@@ -1,9 +1,11 @@
 //! The material for sprites (`MapSprite`): every vertex sits at the
 //! sprite's centre and the vertex shader spreads the corners along the
 //! view's right and up axes, so the quad stays parallel to the view plane.
-//! Added to the image (one, one); glows skip the depth test. The shader
-//! reads the scene behind (the view transmission texture) so the sum is
-//! formed in gamma space, as in the game. See sprite.wgsl.
+//! Added to the image (one, one); glows skip the depth test; sprites in
+//! the colour, texture and solid render modes blend by their alpha, in
+//! normal mode they are opaque (specs/cs_source/sprites_dust.md 3). The
+//! shader reads the scene behind (the view transmission texture) so the
+//! sum or blend is formed in gamma space, as in the game. See sprite.wgsl.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},
@@ -34,6 +36,21 @@ pub struct SpriteMaterial {
     pub texture: Option<Handle<Image>>,
     /// Drawn over everything (glows); otherwise depth tested.
     pub glow: bool,
+    /// How it meets what is behind.
+    pub blend: SpriteBlend,
+}
+
+/// How a sprite meets the image (its render mode).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SpriteBlend {
+    /// Added (additive and glow modes 3, 5, 9).
+    #[default]
+    Add,
+    /// Blended by its alpha (colour, texture and solid modes 1, 2, 4):
+    /// depth tested, not written.
+    Blend,
+    /// An opaque square (normal mode 0): depth tested and written.
+    Opaque,
 }
 
 impl Material for SpriteMaterial {
@@ -66,18 +83,31 @@ impl Material for SpriteMaterial {
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
         descriptor.primitive.cull_mode = None;
-        let add = BlendComponent {
-            src_factor: BlendFactor::One,
-            dst_factor: BlendFactor::One,
-            operation: BlendOperation::Add,
+        // Added: the shader outputs what to add. Blended and opaque: it
+        // outputs the finished pixel (it read the scene behind).
+        let add = match key.bind_group_data.blend {
+            SpriteBlend::Add => BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::One,
+                operation: BlendOperation::Add,
+            },
+            SpriteBlend::Blend | SpriteBlend::Opaque => BlendComponent::REPLACE,
         };
+        if key.bind_group_data.blend != SpriteBlend::Add {
+            if let Some(fragment) = descriptor.fragment.as_mut() {
+                fragment.shader_defs.push("SPRITE_REPLACE".into());
+                if key.bind_group_data.blend == SpriteBlend::Opaque {
+                    fragment.shader_defs.push("SPRITE_OPAQUE".into());
+                }
+            }
+        }
         if let Some(fragment) = descriptor.fragment.as_mut() {
             for target in fragment.targets.iter_mut().flatten() {
                 target.blend = Some(BlendState { color: add, alpha: add });
             }
         }
         if let Some(depth) = descriptor.depth_stencil.as_mut() {
-            depth.depth_write_enabled = Some(false);
+            depth.depth_write_enabled = Some(key.bind_group_data.blend == SpriteBlend::Opaque);
             if key.bind_group_data.glow {
                 depth.depth_compare = Some(CompareFunction::Always);
             }
@@ -90,11 +120,15 @@ impl Material for SpriteMaterial {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SpriteMaterialKey {
     glow: bool,
+    blend: SpriteBlend,
 }
 
 impl From<&SpriteMaterial> for SpriteMaterialKey {
     fn from(m: &SpriteMaterial) -> Self {
-        Self { glow: m.glow }
+        Self {
+            glow: m.glow,
+            blend: m.blend,
+        }
     }
 }
 

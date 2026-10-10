@@ -276,6 +276,7 @@ fn planted(
                         },
                         texture: Some(marker_tex),
                         glow: true,
+                        blend: crate::map::sprite_material::SpriteBlend::Add,
                     })),
                     bevy::light::NotShadowCaster,
                     bevy::camera::visibility::NoFrustumCulling,
@@ -290,6 +291,7 @@ fn planted(
                 },
                 texture: Some(led_tex),
                 glow: false,
+                blend: crate::map::sprite_material::SpriteBlend::Add,
             });
             let led = commands
                 .spawn((

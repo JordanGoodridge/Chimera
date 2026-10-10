@@ -174,19 +174,49 @@ fn feet_in(f: &mut Flow, id: EntId) -> Option<Vec3> {
             .element_product()
             .total_cmp(&(a.max - a.min).element_product())
     });
-    for b in brushes.iter().take(4) {
-        let c = (b.min + b.max) / 2.0;
+    // Columns: each brush's middle first, then across it and over its
+    // edges (a player touches a trigger its box overlaps: a trigger under
+    // a block or along a wall has room beside its middle). Off the middle,
+    // only spots touching no other trigger (what it does there is its).
+    let others: Vec<mashup::core::MapBrush> = w
+        .ids()
+        .into_iter()
+        .filter(|o| *o != id)
+        .filter_map(|o| trigger(w, o))
+        .flat_map(|t| t.brushes.iter().cloned())
+        .collect();
+    let mut columns: Vec<(usize, Vec2)> = Vec::new();
+    let middles = brushes.len().min(4);
+    for (i, b) in brushes.iter().take(4).enumerate() {
+        columns.push((i, ((b.min + b.max) / 2.0).truncate()));
+    }
+    for (i, b) in brushes.iter().take(4).enumerate() {
+        let (lo, hi) = (b.min.truncate() - Vec2::splat(12.0), b.max.truncate() + Vec2::splat(12.0));
+        for fx in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            for fy in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                if (fx, fy) != (0.5, 0.5) {
+                    columns.push((i, lo + (hi - lo) * Vec2::new(fx, fy)));
+                }
+            }
+        }
+    }
+    let mut tries = 0;
+    for (n, (i, c)) in columns.into_iter().enumerate() {
+        let b = &brushes[i];
         // Up through the trigger, then below it (the box reaches 72 up).
-        // (A thin trigger on a floor: feet just inside its slab.)
+        // (A thin trigger on a floor: feet just inside its slab.) Columns
+        // off the middle: fewer heights.
         let mut zs: Vec<f32> = vec![b.min.z + 1.0, (b.min.z + b.max.z) / 2.0, b.max.z - 0.25];
         let mut z = b.min.z + 9.0;
-        while z < b.max.z - 1.0 && zs.len() < 64 {
+        let most = if n < 4 { 64 } else { 12 };
+        while z < b.max.z - 1.0 && zs.len() < most {
             zs.push(z);
             z += 8.0;
         }
-        zs.extend((1..18).map(|k| b.min.z + 1.0 - k as f32 * 4.0));
+        zs.extend((1..if n < 4 { 18 } else { 6 }).map(|k| b.min.z + 1.0 - k as f32 * 4.0));
         for z in zs {
             let feet = Vec3::new(c.x, c.y, z);
+            // Inside the box test first (cheap); the physics query after.
             // With a margin: the logic tests the box from the transform, a
             // float off this one (a slanted face near its tip misses then).
             let inside = mashup::logic::world::box_touches(
@@ -194,8 +224,24 @@ fn feet_in(f: &mut Flow, id: EntId) -> Option<Vec3> {
                 feet + Vec3::new(-14.0, -14.0, 0.1),
                 feet + Vec3::new(14.0, 14.0, 61.9),
             );
-            if inside && !blocked(f, feet) {
+            if !inside || (n >= middles && others.iter().any(|o| brushes_overlap(o, feet))) {
+                continue;
+            }
+            // Off the middle, also clear of walls and slopes a few units
+            // around (a box against a surf ramp has its push clipped).
+            let clear = |f: &mut Flow, feet: Vec3| {
+                !blocked(f, feet)
+                    && (n < middles
+                        || [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y, Vec3::Z]
+                            .into_iter()
+                            .all(|d| !blocked(f, feet + d * 4.0)))
+            };
+            if clear(f, feet) {
                 return Some(feet);
+            }
+            tries += 1;
+            if tries > 400 {
+                return None;
             }
         }
     }

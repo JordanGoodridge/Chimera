@@ -1597,6 +1597,8 @@ pub struct MapSprite {
     /// A glow: drawn over everything, faded by how much of its occlusion
     /// proxy can be seen. Otherwise depth tested against the world.
     pub glow: bool,
+    /// Added, blended by its alpha or opaque (its render mode).
+    pub blend: sprite_material::SpriteBlend,
     /// Glow occlusion proxy: half-diagonal of a square pulled this far
     /// toward the viewer, meters.
     pub proxy: f32,
@@ -3305,6 +3307,7 @@ fn spawn_map(
                         },
                         texture: Some(textures[sprite.texture].clone()),
                         glow: sprite.glow,
+                        blend: sprite.blend,
                     })),
                     bevy::light::NotShadowCaster,
                     // The quad is spread in the vertex shader, so the mesh's
@@ -3395,6 +3398,7 @@ fn spawn_map(
                             },
                             texture: Some(textures[h.texture].clone()),
                             glow: true,
+                            blend: crate::map::sprite_material::SpriteBlend::Add,
                         })),
                         bevy::light::NotShadowCaster,
                         bevy::camera::visibility::NoFrustumCulling,
@@ -3426,6 +3430,7 @@ fn spawn_map(
                         },
                         texture: Some(textures[g.texture].clone()),
                         glow: true,
+                        blend: crate::map::sprite_material::SpriteBlend::Add,
                     })),
                     bevy::light::NotShadowCaster,
                     bevy::camera::visibility::NoFrustumCulling,

@@ -1088,3 +1088,20 @@ fn strike_beams_strike_and_kill() {
     let health = sim.app.world().get::<Health>(p).map_or(0.0, |h| h.current);
     assert!(health <= 0.0, "the beam through the player kills: {health}");
 }
+
+/// Sprites in the blended (1, 2, 4) and normal (0) render modes are drawn
+/// (sprites_dust.md 3): surf_sacrifice's name labels (texture mode),
+/// mg_swag_multigames_v1's buy zone signs (normal).
+#[test]
+fn blended_and_normal_sprites_load() {
+    use mashup::map::sprite_material::SpriteBlend;
+    if let Some(map) = load("surf_sacrifice") {
+        let labels = map.sprites.iter().filter(|s| s.blend == SpriteBlend::Blend).count();
+        assert!(labels >= 14, "{labels}");
+        assert!(!map.warnings.iter().any(|w| w.contains("render modes")), "{:?}", map.warnings);
+    }
+    if let Some(map) = load("mg_swag_multigames_v1") {
+        let signs = map.sprites.iter().filter(|s| s.blend == SpriteBlend::Opaque).count();
+        assert_eq!(signs, 7);
+    }
+}
