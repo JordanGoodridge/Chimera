@@ -71,6 +71,9 @@ pub struct NewGame {
     pub difficulty: usize,
     /// The Game and Bot pages' cvars.
     pub cvars: Vec<ServerCvar>,
+    /// Host a server others can join (Create Server); false: the quick
+    /// start's single-player game.
+    pub host: bool,
 }
 
 impl Default for NewGame {
@@ -83,6 +86,7 @@ impl Default for NewGame {
             bot_team: 0,
             difficulty: NORMAL,
             cvars: Vec::new(),
+            host: true,
         }
     }
 }
@@ -137,11 +141,20 @@ impl GameMenu {
         if let Some(ui) = self.ui.0.as_ref() {
             for s in &ui.server_settings {
                 let before = get(&s.cvar);
+                // Create Server always hosts a server others can join (as
+                // CS:S's does): a single-player `maxplayers` (1) shows the
+                // game's default instead.
+                let single = s.cvar == "maxplayers"
+                    && before.as_deref().and_then(|v| v.trim().parse::<u32>().ok()).is_some_and(|n| n <= 1);
                 out.push(ServerCvar {
                     cvar: s.cvar.clone(),
                     label: s.label.clone(),
                     kind: s.kind.clone(),
-                    value: before.clone().unwrap_or_else(|| s.default.clone()),
+                    value: if single {
+                        s.default.clone()
+                    } else {
+                        before.clone().unwrap_or_else(|| s.default.clone())
+                    },
                     before,
                     page: 1,
                     field: None,
@@ -215,6 +228,7 @@ impl GameMenu {
         self.new_game.bot_count = QUICK_BOTS.to_string();
         self.new_game.bot_team = 0;
         self.new_game.difficulty = NORMAL;
+        self.new_game.host = false;
         // Rounds; the rest as they are.
         for c in &mut self.new_game.cvars {
             c.value = if c.cvar == ROUNDS_CVAR {
@@ -259,6 +273,17 @@ impl GameMenu {
             if c.cvar != ROUNDS_CVAR && c.before.as_ref().is_some_and(|b| b.trim() != c.value.trim()) {
                 lines.push(format!("{} {}", c.cvar, crate::console::quote(&c.value)));
             }
+        }
+        // Hosting needs `maxplayers` above 1 (else the map loads single
+        // player and nobody can join): the Game page's value, else 32.
+        if ng.host {
+            let max = self
+                .server_cvar("maxplayers")
+                .and_then(|c| c.value.trim().parse::<u32>().ok())
+                .filter(|n| *n > 1)
+                .unwrap_or(32);
+            lines.retain(|l| !l.starts_with("maxplayers "));
+            lines.push(format!("maxplayers {max}"));
         }
         lines.extend([
             format!("bot_reaction {reaction}"),

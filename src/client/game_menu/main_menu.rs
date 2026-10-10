@@ -320,6 +320,7 @@ impl GameMenu {
             }
             if page == Page::NewGame {
                 self.create_tab = 0;
+                self.new_game.host = true;
             }
             if self.page != page {
                 self.go_to(page);

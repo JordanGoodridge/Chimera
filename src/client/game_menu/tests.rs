@@ -264,6 +264,9 @@ fn create_server_starts_a_map_from_the_main_menu() {
     // Enter: Start, the default button.
     let o = press(&mut m, &[Input::Activate]);
     assert_eq!(o.lines.last().map(String::as_str), Some("map cs_office"));
+    // Create Server hosts a server others can join: never single player.
+    let max = o.lines.iter().find_map(|l| l.strip_prefix("maxplayers ")).expect("maxplayers set");
+    assert!(max.parse::<u32>().unwrap() > 1, "maxplayers {max}");
     // The menu stays up, loading, and takes no input until the map is in.
     assert!(!o.close && m.open);
     assert_eq!(m.loading.as_deref(), Some("cs_office"));
@@ -506,6 +509,7 @@ fn create_server_by_its_controls() {
             "bot_kick",
             "mashup_rounds 1",
             "mp_friendlyfire 1",
+            "maxplayers 32",
             "bot_reaction 0.2",
             "bot_aim_error 1.5",
             "bot_turn_rate 540",
