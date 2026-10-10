@@ -697,13 +697,54 @@ Probes wanted (the reference server; not run here):
   with no `.phy`, solid "Use VPhysics"; walk into it holding +forward
   and read `getpos` (stops or passes through).
 
+## Round 5 (2026-10-10)
+
+The ranked list's top (strike-generator env_beams), the course flows'
+"no room" bucket, gungame weapons, render looks over the network, load
+times. Raw output in this session's `target/mapsweep/round5/`.
+
+| Problem | Maps | Fix (tests) |
+|---|---|---|
+| Strike-generator env_beams (life ≠ 0) did nothing: not drawn, no damage, StrikeOnce ignored | 1 (mg_n64_goldeneye_v2: 14 beams, 900 damage each; the "beam kills who stayed" of its flow) | visual_entities.md 4.2 in `logic::beams` (first strike 1 s after spawn or the tick after TurnOn, then every life + StrikeTime or U(0, StrikeTime), StrikeOnce on or off, a random entity of each end name, a wall within the radius without an end, damage once per strike to the first player on the line; `Effect::BeamStrike`); drawn by `map::emitters::StrikeEmitter` (1 steps 4-8: segment count, fractal noise regenerated each frame) (`game_cases::strike_*`, `strike_tests`, `heavy::map_community::strike_beams_strike_and_kill`; `target/shots/n64_strike4.png`) |
+| The CS:S loader read beam, laser, spotlight and light glow keys in Hammer's case ("SpotlightLength", "LightningStart", "BoltWidth", "MinDist"...), but vbsp lower-cases the entity lump: none matched, so every point_spotlight was 500 x 10, persistent env_beams and lasers had no ends (not drawn), light glows had no size. Also func_dustmotes' Color, env_soundscape_proxy's MainSoundscapeName, env_soundscape's StartDisabled, prop_dynamic's DefaultAnim (those props weren't animated) | 22+ maps with spotlights, every map with these classes, stock maps too | Keys read without case (`cs_source::beams::prop`) or lower-cased |
+| Sprites in render modes 0, 1, 2, 4 not drawn (26 on 3 maps: surf_sacrifice's name labels, mg_swag_multigames_v1's buy zone signs, mg_jacks_multigames_v1's glows without a mode) | 3 | sprites_dust.md 3: colour/texture/solid modes blend by alpha (depth tested), normal mode is an opaque square (`SpriteBlend`; `blended_and_normal_sprites_load`; `target/shots/sacrifice_label.png`) |
+| Players' render looks (invisibility, colours) and movers' colours and texture frames weren't sent to network clients; strikes, tesla sparks and env_spark bursts neither | 4 + the beam/tesla/spark maps | `RenderLook` and `BrushTint` are replicated components (a client puts a mover's on its own node: `net::movers::copy_tints`); `net::mapfx` sends `MapFx` (NET_VERSION net11) (`net::map_render_looks_replicate`, `net::map_effects_reach_clients`). Third person (local) checked live: `target/shots/thirdperson_red.png` |
+| Slow loads: surf_demise 39-58 s (props: 2484 props x 935 lights' shadow rays each tried all 261120 terrain triangles), minigame maps 3-4 s decoding MP3s one by one | surf_demise; mg_lt_galaxy_v5, mg_n64_goldeneye_v2 and other music maps | Terrain triangles in a ground grid walked by each ray (`ambient::TerrainGrid`; `terrain_grid_finds_what_trying_every_triangle_finds`): surf_demise 39 s -> 9 s; wave files decoded on up to 8 threads (galaxy's sounds 3.2 -> 0.6 s). `mapsweep` prints each map's slow load stages |
+| Course flows: 475 triggers "no room for a player" | 72 course/gg maps | The harness only tried each brush's middle column. Now also spots across the trigger and over its edges, touching no other trigger and clear of walls and ramps (a box against a ramp has its push clipped): 235 left (thin slabs inside floors and blocks, triggers in walls). Our trigger touch wasn't wrong |
+
+Gungame weapons (`heavy::map_community::gungame_weapons_pick_up_equip_and_strip`):
+gg_iceworld_l33t's placed weapons are picked up walking onto them with
+the slot empty, stay with it full (one per slot), grenades go to their
+own slot, all are put back at a round restart; gg_usp_deagle's
+game_player_equip is the whole kit (knife and USP); gg_deagle7k's
+OnMapSpawn StripWeaponsAndSuit has no player to strip and takes nothing.
+All as CS:S does by the public entity docs and weapons.md; game_player_equip's
+`ammo_*` keys (gg_usp_deagle's `ammo_45acp 9`) are still ignored (no spec
+for ammo entities). The weapon ladder is the GunGame plugin's: not added.
+
+Load times (dev build, the box under load 12-20; `mapsweep`): every map
+loads; none panics (surf_surreal logs a model reader panic that
+`props::meshes_readable` catches: the model is skipped, as round 1
+did). Over 5 s before: surf_demise 58, surf_surreal 13, mg_lt_galaxy_v5
+12, mg_n64_goldeneye_v2 8, surf_holiday 8, surf_boreas 8, surf_sedona 7,
+surf_hellenic 6, and 4 more near 5; after (same build, alone): surf_demise
+9, surf_surreal 7, surf_sedona 7, the rest under 5 (galaxy 2.4, n64
+2.0). surf_demise's and surreal's are their packed files, LZMA lumps and
+props; nothing else stands out.
+
+After: `mapsweep --audit` as round 4 left it (22 connections to inputs
+their class lacks, 46 to missing targets, 1 unhandled entity, 18
+run-time complaints, 129 notes, 0 movers failing, 0 panics); minigame
+flows 17 of 17; course flows 72 of 72 (checked items 3330 -> 3630 of
+4242; known 890 -> 612: 235 no room, 166 filtered, 153 overlapping
+teleports, 42 chained, 8 missing destinations, the rest single cases).
+
 ## Left, ranked by maps affected
 
 Generic, by maps affected (counts from the sweep after the fixes):
 
-1. **Strike-generator env_beams** (visual_entities.md 4.2); map ragdolls
-   and the round 2 classes are in since round 3, detail props since
-   round 4 (above).
+1. ~~**Strike-generator env_beams**~~ (round 5); map ragdolls and the
+   round 2 classes are in since round 3, detail props since round 4.
 2. **Particle operators checked against CS:S** (round 2 draws `.pcf`
    effects by interpretation; tech-debt), round 3's embers and muzzle
    flashes too, and the physics numbers (buoyancy, motors, constraint
@@ -712,17 +753,21 @@ Generic, by maps affected (counts from the sweep after the fixes):
    don't have, 7 kinds of run-time complaints): nothing to fix on our
    side unless the game is seen to do something with them.
 4. **Players stuck after a shared teleport** (minigame flows, above).
-5. **Materials and textures** (sweep of the evening of 2026-10-08): 19
-   textures missing over 10 maps (mostly `_rt_camera`, custom cubemaps,
-   files the map's author didn't pack), 11 materials missing over 8 maps,
-   1 unreadable (an empty file, mg_jacks_multigames_v1), 1 unknown shader
-   (Screenspace_General, mg_creative_multigames_v8_ns), 9 models
-   unreadable (4 maps). Sounds: 14 missing (7 maps; mostly not packed).
+5. **Materials and textures** (round 5's sweep): 17 textures missing
+   over 8 maps and 11 materials over 8 (custom cubemaps and files the
+   map's author didn't pack), 1 unreadable (an empty file,
+   mg_jacks_multigames_v1), 1 unknown shader (Screenspace_General,
+   mg_creative_multigames_v8_ns), 9 models unreadable over 4 maps (7 of
+   them "String is not null-terminated" in the vmdl reader: kz_hikari's
+   sandbags and bamboo, a car). Sounds: 14 missing (7 maps; not
+   packed).
 6. **Decals/overlays without a surface** (11 / 5 maps, one each mostly),
    as on the stock maps (other-maps.md #11).
 7. **Server commands** maps send that we refuse: SourceMod/Mani admin
    commands (ma_say, sm_say: chat text) on 5 maps, noted once per map
    since round 2 (a server without the plugin ignores them too).
+8. **game_player_equip's ammo keys** (`ammo_45acp` and the like: gg_usp_deagle)
+   are ignored: what an ammo entity gives in CS:S has no spec.
 
 Specs for the map entities (written 2026-10-08 from the public Source SDK 2013,
 implemented 2026-10-09, above):
