@@ -156,6 +156,8 @@ struct Row {
     name: String,
     status: String,
     load_s: f32,
+    /// The load's slowest stages (`MapData::load_times`), slowest first.
+    slow_stages: Vec<(&'static str, f32)>,
     bsp_version: i32,
     warnings: Vec<String>,
     /// Kind -> count.
@@ -292,6 +294,8 @@ fn sweep_map(name: &str, path: &Path, secs: f32, audit: bool) -> Row {
         }
     };
     row.status = "ok".into();
+    row.slow_stages = map.load_times.iter().copied().filter(|s| s.1 >= 0.5).collect();
+    row.slow_stages.sort_by(|a, b| b.1.total_cmp(&a.1));
     row.warnings = map.warnings.clone();
     row.warnings.extend(missing_sounds(&map));
     // Decoded textures whose pixels don't match their size (drawing code
@@ -484,6 +488,10 @@ fn main() -> ExitCode {
             row.warnings.len(),
             row.unsupported.len()
         );
+        if !row.slow_stages.is_empty() {
+            let stages: Vec<String> = row.slow_stages.iter().map(|(n, t)| format!("{n} {t:.1}s")).collect();
+            eprintln!("  slowest load stages: {}", stages.join(", "));
+        }
         rows.push(row);
     }
     if args.audit

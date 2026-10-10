@@ -34,6 +34,7 @@ use crate::{
     logic::{CarriedMover, Logic, brush_to_engine, carry_player, classes::Class, movers::pusher, mover_brushes_at},
     map::{
         MapBrushEntity, MapEntities,
+        tint::BrushTint,
         entities::{entity_rotation, entity_to_engine, rotation_to_engine},
     },
 };
@@ -50,7 +51,25 @@ pub(super) fn plugin(app: &mut App) {
                 .after(SimSet::Commands)
                 .before(SimSet::Movement)
                 .run_if(resource_equals(NetRole::Client)),
-        );
+        )
+        .add_systems(Update, copy_tints.run_if(resource_equals(NetRole::Client)));
+}
+
+/// A client: a mover's render colour, alpha, mode and texture frame
+/// (`map::tint::BrushTint`, replicated with its `NetMover`) onto its own
+/// copy of the node, which draws it.
+fn copy_tints(
+    movers: Query<(&NetMover, &BrushTint), Changed<BrushTint>>,
+    nodes: Query<(Entity, &MapBrushEntity, Option<&BrushTint>), Without<NetMover>>,
+    mut commands: Commands,
+) {
+    for (m, tint) in &movers {
+        for (node, index, have) in &nodes {
+            if index.0 as u32 == m.index && have != Some(tint) {
+                commands.entity(node).insert(*tint);
+            }
+        }
+    }
 }
 
 /// The server: each mover node's state into its `NetMover` (replicated

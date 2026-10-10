@@ -1020,7 +1020,7 @@ fn entity_props(bsp: &Bsp) -> Vec<PropPlacement> {
             let dynamic = class.starts_with("prop_dynamic");
             let animated = ragdoll
                 || dynamic
-                    && (e.prop("DefaultAnim").is_some_and(|a| !a.trim().is_empty())
+                    && (e.prop("defaultanim").is_some_and(|a| !a.trim().is_empty())
                         || e.prop("targetname")
                             .is_some_and(|n| animated_names.contains(&n.to_ascii_lowercase())));
             Some(PropPlacement {

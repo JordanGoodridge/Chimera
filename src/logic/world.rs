@@ -335,6 +335,16 @@ pub enum Effect {
     Tesla {
         entity: usize,
     },
+    /// A strike-generator env_beam struck (visual_entities.md 4.2): the
+    /// map draws a short-lived beam from `start` to `end` (entity space)
+    /// for `life` seconds (0: until the map's next restart) in the
+    /// entity's look (by map index).
+    BeamStrike {
+        entity: usize,
+        start: Vec3,
+        end: Vec3,
+        life: f32,
+    },
     /// env_viewpunch: add to a player's view punch (pitch, yaw, roll
     /// degrees, Source's: pitch down positive).
     ViewPunch {

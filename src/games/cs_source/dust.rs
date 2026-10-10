@@ -42,7 +42,7 @@ pub fn add_dust(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) {
             continue;
         };
         let rgb: Vec<f32> = e
-            .prop("Color")
+            .prop("color")
             .unwrap_or("255 255 255")
             .split_whitespace()
             .filter_map(|v| v.parse::<f32>().ok())

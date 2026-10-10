@@ -524,3 +524,78 @@ fn a_changed_value_goes_out_for_a_while_then_stops() {
     sim.ticks(net::server::SETTLE_TICKS * 2);
     assert_eq!(health(&sim), Some(0.25), "not sent for ever");
 }
+
+#[test]
+fn map_render_looks_replicate() {
+    use mashup::map::{
+        MapBrushEntity,
+        tint::{BrushTint, RenderLook},
+    };
+    let mut sim = NetSim::new(lan(), 32, 2, greybox);
+    sim.until_joined(200);
+    sim.ticks(10);
+    // The map logic makes client 0's player invisible and another one red
+    // (AddOutput rendermode/renderamt, Color: `logic::bridge`).
+    let ghost = RenderLook {
+        color: [255; 3],
+        alpha: 0,
+        mode: 1,
+    };
+    let on_server = NetSim::owned_by(&mut sim.server, Some(1)).unwrap();
+    sim.server.app.world_mut().entity_mut(on_server).insert(ghost);
+    // A mover's colour: the server's node replicates with its NetMover;
+    // the client's own copy of the node (same index) takes it.
+    let red = BrushTint(
+        RenderLook {
+            color: [255, 0, 0],
+            alpha: 255,
+            mode: 0,
+        },
+        2,
+    );
+    sim.server.app.world_mut().spawn((
+        bevy_replicon::prelude::Replicated,
+        net::NetMover {
+            index: 77,
+            ..default()
+        },
+        red,
+    ));
+    let node = sim.clients[1].app.world_mut().spawn(MapBrushEntity(77)).id();
+    sim.ticks(30);
+    let other = seen_by(&mut sim, 1, 1).unwrap();
+    assert_eq!(sim.clients[1].app.world().get::<RenderLook>(other), Some(&ghost), "others see it");
+    let me = sim.local_player(0).unwrap();
+    assert_eq!(sim.clients[0].app.world().get::<RenderLook>(me), Some(&ghost), "its own client too");
+    assert_eq!(sim.clients[1].app.world().get::<BrushTint>(node), Some(&red), "the node's copy");
+    // Back to normal.
+    sim.server.app.world_mut().entity_mut(on_server).insert(RenderLook::default());
+    sim.ticks(30);
+    assert_eq!(
+        sim.clients[1].app.world().get::<RenderLook>(other),
+        Some(&RenderLook::default())
+    );
+}
+
+#[test]
+fn map_effects_reach_clients() {
+    use bevy::ecs::message::Messages;
+    use mashup::map::emitters::BeamStrike;
+    let mut sim = NetSim::new(lan(), 33, 1, greybox);
+    sim.until_joined(200);
+    sim.ticks(10);
+    let strike = BeamStrike {
+        entity: 12,
+        start: Vec3::new(1.0, 2.0, 3.0),
+        end: Vec3::new(4.0, 5.0, 6.0),
+        life: 2.0,
+    };
+    sim.server.app.world_mut().write_message(strike);
+    let mut seen = Vec::new();
+    for _ in 0..30 {
+        sim.ticks(1);
+        let messages = sim.clients[0].app.world().resource::<Messages<BeamStrike>>();
+        seen.extend(messages.iter_current_update_messages().copied());
+    }
+    assert!(seen.contains(&strike), "{seen:?}");
+}

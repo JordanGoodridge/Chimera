@@ -1,8 +1,9 @@
 //! Map effects drawn through the particle pool (`particles`), for any
 //! game: sprite trails (Source's env_spritetrail, specs/source/
 //! visual_entities.md 5), smoke stacks (env_smokestack,
-//! specs/source/particles_and_smoke.md 3) and tesla arcs (point_tesla,
-//! public entity docs). Each is an entity of its own
+//! specs/source/particles_and_smoke.md 3), tesla arcs (point_tesla,
+//! public entity docs) and strike-generator env_beams' short-lived beams
+//! (visual_entities.md 1, 4.2). Each is an entity of its own
 //! (`TrailEmitter`, `SmokeStackEmitter`) whose transform is where its map
 //! entity is (the logic moves it when the entity follows a parent:
 //! `FollowsEntity`); each frame it adds what it shows as a one-frame
@@ -764,6 +765,200 @@ pub(super) fn update_muzzle_flashes(
     }
 }
 
+/// A strike-generator env_beam's look (visual_entities.md 4.2): its
+/// strikes are beams of this width, colour and noise.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapStrike {
+    /// The entity (index into `MapData::entities`).
+    pub entity: usize,
+    /// Index into `MapData::particles::materials` (additive).
+    pub material: usize,
+    /// BoltWidth, meters: the strip is twice as wide (1 step 7).
+    pub width: f32,
+    /// rendercolor / 255 x renderamt / 255 (the brightness).
+    pub color: Vec3,
+    /// NoiseAmplitude, 0-64.
+    pub noise: f32,
+}
+
+/// A strike: the beam from `start` to `end` (engine space) lives `life`
+/// seconds (0: until the map's next round restart).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct BeamStrike {
+    pub entity: usize,
+    pub start: Vec3,
+    pub end: Vec3,
+    pub life: f32,
+}
+
+/// Samples of a beam's noise (noise_divisions + 1).
+pub const BEAM_NOISE_SAMPLES: usize = 129;
+/// Most segments a beam is drawn in (noise_divisions).
+pub const BEAM_MAX_SEGMENTS: usize = 128;
+
+/// How many points a beam of `length` units, widths `width`/`end_width`
+/// (units) and noise amplitude `noise` is drawn through (1 step 4).
+pub fn beam_segments(length: f32, width: f32, end_width: f32, noise: f32) -> usize {
+    let mut n = if noise >= 0.5 {
+        (length * 0.25 + 3.0) as usize
+    } else {
+        (length * 0.075 + 3.0) as usize
+    };
+    let h = width.max(end_width) / 2.0;
+    if h > 0.0 && length / ((n.max(2) - 1) as f32) < 1.414 * h {
+        n = ((length / (1.414 * h)) as usize + 1).max(2);
+    }
+    n.min(BEAM_MAX_SEGMENTS)
+}
+
+/// Fractal noise (1 step 5): the ends 0, each span's middle the mean of
+/// its ends plus U(-1, 1) x k, k halving at each subdivision.
+pub fn fractal_noise(rng: &mut ParticleRng) -> [f32; BEAM_NOISE_SAMPLES] {
+    fn split(n: &mut [f32; BEAM_NOISE_SAMPLES], a: usize, b: usize, k: f32, rng: &mut ParticleRng) {
+        if b - a <= 1 {
+            return;
+        }
+        let mid = (a + b) / 2;
+        n[mid] = (n[a] + n[b]) * 0.5 + rng.float(-1.0, 1.0) * k;
+        split(n, a, mid, k * 0.5, rng);
+        split(n, mid, b, k * 0.5, rng);
+    }
+    let mut n = [0.0; BEAM_NOISE_SAMPLES];
+    split(&mut n, 0, BEAM_NOISE_SAMPLES - 1, 1.0, rng);
+    n
+}
+
+struct Bolt {
+    start: Vec3,
+    end: Vec3,
+    age: f32,
+    /// 0: forever.
+    life: f32,
+}
+
+/// A strike generator's live beams.
+#[derive(Component)]
+pub struct StrikeEmitter {
+    pub strike: MapStrike,
+    bolts: Vec<Bolt>,
+    rng: ParticleRng,
+}
+
+impl StrikeEmitter {
+    pub fn new(strike: MapStrike, seed: u64) -> Self {
+        Self {
+            strike,
+            bolts: Vec::new(),
+            rng: ParticleRng::new(seed),
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.bolts.len()
+    }
+
+    pub fn strike(&mut self, start: Vec3, end: Vec3, life: f32) {
+        self.bolts.push(Bolt {
+            start,
+            end,
+            age: 0.0,
+            life: life.max(0.0),
+        });
+    }
+
+    /// Age the beams; the dead ones go (shown at constant brightness until
+    /// then).
+    pub fn step(&mut self, dt: f32) {
+        for b in &mut self.bolts {
+            b.age += dt;
+        }
+        self.bolts.retain(|b| b.life <= 0.0 || b.age < b.life);
+    }
+
+    pub fn clear(&mut self) {
+        self.bolts.clear();
+    }
+
+    /// The beams as camera-facing strips, through new fractal noise each
+    /// frame (1 steps 4-8; texture one repeat per 100 units).
+    pub fn quads(&mut self, eye: Vec3, forward: Vec3) -> Vec<Particle> {
+        const UNIT: f32 = 0.0254;
+        let s = self.strike.clone();
+        let mut out = Vec::new();
+        let bolts: Vec<(Vec3, Vec3)> = self.bolts.iter().map(|b| (b.start, b.end)).collect();
+        for (a, b) in bolts {
+            let d = b - a;
+            let length = d.length() / UNIT;
+            if length < 0.1 {
+                continue;
+            }
+            let width_units = s.width / UNIT;
+            let n = beam_segments(length, width_units, width_units, s.noise);
+            let noise = if s.noise != 0.0 {
+                fractal_noise(&mut self.rng)
+            } else {
+                [0.0; BEAM_NOISE_SAMPLES]
+            };
+            let across = forward.cross(d).normalize_or_zero();
+            let points: Vec<Vec3> = (0..n)
+                .map(|j| {
+                    let f = j as f32 / (n - 1) as f32;
+                    let sample = noise[(127.0 * f) as usize];
+                    a + d * f + across * sample * s.noise * length / 100.0 * UNIT
+                })
+                .collect();
+            let v_step = (length / 100.0) / (n - 1) as f32;
+            for (j, pair) in points.windows(2).enumerate() {
+                let (p, q) = (pair[0], pair[1]);
+                let mid = (p + q) * 0.5;
+                let side = (q - p).cross(mid - eye).normalize_or_zero() * s.width;
+                let mut particle = Particle::new(mid, 1.0, s.material, 0.0);
+                particle.color = s.color;
+                particle.shape = Shape::Quad {
+                    corners: [p - side, q - side, q + side, p + side],
+                    rect: [0.0, j as f32 * v_step, 1.0, (j + 1) as f32 * v_step],
+                };
+                out.push(particle);
+            }
+        }
+        out
+    }
+}
+
+/// Strike generators draw the strikes the logic sends (`BeamStrike`);
+/// a round restart takes the lasting ones away.
+pub(super) fn update_strikes(
+    time: Res<Time>,
+    eyes: EyeQuery,
+    mut strikes: MessageReader<BeamStrike>,
+    restarts: Option<Res<crate::core::RoundRestarts>>,
+    mut emitters: Query<&mut StrikeEmitter>,
+    mut pool: ResMut<Particles>,
+) {
+    let dt = time.delta_secs().min(0.1);
+    let new: Vec<BeamStrike> = strikes.read().copied().collect();
+    let restarted = restarts.is_some_and(|r| r.is_changed());
+    let eye = eyes.iter().next().map(|e| (e.translation(), e.forward().as_vec3()));
+    for mut e in &mut emitters {
+        if restarted {
+            e.clear();
+        }
+        let entity = e.strike.entity;
+        for s in new.iter().filter(|s| s.entity == entity) {
+            e.strike(s.start, s.end, s.life);
+        }
+        e.step(dt);
+        let Some((eye, forward)) = eye else { continue };
+        if e.count() == 0 {
+            continue;
+        }
+        let quads = e.quads(eye, forward);
+        if !quads.is_empty() {
+            pool.add(frame_group(quads));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -902,6 +1097,66 @@ mod tests {
         // engine +Z.
         let p = e.puffs[0].position;
         assert!((p - Vec3::Z).length() < 1e-3, "{p}");
+    }
+}
+
+#[cfg(test)]
+mod strike_tests {
+    use super::*;
+
+    #[test]
+    fn beam_segments_as_the_spec_counts_them() {
+        // visual_entities.md test cases.
+        assert_eq!(beam_segments(400.0, 2.0, 2.0, 0.0), 33);
+        assert_eq!(beam_segments(400.0, 2.0, 2.0, 10.0), 103);
+        assert_eq!(beam_segments(40.0, 20.0, 20.0, 0.0), 3);
+        assert_eq!(beam_segments(4000.0, 2.0, 2.0, 10.0), BEAM_MAX_SEGMENTS);
+    }
+
+    #[test]
+    fn fractal_noise_is_zero_at_the_ends_and_bounded() {
+        let mut rng = ParticleRng::new(3);
+        let n = fractal_noise(&mut rng);
+        assert_eq!((n[0], n[BEAM_NOISE_SAMPLES - 1]), (0.0, 0.0));
+        // 1 + 1/2 + 1/4 + ... < 2.
+        assert!(n.iter().all(|v| v.abs() < 2.0));
+        assert!(n.iter().any(|v| *v != 0.0));
+    }
+
+    #[test]
+    fn strikes_live_their_life_and_crackle() {
+        let mut e = StrikeEmitter::new(
+            MapStrike {
+                entity: 4,
+                material: 0,
+                width: 50.0 * 0.0254,
+                color: Vec3::ONE,
+                noise: 20.0,
+            },
+            1,
+        );
+        let (a, b) = (Vec3::ZERO, Vec3::X * 400.0 * 0.0254);
+        e.strike(a, b, 2.0);
+        e.strike(a, b, 0.0);
+        let eye = Vec3::new(5.0, 0.0, 5.0);
+        let forward = (Vec3::new(5.0, 0.0, 0.0) - eye).normalize();
+        let first = e.quads(eye, forward);
+        // 400 units, noise 20: 103 points, but no closer than 1.414 x
+        // half the width (50): 12 points, two beams.
+        assert_eq!(first.len(), 2 * 11);
+        let second = e.quads(eye, forward);
+        let corners = |p: &Particle| match p.shape {
+            Shape::Quad { corners, .. } => corners,
+            _ => unreachable!(),
+        };
+        assert_ne!(corners(&first[5]), corners(&second[5]), "new noise each frame");
+        e.step(1.9);
+        assert_eq!(e.count(), 2);
+        e.step(0.2);
+        // The life-0 beam stays.
+        assert_eq!(e.count(), 1);
+        e.clear();
+        assert_eq!(e.count(), 0);
     }
 }
 

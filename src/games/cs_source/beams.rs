@@ -3,8 +3,8 @@
 //! source), env_laser (3) and persistent env_beam (4.1) between their
 //! endpoints as placed, env_lightglow (6), into `map::beams`. Lasers and
 //! beams are drawn where the map placed their ends (targets that move
-//! aren't followed); strike-generator env_beams (life ≠ 0) and noise
-//! aren't drawn.
+//! aren't followed; no noise); strike-generator env_beams (life ≠ 0)
+//! as `map::emitters::MapStrike`, the look of the beams they strike.
 
 use bevy::prelude::*;
 use vbsp::Bsp;
@@ -12,6 +12,14 @@ use vbsp::Bsp;
 use super::{bsp::METERS_PER_UNIT, material::MaterialLoader};
 use crate::map::MapData;
 use crate::map::beams::{MapBeam, MapGlow, SpotHalo};
+use crate::map::emitters::MapStrike;
+use crate::map::particles::ParticleBlend;
+
+/// An entity key, ignoring case (vbsp gives the lump's keys lower-cased:
+/// "BoltWidth", "SpotlightLength" and the like never matched as written).
+fn prop<'a>(e: &vbsp::RawEntity<'a>, key: &str) -> Option<&'a str> {
+    e.properties().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v)
+}
 
 fn parse3(v: &str) -> Option<Vec3> {
     let mut it = v.split_whitespace().filter_map(|p| p.parse::<f32>().ok());
@@ -50,22 +58,52 @@ fn trace(data: &MapData, skip: &std::collections::HashSet<usize>, from: Vec3, to
         .fold(1.0, f32::min)
 }
 
+/// Strike-generator env_beams (life ≠ 0, or a ring; 4.2): the look of
+/// the short-lived beams the logic strikes, drawn through the particle
+/// pool (after its materials are loaded).
+pub fn add_strikes(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) {
+    for (index, e) in bsp.entities.iter().enumerate() {
+        if prop(&e, "classname") != Some("env_beam") {
+            continue;
+        }
+        let num = |k: &'static str| prop(&e, k).and_then(|v| v.trim().parse::<f32>().ok());
+        let flags = num("spawnflags").unwrap_or(0.0) as u32;
+        if num("life").unwrap_or(0.0) == 0.0 && flags & 8 == 0 {
+            continue;
+        }
+        let Some(material) = prop(&e, "texture")
+            .and_then(|t| super::trails::particle_material(materials, data, t, Some(ParticleBlend::Additive)))
+        else {
+            continue;
+        };
+        let rgb = prop(&e, "rendercolor").and_then(parse3).unwrap_or(Vec3::splat(255.0)) / 255.0;
+        let brightness = num("renderamt").unwrap_or(255.0).clamp(0.0, 255.0) / 255.0;
+        data.strikes.push(MapStrike {
+            entity: index,
+            material,
+            width: num("BoltWidth").unwrap_or(1.0).clamp(0.0, 102.3) * METERS_PER_UNIT,
+            color: rgb * brightness,
+            noise: num("NoiseAmplitude").unwrap_or(0.0).clamp(0.0, 64.0),
+        });
+    }
+}
+
 pub fn add_beams(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) {
     let skip: std::collections::HashSet<usize> = data.trace_skip.iter().copied().collect();
     let origin_of = |name: &str| {
         bsp.entities
             .iter()
-            .find(|e| e.prop("targetname").is_some_and(|n| n.eq_ignore_ascii_case(name)))
-            .and_then(|e| e.prop("origin").and_then(parse3))
+            .find(|e| prop(&e, "targetname").is_some_and(|n| n.eq_ignore_ascii_case(name)))
+            .and_then(|e| prop(&e, "origin").and_then(parse3))
     };
     let mut beams = Vec::new();
     let mut glows = Vec::new();
     for (index, e) in bsp.entities.iter().enumerate() {
-        let Some(class) = e.prop("classname") else { continue };
-        let num = |k: &'static str| e.prop(k).and_then(|v| v.trim().parse::<f32>().ok());
-        let origin = e.prop("origin").and_then(parse3).unwrap_or(Vec3::ZERO);
-        let angles = e.prop("angles").and_then(parse3).unwrap_or(Vec3::ZERO);
-        let rgb = e.prop("rendercolor").and_then(parse3).unwrap_or(Vec3::splat(255.0)) / 255.0;
+        let Some(class) = prop(&e, "classname") else { continue };
+        let num = |k: &'static str| prop(&e, k).and_then(|v| v.trim().parse::<f32>().ok());
+        let origin = prop(&e, "origin").and_then(parse3).unwrap_or(Vec3::ZERO);
+        let angles = prop(&e, "angles").and_then(parse3).unwrap_or(Vec3::ZERO);
+        let rgb = prop(&e, "rendercolor").and_then(parse3).unwrap_or(Vec3::splat(255.0)) / 255.0;
         let flags = num("spawnflags").unwrap_or(0.0) as u32;
         match class {
             "point_spotlight" => {
@@ -109,21 +147,20 @@ pub fn add_beams(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
                 });
             }
             "env_laser" | "env_beam" => {
-                let Some(texture) = e.prop("texture").and_then(|t| sprite(materials, t)) else {
+                let Some(texture) = prop(&e, "texture").and_then(|t| sprite(materials, t)) else {
                     continue;
                 };
                 let laser = class == "env_laser";
                 let (start, end) = if laser {
-                    (Some(origin), e.prop("LaserTarget").and_then(origin_of))
+                    (Some(origin), prop(&e, "LaserTarget").and_then(origin_of))
                 } else {
-                    // Strike generators (life ≠ 0, or a ring) send short
-                    // beams: not drawn.
+                    // Strike generators (life ≠ 0, or a ring): `add_strikes`.
                     if num("life").unwrap_or(0.0) != 0.0 || flags & 8 != 0 {
                         continue;
                     }
                     (
-                        e.prop("LightningStart").and_then(origin_of),
-                        e.prop("LightningEnd").and_then(origin_of),
+                        prop(&e, "LightningStart").and_then(origin_of),
+                        prop(&e, "LightningEnd").and_then(origin_of),
                     )
                 };
                 let (Some(start), Some(end)) = (start, end) else { continue };
@@ -139,7 +176,7 @@ pub fn add_beams(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
                 } else {
                     0
                 };
-                let named = e.prop("targetname").is_some_and(|n| !n.is_empty());
+                let named = prop(&e, "targetname").is_some_and(|n| !n.is_empty());
                 beams.push(MapBeam {
                     entity: Some(index),
                     start: engine(start),
@@ -178,4 +215,5 @@ pub fn add_beams(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
     }
     data.beams = beams;
     data.glows = glows;
+
 }

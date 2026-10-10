@@ -549,3 +549,134 @@ fn spark_once_stops_sparking() {
     assert_eq!(got(&w, w.find("sparked").unwrap(), "Trigger").len(), after);
     assert!(!part_on(&w, s));
 }
+
+// ------------------------------------------------------ env_beam strikes
+
+fn strike_beam(w: &mut LogicWorld, extra: &[(&str, &str)]) -> EntId {
+    let mut pairs = vec![
+        ("classname", "env_beam"),
+        ("texture", "x"),
+        ("LightningStart", "a"),
+        ("LightningEnd", "b"),
+        ("life", "0.5"),
+        ("StrikeTime", "1"),
+        ("damage", "20"),
+    ];
+    pairs.extend_from_slice(extra);
+    let id = spawn(w, &pairs);
+    w.get_mut(id).unwrap().map_index = Some(9);
+    spawn(w, &[("classname", "info_target"), ("targetname", "a"), ("origin", "0 -100 32")]);
+    spawn(w, &[("classname", "info_target"), ("targetname", "b"), ("origin", "0 100 32")]);
+    id
+}
+
+type Strikes = Vec<(i64, Vec3, Vec3, f32)>;
+
+/// (tick, start, end, life) of each strike up to tick `until`, and the
+/// damage dealt.
+fn strikes(w: &mut LogicWorld, until: i64) -> (Strikes, f32) {
+    let (mut out, mut damage) = (Vec::new(), 0.0);
+    while w.tick <= until {
+        w.frame(&NoCollision);
+        for e in effects(w) {
+            match e {
+                Effect::BeamStrike {
+                    entity: 9,
+                    start,
+                    end,
+                    life,
+                } => out.push((w.tick - 1, start, end, life)),
+                Effect::Damage { amount, .. } => damage += amount,
+                _ => {}
+            }
+        }
+    }
+    (out, damage)
+}
+
+#[test]
+fn strike_generator_strikes_after_its_life_and_wait() {
+    // Spec test: life 0.5, StrikeTime 1, unnamed, damage 20, a player in
+    // line: strikes at t = 1, 2.5, 4; 20 damage each.
+    let mut w = world();
+    strike_beam(&mut w, &[]);
+    player_at(&mut w, 1, Vec3::ZERO);
+    w.activate();
+    let (s, damage) = strikes(&mut w, 280);
+    let times: Vec<f32> = s.iter().map(|(t, ..)| *t as f32 * DT).collect();
+    assert_eq!(times.len(), 3, "{times:?}");
+    for (t, want) in times.iter().zip([1.0, 2.5, 4.0]) {
+        assert!((t - want).abs() < 0.03, "{times:?}");
+    }
+    assert_eq!(s[0].1, Vec3::new(0.0, -100.0, 32.0));
+    assert_eq!(s[0].2, Vec3::new(0.0, 100.0, 32.0));
+    assert_eq!(s[0].3, 0.5);
+    assert!((damage - 60.0).abs() < 1e-3, "{damage}");
+}
+
+#[test]
+fn named_strike_generator_waits_for_turn_on_and_strike_once_needs_none() {
+    let mut w = world();
+    strike_beam(&mut w, &[("targetname", "beam"), ("spawnflags", "2"), ("damage", "0")]);
+    w.activate();
+    let (s, _) = strikes(&mut w, 200);
+    assert!(s.is_empty(), "off until TurnOn");
+    w.queue_input("beam", "StrikeOnce", Value::Void, 0.0, None);
+    let (s, _) = strikes(&mut w, 202);
+    assert_eq!(s.len(), 1, "StrikeOnce while off");
+    w.queue_input("beam", "TurnOn", Value::Void, 0.0, None);
+    let (s, _) = strikes(&mut w, 205);
+    assert_eq!(s.len(), 1, "TurnOn strikes on the next tick");
+    w.queue_input("beam", "TurnOff", Value::Void, 0.0, None);
+    let (s, _) = strikes(&mut w, 400);
+    assert!(s.is_empty(), "TurnOff stops the strikes");
+}
+
+#[test]
+fn random_strike_waits_up_to_its_strike_time() {
+    let mut w = world();
+    strike_beam(&mut w, &[("spawnflags", "4"), ("damage", "0")]);
+    w.activate();
+    let (s, _) = strikes(&mut w, 2000);
+    let gaps: Vec<f32> = s.windows(2).map(|p| (p[1].0 - p[0].0) as f32 * DT).collect();
+    assert!(gaps.len() > 10, "{gaps:?}");
+    assert!(gaps.iter().all(|g| (0.5 - 0.02..=1.5 + 0.02).contains(g)), "{gaps:?}");
+    assert!(gaps.iter().any(|g| (g - gaps[0]).abs() > 0.05), "random: {gaps:?}");
+}
+
+#[test]
+fn strike_without_an_end_runs_to_a_wall_within_its_radius() {
+    // A closed box 200 across around the start: each strike runs from the
+    // start to a wall.
+    let mut w = world();
+    let id = spawn(
+        &mut w,
+        &[
+            ("classname", "env_beam"),
+            ("texture", "x"),
+            ("LightningStart", "a"),
+            ("life", "0.2"),
+            ("StrikeTime", "0"),
+            ("Radius", "256"),
+        ],
+    );
+    w.get_mut(id).unwrap().map_index = Some(9);
+    spawn(&mut w, &[("classname", "info_target"), ("targetname", "a"), ("origin", "0 0 0")]);
+    let slab = |lo: [f32; 3], hi: [f32; 3]| crate::map::MapBrush::from_box(Vec3::from(lo), Vec3::from(hi));
+    w.collision = Some(std::sync::Arc::new(BrushCollision(vec![
+        slab([100.0, -500.0, -500.0], [120.0, 500.0, 500.0]),
+        slab([-120.0, -500.0, -500.0], [-100.0, 500.0, 500.0]),
+        slab([-500.0, 100.0, -500.0], [500.0, 120.0, 500.0]),
+        slab([-500.0, -120.0, -500.0], [500.0, -100.0, 500.0]),
+        slab([-500.0, -500.0, 100.0], [500.0, 500.0, 120.0]),
+        slab([-500.0, -500.0, -120.0], [500.0, 500.0, -100.0]),
+    ])));
+    w.activate();
+    let (s, _) = strikes(&mut w, 400);
+    assert!(s.len() > 5, "{}", s.len());
+    for (_, start, end, _) in s {
+        assert_eq!(start, Vec3::ZERO);
+        let m = end.abs().max_element();
+        assert!((m - 100.0).abs() < 0.5, "on a wall: {end}");
+    }
+}

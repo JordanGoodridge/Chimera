@@ -329,6 +329,17 @@ pub fn load(materials: &mut MaterialLoader, map: &str, surfaces: &SurfaceProps, 
         );
         out.surfaces.insert(name.clone(), surface);
     }
+    // Every wave file first, decoded on several threads (MP3 music and
+    // effects took seconds one after another on minigame maps).
+    let mut files: Vec<String> = wanted
+        .iter()
+        .filter_map(|n| scripts.entries.get(n))
+        .flat_map(|raw| raw.waves.iter().map(|w| wave_file(w)))
+        .chain(ambient_raw.iter().map(|n| wave_file(n)))
+        .collect();
+    files.sort();
+    files.dedup();
+    let mut predecoded = decode_files(files.iter().map(|f| (f.clone(), materials.read(f))).collect());
     let mut decoded: HashMap<String, Option<usize>> = HashMap::new();
     let mut failed = 0;
     for name in wanted {
@@ -339,7 +350,7 @@ pub fn load(materials: &mut MaterialLoader, map: &str, surfaces: &SurfaceProps, 
         for w in &raw.waves {
             let file = wave_file(w);
             let index = *decoded.entry(file.clone()).or_insert_with(|| {
-                let clip = materials.read(&file).and_then(|b| super::wav::decode_any(&b).ok());
+                let clip = predecoded.remove(&file).flatten();
                 clip.map(|c| {
                     out.clips.push(c);
                     out.clips.len() - 1
@@ -390,7 +401,7 @@ pub fn load(materials: &mut MaterialLoader, map: &str, surfaces: &SurfaceProps, 
     for name in ambient_raw {
         let file = wave_file(&name);
         let index = *decoded.entry(file.clone()).or_insert_with(|| {
-            let clip = materials.read(&file).and_then(|b| super::wav::decode_any(&b).ok());
+            let clip = predecoded.remove(&file).flatten();
             clip.map(|c| {
                 out.clips.push(c);
                 out.clips.len() - 1
@@ -414,6 +425,29 @@ pub fn load(materials: &mut MaterialLoader, map: &str, surfaces: &SurfaceProps, 
         bevy::log::warn!("sounds: {failed} waves couldn't be read or decoded");
     }
     out
+}
+
+/// Wave files (name, bytes when found) decoded on up to 8 threads, the
+/// largest first: by name, None where missing or undecodable.
+fn decode_files(files: Vec<(String, Option<Vec<u8>>)>) -> HashMap<String, Option<crate::map::sound::MapSoundClip>> {
+    let mut files = files;
+    files.sort_by_key(|(_, b)| std::cmp::Reverse(b.as_ref().map_or(0, Vec::len)));
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let out = std::sync::Mutex::new(HashMap::new());
+    std::thread::scope(|s| {
+        for _ in 0..threads {
+            s.spawn(|| {
+                loop {
+                    let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some((name, bytes)) = files.get(k) else { break };
+                    let clip = bytes.as_ref().and_then(|b| super::wav::decode_any(b).ok());
+                    out.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), clip);
+                }
+            });
+        }
+    });
+    out.into_inner().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]

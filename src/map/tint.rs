@@ -18,7 +18,7 @@ pub const RENDER_NONE: u8 = 10;
 
 /// How an entity is drawn: colour (sRGB 0-255), alpha (renderamt) and
 /// render mode.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RenderLook {
     pub color: [u8; 3],
     pub alpha: u8,
@@ -78,7 +78,7 @@ impl RenderLook {
 /// A brush entity node's look (white, normal: as the material is) and
 /// the texture frame its animated textures show (env_texturetoggle; 0:
 /// the first).
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BrushTint(pub RenderLook, pub u32);
 
 impl BrushTint {
