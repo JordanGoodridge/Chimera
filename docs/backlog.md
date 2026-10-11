@@ -10,6 +10,13 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- Third-person AK (user, 2026-10-11): looking up or down, the AK's
+  magazine sits in the wrong place. Likely the reload layer's
+  `weapon_bone_LHand`/magazine bone, or the new hand IK (`lock_hands`,
+  `mashup_hand_ik 0` to compare) moving a bone the magazine follows;
+  check the AK's world model bones (magazine attached to the left hand
+  vs the gun) at several pitches, against a CS:S third-person capture.
+
 Connections and hosting: done 2026-10-10, to playtest (multiplayer.md,
 "Playtest with friends"): Create Server's Game tab lists `settings.scr`'s
 options on a fresh config (they were read when the main menu opened,
