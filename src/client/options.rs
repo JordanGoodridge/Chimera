@@ -79,6 +79,9 @@ pub enum SettingKind {
     Negate,
     /// The window size: the monitor's modes (`GameMenu::resolutions`).
     Resolution,
+    /// A text entry of at most this many characters, set on OK or Apply
+    /// (the player name: not a rename per key typed).
+    Text(usize),
 }
 
 /// Where a setting is shown: an options tab, one of the options' own
@@ -340,7 +343,11 @@ pub const SETTINGS: &[Setting] = &[
     // Voice (`OptionsSubVoice.res`): mashup has no voice chat.
     setting(Options(Tab::Voice), "voice_modenable", Some("voice_modenable"), Some("#GameUI_EnableVoice"), "Enable voice", SettingKind::Toggle),
     setting(Options(Tab::Voice), "voice_scale", Some("VoiceReceive"), Some("#GameUI_VoiceReceiveVolume"), "Voice receive volume", range(0.0, 1.0, 0.05, 2)),
-    // Multiplayer (`OptionsSubMultiplayer.res`).
+    // Multiplayer (`OptionsSubMultiplayer.res`). The player name: older
+    // CS:S had it here ("Player name", `#GameUI_PlayerName`); the
+    // install's layout doesn't, so `gameui` adds it in the spray image's
+    // place (mashup has no sprays).
+    setting(Options(Tab::Multiplayer), "name", Some("NameEntry"), Some("#GameUI_PlayerName"), "Player name", SettingKind::Text(32)),
     setting(
         Options(Tab::Multiplayer),
         "cl_crosshaircolor",
@@ -518,6 +525,7 @@ impl Setting {
                 let v = current.trim().parse::<f32>().unwrap_or(0.022);
                 format!("{}", -v)
             }
+            SettingKind::Text(_) => current.to_string(),
             SettingKind::Resolution => {
                 if choices.is_empty() {
                     return current.to_string();
@@ -548,6 +556,7 @@ impl Setting {
             SettingKind::Toggle | SettingKind::ToggleTo(_) | SettingKind::Negate => {
                 if self.checked(value) { "On" } else { "Off" }.to_string()
             }
+            SettingKind::Text(_) => value.to_string(),
             SettingKind::Resolution => {
                 if value.trim().is_empty() {
                     "As started".to_string()
@@ -566,7 +575,7 @@ impl Setting {
             SettingKind::Choice(list) => list.iter().map(|(v, l)| (v.to_string(), choice_label(l, text))).collect(),
             SettingKind::Toggle => ON_OFF.iter().map(|(v, l)| (v.to_string(), choice_label(l, text))).collect(),
             SettingKind::Resolution => choices.iter().map(|c| (c.clone(), c.clone())).collect(),
-            SettingKind::Range { .. } | SettingKind::Negate | SettingKind::ToggleTo(_) => Vec::new(),
+            SettingKind::Range { .. } | SettingKind::Negate | SettingKind::ToggleTo(_) | SettingKind::Text(_) => Vec::new(),
         }
     }
 

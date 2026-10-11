@@ -151,12 +151,17 @@ pub(super) fn ui_loaded(
             open_menu(w, page);
             w.resource_mut::<GameMenu>().set_create_tab(create_tab);
         });
+    } else {
+        // The dialogs opened from here later take their rows from these.
+        commands.queue(refresh_script_cvars);
     }
 }
 
-/// Open the menu on a page, reading the settings from the console.
-pub(super) fn open_menu(w: &mut World, page: Page) {
-    let (get, binds, known) = {
+/// The menu's cvars now (the settings', Create Server's and Multiplayer
+/// > Advanced's: the install's scripts' once the GameUI look is in), the
+/// binds and every console name.
+fn menu_values(w: &mut World) -> (HashMap<String, String>, BTreeMap<String, String>, BTreeSet<String>) {
+    {
         let mut names: Vec<String> = SETTINGS
             .iter()
             .flat_map(|s| s.cvars().map(str::to_string))
@@ -180,7 +185,24 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
             .filter_map(|c| (c.get)(w).map(|v| (c.name.clone(), v)))
             .collect::<HashMap<_, _>>();
         (values, binds, known)
-    };
+    }
+}
+
+/// The GameUI look came in with the menu on its main page (at startup it
+/// opens before the install's scripts are read): Create Server's Game page
+/// (`settings.scr`) and Multiplayer > Advanced (`user.scr`) read their
+/// cvars again, so their rows are there when opened.
+pub(super) fn refresh_script_cvars(w: &mut World) {
+    let (get, ..) = menu_values(w);
+    let mut menu = w.resource_mut::<GameMenu>();
+    let get = |n: &str| get.get(n).cloned();
+    menu.new_game.cvars = menu.server_cvars(&get);
+    menu.user_cvars = menu.user_cvars_now(&get);
+}
+
+/// Open the menu on a page, reading the settings from the console.
+pub(super) fn open_menu(w: &mut World, page: Page) {
+    let (get, binds, known) = menu_values(w);
     let current = w
         .get_resource::<crate::map::LoadedMapName>()
         .map(|m| m.0.rsplit(':').next().unwrap_or(&m.0).to_string());
@@ -766,9 +788,22 @@ pub(super) fn world_behind_dialogs(
     mut picture: ResMut<widgets::WorldPicture>,
     mut images: ResMut<Assets<Image>>,
     mut shown: Query<(Entity, &mut ImageNode), With<WorldUnderUi>>,
+    mut projections: Query<&mut Projection, With<crate::client::FirstPersonCamera>>,
     mut commands: Commands,
 ) {
     use bevy::camera::RenderTarget;
+    // Bevy works a camera's target size and scale out again only when its
+    // window or image changes or its `Camera` is added or `Projection`
+    // changed, not when its `RenderTarget` is swapped: back on the window
+    // it kept the picture's (physical pixels, scale 1), so on a scaled
+    // display everything placed by the camera's size (the crosshair,
+    // `world_to_viewport`) went right of and below where it belongs.
+    let mut retarget = |e: Entity, target: RenderTarget, commands: &mut Commands| {
+        commands.entity(e).insert(target);
+        if let Ok(mut p) = projections.get_mut(e) {
+            p.set_changed();
+        }
+    };
     let ours = |t: &RenderTarget| match (t, &picture.0) {
         (RenderTarget::Image(i), Some((h, _))) => i.handle == *h,
         _ => false,
@@ -783,9 +818,7 @@ pub(super) fn world_behind_dialogs(
         if picture.0.is_some() {
             for (e, t) in &cameras {
                 if ours(t) {
-                    commands
-                        .entity(e)
-                        .insert(RenderTarget::Window(bevy::window::WindowRef::Primary));
+                    retarget(e, RenderTarget::Window(bevy::window::WindowRef::Primary), &mut commands);
                 }
             }
             for (e, _) in &shown {
@@ -812,7 +845,7 @@ pub(super) fn world_behind_dialogs(
         }
     };
     if !drawing {
-        commands.entity(camera).insert(RenderTarget::Image(handle.clone().into()));
+        retarget(camera, RenderTarget::Image(handle.clone().into()), &mut commands);
     }
     match shown.single_mut() {
         Ok((_, mut node)) => {

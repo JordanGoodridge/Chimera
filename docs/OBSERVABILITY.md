@@ -84,7 +84,9 @@ rendering. Write screenshots to a scratch directory, never into the repo.
 Needs a display: on the Linux dev box set `WAYLAND_DISPLAY=wayland-1` and
 `XDG_RUNTIME_DIR=/run/user/1000` if the shell lacks them. `--frames N`
 without `--screenshot` just runs N frames and exits (smoke test).
-`--window 1920x1080` fixes the window's size in pixels (a fixed-size window
+`--scale 1.25` gives the window that scale factor (Windows at 125 %: UI
+placed in logical pixels, e.g. the crosshair after a dialog; with
+`--window` it is 1 unless given). `--window 1920x1080` fixes the window's size in pixels (a fixed-size window
 floats under Hyprland instead of being tiled), for UI checked at a known
 resolution. `--help` lists all options.
 
@@ -608,7 +610,13 @@ through each game's `mashup/console` (aim from the other's `Transform` as
 the client draws it, `world.query` on its `Name`), the host's health from
 its `LocalPlayer`'s `Health`, `+sv_showlagcompensation 1` on the host to
 log each rewind. Cheat commands (`setpos`, `setang`, `noclip`, `god`,
-`give`, ...) need `+sv_cheats 1` on the host in a network game. A round
+`give`, ...) need `+sv_cheats 1` on the host in a network game; a
+client's go to the server and act on its player there (`net::cheats`:
+the answer prints in the client's console), so a client's `noclip` is
+the server's and predicted. `mashup_noblock 1` (or 2) on the server lets
+teammates (everyone) pass through each other. Chat says who joined and
+left ("Player X left the game (Disconnect by user.)"); a client whose
+server stopped shows "Server shutting down" at once. A round
 on de_dust2: host `... -port 27031 +name Host +maxplayers 4 +sv_cheats 1
 +mashup_rounds 1 +map de_dust2` (or `+map cs_source:de_dust2`), then `mp_restartgame 1` once the client is in;
 `buymenu`, `buy <weapon>`, `jointeam 2`, `say`/`say_team`,
@@ -649,7 +657,8 @@ connection has come. Downloads land in the content cache
 (`<data>/mashup/content/cs_source/maps/<name>.bsp`, noted in its
 `index.toml`). On a server, `sv_allowdownload` (1), `sv_downloadurl` (an
 HTTP folder with `maps/<name>.bsp.bz2` or `.bsp`; quote it, `//` starts a
-comment) and `net_maxfilesize` (64 MB) say how clients get the map;
+comment) and `net_maxfilesize` (512 MB, the most a server sends and a
+client takes; CS:S's 16, a deliberate difference: `net::maps::MAX_FILE_MB`) say how clients get the map;
 `hostname` names the server. The log shows `changing level to ...`,
 `now serving <map> (<bytes>, sha256 ...)`, `sending maps/x.bsp`, and on a
 client `saved maps/x.bsp to ...`.

@@ -22,6 +22,9 @@ use renetcode::{
 
 use crate::console::resource_cvar;
 
+/// Copies of netcode's disconnect packet sent on hanging up.
+const HANG_UP_COPIES: usize = 3;
+
 /// Fake network conditions (Source's cvars): what this process receives
 /// is delayed by `lag` ms plus up to `jitter` ms more (so it may come out
 /// of order), and `loss` percent of the packets it receives and sends are
@@ -70,7 +73,12 @@ impl UdpClient {
             return;
         }
         if let Ok((addr, packet)) = self.netcode.disconnect() {
-            let _ = self.socket.send_to(packet, addr);
+            // A few copies (netcode's spec sends ten; renetcode one): one
+            // lost leaves the other end waiting for its timeout. The same
+            // sequence: copies after the first are dropped as replays.
+            for _ in 0..HANG_UP_COPIES {
+                let _ = self.socket.send_to(packet, addr);
+            }
         }
     }
 
@@ -187,7 +195,17 @@ pub struct UdpServer {
     buffer: Box<[u8; NETCODE_MAX_PACKET_BYTES]>,
     pub queries: super::query::Responder,
     clock: Duration,
+    /// When each client was last heard from.
+    heard: std::collections::HashMap<u64, Duration>,
+    /// Why netcode let each client go, by id, until the server takes it
+    /// (`server::left`): "timed out" after a silence, else the client hung
+    /// up ("Disconnect by user.").
+    pub left: std::collections::HashMap<u64, &'static str>,
 }
+
+/// A client silent this long before netcode let it go timed out (netcode
+/// says only that it is gone; its timeout is 30 s).
+const SILENT_TIMED_OUT: Duration = Duration::from_secs(10);
 
 impl UdpServer {
     pub fn new(config: ServerConfig, socket: UdpSocket, secret: u64) -> std::io::Result<Self> {
@@ -198,6 +216,8 @@ impl UdpServer {
             buffer: Box::new([0; NETCODE_MAX_PACKET_BYTES]),
             queries: super::query::Responder::new(secret),
             clock: Duration::ZERO,
+            heard: Default::default(),
+            left: Default::default(),
         })
     }
 
@@ -210,11 +230,29 @@ impl UdpServer {
         self.netcode.user_data(client_id)
     }
 
-    /// Hang up on every client now (their disconnect packets).
+    /// Hang up on every client now (their disconnect packets, a few copies
+    /// each: `HANG_UP_COPIES`).
     pub fn disconnect_all(&mut self, server: &mut RenetServer) {
-        for id in self.netcode.clients_id() {
-            let result = self.netcode.disconnect(id);
-            handle_server_result(result, &self.socket, server);
+        let ids = self.netcode.clients_id();
+        if !ids.is_empty() {
+            info!("hanging up on {} client(s)", ids.len());
+        }
+        for id in ids {
+            match self.netcode.disconnect(id) {
+                ServerResult::ClientDisconnected {
+                    client_id,
+                    addr,
+                    payload,
+                } => {
+                    server.remove_connection(client_id);
+                    if let Some(payload) = payload {
+                        for _ in 0..HANG_UP_COPIES {
+                            let _ = self.socket.send_to(payload, addr);
+                        }
+                    }
+                }
+                other => handle_server_result(other, &self.socket, server),
+            }
         }
     }
 
@@ -239,6 +277,9 @@ impl UdpServer {
                         continue;
                     }
                     let result = self.netcode.process_packet(addr, packet);
+                    if let ServerResult::Payload { client_id, .. } = &result {
+                        self.heard.insert(*client_id, self.clock);
+                    }
                     handle_server_result(result, &self.socket, server);
                 }
                 Err(e)
@@ -255,6 +296,14 @@ impl UdpServer {
         }
         for id in self.netcode.clients_id() {
             let result = self.netcode.update_client(id);
+            if let ServerResult::ClientDisconnected { client_id, .. } = &result {
+                let silent = self
+                    .heard
+                    .remove(client_id)
+                    .is_none_or(|t| self.clock.saturating_sub(t) >= SILENT_TIMED_OUT);
+                self.left
+                    .insert(*client_id, if silent { "timed out" } else { super::client::BY_USER });
+            }
             handle_server_result(result, &self.socket, server);
         }
         for id in server.disconnections_id() {

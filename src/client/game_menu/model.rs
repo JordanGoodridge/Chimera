@@ -298,6 +298,8 @@ pub struct GameMenu {
     /// A value entry's text as typed (it sets its setting once it reads
     /// as one), while focused.
     pub editing: Option<(Field, String)>,
+    /// Text settings typed and not set yet (OK or Apply sets them).
+    pub typed: Vec<usize>,
 }
 
 /// Keyboard list rows shown at once.
@@ -419,6 +421,7 @@ impl GameMenu {
             self.main = main_entries(self.ui.0.as_deref());
         }
         self.values = SETTINGS.iter().map(|s| s.read(&get)).collect();
+        self.typed.clear();
         self.aspect = get("mashup_resolution").and_then(|r| aspect_of(&r));
         let num = |name: &str| get(name).and_then(|v| v.trim().parse::<f32>().ok());
         self.new_game.map = current_map
@@ -633,6 +636,11 @@ impl GameMenu {
                         SettingKind::Range { .. } => Control::Slider {
                             fraction: s.fraction(&v).unwrap_or(0.0),
                             text: shown,
+                        },
+                        SettingKind::Text(max) => Control::Text {
+                            text: v,
+                            numeric: false,
+                            max,
                         },
                         _ => Control::Check(s.checked(&v)),
                     }
@@ -1084,6 +1092,15 @@ impl GameMenu {
             Field::BotCount => self.new_game.bot_count = text,
             Field::ServerCvar(i) => self.new_game.cvars[i].value = text,
             Field::UserCvar(i) => self.user_cvars[i].value = text,
+            // A text setting (the player name): set on OK or Apply.
+            Field::Setting(i) if matches!(SETTINGS[i].kind, SettingKind::Text(_)) => {
+                if let Some(v) = self.values.get_mut(i) {
+                    *v = Some(text);
+                    if !self.typed.contains(&i) {
+                        self.typed.push(i);
+                    }
+                }
+            }
             Field::SettingText(i) => {
                 self.editing = Some((field, text.clone()));
                 // Set once it reads as a number in range.
@@ -1258,6 +1275,11 @@ impl GameMenu {
                 }
                 self.back();
             }
+            Action::Ok if !self.typed.is_empty() && matches!(self.page, Page::Settings | Page::Extras) => {
+                self.apply_typed(out);
+                self.options_before.clear();
+                self.back();
+            }
             Action::Ok => match self.page {
                 Page::KeyboardAdvanced | Page::VideoAdvanced | Page::Gamma => {
                     self.advanced_before.clear();
@@ -1275,6 +1297,7 @@ impl GameMenu {
                     self.back();
                 }
                 Page::Settings | Page::Extras => {
+                    self.typed.clear();
                     let before = std::mem::take(&mut self.options_before);
                     self.restore(before, out);
                     self.back();
@@ -1282,6 +1305,7 @@ impl GameMenu {
                 _ => self.back(),
             },
             Action::Apply => {
+                self.apply_typed(out);
                 self.options_before = self.snapshot(|_| true);
             }
         }

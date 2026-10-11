@@ -358,6 +358,54 @@ fn main_menu_look(mount: &Mount, ui: &mut GameUi) {
     }
 }
 
+/// A `.res` file's text as a layout (tests).
+pub fn layout_of_res(text: &str) -> Option<crate::map::hud::UiLayout> {
+    let text = text.to_string();
+    let root = read_res_pc(&mut |_| Some(text.clone()), "x.res")?;
+    Some(super::vgui::layout(&root, &HashMap::new(), &HashMap::new(), &mut |_| None))
+}
+
+/// The Multiplayer tab's "Player name" entry (`NameEntry`, bound to
+/// `name`), when the install's layout lacks it: older CS:S had one, the
+/// current one names you from Steam. Ours goes where the spray image's
+/// words were (`Label2`, `Label3`: mashup has no sprays; the greyed
+/// picture and import button stay), label and entry on one line.
+pub fn add_player_name(layout: &mut crate::map::hud::UiLayout, strings: &HashMap<String, String>) {
+    use crate::map::hud::{HudCoord, UiKind};
+    if layout.get("NameEntry").is_some() {
+        return;
+    }
+    let Some(template) = layout.get("Label2").cloned() else { return };
+    let (x, y) = match (template.x, template.y) {
+        (HudCoord::Start(x), HudCoord::Start(y)) => (x, y),
+        _ => return,
+    };
+    for c in &mut layout.controls {
+        if c.name == "Label2" || c.name == "Label3" {
+            c.visible = false;
+        }
+    }
+    let words = strings
+        .get("gameui_playername")
+        .cloned()
+        .unwrap_or_else(|| "Player name".into());
+    let mut label = template.clone();
+    label.name = "NameLabel".into();
+    label.text = words;
+    label.wide = 86.0;
+    label.keys.insert("associate".into(), "NameEntry".into());
+    let mut entry = template;
+    entry.name = "NameEntry".into();
+    entry.kind = UiKind::Other("TextEntry".into());
+    entry.text = String::new();
+    entry.x = HudCoord::Start(x + 90.0);
+    entry.y = HudCoord::Start(y);
+    entry.wide = 150.0;
+    entry.keys.remove("labeltext");
+    layout.controls.push(label);
+    layout.controls.push(entry);
+}
+
 /// The GameUI look from a mounted install (None without its scheme and
 /// menu files).
 pub fn load(mount: &Mount) -> Option<GameUi> {
@@ -397,7 +445,10 @@ pub fn load(mount: &Mount) -> Option<GameUi> {
     };
     for (page, file) in OPTION_PAGES {
         if let Some(root) = read_res_pc(&mut read, file) {
-            let layout = super::vgui::layout(&root, &strings, &ui.colors, &mut |_| None);
+            let mut layout = super::vgui::layout(&root, &strings, &ui.colors, &mut |_| None);
+            if page == "multiplayer" {
+                add_player_name(&mut layout, &strings);
+            }
             // Its pictures (ImagePanel `image`, under materials/vgui/: the
             // brightness dialog's `gamma`).
             for c in &layout.controls {

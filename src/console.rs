@@ -66,7 +66,7 @@ pub const SERVER_PREFIXES: &[&str] = &["sv_", "mp_", "phys_", "bot_", "ammo_"];
 
 /// Game rules of ours without a server prefix that are the server's and
 /// replicated all the same.
-pub const SERVER_NAMES: &[&str] = &["mashup_rounds"];
+pub const SERVER_NAMES: &[&str] = &["mashup_rounds", "mashup_noblock"];
 
 /// The player's own settings with a server prefix (Source's client cvars:
 /// `mp_decals`, Multiplayer > Advanced's decal limit).
@@ -140,6 +140,9 @@ pub struct Console {
     /// the earlier): two settings answering to one name, a bug
     /// (`hostname` had two, so the server's name couldn't be set).
     pub replaced: Vec<String>,
+    /// Lines a network client sends its server to run for its player
+    /// (cheats: `net::cheats` takes them).
+    pub to_server: Vec<String>,
 }
 
 const MAX_OUTPUT: usize = 4000;
@@ -427,6 +430,15 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
             Err(format!(
                 "Can't use server command {name} from a client: only the server operator can run it."
             ))
+        } else if CHEATS.contains(&name.as_str())
+            && world.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client)
+        {
+            // A network client's cheat acts on its player on the server,
+            // which runs it if its `sv_cheats` is 1 and says what came of
+            // it (`net::cheats`), as Source's client sends them on.
+            let line = words.iter().map(|w| quote(w)).collect::<Vec<_>>().join(" ");
+            world.resource_mut::<Console>().to_server.push(line);
+            Ok(None)
         } else if CHEATS.contains(&name.as_str()) && !cheats_allowed(world) {
             // Source's words.
             Err(format!(
@@ -611,6 +623,23 @@ pub const SERVER_COMMANDS: &[&str] = &[
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cheats(pub u8);
 
+/// The player a command runs for, while a server runs a network client's
+/// (`net::cheats`); else commands act on the local player.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CommandPlayer(pub Entity);
+
+/// The player a command acts on: the client's whose command the server
+/// runs (`CommandPlayer`), else the local player.
+pub fn command_player(world: &mut World) -> Result<Entity, String> {
+    if let Some(p) = world.get_resource::<CommandPlayer>() {
+        return Ok(p.0);
+    }
+    world
+        .query_filtered::<Entity, With<crate::core::LocalPlayer>>()
+        .single(world)
+        .map_err(|_| "no local player".to_string())
+}
+
 /// Whether cheat commands work here: single player, or `sv_cheats 1`.
 pub fn cheats_allowed(world: &World) -> bool {
     world
@@ -634,6 +663,14 @@ impl Plugin for ConsolePlugin {
             "1: cheat commands (noclip, god, setpos, give, ...) work in a network game (single player always has them).",
             |c| &mut c.0,
         );
+        app.init_resource::<crate::core::NoBlock>();
+        resource_cvar::<crate::core::NoBlock, u8>(
+            app,
+            "mashup_noblock",
+            "Players passing through each other (ours; the server's, sent to clients): 0 nobody (CS:S), 1 teammates, 2 everyone.",
+            |n| &mut n.0,
+        );
+        app.world_mut().resource_mut::<Console>().set_range("mashup_noblock", 0.0, 2.0);
     }
 }
 

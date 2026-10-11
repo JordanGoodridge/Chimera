@@ -398,6 +398,16 @@ impl GameMenu {
         ]
     }
 
+    /// Set the text settings typed (`typed`): the player name renames you
+    /// once, on OK or Apply, not per key.
+    pub(super) fn apply_typed(&mut self, out: &mut Outcome) {
+        for i in std::mem::take(&mut self.typed) {
+            if let Some(Some(v)) = self.values.get(i) {
+                out.lines.extend(SETTINGS[i].lines(v));
+            }
+        }
+    }
+
     /// Put settings back as they were.
     pub(super) fn restore(&mut self, before: Vec<(usize, Option<String>)>, out: &mut Outcome) {
         for (s, before) in before {

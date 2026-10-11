@@ -496,6 +496,24 @@ impl Hitbox {
 #[reflect(Component)]
 pub struct Hitboxes(pub Vec<Hitbox>);
 
+/// `mashup_noblock` (ours, a server setting sent to clients, off by
+/// default as CS:S has nothing like it): 0 players block each other (CS:S),
+/// 1 teammates pass through each other, 2 nobody blocks anybody.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoBlock(pub u8);
+
+impl NoBlock {
+    /// Whether two characters on these teams block each other (None: not a
+    /// player on a team, e.g. a hostage: always blocks).
+    pub fn blocks(self, a: Option<u8>, b: Option<u8>) -> bool {
+        match (self.0, a, b) {
+            (_, None, _) | (_, _, None) | (0, ..) => true,
+            (1, a, b) => a != b,
+            _ => false,
+        }
+    }
+}
+
 /// Takes no damage (the `god` command).
 #[derive(Component, Reflect, Default, Clone, Copy, Debug)]
 #[reflect(Component)]

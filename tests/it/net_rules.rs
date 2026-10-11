@@ -671,19 +671,33 @@ fn server_cvars_reach_clients_and_prediction_uses_them() {
     // A state each update (20 a second: CS:S's `cl_updaterate`).
     assert!(g.checked > 90);
     assert_eq!(g.errors, 0);
-    // Cheat commands need the server's sv_cheats 1 (replicated).
+    // Cheat commands go to the server, which runs them for our player
+    // with its sv_cheats 1 (`net::cheats`).
     let last = |sim: &NetSim| {
         sim.clients[0].app.world().resource::<Console>().output.last().map(|l| l.text.clone()).unwrap_or_default()
     };
     client_console(&mut sim, 0, "give weapon_awp");
-    sim.ticks(2);
+    sim.ticks(10);
     assert!(last(&sim).starts_with("Can't use cheat command give"), "{}", last(&sim));
     server_console(&mut sim, "sv_cheats 1");
     sim.ticks(30);
+    let theirs = sim.character_of(0).unwrap();
+    let carried = |sim: &NetSim| {
+        sim.server.app.world().get::<mashup::weapon::Inventory>(theirs).map_or(0, |i| i.weapons.len())
+    };
+    let before_give = carried(&sim);
     client_console(&mut sim, 0, "give weapon_awp");
-    sim.ticks(2);
-    // Allowed now; what a client carries is still the server's.
-    assert!(last(&sim).contains("only the server"), "{}", last(&sim));
+    sim.ticks(10);
+    let refusals = sim.clients[0]
+        .app
+        .world()
+        .resource::<Console>()
+        .output
+        .iter()
+        .filter(|l| l.text.starts_with("Can't use cheat command give"))
+        .count();
+    assert_eq!(refusals, 1, "refused only while sv_cheats was 0");
+    assert!(carried(&sim) > before_give, "the server gave our player the AWP: {}", last(&sim));
     // Leaving puts the client's own value back.
     mashup::net::disconnect(sim.clients[0].app.world_mut(), "test");
     assert_eq!(get(sim.clients[0].app.world_mut(), "sv_airaccelerate"), before);

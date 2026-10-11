@@ -316,7 +316,9 @@ fn kick_by(world: &mut World, pick: impl Fn(&str, Option<u64>) -> bool, reason: 
             },
         });
         let at = world.resource::<Time<Real>>().elapsed_secs_f64();
-        world.entity_mut(client).insert(RefusedAt(at));
+        world
+            .entity_mut(client)
+            .insert((RefusedAt(at), LeaveReason(reason.to_string())));
         return Some(format!("kicked {name}"));
     }
     let bot = world
@@ -561,6 +563,11 @@ fn admit(world: &mut World, client: Entity, msg: Join) {
     // The server's replicated cvars (movement, rules), before it plays.
     super::cvars::send_all(world, client);
     info!("{name} joined (client {id})");
+    // Everyone's chat: "Player X has joined the game".
+    world.write_message(ToClients {
+        targets: SendTargets::All,
+        message: super::PlayerCame { name, left: None },
+    });
 }
 
 /// Whether a client gave the server's password (`sv_password`; any
@@ -666,12 +673,38 @@ fn receive_loaded(mut loaded: MessageReader<FromClient<super::Loaded>>, players:
     }
 }
 
-/// A client left (or was dropped): its character and weapons go.
-fn left(remove: On<Remove, ConnectedClient>, players: Query<&Player>, mut commands: Commands) {
-    let Ok(p) = players.get(remove.entity) else { return };
-    info!("{} left", p.name);
-    let character = p.character;
-    commands.queue(move |world: &mut World| despawn_character(world, character));
+/// Why a client is being dropped (a kick's reason), for the others' chat.
+#[derive(Component, Clone, Debug)]
+pub struct LeaveReason(pub String);
+
+/// A client left (or was dropped): its character and weapons go, and
+/// everyone reads why ("Player X left the game (Disconnect by user.)"):
+/// a kick's reason, netcode's timeout ("timed out"), else the player
+/// hung up.
+fn left(
+    remove: On<Remove, ConnectedClient>,
+    players: Query<(&Player, Option<&NetworkId>, Option<&LeaveReason>)>,
+    mut commands: Commands,
+) {
+    let Ok((p, id, reason)) = players.get(remove.entity) else { return };
+    let (name, character) = (p.name.clone(), p.character);
+    let (id, reason) = (id.map(|n| n.get()), reason.map(|r| r.0.clone()));
+    commands.queue(move |world: &mut World| {
+        let transport = id.and_then(|id| world.get_resource_mut::<super::udp::UdpServer>()?.left.remove(&id));
+        let reason = reason
+            .or(transport.map(str::to_string))
+            .unwrap_or_else(|| super::client::BY_USER.to_string());
+        if super::chat::hosted(world) {
+            debug!("{name} left ({reason})");
+        } else {
+            info!("{name} left ({reason})");
+        }
+        despawn_character(world, character);
+        world.write_message(ToClients {
+            targets: SendTargets::All,
+            message: super::PlayerCame { name, left: Some(reason) },
+        });
+    });
 }
 
 fn despawn_player(world: &mut World, client: Entity) {

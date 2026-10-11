@@ -29,7 +29,6 @@ use crate::{
     console::{Console, ConsoleAppExt, Level, cfg_dir, parse, resource_cvar},
     core::{LocalPlayer, MovementState, Velocity},
     map::PlaySound,
-    slots::{MovementSlot, set_movement},
 };
 
 pub struct ConsoleUiPlugin;
@@ -1944,9 +1943,9 @@ pub fn map_target(name: &str) -> Option<(String, bool)> {
     }
 }
 
+/// The player a command acts on (a network client's on its server).
 fn local_player(w: &mut World) -> Result<Entity, String> {
-    let mut q = w.query_filtered::<Entity, With<LocalPlayer>>();
-    q.single(w).map_err(|_| "no local player".to_string())
+    crate::console::command_player(w)
 }
 
 /// The eye and the feet relative to a character's origin
@@ -1993,31 +1992,10 @@ pub fn client_commands(app: &mut App) {
             );
         }
     }
+    // noclip, god, setpos, setang: a dedicated server runs them too (for a
+    // client's player).
+    crate::net::cheats::player_commands(app);
     app.console_command(
-        "noclip",
-        "Fly through walls (toggles back to the movement you had).",
-        |w, _| {
-            let p = local_player(w)?;
-            let current = w.get::<MovementSlot>(p).map(|s| s.0).ok_or("no movement")?;
-            let back = w.get_resource::<NoclipBack>().map(|b| b.0);
-            let next = if current == crate::movement::noclip::ID {
-                back.unwrap_or(crate::games::cs_source::movement::ID)
-            } else {
-                w.insert_resource(NoclipBack(current));
-                crate::movement::noclip::ID
-            };
-            set_movement(p, next).apply(w);
-            Ok(Some(format!(
-                "noclip {}",
-                if next == crate::movement::noclip::ID {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            )))
-        },
-    )
-    .console_command(
         "getpos",
         "Your position and view, as a setpos/setang line (CS:S units).",
         |w, _| {
@@ -2045,48 +2023,6 @@ pub fn client_commands(app: &mut App) {
             )))
         },
     )
-    .console_command(
-        "setpos",
-        "setpos <x> <y> <z>: put your feet there (CS:S units; Source's origin: getpos prints the eye, 64 higher standing).",
-        |w, a| {
-            let [x, y, z] = a else {
-                return Err("setpos <x> <y> <z>".into());
-            };
-            let n = |s: &String| s.parse::<f32>().map_err(|_| format!("bad number \"{s}\""));
-            let v = Vec3::new(n(x)?, n(z)?, -n(y)?) * 0.0254;
-            let p = local_player(w)?;
-            let origin = v - eye_and_feet(w, p).1;
-            w.get_mut::<Transform>(p).ok_or("no transform")?.translation = origin;
-            w.get_mut::<Velocity>(p).ok_or("no velocity")?.0 = Vec3::ZERO;
-            Ok(None)
-        },
-    )
-    .console_command(
-        "setang",
-        "setang <pitch> <yaw>: look there (degrees, CS:S convention).",
-        |w, a| {
-            let [pitch, yaw, ..] = a else {
-                return Err("setang <pitch> <yaw>".into());
-            };
-            let n = |s: &String| s.parse::<f32>().map_err(|_| format!("bad number \"{s}\""));
-            let (pitch, yaw) = (n(pitch)?, n(yaw)?);
-            let p = local_player(w)?;
-            let mut i = w.get_mut::<crate::core::Intent>(p).ok_or("no intent")?;
-            i.pitch = -pitch.to_radians();
-            i.yaw = (yaw - 90.0).to_radians();
-            Ok(None)
-        },
-    )
-    .console_command("god", "Toggle taking no damage.", |w, _| {
-        let p = local_player(w)?;
-        let on = w.get::<crate::core::God>(p).is_none();
-        if on {
-            w.entity_mut(p).insert(crate::core::God);
-        } else {
-            w.entity_mut(p).remove::<crate::core::God>();
-        }
-        Ok(Some(format!("godmode {}", if on { "ON" } else { "OFF" })))
-    })
     .console_command("kill", "Kill yourself (CS:S's suicide: you die where you stand, which can end the round).", |w, _| {
         use crate::core::{Damage, DamageKind, Health, Hitgroup};
         use crate::rules::Dead;
@@ -2375,9 +2311,6 @@ pub fn remote_exec(
     Ok(serde_json::json!({ "output": out }))
 }
 
-/// The movement to go back to when noclip turns off.
-#[derive(Resource)]
-struct NoclipBack(&'static str);
 
 #[cfg(test)]
 mod tests {

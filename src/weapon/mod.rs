@@ -139,11 +139,7 @@ impl Plugin for WeaponPlugin {
             run: Arc::new(|w, args| {
                 server_only(w)?;
                 let id = args.first().ok_or("usage: give <weapon id>")?;
-                let player = w
-                    .query_filtered::<Entity, With<LocalPlayer>>()
-                    .iter(w)
-                    .next()
-                    .ok_or("no local player")?;
+                let player = local_player(w)?;
                 let def = w
                     .resource::<WeaponRegistry>()
                     .find(id)
@@ -311,11 +307,9 @@ fn server_only(w: &World) -> Result<(), String> {
     Ok(())
 }
 
+/// The player a command acts on (a network client's on its server).
 fn local_player(w: &mut World) -> Result<Entity, String> {
-    w.query_filtered::<Entity, With<LocalPlayer>>()
-        .iter(w)
-        .next()
-        .ok_or_else(|| "no local player".to_string())
+    crate::console::command_player(w)
 }
 
 /// IDs of the weapons `owner` carries.

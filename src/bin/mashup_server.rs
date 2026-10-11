@@ -89,7 +89,9 @@ fn main() {
         &mut app,
         MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(1))),
     );
-    app.add_plugins(bevy::log::LogPlugin::default());
+    // Ctrl+C exits as `quit` does (AppExit: `net::udp` hangs up on every
+    // client), not killed with its clients left to time out.
+    app.add_plugins((bevy::log::LogPlugin::default(), bevy::app::TerminalCtrlCHandlerPlugin));
     let map_id = net::normalize_map(&options.map);
     if map_id == net::GREYBOX {
         // The map systems too: `changelevel` loads one later.

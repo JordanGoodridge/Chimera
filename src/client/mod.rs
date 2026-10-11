@@ -95,6 +95,9 @@ pub struct Args {
     pub console_open: bool,
     /// Window size in physical pixels (screenshots at a known size).
     pub window: Option<UVec2>,
+    /// The window's scale factor in place of the display's (with
+    /// `--window`: 1), e.g. 1.25 as Windows at 125 %.
+    pub scale: Option<f32>,
     /// Size of `--views` captures and `--bench` frames (default 1280x720).
     pub view_size: Option<UVec2>,
 }
@@ -127,6 +130,8 @@ usage: mashup [options]
   --console                 start with the console open (~ toggles it)
   --window <WxH>            window size in pixels, e.g. 1920x1080 (screenshots at a known size;
                             a tiling window manager may still resize it)
+  --scale <f>               the window's scale factor (physical pixels per logical one) in place of
+                            the display's, e.g. 1.25 as Windows at 125 % (with --window: 1)
   -port <n>                 UDP port to host on (hostport; default 27015)
   +<command> [args...]      run a console command at startup, Source style
                             (e.g. +sv_airaccelerate 150 +cl_showpos 1 +bind f noclip;
@@ -229,6 +234,13 @@ impl Args {
                     out.cvars.push((name.to_string(), v.to_string()));
                 }
                 "--exec" => out.exec.push(value.into()),
+                "--scale" => {
+                    let s: f32 = value.parse().map_err(|_| format!("--scale: not a number: {value}"))?;
+                    if !(0.5..=4.0).contains(&s) {
+                        return Err(format!("--scale: expected 0.5-4, got {value}"));
+                    }
+                    out.scale = Some(s);
+                }
                 "--window" | "--view-size" => {
                     let size = value
                         .split_once(['x', 'X'])

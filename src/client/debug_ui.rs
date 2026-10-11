@@ -204,10 +204,9 @@ impl Plugin for DebugUiStatePlugin {
     }
 }
 
+/// The player a command acts on (a network client's on its server).
 fn local_player(w: &mut World) -> Result<Entity, String> {
-    w.query_filtered::<Entity, With<LocalPlayer>>()
-        .single(w)
-        .map_err(|_| "no local player".to_string())
+    crate::console::command_player(w)
 }
 
 /// The Player tab's setters: health, armour and money, in CS:S points.
