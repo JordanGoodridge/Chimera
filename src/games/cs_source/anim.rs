@@ -10,7 +10,9 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use crate::map::anim::{AnimSet, Animation, AutoLayer, Axis, BonePose, PoseParam, Sequence, Track, euler};
+use crate::map::anim::{
+    AnimSet, Animation, AutoLayer, Axis, BonePose, IkChain, IkRule, PoseParam, Sequence, Track, euler,
+};
 
 /// Reads a file from the game (path relative to the game root).
 pub type Read<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
@@ -95,6 +97,10 @@ struct Model {
     bones: Vec<Bone>,
     /// Animation descriptions: name and byte offset.
     anims: Vec<(String, usize)>,
+    /// Each animation's IK rules: (chain, lock), chains local.
+    anim_ik: Vec<Vec<(usize, bool)>>,
+    /// IK chains: name and (root, middle, end) bones, local.
+    ik_chains: Vec<(String, [usize; 3])>,
     sequences: Vec<RawSequence>,
     params: Vec<PoseParam>,
     includes: Vec<String>,
@@ -135,12 +141,49 @@ fn parse(bytes: Vec<u8>) -> Result<Model, String> {
         });
     }
     let (n, at) = count(180)?;
-    let anims = (0..n)
+    let anims: Vec<(String, usize)> = (0..n)
         .map(|i| {
             let o = at + i * 100;
             Ok((b.name(o, o + 4)?, o))
         })
         .collect::<Result<_, String>>()?;
+    // IK rules (152 bytes each, read from the files: +4 kind, +8 chain;
+    // kind 1 locks the chain's end to a bone, 4 releases it), in this file
+    // only (animations streamed from `.ani` blocks keep none here).
+    let anim_ik = anims
+        .iter()
+        .map(|(_, o): &(String, usize)| {
+            let (n, at) = count(o + 60)?;
+            if at == 0 {
+                return Ok(Vec::new());
+            }
+            (0..n.min(16))
+                .filter_map(|k| {
+                    let r = o + at + 152 * k;
+                    match (b.i32(r + 4), b.i32(r + 8)) {
+                        (Ok(1), Ok(c)) if c >= 0 => Some(Ok((c as usize, true))),
+                        (Ok(4), Ok(c)) if c >= 0 => Some(Ok((c as usize, false))),
+                        (Err(e), _) | (_, Err(e)) => Some(Err(e)),
+                        _ => None,
+                    }
+                })
+                .collect()
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    // IK chains (16 bytes: name, kind, link count, links of 28 bytes each
+    // starting with the bone); two-bone limbs have three links.
+    let (n, at) = count(284)?;
+    let ik_chains = (0..n.min(16))
+        .filter_map(|i| {
+            let o = at + i * 16;
+            let (links, links_at) = (b.i32(o + 8).ok()?, b.i32(o + 12).ok()?);
+            if links != 3 {
+                return None;
+            }
+            let bone = |k: usize| b.i32(o + links_at as usize + 28 * k).ok().filter(|v| *v >= 0).map(|v| v as usize);
+            Some((b.name(o, o).ok()?, [bone(0)?, bone(1)?, bone(2)?]))
+        })
+        .collect();
     let (n, at) = count(300)?;
     let params = (0..n)
         .map(|i| {
@@ -252,6 +295,8 @@ fn parse(bytes: Vec<u8>) -> Result<Model, String> {
         version,
         bones,
         anims,
+        anim_ik,
+        ik_chains,
         sequences,
         params,
         includes,
@@ -863,6 +908,27 @@ pub fn load(read: Read, path: &str) -> Result<AnimSet, String> {
         }
         param_maps.push(local);
     }
+    // IK chains: first name wins; each model's chain → the merged one.
+    let mut chain_maps: Vec<Vec<Option<usize>>> = Vec::new();
+    for (mi, m) in models.iter().enumerate() {
+        let mut local = Vec::new();
+        for (name, bones) in &m.ik_chains {
+            let found = set.ik_chains.iter().position(|c| c.name.eq_ignore_ascii_case(name));
+            let mapped = bones.map(|b| bone_maps[mi].get(b).copied().flatten());
+            local.push(match (found, mapped) {
+                (Some(i), _) => Some(i),
+                (None, [Some(a), Some(b), Some(c)]) => {
+                    set.ik_chains.push(IkChain {
+                        name: name.to_lowercase(),
+                        bones: [a, b, c],
+                    });
+                    Some(set.ik_chains.len() - 1)
+                }
+                _ => None,
+            });
+        }
+        chain_maps.push(local);
+    }
     // Sequences: first name wins; autolayers resolve by name afterwards.
     let mut seq_names: HashMap<String, usize> = HashMap::new();
     let mut pending: Vec<(usize, usize)> = Vec::new(); // (merged, model)
@@ -905,6 +971,21 @@ pub fn load(read: Read, path: &str) -> Result<AnimSet, String> {
                 autolayers: Vec::new(),
                 bone_weights: weights,
                 events: s.events.clone(),
+                // The rules of its first animation (the grid's cells
+                // carry the same ones).
+                ik_rules: s
+                    .anims
+                    .first()
+                    .and_then(|a| m.anim_ik.get(*a))
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(c, lock)| {
+                        Some(IkRule {
+                            chain: chain_maps[mi].get(*c).copied().flatten()?,
+                            lock: *lock,
+                        })
+                    })
+                    .collect(),
             });
         }
     }
@@ -927,6 +1008,8 @@ pub fn load(read: Read, path: &str) -> Result<AnimSet, String> {
             .collect();
     }
     set.names = seq_names;
+    set.parents = target.bones.iter().map(|b| b.parent).collect();
+    set.bone_names = target.bones.iter().map(|b| b.name.to_lowercase()).collect();
     Ok(set)
 }
 

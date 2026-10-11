@@ -751,7 +751,7 @@ pub fn split_mesh(mesh: &MapMesh, vis: Option<&MapVisibility>, size: f32) -> Vec
 /// The triangles `indices` of `mesh` as a mesh of their own (vertices
 /// renumbered, every per-vertex attribute kept). `template` is the mesh
 /// with its per-vertex data emptied (everything else is copied from it).
-fn sub_mesh(mesh: &MapMesh, template: &MapMesh, indices: &[u32]) -> MapMesh {
+pub(crate) fn sub_mesh(mesh: &MapMesh, template: &MapMesh, indices: &[u32]) -> MapMesh {
     let mut remap: std::collections::HashMap<u32, u32> = Default::default();
     let mut used: Vec<usize> = Vec::new();
     let new_indices = indices
@@ -778,6 +778,7 @@ fn sub_mesh(mesh: &MapMesh, template: &MapMesh, indices: &[u32]) -> MapMesh {
         indices: new_indices,
         lightmap_uvs: pick(&mesh.lightmap_uvs, &used),
         blend_weights: pick(&mesh.blend_weights, &used),
+        source_vertices: pick(&mesh.source_vertices, &used),
         ..template.clone()
     }
 }

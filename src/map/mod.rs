@@ -639,6 +639,13 @@ pub struct MapHeldModel {
     /// Where it shoots from, in the bone's frame (muzzle flashes; +X
     /// forward).
     pub muzzle: Option<Transform>,
+    /// Bone merge: parts that follow other bones of the skeleton (the
+    /// dual pistols' left gun, on the left hand), each in its bone's
+    /// frame; held in a hand, `model` then draws only what is left. Empty:
+    /// all of it follows `bone`.
+    pub merged: Vec<(String, MapModel)>,
+    /// `model` without the `merged` parts (None: `merged` is empty).
+    pub own: Option<MapModel>,
 }
 
 /// What a character holds (a `MapHeldModel` key), drawn in its body's
@@ -700,7 +707,20 @@ struct CharacterBodies(Vec<BodyAssets>);
 /// Meshes and materials of each held model, by key.
 #[derive(Resource)]
 #[allow(clippy::type_complexity)]
-struct HeldAssets(HashMap<String, (String, Vec<(Handle<Mesh>, Handle<PropMaterial>)>, Option<Transform>)>);
+struct HeldAssets(HashMap<String, HeldParts>);
+
+/// A held model's meshes on its bone, its muzzle there, and the parts
+/// that follow other bones (`MapHeldModel::merged`).
+#[allow(clippy::type_complexity)]
+struct HeldParts {
+    bone: String,
+    /// The whole model on `bone` (loose items).
+    whole: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
+    /// What stays on `bone` when held.
+    own: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
+    muzzle: Option<Transform>,
+    merged: Vec<(String, Vec<(Handle<Mesh>, Handle<PropMaterial>)>)>,
+}
 
 struct BodyAssets {
     parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
@@ -721,6 +741,8 @@ pub struct CharacterBody {
     joints: Vec<Entity>,
     /// The held model shown and its key.
     held: Option<(Entity, String)>,
+    /// Its bone-merged parts on other joints (`MapHeldModel::merged`).
+    held_parts: Vec<Entity>,
 }
 
 /// Whether the local player's own body is drawn (third person). The
@@ -798,6 +820,7 @@ fn attach_bodies(
             model: index,
             joints: joints.clone(),
             held: None,
+            held_parts: Vec::new(),
         });
         // Its own materials, lit where it stands (probe_lit), at its centre.
         let mut own = Vec::new();
@@ -900,26 +923,33 @@ fn attach_held(
         if let Some((e, _)) = body.held.take() {
             commands.entity(e).despawn();
         }
+        for e in std::mem::take(&mut body.held_parts) {
+            commands.entity(e).despawn();
+        }
         let Some(key) = &want.0 else { continue };
-        let Some((bone, parts, muzzle)) = held.0.get(key) else {
+        let Some(parts) = held.0.get(key) else {
             continue;
         };
-        let Some(joint) = bodies.0[body.model]
-            .bones
-            .iter()
-            .position(|b| b.name.eq_ignore_ascii_case(bone))
-            .and_then(|i| body.joints.get(i).copied())
-        else {
+        let joint_of = |bone: &str| {
+            bodies.0[body.model]
+                .bones
+                .iter()
+                .position(|b| b.name.eq_ignore_ascii_case(bone))
+                .and_then(|i| body.joints.get(i).copied())
+        };
+        let Some(joint) = joint_of(&parts.bone) else {
             continue;
         };
         // Its own materials, lit where it is (probe_lit).
-        let own: Vec<Handle<PropMaterial>> = parts
-            .iter()
-            .map(|(_, m)| match materials.as_mut() {
-                Some(assets) => probe_lit::instance(assets, m),
-                None => m.clone(),
-            })
-            .collect();
+        let mut instance = |list: &[(Handle<Mesh>, Handle<PropMaterial>)]| -> Vec<Handle<PropMaterial>> {
+            list.iter()
+                .map(|(_, m)| match materials.as_mut() {
+                    Some(assets) => probe_lit::instance(assets, m),
+                    None => m.clone(),
+                })
+                .collect()
+        };
+        let own = instance(&parts.own);
         let model = commands
             .spawn((
                 Transform::default(),
@@ -928,14 +958,35 @@ fn attach_held(
                 probe_lit::ProbeLit::new(own.clone(), Vec3::ZERO),
             ))
             .with_children(|m| {
-                for ((mesh, _), material) in parts.iter().zip(own) {
+                for ((mesh, _), material) in parts.own.iter().zip(own) {
                     m.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material)));
                 }
-                if let Some(t) = muzzle {
-                    m.spawn((*t, view_model::HeldMuzzle { owner: character }));
+                if let Some(t) = parts.muzzle {
+                    m.spawn((t, view_model::HeldMuzzle { owner: character }));
                 }
             })
             .id();
+        // Bone-merged parts on their own joints, despawned with the rest.
+        let mut merged = Vec::new();
+        for (bone, list) in &parts.merged {
+            let Some(at) = joint_of(bone) else { continue };
+            let lit = instance(list);
+            let part = commands
+                .spawn((
+                    Transform::default(),
+                    Visibility::Inherited,
+                    ChildOf(at),
+                    probe_lit::ProbeLit::new(lit.clone(), Vec3::ZERO),
+                ))
+                .with_children(|m| {
+                    for ((mesh, _), material) in list.iter().zip(lit) {
+                        m.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material)));
+                    }
+                })
+                .id();
+            merged.push(part);
+        }
+        body.held_parts = merged;
         body.held = Some((model, key.clone()));
     }
 }
@@ -2561,13 +2612,26 @@ fn spawn_map(
                 .held
                 .iter()
                 .map(|h| {
-                    let parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)> = h
-                        .model
-                        .meshes
-                        .iter()
-                        .map(|m| (meshes.add(build_mesh(m, false)), pm.add(model_material(m))))
-                        .collect();
-                    (h.key.clone(), (h.bone.clone(), parts, h.muzzle))
+                    let mut build = |model: &MapModel| -> Vec<(Handle<Mesh>, Handle<PropMaterial>)> {
+                        model
+                            .meshes
+                            .iter()
+                            .map(|m| (meshes.add(build_mesh(m, false)), pm.add(model_material(m))))
+                            .collect()
+                    };
+                    let whole = build(&h.model);
+                    let own = h.own.as_ref().map_or_else(|| whole.clone(), &mut build);
+                    let merged = h.merged.iter().map(|(b, m)| (b.clone(), build(m))).collect();
+                    (
+                        h.key.clone(),
+                        HeldParts {
+                            bone: h.bone.clone(),
+                            whole,
+                            own,
+                            muzzle: h.muzzle,
+                            merged,
+                        },
+                    )
                 })
                 .collect::<HashMap<_, _>>();
             // Loose (dropped) forms, sized by the first character's scale.
@@ -2576,7 +2640,7 @@ fn spawn_map(
                     .held
                     .iter()
                     .filter_map(|h| {
-                        let parts = held.get(&h.key)?.1.clone();
+                        let parts = held.get(&h.key)?.whole.clone();
                         Some((h.key.clone(), loose::asset(h, root, parts)))
                     })
                     .collect();
@@ -5591,6 +5655,7 @@ mod pose_tests {
             model: 0,
             joints: vec![joint],
             held: None,
+            held_parts: Vec::new(),
         });
         joint
     }

@@ -43,11 +43,23 @@ Gameplay and rules:
   (Multiplayer tab) instead of only the console command.
 
 Looks:
-- Third-person player models "not rigged right": a CT holding a pistol,
-  the arms/gun pose off (screenshot: the gun held out to the side, hand
-  not on the grip). Check weapon attachment (bone-merge to the hand,
-  `ValveBiped.Weapon_bone`/attachment) and the aim/shoot layer for
-  pistols.
+- Third-person player models "not rigged right" (fixed 2026-10-10, to
+  playtest): the gun hangs on the spine's animated `weapon_bone` (right)
+  while the aim layers turn the arms with the look, so aiming up or down
+  took the hands off the gun (a pistol's grip 4.8 units from the hand
+  looking 40 degrees down). The player models carry IK chains (`rhand`,
+  `lhand`) and per-animation IK rules (read from the files: hand poses
+  lock the hands to the weapon, the knife's release them, dual pistols
+  lock the right hand only, reloads lock to the grips); the hands now
+  follow them onto `weapon_bone_RHand`/`_LHand` (where every weapon's
+  authored pose has them, within 2 units and 9 degrees; not the
+  grenades', whose world model hangs on the hand) with a two-bone IK
+  (`map::anim::AnimSet::solve_ik`, `player_anim::lock_hands`;
+  `mashup_hand_ik 0` turns it off to compare;
+  `animation::hands_stay_on_the_weapon_while_aiming`). World models
+  bone-merge: the dual pistols' left gun follows the left hand. Capture
+  to confirm: CS:S third person (`thirdperson; cam_idealyaw 130`) with a
+  pistol looking 30 degrees up and down, and crouched.
 - Other players' weapon draw ("pull out") animation looks wrong in third
   person.
 - Standing inside another player: the screen shows only the skybox, no
@@ -414,19 +426,6 @@ a first bot are in.
   blast pushes, separation repair, settling and removal): check the
   spec's open questions (force scale, bone_dt, death-pose facing and
   crouch choice, joint limit convention) in the game.
-- Held weapons don't stay in other players' hands (they float around the
-  hands). Findings 2026-10-06: the world model's mesh follows the player's
-  animated `weapon_bone` (child of the spine), which is right; the arms
-  only follow their own animation. At idle the hands already sit on the
-  AK (checked with `+thirdperson +cam_idealyaw 140`). A two-bone IK onto
-  `weapon_bone_RHand`/`_LHand` was tried and dropped: `_LHand` is a child
-  of `_RHand` and pulled the left hand onto the grip, so those bones
-  aren't plain hand targets. Needs a spec of Source's IK chains, the
-  sequences' IK rules and locks (the animation spec's open question "IK"),
-  and a reproduction of the floating. With `mashup_freecam 2` the AK
-  sits in both hands standing, crouched and firing (2026-10-06); still to
-  check: jumping and other weapons; a running bot (`mashup_watch 1`) holds
-  its AK with both hands too.
 
 ## 4. Bots
 

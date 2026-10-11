@@ -358,7 +358,10 @@ Only `Reflect`-registered types are visible; register new core components in
   player's model and animation. `cam_idealyaw` orbits the camera
   (degrees; `+cam_idealyaw 140` looks at the player's front, e.g. to see
   how the hands hold the weapon). Holding Left Alt (`+freelook`) turns
-  only the camera; the aim stays put.
+  only the camera; the aim stays put. `mashup_hand_ik 0` draws bodies
+  without the hands locked onto the weapon (the animation's own arms),
+  to compare: `+setpos 185 300 40 +setang -30 0 0 +thirdperson
+  +cam_idealyaw 130 +cam_idealdist 60` on de_dust2 with a pistol.
 - `mashup_freecam 1` detaches the camera and flies it (WASD, mouse,
   space/ctrl up and down, shift faster) while your body stands still and
   is drawn; `mashup_freecam 2` leaves the camera where it is and gives

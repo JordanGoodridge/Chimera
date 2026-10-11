@@ -27,6 +27,41 @@ pub struct AnimSet {
     pub params: Vec<PoseParam>,
     /// Sequence index by lower-case name (filled by loaders; optional).
     pub names: HashMap<String, usize>,
+    /// The target skeleton's bone parents (empty: unknown; inverse
+    /// kinematics then does nothing).
+    pub parents: Vec<Option<usize>>,
+    /// The target skeleton's bone names (lower case), as `parents`.
+    pub bone_names: Vec<String>,
+    /// Two-bone chains inverse kinematics can bend (`IkGoal`).
+    pub ik_chains: Vec<IkChain>,
+}
+
+/// A limb inverse kinematics can bend: root (shoulder), middle (elbow)
+/// and end (hand) bones, target skeleton indices.
+#[derive(Debug, Clone, Default)]
+pub struct IkChain {
+    /// Lower-case name (games pick chains by it).
+    pub name: String,
+    pub bones: [usize; 3],
+}
+
+/// What a sequence's animation says about an IK chain while it plays:
+/// lock the chain's end to where the animation put it relative to a bone,
+/// or release it. Games decide what a lock aims at (`Animator::ik`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IkRule {
+    /// `AnimSet::ik_chains` index.
+    pub chain: usize,
+    pub lock: bool,
+}
+
+/// One chain's end pulled onto a bone's place and turn (both model space,
+/// from this frame's pose) by `weight`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IkGoal {
+    pub chain: usize,
+    pub target: usize,
+    pub weight: f32,
 }
 
 /// Sampled frames of one animation.
@@ -80,6 +115,8 @@ pub struct Sequence {
     pub bone_weights: Vec<f32>,
     /// Animation events, by cycle (games decide what they mean).
     pub events: Vec<AnimEvent>,
+    /// Its animation's IK rules, in order (later ones win).
+    pub ik_rules: Vec<IkRule>,
 }
 
 /// An event a sequence fires when its cycle passes `cycle`.
@@ -378,6 +415,78 @@ impl AnimSet {
         .sum()
     }
 
+    /// Fold sequence `s`'s IK rules, then its autolayers', into `locks`
+    /// (per chain: Some(true) locked, Some(false) released, None
+    /// untouched), as `accumulate` visits them.
+    pub fn ik_locks(&self, s: usize, locks: &mut [Option<bool>]) {
+        self.ik_locks_depth(s, locks, 0);
+    }
+
+    fn ik_locks_depth(&self, s: usize, locks: &mut [Option<bool>], depth: u32) {
+        let Some(seq) = self.sequences.get(s).filter(|_| depth <= 8) else {
+            return;
+        };
+        for r in &seq.ik_rules {
+            if let Some(l) = locks.get_mut(r.chain) {
+                *l = Some(r.lock);
+            }
+        }
+        for l in &seq.autolayers {
+            self.ik_locks_depth(l.sequence, locks, depth + 1);
+        }
+    }
+
+    /// Bend each goal's chain so its end bone lands on the target bone
+    /// (place and turn, blended by the goal's weight), keeping the elbow
+    /// in the plane it bent in. `pose` is local (as `Animator::pose`);
+    /// needs `parents`.
+    pub fn solve_ik(&self, pose: &mut [BonePose], goals: &[IkGoal]) {
+        if self.parents.len() != pose.len() || goals.is_empty() {
+            return;
+        }
+        for g in goals {
+            let (Some(chain), true) = (self.ik_chains.get(g.chain), g.weight > 0.0) else {
+                continue;
+            };
+            let global = model_space(pose, &self.parents);
+            let [a, b, c] = chain.bones;
+            if [a, b, c, g.target].iter().any(|i| *i >= pose.len()) {
+                continue;
+            }
+            let w = g.weight.min(1.0);
+            let (target_q, target_p) = global[g.target];
+            let goal_p = global[c].1.lerp(target_p, w);
+            let goal_q = slerp(global[c].0, target_q, w);
+            let (sa, eb, hc) = (global[a].1, global[b].1, global[c].1);
+            let (upper, lower) = (eb.distance(sa), hc.distance(eb));
+            let to_goal = goal_p - sa;
+            let d = to_goal.length().clamp((upper - lower).abs() + 1e-3, upper + lower - 1e-3);
+            let Some(dir) = to_goal.try_normalize() else { continue };
+            // The elbow stays on its side of the shoulder-goal line.
+            let bend = (eb - sa)
+                .reject_from_normalized(dir)
+                .try_normalize()
+                .unwrap_or_else(|| dir.any_orthonormal_vector());
+            let along = (upper * upper - lower * lower + d * d) / (2.0 * d);
+            let elbow = sa + dir * along + bend * (upper * upper - along * along).max(0.0).sqrt();
+            // Turn the upper bone onto the new elbow, then the lower one onto the goal.
+            let turn_a = Quat::from_rotation_arc((eb - sa).normalize_or_zero(), (elbow - sa).normalize_or_zero());
+            let qa = turn_a * global[a].0;
+            let lower_now = turn_a * (hc - eb);
+            let reach = sa + dir * d;
+            let turn_b = Quat::from_rotation_arc(lower_now.normalize_or_zero(), (reach - elbow).normalize_or_zero());
+            let qb = turn_b * turn_a * global[b].0;
+            let parent_q = |i: usize, own: &[(Quat, Vec3)]| self.parents[i].map_or(Quat::IDENTITY, |p| own[p].0);
+            let mut own = global.clone();
+            own[a].0 = qa;
+            own[b].0 = qb;
+            own[c].0 = goal_q;
+            pose[a].0 = (parent_q(a, &own).inverse() * qa).normalize();
+            pose[b].0 = (parent_q(b, &own).inverse() * qb).normalize();
+            pose[c].0 = (parent_q(c, &own).inverse() * goal_q).normalize();
+        }
+    }
+
     /// Merge sequence `s` at `cycle` and `weight` into `pose`, then its
     /// autolayers (§6, §7).
     pub fn accumulate(&self, pose: &mut [BonePose], s: usize, cycle: f32, weight: f32, params: &[f32]) {
@@ -427,6 +536,19 @@ impl AnimSet {
             self.accumulate_depth(pose, l.sequence, c, weight * r, params, depth + 1);
         }
     }
+}
+
+/// Each bone's model-space rotation and position from a local pose
+/// (parents before children).
+pub fn model_space(pose: &[BonePose], parents: &[Option<usize>]) -> Vec<BonePose> {
+    let mut out: Vec<BonePose> = Vec::with_capacity(pose.len());
+    for (i, &(q, p)) in pose.iter().enumerate() {
+        out.push(match parents.get(i).copied().flatten().filter(|p| *p < i) {
+            Some(pi) => (out[pi].0 * q, out[pi].1 + out[pi].0 * p),
+            None => (q, p),
+        });
+    }
+    out
 }
 
 /// Grid corners (offsets added to (i0, i1)) and weights of the triangle
@@ -569,6 +691,8 @@ pub struct Animator {
     /// The body's yaw (radians, as `Intent::yaw`); None: the character's
     /// look yaw.
     pub yaw: Option<f32>,
+    /// Limbs pulled onto bones after the layers (`AnimSet::solve_ik`).
+    pub ik: Vec<IkGoal>,
 }
 
 impl Animator {
@@ -694,6 +818,7 @@ impl Animator {
             };
             set.accumulate(&mut pose, l.sequence, cycle, l.weight.min(1.0), &self.params);
         }
+        set.solve_ik(&mut pose, &self.ik);
         pose
     }
 }
@@ -737,6 +862,45 @@ mod tests {
         let (c, w) = triangle(1, 0, 0.8, 0.6);
         assert_eq!(c, [(2, 0), (2, 1), (1, 1)]);
         assert!(close(w, [0.4, 0.4, 0.2]), "{w:?}");
+    }
+
+    /// A two-bone arm (lengths 10 and 8) reaches a bone 12 units off,
+    /// with its turn; out of reach it stretches straight toward it.
+    #[test]
+    fn ik_bends_a_chain_onto_its_target() {
+        let x = Vec3::X;
+        let defaults = vec![
+            (Quat::IDENTITY, Vec3::ZERO),
+            (Quat::IDENTITY, x * 10.0),
+            (Quat::from_rotation_z(0.3), x * 8.0),
+            (Quat::from_rotation_y(0.5), Vec3::new(6.0, 7.0, 1.0)),
+        ];
+        let set = AnimSet {
+            defaults: defaults.clone(),
+            parents: vec![None, Some(0), Some(1), None],
+            ik_chains: vec![IkChain {
+                name: "arm".into(),
+                bones: [0, 1, 2],
+            }],
+            ..default()
+        };
+        let goal = IkGoal {
+            chain: 0,
+            target: 3,
+            weight: 1.0,
+        };
+        let mut pose = defaults.clone();
+        set.solve_ik(&mut pose, &[goal]);
+        let g = model_space(&pose, &set.parents);
+        assert!(g[2].1.distance(g[3].1) < 1e-3, "{:?}", g[2].1);
+        assert!(g[2].0.angle_between(g[3].0) < 1e-3);
+        assert!((g[1].1.distance(g[0].1) - 10.0).abs() < 1e-3, "lengths kept");
+        let far = (Quat::IDENTITY, Vec3::new(0.0, 30.0, 0.0));
+        let mut pose = defaults.clone();
+        pose[3] = far;
+        set.solve_ik(&mut pose, &[goal]);
+        let g = model_space(&pose, &set.parents);
+        assert!(g[2].1.distance(Vec3::new(0.0, 18.0, 0.0)) < 0.01, "{:?}", g[2].1);
     }
 
     #[test]

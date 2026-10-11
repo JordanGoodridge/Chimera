@@ -403,7 +403,10 @@ pub fn load_shell(materials: &mut MaterialLoader, path: &str) -> Result<crate::m
 
 /// A weapon's world model held by characters: its meshes in the frame of
 /// its first bone that player skeletons also have (bone merge: that bone
-/// follows the hand), in the skeleton's axes and units.
+/// follows the hand), in the skeleton's axes and units. Parts skinned to
+/// another bone the skeleton has (or to a child of one) follow that bone
+/// instead when held (`MapHeldModel::merged`: the dual pistols' left gun
+/// is on `ValveBiped.Bip01_L_Hand`).
 pub fn load_held(
     materials: &mut MaterialLoader,
     path: &str,
@@ -440,6 +443,51 @@ pub fn load_held(
     // Engine space (meters, x z -y) back to the model's units and axes.
     let source = |v: [f32; 3]| Vec3::new(v[0], -v[2], v[1]);
     let mut held = convert_model_in(&model, 0, materials, false, &[]);
+    // Bone merge: each of the model's bones follows the skeleton's bone of
+    // the same name, or else its parent's.
+    let mut merge_bone: Vec<Option<usize>> = Vec::with_capacity(mdl.bones.len());
+    for (k, b) in mdl.bones.iter().enumerate() {
+        let shared = skeleton.iter().any(|s| s.name.eq_ignore_ascii_case(&b.name));
+        let parent = usize::try_from(b.parent).ok().filter(|p| *p < k);
+        merge_bone.push(if shared { Some(k) } else { parent.and_then(|p| merge_bone[p]) });
+    }
+    let follows = |joint: u16| merge_bone.get(joint as usize).copied().flatten().unwrap_or(i);
+    let mut own = crate::map::MapModel::default();
+    let mut merged: Vec<(usize, crate::map::MapModel)> = Vec::new();
+    for mesh in &held.meshes {
+        let mut groups: Vec<(usize, Vec<u32>)> = Vec::new();
+        for tri in mesh.indices.chunks_exact(3) {
+            let b = mesh.joints.get(tri[0] as usize).map_or(i, |j| follows(j[0]));
+            match groups.iter_mut().find(|(g, _)| *g == b) {
+                Some((_, list)) => list.extend_from_slice(tri),
+                None => groups.push((b, tri.to_vec())),
+            }
+        }
+        for (b, indices) in groups {
+            let mut part = crate::map::vis::sub_mesh(mesh, mesh, &indices);
+            let frame = match global.get(b) {
+                Some((q, p)) if b != i => Transform::from_rotation(*q).with_translation(*p).to_matrix().inverse(),
+                _ => to_bone,
+            };
+            for v in &mut part.positions {
+                *v = frame.transform_point3(source(*v) / METERS_PER_UNIT).to_array();
+            }
+            for n in &mut part.normals {
+                *n = frame.transform_vector3(source(*n)).normalize_or_zero().to_array();
+            }
+            if b == i {
+                own.meshes.push(part);
+            } else {
+                match merged.iter_mut().find(|(g, _)| *g == b) {
+                    Some((_, m)) => m.meshes.push(part),
+                    None => merged.push((b, crate::map::MapModel {
+                        meshes: vec![part],
+                        ..default()
+                    })),
+                }
+            }
+        }
+    }
     for mesh in &mut held.meshes {
         for v in &mut mesh.positions {
             *v = to_bone.transform_point3(source(*v) / METERS_PER_UNIT).to_array();
@@ -467,6 +515,8 @@ pub fn load_held(
         model: held,
         bone: bone.name.clone(),
         muzzle,
+        own: (!merged.is_empty()).then_some(own),
+        merged: merged.into_iter().map(|(b, m)| (mdl.bones[b].name.clone(), m)).collect(),
     })
 }
 

@@ -439,3 +439,77 @@ fn hostage_animations_from_ani_blocks() {
         }
     }
 }
+
+/// Hands stay on the weapon (playtest 2026-10-10: a third-person pistol
+/// held a hand's width off the hand). The aim layers turn the arms with
+/// the look while the weapon bone hangs from the spine; the player
+/// models' IK rules lock the hands to the grips (`weapon_bone_RHand`,
+/// `_LHand`, where each weapon's hand pose puts them) for guns and the
+/// bomb, the right one only for dual pistols (and the knife's while
+/// running), none for grenades. Without the locks a pistol's grip was 4.8 units from the
+/// hand looking 40 degrees down.
+#[test]
+fn hands_stay_on_the_weapon_while_aiming() {
+    use mashup::games::cs_source::player_anim::{Inputs, PlayerAnim};
+    use mashup::map::anim::{Animator, model_space};
+    let path = "models/player/ct_urban.mdl";
+    let Some(set) = load(path) else { return };
+    let set = std::sync::Arc::new(set);
+    let b = |n: &str| set.bone_names.iter().position(|x| x == n).unwrap_or_else(|| panic!("{n}"));
+    let hands = [b("valvebiped.bip01_r_hand"), b("valvebiped.bip01_l_hand")];
+    let grips = [b("valvebiped.weapon_bone_rhand"), b("valvebiped.weapon_bone_lhand")];
+    let both = [true, true];
+    for (suffix, locked) in [
+        ("PISTOL", both),
+        ("AK", both),
+        ("M4", both),
+        ("MP5", both),
+        ("P90", both),
+        ("M3S90", both),
+        ("XM1014", both),
+        ("AWP", both),
+        ("SCOUT", both),
+        ("M249", both),
+        ("C4", both),
+        ("ELITES", [true, false]),
+        ("KNIFE", [false, false]),
+        ("GREN", [false, false]),
+    ] {
+        for (pitch, yaw) in [(0.0, 0.0), (45.0, 0.0), (-60.0, 30.0), (80.0, -50.0)] {
+            for (name, v, ducked) in [
+                ("idle", Vec2::ZERO, false),
+                ("run", Vec2::new(250.0, 0.0), false),
+                ("walk", Vec2::new(120.0, 0.0), false),
+                ("crouch", Vec2::ZERO, true),
+                ("crouch-walk", Vec2::new(60.0, 0.0), true),
+            ] {
+                let mut a = Animator::new(set.clone());
+                let mut s = PlayerAnim::default();
+                let mut i = Inputs {
+                    velocity: v,
+                    ducked,
+                    on_ground: true,
+                    ..default()
+                };
+                for k in 0..40 {
+                    s.update(&mut a, &i, suffix, 0.016, k as f64 * 0.016);
+                    // Turned after the first update: the feet stay put.
+                    i.eye_pitch = pitch;
+                    i.eye_yaw = yaw;
+                }
+                let pose = model_space(&a.pose(1.0), &set.parents);
+                for k in 0..2 {
+                    let gap = pose[hands[k]].1.distance(pose[grips[k]].1);
+                    let turn = pose[hands[k]].0.angle_between(pose[grips[k]].0).to_degrees();
+                    let what = format!("{suffix} {name} pitch {pitch} yaw {yaw} hand {k}: {gap:.2}, {turn:.1} deg");
+                    // The knife's running pose locks its right hand too.
+                    let locked = locked[k] || (suffix == "KNIFE" && name == "run" && k == 0);
+                    if locked {
+                        assert!(gap < 0.05 && turn < 0.5, "{what} off its grip");
+                    }
+                    assert_eq!(s.hand_locks[k] > 0.99, locked, "{what}: lock {:?}", s.hand_locks);
+                }
+            }
+        }
+    }
+}

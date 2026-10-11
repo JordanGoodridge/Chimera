@@ -1094,6 +1094,7 @@ mod tests {
             .world_mut()
             .spawn((
                 super::super::CharacterBody {
+                    held_parts: Vec::new(),
                     model: 0,
                     joints: Vec::new(),
                     held: None,

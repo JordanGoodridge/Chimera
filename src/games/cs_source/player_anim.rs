@@ -24,12 +24,25 @@ const FEET_YAW_RATE: f32 = 720.0;
 const FEET_TURN_FADE: f32 = 45.0;
 const FACE_FRONT_TIME: f64 = 3.0;
 const JUMP_GROUND_IGNORE: f64 = 0.2;
+/// Seconds a hand takes to settle onto its grip or let go (our choice;
+/// the files' IK rules carry no fade we use).
+const HAND_LOCK_FADE: f32 = 0.2;
+/// IK chains of the shared skeleton and the grip bones their ends lock
+/// to: `weapon_bone_RHand`/`_LHand` sit where the hands are in each
+/// weapon's authored pose, so a locked hand stays on the gun while the
+/// aim layers turn the arms (playtest 2026-10-10: a pistol held a hand's
+/// width off the hand when aiming up or down).
+const HAND_CHAINS: [(&str, &str); 2] = [
+    ("rhand", "valvebiped.weapon_bone_rhand"),
+    ("lhand", "valvebiped.weapon_bone_lhand"),
+];
 
 pub struct PlayerAnimPlugin;
 
 impl Plugin for PlayerAnimPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<WeaponEvent>()
+            .init_resource::<HandIk>()
             .add_systems(
                 Update,
                 (
@@ -38,6 +51,23 @@ impl Plugin for PlayerAnimPlugin {
                     hold_weapons,
                 ),
             );
+        crate::console::resource_cvar::<HandIk, u8>(
+            app,
+            "mashup_hand_ik",
+            "1: hands locked onto the weapon as the player models' IK rules say (drawn bodies); 0: off, the animation's own arms (for comparison).",
+            |h| &mut h.0,
+        );
+    }
+}
+
+/// `mashup_hand_ik`: drawn bodies lock their hands onto their weapon
+/// (`PlayerAnim::lock_hands`); 0 turns it off.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HandIk(pub u8);
+
+impl Default for HandIk {
+    fn default() -> Self {
+        Self(1)
     }
 }
 
@@ -132,6 +162,10 @@ pub struct PlayerAnim {
     grenade: Option<(usize, f32, bool)>,
     /// A throw waits for the prime to reach its end.
     throw_wanted: bool,
+    /// How far each hand (`HAND_CHAINS`) is locked onto its grip, 0 to 1.
+    pub hand_locks: [f32; 2],
+    /// The next lock update snaps (spawn).
+    reset_hands: bool,
 }
 
 impl Default for PlayerAnim {
@@ -152,6 +186,8 @@ impl Default for PlayerAnim {
             reload: None,
             grenade: None,
             throw_wanted: false,
+            hand_locks: [0.0; 2],
+            reset_hands: true,
         }
     }
 }
@@ -471,6 +507,7 @@ impl PlayerAnim {
             weight: 1.0,
         });
         a.layers = layers;
+        self.lock_hands(a, suffix, dt);
         Outputs {
             move_x,
             move_y,
@@ -478,6 +515,49 @@ impl PlayerAnim {
             body_pitch,
             rate,
         }
+    }
+}
+
+impl PlayerAnim {
+    /// The hands' IK locks from the files' rules (`AnimSet::ik_locks`):
+    /// the layers in order, each sequence then its autolayers, the last
+    /// rule for a chain wins. Guns' hand poses lock both hands to the
+    /// weapon, the knife's release them, dual pistols lock the right hand
+    /// only; reloads lock them to the grips as they move. Grenades hang
+    /// on the hand itself and their grips aren't where the hands are
+    /// (the right one 7.7 units and 162 degrees off): no locks.
+    fn lock_hands(&mut self, a: &mut Animator, suffix: &str, dt: f32) {
+        let set = a.set.clone();
+        a.ik.clear();
+        if set.ik_chains.is_empty() || set.parents.is_empty() {
+            return;
+        }
+        let mut locks = vec![None; set.ik_chains.len()];
+        if suffix != "GREN" {
+            for l in a.layers.iter().flatten().filter(|l| l.weight > 0.0) {
+                set.ik_locks(l.sequence, &mut locks);
+            }
+        }
+        for (k, (chain, grip)) in HAND_CHAINS.iter().enumerate() {
+            let found = set.ik_chains.iter().position(|c| c.name == *chain);
+            let target = set.bone_names.iter().position(|n| n == grip);
+            let (Some(chain), Some(target)) = (found, target) else {
+                self.hand_locks[k] = 0.0;
+                continue;
+            };
+            let want = if locks[chain] == Some(true) { 1.0 } else { 0.0 };
+            let step = if self.reset_hands { 1.0 } else { dt / HAND_LOCK_FADE };
+            let w = &mut self.hand_locks[k];
+            *w = if *w < want { (*w + step).min(want) } else { (*w - step).max(want) };
+            if *w > 0.0 {
+                a.ik.push(crate::map::anim::IkGoal {
+                    chain,
+                    target,
+                    weight: *w,
+                });
+            }
+        }
+        self.reset_hands = false;
     }
 }
 
@@ -645,6 +725,7 @@ fn drive(
     weapons: WeaponsQuery,
     loading: LoadingQuery,
     mut events: MessageReader<WeaponEvent>,
+    hand_ik: Res<HandIk>,
     mut commands: Commands,
 ) {
     let all: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
@@ -665,6 +746,9 @@ fn drive(
         let look = crate::map::interp::eye_view(view, intent, movement);
         let weapon = inventory.and_then(|i| i.active).and_then(|w| weapons.get(w).ok());
         animate(e, &mut state, &mut animator, look, velocity, movement, weapon, &happened, dt, now);
+        if hand_ik.0 == 0 {
+            animator.ik.clear();
+        }
     }
 }
 

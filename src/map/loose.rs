@@ -236,6 +236,8 @@ mod tests {
             ..default()
         });
         let held = MapHeldModel {
+            merged: Vec::new(),
+            own: None,
             key: "gun".into(),
             model,
             bone: "b".into(),
