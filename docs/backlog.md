@@ -10,6 +10,12 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- No weapon held (user, 2026-10-11, e.g. after a map strip): CS:S shows
+  its five-dot crosshair (the HUD's default crosshair sprite when no
+  weapon draws one); ours keeps the normal crosshair. And our view model
+  goes into a T-pose (hands with no weapon animation): with no weapon,
+  draw no view model, as CS:S.
+
 - Moving under a brush at head height (user, 2026-10-11; likely
   mg_jacks_multigames_v1 near `setpos -12348.55 14196.69 1472.03; setang
   -23.23 268.82 0`, though that setpos lands you on top of the brush):
