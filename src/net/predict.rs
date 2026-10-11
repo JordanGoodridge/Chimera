@@ -893,8 +893,8 @@ fn capture_command(
 }
 
 /// The rules hold our player as the server's do (`rules::hold_the_dead`:
-/// nothing but the look; `rules::rounds::hold_frozen`: the look and weapon
-/// picks). Arming and defusing hold it as predicted (`objectives::bomb`'s
+/// nothing but the look; `rules::rounds::hold_frozen`: the look, weapon
+/// picks and reload). Arming and defusing hold it as predicted (`objectives::bomb`'s
 /// `BombHold`, before the command is recorded).
 fn hold_local(
     held: Res<Held>,
@@ -905,15 +905,16 @@ fn hold_local(
     let frozen = held
         .frozen_until
         .is_some_and(|until| clock.tick.is_none_or(|t| t < until));
-    if held.dead || frozen {
-        let (yaw, pitch, command, select) = (intent.yaw, intent.pitch, intent.command, intent.select);
+    if held.dead {
+        let (yaw, pitch, command) = (intent.yaw, intent.pitch, intent.command);
         **intent = Intent {
             yaw,
             pitch,
             command,
-            select: if held.dead { None } else { select },
             ..default()
         };
+    } else if frozen {
+        **intent = crate::rules::rounds::frozen_intent(intent);
     }
 }
 

@@ -312,3 +312,55 @@ fn a_map_change_starts_a_fresh_game_and_brings_the_dead_back() {
     assert_eq!(sim.app.world().resource::<RoundState>().number, 1);
     assert_eq!(money(&sim, ct2), 800);
 }
+
+/// "The gun does not reload after the round ends" (playtest 2026-10-10):
+/// survivors keep their weapons and the rounds in them (CS:S: nothing is
+/// refilled at a round start), and pressing reload works in the next
+/// round's freeze time as after it (CS:S only stops moving and attacking
+/// while frozen).
+#[test]
+fn survivors_keep_their_clip_and_reload_in_the_freeze() {
+    use mashup::{
+        games::cs_source::{TICK_INTERVAL, weapons::CsWeaponsPlugin},
+        greybox::GreyboxMapPlugin,
+        weapon::{Inventory, Magazine},
+    };
+    let mut sim = Sim::new((GreyboxMapPlugin, CsWeaponsPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    let t = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), placeholder::ID);
+    let ct = sim.spawn_character(Vec3::new(4.0, 1.0, 0.0), placeholder::ID);
+    sim.app.world_mut().entity_mut(t).insert(Team(1));
+    sim.app.world_mut().entity_mut(ct).insert(Team(2));
+    sim.app
+        .world_mut()
+        .resource_mut::<Console>()
+        .submit("mp_freezetime 4; mp_roundtime 0.5; mashup_rounds 1");
+    sim.seconds(4.2);
+    assert!(matches!(phase(&sim), Phase::Live { .. }), "{:?}", phase(&sim));
+    let pistol = sim.app.world().get::<Inventory>(t).unwrap().active.expect("a pistol drawn");
+    let clip = |sim: &Sim| sim.app.world().get::<Magazine>(pistol).unwrap().clip;
+    let full = clip(&sim);
+    sim.app.world_mut().get_mut::<Magazine>(pistol).unwrap().clip = 5;
+    kill(&mut sim, t, ct);
+    assert!(matches!(phase(&sim), Phase::Over { .. }), "{:?}", phase(&sim));
+    sim.seconds(5.2);
+    assert!(matches!(phase(&sim), Phase::Freeze { .. }), "{:?}", phase(&sim));
+    assert_eq!(sim.app.world().get::<Inventory>(t).unwrap().active, Some(pistol), "kept");
+    assert_eq!(clip(&sim), 5, "a survivor's clip is as it was");
+    // Reload pressed in the freeze: the pistol reloads (2.3 s at most).
+    sim.intent(t).reload = true;
+    sim.ticks(2);
+    sim.intent(t).reload = false;
+    sim.seconds(3.0);
+    assert!(matches!(phase(&sim), Phase::Freeze { .. }), "{:?}", phase(&sim));
+    assert_eq!(clip(&sim), full, "reloaded in the freeze");
+    // And after it.
+    sim.seconds(1.0);
+    assert!(matches!(phase(&sim), Phase::Live { .. }), "{:?}", phase(&sim));
+    sim.app.world_mut().get_mut::<Magazine>(pistol).unwrap().clip = 3;
+    sim.intent(t).reload = true;
+    sim.ticks(2);
+    sim.intent(t).reload = false;
+    sim.seconds(3.0);
+    assert_eq!(clip(&sim), full, "reloaded in the round");
+}

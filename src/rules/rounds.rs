@@ -531,20 +531,31 @@ pub(super) fn kill_rewards(
     }
 }
 
-/// While frozen, nobody moves or shoots (they can still look around).
-/// Bots think before the rules (`bot::BotPlugin`), so this holds them too.
+/// While frozen, nobody moves or shoots; they can still look around,
+/// switch weapons and reload (playtest 2026-10-10: "the gun does not
+/// reload after the round ends": R did nothing in the next round's
+/// freeze). Bots think before the rules (`bot::BotPlugin`), so this holds
+/// them too. A network client holds its own the same way
+/// (`net::predict::hold_local`).
 pub(super) fn hold_frozen(frozen: Res<FreezeTime>, mut intents: Query<&mut Intent>) {
     if !frozen.0 {
         return;
     }
     for mut intent in &mut intents {
-        let (yaw, pitch, select) = (intent.yaw, intent.pitch, intent.select);
-        *intent = Intent {
-            yaw,
-            pitch,
-            select,
-            ..default()
-        };
+        *intent = frozen_intent(&intent);
+    }
+}
+
+/// What a frozen player's intent keeps: the look, weapon picks and reload.
+pub fn frozen_intent(intent: &Intent) -> Intent {
+    Intent {
+        yaw: intent.yaw,
+        pitch: intent.pitch,
+        select: intent.select,
+        last_weapon: intent.last_weapon,
+        reload: intent.reload,
+        command: intent.command,
+        ..default()
     }
 }
 

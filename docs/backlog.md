@@ -34,10 +34,16 @@ Gameplay and rules:
 - A console setting to make teammates not collide (user's answer to the
   noblock question): opt-in, off by default (parity first); e.g.
   `mashup_noblock 1` (teammates) / `2` (everyone).
-- "Gun does not reload after round end" (reporter THE GLITCH): find out
-  what was meant: R not working after a round restart, or the clip not
-  refilled; check CS:S (survivors keep their weapons and ammo as they
-  are; pressing R must work).
+- "Gun does not reload after round end" (reporter THE GLITCH; fixed
+  2026-10-10, to playtest): reproduced: R in the next round's freeze time
+  did nothing (the freeze dropped every key but the look and weapon
+  picks, `rules::rounds::hold_frozen`, and a network client the same,
+  `net::predict::hold_local`); now reload and lastinv go through, moving
+  and attacking stay held (`rounds::survivors_keep_their_clip_and_reload_in_the_freeze`).
+  The clip isn't refilled at a round start: survivors keep their weapons
+  and ammo as they are (parity, unchanged). Capture to confirm: in CS:S,
+  empty half a clip, survive the round, press R in the freeze time
+  (reloads at once, or only once it ends?).
 - Chat messages are printed twice in the console.
 - Player name: persist `name` in the config, and a name field in Options
   (Multiplayer tab) instead of only the console command.
