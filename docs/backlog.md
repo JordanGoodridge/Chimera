@@ -10,6 +10,24 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- Buying on maps without buy zones (user, 2026-10-11, mg_jacks_multigames_v1):
+  you can buy guns anywhere. jacks has no `func_buyzone` and no
+  `info_map_parameters`; our `weapon::economy::in_buy_zone` lets everyone
+  buy anywhere when a map has no zones ("CS:S puts zones around the
+  spawns then; not modelled yet"). Model CS:S's rule (spec needed: the
+  zone made around each team's spawn points, its radius, `mp_buytime`),
+  and `info_map_parameters` `buying` (0 everyone, 1 CT only, 2 T only,
+  3 nobody; objectives.md notes the key).
+- Weapons after a round on minigame maps (user, 2026-10-11): players walk
+  into the lobby with e.g. a machine gun. In CS:S survivors keep their
+  weapons into the next round; minigame maps strip them with map logic
+  (`player_weaponstrip` Strip/StripWeaponsAndSuit or `game_player_equip`
+  with the strip flag, fired by a trigger in the spawn/lobby or a
+  logic_auto at round start). jacks has 4 player_weaponstrips fired by
+  triggers' OnStartTouch. Check whether a player spawning or teleported
+  inside such a trigger gets StartTouch (Source does), which trigger
+  jacks' lobby uses, and that the strip happens; compare with CS:S.
+
 - AK full-auto sounds choppy (user, 2026-10-11): holding fire, each
   shot seems to cut the previous one off. Source plays weapon fire on
   the entity's CHAN_WEAPON, where a new sound replaces the old one, so
