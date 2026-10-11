@@ -845,6 +845,7 @@ pub(super) fn build_flash_assets(
                 },
                 texture: Some(t.clone()),
                 glow: false,
+                blend: crate::map::sprite_material::SpriteBlend::Add,
             })
         });
     Some(FlashAssets {

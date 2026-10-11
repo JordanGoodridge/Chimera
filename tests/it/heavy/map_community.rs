@@ -953,3 +953,155 @@ fn moving_water_follows_its_entity() {
         );
     }
 }
+
+/// Gungame arenas' weapons as CS:S hands them out (the weapon ladder
+/// itself is a server plugin's, not the map's): gg_iceworld_l33t's placed
+/// weapons are picked up by walking onto them into an empty slot only;
+/// gg_usp_deagle's game_player_equip is the whole kit; gg_deagle7k's
+/// player_weaponstrip, fired at map spawn with no player, takes nothing.
+#[test]
+fn gungame_weapons_pick_up_equip_and_strip() {
+    fn held(sim: &Sim, p: Entity) -> Vec<String> {
+        let world = sim.app.world();
+        let inv = world.get::<Inventory>(p).expect("an inventory");
+        let mut ids: Vec<String> = inv
+            .weapons
+            .iter()
+            .filter_map(|w| world.get::<Weapon>(*w))
+            .map(|w| w.id.trim_start_matches("cs_source:").to_string())
+            .collect();
+        ids.sort();
+        ids
+    }
+    fn lying(sim: &mut Sim, class: &str, entities: &[mashup::map::MapEntity]) -> Vec<(Entity, Vec3)> {
+        let world = sim.app.world_mut();
+        world
+            .query::<(&Loose, &MapWeapon, &Transform)>()
+            .iter(world)
+            .filter(|(_, m, _)| entities[m.0].classname().eq_ignore_ascii_case(class))
+            .map(|(l, _, t)| (l.weapon, t.translation))
+            .collect()
+    }
+    let new_sim = |map: MapData| {
+        let mut sim = Sim::new((MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
+        sim.set_tick_interval(cs_source::TICK_INTERVAL);
+        sim.ticks(2);
+        sim
+    };
+    if let Some(map) = load("gg_iceworld_l33t") {
+        let entities = map.entities.clone();
+        let mut sim = new_sim(map);
+        let (_, at) = lying(&mut sim, "weapon_ak47", &entities)[0];
+        let p = sim.spawn_character(at + Vec3::Y * 0.1, cs_source::movement::ID);
+        sim.ticks(10);
+        // The spawn kit has no rifle (knife and pistol).
+        let with_ak = held(&sim, p);
+        assert_eq!(
+            with_ak,
+            vec!["weapon_ak47", "weapon_knife", "weapon_usp"],
+            "walked onto with the rifle slot empty: picked up"
+        );
+        // Another rifle: the slot is full, so it stays (one weapon per slot).
+        let m4s = lying(&mut sim, "weapon_m4a1", &entities).len();
+        let (_, at) = lying(&mut sim, "weapon_m4a1", &entities)[0];
+        sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = at + Vec3::Y * 0.1;
+        sim.ticks(70);
+        assert_eq!(held(&sim, p), with_ak, "the M4 stays");
+        assert_eq!(lying(&mut sim, "weapon_m4a1", &entities).len(), m4s);
+        // A grenade: its own slot.
+        let (_, at) = lying(&mut sim, "weapon_hegrenade", &entities)[0];
+        sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = at + Vec3::Y * 0.1;
+        sim.ticks(70);
+        assert!(held(&sim, p).contains(&"weapon_hegrenade".to_string()), "the grenade");
+        // A round restart puts the carried placed weapons back where the
+        // map put them; the player keeps its own.
+        let placed = entities.iter().filter(|e| e.classname().starts_with("weapon_")).count();
+        sim.app.world_mut().resource_mut::<RoundRestarts>().0 += 1;
+        sim.ticks(2);
+        let world = sim.app.world_mut();
+        let lying_now = world.query::<(&Loose, &MapWeapon)>().iter(world).count();
+        assert_eq!(lying_now, placed, "every placed weapon lies there again");
+    }
+    if let Some(map) = load("gg_usp_deagle") {
+        let mut sim = new_sim(map);
+        let p = sim.spawn_character(Vec3::new(0.0, 50.0, 0.0), placeholder::ID);
+        sim.ticks(2);
+        assert_eq!(held(&sim, p), vec!["weapon_knife", "weapon_usp"], "the equip is the whole kit");
+    }
+    if let Some(map) = load("gg_deagle7k") {
+        let mut sim = new_sim(map);
+        let p = sim.spawn_character(Vec3::new(0.0, 50.0, 0.0), placeholder::ID);
+        sim.ticks(2);
+        let kit = held(&sim, p);
+        assert!(!kit.is_empty());
+        // OnMapSpawn's StripWeaponsAndSuit (no activator: no player).
+        sim.app.world_mut().resource_mut::<mashup::logic::Logic>().world.queue_input(
+            "strip",
+            "StripWeaponsAndSuit",
+            mashup::logic::Value::Void,
+            0.0,
+            None,
+        );
+        sim.ticks(5);
+        assert_eq!(held(&sim, p), kit, "a strip with no player to strip takes nothing");
+    }
+}
+
+/// mg_n64_goldeneye_v2's strike-generator env_beams (visual_entities.md
+/// 4.2): a weapon button's StrikeOnce, 20 s later, strikes all 14 between
+/// their info_targets (the map draws each for its 2 s life:
+/// `map::emitters::StrikeEmitter`) and kills a player on a line (900).
+#[test]
+fn strike_beams_strike_and_kill() {
+    use bevy::ecs::message::Messages;
+    use mashup::{
+        core::Health,
+        logic::{Logic, Value},
+        map::emitters::BeamStrike,
+    };
+    let Some(map) = load("mg_n64_goldeneye_v2") else { return };
+    assert_eq!(map.strikes.len(), 14, "its strike generators' looks");
+    assert!(map.strikes.iter().all(|s| s.noise == 20.0 && (s.width / 0.0254 - 50.0).abs() < 1e-3));
+    let mut sim = Sim::new((MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
+    sim.set_tick_interval(cs_source::TICK_INTERVAL);
+    sim.ticks(2);
+    // On the line from t1 (-18 -32 2994) to t2 (94 208 2900), halfway.
+    let p = sim.spawn_character(
+        cs_source::movement::to_engine(Vec3::new(38.0, 88.0, 2947.0)),
+        cs_source::movement::ID,
+    );
+    sim.ticks(2);
+    sim.app
+        .world_mut()
+        .resource_mut::<Logic>()
+        .world
+        .queue_input("beam", "StrikeOnce", Value::Void, 0.0, None);
+    let mut strikes: Vec<BeamStrike> = Vec::new();
+    for _ in 0..3 {
+        sim.ticks(1);
+        let messages = sim.app.world().resource::<Messages<BeamStrike>>();
+        strikes.extend(messages.iter_current_update_messages().copied());
+    }
+    strikes.dedup();
+    assert_eq!(strikes.len(), 14, "every beam struck");
+    assert!(strikes.iter().all(|s| s.life == 2.0 && s.start.distance(s.end) > 1.0));
+    let health = sim.app.world().get::<Health>(p).map_or(0.0, |h| h.current);
+    assert!(health <= 0.0, "the beam through the player kills: {health}");
+}
+
+/// Sprites in the blended (1, 2, 4) and normal (0) render modes are drawn
+/// (sprites_dust.md 3): surf_sacrifice's name labels (texture mode),
+/// mg_swag_multigames_v1's buy zone signs (normal).
+#[test]
+fn blended_and_normal_sprites_load() {
+    use mashup::map::sprite_material::SpriteBlend;
+    if let Some(map) = load("surf_sacrifice") {
+        let labels = map.sprites.iter().filter(|s| s.blend == SpriteBlend::Blend).count();
+        assert!(labels >= 14, "{labels}");
+        assert!(!map.warnings.iter().any(|w| w.contains("render modes")), "{:?}", map.warnings);
+    }
+    if let Some(map) = load("mg_swag_multigames_v1") {
+        let signs = map.sprites.iter().filter(|s| s.blend == SpriteBlend::Opaque).count();
+        assert_eq!(signs, 7);
+    }
+}

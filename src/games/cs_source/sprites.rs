@@ -9,7 +9,7 @@ use super::{
     bsp::{METERS_PER_UNIT, to_engine},
     material::MaterialLoader,
 };
-use crate::map::{MapData, MapSprite};
+use crate::map::{MapData, MapSprite, sprite_material::SpriteBlend};
 
 fn parse3(v: &str) -> Option<Vec3> {
     let mut it = v.split_whitespace().filter_map(|p| p.parse::<f32>().ok());
@@ -35,11 +35,19 @@ pub fn add_sprites(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData
         };
         let mode: u32 = e.prop("rendermode").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
         let fx: u32 = e.prop("renderfx").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-        // Only the modes dust2-era maps use for lights are drawn so far.
-        if !matches!(mode, 3 | 5 | 9) {
-            skipped += 1;
-            continue;
-        }
+        // Additive and glow modes (3, 5, 9), blended (1, 2, 4) and opaque
+        // (0) are drawn (sprites_dust.md 3); environmental and none (6,
+        // 10) never are; 7 and 8 aren't yet.
+        let blend = match mode {
+            3 | 5 | 9 => SpriteBlend::Add,
+            1 | 2 | 4 => SpriteBlend::Blend,
+            0 => SpriteBlend::Opaque,
+            6 | 10 => continue,
+            _ => {
+                skipped += 1;
+                continue;
+            }
+        };
         // A named sprite without "Start on" starts hidden (the logic can
         // show it).
         let flags: u32 = e.prop("spawnflags").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
@@ -61,7 +69,7 @@ pub fn add_sprites(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData
             .unwrap_or(255.0)
             / 255.0;
         let rgb = e.prop("rendercolor").and_then(parse3).unwrap_or(Vec3::splat(255.0)) / 255.0;
-        let glow = mode != 5;
+        let glow = matches!(mode, 3 | 9);
         // Glows: vertex rgb = rendercolor x blend x glow factor, where the
         // blend is renderamt and Constant Glow (renderfx 14) multiplies by
         // renderamt again (no distance fade); vertex alpha is renderamt.
@@ -74,6 +82,8 @@ pub fn add_sprites(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData
         } else {
             rgb
         };
+        // Normal mode: the texture as it is (vertex colour ignored).
+        let rgb = if blend == SpriteBlend::Opaque { Vec3::ONE } else { rgb };
         data.sprites.push(MapSprite {
             position: to_engine(vbsp::Vector {
                 x: origin.x,
@@ -84,6 +94,7 @@ pub fn add_sprites(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData
             size: Vec2::new(t.width as f32, t.height as f32) * scale * METERS_PER_UNIT,
             color: rgb.extend(amt),
             glow,
+            blend,
             proxy: e
                 .prop("GlowProxySize")
                 .or_else(|| e.prop("glowproxysize"))

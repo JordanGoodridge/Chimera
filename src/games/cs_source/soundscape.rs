@@ -346,7 +346,7 @@ pub fn load(materials: &mut MaterialLoader, bsp: &Bsp, map: &str, sounds: &mut M
                 // A proxy plays the soundscape and positions of the
                 // env_soundscape it names ("MainSoundscapeName").
                 let main = if class == "env_soundscape_proxy" {
-                    let Some(m) = ent.prop("MainSoundscapeName").and_then(|n| {
+                    let Some(m) = ent.prop("mainsoundscapename").and_then(|n| {
                         entities.iter().find(|e| {
                             e.prop("classname") == Some("env_soundscape")
                                 && e.prop("targetname").is_some_and(|t| t.eq_ignore_ascii_case(n))
@@ -374,7 +374,7 @@ pub fn load(materials: &mut MaterialLoader, bsp: &Bsp, map: &str, sounds: &mut M
                     scape: s,
                     positions: positions(main),
                     entity: Some(index),
-                    start_disabled: ent.prop("StartDisabled").is_some_and(|v| v.trim_start().starts_with('1')),
+                    start_disabled: ent.prop("startdisabled").is_some_and(|v| v.trim_start().starts_with('1')),
                 });
             }
             _ => {}

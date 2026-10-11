@@ -952,7 +952,8 @@ refuses any folder inside the repository.
 `catch_unwind`, runs its map logic for a few seconds, and writes
 `report.md` (problems ranked by how many maps they affect, then one row
 per map), `report.csv` and `warnings.txt` (every warning and logic line)
-to `target/mapsweep/` (or `--out`). Load warnings are grouped by kind
+to `target/mapsweep/` (or `--out`); the console says each map's load
+time and its stages over half a second (`MapData::load_times`). Load warnings are grouped by kind
 (missing or unreadable materials, textures, models, sounds; decals and
 overlays without a surface), plus entity classes nothing handles, classes
 handled only as static brushes, and logic complaints (refused server

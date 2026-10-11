@@ -399,6 +399,115 @@ pub struct Occluders {
     /// collision (a point under terrain still sees the sun through it;
     /// de_nuke's dumpsters sit with their centres below the ground).
     terrain: Vec<([Vec3; 3], Vec3, Vec3, Vec3)>,
+    /// The terrain triangles by the ground cells (engine x, z) their
+    /// bounds cover: a ray tests only those of the cells it crosses (a
+    /// map with 261k terrain triangles and 935 lights took 30 s and more
+    /// to light its props when every ray tried them all).
+    grid: TerrainGrid,
+}
+
+/// Triangles binned on a horizontal grid (engine x and z).
+#[derive(Default)]
+struct TerrainGrid {
+    origin: Vec2,
+    cell: f32,
+    size: (usize, usize),
+    cells: Vec<Vec<u32>>,
+}
+
+/// Most cells along each side of a terrain grid.
+const TERRAIN_GRID_MAX: usize = 512;
+
+impl TerrainGrid {
+    fn new(terrain: &[([Vec3; 3], Vec3, Vec3, Vec3)]) -> Self {
+        if terrain.is_empty() {
+            return Self::default();
+        }
+        let lo = terrain.iter().fold(Vec2::MAX, |a, t| a.min(t.2.xz()));
+        let hi = terrain.iter().fold(Vec2::MIN, |a, t| a.max(t.3.xz()));
+        let extent = (hi - lo).max(Vec2::splat(1e-3));
+        // About 128 units a cell, fewer cells on a huge map.
+        let cell = (128.0 * METERS_PER_UNIT).max(extent.max_element() / TERRAIN_GRID_MAX as f32);
+        let size = (
+            ((extent.x / cell).floor() as usize + 1).min(TERRAIN_GRID_MAX),
+            ((extent.y / cell).floor() as usize + 1).min(TERRAIN_GRID_MAX),
+        );
+        let mut cells = vec![Vec::new(); size.0 * size.1];
+        let index = |v: f32, o: f32, n: usize| (((v - o) / cell).floor().max(0.0) as usize).min(n - 1);
+        for (i, t) in terrain.iter().enumerate() {
+            let (x0, x1) = (index(t.2.x, lo.x, size.0), index(t.3.x, lo.x, size.0));
+            let (z0, z1) = (index(t.2.z, lo.y, size.1), index(t.3.z, lo.y, size.1));
+            for z in z0..=z1 {
+                for x in x0..=x1 {
+                    cells[z * size.0 + x].push(i as u32);
+                }
+            }
+        }
+        Self {
+            origin: lo,
+            cell,
+            size,
+            cells,
+        }
+    }
+
+    /// The triangles of each cell a ray from `p` along `dir` crosses
+    /// within `max` (a triangle can come up more than once), until `hit`
+    /// says yes.
+    fn any_along(&self, p: Vec3, dir: Vec3, max: f32, mut hit: impl FnMut(u32) -> bool) -> bool {
+        if self.cells.is_empty() {
+            return false;
+        }
+        let (a, d) = (p.xz(), dir.xz());
+        let hi = self.origin + Vec2::new(self.size.0 as f32, self.size.1 as f32) * self.cell;
+        // The part of the ray over the grid.
+        let (mut t0, mut t1) = (0.0f32, max);
+        for k in 0..2 {
+            if d[k].abs() < 1e-9 {
+                if a[k] < self.origin[k] || a[k] > hi[k] {
+                    return false;
+                }
+                continue;
+            }
+            let (u, v) = ((self.origin[k] - a[k]) / d[k], (hi[k] - a[k]) / d[k]);
+            t0 = t0.max(u.min(v));
+            t1 = t1.min(u.max(v));
+        }
+        if t0 > t1 {
+            return false;
+        }
+        let start = a + d * t0;
+        let n = [self.size.0 as i64, self.size.1 as i64];
+        let mut c = [0i64; 2];
+        let (mut step, mut next, mut delta) = ([0i64; 2], [f32::INFINITY; 2], [f32::INFINITY; 2]);
+        for k in 0..2 {
+            c[k] = (((start[k] - self.origin[k]) / self.cell).floor() as i64).clamp(0, n[k] - 1);
+            if d[k] > 1e-9 {
+                step[k] = 1;
+                next[k] = (self.origin[k] + (c[k] + 1) as f32 * self.cell - a[k]) / d[k];
+                delta[k] = self.cell / d[k];
+            } else if d[k] < -1e-9 {
+                step[k] = -1;
+                next[k] = (self.origin[k] + c[k] as f32 * self.cell - a[k]) / d[k];
+                delta[k] = -self.cell / d[k];
+            }
+        }
+        loop {
+            let cell = &self.cells[c[1] as usize * self.size.0 + c[0] as usize];
+            if cell.iter().any(|i| hit(*i)) {
+                return true;
+            }
+            let k = if next[0] < next[1] { 0 } else { 1 };
+            if next[k] > t1 || step[k] == 0 {
+                return false;
+            }
+            c[k] += step[k];
+            if c[k] < 0 || c[k] >= n[k] {
+                return false;
+            }
+            next[k] += delta[k];
+        }
+    }
 }
 
 impl Occluders {
@@ -410,7 +519,7 @@ impl Occluders {
             .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
             .collect();
         let colliders = if parts.is_empty() { Vec::new() } else { vec![Collider::compound(parts)] };
-        let terrain = triangles
+        let terrain: Vec<_> = triangles
             .1
             .iter()
             .filter_map(|t| {
@@ -419,7 +528,12 @@ impl Occluders {
                 (n != Vec3::ZERO).then(|| ([a, b, c], n, a.min(b).min(c), a.max(b).max(c)))
             })
             .collect();
-        Self { colliders, terrain }
+        let grid = TerrainGrid::new(&terrain);
+        Self {
+            colliders,
+            terrain,
+            grid,
+        }
     }
 
     /// Whether anything blocks the segment from `p` along `dir` for `max`
@@ -435,7 +549,8 @@ impl Occluders {
         }
         let end = p + dir * max;
         let (lo, hi) = (p.min(end), p.max(end));
-        self.terrain.iter().any(|([a, b, c], n, tlo, thi)| {
+        self.grid.any_along(p, dir, max, |i| {
+            let ([a, b, c], n, tlo, thi) = &self.terrain[i as usize];
             n.dot(dir) < 0.0 && tlo.cmple(hi).all() && thi.cmpge(lo).all() && ray_triangle(p, dir, *a, *b, *c).is_some_and(|t| t > 0.0 && t < max)
         })
     }
@@ -497,5 +612,50 @@ mod tests {
         assert!(!o.blocked(Vec3::ZERO, Vec3::Y, 5.0));
         // Too short to reach it.
         assert!(!o.blocked(Vec3::new(0.0, 2.0, 0.0), Vec3::NEG_Y, 0.5));
+    }
+
+    #[test]
+    fn terrain_grid_finds_what_trying_every_triangle_finds() {
+        // A bumpy terrain 200 m across in small triangles, and rays every
+        // way: the grid's answer is the brute force's.
+        let mut positions = Vec::new();
+        let mut triangles = Vec::new();
+        let n = 40u32;
+        for z in 0..=n {
+            for x in 0..=n {
+                let (fx, fz) = (x as f32 * 5.0 - 100.0, z as f32 * 5.0 - 100.0);
+                positions.push([fx, (fx * 0.1).sin() * 3.0 + (fz * 0.07).cos() * 4.0, fz]);
+            }
+        }
+        for z in 0..n {
+            for x in 0..n {
+                let i = z * (n + 1) + x;
+                triangles.push([i, i + n + 1, i + 1]);
+                triangles.push([i + 1, i + n + 1, i + n + 2]);
+            }
+        }
+        let o = Occluders::new(&[], (&positions, &triangles));
+        let brute = |p: Vec3, dir: Vec3, max: f32| {
+            o.terrain.iter().any(|([a, b, c], n, _, _)| {
+                n.dot(dir) < 0.0 && ray_triangle(p, dir, *a, *b, *c).is_some_and(|t| t > 0.0 && t < max)
+            })
+        };
+        let mut seed = 7u32;
+        let mut r = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed as f32 / u32::MAX as f32) * 2.0 - 1.0
+        };
+        let (mut hits, mut misses) = (0, 0);
+        for _ in 0..3000 {
+            let p = Vec3::new(r() * 120.0, r() * 10.0 + 6.0, r() * 120.0);
+            let dir = Vec3::new(r(), r() - 0.3, r()).normalize_or(Vec3::NEG_Y);
+            let max = (r() + 1.0) * 150.0;
+            let want = brute(p, dir, max);
+            assert_eq!(o.blocked(p, dir, max), want, "{p} {dir} {max}");
+            if want { hits += 1 } else { misses += 1 }
+        }
+        assert!(hits > 100 && misses > 100, "{hits} {misses}");
     }
 }

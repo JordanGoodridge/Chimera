@@ -1333,6 +1333,8 @@ pub struct MapData {
     pub smokestacks: Vec<emitters::MapSmokeStack>,
     /// point_tesla arcs (`emitters`).
     pub teslas: Vec<emitters::MapTesla>,
+    /// Strike-generator env_beams' looks (`emitters::StrikeEmitter`).
+    pub strikes: Vec<emitters::MapStrike>,
     /// env_muzzleflash entities (`emitters::MuzzleFlashEmitter`).
     pub muzzle_flashes: Vec<emitters::MapMuzzleFlash>,
     /// env_embers volumes (`emitters::EmbersEmitter`).
@@ -1595,6 +1597,8 @@ pub struct MapSprite {
     /// A glow: drawn over everything, faded by how much of its occlusion
     /// proxy can be seen. Otherwise depth tested against the world.
     pub glow: bool,
+    /// Added, blended by its alpha or opaque (its render mode).
+    pub blend: sprite_material::SpriteBlend,
     /// Glow occlusion proxy: half-diagonal of a square pulled this far
     /// toward the viewer, meters.
     pub proxy: f32,
@@ -2057,6 +2061,7 @@ impl Plugin for MapPlugin {
             .add_message::<prop_physics::PropAwakened>()
             .add_message::<GlassShatter>()
             .add_message::<emitters::TeslaSpark>()
+            .add_message::<emitters::BeamStrike>()
             .add_message::<emitters::MuzzleFlashFire>()
             .add_message::<ViewKick>()
             .add_message::<GlassImpact>()
@@ -2138,6 +2143,7 @@ impl Plugin for MapPlugin {
                             emitters::update_trails,
                             emitters::update_smokestacks,
                             emitters::update_teslas,
+                            emitters::update_strikes,
                             color_correction::update,
                             emitters::update_embers,
                             emitters::update_muzzle_flashes,
@@ -3251,6 +3257,16 @@ fn spawn_map(
                     e.insert(EntityPart { entity, on: true, exists: true });
                 }
             }
+            for (i, s) in data.strikes.iter().enumerate() {
+                commands.spawn((
+                    Name::new(format!("Strike beams {i}")),
+                    MapPart,
+                    emitters::StrikeEmitter::new(s.clone(), i as u64 + 1),
+                    Transform::default(),
+                    Visibility::default(),
+                    ChildOf(root),
+                ));
+            }
             for (i, s) in data.smokestacks.iter().enumerate() {
                 let reach = s.length + s.base_spread + s.end_size * 2.0;
                 let clusters = visibility
@@ -3291,6 +3307,7 @@ fn spawn_map(
                         },
                         texture: Some(textures[sprite.texture].clone()),
                         glow: sprite.glow,
+                        blend: sprite.blend,
                     })),
                     bevy::light::NotShadowCaster,
                     // The quad is spread in the vertex shader, so the mesh's
@@ -3381,6 +3398,7 @@ fn spawn_map(
                             },
                             texture: Some(textures[h.texture].clone()),
                             glow: true,
+                            blend: crate::map::sprite_material::SpriteBlend::Add,
                         })),
                         bevy::light::NotShadowCaster,
                         bevy::camera::visibility::NoFrustumCulling,
@@ -3412,6 +3430,7 @@ fn spawn_map(
                         },
                         texture: Some(textures[g.texture].clone()),
                         glow: true,
+                        blend: crate::map::sprite_material::SpriteBlend::Add,
                     })),
                     bevy::light::NotShadowCaster,
                     bevy::camera::visibility::NoFrustumCulling,

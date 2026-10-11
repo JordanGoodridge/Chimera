@@ -39,6 +39,7 @@ pub mod delta;
 pub mod game;
 pub mod http;
 pub mod interp;
+pub mod mapfx;
 pub mod maps;
 pub mod memory;
 pub mod movers;
@@ -77,7 +78,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net11");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net12");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -697,6 +698,27 @@ pub struct Detonation {
 #[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MapHud(pub crate::logic::HudShow);
 
+/// Server -> clients: a map effect the logic set off (`mapfx`): a
+/// strike-generator env_beam's strike (map entity index, engine-space
+/// ends, life), a point_tesla's spark, an env_spark burst.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum MapFx {
+    Strike {
+        entity: u32,
+        start: [f32; 3],
+        end: [f32; 3],
+        life: f32,
+    },
+    Tesla {
+        entity: u32,
+    },
+    Spark {
+        at: [f32; 3],
+        dir: [f32; 3],
+        magnitude: f32,
+    },
+}
+
 /// Server -> the client a character belongs to: its player was blinded
 /// (alpha, seconds held, seconds fading: `core::Blinded` from now on) or
 /// its hearing hit (`core::Deafened`).
@@ -1023,6 +1045,12 @@ impl Plugin for NetPlugin {
             .replicate::<Health>()
             .ordered::<Health>()
             .replicate::<NetMover>()
+            // Map render looks: players' (invisibility, team colours) and
+            // movers' (colour, alpha, texture frame), only when they change.
+            .replicate::<crate::map::tint::RenderLook>()
+            .ordered::<crate::map::tint::RenderLook>()
+            .replicate::<crate::map::tint::BrushTint>()
+            .ordered::<crate::map::tint::BrushTint>()
             // Every value a client receives also goes into its snapshot
             // buffer, by the server tick it is from.
             .set_receive_fns::<NetBody>(interp::write_snapshot::<NetBody>, interp::remove_snapshots::<NetBody>)
@@ -1082,6 +1110,8 @@ impl Plugin for NetPlugin {
             .add_server_message::<NameChanged>(Channel::Ordered)
             .make_message_independent::<NameChanged>()
             .add_server_message::<MapHud>(Channel::Ordered)
+            .add_server_message::<MapFx>(Channel::Unreliable)
+            .make_message_independent::<MapFx>()
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
             .add_message::<NetEvent>()
@@ -1100,6 +1130,7 @@ impl Plugin for NetPlugin {
         chat::plugin(app);
         cvars::plugin(app);
         maps::plugin(app);
+        mapfx::plugin(app);
         decals::plugin(app);
         udp::plugin(app);
         query::plugin(app);

@@ -2,8 +2,10 @@
 //! point_spotlight's LightOn/LightOff and outputs (2.5), env_laser's and
 //! persistent env_beam's on/off, damage every 0.1 s to the first player
 //! on the line and env_beam's touch output (3, 4.1), env_lightglow's
-//! inputs, env_spark's timing and OnSpark (8). The map draws them
-//! (`map::beams`); what is on reaches it as `map::EntityPart`.
+//! inputs, env_spark's timing and OnSpark (8), strike-generator
+//! env_beams' strikes (4.2: when, between which points, the damage). The
+//! map draws them (`map::beams`, `map::emitters`); what is on reaches it
+//! as `map::EntityPart`, a strike as `Effect::BeamStrike`.
 
 use bevy::prelude::*;
 
@@ -33,6 +35,44 @@ pub struct Zap {
     pub end: Option<Vec3>,
 }
 
+/// A strike-generator env_beam (life ≠ 0, or a ring; 4.2).
+#[derive(Clone, Debug, Default)]
+pub struct Strike {
+    /// Each strike's life and the wait after it, seconds.
+    pub life: f32,
+    pub strike_time: f32,
+    /// "Random Strike" (4): the wait is U(0, StrikeTime).
+    pub random: bool,
+    /// Per strike, to the first thing on the line (with LightningEnd).
+    pub damage: f32,
+    pub ring: bool,
+}
+
+/// env_beam spawnflags.
+pub const SF_BEAM_RANDOM: u32 = 4;
+pub const SF_BEAM_RING: u32 = 8;
+
+/// Tries a strike without an end makes for a surface (4.2).
+const STRIKE_TRIES: usize = 10;
+
+/// A strike generator's settings, if it is one.
+pub fn strike(e: &LogicEntity) -> Option<Box<Strike>> {
+    if class(e) != "env_beam" {
+        return None;
+    }
+    let life = e.kv_f("life");
+    let ring = e.has_flag(SF_BEAM_RING);
+    (life != 0.0 || ring).then(|| {
+        Box::new(Strike {
+            life,
+            strike_time: e.kv_f("StrikeTime"),
+            random: e.has_flag(SF_BEAM_RANDOM),
+            damage: e.kv_f("damage"),
+            ring,
+        })
+    })
+}
+
 fn class(e: &LogicEntity) -> String {
     e.classname.to_ascii_lowercase()
 }
@@ -50,7 +90,7 @@ pub fn starts_on(e: &LogicEntity) -> bool {
 pub fn zap(e: &LogicEntity) -> Option<Box<Zap>> {
     let c = class(e);
     let laser = c == "env_laser";
-    if !laser && (c != "env_beam" || e.kv_f("life") != 0.0) {
+    if !laser && (c != "env_beam" || e.kv_f("life") != 0.0 || e.has_flag(SF_BEAM_RING)) {
         return None;
     }
     let damage = e.kv_f("damage");
@@ -87,7 +127,8 @@ fn set_on(w: &mut LogicWorld, id: EntId, on: bool) {
         z.stopped = false;
     }
     let kind = p.kind;
-    let thinks = p.zap.is_some();
+    // A strike generator turned on strikes on the next tick (4.2).
+    let thinks = p.zap.is_some() || p.strike.is_some();
     let spotlight = w.get(id).is_some_and(|e| class(e) == "point_spotlight");
     if spotlight {
         let out = if on { "OnLightOn" } else { "OnLightOff" };
@@ -120,9 +161,11 @@ pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str) -> bool {
         (PartKind::Beam, "turnoff") if !spotlight => set_on(w, id, false),
         (PartKind::Beam, "toggle") if !spotlight => set_on(w, id, !p.1),
         // The beam's look (width, noise, colour, scroll): kept as placed.
+        // One strike now, on or off, either kind (4.2).
+        (PartKind::Beam, "strikeonce") if !spotlight => strike_once(w, id),
         (
             PartKind::Beam,
-            "width" | "noise" | "colorredvalue" | "colorgreenvalue" | "colorbluevalue" | "scrollspeed" | "strikeonce",
+            "width" | "noise" | "colorredvalue" | "colorgreenvalue" | "colorbluevalue" | "scrollspeed",
         ) => {}
         (PartKind::Glow, "color") => {}
         (PartKind::Spark, "startspark") => set_on(w, id, true),
@@ -144,8 +187,8 @@ pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str) -> bool {
 /// are on start thinking; a spark that starts on sparks after 0.1 +
 /// U(0, 1.5) s.
 pub(super) fn activate(w: &mut LogicWorld, id: EntId) {
-    let Some((kind, on, zap)) = w.get(id).and_then(|e| match &e.class {
-        Class::Part(p) => Some((p.kind, p.on, p.zap.is_some())),
+    let Some((kind, on, zap, strike)) = w.get(id).and_then(|e| match &e.class {
+        Class::Part(p) => Some((p.kind, p.on, p.zap.is_some(), p.strike.is_some())),
         _ => None,
     }) else {
         return;
@@ -153,6 +196,8 @@ pub(super) fn activate(w: &mut LogicWorld, id: EntId) {
     let spotlight = w.get(id).is_some_and(|e| class(e) == "point_spotlight");
     match kind {
         PartKind::Beam if spotlight && on => w.fire_output(id, "OnLightOn", Some(Who::Ent(id)), Value::Void),
+        // The first strike 1 s after spawn (4.2).
+        PartKind::Beam if strike && on => w.think_in(id, 1.0),
         PartKind::Beam if zap && on => w.think_in(id, w.dt),
         PartKind::Spark if on => {
             let delay = 0.1 + w.random() * 1.5;
@@ -213,6 +258,12 @@ pub(super) fn think(w: &mut LogicWorld, id: EntId) {
             });
             let delay = (a + (b.max(a) - a) * w.random()).max(w.dt);
             w.think_in(id, delay);
+        }
+        PartKind::Beam if part(w, id).is_some_and(|p| p.strike.is_some()) => {
+            let Some(s) = part(w, id).and_then(|p| p.strike.as_deref()).cloned() else { return };
+            strike_now(w, id, &s);
+            let wait = if s.random { w.random() * s.strike_time } else { s.strike_time };
+            w.think_in(id, (s.life + wait).max(w.dt));
         }
         PartKind::Beam => {
             zap_tick(w, id);
@@ -279,6 +330,122 @@ fn line(w: &mut LogicWorld, id: EntId) -> Option<(Vec3, Vec3)> {
             e.kv("LightningEnd").unwrap_or("").to_string(),
         );
         Some((origin_of(w, &a)?, origin_of(w, &b)?))
+    }
+}
+
+/// StrikeOnce (4.2): one strike between the ends, whatever the beam's
+/// kind or state (a persistent beam's has its life 0: it stays).
+fn strike_once(w: &mut LogicWorld, id: EntId) {
+    let Some(e) = w.get(id) else { return };
+    if e.kv("LightningEnd").is_none_or(|n| n.trim().is_empty()) {
+        return;
+    }
+    let fallback = Strike {
+        life: e.kv_f("life"),
+        damage: e.kv_f("damage"),
+        ring: e.has_flag(SF_BEAM_RING),
+        ..default()
+    };
+    let s = part(w, id).and_then(|p| p.strike.as_deref()).cloned().unwrap_or(fallback);
+    strike_now(w, id, &s);
+}
+
+/// A random one of the entities `name` matches: its origin, and whether
+/// it is a "static point" (4.1: no parent and no model, or an
+/// info_target, info_landmark or path_corner).
+fn random_end(w: &mut LogicWorld, name: &str) -> Option<(Vec3, bool)> {
+    let ends: Vec<(Vec3, bool)> = w
+        .resolve(name, None, None)
+        .into_iter()
+        .filter_map(|t| match t {
+            Who::Ent(t) => w.get(t).map(|t| {
+                let point_class = matches!(class(t).as_str(), "info_target" | "info_landmark" | "path_corner");
+                let bare = t.kv("parentname").is_none_or(|p| p.trim().is_empty())
+                    && t.hulls.is_empty()
+                    && t.kv("model").is_none();
+                (t.origin, point_class || bare)
+            }),
+            Who::Player(p) => w.player(p).map(|p| (p.origin, false)),
+        })
+        .collect();
+    if ends.is_empty() {
+        return None;
+    }
+    Some(ends[w.random_int(ends.len())])
+}
+
+/// Where a line from `from` along a random direction meets the static
+/// world within `radius`, and how far that is (None: nothing in reach).
+fn random_hit(w: &mut LogicWorld, from: Vec3, radius: f32) -> Option<(Vec3, f32)> {
+    let dir = (Vec3::new(w.random(), w.random(), w.random()) * 2.0 - Vec3::ONE).normalize_or_zero();
+    if dir == Vec3::ZERO {
+        return None;
+    }
+    let to = from + dir * radius;
+    let f = w
+        .collision
+        .as_ref()
+        .map_or(1.0, |c| c.sweep(Vec3::ZERO, Vec3::ZERO, from, to));
+    (f < 1.0).then(|| (from.lerp(to, f), f * radius))
+}
+
+/// One strike (4.2): the line it runs (between the ends; from the start
+/// to a wall within the radius; between two walls around the beam); the
+/// map draws it, and with both ends the first player on it takes the
+/// damage once.
+fn strike_now(w: &mut LogicWorld, id: EntId, s: &Strike) {
+    let Some(e) = w.get(id) else { return };
+    let (origin, index) = (e.origin, e.map_index);
+    let name = |k: &str| e.kv(k).map(str::trim).filter(|n| !n.is_empty()).map(str::to_string);
+    let (start, end) = (name("LightningStart"), name("LightningEnd"));
+    let radius = e.kv_f("Radius");
+    let line = match (start, end) {
+        (Some(a), Some(b)) => {
+            let (Some((a, a_static)), Some((b, b_static))) = (random_end(w, &a), random_end(w, &b)) else {
+                return;
+            };
+            // A ring needs two entities (with a static point: nothing).
+            if s.ring && (a_static || b_static) {
+                return;
+            }
+            if s.damage > 0.0
+                && let Some(p) = first_player(w, a, b)
+            {
+                w.effects.push(Effect::Damage {
+                    target: p,
+                    amount: s.damage,
+                    crush: false,
+                });
+            }
+            Some((a, b))
+        }
+        (Some(a), None) => {
+            let Some((from, _)) = random_end(w, &a) else { return };
+            (0..STRIKE_TRIES).find_map(|_| {
+                random_hit(w, from, radius)
+                    .filter(|(_, d)| *d >= radius / 10.0)
+                    .map(|(hit, _)| (from, hit))
+            })
+        }
+        (None, None) => (0..STRIKE_TRIES).find_map(|_| {
+            let (a, _) = random_hit(w, origin, radius)?;
+            let (b, _) = random_hit(w, origin, radius)?;
+            let (da, db) = ((a - origin).normalize_or_zero(), (b - origin).normalize_or_zero());
+            let sees = w
+                .collision
+                .as_ref()
+                .is_none_or(|c| c.sweep(Vec3::ZERO, Vec3::ZERO, a, b) >= 1.0);
+            (da.dot(db) <= 0.0 && a.distance(b) >= radius / 10.0 && sees).then_some((a, b))
+        }),
+        (None, Some(_)) => None,
+    };
+    if let (Some((start, end)), Some(entity)) = (line, index) {
+        w.effects.push(Effect::BeamStrike {
+            entity,
+            start,
+            end,
+            life: s.life,
+        });
     }
 }
 

@@ -60,6 +60,17 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let c = to_gamma(t.rgb) * params.color.rgb * t.a * params.color.a;
     let uv = (in.position.xy - view.viewport.xy) / view.viewport.zw;
     let behind = textureSampleLevel(view_transmission_texture, view_transmission_sampler, uv, 0.0).rgb;
+#ifdef SPRITE_REPLACE
+    // Blended (or opaque): the finished pixel, mixed in gamma space.
+#ifdef SPRITE_OPAQUE
+    let a = 1.0;
+#else
+    let a = saturate(t.a * params.color.a);
+#endif
+    let lit = to_gamma(t.rgb) * params.color.rgb;
+    return vec4<f32>(to_linear(saturate(mix(to_gamma(saturate(behind)), lit, a))), 1.0);
+#else
     let sum = to_linear(saturate(to_gamma(saturate(behind)) + c));
     return vec4<f32>(max(sum - behind, vec3<f32>(0.0)), 0.0);
+#endif
 }

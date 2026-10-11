@@ -1387,6 +1387,14 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
             Effect::Tesla { entity } => {
                 world.write_message(crate::map::emitters::TeslaSpark { entity });
             }
+            Effect::BeamStrike { entity, start, end, life } => {
+                world.write_message(crate::map::emitters::BeamStrike {
+                    entity,
+                    start: entity_to_engine(start, scale),
+                    end: entity_to_engine(end, scale),
+                    life,
+                });
+            }
             Effect::MuzzleFlash { entity } => {
                 world.write_message(crate::map::emitters::MuzzleFlashFire { entity });
             }

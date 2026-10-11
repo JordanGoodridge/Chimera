@@ -62,6 +62,8 @@ pub struct Part {
     pub on: bool,
     /// A laser's or beam's damage and touch state (`beams`).
     pub zap: Option<Box<super::beams::Zap>>,
+    /// A strike-generator env_beam's settings (`beams`).
+    pub strike: Option<Box<super::beams::Strike>>,
 }
 
 /// A light with a switchable style.
@@ -95,6 +97,7 @@ pub(super) fn spawn_part(w: &LogicWorld, id: EntId, kind: PartKind) -> Part {
         kind,
         on,
         zap: super::beams::zap(e),
+        strike: super::beams::strike(e),
     }
 }
 
