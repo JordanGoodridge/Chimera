@@ -123,7 +123,7 @@ fn build(name: &str) -> MapData {
 
 /// A map file's bytes: a VBSP-looking header, the name and a version, then
 /// `len` bytes from a generator (so it doesn't pack to nothing).
-fn file_bytes(name: &str, version: u8, len: usize) -> Vec<u8> {
+pub(crate) fn file_bytes(name: &str, version: u8, len: usize) -> Vec<u8> {
     let mut out = b"VBSP".to_vec();
     out.extend_from_slice(name.as_bytes());
     out.push(version);
@@ -146,7 +146,7 @@ fn scratch(test: &str) -> PathBuf {
     dir
 }
 
-fn write_map(install: &Path, name: &str, bytes: &[u8]) {
+pub(crate) fn write_map(install: &Path, name: &str, bytes: &[u8]) {
     let maps = install.join("maps");
     std::fs::create_dir_all(&maps).unwrap();
     std::fs::write(maps.join(format!("{name}.bsp")), bytes).unwrap();
@@ -177,7 +177,7 @@ fn link() -> LinkConditions {
 }
 
 /// A server on `map` from `install`, with no clients yet.
-fn server(install: PathBuf, map: &str, seed: u64) -> NetSim {
+pub(crate) fn server(install: PathBuf, map: &str, seed: u64) -> NetSim {
     let setup_install = install.clone();
     let mut sim = NetSim::new(link(), seed, 0, move |app| {
         app.add_plugins((GreyboxMapPlugin, MapPlugin::empty(), SourceMovementPlugin, CsWeaponsPlugin))
@@ -190,7 +190,7 @@ fn server(install: PathBuf, map: &str, seed: u64) -> NetSim {
 }
 
 /// A client whose install is `install` and content cache `cache`.
-fn add_client(sim: &mut NetSim, install: &Path, cache: Option<&Path>) -> usize {
+pub(crate) fn add_client(sim: &mut NetSim, install: &Path, cache: Option<&Path>) -> usize {
     let m = maps(install, cache);
     sim.add_client(move |w| {
         let read = {
@@ -205,21 +205,21 @@ fn add_client(sim: &mut NetSim, install: &Path, cache: Option<&Path>) -> usize {
     })
 }
 
-fn run(world: &mut World, line: &str) {
+pub(crate) fn run(world: &mut World, line: &str) {
     for words in parse(line) {
         execute(world, &words, 0);
     }
 }
 
-fn progress(sim: &NetSim, i: usize) -> JoinProgress {
+pub(crate) fn progress(sim: &NetSim, i: usize) -> JoinProgress {
     sim.clients[i].app.world().resource::<JoinProgress>().clone()
 }
 
-fn stages(p: &JoinProgress) -> Vec<JoinStage> {
+pub(crate) fn stages(p: &JoinProgress) -> Vec<JoinStage> {
     p.log.iter().map(|(s, _)| *s).collect()
 }
 
-fn loaded(sim: &NetSim, i: usize) -> Option<MapFile> {
+pub(crate) fn loaded(sim: &NetSim, i: usize) -> Option<MapFile> {
     sim.clients[i].app.world().get_resource::<MapFile>().cloned()
 }
 
@@ -545,6 +545,26 @@ fn wrong_or_refused_downloads_end_the_join_with_reasons() {
         p.failure.clone().unwrap(),
         (JoinFailure::MapMissing, "Missing map maps/beta.bsp, disconnecting".to_string())
     );
+
+    // Big community maps go over the connection by default (CS:S's
+    // default is 16 MB; ours 512, a deliberate difference).
+    assert_eq!(
+        sim.server.app.world().resource::<mashup::net::maps::DownloadSettings>().max_mb,
+        512.0
+    );
+    // The client's own limit (the same cvar, its value): refused before
+    // asking, with why.
+    run(sim.server.app.world_mut(), "sv_allowdownload 1");
+    let (c, _) = joins_without_the_map(&mut sim, &dir);
+    run(sim.clients[c].app.world_mut(), "net_maxfilesize 0.1");
+    sim.until(600, |s| *s.clients[c].app.world().resource::<NetRole>() == NetRole::Standalone);
+    match progress(&sim, c).failure.clone().unwrap() {
+        (JoinFailure::Download { file, error }, _) => {
+            assert_eq!(file, "maps/beta.bsp");
+            assert!(error.contains("more than you download (net_maxfilesize 0.1)"), "{error}");
+        }
+        other => panic!("{other:?}"),
+    }
 
     // Downloads on, but the map is over net_maxfilesize: the server says why.
     run(sim.server.app.world_mut(), "sv_allowdownload 1; net_maxfilesize 0.1");

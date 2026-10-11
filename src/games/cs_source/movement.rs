@@ -2030,8 +2030,17 @@ fn step(
     cfg: Res<SourceMovementConfig>,
     (clock, first): (Res<crate::core::SimClock>, Res<crate::core::FirstTimePredicted>),
     other_characters: Query<(Entity, &ColliderAabb, Option<&Health>), (With<Intent>, Without<SourceMovement>)>,
-    (health, dead): (Query<&Health>, Query<(), With<ColliderDisabled>>),
+    (health, dead, noblock, teams): (
+        Query<&Health>,
+        Query<(), With<ColliderDisabled>>,
+        Option<Res<crate::core::NoBlock>>,
+        Query<&crate::core::Team, Without<crate::objectives::hostages::Hostage>>,
+    ),
 ) {
+    // `mashup_noblock` (ours): which players pass through which (hostages
+    // and other characters without a team always block).
+    let noblock = noblock.map_or_else(Default::default, |n| *n);
+    let team = |e: Entity| teams.get(e).ok().map(|t| t.0);
     let dt = clock.dt();
     // Every living character's box: Source hulls for Source movers, else
     // the collider's bounds. Those whose collider is off (the dead, also
@@ -2096,7 +2105,7 @@ fn step(
         }
         let mut others: Vec<MapBrush> = boxes
             .iter()
-            .filter(|(e, _)| *e != entity)
+            .filter(|(e, _)| *e != entity && noblock.blocks(team(entity), team(*e)))
             .map(|(_, b)| b.clone())
             .collect();
         let mut owners: Vec<Option<Entity>> = vec![None; others.len()];

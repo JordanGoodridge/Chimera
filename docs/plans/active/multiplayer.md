@@ -969,7 +969,7 @@ with tests passing and something to see.
      hashed in the background; else a download: `sv_downloadurl` first
      (`<url>/maps/<name>.bsp.bz2`, then `.bsp`; `net::http`, plain HTTP
      as the game's), then over the connection if `sv_allowdownload`
-     (`MapRequest`, 16 KB `MapChunk`s, at most 256 KB beyond the
+     (`MapRequest`, 16 KB `MapChunk`s, at most 512 KB beyond the
      client's `MapAck`, `net_maxfilesize`, refusals as `MapDenied`). What
      arrives must have the offer's size and hash, is written to the
      content cache (`maps/<name>.bsp`, noted in `index.toml` with its
@@ -1413,6 +1413,43 @@ with tests passing and something to see.
      both transports. Budget now (the soak's): 10 KB/s plus 0.4 per
      update a second (18 at 20, 36 at an update every tick), half again
      on the worst link.
+
+### Playtest with friends (2026-10-10), fixed (`NET_VERSION` net13)
+
+- **Server gone**: clients waited for the 30 s timeout. Every way a
+  server ends hangs up on its clients (netcode's disconnect packet,
+  three copies each way: `udp::HANG_UP_COPIES`; renetcode sends one); the
+  dedicated server's Ctrl+C now exits as `quit` does
+  (`TerminalCtrlCHandlerPlugin`: before, the process was killed with its
+  clients left to time out); a client told by netcode without a word
+  first shows CS:S's "Server shutting down" (`client::SHUTTING_DOWN`, in
+  the game's "You have been disconnected from the server. Reason: %s1").
+  Test: `net::clients_hear_at_once_that_the_server_shut_down` (UDP on
+  loopback: the server's `quit`, `disconnect`, app exit).
+- **Big maps**: `net_maxfilesize` 512 by default (CS:S's 16, at most
+  64; a deliberate difference, `maps::MAX_FILE_MB`), on both ends (a
+  client refuses an offer over its own value with why), window 512 KB.
+  Test: `heavy::net_big_map` (150 MB in 42 s of game time at 64 Hz over
+  `NetSim`, the dialog's bytes moving every second).
+- **Cheats from clients** (`net::cheats`): a client's `CHEATS` line goes
+  to the server (`ClientCommand`), which runs it for that client's player
+  (`console::CommandPlayer`) when its `sv_cheats` is 1, and sends back
+  what it printed (`ConsoleText`); anything else a client sends that way
+  is dropped. `noclip` (per player now), `god`, `setpos`, `setang` are
+  registered by `NetPlugin` too (the dedicated server has them); the
+  client mirrors the server's movement, so noclip is predicted (0 errors
+  in the test). `ent_fire` from a client acts with no activator, and
+  `setang` is overridden by the client's own look.
+- **`mashup_noblock`** (ours, replicated, 0 by default): 1 teammates, 2
+  all players pass through each other in the Source movement (hostages
+  always block). Tests: `net_players::noblock_*`.
+- **Chat**: "Player %s1 has joined the game" and "Player %s1 left the game
+  (%s2)" (the engine's `game_player_*_game` strings; `PlayerCame`), the
+  reason a kick's, "timed out" after 10 s of silence, else "Disconnect
+  by user."; a listen server's host no longer gets chat lines (and
+  renames) printed twice (the log's info line copied into the console).
+- **Name**: `name` is archived; Options > Multiplayer has "Player name"
+  (set on OK/Apply: one rename).
 
 ## 6. Open questions for the user
 

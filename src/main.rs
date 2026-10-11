@@ -57,20 +57,27 @@ fn main() {
                 primary_window: Some(Window {
                     title: "mashup".into(),
                     // Physical pixels whatever the display's scaling.
-                    resolution: args
-                        .window
-                        .map(|s| bevy::window::WindowResolution::new(s.x, s.y).with_scale_factor_override(1.0))
-                        .unwrap_or_default(),
+                    // (`--scale`: as a display scaled that much.)
+                    resolution: match (args.window, args.scale) {
+                        (Some(s), scale) => bevy::window::WindowResolution::new(s.x, s.y)
+                            .with_scale_factor_override(scale.unwrap_or(1.0)),
+                        (None, Some(scale)) => bevy::window::WindowResolution::default().with_scale_factor_override(scale),
+                        (None, None) => default(),
+                    },
                     // A fixed size: tiling window managers float such
                     // windows instead of resizing them.
                     resizable: args.window.is_none(),
                     resize_constraints: args
                         .window
-                        .map(|s| bevy::window::WindowResizeConstraints {
-                            min_width: s.x as f32,
-                            min_height: s.y as f32,
-                            max_width: s.x as f32,
-                            max_height: s.y as f32,
+                        .map(|s| {
+                            // In logical pixels.
+                            let s = s.as_vec2() / args.scale.unwrap_or(1.0);
+                            bevy::window::WindowResizeConstraints {
+                                min_width: s.x,
+                                min_height: s.y,
+                                max_width: s.x,
+                                max_height: s.y,
+                            }
                         })
                         .unwrap_or_default(),
                     ..default()

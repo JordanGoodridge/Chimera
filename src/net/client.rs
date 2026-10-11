@@ -218,6 +218,9 @@ pub enum JoinFailure {
 /// a failure to show.
 pub const BY_USER: &str = "Disconnect by user.";
 
+/// Why a client was dropped when its server stopped (CS:S's words).
+pub const SHUTTING_DOWN: &str = "Server shutting down";
+
 /// Seconds without a packet before either end of a UDP connection gives
 /// up (Source's `cl_timeout` default).
 pub const TIMEOUT_SECONDS: i32 = 30;
@@ -585,7 +588,10 @@ fn watch_connection(world: &mut World) {
         "ConnectionRequestTimedOut" | "ConnectionResponseTimedOut" => "Connection to server timed out.".to_string(),
         "ConnectionTimedOut" => "Connection to server timed out (ConnectionTimedOut).".to_string(),
         "ConnectionDenied" => "Server is full.".to_string(),
-        "DisconnectedByServer" => "The server ended the game (DisconnectedByServer).".to_string(),
+        // Netcode's hang-up without a word first: the server stopped (its
+        // `quit`, the host's `disconnect` or menu, the app closed); a kick
+        // or refusal says why before (`RefusedReason`). CS:S's words.
+        "DisconnectedByServer" => SHUTTING_DOWN.to_string(),
         _ => reason,
     };
     super::disconnect(world, &reason);

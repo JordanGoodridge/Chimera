@@ -191,6 +191,58 @@ fn control(m: &GameMenu, i: usize) -> Control {
     }
 }
 
+/// Options > Multiplayer's "Player name" (`name`): typed, set on Apply
+/// or OK (one rename, not one per key), dropped by Cancel.
+#[test]
+fn the_player_name_in_the_multiplayer_options() {
+    let named = |n: &str| if n == "name" { Some("Player".to_string()) } else { get(n) };
+    let mut m = GameMenu {
+        in_game: true,
+        ..default()
+    };
+    m.open(Page::Settings, vec!["de_dust2".into()], Some("de_dust2"), named);
+    m.set_tab(Tab::Multiplayer);
+    let row = row_of(&m, "name");
+    assert!(matches!(control(&m, row), Control::Text { ref text, numeric: false, max: 32 } if text == "Player"));
+    let out = press(&mut m, &[Input::FocusRow(row), Input::Type("Zed".into())]);
+    assert!(out.lines.is_empty(), "nothing set while typing: {:?}", out.lines);
+    let typed = match control(&m, row_of(&m, "name")) {
+        Control::Text { text, .. } => text,
+        c => panic!("{c:?}"),
+    };
+    assert!(typed.ends_with("Zed"), "{typed}");
+    let out = click_on(&mut m, |m| button(m, Action::Apply));
+    assert_eq!(out.lines, [format!("name {}", crate::console::quote(&typed))]);
+    // Typed again, then Cancel: nothing new set (the value goes back).
+    let row = row_of(&m, "name");
+    press(&mut m, &[Input::FocusRow(row), Input::Type("X".into())]);
+    let out = click_on(&mut m, |m| button(m, Action::Cancel));
+    assert!(out.lines.iter().all(|l| l == &format!("name {}", crate::console::quote(&typed))), "{:?}", out.lines);
+}
+
+/// The install's Multiplayer layout has no name entry (current CS:S
+/// names you from Steam): it gets one in the spray words' place.
+#[test]
+fn the_multiplayer_layout_gets_a_name_entry() {
+    let root = crate::games::cs_source::gameui::layout_of_res(
+        r#""Resource/OptionsSubMultiplayer.res" {
+            "Label2" { "ControlName" "Label" "fieldName" "Label2" "xpos" "16" "ypos" "148" "wide" "150" "tall" "24" "labelText" "Spray" }
+            "Label3" { "ControlName" "Label" "fieldName" "Label3" "xpos" "95" "ypos" "175" "wide" "150" "tall" "80" "labelText" "Note" }
+        }"#,
+    );
+    let mut layout = root.expect("a layout");
+    let strings = HashMap::from([("gameui_playername".to_string(), "Player name".to_string())]);
+    crate::games::cs_source::gameui::add_player_name(&mut layout, &strings);
+    let entry = layout.get("NameEntry").expect("added");
+    let label = layout.get("NameLabel").expect("added");
+    assert_eq!(label.text, "Player name");
+    assert!(class_of(entry).eq_ignore_ascii_case("TextEntry"));
+    assert!(!layout.get("Label2").unwrap().visible && !layout.get("Label3").unwrap().visible);
+    let before = layout.controls.len();
+    crate::games::cs_source::gameui::add_player_name(&mut layout, &strings);
+    assert_eq!(layout.controls.len(), before, "once");
+}
+
 #[test]
 fn opens_with_the_game_as_it_is() {
     let m = menu();
@@ -297,6 +349,141 @@ fn quick_start_and_the_greybox() {
     let mut m = menu();
     let o = click(&mut m, MainItem::Greybox);
     assert!(o.close && !m.open && o.lines == ["map greybox"]);
+}
+
+/// First launch (a fresh config): the main menu opens before the
+/// install's GameUI scripts are read (the first-run dialog picks the
+/// install, then they load). Create Server's Game page still lists
+/// `settings.scr`'s options with their values once they are in.
+#[test]
+fn the_game_page_lists_the_scripts_options_read_after_the_menu_opened() {
+    let mut app = App::new();
+    app.add_plugins(crate::console::ConsolePlugin)
+        .init_resource::<crate::net::NetSettings>()
+        .init_resource::<GameMenu>()
+        .init_resource::<MenuUi>()
+        .init_resource::<RegrabCursor>()
+        .init_resource::<Assets<Image>>()
+        .init_resource::<Assets<Font>>()
+        .init_resource::<crate::client::fonts::UiFonts>();
+    crate::console::resource_cvar::<crate::net::NetSettings, u32>(&mut app, "maxplayers", "", |s| &mut s.maxplayers);
+    let w = app.world_mut();
+    open_menu(w, Page::Main);
+    // The scripts come in with the main menu open.
+    let ui = GameUi {
+        server_settings: vec![ServerSetting {
+            cvar: "maxplayers".into(),
+            label: "Max players".into(),
+            kind: ServerSettingKind::Number { min: Some(1.0), max: Some(32.0) },
+            default: "32".into(),
+        }],
+        ..default()
+    };
+    w.resource_mut::<MenuUi>().loading = Some(Arc::new(Mutex::new(Some(Some(ui)))));
+    w.run_system_cached(ui_loaded).unwrap();
+    w.flush();
+    let mut m = w.resource::<GameMenu>().clone();
+    click(&mut m, MainItem::NewGame);
+    m.set_create_tab(1);
+    let max = m
+        .new_game
+        .cvars
+        .iter()
+        .position(|c| c.cvar == "maxplayers")
+        .expect("maxplayers read");
+    assert!(
+        m.rows()
+            .iter()
+            .any(|r| matches!(r, Row::Control { field: Field::ServerCvar(i), .. } if *i == max)),
+        "the Game page shows Max players"
+    );
+    // Single player's 1 shows the game's default: Create Server hosts.
+    assert_eq!(m.new_game.cvars[max].value, "32");
+}
+
+/// Playtest 2026-10-10: the crosshair sat right of and below the centre
+/// after Options > Multiplayer > Advanced on a scaled display (Windows at
+/// 125 %). An in-game dialog draws the world into a picture
+/// (`world_behind_dialogs`); back on the window, Bevy kept the picture's
+/// size and scale for the camera. Each dialog opened and closed in a game
+/// on a 1.25-scaled window: the camera's size is the window's again after,
+/// and the crosshair's centre with it.
+#[test]
+fn the_camera_and_crosshair_are_the_windows_after_every_dialog() {
+    use bevy::{
+        camera::RenderTarget,
+        window::{PrimaryWindow, WindowCreated, WindowResized, WindowResolution, WindowScaleFactorChanged},
+    };
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), crate::console::ConsolePlugin))
+        .init_asset::<Image>()
+        .init_asset::<Font>()
+        .add_message::<WindowResized>()
+        .add_message::<WindowCreated>()
+        .add_message::<WindowScaleFactorChanged>()
+        .init_resource::<bevy::render::texture::ManualTextureViews>()
+        .insert_resource(GameMenu {
+            in_game: true,
+            ..default()
+        })
+        .init_resource::<MenuUi>()
+        .init_resource::<RegrabCursor>()
+        .init_resource::<LoadingDetails>()
+        .init_resource::<crate::client::fonts::UiFonts>()
+        .init_resource::<Windows>()
+        .init_resource::<widgets::FrameBacking>()
+        .init_resource::<widgets::WorldPicture>()
+        .add_systems(Update, (draw, world_behind_dialogs).chain())
+        .add_systems(PostUpdate, bevy::render::camera::camera_system);
+    let window = Window {
+        resolution: WindowResolution::new(2000, 1125).with_scale_factor_override(1.25),
+        ..default()
+    };
+    let logical = Vec2::new(window.width(), window.height());
+    assert_eq!(logical, Vec2::new(1600.0, 900.0));
+    app.world_mut().spawn((window, PrimaryWindow));
+    let camera = app
+        .world_mut()
+        .spawn((
+            Camera::default(),
+            RenderTarget::Window(bevy::window::WindowRef::Primary),
+            Projection::default(),
+            crate::client::FirstPersonCamera,
+        ))
+        .id();
+    app.update();
+    let size = |app: &App| app.world().get::<Camera>(camera).unwrap().logical_viewport_size();
+    assert_eq!(size(&app), Some(logical));
+    for page in [
+        Page::Settings,
+        Page::KeyboardAdvanced,
+        Page::VideoAdvanced,
+        Page::Gamma,
+        Page::MultiplayerAdvanced,
+        Page::Extras,
+        Page::NewGame,
+        Page::Bots,
+        Page::Team,
+    ] {
+        open_menu(app.world_mut(), page);
+        app.update();
+        app.update();
+        let on_picture = matches!(app.world().get::<RenderTarget>(camera), Some(RenderTarget::Image(_)));
+        assert!(on_picture, "{page:?}: the world drawn into a picture");
+        // The picture's pixels: physical ones.
+        assert_eq!(size(&app), Some(Vec2::new(2000.0, 1125.0)), "{page:?} open");
+        app.world_mut().resource_mut::<GameMenu>().open = false;
+        app.update();
+        app.update();
+        assert!(matches!(app.world().get::<RenderTarget>(camera), Some(RenderTarget::Window(_))));
+        assert_eq!(size(&app), Some(logical), "{page:?} closed: the window's size again");
+        let cam = app.world().get::<Camera>(camera).unwrap();
+        assert_eq!(
+            crate::client::hud::crosshair_space(None, cam).map(|s| s / 2.0),
+            Some(logical / 2.0),
+            "{page:?}: the crosshair at the window's centre"
+        );
+    }
 }
 
 /// `disconnect` and `map greybox` on a world (headless): the map gives

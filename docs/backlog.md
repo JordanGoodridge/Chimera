@@ -10,37 +10,25 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
-Connections and hosting:
-- Create Server on first launch (fresh config): the Game tab shows none
-  of the game settings, so "Max players" can't be set (playtest2 forces
-  32 on Start, but the tab must list the settings). Check
-  `server_cvars` (rows only where the cvar exists: `before.is_some()`)
-  and the GameUI/`settings.scr` load order on a fresh config.
-- Map download refused: "maps/mg_swag_multigames_v1.bsp is 141.5 MB,
-  more than the server sends (net_maxfilesize 64)". Community maps are
-  big: raise the default (or make the server offer what it has), allow
-  the client to accept it, and show download progress; keep
-  `sv_downloadurl`.
-- When the server closes, clients aren't disconnected (they wait for the
-  timeout): send netcode's disconnect to every client on shutdown/quit/
-  map change failure, and show "Server shutting down" (CS:S's string).
-- Chat should say when someone leaves ("<name> has left the game (<reason>)",
-  CS:S's wording).
+Connections and hosting: done 2026-10-10, to playtest (multiplayer.md,
+"Playtest with friends"): Create Server's Game tab lists `settings.scr`'s
+options on a fresh config (they were read when the main menu opened,
+before the install's GameUI files came in); `net_maxfilesize` 512 on
+both ends (150 MB map: `heavy::net_big_map`); a stopped server hangs
+up on its clients (three copies of netcode's packet, Ctrl+C on the
+dedicated server too) and they show "Server shutting down"; chat says
+who joined and left and why. Left: whether the playtest's hang was a
+lost packet, a killed process or something else (not reproduced here:
+every stop path disconnected at once over loopback).
 
-Gameplay and rules:
-- `god`/`noclip` refused for connected players even with `sv_cheats 1`
-  on the server: cheat commands from clients must go to the server and be
-  allowed when the server's sv_cheats is 1 (CS:S behaviour).
-- A console setting to make teammates not collide (user's answer to the
-  noblock question): opt-in, off by default (parity first); e.g.
-  `mashup_noblock 1` (teammates) / `2` (everyone).
+Gameplay and rules (done 2026-10-10, to playtest: a client's cheats run
+on the server with its `sv_cheats`, noclip predicted; `mashup_noblock`
+1/2, off by default; chat lines once in the console; `name` saved, a
+"Player name" entry on Options > Multiplayer):
 - "Gun does not reload after round end" (reporter THE GLITCH): find out
   what was meant: R not working after a round restart, or the clip not
   refilled; check CS:S (survivors keep their weapons and ammo as they
   are; pressing R must work).
-- Chat messages are printed twice in the console.
-- Player name: persist `name` in the config, and a name field in Options
-  (Multiplayer tab) instead of only the console command.
 
 Looks:
 - Third-person player models "not rigged right": a CT holding a pistol,
@@ -53,9 +41,11 @@ Looks:
 - Standing inside another player: the screen shows only the skybox, no
   world (the camera inside a player's collider breaks visibility: leaf/
   PVS lookup or a near-plane/clip issue).
-- Crosshair moves off centre after opening Options > Multiplayer >
-  Advanced (reported as a big deal; a screenshot on de_dust2 shows it
-  right of and below centre).
+- Crosshair off centre after Options > Multiplayer > Advanced: fixed
+  2026-10-10, to playtest. On a scaled display (Windows at 125 %) the
+  camera kept the in-game dialog picture's size (physical pixels) after
+  going back to the window; the crosshair now uses the UI's size, and
+  the camera's is worked out again (`--scale 1.25` reproduces it).
 - de_dust2 (same screenshot, near "MAIN" on the wall by long/mid): large
   dark square panels on the wall: a brush entity or overlay drawn without
   its light (or a shadow/decal atlas cell); identify the entity and fix.

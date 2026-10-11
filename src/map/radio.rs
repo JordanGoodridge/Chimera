@@ -76,6 +76,10 @@ pub struct SayFormats {
     pub joins: Vec<(u8, String)>,
     /// "* %s1 changed name to %s2".
     pub name_change: String,
+    /// "Player %s1 has joined the game" (a player connected).
+    pub joined_game: String,
+    /// "Player %s1 left the game (%s2)" (`%s2` why).
+    pub left_game: String,
 }
 
 /// One team's chat formats: alive, alive at a known place, dead.
@@ -98,6 +102,8 @@ impl Default for SayFormats {
             sound: None,
             joins: Vec::new(),
             name_change: "* %s1 changed name to %s2".into(),
+            joined_game: "Player %s1 has joined the game".into(),
+            left_game: "Player %s1 left the game (%s2)".into(),
         }
     }
 }
@@ -106,6 +112,16 @@ impl SayFormats {
     /// The chat line saying `old` is now called `new`.
     pub fn renamed(&self, old: &str, new: &str) -> Vec<(ChatColor, String)> {
         colour_runs(&fill(&self.name_change, &[old, new]), old)
+    }
+
+    /// The chat line saying `player` joined the server, or (`left`: why)
+    /// left it.
+    pub fn came(&self, player: &str, left: Option<&str>) -> Vec<(ChatColor, String)> {
+        let line = match left {
+            None => fill(&self.joined_game, &[player]),
+            Some(reason) => fill(&self.left_game, &[player, reason]),
+        };
+        vec![(ChatColor::Normal, line)]
     }
 
     /// The chat line saying `player` joins `team`, when the game has one.

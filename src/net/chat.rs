@@ -252,14 +252,24 @@ fn receive_says(mut requests: MessageReader<FromClient<SayRequest>>, mut command
     }
 }
 
+/// A listen server: the host plays here (its chat shows what the log
+/// would say).
+pub(super) fn hosted(world: &mut World) -> bool {
+    world.query_filtered::<(), With<LocalPlayer>>().iter(world).next().is_some()
+}
+
 /// Send `from`'s line to each player who reads it.
 pub fn deliver_say(world: &mut World, from: Entity, text: &str, team_only: bool) {
     let s = sender_of(world, from);
-    info!(
-        "{}{}: {text}",
-        s.name,
-        if team_only { " (team)" } else { "" }
-    );
+    // In the console for a dedicated server's operator; a listen server's
+    // host reads it in its chat, which prints it to the console (logged
+    // at info too, the game's console showed it twice).
+    let line = format!("{}{}: {text}", s.name, if team_only { " (team)" } else { "" });
+    if hosted(world) {
+        debug!("{line}");
+    } else if let Some(mut console) = world.get_resource_mut::<crate::console::Console>() {
+        console.print(crate::console::Level::Info, line);
+    }
     let sender = world.get::<Replicated>(from).map(|_| from);
     // Remote players, then the host.
     let mut readers: Vec<(ClientId, Entity)> = world
@@ -376,7 +386,11 @@ pub fn rename(world: &mut World, character: Entity, name: &str) -> bool {
     if old == name {
         return false;
     }
-    info!("{old} changed name to {name}");
+    if hosted(world) {
+        debug!("{old} changed name to {name}");
+    } else {
+        info!("{old} changed name to {name}");
+    }
     world.get_mut::<NetCharacter>(character).expect("checked").name = name.to_string();
     world.entity_mut(character).insert(Name::new(name.to_string()));
     world.write_message(ToClients {

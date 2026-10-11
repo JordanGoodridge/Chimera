@@ -52,8 +52,10 @@ use crate::{
 
 /// Bytes in each piece of a map sent over the connection.
 pub const CHUNK: usize = 16 * 1024;
-/// Bytes a server keeps in flight to a client beyond what it acknowledged.
-pub const WINDOW: u64 = 256 * 1024;
+/// Bytes a server keeps in flight to a client beyond what it acknowledged
+/// (a community map of 150 MB comes in about 40 s at 60 frames a second
+/// and 100 ms round trip: `PER_FRAME` and renet's 60 KB a frame limit it).
+pub const WINDOW: u64 = 512 * 1024;
 /// Bytes a server queues per client per frame, at most.
 const PER_FRAME: usize = 4 * CHUNK;
 
@@ -68,6 +70,13 @@ pub struct MapFiles {
     /// `<cache>/maps/<name>.bsp`. None: this process can't download.
     pub cache: Option<PathBuf>,
 }
+
+/// `net_maxfilesize`'s default, MB. **A deliberate difference:** CS:S's
+/// is 16 (at most 64), its big maps coming over `sv_downloadurl`; friends
+/// hosting community maps (often 100-200 MB) have no web server, so ours
+/// sends those over the connection by default. The same on both ends: a
+/// server sends at most its value, a client takes at most its own.
+pub const MAX_FILE_MB: f32 = 512.0;
 
 /// `sv_allowdownload`, `sv_downloadurl`, `net_maxfilesize` (Source's).
 #[derive(Resource, Clone, Debug)]
@@ -85,9 +94,7 @@ impl Default for DownloadSettings {
         Self {
             allow: 1,
             url: String::new(),
-            // CS:S's default is 16 MB; stock and community maps are often
-            // bigger, and a client here has no other way without a URL.
-            max_mb: 64.0,
+            max_mb: MAX_FILE_MB,
         }
     }
 }
@@ -181,7 +188,7 @@ pub(super) fn plugin(app: &mut App) {
     resource_cvar::<DownloadSettings, f32>(
         app,
         "net_maxfilesize",
-        "Largest map the server sends over the connection, MB.",
+        "Largest map sent over the connection, MB: a server sends at most this, a client takes at most this (512; CS:S's 16).",
         |s| &mut s.max_mb,
     );
     download_filter_cvar(app);
@@ -809,10 +816,28 @@ fn download(world: &mut World, welcome: &Welcome, copy: LocalCopy) -> Fetch {
     }
 }
 
-/// Ask the server for the file.
+/// Ask the server for the file (if it isn't over this client's own
+/// `net_maxfilesize`).
 fn request(world: &mut World, map: &str) -> Fetch {
-    super::client::set_stage(world, JoinStage::Downloading);
     let total = world.get_resource::<Handshake>().map_or(0, |h| h.welcome.map_size);
+    let max_mb = world.get_resource::<DownloadSettings>().map_or(MAX_FILE_MB, |s| s.max_mb);
+    if total as f64 > max_mb as f64 * 1024.0 * 1024.0 {
+        let file = map_path(map);
+        let error = format!(
+            "{file} is {:.1} MB, more than you download (net_maxfilesize {max_mb}).",
+            total as f64 / (1024.0 * 1024.0)
+        );
+        super::client::fail(
+            world,
+            JoinFailure::Download {
+                file: file.clone(),
+                error: error.clone(),
+            },
+            &error,
+        );
+        return Fetch::Start;
+    }
+    super::client::set_stage(world, JoinStage::Downloading);
     if let Some(mut p) = world.get_resource_mut::<JoinProgress>() {
         p.download = Some(super::client::DownloadInfo {
             file: map_path(map),

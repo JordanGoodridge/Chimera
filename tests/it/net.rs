@@ -318,6 +318,77 @@ fn netcode_over_loopback() {
     net::disconnect(server.app.world_mut(), "done");
 }
 
+/// A UDP server and a client joined to it on loopback.
+fn udp_pair() -> (mashup::harness::Sim, mashup::harness::Sim) {
+    let make = || {
+        mashup::harness::Sim::with(|app| {
+            app.add_plugins(net::NetPlugin);
+            greybox(app);
+        })
+    };
+    let mut server = make();
+    {
+        let world = server.app.world_mut();
+        let mut s = world.resource_mut::<NetSettings>();
+        s.hostport = 0;
+        s.maxplayers = 4;
+    }
+    let addr = net::server::listen(server.app.world_mut()).expect("listen");
+    let mut client = make();
+    let to = std::net::SocketAddr::from(([127, 0, 0, 1], addr.port()));
+    net::client::connect(client.app.world_mut(), to).expect("connect");
+    for _ in 0..400 {
+        server.app.update();
+        client.app.update();
+        std::thread::sleep(Duration::from_millis(1));
+        if client.app.world().contains_resource::<Joined>() {
+            return (server, client);
+        }
+    }
+    panic!("didn't join over UDP");
+}
+
+/// Playtest 2026-10-10: when the server closed, clients waited for the
+/// timeout. Every way a server ends (its `quit`, the host's `disconnect`
+/// or menu, the app exiting: window closed, Ctrl+C) hangs up on its
+/// clients at once, and they show CS:S's "Server shutting down".
+#[test]
+fn clients_hear_at_once_that_the_server_shut_down() {
+    use mashup::net::client::{JoinFailure, JoinProgress};
+    let ends: [(&str, fn(&mut World)); 3] = [
+        // The game's `quit` (and the dedicated server's).
+        ("quit", |w| {
+            net::disconnect(w, "Quit.");
+            w.write_message(AppExit::Success);
+        }),
+        ("disconnect", |w| net::disconnect(w, "Disconnect by user.")),
+        ("app exit", |w| {
+            w.write_message(AppExit::Success);
+        }),
+    ];
+    for (how, end) in ends {
+        let (mut server, mut client) = udp_pair();
+        end(server.app.world_mut());
+        server.app.update();
+        let mut gone = false;
+        for _ in 0..50 {
+            client.app.update();
+            std::thread::sleep(Duration::from_millis(2));
+            if *client.app.world().resource::<mashup::core::NetRole>() == mashup::core::NetRole::Standalone {
+                gone = true;
+                break;
+            }
+        }
+        assert!(gone, "{how}: the client was told at once (not after the 30 s timeout)");
+        let p = client.app.world().resource::<JoinProgress>().clone();
+        assert_eq!(
+            p.failure,
+            Some((JoinFailure::Dropped, "Server shutting down".to_string())),
+            "{how}: CS:S's words in the Disconnected dialog"
+        );
+    }
+}
+
 /// A client that goes quiet for 20 s (putting a big map in on a slow or
 /// busy machine) is still connected after: both ends wait 30 s
 /// (`net::client::TIMEOUT_SECONDS`, Source's `cl_timeout`). With

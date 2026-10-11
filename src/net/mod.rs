@@ -32,6 +32,7 @@
 
 pub mod anchors;
 pub mod chat;
+pub mod cheats;
 pub mod client;
 pub mod cvars;
 pub mod decals;
@@ -78,7 +79,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net12");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net13");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -982,6 +983,17 @@ pub struct NameChanged {
     pub new: String,
 }
 
+/// Server -> every player: someone joined the server ("Player %s1 has
+/// joined the game") or left it, and why ("Player %s1 left the game
+/// (%s2)": "Disconnect by user.", "timed out", a kick's reason), the
+/// game's words (`map::radio::SayFormats`).
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct PlayerCame {
+    pub name: String,
+    /// None: joined; else left, for this reason.
+    pub left: Option<String>,
+}
+
 /// The network's systems, protocol and console commands. With
 /// `RepliconPlugins` and renet's; nothing runs until `listen` or
 /// `connect` (single player stays `NetRole::Standalone`).
@@ -1112,6 +1124,12 @@ impl Plugin for NetPlugin {
             .add_server_message::<MapHud>(Channel::Ordered)
             .add_server_message::<MapFx>(Channel::Unreliable)
             .make_message_independent::<MapFx>()
+            // Cheats from clients, joins and leaves (net13).
+            .add_client_message::<cheats::ClientCommand>(Channel::Ordered)
+            .add_server_message::<cheats::ConsoleText>(Channel::Ordered)
+            .make_message_independent::<cheats::ConsoleText>()
+            .add_server_message::<PlayerCame>(Channel::Ordered)
+            .make_message_independent::<PlayerCame>()
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
             .add_message::<NetEvent>()
@@ -1128,6 +1146,7 @@ impl Plugin for NetPlugin {
         weapons::plugin(app);
         game::plugin(app);
         chat::plugin(app);
+        cheats::plugin(app);
         cvars::plugin(app);
         maps::plugin(app);
         mapfx::plugin(app);
@@ -1273,7 +1292,9 @@ fn commands(app: &mut App) {
         "Players a server takes, the host included (1: single player). Above 1, `map` hosts a listen server.",
         |s| &mut s.maxplayers,
     );
-    resource_cvar::<NetSettings, String>(app, "name", "Your player name.", |s| &mut s.name);
+    resource_cvar::<NetSettings, String>(app, "name", "Your player name (saved; renames you on the server too).", |s| &mut s.name);
+    // Saved in config.cfg (Source archives `name`).
+    app.world_mut().resource_mut::<crate::console::Console>().archive("name");
     app.console_command(
         "connect",
         "connect <ip[:port]>: join a server (port 27015 unless given).",

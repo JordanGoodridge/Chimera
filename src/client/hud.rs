@@ -513,6 +513,18 @@ fn short(id: &str) -> &str {
     id.strip_prefix("weapon_").unwrap_or(id)
 }
 
+/// The size of the space the crosshair's lines are placed in: the UI's
+/// (the window the UI camera draws to, in its logical pixels), else the
+/// 3D camera's. Not the 3D camera's first: while a dialog is open in a
+/// game it draws into a picture (`game_menu::world_behind_dialogs`) whose
+/// pixels are physical ones, so on a scaled display (Windows at 125 %)
+/// the centre came out right of and below the window's.
+pub fn crosshair_space(ui: Option<&bevy::ui::ComputedUiRenderTargetInfo>, camera: &Camera) -> Option<Vec2> {
+    ui.map(|i| i.logical_size())
+        .filter(|s| s.x > 0.0 && s.y > 0.0)
+        .or_else(|| camera.logical_viewport_size())
+}
+
 /// Crosshair gap from the held weapon's spread at the camera's field of
 /// view.
 #[allow(clippy::type_complexity)]
@@ -521,13 +533,19 @@ fn draw_crosshair(
     (spectating, watched): (Option<Res<super::spectate::SpecView>>, Query<(&Inventory, Option<&Zoomed>)>),
     scans: Query<&Hitscan>,
     camera: Query<(&Camera, &Projection), With<FirstPersonCamera>>,
-    mut lines: Query<(&CrosshairLine, &mut Node, &mut Visibility, &mut BackgroundColor)>,
+    mut lines: Query<(
+        &CrosshairLine,
+        &mut Node,
+        &mut Visibility,
+        &mut BackgroundColor,
+        Option<&bevy::ui::ComputedUiRenderTargetInfo>,
+    )>,
     color: Res<CrosshairColor>,
 ) {
     let Some((cam, proj)) = camera.iter().next() else {
         return;
     };
-    let Some(size) = cam.logical_viewport_size() else {
+    let Some(size) = crosshair_space(lines.iter().find_map(|l| l.4), cam) else {
         return;
     };
     // Watching someone in first person: their weapon's crosshair (CS:S
@@ -554,7 +572,7 @@ fn draw_crosshair(
     let spread_gap = spread / (fov / 2.0).tan() * size.y / 2.0;
     let shapes = color.lines(spread_gap, size.y);
     let centre = size / 2.0;
-    for (line, mut node, mut vis, mut bg) in &mut lines {
+    for (line, mut node, mut vis, mut bg, _) in &mut lines {
         bg.set_if_neq(BackgroundColor(color.color()));
         *vis = if visible {
             Visibility::Inherited

@@ -72,7 +72,14 @@ pub fn sound_entries() -> impl Iterator<Item = &'static str> {
 /// The radio, with the install's strings (or None without them).
 pub fn load(materials: &MaterialLoader) -> Option<RadioCommands> {
     let bytes = materials.read("resource/cstrike_english.txt")?;
-    Some(build(&localization(&decode(&bytes))))
+    // The engine's strings (players joining and leaving), the game's over
+    // them.
+    let mut strings = materials
+        .read("resource/valve_english.txt")
+        .map(|b| localization(&decode(&b)))
+        .unwrap_or_default();
+    strings.extend(localization(&decode(&bytes)));
+    Some(build(&strings))
 }
 
 /// Build the radio from localized strings (keys as in the file).
@@ -130,6 +137,13 @@ fn say(get: &dyn Fn(&str) -> Option<String>) -> SayFormats {
         name_change: get("Cstrike_Name_Change")
             .map(|s| s.trim_end().to_string())
             .unwrap_or(generic.name_change),
+        // The engine's (`valve_english.txt`; its PC line, with the reason).
+        joined_game: get("game_player_joined_game")
+            .map(|s| s.trim_end().to_string())
+            .unwrap_or(generic.joined_game),
+        left_game: get("game_player_left_game")
+            .map(|s| s.trim_end().to_string())
+            .unwrap_or(generic.left_game),
     }
 }
 

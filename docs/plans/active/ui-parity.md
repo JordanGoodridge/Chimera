@@ -97,6 +97,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `CrosshairImage` | CrosshairImagePanelCS | our crosshair preview (all of the above) |
 | | `LockRadarRotationCheckbox` | CCvarToggleCheckButton | `cl_radar_locked` (0): the radar keeps the overview as drawn |
 | | `DownloadFilterCheck` | ComboBox | `cl_downloadfilter` (all, nosounds, mapsonly, none): servers here send only maps, so only "none" refuses (joining then fails as a missing map) |
+| | `NameEntry` + `NameLabel` (ours: the install's file has none, older CS:S had "Player name") | TextEntry | `name` (archived): `#GameUI_PlayerName`, added by `gameui::add_player_name` where the spray image's words (`Label2`, `Label3`) were; set on OK / Apply (one rename online, not one per key); a deliberate difference |
 | | `Advanced` | Button | opens Multiplayer > Advanced |
 | | `ImportSprayImage`, `ResetStats`, `LogoImage` | Button / ImagePanel | greyed (see below) |
 | Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those mashup has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `cl_autohelp`, `hud_takesshots`, `cl_disablefreezecam`, `cl_disablehtmlmotd`, `cl_cloud_settings`); without the install: ours, the weapon hand |
@@ -156,6 +157,9 @@ defaults are CS:S's (`client::options` tests
   without a headset). `game_menu::draw::LEFT_OUT` lists them.
 - Brightness works windowed too (CS:S's needs full screen for its
   hardware gamma ramp; ours is a pass over the frame).
+- Multiplayer: a "Player name" entry (`name`) in place of the spray
+  image's two labels (current CS:S takes the name from Steam; mashup has
+  no sprays). It waits for OK or Apply, unlike the tab's other options.
 - Texture detail and filtering apply from the next map load (the
   textures live only on the GPU once drawn); CS:S's apply at once.
 

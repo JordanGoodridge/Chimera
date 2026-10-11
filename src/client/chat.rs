@@ -68,8 +68,9 @@ impl Plugin for GameMessagesPlugin {
             .add_message::<crate::net::ChatMessage>()
             .add_message::<crate::net::Notice>()
             .add_message::<crate::net::NameChanged>()
+            .add_message::<crate::net::PlayerCame>()
             .add_message::<crate::map::PlaySound>()
-            .add_systems(Update, (team_joins, heard_says, notices, name_changes));
+            .add_systems(Update, (team_joins, heard_says, notices, name_changes, comings_and_goings));
         for (name, team, help) in [
             ("say", false, "Say something to everyone."),
             ("say_team", true, "Say something to your team."),
@@ -109,6 +110,20 @@ fn name_changes(
     let formats = radio.map(|r| r.say.clone()).unwrap_or_default();
     for n in renamed.read() {
         chat.write(ChatLine(formats.renamed(&n.old, &n.new), None));
+    }
+}
+
+/// Players joining and leaving a network game ("Player X has joined the
+/// game", "Player X left the game (Disconnect by user.)", the engine's
+/// strings).
+fn comings_and_goings(
+    mut came: MessageReader<crate::net::PlayerCame>,
+    radio: Option<Res<crate::map::radio::RadioCommands>>,
+    mut chat: MessageWriter<ChatLine>,
+) {
+    let formats = radio.map(|r| r.say.clone()).unwrap_or_default();
+    for c in came.read() {
+        chat.write(ChatLine(formats.came(&c.name, c.left.as_deref()), None));
     }
 }
 
