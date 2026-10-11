@@ -10,6 +10,15 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- AK full-auto sounds choppy (user, 2026-10-11): holding fire, each
+  shot seems to cut the previous one off. Source plays weapon fire on
+  the entity's CHAN_WEAPON, where a new sound replaces the old one, so
+  some cutting is likely parity; but check (a) whether ours cuts with an
+  audible click (no short fade-out when a channel sound is replaced),
+  (b) the AK's script entry (channel, `soundlevel`, wave count/pitch
+  variation), (c) the own-sound path (centred, non-spatial) restarting
+  the voice, and compare with a CS:S recording of a full-auto AK burst.
+
 - Shadows under players vs bullet decals (user, 2026-10-11): the
   shadow under a player and bullet-hole decals don't layer: decals draw
   over the shadow unshadowed, so they look lighter than the ground around
