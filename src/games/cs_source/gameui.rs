@@ -392,13 +392,13 @@ pub fn add_player_name(layout: &mut crate::map::hud::UiLayout, strings: &HashMap
     let mut label = template.clone();
     label.name = "NameLabel".into();
     label.text = words;
-    label.wide = 75.0;
+    label.wide = 86.0;
     label.keys.insert("associate".into(), "NameEntry".into());
     let mut entry = template;
     entry.name = "NameEntry".into();
     entry.kind = UiKind::Other("TextEntry".into());
     entry.text = String::new();
-    entry.x = HudCoord::Start(x + 79.0);
+    entry.x = HudCoord::Start(x + 90.0);
     entry.y = HudCoord::Start(y);
     entry.wide = 150.0;
     entry.keys.remove("labeltext");
