@@ -166,6 +166,8 @@ pub struct PlayerAnim {
     pub hand_locks: [f32; 2],
     /// The next lock update snaps (spawn).
     reset_hands: bool,
+    /// The weapon suffix of the last update.
+    suffix: &'static str,
 }
 
 impl Default for PlayerAnim {
@@ -188,6 +190,7 @@ impl Default for PlayerAnim {
             throw_wanted: false,
             hand_locks: [0.0; 2],
             reset_hands: true,
+            suffix: "",
         }
     }
 }
@@ -315,8 +318,19 @@ impl PlayerAnim {
 
     /// One update (§ "Per-frame order") for a body with weapon animation
     /// `suffix`.
-    pub fn update(&mut self, a: &mut Animator, i: &Inputs, suffix: &str, dt: f32, now: f64) -> Outputs {
+    pub fn update(&mut self, a: &mut Animator, i: &Inputs, suffix: &'static str, dt: f32, now: f64) -> Outputs {
         let set = a.set.clone();
+        // Another weapon drawn: the old one's shot and reload gestures stop
+        // with it (switching cancels a reload, weapons.md T11); they were
+        // played out on the new weapon's arms, up to the reload's 2 s
+        // (playtest 2026-10-10: others' weapon draw looked wrong). The
+        // grenade's throw plays out: the thrower draws the next weapon
+        // while it does.
+        if suffix != self.suffix {
+            self.fire = None;
+            self.reload = None;
+            self.suffix = suffix;
+        }
         let speed = i.velocity.length();
         let moving = speed > MOVING_MIN_SPEED;
         // Main sequence.

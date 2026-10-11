@@ -61,7 +61,16 @@ Looks:
   to confirm: CS:S third person (`thirdperson; cam_idealyaw 130`) with a
   pistol looking 30 degrees up and down, and crouched.
 - Other players' weapon draw ("pull out") animation looks wrong in third
-  person.
+  person. Fixed 2026-10-10 (to playtest) what we found: a reload or shot
+  gesture went on after drawing another weapon, played on the new
+  weapon's arms (a reload up to 2 s); now a weapon change stops them
+  (the grenade's throw still plays out;
+  `animation::drawing_another_weapon_stops_the_old_ones_gestures`). The
+  player models have no draw sequence (spec §14): the new weapon's upper
+  body crosses over in its sequences' fade, as before. Capture to
+  confirm: in CS:S, a bot switching rifle to pistol (and mid-reload) in
+  third person, a few frames over the first half second; if CS:S shows a
+  gesture we lack, it needs a spec.
 - Standing inside another player: the screen shows only the skybox, no
   world (the camera inside a player's collider breaks visibility: leaf/
   PVS lookup or a near-plane/clip issue).

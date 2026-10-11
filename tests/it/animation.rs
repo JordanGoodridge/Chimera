@@ -513,3 +513,47 @@ fn hands_stay_on_the_weapon_while_aiming() {
         }
     }
 }
+
+/// Drawing another weapon (playtest 2026-10-10: others' weapon draw
+/// looked wrong in third person): the old weapon's reload and shot
+/// gestures stop with it instead of playing out on the new weapon's arms
+/// (a reload's up to 2 s); the upper body crosses over to the new
+/// weapon's pose in the sequences' own fade.
+#[test]
+fn drawing_another_weapon_stops_the_old_ones_gestures() {
+    use mashup::games::cs_source::player_anim::{Inputs, PlayerAnim};
+    use mashup::map::anim::Animator;
+    let Some(set) = load("models/player/ct_urban.mdl") else { return };
+    let set = std::sync::Arc::new(set);
+    let mut a = Animator::new(set.clone());
+    let mut s = PlayerAnim::default();
+    let idle = Inputs {
+        on_ground: true,
+        ..default()
+    };
+    let mut now = 0.0;
+    let mut step = |a: &mut Animator, s: &mut PlayerAnim, i: &Inputs, suffix: &'static str, n: u32| {
+        for _ in 0..n {
+            s.update(a, i, suffix, 0.016, now);
+            now += 0.016;
+        }
+    };
+    step(&mut a, &mut s, &idle, "AK", 30);
+    let reload = Inputs { reloaded: true, ..idle };
+    step(&mut a, &mut s, &reload, "AK", 1);
+    step(&mut a, &mut s, &idle, "AK", 20);
+    let name = |a: &Animator, k: usize| a.layers[k].map(|l| set.sequences[l.sequence].name.clone());
+    assert_eq!(name(&a, 5).as_deref(), Some("Idle_Reload_AK"), "reloading");
+    step(&mut a, &mut s, &idle, "PISTOL", 1);
+    assert_eq!(name(&a, 5), None, "the reload stopped with the switch");
+    let fire = Inputs { fired: true, ..idle };
+    step(&mut a, &mut s, &fire, "PISTOL", 1);
+    assert!(name(&a, 4).is_some_and(|n| n.contains("Pistol")), "{:?}", name(&a, 4));
+    step(&mut a, &mut s, &idle, "KNIFE", 1);
+    assert_eq!(name(&a, 4), None, "the shot stopped with the switch");
+    // The upper body: the knife's pose alone once the fade is over.
+    let fade = set.sequences[set.sequence("Idle_Upper_PISTOL").unwrap()].fade_out;
+    step(&mut a, &mut s, &idle, "KNIFE", (fade / 0.016) as u32 + 2);
+    let upper: Vec<String> = (0..4).filter_map(|k| name(&a, k)).collect();
+    assert_eq!(upper, ["Idle_Upper_KNIFE"], "fade {fade}");
+}
