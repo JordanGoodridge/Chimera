@@ -10,6 +10,11 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- Alt-tab back into the game (user, 2026-10-11): regaining window focus
+  should grab and hide the cursor again and resume mouse look at once
+  (as CS:S does), when in a game with no menu, console or dialog open;
+  today a click is needed.
+
 - Buying on maps without buy zones (user, 2026-10-11, mg_jacks_multigames_v1):
   you can buy guns anywhere. jacks has no `func_buyzone` and no
   `info_map_parameters`; our `weapon::economy::in_buy_zone` lets everyone
