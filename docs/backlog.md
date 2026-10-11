@@ -10,6 +10,19 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- mg_jacks_multigames_v1 in real CS:S (user, 2026-10-11), to match:
+  (1) selecting a game plays a sound (the map has 25 ambient_generics;
+  check the selector's outputs reach them and they play for everyone);
+  (2) it prints chat messages, e.g. "<== Spawn: Surf == >": the map
+  sends `say ...` through point_servercommand (5 of them, e.g. `kon`),
+  which on a listen server shows under the host's name (on a dedicated
+  server as "Console"); ours must show these lines in chat the same way
+  (our point_servercommand allows `say`: check it reaches chat, and the
+  speaker name); it also runs `sv_airaccelerate 750` for the surf/climb
+  spawns (allowed setting? check); (3) it strips weapons from players and
+  bots between games (see the weapons-after-a-round entry): make ours do
+  the same, bots included.
+
 - Alt-tab back into the game (user, 2026-10-11): regaining window focus
   should grab and hide the cursor again and resume mouse look at once
   (as CS:S does), when in a game with no menu, console or dialog open;
