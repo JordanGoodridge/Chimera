@@ -10,6 +10,17 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- Shadows under players vs bullet decals (user, 2026-10-11): the
+  shadow under a player and bullet-hole decals don't layer: decals draw
+  over the shadow unshadowed, so they look lighter than the ground around
+  them. Also the shadow itself is buggy: it has only a few states and
+  shifts often as the player or the viewer moves (render-to-texture
+  shadow atlas cells / blob vs silhouette switching?). Check whether CS:S
+  draws these under players at all (its render-to-texture shadows exist
+  for props and players at shadow detail medium+; compare a capture) —
+  keep them for now; fix the decal ordering (decals before the shadow
+  projection, or the shadow modulating decals too) and the jumpy states.
+
 - Third-person AK (user, 2026-10-11): looking up or down, the AK's
   magazine sits in the wrong place. Likely the reload layer's
   `weapon_bone_LHand`/magazine bone, or the new hand IK (`lock_hands`,
