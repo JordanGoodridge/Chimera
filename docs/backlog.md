@@ -10,6 +10,14 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- Water seen through other parts of the map (user, 2026-10-11,
+  mg_jacks_multigames_v1, `setpos -12146.96 15343.41 -927.97; setang
+  -29.57 184.04 0`): a water surface draws through walls/geometry in
+  front of it. Check its depth test/write and render order (transparent
+  pass vs the world), the water chunks' visibility clusters (round 1 of
+  the sky fix split water per cluster), and the planar reflection/
+  refraction passes.
+
 - No weapon held (user, 2026-10-11, e.g. after a map strip): CS:S shows
   its five-dot crosshair (the HUD's default crosshair sprite when no
   weapon draws one); ours keeps the normal crosshair. And our view model
