@@ -215,6 +215,21 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // coordinates, and the detail's before $detailscale.
     let uv = transform_uv(in.uv, params.base_uv_u, params.base_uv_v);
     var albedo = textureSample(base_texture, base_sampler, uv) * params.base_color;
+    // DecalModulate (shaders.md, DecalModulate): the surface times 2 x the
+    // texel in gamma space, unlit; transparent texels (alpha 0) leave it,
+    // partial alpha doesn't fade it. The blend is src x dst + dst x src,
+    // so this returns half the factor (in our linear framebuffer the
+    // factor raised to 2.2, as decal.wgsl). Fog fades it to neutral by
+    // the fog amount^0.4.
+    if params.translucent > 2.5 {
+        if albedo.a <= 0.0 {
+            discard;
+        }
+        var factor = 2.0 * pow(max(albedo.rgb, vec3(0.0)), vec3(1.0 / 2.2));
+        let f = source_fog(params.fog_color, params.fog_range, params.water_fog_color, params.water_fog_range, in.world_position.xyz);
+        factor = mix(factor, vec3(1.0), pow(f.a, 0.4));
+        return vec4<f32>(min(pow(factor, vec3(2.2)), vec3(2.0)) * 0.5, 1.0);
+    }
     // Self-illumination masks by the base texture's own alpha (before the
     // second layer); the surface is then opaque (alpha = $alpha only).
     let base_alpha = albedo.a;

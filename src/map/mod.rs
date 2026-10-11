@@ -273,6 +273,10 @@ pub struct MapMesh {
     /// Drawn at the texture's own brightness, ignoring lighting (Source's
     /// UnlitGeneric).
     pub unlit: bool,
+    /// A map decal or overlay that multiplies the surface under it by 2 x
+    /// its texel (Source's DecalModulate: 0.5 grey leaves it unchanged),
+    /// unlit; with `alpha` Blend.
+    pub modulate: bool,
     /// Surface property name (footsteps, impacts), lower-case.
     pub surface: Option<String>,
     /// Reflection of a baked cubemap (Source `$envmap`).
@@ -2862,7 +2866,7 @@ fn spawn_map(
                         light_scale: data.look.light_scale,
                         lightmap_scale: if source_ldr { SOURCE_LIGHTMAP_SCALE } else { 1.0 },
                         bicubic: if data.look.bicubic_lightmaps { 1.0 } else { 0.0 },
-                        translucent: m.alpha.shader_mode(),
+                        translucent: if m.modulate { 3.0 } else { m.alpha.shader_mode() },
                         blend: if blended { 1.0 } else { 0.0 },
                         blend_masked: if blend.mask.is_some() { 1.0 } else { 0.0 },
                         blend_normal: if bumped && blend.normal_map.is_some() { 1.0 } else { 0.0 },
@@ -2943,6 +2947,7 @@ fn spawn_map(
                     double_sided: m.double_sided,
                     // Map overlays and infodecals (see WorldMaterial::decal).
                     decal: m.material.starts_with("decal:") && m.alpha != MapAlpha::Opaque,
+                    modulate: m.modulate,
                 };
                 let material = world_shared
                     .entry((m.skybox, own(m), format!("{material:?}")))

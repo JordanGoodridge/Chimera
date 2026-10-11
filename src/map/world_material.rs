@@ -39,7 +39,7 @@ pub struct WorldParams {
     /// 1: bicubic lightmap sampling.
     pub bicubic: f32,
     /// 1 when alpha blended, 2 when additive (output alpha 0, which adds
-    /// under premultiplied blending). Otherwise the output alpha is 1: textures
+    /// under premultiplied blending), 3 for a modulate-2x decal (`modulate`). Otherwise the output alpha is 1: textures
     /// often keep other data in alpha (env map masks), and the camera's
     /// output is composited over the sky camera by alpha.
     pub translucent: f32,
@@ -137,6 +137,9 @@ pub struct WorldMaterial {
     /// writes, so everything see-through (particles, smoke, glows, muzzle
     /// flashes) draws over it rather than being sorted against it.
     pub decal: bool,
+    /// A decal that multiplies the surface: blended as `src x dst + dst x
+    /// src` (Source's DecalModulate), the shader returning half the factor.
+    pub modulate: bool,
 }
 
 impl Material for WorldMaterial {
@@ -180,6 +183,20 @@ impl Material for WorldMaterial {
                 },
                 alpha: bevy::render::render_resource::BlendComponent::OVER,
             }),
+            // Modulate 2x; the destination's alpha stays (the sky
+            // composite reads it).
+            3 => Some(bevy::render::render_resource::BlendState {
+                color: bevy::render::render_resource::BlendComponent {
+                    src_factor: bevy::render::render_resource::BlendFactor::Dst,
+                    dst_factor: bevy::render::render_resource::BlendFactor::Src,
+                    operation: bevy::render::render_resource::BlendOperation::Add,
+                },
+                alpha: bevy::render::render_resource::BlendComponent {
+                    src_factor: bevy::render::render_resource::BlendFactor::Zero,
+                    dst_factor: bevy::render::render_resource::BlendFactor::One,
+                    operation: bevy::render::render_resource::BlendOperation::Add,
+                },
+            }),
             _ => None,
         };
         if blend.is_some() {
@@ -201,7 +218,8 @@ impl Material for WorldMaterial {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorldMaterialKey {
     double_sided: bool,
-    /// Decals only: 1 alpha blend, 2 additive (0: not a decal).
+    /// Decals only: 1 alpha blend, 2 additive, 3 modulate 2x (0: not a
+    /// decal).
     decal_blend: u8,
 }
 
@@ -211,6 +229,7 @@ impl From<&WorldMaterial> for WorldMaterialKey {
             double_sided: m.double_sided,
             decal_blend: match (m.decal, m.alpha_mode) {
                 (false, _) => 0,
+                (true, _) if m.modulate => 3,
                 (true, AlphaMode::Add) => 2,
                 (true, _) => 1,
             },

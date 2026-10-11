@@ -62,6 +62,9 @@ pub struct Resolved {
     /// `$selfillum` (kept only when the base texture has alpha, or a
     /// model's `$selfillummask` is set).
     pub selfillum: Option<crate::map::MapSelfIllum>,
+    /// DecalModulate: multiplies what it lies on by 2 x its texel
+    /// (specs/cs_source/shaders.md, DecalModulate).
+    pub modulate: bool,
 }
 
 pub struct MaterialLoader<'a> {
@@ -171,6 +174,7 @@ impl<'a> MaterialLoader<'a> {
                     tint: None,
                     base_transform: Default::default(),
                     selfillum: None,
+                    modulate: false,
                 }
             }
         }
@@ -192,6 +196,7 @@ impl<'a> MaterialLoader<'a> {
             tint: None,
             base_transform: Default::default(),
             selfillum: None,
+            modulate: false,
         };
         let vmt_path = format!("materials/{}.vmt", normalize(name));
         let Some(text) = self.read_text(&vmt_path) else {
@@ -250,6 +255,9 @@ impl<'a> MaterialLoader<'a> {
             // Water's `$bumpmap` is a DuDv refraction map (unsupported
             // format, and not a normal map); `$normalmap` is the normal map.
             vmt_parser::material::Material::Water(m) => (m.base_texture.as_deref(), m.normal_map.as_deref()),
+            // DecalModulate (blood, dirt): without its texture the decal
+            // was never placed.
+            vmt_parser::material::Material::DecalModulate(m) => (Some(m.base_texture.as_str()), None),
             m => (m.base_texture(), m.bump_map()),
         };
         let mut texture = base.and_then(|t| self.texture(t, true));
@@ -344,6 +352,7 @@ impl<'a> MaterialLoader<'a> {
             tint: tint(&keys),
             base_transform,
             selfillum,
+            modulate: matches!(material, vmt_parser::material::Material::DecalModulate(_)),
         }
     }
 

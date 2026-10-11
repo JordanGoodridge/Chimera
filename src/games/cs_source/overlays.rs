@@ -190,6 +190,9 @@ pub fn add_overlays(
                         } else {
                             r.alpha
                         },
+                        // DecalModulate overlays multiply the surface (not an
+                        // alpha-blended square of their grey texture).
+                        modulate: r.modulate,
                         ..default()
                     });
                     let engine_normal = to_engine(vb(match mover {

@@ -1105,3 +1105,31 @@ fn blended_and_normal_sprites_load() {
         assert_eq!(signs, 7);
     }
 }
+
+/// DecalModulate decals and overlays (blood, dirt, scratches: the surface
+/// times 2 x the texel) multiply what they lie on. They had no texture
+/// (the VMT parser's accessor skips the shader), so infodecals were never
+/// placed and overlays drew untextured; now they are blended modulate
+/// decals (`MapMesh::modulate`). gg_bk_warehouse_v1's infodecals use the
+/// stock `decals/blood*`.
+#[test]
+fn modulate_decals_multiply_the_surface() {
+    let Some(map) = load("gg_bk_warehouse_v1") else { return };
+    let blood: Vec<_> = map
+        .meshes
+        .iter()
+        .filter(|m| m.material.starts_with("decal:decals/blood"))
+        .collect();
+    assert!(blood.len() >= 8, "{} blood decals placed (they had no texture)", blood.len());
+    for m in &blood {
+        assert!(m.modulate, "{}: not modulate", m.material);
+        assert_eq!(m.alpha, mashup::map::MapAlpha::Blend, "{}", m.material);
+    }
+    // Ordinary decals stay what they were.
+    assert!(
+        map.meshes
+            .iter()
+            .filter(|m| m.material.starts_with("decal:") && !m.material.contains("blood"))
+            .all(|m| !m.modulate)
+    );
+}

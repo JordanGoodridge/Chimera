@@ -182,7 +182,10 @@ pub fn add_decals(bsp: &Bsp, layout: &LightmapLayout, materials: &mut MaterialLo
         let decal = Decal {
             name: &name,
             tex,
-            alpha: r.alpha,
+            // DecalModulate multiplies the surface (a blended decal, never
+            // an opaque square of its mostly grey texture).
+            alpha: if r.modulate { crate::map::MapAlpha::Blend } else { r.alpha },
+            modulate: r.modulate,
             size,
             skybox,
         };
@@ -234,6 +237,7 @@ struct Decal<'a> {
     name: &'a str,
     tex: usize,
     alpha: crate::map::MapAlpha,
+    modulate: bool,
     size: Vec2,
     skybox: bool,
 }
@@ -323,6 +327,7 @@ fn project(
                     color: [255, 255, 255],
                     texture: Some(decal.tex),
                     alpha: decal.alpha,
+                    modulate: decal.modulate,
                     double_sided: false,
                     entity: surface.entity,
                     ..default()

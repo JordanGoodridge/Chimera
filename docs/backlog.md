@@ -72,14 +72,29 @@ Looks:
   third person, a few frames over the first half second; if CS:S shows a
   gesture we lack, it needs a spec.
 - Standing inside another player: the screen shows only the skybox, no
-  world (the camera inside a player's collider breaks visibility: leaf/
-  PVS lookup or a near-plane/clip issue).
+  world. Not reproduced (2026-10-10, de_dust2): inside a bot standing and
+  in noclip, and over the network (host `setpos` onto a client, the client
+  walking, ducking and jumping inside it, both screens), the world draws
+  and the body's insides show, as in CS:S; first-person spectating too.
+  What the report describes matches the camera outside the map (the 3D
+  skybox over black: what a `setpos` into the void shows), so something
+  moved the player or camera out. Needed: the reporter's F9 bug report
+  (`setpos` line, map) or the steps (map, team, spawn, noblock?).
 - Crosshair moves off centre after opening Options > Multiplayer >
   Advanced (reported as a big deal; a screenshot on de_dust2 shows it
   right of and below centre).
 - de_dust2 (same screenshot, near "MAIN" on the wall by long/mid): large
-  dark square panels on the wall: a brush entity or overlay drawn without
-  its light (or a shadow/decal atlas cell); identify the entity and fix.
+  dark square panels on the wall. The stock CS:S de_dust2 has no "MAIN"
+  graffiti and no grey stone there (its overlays: graffiti01-03 are other
+  texts; checked against the install's BSP): the screenshot's map is
+  another one (a remake or a multigame map's dust2 room). Found and fixed
+  meanwhile (2026-10-10): DecalModulate decals and overlays (blood, dirt,
+  scratches) had no texture, so their infodecals were never placed and
+  their overlays drew untextured; now they multiply the surface 2x as in
+  the game (`MapMesh::modulate`, world.wgsl;
+  `heavy::map_community::modulate_decals_multiply_the_surface`,
+  gg_bk_warehouse_v1's blood). Needed: the map's name and a `setpos`
+  there (F9 report) to identify the panels.
 
 - Done 2026-10-09, checked against the coordinator's CS:S captures the
   same day: (1) other rooms showing through the sky
