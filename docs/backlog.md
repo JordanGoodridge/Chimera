@@ -10,6 +10,17 @@ plan when work starts; delete them when done.
 
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
+- Moving under a brush at head height (user, 2026-10-11; likely
+  mg_jacks_multigames_v1 near `setpos -12348.55 14196.69 1472.03; setang
+  -23.23 268.82 0`, though that setpos lands you on top of the brush):
+  ours lets the camera see through the brush; in CS:S the camera is
+  pushed down as soon as the top of the player's box goes under the
+  brush's edge. Find what CS:S does (the view origin clamped below a
+  ceiling / the near plane, or the player box being forced to duck under
+  a low edge — check the movement spec) and match it. Also: why does
+  that setpos put you on top of the brush instead of under it (our
+  setpos unsticking upward?).
+
 - mg_jacks_multigames_v1 in real CS:S (user, 2026-10-11), to match:
   (1) selecting a game plays a sound (the map has 25 ambient_generics;
   check the selector's outputs reach them and they play for everyone);
