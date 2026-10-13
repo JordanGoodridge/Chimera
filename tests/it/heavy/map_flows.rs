@@ -639,6 +639,99 @@ fn jacks_multigames_mp5_deagle() {
     assert!(failed.is_empty(), "{failed:#?}");
 }
 
+/// mg_jacks_multigames_v1, every game in turn: the teams go through
+/// their teleporters onto shared destinations (several players on one
+/// point) and stay in the map (each eye in a cluster: a playtester saw
+/// only the sky, as from outside the map, standing inside another
+/// player there).
+#[test]
+fn jacks_every_game_keeps_players_in_the_map() {
+    let Some(mut f) = Flow::new("mg_jacks_multigames_v1", 3, 3) else { return };
+    let vis = f.sim.app.world().resource::<mashup::map::vis::ActiveVisibility>().0.clone();
+    let buttons: Vec<String> = {
+        let w = &f.sim.app.world().resource::<Logic>().world;
+        let mut names: Vec<String> = w
+            .ids()
+            .into_iter()
+            .filter(|id| w.get(*id).is_some_and(|e| e.classname.eq_ignore_ascii_case("func_button")))
+            .map(|id| w.name_of(Who::Ent(id)))
+            .filter(|n| n.starts_with("button_"))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    };
+    eprintln!("games: {buttons:?}");
+    let all = f.all();
+    let (t, ct) = (f.t.clone(), f.ct.clone());
+    for name in &buttons {
+        next_round(&mut f, &ct);
+        let Some(button) = f.ent(name) else { continue };
+        let pressed = f.press(t[0], button);
+        f.secs(1.0);
+        let tt = f.ent("teleporter_t").unwrap();
+        let tct = f.ent_near("trigger_teleport", f.centre(tt)).unwrap();
+        f.touch(&t, tt);
+        f.touch(&ct, tct);
+        for s in 0..6 {
+            f.secs(0.5);
+            for p in &all {
+                let eye = f.feet(*p) + Vec3::Z * 64.0;
+                let inside = vis.cluster_at(entity_to_engine(eye, UNIT)).is_some();
+                if s == 0 || !inside {
+                    eprintln!("{name} (pressed {pressed}) t+{:.1}: {p} eye {eye:.0} in a cluster: {inside}", s as f32 * 0.5);
+                }
+                f.check(&format!("{name}: {p} in the map"), inside, format!("eye {eye:.0}"));
+            }
+        }
+    }
+    let failed = f.finish();
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// mg_jacks_multigames_v1's weapon strips between games: its courses'
+/// end teleports (`sr_port*`'s trigger_multiples, OnStartTouch
+/// `stripper_slide` StripWeaponsAndSuit) and the arenas' (`strippi`, ...)
+/// take everyone's weapons: players put (teleported, spawned) inside the
+/// trigger get StartTouch as Source gives it, every character the same
+/// (bots are characters like players). The "Normal" spawn mode's
+/// teleport goes straight to the lobby with no strip (the map's own
+/// design: survivors keep their weapons, as in CS:S).
+#[test]
+fn jacks_strips_everyone_between_games() {
+    let Some(mut f) = Flow::new("mg_jacks_multigames_v1", 2, 2) else { return };
+    let all = f.all();
+    for p in &all {
+        let given = mashup::weapon::equip::give_item(f.sim.app.world_mut(), *p, "weapon_ak47", 1);
+        f.check("given an AK", given, "");
+    }
+    f.secs(0.2);
+    let armed = all.iter().all(|p| f.weapons(*p).iter().any(|w| w == "weapon_ak47"));
+    f.check("everyone armed", armed, format!("{:?}", f.weapons(all[0])));
+    // The slide course's end: put inside the trigger (as its teleport
+    // destination would).
+    let trigger = f.ent_near("trigger_multiple", Vec3::new(-1003.0, 15865.0, -387.0)).unwrap();
+    f.touch(&all, trigger);
+    let stripped = all.iter().all(|p| f.weapons(*p).is_empty());
+    f.check(
+        "every character stripped (StartTouch on arrival)",
+        stripped,
+        format!("{:?}", all.iter().map(|p| f.weapons(*p)).collect::<Vec<_>>()),
+    );
+    // The map's chat lines and its air acceleration for the climb and
+    // surf spawns (750; put back when the map unloads).
+    let mode = target_of(&f, "spawn_tele_t");
+    let accel = {
+        let w = f.sim.app.world_mut();
+        let c = w.resource::<Console>().cvar("sv_airaccelerate").cloned().unwrap();
+        (c.get)(w).unwrap()
+    };
+    let want = if mode == "desti_normal_t" { accel != "750" } else { accel == "750" };
+    f.check("sv_airaccelerate by spawn mode", want, format!("{mode}: {accel}"));
+    let failed = f.finish();
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
 /// mg_lt_galaxy_v5: a vote. 20 s after the round starts the vote pads
 /// open (a countdown in chat first); each pad counts who stands on it
 /// (math_counter into a logic_case) and drives its meter up faster the
