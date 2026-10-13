@@ -15,7 +15,9 @@
 //!   armour and weapons with their ammo are the server's once both sides
 //!   have held them still for a while (settled);
 //! - prediction errors per client stay rare (server teleports, which the
-//!   test makes for planting and defusing, excused);
+//!   test makes for planting and defusing, excused), and none is of a
+//!   player's position alone by less than the physics' 0.01 mm tolerance
+//!   (the physics' copy of the position had a say, never right);
 //! - entity counts per kind stay level from round to round and from one
 //!   visit of de_dust2 to the next, on the server and on every client;
 //! - memory (the process's resident size), bandwidth per client and the
@@ -611,8 +613,9 @@ struct ClientStats {
     body_compared: u64,
     body_off: u64,
     body_off_loading: u64,
-    /// Errors of a dead player's position alone, below 0.01 mm.
-    dead_drift: u64,
+    /// Errors of a player's position alone below 0.01 mm, alive or dead,
+    /// by context.
+    drift: BTreeMap<String, u64>,
     body_worst: f32,
     ping: f64,
     /// Prediction errors by what differed and when (the round's phase,
@@ -935,16 +938,20 @@ impl Soak {
                     } else {
                         s.errors += d;
                     }
-                    // A held (dead) player's position off by less than the
-                    // physics' tolerance, alone: the stale physics copy
-                    // (`net::canonical_position`) put it back every tick.
+                    // A player's position off by less than the physics'
+                    // tolerance, alone, alive or dead (in contact or not:
+                    // a contact moves more): the physics' copy of it
+                    // had a say. First a stale copy put a dead player back
+                    // every tick (`net::canonical_position`), then the
+                    // physics undid steps that small while the body was
+                    // awake (`core::keep_moved_positions`): a respawned
+                    // player for half a second.
                     if d > 0
-                        && context.contains("dead")
                         && g.last_error < 1e-5
                         && g.last_differing.len() == 1
                         && g.last_differing[0].ends_with("::Transform")
                     {
-                        s.dead_drift += d;
+                        *s.drift.entry(context.clone()).or_default() += d;
                     }
                     if d > 0 {
                         if g.last_error <= 1.0 {
@@ -961,10 +968,11 @@ impl Soak {
                                 let flags = |w: &World, e: Option<Entity>| {
                                     e.map_or("-".to_string(), |e| {
                                         format!(
-                                            "dead {} connecting {} nocollide {} pos {:?} slot {}",
+                                            "dead {} connecting {} nocollide {} asleep {} pos {:?} slot {}",
                                             w.get::<Dead>(e).is_some(),
                                             w.get::<Connecting>(e).is_some(),
                                             w.get::<avian3d::prelude::ColliderDisabled>(e).is_some(),
+                                            w.get::<avian3d::prelude::Sleeping>(e).is_some(),
                                             w.get::<Position>(e).map(|p| p.0),
                                             w.get::<mashup::slots::MovementSlot>(e).is_some(),
                                         )
@@ -1776,10 +1784,11 @@ fn report(soak: &mut Soak, minutes: f64, real: Duration) {
         println!("\nsizes: OwnState (delta, whole) {own:?} bytes, NetBody {bodies:?} bytes");
     }
     for (id, s) in &soak.stats {
-        if s.dead_drift > 0 {
+        let drift: u64 = s.drift.values().sum();
+        if drift > 0 {
             failures.push(format!(
-                "client {id}: {} errors of a dead player's position below 0.01 mm",
-                s.dead_drift
+                "client {id}: {drift} errors of a player's position alone below 0.01 mm ({:?})",
+                s.drift
             ));
         }
         if s.body_off_loading > 0 {
@@ -1806,6 +1815,7 @@ fn report(soak: &mut Soak, minutes: f64, real: Duration) {
     }
     for (id, s) in &soak.stats {
         println!("client {id} errors: {:?}", s.parts);
+        println!("client {id} position-only errors below 0.01 mm: {:?}", s.drift);
     }
     let errors = ERROR_COUNT.load(std::sync::atomic::Ordering::Relaxed);
     println!("\nBevy errors (failed commands, ...): {errors}");

@@ -1302,7 +1302,29 @@ with tests passing and something to see.
      client's physics copy of its own position (`Position`) stayed stale
      after a correction below the physics' 0.01 mm tolerance, so dead
      players mispredicted on every tick (`net::canonical_position` sets
-     it, unmarked; the soak checks dead players' sub-tolerance errors);
+     it, unmarked; the soak checks dead players' sub-tolerance errors).
+     That check still failed now and then (5-29 errors on a lossy
+     client, 2026-10-13): the physics writes its copy back over the
+     transform of every awake body after each step, so a step of the
+     movement's below the tolerance was undone while the body was awake
+     and kept while it slept (half a second after its last bigger move)
+     and in a replay. A player put at a spawn point (transform and
+     physics copy, `rules::put_at_spawn`) is moved a float step by the
+     movement's metres-to-units round trip (z -30 to -30.000002 on the
+     greybox): the server's freshly woken body stayed put for half a
+     second while the client, its body asleep and its replays without
+     physics, had it a float step on (the soak's greybox freezes showed
+     it: -30.000002 predicted, -30.0 the server's); the soak counted
+     those as a dead player's while the client still had the respawned
+     player dead (its body flags, held back behind a lost update, come
+     later than its own state on a lossy link).
+     Before each physics step a character's physics copy is now set to
+     the movement's position (`core::keep_moved_positions`; test
+     `net_prediction::a_float_step_below_the_physics_tolerance_is_
+     predicted`). Before it every soak had position-only errors at
+     freeze times, counted as the living's (1-15 a client; those
+     printed were micrometres); none in the soaks since, and the soak's
+     check now covers the living too;
      (3) `hostname` was two cvars, the server lists' and `status`'s one
      never set by the console (`+hostname` on a dedicated server changed
      nothing players saw; test `net_query::hostname_is_one_setting`,

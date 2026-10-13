@@ -8,6 +8,23 @@ plan when work starts; delete them when done.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Bomb planting looks like CS 1.6 (user, 2026-10-13)
+
+In CS:S, planting shows the player typing the code on the C4's keypad,
+the digits appearing one by one on the bomb's little screen as they're
+typed; ours shows a 1.6-style progress bar while arming. Ours already
+draws a code on the view model's screen (`client/bomb_fx.rs`,
+`ViewModelScreen`, `BombRules::screen_text`) and plays the arm
+animation, but `client/objectives_hud.rs` also draws `HudProgressBar`
+while arming (CS:S's `cl_c4progressbar` is "while defusing").
+To do: no progress bar while arming (keep it for defusing per
+`cl_c4progressbar`); the digits appear one at a time in step with the
+view model's key presses (check the C4 view model's sequence events /
+timing, and the screen text's reveal), the screen readable on Windows;
+check what other players see (third person: the planting animation,
+the bomb in hand). Compare with a CS:S capture of a plant (first person,
+frames every 0.25 s).
+
 ### Decisions 2026-10-13 (user)
 
 - Refactor: go ahead with engine-split.md "Crates and compile time"

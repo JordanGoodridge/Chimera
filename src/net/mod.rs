@@ -105,7 +105,8 @@ pub const GREYBOX: &str = "greybox";
 /// over its transform) would undo a small correction every tick: a
 /// player standing still 1 ULP away from the server's spot (below the
 /// physics' 0.01 mm tolerance) mispredicted on every tick (found by the
-/// soak, tests/it/heavy/net_soak.rs).
+/// soak, tests/it/heavy/net_soak.rs). Steps that small within a tick are
+/// kept by `core::keep_moved_positions`.
 pub fn canonical_position(world: &mut World, e: Entity) {
     let Some(mut t) = world.get_mut::<Transform>(e) else { return };
     let canonical = t.translation + Vec3::ZERO;
