@@ -351,7 +351,13 @@ fn send_join(world: &mut World) {
         version: world.resource::<NetVersion>().0.clone(),
         protocol: *world.resource::<ProtocolHash>(),
         name: world.resource::<NetSettings>().name.clone(),
-        userinfo: crate::console::userinfo(world).into_iter().collect(),
+        userinfo: {
+            let mut info: Vec<(String, String)> = crate::console::userinfo(world).into_iter().collect();
+            // How we come in: the join menus or straight onto a team.
+            let choice = world.get_resource::<crate::rules::JoinChoice>().copied().unwrap_or_default();
+            info.push((super::server::JOIN_KEY.to_string(), choice.key()));
+            info
+        },
     };
     world.commands().client_trigger(join);
     world.flush();

@@ -180,7 +180,7 @@ fn team_joins(
             Option<&Name>,
             Has<LocalPlayer>,
             Option<&crate::net::NetCharacter>,
-            Has<crate::core::Spectating>,
+            (Has<crate::core::Spectating>, Has<crate::core::Unassigned>),
         ),
         With<crate::core::Intent>,
     >,
@@ -190,7 +190,11 @@ fn team_joins(
 ) {
     let Some(radio) = radio else { return };
     let mut now = std::collections::HashMap::with_capacity(known.len());
-    for (e, team, name, local, net, spectating) in &who {
+    for (e, team, name, local, net, (spectating, unassigned)) in &who {
+        // On no team yet (the join menus): nothing to say.
+        if unassigned {
+            continue;
+        }
         // The spectators by their own number (`SayFormats::joins`).
         let key = if spectating { crate::map::radio::SPECTATORS } else { team.0 };
         now.insert(e, key);

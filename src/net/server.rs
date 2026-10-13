@@ -544,7 +544,15 @@ fn admit(world: &mut World, client: Entity, msg: Join) {
         return;
     }
     let name = clean_name(&msg.name, id);
-    let character = spawn_player(world, id, &name);
+    // How it comes in (`rules::JoinChoice`, in its userinfo): on a team at
+    // once unless it asked for the join menus.
+    let choice = msg
+        .userinfo
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(JOIN_KEY))
+        .and_then(|(_, v)| crate::rules::JoinChoice::from_key(v))
+        .unwrap_or_default();
+    let character = spawn_player(world, id, &name, choice);
     set_userinfo(world, character, &msg.userinfo);
     world.entity_mut(client).insert((
         AuthorizedClient,
@@ -562,6 +570,8 @@ fn admit(world: &mut World, client: Entity, msg: Join) {
     });
     // The server's replicated cvars (movement, rules), before it plays.
     super::cvars::send_all(world, client);
+    // The message of the day, for its join menus.
+    super::motd::send(world, client);
     info!("{name} joined (client {id})");
     // Everyone's chat: "Player X has joined the game".
     world.write_message(ToClients {
@@ -613,7 +623,7 @@ pub(super) fn clean_name(name: &str, id: u64) -> String {
 /// A remote player's character: on the team with fewer players, out of
 /// the game (`core::Connecting`) until its client has loaded the map,
 /// then spawned as the rules allow (`rules::enter_game`).
-fn spawn_player(world: &mut World, id: u64, name: &str) -> Entity {
+fn spawn_player(world: &mut World, id: u64, name: &str, choice: crate::rules::JoinChoice) -> Entity {
     let mut counts = [0usize; 2];
     for (team, hostage) in world.query::<(&Team, Has<Hostage>)>().iter(world) {
         if !hostage && (1..=2).contains(&team.0) {
@@ -647,8 +657,24 @@ fn spawn_player(world: &mut World, id: u64, name: &str) -> Entity {
     set_movement(e, movement).apply(world);
     // Out of the game until its client has the map (`receive_loaded`).
     crate::rules::hold_out(world, e);
+    match choice {
+        // No team until it picks one (its client's join menus).
+        crate::rules::JoinChoice::Menus => crate::rules::make_unassigned(world, e),
+        crate::rules::JoinChoice::Team(t) if t.0 == 0 => {
+            if crate::rules::join_spectators(world, e).is_err() {
+                crate::rules::make_unassigned(world, e);
+            }
+        }
+        crate::rules::JoinChoice::Team(t) => {
+            world.entity_mut(e).insert(t);
+        }
+        crate::rules::JoinChoice::Auto => {}
+    }
     e
 }
+
+/// The userinfo key a client says how it joins with (`rules::JoinChoice::key`).
+pub const JOIN_KEY: &str = "_jointeam";
 
 /// A client has the map loaded: its player comes into the game, if it's
 /// the map the server is on (a report from before a map change counts

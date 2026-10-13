@@ -1842,6 +1842,7 @@ struct MapLoad {
 /// downloaded from a server), then swap it in place (`finish_map_load`):
 /// everyone respawns at the new spawn points.
 pub(super) fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>) {
+    w.remove_resource::<FreshGame>();
     w.insert_resource(crate::map::LoadedMapName(id.to_string()));
     // At the HDR level set now (mat_hdr_level), as the game does.
     let hdr_level = w.get_resource::<super::hdr::HdrSettings>().map_or(0, |s| s.level);
@@ -1939,7 +1940,16 @@ fn finish_map_load(w: &mut World) {
     w.resource_mut::<Console>().info(summary);
     super::game_menu::entered_game(w);
     super::net::listen_if_hosting(w);
+    if w.remove_resource::<FreshGame>().is_some() {
+        super::join_menus::start_game(w);
+    }
 }
+
+/// The map loading is a game the `map` command starts (not a server's
+/// map change or a server's map we join): the local player joins it as
+/// `rules::JoinChoice` says (`join_menus::start_game`).
+#[derive(Resource)]
+struct FreshGame;
 
 /// The greybox map in place of whatever map is loaded (`map greybox`, and
 /// `disconnect`, which leaves it behind the main menu), everyone respawned
@@ -2205,6 +2215,7 @@ pub fn client_commands(app: &mut App) {
                 load_greybox(w);
                 super::game_menu::entered_game(w);
                 super::net::listen_if_hosting(w);
+                super::join_menus::start_game(w);
                 return Ok(Some("loaded the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
@@ -2212,6 +2223,8 @@ pub fn client_commands(app: &mut App) {
                 return Err(format!("no map \"{short}\" in the install"));
             }
             start_map_load(w, &id, None);
+            // A game of our own starts: we join it once it's loaded.
+            w.insert_resource(FreshGame);
             Ok(Some(format!("loading {id}...")))
         },
     )
