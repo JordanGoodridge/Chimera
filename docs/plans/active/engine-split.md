@@ -89,6 +89,40 @@ minigames/, games/originals/, apps/*, tools/ (debug binaries: not built by `carg
   ("CS:S, our way") as its own ids and data, without touching
   `cs_source`; the faithful game stays the parity baseline and its tests
   run against `cs_source` alone.
+
+Progress (2026-10-13, one session; architecture-review.md has the
+measurements):
+
+- [x] (1) Tools out of the test build: no `tools/` package yet; the
+  binaries no test runs are behind `required-features` (`tools`: refcmp,
+  movecmp, perfgate, tracesum, mapsweep; `server`: mashup_server). A
+  leaf edit's test build went from ~228 s to ~127 s (medians, load
+  16-36). A `tools/` package comes with the crate split.
+- [x] (2) `map/mod.rs` split (P1): `data` (MapData, plain data), `state`
+  (what the logic writes), `spawn` (`spawn_map` as ~25 phase functions),
+  `bodies`, `props`, `materials`, `images`, `collision`, `sky`; paths
+  outside `map` unchanged. `tests/it/heavy/map_spawn_dump.rs` dumps
+  spawned maps for before/after comparisons.
+- [x] (2) `audio` out of `map` (P3, first slice): playback, live sounds,
+  room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
+  side. `map_plugin.rs` builds `map::MapPlugin` (map, then audio, in the
+  old order); the architecture test keeps map, logic and net off audio.
+- [ ] (2) `anim`: not moved. `map::anim` (`AnimSet`, `Animator`) is data
+  in `MapData` and evaluated headless for the server's hitboxes
+  (`bodies::SimAnimator`); ragdolls (`ragdoll`, `placed_ragdoll`) are
+  simulation that `logic` and `net` use. Only the drawn side (posing
+  drawn bodies, view models) is presentation; decide whether animation
+  evaluation is `world`/`sim` (then nothing to move but drawing) before
+  moving.
+- [ ] (2) `render` out of `map`: materials and WGSL, culling and window
+  fading, water drawing, shadows, particles and decal drawing, view
+  models, sky drawing, lod, fog. Needs first: the state `logic`/`net`
+  write (`vis::LogicHidden`, `VisClusters`, `tint::RenderLook`/brush
+  tints, beam/monitor/emitter on-off) moved to `map::state`; the drawn
+  phases of `spawn` (`spawn_drawn`, prop meshes) called from
+  `map_plugin` as the sound plugin is, so spawn order stays.
+- [ ] (2) CS:S UI out of `client`, rules behind a rule-module interface,
+  game-registered replication.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -160,7 +194,7 @@ minigames/, games/originals/, apps/*, tools/ (debug binaries: not built by `carg
 |---|---|---|
 | `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | |
 | `src/logic` | source | Source entity I/O and classes (func_door, triggers, ...) |
-| `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water) |
+| `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | formats (bsp, vpk, material, mdl, phy, wav, sound) to source; CS:S rules, weapons, HUD, bots' CS:S parts stay |
 | `src/games/combat_arms` | games/combat_arms | local, git-ignored |
 | `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` private |
