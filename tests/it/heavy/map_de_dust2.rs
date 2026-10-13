@@ -430,6 +430,43 @@ fn props_load_and_windows_block() {
     );
 }
 
+/// dust2's cables carry their settled simulation for the wind (no
+/// env_wind, no NoWind keys): the nodes the drawn points pass through,
+/// pinned where the strip starts and ends.
+#[test]
+fn ropes_can_sway() {
+    let Some(map) = dust2() else { return };
+    assert!(!map.ropes.is_empty());
+    for rope in &map.ropes {
+        let sway = rope.sway.as_ref().expect("a settled simulation");
+        assert!(sway.wind && sway.nodes.len() >= 2 && sway.link > 0.0);
+        let first = rope.points.first().unwrap();
+        let last = rope.points.last().unwrap();
+        assert!(first.distance(sway.nodes[0]) < 1e-4 && last.distance(*sway.nodes.last().unwrap()) < 1e-4);
+        let drawn = mashup::map::rope_sway::spline(&sway.nodes, sway.subdiv);
+        assert_eq!(drawn.len(), rope.points.len());
+    }
+}
+
+/// Baked cubemaps keep their mip chains (a bumped floor's highlight
+/// widens through them as in the game; refcmp `tunnel_floor_e`), and the
+/// cube texture takes every level.
+#[test]
+fn cubemaps_keep_their_mips() {
+    let Some(map) = dust2() else { return };
+    assert!(!map.cubemaps.is_empty());
+    for c in &map.cubemaps {
+        assert!(c.mips > 1, "{}: {} mips", c.name, c.mips);
+        let texels: u32 = (0..c.mips).map(|m| (c.size >> m).max(1).pow(2)).sum();
+        for face in &c.faces {
+            assert_eq!(face.len(), texels as usize * 4, "{}", c.name);
+        }
+        let image = mashup::map::cube_image(c);
+        assert_eq!(image.texture_descriptor.mip_level_count, c.mips);
+        assert_eq!(image.data.as_ref().map(Vec::len), Some(texels as usize * 4 * 6));
+    }
+}
+
 /// The lighting model used for props (ambient cube + shadow-tested direct
 /// lights), evaluated at world surface points, must reproduce the map's own
 /// lightmaps there. Guards units, sun direction and shadow geometry.
@@ -1498,9 +1535,11 @@ fn envmaps_load() {
     assert_eq!((e.contrast, e.saturation, e.fresnel), (0.0, 1.0, 1.0));
     let c = &map.cubemaps[e.cubemap.expect("a baked cubemap")];
     assert_eq!(c.size, 64);
-    assert!(c.faces.iter().all(|f| f.len() == 64 * 64 * 4));
+    // Each face: its 64x64 top mip, then the smaller ones.
+    assert_eq!(c.mips, 7);
+    assert!(c.faces.iter().all(|f| f.len() == (0..7).map(|m| (64usize >> m).pow(2) * 4).sum::<usize>()));
     // Faces differ (not six copies of one image).
-    assert_ne!(c.faces[4], c.faces[5]);
+    assert_ne!(c.faces[4][..64 * 64 * 4], c.faces[5][..64 * 64 * 4]);
     // The cubemap lump's samples (37 on dust2) load for props.
     assert_eq!(map.cubemap_samples.len(), 37);
     // Cars reflect the nearest cubemap, tinted by the DX9 block (.125 on

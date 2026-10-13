@@ -461,8 +461,10 @@ fn capture_ours_io(
         .arg(&views_path)
         .arg("--capture-dir")
         .arg(out)
-        // The reference captures hide the view model too.
-        .args(["+r_drawviewmodel", "0"])
+        // The reference captures hide the view model too. Ropes hang
+        // still: a reference is one moment of its wind, so a swaying rope
+        // would make every comparison differ by chance.
+        .args(["+r_drawviewmodel", "0", "+rope_wind_dist", "0"])
         .args(extra)
         .envs(env.iter().map(|(k, v)| (*k, v.as_str())))
         .stdout(if show_stdout {
