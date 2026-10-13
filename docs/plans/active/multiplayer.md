@@ -1454,7 +1454,9 @@ with tests passing and something to see.
 ### mg_jacks_multigames_v1 in a network game (2026-10-13, `NET_VERSION` net14)
 
 (net15, same day: the HUD's weapon pick by place in the slot, `Intent::pick`,
-from the parity pass, landed beside net14 and took the next number.)
+from the parity pass, landed beside net14 and took the next number.
+net16, parity round 2: `Hurt` (the damage indicator on clients),
+`RoundOver`'s win panel summary, entity-mapped, and `NetRound::map_started`.)
 
 - **Map logic's sounds** reach clients (they run no map logic): its
   one-shots (`logic::LogicOneShot`: a locked door, a break, a spark) as

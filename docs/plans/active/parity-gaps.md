@@ -347,7 +347,7 @@ common console commands, against mashup's.
   `users`, `buyequip`, `cancelselect`, `cl_radaralpha`,
   `hud_saytext_time`. Tests: unit tests in `client::perf`, `net`,
   `client::weapon_select`, `client::chat`.
-- `NET_VERSION` net15 (`Hurt`, `RoundOver`'s summary, `NetRound`'s map
+- `NET_VERSION` net16 (`Hurt`, `RoundOver`'s summary, `NetRound`'s map
   start).
 
 ## Next fixes that need no capture
