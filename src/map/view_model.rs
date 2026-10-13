@@ -573,7 +573,14 @@ pub(super) fn draw_view_models(
         // A new body is hidden until its first pose: its skeleton spawns in
         // the reference pose, which for view models is nothing like the
         // drawn weapon (a full-screen mess for a frame on every switch).
-        if *visibility == Visibility::Hidden && (animator.is_some() || model.animations.is_none()) {
+        // And one with nothing playing (no sequence for it) stays hidden
+        // rather than T-posed: CS:S draws no hands without a weapon.
+        // (A finished sequence keeps its last pose: only no animator at
+        // all hides it again.)
+        let unanimated = model.animations.is_some() && state.is_none_or(|(s, _)| s.animator.is_none());
+        if unanimated {
+            visibility.set_if_neq(Visibility::Hidden);
+        } else if *visibility == Visibility::Hidden && (animator.is_some() || model.animations.is_none()) {
             *visibility = Visibility::Inherited;
         }
         // Light it from one point near the eye (spec view_models.md 9): its

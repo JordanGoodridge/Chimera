@@ -369,6 +369,19 @@ fn the_dead_show_no_view_model() {
     assert_eq!(view(&sim, p).0, None);
 }
 
+/// Stripped of every weapon (a map's player_weaponstrip): no view model
+/// (CS:S draws none; ours showed the hands T-posed).
+#[test]
+fn no_weapon_shows_no_view_model() {
+    let mut sim = sim();
+    let p = holding(&mut sim, AK47);
+    assert_eq!(view(&sim, p).0.as_deref(), Some(AK47));
+    mashup::weapon::equip::strip(sim.app.world_mut(), p);
+    sim.ticks(3);
+    let v = sim.app.world().get::<ViewAnimator>(p).unwrap();
+    assert!(v.key.is_none() && v.animator.is_none(), "{:?}", v.key);
+}
+
 /// Spec view_models.md E1: every shot restarts a fire sequence and re-arms
 /// its events, so the muzzle flash and brass fire on both of two quick
 /// shots, even when the same fire sequence is picked twice.

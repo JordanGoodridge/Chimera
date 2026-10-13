@@ -1,4 +1,6 @@
-//! Stamps the build with its git commit (`MASHUP_GIT`), for bug reports.
+//! Stamps the build with its git commit (`MASHUP_GIT`: `git describe`) and
+//! its version (`MASHUP_VERSION`: tag or describe, short hash and commit
+//! date, `src/core/version.rs`), for bug reports and the `version` command.
 //!
 //! Reruns only when this checkout's commit changes: when HEAD or the
 //! current branch's ref moves. Paths come from `git rev-parse --git-path`,
@@ -8,9 +10,13 @@
 //! relink everything), so a `-dirty` mark is as of the last commit change.
 use std::{path::Path, process::Command};
 
+include!("src/core/version.rs");
+
 fn git(args: &[&str]) -> Option<String> {
     Command::new("git")
         .args(args)
+        // Commit dates in UTC.
+        .env("TZ", "UTC")
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -20,8 +26,22 @@ fn git(args: &[&str]) -> Option<String> {
 fn main() {
     let hash = git(&["describe", "--always", "--dirty"]).unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=MASHUP_GIT={hash}");
+    let version = match (
+        git(&["rev-parse", "--short", "HEAD"]),
+        git(&["log", "-1", "--format=%cd", "--date=format-local:%Y-%m-%d"]),
+    ) {
+        (Some(short), Some(date)) => format_version(
+            git(&["describe", "--tags"]).as_deref(),
+            &short,
+            &date,
+            hash.ends_with("-dirty"),
+        ),
+        _ => "unknown".into(),
+    };
+    println!("cargo:rustc-env=MASHUP_VERSION={version}");
     // Without git: rerun only when this script changes.
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/core/version.rs");
     let Some(head) = git(&["rev-parse", "--git-path", "HEAD"]) else { return };
     println!("cargo:rerun-if-changed={head}");
     // The branch's own ref, or packed-refs when it is packed (a detached

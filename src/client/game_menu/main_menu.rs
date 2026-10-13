@@ -266,7 +266,23 @@ pub(super) fn main_list(
         label(commands, e_node, look, (4.0, 0.0, 256.0, item_h), &e.label.to_uppercase(), font.clone(), color, -1);
         y += item_h;
     }
+    // This build's version, small in the bottom-right corner.
+    let version = label(
+        commands,
+        root,
+        look,
+        (size.x / look.s - 408.0, size.y / look.s - 20.0, 400.0, 16.0),
+        crate::core::VERSION,
+        look.font("DefaultSmall", (13.0, false)),
+        look.disabled(),
+        1,
+    );
+    commands.entity(version).insert(VersionLabel);
 }
+
+/// The main menu's version text (`core::VERSION`).
+#[derive(Component)]
+pub struct VersionLabel;
 
 impl GameMenu {
     /// The left-hand entries shown: in a game all, at the main menu those
