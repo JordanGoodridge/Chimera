@@ -329,7 +329,12 @@ fn survivors_keep_their_clip_and_reload_in_the_freeze() {
     sim.set_tick_interval(TICK_INTERVAL);
     let t = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), placeholder::ID);
     let ct = sim.spawn_character(Vec3::new(4.0, 1.0, 0.0), placeholder::ID);
-    sim.app.world_mut().entity_mut(t).insert(Team(1));
+    // A person (not a bot: bots autobuy at the round's start and would
+    // draw what they bought).
+    sim.app
+        .world_mut()
+        .entity_mut(t)
+        .insert((Team(1), mashup::core::LocalPlayer));
     sim.app.world_mut().entity_mut(ct).insert(Team(2));
     sim.app
         .world_mut()
