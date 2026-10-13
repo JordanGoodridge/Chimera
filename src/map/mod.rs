@@ -1315,7 +1315,7 @@ pub struct MapShadows {
 
 /// Sound entries the announcer plays for rounds: a side's win, a draw,
 /// and one picked at random when a round goes live; also the player's
-/// own deny sound (+use on nothing).
+/// own interface sounds (+use on nothing, the HUD's weapon selection).
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct RoundSounds {
     pub attackers_win: Option<String>,
@@ -1323,6 +1323,12 @@ pub struct RoundSounds {
     pub draw: Option<String>,
     pub start: Vec<String>,
     pub use_deny: Option<String>,
+    /// The weapon selection opening or its highlight moving.
+    pub weapon_move: Option<String>,
+    /// A weapon picked from the weapon selection.
+    pub weapon_pick: Option<String>,
+    /// A slot key on an empty slot.
+    pub weapon_deny: Option<String>,
 }
 
 /// Indices into `core::MapBrushes` of brushes that stop players but not

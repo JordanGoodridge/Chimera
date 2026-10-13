@@ -24,7 +24,15 @@ use crate::core::HearingEffect;
 pub struct Hearing {
     pub effect: Option<(HearingEffect, f64)>,
     pub mix: Arc<HearingMix>,
+    /// The eye is in water (`water::WaterView`): everything muffled
+    /// (`UNDERWATER`).
+    pub underwater: bool,
 }
+
+/// What the listener hears with its eye in water: (mix, low-pass cutoff
+/// Hz, wet gain). Source switches to its `dsp_water` room preset there
+/// (engine-side, its parameters UNMEASURED); ours is a steady muffle.
+pub const UNDERWATER: (f32, f32, f32) = (1.0, 600.0, 0.8);
 
 impl Hearing {
     /// Strength of the running effect at `now` (0 without one).
@@ -46,12 +54,19 @@ impl Hearing {
     /// What the playing sounds get at `now`: (mix, cutoff Hz, wet gain,
     /// ring tone Hz, ring amplitude).
     pub fn targets(&self, now: f64) -> (f32, f32, f32, f32, f32) {
-        let Some((e, _)) = self.effect else {
-            return (0.0, 0.0, 1.0, 0.0, 0.0);
-        };
-        let level = self.level(now);
-        let mix = e.mix * level;
-        (mix, e.cutoff, e.wet_gain, e.ring_hz, e.ring_gain * mix)
+        let effect = self.effect.map(|(e, _)| {
+            let mix = e.mix * self.level(now);
+            (mix, e.cutoff, e.wet_gain, e.ring_hz, e.ring_gain * mix)
+        });
+        let (mix, cutoff, wet, ring_hz, ring) = effect.unwrap_or((0.0, 0.0, 1.0, 0.0, 0.0));
+        if !self.underwater {
+            return (mix, cutoff, wet, ring_hz, ring);
+        }
+        // Under water the muffle holds; a blast's ring still sounds, and
+        // its own muffle wins where it is the duller one.
+        let (w_mix, w_cutoff, w_wet) = UNDERWATER;
+        let cutoff = if mix > 0.0 { cutoff.min(w_cutoff) } else { w_cutoff };
+        (mix.max(w_mix), cutoff, w_wet.min(if mix > 0.0 { wet } else { 1.0 }), ring_hz, ring)
     }
 }
 
@@ -213,13 +228,24 @@ impl Plugin for HearingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Hearing>()
             .init_resource::<Ringing>()
-            .add_systems(PostUpdate, drive.run_if(resource_exists::<Assets<RingTone>>));
+            .add_systems(
+                PostUpdate,
+                (eye_in_water, drive.run_if(resource_exists::<Assets<RingTone>>)).chain(),
+            );
     }
 
     fn finish(&self, app: &mut App) {
         if app.is_plugin_added::<bevy::audio::AudioPlugin>() {
             bevy::audio::AddAudioSource::add_audio_source::<RingTone>(app);
         }
+    }
+}
+
+/// Whether the eye is in water this frame (the map's `WaterView`).
+fn eye_in_water(view: Option<Res<super::water::WaterView>>, mut hearing: ResMut<Hearing>) {
+    let under = view.is_some_and(|v| v.under.is_some());
+    if hearing.underwater != under {
+        hearing.underwater = under;
     }
 }
 
@@ -293,6 +319,23 @@ mod tests {
             ..RING
         };
         assert!((linear.level(2.1) - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn under_water_everything_is_muffled_and_a_ring_still_sounds() {
+        let mut h = Hearing {
+            underwater: true,
+            ..default()
+        };
+        let (mix, cutoff, wet, _, ring) = h.targets(0.0);
+        assert_eq!((mix, cutoff, wet, ring), (UNDERWATER.0, UNDERWATER.1, UNDERWATER.2, 0.0));
+        h.apply(RING, 10.0);
+        let (mix, cutoff, _, hz, ring) = h.targets(11.0);
+        assert_eq!((mix, hz), (1.0, 3000.0));
+        assert_eq!(cutoff, UNDERWATER.1, "the duller of the two");
+        assert!(ring > 0.0);
+        h.underwater = false;
+        assert_eq!(h.targets(11.0).1, 1000.0, "out of the water: the blast's own");
     }
 
     #[test]

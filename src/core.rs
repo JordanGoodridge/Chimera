@@ -34,8 +34,11 @@ pub struct Intent {
     /// Secondary attack (Source attack2: stab, zoom, burst toggle).
     pub secondary: bool,
     pub reload: bool,
-    /// A weapon slot key held this tick (0 = first slot); the weapon slot
-    /// switches when it changes.
+    /// A weapon pick held this tick; the weapon switches when it changes.
+    /// A slot key is the slot (0 = first slot: its first weapon, or the
+    /// next one in it after the held one); a pick of one weapon in a slot
+    /// (the HUD's weapon selection: `invnext`, the second grenade) is
+    /// `Intent::pick` (see `Intent::picked`).
     pub select: Option<u8>,
     /// Switch to the previously held weapon (Source `lastinv`).
     pub last_weapon: bool,
@@ -49,7 +52,25 @@ pub struct Intent {
     pub command: u32,
 }
 
+/// Weapon slots a pick can name (`Intent::select`).
+pub const PICK_SLOTS: u8 = 10;
+/// Weapons per slot a pick can name.
+pub const PICK_DEPTH: u8 = 8;
+
 impl Intent {
+    /// The `select` value picking the `nth` weapon (from 0, in inventory
+    /// order) in `slot`.
+    pub fn pick(slot: u8, nth: u8) -> u8 {
+        slot + PICK_SLOTS * (nth.min(PICK_DEPTH - 1) + 1)
+    }
+
+    /// A `select` value as its slot and, for a pick, the weapon's place in
+    /// the slot (None: a slot key).
+    pub fn picked(select: u8) -> (u8, Option<u8>) {
+        let (slot, n) = (select % PICK_SLOTS, select / PICK_SLOTS);
+        (slot, n.checked_sub(1))
+    }
+
     pub fn look_rotation(&self) -> Quat {
         Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, 0.0)
     }

@@ -15,7 +15,11 @@
 //! that slot (again: the next weapon in it), attack takes the highlighted
 //! weapon and attack2 closes it; with `hud_fastswitch 1` slot keys switch
 //! at once and the row shows the drawn weapon for a moment. The row closes
-//! itself after a while (`MENU_SECONDS`, ours).
+//! itself after a while (`MENU_SECONDS`, ours). `invnext` / `invprev`
+//! (CS:S's mouse-wheel commands) step through every weapon held, slot by
+//! slot, the same way: opening the row (fast switch off) or switching.
+//! The row plays the game's selection sounds (`map::RoundSounds`): a move
+//! of the highlight, a pick, a slot key on an empty slot.
 //!
 //! History: each weapon you get shows on the right, newest at the bottom
 //! of the panel and older ones `history_gap` above, for
@@ -72,6 +76,15 @@ impl Plugin for WeaponSelectPlugin {
                 },
             );
         }
+        for (name, step, help) in [
+            ("invnext", 1, "The next weapon held (with hud_fastswitch 0: in the weapon selection)."),
+            ("invprev", -1, "The previous weapon held (with hud_fastswitch 0: in the weapon selection)."),
+        ] {
+            app.console_command(name, help, move |w, _| {
+                w.resource_mut::<WeaponMenu>().steps.push(step);
+                Ok(None)
+            });
+        }
     }
 }
 
@@ -106,7 +119,8 @@ pub struct WeaponMenu {
     shown_for: Option<f32>,
     /// Open for a pick (fast switch off), not just showing a switch.
     pub choosing: bool,
-    /// The slot to select and how long it is still held in the intent.
+    /// The slot or pick (`core::Intent::select`) to select and how long
+    /// it is still held in the intent.
     pub select: Option<(u8, f32)>,
     /// Attack has picked a weapon and is still held: no firing until it
     /// is let go.
@@ -116,6 +130,8 @@ pub struct WeaponMenu {
     pub takes_slots: bool,
     /// Slot commands run since last frame (console, binds of `slotN`).
     pressed: Vec<u8>,
+    /// `invnext` (+1) and `invprev` (-1) run since last frame.
+    steps: Vec<i8>,
 }
 
 impl WeaponMenu {
@@ -145,6 +161,31 @@ pub fn next_in_slot(held: &[(Entity, u8)], slot: u8, current: Option<Entity>) ->
     }
 }
 
+/// What `invnext` (`step` 1) or `invprev` (-1) moves to from `current`:
+/// the weapons held ordered by slot, then inventory order, wrapping; from
+/// nothing, the first (or last).
+pub fn step_weapon(held: &[(Entity, u8)], current: Option<Entity>, step: i8) -> Option<Entity> {
+    let mut order: Vec<(Entity, u8)> = held.to_vec();
+    order.sort_by_key(|(_, s)| *s);
+    let n = order.len() as i32;
+    if n == 0 {
+        return None;
+    }
+    let i = match current.and_then(|c| order.iter().position(|(e, _)| *e == c)) {
+        Some(i) => (i as i32 + step as i32).rem_euclid(n),
+        None if step < 0 => n - 1,
+        None => 0,
+    };
+    Some(order[i as usize].0)
+}
+
+/// The intent's pick of `weapon` (its slot and place in it), if held.
+pub fn pick_of(held: &[(Entity, u8)], weapon: Entity) -> Option<u8> {
+    let slot = held.iter().find(|(e, _)| *e == weapon)?.1;
+    let nth = held.iter().filter(|(_, s)| *s == slot).position(|(e, _)| *e == weapon)?;
+    Some(crate::core::Intent::pick(slot, nth as u8))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn menu_input(
     mut menu: ResMut<WeaponMenu>,
@@ -161,8 +202,14 @@ fn menu_input(
         Option<Res<super::radio::RadioMenu>>,
     ),
     time: Res<Time>,
+    (sounds, mut play): (Option<Res<crate::map::RoundSounds>>, MessageWriter<crate::map::PlaySound>),
 ) {
     let dt = time.delta_secs();
+    let mut sound = |pick: fn(&crate::map::RoundSounds) -> &Option<String>| {
+        if let Some(entry) = sounds.as_ref().and_then(|s| pick(s).clone()) {
+            play.write(crate::map::PlaySound::ui(entry));
+        }
+    };
     menu.takes_slots = fast.0 == 0
         && hud
             .as_ref()
@@ -189,35 +236,68 @@ fn menu_input(
         menu.swallow_fire = false;
     }
     let mut pressed = std::mem::take(&mut menu.pressed);
+    let steps = std::mem::take(&mut menu.steps);
+    let held: Vec<(Entity, u8)> = player
+        .as_ref()
+        .map(|inv| {
+            inv.weapons
+                .iter()
+                .filter_map(|e| weapons.get(*e).ok().map(|w| (*e, w.slot)))
+                .collect()
+        })
+        .unwrap_or_default();
     if menu.takes_slots {
         pressed.extend((0..5u8).filter(|s| just(&format!("slot{}", s + 1))));
-    } else if let Some(&slot) = pressed.last() {
-        // Fast switch: the command switches directly, like the key.
-        menu.select = Some((slot, SELECT_HOLD));
+    } else {
+        if let Some(&slot) = pressed.last() {
+            // Fast switch: the command switches directly, like the key.
+            menu.select = Some((slot, SELECT_HOLD));
+            return;
+        }
+        // invnext / invprev switch directly from the weapon in hand.
+        let mut current = player.as_ref().and_then(|i| i.active);
+        for step in &steps {
+            current = step_weapon(&held, current, *step);
+        }
+        if !steps.is_empty()
+            && let Some(pick) = current.and_then(|w| pick_of(&held, w))
+        {
+            menu.select = Some((pick, SELECT_HOLD));
+        }
         return;
     }
-    let Some(inv) = player else { return };
-    let held: Vec<(Entity, u8)> = inv
-        .weapons
-        .iter()
-        .filter_map(|e| weapons.get(*e).ok().map(|w| (*e, w.slot)))
-        .collect();
+    if player.is_none() {
+        return;
+    }
     for slot in pressed {
         let current = menu.highlighted.filter(|_| menu.choosing);
         if let Some(next) = next_in_slot(&held, slot, current) {
             menu.highlighted = Some(next);
             menu.choosing = true;
             menu.shown_for = Some(0.0);
+            sound(|s| &s.weapon_move);
+        } else {
+            sound(|s| &s.weapon_deny);
+        }
+    }
+    for step in steps {
+        // From the highlight while the row is open, else the weapon in hand.
+        let current = menu
+            .highlighted
+            .filter(|_| menu.choosing && menu.shown_for.is_some())
+            .or(player.as_ref().and_then(|i| i.active));
+        if let Some(next) = step_weapon(&held, current, step) {
+            menu.highlighted = Some(next);
+            menu.choosing = true;
+            menu.shown_for = Some(0.0);
+            sound(|s| &s.weapon_move);
         }
     }
     if menu.choosing && menu.shown_for.is_some() {
         if just("+attack") {
-            if let Some(slot) = menu
-                .highlighted
-                .and_then(|e| held.iter().find(|(w, _)| *w == e))
-                .map(|(_, s)| *s)
-            {
-                menu.select = Some((slot, SELECT_HOLD));
+            if let Some(pick) = menu.highlighted.and_then(|e| pick_of(&held, e)) {
+                menu.select = Some((pick, SELECT_HOLD));
+                sound(|s| &s.weapon_pick);
             }
             menu.swallow_fire = true;
             menu.shown_for = None;
@@ -622,6 +702,25 @@ mod tests {
         // Open on another slot: that slot's first.
         assert_eq!(next_in_slot(&held, 3, Some(a)), Some(b));
         assert_eq!(next_in_slot(&held, 1, None), None);
+    }
+
+    #[test]
+    fn inventory_steps_go_slot_by_slot_and_wrap() {
+        let [knife, ak, usp, he, flash] = [1, 2, 3, 4, 5].map(Entity::from_raw_u32).map(Option::unwrap);
+        // Inventory order isn't slot order; grenades share slot 3.
+        let held = [(knife, 2), (ak, 0), (usp, 1), (he, 3), (flash, 3)];
+        assert_eq!(step_weapon(&held, Some(ak), 1), Some(usp));
+        assert_eq!(step_weapon(&held, Some(usp), 1), Some(knife));
+        assert_eq!(step_weapon(&held, Some(he), 1), Some(flash));
+        assert_eq!(step_weapon(&held, Some(flash), 1), Some(ak), "wraps");
+        assert_eq!(step_weapon(&held, Some(ak), -1), Some(flash), "wraps back");
+        assert_eq!(step_weapon(&held, None, 1), Some(ak));
+        assert_eq!(step_weapon(&held, None, -1), Some(flash));
+        assert_eq!(step_weapon(&[], None, 1), None);
+        // The flashbang is the second weapon in its slot.
+        assert_eq!(pick_of(&held, flash), Some(crate::core::Intent::pick(3, 1)));
+        assert_eq!(crate::core::Intent::picked(crate::core::Intent::pick(3, 1)), (3, Some(1)));
+        assert_eq!(crate::core::Intent::picked(3), (3, None));
     }
 
     #[test]

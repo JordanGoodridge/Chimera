@@ -690,6 +690,10 @@ fn take(world: &mut World, owner: Entity, weapon: Entity) {
         w.owner = Some(owner);
     }
     super::equip::picked_up(world, owner, weapon);
+    let sound = world
+        .get_resource::<super::economy::Prices>()
+        .and_then(|p| p.pickup_sound.clone());
+    super::economy::owner_sound(world, owner, sound);
 }
 
 /// `cl_autowepswitch` (CS:S's Multiplayer > Advanced "Automatically switch

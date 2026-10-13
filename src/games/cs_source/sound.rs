@@ -204,7 +204,21 @@ const ALWAYS: &[&str] = &[
     "Player.UseDeny",
     super::radio::CHAT_SOUND,
     super::weapons::AMMO_SOUND,
+    // Picking up or buying a weapon, an item (kevlar, defuse kit).
+    super::weapons::PICKUP_SOUND,
+    super::weapons::ITEM_SOUND,
+    // The HUD's weapon selection.
+    WEAPON_MOVE,
+    WEAPON_PICK,
+    WEAPON_DENY,
 ];
+
+/// The HUD weapon selection's sounds (the install's game_sounds.txt; all
+/// `common/wpn_hudoff.wav`, the move and deny at half volume). When CS:S
+/// plays each is inferred from their names (docs/tech-debt.md).
+const WEAPON_MOVE: &str = "Player.WeaponSelectionMoveSlot";
+const WEAPON_PICK: &str = "Player.WeaponSelected";
+const WEAPON_DENY: &str = "Player.DenyWeaponSelection";
 
 /// The announcer's round sounds (game_sounds_radio.txt entries).
 pub fn round_sounds() -> crate::map::RoundSounds {
@@ -217,6 +231,9 @@ pub fn round_sounds() -> crate::map::RoundSounds {
         // common/wpn_select.wav at 0.4); the later definition wins here.
         // Which CS:S plays is an open question (doors_buttons.md Q2).
         use_deny: Some("Player.UseDeny".into()),
+        weapon_move: Some(WEAPON_MOVE.into()),
+        weapon_pick: Some(WEAPON_PICK.into()),
+        weapon_deny: Some(WEAPON_DENY.into()),
     }
 }
 

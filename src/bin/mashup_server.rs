@@ -134,7 +134,7 @@ fn main() {
         read: Arc::new(games::map_file_bytes),
         cache: mashup::mount::config::content_dir(cs_source::GAME),
     })
-    .add_systems(Update, finish_level_change)
+    .add_systems(Update, (finish_level_change, follow_map_cycle))
     .console_command(
         "changelevel",
         "changelevel <map>: move the server and its players to another map (greybox or a CS:S map).",
@@ -193,6 +193,21 @@ struct LevelLoad {
 
 /// `changelevel <map>`: the greybox at once; a CS:S map loaded in the
 /// background (the game plays on), then swapped in (`finish_level_change`).
+/// The rules' map cycle (`rules::game_end`: the next map when a game
+/// ends) follows the map loaded; its maps from the install's map cycle.
+fn follow_map_cycle(name: Option<Res<LoadedMapName>>, mut cycle: ResMut<mashup::rules::game_end::MapCycle>) {
+    let Some(name) = name.filter(|n| n.is_changed()) else { return };
+    cycle.current = net::maps::map_name(&name.0).to_string();
+    if cycle.maps.is_empty() {
+        cycle.maps = mashup::mount::config::LocalConfig::load()
+            .ok()
+            .and_then(|c| c.game_path(cs_source::GAME))
+            .and_then(|path| cs_source::mount::open(&path).ok())
+            .map(|mount| cs_source::map_cycle(&mount))
+            .unwrap_or_default();
+    }
+}
+
 fn change_level(world: &mut World, name: &str) -> Result<Option<String>, String> {
     let id = net::normalize_map(name);
     if id == net::GREYBOX {
