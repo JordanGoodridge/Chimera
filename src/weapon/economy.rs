@@ -118,8 +118,8 @@ impl Default for BuyWindow {
 
 /// Why buying fails for a terrorist or a CT on a map whose
 /// `info_map_parameters` bars them (CS:S's words, on one line).
-pub const T_CANT_BUY: &str = "Terrorists aren't allowed to buy anything on this map!";
-pub const CT_CANT_BUY: &str = "CTs aren't allowed to buy anything on this map!";
+pub const T_CANT_BUY: &str = "Terrorists aren't allowed to buy anything on this map.";
+pub const CT_CANT_BUY: &str = "CTs aren't allowed to buy anything on this map.";
 
 /// Why buying fails without the money (CS:S's words).
 pub const INSUFFICIENT_FUNDS: &str = "You have insufficient funds.";
