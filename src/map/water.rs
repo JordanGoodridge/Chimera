@@ -896,7 +896,15 @@ pub(super) fn spawn_surfaces(
                     ChildOf(node.unwrap_or(root)),
                 ));
                 if node.is_some() {
-                    e.insert(MovingWaterSurface { min, max });
+                    // Culled by the clusters its moved bounds touch, as
+                    // a brush entity is (`tag_moved_brush_entities`):
+                    // untagged, mg_jacks_multigames_v1's flood showed
+                    // through the sky from other rooms.
+                    e.insert((
+                        MovingWaterSurface { min, max },
+                        super::BrushEntityBounds { min, max },
+                        super::vis::VisClusters::new(Vec::new()),
+                    ));
                 }
                 if !clusters.is_empty() {
                     e.insert(super::vis::VisClusters::new(clusters));

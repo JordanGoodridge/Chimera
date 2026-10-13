@@ -598,6 +598,60 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
     check("water surfaces", water);
 }
 
+/// mg_jacks_multigames_v1 (a playtest, `setpos -12146.96 15343.41
+/// -927.97; setang -29.57 184.04 0`): the flood's water (a
+/// func_water_analog, drawn under its mover's node) showed through the
+/// sky from another room: moving water had no clusters, so it was never
+/// culled. Now it is tagged by its moved bounds, as brush entities are.
+#[test]
+fn moving_water_is_culled_on_jacks() {
+    let Some(map) = load("mg_jacks_multigames_v1") else { return };
+    let v = map.visibility.clone().expect("visibility");
+    let eye = Vec3::new(-12146.96, -927.97 + 64.0, -15343.41) * cs_source::bsp::METERS_PER_UNIT;
+    let cluster = v.cluster_at(eye).expect("the spot is in a cluster");
+    let mut sim = Sim::new((
+        |app: &mut App| {
+            app.init_asset::<Image>()
+                .init_asset::<StandardMaterial>()
+                .init_asset::<mashup::map::world_material::WorldMaterial>()
+                .init_asset::<mashup::map::prop_material::PropMaterial>()
+                .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
+                .init_asset::<mashup::map::water::WaterMaterial>()
+                .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
+        },
+        MapPlugin::new(map),
+        SourceMovementPlugin,
+        CsWeaponsPlugin,
+    ));
+    sim.set_tick_interval(cs_source::TICK_INTERVAL);
+    let view = sim.app.world_mut().spawn((Camera3d::default(), Transform::from_translation(eye))).id();
+    sim.ticks(1);
+    let world = sim.app.world_mut();
+    let mut cams = world.query::<(Entity, &mut Camera)>();
+    for (e, mut c) in cams.iter_mut(world) {
+        c.is_active = e == view;
+    }
+    sim.ticks(10);
+    let world = sim.app.world_mut();
+    assert_eq!(world.resource::<mashup::map::vis::VisStats>().cluster, Some(cluster));
+    let mut q = world.query::<(
+        &mashup::map::water::WaterSurface,
+        Option<&mashup::map::vis::VisClusters>,
+        Has<mashup::map::water::MovingWaterSurface>,
+    )>();
+    let mut moving = 0;
+    for (s, c, moves) in q.iter(world).filter(|(s, ..)| !s.skybox) {
+        let c = c.unwrap_or_else(|| panic!("{:?}..{:?} untagged (moving: {moves})", s.min, s.max));
+        assert!(!c.clusters.is_empty(), "{:?}..{:?}: no clusters", s.min, s.max);
+        assert_eq!(c.potentially_visible, v.sees_any(cluster, &c.clusters));
+        if moves {
+            moving += 1;
+            assert!(!c.potentially_visible, "the flood, another room's, is culled here");
+        }
+    }
+    assert!(moving > 0, "the flood's surfaces");
+}
+
 /// The 2D sky's bottom face (`dn`) joins the side faces: on community
 /// skies whose bottom is a picture (stock CS:S bottoms are one colour),
 /// the orientation `cs_source::sky::FACES` gives it has the smallest seam
