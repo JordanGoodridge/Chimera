@@ -343,7 +343,8 @@ fn soundscapes_follow_enable_and_disable() {
 /// client gets them in a burst after a stall): the last one plays, each
 /// one before it is stopped once. They were despawned twice, a Bevy
 /// warning each time (hundreds in a 17-minute live soak; multiplayer.md,
-/// "Soak").
+/// "Soak"). One already playing fades out (`FadingOut`, a few
+/// milliseconds; headless, nothing ends it) rather than stopping dead.
 #[test]
 fn a_burst_on_one_channel_replaces_cleanly() {
     let mut s = MapSounds::default();
@@ -374,13 +375,25 @@ fn a_burst_on_one_channel_replaces_cleanly() {
     };
     let playing = |sim: &mut Sim| {
         let w = sim.app.world_mut();
-        w.query::<&AudioPlayer<mashup::map::live_sound::LiveClip>>().iter(w).count()
+        w.query_filtered::<(), (
+            With<AudioPlayer<mashup::map::live_sound::LiveClip>>,
+            Without<mashup::map::sound::FadingOut>,
+        )>()
+        .iter(w)
+        .count()
     };
-    for burst in [1, 3, 2, 4] {
+    let fading = |sim: &mut Sim| {
+        let w = sim.app.world_mut();
+        w.query_filtered::<(), With<mashup::map::sound::FadingOut>>().iter(w).count()
+    };
+    for (i, burst) in [1, 3, 2, 4].into_iter().enumerate() {
         for _ in 0..burst {
             sim.app.world_mut().write_message(shot());
         }
         sim.app.update();
         assert_eq!(playing(&mut sim), 1, "one sound on the channel after a burst of {burst}");
+        // Each burst's sound fades when the next burst replaces it (the
+        // ones replaced within a burst never started).
+        assert_eq!(fading(&mut sim), i, "fading after a burst of {burst}");
     }
 }
