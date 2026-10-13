@@ -21,6 +21,20 @@ use crate::{
 /// One Hammer unit is one inch.
 pub const METERS_PER_UNIT: f32 = 0.0254;
 
+/// The player models by class (`core::PlayerClass` 1-8, CS:S's
+/// `joinclass` numbers): Phoenix Connexion, Elite Crew, Arctic Avengers,
+/// Guerilla Warfare; SEAL Team 6, GSG-9, SAS, GIGN.
+pub const CLASS_MODELS: [&str; 8] = [
+    "models/player/t_phoenix.mdl",
+    "models/player/t_leet.mdl",
+    "models/player/t_arctic.mdl",
+    "models/player/t_guerilla.mdl",
+    "models/player/ct_urban.mdl",
+    "models/player/ct_gsg9.mdl",
+    "models/player/ct_sas.mdl",
+    "models/player/ct_gign.mdl",
+];
+
 /// Source (x forward, y left, z up) to engine (y up, -z forward), in meters.
 /// A rotation, so handedness and winding are preserved.
 pub fn to_engine(v: vbsp::Vector) -> Vec3 {
@@ -242,13 +256,24 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
     timer.lap("ropes, sprites, dust, steam");
     report(0.55, "LoadingProgress_LoadResources");
     // Character bodies: a terrorist and a counter-terrorist model (CS:S
-    // teams 2 and 3; ours are 1 and 2), the CT one for anyone else.
+    // teams 2 and 3; ours are 1 and 2), the CT one for anyone else; then
+    // the other classes' (`core::PlayerClass`, the class menu).
     for (path, team) in [
-        ("models/player/t_phoenix.mdl", Some(crate::core::Team(1))),
-        ("models/player/ct_urban.mdl", None),
+        (CLASS_MODELS[0], Some(crate::core::Team(1))),
+        (CLASS_MODELS[4], None),
     ] {
         match super::props::load_character(&mut materials, &surfaces, path, team) {
             Ok(c) => data.characters.push(c),
+            Err(e) => data.warnings.push(e),
+        }
+    }
+    for (i, path) in CLASS_MODELS.iter().enumerate().filter(|(i, _)| i % 4 != 0) {
+        let team = crate::core::Team(1 + i as u8 / 4);
+        match super::props::load_character(&mut materials, &surfaces, path, Some(team)) {
+            Ok(mut c) => {
+                c.class = Some(i as u8 + 1);
+                data.characters.push(c);
+            }
             Err(e) => data.warnings.push(e),
         }
     }

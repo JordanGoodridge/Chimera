@@ -249,6 +249,7 @@ pub fn load_character(
     Ok(crate::map::MapCharacterModel {
         team,
         name: None,
+        class: None,
         ragdoll,
         animations,
         boxes,

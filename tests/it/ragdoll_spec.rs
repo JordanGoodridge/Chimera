@@ -238,6 +238,7 @@ fn front_death_pose_throws_the_head_back() {
     let m = MapCharacterModel {
         team: None,
         name: None,
+        class: None,
         model: Default::default(),
         hitboxes: Vec::new(),
         bones,

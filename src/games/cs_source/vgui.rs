@@ -222,6 +222,13 @@ const SCOREBOARD: &str = "resource/ui/scoreboard.res";
 const SPECTATOR: &str = "resource/ui/spectator.res";
 const SPECTATOR_MENU: &str = "resource/ui/bottomspectator.res";
 const WIN_PANEL: &str = "resource/ui/win_round.res";
+/// The message of the day's panel, and the class menus by team.
+const MOTD_PANEL: &str = "resource/ui/motd.res";
+const CLASS_PAGES: [(u8, &str); 2] = [(1, "resource/ui/classmenu_ter.res"), (2, "resource/ui/classmenu_ct.res")];
+/// The install's message of the day as a server finds it (the game folder's
+/// `motd.txt`, else the shipped default), and the plain-text one.
+const MOTD_FILES: [&str; 3] = ["motd.txt", "cfg/motd.txt", "cfg/motd_default.txt"];
+const MOTD_TEXT_FILES: [&str; 3] = ["motd_text.txt", "cfg/motd_text.txt", "cfg/motd_text_default.txt"];
 /// The spectator menu's drop-downs' entries (command menu definitions).
 const SPECTATOR_OPTIONS: &str = "resource/spectatormenu.res";
 const SPECTATOR_MODES: &str = "resource/spectatormodes.res";
@@ -307,6 +314,8 @@ pub(crate) fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str)
     let mut queue: Vec<String> = BUY_PAGES.iter().map(|(_, p)| p.to_string()).collect();
     queue.push(BUY_FALLBACK.into());
     queue.push(TEAM_MENU.into());
+    queue.push(MOTD_PANEL.into());
+    queue.extend(CLASS_PAGES.iter().map(|(_, p)| p.to_string()));
     queue.extend([SCOREBOARD, SPECTATOR, SPECTATOR_MENU, WIN_PANEL].map(String::from));
     let mut seen = std::collections::HashSet::new();
     while let Some(path) = queue.pop() {
@@ -371,6 +380,21 @@ pub(crate) fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str)
         }
     }
     menus.team = menus.layouts.contains_key(TEAM_MENU).then(|| TEAM_MENU.to_string());
+    menus.motd = menus.layouts.contains_key(MOTD_PANEL).then(|| MOTD_PANEL.to_string());
+    for (team, path) in CLASS_PAGES {
+        if menus.layouts.contains_key(path) {
+            menus.class.insert(team, path.to_string());
+        }
+    }
+    let first_file = |files: &[&str]| {
+        files
+            .iter()
+            .find_map(|f| materials.read(f))
+            .map(|b| super::radio::decode(&b))
+            .filter(|t| !t.trim().is_empty())
+    };
+    menus.motd_file = first_file(&MOTD_FILES);
+    menus.motd_text_file = first_file(&MOTD_TEXT_FILES);
     let have = |path: &str| menus.layouts.contains_key(path).then(|| path.to_string());
     (menus.scoreboard, menus.spectator, menus.spectator_menu) = (have(SCOREBOARD), have(SPECTATOR), have(SPECTATOR_MENU));
     menus.win_panel = have(WIN_PANEL);

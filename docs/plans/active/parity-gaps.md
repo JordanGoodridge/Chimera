@@ -27,16 +27,16 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Movement | 2 | 7 | 2 | 0 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
 | Sounds | 6 | 7 | 5 | 3 |
-| HUD | 12 | 4 | 3 | 3 |
-| Menus and commands | 11 | 4 | 8 | 8 |
+| HUD | 14 | 4 | 1 | 5 |
+| Menus and commands | 12 | 4 | 7 | 9 |
 | Rendering, lighting, materials | 4 | 16 | 2 | 0 |
 | Maps and entities | 5 | 10 | 1 | 0 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **56** | **62** | **27** | **20** |
+| **Total** | **59** | **62** | **24** | **23** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
-the first pass and round 2 (counted under have; `invnext` and `autobuy`
+the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
 appear under both Weapons and Menus: 9 fixes in the first pass; round 2
 in its own section below). Round 2 split three Menus rows (what was
 fixed from what wasn't) and recounted HUD from its table.
@@ -169,8 +169,8 @@ report folders):
 | Spectator menu look | differs | L | S | backlog 2b (`bottomspectator.res`) |
 | Freeze cam panel (`freezepanel_basic.res`) | differs | M | S | backlog 2b |
 | Map time left on the scoreboard | have (fixed) | L | S | beside the clock icon (`WinConditionLabel`) with `mp_timelimit`; a client has the map's start in `NetRound` |
-| Class menu (`classmenu_*.res`) | missing | M | M | backlog 2b: needs player models per class |
-| MOTD on joining (`motd.res`, `cfg/motd_default.txt`) | missing | L | S | CS:S shows it, then the team menu, on joining; ours joins a team at once (no team menu either): a join-flow decision for the user before either |
+| Class menu (`classmenu_*.res`) | have (fixed) | M | M | after picking a team; the eight classes' models (`models/player/*.mdl`) on bodies, auto-select a random one |
+| MOTD on joining (`motd.res`, `cfg/motd_default.txt`) | have (fixed) | L | S | then the team menu, then the class menu; HTML shown as its text (we don't render HTML) |
 | Hint panel messages (`cl_autohelp`) | missing | M | M | |
 
 ## Menus and commands
@@ -197,7 +197,7 @@ common console commands, against mashup's.
 | `fps_max` | have (fixed) | L | S | 300 as CS:S (`client::perf::FrameLimit`); off under `--bench` |
 | `timeleft` | have (fixed) | L | S | with `mp_timelimit` |
 | `users`, `ping` | have (fixed) | L | S | Source's layouts (`net::users_text`, `ping_text`) |
-| `motd` | missing | L | S | with the MOTD panel (above) |
+| `motd` | have (fixed) | L | S | opens the MOTD panel |
 | `buyequip`, `cancelselect` | have (fixed) | L | S | the buy menu's equipment page; close the weapon selection |
 | `commandmenu`, `showbriefing`, `cheer` | missing | L | S | what each shows in CS:S is unclear from the data (no capture planned) |
 | `cl_radaralpha`, `hud_saytext_time` | have (fixed) | L | S | 200 and 12 s, as CS:S |
@@ -350,6 +350,43 @@ common console commands, against mashup's.
 - `NET_VERSION` net16 (`Hurt`, `RoundOver`'s summary, `NetRound`'s map
   start).
 
+## Fixed: the join flow
+
+- Joining a server, or starting a game with `map` (the menus' Create
+  Server, `--map`), shows CS:S's join flow (`client::join_menus`): the
+  message of the day in `resource/ui/motd.res` (the server's name, its
+  `motd.txt`: the host's config folder, else the install's `motd.txt`,
+  `cfg/motd.txt`, `cfg/motd_default.txt`; sent to clients as they are
+  let in, `net::ServerMotd`), OK opens the team menu, a team opens the
+  class menu (`classmenu_ter.res` / `classmenu_ct.res`, each class's
+  picture beside it), and the player spawns as the round rules allow
+  (in the freeze time, or with nobody of its team alive, this round;
+  else the next). Until it picks a team it is on none
+  (`core::Unassigned`: no body, watching as a spectator); on a team
+  without a class (`core::ChoosingClass`) it is neither spawned nor
+  counted for the round's end. The chat says "Player X has joined the
+  game" as it connects and "X is joining the Terrorist force" when it
+  picks. `motd` shows the message again.
+- Differences: we don't render HTML: an HTML message shows its text
+  (tags out, line breaks kept); `cl_disablehtmlmotd 1` (now in
+  Multiplayer > Advanced) shows the server's plain-text one
+  (`motd_text.txt`, else `cfg/motd_text_default.txt`), as CS:S does. A
+  message that is a web address shows the address. Bots keep their
+  team's first model (bots are parked). Players keep their team over a
+  `changelevel` (CS:S's behaviour there is unmeasured).
+- `joinclass <0-8>` (`core::PlayerClass`, replicated; 0 auto-selects one
+  of the team's at random); `jointeam 0` auto-assigns. The class's model
+  (Phoenix Connexion, Elite Crew, Arctic Avengers, Guerilla Warfare; SEAL
+  Team 6, GSG-9, SAS, GIGN) is the body others see and its hitboxes.
+- Scripted runs skip it (`rules::JoinChoice`, `--join menus|auto|1|2|3`):
+  `--screenshot`, `--views`, `--spawn`, `--look`, `+jointeam <n>` and
+  `+spectate` join at once; tests' `Sim`/`NetSim` too (a network client
+  says which in its userinfo, `_jointeam`). `bot_join_after_player`
+  waits for a player on a team.
+- `NET_VERSION` net17 (`ClassRequest`, `ServerMotd`, replicated
+  `Unassigned`, `ChoosingClass`, `PlayerClass`). Tests: `join_flow::*`,
+  `client::join_menus`, `net::motd` and `client` unit tests.
+
 ## Next fixes that need no capture
 
 In order of impact over cost:
@@ -357,13 +394,10 @@ In order of impact over cost:
 1. Hint messages (`cl_autohelp`, `HudHintDisplay`, the game's `#Hint_*`
    strings, `Hud.Hint`): when each shows is game logic not in the data;
    a spec session or capture first (M).
-2. The join flow: CS:S shows the MOTD (`motd.res`, `cfg/motd.txt` else
-   `motd_default.txt`), then the team menu; ours joins a team at once.
-   Needs the user's call on the join flow, then (S).
-3. `cl_cmdrate` (CS:S's default 30 sends commands in fewer packets than
+2. `cl_cmdrate` (CS:S's default 30 sends commands in fewer packets than
    ours, one a frame): a choice for the network feel, not a gap players
    see; left (S).
-4. Ricochet sounds once spec Q7 says when they play (spec session).
+3. Ricochet sounds once spec Q7 says when they play (spec session).
 
 ## Captures wanted
 

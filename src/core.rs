@@ -668,6 +668,46 @@ pub struct Connecting;
 #[reflect(Component)]
 pub struct Spectating;
 
+/// In the game but on no team yet (CS:S's unassigned players): it has not
+/// picked one in the team menu. Also `Spectating` (no body, watching,
+/// counted on no team); `rules::join_team` or `rules::join_spectators`
+/// ends it. Its client shows the join menus (the MOTD, then the team
+/// menu: `client::join_menus`). Replicated.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
+pub struct Unassigned;
+
+/// On a team, picked from the team menu after joining the game, but no
+/// class (player model) chosen yet: still no body, neither spawned nor
+/// counted for a round's end until `joinclass` (`rules::join_class`), as
+/// CS:S waits for the class menu. Replicated.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
+pub struct ChoosingClass;
+
+/// A player's class (CS:S's `joinclass` number: its player model): 1-4
+/// the terrorists' (Phoenix Connexion, Elite Crew, Arctic Avengers,
+/// Guerilla Warfare), 5-8 the counter-terrorists' (SEAL Team 6, GSG-9,
+/// SAS, GIGN). Without one a character wears its team's first model.
+/// Replicated; a game's loader draws it (`map::BodyName`).
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
+pub struct PlayerClass(pub u8);
+
+impl PlayerClass {
+    /// Classes per team.
+    pub const PER_TEAM: u8 = 4;
+
+    /// The team (ours: 1 terrorists, 2 counter-terrorists) a class belongs to.
+    pub fn team(self) -> Option<Team> {
+        match self.0 {
+            1..=4 => Some(Team(1)),
+            5..=8 => Some(Team(2)),
+            _ => None,
+        }
+    }
+}
+
 /// Number of fixed ticks simulated so far. Tests and tools use it to step
 /// the simulation by exact ticks.
 #[derive(Resource, Reflect, Default, Clone, Copy, Debug)]
@@ -1291,6 +1331,9 @@ impl Plugin for CorePlugin {
             .register_type::<MovementState>()
             .register_type::<Health>()
             .register_type::<Team>()
+            .register_type::<Unassigned>()
+            .register_type::<ChoosingClass>()
+            .register_type::<PlayerClass>()
             .register_type::<UserInfo>()
             .register_type::<Seed>()
             .register_type::<MaxSpeed>()

@@ -407,6 +407,16 @@ pub struct GameMenus {
     /// The round's win panel (`resource/ui/win_round.res`: winner, why,
     /// MVP, a fun fact), placed by the HUD layout's `WinPanel_Round`.
     pub win_panel: Option<String>,
+    /// The message of the day's panel (CS:S's `resource/ui/textwindow.res`
+    /// style info panel: a title, the message, an OK button).
+    pub motd: Option<String>,
+    /// The install's own message of the day (the server's, when it has no
+    /// other: `net::motd`): the file as written (often HTML), and the
+    /// plain-text one.
+    pub motd_file: Option<String>,
+    pub motd_text_file: Option<String>,
+    /// The class menu's layout per team (`core::Team` number).
+    pub class: HashMap<u8, String>,
     /// The loaded map's description (the team menu's `MapInfo`).
     pub map_info: Option<String>,
     /// The game's localised strings by lower-case token (no `#`), for
