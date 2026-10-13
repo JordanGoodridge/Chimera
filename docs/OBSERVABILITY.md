@@ -45,9 +45,11 @@ fails and says how to move it. Test names read `weapons::name` and
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
 - Before every push, `.githooks/pre-push` also checks the build without
-  `--features dev` (`cargo check --lib --bins`; the playtest and release
-  builds use that configuration and the tests don't), even with
-  `MASHUP_PUSH_TESTS=0`.
+  `--features dev` (`cargo check --lib --bins --features tools,server`;
+  the playtest and release builds use that configuration and the tests
+  don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
+  built only with `--features tools`, the dedicated server with
+  `--features server` (so `cargo test` doesn't relink them).
 - Full suite, before a push or a merge to main (`.githooks/pre-push`, which
   `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
   6 tests at once and 2 heavy ones, `.config/nextest.toml`: memory, not CPU,
@@ -635,7 +637,7 @@ renames it for everyone ("* X changed name to Y"); bots take names from
 the install's botprofile.db at `bot_difficulty` (0-3; `bot_prefix`),
 `bot_kick t|ct|easy|...|expert|<name>`, and with `bot_join_after_player 1`
 (the default) the quota waits for a player. The dedicated server:
-`cargo run --features dev --bin mashup_server -- -port 27032 +map greybox
+`cargo run --features dev,server --bin mashup_server -- -port 27032 +map greybox
 +bot_add` (console on stdin: `status`, `bot_add`, `bot_quota 6`, `changelevel de_dust2`, `quit`). Logs show
 `listening on UDP ...`, `<name> joined`, `<name> left`, `disconnected:
 <reason>`.
@@ -730,8 +732,8 @@ server, `password` on a client (the browser asks for it). Two dedicated
 servers and a client on this box:
 
 ```
-cargo run --features dev --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
-cargo run --features dev --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
+cargo run --features dev,server --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
+cargo run --features dev,server --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
 cargo run --features dev -- --window 1280x720 +net_lan_ports 27031-27032 +openserverbrowser lan
 ```
 
@@ -819,7 +821,7 @@ Details and baseline numbers: [performance.md](performance.md).
   p90, p99, p99.9, max per view and overall, for scripts
   (`jq '.overall.metrics.main_instructions.p50' bench.json`).
 - `perfgate` (`src/bin/perfgate.rs`): the instructions-per-tick
-  regression gate: `cargo build --profile playtest --bin perfgate &&
+  regression gate: `cargo build --profile playtest --features tools --bin perfgate &&
   target/playtest/perfgate` runs greybox, de_dust2 (rounds, 10 bots) and
   mg_lego_multigames_v2 headless for 2000 ticks each, prints instructions
   per tick (all threads: p50, p99, total; main thread) and CPU and wall
@@ -874,7 +876,7 @@ Details and baseline numbers: [performance.md](performance.md).
   sync_movers`). Example (performance.md has real output):
   `cargo build --profile playtest --features profile`, then
   `TRACE_CHROME=target/t.json target/playtest/mashup --map cs_source:de_dust2 --frames 400`,
-  then `cargo build --profile playtest --bin tracesum` and
+  then `cargo build --profile playtest --features tools --bin tracesum` and
   `target/playtest/tracesum target/t.json --skip 200`.
   Read systems' own spans, not schedules' self time: writing the trace
   stalls every thread now and then (2-3 ms gaps without any span), which
@@ -981,10 +983,10 @@ that build per map for a 1280x720 screenshot from the first spawn and the
 last `mashup_perf_log` line (needs a display).
 
 ```
-cargo run --features dev --bin mapsweep                      # every cached map
-cargo run --features dev --bin mapsweep -- --filter surf_,kz_ # some of them
-cargo run --features dev --bin mapsweep -- --shots target/playtest/mashup --filter mg_
-cargo run --features dev --bin mapsweep -- --audit           # plus the map logic audit
+cargo run --features dev,tools --bin mapsweep                      # every cached map
+cargo run --features dev,tools --bin mapsweep -- --filter surf_,kz_ # some of them
+cargo run --features dev,tools --bin mapsweep -- --shots target/playtest/mashup --filter mg_
+cargo run --features dev,tools --bin mapsweep -- --audit           # plus the map logic audit
 ```
 
 `--audit` adds `audit.md` (ranked by maps affected) and `audit.txt` (per
@@ -1070,9 +1072,9 @@ Laplacian) and mean absolute difference, plus side-by-side images
 (reference | ours | difference x4).
 
 ```
-cargo build --features dev && cargo run --features dev --bin refcmp
-cargo run --features dev --bin refcmp -- report            # re-compare existing captures
-cargo run --features dev --bin refcmp -- capture-ours --only a_sign
+cargo build --features dev && cargo run --features dev,tools --bin refcmp
+cargo run --features dev,tools --bin refcmp -- report            # re-compare existing captures
+cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
 ```
 
 - Views: `tools/refcmp/<map>.toml` (Source eye positions and angles; add
@@ -1127,8 +1129,8 @@ cargo run --features dev --bin refcmp -- capture-ours --only a_sign
 
 ```
 cargo build --features dev
-cargo run --features dev --bin refcmp -- capture-hud --out <scratch>
-cargo run --features dev --bin refcmp -- hudcmp --out <scratch> --hud-ref <dir>
+cargo run --features dev,tools --bin refcmp -- capture-hud --out <scratch>
+cargo run --features dev,tools --bin refcmp -- hudcmp --out <scratch> --hud-ref <dir>
 ```
 
 - `--hud-ref <dir>` holds CS:S captures named `hudref_<state>_<W>x<H>.jpg`
@@ -1173,10 +1175,10 @@ The reference CS:S (see refcmp) can also be measured directly over RCON:
 ## Tick-exact CS:S comparisons (movecmp)
 
 ```
-cargo run --features dev --bin movecmp            # all scenarios
-cargo run --features dev --bin movecmp -- --only bhop --keep-running
-cargo run --features dev --bin movecmp -- fuzz --runs 16 --ticks 150   # ladders and water
-cargo run --features dev --bin movecmp -- --offline   # against the last CS:S logs, no server
+cargo run --features dev,tools --bin movecmp            # all scenarios
+cargo run --features dev,tools --bin movecmp -- --only bhop --keep-running
+cargo run --features dev,tools --bin movecmp -- fuzz --runs 16 --ticks 150   # ladders and water
+cargo run --features dev,tools --bin movecmp -- --offline   # against the last CS:S logs, no server
 ```
 
 - Each scenario (in `src/bin/movecmp.rs`) is a start position and per-tick

@@ -1,4 +1,4 @@
-# Camera views compared between real CS:S and mashup (cargo run --bin refcmp).
+# Camera views compared between real CS:S and mashup (cargo run --features tools --bin refcmp).
 # Positions are eye positions in Source units; angles are [pitch, yaw] in
 # Source degrees (yaw 0 = +X, positive pitch looks down).
 

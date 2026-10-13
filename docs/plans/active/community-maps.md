@@ -5,7 +5,7 @@ content cache: surf_, bhop_, kz_, gg_, mg_) load and play; fix the most
 common problems generically (no per-map hacks). Parent plan:
 [custom-maps.md](custom-maps.md).
 
-How to check: `cargo run --features dev --bin mapsweep` (docs/OBSERVABILITY.md,
+How to check: `cargo run --features dev,tools --bin mapsweep` (docs/OBSERVABILITY.md,
 "Sweeping every cached map") writes `target/mapsweep/report.md` (problems
 ranked by maps affected, then a row per map), `report.csv`,
 `warnings.txt`; `--shots target/playtest/mashup` adds a screenshot from

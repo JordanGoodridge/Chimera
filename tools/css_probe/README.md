@@ -2,7 +2,7 @@
 
 A SourceMod plugin that replays per-tick inputs on a bot in a real CS:S
 dedicated server and logs the bot's position, velocity, ground and duck
-state after every tick. `cargo run --features dev --bin movecmp` drives it
+state after every tick. `cargo run --features dev,tools --bin movecmp` drives it
 and compares the result with mashup's Source movement (see
 docs/OBSERVABILITY.md).
 
