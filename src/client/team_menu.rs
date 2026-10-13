@@ -99,6 +99,7 @@ fn keys(
     hud: Option<Res<ActiveHud>>,
     mut others: (ResMut<super::buy_menu::BuyMenu>, ResMut<super::radio::RadioMenu>),
     rules: Option<Res<crate::rules::Deathmatch>>,
+    mut join: Option<ResMut<super::join_menus::JoinMenus>>,
 ) {
     let spectators = spectators_allowed(rules.as_deref());
     if !super::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.as_deref()) {
@@ -127,6 +128,7 @@ fn keys(
         let info = menus.map_info.as_deref();
         if let Some(command) = super::vgui::hotkey_button(page, key, &mut |c| shown(c, info, spectators)).and_then(|c| c.command.clone()) {
             if let Some(l) = line(&command, count) {
+                class_next(&l, join.as_deref_mut());
                 console.submit(l);
             }
             menu.0 = false;
@@ -145,10 +147,25 @@ fn keys(
         None
     };
     if let Some(team) = pick {
-        console.submit(format!("jointeam {team}"));
+        let l = format!("jointeam {team}");
+        class_next(&l, join.as_deref_mut());
+        console.submit(l);
         menu.0 = false;
     } else if keys.just_pressed(KeyCode::Digit0) {
         menu.0 = false;
+    }
+}
+
+/// Joining the terrorists or counter-terrorists from the menu: the class
+/// menu opens once we're on that team (`join_menus`), as in CS:S.
+fn class_next(line: &str, join: Option<&mut super::join_menus::JoinMenus>) {
+    let team = match line.trim() {
+        "jointeam 2" => 1,
+        "jointeam 3" => 2,
+        _ => return,
+    };
+    if let Some(j) = join {
+        j.class_after_team = Some(team);
     }
 }
 
@@ -158,6 +175,7 @@ fn pointer(
     mut menu: ResMut<TeamMenu>,
     mut console: ResMut<Console>,
     teams: Query<&Team, With<Intent>>,
+    mut join: Option<ResMut<super::join_menus::JoinMenus>>,
 ) {
     let count = |n: u8| teams.iter().filter(|t| t.0 == n).count();
     for (interaction, b) in &buttons {
@@ -166,6 +184,7 @@ fn pointer(
         }
         if let Some(command) = &b.command {
             if let Some(l) = line(command, count) {
+                class_next(&l, join.as_deref_mut());
                 console.submit(l);
             }
             menu.0 = false;

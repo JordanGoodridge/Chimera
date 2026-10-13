@@ -398,7 +398,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   `client/scoreboard.rs`), and the weapon selection and pickup history
   (`client/weapon_select.rs`; `hud_fastswitch`), matched to CS:S
   captures panel by panel (`refcmp hudcmp`). Left of that pass: the
-  radar's look (zoom, translucency, markers) is ours. The team menu is in (M; you start as CT). The radio
+  radar's look (zoom, translucency, markers) is ours. The team menu is in (M; joining a game shows the message of the day, then the team menu, then the class menu: `client/join_menus.rs`). The radio
   is in (`client/radio.rs`: Z/X/C menus, the calls as console commands,
   "Fire in the hole!" on throws, bots' enemy spotted/down and need
   backup, and bots' own commands and reports: go / stick together /
@@ -408,8 +408,8 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   the spectator bars (`spectator.res`), the radio icon over a teammate's
   head (`sprites/radio`, hidden by walls), and
   text chat (Y / U, `say`, `say_team`). The buy and team menus draw in the game's VGUI look from its `.res` files
-  (`client/vgui.rs`). Left: the class menu (`classmenu_*.res`, needs player
-  models per class),
+  (`client/vgui.rs`), as do the message of the day and the class menu
+  (`client/join_menus.rs`). Left:
   the scoreboard's row spacing (16 units, a guess) and dead rows' look
   checked against CS:S, its map time left beside the clock
   (`mp_timelimit` is in: `rules::game_end::time_left`), the spectator menu in `bottomspectator.res`'s look

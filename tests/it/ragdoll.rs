@@ -122,6 +122,7 @@ fn model() -> MapCharacterModel {
     MapCharacterModel {
         team: None,
         name: None,
+        class: None,
         model: MapModel::default(),
         hitboxes: boxes
             .iter()

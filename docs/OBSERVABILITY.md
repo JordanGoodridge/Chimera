@@ -79,6 +79,16 @@ Add `--map cs_source:de_dust2` to load a real map (noclip plus
 renders surfaces white so only baked lighting shows: misoriented lightmaps
 appear as shadows that break at face edges.
 
+Joining: a game started on a map shows CS:S's join flow (the message
+of the day, the team menu, the class menu; `client::join_menus`) and the
+player has no body until it picks, but `--screenshot`, `--views`,
+`--spawn` and `--look` runs join the smaller team at once, as do
+`+jointeam <n>` (that team) and `+spectate`; `--join menus|auto|1|2|3`
+says which outright (e.g. `--join menus` to photograph the panels: the
+message of the day opens at the start, `+chooseteam` the team menu, and
+`+jointeam 2` after it the class menu). Live runs over the remote
+protocol that expect a player on a team: add `+jointeam 3`.
+
 Runs 90 frames, saves the primary window, exits. Read the PNG to check
 rendering. Write screenshots to a scratch directory, never into the repo.
 Needs a display: on the Linux dev box set `WAYLAND_DISPLAY=wayland-1` and
@@ -191,7 +201,8 @@ Only `Reflect`-registered types are visible; register new core components in
   the team menu, e.g. `--map cs_source:de_dust2 --screenshot buy.png
   +wait 30 +buymenu 4` (the `wait` lets the map's HUD and menu layouts
   load first, so the game-look pages are used). Their key and button
-  logic is tested headless in `client::buy_menu` and `client::team_menu`;
+  logic is tested headless in `client::buy_menu` and `client::team_menu`
+  (the join flow's in `tests/it/join_flow.rs`);
   `tests/it/heavy/map_de_dust2.rs` checks the install's layouts load.
 - `ent_fire <target> <input> [value]` sends a map entity an input through
   the logic layer (names, `*` wildcards, classnames; the local player is
