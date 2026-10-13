@@ -93,7 +93,10 @@ Rules:
    `engine` out of `src/` first, then `source` (the Source formats and
    logic out of `games/cs_source`, `logic`, parts of `map`), then
    `games/*` and `apps/*`. Sort every module first (table below), then
-   move.
+   move. [architecture-review.md](architecture-review.md) (P9) measured
+   it: one `engine` crate at the bottom gives no iteration gain (most
+   commits touch `core` or `map`); a finer engine split after sorting
+   `map` does.
 3. [ ] Minigame definitions and rule modules; the existing modes as the
    first definitions.
 4. [ ] Networking ([multiplayer.md](multiplayer.md)); the Lucker Party app (lobby, party flow, rotation,
