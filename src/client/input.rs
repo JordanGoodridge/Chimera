@@ -166,6 +166,7 @@ pub fn capture_cursor(cursor: &mut CursorOptions) {
     cursor.grab_mode = CursorGrabMode::Locked;
 }
 
+#[allow(clippy::type_complexity)]
 pub(super) fn grab_cursor(
     mut cursor: Single<&mut CursorOptions>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -173,10 +174,11 @@ pub(super) fn grab_cursor(
     mut focus: MessageReader<bevy::window::WindowFocused>,
     menu: Option<Res<super::game_menu::GameMenu>>,
     vgui: Option<Res<super::vgui::VguiOpen>>,
-    (console, debug_ui, egui): (
+    (console, debug_ui, egui, chat): (
         Option<Res<super::console::ConsoleUi>>,
         Option<Res<super::debug_ui::DebugUi>>,
         Option<Res<bevy_inspector_egui::bevy_egui::input::EguiWantsInput>>,
+        Option<Res<super::chat::ChatInput>>,
     ),
 ) {
     // The game menu and the game-look buy and team menus own the mouse
@@ -191,10 +193,20 @@ pub(super) fn grab_cursor(
         || egui.is_some_and(|e| e.wants_any_pointer_input());
     // Losing focus (alt-tab) ends the grab: Windows drops the cursor clip
     // then, and a grab we still believed in would keep turning the view
-    // while the real cursor wanders off and clicks other windows. Clicking
-    // back in grabs again.
-    if focus.read().any(|f| !f.focused) {
+    // while the real cursor wanders off and clicks other windows. Coming
+    // back (alt-tab) grabs again at once, as CS:S, when playing with
+    // nothing open that owns the mouse or keys (menu, console, chat,
+    // dialogs, debug UI); else a click grabs.
+    let (mut lost, mut gained) = (false, false);
+    for f in focus.read() {
+        (lost, gained) = (!f.focused, f.focused);
+    }
+    let playing = menu.as_ref().is_none_or(|m| m.in_game && m.loading.is_none());
+    let typing = chat.is_some_and(|c| c.open.is_some());
+    if lost {
         release_cursor(&mut cursor);
+    } else if gained && playing && !in_menu && !typing {
+        capture_cursor(&mut cursor);
     } else if keys.just_pressed(KeyCode::Escape) && menu.is_none() {
         release_cursor(&mut cursor);
     } else if mouse.just_pressed(MouseButton::Left) && !cursor_grabbed(&cursor) && !in_menu {
@@ -522,5 +534,40 @@ mod tests {
         app.update();
         let cursor = app.world().get::<CursorOptions>(window).unwrap();
         assert!(!cursor_grabbed(cursor) && cursor.visible);
+        // Alt-tab back in: grabbed and hidden again at once, no click.
+        app.world_mut()
+            .write_message(bevy::window::WindowFocused { window, focused: true });
+        app.update();
+        let cursor = app.world().get::<CursorOptions>(window).unwrap();
+        assert!(cursor_grabbed(cursor) && !cursor.visible);
+    }
+
+    #[test]
+    fn regaining_focus_leaves_an_open_menu_or_chat_alone() {
+        for (menu_open, chat_open) in [(true, false), (false, true)] {
+            let mut app = App::new();
+            let menu = super::super::game_menu::GameMenu {
+                open: menu_open,
+                in_game: true,
+                ..default()
+            };
+            app.init_resource::<ButtonInput<MouseButton>>()
+                .init_resource::<ButtonInput<KeyCode>>()
+                .insert_resource(menu)
+                .insert_resource(super::super::chat::ChatInput {
+                    open: chat_open.then_some(false),
+                    ..default()
+                })
+                .add_message::<bevy::window::WindowFocused>()
+                .add_systems(Update, grab_cursor);
+            let window = app.world_mut().spawn(CursorOptions::default()).id();
+            app.update();
+            app.update();
+            app.world_mut()
+                .write_message(bevy::window::WindowFocused { window, focused: true });
+            app.update();
+            let cursor = app.world().get::<CursorOptions>(window).unwrap();
+            assert!(!cursor_grabbed(cursor), "menu {menu_open}, chat {chat_open}");
+        }
     }
 }

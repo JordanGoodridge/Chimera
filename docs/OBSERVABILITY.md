@@ -349,11 +349,18 @@ Only `Reflect`-registered types are visible; register new core components in
   run, fire with `++attack` and keep `--frames` low enough that they are
   still alive (dust lives about a second, sparks a tenth of one).
 - **Bug reports while playtesting:** press F9 (or `bugreport [note]` in the
-  console). It saves `screenshot.png` and `report.txt` (build commit,
+  console). It saves `screenshot.png` and `report.txt` (build version,
   map, a `setpos`/`setang` line to paste back, weapon, health, the last
   40 console lines) to `<data dir>/mashup/bugreports/report-<time>/`
   (`~/.local/share` on Linux, `%LOCALAPPDATA%` on Windows) and prints the
   path.
+- `version` (console, client and server) prints the build: tag or `git
+  describe`, short commit hash and the commit's UTC date, e.g.
+  `v0.1.0-playtest3 (feac156, 2026-10-11)` (no tag: `feac156,
+  2026-10-11`; `-dirty` on the hash with uncommitted changes), then the
+  network protocol (`NET_VERSION`). build.rs stamps it
+  (`core::VERSION`); the main menu shows it bottom right and
+  `mashup_server` prints it at startup.
 - `thirdperson` (back with `firstperson`; distance `cam_idealdist`, CS:S
   units) puts the camera behind the local player and draws its own
   animated body: `+thirdperson` in a `--screenshot` run shows the local

@@ -80,7 +80,7 @@ fn image(hud: &ActiveHud, sprite: &HudSprite, color: Color) -> Option<ImageNode>
 /// nothing. Drawn alpha blended here, so each texel's brightness becomes
 /// its coverage (colour divided by it); otherwise the sprite's black
 /// surround shows as a dark box. `None` if the image isn't 8-bit RGBA.
-fn additive_as_alpha(image: &Image) -> Option<Image> {
+pub(super) fn additive_as_alpha(image: &Image) -> Option<Image> {
     use bevy::render::render_resource::TextureFormat;
     if !matches!(
         image.texture_descriptor.format,

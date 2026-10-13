@@ -1,6 +1,7 @@
 //! CS:S's HUD look, read from the install: panel layout
 //! (`scripts/hudlayout.res`), fonts and colours (`resource/clientscheme.res`
-//! and the TTFs it lists), icon glyphs (`scripts/mod_textures.txt`); the
+//! and the TTFs it lists), icons (`scripts/hud_textures.txt`,
+//! `scripts/mod_textures.txt`); the
 //! VGUI menus come from `super::vgui`.
 
 use std::{collections::HashMap, sync::Arc};
@@ -180,8 +181,11 @@ pub fn load(materials: &mut MaterialLoader, map: &str) -> Option<GameHud> {
         }
     }
 
-    // Icons drawn with font glyphs.
-    if let Some(t) = text(materials, "scripts/mod_textures.txt") {
+    // Icons drawn with font glyphs or cut from sprite sheets: the base
+    // HUD's (e.g. `crosshair_default`, drawn when no weapon draws a
+    // crosshair), then the game's own over them.
+    for script in ["scripts/hud_textures.txt", "scripts/mod_textures.txt"] {
+        let Some(t) = text(materials, script) else { continue };
         let t = parse(&t);
         // Entries sit in a "TextureData" block (under the file's root key).
         fn find<'a>(kv: &'a Kv) -> Option<&'a Kv> {
@@ -190,7 +194,12 @@ pub fn load(materials: &mut MaterialLoader, map: &str) -> Option<GameHud> {
         }
         let t = find(&t).cloned().unwrap_or(t);
         let num = |v: &Kv, k: &str| v.str(k).and_then(|x| x.trim().parse::<f32>().ok());
+        // Of the base HUD's, only the default crosshair (the rest is HL2's).
+        let base = script.starts_with("scripts/hud_");
         for (name, v) in t.items() {
+            if base && !name.eq_ignore_ascii_case("crosshair_default") {
+                continue;
+            }
             if let (Some(font), Some(ch)) = (v.str("font"), v.str("character").and_then(|c| c.chars().next())) {
                 hud.icons.insert(name.clone(), (font.to_string(), ch));
             } else if let Some(file) = v.str("file") {
