@@ -50,13 +50,6 @@ plan when work starts; delete them when done.
 - Done 2026-10-12: alt-tab back in grabs the cursor at once
   (`client::input::grab_cursor`).
 
-- Buying on maps without buy zones (user, 2026-10-11, mg_jacks_multigames_v1):
-  you can buy guns anywhere. jacks has no `func_buyzone` and no
-  `info_map_parameters`; our `weapon::economy::in_buy_zone` lets everyone
-  buy anywhere when a map has no zones. Model CS:S's rule (spec needed:
-  the zone made around each team's spawn points, its radius,
-  `mp_buytime`). `info_map_parameters` `buying` is done
-  (`economy::map_buying`, 2026-10-12).
 - Weapons after a round on minigame maps (user, 2026-10-11): players walk
   into the lobby with e.g. a machine gun. In CS:S survivors keep their
   weapons into the next round; minigame maps strip them with map logic
@@ -75,24 +68,6 @@ plan when work starts; delete them when done.
   (b) the AK's script entry (channel, `soundlevel`, wave count/pitch
   variation), (c) the own-sound path (centred, non-spatial) restarting
   the voice, and compare with a CS:S recording of a full-auto AK burst.
-
-- Shadows under players vs bullet decals (user, 2026-10-11): the
-  shadow under a player and bullet-hole decals don't layer: decals draw
-  over the shadow unshadowed, so they look lighter than the ground around
-  them. Also the shadow itself is buggy: it has only a few states and
-  shifts often as the player or the viewer moves (render-to-texture
-  shadow atlas cells / blob vs silhouette switching?). Check whether CS:S
-  draws these under players at all (its render-to-texture shadows exist
-  for props and players at shadow detail medium+; compare a capture) —
-  keep them for now; fix the decal ordering (decals before the shadow
-  projection, or the shadow modulating decals too) and the jumpy states.
-
-- Third-person AK (user, 2026-10-11): looking up or down, the AK's
-  magazine sits in the wrong place. Likely the reload layer's
-  `weapon_bone_LHand`/magazine bone, or the new hand IK (`lock_hands`,
-  `mashup_hand_ik 0` to compare) moving a bone the magazine follows;
-  check the AK's world model bones (magazine attached to the left hand
-  vs the gun) at several pitches, against a CS:S third-person capture.
 
 Connections and hosting: done 2026-10-10, to playtest (multiplayer.md,
 "Playtest with friends"): Create Server's Game tab lists `settings.scr`'s

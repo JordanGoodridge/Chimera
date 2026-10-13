@@ -95,11 +95,13 @@ pub const MAX_DECALS: usize = 512;
 const REACH: f32 = 0.1;
 /// Lift off the surface (meters): above the map's own decals (0.15 units)
 /// and overlays (up to 0.25 units), so impacts draw on top of them.
-const LIFT: f32 = 0.35 * 0.0254;
+pub(crate) const LIFT: f32 = 0.35 * 0.0254;
 /// How far below the decal its depth-only copy lies (meters): that copy
 /// (0.30 units up) keeps overlays (up to 0.25) off impacts while every
 /// impact's colour (0.35) still passes over every other impact's depth.
-const DEPTH_DROP: f32 = 0.05 * 0.0254;
+/// Dynamic shadows lie above it (`shadows::LIFT`), so they darken
+/// impacts as the ground around them.
+pub(crate) const DEPTH_DROP: f32 = 0.05 * 0.0254;
 const CELL: f32 = 1.0;
 
 /// Triangles (corners and normal) in a uniform grid; those spanning more
