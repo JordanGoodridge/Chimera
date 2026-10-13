@@ -2,7 +2,10 @@
 //! specs/cs_source/ropes.md. Each rope entity with a `NextKey` hangs a rope
 //! to that entity: a short chain of nodes simulated until it settles, then
 //! smoothed with a spline and drawn as a camera-facing strip (the map's
-//! `MapRope`; the strip is built per view by the rope shader).
+//! `MapRope`; the strip is built per view by the rope shader). The
+//! settled nodes go with it, so that the wind can sway it near the camera
+//! (`map::rope_sway`; not on maps with an env_wind, which isn't
+//! simulated, nor ropes with NoWind).
 
 use std::collections::HashMap;
 
@@ -123,29 +126,7 @@ impl RopeSim {
     }
 }
 
-/// The drawn points: every node, with `subdiv` (clamped to 0-7) uniform
-/// Catmull-Rom points between neighbours. Also returns, per point, the
-/// index of the node before it and how far it is toward the next one.
-pub fn spline(nodes: &[Vec3], subdiv: usize) -> Vec<(Vec3, usize, f32)> {
-    let s = subdiv.min(MAX_SUBDIV);
-    let n = nodes.len();
-    let mut out = vec![(nodes[0], 0, 0.0)];
-    for i in 0..n - 1 {
-        let p0 = nodes[i.saturating_sub(1)];
-        let (p1, p2) = (nodes[i], nodes[i + 1]);
-        let p3 = nodes[(i + 2).min(n - 1)];
-        for k in 1..=s {
-            let t = k as f32 / (s + 1) as f32;
-            let c = p1
-                + (p2 - p0) * (t / 2.0)
-                + (p0 * 2.0 - p1 * 5.0 + p2 * 4.0 - p3) * (t * t / 2.0)
-                + (-p0 + p1 * 3.0 - p2 * 3.0 + p3) * (t * t * t / 2.0);
-            out.push((c, i, t));
-        }
-        out.push((p2, i + 1, 0.0));
-    }
-    out
-}
+pub use crate::map::rope_sway::spline;
 
 /// Texture V step per drawn point. The divisor undercounts the points, so
 /// textures stretch more than `TextureScale` suggests (kept: it's how the
@@ -187,6 +168,9 @@ pub fn add_ropes(
             by_name.entry(name).or_insert(origin);
         }
     }
+    // An env_wind blows ropes by its own wind, which isn't simulated:
+    // such maps' ropes hang still.
+    let windy_map = bsp.entities.iter().any(|e| e.prop("classname") == Some("env_wind"));
     let mut material_cache: HashMap<String, (Option<usize>, Option<usize>, Option<(Option<usize>, Option<usize>)>)> =
         HashMap::new();
 
@@ -248,6 +232,16 @@ pub fn add_ropes(
             back,
             ..default()
         };
+        let engine = |p: &Vec3| to_engine(vbsp::Vector { x: p.x, y: p.y, z: p.z });
+        let settled: Vec<Vec3> = sim.nodes.iter().map(engine).collect();
+        rope.sway = Some(crate::map::rope_sway::RopeSway {
+            previous: settled.clone(),
+            nodes: settled,
+            link: sim.link_length() * METERS_PER_UNIT,
+            gravity: Vec3::NEG_Y * CSS_GRAVITY * METERS_PER_UNIT,
+            subdiv,
+            wind: !windy_map && int("nowind").is_none_or(|v| v == 0.0),
+        });
         for (i, (p, node, t)) in points.iter().enumerate() {
             rope.points.push(to_engine(vbsp::Vector { x: p.x, y: p.y, z: p.z }));
             rope.v.push(dv * i as f32);

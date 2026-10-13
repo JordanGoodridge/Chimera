@@ -40,6 +40,15 @@ impl Plugin for ChatPlugin {
             .init_resource::<ChatInput>()
             .add_systems(PreUpdate, typing.after(InputSystems))
             .add_systems(Update, ((collect, draw_chat, draw_input).chain(), draw_hint));
+        crate::console::resource_cvar::<ChatLog, f32>(
+            app,
+            "hud_saytext_time",
+            "Seconds a chat line stays on screen.",
+            |l| &mut l.seconds,
+        );
+        if let Some(mut console) = app.world_mut().get_resource_mut::<crate::console::Console>() {
+            console.archive("hud_saytext_time");
+        }
         for (name, team, help) in [
             ("messagemode", false, "Type a chat line to everyone (Y)."),
             ("messagemode2", true, "Type a chat line to your team (U)."),
@@ -426,16 +435,28 @@ pub const HINT_SECONDS: f32 = 4.0;
 const MAX_LINES: usize = 8;
 
 /// Chat lines shown: runs, the sender's team, when they go.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct ChatLog {
     pub lines: VecDeque<(ChatLine, f32)>,
+    /// Seconds a new line stays (`hud_saytext_time`).
+    pub seconds: f32,
     version: u64,
+}
+
+impl Default for ChatLog {
+    fn default() -> Self {
+        Self {
+            lines: VecDeque::new(),
+            seconds: CHAT_SECONDS,
+            version: 0,
+        }
+    }
 }
 
 impl ChatLog {
     /// Add a line at `now`; the oldest goes past `MAX_LINES`.
     pub fn push(&mut self, line: ChatLine, now: f32) {
-        self.lines.push_back((line, now + CHAT_SECONDS));
+        self.lines.push_back((line, now + self.seconds.max(0.0)));
         while self.lines.len() > MAX_LINES {
             self.lines.pop_front();
         }
@@ -665,6 +686,10 @@ mod tests {
         assert_eq!(log.lines[0].0, ChatLine::plain("2"));
         log.expire(2.0 + CHAT_SECONDS + 0.5);
         assert_eq!(log.lines.front().map(|l| &l.0), Some(&ChatLine::plain("3")));
+        // `hud_saytext_time` sets how long a new line stays.
+        log.seconds = 3.0;
+        log.push(ChatLine::plain("short"), 100.0);
+        assert_eq!(log.lines.back().map(|l| l.1), Some(103.0));
     }
 
     #[test]

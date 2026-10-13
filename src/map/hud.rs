@@ -404,6 +404,9 @@ pub struct GameMenus {
     /// The freeze cam's panel: its frame's layout and what is inside the
     /// frame (`FreezePanelBG`'s controls, placed in it).
     pub freeze_panel: Option<(String, String)>,
+    /// The round's win panel (`resource/ui/win_round.res`: winner, why,
+    /// MVP, a fun fact), placed by the HUD layout's `WinPanel_Round`.
+    pub win_panel: Option<String>,
     /// The loaded map's description (the team menu's `MapInfo`).
     pub map_info: Option<String>,
     /// The game's localised strings by lower-case token (no `#`), for

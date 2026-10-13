@@ -46,15 +46,29 @@ pub(crate) fn radar_cvars(app: &mut App) {
         "1: the radar doesn't turn with your view (the overview as drawn, north up).",
         |r| &mut r.locked,
     );
-    app.world_mut()
-        .resource_mut::<crate::console::Console>()
-        .archive("cl_radar_locked");
+    crate::console::resource_cvar::<RadarOptions, u8>(
+        app,
+        "cl_radaralpha",
+        "How opaque the radar's map is, 0-255.",
+        |r| &mut r.alpha,
+    );
+    let mut console = app.world_mut().resource_mut::<crate::console::Console>();
+    console.archive("cl_radar_locked");
+    console.archive("cl_radaralpha");
 }
 
-/// The radar's options: `cl_radar_locked` (CS:S's default 0: it turns).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+/// The radar's options: `cl_radar_locked` (CS:S's default 0: it turns),
+/// `cl_radaralpha` (CS:S's default 200).
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
 pub struct RadarOptions {
     pub locked: u8,
+    pub alpha: u8,
+}
+
+impl Default for RadarOptions {
+    fn default() -> Self {
+        Self { locked: 0, alpha: 200 }
+    }
 }
 
 /// The angle the overview is turned by on the radar (radians): so the way
@@ -158,7 +172,7 @@ fn build(
         RadarMap,
         MaterialNode(materials.add(RadarMaterial {
             params: RadarParams {
-                alpha: 0.85,
+                alpha: 200.0 / 255.0,
                 ..default()
             },
             overview: overview.1.clone(),
@@ -296,19 +310,21 @@ fn update(
     let centre = o.pixel(at.translation());
     let Ok(pivot_entity) = pivot.single() else { return };
     // Clockwise by the look yaw puts the way you face at the top.
-    let locked = options.is_some_and(|r| r.locked != 0);
+    let locked = options.as_ref().is_some_and(|r| r.locked != 0);
     let facing = radar_angle(o.rotate, locked, intent.yaw);
     // Only on a change: a mutable borrow alone re-prepares the material.
     let (centre_uv, span) = (centre / o.size, Vec2::splat(side / k) / o.size);
+    let alpha = options.as_ref().map_or(200, |r| r.alpha) as f32 / 255.0;
     if let Ok(m) = map.single()
-        && materials
-            .get(&m.0)
-            .is_some_and(|m| (m.params.centre, m.params.span, m.params.angle) != (centre_uv, span, facing))
+        && materials.get(&m.0).is_some_and(|m| {
+            (m.params.centre, m.params.span, m.params.angle, m.params.alpha) != (centre_uv, span, facing, alpha)
+        })
         && let Some(mut m) = materials.get_mut(&m.0)
     {
         m.params.centre = centre_uv;
         m.params.span = span;
         m.params.angle = facing;
+        m.params.alpha = alpha;
     }
     // Dot offsets turn with the map.
     let turn = Rot2::radians(facing);

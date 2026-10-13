@@ -47,6 +47,7 @@ pub mod vgui;
 pub mod view;
 pub mod weapon_select;
 pub mod widgets;
+pub mod win_panel;
 pub mod window_icon;
 
 use std::path::PathBuf;

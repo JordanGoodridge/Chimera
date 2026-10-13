@@ -1090,6 +1090,8 @@ cargo run --features dev --bin refcmp -- capture-ours --only a_sign
   vischeck output under `<dir>/<map>/` instead (reference captures are
   still read from the shared folder), so parallel worktrees don't
   overwrite each other's captures. Our captures currently show the view model.
+  They hang ropes still (`+rope_wind_dist 0`): a reference is one moment
+  of its wind, and swaying cables would move views by chance.
 - Load warnings of every stock map: `cargo test --features dev --test
   it all_stock_maps_warnings -- --ignored --nocapture`.
 - CS:S runs through the Steam client (logged in once on this machine) and

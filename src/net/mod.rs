@@ -79,7 +79,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net15");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net16");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -798,6 +798,18 @@ pub struct HitConfirm {
     pub hitgroup: u8,
 }
 
+/// Server -> the client a character belongs to: damage reached its
+/// player's health (`core::DamageTaken`): how much, which way it
+/// travelled, how it was dealt (`kind` as `net::weapons` numbers them)
+/// and whether someone else dealt it, for the damage indicators.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Hurt {
+    pub amount: f32,
+    pub dir: [f32; 3],
+    pub kind: u8,
+    pub directed: bool,
+}
+
 /// Client -> server: drop the weapon I hold (Source's `drop`).
 #[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct DropRequest;
@@ -829,6 +841,9 @@ pub struct NetRound {
     pub hostages: [u32; 3],
     /// The game on the map is over: the intermission (`RoundState::game_over`).
     pub game_over: bool,
+    /// When the game on this map began (`RoundState::map_started`), for
+    /// the time left with `mp_timelimit`.
+    pub map_started: Option<f64>,
 }
 
 /// `NetRound::phase`.
@@ -978,11 +993,22 @@ pub struct ObjectiveNews {
 }
 
 /// Server -> clients: the round ended (`rules::rounds::RoundEnded`):
-/// the winner's team number and why (`game` numbers the reasons).
-#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+/// the winner's team number and why (`game` numbers the reasons), and the
+/// win panel's summary (`rules::rounds::RoundSummary`): the MVP and why
+/// (`Mvp::ALL`'s index), the fun fact (its string token, the player it
+/// names, its values) and the round's live seconds.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq, bevy::ecs::entity::MapEntities)]
 pub struct RoundOver {
     pub winner: Option<u8>,
     pub reason: u8,
+    #[entities]
+    pub mvp: Option<Entity>,
+    pub mvp_reason: u8,
+    pub fun_fact: Option<String>,
+    #[entities]
+    pub fun_fact_player: Option<Entity>,
+    pub fun_fact_values: Vec<String>,
+    pub seconds: f32,
 }
 
 /// Server -> clients: a sound of the game's rules (`map::GameSound`: the
@@ -1141,6 +1167,8 @@ impl Plugin for NetPlugin {
             .add_client_message::<DropRequest>(Channel::Ordered)
             .add_mapped_server_message::<Killed>(Channel::Ordered)
             .add_mapped_server_message::<HitConfirm>(Channel::Unordered)
+            .add_server_message::<Hurt>(Channel::Unordered)
+            .make_message_independent::<Hurt>()
             // Game rules (slice 5).
             .replicate::<NetRound>()
             .ordered::<NetRound>()
@@ -1159,7 +1187,7 @@ impl Plugin for NetPlugin {
             .add_mapped_server_message::<ChatMessage>(Channel::Ordered)
             .add_mapped_server_message::<RadioCall>(Channel::Ordered)
             .add_mapped_server_message::<ObjectiveNews>(Channel::Ordered)
-            .add_server_message::<RoundOver>(Channel::Ordered)
+            .add_mapped_server_message::<RoundOver>(Channel::Ordered)
             .add_mapped_server_message::<ServerSound>(Channel::Unreliable)
             .add_server_message::<CvarValues>(Channel::Ordered)
             .make_message_independent::<CvarValues>()
@@ -1367,7 +1395,50 @@ fn commands(app: &mut App) {
     })
     .console_command("version", "This build's version and network protocol.", |_, _| {
         Ok(Some(version_text()))
+    })
+    .console_command("ping", "Each player's ping, as the scoreboard has it.", |w, _| {
+        Ok(Some(ping_text(w)))
+    })
+    .console_command("users", "The players in the game: slot, user id, name.", |w, _| {
+        Ok(Some(users_text(w)))
     });
+}
+
+/// The players (not bots) in a network game, by client id: id, name and
+/// ping (the scoreboard's, `NetScore`); alone, our own name.
+fn people(world: &mut World) -> Vec<(u64, String, u16)> {
+    let mut people: Vec<(u64, String, u16)> = world
+        .query::<(&NetCharacter, Option<&NetScore>)>()
+        .iter(world)
+        .filter_map(|(c, s)| Some((c.owner?, c.name.clone(), s.map_or(0, |s| s.ping))))
+        .collect();
+    if people.is_empty() {
+        let name = world.get_resource::<NetSettings>().map_or_else(|| "Player".into(), |s| s.name.clone());
+        people.push((HOST_ID, name, 0));
+    }
+    people.sort_by_key(|p| p.0);
+    people
+}
+
+/// `ping`: Source's "Client ping times:" list.
+pub fn ping_text(world: &mut World) -> String {
+    let mut out = vec!["Client ping times:".to_string()];
+    for (_, name, ping) in people(world) {
+        out.push(format!("{ping:>4} ms : {name}"));
+    }
+    out.join("\n")
+}
+
+/// `users`: Source's `<slot:userid:"name">` list (our user id is the
+/// client id; the host's is 0).
+pub fn users_text(world: &mut World) -> String {
+    let people = people(world);
+    let mut out = vec!["<slot:userid:\"name\">".to_string()];
+    for (slot, (id, name, _)) in people.iter().enumerate() {
+        out.push(format!("{slot}:{id}:\"{name}\""));
+    }
+    out.push(format!("{} users", people.len()));
+    out.join("\n")
 }
 
 /// `version`: the build (`core::VERSION`) and its network protocol.
@@ -1458,6 +1529,33 @@ pub fn status(world: &mut World) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ping_and_users_list_the_people_not_bots() {
+        let mut w = World::new();
+        let alone = users_text(&mut w);
+        assert_eq!(alone, "<slot:userid:\"name\">\n0:0:\"Player\"\n1 users");
+        w.spawn((
+            NetCharacter {
+                owner: Some(7),
+                name: "b".into(),
+            },
+            NetScore {
+                ping: 42,
+                ..Default::default()
+            },
+        ));
+        w.spawn(NetCharacter {
+            owner: Some(HOST_ID),
+            name: "a".into(),
+        });
+        w.spawn(NetCharacter {
+            owner: None,
+            name: "Bot".into(),
+        });
+        assert_eq!(users_text(&mut w), "<slot:userid:\"name\">\n0:0:\"a\"\n1:7:\"b\"\n2 users");
+        assert_eq!(ping_text(&mut w), "Client ping times:\n   0 ms : a\n  42 ms : b");
+    }
 
     #[test]
     fn addresses_default_to_the_source_port() {

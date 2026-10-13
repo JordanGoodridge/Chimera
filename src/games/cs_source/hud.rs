@@ -255,7 +255,8 @@ pub fn load(materials: &mut MaterialLoader, map: &str) -> Option<GameHud> {
             p.str("xpos").and_then(HudCoord::parse),
             p.str("ypos").and_then(HudCoord::parse),
         );
-        if x.is_none() && y.is_none() {
+        // The damage indicator places itself by its own keys (`dmg_xpos`).
+        if x.is_none() && y.is_none() && p.str("dmg_xpos").is_none() {
             continue;
         }
         let (x, y) = (x.unwrap_or(HudCoord::Start(0.0)), y.unwrap_or(HudCoord::Start(0.0)));

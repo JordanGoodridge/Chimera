@@ -234,7 +234,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         })));
     }
     super::sprites::add_sprites(&bsp, &mut materials, &mut data);
-    super::dust::add_dust(&bsp, &mut materials, &mut data);
+    super::dust::add_dust(&bsp, &super::ambient::raw_leaves(&bytes), &mut materials, &mut data);
     super::steam::add_steam(&bsp, &mut materials, &mut data);
     super::beams::add_beams(&bsp, &mut materials, &mut data);
     let surfaces = super::surfaceprops::SurfaceProps::load(&mut materials);
@@ -1672,6 +1672,16 @@ pub fn analog_water_volumes(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<(crate::map::M
                 index,
             )
         })
+        .collect()
+}
+
+/// A brush model's brushes, whatever their contents (tool textures
+/// included), as planes in engine space: a volume entity's own shape
+/// (func_dustmotes' spawn test, specs/cs_source/sprites_dust.md 8).
+pub(super) fn model_volumes(bsp: &Bsp, leaves: &[RawLeaf], model: usize) -> Vec<Vec<(Vec3, f32)>> {
+    brush_volumes_in(bsp, BrushFlags::all(), model_brushes(bsp, leaves, model), None, true)
+        .into_iter()
+        .map(|(_, _, planes)| planes)
         .collect()
 }
 

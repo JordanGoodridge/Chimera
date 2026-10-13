@@ -38,6 +38,13 @@ impl Plugin for DeathmatchPlugin {
         resource_cvar::<crate::core::FriendlyFire, u8>(app, "mp_friendlyfire", "1: teammates hurt each other.", |f| {
             &mut f.0
         });
+        app.init_resource::<FadeToBlack>();
+        resource_cvar::<FadeToBlack, u8>(
+            app,
+            "mp_fadetoblack",
+            "1: a dead player's view fades to black until the next round (no spectating).",
+            |f| &mut f.0,
+        );
         app.init_resource::<crate::core::PlayerIdMode>();
         resource_cvar::<crate::core::PlayerIdMode, u8>(
             app,
@@ -50,6 +57,12 @@ impl Plugin for DeathmatchPlugin {
             "mp_limitteams",
             "In a network game, most players one team may have over the other (0: no limit).",
             |d| &mut d.limit_teams,
+        );
+        resource_cvar::<Deathmatch, u8>(
+            app,
+            "mp_autoteambalance",
+            "1: with rounds, a side two or more players larger gives players to the other as the next round starts.",
+            |d| &mut d.auto_team_balance,
         );
         resource_cvar::<Deathmatch, u8>(
             app,
@@ -184,11 +197,73 @@ pub fn join_spectators(w: &mut World, player: Entity) -> Result<String, String> 
     Ok("joined the spectators".into())
 }
 
+/// `mp_autoteambalance`: as a round ends into the next, while one side
+/// has two or more players more than the other, move players from it
+/// until they differ by one at most. Who moves is ours (CS:S's choice is
+/// unmeasured, docs/plans/active/parity-gaps.md capture C11): computer
+/// players first, then the fewest kills, then the highest entity (a
+/// steady pick). They respawn on the new side with the round's start
+/// (`join_team`, no death counted). Returns who moved.
+pub fn balance_teams(world: &mut World) -> Vec<Entity> {
+    if world.resource::<Deathmatch>().auto_team_balance == 0 {
+        return Vec::new();
+    }
+    let mut sides: [Vec<(bool, i32, Entity)>; 2] = [Vec::new(), Vec::new()];
+    for (e, team, score, local, remote) in world
+        .query_filtered::<(
+            Entity,
+            &Team,
+            Option<&Score>,
+            Has<crate::core::LocalPlayer>,
+            Has<crate::core::RemotePlayer>,
+        ), (
+            With<Intent>,
+            Without<crate::objectives::hostages::Hostage>,
+            Without<crate::core::Connecting>,
+            Without<crate::core::Spectating>,
+        )>()
+        .iter(world)
+    {
+        if (1..=2).contains(&team.0) {
+            let human = local || remote;
+            sides[team.0 as usize - 1].push((human, score.map_or(0, |s| s.kills), e));
+        }
+    }
+    // Only onto a side the map has spawns for (minigame maps with one
+    // side's spawns keep everyone there).
+    let mut spawns = [false; 2];
+    for s in world.query::<&SpawnPoint>().iter(world) {
+        match s.team.map(|t| t.0) {
+            Some(t @ 1..=2) => spawns[t as usize - 1] = true,
+            Some(_) => {}
+            None => spawns = [true; 2],
+        }
+    }
+    let mut moved = Vec::new();
+    loop {
+        let (big, small) = if sides[0].len() > sides[1].len() { (0, 1) } else { (1, 0) };
+        if sides[big].len() < sides[small].len() + 2 || !spawns[small] {
+            break;
+        }
+        // Bots (false) first, fewest kills, the highest entity.
+        sides[big].sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(b.2.cmp(&a.2)));
+        let who = sides[big].remove(0);
+        if join_team(world, who.2, Team(small as u8 + 1)).is_err() {
+            break;
+        }
+        sides[small].push(who);
+        moved.push(who.2);
+    }
+    moved
+}
+
 #[derive(Resource, Clone, Debug)]
 pub struct Deathmatch {
     pub respawn_delay: f32,
     /// `mp_limitteams` (network games only).
     pub limit_teams: u32,
+    /// `mp_autoteambalance` (with rounds: `balance_teams`).
+    pub auto_team_balance: u8,
     /// `mp_allowspectators`: 0 refuses `jointeam 1` and `spectate`.
     pub allow_spectators: u8,
     /// Spawn points picked so far (round robin, so players spread out).
@@ -201,11 +276,18 @@ impl Default for Deathmatch {
             respawn_delay: 2.0,
             // CS:S's default.
             limit_teams: 2,
+            // CS:S's default.
+            auto_team_balance: 1,
             allow_spectators: 1,
             next_spawn: 0,
         }
     }
 }
+
+/// `mp_fadetoblack` (CS:S's default 0): the dead see black
+/// (`client::senses`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FadeToBlack(pub u8);
 
 /// Kills and deaths.
 #[derive(Component, Default, Clone, Copy, Debug, Reflect)]

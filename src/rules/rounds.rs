@@ -56,6 +56,9 @@ pub struct RoundSettings {
     pub loss_max: u32,
     pub kill_reward: u32,
     pub teamkill_penalty: u32,
+    /// `mp_tkpunish`: 1 kills this round's team killers as the next round
+    /// starts (CS:S's default 0).
+    pub tk_punish: u8,
     /// Objective wins (spec 8, *public*/*hyp.*): the bomb exploded or was
     /// defused; time ran out on a bomb map with no plant; all hostages
     /// rescued; time ran out on a hostage map.
@@ -91,6 +94,7 @@ impl Default for RoundSettings {
             loss_max: 3400,
             kill_reward: 300,
             teamkill_penalty: 3300,
+            tk_punish: 0,
             win_bomb: 3500,
             win_target_saved: 3250,
             win_rescued: 3500,
@@ -164,11 +168,196 @@ impl RoundState {
     }
 }
 
-/// A round ended: the winner (None: draw) and why.
+/// A round ended: the winner (None: draw), why, and what the win panel
+/// says besides.
 #[derive(Message, Clone, Debug, PartialEq)]
 pub struct RoundEnded {
     pub winner: Option<Team>,
     pub reason: RoundEndReason,
+    pub summary: RoundSummary,
+}
+
+/// What CS:S's round win panel (`resource/ui/win_round.res`) shows below
+/// the winner: the round's MVP and why, a fun fact, and how long the
+/// round was live.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RoundSummary {
+    pub mvp: Option<(Entity, Mvp)>,
+    pub fun_fact: Option<FunFact>,
+    /// Seconds from the end of the freeze to the round's end.
+    pub seconds: f32,
+}
+
+/// Why the MVP is the MVP (the game's `winpanel_mvp_award_*` strings).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mvp {
+    Kills,
+    BombPlant,
+    BombDefuse,
+    Rescue,
+}
+
+impl Mvp {
+    pub const ALL: [Mvp; 4] = [Mvp::Kills, Mvp::BombPlant, Mvp::BombDefuse, Mvp::Rescue];
+
+    /// The localisation token (no `#`) and its English text (`%s1`: the
+    /// player).
+    pub fn string(self) -> (&'static str, &'static str) {
+        match self {
+            Mvp::Kills => ("winpanel_mvp_award_kills", "MVP: %s1 for most kills"),
+            Mvp::BombPlant => ("winpanel_mvp_award_bombplant", "MVP: %s1 for planting the bomb"),
+            Mvp::BombDefuse => ("winpanel_mvp_award_bombdefuse", "MVP: %s1 for defusing the bomb"),
+            Mvp::Rescue => ("winpanel_mvp_award_rescue", "MVP: %s1 for rescuing the last hostage"),
+        }
+    }
+}
+
+/// A fun fact: the game's `funfact_*` string (token without `#`), the
+/// player it names (`%s1`) and its other values (`%s2`, `%s3`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunFact {
+    pub token: String,
+    pub player: Option<Entity>,
+    pub values: Vec<String>,
+}
+
+/// What happened this round, for its summary (`RoundSummary`): enemies
+/// killed and headshot kills per player, deaths per side, the first kill
+/// (who, seconds into the live round), the defuser and the last hostage
+/// rescuer. Reset as each round starts.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct RoundStats {
+    pub kills: std::collections::HashMap<Entity, u32>,
+    pub headshots: std::collections::HashMap<Entity, u32>,
+    pub deaths: [u32; 2],
+    pub first_kill: Option<(Entity, f32)>,
+    pub defuser: Option<Entity>,
+    pub rescuer: Option<Entity>,
+    /// Who killed a teammate (`mp_tkpunish`).
+    pub team_killers: Vec<Entity>,
+}
+
+/// Count this round's kills and objectives (`RoundStats`).
+pub(super) fn track_round_stats(
+    mut died: MessageReader<Died>,
+    mut events: MessageReader<ObjectiveEvent>,
+    teams: Query<&Team>,
+    hostages: Query<(), With<Hostage>>,
+    rounds: Res<RoundState>,
+    time: Res<Time>,
+    mut stats: ResMut<RoundStats>,
+) {
+    let Phase::Live { since, .. } = rounds.phase else {
+        died.clear();
+        events.clear();
+        return;
+    };
+    for d in died.read() {
+        if hostages.contains(d.entity) {
+            continue;
+        }
+        let Ok(victim) = teams.get(d.entity) else { continue };
+        if let Some(s) = side(*victim) {
+            stats.deaths[s] += 1;
+        }
+        let Some(killer) = d.attacker.filter(|a| *a != d.entity) else {
+            continue;
+        };
+        if teams.get(killer).is_ok_and(|t| t == victim) {
+            if !stats.team_killers.contains(&killer) {
+                stats.team_killers.push(killer);
+            }
+            continue;
+        }
+        *stats.kills.entry(killer).or_default() += 1;
+        if d.damage.hitgroup == crate::core::Hitgroup::Head && d.damage.kind == crate::core::DamageKind::Bullet {
+            *stats.headshots.entry(killer).or_default() += 1;
+        }
+        if stats.first_kill.is_none() {
+            stats.first_kill = Some((killer, (time.elapsed_secs_f64() - since).max(0.0) as f32));
+        }
+    }
+    for e in events.read() {
+        match e {
+            ObjectiveEvent::Defused { who } => stats.defuser = Some(*who),
+            ObjectiveEvent::HostageRescued { leader: Some(l), .. } => stats.rescuer = Some(*l),
+            _ => {}
+        }
+    }
+}
+
+/// The round's summary for the win panel. The MVP follows CS:S's
+/// published award reasons (the bomb's planter when it went off, its
+/// defuser, the last hostage's rescuer, else the winners' top killer;
+/// none for a draw or winners without kills). Which fun fact shows is
+/// ours (CS:S's choice is unmeasured; docs/tech-debt.md): the first that
+/// applies of a win without casualties, a win without kills, two or more
+/// headshot kills, three or more kills, first blood, a round under 30
+/// seconds, else the game's fallback.
+pub fn round_summary(
+    stats: &RoundStats,
+    planter: Option<Entity>,
+    teams: &dyn Fn(Entity) -> Option<Team>,
+    winner: Option<Team>,
+    reason: RoundEndReason,
+    seconds: f32,
+    round: u32,
+) -> RoundSummary {
+    let top = |pick: &dyn Fn(Entity) -> bool, counts: &std::collections::HashMap<Entity, u32>| {
+        // Most, then the lowest entity (a steady pick on ties).
+        counts
+            .iter()
+            .filter(|(e, n)| **n > 0 && pick(**e))
+            .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)))
+            .map(|(e, n)| (*e, *n))
+    };
+    let on = |team: Option<Team>| move |e: Entity| team.is_some() && teams(e) == team;
+    let mvp = match reason {
+        RoundEndReason::TargetBombed => planter.map(|p| (p, Mvp::BombPlant)),
+        RoundEndReason::BombDefused => stats.defuser.map(|p| (p, Mvp::BombDefuse)),
+        RoundEndReason::HostagesRescued => stats.rescuer.map(|p| (p, Mvp::Rescue)),
+        _ => None,
+    }
+    .or_else(|| top(&on(winner), &stats.kills).map(|(e, _)| (e, Mvp::Kills)));
+    let fact = |token: &str, player: Option<Entity>, values: Vec<String>| FunFact {
+        token: token.to_string(),
+        player,
+        values,
+    };
+    let winner_side = winner.and_then(side);
+    let winners_kills: u32 = stats.kills.iter().filter(|(e, _)| on(winner)(**e)).map(|(_, n)| n).sum();
+    let attackers = winner == Some(ATTACKERS);
+    let fun_fact = if let Some(w) = winner_side
+        && stats.deaths[w] == 0
+        && stats.deaths[1 - w] > 0
+    {
+        Some(fact(
+            if attackers { "funfact_t_win_no_casualties" } else { "funfact_ct_win_no_casualties" },
+            None,
+            vec![],
+        ))
+    } else if winner_side.is_some() && winners_kills == 0 {
+        Some(fact(
+            if attackers { "funfact_t_win_no_kills" } else { "funfact_ct_win_no_kills" },
+            None,
+            vec![],
+        ))
+    } else if let Some((e, n)) = top(&|_| true, &stats.headshots).filter(|(_, n)| *n >= 2) {
+        Some(fact("funfact_kills_headshots", Some(e), vec![n.to_string()]))
+    } else if let Some((e, n)) = top(&|_| true, &stats.kills).filter(|(_, n)| *n >= 3) {
+        Some(fact("funfact_killed_enemies", Some(e), vec![n.to_string()]))
+    } else if let Some((e, t)) = stats.first_kill {
+        Some(fact("funfact_first_blood", Some(e), vec![format!("{t:.0}")]))
+    } else if seconds < 30.0 {
+        Some(fact("funfact_short_round", None, vec![format!("{seconds:.0}")]))
+    } else {
+        Some(fact(
+            if round % 2 == 0 { "funfact_fallback1" } else { "funfact_fallback2" },
+            None,
+            vec![],
+        ))
+    };
+    RoundSummary { mvp, fun_fact, seconds }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -217,7 +406,15 @@ fn side(team: Team) -> Option<usize> {
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<RoundSettings>()
         .init_resource::<RoundState>()
-        .add_message::<RoundEnded>();
+        .init_resource::<RoundStats>()
+        .add_message::<RoundEnded>()
+        .add_message::<ObjectiveEvent>()
+        .add_systems(
+            FixedUpdate,
+            track_round_stats
+                .after(crate::core::apply_damage)
+                .run_if(crate::core::authoritative),
+        );
     let cvars: [(&str, &str, fn(&mut RoundSettings) -> &mut f32); 3] = [
         ("mp_freezetime", "Seconds frozen at the start of each round.", |r| {
             &mut r.freeze_time
@@ -239,6 +436,12 @@ pub(super) fn plugin(app: &mut App) {
     resource_cvar::<RoundSettings, u32>(app, "mp_startmoney", "Money each player starts with.", |r| {
         &mut r.start_money
     });
+    resource_cvar::<RoundSettings, u8>(
+        app,
+        "mp_tkpunish",
+        "1: a player who killed a teammate dies as the next round starts.",
+        |r| &mut r.tk_punish,
+    );
     app.console_command(
         "mp_restartgame",
         "mp_restartgame <seconds>: restart the game that many seconds from now (scores, money and the round \
@@ -342,10 +545,15 @@ pub(super) fn run_rounds(world: &mut World) {
                 ends: now + settings.round_time as f64 * 60.0,
             };
         }
-        Phase::Live { ends, .. } => {
+        Phase::Live { ends, since } => {
             if let Some((winner, reason)) = live_outcome(world, now >= ends) {
                 end_round(world, &settings, now, winner, reason);
-                world.write_message(RoundEnded { winner, reason });
+                let summary = summarize(world, winner, reason, (now - since).max(0.0) as f32);
+                world.write_message(RoundEnded {
+                    winner,
+                    reason,
+                    summary,
+                });
             }
         }
         Phase::Over { until, .. } if now >= until => {
@@ -355,6 +563,7 @@ pub(super) fn run_rounds(world: &mut World) {
                 hold_intermission(world);
                 return;
             }
+            super::balance_teams(world);
             start_round(world, &settings, now, false)
         }
         _ => {}
@@ -381,6 +590,16 @@ pub(super) fn run_rounds(world: &mut World) {
     if world.get_resource::<RoundOpen>().is_none_or(|o| o.0 != open) {
         world.insert_resource(RoundOpen(open));
     }
+}
+
+/// This round's `RoundSummary` from its `RoundStats`.
+fn summarize(world: &mut World, winner: Option<Team>, reason: RoundEndReason, seconds: f32) -> RoundSummary {
+    let stats = world.get_resource::<RoundStats>().cloned().unwrap_or_default();
+    let planter = world.get_resource::<BombState>().and_then(|b| b.planter);
+    let teams: std::collections::HashMap<Entity, Team> =
+        world.query::<(Entity, &Team)>().iter(world).map(|(e, t)| (e, *t)).collect();
+    let round = world.resource::<RoundState>().number;
+    round_summary(&stats, planter, &|e| teams.get(&e).copied(), winner, reason, seconds, round)
 }
 
 /// The intermission: nobody moves, shoots or buys.
@@ -506,6 +725,8 @@ fn start_round(world: &mut World, s: &RoundSettings, now: f64, fresh: bool) {
             until: now + s.freeze_time as f64,
         };
     }
+    let team_killers = std::mem::take(&mut world.resource_mut::<RoundStats>().team_killers);
+    world.insert_resource(RoundStats::default());
     // The map's entities as they spawned (logic and map layers).
     world.get_resource_or_init::<crate::core::RoundRestarts>().0 += 1;
     // Everyone back at their spawns: the dead (or everyone, at the start
@@ -522,6 +743,26 @@ fn start_round(world: &mut World, s: &RoundSettings, now: f64, fresh: bool) {
         .collect();
     for (e, dead) in all {
         put_at_spawn(world, e, fresh || dead);
+    }
+    // `mp_tkpunish`: last round's team killers die now (by the world, as
+    // a fall would kill them; how CS:S counts it is unmeasured).
+    if s.tk_punish != 0 && !fresh {
+        for e in team_killers {
+            if world.get::<Health>(e).is_some_and(|h| h.current > 0.0) {
+                let at = world.get::<Transform>(e).map_or(Vec3::ZERO, |t| t.translation);
+                world.write_message(crate::core::Damage {
+                    target: e,
+                    attacker: None,
+                    amount: 1000.0,
+                    point: at,
+                    dir: Vec3::NEG_Y,
+                    hitgroup: crate::core::Hitgroup::Generic,
+                    kind: crate::core::DamageKind::Generic,
+                    weapon: None,
+                    force: Vec3::ZERO,
+                });
+            }
+        }
     }
     // Computer players shop at once.
     let bots: Vec<Entity> = world

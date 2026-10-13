@@ -334,6 +334,15 @@ pub const SETTINGS: &[Setting] = &[
         ]),
     ),
     setting(VideoAdvanced, "mat_vsync", Some("VSync"), Some("#GameUI_Wait_For_VSync"), "Wait for vertical sync", SettingKind::Toggle),
+    // Maps' color_correction entities (`client::color_correction`).
+    setting(
+        VideoAdvanced,
+        "mat_colorcorrection",
+        Some("ColorCorrection"),
+        Some("#GameUI_Color_Correction"),
+        "Color correction",
+        SettingKind::Choice(ON_OFF),
+    ),
     setting(VideoAdvanced, "mat_hdr_level", Some("HDR"), Some("#GameUI_HDR"), "High dynamic range (next map)", SettingKind::Choice(HDR_LEVELS)),
     setting(VideoAdvanced, "fov_desired", Some("FovSlider"), Some("#GameUI_FOV"), "Field of view", range(75.0, 90.0, 1.0, 0)),
     // The video tab's brightness dialog (`OptionsSubVideoGammaDlg.res`):
@@ -675,6 +684,13 @@ impl Plugin for VideoPlugin {
                 w.get_resource_mut::<PlayerFov>().ok_or("not available")?.0 = v.clamp(FOV_RANGE.0, FOV_RANGE.1);
                 Ok(())
             },
+        );
+        app.init_resource::<crate::map::rope_sway::RopeWind>();
+        resource_cvar::<crate::map::rope_sway::RopeWind, f32>(
+            app,
+            "rope_wind_dist",
+            "Ropes sway in the wind while the camera is within this many units of them (0: never).",
+            |w| &mut w.dist,
         );
         app.init_resource::<crate::map::lod::ModelSettings>();
         resource_cvar::<crate::map::lod::ModelSettings, u8>(
@@ -1128,6 +1144,17 @@ mod tests {
         let aa = setting("mat_antialias");
         assert_eq!(aa.step_with("4", 1, &[], false), "4");
         assert!(setting("sensitivity").entries(&[], &none).is_empty());
+    }
+
+    /// Video > Advanced's colour correction combo box (no longer greyed)
+    /// sets `mat_colorcorrection`.
+    #[test]
+    fn colour_correction_is_a_video_setting() {
+        let cc = setting("mat_colorcorrection");
+        assert_eq!((cc.place, cc.field), (Place::VideoAdvanced, Some("ColorCorrection")));
+        assert_eq!(cc.show("1", &none), "Enabled");
+        assert_eq!(cc.read(|c| (c == "mat_colorcorrection").then(|| "0".to_string())).as_deref(), Some("0"));
+        assert_eq!(cc.lines("0"), ["mat_colorcorrection 0"]);
     }
     #[test]
     fn a_control_can_set_several_cvars() {

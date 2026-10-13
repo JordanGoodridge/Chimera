@@ -68,6 +68,18 @@ impl Plugin for BuyMenuPlugin {
                 Ok(None)
             },
         );
+        app.console_command(
+            "buyequip",
+            "Open the buy menu's equipment page (buymenu 6 in the game's menu, 8 in the plain one).",
+            |w, _| {
+                let game = w
+                    .get_resource::<ActiveHud>()
+                    .is_some_and(|h| h.0.menus.as_ref().is_some_and(|m| !m.buy.is_empty()));
+                w.resource_mut::<crate::console::Console>()
+                    .submit(if game { "buymenu 6" } else { "buymenu 8" });
+                Ok(None)
+            },
+        );
     }
 }
 

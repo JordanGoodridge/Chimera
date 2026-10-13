@@ -35,8 +35,24 @@ impl Plugin for PerfPlugin {
             .add_systems(First, start_frame)
             .add_systems(
                 Last,
-                (record_triangles, count_churn, end_frame, perf_report, draw_overlay, hide_overlay).chain(),
-            );
+                (
+                    record_triangles,
+                    count_churn,
+                    end_frame,
+                    perf_report,
+                    draw_overlay,
+                    hide_overlay,
+                    limit_frames,
+                )
+                    .chain(),
+            )
+            .init_resource::<FrameLimit>();
+        resource_cvar::<FrameLimit, f32>(
+            app,
+            "fps_max",
+            "Most frames a second the game draws (0: no cap; vsync may cap lower).",
+            |l| &mut l.fps_max,
+        );
         // The render world's time per frame (its `Render` schedule, run on
         // the render thread beside the next frame's main world).
         let render_time = RenderTime::default();
@@ -254,6 +270,56 @@ impl RenderTime {
 fn start_frame(mut times: ResMut<FrameTimes>) {
     let now = Instant::now();
     times.last_start = times.started.replace(now);
+}
+
+/// `fps_max`: the most frames a second the window draws (CS:S's default
+/// 300; 0 no cap). Off without a window (tests, the dedicated server)
+/// and while `--bench` times views.
+#[derive(Resource, Clone, Debug)]
+pub struct FrameLimit {
+    pub fps_max: f32,
+    /// When the next frame may start.
+    next: Option<Instant>,
+}
+
+impl Default for FrameLimit {
+    fn default() -> Self {
+        Self {
+            fps_max: 300.0,
+            next: None,
+        }
+    }
+}
+
+impl FrameLimit {
+    /// How long to wait at `now` before the next frame, and the frame
+    /// after's start. A frame that ran late starts the count again (no
+    /// catching up with short frames).
+    pub fn wait(&mut self, now: Instant) -> std::time::Duration {
+        if self.fps_max <= 0.0 {
+            self.next = None;
+            return std::time::Duration::ZERO;
+        }
+        // Source clamps fps_max's low end; 10 keeps a typo playable.
+        let frame = std::time::Duration::from_secs_f64(1.0 / self.fps_max.max(10.0) as f64);
+        let start = match self.next {
+            Some(next) if next > now => next,
+            _ => now,
+        };
+        self.next = Some(start + frame);
+        start - now
+    }
+}
+
+fn limit_frames(mut limit: ResMut<FrameLimit>, windows: Query<(), With<bevy::window::PrimaryWindow>>) {
+    if windows.is_empty() {
+        limit.next = None;
+        return;
+    }
+    let wait = limit.wait(Instant::now());
+    if !wait.is_zero() {
+        std::thread::sleep(wait);
+    }
 }
 
 fn end_frame(mut times: ResMut<FrameTimes>) {
@@ -632,5 +698,31 @@ fn hide_overlay(perf: Res<Perf>, mut text: Query<&mut Visibility, With<PerfText>
         for mut v in &mut text {
             v.set_if_neq(Visibility::Hidden);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn fps_max_spaces_frames_without_catching_up() {
+        let mut l = FrameLimit {
+            fps_max: 100.0,
+            next: None,
+        };
+        let t0 = Instant::now();
+        // The first frame starts at once; the next 10 ms after it.
+        assert_eq!(l.wait(t0), Duration::ZERO);
+        assert_eq!(l.wait(t0 + Duration::from_millis(4)), Duration::from_millis(6));
+        // A slow frame (30 ms later): no wait, and the count starts again.
+        assert_eq!(l.wait(t0 + Duration::from_millis(50)), Duration::ZERO);
+        assert_eq!(l.wait(t0 + Duration::from_millis(51)), Duration::from_millis(9));
+        // 0: no cap.
+        l.fps_max = 0.0;
+        assert_eq!(l.wait(t0 + Duration::from_millis(52)), Duration::ZERO);
+        assert_eq!(FrameLimit::default().fps_max, 300.0);
     }
 }

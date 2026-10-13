@@ -1,6 +1,7 @@
 //! The game HUD's sprite pieces: the ammo-type icon in the ammo panel, and
-//! the damage direction indicators (the `pain_*` sprites) that flash on the
-//! side a hit came from.
+//! the damage indicator (the HUD layout's `HudDamageIndicator`: a red bar
+//! at the screen's left or right side, both for a hit from in front or
+//! behind) that flashes on the side a hit came from.
 
 use bevy::prelude::*;
 
@@ -10,8 +11,8 @@ use super::{
 };
 
 use crate::{
-    core::{Damage, Intent, LocalPlayer},
-    map::hud::{ActiveHud, GameHud, HudSprite},
+    core::{DamageTaken, Intent, LocalPlayer},
+    map::hud::{ActiveHud, GameHud},
     rules::Dead,
     weapon::{Inventory, Weapon},
 };
@@ -32,10 +33,8 @@ impl Plugin for HudSpritesPlugin {
 }
 
 /// Seconds a damage indicator takes to fade (an assumption; the game's
-/// timing isn't in its data files).
+/// timing isn't in its data files: capture C8).
 const PAIN_SECONDS: f32 = 1.0;
-/// How far from the screen centre the indicators sit, in virtual units.
-const PAIN_OFFSET: f32 = 40.0;
 
 #[derive(Component)]
 struct SpritePart;
@@ -43,11 +42,12 @@ struct SpritePart;
 #[derive(Component)]
 struct AmmoIcon;
 
-/// Up (in front), down (behind), left, right, and seconds left.
+/// A damage indicator bar (`LEFT` or `RIGHT`) and its seconds left.
 #[derive(Component)]
 struct Pain(usize, f32);
 
-const PAIN_NAMES: [&str; 4] = ["pain_up", "pain_down", "pain_left", "pain_right"];
+const LEFT: usize = 0;
+const RIGHT: usize = 1;
 
 /// The ammo icon for a weapon (CS:S ammo types by weapon).
 pub fn ammo_icon(weapon: &str) -> Option<&'static str> {
@@ -65,18 +65,7 @@ pub fn ammo_icon(weapon: &str) -> Option<&'static str> {
     })
 }
 
-fn image(hud: &ActiveHud, sprite: &HudSprite, color: Color) -> Option<ImageNode> {
-    let handle = hud.1.get(&sprite.texture)?.clone();
-    let [x, y, w, h] = sprite.rect;
-    Some(ImageNode {
-        image: handle,
-        color,
-        rect: Some(Rect::new(x, y, x + w, y + h)),
-        ..default()
-    })
-}
-
-/// The damage indicators' sheet as CS:S draws it, additively: black is
+/// A HUD sprite sheet as CS:S draws it, additively: black is
 /// nothing. Drawn alpha blended here, so each texel's brightness becomes
 /// its coverage (colour divided by it); otherwise the sprite's black
 /// surround shows as a dark box. `None` if the image isn't 8-bit RGBA.
@@ -118,16 +107,99 @@ fn build(
         ..default()
     };
     commands.spawn((SpritePart, AmmoIcon, absolute(), Visibility::Hidden, GlobalZIndex(40)));
-    for (i, name) in PAIN_NAMES.iter().enumerate() {
-        let Some(mut node) = hud.0.sprites.get(*name).and_then(|s| image(&hud, s, Color::srgba(1.0, 0.0, 0.0, 0.0)))
-        else {
-            continue;
-        };
-        if let Some(converted) = images.get(&node.image).and_then(additive_as_alpha) {
-            node.image = images.add(converted);
+    // The damage indicator's bars, when the layout has it.
+    if let Some(bars) = hud.0.panels.get("HudDamageIndicator").map(DamageBars::of) {
+        let shape = images.add(trapezoid(bars));
+        for side in [LEFT, RIGHT] {
+            let node = ImageNode {
+                image: shape.clone(),
+                color: Color::NONE,
+                flip_x: side == RIGHT,
+                ..default()
+            };
+            commands.spawn((SpritePart, Pain(side, 0.0), node, absolute(), GlobalZIndex(41)));
         }
-        commands.spawn((SpritePart, Pain(i, 0.0), node, absolute(), GlobalZIndex(41)));
     }
+}
+
+/// The damage indicator's bars as the HUD layout gives them
+/// (`HudDamageIndicator`, 480-line units): each bar's outer edge
+/// `xpos` in from the screen's side, `wide` across, `tall1` high at the
+/// outer edge from `ypos` down, `tall2` at the inner edge (centred on the
+/// outer one), in `color` (its alpha is the hit's).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DamageBars {
+    pub xpos: f32,
+    pub ypos: f32,
+    pub wide: f32,
+    pub tall1: f32,
+    pub tall2: f32,
+    pub color: [u8; 3],
+}
+
+impl DamageBars {
+    fn of(p: &crate::map::hud::HudPanel) -> Self {
+        let num = |k: &str, d: f32| p.keys.get(k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+        let color = p
+            .keys
+            .get("dmgcolorleft")
+            .map(|v| v.split_whitespace().filter_map(|x| x.parse::<u8>().ok()).collect::<Vec<_>>())
+            .filter(|c| c.len() >= 3)
+            .map_or([255, 0, 0], |c| [c[0], c[1], c[2]]);
+        Self {
+            xpos: num("dmg_xpos", 30.0),
+            ypos: num("dmg_ypos", 100.0),
+            wide: num("dmg_wide", 36.0),
+            tall1: num("dmg_tall1", 240.0),
+            tall2: num("dmg_tall2", 200.0),
+            color,
+        }
+    }
+
+    /// The left bar's box in a window `w` x `h` (the right one mirrors it).
+    pub fn rect(&self, side: usize, w: f32, h: f32) -> Rect {
+        let s = h / 480.0;
+        let left = if side == LEFT {
+            self.xpos * s
+        } else {
+            w - (self.xpos + self.wide) * s
+        };
+        Rect::new(left, self.ypos * s, left + self.wide * s, (self.ypos + self.tall1) * s)
+    }
+}
+
+/// The left bar's shape: white where the trapezoid is (the outer edge on
+/// the left, full height; the inner edge `tall2` of it), clear elsewhere.
+fn trapezoid(bars: DamageBars) -> Image {
+    use bevy::{
+        asset::RenderAssetUsages,
+        render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+    };
+    const PER_UNIT: f32 = 4.0;
+    let (w, h) = ((bars.wide * PER_UNIT).max(1.0) as u32, (bars.tall1 * PER_UNIT).max(1.0) as u32);
+    let mut data = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let across = (x as f32 + 0.5) / w as f32;
+            let half = (bars.tall1 + (bars.tall2 - bars.tall1) * across) / bars.tall1 / 2.0;
+            let from_mid = ((y as f32 + 0.5) / h as f32 - 0.5).abs();
+            if from_mid <= half {
+                let i = ((y * w + x) * 4) as usize;
+                data[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+            }
+        }
+    }
+    Image::new(
+        Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::all(),
+    )
 }
 
 fn teardown(parts: Query<Entity, With<SpritePart>>, mut commands: Commands) {
@@ -136,10 +208,13 @@ fn teardown(parts: Query<Entity, With<SpritePart>>, mut commands: Commands) {
     }
 }
 
-/// Light the indicator on the side each hit on the local player came from.
+/// Light the indicator on the side each hit on the local player came from:
+/// damage that reached its health (`core::DamageTaken`; not under god
+/// mode or refused by the rules), a network client's from the server
+/// (`net::Hurt`).
 fn pain(
-    mut damage: MessageReader<Damage>,
-    me: Option<Single<(Entity, &Intent, Has<crate::core::God>), With<LocalPlayer>>>,
+    mut taken: MessageReader<DamageTaken>,
+    me: Option<Single<(Entity, &Intent), With<LocalPlayer>>>,
     mut parts: Query<&mut Pain>,
     time: Res<Time>,
 ) {
@@ -148,20 +223,20 @@ fn pain(
         p.1 = (p.1 - dt).max(0.0);
     }
     let Some(me) = me else {
-        damage.clear();
+        taken.clear();
         return;
     };
-    let (me, intent, god) = *me;
-    for d in damage.read() {
-        // Nothing to show when the hit takes nothing (god mode).
-        if d.target != me || god {
+    let (me, intent) = *me;
+    for t in taken.read() {
+        let d = &t.damage;
+        if d.target != me {
             continue;
         }
-        // A fall has no direction: every side lights (a guess; see
+        // A fall has no direction: both sides light (a guess; see
         // docs/tech-debt.md).
         let lit = if d.kind == crate::core::DamageKind::Fall {
-            vec![0, 1, 2, 3]
-        } else if d.attacker.is_none_or(|a| a == me) {
+            vec![LEFT, RIGHT]
+        } else if !t.directed {
             continue;
         } else {
             sides(d.dir, intent.yaw)
@@ -174,18 +249,21 @@ fn pain(
     }
 }
 
-/// Which indicators a hit lights (0 up/front, 1 down/behind, 2 left,
-/// 3 right): from the shot's direction (`dir`, attacker toward you) and
-/// your look yaw.
+/// Which bars a hit lights: the left one for a hit from the left, the
+/// right one from the right, both from in front or behind (ours: capture
+/// C8). From the shot's direction (`dir`, attacker toward you) and your
+/// look yaw.
 fn sides(dir: Vec3, yaw: f32) -> Vec<usize> {
     let from = -dir.with_y(0.0).normalize_or_zero();
-    let forward = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
     let right = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
-    let (f, r) = (from.dot(forward), from.dot(right));
-    [(f > 0.3, 0), (f < -0.3, 1), (r < -0.3, 2), (r > 0.3, 3)]
-        .into_iter()
-        .filter_map(|(on, i)| on.then_some(i))
-        .collect()
+    let r = from.dot(right);
+    if r < -0.3 {
+        vec![LEFT]
+    } else if r > 0.3 {
+        vec![RIGHT]
+    } else {
+        vec![LEFT, RIGHT]
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -258,24 +336,20 @@ fn update(
             None => *vis = Visibility::Hidden,
         }
     }
-    // Damage indicators around the centre.
-    let centre = Vec2::new(w, h) / 2.0;
+    // The damage indicator's bars at the screen's sides.
+    let Some(bars) = game.panels.get("HudDamageIndicator").map(DamageBars::of) else {
+        return;
+    };
     for (p, mut node, mut img) in &mut pains {
-        let Some(s) = game.sprites.get(PAIN_NAMES[p.0]) else { continue };
-        let size = Vec2::new(s.rect[2], s.rect[3]) * scale * 0.6;
-        let off = PAIN_OFFSET * scale;
-        let at = match p.0 {
-            0 => Vec2::new(centre.x - size.x / 2.0, centre.y - off - size.y),
-            1 => Vec2::new(centre.x - size.x / 2.0, centre.y + off),
-            2 => Vec2::new(centre.x - off - size.x, centre.y - size.y / 2.0),
-            _ => Vec2::new(centre.x + off, centre.y - size.y / 2.0),
-        };
-        node.left = px(at.x);
-        node.top = px(at.y);
-        node.width = px(size.x);
-        node.height = px(size.y);
+        let r = bars.rect(p.0, w, h);
+        node.left = px(r.min.x);
+        node.top = px(r.min.y);
+        node.width = px(r.width());
+        node.height = px(r.height());
+        // Fading out over `PAIN_SECONDS` from its full strength (ours).
         let alpha = if dead { 0.0 } else { (p.1 / PAIN_SECONDS).clamp(0.0, 1.0) };
-        img.color = Color::srgba(1.0, 0.1, 0.0, alpha * 0.8);
+        let [r, g, b] = bars.color;
+        img.color = Color::srgba_u8(r, g, b, 255).with_alpha(alpha * 0.8);
     }
 }
 
@@ -285,16 +359,41 @@ mod tests {
 
     #[test]
     fn hits_light_the_side_they_came_from() {
-        // Facing -Z (yaw 0); a shot travelling +Z came from in front.
-        assert_eq!(sides(Vec3::Z, 0.0), vec![0]);
-        assert_eq!(sides(Vec3::NEG_Z, 0.0), vec![1]);
+        // Facing -Z (yaw 0); a shot travelling +Z came from in front:
+        // both bars, as from behind.
+        assert_eq!(sides(Vec3::Z, 0.0), vec![LEFT, RIGHT]);
+        assert_eq!(sides(Vec3::NEG_Z, 0.0), vec![LEFT, RIGHT]);
         // From the left (-X side): the shot travels +X.
-        assert_eq!(sides(Vec3::X, 0.0), vec![2]);
-        assert_eq!(sides(Vec3::NEG_X, 0.0), vec![3]);
+        assert_eq!(sides(Vec3::X, 0.0), vec![LEFT]);
+        assert_eq!(sides(Vec3::NEG_X, 0.0), vec![RIGHT]);
         // Turned 90 degrees left (facing -X), a shot from -X is in front.
-        assert_eq!(sides(Vec3::X, std::f32::consts::FRAC_PI_2), vec![0]);
+        assert_eq!(sides(Vec3::X, std::f32::consts::FRAC_PI_2), vec![LEFT, RIGHT]);
         // Diagonal: front and right.
-        assert_eq!(sides(Vec3::new(-1.0, 0.0, 1.0), 0.0), vec![0, 3]);
+        assert_eq!(sides(Vec3::new(-1.0, 0.0, 1.0), 0.0), vec![RIGHT]);
+    }
+
+    #[test]
+    fn damage_bars_sit_where_the_layout_puts_them() {
+        // CS:S's hudlayout.res values.
+        let bars = DamageBars {
+            xpos: 30.0,
+            ypos: 100.0,
+            wide: 36.0,
+            tall1: 240.0,
+            tall2: 200.0,
+            color: [255, 0, 0],
+        };
+        // 1280x960: 2 pixels a unit.
+        assert_eq!(bars.rect(LEFT, 1280.0, 960.0), Rect::new(60.0, 200.0, 132.0, 680.0));
+        assert_eq!(bars.rect(RIGHT, 1280.0, 960.0), Rect::new(1148.0, 200.0, 1220.0, 680.0));
+        // The shape: full height at the outer edge, tall2 at the inner.
+        let img = trapezoid(bars);
+        let (w, h) = (img.width(), img.height());
+        let a = |x: u32, y: u32| img.data.as_ref().unwrap()[((y * w + x) * 4 + 3) as usize];
+        assert_eq!((a(0, 2), a(0, h / 2)), (255, 255), "the outer edge, top to bottom");
+        let inner_gap = ((240.0 - 200.0) / 2.0 / 240.0 * h as f32) as u32;
+        assert_eq!(a(w - 1, inner_gap - 2), 0, "above the inner edge");
+        assert_eq!(a(w - 1, inner_gap + 2), 255, "the inner edge");
     }
 
     #[test]

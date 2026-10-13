@@ -213,6 +213,8 @@ struct Shot {
     spectators: Vec<String>,
     wins: Option<[u32; 2]>,
     map: String,
+    /// The map's time left (`mp_timelimit`), as the board shows it.
+    time_left: Option<String>,
     size: Vec2,
     game_look: bool,
 }
@@ -249,9 +251,11 @@ fn update(
         Option<Res<crate::map::LoadedMapName>>,
         Option<Res<crate::net::NetSettings>>,
     ),
-    (rounds, menu): (
+    (rounds, menu, limits, fixed): (
         Option<Res<crate::rules::rounds::RoundState>>,
         Option<Res<super::game_menu::GameMenu>>,
+        Option<Res<crate::rules::game_end::GameLimits>>,
+        Option<Res<Time<Fixed>>>,
     ),
     mut last: Local<Option<Shot>>,
     mut commands: Commands,
@@ -333,6 +337,11 @@ fn update(
             .then(a.deaths.cmp(&b.deaths))
             .then(a.name.cmp(&b.name))
     });
+    let time_left = map_time_left(
+        limits.as_deref(),
+        rounds.as_deref().and_then(|r| r.map_started),
+        fixed.map_or(0.0, |t| t.elapsed_secs_f64()),
+    );
     // Rounds won, while rounds are played.
     let wins = rounds
         .filter(|r| r.phase != crate::rules::rounds::Phase::Off)
@@ -347,6 +356,7 @@ fn update(
         spectators,
         wins,
         map,
+        time_left,
         size,
         game_look,
     };
@@ -391,12 +401,25 @@ fn draw_game(
             _ => None,
         };
         s.text = fill;
-        // No time limit to show beside the clock (the map's time left).
+        // The map's time left beside the clock; neither without a time
+        // limit.
         if name == "icon_clock" || name == "winconditionlabel" {
-            s.visible = false;
+            s.visible = shot.time_left.is_some();
+        }
+        if name == "winconditionlabel" {
+            s.text = shot.time_left.clone();
         }
         s
     };
+    // The time's label sizes itself to its text, its right side on the
+    // clock (`auto_wide_tocontents`, pinned): drawn right-aligned in its box.
+    let mut layout = layout.clone();
+    for c in &mut layout.controls {
+        if c.name.eq_ignore_ascii_case("WinConditionLabel") {
+            c.align = crate::map::hud::UiAlign::East;
+        }
+    }
+    let layout = &layout;
     painter.spawn(commands, root, shot.size, layout, VguiMenu::Scoreboard, &mut shown);
 
     let rects = layout.rects(Rect::from_corners(Vec2::ZERO, shot.size), painter.scale);
@@ -461,6 +484,14 @@ fn draw_game(
             }
         }
     }
+}
+
+/// The map's time left as the scoreboard shows it (`m:ss`), with a time
+/// limit (`mp_timelimit`; a network client has the server's, with the
+/// map's start in `net::NetRound`).
+fn map_time_left(limits: Option<&crate::rules::game_end::GameLimits>, started: Option<f64>, now: f64) -> Option<String> {
+    let limit = limits?.time_limit;
+    crate::rules::game_end::time_left(limit, Some(started?), now).map(crate::rules::game_end::clock)
 }
 
 /// The scoreboard's spectator line: "No Spectators", or "2 Spectators:
@@ -620,6 +651,18 @@ mod tests {
         app.world_mut().resource_mut::<GameMenu>().open = false;
         app.update();
         assert!(visible(&mut app), "back in the game");
+    }
+
+    #[test]
+    fn the_maps_time_left_shows_with_a_time_limit() {
+        use crate::rules::game_end::GameLimits;
+        let limits = GameLimits {
+            time_limit: 20.0,
+            ..Default::default()
+        };
+        assert_eq!(map_time_left(Some(&limits), Some(100.0), 160.0).as_deref(), Some("19:00"));
+        assert_eq!(map_time_left(Some(&GameLimits::default()), Some(100.0), 160.0), None, "no limit");
+        assert_eq!(map_time_left(Some(&limits), None, 160.0), None, "not started");
     }
 
     #[test]
