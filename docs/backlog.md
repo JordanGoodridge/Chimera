@@ -153,7 +153,7 @@ Looks:
   confirm: in CS:S, a bot switching rifle to pistol (and mid-reload) in
   third person, a few frames over the first half second; if CS:S shows a
   gesture we lack, it needs a spec.
-- Standing inside another player: the screen shows only the skybox, no
+- Standing inside another player (user: seen on mg_jacks_multigames_v1): the screen shows only the skybox, no
   world. Not reproduced (2026-10-10, de_dust2): inside a bot standing and
   in noclip, and over the network (host `setpos` onto a client, the client
   walking, ducking and jumping inside it, both screens), the world draws
@@ -537,60 +537,10 @@ a first bot are in.
 
 ## 4. Bots
 
-- Ladders on other maps (`tests/it/heavy/bot_nav.rs::ladders_climb_both_ways`,
-  ignored; de_nuke's all pass): 118 of 128 climbs on cs_office,
-  de_train, de_port, de_cbble, cs_militia, cs_assault, de_piranesi and
-  de_prodigy (2026-10-07, up from 81; per map before/after: cs_office
-  3/4 to 4/4, de_train 37/70 to 63/70, de_port 1/2 to 2/2, de_cbble
-  11/14 to 14/14, cs_militia 7/10 to 9/10, cs_assault 14/16 to 15/16,
-  de_piranesi 0/2 to 2/2, de_prodigy 8/10 to 9/10). Left: de_train 6,
-  18, 23 up and 24 down (the foot on a ledge 0.7 m above the pit floor
-  by the tracks: bots drop into the pit beside it and jump about under
-  the ledge), 11 and 34 up (wander off on another route after a stuck
-  report from an earlier case), 37 up (flung onto a roof beside the top
-  when an approach from the side catches the ladder early);
-  cs_militia 2 up, cs_assault 5 down, de_prodigy 1 up (not looked at).
-  Look at each with `MASHUP_BOT_CASE="ladder 3 up"` and the trace, or
-  `MASHUP_BOT_TRACE_CASE` to trace one inside the whole map's run.
-- A CS:S bot behaviour spec (nav spec open questions 2-4) to check our
-  team play against: path costs, how bots pick sites, hold and rotate,
-  what they say. Ours (`bot::tactics`) plants through `bot::objectives`
-  (carrier to the nearest target); after a plant the defenders fall back
-  to a rally point, gather and retake together, one defusing while the
-  others cover it, and the terrorists guard the bomb from cover spots
-  (`bot::objectives::Retake`). Left: leading hostages, no sniper spots
-  (the spot flags are loaded), no crouching at hold spots, no lurkers or
-  split attacks, no falling back before a plant (a site lost with the
-  bomb not yet down), and only approach data it computes (v9 files'
-  approach records are skipped). Buying (`bot::buy`, `economy::
-  autobuy_rolling`): profile weapon preferences, eco and pistol rounds,
-  kits; left: team-wide eco/force decisions.
-- Balance (5v5, `bot_rounds::dust2_bot_round_stats`; runs aren't
-  repeatable, one 15-round run swings by 3-4 rounds, so 30-round runs
-  summed): terrorists won, before this pass / after (retakes, buying,
-  two defenders rotating): de_dust2 43/60 (72 %) / 85/120 (71 %),
-  de_nuke 30/60 (50 %) / 52/90 (58 %), cs_office (terrorists defend)
-  31/60 (52 %) / 44/90 (49 %). de_dust2 stays terrorist-sided: counter-
-  terrorists die mostly at B, and while chasing, answering calls or
-  walking to holds rather than holding (the stats print deaths by place
-  and by what the bot was doing). Tried and dropped: defenders not
-  leaving their site to answer calls and not chasing beyond it (de_dust2
-  26/30 to the terrorists), no grenades at all (25/30). Next: why B
-  falls (its hold spots, the B boxes spot bots get stuck on), a measured
-  reaction time.
-- Grenades, beyond the first pass: flashes thrown around corners so they
-  pop out of the thrower's view without turning, running and jump throws
-  (carried velocity in the plan). Done: no team flashes
-  (`grenades::flashes_mate`), smokes cutting sight lines
-  (`tactics::smoke_spot`), "Fire in the hole" (every throw).
-- de_nuke's vents: the stats' stuck spots are mostly bots dropping
-  through the A hatches into the ducts (20.7, -9.9, 35.2 and 11.7, -9.9,
-  35.3, engine m) and in the ducts; not looked at in this pass.
-- Movement: gap jumps. Teammates now give way in doors (`bot::give_way`;
-  `tests/it/bot_manners.rs`). de_nuke's door into A from Inside: a lone
-  bot gets through all three door pairs both ways in about a second
-  (`bot_nav::nuke_doors_are_passable`), so the stalls seen in play are
-  most likely bots shouldering each other there (not reproduced alone).
+Parked (user, 2026-10-13): bots are fine for now; focus on what players
+see. The last pass's notes and open ideas (de_dust2 balance ~71% T,
+de_nuke vent stuck spots, team eco) are in git history and
+docs/tech-debt.md's bot rows.
 
 ## 5. Console, remaining
 
