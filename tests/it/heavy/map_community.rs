@@ -1133,3 +1133,51 @@ fn modulate_decals_multiply_the_surface() {
             .all(|m| !m.modulate)
     );
 }
+
+/// A map without `func_buyzone` (mg_jacks_multigames_v1; buying anywhere
+/// in the playtest of 2026-10-11): buy zones around each team's own
+/// spawn points (`SPAWN_BUY_ZONE_RADIUS`, ours: the size is
+/// undocumented), none out in the games; no `info_map_parameters`, so
+/// both teams may buy. (`mp_buytime` closes buying as on every map:
+/// `rules::rounds`.)
+#[test]
+fn spawn_buy_zones_without_func_buyzone() {
+    use mashup::{
+        core::Team,
+        map::MapEntities,
+        weapon::economy::{Money, SPAWN_BUY_ZONE_RADIUS, cannot_buy_here, in_buy_zone},
+    };
+    let Some(map) = load("mg_jacks_multigames_v1") else { return };
+    assert!(!map.entities.iter().any(|e| e.classname().eq_ignore_ascii_case("func_buyzone")));
+    let mut w = World::new();
+    w.insert_resource(MapEntities {
+        entities: std::sync::Arc::new(map.entities.clone()),
+        scale: map.entity_scale,
+    });
+    let mut check = |at: Vec3, team: u8| {
+        let e = w.spawn((Transform::from_translation(at), Team(team), Money(800))).id();
+        let r = (in_buy_zone(&w, e), cannot_buy_here(&w, e));
+        w.despawn(e);
+        r
+    };
+    let spawns: Vec<(Vec3, u8)> = map.spawns.iter().filter_map(|(p, t)| Some((*p, (*t)?.0))).collect();
+    assert!(spawns.iter().any(|s| s.1 == 1) && spawns.iter().any(|s| s.1 == 2), "both teams spawn");
+    let reach = SPAWN_BUY_ZONE_RADIUS * map.entity_scale;
+    let near = |a: Vec3, b: Vec3, k: f32| (a.x - b.x).abs() <= k * reach && (a.z - b.z).abs() <= k * reach;
+    for (at, team) in &spawns {
+        assert_eq!(check(*at, *team), (true, None), "team {team} at its spawn {at}");
+        // The other team's spawns are elsewhere: not its zone (unless one
+        // of its own is near).
+        if !spawns.iter().any(|(p, t)| *t == 3 - team && near(*p, *at, 1.0)) {
+            assert!(!check(*at, 3 - team).0, "team {} at the other's spawn {at}", 3 - team);
+        }
+    }
+    // Out in the map, past every spawn's reach.
+    let far = map
+        .meshes
+        .iter()
+        .flat_map(|m| m.positions.iter().map(|p| Vec3::from(*p)))
+        .find(|p| spawns.iter().all(|(s, _)| !near(*p, *s, 2.0)))
+        .expect("somewhere far from the spawns");
+    assert!(!check(far, 1).0 && !check(far, 2).0, "no buying at {far}");
+}

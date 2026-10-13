@@ -557,3 +557,61 @@ fn drawing_another_weapon_stops_the_old_ones_gestures() {
     let upper: Vec<String> = (0..4).filter_map(|k| name(&a, k)).collect();
     assert_eq!(upper, ["Idle_Upper_KNIFE"], "fade {fade}");
 }
+
+/// Third-person magazines stay on the gun as the look turns (playtest
+/// 2026-10-11: the AK's slid toward the grip looking up or down). Held
+/// world models put their magazine on `weapon_bone_Clip` (bone merge);
+/// the aim layers of the AK, FAMAS, Galil, MP5, Scout and others carry
+/// a stray clip offset in their up/down/side cells (the same in every
+/// cell, none in the middle one) that pulled the clip to the weapon
+/// bone's origin at full pitch, and some (the Galil, Scout and SG550
+/// crouched, pistols) slide the grips the clip hangs from; the loader
+/// drops additive tracks on the clip and aim tracks on the grips
+/// (`cs_source::anim::load`). Reloads (not additive) still move it.
+#[test]
+fn magazines_stay_on_the_gun_while_aiming() {
+    use mashup::games::cs_source::player_anim::{Inputs, PlayerAnim};
+    use mashup::map::anim::{Animator, model_space};
+    let Some(set) = load("models/player/t_leet.mdl") else { return };
+    let set = std::sync::Arc::new(set);
+    let b = |n: &str| set.bone_names.iter().position(|x| x == n).unwrap_or_else(|| panic!("{n}"));
+    let (weapon, clip) = (b("valvebiped.weapon_bone"), b("valvebiped.weapon_bone_clip"));
+    let clip_on_gun = |a: &Animator| {
+        let pose = model_space(&a.pose(1.0), &set.parents);
+        pose[weapon].0.inverse() * (pose[clip].1 - pose[weapon].1)
+    };
+    for suffix in [
+        "AK", "M4", "FAMAS", "GALIL", "AUG", "SG552", "MP5", "P90", "UMP45", "MAC10", "TMP", "SCOUT", "SG550", "G3",
+        "AWP", "M249", "PISTOL",
+    ] {
+        for (name, v, ducked) in [
+            ("idle", Vec2::ZERO, false),
+            ("walk", Vec2::new(120.0, 0.0), false),
+            ("run", Vec2::new(250.0, 0.0), false),
+            ("crouch", Vec2::ZERO, true),
+        ] {
+            let mut at = None;
+            for (pitch, yaw) in [(0.0, 0.0), (-80.0, 0.0), (-45.0, 30.0), (45.0, -30.0), (80.0, 0.0), (0.0, 50.0)] {
+                let mut a = Animator::new(set.clone());
+                let mut s = PlayerAnim::default();
+                let mut i = Inputs {
+                    velocity: v,
+                    ducked,
+                    on_ground: true,
+                    ..default()
+                };
+                for k in 0..40 {
+                    s.update(&mut a, &i, suffix, 0.016, k as f64 * 0.016);
+                    i.eye_pitch = pitch;
+                    i.eye_yaw = yaw;
+                }
+                let p = clip_on_gun(&a);
+                let level = *at.get_or_insert(p);
+                assert!(
+                    p.distance(level) < 0.05,
+                    "{suffix} {name} pitch {pitch} yaw {yaw}: clip at {p} on the gun, {level} looking level"
+                );
+            }
+        }
+    }
+}

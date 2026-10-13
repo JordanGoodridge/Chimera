@@ -805,6 +805,12 @@ pub fn zero_frames(read: Read, path: &str) -> Result<Vec<ZeroFrames>, String> {
     Ok(out)
 }
 
+/// The player skeleton's magazine bone: held world models' magazines
+/// follow it (bone merge).
+const CLIP_BONE: &str = "ValveBiped.weapon_bone_Clip";
+/// Where the hands hold the weapon (the clip hangs from the left one).
+const GRIP_BONES: [&str; 2] = ["ValveBiped.weapon_bone_RHand", "ValveBiped.weapon_bone_LHand"];
+
 /// Everything the model at `path` can play, through its include models
 /// (§8). Bone indices are the model's own.
 pub fn load(read: Read, path: &str) -> Result<AnimSet, String> {
@@ -882,6 +888,26 @@ pub fn load(read: Read, path: &str) -> Result<AnimSet, String> {
                 }
                 None => false,
             });
+            // OURS: looking around doesn't move the magazine off the gun.
+            // The aim cells of the AK, FAMAS, Galil, MP5, Scout and others
+            // carry one stray offset on `weapon_bone_Clip` (the same in
+            // every cell but the middle one) that pulls the clip to the
+            // weapon bone's origin at full pitch, and some slide the grips
+            // (`weapon_bone_RHand`/`_LHand`, the clip's parents) along the
+            // gun, so third-person world models (bone-merged) showed the
+            // magazine in the grip looking up or down (playtest
+            // 2026-10-11). Additive layers keep off the clip, aim layers
+            // off the grips too (the hand IK keeps the hands on them);
+            // whether CS:S draws the slide is to capture
+            // (docs/tech-debt.md). Reloads and pump actions still move
+            // them.
+            if anim.delta {
+                let aim = anim.name.to_ascii_lowercase().contains("_aim_");
+                anim.tracks.retain(|t| {
+                    let name = &target.bones[t.bone].name;
+                    !(name.eq_ignore_ascii_case(CLIP_BONE) || aim && GRIP_BONES.iter().any(|g| name.eq_ignore_ascii_case(g)))
+                });
+            }
             anim_names.insert(key, set.animations.len());
             local.push(set.animations.len());
             set.animations.push(anim);
