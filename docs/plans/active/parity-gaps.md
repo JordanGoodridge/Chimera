@@ -223,7 +223,7 @@ common console commands, against mashup's.
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C18 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
 | Static props lit in the 3D skybox (nuke's cooling towers teal, CS:S light grey) | differs | M | M | seen once the sky fog is off; their light probe (no `.vhv`); capture C10 |
-| Blood decals on characters | missing | M | M | backlog 3 "Decals, remaining" |
+| Blood decals on characters | missing | M | M | backlog 3 "Decals, remaining"; no spec covers model decals (engine-side): a spec session, then a capture of a shot bot's body |
 | Colour correction option | have (fixed) | L | S | round 2: Video > Advanced's ColorCorrection box sets `mat_colorcorrection` (the post-process was in, the control greyed) |
 | Motion blur option | missing | L | M | video-settings.md (greyed): Source's camera blur needs a spec |
 
@@ -353,6 +353,11 @@ In order of impact over cost:
 4. The MOTD on joining (`motd.res`, `cfg/motd.txt` else
    `motd_default.txt`) (S).
 5. Ricochet sounds once spec Q7 says when they play (spec session).
+6. Rendering and maps (round 2's leftovers, all L): env_steam's
+   JetLength/Speed/SpreadSpeed inputs (visual_entities.md 7); heat-wave
+   steam (Type 1: a refracting quad; no stock map has one); per-vertex
+   tangents for world reflections (tech-debt row); env_wind (detail
+   sway is in; ropes and dust would follow it).
 
 ## Captures wanted
 
