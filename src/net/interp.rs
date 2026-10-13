@@ -31,7 +31,7 @@
 //!   jump between two snapshots no body makes in that time
 //!   (`map::interp::SNAP_SPEED`: teleports) or a death or respawn between
 //!   them is drawn at once at the newer one's tick.
-//! - **Readout.** `NetGraph`'s `interp:` line (perf overlay, F2 Perf tab).
+//! - **Readout.** `NetGraph`'s `interp:` line (perf overlay, debug UI Perf tab).
 
 use std::collections::VecDeque;
 

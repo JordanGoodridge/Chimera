@@ -32,7 +32,9 @@ frames every 0.25 s).
   crate), then crates.
 - Default binds follow CS:S's config_default.cfg (F1 autobuy, F2 rebuy,
   mouse wheel invprev/invnext, ...): move our debug keys (inspector, debug
-  UI, wheel jump) off them.
+  UI, wheel jump) off them. Done 2026-10-13: debug UI F8, inspector F11
+  (`mashup_inspector`), collision F3 (`toggle mashup_drawcollision`; F3
+  is free in CS:S); saved configs keep their binds.
 - `con_enable` stays 1 (deliberate difference, ui-parity.md).
 - SourceMod/Mani chat commands from maps stay ignored, as plain CS:S does.
   Later: consider making SourceMod plugins work on our engine (parity on
@@ -466,7 +468,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 - Debug overlays: `mashup_drawhitboxes`, `mashup_healthbars`,
   `mashup_drawnav`, `mashup_drawbots` exist; add more as features need
   them (sound radii, triggers).
-- Debug UI (F2, `client/debug_ui.rs`) is in. Left: kicking or freezing
+- Debug UI (F8, `client/debug_ui.rs`) is in. Left: kicking or freezing
   one bot (the bot commands act on all), clearing decals and turning fog
   off (no such cvars yet), starting a trace from the running game (needs
   the profile build), a fixed tick-rate control, a history graph per

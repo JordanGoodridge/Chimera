@@ -880,7 +880,11 @@ fn the_keyboard_tab_lists_actions_with_their_keys() {
     let m = keyboard();
     let rows = m.rows();
     assert!(matches!(&rows[0], Row::Heading(t) if t == "Movement"));
-    assert!(matches!(&rows[bind_row(&m, "+jump")], Row::Bind { keys, known: true, .. } if keys == "MWHEELDOWN, MWHEELUP, SPACE"));
+    assert!(matches!(&rows[bind_row(&m, "+jump")], Row::Bind { keys, known: true, .. } if keys == "SPACE"));
+    // CS:S's defaults: the wheel changes weapons, F1 autobuys.
+    assert!(matches!(&rows[bind_row(&m, "invprev")], Row::Bind { keys, .. } if keys == "MWHEELUP"));
+    assert!(matches!(&rows[bind_row(&m, "autobuy")], Row::Bind { keys, .. } if keys == "F1"));
+    assert!(matches!(&rows[bind_row(&m, "debugui")], Row::Bind { keys, .. } if keys == "F8"));
     assert_eq!(m.focus, 1, "the first action, past the heading");
     assert_eq!(m.list(), (rows.len() - 7, KEY_ROWS));
 }
@@ -931,7 +935,7 @@ fn rebinding_through_the_keyboard_tab() {
     assert_eq!(m.capture.as_deref(), Some("+jump"));
     // Keys while waiting go to the bind, not the menu.
     let o = press(&mut m, &[Input::Down, Input::BindKey("f")]);
-    assert_eq!(o.lines, ["unbind mwheeldown; unbind mwheelup; unbind space; bind f +jump"]);
+    assert_eq!(o.lines, ["unbind space; bind f +jump"]);
     assert_eq!(m.capture, None);
     assert!(matches!(&m.rows()[jump], Row::Bind { keys, .. } if keys == "F"));
     // Esc while waiting gives up, leaving the menu open.
@@ -954,6 +958,8 @@ fn rebinding_through_the_keyboard_tab() {
     let o = press(&mut m, &[Input::Click(Target::Row(edit - 1), 0)]);
     assert_eq!(o.lines, ["binddefaults"]);
     assert_eq!(m.binds.get("space").map(String::as_str), Some("+jump"));
+    assert_eq!(m.binds.get("f1").map(String::as_str), Some("autobuy"), "CS:S's");
+    assert_eq!(m.binds.get("mwheelup").map(String::as_str), Some("invprev"));
     assert_eq!(m.binds.get("mouse4"), None);
 }
 

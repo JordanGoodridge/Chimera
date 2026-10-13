@@ -1,8 +1,10 @@
-//! Developer tools. F1: entity inspector. F2: the debug UI (`debug_ui`).
-//! F3: collision shapes (`mashup_drawcollision`).
+//! Developer tools, each a console command on a default bind off CS:S's
+//! keys (`binds::MASHUP_BINDS`): F11 the entity inspector
+//! (`mashup_inspector`), F8 the debug UI (`debugui`, `debug_ui`), F3
+//! collision shapes (`toggle mashup_drawcollision`).
 
 use avian3d::prelude::*;
-use bevy::{input::common_conditions::input_toggle_active, prelude::*, window::CursorOptions};
+use bevy::{prelude::*, window::CursorOptions};
 use bevy_inspector_egui::{
     bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext},
     quick::WorldInspectorPlugin,
@@ -21,7 +23,7 @@ impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             EguiPlugin::default(),
-            WorldInspectorPlugin::default().run_if(input_toggle_active(false, KeyCode::F1)),
+            WorldInspectorPlugin::default().run_if(|on: Res<InspectorOn>| on.0),
             PhysicsDebugPlugin,
             super::debug_ui::DebugUiPlugin,
         ))
@@ -29,7 +31,8 @@ impl Plugin for DebugPlugin {
         .init_resource::<DrawPhys>()
         .init_resource::<DebugHudOn>()
         .add_systems(Startup, (spawn_hud, hide_physics_gizmos, egui_takes_its_input, spawn_ui_camera))
-        .add_systems(Update, (keys, update_hud, draw_hitboxes, draw_phys));
+        .add_systems(Update, (update_hud, draw_hitboxes, draw_phys));
+        commands(app);
         crate::console::resource_cvar::<DrawHitboxes, u8>(
             app,
             "mashup_drawhitboxes",
@@ -50,23 +53,53 @@ impl Plugin for DebugPlugin {
              they touch) and list the props nearest you (mass, mode, state) on the debug HUD.",
             |d| &mut d.0,
         );
-        app.console_cvar(
+    }
+}
+
+/// The debug keys' commands: `mashup_inspector` and the
+/// `mashup_drawcollision` cvar (`debugui` is `debug_ui`'s).
+pub(super) fn commands(app: &mut App) {
+    app.init_resource::<InspectorOn>()
+        .console_command(
+            "mashup_inspector",
+            "mashup_inspector [0|1]: toggle the entity inspector (F11), or turn it on or off; turning it on frees \
+             the mouse (a click takes it back).",
+            |w, a| {
+                let on = match a.first() {
+                    Some(v) => v.trim() != "0",
+                    None => !w.resource::<InspectorOn>().0,
+                };
+                w.resource_mut::<InspectorOn>().0 = on;
+                if on {
+                    let mut cursors = w.query::<&mut CursorOptions>();
+                    for mut c in cursors.iter_mut(w) {
+                        release_cursor(&mut c);
+                    }
+                }
+                Ok(None)
+            },
+        )
+        .console_cvar(
             "mashup_drawcollision",
-            "1: draw every collision shape (avian's debug gizmos; F3 toggles it).",
+            "1: draw every collision shape (avian's debug gizmos; F3, `toggle mashup_drawcollision`, flips it).",
             "0",
             |w| {
                 w.get_resource::<GizmoConfigStore>()
-                    .map(|s| (s.config::<PhysicsGizmos>().0.enabled as u8).to_string())
+                    .and_then(|s| s.get_config::<PhysicsGizmos>())
+                    .map(|c| (c.0.enabled as u8).to_string())
             },
             |w, v| {
                 let on = v.trim() != "0";
                 let mut store = w.get_resource_mut::<GizmoConfigStore>().ok_or("no gizmos")?;
-                store.config_mut::<PhysicsGizmos>().0.enabled = on;
+                store.get_config_mut::<PhysicsGizmos>().ok_or("no physics gizmos")?.0.enabled = on;
                 Ok(())
             },
         );
-    }
 }
+
+/// `mashup_inspector`: the entity inspector shows.
+#[derive(Resource, Default)]
+pub struct InspectorOn(pub bool);
 
 /// Keys typed into an egui field (the debug UI, the inspector) and clicks
 /// on its windows go to egui only: binds and the game don't see them.
@@ -231,25 +264,6 @@ fn hide_physics_gizmos(mut store: ResMut<GizmoConfigStore>) {
     store.config_mut::<PhysicsGizmos>().0.enabled = false;
 }
 
-fn keys(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut cursor: Single<&mut CursorOptions>,
-    mut store: ResMut<GizmoConfigStore>,
-    console: Option<Res<super::console::ConsoleUi>>,
-) {
-    // Typing in the console isn't a shortcut.
-    if console.is_some_and(|c| c.open) {
-        return;
-    }
-    if keys.just_pressed(KeyCode::F1) {
-        release_cursor(&mut cursor);
-    }
-    if keys.just_pressed(KeyCode::F3) {
-        let config = store.config_mut::<PhysicsGizmos>().0;
-        config.enabled = !config.enabled;
-    }
-}
-
 fn spawn_hud(mut commands: Commands, fonts: Res<super::fonts::UiFonts>) {
     commands.spawn((
         DebugHud,
@@ -284,7 +298,7 @@ fn update_hud(
     let mut text = if on.0 != 0 {
         format!(
             "movement: {}\nspeed: {speed:.2} m/s  vertical: {:.2}\nground: {}  crouch: {}  sprint: {}\n\n\
-             click: capture mouse  esc: menu\nV: noclip  F1: inspector  F2: debug UI  F3: collision",
+             click: capture mouse  esc: menu\nV: noclip  F3: collision  F8: debug UI  F11: inspector",
             slot.0, vel.y, state.on_ground, state.crouching, state.sprinting,
         )
     } else {
@@ -307,4 +321,39 @@ fn update_hud(
         }
     }
     hud.0 = text;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::console::Console;
+
+    #[test]
+    fn debug_key_commands_toggle() {
+        let mut app = App::new();
+        app.add_plugins(crate::console::ConsolePlugin);
+        app.init_resource::<GizmoConfigStore>();
+        app.world_mut()
+            .resource_mut::<GizmoConfigStore>()
+            .insert(GizmoConfig { enabled: false, ..default() }, PhysicsGizmos::default());
+        commands(&mut app);
+        let window = app.world_mut().spawn(CursorOptions::default()).id();
+        crate::client::input::capture_cursor(&mut app.world_mut().get_mut::<CursorOptions>(window).unwrap());
+        let mut run = |line: &str| {
+            app.world_mut().resource_mut::<Console>().submit(line);
+            app.update();
+            let w = app.world();
+            let cursor = w.get::<CursorOptions>(window).unwrap().visible;
+            let gizmos = w.resource::<GizmoConfigStore>().config::<PhysicsGizmos>().0.enabled;
+            (w.resource::<InspectorOn>().0, gizmos, cursor)
+        };
+        // F11's line opens the inspector and frees the mouse; again closes it.
+        assert_eq!(run("mashup_inspector"), (true, false, true));
+        assert_eq!(run("mashup_inspector"), (false, false, true));
+        assert_eq!(run("mashup_inspector 1"), (true, false, true));
+        assert_eq!(run("mashup_inspector 0"), (false, false, true));
+        // F3's line flips the collision shapes.
+        assert_eq!(run("toggle mashup_drawcollision"), (false, true, true));
+        assert_eq!(run("toggle mashup_drawcollision"), (false, false, true));
+    }
 }

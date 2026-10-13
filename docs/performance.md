@@ -28,8 +28,8 @@ Performance").
 - `REFCMP_OUT=<dir>` keeps refcmp's captures and reports in your own
   folder (the CS:S references stay shared).
 
-- Load-independent numbers: `mashup_perf`, `mashup_perf_log`, the F2
-  Perf tab and `refcmp bench` also give percentiles (p50 to p99.9, 1%
+- Load-independent numbers: `mashup_perf`, `mashup_perf_log`, the debug
+  UI's Perf tab and `refcmp bench` also give percentiles (p50 to p99.9, 1%
   low fps) of each world's thread CPU time and user-space instructions
   per frame and per tick (Linux hardware counters), and `bench.json` /
   `bench.csv`; `mashup_hitch_ratio` logs what a slow frame spent its

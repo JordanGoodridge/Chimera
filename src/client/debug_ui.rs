@@ -1,4 +1,4 @@
-//! The debug UI (F2, `debugui [tab]`): a tabbed egui window for
+//! The debug UI (F8, `debugui [tab]`): a tabbed egui window for
 //! playtesting and development. Every control runs a console line (a cvar
 //! or a command), so what it does lives in one place and the console,
 //! binds and configs can do the same; the window only reads state to show
@@ -182,7 +182,7 @@ impl Plugin for DebugUiStatePlugin {
             .add_systems(Startup, apply_ranges)
             .console_command(
                 "debugui",
-                "debugui [tab|close]: toggle the debug window (F2), or open it on a tab (player, world, movement, \
+                "debugui [tab|close]: toggle the debug window (F8), or open it on a tab (player, world, movement, \
                  bots, rendering, perf, audio, logic, rounds, cvars).",
                 |w, a| {
                     let mut ui = w.resource_mut::<DebugUi>();
