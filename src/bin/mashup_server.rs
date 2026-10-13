@@ -276,7 +276,8 @@ fn start_serving(world: &mut World, mut started: Local<bool>) {
             let max = world.resource::<NetSettings>().maxplayers;
             let map = net::current_map(world);
             world.resource_mut::<Console>().info(format!(
-                "mashup dedicated server {}: {map} on UDP {addr}, {max} players",
+                "mashup dedicated server {} ({}): {map} on UDP {addr}, {max} players",
+                mashup::core::VERSION,
                 net::NET_VERSION
             ));
         }

@@ -116,6 +116,11 @@ impl Default for BuyWindow {
     }
 }
 
+/// Why buying fails for a terrorist or a CT on a map whose
+/// `info_map_parameters` bars them (CS:S's words, on one line).
+pub const T_CANT_BUY: &str = "Terrorists aren't allowed to buy anything on this map!";
+pub const CT_CANT_BUY: &str = "CTs aren't allowed to buy anything on this map!";
+
 /// Why buying fails without the money (CS:S's words).
 pub const INSUFFICIENT_FUNDS: &str = "You have insufficient funds.";
 /// Why buying fails with no room left (CS:S's words).
@@ -143,13 +148,10 @@ pub fn buy_or_ask(world: &mut World, owner: Entity, name: &str) -> Result<Option
 /// Returns what happened.
 pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
     world.resource::<BuyWindow>().0.clone()?;
-    if world.get::<Money>(owner).is_some() {
-        if let Some(why) = team_cannot_buy(world, owner) {
-            return Err(why.into());
-        }
-        if !in_buy_zone(world, owner) {
-            return Err(NOT_IN_BUY_ZONE.into());
-        }
+    if world.get::<Money>(owner).is_some()
+        && let Some(why) = cannot_buy_here(world, owner)
+    {
+        return Err(why);
     }
     let name = name.to_lowercase();
     let prices = world.resource::<Prices>().clone();
@@ -343,29 +345,37 @@ pub fn starting_reserve(world: &mut World, weapon: Entity) {
     }
 }
 
-/// Why `owner`'s team may not buy on this map (`info_map_parameters`
-/// `buying`: 0 everyone, 1 CTs only, 2 terrorists only, 3 nobody;
-/// specs/cs_source/objectives.md), in CS:S's words; None: it may.
-pub fn team_cannot_buy(world: &World, owner: Entity) -> Option<&'static str> {
-    let map = world.get_resource::<crate::map::MapEntities>()?;
-    let buying = map
-        .entities
-        .iter()
-        .filter(|e| e.classname().eq_ignore_ascii_case("info_map_parameters"))
-        .find_map(|e| e.get("buying").and_then(|v| v.trim().parse::<i32>().ok()))
-        .unwrap_or(0);
-    // Our teams 1 and 2 are Source's 2 and 3.
-    let team = world.get::<crate::core::Team>(owner).map(|t| t.0 as i32 + 1);
-    match (buying, team) {
-        (1 | 3, Some(2)) => Some(TERRORISTS_CANT_BUY),
-        (2 | 3, Some(3)) => Some(CTS_CANT_BUY),
-        _ => None,
+/// Why `owner` can't buy where it stands, if it can't: its team may not
+/// buy on this map (`map_buying`), or it is out of its buy zones.
+pub fn cannot_buy_here(world: &World, owner: Entity) -> Option<String> {
+    let team = world.get::<crate::core::Team>(owner).map(|t| t.0);
+    let barred = match map_buying(world) {
+        3 => true,
+        1 => team == Some(1),
+        2 => team == Some(2),
+        _ => false,
+    };
+    if barred {
+        // CS:S says it by the player's team (a CT when not a terrorist).
+        return Some(if team == Some(1) { T_CANT_BUY } else { CT_CANT_BUY }.into());
     }
+    (!in_buy_zone(world, owner)).then(|| NOT_IN_BUY_ZONE.into())
 }
 
-/// CS:S's words when the map keeps a team from buying.
-pub const TERRORISTS_CANT_BUY: &str = "Terrorists aren't allowed to\nbuy anything on this map.";
-pub const CTS_CANT_BUY: &str = "CTs aren't allowed to buy\nanything on this map.";
+/// The map's `info_map_parameters` `buying` (CS:S): 0 everyone may buy,
+/// 1 CTs only, 2 terrorists only, 3 nobody. 0 without one.
+pub fn map_buying(world: &World) -> u8 {
+    let Some(map) = world.get_resource::<crate::map::MapEntities>() else {
+        return 0;
+    };
+    map.entities
+        .iter()
+        .find(|e| e.classname().eq_ignore_ascii_case("info_map_parameters"))
+        .and_then(|e| e.get("buying"))
+        .and_then(|v| v.trim().parse().ok())
+        .filter(|b| *b <= 3)
+        .unwrap_or(0)
+}
 
 /// On a map without `func_buyzone`, how far out from each of its team's
 /// spawn points a player may buy, horizontally, units. CS:S makes buy
@@ -676,6 +686,45 @@ mod tests {
         (w, p)
     }
 
+    /// `info_map_parameters` `buying`: 0 everyone, 1 CTs only, 2
+    /// terrorists only, 3 nobody; refused in CS:S's words.
+    #[test]
+    fn map_parameters_bar_teams_from_buying() {
+        use crate::map::entities::{MapEntities, MapEntity};
+        let (mut w, p) = world();
+        let set = |w: &mut World, buying: &str| {
+            w.insert_resource(MapEntities {
+                entities: std::sync::Arc::new(vec![MapEntity {
+                    keyvalues: vec![
+                        ("classname".into(), "info_map_parameters".into()),
+                        ("buying".into(), buying.into()),
+                    ],
+                    hulls: vec![],
+                    mover: false,
+                    physics: None,
+                }]),
+                scale: 0.0254,
+            });
+        };
+        // Terrorist (ours 1) and CT (ours 2).
+        for (buying, t_ok, ct_ok) in [("0", true, true), ("1", false, true), ("2", true, false), ("3", false, false)] {
+            set(&mut w, buying);
+            for (team, ok, words) in [(1, t_ok, T_CANT_BUY), (2, ct_ok, CT_CANT_BUY)] {
+                w.entity_mut(p).insert((crate::core::Team(team), Money(16000)));
+                let got = buy(&mut w, p, "vest");
+                w.entity_mut(p).remove::<Armor>();
+                if ok {
+                    assert!(got.is_ok(), "buying {buying}, team {team}: {got:?}");
+                } else {
+                    assert_eq!(got, Err(words.to_string()), "buying {buying}, team {team}");
+                }
+            }
+        }
+        // Free buying (no money) ignores it, as it does buy zones.
+        w.entity_mut(p).remove::<Money>();
+        assert!(buy(&mut w, p, "vest").is_ok());
+    }
+
     #[test]
     fn buying_costs_money_and_checks_funds_and_the_window() {
         let (mut w, p) = world();
@@ -749,21 +798,19 @@ mod tests {
         assert!(!in_buy_zone(&w, p), "far above it");
         at(&mut w, 1000.0, 50.0, 0.0);
         buy(&mut w, p, "vest").unwrap();
-        // info_map_parameters buying 1: CTs only.
+        // A CT at his own spawn; with info_map_parameters buying 1 (CTs
+        // only) a terrorist at his is still refused.
+        w.entity_mut(p).insert(crate::core::Team(2));
+        at(&mut w, -1000.0, 0.0, 0.0);
+        assert_eq!(cannot_buy_here(&w, p), None);
         let mut list = (*map.entities).clone();
         list.push(ent(&[("classname", "info_map_parameters"), ("buying", "1")]));
         map.entities = std::sync::Arc::new(list);
-        w.insert_resource(map.clone());
-        assert_eq!(buy(&mut w, p, "vesthelm").unwrap_err(), TERRORISTS_CANT_BUY);
-        w.entity_mut(p).insert(crate::core::Team(2));
-        at(&mut w, -1000.0, 0.0, 0.0);
-        assert!(team_cannot_buy(&w, p).is_none() && in_buy_zone(&w, p));
-        // Nobody (3).
-        let mut list = (*map.entities).clone();
-        list.last_mut().unwrap().keyvalues[1].1 = "3".into();
-        map.entities = std::sync::Arc::new(list);
         w.insert_resource(map);
-        assert_eq!(team_cannot_buy(&w, p), Some(CTS_CANT_BUY));
+        assert_eq!(cannot_buy_here(&w, p), None);
+        w.entity_mut(p).insert(crate::core::Team(1));
+        at(&mut w, 1000.0, 0.0, 0.0);
+        assert_eq!(buy(&mut w, p, "vesthelm").unwrap_err(), T_CANT_BUY);
     }
 
     #[test]

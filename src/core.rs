@@ -5,6 +5,12 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+pub mod version;
+
+/// This build's version (`version` command, main menu, bug reports,
+/// server banner): see `version::format_version`; stamped by build.rs.
+pub const VERSION: &str = env!("MASHUP_VERSION");
+
 /// What a character wants to do this tick. Written by exactly one intent
 /// source (local input, a bot brain, later the network) and read by the
 /// Movement and Weapon slots. Buttons are level-based ("held"), not edges:

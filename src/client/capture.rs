@@ -594,7 +594,7 @@ fn chrono_stamp() -> String {
 /// What a bug report says besides the screenshot.
 fn report_text(w: &mut World, note: &str) -> String {
     use crate::{console::Console, core::LocalPlayer};
-    let mut out = format!("mashup build {}\n", env!("MASHUP_GIT"));
+    let mut out = format!("mashup build {} ({})\n", crate::core::VERSION, crate::net::NET_VERSION);
     if !note.is_empty() {
         out += &format!("note: {note}\n");
     }

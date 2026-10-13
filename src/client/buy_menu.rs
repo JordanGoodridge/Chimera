@@ -340,8 +340,8 @@ fn close_others(w: &mut World) {
     }
 }
 
-/// Why the local player can't buy now (out of the buy time, a team the
-/// map keeps from buying, or out of a buy zone), as the hint CS:S shows when the buy key is pressed.
+/// Why the local player can't buy now (out of the buy time or a buy
+/// zone, or the map bars its team), as the hint CS:S shows when the buy key is pressed.
 fn cannot_buy(w: &mut World) -> Option<String> {
     let player = w.query_filtered::<Entity, With<LocalPlayer>>().iter(w).next()?;
     // Without money, buying is free and anywhere.
@@ -349,10 +349,7 @@ fn cannot_buy(w: &mut World) -> Option<String> {
     if let Err(why) = &w.resource::<BuyWindow>().0 {
         return Some(why.clone());
     }
-    if let Some(why) = crate::weapon::economy::team_cannot_buy(w, player) {
-        return Some(why.to_string());
-    }
-    (!crate::weapon::economy::in_buy_zone(w, player)).then(|| crate::weapon::economy::NOT_IN_BUY_ZONE.to_string())
+    crate::weapon::economy::cannot_buy_here(w, player)
 }
 
 /// What else is reading the keyboard (console, chat, game menu).

@@ -1145,7 +1145,7 @@ fn spawn_buy_zones_without_func_buyzone() {
     use mashup::{
         core::Team,
         map::MapEntities,
-        weapon::economy::{Money, SPAWN_BUY_ZONE_RADIUS, in_buy_zone, team_cannot_buy},
+        weapon::economy::{Money, SPAWN_BUY_ZONE_RADIUS, cannot_buy_here, in_buy_zone},
     };
     let Some(map) = load("mg_jacks_multigames_v1") else { return };
     assert!(!map.entities.iter().any(|e| e.classname().eq_ignore_ascii_case("func_buyzone")));
@@ -1156,7 +1156,7 @@ fn spawn_buy_zones_without_func_buyzone() {
     });
     let mut check = |at: Vec3, team: u8| {
         let e = w.spawn((Transform::from_translation(at), Team(team), Money(800))).id();
-        let r = (in_buy_zone(&w, e), team_cannot_buy(&w, e));
+        let r = (in_buy_zone(&w, e), cannot_buy_here(&w, e));
         w.despawn(e);
         r
     };
