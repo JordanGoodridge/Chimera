@@ -18,11 +18,10 @@ plan when work starts; delete them when done.
   the sky fix split water per cluster), and the planar reflection/
   refraction passes.
 
-- No weapon held (user, 2026-10-11, e.g. after a map strip): CS:S shows
-  its five-dot crosshair (the HUD's default crosshair sprite when no
-  weapon draws one); ours keeps the normal crosshair. And our view model
-  goes into a T-pose (hands with no weapon animation): with no weapon,
-  draw no view model, as CS:S.
+- Done 2026-10-12: no weapon held draws no view model and the HUD's
+  `crosshair_default` (five dots; `client::hud::crosshair_kind`).
+  Check in a playtest that the T-posed hands are gone after a jacks
+  strip (the single-player strip test shows no view model).
 
 - Moving under a brush at head height (user, 2026-10-11; likely
   mg_jacks_multigames_v1 near `setpos -12348.55 14196.69 1472.03; setang
@@ -48,19 +47,16 @@ plan when work starts; delete them when done.
   bots between games (see the weapons-after-a-round entry): make ours do
   the same, bots included.
 
-- Alt-tab back into the game (user, 2026-10-11): regaining window focus
-  should grab and hide the cursor again and resume mouse look at once
-  (as CS:S does), when in a game with no menu, console or dialog open;
-  today a click is needed.
+- Done 2026-10-12: alt-tab back in grabs the cursor at once
+  (`client::input::grab_cursor`).
 
 - Buying on maps without buy zones (user, 2026-10-11, mg_jacks_multigames_v1):
   you can buy guns anywhere. jacks has no `func_buyzone` and no
   `info_map_parameters`; our `weapon::economy::in_buy_zone` lets everyone
-  buy anywhere when a map has no zones ("CS:S puts zones around the
-  spawns then; not modelled yet"). Model CS:S's rule (spec needed: the
-  zone made around each team's spawn points, its radius, `mp_buytime`),
-  and `info_map_parameters` `buying` (0 everyone, 1 CT only, 2 T only,
-  3 nobody; objectives.md notes the key).
+  buy anywhere when a map has no zones. Model CS:S's rule (spec needed:
+  the zone made around each team's spawn points, its radius,
+  `mp_buytime`). `info_map_parameters` `buying` is done
+  (`economy::map_buying`, 2026-10-12).
 - Weapons after a round on minigame maps (user, 2026-10-11): players walk
   into the lobby with e.g. a machine gun. In CS:S survivors keep their
   weapons into the next round; minigame maps strip them with map logic

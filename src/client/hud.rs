@@ -220,6 +220,37 @@ struct ScopeSquare;
 #[derive(Component)]
 struct CrosshairLine(Vec2);
 
+/// The HUD's own crosshair (CS:S's five dots, the base HUD's
+/// `crosshair_default` sprite), drawn when no weapon draws one.
+#[derive(Component)]
+struct DefaultCrosshair;
+
+/// Which crosshair is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CrosshairKind {
+    /// None: dead, behind a scope, or no player.
+    Hidden,
+    /// The held weapon's (lines, the gap following its spread).
+    Weapon,
+    /// No weapon held (e.g. stripped by the map): the HUD's default, CS:S's
+    /// five dots.
+    Default,
+}
+
+/// The crosshair for a player's inventory (None: no player).
+pub fn crosshair_kind(inventory: Option<&Inventory>, dead: bool, scoped: bool) -> CrosshairKind {
+    match inventory {
+        None => CrosshairKind::Hidden,
+        Some(_) if dead || scoped => CrosshairKind::Hidden,
+        Some(i) if i.active.is_none() => CrosshairKind::Default,
+        Some(_) => CrosshairKind::Weapon,
+    }
+}
+
+/// The default crosshair's dots (stand-in when the install has no sprite):
+/// offsets from the centre, pixels.
+const DEFAULT_DOT_SPREAD: f32 = 8.0;
+
 /// Seconds the hit marker stays up, and whether the last hit killed.
 #[derive(Resource, Default)]
 struct HitMarker {
@@ -435,6 +466,16 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         GlobalZIndex(41),
         Visibility::Hidden,
     ));
+    commands.spawn((
+        DefaultCrosshair,
+        ImageNode::default(),
+        Node {
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        Visibility::Hidden,
+        GlobalZIndex(40),
+    ));
     for dir in [Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y, Vec2::ZERO] {
         commands.spawn((
             CrosshairLine(dir),
@@ -541,6 +582,12 @@ fn draw_crosshair(
         Option<&bevy::ui::ComputedUiRenderTargetInfo>,
     )>,
     color: Res<CrosshairColor>,
+    (hud, mut default_crosshair, mut images, mut sprite): (
+        Option<Res<crate::map::hud::ActiveHud>>,
+        Query<(&mut ImageNode, &mut Node, &mut Visibility), (With<DefaultCrosshair>, Without<CrosshairLine>)>,
+        ResMut<Assets<Image>>,
+        bevy::ecs::system::Local<Option<(Handle<Image>, Handle<Image>, Rect)>>,
+    ),
 ) {
     let Some((cam, proj)) = camera.iter().next() else {
         return;
@@ -557,7 +604,44 @@ fn draw_crosshair(
         (None, None) => (None, None, None),
     };
     // A scope draws its own cross hairs.
-    let visible = inv.is_some() && dead.is_none() && !zoomed.is_some_and(|z| z.scope);
+    let kind = crosshair_kind(inv, dead.is_some(), zoomed.is_some_and(|z| z.scope));
+    // No weapon: the HUD's default crosshair sprite, drawn additively
+    // (converted once to alpha), at its own pixel size.
+    let hud_sprite = hud.as_ref().and_then(|h| {
+        let s = h.0.sprites.get("crosshair_default")?;
+        let handle = h.1.get(&s.texture)?;
+        let [x, y, w, h] = s.rect;
+        Some((handle, Rect::new(x, y, x + w, y + h)))
+    });
+    if let Some((handle, rect)) = hud_sprite
+        && sprite.as_ref().is_none_or(|(source, ..)| source != handle)
+    {
+        let converted = images
+            .get(handle)
+            .and_then(super::hud_sprites::additive_as_alpha)
+            .map(|i| images.add(i))
+            .unwrap_or_else(|| handle.clone());
+        *sprite = Some((handle.clone(), converted, rect));
+    }
+    let sprite_shown = kind == CrosshairKind::Default && hud_sprite.is_some();
+    for (mut image, mut node, mut vis) in &mut default_crosshair {
+        vis.set_if_neq(if sprite_shown { Visibility::Inherited } else { Visibility::Hidden });
+        if let (true, Some((_, handle, rect))) = (sprite_shown, sprite.as_ref()) {
+            if image.image != *handle || image.rect != Some(*rect) {
+                image.image = handle.clone();
+                image.rect = Some(*rect);
+            }
+            image.color = color.color();
+            let (w, h) = (rect.width(), rect.height());
+            node.left = px((size.x / 2.0 - w / 2.0).round());
+            node.top = px((size.y / 2.0 - h / 2.0).round());
+            node.width = px(w);
+            node.height = px(h);
+        }
+    }
+    // Without the sprite, five dots drawn with the lines' nodes.
+    let dots = kind == CrosshairKind::Default && !sprite_shown;
+    let visible = kind == CrosshairKind::Weapon || dots;
     let spread = inv
         .and_then(|i| i.active)
         .and_then(|w| scans.get(w).ok())
@@ -582,6 +666,14 @@ fn draw_crosshair(
         let d = line.0;
         // The line on that side (UI y grows downward).
         let side = Vec2::new(d.x, -d.y);
+        if dots {
+            let c = (centre + side * DEFAULT_DOT_SPREAD).round();
+            node.left = px(c.x - 1.0);
+            node.top = px(c.y - 1.0);
+            node.width = px(2.0);
+            node.height = px(2.0);
+            continue;
+        }
         let Some(&(offset, Vec2 { x: w, y: h })) = shapes.iter().find(|(o, _)| o.normalize_or_zero() == side) else {
             continue;
         };
@@ -806,6 +898,17 @@ mod tests {
     /// Capsules follow the map, not the characters' arrival: a character
     /// that came in on the greybox (no models) loses its capsule on a
     /// map with models, and gets one again back on the greybox.
+    #[test]
+    fn no_weapon_shows_the_default_crosshair() {
+        let mut inv = Inventory::default();
+        assert_eq!(crosshair_kind(Some(&inv), false, false), CrosshairKind::Default);
+        assert_eq!(crosshair_kind(Some(&inv), true, false), CrosshairKind::Hidden);
+        assert_eq!(crosshair_kind(None, false, false), CrosshairKind::Hidden);
+        inv.active = Some(Entity::from_raw_u32(7).unwrap());
+        assert_eq!(crosshair_kind(Some(&inv), false, false), CrosshairKind::Weapon);
+        assert_eq!(crosshair_kind(Some(&inv), false, true), CrosshairKind::Hidden);
+    }
+
     #[test]
     fn capsule_bodies_follow_the_map() {
         use bevy::ecs::system::RunSystemOnce;

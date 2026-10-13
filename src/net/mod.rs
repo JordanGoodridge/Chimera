@@ -1317,7 +1317,15 @@ fn commands(app: &mut App) {
     )
     .console_command("status", "Server, map and players (with ping).", |w, _| {
         Ok(Some(status(w)))
+    })
+    .console_command("version", "This build's version and network protocol.", |_, _| {
+        Ok(Some(version_text()))
     });
+}
+
+/// `version`: the build (`core::VERSION`) and its network protocol.
+pub fn version_text() -> String {
+    format!("Lucker Party {}\nProtocol version {NET_VERSION}", crate::core::VERSION)
 }
 
 /// `status`: Source's layout, roughly.
