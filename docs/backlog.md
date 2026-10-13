@@ -8,6 +8,27 @@ plan when work starts; delete them when done.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Decisions 2026-10-13 (user)
+
+- Refactor: go ahead with engine-split.md "Crates and compile time"
+  steps 1-2 (tools package; move code to its future home in the one
+  crate), then crates.
+- Default binds follow CS:S's config_default.cfg (F1 autobuy, F2 rebuy,
+  mouse wheel invprev/invnext, ...): move our debug keys (inspector, debug
+  UI, wheel jump) off them.
+- `con_enable` stays 1 (deliberate difference, ui-parity.md).
+- SourceMod/Mani chat commands from maps stay ignored, as plain CS:S does.
+  Later: consider making SourceMod plugins work on our engine (parity on
+  community servers, good for users) — an investigation first.
+- Networking: investigate whether Steam networking (relays/NAT traversal)
+  is possible at all for our own client (expected not: it needs our own
+  Steam app id; CS:S's can't be used), prototype if cheap; server size:
+  as many players as we can make performant; stress-test it (parity
+  first: 32 like CS:S as the first target).
+- No new release until the user says the group is testing again.
+- Dark wall panels by "MAIN": skipped (map unknown). Skybox inside a
+  player: waiting for repro details from the user.
+
 ### Playtest with friends, 2026-10-10 (Discord; build v0.1.0-playtest2 or 1)
 
 - Water seen through other parts of the map (user, 2026-10-11,
