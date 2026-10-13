@@ -1264,6 +1264,35 @@ pub fn start_tick(mut tick: ResMut<SimTick>, mut clock: ResMut<SimClock>, time: 
     };
 }
 
+/// Before each physics step: the physics' copy of a character's position
+/// (`Position`) is where its movement put it, to the bit. The physics
+/// takes a moved transform only when it moved more than its tolerance
+/// (0.01 mm), and after the step writes its copy back over the transform
+/// of every body that is awake: a smaller step of the movement's (the
+/// metres-to-units round trip moves a player put at a spawn point by a
+/// float step or two) was undone while the body was awake and kept while
+/// it slept (half a second after its last bigger move), and kept in a
+/// network client's replay, which runs no physics. So the outcome of a
+/// tick hung on the physics' sleep state, which a server and its client
+/// don't share (found by the soak: a respawned player mispredicted by
+/// micrometres on each tick for half a second; tests/it/net_prediction.rs,
+/// `a_float_step_below_the_physics_tolerance_is_predicted`).
+///
+/// A change marks it changed, as the physics' own sync would (it wakes
+/// the body and moves its collider).
+pub fn keep_moved_positions(
+    mut bodies: Query<
+        (&Transform, &mut avian3d::prelude::Position),
+        (With<avian3d::prelude::CustomPositionIntegration>, Without<ChildOf>),
+    >,
+) {
+    for (t, mut p) in &mut bodies {
+        if p.0.to_array().map(f32::to_bits) != t.translation.to_array().map(f32::to_bits) {
+            p.0 = t.translation;
+        }
+    }
+}
+
 pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
@@ -1313,6 +1342,10 @@ impl Plugin for CorePlugin {
             )
             .predicted_net::<MapControls>()
             .add_systems(FixedUpdate, run_predicted(Predict::Movement).in_set(SimSet::Movement))
+            .add_systems(
+                FixedPostUpdate,
+                keep_moved_positions.before(avian3d::prelude::PhysicsSystems::Prepare),
+            )
             .predicted_net::<Transform>()
             .predicted_net::<Velocity>()
             .predicted_net::<MovementState>()

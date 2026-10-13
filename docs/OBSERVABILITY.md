@@ -504,7 +504,9 @@ three map changes (greybox, a community map from the content cache,
 de_dust2), checking all along: settled values the server's on every
 client, others' bodies as the server had them at that tick, prediction
 errors by kind (contacts with others and hits are the server's to say;
-runs of errors in a row are bugs), entity counts per round and map
+runs of errors in a row are bugs, and so is any of a player's position
+alone below the physics' 0.01 mm tolerance, alive or dead: the physics'
+copy of the position had a say), entity counts per round and map
 visit, memory, bandwidth and the server's frame time; Bevy errors
 (failed commands) are counted too. `MASHUP_SOAK_MINUTES` (3 by default,
 30 for the long run), `MASHUP_SOAK_COMMUNITY=<map>`,

@@ -394,3 +394,59 @@ fn a_clock_thrown_off_settles_in_one_jump() {
     let g = graph(&sim, 0);
     assert!(g.checked > 50 && g.errors <= 1, "{} errors in {}", g.errors, g.checked);
 }
+
+/// A player standing still where the movement's unit round trip (metres
+/// to Source units and back) moves it by a float step or two is
+/// predicted, whether the physics has its body awake or asleep. The
+/// physics took a moved transform only beyond its 0.01 mm tolerance and
+/// wrote its own copy back after each step of an awake body, undoing such
+/// a step; a body sleeps half a second after its last move beyond the
+/// tolerance, the server's and the client's at different ticks, and a
+/// replay runs no physics: the client mispredicted by a few micrometres
+/// on each tick until the server's body slept (found by the soak: "errors
+/// of a dead player's position below 0.01 mm"). The physics' copy is now
+/// the movement's before each step (`core::keep_moved_positions`).
+#[test]
+fn a_float_step_below_the_physics_tolerance_is_predicted() {
+    use avian3d::prelude::{Position, Sleeping};
+    for (latency, seed) in [(60, 61), (150, 62)] {
+        let mut sim = joined(link(latency, 0, 0.0), seed, 1);
+        sim.ticks(64);
+        let theirs = sim.character_of(0).unwrap();
+        let me = sim.local_player(0).unwrap();
+        let asleep = |sim: &NetSim| {
+            (
+                sim.server.app.world().get::<Sleeping>(theirs).is_some(),
+                sim.clients[0].app.world().get::<Sleeping>(me).is_some(),
+            )
+        };
+        let idle = asleep(&sim);
+        reset_graph(&mut sim, 0);
+        // The server shoves the player (a correction for the client) to a
+        // spot the round trip doesn't keep.
+        let round_trip = |p: Vec3| source::to_engine(source::to_source(p));
+        let mut at = sim.server.app.world().get::<Transform>(theirs).unwrap().translation + Vec3::X * 0.3;
+        while round_trip(at).x == at.x {
+            at.x = f32::from_bits(at.x.to_bits() + 1);
+        }
+        // Put there as spawning puts a player (`rules::put_at_spawn`: the
+        // transform and the physics' copy).
+        {
+            let w = sim.server.app.world_mut();
+            w.get_mut::<Transform>(theirs).unwrap().translation = at;
+            w.get_mut::<Position>(theirs).unwrap().0 = at;
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..200 {
+            sim.step();
+            seen.insert(asleep(&sim));
+        }
+        let g = graph(&sim, 0);
+        println!(
+            "{latency} ms: asleep (server, client) idle {idle:?}, then {seen:?}; {} errors in {} (last {:.2e} m: {:?})",
+            g.errors, g.checked, g.last_error, g.last_differing
+        );
+        assert_eq!(g.errors, 1, "{latency} ms: the shove alone is a correction ({g:?})");
+        assert_agrees(&mut sim, 0, &format!("{latency} ms, standing"));
+    }
+}
