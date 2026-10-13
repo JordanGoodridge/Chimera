@@ -44,6 +44,58 @@ Rules:
 - `tests/it/architecture.rs` already enforces most of this as layers;
   crates make the compiler enforce it.
 
+## Crates and compile time (agreed 2026-10-13)
+
+The layout above stays the outer structure (ownership and reuse); inside
+it, crates are cut so that hot code sits high in the dependency graph
+(architecture-review.md measured why: one crate means every edit
+recompiles all 165k lines, and one `engine` crate at the bottom wouldn't
+help).
+
+```
+engine/   game-agnostic, several crates with stable interfaces
+  core      core, console, slots/registries, version, metrics
+  world     map data, collision, sim-side spawning
+  sim       frameworks: movement slot, weapon system, rule-module interface, bots framework
+  present   render, audio, animation (a dedicated server can leave it out)
+  net       replication and protocol; games register what replicates
+  client    app shell, input, console UI, a VGUI-like widget layer, debug tools
+source/
+  formats   VPK/BSP/MDL/PHY/PCF/KeyValues/.res: pure data, no Bevy
+  source    entity I/O and logic classes, Source materials/shaders, soundscapes, Source movement
+games/cs_source/   parts (weapons, rule modules, HUD, GameUI menus, bot behaviour)
+                   + CsSourcePlugins (the faithful game) + its app
+minigames/, games/originals/, apps/*, tools/ (debug binaries: not built by `cargo test`)
+```
+
+- Parts depend on engine (and source) interfaces only, never on each
+  other: CS:S weapons don't assume the CS:S HUD or rounds. Each part
+  plugs into a slot (movement, weapons, character, HUD, rules, menus).
+  The architecture test enforces it.
+- Today's engine-level modules that are really CS:S parts move to
+  `games/cs_source` first: the GameUI menus, team/buy menus and HUD
+  pieces in `client` (8 files carry `#Cstrike_*`/`cstrike/`), the round,
+  bomb and hostage rules in `rules`/`objectives` (behind a rule-module
+  interface), and CS:S round state in `net` (game-registered
+  replication). This is also the compile win: the hot code moves up.
+- **Data-driven first** (user, 2026-10-13): where a thing can be data,
+  make it data loaded at run time, with Rust only for behaviour data
+  can't express (then as a hook the data names). First target: weapons
+  (stats, model, sounds, animations, fire modes as data; special
+  behaviour as registered hooks), then rule modules' settings, HUD
+  layouts, minigame definitions (below), bots' buy tables.
+- Example of what this must support later (not planned now): a game
+  crate built on top of `cs_source` that adds original guns and modes
+  ("CS:S, our way") as its own ids and data, without touching
+  `cs_source`; the faithful game stays the parity baseline and its tests
+  run against `cs_source` alone.
+- Order: (1) the `tools` package; (2) inside today's single crate, move
+  code to its future home (the `map` sort, CS:S UI out of `client`,
+  rules behind a rule-module interface, game-registered replication),
+  each move-only with the architecture test updated; (3) cut crates
+  bottom-up, one per commit with the full suite; (4) minigame
+  definitions, the existing modes as the first rule modules.
+
 ## Minigames (the middle layer)
 
 - A minigame is a data file picking pieces by id from any game (map,
