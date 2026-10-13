@@ -15,7 +15,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc,
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 
@@ -147,12 +147,13 @@ pub struct LiveSounds {
 }
 
 /// Per-ear gains and the room send a playing clip reads (f32 bits), set
-/// each frame.
+/// each frame; and whether it is fading out (`fade_out`).
 #[derive(Debug, Default)]
 pub struct Gains {
     left: AtomicU32,
     right: AtomicU32,
     send: AtomicU32,
+    fading: AtomicBool,
 }
 
 impl Gains {
@@ -182,7 +183,21 @@ impl Gains {
             f32::from_bits(self.right.load(Ordering::Relaxed)),
         )
     }
+    /// End the clip with a short fade (`FADE_OUT_SECONDS`) instead of a
+    /// hard stop, which clicks: a sound replaced on its channel (a
+    /// full-auto gun's next shot).
+    pub fn fade_out(&self) {
+        self.fading.store(true, Ordering::Relaxed);
+    }
+    fn fading(&self) -> bool {
+        self.fading.load(Ordering::Relaxed)
+    }
 }
+
+/// How long a clip takes to fade out once `Gains::fade_out` is called:
+/// a few milliseconds, too short to hear as a fade, long enough not to
+/// click (a waveform cut mid-swing is a step).
+pub const FADE_OUT_SECONDS: f32 = 0.005;
 
 /// A clip played with live gains, looping from its loop point, through
 /// the listener's hearing (`hearing::HearingMix`), sending to the room
@@ -226,6 +241,9 @@ pub struct LiveDecoder {
     hearing: Arc<HearingMix>,
     muffle: Muffle,
     room: Option<RoomSend>,
+    /// Fading out (`Gains::fade_out`): the gain left, down to 0, where
+    /// the clip ends.
+    fade: f32,
 }
 
 /// How fast the applied gains follow a change, per frame of audio
@@ -240,6 +258,12 @@ impl Iterator for LiveDecoder {
             return Some(r);
         }
         let frames = self.samples.len() / self.channels.max(1);
+        if self.gains.fading() {
+            if self.fade <= 0.0 {
+                return None;
+            }
+            self.fade -= 1.0 / (FADE_OUT_SECONDS * self.rate.get() as f32).max(1.0);
+        }
         if self.frame >= frames {
             match self.loop_start {
                 Some(s) if s < frames => self.frame = s,
@@ -256,9 +280,10 @@ impl Iterator for LiveDecoder {
         let (tl, tr) = self.gains.get();
         self.current.0 += (tl - self.current.0) * GAIN_SMOOTHING;
         self.current.1 += (tr - self.current.1) * GAIN_SMOOTHING;
+        let fade = self.fade.max(0.0);
         let (l, r) = (
-            l as f32 / 32768.0 * self.current.0,
-            r as f32 / 32768.0 * self.current.1,
+            l as f32 / 32768.0 * self.current.0 * fade,
+            r as f32 / 32768.0 * self.current.1 * fade,
         );
         if let Some(room) = &mut self.room {
             room.push((l + r) * 0.5 * self.gains.send());
@@ -301,6 +326,7 @@ impl Decodable for LiveClip {
             hearing: self.hearing.clone(),
             muffle: Muffle::default(),
             room: self.room.clone().map(RoomSend::new),
+            fade: 1.0,
         }
     }
 }
@@ -338,12 +364,15 @@ pub fn reset(world: &mut World) {
     }
 }
 
+/// Stop a long-lived sound: a short fade out (`Gains::fade_out`), after
+/// which the backend despawns it; despawned at once when it isn't playing.
 fn stop(commands: &mut Commands, sinks: &Query<&AudioSink>, sound: LiveSound) {
-    if let Some((e, _)) = sound.audio {
-        if let Ok(sink) = sinks.get(e) {
-            sink.stop();
+    if let Some((e, gains)) = sound.audio {
+        if sinks.get(e).is_ok_and(|s| !s.is_paused() && !s.empty()) {
+            gains.fade_out();
+        } else {
+            commands.entity(e).try_despawn();
         }
-        commands.entity(e).try_despawn();
     }
 }
 
@@ -561,5 +590,38 @@ mod tests {
         let left: Vec<f32> = decoder(clip(4, Some(2))).step_by(2).take(8).collect();
         let frames: Vec<i32> = left.iter().map(|v| (v * 32768.0 / 100.0).round() as i32).collect();
         assert_eq!(frames, [0, 1, 2, 3, 2, 3, 2, 3]);
+    }
+
+    /// A sound replaced on its channel fades out over a few milliseconds
+    /// and ends, instead of stopping on a loud sample (a click).
+    #[test]
+    fn fade_out_ramps_to_silence_then_ends() {
+        // A loud constant clip, a second long.
+        let c = MapSoundClip {
+            rate: 44100,
+            channels: 1,
+            samples: vec![20000i16; 44100].into(),
+            loop_start: None,
+        };
+        let gains = Arc::new(Gains::new(1.0, 1.0));
+        let mut d = LiveClip::new(c, gains.clone(), Arc::default()).decoder();
+        let before: Vec<f32> = d.by_ref().take(200).collect();
+        let full = 20000.0 / 32768.0;
+        assert!((before[198] - full).abs() < 1e-3, "{}", before[198]);
+        gains.fade_out();
+        let after: Vec<f32> = d.step_by(2).collect();
+        let fade_frames = (FADE_OUT_SECONDS * 44100.0) as usize;
+        assert!(
+            after.len() >= fade_frames - 2 && after.len() <= fade_frames + 2,
+            "ends after the fade: {} frames, fade {fade_frames}",
+            after.len()
+        );
+        // No step larger than the ramp's (a hard stop is a jump of `full`).
+        let mut last = full;
+        for v in &after {
+            assert!(*v <= last + 1e-6 && last - v < 2.0 * full / fade_frames as f32, "{last} -> {v}");
+            last = *v;
+        }
+        assert!(last < full * 0.02, "ends near silence: {last}");
     }
 }

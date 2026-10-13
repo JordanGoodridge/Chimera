@@ -8,7 +8,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bevy::{
-    audio::{AudioPlayer, AudioSink, AudioSinkPlayback, PlaybackSettings, Volume},
+    audio::{AudioPlayer, PlaybackSettings, Volume},
     prelude::*,
 };
 
@@ -327,12 +327,19 @@ impl Ear {
 /// width) pan less, down to centred at the ear.
 pub const NEAR_PAN_UNITS: f32 = 16.0;
 
-/// A playing sound: who made it on which channel.
+/// A playing sound: who made it on which channel, and its live gains
+/// (to fade it out when another replaces it).
 #[derive(Component)]
 struct Playing {
     source: Option<Entity>,
     channel: Option<u8>,
+    gains: Arc<Gains>,
 }
+
+/// A sound another replaced on its channel: fading out, then ended
+/// (`live_sound::Gains::fade_out`).
+#[derive(Component)]
+pub struct FadingOut;
 
 pub(super) const METERS_PER_UNIT: f32 = 0.0254;
 /// Distances closer than this don't get louder (units).
@@ -377,7 +384,7 @@ fn play_sounds(
     mut messages: MessageReader<PlaySound>,
     bank: Option<Res<SoundBank>>,
     listeners: Query<(&GlobalTransform, Option<&ChildOf>), With<SoundListener>>,
-    playing: Query<(Entity, &Playing, Option<&AudioSink>)>,
+    playing: Query<(Entity, &Playing)>,
     mut sources: ResMut<Assets<LiveClip>>,
     hearing: Res<Hearing>,
     room: Res<RoomDsp>,
@@ -429,16 +436,19 @@ fn play_sounds(
         if left.max(right) < 1e-3 {
             continue;
         }
-        // Replace whatever this source plays on this channel.
+        // Replace whatever this source plays on this channel: it fades out
+        // over a few milliseconds and ends (a hard stop clicks: a
+        // full-auto gun's shots each cut the last one off), then the
+        // backend despawns it; it no longer counts as on the channel.
         if let (Some(source), Some(channel)) = (m.source, m.channel) {
-            for (e, p, sink) in &playing {
+            for (e, p) in &playing {
                 if p.source == Some(source) && p.channel == Some(channel) && !stopped.contains(&e) {
-                    if let Some(sink) = sink {
-                        sink.stop();
-                    }
+                    p.gains.fade_out();
                     stopped.push(e);
                     // The audio backend may despawn a finished one first.
-                    commands.entity(e).try_despawn();
+                    if let Ok(mut e) = commands.get_entity(e) {
+                        e.try_remove::<Playing>().try_insert(FadingOut);
+                    }
                 }
             }
             if let Some(i) = started.iter().position(|(k, _)| *k == (source, channel)) {
@@ -450,7 +460,7 @@ fn play_sounds(
             ..clip.clone()
         };
         let gains = Arc::new(Gains::new(left, right).with_send(send));
-        let handle = sources.add(LiveClip::new(once, gains, hearing.mix.clone()).with_room(&room));
+        let handle = sources.add(LiveClip::new(once, gains.clone(), hearing.mix.clone()).with_room(&room));
         let e = commands
             .spawn((
                 AudioPlayer(handle),
@@ -460,6 +470,7 @@ fn play_sounds(
                 Playing {
                     source: m.source,
                     channel: m.channel,
+                    gains,
                 },
             ))
             .id();

@@ -246,7 +246,7 @@ const MAX_VALUE: usize = 64;
 /// A point_servercommand line that passed `check_server_command`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ServerLine {
-    /// `say <text>`: print it.
+    /// `say <text>`: a chat line from the server (`MapSay`).
     Say(String),
     /// Set a game-rule setting (name in lower case; value clamped).
     Set { name: String, value: String },

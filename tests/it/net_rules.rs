@@ -632,6 +632,81 @@ fn chat_and_radio_reach_who_reads_them() {
     assert_eq!(calls[0].all[0].sender, sender, "mapped to the caller's character");
 }
 
+/// Map logic's chat lines and sounds reach network clients, which run
+/// no map logic (mg_jacks_multigames_v1: `say` lines through
+/// point_servercommand, and each game's selection sound, an
+/// ambient_generic): a dedicated server says them as "Console"; its
+/// long-lived sounds start, change and stop on each client under the
+/// same key, and its one-shots play there.
+#[test]
+fn map_says_and_logic_sounds_reach_clients() {
+    use mashup::map::{SoundControl, SoundKey, StartSound};
+    let mut sim = rounds(link(40, 0, 0.0), 57, 2, "");
+    let mut says: Vec<Log<ChatMessage>> = (1..=2).map(|a| Log::new(&sim, a)).collect();
+    let mut lines: Vec<Log<ChatLine>> = (1..=2).map(|a| Log::new(&sim, a)).collect();
+    let mut controls: Vec<Log<SoundControl>> = (1..=2).map(|a| Log::new(&sim, a)).collect();
+    let mut shots: Vec<Log<mashup::map::PlaySound>> = (1..=2).map(|a| Log::new(&sim, a)).collect();
+    let run = |sim: &mut NetSim,
+               says: &mut Vec<Log<ChatMessage>>,
+               lines: &mut Vec<Log<ChatLine>>,
+               controls: &mut Vec<Log<SoundControl>>,
+               shots: &mut Vec<Log<mashup::map::PlaySound>>| {
+        for _ in 0..20 {
+            sim.step();
+            says.iter_mut().for_each(|l| l.poll(sim));
+            lines.iter_mut().for_each(|l| l.poll(sim));
+            controls.iter_mut().for_each(|l| l.poll(sim));
+            shots.iter_mut().for_each(|l| l.poll(sim));
+        }
+    };
+    let server = sim.server.app.world_mut();
+    server.write_message(mashup::logic::MapSay("<== Spawn: Surf == >".into()));
+    let key = SoundKey(1 << 63 | 7);
+    server.write_message(SoundControl::Start(StartSound {
+        key,
+        entry: "Weapon_AK47.Single".into(),
+        at: Some(Vec3::new(1.0, 2.0, 3.0)),
+        ..default()
+    }));
+    // The soundscape's and other keys stay the client's own.
+    server.write_message(SoundControl::Stop(SoundKey(1 << 62 | 3)));
+    server.write_message(mashup::logic::LogicOneShot(mashup::map::PlaySound::at(
+        "DoorSound.DefaultLocked",
+        Vec3::ONE,
+    )));
+    run(&mut sim, &mut says, &mut lines, &mut controls, &mut shots);
+    sim.server.app.world_mut().write_message(SoundControl::Stop(key));
+    run(&mut sim, &mut says, &mut lines, &mut controls, &mut shots);
+    let text = |l: &ChatLine| l.0.iter().map(|(_, s)| s.as_str()).collect::<String>();
+    for i in 0..2 {
+        assert_eq!(heard(&says[i]), vec![("Console".to_string(), "<== Spawn: Surf == >".to_string())]);
+        assert!(says[i].all[0].console);
+        let shown: Vec<String> = lines[i].all.iter().map(text).collect();
+        assert!(shown.iter().any(|s| s == "Console: <== Spawn: Surf == >"), "client {i}: {shown:?}");
+        let got: Vec<String> = controls[i]
+            .all
+            .iter()
+            .map(|c| match c {
+                SoundControl::Start(s) => format!("start {:x} {} {:?}", s.key.0, s.entry, s.at),
+                SoundControl::Stop(k) => format!("stop {:x}", k.0),
+                other => format!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                format!("start {:x} Weapon_AK47.Single {:?}", key.0, Some(Vec3::new(1.0, 2.0, 3.0))),
+                format!("stop {:x}", key.0)
+            ],
+            "client {i}"
+        );
+        assert!(
+            shots[i].all.iter().any(|s| s.entry == "DoorSound.DefaultLocked" && s.at == Some(Vec3::ONE)),
+            "client {i}: the one-shot"
+        );
+    }
+}
+
 #[test]
 fn server_cvars_reach_clients_and_prediction_uses_them() {
     let mut sim = NetSim::new(link(50, 5, 0.0), 55, 1, setup);

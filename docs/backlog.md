@@ -12,40 +12,51 @@ plan when work starts; delete them when done.
 
 - Water seen through other parts of the map (user, 2026-10-11,
   mg_jacks_multigames_v1, `setpos -12146.96 15343.41 -927.97; setang
-  -29.57 184.04 0`): a water surface draws through walls/geometry in
-  front of it. Check its depth test/write and render order (transparent
-  pass vs the world), the water chunks' visibility clusters (round 1 of
-  the sky fix split water per cluster), and the planar reflection/
-  refraction passes.
+  -29.57 184.04 0`): fixed 2026-10-13, to playtest. It was the flood's
+  water (a func_water_analog, drawn under its mover's node) seen through
+  the sky from another room: moving water had no visibility clusters, so
+  it was never culled. It is now tagged by its moved bounds as brush
+  entities are (`heavy::map_community::moving_water_is_culled_on_jacks`).
+  Depth and pass order were fine.
 
 - Done 2026-10-12: no weapon held draws no view model and the HUD's
   `crosshair_default` (five dots; `client::hud::crosshair_kind`).
   Check in a playtest that the T-posed hands are gone after a jacks
   strip (the single-player strip test shows no view model).
 
-- Moving under a brush at head height (user, 2026-10-11; likely
-  mg_jacks_multigames_v1 near `setpos -12348.55 14196.69 1472.03; setang
-  -23.23 268.82 0`, though that setpos lands you on top of the brush):
-  ours lets the camera see through the brush; in CS:S the camera is
-  pushed down as soon as the top of the player's box goes under the
-  brush's edge. Find what CS:S does (the view origin clamped below a
-  ceiling / the near plane, or the player box being forced to duck under
-  a low edge — check the movement spec) and match it. Also: why does
-  that setpos put you on top of the brush instead of under it (our
-  setpos unsticking upward?).
+- Moving under a brush at head height (user, 2026-10-11,
+  mg_jacks_multigames_v1 by the climb start: lamps on the pillar whose
+  undersides are 64.7 units above the floor, over a 62-unit box with the
+  eye at 64): fixed 2026-10-13, to playtest. The eye was kept under a
+  ceiling found by a ray straight up from the box's centre, so a lamp
+  over the box's top but not over the eye let the near plane cut into it;
+  now a flat box as wide as the player's (15 units each side) is swept up
+  (`client::view::below_ceiling`; `console_commands::eye_drops_under_a_brush_edge_over_the_box`).
+  The movement spec doesn't cover the view against ceilings: our reading
+  of the report. Capture to confirm: in CS:S, `setpos -12348.55 14205
+  1408.03; setang 0 268.82 0` (feet on the floor, the box's top under the
+  lamp's edge, the eye just short of it), `getpos` and a screenshot: does
+  the view drop (by how much), or does CS:S do something else (duck)? The
+  setpos in the report is a `getpos` line: it prints the eye, and setpos
+  takes the feet (both games), so it lands 64 units higher, on top of
+  the lamp.
 
-- mg_jacks_multigames_v1 in real CS:S (user, 2026-10-11), to match:
-  (1) selecting a game plays a sound (the map has 25 ambient_generics;
-  check the selector's outputs reach them and they play for everyone);
-  (2) it prints chat messages, e.g. "<== Spawn: Surf == >": the map
-  sends `say ...` through point_servercommand (5 of them, e.g. `kon`),
-  which on a listen server shows under the host's name (on a dedicated
-  server as "Console"); ours must show these lines in chat the same way
-  (our point_servercommand allows `say`: check it reaches chat, and the
-  speaker name); it also runs `sv_airaccelerate 750` for the surf/climb
-  spawns (allowed setting? check); (3) it strips weapons from players and
-  bots between games (see the weapons-after-a-round entry): make ours do
-  the same, bots included.
+- mg_jacks_multigames_v1 in real CS:S (user, 2026-10-11): done
+  2026-10-13, to playtest (multiplayer.md, "mg_jacks_multigames_v1 in a
+  network game"). (1) Each game's selection sound (`lj_sound` PlaySound,
+  an ambient_generic) played only on the host: map logic's sounds now
+  reach clients. (2) Its `say` lines ("<== Spawn: Surf == >", "[==> Map
+  by Jackmaster <==]") show in chat, under the host's name on a listen
+  server, "Console" on a dedicated one. Capture to confirm: on a CS:S
+  listen server with the host dead, do living players read the map's
+  lines (ours follow the host's dead-chat rule)? (3) `sv_airaccelerate
+  750` (climb and surf spawn modes) is allowed and applied; ours puts it
+  back when the map unloads (our rule; CS:S keeps it until a config sets
+  it again). (4) Strips: StartTouch fires for anyone spawned or
+  teleported into a trigger, and bots are stripped as players are
+  (`heavy::map_flows::jacks_strips_everyone_between_games`); the
+  "Normal" spawn mode goes to the lobby with no strip (the map's design,
+  so survivors keep their guns there, in CS:S too).
 
 - Done 2026-10-12: alt-tab back in grabs the cursor at once
   (`client::input::grab_cursor`).
@@ -56,18 +67,23 @@ plan when work starts; delete them when done.
   (`player_weaponstrip` Strip/StripWeaponsAndSuit or `game_player_equip`
   with the strip flag, fired by a trigger in the spawn/lobby or a
   logic_auto at round start). jacks has 4 player_weaponstrips fired by
-  triggers' OnStartTouch. Check whether a player spawning or teleported
-  inside such a trigger gets StartTouch (Source does), which trigger
-  jacks' lobby uses, and that the strip happens; compare with CS:S.
+  triggers' OnStartTouch. Checked on jacks 2026-10-13: a player spawning
+  or teleported inside a trigger gets StartTouch, bots too, and the
+  strip happens; jacks strips at the slide course's end teleports
+  (`stripper_slide`) and on arrival in some arenas (`strippi`,
+  `stripzomb`, `stripper_bw`), not in its lobby, and its "Normal" spawn
+  mode goes to the lobby without a strip (so survivors walk in armed
+  there, in CS:S too). Left: other minigame maps' lobbies; compare with
+  CS:S.
 
-- AK full-auto sounds choppy (user, 2026-10-11): holding fire, each
-  shot seems to cut the previous one off. Source plays weapon fire on
-  the entity's CHAN_WEAPON, where a new sound replaces the old one, so
-  some cutting is likely parity; but check (a) whether ours cuts with an
-  audible click (no short fade-out when a channel sound is replaced),
-  (b) the AK's script entry (channel, `soundlevel`, wave count/pitch
-  variation), (c) the own-sound path (centred, non-spatial) restarting
-  the voice, and compare with a CS:S recording of a full-auto AK burst.
+- AK full-auto sounds choppy (user, 2026-10-11): fixed 2026-10-13, to
+  playtest. `Weapon_AK47.Single` is one wave on CHAN_WEAPON at
+  PITCH_NORM (CompatibilityAttenuation 0.52), so each shot replacing the
+  last is parity; ours stopped the old one on whatever sample it was at
+  (a click every shot). A replaced (or stopped) sound now fades out over
+  5 ms (`map::live_sound::fade_out_ramps_to_silence_then_ends`); the own
+  sound plays centred through the same path. Capture to confirm: a CS:S
+  recording of a full-auto AK burst against ours.
 
 Connections and hosting: done 2026-10-10, to playtest (multiplayer.md,
 "Playtest with friends"): Create Server's Game tab lists `settings.scr`'s
@@ -125,7 +141,13 @@ Looks:
   third person, a few frames over the first half second; if CS:S shows a
   gesture we lack, it needs a spec.
 - Standing inside another player (user: seen on mg_jacks_multigames_v1): the screen shows only the skybox, no
-  world. Not reproduced (2026-10-10, de_dust2): inside a bot standing and
+  world. Not reproduced on jacks either (2026-10-13): inside a bot
+  standing, with `mashup_noblock` 0 and 1, moving and jumping in it; and
+  every game's team teleports onto their shared destinations, players
+  piled on one point, all eyes stay in the map
+  (`heavy::map_flows::jacks_every_game_keeps_players_in_the_map`). The
+  flood water (above) drawn over the sky looked like part of this from
+  some spots. Not reproduced (2026-10-10, de_dust2): inside a bot standing and
   in noclip, and over the network (host `setpos` onto a client, the client
   walking, ducking and jumping inside it, both screens), the world draws
   and the body's insides show, as in CS:S; first-person spectating too.

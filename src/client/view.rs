@@ -177,11 +177,25 @@ pub fn camera_look(mode: &CameraMode, look: Quat) -> Quat {
 /// near plane (0.1 m) plus a little, so the near plane never cuts into it.
 const CEILING_CLEARANCE: f32 = 0.12;
 
+/// Half the width of the flat box swept up from the origin to find the
+/// ceiling over the eye: just inside the player's box (CS:S's is 16
+/// units), so a wall touching the box's side isn't taken for a ceiling.
+/// The whole box's width, not a ray from its centre: walking under a
+/// brush edge at head height, the box's top goes under it (62 units)
+/// while the eye (64) is still just short of it, and the near plane
+/// (several units wide around the eye) cut into the brush and showed the
+/// map through it. CS:S's view drops as soon as the top of the box is
+/// under the edge (a playtester's comparison; the movement spec doesn't
+/// cover the view against ceilings: our reading, a capture to confirm in
+/// docs/backlog.md).
+const CEILING_PROBE_HALF_WIDTH: f32 = 15.0 * METERS_PER_UNIT;
+
 /// The eye, lowered if a ceiling sits closer above it than
-/// `CEILING_CLEARANCE`. The measured CS:S box (62 units, eye at 64) fits a
-/// 64-unit duct like de_nuke's vents standing, with the eye on the ceiling
-/// plane: the near plane then cut into the ceiling and the map showed
-/// through it.
+/// `CEILING_CLEARANCE` anywhere over the player's box
+/// (`CEILING_PROBE_HALF_WIDTH`). The measured CS:S box (62 units, eye at
+/// 64) fits a 64-unit duct like de_nuke's vents standing, with the eye on
+/// the ceiling plane: the near plane then cut into the ceiling and the map
+/// showed through it.
 fn below_ceiling(
     origin: Vec3,
     eye: Vec3,
@@ -193,7 +207,15 @@ fn below_ceiling(
     if reach <= 0.0 {
         return eye;
     }
-    let hit = spatial.cast_ray(origin, Dir3::Y, reach, true, &filter).map(|h| h.distance);
+    let w = 2.0 * CEILING_PROBE_HALF_WIDTH;
+    let config = ShapeCastConfig {
+        max_distance: reach,
+        ignore_origin_penetration: true,
+        ..default()
+    };
+    let hit = spatial
+        .cast_shape(&Collider::cuboid(w, 0.001, w), origin, Quat::IDENTITY, Dir3::Y, &config, &filter)
+        .map(|h| h.distance);
     eye.with_y(eye_under_ceiling(eye.y, hit))
 }
 

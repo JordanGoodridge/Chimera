@@ -101,6 +101,55 @@ fn third_person_camera_sits_as_css_does() {
     assert!((back - 150.0 * 15.4f32.to_radians().cos()).abs() < 0.1, "{back} back");
 }
 
+/// Walking under a brush edge at head height (mg_jacks_multigames_v1's,
+/// a playtest): once the top of the player's box is under the edge, the
+/// eye drops below it, though the edge isn't over the eye itself yet (the
+/// near plane cut into the brush and showed the map through it).
+#[test]
+fn eye_drops_under_a_brush_edge_over_the_box() {
+    use avian3d::prelude::{Collider, RigidBody, SpatialQuery};
+    use bevy::ecs::system::RunSystemOnce;
+    use mashup::client::view::{CameraMode, camera_offset};
+    const U: f32 = 0.0254;
+    let mut sim = Sim::new((GreyboxMapPlugin, SourceMovementPlugin));
+    // High over the greybox; the box's centre (origin) 31 units above its
+    // feet, the eye 33 above that (CS:S: box 62, eye 64).
+    let origin = Vec3::new(0.0, 40.0, 12.0);
+    let eye = Vec3::Y * 33.0 * U;
+    // A slab whose underside is 32.5 units above the origin (between the
+    // box's top and the eye), 100 units wide; `edge` units from the
+    // origin along +x.
+    let slab = |sim: &mut Sim, edge: f32| {
+        let w = 100.0 * U;
+        sim.app
+            .world_mut()
+            .spawn((
+                RigidBody::Static,
+                Collider::cuboid(w, 8.0 * U, w),
+                Transform::from_translation(origin + Vec3::new(edge * U + w / 2.0, (32.5 + 4.0) * U, 0.0)),
+            ))
+            .id()
+    };
+    let at = |sim: &mut Sim| -> Vec3 {
+        let mode = CameraMode::default();
+        sim.app
+            .world_mut()
+            .run_system_once(move |spatial: SpatialQuery| camera_offset(&mode, origin, eye, Quat::IDENTITY, &spatial, []))
+            .unwrap()
+    };
+    // Its edge 20 units away: beside the box, the eye stays.
+    let s = slab(&mut sim, 20.0);
+    sim.ticks(2);
+    assert!((at(&mut sim).y - eye.y).abs() < 1e-4, "edge beside the box: {}", at(&mut sim).y / U);
+    sim.app.world_mut().despawn(s);
+    // 10 units away: over the box's top (the box is 16 units wide each
+    // side), not over the eye: the eye drops under the slab.
+    slab(&mut sim, 10.0);
+    sim.ticks(2);
+    let y = at(&mut sim).y / U;
+    assert!(y < 32.5 - 3.0, "eye at {y} units, slab underside at 32.5");
+}
+
 /// `kill` is CS:S's suicide: the player dies where it stands (god mode or
 /// not), so a lone player can end the round, rather than being moved to
 /// a spawn point alive.

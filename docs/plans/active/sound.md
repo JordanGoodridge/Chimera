@@ -13,7 +13,11 @@ Started 2026-10-05, from specs/cs_source/sounds.md.
   and plays (the listener's own sounds, made by the player the camera
   belongs to, play centred as in Source; sounds within 16 units of the
   ear pan less: `sound::Ear`) through Bevy audio (pitch as playback speed). A new sound on
-  the same (entity, channel) replaces the old one.
+  the same (entity, channel) replaces the old one, which fades out over
+  5 ms (`live_sound::FADE_OUT_SECONDS`) instead of stopping on a loud
+  sample: a full-auto AK's shots (one wave, CHAN_WEAPON) each cut the
+  last one off, as in Source, without a click. Stopped long-lived sounds
+  fade the same way.
 - **Distance model:** one function. Until measured (spec open question
   1): sound levels use H1 (inverse distance from a 36-unit reference),
   CompatibilityAttenuation entries H2 (linear to 1000/a units), level 0
