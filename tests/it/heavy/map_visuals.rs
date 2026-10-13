@@ -108,6 +108,33 @@ fn sprites_load_with_their_entity_and_follow_the_logic() {
     );
 }
 
+/// de_train's two dust clouds (func_dustcloud, sprites_dust.md 7): world-
+/// sized motes inside their brushes, off until the logic turns them on.
+#[test]
+fn de_train_dust_clouds_load_and_turn_on() {
+    let Some(map) = load("de_train") else { return };
+    let clouds: Vec<_> = map.dust.iter().filter(|d| d.world_size).collect();
+    assert_eq!(clouds.len(), 2, "de_train's dustclouda and dustcloudb");
+    for c in &clouds {
+        eprintln!("cloud of entity {:?}: {} to {} (engine)", c.entity, c.min, c.max);
+        assert!(!c.start_on && !c.frozen && !c.brushes.is_empty());
+        // SizeMin 64, SizeMax 128 units as half-widths; alpha 100.
+        assert!((c.size.0 / 0.0254 - 64.0).abs() < 1e-3 && (c.size.1 / 0.0254 - 128.0).abs() < 1e-3, "{:?}", c.size);
+        assert!((c.color[3] - 100.0 / 255.0).abs() < 1e-6);
+    }
+    let index = clouds[0].entity.expect("its entity");
+    let name = map.entities[index].get("targetname").expect("named").to_string();
+    let mut sim = sim(map);
+    let on = |sim: &Sim| {
+        let logic = sim.app.world().resource::<Logic>();
+        logic.world.part_states().iter().any(|p| p.0 == index && p.2)
+    };
+    assert!(!on(&sim));
+    input(&mut sim, &name, "TurnOn", Value::Void);
+    sim.ticks(1);
+    assert!(on(&sim), "{name} turned on");
+}
+
 #[test]
 fn de_nuke_screens_change_skin_and_cars_play() {
     let Some(map) = load("de_nuke") else { return };

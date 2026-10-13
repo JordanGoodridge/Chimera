@@ -1,5 +1,8 @@
-//! Dust motes (`func_dustmotes`) from specs/cs_source/sprites_dust.md: the
-//! entity keys and its brush model's bounds become a `MapDust` volume.
+//! Dust motes (`func_dustmotes`) and dust clouds (`func_dustcloud`) from
+//! specs/cs_source/sprites_dust.md 7-9: the entity keys and its brush
+//! model's bounds and brushes become a `MapDust` volume. A cloud is the
+//! same entity without the screen-constant size: its Size keys are world
+//! half-widths (de_train's two clouds, turned on as the bomb goes off).
 
 use bevy::prelude::*;
 use vbsp::Bsp;
@@ -17,22 +20,23 @@ fn key<'a>(e: &vbsp::RawEntity<'a>, name: &str) -> Option<&'a str> {
         .map(|(_, v)| v)
 }
 
-pub fn add_dust(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) {
+pub fn add_dust(bsp: &Bsp, leaves: &[super::ambient::RawLeaf], materials: &mut MaterialLoader, data: &mut MapData) {
     let models: Vec<_> = bsp.models().collect();
     let mut texture = None;
     for (index, e) in bsp
         .entities
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.prop("classname") == Some("func_dustmotes"))
+        .filter(|(_, e)| matches!(e.prop("classname"), Some("func_dustmotes" | "func_dustcloud")))
     {
+        let cloud = e.prop("classname") == Some("func_dustcloud");
         // StartDisabled: the logic can turn it on later.
         let start_on = !key(&e, "StartDisabled").is_some_and(|v| v.trim_start().starts_with('1'));
-        let Some(model) = e
+        let Some((model_index, model)) = e
             .prop("model")
             .and_then(|m| m.strip_prefix('*'))
             .and_then(|i| i.parse::<usize>().ok())
-            .and_then(|i| models.get(i))
+            .and_then(|i| Some((i, models.get(i)?)))
         else {
             continue;
         };
@@ -55,7 +59,15 @@ pub fn add_dust(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) {
             min: a.min(b),
             max: a.max(b),
             rate: num("SpawnRate", 40.0),
-            size: (num("SizeMin", 10.0), num("SizeMax", 20.0)),
+            // A cloud's sizes are half-widths in units.
+            size: if cloud {
+                (num("SizeMin", 10.0) * METERS_PER_UNIT, num("SizeMax", 20.0) * METERS_PER_UNIT)
+            } else {
+                (num("SizeMin", 10.0), num("SizeMax", 20.0))
+            },
+            world_size: cloud,
+            frozen: key(&e, "Frozen").is_some_and(|v| v.trim_start().starts_with('1')),
+            brushes: super::bsp::model_volumes(bsp, leaves, model_index),
             speed: num("SpeedMax", 10.0) * METERS_PER_UNIT,
             // Lifetimes are sent in 4 bits: 0-15 s.
             life: (

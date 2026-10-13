@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 6 | 7 | 5 | 3 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 4 | 16 | 2 | 0 |
-| Maps and entities | 5 | 10 | 1 | 0 |
+| Rendering, lighting, materials | 6 | 15 | 2 | 2 |
+| Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **59** | **62** | **24** | **23** |
+| **Total** | **64** | **59** | **24** | **28** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -212,24 +212,25 @@ common console commands, against mashup's.
 | Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone |
 | Ropes, sprites, dust motes, beams | have | | | specs |
 | View models | have | | | view-models.md |
-| HDR (`mat_hdr_level 2`, CS:S's default) | differs | M | M | tech-debt "Lightmaps": stand-in exposure and bloom; references are LDR |
+| HDR (`mat_hdr_level 2`, CS:S's default) | differs | M | M | tech-debt "Lightmaps": stand-in exposure and bloom; references are LDR, capture C17 |
 | Player shadows | differs | M | | blob only (tech-debt "Dynamic shadows"); decals under shadows and steadier shadows merged from main 2026-10-13 |
-| World reflections | differs | L | S | tech-debt: top mip only, highlight narrower |
+| World reflections | differs | L | S | the cubemaps now carry their mips (round 2: cs_office mean 0.0189 -> 0.0185, `cam0` 0.041 -> 0.038; de_aztec 0.0408 -> 0.0405; dust2, nuke unchanged); the highlight stays narrower on dust2's bumped tunnel floor (`tunnel_floor_e` 0.016 before and after): per-vertex tangents next |
 | Water refraction | differs | L | M | tech-debt "Water" |
 | Particles blend in linear space | differs | L | M | tech-debt |
 | Glow occlusion by rays | differs | L | M | tech-debt |
-| LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail" |
-| Rope wind sway | differs | L | S | tech-debt "Ropes" |
-| Detail props layout | differs | L | S | tech-debt "Detail props" |
-| Player animation (feet slide, no death layer) | differs | M | M | tech-debt "Player animation": SDK template speeds |
-| Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls" |
-| Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models" |
-| Prop light probes | differs | L | M | tech-debt |
-| 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; capture listed in backlog |
+| LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail"; capture C21 |
+| Rope wind sway | have (fixed) | L | S | round 2: the spec's gusts near the camera (`map::rope_sway`, `rope_wind_dist`); maps with an env_wind hang still (not simulated); refcmp captures with `rope_wind_dist 0`; amplitude unmeasured, capture C18 |
+| Detail props layout | differs | L | S | tech-debt "Detail props"; capture C22 |
+| Player animation (feet slide, no death layer) | differs | M | M | tech-debt "Player animation": SDK template speeds; animation.md's open question needs a demo, capture C14 |
+| Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls": the ammo impulses aren't public (ragdolls.md Q2, weapons.md Q8); capture C13 |
+| Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models"; view_models.md Q5, Q7; capture C15 |
+| Prop light probes | differs | L | M | tech-debt: the engine's weighting isn't public (needs a spec session) |
+| 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C20 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
 | Static props lit in the 3D skybox (nuke's cooling towers teal, CS:S light grey) | differs | M | M | seen once the sky fog is off; their light probe (no `.vhv`); capture C10 |
-| Blood decals on characters | missing | M | M | backlog 3 "Decals, remaining" |
-| Motion blur, colour correction options | missing | L | M | video-settings.md (greyed) |
+| Blood decals on characters | missing | M | M | backlog 3 "Decals, remaining"; no spec covers model decals (engine-side): a spec session, then a capture of a shot bot's body |
+| Colour correction option | have (fixed) | L | S | round 2: Video > Advanced's ColorCorrection box sets `mat_colorcorrection` (the post-process was in, the control greyed) |
+| Motion blur option | missing | L | M | video-settings.md (greyed): Source's camera blur needs a spec |
 
 ## Maps and entities
 
@@ -238,13 +239,14 @@ common console commands, against mashup's.
 | Entity I/O, triggers, movers, breakables, doors, fire | have | | | specs/source |
 | Soundscapes | have | | | |
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
-| Props collide by their visible mesh, not `.phy` | differs | M | M | tech-debt |
+| Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |
 | Pushers (no bevels, no players or props pushed) | differs | L | M | tech-debt "Pushers" |
-| Round restart keep-list | differs | M | S | entity_io.md Q1 |
+| Round restart keep-list | differs | M | S | entity_io.md Q1; capture C16 |
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
-| Steam heat-wave jets, func_dustcloud | missing | L | S | tech-debt |
-| Beams' noise and scroll | differs | L | S | tech-debt "Beams" |
+| func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |
+| Steam heat-wave jets (`Type` 1) | missing | L | S | tech-debt; no stock map has one (every stock env_steam is Type 0) |
+| Beams' noise and scroll | have (fixed) | L | S | round 2: fractal noise each frame, segments, texture repeat, TextureScroll (the spec's s² quirk) and sprite frames on lasers and env_beams (de_cbble's and de_inferno's chimney smoke scroll); the scroll speed is capture C19 |
 | Community-map entity readings | differs | M | | tech-debt rows "Community-map", "Minigame flows" |
 | Water and physics (buoyancy) | differs | L | M | tech-debt |
 | LOD and fading of props (`fademindist`) | differs | L | S | performance backlog |
@@ -350,6 +352,35 @@ common console commands, against mashup's.
 - `NET_VERSION` net16 (`Hurt`, `RoundOver`'s summary, `NetRound`'s map
   start).
 
+### Round 2: rendering, maps and entities
+
+- Beams (`map::beams`, beam.wgsl): lasers and persistent env_beams draw
+  through the spec's point count with fractal noise new each frame,
+  their texture repeating every 100 units and scrolling by
+  TextureScroll, and their sprite's frames at its framerate
+  (visual_entities.md 1). Tests: `map::beams` unit tests (de_cbble's
+  smoke beam's numbers).
+- func_dustcloud (`map::dust`): dust with world-sized motes; motes start
+  inside the volume's brushes; frozen volumes spawn once and hold
+  (sprites_dust.md 7-8). Tests: `map::dust` unit tests,
+  `heavy::map_visuals::de_train_dust_clouds_load_and_turn_on`.
+- Rope wind (`map::rope_sway`): the spec's gusts sway ropes within
+  `rope_wind_dist` of the camera. Tests: `map::rope_sway` unit tests,
+  `heavy::map_de_dust2::ropes_can_sway`. refcmp captures with
+  `rope_wind_dist 0` (de_dust2 mean 0.0309 either way; a swaying cable
+  moved `sky_up` by up to 0.009 between runs).
+- Cubemap mips: baked cubemaps load every mip level (reflections pick
+  them as the game's hardware does). refcmp (`MASHUP_CUBEMAP_TOP_MIP=1`
+  for before): cs_office mean 0.0189 -> 0.0185 (`cam0` 0.041 -> 0.038,
+  `zone0_*` 0.001 lower each), de_aztec 0.0408 -> 0.0405 (`cam0`,
+  `cam1`, `t_spawn`, `zone0_90` 0.001 lower), de_dust2 0.0309 and de_nuke
+  0.0242 unchanged. Test:
+  `heavy::map_de_dust2::cubemaps_keep_their_mips`.
+- Video > Advanced's colour correction box (`mat_colorcorrection`).
+  Test: `client::options` unit test.
+- The "props collide by their visible mesh" row was stale (the `.phy`
+  pieces have been used since physics props landed); tech-debt reworded.
+
 ## Fixed: the join flow
 
 - Joining a server, or starting a game with `map` (the menus' Create
@@ -402,6 +433,19 @@ In order of impact over cost:
    ours, one a frame): a choice for the network feel, not a gap players
    see; left (S).
 3. Ricochet sounds once spec Q7 says when they play (spec session).
+
+1. The scoreboard's map time left (`game_end::time_left`) (S).
+2. Team balance: `mp_limitteams` on joining, `mp_autoteambalance` at a
+   round's end (M; rules as publicly documented, details unmeasured).
+3. `fps_max` (S).
+4. The MOTD on joining (`motd.res`, `cfg/motd.txt` else
+   `motd_default.txt`) (S).
+5. Ricochet sounds once spec Q7 says when they play (spec session).
+6. Rendering and maps (round 2's leftovers, all L): env_steam's
+   JetLength/Speed/SpreadSpeed inputs (visual_entities.md 7); heat-wave
+   steam (Type 1: a refracting quad; no stock map has one); per-vertex
+   tangents for world reflections (tech-debt row); env_wind (detail
+   sway is in; ropes and dust would follow it).
 
 ## Captures wanted
 
@@ -476,3 +520,48 @@ says what decides the open point.
   who is MVP on a time-out win and with tied kills, the title's colour
   for CTs and for a draw, and whether the panel goes when the next
   round starts or before.
+
+- **C13 Ragdoll throw per weapon.** A bot standing still (`bot_stop 1`)
+  on de_dust2's long A, killed from 5 m by one chest shot each with a
+  Desert Eagle, a USP, an AK-47, an AWP, an M3 and a knife stab, and by
+  an HE at 2 m; demo recorded (`record`), then `phys_pushscale 3` and the
+  Deagle again. Decides the ammo impulses (ragdolls.md Q2, weapons.md
+  Q8) and whether the knife uses the melee force.
+- **C14 Player legs.** A demo of a bot walking (`bot_walk 1`), running,
+  crouch-walking and strafing on flat ground (de_dust2's CT spawn),
+  stepped frame by frame with `demoui`: the legs' cycles per second at
+  each speed. Decides the ground speeds and playback rate (animation.md
+  open questions; tech-debt "Player animation").
+- **C15 Muzzle flash and view-model light.** In de_dust2's lower tunnel
+  (refcmp view `tunnel_floor_e`'s eye), `host_timescale 0.1`: screenshots of the
+  first two frames of an AK-47, USP, M3 and AWP shot, with
+  `muzzleflash_light 1` and `0`; then the eye in shadow under a lit edge
+  (B doors' arch) with `r_DrawModelLightOrigin 1`. Decides view_models.md
+  Q5 (material, size, duration, wall light) and Q7 (lighting point).
+- **C16 Round restart keep-list.** entity_io.md Q1's test map on the
+  probe server (logic_auto OnMapSpawn / OnMultiNewRound `say`, a
+  func_brush toggled by a button, two rounds). Decides
+  `world::ROUND_KEEP` and logic_auto's firing.
+- **C17 HDR references.** `refcmp capture-ref` on de_dust2 and de_nuke
+  with `mat_hdr_level 2` (the game's default; restart the map after
+  setting it), 5 s after each view is placed (auto-exposure settles), into
+  a separate folder. Decides `client::hdr`'s exposure and bloom.
+- **C18 Ropes in the wind.** refcmp view `sky_n` (de_dust2) and a
+  de_cbble view of a cable (it has an env_wind): 20 `jpeg`s 0.25 s
+  apart. Decides the gusts' amplitude (the spec's 50 units/s², from the
+  SDK) and what env_wind does to ropes.
+- **C19 Beam scroll.** de_cbble's chimney smoke (env_beam `smoker1`,
+  `setpos -2900 -224 700; setang 0 180 0`), `host_timescale 0.1`, a
+  `jpeg` every 0.05 s for 1 s of game time, and the same with
+  `ent_fire smoker1 ScrollSpeed 1`. Decides visual_entities.md Q10 (s²
+  or s lengths a second).
+- **C20 Sky's down face.** de_dust2 with `noclip`, from 200 units above
+  each of the map's four outer walls looking 60° down past them, and
+  de_aztec likewise, `r_3dsky 0`: the 2D sky below the horizon. Decides
+  the down face's orientation (tech-debt "Sky").
+- **C21 Prop LOD switches.** As tech-debt "Levels of detail" says
+  (de_dust2's pots, backing away with `r_lod -1`, a `jpeg` every 50
+  units); also moving back toward them (hysteresis).
+- **C22 Detail props.** refcmp-style views over cs_militia's and
+  de_port's grass (`cl_detaildist 1200`), close (200 units) and far
+  (1000): density, size, sway.

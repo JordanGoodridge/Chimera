@@ -1,10 +1,11 @@
 //! Beam and glow entities from the map (specs/source/visual_entities.md):
 //! point_spotlight (2: its shaft traced to the first wall, a halo at its
 //! source), env_laser (3) and persistent env_beam (4.1) between their
-//! endpoints as placed, env_lightglow (6), into `map::beams`. Lasers and
-//! beams are drawn where the map placed their ends (targets that move
-//! aren't followed; no noise); strike-generator env_beams (life ≠ 0)
-//! as `map::emitters::MapStrike`, the look of the beams they strike.
+//! endpoints as placed, with their noise, texture scroll and sprite
+//! frames (1), env_lightglow (6), into `map::beams`. Lasers and beams are
+//! drawn where the map placed their ends (targets that move aren't
+//! followed); strike-generator env_beams (life ≠ 0) as
+//! `map::emitters::MapStrike`, the look of the beams they strike.
 
 use bevy::prelude::*;
 use vbsp::Bsp;
@@ -37,14 +38,29 @@ fn forward(angles: Vec3) -> Vec3 {
     Vec3::new(p.cos() * y.cos(), p.cos() * y.sin(), -p.sin())
 }
 
+/// A sprite material's name (`.vmt` or bare name) as the loader takes it.
+fn sprite_name(path: &str) -> String {
+    let path = path.to_lowercase().replace('\\', "/");
+    path.trim_start_matches("materials/")
+        .trim_end_matches(".vmt")
+        .trim_end_matches(".spr")
+        .to_string()
+}
+
 /// A sprite material's texture (`.vmt` or bare name).
 fn sprite(materials: &mut MaterialLoader, path: &str) -> Option<usize> {
-    let path = path.to_lowercase().replace('\\', "/");
-    let path = path
-        .trim_start_matches("materials/")
-        .trim_end_matches(".vmt")
-        .trim_end_matches(".spr");
-    materials.resolve(path).texture
+    materials.resolve(&sprite_name(path)).texture
+}
+
+/// An animated sprite's frames (each a texture); empty for a still one.
+fn sprite_frames(materials: &mut MaterialLoader, path: &str) -> Vec<usize> {
+    let name = sprite_name(path);
+    let text = materials.read_text(&format!("materials/{name}.vmt")).unwrap_or_default();
+    let Some(base) = super::material::material_key::<String>(&text, "$basetexture") else {
+        return Vec::new();
+    };
+    let frames = materials.texture_frames(&base, true);
+    if frames.len() > 1 { frames } else { Vec::new() }
 }
 
 /// How far (0..1) a line from `from` to `to` (engine space) gets through
@@ -144,10 +160,19 @@ pub fn add_beams(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
                         proxy: (1.0 + 60.0 * width / end_width).clamp(1.0, 8.0) * METERS_PER_UNIT,
                     }),
                     start_on: flags & 1 != 0,
+                    // Noise 0, no tile, no scroll (2.1 step 3).
+                    noise: 0.0,
+                    scroll: 0.0,
+                    tile: false,
+                    frames: Vec::new(),
+                    frame_start: 0.0,
+                    frame_rate: 0.0,
                 });
             }
             "env_laser" | "env_beam" => {
-                let Some(texture) = prop(&e, "texture").and_then(|t| sprite(materials, t)) else {
+                let Some((texture, frames)) = prop(&e, "texture")
+                    .and_then(|t| Some((sprite(materials, t)?, sprite_frames(materials, t))))
+                else {
                     continue;
                 };
                 let laser = class == "env_laser";
@@ -189,6 +214,13 @@ pub fn add_beams(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
                     texture,
                     spot: None,
                     start_on: !named || flags & 1 != 0,
+                    // Integers on the wire; a "-" (de_cbble's smoke) is 0.
+                    noise: num("NoiseAmplitude").unwrap_or(0.0).trunc().clamp(0.0, 64.0),
+                    scroll: num("TextureScroll").unwrap_or(0.0).trunc().clamp(0.0, 100.0),
+                    tile: true,
+                    frames,
+                    frame_start: num("framestart").unwrap_or(0.0).max(0.0),
+                    frame_rate: if laser { 0.0 } else { num("framerate").unwrap_or(0.0).max(0.0) },
                 });
             }
             "env_lightglow" => {

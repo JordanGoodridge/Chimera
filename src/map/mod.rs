@@ -66,6 +66,7 @@ pub mod tracer;
 pub use ragdoll::{MapCollisionHooks, MapRagdoll, MapRagdollBody, MapRagdollJoint, Ragdoll, RagdollBody, RagdollShot};
 pub mod room;
 pub mod rope_material;
+pub mod rope_sway;
 pub mod shadows;
 pub mod sound;
 pub mod soundscape;
@@ -385,11 +386,13 @@ pub struct MapRig {
 
 /// A baked environment cubemap: six square RGBA8 sRGB faces in the
 /// source game's face order and axes (Source: +X, -X, +Y, -Y, +Z, -Z in
-/// its Z-up frame), sampled with directions in that frame.
+/// its Z-up frame), sampled with directions in that frame. Each face holds
+/// its mip chain, largest first (`mips` levels, each half the last).
 #[derive(Clone, Debug)]
 pub struct MapCubemap {
     pub name: String,
     pub size: u32,
+    pub mips: u32,
     pub faces: [Vec<u8>; 6],
 }
 
@@ -1599,17 +1602,27 @@ impl std::fmt::Debug for MapLightField {
 #[derive(Resource, Clone)]
 pub struct LightField(pub MapLightField);
 
-/// A dust mote volume (`func_dustmotes`): slow specks spawned inside a box,
-/// fading in and out over their life and with distance
-/// (specs/cs_source/sprites_dust.md). Engine space, meters, seconds.
+/// A dust mote volume (`func_dustmotes`, `func_dustcloud`): slow specks
+/// spawned inside its brushes, fading in and out over their life and with
+/// distance (specs/cs_source/sprites_dust.md). Engine space, meters,
+/// seconds.
 #[derive(Clone, Debug)]
 pub struct MapDust {
+    /// The brushes' bounds.
     pub min: Vec3,
     pub max: Vec3,
+    /// The brushes (planes, outward normals: n.p <= d inside); a mote
+    /// starts inside one. Empty: anywhere in the bounds.
+    pub brushes: Vec<Vec<(Vec3, f32)>>,
     /// Motes per second.
     pub rate: f32,
-    /// Screen-constant size: half-width = size / 10000 x view depth.
+    /// Half-width range: screen-constant (half-width = size / 10000 x view
+    /// depth) unless `world_size`, then meters.
     pub size: (f32, f32),
+    /// A dust cloud: `size` is a half-width in the world.
+    pub world_size: bool,
+    /// Frozen: `rate` motes at once that never move, age or die.
+    pub frozen: bool,
     /// Initial speed per axis, up to this (m/s).
     pub speed: f32,
     pub life: (f32, f32),
@@ -1780,6 +1793,9 @@ pub struct MapRope {
     /// Texture and normal map of a translucent strip drawn behind the rope
     /// that keeps thin, distant ropes visible (fake anti-aliasing).
     pub back: Option<(Option<usize>, Option<usize>)>,
+    /// Its settled simulation, which the wind moves again near the camera
+    /// (`rope_sway`); None: it hangs still.
+    pub sway: Option<rope_sway::RopeSway>,
 }
 
 /// A 3D skybox: a miniature scene (meshes and props marked `skybox`) drawn
@@ -2197,6 +2213,8 @@ impl Plugin for MapPlugin {
                     apply_prop_looks,
                     animate_props,
                     beams::follow_eye.after(switch_parts).before(glow_visibility),
+                    beams::animate_beams.after(switch_parts),
+                    rope_sway::sway_ropes,
                 ),
             )
             .add_systems(
@@ -3202,7 +3220,11 @@ fn spawn_map(
         if view == MapDebugView::Normal {
             for (i, dust) in data.dust.iter().enumerate() {
                 let mesh = meshes.add(dust::empty_mesh());
-                let clusters = visibility.map(|v| vis::box_clusters(v, dust.min, dust.max)).unwrap_or_default();
+                // Culled by its bounds grown by its largest mote (9).
+                let grow = Vec3::splat(if dust.world_size { dust.size.1 } else { 0.0 });
+                let clusters = visibility
+                    .map(|v| vis::box_clusters(v, dust.min - grow, dust.max + grow))
+                    .unwrap_or_default();
                 let mut e = commands.spawn((
                     Name::new(format!("Dust {i}")),
                     MapPart,
@@ -3484,7 +3506,24 @@ fn spawn_map(
                     ChildOf(root),
                 ));
                 part(&mut e, b.entity, b.start_on);
-                tag(&mut e, segment_clusters(b.start, b.end));
+                // Clusters along the beam, out to its noise's reach (fractal
+                // samples stay within ±2).
+                let reach = 2.0 * b.noise * b.start.distance(b.end) / 100.0;
+                let mut clusters = segment_clusters(b.start, b.end);
+                if reach > 0.0 && let Some(v) = visibility {
+                    let (lo, hi) = (b.start.min(b.end) - Vec3::splat(reach), b.start.max(b.end) + Vec3::splat(reach));
+                    v.clusters_in_box(lo, hi, &mut clusters);
+                    clusters.sort_unstable();
+                    clusters.dedup();
+                }
+                tag(&mut e, clusters);
+                if b.animated() {
+                    e.insert(beams::BeamMotion {
+                        beam: b.clone(),
+                        frames: b.frames.iter().map(|f| textures[*f].clone()).collect(),
+                        rng: particles::ParticleRng::new(i as u64 + 1),
+                    });
+                }
                 if let Some(h) = &b.spot {
                     let t = &data.textures[h.texture];
                     let mut e = commands.spawn((
@@ -3565,6 +3604,7 @@ fn spawn_map(
                         .map(|(t, n)| (t, n, true))
                         .into_iter()
                         .chain([(rope.texture, rope.normal_map, false)]);
+                let mut swaying = rope.sway.clone();
                 for (texture, normal, back) in strips {
                     let mut e = commands.spawn((
                         Name::new(format!("Rope {i}{}", if back { " (back)" } else { "" })),
@@ -3587,6 +3627,17 @@ fn spawn_map(
                         ChildOf(statics),
                     ));
                     tag(&mut e, clusters.clone());
+                    // The strips share the mesh: one of them moves it.
+                    if let Some(sway) = swaying.take() {
+                        e.insert(rope_sway::RopeMotion {
+                            gusts: rope_sway::Gusts::new(i as u64 + 1),
+                            sway,
+                            look: rope.clone(),
+                            mesh: mesh.clone(),
+                            pending: 0.0,
+                            resting: true,
+                        });
+                    }
                 }
             }
         }
@@ -4366,20 +4417,31 @@ pub fn parameter_gamma_to_linear(v: f32) -> f32 {
     if v >= 0.95 { 1.0 } else { v.powf(2.2) }
 }
 
-/// A baked cubemap as a cube texture (six sRGB layers, clamped, linear).
-fn cube_image(c: &MapCubemap) -> Image {
-    let data: Vec<u8> = c.faces.concat();
-    let mut image = Image::new(
+/// A baked cubemap as a cube texture (six sRGB layers with their mips,
+/// clamped, linear within a mip, the nearest mip: the reference client's
+/// bilinear filtering). The mips widen a bumped surface's highlight where
+/// its normal varies faster than the screen's pixels, as the game's do.
+pub fn cube_image(c: &MapCubemap) -> Image {
+    // Layer by layer, each layer's mips largest first (wgpu's default
+    // layer-major order).
+    let mut image = Image::new_uninit(
         Extent3d {
             width: c.size,
             height: c.size,
             depth_or_array_layers: 6,
         },
         TextureDimension::D2,
-        data,
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     );
+    // Comparison hook: MASHUP_CUBEMAP_TOP_MIP=1 keeps the largest mip only.
+    if std::env::var("MASHUP_CUBEMAP_TOP_MIP").is_ok_and(|v| v == "1") {
+        let top = (c.size * c.size * 4) as usize;
+        image.data = Some(c.faces.iter().flat_map(|f| f[..top.min(f.len())].iter().copied()).collect());
+    } else {
+        image.data = Some(c.faces.concat());
+        image.texture_descriptor.mip_level_count = c.mips.max(1);
+    }
     image.texture_view_descriptor = Some(bevy::render::render_resource::TextureViewDescriptor {
         dimension: Some(bevy::render::render_resource::TextureViewDimension::Cube),
         ..default()
