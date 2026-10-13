@@ -47,7 +47,10 @@ pub struct BombFxPlugin;
 
 impl Plugin for BombFxPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (screen, planted).run_if(resource_exists::<Assets<Image>>));
+        app.add_systems(
+            Update,
+            (screen.after(screen_text), planted).run_if(resource_exists::<Assets<Image>>),
+        );
     }
 }
 
@@ -62,28 +65,58 @@ struct C4Screen {
     look: (Vec2, Option<(String, f32, bool)>, [u8; 4]),
 }
 
+/// What the C4's screen shows in the first-person view: whose view it
+/// is (the watched player, else the local one) and, while that player
+/// arms the bomb, the code typed so far (`BombRules::screen_text` at the
+/// arming's time on the simulation's clock, so a network client's
+/// predicted arming types the same digits); empty otherwise.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct C4ScreenText {
+    pub viewer: Option<Entity>,
+    pub text: String,
+}
+
 /// Who the first-person view belongs to: the watched player, else the
 /// local one.
 fn viewer(spec: Option<&super::spectate::SpecView>, local: Option<Entity>) -> Option<Entity> {
     spec.and_then(|s| s.in_eye).or(local)
 }
 
+/// `C4ScreenText` this frame.
+pub(super) fn screen_text(
+    rules: Option<Res<BombRules>>,
+    clock: Res<crate::core::SimClock>,
+    spec: Option<Res<super::spectate::SpecView>>,
+    local: Query<Entity, With<LocalPlayer>>,
+    arming: Query<&Arming>,
+    mut out: ResMut<C4ScreenText>,
+) {
+    let viewer = viewer(spec.as_deref(), local.iter().next());
+    let text = match (rules, viewer.and_then(|v| arming.get(v).ok())) {
+        (Some(rules), Some(a)) => rules.screen_text((clock.now - a.since) as f32),
+        _ => String::new(),
+    };
+    let next = C4ScreenText { viewer, text };
+    if *out != next {
+        *out = next;
+    }
+}
+
+/// Draw `C4ScreenText` on the viewer's C4 view model.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn screen(
     rules: Option<Res<BombRules>>,
     hud: Option<Res<ActiveHud>>,
     fonts: Res<super::fonts::UiFonts>,
-    clock: Res<crate::core::SimClock>,
-    spec: Option<Res<super::spectate::SpecView>>,
-    local: Query<Entity, With<LocalPlayer>>,
-    characters: Query<(Entity, Option<&Arming>, Has<ViewModelScreen>), With<Intent>>,
+    shown: Res<C4ScreenText>,
+    characters: Query<(Entity, Has<ViewModelScreen>), With<Intent>>,
     mut texts: Query<&mut Text>,
     mut cameras: Query<&mut Camera>,
     state: Option<ResMut<C4Screen>>,
     mut images: ResMut<Assets<Image>>,
     mut commands: Commands,
 ) {
-    let (Some(rules), Some(key)) = (rules.as_ref(), rules.as_ref().and_then(|r| r.weapon)) else {
+    let Some(key) = rules.as_ref().and_then(|r| r.weapon) else {
         return;
     };
     let look = hud.as_ref().and_then(|h| h.0.screens.get("c4_view_panel"));
@@ -112,14 +145,8 @@ fn screen(
             return;
         }
     };
-    let me = viewer(spec.as_deref(), local.iter().next());
-    let mut text = String::new();
-    for (e, arming, has) in &characters {
-        let mine = Some(e) == me;
-        if mine && let Some(a) = arming {
-            // Arming's time is the simulation's (a network client predicts it).
-            text = rules.screen_text((clock.now - a.since) as f32);
-        }
+    for (e, has) in &characters {
+        let mine = Some(e) == shown.viewer;
         if mine && !has {
             commands.entity(e).insert(ViewModelScreen {
                 key: key.to_string(),
@@ -130,13 +157,13 @@ fn screen(
         }
     }
     if let Ok(mut t) = texts.get_mut(state.text)
-        && t.0 != text
+        && t.0 != shown.text
     {
-        t.0 = text;
+        t.0.clone_from(&shown.text);
     }
     // Drawn only while there is something on it.
     if let Ok(mut c) = cameras.get_mut(state.camera) {
-        let active = texts.get(state.text).is_ok_and(|t| !t.0.is_empty());
+        let active = !shown.text.is_empty();
         if c.is_active != active {
             c.is_active = active;
         }

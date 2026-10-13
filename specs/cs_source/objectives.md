@@ -660,6 +660,15 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     a draw and the next round at once, or nothing until the clock runs
     out? We end the round as a draw (our reading). Test: probe server
     alone on a team, `kill`, log the round end and its reason.
+16. **Q16 The bar while planting.** (Added by an implementation session,
+    not from the source.) A player remembers CS:S planting with no
+    progress bar, only the keypad typing the code on the C4's screen;
+    section 3 says the bar runs for 3 s, and `cl_c4progressbar`'s text
+    names only defusing (and the bar's place, 300 of 480 down, would
+    cover the view model's screen). We draw no bar while planting, with
+    either value. Test: client screenshots 1.5 s into a plant and a
+    defuse with `cl_c4progressbar` 1 and 0; is the planting bar there,
+    and does the cvar hide it?
 
 ## Mapping to our engine
 

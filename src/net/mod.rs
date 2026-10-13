@@ -682,6 +682,9 @@ pub mod weapon_fx {
     pub const SWING2: u8 = 5;
     pub const PIN: u8 = 6;
     pub const THROWN: u8 = 7;
+    /// Arming the bomb began / stopped short (the body's `*_Shoot_C4`).
+    pub const ARMING: u8 = 8;
+    pub const ARMING_STOPPED: u8 = 9;
 }
 
 /// Server -> clients: a grenade went off (`weapon::grenade::Detonated`):
