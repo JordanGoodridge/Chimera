@@ -143,8 +143,13 @@ pub fn buy_or_ask(world: &mut World, owner: Entity, name: &str) -> Result<Option
 /// Returns what happened.
 pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
     world.resource::<BuyWindow>().0.clone()?;
-    if world.get::<Money>(owner).is_some() && !in_buy_zone(world, owner) {
-        return Err(NOT_IN_BUY_ZONE.into());
+    if world.get::<Money>(owner).is_some() {
+        if let Some(why) = team_cannot_buy(world, owner) {
+            return Err(why.into());
+        }
+        if !in_buy_zone(world, owner) {
+            return Err(NOT_IN_BUY_ZONE.into());
+        }
     }
     let name = name.to_lowercase();
     let prices = world.resource::<Prices>().clone();
@@ -338,10 +343,46 @@ pub fn starting_reserve(world: &mut World, weapon: Entity) {
     }
 }
 
+/// Why `owner`'s team may not buy on this map (`info_map_parameters`
+/// `buying`: 0 everyone, 1 CTs only, 2 terrorists only, 3 nobody;
+/// specs/cs_source/objectives.md), in CS:S's words; None: it may.
+pub fn team_cannot_buy(world: &World, owner: Entity) -> Option<&'static str> {
+    let map = world.get_resource::<crate::map::MapEntities>()?;
+    let buying = map
+        .entities
+        .iter()
+        .filter(|e| e.classname().eq_ignore_ascii_case("info_map_parameters"))
+        .find_map(|e| e.get("buying").and_then(|v| v.trim().parse::<i32>().ok()))
+        .unwrap_or(0);
+    // Our teams 1 and 2 are Source's 2 and 3.
+    let team = world.get::<crate::core::Team>(owner).map(|t| t.0 as i32 + 1);
+    match (buying, team) {
+        (1 | 3, Some(2)) => Some(TERRORISTS_CANT_BUY),
+        (2 | 3, Some(3)) => Some(CTS_CANT_BUY),
+        _ => None,
+    }
+}
+
+/// CS:S's words when the map keeps a team from buying.
+pub const TERRORISTS_CANT_BUY: &str = "Terrorists aren't allowed to\nbuy anything on this map.";
+pub const CTS_CANT_BUY: &str = "CTs aren't allowed to buy\nanything on this map.";
+
+/// On a map without `func_buyzone`, how far out from each of its team's
+/// spawn points a player may buy, horizontally, units. CS:S makes buy
+/// zones around the spawn points then (public mapping docs: "a small
+/// area" at each spawn, size not given). OURS: a box this far out each
+/// way and `SPAWN_BUY_ZONE_HEIGHT` up and down; docs/tech-debt.md has
+/// the capture that would measure CS:S's.
+pub const SPAWN_BUY_ZONE_RADIUS: f32 = 200.0;
+/// The spawn buy zone's reach up and down from the spawn point, units
+/// (ours, as above).
+pub const SPAWN_BUY_ZONE_HEIGHT: f32 = 128.0;
+
 /// Whether `owner` stands in one of its team's buy zones (Source
 /// `func_buyzone`, `TeamNum` 2 terrorists, 3 CTs, else anyone). A map
-/// without zones, or no map, lets everyone buy anywhere (CS:S puts
-/// zones around the spawns then; not modelled yet).
+/// without zones has them around its team spawn points instead (each
+/// team's own; `SPAWN_BUY_ZONE_RADIUS`); no map, or a map with neither,
+/// lets everyone buy anywhere.
 pub fn in_buy_zone(world: &World, owner: Entity) -> bool {
     use crate::map::entities::{engine_to_entity, entity_rotation};
     let Some(map) = world.get_resource::<crate::map::MapEntities>() else {
@@ -352,15 +393,42 @@ pub fn in_buy_zone(world: &World, owner: Entity) -> bool {
         .iter()
         .filter(|e| e.classname().eq_ignore_ascii_case("func_buyzone") && !e.hulls.is_empty())
         .collect();
-    if zones.is_empty() {
-        return true;
-    }
-    let Some(at) = world.get::<Transform>(owner).map(|t| t.translation) else {
-        return false;
-    };
     // Our teams 1 and 2 are Source's 2 and 3.
     let team = world.get::<crate::core::Team>(owner).map(|t| t.0 as i32 + 1);
-    let p = engine_to_entity(at, map.scale);
+    let at = world
+        .get::<Transform>(owner)
+        .map(|t| engine_to_entity(t.translation, map.scale));
+    if zones.is_empty() {
+        let spawns: Vec<(i32, Vec3)> = map
+            .entities
+            .iter()
+            .filter_map(|e| {
+                let class = e.classname();
+                let t = if class.eq_ignore_ascii_case("info_player_terrorist") {
+                    2
+                } else if class.eq_ignore_ascii_case("info_player_counterterrorist") {
+                    3
+                } else {
+                    return None;
+                };
+                Some((t, e.origin()))
+            })
+            .collect();
+        if spawns.is_empty() {
+            return true;
+        }
+        let Some(p) = at else { return false };
+        return spawns.iter().any(|(t, o)| {
+            let d = p - *o;
+            team.is_none_or(|team| team == *t)
+                && d.x.abs() <= SPAWN_BUY_ZONE_RADIUS
+                && d.y.abs() <= SPAWN_BUY_ZONE_RADIUS
+                && d.z.abs() <= SPAWN_BUY_ZONE_HEIGHT
+        });
+    }
+    let Some(p) = at else {
+        return false;
+    };
     zones.iter().any(|z| {
         let zone_team = z.get("TeamNum").and_then(|v| v.trim().parse::<i32>().ok()).unwrap_or(0);
         if (zone_team == 2 || zone_team == 3) && team.is_some_and(|t| t != zone_team) {
@@ -642,6 +710,60 @@ mod tests {
         assert_eq!(w.get::<Armor>(p).map(|a| a.helmet), Some(false));
         w.insert_resource(BuyWindow(Err("buy time is over".into())));
         assert_eq!(buy(&mut w, p, "vest").unwrap_err(), "buy time is over");
+    }
+
+    /// A map without `func_buyzone` (mg_jacks_multigames_v1): buying
+    /// only near your own team's spawn points; `info_map_parameters`
+    /// `buying` keeps teams from buying at all.
+    #[test]
+    fn spawn_buy_zones_without_func_buyzone() {
+        let (mut w, p) = world();
+        let ent = |pairs: &[(&str, &str)]| crate::map::MapEntity {
+            keyvalues: pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            ..default()
+        };
+        let scale = 0.0254;
+        let mut map = crate::map::MapEntities {
+            entities: std::sync::Arc::new(vec![
+                ent(&[("classname", "info_player_terrorist"), ("origin", "1000 0 0")]),
+                ent(&[("classname", "info_player_counterterrorist"), ("origin", "-1000 0 0")]),
+            ]),
+            scale,
+        };
+        w.insert_resource(map.clone());
+        let at = |w: &mut World, x: f32, y: f32, z: f32| {
+            w.entity_mut(p).insert(Transform::from_translation(
+                crate::map::entities::entity_to_engine(Vec3::new(x, y, z), scale),
+            ));
+        };
+        // A terrorist (our team 1).
+        w.entity_mut(p).insert(crate::core::Team(1));
+        at(&mut w, 1150.0, -150.0, 40.0);
+        assert!(in_buy_zone(&w, p), "near his own spawn");
+        at(&mut w, 1000.0 - SPAWN_BUY_ZONE_RADIUS - 10.0, 0.0, 0.0);
+        assert!(!in_buy_zone(&w, p), "out of the spawn's reach");
+        assert_eq!(buy(&mut w, p, "vest").unwrap_err(), NOT_IN_BUY_ZONE);
+        at(&mut w, -1000.0, 0.0, 0.0);
+        assert!(!in_buy_zone(&w, p), "the CTs' spawn isn't his");
+        at(&mut w, 1000.0, 0.0, SPAWN_BUY_ZONE_HEIGHT + 10.0);
+        assert!(!in_buy_zone(&w, p), "far above it");
+        at(&mut w, 1000.0, 50.0, 0.0);
+        buy(&mut w, p, "vest").unwrap();
+        // info_map_parameters buying 1: CTs only.
+        let mut list = (*map.entities).clone();
+        list.push(ent(&[("classname", "info_map_parameters"), ("buying", "1")]));
+        map.entities = std::sync::Arc::new(list);
+        w.insert_resource(map.clone());
+        assert_eq!(buy(&mut w, p, "vesthelm").unwrap_err(), TERRORISTS_CANT_BUY);
+        w.entity_mut(p).insert(crate::core::Team(2));
+        at(&mut w, -1000.0, 0.0, 0.0);
+        assert!(team_cannot_buy(&w, p).is_none() && in_buy_zone(&w, p));
+        // Nobody (3).
+        let mut list = (*map.entities).clone();
+        list.last_mut().unwrap().keyvalues[1].1 = "3".into();
+        map.entities = std::sync::Arc::new(list);
+        w.insert_resource(map);
+        assert_eq!(team_cannot_buy(&w, p), Some(CTS_CANT_BUY));
     }
 
     #[test]

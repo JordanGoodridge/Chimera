@@ -26,8 +26,14 @@ const MAX_TEX: u32 = 256;
 const ATLAS_WIDTH: u32 = 1024;
 /// Most a shadow is lightened at the far end of its reach.
 const FALLOFF_AMOUNT: f32 = 240.0 / 255.0;
-/// Shadow geometry sits this far off the surface it darkens (units).
-const LIFT: f32 = 0.1;
+/// Shadow geometry sits this far off the surface it darkens (units):
+/// above the impacts' depth-only copies (`decal::LIFT - DEPTH_DROP`,
+/// 0.30 units), which would otherwise fail its depth test, leaving bullet
+/// holes unshadowed (lighter than the ground around them; playtest
+/// 2026-10-11). Source draws shadows after the surface's decals,
+/// multiplying them too (specs/cs_source/shadows_sky.md, per-frame
+/// order 4).
+pub(crate) const LIFT: f32 = 0.4;
 
 /// One caster's projection (engine space, meters).
 #[derive(Clone, Debug)]
@@ -616,11 +622,14 @@ pub fn blob_atlas() -> Atlas {
 pub const BLOB_RECT: (Vec2, Vec2) = (Vec2::ZERO, Vec2::ONE);
 
 /// A character's blob shadow frame: its collision box (`hull`, relative to
-/// its origin; Source's player box when it has none) turned to its yaw,
-/// cast straight down (Low) or along the map's direction (Medium, High:
-/// our characters have no render-to-texture shadow; Source falls back to
-/// blobs that way past its 32 a frame).
-pub fn character_frame(hull: (Vec3, Vec3), at: Vec3, yaw: Quat, mode: ShadowMode, settings: &MapShadows) -> ShadowFrame {
+/// its origin; Source's player box when it has none), axis-aligned as
+/// the box itself is, cast straight down (Low) or along the map's
+/// direction (Medium, High: our characters have no render-to-texture
+/// shadow; Source falls back to blobs that way past its 32 a frame).
+/// Not turned to the character's yaw: the box's projected widths and
+/// back corner change with it, so the blob grew, shrank and slid in
+/// steps as bots turned to watch a moving viewer (playtest 2026-10-11).
+pub fn character_frame(hull: (Vec3, Vec3), at: Vec3, mode: ShadowMode, settings: &MapShadows) -> ShadowFrame {
     let hull = if (hull.1 - hull.0).length_squared() > 0.0 {
         hull
     } else {
@@ -630,7 +639,7 @@ pub fn character_frame(hull: (Vec3, Vec3), at: Vec3, yaw: Quat, mode: ShadowMode
         )
     };
     let d = if mode == ShadowMode::Blob { DOWN } else { settings.direction };
-    ShadowFrame::blob(hull, at, yaw, d, settings.distance)
+    ShadowFrame::blob(hull, at, Quat::IDENTITY, d, settings.distance)
 }
 
 /// Whether a caster with these model bounds (meters) and an `n` x `n`
@@ -870,12 +879,11 @@ pub(super) fn apply_shadow_detail(
     });
 }
 
-/// A character's blob shadow: whose, and where it was drawn for
-/// (position, yaw).
+/// A character's blob shadow: whose, and where it was drawn for.
 #[derive(Component, Debug)]
 pub struct CharacterBlob {
     pub owner: Entity,
-    drawn: (Vec3, f32),
+    drawn: Vec3,
 }
 
 /// Characters' blob shadows (Source's blob for players: our characters
@@ -892,12 +900,11 @@ pub(super) fn update_character_blobs(
         (
             Entity,
             &GlobalTransform,
-            &crate::core::Intent,
             Option<&crate::core::MovementState>,
             Option<&crate::core::Health>,
             Option<&Children>,
         ),
-        (Without<crate::core::Spectating>, Without<super::ragdoll::Ragdolled>),
+        (With<crate::core::Intent>, Without<crate::core::Spectating>, Without<super::ragdoll::Ragdolled>),
     >,
     bodies: Query<&Visibility, (With<super::CharacterBody>, Without<CharacterBlob>)>,
     mut blobs: Query<(Entity, &mut CharacterBlob, &Mesh3d, &mut Visibility), Without<super::CharacterBody>>,
@@ -912,7 +919,7 @@ pub(super) fn update_character_blobs(
         return;
     };
     let mut have: std::collections::HashMap<Entity, Entity> = blobs.iter().map(|(e, b, ..)| (b.owner, e)).collect();
-    for (owner, at, intent, movement, health, children) in &characters {
+    for (owner, at, movement, health, children) in &characters {
         let alive = health.is_none_or(|h| h.current > 0.0);
         let drawn = children
             .into_iter()
@@ -921,16 +928,15 @@ pub(super) fn update_character_blobs(
         if !alive || !drawn {
             continue;
         }
-        let pose = (at.translation(), intent.yaw);
+        let pose = at.translation();
         let blob = have.remove(&owner);
         if let Some(Ok((_, b, ..))) = blob.map(|b| blobs.get(b))
-            && b.drawn.0.distance(pose.0) < 0.005
-            && (b.drawn.1 - pose.1).abs() < 0.03
+            && b.drawn.distance(pose) < 0.005
         {
             continue;
         }
         let hull = movement.map_or((Vec3::ZERO, Vec3::ZERO), |m| (m.hull_min, m.hull_max));
-        let frame = character_frame(hull, pose.0, Quat::from_rotation_y(pose.1), mode, &source.settings);
+        let frame = character_frame(hull, pose, mode, &source.settings);
         let mesh = shadow_mesh(&frame, &source.receivers, BLOB_RECT);
         match (blob.and_then(|b| blobs.get_mut(b).ok()), mesh) {
             (Some((_, mut b, handle, mut vis)), Some(mesh)) => {
@@ -1014,6 +1020,26 @@ mod tests {
         let rtt = ShadowFrame::new(hull, Vec3::ZERO, Quat::IDENTITY, DOWN, 1.0);
         let centre = Vec3::new(0.0, 36.0 * u, 0.0);
         assert!(((player.origin - centre).dot(DOWN) - 2.0 * (rtt.origin - centre).dot(DOWN)).abs() < BLOB_SNAP * u);
+    }
+
+    /// Shadows darken bullet holes as the ground around them (Source
+    /// draws shadows after the surface's decals): the shadow lies above
+    /// the depth the impacts write, or it fails the depth test there.
+    #[test]
+    fn shadows_draw_over_impact_decals() {
+        let u = METERS_PER_UNIT;
+        let depth_copy = super::super::decal::LIFT - super::super::decal::DEPTH_DROP;
+        assert!(LIFT * u > depth_copy + 0.02 * u, "shadow {LIFT} units, impacts' depth {} units", depth_copy / u);
+        // And on a real floor: the shadow's vertices sit that high.
+        let data = floor_map();
+        let receivers = Receivers::new(&data);
+        let s = data.shadows.clone().unwrap();
+        let frame = character_frame((Vec3::ZERO, Vec3::ZERO), Vec3::new(0.0, 0.0, 0.0), ShadowMode::Texture, &s);
+        let mesh = shadow_mesh(&frame, &receivers, BLOB_RECT).expect("a shadow on the floor");
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(p)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!("positions")
+        };
+        assert!(p.iter().all(|v| v[1] > depth_copy), "under the impacts' depth");
     }
 
     /// A tiny map: a floor and the shadow settings.
@@ -1130,6 +1156,28 @@ mod tests {
         set(&mut sim, 1, 1);
         let medium = blob_centre(&mut sim).expect("a blob at Medium");
         assert!(medium.x > at.x + 0.05, "along the map's direction: {medium}");
+        // A bot standing still, turning to watch a viewer walking round
+        // it: one shadow throughout (it grew, shrank and slid in steps).
+        let blob_box = |sim: &mut Sim| {
+            let world = sim.app.world_mut();
+            let m = world.query::<(&CharacterBlob, &Mesh3d)>().single(world).unwrap().1.0.clone();
+            let mesh = world.resource::<Assets<Mesh>>().get(&m).unwrap();
+            let aabb = bevy::camera::primitives::MeshAabb::compute_aabb(mesh).unwrap();
+            (Vec3::from(aabb.center), Vec3::from(aabb.half_extents))
+        };
+        let first = blob_box(&mut sim);
+        for step in 1..=24 {
+            let yaw = step as f32 * 15f32.to_radians();
+            let mut e = sim.app.world_mut().entity_mut(character);
+            e.get_mut::<crate::core::Intent>().unwrap().yaw = yaw;
+            e.insert(Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)));
+            sim.ticks(1);
+            let now = blob_box(&mut sim);
+            assert!(
+                now.0.abs_diff_eq(first.0, 1e-5) && now.1.abs_diff_eq(first.1, 1e-5),
+                "yaw {step}x15: {now:?} vs {first:?}"
+            );
+        }
         sim.app.world_mut().entity_mut(body).insert(Visibility::Hidden);
         sim.ticks(2);
         assert!(blob_centre(&mut sim).is_none(), "no body drawn, no blob");
