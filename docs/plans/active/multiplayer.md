@@ -1451,6 +1451,24 @@ with tests passing and something to see.
 - **Name**: `name` is archived; Options > Multiplayer has "Player name"
   (set on OK/Apply: one rename).
 
+### mg_jacks_multigames_v1 in a network game (2026-10-13, `NET_VERSION` net14)
+
+- **Map logic's sounds** reach clients (they run no map logic): its
+  one-shots (`logic::LogicOneShot`: a locked door, a break, a spark) as
+  `ServerSound`, and its long-lived sounds (ambient_generic, a mover's
+  loop, fire: `SoundControl` under the logic's keys) as `LogicSound`
+  (ordered: start, change, stop, stop-all; one following a player or a
+  map part follows the client's copy of it). jacks plays each game's
+  selection sound through an ambient_generic: before, only the host heard
+  it. A client joining later doesn't hear loops already playing
+  (docs/tech-debt.md). Test: `net_rules::map_says_and_logic_sounds_reach_clients`.
+- **A map's `say`** (point_servercommand, `logic::MapSay`) goes to chat as
+  Source's server console says it: on a listen server as the host's own
+  line (its name, team colour and dead tag; read by whoever reads the
+  host's chat), on a dedicated server as "Console: text" to everyone, in
+  a game of one as the player's line. Before, it was only printed to the
+  console.
+
 ## 6. Open questions for the user
 
 1. Start slices 0-2 before the engine-split crate work, or after it (the

@@ -38,6 +38,7 @@ pub const MAX_SAY: usize = 127;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_message::<Radio>()
+        .add_message::<crate::logic::MapSay>()
         .init_resource::<Flood>()
         .add_systems(
             PreUpdate,
@@ -47,7 +48,7 @@ pub(super) fn plugin(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
-            (forward_radio, rename_host, forward_hud)
+            (forward_radio, rename_host, forward_hud, forward_map_says)
                 .before(ServerSystems::Send)
                 .run_if(resource_equals(NetRole::Server)),
         )
@@ -160,6 +161,41 @@ fn forward_hud(
         out.write(ToClients {
             targets,
             message: super::MapHud(ev.what.clone()),
+        });
+    }
+}
+
+/// A map's `say` lines (`logic::MapSay`), as Source's server console
+/// says them: a listen server's host says it (its name, read by whoever
+/// reads the host's chat); a dedicated server as "Console", to everyone.
+fn forward_map_says(mut says: MessageReader<crate::logic::MapSay>, mut commands: Commands) {
+    for s in says.read() {
+        let text = clean_say(&s.0);
+        if text.is_empty() {
+            continue;
+        }
+        commands.queue(move |w: &mut World| {
+            let host = w.query_filtered::<Entity, With<LocalPlayer>>().iter(w).next();
+            if let Some(host) = host {
+                deliver_say(w, host, &text, false);
+                return;
+            }
+            if let Some(mut console) = w.get_resource_mut::<crate::console::Console>() {
+                console.print(crate::console::Level::Info, format!("Console: {text}"));
+            }
+            w.write_message(ToClients {
+                targets: SendTargets::CLIENTS_ONLY,
+                message: ChatMessage {
+                    sender: None,
+                    name: "Console".into(),
+                    team: None,
+                    alive: true,
+                    team_only: false,
+                    place: None,
+                    text,
+                    console: true,
+                },
+            });
         });
     }
 }
@@ -299,6 +335,7 @@ pub fn deliver_say(world: &mut World, from: Entity, text: &str, team_only: bool)
                 team_only,
                 place: s.place.clone(),
                 text: text.to_string(),
+                console: false,
             },
         });
     }

@@ -60,6 +60,18 @@ pub enum LogicSet {
     Damage,
 }
 
+/// A one-shot sound map logic played here (a locked door, a break, a
+/// spark); a network server sends it to every client, which runs no map
+/// logic (`net::mapfx`).
+#[derive(Message, Clone, Debug)]
+pub struct LogicOneShot(pub PlaySound);
+
+/// Play a one-shot logic sound here and tell clients (`LogicOneShot`).
+fn logic_sound(world: &mut World, sound: PlaySound) {
+    world.write_message(LogicOneShot(sound.clone()));
+    world.write_message(sound);
+}
+
 pub struct LogicPlugin;
 
 impl Plugin for LogicPlugin {
@@ -67,10 +79,12 @@ impl Plugin for LogicPlugin {
         app.init_resource::<HudMessages>()
             .init_resource::<ScreenFades>()
             .add_message::<HudEvent>()
+            .add_message::<super::MapSay>()
             .add_message::<super::MapShake>()
             .add_message::<crate::map::beams::SparkBurst>()
             .add_message::<crate::core::ScoreChange>()
             .add_message::<PlaySound>()
+            .add_message::<LogicOneShot>()
             .add_message::<SoundControl>()
             .add_message::<SpawnGibs>()
             .add_message::<GlassShatter>()
@@ -1236,7 +1250,7 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                 let mut sound = PlaySound::at(entry, entity_to_engine(at, scale));
                 sound.volume = volume;
                 sound.pitch = pitch;
-                world.write_message(sound);
+                logic_sound(world, sound);
             }
             Effect::AmbientStart {
                 id,
@@ -1729,19 +1743,24 @@ fn entity_node(world: &mut World, id: EntId) -> Option<Entity> {
 const SETTING_COMMANDS: &[&str] = &["mp_restartgame"];
 
 /// A server command that passed `classes::check_server_command`: `say`
-/// prints; a setting our console has as a cvar remembers its value from
+/// goes to chat (`MapSay`) and prints; a setting our console has as a cvar remembers its value from
 /// before the map first changed it (put back when the map unloads,
 /// `restore_settings`) and runs through the console; anything else is
 /// logged and ignored. Each outcome prints a console line.
 fn server_command(world: &mut World, line: &ServerLine) {
+    if let ServerLine::Say(text) = line {
+        info!("point_servercommand: say {text}");
+        if let Some(mut console) = world.get_resource_mut::<Console>() {
+            console.info(format!("point_servercommand: say {text}"));
+        }
+        world.write_message(super::MapSay(text.clone()));
+        return;
+    }
     let Some(mut console) = world.get_resource_mut::<Console>() else {
         return;
     };
     let (name, value) = match line {
-        ServerLine::Say(text) => {
-            console.info(format!("Console: {text}"));
-            return;
-        }
+        ServerLine::Say(_) => return,
         ServerLine::Set { name, value } => (name.clone(), value.clone()),
     };
     let run = format!("{name} {}", crate::console::quote(&value));
@@ -2109,7 +2128,7 @@ fn prop_broke(world: &mut World, id: EntId, sound: Option<String>, explode: Opti
     let Some(node) = prop_node(world, id) else { return };
     let (pos, rot, centre) = prop_pose(world, node);
     if let Some(s) = sound {
-        world.write_message(PlaySound::at(s, pos));
+        logic_sound(world, PlaySound::at(s, pos));
     }
     if let Some(x) = explode {
         let attacker = match x.attacker {

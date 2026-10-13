@@ -240,6 +240,14 @@ impl ScreenFades {
     }
 }
 
+/// A map's `say` line (point_servercommand): chat from the server, as
+/// Source's server console says it: on a listen server under the host's
+/// name (its own chat line), on a dedicated server as "Console"
+/// (`net::chat`); in a game of one, the local player's line
+/// (`client::chat`).
+#[derive(Message, Clone, Debug, PartialEq)]
+pub struct MapSay(pub String);
+
 /// What map logic shows on one player's HUD (`to`) or everyone's (None):
 /// the bridge shows it for the local player, and a network server sends
 /// it to the client the player belongs to.

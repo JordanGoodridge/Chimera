@@ -79,7 +79,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net13");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net14");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -699,6 +699,45 @@ pub struct Detonation {
 #[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct MapHud(pub crate::logic::HudShow);
 
+/// Server -> clients: map logic's long-lived sounds (`map::SoundControl`
+/// under the logic's keys: ambient_generic, a mover's loop, fire), which
+/// clients, running no map logic, would not hear otherwise (`mapfx`).
+/// In order: started, changed, stopped.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq, bevy::ecs::entity::MapEntities)]
+pub struct LogicSound {
+    pub key: u64,
+    pub what: LogicSoundKind,
+    /// A started sound follows this replicated entity (a player)...
+    #[entities]
+    pub follow: Option<Entity>,
+}
+
+/// What a `LogicSound` does.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum LogicSoundKind {
+    Start {
+        entry: String,
+        at: Option<[f32; 3]>,
+        /// ... or this map part: (true: a brush entity, false: a prop;
+        /// map entity index), the client's own copy of it.
+        follow_part: Option<(bool, u32)>,
+        volume: Option<f32>,
+        pitch: Option<f32>,
+        /// (true: Source sound level, false: attenuation; value).
+        level: Option<(bool, f32)>,
+        clip: Option<u32>,
+        looping: bool,
+        dry: bool,
+    },
+    Change {
+        volume: Option<f32>,
+        pitch: Option<f32>,
+    },
+    Stop,
+    /// Every long-lived sound but the soundscape's (a round restart).
+    StopAll,
+}
+
 /// Server -> clients: a map effect the logic set off (`mapfx`): a
 /// strike-generator env_beam's strike (map entity index, engine-space
 /// ends, life), a point_tesla's spark, an env_spark burst.
@@ -903,6 +942,9 @@ pub struct ChatMessage {
     pub team_only: bool,
     pub place: Option<String>,
     pub text: String,
+    /// The server's own line (a map's `say` on a dedicated server):
+    /// shown as "Console: text".
+    pub console: bool,
 }
 
 /// Server -> each player who hears it (`map::radio::hears`): a radio
@@ -1124,6 +1166,7 @@ impl Plugin for NetPlugin {
             .add_server_message::<MapHud>(Channel::Ordered)
             .add_server_message::<MapFx>(Channel::Unreliable)
             .make_message_independent::<MapFx>()
+            .add_mapped_server_message::<LogicSound>(Channel::Ordered)
             // Cheats from clients, joins and leaves (net13).
             .add_client_message::<cheats::ClientCommand>(Channel::Ordered)
             .add_server_message::<cheats::ConsoleText>(Channel::Ordered)

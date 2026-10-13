@@ -70,7 +70,11 @@ impl Plugin for GameMessagesPlugin {
             .add_message::<crate::net::NameChanged>()
             .add_message::<crate::net::PlayerCame>()
             .add_message::<crate::map::PlaySound>()
-            .add_systems(Update, (team_joins, heard_says, notices, name_changes, comings_and_goings));
+            .add_message::<crate::logic::MapSay>()
+            .add_systems(
+                Update,
+                (team_joins, heard_says, notices, name_changes, comings_and_goings, map_says),
+            );
         for (name, team, help) in [
             ("say", false, "Say something to everyone."),
             ("say_team", true, "Say something to your team."),
@@ -93,11 +97,33 @@ fn heard_says(
 ) {
     let formats = radio.map(|r| r.say.clone()).unwrap_or_default();
     for m in heard.read() {
+        if m.console {
+            chat.write(ChatLine::plain(format!("Console: {}", m.text)));
+            continue;
+        }
         let runs = formats.line(&m.name, &m.text, m.team, m.alive, m.team_only, m.place.as_deref());
         chat.write(ChatLine(runs, m.team.map(Team)));
         if let Some(s) = &formats.sound {
             play.write(crate::map::PlaySound::ui(s.clone()));
         }
+    }
+}
+
+/// A map's `say` lines in a game of one: the local player's own (as a
+/// listen server's host says them; a network game's go through the
+/// server, `net::chat`).
+fn map_says(
+    mut says: MessageReader<crate::logic::MapSay>,
+    role: Option<Res<crate::core::NetRole>>,
+    mut commands: Commands,
+) {
+    if role.is_some_and(|r| *r != crate::core::NetRole::Standalone) {
+        says.clear();
+        return;
+    }
+    for s in says.read() {
+        let text = s.0.clone();
+        commands.queue(move |w: &mut World| say(w, &text, false));
     }
 }
 
