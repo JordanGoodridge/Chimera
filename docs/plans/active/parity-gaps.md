@@ -169,7 +169,7 @@ report folders):
 | Spectator menu look | differs | L | S | backlog 2b (`bottomspectator.res`) |
 | Freeze cam panel (`freezepanel_basic.res`) | differs | M | S | backlog 2b |
 | Map time left on the scoreboard | have (fixed) | L | S | beside the clock icon (`WinConditionLabel`) with `mp_timelimit`; a client has the map's start in `NetRound` |
-| Class menu (`classmenu_*.res`) | have (fixed) | M | M | after picking a team; the eight classes' models (`models/player/*.mdl`) on bodies, auto-select a random one |
+| Class menu (`classmenu_*.res`) | have (fixed) | M | M | after picking a team; the eight classes' models (`models/player/*.mdl`) on bodies, auto-select a random one; the menu's 3D model preview (`CSClassImagePanel`) not drawn |
 | MOTD on joining (`motd.res`, `cfg/motd_default.txt`) | have (fixed) | L | S | then the team menu, then the class menu; HTML shown as its text (we don't render HTML) |
 | Hint panel messages (`cl_autohelp`) | missing | M | M | |
 
@@ -358,8 +358,8 @@ common console commands, against mashup's.
   `motd.txt`: the host's config folder, else the install's `motd.txt`,
   `cfg/motd.txt`, `cfg/motd_default.txt`; sent to clients as they are
   let in, `net::ServerMotd`), OK opens the team menu, a team opens the
-  class menu (`classmenu_ter.res` / `classmenu_ct.res`, each class's
-  picture beside it), and the player spawns as the round rules allow
+  class menu (`classmenu_ter.res` / `classmenu_ct.res`, the hovered class's
+  name and description beside it), and the player spawns as the round rules allow
   (in the freeze time, or with nobody of its team alive, this round;
   else the next). Until it picks a team it is on none
   (`core::Unassigned`: no body, watching as a spectator); on a team
@@ -371,7 +371,11 @@ common console commands, against mashup's.
   (tags out, line breaks kept); `cl_disablehtmlmotd 1` (now in
   Multiplayer > Advanced) shows the server's plain-text one
   (`motd_text.txt`, else `cfg/motd_text_default.txt`), as CS:S does. A
-  message that is a web address shows the address. Bots keep their
+  message that is a web address shows the address. The class menu's
+  picture is CS:S's live view of the class's model (`CSClassImagePanel`
+  in `classes/<class>.res`): not drawn, the box stays empty (only
+  auto-select's flat picture shows); to do with a render-to-texture of
+  the body. Bots keep their
   team's first model (bots are parked). Players keep their team over a
   `changelevel` (CS:S's behaviour there is unmeasured).
 - `joinclass <0-8>` (`core::PlayerClass`, replicated; 0 auto-selects one

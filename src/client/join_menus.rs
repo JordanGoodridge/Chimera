@@ -9,7 +9,8 @@
 //!
 //! With the game's layouts (`map::hud::GameMenus::motd`, `::class`) the
 //! panels draw as the game draws them (`super::vgui`); without, plain
-//! lists. We don't render HTML: an HTML message shows its text
+//! lists. The class menu's picture of a class is CS:S's live view of its
+//! model (`CSClassImagePanel`), which isn't drawn: its box stays empty. We don't render HTML: an HTML message shows its text
 //! (`net::motd::plain_text`); with `cl_disablehtmlmotd 1` the server's
 //! plain-text message shows instead, as CS:S does.
 //!
@@ -264,14 +265,14 @@ fn keys(
         }
         return;
     }
-    // The plain list: 1-4 the team's classes, 5 auto-select, 0 closes.
+    // The plain list: 1-4 the team's classes, 6 auto-select (as the game numbers it), 0 closes.
     let per = PlayerClass::PER_TEAM;
     match key.to_digit(10) {
         Some(n @ 1..=4) => {
             console.submit(format!("joinclass {}", (team - 1) * per + n as u8));
             menus.class = None;
         }
-        Some(5) => {
+        Some(6) => {
             console.submit("joinclass 0");
             menus.class = None;
         }
@@ -368,7 +369,7 @@ fn draw(
         for (i, name) in CLASS_NAMES[first..first + 4].iter().enumerate() {
             t.push_str(&format!("{}  {name}\n", i + 1));
         }
-        t.push_str("\n5  Auto-Select\n\n0  Close");
+        t.push_str("\n6  Auto-Select\n\n0  Close");
         t
     } else {
         return;

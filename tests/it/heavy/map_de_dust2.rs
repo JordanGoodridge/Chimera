@@ -96,6 +96,19 @@ fn the_games_buy_and_team_menus_load() {
     let team = &menus.layouts[menus.team.as_ref().unwrap()];
     assert_eq!(team.get("terbutton").unwrap().command.as_deref(), Some("jointeam 2"));
     assert!(menus.map_info.as_ref().is_some_and(|t| !t.is_empty()));
+    // The join flow: the message of the day's panel and text, the class
+    // menus with their buttons and descriptions.
+    let motd = &menus.layouts[menus.motd.as_ref().expect("motd.res")];
+    assert!(motd.get("Message").is_some() && motd.get("ok").is_some() && motd.get("serverName").is_some());
+    assert!(menus.motd_file.as_ref().is_some_and(|t| t.contains("Counter-Strike")));
+    assert!(menus.motd_text_file.as_ref().is_some_and(|t| !t.contains('<')));
+    for (team, first, auto) in [(1, "terror", "autoselect_t"), (2, "urban", "autoselect_ct")] {
+        let class = &menus.layouts[&menus.class[&team]];
+        let b = class.get(first).unwrap_or_else(|| panic!("{first}"));
+        assert_eq!(b.command.as_deref(), Some(if team == 1 { "joinclass 1" } else { "joinclass 5" }));
+        assert!(b.info.is_some(), "{first}'s description");
+        assert_eq!(class.get(auto).unwrap().command.as_deref(), Some("joinclass 0"));
+    }
     // The client scheme's text fonts, read as the Windows game reads them.
     let chat = &hud.text_fonts["ChatFont"];
     assert!(hud.text_fonts.contains_key("Default") && hud.text_fonts.contains_key("MenuTitle"));
@@ -1556,7 +1569,11 @@ fn maps_change_in_place() {
 fn character_models_and_hitboxes() {
     use mashup::core::Hitgroup;
     let Some(map) = dust2() else { return };
-    assert_eq!(map.characters.len(), 2);
+    // The two teams' first classes, then the six other classes' models
+    // (the class menu: `core::PlayerClass`).
+    assert_eq!(map.characters.len(), 8);
+    let classes: Vec<Option<u8>> = map.characters.iter().map(|c| c.class).collect();
+    assert_eq!(classes, [None, None, Some(2), Some(3), Some(4), Some(6), Some(7), Some(8)]);
     for c in &map.characters {
         assert!(!c.model.meshes.is_empty());
         assert_eq!(c.hitboxes.len(), 19);
