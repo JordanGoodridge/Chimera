@@ -11,8 +11,9 @@ rest wait on the captures listed at the end.
 
 Not covered here (other work in flight, 2026-10-13): mg_jacks (water
 through geometry, skybox inside players, head-height camera, its say
-lines, sounds and strips, the AK's sound fade), player shadows vs decals,
-the third-person AK magazine, buy zones around spawns, bots (parked).
+lines, sounds and strips, the AK's sound fade) and bots (parked). Player
+shadows vs decals, the third-person AK magazine and buy zones round
+spawns landed on main during this pass.
 
 Status: **have** (matches, measured or from data), **differs** (in, but
 ours or unmeasured), **missing**. Impact: how often a player notices
@@ -29,10 +30,10 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | HUD | 9 | 5 | 4 | 0 |
 | Menus and commands | 7 | 4 | 9 | 4 |
 | Rendering, lighting, materials | 4 | 16 | 2 | 0 |
-| Maps and entities | 4 | 10 | 1 | 0 |
+| Maps and entities | 5 | 10 | 1 | 0 |
 | Rules and economy | 5 | 4 | 2 | 1 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **46** | **67** | **31** | **11** |
+| **Total** | **47** | **67** | **31** | **11** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 this pass (counted under have; `invnext` and `autobuy` appear under
@@ -207,7 +208,7 @@ common console commands, against mashup's.
 | Ropes, sprites, dust motes, beams | have | | | specs |
 | View models | have | | | view-models.md |
 | HDR (`mat_hdr_level 2`, CS:S's default) | differs | M | M | tech-debt "Lightmaps": stand-in exposure and bloom; references are LDR |
-| Player shadows | differs | M | | blob only (tech-debt "Dynamic shadows"); decal layering in flight elsewhere |
+| Player shadows | differs | M | | blob only (tech-debt "Dynamic shadows"); decals under shadows and steadier shadows merged from main 2026-10-13 |
 | World reflections | differs | L | S | tech-debt: top mip only, highlight narrower |
 | Water refraction | differs | L | M | tech-debt "Water" |
 | Particles blend in linear space | differs | L | M | tech-debt |
@@ -243,7 +244,7 @@ common console commands, against mashup's.
 | Water and physics (buoyancy) | differs | L | M | tech-debt |
 | LOD and fading of props (`fademindist`) | differs | L | S | performance backlog |
 | Model doors beyond the spec | differs | L | S | tech-debt |
-| Buy zones on maps without | | | | other work in flight |
+| Buy zones round spawns on maps without | have | | | merged from main 2026-10-13 |
 | `info_map_parameters` buying | have | | | |
 
 ## Rules and economy
