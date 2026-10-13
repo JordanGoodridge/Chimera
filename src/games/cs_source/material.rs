@@ -757,7 +757,7 @@ impl<'a> MaterialLoader<'a> {
         })
     }
 
-    /// A cubemap texture's six faces (largest mip; sRGB).
+    /// A cubemap texture's six faces with their mips (sRGB).
     pub fn cubemap(&mut self, name: &str) -> Option<usize> {
         let path = format!("materials/{}.vtf", normalize(name).trim_end_matches(".vtf"));
         if let Some(c) = self.cube_by_path.get(&path) {
@@ -768,10 +768,11 @@ impl<'a> MaterialLoader<'a> {
             .ok_or_else(|| "not found".to_string())
             .and_then(|b| cube_faces(&b));
         let index = match decoded {
-            Ok((size, faces)) => {
+            Ok((size, mips, faces)) => {
                 self.cubemaps.push(crate::map::MapCubemap {
                     name: path.clone(),
                     size,
+                    mips,
                     faces,
                 });
                 Some(self.cubemaps.len() - 1)
@@ -1405,7 +1406,7 @@ fn tint(keys: &HashMap<String, String>) -> Option<[f32; 3]> {
 
 /// A material key's value read from its text, when the parser's defaults
 /// can't tell "absent" from a given value.
-fn material_key<T: std::str::FromStr>(text: &str, key: &str) -> Option<T> {
+pub(super) fn material_key<T: std::str::FromStr>(text: &str, key: &str) -> Option<T> {
     text.lines().find_map(|line| {
         let line = line.trim().to_ascii_lowercase();
         let rest = line
@@ -1421,10 +1422,12 @@ fn material_key<T: std::str::FromStr>(text: &str, key: &str) -> Option<T> {
     })
 }
 
-/// A VTF cubemap's six faces at full size, RGBA8. VTF stores mips smallest
-/// first, each mip holding every frame's faces; versions before 7.5 add a
-/// seventh (sphere map) face unless the first frame is 0xFFFF.
-fn cube_faces(bytes: &[u8]) -> Result<(u32, [Vec<u8>; 6]), String> {
+/// A VTF cubemap's six faces, RGBA8, each with its mip chain largest first
+/// (the size, the mip count, the faces). VTF stores mips smallest first,
+/// each mip holding every frame's faces; versions before 7.5 add a seventh
+/// (sphere map) face unless the first frame is 0xFFFF. A chain that stops
+/// short of 1x1 is kept as it is (the levels it has).
+fn cube_faces(bytes: &[u8]) -> Result<(u32, u32, [Vec<u8>; 6]), String> {
     use vtf::{image::VTFImage, resources::ResourceType};
     const ENVMAP: u32 = 0x4000;
     let vtf = vtf::from_bytes(bytes).map_err(|e| e.to_string())?;
@@ -1458,29 +1461,36 @@ fn cube_faces(bytes: &[u8]) -> Result<(u32, [Vec<u8>; 6]), String> {
         format.frame_size(w, h).map(|s| s as usize).map_err(|e| e.to_string())
     };
     let frames = header.frames.max(1) as usize;
+    let mips = header.mipmap_count.max(1) as u32;
+    // Where each mip starts: the smallest first in the file.
+    let mut starts = vec![0usize; mips as usize];
     let mut offset = data_start;
-    for m in 1..header.mipmap_count.max(1) as u32 {
+    for m in (0..mips).rev() {
+        starts[m as usize] = offset;
         offset += size(m)? * frames * faces;
     }
-    let face_size = size(0)?;
-    if offset + face_size * 6 > bytes.len() {
+    if offset > bytes.len() {
         return Err("cubemap data truncated".into());
     }
-    let (w, h) = (header.width as u32, header.height as u32);
     let mut single = header.clone();
     single.mipmap_count = 1;
-    let face = |k: usize| -> Result<Vec<u8>, String> {
-        let img = VTFImage::new(
-            single.clone(),
-            format,
-            w as u16,
-            h as u16,
-            bytes,
-            offset + k * face_size,
-        );
-        Ok(decode_rgba8(&img, 0)?.into_raw())
-    };
-    Ok((w, [face(0)?, face(1)?, face(2)?, face(3)?, face(4)?, face(5)?]))
+    let mut out: [Vec<u8>; 6] = Default::default();
+    for m in 0..mips {
+        let (w, h) = ((header.width as u32 >> m).max(1), (header.height as u32 >> m).max(1));
+        let face_size = size(m)?;
+        for (k, face) in out.iter_mut().enumerate() {
+            let img = VTFImage::new(
+                single.clone(),
+                format,
+                w as u16,
+                h as u16,
+                bytes,
+                starts[m as usize] + k * face_size,
+            );
+            face.extend(decode_rgba8(&img, 0)?.into_raw());
+        }
+    }
+    Ok((header.width as u32, mips, out))
 }
 
 /// "[a b c]", "a b c" or "a" as three numbers (a scalar repeats).

@@ -321,6 +321,7 @@ fn a_map_change_starts_a_fresh_game_and_brings_the_dead_back() {
 #[test]
 fn survivors_keep_their_clip_and_reload_in_the_freeze() {
     use mashup::{
+        core::LocalPlayer,
         games::cs_source::{TICK_INTERVAL, weapons::CsWeaponsPlugin},
         greybox::GreyboxMapPlugin,
         weapon::{Inventory, Magazine},
@@ -329,7 +330,10 @@ fn survivors_keep_their_clip_and_reload_in_the_freeze() {
     sim.set_tick_interval(TICK_INTERVAL);
     let t = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), placeholder::ID);
     let ct = sim.spawn_character(Vec3::new(4.0, 1.0, 0.0), placeholder::ID);
-    sim.app.world_mut().entity_mut(t).insert(Team(1));
+    // A person: computer players shop at the round's start, and whether a
+    // bot's roll buys it a gun (drawn in the pistol's place) depends on
+    // its entity's bits.
+    sim.app.world_mut().entity_mut(t).insert((Team(1), LocalPlayer));
     sim.app.world_mut().entity_mut(ct).insert(Team(2));
     sim.app
         .world_mut()
