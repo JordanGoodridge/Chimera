@@ -215,7 +215,7 @@ pub(super) fn grab_cursor(
 }
 
 /// The drop key (`drop`, G) drops the held weapon while playing; the bug
-/// report key (`bugreport`, F9) saves a bug report any time.
+/// report key (`bug`: F4 as in CS:S, and F9) saves a bug report any time.
 fn drop_key(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -241,8 +241,9 @@ fn drop_key(
     }
 }
 
-/// Jumping on the mouse wheel, as CS:S players bind it: each notch (either
-/// direction) is one press of jump. Presses are queued and played out one
+/// Jumping on the mouse wheel, as CS:S players bind it (`bind mwheeldown
+/// +jump`; the default wheel binds are CS:S's `invnext`/`invprev`): each
+/// notch bound to `+jump` is one press of jump. Presses are queued and played out one
 /// fixed tick held, one tick released, so a jump that needs a fresh press
 /// (Source) sees every notch, and spinning the wheel near a landing lands
 /// a press on the right tick.

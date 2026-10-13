@@ -312,6 +312,14 @@ Only `Reflect`-registered types are visible; register new core components in
   animated body).
 - `mashup_debughud 1` shows the top-left debug readout (movement mode,
   speed, ground/crouch state and the debug keys); off by default.
+- Debug keys: default binds on keys CS:S's `config_default.cfg` leaves
+  free (the rest are CS:S's: F1 autobuy, F2 rebuy, the wheel
+  `invprev`/`invnext`, ...; `client::binds`): F3 collision shapes
+  (`toggle mashup_drawcollision`), F8 the debug UI (`debugui`, section
+  3d), F11 the entity inspector (`mashup_inspector`; frees the mouse),
+  V `noclip`, F9 (and CS:S's F4) a bug report, Left Alt free look. All
+  are console lines, so `bind` moves them and Options > Keyboard lists
+  them.
 - `mashup_drawphys 1` outlines physics props by state (green moving,
   blue asleep, grey still or frozen; multiplayer props darker) and
   players' physics shadows (white, a yellow line to each prop the shadow
@@ -348,7 +356,7 @@ Only `Reflect`-registered types are visible; register new core components in
   `violence_hblood` (0/1). To see a shot's effects in a `--screenshot`
   run, fire with `++attack` and keep `--frames` low enough that they are
   still alive (dust lives about a second, sparks a tenth of one).
-- **Bug reports while playtesting:** press F9 (or `bugreport [note]` in the
+- **Bug reports while playtesting:** press F4 or F9 (or `bugreport [note]` in the
   console). It saves `screenshot.png` and `report.txt` (build version,
   map, a `setpos`/`setang` line to paste back, weapon, health, the last
   40 console lines) to `<data dir>/mashup/bugreports/report-<time>/`
@@ -578,7 +586,7 @@ dead: `mp_restartgame 1` puts everyone in play. `cargo test --features
 dev --test it net_rules -- --nocapture` prints the clocks and
 scoreboards.
 
-In a game: the perf overlay (`mashup_perf 1`) and the F2 Perf tab show,
+In a game: the perf overlay (`mashup_perf 1`) and the debug UI's Perf tab show,
 while connected, `net:` (ping, loss, KB/s), `cmds:` (lead in ticks and
 its target, the clock's speed nudge and jumps, the server's buffer of
 our commands, missed and late), `prediction:` (errors per second and
@@ -788,7 +796,7 @@ Details and baseline numbers: [performance.md](performance.md).
   `Render` sets (opt-in: performance.md, "Baseline"), each with wall
   and thread CPU ms, at most two lines a second (`(N more since the last)`). A profile
   build adds the frame's spans with the most self time (`spans by self
-  ms: <system> 12.3 x2, ...`). The F2 Perf tab has the same percentiles as
+  ms: <system> 12.3 x2, ...`). The debug UI Perf tab has the same percentiles as
   a table, with a frame-time histogram.
 - `mashup_perf_log 1` logs the same readout as one text line a second
   (`mashup_perf: 60 fps  frame 16.67 ms ... | vis: cluster ...`), so runs
@@ -798,7 +806,7 @@ Details and baseline numbers: [performance.md](performance.md).
 - Drawing between ticks (`map::interp`): the readout's `interpolation:`
   line gives the tick rate, the frame's blend between the last two ticks
   (`Time<Fixed>` overstep fraction), ticks run that frame and teleport
-  snaps so far; the F2 Perf tab shows it live every frame.
+  snaps so far; the debug UI's Perf tab shows it live every frame.
   `cl_interpolate 0` draws the latest tick instead (stepping at the tick
   rate), for A/B. `cargo test --features dev --test it interpolation::
   -- --nocapture` prints a walking, ducking camera eye per frame at 240 fps on the CS:S
@@ -893,7 +901,7 @@ Details and baseline numbers: [performance.md](performance.md).
 
 ## 3d. The debug UI
 
-F2 (a bind: `debugui`) opens a tabbed window; `debugui <tab>` opens it
+F8 (a bind: `debugui`; F1 and F2 are CS:S's autobuy and rebuy) opens a tabbed window; `debugui <tab>` opens it
 on a tab (`player`, `world`, `movement`, `bots`, `rendering`, `perf`,
 `audio`, `logic`, `rounds`, `cvars`), `debugui close` closes it, e.g.
 `--window 1280x720 --screenshot ui.png +debugui perf` photographs one.
@@ -917,7 +925,7 @@ and keys typed into its fields don't reach binds.
   bot's team, health, role and activity with watch (`mashup_watch`) and
   go-to buttons.
 - Rendering: the overlays (`cl_showpos`, `net_graph`,
-  `mashup_drawhitboxes`, `mashup_drawcollision` (= F3),
+  `mashup_drawhitboxes`, `mashup_drawcollision` (F3: `toggle mashup_drawcollision`),
   `mashup_drawphys`, `mashup_drawnav`, `mashup_drawbots`, ...), culling
   (`r_novis`, `r_portalsopenall`, `r_occlusion`, with the vis readout),
   HDR, water, view model and effect cvars, third person and free camera.

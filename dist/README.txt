@@ -39,6 +39,18 @@ Everyone else joins:
     the host's address), or open the console (~) and type:
       connect <host address>:27015
 
+Keys
+----
+The default keys are CS:S's (F1 autobuy, F2 rebuy, mouse wheel next and
+previous weapon, B buy menu, ...); Options -> Keyboard changes them, "Use
+Defaults" puts them back. Keys saved by an earlier build stay as they were
+(e.g. the wheel jumping): "Use Defaults" switches to these. Ours, on keys
+CS:S leaves free:
+  F9 (or F4)   bug report: saves a screenshot and details to send us
+  V            noclip (fly through walls, where cheats are allowed)
+  Left Alt     free look
+  F3 / F8 / F11  collision shapes / debug window / entity inspector
+
 Useful console commands (~)
 ---------------------------
   mashup_rounds 1        Counter-Strike rounds with money (0: deathmatch)

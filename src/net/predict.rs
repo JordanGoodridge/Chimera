@@ -22,7 +22,7 @@
 //!   after S run again (`core::predict`, `FirstTimePredicted` false: no
 //!   sounds). The drawn eye eases the jump out over `cl_smoothtime`
 //!   (`smooth_view`) unless it's a teleport.
-//! - **Readout.** `NetGraph` (the perf overlay and the F2 Perf tab):
+//! - **Readout.** `NetGraph` (the perf overlay and the debug UI's Perf tab):
 //!   ping, loss, lead, server buffer, missed commands, prediction errors.
 //!   `cl_showerror 1` logs each error.
 

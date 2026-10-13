@@ -969,8 +969,9 @@ fn run_cfg(w: &mut World, text: &str) {
 /// Binds, aliases and changed cvars, as a config file.
 pub fn config_text(w: &mut World) -> String {
     // The second line tells the client every key's bind is in here
-    // (`client::binds::CONFIG_MARK`).
-    let mut out = String::from("// Written by mashup (host_writeconfig).\n// binds: all\n");
+    // (`client::binds::CONFIG_MARK`), the third that the defaults it was
+    // written over were CS:S's (`client::binds::DEFAULTS_MARK`).
+    let mut out = String::from("// Written by mashup (host_writeconfig).\n// binds: all\n// bind defaults: cs\n");
     let (binds, aliases, cvars) = {
         let c = w.resource::<Console>();
         (
