@@ -63,7 +63,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `MouseAccelerationCheckbox` + `MouseAccelerationSlider` + `MouseAccelerationLabel` | CheckButton / CCvarSlider / TextEntry | `m_customaccel` (0; ticked: 3), `m_customaccel_exponent` (1.05; slider 1 to 1.4, the entry beside it) |
 | | `MouseRaw`, `Joystick*` | CCvarToggleCheckButton | greyed (see below); those whose words the install lacks are left out |
 | Audio | `SFXSlider` | CCvarSlider | `volume` |
-| | `MusicSlider` | CCvarSlider | `snd_musicvolume` (1): sounds under `music/` and MP3s (`map::live_sound::is_music`) |
+| | `MusicSlider` | CCvarSlider | `snd_musicvolume` (1): sounds under `music/` and MP3s (`audio::live_sound::is_music`) |
 | | `snd_mute_losefocus` | CCvarToggleCheckButton | `snd_mute_losefocus` (1): silent while the window is in the background (`client::audio`) |
 | | `SpeakerSetup` | ComboBox | `snd_surround_speakers` (ours 2): Headphones (0), 2, 4, 5.1, 7.1 Speakers; kept and saved, the mixer stays stereo (docs/plans/active/video-settings.md, "Audio tab") |
 | | `SoundQuality` | ComboBox | `snd_pitchquality` and `dsp_slow_cpu` together: Low (0 1), Medium (0 0), High (1 0, the default); kept and saved, one mixer quality |

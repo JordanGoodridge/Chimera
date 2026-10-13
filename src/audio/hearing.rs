@@ -242,7 +242,7 @@ impl Plugin for HearingPlugin {
 }
 
 /// Whether the eye is in water this frame (the map's `WaterView`).
-fn eye_in_water(view: Option<Res<super::water::WaterView>>, mut hearing: ResMut<Hearing>) {
+fn eye_in_water(view: Option<Res<crate::map::water::WaterView>>, mut hearing: ResMut<Hearing>) {
     let under = view.is_some_and(|v| v.under.is_some());
     if hearing.underwater != under {
         hearing.underwater = under;

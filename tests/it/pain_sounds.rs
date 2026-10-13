@@ -16,10 +16,8 @@ use mashup::{
     },
     greybox::{self, GreyboxMapPlugin},
     harness::Sim,
-    map::{
-        MapSounds, MapSurface, PlaySound, SoundLevel,
-        sound::{Ear, SoundBank},
-    },
+    audio::sound::Ear,
+    map::{MapSounds, MapSurface, PlaySound, SoundLevel, sound::SoundBank},
     movement::placeholder,
     weapon::{Armor, Inventory, give},
 };

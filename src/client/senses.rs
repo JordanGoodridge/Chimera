@@ -6,7 +6,7 @@
 //!   `effects/flashbang`, which reads the full-frame copy; no texture to
 //!   load);
 //! - hearing: `core::Deafened` for the local player sets
-//!   `map::hearing::Hearing` (muffled sounds, ringing);
+//!   `audio::hearing::Hearing` (muffled sounds, ringing);
 //! - the view shake of nearby blasts (`weapon::grenade::Shake`).
 
 use bevy::{
@@ -26,7 +26,7 @@ use bevy::{
 use super::FirstPersonCamera;
 use crate::{
     core::{Blinded, Deafened, LocalPlayer},
-    map::hearing::Hearing,
+    audio::hearing::Hearing,
     weapon::grenade::{Detonated, Shake},
 };
 

@@ -338,7 +338,7 @@ Only `Reflect`-registered types are visible; register new core components in
   `-attack` a second later, and `screenshot`s from 1.7 s after the
   release; a `setang` to another direction after the flash shows the
   frozen frame over the new view. Hearing (muffle, ringing) can't be
-  photographed: `map::hearing::Hearing` and its tests
+  photographed: `audio::hearing::Hearing` and its tests
   (`cargo test --lib hearing`) show the curves; `tests/it/cs_grenades.rs`
   checks which effect each blast or flash gives.
 - `mashup_healthbars 1` draws a health bar over every other living

@@ -28,7 +28,7 @@ fn pcm_and_adpcm() {
 /// channel's gain applied, which decodes back to the scaled samples.
 #[test]
 fn stereo_for_playback() {
-    use mashup::map::{MapSoundClip, sound::stereo_wav};
+    use mashup::{audio::sound::stereo_wav, map::MapSoundClip};
     let clip = MapSoundClip {
         rate: 22050,
         channels: 1,

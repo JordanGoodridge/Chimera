@@ -2,8 +2,8 @@
 //! changed (volume, pitch) and stopped by their owner through
 //! `SoundControl` messages, each under its own `SoundKey`. Map ambience
 //! (Source's ambient_generic, from the logic layer) and soundscape loops
-//! (`map::soundscape`) use them; every clip sends to the room
-//! (`map::room`).
+//! (`audio::soundscape`) use them; every clip sends to the room
+//! (`audio::room`).
 //!
 //! A clip with a loop point plays from its start, then loops from that
 //! point forever; any other clip plays once and ends. A sound sits at a
@@ -30,61 +30,8 @@ use bevy::{
 
 use super::hearing::{Hearing, HearingMix, Muffle};
 use super::room::{AMBIENT_SEND, RoomBus, RoomDsp, RoomSend};
-use super::sound::{Ear, MapSoundClip, SoundBank, SoundLevel, SoundListener};
-
-/// Who a long-lived sound belongs to (chosen by its owner).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SoundKey(pub u64);
-
-/// Keys with this bit (and not bit 63, the logic's) belong to the
-/// soundscape's loops (`map::soundscape`), which `StopAll` leaves alone.
-pub const SOUNDSCAPE_KEYS: u64 = 1 << 62;
-
-impl SoundKey {
-    fn soundscape(self) -> bool {
-        self.0 >> 62 == 1
-    }
-}
-
-/// Start, change or stop a long-lived sound.
-#[derive(Message, Clone, Debug)]
-pub enum SoundControl {
-    /// Replaces whatever plays under the same key.
-    Start(StartSound),
-    /// New volume and/or pitch (percent) for a playing sound.
-    Change {
-        key: SoundKey,
-        volume: Option<f32>,
-        pitch: Option<f32>,
-    },
-    Stop(SoundKey),
-    /// Every long-lived sound but the soundscape's loops (map change,
-    /// round restart).
-    StopAll,
-}
-
-/// A long-lived sound to start.
-#[derive(Clone, Debug, Default)]
-pub struct StartSound {
-    pub key: SoundKey,
-    /// A sound entry of the map's `SoundBank` (games add raw files as
-    /// entries of their own).
-    pub entry: String,
-    /// Where (engine space); None plays it unspatialized.
-    pub at: Option<Vec3>,
-    /// Plays from this entity's position while it exists (else `at`).
-    pub follow: Option<Entity>,
-    /// Override the entry's volume, pitch (percent) and level.
-    pub volume: Option<f32>,
-    pub pitch: Option<f32>,
-    pub level: Option<SoundLevel>,
-    /// Play this clip of the bank (`entry` then only names it).
-    pub clip: Option<usize>,
-    /// Loop even without a loop point (from the start).
-    pub looping: bool,
-    /// Bypass the room (Source's `#` waves).
-    pub dry: bool,
-}
+use super::sound::{Ear, SoundListener};
+use crate::map::{MapSoundClip, SoundControl, SoundKey, SoundLevel, sound::SoundBank};
 
 /// A playing long-lived sound.
 #[derive(Clone, Debug)]

@@ -431,7 +431,7 @@ fn attach_camera(commands: &mut Commands, player: Entity, debug_view: bool) {
         FirstPersonCamera,
         // The local player's weapon is drawn here (map::view_model).
         crate::map::ViewModelAnchor,
-        crate::map::sound::SoundListener,
+        crate::audio::sound::SoundListener,
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
             // Source's fov 90 (horizontal at 4:3), kept vertically:

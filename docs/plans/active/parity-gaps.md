@@ -305,8 +305,8 @@ common console commands, against mashup's.
   `cl_autobuy` / `cl_rebuy` userinfo lists, CS:S's default files'
   entries by default. Test:
   `rounds::autobuy_takes_the_list_and_rebuy_restores_the_last_buy`.
-- Under water everything is muffled (`map::hearing`). Test:
-  `map::hearing` unit test.
+- Under water everything is muffled (`audio::hearing`). Test:
+  `audio::hearing` unit test.
 - `jpeg`: a screenshot named after the map. Test: `client::capture`
   unit test.
 - The end of a map's game: `mp_timelimit`, `mp_maxrounds`,
@@ -443,7 +443,7 @@ says what decides the open point.
 - **C5 Under water.** Record the client's audio standing in de_aztec's
   water with the head under while a bot fires an AK-47 at 500 units,
   and the same with the head above. Decides the muffle (cutoff, level,
-  any reverb) to replace `map::hearing::UNDERWATER`.
+  any reverb) to replace `audio::hearing::UNDERWATER`.
 - **C6 Drowning.** Stay under water in de_aztec's river (`noclip` off,
   head under) for 30 s with `sv_soundemitter_trace 1` and `developer
   1`: when damage starts, how much per hit and how often, the sounds,

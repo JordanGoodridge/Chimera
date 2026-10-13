@@ -1,8 +1,8 @@
 //! The options' sound settings (CS:S's Audio tab): the master `volume`,
-//! `snd_musicvolume` (music: `map::live_sound::is_music`) and
+//! `snd_musicvolume` (music: `audio::live_sound::is_music`) and
 //! `snd_mute_losefocus` (silent while the window is in the background).
-//! Bevy's `GlobalVolume` is what the mixer reads (`map::live_sound`,
-//! `map::room`): the volume, or nothing while muted for focus.
+//! Bevy's `GlobalVolume` is what the mixer reads (`audio::live_sound`,
+//! `audio::room`): the volume, or nothing while muted for focus.
 
 use bevy::{
     audio::{GlobalVolume, Volume},
@@ -11,7 +11,7 @@ use bevy::{
 
 use crate::{
     console::{Console, ConsoleAppExt, resource_cvar},
-    map::live_sound::SoundMix,
+    audio::live_sound::SoundMix,
 };
 
 /// Sound volume a fresh config starts with (`volume`).

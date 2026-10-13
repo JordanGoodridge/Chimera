@@ -47,11 +47,9 @@ pub use breakables::{
 };
 pub mod detail;
 mod dust;
-pub mod hearing;
 pub mod hud;
 pub mod interp;
 mod light_styles;
-pub mod live_sound;
 pub mod loading;
 pub mod lod;
 pub mod loose;
@@ -72,15 +70,15 @@ pub mod ragdoll;
 pub mod tint;
 pub mod tracer;
 pub use ragdoll::{MapCollisionHooks, MapRagdoll, MapRagdollBody, MapRagdollJoint, Ragdoll, RagdollBody, RagdollShot};
-pub mod room;
 pub mod rope_material;
 pub mod rope_sway;
 pub mod shadows;
 pub mod sound;
-pub mod soundscape;
 pub mod steam;
-pub use live_sound::{LiveSounds, SoundControl, SoundKey, StartSound};
-pub use sound::{GameSound, MapSoundClip, MapSoundEntry, MapSounds, MapSurface, PlaySound, PredictedSound, SoundLevel};
+pub use sound::{
+    GameSound, MapSoundClip, MapSoundEntry, MapSounds, MapSurface, PlaySound, PredictedSound, SoundControl, SoundKey,
+    SoundLevel, StartSound,
+};
 pub mod shells;
 pub mod sky_occluder;
 pub mod sprite_material;
@@ -258,8 +256,11 @@ pub struct MapFile {
 #[derive(Component)]
 pub struct MapPart;
 
-impl Plugin for MapPlugin {
-    fn build(&self, app: &mut App) {
+impl MapPlugin {
+    /// The map's registration before the sound plugin's: `MapPlugin` is
+    /// built in `crate::map_plugin`, which adds `crate::audio` between
+    /// this and `build_rest`, in the order it always had.
+    pub(crate) fn build_first(&self, app: &mut App) {
         if let Some(data) = &self.data {
             app.insert_resource(PendingMap(data.clone(), self.view))
                 .insert_resource(ActiveMapLook(data.look.clone()));
@@ -268,8 +269,11 @@ impl Plugin for MapPlugin {
         placed_ragdoll::plugin(app);
         app.add_plugins(light_styles::LightStylesPlugin);
         app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin, monitor::MonitorPlugin));
-        app.add_plugins(sound::SoundPlugin)
-            .init_resource::<ShowLocalBody>()
+    }
+
+    /// The map's registration after the sound plugin's (`build_first`).
+    pub(crate) fn build_rest(&self, app: &mut App) {
+        app.init_resource::<ShowLocalBody>()
             .init_resource::<vis::NoVis>()
             .init_resource::<vis::PortalsOpenAll>()
             .init_resource::<vis::Occlusion>()
@@ -554,9 +558,17 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<fog::SceneFog>();
     world.remove_resource::<MapTerrain>();
     world.insert_resource(Gravity::default());
-    soundscape::reset(world);
-    live_sound::reset(world);
+    let hooks = world.get_resource::<MapUnloadHooks>().map(|h| h.0.clone()).unwrap_or_default();
+    for hook in hooks {
+        hook(world);
+    }
 }
+
+/// What layers above the map reset when a map is unloaded: `unload_map`
+/// runs them last, in the order they were added (`crate::audio` stops
+/// the soundscape and the long-lived sounds).
+#[derive(Resource, Default)]
+pub struct MapUnloadHooks(pub Vec<fn(&mut World)>);
 
 /// Replace the loaded map with `data` (spawned now, as at startup).
 pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
