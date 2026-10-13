@@ -28,7 +28,7 @@ use bevy_replicon::prelude::*;
 
 use super::{
     BuyRequest, NetBomb, NetCharacter, NetHostage, NetRound, NetScore, Notice, ObjectiveNews, OwnState, RoundOver,
-    ServerSound, TeamRequest, bomb_outcome, interp::InterpClock, predict::CommandClock, round_phase, score_flags,
+    ServerSound, TeamRequest, ClassRequest, bomb_outcome, interp::InterpClock, predict::CommandClock, round_phase, score_flags,
     server::Player,
 };
 use crate::{
@@ -61,7 +61,7 @@ pub(super) fn plugin(app: &mut App) {
     )
     .add_systems(
         PreUpdate,
-        (receive_buys, receive_teams)
+        (receive_buys, receive_teams, receive_classes)
             .after(ServerSystems::Receive)
             .run_if(in_state(ServerState::Running)),
     )
@@ -90,7 +90,7 @@ pub(super) fn plugin(app: &mut App) {
     )
     .add_systems(
         PostUpdate,
-        (send_buys, send_teams).before(ClientSystems::Send).run_if(client()),
+        (send_buys, send_teams, send_classes).before(ClientSystems::Send).run_if(client()),
     );
 }
 
@@ -350,6 +350,23 @@ fn receive_teams(mut requests: MessageReader<FromClient<TeamRequest>>, players: 
                 crate::rules::join_team(w, character, Team(team))
             };
             if let Err(text) = joined {
+                notify(w, client, text);
+            }
+        });
+    }
+}
+
+/// A client chose its class (`rules::join_class`).
+fn receive_classes(mut requests: MessageReader<FromClient<ClassRequest>>, players: Query<&Player>, mut commands: Commands) {
+    for r in requests.read() {
+        let Some(client) = r.client_id.entity() else { continue };
+        let Ok(p) = players.get(client) else { continue };
+        let (character, class) = (p.character, r.message.class);
+        commands.queue(move |w: &mut World| {
+            if w.get_entity(character).is_err() {
+                return;
+            }
+            if let Err(text) = crate::rules::join_class(w, character, class) {
                 notify(w, client, text);
             }
         });
@@ -883,6 +900,13 @@ fn receive_sounds(mut sounds: MessageReader<ServerSound>, mut play: MessageWrite
 fn send_buys(mut asked: MessageReader<BuyRequested>, mut out: MessageWriter<BuyRequest>) {
     for a in asked.read() {
         out.write(BuyRequest { what: a.0.clone() });
+    }
+}
+
+/// Our class, to the server.
+fn send_classes(mut asked: MessageReader<crate::rules::ClassRequested>, mut out: MessageWriter<ClassRequest>) {
+    for a in asked.read() {
+        out.write(ClassRequest { class: a.0 });
     }
 }
 

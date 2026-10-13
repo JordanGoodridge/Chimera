@@ -70,21 +70,53 @@ impl Plugin for DeathmatchPlugin {
             "1: players may join the spectators (jointeam 1, spectate).",
             |d| &mut d.allow_spectators,
         );
-        app.add_message::<TeamRequested>()
+        app.init_resource::<JoinChoice>()
+            .add_message::<TeamRequested>()
+            .add_message::<ClassRequested>()
             .console_command(
                 "jointeam",
-                "jointeam <1|2|3>: join the spectators (1), the terrorists (2) or counter-terrorists (3); a new team respawns at its spawn.",
+                "jointeam <0|1|2|3>: auto-assign (0: the smaller team), the spectators (1), the terrorists (2) or \
+                 counter-terrorists (3); a new team respawns at its spawn.",
                 |w, a| {
                     let team = match a.first().map(String::as_str) {
+                        Some("0") => auto_assign(w),
                         Some("1") => Team(0),
                         Some("2") => Team(1),
                         Some("3") => Team(2),
-                        _ => return Err("jointeam <1|2|3> (1: spectators, 2: terrorists, 3: counter-terrorists)".into()),
+                        _ => {
+                            return Err(
+                                "jointeam <0|1|2|3> (0: auto-assign, 1: spectators, 2: terrorists, 3: counter-terrorists)"
+                                    .into(),
+                            );
+                        }
                     };
                     request_team(w, team)
                 },
             )
-            .console_command("spectate", "Join the spectators (jointeam 1).", |w, _| request_team(w, Team(0)));
+            .console_command("spectate", "Join the spectators (jointeam 1).", |w, _| request_team(w, Team(0)))
+            .console_command(
+                "joinclass",
+                "joinclass <0-8>: the player model, after picking a team: 0 auto-select, 1-4 the terrorists' \
+                 (Phoenix Connexion, Elite Crew, Arctic Avengers, Guerilla Warfare), 5-8 the counter-terrorists' \
+                 (SEAL Team 6, GSG-9, SAS, GIGN).",
+                |w, a| {
+                    let class = a
+                        .first()
+                        .and_then(|c| c.parse::<u8>().ok())
+                        .filter(|c| *c <= 2 * crate::core::PlayerClass::PER_TEAM)
+                        .ok_or("joinclass <0-8>")?;
+                    if w.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client) {
+                        w.write_message(ClassRequested(class));
+                        return Ok(None);
+                    }
+                    let player = w
+                        .query_filtered::<Entity, With<crate::core::LocalPlayer>>()
+                        .iter(w)
+                        .next()
+                        .ok_or("no local player")?;
+                    join_class(w, player, class).map(Some)
+                },
+            );
     }
 }
 
@@ -111,6 +143,112 @@ fn request_team(w: &mut World, team: Team) -> Result<Option<String>, String> {
 /// (`Team(0)`: the spectators).
 #[derive(Message, Clone, Copy, Debug, PartialEq)]
 pub struct TeamRequested(pub Team);
+
+/// A network client's `joinclass`: the class it asks the server for.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct ClassRequested(pub u8);
+
+/// `jointeam 0`, auto-assign: the team with fewer players (the
+/// terrorists on a tie), not counting the local player itself.
+pub fn auto_assign(w: &mut World) -> Team {
+    let me = w
+        .query_filtered::<Entity, With<crate::core::LocalPlayer>>()
+        .iter(w)
+        .next();
+    let mut counts = [0usize; 3];
+    for (e, t) in w
+        .query_filtered::<(Entity, &Team), (With<Intent>, Without<crate::objectives::hostages::Hostage>)>()
+        .iter(w)
+    {
+        if Some(e) != me && (1..=2).contains(&t.0) {
+            counts[t.0 as usize] += 1;
+        }
+    }
+    if counts[2] < counts[1] { Team(2) } else { Team(1) }
+}
+
+/// How a player comes into a game it starts or joins: CS:S's way, the
+/// join menus (`Menus`: the server's message of the day, then the team
+/// menu, then the class menu; until it picks it is `core::Unassigned`),
+/// or straight onto a team, as tests and scripted runs want: `Auto` the
+/// smaller team (counter-terrorists on a tie), `Team` that one (`Team(0)`
+/// the spectators). The local player's (single player, a listen server's
+/// host) and, for a network client, the one it asks the server for
+/// (`net`). The game's interactive runs use `Menus`
+/// (`client::Args::join_choice`); the default is `Auto`.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum JoinChoice {
+    Menus,
+    #[default]
+    Auto,
+    Team(Team),
+}
+
+impl JoinChoice {
+    /// As a userinfo value (`net`'s join handshake): `menus`, `auto`, or
+    /// the `jointeam` number.
+    pub fn key(self) -> String {
+        match self {
+            Self::Menus => "menus".into(),
+            Self::Auto => "auto".into(),
+            Self::Team(t) => (t.0 + 1).to_string(),
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key.trim() {
+            "menus" => Some(Self::Menus),
+            "auto" | "0" => Some(Self::Auto),
+            "1" => Some(Self::Team(Team(0))),
+            "2" => Some(Self::Team(Team(1))),
+            "3" => Some(Self::Team(Team(2))),
+            _ => None,
+        }
+    }
+}
+
+/// Put `player` in the game on no team (`core::Unassigned`, as CS:S has
+/// a player who just joined): out of play with no body, as a spectator
+/// (`join_spectators`) but whatever `mp_allowspectators` says, until it
+/// picks a team (`join_team`, `join_spectators`).
+pub fn make_unassigned(w: &mut World, player: Entity) {
+    if w.get_entity(player).is_err() {
+        return;
+    }
+    leave_play(w, player);
+    w.entity_mut(player)
+        .remove::<crate::core::ChoosingClass>()
+        .insert((crate::core::Unassigned, crate::core::PlayerClass(0)));
+}
+
+/// `joinclass`: `player`'s class (`core::PlayerClass`; 0 auto-select:
+/// one of its team's at random, as CS:S picks). Picked for the first time
+/// after joining a team (`core::ChoosingClass`), it comes into play as a
+/// player coming into the game does (`enter_game`); later, it is worn
+/// from the next spawn.
+pub fn join_class(w: &mut World, player: Entity, class: u8) -> Result<String, String> {
+    let team = w.get::<Team>(player).copied().filter(|t| (1..=2).contains(&t.0));
+    let Some(team) = team.filter(|_| w.get::<crate::core::Spectating>(player).is_none()) else {
+        return Err("Join a team first.".into());
+    };
+    let per_team = crate::core::PlayerClass::PER_TEAM;
+    let class = if class == 0 {
+        // Auto-select: one of the team's, by the clock and the player.
+        let clock = w.resource::<Time>().elapsed().as_nanos() as u64;
+        let roll = (clock ^ player.to_bits()).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32;
+        (team.0 - 1) * per_team + 1 + (roll % per_team as u64) as u8
+    } else {
+        class
+    };
+    if crate::core::PlayerClass(class).team() != Some(team) {
+        return Err("That class is the other team's.".into());
+    }
+    w.entity_mut(player).insert(crate::core::PlayerClass(class));
+    if w.entity_mut(player).take::<crate::core::ChoosingClass>().is_some() {
+        spawn_if_room(w, player);
+    }
+    Ok(format!("class {class}"))
+}
 
 /// Put `player` on `team`: it respawns at the new team's spawn (with
 /// rounds, at the next round; no death counted). In a network game
@@ -142,10 +280,22 @@ pub fn join_team(w: &mut World, player: Entity, team: Team) -> Result<String, St
     // Switching teams: respawn at the new team's spawn now (no death
     // counted).
     let was_spectating = w.entity_mut(player).take::<crate::core::Spectating>().is_some();
+    // Just come into the game (the team menu): no body until it picks a
+    // class (`join_class`), as CS:S shows the class menu first.
+    let first_team = w.entity_mut(player).take::<crate::core::Unassigned>().is_some();
     w.entity_mut(player).insert((team, Dead { since: f64::MIN }, ColliderDisabled));
-    // Off the spectators, with rounds: into this round when a player
-    // coming into the game would be (`enter_game`), else the next.
-    if was_spectating {
+    // Another team's class doesn't fit: auto-select's at the next pick.
+    if w.get::<crate::core::PlayerClass>(player)
+        .and_then(|c| c.team())
+        .is_some_and(|t| t != team)
+    {
+        w.entity_mut(player).insert(crate::core::PlayerClass(0));
+    }
+    if first_team {
+        w.entity_mut(player).insert(crate::core::ChoosingClass);
+    } else if was_spectating {
+        // Off the spectators, with rounds: into this round when a player
+        // coming into the game would be (`enter_game`), else the next.
         spawn_if_room(w, player);
     }
     Ok(format!(
@@ -164,12 +314,23 @@ pub fn join_team(w: &mut World, player: Entity, team: Team) -> Result<String, St
 /// other weapons go; no death is counted (as with `join_team`). It
 /// stays a spectator over rounds and map changes until it joins a team.
 pub fn join_spectators(w: &mut World, player: Entity) -> Result<String, String> {
-    if w.get::<crate::core::Spectating>(player).is_some() {
+    let unassigned = w.get::<crate::core::Unassigned>(player).is_some();
+    if w.get::<crate::core::Spectating>(player).is_some() && !unassigned {
         return Ok("already spectating".into());
     }
     if w.resource::<Deathmatch>().allow_spectators == 0 {
         return Err("You cannot become a spectator.".into());
     }
+    w.entity_mut(player)
+        .remove::<(crate::core::Unassigned, crate::core::ChoosingClass)>();
+    leave_play(w, player);
+    Ok("joined the spectators".into())
+}
+
+/// Out of play with no body, on no team (`core::Spectating`): a living
+/// player leaves the round as the dead do (its bomb and kit dropped, its
+/// other weapons gone, no death counted).
+fn leave_play(w: &mut World, player: Entity) {
     let alive = w.get::<Dead>(player).is_none() && w.get::<Health>(player).is_some_and(|h| h.current > 0.0);
     if alive {
         crate::objectives::bomb::drop_objective_items(w, player);
@@ -194,7 +355,6 @@ pub fn join_spectators(w: &mut World, player: Entity) -> Result<String, String> 
     if let Some(mut v) = e.get_mut::<Velocity>() {
         v.0 = Vec3::ZERO;
     }
-    Ok("joined the spectators".into())
 }
 
 /// `mp_autoteambalance`: as a round ends into the next, while one side
@@ -221,6 +381,7 @@ pub fn balance_teams(world: &mut World) -> Vec<Entity> {
             Without<crate::objectives::hostages::Hostage>,
             Without<crate::core::Connecting>,
             Without<crate::core::Spectating>,
+            Without<crate::core::ChoosingClass>,
         )>()
         .iter(world)
     {
@@ -498,6 +659,7 @@ fn respawn(world: &mut World) {
             Without<crate::objectives::hostages::Hostage>,
             Without<crate::core::Connecting>,
             Without<crate::core::Spectating>,
+            Without<crate::core::ChoosingClass>,
         )>()
         .iter(world)
         .filter(|(_, d)| now - d.since >= delay)

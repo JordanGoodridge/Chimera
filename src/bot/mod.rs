@@ -333,8 +333,13 @@ fn keep_quota(world: &mut World) {
     let mut counts = [0usize; 2];
     let mut humans = 0;
     let mut playing = 0;
-    for (e, team, bot, connecting) in world
-        .query_filtered::<(Entity, &Team, Option<&Bot>, Has<crate::core::Connecting>), (With<Intent>, With<Health>, Without<crate::objectives::hostages::Hostage>)>()
+    for (e, team, bot, (connecting, unassigned)) in world
+        .query_filtered::<(
+            Entity,
+            &Team,
+            Option<&Bot>,
+            (Has<crate::core::Connecting>, Has<crate::core::Unassigned>),
+        ), (With<Intent>, With<Health>, Without<crate::objectives::hostages::Hostage>)>()
         .iter(world)
     {
         if (1..=2).contains(&team.0) {
@@ -344,7 +349,9 @@ fn keep_quota(world: &mut World) {
             Some(b) => bots.push((e, *team, b.number)),
             None => {
                 humans += 1;
-                if !connecting {
+                // In the game: loaded, and on a team or the spectators
+                // (not still at the join menus).
+                if !connecting && !unassigned {
                     playing += 1;
                 }
             }

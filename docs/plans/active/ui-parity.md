@@ -100,7 +100,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `NameEntry` + `NameLabel` (ours: the install's file has none, older CS:S had "Player name") | TextEntry | `name` (archived): `#GameUI_PlayerName`, added by `gameui::add_player_name` where the spray image's words (`Label2`, `Label3`) were; set on OK / Apply (one rename online, not one per key); a deliberate difference |
 | | `Advanced` | Button | opens Multiplayer > Advanced |
 | | `ImportSprayImage`, `ResetStats`, `LogoImage` | Button / ImagePanel | greyed (see below) |
-| Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those mashup has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `cl_autohelp`, `hud_takesshots`, `cl_disablefreezecam`, `cl_disablehtmlmotd`, `cl_cloud_settings`); without the install: ours, the weapon hand |
+| Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those mashup has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar), `cl_disablehtmlmotd` (1: the message of the day's plain-text version, `client::join_menus`); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `cl_autohelp`, `hud_takesshots`, `cl_disablefreezecam`, `cl_cloud_settings`); without the install: ours, the weapon hand |
 | | `OK`, `Cancel` | Button | as CS:S's dialog: changes wait for OK, which sets those changed; Cancel (Esc, the X) drops them; modal over the options |
 
 ### Spectator menu (`resource/ui/bottomspectator.res`; `client::spectator_menu`)
@@ -139,7 +139,7 @@ defaults are CS:S's (`client::options` tests
 | Voice (all) | no voice chat |
 | Multiplayer `ImportSprayImage`, `LogoImage` | no sprays |
 | Multiplayer `ResetStats` | no stats |
-| Multiplayer > Advanced `cl_clanid`, `cl_disablehtmlmotd`, `cl_cloud_settings`, `hud_takesshots` | no clans, no MOTD, no Steam Cloud, no end-of-map screenshots |
+| Multiplayer > Advanced `cl_clanid`, `cl_cloud_settings`, `hud_takesshots` | no clans, no Steam Cloud, no end-of-map screenshots |
 | Multiplayer > Advanced `cl_autohelp` | hints aren't in mashup yet: backlog |
 
 #### Deliberate differences (CS:S's own, kept apart)

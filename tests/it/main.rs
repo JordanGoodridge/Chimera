@@ -23,6 +23,7 @@ mod cs_guns;
 mod debug_ui;
 mod impact_effects;
 mod interpolation;
+mod join_flow;
 mod logic_physics;
 mod map_game_entities;
 mod map_logic;

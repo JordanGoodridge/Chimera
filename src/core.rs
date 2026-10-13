@@ -668,6 +668,46 @@ pub struct Connecting;
 #[reflect(Component)]
 pub struct Spectating;
 
+/// In the game but on no team yet (CS:S's unassigned players): it has not
+/// picked one in the team menu. Also `Spectating` (no body, watching,
+/// counted on no team); `rules::join_team` or `rules::join_spectators`
+/// ends it. Its client shows the join menus (the MOTD, then the team
+/// menu: `client::join_menus`). Replicated.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
+pub struct Unassigned;
+
+/// On a team, picked from the team menu after joining the game, but no
+/// class (player model) chosen yet: still no body, neither spawned nor
+/// counted for a round's end until `joinclass` (`rules::join_class`), as
+/// CS:S waits for the class menu. Replicated.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
+pub struct ChoosingClass;
+
+/// A player's class (CS:S's `joinclass` number: its player model): 1-4
+/// the terrorists' (Phoenix Connexion, Elite Crew, Arctic Avengers,
+/// Guerilla Warfare), 5-8 the counter-terrorists' (SEAL Team 6, GSG-9,
+/// SAS, GIGN). Without one a character wears its team's first model.
+/// Replicated; a game's loader draws it (`map::BodyName`).
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
+pub struct PlayerClass(pub u8);
+
+impl PlayerClass {
+    /// Classes per team.
+    pub const PER_TEAM: u8 = 4;
+
+    /// The team (ours: 1 terrorists, 2 counter-terrorists) a class belongs to.
+    pub fn team(self) -> Option<Team> {
+        match self.0 {
+            1..=4 => Some(Team(1)),
+            5..=8 => Some(Team(2)),
+            _ => None,
+        }
+    }
+}
+
 /// Number of fixed ticks simulated so far. Tests and tools use it to step
 /// the simulation by exact ticks.
 #[derive(Resource, Reflect, Default, Clone, Copy, Debug)]
@@ -1282,6 +1322,35 @@ pub fn start_tick(mut tick: ResMut<SimTick>, mut clock: ResMut<SimClock>, time: 
     };
 }
 
+/// Before each physics step: the physics' copy of a character's position
+/// (`Position`) is where its movement put it, to the bit. The physics
+/// takes a moved transform only when it moved more than its tolerance
+/// (0.01 mm), and after the step writes its copy back over the transform
+/// of every body that is awake: a smaller step of the movement's (the
+/// metres-to-units round trip moves a player put at a spawn point by a
+/// float step or two) was undone while the body was awake and kept while
+/// it slept (half a second after its last bigger move), and kept in a
+/// network client's replay, which runs no physics. So the outcome of a
+/// tick hung on the physics' sleep state, which a server and its client
+/// don't share (found by the soak: a respawned player mispredicted by
+/// micrometres on each tick for half a second; tests/it/net_prediction.rs,
+/// `a_float_step_below_the_physics_tolerance_is_predicted`).
+///
+/// A change marks it changed, as the physics' own sync would (it wakes
+/// the body and moves its collider).
+pub fn keep_moved_positions(
+    mut bodies: Query<
+        (&Transform, &mut avian3d::prelude::Position),
+        (With<avian3d::prelude::CustomPositionIntegration>, Without<ChildOf>),
+    >,
+) {
+    for (t, mut p) in &mut bodies {
+        if p.0.to_array().map(f32::to_bits) != t.translation.to_array().map(f32::to_bits) {
+            p.0 = t.translation;
+        }
+    }
+}
+
 pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
@@ -1291,6 +1360,9 @@ impl Plugin for CorePlugin {
             .register_type::<MovementState>()
             .register_type::<Health>()
             .register_type::<Team>()
+            .register_type::<Unassigned>()
+            .register_type::<ChoosingClass>()
+            .register_type::<PlayerClass>()
             .register_type::<UserInfo>()
             .register_type::<Seed>()
             .register_type::<MaxSpeed>()
@@ -1332,6 +1404,10 @@ impl Plugin for CorePlugin {
             )
             .predicted_net::<MapControls>()
             .add_systems(FixedUpdate, run_predicted(Predict::Movement).in_set(SimSet::Movement))
+            .add_systems(
+                FixedPostUpdate,
+                keep_moved_positions.before(avian3d::prelude::PhysicsSystems::Prepare),
+            )
             .predicted_net::<Transform>()
             .predicted_net::<Velocity>()
             .predicted_net::<MovementState>()

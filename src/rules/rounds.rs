@@ -659,7 +659,11 @@ fn live_outcome(world: &mut World, time_up: bool) -> Option<(Option<Team>, Round
 fn team_counts(world: &mut World) -> ([u32; 2], [u32; 2]) {
     let (mut alive, mut present) = ([0; 2], [0; 2]);
     for (team, health, dead) in world
-        .query_filtered::<(&Team, &Health, Has<Dead>), (Without<Hostage>, Without<crate::core::Connecting>)>()
+        .query_filtered::<(&Team, &Health, Has<Dead>), (
+            Without<Hostage>,
+            Without<crate::core::Connecting>,
+            Without<crate::core::ChoosingClass>,
+        )>()
         .iter(world)
     {
         if let Some(s) = side(*team) {
@@ -738,6 +742,7 @@ fn start_round(world: &mut World, s: &RoundSettings, now: f64, fresh: bool) {
             Without<Hostage>,
             Without<crate::core::Connecting>,
             Without<crate::core::Spectating>,
+            Without<crate::core::ChoosingClass>,
         )>()
         .iter(world)
         .collect();

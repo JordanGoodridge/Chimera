@@ -22,6 +22,7 @@ pub mod gamma;
 pub mod hdr;
 pub mod hud_sprites;
 pub mod hud_text;
+pub mod join_menus;
 pub mod hud;
 pub mod input;
 pub mod interp;
@@ -101,6 +102,9 @@ pub struct Args {
     pub scale: Option<f32>,
     /// Size of `--views` captures and `--bench` frames (default 1280x720).
     pub view_size: Option<UVec2>,
+    /// `--join`: how the local player comes into games, in place of
+    /// `join_choice`'s pick.
+    pub join: Option<crate::rules::JoinChoice>,
 }
 
 const USAGE: &str = "\
@@ -133,6 +137,11 @@ usage: mashup [options]
                             a tiling window manager may still resize it)
   --scale <f>               the window's scale factor (physical pixels per logical one) in place of
                             the display's, e.g. 1.25 as Windows at 125 % (with --window: 1)
+  --join <how>              how you come into a game you start or join: menus (CS:S's message of
+                            the day, team and class menus), auto (the smaller team) or a jointeam
+                            number (1 spectators, 2 terrorists, 3 counter-terrorists). Default:
+                            menus, but auto in --screenshot/--views runs, with --spawn or --look,
+                            and with +jointeam/+spectate (that team)
   -port <n>                 UDP port to host on (hostport; default 27015)
   +<command> [args...]      run a console command at startup, Source style
                             (e.g. +sv_airaccelerate 150 +cl_showpos 1 +bind f noclip;
@@ -149,6 +158,30 @@ impl Args {
     /// the main menu.
     pub fn starts_in_game(&self) -> bool {
         self.map.is_some() || self.spawn.is_some() || self.look.is_some() || self.movement.is_some() || self.views.is_some()
+    }
+
+    /// How the local player comes into the games it starts or joins
+    /// (`rules::JoinChoice`): `--join`, else CS:S's join menus unless the
+    /// run is scripted: a capture (`--screenshot`, `--views`) or the
+    /// player placed (`--spawn`, `--look`) comes in on the smaller team,
+    /// and a team asked for on the command line (`+jointeam <n>`,
+    /// `+spectate`) on that one.
+    pub fn join_choice(&self) -> crate::rules::JoinChoice {
+        use crate::rules::JoinChoice;
+        if let Some(j) = self.join {
+            return j;
+        }
+        for words in self.console.iter().flat_map(|l| crate::console::parse(l)) {
+            match words.first().map(|w| w.to_lowercase()).as_deref() {
+                Some("jointeam") => {
+                    return words.get(1).and_then(|n| JoinChoice::from_key(n)).unwrap_or(JoinChoice::Auto);
+                }
+                Some("spectate") => return JoinChoice::Team(crate::core::Team(0)),
+                _ => {}
+            }
+        }
+        let scripted = self.screenshot.is_some() || self.views.is_some() || self.spawn.is_some() || self.look.is_some();
+        if scripted { JoinChoice::Auto } else { JoinChoice::Menus }
     }
 
     /// The game map to load at startup: `--map` unless it names the
@@ -228,6 +261,12 @@ impl Args {
                 "--capture-dir" => out.capture_dir = Some(value.into()),
                 "--spawn" => out.spawn = Some(Vec3::from_array(floats::<3>(&flag, &value)?)),
                 "--look" => out.look = Some(Vec2::from_array(floats::<2>(&flag, &value)?)),
+                "--join" => {
+                    out.join = Some(
+                        crate::rules::JoinChoice::from_key(&value)
+                            .ok_or_else(|| format!("--join: expected menus, auto, 1, 2 or 3, got {value}"))?,
+                    )
+                }
                 "--cvar" => {
                     let (name, v) = value
                         .split_once('=')
@@ -293,6 +332,7 @@ impl Plugin for ClientPlugin {
             app.insert_resource(crate::map::LoadedMapName(map.clone()));
         }
         app.insert_resource(ClientArgs(self.args.clone()))
+            .insert_resource(self.args.join_choice())
             .add_plugins((
                 fonts::FontsPlugin,
                 input::LocalInputPlugin,
@@ -340,8 +380,9 @@ impl Plugin for ClientPlugin {
                 audio::SoundOptionsPlugin,
                 gamma::GammaPlugin,
                 overview::OverviewPlugin,
+                join_menus::JoinMenusPlugin,
             ))
-            .add_systems(PostStartup, spawn_local_player)
+            .add_systems(PostStartup, (spawn_local_player, join_at_start).chain())
             .add_systems(Update, camera_for_local_player)
             .add_systems(Update, (follow_eye, zoom_camera).after(spectate::SpectateSet));
 
@@ -393,8 +434,8 @@ fn spawn_local_player(
         None => loadout.movement,
     };
 
-    // Counter-terrorists by default (CS:S would ask; `jointeam 2` switches
-    // to the terrorists).
+    // Counter-terrorists by default; a game started on a map shows the
+    // join menus or joins as asked (`join_at_start`).
     let player = spawn_character(&mut commands, at, Team(2), movement);
     let look = args.look.unwrap_or(Vec2::new(spawn_yaw, 0.0));
     commands.entity(player).insert((
@@ -406,6 +447,15 @@ fn spawn_local_player(
         },
     ));
     attach_camera(&mut commands, player, args.debug_view.is_some());
+}
+
+/// A run that starts on a map (`--map`): the local player comes in as
+/// `rules::JoinChoice` says (CS:S's join menus, or on a team at once:
+/// `join_menus::start_game`).
+fn join_at_start(world: &mut World) {
+    if world.resource::<ClientArgs>().0.map.is_some() {
+        join_menus::start_game(world);
+    }
 }
 
 /// The first-person camera on a new local player (one the network sent:
@@ -622,5 +672,20 @@ mod tests {
         let a = args("--map greybox");
         assert!(a.starts_in_game() && a.game_map().is_none());
         assert_eq!(args("--map cs_source:de_nuke").game_map(), Some("cs_source:de_nuke"));
+    }
+
+    #[test]
+    fn the_join_menus_unless_scripted_or_asked_for_a_team() {
+        use crate::rules::JoinChoice;
+        assert_eq!(args("").join_choice(), JoinChoice::Menus);
+        assert_eq!(args("--map cs_source:de_dust2").join_choice(), JoinChoice::Menus);
+        assert_eq!(args("--map cs_source:de_dust2 --screenshot a.png").join_choice(), JoinChoice::Auto);
+        assert_eq!(args("--spawn 0,1,12").join_choice(), JoinChoice::Auto);
+        assert_eq!(args("+map de_dust2 +jointeam 2").join_choice(), JoinChoice::Team(Team(1)));
+        assert_eq!(args("+jointeam 0").join_choice(), JoinChoice::Auto);
+        assert_eq!(args("+spectate").join_choice(), JoinChoice::Team(Team(0)));
+        assert_eq!(args("--screenshot a.png --join menus").join_choice(), JoinChoice::Menus);
+        assert_eq!(args("--join 3").join_choice(), JoinChoice::Team(Team(2)));
+        assert!(Args::parse_from(["--join".to_string(), "x".to_string()]).is_err());
     }
 }

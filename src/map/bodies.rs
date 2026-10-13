@@ -20,7 +20,11 @@ pub struct CharacterModels(pub Arc<Vec<MapCharacterModel>>);
 impl CharacterModels {
     /// The model for `team`: its own, else one without a team, else any.
     pub fn for_team(&self, team: Option<Team>) -> Option<(usize, &MapCharacterModel)> {
-        let all = self.0.iter().enumerate().filter(|(_, m)| m.name.is_none());
+        let all = self
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.name.is_none() && m.class.is_none());
         all.clone()
             .find(|(_, m)| team.is_some() && m.team == team)
             .or_else(|| all.clone().find(|(_, m)| m.team.is_none()))
@@ -28,15 +32,23 @@ impl CharacterModels {
     }
 
     /// The model a character uses: the one its `BodyName` names, else its
-    /// team's.
-    pub fn for_character(&self, team: Option<Team>, name: Option<&BodyName>) -> Option<(usize, &MapCharacterModel)> {
+    /// class's (`core::PlayerClass`), else its team's.
+    pub fn for_character(
+        &self,
+        team: Option<Team>,
+        name: Option<&BodyName>,
+        class: Option<&crate::core::PlayerClass>,
+    ) -> Option<(usize, &MapCharacterModel)> {
         match name {
             Some(n) => self
                 .0
                 .iter()
                 .enumerate()
                 .find(|(_, m)| m.name.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&n.0))),
-            None => self.for_team(team),
+            None => class
+                .filter(|c| c.0 != 0 && c.team() == team)
+                .and_then(|c| self.0.iter().enumerate().find(|(_, m)| m.class == Some(c.0)))
+                .or_else(|| self.for_team(team)),
         }
     }
 }
@@ -107,7 +119,7 @@ pub(super) fn attach_bodies(
     characters: Query<
         (
             Entity,
-            (Option<&Team>, Option<&BodyName>),
+            (Option<&Team>, Option<&BodyName>, Option<&crate::core::PlayerClass>),
             &ColliderAabb,
             &GlobalTransform,
             Option<&Children>,
@@ -123,8 +135,8 @@ pub(super) fn attach_bodies(
     let (Some(models), Some(bodies)) = (models, bodies) else {
         return;
     };
-    for (e, (team, name), aabb, at, children, local) in &characters {
-        let Some((index, _)) = models.for_character(team.copied(), name) else {
+    for (e, (team, name, class), aabb, at, children, local) in &characters {
+        let Some((index, _)) = models.for_character(team.copied(), name, class) else {
             continue;
         };
         let current = children
@@ -406,12 +418,21 @@ pub(super) fn body_seen(parts: Option<&Children>, seen: &Query<&ViewVisibility, 
 /// the game).
 pub(super) fn attach_hitboxes(
     models: Option<Res<CharacterModels>>,
-    characters: Query<(Entity, Option<&Team>, Option<&BodyName>, Option<&BodyModel>), With<crate::core::Intent>>,
+    characters: Query<
+        (
+            Entity,
+            Option<&Team>,
+            Option<&BodyName>,
+            Option<&crate::core::PlayerClass>,
+            Option<&BodyModel>,
+        ),
+        With<crate::core::Intent>,
+    >,
     mut commands: Commands,
 ) {
     let Some(models) = models else { return };
-    for (e, team, name, current) in &characters {
-        let Some((index, m)) = models.for_character(team.copied(), name) else {
+    for (e, team, name, class, current) in &characters {
+        let Some((index, m)) = models.for_character(team.copied(), name, class) else {
             continue;
         };
         if current == Some(&BodyModel(index)) {

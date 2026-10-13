@@ -36,11 +36,14 @@ pub struct VguiOpen {
     pub team: bool,
     /// The spectator menu (`spectator_menu`).
     pub spectator: bool,
+    /// The join menus' message of the day and class menu (`join_menus`).
+    pub motd: bool,
+    pub class: bool,
 }
 
 impl VguiOpen {
     pub fn any(&self) -> bool {
-        self.buy || self.team || self.spectator
+        self.buy || self.team || self.spectator || self.motd || self.class
     }
 }
 
@@ -49,6 +52,9 @@ impl VguiOpen {
 pub(super) enum VguiMenu {
     Buy,
     Team,
+    /// The message of the day and the class menu (`join_menus`).
+    Motd,
+    Class,
     /// Drawn only (no buttons that act): the scoreboard, the spectator
     /// bars.
     Scoreboard,

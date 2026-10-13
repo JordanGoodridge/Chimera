@@ -8,6 +8,23 @@ plan when work starts; delete them when done.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Bomb planting looks like CS 1.6 (user, 2026-10-13)
+
+In CS:S, planting shows the player typing the code on the C4's keypad,
+the digits appearing one by one on the bomb's little screen as they're
+typed; ours shows a 1.6-style progress bar while arming. Ours already
+draws a code on the view model's screen (`client/bomb_fx.rs`,
+`ViewModelScreen`, `BombRules::screen_text`) and plays the arm
+animation, but `client/objectives_hud.rs` also draws `HudProgressBar`
+while arming (CS:S's `cl_c4progressbar` is "while defusing").
+To do: no progress bar while arming (keep it for defusing per
+`cl_c4progressbar`); the digits appear one at a time in step with the
+view model's key presses (check the C4 view model's sequence events /
+timing, and the screen text's reveal), the screen readable on Windows;
+check what other players see (third person: the planting animation,
+the bomb in hand). Compare with a CS:S capture of a plant (first person,
+frames every 0.25 s).
+
 ### Decisions 2026-10-13 (user)
 
 - Refactor: go ahead with engine-split.md "Crates and compile time"
@@ -398,7 +415,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   `client/scoreboard.rs`), and the weapon selection and pickup history
   (`client/weapon_select.rs`; `hud_fastswitch`), matched to CS:S
   captures panel by panel (`refcmp hudcmp`). Left of that pass: the
-  radar's look (zoom, translucency, markers) is ours. The team menu is in (M; you start as CT). The radio
+  radar's look (zoom, translucency, markers) is ours. The team menu is in (M; joining a game shows the message of the day, then the team menu, then the class menu: `client/join_menus.rs`). The radio
   is in (`client/radio.rs`: Z/X/C menus, the calls as console commands,
   "Fire in the hole!" on throws, bots' enemy spotted/down and need
   backup, and bots' own commands and reports: go / stick together /
@@ -408,8 +425,8 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   the spectator bars (`spectator.res`), the radio icon over a teammate's
   head (`sprites/radio`, hidden by walls), and
   text chat (Y / U, `say`, `say_team`). The buy and team menus draw in the game's VGUI look from its `.res` files
-  (`client/vgui.rs`). Left: the class menu (`classmenu_*.res`, needs player
-  models per class),
+  (`client/vgui.rs`), as do the message of the day and the class menu
+  (`client/join_menus.rs`). Left:
   the scoreboard's row spacing (16 units, a guess) and dead rows' look
   checked against CS:S, its map time left beside the clock
   (`mp_timelimit` is in: `rules::game_end::time_left`), the spectator menu in `bottomspectator.res`'s look

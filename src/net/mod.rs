@@ -43,6 +43,7 @@ pub mod interp;
 pub mod mapfx;
 pub mod maps;
 pub mod memory;
+pub mod motd;
 pub mod movers;
 pub mod ordered;
 pub mod predict;
@@ -79,7 +80,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net16");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net17");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -104,7 +105,8 @@ pub const GREYBOX: &str = "greybox";
 /// over its transform) would undo a small correction every tick: a
 /// player standing still 1 ULP away from the server's spot (below the
 /// physics' 0.01 mm tolerance) mispredicted on every tick (found by the
-/// soak, tests/it/heavy/net_soak.rs).
+/// soak, tests/it/heavy/net_soak.rs). Steps that small within a tick are
+/// kept by `core::keep_moved_positions`.
 pub fn canonical_position(world: &mut World, e: Entity) {
     let Some(mut t) = world.get_mut::<Transform>(e) else { return };
     let canonical = t.translation + Vec3::ZERO;
@@ -924,6 +926,26 @@ pub struct TeamRequest {
     pub team: u8,
 }
 
+/// Client -> server: my class (`joinclass`: CS:S's number, 0
+/// auto-select; `rules::join_class`).
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ClassRequest {
+    pub class: u8,
+}
+
+/// The server's message of the day (CS:S's `motd.txt`), shown as a
+/// player joins (`client::join_menus`): `html` the file as written (often
+/// HTML), `text` the plain-text one (`motd_text.txt`) for players with
+/// `cl_disablehtmlmotd 1`. Server -> a client as it is let in; a game of
+/// one's or a listen server's own come from its files (`motd::current`).
+#[derive(Resource, Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ServerMotd {
+    /// The server's name (`hostname`), the panel's title.
+    pub server: String,
+    pub html: String,
+    pub text: String,
+}
+
 /// Client -> server: say this to everyone or the team (`say`,
 /// `say_team`).
 #[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -1125,6 +1147,12 @@ impl Plugin for NetPlugin {
             .ordered::<Team>()
             .replicate::<crate::core::Spectating>()
             .ordered::<crate::core::Spectating>()
+            .replicate::<crate::core::Unassigned>()
+            .ordered::<crate::core::Unassigned>()
+            .replicate::<crate::core::ChoosingClass>()
+            .ordered::<crate::core::ChoosingClass>()
+            .replicate::<crate::core::PlayerClass>()
+            .ordered::<crate::core::PlayerClass>()
             .replicate::<Health>()
             .ordered::<Health>()
             .replicate::<NetMover>()
@@ -1179,6 +1207,9 @@ impl Plugin for NetPlugin {
             .ordered::<NetHostage>()
             .add_client_message::<BuyRequest>(Channel::Ordered)
             .add_client_message::<TeamRequest>(Channel::Ordered)
+            .add_client_message::<ClassRequest>(Channel::Ordered)
+            .add_server_message::<ServerMotd>(Channel::Ordered)
+            .make_message_independent::<ServerMotd>()
             .add_client_message::<SayRequest>(Channel::Ordered)
             .add_client_message::<RadioRequest>(Channel::Ordered)
             .add_server_message::<Notice>(Channel::Ordered)
@@ -1211,6 +1242,7 @@ impl Plugin for NetPlugin {
         app.world_mut().resource_mut::<ProtocolHasher>().add_custom(NET_VERSION);
         server::plugin(app);
         client::plugin(app);
+        motd::plugin(app);
         predict::plugin(app);
         interp::plugin(app);
         movers::plugin(app);

@@ -444,6 +444,10 @@ pub struct MapCharacterModel {
     /// Set for a model only characters that name it use (`BodyName`, e.g.
     /// hostages); such models are never picked by team.
     pub name: Option<String>,
+    /// The player class that wears it (`core::PlayerClass`; CS:S's
+    /// `joinclass` number); such models are never picked by team: a
+    /// team's own is its first class's.
+    pub class: Option<u8>,
     pub model: MapModel,
     pub hitboxes: Vec<crate::core::Hitbox>,
     /// The skeleton the meshes are skinned to, parents before children.
