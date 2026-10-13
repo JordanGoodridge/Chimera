@@ -51,7 +51,7 @@ use mashup::{
     },
     rules::{
         Dead, Score,
-        rounds::{Phase, RoundEndReason, RoundEnded, RoundSettings, RoundState},
+        rounds::{Mvp, Phase, RoundEndReason, RoundEnded, RoundSettings, RoundState},
     },
     slots::Loadout,
     weapon::{
@@ -293,15 +293,24 @@ fn a_full_round_with_two_clients() {
         p => panic!("{p:?}"),
     }
     let s = sim.server.app.world().resource::<RoundSettings>().clone();
+    let killer_id = sim.client_id(0);
     for (i, l) in ended.iter().enumerate() {
+        // The win panel's MVP: the killer as this client knows it.
+        let killer = if i == 0 {
+            sim.local_player(0).unwrap()
+        } else {
+            NetSim::owned_by(&mut sim.clients[i], Some(killer_id)).unwrap()
+        };
+        assert_eq!(l.all.len(), 1, "client {i} heard the round end once");
+        let e = &l.all[0];
+        assert_eq!((e.winner, e.reason), (Some(Team(2)), RoundEndReason::Eliminated), "client {i}");
+        assert_eq!(e.summary.mvp, Some((killer, Mvp::Kills)), "client {i}'s MVP");
         assert_eq!(
-            l.all,
-            vec![RoundEnded {
-                winner: Some(Team(2)),
-                reason: RoundEndReason::Eliminated
-            }],
-            "client {i} heard the round end"
+            e.summary.fun_fact.as_ref().map(|f| f.token.as_str()),
+            Some("funfact_ct_win_no_casualties"),
+            "client {i}"
         );
+        assert!(e.summary.seconds > 0.0, "client {i}: {}", e.summary.seconds);
         match client_phase(&sim, i) {
             Phase::Over { winner, .. } => assert_eq!(winner, Some(Team(2))),
             p => panic!("client {i}: {p:?}"),

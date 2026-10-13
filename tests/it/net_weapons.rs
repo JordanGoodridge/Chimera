@@ -805,6 +805,57 @@ fn everyone_hears_a_hit_and_a_death_once() {
     assert_eq!(count(&heard, "Player.Death"), [1, 1, 1], "the death cry, once each");
 }
 
+/// The damage indicators over the network: client 0 shoots client 1 from
+/// in front; only client 1 hears of it (`net::Hurt` -> `DamageTaken` on
+/// its own player), once, travelling from the shooter toward it, dealt
+/// by someone else. Under god mode nothing reaches the health and
+/// nothing comes.
+#[test]
+fn the_player_hit_is_told_which_way_the_damage_came() {
+    use mashup::core::{DamageTaken, FriendlyFire, God};
+    let mut sim = joined(link(60, 0, 0.0), 52, 3);
+    sim.server.app.insert_resource(FriendlyFire(1));
+    let target = sim.character_of(1).unwrap();
+    place(&mut sim, 0, Vec3::new(0.0, 1.0, 12.0), 0.0);
+    place(&mut sim, 1, Vec3::new(0.0, 1.0, 4.0), 0.0);
+    place(&mut sim, 2, Vec3::new(4.0, 1.0, 6.0), 0.0);
+    sim.ticks(80);
+    let victim_id = sim.client_id(1);
+    let victim_here = NetSim::owned_by(&mut sim.clients[0], Some(victim_id)).unwrap();
+    let mut told: Vec<Log<DamageTaken>> = (1..=3).map(|app| Log::<DamageTaken>::new(&sim, app)).collect();
+    let shoot = |sim: &mut NetSim, told: &mut Vec<Log<DamageTaken>>| {
+        let me = sim.local_player(0).unwrap();
+        let w = sim.clients[0].app.world();
+        let eye = w.get::<Transform>(me).unwrap().translation + w.get::<MovementState>(me).unwrap().eye_offset;
+        let body = w.get::<Transform>(victim_here).unwrap().translation;
+        let (yaw, pitch) = look_at(eye, body + Vec3::Y * 0.2);
+        let mut i = client_intent(sim, 0);
+        i.yaw = yaw;
+        i.pitch = pitch;
+        i.fire = true;
+        let mut logs: Vec<&mut dyn Poll> = told.iter_mut().map(|l| l as &mut dyn Poll).collect();
+        step(sim, &mut logs);
+        client_intent(sim, 0).fire = false;
+        steps(sim, 60, &mut logs);
+    };
+    shoot(&mut sim, &mut told);
+    let health = sim.server.app.world().get::<Health>(target).unwrap().current;
+    assert!(health < 1.0, "hit: {health}");
+    assert!(told[0].all.is_empty() && told[2].all.is_empty(), "only the victim's client hears of it");
+    let me = sim.local_player(1).unwrap();
+    assert_eq!(told[1].all.len(), 1, "once: {:?}", told[1].all);
+    let t = &told[1].all[0];
+    assert_eq!(t.damage.target, me);
+    assert!(t.directed, "dealt by someone else");
+    assert!((t.damage.amount - (1.0 - health)).abs() < 1e-4, "{} vs {}", t.damage.amount, 1.0 - health);
+    // The shooter stands at +Z of the victim: the shot travels -Z.
+    assert!(t.damage.dir.z < -0.9, "{:?}", t.damage.dir);
+    // God mode: nothing reaches the health, nothing is shown.
+    sim.server.app.world_mut().entity_mut(target).insert(God);
+    shoot(&mut sim, &mut told);
+    assert_eq!(told[1].all.len(), 1, "god mode takes nothing: {:?}", told[1].all);
+}
+
 /// The weapon `id` in `e`'s inventory in `w`.
 fn carried(w: &World, e: Entity, id: &str) -> Option<Entity> {
     w.get::<Inventory>(e)?

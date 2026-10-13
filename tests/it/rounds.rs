@@ -519,3 +519,74 @@ fn the_time_limit_ends_a_deathmatch_game() {
     assert!(sim.app.world().resource::<FreezeTime>().0);
     let _ = p;
 }
+
+/// `mp_autoteambalance` (CS:S's default 1): a side two players larger
+/// gives one to the other as the next round starts (computer players
+/// first, the fewest kills, the highest entity: ours, capture C11);
+/// never onto a side the map has no spawns for; 0 leaves teams alone.
+#[test]
+fn uneven_teams_are_balanced_as_the_next_round_starts() {
+    use mashup::{core::SpawnPoint, rules::Score};
+    let run = |balance: &str, ct_spawns: bool| {
+        let mut sim = Sim::new(());
+        sim.app.world_mut().spawn(SpawnPoint { team: Some(Team(1)) });
+        if ct_spawns {
+            sim.app.world_mut().spawn(SpawnPoint { team: Some(Team(2)) });
+        }
+        let ts: Vec<Entity> = (0..3)
+            .map(|i| sim.spawn_character(Vec3::new(i as f32 * 4.0, 1.0, 0.0), placeholder::ID))
+            .collect();
+        let ct = sim.spawn_character(Vec3::new(0.0, 1.0, 8.0), placeholder::ID);
+        for &e in &ts {
+            sim.app.world_mut().entity_mut(e).insert(Team(1));
+        }
+        sim.app.world_mut().entity_mut(ct).insert(Team(2));
+        sim.app
+            .world_mut()
+            .resource_mut::<Console>()
+            .submit(&format!("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1; mp_autoteambalance {balance}"));
+        sim.ticks(3);
+        // The first terrorist has kills: it stays.
+        sim.app.world_mut().entity_mut(ts[0]).insert(Score { kills: 3, deaths: 0 });
+        assert_eq!(sim.app.world().resource::<RoundState>().number, 1);
+        kill(&mut sim, ts[0], ct);
+        assert!(matches!(phase(&sim), Phase::Over { .. }), "{:?}", phase(&sim));
+        sim.seconds(5.2);
+        assert_eq!(sim.app.world().resource::<RoundState>().number, 2, "the next round");
+        let teams: Vec<u8> = ts.iter().map(|e| sim.app.world().get::<Team>(*e).unwrap().0).collect();
+        // Which of the two without kills is the higher entity.
+        (teams, if ts[2] > ts[1] { 2 } else { 1 })
+    };
+    let (teams, moves) = run("1", true);
+    let mut want = vec![1, 1, 1];
+    want[moves] = 2;
+    assert_eq!(teams, want, "one of the fewest kills moves; 2 against 2");
+    let run = |balance: &str, spawns: bool| run(balance, spawns).0;
+    assert_eq!(run("0", true), vec![1, 1, 1], "off");
+    assert_eq!(run("1", false), vec![1, 1, 1], "no counter-terrorist spawns");
+}
+
+/// `mp_tkpunish 1`: a team killer dies as the next round starts (CS:S's
+/// default 0 leaves it alone).
+#[test]
+fn tkpunish_kills_team_killers_as_the_next_round_starts() {
+    use mashup::core::Health;
+    for punish in [0, 1] {
+        let (mut sim, t, ct, ct2) = setup();
+        sim.app
+            .world_mut()
+            .resource_mut::<Console>()
+            .submit(&format!("mp_friendlyfire 1; mp_tkpunish {punish}"));
+        sim.seconds(1.2);
+        assert!(matches!(phase(&sim), Phase::Live { .. }));
+        kill(&mut sim, ct, ct2);
+        kill(&mut sim, t, ct);
+        assert!(matches!(phase(&sim), Phase::Over { .. }), "{:?}", phase(&sim));
+        sim.seconds(5.2);
+        assert_eq!(sim.app.world().resource::<RoundState>().number, 2);
+        sim.ticks(3);
+        let alive = |e| sim.app.world().get::<Health>(e).unwrap().current > 0.0;
+        assert_eq!(alive(ct), punish == 0, "mp_tkpunish {punish}: the team killer");
+        assert!(alive(ct2) && alive(t), "the others live");
+    }
+}

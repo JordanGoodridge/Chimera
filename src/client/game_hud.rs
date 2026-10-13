@@ -631,11 +631,13 @@ fn update(
     }
 }
 
-/// The round's result across the screen ("Terrorists Win!") until the
-/// next round starts.
+/// The round's result until the next round starts: the game's win panel
+/// (`client::win_panel`), or without its layout the result across the
+/// screen ("Terrorists Win!").
 #[derive(Component)]
 struct RoundBanner;
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn round_banner(
     mut ended: MessageReader<crate::rules::rounds::RoundEnded>,
     rounds: Option<Res<RoundState>>,
@@ -644,7 +646,8 @@ fn round_banner(
     sounds: Option<Res<crate::map::RoundSounds>>,
     mut play: MessageWriter<crate::map::PlaySound>,
     mut was_live: Local<bool>,
-    fonts: Res<UiFonts>,
+    (fonts, hud, settings): (Res<UiFonts>, Option<Res<ActiveHud>>, Option<Res<crate::net::NetSettings>>),
+    who: Query<(Option<&Name>, Has<LocalPlayer>, Option<&crate::net::NetCharacter>)>,
     mut commands: Commands,
 ) {
     use crate::rules::rounds::{ATTACKERS, DEFENDERS, Phase};
@@ -674,8 +677,31 @@ fn round_banner(
     }
     let text = end.reason.text(end.winner);
     let h = windows.iter().next().map_or(480.0, |w| w.height());
+    let w = windows.iter().next().map_or(640.0, |w| w.width());
     for e in &banner {
         commands.entity(e).despawn();
+    }
+    if let Some(hud) = hud.as_deref() {
+        let root = commands
+            .spawn((
+                RoundBanner,
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                GlobalZIndex(45),
+            ))
+            .id();
+        let name = |e: Entity| match who.get(e) {
+            Ok((name, local, net)) => super::shown_name(e, local, net, name, settings.as_deref()),
+            Err(_) => menus_string(hud, "winpanel_former_player", "A Former Player"),
+        };
+        if super::win_panel::spawn(&mut commands, root, hud, &fonts, Vec2::new(w, h), end, &name) {
+            return;
+        }
+        commands.entity(root).despawn();
     }
     commands.spawn((
         RoundBanner,
@@ -694,6 +720,15 @@ fn round_banner(
         TextLayout::justify(Justify::Center),
         GlobalZIndex(45),
     ));
+}
+
+/// A game string from the HUD's menus, else `fallback`.
+fn menus_string(hud: &ActiveHud, token: &str, fallback: &str) -> String {
+    hud.0
+        .menus
+        .as_ref()
+        .map_or(fallback, |m| m.string(token, fallback))
+        .to_string()
 }
 
 /// The notice lines: attacker, weapon glyph, headshot glyph, victim, in

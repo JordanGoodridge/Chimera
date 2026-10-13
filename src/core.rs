@@ -556,6 +556,19 @@ pub struct Radio {
     pub command: String,
 }
 
+/// Damage that reached a character's health (after the rules: not
+/// refused, not under `God`): for the victim's HUD (the damage
+/// indicators). A network client gets its own player's from the server
+/// (`net::Hurt`), with `damage.attacker` None and `directed` saying
+/// whether someone else dealt it.
+#[derive(Message, Clone, Debug)]
+pub struct DamageTaken {
+    pub damage: Damage,
+    /// Dealt by someone other than the victim (a shot, a grenade), so it
+    /// has a side to come from.
+    pub directed: bool,
+}
+
 /// Something's health reached zero.
 #[derive(Message, Clone, Debug)]
 pub struct Died {
@@ -1203,6 +1216,7 @@ pub fn apply_damage(
     mut health: Query<&mut Health, Without<God>>,
     rules: DamageRules,
     mut died: MessageWriter<Died>,
+    mut taken: MessageWriter<DamageTaken>,
 ) {
     for d in damage.read() {
         if rules.refuse(d) {
@@ -1213,6 +1227,10 @@ pub fn apply_damage(
             continue;
         }
         h.current -= d.amount;
+        taken.write(DamageTaken {
+            damage: d.clone(),
+            directed: d.attacker.is_some_and(|a| a != d.target),
+        });
         if h.current <= 0.0 {
             h.current = 0.0;
             died.write(Died {
@@ -1285,6 +1303,7 @@ impl Plugin for CorePlugin {
             .add_message::<Explosion>()
             .add_message::<Deafened>()
             .add_message::<Died>()
+            .add_message::<DamageTaken>()
             .add_message::<Radio>()
             .init_resource::<FriendlyFire>()
             .add_systems(FixedUpdate, apply_damage.after(SimSet::Weapons).run_if(authoritative))

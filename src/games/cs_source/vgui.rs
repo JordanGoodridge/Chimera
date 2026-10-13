@@ -221,6 +221,7 @@ const TEAM_MENU: &str = "resource/ui/teammenu.res";
 const SCOREBOARD: &str = "resource/ui/scoreboard.res";
 const SPECTATOR: &str = "resource/ui/spectator.res";
 const SPECTATOR_MENU: &str = "resource/ui/bottomspectator.res";
+const WIN_PANEL: &str = "resource/ui/win_round.res";
 /// The spectator menu's drop-downs' entries (command menu definitions).
 const SPECTATOR_OPTIONS: &str = "resource/spectatormenu.res";
 const SPECTATOR_MODES: &str = "resource/spectatormodes.res";
@@ -306,7 +307,7 @@ pub(crate) fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str)
     let mut queue: Vec<String> = BUY_PAGES.iter().map(|(_, p)| p.to_string()).collect();
     queue.push(BUY_FALLBACK.into());
     queue.push(TEAM_MENU.into());
-    queue.extend([SCOREBOARD, SPECTATOR, SPECTATOR_MENU].map(String::from));
+    queue.extend([SCOREBOARD, SPECTATOR, SPECTATOR_MENU, WIN_PANEL].map(String::from));
     let mut seen = std::collections::HashSet::new();
     while let Some(path) = queue.pop() {
         let key = layout_key(&path);
@@ -372,6 +373,7 @@ pub(crate) fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str)
     menus.team = menus.layouts.contains_key(TEAM_MENU).then(|| TEAM_MENU.to_string());
     let have = |path: &str| menus.layouts.contains_key(path).then(|| path.to_string());
     (menus.scoreboard, menus.spectator, menus.spectator_menu) = (have(SCOREBOARD), have(SPECTATOR), have(SPECTATOR_MENU));
+    menus.win_panel = have(WIN_PANEL);
     for (path, list) in [
         (SPECTATOR_OPTIONS, &mut menus.spectator_options),
         (SPECTATOR_MODES, &mut menus.spectator_modes),

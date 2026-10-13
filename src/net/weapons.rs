@@ -29,14 +29,14 @@ use bevy::{app::RunFixedMainLoopSystems, prelude::*};
 use bevy_replicon::prelude::*;
 
 use super::{
-    Detonation, DropRequest, FireBullets, HitConfirm, Killed, NetCharacter, NetHeld, NetItem, NetSmoke, Senses,
-    WeaponFx,
+    Detonation, DropRequest, FireBullets, HitConfirm, Hurt, Killed, NetCharacter, NetHeld, NetItem, NetSmoke,
+    Senses, WeaponFx,
     interp::{Around, InterpClock, Snapshots},
     server::Player,
     weapon_fx,
 };
 use crate::{
-    core::{Blinded, Damage, DamageKind, Deafened, Died, Hitgroup, LocalPlayer, NetRole},
+    core::{Blinded, Damage, DamageKind, DamageTaken, Deafened, Died, Hitgroup, LocalPlayer, NetRole},
     map::{
         PlaySound,
         interp::{InterpSystems, NetDrawn, SNAP_SPEED},
@@ -64,7 +64,7 @@ pub(super) fn plugin(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
-            (send_weapon_events, send_detonations, send_senses, send_deaths)
+            (send_weapon_events, send_detonations, send_senses, send_hurts, send_deaths)
                 .before(ServerSystems::Send)
                 .run_if(server()),
         )
@@ -76,6 +76,7 @@ pub(super) fn plugin(app: &mut App) {
                 receive_fx,
                 receive_detonations,
                 receive_senses,
+                receive_hurts,
                 start_smokes,
                 receive_deaths,
                 receive_hits,
@@ -381,6 +382,56 @@ fn send_senses(
         out.write(ToClients {
             targets: SendTargets::Single(ClientId::Client(client)),
             message: Senses { blind, hearing: heard },
+        });
+    }
+}
+
+/// Damage that reached a player's health, to its own client (the damage
+/// indicators).
+fn send_hurts(
+    mut taken: MessageReader<DamageTaken>,
+    players: Query<(Entity, &Player)>,
+    mut out: MessageWriter<ToClients<Hurt>>,
+) {
+    for t in taken.read() {
+        for (client, _) in players.iter().filter(|(_, p)| p.character == t.damage.target) {
+            out.write(ToClients {
+                targets: SendTargets::Single(ClientId::Client(client)),
+                message: Hurt {
+                    amount: t.damage.amount,
+                    dir: t.damage.dir.to_array(),
+                    kind: kind_number(t.damage.kind),
+                    directed: t.directed,
+                },
+            });
+        }
+    }
+}
+
+/// Our player hurt: as `DamageTaken` here (the server applied it).
+fn receive_hurts(
+    mut hurts: MessageReader<Hurt>,
+    me: Option<Single<(Entity, &Transform), With<LocalPlayer>>>,
+    mut taken: MessageWriter<DamageTaken>,
+) {
+    let Some((me, at)) = me.map(|m| *m) else {
+        hurts.clear();
+        return;
+    };
+    for h in hurts.read() {
+        taken.write(DamageTaken {
+            damage: Damage {
+                target: me,
+                attacker: None,
+                amount: h.amount,
+                point: at.translation,
+                dir: Vec3::from_array(h.dir),
+                hitgroup: Hitgroup::Generic,
+                kind: KINDS.get(h.kind as usize).copied().unwrap_or_default(),
+                weapon: None,
+                force: Vec3::ZERO,
+            },
+            directed: h.directed,
         });
     }
 }

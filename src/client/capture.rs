@@ -283,6 +283,11 @@ fn start_views(
         for mut w in &mut windows {
             w.present_mode = bevy::window::PresentMode::AutoNoVsync;
         }
+        commands.queue(|w: &mut World| {
+            if let Some(mut l) = w.get_resource_mut::<super::perf::FrameLimit>() {
+                l.fps_max = 0.0;
+            }
+        });
         info!("timing {} views at {}x{}", views.len(), size.x, size.y);
     } else {
         info!("capturing {} views into {}", views.len(), dir.display());

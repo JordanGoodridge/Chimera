@@ -39,7 +39,69 @@ impl Plugin for SensesPlugin {
             .init_resource::<AfterImage>()
             .init_resource::<ViewShake>()
             .add_systems(Startup, spawn_overlay)
-            .add_systems(Update, (flash_overlay, local_hearing, shake.before(super::follow_eye)));
+            .add_systems(Update, (flash_overlay, local_hearing, shake.before(super::follow_eye)))
+            .add_systems(Update, fade_to_black);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// mp_fadetoblack
+
+/// Seconds the view takes to go black after death with `mp_fadetoblack 1`
+/// (ours: unmeasured).
+const FADE_TO_BLACK: f32 = 1.0;
+
+#[derive(Component)]
+struct BlackOverlay;
+
+/// How black the view is `since` seconds after death (`mp_fadetoblack`).
+pub fn black_alpha(since: Option<f32>) -> f32 {
+    since.map_or(0.0, |s| (s / FADE_TO_BLACK).clamp(0.0, 1.0))
+}
+
+/// `mp_fadetoblack 1`: a dead player's view fades to black (under the
+/// HUD) and stays black until it lives again; spectators and the living
+/// see as usual.
+fn fade_to_black(
+    rule: Option<Res<crate::rules::FadeToBlack>>,
+    me: Option<Single<(Has<crate::rules::Dead>, Has<crate::core::Spectating>), With<LocalPlayer>>>,
+    overlay: Query<(Entity, &mut BackgroundColor), With<BlackOverlay>>,
+    time: Res<Time>,
+    mut died_at: Local<Option<f32>>,
+    mut commands: Commands,
+) {
+    let dead = rule.is_some_and(|r| r.0 != 0) && me.is_some_and(|m| m.0 && !m.1);
+    let now = time.elapsed_secs();
+    *died_at = match (dead, *died_at) {
+        (true, None) => Some(now),
+        (true, at) => at,
+        (false, _) => None,
+    };
+    let alpha = black_alpha(died_at.map(|t| now - t));
+    let mut overlay = overlay;
+    match overlay.iter_mut().next() {
+        Some((e, mut bg)) => {
+            if alpha <= 0.0 {
+                commands.entity(e).despawn();
+            } else {
+                bg.set_if_neq(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, alpha)));
+            }
+        }
+        None if alpha > 0.0 => {
+            commands.spawn((
+                BlackOverlay,
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: percent(100.0),
+                    height: percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, alpha)),
+                Pickable::IGNORE,
+                GlobalZIndex(32),
+            ));
+        }
+        None => {}
     }
 }
 
@@ -283,6 +345,14 @@ fn shake(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fade_to_black_over_a_second_after_death() {
+        assert_eq!(black_alpha(None), 0.0, "alive");
+        assert_eq!(black_alpha(Some(0.0)), 0.0);
+        assert!((black_alpha(Some(0.5)) - 0.5).abs() < 1e-6);
+        assert_eq!(black_alpha(Some(3.0)), 1.0, "then black");
+    }
 
     #[test]
     fn overlay_holds_then_fades_with_its_after_image() {

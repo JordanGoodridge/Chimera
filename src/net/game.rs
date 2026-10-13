@@ -44,7 +44,7 @@ use crate::{
     },
     rules::{
         Score,
-        rounds::{Phase, RoundEndReason, RoundEnded, RoundState},
+        rounds::{FunFact, Mvp, Phase, RoundEndReason, RoundEnded, RoundState, RoundSummary},
     },
     weapon::{
         Armor, Inventory,
@@ -170,6 +170,8 @@ fn write_round(world: &mut World) {
         },
         hostages: [tally.total, tally.rescued, tally.killed],
         game_over: state.game_over.is_some(),
+        // Whole ticks, so it doesn't change with the clock's rounding.
+        map_started: state.map_started.map(|s| t(s).round()),
     };
     let have = world.query::<(Entity, &NetRound)>().iter(world).next().map(|(e, r)| (e, r.clone()));
     match have {
@@ -363,13 +365,26 @@ pub(super) fn notify(world: &mut World, client: Entity, text: String) {
 }
 
 /// Round ends, to every client.
-fn send_round_over(mut ended: MessageReader<RoundEnded>, mut out: MessageWriter<ToClients<RoundOver>>) {
+fn send_round_over(
+    mut ended: MessageReader<RoundEnded>,
+    replicated: Query<(), With<Replicated>>,
+    mut out: MessageWriter<ToClients<RoundOver>>,
+) {
     for e in ended.read() {
+        let s = &e.summary;
+        let known = |p: Option<Entity>| p.filter(|p| replicated.contains(*p));
+        let mvp = s.mvp.filter(|(p, _)| replicated.contains(*p));
         out.write(ToClients {
             targets: SendTargets::CLIENTS_ONLY,
             message: RoundOver {
                 winner: e.winner.map(|t| t.0),
                 reason: REASONS.iter().position(|r| *r == e.reason).unwrap_or(0) as u8,
+                mvp: mvp.map(|(p, _)| p),
+                mvp_reason: mvp.map_or(0, |(_, why)| Mvp::ALL.iter().position(|m| *m == why).unwrap_or(0) as u8),
+                fun_fact: s.fun_fact.as_ref().map(|f| f.token.clone()),
+                fun_fact_player: s.fun_fact.as_ref().and_then(|f| known(f.player)),
+                fun_fact_values: s.fun_fact.as_ref().map_or_else(Vec::new, |f| f.values.clone()),
+                seconds: s.seconds,
             },
         });
     }
@@ -643,6 +658,8 @@ fn apply_round(world: &mut World) {
         if state.game_over != over {
             state.game_over = over;
         }
+        // The map's clock (`timeleft`, the scoreboard's time left).
+        state.map_started = r.map_started.map(t);
     }
     let window = BuyWindow(r.buy_closed.clone().map_or(Ok(()), Err));
     if world.get_resource::<BuyWindow>().is_none_or(|w| w.0 != window.0) {
@@ -812,9 +829,19 @@ fn apply_own(
 /// The round's end: the banner and the announcer (`RoundEnded`).
 fn receive_round_over(mut over: MessageReader<RoundOver>, mut ended: MessageWriter<RoundEnded>) {
     for o in over.read() {
+        let real = |p: Option<Entity>| p.filter(|p| *p != Entity::PLACEHOLDER);
         ended.write(RoundEnded {
             winner: o.winner.map(Team),
             reason: REASONS[(o.reason as usize).min(REASONS.len() - 1)],
+            summary: RoundSummary {
+                mvp: real(o.mvp).map(|p| (p, Mvp::ALL[(o.mvp_reason as usize).min(Mvp::ALL.len() - 1)])),
+                fun_fact: o.fun_fact.clone().map(|token| FunFact {
+                    token,
+                    player: real(o.fun_fact_player),
+                    values: o.fun_fact_values.clone(),
+                }),
+                seconds: o.seconds,
+            },
         });
     }
 }

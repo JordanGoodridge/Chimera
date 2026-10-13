@@ -15,7 +15,7 @@ use mashup::{
         bomb::{BombOutcome, BombState, C4 as C4Part, LooseKit, PlantedBomb, carried_bomb},
         hostages::{Hostage, HostageTally},
     },
-    rules::rounds::{Phase, RoundEndReason, RoundEnded, RoundState},
+    rules::rounds::{Mvp, Phase, RoundEndReason, RoundEnded, RoundState},
     weapon::{
         Inventory, Weapon,
         drop::Loose,
@@ -353,6 +353,13 @@ fn a_round_gives_one_terrorist_the_bomb_and_the_explosion_wins() {
     let end = ended(&sim).expect("round over");
     assert_eq!(end.winner, Some(Team(1)));
     assert_eq!(end.reason, RoundEndReason::TargetBombed);
+    // The win panel: the planter is the MVP; the terrorists won with
+    // every one of them dead, killed by the CT (3 kills).
+    assert_eq!(end.summary.mvp, Some((t, Mvp::BombPlant)));
+    assert_eq!(
+        end.summary.fun_fact.as_ref().map(|f| (f.token.as_str(), f.player, f.values.clone())),
+        Some(("funfact_t_win_no_kills", None, vec![]))
+    );
     // O13: terrorists +3500; the CT the loss bonus (and +300 per kill).
     assert_eq!(money(&sim, t), t_before + 3500);
     assert_eq!(money(&sim, ct), ct_before + 1400);
@@ -381,6 +388,7 @@ fn a_defused_bomb_wins_for_the_defenders_and_pays_the_planters_too() {
     sim.seconds(10.2);
     let end = ended(&sim).expect("round over");
     assert_eq!((end.winner, end.reason), (Some(Team(2)), RoundEndReason::BombDefused));
+    assert_eq!(end.summary.mvp, Some((ct, Mvp::BombDefuse)), "the defuser is the MVP");
     // O14's money: CTs +3500, terrorists the loss bonus + 800.
     assert_eq!(money(&sim, ct), c0 + 3500);
     assert_eq!(money(&sim, t), t0 + 1400 + 800);
@@ -397,6 +405,7 @@ fn bomb_maps_end_on_time_for_the_defenders_and_on_elimination() {
     sim.seconds(62.0);
     let end = ended(&sim).expect("round over");
     assert_eq!((end.winner, end.reason), (Some(Team(2)), RoundEndReason::TargetSaved));
+    assert_eq!(end.summary.mvp, None, "no kills, no MVP");
     assert_eq!(money(&sim, ct), c0 + 3250);
     // O20: all CTs dead after a plant: terrorists at once.
     sim.seconds(5.5);

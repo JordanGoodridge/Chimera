@@ -81,10 +81,12 @@ restarts.
    tests/it/heavy/map_objectives.rs (dust2 A, cs_office). Left: see backlog §3.
 5. Done (2026-10-13, `rules::game_end`): `mp_timelimit`, `mp_maxrounds`,
    `mp_winlimit`, `mp_chattime`, the intermission and the next map of the
-   install's map cycle; `timeleft`. Left: team switching rules
-   (autoteambalance; `mp_limitteams` is in) and the capture C9 in
-   docs/plans/active/parity-gaps.md (CS:S's defaults, what its
-   intermission shows).
+   install's map cycle; `timeleft`. Team balance
+   (`mp_autoteambalance`, `rules::balance_teams`), `mp_tkpunish` and the
+   round's win panel (`RoundSummary`) followed in parity round 2. Left:
+   the captures C9, C11 and C12 in docs/plans/active/parity-gaps.md
+   (CS:S's defaults, its intermission, who balancing moves, the panel's
+   choices).
 
 ## Decision log
 

@@ -85,6 +85,19 @@ impl Plugin for WeaponSelectPlugin {
                 Ok(None)
             });
         }
+        app.console_command("cancelselect", "Close the weapon selection without picking.", |w, _| {
+            w.resource_mut::<WeaponMenu>().cancel();
+            Ok(None)
+        });
+    }
+}
+
+impl WeaponMenu {
+    /// Close the selection row, picking nothing (`cancelselect`).
+    pub fn cancel(&mut self) {
+        self.shown_for = None;
+        self.choosing = false;
+        self.highlighted = None;
     }
 }
 
@@ -686,6 +699,19 @@ pub fn text_width(font: &dyn Fn(&str) -> Option<(GlyphFont, f32)>, name: &str, t
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelselect_closes_the_selection_without_a_pick() {
+        let mut m = WeaponMenu {
+            highlighted: Some(Entity::from_raw_u32(4).unwrap()),
+            shown_for: Some(0.5),
+            choosing: true,
+            ..Default::default()
+        };
+        m.cancel();
+        assert_eq!((m.highlighted, m.shown_for, m.choosing), (None, None, false));
+        assert_eq!(m.select, None, "nothing picked");
+    }
 
     #[test]
     fn slot_keys_pick_the_first_then_cycle() {
