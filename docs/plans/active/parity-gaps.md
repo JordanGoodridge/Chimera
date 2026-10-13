@@ -23,19 +23,20 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 
 | Area | have | differs | missing | fixed now |
 |---|---|---|---|---|
-| Movement | 3 | 6 | 2 | 0 |
-| Weapons, recoil, spread | 4 | 8 | 3 | 3 |
-| Sounds | 5 | 10 | 5 | 3 |
-| HUD | 9 | 6 | 5 | 0 |
-| Menus and commands | 6 | 4 | 10 | 3 |
-| Rendering, lighting, materials | 4 | 14 | 2 | 0 |
-| Maps and entities | 3 | 10 | 2 | 0 |
-| Rules and economy | 4 | 5 | 4 | 0 |
+| Movement | 2 | 7 | 2 | 0 |
+| Weapons, recoil, spread | 5 | 8 | 2 | 3 |
+| Sounds | 6 | 7 | 5 | 3 |
+| HUD | 9 | 5 | 4 | 0 |
+| Menus and commands | 7 | 4 | 9 | 4 |
+| Rendering, lighting, materials | 4 | 16 | 2 | 0 |
+| Maps and entities | 4 | 10 | 1 | 0 |
+| Rules and economy | 5 | 4 | 2 | 1 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **42** | **65** | **37** | **9** |
+| **Total** | **46** | **67** | **31** | **11** |
 
-"Fixed now" counts items that moved from missing or differs to have in
-this pass (they are counted under have above).
+"Fixed now" counts rows that moved from missing or differs to have in
+this pass (counted under have; `invnext` and `autobuy` appear under
+both Weapons and Menus: 9 fixes in all).
 
 ## refcmp: the maps with reference captures
 
@@ -65,7 +66,18 @@ report folders):
   and the cooling towers turn blue-grey, where CS:S shows the mountains
   plainly with a light haze. Ours divides the sky_camera's fog distances
   by its scale (nuke: 512-11000 over 16); dust2's scale is 4, so there it
-  only thickens the haze a little. See "3D skybox fog" below.
+  only thickens the haze a little. Tried here without the division
+  (both `map::material_fog` and the sky camera's `DistanceFog`): nuke's
+  mountains then match CS:S and nuke's mean falls 0.0241 -> 0.0238
+  (`cam1` 0.027 -> 0.020, `cam4` 0.034 -> 0.027), but cs_office's skyline
+  (its 3D skybox: scale 16, fog 0-15000) loses the haze CS:S has (`cam0`
+  0.036 -> 0.041) and dust2 doesn't change. One rule doesn't fit both,
+  so the division stays until capture C10 says what nuke's mountains are
+  (3D geometry or the 2D sky `de_cobble_hdr` behind fully fogged
+  geometry). Without the fog, nuke's cooling towers (`coolingtower.mdl`,
+  a VertexLitGeneric static prop in the 3D skybox, no baked `.vhv`) show
+  dark teal where CS:S's are light grey: their light probe in the
+  skybox is wrong (a separate gap, listed under Rendering).
 - de_aztec `zone0_*`: the difference is texture-level noise over the
   bump-mapped walls and the grass blend (luma equal to 0.001), plus
   the sky at the top: filtering, not light.
@@ -208,6 +220,8 @@ common console commands, against mashup's.
 | Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models" |
 | Prop light probes | differs | L | M | tech-debt |
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; capture listed in backlog |
+| 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
+| Static props lit in the 3D skybox (nuke's cooling towers teal, CS:S light grey) | differs | M | M | seen once the sky fog is off; their light probe (no `.vhv`); capture C10 |
 | Blood decals on characters | missing | M | M | backlog 3 "Decals, remaining" |
 | Motion blur, colour correction options | missing | L | M | video-settings.md (greyed) |
 
@@ -354,6 +368,13 @@ says what decides the open point.
   shot from the left, right, front and behind (a bot with `bot_stop 1`
   turned toward you by `setang`, `ent_fire !picker` with a USP, or a
   second client): the arcs' place, colour and fade.
+- **C10 3D skybox fog and lighting (de_nuke, cs_office).** On the
+  refcmp views `cam16` and `cam2` (de_nuke) and `cam0` (cs_office):
+  captures with `r_3dsky 0`, with `fog_override 1; fog_enableskybox 0`,
+  and as they are. Decides whether nuke's far mountains are 3D skybox
+  geometry or the 2D sky, so whether the sky_camera's fog distances are
+  in skybox or world units (`map::material_fog`); the cooling towers'
+  colour without fog says what their light probe should give.
 - **C9 Defaults.** `mp_flashlight`, `mp_timelimit`, `mp_maxrounds`,
   `mp_winlimit`, `mp_chattime`, `mp_autoteambalance`, `mp_limitteams`,
   `fps_max` values on a fresh listen server started from Create Server
