@@ -187,7 +187,31 @@ impl Plugin for CapturePlugin {
                 Ok(Some(format!("saving {}", path.display())))
             },
         );
+        app.console_command(
+            "jpeg",
+            "Save the window as it is now to the screenshots folder, named after the map (CS:S's F5; a PNG here).",
+            |w, _| {
+                let dir = dirs::data_local_dir()
+                    .ok_or("no per-user data folder")?
+                    .join("mashup")
+                    .join("screenshots");
+                std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+                let map = w
+                    .get_resource::<crate::map::LoadedMapName>()
+                    .map_or("screenshot".to_string(), |m| m.0.rsplit(':').next().unwrap_or("map").to_string());
+                let path = numbered_shot(&dir, &map);
+                w.spawn(Screenshot::primary_window()).observe(save_to_disk(path.clone()));
+                Ok(Some(format!("saving {}", path.display())))
+            },
+        );
     }
+}
+
+/// CS:S's screenshot names: the map and the first free four-digit number
+/// (`de_dust20000.png`).
+pub fn numbered_shot(dir: &std::path::Path, map: &str) -> PathBuf {
+    let name = |n: u32| dir.join(format!("{map}{n:04}.png"));
+    (0..10000).map(name).find(|p| !p.exists()).unwrap_or_else(|| name(9999))
 }
 
 fn countdown(mut commands: Commands, args: Res<ClientArgs>, mut frame: Local<u32>, mut exit: MessageWriter<AppExit>) {
@@ -643,4 +667,17 @@ fn report_text(w: &mut World, note: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn jpeg_names_take_the_next_free_number() {
+        let dir = std::env::temp_dir().join(format!("mashup-jpeg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(super::numbered_shot(&dir, "de_dust2"), dir.join("de_dust20000.png"));
+        std::fs::write(dir.join("de_dust20000.png"), b"").unwrap();
+        assert_eq!(super::numbered_shot(&dir, "de_dust2"), dir.join("de_dust20001.png"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

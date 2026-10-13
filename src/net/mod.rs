@@ -79,7 +79,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net13");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net14");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -356,7 +356,8 @@ impl NetCmd {
 
     /// Write into an intent, made safe first (never trust a client): the
     /// move axis at most 1 long, finite angles, yaw in [0, 2 pi), pitch
-    /// within straight up and down, a weapon slot key 0-9. The command
+    /// within straight up and down, a weapon slot key 0-9 or a pick
+    /// (`Intent::pick`). The command
     /// number stays (stamped each tick). A client puts its own intent
     /// through this too before it simulates (`normalize`), so both sides
     /// simulate the same values.
@@ -378,7 +379,7 @@ impl NetCmd {
         i.reload = on(RELOAD);
         i.last_weapon = on(LAST_WEAPON);
         i.use_key = on(USE);
-        i.select = self.select.filter(|s| *s < 10);
+        i.select = self.select.filter(|s| *s < crate::core::PICK_SLOTS * (crate::core::PICK_DEPTH + 1));
     }
 
     /// The intent as the server will simulate it (`of`, then `apply`),
@@ -786,6 +787,8 @@ pub struct NetRound {
     pub bomb: u8,
     /// Hostages this round: total, rescued, killed.
     pub hostages: [u32; 3],
+    /// The game on the map is over: the intermission (`RoundState::game_over`).
+    pub game_over: bool,
 }
 
 /// `NetRound::phase`.

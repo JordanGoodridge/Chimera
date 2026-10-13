@@ -364,3 +364,158 @@ fn survivors_keep_their_clip_and_reload_in_the_freeze() {
     sim.seconds(3.0);
     assert_eq!(clip(&sim), full, "reloaded in the round");
 }
+
+/// `autobuy` buys down CS:S's default list (one primary: the CT's first
+/// is the M4A1), `rebuy` buys again what was carried after the last buy
+/// (the player's lists are its `cl_autobuy` / `cl_rebuy` userinfo).
+#[test]
+fn autobuy_takes_the_list_and_rebuy_restores_the_last_buy() {
+    use mashup::{
+        core::LocalPlayer,
+        games::cs_source::{
+            TICK_INTERVAL,
+            grenades::FLASHBANG,
+            weapons::{CsWeaponsPlugin, M4A1},
+        },
+        greybox::GreyboxMapPlugin,
+        weapon::{
+            Armor, Inventory, Weapon,
+            economy::{DefuseKit, buy},
+            grenade::Throwable,
+        },
+    };
+    let mut sim = Sim::new((GreyboxMapPlugin, CsWeaponsPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    let ct = sim.spawn_character(Vec3::new(4.0, 1.0, 0.0), placeholder::ID);
+    sim.app.world_mut().entity_mut(ct).insert((Team(2), LocalPlayer));
+    sim.app
+        .world_mut()
+        .resource_mut::<Console>()
+        .submit("mp_freezetime 5; mashup_rounds 1");
+    sim.ticks(3);
+    sim.app.world_mut().entity_mut(ct).insert(Money(16000));
+    let carried = |sim: &Sim, id: &str| -> Option<Entity> {
+        let w = sim.app.world();
+        w.get::<Inventory>(ct)?
+            .weapons
+            .iter()
+            .copied()
+            .find(|g| w.get::<Weapon>(*g).is_some_and(|x| x.id == id))
+    };
+    // m4a1 (ak47 is the terrorists'), ammo, kit, kevlar and helmet.
+    let said = buy(sim.app.world_mut(), ct, "autobuy").unwrap();
+    assert!(said.contains("m4a1"), "{said}");
+    assert!(carried(&sim, M4A1).is_some());
+    let w = sim.app.world();
+    assert_eq!(w.get::<Armor>(ct).map(|a| (a.amount, a.helmet)), Some((1.0, true)));
+    assert!(w.get::<DefuseKit>(ct).is_some());
+    // 3100 + 90 rounds 5.56 (3 x 60) + .45 (7 x 25) + 200 + 1000.
+    assert_eq!(money(&sim, ct), 16000 - 3100 - 180 - 175 - 200 - 1000);
+    // Only one primary: famas and the rest are skipped, and a second
+    // autobuy with the M4A1 carried buys no other gun.
+    assert!(!said.contains("famas"), "{said}");
+    buy(sim.app.world_mut(), ct, "flashbang").unwrap();
+    buy(sim.app.world_mut(), ct, "flashbang").unwrap();
+    // Lost it all (a death): rebuy brings back the rifle, its ammo, the
+    // kit, the armour and both flashbangs.
+    let m4 = carried(&sim, M4A1).unwrap();
+    let flash = carried(&sim, FLASHBANG).unwrap();
+    {
+        let w = sim.app.world_mut();
+        w.get_mut::<Inventory>(ct).unwrap().weapons.retain(|e| *e != m4 && *e != flash);
+        w.despawn(m4);
+        w.despawn(flash);
+        w.entity_mut(ct).remove::<(Armor, DefuseKit)>();
+        w.entity_mut(ct).insert(Money(16000));
+    }
+    sim.ticks(2);
+    let said = buy(sim.app.world_mut(), ct, "rebuy").unwrap();
+    assert!(carried(&sim, M4A1).is_some(), "{said}");
+    let flash = carried(&sim, FLASHBANG).expect("flashbangs");
+    let w = sim.app.world();
+    assert_eq!(w.get::<Throwable>(flash).unwrap().count, 2, "{said}");
+    assert!(w.get::<Armor>(ct).is_some_and(|a| a.helmet), "{said}");
+    assert!(w.get::<DefuseKit>(ct).is_some(), "{said}");
+    // Nothing missing: nothing to rebuy but ammo, which is full.
+    assert!(buy(sim.app.world_mut(), ct, "rebuy").is_err());
+}
+
+/// `mp_maxrounds`: once the last round's end pause runs out the game on
+/// the map is over: everyone held still through the intermission
+/// (`mp_chattime`), then the next map of the cycle (`map <name>` without
+/// a network), or, with no cycle, a fresh game on this one.
+#[test]
+fn the_game_ends_after_mp_maxrounds_with_an_intermission() {
+    use mashup::{
+        core::FreezeTime,
+        rules::game_end::MapCycle,
+    };
+    let (mut sim, t, ct, ct2) = setup();
+    sim.app
+        .world_mut()
+        .resource_mut::<Console>()
+        .submit("mp_maxrounds 1; mp_chattime 2");
+    sim.seconds(1.2);
+    kill(&mut sim, t, ct);
+    kill(&mut sim, t, ct2);
+    assert!(matches!(phase(&sim), Phase::Over { .. }));
+    assert!(sim.app.world().resource::<RoundState>().game_over.is_none());
+    // The end pause (5 s), then the intermission instead of round 2.
+    sim.seconds(5.2);
+    let state = sim.app.world().resource::<RoundState>().clone();
+    assert!(state.game_over.is_some(), "{state:?}");
+    assert_eq!(state.number, 1);
+    assert!(sim.app.world().resource::<FreezeTime>().0, "held still");
+    assert!(sim.app.world().resource::<BuyWindow>().0.is_err());
+    let start = sim.position(t);
+    sim.intent(t).move_axis = Vec2::Y;
+    sim.ticks(10);
+    assert!((sim.position(t) - start).with_y(0.0).length() < 0.01, "frozen in the intermission");
+    sim.intent(t).move_axis = Vec2::ZERO;
+    // No map cycle: a fresh game here once it ends.
+    sim.seconds(2.2);
+    let state = sim.app.world().resource::<RoundState>().clone();
+    assert!(state.game_over.is_none(), "{state:?}");
+    assert_eq!((state.number, state.wins), (1, [0, 0]));
+    // With a cycle, the next map is asked for (`map`, standing in here
+    // for the client's).
+    sim.app.world_mut().resource_mut::<Console>().add_command(mashup::console::Command {
+        name: "map".into(),
+        help: String::new(),
+        run: std::sync::Arc::new(|_, a| Ok(Some(format!("loading {}", a.join(" "))))),
+        complete: None,
+    });
+    sim.app.world_mut().insert_resource(MapCycle {
+        maps: vec!["de_dust2".into(), "de_aztec".into()],
+        current: "de_dust2".into(),
+    });
+    sim.seconds(1.2);
+    kill(&mut sim, t, ct);
+    kill(&mut sim, t, ct2);
+    sim.seconds(7.5);
+    let out: Vec<String> = sim.app.world().resource::<Console>().output.iter().map(|l| l.text.clone()).collect();
+    assert!(out.iter().any(|l| l.contains("loading de_aztec")), "{:?}", &out[out.len().saturating_sub(5)..]);
+    assert_eq!(sim.app.world().resource::<RoundState>().game_over, Some(f64::INFINITY), "held until it loads");
+}
+
+/// `mp_timelimit` in deathmatch: the intermission comes when the time is
+/// up, not at a round's end; `timeleft` says what is left.
+#[test]
+fn the_time_limit_ends_a_deathmatch_game() {
+    use mashup::core::FreezeTime;
+    let mut sim = Sim::new(());
+    let p = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), placeholder::ID);
+    sim.app
+        .world_mut()
+        .resource_mut::<Console>()
+        .submit("mp_timelimit 0.05; timeleft");
+    sim.ticks(3);
+    let said = |sim: &Sim| sim.app.world().resource::<Console>().output.iter().map(|l| l.text.clone()).collect::<Vec<_>>();
+    assert!(said(&sim).iter().any(|l| l.starts_with("Time remaining on map: 0:0")), "{:?}", said(&sim));
+    sim.seconds(2.0);
+    assert!(sim.app.world().resource::<RoundState>().game_over.is_none());
+    sim.seconds(1.5);
+    assert!(sim.app.world().resource::<RoundState>().game_over.is_some(), "3 s are up");
+    assert!(sim.app.world().resource::<FreezeTime>().0);
+    let _ = p;
+}

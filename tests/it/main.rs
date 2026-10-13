@@ -65,6 +65,7 @@ mod teams;
 mod view_model_spec;
 mod view_models;
 mod wav_decode;
+mod weapon_select;
 mod weapons;
 
 // Combat Arms: local, git-ignored files (.gitignore), present where

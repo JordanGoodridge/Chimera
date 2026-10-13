@@ -261,7 +261,9 @@ fn update(
         (Some(b), Some(m)) => super::binds::pressed(&b.binds, &keys, m, "+showscores"),
         _ => false,
     };
-    let show = shown((tab && !typing) || held.showscores, menu.as_deref());
+    // The intermission at the end of a map's game shows it too.
+    let over = rounds.as_ref().is_some_and(|r| r.game_over.is_some());
+    let show = shown((tab && !typing) || held.showscores || over, menu.as_deref());
     if !show && last.is_some() {
         // Hidden: its rows go (the next game draws its own; a map
         // unloading takes the last game's with it).

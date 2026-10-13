@@ -393,10 +393,11 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   (`client/vgui.rs`). Left: the class menu (`classmenu_*.res`, needs player
   models per class),
   the scoreboard's row spacing (16 units, a guess) and dead rows' look
-  checked against CS:S, its map time left beside the clock (no
-  `mp_timelimit`), the spectator menu in `bottomspectator.res`'s look
+  checked against CS:S, its map time left beside the clock
+  (`mp_timelimit` is in: `rules::game_end::time_left`), the spectator menu in `bottomspectator.res`'s look
   (ours is two plain lists; duck opens it) and the freeze cam panel (`freezepanel_basic.res`),
-  autobuy / rebuy / favourites, checking the widescreen placement against
+  the buy menu's favourites (autobuy and rebuy are in: `cl_autobuy`,
+  `cl_rebuy`), checking the widescreen placement against
   the game, other game messages in the chat (team joins, bomb pickups
   and drops are in), bots' answers checked against a bot behaviour spec
   (`ignorerad`, bots answering and carrying out radio commands and
@@ -410,8 +411,9 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   (`client/widgets.rs`; docs/plans/active/ui-parity.md). Left: what
   that plan lists as left (the console as a VGUI frame, the greyed
   controls whose features may come), binds for
-  the keyboard actions greyed in the options (`invprev`,
-  `+voicerecord`, `autobuy`, ...), comparing the look with CS:S's
+  the keyboard actions greyed in the options (`+voicerecord`,
+  `impulse 100`, `nightvision`, ...; `invnext`/`invprev`, `autobuy`,
+  `rebuy` and `jpeg` are in), comparing the look with CS:S's
   (refcmp has no menu views).
 - The main menu is in: startup without a map shows CS:S's (its
   background picture, the title in its logo font, `GameMenu.res`'s

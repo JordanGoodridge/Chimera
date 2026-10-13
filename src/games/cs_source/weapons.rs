@@ -376,6 +376,8 @@ fn prices() -> crate::weapon::economy::Prices {
     p.starting_reserve.insert(GLOCK, 40);
     p.starting_reserve.insert(USP, 24);
     p.ammo_sound = Some(AMMO_SOUND.into());
+    p.pickup_sound = Some(PICKUP_SOUND.into());
+    p.item_sound = Some(ITEM_SOUND.into());
     // Computer players mostly buy the team rifles (ours; CS:S's bot
     // profiles aren't in the spec).
     for (id, weight) in BOT_WEIGHTS {
@@ -437,6 +439,11 @@ const BOT_WEIGHTS: &[(&str, f32)] = &[
 
 /// The sound of buying ammo (Source's generic ammo pickup entry).
 pub const AMMO_SOUND: &str = "BaseCombatCharacter.AmmoPickup";
+/// A weapon picked up or bought (`items/itempickup.wav`).
+pub const PICKUP_SOUND: &str = "Player.PickupWeapon";
+/// Kevlar, a helmet or a defuse kit bought (`items/ammopickup.wav`; which
+/// entry CS:S plays for items is inferred, docs/tech-debt.md).
+pub const ITEM_SOUND: &str = "BaseCombatCharacter.ItemPickup2";
 
 /// CS:S's buy menu: its categories on their number keys (6 and 7 buy
 /// primary and secondary ammo at once) and items in its order; each team

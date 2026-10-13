@@ -65,7 +65,14 @@ impl Plugin for ConsoleUiPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Update, (overlay_text, watch_text))
+            .add_systems(
+                Update,
+                (
+                    overlay_text,
+                    watch_text,
+                    follow_map_cycle.run_if(resource_exists::<crate::rules::game_end::MapCycle>),
+                ),
+            )
             .add_systems(Last, save_on_exit);
         overlay_cvars(app);
         client_commands(app);
@@ -1753,6 +1760,40 @@ pub(super) fn map_names() -> Vec<String> {
             names
         })
         .clone()
+}
+
+/// The install's map cycle (`games::cs_source::map_cycle`), its maps
+/// those installed (cached).
+fn map_cycle() -> Vec<String> {
+    static CYCLE: Mutex<Option<Vec<String>>> = Mutex::new(None);
+    let mut cached = CYCLE.lock().unwrap_or_else(|e| e.into_inner());
+    cached
+        .get_or_insert_with(|| {
+            let Some(path) = crate::mount::config::LocalConfig::load()
+                .ok()
+                .and_then(|c| c.game_path(crate::games::cs_source::GAME))
+            else {
+                return Vec::new();
+            };
+            let Ok(mount) = crate::games::cs_source::mount::open(&path) else {
+                return Vec::new();
+            };
+            crate::games::cs_source::map_cycle(&mount)
+        })
+        .clone()
+}
+
+/// The rules' map cycle follows the map loaded (the end of a game moves
+/// on to the next one: `rules::game_end`).
+fn follow_map_cycle(name: Option<Res<crate::map::LoadedMapName>>, mut cycle: ResMut<crate::rules::game_end::MapCycle>) {
+    let Some(name) = name.filter(|n| n.is_changed()) else { return };
+    let short = crate::net::maps::map_name(&name.0).to_string();
+    if cycle.current != short {
+        cycle.current = short;
+    }
+    if cycle.maps.is_empty() {
+        cycle.maps = map_cycle();
+    }
 }
 
 /// Where a map comes from: the game's own content, its download folder, or

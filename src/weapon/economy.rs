@@ -46,6 +46,10 @@ pub struct Prices {
     pub starting_reserve: HashMap<&'static str, u32>,
     /// Sound entry played when ammo is bought.
     pub ammo_sound: Option<String>,
+    /// Sound entry played when a weapon is bought or picked up.
+    pub pickup_sound: Option<String>,
+    /// Sound entry played when armour or a defuse kit is bought.
+    pub item_sound: Option<String>,
 }
 
 /// A box of ammo: its price and the rounds in it.
@@ -147,6 +151,250 @@ pub fn buy_or_ask(world: &mut World, owner: Entity, name: &str) -> Result<Option
 /// money, replaces a weapon in the same slot (dropped, as CS:S does).
 /// Returns what happened.
 pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
+    let lower = name.to_lowercase();
+    match lower.as_str() {
+        "autobuy" => return autobuy_list(world, owner),
+        "rebuy" => return rebuy(world, owner),
+        _ => {}
+    }
+    let bought = buy_quietly(world, owner, name)?;
+    // What rebuy buys again: everything carried after a buy.
+    let snapshot = RebuySnapshot::of(world, owner);
+    world.entity_mut(owner).insert(snapshot);
+    let prices = world.resource::<Prices>();
+    let sound = if AMMO_BUYS.iter().any(|(n, ..)| *n == lower) {
+        prices.ammo_sound.clone()
+    } else if matches!(lower.as_str(), "vest" | "vesthelm" | "defuser") {
+        prices.item_sound.clone()
+    } else {
+        prices.pickup_sound.clone()
+    };
+    owner_sound(world, owner, sound);
+    Ok(bought)
+}
+
+/// The userinfo keys of the player's autobuy and rebuy lists (CS:S's
+/// client cvars, which its client fills from `cfg/autobuy.txt` and
+/// `cfg/rebuy.txt`).
+pub const AUTOBUY_KEY: &str = "cl_autobuy";
+pub const REBUY_KEY: &str = "cl_rebuy";
+
+/// The lists a player without its own use: CS:S's `cfg/autobuy_default.txt`
+/// and `cfg/rebuy_default.txt` (their entries, in their order).
+pub const AUTOBUY_DEFAULT: &str = "m4a1 ak47 famas galil p90 mp5 primammo secammo defuser vesthelm vest";
+pub const REBUY_DEFAULT: &str =
+    "PrimaryWeapon PrimaryAmmo Defuser Armor HEGrenade Flashbang SmokeGrenade SecondaryWeapon SecondaryAmmo NightVision";
+
+/// The local player's `cl_autobuy` and `cl_rebuy` (sent as userinfo).
+#[derive(Resource, Clone, Debug, PartialEq)]
+pub struct BuyLists {
+    pub autobuy: String,
+    pub rebuy: String,
+}
+
+impl Default for BuyLists {
+    fn default() -> Self {
+        Self {
+            autobuy: AUTOBUY_DEFAULT.into(),
+            rebuy: REBUY_DEFAULT.into(),
+        }
+    }
+}
+
+/// A player's list (`key`) from its userinfo, else the default.
+fn user_list(world: &World, owner: Entity, key: &str, default: &str) -> Vec<String> {
+    let list = world
+        .get::<crate::core::UserInfo>(owner)
+        .and_then(|u| u.0.get(key).cloned())
+        .unwrap_or_else(|| default.to_string());
+    list.split_whitespace().map(str::to_lowercase).take(32).collect()
+}
+
+/// CS:S's buy aliases that aren't the weapon's own name.
+fn alias(name: &str) -> &str {
+    match name {
+        "mp5" => "mp5navy",
+        other => other,
+    }
+}
+
+/// The slot of the weapon `name` buys, if it names one.
+fn weapon_slot(world: &World, name: &str) -> Option<u8> {
+    let registry = world.resource::<WeaponRegistry>();
+    let wanted = if name.contains(':') || name.starts_with("weapon_") {
+        name.to_string()
+    } else {
+        format!("weapon_{name}")
+    };
+    let id = registry.find(&wanted)?.id;
+    weapon_slots(registry).into_iter().find(|(w, _)| *w == id).map(|(_, s)| s)
+}
+
+/// The weapon `owner` carries in `slot`, if any.
+fn carried_in(world: &World, owner: Entity, slot: u8) -> Option<&'static str> {
+    let inv = world.get::<Inventory>(owner)?;
+    inv.weapons
+        .iter()
+        .filter_map(|w| world.get::<Weapon>(*w))
+        .find(|w| w.slot == slot)
+        .map(|w| w.id)
+}
+
+/// `autobuy` (CS:S's F1): the player's `cl_autobuy` list in order, each
+/// entry bought if it can be; once a primary (or secondary) weapon is
+/// bought, later ones are skipped (the list file's rule). Primaries are
+/// skipped too while one is carried (ours: buying would drop it; CS:S's
+/// unmeasured).
+fn autobuy_list(world: &mut World, owner: Entity) -> Result<String, String> {
+    let list = user_list(world, owner, AUTOBUY_KEY, AUTOBUY_DEFAULT);
+    let (mut got, mut why) = (Vec::new(), None);
+    let mut primary = carried_in(world, owner, 0).is_some();
+    let mut secondary = false;
+    for entry in list {
+        let name = alias(&entry).to_string();
+        let slot = weapon_slot(world, &name);
+        if (slot == Some(0) && primary) || (slot == Some(1) && secondary) {
+            continue;
+        }
+        match buy(world, owner, &name) {
+            Ok(_) => {
+                primary |= slot == Some(0);
+                secondary |= slot == Some(1);
+                got.push(name);
+            }
+            Err(e) => why = Some(e),
+        }
+    }
+    if got.is_empty() {
+        return Err(why.unwrap_or_else(|| "Nothing to buy.".into()));
+    }
+    Ok(format!("autobuy: {}", got.join(" ")))
+}
+
+/// What a player carried after its last buy (CS:S's rebuy snapshot):
+/// weapon IDs in the primary and secondary slots, armour (helmet),
+/// grenades by weapon ID and count, a defuse kit.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct RebuySnapshot {
+    pub primary: Option<&'static str>,
+    pub secondary: Option<&'static str>,
+    pub armor: Option<bool>,
+    pub grenades: Vec<(&'static str, GrenadeKind, u32)>,
+    pub defuser: bool,
+}
+
+impl RebuySnapshot {
+    pub fn of(world: &World, owner: Entity) -> Self {
+        let mut grenades = Vec::new();
+        if let Some(inv) = world.get::<Inventory>(owner) {
+            for w in &inv.weapons {
+                if let (Some(weapon), Some(t)) = (world.get::<Weapon>(*w), world.get::<Throwable>(*w)) {
+                    grenades.push((weapon.id, t.effect.kind(), t.count));
+                }
+            }
+        }
+        Self {
+            primary: carried_in(world, owner, 0),
+            secondary: carried_in(world, owner, 1),
+            armor: world.get::<Armor>(owner).filter(|a| a.amount > 0.0).map(|a| a.helmet),
+            grenades,
+            defuser: world.get::<DefuseKit>(owner).is_some(),
+        }
+    }
+}
+
+/// `rebuy` (CS:S's F2): what the player carried after its last buy
+/// (`RebuySnapshot`), bought again by the categories of its `cl_rebuy`
+/// list in order (the rebuy list file's names); what is still carried is
+/// skipped. Rebuying takes no new snapshot, so a round short of money
+/// doesn't forget what it couldn't afford (ours; CS:S's unmeasured).
+fn rebuy(world: &mut World, owner: Entity) -> Result<String, String> {
+    let Some(snap) = world.get::<RebuySnapshot>(owner).cloned() else {
+        return Err("Nothing to rebuy.".into());
+    };
+    let list = user_list(world, owner, REBUY_KEY, REBUY_DEFAULT);
+    let mut wanted: Vec<String> = Vec::new();
+    for category in list {
+        let now = RebuySnapshot::of(world, owner);
+        let grenade = |kind: GrenadeKind| -> Vec<String> {
+            let had = snap.grenades.iter().find(|g| g.1 == kind);
+            let has = now.grenades.iter().find(|g| g.1 == kind).map_or(0, |g| g.2);
+            had.map(|(id, _, n)| vec![id.to_string(); n.saturating_sub(has) as usize])
+                .unwrap_or_default()
+        };
+        let items: Vec<String> = match category.as_str() {
+            "primaryweapon" => snap.primary.filter(|p| now.primary != Some(*p)).map(String::from).into_iter().collect(),
+            "secondaryweapon" => snap
+                .secondary
+                .filter(|p| now.secondary != Some(*p))
+                .map(String::from)
+                .into_iter()
+                .collect(),
+            "primaryammo" => vec!["primammo".into()],
+            "secondaryammo" => vec!["secammo".into()],
+            "defuser" if snap.defuser && !now.defuser => vec!["defuser".into()],
+            "armor" => match (snap.armor, now.armor) {
+                (Some(true), Some(true)) | (Some(false), Some(_)) | (None, _) => Vec::new(),
+                (Some(true), _) => vec!["vesthelm".into()],
+                (Some(false), None) => vec!["vest".into()],
+            },
+            "hegrenade" => grenade(GrenadeKind::Blast),
+            "flashbang" => grenade(GrenadeKind::Flash),
+            "smokegrenade" => grenade(GrenadeKind::Smoke),
+            _ => Vec::new(),
+        };
+        for item in items {
+            // Ammo for a gun not carried, or a full reserve: nothing.
+            if buy_without_snapshot(world, owner, &item).is_ok() {
+                wanted.push(item);
+            }
+        }
+    }
+    if wanted.is_empty() {
+        return Err("Nothing to rebuy.".into());
+    }
+    Ok(format!("rebuy: {}", wanted.join(" ")))
+}
+
+/// `buy` without taking a rebuy snapshot.
+fn buy_without_snapshot(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
+    let before = world.get::<RebuySnapshot>(owner).cloned();
+    let result = buy(world, owner, name);
+    match before {
+        Some(s) => {
+            world.entity_mut(owner).insert(s);
+        }
+        None => {
+            world.entity_mut(owner).remove::<RebuySnapshot>();
+        }
+    }
+    result
+}
+
+/// Play `entry` from `owner` as a sound of the rules (buying, picking
+/// up): a network server's clients hear it too.
+pub fn owner_sound(world: &mut World, owner: Entity, entry: Option<String>) {
+    let Some(entry) = entry.filter(|_| world.contains_resource::<Messages<crate::map::PlaySound>>()) else {
+        return;
+    };
+    let at = world.get::<Transform>(owner).map(|t| t.translation);
+    let sound = crate::map::PlaySound {
+        pitch: None,
+        entry,
+        at,
+        volume: None,
+        source: Some(owner),
+        channel: None,
+    };
+    if world.contains_resource::<Messages<crate::map::GameSound>>() {
+        world.write_message(crate::map::GameSound(sound));
+    } else {
+        world.write_message(sound);
+    }
+}
+
+/// `buy` without its sound.
+fn buy_quietly(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
     world.resource::<BuyWindow>().0.clone()?;
     if world.get::<Money>(owner).is_some()
         && let Some(why) = cannot_buy_here(world, owner)
@@ -272,7 +520,6 @@ pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, Strin
 /// described; unmeasured).
 fn buy_ammo(world: &mut World, owner: Entity, slot: u8, fill: bool) -> Result<String, String> {
     let prices = world.resource::<Prices>();
-    let sound = prices.ammo_sound.clone();
     let held = world.get::<Inventory>(owner).map(|i| i.weapons.clone()).unwrap_or_default();
     let Some((weapon, ammo)) = held.into_iter().find_map(|w| {
         let id = world.get::<Weapon>(w).filter(|x| x.slot == slot)?.id;
@@ -305,23 +552,6 @@ fn buy_ammo(world: &mut World, owner: Entity, slot: u8, fill: bool) -> Result<St
         bought += 1;
         if !fill {
             break;
-        }
-    }
-    if let Some(entry) = sound.filter(|_| world.contains_resource::<Messages<crate::map::PlaySound>>()) {
-        let at = world.get::<Transform>(owner).map(|t| t.translation);
-        let sound = crate::map::PlaySound {
-            pitch: None,
-            entry,
-            at,
-            volume: None,
-            source: Some(owner),
-            channel: None,
-        };
-        // The rules' sound: a network server's clients hear it too.
-        if world.contains_resource::<Messages<crate::map::GameSound>>() {
-            world.write_message(crate::map::GameSound(sound));
-        } else {
-            world.write_message(sound);
         }
     }
     Ok(format!("bought {bought} box{}", if bought == 1 { "" } else { "es" }))

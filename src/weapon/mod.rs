@@ -202,6 +202,26 @@ impl Plugin for WeaponPlugin {
             console.archive(drop::AUTO_SWITCH_KEY);
             console.userinfo(drop::AUTO_SWITCH_KEY);
         }
+        app.init_resource::<economy::BuyLists>();
+        crate::console::resource_cvar::<economy::BuyLists, String>(
+            app,
+            economy::AUTOBUY_KEY,
+            "What autobuy buys, in order (CS:S's cfg/autobuy.txt aliases: m4a1 ak47 ... primammo vesthelm; sent to the server as userinfo).",
+            |l| &mut l.autobuy,
+        );
+        crate::console::resource_cvar::<economy::BuyLists, String>(
+            app,
+            economy::REBUY_KEY,
+            "The order rebuy buys in (CS:S's cfg/rebuy.txt categories: PrimaryWeapon PrimaryAmmo Defuser Armor ...; sent to the server as userinfo).",
+            |l| &mut l.rebuy,
+        );
+        {
+            let mut console = app.world_mut().resource_mut::<Console>();
+            for key in [economy::AUTOBUY_KEY, economy::REBUY_KEY] {
+                console.archive(key);
+                console.userinfo(key);
+            }
+        }
         crate::console::resource_cvar::<drop::DebugPickup, u8>(
             app,
             "mashup_debug_pickup",
@@ -277,6 +297,16 @@ impl Plugin for WeaponPlugin {
                 economy::buy_or_ask(w, player, &name)
             },
         );
+        // CS:S's F1 and F2 (and the buy menu's Autobuy and Rebuy buttons).
+        for (name, help) in [
+            ("autobuy", "Buy what cl_autobuy lists, in order (one primary, one secondary; in a buy zone, in the buy time)."),
+            ("rebuy", "Buy again what you carried after your last buy, in cl_rebuy's order."),
+        ] {
+            app.console_command(name, help, move |w, _| {
+                let player = local_player(w)?;
+                economy::buy_or_ask(w, player, name)
+            });
+        }
         // CS:S's ammo commands (`,` and `.` run buyammo1/2 by default);
         // `buy primammo`/`buy secammo` fill the reserve instead.
         for (name, slot, _) in economy::AMMO_BUYS.into_iter().filter(|(_, _, fill)| !fill) {
@@ -1043,24 +1073,29 @@ fn select_weapons(
     for (owner, intent, mut inv, at) in &mut owners {
         inv.weapons.retain(|w| weapons.contains(*w));
         // Slot keys on press: the first weapon in that slot, or the next one
-        // after the active weapon when several share it.
+        // after the active weapon when several share it; a pick (the HUD's
+        // selection) names its weapon's place in the slot.
         if intent.select != inv.prev_select
-            && let Some(slot) = intent.select
+            && let Some(select) = intent.select
         {
+            let (slot, nth) = Intent::picked(select);
             let in_slot: Vec<Entity> = inv
                 .weapons
                 .iter()
                 .copied()
                 .filter(|w| weapons.get(*w).is_ok_and(|(w, ..)| w.slot == slot))
                 .collect();
-            let next = match inv.active.and_then(|a| in_slot.iter().position(|w| *w == a)) {
-                Some(i) => in_slot[(i + 1) % in_slot.len()],
-                None => match in_slot.first() {
-                    Some(w) => *w,
-                    None => {
-                        inv.prev_select = intent.select;
-                        continue;
-                    }
+            let next = match nth.and_then(|n| in_slot.get(n as usize)) {
+                Some(w) => *w,
+                None => match inv.active.and_then(|a| in_slot.iter().position(|w| *w == a)) {
+                    Some(i) => in_slot[(i + 1) % in_slot.len()],
+                    None => match in_slot.first() {
+                        Some(w) => *w,
+                        None => {
+                            inv.prev_select = intent.select;
+                            continue;
+                        }
+                    },
                 },
             };
             inv.wanted = Some(next);

@@ -17,7 +17,7 @@
 
 use bevy::prelude::*;
 
-use super::{Dead, put_at_spawn};
+use super::{Dead, game_end::GameLimits, put_at_spawn};
 use crate::{
     console::{ConsoleAppExt, resource_cvar},
     core::{Died, FreezeTime, Health, Intent, Team},
@@ -128,6 +128,14 @@ pub struct RoundState {
     losses: [u32; 2],
     /// When `mp_restartgame` restarts the game (seconds since startup).
     pub restart_at: Option<f64>,
+    /// Rounds drawn (with `wins`, the rounds played: `mp_maxrounds`).
+    pub draws: u32,
+    /// When this game on the map started (`mp_timelimit`; set by the
+    /// rules' first step).
+    pub map_started: Option<f64>,
+    /// The game on this map is over (`game_end`): the intermission runs
+    /// until then, everyone held still and the scoreboard up.
+    pub game_over: Option<f64>,
 }
 
 impl Default for RoundState {
@@ -138,6 +146,9 @@ impl Default for RoundState {
             wins: [0; 2],
             losses: [0; 2],
             restart_at: None,
+            draws: 0,
+            map_started: None,
+            game_over: None,
         }
     }
 }
@@ -270,6 +281,17 @@ pub(super) fn run_rounds(world: &mut World) {
     let settings = world.resource::<RoundSettings>().clone();
     let now = world.resource::<Time>().elapsed_secs_f64();
     restart_when_due(world, settings.enabled != 0, now);
+    if world.resource::<RoundState>().map_started.is_none() {
+        world.resource_mut::<RoundState>().map_started = Some(now);
+    }
+    // The game on this map is over: the intermission, then the next map.
+    if let Some(until) = world.resource::<RoundState>().game_over {
+        hold_intermission(world);
+        if now >= until {
+            super::game_end::next_map(world);
+        }
+        return;
+    }
     let phase = world.resource::<RoundState>().phase;
     // The dead drop their weapon in rounds, not in deathmatch.
     let drops = crate::weapon::drop::DeathDrops(settings.enabled != 0);
@@ -277,11 +299,19 @@ pub(super) fn run_rounds(world: &mut World) {
         world.insert_resource(drops);
     }
     if settings.enabled == 0 {
-        if phase != Phase::Off {
-            *world.resource_mut::<RoundState>() = RoundState::default();
+        if phase != Phase::Off || world.get_resource::<FreezeTime>().is_some_and(|f| f.0) {
+            let started = world.resource::<RoundState>().map_started;
+            *world.resource_mut::<RoundState>() = RoundState {
+                map_started: started,
+                ..default()
+            };
             world.insert_resource(BuyWindow::default());
             world.insert_resource(FreezeTime(false));
             world.insert_resource(RoundOpen(true));
+        }
+        let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
+        if super::game_end::reached(limits, state, now, false) {
+            super::game_end::begin(world, now);
         }
         return;
     }
@@ -318,7 +348,15 @@ pub(super) fn run_rounds(world: &mut World) {
                 world.write_message(RoundEnded { winner, reason });
             }
         }
-        Phase::Over { until, .. } if now >= until => start_round(world, &settings, now, false),
+        Phase::Over { until, .. } if now >= until => {
+            let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
+            if super::game_end::reached(limits, state, now, true) {
+                super::game_end::begin(world, now);
+                hold_intermission(world);
+                return;
+            }
+            start_round(world, &settings, now, false)
+        }
         _ => {}
     }
     // Buying: during the freeze and the buy period after it.
@@ -342,6 +380,19 @@ pub(super) fn run_rounds(world: &mut World) {
     let open = matches!(world.resource::<RoundState>().phase, Phase::Live { .. });
     if world.get_resource::<RoundOpen>().is_none_or(|o| o.0 != open) {
         world.insert_resource(RoundOpen(open));
+    }
+}
+
+/// The intermission: nobody moves, shoots or buys.
+fn hold_intermission(world: &mut World) {
+    if world.get_resource::<FreezeTime>().is_none_or(|f| !f.0) {
+        world.insert_resource(FreezeTime(true));
+    }
+    if world.resource::<BuyWindow>().0.is_ok() {
+        world.insert_resource(BuyWindow(Err("The game is over.".into())));
+    }
+    if world.get_resource::<RoundOpen>().is_none_or(|o| o.0) {
+        world.insert_resource(RoundOpen(false));
     }
 }
 
@@ -414,6 +465,9 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
     // Bonuses: the winners' fixed one, the losers' growing with the streak
     // (a draw pays both the loss bonus).
     let mut bonus = [0u32; 2];
+    if winner.is_none() {
+        state.draws += 1;
+    }
     for (i, team) in [ATTACKERS, DEFENDERS].into_iter().enumerate() {
         if winner == Some(team) {
             state.wins[i] += 1;

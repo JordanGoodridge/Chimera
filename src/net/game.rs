@@ -169,6 +169,7 @@ fn write_round(world: &mut World) {
             (None, None) => bomb_outcome::NONE,
         },
         hostages: [tally.total, tally.rescued, tally.killed],
+        game_over: state.game_over.is_some(),
     };
     let have = world.query::<(Entity, &NetRound)>().iter(world).next().map(|(e, r)| (e, r.clone()));
     match have {
@@ -638,12 +639,16 @@ fn apply_round(world: &mut World) {
         if state.wins != r.wins {
             state.wins = r.wins;
         }
+        let over = r.game_over.then_some(f64::INFINITY);
+        if state.game_over != over {
+            state.game_over = over;
+        }
     }
     let window = BuyWindow(r.buy_closed.clone().map_or(Ok(()), Err));
     if world.get_resource::<BuyWindow>().is_none_or(|w| w.0 != window.0) {
         world.insert_resource(window);
     }
-    let frozen = r.phase == round_phase::FREEZE;
+    let frozen = r.phase == round_phase::FREEZE || r.game_over;
     if world.get_resource::<crate::core::FreezeTime>().is_none_or(|f| f.0 != frozen) {
         world.insert_resource(crate::core::FreezeTime(frozen));
     }

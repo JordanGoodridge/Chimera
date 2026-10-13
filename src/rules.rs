@@ -2,6 +2,7 @@
 //! then respawn at a spawn point with full health and fresh starting
 //! weapons; kills and deaths are counted.
 
+pub mod game_end;
 pub mod rounds;
 
 use avian3d::prelude::*;
@@ -29,6 +30,7 @@ impl Plugin for DeathmatchPlugin {
                 .run_if(crate::core::authoritative),
         );
         rounds::plugin(app);
+        game_end::plugin(app);
         resource_cvar::<Deathmatch, f32>(app, "mp_respawn_delay", "Seconds before the dead respawn.", |d| {
             &mut d.respawn_delay
         });
