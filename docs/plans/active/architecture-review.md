@@ -3,7 +3,9 @@
 Status: approved 2026-10-13 (engine-split.md, "Crates and compile
 time", has the order and progress). Done: the tool binaries behind
 features (P9's cheap win), P1 (`map/mod.rs` split, `spawn_map` in
-phases), P3's audio slice. Measured on the dev box under load
+phases), P3's audio and render slices (render: the materials, WGSL and
+every drawn part out of `map`, play-time parts through drawn-part
+requests; `client`'s folders not yet). Measured on the dev box under load
 (other agents building; load averages given with the times), so compare
 ratios, not absolutes.
 

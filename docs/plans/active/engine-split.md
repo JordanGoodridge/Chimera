@@ -112,9 +112,10 @@ measurements):
   server-side bones), so `map::anim`, `bodies::SimAnimator` and the
   ragdolls stay on the sim side; only drawing and skinning is
   presentation and moves with `render`.
-- [~] (2) `render` out of `map` (2026-10-13, one session, three
-  commits, each with the spawn dump identical on the five maps modulo
-  moved paths):
+- [x] (2) `render` out of `map` (2026-10-13 and 14, three sessions,
+  each commit with the spawn dump identical on the five maps modulo
+  moved paths; left: `render` behind a feature for the server, and the
+  crate cut, both below):
   - [x] the state `logic`/`net`/`weapon` write moved to `map::state`
     (`VisClusters`, `LogicHidden`, areaportal/occluder states,
     `RenderLook`/`BrushTint`, `MonitorCamera`/`MonitorFog`, the
@@ -233,6 +234,24 @@ measurements):
     render's (an ordering change to make deliberately) and a headless
     `MapDrawer` (all `Draws` false, nothing spawned) stands in for
     `render::MapAssets`; then `render` can sit behind a feature.
+    The drawn-part requests already leave such a server correct: with
+    no renderer they stay unfulfilled (`tests/it/drawn_parts.rs`).
+  - Cutting the crates (`map` to `engine/world`, `render` to
+    `engine/present`), not done; what it needs (2026-10-14): (a)
+    `impl Plugin for MapPlugin` lives in `map_plugin` (root crate) for a
+    type in `map`: the orphan rule forbids that across crates, so the
+    type moves up beside its registration (e.g. `present::MapPlugin`,
+    re-exported as `map::MapPlugin`), or `world` gets its own plugin
+    with registration hooks that `present` fills in the same order;
+    (b) about 50 `pub(crate)` items of `map` (and more `pub(crate)`
+    fields: `LooseAsset`, `GibAssets`, `FlyingGib`, `Ragdoll`,
+    `PendingMap`, `PlayableArea`, the props' and bodies' types) that
+    `render`/`map_plugin`/`audio` use become `pub`; (c) `map` uses only
+    `core` (`engine_core`) of ours, plus avian, replicon and Bevy's
+    image and camera types (`map::sky`'s images, the camera markers):
+    no blocker; (d) the root crate re-exports `world::map` and
+    `present::render` so `crate::map`/`mashup::map` paths keep working;
+    (e) `audio` (above `map`, beside `render`) goes with `present`.
   - Measured: a leaf edit's test build (`client/window_icon.rs`, a new
     `pub fn`, `cargo test --features dev --no-run`) 239 s before
     (load 14-26), 114 s after (load 17-18): one crate either way, so
