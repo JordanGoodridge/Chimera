@@ -466,6 +466,16 @@ says what decides the open point.
   (`Player.PickupWeapon`, `BaseCombatCharacter.ItemPickup2`,
   `BaseCombatCharacter.AmmoPickup`, none), and whether the round's
   starting pistol plays one at spawn.
+  Server side done (2026-10-14, dedicated server, bots driven by the
+  probe plugin's `mashup_botcmd`, `sv_soundemitter_trace 1`): buying an
+  AK-47, a Deagle or a smoke grenade emits `BaseCombatCharacter.AmmoPickup`
+  from the buyer; kevlar, kevlar+helmet and a defuse kit emit nothing;
+  night vision `BaseCombatCharacter.ItemPickup2` from another entity;
+  every spawn emits `AmmoPickup` from the player (the starting pistol);
+  `Player.PickupWeapon` (itempickup.wav, the same wave) showed once, from
+  a bot that walked over dropped guns, with `ItemPickup2` from those
+  guns. Not changed yet: what the buyer's client plays itself (a
+  listen-server capture with a human, which C4 and C11 need too).
 - **C3 Weapon selection sounds.** With `hud_fastswitch 0`: press 2,
   then 2 again, then 4 with no grenade, then the wheel twice, then
   attack; again with `hud_fastswitch 1`. Record the client's audio (or
