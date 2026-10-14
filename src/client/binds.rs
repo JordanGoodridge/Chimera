@@ -154,8 +154,8 @@ pub const WHEEL_DOWN: &str = "mwheeldown";
 /// install's file can't be read (`read_install_defaults` reads it at
 /// start). Esc (`cancelselect`) and ` (`toggleconsole`) are not binds here.
 /// Some have nothing to run yet (`impulse 100`, `commandmenu`,
-/// `showbriefing`, `cheer`, `+voicerecord`, `nightvision`, `impulse 201`,
-/// `save`, `load`, `pause`): the keys are CS:S's all the same.
+/// `showbriefing`, `cheer`, `+voicerecord`, `save`, `load`, `pause`): the
+/// keys are CS:S's all the same.
 pub const CSS_DEFAULT_BINDS: &[(&str, &str)] = &[
     ("tab", "+showscores"),
     ("space", "+jump"),

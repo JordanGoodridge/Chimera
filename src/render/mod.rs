@@ -32,6 +32,7 @@ pub mod shadows;
 pub mod shells;
 pub mod sky;
 pub mod sky_occluder;
+pub mod spray;
 pub mod steam;
 mod spawn;
 pub mod tint;

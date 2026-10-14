@@ -16,7 +16,9 @@
 //! play `Prices::pickup_sound`/`item_sound`/`ammo_sound` (`owner_sound`);
 //! `autobuy` for bots (a primary by weight among the dearer half they can
 //! afford, its ammo and the pistol's, armour, then now and then grenades:
-//! `BOT_GRENADE_CHANCE`).
+//! `BOT_GRENADE_CHANCE`); night vision goggles (`buy nvgs`: `NightVision`,
+//! `Prices::nightvision`, kept across rounds, lost at death: `lose_on_death`;
+//! the `nightvision` command and its look are the client's).
 //!
 //! Known shortcuts (docs/tech-debt.md): Buy zones on maps without
 //! `func_buyzone` (`weapon::economy::in_buy_zone`, mg_jacks_multigames_v1):
@@ -48,7 +50,7 @@
 //! Known shortcuts (docs/tech-debt.md): `autobuy` / `rebuy` (`weapon::economy`;
 //! rules from the install's `cfg/autobuy_default.txt` and `rebuy_default.txt`
 //! comments): autobuy skips every primary while one is carried (buying would
-//! drop it) and the aliases mashup doesn't sell (`nvgs`); rebuy takes no new
+//! drop it); rebuy takes no new
 //! snapshot itself (a short round doesn't forget what it couldn't afford) and
 //! skips what is still carried; the lists travel as `cl_autobuy`/`cl_rebuy`
 //! userinfo (CS:S's client reads its `cfg/autobuy.txt`; ours are cvars). Why
@@ -100,8 +102,14 @@ pub struct Prices {
     pub ammo_sound: Option<String>,
     /// Sound entry played when a weapon is bought or picked up.
     pub pickup_sound: Option<String>,
-    /// Sound entry played when armour or a defuse kit is bought.
+    /// Sound entry played when armour, a defuse kit or night vision is
+    /// bought.
     pub item_sound: Option<String>,
+    /// Night vision goggles (`NightVision`); 0: not sold.
+    pub nightvision: u32,
+    /// Sound entries night vision plays turned on and off.
+    pub nightvision_on: Option<String>,
+    pub nightvision_off: Option<String>,
 }
 
 /// A box of ammo: its price and the rounds in it.
@@ -148,6 +156,7 @@ impl Prices {
             "vest" => Some(self.vest),
             "vesthelm" => Some(self.vest_helmet),
             "defuser" => (self.defuser > 0).then_some(self.defuser),
+            "nvgs" => (self.nightvision > 0).then_some(self.nightvision),
             id => self.weapons.get(id).copied(),
         }
     }
@@ -158,6 +167,31 @@ impl Prices {
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
 #[reflect(Component)]
 pub struct DefuseKit;
+
+/// Night vision goggles carried (CS:S's `buy nvgs`): kept across rounds
+/// while alive, lost at death (`lose_on_death`). Turning them on is the
+/// owner's client's (`nightvision`, `client::night_vision`).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
+pub struct NightVision;
+
+pub(super) fn plugin(app: &mut App) {
+    app.register_type::<NightVision>().add_systems(
+        FixedUpdate,
+        lose_on_death
+            .after(crate::core::SimSet::Weapons)
+            .run_if(crate::core::authoritative),
+    );
+}
+
+/// The dead lose their night vision (CS:S).
+fn lose_on_death(mut died: MessageReader<crate::core::Died>, mut commands: Commands) {
+    for d in died.read() {
+        if let Ok(mut e) = commands.get_entity(d.entity) {
+            e.remove::<NightVision>();
+        }
+    }
+}
 
 /// Why buying fails outside a buy zone (CS:S's words).
 pub const NOT_IN_BUY_ZONE: &str = "You are not in a buy zone.";
@@ -199,7 +233,7 @@ pub fn buy_or_ask(world: &mut World, owner: Entity, name: &str) -> Result<Option
 }
 
 /// Buy `name` (a weapon ID, `weapon_ak47`, `ak47`, `vest`, `vesthelm`,
-/// `defuser`, or ammo: `AMMO_BUYS`) for `owner`: checks the window and the
+/// `defuser`, `nvgs`, or ammo: `AMMO_BUYS`) for `owner`: checks the window and the
 /// money, replaces a weapon in the same slot (dropped, as CS:S does).
 /// Returns what happened.
 pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
@@ -216,7 +250,7 @@ pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, Strin
     let prices = world.resource::<Prices>();
     let sound = if AMMO_BUYS.iter().any(|(n, ..)| *n == lower) {
         prices.ammo_sound.clone()
-    } else if matches!(lower.as_str(), "vest" | "vesthelm" | "defuser") {
+    } else if matches!(lower.as_str(), "vest" | "vesthelm" | "defuser" | "nvgs") {
         prices.item_sound.clone()
     } else {
         prices.pickup_sound.clone()
@@ -333,6 +367,7 @@ pub struct RebuySnapshot {
     pub armor: Option<bool>,
     pub grenades: Vec<(&'static str, GrenadeKind, u32)>,
     pub defuser: bool,
+    pub nightvision: bool,
 }
 
 impl RebuySnapshot {
@@ -351,6 +386,7 @@ impl RebuySnapshot {
             armor: world.get::<Armor>(owner).filter(|a| a.amount > 0.0).map(|a| a.helmet),
             grenades,
             defuser: world.get::<DefuseKit>(owner).is_some(),
+            nightvision: world.get::<NightVision>(owner).is_some(),
         }
     }
 }
@@ -385,6 +421,7 @@ fn rebuy(world: &mut World, owner: Entity) -> Result<String, String> {
             "primaryammo" => vec!["primammo".into()],
             "secondaryammo" => vec!["secammo".into()],
             "defuser" if snap.defuser && !now.defuser => vec!["defuser".into()],
+            "nightvision" if snap.nightvision && !now.nightvision => vec!["nvgs".into()],
             "armor" => match (snap.armor, now.armor) {
                 (Some(true), Some(true)) | (Some(false), Some(_)) | (None, _) => Vec::new(),
                 (Some(true), _) => vec!["vesthelm".into()],
@@ -497,6 +534,18 @@ fn buy_quietly(world: &mut World, owner: Entity, name: &str) -> Result<String, S
         pay(world, prices.defuser)?;
         world.entity_mut(owner).insert(DefuseKit);
         return Ok("bought defuser".into());
+    }
+    if name == "nvgs" {
+        if prices.nightvision == 0 {
+            return Err("no night vision for sale".into());
+        }
+        if world.get::<NightVision>(owner).is_some() {
+            // CS:S's words (`#Cstrike_TitlesTXT_Already_Have_One`).
+            return Err("You already have one!".into());
+        }
+        pay(world, prices.nightvision)?;
+        world.entity_mut(owner).insert(NightVision);
+        return Ok("bought nvgs".into());
     }
     let wanted = if name.contains(':') || name.starts_with("weapon_") {
         name

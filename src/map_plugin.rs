@@ -168,6 +168,7 @@ fn build_rest(app: &mut App) {
                     render::decal::place_decals,
                     render::decal::drop_brush_decals,
                     render::decal::clear_decals,
+                    render::spray::draw_sprays,
                 )
                     .chain(),
                 (

@@ -453,8 +453,11 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   that plan lists as left (the console as a VGUI frame, the greyed
   controls whose features may come), binds for
   the keyboard actions greyed in the options (`+voicerecord`,
-  `impulse 100`, `nightvision`, ...; `invnext`/`invprev`, `autobuy`,
-  `rebuy` and `jpeg` are in), comparing the look with CS:S's
+  `impulse 100`, ...; `invnext`/`invprev`, `autobuy`, `rebuy`, `jpeg`,
+  `nightvision` and `impulse 201` are in), the Multiplayer tab's spray
+  logo picture and a way to pick it there (sprays are in: `cl_logofile`
+  in the console; Import Spray needs an image-to-VTF converter),
+  comparing the look with CS:S's
   (refcmp has no menu views).
 - The main menu is in: startup without a map shows CS:S's (its
   background picture, the title in its logo font, `GameMenu.res`'s

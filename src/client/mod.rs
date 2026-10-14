@@ -30,6 +30,7 @@ pub mod input;
 pub mod interp;
 pub mod map_screen;
 pub mod net;
+pub mod night_vision;
 pub mod frame_metrics;
 pub mod game_hud;
 pub mod hud_sprites;
@@ -363,6 +364,7 @@ impl Plugin for ClientPlugin {
                 audio::SoundOptionsPlugin,
                 gamma::GammaPlugin,
                 overview::OverviewPlugin,
+                night_vision::NightVisionPlugin,
             ))
             .add_systems(PostStartup, (spawn_local_player, join_at_start).chain())
             .add_systems(Update, camera_for_local_player)

@@ -4,6 +4,11 @@
 //! upright on walls; every nearby face polygon (or displacement triangle)
 //! is clipped to it. Decals reuse the face's lightmap, so they sit in the
 //! same light as the surface.
+//!
+//! Runtime decals for the map too: impacts' groups from
+//! `scripts/decals_subrect.txt` (`impact_decals`) and players' spray logos
+//! (`spray_logos`: every texture in `materials/vgui/logos/`, `SPRAY_SIZE`
+//! units square).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -414,6 +419,35 @@ pub fn impact_decals(materials: &mut MaterialLoader) -> crate::map::decal::MapDe
         }
     }
     out
+}
+
+/// Where players' spray logos are: the stock ones in the game's archive
+/// (`spray_*.vtf`), the player's own import (`spray.vtf`, loose).
+pub const LOGO_DIR: &str = "materials/vgui/logos";
+
+/// How wide a spray is on a wall, units (square). UNMEASURED: the
+/// well-known size of a Half-Life/Counter-Strike spray (64 units); the
+/// logos' `$decalscale` (0.25) is for their use as map decals, not sprays
+/// (docs/tech-debt.md, "Sprays").
+pub const SPRAY_SIZE: f32 = 64.0;
+
+/// Players' spray logos (`LOGO_DIR`'s textures) as runtime decals by name
+/// (`MapDecals::logos`), `SPRAY_SIZE` units square.
+pub fn spray_logos(materials: &mut MaterialLoader, decals: &mut crate::map::decal::MapDecals) {
+    for path in materials.files_in(LOGO_DIR) {
+        let Some(name) = path
+            .strip_prefix(LOGO_DIR)
+            .and_then(|f| f.strip_prefix('/'))
+            .and_then(|f| f.strip_suffix(".vtf"))
+        else {
+            continue;
+        };
+        let size = SPRAY_SIZE * super::bsp::METERS_PER_UNIT;
+        if let Some(d) = materials.texture_decal(&format!("vgui/logos/{name}"), size) {
+            decals.decals.push(d);
+            decals.logos.insert(name.to_string(), decals.decals.len() - 1);
+        }
+    }
 }
 
 #[cfg(test)]

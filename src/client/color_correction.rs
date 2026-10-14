@@ -51,6 +51,11 @@ impl Default for ColorCorrectionSettings {
     }
 }
 
+/// The color correction pass in the render graph (later full-frame passes
+/// order after it).
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ColorCorrectionSet;
+
 /// On the camera that runs the pass this frame.
 #[derive(Component, Clone, Copy, Debug, Default, ExtractComponent)]
 pub struct ColorCorrectionPass;
@@ -88,6 +93,7 @@ impl Plugin for ColorCorrectionPlugin {
             color_correct
                 .after(tonemapping)
                 .after(super::hdr::SourceTonemapSet)
+                .in_set(ColorCorrectionSet)
                 .in_set(Core3dSystems::PostProcess),
         );
     }

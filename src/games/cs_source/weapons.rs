@@ -290,6 +290,10 @@ impl Plugin for CsWeaponsPlugin {
             .register_weapon(M3, |e| gun(e, &M3_GUN))
             .register_weapon(XM1014, |e| gun(e, &XM1014_GUN))
             .insert_resource(prices())
+            .insert_resource(crate::weapon::spray::SprayRules {
+                sound: Some(SPRAY_SOUND.into()),
+                ..default()
+            })
             .add_message::<WeaponEvent>()
             // Inaccuracy, punch and recoil are predicted with the weapon
             // frame (`core::Predict`).
@@ -391,6 +395,11 @@ fn prices() -> crate::weapon::economy::Prices {
     // The defusal kit, counter-terrorists only (spec 5, "Kit").
     p.defuser = super::objectives::DEFUSER_PRICE;
     p.team_only.insert("defuser", 2);
+    // Night vision goggles, either team: $1250 (the install's buy menu
+    // text, `#Cstrike_NightvisionPrice`), with the game's sound entries.
+    p.nightvision = NIGHTVISION_PRICE;
+    p.nightvision_on = Some(NIGHTVISION_ON.into());
+    p.nightvision_off = Some(NIGHTVISION_OFF.into());
     p.menu = menu();
     // Ammo by the box per ammo type; the spawn pistols carry two more
     // clips (Glock 40, USP 24: UNMEASURED, the well-known values).
@@ -466,6 +475,16 @@ const BOT_WEIGHTS: &[(&str, f32)] = &[
     (SG550, 0.5),
     (M249, 0.5),
 ];
+
+/// Night vision's price (the install's `#Cstrike_NightvisionPrice`,
+/// ": $1250").
+pub const NIGHTVISION_PRICE: u32 = 1250;
+/// Night vision turned on and off (the install's game_sounds.txt:
+/// `items/nvg_on.wav`, `items/nvg_off.wav`).
+pub const NIGHTVISION_ON: &str = "Player.NightVisionOn";
+pub const NIGHTVISION_OFF: &str = "Player.NightVisionOff";
+/// A spray (`impulse 201`; game_sounds.txt: `player/sprayer.wav`).
+pub const SPRAY_SOUND: &str = "SprayCan.Paint";
 
 /// The sound of buying ammo (Source's generic ammo pickup entry).
 pub const AMMO_SOUND: &str = "BaseCombatCharacter.AmmoPickup";
@@ -545,6 +564,7 @@ fn menu() -> Vec<crate::weapon::economy::BuyCategory> {
                 (HEGRENADE, "HE Grenade"),
                 (SMOKEGRENADE, "Smoke Grenade"),
                 ("defuser", "Defusal Kit"),
+                ("nvgs", "Nightvision Goggles"),
             ],
         ),
     ]

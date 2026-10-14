@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use super::server::Player;
 use crate::{
-    console::{CHEATS, CommandPlayer, Console, ConsoleAppExt, Level, cheats_allowed, command_player, execute, parse},
+    console::{CommandPlayer, Console, ConsoleAppExt, Level, cheats_allowed, command_player, execute, is_cheat, parse},
     core::{MovementState, NetRole, Velocity},
     slots::{Loadout, MovementSlot, set_movement},
 };
@@ -98,7 +98,7 @@ pub fn run_for(world: &mut World, client: Entity, line: &str) {
         let Some(name) = words.first().map(|w| w.to_lowercase()) else {
             continue;
         };
-        if !CHEATS.contains(&name.as_str()) {
+        if !is_cheat(&name, &words[1..]) {
             continue;
         }
         if !cheats_allowed(world) {

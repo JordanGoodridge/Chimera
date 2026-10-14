@@ -137,7 +137,7 @@ defaults are CS:S's (`games::cs_source::ui::options` tests
 | Video > Advanced `ColorCorrection`, `MotionBlur` | the renderer has neither (no colour correction or motion blur at all; same plan) |
 | Video > Advanced `Multicore` | Bevy always renders multi-threaded |
 | Voice (all) | no voice chat |
-| Multiplayer `ImportSprayImage`, `LogoImage` | no sprays |
+| Multiplayer `ImportSprayImage`, `LogoImage` | sprays are in (`impulse 201`), but the logo is picked with `cl_logofile` in the console: no picture of it or importer yet (backlog) |
 | Multiplayer `ResetStats` | no stats |
 | Multiplayer > Advanced `cl_clanid`, `cl_cloud_settings`, `hud_takesshots` | no clans, no Steam Cloud, no end-of-map screenshots |
 | Multiplayer > Advanced `cl_autohelp` | hints aren't in mashup yet: backlog |
@@ -158,8 +158,8 @@ defaults are CS:S's (`games::cs_source::ui::options` tests
 - Brightness works windowed too (CS:S's needs full screen for its
   hardware gamma ramp; ours is a pass over the frame).
 - Multiplayer: a "Player name" entry (`name`) in place of the spray
-  image's two labels (current CS:S takes the name from Steam; mashup has
-  no sprays). It waits for OK or Apply, unlike the tab's other options.
+  image's two labels (current CS:S takes the name from Steam; mashup's
+  spray logo is `cl_logofile`, set in the console). It waits for OK or Apply, unlike the tab's other options.
 - Texture detail and filtering apply from the next map load (the
   textures live only on the GPU once drawn); CS:S's apply at once.
 

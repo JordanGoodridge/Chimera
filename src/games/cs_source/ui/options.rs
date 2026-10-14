@@ -374,7 +374,7 @@ pub const SETTINGS: &[Setting] = &[
     // Multiplayer (`OptionsSubMultiplayer.res`). The player name: older
     // CS:S had it here ("Player name", `#GameUI_PlayerName`); the
     // install's layout doesn't, so `gameui` adds it in the spray image's
-    // place (mashup has no sprays).
+    // place (the spray logo is `cl_logofile`, set in the console).
     setting(Options(Tab::Multiplayer), "name", Some("NameEntry"), Some("#GameUI_PlayerName"), "Player name", SettingKind::Text(32)),
     setting(
         Options(Tab::Multiplayer),

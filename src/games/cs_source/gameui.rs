@@ -312,7 +312,7 @@ pub fn layout_of_res(text: &str) -> Option<crate::map::hud::UiLayout> {
 /// The Multiplayer tab's "Player name" entry (`NameEntry`, bound to
 /// `name`), when the install's layout lacks it: older CS:S had one, the
 /// current one names you from Steam. Ours goes where the spray image's
-/// words were (`Label2`, `Label3`: mashup has no sprays; the greyed
+/// words were (`Label2`, `Label3`: the spray logo is `cl_logofile`; the greyed
 /// picture and import button stay), label and entry on one line.
 pub fn add_player_name(layout: &mut crate::map::hud::UiLayout, strings: &HashMap<String, String>) {
     use crate::map::hud::{HudCoord, UiKind};

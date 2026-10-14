@@ -206,6 +206,10 @@ const ALWAYS: &[&str] = &[
     // Picking up or buying a weapon, an item (kevlar, defuse kit).
     super::weapons::PICKUP_SOUND,
     super::weapons::ITEM_SOUND,
+    // Night vision on and off, a spray.
+    super::weapons::NIGHTVISION_ON,
+    super::weapons::NIGHTVISION_OFF,
+    super::weapons::SPRAY_SOUND,
     // The HUD's weapon selection.
     WEAPON_MOVE,
     WEAPON_PICK,
