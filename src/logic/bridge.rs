@@ -1752,10 +1752,10 @@ fn with_controls(world: &mut World, target: Entity, f: impl FnOnce(&mut crate::c
 }
 
 /// Our damage kinds as Source damage-type bits (DMG_GENERIC 0, CRUSH 1,
-/// BULLET 2, SLASH 4, BURN 8, FALL 32, BLAST 64; the public SDK's
+/// BULLET 2, SLASH 4, BURN 8, FALL 32, BLAST 64, DROWN 16384; the public SDK's
 /// names). Melee as slash and bullets without their extra flag bits are
 /// our reading; fall, the one maps filter, is exact.
-const DAMAGE_KINDS: [(DamageKind, u32); 7] = [
+const DAMAGE_KINDS: [(DamageKind, u32); 8] = [
     (DamageKind::Generic, 0),
     (DamageKind::Crush, 1),
     (DamageKind::Bullet, 2),
@@ -1763,6 +1763,7 @@ const DAMAGE_KINDS: [(DamageKind, u32); 7] = [
     (DamageKind::Burn, 8),
     (DamageKind::Fall, 32),
     (DamageKind::Blast, 64),
+    (DamageKind::Drown, 16384),
 ];
 
 /// The long-lived sound of a logic entity.

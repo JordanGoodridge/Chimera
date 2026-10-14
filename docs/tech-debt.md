@@ -81,6 +81,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - weapon: mashup_usepickup (+use pickup) reach and rules are ours (`src/weapon/drop.rs`)
 - movement: Source movement lacks base velocity; the landing roll keeps the shared code's spring; some fall-damage cases ignored (`src/games/cs_source/movement.rs`)
 - games/cs_source: Hit slowdown a tick late (after movement); helmeted-head flinch unmeasured (none); flinch set, not added (`src/games/cs_source/hit_reaction.rs`)
+- movement: Drowning's unmeasured parts are ours: reset on surfacing, when restores start, what clears the amount owed, no armour; client drown sounds not played (`src/games/cs_source/drown.rs`)
 - movement: Ladder probe ignores near-horizontal ladder faces (brush tops), our choice (`src/games/cs_source/movement.rs`)
 - movement: Concave props swept by avian shape casts; displacement collision is our construction (`src/games/cs_source/movement.rs`)
 - render: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`engine/present/src/render/sprite_material.rs`)

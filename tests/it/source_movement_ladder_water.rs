@@ -1,7 +1,8 @@
 //! Ladder and water test cases from specs/cs_source/movement.md, on a small
 //! map in Source units: a floor at z = 0, a ladder slab whose face (normal
 //! -X) is at x = 100, a pool 200 units deep, and a shallow pool with a
-//! ledge to climb out onto. 64 tick, the shared code's values.
+//! ledge to climb out onto. 64 tick, the shared code's values; drowning
+//! (`games::cs_source::drown`, at the end) at CS:S's 0.015 s and values.
 
 use bevy::prelude::*;
 use mashup::{
@@ -461,4 +462,134 @@ fn a_ladder_top_is_a_floor() {
         let vz = pl.vel().z;
         assert!(vz > 250.0 && vz < 310.0, "pitch {pitch}: a plain jump, vz {vz}");
     }
+}
+
+/// Drowning (`games::cs_source::drown`) at CS:S's 0.015 s tick: a player
+/// standing on dry floor, then put on the deep pool's bottom (head under).
+struct Diver {
+    sim: Sim,
+    p: Entity,
+}
+
+/// Dry floor, clear of the ladder and the prop.
+const DRY: Vec3 = Vec3::new(-500.0, 0.0, 0.0);
+/// The deep pool's bottom: the head is 136 units under.
+const BOTTOM: Vec3 = Vec3::new(-1500.0, 0.0, -200.0);
+
+impl Diver {
+    fn new() -> Self {
+        let mut sim = Sim::new((TestMap, SourceMovementPlugin));
+        sim.set_tick_interval(mashup::games::cs_source::TICK_INTERVAL);
+        sim.app.insert_resource(SourceMovementConfig::default());
+        let p = sim.spawn_character(to_engine(DRY + Vec3::Z * 36.0), movement::ID);
+        let mut me = Self { sim, p };
+        me.sim.ticks(10);
+        me
+    }
+
+    fn put(&mut self, feet: Vec3) {
+        let w = self.sim.app.world_mut();
+        w.get_mut::<Transform>(self.p).unwrap().translation = to_engine(feet + Vec3::Z * 36.0);
+        w.get_mut::<Velocity>(self.p).unwrap().0 = Vec3::ZERO;
+    }
+
+    fn health(&self) -> i32 {
+        let h = self.sim.app.world().get::<mashup::core::Health>(self.p).unwrap().current;
+        (h * 100.0).round() as i32
+    }
+
+    fn water(&self) -> u8 {
+        self.sim.app.world().get::<SourceMovement>(self.p).unwrap().water_level
+    }
+
+    /// Ticks until health changes (at most `max`): how many ticks and the
+    /// new health.
+    fn next_change(&mut self, max: u64) -> Option<(u64, i32)> {
+        let before = self.health();
+        for n in 1..=max {
+            self.sim.ticks(1);
+            if self.health() != before {
+                return Some((n, self.health()));
+            }
+        }
+        None
+    }
+
+    /// Goes under: the tick the head is first under water is tick 1.
+    fn dive(&mut self) {
+        assert_eq!(self.water(), 0);
+        self.put(BOTTOM);
+        self.sim.ticks(1);
+        assert_eq!(self.water(), 3, "head not under");
+    }
+}
+
+/// Measured (specs/cs_source/movement.md, "Drowning"): the first hit 12.0 s
+/// after going under (tick 801 at 0.015 s), then one every 67 ticks, 3, 4,
+/// then 5 each, until 100 health is dead at 32.1 s.
+#[test]
+fn drowning_as_measured() {
+    let mut d = Diver::new();
+    assert_eq!(d.health(), 100);
+    d.dive();
+    let (first, h) = d.next_change(900).expect("no drowning damage");
+    // Tick 1 under water was already run.
+    assert_eq!(first + 1, 801, "first hit's tick under water");
+    assert_eq!(h, 97, "first hit");
+    let mut tick = 801;
+    let mut health = h;
+    let mut hits = vec![3];
+    while health > 0 {
+        let (n, h) = d.next_change(200).expect("drowning stopped");
+        assert_eq!(n, 67, "ticks between hits (hit {})", hits.len() + 1);
+        tick += n;
+        hits.push(health - h);
+        health = h;
+    }
+    assert_eq!(&hits[..4], &[3, 4, 5, 5]);
+    assert!(hits[2..hits.len() - 1].iter().all(|&h| h == 5), "hits {hits:?}");
+    assert_eq!(hits.len(), 21, "hits {hits:?}");
+    let dead_at = tick as f64 * mashup::games::cs_source::TICK_INTERVAL;
+    assert!((dead_at - 32.1).abs() < 0.05, "dead at {dead_at} s");
+}
+
+/// Measured: back on land after losing 37, health comes back 10 at a
+/// time about every 2 s (the first within the first second) until all the
+/// drowning damage is restored (63 -> 73 -> 83 -> 93 -> 100), no more.
+/// Surfacing starts the 12 s over (ours: unmeasured).
+#[test]
+fn drowning_damage_comes_back() {
+    let mut d = Diver::new();
+    d.dive();
+    while d.health() > 63 {
+        d.next_change(900).expect("no drowning damage");
+    }
+    assert_eq!(d.health(), 63);
+    d.put(DRY);
+    d.sim.ticks(1);
+    assert_eq!(d.water(), 0);
+    let (n, h) = d.next_change(200).expect("nothing restored");
+    assert!(n as f64 * mashup::games::cs_source::TICK_INTERVAL < 1.0, "first restore after {n} ticks");
+    assert_eq!(h, 73);
+    for want in [83, 93, 100] {
+        let (n, h) = d.next_change(300).expect("restoring stopped");
+        let secs = n as f64 * mashup::games::cs_source::TICK_INTERVAL;
+        assert!((secs - 2.0).abs() < 0.05, "{want}: {secs} s after the last");
+        assert_eq!(h, want);
+    }
+    assert_eq!(d.next_change(600), None, "restored more than was taken");
+    // Under again: a fresh 12 s.
+    d.dive();
+    let (first, h) = d.next_change(900).expect("no drowning damage");
+    assert_eq!((first + 1, h), (801, 97));
+}
+
+/// Waist-deep (the head out) never drowns.
+#[test]
+fn no_drowning_with_the_head_out() {
+    let mut d = Diver::new();
+    d.put(SHALLOW - Vec3::X * 100.0);
+    d.sim.ticks(1);
+    assert_eq!(d.water(), 2);
+    assert_eq!(d.next_change(1200), None);
 }

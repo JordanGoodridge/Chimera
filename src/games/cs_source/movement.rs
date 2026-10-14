@@ -13,7 +13,8 @@
 //! landings deal fall damage (specs/cs_source/fall_damage.md) and play
 //! its sound. A bullet hit's velocity modifier (CS:S, weapons.md M18,
 //! set by `hit_reaction`) multiplies the max speed and recovers by 1/3 a
-//! second after each move.
+//! second after each move. A head under water too long drowns
+//! (`super::drown`, from the water level kept here).
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -584,6 +585,7 @@ impl Plugin for SourceMovementPlugin {
         if !app.is_plugin_added::<super::pain::PainSoundsPlugin>() {
             app.add_plugins(super::pain::PainSoundsPlugin);
         }
+        app.add_plugins(super::drown::DrowningPlugin);
     }
 }
 
