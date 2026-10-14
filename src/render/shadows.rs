@@ -746,11 +746,14 @@ impl Material for ShadowMaterial {
         AlphaMode::Multiply
     }
 
-    /// Sort after every other see-through surface: Source draws shadows
-    /// over the world with its decals and overlays already on it. (For
-    /// custom materials this only moves the sort key, not the depth.)
+    /// Sort before every other see-through surface: Source draws shadows
+    /// with the world, its decals and overlays already on it (ours are in
+    /// the alpha-mask phase, before this one) and before anything
+    /// translucent, so smoke, particles and windows cover a shadow behind
+    /// them. (For custom materials this only moves the sort key, not the
+    /// depth.)
     fn depth_bias(&self) -> f32 {
-        1.0e6
+        -1.0e6
     }
 }
 

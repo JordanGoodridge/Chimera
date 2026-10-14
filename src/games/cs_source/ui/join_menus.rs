@@ -538,7 +538,9 @@ fn draw_vgui(
     }
 }
 
-fn clear(roots: &Query<Entity, With<VguiRoot>>, open: &mut VguiOpen, drawn: &mut Drawn, commands: &mut Commands) {
+/// `open` stays a `ResMut` so an unchanged value isn't marked changed:
+/// `grab_cursor` reads a change as a menu just closed and won't grab.
+fn clear(roots: &Query<Entity, With<VguiRoot>>, open: &mut ResMut<VguiOpen>, drawn: &mut Drawn, commands: &mut Commands) {
     for e in roots {
         commands.entity(e).despawn();
     }
@@ -546,11 +548,9 @@ fn clear(roots: &Query<Entity, With<VguiRoot>>, open: &mut VguiOpen, drawn: &mut
     let closed = VguiOpen {
         motd: false,
         class: false,
-        ..*open
+        ..**open
     };
-    if *open != closed {
-        *open = closed;
-    }
+    open.set_if_neq(closed);
 }
 
 #[cfg(test)]
@@ -572,6 +572,31 @@ mod tests {
             text: String::new(),
         };
         assert_eq!(motd_shown(&html_only, true), "Hello\nthere", "no plain one: the HTML one's text");
+    }
+
+    /// A frame with no join menu must not mark `VguiOpen` changed:
+    /// `grab_cursor` reads a change as a menu just closed and keeps the
+    /// cursor free (alt-tab and clicks stopped grabbing).
+    #[test]
+    fn nothing_open_leaves_vgui_open_unchanged() {
+        #[derive(Resource, Default)]
+        struct Changed(u32);
+        let mut app = App::new();
+        app.init_resource::<JoinMenus>()
+            .init_resource::<DisableHtmlMotd>()
+            .init_resource::<crate::client::fonts::UiFonts>()
+            .init_resource::<VguiOpen>()
+            .init_resource::<Changed>()
+            .add_systems(
+                Update,
+                (draw_vgui, |open: Res<VguiOpen>, mut n: ResMut<Changed>| n.0 += open.is_changed() as u32).chain(),
+            );
+        app.update();
+        app.world_mut().resource_mut::<Changed>().0 = 0;
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(app.world().resource::<Changed>().0, 0);
     }
 
     #[test]

@@ -267,14 +267,21 @@ fn crate_refs(code: &str, modules: &BTreeSet<String>) -> BTreeSet<String> {
 #[test]
 fn module_layering() {
     let src = root().join("src");
+    // The engine's crates keep their modules' names (`engine_core`'s
+    // `crate::core`, re-exported by `mashup` at the same paths), so one
+    // table covers them all.
     let mut files = Vec::new();
-    rust_files(&src, &mut files);
+    for dir in ["src", "engine/core/src"] {
+        let mut more = Vec::new();
+        rust_files(&root().join(dir), &mut more);
+        files.extend(more.into_iter().map(|f| (root().join(dir), f)));
+    }
     let modules: BTreeSet<String> = ALLOWED.iter().map(|(m, _)| m.to_string()).collect();
     let games = game_names(&src);
     let mut errors = Vec::new();
 
-    for file in files {
-        let Some(module) = module_of(&src, &file) else { continue };
+    for (base, file) in files {
+        let Some(module) = module_of(&base, &file) else { continue };
         if module == "lib" || module == "main" {
             continue;
         }
@@ -609,7 +616,7 @@ fn docs_stay_one_line_per_entry() {
             ));
         }
         let path = line[2..].split('`').nth(1).unwrap_or("");
-        if (path.starts_with("src/") || path.starts_with("source/")) && !root().join(path).exists() {
+        if ["src/", "source/", "engine/"].iter().any(|p| path.starts_with(p)) && !root().join(path).exists() {
             errors.push(format!(
                 "docs/ARCHITECTURE.md lists {path}, which does not exist. Update the entry."
             ));
@@ -665,8 +672,9 @@ fn untested_binaries_have_no_tests() {
 
 /// The workspace (docs/ARCHITECTURE.md, "Crates"): every member is a
 /// default member, so `cargo test` and `cargo nextest run` at the root (the
-/// hooks' commands) test them all; and the format crates stay pure data,
-/// with no Bevy, physics or game crate under them.
+/// hooks' commands) test them all; the format crates stay pure data, with
+/// no Bevy, physics or game crate under them; and the engine's crates
+/// depend on no game crate (`mashup` is the game today).
 #[test]
 fn workspace_crates() {
     let manifest: toml::Table = fs::read_to_string(root().join("Cargo.toml")).unwrap().parse().unwrap();
@@ -687,9 +695,18 @@ fn workspace_crates() {
              (and the git hooks) never test it. Add it there."
         ));
     }
-    const PURE: &[&str] = &["source/formats"];
-    const FORBIDDEN: &[&str] = &["bevy", "avian", "mashup"];
-    for krate in PURE {
+    // Each member's dependencies that may not be (name prefixes), and why.
+    const PURE_DATA: &str = "is pure data (docs/ARCHITECTURE.md, \"Crates\"). Keep the parsing there and \
+        move what needs it (ECS types, components, conversion to engine types) into the crate that uses \
+        it, e.g. `mashup::games::cs_source`.";
+    const ENGINE: &str = "is the engine's base (docs/ARCHITECTURE.md, \"Crates\"): games build on it, \
+        never the other way. Move the piece that needs the game up into `mashup`, or give the engine a \
+        hook (a registry, a trait, a resource) that the game fills.";
+    const FORBIDDEN: &[(&str, &[&str], &str)] = &[
+        ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
+        ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
+    ];
+    for (krate, forbidden, why) in FORBIDDEN {
         let path = format!("{krate}/Cargo.toml");
         let text = fs::read_to_string(root().join(&path)).unwrap_or_else(|e| panic!("{path}: {e}"));
         let m: toml::Table = text.parse().unwrap();
@@ -705,12 +722,8 @@ fn workspace_crates() {
             );
         }
         for dep in tables.iter().flat_map(|t| t.keys()) {
-            if FORBIDDEN.iter().any(|f| dep.starts_with(f)) {
-                errors.push(format!(
-                    "{path} depends on `{dep}`: {krate} is pure data (docs/ARCHITECTURE.md, \"Crates\"). Keep \
-                     the parsing there and move what needs `{dep}` (ECS types, components, conversion to \
-                     engine types) into the crate that uses it, e.g. `mashup::games::cs_source`."
-                ));
+            if forbidden.iter().any(|f| dep.starts_with(f)) {
+                errors.push(format!("{path} depends on `{dep}`: {krate} {why}"));
             }
         }
     }

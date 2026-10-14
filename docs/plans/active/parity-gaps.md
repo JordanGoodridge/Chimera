@@ -466,6 +466,16 @@ says what decides the open point.
   (`Player.PickupWeapon`, `BaseCombatCharacter.ItemPickup2`,
   `BaseCombatCharacter.AmmoPickup`, none), and whether the round's
   starting pistol plays one at spawn.
+  Server side done (2026-10-14, dedicated server, bots driven by the
+  probe plugin's `mashup_botcmd`, `sv_soundemitter_trace 1`): buying an
+  AK-47, a Deagle or a smoke grenade emits `BaseCombatCharacter.AmmoPickup`
+  from the buyer; kevlar, kevlar+helmet and a defuse kit emit nothing;
+  night vision `BaseCombatCharacter.ItemPickup2` from another entity;
+  every spawn emits `AmmoPickup` from the player (the starting pistol);
+  `Player.PickupWeapon` (itempickup.wav, the same wave) showed once, from
+  a bot that walked over dropped guns, with `ItemPickup2` from those
+  guns. Not changed yet: what the buyer's client plays itself (a
+  listen-server capture with a human, which C4 and C11 need too).
 - **C3 Weapon selection sounds.** With `hud_fastswitch 0`: press 2,
   then 2 again, then 4 with no grenade, then the wheel twice, then
   attack; again with `hud_fastswitch 1`. Record the client's audio (or
@@ -505,6 +515,14 @@ says what decides the open point.
   `fps_max` values on a fresh listen server started from Create Server
   (RCON `cvarlist mp_`); and the map change at the time limit: does
   the round finish first, how long is the intermission, what shows.
+  Partly done (2026-10-14, fresh dedicated server, RCON): mp_roundtime
+  2.5 (ours was 5: fixed), mp_buytime 1.5, mp_freezetime 6,
+  mp_startmoney 800, mp_c4timer 45, mp_chattime 10, mp_limitteams 2,
+  mp_autoteambalance 1, mp_teams_unbalance_limit 1, mp_flashlight 0,
+  mp_timelimit/maxrounds/winlimit/fraglimit 0, mp_hostagepenalty 13,
+  mp_forcecamera 1, mp_playerid 0, mp_fadetoblack 0, sv_alltalk 0: the
+  rest match ours. Still open: the listen server's values after Create
+  Server (settings.scr) and the time-limit map change.
 - **C11 Team balance.** Listen server, `mp_autoteambalance 1`,
   `mp_limitteams 0`, `bot_join_team T; bot_add` four times and one CT
   bot; play a round to its end. Screenshots and `developer 1` console
@@ -513,6 +531,10 @@ says what decides the open point.
   one's score and join order first: the top scorer, the lowest, the
   newest?), at the end or the next round's start, and is a moved player
   respawned at once or kept dead.
+  Partly done (2026-10-14, dedicated server, bots only): four T bots
+  against one CT bot stayed so for five rounds: bots are never moved
+  (ours now matches). Still open, needs a human client: which human
+  moves, the warning, respawn.
 - **C12 Win panel contents.** Ten rounds on de_dust2 with bots
   (`bot_quota 9`): screenshot each round's win panel at 1 s and 4 s
   after the end, with the round's kills from the console (`developer
