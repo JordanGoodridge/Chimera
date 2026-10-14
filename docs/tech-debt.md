@@ -34,7 +34,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`src/games/cs_source/player_anim.rs`)
 - weapon: Spread and recoil seeded as spec 4.2 but with our own generator; command numbers are tick plus seed (`src/weapon/random.rs`)
 - weapon: Penetration: fixed player budget cost and unmeasured material factors (`src/weapon/mod.rs`)
-- weapon, games/cs_source: Grenades follow the SDK template where CS:S is unmeasured (spec open questions) (`src/weapon/grenade.rs`)
+- weapon, games/cs_source: Grenades: release, fuse, HE armour and close-range flash measured (grenades.md); flash distance, redraw, pin rules still the template (`src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`src/bot/mod.rs`)
 - map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`engine/present/src/render/view_model.rs`)
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`engine/world/src/map/ragdoll.rs`)

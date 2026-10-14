@@ -319,8 +319,8 @@ fn flashes_blind_by_view_and_walls() {
     assert!(blind(&sim, hidden).is_none(), "behind the crate");
     // The thrower (far away, 45 m) isn't reached by the fit's radius.
     assert!(blind(&sim, thrower).is_none());
-    // It wears off.
-    sim.seconds(6.0);
+    // It wears off (6.8 s at most).
+    sim.seconds(7.5);
     let now = sim.app.world().resource::<Time>().elapsed_secs_f64();
     assert_eq!(blind(&sim, facing).unwrap().alpha_at(now), 0.0);
 }
@@ -469,8 +469,8 @@ fn collect<M: Message + Clone>(sim: &mut Sim, seconds: f64) -> Vec<M> {
 #[test]
 fn flashes_muffle_hearing_by_blindness() {
     let mut sim = sim();
-    // Close and looking at it: blind ~5 s, the long muffle; facing away:
-    // a quarter of that, the short one.
+    // Close and looking at it: blind ~6.8 s, the long muffle; facing away:
+    // 0.4 of that (measured), the medium one.
     let facing = sim.spawn_character(Vec3::new(0.0, 0.9, 8.0), placeholder::ID);
     let away = sim.spawn_character(Vec3::new(2.0, 0.9, 8.0), placeholder::ID);
     sim.intent(away).yaw = std::f32::consts::PI;
@@ -479,7 +479,7 @@ fn flashes_muffle_hearing_by_blindness() {
     let deaf = collect::<Deafened>(&mut sim, 1.7);
     let of = |e: Entity| deaf.iter().find(|d| d.target == e).map(|d| d.effect);
     assert_eq!(of(facing), Some(FLASH_MUFFLE[0]));
-    assert_eq!(of(away), Some(FLASH_MUFFLE[2]));
+    assert_eq!(of(away), Some(FLASH_MUFFLE[1]));
     let b = sim.app.world().get::<Blinded>(facing).unwrap();
     let a = sim.app.world().get::<Blinded>(away).unwrap();
     assert!(b.end - b.fade_start > a.end - a.fade_start || b.end > a.end);

@@ -274,16 +274,19 @@ pub fn flash_hearing(_alpha: f32, seconds: f32) -> Option<HearingEffect> {
     })
 }
 
-/// How far a flash reaches, units (FIT, Q12: not measured).
+/// How far a flash reaches, units (FIT, Q12: the distance is unmeasured).
 pub const FLASH_RADIUS: f32 = 1500.0;
-/// The longest blindness, seconds, and how much of it is the fade (FIT).
-pub const FLASH_MAX_TIME: f32 = 5.0;
+/// The longest blindness, seconds (measured close up: 6.8 s facing the
+/// grenade, grenades.md "CS:S values"), and how much of it is the fade
+/// (FIT).
+pub const FLASH_MAX_TIME: f32 = 6.8;
 pub const FLASH_MAX_FADE: f32 = 3.0;
 
 /// The flash model (spec 6.2; a FIT pending the probe's measurement grid,
 /// Q12/Q13): strength falls with the square of the distance to 0 at
-/// `FLASH_RADIUS` and with facing (full within 60° of the view, a quarter
-/// facing away: the tutor's "lessens"); a strong flash is full white and
+/// `FLASH_RADIUS` (a fit) and with facing: 0.7 + 0.3 × the cosine of the
+/// angle to the grenade (measured close up: 1 facing it, 0.7 side-on, 0.4
+/// facing away, with max alpha 255, 255, 200); a strong flash is full white and
 /// lasts up to `FLASH_MAX_TIME`, held, then fading over at most
 /// `FLASH_MAX_FADE`.
 pub fn flash_model(distance: f32, facing: f32) -> Option<(f32, f32, f32)> {
@@ -292,7 +295,7 @@ pub fn flash_model(distance: f32, facing: f32) -> Option<(f32, f32, f32)> {
         return None;
     }
     let near = 1.0 - (r / FLASH_RADIUS).powi(2);
-    let look = 0.25 + 0.75 * ((facing + 0.5) / 1.0).clamp(0.0, 1.0);
+    let look = 0.7 + 0.3 * facing.clamp(-1.0, 1.0);
     let s = near * look;
     if s < 0.05 {
         return None;
@@ -852,23 +855,23 @@ mod tests {
             let (alpha, hold, fade) = flash_model(d * UNIT, k).unwrap();
             (hold + fade, flash_hearing(alpha, hold + fade).unwrap())
         };
-        // Close, looking at it: 5 s of white and after-image, the long
-        // muffle (1.6 s held, then a 1 s fade).
+        // Close, looking at it: 6.8 s of white and after-image (measured
+        // close up), the long muffle (1.6 s held, then a 1 s fade).
         let (t, h) = hearing(100.0, 1.0);
-        assert!((t - 4.98).abs() < 0.01, "{t}");
+        assert!((t - 6.77).abs() < 0.01, "{t}");
         assert_eq!(h, FLASH_MUFFLE[0]);
         assert!((h.length() - 2.6).abs() < 1e-5);
-        // Close, facing away: a quarter of the strength, the short one.
+        // Close, facing away: 0.4 of it (measured 2.72 s), the medium one.
         let (t, h) = hearing(100.0, -1.0);
-        assert!((t - 1.245).abs() < 0.01, "{t}");
-        assert_eq!(h, FLASH_MUFFLE[2]);
+        assert!((t - 2.71).abs() < 0.01, "{t}");
+        assert_eq!(h, FLASH_MUFFLE[1]);
         // Halfway out, looking at it: three quarters, the long one;
         // further, under 60 %: the medium one.
         let (t, h) = hearing(750.0, 1.0);
-        assert!((t - 3.75).abs() < 0.01, "{t}");
+        assert!((t - 5.1).abs() < 0.01, "{t}");
         assert_eq!(h, FLASH_MUFFLE[0]);
         let (t, h) = hearing(1000.0, 1.0);
-        assert!((t - 2.78).abs() < 0.01, "{t}");
+        assert!((t - 3.78).abs() < 0.01, "{t}");
         assert_eq!(h, FLASH_MUFFLE[1]);
     }
 
