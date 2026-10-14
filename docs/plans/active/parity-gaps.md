@@ -137,7 +137,7 @@ report folders):
 | HUD weapon selection sounds | have (fixed) | H | S | `Player.WeaponSelectionMoveSlot`/`WeaponSelected`/`DenyWeaponSelection` were never played; when each plays is inferred, capture C3 |
 | Under water muffle | have (fixed) | M | S | nothing changed with the head under water; now a steady low-pass (Source's `dsp_water` is engine-side: values ours, capture C5) |
 | Distance falloff curves | differs | H | S | spec sounds.md Q1 (H1/H2 hypotheses) |
-| Footstep silence rules, jump sound | differs | H | S | spec Q3, Q4 |
+| Footstep silence rules, jump sound | have (fixed) | H | S | measured (sounds.md "Footsteps"): silent below 150 (was: by the walk/duck keys), 0.25 / 0.4 s under 220, 0.55 / 0.3 s above, jump 1.0; duck + jump from standing silent in CS:S, ours plays the jump step |
 | Room DSP presets | differs | M | M | tech-debt "Room DSP": every value ours |
 | `dsp_player`, `soundmixer` | missing | M | M | read, not played (spec Q14) |
 | Wave choice (repeat avoidance) | differs | L | S | spec Q2 |

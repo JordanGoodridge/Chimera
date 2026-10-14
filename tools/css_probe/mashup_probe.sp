@@ -81,6 +81,7 @@ float g_extraYaw[4];
 
 public void OnPluginStart()
 {
+    AddNormalSoundHook(SoundHook_Run);
     RegServerCmd("mashup_run", Command_Run, "mashup_run <input> <output>");
     RegServerCmd("mashup_weapon", Command_Weapon, "mashup_weapon <weapon_name>: what the bot holds for runs");
     RegServerCmd("mashup_wrun", Command_WRun, "mashup_wrun <input> <output>: mashup_run with weapon logging");
@@ -484,6 +485,19 @@ public Action Command_Health(int args)
     SetEntProp(bot, Prop_Send, "m_ArmorValue", args >= 2 ? GetCmdArgInt(2) : 0);
     PrintToServer("mashup: bot %d health %d armor %d", bot, GetClientHealth(bot), GetEntProp(bot, Prop_Send, "m_ArmorValue"));
     return Plugin_Handled;
+}
+
+// Every sound the run's bot (or something it owns) emits during a run:
+// "S tick channel volume level pitch flags sample" rows (footstep rules,
+// specs/cs_source/sounds.md).
+public Action SoundHook_Run(int clients[MAXPLAYERS], int &numClients, char sample[PLATFORM_MAX_PATH],
+    int &entity, int &channel, float &volume, int &level, int &pitch, int &flags,
+    char soundEntry[PLATFORM_MAX_PATH], int &seed)
+{
+    if (g_out != null && g_bot != 0 && entity == g_bot) {
+        g_out.WriteLine("S %d %d %.3f %d %d %d %s", g_cursor, channel, volume, level, pitch, flags, sample);
+    }
+    return Plugin_Continue;
 }
 
 public Action Command_Shooter(int args)
