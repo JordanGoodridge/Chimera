@@ -9,11 +9,10 @@
 
 use bevy::prelude::*;
 
-use super::bodies::HeldAssets;
+use super::{bodies::HeldAssets, probe_lit};
 use crate::map::{
     MapPart,
     loose::{LooseAssets, LooseItem, ShownItem, SitOnOrigin},
-    probe_lit,
 };
 
 /// Marks a `LooseItem` whose meshes were added.
@@ -25,7 +24,7 @@ pub(crate) fn draw_loose(
     items: Query<(Entity, &LooseItem), Without<LooseItemDrawn>>,
     assets: Option<Res<LooseAssets>>,
     held: Option<Res<HeldAssets>>,
-    mut materials: Option<ResMut<Assets<crate::map::prop_material::PropMaterial>>>,
+    mut materials: Option<ResMut<Assets<crate::render::prop_material::PropMaterial>>>,
     mut commands: Commands,
 ) {
     let (Some(assets), Some(held)) = (assets, held) else {
@@ -72,7 +71,7 @@ pub(crate) fn attach_shown(
     items: Query<(Entity, &ShownItem, Option<&SitOnOrigin>), Without<ShownItemDrawn>>,
     assets: Option<Res<LooseAssets>>,
     held: Option<Res<HeldAssets>>,
-    mut materials: Option<ResMut<Assets<crate::map::prop_material::PropMaterial>>>,
+    mut materials: Option<ResMut<Assets<crate::render::prop_material::PropMaterial>>>,
     mut commands: Commands,
 ) {
     let (Some(assets), Some(held)) = (assets, held) else {

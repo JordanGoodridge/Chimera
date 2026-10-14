@@ -24,9 +24,9 @@
 
 use bevy::prelude::*;
 
+use super::rope_material::rope_mesh;
 use crate::map::{
     MapRope, SkyboxCamera, ViewModelCamera, monitor,
-    rope_material::rope_mesh,
     rope_sway::{GUST_BASE, REST_THRESHOLD, RopeSway, STEP, UNIT, WIND_DIST, spline},
     water,
 };

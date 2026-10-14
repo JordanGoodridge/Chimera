@@ -21,11 +21,16 @@ use super::{
     steam, water,
 };
 // Explicit: Bevy's prelude has a `LightProbe` too.
-use crate::map::{
-    LightProbe,
+use crate::map::LightProbe;
+#[allow(unused_imports)]
+use super::{
+    LightmapLayers, SOURCE_LIGHTMAP_SCALE, build_material, build_mesh, clamp_edges, cube_image, fog, fog_color,
+    fog_range, lit_prop_material, material_fog, probe_lit, rope_material,
     prop_material::PropMaterial,
     rope_material::{RopeMaterial, RopeParams},
+    set_prop_envmap, sprite_material,
     sprite_material::{SpriteMaterial, SpriteParams},
+    to_image,
     world_material::{WorldMaterial, WorldParams},
 };
 
@@ -71,6 +76,9 @@ impl MapDrawer for MapAssets<'static> {
             DrawnResource::DecalSurfaces => commands.insert_resource(super::decal::DecalSurfaces::new(s.data)),
             DrawnResource::Particles => super::particles::insert_assets(commands, s.data, &drawn.textures),
             DrawnResource::Decals => super::decal::insert_assets(commands, s.data, &drawn.textures),
+            DrawnResource::Fog => {
+                commands.insert_resource(fog::SceneFog(fog::world_fog(s.data.fog.as_ref())));
+            }
         }
     }
 }
@@ -1353,7 +1361,7 @@ fn spawn_beams(
                     },
                     texture: Some(textures[h.texture].clone()),
                     glow: true,
-                    blend: crate::map::sprite_material::SpriteBlend::Add,
+                    blend: crate::render::sprite_material::SpriteBlend::Add,
                 })),
                 bevy::light::NotShadowCaster,
                 bevy::camera::visibility::NoFrustumCulling,
@@ -1385,7 +1393,7 @@ fn spawn_beams(
                 },
                 texture: Some(textures[g.texture].clone()),
                 glow: true,
-                blend: crate::map::sprite_material::SpriteBlend::Add,
+                blend: crate::render::sprite_material::SpriteBlend::Add,
             })),
             bevy::light::NotShadowCaster,
             bevy::camera::visibility::NoFrustumCulling,

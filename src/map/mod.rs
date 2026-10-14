@@ -20,10 +20,9 @@ use std::{collections::HashMap, sync::Arc};
 use avian3d::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
-    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
-    mesh::Indices,
+    image::ImageSampler,
     prelude::*,
-    render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat},
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
 use crate::core::{MovingSolid, SpawnPoint, Team};
@@ -38,7 +37,6 @@ pub mod emitters;
 pub mod entities;
 pub mod fish;
 pub mod fire;
-pub mod fog;
 pub use entities::{MapBrushEntity, MapEntities, MapEntity, MapHull};
 pub mod beams;
 pub mod breakables;
@@ -56,22 +54,19 @@ pub mod loading;
 pub mod lod;
 pub mod loose;
 pub mod material_fx;
-pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform};
+pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform, parameter_gamma_to_linear};
 pub mod bot_profiles;
 pub mod merge;
 pub mod monitor;
 pub mod nav;
 pub mod particles;
 pub mod placed_ragdoll;
-pub mod probe_lit;
-pub mod prop_material;
 pub mod prop_physics;
 pub mod psys;
 pub mod radio;
 pub mod ragdoll;
 pub mod tracer;
 pub use ragdoll::{MapCollisionHooks, MapRagdoll, MapRagdollBody, MapRagdollJoint, Ragdoll, RagdollBody, RagdollShot};
-pub mod rope_material;
 pub mod rope_sway;
 pub mod sound;
 pub mod steam;
@@ -80,26 +75,20 @@ pub use sound::{
     SoundLevel, StartSound,
 };
 pub mod shells;
-pub mod sprite_material;
 pub mod surface_color;
 pub mod view_model;
 pub mod vis;
 pub mod water;
-pub mod world_material;
 mod data;
 pub use data::*;
 // Explicit: Bevy's prelude has a `LightProbe` too.
 pub use data::LightProbe;
 mod state;
 pub use state::*;
-mod images;
-pub use images::*;
 mod bodies;
 pub use bodies::*;
 mod props;
 pub use props::*;
-mod materials;
-pub use materials::*;
 mod collision;
 use collision::*;
 mod sky;
@@ -112,8 +101,6 @@ pub use view_model::{
     ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
     ViewModels,
 };
-
-use prop_material::{PropMaterial, PropParams};
 
 /// The loaded map's light field, when the game provides one.
 #[derive(Resource, Clone)]
@@ -280,11 +267,6 @@ impl MapPlugin {
     }
 }
 
-/// Bevy adds `lightmap * lightmap_exposure` as light, then applies the
-/// camera's exposure. This cancels the default camera exposure (EV100 9.7)
-/// so a lightmap value of 1.0 shows a texture at its own brightness.
-pub(crate) const LIGHTMAP_EXPOSURE: f32 = 1.2 * 831.746_4; // 1.2 * 2^9.7
-
 /// Height of the capsule center above the feet, so spawns start standing.
 pub const SPAWN_LIFT: f32 = 1.0;
 
@@ -344,7 +326,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<bot_profiles::BotProfiles>();
     world.remove_resource::<MapEntities>();
     world.remove_resource::<water::WaterView>();
-    world.remove_resource::<fog::SceneFog>();
     world.remove_resource::<MapTerrain>();
     world.insert_resource(Gravity::default());
     let hooks = world.get_resource::<MapHooks>().map(|h| h.unload.clone()).unwrap_or_default();

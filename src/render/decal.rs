@@ -60,11 +60,11 @@ use bevy::{
     shader::ShaderRef,
 };
 
+use super::fog;
 use crate::map::{
     DecalGroup, LogicHidden, MAX_DECALS, MapAlpha, MapBrushEntity, MapData, MapMesh, MapPart, PaneLook, PlaceDecal,
     PropIndex,
     decal::{DEPTH_DROP, DecalBlend, LIFT, MapDecal, MapDecals},
-    fog,
 };
 
 /// Present while the loaded map has impact decals (games' placeholder hit

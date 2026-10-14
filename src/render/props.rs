@@ -6,7 +6,8 @@
 
 use bevy::prelude::*;
 
-use crate::map::{PropLook, body_choice, prop_material::PropMaterial};
+use super::prop_material::PropMaterial;
+use crate::map::{PropLook, body_choice};
 
 /// A prop model's mesh (index into `MapModel::meshes`) drawn under the
 /// prop's node.

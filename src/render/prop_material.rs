@@ -69,7 +69,7 @@ pub struct PropParams {
 
 impl PropParams {
     /// Light the material per pixel with `probe` (times `scale`).
-    pub fn set_probe(&mut self, probe: &super::LightProbe, scale: f32) {
+    pub fn set_probe(&mut self, probe: &crate::map::LightProbe, scale: f32) {
         self.probe = 1.0;
         for (c, v) in self.probe_cube.iter_mut().zip(probe.cube) {
             *c = (v * scale).extend(0.0);
@@ -112,7 +112,7 @@ pub struct PropMaterial {
 
 impl Material for PropMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/prop.wgsl".into()
+        "embedded://mashup/render/prop.wgsl".into()
     }
 
     /// Alpha-tested surfaces count as masked, so the depth prepass (main
@@ -125,7 +125,7 @@ impl Material for PropMaterial {
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/prop_prepass.wgsl".into()
+        "embedded://mashup/render/prop_prepass.wgsl".into()
     }
 
     fn specialize(

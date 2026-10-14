@@ -28,15 +28,12 @@ use bevy::{
 
 use crate::{
     core::{Intent, LocalPlayer},
-    map::{
-        ViewModelScreen,
-        hud::ActiveHud,
-        sprite_material::{SpriteMaterial, SpriteParams, sprite_mesh},
-    },
+    map::{ViewModelScreen, hud::ActiveHud},
     objectives::{
         ObjectiveEvent,
         bomb::{Arming, BombRules, PlantedBomb},
     },
+    render::sprite_material::{SpriteMaterial, SpriteParams, sprite_mesh},
 };
 
 const UNIT: f32 = 0.0254;
@@ -311,7 +308,7 @@ fn planted(
                 },
                 texture: Some(led_tex),
                 glow: false,
-                blend: crate::map::sprite_material::SpriteBlend::Add,
+                blend: crate::map::SpriteBlend::Add,
             });
             let led = commands
                 .spawn((

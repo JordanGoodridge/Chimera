@@ -75,15 +75,14 @@ simulation.
 Presentation sits beside the simulation, above `map`: `audio` (sound
 playback, live sounds, room DSP, soundscapes, hearing) uses core and map,
 and only `client` and `map_plugin` use it; `render` (drawing what the map
-spawns: the drawn phases of spawning a map, tints, detail sprites, sky
-occluders, beams, colour correction, levels of detail) uses core and map,
-and only `client` and `map_plugin` use it. `map_plugin` builds
+spawns and simulates: the drawn phases of spawning a map, what is made
+in play, effects, culling, water, shadows, the sky, view models, the
+materials and their shaders) uses core and map, and only `client`,
+`map_plugin` and a game's `ui/` use it. `map_plugin` builds
 `map::MapPlugin` (the type stays in `map`) from map's systems, audio's and
-render's, in one fixed order. Materials, culling, water, shadows,
-particles, decals, sprites, the sky and view models still live in `map`;
-animation evaluation stays on the simulation's side (the server poses
-hitboxes); see docs/plans/active/engine-split.md, "Crates and compile
-time").
+render's, in one fixed order. Animation evaluation stays on the
+simulation's side (the server poses hitboxes); see
+docs/plans/active/engine-split.md, "Crates and compile time".
 
 Drawn-part requests: what the simulation makes during play says in plain
 data what it looks like, and `render` fulfils it; the simulation never
@@ -139,7 +138,7 @@ that the paths exist).
 - `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
-### Map (neutral map data, spawning, drawing, effects)
+### Map (neutral map data, spawning, effects as data)
 
 - `src/map/mod.rs`: `MapPlugin`, `unload_map`/`change_map`, `MapHooks`, the loaded map's resources, re-exports (map)
 - `src/map/data.rs`: `MapData` and everything it holds; plain data (map)
@@ -147,15 +146,11 @@ that the paths exist).
 - `src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
 - `src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
 - `src/map/loading.rs`: how far a map load has come, for a loading screen (map)
-- `src/map/materials.rs`, `images.rs`, `collision.rs`, `sky.rs`: materials, images, colliders and the sky built from map data (map)
-- `src/map/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (map)
-- `src/map/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (map)
+- `src/map/collision.rs`, `sky.rs`: colliders and the sky built from map data (map)
 - `src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
-- `src/map/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders (map)
 - `src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
 - `src/map/merge.rs`: brush entities drawn merged while at their spawn pose (map)
 - `src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
-- `src/map/probe_lit.rs`: moving models lit from the baked light field (map)
 - `src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
 - `src/map/interp.rs`: drawing between simulation ticks (map)
 - `src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
@@ -183,7 +178,6 @@ that the paths exist).
 - `src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
 - `src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
 - `src/map/decal.rs`: runtime decals as data, impacts' lift (map)
-- `src/map/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (map)
 - `src/map/rope_sway.rs`: ropes' settling step and spline (map)
 - `src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
 - `src/map/sound.rs`: the simulation's side of sounds (map)
@@ -212,11 +206,17 @@ that the paths exist).
 - `src/render/tracer.rs`: bullet tracers drawn from the muzzle (render)
 - `src/render/emitters.rs`: trails, smoke stacks, teslas, embers, muzzle flashes, strikes through the pool (render)
 - `src/render/particles.rs`, `particle.wgsl`: drawing the particle pool (render)
-- `src/render/fog.rs`: the scene's fog pushed to effect materials (render)
 - `src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
 - `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 - `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
 - `src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
+- `src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (render)
+- `src/render/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (render)
+- `src/render/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders; the scene's fog (render)
+- `src/render/probe_lit.rs`: moving models lit from the baked light field (render)
+- `src/render/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (render)
+- `src/render/sprite_material.rs`, `sprite.wgsl`: sprites and glows added or blended in gamma space (render)
+- `src/render/materials.rs`, `images.rs`: materials, meshes and images built from map data (render)
 - `src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
 - `src/render/breakables.rs`: drawing gibs and windows' unbroken panes (render)
 - `src/render/props.rs`: placed props' skins and body groups as drawn (render)

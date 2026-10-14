@@ -6,6 +6,7 @@
 //! render layers come from `map::sky`.
 
 #[allow(unused_imports)]
+use super::LIGHTMAP_EXPOSURE;
 use crate::map::*;
 use bevy::prelude::*;
 

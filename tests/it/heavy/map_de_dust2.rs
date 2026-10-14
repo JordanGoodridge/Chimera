@@ -502,7 +502,7 @@ fn cubemaps_keep_their_mips() {
         for face in &c.faces {
             assert_eq!(face.len(), texels as usize * 4, "{}", c.name);
         }
-        let image = mashup::map::cube_image(c);
+        let image = mashup::render::cube_image(c);
         assert_eq!(image.texture_descriptor.mip_level_count, c.mips);
         assert_eq!(image.data.as_ref().map(Vec::len), Some(texels as usize * 4 * 6));
     }
@@ -966,7 +966,7 @@ fn debug_lightmap_texel_percentiles() {
     let mut v: Vec<u8> = Vec::new();
     let mut push = |rgb: &[[f32; 3]]| {
         for c in rgb.iter().flatten() {
-            let t = mashup::map::source_ldr_texel(*c);
+            let t = mashup::render::source_ldr_texel(*c);
             if t > 0 {
                 v.push(t);
             }

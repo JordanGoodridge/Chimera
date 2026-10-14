@@ -57,6 +57,9 @@ pub enum DrawnResource {
     Particles,
     /// Runtime decals' images and materials (after the overview).
     Decals,
+    /// The fog shaders take (with the world's other resources, after the
+    /// moving water; also headless).
+    Fog,
 }
 
 /// Which headless stand-ins a `MapDrawer` makes unneeded: dropped
@@ -740,7 +743,7 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
                 .map(|&(v, e)| (v, e, data.water[v].brush.clone(), s.node_home(e)))
                 .collect(),
         ));
-        commands.insert_resource(fog::SceneFog(fog::world_fog(data.fog.as_ref())));
+        D::insert_drawn(drawn, commands, s, DrawnResource::Fog);
         commands.insert_resource(data.round_sounds.clone());
         if let Some(r) = &data.radio {
             commands.insert_resource(r.clone());

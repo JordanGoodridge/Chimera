@@ -1,8 +1,15 @@
 //! Images built from map data: textures, cubemaps and lightmaps (Source's
 //! LDR lightmap encoding).
 
+use bevy::{
+    asset::RenderAssetUsages,
+    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
+    prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+};
+
 #[allow(unused_imports)]
-use super::*;
+use crate::map::*;
 
 /// Source LDR lightmaps (specs/cs_source/shaders.md): each linear value L is
 /// rounded to 1/1024, clamped to 4095/1024, stored as the 8-bit sRGB texel
@@ -161,16 +168,6 @@ pub(crate) fn clamp_edges(image: &mut Image) {
         d.address_mode_u = ImageAddressMode::ClampToEdge;
         d.address_mode_v = ImageAddressMode::ClampToEdge;
     }
-}
-
-/// Source's parameter gamma-to-linear table (specs/cs_source/shaders.md
-/// Quirks): rounded to 1/255; 0.95 and up become 1; above 1 unchanged.
-pub fn parameter_gamma_to_linear(v: f32) -> f32 {
-    if v > 1.0 {
-        return v;
-    }
-    let v = (v * 255.0).round() / 255.0;
-    if v >= 0.95 { 1.0 } else { v.powf(2.2) }
 }
 
 /// A baked cubemap as a cube texture (six sRGB layers with their mips,

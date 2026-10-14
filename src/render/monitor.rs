@@ -25,9 +25,12 @@ use bevy::{
     render::render_resource::TextureFormat,
 };
 
-use super::sky::{MapSkybox, SkyCameraInfo};
+use super::{
+    LIGHTMAP_EXPOSURE,
+    sky::{MapSkybox, SkyCameraInfo},
+};
 use crate::map::{
-    EMPTY_LAYER, LIGHTMAP_EXPOSURE, MapPart, MonitorCamera, SKYBOX_LAYER,
+    EMPTY_LAYER, MapPart, MonitorCamera, SKYBOX_LAYER,
     monitor::{ScreenCamera, ScreenSkyCamera},
 };
 

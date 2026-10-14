@@ -16,11 +16,11 @@ use bevy::{ecs::reflect::ReflectComponent, prelude::*};
 use mashup::{
     games,
     harness::Sim,
-    map::{
-        MapPlugin, prop_material::PropMaterial, rope_material::RopeMaterial, sprite_material::SpriteMaterial,
-        world_material::WorldMaterial,
+    map::MapPlugin,
+    render::{
+        beams::BeamMaterial, detail::DetailMaterial, prop_material::PropMaterial, rope_material::RopeMaterial,
+        shadows::ShadowMaterial, sprite_material::SpriteMaterial, water::WaterMaterial, world_material::WorldMaterial,
     },
-    render::{beams::BeamMaterial, detail::DetailMaterial, shadows::ShadowMaterial, water::WaterMaterial},
 };
 
 const MAPS: &[&str] = &["de_dust2", "de_nuke", "mg_lego_multigames_v2", "gg_tbr_water_basin", "surf_demise"];

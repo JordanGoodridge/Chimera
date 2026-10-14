@@ -350,10 +350,10 @@ pub(crate) fn fade_windows(
     mut brushes: Query<(&mut WindowBrush, Option<&Children>)>,
     mut panes: Query<(
         Option<&mut Visibility>,
-        Option<&MeshMaterial3d<crate::map::world_material::WorldMaterial>>,
+        Option<&MeshMaterial3d<crate::render::world_material::WorldMaterial>>,
     )>,
-    mut materials: Option<ResMut<Assets<crate::map::world_material::WorldMaterial>>>,
-    mut own: Local<std::collections::HashMap<AssetId<crate::map::world_material::WorldMaterial>, OwnBlend>>,
+    mut materials: Option<ResMut<Assets<crate::render::world_material::WorldMaterial>>>,
+    mut own: Local<std::collections::HashMap<AssetId<crate::render::world_material::WorldMaterial>, OwnBlend>>,
 ) {
     let Some(vis) = vis else { return };
     let Some(eye) = cameras.iter().find(|(_, c)| c.is_active).map(|(t, _)| t.translation()) else {

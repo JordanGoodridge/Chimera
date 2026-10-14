@@ -18,11 +18,10 @@ use bevy::{
     prelude::*,
 };
 
-use super::bodies::PlayModels;
+use super::{bodies::PlayModels, prop_material::PropMaterial};
 use crate::map::{
     LightField, MapData, MapDebugView, PaneLook,
     breakables::{BrushPanes, FlyingGib, GibAssets, GibLook, MapGibPhysics, gib_alpha},
-    prop_material::PropMaterial,
 };
 
 /// Each gib list's models' meshes and their materials per skin family.
@@ -53,9 +52,9 @@ pub(crate) fn build_gib_draws(
                         .meshes
                         .iter()
                         .map(|m| {
-                            let mut material = crate::map::lit_prop_material(m, textures, data, view, false);
+                            let mut material = crate::render::lit_prop_material(m, textures, data, view, false);
                             material.params.dynamic = 0.0;
-                            (meshes.add(crate::map::build_mesh(m, false)), materials.add(material))
+                            (meshes.add(crate::render::build_mesh(m, false)), materials.add(material))
                         })
                         .collect();
                     let skins = model
@@ -68,7 +67,7 @@ pub(crate) fn build_gib_draws(
                                 .zip(looks)
                                 .map(|(m, look)| {
                                     let mut material =
-                                        crate::map::lit_prop_material(&look.apply(m), textures, data, view, false);
+                                        crate::render::lit_prop_material(&look.apply(m), textures, data, view, false);
                                     material.params.dynamic = 0.0;
                                     materials.add(material)
                                 })

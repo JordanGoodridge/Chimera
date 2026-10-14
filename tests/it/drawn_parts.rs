@@ -13,10 +13,9 @@ use mashup::{
         Held, MapData, MapHeldModel, MapMesh, MapModel, MapPlugin, Ragdoll, SpawnGibs,
         breakables::{GibPiece, MapGibSet},
         loose::{LooseItem, ShownItem},
-        prop_material::PropMaterial,
     },
     movement::noclip,
-    render::bodies::CharacterBody,
+    render::{bodies::CharacterBody, prop_material::PropMaterial},
     rules::Deathmatch,
 };
 

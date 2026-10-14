@@ -15,12 +15,14 @@ use mashup::{
     map::{
         MapCollision, MapConvex, MapData, MapMesh, MapModel, MapPhysics, MapPlugin, MapProp, MapShadows, PropIndex,
         PropSolid, PushAway,
+    },
+    render::{
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
         world_material::WorldMaterial,
+        shadows::{PropShadow, ShadowMaterial},
     },
-    render::shadows::{PropShadow, ShadowMaterial},
 };
 
 /// A box's 12 triangles (corners `lo`..`hi`).

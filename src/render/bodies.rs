@@ -30,14 +30,12 @@ use std::collections::HashMap;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
+use super::{build_mesh, probe_lit, prop_material::PropMaterial};
 #[allow(unused_imports)]
 use crate::map::*;
 use crate::{
     core::Team,
-    map::{
-        prop_material::PropMaterial,
-        ragdoll::{Ragdoll, RagdollBody},
-    },
+    map::ragdoll::{Ragdoll, RagdollBody},
 };
 
 /// The models parts made in play are drawn with: each character model's

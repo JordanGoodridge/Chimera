@@ -44,11 +44,11 @@ use bevy::{
     shader::ShaderRef,
 };
 
+use super::sprite_material::SpriteMaterial;
 use crate::map::{
     ParticleRng,
     beams::{MapBeam, MapGlow, SpotHalo},
     emitters::{BEAM_MAX_SEGMENTS, BEAM_NOISE_SAMPLES, beam_segments, fractal_noise},
-    sprite_material::SpriteMaterial,
 };
 
 /// One unit, meters.

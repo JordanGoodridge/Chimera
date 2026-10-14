@@ -21,15 +21,17 @@ use mashup::{
     map::{
         BrushEntityBounds, MapBrushEntity, MapData, MapPlugin,
         merge::{MergedBrush, MergedChunk, MergedPiece},
+        LogicHidden, VisClusters,
+        vis::{self, ActiveVisibility},
+    },
+    mount::config::LocalConfig,
+    render::{
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
-        LogicHidden, VisClusters,
-        vis::{self, ActiveVisibility},
         world_material::WorldMaterial,
+        vis::VisStats,
     },
-    mount::config::LocalConfig,
-    render::vis::VisStats,
 };
 
 fn load(name: &str) -> Option<MapData> {

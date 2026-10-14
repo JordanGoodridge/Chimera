@@ -9,7 +9,7 @@ use super::{
     bsp::{METERS_PER_UNIT, to_engine},
     material::MaterialLoader,
 };
-use crate::map::{MapData, MapSprite, sprite_material::SpriteBlend};
+use crate::map::{MapData, MapSprite, SpriteBlend};
 
 fn parse3(v: &str) -> Option<Vec3> {
     let mut it = v.split_whitespace().filter_map(|p| p.parse::<f32>().ok());

@@ -192,7 +192,7 @@ fn build_rest(app: &mut App) {
                     render::bodies::turn_bodies.after(DriveAnimation),
                     render::bodies::pose_bodies.after(DriveAnimation),
                     render::bodies::attach_held,
-                    probe_lit::relight,
+                    render::probe_lit::relight,
                     render::loose::attach_shown,
                     render::loose::draw_loose,
                 )

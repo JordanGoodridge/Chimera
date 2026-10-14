@@ -23,14 +23,16 @@ use mashup::{
     map::{
         BrushEntityBounds, MapBrushEntity, MapData, MapEntity, MapPlugin,
         DecalGroup, PlaceDecal,
+    },
+    mount::config::LocalConfig,
+    movement::noclip,
+    render::{
+        decal::{ClearDecals, DecalMaterial, DecalSettings, RuntimeDecal},
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
         world_material::WorldMaterial,
     },
-    mount::config::LocalConfig,
-    movement::noclip,
-    render::decal::{ClearDecals, DecalMaterial, DecalSettings, RuntimeDecal},
     weapon::{Inventory, Weapon, give},
 };
 

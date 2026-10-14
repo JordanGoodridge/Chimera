@@ -45,9 +45,8 @@ use bevy::{
     },
 };
 
-use crate::map::{
-    LightStyles, LightmapLayers, MapLightStyle, MapLightmap, source_ldr_bump_texels, source_ldr_texel, world_material,
-};
+use super::{LightmapLayers, source_ldr_bump_texels, source_ldr_texel, world_material};
+use crate::map::{LightStyles, MapLightStyle, MapLightmap};
 
 /// A face block's atlas rectangle and the styles lighting it (style
 /// index, offset of the block in that style's texels).
@@ -670,7 +669,7 @@ fn write_uploads(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::{f16_texels, source_ldr_texels};
+    use crate::render::{f16_texels, source_ldr_texels};
 
     /// A 4x1 atlas: texel 0 lit steadily, texels 1-2 a flickering style's
     /// block (with a switchable style on texel 2 too), texel 3 another

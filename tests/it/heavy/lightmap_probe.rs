@@ -80,7 +80,7 @@ fn lightmap_at_point() {
         println!("face {} material {} luxel {luxel:?}", face.texture().name(), tex.name());
         let show = |label: &str, s: &lightmap::FaceSamples| {
             let l = bilinear(s, luxel);
-            let enc = l.map(|v| mashup::map::source_ldr_texel(v));
+            let enc = l.map(|v| mashup::render::source_ldr_texel(v));
             let dec = enc.map(|t| srgb_decode(t as f32 / 255.0));
             println!("  {label}: linear L {:.4?} -> texel {enc:?} -> decoded {:.4?}", l, dec);
         };

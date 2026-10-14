@@ -26,9 +26,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // in the simulation may use it.
     ("audio", &["core", "map"]),
     // Rendering: draws what the map spawns and simulates (the drawn phases
-    // of spawning a map, through `map::MapDrawer`, effects, culling, water,
-    // shadows, sky, view models); nothing in the simulation may use it, nor
-    // the drawing modules still in map (`MAP_DRAWING`).
+    // of spawning a map, through `map::MapDrawer`, what the simulation
+    // makes in play from its drawn-part requests, effects, culling, water,
+    // shadows, sky, view models, the materials and shaders); nothing in the
+    // simulation may use it, and the simulation names no drawing type
+    // (`simulation_builds_no_drawn_parts`).
     ("render", &["core", "map"]),
     // Builds `map::MapPlugin` from the map and its presentation (`audio`,
     // `render`), its systems in `core`'s sets.
@@ -347,34 +349,32 @@ fn module_layering() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
-/// Drawing modules still in `map` (materials and their shaders), on their
-/// way to `render` (docs/plans/active/engine-split.md, the render slice).
-const MAP_DRAWING: &[&str] = &[
-    "world_material",
-    "prop_material",
-    "sprite_material",
-    "rope_material",
-    "probe_lit",
+/// Drawing types: what builds or holds meshes and materials. The
+/// simulation never names them; it says in plain data what its parts look
+/// like and `render` draws them (docs/ARCHITECTURE.md, "Drawn-part
+/// requests").
+const DRAWING_TYPES: &[&str] = &["Mesh3d", "MeshMaterial3d", "Assets<Mesh>", "StandardMaterial", "MaterialPlugin"];
+
+/// Files of the simulation's layers that still name one of
+/// `DRAWING_TYPES` (file, why).
+const MAP_DRAWING_EXCEPTIONS: &[(&str, &str)] = &[
+    // TODO(engine-split): merged brush entities are drawing only; they
+    // move to render with copies' merged pieces shown by a render hook.
+    ("src/map/merge.rs", "combined meshes of brush entities"),
+    // TODO(engine-split): the placed ragdoll's meshes never cull; a render
+    // system can do that.
+    ("src/map/placed_ragdoll.rs", "its meshes' `NoFrustumCulling`"),
 ];
 
-/// Files of the simulation's layers that still name one of `MAP_DRAWING`
-/// (file, module, why).
-const MAP_DRAWING_EXCEPTIONS: &[(&str, &str, &str)] = &[
-    // TODO(engine-split): `SpriteBlend` is sprite data; it moves to
-    // `map::data` when the sprite material moves to render.
-    (
-        "src/games/cs_source/sprites.rs",
-        "sprite_material",
-        "`SpriteBlend` in `MapSprite`",
-    ),
-];
-
-/// The simulation's layers (and a game's parts outside its `ui/`) name no
-/// drawing module left in `map` (`MAP_DRAWING`), so those can move to
-/// `render` and a dedicated server can leave them out.
+/// The simulation's layers (map, and a game's parts outside its `ui/`)
+/// name no drawing type (`DRAWING_TYPES`) and hold no shader, so a
+/// dedicated server can leave `render` out. (They can't use `render` at
+/// all: `ALLOWED`.)
 #[test]
-fn simulation_uses_no_drawing_module_of_map() {
+fn simulation_builds_no_drawn_parts() {
     const SIM: &[&str] = &[
+        "core",
+        "map",
         "logic",
         "net",
         "weapon",
@@ -401,60 +401,36 @@ fn simulation_uses_no_drawing_module_of_map() {
             .map(|l| l.split("//").next().unwrap_or(""))
             .collect::<Vec<_>>()
             .join(" ");
-        // `map::m` directly, or `m` inside a `map::{...}` group.
-        let mut named = Vec::new();
-        for m in MAP_DRAWING {
-            if code.contains(&format!("map::{m}")) {
-                named.push(*m);
-            }
+        let named: Vec<&str> = DRAWING_TYPES.iter().copied().filter(|t| code.contains(t)).collect();
+        if named.is_empty() {
+            continue;
         }
-        for (i, _) in code.match_indices("map::{") {
-            let mut depth = 0;
-            let mut end = code.len();
-            for (j, c) in code[i + 5..].char_indices() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end = i + 5 + j;
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            let group = &code[i..end];
-            for m in MAP_DRAWING {
-                if group
-                    .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .any(|w| w == *m)
-                {
-                    named.push(*m);
-                }
-            }
+        if MAP_DRAWING_EXCEPTIONS.iter().any(|(f, _)| *f == rel) {
+            used_exceptions.insert(rel.clone());
+            continue;
         }
-        named.sort_unstable();
-        named.dedup();
-        for m in named {
-            if MAP_DRAWING_EXCEPTIONS.iter().any(|(f, e, _)| *f == rel && *e == m) {
-                used_exceptions.insert((rel.clone(), m));
-                continue;
-            }
+        errors.push(format!(
+            "{rel}: the simulation layer `{module}` names {named:?}, which build or hold drawn parts. \
+             Say what the part looks like in plain data (a component or message `render` fulfils, \
+             docs/ARCHITECTURE.md \"Drawn-part requests\") and draw it in `render`, or (with a TODO) \
+             list the file in MAP_DRAWING_EXCEPTIONS in tests/it/architecture.rs."
+        ));
+    }
+    for (f, _) in MAP_DRAWING_EXCEPTIONS {
+        if !used_exceptions.contains(*f) {
             errors.push(format!(
-                "{rel}: the simulation layer `{module}` uses `map::{m}`, a drawing module on its way to \
-                 `render` (docs/plans/active/engine-split.md). Keep the data it needs in `map` (e.g. \
-                 `map::data`) and the drawing in `render`, or (with a TODO) list the file in \
-                 MAP_DRAWING_EXCEPTIONS in tests/it/architecture.rs."
+                "MAP_DRAWING_EXCEPTIONS lists {f}, which no longer names a drawing type: remove the entry."
             ));
         }
     }
-    for (f, m, _) in MAP_DRAWING_EXCEPTIONS {
-        if !used_exceptions.contains(&(f.to_string(), *m)) {
-            errors.push(format!(
-                "MAP_DRAWING_EXCEPTIONS lists {f} for `map::{m}`, which it no longer uses: remove the entry."
-            ));
-        }
+    let wgsl: Vec<String> = fs::read_dir(src.join("map"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".wgsl"))
+        .collect();
+    if !wgsl.is_empty() {
+        errors.push(format!("src/map holds shaders {wgsl:?}: shaders are `render`'s (src/render)."));
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }

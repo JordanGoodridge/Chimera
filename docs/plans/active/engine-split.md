@@ -192,16 +192,33 @@ measurements):
     - [x] `architecture::simulation_uses_no_drawing_module_of_map`: the
       simulation's layers name none of the materials left in map
       (`MAP_DRAWING`; one exception, `SpriteBlend`).
-    - [ ] Left: the materials and WGSL (`world_material`, `prop_material`,
-      `sprite_material`, `rope_material`, `fog`, `probe_lit`,
-      `materials.rs`/`images.rs` helpers), which need the drawn parts of
-      `breakables` (gibs, panes), `loose`, `bodies`, `ragdoll` and
-      `merge` moved first, through drawer hooks that also run after
-      spawning (gibs, dropped weapons and bodies are made in play).
-    `insert_resources` still
-    inserts some drawing resources (decal and particle assets, fog) and
-    `unload_map` still removes them: render's go through `MapHooks`
-    when they move. Client post passes (`client::hdr`, `gamma`,
+    - [x] Drawer hooks that run after spawning (2026-10-14, one commit
+      per group, the spawn dump identical modulo moved paths; component
+      ids and the change tick masked where a system or component was
+      added): drawn-part requests (docs/ARCHITECTURE.md): what the
+      simulation makes in play says in plain data what it looks like
+      and render's systems fulfil it; headless nothing is drawn
+      (`tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
+      models, the ragdoll's adoption of the dead's body), `render::loose`
+      (`LooseItem`, `ShownItem`), `render::breakables` (a gib's
+      `GibLook`, windows' `BrushPanes` clipped and made whole),
+      `render::props` (`PropLook` on skins and body groups). Resource
+      order kept: the gibs' meshes live in `render::bodies::PlayModels`
+      (was `CharacterBodies`), built in the old order and inserted at
+      the bodies' place; `MapPlugin::build_first` split where the
+      ragdoll's drawn systems were added.
+    - [x] The materials and WGSL: `world_material`, `prop_material`,
+      `sprite_material`, `rope_material`, `probe_lit`, `fog` (merged
+      with `render::fog`), `materials.rs`/`images.rs` and their shaders
+      are render's; `SpriteBlend` went to `map::data`,
+      `parameter_gamma_to_linear` to `map::material_fx`, the water fog
+      modes to `map::water`; `SceneFog` is inserted through
+      `MapDrawer::insert_drawn` (`DrawnResource::Fog`) at its old place.
+      `architecture::simulation_builds_no_drawn_parts` replaces the
+      `MAP_DRAWING` check: the simulation's layers name no drawing type
+      (`Mesh3d`, `Assets<Mesh>`, materials) and `src/map` holds no
+      shader.
+    Client post passes (`client::hdr`, `gamma`,
     `color_correction`) stay in client: they hang off
     `FirstPersonCamera`/`UiCamera`/`ClientArgs`.
   - A server without rendering: not yet. `mashup_server` adds no

@@ -470,12 +470,12 @@ fn count_churn(
     names: Query<&Name>,
     map_parts: Query<(), With<crate::map::MapPart>>,
     mut meshes: MessageReader<AssetEvent<Mesh>>,
-    mut props: MessageReader<AssetEvent<crate::map::prop_material::PropMaterial>>,
+    mut props: MessageReader<AssetEvent<crate::render::prop_material::PropMaterial>>,
     mut standard: MessageReader<AssetEvent<StandardMaterial>>,
-    mut sprites: MessageReader<AssetEvent<crate::map::sprite_material::SpriteMaterial>>,
+    mut sprites: MessageReader<AssetEvent<crate::render::sprite_material::SpriteMaterial>>,
     mut particles: MessageReader<AssetEvent<crate::render::particles::ParticleDrawMaterial>>,
     mut decals: MessageReader<AssetEvent<crate::render::decal::DecalMaterial>>,
-    mut world: MessageReader<AssetEvent<crate::map::world_material::WorldMaterial>>,
+    mut world: MessageReader<AssetEvent<crate::render::world_material::WorldMaterial>>,
 ) {
     fn modified<A: Asset>(events: &mut MessageReader<AssetEvent<A>>) -> u32 {
         events.read().filter(|e| matches!(e, AssetEvent::Modified { .. })).count() as u32
