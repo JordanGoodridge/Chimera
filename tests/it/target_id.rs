@@ -1,11 +1,11 @@
-//! CS:S's target ID (`client::target_id`): the player under the crosshair
+//! CS:S's target ID (`games::cs_source::ui::target_id`): the player under the crosshair
 //! named in the game's words, a teammate with its health, an enemy
 //! without; centred with `hud_centerid 1` (the default); none through
 //! smoke, none for enemies with `mp_playerid 1`, nobody with 2.
 
 use bevy::prelude::*;
 use mashup::{
-    client::target_id::{TargetId, TargetIdStatePlugin},
+    games::cs_source::ui::target_id::{TargetId, TargetIdStatePlugin},
     console::Console,
     core::{Health, LocalPlayer, SightBlocker, Team},
     greybox::{self, GreyboxMapPlugin},

@@ -85,7 +85,7 @@
 
 use bevy::{prelude::*, window::CursorOptions};
 
-use super::chat::ChatLine;
+use crate::client::chat::ChatLine;
 use crate::{
     console::{Command, Console, ConsoleAppExt},
     core::{Health, LocalPlayer, Radio, Team},
@@ -103,6 +103,7 @@ impl Plugin for RadioPlugin {
         app.add_plugins(RadioHearPlugin)
             .init_resource::<RadioMenu>()
             .add_systems(Update, ((keys, draw).chain(), draw_icons.after(hear)));
+        crate::client::front_end::sync_panel::<RadioMenu, _>(app, "radio", true, |m| m.0.is_some(), draw);
         for n in 1..=3usize {
             let help = ["Radio commands", "Group radio commands", "Radio responses"][n - 1];
             app.console_command(
@@ -228,12 +229,12 @@ fn keys(
     mut console: ResMut<Console>,
     mut commands: Commands,
 ) {
-    if !super::input::cursor_grabbed(&cursor) {
+    if !crate::client::input::cursor_grabbed(&cursor) {
         return;
     }
     // The radio keys (`radio1` to `radio3`: Z, X, C).
     for i in 0..3 {
-        if super::binds::just_pressed(&console.binds, &keys, &mouse, &format!("radio{}", i + 1)) {
+        if crate::client::binds::just_pressed(&console.binds, &keys, &mouse, &format!("radio{}", i + 1)) {
             commands.queue(move |w: &mut World| open(w, Some(i)));
             return;
         }
@@ -286,7 +287,7 @@ fn draw(
     hud: Option<Res<crate::map::hud::ActiveHud>>,
     shown: Query<Entity, With<MenuText>>,
     windows: Query<&Window>,
-    fonts: Res<super::fonts::UiFonts>,
+    fonts: Res<crate::client::fonts::UiFonts>,
     mut built: Local<Option<(Option<usize>, f32)>>,
     mut commands: Commands,
 ) {
@@ -374,13 +375,13 @@ fn draw_icons(
     time: Res<Time>,
     mut icons: ResMut<RadioIcons>,
     hud: Option<Res<crate::map::hud::ActiveHud>>,
-    camera: Query<(&Camera, &GlobalTransform), With<super::FirstPersonCamera>>,
+    camera: Query<(&Camera, &GlobalTransform), With<crate::client::FirstPersonCamera>>,
     who: Query<(&GlobalTransform, Option<&crate::core::MovementState>, Option<&Health>)>,
     mut nodes: Query<(&mut Node, &mut Visibility), With<RadioIcon>>,
     (spatial, local, spec): (
         avian3d::prelude::SpatialQuery,
         Query<Entity, With<crate::core::LocalPlayer>>,
-        Option<Res<super::spectate::SpecView>>,
+        Option<Res<crate::client::spectate::SpecView>>,
     ),
     mut commands: Commands,
 ) {
@@ -517,7 +518,7 @@ fn hear(
         if !is_local {
             icons.speak(call.sender);
         }
-        let sender = super::shown_name(call.sender, is_local, character, name, net.as_deref());
+        let sender = crate::client::shown_name(call.sender, is_local, character, name, net.as_deref());
         let place = nav.as_ref().zip(at).and_then(|(nav, at)| {
             let area = nav.area_at(at.translation())?;
             nav.places.get(nav.areas[area].place?).cloned()

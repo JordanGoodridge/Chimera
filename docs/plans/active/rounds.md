@@ -38,7 +38,7 @@ restarts.
    guns come with their clip only, the spawn pistols with two more
    clips; bots buy their ammo before armour; prices unmeasured), bot
    buying preferences (ours: `economy::autobuy`, a primary for the team by `Prices::bot_weights` among the dearer half it can afford, then armour), the game's own VGUI buy-menu look
-   (ours: `client/buy_menu.rs`, B or `buymenu`, CS:S's category keys
+   (ours: `games/cs_source/ui/buy_menu.rs`, B or `buymenu`, CS:S's category keys
    and order, each team its own guns; rounds start from the team pistol
    and knife).
 3. Round restarts re-creating map entities: done. `start_round` counts

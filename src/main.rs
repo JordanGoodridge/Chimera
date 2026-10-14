@@ -100,10 +100,7 @@ fn main() {
             .build()
             .disable::<PhysicsInterpolationPlugin>(),
         SimPlugins,
-        mashup::games::cs_source::movement::SourceMovementPlugin,
-        mashup::games::cs_source::weapons::CsWeaponsPlugin,
-        mashup::games::cs_source::player_anim::PlayerAnimPlugin,
-        mashup::games::cs_source::view_anim::ViewAnimPlugin,
+        mashup::games::cs_source::CsSourcePlugins,
         mashup::map::world_material::WorldMaterialPlugin,
         mashup::map::rope_material::RopeMaterialPlugin,
         mashup::map::sprite_material::SpriteMaterialPlugin,
@@ -131,7 +128,10 @@ fn main() {
     })
     // Network play: a listen server, or a client (`connect`).
     .add_plugins(mashup::net::NetPlugin)
-    .add_plugins(client::ClientPlugin { args });
+    .add_plugins(client::ClientPlugin { args })
+    // CS:S's menus, panels and HUD (the shell reaches them through
+    // `client::front_end`).
+    .add_plugins(mashup::games::cs_source::ui::CsSourceUiPlugin);
     if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
         single_threaded_schedules(&mut app);
     }

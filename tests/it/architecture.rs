@@ -81,6 +81,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "metrics",
         ],
     ),
+    // The client shell: window, input, camera, console UI, the VGUI-like
+    // widget layer, debug tools. `games` here is the game-neutral map
+    // loading (`games::load_map`); a game's own module only through
+    // `CLIENT_GAME_EXCEPTIONS`. A game's menus and HUD are that game's
+    // (`games_ui`), reached through `client::front_end`.
     (
         "client",
         &[
@@ -105,7 +110,36 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "metrics",
         ],
     ),
-    // Game plugins: may use the shared layers, never another game.
+    // A game's front end (`src/games/<game>/ui/`: its menus, panels and
+    // HUD): built on the client shell; its own game's modules too. Nothing
+    // else in the game uses it (`game_parts_do_not_use_their_ui`).
+    (
+        "games_ui",
+        &[
+            "lib",
+            "core",
+            "console",
+            "slots",
+            "character",
+            "movement",
+            "greybox",
+            "map",
+            "audio",
+            "render",
+            "weapon",
+            "objectives",
+            "rules",
+            "bot",
+            "mount",
+            "games",
+            "logic",
+            "net",
+            "metrics",
+            "client",
+        ],
+    ),
+    // Game plugins: may use the shared layers, never another game. `rules`:
+    // a game registers its rule modules (`rules::module`).
     (
         "games",
         &[
@@ -118,6 +152,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "map",
             "weapon",
             "objectives",
+            "rules",
         ],
     ),
     // Binaries use the library through `mashup::`, not `crate::`.
@@ -140,11 +175,39 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// The top-level module a file belongs to: `src/movement/noclip.rs` -> `movement`.
+/// A game's front end (`src/games/<game>/ui/...`) is `games_ui`.
 fn module_of(src: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(src).ok()?;
-    let first = rel.components().next()?.as_os_str().to_str()?;
+    let mut parts = rel.components().map(|c| c.as_os_str().to_str().unwrap_or(""));
+    let first = parts.next()?;
+    if first == "games" && parts.nth(1) == Some("ui") {
+        return Some("games_ui".to_string());
+    }
     Some(first.trim_end_matches(".rs").to_string())
 }
+
+/// The games: `src/games/<name>/` folders.
+fn game_names(src: &Path) -> BTreeSet<String> {
+    fs::read_dir(src.join("games"))
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir())
+        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .collect()
+}
+
+/// Client files that still name a game's own module (`crate::games::<game>`),
+/// each with why. The client shell should reach a game only through
+/// registration (`client::front_end`, the app's plugins); shrink this list.
+const CLIENT_GAME_EXCEPTIONS: &[(&str, &str)] = &[
+    // TODO(engine-split): a game registry (the default game, its install,
+    // maps, map cycle and server tick) in place of naming CS:S.
+    ("src/client/console.rs", "map loading: CS:S's install, maps, map cycle, tick"),
+    ("src/client/binds.rs", "the default binds from CS:S's install"),
+    ("src/client/net.rs", "the map files a server offers: CS:S's install"),
+    // TODO(engine-split): movement cvars by the movement slot's registry.
+    ("src/client/debug_ui.rs", "the movement tab lists Source movement's cvars"),
+];
 
 fn ident(s: &str) -> String {
     s.trim_start()
@@ -206,6 +269,7 @@ fn module_layering() {
     let mut files = Vec::new();
     rust_files(&src, &mut files);
     let modules: BTreeSet<String> = ALLOWED.iter().map(|(m, _)| m.to_string()).collect();
+    let games = game_names(&src);
     let mut errors = Vec::new();
 
     for file in files {
@@ -228,14 +292,30 @@ fn module_layering() {
             .map(|l| l.split("//").next().unwrap_or(""))
             .collect::<Vec<_>>()
             .join(" ");
+        let rel = file.strip_prefix(root()).unwrap().to_string_lossy().replace('\\', "/");
         for r in crate_refs(&code, &modules) {
+            // `games::load_map` and the like: the game-neutral map loading.
+            let r = match r.strip_prefix("games::") {
+                Some(name) if !games.contains(name) => "games".to_string(),
+                _ => r,
+            };
             if let Some(game) = r.strip_prefix("games::") {
                 let own = file
                     .strip_prefix(src.join("games"))
                     .ok()
                     .and_then(|p| p.components().next());
                 let own = own.map(|c| c.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string());
-                if module != "client" && own.as_deref() != Some(game) && module != "lib" {
+                if module == "client" {
+                    if !CLIENT_GAME_EXCEPTIONS.iter().any(|(f, _)| *f == rel) {
+                        errors.push(format!(
+                            "{rel}: the client shell uses game `{game}`. A game's menus, panels and HUD live in \
+                             `src/games/{game}/ui/` and the shell reaches them through `client::front_end` \
+                             (hooks the game registers); the app adds the game's plugins (main.rs). Add a hook \
+                             there, or (with a TODO) list the file in CLIENT_GAME_EXCEPTIONS in \
+                             tests/it/architecture.rs."
+                        ));
+                    }
+                } else if own.as_deref() != Some(game) && module != "lib" {
                     errors.push(format!(
                         "{}: uses game `{game}`. Games must not depend on each other, and shared layers must \
                          not depend on any game. Move the shared concept into `core` (rule of three) or add a \
@@ -253,6 +333,50 @@ fn module_layering() {
                  Move the shared piece down a layer or invert the dependency (e.g. register through `slots`); \
                  see docs/ARCHITECTURE.md.",
                 file.display()
+            ));
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
+/// A game's parts (weapons, movement, map loading ...) work without its
+/// front end: only its `ui/` uses `ui`. And `CLIENT_GAME_EXCEPTIONS` lists
+/// only files that still need it.
+#[test]
+fn game_parts_do_not_use_their_ui() {
+    let src = root().join("src");
+    let mut errors = Vec::new();
+    for game in game_names(&src) {
+        let mut files = Vec::new();
+        rust_files(&src.join("games").join(&game), &mut files);
+        for file in files {
+            if module_of(&src, &file).as_deref() == Some("games_ui") {
+                continue;
+            }
+            let code: String = fs::read_to_string(&file)
+                .unwrap()
+                .lines()
+                .map(|l| l.split("//").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let names_ui = [format!("{game}::ui::"), "super::ui::".into(), "self::ui::".into()]
+                .iter()
+                .any(|p| code.contains(p.as_str()));
+            if names_ui {
+                errors.push(format!(
+                    "{}: uses `{game}::ui`, the game's front end. A game's parts must work without its menus \
+                     and HUD (a dedicated server, another game's front end): move what both need out of `ui/`.",
+                    file.display()
+                ));
+            }
+        }
+    }
+    for (file, _) in CLIENT_GAME_EXCEPTIONS {
+        let text = fs::read_to_string(root().join(file)).unwrap_or_default();
+        if !game_names(&src).iter().any(|g| text.contains(&format!("games::{g}"))) {
+            errors.push(format!(
+                "{file} no longer uses a game's module: remove it from CLIENT_GAME_EXCEPTIONS in \
+                 tests/it/architecture.rs."
             ));
         }
     }

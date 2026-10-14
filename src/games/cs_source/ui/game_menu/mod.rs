@@ -114,7 +114,7 @@ mod systems;
 mod tests;
 
 pub use self::{create_server::*, draw::MENU_Z, loading::*, main_menu::*, model::*};
-pub(in crate::client) use self::systems::*;
+pub(in crate::games::cs_source::ui) use self::systems::*;
 use self::{draw::*, options_pages::*};
 
 use std::{
@@ -134,11 +134,12 @@ use bevy::{
     window::CursorOptions,
 };
 
-pub(in crate::client) use crate::client::widgets::{Look, bevel, label, place};
+pub(in crate::games::cs_source::ui) use crate::client::widgets::{Look, bevel, label, place};
+use super::options::{Place, SETTINGS, SettingKind, TABS, Tab, VALUE_ENTRIES};
 use crate::client::{
     binds,
     fonts::UiFonts,
-    options::{Place, SETTINGS, SettingKind, TABS, Tab, VALUE_ENTRIES},
+    front_end::{FrontEnd, FrontEndSync, MenuStatus},
     widgets::{
         self, ButtonState as Btn, Caret, ComboEvent, ComboKey, ComboList, Edit, FrameSpec, SliderDrag, SliderOwner,
         SliderTrack, WindowId, Windows,
@@ -151,6 +152,19 @@ use crate::{
 };
 
 pub struct GameMenuPlugin;
+
+/// Copy what the shell reads of the menu into `MenuStatus` whenever the
+/// menu changes.
+fn sync_status(menu: Res<GameMenu>, mut status: ResMut<MenuStatus>) {
+    if menu.is_changed() {
+        *status = MenuStatus {
+            open: menu.open,
+            in_game: menu.in_game,
+            loading: menu.loading.is_some(),
+            failed: menu.failure.is_some(),
+        };
+    }
+}
 
 impl Plugin for GameMenuPlugin {
     fn build(&self, app: &mut App) {
@@ -165,7 +179,7 @@ impl Plugin for GameMenuPlugin {
                 Update,
                 (
                     ui_loaded,
-                    keys.before(super::console::toggle),
+                    keys.before(crate::client::console::toggle),
                     text_keys,
                     pointer,
                     sync,
@@ -179,6 +193,18 @@ impl Plugin for GameMenuPlugin {
                     .in_set(MenuSystems),
             )
             .add_systems(Update, world_behind_dialogs.after(MenuSystems));
+        // The shell's view of the menu (`client::front_end`).
+        app.init_resource::<MenuStatus>()
+            .add_systems(First, sync_status.in_set(FrontEndSync))
+            .add_systems(Update, sync_status.in_set(FrontEndSync).after(MenuSystems))
+            .add_systems(PostUpdate, sync_status.in_set(FrontEndSync));
+        FrontEnd::register(app, |f| {
+            f.entered_game = entered_game;
+            f.left_game = left_game;
+            f.joining = joining;
+            f.show_failure = show_failure;
+            f.map_load_failed = map_load_failed;
+        });
         crate::console::resource_cvar::<LoadingDetails, u8>(
             app,
             "mashup_loading_details",

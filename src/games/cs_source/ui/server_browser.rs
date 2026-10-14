@@ -57,9 +57,9 @@ use bevy::{
     ui::RelativeCursorPosition,
 };
 
-use super::{
+use super::game_menu::GameMenu;
+use crate::client::{
     fonts::UiFonts,
-    game_menu::GameMenu,
     widgets::{self, Caret, ComboEvent, ComboKey, ComboList, Edit, FrameSpec, Look, Windows, bevel, label, place},
 };
 use crate::{
@@ -1572,7 +1572,7 @@ fn has_keys(
 fn keys(
     mut events: MessageReader<KeyboardInput>,
     held: Res<ButtonInput<KeyCode>>,
-    console_ui: Res<super::console::ConsoleUi>,
+    console_ui: Res<crate::client::console::ConsoleUi>,
     mut browser: ResMut<ServerBrowser>,
     mut console: ResMut<Console>,
     mut inbox: ResMut<RequestInbox>,

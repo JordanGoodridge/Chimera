@@ -172,7 +172,7 @@ pub(super) fn grab_cursor(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut focus: MessageReader<bevy::window::WindowFocused>,
-    menu: Option<Res<super::game_menu::GameMenu>>,
+    menu: Option<Res<super::front_end::MenuStatus>>,
     vgui: Option<Res<super::vgui::VguiOpen>>,
     (console, debug_ui, egui, chat): (
         Option<Res<super::console::ConsoleUi>>,
@@ -201,7 +201,7 @@ pub(super) fn grab_cursor(
     for f in focus.read() {
         (lost, gained) = (!f.focused, f.focused);
     }
-    let playing = menu.as_ref().is_none_or(|m| m.in_game && m.loading.is_none());
+    let playing = menu.as_ref().is_none_or(|m| m.in_game && !m.loading);
     let typing = chat.is_some_and(|c| c.open.is_some());
     if lost {
         release_cursor(&mut cursor);
@@ -223,7 +223,7 @@ fn drop_key(
     console: Option<ResMut<crate::console::Console>>,
     ui: Option<Res<super::console::ConsoleUi>>,
     chat: Option<Res<super::chat::ChatInput>>,
-    menu: Option<Res<super::game_menu::GameMenu>>,
+    menu: Option<Res<super::front_end::MenuStatus>>,
 ) {
     let Some(mut console) = console else { return };
     // Typing, or the game menu reading keys (rebinding them).
@@ -303,11 +303,7 @@ pub(super) fn write_local_intent(
     mut free: ResMut<FreeLook>,
     mut freecam: ResMut<super::view::FreeCam>,
     time: Res<Time>,
-    (menu, team_menu, radio_menu): (
-        Option<Res<super::buy_menu::BuyMenu>>,
-        Option<Res<super::team_menu::TeamMenu>>,
-        Option<Res<super::radio::RadioMenu>>,
-    ),
+    panels: Option<Res<super::front_end::Panels>>,
     zoomed: Query<&crate::weapon::Zoomed, With<LocalPlayer>>,
     spectator: Option<Res<super::spectate::Spectator>>,
     weapon_menu: Option<Res<super::weapon_select::WeaponMenu>>,
@@ -400,10 +396,7 @@ pub(super) fn write_local_intent(
     // with the weapon selection (`hud_fastswitch 0`) they work through it.
     intent.select = if let Some(m) = weapon_menu.as_ref().filter(|m| m.takes_slots || m.select.is_some()) {
         m.selected_slot()
-    } else if menu.is_some_and(|m| m.open)
-        || team_menu.is_some_and(|m| m.0)
-        || radio_menu.is_some_and(|m| m.0.is_some())
-    {
+    } else if panels.is_some_and(|p| p.number_keys_taken()) {
         None
     } else {
         (0..5u8).find(|i| bound(&format!("slot{}", i + 1)))
@@ -547,7 +540,7 @@ mod tests {
     fn regaining_focus_leaves_an_open_menu_or_chat_alone() {
         for (menu_open, chat_open) in [(true, false), (false, true)] {
             let mut app = App::new();
-            let menu = super::super::game_menu::GameMenu {
+            let menu = super::super::front_end::MenuStatus {
                 open: menu_open,
                 in_game: true,
                 ..default()

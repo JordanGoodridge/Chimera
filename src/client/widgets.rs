@@ -1952,7 +1952,6 @@ mod tests {
     /// part under the frame), or over black in a game; no menu: see-through.
     #[test]
     fn frames_draw_over_the_menu_and_hide_it() {
-        assert!(crate::client::game_menu::MENU_Z < FRAME_Z, "frames over the menu's title and entries");
         let mut app = App::new();
         app.init_resource::<Windows>()
             .init_resource::<FrameBacking>()

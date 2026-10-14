@@ -292,7 +292,7 @@ impl Plugin for DebugUiPlugin {
 fn follow_open(
     ui: Res<DebugUi>,
     console: Option<Res<super::console::ConsoleUi>>,
-    menu: Option<Res<super::game_menu::GameMenu>>,
+    menu: Option<Res<super::front_end::MenuStatus>>,
     mut cursor: Single<&mut CursorOptions>,
     mut was: Local<bool>,
 ) {
@@ -886,7 +886,7 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
     });
     ui.horizontal(|ui| {
         ui.label("skill");
-        for (name, reaction, aim, turn) in super::game_menu::DIFFICULTIES {
+        for (name, reaction, aim, turn) in crate::bot::DIFFICULTIES {
             command_button(
                 ui,
                 world,

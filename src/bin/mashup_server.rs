@@ -138,8 +138,11 @@ fn main() {
     }
     app.add_plugins((
         NetPlugin,
-        cs_source::movement::SourceMovementPlugin,
-        cs_source::weapons::CsWeaponsPlugin,
+        // Without the player and view model animation, as before.
+        cs_source::CsSourcePlugins
+            .build()
+            .disable::<cs_source::player_anim::PlayerAnimPlugin>()
+            .disable::<cs_source::view_anim::ViewAnimPlugin>(),
     ))
     .insert_resource(Loadout {
         movement: cs_source::movement::ID,

@@ -233,11 +233,7 @@ fn menu_input(
     cursor: Query<&CursorOptions>,
     player: Option<Single<&Inventory, With<LocalPlayer>>>,
     weapons: Query<&Weapon>,
-    (buy, team, radio): (
-        Option<Res<super::buy_menu::BuyMenu>>,
-        Option<Res<super::team_menu::TeamMenu>>,
-        Option<Res<super::radio::RadioMenu>>,
-    ),
+    panels: Option<Res<super::front_end::Panels>>,
     time: Res<Time>,
     (sounds, mut play): (Option<Res<crate::map::RoundSounds>>, MessageWriter<crate::map::PlaySound>),
 ) {
@@ -264,9 +260,7 @@ fn menu_input(
     let empty = std::collections::BTreeMap::new();
     let binds = console.as_ref().map_or(&empty, |c| &c.binds);
     let playing = cursor.iter().next().is_some_and(super::input::cursor_grabbed)
-        && !buy.is_some_and(|m| m.open)
-        && !team.is_some_and(|m| m.0)
-        && !radio.is_some_and(|m| m.0.is_some());
+        && !panels.is_some_and(|p| p.number_keys_taken());
     let just = |c: &str| playing && super::binds::just_pressed(binds, &keys, &mouse, c);
     let attack_held = playing && super::binds::pressed(binds, &keys, &mouse, "+attack");
     if !attack_held {

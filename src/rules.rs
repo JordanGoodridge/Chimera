@@ -50,6 +50,7 @@
 //! docs/plans/active/parity-gaps.md.
 
 pub mod game_end;
+pub mod module;
 pub mod rounds;
 
 use avian3d::prelude::*;
@@ -78,6 +79,7 @@ impl Plugin for DeathmatchPlugin {
         );
         rounds::plugin(app);
         game_end::plugin(app);
+        module::plugin(app);
         resource_cvar::<Deathmatch, f32>(app, "mp_respawn_delay", "Seconds before the dead respawn.", |d| {
             &mut d.respawn_delay
         });

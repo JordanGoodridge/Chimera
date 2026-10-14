@@ -230,7 +230,7 @@ struct TargetIdText;
 fn draw(
     id: Res<TargetId>,
     hud: Option<Res<ActiveHud>>,
-    fonts: Res<super::fonts::UiFonts>,
+    fonts: Res<crate::client::fonts::UiFonts>,
     window: Query<&Window, With<PrimaryWindow>>,
     mut text: Query<(Entity, &mut Text, &mut TextColor, &mut TextFont, &mut Node, &mut Visibility), With<TargetIdText>>,
     mut commands: Commands,
@@ -259,7 +259,7 @@ fn draw(
     if t.0 != id.text {
         t.0 = id.text.clone();
     }
-    let c = super::chat::run_color(hud.as_deref(), crate::map::radio::ChatColor::Team, id.team);
+    let c = crate::client::chat::run_color(hud.as_deref(), crate::map::radio::ChatColor::Team, id.team);
     color.set_if_neq(TextColor(c));
     let (w, h) = window.single().map_or((1280.0, 720.0), |w| (w.width(), w.height()));
     // The client scheme's TargetID font, its size where it lacks one.

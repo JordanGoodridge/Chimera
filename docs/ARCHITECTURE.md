@@ -59,7 +59,10 @@ console, weapon, objectives; objectives uses core, console, slots,
 character, map, weapon (games use it too, to fill in their bomb and
 hostages); weapon uses core, console, map; logic uses core, console,
 map (games feed it through `MapData::entities`; harness and client may use
-it); map uses only core.
+it); map uses only core. games/<name> uses core, console, slots,
+character, movement, mount, map, weapon, objectives and rules (to register
+its rule modules); its `ui/` uses those, client and the rest of the
+simulation.
 
 Presentation sits beside the simulation, above `map`: `audio` (sound
 playback, live sounds, room DSP, soundscapes, hearing) uses core and map,
@@ -86,6 +89,15 @@ A module may use only the modules below it. Enforced by
   it runs headless in tests and, later, on a dedicated server.
 - `games/<a>` never uses `games/<b>`. Shared needs go into `core` once two or
   three games need them (README, "rule of three"), or through a bridge.
+- A game's front end (`games/<name>/ui/`: menus, panels, HUD) sits on
+  `client` (the shell: input, camera, console UI, VGUI-like widgets, debug
+  tools, net glue); the rest of the game never uses it. The shell reaches
+  it only through `client::front_end` (hooks the game registers), and the
+  app adds it (main.rs). Client files that still name a game:
+  `CLIENT_GAME_EXCEPTIONS` (tests/it/architecture.rs).
+- Rule modules (`rules::module`): a game registers its modes by name
+  (`cs_source:bomb`, ...), picked by the map and cvars; their code is
+  still in `rules` and `objectives` (engine-split.md).
 
 ## Modules
 
@@ -185,6 +197,7 @@ that the paths exist).
 - `src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation (weapon)
 - `src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
+- `src/rules/module.rs`: rule modules a game registers by name; `mashup_rules` (rules)
 - `src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
@@ -217,6 +230,7 @@ that the paths exist).
 ### Games
 
 - `src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
+- `src/games/cs_source/rules.rs`: CS:S's rule modules (games)
 - `src/games/cs_source/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)
@@ -250,47 +264,50 @@ that the paths exist).
 ### Client (window, input, camera, HUD, menus, debug)
 
 - `src/client/`: local input, the camera, captures, the plugin that adds the rest (client)
+- `src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
+- `src/games/cs_source/ui/`: CS:S's front end on the shell, `CsSourceUiPlugin` (games_ui)
 - `src/client/net.rs`: the game's side of the network: joining, dropping, hosting (client)
 - `src/client/view.rs`: third-person, free and chase cameras (client)
 - `src/client/spectate.rs`: spectating while dead or on the spectator team (client)
-- `src/client/freeze_cam.rs`: the freeze cam's picture (client)
+- `src/games/cs_source/ui/freeze_cam.rs`: the freeze cam's picture (games_ui)
 - `src/client/senses.rs`, `flash.wgsl`: flashes and blasts on the local player's senses (client)
 - `src/client/hdr.rs`, `hdr_tonemap.wgsl`: `mat_hdr_level` and the tonemapper (client)
 - `src/client/gamma.rs`, `gamma.wgsl`: `mat_monitorgamma` (client)
 - `src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
 - `src/client/audio.rs`: the options' sound settings (client)
 - `src/client/binds.rs`: every game key is a bind; default binds (client)
-- `src/client/options.rs`: the options dialogs' settings, field of view, video and texture settings (client)
+- `src/client/video.rs`: field of view, video and texture settings (client)
+- `src/games/cs_source/ui/options.rs`: the options dialogs' settings (games_ui)
 - `src/client/console.rs`: the in-game console UI (client)
 - `src/client/debug_ui.rs`: the debug UI (F8) (client)
 - `src/client/debug_views.rs`: gizmo debug overlays: nav, bots, ragdolls (client)
 - `src/client/perf.rs`: the `mashup_perf` overlay (client)
 - `src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
-- `src/client/window_icon.rs`: the window and taskbar icon (client)
-- `src/client/first_run.rs`: finding CS:S on first run (client)
+- `src/games/cs_source/ui/window_icon.rs`: the window and taskbar icon (games_ui)
+- `src/games/cs_source/ui/first_run.rs`: finding CS:S on first run (games_ui)
 - `src/client/fonts.rs`: the one font service (client)
 - `src/client/widgets.rs`: VGUI control state machines and drawing (client)
 - `src/client/vgui.rs`: drawing a game's own menu layouts (client)
-- `src/client/game_menu/`: the main menu and game menu dialogs (client)
-- `src/client/server_browser.rs`: the server browser (client)
-- `src/client/team_menu.rs`: the team menu (client)
-- `src/client/join_menus.rs`: CS:S's join flow: MOTD, team and class menus (client)
-- `src/client/buy_menu.rs`: the buy menu (client)
-- `src/client/radio.rs`: the team radio menus and calls (client)
+- `src/games/cs_source/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
+- `src/games/cs_source/ui/server_browser.rs`: the server browser (games_ui)
+- `src/games/cs_source/ui/team_menu.rs`: the team menu (games_ui)
+- `src/games/cs_source/ui/join_menus.rs`: CS:S's join flow: MOTD, team and class menus (games_ui)
+- `src/games/cs_source/ui/buy_menu.rs`: the buy menu (games_ui)
+- `src/games/cs_source/ui/radio.rs`: the team radio menus and calls (games_ui)
 - `src/client/chat.rs`: the chat area and hint text (client)
-- `src/client/scoreboard.rs`: the scoreboard (client)
+- `src/games/cs_source/ui/scoreboard.rs`: the scoreboard (games_ui)
 - `src/client/win_panel.rs`: the round's win panel (client)
-- `src/client/spectator_menu.rs`: the spectator menu (client)
+- `src/games/cs_source/ui/spectator_menu.rs`: the spectator menu (games_ui)
 - `src/client/overview.rs`: the spectators' map overview (client)
 - `src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
 - `src/client/game_hud.rs`: the game's own HUD panels (client)
 - `src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `src/client/hud_sprites.rs`: HUD sprite icons and damage indicators (client)
 - `src/client/weapon_select.rs`: weapon selection and pickup history (client)
-- `src/client/objectives_hud.rs`: bomb, kit, hostage and zone icons on the HUD (client)
-- `src/client/bomb_fx.rs`: what the bomb shows: the code on the C4 screen, the LED glow, the marker (client)
+- `src/games/cs_source/ui/objectives_hud.rs`: bomb, kit, hostage and zone icons on the HUD (games_ui)
+- `src/games/cs_source/ui/bomb_fx.rs`: what the bomb shows: the code on the C4 screen, the LED glow, the marker (games_ui)
 - `src/client/radar.rs`, `radar.wgsl`: the radar (client)
-- `src/client/target_id.rs`: the target ID under the crosshair (client)
+- `src/games/cs_source/ui/target_id.rs`: the target ID under the crosshair (games_ui)
 - `src/client/game_text.rs`: map HUD messages (game_text) (client)
 - `src/client/map_screen.rs`: map fades, hints and screen overlays (client)
 

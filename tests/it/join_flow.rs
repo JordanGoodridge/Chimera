@@ -1,4 +1,4 @@
-//! CS:S's join flow (`client::join_menus`, `rules::JoinChoice`): a player
+//! CS:S's join flow (`games::cs_source::ui::join_menus`, `rules::JoinChoice`): a player
 //! who comes into a game reads the message of the day, picks a team, then
 //! a class, and spawns as the round rules allow; tests and scripted runs
 //! skip it and join a team at once.
@@ -15,8 +15,8 @@
 
 use bevy::prelude::*;
 use mashup::{
-    client::{
-        chat::{ChatLine, GameMessagesPlugin},
+    client::chat::{ChatLine, GameMessagesPlugin},
+    games::cs_source::ui::{
         join_menus::{self, DisableHtmlMotd, JoinMenus, JoinMenusStatePlugin},
         team_menu::TeamMenu,
     },

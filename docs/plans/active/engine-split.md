@@ -170,8 +170,52 @@ measurements):
 - [x] Heavy tier (P4b): map-looping heavy tests split per map, nextest
   tuned to 5 heavy slots weighted by memory; full suite 1,812 s to
   1,009 s (docs/performance.md, "The heavy tier").
-- [ ] (2) CS:S UI out of `client`, rules behind a rule-module interface,
-  game-registered replication.
+- [~] (2) CS:S UI out of `client`, rules behind a rule-module interface,
+  game-registered replication (2026-10-13, one session):
+  - [x] `games/cs_source/ui/` (`CsSourceUiPlugin`, added by main.rs
+    after `ClientPlugin`): the GameUI menus and dialogs (`game_menu/`,
+    `options` (its rows; the video cvars stay in `client::video`),
+    `first_run`, `server_browser`), the join flow (`join_menus`), the
+    buy, team, radio and spectator menus, the freeze cam panel
+    (`freeze_cam`), `objectives_hud`, `bomb_fx`,
+    `target_id`, `scoreboard`, `window_icon`. The shell reaches them
+    through `client::front_end`: `FrontEnd` hooks (entered/left a game,
+    joining, a failure, a failed map load, starting a game) and the state
+    it reads, `MenuStatus` and `Panels`, which the menus copy in
+    `FrontEndSync` (First, Update after their systems, PostUpdate; the
+    shell's readers saw the menus' resources directly before, so a
+    reader in `Update` may see a change a frame later than it did).
+    `bot::DIFFICULTIES` moved out of Create Server (the debug UI uses
+    it). Architecture test: `games_ui` may use `client`; the rest of a
+    game may not use its `ui`; `client` names a game only in
+    `CLIENT_GAME_EXCEPTIONS` (console, binds, net glue: the install,
+    maps, map cycle and tick of CS:S, waiting for a game registry; the
+    debug UI's Source movement cvars).
+  - Left in `client`, CS:S-flavoured but on generic data (`map::hud`'s
+    layouts): `game_hud`, `hud_sprites`, `win_panel` (CS:S's
+    `win_round.res` and strings; `game_hud` spawns it), `weapon_select`
+    (its `#Cstrike_WPNHUD_*` table), `spectate` (draws CS:S's
+    `spectator.res` bars), `radar`, `overview`, `vgui`
+    (its `VguiOpen`/`VguiMenu` name CS:S's menus), `hud_text`, `fonts`.
+    Next: the HUD as a game part (a HUD slot), then these.
+  - [~] Rule modules: `rules::module` (`RuleModule`: name, description,
+    its cvars as data, when it applies; `RuleModules` registry; `pick`;
+    `mashup_rules`), CS:S's registered by `games/cs_source/rules.rs`
+    (`cs_source:deathmatch`, `:bomb`, `:hostage`, `:elimination`,
+    picked by `mashup_rounds` and the map's objectives as the code
+    already does). The code did not move: `rules::rounds` and
+    `objectives` are named by `net` (`RoundState`, `RoundEnded`,
+    `frozen_intent`, `Hostage`, `BombHold`), `bot` (bomb and hostage
+    goals, `RoundOpen`), `cs_source::movement`/`player_anim`/`pain`
+    (`Hostage`), `rules.rs` itself (deathmatch respawns read the round
+    phase) and the client's HUD; each needs an interface first (round
+    state as replicated data the module registers; objectives behind a
+    bot-goal and use-target interface). Not started: game-registered
+    replication (`net` still names the round and objective types).
+  - [x] (3) `cs_source::CsSourcePlugins` (movement, weapons with the
+    bomb and hostages, rule modules, player and view model animation):
+    main.rs and `mashup_server` (without the animation, as before) use
+    it; tests still pick plugins one by one.
 - [x] (3) First crate (2026-10-14): the repository is a Cargo workspace
   (`mashup` at the root, every member a default member) and
   `source/formats` (package `source_formats`, pure data, no Bevy:

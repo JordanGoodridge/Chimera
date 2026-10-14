@@ -734,7 +734,7 @@ pub struct Spectating;
 /// picked one in the team menu. Also `Spectating` (no body, watching,
 /// counted on no team); `rules::join_team` or `rules::join_spectators`
 /// ends it. Its client shows the join menus (the MOTD, then the team
-/// menu: `client::join_menus`). Replicated.
+/// menu: `games::cs_source::ui::join_menus`). Replicated.
 #[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[reflect(Component)]
 pub struct Unassigned;

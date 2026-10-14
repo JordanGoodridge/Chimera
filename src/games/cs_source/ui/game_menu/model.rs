@@ -347,7 +347,7 @@ pub(super) fn jump(entries: &[String], from: usize, c: char) -> Option<usize> {
 }
 
 /// A layout control's VGUI class (`ComboBox`, `CCvarSlider` ...).
-pub(in crate::client) fn class_of(c: &UiControl) -> &str {
+pub(in crate::games::cs_source::ui) fn class_of(c: &UiControl) -> &str {
     match &c.kind {
         UiKind::Other(class) => class,
         UiKind::Label => "Label",

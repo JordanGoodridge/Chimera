@@ -48,25 +48,25 @@ fn react(world: &mut World, mut cursor: Local<bevy::ecs::message::MessageCursor<
             }
             NetEvent::Connecting(addr) => {
                 world.resource_mut::<Console>().info(format!("Connecting to {addr}..."));
-                super::game_menu::joining(world, &addr.to_string());
+                super::front_end::joining(world, &addr.to_string());
             }
             NetEvent::LoadMap { map, file } => {
                 super::console::load_server_map(world, &map, file);
                 let name = crate::net::maps::map_name(&map).to_string();
-                super::game_menu::joining(world, &name);
+                super::front_end::joining(world, &name);
             }
             NetEvent::ChangingLevel(map) => {
                 world
                     .resource_mut::<Console>()
                     .info(format!("The server is changing level to {map}..."));
                 let name = crate::net::maps::map_name(&map).to_string();
-                super::game_menu::joining(world, &name);
+                super::front_end::joining(world, &name);
             }
             NetEvent::Joined { map } => {
                 world
                     .resource_mut::<Console>()
                     .info(format!("Joined the game on {map}."));
-                super::game_menu::entered_game(world);
+                super::front_end::entered_game(world);
             }
             NetEvent::Disconnected(reason) => {
                 world
@@ -92,15 +92,15 @@ fn back_to_menu(world: &mut World) {
         .is_some();
     if has_player {
         if failed {
-            super::game_menu::left_game(world);
-            super::game_menu::show_failure(world);
+            super::front_end::left_game(world);
+            super::front_end::show_failure(world);
         }
         return;
     }
     super::console::load_greybox(world);
-    super::game_menu::left_game(world);
+    super::front_end::left_game(world);
     if failed {
-        super::game_menu::show_failure(world);
+        super::front_end::show_failure(world);
     }
     if let Err(e) = world.run_system_cached(super::spawn_local_player) {
         error!("spawning the local player: {e}");

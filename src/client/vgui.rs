@@ -33,7 +33,7 @@ impl Plugin for VguiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<VguiOpen>()
             .add_systems(Update, style_buttons)
-            .add_systems(PostUpdate, cursor);
+            .add_systems(PostUpdate, cursor.after(super::front_end::FrontEndSync));
     }
 }
 
@@ -58,7 +58,7 @@ impl VguiOpen {
 
 /// Which menu a button belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum VguiMenu {
+pub enum VguiMenu {
     Buy,
     Team,
     /// The message of the day and the class menu (`join_menus`).
@@ -72,7 +72,7 @@ pub(super) enum VguiMenu {
 
 /// A drawn button: its control's name and command, and whether it works.
 #[derive(Component, Clone, Debug)]
-pub(super) struct VguiButton {
+pub struct VguiButton {
     pub menu: VguiMenu,
     pub name: String,
     pub command: Option<String>,
@@ -80,7 +80,7 @@ pub(super) struct VguiButton {
 }
 
 /// What a menu changes about a control as it draws it.
-pub(super) struct Shown {
+pub struct Shown {
     pub text: Option<String>,
     pub enabled: bool,
     pub visible: bool,
@@ -97,7 +97,7 @@ impl Shown {
 }
 
 /// The visible, working button `key` presses on a page (its `&` hotkey).
-pub(super) fn hotkey_button<'a>(
+pub fn hotkey_button<'a>(
     layout: &'a UiLayout,
     key: char,
     shown: &mut dyn FnMut(&UiControl) -> Shown,
@@ -111,7 +111,7 @@ pub(super) fn hotkey_button<'a>(
 }
 
 /// The number key pressed this frame, as a character.
-pub(super) fn digit(keys: &ButtonInput<KeyCode>) -> Option<char> {
+pub fn digit(keys: &ButtonInput<KeyCode>) -> Option<char> {
     const DIGITS: [KeyCode; 10] = [
         KeyCode::Digit0,
         KeyCode::Digit1,
@@ -132,7 +132,7 @@ pub(super) fn digit(keys: &ButtonInput<KeyCode>) -> Option<char> {
 
 /// The virtual 640x480 screen in a window: scaled by its height, centred
 /// across its width.
-pub(super) fn area(width: f32, height: f32) -> Rect {
+pub fn area(width: f32, height: f32) -> Rect {
     let scale = height / 480.0;
     let w = 640.0 * scale;
     let x = ((width - w) / 2.0).max(0.0);
@@ -140,7 +140,7 @@ pub(super) fn area(width: f32, height: f32) -> Rect {
 }
 
 /// Draws layouts for one window size.
-pub(super) struct Painter<'a> {
+pub struct Painter<'a> {
     pub hud: &'a GameHud,
     pub images: &'a HashMap<usize, Handle<Image>>,
     pub fonts: &'a UiFonts,
@@ -428,7 +428,7 @@ fn cursor(
     open: Res<VguiOpen>,
     mouse: Res<ButtonInput<MouseButton>>,
     ui: Option<Res<super::console::ConsoleUi>>,
-    game_menu: Option<Res<super::game_menu::GameMenu>>,
+    game_menu: Option<Res<super::front_end::MenuStatus>>,
     cursor: Option<Single<&mut CursorOptions>>,
     mut freed: Local<bool>,
 ) {
@@ -449,15 +449,14 @@ fn cursor(
 
 /// Whether the menus may read the keyboard: playing (mouse grabbed) or a
 /// game-look menu open, and nothing else typing.
-pub(super) fn keys_live(
+pub fn keys_live(
     cursor: &CursorOptions,
     open: &VguiOpen,
     console: Option<&super::console::ConsoleUi>,
     chat: Option<&super::chat::ChatInput>,
-    game_menu: Option<&super::game_menu::GameMenu>,
+    game_menu_open: bool,
 ) -> bool {
-    let busy =
-        console.is_some_and(|c| c.open) || chat.is_some_and(|c| c.open.is_some()) || game_menu.is_some_and(|m| m.open);
+    let busy = console.is_some_and(|c| c.open) || chat.is_some_and(|c| c.open.is_some()) || game_menu_open;
     !busy && (super::input::cursor_grabbed(cursor) || open.any())
 }
 

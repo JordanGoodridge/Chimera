@@ -2,7 +2,7 @@
 //! auto-assign (the smaller team) or spectate, joined through `jointeam`. With the
 //! game's own layout (`map::hud::GameMenus::team`, CS:S's
 //! `resource/ui/teammenu.res`) it is drawn as the game draws it
-//! (`super::vgui`): the team buttons with their number keys, clickable
+//! (`crate::client::vgui`): the team buttons with their number keys, clickable
 //! with the mouse (free while it is open), beside the map's description.
 //! The VIP button (VIP maps only) is hidden. Without the layout, a plain
 //! list: 1 terrorists, 2 counter-terrorists, 5 auto-assign, 6 spectate,
@@ -17,8 +17,8 @@
 
 use bevy::{prelude::*, window::CursorOptions};
 
-use super::fonts::UiFonts;
-use super::vgui::{Painter, Shown, VguiButton, VguiMenu, VguiOpen};
+use crate::client::fonts::UiFonts;
+use crate::client::vgui::{Painter, Shown, VguiButton, VguiMenu, VguiOpen};
 use crate::{
     console::{Console, ConsoleAppExt},
     core::{Intent, Team},
@@ -31,6 +31,7 @@ impl Plugin for TeamMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TeamMenu>()
             .add_systems(Update, (keys, pointer, draw, draw_vgui).chain());
+        crate::client::front_end::sync_panel::<TeamMenu, _>(app, "team", true, |m| m.0, draw_vgui);
         app.console_command("chooseteam", "Open the team menu (M).", |w, _| {
             w.resource_mut::<TeamMenu>().0 = true;
             Ok(None)
@@ -96,8 +97,8 @@ fn keys(
     cursor: Single<&CursorOptions>,
     (open, ui, chat, game_menu): (
         Res<VguiOpen>,
-        Option<Res<super::console::ConsoleUi>>,
-        Option<Res<super::chat::ChatInput>>,
+        Option<Res<crate::client::console::ConsoleUi>>,
+        Option<Res<crate::client::chat::ChatInput>>,
         Option<Res<super::game_menu::GameMenu>>,
     ),
     mut menu: ResMut<TeamMenu>,
@@ -109,10 +110,10 @@ fn keys(
     mut join: Option<ResMut<super::join_menus::JoinMenus>>,
 ) {
     let spectators = spectators_allowed(rules.as_deref());
-    if !super::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.as_deref()) {
+    if !crate::client::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.is_some_and(|m| m.open)) {
         return;
     }
-    if super::binds::just_pressed(&console.binds, &keys, &mouse, "chooseteam") {
+    if crate::client::binds::just_pressed(&console.binds, &keys, &mouse, "chooseteam") {
         menu.0 = !menu.0;
         if menu.0 {
             // Menus close each other.
@@ -129,11 +130,11 @@ fn keys(
     if let Some(menus) = hud.as_ref().and_then(|h| h.0.menus.as_ref())
         && let Some(page) = layout(menus)
     {
-        let Some(key) = super::vgui::digit(&keys) else {
+        let Some(key) = crate::client::vgui::digit(&keys) else {
             return;
         };
         let info = menus.map_info.as_deref();
-        if let Some(command) = super::vgui::hotkey_button(page, key, &mut |c| shown(c, info, spectators)).and_then(|c| c.command.clone()) {
+        if let Some(command) = crate::client::vgui::hotkey_button(page, key, &mut |c| shown(c, info, spectators)).and_then(|c| c.command.clone()) {
             if let Some(l) = line(&command, count) {
                 class_next(&l, join.as_deref_mut());
                 console.submit(l);
@@ -301,7 +302,7 @@ fn draw_vgui(
             GlobalZIndex(50),
         ))
         .id();
-    let a = super::vgui::area(size.x, size.y);
+    let a = crate::client::vgui::area(size.x, size.y);
     let area = commands
         .spawn((
             Node {
@@ -350,7 +351,7 @@ mod tests {
                 w.resource_mut::<Joined>().0.push(a.join(" "));
                 Ok(None)
             });
-        super::super::binds::test_binds(&mut app);
+        crate::client::binds::test_binds(&mut app);
         if game_look {
             let button = |name: &str, key: char, command: &str| {
                 let mut c = UiControl::new(name, UiKind::Button, 76.0, 116.0, 148.0, 20.0);
@@ -406,7 +407,7 @@ mod tests {
                 // The game's menu frees the mouse; its keys still work.
                 app.world_mut().resource_mut::<VguiOpen>().team = true;
                 let mut q = app.world_mut().query::<&mut CursorOptions>();
-                super::super::input::release_cursor(&mut q.single_mut(app.world_mut()).unwrap());
+                crate::client::input::release_cursor(&mut q.single_mut(app.world_mut()).unwrap());
             }
             // Spectate.
             press(&mut app, KeyCode::Digit6);
@@ -417,7 +418,7 @@ mod tests {
             if game_look {
                 app.world_mut().resource_mut::<VguiOpen>().team = false;
                 let mut q = app.world_mut().query::<&mut CursorOptions>();
-                super::super::input::capture_cursor(&mut q.single_mut(app.world_mut()).unwrap());
+                crate::client::input::capture_cursor(&mut q.single_mut(app.world_mut()).unwrap());
             }
             press(&mut app, KeyCode::KeyM);
             press(&mut app, KeyCode::Digit1);

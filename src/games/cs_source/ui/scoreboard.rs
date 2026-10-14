@@ -32,7 +32,7 @@
 
 use bevy::prelude::*;
 
-use super::vgui::{Painter, Shown, VguiMenu};
+use crate::client::vgui::{Painter, Shown, VguiMenu};
 use crate::{
     core::{Intent, LocalPlayer, Team},
     map::hud::{ActiveHud, GameMenus, UiControl},
@@ -239,8 +239,8 @@ struct Shot {
 fn update(
     keys: Res<ButtonInput<KeyCode>>,
     (binds, mouse): (Option<Res<crate::console::Console>>, Option<Res<ButtonInput<MouseButton>>>),
-    held: Res<super::console::HeldActions>,
-    console: Option<Res<super::console::ConsoleUi>>,
+    held: Res<crate::client::console::HeldActions>,
+    console: Option<Res<crate::client::console::ConsoleUi>>,
     mut boards: Query<(&mut Visibility, Has<GameBoard>), Or<(With<Board>, With<GameBoard>)>>,
     roots: (Query<Entity, With<GameBoard>>, Query<(Entity, &Column)>),
     players: Query<
@@ -262,7 +262,7 @@ fn update(
     bombs: Query<&Weapon, With<C4>>,
     windows: Query<&Window>,
     (fonts, hud, map, settings): (
-        Res<super::fonts::UiFonts>,
+        Res<crate::client::fonts::UiFonts>,
         Option<Res<ActiveHud>>,
         Option<Res<crate::map::LoadedMapName>>,
         Option<Res<crate::net::NetSettings>>,
@@ -278,7 +278,7 @@ fn update(
 ) {
     let typing = console.is_some_and(|c| c.open);
     let tab = match (&binds, &mouse) {
-        (Some(b), Some(m)) => super::binds::pressed(&b.binds, &keys, m, "+showscores"),
+        (Some(b), Some(m)) => crate::client::binds::pressed(&b.binds, &keys, m, "+showscores"),
         _ => false,
     };
     // The intermission at the end of a map's game shows it too.
@@ -313,7 +313,7 @@ fn update(
     let mut spectators: Vec<String> = players
         .iter()
         .filter(|p| p.10)
-        .map(|(e, name, _, _, _, local, _, _, _, character, _)| super::shown_name(e, local, character, name, settings.as_deref()))
+        .map(|(e, name, _, _, _, local, _, _, _, character, _)| crate::client::shown_name(e, local, character, name, settings.as_deref()))
         .collect();
     spectators.sort();
     let mut rows: Vec<Row> = players
@@ -327,7 +327,7 @@ fn update(
             let bot = bot || flag(crate::net::score_flags::BOT);
             let carrier = carriers.contains(&e) || flag(crate::net::score_flags::BOMB);
             let kit = kit || flag(crate::net::score_flags::KIT);
-            let name = super::shown_name(e, local, character, name, settings.as_deref());
+            let name = crate::client::shown_name(e, local, character, name, settings.as_deref());
             Row {
                 column: if team.is_some_and(|t| t.0 == 1) { 1 } else { 2 },
                 name,
@@ -533,7 +533,7 @@ fn sprite(painter: &Painter, name: &str) -> Option<ImageNode> {
 }
 
 /// The plain board: a column per team.
-fn draw_plain(commands: &mut Commands, columns: &Query<(Entity, &Column)>, fonts: &super::fonts::UiFonts, shot: &Shot) {
+fn draw_plain(commands: &mut Commands, columns: &Query<(Entity, &Column)>, fonts: &crate::client::fonts::UiFonts, shot: &Shot) {
     // The client scheme's scoreboard fonts: team names, column titles,
     // player rows.
     let h = shot.size.y;
@@ -618,7 +618,8 @@ mod tests {
     /// the Esc menu or the loading dialog, and its rows go when it hides.
     #[test]
     fn the_board_shows_only_in_a_game_and_drops_its_rows() {
-        use super::super::{console::HeldActions, fonts::UiFonts, game_menu::GameMenu};
+        use super::super::game_menu::GameMenu;
+        use crate::client::{console::HeldActions, fonts::UiFonts};
         let mut app = App::new();
         let mut menu = GameMenu::default();
         menu.in_game = true;

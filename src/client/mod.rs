@@ -12,8 +12,6 @@
 
 pub mod audio;
 pub mod binds;
-pub mod bomb_fx;
-pub mod buy_menu;
 pub mod capture;
 pub mod chat;
 pub mod console;
@@ -21,43 +19,32 @@ pub mod debug;
 pub mod debug_ui;
 pub mod debug_views;
 pub mod effects;
-pub mod first_run;
 pub mod fonts;
-pub mod game_hud;
-pub mod game_menu;
+pub mod front_end;
 pub mod color_correction;
 pub mod gamma;
 pub mod hdr;
-pub mod hud_sprites;
 pub mod hud_text;
-pub mod join_menus;
 pub mod hud;
 pub mod input;
 pub mod interp;
 pub mod map_screen;
 pub mod net;
-pub mod objectives_hud;
-pub mod options;
 pub mod frame_metrics;
-pub mod freeze_cam;
+pub mod game_hud;
+pub mod hud_sprites;
+pub mod win_panel;
 pub mod perf;
 pub mod overview;
 pub mod radar;
-pub mod radio;
 pub mod game_text;
-pub mod scoreboard;
 pub mod senses;
-pub mod server_browser;
 pub mod spectate;
-pub mod spectator_menu;
-pub mod target_id;
-pub mod team_menu;
 pub mod vgui;
+pub mod video;
 pub mod view;
 pub mod weapon_select;
 pub mod widgets;
-pub mod win_panel;
-pub mod window_icon;
 
 use std::path::PathBuf;
 
@@ -352,43 +339,30 @@ impl Plugin for ClientPlugin {
                 hud::HudPlugin,
                 game_hud::GameHudPlugin,
                 hud_sprites::HudSpritesPlugin,
-                scoreboard::ScoreboardPlugin,
                 game_text::GameTextPlugin,
                 radar::RadarPlugin,
                 effects::ShotEffectsPlugin,
                 view::ViewPlugin,
             ))
             .add_plugins((
-                buy_menu::BuyMenuPlugin,
                 weapon_select::WeaponSelectPlugin,
-                team_menu::TeamMenuPlugin,
                 vgui::VguiPlugin,
                 chat::ChatPlugin,
-                radio::RadioPlugin,
-                objectives_hud::ObjectivesHudPlugin,
-                bomb_fx::BombFxPlugin,
-                game_menu::GameMenuPlugin,
                 senses::SensesPlugin,
                 spectate::SpectatePlugin,
                 hdr::HdrPlugin,
-                options::VideoPlugin,
-                window_icon::WindowIconPlugin,
+                video::VideoPlugin,
                 hud_text::HudTextPlugin,
             ))
             .add_plugins((
                 interp::ClientInterpPlugin,
                 color_correction::ColorCorrectionPlugin,
                 net::ClientNetPlugin,
-                server_browser::ServerBrowserPlugin,
-                first_run::FirstRunPlugin,
                 map_screen::MapScreenPlugin,
                 widgets::WidgetsPlugin,
-                target_id::TargetIdPlugin,
-                freeze_cam::FreezeCamPlugin,
                 audio::SoundOptionsPlugin,
                 gamma::GammaPlugin,
                 overview::OverviewPlugin,
-                join_menus::JoinMenusPlugin,
             ))
             .add_systems(PostStartup, (spawn_local_player, join_at_start).chain())
             .add_systems(Update, camera_for_local_player)
@@ -462,7 +436,7 @@ fn spawn_local_player(
 /// `join_menus::start_game`).
 fn join_at_start(world: &mut World) {
     if world.resource::<ClientArgs>().0.map.is_some() {
-        join_menus::start_game(world);
+        front_end::start_game(world);
     }
 }
 
@@ -533,15 +507,15 @@ fn attach_camera(commands: &mut Commands, player: Entity, debug_view: bool) {
 }
 
 /// The first-person camera's field of view: `fov_desired` (Source's 90,
-/// horizontal at 4:3; `options::PlayerFov`), or the zoom the local player looks through (`weapon::Zoomed`).
+/// horizontal at 4:3; `video::PlayerFov`), or the zoom the local player looks through (`weapon::Zoomed`).
 /// Kept vertically, so it is the same on every screen shape; the view
 /// model and sky cameras follow it.
-fn zoom_camera(
+pub fn zoom_camera(
     player: Option<Single<Option<&crate::weapon::Zoomed>, With<LocalPlayer>>>,
     spectating: Res<spectate::SpecView>,
     zoomed: Query<&crate::weapon::Zoomed>,
     mut cameras: Query<&mut Projection, With<FirstPersonCamera>>,
-    player_fov: Option<Res<options::PlayerFov>>,
+    player_fov: Option<Res<video::PlayerFov>>,
 ) {
     // Spectating in first person: the target's zoom; otherwise none.
     let zoom = match spectate::target_zoom(&spectating, &zoomed) {

@@ -32,9 +32,9 @@ use bevy::{
     prelude::*,
 };
 
-use super::{
+use super::game_menu::{GameMenu, UiText};
+use crate::client::{
     fonts::UiFonts,
-    game_menu::{GameMenu, UiText},
     widgets::{self, Caret, Edit, FrameSpec, Look, label},
 };
 use crate::{
@@ -279,7 +279,7 @@ fn search(w: &mut World) -> Result<String, String> {
 /// The install changed: everything read from it at startup again.
 fn reload(w: &mut World) {
     install::forget_steam();
-    super::console::forget_map_names();
+    crate::client::console::forget_map_names();
     super::game_menu::reload_install(w);
 }
 
@@ -296,7 +296,7 @@ fn apply(w: &mut World, input: Input) {
 
 /// Say which install is used; with none at the main menu, open the
 /// dialog.
-fn startup(args: Option<Res<super::ClientArgs>>, mut first_run: ResMut<FirstRun>) {
+fn startup(args: Option<Res<crate::client::ClientArgs>>, mut first_run: ResMut<FirstRun>) {
     let found = resolve_now();
     let line = found.describe(NAME);
     if found.install.is_some() {
@@ -316,7 +316,7 @@ fn startup(args: Option<Res<super::ClientArgs>>, mut first_run: ResMut<FirstRun>
 fn keys(
     mut events: MessageReader<KeyboardInput>,
     held: Res<ButtonInput<KeyCode>>,
-    console_ui: Res<super::console::ConsoleUi>,
+    console_ui: Res<crate::client::console::ConsoleUi>,
     first_run: Res<FirstRun>,
     mut commands: Commands,
 ) {

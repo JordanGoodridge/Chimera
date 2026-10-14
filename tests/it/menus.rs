@@ -10,10 +10,10 @@ use std::net::SocketAddr;
 
 use bevy::prelude::*;
 use mashup::{
-    client::{
+    client::widgets::{Caret, Edit, Windows, edges_at},
+    games::cs_source::ui::{
         game_menu::{Action, Control, Field, GameMenu, Input, MainItem, Page, Row, Target},
         server_browser::{self, ButtonId, Check, Focus, ServerBrowser},
-        widgets::{Caret, Edit, Windows, edges_at},
     },
     net::{
         NET_VERSION,

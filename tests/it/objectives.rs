@@ -732,7 +732,7 @@ fn hostages_hurt_report_their_attacker() {
 #[test]
 fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
     use mashup::{
-        client::{
+        games::cs_source::ui::{
             bomb_fx::C4ScreenText,
             objectives_hud::{BombHudStatePlugin, BombProgress},
         },

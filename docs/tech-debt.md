@@ -10,14 +10,14 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 
 - cs_source movement: Two deliberate departures from Source's box trace so surfing works (no rampbug stops) (`src/games/cs_source/movement.rs`)
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`src/games/cs_source/material.rs`)
-- client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`src/client/options.rs`)
+- client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`src/games/cs_source/ui/options.rs`)
 - map: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`src/map/merge.rs`)
 - map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices (`src/map/water.rs`)
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`src/logic/ambient.rs`)
 - map: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`src/map/world_material.rs`)
 - map: Community materials: lenient VMT rewrite and stand-in shaders (WindowImposter, ShatteredGlass, LightmappedReflective) (`src/games/cs_source/material.rs`)
-- client, bot, games/cs_source: Radio pairing, hearing rules and rate limits are ours (no spec) (`src/client/radio.rs`)
+- client, bot, games/cs_source: Radio pairing, hearing rules and rate limits are ours (no spec) (`src/games/cs_source/ui/radio.rs`)
 - games/cs_source: Third-person magazine tracks dropped from additive and aim animations to hide the files' stray clip offsets (`src/games/cs_source/anim.rs`)
 - weapon: Buy zones on maps without func_buyzone: our box around each team spawn (`src/weapon/economy.rs`)
 - weapon, games/cs_source: Ammo box prices and sizes are remembered Counter-Strike values, unmeasured (`src/weapon/economy.rs`)
@@ -40,8 +40,8 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
 - client: Spectating numbers (death cam, chase distance, forcecamera) from general knowledge, not measured (`src/client/spectate.rs`)
-- client: Freeze cam timings and distances are guesses (local cvars) (`src/client/freeze_cam.rs`)
-- client: Target ID range, placement and smoke rule are guesses (`src/client/target_id.rs`)
+- client: Freeze cam timings and distances are guesses (local cvars) (`src/games/cs_source/ui/freeze_cam.rs`)
+- client: Target ID range, placement and smoke rule are guesses (`src/games/cs_source/ui/target_id.rs`)
 - weapon, games/cs_source: cl_autowepswitch weights from the spec's table; switching rules partly ours (`src/weapon/drop.rs`)
 - games/cs_source: View-model idle timing for the knife and TMP is our reading, captures wanted (`src/games/cs_source/view_anim.rs`)
 - client: Mouse capture fights the inspector (`mashup_inspector`, F11, releases it; click recaptures). OK for now: Debug-only.

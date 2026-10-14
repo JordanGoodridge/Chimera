@@ -1,5 +1,5 @@
 use super::*;
-use crate::client::options::setting_index;
+use crate::games::cs_source::ui::options::setting_index;
 use crate::map::hud::{GameUiItem, ServerSetting};
 
 const CVARS: [(&str, &str); 17] = [
@@ -499,7 +499,7 @@ fn disconnect_and_the_greybox_on_the_world() {
         .init_resource::<RegrabCursor>()
         .insert_resource(crate::map::LoadedMapName("cs_source:de_dust2".into()));
     let w = app.world_mut();
-    super::super::console::load_greybox(w);
+    crate::client::console::load_greybox(w);
     left_game(w);
     let parts = w
         .query_filtered::<(), With<crate::greybox::GreyboxPart>>()
@@ -1068,7 +1068,7 @@ fn escape_opens_and_closes_and_the_mouse_follows() {
     use bevy::window::CursorGrabMode;
     let mut app = App::new();
     app.add_plugins(crate::console::ConsolePlugin)
-        .init_resource::<super::super::console::ConsoleUi>()
+        .init_resource::<crate::client::console::ConsoleUi>()
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .insert_resource(GameMenu {
@@ -1080,14 +1080,14 @@ fn escape_opens_and_closes_and_the_mouse_follows() {
         .add_systems(
             Update,
             (
-                keys.before(super::super::console::toggle),
-                super::super::console::toggle,
+                keys.before(crate::client::console::toggle),
+                crate::client::console::toggle,
                 cursor,
             )
                 .chain(),
         );
     app.world_mut()
-        .spawn((super::super::console::ConsoleRoot, Visibility::Hidden));
+        .spawn((crate::client::console::ConsoleRoot, Visibility::Hidden));
     let window = app
         .world_mut()
         .spawn(CursorOptions {
@@ -1113,7 +1113,7 @@ fn escape_opens_and_closes_and_the_mouse_follows() {
     // Esc in the console only closes the console.
     press(&mut app, KeyCode::Backquote);
     press(&mut app, KeyCode::Escape);
-    assert!(!open(&app) && !app.world().resource::<super::super::console::ConsoleUi>().open);
+    assert!(!open(&app) && !app.world().resource::<crate::client::console::ConsoleUi>().open);
 
     // Resume clicked: the mouse is grabbed once the button is up, so
     // the click doesn't fire.
@@ -1137,7 +1137,7 @@ fn escape_opens_and_closes_and_the_mouse_follows() {
 fn a_key_rebound_in_the_options_drives_the_action() {
     let mut app = App::new();
     app.add_plugins(crate::console::ConsolePlugin)
-        .init_resource::<super::super::console::ConsoleUi>()
+        .init_resource::<crate::client::console::ConsoleUi>()
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(GameMenu {
             in_game: true,
@@ -1145,12 +1145,12 @@ fn a_key_rebound_in_the_options_drives_the_action() {
         })
         .init_resource::<AfterLoad>()
         .init_resource::<RegrabCursor>()
-        .add_systems(Update, keys.before(super::super::console::toggle))
-        .add_systems(Update, super::super::console::toggle);
-    super::super::binds::test_binds(&mut app);
+        .add_systems(Update, keys.before(crate::client::console::toggle))
+        .add_systems(Update, crate::client::console::toggle);
+    crate::client::binds::test_binds(&mut app);
     binds::commands(&mut app);
     app.world_mut()
-        .spawn((super::super::console::ConsoleRoot, Visibility::Hidden));
+        .spawn((crate::client::console::ConsoleRoot, Visibility::Hidden));
     let tap = |app: &mut App, key: KeyCode| {
         app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
         app.update();
@@ -1378,7 +1378,7 @@ fn advanced_menu() -> GameMenu {
 fn multiplayer_advanced_lists_the_scripts_options() {
     let mut m = advanced_menu();
     let rows = m.rows();
-    let labels: Vec<String> = rows.iter().map(crate::client::game_menu::label_of).collect();
+    let labels: Vec<String> = rows.iter().map(crate::games::cs_source::ui::game_menu::label_of).collect();
     assert_eq!(labels, ["Decal limit", "Weapon alignment", "Clan Tag", "Defuse progress bar", "Auto-help", "OK", "Cancel"]);
     // Ours as controls with their values now; mashup lacks the clan tag
     // and auto-help: greyed, showing the script's defaults, not focused.
@@ -1430,7 +1430,7 @@ fn multiplayer_advanced_has_the_switch_names_and_freeze_cam() {
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(5), 0)]);
     click_on(&mut m, |m| button(m, Action::MultiplayerAdvanced));
-    let rows: Vec<String> = m.rows().iter().map(crate::client::game_menu::label_of).collect();
+    let rows: Vec<String> = m.rows().iter().map(crate::games::cs_source::ui::game_menu::label_of).collect();
     assert_eq!(
         rows[1..4],
         [
@@ -1569,7 +1569,7 @@ fn the_brightness_dialog_sets_the_gamma() {
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
     let gamma_button = button(&m, Action::Gamma);
-    assert_eq!(crate::client::game_menu::label_of(&m.rows()[gamma_button]), "Adjust brightness levels...");
+    assert_eq!(crate::games::cs_source::ui::game_menu::label_of(&m.rows()[gamma_button]), "Adjust brightness levels...");
     press(&mut m, &[Input::Click(Target::Row(gamma_button), 0)]);
     assert_eq!(m.page, Page::Gamma);
     let slider = row_of(&m, "mat_monitorgamma");
@@ -1583,5 +1583,12 @@ fn the_brightness_dialog_sets_the_gamma() {
     assert_eq!(o.lines, ["mat_monitorgamma 2.2"], "as it was");
     assert_eq!((m.page, m.focus), (Page::Settings, gamma_button));
     // VR mode is left out of the video tab on purpose.
-    assert!(crate::client::game_menu::draw::LEFT_OUT.contains(&"VRMode"));
+    assert!(crate::games::cs_source::ui::game_menu::draw::LEFT_OUT.contains(&"VRMode"));
+}
+
+/// The dialogs' frames (`client::widgets`) draw over the menu's title and
+/// entries.
+#[test]
+fn frames_draw_over_the_menu() {
+    assert!(MENU_Z < crate::client::widgets::FRAME_Z);
 }

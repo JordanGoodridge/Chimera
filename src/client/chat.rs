@@ -302,7 +302,7 @@ fn typing(
     mut events: MessageReader<KeyboardInput>,
     cursor: Query<&CursorOptions>,
     console: Option<Res<super::console::ConsoleUi>>,
-    menu: Option<Res<super::game_menu::GameMenu>>,
+    menu: Option<Res<super::front_end::MenuStatus>>,
     (binds, mouse): (Option<Res<crate::console::Console>>, Option<Res<ButtonInput<MouseButton>>>),
     mut commands: Commands,
 ) {

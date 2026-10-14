@@ -38,7 +38,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-use super::spectate::{SpecPhase, Spectator};
+use crate::client::spectate::{SpecPhase, Spectator};
 use crate::map::hud::ActiveHud;
 
 /// The flash's starting opacity and how long it fades, seconds.
@@ -50,7 +50,7 @@ pub struct FreezeCamPlugin;
 impl Plugin for FreezeCamPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Frozen>()
-            .add_systems(Update, freeze.after(super::spectate::SpectateSet));
+            .add_systems(Update, freeze.after(crate::client::spectate::SpectateSet));
     }
 }
 
@@ -80,7 +80,7 @@ fn freeze(
     window: Query<&Window, With<PrimaryWindow>>,
     who: Query<Option<&Name>>,
     hud: Option<Res<ActiveHud>>,
-    fonts: Res<super::fonts::UiFonts>,
+    fonts: Res<crate::client::fonts::UiFonts>,
     menu: Option<Res<super::game_menu::GameMenu>>,
     clips: Option<ResMut<Assets<crate::audio::live_sound::LiveClip>>>,
     mut commands: Commands,
@@ -178,7 +178,7 @@ fn panel(
     commands: &mut Commands,
     root: Entity,
     hud: &ActiveHud,
-    fonts: &super::fonts::UiFonts,
+    fonts: &crate::client::fonts::UiFonts,
     size: Vec2,
     killer: &str,
 ) {
@@ -190,7 +190,7 @@ fn panel(
     else {
         return;
     };
-    let painter = super::vgui::Painter::new(hud, fonts, size.y);
+    let painter = crate::client::vgui::Painter::new(hud, fonts, size.y);
     let rects = outer.rects(Rect::from_corners(Vec2::ZERO, size), painter.scale);
     let Some((frame, r)) = outer
         .controls
@@ -217,7 +217,7 @@ fn panel(
         .id();
     let words = freeze_words(&|t, f| menus.string(t, f).to_string(), killer);
     let mut shown = |c: &crate::map::hud::UiControl| {
-        let mut s = super::vgui::Shown::of(c);
+        let mut s = crate::client::vgui::Shown::of(c);
         match c.name.to_lowercase().as_str() {
             "killername" => s.text = Some(words.0.clone()),
             "infolabel1" => s.text = Some(words.1.clone()),
@@ -226,7 +226,7 @@ fn panel(
         }
         s
     };
-    painter.spawn(commands, e, r.size(), inner, super::vgui::VguiMenu::Spectator, &mut shown);
+    painter.spawn(commands, e, r.size(), inner, crate::client::vgui::VguiMenu::Spectator, &mut shown);
 }
 
 /// The freeze panel's three lines: the killer's name, then the game's

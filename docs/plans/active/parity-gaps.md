@@ -338,7 +338,7 @@ common console commands, against mashup's.
   `net_weapons::the_player_hit_is_told_which_way_the_damage_came`,
   `client::hud_sprites` unit tests; screenshot checked.
 - The scoreboard shows the map's time left with `mp_timelimit`
-  (`NetRound::map_started` for clients). Test: `client::scoreboard` unit
+  (`NetRound::map_started` for clients). Test: `games::cs_source::ui::scoreboard` unit
   test; screenshot checked.
 - `mp_autoteambalance` (`rules::balance_teams`), `mp_tkpunish`,
   `mp_fadetoblack` (`client::senses`). Tests:
@@ -377,14 +377,14 @@ common console commands, against mashup's.
   0.0242 unchanged. Test:
   `heavy::map_de_dust2::cubemaps_keep_their_mips`.
 - Video > Advanced's colour correction box (`mat_colorcorrection`).
-  Test: `client::options` unit test.
+  Test: `games::cs_source::ui::options` unit test.
 - The "props collide by their visible mesh" row was stale (the `.phy`
   pieces have been used since physics props landed); tech-debt reworded.
 
 ## Fixed: the join flow
 
 - Joining a server, or starting a game with `map` (the menus' Create
-  Server, `--map`), shows CS:S's join flow (`client::join_menus`): the
+  Server, `--map`), shows CS:S's join flow (`games::cs_source::ui::join_menus`): the
   message of the day in `resource/ui/motd.res` (the server's name, its
   `motd.txt`: the host's config folder, else the install's `motd.txt`,
   `cfg/motd.txt`, `cfg/motd_default.txt`; sent to clients as they are
@@ -420,7 +420,7 @@ common console commands, against mashup's.
   waits for a player on a team.
 - `NET_VERSION` net17 (`ClassRequest`, `ServerMotd`, replicated
   `Unassigned`, `ChoosingClass`, `PlayerClass`). Tests: `join_flow::*`,
-  `client::join_menus`, `net::motd` and `client` unit tests.
+  `games::cs_source::ui::join_menus`, `net::motd` and `client` unit tests.
 
 ## Next fixes that need no capture
 

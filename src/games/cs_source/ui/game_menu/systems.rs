@@ -50,7 +50,7 @@ impl MenuUi {
 }
 
 /// A decoded picture as a UI image.
-pub(in crate::client) fn ui_image(pic: &crate::map::hud::UiImage, images: &mut Assets<Image>) -> Handle<Image> {
+pub(in crate::games::cs_source::ui) fn ui_image(pic: &crate::map::hud::UiImage, images: &mut Assets<Image>) -> Handle<Image> {
     use bevy::{
         asset::RenderAssetUsages,
         render::render_resource::{Extent3d, TextureDimension, TextureFormat},
@@ -86,7 +86,7 @@ pub(super) fn start_loading_ui(mut ui: ResMut<MenuUi>) {
 
 /// The install changed (the first-run dialog, `mashup_install`): read
 /// its GameUI look again, and the open page's maps.
-pub(in crate::client) fn reload_install(w: &mut World) {
+pub(in crate::games::cs_source::ui) fn reload_install(w: &mut World) {
     if let Err(e) = w.run_system_cached(start_loading_ui) {
         warn!("game menu: reading the GameUI look again: {e}");
     }
@@ -227,12 +227,12 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
         .collect();
     let mut windows = w.query_filtered::<&Window, With<bevy::window::PrimaryWindow>>();
     let window = windows.iter(w).next().map(|w| w.resolution.physical_size());
-    let no_spectators = !crate::client::team_menu::spectators_allowed(w.get_resource::<crate::rules::Deathmatch>());
+    let no_spectators = !crate::games::cs_source::ui::team_menu::spectators_allowed(w.get_resource::<crate::rules::Deathmatch>());
     let mut menu = w.resource_mut::<GameMenu>();
     menu.set_counts(bots, players);
     menu.no_spectators = no_spectators;
     menu.set_binds(binds, known);
-    menu.resolutions = crate::client::options::resolutions(&modes);
+    menu.resolutions = crate::client::video::resolutions(&modes);
     menu.open(page, maps, current.as_deref(), |n| get.get(n).cloned());
     // The aspect ratio of the window as it is when the size is as started.
     if menu.aspect.is_none()
@@ -244,13 +244,13 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos() as u64 / 1000);
     // Menus close each other.
-    if let Some(mut b) = w.get_resource_mut::<crate::client::buy_menu::BuyMenu>() {
+    if let Some(mut b) = w.get_resource_mut::<crate::games::cs_source::ui::buy_menu::BuyMenu>() {
         *b = default();
     }
-    if let Some(mut t) = w.get_resource_mut::<crate::client::team_menu::TeamMenu>() {
+    if let Some(mut t) = w.get_resource_mut::<crate::games::cs_source::ui::team_menu::TeamMenu>() {
         t.0 = false;
     }
-    if let Some(mut r) = w.get_resource_mut::<crate::client::radio::RadioMenu>() {
+    if let Some(mut r) = w.get_resource_mut::<crate::games::cs_source::ui::radio::RadioMenu>() {
         r.0 = None;
     }
     if page != Page::Main
@@ -263,14 +263,14 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
 
 /// The menu open (on its main page unless it is open already): for the
 /// server browser, which shows over it.
-pub(in crate::client) fn open_main(w: &mut World) {
+pub(in crate::games::cs_source::ui) fn open_main(w: &mut World) {
     if !w.resource::<GameMenu>().open {
         open_menu(w, Page::Main);
     }
 }
 
 /// A map is in (`map`, `map greybox`): playing it, the menu closed.
-pub(in crate::client) fn entered_game(w: &mut World) {
+pub(in crate::games::cs_source::ui) fn entered_game(w: &mut World) {
     let Some(mut menu) = w.get_resource_mut::<GameMenu>() else { return };
     if menu.enter_game()
         && let Some(mut regrab) = w.get_resource_mut::<RegrabCursor>()
@@ -280,7 +280,7 @@ pub(in crate::client) fn entered_game(w: &mut World) {
 }
 
 /// Out of the game (`disconnect`): the main menu.
-pub(in crate::client) fn left_game(w: &mut World) {
+pub(in crate::games::cs_source::ui) fn left_game(w: &mut World) {
     let Some(mut menu) = w.get_resource_mut::<GameMenu>() else { return };
     menu.in_game = false;
     menu.loading = None;
@@ -327,8 +327,8 @@ pub(super) fn apply(input: Input, menu: &mut ResMut<GameMenu>, console: &mut Con
 /// (the server browser in front, the first-run dialog).
 pub(super) fn menu_has_keys(
     menu: &GameMenu,
-    browser: Option<&crate::client::server_browser::ServerBrowser>,
-    first_run: Option<&crate::client::first_run::FirstRun>,
+    browser: Option<&crate::games::cs_source::ui::server_browser::ServerBrowser>,
+    first_run: Option<&crate::games::cs_source::ui::first_run::FirstRun>,
     windows: Option<&Windows>,
 ) -> bool {
     if first_run.is_some_and(|f| f.open) {
@@ -339,7 +339,7 @@ pub(super) fn menu_has_keys(
     }
     // The browser and a dialog of the menu both open: the front one.
     menu.page != Page::Main
-        && windows.is_some_and(|w| w.front(&[crate::client::server_browser::WINDOW, menu.page.window()]) == Some(menu.page.window()))
+        && windows.is_some_and(|w| w.front(&[crate::games::cs_source::ui::server_browser::WINDOW, menu.page.window()]) == Some(menu.page.window()))
 }
 
 /// The focused row is a text entry (typing goes to it: `text_keys`).
@@ -410,8 +410,8 @@ pub(super) fn keys(
     mut regrab: ResMut<RegrabCursor>,
     mut commands: Commands,
     (browser, first_run, windows): (
-        Option<Res<crate::client::server_browser::ServerBrowser>>,
-        Option<Res<crate::client::first_run::FirstRun>>,
+        Option<Res<crate::games::cs_source::ui::server_browser::ServerBrowser>>,
+        Option<Res<crate::games::cs_source::ui::first_run::FirstRun>>,
         Option<Res<Windows>>,
     ),
 ) {
@@ -482,8 +482,8 @@ pub(super) fn text_keys(
     mut after: ResMut<AfterLoad>,
     mut regrab: ResMut<RegrabCursor>,
     (browser, first_run, windows): (
-        Option<Res<crate::client::server_browser::ServerBrowser>>,
-        Option<Res<crate::client::first_run::FirstRun>>,
+        Option<Res<crate::games::cs_source::ui::server_browser::ServerBrowser>>,
+        Option<Res<crate::games::cs_source::ui::first_run::FirstRun>>,
         Option<Res<Windows>>,
     ),
 ) {
@@ -561,7 +561,7 @@ pub(super) fn pointer(
     mut console: ResMut<Console>,
     mut after: ResMut<AfterLoad>,
     mut regrab: ResMut<RegrabCursor>,
-    (browser, first_run): (Option<Res<crate::client::server_browser::ServerBrowser>>, Option<Res<crate::client::first_run::FirstRun>>),
+    (browser, first_run): (Option<Res<crate::games::cs_source::ui::server_browser::ServerBrowser>>, Option<Res<crate::games::cs_source::ui::first_run::FirstRun>>),
 ) {
     if !menu.open || menu.capture.is_some() || first_run.is_some_and(|f| f.open) {
         return;
@@ -628,7 +628,7 @@ pub(super) fn sync(
     if !menu.open {
         return;
     }
-    let no_spectators = !crate::client::team_menu::spectators_allowed(rules.as_deref());
+    let no_spectators = !crate::games::cs_source::ui::team_menu::spectators_allowed(rules.as_deref());
     if menu.no_spectators != no_spectators {
         menu.no_spectators = no_spectators;
     }
