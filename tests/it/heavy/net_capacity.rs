@@ -305,8 +305,12 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
         if step >= warm && ticks > 0 {
             let ms = (c1.cpu_ns - c0.cpu_ns) as f64 / 1e6 / ticks as f64;
             tick_ms.extend(std::iter::repeat_n(ms, ticks as usize));
-            if let (Some(a), Some(b)) = (c0.hw, c1.hw) {
-                ins.push((b.instructions - a.instructions) as f64 / 1e6 / ticks as f64);
+            // The counter can read lower when the kernel rescales a
+            // multiplexed counter under load: skip that sample.
+            if let (Some(a), Some(b)) = (c0.hw, c1.hw)
+                && let Some(d) = b.instructions.checked_sub(a.instructions)
+            {
+                ins.push(d as f64 / 1e6 / ticks as f64);
             }
             main_ms.extend(std::iter::repeat_n(
                 (m1 - m0) as f64 / 1e6 / ticks as f64,

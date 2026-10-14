@@ -61,7 +61,7 @@ use crate::{
     },
     weapon::{
         Armor, Inventory,
-        economy::{BuyRequested, BuyWindow, DefuseKit, Money},
+        economy::{BuyRequested, BuyWindow, DefuseKit, Money, NightVision},
     },
 };
 
@@ -823,19 +823,26 @@ fn apply_hostages(
     }
 }
 
-/// Our money and armour from the server's newest state (arming and
-/// defusing are predicted: `objectives::bomb::arm`).
+/// Our money, armour and night vision from the server's newest state
+/// (arming and defusing are predicted: `objectives::bomb::arm`).
 fn apply_own(
     mut states: MessageReader<OwnState>,
-    player: Option<Single<(Entity, Option<&Money>, Option<&Armor>), With<LocalPlayer>>>,
+    player: Option<Single<(Entity, Option<&Money>, Option<&Armor>, Has<NightVision>), With<LocalPlayer>>>,
     mut commands: Commands,
 ) {
     let Some(s) = states.read().max_by_key(|s| s.tick).cloned() else {
         return;
     };
-    let Some((e, money, armor)) = player.map(|p| *p) else {
+    let Some((e, money, armor, nightvision)) = player.map(|p| *p) else {
         return;
     };
+    if s.nightvision != nightvision {
+        if s.nightvision {
+            commands.entity(e).insert(NightVision);
+        } else {
+            commands.entity(e).remove::<NightVision>();
+        }
+    }
     match s.money {
         Some(m) if money.map(|x| x.0) != Some(m) => {
             commands.entity(e).insert(Money(m));

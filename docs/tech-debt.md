@@ -119,3 +119,6 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - net capacity: Client cost of drawing 31 others not profiled further (`src/net/interp.rs`)
 - net capacity: Dedicated server capped at 300 frames a second, no cvar (`src/bin/mashup_server.rs`)
 - net: UPnP: IGD only (no NAT-PMP/PCP, no IPv6), nearest router only, untested on real routers (`src/net/upnp.rs`)
+- weapon: Sprays: reach, size and floor turn are well-known values and ours, unmeasured; world only; names, not pictures (`src/weapon/spray.rs`)
+- map: Sprays drawn with one light value at the centre, no fog (`src/render/spray.rs`)
+- client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`src/client/night_vision.rs`)

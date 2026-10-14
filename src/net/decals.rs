@@ -6,6 +6,14 @@
 //! (`map::PlaceDecal`). Decals on props and brush entities (which
 //! move, break and come back) aren't kept, nor is which variant a decal
 //! took (each client picks its own, as for every shot it draws).
+//!
+//! Players' sprays (`map::decal::Spray`, one entity each) replicate: late
+//! joiners get them as they get every replicated entity, and the server's
+//! despawning a replaced spray or the map's takes them off every client. A
+//! client's `impulse 201` (`weapon::spray::SprayRequested`) goes to the
+//! server as a `SprayRequest`, which sprays for its player
+//! (`weapon::spray::spray`; its logo from the player's `cl_logofile`
+//! userinfo).
 
 use std::collections::VecDeque;
 
@@ -16,10 +24,13 @@ use serde::{Deserialize, Serialize};
 use super::server::Player;
 use crate::{
     core::NetRole,
-    map::{
-        DecalGroup, MAX_DECALS, MapBrushEntity, PlaceDecal, PropIndex,
-    },
+    map::{DecalGroup, MAX_DECALS, MapBrushEntity, PlaceDecal, PropIndex, decal::Spray},
+    weapon::spray::SprayRequested,
 };
+
+/// Client -> server: spray my logo (`impulse 201`).
+#[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct SprayRequest;
 
 /// One world decal: its group (a named one or a surface material's), where,
 /// the surface's normal, the direction of what made it, spun or upright.
@@ -88,7 +99,27 @@ pub(super) fn plugin(app: &mut App) {
         .make_message_independent::<Decals>()
         .init_resource::<DecalLog>()
         .add_message::<PlaceDecal>()
+        .replicate::<Spray>()
+        .add_client_message::<SprayRequest>(Channel::Ordered)
         .add_systems(PostUpdate, record.run_if(resource_equals(NetRole::Server)))
+        .add_systems(
+            PreUpdate,
+            receive_sprays
+                .after(ServerSystems::Receive)
+                .run_if(resource_equals(NetRole::Server)),
+        )
+        .add_systems(
+            PostUpdate,
+            replicate_sprays
+                .before(ServerSystems::Send)
+                .run_if(resource_equals(NetRole::Server)),
+        )
+        .add_systems(
+            PostUpdate,
+            send_sprays
+                .before(ClientSystems::Send)
+                .run_if(resource_equals(NetRole::Client)),
+        )
         .add_systems(
             PreUpdate,
             receive
@@ -137,6 +168,39 @@ pub(super) fn send(world: &mut World, client: Entity) {
         targets: SendTargets::Single(ClientId::Client(client)),
         message: Decals { list },
     });
+}
+
+/// New sprays go to every client.
+fn replicate_sprays(new: Query<Entity, (Added<Spray>, Without<Replicated>)>, mut commands: Commands) {
+    for e in &new {
+        commands.entity(e).insert(Replicated);
+    }
+}
+
+/// Our `impulse 201`, to the server.
+fn send_sprays(mut asked: MessageReader<SprayRequested>, mut out: MessageWriter<SprayRequest>) {
+    for _ in asked.read() {
+        out.write(SprayRequest);
+    }
+}
+
+/// A client's spray, for its player (refusals say nothing, as in the
+/// game).
+fn receive_sprays(
+    mut requests: MessageReader<FromClient<SprayRequest>>,
+    players: Query<&Player>,
+    mut commands: Commands,
+) {
+    for r in requests.read() {
+        let Some(client) = r.client_id.entity() else { continue };
+        let Ok(p) = players.get(client) else { continue };
+        let character = p.character;
+        commands.queue(move |w: &mut World| {
+            if w.get_entity(character).is_ok() {
+                let _ = crate::weapon::spray::spray(w, character);
+            }
+        });
+    }
 }
 
 /// The server's decals, placed here.

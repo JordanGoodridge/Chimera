@@ -610,6 +610,25 @@ impl<'a> MaterialLoader<'a> {
         })
     }
 
+    /// The install's files directly in folder `dir` (not the map's pak).
+    pub fn files_in(&self, dir: &str) -> Vec<String> {
+        self.mount.files_in(dir)
+    }
+
+    /// A whole texture (`name` under `materials/`, no extension) as a
+    /// runtime decal `size` meters square, alpha blended: a player's spray
+    /// logo.
+    pub fn texture_decal(&mut self, name: &str, size: f32) -> Option<crate::map::decal::MapDecal> {
+        let texture = self.texture(name, true)?;
+        Some(crate::map::decal::MapDecal {
+            texture,
+            uv_min: Vec2::ZERO,
+            uv_max: Vec2::ONE,
+            size: Vec2::splat(size),
+            blend: crate::map::decal::DecalBlend::Alpha,
+        })
+    }
+
     /// A material's keys (lower-case), with "patch" materials merged over
     /// the material they include; nested blocks (proxies) are skipped.
     /// A decal material as runtime decals draw it: a `Subrect` of a decal

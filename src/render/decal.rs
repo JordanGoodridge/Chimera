@@ -94,7 +94,7 @@ const BIG_CELLS: i32 = 64;
 /// its own space, and each brush entity's in its node's space.
 #[derive(Resource, Default)]
 pub(crate) struct DecalSurfaces {
-    world: TriSet,
+    pub(crate) world: TriSet,
     models: Vec<TriSet>,
     /// Prop index -> model index.
     props: Vec<usize>,

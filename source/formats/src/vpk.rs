@@ -223,4 +223,12 @@ impl FileSource for Vpk {
     fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>> {
         self.entries.get(path).map(|e| self.read_entry(e))
     }
+
+    fn files_in(&self, dir: &str) -> Vec<String> {
+        self.entries
+            .keys()
+            .filter(|p| p.rsplit_once('/').is_some_and(|(d, _)| d == dir))
+            .cloned()
+            .collect()
+    }
 }

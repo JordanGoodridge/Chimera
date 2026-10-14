@@ -66,7 +66,7 @@ use crate::{
     slots::{Loadout, MovementSlot, set_movement},
     weapon::{
         Armor, Inventory,
-        economy::{DefuseKit, Money},
+        economy::{DefuseKit, Money, NightVision},
     },
 };
 
@@ -924,6 +924,7 @@ fn capture_own_states(world: &mut World) {
             let money = world.get::<Money>(e).map(|m| m.0);
             let armor = world.get::<Armor>(e).map(|a| (a.amount, a.helmet));
             let kit = world.get::<DefuseKit>(e).is_some();
+            let nightvision = world.get::<NightVision>(e).is_some();
             let view = world
                 .get::<crate::core::MapView>(e)
                 .map(|v| (v.origin.to_array(), v.rotation.to_array()));
@@ -946,6 +947,7 @@ fn capture_own_states(world: &mut World) {
                 money,
                 armor,
                 kit,
+                nightvision,
                 view,
                 ..default()
             });

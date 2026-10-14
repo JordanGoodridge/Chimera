@@ -35,7 +35,7 @@ use crate::{
     map::hud::{ActiveHud, GameMenus, UiControl, UiKind, UiLayout, layout_key},
     weapon::{
         Armor, Inventory, Weapon, WeaponRegistry,
-        economy::{AMMO_BUYS, BuyWindow, Money, Prices},
+        economy::{AMMO_BUYS, BuyWindow, Money, NightVision, Prices},
     },
 };
 
@@ -128,11 +128,11 @@ fn current_page<'a>(menus: &'a GameMenus, menu: &BuyMenu, team: Option<u8>) -> O
 }
 
 /// What the buy button's `buy X` names, as `Prices` knows it: `vest`,
-/// `vesthelm`, `defuser` or a weapon ID.
+/// `vesthelm`, `defuser`, `nvgs` or a weapon ID.
 fn priced(what: &str, registry: &WeaponRegistry) -> Option<String> {
     let what = what.to_lowercase();
     match what.as_str() {
-        "vest" | "vesthelm" | "defuser" => Some(what),
+        "vest" | "vesthelm" | "defuser" | "nvgs" => Some(what),
         _ => registry
             .find(&format!("weapon_{what}"))
             .or_else(|| registry.find(&what))
@@ -149,6 +149,8 @@ struct BuyState<'a> {
     team: Option<u8>,
     /// The weapons carried: (slot, ID).
     held: Vec<(u8, &'static str)>,
+    /// Carries night vision goggles (its button is greyed: owned).
+    nightvision: bool,
 }
 
 impl BuyState<'_> {
@@ -165,6 +167,9 @@ impl BuyState<'_> {
                 .map(|b| b.price);
         }
         let id = priced(what, self.registry)?;
+        if id == "nvgs" && self.nightvision {
+            return None;
+        }
         if self
             .prices
             .team_only
@@ -395,7 +400,7 @@ fn keys(
     mut menu: ResMut<BuyMenu>,
     (prices, registry, hud, mut console): (Res<Prices>, Res<WeaponRegistry>, Option<Res<ActiveHud>>, ResMut<Console>),
     (player, weapons): (
-        Option<Single<(Option<&Team>, Option<&Money>, Option<&Inventory>), With<LocalPlayer>>>,
+        Option<Single<(Option<&Team>, Option<&Money>, Option<&Inventory>, Has<NightVision>), With<LocalPlayer>>>,
         Query<&Weapon>,
     ),
     mut slots: Local<Option<Vec<(&'static str, u8)>>>,
@@ -441,6 +446,7 @@ fn keys(
             money: player.as_ref().and_then(|p| p.1).map(|m| m.0),
             team,
             held: held_slots(player.as_ref().and_then(|p| p.2), &weapons),
+            nightvision: player.as_ref().is_some_and(|p| p.3),
         };
         let pressed = crate::client::vgui::hotkey_button(page, key, &mut |c| state.shown(c)).and_then(|c| c.command.clone());
         if let Some(command) = pressed {
@@ -496,7 +502,9 @@ fn draw(
     prices: Res<Prices>,
     registry: Res<WeaponRegistry>,
     window: Res<BuyWindow>,
-    player: Option<Single<(Option<&Money>, Option<&Team>, Option<&Inventory>, Option<&Armor>), With<LocalPlayer>>>,
+    player: Option<
+        Single<(Option<&Money>, Option<&Team>, Option<&Inventory>, Option<&Armor>, Has<NightVision>), With<LocalPlayer>>,
+    >,
     weapons: Query<&Weapon>,
     windows: Query<&Window>,
     mut text: Query<(Entity, &mut Text, &mut TextFont, &mut Node), With<MenuText>>,
@@ -504,7 +512,7 @@ fn draw(
     (hud, fonts): (Option<Res<ActiveHud>>, Res<UiFonts>),
     mut commands: Commands,
 ) {
-    let (money, team, inv, armor) = player.map(|p| *p).unwrap_or((None, None, None, None));
+    let (money, team, inv, armor, nightvision) = player.map(|p| *p).unwrap_or((None, None, None, None, false));
     // The game's own look draws it instead (`draw_vgui`).
     let game_look = hud
         .as_ref()
@@ -542,7 +550,8 @@ fn draw(
             lines.push(c.name.to_uppercase());
             for (i, item) in c.items.iter().enumerate() {
                 let have = held.contains(&item.buy.as_str())
-                    || (item.buy == "vest" && armor.is_some_and(|a| a.amount >= 1.0));
+                    || (item.buy == "vest" && armor.is_some_and(|a| a.amount >= 1.0))
+                    || (item.buy == "nvgs" && nightvision);
                 let broke = money.is_some_and(|m| m.0 < item.price);
                 let note = if have {
                     "  (owned)"
@@ -653,7 +662,7 @@ fn draw_vgui(
     hud: Option<Res<ActiveHud>>,
     fonts: Res<UiFonts>,
     (prices, registry, console): (Res<Prices>, Res<WeaponRegistry>, Res<Console>),
-    player: Option<Single<(Option<&Money>, Option<&Team>, Option<&Inventory>), With<LocalPlayer>>>,
+    player: Option<Single<(Option<&Money>, Option<&Team>, Option<&Inventory>, Has<NightVision>), With<LocalPlayer>>>,
     weapons: Query<&Weapon>,
     windows: Query<&Window>,
     roots: Query<Entity, With<VguiRoot>>,
@@ -662,7 +671,7 @@ fn draw_vgui(
     mut slots: Local<Option<Vec<(&'static str, u8)>>>,
     mut commands: Commands,
 ) {
-    let (money, team, inv) = player.map(|p| *p).unwrap_or((None, None, None));
+    let (money, team, inv, nightvision) = player.map(|p| *p).unwrap_or((None, None, None, false));
     let (money, team) = (money.map(|m| m.0), team.map(|t| t.0));
     let menus = hud.as_ref().and_then(|h| h.0.menus.as_ref());
     let page = menus.filter(|_| menu.open).and_then(|m| current_page(m, &menu, team));
@@ -686,7 +695,7 @@ fn draw_vgui(
         .collect();
     held.sort();
     let (w, h) = (window.width(), window.height());
-    let key = format!("{:?}|{team:?}|{money:?}|{w}x{h}|{held:?}", menu.page);
+    let key = format!("{:?}|{team:?}|{money:?}|{w}x{h}|{held:?}|{nightvision}", menu.page);
     let state = BuyState {
         prices: &prices,
         registry: &registry,
@@ -694,6 +703,7 @@ fn draw_vgui(
         money,
         team,
         held: held_slots(inv, &weapons),
+        nightvision,
     };
     let painter = Painter::new(hud, &fonts, h);
     if drawn.page != key || roots.is_empty() {
@@ -952,11 +962,29 @@ mod tests {
             money: Some(800),
             team: Some(2),
             held: Vec::new(),
+            nightvision: false,
         };
         let enabled = |c: &str| state.shown(&button("b", '1', c)).enabled;
         assert!(enabled("buy vest"));
         assert!(!enabled("buy vesthelm"), "can't afford");
         assert!(!enabled("buy nvgs"), "not sold");
+        // Night vision for sale: greyed while too dear or owned.
+        let sold = Prices {
+            nightvision: 700,
+            ..prices.clone()
+        };
+        let mut nv = BuyState {
+            prices: &sold,
+            registry: &registry,
+            console: &console,
+            money: Some(800),
+            team: Some(2),
+            held: Vec::new(),
+            nightvision: false,
+        };
+        assert!(nv.shown(&button("b", '1', "buy nvgs")).enabled);
+        nv.nightvision = true;
+        assert!(!nv.shown(&button("b", '1', "buy nvgs")).enabled, "owned");
         assert!(enabled("Resource/UI/BuyPistols_CT.res"));
         assert!(enabled("vguicancel"));
         assert!(enabled("rebuy"));

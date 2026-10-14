@@ -107,6 +107,7 @@ fn main() {
         mashup::render::prop_material::PropMaterialPlugin,
         mashup::render::shadows::ShadowMaterialPlugin,
         mashup::render::decal::DecalMaterialPlugin,
+        mashup::render::spray::SprayMaterialPlugin,
         mashup::render::water::WaterMaterialPlugin,
         mashup::render::particles::ParticleMaterialPlugin,
     ))
