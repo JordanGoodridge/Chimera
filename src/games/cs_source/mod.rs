@@ -172,6 +172,7 @@ pub mod breakables;
 pub mod bsp;
 pub mod decals;
 pub mod detail;
+pub mod drown;
 pub mod dust;
 pub mod fire;
 pub mod gameui;

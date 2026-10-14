@@ -43,8 +43,9 @@
 //! bare flesh only the shot's `Flesh.BulletImpact`; deaths `Player.Death`, by a
 //! bullet in the head `Player.DeathHeadShot`. The knife, grenades, fire and
 //! crushing play no hurt sound (the knife has its own hit sounds);
-//! `Player.PlasmaDamage`/`SonicDamage` (null waves) and the drowning entries
-//! are unused (we have no drowning). Played from the victim's origin (its body
+//! `Player.PlasmaDamage`/`SonicDamage` (null waves) are unused; drowning
+//! plays no hurt sound (measured: the server emits none; the client's own
+//! `Player.DrownStart`/`DrownContinue`, if any, aren't played). Played from the victim's origin (its body
 //! centre), the script's channel and level, to everyone, the shooter included
 //! (Source may leave the shooter's own client out of effects made during its
 //! command); armour is what it was when the tick's shots began; no rate limit

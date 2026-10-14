@@ -11,7 +11,8 @@
 //! velocity (conveyors, water currents). Landings and wall slams roll the
 //! view (the punch angle's roll, `MovementState::view_roll`); hard
 //! landings deal fall damage (specs/cs_source/fall_damage.md) and play
-//! its sound.
+//! its sound. A head under water too long drowns (`super::drown`, from the
+//! water level kept here).
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -572,6 +573,7 @@ impl Plugin for SourceMovementPlugin {
         if !app.is_plugin_added::<super::pain::PainSoundsPlugin>() {
             app.add_plugins(super::pain::PainSoundsPlugin);
         }
+        app.add_plugins(super::drown::DrowningPlugin);
     }
 }
 

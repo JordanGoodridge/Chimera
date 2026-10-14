@@ -80,6 +80,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
 - weapon: mashup_usepickup (+use pickup) reach and rules are ours (`src/weapon/drop.rs`)
 - movement: Source movement lacks base velocity; landing roll is the only view punch; some fall-damage cases ignored (`src/games/cs_source/movement.rs`)
+- movement: Drowning's unmeasured parts are ours: reset on surfacing, when restores start, what clears the amount owed, no armour; client drown sounds not played (`src/games/cs_source/drown.rs`)
 - movement: Ladder probe ignores near-horizontal ladder faces (brush tops), our choice (`src/games/cs_source/movement.rs`)
 - movement: Concave props swept by avian shape casts; displacement collision is our construction (`src/games/cs_source/movement.rs`)
 - render: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`src/render/sprite_material.rs`)

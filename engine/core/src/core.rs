@@ -323,6 +323,8 @@ pub enum DamageKind {
     Fall,
     /// Fire (Source's burn type): env_fire and entity flames.
     Burn,
+    /// Drowning: head under water too long (`games::cs_source::drown`).
+    Drown,
 }
 
 /// Give a character items a map names (`weapon_ak47`, `item_kevlar`, with

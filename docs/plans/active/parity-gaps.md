@@ -26,14 +26,14 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 |---|---|---|---|---|
 | Movement | 2 | 7 | 2 | 0 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
-| Sounds | 6 | 7 | 5 | 3 |
+| Sounds | 6 | 8 | 4 | 3 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
 | Rendering, lighting, materials | 6 | 15 | 2 | 2 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **64** | **59** | **24** | **28** |
+| **Total** | **64** | **60** | **23** | **28** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -144,7 +144,7 @@ report folders):
 | ambient_generic levels | differs | L | S | spec Q11 |
 | Scrapes | differs | L | S | spec Q8 |
 | Ricochets (`FX_RicochetSound.Ricochet`) | missing | M | S | never played; spec sounds.md Q7 |
-| Drowning (`Player.DrownStart`/`DrownContinue`, damage) | missing | L | S | no drowning at all; capture C6 |
+| Drowning (`Player.DrownStart`/`DrownContinue`, damage) | differs | L | S | damage and restore as measured (C6, `games/cs_source/drown.rs`); the client's own drown sounds (if CS:S plays any) not played; reset on surfacing unmeasured |
 | Hint sound (`Hud.Hint`) with `cl_autohelp` hints | missing | M | M | hints not in (ui-parity.md, greyed) |
 | Spray sound, night vision and flashlight sounds | differs | L | | `SprayCan.Paint` (all hear it) and `Player.NightVisionOn`/`Off` (the owner only) play; the flashlight is missing |
 | AK full-auto choppy | | | | other work in flight |
