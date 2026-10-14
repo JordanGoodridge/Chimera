@@ -122,7 +122,7 @@ report folders):
 | `cl_autowepswitch` while firing | differs | L | S | tech-debt row |
 | Knife idle timing | differs | L | | tech-debt "View-model idle" |
 | Flashlight (`impulse 100`, F) | missing | L | M | `mp_flashlight` decides on a server; capture C9 for the default |
-| Night vision (`nightvision`, N; buyable) | missing | L | M | the buy menu shows it greyed |
+| Night vision (`nightvision`, N; buyable) | have (fixed) | L | M | `buy nvgs` $1250 (greyed once owned), kept through rounds, lost at death, rebuy; green view and sounds to the owner (tech-debt "Night vision"); capture C24 |
 | Shield | n/a | | | CS:S has none |
 
 ## Sounds
@@ -146,7 +146,7 @@ report folders):
 | Ricochets (`FX_RicochetSound.Ricochet`) | missing | M | S | never played; spec sounds.md Q7 |
 | Drowning (`Player.DrownStart`/`DrownContinue`, damage) | missing | L | S | no drowning at all; capture C6 |
 | Hint sound (`Hud.Hint`) with `cl_autohelp` hints | missing | M | M | hints not in (ui-parity.md, greyed) |
-| Spray sound, night vision and flashlight sounds | missing | L | | their features are missing |
+| Spray sound, night vision and flashlight sounds | differs | L | | `SprayCan.Paint` (all hear it) and `Player.NightVisionOn`/`Off` (the owner only) play; the flashlight is missing |
 | AK full-auto choppy | | | | other work in flight |
 
 ## HUD
@@ -186,12 +186,12 @@ common console commands, against mashup's.
 | `invnext`, `invprev` | have (fixed) | H | S | see Weapons |
 | `jpeg` (F5) | have (fixed) | L | S | a PNG in the screenshots folder named `<map>NNNN` |
 | `kill`, `explode`, `retry`, `connect`, `status`, `exec`, `alias`, `bind`, `toggle`, `incrementvar`, `net_graph`, `cl_showfps`, `cl_showpos` | have | | | |
-| Default binds | have (fixed) | M | S | every `config_default.cfg` bind (read from the install at start, the same table built in otherwise; `client::binds`); mashup's own only on keys it leaves free: Alt free look, V noclip, F9 bug report, F3/F8/F11 debug keys. Saved configs keep their binds (defaults added since go on their free keys once). F, N, T, K, H, I, J, F6, F7, PAUSE run commands mashup lacks (`impulse 100`/`201`, `nightvision`, `+voicerecord`, `commandmenu`, `showbriefing`, `cheer`, `save`/`load`, `pause`: an error line in the console); F10's `quit prompt` opens the game menu (no quit dialog) |
+| Default binds | have (fixed) | M | S | every `config_default.cfg` bind (read from the install at start, the same table built in otherwise; `client::binds`); mashup's own only on keys it leaves free: Alt free look, V noclip, F9 bug report, F3/F8/F11 debug keys. Saved configs keep their binds (defaults added since go on their free keys once). F, K, H, I, J, F6, F7, PAUSE run commands mashup lacks (`impulse 100`, `+voicerecord`, `commandmenu`, `showbriefing`, `cheer`, `save`/`load`, `pause`: an error line in the console); F10's `quit prompt` opens the game menu (no quit dialog) |
 | Console | differs | L | M | a drop-down, not CS:S's VGUI frame (ui-parity.md) |
 | `con_enable` and `volume` defaults | differs | L | | ui-parity.md: undecided |
 | Options apply at once | differs | L | | ui-parity.md: deliberate |
-| `impulse 100` (flashlight), `nightvision` | missing | L | M | |
-| `impulse 201` (spray), Import Spray | missing | M | M | |
+| `impulse 100` (flashlight) | missing | L | M | `nightvision` is in (Weapons) |
+| `impulse 201` (spray), Import Spray | differs | M | M | sprays are in (see Sprays); the logo is `cl_logofile` (console), no Import Spray or picker in the options |
 | `+voicerecord` (voice chat), Voice tab | missing | M | L | players use Discord meanwhile |
 | `record`, `stop`, `playdemo`, `demoui` | missing | L | L | no demos |
 | `fps_max` | have (fixed) | L | S | 300 as CS:S (`client::perf::FrameLimit`); off under `--bench` |
@@ -281,7 +281,7 @@ common console commands, against mashup's.
 | Movers mispredicted for a round trip | differs | L | M | tech-debt "The network so far" |
 | `cl_cmdrate` | differs | L | S | missing as a cvar (one command per tick) |
 | Voice chat | missing | M | L | |
-| Sprays | missing | M | M | |
+| Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
 | Votes (kick, map) | missing | L | M | |
 
@@ -587,3 +587,15 @@ says what decides the open point.
 - **C22 Detail props.** refcmp-style views over cs_militia's and
   de_port's grass (`cl_detaildist 1200`), close (200 units) and far
   (1000): density, size, sway.
+- **C23 Sprays.** A listen server on de_dust2, `sv_cheats 1`: spray
+  (T) at a wall from 50, 100, 120, 130 and 150 units (`getpos`, a
+  `jpeg` each); one on the floor and one on a ceiling looking north,
+  then east; `decalfrequency 2` and two sprays 1 s apart. Decides the
+  reach (ours 128 units), the size on the wall (ours 64 units), a
+  floor spray's turn, and whether a refused spray says anything.
+- **C24 Night vision.** de_dust2's lower tunnel and CT spawn in daylight:
+  a `jpeg` with night vision off and on, same view (`setpos`,
+  `setang`); a second player standing by while the first toggles it,
+  with `snd_show 1` on the second. Decides the overlay's colour and
+  brightening (ours: the frame plus the frame times green), any light
+  around the player, and who hears the toggle (ours: the owner).

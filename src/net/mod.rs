@@ -238,7 +238,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net18");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net19");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -631,6 +631,9 @@ pub struct OwnState {
     pub money: Option<u32>,
     pub armor: Option<(f32, bool)>,
     pub kit: bool,
+    /// Carries night vision goggles (`weapon::economy::NightVision`; the
+    /// player turns them on itself).
+    pub nightvision: bool,
     /// Ticks run without this client's command (its last one repeated),
     /// and commands that came after their tick, since it joined.
     pub missed: u32,

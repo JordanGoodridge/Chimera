@@ -24,6 +24,16 @@ pub trait FileSource: Send + Sync {
     fn entries(&self) -> Vec<Entry>;
     /// `None` if this source doesn't have `path` (already normalized).
     fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>>;
+    /// The files directly in folder `dir` (normalized, no trailing slash),
+    /// as normalized paths. Sources override it to avoid listing
+    /// everything.
+    fn files_in(&self, dir: &str) -> Vec<String> {
+        self.entries()
+            .into_iter()
+            .filter(|e| e.path.rsplit_once('/').is_some_and(|(d, _)| d == dir))
+            .map(|e| e.path)
+            .collect()
+    }
 }
 
 /// Normalize a path the way Source and LithTech resolve them:
@@ -62,6 +72,18 @@ impl Mount {
             .iter()
             .find_map(|l| l.read(&path))
             .unwrap_or_else(|| Err(io::Error::new(io::ErrorKind::NotFound, format!("not in mount: {path}"))))
+    }
+
+    /// The files directly in folder `dir` in any layer, sorted by path
+    /// (one listing of a folder, e.g. CS:S's spray logos, without listing
+    /// the whole install).
+    pub fn files_in(&self, dir: &str) -> Vec<String> {
+        let dir = normalize(dir);
+        let mut seen = std::collections::BTreeSet::new();
+        for layer in &self.layers {
+            seen.extend(layer.files_in(&dir));
+        }
+        seen.into_iter().collect()
     }
 
     /// Every visible file, sorted by path, with the layer it comes from.
@@ -132,6 +154,31 @@ impl FileSource for LooseDir {
         out
     }
 
+    fn files_in(&self, dir: &str) -> Vec<String> {
+        // The folder, matched case-insensitively as `read` does.
+        let mut at = self.root.clone();
+        for part in dir.split('/').filter(|p| !p.is_empty()) {
+            let direct = at.join(part);
+            if direct.is_dir() {
+                at = direct;
+                continue;
+            }
+            let Some(found) = fs::read_dir(&at).ok().and_then(|rd| {
+                rd.flatten()
+                    .find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(part))
+            }) else {
+                return Vec::new();
+            };
+            at = found.path();
+        }
+        let Ok(rd) = fs::read_dir(&at) else { return Vec::new() };
+        rd.flatten()
+            .filter(|e| e.metadata().is_ok_and(|m| m.is_file()))
+            .map(|e| normalize(&format!("{dir}/{}", e.file_name().to_string_lossy())))
+            .filter(|p| !self.hidden(p))
+            .collect()
+    }
+
     fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>> {
         if self.hidden(path) {
             return None;
@@ -155,6 +202,25 @@ impl FileSource for LooseDir {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn files_in_lists_one_folder_of_every_layer() {
+        let root = std::env::temp_dir().join(format!("mashup_files_in_{}", std::process::id()));
+        let logos = root.join("Materials").join("VGUI").join("logos");
+        fs::create_dir_all(logos.join("ui")).unwrap();
+        fs::write(logos.join("Spray_A.vtf"), b"a").unwrap();
+        fs::write(logos.join("ui").join("spray_a.vmt"), b"b").unwrap();
+        let mut mount = Mount::default();
+        mount.push(LooseDir::new(&root));
+        assert_eq!(
+            mount.files_in("materials/vgui/logos"),
+            vec!["materials/vgui/logos/spray_a.vtf"]
+        );
+        assert!(mount.files_in("materials/none").is_empty());
+        fs::remove_dir_all(&root).ok();
+    }
+
     #[test]
     fn normalize_drops_empty_and_dot_components() {
         assert_eq!(super::normalize("./Models\\props//a.MDL"), "models/props/a.mdl");

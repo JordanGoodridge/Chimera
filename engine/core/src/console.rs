@@ -13,7 +13,8 @@
 //! from its name (`SERVER_PREFIXES`, `SERVER_NAMES`: replicated or server-only
 //! in a network game; a network client can't set them, `net::cvars` sends the
 //! replicated ones); `sv_cheats` (`Cheats`) gates `CHEATS` (noclip, god,
-//! setpos, setang, give, impulse, ent_fire, `mashup_set*`) in network games; a
+//! setpos, setang, give, impulse but `PLAYER_IMPULSES` (100, 201), ent_fire,
+//! `mashup_set*`; `is_cheat`) in network games; a
 //! network client sends its cheats to the server (`Console::to_server`,
 //! `net::cheats`; `command_player` is the player a command acts on);
 //! `mashup_noblock` (`core::NoBlock`) is ours and replicated; a network client
@@ -80,9 +81,10 @@ pub enum CvarScope {
 /// these through point_servercommand (`logic::classes::SETTING_PREFIXES`).
 pub const SERVER_PREFIXES: &[&str] = &["sv_", "mp_", "phys_", "bot_", "ammo_"];
 
-/// Game rules of ours without a server prefix that are the server's and
-/// replicated all the same.
-pub const SERVER_NAMES: &[&str] = &["mashup_rounds", "mashup_noblock"];
+/// Game rules without a server prefix that are the server's and
+/// replicated all the same: ours, and Source's `decalfrequency` (the
+/// seconds between a player's sprays).
+pub const SERVER_NAMES: &[&str] = &["mashup_rounds", "mashup_noblock", "decalfrequency"];
 
 /// The player's own settings with a server prefix (Source's client cvars:
 /// `mp_decals`, Multiplayer > Advanced's decal limit).
@@ -446,7 +448,7 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
             Err(format!(
                 "Can't use server command {name} from a client: only the server operator can run it."
             ))
-        } else if CHEATS.contains(&name.as_str())
+        } else if is_cheat(&name, args)
             && world.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client)
         {
             // A network client's cheat acts on its player on the server,
@@ -455,7 +457,7 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
             let line = words.iter().map(|w| quote(w)).collect::<Vec<_>>().join(" ");
             world.resource_mut::<Console>().to_server.push(line);
             Ok(None)
-        } else if CHEATS.contains(&name.as_str()) && !cheats_allowed(world) {
+        } else if is_cheat(&name, args) && !cheats_allowed(world) {
             // Source's words.
             Err(format!(
                 "Can't use cheat command {name} in multiplayer, unless the server has sv_cheats set to 1."
@@ -618,6 +620,17 @@ pub const CHEATS: &[&str] = &[
     "mashup_setarmor",
     "mashup_setmoney",
 ];
+
+/// Impulses that aren't cheats (Source's player impulses): `impulse 100`
+/// (the flashlight) and `impulse 201` (the spray). Every other impulse
+/// (`impulse 101`: all weapons) is one.
+pub const PLAYER_IMPULSES: &[&str] = &["100", "201"];
+
+/// Whether the command `name` (lower case) with `args` is a cheat
+/// (`CHEATS`, but for `PLAYER_IMPULSES`).
+pub fn is_cheat(name: &str, args: &[String]) -> bool {
+    CHEATS.contains(&name) && !(name == "impulse" && args.first().is_some_and(|a| PLAYER_IMPULSES.contains(&a.trim())))
+}
 
 /// Commands that change the server's game (bots, the map): a network
 /// client can't run them (its world isn't the game's; the server's

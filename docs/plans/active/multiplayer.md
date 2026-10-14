@@ -1605,3 +1605,10 @@ cost of drawing many players.
 Others' arming: the server tells every other client when a player starts
 or stops arming the bomb (`ARMING`/`ARMING_STOPPED`), so they see the
 plant animation; new message values, so a new protocol number.
+
+### net19 (2026-10-14)
+
+Night vision and sprays: `OwnState::nightvision` (the player carries
+goggles, for its buy menu and `nightvision`), players' sprays replicate
+(`map::decal::Spray`, one entity each) and a client's `impulse 201` goes
+to the server as a `SprayRequest`.

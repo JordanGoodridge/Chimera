@@ -300,6 +300,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         }
     }
     data.decals = super::decals::impact_decals(&mut materials);
+    super::decals::spray_logos(&mut materials, &mut data.decals);
     data.hud = super::hud::load(&mut materials, name).map(std::sync::Arc::new);
     data.round_sounds = super::sound::round_sounds();
     data.radio = super::radio::load(&materials);

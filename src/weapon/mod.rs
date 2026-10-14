@@ -44,6 +44,7 @@ pub mod grenade;
 pub mod lagcomp;
 pub mod random;
 pub mod remote;
+pub mod spray;
 pub mod sync;
 
 use std::sync::Arc;
@@ -160,6 +161,8 @@ impl Plugin for WeaponPlugin {
         lagcomp::plugin(app);
         remote::plugin(app);
         grenade::plugin(app);
+        spray::plugin(app);
+        economy::plugin(app);
         app.init_resource::<Console>();
         app.world_mut().resource_mut::<Console>().add_command(Command {
             name: "give".into(),
@@ -287,10 +290,15 @@ impl Plugin for WeaponPlugin {
         )
         .console_command(
             "impulse",
-            "impulse 101: every weapon, full clips and reserves, kevlar and helmet.",
+            "impulse 101: every weapon, full clips and reserves, kevlar and helmet (a cheat); impulse 201: spray your logo (T).",
             |w, a| {
-                if a.first().map(String::as_str) != Some("101") {
-                    return Err("only impulse 101 (all weapons and ammo) exists".into());
+                match a.first().map(|s| s.trim()) {
+                    Some("201") => {
+                        let player = local_player(w)?;
+                        return spray::spray_or_ask(w, player);
+                    }
+                    Some("101") => {}
+                    _ => return Err("only impulse 101 (all weapons and ammo) and 201 (spray) exist".into()),
                 }
                 server_only(w)?;
                 let player = local_player(w)?;
