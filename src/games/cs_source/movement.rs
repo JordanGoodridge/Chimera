@@ -11,8 +11,10 @@
 //! velocity (conveyors, water currents). Landings and wall slams roll the
 //! view (the punch angle's roll, `MovementState::view_roll`); hard
 //! landings deal fall damage (specs/cs_source/fall_damage.md) and play
-//! its sound. A head under water too long drowns (`super::drown`, from the
-//! water level kept here).
+//! its sound. A bullet hit's velocity modifier (CS:S, weapons.md M18,
+//! set by `hit_reaction`) multiplies the max speed and recovers by 1/3 a
+//! second after each move. A head under water too long drowns
+//! (`super::drown`, from the water level kept here).
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -27,8 +29,10 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): Source movement
 //! (specs/cs_source/movement.md) lacks base velocity (conveyors, water
-//! currents); its view punch is the landing roll only (the spring runs on roll
-//! alone, as only landings set it); fall damage
+//! currents); its landing roll keeps the movement spec's spring (the shared
+//! code's), on roll alone, apart from the weapons' punch (recoil and the hit
+//! flinch, `weapon::ViewPunch`, which decay by CS:S's measured linear rule;
+//! weapons.md M18 says landings decay that way too, not checked); fall damage
 //! (specs/cs_source/fall_damage.md) ignores landing on moving or floating
 //! objects. CS:S values, hulls, ducking, stamina and the bunny-hop cap are
 //! measured with movecmp/the probe. Not modelled: the bots' automatic jump-duck
@@ -374,6 +378,9 @@ const ORIGIN_ABOVE_FEET: f32 = 36.0;
 const LAND_PUNCH_SCALE: f32 = 0.013;
 const PUNCH_DAMPING: f32 = 9.0;
 const PUNCH_SPRING: f32 = 65.0;
+/// How fast the velocity modifier climbs back to 1, per second (M18:
+/// +0.005 a 0.015 s tick).
+const VELOCITY_MODIFIER_RECOVERY: f32 = 1.0 / 3.0;
 
 const AIR_WISH_CAP: f32 = 30.0;
 const WALKABLE_NORMAL_Z: f32 = 0.7;
@@ -505,6 +512,10 @@ pub struct SourceMovement {
     /// and wall slams kick it (movement spec, "Falling and landing").
     pub punch_roll: f32,
     punch_roll_vel: f32,
+    /// CS:S's velocity modifier (weapons.md M18): a bullet hit sets it
+    /// (0.5 or 0.65, `games::cs_source::hit_reaction`), the max speed is
+    /// multiplied by it, and it climbs back to 1 by 1/3 a second.
+    pub velocity_modifier: f32,
 }
 
 impl Default for SourceMovement {
@@ -539,6 +550,7 @@ impl Default for SourceMovement {
             swim_timer: 0.0,
             punch_roll: 0.0,
             punch_roll_vel: 0.0,
+            velocity_modifier: 1.0,
         }
     }
 }
@@ -1883,8 +1895,10 @@ impl Mover<'_, '_, '_, '_> {
         // Move input: full keys send key_speed, rescaled to the max speed.
         // Walking (+speed) lowers the max speed itself (CS:S, measured): the
         // keys rescale to it, and swimming's wish speed is capped by it.
+        // A recent hit holds it lower (M18): faster than that slows by
+        // the usual friction.
         let walk = if intent.walk { self.cfg.walk_speed } else { 1.0 };
-        let max_speed = self.player_maxspeed.min(self.cfg.maxspeed) * walk;
+        let max_speed = self.player_maxspeed.min(self.cfg.maxspeed) * walk * self.me.velocity_modifier;
         let (mut f, mut s) = (
             intent.move_axis.y * self.cfg.key_speed + self.push_input.x,
             intent.move_axis.x * self.cfg.key_speed + self.push_input.y,
@@ -2278,6 +2292,9 @@ fn step(
         };
         let start = mover.feet;
         mover.tick(intent);
+        // The velocity modifier recovers after the move, whichever way it
+        // went (M18: the first tick after a hit moves at the value set).
+        mover.me.velocity_modifier = (mover.me.velocity_modifier + VELOCITY_MODIFIER_RECOVERY * dt).min(1.0);
         let (feet, v) = (mover.feet, mover.v);
         if let Some(mut touch) = touch {
             *touch = shadow_props.touch(&mover.touched, mover.ground_collider, start, feet, mover.wish, dt);

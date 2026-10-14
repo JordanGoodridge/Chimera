@@ -29,3 +29,4 @@
 
 # Local-only list of private words the pre-push hook refuses (one regex per line).
 /.githooks/private-patterns
+__pycache__/

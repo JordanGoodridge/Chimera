@@ -1612,3 +1612,11 @@ Night vision and sprays: `OwnState::nightvision` (the player carries
 goggles, for its buy menu and `nightvision`), players' sprays replicate
 (`map::decal::Spray`, one entity each) and a client's `impulse 201` goes
 to the server as a `SprayRequest`.
+
+### net20 (2026-10-14)
+
+Being hit (weapons.md M18): the predicted `SourceMovement` carries the
+velocity modifier a bullet hit sets, and `weapon::ViewPunch` gained a
+roll (the head flinch's), so both own-state encodings changed. The
+victim's client gets them with its state and re-runs its commands after
+the hit (one prediction correction).

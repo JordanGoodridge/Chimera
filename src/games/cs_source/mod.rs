@@ -177,6 +177,7 @@ pub mod dust;
 pub mod fire;
 pub mod gameui;
 pub mod grenades;
+pub mod hit_reaction;
 pub mod hostage_anim;
 pub mod hud;
 pub mod impact_effects;

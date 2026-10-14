@@ -37,7 +37,7 @@ impl Plugin for ClientInterpPlugin {
 /// The punch goes into the tick's eye sample, so it eases too.
 fn sample_punch(mut q: Query<(&mut RenderedView, Option<&ViewPunch>)>) {
     for (mut v, punch) in &mut q {
-        let p = punch.map_or(Vec2::ZERO, |p| p.0);
+        let p = punch.map_or(Vec3::ZERO, |p| p.0);
         if v.latest_mut().punch != p {
             v.latest_mut().punch = p;
         }

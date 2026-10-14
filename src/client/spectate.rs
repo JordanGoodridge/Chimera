@@ -681,7 +681,7 @@ fn drawn((t, i, s, punch, view): (&Transform, &Intent, &MovementState, Option<&V
     let eye = match view {
         Some(v) => v.now,
         None => EyeView {
-            punch: punch.map_or(Vec2::ZERO, |p| p.0),
+            punch: punch.map_or(Vec3::ZERO, |p| p.0),
             ..EyeView::of(i, s)
         },
     };

@@ -61,6 +61,12 @@ entries buying emits on the server (parity-gaps.md C2).
 
 ## Weapon measurements
 
+Being hit (M18 in specs/cs_source/weapons.md): `hitmeas.py <weapon> <aim
+height> [armor]` uses `mashup_shooter x y z weapon tick aimz` (the first
+other living player stands there with only that gun, turns to the run's bot
+and fires once at that run tick) and prints the victim's speed modifier and
+view punch after the hit. Needs a second bot (it adds a terrorist).
+
 `weapcmp.py` (driver, Python 3, no dependencies; `rcon.py` is a minimal
 Source RCON client) and `weapmeas.py` (one function per measurement) produce
 the numbers in specs/cs_source/weapons.md, "CS:S values (measured)":

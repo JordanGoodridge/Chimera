@@ -546,7 +546,7 @@ pub(super) fn draw_others(
                 view_roll: 0.0,
                 yaw: body.yaw,
                 pitch: body.pitch,
-                punch: Vec2::ZERO,
+                punch: Vec3::ZERO,
             };
             if view.now != now_view {
                 view.now = now_view;

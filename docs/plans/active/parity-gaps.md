@@ -24,7 +24,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 
 | Area | have | differs | missing | fixed now |
 |---|---|---|---|---|
-| Movement | 2 | 7 | 2 | 0 |
+| Movement | 3 | 8 | 0 | 2 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
 | Sounds | 6 | 8 | 4 | 3 |
 | HUD | 14 | 4 | 1 | 5 |
@@ -33,7 +33,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **64** | **60** | **23** | **28** |
+| **Total** | **65** | **61** | **21** | **30** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -95,8 +95,8 @@ report folders):
 | Ground, air, duck, jump, bhop cap, stamina, ladders, water | have | | | movecmp to 0.002 units (OBSERVABILITY, movecmp) |
 | Fall damage and landing roll | have | | | specs/cs_source/fall_damage.md |
 | Surf ramps | differs | L | | tech-debt "cs_source movement": the rampbug patched out (our choice) |
-| Slowdown when shot ("tagging") | missing | H | S | CS:S slows a player hit by a bullet for a moment; not in any spec. Capture C1 |
-| View punch when hit (flinch) | missing | H | S | CS:S kicks the victim's view on damage; our punch is the landing roll only (tech-debt "Source movement"). Capture C1 |
+| Slowdown when shot ("tagging") | have | | | Fixed 2026-10-14: weapons.md M18 (0.5/0.65 by gun, legs 0.5, +1/3 a second); the speed trace to 0.05 (`games/cs_source/hit_reaction.rs`) |
+| View punch when hit (flinch) | differs | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4); a helmeted head's is unmeasured (none, ours). Capture C1 |
 | Scoped speeds (AWP, Scout, autos zoomed) | differs | M | S | spec movement.md Q1 |
 | Duck spam limit, duck transition times | differs | M | S | spec movement.md Q6 |
 | Backpedal speed (`sv_backspeed`) | differs | L | S | spec movement.md Q10 |
@@ -459,6 +459,10 @@ says what decides the open point.
   victim's horizontal speed and view angles every tick for 1 s after
   each hit. Decides: the speed factor and its recovery, and the punch
   (pitch/yaw, size, decay) by hitgroup and weapon.
+  Done 2026-10-14: specs/cs_source/weapons.md "M18 Being hit".
+  Still open: a helmeted head hit's punch (we give none), whether the
+  flinch replaces or adds to recoil punch already on the view, and a
+  shotgun's flinch (one pellet's damage or all of them).
 - **C2 Pickup and buy sounds.** `sv_soundemitter_trace 1` on the
   listen server: buy an AK-47, kevlar, kevlar+helmet, a defuse kit, an
   HE grenade and ammo; drop the AK and walk over it; touch a dropped AK
@@ -496,6 +500,8 @@ says what decides the open point.
   head under) for 30 s with `sv_soundemitter_trace 1` and `developer
   1`: when damage starts, how much per hit and how often, the sounds,
   and whether health comes back after surfacing.
+  Done 2026-10-14 on de_nuke (aztec's river is too shallow to go under):
+  specs/cs_source/movement.md "Drowning".
 - **C7 Round win panel.** Screenshots at 1280x720 of a round's end by
   elimination, by bomb, by defuse and by time: the panel's place and
   text, how long it stays, whether a centre print shows too.
@@ -522,7 +528,11 @@ says what decides the open point.
   mp_timelimit/maxrounds/winlimit/fraglimit 0, mp_hostagepenalty 13,
   mp_forcecamera 1, mp_playerid 0, mp_fadetoblack 0, sv_alltalk 0: the
   rest match ours. Still open: the listen server's values after Create
-  Server (settings.scr) and the time-limit map change.
+  Server (settings.scr). Time-limit map change (2026-10-14, bots,
+  mp_timelimit 1): the round past the limit plays out;
+  "Intermission_Time_Limit" comes in the same second as its "Round_End"
+  (ours waited the 5 s end pause: fixed), the next map loads mp_chattime
+  (10 s) later. What shows during it: unmeasured.
 - **C11 Team balance.** Listen server, `mp_autoteambalance 1`,
   `mp_limitteams 0`, `bot_join_team T; bot_add` four times and one CT
   bot; play a round to its end. Screenshots and `developer 1` console

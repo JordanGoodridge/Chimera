@@ -73,6 +73,10 @@ int g_tArmor;
 bool g_tHelmet;
 // Extra targets (mashup_targetn 1..3), held at their yaw like the target.
 int g_extra[4];
+// mashup_shooter: another bot that turns to the run's bot and fires once.
+int g_shooter;
+int g_shootTick = -1;
+float g_shootAimZ;
 float g_extraYaw[4];
 
 public void OnPluginStart()
@@ -97,6 +101,8 @@ public void OnPluginStart()
     RegServerCmd("mashup_health", Command_Health,
         "mashup_health <hp> [armor]: respawn the probe bot if dead and set its health and armour (fall damage runs)");
     RegServerCmd("mashup_info", Command_Info, "mashup_info: position and angles of all living players");
+    RegServerCmd("mashup_shooter", Command_Shooter,
+        "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz>: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
     RegServerCmd("mashup_botcmd", Command_BotCmd,
         "mashup_botcmd <userid> <command...>: run a client command as that bot (buy, drop, use; pickup and buy sound captures)");
     HookEvent("weapon_fire", Event_Any);
@@ -480,6 +486,41 @@ public Action Command_Health(int args)
     return Plugin_Handled;
 }
 
+public Action Command_Shooter(int args)
+{
+    int t = FindTarget2();
+    if (t == 0) {
+        PrintToServer("mashup: no shooter");
+        return Plugin_Handled;
+    }
+    float pos[3];
+    float zero[3];
+    pos[0] = GetCmdArgFloat(1);
+    pos[1] = GetCmdArgFloat(2);
+    pos[2] = GetCmdArgFloat(3);
+    char weapon[64];
+    GetCmdArg(4, weapon, sizeof(weapon));
+    g_shootTick = GetCmdArgInt(5);
+    g_shootAimZ = GetCmdArgFloat(6);
+    g_target = 0;
+    g_shooter = t;
+    SetEntityMoveType(t, MOVETYPE_WALK);
+    TeleportEntity(t, pos, NULL_VECTOR, zero);
+    SetEntityHealth(t, 1000);
+    // Both gun slots emptied: the bot AI switches back to its best gun.
+    for (int k = 0; k < 2; k++) {
+        int held = GetPlayerWeaponSlot(t, k);
+        if (held != -1) {
+            RemovePlayerItem(t, held);
+            AcceptEntityInput(held, "Kill");
+        }
+    }
+    GivePlayerItem(t, weapon);
+    FakeClientCommand(t, "use %s", weapon);
+    PrintToServer("mashup: shooter %d at %.1f %.1f %.1f with %s, fires at tick %d", t, pos[0], pos[1], pos[2], weapon, g_shootTick);
+    return Plugin_Handled;
+}
+
 public Action Command_BotCmd(int args)
 {
     int bot = GetClientOfUserId(GetCmdArgInt(1));
@@ -769,6 +810,27 @@ Action StartRun(bool wlog)
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3],
     int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
+    if (client == g_shooter && client != g_bot && g_shooter != 0 && g_bot != 0 && IsClientInGame(g_bot)) {
+        float eye[3];
+        float aim[3];
+        float d[3];
+        GetClientEyePosition(client, eye);
+        GetClientAbsOrigin(g_bot, aim);
+        aim[2] += g_shootAimZ;
+        SubtractVectors(aim, eye, d);
+        GetVectorAngles(d, angles);
+        angles[2] = 0.0;
+        SetEntPropVector(client, Prop_Data, "v_angle", angles);
+        TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR);
+        vel[0] = 0.0;
+        vel[1] = 0.0;
+        vel[2] = 0.0;
+        buttons &= ~(IN_ATTACK | IN_ATTACK2 | IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT | IN_JUMP | IN_DUCK);
+        if (g_out != null && g_cursor == g_shootTick) {
+            buttons |= IN_ATTACK;
+        }
+        return Plugin_Changed;
+    }
     if (client == g_target && client != g_bot && g_target != 0) {
         angles[0] = 0.0;
         angles[1] = g_tYaw;
