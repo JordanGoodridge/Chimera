@@ -568,6 +568,13 @@ pub(super) fn run_rounds(world: &mut World) {
                     reason,
                     summary,
                 });
+                // A limit reached: the intermission starts as the round
+                // ends, as CS:S's (its "Intermission_Time_Limit" in the
+                // same second as "Round_End"; parity-gaps.md C9).
+                let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
+                if super::game_end::reached(limits, state, now, true) {
+                    super::game_end::begin(world, now);
+                }
             }
         }
         Phase::Over { until, .. } if now >= until => {

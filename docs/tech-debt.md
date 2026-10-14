@@ -88,7 +88,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - sound, games/cs_source: Hurt and death sounds chosen by us from the install's entries (no spec) (`src/games/cs_source/pain.rs`)
 - client, weapon, games/cs_source: Weapon selection, pickup and buy sounds inferred from entry names (`src/client/weapon_select.rs`)
 - weapon: autobuy / rebuy rules read from the install's comments, unmeasured (`src/weapon/economy.rs`)
-- rules: End of a map's game (limits, intermission, map cycle) from public cvar descriptions (`src/rules/game_end.rs`)
+- rules: End of a map's game: intermission timing measured (C9), what shows during it unmeasured (`src/rules/game_end.rs`)
 - client, rules: Round win panel MVP and fun-fact rules are ours (`src/client/win_panel.rs`)
 - client: Damage indicator: which bar lights and its fade are ours (`src/client/hud_sprites.rs`)
 - rules: Team balance: when and who moves are ours; no warning message (`src/rules.rs`)
