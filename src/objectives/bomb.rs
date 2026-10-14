@@ -854,6 +854,8 @@ fn tick_bomb(
                 inflictor: Some(e),
                 sound: rules.sounds.explode.clone(),
                 weapon: rules.weapon,
+                // Gone at the round restart (playtest 2026-10-14, as CS:S).
+                round_scorch: true,
             });
             outputs.write_batch(out);
             state.outcome = Some(BombOutcome::Exploded);

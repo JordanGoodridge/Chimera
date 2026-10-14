@@ -203,6 +203,7 @@ fn impact_decals(
                     normal: *normal,
                     dir: (*to - *from).normalize_or_zero(),
                     spin: false,
+                    round: false,
                 });
             }
             // A swing into water only splashes (impact_effects).
@@ -218,6 +219,7 @@ fn impact_decals(
                     normal: *normal,
                     dir: -*normal,
                     spin: false,
+                    round: false,
                 });
             }
             _ => {}

@@ -766,6 +766,7 @@ fn a_late_joiner_gets_the_decals() {
             normal: Vec3::NEG_Z,
             dir: Vec3::Z,
             spin: false,
+            round: false,
         });
     }
     sim.server.app.world_mut().write_message(PlaceDecal {
@@ -775,6 +776,7 @@ fn a_late_joiner_gets_the_decals() {
         normal: Vec3::NEG_Z,
         dir: Vec3::Z,
         spin: false,
+        round: false,
     });
     sim.ticks(5);
     assert_eq!(sim.server.app.world().resource::<mashup::net::decals::DecalLog>().decals.len(), 4);

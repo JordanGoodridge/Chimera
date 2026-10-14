@@ -527,6 +527,45 @@ fn glock_burst_fires_three_rounds_four_ticks_apart() {
     assert_eq!(clip(&sim, p), start - 4);
 }
 
+/// Switching fire mode is silent and prints what it switched to
+/// (playtest 2026-10-14, as CS:S: "Switched to burst-fire mode", back to
+/// "semi-automatic" on the Glock and "automatic" on the FAMAS; the
+/// install's `Cstrike_TitlesTXT_Switch_To_*`, the tokens without one).
+#[test]
+fn burst_switches_are_silent_and_print_the_mode() {
+    use mashup::games::cs_source::ui::objectives_hud::{BombHudStatePlugin, centre_text};
+    #[derive(Resource, Default)]
+    struct Heard(Vec<String>);
+    let mut sim = Sim::new((GreyboxMapPlugin, CsWeaponsPlugin, BombHudStatePlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim.app.init_resource::<Heard>().add_systems(
+        Last,
+        |mut a: MessageReader<mashup::map::PlaySound>, mut b: MessageReader<mashup::map::GameSound>, mut h: ResMut<Heard>| {
+            h.0.extend(a.read().map(|s| s.entry.clone()));
+            h.0.extend(b.read().map(|s| s.0.entry.clone()));
+        },
+    );
+    for (id, normal) in [(GLOCK, "Switch_To_SemiAuto"), (FAMAS, "Switch_To_FullAuto")] {
+        let p = shooter_with(&mut sim, id);
+        sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+        sim.app.world_mut().resource_mut::<Heard>().0.clear();
+        press2(&mut sim, p);
+        sim.ticks(2);
+        assert_eq!(mode(&sim, p), 1);
+        let shown = centre_text(sim.app.world()).unwrap_or_default();
+        assert!(shown.to_lowercase().contains("burst"), "{id}: {shown:?}");
+        sim.seconds(0.4);
+        press2(&mut sim, p);
+        sim.ticks(2);
+        assert_eq!(mode(&sim, p), 0);
+        let shown = centre_text(sim.app.world()).unwrap_or_default();
+        assert!(shown.contains(normal), "{id}: {shown:?}");
+        let heard = &sim.app.world().resource::<Heard>().0;
+        assert!(heard.is_empty(), "{id}: switching played {heard:?}");
+        sim.app.world_mut().entity_mut(p).remove::<LocalPlayer>();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Every gun (the spec's script tables)
 

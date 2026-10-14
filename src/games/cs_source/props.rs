@@ -459,6 +459,13 @@ pub fn load_held(
     // Engine space (meters, x z -y) back to the model's units and axes.
     let source = |v: [f32; 3]| Vec3::new(v[0], -v[2], v[1]);
     let mut held = convert_model_in(&model, 0, materials, false, &[]);
+    // Its surface (a dropped one's impact sounds): the collision model's,
+    // else the model's own $surfaceprop, as for props.
+    held.surfaceprop = load_collision(materials, path)
+        .map(|c| c.surfaceprop)
+        .filter(|s| !s.is_empty())
+        .or(Some(model.surface_prop().to_string()).filter(|s| !s.is_empty()))
+        .map(|s| s.to_lowercase());
     // Bone merge: each of the model's bones follows the skeleton's bone of
     // the same name, or else its parent's.
     let mut merge_bone: Vec<Option<usize>> = Vec::with_capacity(mdl.bones.len());

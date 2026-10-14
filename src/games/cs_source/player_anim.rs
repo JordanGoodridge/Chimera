@@ -239,6 +239,11 @@ pub struct Inputs {
     pub primed: bool,
     /// A grenade was released this update.
     pub threw: bool,
+    /// Arming the bomb stopped short this update (let go, walked off, the
+    /// round ended): its `*_Shoot_C4` gesture stops at once instead of
+    /// playing out (playtest 2026-10-14: a tap's gesture kept playing as
+    /// the player ran off).
+    pub fire_stopped: bool,
 }
 
 /// What the state decided: pose parameters by name and the render yaw.
@@ -430,7 +435,9 @@ impl PlayerAnim {
             layers[..full].fill(None);
         }
         // Fire layer (order 5).
-        if i.fired {
+        if i.fire_stopped && !i.fired {
+            self.fire = None;
+        } else if i.fired {
             let name = match activity {
                 Activity::Run => "Run_Shoot_",
                 Activity::Walk => "Walk_Shoot_",
@@ -651,6 +658,8 @@ struct Happened {
     fired: Vec<(Entity, &'static str)>,
     reloaded: Vec<(Entity, &'static str)>,
     threw: Vec<Entity>,
+    /// Arming stopped short (after its start, if both came this update).
+    arming_stopped: Vec<Entity>,
 }
 
 type WeaponsQuery<'w, 's> = Query<'w, 's, (&'static Weapon, Option<&'static crate::weapon::grenade::Throwable>)>;
@@ -683,6 +692,10 @@ impl Happened {
                 WeaponEventKind::ShellInserting => h.reloaded.push((ev.owner, "_loop")),
                 WeaponEventKind::Reloaded if shells.is_some() => h.reloaded.push((ev.owner, "_end")),
                 WeaponEventKind::Thrown => h.threw.push(ev.owner),
+                WeaponEventKind::ArmingStopped => {
+                    h.fired.retain(|(o, _)| *o != ev.owner);
+                    h.arming_stopped.push(ev.owner);
+                }
                 _ => {}
             }
         }
@@ -725,6 +738,7 @@ fn animate(
         shot_side: Happened::find(&happened.fired, e).unwrap_or(""),
         primed: weapon.and_then(|(_, t)| t).is_some_and(|t| t.primed()),
         threw: happened.threw.contains(&e),
+        fire_stopped: happened.arming_stopped.contains(&e),
     };
     let suffix = suffix(weapon.map(|(w, _)| w.id));
     state.update(animator, &inputs, suffix, dt, now);

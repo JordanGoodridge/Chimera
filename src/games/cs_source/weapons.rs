@@ -50,7 +50,7 @@ use crate::{
         CarriedAppExt, NetPart,
         AltModes, Burst, CharacterPass, DamageEffect, FireTiming, HitgroupScale, Hitscan, Inventory, Magazine, Melee,
         PassMaterial, PassMaterials, Penetration, RegisterWeapons, ShellReload, SpreadShape, StartingWeapons, Swing,
-        Trigger, ViewPunch, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame, WeaponSounds, Zoom,
+        ModeTexts, Trigger, ViewPunch, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame, WeaponSounds, Zoom,
     },
 };
 
@@ -2071,8 +2071,17 @@ pub fn gun(e: &mut EntityWorldMut, g: &Gun) {
             e.insert(AltModes::new(2, time, true));
         }
         Alt::Burst { interval, refire } => {
+            // The switch is silent, with a centre print (playtest
+            // 2026-10-14; the install's strings): back to semi-automatic
+            // (the Glock) or automatic (the FAMAS), or to bursts.
+            let normal = if g.automatic {
+                "#Cstrike_TitlesTXT_Switch_To_FullAuto"
+            } else {
+                "#Cstrike_TitlesTXT_Switch_To_SemiAuto"
+            };
             // 0.3 s secondary delay (M16).
             e.insert((
+                ModeTexts(vec![normal, "#Cstrike_TitlesTXT_Switch_To_BurstFire"]),
                 AltModes::new(2, 0.3, false),
                 Burst {
                     mode: 1,

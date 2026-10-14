@@ -1045,7 +1045,7 @@ fn detonate(
     };
     match &p.effect {
         GrenadeEffect::Blast(b) => {
-            let (origin, probe) = explode_at(at, b, p.thrower, p.weapon, Some(entity), world, rng);
+            let (origin, probe) = explode_at(at, b, p.thrower, p.weapon, Some(entity), world, rng, false);
             message.at = origin;
             message.ground = probe;
             if let Some(s) = &b.sound {
@@ -1101,7 +1101,9 @@ fn detonate(
 
 /// A blast at `at`: the ground probe under it (spec 5.2), radius damage
 /// and pushes from just above it, the scorch mark. Returns the blast
-/// point and what the probe hit.
+/// point and what the probe hit. A `round` scorch goes at the next round
+/// restart (`PlaceDecal::round`).
+#[allow(clippy::too_many_arguments)]
 fn explode_at(
     at: Vec3,
     b: &Blast,
@@ -1110,6 +1112,7 @@ fn explode_at(
     inflictor: Option<Entity>,
     world: &mut GrenadeWorld,
     rng: &mut ParticleRng,
+    round: bool,
 ) -> (Vec3, Option<(Vec3, Vec3, Entity)>) {
     let (from, to) = (at + Vec3::Y * b.probe_up, at - Vec3::Y * b.probe_down);
     let filter = SpatialQueryFilter::default().with_mask(SOLID_LAYERS);
@@ -1132,6 +1135,7 @@ fn explode_at(
             normal: n,
             dir: -n,
             spin: true,
+            round,
         });
     }
     (origin, probe)
@@ -1173,6 +1177,7 @@ fn explosions(
             e.inflictor,
             &mut world,
             &mut rng.0,
+            e.round_scorch,
         );
         // The rules' (map logic's, the bomb's): clients hear it too.
         if let Some(s) = &e.sound {

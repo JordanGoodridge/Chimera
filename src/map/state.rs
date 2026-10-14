@@ -299,6 +299,9 @@ pub struct PlaceDecal {
     pub normal: Vec3,
     pub dir: Vec3,
     pub spin: bool,
+    /// Goes at the next round restart (the bomb's scorch, as in CS:S);
+    /// otherwise it stays until the map changes (`decal::DecalSettings`).
+    pub round: bool,
 }
 
 /// Which decals to choose from.

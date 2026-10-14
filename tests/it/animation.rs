@@ -558,6 +558,37 @@ fn drawing_another_weapon_stops_the_old_ones_gestures() {
     assert_eq!(upper, ["Idle_Upper_KNIFE"], "fade {fade}");
 }
 
+/// Letting go of the bomb stops its third-person gesture at once
+/// (playtest 2026-10-14: a quick tap in a bomb site started the
+/// `*_Shoot_C4` key presses, which kept playing while the player ran off
+/// without planting). `ArmingStopped` reaches the body as `fire_stopped`.
+#[test]
+fn letting_go_of_the_bomb_stops_its_gesture() {
+    use mashup::games::cs_source::player_anim::{Inputs, PlayerAnim};
+    use mashup::map::anim::Animator;
+    let Some(set) = load("models/player/t_leet.mdl") else { return };
+    let set = std::sync::Arc::new(set);
+    let mut a = Animator::new(set.clone());
+    let mut s = PlayerAnim::default();
+    let idle = Inputs {
+        on_ground: true,
+        ..default()
+    };
+    let mut now = 0.0;
+    for _ in 0..10 {
+        s.update(&mut a, &idle, "C4", 0.016, now);
+        now += 0.016;
+    }
+    let name = |a: &Animator| a.layers[4].map(|l| set.sequences[l.sequence].name.clone());
+    s.update(&mut a, &Inputs { fired: true, ..idle }, "C4", 0.016, now);
+    now += 0.016;
+    s.update(&mut a, &idle, "C4", 0.016, now);
+    now += 0.016;
+    assert!(name(&a).is_some_and(|n| n.contains("C4")), "arming: {:?}", name(&a));
+    s.update(&mut a, &Inputs { fire_stopped: true, ..idle }, "C4", 0.016, now);
+    assert_eq!(name(&a), None, "let go: the gesture stopped");
+}
+
 /// Third-person magazines stay on the gun as the look turns (playtest
 /// 2026-10-11: the AK's slid toward the grip looking up or down). Held
 /// world models put their magazine on `weapon_bone_Clip` (bone merge);

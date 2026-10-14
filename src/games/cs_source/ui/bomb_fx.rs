@@ -3,23 +3,21 @@
 //! model (`map::ViewModelScreen` between the model's `controlpanel0_*`
 //! attachments; the text from `BombRules::screen_text`, in the C4
 //! panel's font and armed colour, `GameHud::screens["c4_view_panel"]`),
-//! the planted bomb's LED glow (`sprites/ledglow`) flashing with each
-//! beep, and its marker (`sprites/c4`, additive, drawn through walls as
-//! its material's `$ignorez` says).
+//! and the planted bomb's LED glow (`sprites/ledglow`) flashing with each
+//! beep. No marker sprite floats over it (`sprites/c4`, the spec's HUD
+//! table "position marker", Q12): CS:S draws none (playtest 2026-10-14).
 //!
-//! Guesses (spec Q4, Q12; not measured): who sees the marker (the bomb's
-//! team, and the dead while spectating), its size (32 units) and height
-//! over the bomb (16), the LED's place on the bomb (9 units over its origin, on top), size
-//! (8 units) and how long a flash lasts (`LED_FLASH`).
+//! Guesses (spec Q4; not measured): the LED's place on the bomb (9 units
+//! over its origin, on top), size (8 units) and how long a flash lasts
+//! (`LED_FLASH`).
 //!
 //! What the bomb shows: the code typed on the C4 view model's screen while
 //! arming, a digit per key press of the press-button sequence (`C4ScreenText`
 //! from `objectives::bomb::BombRules::screen_text` on the simulation clock, so
 //! a network client's predicted arming types the same digits; drawn by a camera
 //! into an image in the C4 panel's font and colour, `GameHud::screens`, shown
-//! through `map::ViewModelScreen`), the planted bomb's LED glow
-//! (`sprites/ledglow`) flashing with each beep, and its marker (`sprites/c4`,
-//! drawn through walls) for its team and the dead.
+//! through `map::ViewModelScreen`; cleared at once when arming stops), and the
+//! planted bomb's LED glow (`sprites/ledglow`) flashing with each beep.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -29,7 +27,7 @@ use bevy::{
 };
 
 use crate::{
-    core::{Intent, LocalPlayer, Team},
+    core::{Intent, LocalPlayer},
     map::{
         ViewModelScreen,
         hud::ActiveHud,
@@ -39,14 +37,11 @@ use crate::{
         ObjectiveEvent,
         bomb::{Arming, BombRules, PlantedBomb},
     },
-    rules::Dead,
 };
 
 const UNIT: f32 = 0.0254;
 /// Seconds an LED flash takes to fade out.
 pub const LED_FLASH: f32 = 0.15;
-const MARKER_SIZE: f32 = 32.0;
-const MARKER_HEIGHT: f32 = 16.0;
 const LED_SIZE: f32 = 8.0;
 const LED_HEIGHT: f32 = 9.0;
 /// The screen picture's pixels per panel pixel (sharper text).
@@ -72,6 +67,8 @@ struct C4Screen {
     text: Entity,
     /// The look it was made for (panel size, font, colour).
     look: (Vec2, Option<(String, f32, bool)>, [u8; 4]),
+    /// The picture holds no text (cleared since the last digits).
+    blank: bool,
 }
 
 /// What the C4's screen shows in the first-person view: whose view it
@@ -170,13 +167,26 @@ fn screen(
     {
         t.0.clone_from(&shown.text);
     }
-    // Drawn only while there is something on it.
-    if let Ok(mut c) = cameras.get_mut(state.camera) {
-        let active = !shown.text.is_empty();
-        if c.is_active != active {
-            c.is_active = active;
-        }
+    // Drawn while there is something on it, and once more when it
+    // empties so the picture clears (playtest 2026-10-14: letting go
+    // part way left the typed digits on the screen).
+    let mut state = state;
+    let (active, blank) = screen_drawn(&shown.text, state.blank);
+    if state.blank != blank {
+        state.blank = blank;
     }
+    if let Ok(mut c) = cameras.get_mut(state.camera)
+        && c.is_active != active
+    {
+        c.is_active = active;
+    }
+}
+
+/// Whether the screen's camera draws this frame for `text`, and whether
+/// the picture is blank after it: drawn while there is text, and one
+/// frame more when it empties to clear the last digits.
+pub fn screen_drawn(text: &str, blank: bool) -> (bool, bool) {
+    if text.is_empty() { (!blank, true) } else { (true, false) }
 }
 
 fn make_screen(
@@ -240,30 +250,27 @@ fn make_screen(
         camera,
         text: label,
         look,
+        blank: true,
     });
     let _ = text;
 }
 
-/// A planted bomb's marker and LED.
+/// A planted bomb's LED.
 struct BombSprites {
     bomb: Entity,
-    marker: Entity,
     led: Entity,
     led_material: Handle<SpriteMaterial>,
     /// When it last beeped (Time).
     beep: f64,
 }
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+#[allow(clippy::type_complexity)]
 fn planted(
     time: Res<Time>,
-    rules: Option<Res<BombRules>>,
     hud: Option<Res<ActiveHud>>,
     bombs: Query<(Entity, &PlantedBomb, &Transform)>,
     mut drawn: Local<Vec<BombSprites>>,
-    local: Query<(Option<&Team>, Has<Dead>), With<LocalPlayer>>,
     mut events: MessageReader<ObjectiveEvent>,
-    mut visibility: Query<&mut Visibility>,
     (meshes, materials): (Option<ResMut<Assets<Mesh>>>, Option<ResMut<Assets<SpriteMaterial>>>),
     mut commands: Commands,
 ) {
@@ -279,9 +286,6 @@ fn planted(
             _ => None,
         })
         .collect();
-    // The marker for the bomb's team, and the dead (spectating).
-    let (team, dead) = local.iter().next().map_or((None, true), |(t, d)| (t.copied(), d));
-    let sees_marker = dead || rules.as_ref().is_some_and(|r| team == Some(r.carrier_team));
     let sprite = |name: &str| {
         let s = hud.0.sprites.get(name)?;
         Some((hud.1.get(&s.texture)?.clone(), UVec2::new(s.rect[2] as u32, s.rect[3] as u32)))
@@ -290,36 +294,16 @@ fn planted(
     drawn.retain(|d| {
         let keep = bombs.contains(d.bomb);
         if !keep {
-            commands.entity(d.marker).try_despawn();
             commands.entity(d.led).try_despawn();
         }
         keep
     });
     for (e, bomb, t) in &bombs {
         let Some(sprites) = drawn.iter_mut().find(|d| d.bomb == e) else {
-            let (Some((marker_tex, marker_px)), Some((led_tex, led_px))) = (sprite("c4"), sprite("ledglow")) else {
+            let Some((led_tex, led_px)) = sprite("ledglow") else {
                 continue;
             };
             let up = Vec3::Y * UNIT;
-            let marker = commands
-                .spawn((
-                    Name::new("Planted bomb marker"),
-                    Mesh3d(meshes.add(sprite_mesh(marker_px))),
-                    MeshMaterial3d(materials.add(SpriteMaterial {
-                        params: SpriteParams {
-                            color: Vec4::ONE,
-                            size: Vec2::splat(MARKER_SIZE * UNIT),
-                        },
-                        texture: Some(marker_tex),
-                        glow: true,
-                        blend: crate::map::sprite_material::SpriteBlend::Add,
-                    })),
-                    bevy::light::NotShadowCaster,
-                    bevy::camera::visibility::NoFrustumCulling,
-                    Transform::from_translation(t.translation + up * MARKER_HEIGHT),
-                    Visibility::Hidden,
-                ))
-                .id();
             let led_material = materials.add(SpriteMaterial {
                 params: SpriteParams {
                     color: Vec4::ZERO,
@@ -341,7 +325,6 @@ fn planted(
                 .id();
             drawn.push(BombSprites {
                 bomb: e,
-                marker,
                 led,
                 led_material,
                 beep: f64::NEG_INFINITY,
@@ -356,13 +339,6 @@ fn planted(
             && m.params.color.w != glow
         {
             m.params.color = Vec4::splat(glow);
-        }
-        if let Ok(mut v) = visibility.get_mut(sprites.marker) {
-            v.set_if_neq(if sees_marker && !bomb.defused {
-                Visibility::Visible
-            } else {
-                Visibility::Hidden
-            });
         }
     }
 }
@@ -384,5 +360,13 @@ mod tests {
         assert_eq!(led_glow(LED_FLASH), 0.0);
         assert_eq!(led_glow(1.0), 0.0);
         assert_eq!(led_glow(-1.0), 0.0);
+    }
+
+    #[test]
+    fn the_screen_clears_once_when_its_text_goes() {
+        assert_eq!(screen_drawn("73", true), (true, false));
+        // Let go: drawn once more, empty, then left off.
+        assert_eq!(screen_drawn("", false), (true, true));
+        assert_eq!(screen_drawn("", true), (false, true));
     }
 }
