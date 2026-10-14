@@ -1534,7 +1534,12 @@ alone), render world 26M (19M), CPU p50 ~10 + 11 ms, 50-60 fps on this
 loaded box, 2.5-2.7 GB; headless `NetSim` clients 2.7-3.2 ms a frame.
 Bandwidth at 32: ~17 KB/s to each client at the default 20 updates a
 second, so a listen server with 31 friends uploads ~540 KB/s (~4.3
-Mbit/s).
+Mbit/s). It later read 19.7-20.7 (2026-10-14): de_dust2's physics props
+knocked about by the bots' shots (some rocking for good, never asleep)
+sent full-precision pose and an unused velocity on every update, more as
+being-hit (net20) moved the fights; props and loose items now go on the
+1/32-unit grid without velocity (net23): 16.9 KB/s, 17.5 with the
+server's hit sounds (net22).
 
 Found and fixed:
 
@@ -1620,3 +1625,17 @@ velocity modifier a bullet hit sets, and `weapon::ViewPunch` gained a
 roll (the head flinch's), so both own-state encodings changed. The
 victim's client gets them with its state and re-runs its commands after
 the hit (one prediction correction).
+
+### net22 (2026-10-14)
+
+Player hit sounds (`games::cs_source::pain`): the flesh impact of a bullet
+hit on a player is now the server's `ServerSound` (clients no longer play
+it from their own traces), so builds before and after would double or
+lose it; same messages, so a new protocol number.
+
+### net23 (2026-10-14)
+
+Bandwidth ("Capacity"): `NetProp` and `NetItem` lose their velocity (no
+client read it) and go quantized as `NetBody` does (`net::quant`: 1/32
+unit, 16-bit quaternion parts), the server keeping the quantized values,
+so a prop shaking below the grid sends nothing.

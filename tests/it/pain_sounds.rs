@@ -1,6 +1,8 @@
 //! What players sound like when hurt and killed (`games::cs_source::pain`,
 //! the install's `game_sounds.txt` entries): a body shot with and without
-//! kevlar, a headshot with and without a helmet, a death, a bot's hits.
+//! kevlar, a leg shot, a headshot with and without a helmet, a death, a
+//! bot's hits, and which of them also make the flesh impact (only those
+//! without a hurt sound).
 //! Each plays from the victim: centred for the victim (its own sound),
 //! panned by place for a bystander. Falls: tests/it/source_movement.rs.
 
@@ -8,6 +10,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use mashup::{
+    audio::sound::Ear,
     bot::{BotConfig, add_bot},
     core::{Health, Team},
     games::cs_source::{
@@ -16,7 +19,6 @@ use mashup::{
     },
     greybox::{self, GreyboxMapPlugin},
     harness::Sim,
-    audio::sound::Ear,
     map::{MapSounds, MapSurface, PlaySound, SoundLevel, sound::SoundBank},
     movement::placeholder,
     weapon::{Armor, Inventory, give},
@@ -75,10 +77,25 @@ fn entries(sim: &Sim) -> Vec<String> {
         .collect()
 }
 
-/// One Desert Eagle shot from 8 m at the target's chest or head; the
+/// Where a shot is aimed.
+#[derive(Clone, Copy)]
+enum Part {
+    Head,
+    Chest,
+    Leg,
+}
+use Part::*;
+
+/// How many flesh impacts were heard.
+fn flesh(sim: &Sim) -> usize {
+    let impacts = &sim.app.world().resource::<Impacts>().0;
+    impacts.iter().filter(|e| *e == "Flesh.BulletImpact").count()
+}
+
+/// One Desert Eagle shot from 8 m at the target's head, chest or leg; the
 /// target has `health` (normalized) and `armor`. Returns the sim, the
 /// target and a bystander standing 3 m to the target's side.
-fn shot(head: bool, armor: Option<Armor>, health: f32) -> (Sim, Entity, Entity) {
+fn shot(part: Part, armor: Option<Armor>, health: f32) -> (Sim, Entity, Entity) {
     let mut sim = sim();
     let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
     let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
@@ -91,7 +108,12 @@ fn shot(head: bool, armor: Option<Armor>, health: f32) -> (Sim, Entity, Entity) 
     give(sim.app.world_mut(), shooter, DEAGLE).unwrap();
     sim.seconds(1.2);
     assert!(sim.app.world().get::<Inventory>(shooter).unwrap().active.is_some());
-    let height = if head { 1.8 * 0.92 - 0.9 } else { 1.8 * 0.72 - 0.9 };
+    let height =
+        1.8 * match part {
+            Head => 0.92,
+            Chest => 0.72,
+            Leg => 0.25,
+        } - 0.9;
     let point = sim.position(target) + Vec3::Y * height;
     let eye = sim.position(shooter) + sim.state(shooter).eye_offset;
     let d = point - eye;
@@ -101,6 +123,7 @@ fn shot(head: bool, armor: Option<Armor>, health: f32) -> (Sim, Entity, Entity) 
         i.pitch = d.y.atan2(d.xz().length());
     }
     sim.app.world_mut().resource_mut::<Heard>().0.clear();
+    sim.app.world_mut().resource_mut::<Impacts>().0.clear();
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;
@@ -146,51 +169,67 @@ fn check_heard(sim: &Sim, entry: &str, victim: Entity, bystander: Entity) {
     assert!(l > r && l < 1.0, "bystander: positional ({l}, {r})");
 }
 
+// Measured per hit: specs/cs_source/sounds.md "Hurt and death sounds".
+
 #[test]
 fn body_shot_without_armour_is_only_the_flesh_impact() {
-    let (sim, ..) = shot(false, None, 10.0);
+    let (sim, ..) = shot(Chest, None, 10.0);
     assert!(entries(&sim).is_empty(), "{:?}", entries(&sim));
-    let impacts = &sim.app.world().resource::<Impacts>().0;
-    assert_eq!(
-        impacts.iter().filter(|e| *e == "Flesh.BulletImpact").count(),
-        1,
-        "{impacts:?}"
-    );
+    assert_eq!(flesh(&sim), 1);
 }
 
 #[test]
-fn body_shot_on_kevlar_plays_the_kevlar_hit() {
-    let (sim, target, bystander) = shot(false, Some(KEVLAR), 10.0);
+fn leg_shot_in_kevlar_is_only_the_flesh_impact() {
+    let (sim, ..) = shot(Leg, Some(KEVLAR), 10.0);
+    assert!(entries(&sim).is_empty(), "{:?}", entries(&sim));
+    assert_eq!(flesh(&sim), 1);
+}
+
+#[test]
+fn body_shot_on_kevlar_plays_only_the_kevlar_hit() {
+    let (sim, target, bystander) = shot(Chest, Some(KEVLAR), 10.0);
     check_heard(&sim, "Player.DamageKevlar", target, bystander);
     assert_eq!(entries(&sim), ["Player.DamageKevlar"]);
+    assert_eq!(flesh(&sim), 0, "no flesh impact where the vest takes part");
 }
 
 #[test]
-fn headshot_without_helmet_plays_the_headshot() {
-    let (sim, target, bystander) = shot(true, Some(KEVLAR), 10.0);
-    check_heard(&sim, "Player.DamageHeadShot", target, bystander);
-    assert_eq!(entries(&sim), ["Player.DamageHeadShot"]);
+fn headshot_without_helmet_plays_only_the_headshot() {
+    for armor in [None, Some(KEVLAR)] {
+        let (sim, target, bystander) = shot(Head, armor, 10.0);
+        check_heard(&sim, "Player.DamageHeadShot", target, bystander);
+        assert_eq!(entries(&sim), ["Player.DamageHeadShot"]);
+        assert_eq!(flesh(&sim), 0, "no flesh impact on a head");
+    }
 }
 
 #[test]
 fn headshot_on_a_helmet_plays_the_helmet() {
-    let (sim, target, bystander) = shot(true, Some(HELMET), 10.0);
+    // Unmeasured (a helmeted head): our guess.
+    let (sim, target, bystander) = shot(Head, Some(HELMET), 10.0);
     check_heard(&sim, "Player.DamageHelmet", target, bystander);
     assert_eq!(entries(&sim), ["Player.DamageHelmet"]);
+    assert_eq!(flesh(&sim), 0);
 }
 
 #[test]
-fn deaths_play_the_death_sound() {
+fn deaths_play_the_hit_and_then_the_death_sound() {
     // A body shot that kills: kevlar's hit and the death cry.
-    let (sim, target, bystander) = shot(false, Some(KEVLAR), 0.05);
+    let (sim, target, bystander) = shot(Chest, Some(KEVLAR), 0.05);
     check_heard(&sim, "Player.Death", target, bystander);
     assert_eq!(entries(&sim), ["Player.DamageKevlar", "Player.Death"]);
-    // A killing headshot: the headshot death, not the headshot hurt too.
-    let (sim, target, bystander) = shot(true, None, 0.05);
+    assert_eq!(flesh(&sim), 0);
+    // Bare: the flesh impact and the death cry.
+    let (sim, ..) = shot(Chest, None, 0.05);
+    assert_eq!(entries(&sim), ["Player.Death"]);
+    assert_eq!(flesh(&sim), 1);
+    // A killing headshot: the headshot hurt, then the headshot death.
+    let (sim, target, bystander) = shot(Head, None, 0.05);
     check_heard(&sim, "Player.DeathHeadShot", target, bystander);
-    assert_eq!(entries(&sim), ["Player.DeathHeadShot"]);
+    assert_eq!(entries(&sim), ["Player.DamageHeadShot", "Player.DeathHeadShot"]);
+    assert_eq!(flesh(&sim), 0);
     // Through a helmet: its ding and the headshot death.
-    let (sim, ..) = shot(true, Some(HELMET), 0.05);
+    let (sim, ..) = shot(Head, Some(HELMET), 0.05);
     assert_eq!(entries(&sim), ["Player.DamageHelmet", "Player.DeathHeadShot"]);
 }
 

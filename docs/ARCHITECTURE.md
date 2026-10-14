@@ -271,7 +271,7 @@ that the paths exist).
 - `src/net/interp.rs`: others drawn in the past from snapshots (net)
 - `src/net/ordered.rs`: replicated values applied in tick order (net)
 - `src/net/delta.rs`: byte deltas (net)
-- `src/net/quant.rs`: `NetBody`'s quantized wire form (net)
+- `src/net/quant.rs`: `NetBody`'s, `NetProp`'s and `NetItem`'s quantized wire forms (net)
 - `src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
 - `src/net/movers.rs`: moving brushes over the network (net)
 - `src/net/props.rs`: physics props over the network (net)

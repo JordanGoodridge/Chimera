@@ -49,6 +49,7 @@ class Run:
         self.ticks = {}
         self.w = {}
         self.events = []
+        self.sounds = []  # (tick, channel, volume, sample): the run bot's
 
     def ev(self, name):
         return [e for e in self.events if e[1] == name]
@@ -75,6 +76,8 @@ def parse(text):
             r.w[d["tick"]] = d
         elif p[0] == "E":
             r.events.append((int(p[1]), p[2], p[3:]))
+        elif p[0] == "S":
+            r.sounds.append((int(p[1]), int(p[2]), float(p[3]), p[7]))
         else:
             v = [float(x) for x in p]
             r.ticks[int(v[0])] = v
