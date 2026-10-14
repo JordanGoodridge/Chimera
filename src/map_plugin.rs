@@ -185,7 +185,8 @@ fn build_rest(app: &mut App) {
                     render::bodies::pose_bodies.after(DriveAnimation),
                     render::bodies::attach_held,
                     probe_lit::relight,
-                    loose::attach_shown,
+                    render::loose::attach_shown,
+                    render::loose::draw_loose,
                 )
                     .run_if(resource_exists::<render::bodies::CharacterBodies>),
                 (render::view_model::draw_view_models, render::view_model::view_model_screens)

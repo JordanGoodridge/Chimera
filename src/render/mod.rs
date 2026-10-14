@@ -24,6 +24,7 @@ pub mod fish;
 pub mod glow;
 pub mod light_styles;
 pub mod lod;
+pub mod loose;
 pub mod monitor;
 pub mod particles;
 pub mod parts;

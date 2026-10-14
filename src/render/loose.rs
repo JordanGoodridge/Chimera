@@ -11,8 +11,9 @@ use bevy::prelude::*;
 
 use super::bodies::HeldAssets;
 use crate::map::{
-    MapPart, probe_lit,
+    MapPart,
     loose::{LooseAssets, LooseItem, ShownItem, SitOnOrigin},
+    probe_lit,
 };
 
 /// Marks a `LooseItem` whose meshes were added.
@@ -27,7 +28,9 @@ pub(crate) fn draw_loose(
     mut materials: Option<ResMut<Assets<crate::map::prop_material::PropMaterial>>>,
     mut commands: Commands,
 ) {
-    let (Some(assets), Some(held)) = (assets, held) else { return };
+    let (Some(assets), Some(held)) = (assets, held) else {
+        return;
+    };
     for (e, item) in &items {
         // `try_`: an item can be gone by the time this applies (picked up,
         // or a network client's copy despawned, in the same frame).
@@ -72,7 +75,9 @@ pub(crate) fn attach_shown(
     mut materials: Option<ResMut<Assets<crate::map::prop_material::PropMaterial>>>,
     mut commands: Commands,
 ) {
-    let (Some(assets), Some(held)) = (assets, held) else { return };
+    let (Some(assets), Some(held)) = (assets, held) else {
+        return;
+    };
     for (e, item, sit) in &items {
         let mut ent = commands.entity(e);
         ent.insert((ShownItemDrawn, MapPart, Visibility::default()));

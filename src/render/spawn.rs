@@ -365,17 +365,10 @@ fn build_character_assets(
             )
         })
         .collect::<HashMap<_, _>>();
-    // Loose (dropped) forms, sized by the first character's scale.
-    if let Some(root) = data.characters.first().map(|c| c.root) {
-        let loose = data
-            .held
-            .iter()
-            .filter_map(|h| {
-                let parts = held.get(&h.key)?.whole.clone();
-                Some((h.key.clone(), loose::asset(h, root, parts)))
-            })
-            .collect();
-        commands.insert_resource(loose::LooseAssets(loose));
+    // Loose (dropped) forms (`map::loose`), drawn with the held models'
+    // whole meshes (`super::loose`).
+    if let Some(loose) = loose::assets(data) {
+        commands.insert_resource(loose);
     }
     commands.insert_resource(HeldAssets(held));
     if let Some(prop_materials) = prop_materials.as_mut() {

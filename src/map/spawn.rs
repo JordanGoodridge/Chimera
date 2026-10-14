@@ -353,14 +353,9 @@ fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
 fn insert_headless_assets(commands: &mut Commands, s: &MapSpawn, draws: Draws) {
     let (data, view) = (s.data, s.view);
     if !draws.loose
-        && let Some(root) = data.characters.first().map(|c| c.root)
+        && let Some(loose) = loose::assets(data)
     {
-        let loose = data
-            .held
-            .iter()
-            .map(|h| (h.key.clone(), loose::asset(h, root, Vec::new())))
-            .collect();
-        commands.insert_resource(loose::LooseAssets(loose));
+        commands.insert_resource(loose);
     }
     if !draws.gibs
         && let Some(gibs) = breakables::build_assets(data, &[], view, None)
