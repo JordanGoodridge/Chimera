@@ -59,6 +59,12 @@ its health and armour) and `mashup_wrun`'s `player_hurt` rows.
 (`buy ak47`, `drop`); with `sv_soundemitter_trace 1` it shows which sound
 entries buying emits on the server (parity-gaps.md C2).
 
+## Sounds
+
+Every run also logs the sounds the run's bot emits, as `S tick channel
+volume level pitch flags sample` rows (a SourceMod normal-sound hook), e.g.
+footstep bands and volumes (specs/cs_source/sounds.md "Footsteps").
+
 ## Weapon measurements
 
 Being hit (M18 in specs/cs_source/weapons.md): `hitmeas.py <weapon> <aim
