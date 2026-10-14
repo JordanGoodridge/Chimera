@@ -179,6 +179,11 @@ measurements):
   bottom-up, one per commit with the full suite; (4) minigame
   definitions, the existing modes as the first rule modules.
 
+Test selection (user, 2026-10-14): no coverage-based test selection;
+the crate split (with each crate's own tests and cargo's crate graph to
+pick affected tests) is the way to shorter pushes. Until then pushes run
+the full suite, and the coordinator batches merges.
+
 ## Minigames (the middle layer)
 
 - A minigame is a data file picking pieces by id from any game (map,
