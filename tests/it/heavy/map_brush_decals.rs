@@ -262,6 +262,7 @@ fn a_breakables_decal_goes_when_it_breaks() {
             normal,
             dir: -normal,
             spin: false,
+            round: false,
         });
         sim.ticks(1);
         let decals = decals_on(&mut sim, n);
@@ -279,6 +280,7 @@ fn a_breakables_decal_goes_when_it_breaks() {
             normal,
             dir: -normal,
             spin: false,
+            round: false,
         });
         sim.ticks(1);
         assert!(decals_on(&mut sim, n).is_empty());
@@ -297,6 +299,7 @@ fn a_breakables_decal_goes_when_it_breaks() {
             normal,
             dir: -normal,
             spin: false,
+            round: false,
         });
         sim.ticks(1);
         assert_eq!(decals_on(&mut sim, n).len(), 1);
@@ -309,7 +312,8 @@ fn a_breakables_decal_goes_when_it_breaks() {
 }
 
 /// World decals stay through round restarts (as in the game) unless
-/// `mashup_round_cleardecals` is on; `ClearDecals` (`r_cleardecals`)
+/// `mashup_round_cleardecals` is on, except the round's own (the bomb's
+/// scorch, `PlaceDecal::round`); `ClearDecals` (`r_cleardecals`)
 /// removes them at any time.
 #[test]
 fn decals_clear_on_demand_and_optionally_each_round() {
@@ -332,15 +336,28 @@ fn decals_clear_on_demand_and_optionally_each_round() {
             normal,
             dir: -normal,
             spin: false,
+            round: false,
         });
         sim.ticks(1);
     };
     mark(&mut sim);
     mark(&mut sim);
     assert_eq!(count(&mut sim), 2, "two bullet holes in the floor");
+    // The bomb's scorch is the round's (playtest 2026-10-14, as CS:S).
+    sim.app.world_mut().write_message(PlaceDecal {
+        target: None,
+        group: DecalGroup::Material('C'),
+        point,
+        normal,
+        dir: -normal,
+        spin: false,
+        round: true,
+    });
+    sim.ticks(1);
+    assert_eq!(count(&mut sim), 3, "and a scorch");
     sim.app.world_mut().resource_mut::<RoundRestarts>().0 += 1;
     sim.ticks(3);
-    assert_eq!(count(&mut sim), 2, "kept through a round restart by default");
+    assert_eq!(count(&mut sim), 2, "kept through a round restart by default, the scorch gone");
     sim.app.world_mut().write_message(ClearDecals);
     sim.ticks(1);
     assert_eq!(count(&mut sim), 0, "r_cleardecals removes them");

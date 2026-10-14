@@ -144,10 +144,22 @@ fn eye_drops_under_a_brush_edge_over_the_box() {
     sim.app.world_mut().despawn(s);
     // 10 units away: over the box's top (the box is 16 units wide each
     // side), not over the eye: the eye drops under the slab.
-    slab(&mut sim, 10.0);
+    let s = slab(&mut sim, 10.0);
     sim.ticks(2);
     let y = at(&mut sim).y / U;
     assert!(y < 32.5 - 3.0, "eye at {y} units, slab underside at 32.5");
+    // A loose item (a dropped gun or the bomb, starting inside its
+    // dropper's box) isn't a ceiling: the body doesn't collide with it
+    // (playtest 2026-10-14: dropping the bomb standing still lowered the
+    // view).
+    sim.app.world_mut().despawn(s);
+    let item = slab(&mut sim, -50.0);
+    sim.app.world_mut().entity_mut(item).insert(avian3d::prelude::CollisionLayers::new(
+        mashup::core::ITEM_LAYER,
+        avian3d::prelude::LayerMask::ALL,
+    ));
+    sim.ticks(2);
+    assert!((at(&mut sim).y - eye.y).abs() < 1e-4, "under a loose item: {}", at(&mut sim).y / U);
 }
 
 /// `kill` is CS:S's suicide: the player dies where it stands (god mode or

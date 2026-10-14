@@ -5,8 +5,8 @@
 //! weapon in view swaps it for the one in its slot (CS:GO's rule; CS:S
 //! has only the walk-over pickup).
 //!
-//! Covers: `drop` (G) throws the held weapon out as a `Loose` item (the dead
-//! drop their best one), touching one (its box grown 36 units sideways and 18
+//! Covers: `drop` (G) throws the held weapon out as a `Loose` item from 12
+//! units under the eye (spec 3.9; the dead drop their best one where they lie), touching one (its box grown 36 units sideways and 18
 //! up, 1 s after the drop, in sight of the eye; specs/cs_source/weapons.md 3.9)
 //! takes it when its slot is empty (and draws it when the player's
 //! `cl_autowepswitch` userinfo is on, its `SwitchWeight` is above the one in
@@ -65,6 +65,8 @@ pub struct Loose {
 /// Throw speed forward and up, m/s (a guess, not measured).
 const THROW_FORWARD: f32 = 4.0;
 const THROW_UP: f32 = 1.0;
+/// A thrown weapon starts this far under the eye (12 units; spec 3.9).
+const DROP_UNDER_EYE: f32 = 12.0 * 0.0254;
 /// Seconds after a drop before anyone can pick the weapon up
 /// (specs/cs_source/weapons.md 3.9).
 pub const TOUCH_DELAY: f64 = 1.0;
@@ -175,9 +177,13 @@ pub fn drop_this(world: &mut World, owner: Entity, weapon: Entity, thrown: bool)
         w.owner = None;
     }
     let forward = look * Vec3::NEG_Z;
+    // Thrown from 12 units under the eye (spec 3.9), a little ahead.
+    let eye = world
+        .get::<crate::core::MovementState>(owner)
+        .map_or(Vec3::Y * 0.5, |s| s.eye_offset);
     let (start, velocity) = if thrown {
         (
-            at + Vec3::Y * 0.4 + forward.with_y(0.0).normalize_or_zero() * 0.3,
+            at + eye - Vec3::Y * DROP_UNDER_EYE + forward.with_y(0.0).normalize_or_zero() * 0.3,
             carried + forward * THROW_FORWARD + Vec3::Y * THROW_UP,
         )
     } else {

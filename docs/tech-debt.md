@@ -25,6 +25,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - client, games/cs_source: CS:S HUD matched to Linux-client captures (substitute fonts); a few sizes differ from them (`src/client/game_hud.rs`)
 - client: Game-look HUD, scoreboard, spectator bars, C4 screen and loading progress: guesses where the layouts stop (`src/client/game_hud.rs`)
 - games/cs_source: Impact effects built from the spec's tables, with listed parts left out or read as the spec reads (`src/games/cs_source/impact_effects.rs`)
+- games/cs_source: Loose items' landing dust is the bullet dust puff over a guessed speed, no spec (`src/games/cs_source/impact_effects.rs`)
 - map: Particles blend in linear space and sort per material mesh (`src/map/particles.rs`)
 - weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`src/map/bodies.rs`)
 - map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/map/decal.rs`)

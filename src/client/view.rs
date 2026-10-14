@@ -187,7 +187,8 @@ pub fn camera_look(mode: &CameraMode, look: Quat) -> Quat {
 
 /// The camera's offset from the character's origin: the eye in first
 /// person; in third person, behind it (along `look`, from `camera_look`),
-/// pulled in by a sweep against everything but characters.
+/// pulled in by a sweep against what bodies collide with (not characters
+/// nor loose items).
 /// Clearance kept between the eye and a ceiling just above it: Bevy's
 /// near plane (0.1 m) plus a little, so the near plane never cuts into it.
 const CEILING_CLEARANCE: f32 = 0.12;
@@ -210,14 +211,17 @@ const CEILING_PROBE_HALF_WIDTH: f32 = 15.0 * METERS_PER_UNIT;
 /// (`CEILING_PROBE_HALF_WIDTH`). The measured CS:S box (62 units, eye at
 /// 64) fits a 64-unit duct like de_nuke's vents standing, with the eye on
 /// the ceiling plane: the near plane then cut into the ceiling and the map
-/// showed through it.
+/// showed through it. Only what the body collides with counts
+/// (`core::CHARACTER_FILTER`): a weapon or the bomb just dropped, still
+/// inside its dropper's box, lowered the view as a ceiling would
+/// (playtest 2026-10-14).
 fn below_ceiling(
     origin: Vec3,
     eye: Vec3,
     spatial: &SpatialQuery,
     characters: impl IntoIterator<Item = Entity>,
 ) -> Vec3 {
-    let filter = SpatialQueryFilter::from_excluded_entities(characters).with_mask(crate::core::SOLID_LAYERS);
+    let filter = SpatialQueryFilter::from_excluded_entities(characters).with_mask(crate::core::CHARACTER_FILTER);
     let reach = eye.y + CEILING_CLEARANCE;
     if reach <= 0.0 {
         return eye;
@@ -257,7 +261,7 @@ pub fn camera_offset(
     let Ok(dir) = Dir3::new(look * Vec3::Z) else {
         return eye;
     };
-    let filter = SpatialQueryFilter::from_excluded_entities(characters).with_mask(crate::core::SOLID_LAYERS);
+    let filter = SpatialQueryFilter::from_excluded_entities(characters).with_mask(crate::core::CHARACTER_FILTER);
     let sweep = |from: Vec3, dir: Dir3, max_distance: f32| {
         let config = ShapeCastConfig {
             max_distance,
