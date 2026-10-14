@@ -31,19 +31,19 @@ pub struct PropHome(pub Transform);
 /// `shadows::apply_shadow_detail`): render-to-texture, or blobs (`blob`:
 /// one picture, only the meshes move).
 #[derive(Resource)]
-pub(super) struct ShadowState {
-    pub(super) data: Arc<MapData>,
-    pub(super) settings: MapShadows,
-    pub(super) receivers: Arc<shadows::Receivers>,
-    pub(super) blob: bool,
-    pub(super) atlas: shadows::Atlas,
-    pub(super) atlas_image: Handle<Image>,
-    pub(super) material: Handle<shadows::ShadowMaterial>,
-    pub(super) cells: std::collections::HashMap<usize, shadows::Cell>,
-    pub(super) entities: std::collections::HashMap<usize, Entity>,
-    pub(super) root: Entity,
+pub(crate) struct ShadowState {
+    pub(crate) data: Arc<MapData>,
+    pub(crate) settings: MapShadows,
+    pub(crate) receivers: Arc<shadows::Receivers>,
+    pub(crate) blob: bool,
+    pub(crate) atlas: shadows::Atlas,
+    pub(crate) atlas_image: Handle<Image>,
+    pub(crate) material: Handle<shadows::ShadowMaterial>,
+    pub(crate) cells: std::collections::HashMap<usize, shadows::Cell>,
+    pub(crate) entities: std::collections::HashMap<usize, Entity>,
+    pub(crate) root: Entity,
     /// Where each caster was when its shadow was last drawn.
-    pub(super) built: std::collections::HashMap<usize, (Vec3, Quat)>,
+    pub(crate) built: std::collections::HashMap<usize, (Vec3, Quat)>,
 }
 
 /// Redraw the shadows of physics props that moved (silhouette and mesh);
@@ -55,7 +55,7 @@ pub(super) struct ShadowState {
 /// the atlas image: with seven props rebuilt and the whole atlas converted
 /// every frame this cost 16 ms a frame there.
 #[allow(clippy::type_complexity)]
-pub(super) fn update_prop_shadows(
+pub(crate) fn update_prop_shadows(
     mut commands: Commands,
     state: Option<ResMut<ShadowState>>,
     moved: Query<(&PropIndex, &Transform), (With<PhysicsProp>, Changed<Transform>)>,
@@ -191,36 +191,36 @@ pub struct PropShadow {
 /// A prop model's mesh (index into `MapModel::meshes`) drawn under the
 /// prop's node.
 #[derive(Component, Clone, Copy, Debug)]
-pub(super) struct PropMeshSlot {
-    pub(super) mesh: usize,
+pub(crate) struct PropMeshSlot {
+    pub(crate) mesh: usize,
 }
 
 /// What a prop entity can switch to: its materials per skin family
 /// (empty with one family), its body layout, and what it shows (skin,
 /// body number).
 #[derive(Component)]
-pub(super) struct PropVariants {
-    pub(super) skins: Vec<Vec<Handle<PropMaterial>>>,
+pub(crate) struct PropVariants {
+    pub(crate) skins: Vec<Vec<Handle<PropMaterial>>>,
     /// The body number it spawned with.
-    pub(super) body: i32,
-    pub(super) parts: Vec<u16>,
-    pub(super) mesh_bodies: Vec<Option<(u16, u16)>>,
-    pub(super) shown: (i32, i32),
+    pub(crate) body: i32,
+    pub(crate) parts: Vec<u16>,
+    pub(crate) mesh_bodies: Vec<Option<(u16, u16)>>,
+    pub(crate) shown: (i32, i32),
 }
 
 /// An animated prop: what it plays, its joints by bone, the logic's last
 /// word and the sequence it falls back to.
 #[derive(Component)]
-pub(super) struct PropRig {
-    pub(super) animator: anim::Animator,
-    pub(super) joints: Vec<Entity>,
-    pub(super) seen: Option<PropSequence>,
-    pub(super) default: Option<usize>,
+pub(crate) struct PropRig {
+    pub(crate) animator: anim::Animator,
+    pub(crate) joints: Vec<Entity>,
+    pub(crate) seen: Option<PropSequence>,
+    pub(crate) default: Option<usize>,
 }
 
 /// Inverse bind poses of a rig's bones in the reference pose under its
 /// root.
-pub(super) fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::SkinnedMeshInverseBindposes {
+pub(crate) fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::SkinnedMeshInverseBindposes {
     let mut global: Vec<Mat4> = Vec::with_capacity(rig.bones.len());
     for b in &rig.bones {
         let local = Mat4::from_rotation_translation(b.rotation, b.position);
@@ -236,7 +236,7 @@ pub(super) fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::Skinn
 
 /// Prop entities show the skin and body group the logic gives them
 /// (`PropLook`). A skin the model doesn't have leaves it as it is.
-pub(super) fn apply_prop_looks(
+pub(crate) fn apply_prop_looks(
     mut props: Query<(&PropLook, &mut PropVariants, &Children), Changed<PropLook>>,
     mut slots: Query<(
         &PropMeshSlot,
@@ -286,7 +286,7 @@ pub(super) fn apply_prop_looks(
 /// sequence (sequence 0 when the model lacks it), switching at once; a
 /// new round starts the default one (else the first); a non-looping
 /// sequence that ends starts the default again, if there is one.
-pub(super) fn animate_props(
+pub(crate) fn animate_props(
     time: Res<Time>,
     mut props: Query<(&mut PropRig, Option<&PropSequence>)>,
     mut joints: Query<&mut Transform>,
@@ -345,7 +345,7 @@ pub(super) fn animate_props(
 /// is drawn while on; a dust volume while it exists (off, it only stops
 /// spawning motes).
 #[allow(clippy::type_complexity)]
-pub(super) fn switch_parts(
+pub(crate) fn switch_parts(
     parts: Query<
         (
             Entity,

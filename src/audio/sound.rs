@@ -17,7 +17,7 @@ use super::{
     room::{RoomDsp, distance_send},
 };
 use crate::map::{
-    MapSoundClip, MapUnloadHooks, PlaySound, SoundLevel,
+    MapHooks, MapSoundClip, PlaySound, SoundLevel,
     sound::{METERS_PER_UNIT, SoundBank, distance_gain},
 };
 
@@ -100,10 +100,10 @@ pub struct SoundPlugin;
 impl Plugin for SoundPlugin {
     fn build(&self, app: &mut App) {
         // A map unloaded: the soundscape and the long-lived sounds stop.
-        app.init_resource::<MapUnloadHooks>();
+        app.init_resource::<MapHooks>();
         app.world_mut()
-            .resource_mut::<MapUnloadHooks>()
-            .0
+            .resource_mut::<MapHooks>()
+            .unload
             .extend([super::soundscape::reset as fn(&mut World), super::live_sound::reset]);
         app.add_message::<PlaySound>()
             .add_systems(PostUpdate, play_sounds.run_if(resource_exists::<Assets<LiveClip>>))

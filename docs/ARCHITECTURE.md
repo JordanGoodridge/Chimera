@@ -43,10 +43,14 @@ it); map uses only core.
 
 Presentation sits beside the simulation, above `map`: `audio` (sound
 playback, live sounds, room DSP, soundscapes, hearing) uses core and map,
-and only `client` and `map_plugin` use it. `map_plugin` builds
-`map::MapPlugin` (the type stays in `map`) from map's systems and
-audio's, in one fixed order. Rendering and animation still live in `map`
-(docs/plans/active/engine-split.md, "Crates and compile time").
+and only `client` and `map_plugin` use it; `render` (drawing what the map
+spawns; so far the drawn phases of spawning a map) uses core and map, and
+only `map_plugin` uses it. `map_plugin` builds `map::MapPlugin` (the type
+stays in `map`) from map's systems, audio's and render's spawner, in one
+fixed order. Materials, culling, effects and views still live in `map`;
+animation evaluation stays on the simulation's side (the server poses
+hitboxes); see docs/plans/active/engine-split.md, "Crates and compile
+time").
 
 `metrics` (per-thread CPU time and hardware counters, distributions, the
 tick's measurements) uses no other module of ours; any layer may use it
@@ -142,10 +146,10 @@ A module may use only the modules below it. Enforced by
 | `src/map/fire.rs` | `MapFires`: the fires (floor point, size) and burning entities (their box) the logic says burn now, for a game to draw; `map::MapTraceSkip` (in `mod.rs`) lists the collision brushes line traces pass (player clips, grates), for the logic's static world |
 | `src/map/sky_occluder.rs`, `sky_occluder.wgsl` | Opt-in (`mashup_skyocclude 1`): the playable world's sky faces (`MapData::sky_surfaces`) drawn into depth only, through the main view's depth prepass, so nothing behind a sky face shows; off by default until a CS:S capture says the game does it |
 | `src/map/fog.rs`, `fog.wgsl` | Source's fog shared by map shaders (`mashup::fog::source_fog`): world range fog (in the 3D skybox the sky_camera's own, `map::material_fog`), the water's range fog under water and height fog at the surface; `SceneFog` (set by the map and `water::underwater_fog`) pushed to rope, decal and particle materials |
-| `src/map/mod.rs` | `MapPlugin` (what runs while a map is loaded), `unload_map`/`change_map` (`MapUnloadHooks` for the layers above), the loaded map's resources; re-exports the files below and `core`'s collision types |
+| `src/map/mod.rs` | `MapPlugin` (what runs while a map is loaded), `unload_map`/`change_map` (`MapHooks` for the layers above: what they reset at unload, the spawner `change_map` runs), the loaded map's resources; re-exports the files below and `core`'s collision types |
 | `src/map/data.rs` | `MapData` and what it holds (meshes per material, textures, lightmap, collision, models and placements, spawns, ropes, sky, look); plain data |
 | `src/map/state.rs` | What the logic (and replication) writes on spawned parts and the map and its presentation apply: `EntityPart`, `PropLook`, `PropSequence`, `LightStyles`, soundscape switches, `TonemapInputs`, `ViewKick`; culling's logic side (`VisClusters`, `LogicHidden`, `AreaPortalStates`, `OccluderStates`); `RenderLook`/`BrushTint`; `MonitorCamera`/`MonitorFog`; the effects the logic fires (`SparkBurst`, `TeslaSpark`, `BeamStrike`, `MuzzleFlashFire`, `FollowsEntity`); `PlaceDecal`/`DecalGroup`/`MAX_DECALS`; `ParticleRng` (the weapon layer's grenades share it). So `logic`, `net` and `weapon` use none of map's drawing modules |
-| `src/map/spawn.rs` | `spawn_map` in phases (collision, entity nodes, the drawn parts, props, resources), each a function, in a fixed order |
+| `src/map/spawn.rs` | `spawn_map` in phases (collision, entity nodes, the drawn parts, props, resources), each a function, in a fixed order; the drawn parts through a `MapDrawer` (a system parameter: `world_material`, `draws`, `spawn_drawn`, `spawn_prop`, `textures`), which `map_plugin` picks (`render::MapAssets`) |
 | `src/map/bodies.rs` | Character bodies (by team or `BodyName`; the local one hidden unless `ShowLocalBody`), held models, hitboxes on the skeleton (also headless) |
 | `src/map/props.rs` | Props after spawning: skins and body parts, animated sequences, dynamic prop shadows, the components that tag them |
 | `src/map/materials.rs`, `images.rs`, `collision.rs`, `sky.rs` | Built from map data: standard and prop materials and fog parameters; textures, cubemaps and (Source LDR) lightmaps; convex hulls as brushes and colliders; the sky cubemap and the 3D skybox camera |
@@ -168,7 +172,8 @@ A module may use only the modules below it. Enforced by
 | `src/audio/hearing.rs` | The listener's hearing: blasts' and flashes' muffle and ringing (`Hearing`, `HearingMix`), the underwater muffle |
 | `src/map/sound.rs` | The simulation's side of sounds: entries, clips and soundscapes on `MapData`, `PlaySound`, `SoundControl`/`SoundKey`, the distance model, `SurfaceGrid` |
 | `src/audio/mod.rs`, `src/audio/sound.rs` | Audio (beside the simulation; only `client` and `map_plugin` use it): `SoundPlugin`, playing `PlaySound`s (distance, panning, channels), the listener (`SoundListener`, `Ear`) |
-| `src/map_plugin.rs` | Builds `map::MapPlugin`: map's systems and audio's, in one fixed order |
+| `src/map_plugin.rs` | Builds `map::MapPlugin`: map's systems and audio's, in one fixed order, then `spawn_map` with `render::MapAssets` at startup (and as `MapHooks::spawn` for `change_map`) |
+| `src/render/mod.rs`, `src/render/spawn.rs` | Rendering (beside the simulation; only `map_plugin` uses it): so far the drawn phases of spawning a map (`MapAssets`, the asset stores, as `map::MapDrawer`): images, character assets, lightmaps, sky, water, world meshes (chunked, merged brush entities), model materials, detail sprites, effects, sprites, beams, ropes, shadows, and each prop's skeleton, meshes, skins, ragdoll or rig |
 | `src/map/lod.rs` | Props' levels of detail (`MapLod`: a model's lower `.vtx` levels; `ModelSettings`: `r_rootlod`, `r_lod`): each prop with levels (`LodGroup`) draws the one its screen-size metric from the first-person camera (`ViewModelAnchor`) asks for, never finer than model detail, by swapping its meshes' handles (`LodMeshes`, `switch_lods`) |
 | `src/map/shadows.rs`, `shadow.wgsl` | Dynamic shadows as Video > Advanced's shadow detail asks (`ShadowSettings`: `r_shadows`, `r_shadowrendertotexture`, `r_flashlightdepthtexture`; `apply_shadow_detail` builds them from `ShadowSource` at map load and again at once on a change): at Low Source's blob shadows (`ShadowFrame::blob`, a round picture straight down under each prop), at Medium/High render-to-texture prop shadows; characters' blob shadows at every level (`update_character_blobs`, bodies drawn only). Render-to-texture: silhouettes rasterized into a coverage atlas, clipped onto world surfaces, multiplied over them; redrawn where physics props move by a quarter of a shadow texel or more (`update_prop_shadows`, `moved_visibly`; only the redrawn cell of the atlas image is rewritten; each shadow keeps one mesh asset, rewritten in place: a new handle a frame left a moving prop's shadow undrawn), hidden while the logic hides their prop (broken, killed) |
 | `src/map/rope_material.rs`, `rope.wgsl` | Ropes as camera-facing strips (Source Cable shader, fake anti-aliasing back strip), fogged (`map::fog`) |

@@ -267,7 +267,7 @@ impl MapBeam {
 /// A beam whose look moves: its noise, scroll and sprite frames, redrawn
 /// every frame (`animate_beams`).
 #[derive(Component)]
-pub(super) struct BeamMotion {
+pub(crate) struct BeamMotion {
     pub beam: MapBeam,
     /// The sprite's frames (empty: a still texture).
     pub frames: Vec<Handle<Image>>,
@@ -276,7 +276,7 @@ pub(super) struct BeamMotion {
 
 /// Moves animated beams: new noise every frame, the texture's scroll and
 /// the sprite's frame (specs/source/visual_entities.md 1 steps 3, 5, 8).
-pub(super) fn animate_beams(
+pub(crate) fn animate_beams(
     time: Res<Time>,
     mut beams: Query<(&mut BeamMotion, &MeshMaterial3d<BeamMaterial>, &InheritedVisibility)>,
     materials: Option<ResMut<Assets<BeamMaterial>>>,
@@ -342,14 +342,14 @@ pub fn glow_fade(glow: &MapGlow, dist: f32) -> f32 {
 
 /// What follows the eye on a halo or glow sprite.
 #[derive(Component, Clone, Debug)]
-pub(super) enum EyeGlow {
+pub(crate) enum EyeGlow {
     Halo { halo: SpotHalo, dir: Vec3 },
     Light(MapGlow),
 }
 
 /// Halos and light glows follow the eye: their base colour (before the
 /// occlusion fade, `GlowSprite`) and their size.
-pub(super) fn follow_eye(
+pub(crate) fn follow_eye(
     cameras: Query<
         &GlobalTransform,
         (

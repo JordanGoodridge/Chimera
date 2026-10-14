@@ -25,7 +25,7 @@ struct Mote {
 }
 
 #[derive(Component)]
-pub(super) struct DustEmitter {
+pub(crate) struct DustEmitter {
     pub dust: MapDust,
     pub mesh: Handle<Mesh>,
     motes: Vec<Mote>,
@@ -105,7 +105,7 @@ fn mote_alpha(dust: &MapDust, age: f32, life: f32, depth: f32) -> Option<f32> {
 /// A mesh for an emitter to fill each frame: one invisible triangle, since
 /// Bevy's mesh allocator logs a use-after-free for meshes with no vertices
 /// (it skips allocating them but still copies their data).
-pub(super) fn empty_mesh() -> Mesh {
+pub(crate) fn empty_mesh() -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0f32; 3]; 3]);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0f32, 1.0, 0.0]; 3]);
@@ -128,7 +128,7 @@ pub(super) fn empty_mesh() -> Mesh {
 /// degenerate triangles: the size changes rarely. An empty mesh gets the
 /// padding too (Bevy's allocator logs a use-after-free for meshes without
 /// vertices).
-pub(super) fn write_dynamic_mesh(
+pub(crate) fn write_dynamic_mesh(
     mesh: &mut Mesh,
     normal: Vec3,
     mut positions: Vec<[f32; 3]>,
@@ -153,10 +153,10 @@ pub(super) fn write_dynamic_mesh(
 }
 
 /// Smallest vertex count `write_dynamic_mesh` writes.
-pub(super) const MIN_DYNAMIC_VERTICES: usize = 64;
+pub(crate) const MIN_DYNAMIC_VERTICES: usize = 64;
 
 #[allow(clippy::type_complexity)]
-pub(super) fn update_dust(
+pub(crate) fn update_dust(
     time: Res<Time>,
     cameras: Query<
         &GlobalTransform,

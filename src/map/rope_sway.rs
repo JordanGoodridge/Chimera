@@ -184,7 +184,7 @@ impl Gusts {
 /// A rope that sways: its simulation, gusts, the look it is drawn with and
 /// the mesh its strips share.
 #[derive(Component)]
-pub(super) struct RopeMotion {
+pub(crate) struct RopeMotion {
     pub sway: RopeSway,
     pub gusts: Gusts,
     pub look: MapRope,
@@ -196,7 +196,7 @@ pub(super) struct RopeMotion {
 
 /// Steps ropes the wind blows or that haven't come to rest, and redraws
 /// them from their nodes between the last two steps.
-pub(super) fn sway_ropes(
+pub(crate) fn sway_ropes(
     time: Res<Time>,
     cameras: Query<
         &GlobalTransform,

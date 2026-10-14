@@ -27,9 +27,9 @@ const CCD_SPEED: f32 = 0.5;
 const CCD_SPIN: f32 = 6.0;
 
 #[derive(Resource, Default)]
-pub(super) struct LooseAssets(pub(super) HashMap<String, LooseAsset>);
+pub(crate) struct LooseAssets(pub(crate) HashMap<String, LooseAsset>);
 
-pub(super) struct LooseAsset {
+pub(crate) struct LooseAsset {
     /// Its meshes (none headless).
     parts: Vec<(Handle<Mesh>, Handle<super::prop_material::PropMaterial>)>,
     /// From the held model's space (skeleton axes and units) to the item's
@@ -40,7 +40,7 @@ pub(super) struct LooseAsset {
 
 /// A held model's loose form: `root` takes the skeleton's space to meters
 /// (a character model's `root`; its translation is ignored).
-pub(super) fn asset(
+pub(crate) fn asset(
     held: &MapHeldModel,
     root: Transform,
     parts: Vec<(Handle<Mesh>, Handle<super::prop_material::PropMaterial>)>,
@@ -68,7 +68,7 @@ pub(super) fn asset(
 }
 
 /// Give new loose items their body and meshes.
-pub(super) fn attach_loose(
+pub(crate) fn attach_loose(
     items: Query<(Entity, &LooseItem), Without<RigidBody>>,
     assets: Option<Res<LooseAssets>>,
     mut materials: Option<ResMut<Assets<super::prop_material::PropMaterial>>>,
@@ -153,10 +153,10 @@ pub struct SitOnOrigin(pub Quat);
 
 /// Marks a `ShownItem` whose meshes were added.
 #[derive(Component)]
-pub(super) struct ShownItemDrawn;
+pub(crate) struct ShownItemDrawn;
 
 /// Give new shown items their meshes.
-pub(super) fn attach_shown(
+pub(crate) fn attach_shown(
     items: Query<(Entity, &ShownItem, Option<&SitOnOrigin>), Without<ShownItemDrawn>>,
     assets: Option<Res<LooseAssets>>,
     mut materials: Option<ResMut<Assets<super::prop_material::PropMaterial>>>,

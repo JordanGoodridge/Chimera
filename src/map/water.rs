@@ -730,7 +730,7 @@ fn params(m: &MapWaterMaterial, frames: usize, fog: Option<&super::MapFog>) -> W
 /// Spawns the map's water surfaces (tops, and the downward faces drawn
 /// with their bottom material) and, when one reflects, the reflection camera.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn spawn_surfaces(
+pub(crate) fn spawn_surfaces(
     commands: &mut Commands,
     data: &super::MapData,
     root: Entity,

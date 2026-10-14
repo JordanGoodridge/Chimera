@@ -119,7 +119,7 @@ fn lut_image(data: Vec<u8>) -> Image {
 
 /// Spawn the map's color corrections (an `EntityPart` each: the logic
 /// turns them on and off).
-pub(super) fn spawn(commands: &mut Commands, data: &super::MapData, root: Entity) {
+pub(crate) fn spawn(commands: &mut Commands, data: &super::MapData, root: Entity) {
     for (i, cc) in data.color_corrections.iter().enumerate() {
         let mut e = commands.spawn((
             Name::new(format!("Color correction {i}")),
@@ -144,7 +144,7 @@ pub(super) fn spawn(commands: &mut Commands, data: &super::MapData, root: Entity
 
 /// Fade each color correction toward on or off, weigh it by the eye's
 /// distance, and blend the tables when the weights change.
-pub(super) fn update(
+pub(crate) fn update(
     time: Res<Time>,
     eyes: super::emitters::EyeQuery,
     mut volumes: Query<(&mut ColorCorrectionVolume, &GlobalTransform, Option<&super::EntityPart>)>,

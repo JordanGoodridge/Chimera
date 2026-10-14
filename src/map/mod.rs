@@ -46,10 +46,10 @@ pub use breakables::{
     BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, PanePart, SpawnGibs,
 };
 pub mod detail;
-mod dust;
+pub(crate) mod dust;
 pub mod hud;
 pub mod interp;
-mod light_styles;
+pub(crate) mod light_styles;
 pub mod loading;
 pub mod lod;
 pub mod loose;
@@ -107,6 +107,8 @@ mod sky;
 pub use sky::*;
 mod spawn;
 use spawn::*;
+pub use spawn::{Draws, MapDrawer, MapSpawn, PropSpawn};
+pub(crate) use spawn::spawn_map;
 pub use view_model::{
     DynamicLight, EffectSettings, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor, ViewModelCamera,
     ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
@@ -114,9 +116,8 @@ pub use view_model::{
 };
 
 use prop_material::{PropMaterial, PropParams};
-use rope_material::{RopeMaterial, RopeParams};
-use sprite_material::{SpriteMaterial, SpriteParams};
-use world_material::{WorldMaterial, WorldParams};
+use sprite_material::SpriteMaterial;
+use world_material::WorldMaterial;
 
 /// The loaded map's light field, when the game provides one.
 #[derive(Resource, Clone)]
@@ -167,7 +168,7 @@ impl MapPlugin {
 }
 
 #[derive(Resource)]
-struct PendingMap(Arc<MapData>, MapDebugView);
+pub(crate) struct PendingMap(Arc<MapData>, MapDebugView);
 
 /// Characters below this height (meters) have fallen out of the map.
 #[derive(Resource, Clone, Copy, Debug)]
@@ -259,7 +260,8 @@ pub struct MapPart;
 impl MapPlugin {
     /// The map's registration before the sound plugin's: `MapPlugin` is
     /// built in `crate::map_plugin`, which adds `crate::audio` between
-    /// this and `build_rest`, in the order it always had.
+    /// this and `build_rest`, in the order it always had, then spawns the
+    /// map at startup with `crate::render`'s drawer (`spawn_map`).
     pub(crate) fn build_first(&self, app: &mut App) {
         if let Some(data) = &self.data {
             app.insert_resource(PendingMap(data.clone(), self.view))
@@ -305,7 +307,6 @@ impl MapPlugin {
                 affects_lightmapped_meshes: false,
                 ..default()
             })
-            .add_systems(Startup, spawn_map.run_if(resource_exists::<PendingMap>))
             .add_systems(
                 FixedUpdate,
                 (attach_hitboxes, ragdoll::record_poses, pose_hitboxes)
@@ -558,17 +559,23 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<fog::SceneFog>();
     world.remove_resource::<MapTerrain>();
     world.insert_resource(Gravity::default());
-    let hooks = world.get_resource::<MapUnloadHooks>().map(|h| h.0.clone()).unwrap_or_default();
+    let hooks = world.get_resource::<MapHooks>().map(|h| h.unload.clone()).unwrap_or_default();
     for hook in hooks {
         hook(world);
     }
 }
 
-/// What layers above the map reset when a map is unloaded: `unload_map`
-/// runs them last, in the order they were added (`crate::audio` stops
-/// the soundscape and the long-lived sounds).
+/// What the layers above the map add to loading and unloading maps.
 #[derive(Resource, Default)]
-pub struct MapUnloadHooks(pub Vec<fn(&mut World)>);
+pub struct MapHooks {
+    /// What they reset when a map is unloaded: `unload_map` runs them
+    /// last, in the order they were added (`crate::audio` stops the
+    /// soundscape and the long-lived sounds).
+    pub unload: Vec<fn(&mut World)>,
+    /// Spawns the pending map (`spawn_map` with the drawer
+    /// `crate::map_plugin` picks), for `change_map`.
+    pub spawn: Option<fn(&mut World)>,
+}
 
 /// Replace the loaded map with `data` (spawned now, as at startup).
 pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
@@ -576,8 +583,9 @@ pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
     let data = Arc::new(data);
     world.insert_resource(ActiveMapLook(data.look.clone()));
     world.insert_resource(PendingMap(data, view));
-    if let Err(e) = world.run_system_cached(spawn_map) {
-        error!("spawning the map: {e}");
+    match world.get_resource::<MapHooks>().and_then(|h| h.spawn) {
+        Some(spawn) => spawn(world),
+        None => error!("spawning the map: no map spawner (MapPlugin missing)"),
     }
 }
 
@@ -625,8 +633,8 @@ fn tag_moved_brush_entities(
 /// occlusion proxy is visible.
 #[derive(Component)]
 pub(crate) struct GlowSprite {
-    color: Vec4,
-    proxy: f32,
+    pub(crate) color: Vec4,
+    pub(crate) proxy: f32,
 }
 
 /// Glow visibility (specs/cs_source/sprites_dust.md, 5a): the game measures

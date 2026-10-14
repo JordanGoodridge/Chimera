@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-pub(super) fn build_mesh(m: &MapMesh, with_lightmap: bool) -> Mesh {
+pub(crate) fn build_mesh(m: &MapMesh, with_lightmap: bool) -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, m.positions.clone());
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, m.normals.clone());
@@ -16,7 +16,7 @@ pub(super) fn build_mesh(m: &MapMesh, with_lightmap: bool) -> Mesh {
     mesh
 }
 
-pub(super) fn build_material(
+pub(crate) fn build_material(
     m: &MapMesh,
     textures: &[Handle<Image>],
     view: MapDebugView,
@@ -62,7 +62,7 @@ pub(super) fn build_material(
 
 /// The material of a prop mesh lit by a light probe (`PropMaterial`),
 /// without its cubemap; `skybox`: in the 3D skybox (the sky_camera's fog).
-pub(super) fn lit_prop_material(
+pub(crate) fn lit_prop_material(
     m: &MapMesh,
     textures: &[Handle<Image>],
     data: &MapData,
@@ -117,7 +117,7 @@ pub(super) fn lit_prop_material(
 }
 
 /// Make `material` reflect `cube` as `env` says (Source `$envmap`).
-pub(super) fn set_prop_envmap(
+pub(crate) fn set_prop_envmap(
     material: &mut PropMaterial,
     env: &MapEnvmap,
     cube: Handle<Image>,
@@ -139,7 +139,7 @@ pub(super) fn set_prop_envmap(
 }
 
 /// Fog color for shaders: linear RGB, w = 1 when fog is on.
-pub(super) fn fog_color(fog: Option<&MapFog>) -> Vec4 {
+pub(crate) fn fog_color(fog: Option<&MapFog>) -> Vec4 {
     fog.map_or(Vec4::ZERO, |f| {
         let c = Color::srgb(f.color[0], f.color[1], f.color[2]).to_linear();
         Vec4::new(c.red, c.green, c.blue, 1.0)
@@ -167,7 +167,7 @@ pub fn material_fog(data: &MapData, view: MapDebugView, skybox: bool) -> Option<
 }
 
 /// Fog start, end (meters) and max density for shaders.
-pub(super) fn fog_range(fog: Option<&MapFog>) -> Vec4 {
+pub(crate) fn fog_range(fog: Option<&MapFog>) -> Vec4 {
     fog.map_or(Vec4::new(0.0, 1.0, 0.0, 0.0), |f| {
         Vec4::new(f.start, f.end.max(f.start + 0.01), f.max_density, 0.0)
     })
