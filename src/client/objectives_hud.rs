@@ -1,8 +1,8 @@
 //! The objectives on the HUD (specs/cs_source/objectives.md, HUD table):
 //! the carried-bomb / defusal-kit / rescue-zone icon (`HudC4`,
 //! `HudDefuser`, `HudHostageRescueZone`), the scenario icon (a planted
-//! bomb, the hostages left: `HudScenarioIcon`), the planting and defusing
-//! progress bar (`HudProgressBar`), the game's messages (centre text for
+//! bomb, the hostages left: `HudScenarioIcon`), the defusing progress
+//! bar (`HudProgressBar`; arming types on the C4's screen instead), the game's messages (centre text for
 //! everyone, hints for the local player, chat lines for the team), the
 //! game's deny sound when the local player's +use finds nothing (neither a
 //! map door or button nor the bomb or a hostage; spec 5, step 4), and
@@ -20,7 +20,7 @@ use crate::{
     map::hud::{ActiveHud, HudCoord},
     objectives::{
         MapKind, MapObjectives, ObjectiveEvent,
-        bomb::{Arming, BombRules, BombState, Defusing, PlantedBomb, hull},
+        bomb::{BombRules, BombState, Defusing, PlantedBomb, hull},
         hostages::{Hostage, HostagePenalty, HostageTally},
     },
     weapon::economy::DefuseKit,
@@ -32,10 +32,13 @@ impl Plugin for ObjectivesHudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Overlay>()
             .init_resource::<Centre>()
-            .init_resource::<C4ProgressBar>()
+            .add_plugins(BombHudStatePlugin)
             .add_message::<crate::weapon::drop::UsedPickup>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (messages, status, progress, centre, overlay))
+            .add_systems(
+                Update,
+                (messages, status, progress.after(progress_share), centre, overlay),
+            )
             .add_systems(
                 FixedUpdate,
                 use_deny
@@ -48,9 +51,28 @@ impl Plugin for ObjectivesHudPlugin {
             "1: show the bomb's timer and defuse and the hostages' state (debug).",
             |o| &mut o.0,
         );
-        c4_bar_cvar(app);
     }
 }
+
+/// What the bomb shows the local player, without drawing it (so
+/// headless tests can read it): the progress bar's fill
+/// (`BombProgress`, with `cl_c4progressbar`) and the code on the C4's
+/// screen (`bomb_fx::C4ScreenText`).
+pub struct BombHudStatePlugin;
+
+impl Plugin for BombHudStatePlugin {
+    fn build(&self, app: &mut App) {
+        c4_bar_cvar(app);
+        app.init_resource::<BombProgress>()
+            .init_resource::<super::bomb_fx::C4ScreenText>()
+            .add_systems(Update, (progress_share, super::bomb_fx::screen_text));
+    }
+}
+
+/// The progress bar's fill (0 to 1) while the local player defuses the
+/// bomb; None: no bar.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct BombProgress(pub Option<f32>);
 
 /// `cl_c4progressbar` (archived).
 pub(crate) fn c4_bar_cvar(app: &mut App) {
@@ -70,7 +92,7 @@ pub(crate) fn c4_bar_cvar(app: &mut App) {
 struct Overlay(u8);
 
 /// `cl_c4progressbar` (CS:S's default 1): the progress bar while
-/// defusing; 0 hides it (arming always shows its own).
+/// defusing; 0 hides it (arming has none).
 #[derive(Resource, Clone, Copy, Debug, PartialEq)]
 pub struct C4ProgressBar(pub u8);
 
@@ -393,34 +415,25 @@ fn status(
     }
 }
 
-/// The progress bar while the local player arms or defuses.
-#[allow(clippy::type_complexity)]
-fn progress(
-    hud: Option<Res<ActiveHud>>,
-    windows: Query<&Window>,
-    local: Option<Single<(Entity, Option<&Arming>, Option<&Defusing>), With<LocalPlayer>>>,
+/// How far the local player's defuse is (`BombProgress`). Arming shows
+/// no bar: the C4's own screen types the code (`bomb_fx`), where the bar
+/// would cover it, and `cl_c4progressbar` is "Show a progress bar when
+/// defusing the C4" (spec HUD table; whether CS:S draws one while
+/// planting is the spec's Q16).
+fn progress_share(
+    local: Option<Single<(Entity, Option<&Defusing>), With<LocalPlayer>>>,
     bombs: Query<&PlantedBomb>,
-    rules: Res<BombRules>,
     fixed: Res<Time<Fixed>>,
     clock: Res<crate::core::SimClock>,
-    mut frame: Query<(&Part, &mut Node, &mut Visibility)>,
-    mut fill: Query<&mut Node, (With<FillMarker>, Without<Part>)>,
     defuse_bar: Option<Res<C4ProgressBar>>,
+    mut out: ResMut<BombProgress>,
 ) {
     let defuse_bar = defuse_bar.is_none_or(|b| b.0 != 0);
-    let Some(window) = windows.iter().next() else { return };
-    let (w, h) = (window.width(), window.height());
     let now = fixed.elapsed_secs_f64();
-    let share = local.as_ref().and_then(|l| {
-        let (me, arming, defusing) = **l;
-        // Our own arming and defusing are on the simulation's clock (a
-        // network client predicts them).
-        if let Some(a) = arming {
-            return Some(((clock.now - a.since) / rules.plant_time as f64) as f32);
-        }
-        if !defuse_bar {
-            return None;
-        }
+    let share = local.as_ref().filter(|_| defuse_bar).and_then(|l| {
+        let (me, defusing) = **l;
+        // Our own defuse is on the simulation's clock (a network client
+        // predicts it).
         if let Some(d) = defusing {
             return Some(((clock.now - d.started) / (d.ends - d.started).max(1e-6)) as f32);
         }
@@ -430,6 +443,20 @@ fn progress(
             .find(|d| d.who == me)
             .map(|d| ((now - d.started) / (d.ends - d.started)) as f32)
     });
+    out.set_if_neq(BombProgress(share.map(|s| s.clamp(0.0, 1.0))));
+}
+
+/// The progress bar (`BombProgress`).
+fn progress(
+    hud: Option<Res<ActiveHud>>,
+    windows: Query<&Window>,
+    share: Res<BombProgress>,
+    mut frame: Query<(&Part, &mut Node, &mut Visibility)>,
+    mut fill: Query<&mut Node, (With<FillMarker>, Without<Part>)>,
+) {
+    let share = share.0;
+    let Some(window) = windows.iter().next() else { return };
+    let (w, h) = (window.width(), window.height());
     let r = panel_box(
         hud.as_deref(),
         "HudProgressBar",
@@ -453,7 +480,7 @@ fn progress(
         node.border = UiRect::all(Val::Px((h / 480.0).max(1.0)));
     }
     for mut node in &mut fill {
-        node.width = Val::Percent(share.unwrap_or(0.0).clamp(0.0, 1.0) * 100.0);
+        node.width = Val::Percent(share.unwrap_or(0.0) * 100.0);
     }
 }
 
