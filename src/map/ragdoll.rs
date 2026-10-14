@@ -276,7 +276,7 @@ pub struct Ragdoll {
 
 impl Ragdoll {
     /// A map-placed ragdoll's simulation (`placed_ragdoll`).
-    pub(super) fn placed(
+    pub(crate) fn placed(
         node: Entity,
         bodies: Vec<Entity>,
         joints: Vec<Entity>,
@@ -462,7 +462,7 @@ pub fn death_pose_bones(m: &MapCharacterModel, side: DeathSide, frame: u8, crouc
     Some(globals(m, &pose))
 }
 
-pub(super) fn plugin(app: &mut App) {
+pub(crate) fn plugin(app: &mut App) {
     app.init_resource::<RagdollSettings>()
         .add_message::<RagdollShot>()
         .add_plugins(JointGraphPlugin::<RagdollJoint>::default())
@@ -503,7 +503,7 @@ fn bind_globals(m: &MapCharacterModel) -> Vec<(Quat, Vec3)> {
 }
 
 /// Parent-relative bone transforms to skeleton space.
-pub(super) fn globals(m: &MapCharacterModel, local: &[(Quat, Vec3)]) -> Vec<(Quat, Vec3)> {
+pub(crate) fn globals(m: &MapCharacterModel, local: &[(Quat, Vec3)]) -> Vec<(Quat, Vec3)> {
     let mut out: Vec<(Quat, Vec3)> = Vec::with_capacity(local.len());
     for (b, (q, p)) in m.bones.iter().zip(local) {
         out.push(match b.parent.and_then(|i| out.get(i)) {
@@ -517,7 +517,7 @@ pub(super) fn globals(m: &MapCharacterModel, local: &[(Quat, Vec3)]) -> Vec<(Qua
 /// Keep each living character's skeleton pose for this tick (its animator's,
 /// else the bind pose), placed at its feet and turned by its body's yaw.
 #[allow(clippy::type_complexity)]
-pub(super) fn record_poses(
+pub(crate) fn record_poses(
     time: Res<Time>,
     tick: Res<crate::core::SimTick>,
     models: Option<Res<CharacterModels>>,
@@ -794,7 +794,7 @@ pub fn spawn_ragdoll(
 }
 
 /// A ragdoll body's collider and mass frame.
-pub(super) struct BodyShape {
+pub(crate) struct BodyShape {
     collider: Collider,
     /// Principal moments of inertia (kg m²), with the body's inertia scale.
     principal: Vec3,
@@ -806,7 +806,7 @@ pub(super) struct BodyShape {
 
 impl BodyShape {
     /// `body`'s convex pieces scaled from skeleton units to meters.
-    pub(super) fn new(body: &MapRagdollBody, scale: f32) -> Self {
+    pub(crate) fn new(body: &MapRagdollBody, scale: f32) -> Self {
         let hulls: Vec<_> = body
             .pieces
             .iter()
@@ -831,7 +831,7 @@ impl BodyShape {
 
 /// Spawn ragdoll `ragdoll`'s body `i` at `at` moving at `(v, w)`.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn spawn_body(
+pub(crate) fn spawn_body(
     commands: &mut Commands,
     ragdoll: Entity,
     i: usize,

@@ -30,8 +30,8 @@ use std::collections::VecDeque;
 
 use bevy::prelude::*;
 
-use super::EntityPart;
-use super::particles::{Particle, ParticleGroup, ParticleRng, Particles, Ramp, Shape};
+use super::particles::{Particle, ParticleGroup, Particles, Ramp, Shape};
+use super::{BeamStrike, EntityPart, MuzzleFlashFire, ParticleRng, TeslaSpark};
 
 /// Points a trail keeps (trail_max_points).
 pub const TRAIL_MAX_POINTS: usize = 256;
@@ -129,13 +129,6 @@ pub struct MapTesla {
     pub width: (f32, f32),
     pub life: (f32, f32),
     pub beams: (u32, u32),
-}
-
-/// One spark of a point_tesla (the logic times them).
-#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TeslaSpark {
-    /// The entity (index into `MapData::entities`).
-    pub entity: usize,
 }
 
 struct Arc {
@@ -246,11 +239,6 @@ impl TeslaEmitter {
         out
     }
 }
-
-/// Marks a drawn part whose transform the logic sets to its map entity's
-/// pose each tick (it follows a parent).
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct FollowsEntity;
 
 /// A trail's recorded points: where, and when each dies (seconds of the
 /// trail's own clock).
@@ -464,7 +452,7 @@ impl SmokeStackEmitter {
 
 /// The main view's camera (not monitors', the sky's, the view model's or
 /// the water reflection's).
-pub(super) type EyeQuery<'w, 's> = Query<
+pub(crate) type EyeQuery<'w, 's> = Query<
     'w,
     's,
     &'static GlobalTransform,
@@ -488,7 +476,7 @@ fn frame_group(particles: Vec<Particle>) -> ParticleGroup {
 
 /// Trails record where their entity is and show their strip (hidden ones,
 /// out of the potentially visible set, record but aren't drawn).
-pub(super) fn update_trails(
+pub(crate) fn update_trails(
     time: Res<Time>,
     eyes: EyeQuery,
     mut trails: Query<(
@@ -520,7 +508,7 @@ pub(super) fn update_trails(
 
 /// Teslas spark when the logic says (`TeslaSpark`), their arcs traced
 /// against the world; arcs age and crackle.
-pub(super) fn update_teslas(
+pub(crate) fn update_teslas(
     time: Res<Time>,
     eyes: EyeQuery,
     mut sparks: MessageReader<TeslaSpark>,
@@ -550,7 +538,7 @@ pub(super) fn update_teslas(
 }
 
 /// Smoke stacks emit and show their puffs.
-pub(super) fn update_smokestacks(
+pub(crate) fn update_smokestacks(
     time: Res<Time>,
     mut stacks: Query<(
         &mut SmokeStackEmitter,
@@ -694,7 +682,7 @@ impl EmbersEmitter {
 }
 
 /// Embers emit and show while on.
-pub(super) fn update_embers(
+pub(crate) fn update_embers(
     time: Res<Time>,
     mut embers: Query<(
         &mut EmbersEmitter,
@@ -731,12 +719,6 @@ pub struct MapMuzzleFlash {
     pub scale: f32,
 }
 
-/// An env_muzzleflash fired (by map index).
-#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MuzzleFlashFire {
-    pub entity: usize,
-}
-
 /// How long a map muzzle flash shows, s (ours: about three frames).
 pub const MUZZLE_FLASH_LIFE: f32 = 0.05;
 
@@ -760,7 +742,7 @@ pub fn muzzle_flash_sprites(m: &MapMuzzleFlash, origin: Vec3, forward: Vec3) -> 
 pub struct MuzzleFlashEmitter(pub MapMuzzleFlash);
 
 /// Fired muzzle flashes show their sprites.
-pub(super) fn update_muzzle_flashes(
+pub(crate) fn update_muzzle_flashes(
     mut fired: MessageReader<MuzzleFlashFire>,
     flashes: Query<(&MuzzleFlashEmitter, &GlobalTransform, Option<&Visibility>)>,
     mut pool: ResMut<Particles>,
@@ -795,16 +777,6 @@ pub struct MapStrike {
     pub color: Vec3,
     /// NoiseAmplitude, 0-64.
     pub noise: f32,
-}
-
-/// A strike: the beam from `start` to `end` (engine space) lives `life`
-/// seconds (0: until the map's next round restart).
-#[derive(Message, Clone, Copy, Debug, PartialEq)]
-pub struct BeamStrike {
-    pub entity: usize,
-    pub start: Vec3,
-    pub end: Vec3,
-    pub life: f32,
 }
 
 /// Samples of a beam's noise (noise_divisions + 1).
@@ -943,7 +915,7 @@ impl StrikeEmitter {
 
 /// Strike generators draw the strikes the logic sends (`BeamStrike`);
 /// a round restart takes the lasting ones away.
-pub(super) fn update_strikes(
+pub(crate) fn update_strikes(
     time: Res<Time>,
     eyes: EyeQuery,
     mut strikes: MessageReader<BeamStrike>,

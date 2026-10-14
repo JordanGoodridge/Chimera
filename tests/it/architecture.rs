@@ -25,8 +25,13 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Audio: plays what the simulation's sounds say (`map::sound`); nothing
     // in the simulation may use it.
     ("audio", &["core", "map"]),
-    // Builds `map::MapPlugin` from the map and its presentation (`audio`).
-    ("map_plugin", &["map", "audio"]),
+    // Rendering: draws what the map spawns and simulates (the drawn phases
+    // of spawning a map, through `map::MapDrawer`, and the first drawing
+    // modules); nothing in the simulation may use it.
+    ("render", &["core", "map"]),
+    // Builds `map::MapPlugin` from the map and its presentation (`audio`,
+    // `render`), its systems in `core`'s sets.
+    ("map_plugin", &["core", "map", "audio", "render"]),
     ("weapon", &["core", "console", "map"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
@@ -88,6 +93,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "greybox",
             "map",
             "audio",
+            "render",
             "weapon",
             "objectives",
             "rules",

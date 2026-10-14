@@ -198,9 +198,9 @@ pub struct BreakProp {
 /// Every prop's break pieces, bounds and placed skin, from its model
 /// (also headless).
 #[derive(Resource, Default)]
-pub(super) struct PropBreaks(Vec<(Option<MapBreak>, (Vec3, Vec3), i32)>);
+pub(crate) struct PropBreaks(Vec<(Option<MapBreak>, (Vec3, Vec3), i32)>);
 
-pub(super) fn prop_breaks(data: &MapData) -> PropBreaks {
+pub(crate) fn prop_breaks(data: &MapData) -> PropBreaks {
     PropBreaks(
         data.props
             .iter()
@@ -313,7 +313,7 @@ pub fn break_pieces(
 }
 
 /// Turn `BreakProp`s into gibs.
-pub(super) fn break_props(
+pub(crate) fn break_props(
     mut events: MessageReader<BreakProp>,
     breaks: Option<Res<PropBreaks>>,
     mut gibs: MessageWriter<SpawnGibs>,
@@ -454,11 +454,11 @@ impl BrushPanes {
 /// A mesh drawn under a node with `BrushPanes`: its whole (unclipped)
 /// mesh, from which the unbroken panes are cut.
 #[derive(Component)]
-pub(super) struct PaneSource(Handle<Mesh>);
+pub(crate) struct PaneSource(Handle<Mesh>);
 
 /// Keep a window's collider and meshes to its unbroken panes.
 #[allow(clippy::type_complexity)]
-pub(super) fn update_panes(
+pub(crate) fn update_panes(
     nodes: Query<(Entity, &BrushPanes, Option<&Children>), Changed<BrushPanes>>,
     mut parts: Query<(&mut Mesh3d, Option<&PaneSource>, Option<&PanePart>, &mut Visibility)>,
     meshes: Option<ResMut<Assets<Mesh>>>,
@@ -756,7 +756,7 @@ fn clip_triangle(pts: [Vec2; 3], lo: Vec2, hi: Vec2) -> Vec<Vec3> {
 
 /// Gib models ready to draw, and how they move.
 #[derive(Resource)]
-pub(super) struct GibAssets {
+pub(crate) struct GibAssets {
     sets: Vec<(String, Vec<GibModel>)>,
     physics: MapGibPhysics,
     light_scale: f32,
@@ -816,7 +816,7 @@ fn gib_body(model: &MapModel) -> GibBody {
 }
 
 /// Gib models, and their meshes when rendering (`render`).
-pub(super) fn build_assets(
+pub(crate) fn build_assets(
     data: &MapData,
     textures: &[Handle<Image>],
     view: MapDebugView,
@@ -892,7 +892,7 @@ pub struct PieceBody;
 
 /// A flying (or resting) gib.
 #[derive(Component)]
-pub(super) struct FlyingGib {
+pub(crate) struct FlyingGib {
     state: GibState,
     life: f32,
     glass: bool,
@@ -985,7 +985,7 @@ pub fn gib_alpha(age: f32, life: f32, fade: f32) -> Option<f32> {
 
 /// Spawn thrown gibs (at most `MAX_GIBS` alive).
 #[allow(clippy::too_many_arguments)]
-pub(super) fn spawn_gibs(
+pub(crate) fn spawn_gibs(
     mut events: MessageReader<SpawnGibs>,
     assets: Option<Res<GibAssets>>,
     light_field: Option<Res<LightField>>,
@@ -1154,7 +1154,7 @@ const PANE_PIECE_LIFE: f32 = 5.0;
 /// Falling panes become pane pieces: physics debris of the
 /// `PANE_PIECES` list in the pane's orientation, falling from its
 /// corner (the model's origin there) and spinning.
-pub(super) fn fall_panes(mut events: MessageReader<FallingPane>, mut gibs: MessageWriter<SpawnGibs>) {
+pub(crate) fn fall_panes(mut events: MessageReader<FallingPane>, mut gibs: MessageWriter<SpawnGibs>) {
     for ev in events.read() {
         let [u, v, n] = ev.axes.map(Vec3::normalize_or_zero);
         // The piece model is a square in its own Y/Z plane (Source axes;
@@ -1175,7 +1175,7 @@ pub(super) fn fall_panes(mut events: MessageReader<FallingPane>, mut gibs: Messa
 }
 
 /// Pane pieces that touched something shatter there.
-pub(super) fn shatter_pane_pieces(
+pub(crate) fn shatter_pane_pieces(
     mut started: MessageReader<CollisionStart>,
     pieces: Query<(&PanePiece, &Position, &Rotation, &LinearVelocity)>,
     mut shatter: MessageWriter<GlassShatter>,
@@ -1206,7 +1206,7 @@ pub(super) fn shatter_pane_pieces(
 /// Move gibs, bounce them off the world (not characters) with their
 /// bounce sound, fade them out.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn fly_gibs(
+pub(crate) fn fly_gibs(
     time: Res<Time>,
     assets: Option<Res<GibAssets>>,
     sounds: Option<Res<super::sound::SoundBank>>,
@@ -1298,7 +1298,7 @@ fn fade(gib: &FlyingGib, p: MapGibPhysics, materials: Option<&mut Assets<PropMat
 /// particles (glass shards) go, and windows drawn as panes are whole
 /// again: their meshes uncut and their collider the brush's volumes. The
 /// logic layer puts the nodes themselves back (shown, solid, placed).
-pub(super) fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
+pub(crate) fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
     let count = world.get_resource::<crate::core::RoundRestarts>().map_or(0, |r| r.0);
     if seen.replace(count).is_none_or(|s| s == count) {
         return;
@@ -1363,7 +1363,7 @@ fn make_whole(world: &mut World, node: Entity, index: usize) {
 }
 
 /// Remove gibs (map unload).
-pub(super) fn unload(world: &mut World) {
+pub(crate) fn unload(world: &mut World) {
     world.remove_resource::<GibAssets>();
     let gibs: Vec<Entity> = world.query_filtered::<Entity, With<FlyingGib>>().iter(world).collect();
     for g in gibs {

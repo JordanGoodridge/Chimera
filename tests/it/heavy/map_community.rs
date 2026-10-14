@@ -586,10 +586,10 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
         eprintln!("{what}: {} drawn, {hidden} culled", parts.len() - hidden);
         assert!(hidden > 0, "{what}: other rooms' culled");
     };
-    let mut q = world.query_filtered::<&mashup::map::vis::VisClusters, With<mashup::map::loose::LooseItem>>();
+    let mut q = world.query_filtered::<&mashup::map::VisClusters, With<mashup::map::loose::LooseItem>>();
     let items = q.iter(world).map(|c| (c.clusters.clone(), c.potentially_visible)).collect();
     check("placed weapons", items);
-    let mut q = world.query::<(&mashup::map::water::WaterSurface, Option<&mashup::map::vis::VisClusters>)>();
+    let mut q = world.query::<(&mashup::map::water::WaterSurface, Option<&mashup::map::VisClusters>)>();
     let water = q
         .iter(world)
         .filter(|(s, _)| !s.skybox)
@@ -636,7 +636,7 @@ fn moving_water_is_culled_on_jacks() {
     assert_eq!(world.resource::<mashup::map::vis::VisStats>().cluster, Some(cluster));
     let mut q = world.query::<(
         &mashup::map::water::WaterSurface,
-        Option<&mashup::map::vis::VisClusters>,
+        Option<&mashup::map::VisClusters>,
         Has<mashup::map::water::MovingWaterSurface>,
     )>();
     let mut moving = 0;
@@ -1111,7 +1111,7 @@ fn strike_beams_strike_and_kill() {
     use mashup::{
         core::Health,
         logic::{Logic, Value},
-        map::emitters::BeamStrike,
+        map::BeamStrike,
     };
     let Some(map) = load("mg_n64_goldeneye_v2") else { return };
     assert_eq!(map.strikes.len(), 14, "its strike generators' looks");

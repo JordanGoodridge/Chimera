@@ -87,31 +87,31 @@ pub struct BodyName(pub String);
 /// Meshes and materials of each character model (index as in
 /// `CharacterModels`).
 #[derive(Resource)]
-pub(super) struct CharacterBodies(pub(super) Vec<BodyAssets>);
+pub(crate) struct CharacterBodies(pub(crate) Vec<BodyAssets>);
 
 /// Meshes and materials of each held model, by key.
 #[derive(Resource)]
 #[allow(clippy::type_complexity)]
-pub(super) struct HeldAssets(pub(super) HashMap<String, HeldParts>);
+pub(crate) struct HeldAssets(pub(crate) HashMap<String, HeldParts>);
 
 /// A held model's meshes on its bone, its muzzle there, and the parts
 /// that follow other bones (`MapHeldModel::merged`).
 #[allow(clippy::type_complexity)]
-pub(super) struct HeldParts {
-    pub(super) bone: String,
+pub(crate) struct HeldParts {
+    pub(crate) bone: String,
     /// The whole model on `bone` (loose items).
-    pub(super) whole: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
+    pub(crate) whole: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
     /// What stays on `bone` when held.
-    pub(super) own: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
-    pub(super) muzzle: Option<Transform>,
-    pub(super) merged: Vec<(String, Vec<(Handle<Mesh>, Handle<PropMaterial>)>)>,
+    pub(crate) own: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
+    pub(crate) muzzle: Option<Transform>,
+    pub(crate) merged: Vec<(String, Vec<(Handle<Mesh>, Handle<PropMaterial>)>)>,
 }
 
-pub(super) struct BodyAssets {
-    pub(super) parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
-    pub(super) bindposes: Handle<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
-    pub(super) bones: Vec<MapBone>,
-    pub(super) root: Transform,
+pub(crate) struct BodyAssets {
+    pub(crate) parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
+    pub(crate) bindposes: Handle<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
+    pub(crate) bones: Vec<MapBone>,
+    pub(crate) root: Transform,
 }
 
 /// A joint of a character body's skeleton: its bone index.
@@ -121,13 +121,13 @@ pub struct BodyJoint(pub usize);
 /// A character's drawn body: which model, at its feet.
 #[derive(Component)]
 pub struct CharacterBody {
-    pub(super) model: usize,
+    pub(crate) model: usize,
     /// Joint entities by bone index.
-    pub(super) joints: Vec<Entity>,
+    pub(crate) joints: Vec<Entity>,
     /// The held model shown and its key.
-    pub(super) held: Option<(Entity, String)>,
+    pub(crate) held: Option<(Entity, String)>,
     /// Its bone-merged parts on other joints (`MapHeldModel::merged`).
-    pub(super) held_parts: Vec<Entity>,
+    pub(crate) held_parts: Vec<Entity>,
 }
 
 /// Whether the local player's own body is drawn (third person). The
@@ -139,7 +139,7 @@ pub struct ShowLocalBody(pub bool);
 /// Give characters their team's body (a child at the feet); the local
 /// player's is hidden unless `ShowLocalBody`.
 #[allow(clippy::type_complexity)]
-pub(super) fn attach_bodies(
+pub(crate) fn attach_bodies(
     models: Option<Res<CharacterModels>>,
     bodies: Option<Res<CharacterBodies>>,
     characters: Query<
@@ -233,9 +233,9 @@ pub(super) fn attach_bodies(
 
 /// Height of a body's lighting point above its feet, meters (about the
 /// models' own illumination position, their middle).
-pub(super) const BODY_LIGHT_HEIGHT: f32 = 0.9;
+pub(crate) const BODY_LIGHT_HEIGHT: f32 = 0.9;
 
-pub(super) fn body_visibility(local: bool, show_local: ShowLocalBody) -> Visibility {
+pub(crate) fn body_visibility(local: bool, show_local: ShowLocalBody) -> Visibility {
     if local && !show_local.0 {
         Visibility::Hidden
     } else {
@@ -244,7 +244,7 @@ pub(super) fn body_visibility(local: bool, show_local: ShowLocalBody) -> Visibil
 }
 
 /// Show or hide the local player's body when `ShowLocalBody` changes.
-pub(super) fn show_local_body(
+pub(crate) fn show_local_body(
     show: Res<ShowLocalBody>,
     local: Query<&Children, With<crate::core::LocalPlayer>>,
     mut bodies: Query<&mut Visibility, With<CharacterBody>>,
@@ -261,7 +261,7 @@ pub(super) fn show_local_body(
 }
 
 /// Turn bodies with their character's yaw (as drawn: `interp`).
-pub(super) fn turn_bodies(
+pub(crate) fn turn_bodies(
     characters: Query<(
         &crate::core::Intent,
         &Children,
@@ -286,7 +286,7 @@ pub(super) fn turn_bodies(
 }
 
 /// Draw what each character holds in its body's hand.
-pub(super) fn attach_held(
+pub(crate) fn attach_held(
     held: Option<Res<HeldAssets>>,
     bodies: Option<Res<CharacterBodies>>,
     characters: Query<(Entity, &Held, &Children)>,
@@ -395,7 +395,7 @@ pub const UNSEEN_POSE_INTERVAL: u32 = 4;
 /// `ragdoll::SkeletonPose`, every tick). Bodies aren't culled by their
 /// joints (their bounds are the mesh's, at the body), so posing late
 /// doesn't hide one. Without a camera (headless) every body is posed.
-pub(super) fn pose_bodies(
+pub(crate) fn pose_bodies(
     time: Res<Time>,
     characters: Query<(&anim::Animator, &Children)>,
     bodies: Query<(Entity, &CharacterBody, Option<&Children>)>,
@@ -435,14 +435,14 @@ pub(super) fn pose_bodies(
 }
 
 /// Whether any of a body's meshes was drawn by some camera last frame.
-pub(super) fn body_seen(parts: Option<&Children>, seen: &Query<&ViewVisibility, With<Mesh3d>>) -> bool {
+pub(crate) fn body_seen(parts: Option<&Children>, seen: &Query<&ViewVisibility, With<Mesh3d>>) -> bool {
     parts.into_iter().flatten().any(|p| seen.get(*p).is_ok_and(|v| v.get()))
 }
 
 /// Characters get their team's hitboxes from the loaded character models.
 /// Characters also get the model's animations (an `Animator`, driven by
 /// the game).
-pub(super) fn attach_hitboxes(
+pub(crate) fn attach_hitboxes(
     models: Option<Res<CharacterModels>>,
     characters: Query<
         (
@@ -477,7 +477,7 @@ pub(super) fn attach_hitboxes(
 /// except where a network server animates the body in the fixed tick
 /// (`SimAnimator`).
 #[allow(clippy::type_complexity)]
-pub(super) fn pose_hitboxes(
+pub(crate) fn pose_hitboxes(
     models: Option<Res<CharacterModels>>,
     mut characters: Query<
         (
@@ -529,7 +529,7 @@ pub struct SimPose;
 
 /// Hitboxes from the server's own animation of each body, at the tick's
 /// time (as `pose_hitboxes` does from the drawn one).
-pub(super) fn pose_sim_hitboxes(
+pub(crate) fn pose_sim_hitboxes(
     models: Option<Res<CharacterModels>>,
     clock: Res<crate::core::SimClock>,
     mut characters: Query<(
@@ -561,7 +561,7 @@ pub(super) fn pose_sim_hitboxes(
 /// Render assets of a skinned model: meshes with joint attributes (when
 /// it has a skeleton), materials, and inverse bind poses from the bones'
 /// reference pose under `root`.
-pub(super) fn body_assets(
+pub(crate) fn body_assets(
     model: &MapModel,
     bones: &[MapBone],
     root: Transform,

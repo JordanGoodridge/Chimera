@@ -11,7 +11,8 @@
 //! data), each re-exported here, plus one submodule per feature.
 //!
 //! `MapPlugin` (what runs while a map is loaded), `unload_map`/`change_map`
-//! (`MapUnloadHooks` for the layers above), the loaded map's resources;
+//! (`MapHooks` for the layers above: what they reset at unload, the
+//! spawner `change_map` runs), the loaded map's resources;
 //! re-exports the files below and `core`'s collision types.
 
 use std::{collections::HashMap, sync::Arc};
@@ -49,11 +50,10 @@ pub mod copies;
 pub use breakables::{
     BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, PanePart, SpawnGibs,
 };
-pub mod detail;
-mod dust;
+pub(crate) mod dust;
 pub mod hud;
 pub mod interp;
-mod light_styles;
+pub(crate) mod light_styles;
 pub mod loading;
 pub mod lod;
 pub mod loose;
@@ -71,7 +71,6 @@ pub mod prop_physics;
 pub mod psys;
 pub mod radio;
 pub mod ragdoll;
-pub mod tint;
 pub mod tracer;
 pub use ragdoll::{MapCollisionHooks, MapRagdoll, MapRagdollBody, MapRagdollJoint, Ragdoll, RagdollBody, RagdollShot};
 pub mod rope_material;
@@ -84,7 +83,6 @@ pub use sound::{
     SoundLevel, StartSound,
 };
 pub mod shells;
-pub mod sky_occluder;
 pub mod sprite_material;
 pub mod surface_color;
 pub mod view_model;
@@ -111,6 +109,8 @@ mod sky;
 pub use sky::*;
 mod spawn;
 use spawn::*;
+pub use spawn::{Draws, MapDrawer, MapSpawn, PropSpawn};
+pub(crate) use spawn::spawn_map;
 pub use view_model::{
     DynamicLight, EffectSettings, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor, ViewModelCamera,
     ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
@@ -118,9 +118,8 @@ pub use view_model::{
 };
 
 use prop_material::{PropMaterial, PropParams};
-use rope_material::{RopeMaterial, RopeParams};
-use sprite_material::{SpriteMaterial, SpriteParams};
-use world_material::{WorldMaterial, WorldParams};
+use sprite_material::SpriteMaterial;
+use world_material::WorldMaterial;
 
 /// The loaded map's light field, when the game provides one.
 #[derive(Resource, Clone)]
@@ -171,7 +170,7 @@ impl MapPlugin {
 }
 
 #[derive(Resource)]
-struct PendingMap(Arc<MapData>, MapDebugView);
+pub(crate) struct PendingMap(Arc<MapData>, MapDebugView);
 
 /// Characters below this height (meters) have fallen out of the map.
 #[derive(Resource, Clone, Copy, Debug)]
@@ -180,7 +179,7 @@ pub struct KillHeight(pub f32);
 /// Falling out of the map kills; characters that can't die (god mode, no
 /// health) go back to a spawn point instead.
 #[allow(clippy::type_complexity)]
-fn fall_out_of_map(
+pub(crate) fn fall_out_of_map(
     kill: Option<Res<KillHeight>>,
     mut characters: Query<
         (
@@ -262,8 +261,9 @@ pub struct MapPart;
 
 impl MapPlugin {
     /// The map's registration before the sound plugin's: `MapPlugin` is
-    /// built in `crate::map_plugin`, which adds `crate::audio` between
-    /// this and `build_rest`, in the order it always had.
+    /// built in `crate::map_plugin`, which adds `crate::audio`, then the
+    /// systems of map and `crate::render` (in the order they always had),
+    /// then spawns the map at startup with render's drawer (`spawn_map`).
     pub(crate) fn build_first(&self, app: &mut App) {
         if let Some(data) = &self.data {
             app.insert_resource(PendingMap(data.clone(), self.view))
@@ -273,200 +273,6 @@ impl MapPlugin {
         placed_ragdoll::plugin(app);
         app.add_plugins(light_styles::LightStylesPlugin);
         app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin, monitor::MonitorPlugin));
-    }
-
-    /// The map's registration after the sound plugin's (`build_first`).
-    pub(crate) fn build_rest(&self, app: &mut App) {
-        app.init_resource::<ShowLocalBody>()
-            .init_resource::<vis::NoVis>()
-            .init_resource::<vis::PortalsOpenAll>()
-            .init_resource::<vis::Occlusion>()
-            .init_resource::<sky_occluder::SkyOcclusion>()
-            .init_resource::<vis::VisStats>()
-            .add_message::<decal::PlaceDecal>()
-            .add_message::<decal::ClearDecals>()
-            .init_resource::<decal::DecalSettings>()
-            .add_message::<ViewModelEvent>()
-            .add_message::<SpawnGibs>()
-            .add_message::<breakables::BreakProp>()
-            .add_message::<prop_physics::PropAwakened>()
-            .add_message::<GlassShatter>()
-            .add_message::<emitters::TeslaSpark>()
-            .add_message::<emitters::BeamStrike>()
-            .add_message::<emitters::MuzzleFlashFire>()
-            .add_message::<ViewKick>()
-            .add_message::<GlassImpact>()
-            .add_message::<breakables::FallingPane>()
-            .add_message::<CollisionStart>()
-            .init_resource::<particles::Particles>()
-            .configure_sets(Update, particles::ParticleSet::Step.before(particles::ParticleSet::Draw))
-            .init_resource::<tracer::MuzzleCache>()
-            .init_resource::<tracer::PendingTracers>()
-            .add_message::<tracer::Tracer>()
-            .insert_resource(GlobalAmbientLight {
-                brightness: 600.0,
-                // Baked lighting already includes the map's ambient light.
-                affects_lightmapped_meshes: false,
-                ..default()
-            })
-            .add_systems(Startup, spawn_map.run_if(resource_exists::<PendingMap>))
-            .add_systems(
-                FixedUpdate,
-                (attach_hitboxes, ragdoll::record_poses, pose_hitboxes)
-                    .chain()
-                    .before(crate::core::SimSet::Movement),
-            )
-            .add_systems(FixedUpdate, fall_out_of_map.after(crate::core::SimSet::Movement))
-            .add_systems(FixedLast, pose_sim_hitboxes.in_set(SimPose))
-            .add_systems(
-                FixedUpdate,
-                breakables::round_restart
-                    .after(crate::core::SimSet::Rules)
-                    .before(crate::core::SimSet::Movement),
-            )
-            .add_systems(FixedPostUpdate, breakables::update_panes)
-            .add_systems(FixedPostUpdate, prop_physics::wake_on_contact.after(PhysicsSystems::Writeback))
-            // Moving water follows its brush entity (before movement and
-            // buoyancy read it).
-            .add_systems(FixedUpdate, water::move_water.before(crate::core::SimSet::Movement))
-            // What the logic switches: sprites and dust, lights, prop
-            // skins, bodies and sequences.
-            .add_systems(
-                Update,
-                (
-                    switch_parts
-                        .before(glow_visibility)
-                        .before(dust::update_dust)
-                        .before(steam::update_steam),
-                    (light_styles::relight, light_styles::animate).chain(),
-                    apply_prop_looks,
-                    animate_props,
-                    beams::follow_eye.after(switch_parts).before(glow_visibility),
-                    beams::animate_beams.after(switch_parts),
-                    rope_sway::sway_ropes,
-                ),
-            )
-            .add_systems(
-                Update,
-                (
-                    breakables::break_props,
-                    breakables::fall_panes,
-                    breakables::spawn_gibs,
-                    breakables::fly_gibs,
-                )
-                    .chain(),
-            )
-            .add_systems(
-                FixedPostUpdate,
-                breakables::shatter_pane_pieces.after(PhysicsSystems::Writeback),
-            )
-            // Before the physics step reads it (headless too).
-            .add_systems(FixedUpdate, loose::attach_loose.before(crate::core::SimSet::Movement))
-            .add_systems(
-                Update,
-                (
-                    attach_sky,
-                    glow_visibility,
-                    dust::update_dust,
-                    steam::update_steam,
-                    (
-                        tracer::draw_tracers,
-                        particles::step_particles.in_set(particles::ParticleSet::Step),
-                        (
-                            emitters::update_trails,
-                            emitters::update_smokestacks,
-                            emitters::update_teslas,
-                            emitters::update_strikes,
-                            color_correction::update,
-                            emitters::update_embers,
-                            emitters::update_muzzle_flashes,
-                            fish::swim,
-                            psys::update_systems,
-                        )
-                            .after(particles::ParticleSet::Step)
-                            .before(particles::ParticleSet::Draw),
-                        particles::draw_particles
-                            .run_if(
-                                resource_exists::<Assets<Mesh>>
-                                    .and_then(resource_exists::<Assets<particles::ParticleDrawMaterial>>),
-                            )
-                            .in_set(particles::ParticleSet::Draw),
-                    )
-                        .chain(),
-                    show_skybox_in_place,
-                    (decal::place_decals, decal::drop_brush_decals, decal::clear_decals).chain(),
-                    (
-                        attach_bodies,
-                        show_local_body,
-                        turn_bodies.after(DriveAnimation),
-                        pose_bodies.after(DriveAnimation),
-                        attach_held,
-                        probe_lit::relight,
-                        loose::attach_shown,
-                    )
-                        .run_if(resource_exists::<CharacterBodies>),
-                    (view_model::draw_view_models, view_model::view_model_screens)
-                        .chain()
-                        .after(DriveAnimation)
-                        .run_if(resource_exists::<view_model::ViewModelAssets>),
-                    (
-                        view_model::muzzle_flashes,
-                        view_model::size_flash_sprites,
-                        view_model::age_effects,
-                        shells::eject,
-                        shells::fly,
-                    )
-                        .chain()
-                        .after(DriveAnimation)
-                        .after(view_model::draw_view_models),
-                ),
-            )
-            .add_systems(
-                PostUpdate,
-                (
-                    shadows::apply_shadow_detail,
-                    update_prop_shadows,
-                    shadows::update_character_blobs,
-                )
-                    .chain()
-                    .run_if(resource_exists::<Assets<Mesh>>.and_then(resource_exists::<Assets<Image>>))
-                    .after(bevy::transform::TransformSystems::Propagate)
-                    // A rewritten shadow mesh is announced this frame:
-                    // announced a frame late, the render world (which
-                    // takes a RENDER_WORLD-only mesh's data) took the
-                    // rewrite on an earlier announcement and then found the
-                    // late one empty ("cannot be extracted: already
-                    // extracted", logged each time a moving prop stopped).
-                    .before(bevy::asset::AssetEventSystems),
-            )
-            .add_systems(
-                PostUpdate,
-                // Props' levels of detail from where the eye is this frame.
-                lod::switch_lods.after(bevy::transform::TransformSystems::Propagate),
-            )
-            .add_systems(
-                PostUpdate,
-                // After propagation, so it sees this frame's (interpolated)
-                // eye rather than the last physics tick's; before frusta.
-                follow_sky_camera
-                    .after(bevy::transform::TransformSystems::Propagate)
-                    .before(bevy::camera::visibility::VisibilitySystems::UpdateFrusta),
-            )
-            .add_systems(
-                PostUpdate,
-                // From this frame's camera, before visibility propagates.
-                (
-                    tint::apply_brush_tints,
-                    tint::apply_character_looks,
-                    merge::sync_merged_brushes,
-                    tag_moved_brush_entities,
-                    vis::cull,
-                    vis::fade_windows,
-                )
-                    .chain()
-                    .after(bevy::transform::TransformSystems::Propagate)
-                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
-            );
     }
 }
 
@@ -520,7 +326,7 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<psys::ParticleSystemDefs>();
     world.remove_resource::<ScreenOverlayImages>();
     world.remove_resource::<monitor::MonitorScreen>();
-    world.insert_resource(monitor::MonitorCamera::default());
+    world.insert_resource(MonitorCamera::default());
     if let Some(mut p) = world.get_resource_mut::<particles::Particles>() {
         p.groups.clear();
     }
@@ -562,17 +368,23 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<fog::SceneFog>();
     world.remove_resource::<MapTerrain>();
     world.insert_resource(Gravity::default());
-    let hooks = world.get_resource::<MapUnloadHooks>().map(|h| h.0.clone()).unwrap_or_default();
+    let hooks = world.get_resource::<MapHooks>().map(|h| h.unload.clone()).unwrap_or_default();
     for hook in hooks {
         hook(world);
     }
 }
 
-/// What layers above the map reset when a map is unloaded: `unload_map`
-/// runs them last, in the order they were added (`crate::audio` stops
-/// the soundscape and the long-lived sounds).
+/// What the layers above the map add to loading and unloading maps.
 #[derive(Resource, Default)]
-pub struct MapUnloadHooks(pub Vec<fn(&mut World)>);
+pub struct MapHooks {
+    /// What they reset when a map is unloaded: `unload_map` runs them
+    /// last, in the order they were added (`crate::audio` stops the
+    /// soundscape and the long-lived sounds).
+    pub unload: Vec<fn(&mut World)>,
+    /// Spawns the pending map (`spawn_map` with the drawer
+    /// `crate::map_plugin` picks), for `change_map`.
+    pub spawn: Option<fn(&mut World)>,
+}
 
 /// Replace the loaded map with `data` (spawned now, as at startup).
 pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
@@ -580,8 +392,9 @@ pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
     let data = Arc::new(data);
     world.insert_resource(ActiveMapLook(data.look.clone()));
     world.insert_resource(PendingMap(data, view));
-    if let Err(e) = world.run_system_cached(spawn_map) {
-        error!("spawning the map: {e}");
+    match world.get_resource::<MapHooks>().and_then(|h| h.spawn) {
+        Some(spawn) => spawn(world),
+        None => error!("spawning the map: no map spawner (MapPlugin missing)"),
     }
 }
 
@@ -597,9 +410,9 @@ pub struct BrushEntityBounds {
 /// Brush entities that moved (and every one on its first frame): the
 /// clusters their world bounds touch, for visibility culling. A door or
 /// breakable is then hidden like the world around it.
-fn tag_moved_brush_entities(
+pub(crate) fn tag_moved_brush_entities(
     vis: Option<Res<vis::ActiveVisibility>>,
-    mut nodes: Query<(&GlobalTransform, &BrushEntityBounds, &mut vis::VisClusters), Changed<GlobalTransform>>,
+    mut nodes: Query<(&GlobalTransform, &BrushEntityBounds, &mut VisClusters), Changed<GlobalTransform>>,
 ) {
     let Some(vis) = vis else { return };
     let mut clusters = Vec::new();
@@ -629,8 +442,8 @@ fn tag_moved_brush_entities(
 /// occlusion proxy is visible.
 #[derive(Component)]
 pub(crate) struct GlowSprite {
-    color: Vec4,
-    proxy: f32,
+    pub(crate) color: Vec4,
+    pub(crate) proxy: f32,
 }
 
 /// Glow visibility (specs/cs_source/sprites_dust.md, 5a): the game measures
@@ -639,7 +452,7 @@ pub(crate) struct GlowSprite {
 /// approximate it with lines to the square's centre and corners, and fade
 /// the glow by the fraction that get through. Static props don't occlude.
 #[allow(clippy::type_complexity)]
-fn glow_visibility(
+pub(crate) fn glow_visibility(
     query: SpatialQuery,
     cameras: Query<(&GlobalTransform, &Camera), (With<Camera3d>, Without<monitor::ScreenCamera>, Without<SkyboxCamera>, Without<ViewModelCamera>, Without<water::WaterReflectionCamera>)>,
     ignored: Query<Entity, With<crate::core::Intent>>,
@@ -649,9 +462,9 @@ fn glow_visibility(
             &GlowSprite,
             &MeshMaterial3d<SpriteMaterial>,
             &mut Visibility,
-            Option<&vis::VisClusters>,
+            Option<&VisClusters>,
         ),
-        Without<vis::LogicHidden>,
+        Without<LogicHidden>,
     >,
     materials: Option<ResMut<Assets<SpriteMaterial>>>,
 ) {

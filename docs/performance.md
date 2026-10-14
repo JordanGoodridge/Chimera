@@ -943,7 +943,10 @@ What changed:
 Result, the same box and similar load (32 at the start, 10 at the end):
 **1,009 s wall** (-44%), heavy tests summing to 3,457 s, swap not
 growing (at least 2.8 GB available throughout; the 2-slot run before
-touched 69 MB with the other agents' builds). The slowest tests left:
+touched 69 MB with the other agents' builds). Again after merging main's
+render move (1,541 tests, load 16 at the start, 5 at the end): 896 s,
+heavy tests summing to 3,035 s, at least 4 GB available. The slowest
+tests left:
 the network soak (178-266 s by load; one run of map changes, not
 splittable), `kz_bhop_izanami` (84-161 s) and `kz_bhop_skodna` (60-129
 s), `map_flows::jacks_every_game_keeps_players_in_the_map` (54-104 s),

@@ -141,13 +141,13 @@ pub fn bounce_volume(vz: f32, physics: &MapShellPhysics) -> f32 {
 
 /// Shell models ready to draw, and how they move.
 #[derive(Resource)]
-pub(super) struct ShellAssets {
+pub(crate) struct ShellAssets {
     models: HashMap<String, (Vec<(Handle<Mesh>, Handle<PropMaterial>)>, Option<String>)>,
     physics: MapShellPhysics,
     light_scale: f32,
 }
 
-pub(super) fn build_assets(
+pub(crate) fn build_assets(
     data: &MapData,
     textures: &[Handle<Image>],
     view: MapDebugView,
@@ -181,7 +181,7 @@ pub(super) fn build_assets(
 
 /// A drawn shell.
 #[derive(Component)]
-pub(super) struct Shell {
+pub(crate) struct Shell {
     state: ShellState,
     bounce: Option<String>,
     materials: Vec<Handle<PropMaterial>>,
@@ -204,7 +204,7 @@ fn projection_of(
 
 /// Throw shells for the first-person view model's brass events.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub(super) fn eject(
+pub(crate) fn eject(
     mut events: MessageReader<ViewModelEvent>,
     assets: Option<Res<ShellAssets>>,
     effects: Option<Res<EffectSettings>>,
@@ -340,7 +340,7 @@ pub(super) fn eject(
 /// Move shells, bounce them off the world, place them for drawing and fade
 /// them out.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub(super) fn fly(
+pub(crate) fn fly(
     time: Res<Time>,
     assets: Option<Res<ShellAssets>>,
     sounds: Option<Res<SoundBank>>,
@@ -426,7 +426,7 @@ pub(super) fn fly(
 }
 
 /// Remove shells (map unload).
-pub(super) fn unload(world: &mut World) {
+pub(crate) fn unload(world: &mut World) {
     world.remove_resource::<ShellAssets>();
     let shells: Vec<Entity> = world.query_filtered::<Entity, With<Shell>>().iter(world).collect();
     for s in shells {

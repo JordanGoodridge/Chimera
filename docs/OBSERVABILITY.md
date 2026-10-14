@@ -867,7 +867,7 @@ Details and baseline numbers: [performance.md](performance.md).
   draws every brush entity from its own meshes (no merged combined
   meshes, `map::merge`).
 - `mashup_skyocclude 1` makes sky faces hide what lies behind them even
-  in the view's PVS (`map::sky_occluder`; off by default, unchecked
+  in the view's PVS (`render::sky_occluder`; off by default, unchecked
   against CS:S). Where something shows through the sky, the remote
   protocol (section 3) finds it: query meshes with a non-zero
   `ViewVisibility` and their parents' `Name` (mg_creative's were placed

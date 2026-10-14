@@ -30,30 +30,14 @@ use bevy::{
     render::render_resource::TextureFormat,
 };
 
+use super::{MonitorCamera, MonitorFog};
+
 /// The monitor screen's size, pixels.
 pub const SCREEN_SIZE: u32 = 512;
 
 /// The render target monitors show.
 #[derive(Resource, Clone, Debug)]
 pub struct MonitorScreen(pub Handle<Image>);
-
-/// Where the active monitor camera is (engine space, looking down -Z) and
-/// its vertical field of view (degrees); None: no monitor shows anything.
-/// With it, its fog (None: none).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
-pub struct MonitorCamera(pub Option<(Vec3, Quat, f32)>, pub Option<MonitorFog>);
-
-/// A point_camera's own fog (public entity docs): on or off, colour (sRGB
-/// 0-1), start and end (meters here; the logic gives entity units) and max
-/// density.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MonitorFog {
-    pub enabled: bool,
-    pub color: [f32; 3],
-    pub start: f32,
-    pub end: f32,
-    pub max_density: f32,
-}
 
 /// `DistanceFog::directional_light_exponent` marking a view's fog as
 /// Source fog for the map's shaders (`fog.wgsl`): its colour alpha 1 when

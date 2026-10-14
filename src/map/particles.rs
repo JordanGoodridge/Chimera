@@ -38,7 +38,7 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use super::{MapPart, SkyboxCamera, ViewModelCamera};
+use super::{MapPart, ParticleRng, SkyboxCamera, ViewModelCamera};
 
 /// How a particle material is drawn.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -480,42 +480,6 @@ pub fn probe_planes(
     planes
 }
 
-/// Random numbers for the particle rules (xorshift).
-#[derive(Clone, Debug)]
-pub struct ParticleRng(u64);
-
-impl ParticleRng {
-    pub fn new(seed: u64) -> Self {
-        Self(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1)
-    }
-
-    /// Uniform in 0..1.
-    pub fn random(&mut self) -> f32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        (self.0 >> 40) as f32 / (1u64 << 24) as f32
-    }
-
-    /// Uniform float in a..b.
-    pub fn float(&mut self, a: f32, b: f32) -> f32 {
-        a + (b - a) * self.random()
-    }
-
-    /// Uniform integer in a..=b.
-    pub fn int(&mut self, a: i32, b: i32) -> i32 {
-        if b <= a {
-            return a;
-        }
-        (a + (self.random() * (b - a + 1) as f32) as i32).min(b)
-    }
-
-    /// Three independent draws in a..b.
-    pub fn vec3(&mut self, a: f32, b: f32) -> Vec3 {
-        Vec3::new(self.float(a, b), self.float(a, b), self.float(a, b))
-    }
-}
-
 /// Every live particle group. Games add groups; the map steps and draws
 /// them each rendered frame.
 #[derive(Resource, Debug)]
@@ -750,7 +714,7 @@ impl Plugin for ParticleMaterialPlugin {
 
 /// The meshes particles are drawn with: one entity per material.
 #[derive(Resource)]
-pub(super) struct ParticleAssets {
+pub(crate) struct ParticleAssets {
     data: MapParticles,
     textures: Vec<Handle<Image>>,
     /// (Material index, in the 3D skybox) -> (mesh entity, mesh, whether
@@ -761,7 +725,7 @@ pub(super) struct ParticleAssets {
 }
 
 impl ParticleAssets {
-    pub(super) fn new(data: MapParticles, textures: Vec<Handle<Image>>) -> Self {
+    pub(crate) fn new(data: MapParticles, textures: Vec<Handle<Image>>) -> Self {
         Self {
             data,
             textures,
@@ -794,7 +758,7 @@ impl WorldTrace for WorldTracer<'_, '_> {
 }
 
 /// Step the pool by the frame time against the world.
-pub(super) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, world: WorldTracer) {
+pub(crate) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, world: WorldTracer) {
     if particles.groups.is_empty() {
         return;
     }
@@ -803,7 +767,7 @@ pub(super) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, 
 
 /// Rebuild the particle meshes for the camera.
 #[allow(clippy::type_complexity)]
-pub(super) fn draw_particles(
+pub(crate) fn draw_particles(
     particles: Res<Particles>,
     assets: Option<ResMut<ParticleAssets>>,
     cameras: Query<

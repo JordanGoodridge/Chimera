@@ -725,15 +725,15 @@ impl Plugin for VideoPlugin {
             "Ropes sway in the wind while the camera is within this many units of them (0: never).",
             |w| &mut w.dist,
         );
-        app.init_resource::<crate::map::lod::ModelSettings>();
-        resource_cvar::<crate::map::lod::ModelSettings, u8>(
+        app.init_resource::<crate::render::lod::ModelSettings>();
+        resource_cvar::<crate::render::lod::ModelSettings, u8>(
             app,
             "r_rootlod",
             "Model detail: the finest level of detail models draw, 0 high, 1 medium, 2 low (models with fewer \
              levels draw their coarsest). Applies at once.",
             |s| &mut s.root_lod,
         );
-        resource_cvar::<crate::map::lod::ModelSettings, i32>(
+        resource_cvar::<crate::render::lod::ModelSettings, i32>(
             app,
             "r_lod",
             "-1: models draw the level of detail their size on screen asks for; n: always level n.",

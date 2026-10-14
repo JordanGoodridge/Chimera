@@ -22,6 +22,7 @@ pub mod mount;
 pub mod movement;
 pub mod net;
 pub mod objectives;
+pub mod render;
 pub mod rules;
 pub mod slots;
 pub mod weapon;

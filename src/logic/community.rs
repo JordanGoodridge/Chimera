@@ -11,12 +11,12 @@
 //! `client::senses`), env_shooter (Shoot: its model as gibs, `Effect::Gibs`),
 //! point_push (physics bodies and players pushed each tick while enabled),
 //! env_texturetoggle (its target brushes' `texture_frame`, drawn through
-//! `map::tint::BrushTint`), env_screenoverlay (its overlays in turn on every
+//! `map::BrushTint`), env_screenoverlay (its overlays in turn on every
 //! screen, `HudShow::Overlay`), env_viewpunch (`Effect::ViewPunch`: the weapon
 //! layer adds it to the view punch through `map::ViewKick`), env_muzzleflash
 //! (`Effect::MuzzleFlash`), point_camera (on/off, field of view;
 //! `LogicWorld::monitor_camera`, the camera a shown func_monitor names, written
-//! to `map::monitor::MonitorCamera`); momentary_rot_button and func_rot_button
+//! to `map::MonitorCamera`); momentary_rot_button and func_rot_button
 //! are in `movers.rs`, func_tanktrain is a func_tracktrain, func_monitor a
 //! func_brush.
 //!
@@ -49,7 +49,7 @@
 //! SetPositionImmediately fires nothing, nothing at spawn (so surf_boreas's
 //! decorative spinners, which only restart themselves from OnFullyClosed, stay
 //! still), and players can't turn it with +use. Render inputs
-//! (`map::tint::RenderLook`): Color, Alpha and AddOutput
+//! (`map::RenderLook`): Color, Alpha and AddOutput
 //! rendercolor/renderamt/rendermode draw on brush entities with a node and on
 //! players' bodies and held models; baked brush entities draw their spawn
 //! render mode only (no colour); renderfx (pulses, flicker, hologram) is kept
@@ -307,7 +307,7 @@ impl LogicWorld {
     /// settings (public point_camera docs: fogEnable, fogColor, fogStart,
     /// fogEnd, fogMaxDensity; defaults off, black, 2048, 4096, 1), not the
     /// map's. Distances in entity units.
-    pub fn monitor_fog(&self) -> Option<crate::map::monitor::MonitorFog> {
+    pub fn monitor_fog(&self) -> Option<crate::map::MonitorFog> {
         let c = self.get(self.active_monitor_camera()?)?;
         let num = |k: &str, d: f32| c.kv(k).map_or(d, super::value::atof);
         let mut color = [0.0f32; 3];
@@ -317,7 +317,7 @@ impl LogicWorld {
         {
             *slot = (super::value::atof(v) / 255.0).clamp(0.0, 1.0);
         }
-        Some(crate::map::monitor::MonitorFog {
+        Some(crate::map::MonitorFog {
             enabled: c.kv("fogEnable").is_some_and(|v| super::value::atoi(v) != 0),
             color,
             start: num("fogStart", 2048.0),

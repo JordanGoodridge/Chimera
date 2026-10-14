@@ -66,7 +66,7 @@ pub fn heading(dir: Vec3) -> Quat {
 }
 
 /// Fish swim to their targets and pick new ones.
-pub(super) fn swim(
+pub(crate) fn swim(
     time: Res<Time>,
     water: Option<Res<crate::core::MapWater>>,
     mut fish: Query<(&mut Fish, &mut Transform)>,

@@ -212,7 +212,7 @@ impl SteamEmitter {
 /// Step every jet and rebuild its mesh: rolled camera-facing quads, far to
 /// near. A jet out of view (hidden by `vis`) neither emits nor moves.
 #[allow(clippy::type_complexity)]
-pub(super) fn update_steam(
+pub(crate) fn update_steam(
     time: Res<Time>,
     cameras: Query<
         &GlobalTransform,

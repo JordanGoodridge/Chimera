@@ -67,7 +67,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`src/map/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`src/games/cs_source/props.rs`)
-- map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`src/map/lod.rs`)
+- map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`src/map/shadows.rs`)
 - map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
 - map: Decal reach, orientation and infodecal probes inferred, not specced (`src/map/decal.rs`)
@@ -108,8 +108,8 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Smoke stacks (`map::emitters`, specs/source/particles_and_smoke.md 3): env_particlelight isn't read (no map uses one), the JetLength/Speed/Rate/SpreadSpeed inputs are kept as placed, the material's own lighting isn't applied (the colour is rendercolor). OK for now: No map seen changes them.
 - map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`src/map/buoyancy.rs`)
 - map, logic: Classes from the public entity docs only (func_water_analog, func_tanktrain, monitors, emitters...) (`src/logic/community.rs`)
-- map, logic: Beams: placed ends only, noise and scroll by the spec's quirks, some inputs ignored (`src/map/beams.rs`)
+- map, logic: Beams: placed ends only, noise and scroll by the spec's quirks, some inputs ignored (`src/render/beams.rs`)
 - weapon, map: Entities parented to a placed weapon: the weapon's pose is its owner's feet; riders have no collision (`src/logic/anchors.rs`)
-- map: Detail props' shapes and sway are our readings, unmeasured (`src/map/detail.rs`)
+- map: Detail props' shapes and sway are our readings, unmeasured (`src/render/detail.rs`)
 - bot, weapon: Bot buying rules are ours (`src/bot/buy.rs`)
 - bot: Bots on maps without a nav mesh step aside and wait (`src/bot/aside.rs`)

@@ -19,10 +19,10 @@ use bevy::prelude::*;
 use crate::{
     core::MapWater,
     map::{
+        ParticleRng,
         fire::MapFires,
         particles::{
-            Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, ParticleRng, ParticleSet, Particles,
-            Ramp,
+            Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, ParticleSet, Particles, Ramp,
         },
     },
 };

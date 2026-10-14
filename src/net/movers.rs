@@ -40,8 +40,7 @@ use crate::{
     core::{MovementState, MovingSolid, NetRole, SimClock, SimSet},
     logic::{CarriedMover, Logic, brush_to_engine, carry_player, classes::Class, movers::pusher, mover_brushes_at},
     map::{
-        MapBrushEntity, MapEntities,
-        tint::BrushTint,
+        BrushTint, MapBrushEntity, MapEntities,
         entities::{entity_rotation, entity_to_engine, rotation_to_engine},
     },
 };
@@ -63,7 +62,7 @@ pub(super) fn plugin(app: &mut App) {
 }
 
 /// A client: a mover's render colour, alpha, mode and texture frame
-/// (`map::tint::BrushTint`, replicated with its `NetMover`) onto its own
+/// (`map::BrushTint`, replicated with its `NetMover`) onto its own
 /// copy of the node, which draws it.
 fn copy_tints(
     movers: Query<(&NetMover, &BrushTint), Changed<BrushTint>>,

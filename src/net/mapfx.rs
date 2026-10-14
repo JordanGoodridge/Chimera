@@ -1,8 +1,8 @@
 //! Map effects the server's logic sets off, for network clients to draw
 //! (they run no map logic): strike-generator env_beams' strikes
-//! (`map::emitters::BeamStrike`), point_tesla sparks
-//! (`map::emitters::TeslaSpark`) and env_spark bursts
-//! (`map::beams::SparkBurst`). Unreliable, like Source's temporary
+//! (`map::BeamStrike`), point_tesla sparks
+//! (`map::TeslaSpark`) and env_spark bursts
+//! (`map::SparkBurst`). Unreliable, like Source's temporary
 //! entities: a lost one is a missed flash.
 //!
 //! And map logic's sounds: its one-shots (`logic::LogicOneShot`, as
@@ -15,8 +15,8 @@
 //! Map effects for clients (they run no map logic): the server's
 //! strike-generator beam strikes, tesla sparks and env_spark bursts as `MapFx`
 //! (unreliable), written on a client as its map's own messages
-//! (`map::emitters::BeamStrike`, `TeslaSpark`, `map::beams::SparkBurst`).
-//! Players' and movers' render looks (`map::tint::RenderLook`, `BrushTint`) are
+//! (`map::BeamStrike`, `TeslaSpark`, `map::SparkBurst`).
+//! Players' and movers' render looks (`map::RenderLook`, `BrushTint`) are
 //! replicated components; a client's `movers::copy_tints` puts a mover's on its
 //! own node.
 
@@ -28,9 +28,8 @@ use crate::{
     core::NetRole,
     logic::LogicOneShot,
     map::{
-        MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, StartSound,
-        beams::SparkBurst,
-        emitters::{BeamStrike, TeslaSpark},
+        BeamStrike, MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, SparkBurst,
+        StartSound, TeslaSpark,
     },
 };
 

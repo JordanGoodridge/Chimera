@@ -16,14 +16,14 @@ pub(crate) struct SkyCameraInfo(pub(crate) MapSkyCamera);
 
 /// The map's sky visibility, when it has one (see `MapSkyVis`).
 #[derive(Resource)]
-pub(super) struct SkyVis(pub(super) MapSkyVis);
+pub(crate) struct SkyVis(pub(crate) MapSkyVis);
 
 /// The 3D skybox also exists where it was built, outside the playable area
 /// (as in Source, where you can noclip to it). Drawn there only while the
 /// camera is outside the playable area too: without the game's visibility
 /// data, that keeps it from floating in view from inside the map.
 #[allow(clippy::type_complexity)]
-pub(super) fn show_skybox_in_place(
+pub(crate) fn show_skybox_in_place(
     area: Option<Res<PlayableArea>>,
     cameras: Query<
         (&GlobalTransform, &Camera),
@@ -60,7 +60,7 @@ pub(super) fn show_skybox_in_place(
 
 /// Set when the map has a real 3D skybox (not just the 2D-sky camera).
 #[derive(Resource)]
-pub(super) struct ActiveMapHas3dSky;
+pub(crate) struct ActiveMapHas3dSky;
 
 /// Holds nothing: the sky camera's layer when only the 2D sky shows.
 pub(crate) const EMPTY_LAYER: usize = 31;
@@ -71,7 +71,7 @@ pub struct MapSkybox(pub Handle<Image>);
 
 /// Give every 3D camera the map's sky.
 #[allow(clippy::type_complexity)]
-pub(super) fn attach_sky(
+pub(crate) fn attach_sky(
     mut commands: Commands,
     sky: Option<Res<MapSkybox>>,
     sky_camera: Option<Res<SkyCameraInfo>>,
@@ -102,7 +102,7 @@ pub(super) fn attach_sky(
 
 /// Six faces into one cube texture. Faces narrower than tall or shorter
 /// than wide (Source sides are often half height) are stretched to square.
-pub(super) fn sky_image(sky: &MapSky, textures: &[MapTexture]) -> Image {
+pub(crate) fn sky_image(sky: &MapSky, textures: &[MapTexture]) -> Image {
     if let Some(faces) = sky.hdr.as_deref()
         && std::env::var_os("MASHUP_SKY_DEBUG").is_none()
     {
@@ -208,7 +208,7 @@ pub fn sky_seam_error(sky: &MapSky, textures: &[MapTexture], layer: usize) -> f3
 /// Which texel of a `w` x `h` sky face lands at (x, y) of a `size` cube
 /// face, the face's coordinates through its material's `transform`
 /// (clamped to the texture, as the sky samples it).
-pub(super) fn sky_texel(
+pub(crate) fn sky_texel(
     x: u32,
     y: u32,
     size: u32,
@@ -241,7 +241,7 @@ pub(super) fn sky_texel(
 }
 
 /// The HDR sky (`MapSky::hdr`) as a linear half-float cube map.
-pub(super) fn hdr_sky_image(sky: &MapSky, faces: &[MapHdrImage; 6]) -> Image {
+pub(crate) fn hdr_sky_image(sky: &MapSky, faces: &[MapHdrImage; 6]) -> Image {
     let size = faces.iter().map(|f| f.width.max(f.height)).max().unwrap_or(1).max(1);
     let mut data = Vec::with_capacity((size * size * 8 * 6) as usize);
     for ((face, (_, turns)), transform) in faces.iter().zip(sky.faces).zip(&sky.transforms) {
@@ -262,7 +262,7 @@ pub(super) fn hdr_sky_image(sky: &MapSky, faces: &[MapHdrImage; 6]) -> Image {
     sky_cube_image(size, data, TextureFormat::Rgba16Float)
 }
 
-pub(super) fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) -> Image {
+pub(crate) fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) -> Image {
     let mut image = Image::new(
         Extent3d {
             width: size,
@@ -284,11 +284,11 @@ pub(super) fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) ->
 
 /// World brushes are also drawn by water reflections (props and characters
 /// only when the reflection shows entities).
-pub(super) fn world_layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
+pub(crate) fn world_layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
     if skybox { layer_of(true) } else { water::world_layers() }
 }
 
-pub(super) fn layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
+pub(crate) fn layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
     bevy::camera::visibility::RenderLayers::layer(if skybox { SKYBOX_LAYER } else { 0 })
 }
 
@@ -296,7 +296,7 @@ pub(super) fn layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
 /// `origin + eye / scale`, same rotation, projection and render target. The
 /// main camera then draws the world over it without clearing.
 #[allow(clippy::type_complexity)]
-pub(super) fn follow_sky_camera(
+pub(crate) fn follow_sky_camera(
     mut commands: Commands,
     info: Option<Res<SkyCameraInfo>>,
     vis: Option<Res<SkyVis>>,

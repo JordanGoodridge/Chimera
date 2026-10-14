@@ -7,27 +7,27 @@ use super::*;
 /// Source LDR lightmaps (specs/cs_source/shaders.md): each linear value L is
 /// rounded to 1/1024, clamped to 4095/1024, stored as the 8-bit sRGB texel
 /// 0.5 L^(1/2.2), and multiplied back by 2^2.2 after the sampler's decode.
-pub(super) const SOURCE_LIGHTMAP_SCALE: f32 = 4.594_793;
+pub(crate) const SOURCE_LIGHTMAP_SCALE: f32 = 4.594_793;
 
 pub fn source_ldr_texel(l: f32) -> u8 {
     SOURCE_LDR.texel[source_ldr_level(l)]
 }
 
 /// The 1/1024 step a linear lightmap value is stored at (0-4095).
-pub(super) fn source_ldr_level(l: f32) -> usize {
+pub(crate) fn source_ldr_level(l: f32) -> usize {
     (l * 1024.0).round().clamp(0.0, 4095.0) as usize
 }
 
 /// Every level's encoding, worked out once: a `powf` per channel was most
 /// of the cost of relighting blocks of animated light styles.
-pub(super) struct SourceLdrTable {
+pub(crate) struct SourceLdrTable {
     /// The stored 8-bit value of each level.
-    pub(super) texel: [u8; 4096],
+    pub(crate) texel: [u8; 4096],
     /// Each level's 0.5 L^(1/2.2), before the 8-bit rounding.
-    pub(super) gamma: [f32; 4096],
+    pub(crate) gamma: [f32; 4096],
 }
 
-pub(super) static SOURCE_LDR: std::sync::LazyLock<SourceLdrTable> = std::sync::LazyLock::new(|| {
+pub(crate) static SOURCE_LDR: std::sync::LazyLock<SourceLdrTable> = std::sync::LazyLock::new(|| {
     let mut t = SourceLdrTable {
         texel: [0; 4096],
         gamma: [0.0; 4096],
@@ -87,7 +87,7 @@ pub fn source_ldr_bump_texels(flat: [f32; 3], pages: [[f32; 3]; 3]) -> [[u8; 3];
 
 /// A repeating, mipmapped GPU image. Mipmaps are box-filtered here; source
 /// files' own mip levels aren't used yet.
-pub(super) fn to_image(t: &MapTexture, look: &MapLook) -> Image {
+pub(crate) fn to_image(t: &MapTexture, look: &MapLook) -> Image {
     let mut data = t.rgba8.clone();
     let (mut w, mut h) = (t.width as usize, t.height as usize);
     let mut level = t.rgba8.clone();
@@ -156,7 +156,7 @@ pub(super) fn to_image(t: &MapTexture, look: &MapLook) -> Image {
 }
 
 /// Sample `image` clamped to its edges (pictures drawn once, not tiled).
-pub(super) fn clamp_edges(image: &mut Image) {
+pub(crate) fn clamp_edges(image: &mut Image) {
     if let ImageSampler::Descriptor(d) = &mut image.sampler {
         d.address_mode_u = ImageAddressMode::ClampToEdge;
         d.address_mode_v = ImageAddressMode::ClampToEdge;
@@ -221,12 +221,12 @@ pub fn cube_image(c: &MapCubemap) -> Image {
 /// A lighting atlas layer as a filterable half-float texture, clamped.
 /// A lighting atlas layer in Source's LDR encoding (see
 /// `SOURCE_LIGHTMAP_SCALE`): 8-bit sRGB, decoded by the sampler.
-pub(super) fn source_lightmap_image(rgb: &[[f32; 3]], width: u32, height: u32) -> Image {
+pub(crate) fn source_lightmap_image(rgb: &[[f32; 3]], width: u32, height: u32) -> Image {
     srgb8_image(light_styles::source_ldr_texels(rgb), width, height)
 }
 
 /// RGBA8 sRGB texels as a linearly filtered lightmap layer.
-pub(super) fn srgb8_image(data: Vec<u8>, width: u32, height: u32) -> Image {
+pub(crate) fn srgb8_image(data: Vec<u8>, width: u32, height: u32) -> Image {
     let mut image = Image::new(
         Extent3d {
             width,
@@ -245,14 +245,14 @@ pub(super) fn srgb8_image(data: Vec<u8>, width: u32, height: u32) -> Image {
 /// The lightmap atlas as images: the plain copy (Bevy's `Lightmap` on
 /// StandardMaterial parts), the world material's copy (in the game's own
 /// encoding when `source_ldr`) and its directional pages.
-pub(super) struct LightmapLayers {
-    pub(super) plain: Image,
-    pub(super) world: Image,
-    pub(super) bumped: Option<[Image; 3]>,
+pub(crate) struct LightmapLayers {
+    pub(crate) plain: Image,
+    pub(crate) world: Image,
+    pub(crate) bumped: Option<[Image; 3]>,
 }
 
 impl LightmapLayers {
-    pub(super) fn build(
+    pub(crate) fn build(
         rgb: &[[f32; 3]],
         bumped: Option<&[Vec<[f32; 3]>; 3]>,
         width: u32,
@@ -282,7 +282,7 @@ impl LightmapLayers {
     }
 }
 
-pub(super) fn lightmap_image(rgb: &[[f32; 3]], width: u32, height: u32) -> Image {
+pub(crate) fn lightmap_image(rgb: &[[f32; 3]], width: u32, height: u32) -> Image {
     let data = light_styles::f16_texels(rgb);
     let mut image = Image::new(
         Extent3d {

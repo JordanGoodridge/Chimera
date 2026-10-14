@@ -785,7 +785,7 @@ fn params(m: &MapWaterMaterial, frames: usize, fog: Option<&super::MapFog>) -> W
 /// Spawns the map's water surfaces (tops, and the downward faces drawn
 /// with their bottom material) and, when one reflects, the reflection camera.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn spawn_surfaces(
+pub(crate) fn spawn_surfaces(
     commands: &mut Commands,
     data: &super::MapData,
     root: Entity,
@@ -958,11 +958,11 @@ pub(super) fn spawn_surfaces(
                     e.insert((
                         MovingWaterSurface { min, max },
                         super::BrushEntityBounds { min, max },
-                        super::vis::VisClusters::new(Vec::new()),
+                        super::VisClusters::new(Vec::new()),
                     ));
                 }
                 if !clusters.is_empty() {
-                    e.insert(super::vis::VisClusters::new(clusters));
+                    e.insert(super::VisClusters::new(clusters));
                 }
             }
         }
@@ -1218,7 +1218,7 @@ pub fn update_water(
         &WaterSurface,
         &MeshMaterial3d<WaterMaterial>,
         &mut Visibility,
-        Option<&super::vis::VisClusters>,
+        Option<&super::VisClusters>,
     )>,
     mut materials: ResMut<Assets<WaterMaterial>>,
     view: Option<ResMut<WaterView>>,

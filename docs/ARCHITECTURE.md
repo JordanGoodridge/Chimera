@@ -43,10 +43,16 @@ it); map uses only core.
 
 Presentation sits beside the simulation, above `map`: `audio` (sound
 playback, live sounds, room DSP, soundscapes, hearing) uses core and map,
+and only `client` and `map_plugin` use it; `render` (drawing what the map
+spawns: the drawn phases of spawning a map, tints, detail sprites, sky
+occluders, beams, colour correction, levels of detail) uses core and map,
 and only `client` and `map_plugin` use it. `map_plugin` builds
-`map::MapPlugin` (the type stays in `map`) from map's systems and
-audio's, in one fixed order. Rendering and animation still live in `map`
-(docs/plans/active/engine-split.md, "Crates and compile time").
+`map::MapPlugin` (the type stays in `map`) from map's systems, audio's and
+render's, in one fixed order. Materials, culling, water, shadows,
+particles, decals, sprites, the sky and view models still live in `map`;
+animation evaluation stays on the simulation's side (the server poses
+hitboxes); see docs/plans/active/engine-split.md, "Crates and compile
+time").
 
 `metrics` (per-thread CPU time and hardware counters, distributions, the
 tick's measurements) uses no other module of ours; any layer may use it
@@ -83,10 +89,10 @@ that the paths exist).
 
 ### Map (neutral map data, spawning, drawing, effects)
 
-- `src/map/mod.rs`: `MapPlugin`, `unload_map`/`change_map`, the loaded map's resources, re-exports (map)
+- `src/map/mod.rs`: `MapPlugin`, `unload_map`/`change_map`, `MapHooks`, the loaded map's resources, re-exports (map)
 - `src/map/data.rs`: `MapData` and everything it holds; plain data (map)
-- `src/map/state.rs`: what the logic writes on spawned parts and the map applies (map)
-- `src/map/spawn.rs`: `spawn_map` in fixed phases (map)
+- `src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
+- `src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
 - `src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
 - `src/map/loading.rs`: how far a map load has come, for a loading screen (map)
 - `src/map/materials.rs`, `images.rs`, `collision.rs`, `sky.rs`: materials, images, colliders and the sky built from map data (map)
@@ -96,13 +102,11 @@ that the paths exist).
 - `src/map/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders (map)
 - `src/map/vis.rs`: visibility culling: PVS clusters, area portals, occluders, `LogicHidden` (map)
 - `src/map/merge.rs`: brush entities drawn merged while at their spawn pose (map)
-- `src/map/lod.rs`: props' levels of detail (map)
+- `src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
 - `src/map/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (map)
-- `src/map/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (map)
 - `src/map/light_styles.rs`: switchable and animated light styles at run time (map)
 - `src/map/probe_lit.rs`: moving models lit from the baked light field (map)
 - `src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
-- `src/map/tint.rs`: entities' render colour, alpha and mode; brush texture frames (map)
 - `src/map/interp.rs`: drawing between simulation ticks (map)
 - `src/map/bodies.rs`: character bodies, held models, hitboxes (map)
 - `src/map/props.rs`: placed props after spawning: looks, sequences, shadows (map)
@@ -118,14 +122,13 @@ that the paths exist).
 - `src/map/buoyancy.rs`: bodies in water float (map)
 - `src/map/copies.rs`: copies of map nodes made at run time (map)
 - `src/map/monitor.rs`: func_monitor screens and point_camera views (map)
-- `src/map/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (map)
 - `src/map/fish.rs`: func_fish_pool's fish (map)
-- `src/map/color_correction.rs`: color_correction volumes and their blended table (map)
+- `src/map/color_correction.rs`: color_correction entities as data (map)
 - `src/map/water.rs`, `water.wgsl`: water surfaces (map)
 - `src/map/particles.rs`: the CPU particle pool and its drawing (map)
 - `src/map/psys.rs`: data-driven particle systems (`.pcf` effects) (map)
 - `src/map/emitters.rs`: sprite trails, smoke stacks, tesla arcs, embers, muzzle flashes through the particle pool (map)
-- `src/map/beams.rs`, `beam.wgsl`: beams, glows and spark bursts (map)
+- `src/map/beams.rs`: beams and glows as data (map)
 - `src/map/steam.rs`: steam jets (map)
 - `src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
 - `src/map/tracer.rs`: bullet tracers (map)
@@ -136,7 +139,17 @@ that the paths exist).
 - `src/map/sound.rs`: the simulation's side of sounds (map)
 - `src/map/radio.rs`: a game's team radio data and chat line format (map)
 - `src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
-- `src/map_plugin.rs`: builds `map::MapPlugin` from map's and audio's systems (above map and audio)
+- `src/map_plugin.rs`: builds `map::MapPlugin` from map's, audio's and render's systems (above map, audio, render)
+
+### Render (presentation beside the simulation)
+
+- `src/render/mod.rs`, `src/render/spawn.rs`: the drawn phases of spawning a map (`MapAssets`, a `map::MapDrawer`) (render)
+- `src/render/tint.rs`: entities' render colour, alpha and mode; brush texture frames (render)
+- `src/render/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (render)
+- `src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
+- `src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
+- `src/render/color_correction.rs`: color_correction volumes blended into one table (render)
+- `src/render/lod.rs`: props' levels of detail as drawn (render)
 
 ### Audio (presentation beside the simulation)
 

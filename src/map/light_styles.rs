@@ -56,7 +56,7 @@ type Block = ([u32; 4], Vec<(usize, usize)>);
 /// The lightmap images of a map whose light styles change, and the
 /// brightness each style shows in them now.
 #[derive(Resource)]
-pub(super) struct StyledLightmaps {
+pub(crate) struct StyledLightmaps {
     pub atlas: Arc<MapLightmap>,
     pub source_ldr: bool,
     pub plain: Option<Handle<Image>>,
@@ -225,7 +225,7 @@ impl StyledLightmaps {
 }
 
 /// Texel bytes of the plain lightmap layer (`lightmap_image`'s format).
-pub(super) fn f16_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
+pub(crate) fn f16_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
     let mut data = Vec::with_capacity(rgb.len() * 8);
     for [r, g, b] in rgb {
         for c in [*r, *g, *b, 1.0] {
@@ -237,7 +237,7 @@ pub(super) fn f16_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
 
 /// Texel bytes of the world layer in Source's LDR encoding
 /// (`source_lightmap_image`'s format).
-pub(super) fn source_ldr_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
+pub(crate) fn source_ldr_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
     let mut data = Vec::with_capacity(rgb.len() * 4);
     for [r, g, b] in rgb {
         data.extend([source_ldr_texel(*r), source_ldr_texel(*g), source_ldr_texel(*b), 255]);
@@ -246,7 +246,7 @@ pub(super) fn source_ldr_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
 }
 
 /// Texel bytes of the three directional pages in Source's LDR encoding.
-pub(super) fn source_ldr_page_texels(flat: &[[f32; 3]], pages: &[Vec<[f32; 3]>; 3]) -> [Vec<u8>; 3] {
+pub(crate) fn source_ldr_page_texels(flat: &[[f32; 3]], pages: &[Vec<[f32; 3]>; 3]) -> [Vec<u8>; 3] {
     let mut texels: [Vec<u8>; 3] = std::array::from_fn(|_| Vec::with_capacity(flat.len() * 4));
     for (i, f) in flat.iter().enumerate() {
         let enc = source_ldr_bump_texels(*f, [pages[0][i], pages[1][i], pages[2][i]]);
@@ -261,7 +261,7 @@ pub(super) fn source_ldr_page_texels(flat: &[[f32; 3]], pages: &[Vec<[f32; 3]>; 
 /// (`LightStyles`): the atlas at map start, plus or minus each style
 /// switched since (Source lights' TurnOn/TurnOff), animated ones at the
 /// brightness they show now.
-pub(super) fn relight(
+pub(crate) fn relight(
     styles: Option<Res<LightStyles>>,
     maps: Option<ResMut<StyledLightmaps>>,
     images: Option<ResMut<Assets<Image>>>,
@@ -404,7 +404,7 @@ fn shelf_pack(sizes: &[(u32, u32)], width: u32) -> (Vec<(u32, u32)>, u32) {
 /// the blocks it lights (all styles sharing a block included), packed
 /// into `LightmapUploads`. Block states not seen before are worked out on
 /// the compute task pool and kept (`StyledLightmaps::states`).
-pub(super) fn animate(time: Res<Time>, maps: Option<ResMut<StyledLightmaps>>, mut uploads: ResMut<LightmapUploads>) {
+pub(crate) fn animate(time: Res<Time>, maps: Option<ResMut<StyledLightmaps>>, mut uploads: ResMut<LightmapUploads>) {
     // What the render world didn't take last frame (no renderer: headless)
     // is stale by now.
     uploads.bytes.clear();
@@ -593,7 +593,7 @@ fn encode(
 /// The render side: uploads move to the render world each frame and are
 /// copied into the images' textures once they are prepared. (Set up in
 /// `finish`: the map plugin may be added before the renderer.)
-pub(super) struct LightStylesPlugin;
+pub(crate) struct LightStylesPlugin;
 
 impl Plugin for LightStylesPlugin {
     fn build(&self, app: &mut App) {

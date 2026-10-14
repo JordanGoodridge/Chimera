@@ -10,7 +10,7 @@
 //! Covers: point_spotlight LightOn/LightOff, env_laser/env_beam on/off, damage
 //! every 0.1 s to the first player on the line and OnTouchedByEntity,
 //! env_spark's timing, sound and OnSpark (its sparks as
-//! `map::beams::SparkBurst`, which the game draws), strike-generator env_beams
+//! `map::SparkBurst`, which the game draws), strike-generator env_beams
 //! (4.2: first strike 1 s after spawn or on TurnOn, then every life +
 //! StrikeTime or a random part of it, StrikeOnce, random ends among a name's
 //! matches, walls within the radius without an end, the damage once per strike

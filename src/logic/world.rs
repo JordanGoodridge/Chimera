@@ -516,9 +516,9 @@ pub struct LogicEntity {
 }
 
 impl LogicEntity {
-    /// How it is drawn (`map::tint::RenderLook`).
-    pub fn render_look(&self) -> crate::map::tint::RenderLook {
-        crate::map::tint::RenderLook {
+    /// How it is drawn (`map::RenderLook`).
+    pub fn render_look(&self) -> crate::map::RenderLook {
+        crate::map::RenderLook {
             color: self.render_color,
             alpha: self.render_alpha,
             mode: self.render_mode,
@@ -648,7 +648,7 @@ pub struct LogicWorld {
     /// inputs, AddOutput rendermode/renderamt/rendercolor): invisibility
     /// power-ups, team colours. They keep it across rounds, as the game's
     /// player entities do.
-    pub player_looks: Vec<(Entity, crate::map::tint::RenderLook)>,
+    pub player_looks: Vec<(Entity, crate::map::RenderLook)>,
 }
 
 /// An env_global state.
@@ -1479,11 +1479,11 @@ impl LogicWorld {
     }
 
     /// Change how a player is drawn.
-    fn player_look(&mut self, p: Entity, f: impl FnOnce(&mut crate::map::tint::RenderLook)) {
+    fn player_look(&mut self, p: Entity, f: impl FnOnce(&mut crate::map::RenderLook)) {
         let i = match self.player_looks.iter().position(|(e, _)| *e == p) {
             Some(i) => i,
             None => {
-                self.player_looks.push((p, crate::map::tint::RenderLook::default()));
+                self.player_looks.push((p, crate::map::RenderLook::default()));
                 self.player_looks.len() - 1
             }
         };

@@ -12,7 +12,8 @@ use avian3d::dynamics::solver::islands::BodyIslandNode;
 use bevy::prelude::*;
 
 use super::merge::{MergedBrush, MergedPiece};
-use super::vis::{FadeDistance, Occludee, VisClusters};
+use super::VisClusters;
+use super::vis::{FadeDistance, Occludee};
 
 /// A node copied at run time.
 #[derive(Component, Clone, Copy, Debug)]

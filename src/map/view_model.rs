@@ -235,7 +235,7 @@ pub struct ViewModelCamera;
 
 /// The drawn view model under a `ViewModelCamera`.
 #[derive(Component)]
-pub(super) struct ViewModelBody {
+pub(crate) struct ViewModelBody {
     key: String,
     mirrored: bool,
     joints: Vec<Entity>,
@@ -247,13 +247,13 @@ pub(super) struct ViewModelBody {
 
 /// One drawable part of a view model: its mesh and its material drawn
 /// normally and mirrored (front faces culled).
-pub(super) struct ViewModelPart {
+pub(crate) struct ViewModelPart {
     mesh: Handle<Mesh>,
     materials: [Handle<PropMaterial>; 2],
     envmap: Option<MapEnvmap>,
 }
 
-pub(super) struct ViewModelAsset {
+pub(crate) struct ViewModelAsset {
     parts: Vec<ViewModelPart>,
     bindposes: Handle<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
     bones: Vec<MapBone>,
@@ -263,7 +263,7 @@ pub(super) struct ViewModelAsset {
 /// Meshes, materials and bind poses of each view model, by key, and what
 /// lights them.
 #[derive(Resource)]
-pub(super) struct ViewModelAssets {
+pub(crate) struct ViewModelAssets {
     models: HashMap<String, ViewModelAsset>,
     /// Cubemap samples (position, image) for `env_cubemap` reflections.
     cubemaps: Vec<(Vec3, Handle<Image>)>,
@@ -275,7 +275,7 @@ pub(super) struct ViewModelAssets {
 
 /// Build the view models' render assets.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn build_assets(
+pub(crate) fn build_assets(
     data: &MapData,
     textures: &[Handle<Image>],
     cubemaps: &[Handle<Image>],
@@ -444,7 +444,7 @@ fn camera_fov_43(projection: &Projection) -> Option<f32> {
 /// camera's target, order and tonemapping, and the shown view model under
 /// it; then place, pose and light it.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub(super) fn draw_view_models(
+pub(crate) fn draw_view_models(
     time: Res<Time>,
     assets: Res<ViewModelAssets>,
     settings: Option<Res<ViewModelSettings>>,
@@ -720,7 +720,7 @@ pub struct ViewModelScreen {
 
 /// The screen quad drawn on a view model body (on the body: the quad).
 #[derive(Component)]
-pub(super) struct ScreenQuad(Entity);
+pub(crate) struct ScreenQuad(Entity);
 
 /// The screen's corners on a view model: the bone they sit on, the lower
 /// corner's placement on it and the screen's size along its x and y axes
@@ -738,7 +738,7 @@ pub fn screen_corners(model: &MapViewModel) -> Option<(usize, Transform, Vec2)> 
 
 /// Draw `ViewModelScreen`s on the view model bodies showing them.
 #[allow(clippy::type_complexity)]
-pub(super) fn view_model_screens(
+pub(crate) fn view_model_screens(
     bodies: Query<(Entity, &ViewModelBody, &ChildOf, Option<&ScreenQuad>)>,
     cameras: Query<&ChildOf, With<ViewModelCamera>>,
     anchors: Query<(&ChildOf, Option<&ViewModelSource>), With<ViewModelAnchor>>,
@@ -831,7 +831,7 @@ pub struct DynamicLight {
 
 /// A flash sprite, removed after `life` seconds.
 #[derive(Component)]
-pub(super) struct FlashSprite {
+pub(crate) struct FlashSprite {
     life: f32,
     age: f32,
 }
@@ -839,19 +839,19 @@ pub(super) struct FlashSprite {
 /// Where a character's held weapon shoots from (its world model's muzzle
 /// attachment): a child of the held model.
 #[derive(Component)]
-pub(super) struct HeldMuzzle {
-    pub(super) owner: Entity,
+pub(crate) struct HeldMuzzle {
+    pub(crate) owner: Entity,
 }
 
 /// What muzzle flashes look like, ready to draw.
 #[derive(Resource)]
-pub(super) struct FlashAssets {
+pub(crate) struct FlashAssets {
     data: MapMuzzleFlash,
     mesh: Handle<Mesh>,
     material: Option<Handle<SpriteMaterial>>,
 }
 
-pub(super) fn build_flash_assets(
+pub(crate) fn build_flash_assets(
     data: &MapData,
     textures: &[Handle<Image>],
     meshes: &mut Assets<Mesh>,
@@ -885,7 +885,7 @@ pub(super) fn build_flash_assets(
 
 /// A small deterministic random source for effect variation.
 #[derive(Resource, Default)]
-pub(super) struct FlashDice(u32);
+pub(crate) struct FlashDice(u32);
 
 impl FlashDice {
     fn roll(&mut self) -> f32 {
@@ -907,7 +907,7 @@ impl FlashDice {
 /// effects"), else at the held weapon's muzzle; a sprite plume and a
 /// point light.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub(super) fn muzzle_flashes(
+pub(crate) fn muzzle_flashes(
     mut events: MessageReader<ViewModelEvent>,
     flash: Option<Res<FlashAssets>>,
     models: Option<Res<ViewModels>>,
@@ -1046,7 +1046,7 @@ pub(super) fn muzzle_flashes(
 /// A flash sprite's full size (meters); its material is shared, so the
 /// size is applied per entity by `size_flash_sprites`.
 #[derive(Component, Clone, Copy)]
-pub(super) struct FlashSize(f32);
+pub(crate) struct FlashSize(f32);
 
 /// Most muzzle-flash lights at once; more flashes reuse the oldest.
 const MAX_FLASH_LIGHTS: usize = 8;
@@ -1129,7 +1129,7 @@ fn spawn_flash_light(
 
 /// Shrink dynamic lights' radius to 0 over their life, then turn them off
 /// (kept for reuse); remove flash sprites after their life.
-pub(super) fn age_effects(
+pub(crate) fn age_effects(
     time: Res<Time>,
     mut lights: Query<(&mut DynamicLight, &mut PointLight)>,
     mut sprites: Query<(Entity, &mut FlashSprite)>,
@@ -1159,7 +1159,7 @@ pub(super) fn age_effects(
 
 /// Flash sprites share one material; give each its own size by a material
 /// per size bucket.
-pub(super) fn size_flash_sprites(
+pub(crate) fn size_flash_sprites(
     flash: Option<Res<FlashAssets>>,
     mut sprites: Query<(&FlashSize, &mut MeshMaterial3d<SpriteMaterial>), Added<FlashSize>>,
     mut materials: Option<ResMut<Assets<SpriteMaterial>>>,
@@ -1187,7 +1187,7 @@ pub(super) fn size_flash_sprites(
 }
 
 /// Remove drawn view models (map unload); the cameras stay.
-pub(super) fn unload(world: &mut World) {
+pub(crate) fn unload(world: &mut World) {
     world.remove_resource::<ViewModels>();
     world.remove_resource::<ViewModelAssets>();
     world.remove_resource::<FlashAssets>();

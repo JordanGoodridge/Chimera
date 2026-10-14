@@ -42,12 +42,12 @@ pub struct MuzzleCache(pub HashMap<Entity, (Vec3, f64)>);
 
 /// Tracers waiting a moment for this shot's muzzle flash.
 #[derive(Resource, Default)]
-pub(super) struct PendingTracers(Vec<(Tracer, f64)>);
+pub(crate) struct PendingTracers(Vec<(Tracer, f64)>);
 
 /// How long a tracer waits for its shot's muzzle flash, seconds.
 const WAIT: f64 = 0.05;
 
-pub(super) fn draw_tracers(
+pub(crate) fn draw_tracers(
     mut requests: MessageReader<Tracer>,
     mut pending: ResMut<PendingTracers>,
     muzzles: Res<MuzzleCache>,

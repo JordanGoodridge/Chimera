@@ -5,11 +5,11 @@
 //! opaque and alpha-tested meshes are drawn as part of a combined mesh
 //! per material and chunk (`MergedChunk`), and its own meshes
 //! (`MergedPiece`) stay hidden. When it moves, breaks, is removed or
-//! turned off by the logic (`vis::LogicHidden`), or shows broken panes
+//! turned off by the logic (`LogicHidden`), or shows broken panes
 //! (`BrushPanes`), its triangles leave the combined mesh and its own
 //! meshes are drawn again; when it is back as it started (a closed door,
 //! a round restart) it rejoins. A node with a render colour other than
-//! white (`tint::BrushTint`) draws its own meshes too. The node itself (collider, logic, culling,
+//! white (`BrushTint`) draws its own meshes too. The node itself (collider, logic, culling,
 //! decals) is unchanged either way.
 //!
 //! Brush entities drawn merged (any game): while a brush entity node is at its
@@ -36,7 +36,7 @@ use std::{collections::HashMap, ops::Range};
 use bevy::{mesh::Indices, prelude::*};
 
 use super::{
-    BrushPanes, MapMesh,
+    BrushPanes, LogicHidden, MapMesh, VisClusters,
     vis::{self, MapVisibility},
 };
 
@@ -67,7 +67,7 @@ pub struct MergedChunk {
 /// Whether a brush entity mesh may be drawn merged: in the world (not the
 /// 3D skybox, not water) and not blended (blended meshes are sorted one by
 /// one; merged, their order would change).
-pub(super) fn mergeable(m: &MapMesh) -> bool {
+pub(crate) fn mergeable(m: &MapMesh) -> bool {
     !m.skybox
         && m.water.is_none()
         && !matches!(m.alpha, super::MapAlpha::Blend | super::MapAlpha::Add)
@@ -77,20 +77,20 @@ pub(super) fn mergeable(m: &MapMesh) -> bool {
 
 /// Off with `MASHUP_MERGE_BRUSHES=0` (every brush entity draws its own
 /// meshes), for measurements.
-pub(super) fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     std::env::var("MASHUP_MERGE_BRUSHES").map_or(true, |v| v != "0")
 }
 
 /// Collects brush entity meshes into combined ones while the map spawns.
 /// `K` is the material (with whatever else must match to draw together).
-pub(super) struct Merger<K> {
+pub(crate) struct Merger<K> {
     size: f32,
     groups: Vec<(K, IVec3, MapMesh, Vec<(Entity, Range<usize>)>, Vec<(Vec3, Vec3)>)>,
     index: HashMap<(K, IVec3), usize>,
 }
 
 impl<K: Clone + Eq + std::hash::Hash> Merger<K> {
-    pub(super) fn new(size: f32) -> Self {
+    pub(crate) fn new(size: f32) -> Self {
         Self {
             size,
             groups: Vec::new(),
@@ -100,7 +100,7 @@ impl<K: Clone + Eq + std::hash::Hash> Merger<K> {
 
     /// Add node `node`'s mesh `m` (node space) placed at `home`, grouped
     /// by `key` and the chunk of the node's `centre` (world).
-    pub(super) fn add(&mut self, key: K, node: Entity, home: &Transform, centre: Vec3, m: &MapMesh) {
+    pub(crate) fn add(&mut self, key: K, node: Entity, home: &Transform, centre: Vec3, m: &MapMesh) {
         let cell = (centre / self.size).floor().as_ivec3();
         let i = *self.index.entry((key.clone(), cell)).or_insert_with(|| {
             let mut template = m.clone();
@@ -146,7 +146,7 @@ impl<K: Clone + Eq + std::hash::Hash> Merger<K> {
 
     /// The combined meshes: (key, mesh recentred, its centre, the nodes'
     /// index ranges, the clusters its parts touch).
-    pub(super) fn finish(
+    pub(crate) fn finish(
         self,
         vis: Option<&MapVisibility>,
     ) -> Vec<(K, MapMesh, Vec3, Vec<(Entity, Range<usize>)>, Vec<u32>)> {
@@ -181,22 +181,22 @@ fn at_home(t: &Transform, home: &Transform) -> bool {
 /// removed, broken panes) are drawn from their own meshes and their
 /// triangles leave the combined meshes; those back home rejoin.
 #[allow(clippy::type_complexity)]
-pub(super) fn sync_merged_brushes(
+pub(crate) fn sync_merged_brushes(
     mut nodes: Query<(
         &Transform,
-        Has<vis::LogicHidden>,
+        Has<LogicHidden>,
         Has<BrushPanes>,
         &mut MergedBrush,
         &Children,
-        Option<&super::tint::BrushTint>,
+        Option<&super::BrushTint>,
     )>,
     mut pieces: Query<&mut Visibility, (With<MergedPiece>, Without<MergedChunk>)>,
     mut chunks: Query<(
         &MergedChunk,
         &Mesh3d,
         &mut Visibility,
-        Option<&vis::VisClusters>,
-        Has<vis::LogicHidden>,
+        Option<&VisClusters>,
+        Has<LogicHidden>,
     )>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mut commands: Commands,
@@ -238,13 +238,13 @@ pub(super) fn sync_merged_brushes(
             // Nothing left to draw: hidden, its last indices kept (an
             // empty index buffer isn't worth a special case).
             if !was_hidden {
-                commands.entity(chunk).insert(vis::LogicHidden);
+                commands.entity(chunk).insert(LogicHidden);
             }
             visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
         if was_hidden {
-            commands.entity(chunk).remove::<vis::LogicHidden>();
+            commands.entity(chunk).remove::<LogicHidden>();
             let culled = clusters.is_some_and(|v| !v.potentially_visible);
             visibility.set_if_neq(if culled {
                 Visibility::Hidden

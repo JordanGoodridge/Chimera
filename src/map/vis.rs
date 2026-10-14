@@ -85,7 +85,7 @@
 
 use bevy::prelude::*;
 
-use super::MapMesh;
+use super::{AreaPortalStates, LogicHidden, MapMesh, OccluderStates, VisClusters};
 
 /// A map's visibility description, engine space (meters).
 #[derive(Clone, Debug, Default)]
@@ -490,20 +490,6 @@ fn union(a: ScreenRect, b: ScreenRect) -> ScreenRect {
     [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]
 }
 
-/// Areaportals map logic closed (by key); every other portal is open.
-/// Written by the logic (linked doors, Open/Close inputs), read by `cull`.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
-pub struct AreaPortalStates {
-    /// Sorted.
-    pub closed: Vec<u16>,
-}
-
-impl AreaPortalStates {
-    pub fn is_open(&self, key: u16) -> bool {
-        self.closed.binary_search(&key).is_err()
-    }
-}
-
 /// `r_portalsopenall`: 1 treats every areaportal as open and doesn't look
 /// through them (PVS culling only).
 #[derive(Resource, Default, Clone, Copy)]
@@ -521,14 +507,6 @@ pub struct Occluder {
     pub polygons: Vec<Vec<Vec3>>,
     /// Active at map start (Source: `StartActive`).
     pub start_active: bool,
-}
-
-/// Occluders map logic turned off (StartActive 0, Deactivate, Toggle):
-/// their keys, sorted; every other occluder is active. Without it each
-/// occluder's `start_active` holds.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
-pub struct OccluderStates {
-    pub inactive: Vec<u16>,
 }
 
 /// `r_occlusion`: 0 turns occluders off.
@@ -681,31 +659,6 @@ pub fn decompress_row(data: &[u8], cluster_count: usize) -> Vec<u64> {
     }
     row
 }
-
-/// Clusters a map part touches; it is drawn only while one of them is
-/// potentially visible from the camera's cluster. Entities without it are
-/// always drawn. The culling system owns their `Visibility` (except glow
-/// sprites and water surfaces, which read `potentially_visible`).
-#[derive(Component, Clone, Debug)]
-pub struct VisClusters {
-    pub clusters: Box<[u32]>,
-    pub potentially_visible: bool,
-}
-
-impl VisClusters {
-    pub fn new(clusters: Vec<u32>) -> Self {
-        Self {
-            clusters: clusters.into_boxed_slice(),
-            potentially_visible: true,
-        }
-    }
-}
-
-/// A map part game logic removed or turned off (a broken or killed prop):
-/// culling keeps it hidden. Whoever adds it hides the part; whoever
-/// removes it shows it again.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct LogicHidden;
 
 /// Hidden when the camera is farther than this from the entity's origin,
 /// meters (Source props' `fademaxdist`).

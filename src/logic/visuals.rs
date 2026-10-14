@@ -19,9 +19,9 @@
 //! `map::TonemapInputs`; func_areaportal/func_areaportalwindow: closed while a
 //! linked door is fully closed, else StartOpen and Open/Close/Toggle, as
 //! `LogicWorld::closed_area_portals`, which the bridge writes to
-//! `map::vis::AreaPortalStates`; func_occluder: StartActive and
+//! `map::AreaPortalStates`; func_occluder: StartActive and
 //! Activate/Deactivate/Toggle, as `LogicWorld::inactive_occluders`, written to
-//! `map::vis::OccluderStates`.
+//! `map::OccluderStates`.
 
 use bevy::math::Vec3;
 
