@@ -14,9 +14,26 @@
 //! `Shadowed` on its character; `ShadowContacts` keeps a shadow's pairs to
 //! `prop_physics` bodies it can push (up to 350 kg) and keeps a shadowed
 //! character's own pairs only to `prop_physics` bodies too heavy to push; the
-//! shadow is on `core::SHADOW_LAYER`, which no spatial query sees).
+//! shadow is on `core::SHADOW_LAYER`, which no spatial query sees);
+//! `settle_props`: a moving prop that keeps within 1 in and 5 degrees of
+//! one pose for 1 s is stopped and put to sleep (`Settling`), as Source's
+//! physics sleeps nearly still bodies.
+//!
+//! Known shortcuts (docs/tech-debt.md): The settle thresholds (1 in, 5
+//! degrees, 1 s) are ours: spec 3.5 leaves vphysics' sleep thresholds open.
+//! They stand in for a fix in the solver, which on uneven ground (a convex
+//! hull bridging two displacement triangles) puts back the energy its
+//! contacts take out, so such a prop rocks at speeds above avian's sleep
+//! threshold until `settle_props` stops it (up to about 3 s after a bullet
+//! push for de_dust2's oil drum 390). With avian's warm starting off it
+//! settles, but other props then misbehave (one flew off at 50 m/s). Why
+//! it's OK for now: the rocking is about a degree, and every de_dust2 prop
+//! sleeps within a few seconds of a push (tests/it/heavy/map_prop_settle.rs).
 
-use avian3d::prelude::*;
+use avian3d::{
+    dynamics::solver::islands::{BodyIslandNode, SleepBody},
+    prelude::*,
+};
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use super::{MapBrushCollider, MapPhysics, MapPropCollider, PhysicsProp};
@@ -265,4 +282,113 @@ impl ShadowContacts<'_, '_> {
 /// multiplayer one) up to `SHADOW_PUSH_MASS`.
 pub fn pushable(p: &PhysicsProp) -> bool {
     p.push == super::PushAway::Collide && p.mass <= SHADOW_PUSH_MASS
+}
+
+/// A moving physics prop that stays within `SETTLE_DISTANCE` and
+/// `SETTLE_ANGLE` of one pose for `SETTLE_TIME` is stopped and put to
+/// sleep (with its island), as Source's physics puts nearly still bodies
+/// to sleep (spec 3.5; its thresholds are inside vphysics, an open
+/// question, so these are ours). Avian's own sleep needs the speed below
+/// its threshold for half a second, which a prop rocking on uneven ground
+/// never gets: a de_dust2 oil drum knocked onto the crease between two
+/// displacement triangles (a flat one and one 3.7 degrees steeper) rocked
+/// by about 1.5 degrees at up to 0.5 rad/s forever, the solver putting
+/// back each tick the energy its contacts take out
+/// (tests/it/heavy/map_prop_settle.rs).
+pub const SETTLE_DISTANCE: f32 = 0.0254;
+/// See `SETTLE_DISTANCE`, radians.
+pub const SETTLE_ANGLE: f32 = 0.087;
+/// See `SETTLE_DISTANCE`, seconds.
+pub const SETTLE_TIME: f64 = 1.0;
+
+/// Where an awake physics prop has stayed since when (`settle_props`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Settling {
+    at: Vec3,
+    rotation: Quat,
+    since: f64,
+}
+
+/// After each physics step: props that kept still (`SETTLE_DISTANCE`)
+/// sleep. An island sleeps as a whole, so it waits for every prop in it
+/// to have kept still and every other body in it to be resting by avian's
+/// own measure. Their velocities are zeroed without marking them changed
+/// (a change wakes a sleeping body); a prop that sleeps (by this or by
+/// avian) forgets its pose, so one woken by a push starts its wait again.
+#[allow(clippy::type_complexity)]
+pub fn settle_props(
+    time: Res<Time>,
+    time_to_sleep: Res<TimeToSleep>,
+    mut props: Query<
+        (
+            Entity,
+            &RigidBody,
+            &Position,
+            &Rotation,
+            &BodyIslandNode,
+            &mut LinearVelocity,
+            &mut AngularVelocity,
+            Option<&mut Settling>,
+        ),
+        (With<PhysicsProp>, Without<Sleeping>),
+    >,
+    others: Query<(&RigidBody, &BodyIslandNode, &SleepTimer), (Without<PhysicsProp>, Without<Sleeping>)>,
+    asleep: Query<Entity, (With<Settling>, Or<(With<Sleeping>, Without<PhysicsProp>)>)>,
+    mut commands: Commands,
+    mut still: Local<Vec<(Entity, u32)>>,
+    mut moving: Local<bevy::platform::collections::HashSet<u32>>,
+) {
+    for e in &asleep {
+        commands.entity(e).remove::<Settling>();
+    }
+    let now = time.elapsed_secs_f64();
+    still.clear();
+    moving.clear();
+    for (e, rb, p, r, island, _, _, settling) in &mut props {
+        if !rb.is_dynamic() {
+            if settling.is_some() {
+                commands.entity(e).remove::<Settling>();
+            }
+            continue;
+        }
+        let fresh = Settling {
+            at: p.0,
+            rotation: r.0,
+            since: now,
+        };
+        let Some(mut s) = settling else {
+            commands.entity(e).insert(fresh);
+            moving.insert(island.island_id().0);
+            continue;
+        };
+        if s.at.distance(p.0) > SETTLE_DISTANCE || s.rotation.angle_between(r.0) > SETTLE_ANGLE {
+            *s = fresh;
+        }
+        if now - s.since >= SETTLE_TIME {
+            still.push((e, island.island_id().0));
+        } else {
+            moving.insert(island.island_id().0);
+        }
+    }
+    for (rb, island, timer) in &others {
+        if rb.is_dynamic() && timer.0 < time_to_sleep.0 {
+            moving.insert(island.island_id().0);
+        }
+    }
+    let mut slept = bevy::platform::collections::HashSet::new();
+    for &(e, island) in still.iter() {
+        if moving.contains(&island) {
+            continue;
+        }
+        if let Ok((.., mut v, mut w, _)) = props.get_mut(e) {
+            v.bypass_change_detection().0 = Vec3::ZERO;
+            w.bypass_change_detection().0 = Vec3::ZERO;
+        }
+        // Forgotten now: a push before the next tick wakes it before this
+        // runs again, and it must not count as still from before.
+        commands.entity(e).remove::<Settling>();
+        if slept.insert(island) {
+            commands.queue(SleepBody(e));
+        }
+    }
 }
