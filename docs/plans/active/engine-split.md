@@ -112,6 +112,9 @@ measurements):
   entry (109 KB to 15 KB); the detail moved into the files' `//!` docs
   (debt under "Known shortcuts"). `architecture::docs_stay_one_line_per_entry`
   caps the line lengths and checks the paths.
+- [x] Heavy tier (P4b): map-looping heavy tests split per map, nextest
+  tuned to 5 heavy slots weighted by memory; full suite 1,812 s to
+  1,009 s (docs/performance.md, "The heavy tier").
 - [ ] (2) `anim`: not moved. `map::anim` (`AnimSet`, `Animator`) is data
   in `MapData` and evaluated headless for the server's hitboxes
   (`bodies::SimAnimator`); ragdolls (`ragdoll`, `placed_ragdoll`) are

@@ -61,15 +61,27 @@ fn load(name: &str) -> Option<MapData> {
     Some(games::load_map(&format!("cs_source:{name}")).unwrap_or_else(|e| panic!("{name}: {e}")))
 }
 
-fn maps() -> Vec<String> {
-    match std::env::var("MASHUP_LADDER_MAPS") {
-        // `@file`: the list is in that file.
-        Ok(list) => match list.strip_prefix('@') {
+/// The maps `MASHUP_LADDER_MAPS` lists, if set: they replace the stock
+/// maps.
+fn listed() -> Option<Vec<String>> {
+    let list = std::env::var("MASHUP_LADDER_MAPS").ok()?;
+    // `@file`: the list is in that file.
+    Some(
+        match list.strip_prefix('@') {
             Some(file) => std::fs::read_to_string(file).expect("the map list file"),
             None => list,
         }
-        .split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
-        Err(_) => STOCK.iter().map(|s| s.to_string()).collect(),
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect(),
+    )
+}
+
+/// One stock map's ladders, unless `MASHUP_LADDER_MAPS` names others.
+fn stock(name: &str) {
+    if listed().is_none() {
+        every_ladder_steps_and_its_top_is_a_floor(vec![name.to_string()]);
     }
 }
 
@@ -239,11 +251,13 @@ fn top(t: &mut Tester, b: &MapBrush) -> Option<Vec<String>> {
     Some(problems)
 }
 
-#[test]
-fn every_ladder_steps_and_its_top_is_a_floor() {
+/// Every ladder of `maps` steps and its top is a floor (one test per stock
+/// map below, so they run side by side; `listed_maps` for
+/// `MASHUP_LADDER_MAPS`).
+fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
     let mut report = Vec::new();
     let (mut silent_total, mut stuck_total) = (0, 0);
-    for name in maps() {
+    for name in maps {
         let Some(map) = load(&name) else { continue };
         let ladders: Vec<MapBrush> = map.collision_brushes.iter().filter(|b| b.ladder).cloned().collect();
         if !ladders.is_empty() {
@@ -318,4 +332,37 @@ fn every_ladder_steps_and_its_top_is_a_floor() {
     eprintln!("{}", report.join("\n"));
     assert_eq!(silent_total, 0, "silent ladders:\n{}", report.join("\n"));
     assert_eq!(stuck_total, 0, "ladder tops that aren't floors:\n{}", report.join("\n"));
+}
+
+/// The maps `MASHUP_LADDER_MAPS` names (nothing without it).
+#[test]
+fn listed_maps() {
+    if let Some(maps) = listed() {
+        every_ladder_steps_and_its_top_is_a_floor(maps);
+    }
+}
+
+macro_rules! stock_maps {
+    ($($map:ident,)*) => {
+        /// One test per stock map (`STOCK`), so they spread over the heavy
+        /// tests' slots.
+        mod every_ladder_steps_and_its_top_is_a_floor_on {
+            $(
+                #[test]
+                fn $map() {
+                    super::stock(stringify!($map));
+                }
+            )*
+
+            #[test]
+            fn covers_every_stock_map() {
+                assert_eq!([$(stringify!($map)),*], super::STOCK);
+            }
+        }
+    };
+}
+
+stock_maps! {
+    cs_assault, cs_compound, cs_havana, cs_italy, cs_militia, cs_office, de_aztec, de_cbble, de_chateau,
+    de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_port, de_prodigy, de_tides, de_train,
 }

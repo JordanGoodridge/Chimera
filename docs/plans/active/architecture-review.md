@@ -513,7 +513,12 @@ Cargo changes.
      run before merges that touch `logic`/`map` and nightly, not every
      push.
 - **Payoff**: the push gate back toward the 5-minute range; also faster
-  `mapsweep`. **Cost**: 1-2 sessions. **Risk**: low; a test tier split
+  `mapsweep`.
+- **Done, steps 1, 3 and 4** (2026-10-14; docs/performance.md, "The
+  heavy tier"): loading is a third of the heavy time, simulation two
+  thirds; the map-looping tests split per map; 5 heavy slots with the
+  big tests weighted. Full suite 1,812 s to 1,009 s at similar load.
+  Step 2 (cache or headless load path) and a third tier are still open. **Cost**: 1-2 sessions. **Risk**: low; a test tier split
   needs a written rule for when it must run, or regressions on
   community maps slip through.
 
