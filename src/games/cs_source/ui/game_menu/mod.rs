@@ -156,13 +156,15 @@ pub struct GameMenuPlugin;
 /// Copy what the shell reads of the menu into `MenuStatus` whenever the
 /// menu changes.
 fn sync_status(menu: Res<GameMenu>, mut status: ResMut<MenuStatus>) {
+    // Only a real change counts: `grab_cursor` reads one as the menu just
+    // opened or closed.
     if menu.is_changed() {
-        *status = MenuStatus {
+        status.set_if_neq(MenuStatus {
             open: menu.open,
             in_game: menu.in_game,
             loading: menu.loading.is_some(),
             failed: menu.failure.is_some(),
-        };
+        });
     }
 }
 
