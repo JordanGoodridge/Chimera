@@ -1186,7 +1186,7 @@ with tests passing and something to see.
      adapters add the LAN's directed broadcast to `net_lan_broadcast`;
      the server's firewall rule for its game port covers queries
      (docs/OBSERVABILITY.md).
-   - [x] **The Find Servers dialog** (`client::server_browser`), from the
+   - [x] **The Find Servers dialog** (`games::cs_source::ui::server_browser`), from the
      install's `servers/DialogServerBrowser.res`, `InternetGamesPage.res`
      (and `_Filters`), `DialogAddServer.res`, `DialogServerPassword.res`,
      `serverbrowser_english.txt` and the column icons (read at run time
@@ -1216,7 +1216,7 @@ with tests passing and something to see.
      one is refused with "Bad password.".
    - [x] Tests: `net::query` unit tests (the documented layout, round
      trips, challenges per address and window, rate limits, user data);
-     `client::server_browser` unit tests (sorting, filters, connect,
+     `games::cs_source::ui::server_browser` unit tests (sorting, filters, connect,
      double-click, password dialog, Internet greyed, Add a Server,
      history order, the saved file's round trip);
      `tests/it/net_query.rs`: a server answers with its name, map,

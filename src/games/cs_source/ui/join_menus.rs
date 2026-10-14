@@ -8,7 +8,7 @@
 //! it picks a team it watches as a spectator does, with no body.
 //!
 //! With the game's layouts (`map::hud::GameMenus::motd`, `::class`) the
-//! panels draw as the game draws them (`super::vgui`); without, plain
+//! panels draw as the game draws them (`crate::client::vgui`); without, plain
 //! lists. The class menu's picture of a class is CS:S's live view of its
 //! model (`CSClassImagePanel`), which isn't drawn: its box stays empty. We don't render HTML: an HTML message shows its text
 //! (`net::motd::plain_text`); with `cl_disablehtmlmotd 1` the server's
@@ -19,9 +19,9 @@
 
 use bevy::{prelude::*, window::CursorOptions};
 
-use super::fonts::UiFonts;
+use crate::client::fonts::UiFonts;
 use super::team_menu::TeamMenu;
-use super::vgui::{Painter, Shown, VguiButton, VguiMenu, VguiOpen};
+use crate::client::vgui::{Painter, Shown, VguiButton, VguiMenu, VguiOpen};
 use crate::{
     console::{Console, ConsoleAppExt, resource_cvar},
     core::{ChoosingClass, LocalPlayer, NetRole, PlayerClass, Spectating, Team, Unassigned},
@@ -45,6 +45,7 @@ pub struct JoinMenusStatePlugin;
 
 impl Plugin for JoinMenusStatePlugin {
     fn build(&self, app: &mut App) {
+        crate::client::front_end::FrontEnd::register(app, |f| f.start_game = start_game);
         app.init_resource::<JoinMenus>()
             .init_resource::<TeamMenu>()
             .add_systems(Update, follow_player)
@@ -231,8 +232,8 @@ fn keys(
     cursor: Single<&CursorOptions>,
     (open, ui, chat, game_menu): (
         Res<VguiOpen>,
-        Option<Res<super::console::ConsoleUi>>,
-        Option<Res<super::chat::ChatInput>>,
+        Option<Res<crate::client::console::ConsoleUi>>,
+        Option<Res<crate::client::chat::ChatInput>>,
         Option<Res<super::game_menu::GameMenu>>,
     ),
     mut menus: ResMut<JoinMenus>,
@@ -240,14 +241,14 @@ fn keys(
     mut console: ResMut<Console>,
     hud: Option<Res<ActiveHud>>,
 ) {
-    if !super::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.as_deref()) {
+    if !crate::client::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.is_some_and(|m| m.open)) {
         return;
     }
     let game = hud.as_ref().and_then(|h| h.0.menus.as_ref());
     if menus.motd {
         let ok = game.and_then(motd_layout).and_then(|l| {
-            let key = super::vgui::digit(&keys)?;
-            super::vgui::hotkey_button(l, key, &mut Shown::of)
+            let key = crate::client::vgui::digit(&keys)?;
+            crate::client::vgui::hotkey_button(l, key, &mut Shown::of)
         });
         if ok.is_some() || keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) || keys.just_pressed(KeyCode::Space) {
             motd_done(&mut menus, &mut team_menu);
@@ -255,9 +256,9 @@ fn keys(
         return;
     }
     let Some(team) = menus.class else { return };
-    let Some(key) = super::vgui::digit(&keys) else { return };
+    let Some(key) = crate::client::vgui::digit(&keys) else { return };
     if let Some(page) = game.and_then(|m| class_layout(m, team)) {
-        if let Some(command) = super::vgui::hotkey_button(page, key, &mut Shown::of).and_then(|c| c.command.clone()) {
+        if let Some(command) = crate::client::vgui::hotkey_button(page, key, &mut Shown::of).and_then(|c| c.command.clone()) {
             if let Some(l) = class_line(&command) {
                 console.submit(l);
             }
@@ -480,7 +481,7 @@ fn draw_vgui(
                 GlobalZIndex(50),
             ))
             .id();
-        let a = super::vgui::area(size.x, size.y);
+        let a = crate::client::vgui::area(size.x, size.y);
         let area = commands
             .spawn((
                 Node {

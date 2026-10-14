@@ -938,7 +938,7 @@ pub struct ClassRequest {
 }
 
 /// The server's message of the day (CS:S's `motd.txt`), shown as a
-/// player joins (`client::join_menus`): `html` the file as written (often
+/// player joins (`games::cs_source::ui::join_menus`): `html` the file as written (often
 /// HTML), `text` the plain-text one (`motd_text.txt`) for players with
 /// `cl_disablehtmlmotd 1`. Server -> a client as it is let in; a game of
 /// one's or a listen server's own come from its files (`motd::current`).

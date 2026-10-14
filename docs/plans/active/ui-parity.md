@@ -85,7 +85,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `FovSlider` | CCvarSlider (`cvar_name fov_desired`, 75 to 90) | `fov_desired` (90): the world camera unzoomed (`options::PlayerFov`, `client::zoom_camera`); the view model zooms with it as with a scope (`viewmodel_fov` minus 90 minus it); a scope's zoom is its own; zoomed mouse scaling still divides by 90 |
 | | `ModelDetail` | ComboBox | `r_rootlod`: Low (2), Medium (1), High (0, the default): the finest level of detail props draw; they switch to coarser ones with distance (`render::lod`); at once |
 | | `ShadowDetail` | ComboBox | `r_shadowrendertotexture` and `r_flashlightdepthtexture` together: Low (0 0: blob shadows), Medium (1 0, the default: render-to-texture), High (1 1, as Medium: no flashlights); at once (`map::shadows`) |
-| | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::options::TextureSettings`), from the next map |
+| | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::video::TextureSettings`), from the next map |
 | | `FilteringMode` | ComboBox | `mat_trilinear` and `mat_forceaniso` together: Bilinear (0 1, CS:S's default), Trilinear (1 1), Anisotropic 2X-16X (0 N); from the next map |
 | | `ShaderDetail`, `ColorCorrection`, `MotionBlur`, `Multicore` | ComboBox | greyed (see below; the plan: docs/plans/active/video-settings.md) |
 | Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | the tab, all greyed: mashup has no voice chat |
@@ -100,10 +100,10 @@ from its `.res`, controls mashup lacks greyed.
 | | `NameEntry` + `NameLabel` (ours: the install's file has none, older CS:S had "Player name") | TextEntry | `name` (archived): `#GameUI_PlayerName`, added by `gameui::add_player_name` where the spray image's words (`Label2`, `Label3`) were; set on OK / Apply (one rename online, not one per key); a deliberate difference |
 | | `Advanced` | Button | opens Multiplayer > Advanced |
 | | `ImportSprayImage`, `ResetStats`, `LogoImage` | Button / ImagePanel | greyed (see below) |
-| Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those mashup has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar), `cl_disablehtmlmotd` (1: the message of the day's plain-text version, `client::join_menus`); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `cl_autohelp`, `hud_takesshots`, `cl_disablefreezecam`, `cl_cloud_settings`); without the install: ours, the weapon hand |
+| Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those mashup has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar), `cl_disablehtmlmotd` (1: the message of the day's plain-text version, `games::cs_source::ui::join_menus`); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `cl_autohelp`, `hud_takesshots`, `cl_disablefreezecam`, `cl_cloud_settings`); without the install: ours, the weapon hand |
 | | `OK`, `Cancel` | Button | as CS:S's dialog: changes wait for OK, which sets those changed; Cancel (Esc, the X) drops them; modal over the options |
 
-### Spectator menu (`resource/ui/bottomspectator.res`; `client::spectator_menu`)
+### Spectator menu (`resource/ui/bottomspectator.res`; `games::cs_source::ui::spectator_menu`)
 
 | Control | `.res` class | Now |
 |---|---|---|
@@ -123,7 +123,7 @@ Advanced.
 
 Every new cvar is archived (saved in config.cfg when it differs from
 its default, `host_writeconfig`) and changes the game at once; their
-defaults are CS:S's (`client::options` tests
+defaults are CS:S's (`games::cs_source::ui::options` tests
 `the_options_cvars_start_as_css_and_persist_in_the_config`).
 
 #### Greyed, and why
@@ -266,7 +266,7 @@ at `mat_monitorgamma` 1.6, 2.2 and 2.6, and de_dust2 at the three.
   docs/plans/active/video-settings.md; Multiplayer > Advanced's
   auto-help). Its `cl_autowepswitch`,
   `hud_centerid` and `cl_disablefreezecam` work (`weapon::drop`,
-  `client::target_id`, `client::freeze_cam`).
+  `games::cs_source::ui::target_id`, `games::cs_source::ui::freeze_cam`).
 - Reference captures of CS:S's dialogs to compare with (see the report
   of this work: an open combo box's list colours, the slider's tick
   count, a focused control's ring).

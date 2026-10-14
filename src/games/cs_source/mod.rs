@@ -42,6 +42,7 @@ pub mod sprites;
 pub mod steam;
 pub mod trails;
 pub mod surfaceprops;
+pub mod ui;
 pub mod view_anim;
 pub mod vgui;
 pub mod vhv;
@@ -94,3 +95,4 @@ mod cycle_tests {
 /// (tools/css_probe): a dedicated server started with -tickrate 64 still
 /// accelerates and applies friction in 0.015 s steps, so CS:S fixes it.
 pub const TICK_INTERVAL: f64 = 0.015;
+

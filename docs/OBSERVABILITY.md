@@ -82,7 +82,7 @@ renders surfaces white so only baked lighting shows: misoriented lightmaps
 appear as shadows that break at face edges.
 
 Joining: a game started on a map shows CS:S's join flow (the message
-of the day, the team menu, the class menu; `client::join_menus`) and the
+of the day, the team menu, the class menu; `games::cs_source::ui::join_menus`) and the
 player has no body until it picks, but `--screenshot`, `--views`,
 `--spawn` and `--look` runs join the smaller team at once, as do
 `+jointeam <n>` (that team) and `+spectate`; `--join menus|auto|1|2|3`
@@ -170,7 +170,7 @@ Only `Reflect`-registered types are visible; register new core components in
   line `game menu: GameUI look (...)` says the install's look loaded,
   with how many main menu backgrounds and the title it found (else the
   built-in one is drawn). Its logic is unit-tested in
-  `client::game_menu` (keys and clicks in, console lines out; rebinding
+  `games::cs_source::ui::game_menu` (keys and clicks in, console lines out; rebinding
   with real key presses headless; which entries show in and out of a
   game; `disconnect` and `map greybox` on a world). The main menu over
   a map: `--map cs_source:de_dust2 --screenshot m.png +wait 30 +menu`;
@@ -203,7 +203,7 @@ Only `Reflect`-registered types are visible; register new core components in
   the team menu, e.g. `--map cs_source:de_dust2 --screenshot buy.png
   +wait 30 +buymenu 4` (the `wait` lets the map's HUD and menu layouts
   load first, so the game-look pages are used). Their key and button
-  logic is tested headless in `client::buy_menu` and `client::team_menu`
+  logic is tested headless in `games::cs_source::ui::buy_menu` and `games::cs_source::ui::team_menu`
   (the join flow's in `tests/it/join_flow.rs`);
   `tests/it/heavy/map_de_dust2.rs` checks the install's layouts load.
 - `ent_fire <target> <input> [value]` sends a map entity an input through
@@ -787,7 +787,7 @@ drives it as a click or key would (`row <n>`, `doubleclick <n>`,
 drop-down's list), `hover <n>`, `pick <n>`, `check <name>`, `map`,
 `maxplayers` (their text entries), `next` (Tab), `space`) and prints its
 rows (through `mashup/console` for screenshots); in a test, the model is
-`client::server_browser::ServerBrowser` (`handle` an `Input`, its `rows`,
+`games::cs_source::ui::server_browser::ServerBrowser` (`handle` an `Input`, its `rows`,
 `set_results` from `net::query::ServerQueries::results`); favourites and
 history live in the cfg folder's `serverbrowser.vdf`. `sv_password` on a
 server, `password` on a client (the browser asks for it). Two dedicated

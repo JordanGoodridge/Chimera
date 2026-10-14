@@ -27,10 +27,12 @@ use bevy::{
 };
 use mashup::{
     client::{
-        bomb_fx::C4ScreenText,
         chat::ChatLine,
-        objectives_hud::{BombHudStatePlugin, BombProgress},
         spectate::{SpecPhase, SpectateStatePlugin, Spectator},
+    },
+    games::cs_source::ui::{
+        bomb_fx::C4ScreenText,
+        objectives_hud::{BombHudStatePlugin, BombProgress},
     },
     console::Console,
     core::{Damage, Hitgroup, Intent, LocalPlayer, Team},

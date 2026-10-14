@@ -49,7 +49,7 @@ impl Plugin for ConsoleUiPlugin {
                     // keys there drive those.
                     run_binds.run_if(
                         |ui: Res<ConsoleUi>,
-                         menu: Option<Res<super::game_menu::GameMenu>>,
+                         menu: Option<Res<super::front_end::MenuStatus>>,
                          chat: Option<Res<super::chat::ChatInput>>| {
                             !ui.open && !menu.is_some_and(|m| m.open) && !chat.is_some_and(|c| c.open.is_some())
                         },
@@ -151,7 +151,7 @@ fn lines_for_height(window_height: f32) -> usize {
 }
 
 #[derive(Component)]
-pub(super) struct ConsoleRoot;
+pub struct ConsoleRoot;
 #[derive(Component)]
 struct ConsoleOutput;
 /// One row of the output on screen.
@@ -268,12 +268,12 @@ fn spawn_ui(mut commands: Commands, fonts: Res<UiFonts>) {
     ));
 }
 
-pub(super) fn toggle(
+pub fn toggle(
     keys: Res<ButtonInput<KeyCode>>,
     mut ui: ResMut<ConsoleUi>,
     mut root: Single<&mut Visibility, With<ConsoleRoot>>,
     mut cursor: Single<&mut CursorOptions>,
-    menu: Option<Res<super::game_menu::GameMenu>>,
+    menu: Option<Res<super::front_end::MenuStatus>>,
     debug_ui: Option<Res<super::debug_ui::DebugUi>>,
 ) {
     // Esc hides the suggestions first (`edit`), then closes.
@@ -480,7 +480,7 @@ const ENT_INPUTS: &[&str] = &[
 ];
 
 /// The bots' names ("Bot 3"), in order.
-pub(super) fn bot_names(world: &World) -> Vec<String> {
+pub fn bot_names(world: &World) -> Vec<String> {
     let Some(mut q) = world.try_query_filtered::<&Name, With<crate::bot::Bot>>() else {
         return Vec::new();
     };
@@ -491,7 +491,7 @@ pub(super) fn bot_names(world: &World) -> Vec<String> {
 
 /// The loaded map's named entities and their classes, then the classes
 /// (`ent_fire` takes either).
-pub(super) fn logic_names(world: &World) -> Vec<(String, String)> {
+pub fn logic_names(world: &World) -> Vec<(String, String)> {
     let Some(logic) = world.get_resource::<crate::logic::Logic>() else {
         return Vec::new();
     };
@@ -1732,13 +1732,13 @@ fn run_binds(
 static MAP_NAMES: Mutex<Option<Vec<String>>> = Mutex::new(None);
 
 /// The install changed: find its maps again.
-pub(super) fn forget_map_names() {
+pub fn forget_map_names() {
     *MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// Every map the game can load: the install's, its downloads and
 /// mashup's cache (cached; `import` refreshes it).
-pub(super) fn map_names() -> Vec<String> {
+pub fn map_names() -> Vec<String> {
     let mut cached = MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner());
     cached
         .get_or_insert_with(|| {
@@ -1821,12 +1821,12 @@ fn map_source(name: &str) -> &'static str {
 }
 
 /// Whether a `map` command's load is under way.
-pub(super) fn map_loading(w: &World) -> bool {
+pub fn map_loading(w: &World) -> bool {
     w.contains_resource::<MapLoad>()
 }
 
 /// The map a `map` command is loading (its name, without the game).
-pub(super) fn loading_map(w: &World) -> Option<String> {
+pub fn loading_map(w: &World) -> Option<String> {
     let id = &w.get_resource::<MapLoad>()?.id;
     Some(id.rsplit(':').next().unwrap_or(id).to_string())
 }
@@ -1841,7 +1841,7 @@ struct MapLoad {
 /// Load map `id` in the background (from `file` when given: a copy
 /// downloaded from a server), then swap it in place (`finish_map_load`):
 /// everyone respawns at the new spawn points.
-pub(super) fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>) {
+pub fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>) {
     w.remove_resource::<FreshGame>();
     w.insert_resource(crate::map::LoadedMapName(id.to_string()));
     // At the HDR level set now (mat_hdr_level), as the game does.
@@ -1862,7 +1862,7 @@ pub(super) fn start_map_load(w: &mut World, id: &str, file: Option<std::path::Pa
 /// The server's map, for joining it (`net::NetEvent::LoadMap`): the
 /// greybox at once, another in the background (from the downloaded file
 /// when there is one). The handshake checks the result.
-pub(super) fn load_server_map(w: &mut World, map: &str, file: Option<std::path::PathBuf>) {
+pub fn load_server_map(w: &mut World, map: &str, file: Option<std::path::PathBuf>) {
     if map == crate::net::GREYBOX {
         load_greybox(w);
         return;
@@ -1890,7 +1890,7 @@ fn finish_map_load(w: &mut World) {
         Err(e) => {
             w.resource_mut::<Console>()
                 .print(crate::console::Level::Error, format!("map {id}: {e}"));
-            super::game_menu::map_load_failed(w);
+            super::front_end::map_load_failed(w);
             // Joining a server needs its map.
             match w.get_resource::<crate::core::NetRole>() {
                 Some(crate::core::NetRole::Client) => {
@@ -1904,7 +1904,7 @@ fn finish_map_load(w: &mut World) {
                         .map(|f| format!("cs_source:{}", f.name))
                         .unwrap_or_else(|| GREYBOX.into());
                     w.insert_resource(crate::map::LoadedMapName(back));
-                    super::game_menu::entered_game(w);
+                    super::front_end::entered_game(w);
                 }
                 _ => {}
             }
@@ -1938,10 +1938,10 @@ fn finish_map_load(w: &mut World) {
     }
     crate::rules::new_game(w);
     w.resource_mut::<Console>().info(summary);
-    super::game_menu::entered_game(w);
+    super::front_end::entered_game(w);
     super::net::listen_if_hosting(w);
     if w.remove_resource::<FreshGame>().is_some() {
-        super::join_menus::start_game(w);
+        super::front_end::start_game(w);
     }
 }
 
@@ -1954,7 +1954,7 @@ struct FreshGame;
 /// The greybox map in place of whatever map is loaded (`map greybox`, and
 /// `disconnect`, which leaves it behind the main menu), everyone respawned
 /// on it at the default tick.
-pub(super) fn load_greybox(w: &mut World) {
+pub fn load_greybox(w: &mut World) {
     w.remove_resource::<MapLoad>();
     crate::map::unload_map(w);
     crate::greybox::unload(w);
@@ -2213,9 +2213,9 @@ pub fn client_commands(app: &mut App) {
             let Some((id, check)) = map_target(&name) else {
                 w.resource_mut::<Console>().submit("bot_kick");
                 load_greybox(w);
-                super::game_menu::entered_game(w);
+                super::front_end::entered_game(w);
                 super::net::listen_if_hosting(w);
-                super::join_menus::start_game(w);
+                super::front_end::start_game(w);
                 return Ok(Some("loaded the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
@@ -2240,7 +2240,7 @@ pub fn client_commands(app: &mut App) {
             }
             let Some((id, check)) = map_target(&name) else {
                 load_greybox(w);
-                super::game_menu::entered_game(w);
+                super::front_end::entered_game(w);
                 return Ok(Some("changed level to the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
@@ -2258,7 +2258,7 @@ pub fn client_commands(app: &mut App) {
             crate::net::disconnect(w, "Disconnect by user.");
             w.resource_mut::<Console>().submit("bot_kick");
             load_greybox(w);
-            super::game_menu::left_game(w);
+            super::front_end::left_game(w);
             Ok(None)
         },
     )

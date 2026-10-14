@@ -78,7 +78,7 @@ pub struct C4ScreenText {
 
 /// Who the first-person view belongs to: the watched player, else the
 /// local one.
-fn viewer(spec: Option<&super::spectate::SpecView>, local: Option<Entity>) -> Option<Entity> {
+fn viewer(spec: Option<&crate::client::spectate::SpecView>, local: Option<Entity>) -> Option<Entity> {
     spec.and_then(|s| s.in_eye).or(local)
 }
 
@@ -86,7 +86,7 @@ fn viewer(spec: Option<&super::spectate::SpecView>, local: Option<Entity>) -> Op
 pub(super) fn screen_text(
     rules: Option<Res<BombRules>>,
     clock: Res<crate::core::SimClock>,
-    spec: Option<Res<super::spectate::SpecView>>,
+    spec: Option<Res<crate::client::spectate::SpecView>>,
     local: Query<Entity, With<LocalPlayer>>,
     arming: Query<&Arming>,
     mut out: ResMut<C4ScreenText>,
@@ -107,7 +107,7 @@ pub(super) fn screen_text(
 fn screen(
     rules: Option<Res<BombRules>>,
     hud: Option<Res<ActiveHud>>,
-    fonts: Res<super::fonts::UiFonts>,
+    fonts: Res<crate::client::fonts::UiFonts>,
     shown: Res<C4ScreenText>,
     characters: Query<(Entity, Has<ViewModelScreen>), With<Intent>>,
     mut texts: Query<&mut Text>,
@@ -173,7 +173,7 @@ fn screen(
 fn make_screen(
     commands: &mut Commands,
     images: &mut Assets<Image>,
-    fonts: &super::fonts::UiFonts,
+    fonts: &crate::client::fonts::UiFonts,
     look: (Vec2, Option<(String, f32, bool)>, [u8; 4]),
 ) {
     let (pixels, font, [r, g, b, a]) = look.clone();

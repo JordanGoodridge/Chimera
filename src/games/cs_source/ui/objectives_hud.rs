@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use super::{
+use crate::client::{
     chat::{ChatLine, Hint},
     fonts::UiFonts,
 };
@@ -203,7 +203,7 @@ fn messages(
     let now = time.elapsed_secs();
     let (me, team) = local.map_or((Entity::PLACEHOLDER, None), |l| (l.0, l.1.copied()));
     let name = |e: Entity| match names.get(e) {
-        Ok((name, local, net)) => super::shown_name(e, local, net, name, settings.as_deref()),
+        Ok((name, local, net)) => crate::client::shown_name(e, local, net, name, settings.as_deref()),
         _ => format!("{e}"),
     };
     let carriers = team == Some(rules.carrier_team);

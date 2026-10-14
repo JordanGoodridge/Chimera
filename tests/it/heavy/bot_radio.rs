@@ -19,12 +19,10 @@ use mashup::{
         Activity, Bot, BotConfig, Tactics,
         radio::{CALLS, HOLD_NEAR, Order, TEAM_GAP},
     },
-    client::{
-        chat::{ChatLine, GameMessagesPlugin},
-        radio::RadioHearPlugin,
-    },
+    client::chat::{ChatLine, GameMessagesPlugin},
     console::Console,
     core::{LocalPlayer, Radio, SpawnPoint, Team},
+    games::cs_source::ui::radio::RadioHearPlugin,
     games::{
         self,
         cs_source::{

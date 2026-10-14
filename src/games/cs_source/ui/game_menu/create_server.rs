@@ -3,16 +3,9 @@
 
 use super::*;
 
-/// Bot skill presets: reaction seconds, aim error degrees, turn rate
-/// degrees per second (`bot_reaction`, `bot_aim_error`, `bot_turn_rate`).
-/// Normal is the bots' default (`bot::BotConfig`). Create Server's four
-/// difficulty buttons pick one (`#Cstrike_Bot_Difficulty0..3`).
-pub const DIFFICULTIES: [(&str, f32, f32, f32); 4] = [
-    ("Easy", 0.6, 5.0, 220.0),
-    ("Normal", 0.35, 2.5, 360.0),
-    ("Hard", 0.2, 1.5, 540.0),
-    ("Expert", 0.12, 0.75, 720.0),
-];
+/// Create Server's four difficulty buttons (`#Cstrike_Bot_Difficulty0..3`)
+/// pick one of the bots' skill presets.
+pub use crate::bot::DIFFICULTIES;
 pub(super) const NORMAL: usize = 1;
 /// Bots a new game offers at most (the box takes two digits).
 pub(super) const MAX_BOTS: u8 = 30;

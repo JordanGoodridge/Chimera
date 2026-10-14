@@ -25,9 +25,9 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::{prelude::*, window::CursorOptions};
 
-use super::spectate::{SpecMode, SpecPhase, Spectator};
-use super::vgui::VguiOpen;
-use super::widgets::{self, ComboList, Look};
+use crate::client::spectate::{SpecMode, SpecPhase, Spectator};
+use crate::client::vgui::VguiOpen;
+use crate::client::widgets::{self, ComboList, Look};
 use crate::{
     console::Console,
     core::{Health, Team},
@@ -46,8 +46,9 @@ impl Plugin for SpectatorMenuPlugin {
                 Update,
                 (toggle, read_cvars, click, hover, keys, draw)
                     .chain()
-                    .before(super::spectate::SpectateSet),
+                    .before(crate::client::spectate::SpectateSet),
             );
+        crate::client::front_end::sync_panel::<SpectatorMenu, _>(app, "spectator", false, |m| m.0, draw);
         crate::console::ConsoleAppExt::console_command(
             app,
             "spec_menu",
@@ -68,7 +69,7 @@ impl Plugin for SpectatorMenuPlugin {
             "togglescores",
             "Show or hide the scoreboard (as holding +showscores does).",
             |w, _| {
-                if let Some(mut h) = w.get_resource_mut::<super::console::HeldActions>() {
+                if let Some(mut h) = w.get_resource_mut::<crate::client::console::HeldActions>() {
                     h.showscores = !h.showscores;
                 }
                 Ok(None)
@@ -297,8 +298,8 @@ fn toggle(
     (keys, mouse): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>),
     cursor: Option<Single<&CursorOptions>>,
     (ui, chat, game_menu): (
-        Option<Res<super::console::ConsoleUi>>,
-        Option<Res<super::chat::ChatInput>>,
+        Option<Res<crate::client::console::ConsoleUi>>,
+        Option<Res<crate::client::chat::ChatInput>>,
         Option<Res<super::game_menu::GameMenu>>,
     ),
     console: Res<Console>,
@@ -312,8 +313,14 @@ fn toggle(
     if !watching || team_menu.is_some_and(|t| t.0) {
         menu.set_if_neq(SpectatorMenu(false));
     } else if let Some(cursor) = cursor
-        && super::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.as_deref())
-        && super::binds::just_pressed(&console.binds, &keys, &mouse, "+duck")
+        && crate::client::vgui::keys_live(
+            &cursor,
+            &open,
+            ui.as_deref(),
+            chat.as_deref(),
+            game_menu.is_some_and(|m| m.open),
+        )
+        && crate::client::binds::just_pressed(&console.binds, &keys, &mouse, "+duck")
     {
         menu.0 = !menu.0;
     }
@@ -589,7 +596,7 @@ fn draw(
     who: Query<(Option<&Name>, Option<&Team>, Option<&Health>)>,
     roots: Query<Entity, With<MenuRoot>>,
     windows: Query<&Window>,
-    fonts: Option<Res<super::fonts::UiFonts>>,
+    fonts: Option<Res<crate::client::fonts::UiFonts>>,
     hud: Option<Res<crate::map::hud::ActiveHud>>,
     game_menu: Option<Res<super::game_menu::GameMenu>>,
     mut last: Local<Option<Shot>>,

@@ -1,6 +1,6 @@
 //! The buy menu (B, or `buymenu`). With the game's own menu layouts
 //! (`map::hud::GameMenus`, CS:S's VGUI pages) it is drawn as the game
-//! draws it (`super::vgui`): the team's main page of categories, each
+//! draws it (`crate::client::vgui`): the team's main page of categories, each
 //! category's page of items, and the hovered item's picture, price and
 //! details; the mouse is free while it is open, buttons are clicked or
 //! pressed with their number keys, items you can't buy are greyed. Without
@@ -12,8 +12,8 @@
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 
-use super::fonts::UiFonts;
-use super::vgui::{Painter, Shown, VguiButton, VguiMenu, VguiOpen};
+use crate::client::fonts::UiFonts;
+use crate::client::vgui::{Painter, Shown, VguiButton, VguiMenu, VguiOpen};
 use crate::{
     console::{Console, ConsoleAppExt},
     core::{LocalPlayer, Team},
@@ -30,6 +30,7 @@ impl Plugin for BuyMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BuyMenu>()
             .add_systems(Update, (keys, pointer, draw, draw_vgui).chain());
+        crate::client::front_end::sync_panel::<BuyMenu, _>(app, "buy", true, |m| m.open, draw_vgui);
         app.console_command(
             "buymenu",
             "Open or close the buy menu (B); buymenu <n> opens the category on key n (CS:S's menu: 1 pistols, 2 shotguns, 3 SMGs, 4 rifles, 5 machine guns, 6 equipment; its plain one: 6 primary ammo, 7 secondary ammo, 8 equipment).",
@@ -366,8 +367,8 @@ fn cannot_buy(w: &mut World) -> Option<String> {
 
 /// What else is reading the keyboard (console, chat, game menu).
 type Typing<'a> = (
-    Option<Res<'a, super::console::ConsoleUi>>,
-    Option<Res<'a, super::chat::ChatInput>>,
+    Option<Res<'a, crate::client::console::ConsoleUi>>,
+    Option<Res<'a, crate::client::chat::ChatInput>>,
     Option<Res<'a, super::game_menu::GameMenu>>,
 );
 
@@ -386,16 +387,16 @@ fn keys(
     mut commands: Commands,
 ) {
     let (ui, chat, game_menu) = typing;
-    if !super::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.as_deref()) {
+    if !crate::client::vgui::keys_live(&cursor, &open, ui.as_deref(), chat.as_deref(), game_menu.is_some_and(|m| m.open)) {
         return;
     }
-    if super::binds::just_pressed(&console.binds, &keys, &mouse, "buymenu") {
+    if crate::client::binds::just_pressed(&console.binds, &keys, &mouse, "buymenu") {
         if menu.open {
             *menu = BuyMenu::default();
         } else {
             commands.queue(|w: &mut World| {
                 if let Some(why) = cannot_buy(w) {
-                    w.write_message(super::chat::Hint(why));
+                    w.write_message(crate::client::chat::Hint(why));
                     return;
                 }
                 *w.resource_mut::<BuyMenu>() = BuyMenu {
@@ -415,7 +416,7 @@ fn keys(
     if let Some(menus) = hud.as_ref().and_then(|h| h.0.menus.as_ref())
         && let Some(page) = current_page(menus, &menu, team)
     {
-        let Some(key) = super::vgui::digit(&keys) else {
+        let Some(key) = crate::client::vgui::digit(&keys) else {
             return;
         };
         let state = BuyState {
@@ -426,7 +427,7 @@ fn keys(
             team,
             held: held_slots(player.as_ref().and_then(|p| p.2), &weapons),
         };
-        let pressed = super::vgui::hotkey_button(page, key, &mut |c| state.shown(c)).and_then(|c| c.command.clone());
+        let pressed = crate::client::vgui::hotkey_button(page, key, &mut |c| state.shown(c)).and_then(|c| c.command.clone());
         if let Some(command) = pressed {
             apply(action(&command), &mut menu, &mut console, &mut commands);
         }
@@ -466,7 +467,7 @@ fn buy_now(commands: &mut Commands, what: String) {
         };
         // A network client asks the server, which answers a refusal.
         if let Err(why) = crate::weapon::economy::buy_or_ask(w, player, &what) {
-            w.write_message(super::chat::Hint(why));
+            w.write_message(crate::client::chat::Hint(why));
         }
     });
 }
@@ -699,7 +700,7 @@ fn draw_vgui(
                 GlobalZIndex(50),
             ))
             .id();
-        let a = super::vgui::area(w, h);
+        let a = crate::client::vgui::area(w, h);
         let area = commands
             .spawn((
                 Node {
@@ -830,7 +831,7 @@ mod tests {
     fn app(game_look: bool) -> (App, Entity, Entity) {
         let mut app = App::new();
         app.add_plugins(crate::console::ConsolePlugin)
-            .add_message::<super::super::chat::Hint>()
+            .add_message::<crate::client::chat::Hint>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<BuyMenu>()
             .init_resource::<VguiOpen>()
@@ -843,7 +844,7 @@ mod tests {
                 ..default()
             })
             .add_systems(Update, keys);
-        super::super::binds::test_binds(&mut app);
+        crate::client::binds::test_binds(&mut app);
         if game_look {
             let hud = GameHud {
                 menus: Some(game_menus()),
@@ -878,7 +879,7 @@ mod tests {
         // Open, the menu frees the mouse (as `draw_vgui` and the cursor
         // system do in the game); the keys still work.
         app.world_mut().resource_mut::<VguiOpen>().buy = true;
-        super::super::input::release_cursor(&mut app.world_mut().get_mut::<CursorOptions>(window).unwrap());
+        crate::client::input::release_cursor(&mut app.world_mut().get_mut::<CursorOptions>(window).unwrap());
         press(&mut app, KeyCode::Digit6);
         assert_eq!(
             app.world().resource::<BuyMenu>().page.as_deref(),

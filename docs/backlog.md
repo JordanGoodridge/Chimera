@@ -13,9 +13,9 @@ plan when work starts; delete them when done.
 In CS:S, planting shows the player typing the code on the C4's keypad,
 the digits appearing one by one on the bomb's little screen as they're
 typed; ours shows a 1.6-style progress bar while arming. Ours already
-draws a code on the view model's screen (`client/bomb_fx.rs`,
+draws a code on the view model's screen (`games/cs_source/ui/bomb_fx.rs`,
 `ViewModelScreen`, `BombRules::screen_text`) and plays the arm
-animation, but `client/objectives_hud.rs` also draws `HudProgressBar`
+animation, but `games/cs_source/ui/objectives_hud.rs` also draws `HudProgressBar`
 while arming (CS:S's `cl_c4progressbar` is "while defusing").
 To do: no progress bar while arming (keep it for defusing per
 `cl_c4progressbar`); the digits appear one at a time in step with the
@@ -418,11 +418,11 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 
 - CS:S HUD: health/armour/ammo/money/round-timer panels, death notices
   and the Tab scoreboard are in (`client/game_hud.rs`,
-  `client/scoreboard.rs`), and the weapon selection and pickup history
+  `games/cs_source/ui/scoreboard.rs`), and the weapon selection and pickup history
   (`client/weapon_select.rs`; `hud_fastswitch`), matched to CS:S
   captures panel by panel (`refcmp hudcmp`). Left of that pass: the
-  radar's look (zoom, translucency, markers) is ours. The team menu is in (M; joining a game shows the message of the day, then the team menu, then the class menu: `client/join_menus.rs`). The radio
-  is in (`client/radio.rs`: Z/X/C menus, the calls as console commands,
+  radar's look (zoom, translucency, markers) is ours. The team menu is in (M; joining a game shows the message of the day, then the team menu, then the class menu: `games/cs_source/ui/join_menus.rs`). The radio
+  is in (`games/cs_source/ui/radio.rs`: Z/X/C menus, the calls as console commands,
   "Fire in the hole!" on throws, bots' enemy spotted/down and need
   backup, and bots' own commands and reports: go / stick together /
   follow me from the attackers' leader, cover me, sector clear, in
@@ -432,7 +432,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   head (`sprites/radio`, hidden by walls), and
   text chat (Y / U, `say`, `say_team`). The buy and team menus draw in the game's VGUI look from its `.res` files
   (`client/vgui.rs`), as do the message of the day and the class menu
-  (`client/join_menus.rs`). Left:
+  (`games/cs_source/ui/join_menus.rs`). Left:
   the scoreboard's row spacing (16 units, a guess) and dead rows' look
   checked against CS:S, its map time left beside the clock
   (`mp_timelimit` is in: `rules::game_end::time_left`), the spectator menu in `bottomspectator.res`'s look
@@ -445,7 +445,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   issuing their own are in: `bot::radio::obey`, `speak`; checking
   when CS:S bots talk needs that spec). The radar is in (`client/radar.rs`: the map overview turning
   with you, team dots, your place name); its range (2200 units) is a guess.
-- The game menu (Esc; `client/game_menu/`: Create Server; bots; team;
+- The game menu (Esc; `games/cs_source/ui/game_menu/`: Create Server; bots; team;
   options; bug report; quit) is in, in the game's GameUI look
   (`SourceScheme.res` frames and colours, `GameMenu.res` entries), its
   dialogs laid out from the install's `.res` files with VGUI's controls
@@ -537,7 +537,7 @@ a first bot are in.
   choice, Q7 the bomb's solidity, Q9 hostage models, Q10 follow speeds,
   Q11 rescue rules, Q12 who sees the `sprites/c4` marker and how big,
   Q14 tick rounding); the planted bomb's own screen (`c4_panel`: the
-  view model's is in, `client/bomb_fx.rs`), screen shake, the
+  view model's is in, `games/cs_source/ui/bomb_fx.rs`), screen shake, the
   explosion's scale (it uses the HE's base explosion effect: the install
   names no C4 effect of its own, no explosion `.pcf` or sprite); hostage
   animation beyond idle/walk/run and a nod (`hostage_anim.rs`: compare

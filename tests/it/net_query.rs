@@ -12,7 +12,7 @@ use std::{
 use bevy::prelude::*;
 use mashup::{
     console::Console,
-    client::server_browser::ServerBrowser,
+    games::cs_source::ui::server_browser::ServerBrowser,
     core::{LocalPlayer, Team},
     games::cs_source::movement::{self as source, SourceMovementPlugin},
     greybox::GreyboxMapPlugin,

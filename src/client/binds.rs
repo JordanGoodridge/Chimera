@@ -539,7 +539,7 @@ pub const CONFIG_MARK: &str = "// binds: all";
 /// (`binddefaults new`) once, on free keys.
 pub const DEFAULTS_MARK: &str = "// bind defaults: cs";
 
-pub(super) fn commands(app: &mut App) {
+pub fn commands(app: &mut App) {
     app.console_command(
         "binddefaults",
         "binddefaults [missing|new]: put the default binds back (missing: only on free keys for unbound commands; \
@@ -583,7 +583,7 @@ pub(super) fn commands(app: &mut App) {
 /// For tests of systems that read binds: the mouse's buttons and the
 /// default binds in an app with the console.
 #[cfg(test)]
-pub(super) fn test_binds(app: &mut App) {
+pub fn test_binds(app: &mut App) {
     app.init_resource::<ButtonInput<MouseButton>>();
     bind_defaults(&mut app.world_mut().resource_mut::<Console>().binds, true);
 }

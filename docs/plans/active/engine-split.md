@@ -162,8 +162,36 @@ measurements):
     (load 14-26), 114 s after (load 17-18): one crate either way, so
     the difference is load and cache, not the move; the win comes with
     the crate cut.
-- [ ] (2) CS:S UI out of `client`, rules behind a rule-module interface,
-  game-registered replication.
+- [~] (2) CS:S UI out of `client`, rules behind a rule-module interface,
+  game-registered replication (2026-10-13, one session):
+  - [x] `games/cs_source/ui/` (`CsSourceUiPlugin`, added by main.rs
+    after `ClientPlugin`): the GameUI menus and dialogs (`game_menu/`,
+    `options` (its rows; the video cvars stay in `client::video`),
+    `first_run`, `server_browser`), the join flow (`join_menus`), the
+    buy, team, radio and spectator menus, the freeze cam panel
+    (`freeze_cam`), `objectives_hud`, `bomb_fx`,
+    `target_id`, `scoreboard`, `window_icon`. The shell reaches them
+    through `client::front_end`: `FrontEnd` hooks (entered/left a game,
+    joining, a failure, a failed map load, starting a game) and the state
+    it reads, `MenuStatus` and `Panels`, which the menus copy in
+    `FrontEndSync` (First, Update after their systems, PostUpdate; the
+    shell's readers saw the menus' resources directly before, so a
+    reader in `Update` may see a change a frame later than it did).
+    `bot::DIFFICULTIES` moved out of Create Server (the debug UI uses
+    it). Architecture test: `games_ui` may use `client`; the rest of a
+    game may not use its `ui`; `client` names a game only in
+    `CLIENT_GAME_EXCEPTIONS` (console, binds, net glue: the install,
+    maps, map cycle and tick of CS:S, waiting for a game registry; the
+    debug UI's Source movement cvars).
+  - Left in `client`, CS:S-flavoured but on generic data (`map::hud`'s
+    layouts): `game_hud`, `hud_sprites`, `win_panel` (CS:S's
+    `win_round.res` and strings; `game_hud` spawns it), `weapon_select`
+    (its `#Cstrike_WPNHUD_*` table), `spectate` (draws CS:S's
+    `spectator.res` bars), `radar`, `overview`, `vgui`
+    (its `VguiOpen`/`VguiMenu` name CS:S's menus), `hud_text`, `fonts`.
+    Next: the HUD as a game part (a HUD slot), then these.
+  - [ ] Rules behind a rule-module interface; game-registered
+    replication.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

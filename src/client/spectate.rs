@@ -484,13 +484,13 @@ pub struct SpectatePlugin;
 
 impl Plugin for SpectatePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((SpectateCameraPlugin, super::spectator_menu::SpectatorMenuPlugin))
+        app.add_plugins(SpectateCameraPlugin)
             .init_resource::<SpectatorBarsUp>()
             .add_systems(
                 Update,
                 (
                     keys.before(super::input::grab_cursor).before(track),
-                    spectator_panel.after(place_camera),
+                    spectator_panel.after(place_camera).after(super::front_end::FrontEndSync),
                 ),
             );
     }
@@ -1003,7 +1003,7 @@ fn spectator_panel(
         Option<Res<crate::map::LoadedMapName>>,
     ),
     (rounds, fixed): (Option<Res<crate::rules::rounds::RoundState>>, Res<Time<Fixed>>),
-    menu: Option<Res<super::spectator_menu::SpectatorMenu>>,
+    panels: Option<Res<super::front_end::Panels>>,
     mut last: Local<Option<BarsShot>>,
     mut shown: ResMut<SpectatorBarsUp>,
     mut commands: Commands,
@@ -1091,7 +1091,7 @@ fn spectator_panel(
             .map(super::game_hud::clock_text),
         wins: rounds.map(|r| r.wins),
         size,
-        menu_open: menu.is_some_and(|m| m.0),
+        menu_open: panels.is_some_and(|p| p.is_open("spectator")),
     };
     if last.as_ref() == Some(&shot) {
         return;

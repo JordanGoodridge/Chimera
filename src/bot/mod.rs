@@ -382,6 +382,18 @@ fn keep_quota(world: &mut World) {
     }
 }
 
+/// Bot skill presets: reaction seconds, aim error degrees, turn rate
+/// degrees per second (`bot_reaction`, `bot_aim_error`, `bot_turn_rate`).
+/// Normal is the bots' default (`BotConfig`). The debug UI's skill
+/// buttons and a game's new-game dialog (CS:S's Create Server, its four
+/// difficulty buttons) pick one.
+pub const DIFFICULTIES: [(&str, f32, f32, f32); 4] = [
+    ("Easy", 0.6, 5.0, 220.0),
+    ("Normal", 0.35, 2.5, 360.0),
+    ("Hard", 0.2, 1.5, 540.0),
+    ("Expert", 0.12, 0.75, 720.0),
+];
+
 #[derive(Resource, Clone, Debug)]
 pub struct BotConfig {
     pub stop: u8,
