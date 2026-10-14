@@ -29,7 +29,7 @@
 //! (`games/cs_source/hit_reaction.rs`): the hit lands in the weapons step,
 //! after every player's movement that tick, so the first slowed move is the
 //! victim's next tick (CS:S's can be the same tick, by the order players
-//! run). A helmeted head hit gives no punch (unmeasured, our choice); punch
+//! run). A helmeted head hit gives no punch (measured: CS:S gives none); punch
 //! is set rather than added to recoil already on the view (only measured on
 //! an unpunched victim); a shotgun's flinch uses all its pellets' damage on
 //! the player. The landing roll stays on the movement's spring (the

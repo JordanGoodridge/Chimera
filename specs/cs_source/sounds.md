@@ -773,7 +773,8 @@ probe bot, `sv_soundemitter_trace 1`; the server's emitted entries per hit
 - Chest/stomach without armour, and legs with or without armour:
   `Flesh.BulletImpact` only.
 - A lethal non-head hit: its hit sound above, then `Player.Death`.
-- Helmeted heads: not measured.
+- A helmeted head: `Player.DamageHelmet` only (USP, Glock, AK-47); a killing
+  helmeted headshot not caught.
 
 ## Open questions
 

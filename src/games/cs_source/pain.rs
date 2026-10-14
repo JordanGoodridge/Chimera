@@ -44,7 +44,7 @@
 //! (`games/cs_source/pain.rs`): the per-hit choice for USP and AK-47 shots on
 //! heads, chests, stomachs and legs is measured (sounds.md "Hurt and death
 //! sounds"); the rest is ours from the install's game_sounds.txt entries: a
-//! helmeted head plays `Player.DamageHelmet` (a guess: unmeasured), arms and
+//! helmeted head plays `Player.DamageHelmet` (measured), arms and
 //! generic hits count as covered like the chest (the damage rule's), and a
 //! hit refused by team rules or god mode plays the flesh impact. The knife,
 //! grenades, fire and crushing play no hurt sound (the knife has its own hit

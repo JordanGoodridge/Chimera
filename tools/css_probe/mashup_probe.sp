@@ -100,7 +100,7 @@ public void OnPluginStart()
     RegServerCmd("mashup_walls", Command_Walls,
         "mashup_walls <x0> <x1> <y0> <y1> <step> <ztop> <maxthick> <minbehind>: thin walls seen from ground points");
     RegServerCmd("mashup_health", Command_Health,
-        "mashup_health <hp> [armor]: respawn the probe bot if dead and set its health and armour (fall damage runs)");
+        "mashup_health <hp> [armor] [helmet 0|1]: respawn the probe bot if dead and set its health and armour (fall damage runs)");
     RegServerCmd("mashup_info", Command_Info, "mashup_info: position and angles of all living players");
     RegServerCmd("mashup_shooter", Command_Shooter,
         "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz>: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
@@ -483,6 +483,7 @@ public Action Command_Health(int args)
     }
     SetEntityHealth(bot, GetCmdArgInt(1));
     SetEntProp(bot, Prop_Send, "m_ArmorValue", args >= 2 ? GetCmdArgInt(2) : 0);
+    SetEntProp(bot, Prop_Send, "m_bHasHelmet", args >= 3 ? GetCmdArgInt(3) : 0);
     PrintToServer("mashup: bot %d health %d armor %d", bot, GetClientHealth(bot), GetEntProp(bot, Prop_Send, "m_ArmorValue"));
     return Plugin_Handled;
 }

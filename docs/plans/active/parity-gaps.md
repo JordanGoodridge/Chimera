@@ -96,7 +96,7 @@ report folders):
 | Fall damage and landing roll | have | | | specs/cs_source/fall_damage.md |
 | Surf ramps | differs | L | | tech-debt "cs_source movement": the rampbug patched out (our choice) |
 | Slowdown when shot ("tagging") | have | | | Fixed 2026-10-14: weapons.md M18 (0.5/0.65 by gun, legs 0.5, +1/3 a second); the speed trace to 0.05 (`games/cs_source/hit_reaction.rs`) |
-| View punch when hit (flinch) | differs | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4); a helmeted head's is unmeasured (none, ours). Capture C1 |
+| View punch when hit (flinch) | have (fixed) | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4, helmeted head none: measured, matches) |
 | Scoped speeds (AWP, Scout, autos zoomed) | differs | M | S | spec movement.md Q1 |
 | Duck spam limit, duck transition times | differs | M | S | spec movement.md Q6 |
 | Backpedal speed (`sv_backspeed`) | differs | L | S | spec movement.md Q10 |
