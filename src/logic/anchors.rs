@@ -5,6 +5,24 @@
 //! spawn), and moves with it. Brushes (`Attached`) and triggers move
 //! their volumes along; other entities their origin and angles (aim
 //! points, game_ui's facing check, explosions).
+//!
+//! Covers: entities parented to something that moves follow it: a placed weapon
+//! (its pose from `map::entities::EntityAnchors`), a physics brush or prop or a
+//! mover, from map load or a SetParent at run time (ClearParent lets go,
+//! SetParentAttachment snaps to the parent); triggers and brushes move their
+//! volumes, mover children (a door on a lift) are carried along with their own
+//! motion kept, drawn parts go where their entity is (`part_poses`); players
+//! SetParent to an entity ride it (`player_follows`; the bridge sets
+//! `core::MapControls::parented`, which stops their movement, physics shadow
+//! and push-away) until ClearParent or death.
+//!
+//! Known shortcuts (docs/tech-debt.md): Entities parented to a placed weapon
+//! (no spec; public entity docs): the weapon's place in its owner's hands is
+//! its owner's feet turned to its yaw; props riding it have no collision (as
+//! other parented props); a network client draws the anchor in the past
+//! (`net::anchors`, as other players), so the item its own player carries
+//! trails it by the interpolation delay. Why it's OK for now: mg_item_battle's
+//! items work.
 
 use bevy::prelude::*;
 

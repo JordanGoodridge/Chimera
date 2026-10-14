@@ -13,6 +13,14 @@
 //!
 //! The router is reached through `PortMapping` (UPnP IGD with `igd-next`
 //! by default); tests put in a fake one and never touch the network.
+//!
+//! Known shortcuts (docs/tech-debt.md): UPnP port mapping (`net::upnp`,
+//! `net_upnp`, off by default) speaks UPnP IGD only: not NAT-PMP/PCP (Apple
+//! and some other routers), not IPv6 pinholes, and only the router nearest
+//! the host (double NAT behind an ISP box isn't opened; `status` warns when
+//! the router's outside address is private or CGNAT's). Not tried against a
+//! real router here (tests use a fake one). Why it's OK for now: A prototype
+//! for testers; docs/plans/active/nat-traversal.md.
 
 use std::{
     net::{IpAddr, SocketAddr, UdpSocket},

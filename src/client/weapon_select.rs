@@ -24,6 +24,30 @@
 //! History: each weapon you get shows on the right, newest at the bottom
 //! of the panel and older ones `history_gap` above, for
 //! `HISTORY_SECONDS` (CS:S's `hud_drawhistory_time` default) and fading.
+//!
+//! The game HUD's weapon selection (`HudWeaponSelection`) and pickup history
+//! (`HudHistoryResource`): `hud_fastswitch 0` (CS:S's default) makes slot keys
+//! and the `slot1`..`slot5` commands open the selection (attack picks, attack2
+//! or `cancelselect` closes; `WeaponMenu`, read by `input` for the intent's
+//! pick, `core::Intent::pick`: slot and place in it, so the second grenade can
+//! be taken, and to keep that attack from firing), `1` switches at once and
+//! shows the row briefly; `invnext`/`invprev` step through every weapon held,
+//! slot by slot (`step_weapon`), the same two ways; the selection's sounds from
+//! `map::RoundSounds` (a move, a pick, an empty slot); the row centred at the
+//! top, the highlighted slot's box large with the weapon font's icon
+//! (`CSweapons`) and the localised name (`#Cstrike_WPNHUD_*`), slot numbers for
+//! held slots; weapons got show on the right, newest at the bottom, for 5 s;
+//! `selection_layout`/`history_layout` are pure (tests).
+//!
+//! Known shortcuts (docs/tech-debt.md): Weapon selection, pickup and buy sounds
+//! (no spec; the install's game_sounds.txt entries, when each plays inferred
+//! from its name): the HUD selection plays `Player.WeaponSelectionMoveSlot` as
+//! it opens or its highlight moves, `Player.WeaponSelected` on a pick and
+//! `Player.DenyWeaponSelection` for a slot key on an empty slot (none with
+//! `hud_fastswitch 1`; `WeaponSelectionOpen`/`Close` unused); a weapon bought
+//! or picked up plays `Player.PickupWeapon` from the player, armour or a kit
+//! bought `BaseCombatCharacter.ItemPickup2`. Why it's OK for now: Captures
+//! wanted in docs/plans/active/parity-gaps.md.
 
 use std::collections::HashSet;
 

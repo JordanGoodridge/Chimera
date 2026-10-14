@@ -9,6 +9,20 @@
 //! Escape drops it; while it's open the keyboard types and plays nothing
 //! else. Lines take the game's formats (`map::radio::SayFormats`) and
 //! play its chat sound. Computer players don't chat.
+//!
+//! The chat area (`ChatLine` messages: coloured runs, also printed to the
+//! console; 12 s per line, `hud_saytext_time`) in the HUD's `HudChat` box, and
+//! hint text (`Hint` messages: buy refusals such as "You cannot carry any
+//! more.") in its `HudHintDisplay` box, coloured from the scheme; text chat: Y
+//! / U (`messagemode`, `messagemode2`) open a typing line ("Say :", "Say (TEAM)
+//! :") that takes the keyboard (the game sees no keys) until Enter or Esc, sent
+//! as `say` / `say_team` would (the game's `SayFormats`, the sender's nav place
+//! in team chat, its chat sound); a line when a character gets or changes its
+//! team ("Bot 2 is joining the Terrorist force", `SayFormats::joins`;
+//! `GameMessagesPlugin`, also headless, with `say`/`say_team`); in a network
+//! game `say` asks the server (`net::SayRequest`) and the lines it sends
+//! (`net::ChatMessage`) are formatted here, its refusals (`net::Notice`) shown
+//! as hints.
 
 use std::collections::VecDeque;
 

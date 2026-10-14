@@ -6,6 +6,16 @@
 //! env_beams' strikes (4.2: when, between which points, the damage). The
 //! map draws them (`map::beams`, `map::emitters`); what is on reaches it
 //! as `map::EntityPart`, a strike as `Effect::BeamStrike`.
+//!
+//! Covers: point_spotlight LightOn/LightOff, env_laser/env_beam on/off, damage
+//! every 0.1 s to the first player on the line and OnTouchedByEntity,
+//! env_spark's timing, sound and OnSpark (its sparks as
+//! `map::SparkBurst`, which the game draws), strike-generator env_beams
+//! (4.2: first strike 1 s after spawn or on TurnOn, then every life +
+//! StrikeTime or a random part of it, StrikeOnce, random ends among a name's
+//! matches, walls within the radius without an end, the damage once per strike
+//! to the first player on the line; `Effect::BeamStrike`); drawn by
+//! `map::beams` through `EntityPart`.
 
 use bevy::prelude::*;
 

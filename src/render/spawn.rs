@@ -2,7 +2,8 @@
 //! `map::MapDrawer`, at their places in its order): images, character
 //! assets, lightmaps, the sky, water, world meshes (chunked, merged brush
 //! entities), model materials, detail sprites, effects, sprites, beams,
-//! ropes and shadows; and each placed prop's skeleton, meshes and skins.
+//! ropes and shadows; and each placed prop's skeleton, meshes and skins,
+//! ragdoll or rig. `MapAssets` (the asset stores) is the `map::MapDrawer`.
 
 use std::{collections::HashMap, sync::Arc};
 

@@ -3,6 +3,15 @@
 //! `LocalPlayer`). Commands and prediction: `predict`; getting the map:
 //! `maps`. How far joining has come (for the loading dialog):
 //! `JoinProgress`.
+//!
+//! The client: `connect` (`net::udp`, random id, `password` in netcode's user
+//! data; the process's own characters, bots and weapons go), `Join` on
+//! connecting, the welcome's map checked (`NetEvent::LoadMap`, then name and
+//! SHA-256 or leave), the fixed tick set to the server's, characters from the
+//! server given their local components (no movement slot), ours `LocalPlayer`
+//! (its `NetBody` into `Transform`/`Velocity`/`MovementState` until it is
+//! predicted), others `map::interp::NetDrawn` (drawn by `interp`), dropped
+//! connections back to single player with the reason.
 
 use std::{
     net::{Ipv4Addr, SocketAddr, UdpSocket},

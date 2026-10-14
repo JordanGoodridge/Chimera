@@ -9,6 +9,16 @@
 //! `bot_debug 1`: a list of the bots' states and last radio calls) and
 //! ragdolls (`mashup_ragdoll_debug 1`: each body's bounds and axes, each
 //! joint from its parent body's anchor to the child body).
+//!
+//! Gizmo debug overlays: `mashup_drawnav` (nav areas by place, links, ladders
+//! and their get-on points) and `mashup_drawbots` (sites and their approaches;
+//! per bot: role ring, target, lead, route, goal, hold spot and watched
+//! approaches, look target and the corner it checks, the teammate it answers,
+//! planned grenade arc, target and burst point, a flash it looks away from, its
+//! radio order and its last radio call (4 s) with a label over its head:
+//! "following Player", "Cover Me!"); `bot_debug` (on-screen list of team plans
+//! and each bot's role, site, activity, health, radio order, last radio call
+//! and how long ago).
 
 use bevy::prelude::*;
 

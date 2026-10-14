@@ -6,6 +6,15 @@
 //! each is on and its numbers; the bridge hands them to the physics as
 //! `map::controllers::BodyControllers` (the body's own motion is the
 //! physics engine's). func_physbox is a prop here (`prop_damage`).
+//!
+//! Covers: phys_thruster, phys_keepupright and phys_motor as `controls()`,
+//! which the bridge hands to the physics as
+//! `map::controllers::BodyControllers`; the two-object constraints
+//! (specs/source/physics_constraints.md: bodies by name, the world for a
+//! missing one, start inactive, connect on TurnOn, TurnOn/TurnOff/Break and
+//! OnBreak) and motors' "Hinge Object" as `joints()`, handed over as
+//! `map::controllers::BodyJoints`; func_physbox is a prop here,
+//! `prop_damage::is_physbox`.
 
 use bevy::prelude::*;
 

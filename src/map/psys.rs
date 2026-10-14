@@ -7,6 +7,30 @@
 //! interpretations, listed in docs/tech-debt.md). Simulation is in the
 //! game's units (Source: inches, Z up); particles reach the pool
 //! (`particles`) as one-frame groups in engine space.
+//!
+//! Data-driven particle systems for any game (Source `.pcf` effects):
+//! `SystemDef` (emitters, initializers, operators, forces, renderer, children
+//! with delays; meanings from specs/cs_source/impact_effects.md 14 and fire.md
+//! 7.3), `Instance` (simulated in the game's units, one per start; stopping
+//! lets particles finish), `SystemEmitter` per info_particle_system following
+//! its entity, switched by `EntityPart`, drawn as one-frame pool groups
+//! (sprites, sprite trails, ropes; the material's overbright).
+//!
+//! Known shortcuts (docs/tech-debt.md): Particle systems (`map::psys`,
+//! `games/cs_source/pcf.rs`): the operator meanings are interpretations
+//! (specs/cs_source/impact_effects.md 14, fire.md 7.3; the library isn't
+//! public): drag removes its fraction per step (steps of the system's maximum
+//! time step), velocity noise is uniform per particle, random force a uniform
+//! draw per step, twist a tangential acceleration, sprite trails are streaks
+//! back along the velocity 0.1 s long between the min and max length, animation
+//! rate without "as FPS" plays the sequence that many times a second; oscillate
+//! scalar, collision via traces and the visibility, cull and sleep settings
+//! aren't run (an unseen system freezes); control points 1-63 (`cpointN`) all
+//! sit on the entity; `$addself` sprite cards are blended with the overbright
+//! factor, not part-added; only binary DMX encoding 2 is read; a system's look
+//! isn't compared with CS:S. Why it's OK for now: Draws the maps' effects (7
+//! maps, 307 systems) from their own data; a reference capture would tune the
+//! meanings.
 
 use bevy::prelude::*;
 

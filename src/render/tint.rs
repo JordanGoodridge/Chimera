@@ -6,6 +6,16 @@
 //! alpha. The logic layer writes `BrushTint` on mover nodes and
 //! `RenderLook` on characters; a tinted node draws its own meshes, not
 //! the merged chunks (`merge`).
+//!
+//! Entities' render colour, alpha and mode (`RenderLook`: Source rendercolor,
+//! renderamt, rendermode; normal mode ignores the alpha, colour/texture modes
+//! blend by it, glow and additive modes add, 6 and 10 hide): brush entity nodes
+//! (`BrushTint`, written by the logic bridge) draw a looked copy of their
+//! material, a looked node its own meshes, not the merged chunks (`merge`);
+//! characters (`RenderLook` on the character, from the logic's player looks)
+//! draw their body and held model faded, added or tinted
+//! (`apply_character_looks`, on their `probe_lit` materials). Baked brush
+//! entities' render modes are drawn from load (`MapMesh::render`).
 
 use bevy::prelude::*;
 

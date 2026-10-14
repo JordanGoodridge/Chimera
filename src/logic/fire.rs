@@ -9,6 +9,37 @@
 //! Units as the spec: entity space (inches, Z up), seconds. Fire thinks
 //! advance their own clock by the nominal 0.1 s per think whatever the
 //! tick rounds it to.
+//!
+//! Covers: specs/source/fire.md: env_fire's heat model, growth, floor drop,
+//! burn damage in its box with a line-of-sight check, fuel,
+//! Extinguish/ExtinguishTemporary/Enable/Disable, OnIgnited/OnExtinguished;
+//! env_firesource and env_firesensor; entity flames from the Ignite inputs and
+//! burning props: 1 burn a think to the target, radius burn, heat to fires;
+//! traces through `LogicWorld::collision`, the static world the bridge hands
+//! over.
+//!
+//! Known shortcuts (docs/tech-debt.md): Fire (specs/source/fire.md,
+//! src/logic/fire.rs, src/games/cs_source/fire.rs): the fire cvars are
+//! constants at their defaults; traces (the drop to the floor, the damage line
+//! of sight) go through the world's movement brushes minus player clips, grates
+//! and ladders (`map::MapTraceSkip`), the terrain and movers: static props
+//! block them as their convex brushes, physics props don't (the spec: solid,
+//! moveable and window contents); every character in the logic's player list
+//! counts as a player for the damage box (hostages too, which the spec gives
+//! the half-size object box); burn damage to players skips armour, pain sounds
+//! and the HUD damage icon, and a burn kill shows the skull with no attacker
+//! (Q2); entity flames' radius damage is our linear falloff aimed at 85 % of a
+//! player's eye height (CS:S's radius damage, Q6), a dead player's flame is
+//! removed at once (no client ragdoll copy), and props' world boxes come from
+//! their colliders' AABBs (flame size, damage boxes); the look rebuilds
+//! `env_fire_large_smoke` for every size and smokeless/plasma choices only drop
+//! the smoke (stock maps use only the large system), without twist, noise or
+//! random-force operators (spread start velocities instead),
+//! `burning_character` without its 150-a-second `flames e` part and with flames
+//! on the target's box instead of its hitboxes; bubbles are our sprite size.
+//! Why it's OK for now: The spec's numeric cases pass (tests in
+//! src/logic/fire_tests.rs); de_dust2's A fires light 0.2 s after the bomb and
+//! burn a bot 26 a second (tests/it/heavy/map_fire.rs).
 
 use bevy::prelude::*;
 

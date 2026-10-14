@@ -16,6 +16,16 @@
 //!
 //! Whether the flow runs is `rules::JoinChoice` (`client::Args::join_choice`;
 //! tests and scripted runs join a team at once).
+//!
+//! CS:S's join flow: a player coming into a game on no team
+//! (`core::Unassigned`: joining a server, or a game started with `map`/`--map`,
+//! `start_game`) reads the message of the day (`net::ServerMotd` in the game's
+//! `motd.res`, the server's name over it; HTML shown as its text,
+//! `cl_disablehtmlmotd` the plain-text one), OK opens the team menu, a team
+//! opens the class menu (`classmenu_ter.res`/`classmenu_ct.res`, the hovered
+//! class's picture; `joinclass`), else plain lists; `motd` shows it again;
+//! `JoinMenusStatePlugin` follows the player without drawing (tests). Whether
+//! it runs: `rules::JoinChoice` (`Args::join_choice`, `--join`).
 
 use bevy::{prelude::*, window::CursorOptions};
 

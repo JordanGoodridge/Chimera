@@ -3,6 +3,11 @@
 //! flames on entities by the box of what burns. The logic layer writes
 //! `MapFires` each tick; a game draws them its own way (CS:S: the
 //! `env_fire_*` and `burning_character` particle systems). Engine space.
+//!
+//! `MapFires`: the fires (floor point, size) and burning entities (their box)
+//! the logic says burn now, for a game to draw; `map::MapTraceSkip` (in
+//! `mod.rs`) lists the collision brushes line traces pass (player clips,
+//! grates), for the logic's static world.
 
 use bevy::prelude::*;
 

@@ -3,6 +3,13 @@
 //! probe evaluated per pixel from uniforms (moving models: view models),
 //! plus the scene's point lights (muzzle flashes), with Source's range fog
 //! (the same f^2 curve as the world, see world.wgsl). See prop.wgsl.
+//!
+//! Props lit by a light probe (vertex colours, or per pixel from uniforms for
+//! moving models such as view models), plus the scene's point lights
+//! (`DynamicLight`, read from Bevy's light clusters), Source range fog,
+//! `env_cubemap` reflections of the nearest baked cubemap, and the model
+//! shaders' `$detail` (every blend mode, 5 and 6 after lighting), `$selfillum`
+//! (base alpha or `$selfillummask`) and `$basetexturetransform`.
 
 use bevy::{
     asset::embedded_asset, prelude::*, reflect::TypePath, render::render_resource::AsBindGroup, shader::ShaderRef,

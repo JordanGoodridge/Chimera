@@ -8,6 +8,13 @@
 //! - hearing: `core::Deafened` for the local player sets
 //!   `audio::hearing::Hearing` (muffled sounds, ringing);
 //! - the view shake of nearby blasts (`weapon::grenade::Shake`).
+//!
+//! What flashes and blasts do to the local player's senses: the flash overlay
+//! (white plus the frame captured at the flash by a screenshot read-back, the
+//! after-image, added in an additive UI material and fading with
+//! `core::Blinded`), `core::Deafened` for the local player into
+//! `audio::hearing::Hearing`, and the view shake of `weapon::grenade::Shake`s
+//! in `Detonated` (applied in `follow_eye`).
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

@@ -4,6 +4,37 @@
 //! and points back at it. With `mashup_usepickup 1`, +use on a loose
 //! weapon in view swaps it for the one in its slot (CS:GO's rule; CS:S
 //! has only the walk-over pickup).
+//!
+//! Covers: `drop` (G) throws the held weapon out as a `Loose` item (the dead
+//! drop their best one), touching one (its box grown 36 units sideways and 18
+//! up, 1 s after the drop, in sight of the eye; specs/cs_source/weapons.md 3.9)
+//! takes it when its slot is empty (and draws it when the player's
+//! `cl_autowepswitch` userinfo is on, its `SwitchWeight` is above the one in
+//! hand's and attack isn't held), or only its ammo when the same type is
+//! carried (`Undroppable`: the knife; `Verdict`: why one is or isn't taken,
+//! which `mashup_debug_pickup` prints; a drop is stamped on the tick's clock,
+//! `Time<Fixed>`, wherever it's asked from); with `mashup_usepickup 1`, a +use
+//! press on one looked at within `USE_REACH` swaps it for the weapon in its
+//! slot (`UsedPickup`).
+//!
+//! Known shortcuts (docs/tech-debt.md): `cl_autowepswitch`
+//! (`weapon::drop::auto_switch`): weights are the spec's table (the install's
+//! weapon scripts are encrypted `.ctx`, whose key the repo can't hold); no
+//! switch while attack is held (firing, planting, a pin out: our choice) but a
+//! reload is cancelled; bots have no userinfo and never auto-switch (CS:S's
+//! fake clients' value unknown); buying never auto-switches. Capture to
+//! confirm: in CS:S holding a pistol, walk over a dropped AK (switch), with
+//! `cl_autowepswitch 0` (no switch), and while holding attack with the knife.
+//! Why it's OK for now: Matches the option's words.
+//!
+//! Known shortcuts (docs/tech-debt.md): `mashup_usepickup` (CS:GO's +use
+//! pickup; no spec, CS:S has none): reach 100 units from the eye to the
+//! weapon's centre, the view line within its half size plus 12 units of the
+//! centre, the nearest by angle; same 1 s touch delay and line of sight as
+//! walking over it; the weapon in its slot (the held one if there) is thrown as
+//! with `drop`, and the taken one drawn when the dropped one was held; a press
+//! can also start a door, button or defuse in the same tick. Why it's OK for
+//! now: Off by default; tune the reach in play.
 
 use avian3d::prelude::{AngularVelocity, LinearVelocity};
 use bevy::prelude::*;

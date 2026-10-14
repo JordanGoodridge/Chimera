@@ -12,6 +12,14 @@
 //! advance widths rounded to whole pixels, and the cell starts on a whole
 //! pixel. Coverage is drawn as is: additive text adds `colour · alpha ·
 //! coverage` to what is under it.
+//!
+//! HUD text drawn as Source draws it: the game's font files (and the scheme's
+//! system faces) rasterized here with `ab_glyph` (cell height `tall`, em over
+//! the face's Windows line height in whole pixels, baseline by the hhea
+//! ascender, whole-pixel advances), placed on whole pixels and blended
+//! additively for `additive` fonts (a `UiMaterial`, `hud_text.wgsl`, which also
+//! draws sprite-sheet rectangles); `ink_rect` says where a text's ink lands
+//! (tests).
 
 use std::{
     collections::HashMap,

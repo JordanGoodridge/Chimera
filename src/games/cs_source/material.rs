@@ -1,6 +1,27 @@
 //! Source materials (VMT) and their base textures (VTF) to neutral textures.
 //! Looks in the map's embedded pak first (maps ship patched materials there),
 //! then the game's search path.
+//!
+//! Known shortcuts (docs/tech-debt.md): Textures are decoded to RGBA8 at load
+//! (`material::decode`): surf_sedona's 244 packed textures (up to 4096 square)
+//! come to ~270 M texels, about 1 GB in memory and on the GPU; and a map with
+//! HDR lighting only (surf_sedona) is lit at mat_hdr_level 2, where its trees
+//! sunk into the ground (origin in solid leaves, no ambient samples) are dark.
+//! Why it's OK for now: Loads in seconds now; keeping BC1/BC3 compressed on the
+//! GPU would cut it 4-8x. Level 2 isn't the default.
+//!
+//! Known shortcuts (docs/tech-debt.md): Community maps' materials
+//! (`games/cs_source/material.rs`): what the VMT parser refuses is rewritten
+//! (`lenient_vmt`) and parsed again rather than read by a parser of our own;
+//! shaders the specs don't cover are stand-ins: WindowImposter shows its
+//! cubemap as if infinitely far (no parallax), ShatteredGlass has no per-pane
+//! proxy, LightmappedReflective is an opaque surface of its `$refracttint` (no
+//! reflection or refraction); `$emissiveblend*` (surf_demise's glowing banner
+//! and credits) isn't drawn (black additive, the spec's envmap-only rule;
+//! shaders.md open question 17); loose items' swept-CCD thresholds (0.5 m/s, 6
+//! rad/s, `map::loose`) are a guess. Why it's OK for now: 32 materials over 10
+//! maps parse now; specs/cs_source/shaders.md open question 15 lists the
+//! stand-ins to check against the game.
 
 use std::collections::HashMap;
 

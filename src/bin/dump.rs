@@ -1,5 +1,8 @@
 //! Development tool: inspect and extract a game install's files.
 //! See docs/OBSERVABILITY.md ("Exploring game files").
+//!
+//! Dev tool: summarize, list and extract a game install's files; `--sequences`
+//! lists a model's bones and sequences.
 
 use std::{
     collections::BTreeMap,

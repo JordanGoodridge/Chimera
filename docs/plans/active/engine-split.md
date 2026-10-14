@@ -162,6 +162,14 @@ measurements):
     (load 14-26), 114 s after (load 17-18): one crate either way, so
     the difference is load and cache, not the move; the win comes with
     the crate cut.
+- [x] Docs diet (P2): docs/ARCHITECTURE.md's module table became one
+  line per module (133 KB to 22 KB) and docs/tech-debt.md one line per
+  entry (109 KB to 15 KB); the detail moved into the files' `//!` docs
+  (debt under "Known shortcuts"). `architecture::docs_stay_one_line_per_entry`
+  caps the line lengths and checks the paths.
+- [x] Heavy tier (P4b): map-looping heavy tests split per map, nextest
+  tuned to 5 heavy slots weighted by memory; full suite 1,812 s to
+  1,009 s (docs/performance.md, "The heavy tier").
 - [ ] (2) CS:S UI out of `client`, rules behind a rule-module interface,
   game-registered replication.
 - Order: (1) the `tools` package; (2) inside today's single crate, move

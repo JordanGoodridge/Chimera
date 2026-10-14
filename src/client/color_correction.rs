@@ -3,6 +3,11 @@
 //! applied to the finished frame by the last camera drawing the view (the
 //! view model's when it draws, else the world's), after the tone map. No
 //! pass while no table has weight.
+//!
+//! `mat_colorcorrection` (archived, default 1): the blended table applied to
+//! the finished frame (linear to sRGB, the table, back) by the last camera
+//! drawing the view, after the tone map (`hdr::SourceTonemapSet`); no pass
+//! while no table has weight.
 
 use bevy::{
     asset::embedded_asset,

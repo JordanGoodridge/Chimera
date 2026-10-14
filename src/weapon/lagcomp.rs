@@ -20,6 +20,12 @@
 //!   (`deliver::Shot::rewound`). Nothing is moved in the world, so nothing
 //!   needs restoring. `sv_unlag 0` turns it off; `sv_showlagcompensation
 //!   1` logs every rewind.
+//!
+//! Covers (spec 4.6): on a network server each living character's hit volume
+//! per tick (`HitHistory`: origin, look yaw, box, hitboxes; 1 s), and a remote
+//! player's shots traced against others where it saw them (`ViewTick` from its
+//! command, `rewind`: between two kept ticks, at most `sv_maxunlag`, not across
+//! a 64-unit teleport; `sv_unlag`, `sv_showlagcompensation`, `LagCompStats`).
 
 use std::{collections::VecDeque, sync::Arc};
 

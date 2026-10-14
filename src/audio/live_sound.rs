@@ -10,6 +10,9 @@
 //! point or follows an entity; its distance falloff and panning follow
 //! the listener while it plays. The state (`LiveSounds`) is kept without
 //! audio too, so headless tests read what plays.
+//!
+//! Long-lived sounds started, changed and stopped by `map::SoundControl`
+//! (`LiveSounds`, kept headless too; `LiveClip`, loop points, per-ear gains).
 
 use std::{
     collections::HashMap,

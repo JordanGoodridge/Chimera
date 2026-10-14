@@ -12,6 +12,15 @@
 //! From the install's menu files and general CS:S knowledge; the boxes'
 //! sizes, the defaults and the track length are guesses
 //! (docs/tech-debt.md, spectating).
+//!
+//! The spectators' map overview (`overview_mode` 1 small box, 2 large between
+//! the spectator bars; `OverviewSettings`: `overview_zoom` toward the watched
+//! player or the free camera, `overview_locked`, `_names`, `_health`,
+//! `_tracks`): the radar's overview picture and UI material (`radar.wgsl`,
+//! turned in pixels for boxes that aren't square), the watchable players as
+//! team-coloured dots with names, health bars and their last positions; the
+//! radar hides while it shows; `OverviewStatePlugin` (cvars, zoom) runs without
+//! a window.
 
 use std::collections::{HashMap, VecDeque};
 

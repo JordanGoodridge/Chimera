@@ -2,6 +2,20 @@
 //! the damage indicator (the HUD layout's `HudDamageIndicator`: a red bar
 //! at the screen's left or right side, both for a hit from in front or
 //! behind) that flashes on the side a hit came from.
+//!
+//! The game HUD's sprite icons (`map::hud::HudSprite`, rectangles of the game's
+//! HUD sprite sheets): the ammo-type icon for types without a glyph (buckshot;
+//! added to the screen) and the damage direction indicators (the HUD layout's
+//! `HudDamageIndicator` side bars, from `core::DamageTaken`: what reached the
+//! health, a network client's from the server as `net::Hurt`; a fall lights
+//! both).
+//!
+//! Known shortcuts (docs/tech-debt.md): Damage indicator
+//! (`client::hud_sprites`): the bars' place and size are hudlayout.res's
+//! `HudDamageIndicator`, but which bar lights is ours (left or right by the
+//! attacker's side, both from in front or behind or a fall), solid red at 0.8
+//! alpha fading over 1 s regardless of the damage; `mp_fadetoblack` fades over
+//! 1 s under the HUD (ours). Why it's OK for now: Capture C8.
 
 use bevy::prelude::*;
 

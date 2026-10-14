@@ -2,6 +2,42 @@
 //! "prop_door_rotating") turned like rotating brush doors. Props that take
 //! damage and fire outputs (prop_dynamic, prop_physics*) are in
 //! `prop_damage`.
+//!
+//! Covers: prop_door_rotating: a pusher turning about its hinge, opening away
+//! from the user (the other way when players, loose physics props or the static
+//! world block its swing), return delay, slaves, blocked stop/resume (also by a
+//! physics prop pinned against the world, which forceclosed pushes through and
+//! crushes), the hardware's handle sounds, Open/Close firing twice.
+//!
+//! Known shortcuts (docs/tech-debt.md): Model doors (prop_door_rotating,
+//! src/logic/props.rs) beyond the spec: the leaf side decides forward/back (a
+//! leaf on the hinge's right swaps them: our reading of "hinge on the left");
+//! spawnpos 1/2/3 = open forward/back/ajar and flag 1 opens forward;
+//! OnOpen/OnClose/OnFullyOpen/OnFullyClosed use the door as activator (like
+//! func_door); an Open input with no user opens forward; the swing-side check
+//! and the auto-close retry look at living players, loose physics props (their
+//! world box shrunk 0.5 units sideways, 2 up and down) and the static world
+//! (the leaf's corners, edge midpoints and centre pulled 20 % toward its
+//! centre, as small boxes), sampled every 15°, and a player's opening takes the
+//! other way only when that one is clear; a loose physics prop blocks a turning
+//! door when the door would push its box into the world or another mover (its
+//! world box, as for players), and with forceclosed it is pushed through
+//! instead and a damageable one takes its health as crush damage (each tick it
+//! is pinned); sounds are the model's `door_options` move/open/close for its
+//! skin and locked/unlocked from its `hardwareN` block for the door's
+//! `hardware` (our reading of the model data, spec Q8; no latch entries exist
+//! in the stock models) or the map's sound overrides, the unlocked one on an
+//! unlocked +use only, no 1 s wait between them; collision is the `.phy` pieces
+//! as pusher brushes. Skin/SetBodyGroup/SetAnimation follow
+//! specs/source/prop_damage.md 8-9 except: a skin the model lacks is ignored,
+//! OnAnimationBegun/OnAnimationDone don't fire (the map plays sequences, the
+//! logic doesn't know their length), the cycle advances every frame (not 0.1 s
+//! thinks), sequences pick up no animation events (sounds), skinned props keep
+//! their spawn-time per-vertex light and draw without frustum culling; a skin
+//! swap drops a prop's nearest-cubemap reflection variant; only prop_dynamic
+//! entities with DefaultAnim or a SetAnimation output aimed at them load their
+//! skeleton. Why it's OK for now: The spec's cs_assault cases pass; de_nuke's
+//! steam and cs_office's projector work; see the prop damage row.
 
 use bevy::prelude::*;
 

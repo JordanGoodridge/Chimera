@@ -3,6 +3,14 @@
 //! `snd_mute_losefocus` (silent while the window is in the background).
 //! Bevy's `GlobalVolume` is what the mixer reads (`audio::live_sound`,
 //! `audio::room`): the volume, or nothing while muted for focus.
+//!
+//! The options' sound settings: the master `volume`, `snd_mute_losefocus`
+//! (silent while the window is in the background) through Bevy's
+//! `GlobalVolume`, and `snd_musicvolume` (`audio::live_sound::SoundMix`: sounds
+//! under `music/` and MP3s); the Audio tab's drop-downs' cvars, kept and saved
+//! (`snd_surround_speakers`, `snd_pitchquality`, `dsp_slow_cpu`,
+//! `closecaption`, `cc_subtitles`, `mashup_spoken_language`: what each will
+//! change, docs/plans/active/video-settings.md).
 
 use bevy::{
     audio::{GlobalVolume, Volume},

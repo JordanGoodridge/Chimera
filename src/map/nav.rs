@@ -3,6 +3,12 @@
 //! links between them are directed. Queries and the A* search follow
 //! specs/cs_source/nav.md (the Source nav system, the only one loaded so
 //! far), so its constants are Source's, converted to meters.
+//!
+//! `NavMesh` (any game): areas with corner heights, directed links, ladders,
+//! hiding spots, potentially visible areas and encounter spots in engine space;
+//! area queries, A* with the stock cost or any step cost (`find_path_with`),
+//! crossing points (optionally leaning along the edge), `route`/`points_along`,
+//! `within` (areas by path distance), `sees`.
 
 use bevy::prelude::*;
 

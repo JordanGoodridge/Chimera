@@ -23,6 +23,10 @@
 //! entity's newest (its confirmation mask), so an update held up longer
 //! than a second (three resends in a row lost at 300 ms) still loses a
 //! value changed once before it (docs/tech-debt.md, net).
+//!
+//! Replicated values applied in tick order, held-back older mutations too
+//! (replicon's `ConfirmHistory` as a receive marker with `need_history`;
+//! `newest`, `OrderedAppExt`).
 
 use std::marker::PhantomData;
 

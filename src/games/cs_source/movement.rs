@@ -12,6 +12,63 @@
 //! view (the punch angle's roll, `MovementState::view_roll`); hard
 //! landings deal fall damage (specs/cs_source/fall_damage.md) and play
 //! its sound.
+//!
+//! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
+//! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
+//! against is the one it really crosses last, not the last by backed-off
+//! fraction (Source's choice picks a curved ramp's seam bevel, facing back
+//! along the ramp: a "rampbug" stop, which surf servers patch out with plugins;
+//! kept always on, no cvar, by the user's decision), and moves go in as a start
+//! and a delta (exact parallel tests far from the origin). Not compared with
+//! CS:S tick for tick; the movecmp-derived tests and dust2/nuke walking pass
+//! unchanged. Why it's OK for now: Surfing stopped dead on most surf_sedona
+//! ramps; a movecmp surf scenario would tell how often CS:S itself rampbugs.
+//!
+//! Known shortcuts (docs/tech-debt.md): Source movement
+//! (specs/cs_source/movement.md) lacks base velocity (conveyors, water
+//! currents); its view punch is the landing roll only (the spring runs on roll
+//! alone, as only landings set it); fall damage
+//! (specs/cs_source/fall_damage.md) ignores landing on moving or floating
+//! objects. CS:S values, hulls, ducking, stamina and the bunny-hop cap are
+//! measured with movecmp/the probe. Not modelled: the bots' automatic jump-duck
+//! (bots only). An exactly 18-unit drop is at the edge of the stick-to-ground
+//! reach (unmeasured). Max speed comes from the held weapon (`MaxSpeed`). Why
+//! it's OK for now: Walking, stopping, jumping and crouch-walking match CS:S
+//! tick for tick.
+//!
+//! Known shortcuts (docs/tech-debt.md): Ladder brush tops
+//! (`games::cs_source::movement`, `LADDER_MAX_NORMAL_Z`): the ladder probe
+//! ignores a ladder face whose normal is 0.7 or more vertical (a ladder brush's
+//! top or bottom), our choice: the spec is silent, and taking the top for a
+//! ladder (normal +z) stuck you there (the climb velocity along a vertical
+//! normal left only sideways movement looking down, and a jump added the 270
+//! jump-off push to the jump). Before: 36 ladder tops on the stock maps grabbed
+//! you (`tests/it/heavy/map_ladders.rs`), now 0. Confirmed in the CS:S client
+//! (2026-10-10, feet at (1607, -114, -136) on de_train's ladder top, pitch 30
+//! down): forward walks off the top, a jump is a normal 302 one. Climbing
+//! ladder steps share the ground's step timer (sounds spec 3), so a short climb
+//! right after a ground step (de_train's car ladders looking up, about 0.3 s)
+//! hears none; CS:S's doing the same is unmeasured. Holding walk or duck
+//! silences ladder steps too (our CS:S walk rule, sounds spec Q3; the spec's
+//! ducked ladder step is 0.325). No CS:S surface is `climbable`, so climbable
+//! materials (spec "What counts as a ladder") aren't read. Why it's OK for now:
+//! Every stock ladder climbed long enough steps; tops walk and jump normally.
+//!
+//! Known shortcuts (docs/tech-debt.md): Source movement sweeps concave or
+//! rounded props (182 of dust2's 295) with avian shape casts; world brushes,
+//! convex props (hull within 1 cm of 75% of the surface, from the visible mesh,
+//! not `.phy`) and displacement triangles (as 2-unit-thick solids with bevel
+//! planes, `core::MapTerrain`; CS:S's own displacement collision isn't public)
+//! are swept exactly. A static prop set to collide by its physics model ("Use
+//! VPhysics") whose model has none blocks nothing (our reading of the public
+//! prop_static docs, not measured): 91 of surf_nebula's 230 props (Propper ramp
+//! models over player-clip ramps; their meshes as colliders stopped 13 of 84
+//! surf rides dead), 206 of kz_hikari_od_nh_v2's 485, 55 of
+//! gg_fy_tactic_fight's, 44 of surf_halloween_tf2's. Why it's OK for now: Exact
+//! on crates and boxes; terrain matches CS:S in movecmp (landing on a slope
+//! picked a neighbouring triangle once: 0.15 u/s off for a tick). Probe for the
+//! prop rule: a map with a VPhysics static prop whose model has no `.phy`, walk
+//! into it (`getpos` stops or passes).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

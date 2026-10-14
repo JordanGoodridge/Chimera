@@ -7,6 +7,10 @@
 //! can't set them (`console::execute` refuses), and anything else that
 //! changes one (a map load, a debug slider) is put back to the server's
 //! value; on leaving, its own values come back.
+//!
+//! Replicated cvars (`console::CvarScope::Replicated`): all to a client when it
+//! joins (`CvarValues`), changes as they happen; a client sets them, keeps them
+//! (puts back any local change) and restores its own when it leaves.
 
 use std::collections::HashMap;
 

@@ -11,6 +11,41 @@
 //! map changes, as in the game; `ClearDecals` (the `r_cleardecals`
 //! command) removes them all, and `DecalSettings::round_clear`
 //! (`mashup_round_cleardecals 1`) at every round start.
+//!
+//! Runtime decals for any game: `MapDecals` (decal images in atlas rectangles,
+//! weighted groups, surface material → group), `PlaceDecal` projects one onto
+//! the world triangles near a hit, or onto a hit prop's own model or a hit
+//! brush entity's own brushes (as a child of the prop or node: it moves with
+//! doors; `drop_brush_decals` removes a brush entity's decals when the logic
+//! removes or breaks it and at a round restart; none on a removed one), clipped
+//! to its rectangle, drawn modulate 2× (`DecalMaterial`; fog fades them to
+//! neutral) above the map's decals and overlays (a depth-only copy just under
+//! each keeps overlays off it, while impacts never hide each other: they
+//! multiply in any order, the result of the game's creation order), oldest
+//! removed past `mp_decals` (`DecalSettings::limit`, Source's client setting,
+//! 200).
+//!
+//! Known shortcuts (docs/tech-debt.md): Runtime decals: world and props
+//! (projected onto the prop's own model triangles, as a child so they move with
+//! it), none on characters (blood); lit decals (wood, glass: lightmapped and
+//! alpha-blended in the game) drawn as a modulate-style stain; modulate 2x
+//! brightening is capped at 2x in linear light (the game's gamma-space 2x can
+//! reach about 3x for its lightest texels; an 8-bit target can't hold more in
+//! one blend); a 5% edge fade hides atlas bleeding; orientation follows the map
+//! decal rule (walls upright, floors along world X; the engine's rule isn't
+//! public); limit 512 (the game's is a client setting); fog fades them to
+//! neutral by the fog amount^0.4 (shaders.md section 5). Why it's OK for now:
+//! Bullet holes on world surfaces look right; the rest needs observation in the
+//! game.
+//!
+//! Known shortcuts (docs/tech-debt.md): Decal reach (plane within 4 units or
+//! half the decal's smaller side, in front of the face) and floor/ceiling
+//! orientation (aligned to world X) are inferred, not from a spec; overlapping
+//! decals have no defined draw order. The infodecal probe (origin ∓ (5,5,5)) is
+//! tested against solid drawn brush entities' bounding boxes, not their
+//! brushes, and a decal its entity's faces don't take falls back to the world;
+//! decals by props stay unplaced (13 over the stock maps). Why it's OK for now:
+//! All dust2 wall decals read correctly; floors unverified.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 

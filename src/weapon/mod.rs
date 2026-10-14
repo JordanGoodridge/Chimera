@@ -7,6 +7,34 @@
 //! for other games' weapons: per-game feel goes in extra parts.
 //!
 //! Units: meters, seconds, damage normalized like `Health`.
+//!
+//! Weapons as parts (README, "Weapons and items"): `Trigger`, `Magazine` (cost;
+//! `ShellReload`: one round at a time, a shot stops it), `Hitscan` (pellets
+//! share a shot's inaccuracy offset)/`Melee` (delivery), `Penetration` with
+//! `PassMaterials` (bullets through walls and characters), `DamageEffect`,
+//! `WeaponSounds`, attack2 modes (`AltModes`, with `Zoom` (owner gets `Zoomed`,
+//! max speed) and `Burst`); `Inventory`, `WeaponState` timers,
+//! `WeaponRegistry`/`StartingWeapons` (per team), `give`; selection and deploy
+//! before movement, the Source-style weapon frame in `SimSet::Weapons` (spec
+//! weapons.md 3–4; both in `core::Predict` schedules, timed by
+//! `core::SimClock`; characters a network client draws from snapshots
+//! (`map::interp::NetDrawn`) never run it), `WeaponEvent`s (`replay`: written
+//! while a client re-ran a command; effects skip those; `Fired`: a round's
+//! origin, angles, spread seed and spread, enough to draw it again:
+//! `pellet_dirs`); damage, armour and pushes only where `core::authoritative`.
+//!
+//! Known shortcuts (docs/tech-debt.md): Penetration (M13): a player's budget
+//! cost is a fixed 21.5 units (a fit to the stop cases, Q7), not its thickness;
+//! metal and sand damage factors and every other material class (tile, glass,
+//! grate, ...: metal's scale 1.0, factor 0.5) are unmeasured guesses; the range
+//! halving after players is applied, not after walls (unchecked); the 762MM
+//! distance limit is unbounded (passes at 4000, nothing further measured); open
+//! surfaces (displacements, anything not a closed solid) stop bullets; the
+//! player-just-before-a-wall quirk isn't reproduced. Shots after passing
+//! something are `ShotContinued` events: impact sounds, decals and particles
+//! mark every surface a bullet enters (the probe logs entry impacts only; exit
+//! marks unchecked), but tracers cover only the first segment. Why it's OK for
+//! now: Matches every measured damage and pass/stop case the spec lists.
 
 mod deliver;
 pub mod drop;

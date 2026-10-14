@@ -6,6 +6,15 @@
 //! Verdana where installed, else a stand-in). The buy and team menus use this; while one is open the
 //! mouse is free (`VguiOpen`), as in CS:S, and grabbed again when it
 //! closes.
+//!
+//! Drawing a game's own menu layouts (`map::hud::GameMenus`): each control
+//! (label, button, image, rich text, panel, divider) as a UI node in the
+//! virtual 640×480 screen scaled by height and centred (or a given box: the
+//! scoreboard and spectator bars use the window), placed by `UiLayout::rects`
+//! (VGUI's `pin_to_sibling` corners too), in the scheme's colours and text
+//! fonts (`fonts.rs`); hotkeys (`&1`), hover lighting; `VguiOpen` frees the
+//! mouse while the buy, team or spectator menu is drawn and grabs it again when
+//! closed.
 
 use std::collections::HashMap;
 

@@ -4,6 +4,37 @@
 //! texture; the shadow is clipped onto the world surfaces behind the
 //! caster like a decal, and multiplies them toward the shadow colour with
 //! a 5-tap blur, fading with distance and vanishing in fog. See shadow.wgsl.
+//!
+//! Dynamic shadows as Video > Advanced's shadow detail asks (`ShadowSettings`:
+//! `r_shadows`, `r_shadowrendertotexture`, `r_flashlightdepthtexture`;
+//! `apply_shadow_detail` builds them from `ShadowSource` at map load and again
+//! at once on a change): at Low Source's blob shadows (`ShadowFrame::blob`, a
+//! round picture straight down under each prop), at Medium/High
+//! render-to-texture prop shadows; characters' blob shadows at every level
+//! (`update_character_blobs`, bodies drawn only). Render-to-texture:
+//! silhouettes rasterized into a coverage atlas, clipped onto world surfaces,
+//! multiplied over them; redrawn where physics props move by a quarter of a
+//! shadow texel or more (`update_prop_shadows`, `moved_visibly`; only the
+//! redrawn cell of the atlas image is rewritten; each shadow keeps one mesh
+//! asset, rewritten in place: a new handle a frame left a moving prop's shadow
+//! undrawn), hidden while the logic hides their prop (broken, killed).
+//!
+//! Known shortcuts (docs/tech-debt.md): Dynamic shadows (`map::shadows`, shadow
+//! detail): characters cast blob shadows only, at every level (Source draws
+//! players render-to-texture; theirs would need the posed silhouette each
+//! frame), straight down at Low and along the map's direction at Medium/High,
+//! hidden when no world surface lies within reach under them; the blob's box is
+//! the collision hull axis-aligned, not turned with the character's yaw
+//! (turned, it grew, shrank and slid as bots turned to watch a moving viewer);
+//! shadow geometry lies 0.4 units off the surface, above impacts' depth (0.30),
+//! so shadows darken bullet holes as Source's do (ours: Source draws them in
+//! the decal pass); the blob picture is ours (a round falloff, Source's is a
+//! fixed round texture); the 32-a-frame render-to-texture limit and its blob
+//! fallback aren't modelled; `r_flashlightdepthtexture` (High) changes nothing;
+//! the defaults (Medium) and CS:S's own pick per machine are unconfirmed.
+//! Capture to confirm: CS:S at shadow detail Low and High beside a physics
+//! barrel and a bot on de_dust2. Why it's OK for now: Reads like CS:S's at a
+//! glance.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

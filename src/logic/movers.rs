@@ -2,6 +2,26 @@
 //! push and are blocked by players; func_door, func_door_rotating,
 //! func_button, func_movelinear, func_rotating, func_tracktrain with
 //! path_track, func_brush toggling; and the +use search.
+//!
+//! Covers: pushers that carry, push and are blocked by players;
+//! func_door(_rotating), func_button, func_movelinear, func_rotating,
+//! func_tracktrain + path_track, func_brush, brushes parented to a mover; the
+//! +use search; `push_players`, a pusher step's push on players, shared with a
+//! network client's prediction.
+//!
+//! Known shortcuts (docs/tech-debt.md): Pushers: rotated brushes keep only
+//! their face planes (no bevels for box sweeps), pushes are tested against the
+//! static world and other movers but not other players or props, a player is a
+//! rider only when movement reports it standing on the mover, movers don't push
+//! physics props (their kinematic collider only shoves them through avian), a
+//! mover parented to a mover (a door on a lift: `logic::anchors`) is carried by
+//! its parent's translation only (a turning parent doesn't turn or orbit it),
+//! and so are triggers and point entities parented to movers, but only in the
+//! logic: drawn point entities (sprites, spotlights) stay where they spawned,
+//! func_tracktrain doesn't face or bank along its path; the static-world sweep
+//! in `logic::bridge` duplicates the movement's brush sweep
+//! (`core::MapBrush::sweep_box`). Why it's OK for now: Enough for doors,
+//! buttons, lifts and fans; trains and physics need more.
 
 use bevy::prelude::*;
 

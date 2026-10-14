@@ -4,6 +4,10 @@
 //! target, travels a path_corner chain, can freeze the player, and makes
 //! it invulnerable while it views. The bridge writes the view
 //! (`core::MapView`) and the freeze (`core::MapControls`).
+//!
+//! Covers: point_viewcontrol: per player (the activator), turn and path motion,
+//! hold time, freeze, invulnerability, interrupt, `camera_views` →
+//! `core::MapView`.
 
 use bevy::prelude::*;
 

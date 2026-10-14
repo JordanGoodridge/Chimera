@@ -2,6 +2,18 @@
 //! tick at the player's final position, start/touch/end touch with the
 //! spawnflag and filter rules, and trigger_multiple/once, trigger_hurt,
 //! trigger_push, trigger_teleport, trigger_gravity, trigger_remove.
+//!
+//! Covers: touch links,
+//! trigger_multiple/once/hurt/push/teleport/gravity/remove; physics bodies
+//! touch triggers that let physics objects in, pushed with
+//! `Effect::BodyVelocity` and teleported with `Effect::BodyTeleport`.
+//!
+//! Known shortcuts (docs/tech-debt.md): `trigger_hurt`
+//! (specs/cs_source/fall_damage.md): constant rate only (damagemodel 1 doubling
+//! isn't used by stock maps), no map logic (StartDisabled ones are skipped),
+//! touch test is the character's collider bounds against the trigger's brushes,
+//! one half-second timer per trigger (inferred). Why it's OK for now: de_port's
+//! sea bites as measured.
 
 use bevy::prelude::*;
 

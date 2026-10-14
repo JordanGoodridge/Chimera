@@ -3,6 +3,10 @@
 //! streak starts at the shooter's gun muzzle as last drawn (the view
 //! model's for your own gun, re-projected as its muzzle flash is, else the
 //! held world model's), falling back to the shot's start.
+//!
+//! Bullet tracers for any game: `Tracer` requests (the game's look and
+//! frequency), started at the shooter's last muzzle-flash point
+//! (`MuzzleCache`), drawn as `particles::Shape::Streak`.
 
 use std::collections::HashMap;
 

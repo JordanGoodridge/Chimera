@@ -259,58 +259,64 @@ fn ride(sim: &mut Sim, brushes: &[MapBrush], r: &Ramp, strafe: bool) -> Vec<Stri
     ghosts
 }
 
-/// Players surf every open ramp of several surf maps without a ghost stop
-/// (a stop with open space ahead). Before, most surf_sedona ramps (high
-/// and far from the origin) stopped players dead: a velocity just clipped
-/// along a ramp read as going into it again (`Tracer::sweep_brushes`).
-#[test]
-fn surfing_keeps_speed_on_surf_maps() {
-    rides(&["surf_sedona", "surf_boreas", "surf_apollo", "surf_jive"], 15);
+/// One test per map (so they run side by side), each riding that map's
+/// ramps with `rides`; skipped when `MASHUP_SURF_MAPS` names maps
+/// (`listed_maps` rides those instead).
+macro_rules! surf_maps {
+    ($module:ident, $min_ramps:expr, $($map:ident,)*) => {
+        mod $module {
+            $(
+                #[test]
+                fn $map() {
+                    if std::env::var_os("MASHUP_SURF_MAPS").is_none() {
+                        super::rides(&[stringify!($map)], $min_ramps);
+                    }
+                }
+            )*
+        }
+    };
 }
 
-/// The other surf maps of the cache, the same rides (course flows,
-/// community-maps.md); some have few long open ramps (short or boxed-in
-/// ones, curved displacement ramps), so no minimum. surf_nebula's 13 stops
-/// of 84 rides were its Propper ramp models, which ship no collision
-/// model: we collided with their meshes, a hair off the player-clip ramps
-/// under them, and the box ended inside a mesh (static props without a
-/// collision model block nothing now). To see why a ride stops:
-/// `MASHUP_SURF_MAPS=<map> MASHUP_SURF_DEBUG=1` lists what the hull is
-/// near at each stop, and `MASHUP_SLIDE_DEBUG=1` prints every slide move's
-/// sweeps (docs/OBSERVABILITY.md).
+// Players surf every open ramp of several surf maps without a ghost stop
+// (a stop with open space ahead). Before, most surf_sedona ramps (high
+// and far from the origin) stopped players dead: a velocity just clipped
+// along a ramp read as going into it again (`Tracer::sweep_brushes`).
+surf_maps! {
+    surfing_keeps_speed_on, 15,
+    surf_sedona, surf_boreas, surf_apollo, surf_jive,
+}
+
+// The other surf maps of the cache, the same rides (course flows,
+// community-maps.md); some have few long open ramps (short or boxed-in
+// ones, curved displacement ramps), so no minimum. surf_nebula's 13 stops
+// of 84 rides were its Propper ramp models, which ship no collision
+// model: we collided with their meshes, a hair off the player-clip ramps
+// under them, and the box ended inside a mesh (static props without a
+// collision model block nothing now). To see why a ride stops:
+// `MASHUP_SURF_MAPS=<map> MASHUP_SURF_DEBUG=1` (test `listed_maps`) lists
+// what the hull is near at each stop, and `MASHUP_SLIDE_DEBUG=1` prints
+// every slide move's sweeps (docs/OBSERVABILITY.md).
+surf_maps! {
+    surfing_keeps_speed_on_the_other, 0,
+    surf_botanica, surf_demise, surf_halloween_tf2, surf_happyhands, surf_hellenic, surf_holiday,
+    surf_inferno, surf_kismet, surf_nebula, surf_nsz_fix, surf_sacrifice, surf_slob,
+    surf_stickybutt_alpha, surf_surreal, surf_threnody,
+}
+
+/// `MASHUP_SURF_MAPS=surf_a,surf_b`: those maps' rides (nothing without it).
 #[test]
-fn surfing_keeps_speed_on_the_other_surf_maps() {
-    rides(
-        &[
-            "surf_botanica",
-            "surf_demise",
-            "surf_halloween_tf2",
-            "surf_happyhands",
-            "surf_hellenic",
-            "surf_holiday",
-            "surf_inferno",
-            "surf_kismet",
-            "surf_nebula",
-            "surf_nsz_fix",
-            "surf_sacrifice",
-            "surf_slob",
-            "surf_stickybutt_alpha",
-            "surf_surreal",
-            "surf_threnody",
-        ],
-        0,
-    );
+fn listed_maps() {
+    if let Ok(only) = std::env::var("MASHUP_SURF_MAPS") {
+        let maps: Vec<&str> = only.split(',').collect();
+        rides(&maps, 0);
+    }
 }
 
 /// Every open ramp of each map ridden with and without strafing: no ghost
 /// stop, and at least `min_ramps` ramps found on each.
 fn rides(maps: &[&str], min_ramps: usize) {
     let mut failed = Vec::new();
-    // `MASHUP_SURF_MAPS=surf_a,surf_b`: those instead.
-    let chosen: Vec<String> = match std::env::var("MASHUP_SURF_MAPS") {
-        Ok(only) => only.split(',').map(String::from).collect(),
-        Err(_) => maps.iter().map(|m| m.to_string()).collect(),
-    };
+    let chosen: Vec<String> = maps.iter().map(|m| m.to_string()).collect();
     for name in &chosen {
         let name = name.as_str();
         let Some(map) = cached(name) else { continue };

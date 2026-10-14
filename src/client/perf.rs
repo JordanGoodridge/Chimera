@@ -2,6 +2,16 @@
 //! CPU time, GPU time per render pass, entity and mesh counts, visibility
 //! culling), `r_novis`, and `--bench` (time each `--views` view instead of
 //! capturing it; see docs/performance.md).
+//!
+//! `mashup_perf` overlay (frame times, main-world CPU, render-world time
+//! (`RenderTime`, written by the render world), GPU per render pass, entities,
+//! meshes and triangles drawn, visibility), the same as text (`mashup_perf_log
+//! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
+//! `mashup_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
+//! sleeps at the end of a frame; off without a window and under `--bench`), the
+//! water cvars (`map::water::WaterSettings`); `capture.rs` has `--bench` (its
+//! table, the percentiles table, `bench.json`/`bench.csv`); the distributions
+//! and the hitch log are in `frame_metrics.rs`.
 
 use std::{collections::VecDeque, time::Instant};
 

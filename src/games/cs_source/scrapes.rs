@@ -9,6 +9,22 @@
 //! the client's 8. A scrape is a long-lived sound (`audio::live_sound`) that
 //! follows its body, ramps to each new volume and pitch over 0.1 s and
 //! stops 0.1 s after its last refresh.
+//!
+//! Known shortcuts (docs/tech-debt.md): Scrapes (specs/cs_source/sounds.md 4,
+//! `games/cs_source/scrapes.rs`): Source's friction energy is engine-side (Q8);
+//! ours is the friction work of one 0.015 s tick at the body's hardest-sliding
+//! contact point, manifold friction × normal force (avian's total normal
+//! impulse / step) × sliding speed (relative, tangential), in kg·in²/s² (a 30
+//! kg crate at 100 u/s ≈ 13 900, near full volume; 2 kg debris silent); one
+//! scrape per sliding body against that contact (the spec's per-object slot),
+//! props on the server's 4 slots and update rule, broken props' pieces and
+//! ragdolls (now carrying their bone's `PropSurface`) on the client's 8; the
+//! start pitch is the middle of the entry's range and the volume ramp is linear
+//! over 0.1 s; scrape waves loop from their start when they have no loop point
+//! (Q8 asks whether they need one); bodies whose fastest point is under 5 u/s
+//! are skipped before their contacts are read; the smooth/rough handle quirk is
+//! ignored (the spec allows it). Why it's OK for now: The spec's thresholds and
+//! test cases pass on the stand-in; tuning needs Q8's measurement.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

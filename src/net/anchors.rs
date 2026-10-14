@@ -4,6 +4,10 @@
 //! a client draws its own anchor node (the same index) between the
 //! snapshots around the render time, as it draws physics props, so the
 //! props parented to an item follow whoever carries it.
+//!
+//! Placed weapons' anchor nodes (`map::entities::MapAnchor`): the server's
+//! poses into `NetAnchor`; a client draws its anchor nodes between snapshots at
+//! the render tick, so what is parented to an item follows its carrier.
 
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};
 

@@ -3,6 +3,13 @@
 //! phys_keepupright's turn back toward a goal up axis. Each physics step,
 //! before the solver, they change the body's velocities; the logic says
 //! which are on (`BodyControllers`). Engine space, SI units.
+//!
+//! Physics controllers the logic switches (`BodyControllers`): phys_thruster's
+//! push and turn worked out at each turn-on (`thrust_rates`), keepupright's
+//! correction (`upright_change`) and phys_motor's spin (`motor_change`), added
+//! to the body's velocities before each physics step; map constraints as avian
+//! joints (`BodyJoints`: fixed, ball, hinge, slide, length; to the world
+//! through a static anchor body; off as `JointDisabled`).
 
 use avian3d::prelude::{
     AngularVelocity, ComputedAngularInertia, ComputedMass, LinearVelocity, PhysicsSystems, Rotation,

@@ -3,6 +3,60 @@
 //! game's fonts and icon glyphs, and the death notices, laid out in the
 //! virtual 640x480 screen scaled by the window height as Source's
 //! proportional HUD is. Without one, `hud` draws the plain HUD.
+//!
+//! The game's own HUD when the map provides one (`map::hud::ActiveHud`):
+//! health, armour (shown at 0), ammo (with its ammo type's glyph), money and
+//! round-clock panels laid out by `layout` (pure: panel boxes in whole pixels
+//! as VGUI truncates proportional values, numbers right-aligned in a
+//! three-digit field, icons and digits at the layout's offsets) and drawn with
+//! `hud_text` in the panel colour, added to the screen (health flashes red when
+//! it drops: the game's `HealthTookDamage` animation); death notices with team
+//! colours and weapon/headshot icons; the round's end: the win panel
+//! (`win_panel.rs`), or a centre print without its layout.
+//!
+//! Known shortcuts (docs/tech-debt.md): CS:S HUD parity (`client/game_hud.rs`,
+//! `hud_text.rs`, `weapon_select.rs`): matched to the reference client's
+//! captures, which is the Linux build: its text fonts are substitutes for
+//! Verdana, so the selection's numbers and weapon name are sized by the scheme
+//! (Windows' rule, `yres` entries in pixels, others scaled from 480 lines) and
+//! drawn larger than in the captures (1080: digits 16 px tall against 12, name
+//! 129 px wide against 101) until a Windows capture says which is right; the
+//! ammo glyph (csd.ttf, by ammo type) is sized and offset from measurements
+//! (`AMMO_GLYPH_TALL`, `AMMO_GLYPH_OFFSET`: the weapon scripts that say are
+//! encrypted); the history icons line up by their ink 20 units from the right
+//! (measured); the selection draws the outline face (`CSType`'s file at
+//! `CSweapons`' size) for a highlighted weapon that isn't the one held (one
+//! capture; the scripts' inactive icon is unknown), only the large box's
+//! background (half dark, measured) and no small boxes; the selection stays
+//! open 3 s and a fast switch shows it 1.5 s, each fading over the last 0.5 s,
+//! the history 5 s fading over 1 s (ours); the radar is ours (zoom,
+//! translucency, markers). Why it's OK for now: Each part lands within 1-2 px
+//! of the captures (`refcmp hudcmp`, `tests/it/heavy/hud_layout.rs`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Game-look HUD parts read from the
+//! install's layouts, with guesses where the layouts stop: the scoreboard's
+//! rows 16 units apart (the layout gives only the first), rows in the column
+//! headings' colours, not dimmed when dead (the skull icon says it), status
+//! icons tinted the row's colour, the local row lit with `scoreboard-select`
+//! from the name to the latency cell, no time left (no `mp_timelimit`) beside
+//! the clock; the spectator bars in the scheme's `BgColor` across the window,
+//! the mode's name where the spectator menu's view list sits, the death cam
+//! naming the killer in the player label; while they show the HUD hides the
+//! round clock and money (health, armour and ammo are hidden while dead anyway)
+//! and the death notices sit 4 units under the top bar (what CS:S keeps is by
+//! memory, not measured); no progress bar while planting (the C4's screen types
+//! the code; the spec says the bar runs, the option's text names only defusing:
+//! Q16); the C4 screen's text drawn by a camera into a 400×200 image (twice the
+//! panel's 200×100) in the system's Courier New (or a stand-in); the planted
+//! bomb's marker (`sprites/c4`: shown to terrorists and the dead, 32 units
+//! across, 16 above the bomb) and LED glow (8 units, 9 above the bomb's origin,
+//! a 0.15 s flash per beep) are guesses pending spec Q4/Q12. Map loads report
+//! fixed fractions per loader stage (`map::loading`, a process-wide value: two
+//! loads at once overwrite each other's), not measured shares; the loading
+//! dialog shows only for loads begun at the main menu; the menu's
+//! rollover/click sounds are the waves the install's other VGUI layouts name,
+//! which CS:S's main menu plays is unmeasured. Why it's OK for now: Each reads
+//! like the game in screenshots; a reference capture or spec settles the rest.
 
 use std::collections::HashMap;
 
