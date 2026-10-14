@@ -79,7 +79,8 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`src/games/cs_source/pain.rs`)
 - weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
 - weapon: mashup_usepickup (+use pickup) reach and rules are ours (`src/weapon/drop.rs`)
-- movement: Source movement lacks base velocity; landing roll is the only view punch; some fall-damage cases ignored (`src/games/cs_source/movement.rs`)
+- movement: Source movement lacks base velocity; the landing roll keeps the shared code's spring; some fall-damage cases ignored (`src/games/cs_source/movement.rs`)
+- games/cs_source: Hit slowdown a tick late (after movement); helmeted-head flinch unmeasured (none); flinch set, not added (`src/games/cs_source/hit_reaction.rs`)
 - movement: Ladder probe ignores near-horizontal ladder faces (brush tops), our choice (`src/games/cs_source/movement.rs`)
 - movement: Concave props swept by avian shape casts; displacement collision is our construction (`src/games/cs_source/movement.rs`)
 - render: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`engine/present/src/render/sprite_material.rs`)
@@ -88,7 +89,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - sound, games/cs_source: Hurt and death sounds chosen by us from the install's entries (no spec) (`src/games/cs_source/pain.rs`)
 - client, weapon, games/cs_source: Weapon selection, pickup and buy sounds inferred from entry names (`src/client/weapon_select.rs`)
 - weapon: autobuy / rebuy rules read from the install's comments, unmeasured (`src/weapon/economy.rs`)
-- rules: End of a map's game (limits, intermission, map cycle) from public cvar descriptions (`src/rules/game_end.rs`)
+- rules: End of a map's game: intermission timing measured (C9), what shows during it unmeasured (`src/rules/game_end.rs`)
 - client, rules: Round win panel MVP and fun-fact rules are ours (`src/client/win_panel.rs`)
 - client: Damage indicator: which bar lights and its fade are ours (`src/client/hud_sprites.rs`)
 - rules: Team balance: when and who moves are ours; no warning message (`src/rules.rs`)

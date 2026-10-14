@@ -588,18 +588,19 @@ fn follow_eye(
         let eye = match view {
             Some(v) => v.now,
             None => crate::map::interp::EyeView {
-                punch: punch.map_or(Vec2::ZERO, |p| p.0),
+                punch: punch.map_or(Vec3::ZERO, |p| p.0),
                 ..crate::map::interp::EyeView::of(intent, state)
             },
         };
         // Recoil kicks the view (pitch up, yaw left).
         let p = eye.punch;
-        // A hard landing rolls it (Source's roll turns it clockwise).
+        // A hard landing or a head hit rolls it (Source's roll turns it
+        // clockwise).
         let look = Quat::from_euler(
             EulerRot::YXZ,
             intent.yaw + p.y + free.yaw,
             intent.pitch + p.x + free.pitch,
-            -eye.view_roll,
+            -(eye.view_roll + p.z),
         );
         let look = view::camera_look(&mode, look);
         let offset = view::camera_offset(&mode, at.translation, eye.eye_offset, look, &spatial, &characters);

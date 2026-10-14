@@ -22,6 +22,7 @@ mod cs_grenades;
 mod cs_guns;
 mod debug_ui;
 mod drawn_parts;
+mod hit_reaction;
 mod impact_effects;
 mod interpolation;
 mod join_flow;

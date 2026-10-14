@@ -1,7 +1,9 @@
 //! Deliveries: hitscan shots (spec 4) and melee swings (spec 6.1), and the
 //! damage they deal. Damage to one target within one firing call is summed
 //! and applied once (spec 4.5). Bullets of weapons with `Penetration` go on
-//! through walls and characters (measured M13).
+//! through walls and characters (measured M13). Each bullet hit on
+//! something with health is also told as a `BulletHit` (the damage before
+//! armour and truncation, whether armour covered it, a helmet).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -49,6 +51,7 @@ pub(super) struct World<'w, 's> {
     grid: Option<Res<'w, SurfaceGrid>>,
     materials: Res<'w, PassMaterials>,
     pub events: MessageWriter<'w, WeaponEvent>,
+    hits: MessageWriter<'w, super::BulletHit>,
     play: MessageWriter<'w, PlaySound>,
     first: Res<'w, FirstTimePredicted>,
     role: Option<Res<'w, NetRole>>,
@@ -488,16 +491,19 @@ impl Shot<'_, '_, '_> {
             return;
         }
         let mut amount = quantize(raw, quantum);
+        let mut covered = false;
+        let helmet = self.w.armor.get(target).is_ok_and(|a| a.amount > 0.0 && a.helmet);
         if let Some(ratio) = armor_ratio
             && let Ok(mut armor) = self.w.armor.get_mut(target)
             && armor.covers(hitgroup)
         {
             let (to_health, to_armor) = armor_split(raw, ratio, quantum);
             amount = to_health;
+            covered = true;
             // Armour running out mid-hit isn't measured: clamped.
             armor.amount = (armor.amount - to_armor).max(0.0);
         }
-        self.w.damage.write(Damage {
+        let damage = Damage {
             force,
             target,
             attacker: Some(self.owner),
@@ -507,7 +513,17 @@ impl Shot<'_, '_, '_> {
             hitgroup,
             kind,
             weapon: None,
-        });
+        };
+        if kind == DamageKind::Bullet && self.w.targets.get(target).is_ok_and(|t| t.health.is_some()) {
+            self.w.hits.write(super::BulletHit {
+                damage: damage.clone(),
+                weapon: self.weapon,
+                raw,
+                covered,
+                helmet,
+            });
+        }
+        self.w.damage.write(damage);
         self.w.event(self.owner, self.weapon, WeaponEventKind::Hit {
                 target,
                 amount,

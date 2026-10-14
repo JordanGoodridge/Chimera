@@ -1,17 +1,18 @@
 //! The end of the game on a map (CS:S's `mp_timelimit`, `mp_maxrounds`,
-//! `mp_winlimit`): once a limit is reached (with rounds, as a round's end
-//! pause runs out; in deathmatch, at once) everyone is held still for the
-//! intermission (`mp_chattime`) with the scoreboard up, then the game goes
-//! on to the next map of the map cycle (`MapCycle`; the same map again
-//! without one). CS:S's Create Server sets a 20-minute time limit
+//! `mp_winlimit`): once a limit is reached (with rounds, as the round that
+//! reaches it ends: CS:S lets a round past the time limit play out, then
+//! starts the intermission in the same second as the round's end, measured
+//! 2026-10-14, parity-gaps.md C9; in deathmatch, at once) everyone is held
+//! still for the intermission (`mp_chattime`, CS:S: 10 s, then the map
+//! cycle's next map) with the scoreboard up, then the game goes on to the
+//! next map of the map cycle (`MapCycle`; the same map again without one).
+//! CS:S's Create Server sets a 20-minute time limit
 //! (`cfg/settings_default.scr`); the console's default is 0 (none), as
-//! CS:S's. What CS:S shows and how its intermission ends is unmeasured
-//! (docs/plans/active/parity-gaps.md, capture C9).
+//! CS:S's. What CS:S shows during it is unmeasured.
 //!
 //! Known shortcuts (docs/tech-debt.md): End of a map's game (`rules::game_end`;
-//! public cvar descriptions, CS:S unmeasured): with rounds the limits are
-//! checked as a round's end pause runs out, in deathmatch the time limit at
-//! once; the intermission holds everyone (the freeze) with the scoreboard up
+//! timing measured, the look not): with rounds the limits are checked as a
+//! round ends, in deathmatch the time limit at once; the intermission holds everyone (the freeze) with the scoreboard up
 //! for `mp_chattime`; the next map is the map cycle's (`cfg/mapcycle.txt`, else
 //! `mapcycle_default.txt`, maps not installed left out), held in the
 //! intermission until it loads; `mp_maxrounds` counts draws; no `nextlevel`

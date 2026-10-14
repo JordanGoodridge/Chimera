@@ -366,7 +366,7 @@ fn ak47_recoil_kicks_and_inaccuracy_grows() {
     // Both recover: the punch is gone within a second, the penalty is
     // back near rest after its recovery time.
     sim.seconds(1.0);
-    assert_eq!(sim.app.world().get::<ViewPunch>(p).unwrap().0, Vec2::ZERO);
+    assert_eq!(sim.app.world().get::<ViewPunch>(p).unwrap().0, Vec3::ZERO);
     let v = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
     assert!(v - 0.00916 < 0.0002, "{v}");
 }

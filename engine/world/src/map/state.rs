@@ -11,13 +11,13 @@ use bevy::prelude::*;
 
 use super::{DEFAULT_AUTO_EXPOSURE, MapAlpha, MapHdr};
 
-/// A kick to a player's view from the map (env_viewpunch): pitch up and
-/// yaw left, radians, added to its view punch (the weapon layer's
-/// `ViewPunch`, which decays it as recoil).
+/// A kick to a player's view from the map (env_viewpunch): pitch up, yaw
+/// left and roll (as `MovementState::view_roll`), radians, added to its
+/// view punch (the weapon layer's `ViewPunch`, which decays it as recoil).
 #[derive(Message, Clone, Copy, Debug, PartialEq)]
 pub struct ViewKick {
     pub player: Entity,
-    pub angles: Vec2,
+    pub angles: Vec3,
 }
 
 /// A drawn part of a map entity the logic switches (sprites, dust

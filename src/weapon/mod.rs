@@ -21,7 +21,10 @@
 //! (`map::interp::NetDrawn`) never run it), `WeaponEvent`s (`replay`: written
 //! while a client re-ran a command; effects skip those; `Fired`: a round's
 //! origin, angles, spread seed and spread, enough to draw it again:
-//! `pellet_dirs`); damage, armour and pushes only where `core::authoritative`.
+//! `pellet_dirs`); damage, armour and pushes only where `core::authoritative`,
+//! with a `BulletHit` for each bullet hit on something with health (games'
+//! reactions: CS:S's slowdown and flinch); `ViewPunch` (pitch, yaw, roll) on
+//! the view and, scaled, on the shots.
 //!
 //! Known shortcuts (docs/tech-debt.md): Penetration (M13): a player's budget
 //! cost is a fixed 21.5 units (a fit to the stop cases, Q7), not its thickness;
@@ -99,6 +102,7 @@ impl Plugin for WeaponPlugin {
             .init_resource::<crate::map::entities::EntityAnchors>()
             .add_message::<crate::core::Equip>()
             .add_message::<WeaponEvent>()
+            .add_message::<BulletHit>()
             .add_message::<crate::map::RagdollShot>()
             .add_message::<PlaySound>()
             // The rules' sounds (`map::GameSound`), played here.
@@ -755,11 +759,29 @@ pub enum SpreadShape {
     Disc { inaccuracy: f32, spread: f32 },
 }
 
-/// Recoil on a character's view (pitch up, yaw left; radians): added to
-/// the camera, and to shots by `Hitscan::punch_scale`. Games that model
-/// recoil add and decay it.
+/// Recoil and flinch on a character's view (Source's punch angle: pitch
+/// up, yaw left, roll as `MovementState::view_roll`; radians): added to
+/// the camera, and its pitch and yaw to shots by `Hitscan::punch_scale`.
+/// Games that model recoil or flinching add and decay it.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct ViewPunch(pub Vec2);
+pub struct ViewPunch(pub Vec3);
+
+/// A bullet hit on something with health, as the weapon layer dealt it
+/// (the server's, once per target per shot: a shotgun's pellets on one
+/// target are one, with the last pellet's hitgroup): for games that react
+/// to being hit (CS:S's slowdown and flinch). `damage` is what went out
+/// (rules may still refuse it); `raw` the damage before armour and
+/// truncation (normalized like `Health`); `covered`: armour covered the
+/// hitgroup and took its share; `helmet`: the target had armour with a
+/// helmet before the hit.
+#[derive(Message, Clone, Debug)]
+pub struct BulletHit {
+    pub damage: crate::core::Damage,
+    pub weapon: Entity,
+    pub raw: f32,
+    pub covered: bool,
+    pub helmet: bool,
+}
 
 /// Secondary attack: step through the weapon's modes (0 = normal; scope
 /// levels, silencer on, burst). Other parts read `current`: `Zoom`,
@@ -1355,7 +1377,7 @@ fn weapon_frame(
         }
         let eye = transform.translation + state.eye_offset;
         // Shots follow the view plus the weapon's share of the recoil.
-        let kick = punch.map_or(Vec2::ZERO, |p| p.0) * w.hitscan.map_or(0.0, |h| h.punch_scale);
+        let kick = punch.map_or(Vec2::ZERO, |p| p.0.truncate()) * w.hitscan.map_or(0.0, |h| h.punch_scale);
         let (yaw, pitch) = (intent.yaw + kick.y, intent.pitch + kick.x);
         // A remote player's shots and swings hit others where it saw them
         // (lag compensation, server only: `ViewTick` is set per command).

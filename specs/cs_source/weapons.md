@@ -1338,6 +1338,35 @@ shots at a wall while side-stepping at 95, 140, 180 and 250 (120 each).
   AK-47's `Move × clamp((v − vmax/3)/(2 vmax/3), 0, 1)` within the error
   (≈ ±10 %), possibly ≈ 0.001 higher throughout.
 
+### M18 Being hit: slowdown and flinch
+
+Measured 2026-10-14 (probe server, `tools/css_probe` `mashup_shooter`: a
+second bot fires one shot at the run's bot running at 250 with the knife,
+from behind at about 200-400 units; `velmod` is the victim's speed modifier
+in the plugin's W rows, `punch` its view punch, both after the hit tick):
+
+- Every hit sets the victim's speed modifier, and its speed is held to
+  max speed × modifier (decelerating at the usual friction, 15 a tick from
+  250). The modifier then rises by 0.005 a tick (1/3 a second, linear) back
+  to 1: full speed 1.5 s after a 0.5 hit, 1.05 s after 0.65.
+- The value set: a leg hit (hitgroups 6, 7) 0.5 from any gun. Other hits:
+  0.65 from rifles (AK-47, M4A1, FAMAS, Galil, SG 552, AUG), snipers (AWP,
+  Scout; G3SG1 and SG 550 hit legs only, assumed the same) and shotguns (M3,
+  XM1014); 0.5 from pistols (USP, Glock, Deagle, P228, Five-SeveN, Elites),
+  SMGs (MP5, P90, UMP, MAC-10, TMP) and the M249. Not damage-dependent (the
+  Deagle's 60 gives 0.5, the M4's 32 0.65); armour doesn't change it.
+  Shotguns: pellets each set it; the last one hit decides (a leg pellet
+  last gave 0.5).
+- View punch (flinch), set on the hit and then decaying as the landing
+  punch does (`len -= (10 + len/2) × dt`):
+  - head without a helmet: (pitch −12, yaw 0, roll ±9), the sign random;
+    the same with armour but no helmet;
+  - an unarmoured chest/stomach/arm hit: pitch −min(damage × 0.1, 4) (e.g.
+    21 → −2.1, 37 → −3.7, 44+ → −4), yaw and roll 0;
+  - a hit the vest absorbs part of (armour > 0, not the head), and leg
+    hits: no punch.
+  - Helmeted head hits: not measured.
+
 ### Not measured yet
 
 M9 shotgun reload, M12 hitbox reach, M14 drop/pickup, silenced damage, the
