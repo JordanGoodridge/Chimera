@@ -228,6 +228,22 @@ measurements):
   and MDL conversion (they build engine types; vbsp/vmdl do the
   parsing), surface properties, sound scripts and soundscapes (their
   parsing is mixed with the loading), `.res` layout conversion.
+- [x] (3) `engine/core` (package `engine_core`, 2026-10-14): `core`,
+  `console`, `slots`, `character`, `metrics` and `core::version`
+  (`format_version`) moved whole; they used nothing above each other,
+  so no interface was needed. `mashup` re-exports them at their old
+  paths; `mashup::core` (src/core.rs) adds `VERSION`, stamped by
+  build.rs in the app's crate so a commit doesn't rebuild the base.
+  `movement` (placeholder, noclip) stays: it is a slot implementation,
+  `engine/sim` material. The layering table covers engine/core/src too;
+  `workspace_crates` keeps it off `mashup` and the games. `dev` forwards
+  to `engine_core/dev` (same Bevy build for `cargo test -p engine_core
+  --features dev`). Measured (a new `pub fn`, load 10-40): an edit in
+  `engine_core` checked with `cargo test -p engine_core --features dev`
+  (build and run) in 4-7 s; a leaf edit in `mashup`, `cargo test
+  --features dev --no-run`, 127-160 s as before (one crate below it
+  less, but `mashup` is still ~160k lines); after an `engine_core` edit
+  the same command took 28-81 s (`mashup` recompiles incrementally).
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -302,7 +318,7 @@ the full suite, and the coordinator batches merges.
 
 | Module | Goes to | Notes |
 |---|---|---|
-| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | |
+| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `engine/core` |
 | `src/logic` | source | Source entity I/O and classes (func_door, triggers, ...) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | formats (bsp, vpk, material, mdl, phy, wav, sound) to source; CS:S rules, weapons, HUD, bots' CS:S parts stay |
