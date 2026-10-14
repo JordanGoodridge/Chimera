@@ -73,7 +73,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Decal reach, orientation and infodecal probes inferred, not specced (`src/map/decal.rs`)
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
-- map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`src/map/rope_sway.rs`)
+- map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`src/render/rope_sway.rs`)
 - weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`src/games/cs_source/weapons.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`src/games/cs_source/pain.rs`)
 - weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
@@ -104,7 +104,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - logic, core: Game entities beyond or short of the spec (weapon hiding, HUD suppression, speed, views) (`src/logic/game.rs`)
 - logic, map: point_template copies are cloned nodes (not replicated); point_viewcontrol simplified (`src/logic/templates.rs`)
 - map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`src/map/placed_ragdoll.rs`)
-- map: Particle system operator meanings are interpretations (`src/map/psys.rs`)
+- map: Particle system operator meanings are interpretations (`src/render/psys.rs`)
 - map: Smoke stacks (`map::emitters`, specs/source/particles_and_smoke.md 3): env_particlelight isn't read (no map uses one), the JetLength/Speed/Rate/SpreadSpeed inputs are kept as placed, the material's own lighting isn't applied (the colour is rendercolor). OK for now: No map seen changes them.
 - map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`src/map/buoyancy.rs`)
 - map, logic: Classes from the public entity docs only (func_water_analog, func_tanktrain, monitors, emitters...) (`src/logic/community.rs`)

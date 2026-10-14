@@ -144,7 +144,17 @@ measurements):
     `rope_material`, `fog`, `probe_lit`, `materials.rs`/`images.rs`
     helpers: `breakables`, `loose`, `bodies`, `ragdoll`, `view_model`
     use them, so their drawn parts have to move first, through more
-    `MapDrawer` hooks where they spawn). `insert_resources` still
+    `MapDrawer` hooks where they spawn). Render's resources and entities
+    go at unload through `render::unload_map` (a `MapHooks::unload`
+    hook, so they now go after map's own). Done (2026-10-14, one commit
+    per group, the spawn dump identical modulo moved paths):
+    - [x] `glow_visibility` (`render::glow`; `GlowSprite` stays in map
+      for `vis`), `psys` (definitions stay; `Instance`, `SystemEmitter`,
+      `update_systems` moved), `shells` (types and `shell_step` stay;
+      assets, `eject`, `fly` moved), `rope_sway` (`RopeSway`, `spline`
+      stay; `Gusts`, `RopeMotion`, `RopeWind`, `sway_ropes` moved),
+      `fish` (`Fish` stays; `swim` moved).
+    `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`
     when they move. Client post passes (`client::hdr`, `gamma`,

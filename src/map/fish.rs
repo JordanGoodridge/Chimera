@@ -1,21 +1,18 @@
 //! func_fish_pool's fish (no spec; public entity docs: a pool of fish
 //! models that swim around within "max_range" of its origin), for any
-//! game: each fish swims toward a point picked at random within the range
-//! and inside the map's water, turning toward where it goes, and picks
-//! another when it gets there. Ours: no flocking and no fleeing from
+//! game, as data: where each fish swims next (a point picked at random
+//! within the range and inside the map's water) and which way it faces.
+//! `crate::render::fish` moves them. Ours: no flocking and no fleeing from
 //! players (tech-debt).
 //!
 //! func_fish_pool's fish for any game (public entity docs): `Fish` on each fish
-//! prop (the loader spreads `fish_count` of them around the pool), swimming
-//! toward random places within its range that are in the map's water, turning
-//! toward them.
+//! prop (the loader spreads `fish_count` of them around the pool), picking
+//! random places within its range that are in the map's water.
 
 use bevy::prelude::*;
 
 /// A fish's speed, m/s (ours: about 30 units/s).
 pub const FISH_SPEED: f32 = 30.0 * 0.0254;
-/// How fast a fish turns toward its heading, radians per second.
-const TURN_RATE: f32 = 2.0;
 
 /// One fish of a pool.
 #[derive(Component, Clone, Debug)]
@@ -63,44 +60,6 @@ impl Fish {
 /// The yaw (about engine +Y) that turns a model facing +X toward `dir`.
 pub fn heading(dir: Vec3) -> Quat {
     Quat::from_rotation_y((-dir.z).atan2(dir.x))
-}
-
-/// Fish swim to their targets and pick new ones.
-pub(crate) fn swim(
-    time: Res<Time>,
-    water: Option<Res<crate::core::MapWater>>,
-    mut fish: Query<(&mut Fish, &mut Transform)>,
-) {
-    let dt = time.delta_secs().min(0.1);
-    let wet = |p: Vec3| {
-        water
-            .as_ref()
-            .is_none_or(|w| w.0.iter().any(|v| v.brush.planes.iter().all(|(n, d)| n.dot(p) <= *d)))
-    };
-    for (mut f, mut t) in &mut fish {
-        let target = match f.target {
-            Some(target) if target.distance(t.translation) > FISH_SPEED * 0.5 => target,
-            _ => {
-                let p = f.pick(&wet);
-                f.target = Some(p);
-                p
-            }
-        };
-        let dir = (target - t.translation).normalize_or_zero();
-        if dir == Vec3::ZERO {
-            continue;
-        }
-        let want = heading(dir);
-        t.rotation = t.rotation.slerp(want, (TURN_RATE * dt).min(1.0));
-        let ahead = t.rotation * Vec3::X;
-        let next = t.translation + ahead * FISH_SPEED * dt;
-        // Never out of the water.
-        if wet(next) {
-            t.translation = next;
-        } else {
-            f.target = None;
-        }
-    }
 }
 
 #[cfg(test)]

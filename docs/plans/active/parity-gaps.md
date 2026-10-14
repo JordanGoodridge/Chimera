@@ -219,7 +219,7 @@ common console commands, against mashup's.
 | Particles blend in linear space | differs | L | M | tech-debt |
 | Glow occlusion by rays | differs | L | M | tech-debt |
 | LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail"; capture C21 |
-| Rope wind sway | have (fixed) | L | S | round 2: the spec's gusts near the camera (`map::rope_sway`, `rope_wind_dist`); maps with an env_wind hang still (not simulated); refcmp captures with `rope_wind_dist 0`; amplitude unmeasured, capture C18 |
+| Rope wind sway | have (fixed) | L | S | round 2: the spec's gusts near the camera (`render::rope_sway`, `rope_wind_dist`); maps with an env_wind hang still (not simulated); refcmp captures with `rope_wind_dist 0`; amplitude unmeasured, capture C18 |
 | Detail props layout | differs | L | S | tech-debt "Detail props"; capture C22 |
 | Player animation (feet slide, no death layer) | differs | M | M | tech-debt "Player animation": SDK template speeds; animation.md's open question needs a demo, capture C14 |
 | Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls": the ammo impulses aren't public (ragdolls.md Q2, weapons.md Q8); capture C13 |
@@ -364,8 +364,8 @@ common console commands, against mashup's.
   inside the volume's brushes; frozen volumes spawn once and hold
   (sprites_dust.md 7-8). Tests: `map::dust` unit tests,
   `heavy::map_visuals::de_train_dust_clouds_load_and_turn_on`.
-- Rope wind (`map::rope_sway`): the spec's gusts sway ropes within
-  `rope_wind_dist` of the camera. Tests: `map::rope_sway` unit tests,
+- Rope wind (`render::rope_sway`): the spec's gusts sway ropes within
+  `rope_wind_dist` of the camera. Tests: `map::rope_sway`, `render::rope_sway` unit tests,
   `heavy::map_de_dust2::ropes_can_sway`. refcmp captures with
   `rope_wind_dist 0` (de_dust2 mean 0.0309 either way; a swaying cable
   moved `sky_up` by up to 0.009 between runs).

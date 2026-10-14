@@ -64,8 +64,8 @@ impl Plugin for VideoPlugin {
                 Ok(())
             },
         );
-        app.init_resource::<crate::map::rope_sway::RopeWind>();
-        resource_cvar::<crate::map::rope_sway::RopeWind, f32>(
+        app.init_resource::<crate::render::rope_sway::RopeWind>();
+        resource_cvar::<crate::render::rope_sway::RopeWind, f32>(
             app,
             "rope_wind_dist",
             "Ropes sway in the wind while the camera is within this many units of them (0: never).",

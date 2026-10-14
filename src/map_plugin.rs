@@ -26,7 +26,9 @@ impl Plugin for MapPlugin {
             spawn_map::<render::MapAssets>.run_if(resource_exists::<PendingMap>),
         );
         app.init_resource::<MapHooks>();
-        app.world_mut().resource_mut::<MapHooks>().spawn = Some(spawn_pending_map);
+        let mut hooks = app.world_mut().resource_mut::<MapHooks>();
+        hooks.spawn = Some(spawn_pending_map);
+        hooks.unload.push(render::unload_map);
     }
 }
 
@@ -97,15 +99,15 @@ fn build_rest(app: &mut App) {
             Update,
             (
                 switch_parts
-                    .before(glow_visibility)
+                    .before(render::glow::glow_visibility)
                     .before(dust::update_dust)
                     .before(steam::update_steam),
                 (light_styles::relight, light_styles::animate).chain(),
                 apply_prop_looks,
                 animate_props,
-                render::beams::follow_eye.after(switch_parts).before(glow_visibility),
+                render::beams::follow_eye.after(switch_parts).before(render::glow::glow_visibility),
                 render::beams::animate_beams.after(switch_parts),
-                rope_sway::sway_ropes,
+                render::rope_sway::sway_ropes,
             ),
         )
         .add_systems(
@@ -128,7 +130,7 @@ fn build_rest(app: &mut App) {
             Update,
             (
                 attach_sky,
-                glow_visibility,
+                render::glow::glow_visibility,
                 dust::update_dust,
                 steam::update_steam,
                 (
@@ -142,8 +144,8 @@ fn build_rest(app: &mut App) {
                         render::color_correction::update,
                         emitters::update_embers,
                         emitters::update_muzzle_flashes,
-                        fish::swim,
-                        psys::update_systems,
+                        render::fish::swim,
+                        render::psys::update_systems,
                     )
                         .after(particles::ParticleSet::Step)
                         .before(particles::ParticleSet::Draw),
@@ -175,8 +177,8 @@ fn build_rest(app: &mut App) {
                     view_model::muzzle_flashes,
                     view_model::size_flash_sprites,
                     view_model::age_effects,
-                    shells::eject,
-                    shells::fly,
+                    render::shells::eject,
+                    render::shells::fly,
                 )
                     .chain()
                     .after(DriveAnimation)
