@@ -1,6 +1,12 @@
 //! The local player's HUD (crosshair, health, ammo, hit marker, killfeed,
 //! sniper scope) and bodies for other characters until character models
 //! exist.
+//!
+//! Covers: crosshair (gap from spread, CS:S's `cl_crosshaircolor` presets,
+//! `cl_crosshairscale`, `cl_crosshairalpha` with `cl_crosshairusealpha`,
+//! `cl_dynamiccrosshair`), sniper scope overlay, smoke grey and flash white
+//! screen tints, health, ammo, hit marker, killfeed, capsule bodies for other
+//! characters.
 
 use bevy::prelude::*;
 

@@ -7,6 +7,61 @@
 //! hides the node and drops its collider when the brush stops being
 //! solid, and draws and collides only the unbroken panes of a window
 //! (`LogicWorld::window`). Hits come in through `LogicWorld::damage`.
+//!
+//! Covers: specs/source/breakables.md: func_breakable health, material, damage
+//! scaling, break sounds, gib pieces, OnBreak, removal; func_breakable_surf
+//! windows as pane grids that face the attacked side, shatter where hit or
+//! touched (players and loose physics props) and collapse without support, half
+//! dropping a falling piece (`Effect::PaneFall`), blasts shattering a window in
+//! large-shard bursts; break on pressure, explosions on break
+//! (`Effect::Explosion`), what physics impacts do to them
+//! (`LogicWorld::breakable_impact`); `LogicWorld::damage`.
+//!
+//! Known shortcuts (docs/tech-debt.md): Breakables
+//! (specs/source/breakables.md): the knife counts as a club (×1.5; spec Q2) and
+//! bullets as the bullet type (×0.5; Q1); a broken func_breakable stays drawn
+//! until removed 7 ticks later (Q4) and shots keep hitting a broken window's
+//! unbroken panes (Q5); a window's panes turn to face its first attack (a
+//! Shatter input or a touch keeps the placed side); damage sounds draw the
+//! spec's volume U(0.75, 1) and pitch (window panes' damage sounds too: the
+//! spec says "the damage sound"), break sounds its pitch 95 + I(0, 29) and
+//! volume U(0.85, 1) + |health|/100; a window's own break plays its physics
+//! break sound as scripted, without the break-sound queue's merging; one pane
+//! damage sound per window per tick; pane shard counts/speeds are ours (one
+//! shard per shard-size square of a burst, at most 48). Broken looks (spec Q8,
+//! the client's pane drawing is not specced): the face's `$crackmaterial`
+//! (ShatteredGlass drawn as a translucent LightmappedGeneric with its crack
+//! texture on the face's own texture coordinates; its BreakableSurface proxy is
+//! not modelled) over the unbroken panes, both sides drawn; jagged edges from
+//! the install's 12 `models/brokenglass/glassbroken_*` textures, each side of
+//! an unbroken pane facing a broken neighbour picking one by its place, a strip
+//! half a pane deep into the neighbour, the shard's base on the pane; tile
+//! windows get no edge pieces (no tilebroken textures in the install). The
+//! falling pane piece (`brokenglass_piece.mdl`, bodies 0..2) goes where the
+//! spec says, the pane's corner, though the model is centred on its origin (so
+//! it shows half a pane off); it falls as a box-shaped physics body at full
+//! gravity on the debris layer and shatters into a small burst on whatever it
+//! first touches (glass included: a broken window no longer collides), else
+//! after 5 s; its spin is about the entity axes. Explosions on break:
+//! ExplodeDamage wins over explodemagnitude, radius ExplodeRadius or 2.5 ×
+//! damage (the props' rule, prop_damage.md 7.5), the blast the HE grenade's.
+//! Physics impacts: glass counts 2 kg on the `glass` table, other materials
+//! their box's volume at 700 kg/m³ on the default table (the spec names
+//! neither; the BSP's brush mass is not read); flag 512 breaks on any impact;
+//! players never impact breakables (touch flags do that); a broken window
+//! doesn't collide with bodies at all and loose physics props shatter its panes
+//! by touch with no push (their speed isn't in the logic; tile never breaks by
+//! a prop). Break on pressure ignores flag 1. Tile windows' blast diamond is
+//! centred on the hit, not the attacker. Gibs bounce 0.5 (glass 0.3), rest when
+//! slow; their bounce sound (the spec says only that the break flag picks it)
+//! is the material's `Bounce.Glass/Wood/Metal/Flesh/Concrete` entry (ceiling
+//! tiles as concrete, Material None silent) by the shell bounce rule of
+//! specs/cs_source/view_models.md 8 (one bounce in 6, entry volume × min(1,
+//! vertical speed / 450 u/s), pitch from the entry's range one time in 4, else
+//! its start), breakables.md Q9; propdata templates and the
+//! GlassBreak/BulletProof decals are not done. Why it's OK for now: One bullet
+//! or a knife opens de_nuke's vents; cs_office windows lose the shot panes; the
+//! spec's numeric cases pass.
 
 use bevy::prelude::*;
 

@@ -8,6 +8,11 @@
 //! CS:S install), `mg_lego_multigames_v2` (a community map, when it is in
 //! the content cache). Each runs `--warmup` ticks, then measures `--ticks`
 //! ticks one by one.
+//!
+//! Dev tool: instructions-per-tick regression gate: headless scenarios
+//! (greybox, de_dust2 rounds with 10 bots, mg_lego_multigames_v2) measured with
+//! `metrics::AllThreads`, compared with `tools/perfgate/baseline.json` per
+//! build profile (`--update` rewrites it).
 
 use std::{
     path::{Path, PathBuf},

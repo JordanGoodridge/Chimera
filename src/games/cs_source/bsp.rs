@@ -1,6 +1,15 @@
 //! CS:S maps (BSP v20) to neutral `MapData`. Parsing is the `vbsp` crate;
 //! this module owns Source's conventions: Z-up inches to Y-up meters, which
 //! surfaces draw and collide, and which entities are spawns.
+//!
+//! Known shortcuts (docs/tech-debt.md): Brushes carrying displacements are
+//! found by matching plane and centre (compiled maps don't record it).
+//! Non-mover brush entities (other than breakables) are static where they spawn
+//! and ignore render modes other than 10. Overlays and infodecals on movers go
+//! with them (infodecals whose probe hits the mover's bounding box, overlays
+//! listing its faces); props parented to movers ride them but aren't solid and
+//! keep their spawn-time light probe. Why it's OK for now: Matches dust2; brush
+//! entities look right on cs_office and de_nuke.
 
 use std::collections::{BTreeMap, HashMap};
 

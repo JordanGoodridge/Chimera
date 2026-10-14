@@ -6,6 +6,24 @@
 //! usual editing keys. Binds run when it's closed (`+action` while held).
 //! Also the CS:S-style overlays (cl_showpos, cl_showfps, net_graph, snd_show, watch)
 //! and the client's commands (noclip, getpos/setpos, kill, map, quit, ...).
+//!
+//! The in-game console UI (`~`): completion (names, cvar values, each argument
+//! of the command typed: keys, maps, entities, teams, hitgroups, tabs, ...; on
+//! the line's last command after `;`), fuzzy suggestions under it with Up/Down
+//! picking one (Enter or Tab takes it and adds a space, Esc hides the list), a
+//! help line for the command typed (its usage from the help text with the
+//! argument being typed marked, a cvar's value, default, range and values),
+//! history (Up/Down with an empty line, persisted, Ctrl+R), editing keys
+//! (Ctrl+Backspace/W/Delete words, Ctrl+U/K, Ctrl+V paste, Ctrl+L clear,
+//! Ctrl+Home/End), output lines that fit the window's height,
+//! scrollback/filter/timestamps, row selection to the clipboard (clicks never
+//! grab the mouse while open), binds with `+`/`-` actions, log mirroring,
+//! overlays (cl_showpos, cl_showfps, snd_show, watch), client commands (noclip,
+//! god, getpos/setpos/setang, kill, `mashup_hurtme` (a bullet hit on yourself
+//! at a hitbox), map (in place, `map::change_map`; `map greybox` puts the
+//! greybox back, `load_greybox`), disconnect (the greybox, then the main menu),
+//! toggleconsole, quit), `developer 1` notify lines, the `mashup/console`
+//! remote method.
 
 use std::{
     collections::VecDeque,

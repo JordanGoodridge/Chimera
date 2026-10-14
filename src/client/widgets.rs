@@ -20,6 +20,24 @@
 //! server browser) resize from their edges and corner down to their
 //! minimum size. Nothing is remembered across runs: a frame is centred
 //! the first time it opens in a session, then stays where it was left.
+//!
+//! VGUI's controls, one layer shared by the GameUI dialogs (`game_menu`,
+//! `server_browser`, `first_run`): the state machines the dialogs' models hold
+//! (`ComboList`: a drop-down's open list, highlight, pick, wheel, keys;
+//! `Caret`: a text entry's caret and selection, editing; `focus_step`: Tab
+//! order; `Windows`: movable frames' places for the session, drags kept on
+//! screen, resizes down to a minimum, stacking), the drawing of each control in
+//! the scheme's look (`Look`, `frame` with its title, close box and grip,
+//! `button` (armed, depressed, disabled, default and focus states, restyled by
+//! `style_buttons`), `check_button`, `radio_button`, `combo_box` and
+//! `combo_popup`, `slider` with tick marks, `text_entry` with caret and
+//! selection placed by `UiFonts::char_offsets`, `tabs`), and the systems
+//! moving, raising and resizing frames (`frames_pointer`, `place_frames`: each
+//! frame over what it hides, `FrameBacking`: the main menu's picture, in a game
+//! the world drawn again at `WORLD_UNDER_DIALOGS` brightness from
+//! `WorldPicture`) and following a held slider (`SliderDrag`); `vgui_windows`
+//! lists and moves frames; also the spectator menu's drop-downs
+//! (`spectator_menu.rs`).
 
 use std::collections::HashMap;
 

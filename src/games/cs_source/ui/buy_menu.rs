@@ -8,6 +8,21 @@
 //! with the number keys; a game's direct keys (CS:S's 6 and 7, primary and
 //! secondary ammo) buy at once. Buying goes through `economy::buy`, so the
 //! money, the buy period and team limits apply.
+//!
+//! The buy menu (B or `buymenu [n]`; `buyequip` its equipment page): the game's
+//! categories on their keys and items with prices from
+//! `weapon::economy::Prices` (`menu`; by slot when a game gives none), each
+//! team's own, picked with number keys (weapon slots are off while it's open),
+//! bought through `buy`; a category with `direct` set buys at once (CS:S's 6
+//! and 7: primary and secondary ammo); refusals, and B outside the buy time or
+//! a buy zone, show as a hint (`client::chat::Hint`). With the game's own pages
+//! (`GameMenus::buy`, per team) it is drawn in their look (`vgui.rs`): category
+//! pages, the hovered item's picture, live price and details (`ItemInfo`), held
+//! weapons' pictures in the loadout box; buttons work by hotkey or click,
+//! greyed when the item isn't for sale, too dear, or the command unknown
+//! (autobuy, favourites); its ammo buttons (`buy primammo`/`secammo`) cost a
+//! box for the gun carried in that slot. `,` and `.` run `buyammo1`/`buyammo2`
+//! (weapon/mod.rs), menu open or not.
 
 use bevy::prelude::*;
 use bevy::window::CursorOptions;

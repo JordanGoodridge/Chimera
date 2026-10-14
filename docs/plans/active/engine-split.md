@@ -162,6 +162,14 @@ measurements):
     (load 14-26), 114 s after (load 17-18): one crate either way, so
     the difference is load and cache, not the move; the win comes with
     the crate cut.
+- [x] Docs diet (P2): docs/ARCHITECTURE.md's module table became one
+  line per module (133 KB to 22 KB) and docs/tech-debt.md one line per
+  entry (109 KB to 15 KB); the detail moved into the files' `//!` docs
+  (debt under "Known shortcuts"). `architecture::docs_stay_one_line_per_entry`
+  caps the line lengths and checks the paths.
+- [x] Heavy tier (P4b): map-looping heavy tests split per map, nextest
+  tuned to 5 heavy slots weighted by memory; full suite 1,812 s to
+  1,009 s (docs/performance.md, "The heavy tier").
 - [~] (2) CS:S UI out of `client`, rules behind a rule-module interface,
   game-registered replication (2026-10-13, one session):
   - [x] `games/cs_source/ui/` (`CsSourceUiPlugin`, added by main.rs
@@ -214,6 +222,11 @@ measurements):
   each move-only with the architecture test updated; (3) cut crates
   bottom-up, one per commit with the full suite; (4) minigame
   definitions, the existing modes as the first rule modules.
+
+Test selection (user, 2026-10-14): no coverage-based test selection;
+the crate split (with each crate's own tests and cargo's crate graph to
+pick affected tests) is the way to shorter pushes. Until then pushes run
+the full suite, and the coordinator batches merges.
 
 ## Minigames (the middle layer)
 

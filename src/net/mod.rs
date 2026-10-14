@@ -29,6 +29,163 @@
 //!
 //! `NetRole` (core) says what this process is; `authoritative` systems
 //! (rules, bots, damage, logic) don't run on a client.
+//!
+//! Network play (docs/plans/active/multiplayer.md, slices 1-7): `NetPlugin`
+//! (replicon + renet netcode over UDP, `AuthMethod::Custom`, a mutate message
+//! with every update), the protocol in registration order (`Join`, `Refused`,
+//! `Welcome` (with the map's offer: hash, size, `sv_downloadurl`,
+//! `sv_allowdownload`, which the player's `cl_downloadfilter none` refuses; the
+//! server's name and players), `ChangingLevel`, `ChangeLevel`, `Loaded` (a
+//! client has the map: the server lets its player into the game), `MapRequest`,
+//! `MapAck`, `MapChunk`, `MapDenied`, `UserCmds` of `NetCmd` (one per server
+//! tick, made safe by `NetCmd::apply`, with the view tick its shots are traced
+//! at; and the newest own state the client holds, `ack`), `OwnStateDelta` (an
+//! `OwnState` as a `delta` against the acknowledged one), `OwnState` (with the
+//! map index of the mover stood on, and the map camera viewed through:
+//! `core::MapView`); replicated `NetCharacter`, `Spectating`, `Unassigned`,
+//! `ChoosingClass`, `PlayerClass`, `NetBody` (quantized: `quant`;
+//! `body_flags::TELEPORTS` counts the server's teleports), `Team`, `Health`,
+//! `NetMover`, the map render looks `map::RenderLook` (players) and
+//! `BrushTint` (movers), `NetProp`, `NetHeld`, `NetItem`, `NetSmoke`, the body,
+//! mover, prop and item ones also into each entity's `interp::Snapshots` by
+//! server tick, all written in tick order (`ordered`); weapons' messages
+//! `FireBullets`, `WeaponFx`, `Detonation`, `Senses`, `Killed`, `HitConfirm`,
+//! `Hurt`, `DropRequest`; game rules' `NetRound`, `NetScore`, `NetBomb`,
+//! `NetHostage`, `BuyRequest`, `TeamRequest`, `ClassRequest`, `ServerMotd`
+//! (`motd.rs`), `SayRequest`, `RadioRequest`, `Notice`, `ChatMessage`,
+//! `RadioCall`, `ObjectiveNews`, `RoundOver`, `ServerSound`, `CvarValues`,
+//! `NameRequest`, `NameChanged`, `decals::Decals`; `OwnState` also carries
+//! money, armour, kit and the freeze's end tick (arming and defusing the bomb
+//! are in its predicted state; `epoch`: the client clock epoch its `lead` is
+//! from)), `canonical_position` (a predicted player's zeros as +0.0 at the end
+//! of a tick), `NetSettings` (cvars `hostport` 27015, `maxplayers`, `name`),
+//! the server's `status` with `hostname` and query counts, `NET_VERSION` (also
+//! in replicon's protocol hash), `NetEvent` for the client layer, `disconnect`,
+//! `status`, the `connect`/`listen`/`status`/`ping`/`users` commands, the map
+//! id and hash check (`map_matches`).
+//!
+//! Known shortcuts (docs/tech-debt.md): The network so far
+//! (docs/plans/active/multiplayer.md, slices 1-7): a client steps movers ahead
+//! with what it knows, so a mover starting, reversing after its wait, blocked
+//! by someone else, or a train turning at a path corner mispredicts for a round
+//! trip (corrected; the rest of the ride doesn't); parented brushes and
+//! breakables aren't stepped ahead (drawn at their last snapshot); model doors
+//! (`prop_door_rotating`), broken window panes and prop skins/sequences aren't
+//! replicated yet (props' pose and presence are, loose weapons and grenades in
+//! flight too); others riding a mover are drawn in the past while the mover is
+//! drawn at the predicted tick, so they float or sink by the mover's travel
+//! over the delay (Source draws movers in the past instead); a predicted
+//! player's position is written with +0.0 for -0.0 at the end of each tick in a
+//! network game (`net::canonical_position`: the physics' transform sync does
+//! that only sometimes, which a replay can't know); replicon's message ticks
+//! are 32-bit (the server's tick wraps after 776 days); the server sends the
+//! player's predicted state with each of its updates as a byte delta against
+//! the newest one the client acknowledged (`net::delta`; ~25-90 bytes, the
+//! whole ~400-650 when joining and after a map change), not quantized (the
+//! client compares it bit for bit and replays from it); others' bodies
+//! (`NetBody`) are quantized (`net::quant`: 1/32 unit, 1/8 unit/s, 16-bit
+//! angles, ~20 bytes), props, items, movers and ragdolls are not; updates are
+//! paced per client (`net::server::UpdatePacing`): `cl_updaterate` 20 and
+//! `rate` 30000 (userinfo) within `sv_minupdaterate` 10, `sv_maxupdaterate` 66,
+//! `sv_minrate` 5000 and `sv_maxrate` 0 (no limit) are the community's
+//! documented CS:S defaults, unmeasured (spec session), the rate counts
+//! replicon's message bytes (not renet's headers and acknowledgements) and a
+//! client may owe or save up a quarter second of it, a client's mutations are
+//! dropped on ticks it isn't due an update (reliable updates and messages
+//! always go), its own state goes with its updates only; no transport
+//! compression (deflate on each client's frame of messages saves ~9 % at 20
+//! updates a second: not worth a dependency on both transports); the client's
+//! fixed tick is nudged by adding or removing overstep, so `Time<Fixed>`'s
+//! elapsed no longer matches the server's (`SimClock` is set from the server's
+//! instead); `net_fakelag`/`net_fakeloss` apply only on a client's UDP
+//! transport (not a server's, not `NetSim`'s link); weapons: lag compensation
+//! doesn't rewind the knife's box sweep (only its line) or grenades' blasts,
+//! and a client's own traces test others' colliders a frame or two behind where
+//! it draws them (cosmetic: the server's hits count), others' reload, draw and
+//! knife sounds aren't sent (their fire sounds are), map logic's long-lived
+//! sounds go to clients as they start, change and stop (`net::mapfx`), so a
+//! client joining later doesn't hear loops already playing, a model-less
+//! character is rewound as its box (the present trace uses its capsule),
+//! `FireBullets` is unreliable (a lost one is a shot not drawn, as in Source);
+//! rules (slice 5): a client's round clock and bomb timer run on the server's
+//! clock as its updates arrive (about the one-way latency behind the server's,
+//! ~50 ms at 100 ms ping); arming and defusing the bomb are predicted, but the
+//! planted bomb itself, the HUD's words for them and a defuse someone else
+//! starts come from the server (a round trip late), and a client's defuse
+//! checks the bomb's use box against its own world (others' props drawn in the
+//! past could differ: a correction); the freeze's start is heard a round trip
+//! late (its end is known in advance and isn't mispredicted); objective events
+//! and the rules' sounds go to every client, each client keeps what concerns it
+//! (a counter-terrorist's client hears of the bomb being dropped, but shows
+//! nothing); a player whose client is loading the map is out of the game
+//! (`core::Connecting`), then comes in at once in deathmatch, in the freeze
+//! time and when nobody of its team is alive (ours: CS:S restarts the game when
+//! an empty team gets a player), else at the next round (CS:S's exact join
+//! rules, e.g. a grace after the freeze, need the spec session); a team change
+//! mid-round waits for the next round; `mp_limitteams` is checked in network
+//! games only (single player kept as it was), with our words; chat and radio
+//! flood limits are ours (a burst of 4 lines then one a second; 3 calls then
+//! one every 1.5 s; the sender told in our words), CS:S's unmeasured; name
+//! changes aren't rate-limited and a name another player has isn't made unique;
+//! the dedicated server has no `RadioCommands` unless a map gives them, so any
+//! short radio name is passed on; replicated cvars are polled every frame on
+//! the server (~100 getters) rather than marked when set; bots (slice 6): names
+//! from the install's botprofile.db ("Bot N" without it, e.g. on the greybox)
+//! pick among the free profiles of `bot_difficulty` by the bot's seed (CS:S at
+//! random), `bot_prefix` goes before the name with a space (unchecked against
+//! CS:S), profiles' other attributes (skill, weapon preferences, voice) aren't
+//! used, single player names its bots the same way; `bot_join_after_player`
+//! keeps the quota from adding bots until a human is in the game but kicks none
+//! when the last one leaves; quota bots join the smaller team, the terrorists
+//! on a tie (CS:S picks at random); maps (slice 7): a `changelevel` to the same
+//! map isn't announced to clients while the server loads it (they hear
+//! `ChangeLevel` once it is in), only the map file is downloaded (content
+//! outside its pakfile is not), the server reads the whole file into memory to
+//! serve it and sends at most 64 KB a frame per client with 512 KB in flight on
+//! the reliable ordered channel the chat also uses (a 150 MB community map
+//! takes about 40 s on a good link; no congestion control beyond the window), a
+//! client tells refusals apart by the server's words (`client::classify`;
+//! `Refused` has no kind field, so older builds can still read it), late
+//! joiners get the world's impact decals (not those on props or brush entities,
+//! nor which variant each took; a client with `mashup_round_cleardecals 1` also
+//! gets earlier rounds'); quitting through the remote protocol (`mashup/console
+//! quit`) skips netcode's disconnect packet, so the server notices only when
+//! the client times out; soak (multiplayer.md, "Soak";
+//! tests/it/heavy/net_soak.rs): replicon (0.44.3) holds a client's mutations
+//! back until the update they follow arrives and by default applies only each
+//! entity's newest one, though it acknowledged them all on arrival, so on lossy
+//! links a value changed once on an entity whose body changes every tick was
+//! lost for good (a dead player's last health, a score one kill short, every
+//! player's 0/0 after a map change): the client asks replicon for the older
+//! ones too and applies each component's values in tick order (`net::ordered`,
+//! a receive marker with `need_history`; this replaced resending every changed
+//! value for a second, ~12-20 KB/s a client), but replicon passes older
+//! mutations only within 64 ticks of the entity's newest, so an update held up
+//! over a second (three resends lost in a row at 300 ms) would still lose a
+//! value changed once before it (not seen in the soaks); bandwidth is ~10-13
+//! KB/s per client with twelve characters on de_dust2 at the default 20 updates
+//! a second (peaks ~31-33 KB/s at joins and map changes; was 82-98 and 105-108
+//! at 300 ms with 5 % loss), ~28-34 KB/s with an update every tick (47 at 300
+//! ms/5 %: replicon sends a value with every update until it is acknowledged);
+//! prediction errors come mostly from walking into other players and physics
+//! props (drawn in the past; 0.4-0.8 % of states otherwise; contacts and hits
+//! add ~2 %), and runs of up to ~80 in a row (1.2 s) happen where the client
+//! has its player falling that the server stands on ground, not near another
+//! player or a prop (not pinned down) and from damage's slowdown and blasts'
+//! pushes (the server's), a respawn takes a round trip to predict right again;
+//! a dedicated server still makes ragdolls and plays (silent) looping sounds
+//! for nobody, logging each start at info level (1,111 lines and 53 ragdolls in
+//! 17 minutes); a client's main thread stalls 3-4 s putting a new map in (12 s
+//! and a 5 s frame after it on this machine under load; during its loading
+//! screen, packets wait in the socket meanwhile, and a stall over 30 s drops
+//! the client) and `net_fakejitter` then reorders the whole burst, so renetcode
+//! drops ~150 as replayed (only with the fake jitter); on this loaded box a
+//! local client's ping reads ~60 ms and each client missed ~7 % of ticks'
+//! commands over a 12-minute live run (most during map loads). Why it's OK for
+//! now: Slice 8 and the open questions replace the rest; the rules are tested
+//! in `tests/it/net_rules.rs`; commands, clock sync, prediction and
+//! reconciliation are tested (`tests/it/net_prediction.rs`), the join, map
+//! check and replication too (`tests/it/net.rs`).
 
 pub mod anchors;
 pub mod chat;

@@ -7,6 +7,19 @@
 //! game's deny sound when the local player's +use finds nothing (neither a
 //! map door or button nor the bomb or a hostage; spec 5, step 4), and
 //! `mashup_objectives 1`, a debug readout of the bomb and hostages.
+//!
+//! The objectives on the HUD: the carried-bomb / kit / rescue-zone icon
+//! (`HudC4` etc., flashing red in a target), the scenario icon (planted bomb; a
+//! glyph per hostage left), the defusing progress bar (`HudProgressBar`;
+//! defusing only, off with `cl_c4progressbar 0`: arming types on the C4's
+//! screen instead, spec Q16; its fill `BombProgress` and the C4 screen's text
+//! `bomb_fx::C4ScreenText` come from `BombHudStatePlugin`, headless for tests),
+//! centre messages ("The bomb has been planted."), hints and team chat lines
+//! from `objectives::ObjectiveEvent`; the deny sound
+//! (`map::RoundSounds::use_deny`) when the local player's +use press finds
+//! neither a map entity (`LogicWorld::use_presses`) nor an objective;
+//! `mashup_objectives 1` shows the bomb's timer and defuse and the hostages'
+//! state.
 
 use bevy::prelude::*;
 

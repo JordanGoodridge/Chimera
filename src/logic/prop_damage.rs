@@ -10,6 +10,54 @@
 //! Client-only props (multiplayer physics mode 3) follow their own simple
 //! rule (section 3). Physics impacts reach props as crush damage the host
 //! computes with `impact_damage`.
+//!
+//! Covers: specs/source/prop_damage.md: prop_dynamic/prop_physics* health and
+//! multipliers from the model's prop data (`map::entities::PROP_*_KEY`; the
+//! map's health only on `_override`), damageable only with something to break
+//! into (else events only), integer health, minhealthdmg, damage filter,
+//! spawn-tick hits as events, OnHealthChanged/OnTakeDamage every hit (after
+//! OnBreak on a killing one), breaking (`Effect::PropBreak`: sound, explosion
+//! with the last attacker, pieces; name cleared, parented entities removed),
+//! client-only props (physics mode 3: no name or outputs, 30 per bullet, the
+//! lifted blast rule), the impact damage tables (`impact_damage`),
+//! force/damage-to-enable-motion and OnMotionEnabled,
+//! Wake/Sleep/EnableMotion/DisableMotion (`Effect::PropMotion`), OnAwakened,
+//! break on pressure, Break/health/visibility/collision inputs, Skin,
+//! SetBodyGroup, SetAnimation/SetDefaultAnimation (`PropState`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Prop damage
+//! (specs/source/prop_damage.md, src/logic/prop_damage.rs) left out or
+//! approximated: the explosive_resist fire rule (needs the blast's inflictor
+//! position; no stock prop has it; flammable props otherwise ignite and burn,
+//! see the Fire row); the onbreak-explode interaction doesn't ignite players
+//! (Q5); the buckshot doubling (no damage kind marks buckshot, Q1); the knife
+//! counts as a club (Q2); break-on-touch (flag 16, unused in stock maps);
+//! spawn-time deletion of props whose template is missing or prop_dynamic with
+//! prop data (none in stock maps; cs_havana's prop_physics without prop data
+//! are not placed but keep a logic entity); `PerformanceMode`,
+//! `props_break_max_pieces` and the per-frame cap (pieces are capped at 300
+//! alive); the `break_prop` game event; the other body's velocity restore after
+//! an impact breaks a prop (5 step 9); stress crush (200 to a squeezed player,
+//! 6); players' contacts damaging props (Q13: their physics shadows' contacts
+//! count as the player's and are left out); a client prop's push from bullets
+//! and blasts (avian pushes it as any body); pieces are avian bodies on the
+//! ragdoll layer (a box when the piece model has no `.phy`; mass and damping
+//! from the `.phy`, friction 0.8 and elasticity 0.25 ours; chunks keep the
+//! prop's angles without the 90° realignment; `fademindist`/`fademaxdist`
+//! dither like prop fade bands, equal ones pop) and never block characters or
+//! shots; their impact sounds follow sounds.md's client-side physics object
+//! rule with the piece model's surfaceprop (the spec names no piece sound of
+//! its own; client break sounds stay silent, Q7); the killing hit on a frozen
+//! prop doesn't unfreeze it first (it's gone anyway); props that start asleep
+//! are static bodies until woken (a push from damage, a moving body touching
+//! them, Wake); OnAwakened has no other trigger (players' push-away, Q14);
+//! impact damage reads a pair's velocities before and after the whole physics
+//! step at its first contact; an exploding prop blasts like CS:S's HE grenade
+//! at its magnitude and radius (Q3) with the HE fireball particles; the
+//! explosion sound is the onbreak-explode `PropaneTank.Burst` only. Why it's OK
+//! for now: The spec's numeric cases pass (unit tests); cs_office monitors,
+//! computer cases, sleeping phones; cs_italy's drawer; a crate's pieces;
+//! cs_militia's gas can and roof boards on the real maps.
 
 use bevy::prelude::*;
 

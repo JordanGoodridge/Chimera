@@ -1,5 +1,40 @@
 //! The server side: listening, the join handshake, a character per
 //! client, intents from clients, and what characters replicate.
+//!
+//! The server: `listen` (`udp::UdpServer`: netcode, unsecure, `maxplayers` less
+//! the host, queries on the same port), the join handshake (version, protocol,
+//! `sv_password` from the client's netcode user data, full; refused with
+//! `Refused` and dropped a second later), a character per client (team with
+//! fewer players, out of the game (`core::Connecting`: dead, not solid, no
+//! health) until its client reports the map loaded (`Loaded`, also after each
+//! map change), then spawned as the rules allow (`rules::enter_game`), `Seed`
+//! from its id), each player's commands queued by tick (`CommandBuffer`: late
+//! and too-early ones dropped; the lead reported for the client's newest clock
+//! epoch only), `kick <name>` and `kickid <id> [message]` ("Kicked by Console")
+//! and one applied per tick before the rules (the last repeated when missing),
+//! replicon's tick kept equal to the simulation's (`lock_replication_tick`),
+//! each client's updates paced by its `cl_updaterate` and `rate`
+//! (`UpdatePacing`, `pace_messages`: its mutations dropped on ticks it isn't
+//! due one; `RateLimits`: `sv_minupdaterate`, `sv_maxupdaterate`, `sv_minrate`,
+//! `sv_maxrate`), its own state sent as a delta with its updates, after each
+//! tick `NetBody` and each player's `OwnState` (predicted components, lead,
+//! buffer) from the simulation's values, the host's and bots' characters marked
+//! for replication, leaving players' characters and weapons removed; `players`
+//! for `status`.
+//!
+//! Known shortcuts (docs/tech-debt.md): Every character's body goes to
+//! every client every update (no relevance culling): on de_dust2 only 37-45
+//! % of character pairs are in each other's PVS (`heavy::net_capacity`
+//! counts them), so Source-style culling would cut bodies (most of a
+//! client's ~17 KB/s at 32 players) by about half. Not done: hiding a body
+//! (replicon's per-client component visibility removes it on the client)
+//! needs rules for what a client still gets of players it can't see
+//! (footsteps and gunfire through walls, teammates on the radar: Source's
+//! PAS and radar messages, to spec) and the client's handling of a body
+//! that leaves and comes back (held, drawn at once, the soak's bodies-heard
+//! check). Why it's OK for now: 32 players fit a home upload (~4.3 Mbit/s
+//! for 31 remote clients at 20 updates a second; multiplayer.md
+//! "Capacity"); a rented server has bandwidth to spare.
 
 use std::{
     net::{Ipv4Addr, SocketAddr, UdpSocket},

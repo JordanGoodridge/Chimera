@@ -1,6 +1,53 @@
 //! Match rules. For now one ruleset, deathmatch: the dead stop acting,
 //! then respawn at a spawn point with full health and fresh starting
 //! weapons; kills and deaths are counted.
+//!
+//! Deathmatch: the dead (`Dead`, with their collider disabled so bodies don't
+//! block anyone) stop acting and respawn at their team's spawn points (one
+//! nobody alive stands on) with fresh weapons after `mp_respawn_delay`; a
+//! network server's remote players are kept out of the game while their client
+//! loads the map (`hold_out`, `core::Connecting`) and come in as the rules
+//! allow (`enter_game`: at once in deathmatch, in the freeze time and when
+//! nobody of its team is alive, else at the next round); `MapLoads` counts map
+//! loads (`new_game`); `Score` (kills, deaths); `mp_friendlyfire` (applied in
+//! `core::apply_damage` through `core::FriendlyFire`); `jointeam 0|1|2|3` (0:
+//! auto-assign); the join flow (`JoinChoice`: the menus or a team at once;
+//! `make_unassigned`: in the game on no team, `core::Unassigned`; `join_team`
+//! from it waits for a class, `core::ChoosingClass`, neither spawned nor
+//! counted; `join_class`/`joinclass`: `core::PlayerClass`, 0 auto-selects, then
+//! in as `enter_game` would); `mp_fadetoblack` (`FadeToBlack`, drawn by
+//! `client::senses`); `mp_autoteambalance` (`balance_teams`, as a round ends
+//! into the next: a side two or more larger gives players to the other, bots
+//! first, never onto a side without spawns); the spectator team
+//! (`join_spectators`, `spectate`, `jointeam 1`, `mp_allowspectators`:
+//! `core::Spectating`, no team, dead with no body or weapons, never spawned or
+//! counted for a round end, kept over map changes; `join_team` from it plays as
+//! `enter_game` would); `rounds.rs`: Counter-Strike rounds (`mashup_rounds 1`:
+//! freeze (`core::FreezeTime`: intents held, bots' too), timed rounds, the
+//! objectives' round-end table (bomb exploded/defused, eliminations with and
+//! without a planted bomb, all hostages rescued, time out by map kind:
+//! `RoundEndReason` with the game's words), per-reason money and objective
+//! rewards, `BuyWindow`, `RoundOpen`, `RoundEnded` with its `RoundSummary`
+//! (MVP, fun fact, live time; counted in `RoundStats`), `mp_tkpunish`; a new
+//! round counts `core::RoundRestarts` up and calls `objectives::round_start`;
+//! `mp_restartgame <seconds>` starts the game over (in deathmatch: everyone
+//! respawns)); `game_end.rs`: the end of the game on a map (`mp_timelimit`,
+//! with rounds also `mp_maxrounds` and `mp_winlimit`, checked as a round's end
+//! pause runs out; `timeleft`): `RoundState::game_over` holds everyone for the
+//! intermission (`mp_chattime`; the scoreboard shows, replicated in
+//! `NetRound`), then `map`/`changelevel` to the next of `MapCycle` (filled by
+//! the client and `mashup_server` from the install's map cycle,
+//! `games::cs_source::map_cycle`), or a fresh game without one.
+//!
+//! Known shortcuts (docs/tech-debt.md): Team balance (`rules::balance_teams`,
+//! `mp_autoteambalance`; public cvar descriptions, CS:S unmeasured): checked as
+//! a round's end pause runs out; a side two or more players larger gives
+//! players until they differ by one; who moves is ours (computer players first,
+//! fewest kills, the highest entity); no "*** Auto-Team Balance next round ***"
+//! warning (the game's `Cstrike_TitlesTXT_Auto_Team_Balance_Next_Round`) or
+//! message beyond the usual team-join chat line; never onto a side the map has
+//! no spawns for. Why it's OK for now: Capture C11 in
+//! docs/plans/active/parity-gaps.md.
 
 pub mod game_end;
 pub mod module;

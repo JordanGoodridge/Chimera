@@ -10,6 +10,10 @@
 //! brush within reach (+use from four sides), then a round restart; what
 //! the logic logs, movers told to move that never did, and panics are
 //! collected.
+//!
+//! Covers: `audit_map`: a map's connections checked against what the logic
+//! handles and a scripted player's run through its triggers and buttons, for
+//! `mapsweep --audit`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};

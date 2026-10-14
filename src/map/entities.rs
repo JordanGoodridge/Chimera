@@ -6,6 +6,16 @@
 //!
 //! Entity space: the game's own units, Z up, right-handed (Hammer/Source):
 //! (x, y, z) is engine (x, z, -y) times `MapData::entity_scale` meters.
+//!
+//! `MapEntity` (keyvalues in map order, brush volumes local to the entity,
+//! `mover`, `physics`: a func_physbox's body, whose node the physics moves),
+//! entity-space helpers (Z up, `MapData::entity_scale`), `MapEntities` resource
+//! and `MapBrushEntity` nodes (mover meshes and kinematic collider, moved by
+//! the logic layer), `FireEntityOutput` (rules outside the logic layer ask an
+//! entity to fire an output; the logic bridge does); anchors
+//! (`anchor_entities`: placed weapons something is parented to; a `MapAnchor`
+//! node each that their props ride, `EntityAnchors` their poses, written in
+//! `AnchorSet`).
 
 use std::sync::Arc;
 

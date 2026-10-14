@@ -4,6 +4,15 @@
 //! (`SayFormats`). Games fill `RadioCommands` from their data; the
 //! client opens the menus, registers the commands and plays what
 //! `core::Radio` messages say to the players who hear them.
+//!
+//! A game's team radio for any game (`RadioCommands`: calls with menu slots and
+//! (sound entry, text) variants, menus, the chat line format with Source's
+//! colour control characters), who hears a call (`hears`); the players' text
+//! chat formats (`SayFormats`: to all, dead, spectators, per team with and
+//! without a place; its sound; team join lines, the name change line) and who
+//! reads a line (`sees_say`); `bot_profiles.rs`: a game's bot personalities
+//! (Source's botprofile.db layout: name, difficulties, team;
+//! `BotProfiles::choose` for a new bot's name).
 
 use bevy::prelude::*;
 

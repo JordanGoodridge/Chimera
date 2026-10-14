@@ -17,6 +17,30 @@
 //! low-pass on the send and one feedback echo, then the listener's hearing
 //! (`hearing::Muffle`). Headless, nothing plays and the selection
 //! (`RoomDsp::preset`) is still kept.
+//!
+//! Known shortcuts (docs/tech-debt.md): Room DSP (`audio/room.rs`): Source's
+//! presets are engine-side, so every `PRESETS` value (decay, predelay, damping,
+//! send low-pass, wet level, echo delay/feedback/level per S/M/L room) is
+//! UNMEASURED, derived from the preset names; an index past 28 plays as
+//! Generic. Ours too: the send grows with distance (0.6 at the ear to 1.0 at
+//! 1500 units), unspatialized world sounds send fully and interface sounds
+//! (`PlaySound` without a position) none; the dry signal is untouched (Source's
+//! water rooms may muffle it); a soundscape without "dsp" keeps the previous
+//! room (spec silent); `dsp_volume` scales the room (default 1); a soundscape's
+//! "dsp_volume" overrides it while that soundscape plays instead of setting the
+//! cvar (the same unless the user changed it), "dsp_player" (kept until another
+//! soundscape names one; spec silent) and "soundmixer" are read and shown by
+//! `snd_show` but not played (Source's player DSP and mixers are engine-side),
+//! the trace budget isn't kept (one listener). env_soundscape_proxy ranges with
+//! its own radius (the spec names only its position); OnPlay fires for
+//! env_soundscape(_proxy), not for env_soundscape_triggerable through
+//! trigger_soundscape, from the local listener's selection (Source: per player,
+//! server-side) with the local player as activator. env_soundscape visibility
+//! uses the BSP's solid leaves (no detail brushes or displacements; water
+//! doesn't block, though the spec's trace mask includes it); a positioned
+//! soundscape loop with no loop point in its wave loops from the start (Source
+//! probably plays it once). Why it's OK for now: Audible and cheap (one shared
+//! bus); tune by ear against CS:S and log measured values.
 
 use std::sync::{
     Arc,

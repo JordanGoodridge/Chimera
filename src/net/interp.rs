@@ -32,6 +32,12 @@
 //!   (`map::interp::SNAP_SPEED`: teleports) or a death or respawn between
 //!   them is drawn at once at the newer one's tick.
 //! - **Readout.** `NetGraph`'s `interp:` line (perf overlay, debug UI Perf tab).
+//!
+//! Known shortcuts (docs/tech-debt.md): A client drawing 31 others (live,
+//! de_dust2, playtest build, loaded box): main world 28M instructions a
+//! frame (14M with none), render world 26M (19M), CPU p50 ~10 + 11 ms; not
+//! profiled further (posing, interpolation, sounds of 31 bodies) Why it's
+//! OK for now: 50-60 fps on this loaded box; the server isn't the limit
 
 use std::collections::VecDeque;
 

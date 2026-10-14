@@ -8,7 +8,9 @@
 //! materials, effects, sprites, beams, ropes, shadows), props, the map's
 //! resources, then the sun and spawn points. The drawn parts are spawned
 //! by a `MapDrawer` (`crate::render::MapAssets`, which `crate::map_plugin`
-//! picks), called at their places in that order.
+//! picks), called at their places in that order. `MapDrawer` is a system
+//! parameter: `world_material`, `draws`, `spawn_drawn`, `spawn_prop`,
+//! `textures`.
 
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 

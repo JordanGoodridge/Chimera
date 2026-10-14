@@ -5,7 +5,9 @@
 //! `map`, so `map::MapPlugin` is what tests and apps add; its
 //! registration lives here, above those layers: map's own first
 //! (`MapPlugin::build_first`), audio's, then the systems of map and
-//! render together (`build_rest`), then spawning the map at startup.
+//! render together (`build_rest`, the order they always had), then
+//! spawning the map at startup (`spawn_map` with `render::MapAssets`, also
+//! as `MapHooks::spawn` for `change_map`).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

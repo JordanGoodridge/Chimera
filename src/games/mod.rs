@@ -1,5 +1,7 @@
 //! One module per game. A game module never uses another game's module
 //! (enforced by tests/it/architecture.rs).
+//!
+//! `load_map("game:name")` dispatcher.
 
 #[cfg(feature = "combat_arms")]
 pub mod combat_arms;

@@ -5,6 +5,35 @@
 //! halos and light glows are glow sprites (`GlowSprite`, faded by how
 //! much of their occlusion proxy is seen) whose colour and size follow
 //! the eye each frame. The logic switches them through `EntityPart`.
+//!
+//! Beams and glows for any game (specs/source/visual_entities.md): `MapBeam`
+//! strips facing the camera (`BeamMaterial`: width, end width, shading over the
+//! fade length, a spotlight's near-axis fade; added to the scene; drawn through
+//! up to 129 points moved by fractal noise, the texture repeating and scrolling
+//! along the beam and the sprite's frames playing, `animate_beams`), a
+//! spotlight's halo and env_lightglow as glow sprites whose colour and size
+//! follow the eye (`halo_look`, `glow_fade`), switched by `EntityPart`.
+//!
+//! Known shortcuts (docs/tech-debt.md): Beams
+//! (specs/source/visual_entities.md): lasers and beams are drawn between their
+//! ends as placed (targets that move aren't followed, the random target isn't
+//! redrawn), with the spec's fractal noise (new each frame), segment count,
+//! texture repeat per 100 units, TextureScroll as its quirk reads (offset
+//! frac(now x s²): de_cbble's and de_inferno's chimney smoke at s 5 scroll 25
+//! lengths a second, Q10 unconfirmed) and the sprite's frames at its framerate;
+//! sine noise isn't drawn (no map entity sets it); strike-generator env_beams'
+//! strikes (`map::emitters::StrikeEmitter`) are drawn through the particle pool
+//! between the ends where they were at the strike (moving ends aren't
+//! followed), with the spec's fractal noise and segment count but no scroll or
+//! frame animation, a ring as nothing; their damage hits players only (not
+//! props or breakables); env_spritetrail's strip is drawn with texture row 0
+//! across its full width (texture resolution 0, spec Q6), its quads one per
+//! pair of points (no smoothing), its rendermode only additive or blended;
+//! env_spark draws the electric bullet-impact sparks (its magnitude, trail
+//! length and glow flag aren't used); a spotlight's dynamic light isn't made;
+//! halos and light glows fade by line tests to their proxy (as sprites) and add
+//! in linear space; the beam's strip is twice its width wide (spec Q1). Why
+//! it's OK for now: point_spotlight shafts are the common case (22 maps).
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

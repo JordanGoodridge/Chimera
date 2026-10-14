@@ -5,6 +5,12 @@
 //! (*hyp.*, Q10: stop within 100 units, walk within 250, run beyond; give
 //! up beyond 1500 or after 10 s out of sight). Touching a rescue zone
 //! rescues it. Hurting and killing them is reported for the rules' money.
+//!
+//! Covers: `Hostage` characters (no team, the game's movement, `map::BodyName`
+//! model) spawned at each round start, +use to lead/stop (defenders only),
+//! following over the nav mesh (stop/walk/run distances, give up when far or
+//! unseen), rescue in a rescue zone (or near a defender spawn), `HostageTally`,
+//! hurt/killed events, `mp_hostagepenalty` (`HostagePenalty`).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

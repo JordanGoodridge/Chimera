@@ -1,6 +1,32 @@
 //! Character bodies: each character's drawn body (its team's model,
 //! skinned to an animated skeleton), what it holds, and its hitboxes
 //! following the skeleton (also headless, for the server's hit tests).
+//!
+//! Character bodies (by team or `BodyName`; the local one hidden unless
+//! `ShowLocalBody`), held models, hitboxes on the skeleton (also headless).
+//!
+//! Known shortcuts (docs/tech-debt.md): Maps without character models fall back
+//! to height bands on the collider for hitgroups; in single player hitboxes
+//! follow the client-rate animation (a network server poses them per tick from
+//! its own animation, `map::SimAnimator`), which takes other characters' look
+//! as drawn (eased between ticks, `map::interp`), so their hitboxes trail the
+//! simulated look by up to a tick; the server's per-tick animation runs CS:S's
+//! player animation state a second time (twice the posing work per character on
+//! a listen server) and its hitboxes for tick N come from the end of tick N-1.
+//! Why it's OK for now: Matches what players see; lag compensation hits rewound
+//! poses (tests/it/heavy/map_net_weapons.rs).
+//!
+//! Known shortcuts (docs/tech-debt.md): Frame-time shortcuts
+//! (docs/performance.md, "Frame time pass"): bodies no camera drew last frame
+//! are posed every 4th frame (`map::UNSEEN_POSE_INTERVAL`), so an unseen
+//! shooter's muzzle (where its tracer starts) can be up to three frames behind
+//! its animation; dust motes' and particles' meshes are padded to power-of-two
+//! sizes with degenerate triangles; a physics prop's shadow is redrawn only
+//! after it moves by a quarter of a shadow texel (a creeping prop's shadow lags
+//! it by up to that); the per-frame schedules run on single-threaded executors
+//! (`MASHUP_EXECUTOR=multi`: Bevy's). Why it's OK for now: Measured faster on
+//! the dev box; hitboxes pose every tick on their own; the Windows PC is still
+//! to be measured.
 
 #[allow(unused_imports)]
 use super::*;

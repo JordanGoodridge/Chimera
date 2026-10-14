@@ -6,6 +6,82 @@
 //! living teammates', and the radio icon over a teammate's head while
 //! they speak (the game's `sprites/radio`, else a text marker), hidden
 //! behind walls as the game's depth-tested material is.
+//!
+//! The team radio: menus (Z/X/C or `radio1`-`radio3`, from
+//! `map::radio::RadioCommands`) picked with number keys, a console command per
+//! call (`coverme`, `enemyspot`, ...: registered when a map's radio loads)
+//! writing `core::Radio`; calls the local player hears (their own, living
+//! teammates') play their sound entry and print "Name (RADIO): text" (with the
+//! sender's nav place) to the chat, and a teammate's call shows the radio icon
+//! over their head for 1.5 s (`RadioIcons`: the HUD's `radio` sprite,
+//! `sprites/radio`, else a text marker; hidden behind walls and bodies, as its
+//! material is depth-tested); `ignorerad 1` drops teammates' calls (no sound,
+//! line or icon; your own still play); `RadioHearPlugin` is the hearing part
+//! without a window (tests). The buy, team and radio menus close each other.
+//!
+//! Known shortcuts (docs/tech-debt.md): Radio (no spec; from the game's data
+//! files and in-game behaviour): the pairing of console names, menu keys, sound
+//! entries and text keys is ours (following the menus' order);
+//! "Affirmative/Roger" picks one of its two at random; dead players can't call
+//! and calls are heard by the caller and living or dead teammates; no
+//! per-player rate limit; `ignorerad 1` drops teammates' calls (sound, line and
+//! icon) but not your own (a guess); the radio icon over a teammate stays 1.5 s
+//! (a guess), sized as 16 units across, hidden by a ray from the camera to it
+//! (world, props and other bodies; its material is depth-tested), not a depth
+//! test; the location form (`Game_radio_location`) is used whenever the caller
+//! stands in a named nav place, with the raw place name. Chat colours: team
+//! colours from the scheme; the normal (white) and location (light green)
+//! colours are guesses. Chat lines stay 12 s (`hud_saytext_time`'s default), at
+//! most 8; hints stay 4 s (a guess); both use Bevy's font at the scheme's sizes
+//! (Verdana is a system font, not in the install). Bots' radio habits (enemy
+//! spotted on first sight, enemy down after a kill, need backup at 40% health)
+//! and their cooldowns (12 s per bot and call, 4 s team-wide for the same call)
+//! are ours, and so are the calls bots start on their own (no bot chatter spec;
+//! `bot::radio::speak`): the attackers' group leader says "Go go go" (a third
+//! of rounds, from the team's plan seed and the round) or "Stick together team"
+//! 1 s after the round opens (after the freeze; within 10 s, with a teammate
+//! within 30 m), "Follow me" once the group has gathered before the site and
+//! goes in (with a teammate within 30 m not already following it; not with a
+//! bomb down), "Cover me" while planting or defusing with a teammate within 30
+//! m, "Sector clear" 5 s after the last enemy seen or heard following a fight,
+//! "In position" from the first bot of a team holding a spot, "Regroup team"
+//! from the lowest-numbered survivor once a team of 3 or more bots is down to a
+//! third (two or more alive, not fighting, no bomb down; never "Team fall
+//! back", which sends bots back to spawn); round calls, regroup and in position
+//! once a round per team, follow me and cover me once a round per bot; a team's
+//! bots start one call per 3 s at most (answers and "Fire in the hole" not
+//! counted; what happened (enemy spotted or down, need backup) waits up to 3 s
+//! for its turn, a lasting state's call comes when it fits), most urgent first
+//! (enemy down, spotted, need backup, cover me, regroup, round calls, follow
+//! me, sector clear, in position), bot number breaking ties. Bots carry out
+//! each other's commands through `obey` like a person's; answers are never
+//! commands, so nothing answers an answer. The install's radio script
+//! (`game_sounds_radio.txt`) has bomb sounds only as the round's announcements
+//! (`Event.BombPlanted`, `Event.BombDefused`), no team call about the bomb, so
+//! bots don't call it. Bots answering commands (no bot behaviour spec): one or
+//! two of the nearest teammates answer "Roger that"/"Affirmative" 0.5-1.2 s
+//! later (from the bot's seed and the time) and 0.8 s apart, "Negative" from a
+//! busy one (fighting, planting/defusing, carrying the bomb, sent) nearer than
+//! the one that follows; follow me: the nearest free bot within 30 m follows 40
+//! s (cover me 20 s), walking when over 3.5 m away; stick together: every free
+//! bot within 30 m follows; hold position / get in position: free bots within
+//! 30 m stay within 4 m of the caller's spot for 30 s; regroup: every free bot
+//! walks to the caller's spot (until within 4 m, at most 30 s); fall back:
+//! every free bot walks to the team's spawn point nearest its spawns' middle
+//! for up to 15 s (get out of there: those within 30 m); go / take the point /
+//! storm the front: orders dropped, what they chased forgotten, no waiting for
+//! the group for 20 s, and storming defenders hunt; report in: the two nearest
+//! say "Reporting in"; need backup / taking fire from a person: one bot
+//! `tactics` sent answers; orders come before chasing what was seen or heard,
+//! after a fight and the objective; bots ignore each other's answers. Team join
+//! lines (`Cstrike_game_join_*`) show for every character getting or changing
+//! its team once the map's strings are loaded, bots included, in the normal
+//! colour. C is the radio responses menu now, not a second crouch key. Text
+//! chat: the typing line ("Say :", the engine's `chat_say` strings) sits under
+//! the chat box in our look; team chat uses the place form whenever the sender
+//! stands in a named nav place; the living don't read the dead (CS:S's default,
+//! unmeasured); bots never chat. Why it's OK for now: Works and reads like the
+//! game; a spec session can measure what CS:S does.
 
 use bevy::{prelude::*, window::CursorOptions};
 

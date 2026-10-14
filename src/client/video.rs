@@ -3,6 +3,15 @@
 //! and `mashup_resolution` (the window), `mat_antialias` (MSAA), texture
 //! detail and filtering (`mat_picmip`, `mat_trilinear`, `mat_forceaniso`)
 //! and the player's field of view (`fov_desired`).
+//!
+//! `fov_desired` (`PlayerFov`: the world camera's unzoomed field of view, 75
+//! to 90, CS:S's 90); the video cvars (`mat_vsync`, `mashup_fullscreen`,
+//! `mashup_resolution`, `mat_antialias`; archived) set the window's present
+//! mode, mode and size when they change (not in `--window` or automated runs)
+//! and every camera's MSAA; the texture settings (`TextureSettings`:
+//! `mat_picmip`, `mat_trilinear`, `mat_forceaniso`) each repeating, mipmapped
+//! texture takes as it is added (`apply_texture_settings`, before it goes to
+//! the GPU; so from the next map load).
 
 use bevy::{
     prelude::*,

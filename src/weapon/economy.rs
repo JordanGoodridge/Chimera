@@ -2,6 +2,58 @@
 //! (`Prices`, filled by games), a character's `Money`, and whether buying
 //! is open now (`BuyWindow`, set by the rules). Characters without `Money`
 //! buy for free (deathmatch, testing).
+//!
+//! Covers: `Money`, `Prices` (games fill them, with their buy menu
+//! `BuyCategory`s and bots' `bot_weights`), `buy` charging and checking
+//! `BuyWindow`; ammo by the box (`Prices::ammo`, `AmmoBox` per weapon:
+//! `primammo`/`secammo` fill the primary's or pistol's reserve,
+//! `buyammo1`/`buyammo2` buy one box, up to the reserve maximum; a gun bought
+//! for money comes with its clip only, starting weapons in rounds carry
+//! `Prices::starting_reserve`: `starting_reserve`); `autobuy` and `rebuy` for
+//! players (`buy` names them: the player's `cl_autobuy`/`cl_rebuy` userinfo
+//! lists, CS:S's `cfg/autobuy_default.txt` and `rebuy_default.txt` by default;
+//! `RebuySnapshot`, what was carried after the last buy); buying and picking up
+//! play `Prices::pickup_sound`/`item_sound`/`ammo_sound` (`owner_sound`);
+//! `autobuy` for bots (a primary by weight among the dearer half they can
+//! afford, its ammo and the pistol's, armour, then now and then grenades:
+//! `BOT_GRENADE_CHANCE`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Buy zones on maps without
+//! `func_buyzone` (`weapon::economy::in_buy_zone`, mg_jacks_multigames_v1):
+//! CS:S makes zones around the team spawn points (public mapping docs: "a small
+//! area" at each spawn, size not given). OURS: a box 200 units out horizontally
+//! and 128 up and down from each of your team's
+//! `info_player_terrorist`/`_counterterrorist` (`SPAWN_BUY_ZONE_RADIUS`,
+//! `_HEIGHT`); a player without a team buys at any spawn. Capture to measure
+//! CS:S's: on a no-buyzone map (mg_jacks_multigames_v1) in a local CS:S game as
+//! a terrorist, `sv_cheats 1`, `mp_buytime 99`, `getpos` at a spawn, then walk
+//! straight out along +x (and diagonally, and up a ledge/down a drop) with
+//! `cl_showpos 1`, noting where the buy icon on the HUD goes out and where `buy
+//! vest` starts answering "You are not in a buy zone."; repeat from a spawn at
+//! the edge of the group to tell a per-spawn zone from one box round all
+//! spawns. Why it's OK for now: Buying only near spawn on such maps.
+//!
+//! Known shortcuts (docs/tech-debt.md): Ammo buying (no spec values): box
+//! prices and sizes per ammo type are the well-known Counter-Strike ones (9mm
+//! $20/30, .45 $25/12, .50AE $40/7, .357 $50/13, 5.7 $50/50, 5.56 $60/30, 5.56
+//! box $60/30, 7.62 $80/30, .338 $125/10, buckshot $65/8); a box that doesn't
+//! fit whole costs its full price; `primammo`/`secammo` fill the reserve,
+//! `buyammo1`/`buyammo2` buy one box; the spawn Glock and USP carry 40 and 24
+//! in reserve; ammo stays per weapon (CS:S keeps it per player and type); the
+//! ammo sound is `BaseCombatCharacter.AmmoPickup`. The +use deny sound is
+//! `Player.UseDeny`, whose later script definition wins (doors_buttons.md Q2),
+//! and a terrorist's press on the planted bomb counts as finding nothing. Why
+//! it's OK for now: Plays like CS:S as remembered; measure on the probe server.
+//!
+//! Known shortcuts (docs/tech-debt.md): `autobuy` / `rebuy` (`weapon::economy`;
+//! rules from the install's `cfg/autobuy_default.txt` and `rebuy_default.txt`
+//! comments): autobuy skips every primary while one is carried (buying would
+//! drop it) and the aliases mashup doesn't sell (`nvgs`); rebuy takes no new
+//! snapshot itself (a short round doesn't forget what it couldn't afford) and
+//! skips what is still carried; the lists travel as `cl_autobuy`/`cl_rebuy`
+//! userinfo (CS:S's client reads its `cfg/autobuy.txt`; ours are cvars). Why
+//! it's OK for now: Unmeasured; captures wanted in
+//! docs/plans/active/parity-gaps.md.
 
 use std::collections::HashMap;
 

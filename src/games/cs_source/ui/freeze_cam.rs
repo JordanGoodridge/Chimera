@@ -6,6 +6,31 @@
 //! game's freeze panel (`resource/ui/freezepanel_basic.res`) names the
 //! killer. The flash's strength and length are guesses
 //! (docs/tech-debt.md).
+//!
+//! The freeze cam's picture: the window's screenshot held over the world once
+//! the camera reaches the killer, a white flash fading from it, the install's
+//! freeze sound (`UiSound::FreezeCam`) and the game's freeze panel
+//! (`GameMenus::freeze_panel`, `freezepanel_basic.res`: the killer's name,
+//! "KILLED YOU").
+//!
+//! Known shortcuts (docs/tech-debt.md): Freeze cam (`client::spectate`,
+//! `client::freeze_cam`; from the game's files and general CS:S knowledge, no
+//! spec or capture): it follows the 2 s death cam only when killed by someone
+//! still alive; `spec_freeze_traveltime` 0.4 s and `spec_freeze_time` 4 s are
+//! guesses (Orange Box-era defaults), local cvars here (CS:S's are the
+//! server's); the camera stops 128 units from the killer's eye (no closer than
+//! the death cam was); the held picture is a screenshot of the window, so the
+//! HUD of that moment is in it and live HUD parts drawn over it (chat, notices)
+//! can double; the white flash (70 % fading over 0.35 s) is a guess; the panel
+//! shows the killer's name and "KILLED YOU" only (no avatar, nemesis/revenge,
+//! health gauge or "[F5] Save this moment"); keys wait until spectating starts;
+//! the spectator bars hide during it (and so are not in its picture). Captures
+//! to confirm: in CS:S, killed by a bot at a known spot (`bot_stop 1`,
+//! `setpos`/`setang` both), frames every 0.1 s from the death to 8 s after
+//! (when the zoom starts, how long it takes, how near it ends, the flash, how
+//! long the picture holds), and `help spec_freeze_time` / `help
+//! spec_freeze_traveltime`. Why it's OK for now: Reads like CS:S's; the numbers
+//! are cvars.
 
 use bevy::{
     prelude::*,

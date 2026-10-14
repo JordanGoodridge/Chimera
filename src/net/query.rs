@@ -23,6 +23,17 @@
 //! once, and scans the LAN: the request broadcast to each port of
 //! `net_lan_ports` (27015-27020, as Source's LAN tab) at the
 //! `net_lan_broadcast` addresses and to this machine (127.0.0.1).
+//!
+//! Server queries and LAN discovery (slice 8): A2S_INFO's packets (request,
+//! challenge, info: name, map, folder `mashup`, game, players, max, bots,
+//! dedicated or listen, OS, password, version, port, instance id, keywords),
+//! `Responder` (stateless challenges from a secret, per-address and total rate
+//! limits), the server's `LocalServerInfo` kept current, `Hosting` (`hostname`,
+//! `sv_password`), `JoinPassword` (`password`) and netcode user data; the
+//! client's `ServerQueries` (one socket: ask a server, scan the LAN on
+//! `net_lan_ports` at `net_lan_broadcast` and this machine, retry, ping by
+//! round trip, one entry per server instance, other games' servers left out),
+//! `serverinfo` and `lanscan`.
 
 use std::{
     collections::HashMap,

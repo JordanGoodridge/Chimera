@@ -7,6 +7,13 @@
 //! The VIP button (VIP maps only) is hidden. Without the layout, a plain
 //! list: 1 terrorists, 2 counter-terrorists, 5 auto-assign, 6 spectate,
 //! 0 closes.
+//!
+//! The team menu (M or `chooseteam`): terrorists, counter-terrorists,
+//! auto-assign or spectate through `jointeam`; with the game's layout
+//! (`GameMenus::team`) drawn in its look (`vgui.rs`) beside the map's
+//! description, buttons on their hotkeys or clicked (VIP hidden; Spectate
+//! greyed when the server's `mp_allowspectators`, replicated, is 0); else a
+//! plain list (1, 2, 5, 6, 0).
 
 use bevy::{prelude::*, window::CursorOptions};
 

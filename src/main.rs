@@ -1,3 +1,7 @@
+//! The game binary: `SimPlugins` + map + `NetPlugin` + `ClientPlugin`; the
+//! per-frame schedules (main and render world) on single-threaded executors
+//! (`MASHUP_EXECUTOR=multi`: Bevy's default; docs/performance.md).
+
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use mashup::{

@@ -1,6 +1,8 @@
 //! Slot registries. A game plugin registers its implementations here; the
 //! loadout picks one per slot by ID. Nothing outside a game plugin names that
 //! plugin's types.
+//!
+//! `MovementRegistry`, `Loadout`, `set_movement` (swap an entity's movement).
 
 use bevy::prelude::*;
 

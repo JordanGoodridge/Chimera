@@ -2,7 +2,7 @@
 //! displacements and floors from the map's detail.vbsp (the BSP's `dprp`
 //! game lump; public BSP description, "Detail props", and the public
 //! env_detail_controller / detail.vbsp pages). Sprites and the "cross" and
-//! "tri" sprite shapes become `MapDetailProps` quads (`map::detail` draws
+//! "tri" sprite shapes become `MapDetailProps` quads (`render::detail` draws
 //! them); model entries become static props without collision.
 //!
 //! The lump (version 4): a model dictionary (count, then 128-byte names),

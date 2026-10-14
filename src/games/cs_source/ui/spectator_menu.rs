@@ -20,6 +20,17 @@
 //!
 //! The lists open upward (the bar is at the bottom of the screen). Without
 //! the install, the same controls at the file's places with our words.
+//!
+//! The spectator menu (duck while spectating, or `spec_menu [0|1]`): CS:S's
+//! bottom bar from the install's `bottomspectator.res`, drawn with the shared
+//! widgets (`widgets.rs`): three drop-downs opening upward (Options: the
+//! install's `spectatormenu.res` entries (`GameMenus::spectator_options`) with
+//! cascading submenus, toggles ticked from their cvars, what mashup lacks
+//! greyed (the auto director; the overview's without a map overview); the
+//! watchable players, the watched one shown as "name (health)"; the camera:
+//! `spectatormodes.res`), `<` `>` stepping the target; `togglescores`;
+//! `spec_menuinput` drives it (tests, screenshots); the mouse is free while it
+//! is open (`VguiOpen::spectator`).
 
 use std::collections::{HashMap, HashSet};
 

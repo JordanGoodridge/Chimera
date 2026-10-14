@@ -19,6 +19,27 @@
 //!
 //! As the game menu, the model (`ServerBrowser::handle`) turns clicks and
 //! keys into console lines and queries, unit-tested without a window.
+//!
+//! The server browser (Find Servers, `openserverbrowser [tab]`; `serverbrowser
+//! <input>` drives it from the console), drawn as CS:S's over the menu from the
+//! install's `servers/*.res` layouts (`GameUi::servers`), words and column
+//! icons: tabs Internet (greyed: no master server), Favorites, History, Lan;
+//! the list (password and bot icons, name with the count, game, players, map,
+//! latency; History's last played), sorted by a header click (its arrow),
+//! columns sized by dragging a header's edge, filters (map and max players text
+//! entries, the latency drop-down, has users playing, not full, no password
+//! check boxes; game, location and anti-cheat shown greyed), Tab order and the
+//! default button as VGUI's, the frame moved by its title bar and resized from
+//! its edges and corner (its list grows, buttons and filters follow their
+//! `pinCorner`/`autoResize`), Refresh / Quick refresh, Add a Server (its
+//! dialog: add the address, find games at it, add the server found), Connect or
+//! a double-click (`connect`, after the password dialog for a server with a
+//! password: `password`), Delete takes a server off Favorites or History.
+//! Servers come from `net::query::ServerQueries` (Lan: a scan of
+//! `net_lan_ports`; Favorites and History: each address asked). Favourites and
+//! history in the cfg folder's `serverbrowser.vdf`; a server joined goes first
+//! in History. A model (`ServerBrowser::handle`: clicks and keys in, console
+//! lines and queries out) and its drawing (the game menu's `Look` and helpers).
 
 use std::{
     net::SocketAddr,

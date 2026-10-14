@@ -2,6 +2,53 @@
 //! each fixed tick in the spec's order around the characters' movement
 //! (entity_io.md "Per-tick order"): thinks, movers and +use before
 //! movement; trigger touches, untouch, the event queue and removals after.
+//!
+//! Covers: `carry_player`: a network client's own player pushed by its movers'
+//! steps as `LogicSet::Pre` does; `LogicPlugin`: built from `map::MapEntities`,
+//! runs `LogicSet::Pre` before movement, `LogicSet::Post` after, and
+//! `LogicSet::Damage` after weapons (weapon `Damage` on breakable nodes); moves
+//! mover nodes and their `core::MovingSolid`, disables the collider of what
+//! isn't there, gives broken windows `map::BrushPanes`, hides nodes of removed
+//! entities, pairs prop nodes (`map::PropEntity`) with logic props (weapon
+//! damage with its push and attacker, physics impacts on props, breakables and
+//! players after the physics step (crush damage by the spec's tables, from each
+//! body's velocity before and after it), a broken prop's sound,
+//! `core::Explosion` and `map::BreakProp` pieces from where its body is, motion
+//! requests through `map::prop_physics`, `PropAwakened` into OnAwakened,
+//! players' ground prop for pressure, hidden with `map::LogicHidden` and
+//! not solid (collider and own `MovingSolid` brushes) once gone, put back at
+//! `map::PropHome` at a restart; skin, body group and sequence as
+//! `map::PropLook`/`map::PropSequence`), writes sprites' and dust volumes'
+//! `map::EntityPart`, the light styles (`map::LightStyles`) and which
+//! trigger_soundscape volumes the local player touches
+//! (`map::SoundscapeTouches`); lit fires and flames as `map::fire::MapFires`,
+//! props' collider boxes into the logic (fire), the `ent_fire` console command
+//! and `mashup_logic_record` (the logic world records fired outputs and
+//! deliveries, the latest 256), applies effects (burn damage as `core::Damage`
+//! of kind `Burn`, a flame's `General.BurningObject` loop following what burns,
+//! ambient sounds as `map::SoundControl`, keyed by entity, following the
+//! source's mover or prop node); at a round restart (`core::RoundRestarts`)
+//! stops the entities' sounds (a map change too) and re-creates the world from
+//! the map's entities, `LogicWorld::round_restart`: all but
+//! `world::ROUND_KEEP`, queue dropped, nodes shown again, game_text cleared:
+//! gibs and shattered panes as `map` messages; players' AddOutput (targetname,
+//! gravity, basevelocity, health, origin, rendermode, renderamt, rendercolor)
+//! and the Alpha and Color inputs (`LogicWorld::player_looks`, written as
+//! `map::RenderLook` on the character) and SetDamageFilter (as
+//! `core::DamageFilter`), game_player_equip/player_weaponstrip (as
+//! `core::Equip`).
+//!
+//! Known shortcuts (docs/tech-debt.md): avian 0.7 leaves "body disabled" on a
+//! collider's query-tree proxy after `RigidBodyDisabled` is removed (its
+//! `Discard` observer still sees the component); a new contact of that collider
+//! that touches in its first step is later linked into an island a second time,
+//! which trips avian's `contact.island.is_none()` assertion.
+//! `logic::bridge::set_prop_shown` (the only code that removes
+//! `RigidBodyDisabled`) re-enables the body before its colliders and rebuilds
+//! the proxies of colliders that stayed solid. Why it's OK for now: Contained
+//! to one function, guarded by
+//! `map_logic::restored_prop_contacts_join_islands_once`; drop the workaround
+//! once avian clears the flag itself.
 
 use avian3d::prelude::{
     AngularVelocity, Collider, ColliderAabb, ColliderDisabled, CollisionStart, ComputedMass, LinearVelocity,

@@ -8,6 +8,12 @@
 //! `read` syscall; elsewhere, or where the kernel refuses
 //! (`perf_event_paranoid` above 2, containers, VMs without a PMU), `None`
 //! and `hw_status` says why.
+//!
+//! Covers: per-thread CPU time: `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`,
+//! Windows `GetThreadTimes`; Linux hardware counters through `perf-event2`:
+//! user-space instructions, cycles, cache and branch misses as one counter
+//! group per thread (`ThreadCounters`), `AllThreads` summing every thread of
+//! the process, `hw_status` saying why they're unavailable.
 
 use std::{ops::Sub, sync::OnceLock, thread::ThreadId};
 

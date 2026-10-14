@@ -4,6 +4,11 @@
 //! tick; a client's copy stops simulating (its bodies kinematic) and is
 //! drawn between the snapshots around the render time, as physics props
 //! are (`props`).
+//!
+//! Map-placed ragdolls: the server's part poses into `NetRagdoll` on the prop
+//! node (`write_ragdolls`, at most 24 parts); a client's bodies made kinematic
+//! and `NetDrawn`, drawn between snapshots at the render tick
+//! (`draw_ragdolls`).
 
 use avian3d::prelude::RigidBody;
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};

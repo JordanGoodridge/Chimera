@@ -3,6 +3,10 @@
 //! server's map changes in the loading dialog (`game_menu`), leave the
 //! menu once joined, and come back to the main menu (a fresh local player
 //! on the greybox) when dropped, with why in the dialog.
+//!
+//! The game's side of the network: loads the server's map when asked, leaves
+//! the menu once joined, back to the main menu with a fresh local player when
+//! dropped; `listen_if_hosting` after a map loads with `maxplayers` > 1.
 
 use std::sync::Arc;
 

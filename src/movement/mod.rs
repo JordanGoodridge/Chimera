@@ -1,5 +1,7 @@
 //! Movement slot implementations that don't belong to any one game.
 //! Game-specific movement (e.g. `combat_arms`) lives in that game's plugin.
+//!
+//! `placeholder` (stand-in walking) and `noclip` Movement implementations.
 
 pub mod noclip;
 pub mod placeholder;

@@ -65,7 +65,8 @@ docs/OBSERVABILITY.md section 1 says where new ones go.
   work gets a plan in `docs/plans/active/`, kept updated.
 - When something was hard because a tool, doc or check was missing, add it.
 - Keep docs true: when code changes a fact in a doc, change the doc in the
-  same commit.
+  same commit. A file's detail lives in its `//!` doc (shortcuts under
+  "Known shortcuts"); ARCHITECTURE.md and tech-debt.md keep one line each.
 
 ## Commit identity
 

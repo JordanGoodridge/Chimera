@@ -3,6 +3,14 @@
 //! model's bounds and brushes become a `MapDust` volume. A cloud is the
 //! same entity without the screen-constant size: its Size keys are world
 //! half-widths (de_train's two clouds, turned on as the bomb goes off).
+//!
+//! Known shortcuts (docs/tech-debt.md): Dust motes and clouds (func_dustmotes,
+//! func_dustcloud: the same entity with world-sized motes, sprites_dust.md 7;
+//! de_train's two after the bomb) spawn inside their brushes (10 tries) and
+//! frozen ones once; no wind entities yet (dust2 has none); the material of a
+//! cloud is the motes' `particle/sparkles` (the spec's "same entity"). Why it's
+//! OK for now: Matches the spec on dust2; de_train's clouds unchecked against
+//! CS:S.
 
 use bevy::prelude::*;
 use vbsp::Bsp;

@@ -8,6 +8,23 @@
 //! layer's; games load the gib models (`MapData::gibs`) and draw the
 //! shards of shattered glass (`GlassShatter`, `GlassImpact`).
 //! Engine space: meters, Y up.
+//!
+//! Breakables' drawing and physics for any game: gibs (`SpawnGibs`: the game's
+//! gib lists `MapData::gibs`, flying under gravity, bouncing off the world with
+//! their bounce sound by `MapGibPhysics`' chance and volume rule
+//! (`gib_bounce_sound`), fading, at most `MAX_GIBS`), broken props' pieces
+//! (`BreakProp` → the model's `MapBreak`: its own break pieces at its pose
+//! moving outward, or chunks of a gib list in its box; `break_pieces`; avian
+//! bodies from the piece model's `.phy` hulls, else its box, on
+//! `core::RAGDOLL_LAYER`: they tumble and rest on the world and props,
+//! characters and shots pass; built headless too), `BrushPanes` (a broken
+//! window's unbroken panes: the node's meshes clipped to them, its broken looks
+//! (`MapMesh::pane_look`: the face in its crack material over them, jagged edge
+//! strips where they meet broken ones, `edge_strips`) shown in place of the
+//! face, a collider of pane boxes that shots hit and bodies pass), falling pane
+//! pieces (`FallingPane`: a body of the `PANE_PIECES` list that shatters on
+//! what it touches), `GlassShatter` messages for games to draw shards; at a
+//! round restart gibs and particles go and windows are whole again.
 
 use avian3d::prelude::*;
 use bevy::{

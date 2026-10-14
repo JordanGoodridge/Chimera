@@ -14,6 +14,11 @@
 //!   plays, with the same spread pattern the server traced.
 //! - **What else they do** (`RemoteAction`): reloads, swings and throws,
 //!   for their bodies' animations.
+//!
+//! Covers: what a network client draws of others' weapons (`show_held`: one
+//! weapon built from the registry in their hands; `RemoteShot`: their rounds
+//! traced again with no damage for tracers, impacts and the fire sound;
+//! `RemoteAction`: reloads, swings, throws for their bodies).
 
 use bevy::prelude::*;
 

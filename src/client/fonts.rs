@@ -24,6 +24,26 @@
 //! (the GameUI `Default`: Tahoma) also replaces Bevy's default font, so text that names no font
 //! isn't drawn in Bevy's built-in face. Without a window (headless tests)
 //! nothing is loaded and lookups give default fonts.
+//!
+//! The one font service (`UiFonts`): a scheme font by name (`Scheme::Source`,
+//! GameUI's `SourceScheme.res` fonts from `map::hud::GameUi`: menus, console
+//! `ConsoleText`, overlays `DefaultFixedOutline`; `Scheme::Client`, the map
+//! HUD's `GameHud::text_fonts` from `ClientScheme.res`: `ChatFont`,
+//! `HudHintText`, `Default` for HudMenu-style menus and death notices,
+//! `CenterPrintText`, `Scoreboard*`, `Trebuchet24` for game_text) to a face and
+//! size (the size for the window height by `yres`, proportional ones scaled
+//! from 480 lines; line height to em by each face's OS/2 Windows metrics;
+//! weight 600+ bold; `antialias 0` hard-edged with the real face); the system
+//! faces the schemes name (Tahoma, Verdana, Lucida Console, Courier New,
+//! Trebuchet MS, Arial) read as the app is built from the OS font folders
+//! (`%WINDIR%\Fonts` and the per-user fonts folder: `tahoma.ttf`,
+//! `verdana.ttf`, `lucon.ttf`, `cour.ttf`, `trebuc.ttf`, ...; fontconfig's
+//! folders elsewhere), never bundled, else stand-ins (DejaVu, Liberation,
+//! Noto); the default face also replaces Bevy's default font; the game's own
+//! font files (`cs.ttf` HUD numbers and icon glyphs) by scheme name;
+//! `hud_font()`: a scheme font as `hud_text` draws it (file bytes, additive,
+//! cell height in pixels); `debug()`: a mono face for debug overlays. The
+//! `fonts:` log line says which file each family resolved to.
 
 use std::{
     collections::HashMap,

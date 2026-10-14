@@ -1,6 +1,14 @@
 //! Everything that needs a window: local input, the local player's camera,
 //! debug tools and agent-facing tools (screenshots, remote inspection).
 //! Simulation code must never depend on this module.
+//!
+//! Local input (mouse look as CS:S: `sensitivity` x `m_yaw`/`m_pitch` degrees
+//! per count; Left Alt / `+freelook` turns only the camera; E or `+use` sets
+//! `Intent::use_key`; a click grabs the mouse (not while the console, a menu or
+//! the debug UI is open, nor on an egui window), Esc opens the game menu, which
+//! frees it), first-person camera (FOV from `Zoomed`), debug UI, `--screenshot`
+//! and the `screenshot <file>` and `jpeg` (CS:S's F5: the screenshots folder,
+//! `<map>NNNN.png`) console commands (`capture.rs`), remote protocol.
 
 pub mod audio;
 pub mod binds;

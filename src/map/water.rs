@@ -5,6 +5,61 @@
 //! reflection blended in by distance, range fog under water and the bottom
 //! material seen from below. Games fill `MapWaterMaterial`; everything here
 //! is game-independent. Units: meters, Y up.
+//!
+//! Water surfaces for any game (Source's Water shader): `MapWaterMaterial` from
+//! the game; refraction from the main view's opaque colour and depth prepass
+//! (height fog rebuilt per pixel), planar reflection by a mirrored camera
+//! (`WaterReflectionCamera`, oblique clip at the surface, world brushes on
+//! `REFLECT_LAYER`), the cheap cubemap pass by distance, Fresnel and shore
+//! fade; 3D skybox water samples the main view's planar reflection over the fog
+//! colour; under water (`WaterView`) the view clears to the water's fog colour,
+//! what lies below the surface takes its fog, and the material's
+//! `$underwateroverlay` (`MapScreenWarp`, `ScreenWarpMaterial`,
+//! screen_warp.wgsl) warps the finished frame from the view-model camera's
+//! transmissive phase; when the near plane crosses a surface from above
+//! (`WaterView::intersect`) what lies below takes the water's height fog and
+//! that surface reads it already fogged; `WaterSettings` (the water cvars,
+//! registered by the client: `r_waterforceexpensive`,
+//! `r_waterforcereflectentities`, `r_WaterDrawReflection`,
+//! `r_WaterDrawRefraction`, `mat_drawwater`); surfaces drawn only by main views
+//! (`WATER_LAYER`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Water (specs/cs_source/water.md): the
+//! refraction is the main view's opaque colour (Bevy's transmission copy) and
+//! its fog alpha is rebuilt from a depth prepass, not a separate refraction
+//! render: under-water geometry carries the world's range fog under the water's
+//! height fog, and each surface uses its own height (the original renders one
+//! volume's views for all). Main views on maps with water get a depth prepass
+//! (alpha-tested world and prop surfaces got prepass shaders for it). Open
+//! questions taken as the spec expects: Q1/Q2 planar reflection exactly when
+//! `$reflecttexture` is set, Q3 1024x1024 reflection target, Q4 K =
+//! 1/(`$fogend` - `$fogstart`), Q5 cheap pass in gamma space (the cubemap
+//! re-encoded from its sRGB sample), Q6 `$scroll` and proxies on Bevy's global
+//! time, Q7 the top material's fog under water, Q8 patch materials keep their
+//! proxies, Q9 `srgb?$fogcolor` wins, Q10 fog alpha 1 in cheap mode, Q11
+//! normalised (screen-space) tangent frame, Q12 the reflection mirrors the
+//! nearest reflecting volume below the eye. The map's downward faces get the
+//! bottom material when all tops share one; side faces aren't drawn; 3D skybox
+//! water with a planar reflection samples the main view's reflection over the
+//! fog colour (unspecified; it matches the map's own water where they meet),
+//! else the fog colour with the sky reflected by Fresnel; it ignores the water
+//! cvars. The `$underwateroverlay` is the top material's or else its bottom
+//! material's (Q7; de_port names it on the bottom), drawn by the view-model
+//! camera's transmissive phase; it is a Refract material with no spec:
+//! `$refractamount` taken as screen uv per unit of normal xy (as the Water
+//! shader's), `$bumptransform` scale and TextureScroll over the screen,
+//! `$bluramount` ignored. `$blurrefract` blurs the main view's copy in 25 taps
+//! per pixel (cost only where a material sets it; none stock) and the
+//! `$basetexture` variant (section 6.6, lit base with bump lightmaps) is not
+//! drawn: such a material shows as plain water. Intersection view: the
+//! near-plane test reads "within 7 units" as the rectangle grown by 7 units
+//! crossing the surface; while it holds, everything below that surface (any
+//! volume, in the world, props, ropes, decals, particles) takes its height fog,
+//! so lower water elsewhere is fogged twice; the eye under water uses range
+//! fog, so crossing the surface switches fog formulas (as the original's views
+//! do). Why it's OK for now: Matches the de_aztec reference (cam1 abs diff
+//! 0.027 -> 0.019, unchanged by the overlay, intersection and fog work); each
+//! question names its check in the spec.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

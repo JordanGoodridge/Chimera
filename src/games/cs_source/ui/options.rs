@@ -1,6 +1,31 @@
 //! The options dialog's settings (`game_menu`'s Options page): which
 //! cvar each control sets, on which tab, how its value steps and shows,
 //! and how it shows; what the video settings do is `client::video`.
+//!
+//! The options dialogs' settings (cvar, or several set together (water detail,
+//! sound quality, captioning, filtering); where it shows: a tab, the keyboard
+//! or video tab's Advanced dialog, the brightness dialog, or ours
+//! (`Place::Extras`); the game layout's control showing it (`fieldName`); the
+//! game's label token; slider / choice / check box / check box setting a value
+//! / reverse-mouse / window-size kinds, stepping, showing and a combo box's
+//! entries).
+//!
+//! Known shortcuts (docs/tech-debt.md): Options dialog (`cs_source::ui::game_menu`,
+//! `cs_source::ui::options`): only the keyboard tab places its controls from the
+//! game's `.res` (the others are our column of labelled controls); GameUI is
+//! drawn in screen pixels scaled by window height / 720 (CS:S doesn't scale);
+//! `cl_crosshairscale`'s meaning (screen height the crosshair is drawn for; 0
+//! our size) and the Auto/Small/Medium/Large values, and Opacity 0-255, are
+//! general knowledge, not measured; `cl_crosshairsize`/`thickness` map to
+//! pixels as ours (5 and 0.5 our old lines) and the Multiplayer tab's slider
+//! ranges, the colour drop-down's Custom entry, `m_customaccel`'s curve and the
+//! acceleration slider's range are chosen, not measured
+//! (docs/plans/active/ui-parity.md, "Reference captures needed"); music for
+//! `snd_musicvolume` is a wave under `music/` or an MP3
+//! (`audio::live_sound::is_music`), not Source's own rule; the frame and its
+//! colours follow `SourceScheme.res` by eye, not a capture of CS:S. Why it's OK
+//! for now: The menu works and reads the install's files; a pixel match needs a
+//! reference capture.
 
 use bevy::prelude::*;
 

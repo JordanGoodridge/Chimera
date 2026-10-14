@@ -2,6 +2,14 @@
 //! model (`MapHeldModel`) as a small physics body that players walk
 //! through (`core::ITEM_LAYER`), like Source's dropped weapons. Shots push
 //! it like any physics prop; it slides and tumbles over displacements.
+//!
+//! Loose items for any game (`LooseItem`: a held model's key; `ShownItem`: the
+//! meshes only, for things that move themselves such as grenades, lit where
+//! they are; `SitOnOrigin`: resting on its origin, turned, such as the planted
+//! bomb): a dynamic box body sized from the held model (also headless), swept
+//! against fast moves, on `core::ITEM_LAYER` so characters neither collide with
+//! it nor walk into it (`PushAway::Ignore`), its meshes; shots push it like any
+//! body.
 
 use std::collections::HashMap;
 

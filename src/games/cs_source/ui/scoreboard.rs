@@ -13,6 +13,22 @@
 //! markers; 0 in single player), the local
 //! player's row lit with `scoreboard-select`. Without the layout: two
 //! plain team columns with the status in words.
+//!
+//! The scoreboard (Tab or `+showscores`): with the game's layout
+//! (`GameMenus::scoreboard`, CS:S's `scoreboard.res`) in its look: the
+//! background picture, map name, the map's time left beside the clock
+//! (`mp_timelimit`), team names, players alive and rounds won, column headings,
+//! a row per player on the first row's cells (`ROW_PITCH` apart;
+//! counter-terrorists left), the status column's icons (`hud/scoreboard_dead`,
+//! and for teammates `scoreboard_bomb` by the carrier and `scoreboard_defuser`
+//! by a kit), latency "BOT" for bots, else the ping (a network game's
+//! `net::NetScore`, which also gives scores, bots and the bomb and kit markers;
+//! 0 in single player; names from `net::NetCharacter`; hostages left out), the
+//! local player's row lit (`scoreboard-select`); else two plain team columns
+//! with the status in words. Only in a game: not under the game menu (the main
+//! menu, the Esc menu, the loading dialog; `scoreboard::shown`), and its rows
+//! go when it hides (the last game's players never show while the next map
+//! loads).
 
 use bevy::prelude::*;
 
