@@ -1,6 +1,7 @@
 //! Stamps the build with its git commit (`MASHUP_GIT`: `git describe`) and
 //! its version (`MASHUP_VERSION`: tag or describe, short hash and commit
-//! date, `src/core/version.rs`), for bug reports and the `version` command.
+//! date, `engine/core/src/core/version.rs`), for bug reports and the
+//! `version` command.
 //!
 //! Reruns only when this checkout's commit changes: when HEAD or the
 //! current branch's ref moves. Paths come from `git rev-parse --git-path`,
@@ -10,7 +11,7 @@
 //! relink everything), so a `-dirty` mark is as of the last commit change.
 use std::{path::Path, process::Command};
 
-include!("src/core/version.rs");
+include!("engine/core/src/core/version.rs");
 
 fn git(args: &[&str]) -> Option<String> {
     Command::new("git")
@@ -41,7 +42,7 @@ fn main() {
     println!("cargo:rustc-env=MASHUP_VERSION={version}");
     // Without git: rerun only when this script changes.
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/core/version.rs");
+    println!("cargo:rerun-if-changed=engine/core/src/core/version.rs");
     let Some(head) = git(&["rev-parse", "--git-path", "HEAD"]) else { return };
     println!("cargo:rerun-if-changed={head}");
     // The branch's own ref, or packed-refs when it is packed (a detached

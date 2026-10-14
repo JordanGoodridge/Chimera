@@ -10,9 +10,7 @@
 
 pub mod audio;
 pub mod bot;
-pub mod character;
 pub mod client;
-pub mod console;
 pub mod core;
 pub mod games;
 pub mod greybox;
@@ -20,15 +18,17 @@ pub mod harness;
 pub mod logic;
 pub mod map;
 mod map_plugin;
-pub mod metrics;
 pub mod mount;
 pub mod movement;
 pub mod net;
 pub mod objectives;
 pub mod render;
 pub mod rules;
-pub mod slots;
 pub mod weapon;
+
+// The engine's stable base (engine/core), at its old paths; `core` is
+// a module of its own here (it adds the build's `VERSION`).
+pub use engine_core::{character, console, metrics, slots};
 
 use bevy::prelude::*;
 

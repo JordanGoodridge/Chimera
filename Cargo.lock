@@ -3197,6 +3197,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_core"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "libc",
+ "perf-event2",
+ "postcard",
+ "serde",
+]
+
+[[package]]
 name = "enumn"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4569,11 +4581,10 @@ dependencies = [
  "bzip2",
  "crc32fast",
  "dirs",
+ "engine_core",
  "half",
  "igd-next",
  "image",
- "libc",
- "perf-event2",
  "postcard",
  "renetcode",
  "serde",

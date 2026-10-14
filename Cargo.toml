@@ -3,8 +3,8 @@
 # the repository root act on every default member: `cargo test` tests
 # them all, `cargo test -p source_formats` one crate alone.
 [workspace]
-members = [".", "source/formats"]
-default-members = [".", "source/formats"]
+members = [".", "engine/core", "source/formats"]
+default-members = [".", "engine/core", "source/formats"]
 resolver = "3"
 
 [workspace.package]
@@ -15,7 +15,23 @@ license = "MIT OR Apache-2.0"
 
 # Dependencies more than one member uses (or may): one version for all.
 [workspace.dependencies]
+engine_core = { path = "engine/core" }
 source_formats = { path = "source/formats" }
+avian3d = "0.7"
+# serialize: predicted components (Transform among them) travel as serde
+# (`core::PredictedAppExt::predicted_net`); `dev` got it through
+# bevy_remote, so builds without `dev` (playtest, release) failed.
+bevy = { version = "0.19.1", features = ["wav", "serialize"] }
+# The server's state of a client's own player, compared with its prediction
+# byte for byte (core::PredictedComponents::encode); replicon's format.
+postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.229", features = ["derive"] }
+# Per-thread hardware counters (instructions, cycles, cache and branch
+# misses) for `metrics`; Linux only, elsewhere the metrics say
+# "unavailable".
+perf-event2 = "0.7.4"
+# Per-thread CPU time (`clock_gettime(CLOCK_THREAD_CPUTIME_ID)`).
+libc = "0.2"
 # Bevy's math types (`bevy::math::Vec3` is `glam::Vec3`): the version
 # bevy_math 0.19 uses, so a format crate's vectors are the game's.
 glam = "0.32"
@@ -38,11 +54,11 @@ default-run = "mashup"
 # The file formats (VPK, pakfile, KeyValues and .res, DMX/PCF, nav, ...):
 # pure data, no Bevy (source/formats).
 source_formats.workspace = true
-avian3d = "0.7"
-# serialize: predicted components (Transform among them) travel as serde
-# (`core::PredictedAppExt::predicted_net`); `dev` got it through
-# bevy_remote, so builds without `dev` (playtest, release) failed.
-bevy = { version = "0.19.1", features = ["wav", "serialize"] }
+# The engine's stable base: core, console, slots, character, metrics
+# (engine/core); its modules re-exported at their old paths (lib.rs).
+engine_core.workspace = true
+avian3d.workspace = true
+bevy.workspace = true
 bevy-inspector-egui = "0.37"
 # The inspector's egui, with egui drawn over Bevy's UI (the debug UI over the HUD).
 bevy_egui = { version = "0.40", default-features = false, features = ["bevy_ui"] }
@@ -55,9 +71,7 @@ bevy_replicon_renet = "0.20.0"
 renetcode = "2.0"
 # UPnP port mapping for hosts (`net_upnp`, net::upnp); sync client, no TLS.
 igd-next = { version = "0.18", default-features = false, features = ["io_sync"] }
-# The server's state of a client's own player, compared with its prediction
-# byte for byte (core::PredictedComponents::encode); replicon's format.
-postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+postcard.workspace = true
 bzip2 = "0.6.1"
 # HUD glyphs rasterized and placed as Source's HUD does (client::hud_text).
 ab_glyph = "0.2.32"
@@ -68,7 +82,7 @@ half = "2.7.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tga"] }
 # The window icon (`winit::window::Icon`; the winit bevy_winit uses).
 winit = { version = "0.30", default-features = false }
-serde = { version = "1.0.229", features = ["derive"] }
+serde.workspace = true
 serde_json = "1.0.151"
 # The map file's hash in the connect handshake.
 sha2 = "0.10"
@@ -78,16 +92,6 @@ vbsp = "0.9"
 vmdl = "0.2"
 vmt-parser = "0.2"
 vtf = "0.4"
-
-# Per-thread hardware counters (instructions, cycles, cache and branch
-# misses) for `metrics`; Linux only, elsewhere the metrics say
-# "unavailable".
-[target.'cfg(target_os = "linux")'.dependencies]
-perf-event2 = "0.7.4"
-
-# Per-thread CPU time (`clock_gettime(CLOCK_THREAD_CPUTIME_ID)`).
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
 
 # Where Steam is (`HKCU\Software\Valve\Steam` `SteamPath`) for finding the
 # CS:S install (mount::install); already in the tree through winit.
@@ -159,7 +163,7 @@ combat_arms = ["dep:twofish"]
 
 # Faster iteration: link Bevy as a dynamic library. Use with
 # `cargo run --features dev`. Never enable for release builds.
-dev = ["bevy/dynamic_linking", "bevy/bevy_remote"]
+dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev"]
 
 # CPU profile: every system and render step as a span in a Chrome trace
 # (trace-<time>.json, open in https://ui.perfetto.dev). See
