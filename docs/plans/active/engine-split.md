@@ -107,20 +107,61 @@ measurements):
   room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
   side. `map_plugin.rs` builds `map::MapPlugin` (map, then audio, in the
   old order); the architecture test keeps map, logic and net off audio.
-- [ ] (2) `anim`: not moved. `map::anim` (`AnimSet`, `Animator`) is data
-  in `MapData` and evaluated headless for the server's hitboxes
-  (`bodies::SimAnimator`); ragdolls (`ragdoll`, `placed_ragdoll`) are
-  simulation that `logic` and `net` use. Only the drawn side (posing
-  drawn bodies, view models) is presentation; decide whether animation
-  evaluation is `world`/`sim` (then nothing to move but drawing) before
-  moving.
-- [ ] (2) `render` out of `map`: materials and WGSL, culling and window
-  fading, water drawing, shadows, particles and decal drawing, view
-  models, sky drawing, lod, fog. Needs first: the state `logic`/`net`
-  write (`vis::LogicHidden`, `VisClusters`, `tint::RenderLook`/brush
-  tints, beam/monitor/emitter on-off) moved to `map::state`; the drawn
-  phases of `spawn` (`spawn_drawn`, prop meshes) called from
-  `map_plugin` as the sound plugin is, so spawn order stays.
+- [x] (2) `anim`: decided (coordinator, 2026-10-13): animation
+  evaluation is simulation (the server poses hitboxes, as Source's
+  server-side bones), so `map::anim`, `bodies::SimAnimator` and the
+  ragdolls stay on the sim side; only drawing and skinning is
+  presentation and moves with `render`.
+- [~] (2) `render` out of `map` (2026-10-13, one session, three
+  commits, each with the spawn dump identical on the five maps modulo
+  moved paths):
+  - [x] the state `logic`/`net`/`weapon` write moved to `map::state`
+    (`VisClusters`, `LogicHidden`, areaportal/occluder states,
+    `RenderLook`/`BrushTint`, `MonitorCamera`/`MonitorFog`, the
+    effects' messages, `PlaceDecal`, `ParticleRng`): those layers use no
+    drawing module of map's.
+  - [x] `render/` with the drawn phases of spawning: `map::spawn_map`
+    is generic over `map::MapDrawer` (a system parameter called at the
+    old places: drawn parts, each prop's drawn parts, textures for the
+    resources), `render::MapAssets` implements it; `map_plugin` adds
+    `spawn_map::<render::MapAssets>` and `MapHooks::spawn` (for
+    `change_map`; was `MapUnloadHooks`).
+  - [x] map's system registration (`build_rest`) lives in `map_plugin`
+    (order kept); `tint`, `detail`, `sky_occluder` moved whole; `beams`,
+    `color_correction`, `lod` split (data stays in map, drawing in
+    render).
+  - [ ] The rest, roughly in this order (each needs its data types left
+    in map and its users in map's sim side cut first): glow sprites
+    (`GlowSprite`, `glow_visibility`: `vis` and `beams` use them),
+    `psys`, `shells` and `rope_sway` (data split), `fish`, `dust`,
+    `steam`, `tracer`, `emitters`, `particles` drawing, `decal`
+    drawing, `monitor`, `water` drawing, `shadows` (`props.rs`'s
+    `update_prop_shadows` with it), `vis` culling (`cull`,
+    `fade_windows`, chunking; `copies`, `merge`, `breakables`,
+    `prop_physics` name its tags), `sky` drawing, `light_styles`,
+    `view_model` drawing, then the materials and WGSL last
+    (`world_material`, `prop_material`, `sprite_material`,
+    `rope_material`, `fog`, `probe_lit`, `materials.rs`/`images.rs`
+    helpers: `breakables`, `loose`, `bodies`, `ragdoll`, `view_model`
+    use them, so their drawn parts have to move first, through more
+    `MapDrawer` hooks where they spawn). `insert_resources` still
+    inserts some drawing resources (decal and particle assets, fog) and
+    `unload_map` still removes them: render's go through `MapHooks`
+    when they move. Client post passes (`client::hdr`, `gamma`,
+    `color_correction`) stay in client: they hang off
+    `FirstPersonCamera`/`UiCamera`/`ClientArgs`.
+  - A server without rendering: not yet. `mashup_server` adds no
+    material plugins but links `render` through `MapPlugin` (its spawn
+    drawer and the moved systems run headless with no asset stores, as
+    before). Feasible once `build_rest` is split into map's systems and
+    render's (an ordering change to make deliberately) and a headless
+    `MapDrawer` (all `Draws` false, nothing spawned) stands in for
+    `render::MapAssets`; then `render` can sit behind a feature.
+  - Measured: a leaf edit's test build (`client/window_icon.rs`, a new
+    `pub fn`, `cargo test --features dev --no-run`) 239 s before
+    (load 14-26), 114 s after (load 17-18): one crate either way, so
+    the difference is load and cache, not the move; the win comes with
+    the crate cut.
 - [ ] (2) CS:S UI out of `client`, rules behind a rule-module interface,
   game-registered replication.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
