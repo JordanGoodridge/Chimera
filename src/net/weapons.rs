@@ -13,8 +13,8 @@
 //!   round they fire comes as `FireBullets` (origin, angles, spread seed
 //!   and spread) and is traced again on the client for its tracers,
 //!   impacts and sound (`weapon::remote::RemoteShot`), the same spread
-//!   pattern the server traced; reloads, swings and throws as `WeaponFx`
-//!   for their bodies. The shooter's own client gets neither (it
+//!   pattern the server traced; reloads, swings, throws and bomb arming
+//!   as `WeaponFx` for their bodies. The shooter's own client gets neither (it
 //!   predicted them).
 //! - **Things in the world** (`NetItem`): loose weapons and grenades in
 //!   flight are the server's and drawn from snapshots like props; smoke
@@ -322,6 +322,8 @@ fn send_weapon_events(
             WeaponEventKind::Swing { secondary: true, .. } => weapon_fx::SWING2,
             WeaponEventKind::PinPulled => weapon_fx::PIN,
             WeaponEventKind::Thrown => weapon_fx::THROWN,
+            WeaponEventKind::ArmingStarted => weapon_fx::ARMING,
+            WeaponEventKind::ArmingStopped => weapon_fx::ARMING_STOPPED,
             _ => continue,
         };
         for targets in others {
@@ -600,7 +602,7 @@ fn receive_fire(mut fire: MessageReader<FireBullets>, mut commands: Commands) {
     }
 }
 
-/// Others' reloads, swings and throws.
+/// Others' reloads, swings, throws and bomb arming.
 fn receive_fx(mut fx: MessageReader<WeaponFx>, mut out: MessageWriter<RemoteAction>) {
     for f in fx.read() {
         let kind = match f.kind {
@@ -615,6 +617,8 @@ fn receive_fx(mut fx: MessageReader<WeaponFx>, mut out: MessageWriter<RemoteActi
             },
             weapon_fx::PIN => WeaponEventKind::PinPulled,
             weapon_fx::THROWN => WeaponEventKind::Thrown,
+            weapon_fx::ARMING => WeaponEventKind::ArmingStarted,
+            weapon_fx::ARMING_STOPPED => WeaponEventKind::ArmingStopped,
             _ => continue,
         };
         out.write(RemoteAction { shooter: f.owner, kind });

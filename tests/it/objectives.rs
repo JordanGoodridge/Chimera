@@ -44,7 +44,11 @@ fn record(
 const ZONE: (Vec3, Vec3) = (Vec3::new(-3.0, -1.0, 8.0), Vec3::new(3.0, 3.0, 16.0));
 
 fn sim(objectives: MapObjectives) -> Sim {
-    let mut sim = Sim::new((GreyboxMapPlugin, CsWeaponsPlugin));
+    sim_with(objectives, ())
+}
+
+fn sim_with<M>(objectives: MapObjectives, more: impl bevy::app::Plugins<M>) -> Sim {
+    let mut sim = Sim::new((GreyboxMapPlugin, CsWeaponsPlugin, more));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app.init_resource::<Log>();
     sim.app.add_systems(FixedLast, record);
@@ -716,4 +720,84 @@ fn hostages_hurt_report_their_attacker() {
             .any(|(_, e)| matches!(e, ObjectiveEvent::HostageHurt { attacker: Some(a), .. } if *a == t))
     );
     assert!((sim.app.world().get::<Health>(h).unwrap().current - 0.8).abs() < 1e-4);
+}
+
+/// What the bomb shows the local player (spec HUD table and section 3):
+/// arming types the code on the C4's screen a digit per key press (the
+/// view model's `c4.click` times), masks it at 2.6 s and keeps it until
+/// the bomb leaves the hands, with no progress bar (it would cover the
+/// screen; `cl_c4progressbar` is "Show a progress bar when defusing the
+/// C4"; spec Q16); the bar shows while defusing with `cl_c4progressbar
+/// 1` and not with 0.
+#[test]
+fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
+    use mashup::{
+        client::{
+            bomb_fx::C4ScreenText,
+            objectives_hud::{BombHudStatePlugin, BombProgress},
+        },
+        core::LocalPlayer,
+        objectives::bomb::BombRules,
+    };
+    fn shown(sim: &Sim) -> (String, Option<f32>) {
+        let w = sim.app.world();
+        (w.resource::<C4ScreenText>().text.clone(), w.resource::<BombProgress>().0)
+    }
+    let mut sim = sim_with(bomb_map(), BombHudStatePlugin);
+    let t = carrier(&mut sim);
+    sim.app.world_mut().entity_mut(t).insert(LocalPlayer);
+    sim.ticks(2);
+    assert_eq!(shown(&sim), (String::new(), None), "nothing before arming");
+    let rules = sim.app.world().resource::<BombRules>().clone();
+    sim.intent(t).fire = true;
+    sim.ticks(1);
+    let begun = tick(&sim);
+    // Each tick's text, until the bomb is down.
+    let mut seen: Vec<(u64, String)> = Vec::new();
+    while first(&sim, |e| matches!(e, ObjectiveEvent::Planted { .. })).is_none() {
+        let (text, bar) = shown(&sim);
+        let w = sim.app.world();
+        let since = w.get::<mashup::objectives::bomb::Arming>(t).expect("arming").since;
+        let elapsed = (w.resource::<mashup::core::SimClock>().now - since) as f32;
+        let by_tick = (tick(&sim) - begun) as f32 * TICK_INTERVAL as f32;
+        assert!((elapsed - by_tick).abs() < 1e-4, "{elapsed} s at {by_tick} s");
+        assert_eq!(text, rules.screen_text(elapsed), "at {elapsed} s");
+        assert_eq!(bar, None, "no bar while arming ({elapsed} s), cl_c4progressbar 1 or not");
+        if seen.last().is_none_or(|s| s.1 != text) {
+            seen.push((tick(&sim) - begun, text));
+        }
+        sim.ticks(1);
+        assert!(tick(&sim) - begun < 220, "planted");
+    }
+    // A digit a key press, on the tick its press's time is reached.
+    let texts: Vec<&str> = seen.iter().map(|s| s.1.as_str()).collect();
+    assert_eq!(texts, ["", "7", "73", "735", "7355", "73556", "735560", "7355608", "*******"]);
+    for ((at, text), press) in seen[1..].iter().zip(rules.clicks.iter().chain([&rules.code_masked])) {
+        let (at, press) = (*at as f64 * TICK_INTERVAL, *press as f64);
+        assert!(
+            at >= press - 1e-4 && at - TICK_INTERVAL < press - 1e-4,
+            "{text:?} at {at} s, its key press at {press} s"
+        );
+    }
+    sim.intent(t).fire = false;
+    sim.ticks(1);
+    assert_eq!(shown(&sim), (String::new(), None), "the screen goes with the bomb");
+
+    // A defender (the local player now) with the bar off, then on.
+    sim.app.world_mut().entity_mut(t).remove::<LocalPlayer>();
+    let (_, _, at) = bombs(&mut sim).pop().unwrap();
+    teleport(&mut sim, t, Vec3::new(20.0, 1.0, 30.0));
+    let ct = character(&mut sim, at + Vec3::new(0.0, 1.0, 1.0), 2);
+    sim.app.world_mut().entity_mut(ct).insert(LocalPlayer);
+    sim.ticks(2);
+    look_at(&mut sim, ct, at + Vec3::Y * 0.05);
+    sim.app.world_mut().resource_mut::<Console>().submit("cl_c4progressbar 0");
+    sim.intent(ct).use_key = true;
+    sim.seconds(1.0);
+    assert!(first(&sim, |e| matches!(e, ObjectiveEvent::BeginDefuse { .. })).is_some());
+    assert_eq!(shown(&sim), (String::new(), None), "cl_c4progressbar 0: no defuse bar");
+    sim.app.world_mut().resource_mut::<Console>().submit("cl_c4progressbar 1");
+    sim.ticks(1);
+    let bar = shown(&sim).1.expect("cl_c4progressbar 1: the defuse bar");
+    assert!((bar - 1.0 / 10.0).abs() < 0.01, "a tenth of a 10 s defuse: {bar}");
 }

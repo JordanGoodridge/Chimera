@@ -1507,3 +1507,9 @@ net16, parity round 2: `Hurt` (the damage indicator on clients),
    CS:S owners) or a relay come early for Lucker Party friends?
 4. How many players should a server hold (sizes buffers, bandwidth
    targets)? CS:S allows 32; Lucker Party parties are smaller.
+
+### net18 (2026-10-14)
+
+Others' arming: the server tells every other client when a player starts
+or stops arming the bomb (`ARMING`/`ARMING_STOPPED`), so they see the
+plant animation; new message values, so a new protocol number.
