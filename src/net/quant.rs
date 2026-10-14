@@ -7,6 +7,11 @@
 //! what the server has; varints make small numbers (a still body's
 //! velocity, an eye offset's zeros) a byte.
 //!
+//! Physics props and loose items (`NetProp`, `NetItem`) the same way:
+//! positions to 1/32 unit, the rotation's quaternion parts in 16 bits each
+//! (sign fixed so w >= 0); the server keeps them on the grid too, so a prop
+//! jittering below it (one the physics never puts to sleep) sends nothing.
+//!
 //! A client's own predicted state (`OwnState`) is not quantized: it is
 //! compared bit for bit with the prediction and replayed from, and the
 //! server simulates on from its exact values (`delta` keeps it small).
@@ -15,7 +20,7 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::NetBody;
+use super::{NetBody, NetItem, NetProp};
 
 /// One Source unit, m.
 const UNIT: f64 = 0.0254;
@@ -124,8 +129,122 @@ impl NetBody {
     }
 }
 
+/// A unit quaternion's parts as 16 bits each, w made non-negative (q and
+/// -q are the same rotation).
+fn q_rotation(r: [f32; 4]) -> [i16; 4] {
+    if !r.iter().all(|x| x.is_finite()) {
+        return [0, 0, 0, i16::MAX];
+    }
+    let sign = if r[3] < 0.0 { -1.0 } else { 1.0 };
+    r.map(|x| ((x * sign).clamp(-1.0, 1.0) as f64 * 32767.0).round() as i16)
+}
+
+fn dq_rotation(n: [i16; 4]) -> [f32; 4] {
+    n.map(|x| (x.max(-32767) as f64 / 32767.0) as f32)
+}
+
+/// `NetProp` on the wire.
+#[derive(Serialize, Deserialize)]
+struct PropWire {
+    index: u32,
+    origin: [i32; 3],
+    rotation: [i16; 4],
+    flags: u16,
+}
+
+impl From<&NetProp> for PropWire {
+    fn from(p: &NetProp) -> Self {
+        Self {
+            index: p.index,
+            origin: q3(p.origin, POSITION_STEP),
+            rotation: q_rotation(p.rotation),
+            flags: p.flags,
+        }
+    }
+}
+
+impl From<PropWire> for NetProp {
+    fn from(w: PropWire) -> Self {
+        Self {
+            index: w.index,
+            origin: dq3(w.origin, POSITION_STEP),
+            rotation: dq_rotation(w.rotation),
+            flags: w.flags,
+        }
+    }
+}
+
+impl Serialize for NetProp {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        PropWire::from(self).serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for NetProp {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        PropWire::deserialize(d).map(Self::from)
+    }
+}
+
+impl NetProp {
+    /// The prop as a client will decode it (on the network's grid); the
+    /// server keeps these values.
+    pub fn quantized(&self) -> Self {
+        PropWire::from(self).into()
+    }
+}
+
+/// `NetItem` on the wire.
+#[derive(Serialize, Deserialize)]
+struct ItemWire {
+    model: String,
+    origin: [i32; 3],
+    rotation: [i16; 4],
+}
+
+impl From<&NetItem> for ItemWire {
+    fn from(p: &NetItem) -> Self {
+        Self {
+            model: p.model.clone(),
+            origin: q3(p.origin, POSITION_STEP),
+            rotation: q_rotation(p.rotation),
+        }
+    }
+}
+
+impl From<ItemWire> for NetItem {
+    fn from(w: ItemWire) -> Self {
+        Self {
+            model: w.model,
+            origin: dq3(w.origin, POSITION_STEP),
+            rotation: dq_rotation(w.rotation),
+        }
+    }
+}
+
+impl Serialize for NetItem {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        ItemWire::from(self).serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for NetItem {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        ItemWire::deserialize(d).map(Self::from)
+    }
+}
+
+impl NetItem {
+    /// The item as a client will decode it; the server keeps these values.
+    pub fn quantized(&self) -> Self {
+        ItemWire::from(self).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use bevy::prelude::{EulerRot, Quat};
+
     use super::*;
 
     fn body(origin: [f32; 3], yaw: f32, pitch: f32) -> NetBody {
@@ -169,6 +288,53 @@ mod tests {
         // Not a number: zero, not a panic.
         let nan = body([f32::NAN; 3], f32::NAN, f32::INFINITY).quantized();
         assert_eq!(nan.origin, [0.0; 3]);
+    }
+
+    #[test]
+    fn props_and_items_go_through_on_the_grid() {
+        let r = Quat::from_euler(EulerRot::YXZ, 2.5, -0.7, 0.3);
+        // -q: the same rotation, sent with w >= 0.
+        for rotation in [r.to_array(), (-r).to_array()] {
+            let p = NetProp {
+                index: 390,
+                origin: [21.056_017, 0.019_053_398, -20.248_598],
+                rotation,
+                flags: 3,
+            };
+            let q = p.quantized();
+            assert_eq!(q.quantized(), q);
+            for (a, c) in p.origin.iter().zip(q.origin) {
+                assert!((a - c).abs() <= (POSITION_STEP as f32) * 0.51, "{a} vs {c}");
+            }
+            let back = Quat::from_array(q.rotation).normalize();
+            assert!(back.angle_between(r) < 1e-3, "{back} vs {r}");
+            let bytes = postcard::to_allocvec(&q).unwrap();
+            let decoded: NetProp = postcard::from_bytes(&bytes).unwrap();
+            assert_eq!(decoded, q);
+            // ~20 bytes (46 unquantized, with a velocity no client used).
+            assert!(bytes.len() <= 24, "{} bytes", bytes.len());
+            let item = NetItem {
+                model: "models/weapons/w_rif_ak47.mdl".into(),
+                origin: p.origin,
+                rotation,
+            }
+            .quantized();
+            let bytes = postcard::to_allocvec(&item).unwrap();
+            assert_eq!(postcard::from_bytes::<NetItem>(&bytes).unwrap(), item);
+            assert_eq!(item.quantized(), item);
+        }
+        // A shake below the grid is no change.
+        let p = NetProp {
+            origin: [1.0, 0.5, 2.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            ..Default::default()
+        };
+        let shaken = NetProp {
+            origin: [1.0 + 1e-5, 0.5 - 1e-5, 2.0],
+            rotation: [1e-6, 0.0, 0.0, 1.0],
+            ..p.clone()
+        };
+        assert_eq!(p.quantized(), shaken.quantized());
     }
 
     /// The short way round between two yaws.

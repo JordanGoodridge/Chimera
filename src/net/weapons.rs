@@ -38,7 +38,6 @@
 //! `map::loose::ShownItem`s, starts smoke clouds, writes `Died`, `Detonated`,
 //! `Blinded`, `Deafened`, `DamageTaken` for its own effects and HUD.
 
-use avian3d::prelude::LinearVelocity;
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};
 use bevy_replicon::prelude::*;
 
@@ -182,25 +181,26 @@ fn write_items(
             &Transform,
             Option<&LooseItem>,
             Option<&Projectile>,
-            Option<&LinearVelocity>,
             Option<&mut NetItem>,
         ),
         Or<(With<LooseItem>, With<Projectile>)>,
     >,
     mut commands: Commands,
 ) {
-    for (e, t, loose, projectile, v, have) in &mut q {
-        let (model, velocity) = match (loose, projectile) {
-            (Some(l), _) => (l.0.clone(), v.map_or(Vec3::ZERO, |v| v.0)),
-            (None, Some(p)) => (p.weapon.to_string(), p.velocity),
+    for (e, t, loose, projectile, have) in &mut q {
+        let model = match (loose, projectile) {
+            (Some(l), _) => l.0.clone(),
+            (None, Some(p)) => p.weapon.to_string(),
             _ => continue,
         };
+        // On the network's grid (`quant`): an item shaking below it sends
+        // nothing.
         let now = NetItem {
             model,
             origin: t.translation.to_array(),
             rotation: t.rotation.to_array(),
-            velocity: velocity.to_array(),
-        };
+        }
+        .quantized();
         match have {
             Some(mut have) => {
                 have.set_if_neq(now);
