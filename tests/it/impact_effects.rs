@@ -172,7 +172,7 @@ fn about_three_in_ten_bullet_impacts_ricochet() {
 /// fixed scale (8) and makes nothing else (no flecks, no slash decal).
 #[test]
 fn a_knife_swing_into_water_splashes() {
-    use mashup::{games::cs_source::weapons::KNIFE, map::decal::PlaceDecal, weapon::Weapon};
+    use mashup::{games::cs_source::weapons::KNIFE, map::PlaceDecal, weapon::Weapon};
     let mut sim = sim();
     let centre = (greybox::TANK_MIN + greybox::TANK_MAX) / 2.0;
     let p = sim.spawn_character(Vec3::new(centre.x, 4.0, centre.y), noclip::ID);
@@ -215,7 +215,7 @@ fn a_knife_swing_into_water_splashes() {
 fn blood_stains_the_wall_behind_unless_team_rules_refuse_the_hit() {
     use mashup::{
         core::Team,
-        map::decal::{DecalGroup, PlaceDecal},
+        map::{DecalGroup, PlaceDecal},
     };
     for (same_team, friendly_fire, bleeds) in [(false, 0, true), (true, 0, false), (true, 1, true)] {
         let mut sim = sim();

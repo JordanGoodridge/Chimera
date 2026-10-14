@@ -23,7 +23,7 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use super::{MapMesh, MapPart};
+use super::{DecalGroup, MAX_DECALS, MapMesh, MapPart, PlaceDecal};
 
 /// One decal image: a rectangle of a texture (often a decal atlas) and its
 /// size on surfaces.
@@ -58,38 +58,11 @@ pub struct MapDecals {
     pub by_material: HashMap<char, String>,
 }
 
-/// Put a decal from `group` on the world at `point`, on the surface with
-/// `normal`; `dir` is the direction of whatever made it. `spin` turns it
-/// randomly in the surface plane (bullet holes); otherwise walls keep it
-/// upright. With a `target` prop (or one of its colliders) the decal goes
-/// on that prop's model and moves with it; otherwise on the world.
-#[derive(Message, Clone, Debug)]
-pub struct PlaceDecal {
-    pub target: Option<Entity>,
-    pub group: DecalGroup,
-    pub point: Vec3,
-    pub normal: Vec3,
-    pub dir: Vec3,
-    pub spin: bool,
-}
-
-/// Which decals to choose from.
-#[derive(Clone, Debug)]
-pub enum DecalGroup {
-    /// A named group (e.g. the knife's slashes).
-    Named(String),
-    /// What a surface with this game material letter takes when shot.
-    Material(char),
-}
-
 /// Present while the loaded map has impact decals (games' placeholder hit
 /// marks stand down).
 #[derive(Resource)]
 pub struct ImpactDecals;
 
-/// Most decals a server keeps for late joiners; the oldest goes first.
-/// (Each client draws at most `DecalSettings::limit`.)
-pub const MAX_DECALS: usize = 512;
 /// Triangles whose plane passes farther than this from the point (meters)
 /// take no part of the decal.
 const REACH: f32 = 0.1;
@@ -401,7 +374,7 @@ pub(super) fn place_decals(
     mut asks: MessageReader<PlaceDecal>,
     surfaces: Option<Res<DecalSurfaces>>,
     props: Query<(&super::PropIndex, &GlobalTransform)>,
-    brushes: Query<(&super::MapBrushEntity, &GlobalTransform, Has<super::vis::LogicHidden>)>,
+    brushes: Query<(&super::MapBrushEntity, &GlobalTransform, Has<super::LogicHidden>)>,
     parents: Query<&ChildOf>,
     assets: Option<ResMut<DecalAssets>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
@@ -533,11 +506,11 @@ pub(super) fn place_decals(
 }
 
 /// Decals on brush entities go with them: when the logic removes one
-/// (killed, broken: `vis::LogicHidden` added to its node) and at a round
+/// (killed, broken: `LogicHidden` added to its node) and at a round
 /// restart, which re-creates them.
 #[allow(clippy::type_complexity)]
 pub(super) fn drop_brush_decals(
-    gone: Query<&Children, (With<super::MapBrushEntity>, Added<super::vis::LogicHidden>)>,
+    gone: Query<&Children, (With<super::MapBrushEntity>, Added<super::LogicHidden>)>,
     nodes: Query<&Children, With<super::MapBrushEntity>>,
     decals: Query<(), With<RuntimeDecal>>,
     restarts: Option<Res<crate::core::RoundRestarts>>,

@@ -128,7 +128,7 @@ pub(super) fn spawn(commands: &mut Commands, data: &super::MapData, root: Entity
                 cc: cc.clone(),
                 fade: if cc.start_on { 1.0 } else { 0.0 },
             },
-            super::emitters::FollowsEntity,
+            super::FollowsEntity,
             Transform::from_translation(cc.position),
             ChildOf(root),
         ));

@@ -11,7 +11,8 @@ use mashup::{
     logic::{Logic, Value},
     map::{
         MapData, MapPlugin,
-        vis::{self, AreaPortalStates, FadeDistance, LogicHidden, MapVisibility, VisClusters, WindowBrush},
+        AreaPortalStates, LogicHidden, VisClusters,
+        vis::{self, FadeDistance, MapVisibility, WindowBrush},
     },
     mount::config::LocalConfig,
 };

@@ -768,7 +768,7 @@ pub(super) fn apply_shadow_detail(
     detail: Option<Res<ShadowSettings>>,
     old: Query<Entity, Or<(With<super::PropShadow>, With<CharacterBlob>)>>,
     moved: Query<(&super::PropIndex, &Transform), With<super::PhysicsProp>>,
-    hidden: Query<&super::PropIndex, With<super::vis::LogicHidden>>,
+    hidden: Query<&super::PropIndex, With<super::LogicHidden>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: Option<ResMut<Assets<ShadowMaterial>>>,
@@ -857,10 +857,10 @@ pub(super) fn apply_shadow_detail(
             ChildOf(source.root),
         ));
         if !clusters.is_empty() {
-            e.insert(super::vis::VisClusters::new(clusters));
+            e.insert(super::VisClusters::new(clusters));
         }
         if hidden.contains(&prop) {
-            e.insert((super::vis::LogicHidden, Visibility::Hidden));
+            e.insert((super::LogicHidden, Visibility::Hidden));
         }
         entities.insert(prop, e.id());
     }

@@ -109,7 +109,7 @@ pub(super) fn attach_loose(
             // showed through the sky.
             (
                 super::BrushEntityBounds { min: -half, max: half },
-                super::vis::VisClusters::new(Vec::new()),
+                super::VisClusters::new(Vec::new()),
             ),
         ));
         if let Some(a) = assets.0.get(&item.0) {

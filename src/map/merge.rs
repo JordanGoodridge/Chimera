@@ -5,11 +5,11 @@
 //! opaque and alpha-tested meshes are drawn as part of a combined mesh
 //! per material and chunk (`MergedChunk`), and its own meshes
 //! (`MergedPiece`) stay hidden. When it moves, breaks, is removed or
-//! turned off by the logic (`vis::LogicHidden`), or shows broken panes
+//! turned off by the logic (`LogicHidden`), or shows broken panes
 //! (`BrushPanes`), its triangles leave the combined mesh and its own
 //! meshes are drawn again; when it is back as it started (a closed door,
 //! a round restart) it rejoins. A node with a render colour other than
-//! white (`tint::BrushTint`) draws its own meshes too. The node itself (collider, logic, culling,
+//! white (`BrushTint`) draws its own meshes too. The node itself (collider, logic, culling,
 //! decals) is unchanged either way.
 
 use std::{collections::HashMap, ops::Range};
@@ -17,7 +17,7 @@ use std::{collections::HashMap, ops::Range};
 use bevy::{mesh::Indices, prelude::*};
 
 use super::{
-    BrushPanes, MapMesh,
+    BrushPanes, LogicHidden, MapMesh, VisClusters,
     vis::{self, MapVisibility},
 };
 
@@ -165,19 +165,19 @@ fn at_home(t: &Transform, home: &Transform) -> bool {
 pub(super) fn sync_merged_brushes(
     mut nodes: Query<(
         &Transform,
-        Has<vis::LogicHidden>,
+        Has<LogicHidden>,
         Has<BrushPanes>,
         &mut MergedBrush,
         &Children,
-        Option<&super::tint::BrushTint>,
+        Option<&super::BrushTint>,
     )>,
     mut pieces: Query<&mut Visibility, (With<MergedPiece>, Without<MergedChunk>)>,
     mut chunks: Query<(
         &MergedChunk,
         &Mesh3d,
         &mut Visibility,
-        Option<&vis::VisClusters>,
-        Has<vis::LogicHidden>,
+        Option<&VisClusters>,
+        Has<LogicHidden>,
     )>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mut commands: Commands,
@@ -219,13 +219,13 @@ pub(super) fn sync_merged_brushes(
             // Nothing left to draw: hidden, its last indices kept (an
             // empty index buffer isn't worth a special case).
             if !was_hidden {
-                commands.entity(chunk).insert(vis::LogicHidden);
+                commands.entity(chunk).insert(LogicHidden);
             }
             visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
         if was_hidden {
-            commands.entity(chunk).remove::<vis::LogicHidden>();
+            commands.entity(chunk).remove::<LogicHidden>();
             let culled = clusters.is_some_and(|v| !v.potentially_visible);
             visibility.set_if_neq(if culled {
                 Visibility::Hidden

@@ -279,7 +279,7 @@ impl MapPlugin {
             .init_resource::<vis::Occlusion>()
             .init_resource::<sky_occluder::SkyOcclusion>()
             .init_resource::<vis::VisStats>()
-            .add_message::<decal::PlaceDecal>()
+            .add_message::<PlaceDecal>()
             .add_message::<decal::ClearDecals>()
             .init_resource::<decal::DecalSettings>()
             .add_message::<ViewModelEvent>()
@@ -287,9 +287,9 @@ impl MapPlugin {
             .add_message::<breakables::BreakProp>()
             .add_message::<prop_physics::PropAwakened>()
             .add_message::<GlassShatter>()
-            .add_message::<emitters::TeslaSpark>()
-            .add_message::<emitters::BeamStrike>()
-            .add_message::<emitters::MuzzleFlashFire>()
+            .add_message::<TeslaSpark>()
+            .add_message::<BeamStrike>()
+            .add_message::<MuzzleFlashFire>()
             .add_message::<ViewKick>()
             .add_message::<GlassImpact>()
             .add_message::<breakables::FallingPane>()
@@ -516,7 +516,7 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<psys::ParticleSystemDefs>();
     world.remove_resource::<ScreenOverlayImages>();
     world.remove_resource::<monitor::MonitorScreen>();
-    world.insert_resource(monitor::MonitorCamera::default());
+    world.insert_resource(MonitorCamera::default());
     if let Some(mut p) = world.get_resource_mut::<particles::Particles>() {
         p.groups.clear();
     }
@@ -595,7 +595,7 @@ pub struct BrushEntityBounds {
 /// breakable is then hidden like the world around it.
 fn tag_moved_brush_entities(
     vis: Option<Res<vis::ActiveVisibility>>,
-    mut nodes: Query<(&GlobalTransform, &BrushEntityBounds, &mut vis::VisClusters), Changed<GlobalTransform>>,
+    mut nodes: Query<(&GlobalTransform, &BrushEntityBounds, &mut VisClusters), Changed<GlobalTransform>>,
 ) {
     let Some(vis) = vis else { return };
     let mut clusters = Vec::new();
@@ -645,9 +645,9 @@ fn glow_visibility(
             &GlowSprite,
             &MeshMaterial3d<SpriteMaterial>,
             &mut Visibility,
-            Option<&vis::VisClusters>,
+            Option<&VisClusters>,
         ),
-        Without<vis::LogicHidden>,
+        Without<LogicHidden>,
     >,
     materials: Option<ResMut<Assets<SpriteMaterial>>>,
 ) {

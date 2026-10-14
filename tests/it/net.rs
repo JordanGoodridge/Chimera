@@ -653,10 +653,7 @@ fn updates_follow_each_clients_rate() {
 
 #[test]
 fn map_render_looks_replicate() {
-    use mashup::map::{
-        MapBrushEntity,
-        tint::{BrushTint, RenderLook},
-    };
+    use mashup::map::{BrushTint, MapBrushEntity, RenderLook};
     let mut sim = NetSim::new(lan(), 32, 2, greybox);
     sim.until_joined(200);
     sim.ticks(10);
@@ -706,7 +703,7 @@ fn map_render_looks_replicate() {
 #[test]
 fn map_effects_reach_clients() {
     use bevy::ecs::message::Messages;
-    use mashup::map::emitters::BeamStrike;
+    use mashup::map::BeamStrike;
     let mut sim = NetSim::new(lan(), 33, 1, greybox);
     sim.until_joined(200);
     sim.ticks(10);

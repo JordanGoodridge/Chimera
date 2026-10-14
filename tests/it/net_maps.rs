@@ -751,7 +751,7 @@ fn changelevel_to_the_same_map_makes_clients_reload_it() {
 
 #[test]
 fn a_late_joiner_gets_the_decals() {
-    use mashup::map::decal::{DecalGroup, PlaceDecal};
+    use mashup::map::{DecalGroup, PlaceDecal};
     let dir = scratch("decals");
     let install = server_install(&dir);
     let mut sim = server(install.clone(), "test:alpha", 75);

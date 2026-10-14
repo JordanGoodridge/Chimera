@@ -1158,10 +1158,10 @@ impl Plugin for NetPlugin {
             .replicate::<NetMover>()
             // Map render looks: players' (invisibility, team colours) and
             // movers' (colour, alpha, texture frame), only when they change.
-            .replicate::<crate::map::tint::RenderLook>()
-            .ordered::<crate::map::tint::RenderLook>()
-            .replicate::<crate::map::tint::BrushTint>()
-            .ordered::<crate::map::tint::BrushTint>()
+            .replicate::<crate::map::RenderLook>()
+            .ordered::<crate::map::RenderLook>()
+            .replicate::<crate::map::BrushTint>()
+            .ordered::<crate::map::BrushTint>()
             // Every value a client receives also goes into its snapshot
             // buffer, by the server tick it is from.
             .set_receive_fns::<NetBody>(interp::write_snapshot::<NetBody>, interp::remove_snapshots::<NetBody>)

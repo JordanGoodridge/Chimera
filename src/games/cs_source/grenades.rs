@@ -15,9 +15,9 @@ use super::weapons::HP;
 use crate::{
     core::HearingEffect,
     map::{
-        LightField,
+        LightField, ParticleRng,
         particles::{
-            Bounce, Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, ParticleRng, ParticleSet,
+            Bounce, Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, ParticleSet,
             Particles, Ramp, Shape, WorldTrace, WorldTracer, probe_planes,
         },
     },

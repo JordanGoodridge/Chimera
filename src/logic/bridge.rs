@@ -20,7 +20,7 @@ use crate::core::{
 };
 use crate::map::breakables::{FallingPane, GibPiece, GlassImpact, GlassShatter, SpawnGibs};
 use crate::map::entities::{engine_to_entity, entity_rotation, entity_to_engine, rotation_to_engine};
-use crate::map::vis::{LogicHidden, VisClusters};
+use crate::map::{LogicHidden, VisClusters};
 use crate::map::{
     BreakProp, BrushPanes, EntityPart, LightStyles, MapBrushEntity, MapEntities, PlaySound, PropEntity, PropHome,
     PropIndex, PropLook, PropSequence, SoundControl, SoundKey, SoundLevel, SoundscapeSwitches, SoundscapeTouches,
@@ -81,7 +81,7 @@ impl Plugin for LogicPlugin {
             .add_message::<HudEvent>()
             .add_message::<super::MapSay>()
             .add_message::<super::MapShake>()
-            .add_message::<crate::map::beams::SparkBurst>()
+            .add_message::<crate::map::SparkBurst>()
             .add_message::<crate::core::ScoreChange>()
             .add_message::<PlaySound>()
             .add_message::<LogicOneShot>()
@@ -207,8 +207,8 @@ fn load(world: &mut World) {
             world.remove_resource::<Logic>();
             world.remove_resource::<LightStyles>();
             world.remove_resource::<crate::map::TonemapInputs>();
-            world.remove_resource::<crate::map::vis::AreaPortalStates>();
-            world.remove_resource::<crate::map::vis::OccluderStates>();
+            world.remove_resource::<crate::map::AreaPortalStates>();
+            world.remove_resource::<crate::map::OccluderStates>();
             world.remove_resource::<SoundscapeTouches>();
             world.remove_resource::<SoundscapeSwitches>();
             world.remove_resource::<crate::map::fire::MapFires>();
@@ -525,8 +525,8 @@ fn set_prop_look(world: &mut World, node: Entity, state: &super::props::PropStat
 /// Sprites and dust volumes (`map::EntityPart`) follow their entity: on,
 /// off, or gone (killed) until a round restart; light styles follow the
 /// lights (`map::LightStyles`), areaportals their doors and inputs
-/// (`map::vis::AreaPortalStates`), occluders their inputs
-/// (`map::vis::OccluderStates`).
+/// (`map::AreaPortalStates`), occluders their inputs
+/// (`map::OccluderStates`).
 fn sync_visuals(world: &mut World, logic: &Logic) {
     let mut states = logic.world.part_states();
     states.sort_by_key(|s| s.0);
@@ -550,7 +550,7 @@ fn sync_visuals(world: &mut World, logic: &Logic) {
         let scale = logic.scale;
         let mut moved = Vec::new();
         let mut parts =
-            world.query_filtered::<(Entity, &EntityPart, &mut Transform), With<crate::map::emitters::FollowsEntity>>();
+            world.query_filtered::<(Entity, &EntityPart, &mut Transform), With<crate::map::FollowsEntity>>();
         for (e, part, mut t) in parts.iter_mut(world) {
             let Ok(i) = poses.binary_search_by_key(&part.entity, |p| p.0) else {
                 continue;
@@ -566,7 +566,7 @@ fn sync_visuals(world: &mut World, logic: &Logic) {
         }
         for e in moved {
             let mut part = world.entity_mut(e);
-            if part.take::<crate::map::vis::VisClusters>().is_some() && !part.contains::<LogicHidden>() {
+            if part.take::<crate::map::VisClusters>().is_some() && !part.contains::<LogicHidden>() {
                 part.insert(Visibility::Inherited);
             }
         }
@@ -574,7 +574,7 @@ fn sync_visuals(world: &mut World, logic: &Logic) {
     // How players are drawn (invisibility, colours).
     for (player, look) in &logic.world.player_looks {
         if let Ok(mut e) = world.get_entity_mut(*player)
-            && e.get::<crate::map::tint::RenderLook>() != Some(look)
+            && e.get::<crate::map::RenderLook>() != Some(look)
         {
             e.insert(*look);
         }
@@ -589,16 +589,16 @@ fn sync_visuals(world: &mut World, logic: &Logic) {
     if world.get_resource::<crate::map::TonemapInputs>() != Some(tonemap) {
         world.insert_resource(tonemap.clone());
     }
-    let portals = crate::map::vis::AreaPortalStates {
+    let portals = crate::map::AreaPortalStates {
         closed: logic.world.closed_area_portals(),
     };
-    if world.get_resource::<crate::map::vis::AreaPortalStates>() != Some(&portals) {
+    if world.get_resource::<crate::map::AreaPortalStates>() != Some(&portals) {
         world.insert_resource(portals);
     }
-    let occluders = crate::map::vis::OccluderStates {
+    let occluders = crate::map::OccluderStates {
         inactive: logic.world.inactive_occluders(),
     };
-    if world.get_resource::<crate::map::vis::OccluderStates>() != Some(&occluders) {
+    if world.get_resource::<crate::map::OccluderStates>() != Some(&occluders) {
         world.insert_resource(occluders);
     }
 }
@@ -1039,8 +1039,8 @@ fn sync_movers(world: &mut World, logic: &mut Logic) {
         // Its render colour (rendercolor, the Color input).
         let look = logic.world.get(id).map_or_else(Default::default, |e| e.render_look());
         let frame = logic.world.get(id).map_or(0, |e| e.texture_frame);
-        let tint = crate::map::tint::BrushTint(look, frame);
-        if e.get::<crate::map::tint::BrushTint>()
+        let tint = crate::map::BrushTint(look, frame);
+        if e.get::<crate::map::BrushTint>()
             .map_or(!tint.is_white(), |t| *t != tint)
         {
             e.insert(tint);
@@ -1392,17 +1392,17 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                 });
             }
             Effect::Spark { at, dir, magnitude } => {
-                world.write_message(crate::map::beams::SparkBurst {
+                world.write_message(crate::map::SparkBurst {
                     at: entity_to_engine(at, scale),
                     dir: entity_to_engine(dir, 1.0),
                     magnitude,
                 });
             }
             Effect::Tesla { entity } => {
-                world.write_message(crate::map::emitters::TeslaSpark { entity });
+                world.write_message(crate::map::TeslaSpark { entity });
             }
             Effect::BeamStrike { entity, start, end, life } => {
-                world.write_message(crate::map::emitters::BeamStrike {
+                world.write_message(crate::map::BeamStrike {
                     entity,
                     start: entity_to_engine(start, scale),
                     end: entity_to_engine(end, scale),
@@ -1410,7 +1410,7 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                 });
             }
             Effect::MuzzleFlash { entity } => {
-                world.write_message(crate::map::emitters::MuzzleFlashFire { entity });
+                world.write_message(crate::map::MuzzleFlashFire { entity });
             }
             Effect::ViewPunch { player, angles } => {
                 // Source's pitch is down positive; ours up (radians). Roll
@@ -1623,18 +1623,18 @@ fn sync_controls(world: &mut World, logic: &Logic) {
 /// (`core::MapView`: a camera's pose, looking down -Z).
 fn sync_views(world: &mut World, logic: &Logic) {
     // What monitors show (`map::monitor`).
-    let monitor = crate::map::monitor::MonitorCamera(logic.world.monitor_camera().map(|(origin, angles, fov)| {
+    let monitor = crate::map::MonitorCamera(logic.world.monitor_camera().map(|(origin, angles, fov)| {
         (
             entity_to_engine(origin, logic.scale),
             rotation_to_engine(entity_rotation(angles)) * Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
             fov,
         )
-    }), logic.world.monitor_fog().map(|f| crate::map::monitor::MonitorFog {
+    }), logic.world.monitor_fog().map(|f| crate::map::MonitorFog {
         start: f.start * logic.scale,
         end: f.end * logic.scale,
         ..f
     }));
-    if world.get_resource::<crate::map::monitor::MonitorCamera>() != Some(&monitor) {
+    if world.get_resource::<crate::map::MonitorCamera>() != Some(&monitor) {
         world.insert_resource(monitor);
     }
     for (p, origin, angles) in logic.world.camera_views() {

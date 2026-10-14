@@ -59,10 +59,10 @@ pub(super) fn update_prop_shadows(
     mut commands: Commands,
     state: Option<ResMut<ShadowState>>,
     moved: Query<(&PropIndex, &Transform), (With<PhysicsProp>, Changed<Transform>)>,
-    hidden: Query<&PropIndex, Added<vis::LogicHidden>>,
-    mut shown: RemovedComponents<vis::LogicHidden>,
-    props: Query<&PropIndex, Without<vis::LogicHidden>>,
-    mut shadow_vis: Query<Option<&mut vis::VisClusters>, With<PropShadow>>,
+    hidden: Query<&PropIndex, Added<LogicHidden>>,
+    mut shown: RemovedComponents<LogicHidden>,
+    props: Query<&PropIndex, Without<LogicHidden>>,
+    mut shadow_vis: Query<Option<&mut VisClusters>, With<PropShadow>>,
     vis: Option<Res<vis::ActiveVisibility>>,
     shadow_meshes: Query<&Mesh3d, With<PropShadow>>,
     mut images: ResMut<Assets<Image>>,
@@ -75,14 +75,14 @@ pub(super) fn update_prop_shadows(
     let state = &mut *state;
     for index in &hidden {
         if let Some(e) = state.entities.get(&index.0) {
-            commands.entity(*e).insert((vis::LogicHidden, Visibility::Hidden));
+            commands.entity(*e).insert((LogicHidden, Visibility::Hidden));
         }
     }
     for node in shown.read() {
         let Ok(index) = props.get(node) else { continue };
         if let Some(e) = state.entities.get(&index.0).copied() {
             let on = shadow_vis.get(e).ok().flatten().is_none_or(|v| v.potentially_visible);
-            commands.entity(e).remove::<vis::LogicHidden>().insert(if on {
+            commands.entity(e).remove::<LogicHidden>().insert(if on {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
@@ -350,8 +350,8 @@ pub(super) fn switch_parts(
         (
             Entity,
             &EntityPart,
-            Option<&vis::VisClusters>,
-            Has<vis::LogicHidden>,
+            Option<&VisClusters>,
+            Has<LogicHidden>,
             Has<dust::DustEmitter>,
             Has<steam::SteamEmitter>,
         ),
@@ -368,12 +368,12 @@ pub(super) fn switch_parts(
         }
         if shown {
             let mut c = commands.entity(e);
-            c.remove::<vis::LogicHidden>();
+            c.remove::<LogicHidden>();
             if clusters.is_none_or(|c| c.potentially_visible) {
                 c.insert(Visibility::Inherited);
             }
         } else {
-            commands.entity(e).insert((vis::LogicHidden, Visibility::Hidden));
+            commands.entity(e).insert((LogicHidden, Visibility::Hidden));
         }
     }
 }
@@ -411,14 +411,14 @@ mod switch_tests {
             ))
             .id();
         app.update();
-        assert!(!app.world().entity(sprite).contains::<vis::LogicHidden>());
+        assert!(!app.world().entity(sprite).contains::<LogicHidden>());
         app.world_mut().get_mut::<EntityPart>(sprite).unwrap().on = false;
         app.update();
-        assert!(app.world().entity(sprite).contains::<vis::LogicHidden>());
+        assert!(app.world().entity(sprite).contains::<LogicHidden>());
         assert_eq!(app.world().get::<Visibility>(sprite), Some(&Visibility::Hidden));
         app.world_mut().get_mut::<EntityPart>(sprite).unwrap().on = true;
         app.update();
-        assert!(!app.world().entity(sprite).contains::<vis::LogicHidden>());
+        assert!(!app.world().entity(sprite).contains::<LogicHidden>());
         assert_eq!(app.world().get::<Visibility>(sprite), Some(&Visibility::Inherited));
     }
 

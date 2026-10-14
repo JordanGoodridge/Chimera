@@ -903,11 +903,11 @@ pub(super) fn spawn_surfaces(
                     e.insert((
                         MovingWaterSurface { min, max },
                         super::BrushEntityBounds { min, max },
-                        super::vis::VisClusters::new(Vec::new()),
+                        super::VisClusters::new(Vec::new()),
                     ));
                 }
                 if !clusters.is_empty() {
-                    e.insert(super::vis::VisClusters::new(clusters));
+                    e.insert(super::VisClusters::new(clusters));
                 }
             }
         }
@@ -1163,7 +1163,7 @@ pub fn update_water(
         &WaterSurface,
         &MeshMaterial3d<WaterMaterial>,
         &mut Visibility,
-        Option<&super::vis::VisClusters>,
+        Option<&super::VisClusters>,
     )>,
     mut materials: ResMut<Assets<WaterMaterial>>,
     view: Option<ResMut<WaterView>>,

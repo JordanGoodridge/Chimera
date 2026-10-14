@@ -83,7 +83,7 @@ impl MapSpawn<'_> {
     /// them (`vis`).
     fn tag(&self, e: &mut EntityCommands, clusters: Vec<u32>) {
         if self.visibility.is_some() && !clusters.is_empty() {
-            e.insert(vis::VisClusters::new(clusters));
+            e.insert(VisClusters::new(clusters));
         }
     }
 }
@@ -932,7 +932,7 @@ fn spawn_world_meshes(
     for (node, (min, max)) in node_bounds {
         commands
             .entity(node)
-            .insert((BrushEntityBounds { min, max }, vis::VisClusters::new(Vec::new())));
+            .insert((BrushEntityBounds { min, max }, VisClusters::new(Vec::new())));
     }
 }
 
@@ -1100,7 +1100,7 @@ fn spawn_merged(
         }
         e.insert(merge::MergedChunk { parts, indices });
         if visibility.is_some() && !clusters.is_empty() {
-            e.insert(vis::VisClusters::new(clusters));
+            e.insert(VisClusters::new(clusters));
         }
         id
     };
@@ -1313,7 +1313,7 @@ fn spawn_effects(
             Name::new(format!("Trail {i}")),
             MapPart,
             emitters::TrailEmitter::new(t.clone()),
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(t.position),
             Visibility::default(),
             ChildOf(root),
@@ -1335,7 +1335,7 @@ fn spawn_effects(
             Name::new(format!("Particle system {i}")),
             MapPart,
             psys::SystemEmitter::new(p.clone(), i as u64 + 1),
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(p.position).with_rotation(p.rotation),
             Visibility::default(),
             ChildOf(root),
@@ -1358,7 +1358,7 @@ fn spawn_effects(
             Name::new(format!("Muzzle flash {i}")),
             MapPart,
             emitters::MuzzleFlashEmitter(m.clone()),
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(m.position).with_rotation(m.rotation),
             Visibility::default(),
             ChildOf(root),
@@ -1379,7 +1379,7 @@ fn spawn_effects(
             Name::new(format!("Embers {i}")),
             MapPart,
             emitters::EmbersEmitter::new(m.clone(), i as u64 + 1),
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(m.origin),
             Visibility::default(),
             ChildOf(root),
@@ -1398,7 +1398,7 @@ fn spawn_effects(
             Name::new(format!("Tesla {i}")),
             MapPart,
             emitters::TeslaEmitter::new(t.clone(), i as u64 + 1),
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(t.position),
             Visibility::default(),
             ChildOf(root),
@@ -1436,7 +1436,7 @@ fn spawn_effects(
             Name::new(format!("Smoke stack {i}")),
             MapPart,
             emitters::SmokeStackEmitter::new(stack.clone(), i as u64 + 1),
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(stack.position).with_rotation(stack.rotation),
             Visibility::default(),
             ChildOf(root),
@@ -1481,7 +1481,7 @@ fn spawn_sprites(
             // own bounds are a point: culling would drop the sprite
             // as soon as its centre left the view.
             bevy::camera::visibility::NoFrustumCulling,
-            emitters::FollowsEntity,
+            FollowsEntity,
             Transform::from_translation(sprite.position),
             ChildOf(root),
         ));
@@ -1502,7 +1502,7 @@ fn spawn_sprites(
                 exists: true,
             });
             if !sprite.start_on {
-                e.insert((vis::LogicHidden, Visibility::Hidden));
+                e.insert((LogicHidden, Visibility::Hidden));
             }
         }
     }
@@ -1528,7 +1528,7 @@ fn spawn_beams(
             });
         }
         if !on {
-            e.insert((vis::LogicHidden, Visibility::Hidden));
+            e.insert((LogicHidden, Visibility::Hidden));
         }
     };
     let beam_mesh = meshes.add(beams::beam_mesh());
@@ -1582,7 +1582,7 @@ fn spawn_beams(
             e.insert(beams::BeamMotion {
                 beam: b.clone(),
                 frames: b.frames.iter().map(|f| textures[*f].clone()).collect(),
-                rng: particles::ParticleRng::new(i as u64 + 1),
+                rng: ParticleRng::new(i as u64 + 1),
             });
         }
         if let Some(h) = &b.spot {
@@ -2042,7 +2042,7 @@ fn tag_prop(
     if !prop.skybox && !stays_put && !merged_world() && data.visibility.is_some() {
         let (min, max) = model.bounds;
         if min.x <= max.x {
-            e.insert((BrushEntityBounds { min, max }, vis::VisClusters::new(Vec::new())));
+            e.insert((BrushEntityBounds { min, max }, VisClusters::new(Vec::new())));
         }
         if let Some((near, far)) = prop.fade {
             e.insert(vis::FadeDistance(far));
@@ -2071,7 +2071,7 @@ fn tag_prop(
             None => Vec::new(),
         };
         if !clusters.is_empty() || prop.fade.is_some() {
-            e.insert(vis::VisClusters::new(clusters));
+            e.insert(VisClusters::new(clusters));
         }
         if let Some((near, far)) = prop.fade {
             e.insert(vis::FadeDistance(far));

@@ -25,11 +25,9 @@ use crate::{
         Velocity,
     },
     map::{
-        MapPropCollider, PlaySound,
-        decal::{DecalGroup, PlaceDecal},
+        DecalGroup, MapPropCollider, ParticleRng, PlaceDecal, PlaySound,
         interp::NetDrawn,
         loose::ShownItem,
-        particles::ParticleRng,
     },
 };
 

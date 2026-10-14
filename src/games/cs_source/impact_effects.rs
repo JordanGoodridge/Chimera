@@ -16,10 +16,9 @@ use super::impacts::{surface, surface_of};
 use crate::{
     core::{Damage, Intent, MapWater, MapWaterVolume},
     map::{
-        PlaySound, PropIndex, PropSurface,
-        decal::{DecalGroup, PlaceDecal},
+        DecalGroup, ParticleRng, PlaceDecal, PlaySound, PropIndex, PropSurface,
         particles::{
-            Bounce, Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, ParticleRng, Particles,
+            Bounce, Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, Particles,
             Ramp, Shape, WorldTrace, WorldTracer, probe_planes,
         },
         sound::{SoundBank, SurfaceGrid},
@@ -1187,7 +1186,7 @@ pub fn glass_impact(
 fn glass_effects(
     mut panes: MessageReader<crate::map::GlassShatter>,
     mut hits: MessageReader<crate::map::GlassImpact>,
-    mut sparks: MessageReader<crate::map::beams::SparkBurst>,
+    mut sparks: MessageReader<crate::map::SparkBurst>,
     materials: Option<Res<ParticleMaterials>>,
     colors: Option<Res<SurfaceColors>>,
     mut particles: ResMut<Particles>,
@@ -1278,7 +1277,7 @@ impl Plugin for ImpactEffectsPlugin {
             .add_message::<PlaySound>()
             .add_message::<crate::map::GlassShatter>()
             .add_message::<crate::map::GlassImpact>()
-            .add_message::<crate::map::beams::SparkBurst>()
+            .add_message::<crate::map::SparkBurst>()
             .add_message::<crate::map::tracer::Tracer>()
             .add_systems(
                 FixedUpdate,

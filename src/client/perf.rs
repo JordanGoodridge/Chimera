@@ -14,7 +14,10 @@ use bevy::{
 
 use crate::{
     console::resource_cvar,
-    map::vis::{NoVis, VisClusters, VisStats},
+    map::{
+        VisClusters,
+        vis::{NoVis, VisStats},
+    },
 };
 
 pub struct PerfPlugin;

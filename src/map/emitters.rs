@@ -14,8 +14,8 @@ use std::collections::VecDeque;
 
 use bevy::prelude::*;
 
-use super::EntityPart;
-use super::particles::{Particle, ParticleGroup, ParticleRng, Particles, Ramp, Shape};
+use super::particles::{Particle, ParticleGroup, Particles, Ramp, Shape};
+use super::{BeamStrike, EntityPart, MuzzleFlashFire, ParticleRng, TeslaSpark};
 
 /// Points a trail keeps (trail_max_points).
 pub const TRAIL_MAX_POINTS: usize = 256;
@@ -113,13 +113,6 @@ pub struct MapTesla {
     pub width: (f32, f32),
     pub life: (f32, f32),
     pub beams: (u32, u32),
-}
-
-/// One spark of a point_tesla (the logic times them).
-#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TeslaSpark {
-    /// The entity (index into `MapData::entities`).
-    pub entity: usize,
 }
 
 struct Arc {
@@ -230,11 +223,6 @@ impl TeslaEmitter {
         out
     }
 }
-
-/// Marks a drawn part whose transform the logic sets to its map entity's
-/// pose each tick (it follows a parent).
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct FollowsEntity;
 
 /// A trail's recorded points: where, and when each dies (seconds of the
 /// trail's own clock).
@@ -715,12 +703,6 @@ pub struct MapMuzzleFlash {
     pub scale: f32,
 }
 
-/// An env_muzzleflash fired (by map index).
-#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MuzzleFlashFire {
-    pub entity: usize,
-}
-
 /// How long a map muzzle flash shows, s (ours: about three frames).
 pub const MUZZLE_FLASH_LIFE: f32 = 0.05;
 
@@ -779,16 +761,6 @@ pub struct MapStrike {
     pub color: Vec3,
     /// NoiseAmplitude, 0-64.
     pub noise: f32,
-}
-
-/// A strike: the beam from `start` to `end` (engine space) lives `life`
-/// seconds (0: until the map's next round restart).
-#[derive(Message, Clone, Copy, Debug, PartialEq)]
-pub struct BeamStrike {
-    pub entity: usize,
-    pub start: Vec3,
-    pub end: Vec3,
-    pub life: f32,
 }
 
 /// Samples of a beam's noise (noise_divisions + 1).

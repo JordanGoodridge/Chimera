@@ -974,7 +974,7 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
             && !(class == "func_brush" && (num("Solidity") == Some(1.0) || (start_disabled && num("Solidity") != Some(2.0))))
             // func_rotating spawnflag 64: not solid.
             && !(class == "func_rotating" && (num("spawnflags").unwrap_or(0.0) as i32) & 64 != 0);
-        let look = crate::map::tint::RenderLook {
+        let look = crate::map::RenderLook {
             color: [255; 3],
             alpha: num("renderamt").unwrap_or(255.0).clamp(0.0, 255.0) as u8,
             mode: render_mode.clamp(0, 255) as u8,

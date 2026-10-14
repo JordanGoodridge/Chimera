@@ -1,9 +1,9 @@
 //! Decals for players joining mid-game (docs/plans/active/multiplayer.md,
 //! slice 7's leftover): the server keeps the impact decals put on the
 //! world since its map loaded (`DecalLog`, the newest
-//! `map::decal::MAX_DECALS`) and sends them to a client when it comes into
+//! `map::MAX_DECALS`) and sends them to a client when it comes into
 //! the game (`Loaded`); the client places them as its own
-//! (`map::decal::PlaceDecal`). Decals on props and brush entities (which
+//! (`map::PlaceDecal`). Decals on props and brush entities (which
 //! move, break and come back) aren't kept, nor is which variant a decal
 //! took (each client picks its own, as for every shot it draws).
 
@@ -17,8 +17,7 @@ use super::server::Player;
 use crate::{
     core::NetRole,
     map::{
-        MapBrushEntity, PropIndex,
-        decal::{DecalGroup, MAX_DECALS, PlaceDecal},
+        DecalGroup, MAX_DECALS, MapBrushEntity, PlaceDecal, PropIndex,
     },
 };
 

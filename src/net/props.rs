@@ -24,10 +24,9 @@ use super::{
 use crate::{
     core::NetRole,
     map::{
-        PhysicsProp, PropIndex,
+        LogicHidden, PhysicsProp, PropIndex, VisClusters,
         interp::{InterpSystems, NetDrawn, SNAP_SPEED},
         prop_physics::FrozenBody,
-        vis::{LogicHidden, VisClusters},
     },
 };
 

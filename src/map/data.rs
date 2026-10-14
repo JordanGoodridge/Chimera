@@ -138,7 +138,7 @@ pub struct MapMesh {
     /// What part of a breakable window's look it is (`PaneLook`).
     pub pane_look: PaneLook,
     /// A brush entity's translucent render mode (Source rendermode and
-    /// renderamt): blended or added, and its opacity (`tint::RenderLook`).
+    /// renderamt): blended or added, and its opacity (`RenderLook`).
     pub render: Option<(MapAlpha, f32)>,
     /// Its base texture's frames (indices into `MapData::textures`), when a
     /// map entity can pick one (env_texturetoggle; `tint::TextureFrames`).

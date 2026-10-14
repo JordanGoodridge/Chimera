@@ -16,8 +16,8 @@ use bevy::{
 };
 
 use super::{
+    ParticleRng,
     emitters::{BEAM_MAX_SEGMENTS, BEAM_NOISE_SAMPLES, beam_segments, fractal_noise},
-    particles::ParticleRng,
     sprite_material::SpriteMaterial,
 };
 
@@ -99,15 +99,6 @@ pub struct MapGlow {
     /// "Visible only from front": its forward direction.
     pub front: Option<Vec3>,
     pub proxy: f32,
-}
-
-/// A burst of sparks (env_spark; visual_entities.md 8): where (engine
-/// space), its direction (zero: none) and magnitude; a game draws it.
-#[derive(Message, Clone, Copy, Debug, PartialEq)]
-pub struct SparkBurst {
-    pub at: Vec3,
-    pub dir: Vec3,
-    pub magnitude: f32,
 }
 
 /// 100 units, the distance the glow's quad sits ahead of the eye.
