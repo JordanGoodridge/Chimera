@@ -259,3 +259,17 @@ fn pickup_history_lands_where_css_draws_it() {
         .collect();
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
 }
+
+/// The carried-bomb icon (and the kit's, the scenario's) is a glyph of
+/// the scheme's `Icons` font, which is additive: the scene shows through
+/// it as in CS:S (playtest 2026-10-14: ours was opaque). The objectives
+/// HUD draws them as `hud_text` draws additive fonts.
+#[test]
+fn objective_icons_are_additive_glyphs() {
+    let Some(hud) = hud() else { return };
+    for icon in ["c4", "defuser", "scenario_c4"] {
+        let (font, _) = hud.icons.get(icon).unwrap_or_else(|| panic!("{icon}"));
+        let f = hud.fonts.get(font).unwrap_or_else(|| panic!("{icon}: font {font}"));
+        assert!(f.additive, "{icon}: {font} isn't additive");
+    }
+}

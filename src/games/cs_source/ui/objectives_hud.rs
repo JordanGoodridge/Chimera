@@ -10,7 +10,8 @@
 //!
 //! The objectives on the HUD: the carried-bomb / kit / rescue-zone icon
 //! (`HudC4` etc., flashing red in a target), the scenario icon (planted bomb; a
-//! glyph per hostage left), the defusing progress bar (`HudProgressBar`;
+//! glyph per hostage left; the bomb blinking in step with its beeps), both icon-font glyphs drawn as `client::hud_text`
+//! draws them (additive for the scheme's additive `Icons`: see-through), the defusing progress bar (`HudProgressBar`;
 //! defusing only, off with `cl_c4progressbar 0`: arming types on the C4's
 //! screen instead, spec Q16; its fill `BombProgress` and the C4 screen's text
 //! `bomb_fx::C4ScreenText` come from `BombHudStatePlugin`, headless for tests),
@@ -19,13 +20,15 @@
 //! (`map::RoundSounds::use_deny`) when the local player's +use press finds
 //! neither a map entity (`LogicWorld::use_presses`) nor an objective;
 //! `mashup_objectives 1` shows the bomb's timer and defuse and the hostages'
-//! state.
+//! state; the centre print also says what the local player's weapon switched
+//! to (`weapon::ModeTexts`: "Switched to burst-fire mode").
 
 use bevy::prelude::*;
 
 use crate::client::{
     chat::{ChatLine, Hint},
     fonts::UiFonts,
+    hud_text::{Align, GlyphFont, HudText},
 };
 use crate::{
     console::resource_cvar,
@@ -50,7 +53,13 @@ impl Plugin for ObjectivesHudPlugin {
             .add_systems(Startup, spawn)
             .add_systems(
                 Update,
-                (messages, status, progress.after(progress_share), centre, overlay),
+                (
+                    messages.before(centre),
+                    status,
+                    progress.after(progress_share),
+                    centre,
+                    overlay,
+                ),
             )
             .add_systems(
                 FixedUpdate,
@@ -70,7 +79,8 @@ impl Plugin for ObjectivesHudPlugin {
 /// What the bomb shows the local player, without drawing it (so
 /// headless tests can read it): the progress bar's fill
 /// (`BombProgress`, with `cl_c4progressbar`) and the code on the C4's
-/// screen (`bomb_fx::C4ScreenText`).
+/// screen (`bomb_fx::C4ScreenText`); and the weapon mode switch's centre
+/// print (`mode_texts`, `centre_text`).
 pub struct BombHudStatePlugin;
 
 impl Plugin for BombHudStatePlugin {
@@ -78,7 +88,12 @@ impl Plugin for BombHudStatePlugin {
         c4_bar_cvar(app);
         app.init_resource::<BombProgress>()
             .init_resource::<super::bomb_fx::C4ScreenText>()
-            .add_systems(Update, (progress_share, super::bomb_fx::screen_text));
+            .init_resource::<Centre>()
+            .add_message::<crate::weapon::WeaponEvent>()
+            .add_systems(
+                Update,
+                (progress_share, super::bomb_fx::screen_text, mode_texts.before(centre)),
+            );
     }
 }
 
@@ -136,15 +151,9 @@ fn spawn(mut commands: Commands, fonts: Res<UiFonts>) {
         position_type: PositionType::Absolute,
         ..default()
     };
+    // Drawn as `HudText` (`status`).
     for part in [Part::Status, Part::Scenario] {
-        commands.spawn((
-            part,
-            Text::default(),
-            TextColor(Color::WHITE),
-            abs(),
-            Visibility::Hidden,
-            GlobalZIndex(40),
-        ));
+        commands.spawn((part, abs(), Visibility::Hidden, GlobalZIndex(40)));
     }
     commands
         .spawn((
@@ -321,25 +330,33 @@ fn status(
     world_bits: (Res<MapObjectives>, Res<BombState>, Res<HostageTally>, Res<BombRules>),
     inventories: Query<&crate::weapon::Inventory>,
     bombs: Query<(), With<crate::objectives::bomb::C4>>,
-    mut parts: Query<(
-        &Part,
-        &mut Text,
-        &mut TextFont,
-        &mut TextColor,
-        &mut Node,
-        &mut Visibility,
-    )>,
+    mut parts: Query<(Entity, &Part, &mut Visibility, Option<&mut HudText>)>,
     time: Res<Time>,
+    mut events: MessageReader<ObjectiveEvent>,
+    mut beeps: Local<(f64, f64)>,
+    mut commands: Commands,
 ) {
     let (objectives, bomb, tally, rules) = world_bits;
+    // The planted bomb's beeps (this clock): the last two.
+    for ev in events.read() {
+        if let ObjectiveEvent::Beep { .. } = ev {
+            *beeps = (beeps.1, time.elapsed_secs_f64());
+        }
+    }
+    if bomb.planted.is_none() {
+        *beeps = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    }
     let Some(window) = windows.iter().next() else { return };
     let (w, h) = (window.width(), window.height());
     let hud_ref = hud.as_deref();
     let color = |name: &str, fallback: Color| hud_ref.and_then(|h| h.0.color(name)).unwrap_or(fallback);
-    let glyph = |name: &str| -> Option<(Handle<Font>, f32, char)> {
+    // The icon font's glyph as Source draws it: `Icons` is additive in
+    // the scheme, so the scene shows through the icon (playtest
+    // 2026-10-14: ours was opaque).
+    let glyph = |name: &str| -> Option<(GlyphFont, f32, char)> {
         let (font, ch) = hud_ref?.0.icons.get(name)?.clone();
-        let (handle, tall) = fonts.game(&font)?;
-        Some((handle, tall, ch))
+        let (font, tall) = fonts.hud_font(&font, h)?;
+        Some((font, tall, ch))
     };
     let flash = (time.elapsed_secs() * 4.0) as u32 % 2 == 0;
     let green = color("HudIcon_Green", Color::srgb_u8(0, 160, 0));
@@ -373,15 +390,20 @@ fn status(
     });
     // Scenario: the planted bomb, or a glyph per hostage left.
     let scenario = if bomb.planted.is_some() {
-        glyph("scenario_c4").map(|g| (g, 1))
+        // Blinking with the beeps, faster as they speed up (playtest
+        // 2026-10-14, as CS:S).
+        let since = (time.elapsed_secs_f64() - beeps.1) as f32;
+        let interval = (beeps.1 - beeps.0) as f32;
+        glyph("scenario_c4")
+            .filter(|_| bomb_icon_lit(since, interval))
+            .map(|g| (g, 1))
     } else if objectives.kind() == MapKind::Hostage && tally.total > 0 {
         let left = tally.total.saturating_sub(tally.rescued + tally.killed) as usize;
         glyph("scenario_hostage").map(|g| (g, left))
     } else {
         None
     };
-    let scale = h / 480.0;
-    for (part, mut text, mut font, mut tc, mut node, mut vis) in &mut parts {
+    for (e, part, mut vis, shown) in &mut parts {
         let want = match part {
             Part::Status => status.and_then(|(panel, icon, c)| {
                 let (handle, tall, ch) = glyph(icon)?;
@@ -412,20 +434,38 @@ fn status(
             }),
             _ => continue,
         };
-        let Some((r, handle, tall, s, c)) = want else {
-            *vis = Visibility::Hidden;
+        let Some((r, font, tall, text, color)) = want else {
+            vis.set_if_neq(Visibility::Hidden);
             continue;
         };
-        *vis = Visibility::Inherited;
-        node.left = Val::Px(r.min.x);
-        node.top = Val::Px(r.min.y);
-        if text.0 != s {
-            text.0 = s;
+        vis.set_if_neq(Visibility::Inherited);
+        let next = HudText {
+            font,
+            tall,
+            text,
+            color,
+            at: r.min,
+            align: Align::Left,
+        };
+        match shown {
+            Some(mut t) => {
+                t.set_if_neq(next);
+            }
+            None => {
+                commands.entity(e).insert(next);
+            }
         }
-        font.font = handle.into();
-        font.font_size = FontSize::Px(tall * scale);
-        tc.0 = c;
     }
+}
+
+/// Whether the planted bomb's scenario icon shows `since` seconds after
+/// a beep that came `interval` after the one before: lit for the first
+/// half of each beep's interval (a 1 s one before a second beep is
+/// heard, `objectives::bomb::beep_interval`'s start), so it blinks in
+/// step with the beeps (our reading of a playtest, no spec).
+pub fn bomb_icon_lit(since: f32, interval: f32) -> bool {
+    let interval = if interval.is_finite() && interval > 0.0 { interval } else { 1.0 };
+    !since.is_finite() || since < interval / 2.0 || since > interval * 1.5
 }
 
 /// How far the local player's defuse is (`BombProgress`). Arming shows
@@ -530,6 +570,39 @@ fn centre(
             None => *vis = Visibility::Hidden,
         }
     }
+}
+
+/// The local player's weapon stepping to another mode prints what it
+/// switched to (`weapon::ModeTexts`, the install's strings: the Glock's
+/// and FAMAS's "Switched to burst-fire mode"), in the centre print.
+fn mode_texts(
+    mut events: MessageReader<crate::weapon::WeaponEvent>,
+    local: Query<(), With<LocalPlayer>>,
+    texts: Query<&crate::weapon::ModeTexts>,
+    hud: Option<Res<ActiveHud>>,
+    mut centre: ResMut<Centre>,
+    time: Res<Time>,
+) {
+    for ev in events.read().filter(|e| e.shown() && local.contains(e.owner)) {
+        let crate::weapon::WeaponEventKind::ModeChanged { mode } = ev.kind else {
+            continue;
+        };
+        let Some(token) = texts.get(ev.weapon).ok().and_then(|t| t.0.get(mode as usize)) else {
+            continue;
+        };
+        let text = hud
+            .as_ref()
+            .and_then(|h| h.0.menus.as_ref())
+            .and_then(|m| m.strings.get(&token.trim_start_matches('#').to_lowercase()))
+            .cloned()
+            .unwrap_or_else(|| token.to_string());
+        centre.0 = Some((text, time.elapsed_secs() + CENTRE_SECONDS));
+    }
+}
+
+/// The centre print's text now (tests).
+pub fn centre_text(world: &World) -> Option<String> {
+    world.get_resource::<Centre>().and_then(|c| c.0.as_ref().map(|(s, _)| s.clone()))
 }
 
 /// `mashup_objectives 1`: the bomb (where, time left, defuse progress)
