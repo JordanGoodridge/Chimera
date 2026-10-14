@@ -4,7 +4,7 @@
 //! pieces sharing one point array), then a key-values text section with the
 //! physics parameters.
 
-use bevy::prelude::*;
+use glam::Vec3;
 
 /// One solid's convex pieces and the parameters from its `solid` block.
 #[derive(Clone, Debug)]
@@ -294,7 +294,9 @@ pub fn break_blocks(bytes: &[u8]) -> Vec<Vec<(String, String)>> {
     };
     let mut at = header.max(0) as usize;
     for _ in 0..count.max(0) {
-        let Some(size) = i32_at(bytes, at) else { return Vec::new() };
+        let Some(size) = i32_at(bytes, at) else {
+            return Vec::new();
+        };
         at += 4 + size.max(0) as usize;
     }
     let text = bytes.get(at..).unwrap_or(&[]);

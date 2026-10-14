@@ -16,7 +16,6 @@ pub mod hud;
 pub mod impact_effects;
 pub mod impacts;
 pub mod lightmap;
-pub mod lumps;
 pub mod material;
 pub mod mount;
 pub mod movement;
@@ -24,9 +23,7 @@ pub mod nav;
 pub mod objectives;
 pub mod overlays;
 pub mod pain;
-pub mod pak;
 pub mod pcf;
-pub mod phy;
 pub mod player_anim;
 pub mod propdata;
 pub mod props;
@@ -44,12 +41,12 @@ pub mod trails;
 pub mod surfaceprops;
 pub mod view_anim;
 pub mod vgui;
-pub mod vhv;
 pub mod view_motion;
-pub mod vpk;
 pub mod water;
-pub mod wav;
 pub mod weapons;
+
+// Pure-data readers moved to `source_formats`, at their old paths.
+pub use source_formats::{lumps, pak, phy, vhv, vpk, wav};
 
 pub const GAME: &str = "cs_source";
 

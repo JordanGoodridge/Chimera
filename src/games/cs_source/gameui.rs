@@ -31,72 +31,16 @@
 
 use std::collections::HashMap;
 
+use source_formats::keyvalues::{Escapes, tokens};
+
 use super::hud::Kv;
 use crate::{
     map::hud::{GameUi, GameUiItem, KeyAction, ServerSetting, ServerSettingKind, UiImage, UiSound},
     mount::Mount,
 };
 
-/// Whether a platform condition (`$WIN32`, `!$OSX`, `$X360 || $PS3`)
-/// holds for the Windows PC game.
-pub(crate) fn condition_holds(cond: &str) -> bool {
-    let c = cond.trim().trim_start_matches('[').trim_end_matches(']');
-    c.split("||").any(|any| {
-        any.split("&&").all(|term| {
-            let term = term.trim();
-            let (neg, name) = match term.strip_prefix('!') {
-                Some(n) => (true, n),
-                None => (false, term),
-            };
-            let name = name.trim().trim_start_matches('$').to_uppercase();
-            let on = matches!(name.as_str(), "WIN32" | "WINDOWS");
-            on != neg
-        })
-    })
-}
-
-/// KeyValues as the Windows PC game reads them: an entry followed by a
-/// platform condition that doesn't hold there is left out.
-pub(crate) fn parse_pc(text: &str) -> Kv {
-    let t = super::surfaceprops::tokens(text);
-    let cond = |t: &[String], i: usize| t.get(i).filter(|s| s.starts_with('[') && s.ends_with(']')).cloned();
-    fn block(t: &[String], i: &mut usize, cond: &dyn Fn(&[String], usize) -> Option<String>) -> Kv {
-        let mut items = Vec::new();
-        while *i < t.len() && t[*i] != "}" {
-            let key = t[*i].clone();
-            *i += 1;
-            let mut keep = true;
-            // A condition between a block's name and its brace.
-            if let Some(c) = cond(t, *i) {
-                keep &= condition_holds(&c);
-                *i += 1;
-            }
-            if *i >= t.len() {
-                break;
-            }
-            let value = if t[*i] == "{" {
-                *i += 1;
-                let b = block(t, i, cond);
-                *i += 1; // the closing brace
-                b
-            } else {
-                let v = Kv::Value(t[*i].clone());
-                *i += 1;
-                v
-            };
-            if let Some(c) = cond(t, *i) {
-                keep &= condition_holds(&c);
-                *i += 1;
-            }
-            if keep {
-                items.push((key, value));
-            }
-        }
-        Kv::Block(items)
-    }
-    let mut i = 0;
-    block(&t, &mut i, &cond)
-}
+/// KeyValues as the Windows PC game reads them (`source_formats::keyvalues`).
+pub(crate) use source_formats::keyvalues::parse_pc;
 
 /// A `.res` file's root block, read as the PC game does, with its `#base`
 /// files merged in.
@@ -192,7 +136,7 @@ pub(crate) fn game_menu(root: &Kv, strings: &HashMap<String, String>) -> Vec<Gam
 /// section (`"blank" "===="` lines are rules), every other pair is a
 /// console line and its description.
 pub(crate) fn key_actions(text: &str, strings: &HashMap<String, String>) -> Vec<KeyAction> {
-    let t = super::surfaceprops::tokens(text);
+    let t = tokens(text, Escapes::Off);
     t.chunks_exact(2)
         .filter_map(|pair| {
             let (key, value) = (&pair[0], &pair[1]);
@@ -516,7 +460,7 @@ pub fn load(mount: &Mount) -> Option<GameUi> {
 /// form: `"cvar" { "#Label" { STRING | NUMBER min max | BOOL | LIST
 /// "label" "value" ... } { "default" } }` (a min or max of -1: none).
 pub(crate) fn scr_settings(text: &str, strings: &HashMap<String, String>) -> Vec<ServerSetting> {
-    let t = super::surfaceprops::tokens(text);
+    let t = tokens(text, Escapes::Off);
     let Some(open) = t.iter().position(|s| s == "{") else {
         return Vec::new();
     };
@@ -578,17 +522,6 @@ pub(crate) fn scr_settings(text: &str, strings: &HashMap<String, String>) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn conditions_as_the_windows_pc_reads_them() {
-        assert!(condition_holds("[$WIN32]"));
-        assert!(condition_holds("[!$OSX]"));
-        assert!(!condition_holds("[$X360]"));
-        assert!(!condition_holds("[$POSIX]"));
-        assert!(!condition_holds("[$LINUX]"));
-        assert!(condition_holds("[$X360 || $WIN32]"));
-        assert!(!condition_holds("[$WIN32 && $X360]"));
-    }
 
     #[test]
     fn scheme_entries_for_other_platforms_are_dropped() {

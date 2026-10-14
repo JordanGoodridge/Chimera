@@ -11,7 +11,9 @@ use std::collections::HashMap;
 
 use bevy::math::Vec2;
 
-use super::{bsp::METERS_PER_UNIT, material::MaterialLoader, surfaceprops::tokens};
+use source_formats::keyvalues::{Escapes, tokens};
+
+use super::{bsp::METERS_PER_UNIT, material::MaterialLoader};
 use crate::map::water::{MapScreenWarp, MapWaterMaterial, WaterEnvmap};
 
 /// A KeyValues node: a value or a block of named children, in order.
@@ -23,7 +25,7 @@ pub enum Node {
 
 /// Parse KeyValues text into its top-level entries.
 pub fn parse(text: &str) -> Vec<(String, Node)> {
-    let t = tokens(text);
+    let t = tokens(text, Escapes::Off);
     let mut i = 0;
     block(&t, &mut i)
 }

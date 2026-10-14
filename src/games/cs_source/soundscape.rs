@@ -8,13 +8,13 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+use source_formats::keyvalues::{Escapes, tokens};
 use vbsp::Bsp;
 
 use super::{
     material::MaterialLoader,
     movement::to_engine,
     sound::{interval, named_level, wave_dry, wave_file},
-    surfaceprops::tokens,
 };
 use crate::map::sound::{
     Interval, MapSounds, ScapeLoop, ScapePosition, ScapeRandom, Soundscape, SoundscapeEmitter, SoundscapeZone,
@@ -222,7 +222,7 @@ impl Builder<'_, '_> {
 pub fn load(materials: &mut MaterialLoader, bsp: &Bsp, map: &str, sounds: &mut MapSounds) {
     let mut files: Vec<String> = Vec::new();
     if let Some(manifest) = materials.read("scripts/soundscapes_manifest.txt") {
-        let t = tokens(&String::from_utf8_lossy(&manifest));
+        let t = tokens(&String::from_utf8_lossy(&manifest), Escapes::Off);
         files.extend(
             t.windows(2)
                 .filter(|w| w[0].eq_ignore_ascii_case("file"))
@@ -237,7 +237,7 @@ pub fn load(materials: &mut MaterialLoader, bsp: &Bsp, map: &str, sounds: &mut M
     let mut scripts: HashMap<String, Vec<(String, Node)>> = HashMap::new();
     for f in files {
         let Some(bytes) = materials.read(&f) else { continue };
-        let t = tokens(&String::from_utf8_lossy(&bytes));
+        let t = tokens(&String::from_utf8_lossy(&bytes), Escapes::Off);
         let mut i = 0;
         while i + 1 < t.len() {
             if t[i + 1] != "{" {
