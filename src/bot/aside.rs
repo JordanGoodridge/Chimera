@@ -6,6 +6,13 @@
 //! there. Fighting is left as it is (it shoots what it sees from where it
 //! stands). The console says once per map that bots have no mesh there.
 //! Our design (docs/tech-debt.md): no CS:S behaviour to match.
+//!
+//! Known shortcuts (docs/tech-debt.md): Bots on maps without a navigation mesh
+//! (`bot::aside`, our design: CS:S generates one): they step off spawns and
+//! teleport destinations to a clear spot within 320 units and wait, shooting
+//! what they see; a map with a mesh of a few areas (kz_11342: 3) counts as
+//! having one. Why it's OK for now: Keeps them out of the way on minigame and
+//! course maps; real minigame play is out of scope.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

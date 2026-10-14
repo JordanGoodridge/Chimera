@@ -1,6 +1,8 @@
 //! HUD messages (game_text; specs/source/entity_io.md, "game_text"): what
 //! the server sends and how a client fades, scans out and places them.
 //! The client draws them (`client::game_text`).
+//!
+//! Covers: game_text fades and placement, `HudMessages`.
 
 use bevy::prelude::*;
 

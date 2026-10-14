@@ -6,6 +6,22 @@
 //! `light_spot`: a light style the lightmaps hold apart). The map draws
 //! them; the logic keeps whether each is on (`LogicWorld::part_states`,
 //! `LogicWorld::light_styles`).
+//!
+//! Covers: env_sprite Show/Hide/ToggleSprite, func_dustmotes/func_dustcloud and
+//! env_steam/env_steamjet TurnOn/TurnOff (steam also Toggle), env_spritetrail
+//! (always on), env_smokestack TurnOn/TurnOff/Toggle, info_particle_system
+//! Start/Stop, point_tesla TurnOn/TurnOff/DoSpark (its sparks timed in
+//! `beams.rs`, drawn by `map::emitters` on `Effect::Tesla`),
+//! env_soundscape(_proxy) Enable/Disable/ToggleEnabled (the bridge writes
+//! `map::SoundscapeSwitches`), `light`/`light_spot` TurnOn/TurnOff/Toggle on
+//! the world's switchable light-style table; env_tonemap_controller's inputs as
+//! `LogicWorld::tonemap` (kept over round restarts), written to
+//! `map::TonemapInputs`; func_areaportal/func_areaportalwindow: closed while a
+//! linked door is fully closed, else StartOpen and Open/Close/Toggle, as
+//! `LogicWorld::closed_area_portals`, which the bridge writes to
+//! `map::vis::AreaPortalStates`; func_occluder: StartActive and
+//! Activate/Deactivate/Toggle, as `LogicWorld::inactive_occluders`, written to
+//! `map::vis::OccluderStates`.
 
 use bevy::math::Vec3;
 

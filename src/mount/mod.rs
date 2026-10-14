@@ -2,6 +2,17 @@
 //! archives and loose files, plus local configuration and finding the
 //! installs (`install`: config, saved settings, Steam libraries).
 //! Game-specific archive formats live in `games/<name>/`.
+//!
+//! `Mount` (ordered layers, first match wins), `FileSource`, `LooseDir`, path
+//! normalization, `mashup.local.toml` loading, KeyValues text (`keyvalues.rs`:
+//! Steam's files and our saved ones), finding installs (`install.rs`: the
+//! config's path, else the one saved in the user's `settings.toml` (beside the
+//! cfg folder; `$MASHUP_SETTINGS`), else Steam: its folders per system (Windows
+//! registry `SteamPath`; `$MASHUP_STEAM_ROOT` replaces them), each
+//! `libraryfolders.vdf` library (old and new formats), the app's
+//! `appmanifest_<id>.acf` (fully installed; its build id for the mount doctor)
+//! and the files the game needs; `STEAM_GAMES` lists the games it looks for;
+//! `LocalConfig::game_path` goes through it).
 
 pub mod config;
 pub mod install;

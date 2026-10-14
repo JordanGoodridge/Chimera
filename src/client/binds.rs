@@ -11,6 +11,21 @@
 //! keys held this frame (`pressed`, `just_pressed`), with that system's
 //! own rules (only while playing, not while typing ...); `console::run_binds`
 //! leaves them alone. Every other bind runs its line through the console.
+//!
+//! Every game key is a bind (`Console::binds`, saved in config.cfg):
+//! `default_binds` (CS:S's: the install's `cfg/config_default.cfg`, read at
+//! start by `read_install_defaults`, else the same table in
+//! `CSS_DEFAULT_BINDS`; plus `MASHUP_BINDS` on keys CS:S leaves free: Alt free
+//! look, V noclip, F9 `bug`, the debug keys F3 `toggle mashup_drawcollision`,
+//! F8 `debugui`, F11 `mashup_inspector`) go in before config.cfg runs
+//! (`binddefaults`; `binddefaults missing` for configs written before, which
+//! lack `CONFIG_MARK`; `binddefaults new` once after a config lacking
+//! `DEFAULTS_MARK` puts `added_defaults` on free keys, so older configs get
+//! defaults added since; saved binds win); binds whose line is one of `POLLED`
+//! (`+forward`, `slot1`, `buymenu`, `radio1`, ...) are read from the held keys
+//! by the system that owns the action (`pressed`, `just_pressed`,
+//! `wheel_notches`), all others run through the console (`console::run_binds`);
+//! Source key names, rebind and clear lines for the options.
 
 use std::{collections::BTreeMap, sync::RwLock};
 

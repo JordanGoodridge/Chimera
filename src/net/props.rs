@@ -12,6 +12,10 @@
 //!   the short way), snapped on a jump (a round restart puts props back).
 //!   Pushing one is the server's to simulate: the client sees the result
 //!   after the delay (Source the same).
+//!
+//! Physics props: the server's into `NetProp` (`write_props`); a client's
+//! copies made kinematic and `NetDrawn`, drawn between snapshots at the render
+//! tick (`draw_props`).
 
 use avian3d::prelude::{ColliderDisabled, LinearVelocity, RigidBody};
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};

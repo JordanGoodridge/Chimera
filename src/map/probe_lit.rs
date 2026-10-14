@@ -3,6 +3,10 @@
 //! when they move, instead of real-time lights and shadow maps. Character
 //! bodies, the weapons they hold and loose items use it; each has its own
 //! material instances.
+//!
+//! Moving models (character bodies, held and loose weapons) lit from the baked
+//! `LightField` where they are (`ProbeLit`, own `PropMaterial` instances,
+//! re-sampled after moving 0.25 m), as Source lights models; no shadow maps.
 
 use bevy::prelude::*;
 

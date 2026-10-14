@@ -1,5 +1,26 @@
 //! The server side: listening, the join handshake, a character per
 //! client, intents from clients, and what characters replicate.
+//!
+//! The server: `listen` (`udp::UdpServer`: netcode, unsecure, `maxplayers` less
+//! the host, queries on the same port), the join handshake (version, protocol,
+//! `sv_password` from the client's netcode user data, full; refused with
+//! `Refused` and dropped a second later), a character per client (team with
+//! fewer players, out of the game (`core::Connecting`: dead, not solid, no
+//! health) until its client reports the map loaded (`Loaded`, also after each
+//! map change), then spawned as the rules allow (`rules::enter_game`), `Seed`
+//! from its id), each player's commands queued by tick (`CommandBuffer`: late
+//! and too-early ones dropped; the lead reported for the client's newest clock
+//! epoch only), `kick <name>` and `kickid <id> [message]` ("Kicked by Console")
+//! and one applied per tick before the rules (the last repeated when missing),
+//! replicon's tick kept equal to the simulation's (`lock_replication_tick`),
+//! each client's updates paced by its `cl_updaterate` and `rate`
+//! (`UpdatePacing`, `pace_messages`: its mutations dropped on ticks it isn't
+//! due one; `RateLimits`: `sv_minupdaterate`, `sv_maxupdaterate`, `sv_minrate`,
+//! `sv_maxrate`), its own state sent as a delta with its updates, after each
+//! tick `NetBody` and each player's `OwnState` (predicted components, lead,
+//! buffer) from the simulation's values, the host's and bots' characters marked
+//! for replication, leaving players' characters and weapons removed; `players`
+//! for `status`.
 
 use std::{
     net::{Ipv4Addr, SocketAddr, UdpSocket},

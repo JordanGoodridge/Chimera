@@ -4,6 +4,31 @@
 //! func_brush (`movers::Toggle::spawn_wall_toggle`). What they do to
 //! players goes out as `Effect`s (the bridge writes `core::MapControls`,
 //! HUD events, score changes).
+//!
+//! Covers: specs/source/game_entities.md: player_speedmod (`Effect::SpeedMod`,
+//! written to `core::MapControls`), game_ui (the player's buttons each tick
+//! (`Player::buttons`, from `MapControls::buttons`) into Pressed/Unpressed and
+//! axis outputs, at controls, one driver, FieldOfView, use/jump deactivation),
+//! env_fade and env_hudhint (`Effect::Hud` → `hud::HudEvent`, the local
+//! player's `ScreenFades`), game_score (`core::ScoreChange` for the rules),
+//! env_explosion (the game's blast at its magnitude and radius, removed 0.3 s
+//! later unless repeatable), func_conveyor (`push_conveyors`: base velocity for
+//! players standing on it, before movement), func_wall_toggle (a func_brush
+//! toggled).
+//!
+//! Known shortcuts (docs/tech-debt.md): Game entities
+//! (specs/source/game_entities.md) beyond or short of the spec: "Suppress
+//! weapons" and game_ui's "Hide Weapon" block firing and hide the view model
+//! (`MapControls::weapon_hidden`) without holstering (others still see the
+//! gun); "Suppress HUD" is kept but no HUD hides yet; a negative ModifySpeed
+//! holds the player like 0; a respawn resets the camera view and freeze too
+//! (spec open question 2 of viewcontrol); env_fade's modulate draws as a normal
+//! blend (Q6); env_hudhint uses the hint line (Q5); game_score's team points go
+//! to the rounds won and can't go below 0 (Q8); env_explosion is the game's HE
+//! blast at its magnitude and radius (its own probe, flags other than "No
+//! Damage" and DamageForce ignored; Q7); func_conveyor doesn't scroll its
+//! texture and a network client doesn't predict its push. Why it's OK for now:
+//! Each is its spec's open question or a small look; maps play.
 
 use bevy::prelude::*;
 

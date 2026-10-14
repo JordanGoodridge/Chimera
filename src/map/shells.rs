@@ -5,6 +5,11 @@
 //! the first-person view model. Until its first bounce it is drawn in the
 //! view-model pass, where the view model's field of view places it next to
 //! the gun; after that in the world.
+//!
+//! Spent shells for any game: `MapShell`/`MapShellPhysics` from the game,
+//! thrown from the view model's ejection attachment on brass events, flying,
+//! bouncing (sounds), resting and fading; drawn in the view-model pass until
+//! the first bounce.
 
 use std::collections::HashMap;
 

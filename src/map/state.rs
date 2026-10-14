@@ -1,6 +1,10 @@
 //! State the logic layer writes on spawned map parts and the map applies
 //! (entity parts on/off, prop looks and sequences, light styles,
 //! soundscape switches, tonemap inputs, view kicks).
+//!
+//! What the logic writes on spawned parts and the map applies: `EntityPart`,
+//! `PropLook`, `PropSequence`, `LightStyles`, soundscape switches,
+//! `TonemapInputs`, `ViewKick`.
 
 use bevy::prelude::*;
 

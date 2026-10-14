@@ -11,6 +11,21 @@
 //! (0 fixed, 1 facing the view, 2 turning about the vertical only); UV_1
 //! the corner across and up (facing kinds); COLOR its light and, in
 //! alpha, how much the corner sways.
+//!
+//! Known shortcuts (docs/tech-debt.md): Detail props
+//! (`games::cs_source::detail`, `map::detail`) from the public BSP and entity
+//! docs, not measured: the cross and tri shapes' layout (tri blades out from
+//! the centre by the shape size's share of the width and leaning out by the
+//! shape angle) is our reading; sway is ours (tops swing along env_wind's
+//! direction by its mean speed x 0.25 s, 1.5 rad/s, in a phase per sprite;
+//! CS:S's detail sway isn't documented); `cl_detaildist` and `cl_detailfade`
+//! are fixed at their defaults (1200, 400; no cvars); the fade is linear and
+//! dithered, alpha tested at 0.5; detail light styles (the `dplt`/`dplh` lumps)
+//! and HDR detail light are not read (each sprite's own baked light only). Why
+//! it's OK for now: Grass and weeds show on the maps that have them
+//! (cs_militia, cs_compound, de_port, kz_ancient_ruins, mg_kommando,
+//! surf_happyhands) at a few draw calls; compare with CS:S screenshots (refcmp)
+//! when it matters.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

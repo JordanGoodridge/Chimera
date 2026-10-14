@@ -23,6 +23,20 @@
 //!   ringing as `Senses` to the player it hit.
 //! - **Dropping** (`drop`, G): a request to the server (`DropRequest`);
 //!   picking up is the server's (walking over, +use).
+//!
+//! Weapons over the network (slice 4): the server writes what each character
+//! holds (`NetHeld`), loose weapons and grenades in flight (`NetItem`) and
+//! smoke clouds (`NetSmoke`, named by the grenade's weapon id the cloud keeps:
+//! `SmokeCloud::weapon`), sends each round fired to the other clients
+//! (`FireBullets`), reloads/swings/throws (`WeaponFx`), detonations, flashes
+//! and ringing to the player hit (`Senses`), damage that reached a player's
+//! health to its client (`Hurt`: the damage indicators), deaths (`Killed`) and
+//! hit confirmations (`HitConfirm`), and drops what a client asks to
+//! (`DropRequest`); a client puts others' weapons in their hands
+//! (`weapon::remote::show_held`), traces their rounds again
+//! (`weapon::remote::RemoteShot`), draws items from snapshots as
+//! `map::loose::ShownItem`s, starts smoke clouds, writes `Died`, `Detonated`,
+//! `Blinded`, `Deafened`, `DamageTaken` for its own effects and HUD.
 
 use avian3d::prelude::LinearVelocity;
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};

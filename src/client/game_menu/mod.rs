@@ -19,6 +19,88 @@
 //! is a console line (`map`, `bot_add`, `bind`, cvars ...), so the menu
 //! holds no game logic: the model (`GameMenu::handle`) turns keys and
 //! clicks into those lines, and is unit-tested without a window.
+//!
+//! The main menu and the game menu (one module per dialog: `main_menu.rs` the
+//! left-hand entries, `options_pages.rs` the options' tabs and their Advanced
+//! dialogs, `create_server.rs`, `loading.rs` the loading and Disconnected
+//! dialogs, `extras.rs` ours (Lucker Party Options, Bots, Team); `model.rs` the
+//! shared model, `draw.rs` the drawing, `systems.rs` input and the Bevy
+//! systems, `tests.rs`): Esc, `menu [page or options tab]`,
+//! `gameui_activate`/`gameui_hide`), one implementation drawn as CS:S's GameUI.
+//! Out of a game (startup without a map, `Args::starts_in_game`; after
+//! `disconnect`) it is the main menu: open for good over the game's background
+//! picture (`GameUi::background_for` the window's shape; black without it),
+//! in-game entries hidden, a map it starts shown loading in GameUI's loading
+//! dialog (`GameUi::loading`, the install's `LoadingDialogNoBanner.res`: the
+//! stage the loader reported through `map::loading`, worded by the game's
+//! `LoadingProgress_*` strings, a progress bar, Cancel back to the main menu)
+//! until `console::finish_map_load` puts the game in (`entered_game`); in a
+//! game, over the darkened game, a dialog's frame over the world drawn again,
+//! dimmed (`world_behind_dialogs`: while a dialog is open the 3D view draws
+//! into a picture shown under the UI and, at 40 %, under each frame, so the
+//! menu's entries under it don't show). The same dialog over the main menu's
+//! background for network play (`joining`, `dialog_state`): `connect`
+//! (connecting, retrieving server info), the server's map changes ("Server is
+//! changing level..."), downloading the map (the bar follows the bytes), the
+//! map's load, the host's own map change, and "Starting local game server..."
+//! when `maxplayers` > 1; failures and refusals in it ("Disconnected",
+//! `net_failure_text`: the game's strings for a full server, older or newer
+//! server, timeouts and download errors, else the server's words; Close);
+//! `mashup_loading_details 1` adds a detailed view under it (`LoadTimeline`:
+//! each stage's time, bytes and percentage; the server's name, address, map,
+//! players and ping). The entries at the left: the game's `GameMenu.res`
+//! entries mashup can do, in its words and order (Resume and Disconnect only in
+//! a game, Find Servers opens the server browser (`server_browser.rs`), Create
+//! Server, report a bug), then ours after a gap (quick start: rounds on
+//! de_dust2 with bots; the greybox test map; bots and team in a game; Lucker
+//! Party Options: the settings CS:S's options don't have; console), under the
+//! game's title (`gameinfo.txt` title lines in the scheme's title font, else
+//! `MASHUP`); each dialog a VGUI frame (`widgets.rs`: moved by its title bar,
+//! brought to the front by a click, closed from its X, centred the first time
+//! it opens in a session) in the GameUI scheme (`map::hud::GameUi`, read on a
+//! thread at startup; built-in colours and words without it), its controls
+//! where the install's layout puts them and greyed where mashup lacks what they
+//! set (`page_controls`; without the layouts, a column). Dialogs: Create Server
+//! (`CreateMultiplayerGame*Page.res` on a property sheet: Server (the map
+//! drop-down with `< Random Map >` first, include bots, how many, the
+//! difficulty radio buttons: a preset of
+//! `bot_reaction`/`bot_aim_error`/`bot_turn_rate`), Game (the install's
+//! `cfg/settings.scr` options mashup has, in a scrolled list, plus ours, rounds
+//! or deathmatch), Bot (which team bots join, `bot_prefix`,
+//! `bot_join_after_player`); Start sets what changed and loads the map,
+//! Cancel), bots (`bot_add`, `bot_kick`), team (`jointeam`; Spectate greyed
+//! when the server's replicated `mp_allowspectators` is 0), options (512 x 406
+//! with OK / Cancel / Apply: changes apply at once, Cancel puts back what
+//! changed since it opened or Apply) with tabs: Keyboard (the game's
+//! `kb_act.lst` actions plus ours, with their keys; select, then click again,
+//! Enter or "Edit key" and press a key, mouse button or wheel; "Clear Key";
+//! "Use Defaults"; actions mashup lacks are greyed; "Advanced...": the dialog
+//! of `OptionsSubKeyboardAdvancedDlg.res`, fast weapon switch and developer
+//! console (`con_enable`), OK keeps, Cancel or Esc puts back), Mouse, Audio,
+//! Video (an aspect ratio filtering the resolutions; "Adjust brightness
+//! levels...": `OptionsSubVideoGammaDlg.res`, `mat_monitorgamma` with the
+//! install's `gamma` test picture; its "Advanced...":
+//! `OptionsSubVideoAdvancedDlg.res`, texture detail, antialiasing, filtering,
+//! water detail, vertical sync, HDR, field of view; Virtual Reality Mode left
+//! out, `draw::LEFT_OUT`), Voice (greyed: no voice chat), Multiplayer (the
+//! controls of `OptionsSub*.res` for the archived cvars in `options.rs`:
+//! sliders with tick marks, drop-downs, check boxes, the sensitivity's text
+//! entry, the crosshair preview; its "Advanced...":
+//! `MultiplayerAdvancedDialog.res` listing the install's `cfg/user.scr` options
+//! (`GameUi::user_settings`), those mashup has as controls, the rest greyed,
+//! set on OK); docs/plans/active/ui-parity.md lists every control, its cvar and
+//! why the rest are greyed; `bugreport`; `quit`. Tab and Shift+Tab walk a
+//! dialog's controls, Ctrl+Tab its tabs, Enter presses the default button (OK,
+//! Start), Space the focused control, Esc cancels; `menuinput` drives it. A
+//! model (`GameMenu::handle`: keys and clicks in, console lines out) and its
+//! drawing; a new game's bots are added once the `map` load finishes. While
+//! open the mouse is free (so the local player's input is ignored), binds don't
+//! run, the other menus close; Esc with the console open only closes the
+//! console. Text in the GameUI scheme's fonts (`fonts.rs`: Tahoma and Verdana
+//! where installed). The interface sounds (`GameUi::sounds`:
+//! `ui/buttonrollover` as the pointer comes onto an entry, `ui/buttonclick` and
+//! `ui/buttonclickrelease` as one is pressed and let go); no menu music (the
+//! install has none for CS:S).
 
 mod create_server;
 mod draw;

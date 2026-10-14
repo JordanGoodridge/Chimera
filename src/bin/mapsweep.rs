@@ -7,6 +7,12 @@
 //! entities, props, spawns), and with `--shots` a screenshot from the
 //! first spawn plus the `mashup_perf_log` frame time there. Writes
 //! `report.md`, `report.csv` and `warnings.txt` to `--out`.
+//!
+//! Dev tool: load every map in the content cache headless (each under
+//! `catch_unwind`), run its logic a few seconds, and report load errors,
+//! warnings by kind, unhandled entity classes, logic complaints and counts
+//! (`target/mapsweep/report.md`, `.csv`); `--shots` adds a screenshot and frame
+//! time per map.
 
 use std::{
     collections::{BTreeMap, BTreeSet},

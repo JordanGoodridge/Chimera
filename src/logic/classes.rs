@@ -1,6 +1,31 @@
 //! Entity classes: the logic entities, filters, game_text and the command
 //! entities (specs/source/entity_io.md), and the dispatch to triggers and
 //! movers.
+//!
+//! Covers: logic_auto/relay/timer/case/compare/branch, math_counter, filters,
+//! game_text, point_servercommand (game-rule settings by prefix, put back when
+//! the map unloads, a console line each) / point_clientcommand (allowlist).
+//!
+//! Covers: env_global: global states outlive round restarts; logic_auto's
+//! `globalstate` gate.
+//!
+//! Known shortcuts (docs/tech-debt.md): point_servercommand (our rule,
+//! `logic::classes::check_server_command`; the spec leaves the list to us):
+//! `say` prints; one `<name> <value>` setting whose name starts `sv_`, `mp_`,
+//! `phys_`, `bot_` or `ammo_` and contains none of `SETTING_DENY` (password,
+//! rcon, download/upload, log, ban, pure, sv_lan/region/tags/contact, the
+//! point_servercommand gate, sv_cheats) is applied when our console has that
+//! cvar (plus `mp_restartgame`, a command here), extreme values clamped
+//! (`SETTING_BOUNDS`); unknown cvars (plugin cvars) are logged and ignored;
+//! every other command (quit, exec, bind, connect, rcon, changelevel/map, kick,
+//! plugin commands such as `sm_say`) is refused. Each setting's value before
+//! the map first changed it comes back when the map unloads (another map,
+//! disconnect), not at round restarts; Source keeps them past the map, which
+//! leaks one map's movement rules into the next. Every applied, ignored,
+//! refused and restored setting prints a console line. game_text font is
+//! Trebuchet-sized default font scaled from 480 lines. Why it's OK for now: The
+//! 89 cached community maps send `say`, plugin commands and a few dozen
+//! sv_/mp_/phys_ settings (`sm_say`, `ma_csay`, `rcon` refused).
 
 use super::hud::HudMessage;
 use super::movers::{self, Button, Door, MoveLinear, PathTrack, Rotating, Toggle, Train};

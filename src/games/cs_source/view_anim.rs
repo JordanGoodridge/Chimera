@@ -5,6 +5,15 @@
 //! view_models.md 6–8: muzzle flash, brass); how they are drawn (FOV,
 //! handedness) and their console variables. Drives each character's
 //! `map::ViewAnimator`; `map::view_model` draws it.
+//!
+//! Known shortcuts (docs/tech-debt.md): View-model idle (`view_anim`): the
+//! knife idles `KNIFE_IDLE` (20 s) after its draw or last attack (CS:S's holds
+//! still at least 10 s; its idle turns the blade from 3.4 s in); `IdleInterval`
+//! read as "least time from one idle's start to the next" (only the TMP's 5 s
+//! sway shows it). Captures to confirm: the knife 15, 20, 25 and 30 s after
+//! drawing it, and the TMP 1-10 s after drawing it (`setpos -295 1078 120;
+//! setang 0 0 0` on de_dust2, `give weapon_tmp`). Why it's OK for now: Only the
+//! knife and TMP idles move (`dump --sequences`).
 
 use bevy::prelude::*;
 

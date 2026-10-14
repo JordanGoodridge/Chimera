@@ -7,6 +7,16 @@
 //! (`cfg/settings_default.scr`); the console's default is 0 (none), as
 //! CS:S's. What CS:S shows and how its intermission ends is unmeasured
 //! (docs/plans/active/parity-gaps.md, capture C9).
+//!
+//! Known shortcuts (docs/tech-debt.md): End of a map's game (`rules::game_end`;
+//! public cvar descriptions, CS:S unmeasured): with rounds the limits are
+//! checked as a round's end pause runs out, in deathmatch the time limit at
+//! once; the intermission holds everyone (the freeze) with the scoreboard up
+//! for `mp_chattime`; the next map is the map cycle's (`cfg/mapcycle.txt`, else
+//! `mapcycle_default.txt`, maps not installed left out), held in the
+//! intermission until it loads; `mp_maxrounds` counts draws; no `nextlevel`
+//! cvar. Why it's OK for now: Captures wanted (C9) in
+//! docs/plans/active/parity-gaps.md.
 
 use bevy::prelude::*;
 

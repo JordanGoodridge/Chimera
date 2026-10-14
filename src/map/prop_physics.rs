@@ -5,6 +5,16 @@
 //! woken; a prop that started asleep reports its first wake
 //! (`PropAwakened`, Source OnAwakened). A round restart puts each back as
 //! it spawned.
+//!
+//! Physics props' motion for the logic: frozen props (`FrozenBody`, static with
+//! their brushes) set moving by `enable_motion`, `disable_motion`,
+//! `wake`/`sleep`, props that start asleep (`StartAsleep`: put to sleep once in
+//! the simulation, `PropAwakened` on their first wake), `reset` at a round
+//! restart; players' physics shadows (`PhysicsShadow` on the shadow body,
+//! `Shadowed` on its character; `ShadowContacts` keeps a shadow's pairs to
+//! `prop_physics` bodies it can push (up to 350 kg) and keeps a shadowed
+//! character's own pairs only to `prop_physics` bodies too heavy to push; the
+//! shadow is on `core::SHADOW_LAYER`, which no spatial query sees).
 
 use avian3d::prelude::*;
 use bevy::{ecs::system::SystemParam, prelude::*};

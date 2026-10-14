@@ -10,6 +10,12 @@
 //! after its UI and before the frame goes to the window. Not specified:
 //! the game's exact ramp (a reference capture at 1.6 and 2.6 would settle
 //! it; docs/plans/active/ui-parity.md).
+//!
+//! `mat_monitorgamma` (archived; 2.2, 1.6 to 2.6; the video tab's brightness
+//! dialog): off the default, the UI camera (`debug::UiCamera`, the last to
+//! draw) carries `MonitorGamma` and a pass after its UI and before the frame
+//! goes to the window raises the whole frame (world, HUD, menus) to
+//! `mat_monitorgamma / 2.2`.
 
 use bevy::{
     asset::embedded_asset,

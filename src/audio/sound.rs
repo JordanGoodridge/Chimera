@@ -3,6 +3,8 @@
 //! and level), applies the distance model and left/right panning toward
 //! the listener, and plays it, pitch as playback speed. A new sound on the
 //! same (source entity, channel) replaces the one playing there.
+//!
+//! The listener: `SoundListener` (the client has one) and its `Ear`s.
 
 use std::sync::Arc;
 

@@ -438,6 +438,13 @@ Ranked by payoff over cost and risk. Session counts are rough
   conflict file becomes rarely edited. No code risk.
 - **Cost**: 1 session. **Risk**: losing information: move, don't delete
   (check each row's facts are in the file's `//!` doc first).
+- **Done** (2026-10-13): ARCHITECTURE.md 133 KB to 22 KB, tech-debt.md
+  109 KB to 15 KB. Rows whose facts the `//!` doc already held were
+  dropped; every other row's text was appended to its file's `//!` doc
+  (folder rows split per file where they named files, else into the
+  folder's `mod.rs`), debt rows as a "Known shortcuts" paragraph. Some
+  `//!` docs now repeat themselves in places; trim them as the files are
+  next edited.
 
 ### P3. Sort `map` (and `client`) into top-level modules in the crate
 

@@ -107,6 +107,11 @@ measurements):
   room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
   side. `map_plugin.rs` builds `map::MapPlugin` (map, then audio, in the
   old order); the architecture test keeps map, logic and net off audio.
+- [x] Docs diet (P2): docs/ARCHITECTURE.md's module table became one
+  line per module (133 KB to 22 KB) and docs/tech-debt.md one line per
+  entry (109 KB to 15 KB); the detail moved into the files' `//!` docs
+  (debt under "Known shortcuts"). `architecture::docs_stay_one_line_per_entry`
+  caps the line lengths and checks the paths.
 - [ ] (2) `anim`: not moved. `map::anim` (`AnimSet`, `Animator`) is data
   in `MapData` and evaluated headless for the server's hitboxes
   (`bodies::SimAnimator`); ragdolls (`ragdoll`, `placed_ragdoll`) are

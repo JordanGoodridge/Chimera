@@ -19,6 +19,38 @@
 //! - In a network game the server sends the parts' poses (`NetRagdoll`,
 //!   spec 6.10: up to 24 parts) and a client draws its copy from them
 //!   (`net::ragdolls`).
+//!
+//! Map-placed ragdolls (prop_ragdoll, specs/source/physics_brushes.md 6):
+//! `PlacedRagdoll` on the prop node (the model's `.phy` ragdoll, start pose,
+//! the drawn skeleton's joints, spawnflags); `make` spawns a `Ragdoll` (owner:
+//! the node, `placed`) with the same bodies and joints as a character's, debris
+//! ones on the ragdoll layer (shots push the part hit), held still while pinned
+//! (16384) or asleep (65536) until EnableMotion or a shot; `pose` moves the
+//! node with body 0 and poses its bones from the bodies; killed or not solid as
+//! the logic says (`logic::bridge` sets `gone`/`solid`); remade at a round
+//! restart.
+//!
+//! Known shortcuts (docs/tech-debt.md): Physics brushes and helpers
+//! (specs/source/physics_brushes.md): map prop_ragdolls (`map::placed_ragdoll`)
+//! are simulated as dead players' ragdolls are (same joints, settling,
+//! separation repair), from Hammer's pose ("angleOverride": each part bone
+//! turned to its angles and placed by its posed ancestor's reference offset,
+//! not the joints' attachment offsets; no community map has one) or their first
+//! sequence at the entity's angles; debris ones (flag 4: all ten on the maps)
+//! are on the ragdoll layer, so players pass through them and bullets go on
+//! through, pushing the part they hit by the ragdoll bullet push (4000 kg·in/s,
+//! not the weapon's own force; spec 6.6); others are solid to players and shots
+//! like props, but players' physics shadows don't push them (spec Q6); a model
+//! without a ragdoll `.phy` still lies on its back below its origin, not
+//! simulated; FadeAndRemove removes it at once (no fade); constraints naming a
+//! ragdoll aren't attached to its parts; a network client draws the parts from
+//! the server's (24 at most), its own bodies kinematic; func_physbox's mass is
+//! the compiler's (lump 29) or its hulls' boxes x the default density; the
+//! thin-rod damping rule isn't applied; a broken physbox throws no gibs;
+//! physboxes aren't replicated to network clients (they stay where the map put
+//! them there); thrusters push about the body's origin, not its centre of mass
+//! (Q3). Why it's OK for now: mg_ maps' karts and boats move; measurements are
+//! the spec's open questions.
 
 use std::sync::Arc;
 

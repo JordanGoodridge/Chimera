@@ -4,6 +4,21 @@
 //! read at run time), else the game's weights; grenades by role; a
 //! defusal kit for the defusing team. The buying rules themselves (eco,
 //! full buy, armour first) are `economy`'s.
+//!
+//! Known shortcuts (docs/tech-debt.md): Bot buying
+//! (`weapon::economy::autobuy_rolling` with `BotBuying` from `bot::buy`; CS:S's
+//! bot buying isn't public): a primary only with $650 left for kevlar after it
+//! (the profile's `WeaponPreference` list in order, else `Prices::bot_weights`
+//! among the dearer half), else an eco round (nothing; a kit with $1500 or
+//! more), or with $1000 or less kevlar then pistol ammo; then ammo, kevlar and
+//! helmet (else kevlar), a kit for counter-terrorists on bomb maps, grenades by
+//! role. `WeaponPreference` names are read from the install's `botprofile.db`
+//! at run time; the alias table (`bot::buy::preference_alias`: mp5,
+//! autoshotgun, krieg550, ...) is from the game's buy aliases as commonly
+//! known, not checked against the install's file here; a block's own list
+//! replaces the inherited one (ours). No team-wide eco or force-buy decisions,
+//! no difficulty-based choices. Why it's OK for now: Bots save and full-buy
+//! like players; kits on the CT side.
 
 use bevy::prelude::*;
 

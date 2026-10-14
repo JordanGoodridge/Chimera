@@ -22,6 +22,19 @@
 //!   `ObjectiveNews` (the HUD's words) and the rules' sounds as
 //!   `ServerSound` (`map::GameSound`: beeps, the plant, the defuse, the
 //!   blast, hostages).
+//!
+//! The rules over the network (slice 5): the server writes the round
+//! (`NetRound`: phase and times in server ticks, score, buy window, bomb
+//! outcome, hostage tally), scoreboard lines (`NetScore`: kills, deaths, ping,
+//! bot/bomb/kit), the planted bomb (`NetBomb`) and hostages (`NetHostage`,
+//! replicated as characters), checks buy and team requests (`economy::buy`,
+//! `rules::join_team`; refusals as `Notice`), sends round ends, objective
+//! events and the rules' sounds (`map::GameSound`; a player's own predicted
+//! ones, `map::PredictedSound`, to everyone but that player's client); a client
+//! writes them into single player's resources and components (`RoundState`,
+//! `BuyWindow`, `BombState`, `HostageTally`, `PlantedBomb`, `Hostage`, `Score`,
+//! `DefuseKit`, its own `Money`, `Armor`) with times moved onto its clock
+//! (`ServerTime`).
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;

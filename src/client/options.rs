@@ -2,6 +2,39 @@
 //! cvar each control sets, on which tab, how its value steps and shows,
 //! and the video cvars (`mat_vsync`, `mashup_fullscreen`,
 //! `mashup_resolution`) that set the window, and `mat_antialias` (MSAA).
+//!
+//! The options dialogs' settings (cvar, or several set together (water detail,
+//! sound quality, captioning, filtering); where it shows: a tab, the keyboard
+//! or video tab's Advanced dialog, the brightness dialog, or ours
+//! (`Place::Extras`); the game layout's control showing it (`fieldName`); the
+//! game's label token; slider / choice / check box / check box setting a value
+//! / reverse-mouse / window-size kinds, stepping, showing and a combo box's
+//! entries), `fov_desired` (`PlayerFov`: the world camera's unzoomed field of
+//! view, 75 to 90, CS:S's 90), and the video cvars (`mat_vsync`,
+//! `mashup_fullscreen`, `mashup_resolution`, `mat_antialias`; archived) that
+//! set the window's present mode, mode and size when they change (not in
+//! `--window` or automated runs) and every camera's MSAA, and the texture
+//! settings (`TextureSettings`: `mat_picmip`, `mat_trilinear`,
+//! `mat_forceaniso`) each repeating, mipmapped texture takes as it is added
+//! (`apply_texture_settings`, before it goes to the GPU; so from the next map
+//! load).
+//!
+//! Known shortcuts (docs/tech-debt.md): Options dialog (`client::game_menu`,
+//! `client::options`): only the keyboard tab places its controls from the
+//! game's `.res` (the others are our column of labelled controls); GameUI is
+//! drawn in screen pixels scaled by window height / 720 (CS:S doesn't scale);
+//! `cl_crosshairscale`'s meaning (screen height the crosshair is drawn for; 0
+//! our size) and the Auto/Small/Medium/Large values, and Opacity 0-255, are
+//! general knowledge, not measured; `cl_crosshairsize`/`thickness` map to
+//! pixels as ours (5 and 0.5 our old lines) and the Multiplayer tab's slider
+//! ranges, the colour drop-down's Custom entry, `m_customaccel`'s curve and the
+//! acceleration slider's range are chosen, not measured
+//! (docs/plans/active/ui-parity.md, "Reference captures needed"); music for
+//! `snd_musicvolume` is a wave under `music/` or an MP3
+//! (`audio::live_sound::is_music`), not Source's own rule; the frame and its
+//! colours follow `SourceScheme.res` by eye, not a capture of CS:S. Why it's OK
+//! for now: The menu works and reads the install's files; a pixel match needs a
+//! reference capture.
 
 use bevy::{
     prelude::*,

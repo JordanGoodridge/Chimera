@@ -9,6 +9,22 @@
 //! `FollowsEntity`); each frame it adds what it shows as a one-frame
 //! particle group, between the pool's step and draw. Engine space:
 //! meters, seconds.
+//!
+//! Map effects drawn through the particle pool for any game: sprite trails
+//! (`TrailEmitter`, Source's env_spritetrail: points recorded as the entity
+//! moves, a camera-facing strip tapering and fading over their life) and smoke
+//! stacks (`SmokeStackEmitter`, env_smokestack: puffs born on a ring, rising,
+//! wind, twist, fade in and out, frozen unseen after 5 s) and tesla arcs
+//! (`TeslaEmitter`, point_tesla: on each `TeslaSpark`, jagged additive arcs to
+//! surfaces within its radius, else into the air, fading over their life),
+//! embers (`EmbersEmitter`, env_embers: born at random in its volume, drifting
+//! along its facing, fading) and muzzle flashes (`MuzzleFlashEmitter`,
+//! env_muzzleflash: three sprites along its facing on each `MuzzleFlashFire`)
+//! and strike-generator env_beams' strikes (`StrikeEmitter`,
+//! specs/source/visual_entities.md 1, 4.2: on each `BeamStrike`, a
+//! camera-facing strip through new fractal noise each frame, the spec's segment
+//! count, for the strike's life); their entity's pose comes from the logic when
+//! it follows a parent (`FollowsEntity`, also on sprites).
 
 use std::collections::VecDeque;
 

@@ -2,6 +2,22 @@
 //! 640x480 screen (scaled by the window height, as Source's proportional
 //! HUD is), icon glyphs and colours. Games fill it from their HUD files;
 //! the client draws with it when present.
+//!
+//! A game's own HUD look for any game (`GameHud`: fonts, panels in a virtual
+//! 640×480 screen with `c`/`r` anchors, icon glyphs, colours), drawn by
+//! `client::game_hud`, and the client scheme's text fonts (`text_fonts`, sizes
+//! by screen height, weight, smoothing; drawn through `client::fonts`); its
+//! menus (`GameMenus`: panel layouts of `UiControl`s positioned like the HUD's
+//! panels inside their parent or pinned to a sibling (`UiLayout::rects`),
+//! scheme font sizes by screen height; the buy, team, scoreboard and spectator
+//! layouts; localised strings), drawn by `client::vgui`; screens on models
+//! (`ModelScreen`: panel pixels, font, colours); the game menu and options look
+//! (`GameUi`: GameUI scheme colours, numbers and fonts, menu entries, options
+//! and Create Server page layouts, Create Server's Game page options and
+//! Multiplayer > Advanced's (`ServerSetting`, from the `.scr` scripts),
+//! keyboard actions, localised strings, main menu backgrounds and title, the
+//! loading dialog's layout, the interface sounds, the server browser's layouts
+//! and icons), drawn by `client::game_menu` and `client::server_browser`.
 
 use std::{collections::HashMap, sync::Arc};
 

@@ -5,6 +5,112 @@
 //! env_shooter, point_push, env_texturetoggle,
 //! env_screenoverlay, point_camera (func_monitor is a func_brush),
 //! env_viewpunch, env_muzzleflash.
+//!
+//! Covers: classes community maps use with no spec yet: logic_measure_movement,
+//! point_teleport, logic_multicompare, env_shake (`MapShake`, shaken by
+//! `client::senses`), env_shooter (Shoot: its model as gibs, `Effect::Gibs`),
+//! point_push (physics bodies and players pushed each tick while enabled),
+//! env_texturetoggle (its target brushes' `texture_frame`, drawn through
+//! `map::tint::BrushTint`), env_screenoverlay (its overlays in turn on every
+//! screen, `HudShow::Overlay`), env_viewpunch (`Effect::ViewPunch`: the weapon
+//! layer adds it to the view punch through `map::ViewKick`), env_muzzleflash
+//! (`Effect::MuzzleFlash`), point_camera (on/off, field of view;
+//! `LogicWorld::monitor_camera`, the camera a shown func_monitor names, written
+//! to `map::monitor::MonitorCamera`); momentary_rot_button and func_rot_button
+//! are in `movers.rs`, func_tanktrain is a func_tracktrain, func_monitor a
+//! func_brush.
+//!
+//! Known shortcuts (docs/tech-debt.md): Community-map behaviour the specs leave
+//! open (docs/plans/active/community-maps.md, "Map logic audit"): physics
+//! bodies (physics props, func_physbox) touch triggers with spawnflag 8 or 64
+//! by their collider's world box as the host last reported it (a tick late);
+//! trigger_push on them adds speed × 100 × dt / mass to their velocity each
+//! tick (the spec's force read as an impulse in kg·units/s; once-only: the push
+//! itself) and trigger_teleport moves their box's centre to the destination; a
+//! player's classname set by AddOutput (kz_ stage marks) lasts until changed,
+//! across deaths and round restarts, and stops it matching "player" as a
+//! target; AddOutput classname on any other entity renames it for filters and
+//! targets only; func_rotating's AddOutput maxspeed takes effect at its next
+//! Start or SetSpeed; a mover given speed 0 holds with its goal kept (the
+//! move's time is infinite). Classes with no spec (`logic::community`,
+//! `movers::Momentary`, from the public entity docs): logic_measure_movement
+//! measures from activation every tick until Disabled (MeasureType 1: the
+//! player's eye and view, else its feet and yaw), placing a mover's pusher (its
+//! track along, translation only), a physics body's centre, a player or a point
+//! entity; point_teleport places its target the same way at its own origin and
+//! angles; logic_multicompare compares the values given since the last
+//! CompareValues (none: equal) and forgets them; env_shake shakes only the
+//! local view (`client::senses`, the grenade's shake shape; not sent to network
+//! clients), GlobalShake as an infinite radius, StopShake ending every map
+//! shake; func_rot_button turns like a rotating door (flags 2/64/128,
+//! "distance") with func_button's other rules, its flag 1 is not-solid;
+//! momentary_rot_button turns by SetPosition at its speed and fires
+//! Position/OnReachedPosition/OnFullyOpen/OnFullyClosed on arrival,
+//! SetPositionImmediately fires nothing, nothing at spawn (so surf_boreas's
+//! decorative spinners, which only restart themselves from OnFullyClosed, stay
+//! still), and players can't turn it with +use. Render inputs
+//! (`map::tint::RenderLook`): Color, Alpha and AddOutput
+//! rendercolor/renderamt/rendermode draw on brush entities with a node and on
+//! players' bodies and held models; baked brush entities draw their spawn
+//! render mode only (no colour); renderfx (pulses, flicker, hologram) is kept
+//! and not drawn; sprites, beams and props keep their spawn colour and alpha
+//! (props' and placed weapons' render inputs aren't drawn); a player keeps its
+//! look across deaths and round restarts (its entity persists; not measured in
+//! CS:S); a player's view model doesn't fade with it. Parenting at run time:
+//! SetParent/ClearParent on any entity and on players; SetParentAttachment
+//! snaps to the attachment's place in the parent model's reference pose (the
+//! loader's `$attachment <name>` keys on prop entities something is parented
+//! to; animated attachments don't move; none known: the parent's origin), the
+//! MaintainOffset form keeps the offset; a parented player is placed at its
+//! parent's pose each logic phase with its own movement, physics shadow and
+//! push-away off (`core::MapControls::parented`; a physics parent passes it no
+//! velocity), let go when it dies. Why it's OK for now: What the maps need
+//! (mg_boatrace_scramble's boats, kz_bhop_izanami's stages,
+//! mg_swag_multigames_v1's lifts); a probe-server check would settle the
+//! timings.
+//!
+//! Known shortcuts (docs/tech-debt.md): Classes from the public entity docs
+//! only (`logic::community`, `map::monitor`, `map::emitters`):
+//! func_water_analog is a func_movelinear (Open, Close, SetPosition) whose swim
+//! volume and surface follow its node, as water parented to a mover does
+//! (`map::water::move_water`; WaveHeight unused; a moving surface is drawn
+//! whole, not split by the map's visibility, and isn't replicated beyond its
+//! node's motion); func_tanktrain is a func_tracktrain (no health, gun or
+//! damage); env_shooter throws its gibs all at once ("delay", shoot sounds,
+//! skin and gib angles unused); point_push accelerates by its magnitude in
+//! units/s², falling off linearly to its radius (inner radius and line-of-sight
+//! unused; not measured); env_texturetoggle frames show on movers' own meshes
+//! only (a looked node leaves the merged chunks; a colour set with a frame
+//! shows the frame's material untinted until the colour changes);
+//! env_screenoverlay shows on every screen (not per player), each overlay until
+//! its time, the client drawing it stretched over the view; point_camera
+//! renders at 512² for every monitor (one camera at a time: the first on camera
+//! a shown monitor names), culled for the player's own view, without FOV
+//! changes over time, with the camera's own fog (fogEnable, fogColor, fogStart,
+//! fogEnd, fogMaxDensity; no SetFog inputs) except on water surfaces and prop
+//! shadows in it, which still fade with the scene's, and no water fog;
+//! point_tesla arcs trace the world only (not props) and are redrawn jagged
+//! each frame; color_correction's SetFadeInDuration/SetFadeOutDuration are
+//! accepted and not kept, and the table is applied after the tone map to the
+//! whole view (view models included; under water the screen warp and it read
+//! the same frame, the later one wins); env_embers use `particle/fire` 2 units
+//! wide (the game's ember sprite and size aren't in the entity docs), drift at
+//! 50-100 % of their speed, pulled ones speed up along it; env_muzzleflash
+//! draws three `effects/muzzleflash1` sprites for 0.05 s (no light);
+//! env_viewpunch's roll isn't kept (our view punch has pitch and yaw:
+//! surf_surreal's crash punch is all roll); env_wind, env_detail_controller,
+//! info_ladder_dismount, propper_model, logic_script and ai_changetarget are
+//! noted once per map and do nothing (detail props aren't drawn:
+//! kz_ancient_ruins has some); player SetFogController isn't switched per
+//! player (surf_halloween_tf2's names no controller); func_fish_pool's fish
+//! (props the loader spreads around its origin) swim to random places in its
+//! range and in water, without flocking, fleeing players or their own animation
+//! (`map::fish`); func_reflective_glass is a func_brush (no reflection); props'
+//! EnableDamageForces/DisableDamageForces are accepted and not read;
+//! env_soundscape_triggerable is an env_soundscape. Why it's OK for now: What
+//! the maps use (mg_lt_galaxy_v5's screens, black hole and towers, mg_kommando,
+//! mg_escape_prison_beta, mg_crazykart_v1_1, mg_swag_multigames_v1,
+//! surf_halloween_tf2).
 
 use bevy::prelude::*;
 

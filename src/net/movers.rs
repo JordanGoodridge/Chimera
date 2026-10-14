@@ -25,6 +25,13 @@
 //!   in single player, `map::interp`), so the client's own player stands
 //!   on what it is drawn on; others riding them are drawn in the past
 //!   (`interp`), as in Source.
+//!
+//! Moving brushes: the server's pushers into `NetMover` (`write_movers`); a
+//! client steps each from its snapshots to the tick it predicts as the logic
+//! does (`Stepper`), carries its own player with those steps
+//! (`logic::carry_player`) and places the nodes (`Transform`, `MovingSolid`,
+//! shown, collider) before movement, in each predicted and each replayed tick
+//! (`place`); `restore_ground` after a correction.
 
 use bevy::prelude::*;
 

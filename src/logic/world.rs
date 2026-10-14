@@ -6,6 +6,28 @@
 //!
 //! Positions are in entity space (`crate::map::entities`): the map's own
 //! units, Z up. Time is in ticks of `dt` seconds.
+//!
+//! Covers: the I/O core (`LogicWorld`: named entities, output connections, the
+//! time-ordered event queue serviced once per tick, target matching with
+//! `!activator`/`!caller`/`!self`/`!player`, `*` and the classname fallback,
+//! Kill/AddOutput/FireUser, value typing in `value.rs`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Spec choices where the original is
+//! unread or unmeasured (specs' open questions): queue delays in integer ticks
+//! (ceil(d/dt − 1e-4)); a trigger_hurt pass starts the tick after the first
+//! touch; doubling damage is forgiven at the next pass once its deadline
+//! passed; box use traces measure reach to the hit entity's nearest point;
+//! player damage from triggers is fractional (no integer accumulator); movers
+//! think after their push step; env_global follows the public entity docs (no
+//! spec): "Set initial state" sets a global only if unset, globals outlive
+//! round restarts, Remove makes it dead; `!pvsplayer`/`!picker` are slot 1;
+//! round restarts keep the public multiplayer preserve list
+//! (`world::ROUND_KEEP`: func_brush, func_wall, info_target, soundscapes...;
+//! CS:S's own list unknown), fire logic_auto's OnNewGame, OnMapSpawn and
+//! OnMultiNewRound each round (CS:S unmeasured), leave decals as they are
+//! (entity props are put back where they spawned, at rest, and shown again).
+//! Why it's OK for now: Each is a listed open question; the test map and probe
+//! server settle them.
 
 use std::collections::VecDeque;
 use std::sync::Arc;

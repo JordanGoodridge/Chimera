@@ -5,6 +5,22 @@
 //! stops. The step is the settling one (`Verlet` with damping, three
 //! max-length link sweeps, ends pinned) in engine space, and the drawn
 //! points are the spline through the nodes, between the last two steps.
+//!
+//! Ropes in the wind (specs/cs_source/ropes.md "Wind"): a settled rope's
+//! simulation (`RopeSway`) stepped again with the spec's gusts while the camera
+//! is within `rope_wind_dist` (`RopeWind`), its mesh rebuilt from the spline
+//! through its nodes; `spline` for the loaders.
+//!
+//! Known shortcuts (docs/tech-debt.md): Ropes (from specs/cs_source/ropes.md)
+//! settle at load and sway in the spec's gusts while the camera is within 1000
+//! units (`map::rope_sway`; the gusts are random, never compared with CS:S); on
+//! maps with an env_wind (cs_italy, de_cbble, de_dust) they hang still,
+//! env_wind's own wind not being simulated; no rope collision (`Collide`),
+//! drawn points between the last two steps, their light not sampled again as
+//! they move. Rope gravity 800 is measured, not specced; dust2's 10-node cable
+//! still hangs ~11 px low in the sky_n view. Node light uses our prop probe
+//! averaged over six directions (the engine's point-light query is not public).
+//! Why it's OK for now: The 5-node cables match CS:S to 1-2 px.
 
 use bevy::prelude::*;
 

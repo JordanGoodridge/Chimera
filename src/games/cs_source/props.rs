@@ -1,6 +1,20 @@
 //! Static props (the BSP's `sprp` game lump): Source models (MDL + VVD +
 //! dx90 VTX, parsed by `vmdl`) placed around the map. Each model is
 //! converted once; props reference it with a transform.
+//!
+//! Known shortcuts (docs/tech-debt.md): Models vmdl can't read: animations in
+//! `.ani` blocks are dropped from vmdl's read (our `anim` reads them), and a
+//! model whose `.vtx` indexes past its `.vvd` (surf_surreal) is skipped with a
+//! warning instead of drawn. Why it's OK for now: vmdl `todo!()`s and panics
+//! there; the meshes don't need the animations.
+//!
+//! Known shortcuts (docs/tech-debt.md): Props collide by their `.phy` convex
+//! pieces (physics_props.md 2); a prop entity that isn't a physics prop
+//! (prop_dynamic, doors' frames) and whose model has no `.phy` still collides
+//! as its visible mesh, where the spec makes no physics object and leaves its
+//! trace solid open (Q). Box-solid props (most dust2 windows) are exact. Why
+//! it's OK for now: No stock map's solid prop_dynamic lacks a `.phy` that we
+//! know of; a probe check: shoot and walk into such a prop.
 
 use std::collections::HashMap;
 

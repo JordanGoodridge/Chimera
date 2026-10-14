@@ -3,6 +3,21 @@
 //! bomb's timer and beeps, defusing with +use (faster with a kit), the
 //! explosion (a `core::Explosion` with the map's bomb radius) and the bomb
 //! target's outputs (`map::entities::FireEntityOutput`).
+//!
+//! Covers: the `C4` weapon part (primary arms it inside a target on the ground
+//! for `BombRules::plant_time`, `Arming`, clicks; `arm` runs with the weapon
+//! frame in `core::Predict::Weapons`, so a network client predicts it, and its
+//! client predicts its own defuse, `predict_defuse`; `Arming` and `Defusing`
+//! are in the predicted state; their own sounds as `map::PredictedSound`),
+//! `PlantedBomb` (timer from `mp_c4timer`, beeps on the provisional schedule,
+//! defuse by +use with the use search: 10 s or 5 s with
+//! `weapon::economy::DefuseKit`, interrupt resets, the explosion as a
+//! `core::Explosion` with the map's radius and the game's `ExplosionRule`),
+//! `BombState` (planted, outcome), the target's
+//! `BombPlanted`/`BombDefused`/`BombExplode` outputs as
+//! `map::entities::FireEntityOutput`, kits dropped on death (`LooseKit`) and
+//! picked up by defenders, the bomb dropped on death, one random terrorist gets
+//! it at a round start, arming/defusing hold still.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

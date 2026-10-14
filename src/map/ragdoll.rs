@@ -20,6 +20,42 @@
 //!   apart are repaired, they sleep after 5 s of stillness, and go away at
 //!   a round restart and when their owner lives again (respawn) or is
 //!   gone.
+//!
+//! Ragdolls for any game (specs/cs_source/ragdolls.md): `MapRagdoll` on a
+//! character model (bodies on bones, joints with per-axis limits),
+//! `SkeletonPose` (each living character's skeleton pose per tick, keyed by
+//! `SimTick` and kept 1 s, `at_tick`; hitboxes use the newest, except on a
+//! network server, which poses them from `map::SimAnimator`), on `Died` a
+//! `Ragdoll` of avian bodies at the pose with bone velocities and the killing
+//! hit's impulse, bone velocities aimed at the hit's death pose (`deathpose_*`
+//! sequences: side from the push and facing, frame from the hit group), held by
+//! `RagdollJoint` (a custom XPBD constraint: ball and socket plus X-Y-Z Euler
+//! limits), on `core::RAGDOLL_LAYER`, its own bodies colliding only for the
+//! model's `.phy` collision pairs (`MapCollisionHooks`, the app's avian
+//! collision hooks), friction and elasticity from the surface property;
+//! `RagdollShot` (the weapon layer sends one per bullet path) pushes the pelvis
+//! of ragdolls on it (a blast's names its ragdoll and pushes by its length);
+//! separation repair puts joints held apart back; the owner (`Ragdolled`) hands
+//! its drawn body over, whose joints then follow the bodies; forced sleep after
+//! `ragdoll_sleepaftertime`; removed when the owner lives again or is gone.
+//!
+//! Known shortcuts (docs/tech-debt.md): Ragdolls (specs/cs_source/ragdolls.md):
+//! the killing push is a fixed 2400 kg·in/s along the hit (the template's .50
+//! AE; spec Q2) for every weapon; death poses use the body's yaw for the side
+//! and our crouch flag for the crouched set (spec Q3); blasts push every
+//! ragdoll within their radius by grenades.md 5.3's effect rule (a line of 100
+//! × (1 − d/R) units from 32 below the blast toward the root body, pushed as
+//! ragdolls.md 6.2's template blast, 4000 × its length: the template's scale,
+//! not the generic client copy's 500), with no wall check; the distance is to
+//! the root body; separation repair's "something in between" is a world ray
+//! from the anchor to the child (Source also wants a contact in that
+//! direction); self-collision needs `MapCollisionHooks` in the app's physics
+//! plugins (main and `harness::Sim` have them; without them every ragdoll body
+//! collides); joint limits clamp X-then-Y-then-Z Euler angles (spec Q5's
+//! proposal); damping uses avian's law; ragdolls collide with every prop
+//! (CS:S's client world has no server props); the dead's drawn body never
+//! culls. Why it's OK for now: Bodies fall, settle and look right; each item is
+//! a listed open question or follow-up.
 
 use std::collections::VecDeque;
 

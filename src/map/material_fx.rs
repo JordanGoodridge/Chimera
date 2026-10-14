@@ -4,6 +4,24 @@
 //! combine modes and self-illumination. The combine and self-illum
 //! functions here mirror world.wgsl and prop.wgsl on the CPU, so the
 //! spec's test cases check the maths the shaders run.
+//!
+//! What the world and prop shaders share from specs/cs_source/shaders.md:
+//! `MapUvTransform` (`$basetexturetransform` parsed from its VMT string, or a
+//! TextureScroll proxy's scroll, sent as two rows plus a scroll rate),
+//! `DetailMode`, `MapSelfIllum`, and CPU mirrors of the shaders' detail combine
+//! and self-illum for the spec's test cases (tests/it/shader_spec.rs).
+//!
+//! Known shortcuts (docs/tech-debt.md): Material effects past the spec
+//! (`map::material_fx`, specs/cs_source/shaders.md open questions 16-19):
+//! `$basetexturetransform` composed as uv' = c + R(S uv - c) + t from the
+//! public wiki's wording; a TextureScroll proxy on it replaces it; the
+//! TextureTransform proxy, `$bumptransform` (without `$detail`),
+//! `$envmapmasktransform`, `$blendmasktransform`, `$detailtexturetransform`,
+//! `$selfillum_envmapmask_alpha` and detail modes 10/11 aren't read;
+//! `$selfillummask` masks per rgb channel; the depth prepass of alpha-tested
+//! surfaces ignores the scroll. Why it's OK for now: Community maps' scrolling,
+//! scaled and self-lit materials look right; check against the game when the
+//! spec answers.
 
 use bevy::math::{Vec2, Vec3, Vec4};
 

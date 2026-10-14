@@ -13,6 +13,24 @@
 //!
 //! `target_text` is the pure rule; `TargetIdPlugin` finds the target and
 //! draws it.
+//!
+//! CS:S's target ID: a ray from the eye finds the player under the crosshair
+//! (not through smoke); its name in the game's words and its team's colour
+//! ("Friend: name Health: n%", "Enemy: name", "Hostage: Health: n%"), centred
+//! (`hud_centerid 1`) or at the left; `mp_playerid` (`core::PlayerIdMode`)
+//! limits whose; `TargetIdStatePlugin` finds it without a window (tests).
+//!
+//! Known shortcuts (docs/tech-debt.md): Target ID (`client::target_id`): range
+//! 8192 units (a guess), shown only while the ray from the eye along the view
+//! (with punch) hits the player first (CS:S may keep it a moment after); hidden
+//! through smoke (`SightBlocker`, a guess at CS:S's); placed 260 lines down
+//! centred (`hud_centerid 1`) or at (10, 420) at the left (0), guesses:
+//! `hudlayout.res` gives `TargetID` the whole screen; the forms' `%s2` (after
+//! the name) is left empty; team colours are the scheme's `T_Red`/`CT_Blue`;
+//! hostages named "Hostage: Health: n%" in grey; no names while dead (the
+//! spectator bars name the target). Captures to confirm: a teammate and an
+//! enemy at 2-3 m under the crosshair with `hud_centerid 1` and `0`, and an
+//! enemy through a smoke cloud. Why it's OK for now: Reads like CS:S's.
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::PrimaryWindow};

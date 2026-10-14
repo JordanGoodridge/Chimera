@@ -11,6 +11,25 @@
 //! a round restart) it rejoins. A node with a render colour other than
 //! white (`tint::BrushTint`) draws its own meshes too. The node itself (collider, logic, culling,
 //! decals) is unchanged either way.
+//!
+//! Brush entities drawn merged (any game): while a brush entity node is at its
+//! spawn pose, shown and without broken panes, its opaque and alpha-tested
+//! meshes are drawn through combined meshes per material and 512-unit chunk
+//! (`MergedChunk`, under the map's root of static parts, culled by the clusters
+//! of their parts) and its own meshes (`MergedPiece`) are hidden;
+//! `sync_merged_brushes` splits a node out (its index ranges dropped from the
+//! combined meshes, its own meshes shown) when it moves, is removed or broken
+//! (`vis::LogicHidden`) or shows panes, and merges it back when it is home
+//! again; `MASHUP_MERGE_BRUSHES=0` turns it off.
+//!
+//! Known shortcuts (docs/tech-debt.md): Merged brush entities (`map::merge`)
+//! keep their own meshes spawned and hidden (main-world entities that still
+//! cost visibility checks), and rewriting a combined mesh's indices when one
+//! splits out makes Bevy re-check every mesh entity's pipeline that frame;
+//! decals on brush entities go at a round restart (we assume CS:S re-creates
+//! brush entities then; not measured) and blended brush meshes (glass) take
+//! none. Why it's OK for now: The draw count was the problem (1768 -> 58 at the
+//! lego blocks room); splits happen per break or door move, not per frame.
 
 use std::{collections::HashMap, ops::Range};
 

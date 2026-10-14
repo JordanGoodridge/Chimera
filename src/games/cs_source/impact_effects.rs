@@ -9,6 +9,27 @@
 //!
 //! Units: the spec's inches and in/s, converted to meters at the end
 //! (`UNIT`). Source's up (z) is our y.
+//!
+//! Known shortcuts (docs/tech-debt.md): Impact effects
+//! (specs/cs_source/impact_effects.md): blood is built from the spec's table of
+//! `blood_impact_red_01`, not by reading the `.pcf`; its sprite-card size
+//! limits and screen-size fades, the goop's spin stop and yaw flip, and the
+//! mist's light tint are left out; particle-system drag is applied per frame as
+//! the spec reads it (Q7). The surface colour's base is the texture's average
+//! sRGB colour (Q5). Electric-spark flares are depth tested (`$ignorez` not
+//! supported) and skip the visibility test. Splash light comes from the
+//! lightmap of the surface below. A world hit with no visible surface (sky,
+//! nodraw) makes no particles. The 30 % ricochet (`Bounce.Shrapnel`, section 2)
+//! plays for bullet hits on anything but characters with a visible surface;
+//! whether hits on players or surfaces with no decal name (Q9) ricochet is
+//! unknown, both left out. A knife swing from the dry into water (section 12)
+//! splashes at scale 8 when `cl_show_splashes` is on and makes no particles or
+//! slash mark, but the knife's own hit sound still plays. The glass impact
+//! (section 9) goes out for tile windows too (the breakables spec's hit rule
+//! doesn't limit it to glass); its shards spin about one axis from a random
+//! facing (the spec's three spinning angles and the lying-flat settling are
+//! left out). Why it's OK for now: Spec defaults; the open questions need the
+//! game.
 
 use bevy::prelude::*;
 

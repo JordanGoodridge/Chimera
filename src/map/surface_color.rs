@@ -4,6 +4,10 @@
 //! baked light there. World triangles carry their texture's average
 //! colour and lightmap coordinates; props their model's texture average
 //! and their light probe.
+//!
+//! `SurfaceColors`: a surface's look at a hit point (texture average colour and
+//! baked light: lightmap for the world, light probe for props), for effects
+//! tinted by what they hit.
 
 use std::{collections::HashMap, sync::Arc};
 

@@ -19,6 +19,69 @@
 //!
 //! `r_novis 1` turns culling off, `r_portalsopenall 1` area culling only.
 //! Outside the map (a point in solid or in no cluster) everything is drawn.
+//!
+//! Visibility culling for any game with precomputed visibility: `MapVisibility`
+//! (a point-to-cluster tree, per-cluster potentially visible sets),
+//! `split_mesh` (world meshes cut into grid chunks with their clusters),
+//! `MapAreas` (areas, areaportals with their openings, `flood`: areas reached
+//! through open portals, narrowed by each opening's screen rectangle),
+//! `AreaPortalStates` (portals logic closed), `WindowFade`/`fade_windows`
+//! (areaportal windows' brushes fade in with distance; the portal closes behind
+//! the opaque brush), `Occluder`/`OccluderStates`/`Occludee` (occluder
+//! polygons, which logic turned off, props' bounds; `screen_occluders` and
+//! `occluded`: a part hidden while its bounds lie behind an occluder's plane
+//! and inside its projected outline; `r_occlusion 0` turns them off),
+//! `VisClusters`/`FadeDistance` on map parts (brush entity nodes, moving props
+//! (physics, riders, animated) and loose items by their bounds, re-found when
+//! they move: `map::BrushEntityBounds`; water surfaces in chunks; beams and
+//! glows along their length), `fade_band` (prop fade bands as Bevy visibility
+//! ranges, dithered by `dither.wgsl` in the prop shaders), the `cull` system
+//! (hide parts no camera's cluster can see or whose clusters lie in no area it
+//! reaches, or beyond their fade distance; everything outside the map or with
+//! `r_novis 1`; `r_portalsopenall 1` ignores areaportals; the water reflection
+//! camera draws what its surface's clusters see, `water::ReflectionClusters`),
+//! `VisStats`.
+//!
+//! Known shortcuts (docs/tech-debt.md): Visibility culling (`map::vis`): no
+//! per-leaf frustum culling; brush entities are culled by the clusters their
+//! meshes' whole box touches (re-found whenever they move), the water
+//! reflection by the clusters around its surface; the 3D skybox, physics props,
+//! their shadows, characters, runtime decals and particles are never culled.
+//! Areaportals follow the public BSP and entity documentation; open questions
+//! taken as follows: a linked portal is closed exactly while every door named
+//! by its `target` is fully closed (open from the first tick of opening to the
+//! last of closing) and its own Open/Close/Toggle inputs only count when no
+//! door matches; StartOpen absent = open; func_areaportalwindow: the distance
+//! is from the eye to the opening's bounding box (the public docs don't say
+//! from what point), the brush's alpha rises linearly from `TranslucencyLimit`
+//! at `FadeStartDist` to 1 at `FadeDist` (a step when they are equal), blended
+//! with Bevy's alpha blending (the game's exact blend and sort aren't known),
+//! and the portal closes past `FadeDist` only when the window has a `target`
+//! brush (de_port's and cs_compound's windows have none and stay open; the docs
+//! leave what the game draws there open); a window brush logic disabled or
+//! killed still closes it; `BackgroundBModel` isn't drawn; func_occluder:
+//! occluders hide static props (and prop entities that stay put) only, not
+//! world chunks, as the entity documentation describes them (hiding models;
+//! whether the game also skips displacements or other world surfaces behind
+//! them isn't stated); hiding world chunks too showed holes on cs_assault and
+//! cs_compound, whose occluder brushes stick out of their walls and cover
+//! windows (`refcmp vischeck`: up to 73% of a view), so props behind such an
+//! occluder vanish here as they would in the game; occluders are used from both
+//! faces, every polygon on its own (no merging of neighbours), with no minimum
+//! screen area (`r_occluderminarea` and the like aren't public), not while the
+//! water reflection draws, and the occluder lump's per-occluder flags and area
+//! are ignored (all 0 or one area on stock maps); occluders without an entity
+//! count as active; portal rectangles are the opening's projected bounds plus
+//! 1% of the screen (the engine's exact clipping isn't public); a portal with a
+//! non-opaque surface (glass, grates) within 0.25 m of its opening is never
+//! closed (`AreaPortal::see_through`: closed, the game would show nothing
+//! through it; ours is a guard, not the engine's rule). Prop fade bands are a
+//! 4x4 dither by distance from the view to the prop's origin (Source blends
+//! alpha; `fadescale` and `r_propsmaxdist` are ignored); a `fademindist` of 0
+//! fades over the whole distance (taken literally), negative pops at
+//! `fademaxdist`; physics, animated and riding props still never fade; no LOD
+//! models. Why it's OK for now: Culls most of each map (docs/performance.md);
+//! dithering keeps props in the opaque passes.
 
 use bevy::prelude::*;
 

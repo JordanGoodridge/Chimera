@@ -4,6 +4,26 @@
 //! and out over their life (sin), roll, and take the light sampled along
 //! the jet. One mesh per jet, rebuilt each frame facing the camera, like
 //! the dust volumes (`dust.rs`). Engine space: meters, seconds.
+//!
+//! Steam jets for any game (`MapSteam`, Source's env_steam): puffs emitted
+//! while on and in view, growing per second, sin fade over their life, rolled,
+//! coloured from light samples along the jet; one camera-facing mesh per jet
+//! rebuilt per frame; the logic switches them (`EntityPart`); headless they
+//! still puff, undrawn.
+//!
+//! Known shortcuts (docs/tech-debt.md): Steam jets
+//! (specs/source/visual_entities.md 7, `map/steam.rs`): heat-wave jets (Type 1,
+//! a refracting quad) are not drawn; the JetLength/SpreadSpeed/Speed inputs
+//! aren't handled (TurnOn/TurnOff/Toggle are); roll and RollSpeed are read as
+//! degrees (Q7); "drawn last frame" is approximated by the jet's place being
+//! potentially visible (vis), not its on-screen test; the light samples use the
+//! light field's probe (the mean of its ambient cube plus its direct lights, ×
+//! the look's light scale) once at load (jets don't move), which comes out near
+//! full white for de_nuke's jets even in dim corners (brightness unchecked
+//! against CS:S); puffs are drawn with the material's texture alpha-blended
+//! (StandardMaterial, unlit), not the material's own shader. Why it's OK for
+//! now: de_nuke's jets puff where the steam ambient plays; a screenshot
+//! comparison settles the look (Q4).
 
 use bevy::{mesh::Indices, prelude::*};
 

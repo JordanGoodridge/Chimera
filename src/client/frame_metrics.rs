@@ -7,6 +7,15 @@
 //! The main world is measured between marks run between its schedules
 //! (`MainScheduleOrder`), the render world between its `Render` sets, each
 //! on its own thread.
+//!
+//! Per-frame metrics: marks between the main world's schedules
+//! (`MainScheduleOrder`) and between the render world's `Render` sets, each
+//! world's wall time, thread CPU and counters per frame, GPU time,
+//! distributions (`FrameMetrics::lines`/`stats`, shown by `mashup_perf`, the
+//! debug UI's Perf tab and `--bench`), the hitch log (`mashup_hitch_ratio`: a
+//! frame over that many times the median logs its slowest schedules (and render
+//! sets with `MASHUP_RENDER_PHASES=1`); `span_times`, profile builds: spans'
+//! self time).
 
 use std::{
     sync::{Arc, Mutex},

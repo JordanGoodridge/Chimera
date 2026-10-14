@@ -9,6 +9,26 @@
 //! can't launch light ones). After the physics step the
 //! player is moved to where the shadow got to while pushing or standing
 //! on a prop (reconciliation). Multiplayer props are pushaway.rs's.
+//!
+//! Known shortcuts (docs/tech-debt.md): Physics shadow
+//! (specs/cs_source/physics_props.md 4.1, src/games/cs_source/shadow.rs): the
+//! shadow controller is a velocity that reaches the target in one physics step
+//! (vphysics' controller and its push limits are engine-side, Q7), so props
+//! over 350 kg never touch the shadow (walls to the movement; the player's own
+//! kinematic collider stops them when they move into the player, at any mass),
+//! a light prop pushed into a heavy one can still shove it, there is no 50 in/s
+//! push speed limit and the not-touching velocity target (step 5) is ignored;
+//! the shadow has no gravity and doesn't weigh on a prop stood on; only a move
+//! of more than 24 units (a teleport, a respawn) or a duck/unduck puts the
+//! shadow in place, smaller step-ups drive it there; "stepped up" is a rise of
+//! more than 0.1 units in the tick (slopes count); the touch flag counts only
+//! props of at most 350 kg; reconciliation sweeps the player's box toward the
+//! shadow through avian colliders (characters and multiplayer props left out)
+//! instead of testing the spot for solid; a player's own capsule touches no
+//! other physics prop (multiplayer props get pushaway.rs's scripted push only).
+//! Why it's OK for now: A light crate is shoved and followed, a 400 kg one
+//! blocks, standing on a crate is stable
+//! (tests/it/heavy/map_physics_shadow.rs); compare push speeds with CS:S.
 
 use avian3d::prelude::*;
 use bevy::{ecs::system::SystemParam, prelude::*};

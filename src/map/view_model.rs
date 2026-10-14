@@ -11,6 +11,27 @@
 //! across the eye's vertical plane when its handedness differs from the
 //! player's, and lit per pixel by the map's light at its lighting origin
 //! (`LightField`) plus the scene's point lights (`DynamicLight`).
+//!
+//! First-person view models for any game: `MapViewModel` (skinned meshes in eye
+//! space, own skeleton, `AnimSet`, handedness, attachments, lighting origin),
+//! `ViewModels`, the `ViewAnimator` and `ViewModelOffset` (bob/sway) games
+//! drive on each character, `ViewModelSettings` (FOV, hand, draw), and the
+//! drawing at a `ViewModelAnchor` camera (another character's with
+//! `ViewModelSource` on it: a spectator in first person; a child camera on
+//! `VIEW_MODEL_LAYER` with its own depth and FOV, so the model never clips into
+//! walls; mirrored when its hand differs from the player's; lit per pixel by
+//! the `LightField` at its lighting origin); muzzle flashes from
+//! `ViewModelEvent`s (sprites re-projected into the world view, or at a held
+//! weapon's muzzle, and a pooled `DynamicLight`); `ViewModelScreen`: a picture
+//! on the model's screen between its `controlpanel0_ll`/`_ur` attachments
+//! (Source's VGUI screens; the C4's keypad).
+//!
+//! Known shortcuts (docs/tech-debt.md): View models: near plane 1 cm (not the
+//! spec's 1 unit) and their own depth buffer (not a squeezed depth range); no
+//! light smoothing or ambient boost; the hands get no reflections (mask in the
+//! normal map); muzzle flash look and light falloff, and the shell direction,
+//! are our choices from the spec's data (plans/active/view-models.md open
+//! questions). Why it's OK for now: Each needs a CS:S comparison to settle.
 
 use std::{collections::HashMap, sync::Arc};
 

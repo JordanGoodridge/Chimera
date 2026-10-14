@@ -4,6 +4,13 @@
 //! centre; teammates always, enemies while you can see them (CS:S shows
 //! enemies any teammate has spotted); your place name (from the nav mesh)
 //! below it, as `HudLocation` does.
+//!
+//! The radar: the map's overview picture (`map::hud::ActiveOverview`) in the
+//! HUD's `HudRadar` box, turned so you face up (in a UI material, so it clips;
+//! `cl_radar_locked 1` keeps the overview as drawn; `cl_radaralpha` its
+//! opacity, 200 of 255 as CS:S), team-coloured dots (enemies while you see
+//! them; hostages grey; spectating, centred on the watched player), the planted
+//! bomb (and for terrorists a loose one) in orange, your nav place name below.
 
 use avian3d::prelude::*;
 use bevy::{

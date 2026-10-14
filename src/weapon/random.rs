@@ -12,6 +12,23 @@
 //!
 //! The generator itself is ours (`Rng`): CS:S's is not in the SDK (spec
 //! Q1), so its exact patterns aren't reproduced.
+//!
+//! Covers: the shared random of spec 4.2 (a command's seed from the MD5 of its
+//! number, shots' `& 255`, other rolls by CRC32 of seed, extra and label; our
+//! own generator, spec Q1); console `give`, `slot1`–`slot5`, `lastinv`, `use
+//! <weapon>` (draw one carried, by name).
+//!
+//! Known shortcuts (docs/tech-debt.md): CS:S's spread and recoil are seeded as
+//! spec 4.2 (the command number's MD5 seed, `& 255` for shots; recoil's CRC32
+//! label `"recoil"` and the shot count as `extra` are ours) but roll our own
+//! generator, not Source's (spec Q1); command numbers are the tick plus the
+//! character's `Seed` (`core::number_commands`), not a client's own count; the
+//! bullet impulse is unmeasured (Q8); no water or lag compensation; armour
+//! running out mid-hit is clamped (unmeasured); airborne inaccuracy decays
+//! toward the crouched rest with the standing rest as a floor (a fit to M1's
+//! jump and no-jump falls); crouched-and-moving recoil uses the moving set and
+//! crouched caps the standing ones (unmeasured). Why it's OK for now: The rest
+//! follows the spec's measured values.
 
 /// The command's random seed `S` (spec 4.2, test T1).
 pub fn command_seed(command: u32) -> u32 {

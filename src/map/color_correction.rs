@@ -5,6 +5,13 @@
 //! (what isn't covered stays as it is: the identity table), kept in
 //! `ColorCorrectionLut`; the client applies it to the finished frame as a
 //! post-process (`client::color_correction`, `mat_colorcorrection`).
+//!
+//! color_correction for any game (public entity docs): `MapColorCorrection` (a
+//! 32³ `.raw` table, falloff distances, max weight, fades), a
+//! `ColorCorrectionVolume` per entity (an `EntityPart`: Enable/Disable fade
+//! it), and each frame the tables weighted by the eye's distance blended over
+//! the identity into one 3D image (`ColorCorrectionLut`, rebuilt only when the
+//! weights change).
 
 use std::sync::Arc;
 

@@ -6,6 +6,20 @@
 //! through `Effect::AmbientStart`/`AmbientChange`/`AmbientStop`; the host
 //! plays them. Volumes and pitches are integers (percent), ramps fixed
 //! point ×256, as in the spec.
+//!
+//! Covers: ambient_generic, specs/cs_source/sounds.md 6: entry or raw wave,
+//! radius → sound level, start silent / not looping / play everywhere,
+//! SourceEntityName,
+//! PlaySound/StopSound/ToggleSound/Volume/Pitch/FadeIn/FadeOut, spin and fade
+//! ramps and the LFO at 5 Hz;
+//! `Effect::AmbientStart`/`AmbientChange`/`AmbientStop`.
+//!
+//! Known shortcuts (docs/tech-debt.md): ambient_generic: script entries play at
+//! their own level, raw waves at the radius level (spec open question 11,
+//! unmeasured); presets and "!" sentences are ignored (logged); FadeIn/FadeOut
+//! 0 s fade in one step; long-lived sounds' falloff uses the same H1/H2 guesses
+//! as one-shots. Why it's OK for now: No stock map we load uses presets or
+//! sentences; the guesses share one function with the rest.
 
 use super::classes::Class;
 use super::value::Value;

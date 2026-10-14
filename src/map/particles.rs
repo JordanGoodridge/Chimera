@@ -10,6 +10,23 @@
 //! fade, bounce planes found once per group, the particle cap), which are
 //! general enough for other games' simple effects. Engine space: meters,
 //! Y up.
+//!
+//! Particles for any game: `Particles` (a CPU pool of groups that share a
+//! motion rule: gravity, decay, damping, drag, bounce planes probed once per
+//! group; a cap, a frame-step clamp, near fade, merging), `WorldTracer` (traces
+//! against the world only), `MapParticles` materials (texture, blend, vertex
+//! colour/alpha, sprite sheet); drawn each frame as one rebuilt mesh per
+//! material (particles outside the playable area, in the 3D skybox, in a mesh
+//! of their own on the sky camera's layer) (`ParticleDrawMaterial`,
+//! particle.wgsl: fogged, added ones toward black), camera-facing sprites,
+//! trails and flat quads, back to front; `ParticleSet` (Step, Draw) lets games
+//! show one-frame groups (smoke clouds) between them.
+//!
+//! Known shortcuts (docs/tech-debt.md): Particles blend in linear space (Source
+//! blends in gamma), and each material is one mesh sorted against other
+//! transparent things by its particles' centre; fog is the surfaces' per-pixel
+//! range fog (blended toward the fog colour, added toward black). Why it's OK
+//! for now: Small, fast effects; looks right in screenshots.
 
 use std::collections::HashMap;
 

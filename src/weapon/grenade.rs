@@ -13,6 +13,50 @@
 //! Units: meters, seconds, damage normalized like `Health`. Pitch-based
 //! throw rules use degrees with the Source convention (positive looks
 //! down).
+//!
+//! Covers (specs/cs_source/grenades.md): `Throwable` (count and carry limit,
+//! pin on press, throw on release after a delay, redraw or the spent weapon
+//! goes; predicted with the weapon frame, the projectile launched only where
+//! `core::authoritative`), `ThrowRule` (pitch bend and speed), the `Projectile`
+//! (box sweep, gravity, mirror bounce with elasticity, stop speed, breakables,
+//! water, fuse checked every few ticks), `GrenadeEffect` blast (radius damage
+//! traced against the world only, armour, push on loose bodies, a `RagdollShot`
+//! blast line for each ragdoll in reach (`RagdollBlast`), scorch decal), flash
+//! (`core::Blinded` from a game's `FlashModel`) and smoke (`SmokeCloud` with a
+//! `core::SightBlocker`), `Detonated` for games' effects; `core::Explosion`s
+//! blast the same way with a game's `ExplosionRule` (the HE blast for CS:S) at
+//! their magnitude and radius; a throw says `core::Radio` "fireinhole" (unless
+//! `sv_ignoregrenaderadio`); dying primed drops it live; cleared at a round
+//! restart; buying stacks grenades up to their limit and keeps the hand.
+//!
+//! Known shortcuts (docs/tech-debt.md): Grenades (specs/cs_source/grenades.md)
+//! follow the SDK template where CS:S is unmeasured: release + 0.1 s to the
+//! throw (Q1), redraw of the same type (Q2), a switch with the pin out keeps
+//! the grenade (Q3), HE armour by H1 (Q4), the signed pitch bend (Q5), no
+//! spawn-in-wall check (Q6), a bounce sound on every contact (Q7), the 1.5 s
+//! fuse (Q8), linear falloff 100 → 0 at 350 (Q10), smoke pops once still after
+//! the fuse (Q15), dying primed drops it live (Q17). The flash model is a FIT
+//! (`grenades::flash_model`: radius 1500, strength by distance² and facing, up
+//! to 5 s with a 3 s fade) pending Q12/Q13; the after-image is a screenshot
+//! read-back of the window at the flash (it holds the HUD, arrives a frame or
+//! two late; Q13 for its curve). Hearing (5.5, 6.4): the DSP presets are
+//! approximated (`grenades::EXPLOSION_RING`, `SHOCK_MUFFLE`, `FLASH_MUFFLE`:
+//! top of the mix range, a diffusor as a 2.5 kHz low-pass, the 3 kHz LFO as an
+//! added tone, a fade time of -1 read as a 1 s exponential fade); which flash
+//! muffle by blindness (60 %/30 % of the longest) is a hypothesis (Q14), HE
+//! uses the base player's rule, not presets 137-139 (Q11). The HE view shake is
+//! a guess (2 units, 700-unit radius, 1 s; Q9). Bots' sight through smoke:
+//! blocked when more than the blocker's radius (0.75 × the cloud's) of the line
+//! is inside (Q16 hypothesis). A breakable hit is assumed broken (×0.4, no
+//! bounce; a second contact with it bounces); grenades resting on movers don't
+//! ride them; the blast pushes loose bodies (speed capped at 2000 units/s) but
+//! not players; HE trace sees static world colliders (not movers); the
+//! explosion's glow size is ours; others see a thrown grenade at once (no 0.5 s
+//! hiding); in flight it's drawn with the held world model (the `_thrown`
+//! models share no bone with the player skeleton) and moves per tick (no
+//! interpolation). Why it's OK for now: Each is a listed open question with its
+//! probe check; the measured parts (prices, limits, view-model times) are
+//! exact.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

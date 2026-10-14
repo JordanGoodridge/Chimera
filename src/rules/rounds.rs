@@ -14,6 +14,19 @@
 //! Defaults are CS:S's public server defaults (mp_freezetime,
 //! mp_roundtime, mp_buytime, mp_startmoney) and its well-known reward
 //! amounts; none measured here yet (docs/plans/active/rounds.md).
+//!
+//! Known shortcuts (docs/tech-debt.md): Minigame flows
+//! (docs/plans/active/community-maps.md, "Minigame flows"), our readings: with
+//! players on one side only, all of them dead ends the round as a draw
+//! (objectives.md Q15, unmeasured); a placed weapon the logic kills leaves the
+//! world, from its carrier's hands too (`map::entities::RemovedWeapons`; Source
+//! deletes the entity); the map logic's dice get a new seed from the clock at
+//! every map load (the headless harness fixes it: `logic::LogicSeed`); only
+//! output connections and game_text/env_hudhint/env_message `message`s get the
+//! map's own case back (`cs_source::bsp::restore_text_case`; vbsp lower-cases
+//! the whole entity lump; names, classes and paths stay lower case, matched
+//! without case anyway). Why it's OK for now: 17 mg_ maps' flows pass headless
+//! (`tests/it/heavy/map_flows.rs`); a probe-server round settles Q15.
 
 use bevy::prelude::*;
 

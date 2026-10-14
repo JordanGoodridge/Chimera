@@ -6,6 +6,27 @@
 //! (`LightmapUploads`: one buffer upload a step, copied block by block on
 //! the GPU), so a flickering light costs its blocks a step instead of
 //! whole atlases.
+//!
+//! Light styles at run time: switchable styles (`LightStyles`, from the logic)
+//! rebuild the lightmap images; animated ones step through
+//! `MapLightStyle::pattern` ten times a second and rewrite only the face blocks
+//! they light (each block state encoded once and kept; new ones worked out on
+//! the compute pool), packed into one buffer with touching blocks merged
+//! (`LightmapUploads`, extracted to the render world: one buffer upload a step,
+//! then a buffer-to-texture copy per merged rectangle and image).
+//!
+//! Known shortcuts (docs/tech-debt.md): Lightmaps use LDR data by default;
+//! `mat_hdr_level 2` loads HDR data and tone maps with stand-in exposure and
+//! bloom values, unmeasured (docs/backlog.md, HDR parity). Switchable styles
+//! (32+) switch by rebuilding the whole lightmap images on the CPU (tens of ms,
+//! rare); animated styles (1-31) step through their pattern by rewriting only
+//! the face blocks they light into the GPU textures (`map::light_styles`; still
+//! a copy command per merged block rectangle and image, ~10k render-thread
+//! instructions each: drawing them in one pass per image would remove that), at
+//! Quake's ten letters a second (docs/backlog.md, light style open questions);
+//! props' light probes and baked per-vertex light, the light field and surface
+//! colours keep the map-start lighting. Why it's OK for now: LDR matches the
+//! game within ~1% luma on dust2 (refcmp); revisit for HDR.
 
 use std::{collections::HashMap, sync::Arc};
 
