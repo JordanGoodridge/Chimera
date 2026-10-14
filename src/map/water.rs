@@ -286,7 +286,7 @@ impl WaterView {
 }
 
 /// On the reflection camera: the clusters around its water surface (the
-/// reflection shows what is potentially visible from them; `vis::cull`).
+/// reflection shows what is potentially visible from them; `crate::render::vis::cull`).
 #[derive(Component, Clone, PartialEq)]
 pub struct ReflectionClusters(pub Vec<u32>);
 

@@ -320,7 +320,7 @@ fn run_views(
     time: Res<Time<Real>>,
     meshes: Query<(&Mesh3d, &ViewVisibility), With<bevy::camera::primitives::Aabb>>,
     assets: Res<super::perf::MeshTriangles>,
-    vis: Res<crate::map::vis::VisStats>,
+    vis: Res<crate::render::vis::VisStats>,
     diagnostics: Res<bevy::diagnostic::DiagnosticsStore>,
     frame_times: Res<super::perf::FrameTimes>,
     render_time: Res<super::perf::RenderTime>,

@@ -71,8 +71,8 @@ use bevy::{
 };
 
 use crate::map::water::{
-    MapScreenWarp, MapWaterMaterial, REFLECT_LAYER, ReflectionClusters, WATER_LAYER, WaterEnvmap, WaterReflectionCamera,
-    MovingWaterSurface, WaterSurface, WaterView, world_layers,
+    MapScreenWarp, MapWaterMaterial, MovingWaterSurface, REFLECT_LAYER, ReflectionClusters, WATER_LAYER, WaterEnvmap,
+    WaterReflectionCamera, WaterSurface, WaterView, world_layers,
 };
 
 // --- The spec's maths, for the shader's reference and for tests. ---
@@ -663,10 +663,9 @@ pub(crate) fn spawn_surfaces(
                 .as_deref()
                 .filter(|_| !crate::map::merged_world() && node.is_none());
             for (chunk, clusters) in crate::map::vis::split_mesh(mesh, vis, crate::map::vis::chunk_size()) {
-                let (min, max) = chunk
-                    .positions
-                    .iter()
-                    .fold((Vec3::MAX, Vec3::MIN), |(a, b), p| (a.min(Vec3::from(*p)), b.max(Vec3::from(*p))));
+                let (min, max) = chunk.positions.iter().fold((Vec3::MAX, Vec3::MIN), |(a, b), p| {
+                    (a.min(Vec3::from(*p)), b.max(Vec3::from(*p)))
+                });
                 let mut e = commands.spawn((
                     Name::new(if below {
                         format!("{} (below)", w.name)
@@ -909,7 +908,10 @@ pub fn update_water(
         ),
         MainCameraFilter,
     >,
-    vis: (Option<Res<crate::map::vis::ActiveVisibility>>, Option<Res<crate::map::vis::NoVis>>),
+    vis: (
+        Option<Res<crate::map::vis::ActiveVisibility>>,
+        Option<Res<crate::render::vis::NoVis>>,
+    ),
     (mut volume_clusters, mut volume_key, mut last_surface): (
         Local<Option<Vec<Vec<u32>>>>,
         Local<Option<(usize, usize)>>,
@@ -1018,7 +1020,9 @@ pub fn update_water(
     let (map_vis, novis) = vis;
     let pvs = map_vis.filter(|_| novis.is_none_or(|n| n.0 == 0));
     // Found again for another map (its visibility is another allocation).
-    let map_key = pvs.as_ref().map(|v| (std::sync::Arc::as_ptr(&v.0) as usize, volumes.len()));
+    let map_key = pvs
+        .as_ref()
+        .map(|v| (std::sync::Arc::as_ptr(&v.0) as usize, volumes.len()));
     if let Some(v) = &pvs
         && *volume_key != map_key
     {
@@ -1135,7 +1139,10 @@ pub fn underwater_fog(
     mut water: ResMut<Assets<WaterMaterial>>,
     scene: Option<ResMut<crate::map::fog::SceneFog>>,
     surfaces: Query<(&WaterSurface, &MeshMaterial3d<WaterMaterial>)>,
-    sky_world: Query<(&MeshMaterial3d<crate::map::world_material::WorldMaterial>, &RenderLayers)>,
+    sky_world: Query<(
+        &MeshMaterial3d<crate::map::world_material::WorldMaterial>,
+        &RenderLayers,
+    )>,
     sky_props: Query<(&MeshMaterial3d<crate::map::prop_material::PropMaterial>, &RenderLayers)>,
     mut last: Local<Option<Option<(usize, f32, f32)>>>,
 ) {
@@ -1398,7 +1405,10 @@ mod tests {
         let plane = reflection_plane(eye, &volumes, &surfaces, &all, &all);
         assert_eq!(plane, Some((1.0, 0, 0)), "the nearest");
         let second = |i: usize| i == 1;
-        assert_eq!(reflection_plane(eye, &volumes, &surfaces, &all, &second), Some((-3.0, 0, 1)));
+        assert_eq!(
+            reflection_plane(eye, &volumes, &surfaces, &all, &second),
+            Some((-3.0, 0, 1))
+        );
         assert_eq!(reflection_plane(eye, &volumes, &surfaces, &all, &|_| false), None);
     }
 
@@ -1602,7 +1612,10 @@ mod tests {
         for choice in 0..3 {
             s.set_detail(choice);
             assert_eq!(s.detail(), choice);
-            assert_eq!((s.force_expensive, s.reflect_entities), (WATER_DETAIL[choice].1, WATER_DETAIL[choice].2));
+            assert_eq!(
+                (s.force_expensive, s.reflect_entities),
+                (WATER_DETAIL[choice].1, WATER_DETAIL[choice].2)
+            );
         }
         // "Simple reflections" still reflects a material that forces it
         // ($forceexpensive defaults on: spec open question 1).

@@ -42,7 +42,7 @@ On a busy box, interleave the builds over several rounds and compare
 medians and minimums ("Frame time pass" below), or compare
 instructions, which hardly move with load ("Load-independent metrics").
 
-## Visibility culling (`map::vis`)
+## Visibility culling (`render::vis`, `map::vis`)
 
 Source maps carry precomputed visibility: the BSP tree's leaves belong to
 clusters, and the visibility lump lists, per cluster, every cluster

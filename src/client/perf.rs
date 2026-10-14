@@ -24,10 +24,8 @@ use bevy::{
 
 use crate::{
     console::resource_cvar,
-    map::{
-        VisClusters,
-        vis::{NoVis, VisStats},
-    },
+    map::VisClusters,
+    render::vis::{NoVis, VisStats},
 };
 
 pub struct PerfPlugin;
@@ -101,16 +99,16 @@ impl Plugin for PerfPlugin {
                 |v| &mut v.0,
             );
         }
-        if app.world().contains_resource::<crate::map::vis::PortalsOpenAll>() {
-            resource_cvar::<crate::map::vis::PortalsOpenAll, u8>(
+        if app.world().contains_resource::<crate::render::vis::PortalsOpenAll>() {
+            resource_cvar::<crate::render::vis::PortalsOpenAll, u8>(
                 app,
                 "r_portalsopenall",
                 "1: treat every areaportal as open and don't clip the view through them (PVS culling only).",
                 |v| &mut v.0,
             );
         }
-        if app.world().contains_resource::<crate::map::vis::Occlusion>() {
-            resource_cvar::<crate::map::vis::Occlusion, u8>(
+        if app.world().contains_resource::<crate::render::vis::Occlusion>() {
+            resource_cvar::<crate::render::vis::Occlusion, u8>(
                 app,
                 "r_occlusion",
                 "0: ignore the map's occluders (func_occluder); 1: hide map parts fully behind active ones.",

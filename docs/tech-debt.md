@@ -64,7 +64,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Older maps' ambient light (one cube per leaf: BSP v19, early v20) is sampled at the leaf centre. OK for now: Props light sensibly; the engine's exact use isn't specced.
 - map: Material effects past the spec: texture transforms and proxies from the public wiki's wording (`src/map/material_fx.rs`)
 - map: LDR lightmaps by default; HDR tone mapping unmeasured; light styles rebuilt or rewritten on the CPU (`src/map/light_styles.rs`)
-- map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`src/map/vis.rs`)
+- map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`src/games/cs_source/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`src/render/lod.rs`)

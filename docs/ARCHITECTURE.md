@@ -132,7 +132,7 @@ that the paths exist).
 - `src/map/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (map)
 - `src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
 - `src/map/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders (map)
-- `src/map/vis.rs`: visibility culling: PVS clusters, area portals, occluders, `LogicHidden` (map)
+- `src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
 - `src/map/merge.rs`: brush entities drawn merged while at their spawn pose (map)
 - `src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
 - `src/map/light_styles.rs`: switchable and animated light styles at run time (map)
@@ -196,6 +196,7 @@ that the paths exist).
 - `src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
 - `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 - `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
+- `src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
 - `src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
 
 ### Audio (presentation beside the simulation)

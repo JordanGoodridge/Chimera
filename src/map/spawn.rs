@@ -331,7 +331,7 @@ fn spawn_entity_nodes(commands: &mut Commands, data: &MapData, root: Entity) -> 
 /// Areaportal windows' brushes, the map's entities and what breaks.
 fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
     let data = s.data;
-    // Areaportal windows' brushes fade in with distance (`vis::fade_windows`).
+    // Areaportal windows' brushes fade in with distance (`crate::render::vis::fade_windows`).
     if let Some(v) = data.visibility.as_deref() {
         for (portal, p) in v.areas.portals.iter().enumerate() {
             let brush = p.fade.and_then(|f| f.brush);

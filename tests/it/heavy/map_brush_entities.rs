@@ -25,10 +25,11 @@ use mashup::{
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
         LogicHidden, VisClusters,
-        vis::{self, ActiveVisibility, VisStats},
+        vis::{self, ActiveVisibility},
         world_material::WorldMaterial,
     },
     mount::config::LocalConfig,
+    render::vis::VisStats,
 };
 
 fn load(name: &str) -> Option<MapData> {

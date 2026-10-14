@@ -576,7 +576,7 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
     // Placed weapons settle (they fall onto what they rest on).
     sim.seconds(3.0);
     let world = sim.app.world_mut();
-    assert_eq!(world.resource::<mashup::map::vis::VisStats>().cluster, Some(cluster));
+    assert_eq!(world.resource::<mashup::render::vis::VisStats>().cluster, Some(cluster));
     let check = |what: &str, parts: Vec<(Box<[u32]>, bool)>| {
         let hidden = parts.iter().filter(|(_, on)| !on).count();
         for (clusters, on) in &parts {
@@ -633,7 +633,7 @@ fn moving_water_is_culled_on_jacks() {
     }
     sim.ticks(10);
     let world = sim.app.world_mut();
-    assert_eq!(world.resource::<mashup::map::vis::VisStats>().cluster, Some(cluster));
+    assert_eq!(world.resource::<mashup::render::vis::VisStats>().cluster, Some(cluster));
     let mut q = world.query::<(
         &mashup::map::water::WaterSurface,
         Option<&mashup::map::VisClusters>,

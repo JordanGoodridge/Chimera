@@ -174,6 +174,11 @@ measurements):
       the material, cameras, fog, overlays and their systems moved).
     - [x] `shadows` whole, with `props.rs`'s `ShadowState`,
       `update_prop_shadows` and `PropShadow`.
+    - [x] `vis` culling: `cull`, `fade_windows` and the culling cvars
+      and stats (`NoVis`, `PortalsOpenAll`, `Occlusion`, `VisStats`);
+      the visibility data, chunking and the tags (`VisClusters`,
+      `FadeDistance`, `Occludee`, `WindowBrush`, `ActiveVisibility`:
+      bots and hearing read it) stay.
     `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`

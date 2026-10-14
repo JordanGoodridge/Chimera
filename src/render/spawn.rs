@@ -513,7 +513,7 @@ fn spawn_world_meshes(
     // Keyed by the material's whole description, and by whether it is
     // in the 3D skybox (water fog skips skybox materials).
     // Areaportal windows' brushes keep materials of their own:
-    // `vis::fade_windows` changes their alpha per brush.
+    // `super::vis::fade_windows` changes their alpha per brush.
     let window_brushes: std::collections::HashSet<usize> = data
         .visibility
         .as_deref()

@@ -32,6 +32,7 @@ pub mod steam;
 mod spawn;
 pub mod tint;
 pub mod tracer;
+pub mod vis;
 pub mod water;
 pub use spawn::{Drawn, MapAssets};
 

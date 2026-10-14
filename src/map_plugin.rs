@@ -46,11 +46,11 @@ fn spawn_pending_map(world: &mut World) {
 /// (`MapPlugin::build_first`).
 fn build_rest(app: &mut App) {
     app.init_resource::<ShowLocalBody>()
-        .init_resource::<vis::NoVis>()
-        .init_resource::<vis::PortalsOpenAll>()
-        .init_resource::<vis::Occlusion>()
+        .init_resource::<render::vis::NoVis>()
+        .init_resource::<render::vis::PortalsOpenAll>()
+        .init_resource::<render::vis::Occlusion>()
         .init_resource::<render::sky_occluder::SkyOcclusion>()
-        .init_resource::<vis::VisStats>()
+        .init_resource::<render::vis::VisStats>()
         .add_message::<PlaceDecal>()
         .add_message::<render::decal::ClearDecals>()
         .init_resource::<render::decal::DecalSettings>()
@@ -232,8 +232,8 @@ fn build_rest(app: &mut App) {
                 render::tint::apply_character_looks,
                 merge::sync_merged_brushes,
                 tag_moved_brush_entities,
-                vis::cull,
-                vis::fade_windows,
+                render::vis::cull,
+                render::vis::fade_windows,
             )
                 .chain()
                 .after(bevy::transform::TransformSystems::Propagate)
