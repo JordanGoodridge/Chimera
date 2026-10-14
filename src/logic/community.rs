@@ -97,8 +97,7 @@
 //! wide (the game's ember sprite and size aren't in the entity docs), drift at
 //! 50-100 % of their speed, pulled ones speed up along it; env_muzzleflash
 //! draws three `effects/muzzleflash1` sprites for 0.05 s (no light);
-//! env_viewpunch's roll isn't kept (our view punch has pitch and yaw:
-//! surf_surreal's crash punch is all roll); env_wind, env_detail_controller,
+//! env_wind, env_detail_controller,
 //! info_ladder_dismount, propper_model, logic_script and ai_changetarget are
 //! noted once per map and do nothing (detail props aren't drawn:
 //! kz_ancient_ruins has some); player SetFogController isn't switched per

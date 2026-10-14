@@ -1461,11 +1461,10 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                 world.write_message(crate::map::MuzzleFlashFire { entity });
             }
             Effect::ViewPunch { player, angles } => {
-                // Source's pitch is down positive; ours up (radians). Roll
-                // isn't kept (tech-debt).
+                // Source's pitch is down positive; ours up (radians).
                 world.write_message(crate::map::ViewKick {
                     player,
-                    angles: Vec2::new(-angles.x, angles.y) * std::f32::consts::PI / 180.0,
+                    angles: Vec3::new(-angles.x, angles.y, angles.z) * std::f32::consts::PI / 180.0,
                 });
             }
             Effect::BodyVelocity { id, velocity } => {

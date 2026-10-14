@@ -972,8 +972,8 @@ fn a_shotgun_shot_kicks_and_adds_inaccuracy_once_not_per_pellet() {
             // Long enough for the punch to settle (about 0.45 s from 6
             // degrees) and the penalty to recover.
             sim.seconds(2.0);
-            let before = sim.app.world().get::<ViewPunch>(p).map_or(Vec2::ZERO, |v| v.0);
-            assert_eq!(before, Vec2::ZERO, "{id} shot {shot}: settled");
+            let before = sim.app.world().get::<ViewPunch>(p).map_or(Vec3::ZERO, |v| v.0);
+            assert_eq!(before, Vec3::ZERO, "{id} shot {shot}: settled");
             let acc = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
             tap(&mut sim, p);
             // One tick of decay after the shot: at most 6 degrees.
