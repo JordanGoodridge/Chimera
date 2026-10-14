@@ -238,7 +238,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net21");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net23");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -731,17 +731,18 @@ pub mod mover_flags {
     pub const ATTACHED: u16 = 1 << 8;
 }
 
-/// A physics prop's pose (engine space), velocity and whether it is there,
-/// written by the server on the prop's node after each tick
-/// (`props::write_props`); a client draws its own copy (the node with the
-/// same `map::PropIndex`) from these at the render time (`props`).
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+/// A physics prop's pose (engine space) and whether it is there, written
+/// by the server on the prop's node after each tick (`props::write_props`);
+/// a client draws its own copy (the node with the same `map::PropIndex`)
+/// from these at the render time (`props`). Sent quantized (`quant`: 1/32
+/// unit, 16-bit quaternion parts; the server keeps the quantized values,
+/// `NetProp::quantized`), so a prop shaking below that grid sends nothing.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct NetProp {
     /// `map::PropIndex`.
     pub index: u32,
     pub origin: [f32; 3],
     pub rotation: [f32; 4],
-    pub velocity: [f32; 3],
     /// `prop_flags::*` bits.
     pub flags: u16,
 }
@@ -784,13 +785,13 @@ pub struct NetHeld {
 
 /// Something small the server simulates and clients draw from snapshots
 /// (`weapons`): a loose weapon or a grenade in flight, by its held-model
-/// key (`map::loose::ShownItem`), pose and velocity.
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+/// key (`map::loose::ShownItem`) and pose. Sent quantized as `NetProp`
+/// (`quant`, `NetItem::quantized`).
+#[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct NetItem {
     pub model: String,
     pub origin: [f32; 3],
     pub rotation: [f32; 4],
-    pub velocity: [f32; 3],
 }
 
 /// A smoke cloud (`weapon::grenade::SmokeCloud`): where, and the grenade

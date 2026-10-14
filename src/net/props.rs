@@ -2,9 +2,10 @@
 //! slice 3): the server simulates them; a client draws them from
 //! snapshots at the render time, as it draws other players (`interp`).
 //!
-//! - **Server.** After each tick, each physics prop's pose, velocity and
-//!   whether it is there (shown, solid) go into its node's `NetProp`
-//!   (`write_props`); a prop at rest sends nothing.
+//! - **Server.** After each tick, each physics prop's pose (on the network's
+//!   grid, `quant`) and whether it is there (shown, solid) go into its
+//!   node's `NetProp` (`write_props`); a prop at rest, or shaking below the
+//!   grid, sends nothing.
 //! - **Client.** Its own copy of the prop (the node with the same
 //!   `map::PropIndex`) stops being simulated (a kinematic body, so its
 //!   own player still bumps into it) and is drawn each frame between the
@@ -17,7 +18,7 @@
 //! copies made kinematic and `NetDrawn`, drawn between snapshots at the render
 //! tick (`draw_props`).
 
-use avian3d::prelude::{ColliderDisabled, LinearVelocity, RigidBody};
+use avian3d::prelude::{ColliderDisabled, RigidBody};
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};
 
 use super::{
@@ -57,7 +58,6 @@ fn write_props(
             Entity,
             &PropIndex,
             &Transform,
-            Option<&LinearVelocity>,
             Has<LogicHidden>,
             Has<ColliderDisabled>,
             Option<&mut NetProp>,
@@ -66,7 +66,7 @@ fn write_props(
     >,
     mut commands: Commands,
 ) {
-    for (e, index, t, v, hidden, no_collision, have) in &mut q {
+    for (e, index, t, hidden, no_collision, have) in &mut q {
         let mut flags = 0;
         if !hidden {
             flags |= prop_flags::VISIBLE;
@@ -74,13 +74,15 @@ fn write_props(
         if !no_collision {
             flags |= prop_flags::SOLID;
         }
+        // On the network's grid: a prop shaking below it (one the physics
+        // never puts to sleep) changes nothing to send.
         let now = NetProp {
             index: index.0 as u32,
             origin: t.translation.to_array(),
             rotation: t.rotation.to_array(),
-            velocity: v.map_or([0.0; 3], |v| v.0.to_array()),
             flags,
-        };
+        }
+        .quantized();
         match have {
             Some(mut have) => {
                 have.set_if_neq(now);

@@ -519,7 +519,9 @@ fn physics_props_are_drawn_as_the_server_simulates_them() {
     let ours = crate_node(sim.clients[0].app.world_mut());
     // At rest where the server has it; not simulated here.
     let rest = pos(sim.server.app.world(), theirs);
-    assert!(pos(sim.clients[0].app.world(), ours).distance(rest) < 1e-5);
+    // (On the network's grid: within half a 1/32-unit step.)
+    let grid = mashup::net::quant::POSITION_STEP as f32;
+    assert!(pos(sim.clients[0].app.world(), ours).distance(rest) < grid);
     assert_eq!(
         sim.clients[0].app.world().get::<RigidBody>(ours),
         Some(&RigidBody::Kinematic),
@@ -570,7 +572,7 @@ fn physics_props_are_drawn_as_the_server_simulates_them() {
     assert!(falling.len() > 60, "{} frames falling", falling.len());
     sim.ticks(FPS as u64);
     let end = pos(sim.server.app.world(), theirs);
-    assert!(pos(sim.clients[0].app.world(), ours).distance(end) < 1e-4, "landed where the server has it");
+    assert!(pos(sim.clients[0].app.world(), ours).distance(end) < grid, "landed where the server has it");
 }
 
 // --- Map ragdolls.
