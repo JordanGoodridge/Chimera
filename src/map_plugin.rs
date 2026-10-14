@@ -123,7 +123,7 @@ fn build_rest(app: &mut App) {
                     .before(render::dust::update_dust)
                     .before(render::steam::update_steam),
                 (render::light_styles::relight, render::light_styles::animate).chain(),
-                apply_prop_looks,
+                render::props::apply_prop_looks,
                 animate_props,
                 render::beams::follow_eye.after(render::parts::switch_parts).before(render::glow::glow_visibility),
                 render::beams::animate_beams.after(render::parts::switch_parts),

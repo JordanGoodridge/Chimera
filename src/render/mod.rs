@@ -29,6 +29,7 @@ pub mod loose;
 pub mod monitor;
 pub mod particles;
 pub mod parts;
+pub mod props;
 pub mod psys;
 pub mod rope_sway;
 pub mod shadows;

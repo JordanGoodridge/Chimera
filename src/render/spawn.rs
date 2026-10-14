@@ -14,6 +14,7 @@ use crate::map::*;
 use super::{
     bodies::{HeldAssets, HeldParts, PlayModels, body_assets},
     breakables::PanePart,
+    props::{PropMeshSlot, PropVariants},
     dust, emitters, light_styles, monitor, shadows,
     view_model::{build_assets as build_view_models, build_flash_assets},
     sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},
