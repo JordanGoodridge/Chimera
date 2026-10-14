@@ -532,7 +532,7 @@ fn the_time_limit_ends_a_deathmatch_game() {
 #[test]
 fn uneven_teams_are_balanced_as_the_next_round_starts() {
     use mashup::{core::SpawnPoint, rules::Score};
-    let run = |balance: &str, ct_spawns: bool| {
+    let run = |balance: &str, ct_spawns: bool, humans: bool| {
         let mut sim = Sim::new(());
         sim.app.world_mut().spawn(SpawnPoint { team: Some(Team(1)) });
         if ct_spawns {
@@ -544,6 +544,9 @@ fn uneven_teams_are_balanced_as_the_next_round_starts() {
         let ct = sim.spawn_character(Vec3::new(0.0, 1.0, 8.0), placeholder::ID);
         for &e in &ts {
             sim.app.world_mut().entity_mut(e).insert(Team(1));
+            if humans {
+                sim.app.world_mut().entity_mut(e).insert(mashup::core::RemotePlayer);
+            }
         }
         sim.app.world_mut().entity_mut(ct).insert(Team(2));
         sim.app
@@ -562,13 +565,14 @@ fn uneven_teams_are_balanced_as_the_next_round_starts() {
         // Which of the two without kills is the higher entity.
         (teams, if ts[2] > ts[1] { 2 } else { 1 })
     };
-    let (teams, moves) = run("1", true);
+    let (teams, moves) = run("1", true, true);
     let mut want = vec![1, 1, 1];
     want[moves] = 2;
     assert_eq!(teams, want, "one of the fewest kills moves; 2 against 2");
-    let run = |balance: &str, spawns: bool| run(balance, spawns).0;
-    assert_eq!(run("0", true), vec![1, 1, 1], "off");
-    assert_eq!(run("1", false), vec![1, 1, 1], "no counter-terrorist spawns");
+    let run = |balance: &str, spawns: bool, humans: bool| run(balance, spawns, humans).0;
+    assert_eq!(run("0", true, true), vec![1, 1, 1], "off");
+    assert_eq!(run("1", false, true), vec![1, 1, 1], "no counter-terrorist spawns");
+    assert_eq!(run("1", true, false), vec![1, 1, 1], "bots never move (CS:S, parity-gaps.md C11)");
 }
 
 /// `mp_tkpunish 1`: a team killer dies as the next round starts (CS:S's

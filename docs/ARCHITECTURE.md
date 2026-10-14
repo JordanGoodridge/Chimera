@@ -12,8 +12,9 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 
 ```
 mashup (repository root: src/, tests/it/)   the game, engine and tools
-  |
-source_formats (source/formats/)            file formats as plain data: no Bevy
+  |                \
+engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
+ (engine/core/)       core, console, slots, character, metrics
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
@@ -22,6 +23,13 @@ source_formats (source/formats/)            file formats as plain data: no Bevy
   which re-exports the readers at their old paths.
 - An edit in `source_formats` rebuilds it and `mashup`; `cargo test -p
   source_formats` builds and runs only its own tests (seconds).
+- `engine_core` is the engine's stable base: the modules every layer
+  uses and that rarely change (`core` but the build's `VERSION`,
+  `console`, `slots`, `character`, `metrics`). It never depends on
+  `mashup` or a game (checked); `mashup` re-exports its modules at their
+  old paths (`mashup::core` adds `VERSION`, stamped in the app's crate
+  so a commit doesn't rebuild the base). The layering table covers its
+  modules too. `cargo test -p engine_core --features dev` tests it alone.
 
 ## Layers
 
@@ -110,14 +118,15 @@ that the paths exist).
 
 ### Foundations (core, console, slots, character, movement)
 
-- `src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
-- `src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
-- `src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
-- `src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
+- `engine/core/src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
+- `src/core.rs`: `engine_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
+- `engine/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
+- `engine/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
+- `engine/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
-- `src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
+- `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (neutral map data, spawning, drawing, effects)
 

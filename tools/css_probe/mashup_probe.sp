@@ -97,6 +97,8 @@ public void OnPluginStart()
     RegServerCmd("mashup_health", Command_Health,
         "mashup_health <hp> [armor]: respawn the probe bot if dead and set its health and armour (fall damage runs)");
     RegServerCmd("mashup_info", Command_Info, "mashup_info: position and angles of all living players");
+    RegServerCmd("mashup_botcmd", Command_BotCmd,
+        "mashup_botcmd <userid> <command...>: run a client command as that bot (buy, drop, use; pickup and buy sound captures)");
     HookEvent("weapon_fire", Event_Any);
     HookEvent("bullet_impact", Event_Any);
     HookEvent("player_hurt", Event_Any);
@@ -475,6 +477,22 @@ public Action Command_Health(int args)
     SetEntityHealth(bot, GetCmdArgInt(1));
     SetEntProp(bot, Prop_Send, "m_ArmorValue", args >= 2 ? GetCmdArgInt(2) : 0);
     PrintToServer("mashup: bot %d health %d armor %d", bot, GetClientHealth(bot), GetEntProp(bot, Prop_Send, "m_ArmorValue"));
+    return Plugin_Handled;
+}
+
+public Action Command_BotCmd(int args)
+{
+    int bot = GetClientOfUserId(GetCmdArgInt(1));
+    if (bot == 0 || !IsFakeClient(bot)) {
+        PrintToServer("mashup: no bot with that userid");
+        return Plugin_Handled;
+    }
+    char full[256];
+    char first[16];
+    GetCmdArgString(full, sizeof(full));
+    GetCmdArg(1, first, sizeof(first));
+    FakeClientCommand(bot, "%s", full[strlen(first) + 1]);
+    PrintToServer("mashup: bot %d ran '%s'", bot, full[strlen(first) + 1]);
     return Plugin_Handled;
 }
 

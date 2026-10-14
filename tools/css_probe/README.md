@@ -55,6 +55,10 @@ speed and damage per landing; `fallmeas.py armor` checks armour and death.
 It uses `mashup_health <hp> [armor]` (respawns the probe bot if dead, sets
 its health and armour) and `mashup_wrun`'s `player_hurt` rows.
 
+`mashup_botcmd <userid> <command...>` runs a client command as a bot
+(`buy ak47`, `drop`); with `sv_soundemitter_trace 1` it shows which sound
+entries buying emits on the server (parity-gaps.md C2).
+
 ## Weapon measurements
 
 `weapcmp.py` (driver, Python 3, no dependencies; `rcon.py` is a minimal
