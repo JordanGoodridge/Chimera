@@ -719,6 +719,20 @@ Knife script: MaxPlayerSpeed 250, Damage 50, WeaponArmorRatio 1.7, Range 4096 (t
 - **Bots** duck on their own when they jump (inside the game, not through their buttons). Humans don't.
 - Still open from the fuzz: a one-tick-earlier landing on a ledge edge under water, and a few ladder runs (de_nuke) where on-ladder velocity or attachment differs after many ticks.
 
+### Drowning (measured 2026-10-14, probe server, de_nuke's deep water)
+
+The probe bot idled on the bottom at (600, -900, -945), head under (water
+level 3), `sv_soundemitter_trace 1`; health read with `mashup_info`:
+- The first damage comes 12.0 s after going under (tick 801 at 0.015 s),
+  then every 67 ticks (about 1.0 s): 3, 4, then 5 each hit (+1 a hit, at
+  most 5) until death (100 health: dead at 32.1 s).
+- No pain or drown sound on the server for these hits (`Player.DrownStart`
+  / `DrownContinue` never emitted; the client may play its own); death
+  plays `Player.Death`.
+- Back on land after losing 37: health came back 10 at a time about every
+  2 s (+10 within the first second), until all the drowning damage was
+  restored (63 -> 73 -> 83 -> 93 -> 100), no more.
+
 ## Open questions
 
 1. **Scoped speeds:** weapon speeds are now read from the scripts. Still to check: scoped speeds (AWP/scout/autos are slower zoomed; that is in CS:S code, not in scripts).

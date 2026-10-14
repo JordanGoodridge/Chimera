@@ -500,6 +500,8 @@ says what decides the open point.
   head under) for 30 s with `sv_soundemitter_trace 1` and `developer
   1`: when damage starts, how much per hit and how often, the sounds,
   and whether health comes back after surfacing.
+  Done 2026-10-14 on de_nuke (aztec's river is too shallow to go under):
+  specs/cs_source/movement.md "Drowning".
 - **C7 Round win panel.** Screenshots at 1280x720 of a round's end by
   elimination, by bomb, by defuse and by time: the panel's place and
   text, how long it stays, whether a centre print shows too.
@@ -526,7 +528,11 @@ says what decides the open point.
   mp_timelimit/maxrounds/winlimit/fraglimit 0, mp_hostagepenalty 13,
   mp_forcecamera 1, mp_playerid 0, mp_fadetoblack 0, sv_alltalk 0: the
   rest match ours. Still open: the listen server's values after Create
-  Server (settings.scr) and the time-limit map change.
+  Server (settings.scr). Time-limit map change (2026-10-14, bots,
+  mp_timelimit 1): the round past the limit plays out;
+  "Intermission_Time_Limit" comes in the same second as its "Round_End"
+  (ours waited the 5 s end pause: fixed), the next map loads mp_chattime
+  (10 s) later. What shows during it: unmeasured.
 - **C11 Team balance.** Listen server, `mp_autoteambalance 1`,
   `mp_limitteams 0`, `bot_join_team T; bot_add` four times and one CT
   bot; play a round to its end. Screenshots and `developer 1` console

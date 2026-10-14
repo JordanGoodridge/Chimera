@@ -445,8 +445,9 @@ fn autobuy_takes_the_list_and_rebuy_restores_the_last_buy() {
     assert!(buy(sim.app.world_mut(), ct, "rebuy").is_err());
 }
 
-/// `mp_maxrounds`: once the last round's end pause runs out the game on
-/// the map is over: everyone held still through the intermission
+/// `mp_maxrounds`: as the last round ends the game on the map is over
+/// (CS:S starts its intermission in the same second as the round's end,
+/// parity-gaps.md C9): everyone held still through the intermission
 /// (`mp_chattime`), then the next map of the cycle (`map <name>` without
 /// a network), or, with no cycle, a fresh game on this one.
 #[test]
@@ -464,9 +465,8 @@ fn the_game_ends_after_mp_maxrounds_with_an_intermission() {
     kill(&mut sim, t, ct);
     kill(&mut sim, t, ct2);
     assert!(matches!(phase(&sim), Phase::Over { .. }));
-    assert!(sim.app.world().resource::<RoundState>().game_over.is_none());
-    // The end pause (5 s), then the intermission instead of round 2.
-    sim.seconds(5.2);
+    // The intermission at once, instead of the end pause and round 2.
+    sim.ticks(2);
     let state = sim.app.world().resource::<RoundState>().clone();
     assert!(state.game_over.is_some(), "{state:?}");
     assert_eq!(state.number, 1);
