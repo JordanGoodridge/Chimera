@@ -12,7 +12,7 @@ use crate::map::fog::SceneFog;
 pub fn apply_scene_fog(
     fog: Option<Res<SceneFog>>,
     ropes: Option<ResMut<Assets<crate::map::rope_material::RopeMaterial>>>,
-    decals: Option<ResMut<Assets<crate::map::decal::DecalMaterial>>>,
+    decals: Option<ResMut<Assets<crate::render::decal::DecalMaterial>>>,
     particles: Option<ResMut<Assets<super::particles::ParticleDrawMaterial>>>,
 ) {
     let Some(fog) = fog.filter(|f| f.is_changed()) else {

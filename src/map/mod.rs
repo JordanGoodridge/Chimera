@@ -270,7 +270,8 @@ impl MapPlugin {
         ragdoll::plugin(app);
         placed_ragdoll::plugin(app);
         app.add_plugins(light_styles::LightStylesPlugin);
-        app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin, monitor::MonitorPlugin));
+        app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin));
+        app.init_resource::<MonitorCamera>();
     }
 }
 
@@ -313,15 +314,11 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<CharacterModels>();
     world.remove_resource::<CharacterBodies>();
     world.remove_resource::<HeldAssets>();
-    world.remove_resource::<decal::DecalSurfaces>();
-    world.remove_resource::<decal::DecalAssets>();
-    world.remove_resource::<decal::ImpactDecals>();
     world.remove_resource::<hud::ActiveHud>();
     world.remove_resource::<hud::ActiveOverview>();
     world.remove_resource::<surface_color::SurfaceColors>();
     world.remove_resource::<particles::ParticleMaterials>();
     world.remove_resource::<ScreenOverlayImages>();
-    world.remove_resource::<monitor::MonitorScreen>();
     world.insert_resource(MonitorCamera::default());
     if let Some(mut p) = world.get_resource_mut::<particles::Particles>() {
         p.groups.clear();

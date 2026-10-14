@@ -12,6 +12,7 @@ use bevy::prelude::*;
 
 pub mod beams;
 pub mod color_correction;
+pub mod decal;
 pub mod detail;
 pub mod emitters;
 pub mod fog;
@@ -19,6 +20,7 @@ pub mod dust;
 pub mod fish;
 pub mod glow;
 pub mod lod;
+pub mod monitor;
 pub mod particles;
 pub mod parts;
 pub mod psys;
@@ -35,7 +37,11 @@ pub use spawn::{Drawn, MapAssets};
 /// entities it made (a `map::MapHooks::unload` hook, added by
 /// `map_plugin`).
 pub(crate) fn unload_map(world: &mut World) {
+    world.remove_resource::<decal::DecalSurfaces>();
+    world.remove_resource::<decal::DecalAssets>();
+    world.remove_resource::<decal::ImpactDecals>();
     world.remove_resource::<psys::ParticleSystemDefs>();
+    world.remove_resource::<monitor::MonitorScreen>();
     world.remove_resource::<particles::ParticleAssets>();
     shells::unload(world);
 }

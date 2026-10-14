@@ -153,7 +153,7 @@ that the paths exist).
 - `src/map/controllers.rs`: physics controllers and joints the logic switches (map)
 - `src/map/buoyancy.rs`: bodies in water float (map)
 - `src/map/copies.rs`: copies of map nodes made at run time (map)
-- `src/map/monitor.rs`: func_monitor screens and point_camera views (map)
+- `src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
 - `src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
 - `src/map/color_correction.rs`: color_correction entities as data (map)
 - `src/map/water.rs`, `water.wgsl`: water surfaces (map)
@@ -164,7 +164,7 @@ that the paths exist).
 - `src/map/steam.rs`: steam jets as data (map)
 - `src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
 - `src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
-- `src/map/decal.rs`, `decal.wgsl`: runtime decals (map)
+- `src/map/decal.rs`: runtime decals as data, impacts' lift (map)
 - `src/map/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (map)
 - `src/map/rope_sway.rs`: ropes' settling step and spline (map)
 - `src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
@@ -194,6 +194,8 @@ that the paths exist).
 - `src/render/emitters.rs`: trails, smoke stacks, teslas, embers, muzzle flashes, strikes through the pool (render)
 - `src/render/particles.rs`, `particle.wgsl`: drawing the particle pool (render)
 - `src/render/fog.rs`: the scene's fog pushed to effect materials (render)
+- `src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
+- `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 
 ### Audio (presentation beside the simulation)
 

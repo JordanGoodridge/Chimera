@@ -51,8 +51,12 @@ pub trait MapDrawer: SystemParam + 'static {
 /// (`MapDrawer::insert_drawn`), in the order they come.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DrawnResource {
+    /// What runtime decals land on (after the visibility).
+    DecalSurfaces,
     /// What draws the particle pool (after `ParticleMaterials`).
     Particles,
+    /// Runtime decals' images and materials (after the overview).
+    Decals,
 }
 
 /// Which headless stand-ins a `MapDrawer` makes unneeded: dropped
@@ -687,7 +691,7 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
     if let Some(v) = data.visibility.as_ref().filter(|_| !merged_world()) {
         commands.insert_resource(vis::ActiveVisibility(v.clone()));
     }
-    commands.insert_resource(decal::DecalSurfaces::new(data));
+    D::insert_drawn(drawn, commands, s, DrawnResource::DecalSurfaces);
     commands.insert_resource(surface_color::SurfaceColors::new(data));
     commands.insert_resource(particles::ParticleMaterials(data.particles.clone()));
     D::insert_drawn(drawn, commands, s, DrawnResource::Particles);
@@ -704,10 +708,7 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
     {
         commands.insert_resource(hud::ActiveOverview(o.clone(), image.clone()));
     }
-    if !texture_handles.is_empty() && !data.decals.groups.is_empty() {
-        commands.insert_resource(decal::DecalAssets::new(data.decals.clone(), texture_handles.to_vec()));
-        commands.insert_resource(decal::ImpactDecals);
-    }
+    D::insert_drawn(drawn, commands, s, DrawnResource::Decals);
     commands.insert_resource(sound::SoundBank(data.sounds.clone()));
     if !data.characters.is_empty() {
         commands.insert_resource(CharacterModels(Arc::new(data.characters.clone())));

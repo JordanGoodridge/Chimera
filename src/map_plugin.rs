@@ -4,10 +4,12 @@
 //! systems that aren't ordered explicitly). The plugin's type stays in
 //! `map`, so `map::MapPlugin` is what tests and apps add; its
 //! registration lives here, above those layers: map's own first
-//! (`MapPlugin::build_first`), audio's, then the systems of map and
-//! render together (`build_rest`, the order they always had), then
-//! spawning the map at startup (`spawn_map` with `render::MapAssets`, also
-//! as `MapHooks::spawn` for `change_map`).
+//! (`MapPlugin::build_first`), render's monitor screens (where map's
+//! plugins were added), audio's, then the systems of map and render
+//! together (`build_rest`, the order they always had), then spawning the
+//! map at startup (`spawn_map` with `render::MapAssets`, also as
+//! `MapHooks::spawn` for `change_map`) and render's part of unloading
+//! (`render::unload_map`, a `MapHooks::unload` hook).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -19,6 +21,7 @@ use crate::{audio, render};
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         self.build_first(app);
+        app.add_plugins(render::monitor::MonitorPlugin);
         app.add_plugins(audio::SoundPlugin);
         build_rest(app);
         app.add_systems(
@@ -49,8 +52,8 @@ fn build_rest(app: &mut App) {
         .init_resource::<render::sky_occluder::SkyOcclusion>()
         .init_resource::<vis::VisStats>()
         .add_message::<PlaceDecal>()
-        .add_message::<decal::ClearDecals>()
-        .init_resource::<decal::DecalSettings>()
+        .add_message::<render::decal::ClearDecals>()
+        .init_resource::<render::decal::DecalSettings>()
         .add_message::<ViewModelEvent>()
         .add_message::<SpawnGibs>()
         .add_message::<breakables::BreakProp>()
@@ -158,7 +161,12 @@ fn build_rest(app: &mut App) {
                 )
                     .chain(),
                 show_skybox_in_place,
-                (decal::place_decals, decal::drop_brush_decals, decal::clear_decals).chain(),
+                (
+                    render::decal::place_decals,
+                    render::decal::drop_brush_decals,
+                    render::decal::clear_decals,
+                )
+                    .chain(),
                 (
                     attach_bodies,
                     show_local_body,

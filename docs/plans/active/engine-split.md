@@ -162,6 +162,12 @@ measurements):
       `ParticleAssets` inserted at its old place through
       `MapDrawer::insert_drawn`), `fog::apply_scene_fog` (names the
       particle material; never scheduled).
+    - [x] `decal` drawing (`MapDecals`, `LIFT`, `DEPTH_DROP` stay;
+      `DecalSurfaces`, `DecalAssets` and `ImpactDecals` inserted at their
+      places through `MapDrawer::insert_drawn`), `monitor` (the screen
+      cameras' markers and `MonitorFog`'s view fog stay; `MonitorCamera`
+      is initialized by map where `MonitorPlugin` was added, the plugin's
+      system by render right after).
     `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`

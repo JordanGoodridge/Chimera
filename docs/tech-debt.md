@@ -27,7 +27,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - games/cs_source: Impact effects built from the spec's tables, with listed parts left out or read as the spec reads (`src/games/cs_source/impact_effects.rs`)
 - map: Particles blend in linear space and sort per material mesh (`src/render/particles.rs`)
 - weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`src/map/bodies.rs`)
-- map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/map/decal.rs`)
+- map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/render/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
 - map: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`src/map/world_material.rs`)
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`src/games/cs_source/player_anim.rs`)
@@ -70,7 +70,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`src/map/shadows.rs`)
 - map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
-- map: Decal reach, orientation and infodecal probes inferred, not specced (`src/map/decal.rs`)
+- map: Decal reach, orientation and infodecal probes inferred, not specced (`src/render/decal.rs`)
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
 - map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`src/render/rope_sway.rs`)

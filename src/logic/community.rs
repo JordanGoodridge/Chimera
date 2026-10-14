@@ -70,7 +70,7 @@
 //! timings.
 //!
 //! Known shortcuts (docs/tech-debt.md): Classes from the public entity docs
-//! only (`logic::community`, `map::monitor`, `map::emitters`):
+//! only (`logic::community`, `render::monitor`, `render::emitters`):
 //! func_water_analog is a func_movelinear (Open, Close, SetPosition) whose swim
 //! volume and surface follow its node, as water parented to a mover does
 //! (`map::water::move_water`; WaveHeight unused; a moving surface is drawn

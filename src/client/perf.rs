@@ -132,11 +132,11 @@ impl Plugin for PerfPlugin {
 }
 
 /// `r_cleardecals`, `mashup_round_cleardecals` and `mp_decals`
-/// (`map::decal`).
+/// (`render::decal`).
 pub(crate) fn decal_cvars(app: &mut App) {
     use crate::{
         console::ConsoleAppExt,
-        map::decal::{ClearDecals, DecalSettings},
+        render::decal::{ClearDecals, DecalSettings},
     };
     app.init_resource::<DecalSettings>().add_message::<ClearDecals>();
     app.console_command("r_cleardecals", "Remove every bullet hole, slash and blood decal.", |w, _| {
@@ -476,7 +476,7 @@ fn count_churn(
     mut standard: MessageReader<AssetEvent<StandardMaterial>>,
     mut sprites: MessageReader<AssetEvent<crate::map::sprite_material::SpriteMaterial>>,
     mut particles: MessageReader<AssetEvent<crate::render::particles::ParticleDrawMaterial>>,
-    mut decals: MessageReader<AssetEvent<crate::map::decal::DecalMaterial>>,
+    mut decals: MessageReader<AssetEvent<crate::render::decal::DecalMaterial>>,
     mut world: MessageReader<AssetEvent<crate::map::world_material::WorldMaterial>>,
 ) {
     fn modified<A: Asset>(events: &mut MessageReader<AssetEvent<A>>) -> u32 {
