@@ -52,7 +52,6 @@ pub use breakables::{
 };
 pub mod hud;
 pub mod interp;
-pub(crate) mod light_styles;
 pub mod loading;
 pub mod lod;
 pub mod loose;
@@ -266,7 +265,11 @@ impl MapPlugin {
         }
         ragdoll::plugin(app);
         placed_ragdoll::plugin(app);
-        app.add_plugins(light_styles::LightStylesPlugin);
+    }
+
+    /// The rest of map's registration before the sound plugin's, after
+    /// render's light styles (`crate::map_plugin`).
+    pub(crate) fn build_after_light_styles(&self, app: &mut App) {
         app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin));
         app.init_resource::<MonitorCamera>();
     }
@@ -298,12 +301,7 @@ pub fn unload_map(world: &mut World) {
     }
     world.remove_resource::<PendingMap>();
     world.remove_resource::<MapFile>();
-    world.remove_resource::<light_styles::StyledLightmaps>();
-    world.remove_resource::<MapSkybox>();
     world.remove_resource::<PlayableArea>();
-    world.remove_resource::<SkyCameraInfo>();
-    world.remove_resource::<ActiveMapHas3dSky>();
-    world.remove_resource::<SkyVis>();
     world.remove_resource::<vis::ActiveVisibility>();
     world.remove_resource::<sound::SoundBank>();
     world.remove_resource::<CharacterModels>();

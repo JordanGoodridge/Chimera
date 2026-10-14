@@ -135,7 +135,6 @@ that the paths exist).
 - `src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
 - `src/map/merge.rs`: brush entities drawn merged while at their spawn pose (map)
 - `src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
-- `src/map/light_styles.rs`: switchable and animated light styles at run time (map)
 - `src/map/probe_lit.rs`: moving models lit from the baked light field (map)
 - `src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
 - `src/map/interp.rs`: drawing between simulation ticks (map)
@@ -180,6 +179,7 @@ that the paths exist).
 - `src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
 - `src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
 - `src/render/color_correction.rs`: color_correction volumes blended into one table (render)
+- `src/render/light_styles.rs`: switchable and animated light styles at run time (render)
 - `src/render/lod.rs`: props' levels of detail as drawn (render)
 - `src/render/glow.rs`: glow sprites faded by how much of their proxy is seen (render)
 - `src/render/psys.rs`: running and drawing the particle systems (render)
@@ -196,6 +196,7 @@ that the paths exist).
 - `src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
 - `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 - `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
+- `src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
 - `src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
 - `src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
 

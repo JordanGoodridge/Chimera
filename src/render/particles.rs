@@ -16,9 +16,9 @@ use bevy::{
     asset::embedded_asset, prelude::*, reflect::TypePath, render::render_resource::AsBindGroup, shader::ShaderRef,
 };
 
-use super::dust;
+use super::{dust, sky::SkyCameraInfo};
 use crate::map::{
-    MapData, MapPart, PlayableArea, SKYBOX_LAYER, SkyCameraInfo, SkyboxCamera, ViewModelCamera, fog, monitor,
+    MapData, MapPart, PlayableArea, SKYBOX_LAYER, SkyboxCamera, ViewModelCamera, fog, monitor,
     particles::{MapParticles, Particle, ParticleBlend, ParticleMaterial, Particles, Shape},
     water,
 };

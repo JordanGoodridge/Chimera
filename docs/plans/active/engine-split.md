@@ -179,6 +179,12 @@ measurements):
       the visibility data, chunking and the tags (`VisClusters`,
       `FadeDistance`, `Occludee`, `WindowBrush`, `ActiveVisibility`:
       bots and hearing read it) stay.
+    - [x] `sky` drawing: `attach_sky`, `follow_sky_camera`,
+      `show_skybox_in_place` and the sky resources render inserts; the
+      images, `SkyboxCamera` and the layers stay.
+    - [x] `light_styles` whole (its texel encoders to `map::images`);
+      `MapPlugin::build_first` split at the place its plugin was added
+      (`build_after_light_styles`), so registration keeps its order.
     `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`

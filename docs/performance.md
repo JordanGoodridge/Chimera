@@ -770,7 +770,7 @@ times the p50. Nothing else was periodic: with the light steps gone
 the hitch lines that remain have thread CPU far below wall time (the
 loaded box), and instructions per frame no different from the median.
 
-The fix (`map::light_styles`, run-time path only):
+The fix (`render::light_styles`, run-time path only):
 
 - **States kept.** A block's light depends only on the levels of the
   styles lighting it, and patterns loop through a few letters, so each
@@ -823,7 +823,7 @@ idle machine the step frames were the p99. Pictures: `refcmp report`
 mean abs diff de_dust2 0.030835 before and after (32 views), de_nuke
 0.023818 (27); bhop_myztek's spawn looks the same.
 
-Regression checks (`map::light_styles` unit tests):
+Regression checks (`render::light_styles` unit tests):
 `animate_packs_the_blocks_whose_style_stepped` (a step's blocks in one
 buffer, rows 256-aligned, bytes as the whole-image encoders write them),
 `touching_blocks_merge_into_one_copy`,

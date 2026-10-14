@@ -4,8 +4,9 @@
 //! systems that aren't ordered explicitly). The plugin's type stays in
 //! `map`, so `map::MapPlugin` is what tests and apps add; its
 //! registration lives here, above those layers: map's own first
-//! (`MapPlugin::build_first`), render's monitor screens (where map's
-//! plugins were added), audio's, then the systems of map and render
+//! (`MapPlugin::build_first`, render's light styles,
+//! `MapPlugin::build_after_light_styles`, render's monitor screens: where
+//! map's plugins were added), audio's, then the systems of map and render
 //! together (`build_rest`, the order they always had), then spawning the
 //! map at startup (`spawn_map` with `render::MapAssets`, also as
 //! `MapHooks::spawn` for `change_map`) and render's part of unloading
@@ -21,6 +22,8 @@ use crate::{audio, render};
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         self.build_first(app);
+        app.add_plugins(render::light_styles::LightStylesPlugin);
+        self.build_after_light_styles(app);
         app.add_plugins(render::monitor::MonitorPlugin);
         app.add_plugins(audio::SoundPlugin);
         build_rest(app);
@@ -105,7 +108,7 @@ fn build_rest(app: &mut App) {
                     .before(render::glow::glow_visibility)
                     .before(render::dust::update_dust)
                     .before(render::steam::update_steam),
-                (light_styles::relight, light_styles::animate).chain(),
+                (render::light_styles::relight, render::light_styles::animate).chain(),
                 apply_prop_looks,
                 animate_props,
                 render::beams::follow_eye.after(render::parts::switch_parts).before(render::glow::glow_visibility),
@@ -132,7 +135,7 @@ fn build_rest(app: &mut App) {
         .add_systems(
             Update,
             (
-                attach_sky,
+                render::sky::attach_sky,
                 render::glow::glow_visibility,
                 render::dust::update_dust,
                 render::steam::update_steam,
@@ -160,7 +163,7 @@ fn build_rest(app: &mut App) {
                         .in_set(particles::ParticleSet::Draw),
                 )
                     .chain(),
-                show_skybox_in_place,
+                render::sky::show_skybox_in_place,
                 (
                     render::decal::place_decals,
                     render::decal::drop_brush_decals,
@@ -220,7 +223,7 @@ fn build_rest(app: &mut App) {
             PostUpdate,
             // After propagation, so it sees this frame's (interpolated)
             // eye rather than the last physics tick's; before frusta.
-            follow_sky_camera
+            render::sky::follow_sky_camera
                 .after(bevy::transform::TransformSystems::Propagate)
                 .before(bevy::camera::visibility::VisibilitySystems::UpdateFrusta),
         )

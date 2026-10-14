@@ -11,7 +11,11 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 #[allow(unused_imports)]
 use crate::map::*;
-use super::{dust, emitters, monitor, shadows, steam, water};
+use super::{
+    dust, emitters, light_styles, monitor, shadows,
+    sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},
+    steam, water,
+};
 // Explicit: Bevy's prelude has a `LightProbe` too.
 use crate::map::{
     LightProbe,

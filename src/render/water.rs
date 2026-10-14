@@ -896,7 +896,7 @@ pub fn update_water(
     mut commands: Commands,
     render: Option<Res<MapWaterRender>>,
     volumes: Option<Res<crate::core::MapWater>>,
-    sky: Option<Res<crate::map::MapSkybox>>,
+    sky: Option<Res<super::sky::MapSkybox>>,
     settings: Option<Res<WaterSettings>>,
     main: Query<
         (

@@ -20,7 +20,7 @@
 //! bloom values, unmeasured (docs/backlog.md, HDR parity). Switchable styles
 //! (32+) switch by rebuilding the whole lightmap images on the CPU (tens of ms,
 //! rare); animated styles (1-31) step through their pattern by rewriting only
-//! the face blocks they light into the GPU textures (`map::light_styles`; still
+//! the face blocks they light into the GPU textures (`render::light_styles`; still
 //! a copy command per merged block rectangle and image, ~10k render-thread
 //! instructions each: drawing them in one pass per image would remove that), at
 //! Quake's ten letters a second (docs/backlog.md, light style open questions);
@@ -45,7 +45,7 @@ use bevy::{
     },
 };
 
-use super::{
+use crate::map::{
     LightStyles, LightmapLayers, MapLightStyle, MapLightmap, source_ldr_bump_texels, source_ldr_texel, world_material,
 };
 
@@ -222,39 +222,6 @@ impl StyledLightmaps {
         }
         (flat, pages)
     }
-}
-
-/// Texel bytes of the plain lightmap layer (`lightmap_image`'s format).
-pub(crate) fn f16_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
-    let mut data = Vec::with_capacity(rgb.len() * 8);
-    for [r, g, b] in rgb {
-        for c in [*r, *g, *b, 1.0] {
-            data.extend_from_slice(&half::f16::from_f32(c).to_le_bytes());
-        }
-    }
-    data
-}
-
-/// Texel bytes of the world layer in Source's LDR encoding
-/// (`source_lightmap_image`'s format).
-pub(crate) fn source_ldr_texels(rgb: &[[f32; 3]]) -> Vec<u8> {
-    let mut data = Vec::with_capacity(rgb.len() * 4);
-    for [r, g, b] in rgb {
-        data.extend([source_ldr_texel(*r), source_ldr_texel(*g), source_ldr_texel(*b), 255]);
-    }
-    data
-}
-
-/// Texel bytes of the three directional pages in Source's LDR encoding.
-pub(crate) fn source_ldr_page_texels(flat: &[[f32; 3]], pages: &[Vec<[f32; 3]>; 3]) -> [Vec<u8>; 3] {
-    let mut texels: [Vec<u8>; 3] = std::array::from_fn(|_| Vec::with_capacity(flat.len() * 4));
-    for (i, f) in flat.iter().enumerate() {
-        let enc = source_ldr_bump_texels(*f, [pages[0][i], pages[1][i], pages[2][i]]);
-        for (t, [r, g, b]) in texels.iter_mut().zip(enc) {
-            t.extend([r, g, b, 255]);
-        }
-    }
-    texels
 }
 
 /// Rebuild the lightmap images when switchable light styles change
@@ -703,6 +670,7 @@ fn write_uploads(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::{f16_texels, source_ldr_texels};
 
     /// A 4x1 atlas: texel 0 lit steadily, texels 1-2 a flickering style's
     /// block (with a switchable style on texel 2 too), texel 3 another

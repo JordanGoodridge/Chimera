@@ -19,6 +19,7 @@ pub mod fog;
 pub mod dust;
 pub mod fish;
 pub mod glow;
+pub mod light_styles;
 pub mod lod;
 pub mod monitor;
 pub mod particles;
@@ -27,6 +28,7 @@ pub mod psys;
 pub mod rope_sway;
 pub mod shadows;
 pub mod shells;
+pub mod sky;
 pub mod sky_occluder;
 pub mod steam;
 mod spawn;
@@ -40,12 +42,17 @@ pub use spawn::{Drawn, MapAssets};
 /// entities it made (a `map::MapHooks::unload` hook, added by
 /// `map_plugin`).
 pub(crate) fn unload_map(world: &mut World) {
+    world.remove_resource::<light_styles::StyledLightmaps>();
     world.remove_resource::<decal::DecalSurfaces>();
     world.remove_resource::<decal::DecalAssets>();
     world.remove_resource::<decal::ImpactDecals>();
     world.remove_resource::<psys::ParticleSystemDefs>();
     world.remove_resource::<monitor::MonitorScreen>();
     world.remove_resource::<water::MapWaterRender>();
+    world.remove_resource::<sky::MapSkybox>();
+    world.remove_resource::<sky::SkyCameraInfo>();
+    world.remove_resource::<sky::ActiveMapHas3dSky>();
+    world.remove_resource::<sky::SkyVis>();
     world.remove_resource::<shadows::ShadowState>();
     world.remove_resource::<shadows::ShadowSource>();
     world.remove_resource::<particles::ParticleAssets>();
