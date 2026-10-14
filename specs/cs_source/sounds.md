@@ -745,6 +745,37 @@ What an implementation needs:
 - **Map entities:** ambient_generic and env_soundscape(_proxy/_triggerable) + trigger_soundscape from the BSP entity lump. Soundscape selection runs per local player (we can do it every frame without the trace budget).
 - **Not needed for a first slice:** sentences ("!"), gender macros, DSP presets (no-op, or a simple reverb per preset later), close captions, sound mixers.
 
+## CS:S values (measured)
+
+### Footsteps (2026-10-14, probe server)
+
+The probe plugin's sound hook (`S` rows of `mashup_run`) on the bot running
+straight on de_dust2's sand (-2000, -872) with the knife (max speed 250),
+steady speeds set by forwardmove:
+- No step below 150: 100, 130 (walking, +speed), 140, 145 and ducking (85)
+  are silent; 150 steps.
+- 150 to under 220 (150, 160, 200, 210): a step every 27 ticks (0.4 s) at
+  volume 0.25 on sand; 220 and up (220, 225, 230, 240, 245, 250): every 20
+  ticks (0.3 s) at 0.55. The band is picked at each step by the speed then.
+- Channel 4 (CHAN_BODY), level 326 (as the scripts' 75 dB).
+- A jump's takeoff plays a step at volume 1.0, standing, walking (130) or
+  running; a duck + jump pressed together from standing played none.
+
+### Hurt and death sounds (2026-10-14, probe server)
+
+`tools/css_probe/hitmeas.py`'s shooter firing one USP or AK-47 shot at the
+probe bot, `sv_soundemitter_trace 1`; the server's emitted entries per hit
+(the client may add its own; not measured):
+- Head (no helmet, armour or not): `Player.DamageHeadShot`; when the hit
+  kills, `Player.DamageHeadShot` and then `Player.DeathHeadShot`.
+- Chest/stomach with armour (the vest takes part): `Player.DamageKevlar`
+  only, no `Flesh.BulletImpact`.
+- Chest/stomach without armour, and legs with or without armour:
+  `Flesh.BulletImpact` only.
+- A lethal non-head hit: its hit sound above, then `Player.Death`.
+- A helmeted head: `Player.DamageHelmet` only (USP, Glock, AK-47); a killing
+  helmeted headshot not caught.
+
 ## Open questions
 
 1. **Distance falloff (engine-side).** What is gain(d) for a sound level L, and for "CompatibilityAttenuation" entries? H1 and H2 above are hypotheses.

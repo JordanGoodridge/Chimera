@@ -1365,7 +1365,8 @@ in the plugin's W rows, `punch` its view punch, both after the hit tick):
     21 → −2.1, 37 → −3.7, 44+ → −4), yaw and roll 0;
   - a hit the vest absorbs part of (armour > 0, not the head), and leg
     hits: no punch.
-  - Helmeted head hits: not measured.
+  - A helmeted head (armour 100 + helmet; USP, Glock, AK-47): no punch;
+    the speed modifier as any other hit (0.5 pistols, 0.65 the AK).
 
 ### Not measured yet
 

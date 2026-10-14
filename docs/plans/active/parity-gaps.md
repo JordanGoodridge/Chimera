@@ -26,7 +26,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 |---|---|---|---|---|
 | Movement | 3 | 8 | 0 | 2 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
-| Sounds | 6 | 8 | 4 | 3 |
+| Sounds | 7 | 8 | 3 | 4 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
 | Rendering, lighting, materials | 6 | 15 | 2 | 2 |
@@ -96,7 +96,7 @@ report folders):
 | Fall damage and landing roll | have | | | specs/cs_source/fall_damage.md |
 | Surf ramps | differs | L | | tech-debt "cs_source movement": the rampbug patched out (our choice) |
 | Slowdown when shot ("tagging") | have | | | Fixed 2026-10-14: weapons.md M18 (0.5/0.65 by gun, legs 0.5, +1/3 a second); the speed trace to 0.05 (`games/cs_source/hit_reaction.rs`) |
-| View punch when hit (flinch) | differs | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4); a helmeted head's is unmeasured (none, ours). Capture C1 |
+| View punch when hit (flinch) | have (fixed) | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4, helmeted head none: measured, matches) |
 | Scoped speeds (AWP, Scout, autos zoomed) | differs | M | S | spec movement.md Q1 |
 | Duck spam limit, duck transition times | differs | M | S | spec movement.md Q6 |
 | Backpedal speed (`sv_backspeed`) | differs | L | S | spec movement.md Q10 |
@@ -132,12 +132,12 @@ report folders):
 | Weapon fire, reload parts, empty, deploy, zoom | have | | | spec sounds.md; reload parts at our times (Q9) |
 | Footsteps, ladders, water, landing | have | | | spec; silence rules unmeasured (below) |
 | Round announcer, radio, chat blip, bomb | have | | | |
-| Hurt and death sounds | differs | H | S | tech-debt "Hurt and death sounds": rules ours; sound.md plan lists 7 captures |
+| Hurt and death sounds | have (fixed) | H | S | measured per hit (sounds.md): a killing headshot plays DamageHeadShot and DeathHeadShot, armour-covered hits only DamageKevlar (no flesh impact), heads no flesh impact; helmeted heads unmeasured (tech-debt "Hurt and death sounds") |
 | Weapon pickup and buy sounds | have (fixed) | H | S | `Player.PickupWeapon`, `BaseCombatCharacter.ItemPickup2` were never played; which plays when is inferred (tech-debt), capture C2 |
 | HUD weapon selection sounds | have (fixed) | H | S | `Player.WeaponSelectionMoveSlot`/`WeaponSelected`/`DenyWeaponSelection` were never played; when each plays is inferred, capture C3 |
 | Under water muffle | have (fixed) | M | S | nothing changed with the head under water; now a steady low-pass (Source's `dsp_water` is engine-side: values ours, capture C5) |
 | Distance falloff curves | differs | H | S | spec sounds.md Q1 (H1/H2 hypotheses) |
-| Footstep silence rules, jump sound | differs | H | S | spec Q3, Q4 |
+| Footstep silence rules, jump sound | have (fixed) | H | S | measured (sounds.md "Footsteps"): silent below 150 (was: by the walk/duck keys), 0.25 / 0.4 s under 220, 0.55 / 0.3 s above, jump 1.0; duck + jump from standing silent in CS:S, ours plays the jump step |
 | Room DSP presets | differs | M | M | tech-debt "Room DSP": every value ours |
 | `dsp_player`, `soundmixer` | missing | M | M | read, not played (spec Q14) |
 | Wave choice (repeat avoidance) | differs | L | S | spec Q2 |

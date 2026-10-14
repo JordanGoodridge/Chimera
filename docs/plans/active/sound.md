@@ -97,19 +97,21 @@ Started 2026-10-05, from specs/cs_source/sounds.md.
    `Player.DeathHeadShot` (CHAN_VOICE, headshot1-2), `Player.Death`
    (CHAN_VOICE, death1-6), `Player.FallDamage` (CHAN_BODY, damage1-3),
    all CompatibilityAttenuation 1.0; `Flesh.BulletImpact`
-   (game_sounds_physics.txt, the `flesh` surface's bulletimpact) stays the
-   shot's own client-side impact; shots on players now take the
-   hitboxes' `flesh` (impact_effects.md 3), not the movement box's
-   `player`, which has no bulletimpact (they were silent). Defined, unused: `Player.FallGib`,
+   (game_sounds_physics.txt, the `flesh` surface's bulletimpact; players'
+   hitboxes are `flesh`, impact_effects.md 3) is a player hit's sound only
+   when no hurt sound plays, decided by the server (measured 2026-10-14,
+   specs/cs_source/sounds.md "Hurt and death sounds"). Defined, unused: `Player.FallGib`,
    `Player.PlasmaDamage`/`SonicDamage` (null waves), `Player.DrownStart`/
-   `DrownContinue` (no drowning yet). Rules (tech-debt.md): helmet ->
-   DamageHelmet, bare head -> DamageHeadShot unless it kills, covered body
-   -> DamageKevlar, fall damage taken -> FallDamage, death -> Death or
+   `DrownContinue` (no drowning yet). Rules (measured but the helmet):
+   helmet -> DamageHelmet (a guess), bare head -> DamageHeadShot (a
+   killing one too, then DeathHeadShot), covered body -> DamageKevlar
+   only, else Flesh.BulletImpact, fall damage taken -> FallDamage, death -> Death or
    DeathHeadShot; from the victim, positional for others and centred for
    the victim; hurt sounds are the server's `GameSound` (every client
    once), deaths play from `core::Died` on each side. Reference checks for
    the coordinator (CS:S, `sv_soundemitter_trace 1` on a listen server,
-   bots as victims): (a) body shot with and without kevlar, (b) headshot
+   bots as victims; (a), (c) and (b) without a helmet done 2026-10-14):
+   (a) body shot with and without kevlar, (b) headshot
    with and without helmet, non-lethal and lethal (does a killing
    headshot play DamageHeadShot, DeathHeadShot or both; does a death by
    a headshot also play `Player.Death`), (c) a leg shot in kevlar, (d)

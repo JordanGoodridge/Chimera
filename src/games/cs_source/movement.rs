@@ -156,10 +156,11 @@ pub struct SourceMovementConfig {
     /// `duck_slows_everywhere`; measured; the shared code leaves climbing
     /// speed alone).
     pub duck_slows_ladder: bool,
-    /// CS:S: no footsteps while walking (+speed) or ducked. Players know it
-    /// and the shared code's speed bands contradict it; unmeasured (sound
-    /// spec open question 3).
-    pub silent_walk_duck: bool,
+    /// The slowest a step plays at, off ladders (the shared code's walk
+    /// band starts at 90; CS:S's at 150, measured: 140 silent, 150 steps,
+    /// so walking (130) and ducking (85) are silent by speed, not by key;
+    /// specs/cs_source/sounds.md "Footsteps").
+    pub step_min_speed: f32,
     /// CS:S: the ducked input scale applies while duck is held, or when the
     /// tick started ducked or mid-duck: from the tick duck is pressed until
     /// the tick after it's released, in the air and water too (measured
@@ -314,7 +315,7 @@ impl SourceMovementConfig {
             ladder_dampen: 1.0,
             ladder_angle: -0.707,
             client_maxspeed: 250.0,
-            silent_walk_duck: false,
+            step_min_speed: 90.0,
             duck_slows_ladder: false,
             duck_slows_everywhere: false,
             fall_safe: 580.0,
@@ -358,7 +359,7 @@ impl Default for SourceMovementConfig {
             bunnyhop_cap: 286.0,
             ladder_dampen: 0.2,
             client_maxspeed: 260.0,
-            silent_walk_duck: true,
+            step_min_speed: 150.0,
             duck_slows_ladder: true,
             duck_slows_everywhere: true,
             // Measured on the probe server: 100 damage at 996, not 1024.
@@ -1421,22 +1422,21 @@ impl Mover<'_, '_, '_, '_> {
 
     /// Footsteps (sound spec 3, "When a footstep is checked"), from the
     /// state at the start of the tick.
-    fn footsteps(&mut self, intent: &Intent) {
+    fn footsteps(&mut self) {
         if self.me.step_timer > 0.0 {
             self.me.step_timer = (self.me.step_timer - 1000.0 * self.dt).max(0.0);
             if self.me.step_timer > 0.0 {
                 return;
             }
         }
-        if self.cfg.silent_walk_duck && (intent.walk || intent.crouch || self.me.ducked) {
-            return;
-        }
         let ladder = self.me.ladder.is_some();
         let speed = self.v.length();
-        let (walk, run) = if self.me.ducked || ladder {
+        let (walk, run) = if ladder {
             (60.0, 80.0)
+        } else if self.me.ducked {
+            (self.cfg.step_min_speed.max(60.0), 80.0_f32.max(self.cfg.step_min_speed))
         } else {
-            (90.0, 220.0)
+            (self.cfg.step_min_speed, 220.0)
         };
         if speed < walk || !(ladder || (self.me.on_ground && self.v.truncate().length() > 1e-4)) {
             return;
@@ -1943,7 +1943,7 @@ impl Mover<'_, '_, '_, '_> {
             self.me.fall_speed = -self.v.z;
         }
         let water_before = self.me.water_level;
-        self.footsteps(intent);
+        self.footsteps();
         let was_ducking = self.me.ducked || self.me.ducking;
         let mut scale = self.duck(intent.crouch);
         // CS:S (measured): input is slowed while duck is held, or when the

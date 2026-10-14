@@ -1283,7 +1283,8 @@ fn sounds_load() {
 /// Footsteps (specs/cs_source/sounds.md 3): running across CT spawn steps
 /// every 300 ms (20 ticks at 64 tick), right foot first then alternating,
 /// at the surface's running volume; a jump plays a full-volume step;
-/// walking (+speed) is silent in CS:S.
+/// walking (+speed, 130) and ducking (85) are silent, below CS:S's 150
+/// (specs/cs_source/sounds.md "Footsteps", measured).
 #[test]
 fn footsteps() {
     use mashup::{
@@ -1351,6 +1352,13 @@ fn footsteps() {
     sim.intent(p).walk = true;
     sim.seconds(2.0);
     assert!(sim.app.world().resource::<Heard>().0.is_empty(), "walking is silent");
+    // Ducking: silent too.
+    sim.intent(p).walk = false;
+    sim.intent(p).crouch = true;
+    sim.seconds(1.0);
+    sim.app.world_mut().resource_mut::<Heard>().0.clear();
+    sim.seconds(2.0);
+    assert!(sim.app.world().resource::<Heard>().0.is_empty(), "ducking is silent");
 }
 
 /// Footsteps on props (specs/cs_source/sounds.md 3): solid props carry a
