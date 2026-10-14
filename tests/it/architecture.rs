@@ -162,6 +162,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("bin", &[]),
 ];
 
+/// The engine crates' source folders, scanned with `src/` (their modules
+/// keep their names in `ALLOWED`).
+const ENGINE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src"];
+
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -270,10 +274,11 @@ fn crate_refs(code: &str, modules: &BTreeSet<String>) -> BTreeSet<String> {
 fn module_layering() {
     let src = root().join("src");
     // The engine's crates keep their modules' names (`engine_core`'s
-    // `crate::core`, re-exported by `mashup` at the same paths), so one
+    // `crate::core`, `engine_world`'s `crate::map`, `engine_present`'s
+    // `crate::render`, re-exported by `mashup` at the same paths), so one
     // table covers them all.
     let mut files = Vec::new();
-    for dir in ["src", "engine/core/src"] {
+    for dir in ENGINE_SRC.iter().copied().chain(["src"]) {
         let mut more = Vec::new();
         rust_files(&root().join(dir), &mut more);
         files.extend(more.into_iter().map(|f| (root().join(dir), f)));
@@ -377,13 +382,16 @@ fn simulation_builds_no_drawn_parts() {
         "movement",
         "games",
     ];
-    let src = root().join("src");
     let mut files = Vec::new();
-    rust_files(&src, &mut files);
+    for dir in ENGINE_SRC.iter().copied().chain(["src"]) {
+        let mut more = Vec::new();
+        rust_files(&root().join(dir), &mut more);
+        files.extend(more.into_iter().map(|f| (root().join(dir), f)));
+    }
     let mut errors = Vec::new();
     let mut used_exceptions = BTreeSet::new();
-    for file in files {
-        let Some(module) = module_of(&src, &file) else { continue };
+    for (base, file) in files {
+        let Some(module) = module_of(&base, &file) else { continue };
         if !SIM.contains(&module.as_str()) {
             continue;
         }
@@ -416,14 +424,14 @@ fn simulation_builds_no_drawn_parts() {
             ));
         }
     }
-    let wgsl: Vec<String> = fs::read_dir(src.join("map"))
+    let wgsl: Vec<String> = fs::read_dir(root().join("engine/world/src/map"))
         .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".wgsl"))
         .collect();
     if !wgsl.is_empty() {
-        errors.push(format!("src/map holds shaders {wgsl:?}: shaders are `render`'s (src/render)."));
+        errors.push(format!("engine/world/src/map holds shaders {wgsl:?}: shaders are `render`'s."));
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
@@ -671,9 +679,17 @@ fn workspace_crates() {
     const ENGINE: &str = "is the engine's base (docs/ARCHITECTURE.md, \"Crates\"): games build on it, \
         never the other way. Move the piece that needs the game up into `mashup`, or give the engine a \
         hook (a registry, a trait, a resource) that the game fills.";
+    const WORLD: &str = "is the simulation's map (docs/ARCHITECTURE.md, \"Crates\"): what draws and \
+        plays it (`engine_present`) and the games sit above it. Say what is needed in plain data (a \
+        drawn-part request, a `MapDrawer` or `MapHooks` hook) and let the crate above fill it in.";
+    const PRESENT: &str = "is the engine's presentation (docs/ARCHITECTURE.md, \"Crates\"): it draws \
+        and plays the map, and games build on it. Move the piece that needs the game up into `mashup`, or \
+        give the presentation a hook (a registry, a drawn-part request, a resource) that the game fills.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
+        ("engine/world", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
+        ("engine/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
     ];
     for (krate, forbidden, why) in FORBIDDEN {
         let path = format!("{krate}/Cargo.toml");

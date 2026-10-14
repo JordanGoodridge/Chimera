@@ -974,3 +974,27 @@ to a second. A change in `source_formats` still rebuilds `mashup` above
 it (a dependent crate always does), so the hooks still test both; the
 win grows as more crates are cut and edits land in crates with fewer
 dependents (engine-split.md, "Crates and compile time").
+
+### `engine_world` and `engine_present` (2026-10-14)
+
+`map` moved into `engine/world` (15.6k lines), `render`, `audio` and
+`map_plugin` into `engine/present` (20.7k); `mashup` keeps 134k. Same
+setup as above (own `target/`, sccache, `CARGO_BUILD_JOBS=4`, other
+agents building), a new `pub fn` appended to one file, then reverted and
+rebuilt untimed before the next sample:
+
+| Edit | Command | Time (load) |
+|---|---|---|
+| a leaf in `render` (`render/fish.rs`), before the cut | `cargo test --features dev --no-run` | 210 s (11-33) |
+| a leaf in `render`, after | the same | 30-72 s (14-27) |
+| a leaf in `map` (`map/fish.rs`), after | the same | 37-64 s (15-28) |
+| a leaf in a game (`games/cs_source/ui/window_icon.rs`) | the same | 127-176 s (13-27) |
+| a leaf in `map` | `cargo test -p engine_world --features dev` (build and run its 41 tests) | 8.6 s (32-34) |
+| a leaf in `render` | `cargo test -p engine_present --features dev` (99 tests) | 12 s (28-32) |
+
+An edit in either crate rebuilds it and the crates above (`mashup`
+recompiles incrementally, nothing in it changed); an edit in `mashup`
+still costs `mashup`'s own 134k lines. The first `cargo test -p
+engine_world` builds Bevy once more (about 20 minutes at load 20): a
+crate alone unifies Bevy's features without what `mashup`'s other
+dependencies turn on, so it has its own Bevy build, cached afterwards.

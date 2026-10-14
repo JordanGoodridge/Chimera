@@ -3209,6 +3209,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_present"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "engine_core",
+ "engine_world",
+ "half",
+ "image",
+]
+
+[[package]]
+name = "engine_world"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bevy_replicon",
+ "engine_core",
+ "half",
+ "image",
+ "serde",
+ "source_formats",
+]
+
+[[package]]
 name = "enumn"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4582,6 +4608,8 @@ dependencies = [
  "crc32fast",
  "dirs",
  "engine_core",
+ "engine_present",
+ "engine_world",
  "half",
  "igd-next",
  "image",

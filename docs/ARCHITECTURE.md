@@ -12,6 +12,10 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 
 ```
 mashup (repository root: src/, tests/it/)   the game, engine and tools
+  |
+engine_present (engine/present/)   render, audio, MapPlugin
+  |
+engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (engine/core/)       core, console, slots, character, metrics
@@ -30,6 +34,21 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   old paths (`mashup::core` adds `VERSION`, stamped in the app's crate
   so a commit doesn't rebuild the base). The layering table covers its
   modules too. `cargo test -p engine_core --features dev` tests it alone.
+- `engine_world` is the simulation's map (`map`): the neutral map data,
+  collision, spawning a map's simulated parts (the drawn ones through
+  `map::MapDrawer`), the map's systems. It uses `engine_core` and
+  `source_formats` of ours and never what draws or plays the map, `mashup`
+  or a game (checked). `mashup::map` re-exports it with `MapPlugin`,
+  whose type sits beside its registration in `map_plugin` (orphan rule);
+  map's part of that registration is `map::build_first` and its siblings.
+  `cargo test -p engine_world --features dev` tests it alone.
+- `engine_present` is the presentation beside the simulation: `render`,
+  `audio` and `map_plugin` (`MapPlugin`, registering map's, audio's and
+  render's systems in one order). It uses `engine_world` and
+  `engine_core`, never `mashup` or a game (checked); `mashup` re-exports
+  `render` and `audio` at their old paths. An edit in it rebuilds it and
+  `mashup`, not the map; an edit in `mashup` rebuilds neither.
+  `cargo test -p engine_present --features dev` tests it alone.
 
 ## Layers
 
@@ -79,7 +98,7 @@ spawns and simulates: the drawn phases of spawning a map, what is made
 in play, effects, culling, water, shadows, the sky, view models, the
 materials and their shaders) uses core and map, and only `client`,
 `map_plugin` and a game's `ui/` use it. `map_plugin` builds
-`map::MapPlugin` (the type stays in `map`) from map's systems, audio's and
+`map::MapPlugin` (its type, re-exported into `map`) from map's systems, audio's and
 render's, in one fixed order. Animation evaluation stays on the
 simulation's side (the server poses hitboxes); see
 docs/plans/active/engine-split.md, "Crates and compile time".
@@ -138,101 +157,101 @@ that the paths exist).
 - `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
-### Map (neutral map data, spawning, effects as data)
+### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
 
-- `src/map/mod.rs`: `MapPlugin`, `unload_map`/`change_map`, `MapHooks`, the loaded map's resources, re-exports (map)
-- `src/map/data.rs`: `MapData` and everything it holds; plain data (map)
-- `src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
-- `src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
-- `src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
-- `src/map/loading.rs`: how far a map load has come, for a loading screen (map)
-- `src/map/collision.rs`, `sky.rs`: colliders and the sky built from map data (map)
-- `src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
-- `src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
-- `src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
-- `src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
-- `src/map/interp.rs`: drawing between simulation ticks (map)
-- `src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
-- `src/map/props.rs`: placed props after spawning: physics props, sequences (map)
-- `src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
-- `src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
-- `src/map/ragdoll.rs`: ragdolls on character models (map)
-- `src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
-- `src/map/loose.rs`: loose items: dropped weapons' bodies, shown items, resting on the ground (map)
-- `src/map/shells.rs`: spent shells' types and flight step (map)
-- `src/map/breakables.rs`: gibs, broken panes and falling pieces: physics, and gibs' looks (map)
-- `src/map/prop_physics.rs`: physics props' motion as the logic asks (map)
-- `src/map/controllers.rs`: physics controllers and joints the logic switches (map)
-- `src/map/buoyancy.rs`: bodies in water float (map)
-- `src/map/copies.rs`: copies of map nodes made at run time (map)
-- `src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
-- `src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
-- `src/map/color_correction.rs`: color_correction entities as data (map)
-- `src/map/water.rs`: water materials, surfaces, moving water, the view's water state (map)
-- `src/map/particles.rs`: the CPU particle pool (map)
-- `src/map/psys.rs`: data-driven particle systems (`.pcf` effects) as data (map)
-- `src/map/emitters.rs`: sprite trails, smoke stacks, tesla arcs, embers, muzzle flashes, strikes as data (map)
-- `src/map/beams.rs`: beams and glows as data (map)
-- `src/map/steam.rs`: steam jets as data (map)
-- `src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
-- `src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
-- `src/map/decal.rs`: runtime decals and players' sprays as data, impacts' lift (map)
-- `src/map/rope_sway.rs`: ropes' settling step and spline (map)
-- `src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
-- `src/map/sound.rs`: the simulation's side of sounds (map)
-- `src/map/radio.rs`: a game's team radio data and chat line format (map)
-- `src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
-- `src/map_plugin.rs`: builds `map::MapPlugin` from map's, audio's and render's systems (above map, audio, render)
+- `engine/world/src/lib.rs`, `engine/world/src/map/mod.rs`: map's registration (`build_first`, ...), `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `engine/world/src/map/data.rs`: `MapData` and everything it holds; plain data (map)
+- `engine/world/src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
+- `engine/world/src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
+- `engine/world/src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
+- `engine/world/src/map/loading.rs`: how far a map load has come, for a loading screen (map)
+- `engine/world/src/map/collision.rs`, `sky.rs`: colliders and the sky built from map data (map)
+- `engine/world/src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
+- `engine/world/src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
+- `engine/world/src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
+- `engine/world/src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
+- `engine/world/src/map/interp.rs`: drawing between simulation ticks (map)
+- `engine/world/src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
+- `engine/world/src/map/props.rs`: placed props after spawning: physics props, sequences (map)
+- `engine/world/src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
+- `engine/world/src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
+- `engine/world/src/map/ragdoll.rs`: ragdolls on character models (map)
+- `engine/world/src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
+- `engine/world/src/map/loose.rs`: loose items: dropped weapons' bodies, shown items, resting on the ground (map)
+- `engine/world/src/map/shells.rs`: spent shells' types and flight step (map)
+- `engine/world/src/map/breakables.rs`: gibs, broken panes and falling pieces: physics, and gibs' looks (map)
+- `engine/world/src/map/prop_physics.rs`: physics props' motion as the logic asks (map)
+- `engine/world/src/map/controllers.rs`: physics controllers and joints the logic switches (map)
+- `engine/world/src/map/buoyancy.rs`: bodies in water float (map)
+- `engine/world/src/map/copies.rs`: copies of map nodes made at run time (map)
+- `engine/world/src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
+- `engine/world/src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
+- `engine/world/src/map/color_correction.rs`: color_correction entities as data (map)
+- `engine/world/src/map/water.rs`: water materials, surfaces, moving water, the view's water state (map)
+- `engine/world/src/map/particles.rs`: the CPU particle pool (map)
+- `engine/world/src/map/psys.rs`: data-driven particle systems (`.pcf` effects) as data (map)
+- `engine/world/src/map/emitters.rs`: sprite trails, smoke stacks, tesla arcs, embers, muzzle flashes, strikes as data (map)
+- `engine/world/src/map/beams.rs`: beams and glows as data (map)
+- `engine/world/src/map/steam.rs`: steam jets as data (map)
+- `engine/world/src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
+- `engine/world/src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
+- `engine/world/src/map/decal.rs`: runtime decals and players' sprays as data, impacts' lift (map)
+- `engine/world/src/map/rope_sway.rs`: ropes' settling step and spline (map)
+- `engine/world/src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
+- `engine/world/src/map/sound.rs`: the simulation's side of sounds (map)
+- `engine/world/src/map/radio.rs`: a game's team radio data and chat line format (map)
+- `engine/world/src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
+- `engine/present/src/map_plugin.rs`: `MapPlugin`, built from map's, audio's and render's systems in one order (above map, audio, render)
 
-### Render (presentation beside the simulation)
+### Render (crate `engine_present`, `engine/present/`: presentation beside the simulation)
 
-- `src/render/mod.rs`, `src/render/spawn.rs`: the drawn phases of spawning a map (`MapAssets`, a `map::MapDrawer`) (render)
-- `src/render/tint.rs`: entities' render colour, alpha and mode; brush texture frames (render)
-- `src/render/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (render)
-- `src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
-- `src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
-- `src/render/color_correction.rs`: color_correction volumes blended into one table (render)
-- `src/render/light_styles.rs`: switchable and animated light styles at run time (render)
-- `src/render/lod.rs`: props' levels of detail as drawn (render)
-- `src/render/glow.rs`: glow sprites faded by how much of their proxy is seen (render)
-- `src/render/psys.rs`: running and drawing the particle systems (render)
-- `src/render/shells.rs`: spent shells thrown, flying and drawn (render)
-- `src/render/rope_sway.rs`: ropes in the wind (render)
-- `src/render/fish.rs`: func_fish_pool's fish swimming (render)
-- `src/render/parts.rs`: drawn parts the logic switches on and off (render)
-- `src/render/dust.rs`: dust motes; the effects' dynamic meshes (render)
-- `src/render/steam.rs`: steam jets' puffs (render)
-- `src/render/tracer.rs`: bullet tracers drawn from the muzzle (render)
-- `src/render/emitters.rs`: trails, smoke stacks, teslas, embers, muzzle flashes, strikes through the pool (render)
-- `src/render/particles.rs`, `particle.wgsl`: drawing the particle pool (render)
-- `src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
-- `src/render/spray.rs`, `spray.wgsl`: players' sprays drawn from the install's logos (render)
-- `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
-- `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
-- `src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
-- `src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (render)
-- `src/render/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (render)
-- `src/render/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders; the scene's fog (render)
-- `src/render/probe_lit.rs`: moving models lit from the baked light field (render)
-- `src/render/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (render)
-- `src/render/sprite_material.rs`, `sprite.wgsl`: sprites and glows added or blended in gamma space (render)
-- `src/render/materials.rs`, `images.rs`: materials, meshes and images built from map data (render)
-- `src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
-- `src/render/breakables.rs`: drawing gibs and windows' unbroken panes (render)
-- `src/render/merge.rs`: brush entities drawn merged while at their spawn pose (render)
-- `src/render/props.rs`: placed props' skins and body groups as drawn (render)
-- `src/render/loose.rs`: drawn loose and shown items (render)
-- `src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
-- `src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
-- `src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
+- `engine/present/src/render/mod.rs`, `engine/present/src/render/spawn.rs`: the drawn phases of spawning a map (`MapAssets`, a `map::MapDrawer`) (render)
+- `engine/present/src/render/tint.rs`: entities' render colour, alpha and mode; brush texture frames (render)
+- `engine/present/src/render/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (render)
+- `engine/present/src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
+- `engine/present/src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
+- `engine/present/src/render/color_correction.rs`: color_correction volumes blended into one table (render)
+- `engine/present/src/render/light_styles.rs`: switchable and animated light styles at run time (render)
+- `engine/present/src/render/lod.rs`: props' levels of detail as drawn (render)
+- `engine/present/src/render/glow.rs`: glow sprites faded by how much of their proxy is seen (render)
+- `engine/present/src/render/psys.rs`: running and drawing the particle systems (render)
+- `engine/present/src/render/shells.rs`: spent shells thrown, flying and drawn (render)
+- `engine/present/src/render/rope_sway.rs`: ropes in the wind (render)
+- `engine/present/src/render/fish.rs`: func_fish_pool's fish swimming (render)
+- `engine/present/src/render/parts.rs`: drawn parts the logic switches on and off (render)
+- `engine/present/src/render/dust.rs`: dust motes; the effects' dynamic meshes (render)
+- `engine/present/src/render/steam.rs`: steam jets' puffs (render)
+- `engine/present/src/render/tracer.rs`: bullet tracers drawn from the muzzle (render)
+- `engine/present/src/render/emitters.rs`: trails, smoke stacks, teslas, embers, muzzle flashes, strikes through the pool (render)
+- `engine/present/src/render/particles.rs`, `particle.wgsl`: drawing the particle pool (render)
+- `engine/present/src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
+- `engine/present/src/render/spray.rs`, `spray.wgsl`: players' sprays drawn from the install's logos (render)
+- `engine/present/src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
+- `engine/present/src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
+- `engine/present/src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
+- `engine/present/src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (render)
+- `engine/present/src/render/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (render)
+- `engine/present/src/render/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders; the scene's fog (render)
+- `engine/present/src/render/probe_lit.rs`: moving models lit from the baked light field (render)
+- `engine/present/src/render/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (render)
+- `engine/present/src/render/sprite_material.rs`, `sprite.wgsl`: sprites and glows added or blended in gamma space (render)
+- `engine/present/src/render/materials.rs`, `images.rs`: materials, meshes and images built from map data (render)
+- `engine/present/src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
+- `engine/present/src/render/breakables.rs`: drawing gibs and windows' unbroken panes (render)
+- `engine/present/src/render/merge.rs`: brush entities drawn merged while at their spawn pose (render)
+- `engine/present/src/render/props.rs`: placed props' skins and body groups as drawn (render)
+- `engine/present/src/render/loose.rs`: drawn loose and shown items (render)
+- `engine/present/src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
+- `engine/present/src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
+- `engine/present/src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
 
-### Audio (presentation beside the simulation)
+### Audio (crate `engine_present`: presentation beside the simulation)
 
-- `src/audio/mod.rs`, `src/audio/sound.rs`: `SoundPlugin`, one-shot playback, the listener (audio)
-- `src/audio/live_sound.rs`: long-lived sounds started and stopped by `map::SoundControl` (audio)
-- `src/audio/room.rs`: room DSP presets and the shared reverb bus (audio)
-- `src/audio/soundscape.rs`: soundscape selection and playback (audio)
-- `src/audio/hearing.rs`: blast and flash muffle and ringing, the underwater muffle (audio)
+- `engine/present/src/audio/mod.rs`, `engine/present/src/audio/sound.rs`: `SoundPlugin`, one-shot playback, the listener (audio)
+- `engine/present/src/audio/live_sound.rs`: long-lived sounds started and stopped by `map::SoundControl` (audio)
+- `engine/present/src/audio/room.rs`: room DSP presets and the shared reverb bus (audio)
+- `engine/present/src/audio/soundscape.rs`: soundscape selection and playback (audio)
+- `engine/present/src/audio/hearing.rs`: blast and flash muffle and ringing, the underwater muffle (audio)
 
 ### Simulation above map (logic, weapon, objectives, rules, bot)
 

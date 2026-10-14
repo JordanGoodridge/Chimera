@@ -124,13 +124,13 @@ With `--features dev`, the game serves JSON-RPC on `localhost:15702`.
 
 ```
 curl -s localhost:15702 -d '{"jsonrpc":"2.0","id":1,"method":"world.query","params":{
-  "data":{"components":["mashup::core::MovementState","mashup::core::Velocity"]},
-  "filter":{"with":["mashup::core::LocalPlayer"]}}}'
+  "data":{"components":["engine_core::core::MovementState","engine_core::core::Velocity"]},
+  "filter":{"with":["engine_core::core::LocalPlayer"]}}}'
 ```
 
 ```
 curl -s localhost:15702 -d '{"jsonrpc":"2.0","id":2,"method":"world.get_resources",
-  "params":{"resource":"mashup::core::SimTick"}}'
+  "params":{"resource":"engine_core::core::SimTick"}}'
 ```
 
 Other methods: `world.list_components`, `world.get_components`,
@@ -358,7 +358,7 @@ Only `Reflect`-registered types are visible; register new core components in
   log line `ragdoll ... (death pose Some((Front, 1)))` names the death
   pose. To shoot a body after death, run live with `+bot_stop 1
   +bot_dont_shoot 1 +bot_add 1`, find the bot with a `world.query` of
-  `Transform` on `mashup::core::Intent` entities, `setpos` near it, and
+  `Transform` on `engine_core::core::Intent` entities, `setpos` near it, and
   tap `+attack`/`-attack` over the remote console between
   `screenshot`s.
 - Flashbang look (white plus the frozen after-image): run live on
