@@ -117,7 +117,7 @@ report folders):
 | Other automatics' recoil, scoped/silenced/burst | differs | M | S | spec weapons.md Q3 |
 | Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7 |
 | Unmeasured gun values (556/9mm penetration...) | differs | L | S | tech-debt "The CS:S guns" |
-| Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), fuses, HE vs armour (×0.7375) measured and matching; close-range flash fixed (6.8 s × (0.7 + 0.3 cos)); redraw, pin and flash distance open (grenades.md Q2, Q3, Q12) |
+| Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), fuses, HE vs armour (×0.7375) measured and matching; flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); redraw, pin open (grenades.md Q2, Q3, Q12) |
 | Same-type pickup takes clip and reserve | differs | L | S | tech-debt "Picking up a dropped gun" |
 | `cl_autowepswitch` while firing | differs | L | S | tech-debt row |
 | Knife idle timing | differs | L | | tech-debt "View-model idle" |

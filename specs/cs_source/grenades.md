@@ -706,7 +706,16 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
 - **Q12 flash (partial, 10-100 units):** facing the grenade: duration
   6.7-7.1 s, max alpha 255; side-on (90°): 4.7-4.9 s, 255; facing away
   (180°): 2.7-2.8 s, 200. `player_blind` fires for the victim and the
-  thrower. Farther distances, walls and smoke between: not measured.
+  thrower.
+- **Q12 flash by distance** (de_dust2's open line from (-2000, -872),
+  distance from the detonation to the eye): facing it 173 → 6.32 s, 237 →
+  6.01, 284 → 5.79, 440 → 5.05, 496 → 4.78, 574 → 4.41, 704 → 3.79, 889 →
+  2.91, 1018 → 2.30, none from 1178 (no new `m_flFlashDuration`); facing
+  away 0.4 of each. That is 7.14 × (1 − d/1500) × (0.7 + 0.3 cos), within
+  0.03 s. Max alpha: 255 facing it or side-on, 200 facing away, at every
+  distance. `m_flFlashDuration` keeps its last value after the blindness
+  ends (read only a value set after the detonation). Walls, players and
+  smoke between: not measured.
 
 ## Open questions
 
