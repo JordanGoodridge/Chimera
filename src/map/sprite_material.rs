@@ -6,6 +6,16 @@
 //! normal mode they are opaque (specs/cs_source/sprites_dust.md 3). The
 //! shader reads the scene behind (the view transmission texture) so the
 //! sum or blend is formed in gamma space, as in the game. See sprite.wgsl.
+//!
+//! Known shortcuts (docs/tech-debt.md): Sprites: glow visibility is 5 line
+//! tests to the occlusion proxy (the game uses GPU occlusion queries) with no
+//! fade-in; sprites add in gamma space by reading the scene behind them, so
+//! they draw in Bevy's transmissive phase (before translucent surfaces, unlike
+//! the game's glows) and overlapping sprites each add their own difference;
+//! blended (1, 2, 4) and normal (0) sprites write the finished pixel from that
+//! copy of the scene, so of two overlapping ones only the nearer shows; render
+//! modes 7 and 8 aren't drawn. Why it's OK for now: dust2's lamp glows match
+//! CS:S closely (refcmp glow_lamp).
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

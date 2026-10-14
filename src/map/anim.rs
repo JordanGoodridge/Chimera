@@ -5,6 +5,13 @@
 //! and writes the pose onto a body's joints.
 //!
 //! Poses are in the skeleton's own axes and units (as `MapBone`).
+//!
+//! Skeletal animation for any game: `AnimSet` (sampled animations, sequences on
+//! pose-parameter grids, autolayers, IK chains and the sequences' IK lock
+//! rules), the blend/layer math, two-bone IK (`solve_ik`: a chain's end onto a
+//! bone, e.g. hands onto a weapon's grips), and the `Animator` component that
+//! `pose_bodies` turns into body joint transforms; games drive it in
+//! `DriveAnimation`.
 
 use std::{collections::HashMap, sync::Arc};
 

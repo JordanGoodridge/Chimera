@@ -1,6 +1,26 @@
 //! The material for lightmapped world surfaces: texture x baked light, with
 //! radiosity normal mapping where the surface has directional lightmaps.
 //! See world.wgsl.
+//!
+//! World surfaces: texture x baked light with radiosity normal mapping, plus
+//! the scene's point lights (muzzle flashes), plus baked-cubemap reflections
+//! (Source LightmappedGeneric at LDR); `$detail` blend modes 0-4 and 7-9 with
+//! `$detailtint`, `$selfillum`, `$basetexturetransform` (and
+//! `$basetexturetransform2` on the second layer).
+//!
+//! Known shortcuts (docs/tech-debt.md): World reflections take the bumped
+//! normal through a screen-space tangent frame (no per-vertex tangents); the
+//! cubemaps carry their mips (nearest mip, the reference's bilinear filtering);
+//! CS:S's highlight is still slightly broader on dust2's bumped tunnel floor
+//! (refcmp `tunnel_floor_e`, abs diff 0.016, unchanged by the mips). Why it's
+//! OK for now: Visually matches; per-vertex tangents if it matters.
+//!
+//! Known shortcuts (docs/tech-debt.md): WorldTwoTextureBlend
+//! (specs/cs_source/shaders_two_texture_blend.md) follows the public SDK's
+//! shader; that CS:S ships the same revision (fixed 2.0 lightmap scale, raw
+//! detail) is confirmed only by matching brightness on de_aztec's refcmp views,
+//! not by a capture of the shader; mode 0 with `$bumpmap` is undefined. Why
+//! it's OK for now: refcmp luma matches to 0.01 on all 13 aztec views.
 
 use bevy::{
     asset::embedded_asset, prelude::*, reflect::TypePath, render::render_resource::AsBindGroup, shader::ShaderRef,

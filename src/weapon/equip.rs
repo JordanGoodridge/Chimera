@@ -9,6 +9,28 @@
 //!   weapons when the entity strips.
 //! - `weapon_*` entities placed in the map: loose weapons lying where they
 //!   stand, put back at every round restart (`MapWeapon`).
+//!
+//! Covers: map equipment (game_player_equip without "Use Only" as
+//! `SpawnEquipment`, given instead of the starting weapons at every spawn;
+//! `core::Equip` from the logic gives or strips; `weapon_*` entities placed in
+//! the map lie as loose weapons (`MapWeapon`, on the loose item and the
+//! weapon), put back at each round restart; picking one up fires its map
+//! entity's OnPlayerPickup (`map::entities::FireEntityOutput`);
+//! `anchor_weapons`: where a placed weapon with entities parented to it is,
+//! lying or at the middle of its owner's box (31 units above the feet standing,
+//! as CS:S places the car knife's car) turned to the owner's yaw, into
+//! `map::entities::EntityAnchors` and its anchor node).
+//!
+//! Known shortcuts (docs/tech-debt.md): Community-map entities from public
+//! entity docs, not a spec or a measurement: a game_player_equip without "Use
+//! Only" replaces the starting weapons at every spawn (an empty one leaves
+//! players unarmed, as mg_ maps rely on), "strip" is spawnflag 2, ammo_* keys
+//! are ignored; placed weapon_* entities are put back at each round restart; a
+//! player's AddOutput basevelocity is added to its velocity once (boosters);
+//! SetDamageFilter takes only filter_damage_type (bits compared exactly; our
+//! damage kinds' Source bits besides FALL are our reading) and the filter stays
+//! until another is set. Why it's OK for now: Makes mg_, bhop and surf maps
+//! play; write specs/source/game_entities.md and measure when a map disagrees.
 
 use avian3d::prelude::{AngularVelocity, LinearVelocity};
 use bevy::prelude::*;

@@ -4,6 +4,12 @@
 //! env_hudhint's key hint (the hint line, `chat::Hint`, with `%command%`
 //! replaced by the key bound to it) and env_screenoverlay's picture over
 //! the 3D view (public entity docs). A respawn clears the fades.
+//!
+//! What map entities put on the local screen: env_fade's fades
+//! (`logic::ScreenFades`, a full-screen colour; cleared when the player
+//! spawns), env_hudhint's text on the hint line (`%command%` as the bound key)
+//! and env_screenoverlay's picture over the 3D view (`ScreenFades::overlay`,
+//! its image from `map::ScreenOverlayImages`).
 
 use bevy::prelude::*;
 

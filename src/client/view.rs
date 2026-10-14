@@ -2,6 +2,21 @@
 //! (`thirdperson` / `firstperson`, `cam_idealdist`) and health bars over
 //! characters (`mashup_healthbars`). (The master `volume` is
 //! `client::audio`'s.)
+//!
+//! Third-person camera (`thirdperson`/`firstperson`, `cam_idealdist`,
+//! `cam_idealyaw` orbit, `mashup_freecam` detached camera, `mashup_watch` chase
+//! camera on a bot, turning about the eye as CS:S's camera does and swept back
+//! from it against the world; spectating while dead (`spectate`) comes before
+//! these), `mashup_healthbars`.
+//!
+//! Known shortcuts (docs/tech-debt.md): The third-person camera turns about the
+//! eye, `cam_idealdist` straight back along the view (CS:S's `getpos` at
+//! `setang 0` with `cam_idealdist 150`: the eye's height, 150 back;
+//! `client::view::THIRD_PERSON_PIVOT_UP` = 0). CS:S's camera angles ease toward
+//! the view's (unless `cam_snapto 1`); ours follow at once. The camera sweep is
+//! our 0.2 m sphere, not Source's box. Why it's OK for now: Pitch 45 and 89
+//! weren't measurable at de_dust2's CT spawn (a ceiling stopped CS:S's camera);
+//! check where the camera is free.
 
 use std::collections::HashMap;
 

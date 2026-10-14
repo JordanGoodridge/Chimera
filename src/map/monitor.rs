@@ -10,6 +10,18 @@
 //! point_camera's own (`MonitorFog`), not the map's: the screen camera
 //! carries it as a `DistanceFog` that the map's shaders read as the
 //! view's fog in place of their own (`fog.wgsl`, `view_fog`).
+//!
+//! Monitors for any game (Source's func_monitor and point_camera): the map's
+//! monitor screen texture (`MapData::camera_texture`, Source `_rt_Camera` /
+//! `engine/camerarendertarget`) is a 512² render target (repeating, as monitor
+//! faces' coordinates sit whole repeats from 0) that a camera of ours
+//! (`ScreenCamera`, kept out of every main-view query) draws into from the
+//! active camera's pose (`MonitorCamera`, written by the logic bridge), only
+//! while one is active, over a sky camera of its own (`ScreenSkyCamera`, also a
+//! `ScreenCamera`: the 2D sky and the 3D skybox from the camera's place scaled
+//! into it); with the point_camera's own fog (`MonitorFog`, not the map's),
+//! carried as the screen camera's `DistanceFog` marked `SOURCE_VIEW_FOG`, which
+//! `fog.wgsl` reads as the view's fog.
 
 use bevy::{
     camera::RenderTarget,

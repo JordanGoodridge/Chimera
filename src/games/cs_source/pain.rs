@@ -21,6 +21,38 @@
 //! client predicts being hit); death sounds play wherever the death is
 //! seen (`core::Died`, which a network client gets from the server's
 //! kill), so they are not sent again.
+//!
+//! Known shortcuts (docs/tech-debt.md): Fall damage feedback beyond the specs:
+//! the `Player.FallDamage` sound (now the server's, on any landing whose damage
+//! is taken: not under god mode or a map's fall-damage filter,
+//! `games/cs_source/pain.rs`) and the landing roll (0.013° per unit/s, the
+//! shared movement code's) are specced but not measured in CS:S; the HUD's part
+//! is a guess: the health panel plays the install's `HealthTookDamage`
+//! animation (red, 4 pulses over 1 s; VGUI's pulse curve assumed to be 0.5 −
+//! 0.5·cos, blur left out) on any health drop, and a fall lights both damage
+//! indicator bars (specs/cs_source/fall_damage.md open question 4). Why it's OK
+//! for now: Reads right in play; the coordinator can measure it on the probe
+//! server.
+//!
+//! Known shortcuts (docs/tech-debt.md): Hurt and death sounds
+//! (`games/cs_source/pain.rs`; no spec: sounds.md open question 7) are ours
+//! from the install's game_sounds.txt entries: a bullet in a helmet plays
+//! `Player.DamageHelmet`, in a bare head `Player.DamageHeadShot` (skipped when
+//! it kills: `Player.DeathHeadShot` instead, same waves and channel), anywhere
+//! else armour covers (the damage rule's: not the legs) `Player.DamageKevlar`;
+//! bare flesh only the shot's `Flesh.BulletImpact`; deaths `Player.Death`, by a
+//! bullet in the head `Player.DeathHeadShot`. The knife, grenades, fire and
+//! crushing play no hurt sound (the knife has its own hit sounds);
+//! `Player.PlasmaDamage`/`SonicDamage` (null waves) and the drowning entries
+//! are unused (we have no drowning). Played from the victim's origin (its body
+//! centre), the script's channel and level, to everyone, the shooter included
+//! (Source may leave the shooter's own client out of effects made during its
+//! command); armour is what it was when the tick's shots began; no rate limit
+//! but the channel (a new CHAN_BODY/CHAN_VOICE sound on the victim replaces the
+//! last); shotgun pellets on one player are one hit. Deaths play wherever
+//! `core::Died` is seen (a client's from the server's kill), not sent as a
+//! sound. Why it's OK for now: Reads right; reference checks in
+//! docs/plans/active/sound.md ("Damage and death").
 
 use std::collections::HashMap;
 

@@ -5,6 +5,22 @@
 //! in sections and in external `.ani` blocks (HL2 content such as the
 //! hostages' `humans/male_*` models, mdl_v48.md §8); data that is missing
 //! falls back to the zero-frame cache (§6). Read from raw bytes.
+//!
+//! Known shortcuts (docs/tech-debt.md): Third-person magazines
+//! (`cs_source::anim::load`): additive animations' tracks on
+//! `ValveBiped.weapon_bone_Clip` are dropped, and aim cells' (`*_aim_*`) on
+//! `weapon_bone_RHand`/`_LHand`. The files' aim cells for the AK, FAMAS, Galil,
+//! MP5, Scout, SG550 and others carry one stray clip offset (the same in every
+//! cell but the middle one) that put the magazine at the weapon bone's origin,
+//! in the grip, at full pitch, and some slide the grips the clip hangs from
+//! (Galil/Scout/SG550 crouched, pistols); the hand IK keeps the hands on the
+//! unmoved grips. Decoded per the spec, CS:S's bone merge would draw the same
+//! slide; whether it does is unconfirmed. Capture to confirm: CS:S third person
+//! (`sv_cheats 1; thirdperson`) holding an AK, `cam_idealyaw 95`, looking
+//! straight up and down (and crouched with a Galil), comparing where the
+//! magazine sits; if CS:S slides it too, put this behind an option. Why it's OK
+//! for now: The magazine stays under the gun at every pitch
+//! (tests/it/animation.rs).
 
 use std::collections::HashMap;
 

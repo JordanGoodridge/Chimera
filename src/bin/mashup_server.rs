@@ -7,6 +7,16 @@
 //! `+map greybox` (the default) or a CS:S map from the install
 //! (`+map de_dust2`). Players join with `connect <ip>:<port>`;
 //! `changelevel <map>` (or `map <map>`) moves them all to another map.
+//!
+//! At most 300 frames a second (`FPS_MAX`), schedules on one thread each
+//! (`single_threaded_schedules`).
+//!
+//! Known shortcuts (docs/tech-debt.md): The dedicated server runs at most
+//! 300 frames a second (`FPS_MAX`, srcds's `fps_max` default as documented
+//! by the community; no cvar), each reading packets and running the ticks
+//! due; an idle de_dust2 server still costs ~15 % of a core (its physics
+//! and map logic every tick). Why it's OK for now: Was a frame every
+//! millisecond (a third of a core idle).
 
 use std::{
     io::BufRead,

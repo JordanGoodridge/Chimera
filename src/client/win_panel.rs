@@ -8,6 +8,24 @@
 //! panel), rounded corners. How long CS:S shows it, and whether a centre
 //! print shows with it, is unmeasured (docs/plans/active/parity-gaps.md,
 //! capture C7).
+//!
+//! The round's win panel (`GameMenus::win_panel`, `resource/ui/win_round.res`
+//! at the HUD layout's `WinPanel_Round`): winner, reason, live time, MVP and
+//! fun fact from `RoundEnded::summary` in the game's `winpanel_*`/`funfact_*`
+//! strings (`words`, `fill`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Round win panel (`client::win_panel`,
+//! `rules::rounds::RoundSummary`; layout and strings from the install, rules
+//! ours): the MVP follows CS:S's published award reasons (the planter of a bomb
+//! that went off, the defuser, the last hostage's rescuer, else the winners'
+//! top killer, ties to the lowest entity; none on a draw or with no winner
+//! kills); the fun fact is the first that applies of a win without casualties,
+//! a win without kills, 2+ headshot kills, 3+ kills, first blood, a round under
+//! 30 s, else `funfact_fallback1/2` (CS:S chooses among many more, unmeasured);
+//! the title is the layout's red for terrorists, the scheme's `CT_Blue` for
+//! CTs, grey for a draw; no avatar, background star or rounded corners; shown
+//! until the next round starts, with no centre print. Why it's OK for now:
+//! Captures C7 and C12 in docs/plans/active/parity-gaps.md.
 
 use bevy::prelude::*;
 

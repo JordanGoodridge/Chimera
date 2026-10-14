@@ -11,6 +11,19 @@
 //! bot's state), Rendering (overlays and culling), Perf (frame-time graph,
 //! the `mashup_perf` readout), Audio, Logic (map entities, fire inputs,
 //! outputs fired), Rounds, Cvars (every cvar, searchable and editable).
+//!
+//! The debug UI (F8, `debugui [tab]`): a tabbed egui window (Player, World,
+//! Movement, Bots, Rendering, Perf, Audio, Logic, Rounds, Cvars) whose every
+//! control runs a console line (cvars as checkboxes, sliders or fields by
+//! `Cvar::range`/`integer`; `CVAR_RANGES` gives the ranges), with readouts
+//! (player state, map, bots, frame-time graph and the `mashup_perf` lines,
+//! soundscape, map entities with keyvalues and outputs, outputs fired);
+//! `mashup_sethealth`/`mashup_setarmor`/`mashup_setmoney`; bookmarks in the cfg
+//! folder; `DebugUiStatePlugin` is the state and commands without drawing
+//! (tests). The mouse is free while it is open; egui takes the keys typed into
+//! its fields (`debug.rs` turns on bevy_egui's input absorbing, and spawns the
+//! UI camera: a 2D camera above every 3D one that draws Bevy's UI and then
+//! egui, so the debug UI and inspector sit over the HUD).
 
 use std::collections::{HashMap, VecDeque};
 

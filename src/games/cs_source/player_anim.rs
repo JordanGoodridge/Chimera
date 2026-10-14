@@ -2,6 +2,15 @@
 //! specs/cs_source/animation.md §12 (the SDK template the CS:S data
 //! follows) driving each character's `Animator`. The plugin also drives
 //! hostages (`hostage_anim`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Player animation follows the SDK
+//! template (spec §12): ground speeds 100/250/85 make feet slide against CS:S's
+//! authored ≈107/150/67; no death layer; hand IK is our reading of the files'
+//! IK rules (kinds 1 lock, 4 release; the last rule over the layers wins;
+//! target the grip bones, a 0.2 s fade; no foot IK, no rule ramps); the grenade
+//! layer picks `<Move>_Shoot_GREN1/2` by activity (the spec names
+//! `idle_shoot_gren1/2`). Why it's OK for now: CS:S's own state isn't public;
+//! check against a demo (spec open questions).
 
 use std::sync::Arc;
 

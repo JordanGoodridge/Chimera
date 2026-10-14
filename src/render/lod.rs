@@ -8,6 +8,24 @@
 //! untouched. The metric is our reading (no spec): the camera's view
 //! height at the model over its bounding sphere's diameter, so 100 / the
 //! percent of the screen's height the model fills; docs/tech-debt.md.
+//!
+//! Props' levels of detail (`MapLod`: a model's lower `.vtx` levels;
+//! `ModelSettings`: `r_rootlod`, `r_lod`): each prop with levels (`LodGroup`)
+//! draws the one its screen-size metric from the first-person camera
+//! (`ViewModelAnchor`) asks for, never finer than model detail, by swapping its
+//! meshes' handles (`LodMeshes`, `switch_lods`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Levels of detail (`render::lod`): the
+//! metric that picks a level is our reading of Source's screen-size metric
+//! (view height at the model over its bounding-sphere diameter, against the
+//! `.vtx` switch points), unmeasured; no hysteresis; skinned (animated) props,
+//! characters, view models and the 3D skybox's props keep LOD 0; a lower
+//! level's mesh with a material LOD 0 lacks is dropped; baked per-vertex light
+//! for vertices only lower levels draw is the nearest LOD 0 vertex's (the
+//! `.vhv` has LOD 0's only); `r_rootlod` applies at once (CS:S's on a map
+//! load). Capture to confirm: de_dust2's pots (`setpos 160 2760 60; setang 10 0
+//! 0`, noclip) as the camera backs away, with `r_lod -1`. Why it's OK for now:
+//! Looks like CS:S's from a distance.
 
 use bevy::prelude::*;
 

@@ -11,6 +11,14 @@
 //! `LogicSound`, in order), played on each client as the server plays
 //! them. A client that joins later doesn't hear loops already playing
 //! (docs/tech-debt.md).
+//!
+//! Map effects for clients (they run no map logic): the server's
+//! strike-generator beam strikes, tesla sparks and env_spark bursts as `MapFx`
+//! (unreliable), written on a client as its map's own messages
+//! (`map::BeamStrike`, `TeslaSpark`, `map::SparkBurst`).
+//! Players' and movers' render looks (`map::RenderLook`, `BrushTint`) are
+//! replicated components; a client's `movers::copy_tints` puts a mover's on its
+//! own node.
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;

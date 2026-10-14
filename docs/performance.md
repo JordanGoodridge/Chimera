@@ -909,3 +909,68 @@ opt-in line in `.cargo/config.toml`. Dropping dependencies' debug info
 much but costs a full rebuild and backtraces into Bevy; not done.
 sccache (a compile cache shared by worktrees) could make a new worktree's
 first build cheaper; not tried.
+
+### The heavy tier (2026-10-14)
+
+Measured with `cargo nextest run --features dev` (all 1,504 tests
+passing), a worktree's own `target/`, other agents building (load 24 at
+the start, 4-13 at the end): **1,812 s wall**. The heavy tests' times
+summed to 3,468 s of the suite's 4,314; with at most 2 heavy tests at
+once, the wall time was about that sum / 2. A temporary timing line in
+the CS:S loader (`cs_source::bsp::load_level_bytes`, its `LoadTimer`
+total per test) put converting maps at 1,157 s of the heavy 3,468 (a
+third): nearly all of `map_community` (203 of 235 s) and `map_stock` (62
+of 68), over half of `map_de_dust2` (161 of 283: 64 tests, each loading
+dust2), a fifth of `map_courses` (212 of 1,067); the rest is
+simulation. Peak RSS per heavy test (sampled each second from
+`/proc`): median 1.1 GB, a quarter over 1.7 GB, ten over 3.3 GB (the
+soak 6.6 GB with five apps, `map_stock::water_materials` 4.8 GB,
+surf_sedona's 1 GB of textures 4.7 GB).
+
+What changed:
+
+- The tests that looped over maps run one test per map: `map_ladders`
+  (18 stock maps; `listed_maps` for `MASHUP_LADDER_MAPS`) and
+  `map_surf`'s rides (19 maps; `listed_maps` for `MASHUP_SURF_MAPS`).
+  `map_de_nuke`'s ladder tests climb in their worlds on threads (each
+  try already built its own world from the one loaded map). The
+  courses (`map_courses`) were already one test per map; a course's
+  checks share one world's state, so they stay one test.
+- `.config/nextest.toml`: 8 tests at once, 5 heavy slots; the tests
+  over 3 GB take 2 slots, de_nuke's threaded ones and the soak 3; the
+  soak and the three longest courses start first (`priority`); a test
+  is called slow after 120 s and killed after 20 minutes.
+
+Result, the same box and similar load (32 at the start, 10 at the end):
+**1,009 s wall** (-44%), heavy tests summing to 3,457 s, swap not
+growing (at least 2.8 GB available throughout; the 2-slot run before
+touched 69 MB with the other agents' builds). Again after merging main's
+render move (1,541 tests, load 16 at the start, 5 at the end): 896 s,
+heavy tests summing to 3,035 s, at least 4 GB available. The slowest
+tests left:
+the network soak (178-266 s by load; one run of map changes, not
+splittable), `kz_bhop_izanami` (84-161 s) and `kz_bhop_skodna` (60-129
+s), `map_flows::jacks_every_game_keeps_players_in_the_map` (54-104 s),
+de_nuke's ladders (72-96 s). Next: a converted-map cache or a headless
+load path (architecture-review.md, P4b step 2) would take most of the
+remaining third spent loading.
+
+### The first crate: `source_formats` (2026-10-14)
+
+The repository became a workspace and the pure-data readers moved into
+`source/formats` (docs/ARCHITECTURE.md, "Crates"). Measured in a
+worktree's own `target/` with sccache, `CARGO_BUILD_JOBS=4`, other
+agents building (load 9-16), one edit each:
+
+| Edit | Command | Time |
+|---|---|---|
+| a function in `source_formats` | `cargo test -p source_formats` (build and run its 15 tests) | 0.3-0.9 s |
+| the same | `cargo test --features dev --no-run` (the whole workspace) | 34-38 s: it and `mashup` rebuild |
+| a leaf in `mashup` (`games/cs_source/sky.rs`) | `cargo test --features dev --no-run` | 33-57 s |
+
+Running the fast tier then adds about two minutes (`it` 117-154 s at
+load 15-20), so checking a format change goes from about three minutes
+to a second. A change in `source_formats` still rebuilds `mashup` above
+it (a dependent crate always does), so the hooks still test both; the
+win grows as more crates are cut and edits land in crates with fewer
+dependents (engine-split.md, "Crates and compile time").

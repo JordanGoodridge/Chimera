@@ -1,6 +1,68 @@
 //! Core vocabulary shared by every game plugin. Keep this small: a concept
 //! moves in here only after two or three games need it (README, "rule of
 //! three").
+//!
+//! `Intent` (with its command number, stamped each tick in `SimSet::Commands`:
+//! the tick offset by the character's `Seed`), `Velocity`, `MovementState`
+//! (with the hull, the moving solid stood on and whether it is on a ladder),
+//! `BaseVelocity`, `EntityGravity`, `MovingSolid`, `Health`, `Damage`/`Died`
+//! messages (damage applied after weapons, `Died` carries the killing `Damage`;
+//! `DamageKind`: bullet, melee, blast...; `Damage::weapon` names a thrown
+//! weapon for kill notices; `Damage::force` the push that came with it),
+//! `Explosion` (radius damage asked for by map logic or rules: exploding props,
+//! the bomb; the weapon it counts as), `Blinded` (a flash's white: hold and
+//! fade), `SightBlocker` (a sphere sight doesn't pass: smoke), `Damageable`
+//! (takes `Damage` without `Health`: breakables), `Hitgroup`,
+//! `Hitbox`/`Hitboxes`, physics layers (`RAGDOLL_LAYER`, also prop pieces;
+//! `ITEM_LAYER` for loose items, which slide on their own copy of the
+//! displacement mesh with its internal edges fixed (`ITEM_GROUND_LAYER`);
+//! gameplay queries mask with `SOLID_LAYERS`, characters' bodies and movement
+//! with `CHARACTER_FILTER`, which leaves loose items out), `MaxSpeed`
+//! (equipment speed cap), `God`, `Team`, `Seed` (a character's own dice seed
+//! for rolls that must repeat run to run: bots' choices and route noise,
+//! buying, bullet spread; never entity ids, which shift with every spawn,
+//! resources included), `Radio` (a team radio call: sender and the game's
+//! command name), `SpawnPoint`, `LocalPlayer`, `UserInfo` (a player's own
+//! settings the simulation reads, Source's userinfo: the local player's from
+//! its console, a remote player's from its client), `PlayerIdMode`
+//! (`mp_playerid`), `SimTick`, `SimClock` (the step's time and length, Source's
+//! curtime: what selection, movement and the weapon frame read instead of
+//! `Time`, so a replayed command sees its own time), `set_tick_length` (a new
+//! map's tick: the fixed clock keeps running except on a client, so its time
+//! stays with the frame's `Time<Virtual>`), `NetRole` (standalone, server or
+//! client) and the `authoritative` run condition on server-only systems (bots,
+//! rules, damage, logic, objectives), the predicted path for network play
+//! (docs/plans/active/multiplayer.md): `Predict` schedules (`Select`,
+//! `Movement`, `Weapons`, each run from its place in `FixedUpdate` by
+//! `run_predicted`, or all in order by `predict` for a replayed command),
+//! `FirstTimePredicted` (side effects only the first time a command runs),
+//! `PredictedComponents` (components registered with
+//! `PredictedAppExt::predicted`, saved and restored per entity; `predicted_net`
+//! and `predicted_codec` parts also go to the client predicting them as one
+//! blob), `RoundRestarts` (counted up by the rules at each new round; the logic
+//! and map layers put the map's entities back), `FreezeTime` (the rules hold
+//! everyone still: a round's freeze time), the `SimSet` tick ordering (`Rules`,
+//! `Commands`, `Movement`, `Weapons`), `keep_moved_positions` (before each
+//! physics step a character's physics position is its movement's, to the bit:
+//! the physics would undo steps below its 0.01 mm tolerance while the body is
+//! awake); the collision world maps share with movement:
+//! `MapBrush`/`MapBrushes` (brush planes for exact swept-box movement, ladder
+//! flag), `MapBrushTree` (the BSP tree over the world's brushes: which of two
+//! faces hit at the same distance a trace reports), `MapBrushCollider`,
+//! `MapTerrain` (terrain triangles as thin brushes, with a grid) and
+//! `MapTerrainCollider`, `MapWater` volumes; `Equip` (a map gives a character
+//! items), `DamageFilter` (damage kinds a character ignores: a map's no-fall
+//! filter); what map entities do to a character's controls (`MapControls`:
+//! player_speedmod's movement clock (`time_scale`, read by the movement) and
+//! taken buttons, game_ui's "at controls", a camera's freeze, weapons put away,
+//! invulnerable; applied to its `Intent` by `apply_map_controls` after the
+//! rules, on the server and on the client predicting it: a predicted part; a
+//! respawn resets the clock and the camera), `MapView` (the map camera a
+//! character views through), `buttons` (Source's command button bits),
+//! `ScoreChange` (game_score, applied by the rules).
+//!
+//! `BrushGrid`: a grid over brushes' bounds, the Source movement's broad
+//! phase over `MapBrushes` (identical results to testing every brush).
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

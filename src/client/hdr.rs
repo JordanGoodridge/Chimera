@@ -15,6 +15,16 @@
 //! Not specified (no spec yet; open questions in docs/backlog.md): the
 //! game's exposure target and adaptation speed, its metering, and its
 //! bloom filter. The values here are stand-ins.
+//!
+//! `mat_hdr_level` (archived; read at map load, also before the `--map` load
+//! via `hdr::startup_level`): at 1 or 2 on maps with HDR data (`MapLook::hdr`)
+//! the sky, world and view-model cameras render with `Hdr` into one shared
+//! texture, and the last of them adds `Bloom` and, at 2, Bevy `AutoExposure`
+//! (its compensation curve keeps the target within the map's
+//! `env_tonemap_controller` bounds, as set at map start and then by the
+//! controller's inputs as the logic fires them, `map::TonemapInputs`;
+//! SetTonemapRate scales its adaptation speed) and a linear scale-and-clamp
+//! tone map pass after Bevy's (disabled) tonemapping; at 0 nothing is added.
 
 use bevy::{
     asset::embedded_asset,

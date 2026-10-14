@@ -5,6 +5,21 @@
 //! to the maker), names fixed up per copy so each copy's members talk to
 //! each other. Copies of brush entities and props need their node copied
 //! too: `Effect::Spawned` asks the host.
+//!
+//! Covers: point_template: members taken out at load with their map text and
+//! places, name fix-up, ForceSpawn spawning copies (`Effect::Spawned`: the
+//! bridge copies their brush or prop node, `map::copies`); env_entity_maker: at
+//! itself, room and looking tests, autospawn, post-spawn push
+//! (`Effect::BodyVelocity`).
+//!
+//! Known shortcuts (docs/tech-debt.md): point_template copies (`map::copies`)
+//! are the original node cloned: brush and prop members only (point members are
+//! logic only), not replicated to network clients; members a template takes out
+//! still ran their class's spawn; the instance counter also advances at each
+//! round restart. point_viewcontrol: the drawn view steps per tick (no easing),
+//! aims at a target's origin (attachments ignored), "Make Player non-solid" is
+//! ignored. Why it's OK for now: The minigame maps' templates are props,
+//! brushes and logic; cameras are intro shots.
 
 use bevy::prelude::*;
 

@@ -346,6 +346,59 @@ fn docs_map_links_resolve() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
+/// The docs every session reads stay short (architecture review, P2): the
+/// module list in docs/ARCHITECTURE.md and docs/tech-debt.md are one short
+/// line per entry, with the detail in each file's `//!` doc, so features
+/// don't edit (and parallel branches don't conflict on) paragraph-long rows.
+#[test]
+fn docs_stay_one_line_per_entry() {
+    const MODULE_LINE: usize = 160;
+    const DEBT_LINE: usize = 300;
+    let mut errors = Vec::new();
+    let arch = fs::read_to_string(root().join("docs/ARCHITECTURE.md")).unwrap();
+    let modules = arch
+        .split("\n## Modules\n")
+        .nth(1)
+        .expect("docs/ARCHITECTURE.md has a \"## Modules\" section")
+        .split("\n## ")
+        .next()
+        .unwrap();
+    for line in modules.lines().filter(|l| l.starts_with("- ")) {
+        if line.chars().count() > MODULE_LINE {
+            errors.push(format!(
+                "docs/ARCHITECTURE.md module entry longer than {MODULE_LINE} characters: \
+                 {line:.80}... Keep one short line (what it is, its layer) and put the \
+                 detail in the file's `//!` doc."
+            ));
+        }
+        let path = line[2..].split('`').nth(1).unwrap_or("");
+        if (path.starts_with("src/") || path.starts_with("source/")) && !root().join(path).exists() {
+            errors.push(format!(
+                "docs/ARCHITECTURE.md lists {path}, which does not exist. Update the entry."
+            ));
+        }
+    }
+    let debt = fs::read_to_string(root().join("docs/tech-debt.md")).unwrap();
+    for line in debt.lines().filter(|l| l.starts_with("- ")) {
+        if line.chars().count() > DEBT_LINE {
+            errors.push(format!(
+                "docs/tech-debt.md entry longer than {DEBT_LINE} characters: {line:.80}... \
+                 Keep one line (area, shortcut, where the detail is) and move the detail to \
+                 the module's `//!` doc under \"Known shortcuts\"."
+            ));
+        }
+        if let Some(path) = line.rsplit("(`").next().and_then(|p| p.strip_suffix("`)"))
+            && path.starts_with("src/")
+            && !root().join(path).exists()
+        {
+            errors.push(format!(
+                "docs/tech-debt.md points to {path}, which does not exist. Update the entry."
+            ));
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
 /// Binaries built without a test harness (`test = false` in Cargo.toml)
 /// must have no unit tests, or those would never run.
 #[test]

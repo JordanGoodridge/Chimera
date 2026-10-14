@@ -25,6 +25,19 @@
 //! - **Readout.** `NetGraph` (the perf overlay and the debug UI's Perf tab):
 //!   ping, loss, lead, server buffer, missed commands, prediction errors.
 //!   `cl_showerror 1` logs each error.
+//!
+//! The client's commands, clock and prediction: each fixed tick is a server
+//! tick (`CommandClock`, ahead by the round trip and a buffer, kept there from
+//! the server's `OwnState::lead` by running ticks slightly faster or slower, or
+//! jumping), the intent normalized and sent as that tick's `NetCmd` (with
+//! `CMD_BACKUP` resends), the local player predicted by the normal tick and
+//! kept per tick (`PredictionHistory`), each `OwnState` rebuilt from its delta
+//! against a state held (`OwnStateBases`, acknowledged in `UserCmds`, alone
+//! when there are no commands to send) and compared byte for byte and, if
+//! different, put back and the later commands re-run (`core::predict`, not
+//! first time), the drawn eye easing the correction (`cl_smoothtime`), the
+//! rules' hold mirrored; `NetGraph` readout, `cl_showerror`; `RateSettings`
+//! (`cl_updaterate`, `rate`: userinfo).
 
 use std::{collections::VecDeque, time::Duration};
 

@@ -1,5 +1,12 @@
 //! Mashup prototype. Module layering is documented in docs/ARCHITECTURE.md
 //! and enforced by tests/it/architecture.rs.
+//!
+//! `SimPlugins` (everything the simulation needs), `swap_map` (a map in place
+//! of the one playing, without the view: the dedicated server's `changelevel`,
+//! tests).
+//!
+//! `single_threaded_schedules`: the main world's schedules on Bevy's
+//! single-threaded executor (the game, the dedicated server, `perfgate`).
 
 pub mod audio;
 pub mod bot;

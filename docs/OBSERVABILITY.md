@@ -35,6 +35,14 @@ in `tests/` would be another test binary: `architecture::tests_are_one_crate`
 fails and says how to move it. Test names read `weapons::name` and
 `heavy::map_de_dust2::name`.
 
+The other workspace crates (docs/ARCHITECTURE.md, "Crates") keep their
+tests as unit tests beside their code. Commands at the repository root
+cover every crate; `-p <crate>` picks one: `cargo test -p source_formats`
+builds and runs only the format readers' tests, in seconds, without
+building the game. Tests of a pure reader belong in its crate; tests that
+need the game (ECS, conversion to engine types, real installs) stay in
+`mashup`.
+
 - Fast tier, before every commit (`.githooks/pre-commit`): `cargo test
   --features dev -- --skip heavy::` (unit tests and everything outside
   `heavy`; under a minute when warm). Commits that change only Markdown
@@ -45,15 +53,17 @@ fails and says how to move it. Test names read `weapons::name` and
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
 - Before every push, `.githooks/pre-push` also checks the build without
-  `--features dev` (`cargo check --lib --bins --features tools,server`;
+  `--features dev` (`cargo check --workspace --lib --bins --features tools,server`;
   the playtest and release builds use that configuration and the tests
   don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
   built only with `--features tools`, the dedicated server with
   `--features server` (so `cargo test` doesn't relink them).
 - Full suite, before a push or a merge to main (`.githooks/pre-push`, which
   `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
-  6 tests at once and 2 heavy ones, `.config/nextest.toml`: memory, not CPU,
-  is the limit with other builds running), or
+  8 tests at once and 5 heavy slots, the biggest heavy tests taking 2-3,
+  `.config/nextest.toml`: memory, not CPU, is the limit with other builds
+  running; a heavy test that loops over maps belongs split into one test
+  per map, as `map_courses`, `map_surf` and `map_ladders` are), or
   `cargo test --features dev` without nextest (twice as slow: in one
   process the heavy tests contend). nextest runs each test in its own
   process; install it once with `cargo install cargo-nextest --locked` (or
@@ -1118,7 +1128,8 @@ question 3), chained destinations. `MASHUP_FLOW_TABLE=1 cargo test
 `MASHUP_COURSE_DEBUG=<entity index>` prints the ticks around that
 trigger's check (brushes, links, velocity before and after the
 movement and the logic). `heavy::map_surf` rides every open ramp of the
-cached surf maps (`MASHUP_SURF_MAPS=surf_a,surf_b` for some,
+cached surf maps, one test per map (`MASHUP_SURF_MAPS=surf_a,surf_b`
+with the test `map_surf::listed_maps` for others,
 `MASHUP_SURF_DEBUG=1` to list what the hull is near at each stop;
 `MASHUP_SLIDE_DEBUG=1`, read by the CS:S movement itself, prints every
 slide move's sweeps: position, velocity, fraction, start solid, the plane

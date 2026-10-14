@@ -1,4 +1,9 @@
 //! Distributions: the last N values of a metric and their percentiles.
+//!
+//! Covers: `Ring` of the last values, `Percentiles`: p50/p90/p99/p99.9/max, the
+//! slowest 1%'s mean for "1% low" fps, `TickMetricsPlugin` (each `FixedMain`
+//! run measured between marks before `FixedFirst` and after `FixedLast`:
+//! `TickMetrics`).
 
 /// The last `cap` values pushed.
 #[derive(Clone, Debug)]

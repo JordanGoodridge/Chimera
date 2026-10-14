@@ -11,6 +11,16 @@
 //! console; `mashup_firstrun` drives the dialog (tests, screenshots).
 //! As the other menus, the model (`FirstRun::handle`) is unit-tested
 //! without a window.
+//!
+//! Finding CS:S on first run: the startup log line saying which install is used
+//! and how it was found (`mount::install`), or that none was; with none at the
+//! main menu, a modal dialog drawn with the GameUI dialogs' controls
+//! (`widgets.rs`; Counter-Strike: Source Not Found: a text entry to paste the
+//! folder into, why a folder doesn't do, Retry (that folder, or search Steam
+//! again when empty), Continue Without); a folder that checks out is saved in
+//! the user's settings and the menu's look read again
+//! (`game_menu::reload_install`). `mashup_install [folder\|auto]` shows or sets
+//! it; `mashup_firstrun <input>` drives the dialog.
 
 use std::path::{Path, PathBuf};
 

@@ -51,7 +51,7 @@ if [ "$pushing" = 1 ]; then
     # debugging tools, the dedicated server: Cargo.toml).
     mkdir -p target
     echo "pre-push: checking the build without --features dev..." >&2
-    if ! cargo check --lib --bins --features tools,server --quiet >target/pre-push-check.log 2>&1; then
+    if ! cargo check --workspace --lib --bins --features tools,server --quiet >target/pre-push-check.log 2>&1; then
         grep -E "^error" -A6 target/pre-push-check.log | head -30
         echo "pre-push: the build without --features dev fails (log: target/pre-push-check.log); not pushing." >&2
         exit 1
@@ -63,9 +63,9 @@ if [ "$pushing" = 1 ] && [ "${MASHUP_PUSH_TESTS:-1}" != 0 ]; then
     echo "pre-push: running the full test suite (log: $log)..." >&2
     # nextest (a process per test) is twice as fast as one libtest process.
     if cargo nextest --version >/dev/null 2>&1; then
-        run="cargo nextest run --features dev --no-fail-fast --color never"
+        run="cargo nextest run --workspace --features dev --no-fail-fast --color never"
     else
-        run="cargo test --features dev --quiet --no-fail-fast"
+        run="cargo test --workspace --features dev --quiet --no-fail-fast"
     fi
     if ! $run >"$log" 2>&1; then
         grep -E "panicked|FAILED|FAIL \[|^error" "$log" | head -20

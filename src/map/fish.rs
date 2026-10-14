@@ -4,6 +4,11 @@
 //! and inside the map's water, turning toward where it goes, and picks
 //! another when it gets there. Ours: no flocking and no fleeing from
 //! players (tech-debt).
+//!
+//! func_fish_pool's fish for any game (public entity docs): `Fish` on each fish
+//! prop (the loader spreads `fish_count` of them around the pool), swimming
+//! toward random places within its range that are in the map's water, turning
+//! toward them.
 
 use bevy::prelude::*;
 

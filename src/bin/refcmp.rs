@@ -5,6 +5,12 @@
 //! with the desktop locked) and in mashup, then reports per-view brightness,
 //! saturation and sharpness and writes side-by-side images. Output goes to a
 //! per-user folder, never the repository (it contains game imagery).
+//!
+//! Dev tool: compare views against real CS:S (RCON-driven capture, metrics,
+//! side-by-sides); `bench` (frame times per view) and `vischeck` (culling
+//! on/off renders must match) need no CS:S; `capture-hud` and `hudcmp`
+//! (`shared/hudcmp.rs`) compare the HUD panel by panel with CS:S captures;
+//! `REFCMP_OUT` keeps a session's captures apart.
 
 #[path = "shared/hudcmp.rs"]
 mod hudcmp;

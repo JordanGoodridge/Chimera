@@ -14,6 +14,59 @@
 //! The state machine (`Spectator::step`) is pure; `SpectateStatePlugin`
 //! runs it without a window (tests), `SpectatePlugin` adds the camera,
 //! input and HUD.
+//!
+//! Spectating while dead or on the spectator team (CS:S style;
+//! `core::Spectating`, joined with `spectate`/`jointeam 1` in `rules`: no death
+//! cam, starts flying free, anyone may be watched, `spec_player <name>` picks
+//! one): `Spectator` (a pure state machine: death cam on the killer or your
+//! body for `DEATH_CAM_SECONDS`, then, killed by someone still alive, the
+//! freeze cam (`FreezeCamSettings`: `cl_disablefreezecam`,
+//! `spec_freeze_traveltime`, `spec_freeze_time`; the camera zooms toward the
+//! killer and holds), then the nearest allowed living player; jump / `spec_mode
+//! [4\|5\|6]` cycles first person, chase and free look; attack/attack2 /
+//! `spec_next`/`spec_prev` the target; a dead target lingers
+//! `TARGET_DEATH_HOLD` then the next; back to the eye on living again),
+//! `mp_forcecamera` (`ForceCamera`: 1 only teammates while any lives),
+//! `SpecView` (the camera pose `follow_eye` uses; the first-person target,
+//! whose body is hidden, whose zoom the camera takes and whose view model the
+//! anchor draws through `map::ViewModelSource`), the spectator bars in the
+//! game's layout (`GameMenus::spectator`, CS:S's `spectator.res`: black top and
+//! bottom bars across the window, team scores, "Map: de_dust2" and the round
+//! clock at the top right, the target's "name (health)" in its team colour at
+//! the bottom, the mode where `bottomspectator.res`'s view list sits;
+//! `SpectatorBarsUp`: while they show, the HUD hides its round clock and money
+//! and puts the death notices under the top bar), else a plain bottom panel
+//! ("Spectating: Bot 3 [100]", weapon, mode; "Killed by ..." in the death cam);
+//! in first person the crosshair and scope overlay are the target's (`hud.rs`);
+//! the radar follows the target; `SpectateStatePlugin` runs the state without a
+//! window (tests), `SpectateCameraPlugin` the camera's pose too.
+//!
+//! Known shortcuts (docs/tech-debt.md): Spectating (`client::spectate`) is from
+//! general CS:S knowledge, not measured: the death cam's length (2 s), rise
+//! (1.4 m back, 0.9 m up over 0.8 s) and look; the first target is the nearest
+//! allowed one; a dead target holds 2 s; chase distance 96 units, starting 15
+//! degrees above the target's view; `mp_forcecamera` defaults to 1 and free
+//! look stays allowed under it; the mode is kept across deaths, starting in
+//! first person; no fade to black, auto-director (its menu entry greyed) or
+//! HLTV modes; the map overview (`client::overview`, `overview_mode`): its
+//! boxes' places and sizes (small: 192 x 144 at the top left under the top bar;
+//! large: between the bars), the defaults (off; not turning, names, health and
+//! tracks on), zoom 1 fitting the whole picture, zooming toward the watched
+//! player, the dots, health bars and 12 track points every 0.5 s are ours (no
+//! capture), and the radar hides while it shows. The spectator team
+//! (`rules::join_spectators`): a spectator starts flying free (no spec or
+//! capture says CS:S's starting mode; kept), may watch anyone (`mp_forcecamera`
+//! only binds the dead on a team), no death is counted when a living player
+//! joins it, the bomb and kit drop and the other weapons go; free look is
+//! client-side (the server keeps the body where it left play); the spectator
+//! menu (duck) draws `bottomspectator.res`'s controls with the GameUI dialogs'
+//! widgets and scheme (CS:S's are the client scheme's), its lists open upward,
+//! a submenu beside its entry, a ticked toggle marked with a check sign; there
+//! is no "join a team" in it (M opens the team menu, as in CS:S). In first
+//! person the target's view model has no bob or sway (`ViewModelOffset` is the
+//! local player's only) and no sniper scope overlay or crosshair; flash and
+//! blast senses stay the local player's. Why it's OK for now: Plays like CS:S's
+//! spectator; a spec session can pin the numbers.
 
 use avian3d::prelude::*;
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::CursorOptions};

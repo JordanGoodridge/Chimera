@@ -1,8 +1,20 @@
 //! Shared mount plumbing: the read-only virtual filesystem over a game's
-//! archives and loose files (`source_formats::fs`, re-exported here), plus
-//! local configuration and finding the installs (`install`: config, saved
-//! settings, Steam libraries). Archive formats live in `source_formats`
-//! (VPK) or `games/<name>/`.
+//! archives and loose files, plus local configuration and finding the
+//! installs (`install`: config, saved settings, Steam libraries). Archive
+//! formats live in `source_formats` (VPK) or `games/<name>/`.
+//!
+//! `Mount` (ordered layers, first match wins), `FileSource`, `LooseDir`,
+//! path normalization and KeyValues text (Steam's files and our saved ones
+//! read with `Escapes::On`) come from `source_formats` (`fs`, `keyvalues`),
+//! re-exported here; `mashup.local.toml` loading (`config.rs`); finding
+//! installs (`install.rs`: the config's path, else the one saved in the
+//! user's `settings.toml` (beside the cfg folder; `$MASHUP_SETTINGS`), else
+//! Steam: its folders per system (Windows registry `SteamPath`;
+//! `$MASHUP_STEAM_ROOT` replaces them), each `libraryfolders.vdf` library
+//! (old and new formats), the app's `appmanifest_<id>.acf` (fully
+//! installed; its build id for the mount doctor) and the files the game
+//! needs; `STEAM_GAMES` lists the games it looks for;
+//! `LocalConfig::game_path` goes through it).
 
 pub mod config;
 pub mod install;

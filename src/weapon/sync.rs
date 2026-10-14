@@ -17,6 +17,11 @@
 //!
 //! What only the server changes isn't here: the use key's edge (pickups
 //! by use are the server's).
+//!
+//! Covers: what a character carries as one predicted part (`predicted_codec`:
+//! each weapon's registry index and its `NetPart`s' changing state, the
+//! inventory's indices and timers; a client rebuilds its weapons from the
+//! registry when the list differs: `spawn_weapon`).
 
 use bevy::{ecs::component::Mutable, prelude::*};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

@@ -4,6 +4,22 @@
 //! binds), aliases, binds, `wait`, and output lines with a severity. The
 //! client draws it and feeds it keys; tests and the remote protocol queue
 //! lines directly. Everything runs in one exclusive system each frame.
+//!
+//! The console's core: cvar/command registry
+//! (`ConsoleAppExt::console_cvar`/`console_command`, `resource_cvar`),
+//! Source-style parsing (`;`, quotes, `//`), aliases, binds, `wait`,
+//! exec/config files, built-ins (help, find, cvarlist, differences, reset,
+//! toggle, incrementvar, watch, host_writeconfig, ...); each cvar's `CvarScope`
+//! from its name (`SERVER_PREFIXES`, `SERVER_NAMES`: replicated or server-only
+//! in a network game; a network client can't set them, `net::cvars` sends the
+//! replicated ones); `sv_cheats` (`Cheats`) gates `CHEATS` (noclip, god,
+//! setpos, setang, give, impulse, ent_fire, `mashup_set*`) in network games; a
+//! network client sends its cheats to the server (`Console::to_server`,
+//! `net::cheats`; `command_player` is the player a command acts on);
+//! `mashup_noblock` (`core::NoBlock`) is ours and replicated; a network client
+//! can't run `SERVER_COMMANDS` (bots, `changelevel`, `mp_restartgame`);
+//! userinfo cvars (`Console::userinfo`, `userinfo()`: e.g. `cl_autowepswitch`)
+//! are the local player's `core::UserInfo`.
 
 use std::{
     collections::{BTreeMap, VecDeque},

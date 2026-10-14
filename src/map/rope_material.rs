@@ -4,6 +4,9 @@
 //! specs/cs_source/ropes.md, including the fake anti-aliasing pair: a
 //! translucent "back" strip at least a fraction of a pixel wide, and the
 //! main strip narrowed with distance. See rope.wgsl.
+//!
+//! Ropes as camera-facing strips (Source Cable shader, fake anti-aliasing back
+//! strip), fogged (`map::fog`).
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},

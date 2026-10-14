@@ -7,6 +7,20 @@
 //! so a tipped boat rights itself), and the water's drag. A body lighter
 //! than the water it would displace floats at the depth that balances
 //! (wood, boats); a heavier one sinks slowly. Engine space, SI units.
+//!
+//! Known shortcuts (docs/tech-debt.md): Water and physics (`map::buoyancy`,
+//! `map::controllers`; no spec, public physics docs): lift is water density ×
+//! the colliders' volume × the wet fraction of the body's box (axis-aligned, so
+//! a tipped body's wet part is approximate) × g, capped at 2 g, with drag in
+//! water of 3/s vertically, 0.5/s sideways and 2/s angular; phys_motor (public
+//! entity docs) drives the angular velocity about its axis toward its speed
+//! over the spin-up time (inertia factor unused); constraints are avian joints
+//! that break past their force or torque limit (avian's joint force against the
+//! limit in pounds as a weight in the map's gravity, lb·in times units for
+//! torque; spec 1.5 leaves the exact measure open), hinge and slider motors,
+//! friction and limits, pulleys, springs, ragdoll limits and constraint systems
+//! aren't made. Why it's OK for now: The maps' boats, lamps and flowers behave;
+//! Source's VPhysics numbers would need measuring.
 
 use avian3d::prelude::{
     AngularVelocity, ColliderAabb, ColliderMassProperties, ColliderOf, ComputedAngularInertia, ComputedCenterOfMass,

@@ -5,6 +5,9 @@
 //!
 //! Ladders and water only do something with Source movement
 //! (`--movement cs_source:movement`, or V in game).
+//!
+//! Map slot built in code (ramps, crates, a ladder, a water tank); collision
+//! always, visuals only when rendering.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

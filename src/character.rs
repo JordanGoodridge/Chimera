@@ -1,4 +1,6 @@
 //! The components every character has, whatever controls it.
+//!
+//! `character_bundle`, `spawn_character`, capsule size.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

@@ -19,6 +19,20 @@
 //!   (`NameRequest`, Source's setinfo); the server takes it (made safe),
 //!   renames the character everyone sees and tells everyone
 //!   (`NameChanged`: "* X changed name to Y"). The host's own change too.
+//!
+//! Chat and radio: `SayRequest` (a client's or, through replicon's local
+//! resend, the host's) delivered as `ChatMessage` to each player who reads it
+//! (`map::radio::sees_say`); `RadioRequest` made the sender's `core::Radio`;
+//! every `Radio` sent as `RadioCall` to the remote players who hear it
+//! (`map::radio::hears`); flood protection (`Flood`: a burst of lines or calls,
+//! then one a second / every 1.5 s; more dropped, the sender told); names: a
+//! client's `name` change as `NameRequest`, the host's own, renamed for
+//! everyone and announced (`NameChanged`, "* X changed name to Y"); userinfo: a
+//! client's userinfo cvars go with `Join` and, changed, as `UserInfoRequest`,
+//! kept as its character's `core::UserInfo`; what map logic shows on HUDs
+//! (`logic::HudEvent`: game_text, env_fade, env_hudhint) as `MapHud` to the
+//! player it is for or everyone; map effects (`MapFx`: strikes, tesla sparks,
+//! env_spark) to every client.
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;

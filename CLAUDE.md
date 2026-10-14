@@ -44,6 +44,7 @@ cargo test --features dev -- --skip heavy::   # fast tier; before every commit
 cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
                                    # 2x slower); before pushing or merging
 cargo test --features dev --test it weapons::   # one test file (tests/it/)
+cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`;
                                    # the dedicated server `server`
@@ -65,7 +66,8 @@ docs/OBSERVABILITY.md section 1 says where new ones go.
   work gets a plan in `docs/plans/active/`, kept updated.
 - When something was hard because a tool, doc or check was missing, add it.
 - Keep docs true: when code changes a fact in a doc, change the doc in the
-  same commit.
+  same commit. A file's detail lives in its `//!` doc (shortcuts under
+  "Known shortcuts"); ARCHITECTURE.md and tech-debt.md keep one line each.
 
 ## Commit identity
 

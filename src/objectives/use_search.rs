@@ -2,6 +2,9 @@
 //! logic layer runs for doors and buttons, here over things that are
 //! entities of their own: a planted bomb, hostages). Engine space,
 //! meters; targets are boxes.
+//!
+//! Covers: the player use search (straight trace, tilted box probes, sphere and
+//! cone) over boxes.
 
 use bevy::prelude::*;
 

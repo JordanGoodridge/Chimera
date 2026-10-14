@@ -9,6 +9,11 @@
 //! (character bodies and hitboxes), `props` (placed props after
 //! spawning), `materials`, `images`, `collision` and `sky` (built from the
 //! data), each re-exported here, plus one submodule per feature.
+//!
+//! `MapPlugin` (what runs while a map is loaded), `unload_map`/`change_map`
+//! (`MapHooks` for the layers above: what they reset at unload, the
+//! spawner `change_map` runs), the loaded map's resources;
+//! re-exports the files below and `core`'s collision types.
 
 use std::{collections::HashMap, sync::Arc};
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # Refuse commits while the fast tier of tests fails: unit tests and the
-# integration tests outside `heavy` (docs/OBSERVABILITY.md, section 1).
+# integration tests outside `heavy` of every workspace crate
+# (docs/OBSERVABILITY.md, section 1).
 # The full suite runs before a push (.githooks/pre-push).
 # Enable once per clone: git config core.hooksPath .githooks
 # Skip in an emergency with: git commit --no-verify
@@ -13,7 +14,7 @@ if [ -z "$(git diff --cached --name-only --diff-filter=ACMRD | grep -v '\.md$')"
 fi
 mkdir -p target
 log=target/pre-commit.log
-if ! cargo test --features dev --quiet --no-fail-fast -- --skip heavy:: >"$log" 2>&1; then
+if ! cargo test --workspace --features dev --quiet --no-fail-fast -- --skip heavy:: >"$log" 2>&1; then
     grep -E "panicked|FAILED|^error" "$log" | head -20
     echo "pre-commit: fast tests failed (full log: $log); not committing." >&2
     exit 1

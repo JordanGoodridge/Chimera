@@ -1,5 +1,14 @@
 //! Headless simulation for tests and tools: no window, no rendering, time
 //! advanced by exact fixed ticks. Scenario tests in `tests/` build on this.
+//!
+//! `NetSim`: a server and N clients (each a `Sim`) over `net::memory`, stepped
+//! together; `Sim`: headless app stepped by exact fixed ticks, for tests;
+//! `Sim::pad` (and `MASHUP_TEST_PAD=<n>` for every `Sim`) spawns entities and a
+//! resource first, so a test can check its result doesn't depend on entity ids;
+//! `emulate_mesh_extraction` stands in for the render world's mesh extraction
+//! (takes a `RENDER_WORLD`-only mesh's data, `MeshExtraction` keeps the copies
+//! and the meshes announced changed after their data was taken: Bevy's "already
+//! been extracted" error).
 
 use std::{
     sync::{Arc, Mutex},

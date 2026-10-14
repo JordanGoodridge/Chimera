@@ -10,6 +10,30 @@
 //!
 //! Units: meters, seconds, engine space (Y up) unless a name says
 //! "units" (Source inches).
+//!
+//! Round objectives for Counter-Strike-style scenarios
+//! (specs/cs_source/objectives.md): `MapObjectives` (bomb targets and rescue
+//! zones as `Zone`s from the map's brush entities, hostage spawns,
+//! `info_map_parameters` bomb radius; `MapKind`), `ObjectiveEvent` (what
+//! happened: for money, messages, bots), `RoundOpen` (the rules allow
+//! planting), `round_start` (called by the rules).
+//!
+//! Known shortcuts (docs/tech-debt.md): The bomb and hostages follow spec
+//! objectives.md's hypotheses where CS:S is unmeasured: planting and defusing
+//! hold the player still, the blast is H1 (linear to 3.5 × bombradius, the HE
+//! rule's walls, armour and body heights), the planter is the attacker (so
+//! `mp_friendlyfire 0` spares terrorists), beeps on the provisional schedule at
+//! a fixed level, the planted bomb isn't solid and doesn't ride movers,
+//! `info_bomb_target`/`info_hostage_rescue` radii are guesses, the carrier is
+//! chosen by a round-seeded hash, money values Q5, hostage health 100 and
+//! follow distances/speeds Q10, hostage models spread by index (Q9), a hostage
+//! hurt costs nothing (Q5), a removed local player is only told; the planted
+//! model is turned by a fixed rotation (`BombRules::planted_turn`) because the
+//! item loads standing on end; hostage animation (`hostage_anim.rs`:
+//! idle/walk/run thresholds, turn rate, the nod gestures) is ours, CS:S
+//! unmeasured. Why it's OK for now: Each is an open question with its probe
+//! check in the spec; the timings (3 s, 5/10 s, 45 s, tick rounding) are
+//! tested.
 
 pub mod bomb;
 pub mod hostages;

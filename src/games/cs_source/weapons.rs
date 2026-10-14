@@ -11,6 +11,36 @@
 //! values are the spec's tables, which were read from the user's install.
 //! Sound entries and model paths are the install's own names (its sound
 //! scripts and model files), checked by `tests/it/heavy/map_de_dust2.rs`.
+//!
+//! Known shortcuts (docs/tech-debt.md): The CS:S guns (all 24 in
+//! `games/cs_source/weapons.rs`): unmeasured parts are marked `UNMEASURED`
+//! there: the 556MM and 9MM penetration powers/distances and 45ACP's distance
+//! are community values (the same table's 45ACP, 50AE, 762MM and 338MAG powers
+//! match M13); 357SIG, 57MM and BUCKSHOT take 45ACP's power and distance,
+//! 556MM_BOX 556MM's; recoil is measured only for the AK-47, M4A1 and the
+//! USP/Deagle/AWP/Glock: FAMAS, Galil, AUG, SG552 and the SMGs use the M4A1's
+//! sets, the M249 the AK-47's, the scout, SG550, G3SG1, P228, Five-SeveN and
+//! Elites the semi-automatics' 2° with no cap, the shotguns the SDK template's
+//! random 4-6° (8-11° airborne), once per shot, decaying by the AK-47's
+//! measured rule, bullets along view + 2 × punch (the template's and the
+//! measured rifles'; shotgun kick, decay and aim factor unmeasured); the M4A1's
+//! moving/airborne kicks are its standing set; scoped, silenced and burst
+//! recoil are the normal ones; silenced damage and range are unchanged (M16 not
+//! measured); the Glock's burst refire is 0.5 s; reloading unzooms; the SG552's
+//! zoomed speed is unchanged and the G3SG1's is the SG550's 150. Shotguns: the
+//! shell-by-shell reload uses the SDK template's 0.5 s start and 0.45 s a shell
+//! for both (M9; the models' durations differ), pellets share one inaccuracy
+//! offset per shot and each draws its own Spread part (Q12), every pellet is a
+//! line trace. The Elites alternate hands by the clip's parity (left on odd
+//! rounds left, ours). Bots' buying weights (`BOT_WEIGHTS`) are ours. Zoomed
+//! mouse speed is `zoom_sensitivity_ratio` (1.2) × zoom FOV / 90 as the
+//! community documents it, not measured; the scope overlay uses the game's
+//! `sprites/scope_arc` and `overlays/scope_lens` laid out by eye (quarters
+//! mirrored over the screen-height square, 1-pixel cross hairs), not compared
+//! against the game. Timers compare with a 10 µs slack (`TIME_SLACK`) so
+//! exact-tick durations fire on that tick as CS:S's 32-bit times do. Why it's
+//! OK for now: Measured behaviour is all in; the rest needs the probe (list in
+//! plans/active/weapons.md).
 
 use bevy::prelude::*;
 
