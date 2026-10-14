@@ -569,8 +569,11 @@ impl Trace {
 /// hid any real hit behind it, leaving the box inside the terrain.)
 struct Tracer<'a, 'w, 's> {
     query: &'a SpatialQuery<'w, 's>,
-    filter: SpatialQueryFilter,
+    filter: &'a SpatialQueryFilter,
     brushes: Option<&'a MapBrushes>,
+    /// A broad phase over `brushes` (built from them; ignored if it was
+    /// built from another list).
+    grid: Option<&'a crate::core::BrushGrid>,
     /// The BSP tree over `brushes` (Source maps): decides which of two
     /// faces hit at the same distance a trace reports.
     tree: Option<&'a MapBrushTree>,
@@ -584,7 +587,7 @@ struct Tracer<'a, 'w, 's> {
     heights: (f32, f32),
     /// Other characters' boxes (engine space), swept exactly like brushes:
     /// players are axis-aligned boxes to each other, as in Source.
-    others: &'a [MapBrush],
+    others: &'a [&'a MapBrush],
     /// Terrain triangles (displacements), swept exactly like brushes.
     terrain: Option<&'a MapTerrain>,
     /// For each of `others`: the moving solid it belongs to (None for
@@ -604,7 +607,7 @@ struct BrushHit {
     start_solid: bool,
 }
 
-impl Tracer<'_, '_, '_> {
+impl<'a> Tracer<'a, '_, '_> {
     /// The surface property name a trace hit carries, if any.
     fn surface_name(&self, hit: HitSurface) -> Option<String> {
         match hit {
@@ -644,7 +647,14 @@ impl Tracer<'_, '_, '_> {
         let terrain = self.terrain_near(lo, hi);
         // Brushes hit at the current fraction: (index, normal, ladder).
         let mut tied: Vec<(usize, Vec3, bool)> = Vec::new();
-        'brush: for (i, b) in brushes.iter().chain(self.others).chain(terrain).enumerate() {
+        'brush: for (i, b) in self.world_near(lo, hi).chain(
+            self.others
+                .iter()
+                .copied()
+                .chain(terrain)
+                .enumerate()
+                .map(|(j, b)| (brushes.len() + j, b)),
+        ) {
             if b.max.cmplt(lo).any() || b.min.cmpgt(hi).any() {
                 continue;
             }
@@ -751,6 +761,21 @@ impl Tracer<'_, '_, '_> {
         out
     }
 
+    /// The map's brushes (with their index) that may overlap `lo`..`hi`
+    /// (engine space), in index order: all of them without a grid. Those
+    /// left out are ones the callers' own bounds tests skip anyway.
+    fn world_near(&self, lo: Vec3, hi: Vec3) -> Box<dyn Iterator<Item = (usize, &'a MapBrush)> + 'a> {
+        let brushes = self.brushes.map_or(&[][..], |b| &b.0[..]);
+        match self.grid {
+            Some(g) if g.len == brushes.len() && lo.is_finite() && hi.is_finite() => {
+                let mut near = Vec::new();
+                g.near(brushes, lo, hi, &mut near);
+                Box::new(near.into_iter().map(move |i| (i as usize, &brushes[i as usize])))
+            }
+            _ => Box::new(brushes.iter().enumerate()),
+        }
+    }
+
     /// Terrain brushes whose bounds overlap `lo`..`hi` (engine space).
     fn terrain_near(&self, lo: Vec3, hi: Vec3) -> impl Iterator<Item = &MapBrush> {
         let mut near = Vec::new();
@@ -765,15 +790,18 @@ impl Tracer<'_, '_, '_> {
     /// than the solid skin.
     fn in_brush(&self, half: Vec3, centre: Vec3) -> bool {
         let skin = SOLID_SKIN * METERS_PER_UNIT;
-        let brushes = self.brushes.map_or(&[][..], |b| &b.0[..]);
         let terrain = self.terrain_near(centre - half, centre + half);
-        brushes.iter().chain(self.others).chain(terrain).any(|b| {
-            b.max.cmpgt(centre - half).all()
-                && b.min.cmplt(centre + half).all()
-                && b.planes
-                    .iter()
-                    .all(|(n, d)| n.dot(centre) - (d + n.abs().dot(half)) < -skin)
-        })
+        self.world_near(centre - half, centre + half)
+            .map(|(_, b)| b)
+            .chain(self.others.iter().copied())
+            .chain(terrain)
+            .any(|b| {
+                b.max.cmpgt(centre - half).all()
+                    && b.min.cmplt(centre + half).all()
+                    && b.planes
+                        .iter()
+                        .all(|(n, d)| n.dot(centre) - (d + n.abs().dot(half)) < -skin)
+            })
     }
 
     /// Sweep a box (`lo`..`hi` relative to the feet, Source units) from feet
@@ -827,7 +855,7 @@ impl Tracer<'_, '_, '_> {
         // report such grazing contacts.
         if let Some(hit) = self
             .query
-            .cast_shape(&shape, centre(from), Quat::IDENTITY, dir, &config, &self.filter)
+            .cast_shape(&shape, centre(from), Quat::IDENTITY, dir, &config, self.filter)
             .filter(|hit| hit.normal1.dot(*dir) < -1e-3)
         {
             // Keep the margin along the surface normal, as Source's traces
@@ -887,7 +915,7 @@ impl Tracer<'_, '_, '_> {
         );
         !self
             .query
-            .shape_intersections(&shape, to_engine(feet + (lo + hi) / 2.0), Quat::IDENTITY, &self.filter)
+            .shape_intersections(&shape, to_engine(feet + (lo + hi) / 2.0), Quat::IDENTITY, self.filter)
             .is_empty()
     }
 
@@ -2028,7 +2056,11 @@ fn step(
     mut play: MessageWriter<PlaySound>,
     mut damage: MessageWriter<Damage>,
     cfg: Res<SourceMovementConfig>,
-    (clock, first): (Res<crate::core::SimClock>, Res<crate::core::FirstTimePredicted>),
+    (clock, first, mut grid_cache): (
+        Res<crate::core::SimClock>,
+        Res<crate::core::FirstTimePredicted>,
+        Local<Option<crate::core::BrushGrid>>,
+    ),
     other_characters: Query<(Entity, &ColliderAabb, Option<&Health>), (With<Intent>, Without<SourceMovement>)>,
     (health, dead, noblock, teams): (
         Query<&Health>,
@@ -2078,12 +2110,37 @@ fn step(
         .collect();
     // Moving solids (doors, platforms) are swept like brushes, and know
     // their owner (what the player stands on).
-    let mover_brushes: Vec<(Entity, MapBrush)> = movers
+    let mover_brushes: Vec<(Entity, &MapBrush)> = movers
         .iter()
         .filter(|(_, m)| m.solid)
-        .flat_map(|(e, m)| m.brushes.iter().map(move |b| (e, b.clone())))
+        .flat_map(|(e, m)| m.brushes.iter().map(move |b| (e, b)))
         .collect();
     let mover_velocity = |e: Entity| movers.get(e).map_or(Vec3::ZERO, |(_, m)| to_source(m.velocity));
+    // With brushes swept exactly, physics queries skip the same brushes.
+    // Players pass through multiplayer physics props (their own
+    // collision group); props that collide stay in. The same for every
+    // player (each is among the characters): built once a tick, not once
+    // a player (thousands of brush colliders on a big map).
+    let excluded = characters
+        .iter()
+        .copied()
+        .chain(brushes.as_ref().map(|_| brush_colliders.iter()).into_iter().flatten())
+        .chain(terrain.as_ref().map(|_| terrain_colliders.iter()).into_iter().flatten())
+        .chain(
+            props
+                .iter()
+                .filter(|(_, _, p)| p.push != PushAway::Collide)
+                .map(|(e, ..)| e),
+        );
+    let filter = SpatialQueryFilter::from_excluded_entities(excluded).with_mask(crate::core::SOLID_LAYERS);
+    // The broad phase over the map's brushes, rebuilt with them.
+    let grid = &mut *grid_cache;
+    if let Some(b) = brushes.as_ref()
+        && (b.is_changed() || grid.as_ref().is_none_or(|g| g.len != b.0.len()))
+    {
+        *grid = Some(crate::core::BrushGrid::new(&b.0));
+    }
+    let grid = grid.as_ref().filter(|_| brushes.is_some());
     for (entity, intent, mut me, mut transform, mut vel, mut state, weapon_speed, mut base, gravity, touch, controls) in
         &mut q
     {
@@ -2103,29 +2160,18 @@ fn step(
         if me.ground_entity.is_none() && state.ground.is_some() {
             me.ground_entity = state.ground;
         }
-        let mut others: Vec<MapBrush> = boxes
+        // (Borrowed, not copied: a full server copied every other
+        // player's box for every player every tick.)
+        let mut others: Vec<&MapBrush> = boxes
             .iter()
             .filter(|(e, _)| *e != entity && noblock.blocks(team(entity), team(*e)))
-            .map(|(_, b)| b.clone())
+            .map(|(_, b)| b)
             .collect();
         let mut owners: Vec<Option<Entity>> = vec![None; others.len()];
-        for (e, b) in &mover_brushes {
-            others.push(b.clone());
-            owners.push(Some(*e));
+        for &(e, b) in &mover_brushes {
+            others.push(b);
+            owners.push(Some(e));
         }
-        // With brushes swept exactly, physics queries skip the same brushes.
-        // Players pass through multiplayer physics props (their own
-        // collision group); props that collide stay in.
-        let excluded = std::iter::once(entity)
-            .chain(characters.iter().copied())
-            .chain(brushes.as_ref().map(|_| brush_colliders.iter()).into_iter().flatten())
-            .chain(terrain.as_ref().map(|_| terrain_colliders.iter()).into_iter().flatten())
-            .chain(
-                props
-                    .iter()
-                    .filter(|(_, _, p)| p.push != PushAway::Collide)
-                    .map(|(e, ..)| e),
-            );
         let (forward, right) = Mover::view(intent);
         let push_input = super::pushaway::push_back(
             super::pushaway::player_box(&transform, &me, &cfg),
@@ -2136,8 +2182,9 @@ fn step(
         let prop_surface = |e: Entity| prop_surfaces.get(e).ok().map(|s| s.0.clone());
         let tracer = Tracer {
             query: &query,
-            filter: SpatialQueryFilter::from_excluded_entities(excluded).with_mask(crate::core::SOLID_LAYERS),
+            filter: &filter,
             brushes: brushes.as_deref(),
+            grid,
             tree: tree.as_deref(),
             water: water.as_deref(),
             surfaces: surfaces.as_deref(),

@@ -53,6 +53,7 @@ pub mod query;
 pub mod ragdolls;
 pub mod server;
 pub mod udp;
+pub mod upnp;
 pub mod weapons;
 
 use std::net::SocketAddr;
@@ -1258,6 +1259,7 @@ impl Plugin for NetPlugin {
         mapfx::plugin(app);
         decals::plugin(app);
         udp::plugin(app);
+        upnp::plugin(app);
         query::plugin(app);
         memory::plugin(app);
         commands(app);
@@ -1517,6 +1519,9 @@ pub fn status(world: &mut World) -> String {
             let settings = world.resource::<NetSettings>().clone();
             out.insert(0, format!("hostname: {}", world.resource::<query::Hosting>().hostname));
             out.push(format!("udp/ip  : 0.0.0.0:{}", settings.hostport));
+            if let Some(line) = world.resource::<upnp::Upnp>().state.line() {
+                out.push(format!("upnp    : {line}"));
+            }
             if let Some(t) = world.get_resource::<udp::UdpServer>() {
                 let q = &t.queries;
                 out.push(format!(

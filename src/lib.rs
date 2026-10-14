@@ -43,6 +43,40 @@ impl Plugin for SimPlugins {
     }
 }
 
+/// Run the main world's per-frame and fixed schedules on one thread each
+/// instead of Bevy's multi-threaded executor: the game (`main.rs`, which
+/// does the render world's too), the dedicated server and `perfgate`.
+///
+/// A tick runs a few hundred systems, nearly all tiny: handing each to a
+/// worker thread and waking the next cost more than the systems did, and
+/// much more on a busy machine (docs/performance.md, "Frame time pass";
+/// a 32-player server spent half its CPU time on it: multiplayer.md,
+/// "Capacity"). Systems that iterate many entities still spread over the
+/// task pool themselves.
+pub fn single_threaded_schedules(app: &mut App) {
+    use bevy::ecs::{
+        intern::Interned,
+        schedule::{ScheduleLabel, SingleThreadedExecutor},
+    };
+    let labels: [Interned<dyn ScheduleLabel>; 10] = [
+        First.intern(),
+        PreUpdate.intern(),
+        Update.intern(),
+        PostUpdate.intern(),
+        Last.intern(),
+        FixedFirst.intern(),
+        FixedPreUpdate.intern(),
+        FixedUpdate.intern(),
+        FixedPostUpdate.intern(),
+        FixedLast.intern(),
+    ];
+    for label in labels {
+        app.edit_schedule(label, |s| {
+            s.set_executor(SingleThreadedExecutor::new());
+        });
+    }
+}
+
 /// Put a map in place of the one playing, as the game's `map` does
 /// without the view (the dedicated server's `changelevel`, tests): `data`
 /// for map `id`, or the greybox (None); the tick its game runs at;

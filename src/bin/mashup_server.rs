@@ -32,6 +32,11 @@ usage: mashup_server [-port <n>] [+map <name>] [+maxplayers <n>] [+<command> [ar
   +<command>       any console command or cvar, e.g. +maxplayers 8 +bot_quota 4
 Type console commands on stdin: status, bot_add, bot_kick, bot_quota, changelevel <map>, quit.";
 
+/// The dedicated server's frames a second at most: srcds's `fps_max`
+/// default (300, community-documented); a packet waits at most a frame
+/// (3.3 ms) to be read.
+const FPS_MAX: f64 = 300.0;
+
 struct Options {
     map: String,
     console: Vec<String>,
@@ -83,11 +88,12 @@ fn main() {
         std::process::exit(2);
     });
     let mut app = App::new();
-    // A frame every millisecond at most: fixed ticks keep real time without
-    // spinning a core.
+    // At most `FPS_MAX` frames a second (each runs the ticks due, and
+    // reads and sends packets): a frame every millisecond cost an idle
+    // server a third of a core (multiplayer.md, "Capacity").
     harness::add_headless_with(
         &mut app,
-        MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(1))),
+        MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / FPS_MAX))),
     );
     // Ctrl+C exits as `quit` does (AppExit: `net::udp` hangs up on every
     // client), not killed with its clients left to time out.
@@ -177,6 +183,12 @@ fn main() {
         }
     });
     app.insert_resource(Stdin(Mutex::new(rx)));
+    // As the game does: one thread per schedule (half the CPU time of
+    // Bevy's multi-threaded executor on a full server; multiplayer.md,
+    // "Capacity"). `MASHUP_EXECUTOR=multi` keeps Bevy's default.
+    if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
+        mashup::single_threaded_schedules(&mut app);
+    }
     app.run();
 }
 

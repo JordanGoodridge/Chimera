@@ -495,7 +495,8 @@ two spawns), plus traces of a `--features profile` build.
   load 3, 10-30 ms at load 10-20 for the same views). Every per-frame
   schedule (First..Last, the fixed ones, `Render`, `RenderGraph`,
   `Core3d`, `Core2d`) now runs on Bevy's single-threaded executor
-  (`main.rs`); systems that iterate many entities still spread over the
+  (`main.rs`, with `mashup::single_threaded_schedules` for the main
+  world's, which the dedicated server uses too); systems that iterate many entities still spread over the
   task pool themselves (transform propagation, visibility), and the main
   and render worlds still run side by side. `MASHUP_EXECUTOR=multi`
   brings back Bevy's default. On macOS the render schedules keep Bevy's

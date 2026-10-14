@@ -135,7 +135,8 @@ fn main() {
 }
 
 /// Run the per-frame schedules on one thread each instead of Bevy's
-/// multi-threaded executor.
+/// multi-threaded executor (`mashup::single_threaded_schedules` for the
+/// main world, the render world's here).
 ///
 /// A frame runs about 1500 systems (main and render world), nearly all of
 /// them tiny: handing each to a worker thread and waking the next cost more
@@ -151,23 +152,7 @@ fn single_threaded_schedules(app: &mut App) {
         intern::Interned,
         schedule::{ScheduleLabel, SingleThreadedExecutor},
     };
-    let main: [Interned<dyn ScheduleLabel>; 10] = [
-        First.intern(),
-        PreUpdate.intern(),
-        Update.intern(),
-        PostUpdate.intern(),
-        Last.intern(),
-        FixedFirst.intern(),
-        FixedPreUpdate.intern(),
-        FixedUpdate.intern(),
-        FixedPostUpdate.intern(),
-        FixedLast.intern(),
-    ];
-    for label in main {
-        app.edit_schedule(label, |s| {
-            s.set_executor(SingleThreadedExecutor::new());
-        });
-    }
+    mashup::single_threaded_schedules(app);
     // On macOS the render world keeps Bevy's executor: it runs on the
     // pipelined render thread, and the window surface must be created on
     // the main thread (AppKit's NSView), which only the multi-threaded

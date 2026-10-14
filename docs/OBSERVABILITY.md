@@ -533,6 +533,38 @@ client by step. It prints the summary tables (`cargo test --features dev
 --test it heavy::net_soak -- --nocapture`; ~1 real minute per game minute
 in the dev build).
 
+**Capacity** (`tests/it/heavy/net_capacity.rs`, multiplayer.md
+"Capacity"): a de_dust2 server full of players (32: a few `NetSim`
+clients, bots for the rest; deathmatch, so everyone is alive and
+moving) measured for 20 game seconds after a 10 s warm-up: the server's
+CPU time per tick summed over the process's threads while its frame
+runs (`metrics::AllThreads`; the clients run after it), p50 and p99,
+and instructions per tick (stable under load: compare those between
+runs), its main thread's share, bytes a second to each client, each
+client's CPU per frame (headless), memory, the share of character pairs
+in each other's PVS (what Source-style culling would keep), updates
+choked by each client's `rate`. It asserts, at the default size, p50
+under two thirds of the 66-tick budget, p99 under it, under 50M
+instructions a tick (~25M in the dev build), and under 40 KB/s a
+client. Bigger runs print the same table:
+`MASHUP_CAPACITY_PLAYERS=64 MASHUP_CAPACITY_CLIENTS=8
+MASHUP_CAPACITY_MAP=mg_jacks_multigames_v1 MASHUP_CAPACITY_SECONDS=30
+cargo test --profile playtest --features dev --test it heavy::net_capacity
+-- --nocapture` (each client world takes ~0.8 GB: keep clients to a
+handful; the per-client cost is the difference between runs).
+Schedules run single-threaded as the game and the dedicated server do;
+`MASHUP_EXECUTOR=multi` measures Bevy's default executor. A
+`--features profile` build with `MASHUP_CAPACITY_CLIENTS=0
+TRACE_CHROME=<file>` traces the server alone for `tracesum` (it shows
+some systems only: the bots' and many of ours don't appear; with
+`ptrace_scope` 1, gdb started on the test binary and interrupted every
+fraction of a second, collecting the test thread's stacks, found what
+the trace hid). A live
+check of the real binary: start `mashup_server -port 27141 +map de_dust2
++maxplayers 32 +mashup_rounds 0 +bot_join_after_player 0 +bot_quota_mode
+fill +bot_quota 32` and read its CPU time (`/proc/<pid>/stat` fields 14
+and 15) and RSS over a minute.
+
 A live soak (real processes, this box): `mashup_server -port 27111 +map
 de_dust2 +maxplayers 12 +mashup_rounds 1 +bot_quota_mode fill +bot_quota
 10 +bot_join_after_player 0 +sv_cheats 1` with its stdin on a fifo
@@ -709,11 +741,20 @@ reservation keeps the rule pointing at it) and gives friends its public
 address (what a "what is my IP" page shows); behind carrier-grade NAT
 (a public address the router's WAN side doesn't have) forwarding can't
 work: one of the friends hosts, or a VPN (Tailscale, ZeroTier) puts
-everyone on one network. The host's upload carries every client: about
+everyone on one network. `net_upnp 1` (before hosting; `+net_upnp 1` on
+the dedicated server) asks the router to forward the port itself (UPnP
+IGD, `net::upnp`): `status` shows `upnp : UDP <port> forwarded by
+router <ip>; friends connect to <public>:<port>`, why it failed, or a
+warning when the router's outside address is itself private (CGNAT);
+the mapping goes when serving stops. Tests use a fake router
+(`tests/it/net_upnp.rs`): never try it against this box's network.
+docs/plans/active/nat-traversal.md has the other options (Steam
+networking needs an app id of our own). The host's upload carries every client: about
 10-13 KB/s (~0.1 Mbit/s) each with twelve characters at the default
 `cl_updaterate 20`, ~15-19 at 33, ~25-31 at 66 (held there by the
 default `rate` 30000; ~28-49 without it), more on lossy links (~1.3×);
-joins and map changes burst to ~30-40. A client caps what it is sent
+joins and map changes burst to ~30-40; ~17 KB/s each with 32 players
+(multiplayer.md "Capacity"). A client caps what it is sent
 with `rate` (bytes a second) and `cl_updaterate`, the host with
 `sv_maxrate` and `sv_maxupdaterate` (multiplayer.md, "Soak",
 "Bandwidth"). Both

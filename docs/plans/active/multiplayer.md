@@ -22,7 +22,8 @@ along, late joiners get the whole state, maps downloaded (connection or
 changes; slice 8 done (2026-10-09): server queries on the game port
 (A2S_INFO's layout), LAN discovery, the Find Servers dialog with
 favourites, history and passwords; a soak before playing with friends
-(item 10, 2026-10-09). Recommendation:
+(item 10, 2026-10-09); a capacity pass (32 players and more,
+"Capacity", 2026-10-13). Recommendation:
 **bevy_replicon + renet (netcode over UDP)** for transport and
 replication; **our own Source-style prediction, interpolation and lag
 compensation** on top. Slices below; slice 0 is refactoring that pays off
@@ -233,9 +234,11 @@ avian3d 0.7).
   (and the earlier prototype's direct-IP lobby); `hostport` cvar. On this
   dev box the CS:S probe server already uses 27015 (RCON on 127.0.0.1), so
   local tests use ephemeral ports and manual runs `+hostport 27016`.
-- NAT: the host forwards the port, as in Source. Later options: Steam
-  networking (`renet_steam`, relays and NAT punching, needs Steam on both
-  ends; fits Lucker Party friends), or our own relay. Open question 3.
+- NAT: the host forwards the port, as in Source. Steam networking
+  (`renet_steam`, relays and NAT punching) needs a Steam app id of our
+  own (CS:S's can't be used), Steam running on every PC: not now. UPnP
+  port mapping on the host's router is prototyped (`net_upnp 1`); options
+  and costs in [nat-traversal.md](nat-traversal.md) (open question 3).
 - Auth: netcode "unsecure" mode for direct IP and LAN (no encryption, as
   Source's game traffic), a random 64-bit client id, an optional server
   password and the player name in the 256-byte user data, a protocol id
@@ -1496,14 +1499,103 @@ net16, parity round 2: `Hurt` (the damage indicator on clients),
   a game of one as the player's line. Before, it was only printed to the
   console.
 
+### Capacity (2026-10-13)
+
+How many players a server holds within CS:S's tick (66.7 a second,
+15 ms). `heavy::net_capacity` (docs/OBSERVABILITY.md "Capacity"): a
+de_dust2 server full of players, a few of them `NetSim` clients and the
+rest bots, in deathmatch (all alive and moving), the server's CPU time
+per tick summed over every thread while its frame runs, and
+instructions per tick (stable under load). Playtest build on this box
+(load 12-30: CPU times move ~1.5x from run to run; instructions don't).
+
+| de_dust2, 32 players (4 clients + 28 bots) | server tick CPU ms p50 / p99 | instructions a tick |
+|---|---|---|
+| before: Bevy's multi-threaded executor (as `mashup_server` ran) | 10.2-12.9 / 13.7-19.5 | - |
+| one thread per schedule (as the game, so a listen server, already ran) | 7.1 / 14.4 | - |
+| + a broad phase over the map's brushes in the movement's sweeps, its physics filter built once a tick, other players' boxes borrowed | 4.4 / 5.7 | - |
+| + bots' sight: PVS first, nearest first; nav links counted once | 2.8-4.1 / 4.0-5.7 | 18.5 (0 clients) - 20.1 (4) - 20.6 (8) M |
+
+| run (after) | server tick CPU ms p50 / p99 | KB/s a client | others in PVS |
+|---|---|---|---|
+| de_dust2, 32 (4 clients) | 3.4-4.1 / 5.2-5.7 | 17.2-17.7 (29-38 of ~600 updates choked) | 37-39 % |
+| de_dust2, 48 (bots) | 3.3 / 4.3 | - | 33 % |
+| de_dust2, 64 (4 clients) | 4.3-8.2 / 10.2-11.8 | 9.8-12.3 (bots crowding spawns stand still: less to send) | 39-45 % |
+| mg_jacks_multigames_v1, 32 (bots, one lobby) | before 15.0 / 18.1 (186M instructions), after 9.8 / 15.9 (42M) | 21.8 | 88-100 % |
+| mg_jacks_multigames_v1, 64 (bots) | before 45 / 74 (577M), after 24.6 / 35.8 (149M) | - | 100 % |
+| live `mashup_server`, de_dust2, 32 bots | before 85 % of a core (12.8 ms a tick), after 37 % (5.6), 1.1 GB | - | - |
+| live `mashup_server`, de_dust2, idle | before 37 % of a core, after 15 % | - | - |
+
+Each client costs the server ~0.26M instructions a tick (~0.04 ms;
+replication, its commands, its own state), so 31 remote players add
+~1.3 ms to the 32-player numbers above. A client drawing 31 others
+(live, windowed, de_dust2): main world 28M instructions a frame (14M
+alone), render world 26M (19M), CPU p50 ~10 + 11 ms, 50-60 fps on this
+loaded box, 2.5-2.7 GB; headless `NetSim` clients 2.7-3.2 ms a frame.
+Bandwidth at 32: ~17 KB/s to each client at the default 20 updates a
+second, so a listen server with 31 friends uploads ~540 KB/s (~4.3
+Mbit/s).
+
+Found and fixed:
+
+1. **The dedicated server used Bevy's multi-threaded executor**: half
+   its CPU time went to handing each of a few hundred tiny systems to a
+   worker (the game had dropped it for that reason: docs/performance.md
+   "Frame time pass"). `mashup::single_threaded_schedules` now serves
+   the game, `mashup_server` and `perfgate` (`MASHUP_EXECUTOR=multi`
+   brings Bevy's back).
+2. **The movement swept every brush of the map** for each of a player's
+   ~10 sweeps a tick (bounds tests over all of de_dust2's brushes:
+   ~75 us a player a tick, 2.4 ms at 32): `core::BrushGrid`, a grid over
+   the brushes' bounds kept per map, hands the sweeps only the brushes
+   whose bounds overlap theirs, in index order, so the result is the
+   same (unit test `the_grid_finds_what_testing_every_brush_finds`; the
+   movement and prediction tests unchanged). The physics filter (every
+   character, brush collider and pass-through prop excluded) was rebuilt
+   for each player; it is the same for all, so it is built once a tick;
+   other players' and movers' boxes are borrowed, not copied, per player.
+3. **Bots traced to every enemy each tick**: an enemy whose visibility
+   cluster the bot's can't see (the map's PVS, conservative) is skipped
+   without a trace, and the rest are tried nearest first until one is in
+   sight (the same pick as before).
+4. **Nav link failures were counted every tick** when two bots were stuck
+   on one link (each counted the other's report): 130,000 log lines in
+   45 s on a full server, and the link banned for the rest of the map at
+   once. A report counts once per time stuck (`bot::tactics::note_failure`,
+   unit test `two_bots_stuck_on_one_link_count_once_each`).
+5. **Bots on maps without a nav mesh** (`bot::aside`) parsed every map
+   entity each tick to find spawns and teleports (now once a map), and a
+   bot with no free spot left searched every tick (~300 traces): it
+   looks again half a second later. On mg_jacks_multigames_v1 these were
+   most of the tick.
+6. **The dedicated server ran a frame every millisecond**: now at most
+   300 a second (srcds's `fps_max` default): an idle server went from a
+   third of a core to a sixth.
+
+Practical max: **32 players fit with room to spare** (p99 well under a
+tick, everyone in deathmatch); 48-64 on a de_dust2-sized map fit the
+tick on this CPU (Ryzen 5 5600X; p99 10-12 ms at 64 with bots). Two
+limits come first: a home connection's upload for a listen server
+(~0.14 Mbit/s a remote player at 20 updates a second: 4.3 Mbit/s for
+31), and a crowd of bots in one room on a big minigame map (32 fit,
+64 don't: docs/tech-debt.md "net capacity"). `maxplayers` stays the
+host's choice. Not done (tech-debt): culling bodies by PVS
+(would roughly halve the bandwidth), bots' sight in crowds, the client's
+cost of drawing many players.
+
 ## 6. Open questions for the user
 
 1. Start slices 0-2 before the engine-split crate work, or after it (the
    engine-split order puts networking last)?
 2. Listen server only at first (host plays), or is a dedicated server on a
    rented box wanted early?
-3. NAT: is "host forwards UDP 27015" acceptable for now, or should Steam
-   networking (needs Steam running on every player's PC; fine for
-   CS:S owners) or a relay come early for Lucker Party friends?
-4. How many players should a server hold (sizes buffers, bandwidth
-   targets)? CS:S allows 32; Lucker Party parties are smaller.
+3. NAT: answered (2026-10-13, backlog "Decisions 2026-10-13"): find
+   out whether Steam networking is possible at all. It isn't without a
+   Steam app id of our own (nat-traversal.md: CS:S's would be presenting
+   us as CS:S; Spacewar is Valve's test app). Now: UPnP port mapping as
+   an opt-in (`net_upnp 1`), port forwarding and VPNs as before, a
+   rented server for a regular group; later, with a lobby, our own
+   rendezvous and relay; a Steam app only if Lucker Party becomes one.
+4. Server size: answered (2026-10-13): as many as perform, 32 first.
+   32 fit with room ("Capacity" above); 48-64 fit the tick on a
+   de_dust2-sized map; upload bandwidth limits a listen server first.

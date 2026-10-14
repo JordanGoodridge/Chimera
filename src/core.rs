@@ -1769,6 +1769,106 @@ pub struct MapWater(pub Vec<MapWaterVolume>);
 #[derive(Resource, Clone, Debug, Default)]
 pub struct MapBrushes(pub Vec<MapBrush>);
 
+/// A grid over engine x and z of a list of brushes' bounds (a broad
+/// phase): which brushes a box may overlap, without testing them all.
+/// Built from `MapBrushes` by whoever sweeps against them (the Source
+/// movement keeps one per map: a sweep tested every brush of the map's
+/// bounds, ~75 us a player a tick on de_dust2; multiplayer.md
+/// "Capacity").
+#[derive(Clone, Debug, Default)]
+pub struct BrushGrid {
+    origin: Vec2,
+    cell: f32,
+    size: (usize, usize),
+    cells: Vec<Vec<u32>>,
+    /// Brushes over more than `MAX_CELLS` cells (the sky's walls, big
+    /// floors): always candidates.
+    big: Vec<u32>,
+    /// How many brushes it was built from.
+    pub len: usize,
+}
+
+impl BrushGrid {
+    /// Grid cell size, meters (~157 units).
+    const CELL: f32 = 4.0;
+    const MAX_CELLS: usize = 64;
+
+    pub fn new(brushes: &[MapBrush]) -> Self {
+        if brushes.is_empty() {
+            return Self::default();
+        }
+        let lo = brushes.iter().fold(Vec2::MAX, |acc, b| acc.min(b.min.xz()));
+        let hi = brushes.iter().fold(Vec2::MIN, |acc, b| acc.max(b.max.xz()));
+        if !lo.is_finite() || !hi.is_finite() {
+            return Self {
+                big: (0..brushes.len() as u32).collect(),
+                len: brushes.len(),
+                ..default()
+            };
+        }
+        let size = (
+            (((hi.x - lo.x) / Self::CELL).floor() as usize + 1).min(4096),
+            (((hi.y - lo.y) / Self::CELL).floor() as usize + 1).min(4096),
+        );
+        let mut grid = Self {
+            origin: lo,
+            cell: Self::CELL,
+            size,
+            cells: vec![Vec::new(); size.0 * size.1],
+            big: Vec::new(),
+            len: brushes.len(),
+        };
+        for (i, b) in brushes.iter().enumerate() {
+            let (x0, z0, x1, z1) = grid.cell_range(b.min, b.max);
+            if (x1 - x0 + 1) * (z1 - z0 + 1) > Self::MAX_CELLS {
+                grid.big.push(i as u32);
+                continue;
+            }
+            for z in z0..=z1 {
+                for x in x0..=x1 {
+                    grid.cells[z * size.0 + x].push(i as u32);
+                }
+            }
+        }
+        grid
+    }
+
+    fn cell_range(&self, lo: Vec3, hi: Vec3) -> (usize, usize, usize, usize) {
+        let to = |v: f32, o: f32, n: usize| (((v - o) / self.cell).floor().max(0.0) as usize).min(n - 1);
+        (
+            to(lo.x, self.origin.x, self.size.0),
+            to(lo.z, self.origin.y, self.size.1),
+            to(hi.x, self.origin.x, self.size.0),
+            to(hi.z, self.origin.y, self.size.1),
+        )
+    }
+
+    /// Indices of `brushes` (the list it was built from) whose bounds
+    /// overlap `lo`..`hi`, bounds included: sorted, no repeats, into
+    /// `out`. Every brush the box touches is there, so a sweep testing
+    /// these in order gets what testing all of them would.
+    pub fn near(&self, brushes: &[MapBrush], lo: Vec3, hi: Vec3, out: &mut Vec<u32>) {
+        out.clear();
+        let overlaps = |i: &u32| {
+            let b = &brushes[*i as usize];
+            b.max.cmpge(lo).all() && b.min.cmple(hi).all()
+        };
+        out.extend(self.big.iter().copied().filter(overlaps));
+        // Out of the grid: its edge cells (clamped), which hold whatever
+        // lies past them.
+        if !self.cells.is_empty() && lo.is_finite() && hi.is_finite() {
+            let (x0, z0, x1, z1) = self.cell_range(lo, hi);
+            for z in z0..=z1 {
+                for x in x0..=x1 {
+                    out.extend(self.cells[z * self.size.0 + x].iter().copied().filter(overlaps));
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+    }
+}
+
 /// The map's BSP tree over the leading `MapBrushes` (Source maps; the
 /// world's brushes). A Source trace tests brushes leaf by leaf down this
 /// tree, so of two faces hit at the same distance (a ladder flush with a
@@ -1837,3 +1937,47 @@ pub struct MapBrushCollider;
 /// that hit it (footsteps).
 #[derive(Component, Clone, Debug)]
 pub struct PropSurface(pub String);
+
+#[cfg(test)]
+mod brush_grid_tests {
+    use super::*;
+
+    /// The grid's candidates are exactly the brushes whose bounds overlap
+    /// the box (what testing every brush finds), in index order.
+    #[test]
+    fn the_grid_finds_what_testing_every_brush_finds() {
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut rand = move |lo: f32, hi: f32| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            lo + (hi - lo) * (seed >> 40) as f32 / (1u64 << 24) as f32
+        };
+        let mut brushes = Vec::new();
+        for i in 0..2000 {
+            let at = Vec3::new(rand(-300.0, 300.0), rand(-50.0, 50.0), rand(-300.0, 300.0));
+            // Some long walls and floors (the grid's "big" list).
+            let size = if i % 50 == 0 {
+                Vec3::new(rand(50.0, 600.0), rand(0.1, 10.0), rand(50.0, 600.0))
+            } else {
+                Vec3::new(rand(0.1, 8.0), rand(0.1, 8.0), rand(0.1, 8.0))
+            };
+            brushes.push(MapBrush::from_box(at, at + size));
+        }
+        let grid = BrushGrid::new(&brushes);
+        let mut near = Vec::new();
+        for _ in 0..500 {
+            // Boxes inside and outside the brushes' extent.
+            let lo = Vec3::new(rand(-1000.0, 1000.0), rand(-60.0, 60.0), rand(-1000.0, 1000.0));
+            let hi = lo + Vec3::new(rand(0.0, 20.0), rand(0.0, 5.0), rand(0.0, 20.0));
+            grid.near(&brushes, lo, hi, &mut near);
+            let all: Vec<u32> = brushes
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| !(b.max.cmplt(lo).any() || b.min.cmpgt(hi).any()))
+                .map(|(i, _)| i as u32)
+                .collect();
+            assert_eq!(near, all);
+        }
+    }
+}

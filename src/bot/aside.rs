@@ -30,6 +30,10 @@ const ARRIVED: f32 = 10.0 * UNIT;
 const STEP: f32 = 18.0 * UNIT;
 /// Gives up on a spot it hasn't neared for this long (seconds).
 const GIVE_UP: f32 = 2.0;
+/// After a search found no spot, looks again this much later (seconds):
+/// a search is up to ~300 traces, and a crowd of bots in a lobby with no
+/// spot left searched every tick (multiplayer.md, "Capacity").
+const SEARCH_AGAIN: f64 = 0.5;
 
 /// A bot's spot to stand aside at.
 #[derive(Component, Default, Debug)]
@@ -42,6 +46,8 @@ pub struct Aside {
     last: Option<Vec3>,
     /// Spots given up on.
     failed: Vec<Vec3>,
+    /// No search before this time (the last one found nothing).
+    next_search: f64,
 }
 
 /// Spawn points and teleport destinations (engine space, feet), and the
@@ -116,6 +122,10 @@ pub fn step_aside(
     mut console: Option<ResMut<crate::console::Console>>,
     spatial: SpatialQuery,
     time: Res<Time>,
+    // The map's teleport destinations and triggers (`keep_clear` without
+    // spawns), worked out once a map: parsing every entity each tick cost
+    // a big minigame map's server more than its bots.
+    mut map_spots: Local<Option<(String, Vec<Vec3>, Vec<(Vec3, Vec3)>)>>,
 ) {
     // A loaded map without a mesh (maps built in code, as tests use, have
     // no file).
@@ -136,8 +146,13 @@ pub fn step_aside(
             c.info(line);
         }
     }
-    let spawn_feet: Vec<Vec3> = spawns.iter().map(|t| t.translation).collect();
-    let (spots, volumes) = keep_clear(&spawn_feet, map.as_deref());
+    if map.as_ref().is_some_and(|m| m.is_changed()) || map_spots.as_ref().is_none_or(|c| c.0 != name) {
+        let (spots, volumes) = keep_clear(&[], map.as_deref());
+        *map_spots = Some((name.clone(), spots, volumes));
+    }
+    let Some((_, map_only, volumes)) = map_spots.as_ref() else { return };
+    let spots: Vec<Vec3> = spawns.iter().map(|t| t.translation).chain(map_only.iter().copied()).collect();
+    let volumes = &volumes[..];
     let filter = SpatialQueryFilter::default().with_mask(crate::core::SOLID_LAYERS);
     let not_character = |e: Entity| !characters.contains(e);
     let now = time.elapsed_secs_f64();
@@ -157,9 +172,10 @@ pub fn step_aside(
             // Teleported or respawned.
             aside.spot = None;
             aside.failed.clear();
+            aside.next_search = 0.0;
         }
         aside.last = Some(feet);
-        if aside.spot.is_none() && in_the_way(feet, &spots, &volumes) {
+        if aside.spot.is_none() && now >= aside.next_search && in_the_way(feet, &spots, volumes) {
             let ray = |a: Vec3, b: Vec3| -> Option<f32> {
                 let d = b - a;
                 let dir = Dir3::new(d).ok()?;
@@ -183,17 +199,20 @@ pub fn step_aside(
                     let ground = ground?;
                     (open
                         // With room for where it stops (`ARRIVED`).
-                        && !near(ground, &spots, &volumes, ARRIVED * 2.0)
+                        && !near(ground, &spots, volumes, ARRIVED * 2.0)
                         && !taken.iter().any(|s| s.distance(ground) < CLEAR / 2.0)
                         && !aside.failed.iter().any(|s| s.distance(ground) < ARRIVED * 2.0))
                     .then_some(ground)
                 })
             });
-            if let Some(s) = spot {
-                taken.push(s);
-                aside.spot = Some(s);
-                aside.best = f32::MAX;
-                aside.since = now;
+            match spot {
+                Some(s) => {
+                    taken.push(s);
+                    aside.spot = Some(s);
+                    aside.best = f32::MAX;
+                    aside.since = now;
+                }
+                None => aside.next_search = now + SEARCH_AGAIN,
             }
         }
         let Some(spot) = aside.spot else { continue };

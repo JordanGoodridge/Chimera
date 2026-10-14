@@ -349,24 +349,7 @@ fn drive(tick: Res<mashup::core::SimTick>, mut q: Query<(&Driven, &mut Intent)>)
 /// As the game runs them (src/main.rs): every per-frame and fixed schedule
 /// on one thread, so the counts don't depend on how work was handed out.
 fn single_threaded_schedules(app: &mut App) {
-    use bevy::ecs::{intern::Interned, schedule::ScheduleLabel, schedule::SingleThreadedExecutor};
-    let labels: [Interned<dyn ScheduleLabel>; 10] = [
-        First.intern(),
-        PreUpdate.intern(),
-        Update.intern(),
-        PostUpdate.intern(),
-        Last.intern(),
-        FixedFirst.intern(),
-        FixedPreUpdate.intern(),
-        FixedUpdate.intern(),
-        FixedPostUpdate.intern(),
-        FixedLast.intern(),
-    ];
-    for label in labels {
-        app.edit_schedule(label, |s| {
-            s.set_executor(SingleThreadedExecutor::new());
-        });
-    }
+    mashup::single_threaded_schedules(app);
 }
 
 /// Run `warmup` ticks, then measure `ticks` ticks one at a time (a `Sim`

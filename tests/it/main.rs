@@ -42,6 +42,7 @@ mod net_players;
 mod net_prediction;
 mod net_query;
 mod net_rules;
+mod net_upnp;
 mod net_weapons;
 mod objectives;
 mod pain_sounds;
@@ -95,6 +96,7 @@ mod heavy {
     mod map_de_port;
     mod map_net_changelevel;
     mod net_big_map;
+    mod net_capacity;
     mod map_net_weapons;
     mod net_soak;
     mod map_fire;

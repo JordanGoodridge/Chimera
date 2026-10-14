@@ -29,10 +29,15 @@ One player hosts:
     (+sv_password <pw> for a password, +hostname "<name>" to name it).
   - Allow the Windows Firewall prompt the first time (private networks).
   - Over the internet: forward UDP port 27015 on your router to your PC and
-    give friends your public IP address. If your router has no public
-    address (carrier-grade NAT), use Tailscale or ZeroTier instead, or let a
-    friend with a public address host.
-  - Upload needed: about 0.1 Mbit/s per friend.
+    give friends your public IP address. Or let the game ask the router
+    for you (UPnP, if the router allows it): type  net_upnp 1  in the
+    console before starting the server (dedicated: +net_upnp 1), then
+    status  shows the address to give friends, or why the router said no.
+    If your router has no public address (carrier-grade NAT), use
+    Tailscale or ZeroTier instead, or let a friend with a public address
+    host.
+  - Upload needed: about 0.1-0.15 Mbit/s per friend (a full 32-player
+    server: about 4.5 Mbit/s).
 
 Everyone else joins:
   - Main menu -> Find Servers (Lan tab, or Favorites -> Add a Server with

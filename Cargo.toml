@@ -23,6 +23,8 @@ bevy_replicon_renet = "0.20.0"
 # Netcode's client protocol, for our UDP client transport with
 # `net_fakelag`/`net_fakeloss` (net::udp); the one bevy_replicon_renet uses.
 renetcode = "2.0"
+# UPnP port mapping for hosts (`net_upnp`, net::upnp); sync client, no TLS.
+igd-next = { version = "0.18", default-features = false, features = ["io_sync"] }
 # The server's state of a client's own player, compared with its prediction
 # byte for byte (core::PredictedComponents::encode); replicon's format.
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }

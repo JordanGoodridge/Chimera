@@ -168,6 +168,33 @@ pub struct Tactics {
     pub failed_links: Vec<(usize, usize)>,
 }
 
+/// A bot's report that it got stuck on `link` (`until`: when its own
+/// memory of it ends, later for each newer time stuck). Counted once per
+/// time stuck: a report no newer than the newest counted is one already
+/// counted (two bots stuck on one link counted each other's every tick,
+/// flooding a full server's log and banning the link for good at once:
+/// multiplayer.md "Capacity"). The new count when it is a second or later
+/// failure.
+fn note_failure(failed: &mut Vec<((usize, usize), f64, u32, f64)>, link: (usize, usize), until: f64, now: f64) -> Option<u32> {
+    match failed.iter_mut().find(|f| f.0 == link) {
+        Some(f) if until <= f.3 => None,
+        Some(f) => {
+            f.2 += 1;
+            f.3 = until;
+            f.1 = if f.2 >= FAILED_FOREVER {
+                f64::INFINITY
+            } else {
+                now + FAILED_MEMORY * f.2 as f64
+            };
+            Some(f.2)
+        }
+        None => {
+            failed.push((link, now + FAILED_MEMORY, 1, until));
+            None
+        }
+    }
+}
+
 impl Tactics {
     pub fn team(&self, team: Team) -> Option<&TeamPlan> {
         self.teams.iter().find(|t| t.team == team)
@@ -644,19 +671,8 @@ pub(super) fn update(
     // Links bots keep getting stuck on: avoided by all of them.
     for (_, bot, ..) in &bots {
         for &(link, until) in &bot.stuck_links {
-            match tactics.failed.iter_mut().find(|f| f.0 == link) {
-                Some(f) if f.3 == until => {}
-                Some(f) => {
-                    f.2 += 1;
-                    f.3 = until;
-                    f.1 = if f.2 >= FAILED_FOREVER {
-                        f64::INFINITY
-                    } else {
-                        now + FAILED_MEMORY * f.2 as f64
-                    };
-                    info!("bots: nav link {link:?} failed {} times", f.2);
-                }
-                None => tactics.failed.push((link, now + FAILED_MEMORY, 1, until)),
+            if let Some(times) = note_failure(&mut tactics.failed, link, until, now) {
+                info!("bots: nav link {link:?} failed {times} times");
             }
         }
     }
@@ -860,6 +876,26 @@ pub(super) fn update(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn two_bots_stuck_on_one_link_count_once_each() {
+        let mut failed = Vec::new();
+        let link = (3, 7);
+        // Bot A stuck at t=0 (memory until 10), bot B at t=2 (until 12):
+        // both keep reporting every tick.
+        assert_eq!(super::note_failure(&mut failed, link, 10.0, 0.0), None);
+        assert_eq!(super::note_failure(&mut failed, link, 12.0, 2.0), Some(2));
+        for t in 0..100 {
+            let now = 2.0 + t as f64 * 0.015;
+            assert_eq!(super::note_failure(&mut failed, link, 10.0, now), None);
+            assert_eq!(super::note_failure(&mut failed, link, 12.0, now), None);
+        }
+        assert_eq!(failed[0].2, 2, "two failures, not one a tick");
+        assert!(failed[0].1.is_finite(), "not banned for good after two");
+        // A third time stuck bans it.
+        assert_eq!(super::note_failure(&mut failed, link, 20.0, 10.0), Some(3));
+        assert!(failed[0].1.is_infinite());
+    }
+
     use super::*;
     use crate::bot::path::tests::{area, link};
     use crate::map::nav::{HidingSpot, Side};

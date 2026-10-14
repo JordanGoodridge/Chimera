@@ -41,7 +41,11 @@ frames every 0.25 s).
   is possible at all for our own client (expected not: it needs our own
   Steam app id; CS:S's can't be used), prototype if cheap; server size:
   as many players as we can make performant; stress-test it (parity
-  first: 32 like CS:S as the first target).
+  first: 32 like CS:S as the first target). Done 2026-10-13: not
+  possible without our own Steam app id; UPnP prototyped (`net_upnp`),
+  recommendation in docs/plans/active/nat-traversal.md; 32 players fit
+  the tick after a capacity pass (multiplayer.md "Capacity"), follow-ups
+  in docs/tech-debt.md.
 - No new release until the user says the group is testing again.
 - Dark wall panels by "MAIN": skipped (map unknown). Skybox inside a
   player: waiting for repro details from the user.
@@ -498,8 +502,11 @@ History, Lan; Internet waits for a master server), server info queries,
 LAN discovery, passwords. Slice 9 (lobby) dropped: standard CS:S. Left:
 LAN broadcast between two machines (Windows) untested, CS:S's join rules
 (empty team restarts the game) need a spec. Open questions 3 (NAT) and
-4 (server size) still wait on the user; 1 is moot (networking came
-first), 2 was taken as both.
+4 (server size) answered 2026-10-13: Steam networking needs an app id of
+our own (docs/plans/active/nat-traversal.md; UPnP mapping prototyped,
+`net_upnp 1`), and a server holds 32 players within the tick
+(multiplayer.md "Capacity", `heavy::net_capacity`); 1 is moot
+(networking came first), 2 was taken as both.
 
 ## 3. Weapons, remaining
 
