@@ -1820,7 +1820,10 @@ impl BrushGrid {
         };
         for (i, b) in brushes.iter().enumerate() {
             let (x0, z0, x1, z1) = grid.cell_range(b.min, b.max);
-            if (x1 - x0 + 1) * (z1 - z0 + 1) > Self::MAX_CELLS {
+            // Empty or inverted bounds (min above max, NaN): in the always
+            // list, where the callers' own bounds tests decide.
+            let inverted = x1 < x0 || z1 < z0 || !b.min.is_finite() || !b.max.is_finite();
+            if inverted || (x1 - x0 + 1) * (z1 - z0 + 1) > Self::MAX_CELLS {
                 grid.big.push(i as u32);
                 continue;
             }
@@ -1956,7 +1959,12 @@ mod brush_grid_tests {
         let mut brushes = Vec::new();
         for i in 0..2000 {
             let at = Vec3::new(rand(-300.0, 300.0), rand(-50.0, 50.0), rand(-300.0, 300.0));
-            // Some long walls and floors (the grid's "big" list).
+            // Some long walls and floors (the grid's "big" list), and an
+            // empty brush (bounds inverted, as a brush with no volume has).
+            if i % 97 == 0 {
+                brushes.push(MapBrush::from_box(Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)));
+                continue;
+            }
             let size = if i % 50 == 0 {
                 Vec3::new(rand(50.0, 600.0), rand(0.1, 10.0), rand(50.0, 600.0))
             } else {

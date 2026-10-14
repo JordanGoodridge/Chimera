@@ -1,6 +1,7 @@
 //! Mashup prototype. Module layering is documented in docs/ARCHITECTURE.md
 //! and enforced by tests/it/architecture.rs.
 
+pub mod audio;
 pub mod bot;
 pub mod character;
 pub mod client;
@@ -11,11 +12,13 @@ pub mod greybox;
 pub mod harness;
 pub mod logic;
 pub mod map;
+mod map_plugin;
 pub mod metrics;
 pub mod mount;
 pub mod movement;
 pub mod net;
 pub mod objectives;
+pub mod render;
 pub mod rules;
 pub mod slots;
 pub mod weapon;

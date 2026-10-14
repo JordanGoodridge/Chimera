@@ -545,7 +545,7 @@ with tests passing and something to see.
    - [x] Error smoothing: the drawn eye keeps the correction and eases it
      out over `cl_smoothtime` (0.1 s); a correction larger than a tick's
      teleport distance (`map::interp::SNAP_SPEED`) snaps.
-   - [x] Readout: `NetGraph` in the perf overlay and the F2 Perf tab
+   - [x] Readout: `NetGraph` in the perf overlay and the debug UI's Perf tab
      (`net:` ping, loss, KB/s; `cmds:` lead, target, nudge, jumps, server
      buffer, missed, late; `prediction:` errors/s, worst, totals,
      replayed, easing), `status` (client: prediction; server: each
@@ -634,7 +634,7 @@ with tests passing and something to see.
      every tick and replay in a network game (`net::canonical_position`).
    - [x] Readout: `NetGraph`'s `interp:` line (delay, update interval,
      snapshots ahead, newest ahead, frames extrapolated/held, snaps,
-     movers, ticks carried) in the perf overlay and F2 Perf tab; cvars
+     movers, ticks carried) in the perf overlay and debug UI Perf tab; cvars
      `cl_interp`, `cl_interp_ratio`, `cl_extrapolate`,
      `cl_extrapolate_amount`.
    - [x] Tests (`tests/it/net_interp.rs`, `NetSim` at 240 frames a
@@ -1599,3 +1599,9 @@ cost of drawing many players.
 4. Server size: answered (2026-10-13): as many as perform, 32 first.
    32 fit with room ("Capacity" above); 48-64 fit the tick on a
    de_dust2-sized map; upload bandwidth limits a listen server first.
+
+### net18 (2026-10-14)
+
+Others' arming: the server tells every other client when a player starts
+or stops arming the bomb (`ARMING`/`ARMING_STOPPED`), so they see the
+plant animation; new message values, so a new protocol number.

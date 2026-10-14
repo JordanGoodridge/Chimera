@@ -45,6 +45,8 @@ cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
                                    # 2x slower); before pushing or merging
 cargo test --features dev --test it weapons::   # one test file (tests/it/)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
+cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`;
+                                   # the dedicated server `server`
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 ```
 

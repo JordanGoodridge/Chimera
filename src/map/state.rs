@@ -1,0 +1,351 @@
+//! State the logic layer (and network replication) writes on spawned map
+//! parts and the map and its presentation apply: entity parts on/off,
+//! prop looks and sequences, light styles, soundscape switches, tonemap
+//! inputs, view kicks; what culling reads of the logic (`VisClusters`,
+//! `LogicHidden`, areaportal and occluder states); render looks and brush
+//! tints; the monitor camera; the effects the logic fires (sparks, tesla
+//! arcs, strikes, map muzzle flashes) and decals to place; and the
+//! particle rules' random numbers, which the weapon layer shares.
+
+use bevy::prelude::*;
+
+use super::{DEFAULT_AUTO_EXPOSURE, MapAlpha, MapHdr};
+
+/// A kick to a player's view from the map (env_viewpunch): pitch up and
+/// yaw left, radians, added to its view punch (the weapon layer's
+/// `ViewPunch`, which decays it as recoil).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct ViewKick {
+    pub player: Entity,
+    pub angles: Vec2,
+}
+
+/// A drawn part of a map entity the logic switches (sprites, dust
+/// volumes): `on` shows a sprite or lets dust spawn motes; `exists` false
+/// (killed) removes it from view at once. The logic layer writes it.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EntityPart {
+    /// Index into `MapData::entities`.
+    pub entity: usize,
+    pub on: bool,
+    pub exists: bool,
+}
+
+/// How a prop entity looks, as the logic says (skin family, and the body
+/// number SetBodyGroup set; `MapModel::skins`, `MapModel::body_choice`).
+/// The logic layer writes it; the map applies it.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct PropLook {
+    pub skin: i32,
+    pub body_group: Option<i32>,
+}
+
+/// What an animated prop plays, as the logic says: a sequence by name
+/// with a serial (a new serial restarts it), the one played at spawn and
+/// after a sequence ends, and the round (a new round starts over).
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PropSequence {
+    pub play: Option<(String, u32)>,
+    pub default: String,
+    pub round: u32,
+}
+
+/// Switchable light styles that are off (Source styles 32+). The logic
+/// layer writes it; the map relights the lightmaps when it changes.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct LightStyles {
+    /// Style numbers and whether each is lit; unlisted styles keep their
+    /// state at map start.
+    pub styles: Vec<(u8, bool)>,
+}
+
+/// Which soundscape volumes (by entity index, `SoundscapeZone::entity`)
+/// the listener touches, as the logic layer's touch code says; None: the
+/// map tests the zones' boxes itself.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SoundscapeTouches(pub Option<Vec<usize>>);
+
+/// Which env_soundscape entities (by entity index,
+/// `SoundscapeEmitter::entity`) are enabled, as the logic layer's
+/// Enable/Disable inputs left them; None: the map goes by their
+/// StartDisabled keys.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SoundscapeSwitches(pub Option<Vec<usize>>);
+
+/// What the map's env_tonemap_controller inputs set while it runs (the
+/// logic layer writes it): each set field replaces the map's look
+/// (`MapHdr`), which holds what the map sets at its start.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct TonemapInputs {
+    pub exposure_min: Option<f32>,
+    pub exposure_max: Option<f32>,
+    pub bloom_scale: Option<f32>,
+    pub rate: Option<f32>,
+    /// UseDefaultAutoExposure: bounds back at `DEFAULT_AUTO_EXPOSURE`
+    /// (until set again).
+    pub default_exposure: bool,
+}
+
+impl TonemapInputs {
+    /// `hdr` with these inputs applied.
+    pub fn apply(&self, hdr: &MapHdr) -> MapHdr {
+        let mut out = hdr.clone();
+        if let Some((lo, hi)) = out.exposure {
+            let (lo, hi) = if self.default_exposure {
+                DEFAULT_AUTO_EXPOSURE
+            } else {
+                (lo, hi)
+            };
+            out.exposure = Some((self.exposure_min.unwrap_or(lo), self.exposure_max.unwrap_or(hi)));
+        }
+        if let Some(b) = self.bloom_scale {
+            out.bloom_scale = b;
+        }
+        if let Some(r) = self.rate {
+            out.rate = r;
+        }
+        out
+    }
+}
+
+/// Areaportals map logic closed (by key); every other portal is open.
+/// Written by the logic (linked doors, Open/Close inputs), read by `cull`.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct AreaPortalStates {
+    /// Sorted.
+    pub closed: Vec<u16>,
+}
+
+impl AreaPortalStates {
+    pub fn is_open(&self, key: u16) -> bool {
+        self.closed.binary_search(&key).is_err()
+    }
+}
+
+/// Occluders map logic turned off (StartActive 0, Deactivate, Toggle):
+/// their keys, sorted; every other occluder is active. Without it each
+/// occluder's `start_active` holds.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct OccluderStates {
+    pub inactive: Vec<u16>,
+}
+
+/// Clusters a map part touches; it is drawn only while one of them is
+/// potentially visible from the camera's cluster. Entities without it are
+/// always drawn. The culling system owns their `Visibility` (except glow
+/// sprites and water surfaces, which read `potentially_visible`).
+#[derive(Component, Clone, Debug)]
+pub struct VisClusters {
+    pub clusters: Box<[u32]>,
+    pub potentially_visible: bool,
+}
+
+impl VisClusters {
+    pub fn new(clusters: Vec<u32>) -> Self {
+        Self {
+            clusters: clusters.into_boxed_slice(),
+            potentially_visible: true,
+        }
+    }
+}
+
+/// A map part game logic removed or turned off (a broken or killed prop):
+/// culling keeps it hidden. Whoever adds it hides the part; whoever
+/// removes it shows it again.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct LogicHidden;
+
+/// Source render modes that matter here.
+pub const RENDER_NORMAL: u8 = 0;
+pub const RENDER_TRANS_ADD: u8 = 5;
+pub const RENDER_NONE: u8 = 10;
+
+/// How an entity is drawn: colour (sRGB 0-255), alpha (renderamt) and
+/// render mode.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RenderLook {
+    pub color: [u8; 3],
+    pub alpha: u8,
+    pub mode: u8,
+}
+
+impl Default for RenderLook {
+    fn default() -> Self {
+        Self {
+            color: [255; 3],
+            alpha: 255,
+            mode: RENDER_NORMAL,
+        }
+    }
+}
+
+impl RenderLook {
+    /// Drawn as its materials are.
+    pub fn is_plain(&self) -> bool {
+        self.color == [255; 3] && self.blend().is_none()
+    }
+
+    /// The blend its render mode asks for, with the opacity (0-1): normal
+    /// mode ignores renderamt; colour, texture and alpha modes (1, 2, 4)
+    /// blend by it; glow and additive modes (3, 5, 7, 8, 9) add, scaled by
+    /// it; environmental (6) and none (10) aren't drawn.
+    pub fn blend(&self) -> Option<(MapAlpha, f32)> {
+        let a = self.alpha as f32 / 255.0;
+        match self.mode {
+            RENDER_NORMAL => None,
+            1 | 2 | 4 => (self.alpha < 255).then_some((MapAlpha::Blend, a)),
+            3 | 5 | 7 | 8 | 9 => Some((MapAlpha::Add, a)),
+            6 | RENDER_NONE => Some((MapAlpha::Blend, 0.0)),
+            _ => None,
+        }
+    }
+
+    /// The colour multiplier (linear rgb; the game multiplies in gamma
+    /// space, so the colour is converted as sRGB), with the opacity in w;
+    /// an added look takes the opacity into its colour.
+    pub fn factor(&self) -> Vec4 {
+        let c = Color::srgb_u8(self.color[0], self.color[1], self.color[2]).to_linear();
+        let rgb = Vec3::new(c.red, c.green, c.blue);
+        match self.blend() {
+            Some((MapAlpha::Add, a)) => (rgb * a).extend(1.0),
+            Some((_, a)) => rgb.extend(a),
+            None => rgb.extend(1.0),
+        }
+    }
+
+    /// Not drawn at all.
+    pub fn invisible(&self) -> bool {
+        matches!(self.blend(), Some((MapAlpha::Blend, a)) if a <= 0.0)
+    }
+}
+
+/// A brush entity node's look (white, normal: as the material is) and
+/// the texture frame its animated textures show (env_texturetoggle; 0:
+/// the first).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BrushTint(pub RenderLook, pub u32);
+
+impl BrushTint {
+    pub fn is_white(&self) -> bool {
+        self.0.is_plain() && self.1 == 0
+    }
+}
+
+/// Where the active monitor camera is (engine space, looking down -Z) and
+/// its vertical field of view (degrees); None: no monitor shows anything.
+/// With it, its fog (None: none).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct MonitorCamera(pub Option<(Vec3, Quat, f32)>, pub Option<MonitorFog>);
+
+/// A point_camera's own fog (public entity docs): on or off, colour (sRGB
+/// 0-1), start and end (meters here; the logic gives entity units) and max
+/// density.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MonitorFog {
+    pub enabled: bool,
+    pub color: [f32; 3],
+    pub start: f32,
+    pub end: f32,
+    pub max_density: f32,
+}
+
+/// A burst of sparks (env_spark; visual_entities.md 8): where (engine
+/// space), its direction (zero: none) and magnitude; a game draws it.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct SparkBurst {
+    pub at: Vec3,
+    pub dir: Vec3,
+    pub magnitude: f32,
+}
+
+/// One spark of a point_tesla (the logic times them).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TeslaSpark {
+    /// The entity (index into `MapData::entities`).
+    pub entity: usize,
+}
+
+/// Marks a drawn part whose transform the logic sets to its map entity's
+/// pose each tick (it follows a parent).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct FollowsEntity;
+
+/// An env_muzzleflash fired (by map index).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MuzzleFlashFire {
+    pub entity: usize,
+}
+
+/// A strike: the beam from `start` to `end` (engine space) lives `life`
+/// seconds (0: until the map's next round restart).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct BeamStrike {
+    pub entity: usize,
+    pub start: Vec3,
+    pub end: Vec3,
+    pub life: f32,
+}
+
+/// Put a decal from `group` on the world at `point`, on the surface with
+/// `normal`; `dir` is the direction of whatever made it. `spin` turns it
+/// randomly in the surface plane (bullet holes); otherwise walls keep it
+/// upright. With a `target` prop (or one of its colliders) the decal goes
+/// on that prop's model and moves with it; otherwise on the world.
+#[derive(Message, Clone, Debug)]
+pub struct PlaceDecal {
+    pub target: Option<Entity>,
+    pub group: DecalGroup,
+    pub point: Vec3,
+    pub normal: Vec3,
+    pub dir: Vec3,
+    pub spin: bool,
+}
+
+/// Which decals to choose from.
+#[derive(Clone, Debug)]
+pub enum DecalGroup {
+    /// A named group (e.g. the knife's slashes).
+    Named(String),
+    /// What a surface with this game material letter takes when shot.
+    Material(char),
+}
+
+/// Most decals a server keeps for late joiners; the oldest goes first.
+/// (Each client draws at most `DecalSettings::limit`.)
+pub const MAX_DECALS: usize = 512;
+
+/// Random numbers for the particle rules (xorshift).
+#[derive(Clone, Debug)]
+pub struct ParticleRng(u64);
+
+impl ParticleRng {
+    pub fn new(seed: u64) -> Self {
+        Self(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1)
+    }
+
+    /// Uniform in 0..1.
+    pub fn random(&mut self) -> f32 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 >> 40) as f32 / (1u64 << 24) as f32
+    }
+
+    /// Uniform float in a..b.
+    pub fn float(&mut self, a: f32, b: f32) -> f32 {
+        a + (b - a) * self.random()
+    }
+
+    /// Uniform integer in a..=b.
+    pub fn int(&mut self, a: i32, b: i32) -> i32 {
+        if b <= a {
+            return a;
+        }
+        (a + (self.random() * (b - a + 1) as f32) as i32).min(b)
+    }
+
+    /// Three independent draws in a..b.
+    pub fn vec3(&mut self, a: f32, b: f32) -> Vec3 {
+        Vec3::new(self.float(a, b), self.float(a, b), self.float(a, b))
+    }
+}

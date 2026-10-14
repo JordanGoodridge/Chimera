@@ -11,7 +11,8 @@
 use bevy::prelude::*;
 
 use super::EntityPart;
-use super::particles::{Particle, ParticleGroup, ParticleRng, Particles, Ramp, Shape};
+use super::ParticleRng;
+use super::particles::{Particle, ParticleGroup, Particles, Ramp, Shape};
 
 /// Control points a system can use.
 pub const MAX_CONTROL_POINTS: usize = 8;
@@ -952,7 +953,7 @@ pub struct ParticleSystemDefs(pub std::sync::Arc<MapParticleSystems>);
 /// Run and show every placed particle system near enough and not hidden by
 /// visibility (hidden ones are frozen, as the game sleeps unseen effects).
 #[allow(clippy::type_complexity)]
-pub(super) fn update_systems(
+pub(crate) fn update_systems(
     time: Res<Time>,
     defs: Option<Res<ParticleSystemDefs>>,
     materials: Option<Res<super::particles::ParticleMaterials>>,

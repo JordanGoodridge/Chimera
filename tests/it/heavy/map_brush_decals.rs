@@ -22,7 +22,8 @@ use mashup::{
     logic::{Logic, Value},
     map::{
         BrushEntityBounds, MapBrushEntity, MapData, MapEntity, MapPlugin,
-        decal::{ClearDecals, DecalGroup, DecalMaterial, DecalSettings, PlaceDecal, RuntimeDecal},
+        DecalGroup, PlaceDecal,
+        decal::{ClearDecals, DecalMaterial, DecalSettings, RuntimeDecal},
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,

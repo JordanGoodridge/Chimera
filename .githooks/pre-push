@@ -47,10 +47,11 @@ fi
 if [ "$pushing" = 1 ]; then
     # The tests build with --features dev; playtest and release builds
     # don't. Check that configuration too (always: the suite can't catch
-    # a dev-only dependency).
+    # a dev-only dependency), with the binaries behind features (the
+    # debugging tools, the dedicated server: Cargo.toml).
     mkdir -p target
     echo "pre-push: checking the build without --features dev..." >&2
-    if ! cargo check --lib --bins --quiet >target/pre-push-check.log 2>&1; then
+    if ! cargo check --lib --bins --features tools,server --quiet >target/pre-push-check.log 2>&1; then
         grep -E "^error" -A6 target/pre-push-check.log | head -30
         echo "pre-push: the build without --features dev fails (log: target/pre-push-check.log); not pushing." >&2
         exit 1

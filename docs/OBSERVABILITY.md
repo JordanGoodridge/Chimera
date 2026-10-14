@@ -45,9 +45,11 @@ fails and says how to move it. Test names read `weapons::name` and
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
 - Before every push, `.githooks/pre-push` also checks the build without
-  `--features dev` (`cargo check --lib --bins`; the playtest and release
-  builds use that configuration and the tests don't), even with
-  `MASHUP_PUSH_TESTS=0`.
+  `--features dev` (`cargo check --lib --bins --features tools,server`;
+  the playtest and release builds use that configuration and the tests
+  don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
+  built only with `--features tools`, the dedicated server with
+  `--features server` (so `cargo test` doesn't relink them).
 - Full suite, before a push or a merge to main (`.githooks/pre-push`, which
   `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
   6 tests at once and 2 heavy ones, `.config/nextest.toml`: memory, not CPU,
@@ -323,6 +325,14 @@ Only `Reflect`-registered types are visible; register new core components in
   animated body).
 - `mashup_debughud 1` shows the top-left debug readout (movement mode,
   speed, ground/crouch state and the debug keys); off by default.
+- Debug keys: default binds on keys CS:S's `config_default.cfg` leaves
+  free (the rest are CS:S's: F1 autobuy, F2 rebuy, the wheel
+  `invprev`/`invnext`, ...; `client::binds`): F3 collision shapes
+  (`toggle mashup_drawcollision`), F8 the debug UI (`debugui`, section
+  3d), F11 the entity inspector (`mashup_inspector`; frees the mouse),
+  V `noclip`, F9 (and CS:S's F4) a bug report, Left Alt free look. All
+  are console lines, so `bind` moves them and Options > Keyboard lists
+  them.
 - `mashup_drawphys 1` outlines physics props by state (green moving,
   blue asleep, grey still or frozen; multiplayer props darker) and
   players' physics shadows (white, a yellow line to each prop the shadow
@@ -347,7 +357,7 @@ Only `Reflect`-registered types are visible; register new core components in
   `-attack` a second later, and `screenshot`s from 1.7 s after the
   release; a `setang` to another direction after the flash shows the
   frozen frame over the new view. Hearing (muffle, ringing) can't be
-  photographed: `map::hearing::Hearing` and its tests
+  photographed: `audio::hearing::Hearing` and its tests
   (`cargo test --lib hearing`) show the curves; `tests/it/cs_grenades.rs`
   checks which effect each blast or flash gives.
 - `mashup_healthbars 1` draws a health bar over every other living
@@ -359,7 +369,7 @@ Only `Reflect`-registered types are visible; register new core components in
   `violence_hblood` (0/1). To see a shot's effects in a `--screenshot`
   run, fire with `++attack` and keep `--frames` low enough that they are
   still alive (dust lives about a second, sparks a tenth of one).
-- **Bug reports while playtesting:** press F9 (or `bugreport [note]` in the
+- **Bug reports while playtesting:** press F4 or F9 (or `bugreport [note]` in the
   console). It saves `screenshot.png` and `report.txt` (build version,
   map, a `setpos`/`setang` line to paste back, weapon, health, the last
   40 console lines) to `<data dir>/mashup/bugreports/report-<time>/`
@@ -623,7 +633,7 @@ dead: `mp_restartgame 1` puts everyone in play. `cargo test --features
 dev --test it net_rules -- --nocapture` prints the clocks and
 scoreboards.
 
-In a game: the perf overlay (`mashup_perf 1`) and the F2 Perf tab show,
+In a game: the perf overlay (`mashup_perf 1`) and the debug UI's Perf tab show,
 while connected, `net:` (ping, loss, KB/s), `cmds:` (lead in ticks and
 its target, the clock's speed nudge and jumps, the server's buffer of
 our commands, missed and late), `prediction:` (errors per second and
@@ -680,7 +690,7 @@ renames it for everyone ("* X changed name to Y"); bots take names from
 the install's botprofile.db at `bot_difficulty` (0-3; `bot_prefix`),
 `bot_kick t|ct|easy|...|expert|<name>`, and with `bot_join_after_player 1`
 (the default) the quota waits for a player. The dedicated server:
-`cargo run --features dev --bin mashup_server -- -port 27032 +map greybox
+`cargo run --features dev,server --bin mashup_server -- -port 27032 +map greybox
 +bot_add` (console on stdin: `status`, `bot_add`, `bot_quota 6`, `changelevel de_dust2`, `quit`). Logs show
 `listening on UDP ...`, `<name> joined`, `<name> left`, `disconnected:
 <reason>`.
@@ -784,8 +794,8 @@ server, `password` on a client (the browser asks for it). Two dedicated
 servers and a client on this box:
 
 ```
-cargo run --features dev --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
-cargo run --features dev --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
+cargo run --features dev,server --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
+cargo run --features dev,server --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
 cargo run --features dev -- --window 1280x720 +net_lan_ports 27031-27032 +openserverbrowser lan
 ```
 
@@ -842,7 +852,7 @@ Details and baseline numbers: [performance.md](performance.md).
   `Render` sets (opt-in: performance.md, "Baseline"), each with wall
   and thread CPU ms, at most two lines a second (`(N more since the last)`). A profile
   build adds the frame's spans with the most self time (`spans by self
-  ms: <system> 12.3 x2, ...`). The F2 Perf tab has the same percentiles as
+  ms: <system> 12.3 x2, ...`). The debug UI Perf tab has the same percentiles as
   a table, with a frame-time histogram.
 - `mashup_perf_log 1` logs the same readout as one text line a second
   (`mashup_perf: 60 fps  frame 16.67 ms ... | vis: cluster ...`), so runs
@@ -852,7 +862,7 @@ Details and baseline numbers: [performance.md](performance.md).
 - Drawing between ticks (`map::interp`): the readout's `interpolation:`
   line gives the tick rate, the frame's blend between the last two ticks
   (`Time<Fixed>` overstep fraction), ticks run that frame and teleport
-  snaps so far; the F2 Perf tab shows it live every frame.
+  snaps so far; the debug UI's Perf tab shows it live every frame.
   `cl_interpolate 0` draws the latest tick instead (stepping at the tick
   rate), for A/B. `cargo test --features dev --test it interpolation::
   -- --nocapture` prints a walking, ducking camera eye per frame at 240 fps on the CS:S
@@ -873,7 +883,7 @@ Details and baseline numbers: [performance.md](performance.md).
   p90, p99, p99.9, max per view and overall, for scripts
   (`jq '.overall.metrics.main_instructions.p50' bench.json`).
 - `perfgate` (`src/bin/perfgate.rs`): the instructions-per-tick
-  regression gate: `cargo build --profile playtest --bin perfgate &&
+  regression gate: `cargo build --profile playtest --features tools --bin perfgate &&
   target/playtest/perfgate` runs greybox, de_dust2 (rounds, 10 bots) and
   mg_lego_multigames_v2 headless for 2000 ticks each, prints instructions
   per tick (all threads: p50, p99, total; main thread) and CPU and wall
@@ -896,7 +906,7 @@ Details and baseline numbers: [performance.md](performance.md).
   draws every brush entity from its own meshes (no merged combined
   meshes, `map::merge`).
 - `mashup_skyocclude 1` makes sky faces hide what lies behind them even
-  in the view's PVS (`map::sky_occluder`; off by default, unchecked
+  in the view's PVS (`render::sky_occluder`; off by default, unchecked
   against CS:S). Where something shows through the sky, the remote
   protocol (section 3) finds it: query meshes with a non-zero
   `ViewVisibility` and their parents' `Name` (mg_creative's were placed
@@ -928,7 +938,7 @@ Details and baseline numbers: [performance.md](performance.md).
   sync_movers`). Example (performance.md has real output):
   `cargo build --profile playtest --features profile`, then
   `TRACE_CHROME=target/t.json target/playtest/mashup --map cs_source:de_dust2 --frames 400`,
-  then `cargo build --profile playtest --bin tracesum` and
+  then `cargo build --profile playtest --features tools --bin tracesum` and
   `target/playtest/tracesum target/t.json --skip 200`.
   Read systems' own spans, not schedules' self time: writing the trace
   stalls every thread now and then (2-3 ms gaps without any span), which
@@ -947,7 +957,7 @@ Details and baseline numbers: [performance.md](performance.md).
 
 ## 3d. The debug UI
 
-F2 (a bind: `debugui`) opens a tabbed window; `debugui <tab>` opens it
+F8 (a bind: `debugui`; F1 and F2 are CS:S's autobuy and rebuy) opens a tabbed window; `debugui <tab>` opens it
 on a tab (`player`, `world`, `movement`, `bots`, `rendering`, `perf`,
 `audio`, `logic`, `rounds`, `cvars`), `debugui close` closes it, e.g.
 `--window 1280x720 --screenshot ui.png +debugui perf` photographs one.
@@ -971,7 +981,7 @@ and keys typed into its fields don't reach binds.
   bot's team, health, role and activity with watch (`mashup_watch`) and
   go-to buttons.
 - Rendering: the overlays (`cl_showpos`, `net_graph`,
-  `mashup_drawhitboxes`, `mashup_drawcollision` (= F3),
+  `mashup_drawhitboxes`, `mashup_drawcollision` (F3: `toggle mashup_drawcollision`),
   `mashup_drawphys`, `mashup_drawnav`, `mashup_drawbots`, ...), culling
   (`r_novis`, `r_portalsopenall`, `r_occlusion`, with the vis readout),
   HDR, water, view model and effect cvars, third person and free camera.
@@ -1035,10 +1045,10 @@ that build per map for a 1280x720 screenshot from the first spawn and the
 last `mashup_perf_log` line (needs a display).
 
 ```
-cargo run --features dev --bin mapsweep                      # every cached map
-cargo run --features dev --bin mapsweep -- --filter surf_,kz_ # some of them
-cargo run --features dev --bin mapsweep -- --shots target/playtest/mashup --filter mg_
-cargo run --features dev --bin mapsweep -- --audit           # plus the map logic audit
+cargo run --features dev,tools --bin mapsweep                      # every cached map
+cargo run --features dev,tools --bin mapsweep -- --filter surf_,kz_ # some of them
+cargo run --features dev,tools --bin mapsweep -- --shots target/playtest/mashup --filter mg_
+cargo run --features dev,tools --bin mapsweep -- --audit           # plus the map logic audit
 ```
 
 `--audit` adds `audit.md` (ranked by maps affected) and `audit.txt` (per
@@ -1124,9 +1134,9 @@ Laplacian) and mean absolute difference, plus side-by-side images
 (reference | ours | difference x4).
 
 ```
-cargo build --features dev && cargo run --features dev --bin refcmp
-cargo run --features dev --bin refcmp -- report            # re-compare existing captures
-cargo run --features dev --bin refcmp -- capture-ours --only a_sign
+cargo build --features dev && cargo run --features dev,tools --bin refcmp
+cargo run --features dev,tools --bin refcmp -- report            # re-compare existing captures
+cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
 ```
 
 - Views: `tools/refcmp/<map>.toml` (Source eye positions and angles; add
@@ -1181,8 +1191,8 @@ cargo run --features dev --bin refcmp -- capture-ours --only a_sign
 
 ```
 cargo build --features dev
-cargo run --features dev --bin refcmp -- capture-hud --out <scratch>
-cargo run --features dev --bin refcmp -- hudcmp --out <scratch> --hud-ref <dir>
+cargo run --features dev,tools --bin refcmp -- capture-hud --out <scratch>
+cargo run --features dev,tools --bin refcmp -- hudcmp --out <scratch> --hud-ref <dir>
 ```
 
 - `--hud-ref <dir>` holds CS:S captures named `hudref_<state>_<W>x<H>.jpg`
@@ -1227,10 +1237,10 @@ The reference CS:S (see refcmp) can also be measured directly over RCON:
 ## Tick-exact CS:S comparisons (movecmp)
 
 ```
-cargo run --features dev --bin movecmp            # all scenarios
-cargo run --features dev --bin movecmp -- --only bhop --keep-running
-cargo run --features dev --bin movecmp -- fuzz --runs 16 --ticks 150   # ladders and water
-cargo run --features dev --bin movecmp -- --offline   # against the last CS:S logs, no server
+cargo run --features dev,tools --bin movecmp            # all scenarios
+cargo run --features dev,tools --bin movecmp -- --only bhop --keep-running
+cargo run --features dev,tools --bin movecmp -- fuzz --runs 16 --ticks 150   # ladders and water
+cargo run --features dev,tools --bin movecmp -- --offline   # against the last CS:S logs, no server
 ```
 
 - Each scenario (in `src/bin/movecmp.rs`) is a start position and per-tick

@@ -1,4 +1,4 @@
-//! Props' levels of detail (`map::lod`, Video > Advanced's model detail):
+//! Props' levels of detail (`render::lod`, Video > Advanced's model detail):
 //! a prop whose model has a lower level draws it once the camera is far
 //! enough (its screen-size metric past the level's switch point), the
 //! finer one up close; `r_rootlod` keeps it from the finer level at any
@@ -9,13 +9,14 @@ use mashup::{
     harness::Sim,
     map::{
         MapData, MapMesh, MapModel, MapPlugin, MapProp, PropSolid, ViewModelAnchor,
-        lod::{LodMeshes, MapLod, ModelSettings},
+        lod::MapLod,
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         shadows::ShadowMaterial,
         sprite_material::SpriteMaterial,
         world_material::WorldMaterial,
     },
+    render::lod::{LodMeshes, ModelSettings},
 };
 
 fn quad(material: &str, half: f32) -> MapMesh {

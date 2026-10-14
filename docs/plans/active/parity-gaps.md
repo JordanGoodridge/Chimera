@@ -110,7 +110,7 @@ report folders):
 |---|---|---|---|---|
 | Damage, falloff, hitgroups, armour | have | | | measured M5-M7 |
 | AK-47/M4A1/pistols/AWP recoil, inaccuracy | have | | | measured M1-M4 |
-| `invnext` / `invprev` (the mouse wheel's weapon commands) | have (fixed) | H | S | were missing; the default wheel binds stay `+jump` (mashup's choice; CS:S binds MWHEELUP invprev, MWHEELDOWN invnext) |
+| `invnext` / `invprev` (the mouse wheel's weapon commands) | have (fixed) | H | S | were missing; on the wheel by default as CS:S (MWHEELUP invprev, MWHEELDOWN invnext; wheel jumping: `bind mwheeldown +jump`) |
 | Picking the second grenade from the HUD selection | have (fixed) | M | S | the pick drew the first weapon of the slot; now `Intent::pick` names it |
 | `autobuy` / `rebuy` (F1 / F2) | have (fixed) | H | S | were missing (the buy menu's buttons greyed); details unmeasured (tech-debt), capture C4 |
 | Spread generator | differs | L | M | tech-debt "CS:S's spread and recoil": seeded as CS:S, our generator (spec Q1) |
@@ -182,11 +182,11 @@ common console commands, against mashup's.
 |---|---|---|---|---|
 | Main menu, Options (six tabs), Create Server, Find Servers | have | | | docs/plans/active/ui-parity.md |
 | Movement, attack, slots 1-5, `lastinv`, `drop`, `buymenu`, `chooseteam`, radio, chat, `buyammo1/2`, `+showscores` | have | | | same keys as CS:S |
-| `autobuy` (F1), `rebuy` (F2) | have (fixed) | H | S | commands added; F2 stays mashup's debug UI and F1 the inspector's mouse release, so the F-key binds aren't added (bind them in Options) |
+| `autobuy` (F1), `rebuy` (F2) | have (fixed) | H | S | commands added, on F1 and F2 by default (the debug UI and inspector moved to F8 and F11) |
 | `invnext`, `invprev` | have (fixed) | H | S | see Weapons |
 | `jpeg` (F5) | have (fixed) | L | S | a PNG in the screenshots folder named `<map>NNNN` |
 | `kill`, `explode`, `retry`, `connect`, `status`, `exec`, `alias`, `bind`, `toggle`, `incrementvar`, `net_graph`, `cl_showfps`, `cl_showpos` | have | | | |
-| Default binds | differs | M | | wheel jumps, V noclip, F2 debug UI, Alt free look (mashup's); `config_default.cfg`'s F, N, T, K, H, I, J, O, F10, PAUSE binds have nothing to run |
+| Default binds | have (fixed) | M | S | every `config_default.cfg` bind (read from the install at start, the same table built in otherwise; `client::binds`); mashup's own only on keys it leaves free: Alt free look, V noclip, F9 bug report, F3/F8/F11 debug keys. Saved configs keep their binds (defaults added since go on their free keys once). F, N, T, K, H, I, J, F6, F7, PAUSE run commands mashup lacks (`impulse 100`/`201`, `nightvision`, `+voicerecord`, `commandmenu`, `showbriefing`, `cheer`, `save`/`load`, `pause`: an error line in the console); F10's `quit prompt` opens the game menu (no quit dialog) |
 | Console | differs | L | M | a drop-down, not CS:S's VGUI frame (ui-parity.md) |
 | `con_enable` and `volume` defaults | differs | L | | ui-parity.md: undecided |
 | Options apply at once | differs | L | | ui-parity.md: deliberate |
@@ -305,8 +305,8 @@ common console commands, against mashup's.
   `cl_autobuy` / `cl_rebuy` userinfo lists, CS:S's default files'
   entries by default. Test:
   `rounds::autobuy_takes_the_list_and_rebuy_restores_the_last_buy`.
-- Under water everything is muffled (`map::hearing`). Test:
-  `map::hearing` unit test.
+- Under water everything is muffled (`audio::hearing`). Test:
+  `audio::hearing` unit test.
 - `jpeg`: a screenshot named after the map. Test: `client::capture`
   unit test.
 - The end of a map's game: `mp_timelimit`, `mp_maxrounds`,
@@ -354,11 +354,11 @@ common console commands, against mashup's.
 
 ### Round 2: rendering, maps and entities
 
-- Beams (`map::beams`, beam.wgsl): lasers and persistent env_beams draw
+- Beams (`render::beams`, beam.wgsl): lasers and persistent env_beams draw
   through the spec's point count with fractal noise new each frame,
   their texture repeating every 100 units and scrolling by
   TextureScroll, and their sprite's frames at its framerate
-  (visual_entities.md 1). Tests: `map::beams` unit tests (de_cbble's
+  (visual_entities.md 1). Tests: `render::beams` unit tests (de_cbble's
   smoke beam's numbers).
 - func_dustcloud (`map::dust`): dust with world-sized motes; motes start
   inside the volume's brushes; frozen volumes spawn once and hold
@@ -481,7 +481,7 @@ says what decides the open point.
 - **C5 Under water.** Record the client's audio standing in de_aztec's
   water with the head under while a bot fires an AK-47 at 500 units,
   and the same with the head above. Decides the muffle (cutoff, level,
-  any reverb) to replace `map::hearing::UNDERWATER`.
+  any reverb) to replace `audio::hearing::UNDERWATER`.
 - **C6 Drowning.** Stay under water in de_aztec's river (`noclip` off,
   head under) for 30 s with `sv_soundemitter_trace 1` and `developer
   1`: when damage starts, how much per hit and how often, the sounds,

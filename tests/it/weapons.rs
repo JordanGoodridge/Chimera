@@ -1074,7 +1074,7 @@ fn sounds_this_tick(sim: &mut Sim) -> Vec<mashup::map::PlaySound> {
 /// Another player's shot from the side still pans.
 #[test]
 fn own_gunfire_is_centred_while_strafing_others_pan() {
-    use mashup::map::{SoundLevel, sound::Ear};
+    use mashup::{audio::sound::Ear, map::SoundLevel};
     let mut sim = sim();
     let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
     sim.ticks(1);

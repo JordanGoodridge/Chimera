@@ -26,7 +26,12 @@ use bevy::{
     prelude::*,
 };
 use mashup::{
-    client::{chat::ChatLine, spectate::{SpecPhase, SpectateStatePlugin, Spectator}},
+    client::{
+        bomb_fx::C4ScreenText,
+        chat::ChatLine,
+        objectives_hud::{BombHudStatePlugin, BombProgress},
+        spectate::{SpecPhase, SpectateStatePlugin, Spectator},
+    },
     console::Console,
     core::{Damage, Hitgroup, Intent, LocalPlayer, Team},
     games::cs_source::{
@@ -67,6 +72,7 @@ fn setup(app: &mut App) {
     app.add_plugins((GreyboxMapPlugin, SourceMovementPlugin, CsWeaponsPlugin))
         .add_plugins(mashup::client::chat::GameMessagesPlugin)
         .add_plugins(SpectateStatePlugin)
+        .add_plugins(BombHudStatePlugin)
         .insert_resource(Loadout { movement: source::ID })
         .insert_resource(MapObjectives {
             bomb_targets: vec![Zone::engine_box(ZONE.0, ZONE.1)],
@@ -912,7 +918,9 @@ fn played(l: &Log<mashup::map::PlaySound>, entry: &str) -> usize {
 /// other weapon actions: the progress, the hold, the key presses' sounds
 /// and the bomb leaving its hands show without a round trip, the server's
 /// state agrees with them (no prediction errors), and the planter's and
-/// defuser's own sounds aren't sent back to them.
+/// defuser's own sounds aren't sent back to them. The predicted arming
+/// types the code on the planter's C4 screen digit by digit at the key
+/// presses' times, and the other client sees the planter's body arm.
 #[test]
 fn arming_and_defusing_are_predicted() {
     let mut sim = rounds(link(100, 0, 0.0), 57, 2, "mp_freezetime 1");
@@ -930,6 +938,7 @@ fn arming_and_defusing_are_predicted() {
     assert!(carried(&mut sim, 1).iter().any(|id| id.ends_with("weapon_c4")));
     let mut sounds = Log::<mashup::map::PlaySound>::new(&sim, 2);
     let mut other = Log::<mashup::map::PlaySound>::new(&sim, 1);
+    let mut others_view = Log::<mashup::weapon::WeaponEvent>::new(&sim, 1);
     *sim.clients[1].app.world_mut().resource_mut::<NetGraph>() = NetGraph::default();
     client_intent(&mut sim, 1).fire = true;
     // The frame fire is pressed, the client arms: no round trip.
@@ -938,6 +947,14 @@ fn arming_and_defusing_are_predicted() {
     let c = sim.character_of(1).unwrap();
     assert!(sim.clients[1].app.world().get::<Arming>(me).is_some(), "arming shown at once");
     assert!(sim.server.app.world().get::<Arming>(c).is_none(), "the server hasn't heard yet");
+    // The C4's screen: each text it showed, with the arming's time then.
+    let screen = |sim: &NetSim| {
+        let w = sim.clients[1].app.world();
+        let since = w.get::<Arming>(me).map(|a| a.since);
+        let now = w.resource::<mashup::core::SimClock>().now;
+        (since.map(|s| (now - s) as f32), w.resource::<C4ScreenText>().text.clone())
+    };
+    let mut typed: Vec<(Option<f32>, String)> = vec![screen(&sim)];
     // Held still while arming, as the server holds it.
     client_intent(&mut sim, 1).move_axis = Vec2::Y;
     let mut gone_first = false;
@@ -945,6 +962,11 @@ fn arming_and_defusing_are_predicted() {
         sim.step();
         sounds.poll(&sim);
         other.poll(&sim);
+        others_view.poll(&sim);
+        let now = screen(&sim);
+        if typed.last().is_none_or(|t| t.1 != now.1) {
+            typed.push(now);
+        }
         let lost = !carried(&mut sim, 1).iter().any(|id| id.ends_with("weapon_c4"));
         if lost && sim.server.app.world().resource::<BombState>().planted.is_none() {
             gone_first = true;
@@ -974,6 +996,25 @@ fn arming_and_defusing_are_predicted() {
     let rules = sim.server.app.world().resource::<mashup::objectives::bomb::BombRules>().clone();
     assert_eq!(clicks, rules.clicks.len(), "each key press once (predicted, not sent back)");
     assert!(!carried(&mut sim, 1).iter().any(|id| id.ends_with("weapon_c4")));
+    // The code came a digit per key press, at its time, and stayed
+    // masked until the bomb left the planter's hands.
+    let texts: Vec<&str> = typed.iter().map(|t| t.1.as_str()).collect();
+    assert_eq!(
+        texts,
+        ["", "7", "73", "735", "7355", "73556", "735560", "7355608", "*******", ""],
+        "{typed:?}"
+    );
+    let times = rules.clicks.iter().chain([&rules.code_masked]);
+    for ((at, _), want) in typed[1..9].iter().zip(times) {
+        let at = at.expect("shown while arming");
+        assert!(at >= *want && at < want + 0.02, "shown at {at} s, its key press at {want} s: {typed:?}");
+    }
+    let armed = others_view
+        .all
+        .iter()
+        .filter(|e| matches!(e.kind, mashup::weapon::WeaponEventKind::ArmingStarted))
+        .count();
+    assert_eq!(armed, 1, "the other client's copy of the planter armed (its body's animation)");
 
     // The defuse: client 0 at the bomb, +use.
     let bomb_at = {
@@ -1002,6 +1043,7 @@ fn arming_and_defusing_are_predicted() {
     let local0 = sim.local_player(0).unwrap();
     let w = sim.clients[0].app.world();
     assert!(w.get::<mashup::objectives::bomb::Defusing>(local0).is_some(), "defusing shown at once");
+    assert!(w.resource::<BombProgress>().0.is_some(), "the defuse bar at once");
     assert!(sim.server.app.world().get::<mashup::objectives::bomb::Defusing>(me0).is_none());
     for _ in 0..800 {
         sim.step();

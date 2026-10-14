@@ -1,6 +1,6 @@
 //! What a player sounds like when hurt and when killed: the install's
 //! `game_sounds.txt` entries, played from the victim (its own sounds are
-//! centred for the victim, `map::sound::Ear`; positional for everyone
+//! centred for the victim, `audio::sound::Ear`; positional for everyone
 //! else). docs/plans/active/sound.md "Damage and death"; the choices
 //! the scripts and specs leave open are in docs/tech-debt.md.
 //!

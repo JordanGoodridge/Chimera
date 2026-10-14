@@ -81,7 +81,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net17");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net18");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -684,6 +684,9 @@ pub mod weapon_fx {
     pub const SWING2: u8 = 5;
     pub const PIN: u8 = 6;
     pub const THROWN: u8 = 7;
+    /// Arming the bomb began / stopped short (the body's `*_Shoot_C4`).
+    pub const ARMING: u8 = 8;
+    pub const ARMING_STOPPED: u8 = 9;
 }
 
 /// Server -> clients: a grenade went off (`weapon::grenade::Detonated`):
@@ -1159,10 +1162,10 @@ impl Plugin for NetPlugin {
             .replicate::<NetMover>()
             // Map render looks: players' (invisibility, team colours) and
             // movers' (colour, alpha, texture frame), only when they change.
-            .replicate::<crate::map::tint::RenderLook>()
-            .ordered::<crate::map::tint::RenderLook>()
-            .replicate::<crate::map::tint::BrushTint>()
-            .ordered::<crate::map::tint::BrushTint>()
+            .replicate::<crate::map::RenderLook>()
+            .ordered::<crate::map::RenderLook>()
+            .replicate::<crate::map::BrushTint>()
+            .ordered::<crate::map::BrushTint>()
             // Every value a client receives also goes into its snapshot
             // buffer, by the server tick it is from.
             .set_receive_fns::<NetBody>(interp::write_snapshot::<NetBody>, interp::remove_snapshots::<NetBody>)

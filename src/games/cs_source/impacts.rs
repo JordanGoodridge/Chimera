@@ -10,9 +10,8 @@ use bevy::prelude::*;
 use crate::{
     core::{Intent, MapWater},
     map::{
-        PhysicsProp, PlaySound, PropSurface,
+        DecalGroup, PhysicsProp, PlaceDecal, PlaySound, PropSurface,
         breakables::PieceBody,
-        decal::{DecalGroup, PlaceDecal},
         sound::{MapSounds, MapSurface, SoundBank, SurfaceGrid},
     },
     weapon::{WeaponEvent, WeaponEventKind},

@@ -296,7 +296,7 @@ fn detail_props_load() {
     assert!(d.quads.iter().any(|q| q.sway > 0.0));
     // Lit: the sprites take their baked light, not black.
     assert!(d.quads.iter().filter(|q| q.light.iter().any(|c| *c > 0.05)).count() * 2 > d.quads.len());
-    assert!(!mashup::map::detail::cell_meshes(d).is_empty());
+    assert!(!mashup::render::detail::cell_meshes(d).is_empty());
     let Some(map) = load("de_inferno") else { return };
     assert!(map.detail_props.is_none(), "models only");
     let fade = Some((1024.0 * 0.0254, 1536.0 * 0.0254));

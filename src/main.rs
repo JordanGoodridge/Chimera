@@ -110,9 +110,9 @@ fn main() {
         mashup::map::particles::ParticleMaterialPlugin,
     ))
     .add_plugins((
-        mashup::map::beams::BeamMaterialPlugin,
-        mashup::map::sky_occluder::SkyOccluderPlugin,
-        mashup::map::detail::DetailMaterialPlugin,
+        mashup::render::beams::BeamMaterialPlugin,
+        mashup::render::sky_occluder::SkyOccluderPlugin,
+        mashup::render::detail::DetailMaterialPlugin,
     ))
     // A game's maps run at that game's server tick.
     .insert_resource(match args.game_map() {

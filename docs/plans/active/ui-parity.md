@@ -63,7 +63,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `MouseAccelerationCheckbox` + `MouseAccelerationSlider` + `MouseAccelerationLabel` | CheckButton / CCvarSlider / TextEntry | `m_customaccel` (0; ticked: 3), `m_customaccel_exponent` (1.05; slider 1 to 1.4, the entry beside it) |
 | | `MouseRaw`, `Joystick*` | CCvarToggleCheckButton | greyed (see below); those whose words the install lacks are left out |
 | Audio | `SFXSlider` | CCvarSlider | `volume` |
-| | `MusicSlider` | CCvarSlider | `snd_musicvolume` (1): sounds under `music/` and MP3s (`map::live_sound::is_music`) |
+| | `MusicSlider` | CCvarSlider | `snd_musicvolume` (1): sounds under `music/` and MP3s (`audio::live_sound::is_music`) |
 | | `snd_mute_losefocus` | CCvarToggleCheckButton | `snd_mute_losefocus` (1): silent while the window is in the background (`client::audio`) |
 | | `SpeakerSetup` | ComboBox | `snd_surround_speakers` (ours 2): Headphones (0), 2, 4, 5.1, 7.1 Speakers; kept and saved, the mixer stays stereo (docs/plans/active/video-settings.md, "Audio tab") |
 | | `SoundQuality` | ComboBox | `snd_pitchquality` and `dsp_slow_cpu` together: Low (0 1), Medium (0 0), High (1 0, the default); kept and saved, one mixer quality |
@@ -83,7 +83,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `VSync` | ComboBox | `mat_vsync` as Disabled / Enabled |
 | | `HDR` (hidden in the file, shown when the mod has HDR) | ComboBox | `mat_hdr_level` |
 | | `FovSlider` | CCvarSlider (`cvar_name fov_desired`, 75 to 90) | `fov_desired` (90): the world camera unzoomed (`options::PlayerFov`, `client::zoom_camera`); the view model zooms with it as with a scope (`viewmodel_fov` minus 90 minus it); a scope's zoom is its own; zoomed mouse scaling still divides by 90 |
-| | `ModelDetail` | ComboBox | `r_rootlod`: Low (2), Medium (1), High (0, the default): the finest level of detail props draw; they switch to coarser ones with distance (`map::lod`); at once |
+| | `ModelDetail` | ComboBox | `r_rootlod`: Low (2), Medium (1), High (0, the default): the finest level of detail props draw; they switch to coarser ones with distance (`render::lod`); at once |
 | | `ShadowDetail` | ComboBox | `r_shadowrendertotexture` and `r_flashlightdepthtexture` together: Low (0 0: blob shadows), Medium (1 0, the default: render-to-texture), High (1 1, as Medium: no flashlights); at once (`map::shadows`) |
 | | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::options::TextureSettings`), from the next map |
 | | `FilteringMode` | ComboBox | `mat_trilinear` and `mat_forceaniso` together: Bilinear (0 1, CS:S's default), Trilinear (1 1), Anisotropic 2X-16X (0 N); from the next map |

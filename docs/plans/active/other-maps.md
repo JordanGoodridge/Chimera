@@ -12,7 +12,7 @@ How to check:
 - Views: `tools/refcmp/{de_aztec,cs_office,de_nuke}.toml` (the maps'
   intermission cameras, first T/CT spawns, bomb/rescue zones four ways;
   cs_office adds hostage rooms and a window). Ours: `cargo run --features
-  dev --bin refcmp -- capture-ours --views tools/refcmp/<map>.toml`. The
+  dev,tools --bin refcmp -- capture-ours --views tools/refcmp/<map>.toml`. The
   reference game is shared: ask the coordinating session before capturing
   it (`capture-ref`).
 - `tests/it/heavy/map_stock.rs` holds a test per fix, and ignored debug aids:

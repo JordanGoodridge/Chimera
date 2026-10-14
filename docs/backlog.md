@@ -32,7 +32,9 @@ frames every 0.25 s).
   crate), then crates.
 - Default binds follow CS:S's config_default.cfg (F1 autobuy, F2 rebuy,
   mouse wheel invprev/invnext, ...): move our debug keys (inspector, debug
-  UI, wheel jump) off them.
+  UI, wheel jump) off them. Done 2026-10-13: debug UI F8, inspector F11
+  (`mashup_inspector`), collision F3 (`toggle mashup_drawcollision`; F3
+  is free in CS:S); saved configs keep their binds.
 - `con_enable` stays 1 (deliberate difference, ui-parity.md).
 - SourceMod/Mani chat commands from maps stay ignored, as plain CS:S does.
   Later: consider making SourceMod plugins work on our engine (parity on
@@ -123,7 +125,7 @@ frames every 0.25 s).
   PITCH_NORM (CompatibilityAttenuation 0.52), so each shot replacing the
   last is parity; ours stopped the old one on whatever sample it was at
   (a click every shot). A replaced (or stopped) sound now fades out over
-  5 ms (`map::live_sound::fade_out_ramps_to_silence_then_ends`); the own
+  5 ms (`audio::live_sound::fade_out_ramps_to_silence_then_ends`); the own
   sound plays centred through the same path. Capture to confirm: a CS:S
   recording of a full-auto AK burst against ours.
 
@@ -223,7 +225,7 @@ Looks:
   -3047.50 -9638.97; setang -38.85 18.60 0` shows the same sky view as
   ours (nothing in the sky). Open: whether CS:S also hides things *in* the
   PVS behind a sky face; our `mashup_skyocclude 1` does
-  (`map::sky_occluder`), off by default. Capture: a prop in view behind a
+  (`render::sky_occluder`), off by default. Capture: a prop in view behind a
   sky face from a leaf whose PVS holds it. (2) The 2D sky's `dn` face
   turned half a turn (`cs_source::sky::FACES`). Not captured yet: CS:S
   looking straight down from noclip over a map with a pictured bottom
@@ -470,7 +472,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 - Debug overlays: `mashup_drawhitboxes`, `mashup_healthbars`,
   `mashup_drawnav`, `mashup_drawbots` exist; add more as features need
   them (sound radii, triggers).
-- Debug UI (F2, `client/debug_ui.rs`) is in. Left: kicking or freezing
+- Debug UI (F8, `client/debug_ui.rs`) is in. Left: kicking or freezing
   one bot (the bot commands act on all), clearing decals and turning fog
   off (no such cvars yet), starting a trace from the running game (needs
   the profile build), a fixed tick-rate control, a history graph per
@@ -598,7 +600,7 @@ docs/plans/active/sound.md.
 - Scrapes by ear: tune `games::cs_source::scrapes::friction_energy`
   against CS:S (a crate shoved across concrete, a ragdoll sliding down a
   ramp) once spec open question 8 is measured.
-- Room DSP by ear: tune `map::room::PRESETS` against CS:S (dust2's
+- Room DSP by ear: tune `audio::room::PRESETS` against CS:S (dust2's
   tunnels, nuke's halls); soundscape `dsp_player` and `soundmixer` are
   read but not played (engine-side effects).
 - Stock ambient_generics the bomb starts (de_nuke's alarm, dust2's

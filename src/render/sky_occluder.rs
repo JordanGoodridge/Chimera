@@ -28,7 +28,7 @@ pub struct SkyOccluderMaterial {}
 
 impl Material for SkyOccluderMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/sky_occluder.wgsl".into()
+        "embedded://mashup/render/sky_occluder.wgsl".into()
     }
 
     fn specialize(
@@ -132,7 +132,7 @@ fn prepass_on_main_cameras(
     main: Query<
         Entity,
         (
-            super::water::MainCameraFilter,
+            crate::map::water::MainCameraFilter,
             Without<bevy::core_pipeline::prepass::DepthPrepass>,
         ),
     >,

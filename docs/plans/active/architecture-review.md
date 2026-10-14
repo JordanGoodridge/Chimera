@@ -1,7 +1,9 @@
 # Plan: architecture review and refactoring (2026-10-13)
 
-Status: proposal, waiting for the owner's pick of the first slices
-(section 4). Nothing refactored yet. Measured on the dev box under load
+Status: approved 2026-10-13 (engine-split.md, "Crates and compile
+time", has the order and progress). Done: the tool binaries behind
+features (P9's cheap win), P1 (`map/mod.rs` split, `spawn_map` in
+phases), P3's audio slice. Measured on the dev box under load
 (other agents building; load averages given with the times), so compare
 ratios, not absolutes.
 

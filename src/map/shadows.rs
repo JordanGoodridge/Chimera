@@ -743,18 +743,18 @@ pub fn shadow_color(color: [u8; 3]) -> Vec4 {
 /// (`apply_shadow_detail`).
 #[derive(Resource)]
 pub(crate) struct ShadowSource {
-    pub(super) data: std::sync::Arc<MapData>,
-    pub(super) settings: MapShadows,
-    pub(super) receivers: std::sync::Arc<Receivers>,
-    pub(super) root: Entity,
-    pub(super) fog_color: Vec4,
-    pub(super) fog_range: Vec4,
+    pub(crate) data: std::sync::Arc<MapData>,
+    pub(crate) settings: MapShadows,
+    pub(crate) receivers: std::sync::Arc<Receivers>,
+    pub(crate) root: Entity,
+    pub(crate) fog_color: Vec4,
+    pub(crate) fog_range: Vec4,
     /// Tag shadows with the PVS clusters they touch (`vis`).
-    pub(super) tag: bool,
+    pub(crate) tag: bool,
     /// The mode built; None: not yet.
-    pub(super) built: Option<ShadowMode>,
+    pub(crate) built: Option<ShadowMode>,
     /// The blob picture's material (characters' blobs; props' at Low).
-    pub(super) blob_material: Option<Handle<ShadowMaterial>>,
+    pub(crate) blob_material: Option<Handle<ShadowMaterial>>,
 }
 
 /// Build the map's prop shadows as shadow detail asks: render-to-texture
@@ -762,13 +762,13 @@ pub(crate) struct ShadowSource {
 /// again, at once, when it changes (physics props where they are now,
 /// those the logic hid hidden).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub(super) fn apply_shadow_detail(
+pub(crate) fn apply_shadow_detail(
     mut commands: Commands,
     source: Option<ResMut<ShadowSource>>,
     detail: Option<Res<ShadowSettings>>,
     old: Query<Entity, Or<(With<super::PropShadow>, With<CharacterBlob>)>>,
     moved: Query<(&super::PropIndex, &Transform), With<super::PhysicsProp>>,
-    hidden: Query<&super::PropIndex, With<super::vis::LogicHidden>>,
+    hidden: Query<&super::PropIndex, With<super::LogicHidden>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: Option<ResMut<Assets<ShadowMaterial>>>,
@@ -857,10 +857,10 @@ pub(super) fn apply_shadow_detail(
             ChildOf(source.root),
         ));
         if !clusters.is_empty() {
-            e.insert(super::vis::VisClusters::new(clusters));
+            e.insert(super::VisClusters::new(clusters));
         }
         if hidden.contains(&prop) {
-            e.insert((super::vis::LogicHidden, Visibility::Hidden));
+            e.insert((super::LogicHidden, Visibility::Hidden));
         }
         entities.insert(prop, e.id());
     }
@@ -892,7 +892,7 @@ pub struct CharacterBlob {
 /// body is drawn (not your own in first person, not one watched through
 /// its eyes), its mesh rewritten in place when it moves.
 #[allow(clippy::type_complexity)]
-pub(super) fn update_character_blobs(
+pub(crate) fn update_character_blobs(
     mut commands: Commands,
     source: Option<Res<ShadowSource>>,
     detail: Option<Res<ShadowSettings>>,

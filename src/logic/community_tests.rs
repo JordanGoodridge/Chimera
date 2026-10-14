@@ -642,7 +642,7 @@ fn render_inputs_on_players_and_brushes() {
     // Invisibility power-ups (mg_swag_multigames_v1, surf_halloween_tf2,
     // mg_lt_galaxy_v5): AddOutput rendermode/renderamt/rendercolor and the
     // Alpha and Color inputs on !activator; brushes fade by Alpha.
-    use crate::map::tint::RenderLook;
+    use crate::map::RenderLook;
     let mut w = world();
     let p = player_at(&mut w, 1, Vec3::ZERO);
     let wall = spawn(

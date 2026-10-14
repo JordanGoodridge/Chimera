@@ -966,13 +966,20 @@ fn autoexec(
     // Every key is a bind: the defaults first, then the player's config.
     // A config written before that has only the player's own binds after
     // its `unbindall`: the defaults go back on the keys it left free.
-    let marked = crate::console::read_cfg("config.cfg").is_none_or(|t| t.contains(super::binds::CONFIG_MARK));
+    // The defaults are CS:S's from the install's config_default.cfg.
+    super::binds::read_install_defaults();
+    let config = crate::console::read_cfg("config.cfg");
+    let marked = config.as_ref().is_none_or(|t| t.contains(super::binds::CONFIG_MARK));
+    let current = config.as_ref().is_none_or(|t| t.contains(super::binds::DEFAULTS_MARK));
     console.submit("binddefaults; execifexists config.cfg");
     if !marked {
         console.submit("binddefaults missing");
+    } else if !current {
+        // Defaults added since the config was written (CS:S's F1, F2,
+        // wheel, ...), on the keys it leaves free: once, as the config is
+        // written again with the mark.
+        console.submit("binddefaults new");
     }
-    // Defaults added since the config was written (F2: the debug UI).
-    console.submit("binddefaults new");
     console.submit("execifexists autoexec.cfg");
     for line in &args.0.console {
         console.submit(line.clone());
@@ -1377,10 +1384,10 @@ fn overlay_cvars(app: &mut App) {
         "1: mark where sounds play, with their names, for a few seconds; show the soundscape and room DSP preset.",
         |o| &mut o.snd_show,
     );
-    // The room (map::room) may be added after the console.
-    app.init_resource::<crate::map::room::RoomDsp>();
-    resource_cvar::<crate::map::room::RoomDsp, u8>(app, "dsp_off", "1: no room reverb or echo.", |r| &mut r.off);
-    resource_cvar::<crate::map::room::RoomDsp, f32>(
+    // The room (audio::room) may be added after the console.
+    app.init_resource::<crate::audio::room::RoomDsp>();
+    resource_cvar::<crate::audio::room::RoomDsp, u8>(app, "dsp_off", "1: no room reverb or echo.", |r| &mut r.off);
+    resource_cvar::<crate::audio::room::RoomDsp, f32>(
         app,
         "dsp_volume",
         "Level of the room reverb and echo (1 normal).",
@@ -1432,8 +1439,8 @@ fn draw_overlays(
     fixed: Res<Time<Fixed>>,
     entities: Query<Entity>,
     sound: (
-        Option<Res<crate::map::soundscape::ScapeState>>,
-        Option<Res<crate::map::room::RoomDsp>>,
+        Option<Res<crate::audio::soundscape::ScapeState>>,
+        Option<Res<crate::audio::room::RoomDsp>>,
     ),
 ) {
     let _ = map;
@@ -1489,7 +1496,7 @@ fn draw_overlays(
     if o.snd_show > 0
         && let (Some(scape), Some(room)) = &sound
     {
-        lines.push(crate::map::soundscape::readout(scape, room));
+        lines.push(crate::audio::soundscape::readout(scape, room));
     }
     if !o.watch_text.is_empty() {
         lines.push(o.watch_text.clone());
@@ -2259,11 +2266,20 @@ pub fn client_commands(app: &mut App) {
         w.resource_mut::<ConsoleUi>().toggle_request = true;
         Ok(None)
     })
-    .console_command("quit", "Quit (binds and changed cvars are saved).", |w, _| {
-        crate::net::disconnect(w, "Quit.");
-        w.write_message(AppExit::Success);
-        Ok(None)
-    })
+    .console_command(
+        "quit",
+        "quit [prompt]: quit (binds and changed cvars are saved); prompt (CS:S's F10): open the game menu, \
+         whose Quit quits (no quit dialog yet).",
+        |w, a| {
+            if a.first().is_some_and(|x| x.eq_ignore_ascii_case("prompt")) {
+                w.resource_mut::<Console>().submit("menu main");
+                return Ok(None);
+            }
+            crate::net::disconnect(w, "Quit.");
+            w.write_message(AppExit::Success);
+            Ok(None)
+        },
+    )
     .console_command("exit", "Quit.", |w, _| {
         crate::net::disconnect(w, "Quit.");
         w.write_message(AppExit::Success);

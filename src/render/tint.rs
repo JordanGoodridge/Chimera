@@ -9,83 +9,7 @@
 
 use bevy::prelude::*;
 
-use super::{MapAlpha, prop_material::PropMaterial, world_material::WorldMaterial};
-
-/// Source render modes that matter here.
-pub const RENDER_NORMAL: u8 = 0;
-pub const RENDER_TRANS_ADD: u8 = 5;
-pub const RENDER_NONE: u8 = 10;
-
-/// How an entity is drawn: colour (sRGB 0-255), alpha (renderamt) and
-/// render mode.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct RenderLook {
-    pub color: [u8; 3],
-    pub alpha: u8,
-    pub mode: u8,
-}
-
-impl Default for RenderLook {
-    fn default() -> Self {
-        Self {
-            color: [255; 3],
-            alpha: 255,
-            mode: RENDER_NORMAL,
-        }
-    }
-}
-
-impl RenderLook {
-    /// Drawn as its materials are.
-    pub fn is_plain(&self) -> bool {
-        self.color == [255; 3] && self.blend().is_none()
-    }
-
-    /// The blend its render mode asks for, with the opacity (0-1): normal
-    /// mode ignores renderamt; colour, texture and alpha modes (1, 2, 4)
-    /// blend by it; glow and additive modes (3, 5, 7, 8, 9) add, scaled by
-    /// it; environmental (6) and none (10) aren't drawn.
-    pub fn blend(&self) -> Option<(MapAlpha, f32)> {
-        let a = self.alpha as f32 / 255.0;
-        match self.mode {
-            RENDER_NORMAL => None,
-            1 | 2 | 4 => (self.alpha < 255).then_some((MapAlpha::Blend, a)),
-            3 | 5 | 7 | 8 | 9 => Some((MapAlpha::Add, a)),
-            6 | RENDER_NONE => Some((MapAlpha::Blend, 0.0)),
-            _ => None,
-        }
-    }
-
-    /// The colour multiplier (linear rgb; the game multiplies in gamma
-    /// space, so the colour is converted as sRGB), with the opacity in w;
-    /// an added look takes the opacity into its colour.
-    pub fn factor(&self) -> Vec4 {
-        let c = Color::srgb_u8(self.color[0], self.color[1], self.color[2]).to_linear();
-        let rgb = Vec3::new(c.red, c.green, c.blue);
-        match self.blend() {
-            Some((MapAlpha::Add, a)) => (rgb * a).extend(1.0),
-            Some((_, a)) => rgb.extend(a),
-            None => rgb.extend(1.0),
-        }
-    }
-
-    /// Not drawn at all.
-    pub fn invisible(&self) -> bool {
-        matches!(self.blend(), Some((MapAlpha::Blend, a)) if a <= 0.0)
-    }
-}
-
-/// A brush entity node's look (white, normal: as the material is) and
-/// the texture frame its animated textures show (env_texturetoggle; 0:
-/// the first).
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BrushTint(pub RenderLook, pub u32);
-
-impl BrushTint {
-    pub fn is_white(&self) -> bool {
-        self.0.is_plain() && self.1 == 0
-    }
-}
+use crate::map::{BrushTint, MapAlpha, RenderLook, prop_material::PropMaterial, world_material::WorldMaterial};
 
 /// A brush entity mesh's texture frames (its base texture's, when it has
 /// several and something can pick one).
@@ -94,10 +18,10 @@ pub struct TextureFrames(pub Vec<Handle<Image>>);
 
 /// A tinted mesh's own material, to go back to (white) or tint again.
 #[derive(Component, Clone, Debug)]
-pub(super) struct UntintedWorld(Handle<WorldMaterial>);
+pub(crate) struct UntintedWorld(Handle<WorldMaterial>);
 
 #[derive(Component, Clone, Debug)]
-pub(super) struct UntintedStandard(Handle<StandardMaterial>);
+pub(crate) struct UntintedStandard(Handle<StandardMaterial>);
 
 /// A world material with a look applied.
 fn looked_world(mut m: WorldMaterial, look: &RenderLook) -> WorldMaterial {
@@ -113,7 +37,7 @@ fn looked_world(mut m: WorldMaterial, look: &RenderLook) -> WorldMaterial {
 /// Nodes whose tint changed: their meshes get a tinted copy of their
 /// material (or their own back).
 #[allow(clippy::type_complexity)]
-pub(super) fn apply_brush_tints(
+pub(crate) fn apply_brush_tints(
     nodes: Query<(&BrushTint, &Children), Changed<BrushTint>>,
     mut world_parts: Query<(
         &mut MeshMaterial3d<WorldMaterial>,
@@ -176,7 +100,7 @@ pub(super) fn apply_brush_tints(
 
 /// A model's own materials as they were before a look (colour, blend).
 #[derive(Component, Clone, Debug)]
-pub(super) struct UnlookedModel {
+pub(crate) struct UnlookedModel {
     base: Vec<(Vec4, f32, AlphaMode)>,
     applied: RenderLook,
 }
@@ -185,10 +109,10 @@ pub(super) struct UnlookedModel {
 /// model it holds (each `probe_lit::ProbeLit` among its descendants, with
 /// its own material instances) take the colour and fade or add by the
 /// alpha; restored when plain again.
-pub(super) fn apply_character_looks(
+pub(crate) fn apply_character_looks(
     characters: Query<(Entity, &RenderLook)>,
     children: Query<&Children>,
-    models: Query<(&super::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
+    models: Query<(&crate::map::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
     materials: Option<ResMut<Assets<PropMaterial>>>,
     mut commands: Commands,
 ) {

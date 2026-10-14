@@ -19,9 +19,13 @@ use bevy::{
 
 use super::{
     hearing::Hearing,
-    live_sound::{Gains, LiveClip, SOUNDSCAPE_KEYS, SoundControl, SoundKey, StartSound},
+    live_sound::{Gains, LiveClip},
     room::{AMBIENT_SEND, PRESETS, RoomDsp, distance_send},
-    sound::{METERS_PER_UNIT, MapSoundClip, ScapePosition, SoundBank, SoundLevel, SoundListener, distance_gain, pan},
+    sound::{SoundListener, pan},
+};
+use crate::map::{
+    MapSoundClip, SoundControl, SoundKey, SoundLevel, StartSound,
+    sound::{METERS_PER_UNIT, SOUNDSCAPE_KEYS, ScapePosition, SoundBank, distance_gain},
     vis::ActiveVisibility,
 };
 
@@ -37,7 +41,7 @@ pub struct SoundscapePlugin;
 impl Plugin for SoundscapePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScapeState>()
-            .add_message::<super::entities::FireEntityOutput>()
+            .add_message::<crate::map::entities::FireEntityOutput>()
             .add_systems(
             PostUpdate,
             (
@@ -134,7 +138,7 @@ pub fn choose_emitter(
 
 /// Whether emitter `e` may be picked: the logic's switches, else its
 /// StartDisabled key.
-pub fn emitter_enabled(e: &super::sound::SoundscapeEmitter, switches: Option<&super::SoundscapeSwitches>) -> bool {
+pub fn emitter_enabled(e: &crate::map::sound::SoundscapeEmitter, switches: Option<&crate::map::SoundscapeSwitches>) -> bool {
     match (switches.and_then(|s| s.0.as_ref()), e.entity) {
         (Some(on), Some(entity)) => on.contains(&entity),
         _ => !e.start_disabled,
@@ -144,15 +148,15 @@ pub fn emitter_enabled(e: &super::sound::SoundscapeEmitter, switches: Option<&su
 #[allow(clippy::too_many_arguments)]
 fn select(
     bank: Option<Res<SoundBank>>,
-    touches: Option<Res<super::SoundscapeTouches>>,
-    switches: Option<Res<super::SoundscapeSwitches>>,
+    touches: Option<Res<crate::map::SoundscapeTouches>>,
+    switches: Option<Res<crate::map::SoundscapeSwitches>>,
     vis: Option<Res<ActiveVisibility>>,
     listener: Query<&GlobalTransform, With<SoundListener>>,
     local: Query<Entity, With<crate::core::LocalPlayer>>,
     mut state: ResMut<ScapeState>,
     mut room: ResMut<RoomDsp>,
     mut control: MessageWriter<SoundControl>,
-    mut outputs: MessageWriter<super::entities::FireEntityOutput>,
+    mut outputs: MessageWriter<crate::map::entities::FireEntityOutput>,
     time: Res<Time>,
 ) {
     let (Some(bank), Some(ear)) = (bank, listener.iter().next()) else {
@@ -222,7 +226,7 @@ fn select(
     if let Source::Emitter(i) = source
         && let Some(map_index) = sounds.soundscape_emitters[i].entity
     {
-        outputs.write(super::entities::FireEntityOutput {
+        outputs.write(crate::map::entities::FireEntityOutput {
             map_index,
             output: "OnPlay".into(),
             activator: local.iter().next(),

@@ -92,8 +92,8 @@ pub fn enable_motion(world: &mut World, node: Entity) -> bool {
     let (min, max) = frozen.bounds;
     e.remove::<super::vis::Occludee>();
     e.insert(super::BrushEntityBounds { min, max });
-    if !e.contains::<super::vis::VisClusters>() {
-        e.insert(super::vis::VisClusters::new(Vec::new()));
+    if !e.contains::<super::VisClusters>() {
+        e.insert(super::VisClusters::new(Vec::new()));
     }
     e.insert((
         Unfrozen { solid, brush_collider },
@@ -167,7 +167,7 @@ pub fn reset(world: &mut World, node: Entity, asleep: bool) {
 
 /// A moving body running into a prop that sleeps since it spawned wakes
 /// it.
-pub(super) fn wake_on_contact(
+pub(crate) fn wake_on_contact(
     mut started: MessageReader<CollisionStart>,
     asleep: Query<(), With<StartAsleep>>,
     bodies: Query<(&RigidBody, &LinearVelocity)>,

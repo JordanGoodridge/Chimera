@@ -28,8 +28,8 @@ Performance").
 - `REFCMP_OUT=<dir>` keeps refcmp's captures and reports in your own
   folder (the CS:S references stay shared).
 
-- Load-independent numbers: `mashup_perf`, `mashup_perf_log`, the F2
-  Perf tab and `refcmp bench` also give percentiles (p50 to p99.9, 1%
+- Load-independent numbers: `mashup_perf`, `mashup_perf_log`, the debug
+  UI's Perf tab and `refcmp bench` also give percentiles (p50 to p99.9, 1%
   low fps) of each world's thread CPU time and user-space instructions
   per frame and per tick (Linux hardware counters), and `bench.json` /
   `bench.csv`; `mashup_hitch_ratio` logs what a slow frame spent its
@@ -730,7 +730,7 @@ CPU models and thread counts: take a baseline on the machine that
 checks). Its de_dust2 p99 is 26-27M per tick (rounds starting, bots
 seeing each other); the run takes about a minute plus map loading.
 
-- Check: `cargo build --profile playtest --bin perfgate &&
+- Check: `cargo build --profile playtest --features tools --bin perfgate &&
   target/playtest/perfgate` (exit 1 on a rise; `--scenario de_dust2`
   for one).
 - A wanted rise (or a drop): `target/playtest/perfgate --update`, and
@@ -870,6 +870,20 @@ What changed:
   stay without).
 - Two tiers: the fast tier before each commit, the full suite before a
   push.
+- (2026-10-13) The binaries no test runs are behind features
+  (`required-features` in Cargo.toml): the debugging tools (`refcmp`,
+  `movecmp`, `perfgate`, `tracesum`, `mapsweep`) need `--features tools`,
+  the dedicated server `--features server`. Cargo builds every binary of
+  the package for its integration tests, so before this each of them
+  relinked the whole game on every `cargo test` (and `mapsweep` built a
+  test harness too). Only `mashup`, `dump` (run by `mount_cs_source`) and
+  `testmap` (no game; its unit tests check the committed `.vmf`) are
+  built now. A new `pub fn` in `client/window_icon.rs`, then removed
+  again, `cargo test --features dev --no-run`, `CARGO_BUILD_JOBS=4`,
+  sccache, interleaved: before 232 s (load 36), 226 s (load 28), 179 s
+  (load 24), 230 s (load 27); after 132 s (load 16-25), 122 s (load
+  16-20), 119 s (load 25), 151 s (load 26-30): about 45% off a
+  source-change test cycle.
 
 | | before | after |
 |---|---|---|

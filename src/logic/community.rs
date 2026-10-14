@@ -201,7 +201,7 @@ impl LogicWorld {
     /// settings (public point_camera docs: fogEnable, fogColor, fogStart,
     /// fogEnd, fogMaxDensity; defaults off, black, 2048, 4096, 1), not the
     /// map's. Distances in entity units.
-    pub fn monitor_fog(&self) -> Option<crate::map::monitor::MonitorFog> {
+    pub fn monitor_fog(&self) -> Option<crate::map::MonitorFog> {
         let c = self.get(self.active_monitor_camera()?)?;
         let num = |k: &str, d: f32| c.kv(k).map_or(d, super::value::atof);
         let mut color = [0.0f32; 3];
@@ -211,7 +211,7 @@ impl LogicWorld {
         {
             *slot = (super::value::atof(v) / 255.0).clamp(0.0, 1.0);
         }
-        Some(crate::map::monitor::MonitorFog {
+        Some(crate::map::MonitorFog {
             enabled: c.kv("fogEnable").is_some_and(|v| super::value::atoi(v) != 0),
             color,
             start: num("fogStart", 2048.0),

@@ -53,6 +53,34 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
     let c4 = map.view_models.iter().find(|v| v.key == cs_source::objectives::C4).unwrap();
     let (_, _, size) = mashup::map::view_model::screen_corners(c4).expect("the C4's screen attachments");
     assert!((size.x - 2.7).abs() < 0.01 && (size.y - 1.25).abs() < 0.01, "{size}");
+    // The press-button sequence types the code on the screen (model event
+    // 7001, the text in its options) when its fingers press the keys:
+    // the times and text `BombRules::screen_text` shows (spec Constants,
+    // plant_vm_clicks and plant_vm_code).
+    let set = c4.animations.as_ref().expect("v_c4's sequences");
+    let arm = set
+        .sequences
+        .iter()
+        .position(|s| s.activity.eq_ignore_ascii_case("ACT_VM_PRIMARYATTACK"))
+        .expect("the press-button sequence");
+    let length = set.duration(arm);
+    assert!((length - 2.7667).abs() < 0.01, "{length}");
+    let typed: Vec<(f32, &str)> = set.sequences[arm]
+        .events
+        .iter()
+        .filter(|e| e.event == 7001)
+        .map(|e| (e.cycle * length, e.options.trim()))
+        .collect();
+    // A blank screen as it starts, then a character per key press.
+    assert_eq!(typed.len(), 9, "{typed:?}");
+    assert_eq!(typed[0], (0.0, ""));
+    let rules = mashup::objectives::bomb::BombRules::default();
+    for (at, text) in &typed {
+        assert_eq!(rules.screen_text(at + 0.01), *text, "at {at} s: {typed:?}");
+        if *at > 0.0 {
+            assert_ne!(rules.screen_text(at - 0.02), *text, "not before {at} s: {typed:?}");
+        }
+    }
     // GameUI: the loading dialog and the interface sounds.
     let config = LocalConfig::load().unwrap();
     let install = config.game_path("cs_source").unwrap();
@@ -2723,12 +2751,14 @@ fn grenade_models_and_sequences() {
 /// and the room preset its "dsp" names.
 #[test]
 fn walking_into_a_tunnel_switches_soundscape_and_room() {
-    use mashup::map::{
-        LiveSounds,
-        live_sound::SOUNDSCAPE_KEYS,
-        room::{RoomDsp, preset},
-        sound::{SoundListener, SoundscapeZone},
-        soundscape::ScapeState,
+    use mashup::{
+        audio::{
+            live_sound::LiveSounds,
+            room::{RoomDsp, preset},
+            sound::SoundListener,
+            soundscape::ScapeState,
+        },
+        map::sound::{SOUNDSCAPE_KEYS, SoundscapeZone},
     };
     let Some(map) = dust2() else { return };
     let s = map.sounds.clone();

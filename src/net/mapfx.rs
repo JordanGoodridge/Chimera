@@ -1,8 +1,8 @@
 //! Map effects the server's logic sets off, for network clients to draw
 //! (they run no map logic): strike-generator env_beams' strikes
-//! (`map::emitters::BeamStrike`), point_tesla sparks
-//! (`map::emitters::TeslaSpark`) and env_spark bursts
-//! (`map::beams::SparkBurst`). Unreliable, like Source's temporary
+//! (`map::BeamStrike`), point_tesla sparks
+//! (`map::TeslaSpark`) and env_spark bursts
+//! (`map::SparkBurst`). Unreliable, like Source's temporary
 //! entities: a lost one is a missed flash.
 //!
 //! And map logic's sounds: its one-shots (`logic::LogicOneShot`, as
@@ -20,9 +20,8 @@ use crate::{
     core::NetRole,
     logic::LogicOneShot,
     map::{
-        MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, StartSound,
-        beams::SparkBurst,
-        emitters::{BeamStrike, TeslaSpark},
+        BeamStrike, MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, SparkBurst,
+        StartSound, TeslaSpark,
     },
 };
 

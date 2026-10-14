@@ -23,7 +23,7 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use super::{MapMesh, MapPart};
+use super::{DecalGroup, MAX_DECALS, MapMesh, MapPart, PlaceDecal};
 
 /// One decal image: a rectangle of a texture (often a decal atlas) and its
 /// size on surfaces.
@@ -58,38 +58,11 @@ pub struct MapDecals {
     pub by_material: HashMap<char, String>,
 }
 
-/// Put a decal from `group` on the world at `point`, on the surface with
-/// `normal`; `dir` is the direction of whatever made it. `spin` turns it
-/// randomly in the surface plane (bullet holes); otherwise walls keep it
-/// upright. With a `target` prop (or one of its colliders) the decal goes
-/// on that prop's model and moves with it; otherwise on the world.
-#[derive(Message, Clone, Debug)]
-pub struct PlaceDecal {
-    pub target: Option<Entity>,
-    pub group: DecalGroup,
-    pub point: Vec3,
-    pub normal: Vec3,
-    pub dir: Vec3,
-    pub spin: bool,
-}
-
-/// Which decals to choose from.
-#[derive(Clone, Debug)]
-pub enum DecalGroup {
-    /// A named group (e.g. the knife's slashes).
-    Named(String),
-    /// What a surface with this game material letter takes when shot.
-    Material(char),
-}
-
 /// Present while the loaded map has impact decals (games' placeholder hit
 /// marks stand down).
 #[derive(Resource)]
 pub struct ImpactDecals;
 
-/// Most decals a server keeps for late joiners; the oldest goes first.
-/// (Each client draws at most `DecalSettings::limit`.)
-pub const MAX_DECALS: usize = 512;
 /// Triangles whose plane passes farther than this from the point (meters)
 /// take no part of the decal.
 const REACH: f32 = 0.1;
@@ -108,7 +81,7 @@ const CELL: f32 = 1.0;
 /// than `BIG_CELLS` cells in a list of their own with their bounds (a surf
 /// map's 100 m ramp filled millions of cells: a minute and gigabytes).
 #[derive(Default)]
-pub(super) struct TriSet {
+pub(crate) struct TriSet {
     tris: Vec<[Vec3; 4]>,
     cells: HashMap<IVec3, Vec<u32>>,
     big: Vec<(u32, Vec3, Vec3)>,
@@ -120,7 +93,7 @@ const BIG_CELLS: i32 = 64;
 /// What decals can land on: the world's triangles, each prop model's in
 /// its own space, and each brush entity's in its node's space.
 #[derive(Resource, Default)]
-pub(super) struct DecalSurfaces {
+pub(crate) struct DecalSurfaces {
     world: TriSet,
     models: Vec<TriSet>,
     /// Prop index -> model index.
@@ -163,7 +136,7 @@ fn cell(p: Vec3) -> IVec3 {
 }
 
 impl DecalSurfaces {
-    pub(super) fn new(data: &super::MapData) -> Self {
+    pub(crate) fn new(data: &super::MapData) -> Self {
         let mut by_entity: HashMap<usize, Vec<&MapMesh>> = HashMap::new();
         for m in &data.meshes {
             if let Some(e) = m.entity {
@@ -186,7 +159,7 @@ impl TriSet {
     /// Opaque surfaces (not the 3D skybox, other decals or overlays,
     /// unlit or blended surfaces), without brush entities' meshes (local to
     /// their entity, not world space).
-    pub(super) fn new(meshes: &[MapMesh]) -> Self {
+    pub(crate) fn new(meshes: &[MapMesh]) -> Self {
         Self::from_meshes(meshes.iter(), false)
     }
 
@@ -295,7 +268,7 @@ fn clip(mut poly: Vec<(Vec3, Vec2)>) -> Vec<(Vec3, Vec2)> {
 /// The decal's mesh on the surfaces near `point`: positions, normals and
 /// texture coordinates within `decal`'s rectangle. None when nothing is
 /// in reach.
-pub(super) fn project(
+pub(crate) fn project(
     surfaces: &TriSet,
     decal: &MapDecal,
     point: Vec3,
@@ -349,10 +322,10 @@ pub(super) fn project(
 /// The loaded map's decal definitions, their textures and materials, and
 /// the decals placed so far.
 #[derive(Resource)]
-pub(super) struct DecalAssets {
-    pub(super) data: MapDecals,
+pub(crate) struct DecalAssets {
+    pub(crate) data: MapDecals,
     /// Every map texture, by `MapData::textures` index.
-    pub(super) textures: Vec<Handle<Image>>,
+    pub(crate) textures: Vec<Handle<Image>>,
     /// (decal index, depth only) -> material.
     materials: HashMap<(usize, bool), Handle<DecalMaterial>>,
     placed: VecDeque<Entity>,
@@ -360,7 +333,7 @@ pub(super) struct DecalAssets {
 }
 
 impl DecalAssets {
-    pub(super) fn new(data: MapDecals, textures: Vec<Handle<Image>>) -> Self {
+    pub(crate) fn new(data: MapDecals, textures: Vec<Handle<Image>>) -> Self {
         Self {
             data,
             textures,
@@ -397,11 +370,11 @@ impl DecalAssets {
 }
 
 /// Place the decals asked for this frame.
-pub(super) fn place_decals(
+pub(crate) fn place_decals(
     mut asks: MessageReader<PlaceDecal>,
     surfaces: Option<Res<DecalSurfaces>>,
     props: Query<(&super::PropIndex, &GlobalTransform)>,
-    brushes: Query<(&super::MapBrushEntity, &GlobalTransform, Has<super::vis::LogicHidden>)>,
+    brushes: Query<(&super::MapBrushEntity, &GlobalTransform, Has<super::LogicHidden>)>,
     parents: Query<&ChildOf>,
     assets: Option<ResMut<DecalAssets>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
@@ -533,11 +506,11 @@ pub(super) fn place_decals(
 }
 
 /// Decals on brush entities go with them: when the logic removes one
-/// (killed, broken: `vis::LogicHidden` added to its node) and at a round
+/// (killed, broken: `LogicHidden` added to its node) and at a round
 /// restart, which re-creates them.
 #[allow(clippy::type_complexity)]
-pub(super) fn drop_brush_decals(
-    gone: Query<&Children, (With<super::MapBrushEntity>, Added<super::vis::LogicHidden>)>,
+pub(crate) fn drop_brush_decals(
+    gone: Query<&Children, (With<super::MapBrushEntity>, Added<super::LogicHidden>)>,
     nodes: Query<&Children, With<super::MapBrushEntity>>,
     decals: Query<(), With<RuntimeDecal>>,
     restarts: Option<Res<crate::core::RoundRestarts>>,
@@ -562,7 +535,7 @@ pub(super) fn drop_brush_decals(
 
 /// `ClearDecals`, and round starts with `DecalSettings::round_clear` on:
 /// every runtime decal goes (world, props and brush entities alike).
-pub(super) fn clear_decals(
+pub(crate) fn clear_decals(
     mut asks: MessageReader<ClearDecals>,
     settings: Option<Res<DecalSettings>>,
     restarts: Option<Res<crate::core::RoundRestarts>>,

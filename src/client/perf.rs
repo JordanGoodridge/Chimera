@@ -14,7 +14,10 @@ use bevy::{
 
 use crate::{
     console::resource_cvar,
-    map::vis::{NoVis, VisClusters, VisStats},
+    map::{
+        VisClusters,
+        vis::{NoVis, VisStats},
+    },
 };
 
 pub struct PerfPlugin;
@@ -104,8 +107,8 @@ impl Plugin for PerfPlugin {
                 |v| &mut v.0,
             );
         }
-        if app.world().contains_resource::<crate::map::sky_occluder::SkyOcclusion>() {
-            resource_cvar::<crate::map::sky_occluder::SkyOcclusion, u8>(
+        if app.world().contains_resource::<crate::render::sky_occluder::SkyOcclusion>() {
+            resource_cvar::<crate::render::sky_occluder::SkyOcclusion, u8>(
                 app,
                 "mashup_skyocclude",
                 "1: sky faces hide what lies behind them (props, water, brush entities in the view's PVS); 0 (default): \

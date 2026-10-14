@@ -1,4 +1,4 @@
-//! The debug UI (F2, `debugui [tab]`): a tabbed egui window for
+//! The debug UI (F8, `debugui [tab]`): a tabbed egui window for
 //! playtesting and development. Every control runs a console line (a cvar
 //! or a command), so what it does lives in one place and the console,
 //! binds and configs can do the same; the window only reads state to show
@@ -182,7 +182,7 @@ impl Plugin for DebugUiStatePlugin {
             .add_systems(Startup, apply_ranges)
             .console_command(
                 "debugui",
-                "debugui [tab|close]: toggle the debug window (F2), or open it on a tab (player, world, movement, \
+                "debugui [tab|close]: toggle the debug window (F8), or open it on a tab (player, world, movement, \
                  bots, rendering, perf, audio, logic, rounds, cvars).",
                 |w, a| {
                     let mut ui = w.resource_mut::<DebugUi>();
@@ -1204,11 +1204,11 @@ fn audio_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
     ui.separator();
     ui.heading("Soundscape and room");
     match (
-        world.get_resource::<crate::map::soundscape::ScapeState>(),
-        world.get_resource::<crate::map::room::RoomDsp>(),
+        world.get_resource::<crate::audio::soundscape::ScapeState>(),
+        world.get_resource::<crate::audio::room::RoomDsp>(),
     ) {
         (Some(s), Some(r)) => {
-            ui.monospace(crate::map::soundscape::readout(s, r));
+            ui.monospace(crate::audio::soundscape::readout(s, r));
         }
         _ => {
             ui.weak("no soundscape (the map has none, or it hasn't loaded)");
