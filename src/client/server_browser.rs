@@ -1263,7 +1263,7 @@ impl ServerBrowser {
     /// Read favourites and history from `saved_text`'s format (what it
     /// can; the rest is left out).
     pub fn load_text(&mut self, text: &str) {
-        let tokens = crate::mount::keyvalues::tokens(text);
+        let tokens = crate::mount::keyvalues::tokens(text, crate::mount::keyvalues::Escapes::On);
         let mut i = 0;
         let mut path: Vec<String> = Vec::new();
         let mut current: Vec<(String, String)> = Vec::new();

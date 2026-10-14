@@ -172,6 +172,18 @@ measurements):
   1,009 s (docs/performance.md, "The heavy tier").
 - [ ] (2) CS:S UI out of `client`, rules behind a rule-module interface,
   game-registered replication.
+- [x] (3) First crate (2026-10-14): the repository is a Cargo workspace
+  (`mashup` at the root, every member a default member) and
+  `source/formats` (package `source_formats`, pure data, no Bevy:
+  checked by `architecture::workspace_crates`) holds the VFS core, VPK,
+  pakfile, LZMA lumps, `.vhv`, `.phy`, WAV/MP3, the detail lump, DMX/PCF,
+  `.nav` records, KeyValues (one tokenizer, explicit escapes: P7) and
+  localization files; `mashup` re-exports them at their old paths. A
+  format edit is checked with `cargo test -p source_formats` in about a
+  second (docs/performance.md, "The first crate"). Not moved yet: BSP
+  and MDL conversion (they build engine types; vbsp/vmdl do the
+  parsing), surface properties, sound scripts and soundscapes (their
+  parsing is mixed with the loading), `.res` layout conversion.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

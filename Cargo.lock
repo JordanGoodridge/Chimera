@@ -4573,14 +4573,13 @@ dependencies = [
  "igd-next",
  "image",
  "libc",
- "lzma-rs",
  "perf-event2",
  "postcard",
  "renetcode",
  "serde",
  "serde_json",
  "sha2",
- "symphonia",
+ "source_formats",
  "toml",
  "twofish",
  "vbsp",
@@ -6602,6 +6601,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "source_formats"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "lzma-rs",
+ "symphonia",
 ]
 
 [[package]]

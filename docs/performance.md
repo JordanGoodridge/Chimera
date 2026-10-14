@@ -954,3 +954,23 @@ s), `map_flows::jacks_every_game_keeps_players_in_the_map` (54-104 s),
 de_nuke's ladders (72-96 s). Next: a converted-map cache or a headless
 load path (architecture-review.md, P4b step 2) would take most of the
 remaining third spent loading.
+
+### The first crate: `source_formats` (2026-10-14)
+
+The repository became a workspace and the pure-data readers moved into
+`source/formats` (docs/ARCHITECTURE.md, "Crates"). Measured in a
+worktree's own `target/` with sccache, `CARGO_BUILD_JOBS=4`, other
+agents building (load 9-16), one edit each:
+
+| Edit | Command | Time |
+|---|---|---|
+| a function in `source_formats` | `cargo test -p source_formats` (build and run its 15 tests) | 0.3-0.9 s |
+| the same | `cargo test --features dev --no-run` (the whole workspace) | 34-38 s: it and `mashup` rebuild |
+| a leaf in `mashup` (`games/cs_source/sky.rs`) | `cargo test --features dev --no-run` | 33-57 s |
+
+Running the fast tier then adds about two minutes (`it` 117-154 s at
+load 15-20), so checking a format change goes from about three minutes
+to a second. A change in `source_formats` still rebuilds `mashup` above
+it (a dependent crate always does), so the hooks still test both; the
+win grows as more crates are cut and edits land in crates with fewer
+dependents (engine-split.md, "Crates and compile time").

@@ -35,6 +35,14 @@ in `tests/` would be another test binary: `architecture::tests_are_one_crate`
 fails and says how to move it. Test names read `weapons::name` and
 `heavy::map_de_dust2::name`.
 
+The other workspace crates (docs/ARCHITECTURE.md, "Crates") keep their
+tests as unit tests beside their code. Commands at the repository root
+cover every crate; `-p <crate>` picks one: `cargo test -p source_formats`
+builds and runs only the format readers' tests, in seconds, without
+building the game. Tests of a pure reader belong in its crate; tests that
+need the game (ECS, conversion to engine types, real installs) stay in
+`mashup`.
+
 - Fast tier, before every commit (`.githooks/pre-commit`): `cargo test
   --features dev -- --skip heavy::` (unit tests and everything outside
   `heavy`; under a minute when warm). Commits that change only Markdown
@@ -45,7 +53,7 @@ fails and says how to move it. Test names read `weapons::name` and
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
 - Before every push, `.githooks/pre-push` also checks the build without
-  `--features dev` (`cargo check --lib --bins --features tools,server`;
+  `--features dev` (`cargo check --workspace --lib --bins --features tools,server`;
   the playtest and release builds use that configuration and the tests
   don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
   built only with `--features tools`, the dedicated server with

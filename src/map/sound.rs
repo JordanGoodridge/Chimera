@@ -10,15 +10,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use bevy::prelude::*;
 
-/// Decoded audio: interleaved 16-bit samples.
-#[derive(Clone, Debug)]
-pub struct MapSoundClip {
-    pub rate: u32,
-    pub channels: u16,
-    pub samples: Arc<[i16]>,
-    /// Loop from this frame to the end, when the file says so.
-    pub loop_start: Option<usize>,
-}
+/// Decoded audio: interleaved 16-bit samples (what the format readers
+/// decode to).
+pub use source_formats::wav::SoundClip as MapSoundClip;
 
 /// How a sound falls off with distance.
 #[derive(Clone, Copy, Debug, PartialEq)]

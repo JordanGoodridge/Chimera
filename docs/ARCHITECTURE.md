@@ -3,6 +3,26 @@
 A map of the code. Design rationale lives in the [README](../README.md); this
 file says where things are and which way dependencies may point.
 
+## Crates
+
+A Cargo workspace (docs/plans/active/engine-split.md, "Crates and compile
+time"); every member is a default member, so `cargo test` and `cargo
+nextest run` at the root test them all (`tests/it/architecture.rs`,
+`workspace_crates`).
+
+```
+mashup (repository root: src/, tests/it/)   the game, engine and tools
+  |
+source_formats (source/formats/)            file formats as plain data: no Bevy
+```
+
+- `source_formats` turns bytes and text into Rust values (glam vectors,
+  Source units); it never depends on Bevy, avian or `mashup` (checked).
+  Conversion into engine types stays in `mashup` (`games/cs_source`),
+  which re-exports the readers at their old paths.
+- An edit in `source_formats` rebuilds it and `mashup`; `cargo test -p
+  source_formats` builds and runs only its own tests (seconds).
+
 ## Layers
 
 ```
@@ -84,7 +104,7 @@ that the paths exist).
 - `src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
-- `src/mount/`: the VFS (ordered layers), `mashup.local.toml`, KeyValues text, finding game installs (mount)
+- `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (neutral map data, spawning, drawing, effects)
@@ -197,7 +217,22 @@ that the paths exist).
 ### Games
 
 - `src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
-- `src/games/cs_source/`: Counter-Strike: Source from the install: VPK, BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
+- `src/games/cs_source/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
+
+### Source formats (crate `source_formats`, `source/formats/`)
+
+- `source/formats/src/fs.rs`: the VFS core: `FileSource`, `Mount` (layers in order), `LooseDir`, `normalize` (re-exported by `mount`)
+- `source/formats/src/keyvalues.rs`: KeyValues: one tokenizer (`Escapes::On`/`Off`), the `Kv` tree, `parse`/`parse_res`/`parse_pc`
+- `source/formats/src/localization.rs`: localization files (UTF-16/UTF-8, their own escapes)
+- `source/formats/src/vpk.rs`: VPK archives (v1, v2) as a `FileSource`
+- `source/formats/src/pak.rs`: a BSP's pakfile (zip; stored and LZMA entries)
+- `source/formats/src/lumps.rs`: LZMA-compressed BSP lumps inflated before anything reads the file
+- `source/formats/src/detail.rs`: the `dprp` detail prop lump
+- `source/formats/src/vhv.rs`: static props' baked per-vertex light (`.vhv`)
+- `source/formats/src/phy.rs`: collision models (`.phy`): solids, ragdolls, break blocks
+- `source/formats/src/pcf.rs`: particle files (binary DMX) and particle manifests
+- `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/nav.rs`)
+- `source/formats/src/wav.rs`: WAV (PCM, MS-ADPCM) and MP3 decoding to `SoundClip`
 
 ### Binaries and the test harness
 

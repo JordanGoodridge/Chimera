@@ -6,10 +6,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{
-    material::MaterialLoader,
-    surfaceprops::{SurfaceProps, tokens},
-};
+use source_formats::keyvalues::{Escapes, tokens};
+
+use super::{material::MaterialLoader, surfaceprops::SurfaceProps};
 use crate::map::{MapEntity, MapSoundEntry, MapSounds, MapSurface, SoundLevel, sound::Interval};
 
 /// An entry as written: its keys, and its waves in order.
@@ -29,7 +28,7 @@ impl SoundScripts {
     pub fn load(materials: &mut MaterialLoader, map: &str) -> Self {
         let mut me = Self::default();
         if let Some(manifest) = materials.read("scripts/game_sounds_manifest.txt") {
-            let t = tokens(&String::from_utf8_lossy(&manifest));
+            let t = tokens(&String::from_utf8_lossy(&manifest), Escapes::Off);
             let files: Vec<String> = t
                 .windows(2)
                 .filter(|w| w[0].eq_ignore_ascii_case("precache_file") || w[0].eq_ignore_ascii_case("preload_file"))
@@ -48,7 +47,7 @@ impl SoundScripts {
     }
 
     pub fn add(&mut self, text: &str) {
-        let t = tokens(text);
+        let t = tokens(text, Escapes::Off);
         let mut i = 0;
         while i + 1 < t.len() {
             if t[i + 1] != "{" {

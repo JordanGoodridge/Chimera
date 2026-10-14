@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+use source_formats::keyvalues::{Escapes, tokens};
 use vbsp::Bsp;
 
 use super::{
@@ -538,7 +539,7 @@ pub fn load_held(
 /// The `prop_data` block of a model's key values (spec 2.2), lower-case
 /// keys.
 fn prop_data(text: &str) -> Option<HashMap<String, String>> {
-    let t = super::surfaceprops::tokens(text);
+    let t = tokens(text, Escapes::Off);
     let start = t
         .windows(2)
         .position(|w| w[0].eq_ignore_ascii_case("prop_data") && w[1] == "{")?;

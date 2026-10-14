@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use bevy::prelude::*;
+use source_formats::keyvalues::{Escapes, tokens};
 use vbsp::{Bsp, TextureFlags};
 
 use super::{
@@ -372,7 +373,7 @@ pub fn impact_decals(materials: &mut MaterialLoader) -> crate::map::decal::MapDe
     else {
         return out;
     };
-    let t = super::surfaceprops::tokens(&text);
+    let t = tokens(&text, Escapes::Off);
     let mut by_path: HashMap<String, Option<usize>> = HashMap::new();
     let mut i = 0;
     while i + 1 < t.len() {

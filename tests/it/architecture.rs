@@ -372,7 +372,7 @@ fn docs_stay_one_line_per_entry() {
             ));
         }
         let path = line[2..].split('`').nth(1).unwrap_or("");
-        if path.starts_with("src/") && !root().join(path).exists() {
+        if (path.starts_with("src/") || path.starts_with("source/")) && !root().join(path).exists() {
             errors.push(format!(
                 "docs/ARCHITECTURE.md lists {path}, which does not exist. Update the entry."
             ));
@@ -421,6 +421,60 @@ fn untested_binaries_have_no_tests() {
                 "{path} has tests, but its [[bin]] `{name}` in Cargo.toml says `test = false`, so they never \
                  run. Remove that `test = false`."
             ));
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
+/// The workspace (docs/ARCHITECTURE.md, "Crates"): every member is a
+/// default member, so `cargo test` and `cargo nextest run` at the root (the
+/// hooks' commands) test them all; and the format crates stay pure data,
+/// with no Bevy, physics or game crate under them.
+#[test]
+fn workspace_crates() {
+    let manifest: toml::Table = fs::read_to_string(root().join("Cargo.toml")).unwrap().parse().unwrap();
+    let ws = manifest["workspace"].as_table().expect("[workspace] in Cargo.toml");
+    let list = |key: &str| -> BTreeSet<String> {
+        ws.get(key)
+            .and_then(|m| m.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|m| m.as_str().map(String::from))
+            .collect()
+    };
+    let (members, defaults) = (list("members"), list("default-members"));
+    let mut errors = Vec::new();
+    for m in members.difference(&defaults) {
+        errors.push(format!(
+            "workspace member `{m}` isn't in `default-members` (Cargo.toml), so `cargo test` at the root \
+             (and the git hooks) never test it. Add it there."
+        ));
+    }
+    const PURE: &[&str] = &["source/formats"];
+    const FORBIDDEN: &[&str] = &["bevy", "avian", "mashup"];
+    for krate in PURE {
+        let path = format!("{krate}/Cargo.toml");
+        let text = fs::read_to_string(root().join(&path)).unwrap_or_else(|e| panic!("{path}: {e}"));
+        let m: toml::Table = text.parse().unwrap();
+        let mut tables: Vec<&toml::Table> = ["dependencies", "dev-dependencies", "build-dependencies"]
+            .iter()
+            .filter_map(|k| m.get(*k).and_then(|t| t.as_table()))
+            .collect();
+        for target in m.get("target").and_then(|t| t.as_table()).into_iter().flat_map(|t| t.values()) {
+            tables.extend(
+                ["dependencies", "dev-dependencies"]
+                    .iter()
+                    .filter_map(|k| target.get(*k).and_then(|t| t.as_table())),
+            );
+        }
+        for dep in tables.iter().flat_map(|t| t.keys()) {
+            if FORBIDDEN.iter().any(|f| dep.starts_with(f)) {
+                errors.push(format!(
+                    "{path} depends on `{dep}`: {krate} is pure data (docs/ARCHITECTURE.md, \"Crates\"). Keep \
+                     the parsing there and move what needs `{dep}` (ECS types, components, conversion to \
+                     engine types) into the crate that uses it, e.g. `mashup::games::cs_source`."
+                ));
+            }
         }
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));

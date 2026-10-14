@@ -565,6 +565,16 @@ Cargo changes.
   tested decision per file type. **Cost**: 1 session. **Risk**: parsing
   changes on community content; guard with mapsweep over the cached maps
   (warnings and entity counts identical) and the mount tests.
+- **Status (2026-10-14, with the `source_formats` crate)**: done in part.
+  One tokenizer (`source_formats::keyvalues::tokens(text, Escapes)`),
+  every caller choosing `Escapes::On` (Steam's files, ours) or `Off`
+  (the game's scripts and resource files) as it behaved before; one tree
+  type `Kv` (mount's `Node` and hud's `Kv` merged) with its three
+  parsers kept as they were (`parse`, `parse_res`, `parse_pc`; they
+  differ on a key before `}` and on conditionals, tested). Open: the
+  spec question (which files the game reads with escapes), the
+  token-walk cursor, soundscape.rs's own tree parser, localization's
+  own escapes (`\n`, `\t`), and the one `LeReader`.
 
 ### P8. Split the remaining giant systems
 

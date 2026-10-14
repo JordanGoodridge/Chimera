@@ -1,7 +1,13 @@
 //! Counter-Strike: Source (Steam app 240).
 //!
-//! VPK reader, LZMA-compressed BSP lumps decompressed before anything reads the
-//! file (`lumps.rs`; community maps repacked with bspzip), the CS:S search path
+//! The pure-data readers (VPK, pakfile, LZMA lumps, `.vhv`, `.phy`, WAV/MP3,
+//! the detail lump, DMX/PCF, `.nav` records, KeyValues, localization files)
+//! live in the `source_formats` crate and are re-exported here at their old
+//! paths (`vpk`, `pak`, `lumps`, `vhv`, `phy`, `wav`); this module turns what
+//! they read into engine types.
+//!
+//! VPK archives, LZMA-compressed BSP lumps decompressed before anything reads the
+//! file (`lumps`; community maps repacked with bspzip), the CS:S search path
 //! (plus the install's `download/` folder and mashup's content cache, last;
 //! `mount::import_map` copies `.bsp`/`.bsp.bz2` maps into the cache), BSP to
 //! `MapData` (via `vbsp`), VMT/VTF materials (map pak first, then the mount;
@@ -175,7 +181,6 @@ pub mod hud;
 pub mod impact_effects;
 pub mod impacts;
 pub mod lightmap;
-pub mod lumps;
 pub mod material;
 pub mod mount;
 pub mod movement;
@@ -183,9 +188,7 @@ pub mod nav;
 pub mod objectives;
 pub mod overlays;
 pub mod pain;
-pub mod pak;
 pub mod pcf;
-pub mod phy;
 pub mod player_anim;
 pub mod propdata;
 pub mod props;
@@ -203,12 +206,12 @@ pub mod trails;
 pub mod surfaceprops;
 pub mod view_anim;
 pub mod vgui;
-pub mod vhv;
 pub mod view_motion;
-pub mod vpk;
 pub mod water;
-pub mod wav;
 pub mod weapons;
+
+// Pure-data readers moved to `source_formats`, at their old paths.
+pub use source_formats::{lumps, pak, phy, vhv, vpk, wav};
 
 pub const GAME: &str = "cs_source";
 

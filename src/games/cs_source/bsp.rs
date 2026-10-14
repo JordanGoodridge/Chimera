@@ -14,6 +14,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use bevy::prelude::*;
+use source_formats::keyvalues::{Escapes, tokens};
 use vbsp::{BrushFlags, Bsp, TextureFlags};
 
 use super::{
@@ -1879,7 +1880,7 @@ pub fn brush_model_physics(bytes: &[u8]) -> std::collections::HashMap<usize, (f3
         let text_at = at + 16 + data as usize;
         let Some(text) = lump.get(text_at..text_at + keys as usize) else { break };
         let text = String::from_utf8_lossy(text);
-        let t = super::surfaceprops::tokens(&text);
+        let t = tokens(&text, Escapes::Off);
         let (mut mass, mut surface) = (0.0f32, None);
         for w in t.windows(2) {
             if w[0].eq_ignore_ascii_case("mass") {
