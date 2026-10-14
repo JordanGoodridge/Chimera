@@ -459,6 +459,7 @@ says what decides the open point.
   victim's horizontal speed and view angles every tick for 1 s after
   each hit. Decides: the speed factor and its recovery, and the punch
   (pitch/yaw, size, decay) by hitgroup and weapon.
+  Done 2026-10-14: specs/cs_source/weapons.md "M18 Being hit".
 - **C2 Pickup and buy sounds.** `sv_soundemitter_trace 1` on the
   listen server: buy an AK-47, kevlar, kevlar+helmet, a defuse kit, an
   HE grenade and ammo; drop the AK and walk over it; touch a dropped AK
