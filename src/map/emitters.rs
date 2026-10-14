@@ -436,7 +436,7 @@ impl SmokeStackEmitter {
 
 /// The main view's camera (not monitors', the sky's, the view model's or
 /// the water reflection's).
-pub(super) type EyeQuery<'w, 's> = Query<
+pub(crate) type EyeQuery<'w, 's> = Query<
     'w,
     's,
     &'static GlobalTransform,
@@ -460,7 +460,7 @@ fn frame_group(particles: Vec<Particle>) -> ParticleGroup {
 
 /// Trails record where their entity is and show their strip (hidden ones,
 /// out of the potentially visible set, record but aren't drawn).
-pub(super) fn update_trails(
+pub(crate) fn update_trails(
     time: Res<Time>,
     eyes: EyeQuery,
     mut trails: Query<(
@@ -492,7 +492,7 @@ pub(super) fn update_trails(
 
 /// Teslas spark when the logic says (`TeslaSpark`), their arcs traced
 /// against the world; arcs age and crackle.
-pub(super) fn update_teslas(
+pub(crate) fn update_teslas(
     time: Res<Time>,
     eyes: EyeQuery,
     mut sparks: MessageReader<TeslaSpark>,
@@ -522,7 +522,7 @@ pub(super) fn update_teslas(
 }
 
 /// Smoke stacks emit and show their puffs.
-pub(super) fn update_smokestacks(
+pub(crate) fn update_smokestacks(
     time: Res<Time>,
     mut stacks: Query<(
         &mut SmokeStackEmitter,
@@ -666,7 +666,7 @@ impl EmbersEmitter {
 }
 
 /// Embers emit and show while on.
-pub(super) fn update_embers(
+pub(crate) fn update_embers(
     time: Res<Time>,
     mut embers: Query<(
         &mut EmbersEmitter,
@@ -726,7 +726,7 @@ pub fn muzzle_flash_sprites(m: &MapMuzzleFlash, origin: Vec3, forward: Vec3) -> 
 pub struct MuzzleFlashEmitter(pub MapMuzzleFlash);
 
 /// Fired muzzle flashes show their sprites.
-pub(super) fn update_muzzle_flashes(
+pub(crate) fn update_muzzle_flashes(
     mut fired: MessageReader<MuzzleFlashFire>,
     flashes: Query<(&MuzzleFlashEmitter, &GlobalTransform, Option<&Visibility>)>,
     mut pool: ResMut<Particles>,
@@ -899,7 +899,7 @@ impl StrikeEmitter {
 
 /// Strike generators draw the strikes the logic sends (`BeamStrike`);
 /// a round restart takes the lasting ones away.
-pub(super) fn update_strikes(
+pub(crate) fn update_strikes(
     time: Res<Time>,
     eyes: EyeQuery,
     mut strikes: MessageReader<BeamStrike>,

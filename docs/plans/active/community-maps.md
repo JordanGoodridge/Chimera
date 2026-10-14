@@ -152,7 +152,7 @@ func_wall_toggle, func_conveyor (`logic::game`); point_viewcontrol
 (`logic::templates`, node copies in `map::copies`); func_physbox(_multiplayer)
 as physics bodies with the compiler's stored mass, phys_thruster and
 phys_keepupright (`logic::physics`, `map::controllers`); point_spotlight,
-env_laser, persistent env_beam and env_lightglow drawn (`map::beams`),
+env_laser, persistent env_beam and env_lightglow drawn (`render::beams`),
 env_spark's sparks; entities parented to a placed weapon follow it and
 its carrier, OnPlayerPickup (`map::entities` anchors). mg_item_battle_v4b:
 walking onto an item knife picks it up, its car rides along under the
@@ -197,7 +197,7 @@ Fixed, by maps affected (tests in `src/logic/community_tests.rs`,
 | Physics objects never touched triggers (spawnflag 8/64: boats on boosters and finish lines, karts) | 11+ maps have such triggers | `LogicWorld::touch_bodies`: physics props and func_physbox by their collider boxes; trigger_push impulses (`Effect::BodyVelocity`), trigger_teleport (`Effect::BodyTeleport`) |
 | AddOutput classname on players ignored (kz_/bhop_ stage marks for filter_activator_class) | 3 | `LogicWorld::player_classes`; AddOutput classname on entities renames them for filters |
 | AddOutput maxspeed, force, message, weapon_* on func_rotating, phys_thruster, ambient_generic, game_player_equip did nothing | 3 | Applied (`classes::class_keyvalue`; added sounds are loaded with the map) |
-| Color on brushes (selector buttons turning red once taken) | 3 | `map::tint` (rendercolor at load too) |
+| Color on brushes (selector buttons turning red once taken) | 3 | `render::tint` (rendercolor at load too) |
 | func_rot_button, momentary_rot_button, logic_measure_movement, point_teleport, logic_multicompare, env_shake unhandled | 1-3 each | `movers` (rotating buttons) and `logic::community` |
 | ForceSpawn of a template holding a func_physbox hung the game and filled memory (mg_creative_multigames_v8_ns's boats; found playing it) | 1+ | `map::copies::copy_node` no longer follows a body's own collider list |
 
@@ -350,7 +350,7 @@ parented to things, the remaining classes, and the scripted runs' noise.
 | Movers that didn't move / jumped / children left behind / panics | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
 
 Fixed, by maps affected (tests in `src/logic/community_tests.rs`,
-`map::emitters`, `map::psys`, `games::cs_source::pcf`, `map::tint`,
+`map::emitters`, `map::psys`, `games::cs_source::pcf`, `render::tint`,
 `map::buoyancy`, `map::controllers`, `tests/it/logic_physics.rs`,
 `tests/it/heavy/map_community.rs::visual_entities_load`):
 
@@ -440,14 +440,14 @@ Fixed, by maps affected (tests: `tests/it/heavy/map_community.rs`
 `use_reaches_a_usable_parent`, `water_analog_moves`;
 `src/logic/community_tests.rs`
 `view_punch_muzzle_flash_color_correction_and_noted_classes`;
-`map::color_correction`, `map::fish` unit tests):
+`render::color_correction`, `map::fish` unit tests):
 
 | Problem | Maps | Fix |
 |---|---|---|
 | Map ragdolls weren't simulated (drawn posed or lying) | 6 (10 ragdolls, all with a ragdoll `.phy`, all debris; none has a Hammer pose) | `map::placed_ragdoll`: the character ragdoll's bodies, joints, settling and repair from the first sequence at the entity's angles (or Hammer's pose); debris on the ragdoll layer: players pass, shots push the part they hit; 16384/65536, EnableMotion, DisableMotion, Wake; killed and remade at a round restart with the logic; parts sent to network clients (`net::ragdolls`, `NetRagdoll`) |
 | Usable brushes +use didn't find | 7 (3 maps) | None were +use's: crazykart's 5 stage buttons sit in the winner's room, whose triggers (trigger_hurt "hurt_spawn"/"hurt_all" around it) take the scripted player away before it presses (the flows test presses them as the winner); n64's spawn door is one func_door of four panels, and the audit aimed at the empty middle between them; the lego func_rotating is found now that the audit aims at one of its pieces. The audit now aims at a piece and lists "the map moved the player away" apart. Also fixed per doors_buttons.md: a hit brush that isn't usable tries its parent chain (`find_use`) |
 | Moving water stayed where it spawned | 3 (mg_jacks_multigames_v1's flood: up 635 units at 11/s; water parented to a spinning rotator on mg_3k_smash_lego_copter and to a door on mg_creative_multigames_v8_ns, whose surfaces were drawn at the world origin) | func_water_analog is a func_movelinear; its swim volume (`MapData::water_movers`, `water::move_water`) and surface (drawn under its node) follow the node, as water parented to a mover does: swimming, buoyancy, splashes and the under-water view all read the moved volume; its surfaces are culled by the clusters their moved bounds touch, as brush entities are (untagged, jacks' flood showed through the sky from other rooms: `moving_water_is_culled_on_jacks`) |
-| color_correction not applied | 2 (mg_lt_galaxy_v5, surf_demise) | `map::color_correction` (the pak's `.raw` 32³ tables, red fastest; weight by falloff distance, fades) blended into one 3D table; `client::color_correction` applies it after the tone map (`mat_colorcorrection`) |
+| color_correction not applied | 2 (mg_lt_galaxy_v5, surf_demise) | `render::color_correction` (the pak's `.raw` 32³ tables, red fastest; weight by falloff distance, fades) blended into one 3D table; `client::color_correction` applies it after the tone map (`mat_colorcorrection`) |
 | env_embers not drawn | 2 (jacks' 6, 3 on; surf_stickybutt_alpha's shaft) | `emitters::EmbersEmitter` (TurnOn/TurnOff/Toggle) |
 | env_wind, env_detail_controller, info_ladder_dismount, propper_model, logic_script, ai_changetarget | 2, 3, 1, 1 (14), 1, 1 | Noted once per map (`classes::noted_class`), with their inputs: nothing to do in CS:S or nothing we draw (detail props aren't drawn; only kz_ancient_ruins has any) |
 | env_muzzleflash, env_viewpunch, func_fish_pool, info_constraint_anchor | 1 each (kommando, surreal, kommando, jacks) | Flash sprites on Fire; a view kick in its radius (`map::ViewKick`; its roll isn't kept); 20 goldfish swim about the pool (`map::fish`); constraints resolve an anchor's name to its parent's body (jacks' has no parent: inert, as in the game) |
@@ -638,7 +638,7 @@ Working down the course flows' list and the round-2 leftovers.
 | Problem | Maps | Fix (tests) |
 |---|---|---|
 | 13 of surf_nebula's 84 ramp rides stopped dead. `MASHUP_SLIDE_DEBUG` (new: every slide move's sweeps) showed each stop: a full move whose end tested solid against a prop's collider, or a sweep starting inside one. The props are its Propper ramp models (91 of its 230 static props), which ship no collision model; they sit a hair off player-clip ramps that are the real surfaces, and we collided with their triangle meshes | surf_nebula (91 props); kz_hikari_od_nh_v2 (206 props), gg_fy_tactic_fight (55), surf_halloween_tf2 (44) have such props too | A static prop set to collide by its physics model blocks nothing without one (our reading of the public prop_static docs; tech-debt, probe below). `heavy::map_surf` rides all 19 cached surf maps now (5 to 88 open ramps each, 0 ghost stops), surf_nebula included |
-| Detail props not drawn (the BSP's detail lump: grass, weeds, bushes) | 7 cached maps and 3 stock with sprites (cs_militia, cs_compound, de_port), de_inferno, de_nuke, de_train and gg_churches with detail models; kz_ancient_ruins' lump is LZMA-compressed | `games::cs_source::detail` reads the `dprp` lump (compressed or not); sprites and their cross and tri shapes become `MapDetailProps`, drawn by `map::detail` in one mesh per 1024-unit cell (a few draw calls; the vertex shader turns facing sprites, sways tops in env_wind, fades by distance, dithered); detail models become non-solid static props; env_detail_controller's fade, else cl_detaildist/cl_detailfade's defaults (`map_visuals::detail_props_load`, `map_community::detail_sprites_on_community_maps`, unit tests). Screenshots (this session's `target/agent/keep/`): `militia_grass.png`, `ruins_grass.png` |
+| Detail props not drawn (the BSP's detail lump: grass, weeds, bushes) | 7 cached maps and 3 stock with sprites (cs_militia, cs_compound, de_port), de_inferno, de_nuke, de_train and gg_churches with detail models; kz_ancient_ruins' lump is LZMA-compressed | `games::cs_source::detail` reads the `dprp` lump (compressed or not); sprites and their cross and tri shapes become `MapDetailProps`, drawn by `render::detail` in one mesh per 1024-unit cell (a few draw calls; the vertex shader turns facing sprites, sways tops in env_wind, fades by distance, dithered); detail models become non-solid static props; env_detail_controller's fade, else cl_detaildist/cl_detailfade's defaults (`map_visuals::detail_props_load`, `map_community::detail_sprites_on_community_maps`, unit tests). Screenshots (this session's `target/agent/keep/`): `militia_grass.png`, `ruins_grass.png` |
 | Monitors drew the map's fog | point_camera on mg_kommando, mg_lt_galaxy_v5 (fog off on both) | The camera's own fogEnable/fogColor/fogStart/fogEnd/fogMaxDensity (`LogicWorld::monitor_fog` -> `MonitorFog` -> the screen camera's `DistanceFog`, read by `fog.wgsl` as the view's fog; `community_tests::monitor_camera_fog_is_the_cameras_own`; test_hardware's monitors checked live, `monitors.png`) |
 | Bots stood on spawns and teleport destinations on maps without a navigation mesh | the 83 cached maps without one (6 pack a mesh) | `bot::aside`: they step off spawns and teleport destinations and out of teleport triggers to a clear spot within 320 units and wait; the console says once that the map has no mesh (`bot_nav::bots_stand_aside_without_a_nav_mesh` on bhop_flatzone). Full minigame AI stays out of scope |
 

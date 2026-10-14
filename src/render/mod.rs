@@ -6,5 +6,11 @@
 //! `map::MapDrawer`); materials, culling, effects and views still live in
 //! `map` (docs/plans/active/engine-split.md, "Crates and compile time").
 
+pub mod beams;
+pub mod color_correction;
+pub mod detail;
+pub mod lod;
+pub mod sky_occluder;
 mod spawn;
+pub mod tint;
 pub use spawn::{Drawn, MapAssets};

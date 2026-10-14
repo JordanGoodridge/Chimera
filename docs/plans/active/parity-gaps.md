@@ -354,11 +354,11 @@ common console commands, against mashup's.
 
 ### Round 2: rendering, maps and entities
 
-- Beams (`map::beams`, beam.wgsl): lasers and persistent env_beams draw
+- Beams (`render::beams`, beam.wgsl): lasers and persistent env_beams draw
   through the spec's point count with fractal noise new each frame,
   their texture repeating every 100 units and scrolling by
   TextureScroll, and their sprite's frames at its framerate
-  (visual_entities.md 1). Tests: `map::beams` unit tests (de_cbble's
+  (visual_entities.md 1). Tests: `render::beams` unit tests (de_cbble's
   smoke beam's numbers).
 - func_dustcloud (`map::dust`): dust with world-sized motes; motes start
   inside the volume's brushes; frozen volumes spawn once and hold

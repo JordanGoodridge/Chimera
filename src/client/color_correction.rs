@@ -30,7 +30,8 @@ use bevy::{
 use super::FirstPersonCamera;
 use crate::{
     console::{Console, resource_cvar},
-    map::{ViewModelCamera, color_correction::ColorCorrectionLut},
+    map::ViewModelCamera,
+    render::color_correction::ColorCorrectionLut,
 };
 
 /// `mat_colorcorrection`: 1 applies maps' color correction, 0 doesn't.

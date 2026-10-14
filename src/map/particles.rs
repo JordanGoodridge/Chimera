@@ -697,7 +697,7 @@ impl Plugin for ParticleMaterialPlugin {
 
 /// The meshes particles are drawn with: one entity per material.
 #[derive(Resource)]
-pub(super) struct ParticleAssets {
+pub(crate) struct ParticleAssets {
     data: MapParticles,
     textures: Vec<Handle<Image>>,
     /// (Material index, in the 3D skybox) -> (mesh entity, mesh, whether
@@ -708,7 +708,7 @@ pub(super) struct ParticleAssets {
 }
 
 impl ParticleAssets {
-    pub(super) fn new(data: MapParticles, textures: Vec<Handle<Image>>) -> Self {
+    pub(crate) fn new(data: MapParticles, textures: Vec<Handle<Image>>) -> Self {
         Self {
             data,
             textures,
@@ -741,7 +741,7 @@ impl WorldTrace for WorldTracer<'_, '_> {
 }
 
 /// Step the pool by the frame time against the world.
-pub(super) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, world: WorldTracer) {
+pub(crate) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, world: WorldTracer) {
     if particles.groups.is_empty() {
         return;
     }
@@ -750,7 +750,7 @@ pub(super) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, 
 
 /// Rebuild the particle meshes for the camera.
 #[allow(clippy::type_complexity)]
-pub(super) fn draw_particles(
+pub(crate) fn draw_particles(
     particles: Res<Particles>,
     assets: Option<ResMut<ParticleAssets>>,
     cameras: Query<

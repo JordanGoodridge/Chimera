@@ -141,7 +141,7 @@ pub struct MapMesh {
     /// renderamt): blended or added, and its opacity (`RenderLook`).
     pub render: Option<(MapAlpha, f32)>,
     /// Its base texture's frames (indices into `MapData::textures`), when a
-    /// map entity can pick one (env_texturetoggle; `tint::TextureFrames`).
+    /// map entity can pick one (env_texturetoggle; `render::tint::TextureFrames`).
     pub frames: Vec<usize>,
 }
 
@@ -955,7 +955,7 @@ pub struct MapDetailProps {
     pub texture: usize,
     pub quads: Vec<DetailQuad>,
     /// Fade distances (start, gone), meters, when the map sets its own
-    /// (env_detail_controller); None: `detail::DEFAULT_FADE`.
+    /// (env_detail_controller); None: `render::detail::DEFAULT_FADE`.
     pub fade: Option<(f32, f32)>,
     /// The wind they sway in (env_wind): horizontal direction (engine) and
     /// speed (m/s); None: still.

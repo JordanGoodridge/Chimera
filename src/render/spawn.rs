@@ -73,8 +73,8 @@ pub struct MapAssets<'w> {
     shadow_materials: Option<Res<'w, Assets<shadows::ShadowMaterial>>>,
     water_materials: Option<ResMut<'w, Assets<water::WaterMaterial>>>,
     bindposes: Option<ResMut<'w, Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>>,
-    beam_materials: Option<ResMut<'w, Assets<beams::BeamMaterial>>>,
-    detail_materials: Option<ResMut<'w, Assets<detail::DetailMaterial>>>,
+    beam_materials: Option<ResMut<'w, Assets<super::beams::BeamMaterial>>>,
+    detail_materials: Option<ResMut<'w, Assets<super::detail::DetailMaterial>>>,
 }
 
 /// Render handles the drawn phases make and the props and resources use
@@ -179,7 +179,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
         && let Some(props) = &data.detail_props
         && let Some(detail_materials) = detail_materials.as_mut()
     {
-        detail::spawn(
+        super::detail::spawn(
             commands,
             meshes,
             detail_materials,
@@ -461,11 +461,11 @@ fn spawn_sky(
     }
     // Sky faces, to hide what lies behind them (depth only, when
     // `mashup_skyocclude` is on: `sky_occluder`).
-    if let Some(mesh) = sky_occluder::mesh(&data.sky_surfaces) {
+    if let Some(mesh) = super::sky_occluder::mesh(&data.sky_surfaces) {
         commands.spawn((
             Name::new("Sky surfaces"),
             MapPart,
-            sky_occluder::SkyOccluder,
+            super::sky_occluder::SkyOccluder,
             Mesh3d(meshes.add(mesh)),
             Transform::default(),
             ChildOf(s.statics),
@@ -648,7 +648,7 @@ fn spawn_world_meshes(
                 part.insert((merge::MergedPiece, Visibility::Hidden));
             }
             if !m.frames.is_empty() {
-                part.insert(tint::TextureFrames(
+                part.insert(super::tint::TextureFrames(
                     m.frames.iter().map(|f| textures[*f].clone()).collect(),
                 ));
             }
@@ -1089,7 +1089,7 @@ fn spawn_effects(
     if !data.particle_systems.defs.is_empty() {
         commands.insert_resource(psys::ParticleSystemDefs(data.particle_systems.clone()));
     }
-    color_correction::spawn(commands, data, root);
+    super::color_correction::spawn(commands, data, root);
     for (i, m) in data.muzzle_flashes.iter().enumerate() {
         let mut e = commands.spawn((
             Name::new(format!("Muzzle flash {i}")),
@@ -1251,7 +1251,7 @@ fn spawn_beams(
     commands: &mut Commands,
     s: &MapSpawn,
     meshes: &mut Assets<Mesh>,
-    beam_materials: &mut Assets<beams::BeamMaterial>,
+    beam_materials: &mut Assets<super::beams::BeamMaterial>,
     sprite_materials: &mut Assets<SpriteMaterial>,
     textures: &[Handle<Image>],
 ) {
@@ -1268,7 +1268,7 @@ fn spawn_beams(
             e.insert((LogicHidden, Visibility::Hidden));
         }
     };
-    let beam_mesh = meshes.add(beams::beam_mesh());
+    let beam_mesh = meshes.add(super::beams::beam_mesh());
     // Hidden where the camera can't see them: the clusters along a
     // beam (a box every meter), around a glow.
     let segment_clusters = |a: Vec3, b: Vec3| {
@@ -1288,7 +1288,7 @@ fn spawn_beams(
             Name::new(format!("Beam {i}")),
             MapPart,
             Mesh3d(beam_mesh.clone()),
-            MeshMaterial3d(beam_materials.add(beams::BeamMaterial {
+            MeshMaterial3d(beam_materials.add(super::beams::BeamMaterial {
                 params: b.params(),
                 texture: Some(textures[b.texture].clone()),
             })),
@@ -1316,7 +1316,7 @@ fn spawn_beams(
         }
         s.tag(&mut e, clusters);
         if b.animated() {
-            e.insert(beams::BeamMotion {
+            e.insert(super::beams::BeamMotion {
                 beam: b.clone(),
                 frames: b.frames.iter().map(|f| textures[*f].clone()).collect(),
                 rng: ParticleRng::new(i as u64 + 1),
@@ -1344,7 +1344,7 @@ fn spawn_beams(
                     color: h.color.extend(1.0),
                     proxy: h.proxy,
                 },
-                beams::EyeGlow::Halo {
+                super::beams::EyeGlow::Halo {
                     halo: h.clone(),
                     dir: (b.end - b.start).normalize_or_zero(),
                 },
@@ -1376,7 +1376,7 @@ fn spawn_beams(
                 color: g.color.extend(1.0),
                 proxy: g.proxy,
             },
-            beams::EyeGlow::Light(g.clone()),
+            super::beams::EyeGlow::Light(g.clone()),
             ChildOf(root),
         ));
         part(&mut e, g.entity, true);
@@ -1569,7 +1569,7 @@ fn spawn_baked_prop_meshes(
                 };
                 levels.push(h);
             }
-            lod::LodMeshes(levels)
+            super::lod::LodMeshes(levels)
         });
         let mut c = commands.spawn((
             Mesh3d(handle),
@@ -1660,7 +1660,7 @@ fn spawn_shared_prop_meshes(
             c.insert(range.clone());
         }
         if let Some(levels) = levels.as_ref().and_then(|l| l.get(mesh_index)) {
-            c.insert(lod::LodMeshes(levels.clone()));
+            c.insert(super::lod::LodMeshes(levels.clone()));
         }
     }
 }
@@ -1730,7 +1730,7 @@ fn spawn_prop(
     if leveled {
         commands
             .entity(id)
-            .insert(lod::LodGroup::new(model.bounds, &model.lods));
+            .insert(super::lod::LodGroup::new(model.bounds, &model.lods));
     }
     let mesh = PropMeshes {
         id,

@@ -47,7 +47,7 @@ pub fn instance(materials: &mut Assets<PropMaterial>, shared: &Handle<PropMateri
     }
 }
 
-pub(super) fn relight(
+pub(crate) fn relight(
     field: Option<Res<LightField>>,
     scale: Option<Res<ProbeLightScale>>,
     mut lit: Query<(&mut ProbeLit, &GlobalTransform)>,

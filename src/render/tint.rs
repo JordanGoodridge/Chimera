@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use super::{BrushTint, MapAlpha, RenderLook, prop_material::PropMaterial, world_material::WorldMaterial};
+use crate::map::{BrushTint, MapAlpha, RenderLook, prop_material::PropMaterial, world_material::WorldMaterial};
 
 /// A brush entity mesh's texture frames (its base texture's, when it has
 /// several and something can pick one).
@@ -18,10 +18,10 @@ pub struct TextureFrames(pub Vec<Handle<Image>>);
 
 /// A tinted mesh's own material, to go back to (white) or tint again.
 #[derive(Component, Clone, Debug)]
-pub(super) struct UntintedWorld(Handle<WorldMaterial>);
+pub(crate) struct UntintedWorld(Handle<WorldMaterial>);
 
 #[derive(Component, Clone, Debug)]
-pub(super) struct UntintedStandard(Handle<StandardMaterial>);
+pub(crate) struct UntintedStandard(Handle<StandardMaterial>);
 
 /// A world material with a look applied.
 fn looked_world(mut m: WorldMaterial, look: &RenderLook) -> WorldMaterial {
@@ -37,7 +37,7 @@ fn looked_world(mut m: WorldMaterial, look: &RenderLook) -> WorldMaterial {
 /// Nodes whose tint changed: their meshes get a tinted copy of their
 /// material (or their own back).
 #[allow(clippy::type_complexity)]
-pub(super) fn apply_brush_tints(
+pub(crate) fn apply_brush_tints(
     nodes: Query<(&BrushTint, &Children), Changed<BrushTint>>,
     mut world_parts: Query<(
         &mut MeshMaterial3d<WorldMaterial>,
@@ -100,7 +100,7 @@ pub(super) fn apply_brush_tints(
 
 /// A model's own materials as they were before a look (colour, blend).
 #[derive(Component, Clone, Debug)]
-pub(super) struct UnlookedModel {
+pub(crate) struct UnlookedModel {
     base: Vec<(Vec4, f32, AlphaMode)>,
     applied: RenderLook,
 }
@@ -109,10 +109,10 @@ pub(super) struct UnlookedModel {
 /// model it holds (each `probe_lit::ProbeLit` among its descendants, with
 /// its own material instances) take the colour and fade or add by the
 /// alpha; restored when plain again.
-pub(super) fn apply_character_looks(
+pub(crate) fn apply_character_looks(
     characters: Query<(Entity, &RenderLook)>,
     children: Query<&Children>,
-    models: Query<(&super::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
+    models: Query<(&crate::map::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
     materials: Option<ResMut<Assets<PropMaterial>>>,
     mut commands: Commands,
 ) {

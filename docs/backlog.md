@@ -221,7 +221,7 @@ Looks:
   -3047.50 -9638.97; setang -38.85 18.60 0` shows the same sky view as
   ours (nothing in the sky). Open: whether CS:S also hides things *in* the
   PVS behind a sky face; our `mashup_skyocclude 1` does
-  (`map::sky_occluder`), off by default. Capture: a prop in view behind a
+  (`render::sky_occluder`), off by default. Capture: a prop in view behind a
   sky face from a leaf whose PVS holds it. (2) The 2D sky's `dn` face
   turned half a turn (`cs_source::sky::FACES`). Not captured yet: CS:S
   looking straight down from noclip over a map with a pictured bottom
