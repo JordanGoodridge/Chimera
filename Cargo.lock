@@ -3209,6 +3209,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_present"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "engine_core",
+ "engine_world",
+ "half",
+ "image",
+]
+
+[[package]]
 name = "engine_world"
 version = "0.1.0"
 dependencies = [
@@ -4596,6 +4608,7 @@ dependencies = [
  "crc32fast",
  "dirs",
  "engine_core",
+ "engine_present",
  "engine_world",
  "half",
  "igd-next",

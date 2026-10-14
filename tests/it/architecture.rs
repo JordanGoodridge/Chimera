@@ -164,7 +164,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
 
 /// The engine crates' source folders, scanned with `src/` (their modules
 /// keep their names in `ALLOWED`).
-const ENGINE_SRC: &[&str] = &["engine/core/src", "engine/world/src"];
+const ENGINE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src"];
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -274,8 +274,9 @@ fn crate_refs(code: &str, modules: &BTreeSet<String>) -> BTreeSet<String> {
 fn module_layering() {
     let src = root().join("src");
     // The engine's crates keep their modules' names (`engine_core`'s
-    // `crate::core`, `engine_world`'s `crate::map`, re-exported by `mashup`
-    // at the same paths), so one table covers them all.
+    // `crate::core`, `engine_world`'s `crate::map`, `engine_present`'s
+    // `crate::render`, re-exported by `mashup` at the same paths), so one
+    // table covers them all.
     let mut files = Vec::new();
     for dir in ENGINE_SRC.iter().copied().chain(["src"]) {
         let mut more = Vec::new();
@@ -681,10 +682,14 @@ fn workspace_crates() {
     const WORLD: &str = "is the simulation's map (docs/ARCHITECTURE.md, \"Crates\"): what draws and \
         plays it (`engine_present`) and the games sit above it. Say what is needed in plain data (a \
         drawn-part request, a `MapDrawer` or `MapHooks` hook) and let the crate above fill it in.";
+    const PRESENT: &str = "is the engine's presentation (docs/ARCHITECTURE.md, \"Crates\"): it draws \
+        and plays the map, and games build on it. Move the piece that needs the game up into `mashup`, or \
+        give the presentation a hook (a registry, a drawn-part request, a resource) that the game fills.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
         ("engine/world", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
+        ("engine/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
     ];
     for (krate, forbidden, why) in FORBIDDEN {
         let path = format!("{krate}/Cargo.toml");

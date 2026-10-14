@@ -236,7 +236,7 @@ measurements):
     `render::MapAssets`; then `render` can sit behind a feature.
     The drawn-part requests already leave such a server correct: with
     no renderer they stay unfulfilled (`tests/it/drawn_parts.rs`).
-  - [~] Cutting the crates (`map` to `engine/world`, `render` to
+  - [x] Cutting the crates (`map` to `engine/world`, `render` to
     `engine/present`). Done (2026-10-14): `engine/world` (package
     `engine_world`, module `map`): `MapPlugin`'s type moved up into
     `map_plugin` beside its `impl Plugin` (re-exported as
@@ -246,6 +246,19 @@ measurements):
     (the data's in map, `render::beams::beam_params` in render), a
     `#[cfg(test)]` stand-in inlined into render's test; spawn dump
     identical on the five maps modulo moved paths (no masking needed).
+    Then `engine/present` (package `engine_present`): `render`, `audio`
+    and `map_plugin` (`MapPlugin`, `pub use`d by `mashup::map`) moved
+    whole; their `pub(crate)` items became `pub`, the embedded shaders'
+    paths are `embedded://engine_present/render/...`; `mashup`
+    re-exports `render` and `audio`. Spawn dump identical again (five
+    maps, modulo paths), `tests/it/drawn_parts.rs` passes, de_dust2 and
+    gg_tbr_water_basin screenshots draw as before. Measured
+    (docs/performance.md, "`engine_world` and `engine_present`"): a
+    leaf edit in render or map, `cargo test --features dev --no-run`,
+    30-72 s (was 210 s); in a game file still 127-176 s (mashup's 134k
+    lines); `cargo test -p engine_world` 9 s, `-p engine_present` 12 s.
+    Left: `render` behind a feature for the server (above), the
+    simulation's other layers (`engine/sim`), `mashup` itself.
     What it needed (2026-10-14): (a)
     `impl Plugin for MapPlugin` lives in `map_plugin` (root crate) for a
     type in `map`: the orphan rule forbids that across crates, so the
