@@ -33,6 +33,7 @@ pub mod props;
 pub mod pushaway;
 pub mod radio;
 pub mod ropes;
+pub mod rules;
 pub mod scrapes;
 pub mod shadow;
 pub mod sky;
@@ -96,3 +97,20 @@ mod cycle_tests {
 /// accelerates and applies friction in 0.015 s steps, so CS:S fixes it.
 pub const TICK_INTERVAL: f64 = 0.015;
 
+/// The faithful game's parts, after `SimPlugins`: Source movement, CS:S's
+/// weapons (with the bomb and the hostages), its rule modules, and the
+/// player and view model animation. The dedicated server leaves the
+/// animation out (`.build().disable::<..>()`), as it always has; a windowed game adds the
+/// front end (`ui::CsSourceUiPlugin`) after the client shell.
+pub struct CsSourcePlugins;
+
+impl bevy::app::PluginGroup for CsSourcePlugins {
+    fn build(self) -> bevy::app::PluginGroupBuilder {
+        bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(movement::SourceMovementPlugin)
+            .add(weapons::CsWeaponsPlugin)
+            .add(rules::CsRulesPlugin)
+            .add(player_anim::PlayerAnimPlugin)
+            .add(view_anim::ViewAnimPlugin)
+    }
+}

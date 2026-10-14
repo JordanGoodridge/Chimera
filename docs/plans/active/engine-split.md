@@ -190,8 +190,24 @@ measurements):
     `spectator.res` bars), `radar`, `overview`, `vgui`
     (its `VguiOpen`/`VguiMenu` name CS:S's menus), `hud_text`, `fonts`.
     Next: the HUD as a game part (a HUD slot), then these.
-  - [ ] Rules behind a rule-module interface; game-registered
-    replication.
+  - [~] Rule modules: `rules::module` (`RuleModule`: name, description,
+    its cvars as data, when it applies; `RuleModules` registry; `pick`;
+    `mashup_rules`), CS:S's registered by `games/cs_source/rules.rs`
+    (`cs_source:deathmatch`, `:bomb`, `:hostage`, `:elimination`,
+    picked by `mashup_rounds` and the map's objectives as the code
+    already does). The code did not move: `rules::rounds` and
+    `objectives` are named by `net` (`RoundState`, `RoundEnded`,
+    `frozen_intent`, `Hostage`, `BombHold`), `bot` (bomb and hostage
+    goals, `RoundOpen`), `cs_source::movement`/`player_anim`/`pain`
+    (`Hostage`), `rules.rs` itself (deathmatch respawns read the round
+    phase) and the client's HUD; each needs an interface first (round
+    state as replicated data the module registers; objectives behind a
+    bot-goal and use-target interface). Not started: game-registered
+    replication (`net` still names the round and objective types).
+  - [x] (3) `cs_source::CsSourcePlugins` (movement, weapons with the
+    bomb and hostages, rule modules, player and view model animation):
+    main.rs and `mashup_server` (without the animation, as before) use
+    it; tests still pick plugins one by one.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

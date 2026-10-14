@@ -138,7 +138,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "client",
         ],
     ),
-    // Game plugins: may use the shared layers, never another game.
+    // Game plugins: may use the shared layers, never another game. `rules`:
+    // a game registers its rule modules (`rules::module`).
     (
         "games",
         &[
@@ -151,6 +152,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "map",
             "weapon",
             "objectives",
+            "rules",
         ],
     ),
     // Binaries use the library through `mashup::`, not `crate::`.
