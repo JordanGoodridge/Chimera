@@ -9,7 +9,7 @@
 //! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
 //! `mashup_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
 //! sleeps at the end of a frame; off without a window and under `--bench`), the
-//! water cvars (`map::water::WaterSettings`); `capture.rs` has `--bench` (its
+//! water cvars (`render::water::WaterSettings`); `capture.rs` has `--bench` (its
 //! table, the percentiles table, `bench.json`/`bench.csv`); the distributions
 //! and the hitch log are in `frame_metrics.rs`.
 
@@ -161,9 +161,9 @@ pub(crate) fn decal_cvars(app: &mut App) {
 }
 
 /// Source's water settings (specs/cs_source/water.md section 1) on
-/// `map::water::WaterSettings`.
+/// `render::water::WaterSettings`.
 fn water_cvars(app: &mut App) {
-    use crate::map::water::WaterSettings;
+    use crate::render::water::WaterSettings;
     app.init_resource::<WaterSettings>();
     resource_cvar::<WaterSettings, u8>(
         app,

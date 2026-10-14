@@ -168,6 +168,10 @@ measurements):
       cameras' markers and `MonitorFog`'s view fog stay; `MonitorCamera`
       is initialized by map where `MonitorPlugin` was added, the plugin's
       system by render right after).
+    - [x] `water` drawing (`MapWaterMaterial`, `WaterSurface`,
+      `move_water` and `WaterMovers`, `WaterView` (hearing reads it),
+      the reflection camera's markers, the layers and `height_fog` stay;
+      the material, cameras, fog, overlays and their systems moved).
     `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`

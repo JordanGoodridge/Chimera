@@ -61,7 +61,7 @@ potentially visible from anywhere inside it (PVS, run-length encoded).
   when it changes it shows the tagged parts whose clusters are potentially
   visible and hides the rest. In solid or outside the map (no cluster),
   or with `r_novis 1`, everything is drawn.
-- The water's reflection camera (`map::water`) draws only for a
+- The water's reflection camera (`render::water`) draws only for a
   reflecting volume the main camera can see (in its frustum and in its
   cluster's PVS; the spec renders the views of the volume the camera
   sees). While it draws, parts potentially visible from the clusters

@@ -156,7 +156,7 @@ that the paths exist).
 - `src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
 - `src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
 - `src/map/color_correction.rs`: color_correction entities as data (map)
-- `src/map/water.rs`, `water.wgsl`: water surfaces (map)
+- `src/map/water.rs`: water materials, surfaces, moving water, the view's water state (map)
 - `src/map/particles.rs`: the CPU particle pool (map)
 - `src/map/psys.rs`: data-driven particle systems (`.pcf` effects) as data (map)
 - `src/map/emitters.rs`: sprite trails, smoke stacks, tesla arcs, embers, muzzle flashes, strikes as data (map)
@@ -196,6 +196,7 @@ that the paths exist).
 - `src/render/fog.rs`: the scene's fog pushed to effect materials (render)
 - `src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
 - `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
+- `src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
 
 ### Audio (presentation beside the simulation)
 

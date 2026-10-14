@@ -107,7 +107,7 @@ fn main() {
         mashup::map::prop_material::PropMaterialPlugin,
         mashup::map::shadows::ShadowMaterialPlugin,
         mashup::render::decal::DecalMaterialPlugin,
-        mashup::map::water::WaterMaterialPlugin,
+        mashup::render::water::WaterMaterialPlugin,
         mashup::render::particles::ParticleMaterialPlugin,
     ))
     .add_plugins((

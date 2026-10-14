@@ -556,7 +556,7 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
                 .init_asset::<mashup::map::world_material::WorldMaterial>()
                 .init_asset::<mashup::map::prop_material::PropMaterial>()
                 .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
-                .init_asset::<mashup::map::water::WaterMaterial>()
+                .init_asset::<mashup::render::water::WaterMaterial>()
                 .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
         },
         MapPlugin::new(map),
@@ -616,7 +616,7 @@ fn moving_water_is_culled_on_jacks() {
                 .init_asset::<mashup::map::world_material::WorldMaterial>()
                 .init_asset::<mashup::map::prop_material::PropMaterial>()
                 .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
-                .init_asset::<mashup::map::water::WaterMaterial>()
+                .init_asset::<mashup::render::water::WaterMaterial>()
                 .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
         },
         MapPlugin::new(map),

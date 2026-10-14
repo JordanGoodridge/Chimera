@@ -5,14 +5,14 @@
 //! carry the same four values in their own uniforms.
 //!
 //! `SceneFog` holds the current values: the map sets the world part when
-//! it spawns, `water::underwater_fog` the water part as the eye moves.
+//! it spawns, `crate::render::water::underwater_fog` the water part as the eye moves.
 //! Materials take it when created (`crate::render::fog::apply_scene_fog`
 //! would update them when it changes).
 //!
 //! Source's fog shared by map shaders (`mashup::fog::source_fog`): world range
 //! fog (in the 3D skybox the sky_camera's own, `map::material_fog`), the
 //! water's range fog under water and height fog at the surface; `SceneFog` (set
-//! by the map and `water::underwater_fog`) taken by rope, decal and particle
+//! by the map and `crate::render::water::underwater_fog`) taken by rope, decal and particle
 //! materials.
 
 use bevy::prelude::*;

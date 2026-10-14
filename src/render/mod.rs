@@ -31,6 +31,7 @@ pub mod steam;
 mod spawn;
 pub mod tint;
 pub mod tracer;
+pub mod water;
 pub use spawn::{Drawn, MapAssets};
 
 /// What `map::unload_map` removes of render's: its resources and the
@@ -42,6 +43,7 @@ pub(crate) fn unload_map(world: &mut World) {
     world.remove_resource::<decal::ImpactDecals>();
     world.remove_resource::<psys::ParticleSystemDefs>();
     world.remove_resource::<monitor::MonitorScreen>();
+    world.remove_resource::<water::MapWaterRender>();
     world.remove_resource::<particles::ParticleAssets>();
     shells::unload(world);
 }

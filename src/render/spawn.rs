@@ -11,7 +11,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 #[allow(unused_imports)]
 use crate::map::*;
-use super::{dust, emitters, monitor, steam};
+use super::{dust, emitters, monitor, steam, water};
 // Explicit: Bevy's prelude has a `LightProbe` too.
 use crate::map::{
     LightProbe,
@@ -162,7 +162,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
     }
     let lightmaps = build_lightmaps(commands, data, images, world_materials.is_none());
     let sky_handle = spawn_sky(commands, s, images, meshes);
-    // Water surfaces have their own material (map::water).
+    // Water surfaces have their own material (`water`).
     let water_drawn = water_materials.is_some() && view == MapDebugView::Normal;
     if water_drawn && let Some(water_materials) = water_materials.as_mut() {
         water::spawn_surfaces(

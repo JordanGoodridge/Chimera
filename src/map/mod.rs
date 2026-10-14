@@ -107,9 +107,8 @@ use collision::*;
 mod sky;
 pub use sky::*;
 mod spawn;
-use spawn::*;
 pub use spawn::{Draws, DrawnResource, MapDrawer, MapSpawn, PropSpawn};
-pub(crate) use spawn::spawn_map;
+pub(crate) use spawn::{merged_world, spawn_map};
 pub use view_model::{
     DynamicLight, EffectSettings, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor, ViewModelCamera,
     ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
@@ -117,7 +116,6 @@ pub use view_model::{
 };
 
 use prop_material::{PropMaterial, PropParams};
-use world_material::WorldMaterial;
 
 /// The loaded map's light field, when the game provides one.
 #[derive(Resource, Clone)]
@@ -355,7 +353,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<radio::RadioCommands>();
     world.remove_resource::<bot_profiles::BotProfiles>();
     world.remove_resource::<MapEntities>();
-    world.remove_resource::<water::MapWaterRender>();
     world.remove_resource::<water::WaterView>();
     world.remove_resource::<fog::SceneFog>();
     world.remove_resource::<MapTerrain>();

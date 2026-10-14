@@ -132,7 +132,7 @@ fn prepass_on_main_cameras(
     main: Query<
         Entity,
         (
-            crate::map::water::MainCameraFilter,
+            crate::render::water::MainCameraFilter,
             Without<bevy::core_pipeline::prepass::DepthPrepass>,
         ),
     >,
