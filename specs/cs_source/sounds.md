@@ -745,6 +745,22 @@ What an implementation needs:
 - **Map entities:** ambient_generic and env_soundscape(_proxy/_triggerable) + trigger_soundscape from the BSP entity lump. Soundscape selection runs per local player (we can do it every frame without the trace budget).
 - **Not needed for a first slice:** sentences ("!"), gender macros, DSP presets (no-op, or a simple reverb per preset later), close captions, sound mixers.
 
+## CS:S values (measured)
+
+### Hurt and death sounds (2026-10-14, probe server)
+
+`tools/css_probe/hitmeas.py`'s shooter firing one USP or AK-47 shot at the
+probe bot, `sv_soundemitter_trace 1`; the server's emitted entries per hit
+(the client may add its own; not measured):
+- Head (no helmet, armour or not): `Player.DamageHeadShot`; when the hit
+  kills, `Player.DamageHeadShot` and then `Player.DeathHeadShot`.
+- Chest/stomach with armour (the vest takes part): `Player.DamageKevlar`
+  only, no `Flesh.BulletImpact`.
+- Chest/stomach without armour, and legs with or without armour:
+  `Flesh.BulletImpact` only.
+- A lethal non-head hit: its hit sound above, then `Player.Death`.
+- Helmeted heads: not measured.
+
 ## Open questions
 
 1. **Distance falloff (engine-side).** What is gain(d) for a sound level L, and for "CompatibilityAttenuation" entries? H1 and H2 above are hypotheses.
