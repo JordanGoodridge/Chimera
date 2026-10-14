@@ -351,14 +351,14 @@ fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
 
 /// Headless: dropped weapons and gibs still have their bodies, undrawn.
 fn insert_headless_assets(commands: &mut Commands, s: &MapSpawn, draws: Draws) {
-    let (data, view) = (s.data, s.view);
+    let data = s.data;
     if !draws.loose
         && let Some(loose) = loose::assets(data)
     {
         commands.insert_resource(loose);
     }
     if !draws.gibs
-        && let Some(gibs) = breakables::build_assets(data, &[], view, None)
+        && let Some(gibs) = breakables::build_assets(data)
     {
         commands.insert_resource(gibs);
     }

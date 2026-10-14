@@ -9,7 +9,7 @@
 //! Character bodies (by team or `BodyName`; the local one hidden unless
 //! `ShowLocalBody`), held models with their muzzles and bone-merged parts,
 //! posed from the character's `Animator`, lit where they are
-//! (`probe_lit`); `CharacterBodies`/`HeldAssets` are built when the map
+//! (`probe_lit`); `PlayModels`/`HeldAssets` are built when the map
 //! spawns (`render::spawn`); `adopt_bodies`/`pose_ragdolls` hand a dead
 //! character's body to its ragdoll and pose it from the ragdoll's bodies.
 //!
@@ -40,10 +40,16 @@ use crate::{
     },
 };
 
-/// Meshes and materials of each character model (index as in
-/// `CharacterModels`).
+/// The models parts made in play are drawn with: each character model's
+/// meshes and materials (index as in `CharacterModels`), and each gib
+/// list's (`render::breakables`). One resource, inserted where the
+/// character bodies' always was (resources are entities: their order
+/// decides ids).
 #[derive(Resource)]
-pub(crate) struct CharacterBodies(pub(crate) Vec<BodyAssets>);
+pub(crate) struct PlayModels {
+    pub(crate) bodies: Vec<BodyAssets>,
+    pub(crate) gibs: super::breakables::GibDraws,
+}
 
 /// Meshes and materials of each held model, by key.
 #[derive(Resource)]
@@ -91,7 +97,7 @@ pub struct CharacterBody {
 #[allow(clippy::type_complexity)]
 pub(crate) fn attach_bodies(
     models: Option<Res<CharacterModels>>,
-    bodies: Option<Res<CharacterBodies>>,
+    bodies: Option<Res<PlayModels>>,
     characters: Query<
         (
             Entity,
@@ -125,7 +131,7 @@ pub(crate) fn attach_bodies(
             None => {}
         }
         let feet = aabb.min.y - at.translation().y;
-        let assets = &bodies.0[index];
+        let assets = &bodies.bodies[index];
         let body = commands
             .spawn((
                 Name::new("Body"),
@@ -238,7 +244,7 @@ pub(crate) fn turn_bodies(
 /// Draw what each character holds in its body's hand.
 pub(crate) fn attach_held(
     held: Option<Res<HeldAssets>>,
-    bodies: Option<Res<CharacterBodies>>,
+    bodies: Option<Res<PlayModels>>,
     characters: Query<(Entity, &Held, &Children)>,
     mut body_query: Query<&mut CharacterBody>,
     mut materials: Option<ResMut<Assets<PropMaterial>>>,
@@ -266,7 +272,7 @@ pub(crate) fn attach_held(
             continue;
         };
         let joint_of = |bone: &str| {
-            bodies.0[body.model]
+            bodies.bodies[body.model]
                 .bones
                 .iter()
                 .position(|b| b.name.eq_ignore_ascii_case(bone))

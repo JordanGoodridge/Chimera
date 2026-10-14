@@ -90,8 +90,9 @@ data what it looks like, and `render` fulfils it; the simulation never
 builds a mesh or material. A character's team, `BodyName` and class pick
 its body, `Held` names what it holds, a `Ragdoll` takes the dead's body
 over, `LooseItem`/`ShownItem` name a held model to lie or move as;
-render's systems react to them (added, changed, without their drawn
-marker). Without `render` (a dedicated server) the requests stay
+a gib carries its `GibLook` (which model of which gib list, skin, glass,
+fade distances) and a window its `BrushPanes`; render's systems react to
+them (added, changed, removed, without their drawn marker). Without `render` (a dedicated server) the requests stay
 unfulfilled and the simulation's parts (bodies, colliders) work alone
 (`tests/it/drawn_parts.rs`).
 
@@ -165,7 +166,7 @@ that the paths exist).
 - `src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
 - `src/map/loose.rs`: loose items: dropped weapons' bodies, shown items, resting on the ground (map)
 - `src/map/shells.rs`: spent shells' types and flight step (map)
-- `src/map/breakables.rs`: gibs, broken panes and falling pieces: drawing and physics (map)
+- `src/map/breakables.rs`: gibs, broken panes and falling pieces: physics, and gibs' looks (map)
 - `src/map/prop_physics.rs`: physics props' motion as the logic asks (map)
 - `src/map/controllers.rs`: physics controllers and joints the logic switches (map)
 - `src/map/buoyancy.rs`: bodies in water float (map)
@@ -217,6 +218,7 @@ that the paths exist).
 - `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
 - `src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
 - `src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
+- `src/render/breakables.rs`: drawing gibs and windows' unbroken panes (render)
 - `src/render/loose.rs`: drawn loose and shown items (render)
 - `src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
 - `src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)

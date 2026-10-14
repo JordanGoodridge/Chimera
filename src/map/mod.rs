@@ -48,7 +48,7 @@ pub mod contact_filter;
 pub mod controllers;
 pub mod copies;
 pub use breakables::{
-    BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, PanePart, SpawnGibs,
+    BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, SpawnGibs,
 };
 pub mod hud;
 pub mod interp;

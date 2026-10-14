@@ -12,7 +12,8 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 #[allow(unused_imports)]
 use crate::map::*;
 use super::{
-    bodies::{CharacterBodies, HeldAssets, HeldParts, body_assets},
+    bodies::{HeldAssets, HeldParts, PlayModels, body_assets},
+    breakables::PanePart,
     dust, emitters, light_styles, monitor, shadows,
     view_model::{build_assets as build_view_models, build_flash_assets},
     sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},
@@ -338,7 +339,6 @@ fn build_character_assets(
         .iter()
         .map(|c| body_assets(&c.model, &c.bones, c.root, meshes, pm, bindposes, &model_material))
         .collect();
-    commands.insert_resource(CharacterBodies(bodies));
     let held = data
         .held
         .iter()
@@ -365,34 +365,37 @@ fn build_character_assets(
             )
         })
         .collect::<HashMap<_, _>>();
+    let view_models = prop_materials
+        .as_mut()
+        .map(|pm| build_view_models(data, textures, cubemaps, view, meshes, pm, bindposes));
+    let flash = build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut());
+    let shells = prop_materials
+        .as_mut()
+        .and_then(|pm| super::shells::build_assets(data, textures, view, meshes, pm));
+    let gibs = prop_materials
+        .as_mut()
+        .map(|pm| super::breakables::build_gib_draws(data, textures, view, meshes, pm))
+        .unwrap_or_default();
+    // Built in that order (asset ids follow it), inserted in this one
+    // (resource ids follow it): the gibs' meshes go with the bodies'.
+    commands.insert_resource(PlayModels { bodies, gibs });
     // Loose (dropped) forms (`map::loose`), drawn with the held models'
     // whole meshes (`super::loose`).
     if let Some(loose) = loose::assets(data) {
         commands.insert_resource(loose);
     }
     commands.insert_resource(HeldAssets(held));
-    if let Some(prop_materials) = prop_materials.as_mut() {
-        commands.insert_resource(build_view_models(
-            data,
-            textures,
-            cubemaps,
-            view,
-            meshes,
-            prop_materials,
-            bindposes,
-        ));
+    if let Some(view_models) = view_models {
+        commands.insert_resource(view_models);
     }
-    if let Some(flash) = build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut()) {
+    if let Some(flash) = flash {
         commands.insert_resource(flash);
     }
-    if let Some(prop_materials) = prop_materials.as_mut()
-        && let Some(shells) = super::shells::build_assets(data, textures, view, meshes, prop_materials)
-    {
+    if let Some(shells) = shells {
         commands.insert_resource(shells);
     }
-    if let Some(prop_materials) = prop_materials.as_mut()
-        && let Some(gibs) = breakables::build_assets(data, textures, view, Some((meshes, prop_materials)))
-    {
+    // The gibs' simulation (`map::breakables`), drawn by `super::breakables`.
+    if let Some(gibs) = breakables::build_assets(data) {
         commands.insert_resource(gibs);
     }
 }

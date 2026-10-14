@@ -27,7 +27,7 @@ impl Plugin for MapPlugin {
             (render::bodies::adopt_bodies, render::bodies::pose_ragdolls)
                 .chain()
                 .after(DriveAnimation)
-                .run_if(resource_exists::<render::bodies::CharacterBodies>),
+                .run_if(resource_exists::<render::bodies::PlayModels>),
         );
         self.build_after_ragdolls(app);
         app.add_plugins(render::light_styles::LightStylesPlugin);
@@ -103,6 +103,12 @@ fn build_rest(app: &mut App) {
                 .before(crate::core::SimSet::Movement),
         )
         .add_systems(FixedPostUpdate, breakables::update_panes)
+        .add_systems(
+            FixedPostUpdate,
+            (render::breakables::restore_panes, render::breakables::clip_panes)
+                .chain()
+                .after(breakables::update_panes),
+        )
         .add_systems(FixedPostUpdate, prop_physics::wake_on_contact.after(PhysicsSystems::Writeback))
         // Moving water follows its brush entity (before movement and
         // buoyancy read it).
@@ -130,7 +136,9 @@ fn build_rest(app: &mut App) {
                 breakables::break_props,
                 breakables::fall_panes,
                 breakables::spawn_gibs,
+                render::breakables::draw_gibs,
                 breakables::fly_gibs,
+                render::breakables::fade_gibs,
             )
                 .chain(),
         )
@@ -188,7 +196,7 @@ fn build_rest(app: &mut App) {
                     render::loose::attach_shown,
                     render::loose::draw_loose,
                 )
-                    .run_if(resource_exists::<render::bodies::CharacterBodies>),
+                    .run_if(resource_exists::<render::bodies::PlayModels>),
                 (render::view_model::draw_view_models, render::view_model::view_model_screens)
                     .chain()
                     .after(DriveAnimation)

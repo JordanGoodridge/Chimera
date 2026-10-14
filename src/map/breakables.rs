@@ -1,38 +1,35 @@
-//! Breakable brushes for any game, the drawing and physics side: gibs
+//! Breakable brushes for any game, the simulation's side: gibs
 //! (small models thrown when a brush breaks, flying with gravity, bouncing
 //! off the world and fading out; a broken prop's pieces are physics
 //! bodies that tumble and come to rest; neither blocks characters or
 //! shots) and windows
 //! made of panes (`BrushPanes` on a brush entity node: only the unbroken
 //! panes are drawn and hit by shots). What breaks, and when, is the logic
-//! layer's; games load the gib models (`MapData::gibs`) and draw the
+//! layer's; what each gib looks like is a `GibLook` on it, which
+//! `crate::render::breakables` draws (with the windows' meshes); games load the gib models (`MapData::gibs`) and draw the
 //! shards of shattered glass (`GlassShatter`, `GlassImpact`).
 //! Engine space: meters, Y up.
 //!
-//! Breakables' drawing and physics for any game: gibs (`SpawnGibs`: the game's
+//! Breakables' physics for any game: gibs (`SpawnGibs`: the game's
 //! gib lists `MapData::gibs`, flying under gravity, bouncing off the world with
 //! their bounce sound by `MapGibPhysics`' chance and volume rule
-//! (`gib_bounce_sound`), fading, at most `MAX_GIBS`), broken props' pieces
+//! (`gib_bounce_sound`), their look (`GibLook`) and fade (`gib_alpha`) for
+//! render, at most `MAX_GIBS`), broken props' pieces
 //! (`BreakProp` → the model's `MapBreak`: its own break pieces at its pose
 //! moving outward, or chunks of a gib list in its box; `break_pieces`; avian
 //! bodies from the piece model's `.phy` hulls, else its box, on
 //! `core::RAGDOLL_LAYER`: they tumble and rest on the world and props,
 //! characters and shots pass; built headless too), `BrushPanes` (a broken
-//! window's unbroken panes: the node's meshes clipped to them, its broken looks
-//! (`MapMesh::pane_look`: the face in its crack material over them, jagged edge
-//! strips where they meet broken ones, `edge_strips`) shown in place of the
-//! face, a collider of pane boxes that shots hit and bodies pass), falling pane
+//! window's unbroken panes: a collider of pane boxes that shots hit and bodies
+//! pass; render clips the node's meshes to them), falling pane
 //! pieces (`FallingPane`: a body of the `PANE_PIECES` list that shatters on
 //! what it touches), `GlassShatter` messages for games to draw shards; at a
 //! round restart gibs and particles go and windows are whole again.
 
 use avian3d::prelude::*;
-use bevy::{
-    mesh::{Indices, VertexAttributeValues},
-    prelude::*,
-};
+use bevy::prelude::*;
 
-use super::{LightField, MapData, MapDebugView, MapModel, MapPart, PaneLook, prop_material::PropMaterial};
+use super::{MapData, MapModel, MapPart};
 
 /// A gib list: the models one break picks from, by name (Source: the
 /// propdata "BreakableModels" lists, "MetalChunks"...).
@@ -451,21 +448,10 @@ impl BrushPanes {
     }
 }
 
-/// A mesh drawn under a node with `BrushPanes`: its whole (unclipped)
-/// mesh, from which the unbroken panes are cut.
-#[derive(Component)]
-pub(crate) struct PaneSource(Handle<Mesh>);
-
-/// Keep a window's collider and meshes to its unbroken panes.
-#[allow(clippy::type_complexity)]
-pub(crate) fn update_panes(
-    nodes: Query<(Entity, &BrushPanes, Option<&Children>), Changed<BrushPanes>>,
-    mut parts: Query<(&mut Mesh3d, Option<&PaneSource>, Option<&PanePart>, &mut Visibility)>,
-    meshes: Option<ResMut<Assets<Mesh>>>,
-    mut commands: Commands,
-) {
-    let mut meshes = meshes;
-    for (node, panes, children) in &nodes {
+/// Keep a window's collider to its unbroken panes (`crate::render::breakables`
+/// its meshes).
+pub(crate) fn update_panes(nodes: Query<(Entity, &BrushPanes), Changed<BrushPanes>>, mut commands: Commands) {
+    for (node, panes) in &nodes {
         let boxes = panes.boxes();
         if boxes.is_empty() {
             commands.entity(node).insert(ColliderDisabled);
@@ -484,291 +470,23 @@ pub(crate) fn update_panes(
                 ))
                 .remove::<ColliderDisabled>();
         }
-        let (Some(meshes), Some(children)) = (meshes.as_mut(), children) else {
-            continue;
-        };
-        // With a broken look the face as placed gives way to it.
-        let looks: Vec<PaneLook> = children
-            .iter()
-            .filter_map(|c| parts.get(c).ok().map(|p| p.2.map_or(PaneLook::Whole, |l| l.0)))
-            .collect();
-        let cracked = looks.contains(&PaneLook::Cracked);
-        let edges = looks.iter().filter(|l| matches!(l, PaneLook::Edge(_))).count() as u8;
-        for child in children.iter() {
-            let Ok((mut mesh3d, source, look, mut visibility)) = parts.get_mut(child) else {
-                continue;
-            };
-            let look = look.map_or(PaneLook::Whole, |l| l.0);
-            let source = match source {
-                Some(s) => s.0.clone(),
-                None => {
-                    let s = mesh3d.0.clone();
-                    commands.entity(child).insert(PaneSource(s.clone()));
-                    s
-                }
-            };
-            if look == PaneLook::Whole && cracked {
-                visibility.set_if_neq(Visibility::Hidden);
-                continue;
-            }
-            let Some(clipped) = meshes.get(&source).and_then(|m| match look {
-                PaneLook::Edge(k) => clip_to_rects(m, panes, &edge_strips(panes, k, edges)),
-                _ => clip_to_panes(m, panes),
-            }) else {
-                continue;
-            };
-            // Nothing left of it: hidden (an empty mesh upsets the
-            // renderer's allocator).
-            if clipped.indices().is_none_or(|i| i.is_empty()) {
-                visibility.set_if_neq(Visibility::Hidden);
-                continue;
-            }
-            visibility.set_if_neq(Visibility::Inherited);
-            let old = std::mem::replace(&mut mesh3d.0, meshes.add(clipped));
-            if old != source {
-                meshes.remove(&old);
-            }
-        }
     }
-}
-
-/// A window's broken look on one of its meshes (`MapMesh::pane_look`):
-/// hidden until the window breaks.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct PanePart(pub PaneLook);
-
-/// How far (in panes) a jagged edge piece reaches into the broken pane
-/// beside it (ours: the spec leaves edge pieces to the client).
-pub const EDGE_DEPTH: f32 = 0.5;
-
-/// A rectangle of pane space to cut a mesh to; `uv` maps a point `p` of
-/// it to texture coordinates ((p − o)·x, (p − o)·y) instead of
-/// interpolating the mesh's.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PaneRect {
-    pub lo: Vec2,
-    pub hi: Vec2,
-    pub uv: Option<(Vec2, Vec2, Vec2)>,
-}
-
-/// The edge strips of edge material `k` of `kinds`: along each side of an
-/// unbroken pane whose neighbour inside the window broke, reaching
-/// `EDGE_DEPTH` into the neighbour; its texture's u runs along the side
-/// and its bottom (v = 1) lies on the pane. Each side picks one of the `kinds` edge
-/// materials by its place (ours).
-pub fn edge_strips(panes: &BrushPanes, k: u8, kinds: u8) -> Vec<PaneRect> {
-    let (cols, rows) = (panes.cols as i32, panes.rows as i32);
-    let broken = |c: i32, r: i32| c >= 0 && r >= 0 && c < cols && r < rows && !panes.whole(c as usize, r as usize);
-    let d = EDGE_DEPTH;
-    let mut out = Vec::new();
-    for r in 0..rows {
-        for c in 0..cols {
-            if !panes.whole(c as usize, r as usize) {
-                continue;
-            }
-            let (x, y) = (c as f32, r as f32);
-            // (neighbour, rect, origin, u axis, v axis)
-            let sides = [
-                (
-                    (c + 1, r),
-                    Vec2::new(x + 1.0, y),
-                    Vec2::new(x + 1.0 + d, y + 1.0),
-                    Vec2::new(x + 1.0 + d, y),
-                    Vec2::Y,
-                    Vec2::NEG_X / d,
-                ),
-                (
-                    (c - 1, r),
-                    Vec2::new(x - d, y),
-                    Vec2::new(x, y + 1.0),
-                    Vec2::new(x - d, y + 1.0),
-                    Vec2::NEG_Y,
-                    Vec2::X / d,
-                ),
-                (
-                    (c, r + 1),
-                    Vec2::new(x, y + 1.0),
-                    Vec2::new(x + 1.0, y + 1.0 + d),
-                    Vec2::new(x + 1.0, y + 1.0 + d),
-                    Vec2::NEG_X,
-                    Vec2::NEG_Y / d,
-                ),
-                (
-                    (c, r - 1),
-                    Vec2::new(x, y - d),
-                    Vec2::new(x + 1.0, y),
-                    Vec2::new(x, y - d),
-                    Vec2::X,
-                    Vec2::Y / d,
-                ),
-            ];
-            for (i, ((nc, nr), lo, hi, o, ux, vy)) in sides.into_iter().enumerate() {
-                if !broken(nc, nr) {
-                    continue;
-                }
-                let pick = (c as u32).wrapping_mul(7) ^ (r as u32).wrapping_mul(13) ^ (i as u32).wrapping_mul(5);
-                if kinds == 0 || (pick % kinds as u32) as u8 != k {
-                    continue;
-                }
-                out.push(PaneRect {
-                    lo,
-                    hi,
-                    uv: Some((o, ux, vy)),
-                });
-            }
-        }
-    }
-    out
-}
-
-/// The part of a triangle mesh over unbroken panes: every triangle
-/// clipped to each unbroken pane it overlaps (in the window's plane), its
-/// float attributes interpolated.
-pub fn clip_to_panes(mesh: &Mesh, panes: &BrushPanes) -> Option<Mesh> {
-    let mut rects = Vec::new();
-    for r in 0..panes.rows {
-        for c in 0..panes.cols {
-            if panes.whole(c, r) {
-                let lo = Vec2::new(c as f32, r as f32);
-                rects.push(PaneRect {
-                    lo,
-                    hi: lo + Vec2::ONE,
-                    uv: None,
-                });
-            }
-        }
-    }
-    clip_to_rects(mesh, panes, &rects)
-}
-
-/// A triangle mesh cut to rectangles of pane space: every triangle
-/// clipped to each rectangle it overlaps (in the window's plane), its
-/// float attributes interpolated, its texture coordinates the
-/// rectangle's own where it has them.
-pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Option<Mesh> {
-    let positions: Vec<Vec3> = match mesh.try_attribute(Mesh::ATTRIBUTE_POSITION).ok()? {
-        VertexAttributeValues::Float32x3(v) => v.iter().map(|p| Vec3::from(*p)).collect(),
-        _ => return None,
-    };
-    let indices: Vec<u32> = match mesh.try_indices_option().ok()? {
-        Some(i) => i.iter().map(|i| i as u32).collect(),
-        None => (0..positions.len() as u32).collect(),
-    };
-    let st: Vec<Vec2> = positions.iter().map(|p| panes.pane_at(*p)).collect();
-    // Output vertices as weights over a source triangle, and their own
-    // texture coordinates.
-    let mut out: Vec<([u32; 3], Vec3, Option<Vec2>)> = Vec::new();
-    let mut tris: Vec<[u32; 3]> = Vec::new();
-    for t in indices.chunks_exact(3) {
-        let tri = [t[0], t[1], t[2]];
-        let pts = tri.map(|i| st[i as usize]);
-        let lo = pts[0].min(pts[1]).min(pts[2]);
-        let hi = pts[0].max(pts[1]).max(pts[2]);
-        for rect in rects {
-            if rect.hi.x <= lo.x || rect.lo.x >= hi.x || rect.hi.y <= lo.y || rect.lo.y >= hi.y {
-                continue;
-            }
-            let poly = clip_triangle(pts, rect.lo, rect.hi);
-            if poly.len() < 3 {
-                continue;
-            }
-            let base = out.len() as u32;
-            out.extend(poly.iter().map(|w| {
-                let uv = rect.uv.map(|(o, x, y)| {
-                    let p = pts[0] * w.x + pts[1] * w.y + pts[2] * w.z - o;
-                    Vec2::new(p.dot(x), p.dot(y))
-                });
-                (tri, *w, uv)
-            }));
-            for k in 1..poly.len() as u32 - 1 {
-                tris.push([base, base + k, base + k + 1]);
-            }
-        }
-    }
-    let mut clipped = Mesh::new(mesh.primitive_topology(), mesh.asset_usage);
-    for (attribute, values) in mesh.try_attributes().ok()? {
-        let mix = |get: &dyn Fn(usize) -> Vec4| -> Vec<Vec4> {
-            out.iter()
-                .map(|(t, w, _)| get(t[0] as usize) * w.x + get(t[1] as usize) * w.y + get(t[2] as usize) * w.z)
-                .collect()
-        };
-        let values: VertexAttributeValues = match values {
-            VertexAttributeValues::Float32x2(v) => mix(&|i| Vec2::from(v[i]).extend(0.0).extend(0.0))
-                .into_iter()
-                .map(|x| [x.x, x.y])
-                .collect::<Vec<_>>()
-                .into(),
-            VertexAttributeValues::Float32x3(v) => mix(&|i| Vec3::from(v[i]).extend(0.0))
-                .into_iter()
-                .map(|x| [x.x, x.y, x.z])
-                .collect::<Vec<_>>()
-                .into(),
-            VertexAttributeValues::Float32x4(v) => mix(&|i| Vec4::from(v[i]))
-                .into_iter()
-                .map(|x| x.to_array())
-                .collect::<Vec<_>>()
-                .into(),
-            _ => continue,
-        };
-        clipped.insert_attribute(attribute.clone(), values);
-    }
-    if out.iter().any(|(_, _, uv)| uv.is_some()) {
-        let uvs: Vec<[f32; 2]> = out.iter().map(|(_, _, uv)| uv.unwrap_or_default().to_array()).collect();
-        clipped.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    }
-    clipped.insert_indices(Indices::U32(tris.into_iter().flatten().collect()));
-    Some(clipped)
-}
-
-/// A triangle (2D points) clipped to a rectangle: the polygon's corners as
-/// barycentric weights over the triangle.
-fn clip_triangle(pts: [Vec2; 3], lo: Vec2, hi: Vec2) -> Vec<Vec3> {
-    let mut poly: Vec<Vec3> = vec![Vec3::X, Vec3::Y, Vec3::Z];
-    let at = |w: Vec3| pts[0] * w.x + pts[1] * w.y + pts[2] * w.z;
-    // Half-planes: (axis, bound, keep below?).
-    for (axis, bound, below) in [(0, lo.x, false), (0, hi.x, true), (1, lo.y, false), (1, hi.y, true)] {
-        let inside = |w: Vec3| {
-            let v = at(w)[axis];
-            if below { v <= bound + 1e-5 } else { v >= bound - 1e-5 }
-        };
-        let mut next = Vec::with_capacity(poly.len() + 2);
-        for i in 0..poly.len() {
-            let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
-            let (ia, ib) = (inside(a), inside(b));
-            if ia {
-                next.push(a);
-            }
-            if ia != ib {
-                let (va, vb) = (at(a)[axis], at(b)[axis]);
-                let t = ((bound - va) / (vb - va)).clamp(0.0, 1.0);
-                next.push(a + (b - a) * t);
-            }
-        }
-        poly = next;
-        if poly.len() < 3 {
-            return Vec::new();
-        }
-    }
-    poly
 }
 
 // ---------------------------------------------------------------- gibs
 
-/// Gib models ready to draw, and how they move.
+/// Gib models and how they move (`crate::render::breakables` draws them).
 #[derive(Resource)]
 pub(crate) struct GibAssets {
     sets: Vec<(String, Vec<GibModel>)>,
-    physics: MapGibPhysics,
-    light_scale: f32,
+    pub(crate) physics: MapGibPhysics,
+    pub(crate) light_scale: f32,
 }
 
-/// A gib model's meshes (none headless), each skin family's materials
-/// for them when it has several, its bounds' centre, its smallest half
-/// size (model space), and the body a prop's piece gets: its collider
-/// about the centre, mass (kg), damping and surface.
+/// A gib model's bounds' centre, its smallest half size (model space),
+/// and the body a prop's piece gets: its collider about the centre, mass
+/// (kg), damping and surface.
 struct GibModel {
-    parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
-    skins: Vec<Vec<Handle<PropMaterial>>>,
     centre: Vec3,
     radius: f32,
     body: GibBody,
@@ -815,13 +533,8 @@ fn gib_body(model: &MapModel) -> GibBody {
     }
 }
 
-/// Gib models, and their meshes when rendering (`render`).
-pub(crate) fn build_assets(
-    data: &MapData,
-    textures: &[Handle<Image>],
-    view: MapDebugView,
-    mut render: Option<(&mut Assets<Mesh>, &mut Assets<PropMaterial>)>,
-) -> Option<GibAssets> {
+/// Gib models (`MapData::gibs`): how each is placed and its body.
+pub(crate) fn build_assets(data: &MapData) -> Option<GibAssets> {
     if data.gibs.is_empty() {
         return None;
     }
@@ -833,42 +546,8 @@ pub(crate) fn build_assets(
                 .models
                 .iter()
                 .map(|model| {
-                    let parts = match render.as_mut() {
-                        Some((meshes, materials)) => model
-                            .meshes
-                            .iter()
-                            .map(|m| {
-                                let mut material = super::lit_prop_material(m, textures, data, view, false);
-                                material.params.dynamic = 0.0;
-                                (meshes.add(super::build_mesh(m, false)), materials.add(material))
-                            })
-                            .collect(),
-                        None => Vec::new(),
-                    };
-                    let skins = match render.as_mut() {
-                        Some((_, materials)) => model
-                            .skins
-                            .iter()
-                            .map(|looks| {
-                                model
-                                    .meshes
-                                    .iter()
-                                    .zip(looks)
-                                    .map(|(m, look)| {
-                                        let mut material =
-                                            super::lit_prop_material(&look.apply(m), textures, data, view, false);
-                                        material.params.dynamic = 0.0;
-                                        materials.add(material)
-                                    })
-                                    .collect()
-                            })
-                            .collect(),
-                        None => Vec::new(),
-                    };
                     let (lo, hi) = model.bounds;
                     GibModel {
-                        parts,
-                        skins,
                         centre: (lo + hi) / 2.0,
                         radius: ((hi - lo) / 2.0).min_element().max(0.0),
                         body: gib_body(model),
@@ -893,18 +572,32 @@ pub struct PieceBody;
 /// A flying (or resting) gib.
 #[derive(Component)]
 pub(crate) struct FlyingGib {
-    state: GibState,
-    life: f32,
-    glass: bool,
+    pub(crate) state: GibState,
+    pub(crate) life: f32,
+    pub(crate) glass: bool,
     /// Falls at the prop pieces' gravity.
     prop: bool,
     /// Kept this far off what it bounces on (its smallest half size).
     radius: f32,
     /// A physics body moves it (a prop's piece), not `state`.
     body: bool,
-    materials: Vec<Handle<PropMaterial>>,
     /// The sound entry it makes when it bounces.
     bounce: Option<String>,
+}
+
+/// What a gib looks like, for `crate::render::breakables` to draw (none
+/// is drawn without it): model `model` of gib list `set` (indices in
+/// `MapData::gibs`) in skin family `skin` (one its model lacks shows skin
+/// 0), its origin `offset` from the gib's centre, glass (translucent),
+/// faded out between `fade` distances from the view (meters).
+#[derive(Component, Clone, Debug, PartialEq)]
+pub struct GibLook {
+    pub set: usize,
+    pub model: usize,
+    pub skin: i32,
+    pub glass: bool,
+    pub offset: Vec3,
+    pub fade: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -983,13 +676,11 @@ pub fn gib_alpha(age: f32, life: f32, fade: f32) -> Option<f32> {
     (a > 0.0).then_some(a)
 }
 
-/// Spawn thrown gibs (at most `MAX_GIBS` alive).
-#[allow(clippy::too_many_arguments)]
+/// Spawn thrown gibs (at most `MAX_GIBS` alive), each with its look
+/// (`GibLook`) for render to draw.
 pub(crate) fn spawn_gibs(
     mut events: MessageReader<SpawnGibs>,
     assets: Option<Res<GibAssets>>,
-    light_field: Option<Res<LightField>>,
-    mut materials: Option<ResMut<Assets<PropMaterial>>>,
     alive: Query<(), With<FlyingGib>>,
     gravity: Option<Res<Gravity>>,
     mut dice: Local<u32>,
@@ -1008,7 +699,12 @@ pub(crate) fn spawn_gibs(
     };
     let mut count = alive.iter().count();
     for ev in events.read() {
-        let Some((_, models)) = assets.sets.iter().find(|(n, _)| n.eq_ignore_ascii_case(&ev.set)) else {
+        let Some((set, (_, models))) = assets
+            .sets
+            .iter()
+            .enumerate()
+            .find(|(_, (n, _))| n.eq_ignore_ascii_case(&ev.set))
+        else {
             continue;
         };
         if models.is_empty() {
@@ -1020,8 +716,8 @@ pub(crate) fn spawn_gibs(
             }
             count += 1;
             *dice = dice.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            let model = &models[piece.model.map_or((*dice >> 8) as usize, |m| m.min(models.len() - 1)) % models.len()];
-            let parts = &model.parts;
+            let index = piece.model.map_or((*dice >> 8) as usize, |m| m.min(models.len() - 1)) % models.len();
+            let model = &models[index];
             // Where it's lit and starts: its centre.
             let (rotation, centre) = match piece.rotation {
                 Some(r) => (r, piece.position + r * model.centre),
@@ -1035,27 +731,6 @@ pub(crate) fn spawn_gibs(
             } else {
                 Vec3::ZERO
             };
-            let mut own = Vec::with_capacity(parts.len());
-            // Its skin's materials (a skin it lacks shows skin 0).
-            let skin = usize::try_from(piece.skin).ok().and_then(|s| model.skins.get(s));
-            if let Some(materials) = materials.as_mut() {
-                let probe = light_field.as_ref().map(|f| (f.0.0)(centre));
-                for (i, (_, m)) in parts.iter().enumerate() {
-                    let m = skin.and_then(|s| s.get(i)).unwrap_or(m);
-                    let Some(mut material) = materials.get(m).cloned() else {
-                        continue;
-                    };
-                    if let Some(probe) = &probe {
-                        material.params.set_probe(probe, assets.light_scale);
-                    }
-                    if ev.glass {
-                        material.alpha_mode = AlphaMode::Blend;
-                        material.params.translucent = 1.0;
-                        material.params.base_color.w = assets.physics.glass_alpha;
-                    }
-                    own.push(materials.add(material));
-                }
-            }
             let state = GibState {
                 position: centre,
                 velocity: piece.velocity,
@@ -1079,8 +754,15 @@ pub(crate) fn spawn_gibs(
                     prop: ev.prop,
                     radius: if ev.prop { model.radius } else { 0.0 },
                     body,
-                    materials: own.clone(),
                     bounce: ev.bounce.clone(),
+                },
+                GibLook {
+                    set,
+                    model: index,
+                    skin: piece.skin,
+                    glass: ev.glass,
+                    offset,
+                    fade: piece.fade_dist,
                 },
                 Transform::from_translation(centre).with_rotation(rotation),
                 Visibility::default(),
@@ -1117,25 +799,6 @@ pub(crate) fn spawn_gibs(
                     MaxAngularSpeed(3600f32.to_radians()),
                 ));
             }
-            // Fade distances from the break block (a band dithers out;
-            // equal ones pop).
-            let range = piece.fade_dist.map(|(near, far)| {
-                super::vis::fade_band(near, far)
-                    .unwrap_or_else(|| bevy::camera::visibility::VisibilityRange::abrupt(0.0, far))
-            });
-            gib.with_children(|g| {
-                for ((mesh, _), material) in parts.iter().zip(own) {
-                    let mut c = g.spawn((
-                        Mesh3d(mesh.clone()),
-                        MeshMaterial3d(material),
-                        Transform::from_translation(offset),
-                        bevy::light::NotShadowCaster,
-                    ));
-                    if let Some(range) = &range {
-                        c.insert(range.clone());
-                    }
-                }
-            });
         }
     }
 }
@@ -1213,7 +876,6 @@ pub(crate) fn fly_gibs(
     spatial: SpatialQuery,
     characters: Query<Entity, With<crate::core::Intent>>,
     mut gibs: Query<(Entity, &mut FlyingGib, &mut Transform)>,
-    mut materials: Option<ResMut<Assets<PropMaterial>>>,
     mut play: MessageWriter<super::sound::PlaySound>,
     mut dice: Local<u32>,
     mut commands: Commands,
@@ -1232,9 +894,7 @@ pub(crate) fn fly_gibs(
             gib.state.age += dt;
             if gib_alpha(gib.state.age, gib.life, p.fade).is_none() {
                 commands.entity(e).try_despawn();
-                continue;
             }
-            fade(&gib, p, materials.as_deref_mut());
             continue;
         }
         let bounce = if gib.glass { p.glass_bounce } else { p.bounce };
@@ -1264,32 +924,13 @@ pub(crate) fn fly_gibs(
             sound.pitch = Some(pitch);
             play.write(sound);
         }
-        let Some(alpha) = gib_alpha(gib.state.age, gib.life, p.fade) else {
+        if gib_alpha(gib.state.age, gib.life, p.fade).is_none() {
             commands.entity(e).try_despawn();
             continue;
-        };
-        if alpha < 1.0 {
-            fade(&gib, p, materials.as_deref_mut());
         }
         if transform.translation != gib.state.position || transform.rotation != gib.state.rotation {
             transform.translation = gib.state.position;
             transform.rotation = gib.state.rotation;
-        }
-    }
-}
-
-/// A fading gib's materials take its opacity.
-fn fade(gib: &FlyingGib, p: MapGibPhysics, materials: Option<&mut Assets<PropMaterial>>) {
-    let Some(alpha) = gib_alpha(gib.state.age, gib.life, p.fade).filter(|a| *a < 1.0) else {
-        return;
-    };
-    let Some(materials) = materials else { return };
-    let base = if gib.glass { p.glass_alpha } else { 1.0 };
-    for m in &gib.materials {
-        if let Some(mut material) = materials.get_mut(m) {
-            material.alpha_mode = AlphaMode::Blend;
-            material.params.translucent = 1.0;
-            material.params.base_color.w = alpha * base;
         }
     }
 }
@@ -1320,45 +961,18 @@ pub(crate) fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
     }
 }
 
-/// A window node back to its whole brush.
+/// A window node back to its whole brush (`crate::render::breakables`
+/// draws its meshes whole again).
 fn make_whole(world: &mut World, node: Entity, index: usize) {
     let collider = world
         .get_resource::<super::MapEntities>()
         .and_then(|m| Some(super::entities::brush_collider(m.entities.get(index)?, m.scale)))
         .flatten();
-    let children: Vec<Entity> = world
-        .get::<Children>(node)
-        .map(|c| c.iter().collect())
-        .unwrap_or_default();
     let mut e = world.entity_mut(node);
     e.remove::<(BrushPanes, ColliderDisabled)>();
     e.insert(CollisionLayers::default());
     if let Some(c) = collider {
         e.insert(c);
-    }
-    for child in children {
-        let Some(source) = world.get::<PaneSource>(child).map(|s| s.0.clone()) else {
-            continue;
-        };
-        // The face as placed again, its broken looks hidden.
-        let want = if world.get::<PanePart>(child).is_some() {
-            Visibility::Hidden
-        } else {
-            Visibility::Inherited
-        };
-        if let Some(mut v) = world.get_mut::<Visibility>(child) {
-            v.set_if_neq(want);
-        }
-        let old = world.get::<Mesh3d>(child).map(|m| m.0.clone());
-        world
-            .entity_mut(child)
-            .insert(Mesh3d(source.clone()))
-            .remove::<PaneSource>();
-        if let (Some(old), Some(mut meshes)) = (old, world.get_resource_mut::<Assets<Mesh>>())
-            && old != source
-        {
-            meshes.remove(&old);
-        }
     }
 }
 
@@ -1385,47 +999,6 @@ mod tests {
             rows,
             broken: vec![false; cols * rows],
         }
-    }
-
-    #[test]
-    fn clipping_keeps_only_unbroken_panes() {
-        // A 2x1 quad over two panes; break the right one.
-        let mut mesh = Mesh::new(
-            bevy::mesh::PrimitiveTopology::TriangleList,
-            bevy::asset::RenderAssetUsages::default(),
-        );
-        mesh.insert_attribute(
-            Mesh::ATTRIBUTE_POSITION,
-            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
-        );
-        mesh.insert_attribute(
-            Mesh::ATTRIBUTE_UV_0,
-            vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
-        );
-        mesh.insert_indices(Indices::U32(vec![0, 1, 2, 0, 2, 3]));
-        let mut p = panes(2, 1);
-        let whole = clip_to_panes(&mesh, &p).unwrap();
-        let area = |m: &Mesh| {
-            let Some(VertexAttributeValues::Float32x3(pos)) = m.attribute(Mesh::ATTRIBUTE_POSITION) else {
-                panic!()
-            };
-            let idx: Vec<usize> = m.indices().unwrap().iter().collect();
-            idx.chunks(3)
-                .map(|t| {
-                    let [a, b, c] = [t[0], t[1], t[2]].map(|i| Vec3::from(pos[i]));
-                    (b - a).cross(c - a).length() / 2.0
-                })
-                .sum::<f32>()
-        };
-        assert!((area(&whole) - 2.0).abs() < 1e-4);
-        p.broken[1] = true;
-        let half = clip_to_panes(&mesh, &p).unwrap();
-        assert!((area(&half) - 1.0).abs() < 1e-4, "{}", area(&half));
-        // UVs follow: nothing past u = 0.5 is left.
-        let Some(VertexAttributeValues::Float32x2(uv)) = half.attribute(Mesh::ATTRIBUTE_UV_0) else {
-            panic!()
-        };
-        assert!(uv.iter().all(|u| u[0] <= 0.5 + 1e-5));
     }
 
     #[test]
