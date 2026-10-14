@@ -26,8 +26,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // in the simulation may use it.
     ("audio", &["core", "map"]),
     // Rendering: draws what the map spawns and simulates (the drawn phases
-    // of spawning a map, through `map::MapDrawer`, and the first drawing
-    // modules); nothing in the simulation may use it.
+    // of spawning a map, through `map::MapDrawer`, effects, culling, water,
+    // shadows, sky, view models); nothing in the simulation may use it, nor
+    // the drawing modules still in map (`MAP_DRAWING`).
     ("render", &["core", "map"]),
     // Builds `map::MapPlugin` from the map and its presentation (`audio`,
     // `render`), its systems in `core`'s sets.
@@ -333,6 +334,118 @@ fn module_layering() {
                  Move the shared piece down a layer or invert the dependency (e.g. register through `slots`); \
                  see docs/ARCHITECTURE.md.",
                 file.display()
+            ));
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
+/// Drawing modules still in `map` (materials and their shaders), on their
+/// way to `render` (docs/plans/active/engine-split.md, the render slice).
+const MAP_DRAWING: &[&str] = &[
+    "world_material",
+    "prop_material",
+    "sprite_material",
+    "rope_material",
+    "probe_lit",
+];
+
+/// Files of the simulation's layers that still name one of `MAP_DRAWING`
+/// (file, module, why).
+const MAP_DRAWING_EXCEPTIONS: &[(&str, &str, &str)] = &[
+    // TODO(engine-split): `SpriteBlend` is sprite data; it moves to
+    // `map::data` when the sprite material moves to render.
+    (
+        "src/games/cs_source/sprites.rs",
+        "sprite_material",
+        "`SpriteBlend` in `MapSprite`",
+    ),
+];
+
+/// The simulation's layers (and a game's parts outside its `ui/`) name no
+/// drawing module left in `map` (`MAP_DRAWING`), so those can move to
+/// `render` and a dedicated server can leave them out.
+#[test]
+fn simulation_uses_no_drawing_module_of_map() {
+    const SIM: &[&str] = &[
+        "logic",
+        "net",
+        "weapon",
+        "rules",
+        "objectives",
+        "bot",
+        "movement",
+        "games",
+    ];
+    let src = root().join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut errors = Vec::new();
+    let mut used_exceptions = BTreeSet::new();
+    for file in files {
+        let Some(module) = module_of(&src, &file) else { continue };
+        if !SIM.contains(&module.as_str()) {
+            continue;
+        }
+        let rel = file.strip_prefix(root()).unwrap().to_string_lossy().replace('\\', "/");
+        let code = fs::read_to_string(&file)
+            .unwrap()
+            .lines()
+            .map(|l| l.split("//").next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join(" ");
+        // `map::m` directly, or `m` inside a `map::{...}` group.
+        let mut named = Vec::new();
+        for m in MAP_DRAWING {
+            if code.contains(&format!("map::{m}")) {
+                named.push(*m);
+            }
+        }
+        for (i, _) in code.match_indices("map::{") {
+            let mut depth = 0;
+            let mut end = code.len();
+            for (j, c) in code[i + 5..].char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = i + 5 + j;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let group = &code[i..end];
+            for m in MAP_DRAWING {
+                if group
+                    .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    .any(|w| w == *m)
+                {
+                    named.push(*m);
+                }
+            }
+        }
+        named.sort_unstable();
+        named.dedup();
+        for m in named {
+            if MAP_DRAWING_EXCEPTIONS.iter().any(|(f, e, _)| *f == rel && *e == m) {
+                used_exceptions.insert((rel.clone(), m));
+                continue;
+            }
+            errors.push(format!(
+                "{rel}: the simulation layer `{module}` uses `map::{m}`, a drawing module on its way to \
+                 `render` (docs/plans/active/engine-split.md). Keep the data it needs in `map` (e.g. \
+                 `map::data`) and the drawing in `render`, or (with a TODO) list the file in \
+                 MAP_DRAWING_EXCEPTIONS in tests/it/architecture.rs."
+            ));
+        }
+    }
+    for (f, m, _) in MAP_DRAWING_EXCEPTIONS {
+        if !used_exceptions.contains(&(f.to_string(), *m)) {
+            errors.push(format!(
+                "MAP_DRAWING_EXCEPTIONS lists {f} for `map::{m}`, which it no longer uses: remove the entry."
             ));
         }
     }

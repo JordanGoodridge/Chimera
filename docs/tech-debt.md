@@ -35,7 +35,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - weapon: Penetration: fixed player budget cost and unmeasured material factors (`src/weapon/mod.rs`)
 - weapon, games/cs_source: Grenades follow the SDK template where CS:S is unmeasured (spec open questions) (`src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`src/bot/mod.rs`)
-- map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`src/map/view_model.rs`)
+- map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`src/render/view_model.rs`)
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.

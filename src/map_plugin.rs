@@ -180,20 +180,20 @@ fn build_rest(app: &mut App) {
                     loose::attach_shown,
                 )
                     .run_if(resource_exists::<CharacterBodies>),
-                (view_model::draw_view_models, view_model::view_model_screens)
+                (render::view_model::draw_view_models, render::view_model::view_model_screens)
                     .chain()
                     .after(DriveAnimation)
-                    .run_if(resource_exists::<view_model::ViewModelAssets>),
+                    .run_if(resource_exists::<render::view_model::ViewModelAssets>),
                 (
-                    view_model::muzzle_flashes,
-                    view_model::size_flash_sprites,
-                    view_model::age_effects,
+                    render::view_model::muzzle_flashes,
+                    render::view_model::size_flash_sprites,
+                    render::view_model::age_effects,
                     render::shells::eject,
                     render::shells::fly,
                 )
                     .chain()
                     .after(DriveAnimation)
-                    .after(view_model::draw_view_models),
+                    .after(render::view_model::draw_view_models),
             ),
         )
         .add_systems(

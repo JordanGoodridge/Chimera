@@ -13,6 +13,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 use crate::map::*;
 use super::{
     dust, emitters, light_styles, monitor, shadows,
+    view_model::{build_assets as build_view_models, build_flash_assets},
     sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},
     steam, water,
 };
@@ -377,7 +378,7 @@ fn build_character_assets(
     }
     commands.insert_resource(HeldAssets(held));
     if let Some(prop_materials) = prop_materials.as_mut() {
-        commands.insert_resource(view_model::build_assets(
+        commands.insert_resource(build_view_models(
             data,
             textures,
             cubemaps,
@@ -387,7 +388,7 @@ fn build_character_assets(
             bindposes,
         ));
     }
-    if let Some(flash) = view_model::build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut()) {
+    if let Some(flash) = build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut()) {
         commands.insert_resource(flash);
     }
     if let Some(prop_materials) = prop_materials.as_mut()

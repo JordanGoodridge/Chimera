@@ -316,7 +316,6 @@ pub fn unload_map(world: &mut World) {
     if let Some(mut p) = world.get_resource_mut::<particles::Particles>() {
         p.groups.clear();
     }
-    view_model::unload(world);
     breakables::unload(world);
     world.remove_resource::<breakables::PropBreaks>();
     let bodies: Vec<Entity> = world

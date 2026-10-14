@@ -42,7 +42,7 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   including view punch; written as the local player's
   `map::ViewModelOffset` (camera space), which the drawing mirrors with
   the model.
-- **Drawing** (`map/view_model.rs`, render only): the client marks its
+- **Drawing** (`render/view_model.rs`, render only): the client marks its
   first-person camera with `ViewModelAnchor`; the map adds a child camera
   on its own render layer (`VIEW_MODEL_LAYER`), drawn after the world with
   its own depth buffer (so the model never clips into walls) and its own

@@ -141,7 +141,7 @@ that the paths exist).
 - `src/map/bodies.rs`: character bodies, held models, hitboxes (map)
 - `src/map/props.rs`: placed props after spawning: looks, sequences (map)
 - `src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
-- `src/map/view_model.rs`: first-person view models (map)
+- `src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
 - `src/map/ragdoll.rs`: ragdolls on character models (map)
 - `src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
 - `src/map/loose.rs`: loose items: dropped weapons, shown items, resting on the ground (map)
@@ -197,6 +197,7 @@ that the paths exist).
 - `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 - `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
 - `src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
+- `src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
 - `src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
 - `src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
 
