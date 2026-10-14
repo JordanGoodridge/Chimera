@@ -1384,7 +1384,7 @@ fn think(
                 // Recoil control: aimed so the bullets (eye angles plus
                 // the weapon's share of the punch) stay on the target,
                 // pulling down against the kick.
-                let kick = punch.map_or(Vec2::ZERO, |p| p.0) * punch_scale * cfg.recoil_control;
+                let kick = punch.map_or(Vec2::ZERO, |p| p.0.truncate()) * punch_scale * cfg.recoil_control;
                 let want_yaw = (-to.x).atan2(-to.z) + bot.wobble.0.x - kick.y;
                 let want_pitch = to.y.atan2(to.xz().length()) + bot.wobble.0.y - kick.x;
                 let step = cfg.turn_rate.to_radians() * dt;

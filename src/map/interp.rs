@@ -132,9 +132,9 @@ pub struct EyeView {
     /// Look angles (`Intent`), radians.
     pub yaw: f32,
     pub pitch: f32,
-    /// Recoil on the view (`weapon::ViewPunch`), radians; the client
-    /// fills it in.
-    pub punch: Vec2,
+    /// Recoil and flinch on the view (`weapon::ViewPunch`: pitch, yaw,
+    /// roll), radians; the client fills it in.
+    pub punch: Vec3,
 }
 
 impl EyeView {
@@ -144,7 +144,7 @@ impl EyeView {
             view_roll: state.view_roll,
             yaw: intent.yaw,
             pitch: intent.pitch,
-            punch: Vec2::ZERO,
+            punch: Vec3::ZERO,
         }
     }
 

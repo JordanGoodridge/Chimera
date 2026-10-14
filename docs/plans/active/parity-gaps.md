@@ -24,7 +24,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 
 | Area | have | differs | missing | fixed now |
 |---|---|---|---|---|
-| Movement | 2 | 7 | 2 | 0 |
+| Movement | 3 | 8 | 0 | 2 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
 | Sounds | 6 | 7 | 5 | 3 |
 | HUD | 14 | 4 | 1 | 5 |
@@ -95,8 +95,8 @@ report folders):
 | Ground, air, duck, jump, bhop cap, stamina, ladders, water | have | | | movecmp to 0.002 units (OBSERVABILITY, movecmp) |
 | Fall damage and landing roll | have | | | specs/cs_source/fall_damage.md |
 | Surf ramps | differs | L | | tech-debt "cs_source movement": the rampbug patched out (our choice) |
-| Slowdown when shot ("tagging") | missing | H | S | CS:S slows a player hit by a bullet for a moment; not in any spec. Capture C1 |
-| View punch when hit (flinch) | missing | H | S | CS:S kicks the victim's view on damage; our punch is the landing roll only (tech-debt "Source movement"). Capture C1 |
+| Slowdown when shot ("tagging") | have | | | Fixed 2026-10-14: weapons.md M18 (0.5/0.65 by gun, legs 0.5, +1/3 a second); the speed trace to 0.05 (`games/cs_source/hit_reaction.rs`) |
+| View punch when hit (flinch) | differs | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4); a helmeted head's is unmeasured (none, ours). Capture C1 |
 | Scoped speeds (AWP, Scout, autos zoomed) | differs | M | S | spec movement.md Q1 |
 | Duck spam limit, duck transition times | differs | M | S | spec movement.md Q6 |
 | Backpedal speed (`sv_backspeed`) | differs | L | S | spec movement.md Q10 |
@@ -460,6 +460,9 @@ says what decides the open point.
   each hit. Decides: the speed factor and its recovery, and the punch
   (pitch/yaw, size, decay) by hitgroup and weapon.
   Done 2026-10-14: specs/cs_source/weapons.md "M18 Being hit".
+  Still open: a helmeted head hit's punch (we give none), whether the
+  flinch replaces or adds to recoil punch already on the view, and a
+  shotgun's flinch (one pellet's damage or all of them).
 - **C2 Pickup and buy sounds.** `sv_soundemitter_trace 1` on the
   listen server: buy an AK-47, kevlar, kevlar+helmet, a defuse kit, an
   HE grenade and ammo; drop the AK and walk over it; touch a dropped AK

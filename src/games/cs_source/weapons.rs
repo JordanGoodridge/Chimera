@@ -4,7 +4,8 @@
 //! CS:S's feel that doesn't decompose into parts lives here as components:
 //! `Inaccuracy` (the accuracy penalty) and `Recoil` (view punch per shot).
 //! Bullet penetration is the shared `Penetration` part with CS:S's numbers
-//! (`PASS_MATERIALS`, measured M13).
+//! (`PASS_MATERIALS`, measured M13). Each gun's hit slowdown (`Gun::
+//! hit_slowdown`, measured M18) goes on it as `hit_reaction::HitSlowdown`.
 //!
 //! Guns are rows of script values (`Gun`, one const per weapon; each field
 //! names its script key) built by `gun`. The scripts are encrypted; the
@@ -307,6 +308,7 @@ impl Plugin for CsWeaponsPlugin {
                 super::impacts::ImpactSoundsPlugin,
                 super::impact_effects::ImpactEffectsPlugin,
                 super::grenades::GrenadesPlugin,
+                super::hit_reaction::HitReactionPlugin,
                 super::fire::FirePlugin,
                 super::objectives::CsObjectivesPlugin,
                 // A network server's per-tick body animation, for hitboxes.
@@ -827,6 +829,9 @@ pub struct Gun {
     pub pellets: u32,
     /// `WeaponArmorRatio`.
     pub armor_ratio: f32,
+    /// The speed modifier a hit from it sets on the victim, but in the
+    /// legs (`LEG_HIT_SLOWDOWN`): measured M18, by weapon class.
+    pub hit_slowdown: f32,
     pub accuracy: AccuracyKeys,
     /// The `*Alt` keys, used in the alternate mode.
     pub accuracy_alt: Option<AccuracyKeys>,
@@ -876,6 +881,14 @@ impl ModelSounds {
             .chain(self.modes.iter().map(|(_, _, s)| *s))
     }
 }
+
+/// The victim's speed modifier after a hit (measured M18): rifles,
+/// snipers and shotguns 0.65; pistols, SMGs and the M249 0.5 (the G3SG1
+/// and SG550 were seen hitting legs only: assumed 0.65 like the other
+/// snipers); a leg hit 0.5 from any gun.
+const HIT_SLOWDOWN_HEAVY: f32 = 0.65;
+const HIT_SLOWDOWN_LIGHT: f32 = 0.5;
+const LEG_HIT_SLOWDOWN: f32 = 0.5;
 
 /// No cap on the punch was seen for the semi-automatics (UNMEASURED).
 const NO_CAP: f32 = 90.0;
@@ -933,6 +946,7 @@ pub const AK47_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.55,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0006, 0.00687, 0.00916, 0.43044, 0.08609, 0.01158, 0.09222]),
     accuracy_alt: None,
     recovery: (0.34868, 0.48815),
@@ -968,6 +982,7 @@ pub const M4A1_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.4,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0006, 0.00525, 0.007, 0.34151, 0.0683, 0.01266, 0.06872]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.00054, 0.00525, 0.007, 0.34846, 0.06969, 0.01165, 0.07039,
@@ -999,6 +1014,7 @@ pub const AWP_GUN: Gun = Gun {
     penetration: 3,
     pellets: 1,
     armor_ratio: 1.95,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0002, 0.0606, 0.0808, 0.546, 0.0546, 0.14, 0.273]),
     accuracy_alt: Some(AccuracyKeys::new([0.0002, 0.0015, 0.002, 0.546, 0.0546, 0.14, 0.273])),
     recovery: (0.24671, 0.34539),
@@ -1034,6 +1050,7 @@ pub const USP_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.0,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.004, 0.006, 0.008, 0.28725, 0.05745, 0.03495, 0.01724]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.003, 0.006, 0.008, 0.29625, 0.05925, 0.02504, 0.01778,
@@ -1065,6 +1082,7 @@ pub const GLOCK_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.05,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.004, 0.0075, 0.01, 0.2775, 0.0555, 0.03167, 0.01665]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.004, 0.0075, 0.01, 0.2775, 0.0555, 0.02217, 0.01665,
@@ -1102,6 +1120,7 @@ pub const DEAGLE_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.5,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.004, 0.00975, 0.013, 0.345, 0.069, 0.055, 0.0207]),
     accuracy_alt: None,
     recovery: (0.32236, 0.38683),
@@ -1131,6 +1150,7 @@ pub const FAMAS_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.4,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0006, 0.00412, 0.00549, 0.36527, 0.07305, 0.01186, 0.0698]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.0006, 0.00412, 0.00549, 0.36527, 0.07305, 0.00593, 0.0698,
@@ -1167,6 +1187,7 @@ pub const GALIL_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.55,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0006, 0.00939, 0.01253, 0.45434, 0.09087, 0.00984, 0.10561]),
     accuracy_alt: None,
     recovery: (0.35197, 0.49275),
@@ -1197,6 +1218,7 @@ pub const AUG_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.4,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0006, 0.00412, 0.00549, 0.36936, 0.07387, 0.0109, 0.07268]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.0006, 0.00288, 0.00385, 0.36936, 0.07387, 0.0109, 0.07268,
@@ -1235,6 +1257,7 @@ pub const SG552_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.4,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0006, 0.00405, 0.0054, 0.33464, 0.06693, 0.01227, 0.06132]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.0006, 0.00284, 0.00378, 0.33464, 0.06693, 0.00859, 0.06132,
@@ -1273,6 +1296,7 @@ pub const SCOUT_GUN: Gun = Gun {
     penetration: 3,
     pellets: 1,
     armor_ratio: 1.7,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0003, 0.02378, 0.0317, 0.38195, 0.03819, 0.06667, 0.19097]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.0003, 0.003, 0.004, 0.38195, 0.03819, 0.06667, 0.19097,
@@ -1311,6 +1335,7 @@ pub const SG550_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.45,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0003, 0.01928, 0.0257, 0.43727, 0.04373, 0.03829, 0.21864]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.0003, 0.0015, 0.002, 0.43727, 0.04373, 0.03829, 0.21864,
@@ -1349,6 +1374,7 @@ pub const G3SG1_GUN: Gun = Gun {
     penetration: 3,
     pellets: 1,
     armor_ratio: 1.65,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.0003, 0.01935, 0.0258, 0.46557, 0.04656, 0.04989, 0.23279]),
     accuracy_alt: Some(AccuracyKeys::new([
         0.0003, 0.0015, 0.002, 0.46557, 0.04656, 0.04989, 0.23279,
@@ -1387,6 +1413,7 @@ pub const MAC10_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 0.95,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.001, 0.01425, 0.019, 0.13704, 0.02741, 0.00845, 0.0062]),
     accuracy_alt: None,
     recovery: (0.25263, 0.35368),
@@ -1417,6 +1444,7 @@ pub const TMP_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.0,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.001, 0.015, 0.02, 0.1118, 0.02236, 0.01594, 0.00389]),
     accuracy_alt: None,
     recovery: (0.15131, 0.21184),
@@ -1447,6 +1475,7 @@ pub const MP5NAVY_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.0,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.001, 0.01289, 0.01718, 0.23025, 0.04605, 0.00638, 0.01785]),
     accuracy_alt: None,
     recovery: (0.2796, 0.39144),
@@ -1477,6 +1506,7 @@ pub const UMP45_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.0,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.001, 0.01439, 0.01919, 0.16941, 0.03388, 0.01129, 0.01366]),
     accuracy_alt: None,
     recovery: (0.2171, 0.30394),
@@ -1507,6 +1537,7 @@ pub const P90_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.5,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.001, 0.01463, 0.01951, 0.16494, 0.03299, 0.00732, 0.01062]),
     accuracy_alt: None,
     recovery: (0.23289, 0.32605),
@@ -1537,6 +1568,7 @@ pub const M249_GUN: Gun = Gun {
     penetration: 2,
     pellets: 1,
     armor_ratio: 1.6,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.002, 0.00763, 0.01017, 0.7083, 0.14166, 0.00427, 0.10618]),
     accuracy_alt: None,
     recovery: (0.5592, 0.78288),
@@ -1567,6 +1599,7 @@ pub const P228_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.25,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.004, 0.00825, 0.011, 0.285, 0.057, 0.03318, 0.0171]),
     accuracy_alt: None,
     recovery: (0.23026, 0.27631),
@@ -1597,6 +1630,7 @@ pub const FIVESEVEN_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.5,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.004, 0.006, 0.01, 0.25635, 0.05127, 0.05883, 0.01538]),
     accuracy_alt: None,
     recovery: (0.18628, 0.22353),
@@ -1627,6 +1661,7 @@ pub const ELITE_GUN: Gun = Gun {
     penetration: 1,
     pellets: 1,
     armor_ratio: 1.05,
+    hit_slowdown: HIT_SLOWDOWN_LIGHT,
     accuracy: AccuracyKeys::new([0.004, 0.006, 0.008, 0.29625, 0.05925, 0.03162, 0.01778]),
     accuracy_alt: None,
     recovery: (0.24753, 0.29703),
@@ -1658,6 +1693,7 @@ pub const M3_GUN: Gun = Gun {
     penetration: 1,
     pellets: 9,
     armor_ratio: 1.0,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.04, 0.0075, 0.01, 0.42, 0.084, 0.04164, 0.0432]),
     accuracy_alt: None,
     recovery: (0.29605, 0.41447),
@@ -1688,6 +1724,7 @@ pub const XM1014_GUN: Gun = Gun {
     penetration: 1,
     pellets: 6,
     armor_ratio: 1.0,
+    hit_slowdown: HIT_SLOWDOWN_HEAVY,
     accuracy: AccuracyKeys::new([0.04, 0.0075, 0.01, 0.41176, 0.08235, 0.03644, 0.03544]),
     accuracy_alt: None,
     recovery: (0.32894, 0.46052),
@@ -2054,6 +2091,10 @@ pub fn gun(e: &mut EntityWorldMut, g: &Gun) {
                 .collect(),
         },
     ));
+    e.insert(super::hit_reaction::HitSlowdown {
+        body: g.hit_slowdown,
+        legs: LEG_HIT_SLOWDOWN,
+    });
     if let Some((start, insert)) = g.shells {
         e.insert(ShellReload { start, insert });
     }
@@ -2254,11 +2295,13 @@ const MOVING_SPEED: f32 = 0.1;
 /// holds about 0.45 s, then falls within 0.1 s).
 const SHOTS_RESET: f64 = 0.5;
 
-/// Punch decay per second: |p| -= (10 + 0.5 |p|) degrees/s (M3).
-fn decay_punch(p: Vec2, dt: f32) -> Vec2 {
+/// Punch decay per second: |p| -= (10 + 0.5 |p|) degrees/s (M3), over
+/// all three angles together (M18: a head flinch's (-12, 0, 9) is
+/// (-11.79, 0, 8.8425) a tick later).
+pub fn decay_punch(p: Vec3, dt: f32) -> Vec3 {
     let len = p.length().to_degrees();
     if len <= 0.0 {
-        return Vec2::ZERO;
+        return Vec3::ZERO;
     }
     let next = (len - (10.0 + 0.5 * len) * dt).max(0.0);
     p * (next / len)
@@ -2398,10 +2441,11 @@ fn after_shots(
             let u = dice.next();
             up = (kick.up + (u * (kick.up_max - kick.up + 1.0)).floor()).min(kick.up_max);
         }
-        let old = punch.as_ref().map_or(Vec2::ZERO, |p| p.0);
-        let kicked = Vec2::new(
+        let old = punch.as_ref().map_or(Vec3::ZERO, |p| p.0);
+        let kicked = Vec3::new(
             (old.x + up.to_radians()).min(kick.up_cap.to_radians()),
             (old.y + side.to_radians() * r.direction).clamp(-kick.side_cap.to_radians(), kick.side_cap.to_radians()),
+            old.z,
         );
         match punch {
             Some(mut p) => p.0 = kicked,
@@ -2419,9 +2463,9 @@ mod tests {
     #[test]
     fn punch_decays_linearly_plus_proportionally() {
         // |p| 5 degrees: -(10 + 2.5) x 0.015 = -0.1875 per tick.
-        let p = Vec2::new(5f32.to_radians(), 0.0);
+        let p = Vec3::new(5f32.to_radians(), 0.0, 0.0);
         let next = decay_punch(p, 0.015).x.to_degrees();
         assert!((next - 4.8125).abs() < 1e-4, "{next}");
-        assert_eq!(decay_punch(Vec2::new(0.001, 0.0), 0.015), Vec2::ZERO);
+        assert_eq!(decay_punch(Vec3::new(0.001, 0.0, 0.0), 0.015), Vec3::ZERO);
     }
 }
