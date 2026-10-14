@@ -9,7 +9,7 @@
 
 use bevy::{asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology};
 
-use super::{MapDust, SkyboxCamera};
+use crate::map::{EntityPart, MapDust, SkyboxCamera, ViewModelCamera, monitor, water};
 
 /// All dust shares this many motes at most (the game's particle limit).
 const MAX_MOTES: usize = 2048;
@@ -162,13 +162,13 @@ pub(crate) fn update_dust(
         &GlobalTransform,
         (
             With<Camera3d>,
-            Without<super::monitor::ScreenCamera>,
+            Without<monitor::ScreenCamera>,
             Without<SkyboxCamera>,
-            Without<super::ViewModelCamera>,
-            Without<super::water::WaterReflectionCamera>,
+            Without<ViewModelCamera>,
+            Without<water::WaterReflectionCamera>,
         ),
     >,
-    mut emitters: Query<(&mut DustEmitter, Option<&super::EntityPart>, Option<&Visibility>)>,
+    mut emitters: Query<(&mut DustEmitter, Option<&EntityPart>, Option<&Visibility>)>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let dt = time.delta_secs();

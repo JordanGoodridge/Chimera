@@ -6,13 +6,13 @@
 //!
 //! `SceneFog` holds the current values: the map sets the world part when
 //! it spawns, `water::underwater_fog` the water part as the eye moves.
-//! Materials take it when created and `apply_scene_fog` updates them when
-//! it changes.
+//! Materials take it when created (`crate::render::fog::apply_scene_fog`
+//! would update them when it changes).
 //!
 //! Source's fog shared by map shaders (`mashup::fog::source_fog`): world range
 //! fog (in the 3D skybox the sky_camera's own, `map::material_fog`), the
 //! water's range fog under water and height fog at the surface; `SceneFog` (set
-//! by the map and `water::underwater_fog`) pushed to rope, decal and particle
+//! by the map and `water::underwater_fog`) taken by rope, decal and particle
 //! materials.
 
 use bevy::prelude::*;
@@ -93,50 +93,6 @@ impl Plugin for FogShaderPlugin {
 
     fn is_unique(&self) -> bool {
         false
-    }
-}
-
-/// Put the current fog on rope, decal and particle materials when it
-/// changes.
-pub fn apply_scene_fog(
-    fog: Option<Res<SceneFog>>,
-    ropes: Option<ResMut<Assets<super::rope_material::RopeMaterial>>>,
-    decals: Option<ResMut<Assets<super::decal::DecalMaterial>>>,
-    particles: Option<ResMut<Assets<super::particles::ParticleDrawMaterial>>>,
-) {
-    let Some(fog) = fog.filter(|f| f.is_changed()) else {
-        return;
-    };
-    let f = fog.0;
-    if let Some(mut ropes) = ropes {
-        let ids: Vec<_> = ropes.ids().collect();
-        for id in ids {
-            if ropes.get(id).is_some_and(|m| m.params.fog != f)
-                && let Some(mut m) = ropes.get_mut(id)
-            {
-                m.params.fog = f;
-            }
-        }
-    }
-    if let Some(mut decals) = decals {
-        let ids: Vec<_> = decals.ids().collect();
-        for id in ids {
-            if decals.get(id).is_some_and(|m| m.fog != f)
-                && let Some(mut m) = decals.get_mut(id)
-            {
-                m.fog = f;
-            }
-        }
-    }
-    if let Some(mut particles) = particles {
-        let ids: Vec<_> = particles.ids().collect();
-        for id in ids {
-            if particles.get(id).is_some_and(|m| m.fog != f)
-                && let Some(mut m) = particles.get_mut(id)
-            {
-                m.fog = f;
-            }
-        }
     }
 }
 

@@ -154,6 +154,14 @@ measurements):
       assets, `eject`, `fly` moved), `rope_sway` (`RopeSway`, `spline`
       stay; `Gusts`, `RopeMotion`, `RopeWind`, `sway_ropes` moved),
       `fish` (`Fish` stays; `swim` moved).
+    - [x] `dust` (whole), `steam` (`MapSteam` stays; the headless
+      stand-ins through `MapDrawer::spawn_undrawn`), `switch_parts`
+      (`render::parts`), `tracer` (`Tracer`, `MuzzleCache` stay),
+      `emitters` (the `Map*` data and beam noise stay), `particles`
+      drawing (the pool, its stepping and `ParticleMaterials` stay;
+      `ParticleAssets` inserted at its old place through
+      `MapDrawer::insert_drawn`), `fog::apply_scene_fog` (names the
+      particle material; never scheduled).
     `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`

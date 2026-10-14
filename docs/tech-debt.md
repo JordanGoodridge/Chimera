@@ -25,7 +25,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - client, games/cs_source: CS:S HUD matched to Linux-client captures (substitute fonts); a few sizes differ from them (`src/client/game_hud.rs`)
 - client: Game-look HUD, scoreboard, spectator bars, C4 screen and loading progress: guesses where the layouts stop (`src/client/game_hud.rs`)
 - games/cs_source: Impact effects built from the spec's tables, with listed parts left out or read as the spec reads (`src/games/cs_source/impact_effects.rs`)
-- map: Particles blend in linear space and sort per material mesh (`src/map/particles.rs`)
+- map: Particles blend in linear space and sort per material mesh (`src/render/particles.rs`)
 - weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`src/map/bodies.rs`)
 - map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/map/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
@@ -94,7 +94,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map, sound: Under water (`audio::hearing::UNDERWATER`): a steady low-pass (600 Hz, 0.8) on everything while the eye is in water; Source switches to its `dsp_water` room preset, engine-side and unmeasured. OK for now: Better than no change at all; capture wanted.
 - client: Third-person camera follows at once (no easing) and sweeps a sphere (`src/client/view.rs`)
 - sound: Scrape friction energy is our stand-in for Source's (`src/games/cs_source/scrapes.rs`)
-- map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`src/map/steam.rs`)
+- map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`src/render/steam.rs`)
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
 - map, client: Frame-time shortcuts: unseen bodies posed every 4th frame, padded meshes, lazy prop shadows, single-threaded executors (`src/map/bodies.rs`)
 - map: Maps load synchronously before the app starts. OK for now: dust2 converts in well under a second.
@@ -105,7 +105,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - logic, map: point_template copies are cloned nodes (not replicated); point_viewcontrol simplified (`src/logic/templates.rs`)
 - map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`src/map/placed_ragdoll.rs`)
 - map: Particle system operator meanings are interpretations (`src/render/psys.rs`)
-- map: Smoke stacks (`map::emitters`, specs/source/particles_and_smoke.md 3): env_particlelight isn't read (no map uses one), the JetLength/Speed/Rate/SpreadSpeed inputs are kept as placed, the material's own lighting isn't applied (the colour is rendercolor). OK for now: No map seen changes them.
+- map: Smoke stacks: env_particlelight not read, inputs kept as placed, the material's own lighting not applied (`src/render/emitters.rs`)
 - map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`src/map/buoyancy.rs`)
 - map, logic: Classes from the public entity docs only (func_water_analog, func_tanktrain, monitors, emitters...) (`src/logic/community.rs`)
 - map, logic: Beams: placed ends only, noise and scroll by the spec's quirks, some inputs ignored (`src/render/beams.rs`)

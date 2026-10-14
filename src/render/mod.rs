@@ -13,15 +13,22 @@ use bevy::prelude::*;
 pub mod beams;
 pub mod color_correction;
 pub mod detail;
+pub mod emitters;
+pub mod fog;
+pub mod dust;
 pub mod fish;
 pub mod glow;
 pub mod lod;
+pub mod particles;
+pub mod parts;
 pub mod psys;
 pub mod rope_sway;
 pub mod shells;
 pub mod sky_occluder;
+pub mod steam;
 mod spawn;
 pub mod tint;
+pub mod tracer;
 pub use spawn::{Drawn, MapAssets};
 
 /// What `map::unload_map` removes of render's: its resources and the
@@ -29,5 +36,6 @@ pub use spawn::{Drawn, MapAssets};
 /// `map_plugin`).
 pub(crate) fn unload_map(world: &mut World) {
     world.remove_resource::<psys::ParticleSystemDefs>();
+    world.remove_resource::<particles::ParticleAssets>();
     shells::unload(world);
 }

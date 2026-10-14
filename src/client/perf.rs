@@ -475,7 +475,7 @@ fn count_churn(
     mut props: MessageReader<AssetEvent<crate::map::prop_material::PropMaterial>>,
     mut standard: MessageReader<AssetEvent<StandardMaterial>>,
     mut sprites: MessageReader<AssetEvent<crate::map::sprite_material::SpriteMaterial>>,
-    mut particles: MessageReader<AssetEvent<crate::map::particles::ParticleDrawMaterial>>,
+    mut particles: MessageReader<AssetEvent<crate::render::particles::ParticleDrawMaterial>>,
     mut decals: MessageReader<AssetEvent<crate::map::decal::DecalMaterial>>,
     mut world: MessageReader<AssetEvent<crate::map::world_material::WorldMaterial>>,
 ) {

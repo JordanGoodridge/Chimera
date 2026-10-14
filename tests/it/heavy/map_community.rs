@@ -1104,7 +1104,7 @@ fn gungame_weapons_pick_up_equip_and_strip() {
 /// mg_n64_goldeneye_v2's strike-generator env_beams (visual_entities.md
 /// 4.2): a weapon button's StrikeOnce, 20 s later, strikes all 14 between
 /// their info_targets (the map draws each for its 2 s life:
-/// `map::emitters::StrikeEmitter`) and kills a player on a line (900).
+/// `render::emitters::StrikeEmitter`) and kills a player on a line (900).
 #[test]
 fn strike_beams_strike_and_kill() {
     use bevy::ecs::message::Messages;

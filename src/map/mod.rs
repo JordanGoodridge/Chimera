@@ -50,7 +50,6 @@ pub mod copies;
 pub use breakables::{
     BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, PanePart, SpawnGibs,
 };
-pub(crate) mod dust;
 pub mod hud;
 pub mod interp;
 pub(crate) mod light_styles;
@@ -109,7 +108,7 @@ mod sky;
 pub use sky::*;
 mod spawn;
 use spawn::*;
-pub use spawn::{Draws, MapDrawer, MapSpawn, PropSpawn};
+pub use spawn::{Draws, DrawnResource, MapDrawer, MapSpawn, PropSpawn};
 pub(crate) use spawn::spawn_map;
 pub use view_model::{
     DynamicLight, EffectSettings, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor, ViewModelCamera,
@@ -320,7 +319,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<hud::ActiveHud>();
     world.remove_resource::<hud::ActiveOverview>();
     world.remove_resource::<surface_color::SurfaceColors>();
-    world.remove_resource::<particles::ParticleAssets>();
     world.remove_resource::<particles::ParticleMaterials>();
     world.remove_resource::<ScreenOverlayImages>();
     world.remove_resource::<monitor::MonitorScreen>();

@@ -108,7 +108,7 @@ fn main() {
         mashup::map::shadows::ShadowMaterialPlugin,
         mashup::map::decal::DecalMaterialPlugin,
         mashup::map::water::WaterMaterialPlugin,
-        mashup::map::particles::ParticleMaterialPlugin,
+        mashup::render::particles::ParticleMaterialPlugin,
     ))
     .add_plugins((
         mashup::render::beams::BeamMaterialPlugin,

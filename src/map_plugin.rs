@@ -66,7 +66,7 @@ fn build_rest(app: &mut App) {
         .init_resource::<particles::Particles>()
         .configure_sets(Update, particles::ParticleSet::Step.before(particles::ParticleSet::Draw))
         .init_resource::<tracer::MuzzleCache>()
-        .init_resource::<tracer::PendingTracers>()
+        .init_resource::<render::tracer::PendingTracers>()
         .add_message::<tracer::Tracer>()
         .insert_resource(GlobalAmbientLight {
             brightness: 600.0,
@@ -98,15 +98,15 @@ fn build_rest(app: &mut App) {
         .add_systems(
             Update,
             (
-                switch_parts
+                render::parts::switch_parts
                     .before(render::glow::glow_visibility)
-                    .before(dust::update_dust)
-                    .before(steam::update_steam),
+                    .before(render::dust::update_dust)
+                    .before(render::steam::update_steam),
                 (light_styles::relight, light_styles::animate).chain(),
                 apply_prop_looks,
                 animate_props,
-                render::beams::follow_eye.after(switch_parts).before(render::glow::glow_visibility),
-                render::beams::animate_beams.after(switch_parts),
+                render::beams::follow_eye.after(render::parts::switch_parts).before(render::glow::glow_visibility),
+                render::beams::animate_beams.after(render::parts::switch_parts),
                 render::rope_sway::sway_ropes,
             ),
         )
@@ -131,28 +131,28 @@ fn build_rest(app: &mut App) {
             (
                 attach_sky,
                 render::glow::glow_visibility,
-                dust::update_dust,
-                steam::update_steam,
+                render::dust::update_dust,
+                render::steam::update_steam,
                 (
-                    tracer::draw_tracers,
+                    render::tracer::draw_tracers,
                     particles::step_particles.in_set(particles::ParticleSet::Step),
                     (
-                        emitters::update_trails,
-                        emitters::update_smokestacks,
-                        emitters::update_teslas,
-                        emitters::update_strikes,
+                        render::emitters::update_trails,
+                        render::emitters::update_smokestacks,
+                        render::emitters::update_teslas,
+                        render::emitters::update_strikes,
                         render::color_correction::update,
-                        emitters::update_embers,
-                        emitters::update_muzzle_flashes,
+                        render::emitters::update_embers,
+                        render::emitters::update_muzzle_flashes,
                         render::fish::swim,
                         render::psys::update_systems,
                     )
                         .after(particles::ParticleSet::Step)
                         .before(particles::ParticleSet::Draw),
-                    particles::draw_particles
+                    render::particles::draw_particles
                         .run_if(
                             resource_exists::<Assets<Mesh>>
-                                .and_then(resource_exists::<Assets<particles::ParticleDrawMaterial>>),
+                                .and_then(resource_exists::<Assets<render::particles::ParticleDrawMaterial>>),
                         )
                         .in_set(particles::ParticleSet::Draw),
                 )

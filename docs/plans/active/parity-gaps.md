@@ -360,9 +360,9 @@ common console commands, against mashup's.
   TextureScroll, and their sprite's frames at its framerate
   (visual_entities.md 1). Tests: `render::beams` unit tests (de_cbble's
   smoke beam's numbers).
-- func_dustcloud (`map::dust`): dust with world-sized motes; motes start
+- func_dustcloud (`render::dust`): dust with world-sized motes; motes start
   inside the volume's brushes; frozen volumes spawn once and hold
-  (sprites_dust.md 7-8). Tests: `map::dust` unit tests,
+  (sprites_dust.md 7-8). Tests: `render::dust` unit tests,
   `heavy::map_visuals::de_train_dust_clouds_load_and_turn_on`.
 - Rope wind (`render::rope_sway`): the spec's gusts sway ropes within
   `rope_wind_dist` of the camera. Tests: `map::rope_sway`, `render::rope_sway` unit tests,

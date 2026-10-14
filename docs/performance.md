@@ -484,7 +484,7 @@ two spawns), plus traces of a `--features profile` build.
   world; the next 4.9 ms), presumably depending on whether the new size
   fit the hole the old one left. Dust and particle meshes are now padded
   to power-of-two sizes with degenerate triangles
-  (`dust::write_dynamic_mesh`): in the same trace 0.33 ms, 0.53 ms and
+  (`render::dust::write_dynamic_mesh`): in the same trace 0.33 ms, 0.53 ms and
   0.17 ms.
 - **The executor.** A frame runs about 1500 systems (main and render
   world: ~200 of ours, ~180 avian per tick, ~60 render-graph systems

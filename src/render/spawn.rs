@@ -11,6 +11,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 #[allow(unused_imports)]
 use crate::map::*;
+use super::{dust, emitters, steam};
 // Explicit: Bevy's prelude has a `LightProbe` too.
 use crate::map::{
     LightProbe,
@@ -34,7 +35,12 @@ impl MapDrawer for MapAssets<'static> {
         Draws {
             loose: drawn && a.bindposes.is_some(),
             gibs: drawn && a.prop_materials.is_some(),
-            steam: drawn,
+        }
+    }
+
+    fn spawn_undrawn(a: &mut MapAssets, commands: &mut Commands, s: &MapSpawn) {
+        if !(a.meshes.is_some() && a.materials.is_some() && a.images.is_some()) {
+            super::steam::spawn_undrawn(commands, s);
         }
     }
 
@@ -50,6 +56,12 @@ impl MapDrawer for MapAssets<'static> {
 
     fn textures(drawn: &Drawn) -> &[Handle<Image>] {
         &drawn.textures
+    }
+
+    fn insert_drawn(drawn: &Drawn, commands: &mut Commands, s: &MapSpawn, which: DrawnResource) {
+        match which {
+            DrawnResource::Particles => super::particles::insert_assets(commands, s.data, &drawn.textures),
+        }
     }
 }
 
