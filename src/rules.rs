@@ -40,10 +40,10 @@
 //! `games::cs_source::map_cycle`), or a fresh game without one.
 //!
 //! Known shortcuts (docs/tech-debt.md): Team balance (`rules::balance_teams`,
-//! `mp_autoteambalance`; public cvar descriptions, CS:S unmeasured): checked as
-//! a round's end pause runs out; a side two or more players larger gives
-//! players until they differ by one; who moves is ours (computer players first,
-//! fewest kills, the highest entity); no "*** Auto-Team Balance next round ***"
+//! `mp_autoteambalance`; bots never move, measured; the rest unmeasured):
+//! checked as a round's end pause runs out; a side two or more players larger
+//! gives human players until they differ by one; which human moves is ours
+//! (fewest kills, the highest entity); no "*** Auto-Team Balance next round ***"
 //! warning (the game's `Cstrike_TitlesTXT_Auto_Team_Balance_Next_Round`) or
 //! message beyond the usual team-join chat line; never onto a side the map has
 //! no spawns for. Why it's OK for now: Capture C11 in
@@ -408,11 +408,13 @@ fn leave_play(w: &mut World, player: Entity) {
 
 /// `mp_autoteambalance`: as a round ends into the next, while one side
 /// has two or more players more than the other, move players from it
-/// until they differ by one at most. Who moves is ours (CS:S's choice is
-/// unmeasured, docs/plans/active/parity-gaps.md capture C11): computer
-/// players first, then the fewest kills, then the highest entity (a
-/// steady pick). They respawn on the new side with the round's start
-/// (`join_team`, no death counted). Returns who moved.
+/// until they differ by one at most. Bots count but never move: CS:S
+/// left four terrorist bots against one counter-terrorist bot for five
+/// rounds (`mp_autoteambalance 1`, `mp_limitteams 0`; parity-gaps.md
+/// C11, 2026-10-14). Which human moves is ours (unmeasured): the fewest
+/// kills, then the highest entity (a steady pick). They respawn on the
+/// new side with the round's start (`join_team`, no death counted).
+/// Returns who moved.
 pub fn balance_teams(world: &mut World) -> Vec<Entity> {
     if world.resource::<Deathmatch>().auto_team_balance == 0 {
         return Vec::new();
@@ -455,8 +457,11 @@ pub fn balance_teams(world: &mut World) -> Vec<Entity> {
         if sides[big].len() < sides[small].len() + 2 || !spawns[small] {
             break;
         }
-        // Bots (false) first, fewest kills, the highest entity.
-        sides[big].sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(b.2.cmp(&a.2)));
+        // Humans only: the fewest kills, the highest entity.
+        sides[big].sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(b.2.cmp(&a.2)));
+        if !sides[big].first().is_some_and(|p| p.0) {
+            break;
+        }
         let who = sides[big].remove(0);
         if join_team(world, who.2, Team(small as u8 + 1)).is_err() {
             break;

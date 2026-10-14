@@ -521,6 +521,10 @@ says what decides the open point.
   one's score and join order first: the top scorer, the lowest, the
   newest?), at the end or the next round's start, and is a moved player
   respawned at once or kept dead.
+  Partly done (2026-10-14, dedicated server, bots only): four T bots
+  against one CT bot stayed so for five rounds: bots are never moved
+  (ours now matches). Still open, needs a human client: which human
+  moves, the warning, respawn.
 - **C12 Win panel contents.** Ten rounds on de_dust2 with bots
   (`bot_quota 9`): screenshot each round's win panel at 1 s and 4 s
   after the end, with the round's kills from the console (`developer
