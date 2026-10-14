@@ -12,6 +12,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 #[allow(unused_imports)]
 use crate::map::*;
 use super::{
+    bodies::{CharacterBodies, HeldAssets, HeldParts, body_assets},
     dust, emitters, light_styles, monitor, shadows,
     view_model::{build_assets as build_view_models, build_flash_assets},
     sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},

@@ -264,6 +264,11 @@ impl MapPlugin {
                 .insert_resource(ActiveMapLook(data.look.clone()));
         }
         ragdoll::plugin(app);
+    }
+
+    /// Map's registration after render's ragdoll drawing
+    /// (`crate::map_plugin`): placed ragdolls.
+    pub(crate) fn build_after_ragdolls(&self, app: &mut App) {
         placed_ragdoll::plugin(app);
     }
 
@@ -305,8 +310,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<vis::ActiveVisibility>();
     world.remove_resource::<sound::SoundBank>();
     world.remove_resource::<CharacterModels>();
-    world.remove_resource::<CharacterBodies>();
-    world.remove_resource::<HeldAssets>();
     world.remove_resource::<hud::ActiveHud>();
     world.remove_resource::<hud::ActiveOverview>();
     world.remove_resource::<surface_color::SurfaceColors>();
@@ -318,13 +321,6 @@ pub fn unload_map(world: &mut World) {
     }
     breakables::unload(world);
     world.remove_resource::<breakables::PropBreaks>();
-    let bodies: Vec<Entity> = world
-        .query_filtered::<Entity, With<CharacterBody>>()
-        .iter(world)
-        .collect();
-    for b in bodies {
-        world.entity_mut(b).despawn();
-    }
     let animated: Vec<Entity> = world
         .query_filtered::<Entity, With<anim::Animator>>()
         .iter(world)

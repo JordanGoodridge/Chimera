@@ -13,7 +13,7 @@
 //!   16384 pins every part (static) until EnableMotion, flag 65536 holds
 //!   them still until a shot or the Wake input wakes them (6.4, 6.7).
 //! - `pose` moves the node with body 0 and poses the drawn bones from the
-//!   bodies (as `ragdoll::pose_ragdolls` does a character's).
+//!   bodies (as `crate::render::bodies::pose_ragdolls` does a character's).
 //! - Killed by the logic: the bodies go out of the simulation; a round
 //!   restart makes it again where it was placed.
 //! - In a network game the server sends the parts' poses (`NetRagdoll`,

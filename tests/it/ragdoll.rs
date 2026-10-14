@@ -22,7 +22,7 @@ use mashup::{
     rules::Deathmatch,
 };
 
-const SCALE: f32 = 0.0254;
+pub(crate) const SCALE: f32 = 0.0254;
 
 /// A box's corners, inches.
 fn cube(lo: Vec3, hi: Vec3) -> Vec<Vec3> {
@@ -70,7 +70,7 @@ fn joint(parent: usize, child: usize, deg: [(f32, f32); 3]) -> MapRagdollJoint {
 
 /// A Source-style skeleton (inches, Z up, facing +X): pelvis, spine,
 /// head, two legs of thigh and calf, and an unsimulated foot.
-fn model() -> MapCharacterModel {
+pub(crate) fn model() -> MapCharacterModel {
     let bones = vec![
         bone("pelvis", None, Vec3::new(0.0, 0.0, 38.0)),
         bone("spine", Some(0), Vec3::new(0.0, 0.0, 6.0)),
@@ -147,7 +147,7 @@ fn sim() -> (Sim, Entity) {
     sim_with(model())
 }
 
-fn floor_map(model: MapCharacterModel) -> MapData {
+pub(crate) fn floor_map(model: MapCharacterModel) -> MapData {
     let (lo, hi) = (Vec3::new(-20.0, -1.0, -20.0), Vec3::new(20.0, 0.0, 20.0));
     MapData {
         name: "test:ragdoll".into(),
@@ -167,7 +167,7 @@ fn sim_with(model: MapCharacterModel) -> (Sim, Entity) {
     (sim, p)
 }
 
-fn kill(sim: &mut Sim, p: Entity, hitgroup: Hitgroup, point: Vec3, dir: Vec3) {
+pub(crate) fn kill(sim: &mut Sim, p: Entity, hitgroup: Hitgroup, point: Vec3, dir: Vec3) {
     sim.app.world_mut().write_message(Damage {
         force: bevy::math::Vec3::ZERO,
         target: p,

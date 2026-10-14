@@ -97,7 +97,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - sound: Scrape friction energy is our stand-in for Source's (`src/games/cs_source/scrapes.rs`)
 - map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`src/render/steam.rs`)
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
-- map, client: Frame-time shortcuts: unseen bodies posed every 4th frame, padded meshes, lazy prop shadows, single-threaded executors (`src/map/bodies.rs`)
+- render, client: Frame-time shortcuts: unseen bodies posed every 4th frame, padded meshes, lazy prop shadows, single-threaded executors (`src/render/bodies.rs`)
 - map: Maps load synchronously before the app starts. OK for now: dust2 converts in well under a second.
 - deps: `vbsp` pulls `binrw` 0.14, which rustc flags as future-incompatible. OK for now: Upstream; watch on Rust upgrades.
 - build: Windows build not yet verified. OK for now: Needs the Windows PC set up (see plans).

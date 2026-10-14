@@ -43,8 +43,9 @@ use bevy::{
     prelude::*,
 };
 
+use super::bodies::BodyJoint;
 use crate::map::{
-    BodyJoint, LightField, LightProbe, MapBone, MapData, MapDebugView, MapEnvmap, MapFlashLight, MapMuzzleFlash,
+    LightField, LightProbe, MapBone, MapData, MapDebugView, MapEnvmap, MapFlashLight, MapMuzzleFlash,
     prop_material::PropMaterial,
     sprite_material::{SpriteMaterial, SpriteParams},
     view_model::*,

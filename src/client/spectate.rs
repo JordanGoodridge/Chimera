@@ -920,7 +920,7 @@ fn show_through_eyes(
     view: Res<SpecView>,
     mut hidden: Local<Option<Entity>>,
     children: Query<&Children>,
-    mut bodies: Query<&mut Visibility, With<crate::map::CharacterBody>>,
+    mut bodies: Query<&mut Visibility, With<crate::render::bodies::CharacterBody>>,
     anchors: Query<(Entity, Option<&ViewModelSource>), With<ViewModelAnchor>>,
     mut commands: Commands,
 ) {

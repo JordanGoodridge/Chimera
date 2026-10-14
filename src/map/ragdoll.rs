@@ -36,7 +36,7 @@
 //! `RagdollShot` (the weapon layer sends one per bullet path) pushes the pelvis
 //! of ragdolls on it (a blast's names its ragdoll and pushes by its length);
 //! separation repair puts joints held apart back; the owner (`Ragdolled`) hands
-//! its drawn body over, whose joints then follow the bodies; forced sleep after
+//! its drawn body over (`crate::render::bodies`), whose joints then follow the bodies; forced sleep after
 //! `ragdoll_sleepaftertime`; removed when the owner lives again or is gone.
 //!
 //! Known shortcuts (docs/tech-debt.md): Ragdolls (specs/cs_source/ragdolls.md):
@@ -76,7 +76,7 @@ use avian3d::{
 };
 use bevy::{ecs::system::SystemParam, prelude::*};
 
-use super::{BodyJoint, BodyModel, CharacterBody, CharacterModels, MapCharacterModel, MapPart, anim};
+use super::{BodyModel, CharacterModels, MapCharacterModel, MapPart, anim};
 use crate::core::{Died, Health, Hitgroup, Intent, MovementState, RAGDOLL_LAYER};
 
 /// A character model's ragdoll: bodies on its bones, joints between them
@@ -250,7 +250,7 @@ pub struct Ragdoll {
     /// Rigid bodies, as `MapRagdoll::bodies`.
     pub bodies: Vec<Entity>,
     pub joints: Vec<Entity>,
-    /// The owner's drawn body, once taken over.
+    /// The owner's drawn body, once taken over (`crate::render::bodies::adopt_bodies`).
     pub visual: Option<Entity>,
     /// Each body's joint parent body, and the child's anchor in the
     /// parent bone's frame (skeleton units).
@@ -487,13 +487,6 @@ pub(crate) fn plugin(app: &mut App) {
             )
                 .chain()
                 .after(crate::core::apply_damage),
-        )
-        .add_systems(
-            Update,
-            (adopt_bodies, pose_ragdolls)
-                .chain()
-                .after(super::DriveAnimation)
-                .run_if(resource_exists::<super::CharacterBodies>),
         );
 }
 
@@ -1145,119 +1138,6 @@ fn settle_ragdolls(
     }
 }
 
-/// Take the owner's drawn body over: out of the character, visible (also
-/// the local player's), without its held weapon, never culled (its mesh
-/// bounds are the standing pose's).
-#[allow(clippy::type_complexity)]
-fn adopt_bodies(
-    mut ragdolls: Query<&mut Ragdoll>,
-    owners: Query<&Children>,
-    mut bodies: Query<(&mut CharacterBody, Option<&Children>)>,
-    meshes: Query<(), With<Mesh3d>>,
-    mut commands: Commands,
-) {
-    for mut r in &mut ragdolls {
-        if r.visual.is_some() || r.placed {
-            continue;
-        }
-        let Ok(children) = owners.get(r.owner) else { continue };
-        let Some(body) = children.iter().find(|c| bodies.contains(*c)) else {
-            continue;
-        };
-        let (mut b, parts) = bodies.get_mut(body).unwrap();
-        if let Some((held, _)) = b.held.take() {
-            commands.entity(held).despawn();
-        }
-        for part in parts.into_iter().flatten() {
-            if meshes.contains(*part) {
-                commands.entity(*part).insert(bevy::camera::visibility::NoFrustumCulling);
-            }
-        }
-        commands
-            .entity(body)
-            .remove::<ChildOf>()
-            .insert((Transform::IDENTITY, Visibility::Inherited, MapPart));
-        // Lit where the ragdoll lies (its root body), not at the origin
-        // where the drawn body now sits.
-        if let Some(&root) = r.bodies.first() {
-            commands.queue(move |w: &mut World| {
-                if let Some(mut lit) = w.get_mut::<super::probe_lit::ProbeLit>(body) {
-                    lit.follow = Some(root);
-                    lit.offset = Vec3::ZERO;
-                }
-            });
-        }
-        r.visual = Some(body);
-    }
-}
-
-/// Pose a ragdoll's drawn skeleton from its bodies (spec 5): a simulated
-/// bone takes its body's rotation, and its position from the parent
-/// body's bone and the joint anchor (the root body: its own); the other
-/// bones keep their bind pose under their parent.
-#[allow(clippy::type_complexity)]
-fn pose_ragdolls(
-    ragdolls: Query<&Ragdoll>,
-    models: Option<Res<CharacterModels>>,
-    drawn: Query<&CharacterBody>,
-    physics: Query<&Transform, (With<RagdollBody>, Without<BodyJoint>)>,
-    mut joints: Query<&mut Transform, With<BodyJoint>>,
-) {
-    let Some(models) = models else { return };
-    for r in &ragdolls {
-        let (Some(visual), Some(m)) = (r.visual, models.0.get(r.model)) else {
-            continue;
-        };
-        let (Ok(drawn), Some(ragdoll)) = (drawn.get(visual), m.ragdoll.as_ref()) else {
-            continue;
-        };
-        let to_skeleton = m.root.compute_affine().inverse();
-        let inv_root = m.root.rotation.inverse();
-        let mut simulated: Vec<Option<usize>> = vec![None; m.bones.len()];
-        for (i, b) in ragdoll.bodies.iter().enumerate() {
-            if let Some(s) = simulated.get_mut(b.bone) {
-                *s = Some(i);
-            }
-        }
-        let mut global: Vec<(Quat, Vec3)> = Vec::with_capacity(m.bones.len());
-        for (bone, b) in m.bones.iter().enumerate() {
-            let parent = b.parent.and_then(|p| global.get(p).copied());
-            let g = match simulated[bone].and_then(|i| Some((i, physics.get(*r.bodies.get(i)?).ok()?))) {
-                Some((i, t)) => {
-                    let q = inv_root * t.rotation;
-                    let p = match r.parents[i] {
-                        Some((pi, anchor)) => {
-                            let (pq, pp) = global[ragdoll.bodies[pi].bone];
-                            pp + pq * anchor
-                        }
-                        None => to_skeleton.transform_point3(t.translation),
-                    };
-                    (q, p)
-                }
-                None => match parent {
-                    Some((pq, pp)) => (pq * b.rotation, pp + pq * b.position),
-                    None => (b.rotation, b.position),
-                },
-            };
-            global.push(g);
-        }
-        for (bone, b) in m.bones.iter().enumerate() {
-            let (q, p) = global[bone];
-            let local = match b.parent.map(|i| global[i]) {
-                Some((pq, pp)) => (pq.inverse() * q, pq.inverse() * (p - pp)),
-                None => (q, p),
-            };
-            // Only real changes: a ragdoll at rest leaves its joints (and
-            // transform propagation under them) alone.
-            if let Some(mut t) = drawn.joints.get(bone).and_then(|j| joints.get_mut(*j).ok())
-                && (t.rotation != local.0 || t.translation != local.1)
-            {
-                t.rotation = local.0;
-                t.translation = local.1;
-            }
-        }
-    }
-}
 
 /// A ragdoll joint (avian custom XPBD constraint): the child body's origin
 /// stays at `anchor` in the parent body (ball and socket), and the child's

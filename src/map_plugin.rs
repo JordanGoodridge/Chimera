@@ -22,6 +22,14 @@ use crate::{audio, render};
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         self.build_first(app);
+        app.add_systems(
+            Update,
+            (render::bodies::adopt_bodies, render::bodies::pose_ragdolls)
+                .chain()
+                .after(DriveAnimation)
+                .run_if(resource_exists::<render::bodies::CharacterBodies>),
+        );
+        self.build_after_ragdolls(app);
         app.add_plugins(render::light_styles::LightStylesPlugin);
         self.build_after_light_styles(app);
         app.add_plugins(render::monitor::MonitorPlugin);
@@ -171,15 +179,15 @@ fn build_rest(app: &mut App) {
                 )
                     .chain(),
                 (
-                    attach_bodies,
-                    show_local_body,
-                    turn_bodies.after(DriveAnimation),
-                    pose_bodies.after(DriveAnimation),
-                    attach_held,
+                    render::bodies::attach_bodies,
+                    render::bodies::show_local_body,
+                    render::bodies::turn_bodies.after(DriveAnimation),
+                    render::bodies::pose_bodies.after(DriveAnimation),
+                    render::bodies::attach_held,
                     probe_lit::relight,
                     loose::attach_shown,
                 )
-                    .run_if(resource_exists::<CharacterBodies>),
+                    .run_if(resource_exists::<render::bodies::CharacterBodies>),
                 (render::view_model::draw_view_models, render::view_model::view_model_screens)
                     .chain()
                     .after(DriveAnimation)

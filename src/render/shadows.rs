@@ -945,8 +945,8 @@ pub(crate) fn update_character_blobs(
         ),
         (With<crate::core::Intent>, Without<crate::core::Spectating>, Without<crate::map::ragdoll::Ragdolled>),
     >,
-    bodies: Query<&Visibility, (With<crate::map::CharacterBody>, Without<CharacterBlob>)>,
-    mut blobs: Query<(Entity, &mut CharacterBlob, &Mesh3d, &mut Visibility), Without<crate::map::CharacterBody>>,
+    bodies: Query<&Visibility, (With<crate::render::bodies::CharacterBody>, Without<CharacterBlob>)>,
+    mut blobs: Query<(Entity, &mut CharacterBlob, &Mesh3d, &mut Visibility), Without<crate::render::bodies::CharacterBody>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let mode = detail.map_or(ShadowMode::Texture, |d| d.mode());
@@ -1319,7 +1319,7 @@ mod tests {
             .app
             .world_mut()
             .spawn((
-                crate::map::CharacterBody {
+                crate::render::bodies::CharacterBody {
                     held_parts: Vec::new(),
                     model: 0,
                     joints: Vec::new(),

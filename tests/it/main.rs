@@ -21,6 +21,7 @@ mod console_commands;
 mod cs_grenades;
 mod cs_guns;
 mod debug_ui;
+mod drawn_parts;
 mod impact_effects;
 mod interpolation;
 mod join_flow;

@@ -13,6 +13,7 @@
 use bevy::prelude::*;
 
 pub mod beams;
+pub mod bodies;
 pub mod color_correction;
 pub mod decal;
 pub mod detail;
@@ -59,6 +60,15 @@ pub(crate) fn unload_map(world: &mut World) {
     world.remove_resource::<shadows::ShadowState>();
     world.remove_resource::<shadows::ShadowSource>();
     world.remove_resource::<particles::ParticleAssets>();
+    world.remove_resource::<bodies::CharacterBodies>();
+    world.remove_resource::<bodies::HeldAssets>();
+    let drawn: Vec<Entity> = world
+        .query_filtered::<Entity, With<bodies::CharacterBody>>()
+        .iter(world)
+        .collect();
+    for b in drawn {
+        world.entity_mut(b).despawn();
+    }
     view_model::unload(world);
     shells::unload(world);
 }

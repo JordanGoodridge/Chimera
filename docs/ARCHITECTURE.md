@@ -85,6 +85,16 @@ animation evaluation stays on the simulation's side (the server poses
 hitboxes); see docs/plans/active/engine-split.md, "Crates and compile
 time").
 
+Drawn-part requests: what the simulation makes during play says in plain
+data what it looks like, and `render` fulfils it; the simulation never
+builds a mesh or material. A character's team, `BodyName` and class pick
+its body, `Held` names what it holds, a `Ragdoll` takes the dead's body
+over, `LooseItem`/`ShownItem` name a held model to lie or move as;
+render's systems react to them (added, changed, without their drawn
+marker). Without `render` (a dedicated server) the requests stay
+unfulfilled and the simulation's parts (bodies, colliders) work alone
+(`tests/it/drawn_parts.rs`).
+
 `metrics` (per-thread CPU time and hardware counters, distributions, the
 tick's measurements) uses no other module of ours; any layer may use it
 (so far harness and client; `SimPlugins` adds its tick plugin).
@@ -147,7 +157,7 @@ that the paths exist).
 - `src/map/probe_lit.rs`: moving models lit from the baked light field (map)
 - `src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
 - `src/map/interp.rs`: drawing between simulation ticks (map)
-- `src/map/bodies.rs`: character bodies, held models, hitboxes (map)
+- `src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
 - `src/map/props.rs`: placed props after spawning: looks, sequences (map)
 - `src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
 - `src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
@@ -206,6 +216,7 @@ that the paths exist).
 - `src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 - `src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
 - `src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
+- `src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
 - `src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
 - `src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
 - `src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
