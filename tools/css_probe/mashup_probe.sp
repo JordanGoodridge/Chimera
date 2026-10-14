@@ -27,6 +27,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <cstrike>
+#include <sdkhooks>
 
 public Plugin myinfo = {
     name = "mashup probe",
@@ -76,6 +77,7 @@ int g_extra[4];
 // mashup_shooter: another bot that turns to the run's bot and fires once.
 int g_shooter;
 int g_shootTick = -1;
+int g_shootHold = 1;
 float g_shootAimZ;
 float g_extraYaw[4];
 
@@ -103,7 +105,7 @@ public void OnPluginStart()
         "mashup_health <hp> [armor] [helmet 0|1]: respawn the probe bot if dead and set its health and armour (fall damage runs)");
     RegServerCmd("mashup_info", Command_Info, "mashup_info: position and angles of all living players");
     RegServerCmd("mashup_shooter", Command_Shooter,
-        "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz>: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
+        "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz> [hold ticks]: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
     RegServerCmd("mashup_state", Command_State,
         "mashup_state <userid>: that player's money, armour, helmet, kit and each weapon's clip and reserve");
     RegServerCmd("mashup_botcmd", Command_BotCmd,
@@ -114,6 +116,10 @@ public void OnPluginStart()
     HookEvent("weapon_reload", Event_Any);
     HookEvent("weapon_zoom", Event_Any);
     HookEvent("player_death", Event_Any);
+    HookEvent("hegrenade_detonate", Event_Grenade);
+    HookEvent("flashbang_detonate", Event_Grenade);
+    HookEvent("smokegrenade_detonate", Event_Grenade);
+    HookEvent("player_blind", Event_Any);
 }
 
 int FindTarget2()
@@ -519,6 +525,7 @@ public Action Command_Shooter(int args)
     GetCmdArg(4, weapon, sizeof(weapon));
     g_shootTick = GetCmdArgInt(5);
     g_shootAimZ = GetCmdArgFloat(6);
+    g_shootHold = args >= 7 ? GetCmdArgInt(7) : 1;
     g_target = 0;
     g_shooter = t;
     SetEntityMoveType(t, MOVETYPE_WALK);
@@ -698,6 +705,39 @@ public void Event_Any(Event event, const char[] name, bool dontBroadcast)
     }
 }
 
+// Grenade detonations: "G tick event x y z thrower".
+public void Event_Grenade(Event event, const char[] name, bool dontBroadcast)
+{
+    if (g_out == null) {
+        return;
+    }
+    g_out.WriteLine("G %d %s %.3f %.3f %.3f %d", g_cursor + 1, name, event.GetFloat("x"), event.GetFloat("y"),
+        event.GetFloat("z"), GetClientOfUserId(event.GetInt("userid")));
+}
+
+// Projectiles: "P tick class x y z vx vy vz" the frame after creation.
+public void OnEntityCreated(int entity, const char[] classname)
+{
+    if (g_out != null && StrContains(classname, "_projectile") != -1) {
+        RequestFrame(Frame_Projectile, EntIndexToEntRef(entity));
+    }
+}
+
+public void Frame_Projectile(int ref)
+{
+    int e = EntRefToEntIndex(ref);
+    if (e == INVALID_ENT_REFERENCE || g_out == null) {
+        return;
+    }
+    char cls[64];
+    GetEntityClassname(e, cls, sizeof(cls));
+    float o[3];
+    float v[3];
+    GetEntPropVector(e, Prop_Data, "m_vecAbsOrigin", o);
+    GetEntPropVector(e, Prop_Data, "m_vecAbsVelocity", v);
+    g_out.WriteLine("P %d %s %.3f %.3f %.3f %.3f %.3f %.3f", g_cursor, cls, o[0], o[1], o[2], v[0], v[1], v[2]);
+}
+
 void WriteWeaponRow(int client)
 {
     int w = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
@@ -867,7 +907,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         vel[1] = 0.0;
         vel[2] = 0.0;
         buttons &= ~(IN_ATTACK | IN_ATTACK2 | IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT | IN_JUMP | IN_DUCK);
-        if (g_out != null && g_cursor == g_shootTick) {
+        if (g_out != null && g_cursor >= g_shootTick && g_cursor < g_shootTick + g_shootHold) {
             buttons |= IN_ATTACK;
         }
         return Plugin_Changed;
@@ -973,5 +1013,11 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
         v[2], (flags & FL_ONGROUND) ? 1 : 0, (flags & FL_DUCKING) ? 1 : 0, maxs[2], view[2], buttons, water, ladder);
     if (g_wlog) {
         WriteWeaponRow(client);
+    }
+    // Flashed: "F tick duration max_alpha health armor".
+    float flash = GetEntPropFloat(client, Prop_Send, "m_flFlashDuration");
+    if (flash > 0.0) {
+        g_out.WriteLine("F %d %.4f %.2f %d %d", g_cursor, flash, GetEntPropFloat(client, Prop_Send, "m_flFlashMaxAlpha"),
+            GetClientHealth(client), GetEntProp(client, Prop_Send, "m_ArmorValue"));
     }
 }

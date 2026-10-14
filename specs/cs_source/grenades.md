@@ -683,6 +683,31 @@ render world, view model, smoke fog overlay, screen fade, flash overlay
 | G30 pin pull | press attack | – | `pullpin` 0.9512 s; pin sound at 0.6585 s |
 | G31 buy limit | own 2 flashbangs, buy flashbang | – | refused, money unchanged |
 
+## CS:S values (measured 2026-10-14, probe server)
+
+`tools/css_probe`: a second bot throws (`mashup_shooter ... weapon_hegrenade
+20 <aimz> <hold ticks>`) at the run's bot standing on de_dust2's CT spawn
+floor; the plugin logs projectile creation (`P`), detonations (`G`),
+`player_hurt` and the victim's flash netprops (`F`).
+- **Q1 release:** the projectile appears 6 ticks (about 0.09 s) after the
+  throw's `weapon_fire`, whether attack was tapped (1 tick) or held 30 or 70
+  ticks: a tap throws at once, as the template's release + 0.1 s.
+- **Q8 fuse:** HE and flashbang detonate 115 ticks after `weapon_fire`,
+  about 109 after the projectile appears (1.6 s: the template's 1.5 s
+  checked every 0.2 s); smoke 111 after the fire event while still rolling.
+- **Q4 HE vs armour:** with 100 armour (helmet or not) health damage is the
+  unarmoured damage × 0.7375 (1.475 × 0.5, hypothesis H1) and armour loses
+  half the difference: unarmoured 88 → 65 health + 11 armour; 70 → 52 + 9.
+  The helmet changes nothing. Hitgroup 0.
+- **Q10 HE falloff (partial):** consistent with 100 − d/3.5 to a body point
+  about 36 units over the feet: feet distance 18 → 85-91, 36 → 84-88, 66-83
+  → 68-74, an airburst 126 away → 69. Farther distances not caught (the
+  throws hit walls); the thrower takes damage from its own grenade.
+- **Q12 flash (partial, 10-100 units):** facing the grenade: duration
+  6.7-7.1 s, max alpha 255; side-on (90°): 4.7-4.9 s, 255; facing away
+  (180°): 2.7-2.8 s, 200. `player_blind` fires for the victim and the
+  thrower. Farther distances, walls and smoke between: not measured.
+
 ## Open questions
 
 Checks below use the dedicated probe server (`tools/css_probe`, SourceMod;
