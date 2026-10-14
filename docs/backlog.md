@@ -535,7 +535,8 @@ a first bot are in.
   probe (Q1 movement while arming, Q3 blast shape/walls/armour, Q4 beep
   schedule and loudness and where the LED sits, Q5 money, Q6 carrier
   choice, Q7 the bomb's solidity, Q9 hostage models, Q10 follow speeds,
-  Q11 rescue rules, Q12 who sees the `sprites/c4` marker and how big,
+  Q11 rescue rules, Q12 radar (no `sprites/c4` marker is drawn: CS:S
+  shows none, playtest 2026-10-14),
   Q14 tick rounding); the planted bomb's own screen (`c4_panel`: the
   view model's is in, `games/cs_source/ui/bomb_fx.rs`), screen shake, the
   explosion's scale (it uses the HE's base explosion effect: the install

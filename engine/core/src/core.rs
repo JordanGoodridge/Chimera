@@ -302,6 +302,9 @@ pub struct Explosion {
     /// The weapon kills count as (kill notices); None: a map explosion
     /// (`weapon::grenade::EXPLOSION_WEAPON`).
     pub weapon: Option<&'static str>,
+    /// Its scorch mark goes at the next round restart (the bomb's, as in
+    /// CS:S; `map::PlaceDecal::round`); others stay with the map.
+    pub round_scorch: bool,
 }
 
 /// How damage was dealt (Source damage types, as far as anything here

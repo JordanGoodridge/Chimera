@@ -30,6 +30,13 @@
 //! facing (the spec's three spinning angles and the lying-flat settling are
 //! left out). Why it's OK for now: Spec defaults; the open questions need the
 //! game.
+//!
+//! Known shortcuts (docs/tech-debt.md): Loose items' landing dust (a dropped
+//! weapon or the bomb hitting the ground at 320 u/s or more,
+//! `LOOSE_DUST_MIN_SPEED`) is the bullet dust puff (section 6) at the contact
+//! in the ground's colour; no spec covers physics impact dust, the speed and
+//! the puff are ours. Why it's OK for now: A playtest saw CS:S's dropped bomb
+//! kick up a little dust; capture it to match.
 
 use bevy::prelude::*;
 
@@ -1304,7 +1311,11 @@ impl Plugin for ImpactEffectsPlugin {
                 FixedUpdate,
                 (impact_effects, blood_effects, tracers).after(crate::core::SimSet::Weapons),
             )
-            .add_systems(Update, glass_effects);
+            .add_systems(Update, glass_effects)
+            .add_systems(
+                FixedPostUpdate,
+                loose_item_dust.after(avian3d::prelude::PhysicsSystems::Writeback),
+            );
         {
             let mut p = app.world_mut().resource_mut::<Particles>();
             p.cap = MAX_PARTICLES;
@@ -1485,6 +1496,68 @@ fn impact_effects(
     }
 }
 
+/// A loose item (a dropped weapon, the bomb) landing at least this hard
+/// kicks up dust, u/s (our guess: a full-volume impact, `impacts.rs`;
+/// a weapon dropped standing on flat ground lands just under it).
+pub const LOOSE_DUST_MIN_SPEED: f32 = 320.0;
+
+/// Dust where a loose item lands hard (playtest 2026-10-14: CS:S's
+/// dropped bomb kicks up a little dust): the bullet dust puff (spec
+/// section 6) at the contact, in the ground's colour.
+#[allow(clippy::too_many_arguments)]
+fn loose_item_dust(
+    mut started: MessageReader<avian3d::prelude::CollisionStart>,
+    collisions: avian3d::prelude::Collisions,
+    loose: Query<(), With<crate::map::loose::LooseItem>>,
+    characters: Query<(), With<Intent>>,
+    props: Query<&PropIndex>,
+    colors: Option<Res<SurfaceColors>>,
+    materials: Option<Res<ParticleMaterials>>,
+    mut particles: ResMut<Particles>,
+    mut rng: ResMut<EffectRng>,
+) {
+    let Some(materials) = materials else {
+        started.clear();
+        return;
+    };
+    let mats = EffectMaterials::new(&materials.0);
+    for start in started.read() {
+        let Some(pair) = collisions.get(start.collider1, start.collider2) else {
+            continue;
+        };
+        let is_loose = |b: Option<Entity>| b.is_some_and(|b| loose.contains(b));
+        // The item against the ground (not another item, nor a player).
+        let other = match (is_loose(pair.body1), is_loose(pair.body2)) {
+            (true, false) => pair.body2,
+            (false, true) => pair.body1,
+            _ => continue,
+        };
+        if other.is_some_and(|o| characters.contains(o)) {
+            continue;
+        }
+        let Some((speed, at, normal)) = pair
+            .manifolds
+            .iter()
+            .flat_map(|m| m.points.iter().map(move |p| (-p.normal_speed / UNIT, p.point, m.normal)))
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+        else {
+            continue;
+        };
+        if speed < LOOSE_DUST_MIN_SPEED {
+            continue;
+        }
+        // The manifold's normal points from body 1 to body 2: up from the
+        // ground toward the item.
+        let up = if is_loose(pair.body2) { normal } else { -normal };
+        let prop = other.and_then(|o| props.get(o).ok()).map(|p| p.0);
+        let look = match colors.as_deref().map(|c| look_at(c, prop, at, up)) {
+            Some(Ok(look)) => look,
+            _ => None,
+        };
+        particles.add(dust_puff(&mut rng.0, &mats, at, up, surface_color(look)));
+    }
+}
+
 /// A water splash at `at` of scale `size` (None: a bullet's, U(8, 12)).
 #[allow(clippy::too_many_arguments)]
 fn splash(
@@ -1565,6 +1638,7 @@ fn blood_effects(
                 normal: n,
                 dir,
                 spin: true,
+                round: false,
             });
         }
     }

@@ -400,6 +400,7 @@ fn explosions_break_windows_and_vents() {
         inflictor: None,
         sound: None,
         weapon: None,
+        round_scorch: false,
     });
     office.ticks(3);
     let id = id_of(&office, win);
@@ -422,6 +423,7 @@ fn explosions_break_windows_and_vents() {
             inflictor: None,
             sound: None,
             weapon: None,
+            round_scorch: false,
         });
     }
     nuke.ticks(3);

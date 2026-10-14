@@ -48,9 +48,8 @@
 //! the code; the spec says the bar runs, the option's text names only defusing:
 //! Q16); the C4 screen's text drawn by a camera into a 400×200 image (twice the
 //! panel's 200×100) in the system's Courier New (or a stand-in); the planted
-//! bomb's marker (`sprites/c4`: shown to terrorists and the dead, 32 units
-//! across, 16 above the bomb) and LED glow (8 units, 9 above the bomb's origin,
-//! a 0.15 s flash per beep) are guesses pending spec Q4/Q12. Map loads report
+//! bomb's LED glow (8 units, 9 above the bomb's origin, a 0.15 s flash per
+//! beep) is a guess pending spec Q4. Map loads report
 //! fixed fractions per loader stage (`map::loading`, a process-wide value: two
 //! loads at once overwrite each other's), not measured shares; the loading
 //! dialog shows only for loads begun at the main menu; the menu's

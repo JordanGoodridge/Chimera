@@ -235,6 +235,14 @@ fn defusing_without_a_kit_takes_ten_and_letting_go_starts_over() {
 fn a_defuse_ending_after_the_timer_loses_to_the_explosion() {
     // O16: no kit, starting 36 s in: it would end at 46.
     let (mut sim, _, ct, planted) = planted_with_defender(false);
+    #[derive(Resource, Default)]
+    struct Scorches(Vec<bool>);
+    sim.app.init_resource::<Scorches>().add_systems(
+        FixedLast,
+        |mut asks: MessageReader<mashup::map::PlaceDecal>, mut seen: ResMut<Scorches>| {
+            seen.0.extend(asks.read().map(|a| a.round));
+        },
+    );
     let far = character(&mut sim, Vec3::new(30.0, 1.0, -30.0), 2);
     wait_until(&mut sim, planted + 2400 - 1);
     sim.intent(ct).use_key = true;
@@ -249,6 +257,8 @@ fn a_defuse_ending_after_the_timer_loses_to_the_explosion() {
     let far_health = sim.app.world().get::<Health>(far).unwrap().current;
     assert!(far_health > 0.8, "far defender took {far_health}");
     assert!(bombs(&mut sim).is_empty(), "the bomb is gone");
+    // Its scorch goes at the round restart (playtest 2026-10-14, as CS:S).
+    assert_eq!(sim.app.world().resource::<Scorches>().0, [true], "one scorch, the round's");
 }
 
 #[test]
@@ -749,6 +759,15 @@ fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
     sim.ticks(2);
     assert_eq!(shown(&sim), (String::new(), None), "nothing before arming");
     let rules = sim.app.world().resource::<BombRules>().clone();
+    // Letting go part way clears the typed digits at once (playtest
+    // 2026-10-14, as CS:S).
+    sim.intent(t).fire = true;
+    sim.seconds(1.3);
+    assert_eq!(shown(&sim).0, "73", "typing");
+    sim.intent(t).fire = false;
+    sim.ticks(1);
+    assert_eq!(shown(&sim), (String::new(), None), "let go: the digits cleared");
+    sim.ticks(2);
     sim.intent(t).fire = true;
     sim.ticks(1);
     let begun = tick(&sim);
@@ -800,4 +819,21 @@ fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
     sim.ticks(1);
     let bar = shown(&sim).1.expect("cl_c4progressbar 1: the defuse bar");
     assert!((bar - 1.0 / 10.0).abs() < 0.01, "a tenth of a 10 s defuse: {bar}");
+}
+
+/// The planted bomb's HUD icon blinks with the beeps (playtest
+/// 2026-10-14, as CS:S): lit for the first half of each beep's interval,
+/// so slowly at first (1 s) and fast at the end (0.1 s).
+#[test]
+fn the_planted_bomb_icon_blinks_with_the_beeps() {
+    use mashup::{games::cs_source::ui::objectives_hud::bomb_icon_lit, objectives::bomb::beep_interval};
+    for remaining in [45.0, 20.0, 1.0] {
+        let interval = beep_interval(remaining, 45.0);
+        assert!(bomb_icon_lit(0.0, interval));
+        assert!(bomb_icon_lit(interval * 0.4, interval));
+        assert!(!bomb_icon_lit(interval * 0.6, interval), "{remaining} s left: off half way");
+    }
+    let end = beep_interval(0.5, 45.0);
+    assert!(bomb_icon_lit(0.04, end) && !bomb_icon_lit(0.07, end), "fast at the end ({end} s)");
+    assert!(bomb_icon_lit(f32::INFINITY, f32::NAN), "lit before the first beep");
 }

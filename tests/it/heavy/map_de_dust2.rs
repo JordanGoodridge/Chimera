@@ -1441,6 +1441,28 @@ fn impact_sounds() {
         "no impact sound from the dropped prop: {heard:?}"
     );
 
+    // The bomb thrown down onto the ground (playtest 2026-10-14: CS:S's
+    // lands with its model's impact sound): a loose item sounds by its
+    // world model's surface.
+    let at = map.spawns[0].0 + Vec3::Y * 1.5;
+    let bomb = sim
+        .app
+        .world_mut()
+        .spawn((
+            mashup::map::loose::LooseItem(mashup::games::cs_source::objectives::C4.to_string()),
+            Transform::from_translation(at),
+            avian3d::prelude::LinearVelocity(Vec3::NEG_Y * 6.0),
+        ))
+        .id();
+    sim.seconds(2.0);
+    let surface = sim.app.world().get::<mashup::core::PropSurface>(bomb).map(|s| s.0.clone());
+    assert!(surface.is_some(), "the bomb's model has a surface");
+    let heard = std::mem::take(&mut sim.app.world_mut().resource_mut::<Heard>().0);
+    assert!(
+        heard.iter().any(|s| s.contains(".impact")),
+        "no impact sound from the bomb ({surface:?}): {heard:?}"
+    );
+
     // CT spawn 0 faces a wall corner: fire the AK-47 into it.
     let spawn = map.spawns[0].0 + Vec3::Y * 1.0;
     let p = sim.spawn_character(spawn, mashup::games::cs_source::movement::ID);

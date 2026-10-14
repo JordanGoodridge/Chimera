@@ -163,7 +163,8 @@ pub fn load(materials: &mut MaterialLoader, map: &str) -> Option<GameHud> {
     // outside; the bottom-right quarter as stored) and the lens tint; the
     // icon over a teammate's head while they speak on the radio; the
     // scoreboard's status icons and its row highlight; the planted bomb's
-    // marker and its LED's glow.
+    // LED's glow (and `sprites/c4`, which nothing draws: CS:S has no
+    // marker over the bomb).
     for (name, material) in [
         ("scope_arc", "sprites/scope_arc"),
         ("scope_lens", "overlays/scope_lens"),

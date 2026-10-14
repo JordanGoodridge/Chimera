@@ -9,7 +9,8 @@
 //! bomb): a dynamic box body sized from the held model (also headless), swept
 //! against fast moves, on `core::ITEM_LAYER` so characters neither collide with
 //! it nor walk into it (`PushAway::Ignore`), its meshes; shots push it like any
-//! body.
+//! body; its contacts are reported (`CollisionEventsEnabled`, with its model's
+//! surface as `core::PropSurface`) for games' impact sounds and dust.
 
 use std::collections::HashMap;
 
@@ -44,6 +45,8 @@ pub(crate) struct LooseAsset {
     /// frame, centred on its bounds.
     frame: Transform,
     half: Vec3,
+    /// The model's surface property (impact sounds), lower-case.
+    surface: Option<String>,
 }
 
 /// A held model's loose form: `root` takes the skeleton's space to meters
@@ -72,6 +75,7 @@ pub(crate) fn asset(
         parts,
         frame: to.with_translation(-centre),
         half,
+        surface: held.model.surfaceprop.clone(),
     }
 }
 
@@ -86,6 +90,11 @@ pub(crate) fn attach_loose(
     for (e, item) in &items {
         let half = assets.0.get(&item.0).map_or(Vec3::splat(0.1), |a| a.half);
         let mut ent = commands.entity(e);
+        // Its landings and knocks sound by its model's surface, and kick up
+        // dust when hard (the game's impact sounds and effects listen).
+        if let Some(s) = assets.0.get(&item.0).and_then(|a| a.surface.clone()) {
+            ent.try_insert(crate::core::PropSurface(s));
+        }
         // `try_`: an item can be gone by the time this applies (picked up,
         // or a network client's copy despawned, in the same frame; the
         // network soak saw it: a failed command each time).
@@ -111,7 +120,7 @@ pub(crate) fn attach_loose(
                 mass: MASS,
                 bounds: (-half, half),
             },
-            (MapPart, Visibility::default()),
+            (MapPart, Visibility::default(), CollisionEventsEnabled),
             // Hidden where the camera can't see it, wherever it goes
             // (`tag_moved_brush_entities`): placed weapons in other rooms
             // showed through the sky.
@@ -219,6 +228,7 @@ mod tests {
                 parts: vec![(Handle::default(), Handle::default())],
                 frame: Transform::IDENTITY,
                 half: Vec3::splat(0.1),
+                surface: None,
             },
         );
         app.insert_resource(LooseAssets(assets));

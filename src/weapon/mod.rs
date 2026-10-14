@@ -782,6 +782,12 @@ impl AltModes {
     }
 }
 
+/// What the owner reads on stepping to each `AltModes` mode (a centre
+/// print, as game string tokens by mode; CS:S's burst weapons: "Switched
+/// to burst-fire mode"). Games' HUDs show it.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct ModeTexts(pub Vec<&'static str>);
+
 /// Modes 1.. of `AltModes` look through a scope: the owner's view narrows
 /// to `fov[mode - 1]` (horizontal degrees at 4:3, like Source's `fov`) and
 /// it moves at most `max_speed`. Switching away and reloading unzoom.

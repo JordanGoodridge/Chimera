@@ -10,7 +10,9 @@
 //! brush entities). Characters take no decals yet. They stay until the
 //! map changes, as in the game; `ClearDecals` (the `r_cleardecals`
 //! command) removes them all, and `DecalSettings::round_clear`
-//! (`mashup_round_cleardecals 1`) at every round start.
+//! (`mashup_round_cleardecals 1`) at every round start; a decal placed
+//! for the round (`PlaceDecal::round`: the bomb's scorch, as CS:S) goes at
+//! the next round start anyway.
 //!
 //! Runtime decals for any game: `MapDecals` (decal images in atlas rectangles,
 //! weighted groups, surface material → group), `PlaceDecal` projects one onto
@@ -128,6 +130,11 @@ impl Default for DecalSettings {
 /// child).
 #[derive(Component)]
 pub struct RuntimeDecal;
+
+/// A runtime decal that goes at the next round restart (`PlaceDecal::
+/// round`: the bomb's scorch).
+#[derive(Component)]
+pub struct RoundDecal;
 
 fn cell(p: Vec3) -> IVec3 {
     (p / CELL).floor().as_ivec3()
@@ -503,6 +510,9 @@ pub(crate) fn place_decals(
         if let Some(p) = parent {
             decal_entity.insert(ChildOf(p));
         }
+        if ask.round {
+            decal_entity.insert(RoundDecal);
+        }
         let e = decal_entity.id();
         assets.placed.push_back(e);
         while assets.placed.len() > limit {
@@ -542,13 +552,15 @@ pub(crate) fn drop_brush_decals(
 }
 
 /// `ClearDecals`, and round starts with `DecalSettings::round_clear` on:
-/// every runtime decal goes (world, props and brush entities alike).
+/// every runtime decal goes (world, props and brush entities alike). Every
+/// round start takes the round's own (`RoundDecal`: the bomb's scorch).
 pub(crate) fn clear_decals(
     mut asks: MessageReader<ClearDecals>,
     settings: Option<Res<DecalSettings>>,
     restarts: Option<Res<crate::core::RoundRestarts>>,
     mut seen: Local<Option<u32>>,
     decals: Query<Entity, With<RuntimeDecal>>,
+    round: Query<Entity, With<RoundDecal>>,
     assets: Option<ResMut<DecalAssets>>,
     mut commands: Commands,
 ) {
@@ -556,6 +568,15 @@ pub(crate) fn clear_decals(
     let restart = seen.replace(count).is_some_and(|s| s != count);
     let asked = asks.read().count() > 0;
     if !asked && !(restart && settings.is_some_and(|s| s.round_clear != 0)) {
+        if restart && !round.is_empty() {
+            let gone: Vec<Entity> = round.iter().collect();
+            for e in &gone {
+                commands.entity(*e).try_despawn();
+            }
+            if let Some(mut assets) = assets {
+                assets.placed.retain(|e| !gone.contains(e));
+            }
+        }
         return;
     }
     for e in &decals {

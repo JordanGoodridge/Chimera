@@ -63,6 +63,7 @@ impl NetDecal {
             normal: Vec3::from_array(self.normal),
             dir: Vec3::from_array(self.dir),
             spin: self.spin,
+            round: false,
         })
     }
 }
@@ -115,7 +116,8 @@ fn record(
                 .chain(parents.get(t).ok().map(|c| c.parent()))
                 .any(|e| movable.contains(e))
         });
-        if on_movable {
+        // The round's own (the bomb's scorch) go at its restart.
+        if on_movable || ask.round {
             continue;
         }
         log.decals.push_back(NetDecal::of(ask));
