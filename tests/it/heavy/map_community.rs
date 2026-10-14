@@ -556,7 +556,7 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
                 .init_asset::<mashup::map::world_material::WorldMaterial>()
                 .init_asset::<mashup::map::prop_material::PropMaterial>()
                 .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
-                .init_asset::<mashup::map::water::WaterMaterial>()
+                .init_asset::<mashup::render::water::WaterMaterial>()
                 .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
         },
         MapPlugin::new(map),
@@ -576,7 +576,7 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
     // Placed weapons settle (they fall onto what they rest on).
     sim.seconds(3.0);
     let world = sim.app.world_mut();
-    assert_eq!(world.resource::<mashup::map::vis::VisStats>().cluster, Some(cluster));
+    assert_eq!(world.resource::<mashup::render::vis::VisStats>().cluster, Some(cluster));
     let check = |what: &str, parts: Vec<(Box<[u32]>, bool)>| {
         let hidden = parts.iter().filter(|(_, on)| !on).count();
         for (clusters, on) in &parts {
@@ -616,7 +616,7 @@ fn moving_water_is_culled_on_jacks() {
                 .init_asset::<mashup::map::world_material::WorldMaterial>()
                 .init_asset::<mashup::map::prop_material::PropMaterial>()
                 .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
-                .init_asset::<mashup::map::water::WaterMaterial>()
+                .init_asset::<mashup::render::water::WaterMaterial>()
                 .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
         },
         MapPlugin::new(map),
@@ -633,7 +633,7 @@ fn moving_water_is_culled_on_jacks() {
     }
     sim.ticks(10);
     let world = sim.app.world_mut();
-    assert_eq!(world.resource::<mashup::map::vis::VisStats>().cluster, Some(cluster));
+    assert_eq!(world.resource::<mashup::render::vis::VisStats>().cluster, Some(cluster));
     let mut q = world.query::<(
         &mashup::map::water::WaterSurface,
         Option<&mashup::map::VisClusters>,
@@ -1104,7 +1104,7 @@ fn gungame_weapons_pick_up_equip_and_strip() {
 /// mg_n64_goldeneye_v2's strike-generator env_beams (visual_entities.md
 /// 4.2): a weapon button's StrikeOnce, 20 s later, strikes all 14 between
 /// their info_targets (the map draws each for its 2 s life:
-/// `map::emitters::StrikeEmitter`) and kills a player on a line (900).
+/// `render::emitters::StrikeEmitter`) and kills a player on a line (900).
 #[test]
 fn strike_beams_strike_and_kill() {
     use bevy::ecs::message::Messages;

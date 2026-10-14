@@ -111,7 +111,7 @@ pub(crate) fn spawn(commands: &mut Commands, data: &crate::map::MapData, root: E
 /// distance, and blend the tables when the weights change.
 pub(crate) fn update(
     time: Res<Time>,
-    eyes: crate::map::emitters::EyeQuery,
+    eyes: super::emitters::EyeQuery,
     mut volumes: Query<(&mut ColorCorrectionVolume, &GlobalTransform, Option<&crate::map::EntityPart>)>,
     lut: Option<ResMut<ColorCorrectionLut>>,
     images: Option<ResMut<Assets<Image>>>,

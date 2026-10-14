@@ -12,7 +12,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`src/games/cs_source/material.rs`)
 - client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`src/games/cs_source/ui/options.rs`)
 - map: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`src/map/merge.rs`)
-- map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices (`src/map/water.rs`)
+- map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices (`src/render/water.rs`)
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`src/logic/ambient.rs`)
 - map: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`src/map/world_material.rs`)
@@ -26,9 +26,9 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - client: Game-look HUD, scoreboard, spectator bars, C4 screen and loading progress: guesses where the layouts stop (`src/client/game_hud.rs`)
 - games/cs_source: Impact effects built from the spec's tables, with listed parts left out or read as the spec reads (`src/games/cs_source/impact_effects.rs`)
 - games/cs_source: Loose items' landing dust is the bullet dust puff over a guessed speed, no spec (`src/games/cs_source/impact_effects.rs`)
-- map: Particles blend in linear space and sort per material mesh (`src/map/particles.rs`)
+- map: Particles blend in linear space and sort per material mesh (`src/render/particles.rs`)
 - weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`src/map/bodies.rs`)
-- map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/map/decal.rs`)
+- map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/render/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
 - map: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`src/map/world_material.rs`)
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`src/games/cs_source/player_anim.rs`)
@@ -36,7 +36,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - weapon: Penetration: fixed player budget cost and unmeasured material factors (`src/weapon/mod.rs`)
 - weapon, games/cs_source: Grenades follow the SDK template where CS:S is unmeasured (spec open questions) (`src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`src/bot/mod.rs`)
-- map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`src/map/view_model.rs`)
+- map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`src/render/view_model.rs`)
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
@@ -64,17 +64,17 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - logic: point_servercommand: our allow and deny rules for map-sent server commands (`src/logic/classes.rs`)
 - map: Older maps' ambient light (one cube per leaf: BSP v19, early v20) is sampled at the leaf centre. OK for now: Props light sensibly; the engine's exact use isn't specced.
 - map: Material effects past the spec: texture transforms and proxies from the public wiki's wording (`src/map/material_fx.rs`)
-- map: LDR lightmaps by default; HDR tone mapping unmeasured; light styles rebuilt or rewritten on the CPU (`src/map/light_styles.rs`)
-- map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`src/map/vis.rs`)
+- map: LDR lightmaps by default; HDR tone mapping unmeasured; light styles rebuilt or rewritten on the CPU (`src/render/light_styles.rs`)
+- map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`src/games/cs_source/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`src/render/lod.rs`)
-- map: Characters cast blob shadows only; shadow details ours (`src/map/shadows.rs`)
+- map: Characters cast blob shadows only; shadow details ours (`src/render/shadows.rs`)
 - map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
-- map: Decal reach, orientation and infodecal probes inferred, not specced (`src/map/decal.rs`)
+- map: Decal reach, orientation and infodecal probes inferred, not specced (`src/render/decal.rs`)
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
-- map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`src/map/rope_sway.rs`)
+- map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`src/render/rope_sway.rs`)
 - weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`src/games/cs_source/weapons.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`src/games/cs_source/pain.rs`)
 - weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
@@ -95,7 +95,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map, sound: Under water (`audio::hearing::UNDERWATER`): a steady low-pass (600 Hz, 0.8) on everything while the eye is in water; Source switches to its `dsp_water` room preset, engine-side and unmeasured. OK for now: Better than no change at all; capture wanted.
 - client: Third-person camera follows at once (no easing) and sweeps a sphere (`src/client/view.rs`)
 - sound: Scrape friction energy is our stand-in for Source's (`src/games/cs_source/scrapes.rs`)
-- map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`src/map/steam.rs`)
+- map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`src/render/steam.rs`)
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
 - map, client: Frame-time shortcuts: unseen bodies posed every 4th frame, padded meshes, lazy prop shadows, single-threaded executors (`src/map/bodies.rs`)
 - map: Maps load synchronously before the app starts. OK for now: dust2 converts in well under a second.
@@ -105,8 +105,8 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - logic, core: Game entities beyond or short of the spec (weapon hiding, HUD suppression, speed, views) (`src/logic/game.rs`)
 - logic, map: point_template copies are cloned nodes (not replicated); point_viewcontrol simplified (`src/logic/templates.rs`)
 - map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`src/map/placed_ragdoll.rs`)
-- map: Particle system operator meanings are interpretations (`src/map/psys.rs`)
-- map: Smoke stacks (`map::emitters`, specs/source/particles_and_smoke.md 3): env_particlelight isn't read (no map uses one), the JetLength/Speed/Rate/SpreadSpeed inputs are kept as placed, the material's own lighting isn't applied (the colour is rendercolor). OK for now: No map seen changes them.
+- map: Particle system operator meanings are interpretations (`src/render/psys.rs`)
+- map: Smoke stacks: env_particlelight not read, inputs kept as placed, the material's own lighting not applied (`src/render/emitters.rs`)
 - map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`src/map/buoyancy.rs`)
 - map, logic: Classes from the public entity docs only (func_water_analog, func_tanktrain, monitors, emitters...) (`src/logic/community.rs`)
 - map, logic: Beams: placed ends only, noise and scroll by the spec's quirks, some inputs ignored (`src/render/beams.rs`)

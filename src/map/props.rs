@@ -1,5 +1,6 @@
 //! Placed props after spawning: their looks (skin, body parts), animated
-//! sequences and dynamic shadows, and the components that tag them.
+//! sequences, and the components that tag them (their dynamic shadows:
+//! `crate::render::shadows`).
 
 #[allow(unused_imports)]
 use super::*;
@@ -26,167 +27,6 @@ pub struct PropEntity(pub usize);
 /// restart can put a moved physics prop back.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct PropHome(pub Transform);
-
-/// What it takes to redraw prop shadows when props move (built by
-/// `shadows::apply_shadow_detail`): render-to-texture, or blobs (`blob`:
-/// one picture, only the meshes move).
-#[derive(Resource)]
-pub(crate) struct ShadowState {
-    pub(crate) data: Arc<MapData>,
-    pub(crate) settings: MapShadows,
-    pub(crate) receivers: Arc<shadows::Receivers>,
-    pub(crate) blob: bool,
-    pub(crate) atlas: shadows::Atlas,
-    pub(crate) atlas_image: Handle<Image>,
-    pub(crate) material: Handle<shadows::ShadowMaterial>,
-    pub(crate) cells: std::collections::HashMap<usize, shadows::Cell>,
-    pub(crate) entities: std::collections::HashMap<usize, Entity>,
-    pub(crate) root: Entity,
-    /// Where each caster was when its shadow was last drawn.
-    pub(crate) built: std::collections::HashMap<usize, (Vec3, Quat)>,
-}
-
-/// Redraw the shadows of physics props that moved (silhouette and mesh);
-/// a prop the logic hid (broken, killed) hides its shadow until it shows
-/// again (a round restart). Props that only jitter in place (resting
-/// physics props that never fall asleep: seven on cs_office, every frame)
-/// keep their shadow until they have moved by a quarter of a shadow texel
-/// (`shadows::moved_visibly`), and a redrawn cell updates only its part of
-/// the atlas image: with seven props rebuilt and the whole atlas converted
-/// every frame this cost 16 ms a frame there.
-#[allow(clippy::type_complexity)]
-pub(crate) fn update_prop_shadows(
-    mut commands: Commands,
-    state: Option<ResMut<ShadowState>>,
-    moved: Query<(&PropIndex, &Transform), (With<PhysicsProp>, Changed<Transform>)>,
-    hidden: Query<&PropIndex, Added<LogicHidden>>,
-    mut shown: RemovedComponents<LogicHidden>,
-    props: Query<&PropIndex, Without<LogicHidden>>,
-    mut shadow_vis: Query<Option<&mut VisClusters>, With<PropShadow>>,
-    vis: Option<Res<vis::ActiveVisibility>>,
-    shadow_meshes: Query<&Mesh3d, With<PropShadow>>,
-    mut images: ResMut<Assets<Image>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    let Some(mut state) = state else {
-        shown.clear();
-        return;
-    };
-    let state = &mut *state;
-    for index in &hidden {
-        if let Some(e) = state.entities.get(&index.0) {
-            commands.entity(*e).insert((LogicHidden, Visibility::Hidden));
-        }
-    }
-    for node in shown.read() {
-        let Ok(index) = props.get(node) else { continue };
-        if let Some(e) = state.entities.get(&index.0).copied() {
-            let on = shadow_vis.get(e).ok().flatten().is_none_or(|v| v.potentially_visible);
-            commands.entity(e).remove::<LogicHidden>().insert(if on {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            });
-        }
-    }
-    let mut redrawn: Vec<shadows::Cell> = Vec::new();
-    for (index, t) in &moved {
-        let Some(cell) = state.cells.get(&index.0).copied() else {
-            continue;
-        };
-        let model = &state.data.models[state.data.props[index.0].model];
-        if let Some(&from) = state.built.get(&index.0)
-            && !shadows::moved_visibly(model.bounds, cell.size, from, (t.translation, t.rotation))
-        {
-            continue;
-        }
-        state.built.insert(index.0, (t.translation, t.rotation));
-        let mesh = if state.blob {
-            let frame = shadows::ShadowFrame::blob(
-                model.bounds,
-                t.translation,
-                t.rotation,
-                shadows::DOWN,
-                state.settings.distance,
-            );
-            shadows::shadow_mesh(&frame, &state.receivers, shadows::BLOB_RECT)
-        } else {
-            redrawn.push(cell);
-            shadows::rebuild(
-                &state.data,
-                &state.settings,
-                &state.receivers,
-                &mut state.atlas,
-                &cell,
-                t.translation,
-                t.rotation,
-            )
-        };
-        match (mesh, state.entities.get(&index.0).copied()) {
-            (Some(mesh), Some(e)) => match shadow_meshes.get(e) {
-                // The same mesh asset, rewritten: a new handle every
-                // frame left the shadow undrawn while its prop moved
-                // (Bevy re-specializes an entity whose `Mesh3d` changed
-                // and skipped it while the new mesh wasn't prepared yet).
-                // (The handle keeps the asset alive: the id stays valid.)
-                Ok(handle) => {
-                    // Hidden where the camera can't see where it now lies.
-                    if let Some(v) = vis.as_ref()
-                        && let Some(aabb) = bevy::camera::primitives::MeshAabb::compute_aabb(&mesh)
-                        && let Ok(Some(mut tag)) = shadow_vis.get_mut(e)
-                    {
-                        let clusters = vis::box_clusters(&v.0, Vec3::from(aabb.min()), Vec3::from(aabb.max()));
-                        if !clusters.is_empty() && *tag.clusters != clusters[..] {
-                            tag.clusters = clusters.into_boxed_slice();
-                        }
-                    }
-                    let _ = meshes.insert(handle.id(), mesh);
-                }
-                Err(_) => {
-                    commands.entity(e).insert(Mesh3d(meshes.add(mesh)));
-                }
-            },
-            (Some(mesh), None) => {
-                let e = commands
-                    .spawn((
-                        Name::new(format!("Shadow of prop {}", index.0)),
-                        MapPart,
-                        PropShadow { prop: index.0 },
-                        Mesh3d(meshes.add(mesh)),
-                        MeshMaterial3d(state.material.clone()),
-                        bevy::light::NotShadowCaster,
-                        Transform::default(),
-                        ChildOf(state.root),
-                    ))
-                    .id();
-                state.entities.insert(index.0, e);
-            }
-            (None, Some(e)) => {
-                commands.entity(e).despawn();
-                state.entities.remove(&index.0);
-            }
-            (None, None) => {}
-        }
-    }
-    if !redrawn.is_empty()
-        && let Some(mut image) = images.get_mut(&state.atlas_image)
-    {
-        match image.data.as_mut() {
-            Some(bytes) => {
-                for cell in &redrawn {
-                    state.atlas.write_bytes(bytes, cell.at, cell.size);
-                }
-            }
-            None => image.data = Some(state.atlas.bytes()),
-        }
-    }
-}
-
-/// A prop's dynamic shadow on the world (index into `MapData::props`).
-#[derive(Component, Debug)]
-pub struct PropShadow {
-    pub prop: usize,
-}
 
 /// A prop model's mesh (index into `MapModel::meshes`) drawn under the
 /// prop's node.
@@ -341,43 +181,6 @@ pub(crate) fn animate_props(
     }
 }
 
-/// Sprites and dust volumes follow their entity (`EntityPart`): a sprite
-/// is drawn while on; a dust volume while it exists (off, it only stops
-/// spawning motes).
-#[allow(clippy::type_complexity)]
-pub(crate) fn switch_parts(
-    parts: Query<
-        (
-            Entity,
-            &EntityPart,
-            Option<&VisClusters>,
-            Has<LogicHidden>,
-            Has<dust::DustEmitter>,
-            Has<steam::SteamEmitter>,
-        ),
-        Changed<EntityPart>,
-    >,
-    mut commands: Commands,
-) {
-    for (e, part, clusters, hidden, dust, steam) in &parts {
-        // Dust and steam stay drawn while off: what they made lives on.
-        let dust = dust || steam;
-        let shown = part.exists && (dust || part.on);
-        if shown != hidden {
-            continue;
-        }
-        if shown {
-            let mut c = commands.entity(e);
-            c.remove::<LogicHidden>();
-            if clusters.is_none_or(|c| c.potentially_visible) {
-                c.insert(Visibility::Inherited);
-            }
-        } else {
-            commands.entity(e).insert((LogicHidden, Visibility::Hidden));
-        }
-    }
-}
-
 /// A prop's physics collider (sprite glows see through static props, as
 /// the game's line test ignores them).
 #[derive(Component)]
@@ -393,33 +196,6 @@ mod switch_tests {
         let parts = [1, 3, 2];
         assert_eq!(body_choice(&parts, 5, 1), 2);
         assert_eq!(body_choice(&parts, 5, 2), 1);
-    }
-
-    #[test]
-    fn switched_parts_hide_and_show() {
-        let mut app = App::new();
-        app.add_systems(Update, switch_parts);
-        let sprite = app
-            .world_mut()
-            .spawn((
-                EntityPart {
-                    entity: 3,
-                    on: true,
-                    exists: true,
-                },
-                Visibility::Inherited,
-            ))
-            .id();
-        app.update();
-        assert!(!app.world().entity(sprite).contains::<LogicHidden>());
-        app.world_mut().get_mut::<EntityPart>(sprite).unwrap().on = false;
-        app.update();
-        assert!(app.world().entity(sprite).contains::<LogicHidden>());
-        assert_eq!(app.world().get::<Visibility>(sprite), Some(&Visibility::Hidden));
-        app.world_mut().get_mut::<EntityPart>(sprite).unwrap().on = true;
-        app.update();
-        assert!(!app.world().entity(sprite).contains::<LogicHidden>());
-        assert_eq!(app.world().get::<Visibility>(sprite), Some(&Visibility::Inherited));
     }
 
     #[test]

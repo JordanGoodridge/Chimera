@@ -9,11 +9,9 @@ use mashup::{
     games::{self, cs_source},
     harness::Sim,
     logic::{Logic, Value},
-    map::{
-        MapData, MapPlugin,
-        vis::{Occludee, VisStats},
-    },
+    map::{MapData, MapPlugin, vis::Occludee},
     mount::config::LocalConfig,
+    render::vis::VisStats,
 };
 
 fn load(name: &str) -> Option<MapData> {

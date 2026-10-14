@@ -81,7 +81,7 @@ fn spawn_effects(
     bodies: Query<&RigidBody>,
     assets: Res<Assets3>,
     mut marks: ResMut<Marks>,
-    decals: Option<Res<crate::map::decal::ImpactDecals>>,
+    decals: Option<Res<crate::render::decal::ImpactDecals>>,
     mut commands: Commands,
 ) {
     let me = local.map(|l| *l);

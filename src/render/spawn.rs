@@ -11,6 +11,12 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 #[allow(unused_imports)]
 use crate::map::*;
+use super::{
+    dust, emitters, light_styles, monitor, shadows,
+    view_model::{build_assets as build_view_models, build_flash_assets},
+    sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},
+    steam, water,
+};
 // Explicit: Bevy's prelude has a `LightProbe` too.
 use crate::map::{
     LightProbe,
@@ -34,7 +40,12 @@ impl MapDrawer for MapAssets<'static> {
         Draws {
             loose: drawn && a.bindposes.is_some(),
             gibs: drawn && a.prop_materials.is_some(),
-            steam: drawn,
+        }
+    }
+
+    fn spawn_undrawn(a: &mut MapAssets, commands: &mut Commands, s: &MapSpawn) {
+        if !(a.meshes.is_some() && a.materials.is_some() && a.images.is_some()) {
+            super::steam::spawn_undrawn(commands, s);
         }
     }
 
@@ -50,6 +61,14 @@ impl MapDrawer for MapAssets<'static> {
 
     fn textures(drawn: &Drawn) -> &[Handle<Image>] {
         &drawn.textures
+    }
+
+    fn insert_drawn(drawn: &Drawn, commands: &mut Commands, s: &MapSpawn, which: DrawnResource) {
+        match which {
+            DrawnResource::DecalSurfaces => commands.insert_resource(super::decal::DecalSurfaces::new(s.data)),
+            DrawnResource::Particles => super::particles::insert_assets(commands, s.data, &drawn.textures),
+            DrawnResource::Decals => super::decal::insert_assets(commands, s.data, &drawn.textures),
+        }
     }
 }
 
@@ -148,7 +167,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
     }
     let lightmaps = build_lightmaps(commands, data, images, world_materials.is_none());
     let sky_handle = spawn_sky(commands, s, images, meshes);
-    // Water surfaces have their own material (map::water).
+    // Water surfaces have their own material (`water`).
     let water_drawn = water_materials.is_some() && view == MapDebugView::Normal;
     if water_drawn && let Some(water_materials) = water_materials.as_mut() {
         water::spawn_surfaces(
@@ -359,7 +378,7 @@ fn build_character_assets(
     }
     commands.insert_resource(HeldAssets(held));
     if let Some(prop_materials) = prop_materials.as_mut() {
-        commands.insert_resource(view_model::build_assets(
+        commands.insert_resource(build_view_models(
             data,
             textures,
             cubemaps,
@@ -369,11 +388,11 @@ fn build_character_assets(
             bindposes,
         ));
     }
-    if let Some(flash) = view_model::build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut()) {
+    if let Some(flash) = build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut()) {
         commands.insert_resource(flash);
     }
     if let Some(prop_materials) = prop_materials.as_mut()
-        && let Some(shells) = shells::build_assets(data, textures, view, meshes, prop_materials)
+        && let Some(shells) = super::shells::build_assets(data, textures, view, meshes, prop_materials)
     {
         commands.insert_resource(shells);
     }
@@ -499,7 +518,7 @@ fn spawn_world_meshes(
     // Keyed by the material's whole description, and by whether it is
     // in the 3D skybox (water fog skips skybox materials).
     // Areaportal windows' brushes keep materials of their own:
-    // `vis::fade_windows` changes their alpha per brush.
+    // `super::vis::fade_windows` changes their alpha per brush.
     let window_brushes: std::collections::HashSet<usize> = data
         .visibility
         .as_deref()
@@ -1072,7 +1091,7 @@ fn spawn_effects(
         let mut e = commands.spawn((
             Name::new(format!("Particle system {i}")),
             MapPart,
-            psys::SystemEmitter::new(p.clone(), i as u64 + 1),
+            super::psys::SystemEmitter::new(p.clone(), i as u64 + 1),
             FollowsEntity,
             Transform::from_translation(p.position).with_rotation(p.rotation),
             Visibility::default(),
@@ -1088,7 +1107,7 @@ fn spawn_effects(
         }
     }
     if !data.particle_systems.defs.is_empty() {
-        commands.insert_resource(psys::ParticleSystemDefs(data.particle_systems.clone()));
+        commands.insert_resource(super::psys::ParticleSystemDefs(data.particle_systems.clone()));
     }
     super::color_correction::spawn(commands, data, root);
     for (i, m) in data.muzzle_flashes.iter().enumerate() {
@@ -1436,8 +1455,8 @@ fn spawn_ropes(
             s.tag(&mut e, clusters.clone());
             // The strips share the mesh: one of them moves it.
             if let Some(sway) = swaying.take() {
-                e.insert(rope_sway::RopeMotion {
-                    gusts: rope_sway::Gusts::new(i as u64 + 1),
+                e.insert(super::rope_sway::RopeMotion {
+                    gusts: super::rope_sway::Gusts::new(i as u64 + 1),
                     sway,
                     look: rope.clone(),
                     mesh: mesh.clone(),

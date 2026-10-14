@@ -641,12 +641,12 @@ docs/plans/active/sound.md.
 
 ## 8. Visual fidelity
 
-- **Water surfaces** (specs/cs_source/water.md, `map::water`): refraction,
+- **Water surfaces** (specs/cs_source/water.md, `render::water`): refraction,
   planar reflection, the cheap cubemap pass, under-water fog (world,
   props, ropes, decals, particles), bottom materials, the
   `$underwateroverlay` screen warp, the intersection view's height fog
   the water cvars, `$blurrefract` with `$refracttint` and the "Water
-  detail" choices (`map::water::WATER_DETAIL`, for the Video Advanced
+  detail" choices (`render::water::WATER_DETAIL`, for the Video Advanced
   menu) are in. Left: a Refract shader spec (the warp's
   strength and blur are guesses: de_port's `water_warp01` looks subtle),
   the `$basetexture` variant (no stock material uses it), and a

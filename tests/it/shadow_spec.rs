@@ -1,7 +1,7 @@
 //! Prop shadow test cases from specs/cs_source/shadows_sky.md.
 
 use bevy::prelude::*;
-use mashup::map::shadows::{ShadowFrame, cell_size, shadow_color};
+use mashup::render::shadows::{ShadowFrame, cell_size, shadow_color};
 
 const M: f32 = 0.0254;
 
@@ -59,7 +59,10 @@ fn receiver_colour() {
 /// rest instead of writing past the cell.
 #[test]
 fn silhouette_skips_triangles_outside_the_cell() {
-    use mashup::map::{MapMesh, MapModel, shadows::silhouette};
+    use mashup::{
+        map::{MapMesh, MapModel},
+        render::shadows::silhouette,
+    };
     let bounds = (Vec3::splat(-0.5), Vec3::splat(0.5));
     let down = Vec3::NEG_Y;
     let f = ShadowFrame::new(bounds, Vec3::ZERO, Quat::IDENTITY, down, 50.0 * M);

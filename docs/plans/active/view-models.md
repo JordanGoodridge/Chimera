@@ -42,7 +42,7 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   including view punch; written as the local player's
   `map::ViewModelOffset` (camera space), which the drawing mirrors with
   the model.
-- **Drawing** (`map/view_model.rs`, render only): the client marks its
+- **Drawing** (`render/view_model.rs`, render only): the client marks its
   first-person camera with `ViewModelAnchor`; the map adds a child camera
   on its own render layer (`VIEW_MODEL_LAYER`), drawn after the world with
   its own depth buffer (so the model never clips into walls) and its own
@@ -66,7 +66,7 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   clusters, so it lights world surfaces, props and view models. Other
   characters (and the local player in third person) flash at their held
   world model's `muzzle_flash` attachment.
-- **Shells** (`map/shells.rs`, spec 8): on the brass event, the shell
+- **Shells** (`render/shells.rs`, spec 8): on the brass event, the shell
   model (`models/shells/shell_<type>.mdl`) leaves the view model's
   attachment `2` (re-projected), flies under full gravity with the spec's
   speeds and spin, bounces at half speed (a bounce sound one hit in six),

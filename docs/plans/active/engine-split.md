@@ -130,7 +130,7 @@ measurements):
     (order kept); `tint`, `detail`, `sky_occluder` moved whole; `beams`,
     `color_correction`, `lod` split (data stays in map, drawing in
     render).
-  - [ ] The rest, roughly in this order (each needs its data types left
+  - [~] The rest, roughly in this order (each needs its data types left
     in map and its users in map's sim side cut first): glow sprites
     (`GlowSprite`, `glow_visibility`: `vis` and `beams` use them),
     `psys`, `shells` and `rope_sway` (data split), `fish`, `dust`,
@@ -144,7 +144,61 @@ measurements):
     `rope_material`, `fog`, `probe_lit`, `materials.rs`/`images.rs`
     helpers: `breakables`, `loose`, `bodies`, `ragdoll`, `view_model`
     use them, so their drawn parts have to move first, through more
-    `MapDrawer` hooks where they spawn). `insert_resources` still
+    `MapDrawer` hooks where they spawn). Render's resources and entities
+    go at unload through `render::unload_map` (a `MapHooks::unload`
+    hook, so they now go after map's own). Done (2026-10-14, one commit
+    per group, the spawn dump identical modulo moved paths):
+    - [x] `glow_visibility` (`render::glow`; `GlowSprite` stays in map
+      for `vis`), `psys` (definitions stay; `Instance`, `SystemEmitter`,
+      `update_systems` moved), `shells` (types and `shell_step` stay;
+      assets, `eject`, `fly` moved), `rope_sway` (`RopeSway`, `spline`
+      stay; `Gusts`, `RopeMotion`, `RopeWind`, `sway_ropes` moved),
+      `fish` (`Fish` stays; `swim` moved).
+    - [x] `dust` (whole), `steam` (`MapSteam` stays; the headless
+      stand-ins through `MapDrawer::spawn_undrawn`), `switch_parts`
+      (`render::parts`), `tracer` (`Tracer`, `MuzzleCache` stay),
+      `emitters` (the `Map*` data and beam noise stay), `particles`
+      drawing (the pool, its stepping and `ParticleMaterials` stay;
+      `ParticleAssets` inserted at its old place through
+      `MapDrawer::insert_drawn`), `fog::apply_scene_fog` (names the
+      particle material; never scheduled).
+    - [x] `decal` drawing (`MapDecals`, `LIFT`, `DEPTH_DROP` stay;
+      `DecalSurfaces`, `DecalAssets` and `ImpactDecals` inserted at their
+      places through `MapDrawer::insert_drawn`), `monitor` (the screen
+      cameras' markers and `MonitorFog`'s view fog stay; `MonitorCamera`
+      is initialized by map where `MonitorPlugin` was added, the plugin's
+      system by render right after).
+    - [x] `water` drawing (`MapWaterMaterial`, `WaterSurface`,
+      `move_water` and `WaterMovers`, `WaterView` (hearing reads it),
+      the reflection camera's markers, the layers and `height_fog` stay;
+      the material, cameras, fog, overlays and their systems moved).
+    - [x] `shadows` whole, with `props.rs`'s `ShadowState`,
+      `update_prop_shadows` and `PropShadow`.
+    - [x] `vis` culling: `cull`, `fade_windows` and the culling cvars
+      and stats (`NoVis`, `PortalsOpenAll`, `Occlusion`, `VisStats`);
+      the visibility data, chunking and the tags (`VisClusters`,
+      `FadeDistance`, `Occludee`, `WindowBrush`, `ActiveVisibility`:
+      bots and hearing read it) stay.
+    - [x] `sky` drawing: `attach_sky`, `follow_sky_camera`,
+      `show_skybox_in_place` and the sky resources render inserts; the
+      images, `SkyboxCamera` and the layers stay.
+    - [x] `light_styles` whole (its texel encoders to `map::images`);
+      `MapPlugin::build_first` split at the place its plugin was added
+      (`build_after_light_styles`), so registration keeps its order.
+    - [x] `view_model` drawing: assets, `draw_view_models`, screens,
+      muzzle flashes and their lights, `unload`; the games' types, the
+      animator, events, markers (`HeldMuzzle`, which `bodies` spawns) and
+      the placement maths (`shells` uses it) stay.
+    - [x] `architecture::simulation_uses_no_drawing_module_of_map`: the
+      simulation's layers name none of the materials left in map
+      (`MAP_DRAWING`; one exception, `SpriteBlend`).
+    - [ ] Left: the materials and WGSL (`world_material`, `prop_material`,
+      `sprite_material`, `rope_material`, `fog`, `probe_lit`,
+      `materials.rs`/`images.rs` helpers), which need the drawn parts of
+      `breakables` (gibs, panes), `loose`, `bodies`, `ragdoll` and
+      `merge` moved first, through drawer hooks that also run after
+      spawning (gibs, dropped weapons and bodies are made in play).
+    `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`
     when they move. Client post passes (`client::hdr`, `gamma`,

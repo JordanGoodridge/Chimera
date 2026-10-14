@@ -105,10 +105,10 @@ fn main() {
         mashup::map::rope_material::RopeMaterialPlugin,
         mashup::map::sprite_material::SpriteMaterialPlugin,
         mashup::map::prop_material::PropMaterialPlugin,
-        mashup::map::shadows::ShadowMaterialPlugin,
-        mashup::map::decal::DecalMaterialPlugin,
-        mashup::map::water::WaterMaterialPlugin,
-        mashup::map::particles::ParticleMaterialPlugin,
+        mashup::render::shadows::ShadowMaterialPlugin,
+        mashup::render::decal::DecalMaterialPlugin,
+        mashup::render::water::WaterMaterialPlugin,
+        mashup::render::particles::ParticleMaterialPlugin,
     ))
     .add_plugins((
         mashup::render::beams::BeamMaterialPlugin,

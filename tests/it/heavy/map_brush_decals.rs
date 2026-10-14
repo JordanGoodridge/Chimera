@@ -23,7 +23,6 @@ use mashup::{
     map::{
         BrushEntityBounds, MapBrushEntity, MapData, MapEntity, MapPlugin,
         DecalGroup, PlaceDecal,
-        decal::{ClearDecals, DecalMaterial, DecalSettings, RuntimeDecal},
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
@@ -31,6 +30,7 @@ use mashup::{
     },
     mount::config::LocalConfig,
     movement::noclip,
+    render::decal::{ClearDecals, DecalMaterial, DecalSettings, RuntimeDecal},
     weapon::{Inventory, Weapon, give},
 };
 

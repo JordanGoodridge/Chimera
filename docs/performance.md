@@ -42,7 +42,7 @@ On a busy box, interleave the builds over several rounds and compare
 medians and minimums ("Frame time pass" below), or compare
 instructions, which hardly move with load ("Load-independent metrics").
 
-## Visibility culling (`map::vis`)
+## Visibility culling (`render::vis`, `map::vis`)
 
 Source maps carry precomputed visibility: the BSP tree's leaves belong to
 clusters, and the visibility lump lists, per cluster, every cluster
@@ -61,7 +61,7 @@ potentially visible from anywhere inside it (PVS, run-length encoded).
   when it changes it shows the tagged parts whose clusters are potentially
   visible and hides the rest. In solid or outside the map (no cluster),
   or with `r_novis 1`, everything is drawn.
-- The water's reflection camera (`map::water`) draws only for a
+- The water's reflection camera (`render::water`) draws only for a
   reflecting volume the main camera can see (in its frustum and in its
   cluster's PVS; the spec renders the views of the volume the camera
   sees). While it draws, parts potentially visible from the clusters
@@ -484,7 +484,7 @@ two spawns), plus traces of a `--features profile` build.
   world; the next 4.9 ms), presumably depending on whether the new size
   fit the hole the old one left. Dust and particle meshes are now padded
   to power-of-two sizes with degenerate triangles
-  (`dust::write_dynamic_mesh`): in the same trace 0.33 ms, 0.53 ms and
+  (`render::dust::write_dynamic_mesh`): in the same trace 0.33 ms, 0.53 ms and
   0.17 ms.
 - **The executor.** A frame runs about 1500 systems (main and render
   world: ~200 of ours, ~180 avian per tick, ~60 render-graph systems
@@ -770,7 +770,7 @@ times the p50. Nothing else was periodic: with the light steps gone
 the hitch lines that remain have thread CPU far below wall time (the
 loaded box), and instructions per frame no different from the median.
 
-The fix (`map::light_styles`, run-time path only):
+The fix (`render::light_styles`, run-time path only):
 
 - **States kept.** A block's light depends only on the levels of the
   styles lighting it, and patterns loop through a few letters, so each
@@ -823,7 +823,7 @@ idle machine the step frames were the p99. Pictures: `refcmp report`
 mean abs diff de_dust2 0.030835 before and after (32 views), de_nuke
 0.023818 (27); bhop_myztek's spawn looks the same.
 
-Regression checks (`map::light_styles` unit tests):
+Regression checks (`render::light_styles` unit tests):
 `animate_packs_the_blocks_whose_style_stepped` (a step's blocks in one
 buffer, rows 256-aligned, bytes as the whole-image encoders write them),
 `touching_blocks_merge_into_one_copy`,

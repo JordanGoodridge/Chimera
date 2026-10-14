@@ -19,7 +19,7 @@
 //! asset, rewritten in place: a new handle a frame left a moving prop's shadow
 //! undrawn), hidden while the logic hides their prop (broken, killed).
 //!
-//! Known shortcuts (docs/tech-debt.md): Dynamic shadows (`map::shadows`, shadow
+//! Known shortcuts (docs/tech-debt.md): Dynamic shadows (`render::shadows`, shadow
 //! detail): characters cast blob shadows only, at every level (Source draws
 //! players render-to-texture; theirs would need the posed silhouette each
 //! frame), straight down at Low and along the map's direction at Medium/High,
@@ -46,7 +46,12 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use super::{MapAlpha, MapData, MapModel, MapProp, MapShadows, MapTexture};
+use std::sync::Arc;
+
+use crate::map::{
+    LogicHidden, MapAlpha, MapData, MapModel, MapPart, MapProp, MapShadows, MapTexture, PhysicsProp, PropIndex, VisClusters,
+    vis,
+};
 
 const METERS_PER_UNIT: f32 = 0.0254;
 /// Added to each projected width, units.
@@ -734,7 +739,7 @@ pub struct ShadowMaterial {
 
 impl Material for ShadowMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/shadow.wgsl".into()
+        "embedded://mashup/render/shadow.wgsl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -800,9 +805,9 @@ pub(crate) fn apply_shadow_detail(
     mut commands: Commands,
     source: Option<ResMut<ShadowSource>>,
     detail: Option<Res<ShadowSettings>>,
-    old: Query<Entity, Or<(With<super::PropShadow>, With<CharacterBlob>)>>,
-    moved: Query<(&super::PropIndex, &Transform), With<super::PhysicsProp>>,
-    hidden: Query<&super::PropIndex, With<super::LogicHidden>>,
+    old: Query<Entity, Or<(With<PropShadow>, With<CharacterBlob>)>>,
+    moved: Query<(&PropIndex, &Transform), With<PhysicsProp>>,
+    hidden: Query<&PropIndex, With<LogicHidden>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: Option<ResMut<Assets<ShadowMaterial>>>,
@@ -817,7 +822,7 @@ pub(crate) fn apply_shadow_detail(
     for e in &old {
         commands.entity(e).despawn();
     }
-    commands.remove_resource::<super::ShadowState>();
+    commands.remove_resource::<ShadowState>();
     source.built = Some(mode);
     source.blob_material = None;
     if mode == ShadowMode::Off {
@@ -877,13 +882,13 @@ pub(crate) fn apply_shadow_detail(
         // Physics props' shadows move with them: their clusters follow
         // the rebuilt mesh (`update_prop_shadows`).
         let clusters = match (visibility, bevy::camera::primitives::MeshAabb::compute_aabb(&mesh)) {
-            (Some(v), Some(aabb)) => super::vis::box_clusters(v, Vec3::from(aabb.min()), Vec3::from(aabb.max())),
+            (Some(v), Some(aabb)) => vis::box_clusters(v, Vec3::from(aabb.min()), Vec3::from(aabb.max())),
             _ => Vec::new(),
         };
         let mut e = commands.spawn((
             Name::new(format!("Shadow of prop {prop}")),
-            super::MapPart,
-            super::PropShadow { prop },
+            crate::map::MapPart,
+            PropShadow { prop },
             Mesh3d(meshes.add(mesh)),
             MeshMaterial3d(material.clone()),
             bevy::light::NotShadowCaster,
@@ -891,14 +896,14 @@ pub(crate) fn apply_shadow_detail(
             ChildOf(source.root),
         ));
         if !clusters.is_empty() {
-            e.insert(super::VisClusters::new(clusters));
+            e.insert(VisClusters::new(clusters));
         }
         if hidden.contains(&prop) {
-            e.insert((super::LogicHidden, Visibility::Hidden));
+            e.insert((LogicHidden, Visibility::Hidden));
         }
         entities.insert(prop, e.id());
     }
-    commands.insert_resource(super::ShadowState {
+    commands.insert_resource(ShadowState {
         data: data.clone(),
         settings: source.settings.clone(),
         receivers: source.receivers.clone(),
@@ -938,10 +943,10 @@ pub(crate) fn update_character_blobs(
             Option<&crate::core::Health>,
             Option<&Children>,
         ),
-        (With<crate::core::Intent>, Without<crate::core::Spectating>, Without<super::ragdoll::Ragdolled>),
+        (With<crate::core::Intent>, Without<crate::core::Spectating>, Without<crate::map::ragdoll::Ragdolled>),
     >,
-    bodies: Query<&Visibility, (With<super::CharacterBody>, Without<CharacterBlob>)>,
-    mut blobs: Query<(Entity, &mut CharacterBlob, &Mesh3d, &mut Visibility), Without<super::CharacterBody>>,
+    bodies: Query<&Visibility, (With<crate::map::CharacterBody>, Without<CharacterBlob>)>,
+    mut blobs: Query<(Entity, &mut CharacterBlob, &Mesh3d, &mut Visibility), Without<crate::map::CharacterBody>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let mode = detail.map_or(ShadowMode::Texture, |d| d.mode());
@@ -986,7 +991,7 @@ pub(crate) fn update_character_blobs(
             (None, Some(mesh)) => {
                 commands.spawn((
                     Name::new("Character blob shadow"),
-                    super::MapPart,
+                    crate::map::MapPart,
                     CharacterBlob { owner, drawn: pose },
                     Mesh3d(meshes.add(mesh)),
                     MeshMaterial3d(material.clone()),
@@ -1003,6 +1008,167 @@ pub(crate) fn update_character_blobs(
     for (_, blob) in have {
         commands.entity(blob).despawn();
     }
+}
+
+/// What it takes to redraw prop shadows when props move (built by
+/// `apply_shadow_detail`): render-to-texture, or blobs (`blob`:
+/// one picture, only the meshes move).
+#[derive(Resource)]
+pub(crate) struct ShadowState {
+    pub(crate) data: Arc<MapData>,
+    pub(crate) settings: MapShadows,
+    pub(crate) receivers: Arc<Receivers>,
+    pub(crate) blob: bool,
+    pub(crate) atlas: Atlas,
+    pub(crate) atlas_image: Handle<Image>,
+    pub(crate) material: Handle<ShadowMaterial>,
+    pub(crate) cells: std::collections::HashMap<usize, Cell>,
+    pub(crate) entities: std::collections::HashMap<usize, Entity>,
+    pub(crate) root: Entity,
+    /// Where each caster was when its shadow was last drawn.
+    pub(crate) built: std::collections::HashMap<usize, (Vec3, Quat)>,
+}
+
+/// Redraw the shadows of physics props that moved (silhouette and mesh);
+/// a prop the logic hid (broken, killed) hides its shadow until it shows
+/// again (a round restart). Props that only jitter in place (resting
+/// physics props that never fall asleep: seven on cs_office, every frame)
+/// keep their shadow until they have moved by a quarter of a shadow texel
+/// (`moved_visibly`), and a redrawn cell updates only its part of
+/// the atlas image: with seven props rebuilt and the whole atlas converted
+/// every frame this cost 16 ms a frame there.
+#[allow(clippy::type_complexity)]
+pub(crate) fn update_prop_shadows(
+    mut commands: Commands,
+    state: Option<ResMut<ShadowState>>,
+    moved: Query<(&PropIndex, &Transform), (With<PhysicsProp>, Changed<Transform>)>,
+    hidden: Query<&PropIndex, Added<LogicHidden>>,
+    mut shown: RemovedComponents<LogicHidden>,
+    props: Query<&PropIndex, Without<LogicHidden>>,
+    mut shadow_vis: Query<Option<&mut VisClusters>, With<PropShadow>>,
+    vis: Option<Res<vis::ActiveVisibility>>,
+    shadow_meshes: Query<&Mesh3d, With<PropShadow>>,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    let Some(mut state) = state else {
+        shown.clear();
+        return;
+    };
+    let state = &mut *state;
+    for index in &hidden {
+        if let Some(e) = state.entities.get(&index.0) {
+            commands.entity(*e).insert((LogicHidden, Visibility::Hidden));
+        }
+    }
+    for node in shown.read() {
+        let Ok(index) = props.get(node) else { continue };
+        if let Some(e) = state.entities.get(&index.0).copied() {
+            let on = shadow_vis.get(e).ok().flatten().is_none_or(|v| v.potentially_visible);
+            commands.entity(e).remove::<LogicHidden>().insert(if on {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
+        }
+    }
+    let mut redrawn: Vec<Cell> = Vec::new();
+    for (index, t) in &moved {
+        let Some(cell) = state.cells.get(&index.0).copied() else {
+            continue;
+        };
+        let model = &state.data.models[state.data.props[index.0].model];
+        if let Some(&from) = state.built.get(&index.0)
+            && !moved_visibly(model.bounds, cell.size, from, (t.translation, t.rotation))
+        {
+            continue;
+        }
+        state.built.insert(index.0, (t.translation, t.rotation));
+        let mesh = if state.blob {
+            let frame = ShadowFrame::blob(
+                model.bounds,
+                t.translation,
+                t.rotation,
+                DOWN,
+                state.settings.distance,
+            );
+            shadow_mesh(&frame, &state.receivers, BLOB_RECT)
+        } else {
+            redrawn.push(cell);
+            rebuild(
+                &state.data,
+                &state.settings,
+                &state.receivers,
+                &mut state.atlas,
+                &cell,
+                t.translation,
+                t.rotation,
+            )
+        };
+        match (mesh, state.entities.get(&index.0).copied()) {
+            (Some(mesh), Some(e)) => match shadow_meshes.get(e) {
+                // The same mesh asset, rewritten: a new handle every
+                // frame left the shadow undrawn while its prop moved
+                // (Bevy re-specializes an entity whose `Mesh3d` changed
+                // and skipped it while the new mesh wasn't prepared yet).
+                // (The handle keeps the asset alive: the id stays valid.)
+                Ok(handle) => {
+                    // Hidden where the camera can't see where it now lies.
+                    if let Some(v) = vis.as_ref()
+                        && let Some(aabb) = bevy::camera::primitives::MeshAabb::compute_aabb(&mesh)
+                        && let Ok(Some(mut tag)) = shadow_vis.get_mut(e)
+                    {
+                        let clusters = vis::box_clusters(&v.0, Vec3::from(aabb.min()), Vec3::from(aabb.max()));
+                        if !clusters.is_empty() && *tag.clusters != clusters[..] {
+                            tag.clusters = clusters.into_boxed_slice();
+                        }
+                    }
+                    let _ = meshes.insert(handle.id(), mesh);
+                }
+                Err(_) => {
+                    commands.entity(e).insert(Mesh3d(meshes.add(mesh)));
+                }
+            },
+            (Some(mesh), None) => {
+                let e = commands
+                    .spawn((
+                        Name::new(format!("Shadow of prop {}", index.0)),
+                        MapPart,
+                        PropShadow { prop: index.0 },
+                        Mesh3d(meshes.add(mesh)),
+                        MeshMaterial3d(state.material.clone()),
+                        bevy::light::NotShadowCaster,
+                        Transform::default(),
+                        ChildOf(state.root),
+                    ))
+                    .id();
+                state.entities.insert(index.0, e);
+            }
+            (None, Some(e)) => {
+                commands.entity(e).despawn();
+                state.entities.remove(&index.0);
+            }
+            (None, None) => {}
+        }
+    }
+    if !redrawn.is_empty()
+        && let Some(mut image) = images.get_mut(&state.atlas_image)
+    {
+        match image.data.as_mut() {
+            Some(bytes) => {
+                for cell in &redrawn {
+                    state.atlas.write_bytes(bytes, cell.at, cell.size);
+                }
+            }
+            None => image.data = Some(state.atlas.bytes()),
+        }
+    }
+}
+
+/// A prop's dynamic shadow on the world (index into `MapData::props`).
+#[derive(Component, Debug)]
+pub struct PropShadow {
+    pub prop: usize,
 }
 
 #[cfg(test)]
@@ -1062,7 +1228,7 @@ mod tests {
     #[test]
     fn shadows_draw_over_impact_decals() {
         let u = METERS_PER_UNIT;
-        let depth_copy = super::super::decal::LIFT - super::super::decal::DEPTH_DROP;
+        let depth_copy = crate::map::decal::LIFT - crate::map::decal::DEPTH_DROP;
         assert!(LIFT * u > depth_copy + 0.02 * u, "shadow {LIFT} units, impacts' depth {} units", depth_copy / u);
         // And on a real floor: the shadow's vertices sit that high.
         let data = floor_map();
@@ -1085,7 +1251,7 @@ mod tests {
                 color: [100, 100, 100],
                 distance: 2.0,
             }),
-            meshes: vec![super::super::MapMesh {
+            meshes: vec![crate::map::MapMesh {
                 material: "test/floor".into(),
                 positions: vec![[-10.0, 0.0, -10.0], [-10.0, 0.0, 10.0], [10.0, 0.0, 10.0], [10.0, 0.0, -10.0]],
                 normals: vec![[0.0, 1.0, 0.0]; 4],
@@ -1153,7 +1319,7 @@ mod tests {
             .app
             .world_mut()
             .spawn((
-                super::super::CharacterBody {
+                crate::map::CharacterBody {
                     held_parts: Vec::new(),
                     model: 0,
                     joints: Vec::new(),

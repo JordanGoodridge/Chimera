@@ -9,8 +9,9 @@ use mashup::{
     games::{self, cs_source, cs_source::movement::SourceMovementPlugin},
     harness::Sim,
     logic::{Logic, Value},
-    map::{EntityPart, MapData, MapPlugin, steam::SteamEmitter},
+    map::{EntityPart, MapData, MapPlugin},
     mount::config::LocalConfig,
+    render::steam::SteamEmitter,
 };
 
 fn load(name: &str) -> Option<MapData> {

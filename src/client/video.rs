@@ -64,8 +64,8 @@ impl Plugin for VideoPlugin {
                 Ok(())
             },
         );
-        app.init_resource::<crate::map::rope_sway::RopeWind>();
-        resource_cvar::<crate::map::rope_sway::RopeWind, f32>(
+        app.init_resource::<crate::render::rope_sway::RopeWind>();
+        resource_cvar::<crate::render::rope_sway::RopeWind, f32>(
             app,
             "rope_wind_dist",
             "Ropes sway in the wind while the camera is within this many units of them (0: never).",
@@ -85,21 +85,21 @@ impl Plugin for VideoPlugin {
             "-1: models draw the level of detail their size on screen asks for; n: always level n.",
             |s| &mut s.lod,
         );
-        app.init_resource::<crate::map::shadows::ShadowSettings>();
-        resource_cvar::<crate::map::shadows::ShadowSettings, u8>(
+        app.init_resource::<crate::render::shadows::ShadowSettings>();
+        resource_cvar::<crate::render::shadows::ShadowSettings, u8>(
             app,
             "r_shadows",
             "0: no dynamic shadows (props' and characters').",
             |s| &mut s.shadows,
         );
-        resource_cvar::<crate::map::shadows::ShadowSettings, u8>(
+        resource_cvar::<crate::render::shadows::ShadowSettings, u8>(
             app,
             "r_shadowrendertotexture",
             "1: props cast their silhouette (render-to-texture shadows); 0: blob shadows, a round patch straight \
              down (shadow detail Low). Applies at once.",
             |s| &mut s.render_to_texture,
         );
-        resource_cvar::<crate::map::shadows::ShadowSettings, u8>(
+        resource_cvar::<crate::render::shadows::ShadowSettings, u8>(
             app,
             "r_flashlightdepthtexture",
             "1: flashlights cast depth shadows (shadow detail High; CS:S has no flashlights: as Medium).",

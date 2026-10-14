@@ -4,10 +4,13 @@
 //! systems that aren't ordered explicitly). The plugin's type stays in
 //! `map`, so `map::MapPlugin` is what tests and apps add; its
 //! registration lives here, above those layers: map's own first
-//! (`MapPlugin::build_first`), audio's, then the systems of map and
-//! render together (`build_rest`, the order they always had), then
-//! spawning the map at startup (`spawn_map` with `render::MapAssets`, also
-//! as `MapHooks::spawn` for `change_map`).
+//! (`MapPlugin::build_first`, render's light styles,
+//! `MapPlugin::build_after_light_styles`, render's monitor screens: where
+//! map's plugins were added), audio's, then the systems of map and render
+//! together (`build_rest`, the order they always had), then spawning the
+//! map at startup (`spawn_map` with `render::MapAssets`, also as
+//! `MapHooks::spawn` for `change_map`) and render's part of unloading
+//! (`render::unload_map`, a `MapHooks::unload` hook).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -19,6 +22,9 @@ use crate::{audio, render};
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         self.build_first(app);
+        app.add_plugins(render::light_styles::LightStylesPlugin);
+        self.build_after_light_styles(app);
+        app.add_plugins(render::monitor::MonitorPlugin);
         app.add_plugins(audio::SoundPlugin);
         build_rest(app);
         app.add_systems(
@@ -26,7 +32,9 @@ impl Plugin for MapPlugin {
             spawn_map::<render::MapAssets>.run_if(resource_exists::<PendingMap>),
         );
         app.init_resource::<MapHooks>();
-        app.world_mut().resource_mut::<MapHooks>().spawn = Some(spawn_pending_map);
+        let mut hooks = app.world_mut().resource_mut::<MapHooks>();
+        hooks.spawn = Some(spawn_pending_map);
+        hooks.unload.push(render::unload_map);
     }
 }
 
@@ -41,14 +49,14 @@ fn spawn_pending_map(world: &mut World) {
 /// (`MapPlugin::build_first`).
 fn build_rest(app: &mut App) {
     app.init_resource::<ShowLocalBody>()
-        .init_resource::<vis::NoVis>()
-        .init_resource::<vis::PortalsOpenAll>()
-        .init_resource::<vis::Occlusion>()
+        .init_resource::<render::vis::NoVis>()
+        .init_resource::<render::vis::PortalsOpenAll>()
+        .init_resource::<render::vis::Occlusion>()
         .init_resource::<render::sky_occluder::SkyOcclusion>()
-        .init_resource::<vis::VisStats>()
+        .init_resource::<render::vis::VisStats>()
         .add_message::<PlaceDecal>()
-        .add_message::<decal::ClearDecals>()
-        .init_resource::<decal::DecalSettings>()
+        .add_message::<render::decal::ClearDecals>()
+        .init_resource::<render::decal::DecalSettings>()
         .add_message::<ViewModelEvent>()
         .add_message::<SpawnGibs>()
         .add_message::<breakables::BreakProp>()
@@ -64,7 +72,7 @@ fn build_rest(app: &mut App) {
         .init_resource::<particles::Particles>()
         .configure_sets(Update, particles::ParticleSet::Step.before(particles::ParticleSet::Draw))
         .init_resource::<tracer::MuzzleCache>()
-        .init_resource::<tracer::PendingTracers>()
+        .init_resource::<render::tracer::PendingTracers>()
         .add_message::<tracer::Tracer>()
         .insert_resource(GlobalAmbientLight {
             brightness: 600.0,
@@ -96,16 +104,16 @@ fn build_rest(app: &mut App) {
         .add_systems(
             Update,
             (
-                switch_parts
-                    .before(glow_visibility)
-                    .before(dust::update_dust)
-                    .before(steam::update_steam),
-                (light_styles::relight, light_styles::animate).chain(),
+                render::parts::switch_parts
+                    .before(render::glow::glow_visibility)
+                    .before(render::dust::update_dust)
+                    .before(render::steam::update_steam),
+                (render::light_styles::relight, render::light_styles::animate).chain(),
                 apply_prop_looks,
                 animate_props,
-                render::beams::follow_eye.after(switch_parts).before(glow_visibility),
-                render::beams::animate_beams.after(switch_parts),
-                rope_sway::sway_ropes,
+                render::beams::follow_eye.after(render::parts::switch_parts).before(render::glow::glow_visibility),
+                render::beams::animate_beams.after(render::parts::switch_parts),
+                render::rope_sway::sway_ropes,
             ),
         )
         .add_systems(
@@ -127,36 +135,41 @@ fn build_rest(app: &mut App) {
         .add_systems(
             Update,
             (
-                attach_sky,
-                glow_visibility,
-                dust::update_dust,
-                steam::update_steam,
+                render::sky::attach_sky,
+                render::glow::glow_visibility,
+                render::dust::update_dust,
+                render::steam::update_steam,
                 (
-                    tracer::draw_tracers,
+                    render::tracer::draw_tracers,
                     particles::step_particles.in_set(particles::ParticleSet::Step),
                     (
-                        emitters::update_trails,
-                        emitters::update_smokestacks,
-                        emitters::update_teslas,
-                        emitters::update_strikes,
+                        render::emitters::update_trails,
+                        render::emitters::update_smokestacks,
+                        render::emitters::update_teslas,
+                        render::emitters::update_strikes,
                         render::color_correction::update,
-                        emitters::update_embers,
-                        emitters::update_muzzle_flashes,
-                        fish::swim,
-                        psys::update_systems,
+                        render::emitters::update_embers,
+                        render::emitters::update_muzzle_flashes,
+                        render::fish::swim,
+                        render::psys::update_systems,
                     )
                         .after(particles::ParticleSet::Step)
                         .before(particles::ParticleSet::Draw),
-                    particles::draw_particles
+                    render::particles::draw_particles
                         .run_if(
                             resource_exists::<Assets<Mesh>>
-                                .and_then(resource_exists::<Assets<particles::ParticleDrawMaterial>>),
+                                .and_then(resource_exists::<Assets<render::particles::ParticleDrawMaterial>>),
                         )
                         .in_set(particles::ParticleSet::Draw),
                 )
                     .chain(),
-                show_skybox_in_place,
-                (decal::place_decals, decal::drop_brush_decals, decal::clear_decals).chain(),
+                render::sky::show_skybox_in_place,
+                (
+                    render::decal::place_decals,
+                    render::decal::drop_brush_decals,
+                    render::decal::clear_decals,
+                )
+                    .chain(),
                 (
                     attach_bodies,
                     show_local_body,
@@ -167,28 +180,28 @@ fn build_rest(app: &mut App) {
                     loose::attach_shown,
                 )
                     .run_if(resource_exists::<CharacterBodies>),
-                (view_model::draw_view_models, view_model::view_model_screens)
+                (render::view_model::draw_view_models, render::view_model::view_model_screens)
                     .chain()
                     .after(DriveAnimation)
-                    .run_if(resource_exists::<view_model::ViewModelAssets>),
+                    .run_if(resource_exists::<render::view_model::ViewModelAssets>),
                 (
-                    view_model::muzzle_flashes,
-                    view_model::size_flash_sprites,
-                    view_model::age_effects,
-                    shells::eject,
-                    shells::fly,
+                    render::view_model::muzzle_flashes,
+                    render::view_model::size_flash_sprites,
+                    render::view_model::age_effects,
+                    render::shells::eject,
+                    render::shells::fly,
                 )
                     .chain()
                     .after(DriveAnimation)
-                    .after(view_model::draw_view_models),
+                    .after(render::view_model::draw_view_models),
             ),
         )
         .add_systems(
             PostUpdate,
             (
-                shadows::apply_shadow_detail,
-                update_prop_shadows,
-                shadows::update_character_blobs,
+                render::shadows::apply_shadow_detail,
+                render::shadows::update_prop_shadows,
+                render::shadows::update_character_blobs,
             )
                 .chain()
                 .run_if(resource_exists::<Assets<Mesh>>.and_then(resource_exists::<Assets<Image>>))
@@ -210,7 +223,7 @@ fn build_rest(app: &mut App) {
             PostUpdate,
             // After propagation, so it sees this frame's (interpolated)
             // eye rather than the last physics tick's; before frusta.
-            follow_sky_camera
+            render::sky::follow_sky_camera
                 .after(bevy::transform::TransformSystems::Propagate)
                 .before(bevy::camera::visibility::VisibilitySystems::UpdateFrusta),
         )
@@ -222,8 +235,8 @@ fn build_rest(app: &mut App) {
                 render::tint::apply_character_looks,
                 merge::sync_merged_brushes,
                 tag_moved_brush_entities,
-                vis::cull,
-                vis::fade_windows,
+                render::vis::cull,
+                render::vis::fade_windows,
             )
                 .chain()
                 .after(bevy::transform::TransformSystems::Propagate)

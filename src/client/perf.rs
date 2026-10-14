@@ -9,7 +9,7 @@
 //! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
 //! `mashup_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
 //! sleeps at the end of a frame; off without a window and under `--bench`), the
-//! water cvars (`map::water::WaterSettings`); `capture.rs` has `--bench` (its
+//! water cvars (`render::water::WaterSettings`); `capture.rs` has `--bench` (its
 //! table, the percentiles table, `bench.json`/`bench.csv`); the distributions
 //! and the hitch log are in `frame_metrics.rs`.
 
@@ -24,10 +24,8 @@ use bevy::{
 
 use crate::{
     console::resource_cvar,
-    map::{
-        VisClusters,
-        vis::{NoVis, VisStats},
-    },
+    map::VisClusters,
+    render::vis::{NoVis, VisStats},
 };
 
 pub struct PerfPlugin;
@@ -101,16 +99,16 @@ impl Plugin for PerfPlugin {
                 |v| &mut v.0,
             );
         }
-        if app.world().contains_resource::<crate::map::vis::PortalsOpenAll>() {
-            resource_cvar::<crate::map::vis::PortalsOpenAll, u8>(
+        if app.world().contains_resource::<crate::render::vis::PortalsOpenAll>() {
+            resource_cvar::<crate::render::vis::PortalsOpenAll, u8>(
                 app,
                 "r_portalsopenall",
                 "1: treat every areaportal as open and don't clip the view through them (PVS culling only).",
                 |v| &mut v.0,
             );
         }
-        if app.world().contains_resource::<crate::map::vis::Occlusion>() {
-            resource_cvar::<crate::map::vis::Occlusion, u8>(
+        if app.world().contains_resource::<crate::render::vis::Occlusion>() {
+            resource_cvar::<crate::render::vis::Occlusion, u8>(
                 app,
                 "r_occlusion",
                 "0: ignore the map's occluders (func_occluder); 1: hide map parts fully behind active ones.",
@@ -132,11 +130,11 @@ impl Plugin for PerfPlugin {
 }
 
 /// `r_cleardecals`, `mashup_round_cleardecals` and `mp_decals`
-/// (`map::decal`).
+/// (`render::decal`).
 pub(crate) fn decal_cvars(app: &mut App) {
     use crate::{
         console::ConsoleAppExt,
-        map::decal::{ClearDecals, DecalSettings},
+        render::decal::{ClearDecals, DecalSettings},
     };
     app.init_resource::<DecalSettings>().add_message::<ClearDecals>();
     app.console_command("r_cleardecals", "Remove every bullet hole, slash and blood decal.", |w, _| {
@@ -161,9 +159,9 @@ pub(crate) fn decal_cvars(app: &mut App) {
 }
 
 /// Source's water settings (specs/cs_source/water.md section 1) on
-/// `map::water::WaterSettings`.
+/// `render::water::WaterSettings`.
 fn water_cvars(app: &mut App) {
-    use crate::map::water::WaterSettings;
+    use crate::render::water::WaterSettings;
     app.init_resource::<WaterSettings>();
     resource_cvar::<WaterSettings, u8>(
         app,
@@ -475,8 +473,8 @@ fn count_churn(
     mut props: MessageReader<AssetEvent<crate::map::prop_material::PropMaterial>>,
     mut standard: MessageReader<AssetEvent<StandardMaterial>>,
     mut sprites: MessageReader<AssetEvent<crate::map::sprite_material::SpriteMaterial>>,
-    mut particles: MessageReader<AssetEvent<crate::map::particles::ParticleDrawMaterial>>,
-    mut decals: MessageReader<AssetEvent<crate::map::decal::DecalMaterial>>,
+    mut particles: MessageReader<AssetEvent<crate::render::particles::ParticleDrawMaterial>>,
+    mut decals: MessageReader<AssetEvent<crate::render::decal::DecalMaterial>>,
     mut world: MessageReader<AssetEvent<crate::map::world_material::WorldMaterial>>,
 ) {
     fn modified<A: Asset>(events: &mut MessageReader<AssetEvent<A>>) -> u32 {

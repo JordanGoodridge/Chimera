@@ -9,8 +9,8 @@
 //! resources, then the sun and spawn points. The drawn parts are spawned
 //! by a `MapDrawer` (`crate::render::MapAssets`, which `crate::map_plugin`
 //! picks), called at their places in that order. `MapDrawer` is a system
-//! parameter: `world_material`, `draws`, `spawn_drawn`, `spawn_prop`,
-//! `textures`.
+//! parameter: `world_material`, `draws`, `spawn_undrawn`, `spawn_drawn`,
+//! `spawn_prop`, `textures`, `insert_drawn` (`DrawnResource`).
 
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 
@@ -28,6 +28,10 @@ pub trait MapDrawer: SystemParam + 'static {
     fn world_material(p: &SystemParamItem<Self>) -> bool;
     /// Which of the headless stand-ins it draws itself.
     fn draws(p: &SystemParamItem<Self>) -> Draws;
+    /// Stand-ins for the drawn parts it can't draw (headless), after the
+    /// loose items' and gibs' assets: steam jets still puff, undrawn,
+    /// switched by the logic.
+    fn spawn_undrawn(p: &mut SystemParamItem<Self>, commands: &mut Commands, s: &MapSpawn);
     /// Everything drawn: images, character assets, lightmaps, sky, water,
     /// world meshes, model materials, detail sprites, effects, sprites,
     /// beams, ropes and shadows.
@@ -38,16 +42,30 @@ pub trait MapDrawer: SystemParam + 'static {
     fn spawn_prop(p: &mut SystemParamItem<Self>, commands: &mut Commands, s: &MapSpawn, drawn: &mut Self::Drawn, prop: PropSpawn);
     /// The map textures' images (empty headless).
     fn textures(drawn: &Self::Drawn) -> &[Handle<Image>];
+    /// A drawn resource, inserted among the map's own resources at its
+    /// place (their order decides their ids).
+    fn insert_drawn(drawn: &Self::Drawn, commands: &mut Commands, s: &MapSpawn, which: DrawnResource);
+}
+
+/// The drawn resources `spawn_map` has a `MapDrawer` insert
+/// (`MapDrawer::insert_drawn`), in the order they come.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DrawnResource {
+    /// What runtime decals land on (after the visibility).
+    DecalSurfaces,
+    /// What draws the particle pool (after `ParticleMaterials`).
+    Particles,
+    /// Runtime decals' images and materials (after the overview).
+    Decals,
 }
 
 /// Which headless stand-ins a `MapDrawer` makes unneeded: dropped
-/// weapons' and gibs' assets, steam jets.
+/// weapons' and gibs' assets.
 #[derive(Clone, Copy, Debug)]
 pub struct Draws {
     /// Dropped weapons (loose items' assets).
     pub loose: bool,
     pub gibs: bool,
-    pub steam: bool,
 }
 
 /// A placed prop for `MapDrawer::spawn_prop`.
@@ -129,9 +147,10 @@ pub fn spawn_map<D: MapDrawer>(mut commands: Commands, pending: Res<PendingMap>,
     };
     insert_entities(&mut commands, &s);
     insert_headless_assets(&mut commands, &s, D::draws(assets));
+    D::spawn_undrawn(assets, &mut commands, &s);
     let mut drawn = D::spawn_drawn(assets, &mut commands, &s);
     let brushes = spawn_props::<D>(&mut commands, &s, assets, &mut drawn);
-    insert_resources(&mut commands, &s, D::textures(&drawn), brushes);
+    insert_resources::<D>(&mut commands, &s, &drawn, brushes);
     spawn_sun_and_spawn_points(&mut commands, data);
 }
 
@@ -312,7 +331,7 @@ fn spawn_entity_nodes(commands: &mut Commands, data: &MapData, root: Entity) -> 
 /// Areaportal windows' brushes, the map's entities and what breaks.
 fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
     let data = s.data;
-    // Areaportal windows' brushes fade in with distance (`vis::fade_windows`).
+    // Areaportal windows' brushes fade in with distance (`crate::render::vis::fade_windows`).
     if let Some(v) = data.visibility.as_deref() {
         for (portal, p) in v.areas.portals.iter().enumerate() {
             let brush = p.fade.and_then(|f| f.brush);
@@ -330,8 +349,7 @@ fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
     commands.insert_resource(breakables::prop_breaks(data));
 }
 
-/// Headless: dropped weapons and gibs still have their bodies, undrawn;
-/// steam jets still puff (undrawn), switched by the logic.
+/// Headless: dropped weapons and gibs still have their bodies, undrawn.
 fn insert_headless_assets(commands: &mut Commands, s: &MapSpawn, draws: Draws) {
     let (data, view) = (s.data, s.view);
     if !draws.loose
@@ -348,22 +366,6 @@ fn insert_headless_assets(commands: &mut Commands, s: &MapSpawn, draws: Draws) {
         && let Some(gibs) = breakables::build_assets(data, &[], view, None)
     {
         commands.insert_resource(gibs);
-    }
-    if !draws.steam {
-        for (i, jet) in data.steam.iter().enumerate() {
-            let mut e = commands.spawn((
-                Name::new(format!("Steam {i}")),
-                MapPart,
-                steam::SteamEmitter::new(jet.clone(), Handle::default(), i as u64 + 1),
-            ));
-            if let Some(entity) = jet.entity {
-                e.insert(EntityPart {
-                    entity,
-                    on: jet.start_on,
-                    exists: true,
-                });
-            }
-        }
     }
 }
 
@@ -683,20 +685,16 @@ fn insert_prop_collider(
 /// decals, surface colours, particles, the HUD, sounds, character and view
 /// models, the light field, the nav mesh) and, with any brushes, the
 /// collision world and what goes with it.
-fn insert_resources(commands: &mut Commands, s: &MapSpawn, texture_handles: &[Handle<Image>], brushes: Vec<MapBrush>) {
+fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: &D::Drawn, brushes: Vec<MapBrush>) {
     let data = s.data;
+    let texture_handles = D::textures(drawn);
     if let Some(v) = data.visibility.as_ref().filter(|_| !merged_world()) {
         commands.insert_resource(vis::ActiveVisibility(v.clone()));
     }
-    commands.insert_resource(decal::DecalSurfaces::new(data));
+    D::insert_drawn(drawn, commands, s, DrawnResource::DecalSurfaces);
     commands.insert_resource(surface_color::SurfaceColors::new(data));
     commands.insert_resource(particles::ParticleMaterials(data.particles.clone()));
-    if !texture_handles.is_empty() && !data.particles.materials.is_empty() {
-        commands.insert_resource(particles::ParticleAssets::new(
-            data.particles.clone(),
-            texture_handles.to_vec(),
-        ));
-    }
+    D::insert_drawn(drawn, commands, s, DrawnResource::Particles);
     if let Some(h) = &data.hud {
         let images = h
             .sprites
@@ -710,10 +708,7 @@ fn insert_resources(commands: &mut Commands, s: &MapSpawn, texture_handles: &[Ha
     {
         commands.insert_resource(hud::ActiveOverview(o.clone(), image.clone()));
     }
-    if !texture_handles.is_empty() && !data.decals.groups.is_empty() {
-        commands.insert_resource(decal::DecalAssets::new(data.decals.clone(), texture_handles.to_vec()));
-        commands.insert_resource(decal::ImpactDecals);
-    }
+    D::insert_drawn(drawn, commands, s, DrawnResource::Decals);
     commands.insert_resource(sound::SoundBank(data.sounds.clone()));
     if !data.characters.is_empty() {
         commands.insert_resource(CharacterModels(Arc::new(data.characters.clone())));
