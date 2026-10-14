@@ -6,7 +6,7 @@
 //!
 //! Each sliding body keeps at most one scrape, against the contact that
 //! slides hardest; props share the server's 4 slots, pieces and ragdolls
-//! the client's 8. A scrape is a long-lived sound (`map::live_sound`) that
+//! the client's 8. A scrape is a long-lived sound (`audio::live_sound`) that
 //! follows its body, ramps to each new volume and pitch over 0.1 s and
 //! stops 0.1 s after its last refresh.
 

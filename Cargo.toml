@@ -78,29 +78,53 @@ test = false
 name = "dump"
 test = false
 
-# The dedicated server: the simulation and `net`, no window.
+# Binaries no test runs are built only with a feature (`required-features`):
+# cargo builds every binary of the package for its integration tests, so
+# without one each would relink the whole game on every `cargo test`
+# (docs/performance.md, "Test cycle"). The pre-push hook checks them with
+# `cargo check --lib --bins --features tools,server`.
+
+# The dedicated server: the simulation and `net`, no window
+# (`cargo run --features server --bin mashup_server`).
 [[bin]]
 name = "mashup_server"
 test = false
+required-features = ["server"]
 
+# Debugging tools (docs/OBSERVABILITY.md): `--features tools`.
 [[bin]]
 name = "movecmp"
 test = false
+required-features = ["tools"]
 
 [[bin]]
 name = "refcmp"
 test = false
+required-features = ["tools"]
 
 [[bin]]
 name = "tracesum"
 test = false
+required-features = ["tools"]
 
 # Instructions-per-tick regression gate (docs/performance.md).
 [[bin]]
 name = "perfgate"
 test = false
+required-features = ["tools"]
+
+[[bin]]
+name = "mapsweep"
+test = false
+required-features = ["tools"]
 
 [features]
+# The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep).
+tools = []
+
+# The dedicated server binary (mashup_server).
+server = []
+
 # Combat Arms loader: developed locally, git-ignored (src/games/combat_arms/).
 # Enable with --features combat_arms where that folder exists.
 combat_arms = ["dep:twofish"]

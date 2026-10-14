@@ -150,7 +150,7 @@ usage: mashup [options]
 network play (docs/OBSERVABILITY.md, \"Network play\"):
   host:    mashup -port 27016 +maxplayers 4 +map greybox
   join:    mashup +connect 127.0.0.1:27016
-  server:  cargo run --bin mashup_server -- -port 27016 +map greybox";
+  server:  cargo run --features server --bin mashup_server -- -port 27016 +map greybox";
 
 impl Args {
     /// Whether the run starts playing (a map given, or the player placed
@@ -481,7 +481,7 @@ fn attach_camera(commands: &mut Commands, player: Entity, debug_view: bool) {
         FirstPersonCamera,
         // The local player's weapon is drawn here (map::view_model).
         crate::map::ViewModelAnchor,
-        crate::map::sound::SoundListener,
+        crate::audio::sound::SoundListener,
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
             // Source's fov 90 (horizontal at 4:3), kept vertically:

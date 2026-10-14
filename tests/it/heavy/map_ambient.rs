@@ -10,7 +10,8 @@ use mashup::{
     games::{self, cs_source, cs_source::movement::SourceMovementPlugin},
     harness::Sim,
     logic::{Effect, Logic, LogicWorld, NoCollision, Value},
-    map::{LiveSounds, MapData, MapPlugin, PropEntity, SoundLevel},
+    audio::live_sound::LiveSounds,
+    map::{MapData, MapPlugin, PropEntity, SoundLevel},
     mount::config::LocalConfig,
 };
 

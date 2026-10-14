@@ -121,7 +121,7 @@ frames every 0.25 s).
   PITCH_NORM (CompatibilityAttenuation 0.52), so each shot replacing the
   last is parity; ours stopped the old one on whatever sample it was at
   (a click every shot). A replaced (or stopped) sound now fades out over
-  5 ms (`map::live_sound::fade_out_ramps_to_silence_then_ends`); the own
+  5 ms (`audio::live_sound::fade_out_ramps_to_silence_then_ends`); the own
   sound plays centred through the same path. Capture to confirm: a CS:S
   recording of a full-auto AK burst against ours.
 
@@ -593,7 +593,7 @@ docs/plans/active/sound.md.
 - Scrapes by ear: tune `games::cs_source::scrapes::friction_energy`
   against CS:S (a crate shoved across concrete, a ragdoll sliding down a
   ramp) once spec open question 8 is measured.
-- Room DSP by ear: tune `map::room::PRESETS` against CS:S (dust2's
+- Room DSP by ear: tune `audio::room::PRESETS` against CS:S (dust2's
   tunnels, nuke's halls); soundscape `dsp_player` and `soundmixer` are
   read but not played (engine-side effects).
 - Stock ambient_generics the bomb starts (de_nuke's alarm, dust2's

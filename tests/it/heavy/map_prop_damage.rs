@@ -23,7 +23,8 @@ use mashup::{
     },
     harness::Sim,
     logic::{EntId, Logic, Value},
-    map::{BreakProp, LiveSounds, MapData, MapPlugin, PropEntity, PropLook, SpawnGibs},
+    audio::live_sound::LiveSounds,
+    map::{BreakProp, MapData, MapPlugin, PropEntity, PropLook, SpawnGibs},
     mount::config::LocalConfig,
     movement::noclip,
 };

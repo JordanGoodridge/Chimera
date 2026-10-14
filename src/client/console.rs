@@ -1384,10 +1384,10 @@ fn overlay_cvars(app: &mut App) {
         "1: mark where sounds play, with their names, for a few seconds; show the soundscape and room DSP preset.",
         |o| &mut o.snd_show,
     );
-    // The room (map::room) may be added after the console.
-    app.init_resource::<crate::map::room::RoomDsp>();
-    resource_cvar::<crate::map::room::RoomDsp, u8>(app, "dsp_off", "1: no room reverb or echo.", |r| &mut r.off);
-    resource_cvar::<crate::map::room::RoomDsp, f32>(
+    // The room (audio::room) may be added after the console.
+    app.init_resource::<crate::audio::room::RoomDsp>();
+    resource_cvar::<crate::audio::room::RoomDsp, u8>(app, "dsp_off", "1: no room reverb or echo.", |r| &mut r.off);
+    resource_cvar::<crate::audio::room::RoomDsp, f32>(
         app,
         "dsp_volume",
         "Level of the room reverb and echo (1 normal).",
@@ -1439,8 +1439,8 @@ fn draw_overlays(
     fixed: Res<Time<Fixed>>,
     entities: Query<Entity>,
     sound: (
-        Option<Res<crate::map::soundscape::ScapeState>>,
-        Option<Res<crate::map::room::RoomDsp>>,
+        Option<Res<crate::audio::soundscape::ScapeState>>,
+        Option<Res<crate::audio::room::RoomDsp>>,
     ),
 ) {
     let _ = map;
@@ -1496,7 +1496,7 @@ fn draw_overlays(
     if o.snd_show > 0
         && let (Some(scape), Some(room)) = &sound
     {
-        lines.push(crate::map::soundscape::readout(scape, room));
+        lines.push(crate::audio::soundscape::readout(scape, room));
     }
     if !o.watch_text.is_empty() {
         lines.push(o.watch_text.clone());

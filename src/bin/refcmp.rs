@@ -1001,7 +1001,7 @@ fn skyconv(file: &ViewsFile, ref_dir: &Path, out: &Path) -> Result<(), String> {
 }
 
 /// Warn when the game binary is older than the sources: refcmp runs the
-/// built game, and `cargo run --bin refcmp` doesn't rebuild it.
+/// built game, and `cargo run --features tools --bin refcmp` doesn't rebuild it.
 fn warn_if_stale(exe: &std::path::Path) {
     fn newest(dir: &std::path::Path) -> Option<std::time::SystemTime> {
         let mut best = None;

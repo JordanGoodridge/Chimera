@@ -57,7 +57,7 @@ fn freeze(
     hud: Option<Res<ActiveHud>>,
     fonts: Res<super::fonts::UiFonts>,
     menu: Option<Res<super::game_menu::GameMenu>>,
-    clips: Option<ResMut<Assets<crate::map::live_sound::LiveClip>>>,
+    clips: Option<ResMut<Assets<crate::audio::live_sound::LiveClip>>>,
     mut commands: Commands,
 ) {
     let now = time.elapsed_secs_f64();
@@ -97,8 +97,8 @@ fn freeze(
             .and_then(|m| m.ui.0.clone())
             .and_then(|ui| ui.sounds.get(&crate::map::hud::UiSound::FreezeCam).cloned());
         if let (Some(clip), Some(mut clips)) = (sound, clips) {
-            let gains = std::sync::Arc::new(crate::map::live_sound::Gains::new(1.0, 1.0));
-            let handle = clips.add(crate::map::live_sound::LiveClip::new(clip, gains, default()));
+            let gains = std::sync::Arc::new(crate::audio::live_sound::Gains::new(1.0, 1.0));
+            let handle = clips.add(crate::audio::live_sound::LiveClip::new(clip, gains, default()));
             commands.spawn((AudioPlayer(handle), PlaybackSettings::DESPAWN));
         }
         return;

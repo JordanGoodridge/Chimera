@@ -22,6 +22,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("movement", &["core", "slots", "character"]),
     ("greybox", &["core"]),
     ("map", &["core"]),
+    // Audio: plays what the simulation's sounds say (`map::sound`); nothing
+    // in the simulation may use it.
+    ("audio", &["core", "map"]),
+    // Builds `map::MapPlugin` from the map and its presentation (`audio`).
+    ("map_plugin", &["map", "audio"]),
     ("weapon", &["core", "console", "map"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
@@ -82,6 +87,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "movement",
             "greybox",
             "map",
+            "audio",
             "weapon",
             "objectives",
             "rules",

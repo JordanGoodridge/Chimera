@@ -63,7 +63,7 @@ Started 2026-10-05, from specs/cs_source/sounds.md.
    ear's cluster and a clear line through the BSP's solid leaves; the
    current one stays until another qualifies (closer, or the current one
    out of range or sight). Loops are `live_sound` sounds (intro, then the
-   loop point; live panning). Room DSP (`map/room.rs`): the soundscape's
+   loop point; live panning). Room DSP (`audio/room.rs`): the soundscape's
    top-level "dsp" picks a preset from a 29-row table of our parameters
    (Source's are engine-side), played by one shared reverb bus that every
    clip sends into (more with distance; `#` waves and interface sounds
@@ -76,7 +76,7 @@ Started 2026-10-05, from specs/cs_source/sounds.md.
    (`map::SoundscapeSwitches`): a disabled current one gives way to the
    next that qualifies; OnPlay fires when one becomes current. Not yet:
    the trace budget (not needed: one listener).
-6. [x] ambient_generic (`logic/ambient.rs` on `map/live_sound.rs`):
+6. [x] ambient_generic (`logic/ambient.rs` on `audio/live_sound.rs`):
    the logic keeps the entity's state (spawn keys, inputs, ramps and LFO
    at 5 Hz) and asks for long-lived sounds by entity (`Effect::Ambient*`
    -> `map::SoundControl`); the map layer plays them with live gains and

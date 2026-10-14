@@ -109,6 +109,7 @@ mod heavy {
     mod map_prop_damage;
     mod map_props;
     mod map_sound_stock;
+    mod map_spawn_dump;
     mod map_stock;
     mod map_surf;
     mod map_vis;

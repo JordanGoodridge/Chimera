@@ -720,7 +720,7 @@ pub(super) fn menu_sounds(
     menu: Res<GameMenu>,
     menu_ui: Option<Res<MenuUi>>,
     hits: Query<(&Interaction, &Hit), Changed<Interaction>>,
-    clips: Option<ResMut<Assets<crate::map::live_sound::LiveClip>>>,
+    clips: Option<ResMut<Assets<crate::audio::live_sound::LiveClip>>>,
     mut last: Local<(Option<Target>, Option<Target>)>,
     mut commands: Commands,
 ) {
@@ -734,8 +734,8 @@ pub(super) fn menu_sounds(
     use crate::map::hud::UiSound;
     let mut play = |sound: UiSound| {
         if let Some(clip) = ui.sounds.get(&sound) {
-            let gains = std::sync::Arc::new(crate::map::live_sound::Gains::new(1.0, 1.0));
-            let handle = clips.add(crate::map::live_sound::LiveClip::new(clip.clone(), gains, default()));
+            let gains = std::sync::Arc::new(crate::audio::live_sound::Gains::new(1.0, 1.0));
+            let handle = clips.add(crate::audio::live_sound::LiveClip::new(clip.clone(), gains, default()));
             commands.spawn((AudioPlayer(handle), PlaybackSettings::DESPAWN));
         }
     };

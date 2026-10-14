@@ -16,14 +16,18 @@ use mashup::{
         scrapes::Scrapes,
         weapons::CsWeaponsPlugin,
     },
+    audio::{
+        live_sound::LiveSounds,
+        room::RoomDsp,
+        sound::SoundListener,
+        soundscape::{ScapeState, Source},
+    },
     harness::Sim,
     logic::{Logic, Value},
     map::{
-        LiveSounds, MapBrush, MapCollision, MapConvex, MapData, MapEntity, MapModel, MapPhysics, MapPlugin, MapProp,
+        MapBrush, MapCollision, MapConvex, MapData, MapEntity, MapModel, MapPhysics, MapPlugin, MapProp,
         MapSoundClip, MapSoundEntry, MapSounds, MapSurface, PropEntity, PropSolid, PushAway, SoundLevel,
-        room::RoomDsp,
-        sound::{Interval, SoundListener, Soundscape, SoundscapeEmitter},
-        soundscape::{ScapeState, Source},
+        sound::{Interval, Soundscape, SoundscapeEmitter},
     },
 };
 
@@ -305,7 +309,7 @@ fn soundscapes_follow_enable_and_disable() {
         assert_eq!(room.player, Some(1));
         let state = sim.app.world().resource::<ScapeState>();
         assert_eq!(state.mixer.as_deref(), Some("Default_Mix"));
-        let readout = mashup::map::soundscape::readout(state, room);
+        let readout = mashup::audio::soundscape::readout(state, room);
         assert!(readout.contains("mixer Default_Mix"), "{readout}");
     }
     assert!(sim.app.world().resource::<Logic>().world.find("marker").is_some());
@@ -362,7 +366,7 @@ fn a_burst_on_one_channel_replaces_cleanly() {
     );
     let mut sim = Sim::new((MapPlugin::new(map(Vec::new(), s)), SourceMovementPlugin));
     sim.app.set_error_handler(bevy::ecs::error::panic);
-    sim.app.init_asset::<mashup::map::live_sound::LiveClip>();
+    sim.app.init_asset::<mashup::audio::live_sound::LiveClip>();
     sim.ticks(2);
     let shooter = sim.app.world_mut().spawn(Transform::default()).id();
     let shot = || mashup::map::PlaySound {
@@ -376,15 +380,15 @@ fn a_burst_on_one_channel_replaces_cleanly() {
     let playing = |sim: &mut Sim| {
         let w = sim.app.world_mut();
         w.query_filtered::<(), (
-            With<AudioPlayer<mashup::map::live_sound::LiveClip>>,
-            Without<mashup::map::sound::FadingOut>,
+            With<AudioPlayer<mashup::audio::live_sound::LiveClip>>,
+            Without<mashup::audio::sound::FadingOut>,
         )>()
         .iter(w)
         .count()
     };
     let fading = |sim: &mut Sim| {
         let w = sim.app.world_mut();
-        w.query_filtered::<(), With<mashup::map::sound::FadingOut>>().iter(w).count()
+        w.query_filtered::<(), With<mashup::audio::sound::FadingOut>>().iter(w).count()
     };
     for (i, burst) in [1, 3, 2, 4].into_iter().enumerate() {
         for _ in 0..burst {

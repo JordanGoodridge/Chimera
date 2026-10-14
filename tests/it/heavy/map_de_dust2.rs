@@ -2723,12 +2723,14 @@ fn grenade_models_and_sequences() {
 /// and the room preset its "dsp" names.
 #[test]
 fn walking_into_a_tunnel_switches_soundscape_and_room() {
-    use mashup::map::{
-        LiveSounds,
-        live_sound::SOUNDSCAPE_KEYS,
-        room::{RoomDsp, preset},
-        sound::{SoundListener, SoundscapeZone},
-        soundscape::ScapeState,
+    use mashup::{
+        audio::{
+            live_sound::LiveSounds,
+            room::{RoomDsp, preset},
+            sound::SoundListener,
+            soundscape::ScapeState,
+        },
+        map::sound::{SOUNDSCAPE_KEYS, SoundscapeZone},
     };
     let Some(map) = dust2() else { return };
     let s = map.sounds.clone();

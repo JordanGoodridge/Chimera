@@ -1204,11 +1204,11 @@ fn audio_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
     ui.separator();
     ui.heading("Soundscape and room");
     match (
-        world.get_resource::<crate::map::soundscape::ScapeState>(),
-        world.get_resource::<crate::map::room::RoomDsp>(),
+        world.get_resource::<crate::audio::soundscape::ScapeState>(),
+        world.get_resource::<crate::audio::room::RoomDsp>(),
     ) {
         (Some(s), Some(r)) => {
-            ui.monospace(crate::map::soundscape::readout(s, r));
+            ui.monospace(crate::audio::soundscape::readout(s, r));
         }
         _ => {
             ui.weak("no soundscape (the map has none, or it hasn't loaded)");
