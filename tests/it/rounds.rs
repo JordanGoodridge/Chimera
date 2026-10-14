@@ -234,10 +234,10 @@ fn restartgame_starts_over_after_its_delay() {
     assert!(sim.app.world().get::<mashup::rules::Dead>(ct).is_none(), "everyone is back");
 }
 
-/// Ammo in rounds (CS:S): the spawn pistol carries two more clips, a
-/// bought gun only its clip, and ammo is bought by the box (`primammo`,
-/// `secammo` fill; `buyammo1` buys one) up to the type's maximum; bots buy
-/// theirs.
+/// Ammo in rounds (CS:S today, measured: specs/cs_source/weapons.md M19):
+/// the spawn pistols and bought guns come full, and ammo is free, by the
+/// box (`primammo`, `secammo` fill; `buyammo1` buys one) up to the type's
+/// maximum.
 #[test]
 fn rounds_ammo_is_bought_by_the_box() {
     use mashup::{
@@ -272,30 +272,44 @@ fn rounds_ammo_is_bought_by_the_box() {
         let m = w.get::<Magazine>(*g).unwrap();
         (m.clip, m.reserve)
     };
-    // The bot: Glock 20 + 40, then 9 mm ($20 a box of 30, at most 120)
-    // (3 boxes, the last partly: 60), kevlar for 650 of its 800.
+    // The bot: Glock 20 + 120, kevlar for 650 of its 800.
     assert_eq!(gun(&sim, t, GLOCK), (20, 120));
-    assert_eq!(money(&sim, t), 90);
-    // The player: USP 12 + 24.
-    assert_eq!(gun(&sim, ct, USP), (12, 24));
+    assert_eq!(money(&sim, t), 150);
+    // The player: USP 12 + 100.
+    assert_eq!(gun(&sim, ct, USP), (12, 100));
     assert_eq!(money(&sim, ct), 800);
-    // The M4A1 (3100 of 16000): its clip, no reserve.
+    // The M4A1 (3100 of 16000): full.
     sim.app.world_mut().entity_mut(ct).insert(Money(16000));
     buy(sim.app.world_mut(), ct, "m4a1").unwrap();
-    assert_eq!(gun(&sim, ct, M4A1), (30, 0));
-    // 5.56: $60 a box of 30, at most 90.
-    buy(sim.app.world_mut(), ct, "buyammo1").unwrap();
-    assert_eq!((gun(&sim, ct, M4A1).1, money(&sim, ct)), (30, 12840));
-    buy(sim.app.world_mut(), ct, "primammo").unwrap();
-    assert_eq!((gun(&sim, ct, M4A1).1, money(&sim, ct)), (90, 12720));
+    assert_eq!(gun(&sim, ct, M4A1), (30, 90));
     assert_eq!(
         buy(sim.app.world_mut(), ct, "primammo").unwrap_err(),
         "You cannot carry any more."
     );
-    // .45 ACP: $25 a box of 12, at most 100: 24 + 7 boxes (the last
-    // partly).
+    // Emptied: one free box of 30, then a free fill to 90.
+    let set_reserve = |sim: &mut Sim, id: &str, n: u32| {
+        let w = sim.app.world_mut();
+        let g = w
+            .get::<Inventory>(ct)
+            .unwrap()
+            .weapons
+            .iter()
+            .copied()
+            .find(|g| w.get::<Weapon>(*g).is_some_and(|x| x.id == id))
+            .unwrap();
+        w.get_mut::<Magazine>(g).unwrap().reserve = n;
+    };
+    set_reserve(&mut sim, M4A1, 0);
+    buy(sim.app.world_mut(), ct, "buyammo1").unwrap();
+    assert_eq!((gun(&sim, ct, M4A1).1, money(&sim, ct)), (30, 12900));
+    buy(sim.app.world_mut(), ct, "primammo").unwrap();
+    assert_eq!((gun(&sim, ct, M4A1).1, money(&sim, ct)), (90, 12900));
+    // .45 ACP: boxes of 25, at most 100.
+    set_reserve(&mut sim, USP, 0);
+    buy(sim.app.world_mut(), ct, "buyammo2").unwrap();
+    assert_eq!(gun(&sim, ct, USP).1, 25);
     buy(sim.app.world_mut(), ct, "secammo").unwrap();
-    assert_eq!((gun(&sim, ct, USP).1, money(&sim, ct)), (100, 12545));
+    assert_eq!((gun(&sim, ct, USP).1, money(&sim, ct)), (100, 12900));
 }
 
 #[test]
@@ -414,8 +428,8 @@ fn autobuy_takes_the_list_and_rebuy_restores_the_last_buy() {
     let w = sim.app.world();
     assert_eq!(w.get::<Armor>(ct).map(|a| (a.amount, a.helmet)), Some((1.0, true)));
     assert!(w.get::<DefuseKit>(ct).is_some());
-    // 3100 + 90 rounds 5.56 (3 x 60) + .45 (7 x 25) + 200 + 1000.
-    assert_eq!(money(&sim, ct), 16000 - 3100 - 180 - 175 - 200 - 1000);
+    // 3100 + 200 + 1000 (the M4A1 comes full; ammo is free).
+    assert_eq!(money(&sim, ct), 16000 - 3100 - 200 - 1000);
     // Only one primary: famas and the rest are skipped, and a second
     // autobuy with the M4A1 carried buys no other gun.
     assert!(!said.contains("famas"), "{said}");

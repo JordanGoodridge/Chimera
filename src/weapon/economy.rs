@@ -8,8 +8,8 @@
 //! `BuyWindow`; ammo by the box (`Prices::ammo`, `AmmoBox` per weapon:
 //! `primammo`/`secammo` fill the primary's or pistol's reserve,
 //! `buyammo1`/`buyammo2` buy one box, up to the reserve maximum; a gun bought
-//! for money comes with its clip only, starting weapons in rounds carry
-//! `Prices::starting_reserve`: `starting_reserve`); `autobuy` and `rebuy` for
+//! for money comes with its clip only unless `Prices::bought_full`, starting
+//! weapons in rounds carry `Prices::starting_reserve`: `starting_reserve`); `autobuy` and `rebuy` for
 //! players (`buy` names them: the player's `cl_autobuy`/`cl_rebuy` userinfo
 //! lists, CS:S's `cfg/autobuy_default.txt` and `rebuy_default.txt` by default;
 //! `RebuySnapshot`, what was carried after the last buy); buying and picking up
@@ -35,13 +35,12 @@
 //! the edge of the group to tell a per-spawn zone from one box round all
 //! spawns. Why it's OK for now: Buying only near spawn on such maps.
 //!
-//! Known shortcuts (docs/tech-debt.md): Ammo buying (no spec values): box
-//! prices and sizes per ammo type are the well-known Counter-Strike ones (9mm
-//! $20/30, .45 $25/12, .50AE $40/7, .357 $50/13, 5.7 $50/50, 5.56 $60/30, 5.56
-//! box $60/30, 7.62 $80/30, .338 $125/10, buckshot $65/8); a box that doesn't
-//! fit whole costs its full price; `primammo`/`secammo` fill the reserve,
-//! `buyammo1`/`buyammo2` buy one box; the spawn Glock and USP carry 40 and 24
-//! in reserve; ammo stays per weapon (CS:S keeps it per player and type); the
+//! Known shortcuts (docs/tech-debt.md): Ammo buying: CS:S's values measured on
+//! the probe server (2026-10-14, specs/cs_source/weapons.md M19: ammo free,
+//! boxes 9mm 30, .45 25, .50AE 7, .357 13, 5.7 50, 5.56 30, 7.62 30, .338 10,
+//! buckshot 8; bought guns and the spawn pistols full); the generic rules for
+//! a game that prices ammo (a box that doesn't fit whole costs its full
+//! price) are ours; ammo stays per weapon (CS:S keeps it per player and type); the
 //! ammo sound is `BaseCombatCharacter.AmmoPickup`. The +use deny sound is
 //! `Player.UseDeny`, whose later script definition wins (doors_buttons.md Q2),
 //! and a terrorist's press on the planted bomb counts as finding nothing. Why
@@ -93,8 +92,12 @@ pub struct Prices {
     pub bot_weights: HashMap<&'static str, f32>,
     /// Ammo for sale: the box each weapon's ammo comes in, by weapon ID.
     /// A weapon listed here and bought for money comes with an empty
-    /// reserve (you buy its ammo); unlisted weapons keep a full one.
+    /// reserve (you buy its ammo) unless `bought_full`; unlisted weapons
+    /// keep a full one.
     pub ammo: HashMap<&'static str, AmmoBox>,
+    /// A weapon bought for money comes with a full reserve even where ammo
+    /// is sold (CS:S today, measured 2026-10-14).
+    pub bought_full: bool,
     /// Rounds a starting weapon carries in reserve while ammo is sold
     /// (rounds with money), by weapon ID; unlisted: none.
     pub starting_reserve: HashMap<&'static str, u32>,
@@ -591,6 +594,7 @@ fn buy_quietly(world: &mut World, owner: Entity, name: &str) -> Result<String, S
     // clip weapon adds nothing to the reserve).
     if money.is_some()
         && prices.ammo.contains_key(id)
+        && !prices.bought_full
         && let Some(mut m) = world.get_mut::<super::Magazine>(new)
     {
         m.reserve = 0;

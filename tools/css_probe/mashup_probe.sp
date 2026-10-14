@@ -104,6 +104,8 @@ public void OnPluginStart()
     RegServerCmd("mashup_info", Command_Info, "mashup_info: position and angles of all living players");
     RegServerCmd("mashup_shooter", Command_Shooter,
         "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz>: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
+    RegServerCmd("mashup_state", Command_State,
+        "mashup_state <userid>: that player's money, armour, helmet, kit and each weapon's clip and reserve");
     RegServerCmd("mashup_botcmd", Command_BotCmd,
         "mashup_botcmd <userid> <command...>: run a client command as that bot (buy, drop, use; pickup and buy sound captures)");
     HookEvent("weapon_fire", Event_Any);
@@ -533,6 +535,30 @@ public Action Command_Shooter(int args)
     GivePlayerItem(t, weapon);
     FakeClientCommand(t, "use %s", weapon);
     PrintToServer("mashup: shooter %d at %.1f %.1f %.1f with %s, fires at tick %d", t, pos[0], pos[1], pos[2], weapon, g_shootTick);
+    return Plugin_Handled;
+}
+
+public Action Command_State(int args)
+{
+    int c = GetClientOfUserId(GetCmdArgInt(1));
+    if (c == 0) {
+        PrintToServer("mashup: no such player");
+        return Plugin_Handled;
+    }
+    PrintToServer("mashup_state money %d armor %d helmet %d kit %d health %d",
+        GetEntProp(c, Prop_Send, "m_iAccount"), GetEntProp(c, Prop_Send, "m_ArmorValue"),
+        GetEntProp(c, Prop_Send, "m_bHasHelmet"), GetEntProp(c, Prop_Send, "m_bHasDefuser"), GetClientHealth(c));
+    for (int k = 0; k < 5; k++) {
+        int w = GetPlayerWeaponSlot(c, k);
+        if (w == -1) {
+            continue;
+        }
+        char cls[64];
+        GetEntityClassname(w, cls, sizeof(cls));
+        int type = GetEntProp(w, Prop_Send, "m_iPrimaryAmmoType");
+        int reserve = type >= 0 ? GetEntProp(c, Prop_Send, "m_iAmmo", _, type) : -1;
+        PrintToServer("mashup_state slot %d %s clip %d reserve %d", k, cls, GetEntProp(w, Prop_Send, "m_iClip1"), reserve);
+    }
     return Plugin_Handled;
 }
 

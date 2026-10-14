@@ -20,7 +20,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - client, bot, games/cs_source: Radio pairing, hearing rules and rate limits are ours (no spec) (`src/games/cs_source/ui/radio.rs`)
 - games/cs_source: Third-person magazine tracks dropped from additive and aim animations to hide the files' stray clip offsets (`src/games/cs_source/anim.rs`)
 - weapon: Buy zones on maps without func_buyzone: our box around each team spawn (`src/weapon/economy.rs`)
-- weapon, games/cs_source: Ammo box prices and sizes are remembered Counter-Strike values, unmeasured (`src/weapon/economy.rs`)
+- weapon, games/cs_source: Ammo buying measured (M19); the generic priced-ammo rules (partial boxes) are ours (`src/weapon/economy.rs`)
 - objectives: Bomb and hostages follow the spec's hypotheses where CS:S is unmeasured (`src/objectives/mod.rs`)
 - client, games/cs_source: CS:S HUD matched to Linux-client captures (substitute fonts); a few sizes differ from them (`src/client/game_hud.rs`)
 - client: Game-look HUD, scoreboard, spectator bars, C4 screen and loading progress: guesses where the layouts stop (`src/client/game_hud.rs`)

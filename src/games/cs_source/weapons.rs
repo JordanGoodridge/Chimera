@@ -403,8 +403,8 @@ fn prices() -> crate::weapon::economy::Prices {
     p.nightvision_on = Some(NIGHTVISION_ON.into());
     p.nightvision_off = Some(NIGHTVISION_OFF.into());
     p.menu = menu();
-    // Ammo by the box per ammo type; the spawn pistols carry two more
-    // clips (Glock 40, USP 24: UNMEASURED, the well-known values).
+    // Ammo by the box per ammo type, free in CS:S today; bought guns and
+    // the spawn pistols come full (measured: weapons.md M19).
     for g in GUNS {
         p.ammo.insert(
             g.id,
@@ -414,8 +414,9 @@ fn prices() -> crate::weapon::economy::Prices {
             },
         );
     }
-    p.starting_reserve.insert(GLOCK, 40);
-    p.starting_reserve.insert(USP, 24);
+    p.starting_reserve.insert(GLOCK, 120);
+    p.starting_reserve.insert(USP, 100);
+    p.bought_full = true;
     p.ammo_sound = Some(AMMO_SOUND.into());
     p.pickup_sound = Some(PICKUP_SOUND.into());
     p.item_sound = Some(ITEM_SOUND.into());
@@ -634,9 +635,8 @@ fn knife(e: &mut EntityWorldMut) {
 }
 
 /// An ammo type: penetration power and reach (measured M13), most rounds
-/// carried (`ammo_<type>_max`, M17), and the box it's bought in
-/// (UNMEASURED: the spec has no ammo prices; these are the well-known
-/// Counter-Strike values, docs/tech-debt.md).
+/// carried (`ammo_<type>_max`, M17), and the box it's bought in (M19:
+/// measured box sizes; ammo costs nothing in CS:S today).
 #[derive(Clone, Copy, Debug)]
 pub struct Ammo {
     /// Units of a scale-1 material.
@@ -655,7 +655,7 @@ pub const AMMO_762MM: Ammo = Ammo {
     power: 39.0,
     max_distance: f32::INFINITY,
     max: 90,
-    box_price: 80,
+    box_price: 0,
     box_rounds: 30,
 };
 /// 338MAG: power 45, still passes at 4000 (M13).
@@ -663,7 +663,7 @@ pub const AMMO_338MAG: Ammo = Ammo {
     power: 45.0,
     max_distance: f32::INFINITY,
     max: 30,
-    box_price: 125,
+    box_price: 0,
     box_rounds: 10,
 };
 /// 50AE: power 30, passes a player at 1006 units, not at 1015 (M13).
@@ -671,7 +671,7 @@ pub const AMMO_50AE: Ammo = Ammo {
     power: 30.0,
     max_distance: 1010.0,
     max: 35,
-    box_price: 40,
+    box_price: 0,
     box_rounds: 7,
 };
 /// 45ACP: power 15 (M13). UNMEASURED distance: the community value 500
@@ -680,8 +680,8 @@ pub const AMMO_45ACP: Ammo = Ammo {
     power: 15.0,
     max_distance: 500.0,
     max: 100,
-    box_price: 25,
-    box_rounds: 12,
+    box_price: 0,
+    box_rounds: 25,
 };
 /// 556MM: UNMEASURED power and distance: the community values 35 / 4000
 /// (the same table's 45ACP, 50AE, 762MM and 338MAG powers match M13).
@@ -689,7 +689,7 @@ pub const AMMO_556MM: Ammo = Ammo {
     power: 35.0,
     max_distance: 4000.0,
     max: 90,
-    box_price: 60,
+    box_price: 0,
     box_rounds: 30,
 };
 /// 9MM: UNMEASURED power and distance: the community values 21 / 800.
@@ -697,7 +697,7 @@ pub const AMMO_9MM: Ammo = Ammo {
     power: 21.0,
     max_distance: 800.0,
     max: 120,
-    box_price: 20,
+    box_price: 0,
     box_rounds: 30,
 };
 
@@ -705,28 +705,28 @@ pub const AMMO_9MM: Ammo = Ammo {
 /// round).
 pub const AMMO_357SIG: Ammo = Ammo {
     max: 52,
-    box_price: 50,
+    box_price: 0,
     box_rounds: 13,
     ..AMMO_45ACP
 };
 /// 57MM: UNMEASURED power and distance: 45ACP's.
 pub const AMMO_57MM: Ammo = Ammo {
     max: 100,
-    box_price: 50,
+    box_price: 0,
     box_rounds: 50,
     ..AMMO_45ACP
 };
 /// BUCKSHOT: UNMEASURED power and distance (per pellet): 45ACP's.
 pub const AMMO_BUCKSHOT: Ammo = Ammo {
     max: 32,
-    box_price: 65,
+    box_price: 0,
     box_rounds: 8,
     ..AMMO_45ACP
 };
 /// 556MM_BOX (the M249's): UNMEASURED power and distance: 556MM's.
 pub const AMMO_556MM_BOX: Ammo = Ammo {
     max: 200,
-    box_price: 60,
+    box_price: 0,
     box_rounds: 30,
     ..AMMO_556MM
 };

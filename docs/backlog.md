@@ -522,9 +522,8 @@ a first bot are in.
 
 - Probe the new guns' unmeasured rules (listed in the weapons plan):
   recoil of most guns, the shotgun reload and pellets, the other ammo
-  types' penetration. Ammo prices and box sizes are the well-known
-  values, not measured (docs/tech-debt.md); measure them, `primammo`'s
-  fill-up and the spawn pistols' reserves on the probe.
+  types' penetration. Ammo, box sizes, `primammo`'s fill-up and the
+  spawn pistols' reserves: measured and matched 2026-10-14 (M19).
 - The AWP's view model is in (MDL v48 reads like v44,
   specs/cs_source/mdl_v48.md); compare its fire and reload against the
   game. (MDL 45–48, sections, `.ani` blocks and the zero-frame cache

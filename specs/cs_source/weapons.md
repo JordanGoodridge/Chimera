@@ -1368,6 +1368,23 @@ in the plugin's W rows, `punch` its view punch, both after the hit tick):
   - A helmeted head (armour 100 + helmet; USP, Glock, AK-47): no punch;
     the speed modifier as any other hit (0.5 pistols, 0.65 the AK).
 
+### M19 Ammo and buying (2026-10-14)
+
+Probe server, bots driven by `mashup_botcmd`, read with `mashup_state`:
+- Ammo is free: `primammo`/`secammo` fill an empty reserve at $0; one
+  `buyammo1`/`buyammo2` adds one box at $0 (up to the type's maximum).
+- Box sizes: 7.62 and 5.56 (rifles, M249) 30; .338 (AWP) 10; buckshot 8;
+  9mm (MP5, TMP, Glock, Elites) 30; .45 (UMP, USP) 25; .357 (P228) 13;
+  5.7 (P90, Five-SeveN) 50; .50AE (Deagle) 7.
+- A gun bought comes with a full clip and a full reserve (AK 30+90, AWP
+  10+30, M3 8+32, M249 100+200, P90 50+100, Deagle 7+35, ...).
+- The spawn pistols are full: Glock 20+120, USP 12+100.
+- After the buy time no ammo is bought.
+- Gun prices as the scripts: AK $2500, Galil 2000, M3 1700, AWP 4750, MP5
+  1500, M249 5750, Scout 2750, SG 552 3500, G3SG1 5000, MAC-10 1400, UMP
+  1700, P90 2350, XM1014 3000, M4A1 3100, FAMAS 2250, AUG 3500, SG 550
+  4200, TMP 1250, Five-SeveN 750, Deagle 650, P228 600.
+
 ### Not measured yet
 
 M9 shotgun reload, M12 hitbox reach, M14 drop/pickup, silenced damage, the

@@ -265,7 +265,7 @@ common console commands, against mashup's.
 | `mp_timelimit`, `mp_maxrounds`, `mp_winlimit`, `mp_chattime`, map cycle | have (fixed) | M | M | were missing (a session never left its map; CS:S's Create Server sets a 20-minute limit, `cfg/settings_default.scr`); now the intermission and the next map of the install's `cfg/mapcycle_default.txt`; details unmeasured (tech-debt), capture C9 |
 | Team balance (`mp_autoteambalance`, `mp_limitteams`) | have (fixed) | M | S | `mp_limitteams` was in; `mp_autoteambalance` (1) moves players as the next round starts (`rules::balance_teams`); who moves and the warning unmeasured: C11 |
 | `mp_tkpunish`, `mp_fadetoblack` | have (fixed) | L | S | both 0 as CS:S; a team killer dies as the next round starts; the dead fade to black over 1 s (ours) |
-| Ammo prices and sizes | differs | L | | tech-debt "Ammo buying": community values |
+| Ammo prices and sizes | have (fixed) | M | S | measured (weapons.md M19): ammo free, bought guns and spawn pistols full, the .45 box 25; we charged per box and sold guns with the clip only |
 | Bomb and hostage details | differs | M | | tech-debt; objectives.md open questions |
 | Draw rules on one-sided maps | differs | L | | tech-debt "Minigame flows" |
 | Freeze-time reload | differs | L | | backlog: capture to confirm |
