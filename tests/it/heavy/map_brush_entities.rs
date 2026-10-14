@@ -3,7 +3,7 @@
 //! material share one material asset (so they draw in batches), and they
 //! are culled by the map's visibility like the world, following them as
 //! they move (docs/performance.md); while they stay put and whole they
-//! are drawn merged per material and chunk (`map::merge`), and drawn on
+//! are drawn merged per material and chunk (`render::merge`), and drawn on
 //! their own again once they move, break or are removed. On the minigame
 //! map
 //! `mg_lego_multigames_v2` (578 func_breakable, 170 func_door; skipped
@@ -20,16 +20,18 @@ use mashup::{
     logic::{Logic, Value},
     map::{
         BrushEntityBounds, MapBrushEntity, MapData, MapPlugin,
+        LogicHidden, VisClusters,
+        vis::{self, ActiveVisibility},
+    },
+    mount::config::LocalConfig,
+    render::{
         merge::{MergedBrush, MergedChunk, MergedPiece},
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
-        LogicHidden, VisClusters,
-        vis::{self, ActiveVisibility},
         world_material::WorldMaterial,
+        vis::VisStats,
     },
-    mount::config::LocalConfig,
-    render::vis::VisStats,
 };
 
 fn load(name: &str) -> Option<MapData> {

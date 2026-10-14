@@ -273,13 +273,19 @@ pub struct WaterView {
     pub intersect: Option<(usize, f32)>,
 }
 
+/// Water fog modes, as shaders take them (`crate::render::fog::FogUniform`'s
+/// `water_color.w`): off, range fog under water, height fog at the surface.
+pub const WATER_FOG_OFF: f32 = 0.0;
+pub const WATER_FOG_RANGE: f32 = 1.0;
+pub const WATER_FOG_HEIGHT: f32 = 2.0;
+
 impl WaterView {
     /// The water fog that views use now: (material, surface height, mode
-    /// `fog::WATER_FOG_RANGE` or `fog::WATER_FOG_HEIGHT`).
+    /// `WATER_FOG_RANGE` or `WATER_FOG_HEIGHT`).
     pub fn fog(&self) -> Option<(usize, f32, f32)> {
         match (self.under, self.plane, self.intersect) {
-            (Some(i), Some(plane), _) => Some((i, plane, super::fog::WATER_FOG_RANGE)),
-            (None, _, Some((i, plane))) => Some((i, plane, super::fog::WATER_FOG_HEIGHT)),
+            (Some(i), Some(plane), _) => Some((i, plane, WATER_FOG_RANGE)),
+            (None, _, Some((i, plane))) => Some((i, plane, WATER_FOG_HEIGHT)),
             _ => None,
         }
     }

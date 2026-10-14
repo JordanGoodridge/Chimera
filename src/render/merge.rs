@@ -22,7 +22,10 @@
 //! (`vis::LogicHidden`) or shows panes, and merges it back when it is home
 //! again; `MASHUP_MERGE_BRUSHES=0` turns it off.
 //!
-//! Known shortcuts (docs/tech-debt.md): Merged brush entities (`map::merge`)
+//! A node copied at run time (`map::copies`) draws its own meshes, never
+//! merged (`show_copied_pieces`, a `map::MapHooks::copied` hook).
+//!
+//! Known shortcuts (docs/tech-debt.md): Merged brush entities (`render::merge`)
 //! keep their own meshes spawned and hidden (main-world entities that still
 //! cost visibility checks), and rewriting a combined mesh's indices when one
 //! splits out makes Bevy re-check every mesh entity's pipeline that frame;
@@ -35,8 +38,9 @@ use std::{collections::HashMap, ops::Range};
 
 use bevy::{mesh::Indices, prelude::*};
 
-use super::{
+use crate::map::{
     BrushPanes, LogicHidden, MapMesh, VisClusters,
+    copies::MapCopy,
     vis::{self, MapVisibility},
 };
 
@@ -70,7 +74,7 @@ pub struct MergedChunk {
 pub(crate) fn mergeable(m: &MapMesh) -> bool {
     !m.skybox
         && m.water.is_none()
-        && !matches!(m.alpha, super::MapAlpha::Blend | super::MapAlpha::Add)
+        && !matches!(m.alpha, crate::map::MapAlpha::Blend | crate::map::MapAlpha::Add)
         && m.normals.len() == m.positions.len()
         && m.uvs.len() == m.positions.len()
 }
@@ -188,7 +192,7 @@ pub(crate) fn sync_merged_brushes(
         Has<BrushPanes>,
         &mut MergedBrush,
         &Children,
-        Option<&super::BrushTint>,
+        Option<&crate::map::BrushTint>,
     )>,
     mut pieces: Query<&mut Visibility, (With<MergedPiece>, Without<MergedChunk>)>,
     mut chunks: Query<(
@@ -255,5 +259,59 @@ pub(crate) fn sync_merged_brushes(
         if let Some(mut m) = meshes.get_mut(&mesh.0) {
             m.insert_indices(Indices::U32(indices));
         }
+    }
+}
+/// A node copied at run time (`map::copies::copy_node`, a
+/// `map::MapHooks::copied` hook): it and the brush entities under it are
+/// never merged, and the pieces the original draws merged are drawn by
+/// themselves.
+pub(crate) fn show_copied_pieces(world: &mut World, copy: Entity) {
+    debug_assert!(world.get::<MapCopy>(copy).is_some());
+    let mut stack = vec![copy];
+    while let Some(e) = stack.pop() {
+        let Ok(mut node) = world.get_entity_mut(e) else { continue };
+        node.remove::<MergedBrush>();
+        if node.contains::<MergedPiece>() {
+            node.remove::<MergedPiece>().insert(Visibility::Inherited);
+        }
+        if let Some(children) = world.get::<Children>(e) {
+            stack.extend(children.iter());
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::map::{MapHooks, copies::copy_node};
+
+    /// A copy of a merged brush entity draws its own meshes: it isn't
+    /// merged and its pieces show; the original stays merged.
+    #[test]
+    fn copies_draw_their_own_meshes() {
+        let mut world = World::new();
+        world.insert_resource(MapHooks {
+            copied: vec![show_copied_pieces],
+            ..default()
+        });
+        let node = world
+            .spawn((
+                Transform::default(),
+                MergedBrush {
+                    home: Transform::default(),
+                    chunks: Vec::new(),
+                    merged: true,
+                },
+            ))
+            .id();
+        let piece = world.spawn((MergedPiece, Visibility::Hidden, ChildOf(node))).id();
+        let copy = copy_node(&mut world, node, Transform::from_xyz(1.0, 0.0, 0.0)).unwrap();
+        assert!(world.get::<MergedBrush>(copy).is_none());
+        let copied = world.get::<Children>(copy).unwrap()[0];
+        assert!(world.get::<MergedPiece>(copied).is_none());
+        assert_eq!(world.get::<Visibility>(copied), Some(&Visibility::Inherited));
+        assert!(world.get::<MergedBrush>(node).is_some());
+        assert!(world.get::<MergedPiece>(piece).is_some());
     }
 }

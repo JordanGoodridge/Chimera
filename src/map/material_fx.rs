@@ -222,3 +222,13 @@ pub fn detail_post_lighting(mode: u8, d: Vec3, f: f32) -> Vec3 {
 pub fn self_illum(diffuse: Vec3, albedo: Vec3, tint: Vec3, mask: f32) -> Vec3 {
     diffuse.lerp(tint * albedo, mask)
 }
+/// Source's parameter gamma-to-linear table (specs/cs_source/shaders.md
+/// Quirks): rounded to 1/255; 0.95 and up become 1; above 1 unchanged.
+pub fn parameter_gamma_to_linear(v: f32) -> f32 {
+    if v > 1.0 {
+        return v;
+    }
+    let v = (v * 255.0).round() / 255.0;
+    if v >= 0.95 { 1.0 } else { v.powf(2.2) }
+}
+

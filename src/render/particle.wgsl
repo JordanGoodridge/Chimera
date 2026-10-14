@@ -2,7 +2,7 @@
 // alpha-blended or added, then fogged: blended particles toward the fog
 // colour, added ones toward black (Source's sprite-card fog). The fog is
 // the world's range fog and, below the water's surface, the water's
-// (map::fog).
+// (render::fog).
 
 #import bevy_pbr::forward_io::VertexOutput
 #import mashup::fog::source_fog

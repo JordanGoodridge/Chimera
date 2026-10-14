@@ -10,13 +10,13 @@ use mashup::{
     map::{
         MapData, MapMesh, MapModel, MapPlugin, MapProp, PropSolid, ViewModelAnchor,
         lod::MapLod,
+    },
+    render::{
+        lod::{LodMeshes, ModelSettings},
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,
         world_material::WorldMaterial,
-    },
-    render::{
-        lod::{LodMeshes, ModelSettings},
         shadows::ShadowMaterial,
     },
 };

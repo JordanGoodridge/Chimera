@@ -11,11 +11,11 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - cs_source movement: Two deliberate departures from Source's box trace so surfing works (no rampbug stops) (`src/games/cs_source/movement.rs`)
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`src/games/cs_source/material.rs`)
 - client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`src/games/cs_source/ui/options.rs`)
-- map: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`src/map/merge.rs`)
+- render: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`src/render/merge.rs`)
 - map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices (`src/render/water.rs`)
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`src/logic/ambient.rs`)
-- map: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`src/map/world_material.rs`)
+- render: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`src/render/world_material.rs`)
 - map: Community materials: lenient VMT rewrite and stand-in shaders (WindowImposter, ShatteredGlass, LightmappedReflective) (`src/games/cs_source/material.rs`)
 - client, bot, games/cs_source: Radio pairing, hearing rules and rate limits are ours (no spec) (`src/games/cs_source/ui/radio.rs`)
 - games/cs_source: Third-person magazine tracks dropped from additive and aim animations to hide the files' stray clip offsets (`src/games/cs_source/anim.rs`)
@@ -30,7 +30,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`src/map/bodies.rs`)
 - map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/render/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
-- map: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`src/map/world_material.rs`)
+- render: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`src/render/world_material.rs`)
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`src/games/cs_source/player_anim.rs`)
 - weapon: Spread and recoil seeded as spec 4.2 but with our own generator; command numbers are tick plus seed (`src/weapon/random.rs`)
 - weapon: Penetration: fixed player budget cost and unmeasured material factors (`src/weapon/mod.rs`)
@@ -82,7 +82,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - movement: Source movement lacks base velocity; landing roll is the only view punch; some fall-damage cases ignored (`src/games/cs_source/movement.rs`)
 - movement: Ladder probe ignores near-horizontal ladder faces (brush tops), our choice (`src/games/cs_source/movement.rs`)
 - movement: Concave props swept by avian shape casts; displacement collision is our construction (`src/games/cs_source/movement.rs`)
-- map: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`src/map/sprite_material.rs`)
+- render: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`src/render/sprite_material.rs`)
 - map: trigger_hurt: constant rate only, touch by collider bounds, one half-second timer per trigger (`src/logic/triggers.rs`)
 - map: Dust motes and clouds: spawn tries, no wind, the clouds' material (`src/games/cs_source/dust.rs`)
 - sound, games/cs_source: Hurt and death sounds chosen by us from the install's entries (no spec) (`src/games/cs_source/pain.rs`)
@@ -97,7 +97,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - sound: Scrape friction energy is our stand-in for Source's (`src/games/cs_source/scrapes.rs`)
 - map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`src/render/steam.rs`)
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
-- map, client: Frame-time shortcuts: unseen bodies posed every 4th frame, padded meshes, lazy prop shadows, single-threaded executors (`src/map/bodies.rs`)
+- render, client: Frame-time shortcuts: unseen bodies posed every 4th frame, padded meshes, lazy prop shadows, single-threaded executors (`src/render/bodies.rs`)
 - map: Maps load synchronously before the app starts. OK for now: dust2 converts in well under a second.
 - deps: `vbsp` pulls `binrw` 0.14, which rustc flags as future-incompatible. OK for now: Upstream; watch on Rust upgrades.
 - build: Windows build not yet verified. OK for now: Needs the Windows PC set up (see plans).

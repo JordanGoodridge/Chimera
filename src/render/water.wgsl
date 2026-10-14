@@ -107,7 +107,7 @@ fn refraction(uv: vec2<f32>, surface: f32) -> vec4<f32> {
     let h = select(1.0, saturate((plane - p.y) / path), path > 0.0);
     let f = saturate(h * z * k);
     // The near plane crosses this surface: what lies below was drawn with
-    // this same fog already (map::fog, the intersection view).
+    // this same fog already (render::fog, the intersection view).
     if abs(surface - params.prefog_plane) < 0.02 {
         return vec4<f32>(c, f);
     }

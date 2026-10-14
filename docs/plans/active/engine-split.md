@@ -112,9 +112,10 @@ measurements):
   server-side bones), so `map::anim`, `bodies::SimAnimator` and the
   ragdolls stay on the sim side; only drawing and skinning is
   presentation and moves with `render`.
-- [~] (2) `render` out of `map` (2026-10-13, one session, three
-  commits, each with the spawn dump identical on the five maps modulo
-  moved paths):
+- [x] (2) `render` out of `map` (2026-10-13 and 14, three sessions,
+  each commit with the spawn dump identical on the five maps modulo
+  moved paths; left: `render` behind a feature for the server, and the
+  crate cut, both below):
   - [x] the state `logic`/`net`/`weapon` write moved to `map::state`
     (`VisClusters`, `LogicHidden`, areaportal/occluder states,
     `RenderLook`/`BrushTint`, `MonitorCamera`/`MonitorFog`, the
@@ -192,16 +193,38 @@ measurements):
     - [x] `architecture::simulation_uses_no_drawing_module_of_map`: the
       simulation's layers name none of the materials left in map
       (`MAP_DRAWING`; one exception, `SpriteBlend`).
-    - [ ] Left: the materials and WGSL (`world_material`, `prop_material`,
-      `sprite_material`, `rope_material`, `fog`, `probe_lit`,
-      `materials.rs`/`images.rs` helpers), which need the drawn parts of
-      `breakables` (gibs, panes), `loose`, `bodies`, `ragdoll` and
-      `merge` moved first, through drawer hooks that also run after
-      spawning (gibs, dropped weapons and bodies are made in play).
-    `insert_resources` still
-    inserts some drawing resources (decal and particle assets, fog) and
-    `unload_map` still removes them: render's go through `MapHooks`
-    when they move. Client post passes (`client::hdr`, `gamma`,
+    - [x] Drawer hooks that run after spawning (2026-10-14, one commit
+      per group, the spawn dump identical modulo moved paths; component
+      ids and the change tick masked where a system or component was
+      added): drawn-part requests (docs/ARCHITECTURE.md): what the
+      simulation makes in play says in plain data what it looks like
+      and render's systems fulfil it; headless nothing is drawn
+      (`tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
+      models, the ragdoll's adoption of the dead's body), `render::loose`
+      (`LooseItem`, `ShownItem`), `render::breakables` (a gib's
+      `GibLook`, windows' `BrushPanes` clipped and made whole),
+      `render::props` (`PropLook` on skins and body groups). Resource
+      order kept: the gibs' meshes live in `render::bodies::PlayModels`
+      (was `CharacterBodies`), built in the old order and inserted at
+      the bodies' place; `MapPlugin::build_first` split where the
+      ragdoll's drawn systems were added.
+    - [x] The materials and WGSL: `world_material`, `prop_material`,
+      `sprite_material`, `rope_material`, `probe_lit`, `fog` (merged
+      with `render::fog`), `materials.rs`/`images.rs` and their shaders
+      are render's; `SpriteBlend` went to `map::data`,
+      `parameter_gamma_to_linear` to `map::material_fx`, the water fog
+      modes to `map::water`; `SceneFog` is inserted through
+      `MapDrawer::insert_drawn` (`DrawnResource::Fog`) at its old place.
+      `architecture::simulation_builds_no_drawn_parts` replaces the
+      `MAP_DRAWING` check: the simulation's layers name no drawing type
+      (`Mesh3d`, `Assets<Mesh>`, materials) and `src/map` holds no
+      shader.
+    - [x] `merge` whole (a node copied at run time is finished by a
+      `MapHooks::copied` hook: render shows its pieces, never merged)
+      and the placed ragdoll's never-culled meshes
+      (`render::bodies::uncull_placed_ragdolls`): the simulation's
+      layers name no drawing type, with no exceptions.
+    Client post passes (`client::hdr`, `gamma`,
     `color_correction`) stay in client: they hang off
     `FirstPersonCamera`/`UiCamera`/`ClientArgs`.
   - A server without rendering: not yet. `mashup_server` adds no
@@ -211,6 +234,24 @@ measurements):
     render's (an ordering change to make deliberately) and a headless
     `MapDrawer` (all `Draws` false, nothing spawned) stands in for
     `render::MapAssets`; then `render` can sit behind a feature.
+    The drawn-part requests already leave such a server correct: with
+    no renderer they stay unfulfilled (`tests/it/drawn_parts.rs`).
+  - Cutting the crates (`map` to `engine/world`, `render` to
+    `engine/present`), not done; what it needs (2026-10-14): (a)
+    `impl Plugin for MapPlugin` lives in `map_plugin` (root crate) for a
+    type in `map`: the orphan rule forbids that across crates, so the
+    type moves up beside its registration (e.g. `present::MapPlugin`,
+    re-exported as `map::MapPlugin`), or `world` gets its own plugin
+    with registration hooks that `present` fills in the same order;
+    (b) about 50 `pub(crate)` items of `map` (and more `pub(crate)`
+    fields: `LooseAsset`, `GibAssets`, `FlyingGib`, `Ragdoll`,
+    `PendingMap`, `PlayableArea`, the props' and bodies' types) that
+    `render`/`map_plugin`/`audio` use become `pub`; (c) `map` uses only
+    `core` (`engine_core`) of ours, plus avian, replicon and Bevy's
+    image and camera types (`map::sky`'s images, the camera markers):
+    no blocker; (d) the root crate re-exports `world::map` and
+    `present::render` so `crate::map`/`mashup::map` paths keep working;
+    (e) `audio` (above `map`, beside `render`) goes with `present`.
   - Measured: a leaf edit's test build (`client/window_icon.rs`, a new
     `pub fn`, `cargo test --features dev --no-run`) 239 s before
     (load 14-26), 114 s after (load 17-18): one crate either way, so

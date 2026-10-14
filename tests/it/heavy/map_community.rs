@@ -553,9 +553,9 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
         |app: &mut App| {
             app.init_asset::<Image>()
                 .init_asset::<StandardMaterial>()
-                .init_asset::<mashup::map::world_material::WorldMaterial>()
-                .init_asset::<mashup::map::prop_material::PropMaterial>()
-                .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
+                .init_asset::<mashup::render::world_material::WorldMaterial>()
+                .init_asset::<mashup::render::prop_material::PropMaterial>()
+                .init_asset::<mashup::render::sprite_material::SpriteMaterial>()
                 .init_asset::<mashup::render::water::WaterMaterial>()
                 .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
         },
@@ -613,9 +613,9 @@ fn moving_water_is_culled_on_jacks() {
         |app: &mut App| {
             app.init_asset::<Image>()
                 .init_asset::<StandardMaterial>()
-                .init_asset::<mashup::map::world_material::WorldMaterial>()
-                .init_asset::<mashup::map::prop_material::PropMaterial>()
-                .init_asset::<mashup::map::sprite_material::SpriteMaterial>()
+                .init_asset::<mashup::render::world_material::WorldMaterial>()
+                .init_asset::<mashup::render::prop_material::PropMaterial>()
+                .init_asset::<mashup::render::sprite_material::SpriteMaterial>()
                 .init_asset::<mashup::render::water::WaterMaterial>()
                 .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
         },
@@ -1148,7 +1148,7 @@ fn strike_beams_strike_and_kill() {
 /// mg_swag_multigames_v1's buy zone signs (normal).
 #[test]
 fn blended_and_normal_sprites_load() {
-    use mashup::map::sprite_material::SpriteBlend;
+    use mashup::map::SpriteBlend;
     if let Some(map) = load("surf_sacrifice") {
         let labels = map.sprites.iter().filter(|s| s.blend == SpriteBlend::Blend).count();
         assert!(labels >= 14, "{labels}");

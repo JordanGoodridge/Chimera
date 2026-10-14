@@ -22,6 +22,14 @@ use crate::{audio, render};
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         self.build_first(app);
+        app.add_systems(
+            Update,
+            (render::bodies::adopt_bodies, render::bodies::pose_ragdolls)
+                .chain()
+                .after(DriveAnimation)
+                .run_if(resource_exists::<render::bodies::PlayModels>),
+        );
+        self.build_after_ragdolls(app);
         app.add_plugins(render::light_styles::LightStylesPlugin);
         self.build_after_light_styles(app);
         app.add_plugins(render::monitor::MonitorPlugin);
@@ -35,6 +43,7 @@ impl Plugin for MapPlugin {
         let mut hooks = app.world_mut().resource_mut::<MapHooks>();
         hooks.spawn = Some(spawn_pending_map);
         hooks.unload.push(render::unload_map);
+        hooks.copied.push(render::merge::show_copied_pieces);
     }
 }
 
@@ -95,6 +104,12 @@ fn build_rest(app: &mut App) {
                 .before(crate::core::SimSet::Movement),
         )
         .add_systems(FixedPostUpdate, breakables::update_panes)
+        .add_systems(
+            FixedPostUpdate,
+            (render::breakables::restore_panes, render::breakables::clip_panes)
+                .chain()
+                .after(breakables::update_panes),
+        )
         .add_systems(FixedPostUpdate, prop_physics::wake_on_contact.after(PhysicsSystems::Writeback))
         // Moving water follows its brush entity (before movement and
         // buoyancy read it).
@@ -109,7 +124,7 @@ fn build_rest(app: &mut App) {
                     .before(render::dust::update_dust)
                     .before(render::steam::update_steam),
                 (render::light_styles::relight, render::light_styles::animate).chain(),
-                apply_prop_looks,
+                render::props::apply_prop_looks,
                 animate_props,
                 render::beams::follow_eye.after(render::parts::switch_parts).before(render::glow::glow_visibility),
                 render::beams::animate_beams.after(render::parts::switch_parts),
@@ -122,7 +137,9 @@ fn build_rest(app: &mut App) {
                 breakables::break_props,
                 breakables::fall_panes,
                 breakables::spawn_gibs,
+                render::breakables::draw_gibs,
                 breakables::fly_gibs,
+                render::breakables::fade_gibs,
             )
                 .chain(),
         )
@@ -172,15 +189,16 @@ fn build_rest(app: &mut App) {
                 )
                     .chain(),
                 (
-                    attach_bodies,
-                    show_local_body,
-                    turn_bodies.after(DriveAnimation),
-                    pose_bodies.after(DriveAnimation),
-                    attach_held,
-                    probe_lit::relight,
-                    loose::attach_shown,
+                    render::bodies::attach_bodies,
+                    render::bodies::show_local_body,
+                    render::bodies::turn_bodies.after(DriveAnimation),
+                    render::bodies::pose_bodies.after(DriveAnimation),
+                    render::bodies::attach_held,
+                    render::probe_lit::relight,
+                    render::loose::attach_shown,
+                    render::loose::draw_loose,
                 )
-                    .run_if(resource_exists::<CharacterBodies>),
+                    .run_if(resource_exists::<render::bodies::PlayModels>),
                 (render::view_model::draw_view_models, render::view_model::view_model_screens)
                     .chain()
                     .after(DriveAnimation)
@@ -220,6 +238,7 @@ fn build_rest(app: &mut App) {
             // Props' levels of detail from where the eye is this frame.
             render::lod::switch_lods.after(bevy::transform::TransformSystems::Propagate),
         )
+        .add_systems(Update, render::bodies::uncull_placed_ragdolls)
         .add_systems(
             PostUpdate,
             // After propagation, so it sees this frame's (interpolated)
@@ -234,7 +253,7 @@ fn build_rest(app: &mut App) {
             (
                 render::tint::apply_brush_tints,
                 render::tint::apply_character_looks,
-                merge::sync_merged_brushes,
+                render::merge::sync_merged_brushes,
                 tag_moved_brush_entities,
                 render::vis::cull,
                 render::vis::fade_windows,

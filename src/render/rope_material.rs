@@ -6,7 +6,7 @@
 //! main strip narrowed with distance. See rope.wgsl.
 //!
 //! Ropes as camera-facing strips (Source Cable shader, fake anti-aliasing back
-//! strip), fogged (`map::fog`).
+//! strip), fogged (`render::fog`).
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},
@@ -17,7 +17,7 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use super::MapRope;
+use crate::map::MapRope;
 
 #[derive(Clone, Copy, Debug, Default, bevy::render::render_resource::ShaderType)]
 pub struct RopeParams {
@@ -47,11 +47,11 @@ pub struct RopeMaterial {
 
 impl Material for RopeMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://mashup/map/rope.wgsl".into()
+        "embedded://mashup/render/rope.wgsl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/rope.wgsl".into()
+        "embedded://mashup/render/rope.wgsl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {

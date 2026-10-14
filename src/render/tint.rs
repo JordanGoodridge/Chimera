@@ -19,7 +19,8 @@
 
 use bevy::prelude::*;
 
-use crate::map::{BrushTint, MapAlpha, RenderLook, prop_material::PropMaterial, world_material::WorldMaterial};
+use super::{prop_material::PropMaterial, world_material::WorldMaterial};
+use crate::map::{BrushTint, MapAlpha, RenderLook};
 
 /// A brush entity mesh's texture frames (its base texture's, when it has
 /// several and something can pick one).
@@ -122,7 +123,7 @@ pub(crate) struct UnlookedModel {
 pub(crate) fn apply_character_looks(
     characters: Query<(Entity, &RenderLook)>,
     children: Query<&Children>,
-    models: Query<(&crate::map::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
+    models: Query<(&crate::render::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
     materials: Option<ResMut<Assets<PropMaterial>>>,
     mut commands: Commands,
 ) {

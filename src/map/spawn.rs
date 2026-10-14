@@ -57,6 +57,9 @@ pub enum DrawnResource {
     Particles,
     /// Runtime decals' images and materials (after the overview).
     Decals,
+    /// The fog shaders take (with the world's other resources, after the
+    /// moving water; also headless).
+    Fog,
 }
 
 /// Which headless stand-ins a `MapDrawer` makes unneeded: dropped
@@ -351,19 +354,14 @@ fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
 
 /// Headless: dropped weapons and gibs still have their bodies, undrawn.
 fn insert_headless_assets(commands: &mut Commands, s: &MapSpawn, draws: Draws) {
-    let (data, view) = (s.data, s.view);
+    let data = s.data;
     if !draws.loose
-        && let Some(root) = data.characters.first().map(|c| c.root)
+        && let Some(loose) = loose::assets(data)
     {
-        let loose = data
-            .held
-            .iter()
-            .map(|h| (h.key.clone(), loose::asset(h, root, Vec::new())))
-            .collect();
-        commands.insert_resource(loose::LooseAssets(loose));
+        commands.insert_resource(loose);
     }
     if !draws.gibs
-        && let Some(gibs) = breakables::build_assets(data, &[], view, None)
+        && let Some(gibs) = breakables::build_assets(data)
     {
         commands.insert_resource(gibs);
     }
@@ -745,7 +743,7 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
                 .map(|&(v, e)| (v, e, data.water[v].brush.clone(), s.node_home(e)))
                 .collect(),
         ));
-        commands.insert_resource(fog::SceneFog(fog::world_fog(data.fog.as_ref())));
+        D::insert_drawn(drawn, commands, s, DrawnResource::Fog);
         commands.insert_resource(data.round_sounds.clone());
         if let Some(r) = &data.radio {
             commands.insert_resource(r.clone());

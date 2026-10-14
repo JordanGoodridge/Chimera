@@ -1,8 +1,16 @@
 //! Materials and meshes built from map meshes: the standard and prop
 //! materials, and the fog parameters map shaders take.
 
+use bevy::{asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology};
+
+use super::prop_material::{PropMaterial, PropParams};
 #[allow(unused_imports)]
-use super::*;
+use crate::map::*;
+
+/// Bevy adds `lightmap * lightmap_exposure` as light, then applies the
+/// camera's exposure. This cancels the default camera exposure (EV100 9.7)
+/// so a lightmap value of 1.0 shows a texture at its own brightness.
+pub(crate) const LIGHTMAP_EXPOSURE: f32 = 1.2 * 831.746_4; // 1.2 * 2^9.7
 
 pub(crate) fn build_mesh(m: &MapMesh, with_lightmap: bool) -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());

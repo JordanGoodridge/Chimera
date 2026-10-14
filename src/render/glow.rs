@@ -6,10 +6,8 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use crate::map::{
-    GlowSprite, LogicHidden, SkyboxCamera, ViewModelCamera, VisClusters, monitor, sprite_material::SpriteMaterial,
-    water,
-};
+use super::sprite_material::SpriteMaterial;
+use crate::map::{GlowSprite, LogicHidden, SkyboxCamera, ViewModelCamera, VisClusters, monitor, water};
 
 /// Glow visibility (specs/cs_source/sprites_dust.md, 5a): the game measures
 /// the visible fraction of a view-facing square (half-diagonal = proxy

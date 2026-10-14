@@ -13,7 +13,7 @@
 //!   16384 pins every part (static) until EnableMotion, flag 65536 holds
 //!   them still until a shot or the Wake input wakes them (6.4, 6.7).
 //! - `pose` moves the node with body 0 and poses the drawn bones from the
-//!   bodies (as `ragdoll::pose_ragdolls` does a character's).
+//!   bodies (as `crate::render::bodies::pose_ragdolls` does a character's).
 //! - Killed by the logic: the bodies go out of the simulation; a round
 //!   restart makes it again where it was placed.
 //! - In a network game the server sends the parts' poses (`NetRagdoll`,
@@ -167,19 +167,12 @@ fn node_world(t: &Transform, parent: Option<&GlobalTransform>) -> Transform {
 /// Make each placed ragdoll's bodies and joints from its start pose.
 #[allow(clippy::type_complexity)]
 fn make(
-    mut nodes: Query<(
-        Entity,
-        &mut PlacedRagdoll,
-        &Transform,
-        Option<&ChildOf>,
-        Option<&Children>,
-    )>,
+    mut nodes: Query<(Entity, &mut PlacedRagdoll, &Transform, Option<&ChildOf>)>,
     globals: Query<&GlobalTransform>,
-    meshes: Query<(), With<Mesh3d>>,
     time: Res<Time>,
     mut commands: Commands,
 ) {
-    for (node, mut placed, t, parent, children) in &mut nodes {
+    for (node, mut placed, t, parent) in &mut nodes {
         if placed.sim.is_some() || placed.gone {
             continue;
         }
@@ -258,12 +251,6 @@ fn make(
             root_world.translation,
             time.elapsed_secs_f64(),
         ));
-        // Its meshes' bounds are the reference pose's.
-        for c in children.into_iter().flatten() {
-            if meshes.contains(*c) {
-                commands.entity(*c).insert(bevy::camera::visibility::NoFrustumCulling);
-            }
-        }
         placed.follow = Transform::from_matrix(root_world.to_matrix().inverse() * world.to_matrix());
         placed.sim = Some(sim);
         debug!("placed ragdoll {node}: {} bodies", ragdoll.bodies.len());

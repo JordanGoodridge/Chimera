@@ -16,9 +16,9 @@ use std::collections::HashMap;
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::{camera::visibility::RenderLayers, prelude::*};
 
+use super::prop_material::PropMaterial;
 use crate::map::{
     LightField, MapData, MapDebugView, ViewModels,
-    prop_material::PropMaterial,
     shells::{MapShellPhysics, ShellHit, ShellState, bounce_volume, shell_alpha, shell_step},
     sound::{PlaySound, SoundBank},
     view_model::{
@@ -52,9 +52,9 @@ pub(crate) fn build_assets(
                 .meshes
                 .iter()
                 .map(|m| {
-                    let mut material = crate::map::lit_prop_material(m, textures, data, view, false);
+                    let mut material = crate::render::lit_prop_material(m, textures, data, view, false);
                     material.params.dynamic = 0.0;
-                    (meshes.add(crate::map::build_mesh(m, false)), materials.add(material))
+                    (meshes.add(crate::render::build_mesh(m, false)), materials.add(material))
                 })
                 .collect();
             (s.key.to_lowercase(), (parts, s.bounce.clone()))

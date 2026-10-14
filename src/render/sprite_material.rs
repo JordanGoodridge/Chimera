@@ -28,6 +28,8 @@ use bevy::{
     shader::ShaderRef,
 };
 
+pub use crate::map::SpriteBlend;
+
 #[derive(Clone, Copy, Debug, Default, bevy::render::render_resource::ShaderType)]
 pub struct SpriteParams {
     /// RGB scale and alpha weight.
@@ -50,26 +52,13 @@ pub struct SpriteMaterial {
     pub blend: SpriteBlend,
 }
 
-/// How a sprite meets the image (its render mode).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum SpriteBlend {
-    /// Added (additive and glow modes 3, 5, 9).
-    #[default]
-    Add,
-    /// Blended by its alpha (colour, texture and solid modes 1, 2, 4):
-    /// depth tested, not written.
-    Blend,
-    /// An opaque square (normal mode 0): depth tested and written.
-    Opaque,
-}
-
 impl Material for SpriteMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://mashup/map/sprite.wgsl".into()
+        "embedded://mashup/render/sprite.wgsl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/sprite.wgsl".into()
+        "embedded://mashup/render/sprite.wgsl".into()
     }
 
     /// Opaque here only so Bevy draws sprites in the transmissive phase,

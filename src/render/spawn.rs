@@ -12,17 +12,25 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 #[allow(unused_imports)]
 use crate::map::*;
 use super::{
-    dust, emitters, light_styles, monitor, shadows,
+    bodies::{HeldAssets, HeldParts, PlayModels, body_assets},
+    breakables::PanePart,
+    props::{PropMeshSlot, PropVariants},
+    dust, emitters, light_styles, merge, monitor, shadows,
     view_model::{build_assets as build_view_models, build_flash_assets},
     sky::{ActiveMapHas3dSky, MapSkybox, SkyCameraInfo, SkyVis},
     steam, water,
 };
 // Explicit: Bevy's prelude has a `LightProbe` too.
-use crate::map::{
-    LightProbe,
+use crate::map::LightProbe;
+#[allow(unused_imports)]
+use super::{
+    LightmapLayers, SOURCE_LIGHTMAP_SCALE, build_material, build_mesh, clamp_edges, cube_image, fog, fog_color,
+    fog_range, lit_prop_material, material_fog, probe_lit, rope_material,
     prop_material::PropMaterial,
     rope_material::{RopeMaterial, RopeParams},
+    set_prop_envmap, sprite_material,
     sprite_material::{SpriteMaterial, SpriteParams},
+    to_image,
     world_material::{WorldMaterial, WorldParams},
 };
 
@@ -68,6 +76,9 @@ impl MapDrawer for MapAssets<'static> {
             DrawnResource::DecalSurfaces => commands.insert_resource(super::decal::DecalSurfaces::new(s.data)),
             DrawnResource::Particles => super::particles::insert_assets(commands, s.data, &drawn.textures),
             DrawnResource::Decals => super::decal::insert_assets(commands, s.data, &drawn.textures),
+            DrawnResource::Fog => {
+                commands.insert_resource(fog::SceneFog(fog::world_fog(s.data.fog.as_ref())));
+            }
         }
     }
 }
@@ -337,7 +348,6 @@ fn build_character_assets(
         .iter()
         .map(|c| body_assets(&c.model, &c.bones, c.root, meshes, pm, bindposes, &model_material))
         .collect();
-    commands.insert_resource(CharacterBodies(bodies));
     let held = data
         .held
         .iter()
@@ -364,41 +374,37 @@ fn build_character_assets(
             )
         })
         .collect::<HashMap<_, _>>();
-    // Loose (dropped) forms, sized by the first character's scale.
-    if let Some(root) = data.characters.first().map(|c| c.root) {
-        let loose = data
-            .held
-            .iter()
-            .filter_map(|h| {
-                let parts = held.get(&h.key)?.whole.clone();
-                Some((h.key.clone(), loose::asset(h, root, parts)))
-            })
-            .collect();
-        commands.insert_resource(loose::LooseAssets(loose));
+    let view_models = prop_materials
+        .as_mut()
+        .map(|pm| build_view_models(data, textures, cubemaps, view, meshes, pm, bindposes));
+    let flash = build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut());
+    let shells = prop_materials
+        .as_mut()
+        .and_then(|pm| super::shells::build_assets(data, textures, view, meshes, pm));
+    let gibs = prop_materials
+        .as_mut()
+        .map(|pm| super::breakables::build_gib_draws(data, textures, view, meshes, pm))
+        .unwrap_or_default();
+    // Built in that order (asset ids follow it), inserted in this one
+    // (resource ids follow it): the gibs' meshes go with the bodies'.
+    commands.insert_resource(PlayModels { bodies, gibs });
+    // Loose (dropped) forms (`map::loose`), drawn with the held models'
+    // whole meshes (`super::loose`).
+    if let Some(loose) = loose::assets(data) {
+        commands.insert_resource(loose);
     }
     commands.insert_resource(HeldAssets(held));
-    if let Some(prop_materials) = prop_materials.as_mut() {
-        commands.insert_resource(build_view_models(
-            data,
-            textures,
-            cubemaps,
-            view,
-            meshes,
-            prop_materials,
-            bindposes,
-        ));
+    if let Some(view_models) = view_models {
+        commands.insert_resource(view_models);
     }
-    if let Some(flash) = build_flash_assets(data, textures, meshes, sprite_materials.as_deref_mut()) {
+    if let Some(flash) = flash {
         commands.insert_resource(flash);
     }
-    if let Some(prop_materials) = prop_materials.as_mut()
-        && let Some(shells) = super::shells::build_assets(data, textures, view, meshes, prop_materials)
-    {
+    if let Some(shells) = shells {
         commands.insert_resource(shells);
     }
-    if let Some(prop_materials) = prop_materials.as_mut()
-        && let Some(gibs) = breakables::build_assets(data, textures, view, Some((meshes, prop_materials)))
-    {
+    // The gibs' simulation (`map::breakables`), drawn by `super::breakables`.
+    if let Some(gibs) = breakables::build_assets(data) {
         commands.insert_resource(gibs);
     }
 }
@@ -1355,7 +1361,7 @@ fn spawn_beams(
                     },
                     texture: Some(textures[h.texture].clone()),
                     glow: true,
-                    blend: crate::map::sprite_material::SpriteBlend::Add,
+                    blend: crate::render::sprite_material::SpriteBlend::Add,
                 })),
                 bevy::light::NotShadowCaster,
                 bevy::camera::visibility::NoFrustumCulling,
@@ -1387,7 +1393,7 @@ fn spawn_beams(
                 },
                 texture: Some(textures[g.texture].clone()),
                 glow: true,
-                blend: crate::map::sprite_material::SpriteBlend::Add,
+                blend: crate::render::sprite_material::SpriteBlend::Add,
             })),
             bevy::light::NotShadowCaster,
             bevy::camera::visibility::NoFrustumCulling,

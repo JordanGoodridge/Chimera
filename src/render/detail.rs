@@ -37,7 +37,8 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use crate::map::{MapDetailProps, fog::FogUniform};
+use super::fog::FogUniform;
+use crate::map::MapDetailProps;
 
 /// Fade (start, gone) without an env_detail_controller, meters: the
 /// game's `cl_detaildist` 1200 less `cl_detailfade` 400, to 1200 units.
@@ -235,7 +236,7 @@ pub fn spawn(
 }
 
 /// Keep the detail materials' fog with the scene's.
-fn apply_fog(fog: Option<Res<crate::map::fog::SceneFog>>, mut materials: ResMut<Assets<DetailMaterial>>) {
+fn apply_fog(fog: Option<Res<crate::render::fog::SceneFog>>, mut materials: ResMut<Assets<DetailMaterial>>) {
     let Some(fog) = fog.filter(|f| f.is_changed()) else {
         return;
     };
@@ -255,7 +256,7 @@ pub struct DetailMaterialPlugin;
 impl Plugin for DetailMaterialPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "detail.wgsl");
-        app.add_plugins((crate::map::fog::FogShaderPlugin, MaterialPlugin::<DetailMaterial>::default()))
+        app.add_plugins((crate::render::fog::FogShaderPlugin, MaterialPlugin::<DetailMaterial>::default()))
             .add_systems(Update, apply_fog);
     }
 }

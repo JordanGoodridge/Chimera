@@ -43,10 +43,13 @@ use bevy::{
     prelude::*,
 };
 
-use crate::map::{
-    BodyJoint, LightField, LightProbe, MapBone, MapData, MapDebugView, MapEnvmap, MapFlashLight, MapMuzzleFlash,
+use super::{
+    bodies::BodyJoint,
     prop_material::PropMaterial,
     sprite_material::{SpriteMaterial, SpriteParams},
+};
+use crate::map::{
+    LightField, LightProbe, MapBone, MapData, MapDebugView, MapEnvmap, MapFlashLight, MapMuzzleFlash,
     view_model::*,
 };
 
@@ -110,7 +113,7 @@ pub(crate) fn build_assets(
                 .meshes
                 .iter()
                 .map(|m| {
-                    let mut mesh = crate::map::build_mesh(m, false);
+                    let mut mesh = crate::render::build_mesh(m, false);
                     if m.joints.len() == m.positions.len() && !v.bones.is_empty() {
                         mesh.insert_attribute(
                             Mesh::ATTRIBUTE_JOINT_INDEX,
@@ -118,7 +121,7 @@ pub(crate) fn build_assets(
                         );
                         mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, m.joint_weights.clone());
                     }
-                    let mut material = crate::map::lit_prop_material(m, textures, data, view, false);
+                    let mut material = crate::render::lit_prop_material(m, textures, data, view, false);
                     // Without a light field it shows its texture as is.
                     if !m.unlit && view != MapDebugView::Albedo && data.light_field.is_some() {
                         material.params.set_probe(&LightProbe::default(), 1.0);
@@ -389,7 +392,7 @@ pub(crate) fn draw_view_models(
                         .cubemap
                         .and_then(|c| assets.cubemap_images.get(c).cloned())
                         .unwrap_or_else(|| assets.cubemaps[i].1.clone());
-                    crate::map::set_prop_envmap(&mut material, &env, cube, &assets.textures);
+                    crate::render::set_prop_envmap(&mut material, &env, cube, &assets.textures);
                 }
             }
             body.cubemap = nearest;
@@ -575,11 +578,11 @@ pub(crate) fn build_flash_assets(
                 },
                 texture: Some(t.clone()),
                 glow: false,
-                blend: crate::map::sprite_material::SpriteBlend::Add,
+                blend: crate::render::sprite_material::SpriteBlend::Add,
             })
         });
     Some(FlashAssets {
-        mesh: meshes.add(crate::map::sprite_material::sprite_mesh(size)),
+        mesh: meshes.add(crate::render::sprite_material::sprite_mesh(size)),
         material,
         data: flash,
     })

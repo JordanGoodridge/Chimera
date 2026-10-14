@@ -503,9 +503,9 @@ fn params(m: &MapWaterMaterial, frames: usize, fog: Option<&crate::map::MapFog>)
         } else {
             Vec4::new(1.0, 1.0, 1.0, 0.0)
         },
-        scene_fog_linear: crate::map::fog_color(fog),
+        scene_fog_linear: crate::render::fog_color(fog),
         scene_fog_gamma: fog.map_or(Vec4::ZERO, |f| raw(f.color)),
-        scene_fog_range: crate::map::fog_range(fog),
+        scene_fog_range: crate::render::fog_range(fog),
         bump: Vec4::new(m.bump_scroll.x, m.bump_scroll.y, m.frame_rate, frames.max(1) as f32),
         scrolls: Vec4::new(m.scroll1.x, m.scroll1.y, m.scroll2.x, m.scroll2.y),
         refract_amount: m.refract_amount,
@@ -646,7 +646,7 @@ pub(crate) fn spawn_surfaces(
                 let layers: Vec<Image> = w
                     .normal_frames
                     .iter()
-                    .map(|&i| crate::map::to_image(&data.textures[i], &data.look))
+                    .map(|&i| crate::render::to_image(&data.textures[i], &data.look))
                     .collect();
                 let h = frames_image(&layers).map(|i| images.add(i));
                 if let Some(h) = &h {
@@ -685,7 +685,7 @@ pub(crate) fn spawn_surfaces(
                     } else {
                         RenderLayers::layer(WATER_LAYER)
                     },
-                    Mesh3d(meshes.add(crate::map::build_mesh(&chunk, false))),
+                    Mesh3d(meshes.add(crate::render::build_mesh(&chunk, false))),
                     MeshMaterial3d(materials.add(WaterMaterial {
                         params: p,
                         normal: normal.clone(),
@@ -727,7 +727,7 @@ pub(crate) fn spawn_surfaces(
         let layers: Vec<Image> = warp
             .normal_frames
             .iter()
-            .map(|&t| crate::map::to_image(&data.textures[t], &data.look))
+            .map(|&t| crate::render::to_image(&data.textures[t], &data.look))
             .collect();
         if let Some(image) = frames_image(&layers) {
             info!(
@@ -745,11 +745,11 @@ pub(crate) fn spawn_surfaces(
         overlays,
         reflection,
         scene_fog: (
-            crate::map::fog_color(data.fog.as_ref()),
+            crate::render::fog_color(data.fog.as_ref()),
             data.fog
                 .as_ref()
                 .map_or(Vec4::ZERO, |f| Vec4::new(f.color[0], f.color[1], f.color[2], 1.0)),
-            crate::map::fog_range(data.fog.as_ref()),
+            crate::render::fog_range(data.fog.as_ref()),
         ),
     });
     commands.insert_resource(WaterView::default());
@@ -1086,7 +1086,7 @@ pub fn update_water(
     if !has_sky && let Some(sky) = &sky {
         commands.entity(entity).insert(bevy::light::Skybox {
             image: Some(sky.0.clone()),
-            brightness: crate::map::LIGHTMAP_EXPOSURE,
+            brightness: crate::render::LIGHTMAP_EXPOSURE,
             ..default()
         });
     }
@@ -1134,16 +1134,16 @@ const NO_PREFOG: f32 = -1.0e9;
 pub fn underwater_fog(
     view: Option<Res<WaterView>>,
     render: Option<Res<MapWaterRender>>,
-    world: Option<ResMut<Assets<crate::map::world_material::WorldMaterial>>>,
-    props: Option<ResMut<Assets<crate::map::prop_material::PropMaterial>>>,
+    world: Option<ResMut<Assets<crate::render::world_material::WorldMaterial>>>,
+    props: Option<ResMut<Assets<crate::render::prop_material::PropMaterial>>>,
     mut water: ResMut<Assets<WaterMaterial>>,
-    scene: Option<ResMut<crate::map::fog::SceneFog>>,
+    scene: Option<ResMut<crate::render::fog::SceneFog>>,
     surfaces: Query<(&WaterSurface, &MeshMaterial3d<WaterMaterial>)>,
     sky_world: Query<(
-        &MeshMaterial3d<crate::map::world_material::WorldMaterial>,
+        &MeshMaterial3d<crate::render::world_material::WorldMaterial>,
         &RenderLayers,
     )>,
-    sky_props: Query<(&MeshMaterial3d<crate::map::prop_material::PropMaterial>, &RenderLayers)>,
+    sky_props: Query<(&MeshMaterial3d<crate::render::prop_material::PropMaterial>, &RenderLayers)>,
     mut last: Local<Option<Option<(usize, f32, f32)>>>,
 ) {
     let (Some(view), Some(render)) = (view, render) else {
@@ -1204,7 +1204,7 @@ pub fn underwater_fog(
     // The surface itself: seen from below, it is in the under-water view;
     // crossed by the near plane, it reads what lies below already fogged.
     let (lin, gamma, range, prefog) = match fog {
-        Some((c, g, r, mode, _)) if mode == crate::map::fog::WATER_FOG_RANGE => {
+        Some((c, g, r, mode, _)) if mode == crate::render::fog::WATER_FOG_RANGE => {
             (c.truncate().extend(1.0), g, r.truncate().extend(0.0), NO_PREFOG)
         }
         Some((_, _, _, _, plane)) => (render.scene_fog.0, render.scene_fog.1, render.scene_fog.2, plane),
@@ -1708,14 +1708,14 @@ mod tests {
             plane: Some(1.0),
             intersect: None,
         };
-        assert_eq!(under.fog(), Some((0, 1.0, crate::map::fog::WATER_FOG_RANGE)));
+        assert_eq!(under.fog(), Some((0, 1.0, crate::render::fog::WATER_FOG_RANGE)));
         let at = WaterView {
             intersect: Some((0, 1.0)),
             ..default()
         };
-        assert_eq!(at.fog(), Some((0, 1.0, crate::map::fog::WATER_FOG_HEIGHT)));
+        assert_eq!(at.fog(), Some((0, 1.0, crate::render::fog::WATER_FOG_HEIGHT)));
         assert_eq!(WaterView::default().fog(), None);
-        let (c, r) = water_fog_uniforms(&port, 1.0, crate::map::fog::WATER_FOG_HEIGHT);
+        let (c, r) = water_fog_uniforms(&port, 1.0, crate::render::fog::WATER_FOG_HEIGHT);
         assert_eq!(c.w, 2.0);
         assert!((c.x - gamma_to_linear(21.0 / 255.0)).abs() < 1e-6);
         assert!((r.y - 500.0 * 0.0254).abs() < 1e-6 && (r.w - (1.0 + 2.0 * 0.0254)).abs() < 1e-6);

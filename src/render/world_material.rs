@@ -101,7 +101,7 @@ impl WorldParams {
     /// Identity texture transforms and a white detail tint, for params
     /// built field by field.
     pub fn identity_uv() -> Self {
-        let [u, v] = super::MapUvTransform::IDENTITY.shader_rows();
+        let [u, v] = crate::map::MapUvTransform::IDENTITY.shader_rows();
         Self {
             base_uv_u: u,
             base_uv_v: v,
@@ -164,7 +164,7 @@ pub struct WorldMaterial {
 
 impl Material for WorldMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/world.wgsl".into()
+        "embedded://mashup/render/world.wgsl".into()
     }
 
     /// Alpha-tested surfaces count as masked, so the depth prepass (main
@@ -180,7 +180,7 @@ impl Material for WorldMaterial {
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        "embedded://mashup/map/world_prepass.wgsl".into()
+        "embedded://mashup/render/world_prepass.wgsl".into()
     }
 
     fn specialize(

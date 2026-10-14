@@ -20,10 +20,9 @@ use std::{collections::HashMap, sync::Arc};
 use avian3d::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
-    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
-    mesh::Indices,
+    image::ImageSampler,
     prelude::*,
-    render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat},
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
 use crate::core::{MovingSolid, SpawnPoint, Team};
@@ -38,7 +37,6 @@ pub mod emitters;
 pub mod entities;
 pub mod fish;
 pub mod fire;
-pub mod fog;
 pub use entities::{MapBrushEntity, MapEntities, MapEntity, MapHull};
 pub mod beams;
 pub mod breakables;
@@ -48,7 +46,7 @@ pub mod contact_filter;
 pub mod controllers;
 pub mod copies;
 pub use breakables::{
-    BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, PanePart, SpawnGibs,
+    BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, SpawnGibs,
 };
 pub mod hud;
 pub mod interp;
@@ -56,22 +54,18 @@ pub mod loading;
 pub mod lod;
 pub mod loose;
 pub mod material_fx;
-pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform};
+pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform, parameter_gamma_to_linear};
 pub mod bot_profiles;
-pub mod merge;
 pub mod monitor;
 pub mod nav;
 pub mod particles;
 pub mod placed_ragdoll;
-pub mod probe_lit;
-pub mod prop_material;
 pub mod prop_physics;
 pub mod psys;
 pub mod radio;
 pub mod ragdoll;
 pub mod tracer;
 pub use ragdoll::{MapCollisionHooks, MapRagdoll, MapRagdollBody, MapRagdollJoint, Ragdoll, RagdollBody, RagdollShot};
-pub mod rope_material;
 pub mod rope_sway;
 pub mod sound;
 pub mod steam;
@@ -80,26 +74,20 @@ pub use sound::{
     SoundLevel, StartSound,
 };
 pub mod shells;
-pub mod sprite_material;
 pub mod surface_color;
 pub mod view_model;
 pub mod vis;
 pub mod water;
-pub mod world_material;
 mod data;
 pub use data::*;
 // Explicit: Bevy's prelude has a `LightProbe` too.
 pub use data::LightProbe;
 mod state;
 pub use state::*;
-mod images;
-pub use images::*;
 mod bodies;
 pub use bodies::*;
 mod props;
 pub use props::*;
-mod materials;
-pub use materials::*;
 mod collision;
 use collision::*;
 mod sky;
@@ -112,8 +100,6 @@ pub use view_model::{
     ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
     ViewModels,
 };
-
-use prop_material::{PropMaterial, PropParams};
 
 /// The loaded map's light field, when the game provides one.
 #[derive(Resource, Clone)]
@@ -264,6 +250,11 @@ impl MapPlugin {
                 .insert_resource(ActiveMapLook(data.look.clone()));
         }
         ragdoll::plugin(app);
+    }
+
+    /// Map's registration after render's ragdoll drawing
+    /// (`crate::map_plugin`): placed ragdolls.
+    pub(crate) fn build_after_ragdolls(&self, app: &mut App) {
         placed_ragdoll::plugin(app);
     }
 
@@ -274,11 +265,6 @@ impl MapPlugin {
         app.init_resource::<MonitorCamera>();
     }
 }
-
-/// Bevy adds `lightmap * lightmap_exposure` as light, then applies the
-/// camera's exposure. This cancels the default camera exposure (EV100 9.7)
-/// so a lightmap value of 1.0 shows a texture at its own brightness.
-pub(crate) const LIGHTMAP_EXPOSURE: f32 = 1.2 * 831.746_4; // 1.2 * 2^9.7
 
 /// Height of the capsule center above the feet, so spawns start standing.
 pub const SPAWN_LIFT: f32 = 1.0;
@@ -305,8 +291,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<vis::ActiveVisibility>();
     world.remove_resource::<sound::SoundBank>();
     world.remove_resource::<CharacterModels>();
-    world.remove_resource::<CharacterBodies>();
-    world.remove_resource::<HeldAssets>();
     world.remove_resource::<hud::ActiveHud>();
     world.remove_resource::<hud::ActiveOverview>();
     world.remove_resource::<surface_color::SurfaceColors>();
@@ -318,13 +302,6 @@ pub fn unload_map(world: &mut World) {
     }
     breakables::unload(world);
     world.remove_resource::<breakables::PropBreaks>();
-    let bodies: Vec<Entity> = world
-        .query_filtered::<Entity, With<CharacterBody>>()
-        .iter(world)
-        .collect();
-    for b in bodies {
-        world.entity_mut(b).despawn();
-    }
     let animated: Vec<Entity> = world
         .query_filtered::<Entity, With<anim::Animator>>()
         .iter(world)
@@ -348,7 +325,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<bot_profiles::BotProfiles>();
     world.remove_resource::<MapEntities>();
     world.remove_resource::<water::WaterView>();
-    world.remove_resource::<fog::SceneFog>();
     world.remove_resource::<MapTerrain>();
     world.insert_resource(Gravity::default());
     let hooks = world.get_resource::<MapHooks>().map(|h| h.unload.clone()).unwrap_or_default();
@@ -367,6 +343,10 @@ pub struct MapHooks {
     /// Spawns the pending map (`spawn_map` with the drawer
     /// `crate::map_plugin` picks), for `change_map`.
     pub spawn: Option<fn(&mut World)>,
+    /// What they do to a node copied at run time (`copies::copy_node`),
+    /// once it is made, in the order they were added (`crate::render`
+    /// draws it by its own meshes, never merged).
+    pub copied: Vec<fn(&mut World, Entity)>,
 }
 
 /// Replace the loaded map with `data` (spawned now, as at startup).

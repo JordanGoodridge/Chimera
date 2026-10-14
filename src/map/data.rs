@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use super::{
     DetailMode, MapEntity, MapRagdoll, MapSelfIllum, MapSounds, MapUvTransform, MapViewModel, anim, beams,
     bot_profiles, breakables, color_correction, decal, emitters, hud, lod, nav, particles, psys, radio, rope_sway,
-    shells, sprite_material, steam, vis, water,
+    shells, steam, vis, water,
 };
 use crate::core::{MapBrush, MapBrushTree, MapWaterVolume, Team};
 
@@ -1005,7 +1005,7 @@ pub struct MapSprite {
     /// proxy can be seen. Otherwise depth tested against the world.
     pub glow: bool,
     /// Added, blended by its alpha or opaque (its render mode).
-    pub blend: sprite_material::SpriteBlend,
+    pub blend: SpriteBlend,
     /// Glow occlusion proxy: half-diagonal of a square pulled this far
     /// toward the viewer, meters.
     pub proxy: f32,
@@ -1155,3 +1155,16 @@ impl MapData {
         (lo, hi)
     }
 }
+/// How a sprite meets the image (its render mode).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SpriteBlend {
+    /// Added (additive and glow modes 3, 5, 9).
+    #[default]
+    Add,
+    /// Blended by its alpha (colour, texture and solid modes 1, 2, 4):
+    /// depth tested, not written.
+    Blend,
+    /// An opaque square (normal mode 0): depth tested and written.
+    Opaque,
+}
+

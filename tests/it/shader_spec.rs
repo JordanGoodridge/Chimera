@@ -1,7 +1,7 @@
 //! Test cases from specs/cs_source/shaders.md that our renderer's CPU side
 //! reproduces: the LDR lightmap texel encoding and the bump page encoding.
 
-use mashup::map::{source_ldr_bump_texels, source_ldr_texel};
+use mashup::render::{source_ldr_bump_texels, source_ldr_texel};
 
 #[test]
 fn ldr_lightmap_encoding() {

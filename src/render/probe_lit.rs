@@ -10,7 +10,8 @@
 
 use bevy::prelude::*;
 
-use super::{LightField, prop_material::PropMaterial};
+use super::prop_material::PropMaterial;
+use crate::map::LightField;
 
 /// Lit from the light field at this entity's position (plus `offset`).
 #[derive(Component, Clone, Debug, Default)]
