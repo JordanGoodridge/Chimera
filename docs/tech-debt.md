@@ -56,6 +56,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - logic: Fire: cvars as constants, simplified traces and our readings of the spec's open questions (`src/logic/fire.rs`)
 - games/cs_source: Player physics shadow reaches its target in one step; heavy-prop and push limits are ours (`src/games/cs_source/shadow.rs`)
 - logic: Workaround for avian 0.7's stale "body disabled" flag when re-enabling a prop body (`src/logic/bridge.rs`)
+- map: Physics props rocking on uneven ground are put to sleep by our own stillness test, not a solver fix (`engine/world/src/map/prop_physics.rs`)
 - logic: Pushers: no bevels for rotated brushes, push tests skip players and props, simplified riding (`src/logic/movers.rs`)
 - logic: Community-map behaviour the specs leave open: physics bodies in triggers, AddOutput, render inputs, parenting (`src/logic/community.rs`)
 - logic, weapon: Community-map entities from public docs: game_player_equip, placed weapons, basevelocity, damage filters (`src/weapon/equip.rs`)

@@ -141,6 +141,7 @@ fn build_rest(app: &mut App) {
                 .after(breakables::update_panes),
         )
         .add_systems(FixedPostUpdate, prop_physics::wake_on_contact.after(PhysicsSystems::Writeback))
+        .add_systems(FixedPostUpdate, prop_physics::settle_props.after(PhysicsSystems::Writeback))
         // Moving water follows its brush entity (before movement and
         // buoyancy read it).
         .add_systems(FixedUpdate, water::move_water.before(crate::core::SimSet::Movement))

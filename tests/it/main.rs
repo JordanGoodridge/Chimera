@@ -113,6 +113,7 @@ mod heavy {
     mod map_occluders;
     mod map_physics_shadow;
     mod map_prop_damage;
+    mod map_prop_settle;
     mod map_props;
     mod map_sound_stock;
     mod map_spawn_dump;
