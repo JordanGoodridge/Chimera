@@ -11,9 +11,10 @@
 //! maps rescuing every hostage wins for the counter-terrorists and the
 //! terrorists win on time; each reason pays its own bonus.
 //!
-//! Defaults are CS:S's public server defaults (mp_freezetime,
-//! mp_roundtime, mp_buytime, mp_startmoney) and its well-known reward
-//! amounts; none measured here yet (docs/plans/active/rounds.md).
+//! Defaults are CS:S's (mp_freezetime 6, mp_roundtime 2.5, mp_buytime 1.5,
+//! mp_startmoney 800: read from a fresh dedicated server over RCON,
+//! 2026-10-14, parity-gaps.md C9) and its well-known reward amounts
+//! (unmeasured, docs/plans/active/rounds.md).
 //!
 //! Known shortcuts (docs/tech-debt.md): Minigame flows
 //! (docs/plans/active/community-maps.md, "Minigame flows"), our readings: with
@@ -96,7 +97,7 @@ impl Default for RoundSettings {
         Self {
             enabled: 0,
             freeze_time: 6.0,
-            round_time: 5.0,
+            round_time: 2.5,
             buy_time: 1.5,
             start_money: 800,
             max_money: 16000,

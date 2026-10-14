@@ -505,6 +505,14 @@ says what decides the open point.
   `fps_max` values on a fresh listen server started from Create Server
   (RCON `cvarlist mp_`); and the map change at the time limit: does
   the round finish first, how long is the intermission, what shows.
+  Partly done (2026-10-14, fresh dedicated server, RCON): mp_roundtime
+  2.5 (ours was 5: fixed), mp_buytime 1.5, mp_freezetime 6,
+  mp_startmoney 800, mp_c4timer 45, mp_chattime 10, mp_limitteams 2,
+  mp_autoteambalance 1, mp_teams_unbalance_limit 1, mp_flashlight 0,
+  mp_timelimit/maxrounds/winlimit/fraglimit 0, mp_hostagepenalty 13,
+  mp_forcecamera 1, mp_playerid 0, mp_fadetoblack 0, sv_alltalk 0: the
+  rest match ours. Still open: the listen server's values after Create
+  Server (settings.scr) and the time-limit map change.
 - **C11 Team balance.** Listen server, `mp_autoteambalance 1`,
   `mp_limitteams 0`, `bot_join_team T; bot_add` four times and one CT
   bot; play a round to its end. Screenshots and `developer 1` console
