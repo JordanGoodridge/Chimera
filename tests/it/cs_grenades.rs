@@ -255,9 +255,19 @@ fn he_damage_falls_off_with_distance_g18() {
     let src = Vec3::new(g.x, 1.6 * UNIT, g.z);
     let far = (eye - src).length() / UNIT;
     let near = (eye.with_y(0.7 * eye.y) - src).length() / UNIT;
-    let (lo, hi) = (100.0 - far / 3.5, 100.0 - near / 3.5);
+    // CS:S today (sv_legacy_grenade_damage 0, measured): a bell of σ
+    // 350/3 units.
+    let bell = |d: f32| 100.0 * (-(d * d) / (2.0 * (350.0f32 / 3.0).powi(2))).exp();
+    let (lo, hi) = (bell(far), bell(near));
     let hp = lost * 100.0;
     assert!(hp >= lo.floor() - 0.01 && hp <= hi + 0.01, "{hp} not in {lo}..{hi}");
+    // The original game's linear falloff with sv_legacy_grenade_damage 1.
+    let mut sim2 = self::sim();
+    sim2.app.world_mut().resource_mut::<mashup::console::Console>().submit("sv_legacy_grenade_damage 1");
+    let (lost, ..) = he_damage_at(&mut sim2, at, g);
+    let (lo, hi) = (100.0 - far / 3.5, 100.0 - near / 3.5);
+    let hp = lost * 100.0;
+    assert!(hp >= lo.floor() - 0.01 && hp <= hi + 0.01, "legacy {hp} not in {lo}..{hi}");
 }
 
 #[test]

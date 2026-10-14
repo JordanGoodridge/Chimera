@@ -34,10 +34,12 @@
 //! throw (Q1), redraw of the same type (Q2), a switch with the pin out keeps
 //! the grenade (Q3), HE armour by H1 (Q4), the signed pitch bend (Q5), no
 //! spawn-in-wall check (Q6), a bounce sound on every contact (Q7), the 1.5 s
-//! fuse (Q8), linear falloff 100 → 0 at 350 (Q10), smoke pops once still after
-//! the fuse (Q15), dying primed drops it live (Q17). The flash model is a FIT
-//! (`grenades::flash_model`: radius 1500, strength by distance² and facing, up
-//! to 5 s with a 3 s fade) pending Q12/Q13; the after-image is a screenshot
+//! fuse (Q8, measured: matches), smoke pops once still after the fuse (Q15),
+//! dying primed drops it live (Q17). Measured since (grenades.md "CS:S
+//! values"): HE armour (H1), HE falloff (a bell, `blast_damage_bell`, or
+//! linear with `sv_legacy_grenade_damage 1`), the flash's strength by
+//! distance and facing (`grenades::flash_model`); its hold and fade split
+//! is a FIT pending Q13; the after-image is a screenshot
 //! read-back of the window at the flash (it holds the HUD, arrives a frame or
 //! two late; Q13 for its curve). Hearing (5.5, 6.4): the DSP presets are
 //! approximated (`grenades::EXPLOSION_RING`, `SHOCK_MUFFLE`, `FLASH_MUFFLE`:
@@ -241,11 +243,27 @@ pub fn blast_damage(damage: f32, radius: f32, distance: f32) -> f32 {
     (damage - distance * damage / radius).max(0.0)
 }
 
+/// Radius damage as a bell: `damage` × exp(−d² / 2σ²), none past `radius`.
+pub fn blast_damage_bell(damage: f32, sigma: f32, radius: f32, distance: f32) -> f32 {
+    if distance >= radius {
+        return 0.0;
+    }
+    damage * (-(distance * distance) / (2.0 * sigma * sigma)).exp()
+}
+
+/// Blasts with a bell falloff (`Blast::bell_sigma`) fall linearly instead
+/// (CS:S's `sv_legacy_grenade_damage 1`, the original game's rule).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct LegacyBlastDamage(pub u8);
+
 /// A blast (the HE grenade, spec 5).
 #[derive(Clone, Debug)]
 pub struct Blast {
     pub damage: f32,
     pub radius: f32,
+    /// Falloff: a bell of this σ (`blast_damage_bell`) unless
+    /// `LegacyBlastDamage`; None: linear to `radius`.
+    pub bell_sigma: Option<f32>,
     /// As `DamageEffect::armor_ratio`; blasts hit no hitgroup, so armour
     /// without a helmet covers them.
     pub armor_ratio: Option<f32>,
@@ -808,6 +826,7 @@ struct Body {
 #[derive(bevy::ecs::system::SystemParam)]
 struct GrenadeWorld<'w, 's> {
     spatial: SpatialQuery<'w, 's>,
+    legacy: Option<Res<'w, LegacyBlastDamage>>,
     bodies: Query<'w, 's, Body, Without<Projectile>>,
     colliders: Query<'w, 's, &'static ColliderOf>,
     rigid: Query<'w, 's, (&'static RigidBody, Option<&'static MapPropCollider>)>,
@@ -1261,7 +1280,13 @@ fn blast(
             Some(_) => continue,
         };
         *point = end;
-        *amount = blast_damage(b.damage, b.radius, end.distance(src));
+        let d = end.distance(src);
+        *amount = match b.bell_sigma {
+            Some(sigma) if world.legacy.as_ref().is_none_or(|l| l.0 == 0) => {
+                blast_damage_bell(b.damage, sigma, b.radius, d)
+            }
+            _ => blast_damage(b.damage, b.radius, d),
+        };
     }
     for (target, end, raw) in hits {
         if raw <= 0.0 {

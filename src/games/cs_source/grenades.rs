@@ -96,11 +96,23 @@ impl Plugin for GrenadesPlugin {
             .add_message::<Detonated>()
             // Exploding props blast like the HE grenade (prop_damage.md
             // 7.5: the game's radius damage; spec Q3).
-            .insert_resource(ExplosionRule(he_blast()))
+            // Linear: the bell is grenades' only (`sv_legacy_grenade_damage`
+            // names grenade damage).
+            .insert_resource(ExplosionRule(Blast {
+                bell_sigma: None,
+                ..he_blast()
+            }))
+            .init_resource::<crate::weapon::grenade::LegacyBlastDamage>()
             .init_resource::<Particles>()
             .init_resource::<FxRng>()
             .add_systems(FixedUpdate, explosions.after(crate::core::SimSet::Weapons))
             .add_systems(Update, draw_clouds.after(ParticleSet::Step).before(ParticleSet::Draw));
+        crate::console::resource_cvar::<crate::weapon::grenade::LegacyBlastDamage, u8>(
+            app,
+            "sv_legacy_grenade_damage",
+            "1: grenade damage as the original Counter-Strike: Source (linear); 0: today's (a bell).",
+            |l| &mut l.0,
+        );
     }
 }
 
@@ -145,14 +157,18 @@ pub fn flight() -> Flight {
     }
 }
 
-/// The HE blast (spec 5): 100 at the centre to 0 at 350 units, armour
-/// by the script's ratio (H1), the push capped at 75 kg x 400 units/s
+/// The HE blast (spec 5; measured, grenades.md "CS:S values"): 100 ×
+/// exp(−d² / 2σ²), σ = 350/3 units, none past 350 (CS:S today,
+/// `sv_legacy_grenade_damage 0`); with `sv_legacy_grenade_damage 1`,
+/// linear from 100 to 0 at 350 (the original game's). Armour by the
+/// script's ratio (H1, measured), the push capped at 75 kg x 400 units/s
 /// times the template's 1.5.
 pub fn he_blast() -> Blast {
     Blast {
         damage: 100.0 * HP,
         radius: 350.0 * UNIT,
-        // UNMEASURED (Q4): hypothesis H1, the HE script's WeaponArmorRatio.
+        bell_sigma: Some(350.0 / 3.0 * UNIT),
+        // Measured (Q4): the HE script's WeaponArmorRatio, × 0.5.
         armor_ratio: Some(1.475),
         quantum: HP,
         probe_up: 8.0 * UNIT,

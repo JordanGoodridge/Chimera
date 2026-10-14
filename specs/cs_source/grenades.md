@@ -699,10 +699,13 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   unarmoured damage × 0.7375 (1.475 × 0.5, hypothesis H1) and armour loses
   half the difference: unarmoured 88 → 65 health + 11 armour; 70 → 52 + 9.
   The helmet changes nothing. Hitgroup 0.
-- **Q10 HE falloff (partial):** consistent with 100 − d/3.5 to a body point
-  about 36 units over the feet: feet distance 18 → 85-91, 36 → 84-88, 66-83
-  → 68-74, an airburst 126 away → 69. Farther distances not caught (the
-  throws hit walls); the thrower takes damage from its own grenade.
+- **Q10 HE falloff:** `sv_legacy_grenade_damage` defaults to 0 ("Enable to
+  replicate grenade damage behavior of the original Counter-Strike Source
+  game"). At 0: a bell, 100 × exp(−d² / 2σ²) with σ ≈ 115-117 (350/3) for d
+  to a body point about 54 units over the feet (fit over 13 throws on
+  de_dust2's open line: 23 → 95, 81 → 72, 132 → 49, 169 → 32, 285 → 4-5,
+  none from 354). At 1: linear 100 − d/3.5 (44 → 89, 60 → 84, 81 → 75).
+  The thrower takes damage from its own grenade.
 - **Q12 flash (partial, 10-100 units):** facing the grenade: duration
   6.7-7.1 s, max alpha 255; side-on (90°): 4.7-4.9 s, 255; facing away
   (180°): 2.7-2.8 s, 200. `player_blind` fires for the victim and the
