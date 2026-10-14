@@ -497,6 +497,8 @@ says what decides the open point.
   head under) for 30 s with `sv_soundemitter_trace 1` and `developer
   1`: when damage starts, how much per hit and how often, the sounds,
   and whether health comes back after surfacing.
+  Done 2026-10-14 on de_nuke (aztec's river is too shallow to go under):
+  specs/cs_source/movement.md "Drowning".
 - **C7 Round win panel.** Screenshots at 1280x720 of a round's end by
   elimination, by bomb, by defuse and by time: the panel's place and
   text, how long it stays, whether a centre print shows too.
