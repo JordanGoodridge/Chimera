@@ -48,7 +48,7 @@ use super::sprite_material::SpriteMaterial;
 use crate::map::{
     ParticleRng,
     beams::{MapBeam, MapGlow, SpotHalo},
-    emitters::{BEAM_MAX_SEGMENTS, BEAM_NOISE_SAMPLES, beam_segments, fractal_noise},
+    emitters::{BEAM_MAX_SEGMENTS, BEAM_NOISE_SAMPLES, fractal_noise},
 };
 
 /// One unit, meters.
@@ -158,66 +158,34 @@ pub fn beam_mesh() -> Mesh {
     mesh
 }
 
-impl MapBeam {
-    /// Its length, units.
-    fn length_units(&self) -> f32 {
-        self.start.distance(self.end) / UNIT
+/// A beam's shader parameters at `now` seconds, with this frame's noise
+/// samples (zeros: straight).
+pub fn beam_params_at(beam: &MapBeam, now: f32, noise: &[f32; BEAM_NOISE_SAMPLES]) -> BeamParams {
+    let n = beam.points();
+    let length = beam.length_units();
+    let step = if beam.tile { length / 100.0 } else { 1.0 } / (n - 1) as f32;
+    let mut packed = [Vec4::ZERO; NOISE_VECTORS];
+    for (i, v) in noise.iter().enumerate() {
+        packed[i / 4][i % 4] = *v;
     }
+    BeamParams {
+        start: beam.start.extend(1.0),
+        end: beam.end.extend(1.0),
+        color: beam.color.extend(beam.shade as f32),
+        widths: Vec4::new(
+            beam.width,
+            beam.end_width,
+            beam.fade,
+            beam.spot.as_ref().map_or(0.0, |s| s.width),
+        ),
+        strip: Vec4::new(n as f32, beam.noise * length / 100.0 * UNIT, beam.scroll_offset(now), step),
+        noise: packed,
+    }
+}
 
-    /// The points its strip is drawn through (1 step 4; a spotlight's
-    /// beam: one straight segment, 2.3).
-    pub fn points(&self) -> usize {
-        if self.spot.is_some() {
-            return 2;
-        }
-        beam_segments(self.length_units(), self.width / UNIT, self.end_width / UNIT, self.noise).max(2)
-    }
-
-    /// The texture's offset along the beam at `now` seconds (1 step 8).
-    pub fn scroll_offset(&self, now: f32) -> f32 {
-        (now as f64 * self.scroll as f64 * self.scroll as f64).rem_euclid(1.0) as f32
-    }
-
-    /// The sprite frame shown at `now` (1 step 3), an index into `frames`.
-    pub fn frame(&self, now: f32) -> usize {
-        let count = self.frames.len().max(1);
-        ((self.frame_start + now * self.frame_rate).max(0.0) as usize) % count
-    }
-
-    /// Whether its look changes from frame to frame (noise, scroll or an
-    /// animated sprite).
-    pub fn animated(&self) -> bool {
-        self.noise != 0.0 || self.scroll != 0.0 || (self.frames.len() > 1 && self.frame_rate != 0.0)
-    }
-
-    /// Shader parameters at `now` seconds, with this frame's noise samples
-    /// (zeros: straight).
-    pub fn params_at(&self, now: f32, noise: &[f32; BEAM_NOISE_SAMPLES]) -> BeamParams {
-        let n = self.points();
-        let length = self.length_units();
-        let step = if self.tile { length / 100.0 } else { 1.0 } / (n - 1) as f32;
-        let mut packed = [Vec4::ZERO; NOISE_VECTORS];
-        for (i, v) in noise.iter().enumerate() {
-            packed[i / 4][i % 4] = *v;
-        }
-        BeamParams {
-            start: self.start.extend(1.0),
-            end: self.end.extend(1.0),
-            color: self.color.extend(self.shade as f32),
-            widths: Vec4::new(
-                self.width,
-                self.end_width,
-                self.fade,
-                self.spot.as_ref().map_or(0.0, |s| s.width),
-            ),
-            strip: Vec4::new(n as f32, self.noise * length / 100.0 * UNIT, self.scroll_offset(now), step),
-            noise: packed,
-        }
-    }
-
-    pub fn params(&self) -> BeamParams {
-        self.params_at(0.0, &[0.0; BEAM_NOISE_SAMPLES])
-    }
+/// A beam's shader parameters, straight, at time zero.
+pub fn beam_params(beam: &MapBeam) -> BeamParams {
+    beam_params_at(beam, 0.0, &[0.0; BEAM_NOISE_SAMPLES])
 }
 
 /// A beam whose look moves: its noise, scroll and sprite frames, redrawn
@@ -248,7 +216,7 @@ pub(crate) fn animate_beams(
         } else {
             [0.0; BEAM_NOISE_SAMPLES]
         };
-        let params = m.beam.params_at(now, &noise);
+        let params = beam_params_at(&m.beam, now, &noise);
         let texture = (m.frames.len() > 1).then(|| m.frames[m.beam.frame(now)].clone());
         let Some(current) = materials.get(&material.0) else { continue };
         let texture_changed = texture.as_ref().is_some_and(|t| current.texture.as_ref() != Some(t));
@@ -422,7 +390,7 @@ mod tests {
         // shorter than 1.414 x the half width 12.5 make it
         // int(208 / 17.675) + 1 = 12.
         assert_eq!(b.points(), 12);
-        let p = b.params_at(0.0, &[0.0; BEAM_NOISE_SAMPLES]);
+        let p = beam_params_at(&b, 0.0, &[0.0; BEAM_NOISE_SAMPLES]);
         // One repeat per 100 units: 2.08 over the beam's 11 segments.
         assert!((p.strip.w * 11.0 - 2.08).abs() < 1e-4, "{}", p.strip.w);
         // Scroll offset frac(now x s²): 0.1 s at s 5 is 2.5 lengths.
@@ -444,7 +412,7 @@ mod tests {
         let mut samples = [0.0; BEAM_NOISE_SAMPLES];
         samples[64] = 0.5;
         samples[128] = -1.0;
-        let q = noisy.params_at(0.0, &samples);
+        let q = beam_params_at(&noisy, 0.0, &samples);
         assert!((q.strip.y - 10.0 * 2.08 * UNIT).abs() < 1e-6);
         assert_eq!((q.noise[16].x, q.noise[32].x), (0.5, -1.0));
         // A spotlight's: one straight segment, the texture once along it.
@@ -462,7 +430,7 @@ mod tests {
             ..smoke()
         };
         assert_eq!(spot.points(), 2);
-        assert_eq!(spot.params().strip.w, 1.0);
+        assert_eq!(beam_params(&spot).strip.w, 1.0);
         assert!(!spot.animated());
     }
 

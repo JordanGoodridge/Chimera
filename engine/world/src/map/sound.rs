@@ -4,7 +4,7 @@
 //! stops long-lived sounds with `SoundControl` under a `SoundKey`; the
 //! distance model (`distance_gain`, also for bots' hearing) and the
 //! surface under a point (`SurfaceGrid`, footsteps). Playback is
-//! `crate::audio`.
+//! `audio`.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -261,7 +261,7 @@ pub fn relay_game_sounds(
 pub struct SoundBank(pub Arc<MapSounds>);
 
 /// Meters per Source unit.
-pub(crate) const METERS_PER_UNIT: f32 = 0.0254;
+pub const METERS_PER_UNIT: f32 = 0.0254;
 /// Distances closer than this don't get louder (units).
 const MIN_DISTANCE: f32 = 36.0;
 
@@ -411,7 +411,7 @@ pub struct SoundKey(pub u64);
 pub const SOUNDSCAPE_KEYS: u64 = 1 << 62;
 
 impl SoundKey {
-    pub(crate) fn soundscape(self) -> bool {
+    pub fn soundscape(self) -> bool {
         self.0 >> 62 == 1
     }
 }

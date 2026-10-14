@@ -2,7 +2,7 @@
 //! trails (strips along the velocity) and flat quads, in groups that share
 //! a motion rule (gravity, decay, damping, drag, bounce planes). Games
 //! build groups with their own numbers and add them to `Particles`; the
-//! pool steps them once per rendered frame and `crate::render::particles`
+//! pool steps them once per rendered frame and `render::particles`
 //! draws them.
 //!
 //! The rules follow the "old style" client particles of
@@ -641,7 +641,7 @@ impl WorldTrace for WorldTracer<'_, '_> {
 }
 
 /// Step the pool by the frame time against the world.
-pub(crate) fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, world: WorldTracer) {
+pub fn step_particles(time: Res<Time>, mut particles: ResMut<Particles>, world: WorldTracer) {
     if particles.groups.is_empty() {
         return;
     }

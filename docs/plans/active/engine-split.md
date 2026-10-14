@@ -236,8 +236,17 @@ measurements):
     `render::MapAssets`; then `render` can sit behind a feature.
     The drawn-part requests already leave such a server correct: with
     no renderer they stay unfulfilled (`tests/it/drawn_parts.rs`).
-  - Cutting the crates (`map` to `engine/world`, `render` to
-    `engine/present`), not done; what it needs (2026-10-14): (a)
+  - [~] Cutting the crates (`map` to `engine/world`, `render` to
+    `engine/present`). Done (2026-10-14): `engine/world` (package
+    `engine_world`, module `map`): `MapPlugin`'s type moved up into
+    `map_plugin` beside its `impl Plugin` (re-exported as
+    `map::MapPlugin`; map's part is `map::build_first`,
+    `build_after_ragdolls`, `build_after_light_styles`), map's
+    `pub(crate)` items became `pub`, `impl MapBeam`'s drawing maths split
+    (the data's in map, `render::beams::beam_params` in render), a
+    `#[cfg(test)]` stand-in inlined into render's test; spawn dump
+    identical on the five maps modulo moved paths (no masking needed).
+    What it needed (2026-10-14): (a)
     `impl Plugin for MapPlugin` lives in `map_plugin` (root crate) for a
     type in `map`: the orphan rule forbids that across crates, so the
     type moves up beside its registration (e.g. `present::MapPlugin`,

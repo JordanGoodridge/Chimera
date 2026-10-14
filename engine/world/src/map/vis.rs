@@ -4,7 +4,7 @@
 //! cluster lists the clusters potentially visible from anywhere inside it.
 //! Map parts are tagged with the clusters they touch (`VisClusters`);
 //! areaportals divide the map into areas (`MapAreas::flood`); occluders
-//! hide what lies behind them. `crate::render::vis` culls with them (bots
+//! hide what lies behind them. `render::vis` culls with them (bots
 //! and hearing use them too).
 //!
 //! Visibility for any game with precomputed visibility: `MapVisibility` (a
@@ -655,7 +655,7 @@ pub fn split_mesh(mesh: &MapMesh, vis: Option<&MapVisibility>, size: f32) -> Vec
 /// The triangles `indices` of `mesh` as a mesh of their own (vertices
 /// renumbered, every per-vertex attribute kept). `template` is the mesh
 /// with its per-vertex data emptied (everything else is copied from it).
-pub(crate) fn sub_mesh(mesh: &MapMesh, template: &MapMesh, indices: &[u32]) -> MapMesh {
+pub fn sub_mesh(mesh: &MapMesh, template: &MapMesh, indices: &[u32]) -> MapMesh {
     let mut remap: std::collections::HashMap<u32, u32> = Default::default();
     let mut used: Vec<usize> = Vec::new();
     let new_indices = indices

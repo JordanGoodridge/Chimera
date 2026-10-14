@@ -36,7 +36,7 @@
 //! `RagdollShot` (the weapon layer sends one per bullet path) pushes the pelvis
 //! of ragdolls on it (a blast's names its ragdoll and pushes by its length);
 //! separation repair puts joints held apart back; the owner (`Ragdolled`) hands
-//! its drawn body over (`crate::render::bodies`), whose joints then follow the bodies; forced sleep after
+//! its drawn body over (`render::bodies`), whose joints then follow the bodies; forced sleep after
 //! `ragdoll_sleepaftertime`; removed when the owner lives again or is gone.
 //!
 //! Known shortcuts (docs/tech-debt.md): Ragdolls (specs/cs_source/ragdolls.md):
@@ -250,7 +250,7 @@ pub struct Ragdoll {
     /// Rigid bodies, as `MapRagdoll::bodies`.
     pub bodies: Vec<Entity>,
     pub joints: Vec<Entity>,
-    /// The owner's drawn body, once taken over (`crate::render::bodies::adopt_bodies`).
+    /// The owner's drawn body, once taken over (`render::bodies::adopt_bodies`).
     pub visual: Option<Entity>,
     /// Each body's joint parent body, and the child's anchor in the
     /// parent bone's frame (skeleton units).
@@ -276,7 +276,7 @@ pub struct Ragdoll {
 
 impl Ragdoll {
     /// A map-placed ragdoll's simulation (`placed_ragdoll`).
-    pub(crate) fn placed(
+    pub fn placed(
         node: Entity,
         bodies: Vec<Entity>,
         joints: Vec<Entity>,
@@ -462,7 +462,7 @@ pub fn death_pose_bones(m: &MapCharacterModel, side: DeathSide, frame: u8, crouc
     Some(globals(m, &pose))
 }
 
-pub(crate) fn plugin(app: &mut App) {
+pub fn plugin(app: &mut App) {
     app.init_resource::<RagdollSettings>()
         .add_message::<RagdollShot>()
         .add_plugins(JointGraphPlugin::<RagdollJoint>::default())
@@ -496,7 +496,7 @@ fn bind_globals(m: &MapCharacterModel) -> Vec<(Quat, Vec3)> {
 }
 
 /// Parent-relative bone transforms to skeleton space.
-pub(crate) fn globals(m: &MapCharacterModel, local: &[(Quat, Vec3)]) -> Vec<(Quat, Vec3)> {
+pub fn globals(m: &MapCharacterModel, local: &[(Quat, Vec3)]) -> Vec<(Quat, Vec3)> {
     let mut out: Vec<(Quat, Vec3)> = Vec::with_capacity(local.len());
     for (b, (q, p)) in m.bones.iter().zip(local) {
         out.push(match b.parent.and_then(|i| out.get(i)) {
@@ -510,7 +510,7 @@ pub(crate) fn globals(m: &MapCharacterModel, local: &[(Quat, Vec3)]) -> Vec<(Qua
 /// Keep each living character's skeleton pose for this tick (its animator's,
 /// else the bind pose), placed at its feet and turned by its body's yaw.
 #[allow(clippy::type_complexity)]
-pub(crate) fn record_poses(
+pub fn record_poses(
     time: Res<Time>,
     tick: Res<crate::core::SimTick>,
     models: Option<Res<CharacterModels>>,
@@ -787,7 +787,7 @@ pub fn spawn_ragdoll(
 }
 
 /// A ragdoll body's collider and mass frame.
-pub(crate) struct BodyShape {
+pub struct BodyShape {
     collider: Collider,
     /// Principal moments of inertia (kg m²), with the body's inertia scale.
     principal: Vec3,
@@ -799,7 +799,7 @@ pub(crate) struct BodyShape {
 
 impl BodyShape {
     /// `body`'s convex pieces scaled from skeleton units to meters.
-    pub(crate) fn new(body: &MapRagdollBody, scale: f32) -> Self {
+    pub fn new(body: &MapRagdollBody, scale: f32) -> Self {
         let hulls: Vec<_> = body
             .pieces
             .iter()
@@ -824,7 +824,7 @@ impl BodyShape {
 
 /// Spawn ragdoll `ragdoll`'s body `i` at `at` moving at `(v, w)`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn spawn_body(
+pub fn spawn_body(
     commands: &mut Commands,
     ragdoll: Entity,
     i: usize,

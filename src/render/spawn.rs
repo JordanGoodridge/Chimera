@@ -1315,7 +1315,7 @@ fn spawn_beams(
             MapPart,
             Mesh3d(beam_mesh.clone()),
             MeshMaterial3d(beam_materials.add(super::beams::BeamMaterial {
-                params: b.params(),
+                params: super::beams::beam_params(b),
                 texture: Some(textures[b.texture].clone()),
             })),
             bevy::light::NotShadowCaster,

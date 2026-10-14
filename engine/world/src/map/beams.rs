@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 
+use super::emitters::beam_segments;
+
 /// A beam between two points (engine space, meters).
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapBeam {
@@ -77,4 +79,40 @@ pub struct MapGlow {
     /// "Visible only from front": its forward direction.
     pub front: Option<Vec3>,
     pub proxy: f32,
+}
+
+/// One unit, meters.
+const UNIT: f32 = 0.0254;
+
+impl MapBeam {
+    /// Its length, units.
+    pub fn length_units(&self) -> f32 {
+        self.start.distance(self.end) / UNIT
+    }
+
+    /// The points its strip is drawn through (1 step 4; a spotlight's
+    /// beam: one straight segment, 2.3).
+    pub fn points(&self) -> usize {
+        if self.spot.is_some() {
+            return 2;
+        }
+        beam_segments(self.length_units(), self.width / UNIT, self.end_width / UNIT, self.noise).max(2)
+    }
+
+    /// The texture's offset along the beam at `now` seconds (1 step 8).
+    pub fn scroll_offset(&self, now: f32) -> f32 {
+        (now as f64 * self.scroll as f64 * self.scroll as f64).rem_euclid(1.0) as f32
+    }
+
+    /// The sprite frame shown at `now` (1 step 3), an index into `frames`.
+    pub fn frame(&self, now: f32) -> usize {
+        let count = self.frames.len().max(1);
+        ((self.frame_start + now * self.frame_rate).max(0.0) as usize) % count
+    }
+
+    /// Whether its look changes from frame to frame (noise, scroll or an
+    /// animated sprite).
+    pub fn animated(&self) -> bool {
+        self.noise != 0.0 || self.scroll != 0.0 || (self.frames.len() > 1 && self.frame_rate != 0.0)
+    }
 }

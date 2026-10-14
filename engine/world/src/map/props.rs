@@ -1,6 +1,6 @@
 //! Placed props after spawning: their animated sequences and the
-//! components that tag them (their looks as drawn: `crate::render::props`;
-//! their dynamic shadows: `crate::render::shadows`).
+//! components that tag them (their looks as drawn: `render::props`;
+//! their dynamic shadows: `render::shadows`).
 
 #[allow(unused_imports)]
 use super::*;
@@ -31,16 +31,16 @@ pub struct PropHome(pub Transform);
 /// An animated prop: what it plays, its joints by bone, the logic's last
 /// word and the sequence it falls back to.
 #[derive(Component)]
-pub(crate) struct PropRig {
-    pub(crate) animator: anim::Animator,
-    pub(crate) joints: Vec<Entity>,
-    pub(crate) seen: Option<PropSequence>,
-    pub(crate) default: Option<usize>,
+pub struct PropRig {
+    pub animator: anim::Animator,
+    pub joints: Vec<Entity>,
+    pub seen: Option<PropSequence>,
+    pub default: Option<usize>,
 }
 
 /// Inverse bind poses of a rig's bones in the reference pose under its
 /// root.
-pub(crate) fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::SkinnedMeshInverseBindposes {
+pub fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::SkinnedMeshInverseBindposes {
     let mut global: Vec<Mat4> = Vec::with_capacity(rig.bones.len());
     for b in &rig.bones {
         let local = Mat4::from_rotation_translation(b.rotation, b.position);
@@ -59,7 +59,7 @@ pub(crate) fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::Skinn
 /// sequence (sequence 0 when the model lacks it), switching at once; a
 /// new round starts the default one (else the first); a non-looping
 /// sequence that ends starts the default again, if there is one.
-pub(crate) fn animate_props(
+pub fn animate_props(
     time: Res<Time>,
     mut props: Query<(&mut PropRig, Option<&PropSequence>)>,
     mut joints: Query<&mut Transform>,

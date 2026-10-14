@@ -6,7 +6,7 @@
 //!
 //! Bullet tracers for any game: `Tracer` requests (the game's look and
 //! frequency) and the shooters' last muzzle-flash points (`MuzzleCache`);
-//! `crate::render::tracer` draws them.
+//! `render::tracer` draws them.
 
 use std::collections::HashMap;
 

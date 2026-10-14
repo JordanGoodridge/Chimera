@@ -7,7 +7,7 @@
 //! parts (images, bodies, lightmaps, sky, water, world meshes, model
 //! materials, effects, sprites, beams, ropes, shadows), props, the map's
 //! resources, then the sun and spawn points. The drawn parts are spawned
-//! by a `MapDrawer` (`crate::render::MapAssets`, which `crate::map_plugin`
+//! by a `MapDrawer` (`render::MapAssets`, which `map_plugin`
 //! picks), called at their places in that order. `MapDrawer` is a system
 //! parameter: `world_material`, `draws`, `spawn_undrawn`, `spawn_drawn`,
 //! `spawn_prop`, `textures`, `insert_drawn` (`DrawnResource`).
@@ -334,7 +334,7 @@ fn spawn_entity_nodes(commands: &mut Commands, data: &MapData, root: Entity) -> 
 /// Areaportal windows' brushes, the map's entities and what breaks.
 fn insert_entities(commands: &mut Commands, s: &MapSpawn) {
     let data = s.data;
-    // Areaportal windows' brushes fade in with distance (`crate::render::vis::fade_windows`).
+    // Areaportal windows' brushes fade in with distance (`render::vis::fade_windows`).
     if let Some(v) = data.visibility.as_deref() {
         for (portal, p) in v.areas.portals.iter().enumerate() {
             let brush = p.fade.and_then(|f| f.brush);
@@ -783,6 +783,6 @@ fn spawn_sun_and_spawn_points(commands: &mut Commands, data: &MapData) {
 /// Comparison hook: MASHUP_MERGED_WORLD=1 spawns the world as one mesh per
 /// material with no visibility culling (as before chunking), for A/B
 /// measurements against `vis`.
-pub(crate) fn merged_world() -> bool {
+pub fn merged_world() -> bool {
     std::env::var("MASHUP_MERGED_WORLD").is_ok_and(|v| v == "1")
 }

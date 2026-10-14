@@ -1,5 +1,5 @@
 //! The sky: the 2D sky cubemap's image and the render layers that
-//! separate the 3D skybox from the world (`crate::render::sky` draws
+//! separate the 3D skybox from the world (`render::sky` draws
 //! them: the sky on the cameras, the 3D skybox's camera).
 
 #[allow(unused_imports)]
@@ -13,11 +13,11 @@ pub const SKYBOX_LAYER: usize = 1;
 pub struct SkyboxCamera;
 
 /// Holds nothing: the sky camera's layer when only the 2D sky shows.
-pub(crate) const EMPTY_LAYER: usize = 31;
+pub const EMPTY_LAYER: usize = 31;
 
 /// Six faces into one cube texture. Faces narrower than tall or shorter
 /// than wide (Source sides are often half height) are stretched to square.
-pub(crate) fn sky_image(sky: &MapSky, textures: &[MapTexture]) -> Image {
+pub fn sky_image(sky: &MapSky, textures: &[MapTexture]) -> Image {
     if let Some(faces) = sky.hdr.as_deref()
         && std::env::var_os("MASHUP_SKY_DEBUG").is_none()
     {
@@ -123,7 +123,7 @@ pub fn sky_seam_error(sky: &MapSky, textures: &[MapTexture], layer: usize) -> f3
 /// Which texel of a `w` x `h` sky face lands at (x, y) of a `size` cube
 /// face, the face's coordinates through its material's `transform`
 /// (clamped to the texture, as the sky samples it).
-pub(crate) fn sky_texel(
+pub fn sky_texel(
     x: u32,
     y: u32,
     size: u32,
@@ -156,7 +156,7 @@ pub(crate) fn sky_texel(
 }
 
 /// The HDR sky (`MapSky::hdr`) as a linear half-float cube map.
-pub(crate) fn hdr_sky_image(sky: &MapSky, faces: &[MapHdrImage; 6]) -> Image {
+pub fn hdr_sky_image(sky: &MapSky, faces: &[MapHdrImage; 6]) -> Image {
     let size = faces.iter().map(|f| f.width.max(f.height)).max().unwrap_or(1).max(1);
     let mut data = Vec::with_capacity((size * size * 8 * 6) as usize);
     for ((face, (_, turns)), transform) in faces.iter().zip(sky.faces).zip(&sky.transforms) {
@@ -177,7 +177,7 @@ pub(crate) fn hdr_sky_image(sky: &MapSky, faces: &[MapHdrImage; 6]) -> Image {
     sky_cube_image(size, data, TextureFormat::Rgba16Float)
 }
 
-pub(crate) fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) -> Image {
+pub fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) -> Image {
     let mut image = Image::new(
         Extent3d {
             width: size,
@@ -199,10 +199,10 @@ pub(crate) fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) ->
 
 /// World brushes are also drawn by water reflections (props and characters
 /// only when the reflection shows entities).
-pub(crate) fn world_layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
+pub fn world_layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
     if skybox { layer_of(true) } else { water::world_layers() }
 }
 
-pub(crate) fn layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
+pub fn layer_of(skybox: bool) -> bevy::camera::visibility::RenderLayers {
     bevy::camera::visibility::RenderLayers::layer(if skybox { SKYBOX_LAYER } else { 0 })
 }

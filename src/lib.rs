@@ -16,7 +16,6 @@ pub mod games;
 pub mod greybox;
 pub mod harness;
 pub mod logic;
-pub mod map;
 mod map_plugin;
 pub mod mount;
 pub mod movement;
@@ -29,6 +28,14 @@ pub mod weapon;
 // The engine's stable base (engine/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
 pub use engine_core::{character, console, metrics, slots};
+
+/// The engine's map (engine/world, crate `engine_world`) at its old path,
+/// with `MapPlugin` (`map_plugin`: its registration includes `audio` and
+/// `render`).
+pub mod map {
+    pub use crate::map_plugin::MapPlugin;
+    pub use engine_world::map::*;
+}
 
 use bevy::prelude::*;
 

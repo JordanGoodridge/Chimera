@@ -120,7 +120,13 @@ mod tests {
         let mut app = App::new();
         app.set_error_handler(bevy::ecs::error::panic);
         let mut assets = HashMap::new();
-        assets.insert("gun".to_string(), crate::map::loose::LooseAsset::stand_in());
+        // A 0.2 m box with no surface.
+        let gun = crate::map::loose::LooseAsset {
+            frame: Transform::IDENTITY,
+            half: Vec3::splat(0.1),
+            surface: None,
+        };
+        assets.insert("gun".to_string(), gun);
         app.insert_resource(LooseAssets(assets));
         let mut held = HashMap::new();
         held.insert(

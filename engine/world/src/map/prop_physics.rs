@@ -177,7 +177,7 @@ pub fn reset(world: &mut World, node: Entity, asleep: bool) {
 
 /// A moving body running into a prop that sleeps since it spawned wakes
 /// it.
-pub(crate) fn wake_on_contact(
+pub fn wake_on_contact(
     mut started: MessageReader<CollisionStart>,
     asleep: Query<(), With<StartAsleep>>,
     bodies: Query<(&RigidBody, &LinearVelocity)>,

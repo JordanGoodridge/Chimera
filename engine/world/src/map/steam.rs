@@ -1,6 +1,6 @@
 //! Steam jets (`MapSteam`, Source's env_steam: specs/source/visual_entities.md
 //! 7) as data: a jet's puffs' life, size, opacity and colour (the light
-//! sampled along the jet, `light_ramp`). `crate::render::steam` emits and
+//! sampled along the jet, `light_ramp`). `render::steam` emits and
 //! draws the puffs. Engine space: meters, seconds.
 //!
 //! Steam jets for any game (`MapSteam`, Source's env_steam): puffs growing per

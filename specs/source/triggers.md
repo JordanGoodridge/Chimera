@@ -324,7 +324,7 @@ weightlessness). Whether CS:S resets it on respawn is an open question.
 ### trigger_soundscape
 
 Already implemented: src/games/cs_source/soundscape.rs and
-src/map/sound.rs, behaviour in specs/cs_source/sounds.md
+engine/world/src/map/sound.rs, behaviour in specs/cs_source/sounds.md
 ("env_soundscape_triggerable + trigger_soundscape"). It uses the same touch
 rules: start touch pushes the soundscape onto the player's list, end touch
 pops back; dead/spectating players are re-checked every 0.2 s by an overlap

@@ -27,7 +27,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - games/cs_source: Impact effects built from the spec's tables, with listed parts left out or read as the spec reads (`src/games/cs_source/impact_effects.rs`)
 - games/cs_source: Loose items' landing dust is the bullet dust puff over a guessed speed, no spec (`src/games/cs_source/impact_effects.rs`)
 - map: Particles blend in linear space and sort per material mesh (`src/render/particles.rs`)
-- weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`src/map/bodies.rs`)
+- weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`engine/world/src/map/bodies.rs`)
 - map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`src/render/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
 - render: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`src/render/world_material.rs`)
@@ -37,7 +37,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - weapon, games/cs_source: Grenades follow the SDK template where CS:S is unmeasured (spec open questions) (`src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`src/bot/mod.rs`)
 - map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`src/render/view_model.rs`)
-- map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`src/map/ragdoll.rs`)
+- map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`engine/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
 - client: Spectating numbers (death cam, chase distance, forcecamera) from general knowledge, not measured (`src/client/spectate.rs`)
@@ -63,7 +63,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - games/cs_source: Models vmdl can't read: `.ani` animations dropped from its read, bad `.vtx` models skipped (`src/games/cs_source/props.rs`)
 - logic: point_servercommand: our allow and deny rules for map-sent server commands (`src/logic/classes.rs`)
 - map: Older maps' ambient light (one cube per leaf: BSP v19, early v20) is sampled at the leaf centre. OK for now: Props light sensibly; the engine's exact use isn't specced.
-- map: Material effects past the spec: texture transforms and proxies from the public wiki's wording (`src/map/material_fx.rs`)
+- map: Material effects past the spec: texture transforms and proxies from the public wiki's wording (`engine/world/src/map/material_fx.rs`)
 - map: LDR lightmaps by default; HDR tone mapping unmeasured; light styles rebuilt or rewritten on the CPU (`src/render/light_styles.rs`)
 - map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
@@ -104,10 +104,10 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - net: The network so far: known mispredictions and gaps of slices 1-7 (`src/net/mod.rs`)
 - logic, core: Game entities beyond or short of the spec (weapon hiding, HUD suppression, speed, views) (`src/logic/game.rs`)
 - logic, map: point_template copies are cloned nodes (not replicated); point_viewcontrol simplified (`src/logic/templates.rs`)
-- map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`src/map/placed_ragdoll.rs`)
+- map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`engine/world/src/map/placed_ragdoll.rs`)
 - map: Particle system operator meanings are interpretations (`src/render/psys.rs`)
 - map: Smoke stacks: env_particlelight not read, inputs kept as placed, the material's own lighting not applied (`src/render/emitters.rs`)
-- map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`src/map/buoyancy.rs`)
+- map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`engine/world/src/map/buoyancy.rs`)
 - map, logic: Classes from the public entity docs only (func_water_analog, func_tanktrain, monitors, emitters...) (`src/logic/community.rs`)
 - map, logic: Beams: placed ends only, noise and scroll by the spec's quirks, some inputs ignored (`src/render/beams.rs`)
 - weapon, map: Entities parented to a placed weapon: the weapon's pose is its owner's feet; riders have no collision (`src/logic/anchors.rs`)

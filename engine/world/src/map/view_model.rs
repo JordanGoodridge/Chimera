@@ -2,7 +2,7 @@
 //! share: games load `MapViewModel`s with the map, drive each character's
 //! `ViewAnimator` (which sequence plays) and `ViewModelOffset` (bob and
 //! sway), and send `ViewModelEvent`s (muzzle flashes, brass);
-//! `crate::render::view_model` draws the view model of the character whose
+//! `render::view_model` draws the view model of the character whose
 //! camera carries `ViewModelAnchor`, with the placement maths here
 //! (`placement`, `reproject`, `attachment_transform`, the fields of view).
 //!
@@ -310,6 +310,6 @@ pub struct DynamicLight {
 /// Where a character's held weapon shoots from (its world model's muzzle
 /// attachment): a child of the held model.
 #[derive(Component)]
-pub(crate) struct HeldMuzzle {
-    pub(crate) owner: Entity,
+pub struct HeldMuzzle {
+    pub owner: Entity,
 }

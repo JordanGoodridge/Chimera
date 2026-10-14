@@ -3,7 +3,7 @@
 //! The logic writes the active camera (`MonitorCamera`) and its fog
 //! (`MonitorFog`, here as a view's `DistanceFog` marked `SOURCE_VIEW_FOG`,
 //! which the map's shaders read as the view's fog: `fog.wgsl`,
-//! `view_fog`); `crate::render::monitor` draws the screen with cameras of
+//! `view_fog`); `render::monitor` draws the screen with cameras of
 //! its own (`ScreenCamera`, `ScreenSkyCamera`), which every main-view
 //! system leaves out.
 //!
@@ -40,7 +40,7 @@ impl MonitorFog {
     }
 }
 
-/// Our camera drawing into the monitor screen (`crate::render::monitor`).
+/// Our camera drawing into the monitor screen (`render::monitor`).
 #[derive(Component)]
 pub struct ScreenCamera;
 

@@ -2,7 +2,7 @@
 //! (its team's, its class's or the one `BodyName` names), what it holds
 //! (`Held`), its animations and its hitboxes following the skeleton (also
 //! headless, for the server's hit tests). The drawn body, held model and
-//! their posing are `crate::render::bodies`, which draws what these say.
+//! their posing are `render::bodies`, which draws what these say.
 //!
 //! `CharacterModels`, `BodyModel`, `BodyName`, `Held`, `ShowLocalBody`;
 //! hitboxes on the skeleton (also headless), `SimAnimator`/`SimPose`.
@@ -88,7 +88,7 @@ pub struct DriveAnimation;
 /// Characters get their team's hitboxes from the loaded character models.
 /// Characters also get the model's animations (an `Animator`, driven by
 /// the game).
-pub(crate) fn attach_hitboxes(
+pub fn attach_hitboxes(
     models: Option<Res<CharacterModels>>,
     characters: Query<
         (
@@ -123,7 +123,7 @@ pub(crate) fn attach_hitboxes(
 /// except where a network server animates the body in the fixed tick
 /// (`SimAnimator`).
 #[allow(clippy::type_complexity)]
-pub(crate) fn pose_hitboxes(
+pub fn pose_hitboxes(
     models: Option<Res<CharacterModels>>,
     mut characters: Query<
         (
@@ -175,7 +175,7 @@ pub struct SimPose;
 
 /// Hitboxes from the server's own animation of each body, at the tick's
 /// time (as `pose_hitboxes` does from the drawn one).
-pub(crate) fn pose_sim_hitboxes(
+pub fn pose_sim_hitboxes(
     models: Option<Res<CharacterModels>>,
     clock: Res<crate::core::SimClock>,
     mut characters: Query<(

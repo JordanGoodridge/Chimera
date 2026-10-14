@@ -11,7 +11,7 @@
 //! it nor walk into it (`PushAway::Ignore`), its meshes; shots push it like any
 //! body; its contacts are reported (`CollisionEventsEnabled`, with its model's
 //! surface as `core::PropSurface`) for games' impact sounds and dust. The
-//! item components are requests for drawing too: `crate::render::loose`
+//! item components are requests for drawing too: `render::loose`
 //! adds the meshes (none headless).
 
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ use super::{MapHeldModel, MapPart, PhysicsProp, PushAway};
 
 /// A loose item drawn with a held model (its `MapHeldModel` key).
 /// Spawners give it a `Transform` and velocities; the map adds the body
-/// (`crate::render::loose` the meshes) and removes it with the map.
+/// (`render::loose` the meshes) and removes it with the map.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct LooseItem(pub String);
 
@@ -38,32 +38,20 @@ const CCD_SPEED: f32 = 0.5;
 const CCD_SPIN: f32 = 6.0;
 
 #[derive(Resource, Default)]
-pub(crate) struct LooseAssets(pub(crate) HashMap<String, LooseAsset>);
+pub struct LooseAssets(pub HashMap<String, LooseAsset>);
 
-pub(crate) struct LooseAsset {
+pub struct LooseAsset {
     /// From the held model's space (skeleton axes and units) to the item's
     /// frame, centred on its bounds (where its meshes are drawn).
-    pub(crate) frame: Transform,
-    pub(crate) half: Vec3,
+    pub frame: Transform,
+    pub half: Vec3,
     /// The model's surface property (impact sounds), lower-case.
-    surface: Option<String>,
-}
-
-impl LooseAsset {
-    /// A 0.2 m box with no surface (tests).
-    #[cfg(test)]
-    pub(crate) fn stand_in() -> Self {
-        Self {
-            frame: Transform::IDENTITY,
-            half: Vec3::splat(0.1),
-            surface: None,
-        }
-    }
+    pub surface: Option<String>,
 }
 
 /// Each held model's loose form, sized by the first character's scale
 /// (none without characters).
-pub(crate) fn assets(data: &super::MapData) -> Option<LooseAssets> {
+pub fn assets(data: &super::MapData) -> Option<LooseAssets> {
     let root = data.characters.first()?.root;
     Some(LooseAssets(
         data.held.iter().map(|h| (h.key.clone(), asset(h, root))).collect(),
@@ -72,7 +60,7 @@ pub(crate) fn assets(data: &super::MapData) -> Option<LooseAssets> {
 
 /// A held model's loose form: `root` takes the skeleton's space to meters
 /// (a character model's `root`; its translation is ignored).
-pub(crate) fn asset(held: &MapHeldModel, root: Transform) -> LooseAsset {
+pub fn asset(held: &MapHeldModel, root: Transform) -> LooseAsset {
     let to = Transform::from_rotation(root.rotation).with_scale(root.scale);
     let (lo, hi) = held
         .model
@@ -95,8 +83,8 @@ pub(crate) fn asset(held: &MapHeldModel, root: Transform) -> LooseAsset {
     }
 }
 
-/// Give new loose items their body (`crate::render::loose` their meshes).
-pub(crate) fn attach_loose(
+/// Give new loose items their body (`render::loose` their meshes).
+pub fn attach_loose(
     items: Query<(Entity, &LooseItem), Without<RigidBody>>,
     assets: Option<Res<LooseAssets>>,
     mut commands: Commands,
@@ -149,7 +137,7 @@ pub(crate) fn attach_loose(
 
 /// An item drawn with a held model's meshes (its `MapHeldModel` key) and
 /// no physics body: something that moves itself (a thrown grenade).
-/// Spawners give it a `Transform`; `crate::render::loose` adds the meshes.
+/// Spawners give it a `Transform`; `render::loose` adds the meshes.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct ShownItem(pub String);
 

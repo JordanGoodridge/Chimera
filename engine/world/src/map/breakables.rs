@@ -6,7 +6,7 @@
 //! made of panes (`BrushPanes` on a brush entity node: only the unbroken
 //! panes are drawn and hit by shots). What breaks, and when, is the logic
 //! layer's; what each gib looks like is a `GibLook` on it, which
-//! `crate::render::breakables` draws (with the windows' meshes); games load the gib models (`MapData::gibs`) and draw the
+//! `render::breakables` draws (with the windows' meshes); games load the gib models (`MapData::gibs`) and draw the
 //! shards of shattered glass (`GlassShatter`, `GlassImpact`).
 //! Engine space: meters, Y up.
 //!
@@ -195,9 +195,9 @@ pub struct BreakProp {
 /// Every prop's break pieces, bounds and placed skin, from its model
 /// (also headless).
 #[derive(Resource, Default)]
-pub(crate) struct PropBreaks(Vec<(Option<MapBreak>, (Vec3, Vec3), i32)>);
+pub struct PropBreaks(Vec<(Option<MapBreak>, (Vec3, Vec3), i32)>);
 
-pub(crate) fn prop_breaks(data: &MapData) -> PropBreaks {
+pub fn prop_breaks(data: &MapData) -> PropBreaks {
     PropBreaks(
         data.props
             .iter()
@@ -310,7 +310,7 @@ pub fn break_pieces(
 }
 
 /// Turn `BreakProp`s into gibs.
-pub(crate) fn break_props(
+pub fn break_props(
     mut events: MessageReader<BreakProp>,
     breaks: Option<Res<PropBreaks>>,
     mut gibs: MessageWriter<SpawnGibs>,
@@ -448,9 +448,9 @@ impl BrushPanes {
     }
 }
 
-/// Keep a window's collider to its unbroken panes (`crate::render::breakables`
+/// Keep a window's collider to its unbroken panes (`render::breakables`
 /// its meshes).
-pub(crate) fn update_panes(nodes: Query<(Entity, &BrushPanes), Changed<BrushPanes>>, mut commands: Commands) {
+pub fn update_panes(nodes: Query<(Entity, &BrushPanes), Changed<BrushPanes>>, mut commands: Commands) {
     for (node, panes) in &nodes {
         let boxes = panes.boxes();
         if boxes.is_empty() {
@@ -475,12 +475,12 @@ pub(crate) fn update_panes(nodes: Query<(Entity, &BrushPanes), Changed<BrushPane
 
 // ---------------------------------------------------------------- gibs
 
-/// Gib models and how they move (`crate::render::breakables` draws them).
+/// Gib models and how they move (`render::breakables` draws them).
 #[derive(Resource)]
-pub(crate) struct GibAssets {
+pub struct GibAssets {
     sets: Vec<(String, Vec<GibModel>)>,
-    pub(crate) physics: MapGibPhysics,
-    pub(crate) light_scale: f32,
+    pub physics: MapGibPhysics,
+    pub light_scale: f32,
 }
 
 /// A gib model's bounds' centre, its smallest half size (model space),
@@ -534,7 +534,7 @@ fn gib_body(model: &MapModel) -> GibBody {
 }
 
 /// Gib models (`MapData::gibs`): how each is placed and its body.
-pub(crate) fn build_assets(data: &MapData) -> Option<GibAssets> {
+pub fn build_assets(data: &MapData) -> Option<GibAssets> {
     if data.gibs.is_empty() {
         return None;
     }
@@ -571,10 +571,10 @@ pub struct PieceBody;
 
 /// A flying (or resting) gib.
 #[derive(Component)]
-pub(crate) struct FlyingGib {
-    pub(crate) state: GibState,
-    pub(crate) life: f32,
-    pub(crate) glass: bool,
+pub struct FlyingGib {
+    pub state: GibState,
+    pub life: f32,
+    pub glass: bool,
     /// Falls at the prop pieces' gravity.
     prop: bool,
     /// Kept this far off what it bounces on (its smallest half size).
@@ -585,7 +585,7 @@ pub(crate) struct FlyingGib {
     bounce: Option<String>,
 }
 
-/// What a gib looks like, for `crate::render::breakables` to draw (none
+/// What a gib looks like, for `render::breakables` to draw (none
 /// is drawn without it): model `model` of gib list `set` (indices in
 /// `MapData::gibs`) in skin family `skin` (one its model lacks shows skin
 /// 0), its origin `offset` from the gib's centre, glass (translucent),
@@ -678,7 +678,7 @@ pub fn gib_alpha(age: f32, life: f32, fade: f32) -> Option<f32> {
 
 /// Spawn thrown gibs (at most `MAX_GIBS` alive), each with its look
 /// (`GibLook`) for render to draw.
-pub(crate) fn spawn_gibs(
+pub fn spawn_gibs(
     mut events: MessageReader<SpawnGibs>,
     assets: Option<Res<GibAssets>>,
     alive: Query<(), With<FlyingGib>>,
@@ -817,7 +817,7 @@ const PANE_PIECE_LIFE: f32 = 5.0;
 /// Falling panes become pane pieces: physics debris of the
 /// `PANE_PIECES` list in the pane's orientation, falling from its
 /// corner (the model's origin there) and spinning.
-pub(crate) fn fall_panes(mut events: MessageReader<FallingPane>, mut gibs: MessageWriter<SpawnGibs>) {
+pub fn fall_panes(mut events: MessageReader<FallingPane>, mut gibs: MessageWriter<SpawnGibs>) {
     for ev in events.read() {
         let [u, v, n] = ev.axes.map(Vec3::normalize_or_zero);
         // The piece model is a square in its own Y/Z plane (Source axes;
@@ -838,7 +838,7 @@ pub(crate) fn fall_panes(mut events: MessageReader<FallingPane>, mut gibs: Messa
 }
 
 /// Pane pieces that touched something shatter there.
-pub(crate) fn shatter_pane_pieces(
+pub fn shatter_pane_pieces(
     mut started: MessageReader<CollisionStart>,
     pieces: Query<(&PanePiece, &Position, &Rotation, &LinearVelocity)>,
     mut shatter: MessageWriter<GlassShatter>,
@@ -869,7 +869,7 @@ pub(crate) fn shatter_pane_pieces(
 /// Move gibs, bounce them off the world (not characters) with their
 /// bounce sound, fade them out.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn fly_gibs(
+pub fn fly_gibs(
     time: Res<Time>,
     assets: Option<Res<GibAssets>>,
     sounds: Option<Res<super::sound::SoundBank>>,
@@ -939,7 +939,7 @@ pub(crate) fn fly_gibs(
 /// particles (glass shards) go, and windows drawn as panes are whole
 /// again: their meshes uncut and their collider the brush's volumes. The
 /// logic layer puts the nodes themselves back (shown, solid, placed).
-pub(crate) fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
+pub fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
     let count = world.get_resource::<crate::core::RoundRestarts>().map_or(0, |r| r.0);
     if seen.replace(count).is_none_or(|s| s == count) {
         return;
@@ -961,7 +961,7 @@ pub(crate) fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
     }
 }
 
-/// A window node back to its whole brush (`crate::render::breakables`
+/// A window node back to its whole brush (`render::breakables`
 /// draws its meshes whole again).
 fn make_whole(world: &mut World, node: Entity, index: usize) {
     let collider = world
@@ -977,7 +977,7 @@ fn make_whole(world: &mut World, node: Entity, index: usize) {
 }
 
 /// Remove gibs (map unload).
-pub(crate) fn unload(world: &mut World) {
+pub fn unload(world: &mut World) {
     world.remove_resource::<GibAssets>();
     let gibs: Vec<Entity> = world.query_filtered::<Entity, With<FlyingGib>>().iter(world).collect();
     for g in gibs {

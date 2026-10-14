@@ -4,7 +4,7 @@
 //! definition is a list of emitters, initializers, operators, forces and
 //! renderers; their meanings follow specs/cs_source/impact_effects.md 14
 //! and specs/source/fire.md 7.3 (the library that runs them is not public:
-//! interpretations, listed in docs/tech-debt.md). `crate::render::psys`
+//! interpretations, listed in docs/tech-debt.md). `render::psys`
 //! runs and draws them.
 //!
 //! Data-driven particle systems for any game (Source `.pcf` effects) as

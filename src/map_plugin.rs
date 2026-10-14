@@ -1,16 +1,20 @@
-//! Builds `map::MapPlugin`: the map's own systems (`map`), the audio
-//! that plays its sounds (`audio`) and what draws it (`render`),
+//! `MapPlugin`: the map's own systems (`map`, crate `engine_world`), the
+//! audio that plays its sounds (`audio`) and what draws it (`render`),
 //! registered in one fixed order (the order decides how Bevy orders
-//! systems that aren't ordered explicitly). The plugin's type stays in
-//! `map`, so `map::MapPlugin` is what tests and apps add; its
-//! registration lives here, above those layers: map's own first
-//! (`MapPlugin::build_first`, render's light styles,
-//! `MapPlugin::build_after_light_styles`, render's monitor screens: where
+//! systems that aren't ordered explicitly; resources are entities, so
+//! their insert order decides their ids). The type lives here, beside its
+//! `impl Plugin` (the orphan rule: `map` is another crate), and is
+//! re-exported as `map::MapPlugin`, what tests and apps add. Map's own
+//! registration first (`map::build_first`, render's ragdoll drawing,
+//! `map::build_after_ragdolls`, render's light styles,
+//! `map::build_after_light_styles`, render's monitor screens: where
 //! map's plugins were added), audio's, then the systems of map and render
 //! together (`build_rest`, the order they always had), then spawning the
 //! map at startup (`spawn_map` with `render::MapAssets`, also as
 //! `MapHooks::spawn` for `change_map`) and render's part of unloading
 //! (`render::unload_map`, a `MapHooks::unload` hook).
+
+use std::sync::Arc;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -19,9 +23,35 @@ use bevy::prelude::*;
 use crate::map::*;
 use crate::{audio, render};
 
+/// Spawns a loaded map: collision always, meshes only when rendering is
+/// present (same pattern as the greybox, so maps load in headless tests).
+pub struct MapPlugin {
+    /// The map to spawn at startup; None starts without one (another map
+    /// can be loaded later with `change_map`).
+    pub data: Option<Arc<MapData>>,
+    pub view: MapDebugView,
+}
+
+impl MapPlugin {
+    pub fn new(data: MapData) -> Self {
+        Self {
+            data: Some(Arc::new(data)),
+            view: MapDebugView::Normal,
+        }
+    }
+
+    /// The map systems and materials without a map loaded yet.
+    pub fn empty() -> Self {
+        Self {
+            data: None,
+            view: MapDebugView::Normal,
+        }
+    }
+}
+
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        self.build_first(app);
+        build_first(app, self.data.as_ref(), self.view);
         app.add_systems(
             Update,
             (render::bodies::adopt_bodies, render::bodies::pose_ragdolls)
@@ -29,9 +59,9 @@ impl Plugin for MapPlugin {
                 .after(DriveAnimation)
                 .run_if(resource_exists::<render::bodies::PlayModels>),
         );
-        self.build_after_ragdolls(app);
+        build_after_ragdolls(app);
         app.add_plugins(render::light_styles::LightStylesPlugin);
-        self.build_after_light_styles(app);
+        build_after_light_styles(app);
         app.add_plugins(render::monitor::MonitorPlugin);
         app.add_plugins(audio::SoundPlugin);
         build_rest(app);
@@ -55,7 +85,7 @@ fn spawn_pending_map(world: &mut World) {
 }
 
 /// The map's and render's registration after the sound plugin's
-/// (`MapPlugin::build_first`).
+/// (`map::build_first`).
 fn build_rest(app: &mut App) {
     app.init_resource::<ShowLocalBody>()
         .init_resource::<render::vis::NoVis>()

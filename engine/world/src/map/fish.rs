@@ -2,7 +2,7 @@
 //! models that swim around within "max_range" of its origin), for any
 //! game, as data: where each fish swims next (a point picked at random
 //! within the range and inside the map's water) and which way it faces.
-//! `crate::render::fish` moves them. Ours: no flocking and no fleeing from
+//! `render::fish` moves them. Ours: no flocking and no fleeing from
 //! players (tech-debt).
 //!
 //! func_fish_pool's fish for any game (public entity docs): `Fish` on each fish

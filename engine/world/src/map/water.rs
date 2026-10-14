@@ -4,7 +4,7 @@
 //! and the water that moves with its brush entity (`move_water`), where
 //! the eye is relative to the water (`WaterView`: the drawing writes it,
 //! hearing reads it), the reflection camera's markers and the render
-//! layers. `crate::render::water` draws them. Units: meters, Y up.
+//! layers. `render::water` draws them. Units: meters, Y up.
 //!
 //! Water for any game: `MapWaterMaterial` from the game; `WaterSurface` bounds
 //! and `MapWater` volumes following their brush entity (`move_water`);
@@ -273,7 +273,7 @@ pub struct WaterView {
     pub intersect: Option<(usize, f32)>,
 }
 
-/// Water fog modes, as shaders take them (`crate::render::fog::FogUniform`'s
+/// Water fog modes, as shaders take them (`render::fog::FogUniform`'s
 /// `water_color.w`): off, range fog under water, height fog at the surface.
 pub const WATER_FOG_OFF: f32 = 0.0;
 pub const WATER_FOG_RANGE: f32 = 1.0;
@@ -292,7 +292,7 @@ impl WaterView {
 }
 
 /// On the reflection camera: the clusters around its water surface (the
-/// reflection shows what is potentially visible from them; `crate::render::vis::cull`).
+/// reflection shows what is potentially visible from them; `render::vis::cull`).
 #[derive(Component, Clone, PartialEq)]
 pub struct ReflectionClusters(pub Vec<u32>);
 

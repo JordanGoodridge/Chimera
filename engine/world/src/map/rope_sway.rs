@@ -1,5 +1,5 @@
 //! Ropes' simulation (specs/cs_source/ropes.md, "Wind"), for the loaders
-//! (settling at load) and `crate::render::rope_sway` (swaying in the wind
+//! (settling at load) and `render::rope_sway` (swaying in the wind
 //! after): the step is the settling one (`Verlet` with damping, three
 //! max-length link sweeps, ends pinned) in engine space, and the drawn
 //! points are the spline through the nodes.
@@ -15,7 +15,7 @@ pub const STEP: f32 = 1.0 / 50.0;
 const DAMPING: f32 = 0.98;
 const SWEEPS: usize = 3;
 const MAX_SUBDIV: usize = 7;
-pub(crate) const UNIT: f32 = 0.0254;
+pub const UNIT: f32 = 0.0254;
 /// Wind only within this of the line between the ends (rope_wind_dist's
 /// default).
 pub const WIND_DIST: f32 = 1000.0 * UNIT;
@@ -23,7 +23,7 @@ pub const WIND_DIST: f32 = 1000.0 * UNIT;
 /// A gust's strength before its envelope, m/s².
 pub const GUST_BASE: f32 = 50.0 * UNIT;
 /// A node is still moving while its squared step displacement exceeds this.
-pub(crate) const REST_THRESHOLD: f32 = 0.03 * UNIT * UNIT;
+pub const REST_THRESHOLD: f32 = 0.03 * UNIT * UNIT;
 
 /// The drawn points: every node, with `subdiv` (clamped to 0-7) uniform
 /// Catmull-Rom points between neighbours. Also returns, per point, the

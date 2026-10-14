@@ -4,13 +4,13 @@
 //! specs/source/particles_and_smoke.md 3), tesla arcs (point_tesla,
 //! public entity docs), embers (env_embers), muzzle flashes
 //! (env_muzzleflash) and strike-generator env_beams' short-lived beams
-//! (visual_entities.md 1, 4.2). `crate::render::emitters` runs and draws
+//! (visual_entities.md 1, 4.2). `render::emitters` runs and draws
 //! them. Engine space: meters, seconds.
 //!
 //! Map effects for any game as data: `MapTrail`, `MapSmokeStack` (a puff's
 //! life, size and opacity), `MapTesla`, `MapEmbers`, `MapMuzzleFlash`,
 //! `MapStrike` (with the beam's segment count and fractal noise, which
-//! `crate::render::beams` uses too).
+//! `render::beams` uses too).
 
 use bevy::prelude::*;
 

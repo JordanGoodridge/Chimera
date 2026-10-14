@@ -125,7 +125,7 @@ pub struct MapMesh {
     /// Colour multiplier (linear) on the texture (Source `$color`/`$color2`).
     pub tint: Option<[f32; 3]>,
     /// A water surface: index into `MapData::water_materials` (drawn by
-    /// `crate::render::water::WaterMaterial` instead).
+    /// `render::water::WaterMaterial` instead).
     pub water: Option<usize>,
     /// A model mesh that belongs to one choice of a body part with
     /// several (part, choice): drawn only while the prop's body picks it

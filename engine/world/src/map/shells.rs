@@ -2,7 +2,7 @@
 //! specs/cs_source/view_models.md 8) as data and motion: a shell type's
 //! model and bounce sound (`MapShell`), how shells move (`MapShellPhysics`)
 //! and one step of a shell's flight (`shell_step`, `shell_alpha`,
-//! `bounce_volume`). `crate::render::shells` throws and draws them.
+//! `bounce_volume`). `render::shells` throws and draws them.
 //!
 //! Spent shells for any game: `MapShell`/`MapShellPhysics` from the game; a
 //! flight's step, fade and bounce volume.

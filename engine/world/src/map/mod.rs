@@ -2,15 +2,17 @@
 //! engine spawns, and the map's systems. Units are meters, Y up (README:
 //! mounts own each game's units and axes; the engine sees only this).
 //!
-//! This file holds `MapPlugin` (what runs while a map is loaded),
-//! unloading and changing maps, and the loaded map's resources. The rest:
+//! This file holds map's part of `MapPlugin` (`build_first` and its
+//! siblings: what runs while a map is loaded; the plugin type and the
+//! order are `map_plugin`'s, above map), unloading and changing maps,
+//! and the loaded map's resources. The rest:
 //! `data` (`MapData` and what it holds), `state` (what the logic writes on
 //! spawned parts), `spawn` (spawning a map, in phases), `bodies`
 //! (character bodies and hitboxes), `props` (placed props after
 //! spawning), `materials`, `images`, `collision` and `sky` (built from the
 //! data), each re-exported here, plus one submodule per feature.
 //!
-//! `MapPlugin` (what runs while a map is loaded), `unload_map`/`change_map`
+//! Map's registration (`build_first`, ...), `unload_map`/`change_map`
 //! (`MapHooks` for the layers above: what they reset at unload, the
 //! spawner `change_map` runs), the loaded map's resources;
 //! re-exports the files below and `core`'s collision types.
@@ -94,7 +96,7 @@ mod sky;
 pub use sky::*;
 mod spawn;
 pub use spawn::{Draws, DrawnResource, MapDrawer, MapSpawn, PropSpawn};
-pub(crate) use spawn::{merged_world, spawn_map};
+pub use spawn::{merged_world, spawn_map};
 pub use view_model::{
     DynamicLight, EffectSettings, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor, ViewModelCamera,
     ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
@@ -111,15 +113,6 @@ pub struct LightField(pub MapLightField);
 #[derive(Resource, Clone, Debug, Default)]
 pub struct ScreenOverlayImages(pub HashMap<String, Handle<Image>>);
 
-/// Spawns a loaded map: collision always, meshes only when rendering is
-/// present (same pattern as the greybox, so maps load in headless tests).
-pub struct MapPlugin {
-    /// The map to spawn at startup; None starts without one (another map
-    /// can be loaded later with `change_map`).
-    pub data: Option<Arc<MapData>>,
-    pub view: MapDebugView,
-}
-
 /// Debug renders, used to compare against reference screenshots.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum MapDebugView {
@@ -132,25 +125,8 @@ pub enum MapDebugView {
     Albedo,
 }
 
-impl MapPlugin {
-    pub fn new(data: MapData) -> Self {
-        Self {
-            data: Some(Arc::new(data)),
-            view: MapDebugView::Normal,
-        }
-    }
-
-    /// The map systems and materials without a map loaded yet.
-    pub fn empty() -> Self {
-        Self {
-            data: None,
-            view: MapDebugView::Normal,
-        }
-    }
-}
-
 #[derive(Resource)]
-pub(crate) struct PendingMap(Arc<MapData>, MapDebugView);
+pub struct PendingMap(Arc<MapData>, MapDebugView);
 
 /// Characters below this height (meters) have fallen out of the map.
 #[derive(Resource, Clone, Copy, Debug)]
@@ -159,7 +135,7 @@ pub struct KillHeight(pub f32);
 /// Falling out of the map kills; characters that can't die (god mode, no
 /// health) go back to a spawn point instead.
 #[allow(clippy::type_complexity)]
-pub(crate) fn fall_out_of_map(
+pub fn fall_out_of_map(
     kill: Option<Res<KillHeight>>,
     mut characters: Query<
         (
@@ -214,7 +190,7 @@ pub(crate) fn fall_out_of_map(
 
 /// The map's playable area (see `MapData::playable`).
 #[derive(Resource)]
-pub(crate) struct PlayableArea(pub(crate) (Vec3, Vec3));
+pub struct PlayableArea(pub (Vec3, Vec3));
 
 /// The loaded map's presentation settings, for cameras to follow.
 #[derive(Resource, Clone, Debug)]
@@ -239,31 +215,31 @@ pub struct MapFile {
 #[derive(Component)]
 pub struct MapPart;
 
-impl MapPlugin {
-    /// The map's registration before the sound plugin's: `MapPlugin` is
-    /// built in `crate::map_plugin`, which adds `crate::audio`, then the
-    /// systems of map and `crate::render` (in the order they always had),
-    /// then spawns the map at startup with render's drawer (`spawn_map`).
-    pub(crate) fn build_first(&self, app: &mut App) {
-        if let Some(data) = &self.data {
-            app.insert_resource(PendingMap(data.clone(), self.view))
-                .insert_resource(ActiveMapLook(data.look.clone()));
-        }
-        ragdoll::plugin(app);
+/// Map's registration before the sound plugin's, with the map to spawn
+/// at startup (`data`; None starts without one). `MapPlugin` (built above
+/// map, in the game crate's `map_plugin`: the orphan rule keeps a plugin's
+/// type beside its `impl Plugin`) runs it, then adds `audio`, then the
+/// systems of map and `render` (in the order they always had), then spawns
+/// the map at startup with render's drawer (`spawn_map`).
+pub fn build_first(app: &mut App, data: Option<&Arc<MapData>>, view: MapDebugView) {
+    if let Some(data) = data {
+        app.insert_resource(PendingMap(data.clone(), view))
+            .insert_resource(ActiveMapLook(data.look.clone()));
     }
+    ragdoll::plugin(app);
+}
 
-    /// Map's registration after render's ragdoll drawing
-    /// (`crate::map_plugin`): placed ragdolls.
-    pub(crate) fn build_after_ragdolls(&self, app: &mut App) {
-        placed_ragdoll::plugin(app);
-    }
+/// Map's registration after render's ragdoll drawing (`map_plugin`):
+/// placed ragdolls.
+pub fn build_after_ragdolls(app: &mut App) {
+    placed_ragdoll::plugin(app);
+}
 
-    /// The rest of map's registration before the sound plugin's, after
-    /// render's light styles (`crate::map_plugin`).
-    pub(crate) fn build_after_light_styles(&self, app: &mut App) {
-        app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin));
-        app.init_resource::<MonitorCamera>();
-    }
+/// The rest of map's registration before the sound plugin's, after
+/// render's light styles (`map_plugin`).
+pub fn build_after_light_styles(app: &mut App) {
+    app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin));
+    app.init_resource::<MonitorCamera>();
 }
 
 /// Height of the capsule center above the feet, so spawns start standing.
@@ -337,14 +313,14 @@ pub fn unload_map(world: &mut World) {
 #[derive(Resource, Default)]
 pub struct MapHooks {
     /// What they reset when a map is unloaded: `unload_map` runs them
-    /// last, in the order they were added (`crate::audio` stops the
+    /// last, in the order they were added (`audio` stops the
     /// soundscape and the long-lived sounds).
     pub unload: Vec<fn(&mut World)>,
     /// Spawns the pending map (`spawn_map` with the drawer
-    /// `crate::map_plugin` picks), for `change_map`.
+    /// `map_plugin` picks), for `change_map`.
     pub spawn: Option<fn(&mut World)>,
     /// What they do to a node copied at run time (`copies::copy_node`),
-    /// once it is made, in the order they were added (`crate::render`
+    /// once it is made, in the order they were added (`render`
     /// draws it by its own meshes, never merged).
     pub copied: Vec<fn(&mut World, Entity)>,
 }
@@ -373,7 +349,7 @@ pub struct BrushEntityBounds {
 /// Brush entities that moved (and every one on its first frame): the
 /// clusters their world bounds touch, for visibility culling. A door or
 /// breakable is then hidden like the world around it.
-pub(crate) fn tag_moved_brush_entities(
+pub fn tag_moved_brush_entities(
     vis: Option<Res<vis::ActiveVisibility>>,
     mut nodes: Query<(&GlobalTransform, &BrushEntityBounds, &mut VisClusters), Changed<GlobalTransform>>,
 ) {
@@ -404,7 +380,7 @@ pub(crate) fn tag_moved_brush_entities(
 /// A glow sprite: drawn over everything, faded by how much of its
 /// occlusion proxy is visible.
 #[derive(Component)]
-pub(crate) struct GlowSprite {
-    pub(crate) color: Vec4,
-    pub(crate) proxy: f32,
+pub struct GlowSprite {
+    pub color: Vec4,
+    pub proxy: f32,
 }
