@@ -14,13 +14,13 @@ use mashup::{
     harness::{MeshExtraction, Sim},
     map::{
         MapCollision, MapConvex, MapData, MapMesh, MapModel, MapPhysics, MapPlugin, MapProp, MapShadows, PropIndex,
-        PropShadow, PropSolid, PushAway,
+        PropSolid, PushAway,
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
-        shadows::ShadowMaterial,
         sprite_material::SpriteMaterial,
         world_material::WorldMaterial,
     },
+    render::shadows::{PropShadow, ShadowMaterial},
 };
 
 /// A box's 12 triangles (corners `lo`..`hi`).
@@ -227,7 +227,7 @@ fn shadows_now(sim: &mut Sim) -> Vec<(Entity, u32)> {
 /// silhouette back.
 #[test]
 fn shadow_detail_switches_between_silhouettes_and_blobs_at_once() {
-    use mashup::map::shadows::{BLOB_TEX, ShadowSettings};
+    use mashup::render::shadows::{BLOB_TEX, ShadowSettings};
     let mut sim = sim();
     sim.ticks(5);
     let rtt = shadows_now(&mut sim);

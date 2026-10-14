@@ -74,7 +74,6 @@ pub mod tracer;
 pub use ragdoll::{MapCollisionHooks, MapRagdoll, MapRagdollBody, MapRagdollJoint, Ragdoll, RagdollBody, RagdollShot};
 pub mod rope_material;
 pub mod rope_sway;
-pub mod shadows;
 pub mod sound;
 pub mod steam;
 pub use sound::{
@@ -306,8 +305,6 @@ pub fn unload_map(world: &mut World) {
     world.remove_resource::<ActiveMapHas3dSky>();
     world.remove_resource::<SkyVis>();
     world.remove_resource::<vis::ActiveVisibility>();
-    world.remove_resource::<ShadowState>();
-    world.remove_resource::<shadows::ShadowSource>();
     world.remove_resource::<sound::SoundBank>();
     world.remove_resource::<CharacterModels>();
     world.remove_resource::<CharacterBodies>();

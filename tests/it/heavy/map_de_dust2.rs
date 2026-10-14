@@ -1122,7 +1122,7 @@ fn prop_shadows() {
     );
     assert_eq!(s.color, [159, 168, 181]);
     assert!((s.distance - 75.0 * 0.0254).abs() < 1e-5);
-    let built = mashup::map::shadows::build(&map, s);
+    let built = mashup::render::shadows::build(&map, s);
     let casters = map.props.iter().filter(|p| p.casts_shadow && !p.skybox).count();
     assert!(casters >= 70, "{casters} casters");
     // Most casters stand on the world, so their shadows land on it.

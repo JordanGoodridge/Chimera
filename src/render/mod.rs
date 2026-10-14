@@ -25,6 +25,7 @@ pub mod particles;
 pub mod parts;
 pub mod psys;
 pub mod rope_sway;
+pub mod shadows;
 pub mod shells;
 pub mod sky_occluder;
 pub mod steam;
@@ -44,6 +45,8 @@ pub(crate) fn unload_map(world: &mut World) {
     world.remove_resource::<psys::ParticleSystemDefs>();
     world.remove_resource::<monitor::MonitorScreen>();
     world.remove_resource::<water::MapWaterRender>();
+    world.remove_resource::<shadows::ShadowState>();
+    world.remove_resource::<shadows::ShadowSource>();
     world.remove_resource::<particles::ParticleAssets>();
     shells::unload(world);
 }

@@ -196,9 +196,9 @@ fn build_rest(app: &mut App) {
         .add_systems(
             PostUpdate,
             (
-                shadows::apply_shadow_detail,
-                update_prop_shadows,
-                shadows::update_character_blobs,
+                render::shadows::apply_shadow_detail,
+                render::shadows::update_prop_shadows,
+                render::shadows::update_character_blobs,
             )
                 .chain()
                 .run_if(resource_exists::<Assets<Mesh>>.and_then(resource_exists::<Assets<Image>>))

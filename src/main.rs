@@ -105,7 +105,7 @@ fn main() {
         mashup::map::rope_material::RopeMaterialPlugin,
         mashup::map::sprite_material::SpriteMaterialPlugin,
         mashup::map::prop_material::PropMaterialPlugin,
-        mashup::map::shadows::ShadowMaterialPlugin,
+        mashup::render::shadows::ShadowMaterialPlugin,
         mashup::render::decal::DecalMaterialPlugin,
         mashup::render::water::WaterMaterialPlugin,
         mashup::render::particles::ParticleMaterialPlugin,

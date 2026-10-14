@@ -309,7 +309,7 @@ pub const SETTINGS: &[Setting] = &[
     ),
     // Shadow detail: Low blob shadows, Medium render-to-texture, High as
     // Medium (no flashlights in CS:S); rebuilt at once
-    // (`map::shadows::apply_shadow_detail`).
+    // (`render::shadows::apply_shadow_detail`).
     setting(
         VideoAdvanced,
         "r_shadowrendertotexture r_flashlightdepthtexture",

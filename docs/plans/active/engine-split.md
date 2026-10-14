@@ -172,6 +172,8 @@ measurements):
       `move_water` and `WaterMovers`, `WaterView` (hearing reads it),
       the reflection camera's markers, the layers and `height_fog` stay;
       the material, cameras, fog, overlays and their systems moved).
+    - [x] `shadows` whole, with `props.rs`'s `ShadowState`,
+      `update_prop_shadows` and `PropShadow`.
     `insert_resources` still
     inserts some drawing resources (decal and particle assets, fog) and
     `unload_map` still removes them: render's go through `MapHooks`

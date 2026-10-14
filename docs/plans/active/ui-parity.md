@@ -84,7 +84,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `HDR` (hidden in the file, shown when the mod has HDR) | ComboBox | `mat_hdr_level` |
 | | `FovSlider` | CCvarSlider (`cvar_name fov_desired`, 75 to 90) | `fov_desired` (90): the world camera unzoomed (`options::PlayerFov`, `client::zoom_camera`); the view model zooms with it as with a scope (`viewmodel_fov` minus 90 minus it); a scope's zoom is its own; zoomed mouse scaling still divides by 90 |
 | | `ModelDetail` | ComboBox | `r_rootlod`: Low (2), Medium (1), High (0, the default): the finest level of detail props draw; they switch to coarser ones with distance (`render::lod`); at once |
-| | `ShadowDetail` | ComboBox | `r_shadowrendertotexture` and `r_flashlightdepthtexture` together: Low (0 0: blob shadows), Medium (1 0, the default: render-to-texture), High (1 1, as Medium: no flashlights); at once (`map::shadows`) |
+| | `ShadowDetail` | ComboBox | `r_shadowrendertotexture` and `r_flashlightdepthtexture` together: Low (0 0: blob shadows), Medium (1 0, the default: render-to-texture), High (1 1, as Medium: no flashlights); at once (`render::shadows`) |
 | | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::video::TextureSettings`), from the next map |
 | | `FilteringMode` | ComboBox | `mat_trilinear` and `mat_forceaniso` together: Bilinear (0 1, CS:S's default), Trilinear (1 1), Anisotropic 2X-16X (0 N); from the next map |
 | | `ShaderDetail`, `ColorCorrection`, `MotionBlur`, `Multicore` | ComboBox | greyed (see below; the plan: docs/plans/active/video-settings.md) |

@@ -12,11 +12,13 @@ use mashup::{
         lod::MapLod,
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
-        shadows::ShadowMaterial,
         sprite_material::SpriteMaterial,
         world_material::WorldMaterial,
     },
-    render::lod::{LodMeshes, ModelSettings},
+    render::{
+        lod::{LodMeshes, ModelSettings},
+        shadows::ShadowMaterial,
+    },
 };
 
 fn quad(material: &str, half: f32) -> MapMesh {

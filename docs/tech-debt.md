@@ -68,7 +68,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`src/games/cs_source/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`src/render/lod.rs`)
-- map: Characters cast blob shadows only; shadow details ours (`src/map/shadows.rs`)
+- map: Characters cast blob shadows only; shadow details ours (`src/render/shadows.rs`)
 - map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
 - map: Decal reach, orientation and infodecal probes inferred, not specced (`src/render/decal.rs`)
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
