@@ -1,6 +1,8 @@
 //! Impact sounds (specs/cs_source/sounds.md 4): bullet impacts by the hit
 //! surface, and physics impacts by both touching surfaces and the impact
-//! speed. Scrapes (looping friction sounds) are `scrapes.rs`.
+//! speed. Scrapes (looping friction sounds) are `scrapes.rs`. A bullet
+//! hit on a player sounds once, the server's choice (`pain.rs`: a hurt
+//! sound, or the flesh impact), so it is left out here.
 
 use std::collections::HashMap;
 
@@ -14,6 +16,7 @@ use crate::{
         breakables::PieceBody,
         sound::{MapSounds, MapSurface, SoundBank, SurfaceGrid},
     },
+    objectives::hostages::Hostage,
     weapon::{WeaponEvent, WeaponEventKind},
 };
 
@@ -107,6 +110,7 @@ fn bullet_impacts(
     grid: Option<Res<SurfaceGrid>>,
     props: Query<&PropSurface>,
     characters: Query<(), With<Intent>>,
+    players: Query<(), (With<Intent>, Without<Hostage>)>,
     water: Option<Res<MapWater>>,
     mut play: MessageWriter<PlaySound>,
 ) {
@@ -126,10 +130,17 @@ fn bullet_impacts(
         if hit.is_none() || in_water(*from, *to, water.as_deref()) {
             continue;
         }
-        // Players' hitboxes are `flesh` (impact_effects.md 3), not the
+        // A player's hit sound is the server's, one per hit: a hurt sound,
+        // or this flesh impact where none plays (`pain::hurt_sounds`;
+        // measured, sounds.md "Hurt and death sounds"). A network client
+        // can't tell, not knowing others' armour.
+        if hit.is_some_and(|e| players.contains(e)) {
+            continue;
+        }
+        // Hostages' hitboxes are `flesh` (impact_effects.md 3), not the
         // movement box's `player` (which has no impact sound of its own).
         let name = match hit {
-            Some(e) if characters.contains(*e) => "flesh".to_string(),
+            Some(e) if characters.contains(*e) => super::pain::FLESH.to_string(),
             _ => surface_of(*hit, *to, &props, &characters, grid.as_deref()),
         };
         let Some(entry) = surface(&bank.0, &name).and_then(|s| s.bullet_impact.clone()) else {

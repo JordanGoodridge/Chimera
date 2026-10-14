@@ -1,24 +1,30 @@
-//! What a player sounds like when hurt and when killed: the install's
+//! What a player sounds like when hit and when killed: the install's
 //! `game_sounds.txt` entries, played from the victim (its own sounds are
 //! centred for the victim, `audio::sound::Ear`; positional for everyone
-//! else). docs/plans/active/sound.md "Damage and death"; the choices
-//! the scripts and specs leave open are in docs/tech-debt.md.
+//! else). Measured on a CS:S server (specs/cs_source/sounds.md "Hurt and
+//! death sounds"): each bullet hit on a player makes one hit sound, a
+//! killing hit too, then the death sound.
 //!
-//! - A bullet in the head: `Player.DamageHelmet` (CHAN_BODY) when a
-//!   helmet covers it, else `Player.DamageHeadShot` (CHAN_VOICE) unless
-//!   the shot kills (the death sound plays instead).
-//! - A bullet anywhere armour covers (chest, stomach, arms, generic):
-//!   `Player.DamageKevlar` (CHAN_BODY). Bare flesh gets only the shot's
-//!   own impact (`Flesh.BulletImpact`, the hit surface's; `impacts.rs`).
+//! - A bullet in a bare head: `Player.DamageHeadShot` (CHAN_VOICE), the
+//!   killing one included. In a helmet: `Player.DamageHelmet` (CHAN_BODY;
+//!   unmeasured, below).
+//! - A bullet where armour covers (the vest takes part: chest, stomach,
+//!   arms, generic): `Player.DamageKevlar` (CHAN_BODY) only.
+//! - Any other bullet hit (bare body, legs with or without armour, a hit
+//!   refused by team rules or god mode): the `flesh` surface's bullet
+//!   impact (`Flesh.BulletImpact`) at the hit. It is the only impact sound
+//!   a hit on a player makes: `impacts.rs` leaves players' hits to this
+//!   module (hostages keep theirs there).
 //! - A landing that takes health: `Player.FallDamage` (CHAN_BODY;
 //!   sounds.md, "Landing").
 //! - A death: `Player.DeathHeadShot` for a bullet in the head, else
 //!   `Player.Death` (both CHAN_VOICE).
 //!
-//! Only damage that is taken counts (not refused by team rules, map
-//! filters or god mode). Hurt sounds are the server's (`map::GameSound`:
-//! every client hears them once, the victim's own included, since no
-//! client predicts being hit); death sounds play wherever the death is
+//! Hurt sounds count only damage that is taken (not refused by team
+//! rules, map filters or god mode). Hit sounds are the server's
+//! (`map::GameSound`: every client hears them once, the victim's and the
+//! shooter's own included: a client knows no one else's armour, so it
+//! can't predict which plays); death sounds play wherever the death is
 //! seen (`core::Died`, which a network client gets from the server's
 //! kill), so they are not sent again.
 //!
@@ -35,24 +41,28 @@
 //! server.
 //!
 //! Known shortcuts (docs/tech-debt.md): Hurt and death sounds
-//! (`games/cs_source/pain.rs`; no spec: sounds.md open question 7) are ours
-//! from the install's game_sounds.txt entries: a bullet in a helmet plays
-//! `Player.DamageHelmet`, in a bare head `Player.DamageHeadShot` (skipped when
-//! it kills: `Player.DeathHeadShot` instead, same waves and channel), anywhere
-//! else armour covers (the damage rule's: not the legs) `Player.DamageKevlar`;
-//! bare flesh only the shot's `Flesh.BulletImpact`; deaths `Player.Death`, by a
-//! bullet in the head `Player.DeathHeadShot`. The knife, grenades, fire and
-//! crushing play no hurt sound (the knife has its own hit sounds);
-//! `Player.PlasmaDamage`/`SonicDamage` (null waves) are unused; drowning
-//! plays no hurt sound (measured: the server emits none; the client's own
-//! `Player.DrownStart`/`DrownContinue`, if any, aren't played). Played from the victim's origin (its body
-//! centre), the script's channel and level, to everyone, the shooter included
-//! (Source may leave the shooter's own client out of effects made during its
-//! command); armour is what it was when the tick's shots began; no rate limit
-//! but the channel (a new CHAN_BODY/CHAN_VOICE sound on the victim replaces the
-//! last); shotgun pellets on one player are one hit. Deaths play wherever
-//! `core::Died` is seen (a client's from the server's kill), not sent as a
-//! sound. Why it's OK for now: Reads right; reference checks in
+//! (`games/cs_source/pain.rs`): the per-hit choice for USP and AK-47 shots on
+//! heads, chests, stomachs and legs is measured (sounds.md "Hurt and death
+//! sounds"); the rest is ours from the install's game_sounds.txt entries: a
+//! helmeted head plays `Player.DamageHelmet` (a guess: unmeasured), arms and
+//! generic hits count as covered like the chest (the damage rule's), and a
+//! hit refused by team rules or god mode plays the flesh impact. The knife,
+//! grenades, fire and crushing play no hurt sound (the knife has its own hit
+//! sounds); `Player.PlasmaDamage`/`SonicDamage` (null waves) are unused;
+//! drowning plays no hurt sound (measured: the server emits none; the client's
+//! own `Player.DrownStart`/`DrownContinue`, if any, aren't played). Played
+//! from the victim's origin (its body centre; the flesh impact at the hit),
+//! the script's channel and level, to everyone, the shooter included (Source
+//! may leave the shooter's own client out of effects made during its command;
+//! the server trace doesn't show it), so the shooter hears its own hit one
+//! round trip late; armour is what it was when the tick's shots began; no rate
+//! limit but the channel (a new CHAN_BODY/CHAN_VOICE sound on the victim
+//! replaces the last, so a killing headshot's `Player.DamageHeadShot` is cut
+//! by `Player.DeathHeadShot`); shotgun pellets on one player are one hit, and
+//! two players hit by one shotgun shot each make a flesh impact (no 300-unit
+//! grouping). Deaths play wherever `core::Died` is seen (a client's from the
+//! server's kill), not sent as a sound. Why it's OK for now: Matches every
+//! measured case; the helmet and the rest are reference checks in
 //! docs/plans/active/sound.md ("Damage and death").
 
 use std::collections::HashMap;
@@ -60,8 +70,8 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::{
-    core::{Damage, DamageKind, DamageRules, Died, God, Health, Hitgroup, SimSet, Team},
-    map::{GameSound, PlaySound},
+    core::{Damage, DamageKind, DamageRules, Died, God, Health, Hitgroup, Intent, MapWater, SimSet, Team},
+    map::{GameSound, PlaySound, sound::SoundBank},
     objectives::hostages::Hostage,
     weapon::Armor,
 };
@@ -72,6 +82,9 @@ pub const DAMAGE_HEADSHOT: &str = "Player.DamageHeadShot";
 pub const FALL_DAMAGE: &str = "Player.FallDamage";
 pub const DEATH: &str = "Player.Death";
 pub const DEATH_HEADSHOT: &str = "Player.DeathHeadShot";
+/// The surface players' hitboxes are (impact_effects.md 3): its bullet
+/// impact is a body hit's sound when no hurt sound plays.
+pub const FLESH: &str = "flesh";
 
 /// The entries this module plays (precached with every map).
 pub const SOUNDS: &[&str] = &[
@@ -114,16 +127,14 @@ fn remember_armor(armor: Query<(Entity, &Armor)>, mut before: ResMut<ArmorBefore
     before.0.extend(armor.iter().map(|(e, a)| (e, *a)));
 }
 
-/// The hurt sound for one hit that is taken; `lethal`: it kills.
-pub fn hurt_sound(kind: DamageKind, group: Hitgroup, armor: Option<Armor>, lethal: bool) -> Option<&'static str> {
+/// The hurt sound for one hit that is taken, a killing one included
+/// (measured: `Player.DamageHeadShot`, then `Player.DeathHeadShot`). A
+/// bullet that gets none makes the flesh impact instead (`hurt_sounds`).
+pub fn hurt_sound(kind: DamageKind, group: Hitgroup, armor: Option<Armor>) -> Option<&'static str> {
     let covered = armor.is_some_and(|a| a.covers(group));
     match kind {
         DamageKind::Fall => Some(FALL_DAMAGE),
-        DamageKind::Bullet if group == Hitgroup::Head => match (covered, lethal) {
-            (true, _) => Some(DAMAGE_HELMET),
-            (false, false) => Some(DAMAGE_HEADSHOT),
-            (false, true) => None,
-        },
+        DamageKind::Bullet if group == Hitgroup::Head => Some(if covered { DAMAGE_HELMET } else { DAMAGE_HEADSHOT }),
         DamageKind::Bullet if covered => Some(DAMAGE_KEVLAR),
         _ => None,
     }
@@ -138,35 +149,56 @@ pub fn death_sound(kind: DamageKind, group: Hitgroup) -> &'static str {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
     before: Res<ArmorBeforeShots>,
-    victims: Query<(&Health, &Transform, Has<God>), (With<Team>, Without<Hostage>)>,
+    victims: Query<(&Health, &Transform, Has<God>, Has<Team>), (With<Intent>, Without<Hostage>)>,
     rules: DamageRules,
+    bank: Option<Res<SoundBank>>,
+    water: Option<Res<MapWater>>,
     mut out: MessageWriter<GameSound>,
 ) {
+    let flesh = bank
+        .as_ref()
+        .and_then(|b| super::impacts::surface(&b.0, FLESH))
+        .and_then(|s| s.bullet_impact.clone());
     // Health left as this tick's hits land (several can hit one victim).
     let mut left: HashMap<Entity, f32> = HashMap::new();
     for d in damage.read() {
-        let Ok((health, at, god)) = victims.get(d.target) else {
+        let Ok((health, at, god, team)) = victims.get(d.target) else {
             continue;
         };
-        if god || rules.refuse(d) {
-            continue;
-        }
         let h = left.entry(d.target).or_insert(health.current);
         if *h <= 0.0 {
             continue;
         }
-        *h -= d.amount;
-        let Some(entry) = hurt_sound(d.kind, d.hitgroup, before.0.get(&d.target).copied(), *h <= 0.0) else {
-            continue;
+        let hurt = if team && !god && !rules.refuse(d) {
+            *h -= d.amount;
+            hurt_sound(d.kind, d.hitgroup, before.0.get(&d.target).copied())
+        } else {
+            None
         };
-        out.write(GameSound(PlaySound {
-            source: Some(d.target),
-            ..PlaySound::at(entry, at.translation)
-        }));
+        if let Some(entry) = hurt {
+            out.write(GameSound(PlaySound {
+                source: Some(d.target),
+                ..PlaySound::at(entry, at.translation)
+            }));
+        } else if d.kind == DamageKind::Bullet
+            && let Some(entry) = &flesh
+            && !under_water(d.point, water.as_deref())
+        {
+            // A bullet no hurt sound covers: the hit surface's impact
+            // (players' hitboxes are `flesh`), where it hit.
+            out.write(GameSound(PlaySound::at(entry.clone(), d.point)));
+        }
     }
+}
+
+/// A hit in water makes no impact sound (as `impacts::bullet_impacts`).
+fn under_water(point: Vec3, water: Option<&MapWater>) -> bool {
+    water
+        .is_some_and(|w| super::impact_effects::water_shot(point, point, &w.0) != super::impact_effects::WaterShot::Dry)
 }
 
 fn death_sounds(
@@ -199,44 +231,32 @@ mod tests {
     #[test]
     fn bullets_by_armour_and_hitgroup() {
         let b = DamageKind::Bullet;
-        assert_eq!(hurt_sound(b, Hitgroup::Chest, Some(KEVLAR), false), Some(DAMAGE_KEVLAR));
-        assert_eq!(
-            hurt_sound(b, Hitgroup::LeftArm, Some(KEVLAR), true),
-            Some(DAMAGE_KEVLAR)
-        );
-        assert_eq!(hurt_sound(b, Hitgroup::Chest, None, false), None);
+        assert_eq!(hurt_sound(b, Hitgroup::Chest, Some(KEVLAR)), Some(DAMAGE_KEVLAR));
+        assert_eq!(hurt_sound(b, Hitgroup::LeftArm, Some(KEVLAR)), Some(DAMAGE_KEVLAR));
+        assert_eq!(hurt_sound(b, Hitgroup::Chest, None), None);
         // Legs aren't covered.
-        assert_eq!(hurt_sound(b, Hitgroup::RightLeg, Some(HELMET), false), None);
+        assert_eq!(hurt_sound(b, Hitgroup::RightLeg, Some(HELMET)), None);
         // Spent armour covers nothing.
         let spent = Armor {
             amount: 0.0,
             helmet: true,
         };
-        assert_eq!(hurt_sound(b, Hitgroup::Stomach, Some(spent), false), None);
-        assert_eq!(hurt_sound(b, Hitgroup::Head, Some(HELMET), false), Some(DAMAGE_HELMET));
-        assert_eq!(hurt_sound(b, Hitgroup::Head, Some(HELMET), true), Some(DAMAGE_HELMET));
-        assert_eq!(
-            hurt_sound(b, Hitgroup::Head, Some(KEVLAR), false),
-            Some(DAMAGE_HEADSHOT)
-        );
-        assert_eq!(hurt_sound(b, Hitgroup::Head, None, true), None);
+        assert_eq!(hurt_sound(b, Hitgroup::Stomach, Some(spent)), None);
+        assert_eq!(hurt_sound(b, Hitgroup::Head, Some(HELMET)), Some(DAMAGE_HELMET));
+        assert_eq!(hurt_sound(b, Hitgroup::Head, Some(KEVLAR)), Some(DAMAGE_HEADSHOT));
+        // A bare head, the killing hit too (the death sound follows).
+        assert_eq!(hurt_sound(b, Hitgroup::Head, None), Some(DAMAGE_HEADSHOT));
     }
 
     #[test]
     fn other_kinds() {
         assert_eq!(
-            hurt_sound(DamageKind::Fall, Hitgroup::Generic, Some(HELMET), false),
+            hurt_sound(DamageKind::Fall, Hitgroup::Generic, Some(HELMET)),
             Some(FALL_DAMAGE)
         );
-        assert_eq!(
-            hurt_sound(DamageKind::Melee, Hitgroup::Chest, Some(HELMET), false),
-            None
-        );
-        assert_eq!(
-            hurt_sound(DamageKind::Blast, Hitgroup::Generic, Some(HELMET), false),
-            None
-        );
-        assert_eq!(hurt_sound(DamageKind::Burn, Hitgroup::Generic, None, false), None);
+        assert_eq!(hurt_sound(DamageKind::Melee, Hitgroup::Chest, Some(HELMET)), None);
+        assert_eq!(hurt_sound(DamageKind::Blast, Hitgroup::Generic, Some(HELMET)), None);
+        assert_eq!(hurt_sound(DamageKind::Burn, Hitgroup::Generic, None), None);
         assert_eq!(death_sound(DamageKind::Bullet, Hitgroup::Head), DEATH_HEADSHOT);
         assert_eq!(death_sound(DamageKind::Melee, Hitgroup::Head), DEATH);
         assert_eq!(death_sound(DamageKind::Fall, Hitgroup::Generic), DEATH);

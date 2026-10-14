@@ -1620,3 +1620,10 @@ velocity modifier a bullet hit sets, and `weapon::ViewPunch` gained a
 roll (the head flinch's), so both own-state encodings changed. The
 victim's client gets them with its state and re-runs its commands after
 the hit (one prediction correction).
+
+### net22 (2026-10-14)
+
+Player hit sounds (`games::cs_source::pain`): the flesh impact of a bullet
+hit on a player is now the server's `ServerSound` (clients no longer play
+it from their own traces), so builds before and after would double or
+lose it; same messages, so a new protocol number.

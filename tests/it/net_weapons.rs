@@ -742,8 +742,9 @@ fn bots_shoot_players_over_the_net() {
 /// Hurt and death sounds over the network (`games::cs_source::pain`):
 /// client 0 shoots client 1, in kevlar, while client 2 watches. Every
 /// client hears the kevlar hit once, from the victim (the shooter and the
-/// victim included: no client predicts being hit), then the second shot's
-/// death cry once (from the kill the server sends, not again as a sound).
+/// victim included: no client predicts being hit) and no flesh impact;
+/// without armour the flesh impact once; then the last shot's death cry
+/// once (from the kill the server sends, not again as a sound).
 #[test]
 fn everyone_hears_a_hit_and_a_death_once() {
     use mashup::{core::FriendlyFire, map::PlaySound, weapon::Armor};
@@ -758,6 +759,26 @@ fn everyone_hears_a_hit_and_a_death_once() {
         helmet: false,
     });
     sim.ticks(80);
+    // Surfaces as the install's: players' hitboxes are `flesh`; every
+    // side has them (a client playing its own flesh impacts would show).
+    {
+        use mashup::map::{MapSounds, MapSurface, sound::SoundBank};
+        let mut sounds = MapSounds::default();
+        for (name, impact) in [("flesh", Some("Flesh.BulletImpact")), ("default", None)] {
+            sounds.surfaces.insert(
+                name.into(),
+                MapSurface {
+                    bullet_impact: impact.map(String::from),
+                    ..default()
+                },
+            );
+        }
+        let bank = SoundBank(std::sync::Arc::new(sounds));
+        sim.server.app.insert_resource(bank.clone());
+        for c in &mut sim.clients {
+            c.app.insert_resource(bank.clone());
+        }
+    }
     let id = sim.client_id(1);
     // The victim as each client knows it.
     let victims: Vec<Entity> = (0..3)
@@ -797,11 +818,25 @@ fn everyone_hears_a_hit_and_a_death_once() {
     assert!(health < 1.0 && health > 0.0, "hit, alive: {health}");
     assert_eq!(count(&heard, "Player.DamageKevlar"), [1, 1, 1], "the kevlar hit, once each");
     assert_eq!(count(&heard, "Player.Death"), [0, 0, 0]);
+    // No flesh impact where the vest takes part, though no client knows
+    // the victim's armour but its own (the server decides).
+    let flesh = |heard: &[Log<PlaySound>]| -> Vec<usize> {
+        heard
+            .iter()
+            .map(|l| l.all.iter().filter(|s| s.entry == "Flesh.BulletImpact").count())
+            .collect()
+    };
+    assert_eq!(flesh(&heard), [0, 0, 0]);
+    // Without armour: only the flesh impact, once each.
+    sim.server.app.world_mut().entity_mut(target).remove::<Armor>();
+    shoot(&mut sim, &mut heard);
+    assert_eq!(count(&heard, "Player.DamageKevlar"), [1, 1, 1]);
+    assert_eq!(flesh(&heard), [1, 1, 1], "the flesh impact, once each");
     // The next one kills.
     sim.server.app.world_mut().get_mut::<Health>(target).unwrap().current = 0.01;
     shoot(&mut sim, &mut heard);
     assert_eq!(sim.server.app.world().get::<Health>(target).unwrap().current, 0.0, "killed");
-    assert_eq!(count(&heard, "Player.DamageKevlar"), [2, 2, 2]);
+    assert_eq!(flesh(&heard), [2, 2, 2]);
     assert_eq!(count(&heard, "Player.Death"), [1, 1, 1], "the death cry, once each");
 }
 

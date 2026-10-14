@@ -26,7 +26,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 |---|---|---|---|---|
 | Movement | 3 | 8 | 0 | 2 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
-| Sounds | 6 | 8 | 4 | 3 |
+| Sounds | 7 | 8 | 3 | 4 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
 | Rendering, lighting, materials | 6 | 15 | 2 | 2 |
@@ -132,7 +132,7 @@ report folders):
 | Weapon fire, reload parts, empty, deploy, zoom | have | | | spec sounds.md; reload parts at our times (Q9) |
 | Footsteps, ladders, water, landing | have | | | spec; silence rules unmeasured (below) |
 | Round announcer, radio, chat blip, bomb | have | | | |
-| Hurt and death sounds | differs | H | S | tech-debt "Hurt and death sounds": rules ours; sound.md plan lists 7 captures |
+| Hurt and death sounds | have (fixed) | H | S | measured per hit (sounds.md): a killing headshot plays DamageHeadShot and DeathHeadShot, armour-covered hits only DamageKevlar (no flesh impact), heads no flesh impact; helmeted heads unmeasured (tech-debt "Hurt and death sounds") |
 | Weapon pickup and buy sounds | have (fixed) | H | S | `Player.PickupWeapon`, `BaseCombatCharacter.ItemPickup2` were never played; which plays when is inferred (tech-debt), capture C2 |
 | HUD weapon selection sounds | have (fixed) | H | S | `Player.WeaponSelectionMoveSlot`/`WeaponSelected`/`DenyWeaponSelection` were never played; when each plays is inferred, capture C3 |
 | Under water muffle | have (fixed) | M | S | nothing changed with the head under water; now a steady low-pass (Source's `dsp_water` is engine-side: values ours, capture C5) |

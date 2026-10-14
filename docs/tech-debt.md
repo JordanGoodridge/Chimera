@@ -87,7 +87,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - render: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`engine/present/src/render/sprite_material.rs`)
 - map: trigger_hurt: constant rate only, touch by collider bounds, one half-second timer per trigger (`src/logic/triggers.rs`)
 - map: Dust motes and clouds: spawn tries, no wind, the clouds' material (`src/games/cs_source/dust.rs`)
-- sound, games/cs_source: Hurt and death sounds chosen by us from the install's entries (no spec) (`src/games/cs_source/pain.rs`)
+- sound, games/cs_source: Hurt and death sounds: helmeted heads and untested cases unmeasured (`src/games/cs_source/pain.rs`)
 - client, weapon, games/cs_source: Weapon selection, pickup and buy sounds inferred from entry names (`src/client/weapon_select.rs`)
 - weapon: autobuy / rebuy rules read from the install's comments, unmeasured (`src/weapon/economy.rs`)
 - rules: End of a map's game: intermission timing measured (C9), what shows during it unmeasured (`src/rules/game_end.rs`)
