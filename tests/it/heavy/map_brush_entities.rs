@@ -20,12 +20,12 @@ use mashup::{
     logic::{Logic, Value},
     map::{
         BrushEntityBounds, MapBrushEntity, MapData, MapPlugin,
-        merge::{MergedBrush, MergedChunk, MergedPiece},
         LogicHidden, VisClusters,
         vis::{self, ActiveVisibility},
     },
     mount::config::LocalConfig,
     render::{
+        merge::{MergedBrush, MergedChunk, MergedPiece},
         prop_material::PropMaterial,
         rope_material::RopeMaterial,
         sprite_material::SpriteMaterial,

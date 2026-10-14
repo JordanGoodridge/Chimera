@@ -5,7 +5,7 @@
 //!
 //! The drawn phases of spawning a map (`spawn`, through `map::MapDrawer`);
 //! what the simulation makes in play, drawn from its drawn-part requests
-//! (`bodies`, `loose`, `breakables`, `props`: docs/ARCHITECTURE.md,
+//! (`bodies`, `loose`, `breakables`, `props`, `merge`: docs/ARCHITECTURE.md,
 //! "Drawn-part requests"); the effects, decals, water, shadows, culling,
 //! sky, light styles, monitor screens and view models; the materials
 //! (`world_material`, `prop_material`, `sprite_material`, `rope_material`,
@@ -29,6 +29,7 @@ mod images;
 pub use images::*;
 pub mod light_styles;
 pub mod lod;
+pub mod merge;
 mod materials;
 pub use materials::*;
 pub mod loose;

@@ -218,6 +218,11 @@ measurements):
       `MAP_DRAWING` check: the simulation's layers name no drawing type
       (`Mesh3d`, `Assets<Mesh>`, materials) and `src/map` holds no
       shader.
+    - [x] `merge` whole (a node copied at run time is finished by a
+      `MapHooks::copied` hook: render shows its pieces, never merged)
+      and the placed ragdoll's never-culled meshes
+      (`render::bodies::uncull_placed_ragdolls`): the simulation's
+      layers name no drawing type, with no exceptions.
     Client post passes (`client::hdr`, `gamma`,
     `color_correction`) stay in client: they hang off
     `FirstPersonCamera`/`UiCamera`/`ClientArgs`.

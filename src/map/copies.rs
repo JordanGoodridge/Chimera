@@ -2,17 +2,17 @@
 //! prop members spawned again: specs/source/viewcontrol_and_templates.md
 //! 2.2): the node and everything under it cloned, without the physics
 //! engine's per-body bookkeeping (island and tree keys: the copy gets its
-//! own when its body and colliders are added), drawn by its own meshes
-//! (never merged), visible wherever it is (the original's visibility
-//! clusters don't apply), and not replicated (a network client doesn't
-//! see copies yet). `MapCopy` marks them so a round restart removes them.
+//! own when its body and colliders are added), visible wherever it is
+//! (the original's visibility clusters don't apply), and not replicated (a
+//! network client doesn't see copies yet). `MapCopy` marks them so a round
+//! restart removes them. The layers above finish a copy through
+//! `MapHooks::copied` (render draws it by its own meshes, never merged).
 
 use avian3d::collider_tree::ColliderTreeProxyKey;
 use avian3d::dynamics::solver::islands::BodyIslandNode;
 use bevy::prelude::*;
 
-use super::merge::{MergedBrush, MergedPiece};
-use super::VisClusters;
+use super::{MapHooks, VisClusters};
 use super::vis::{FadeDistance, Occludee};
 
 /// A node copied at run time.
@@ -29,11 +29,9 @@ pub fn copy_node(world: &mut World, node: Entity, pose: Transform) -> Option<Ent
             // func_physbox): followed, cloning never ends. The colliders
             // under it are cloned as children and join the copy's body.
             .deny::<(BodyIslandNode, ColliderTreeProxyKey, avian3d::prelude::RigidBodyColliders)>()
-            .deny::<(MergedBrush, VisClusters, Occludee, FadeDistance)>()
+            .deny::<(VisClusters, Occludee, FadeDistance)>()
             .deny::<bevy_replicon::prelude::Replicated>();
     });
-    // Pieces drawn merged in the original are drawn by themselves here.
-    show_merged_pieces(world, node, copy);
     let mut e = world.entity_mut(copy);
     e.insert((MapCopy, pose, Visibility::Inherited));
     if let Some(mut p) = e.get_mut::<avian3d::prelude::Position>() {
@@ -42,22 +40,11 @@ pub fn copy_node(world: &mut World, node: Entity, pose: Transform) -> Option<Ent
     if let Some(mut r) = e.get_mut::<avian3d::prelude::Rotation>() {
         *r = avian3d::prelude::Rotation::from(pose.rotation);
     }
-    Some(copy)
-}
-
-/// Walk the original and its copy together: a copied piece the original
-/// draws merged is shown.
-fn show_merged_pieces(world: &mut World, original: Entity, copy: Entity) {
-    let a: Vec<Entity> = world.get::<Children>(original).map(|c| c.to_vec()).unwrap_or_default();
-    let b: Vec<Entity> = world.get::<Children>(copy).map(|c| c.to_vec()).unwrap_or_default();
-    for (x, y) in a.into_iter().zip(b) {
-        if world.get::<MergedPiece>(x).is_some()
-            && let Ok(mut e) = world.get_entity_mut(y)
-        {
-            e.remove::<MergedPiece>().insert(Visibility::Inherited);
-        }
-        show_merged_pieces(world, x, y);
+    let hooks = world.get_resource::<MapHooks>().map(|h| h.copied.clone()).unwrap_or_default();
+    for hook in hooks {
+        hook(world, copy);
     }
+    Some(copy)
 }
 
 #[cfg(test)]

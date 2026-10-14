@@ -56,7 +56,6 @@ pub mod loose;
 pub mod material_fx;
 pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform, parameter_gamma_to_linear};
 pub mod bot_profiles;
-pub mod merge;
 pub mod monitor;
 pub mod nav;
 pub mod particles;
@@ -344,6 +343,10 @@ pub struct MapHooks {
     /// Spawns the pending map (`spawn_map` with the drawer
     /// `crate::map_plugin` picks), for `change_map`.
     pub spawn: Option<fn(&mut World)>,
+    /// What they do to a node copied at run time (`copies::copy_node`),
+    /// once it is made, in the order they were added (`crate::render`
+    /// draws it by its own meshes, never merged).
+    pub copied: Vec<fn(&mut World, Entity)>,
 }
 
 /// Replace the loaded map with `data` (spawned now, as at startup).

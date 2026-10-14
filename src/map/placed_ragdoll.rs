@@ -167,19 +167,12 @@ fn node_world(t: &Transform, parent: Option<&GlobalTransform>) -> Transform {
 /// Make each placed ragdoll's bodies and joints from its start pose.
 #[allow(clippy::type_complexity)]
 fn make(
-    mut nodes: Query<(
-        Entity,
-        &mut PlacedRagdoll,
-        &Transform,
-        Option<&ChildOf>,
-        Option<&Children>,
-    )>,
+    mut nodes: Query<(Entity, &mut PlacedRagdoll, &Transform, Option<&ChildOf>)>,
     globals: Query<&GlobalTransform>,
-    meshes: Query<(), With<Mesh3d>>,
     time: Res<Time>,
     mut commands: Commands,
 ) {
-    for (node, mut placed, t, parent, children) in &mut nodes {
+    for (node, mut placed, t, parent) in &mut nodes {
         if placed.sim.is_some() || placed.gone {
             continue;
         }
@@ -258,12 +251,6 @@ fn make(
             root_world.translation,
             time.elapsed_secs_f64(),
         ));
-        // Its meshes' bounds are the reference pose's.
-        for c in children.into_iter().flatten() {
-            if meshes.contains(*c) {
-                commands.entity(*c).insert(bevy::camera::visibility::NoFrustumCulling);
-            }
-        }
         placed.follow = Transform::from_matrix(root_world.to_matrix().inverse() * world.to_matrix());
         placed.sim = Some(sim);
         debug!("placed ragdoll {node}: {} bodies", ragdoll.bodies.len());

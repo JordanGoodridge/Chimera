@@ -357,14 +357,7 @@ const DRAWING_TYPES: &[&str] = &["Mesh3d", "MeshMaterial3d", "Assets<Mesh>", "St
 
 /// Files of the simulation's layers that still name one of
 /// `DRAWING_TYPES` (file, why).
-const MAP_DRAWING_EXCEPTIONS: &[(&str, &str)] = &[
-    // TODO(engine-split): merged brush entities are drawing only; they
-    // move to render with copies' merged pieces shown by a render hook.
-    ("src/map/merge.rs", "combined meshes of brush entities"),
-    // TODO(engine-split): the placed ragdoll's meshes never cull; a render
-    // system can do that.
-    ("src/map/placed_ragdoll.rs", "its meshes' `NoFrustumCulling`"),
-];
+const MAP_DRAWING_EXCEPTIONS: &[(&str, &str)] = &[];
 
 /// The simulation's layers (map, and a game's parts outside its `ui/`)
 /// name no drawing type (`DRAWING_TYPES`) and hold no shader, so a

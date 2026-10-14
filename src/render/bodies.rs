@@ -502,6 +502,26 @@ pub(crate) fn pose_ragdolls(
     }
 }
 
+/// A map-placed ragdoll's meshes once it is simulated
+/// (`map::placed_ragdoll`): never culled, their bounds being the
+/// reference pose's.
+pub(crate) fn uncull_placed_ragdolls(
+    nodes: Query<(&placed_ragdoll::PlacedRagdoll, &Children), Changed<placed_ragdoll::PlacedRagdoll>>,
+    meshes: Query<(), (With<Mesh3d>, Without<bevy::camera::visibility::NoFrustumCulling>)>,
+    mut commands: Commands,
+) {
+    for (placed, children) in &nodes {
+        if placed.sim.is_none() {
+            continue;
+        }
+        for c in children {
+            if meshes.contains(*c) {
+                commands.entity(*c).insert(bevy::camera::visibility::NoFrustumCulling);
+            }
+        }
+    }
+}
+
 /// Render assets of a skinned model: meshes with joint attributes (when
 /// it has a skeleton), materials, and inverse bind poses from the bones'
 /// reference pose under `root`.

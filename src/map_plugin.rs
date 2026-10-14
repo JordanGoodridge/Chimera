@@ -43,6 +43,7 @@ impl Plugin for MapPlugin {
         let mut hooks = app.world_mut().resource_mut::<MapHooks>();
         hooks.spawn = Some(spawn_pending_map);
         hooks.unload.push(render::unload_map);
+        hooks.copied.push(render::merge::show_copied_pieces);
     }
 }
 
@@ -236,6 +237,7 @@ fn build_rest(app: &mut App) {
             // Props' levels of detail from where the eye is this frame.
             render::lod::switch_lods.after(bevy::transform::TransformSystems::Propagate),
         )
+        .add_systems(Update, render::bodies::uncull_placed_ragdolls)
         .add_systems(
             PostUpdate,
             // After propagation, so it sees this frame's (interpolated)
@@ -250,7 +252,7 @@ fn build_rest(app: &mut App) {
             (
                 render::tint::apply_brush_tints,
                 render::tint::apply_character_looks,
-                merge::sync_merged_brushes,
+                render::merge::sync_merged_brushes,
                 tag_moved_brush_entities,
                 render::vis::cull,
                 render::vis::fade_windows,

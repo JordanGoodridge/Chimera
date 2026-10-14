@@ -11,7 +11,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - cs_source movement: Two deliberate departures from Source's box trace so surfing works (no rampbug stops) (`src/games/cs_source/movement.rs`)
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`src/games/cs_source/material.rs`)
 - client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`src/games/cs_source/ui/options.rs`)
-- map: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`src/map/merge.rs`)
+- render: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`src/render/merge.rs`)
 - map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices (`src/render/water.rs`)
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`src/logic/ambient.rs`)
