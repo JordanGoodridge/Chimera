@@ -27,6 +27,7 @@ use std::collections::HashMap;
 
 use bevy::math::Vec2;
 
+use source_formats::keyvalues::{Escapes, tokens};
 use vbsp::Bsp;
 
 use crate::{
@@ -577,7 +578,7 @@ impl<'a> MaterialLoader<'a> {
     pub fn particle(&mut self, name: &str) -> Option<crate::map::particles::ParticleMaterial> {
         use crate::map::particles::{ParticleBlend, ParticleMaterial};
         let text = self.read_text(&format!("materials/{}.vmt", normalize(name).trim_end_matches(".vmt")))?;
-        let shader = super::surfaceprops::tokens(&text)
+        let shader = tokens(&text, Escapes::Off)
             .first()
             .map(|s| s.to_lowercase())
             .unwrap_or_default();
@@ -619,7 +620,7 @@ impl<'a> MaterialLoader<'a> {
         use crate::map::decal::{DecalBlend, MapDecal};
         let vmt = |n: &str| format!("materials/{}.vmt", normalize(n).trim_end_matches(".vmt"));
         let shader = |text: &str| {
-            super::surfaceprops::tokens(text)
+            tokens(text, Escapes::Off)
                 .first()
                 .map(|s| s.to_lowercase())
                 .unwrap_or_default()
@@ -666,7 +667,7 @@ impl<'a> MaterialLoader<'a> {
     }
 
     fn keys(&self, text: &str, depth: u32) -> HashMap<String, String> {
-        let t = super::surfaceprops::tokens(text);
+        let t = tokens(text, Escapes::Off);
         let mut out = HashMap::new();
         if t.first().is_some_and(|s| s.eq_ignore_ascii_case("patch")) {
             let include = t
@@ -1367,7 +1368,7 @@ fn lenient_vmt(text: &str) -> String {
             }
         }
     }
-    let t = super::surfaceprops::tokens(text);
+    let t = tokens(text, Escapes::Off);
     let has_base2 = t.iter().any(|s| s.eq_ignore_ascii_case("$basetexture2"));
     let mut i = 0;
     let mut out = String::new();

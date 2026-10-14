@@ -11,70 +11,9 @@ use bevy::prelude::*;
 use super::material::MaterialLoader;
 use crate::map::hud::{GameHud, HudCoord, HudFont, HudPanel};
 
-/// A KeyValues tree: each key holds a string or a block.
-#[derive(Debug, Clone)]
-pub(crate) enum Kv {
-    Value(String),
-    Block(Vec<(String, Kv)>),
-}
-
-impl Kv {
-    pub(crate) fn get(&self, key: &str) -> Option<&Kv> {
-        match self {
-            Kv::Block(items) => items.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
-            Kv::Value(_) => None,
-        }
-    }
-    pub(crate) fn str(&self, key: &str) -> Option<&str> {
-        match self.get(key)? {
-            Kv::Value(v) => Some(v),
-            Kv::Block(_) => None,
-        }
-    }
-    /// This value's text (None for a block).
-    pub(crate) fn str_value(&self) -> Option<&str> {
-        match self {
-            Kv::Value(v) => Some(v),
-            Kv::Block(_) => None,
-        }
-    }
-    pub(crate) fn items(&self) -> &[(String, Kv)] {
-        match self {
-            Kv::Block(items) => items,
-            Kv::Value(_) => &[],
-        }
-    }
-}
-
-/// Parse KeyValues text; platform conditionals (`[$WIN32]`) are dropped.
-pub(crate) fn parse(text: &str) -> Kv {
-    let tokens: Vec<String> = super::surfaceprops::tokens(text)
-        .into_iter()
-        .filter(|t| !(t.starts_with('[') && t.ends_with(']')))
-        .collect();
-    fn block(t: &[String], i: &mut usize) -> Kv {
-        let mut items = Vec::new();
-        while *i < t.len() && t[*i] != "}" {
-            let key = t[*i].clone();
-            *i += 1;
-            if *i >= t.len() {
-                break;
-            }
-            if t[*i] == "{" {
-                *i += 1;
-                let b = block(t, i);
-                *i += 1; // the closing brace
-                items.push((key, b));
-            } else {
-                items.push((key, Kv::Value(t[*i].clone())));
-                *i += 1;
-            }
-        }
-        Kv::Block(items)
-    }
-    let mut i = 0;
-    block(&tokens, &mut i)
-}
+/// The KeyValues tree and the resource-file reader (platform conditionals
+/// dropped), from `source_formats::keyvalues`.
+pub(crate) use source_formats::keyvalues::{Kv, parse_res as parse};
 
 fn color(text: &str) -> Option<[u8; 4]> {
     let v: Vec<u8> = text.split_whitespace().filter_map(|x| x.parse().ok()).collect();

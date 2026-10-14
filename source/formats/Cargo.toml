@@ -1,0 +1,19 @@
+[package]
+name = "source_formats"
+version = "0.1.0"
+description = "Source engine file formats as plain data: no Bevy, no game code"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# Pure data: what a format needs to be read and nothing else. No Bevy, no
+# avian, no `mashup` (tests/it/architecture.rs checks it).
+[dependencies]
+glam.workspace = true
+lzma-rs.workspace = true
+symphonia.workspace = true

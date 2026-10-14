@@ -22,7 +22,7 @@ Started 2026-10-05, from specs/cs_source/sounds.md.
   1): sound levels use H1 (inverse distance from a 36-unit reference),
   CompatibilityAttenuation entries H2 (linear to 1000/a units), level 0
   everywhere.
-- **CS:S layer:** `games/cs_source/wav.rs` (RIFF: PCM 8/16-bit, MS-ADPCM,
+- **CS:S layer:** `source/formats/src/wav.rs` (RIFF: PCM 8/16-bit, MS-ADPCM,
   loop points from `cue `/`smpl`), `games/cs_source/sound.rs` (the
   game_sounds manifest and scripts, the per-map level sounds file,
   precaching the entries a map uses).

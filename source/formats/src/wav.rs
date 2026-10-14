@@ -5,7 +5,18 @@
 //! plays them too; community maps pack music and effects as MP3) decode
 //! through `symphonia` (`decode_any`).
 
-use crate::map::MapSoundClip;
+use std::sync::Arc;
+
+/// Decoded audio: interleaved 16-bit samples (the game's
+/// `map::MapSoundClip`).
+#[derive(Clone, Debug)]
+pub struct SoundClip {
+    pub rate: u32,
+    pub channels: u16,
+    pub samples: Arc<[i16]>,
+    /// Loop from this frame to the end, when the file says so.
+    pub loop_start: Option<usize>,
+}
 
 fn u16_at(b: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_le_bytes(b.get(at..at + 2)?.try_into().ok()?))
@@ -20,7 +31,7 @@ fn i16_at(b: &[u8], at: usize) -> Option<i16> {
 }
 
 /// Decode a sound file: RIFF WAVE, else MP3.
-pub fn decode_any(bytes: &[u8]) -> Result<MapSoundClip, String> {
+pub fn decode_any(bytes: &[u8]) -> Result<SoundClip, String> {
     if bytes.get(0..4) == Some(b"RIFF") {
         decode(bytes)
     } else {
@@ -29,10 +40,10 @@ pub fn decode_any(bytes: &[u8]) -> Result<MapSoundClip, String> {
 }
 
 /// Decode an MP3 file (no loop point).
-pub fn decode_mp3(bytes: &[u8]) -> Result<MapSoundClip, String> {
+pub fn decode_mp3(bytes: &[u8]) -> Result<SoundClip, String> {
     use symphonia::core::{
-        audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions,
-        io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
+        audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions, io::MediaSourceStream,
+        meta::MetadataOptions, probe::Hint,
     };
     let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes.to_vec())), Default::default());
     let mut hint = Hint::new();
@@ -78,7 +89,7 @@ pub fn decode_mp3(bytes: &[u8]) -> Result<MapSoundClip, String> {
     if samples.is_empty() || channels == 0 {
         return Err("no audio decoded".into());
     }
-    Ok(MapSoundClip {
+    Ok(SoundClip {
         rate,
         channels,
         samples: samples.into(),
@@ -87,7 +98,7 @@ pub fn decode_mp3(bytes: &[u8]) -> Result<MapSoundClip, String> {
 }
 
 /// Decode a WAV file.
-pub fn decode(bytes: &[u8]) -> Result<MapSoundClip, String> {
+pub fn decode(bytes: &[u8]) -> Result<SoundClip, String> {
     if bytes.get(0..4) != Some(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
         return Err("not a RIFF WAVE file".into());
     }
@@ -123,7 +134,7 @@ pub fn decode(bytes: &[u8]) -> Result<MapSoundClip, String> {
         (2, _) => adpcm(fmt, data, channels)?,
         _ => return Err(format!("unsupported format tag {tag}, {bits} bits")),
     };
-    Ok(MapSoundClip {
+    Ok(SoundClip {
         rate,
         channels,
         samples: samples.into(),

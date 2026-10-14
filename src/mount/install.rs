@@ -25,7 +25,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{config::LocalConfig, keyvalues};
+use super::{
+    config::LocalConfig,
+    keyvalues::{self, Escapes, Kv},
+};
 
 /// A game Steam installs: our game id, its Steam app, the files (relative
 /// to the install folder) that show it is that game.
@@ -156,12 +159,12 @@ impl Manifest {
 /// Read an `appmanifest_<id>.acf`.
 pub fn read_manifest(path: &Path) -> Option<Manifest> {
     let text = fs::read_to_string(path).ok()?;
-    let root = keyvalues::parse(&text);
+    let root = keyvalues::parse(&text, Escapes::On);
     let state = root.get("AppState")?;
     Some(Manifest {
-        install_dir: state.value("installdir")?.to_string(),
-        build_id: state.value("buildid").map(String::from),
-        state_flags: state.value("StateFlags").and_then(|v| v.trim().parse().ok()).unwrap_or(0),
+        install_dir: state.str("installdir")?.to_string(),
+        build_id: state.str("buildid").map(String::from),
+        state_flags: state.str("StateFlags").and_then(|v| v.trim().parse().ok()).unwrap_or(0),
     })
 }
 
@@ -184,19 +187,19 @@ pub fn libraries(root: &Path) -> Vec<Library> {
         .iter()
         .find_map(|f| fs::read_to_string(root.join(f)).ok())
         .unwrap_or_default();
-    let kv = keyvalues::parse(&text);
-    let top = kv.children().first().map(|(_, v)| v);
-    for (key, node) in top.map(keyvalues::Node::children).unwrap_or(&[]) {
+    let kv = keyvalues::parse(&text, Escapes::On);
+    let top = kv.items().first().map(|(_, v)| v);
+    for (key, node) in top.map(Kv::items).unwrap_or(&[]) {
         let Ok(index) = key.trim().parse::<usize>() else {
             continue;
         };
         let (path, apps) = match node {
-            keyvalues::Node::Value(p) => (p.clone(), Vec::new()),
-            keyvalues::Node::Block(_) => {
-                let Some(p) = node.value("path") else { continue };
+            Kv::Value(p) => (p.clone(), Vec::new()),
+            Kv::Block(_) => {
+                let Some(p) = node.str("path") else { continue };
                 let apps = node
                     .get("apps")
-                    .map_or(Vec::new(), |a| a.children().iter().filter_map(|(k, _)| k.trim().parse().ok()).collect());
+                    .map_or(Vec::new(), |a| a.items().iter().filter_map(|(k, _)| k.trim().parse().ok()).collect());
                 (p.to_string(), apps)
             }
         };

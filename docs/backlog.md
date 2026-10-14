@@ -677,7 +677,7 @@ docs/plans/active/sound.md.
   (Quake's convention; the engine's rate, interpolation and scaling space
   aren't specced), styles 13-31 without a light `pattern` stay steady,
   and props' probes ignore them. Baked per-vertex prop light (`.vhv`,
-  `games/cs_source/vhv.rs`): its decode is taken as the spec's
+  `source/formats/src/vhv.rs`): its decode is taken as the spec's
   (2v)^2.2 (shaders.md 4) for both `sp_` and `sp_hdr_` files (the HDR
   files in the cached maps hold the same bytes as the LDR ones), each set
   falls back to the other, and a file whose checksum or vertex count

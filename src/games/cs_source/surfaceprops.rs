@@ -6,6 +6,8 @@
 
 use std::collections::HashMap;
 
+use source_formats::keyvalues::{Escapes, tokens};
+
 use super::material::MaterialLoader;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -20,47 +22,6 @@ pub struct SurfaceProps {
     entries: HashMap<String, HashMap<String, String>>,
 }
 
-/// Tokens: quoted strings, bare words and braces; `//` comments skipped.
-pub(crate) fn tokens(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => {
-                let mut s = String::new();
-                for c in chars.by_ref() {
-                    if c == '"' {
-                        break;
-                    }
-                    s.push(c);
-                }
-                out.push(s);
-            }
-            '{' | '}' => out.push(c.to_string()),
-            '/' if chars.peek() == Some(&'/') => {
-                for c in chars.by_ref() {
-                    if c == '\n' {
-                        break;
-                    }
-                }
-            }
-            c if c.is_whitespace() => {}
-            c => {
-                let mut s = c.to_string();
-                while let Some(&n) = chars.peek() {
-                    if n.is_whitespace() || n == '"' || n == '{' || n == '}' {
-                        break;
-                    }
-                    s.push(n);
-                    chars.next();
-                }
-                out.push(s);
-            }
-        }
-    }
-    out
-}
-
 impl SurfaceProps {
     /// Load the files the manifest lists (missing ones are skipped).
     pub fn load(materials: &mut MaterialLoader) -> Self {
@@ -69,7 +30,7 @@ impl SurfaceProps {
             return me;
         };
         let manifest = String::from_utf8_lossy(&manifest).to_string();
-        let t = tokens(&manifest);
+        let t = tokens(&manifest, Escapes::Off);
         let files: Vec<String> = t
             .windows(2)
             .filter(|w| w[0].eq_ignore_ascii_case("file"))
@@ -85,7 +46,7 @@ impl SurfaceProps {
 
     /// Add one file's entries.
     pub fn add(&mut self, text: &str) {
-        let t = tokens(text);
+        let t = tokens(text, Escapes::Off);
         let mut i = 0;
         while i + 1 < t.len() {
             if t[i + 1] != "{" {
