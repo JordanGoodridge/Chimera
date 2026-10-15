@@ -9,7 +9,11 @@
 //! `changelevel <map>` (or `map <map>`) moves them all to another map.
 //!
 //! At most 300 frames a second (`FPS_MAX`), schedules on one thread each
-//! (`single_threaded_schedules`).
+//! (`single_threaded_schedules`). The map's systems alone
+//! (`map::MapSimPlugin`: nothing drawn or played); released built without
+//! the presentation (`cargo build --release --no-default-features
+//! --features server --bin mashup_server`: no engine_present, client
+//! shell or front end linked).
 //!
 //! Known shortcuts (docs/tech-debt.md): The dedicated server runs at most
 //! 300 frames a second (`FPS_MAX`, srcds's `fps_max` default as documented
@@ -30,7 +34,7 @@ use mashup::{
     games::{self, cs_source},
     greybox::GreyboxMapPlugin,
     harness,
-    map::{LoadedMapName, MapPlugin},
+    map::{LoadedMapName, MapSimPlugin},
     net::{self, NetPlugin, NetSettings},
     slots::Loadout,
 };
@@ -111,7 +115,7 @@ fn main() {
     let map_id = net::normalize_map(&options.map);
     if map_id == net::GREYBOX {
         // The map systems too: `changelevel` loads one later.
-        app.add_plugins((GreyboxMapPlugin, MapPlugin::empty()))
+        app.add_plugins((GreyboxMapPlugin, MapSimPlugin::empty()))
             .insert_resource(Time::<Fixed>::from_hz(mashup::DEFAULT_TICK_HZ));
     } else {
         let id = if map_id.contains(':') {
@@ -126,7 +130,7 @@ fn main() {
                     data.spawns.len(),
                     data.warnings.len()
                 );
-                app.add_plugins(MapPlugin::new(data))
+                app.add_plugins(MapSimPlugin::new(data))
                     .insert_resource(Time::<Fixed>::from_seconds(cs_source::TICK_INTERVAL))
                     .insert_resource(LoadedMapName(id));
             }

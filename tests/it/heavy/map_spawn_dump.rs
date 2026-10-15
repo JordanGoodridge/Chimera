@@ -6,7 +6,11 @@
 //! reflected values, then the resources and the asset counts. Dump before
 //! and after a change and `diff` the folders: a move-only change gives
 //! identical files. Without the variable it does nothing (maps missing
-//! from the install or the content cache are skipped).
+//! from the install or the content cache are skipped). Each schedule's
+//! systems in the order they run (the order Bevy's topological sort gives,
+//! which follows registration order where systems aren't ordered) go to
+//! `<dir>/<map>.systems.txt`, for refactors of the map's registration
+//! (`map::build`).
 //!
 //! `cargo test --features dev --test it heavy::map_spawn_dump -- --nocapture`
 
@@ -96,6 +100,28 @@ fn dump(world: &mut World) -> String {
     out
 }
 
+/// Every schedule's systems in the order they run (built now if they
+/// haven't run yet: the fixed ones on the first update).
+fn system_order(world: &mut World) -> String {
+    let mut labels: Vec<(String, bevy::ecs::schedule::InternedScheduleLabel)> = world
+        .resource::<Schedules>()
+        .iter()
+        .map(|(label, s)| (format!("{label:?}"), s.label()))
+        .collect();
+    labels.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = String::new();
+    for (name, label) in labels {
+        let _ = writeln!(out, "{name}:");
+        world.schedule_scope(label, |world, schedule| {
+            schedule.initialize(world).expect("schedule builds");
+            for (_, system) in schedule.systems().expect("initialized") {
+                let _ = writeln!(out, "  {}", system.name());
+            }
+        });
+    }
+    out
+}
+
 #[test]
 fn dump_spawned_maps() {
     let Some(dir) = std::env::var_os("MASHUP_SPAWN_DUMP").map(PathBuf::from) else {
@@ -117,5 +143,9 @@ fn dump_spawned_maps() {
         let path = dir.join(format!("{name}.txt"));
         std::fs::write(&path, &text).unwrap();
         eprintln!("{name}: {} lines to {}", text.lines().count(), path.display());
+        // After the world's dump: building a schedule initializes its
+        // systems (which may add resources).
+        let order = system_order(sim.app.world_mut());
+        std::fs::write(dir.join(format!("{name}.systems.txt")), order).unwrap();
     }
 }

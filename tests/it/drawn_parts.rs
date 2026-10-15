@@ -2,20 +2,23 @@
 //! plain-data requests (docs/ARCHITECTURE.md, "Drawn-part requests"): a
 //! character's body and what it holds, a dead character's body handed to
 //! its ragdoll, loose and shown items, gibs. With the render asset stores
-//! each gets its meshes; headless (a server) the same requests make the
-//! simulation's parts (bodies, colliders) and no meshes.
+//! each gets its meshes; headless the same requests make the simulation's
+//! parts (bodies, colliders) and no meshes, and so with the map's systems
+//! alone (`map::MapSimPlugin`, the dedicated server's).
 
 use bevy::prelude::*;
 use mashup::{
     core::Hitgroup,
     harness::Sim,
     map::{
-        Held, MapData, MapHeldModel, MapMesh, MapModel, MapPlugin, Ragdoll, SpawnGibs,
+        Held, MapData, MapDebugView, MapHeldModel, MapMesh, MapModel, MapPart, MapPlugin, MapSimPlugin, PlaySound,
+        Ragdoll, SoundControl, SpawnGibs,
         breakables::{GibPiece, MapGibSet},
+        change_map,
         loose::{LooseItem, ShownItem},
     },
     movement::noclip,
-    render::{bodies::CharacterBody, prop_material::PropMaterial},
+    render::{bodies::CharacterBody, prop_material::PropMaterial, vis::VisStats},
     rules::Deathmatch,
 };
 
@@ -178,4 +181,43 @@ fn headless_the_same_requests_draw_nothing() {
     let world = sim.app.world_mut();
     assert_eq!(world.query::<&Ragdoll>().iter(world).count(), 1, "the ragdoll's bodies");
     assert_eq!(all_meshes(&mut sim), 0, "nothing drawn");
+}
+
+/// A dedicated server's map (`MapSimPlugin`: map's systems alone, nothing
+/// of render or audio registered): the same requests make the
+/// simulation's parts, what the simulation writes for the audio is
+/// registered without it, and `change_map` spawns a map with the drawer
+/// that draws nothing.
+#[test]
+fn the_map_alone_makes_the_same_parts() {
+    let mut sim = Sim::new(MapSimPlugin::new(map()));
+    sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
+    let p = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
+    sim.ticks(10);
+    let parts = |sim: &mut Sim| {
+        let world = sim.app.world_mut();
+        world.query::<&MapPart>().iter(world).count()
+    };
+    let spawned = parts(&mut sim);
+    assert!(spawned > 0, "the map's parts");
+    let world = sim.app.world();
+    assert!(world.contains_resource::<Messages<PlaySound>>(), "the sounds' messages");
+    assert!(world.contains_resource::<Messages<SoundControl>>());
+    assert!(!world.contains_resource::<VisStats>(), "no render resources");
+    sim.app.world_mut().entity_mut(p).insert(Held(Some("gun".into())));
+    let loose = sim.app.world_mut().spawn((LooseItem("gun".into()), Transform::from_xyz(2.0, 0.2, 0.0))).id();
+    throw_gib(&mut sim);
+    sim.ticks(2);
+    assert!(sim.app.world().get::<avian3d::prelude::RigidBody>(loose).is_some(), "the loose item's body");
+    assert_eq!(gibs(&mut sim).len(), 1, "the gib flies");
+    kill(&mut sim, p, Hitgroup::Chest, Vec3::new(0.0, 1.2, 0.0), Vec3::X);
+    sim.ticks(2);
+    let world = sim.app.world_mut();
+    assert_eq!(world.query::<&Ragdoll>().iter(world).count(), 1, "the ragdoll's bodies");
+    assert_eq!(all_meshes(&mut sim), 0, "nothing drawn");
+    // The map again, unloaded (with what play made) and spawned by the
+    // hook `MapSimPlugin` sets.
+    change_map(sim.app.world_mut(), map(), MapDebugView::Normal);
+    sim.ticks(2);
+    assert_eq!(parts(&mut sim), spawned, "the map's parts, spawned again");
 }

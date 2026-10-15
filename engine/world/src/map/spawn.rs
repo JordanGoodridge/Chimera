@@ -7,8 +7,8 @@
 //! parts (images, bodies, lightmaps, sky, water, world meshes, model
 //! materials, effects, sprites, beams, ropes, shadows), props, the map's
 //! resources, then the sun and spawn points. The drawn parts are spawned
-//! by a `MapDrawer` (`render::MapAssets`, which `map_plugin`
-//! picks), called at their places in that order. `MapDrawer` is a system
+//! by a `MapDrawer` (`render::MapAssets`, which `MapPlugin` picks; `()`
+//! draws nothing, `MapSimPlugin`'s), called at their places in that order. `MapDrawer` is a system
 //! parameter: `world_material`, `draws`, `spawn_undrawn`, `spawn_drawn`,
 //! `spawn_prop`, `textures`, `insert_drawn` (`DrawnResource`).
 

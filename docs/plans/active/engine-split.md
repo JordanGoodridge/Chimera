@@ -114,7 +114,7 @@ measurements):
   presentation and moves with `render`.
 - [x] (2) `render` out of `map` (2026-10-13 and 14, three sessions,
   each commit with the spawn dump identical on the five maps modulo
-  moved paths; left: `render` behind a feature for the server, and the
+  moved paths; then `render` behind a feature for the server and the
   crate cut, both below):
   - [x] the state `logic`/`net`/`weapon` write moved to `map::state`
     (`VisClusters`, `LogicHidden`, areaportal/occluder states,
@@ -227,15 +227,47 @@ measurements):
     Client post passes (`client::hdr`, `gamma`,
     `color_correction`) stay in client: they hang off
     `FirstPersonCamera`/`UiCamera`/`ClientArgs`.
-  - A server without rendering: not yet. `mashup_server` adds no
-    material plugins but links `render` through `MapPlugin` (its spawn
-    drawer and the moved systems run headless with no asset stores, as
-    before). Feasible once `build_rest` is split into map's systems and
-    render's (an ordering change to make deliberately) and a headless
-    `MapDrawer` (all `Draws` false, nothing spawned) stands in for
-    `render::MapAssets`; then `render` can sit behind a feature.
-    The drawn-part requests already leave such a server correct: with
-    no renderer they stay unfulfilled (`tests/it/drawn_parts.rs`).
+  - [x] A server without rendering (2026-10-14): `engine_world`
+    registers all of map's systems itself (`map::build`, in
+    `map/registration.rs`), with what draws and plays the map at fixed
+    places among them (`map::MapLayers`: hooks that register at a place,
+    and the drawing systems of chains that mix map's and render's, e.g.
+    the gibs' and the culling's, handed over as `ScheduleConfigs` so each
+    stays one chain). `map::MapSimPlugin` is map's alone (the `()`
+    drawer: nothing drawn, no headless stand-ins); `engine_present`'s
+    `MapPlugin` fills the places (`Present`). The client's order is
+    unchanged: the spawn dump (five maps) and each schedule's system
+    order (now in the dump too, `<map>.systems.txt`) are identical
+    before and after. `mashup`'s `engine_present` dependency and the
+    client shell (`client`, `games::*::ui`, egui, glyph, clipboard,
+    winit crates) are behind the default feature `present`;
+    `mashup_server` adds `MapSimPlugin` and builds with
+    `--no-default-features --features server` (pre-push hook,
+    `architecture::server_builds_without_presentation`, release.yml).
+    The server no longer runs render's and audio's systems headless,
+    nor spawns the steam jets' undrawn stand-ins or render's
+    per-prop components (`LodGroup`, `PropVariants`): its entity ids
+    differ from before (it never matched a client's). Measured
+    (`cargo build --release`, this box, 4 jobs, sccache): the server
+    binary 117.3 MB (77.6 stripped) before, 106.3 (69.4) after; no
+    `engine_present`, egui, client or cpal/rodio symbols left, wgpu's
+    halved (Bevy's own); a rebuild after a game file's edit 255 s
+    before, 204 s after; 548 crates compiled before, 518 after. Left: Bevy's
+    own render, window, audio and gamepad crates (bevy_render/wgpu,
+    bevy_winit/winit, bevy_audio/cpal, gilrs) still build into the
+    server: the workspace's `bevy` has its default features. Feasible
+    next: `bevy` without default features in the workspace (the
+    simulation needs bevy_asset, bevy_image, bevy_mesh, bevy_camera,
+    bevy_light, none of which needs bevy_render in 0.19), `present`
+    adding `bevy/default` (the client's features unchanged) and
+    `engine_world`/`engine_core` taking it as a dev-dependency (their
+    own tests keep sharing the game's Bevy build); what stands in the
+    way: avian3d's default features (`debug-plugin`, `bevy_picking`,
+    `bevy_scene` pull the render crates; the solver's features must
+    stay the client's), the greybox's visuals (`StandardMaterial`,
+    `Face`), `map::monitor`'s `bevy::pbr::DistanceFog`, `map::sky`'s
+    `bevy::render::render_resource` types, and the headless harness's
+    plugins.
   - [x] Cutting the crates (`map` to `engine/world`, `render` to
     `engine/present`). Done (2026-10-14): `engine/world` (package
     `engine_world`, module `map`): `MapPlugin`'s type moved up into
@@ -257,8 +289,8 @@ measurements):
     leaf edit in render or map, `cargo test --features dev --no-run`,
     30-72 s (was 210 s); in a game file still 127-176 s (mashup's 134k
     lines); `cargo test -p engine_world` 9 s, `-p engine_present` 12 s.
-    Left: `render` behind a feature for the server (above), the
-    simulation's other layers (`engine/sim`), `mashup` itself.
+    Left: the simulation's other layers (`engine/sim`), `mashup` itself
+    (`render` behind a feature for the server: done, above).
     What it needed (2026-10-14): (a)
     `impl Plugin for MapPlugin` lives in `map_plugin` (root crate) for a
     type in `map`: the orphan rule forbids that across crates, so the
