@@ -998,3 +998,30 @@ still costs `mashup`'s own 134k lines. The first `cargo test -p
 engine_world` builds Bevy once more (about 20 minutes at load 20): a
 crate alone unifies Bevy's features without what `mashup`'s other
 dependencies turn on, so it has its own Bevy build, cached afterwards.
+
+### `engine_sim`, `source_logic` and `cs_source` (2026-10-14)
+
+`logic` moved into `source/logic` (24.6k lines), `weapon`, `movement`
+and the rule-module interface into `engine/sim` (8.1k), `mount` into
+`engine_core`, and CS:S's simulation with its rules and bots into
+`games/cs_source` (39.5k: the game's parts, `rules`, `objectives`,
+`bot`); `mashup` keeps 61.5k (client 23.3k, the CS:S front end 17.9k,
+net 13.8k, the binaries). Same setup (own `target/`, sccache,
+`CARGO_BUILD_JOBS=4`, other agents building), a new `pub fn` appended
+to one file, then reverted and rebuilt untimed; two samples each:
+
+| Edit | Command | Time (load) |
+|---|---|---|
+| a leaf in `engine_sim` (`movement/noclip.rs`) | `cargo test --features dev --no-run` | 20 s, 126 s (9-32) |
+| the same | `cargo test -p engine_sim --features dev` (build and run) | 1.6-1.9 s |
+| a leaf in `source_logic` (`logic/value.rs`) | `cargo test --features dev --no-run` | 19-28 s (11-23) |
+| the same | `cargo test -p source_logic --features dev` (216 tests) | 1.8-2.5 s |
+| a leaf in `cs_source` (`game/radio.rs`) | `cargo test --features dev --no-run` | 22-27 s (12-23) |
+| the same | `cargo test -p cs_source --features dev` (135 tests) | 3.1-3.5 s |
+| a leaf in CS:S's front end (`games/cs_source/ui/window_icon.rs`, in `mashup`) | `cargo test --features dev --no-run` | 18-41 s (13-23) (was 127-176 s) |
+| a leaf in the client (`client/gamma.rs`) | the same | 77-78 s (13-23) |
+
+A game edit's test build fell from 127-176 s to about 25 s; the crates
+above an edited one recompile incrementally (nothing they use changed).
+What stays slow is `mashup`'s own code (the client, net), the next cuts
+(engine-split.md, "Remaining couplings").

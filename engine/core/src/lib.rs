@@ -1,6 +1,8 @@
 //! The engine's stable base (docs/ARCHITECTURE.md, "Crates"): the shared
 //! vocabulary (`core`), the console, the slot registries (`slots`), the
-//! character's components (`character`) and the performance metrics. Code
+//! character's components (`character`), the performance metrics and the
+//! mounts (`mount`: the VFS over a game's files, local config, finding
+//! installs). Code
 //! everything else uses and that changes rarely, in its own crate so an
 //! edit higher up doesn't recompile it.
 //!
@@ -11,4 +13,5 @@ pub mod character;
 pub mod console;
 pub mod core;
 pub mod metrics;
+pub mod mount;
 pub mod slots;

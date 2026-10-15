@@ -368,7 +368,7 @@ fn hide_node(world: &mut World, node: Entity) {
 
 /// Show or hide a mover node for the logic (`LogicHidden`): shown, it is
 /// drawn when visibility culling (`VisClusters`, by its bounds) allows.
-pub(crate) fn set_node_shown(e: &mut EntityWorldMut, visible: bool) {
+pub fn set_node_shown(e: &mut EntityWorldMut, visible: bool) {
     let hidden = e.contains::<LogicHidden>();
     if visible {
         let culled = e.get::<VisClusters>().is_some_and(|v| !v.potentially_visible);

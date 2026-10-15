@@ -2928,6 +2928,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cs_source"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bzip2",
+ "engine_core",
+ "engine_sim",
+ "engine_world",
+ "half",
+ "image",
+ "serde",
+ "sha2",
+ "source_formats",
+ "vbsp",
+ "vmdl",
+ "vmt-parser",
+ "vtf",
+]
+
+[[package]]
 name = "ctrlc"
 version = "3.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3202,10 +3223,14 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
+ "dirs",
  "libc",
  "perf-event2",
  "postcard",
  "serde",
+ "source_formats",
+ "toml",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3218,6 +3243,18 @@ dependencies = [
  "engine_world",
  "half",
  "image",
+]
+
+[[package]]
+name = "engine_sim"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "engine_core",
+ "engine_world",
+ "postcard",
+ "serde",
 ]
 
 [[package]]
@@ -4606,9 +4643,11 @@ dependencies = [
  "bevy_replicon_renet",
  "bzip2",
  "crc32fast",
+ "cs_source",
  "dirs",
  "engine_core",
  "engine_present",
+ "engine_sim",
  "engine_world",
  "half",
  "igd-next",
@@ -4619,13 +4658,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "source_formats",
+ "source_logic",
  "toml",
  "twofish",
  "vbsp",
  "vmdl",
  "vmt-parser",
  "vtf",
- "windows-sys 0.61.2",
  "winit",
 ]
 
@@ -6649,6 +6688,17 @@ dependencies = [
  "glam",
  "lzma-rs",
  "symphonia",
+]
+
+[[package]]
+name = "source_logic"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "engine_core",
+ "engine_world",
+ "serde",
 ]
 
 [[package]]

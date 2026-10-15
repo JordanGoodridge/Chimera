@@ -63,7 +63,7 @@ impl LocalConfig {
         let candidates = [
             std::env::var_os("MASHUP_CONFIG").map(PathBuf::from),
             Some(PathBuf::from(FILE_NAME)),
-            Some(Path::new(env!("CARGO_MANIFEST_DIR")).join(FILE_NAME)),
+            Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(FILE_NAME)),
         ];
         let Some(path) = candidates.into_iter().flatten().find(|p| p.is_file()) else {
             return Ok(Self::default());

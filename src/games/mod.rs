@@ -2,10 +2,20 @@
 //! (enforced by tests/it/architecture.rs).
 //!
 //! `load_map("game:name")` dispatcher.
+//!
+//! `cs_source` is the `cs_source` crate's parts (games/cs_source,
+//! `cs_source::game`) with the game's front end (`ui/`, here beside the
+//! client shell it builds on).
 
 #[cfg(feature = "combat_arms")]
 pub mod combat_arms;
-pub mod cs_source;
+
+/// Counter-Strike: Source: its parts (crate `cs_source`, games/cs_source)
+/// at their old paths, and its front end (`ui`).
+pub mod cs_source {
+    pub use ::cs_source::game::*;
+    pub mod ui;
+}
 
 use crate::{map::MapData, mount::config::LocalConfig};
 

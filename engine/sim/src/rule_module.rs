@@ -54,7 +54,7 @@ pub fn pick(world: &World) -> Option<&'static str> {
     modules.0.iter().find(|m| (m.applies)(world)).map(|m| m.name)
 }
 
-pub(super) fn plugin(app: &mut App) {
+pub fn plugin(app: &mut App) {
     app.init_resource::<RuleModules>().console_command(
         "mashup_rules",
         "List the rule modules the games registered (name, what it plays, its cvars), the one playing marked *.",

@@ -21,7 +21,7 @@ use crate::map::hud::{
 
 /// Read a `.res` file's root block with its `#base` files merged in (paths
 /// relative to the file's folder; the file's own keys win).
-pub(crate) fn read_res(read: &mut dyn FnMut(&str) -> Option<String>, path: &str) -> Option<Kv> {
+pub fn read_res(read: &mut dyn FnMut(&str) -> Option<String>, path: &str) -> Option<Kv> {
     fn go(read: &mut dyn FnMut(&str) -> Option<String>, path: &str, depth: usize) -> Option<Kv> {
         let kv = parse(&read(path)?);
         let mut root = None;
@@ -53,7 +53,7 @@ pub(crate) fn read_res(read: &mut dyn FnMut(&str) -> Option<String>, path: &str)
 
 /// `over` laid on `base`: a key in both takes `over`'s value (blocks merged
 /// key by key); keys only in `over` are added after `base`'s.
-pub(crate) fn merge(base: Kv, over: Kv) -> Kv {
+pub fn merge(base: Kv, over: Kv) -> Kv {
     let (Kv::Block(mut items), Kv::Block(over)) = (base, over.clone()) else {
         return over;
     };
@@ -68,7 +68,7 @@ pub(crate) fn merge(base: Kv, over: Kv) -> Kv {
 
 /// Text with VGUI's hotkey marker: `&1 PISTOLS` -> ("1 PISTOLS", '1');
 /// `&&` is a literal ampersand.
-pub(crate) fn hotkey(text: &str) -> (String, Option<char>) {
+pub fn hotkey(text: &str) -> (String, Option<char>) {
     let mut out = String::new();
     let mut key = None;
     let mut chars = text.chars().peekable();
@@ -122,7 +122,7 @@ fn kind(control: &str) -> UiKind {
 /// A layout from a `.res` root block: `strings` localises `#token` text
 /// (lower-case keys), `colors` names scheme colours, `image` turns an image
 /// path into a sprite key (None: not drawn).
-pub(crate) fn layout(
+pub fn layout(
     root: &Kv,
     strings: &HashMap<String, String>,
     colors: &HashMap<String, [u8; 4]>,
@@ -185,7 +185,7 @@ pub(crate) fn layout(
 }
 
 /// The scheme's fonts: every size entry of every font, in order.
-pub(crate) fn fonts(scheme: &Kv) -> HashMap<String, Vec<UiFontSize>> {
+pub fn fonts(scheme: &Kv) -> HashMap<String, Vec<UiFontSize>> {
     let mut out = HashMap::new();
     for (name, f) in scheme.get("Fonts").map(Kv::items).unwrap_or_default() {
         let sizes: Vec<UiFontSize> = f
@@ -236,7 +236,7 @@ const SPECTATOR_MODES: &str = "resource/spectatormodes.res";
 /// A command menu definition's entries: its `menuitem` blocks in order,
 /// each with its label (`#token` resolved), command, toggle cvar and
 /// submenu.
-pub(crate) fn command_menu(root: &Kv, strings: &HashMap<String, String>) -> Vec<CommandMenuItem> {
+pub fn command_menu(root: &Kv, strings: &HashMap<String, String>) -> Vec<CommandMenuItem> {
     root.items()
         .iter()
         .filter(|(k, v)| k.to_lowercase().starts_with("menuitem") && matches!(v, Kv::Block(_)))
@@ -294,7 +294,7 @@ fn image(materials: &mut MaterialLoader, sprites: &mut Vec<(String, HudSprite)>,
 
 /// The menus from the install (None without its menu files). Pictures the
 /// layouts show become `hud.sprites` (keyed by material name).
-pub(crate) fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str) -> Option<GameMenus> {
+pub fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str) -> Option<GameMenus> {
     // The engine's strings (the spectator bars' `Spec_*`), then the game's
     // over them.
     let mut strings = HashMap::new();

@@ -36,6 +36,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // `render`), its systems in `core`'s sets.
     ("map_plugin", &["core", "map", "audio", "render"]),
     ("weapon", &["core", "console", "map"]),
+    // The rule-module interface (engine/sim): a game registers its modes
+    // by name; `rules::module` at its old path.
+    ("rule_module", &["console"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
     ("objectives", &["core", "console", "slots", "character", "map", "weapon"]),
@@ -162,9 +165,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("bin", &[]),
 ];
 
-/// The engine crates' source folders, scanned with `src/` (their modules
-/// keep their names in `ALLOWED`).
-const ENGINE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src"];
+/// The crates' source folders cut out of `mashup`, scanned with `src/`
+/// (their modules keep their names in `ALLOWED`; a game crate's `game`
+/// module is `games`, as `src/games/<game>/` was).
+const CRATE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src", "engine/sim/src", "source/logic/src", "games/cs_source/src"];
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -181,8 +185,9 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The top-level module a file belongs to: `src/movement/noclip.rs` -> `movement`.
-/// A game's front end (`src/games/<game>/ui/...`) is `games_ui`.
+/// The top-level module a file belongs to: `src/greybox.rs` -> `greybox`.
+/// A game's front end (`src/games/<game>/ui/...`) is `games_ui`; a game
+/// crate's parts (`games/<game>/src/game/...`) are `games`.
 fn module_of(src: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(src).ok()?;
     let mut parts = rel.components().map(|c| c.as_os_str().to_str().unwrap_or(""));
@@ -190,7 +195,17 @@ fn module_of(src: &Path, file: &Path) -> Option<String> {
     if first == "games" && parts.nth(1) == Some("ui") {
         return Some("games_ui".to_string());
     }
+    if first == "game" && crate_game(src).is_some() {
+        return Some("games".to_string());
+    }
     Some(first.trim_end_matches(".rs").to_string())
+}
+
+/// The game a game crate's source folder (`games/<game>/src`) holds.
+fn crate_game(src: &Path) -> Option<String> {
+    let game = src.parent()?;
+    (game.parent()?.file_name()? == "games" && src.file_name()? == "src")
+        .then(|| game.file_name().unwrap().to_string_lossy().to_string())
 }
 
 /// The games: `src/games/<name>/` folders.
@@ -273,12 +288,12 @@ fn crate_refs(code: &str, modules: &BTreeSet<String>) -> BTreeSet<String> {
 #[test]
 fn module_layering() {
     let src = root().join("src");
-    // The engine's crates keep their modules' names (`engine_core`'s
+    // The crates cut out keep their modules' names (`engine_core`'s
     // `crate::core`, `engine_world`'s `crate::map`, `engine_present`'s
-    // `crate::render`, re-exported by `mashup` at the same paths), so one
-    // table covers them all.
+    // `crate::render`, `source_logic`'s `crate::logic`, re-exported by
+    // `mashup` at the same paths), so one table covers them all.
     let mut files = Vec::new();
-    for dir in ENGINE_SRC.iter().copied().chain(["src"]) {
+    for dir in CRATE_SRC.iter().copied().chain(["src"]) {
         let mut more = Vec::new();
         rust_files(&root().join(dir), &mut more);
         files.extend(more.into_iter().map(|f| (root().join(dir), f)));
@@ -302,11 +317,16 @@ fn module_layering() {
         };
         let text = fs::read_to_string(&file).unwrap();
         // Strip line comments and join, so grouped imports can span lines.
-        let code = text
+        let mut code = text
             .lines()
             .map(|l| l.split("//").next().unwrap_or(""))
             .collect::<Vec<_>>()
             .join(" ");
+        // A game crate's own parts (`crate::game::`) are its game's module.
+        let crate_game = crate_game(&base);
+        if let Some(game) = &crate_game {
+            code = code.replace("crate::game::", &format!("crate::games::{game}::"));
+        }
         let rel = file.strip_prefix(root()).unwrap().to_string_lossy().replace('\\', "/");
         for r in crate_refs(&code, &modules) {
             // `games::load_map` and the like: the game-neutral map loading.
@@ -319,7 +339,9 @@ fn module_layering() {
                     .strip_prefix(src.join("games"))
                     .ok()
                     .and_then(|p| p.components().next());
-                let own = own.map(|c| c.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string());
+                let own = own
+                    .map(|c| c.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string())
+                    .or(crate_game.clone());
                 if module == "client" {
                     if !CLIENT_GAME_EXCEPTIONS.iter().any(|(f, _)| *f == rel) {
                         errors.push(format!(
@@ -380,10 +402,11 @@ fn simulation_builds_no_drawn_parts() {
         "objectives",
         "bot",
         "movement",
+        "rule_module",
         "games",
     ];
     let mut files = Vec::new();
-    for dir in ENGINE_SRC.iter().copied().chain(["src"]) {
+    for dir in CRATE_SRC.iter().copied().chain(["src"]) {
         let mut more = Vec::new();
         rust_files(&root().join(dir), &mut more);
         files.extend(more.into_iter().map(|f| (root().join(dir), f)));
@@ -593,7 +616,7 @@ fn docs_stay_one_line_per_entry() {
             ));
         }
         let path = line[2..].split('`').nth(1).unwrap_or("");
-        if ["src/", "source/", "engine/"].iter().any(|p| path.starts_with(p)) && !root().join(path).exists() {
+        if ["src/", "source/", "engine/", "games/"].iter().any(|p| path.starts_with(p)) && !root().join(path).exists() {
             errors.push(format!(
                 "docs/ARCHITECTURE.md lists {path}, which does not exist. Update the entry."
             ));
@@ -685,11 +708,24 @@ fn workspace_crates() {
     const PRESENT: &str = "is the engine's presentation (docs/ARCHITECTURE.md, \"Crates\"): it draws \
         and plays the map, and games build on it. Move the piece that needs the game up into `mashup`, or \
         give the presentation a hook (a registry, a drawn-part request, a resource) that the game fills.";
+    const SIM: &str = "is the simulation's frameworks (docs/ARCHITECTURE.md, \"Crates\"): the games \
+        fill them and sit above them. Move the piece that needs the game up into `mashup`, or give the \
+        framework a hook (a registry, a trait, data) that the game fills.";
+    const GAME: &str = "is a game's simulation (docs/ARCHITECTURE.md, \"Crates\"): it builds on the \
+        engine and runs on a dedicated server without drawing; its front end and the apps sit above it, \
+        and games never use each other. Move the piece up into `mashup` (the front end is \
+        `src/games/<game>/ui/`), or give the engine a hook the game fills.";
+    const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
+        on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
+        plain data or give it a hook (a registry, a resource) that the crate above fills.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
         ("engine/world", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
         ("engine/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
+        ("engine/sim", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
+        ("games/cs_source", &["engine_present", "mashup", "combat_arms"], GAME),
+        ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
     ];
     for (krate, forbidden, why) in FORBIDDEN {
         let path = format!("{krate}/Cargo.toml");

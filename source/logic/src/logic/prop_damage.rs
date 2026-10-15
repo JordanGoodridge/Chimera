@@ -26,7 +26,7 @@
 //! SetBodyGroup, SetAnimation/SetDefaultAnimation (`PropState`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Prop damage
-//! (specs/source/prop_damage.md, src/logic/prop_damage.rs) left out or
+//! (specs/source/prop_damage.md, source/logic/src/logic/prop_damage.rs) left out or
 //! approximated: the explosive_resist fire rule (needs the blast's inflictor
 //! position; no stock prop has it; flammable props otherwise ignite and burn,
 //! see the Fire row); the onbreak-explode interaction doesn't ignite players

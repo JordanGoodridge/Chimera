@@ -8,23 +8,16 @@
 //! `single_threaded_schedules`: the main world's schedules on Bevy's
 //! single-threaded executor (the game, the dedicated server, `perfgate`).
 
-pub mod bot;
 pub mod client;
 pub mod core;
 pub mod games;
 pub mod greybox;
 pub mod harness;
-pub mod logic;
-pub mod mount;
-pub mod movement;
 pub mod net;
-pub mod objectives;
-pub mod rules;
-pub mod weapon;
 
 // The engine's stable base (engine/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
-pub use engine_core::{character, console, metrics, slots};
+pub use engine_core::{character, console, metrics, mount, slots};
 
 /// The engine's map (engine/world, crate `engine_world`) at its old path,
 /// with `MapPlugin` (engine/present's `map_plugin`: its registration
@@ -36,6 +29,18 @@ pub mod map {
 
 // The engine's presentation (engine/present), at its old paths.
 pub use engine_present::{audio, render};
+
+// Source's map logic (source/logic: entity I/O, logic classes, triggers,
+// movers), at its old path.
+pub use source_logic::logic;
+
+// The simulation's frameworks (engine/sim: weapons, the movement
+// slot's own implementations), at their old paths.
+pub use engine_sim::{movement, weapon};
+
+// CS:S's rules (games/cs_source: deathmatch, rounds, the bomb and the
+// hostages), at their old paths; `games::cs_source` re-exports the rest.
+pub use cs_source::{bot, objectives, rules};
 
 use bevy::prelude::*;
 
