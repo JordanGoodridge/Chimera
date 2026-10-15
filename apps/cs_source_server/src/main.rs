@@ -109,6 +109,7 @@ fn main() {
         &mut app,
         MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / FPS_MAX))),
     );
+    app.add_plugins(cs_source_app::SimPlugins);
     // Ctrl+C exits as `quit` does (AppExit: `net::udp` hangs up on every
     // client), not killed with its clients left to time out.
     app.add_plugins((bevy::log::LogPlugin::default(), bevy::app::TerminalCtrlCHandlerPlugin));

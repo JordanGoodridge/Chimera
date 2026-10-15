@@ -35,7 +35,7 @@ use cs_source_app::{
             movement::{self, SourceMovement, SourceMovementConfig, SourceMovementPlugin, to_engine, to_source},
         },
     },
-    harness::Sim,
+    harness::{CsSim, Sim},
     map::{MapData, MapDebugView, MapPlugin},
     mount::config::{LocalConfig, default_dump_dir},
 };
@@ -769,7 +769,7 @@ const ORIGIN_ABOVE_FEET: f32 = 36.0;
 /// additions are played too.
 fn run_ours(map: &Arc<MapData>, s: &Scenario, theirs: &[State]) -> Vec<State> {
     let start = &theirs[0];
-    let mut sim = Sim::new((
+    let mut sim = Sim::new(CsSim, (
         MapPlugin {
             data: Some(map.clone()),
             view: MapDebugView::Normal,

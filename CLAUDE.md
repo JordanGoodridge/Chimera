@@ -50,8 +50,8 @@ cargo run -q -p repo_checks --bin affected -- --base main   # which crates' test
                                    # a branch can affect, and why (the hooks
                                    # run only those: fast tier before a commit,
                                    # with heavy tests before a push)
-cargo test -p cs_source_app --features dev --test it weapons::   # one test
-                                   # file (apps/cs_source/tests/it/weapons.rs)
+cargo test -p cs_source --features dev --test it weapons::   # one test
+                                   # file (games/cs_source/tests/it/weapons.rs)
 cargo test -p chimera_world --features dev   # one crate's own tests (also
                                    # chimera_core, chimera_present, chimera_sim, chimera_net,
                                    # chimera_client, source_logic, cs_source, cs_source_app)
@@ -68,7 +68,9 @@ cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 
 Each crate's integration tests are one binary, `<crate>/tests/it/` (slow
 ones in `tests/it/heavy/`), in the lowest crate whose API they need;
-docs/OBSERVABILITY.md section 1 says where new ones go. Pushes run the
+scenario tests run on Chimera's `harness::Sim` with their layer's base
+(`SimBasePlugins` in Chimera, `CsSim` in cs_source); docs/OBSERVABILITY.md
+section 1 says where new ones go. Pushes run the
 affected crates' tests (`MASHUP_PUSH_TESTS=all`: everything, `=0`: none).
 
 ## Working conventions

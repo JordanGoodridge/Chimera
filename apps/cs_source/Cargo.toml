@@ -13,9 +13,10 @@ default-run = "mashup"
 doctest = false
 
 # The app composes Chimera, Source's logic and CS:S: `SimPlugins` (the
-# simulation every CS:S build runs: the game's rules, bots and network
-# part with Source's map logic), the headless harness tools and tests
-# drive (`harness`), the greybox, map loading by id (`games`), and with
+# simulation every CS:S build runs, `cs_source::SimPlugins`, with this
+# build's version), the harness and greybox at their old paths
+# (chimera_world's, chimera_net's and cs_source's), map loading by id
+# (`games`), and with
 # the presentation the client (`client`: the shell with this app's hooks
 # and CS:S's HUD) and the game binary. Above it: the dedicated server
 # (apps/cs_source_server), the tools that drive this simulation
@@ -36,17 +37,8 @@ avian3d.workspace = true
 bevy.workspace = true
 workspace-hack.workspace = true
 
-# The tests' own crates: the network's (bevy_replicon's client side, the
-# netcode client), wire formats and compressed map downloads, BSP files.
-[dev-dependencies]
-bevy_replicon.workspace = true
-bevy_replicon_renet.workspace = true
-bzip2.workspace = true
-postcard.workspace = true
-vbsp.workspace = true
-
-# The integration tests (tests/it/: scenario tests on the harness and the
-# greybox, `heavy::` on real maps) drive the game with its presentation.
+# The integration tests (tests/it/): what only the app has (its build's
+# version); the scenario tests are cs_source's (games/cs_source/tests/).
 [[test]]
 name = "it"
 path = "tests/it/main.rs"

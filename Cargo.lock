@@ -3066,6 +3066,7 @@ dependencies = [
  "crc32fast",
  "half",
  "image",
+ "postcard",
  "serde",
  "serde_json",
  "sha2",
@@ -3085,9 +3086,6 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
- "bevy_replicon",
- "bevy_replicon_renet",
- "bzip2",
  "chimera_client",
  "chimera_core",
  "chimera_net",
@@ -3095,10 +3093,8 @@ dependencies = [
  "chimera_sim",
  "chimera_world",
  "cs_source",
- "postcard",
  "source_formats",
  "source_logic",
- "vbsp",
  "workspace-hack",
 ]
 

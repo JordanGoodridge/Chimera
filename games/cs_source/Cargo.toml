@@ -11,9 +11,16 @@ license.workspace = true
 [lib]
 doctest = false
 
+# What only a feature compiles, for the hooks' test selection
+# (checks/src/affected.rs): an edit under src/ui/ runs the front end's
+# tests (tests/ui/, the unit tests in `ui::`) and the crates above, not
+# the simulation's (tests/it/).
+[package.metadata.affected]
+feature-paths = { ui = ["src/ui/"] }
+
 # The engine's crates and the formats, Bevy and physics, Source's file
-# readers; never `mashup` or another game, and the presentation
-# (`chimera_present`), the shell and Source's logic only for `ui`
+# readers and map logic; never `mashup` or another game, and the
+# presentation (`chimera_present`) and the shell only for `ui`
 # (checks/tests/it/architecture.rs checks it). Same versions and features
 # as the game's (workspace dependencies), so `cargo test -p cs_source`
 # reuses the game's builds.
@@ -21,6 +28,9 @@ doctest = false
 chimera_core.workspace = true
 chimera_world.workspace = true
 chimera_sim.workspace = true
+# Source's map logic (entity I/O, triggers, movers): part of the game's
+# simulation (`SimPlugins`).
+source_logic.workspace = true
 # The network: the game registers its round, bomb and hostages there and
 # fills its hooks (`game::net`).
 chimera_net.workspace = true
@@ -38,11 +48,9 @@ vmdl.workspace = true
 vmt-parser.workspace = true
 vtf.workspace = true
 # The front end (`ui`, the `ui` feature): the client shell, the
-# presentation it draws with, Source's logic (the objectives' map
-# entities), the clipboard and the window icon.
+# presentation it draws with, the clipboard and the window icon.
 chimera_client = { workspace = true, optional = true }
 chimera_present = { workspace = true, optional = true }
-source_logic = { workspace = true, optional = true }
 arboard = { workspace = true, optional = true }
 winit = { workspace = true, optional = true }
 # Joining's progress (the loading dialog reads the netcode client).
@@ -50,18 +58,27 @@ bevy_replicon_renet = { workspace = true, optional = true }
 workspace-hack.workspace = true
 
 # The tests' own crates: checksums of files read through the mount
-# (games/cs_source/tests/it/mount_cs_source.rs), the lightmap probe's JSON.
+# (games/cs_source/tests/it/mount_cs_source.rs), the lightmap probe's JSON;
+# the presentation, so the scenario tests run the map as the game does
+# (`MapPlugin`: its drawn parts and sounds too; never the game's own
+# build, checks/tests/it/architecture.rs); the network's client side and
+# wire format (tests/it/net*.rs).
 [dev-dependencies]
 crc32fast = "1.5.2"
 serde_json.workspace = true
+chimera_present.workspace = true
+bevy_replicon_renet.workspace = true
+postcard.workspace = true
 
 # The simulation's integration tests (tests/it/): loaders and spec test
-# cases on the install, `heavy::` on real maps.
+# cases on the install, the scenario tests on the headless harness
+# (`harness::CsSim`, tests/common/stack.rs), `heavy::` on real maps.
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
 
-# The front end's (tests/ui/): built with `ui` only.
+# The front end's (tests/ui/): built with `ui` only; its scenario tests
+# too (the client shell's and CS:S's menus' and HUD's state).
 [[test]]
 name = "ui"
 path = "tests/ui/main.rs"
@@ -71,7 +88,7 @@ required-features = ["ui"]
 # CS:S's front end (`ui`): its menus, panels and HUD on the client shell.
 # The game's client turns it on (`mashup`'s `present`); the dedicated
 # server and the simulation's tests build without it.
-ui = ["dep:chimera_client", "dep:chimera_present", "dep:source_logic", "dep:arboard", "dep:winit", "dep:bevy_replicon_renet"]
+ui = ["dep:chimera_client", "dep:chimera_present", "dep:arboard", "dep:winit", "dep:bevy_replicon_renet"]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p cs_source --features dev` shares the game's Bevy build.
 dev = [
@@ -81,5 +98,9 @@ dev = [
     "chimera_net/dev",
     "chimera_client?/dev",
     "chimera_present?/dev",
-    "source_logic?/dev",
+    "source_logic/dev",
 ]
+# CPU profile: spans in a Chrome trace (docs/performance.md), for the
+# capacity test's server (tests/it/heavy/net_capacity.rs). Only for
+# measuring.
+profile = ["chimera_core/profile"]

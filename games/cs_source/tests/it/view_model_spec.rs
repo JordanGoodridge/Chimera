@@ -1,7 +1,7 @@
 //! The test cases of specs/cs_source/view_models.md that are pure maths:
 //! bob (B), sway (S), field of view (F) and handedness (H). The scenario
-//! cases (E1, events) are in apps/cs_source/tests/it/view_models.rs, the model data (L1,
-//! attachments, events) in apps/cs_source/tests/it/heavy/map_de_dust2.rs.
+//! cases (E1, events) are in games/cs_source/tests/it/view_models.rs, the model data (L1,
+//! attachments, events) in games/cs_source/tests/it/heavy/map_de_dust2.rs.
 
 use bevy::prelude::*;
 use cs_source::game::{view_anim, view_motion::{ Bob, SwayHistory, ViewMotion, angles, bob_offset, bob_wave, placement, rotation, sway_offset, to_camera, }};
