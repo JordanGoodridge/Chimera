@@ -721,6 +721,20 @@ public void OnEntityCreated(int entity, const char[] classname)
     if (g_out != null && StrContains(classname, "_projectile") != -1) {
         RequestFrame(Frame_Projectile, EntIndexToEntRef(entity));
     }
+    if (g_out != null && StrEqual(classname, "env_particlesmokegrenade")) {
+        RequestFrame(Frame_Cloud, EntIndexToEntRef(entity));
+    }
+}
+
+// The smoke cloud: "C tick spawn fade_start fade_end now" (game time).
+public void Frame_Cloud(int ref)
+{
+    int e = EntRefToEntIndex(ref);
+    if (e == INVALID_ENT_REFERENCE || g_out == null) {
+        return;
+    }
+    g_out.WriteLine("C %d %.3f %.3f %.3f %.3f", g_cursor, GetEntPropFloat(e, Prop_Send, "m_flSpawnTime"),
+        GetEntPropFloat(e, Prop_Send, "m_FadeStartTime"), GetEntPropFloat(e, Prop_Send, "m_FadeEndTime"), GetGameTime());
 }
 
 public void Frame_Projectile(int ref)

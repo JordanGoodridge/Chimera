@@ -79,7 +79,7 @@ def parse(text):
             r.events.append((int(p[1]), p[2], p[3:]))
         elif p[0] == "S":
             r.sounds.append((int(p[1]), int(p[2]), float(p[3]), p[7]))
-        elif p[0] in ("G", "P", "F"):
+        elif p[0] in ("G", "P", "F", "C"):
             r.extra.append(p)
         else:
             v = [float(x) for x in p]
