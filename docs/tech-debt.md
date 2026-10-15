@@ -40,7 +40,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`engine/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
-- client: Spectating numbers (death cam, chase distance, forcecamera) from general knowledge, not measured (`src/client/spectate.rs`)
+- client: Spectating numbers (death cam, chase distance, forcecamera) from general knowledge, not measured (`engine/client/src/client/spectate.rs`)
 - client: Freeze cam timings and distances are guesses (local cvars) (`src/games/cs_source/ui/freeze_cam.rs`)
 - client: Target ID range, placement and smoke rule are guesses (`src/games/cs_source/ui/target_id.rs`)
 - weapon, games/cs_source: cl_autowepswitch weights from the spec's table; switching rules partly ours (`engine/sim/src/weapon/drop.rs`)
@@ -96,7 +96,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - games/cs_source ui: Damage indicator: which bar lights and its fade are ours (`src/games/cs_source/ui/hud_sprites.rs`)
 - rules: Team balance: when and who moves are ours; no warning message (`games/cs_source/src/rules.rs`)
 - map, sound: Under water (`audio::hearing::UNDERWATER`): a steady low-pass (600 Hz, 0.8) on everything while the eye is in water; Source switches to its `dsp_water` room preset, engine-side and unmeasured. OK for now: Better than no change at all; capture wanted.
-- client: Third-person camera follows at once (no easing) and sweeps a sphere (`src/client/view.rs`)
+- client: Third-person camera follows at once (no easing) and sweeps a sphere (`engine/client/src/client/view.rs`)
 - sound: Scrape friction energy is our stand-in for Source's (`games/cs_source/src/game/scrapes.rs`)
 - map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`engine/present/src/render/steam.rs`)
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
@@ -124,4 +124,4 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - net: UPnP: IGD only (no NAT-PMP/PCP, no IPv6), nearest router only, untested on real routers (`engine/net/src/net/upnp.rs`)
 - weapon: Sprays: reach, size and floor turn are well-known values and ours, unmeasured; world only; names, not pictures (`engine/sim/src/weapon/spray.rs`)
 - map: Sprays drawn with one light value at the centre, no fog (`engine/present/src/render/spray.rs`)
-- client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`src/client/night_vision.rs`)
+- client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`engine/client/src/client/night_vision.rs`)

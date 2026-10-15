@@ -128,7 +128,7 @@ pub struct FlashMaterial {
 
 impl UiMaterial for FlashMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/client/flash.wgsl".into()
+        "embedded://engine_client/client/flash.wgsl".into()
     }
 
     /// Additive, as the game's flash materials.

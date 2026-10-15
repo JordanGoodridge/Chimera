@@ -93,7 +93,7 @@ impl Plugin for LocalInputPlugin {
     }
 }
 
-pub(crate) fn mouse_cvars(app: &mut App) {
+pub fn mouse_cvars(app: &mut App) {
     use crate::console::{Console, resource_cvar};
     resource_cvar::<MouseSettings, f32>(
         app,

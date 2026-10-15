@@ -171,7 +171,7 @@ fn init_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://mashup/client/color_correction.wgsl");
+    let shader = asset_server.load("embedded://engine_client/client/color_correction.wgsl");
     let pipeline = |format: TextureFormat| {
         pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("color_correction_pipeline".into()),

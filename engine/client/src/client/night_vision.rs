@@ -197,7 +197,7 @@ fn init_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://mashup/client/night_vision.wgsl");
+    let shader = asset_server.load("embedded://engine_client/client/night_vision.wgsl");
     let pipeline = |format: TextureFormat| {
         pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("night_vision_pipeline".into()),

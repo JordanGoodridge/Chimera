@@ -101,7 +101,7 @@ pub const CROSSHAIR_CVARS: [&str; 11] = [
     "cl_crosshaircolor_b",
 ];
 
-pub(crate) fn crosshair_cvars(app: &mut App) {
+pub fn crosshair_cvars(app: &mut App) {
     use crate::console::resource_cvar;
     resource_cvar::<CrosshairColor, u8>(
         app,

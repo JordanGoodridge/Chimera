@@ -116,15 +116,6 @@ impl Plugin for WeaponSelectPlugin {
     }
 }
 
-impl WeaponMenu {
-    /// Close the selection row, picking nothing (`cancelselect`).
-    pub fn cancel(&mut self) {
-        self.shown_for = None;
-        self.choosing = false;
-        self.highlighted = None;
-    }
-}
-
 /// `hud_fastswitch`.
 #[derive(Resource, Default)]
 pub struct FastSwitch(pub u8);

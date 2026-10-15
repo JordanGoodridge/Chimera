@@ -131,7 +131,7 @@ impl Plugin for PerfPlugin {
 
 /// `r_cleardecals`, `mashup_round_cleardecals` and `mp_decals`
 /// (`render::decal`).
-pub(crate) fn decal_cvars(app: &mut App) {
+pub fn decal_cvars(app: &mut App) {
     use crate::{
         console::ConsoleAppExt,
         render::decal::{ClearDecals, DecalSettings},

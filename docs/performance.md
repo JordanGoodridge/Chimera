@@ -606,7 +606,7 @@ quiet machine and on the Windows PC are still to be taken.
 
 Every number in "Frame time pass" was taken at load 6-33, where single
 runs swing 2-10x. What now measures besides wall time (`engine/core/src/metrics/`,
-`src/client/frame_metrics.rs`; OBSERVABILITY.md 3c says where each shows):
+`engine/client/src/client/frame_metrics.rs`; OBSERVABILITY.md 3c says where each shows):
 
 - **Thread CPU time** of the main world (between marks before `First` and
   after `Last`), the render world (before `ExtractCommands` to after

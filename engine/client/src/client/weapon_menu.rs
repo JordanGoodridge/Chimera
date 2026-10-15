@@ -33,4 +33,11 @@ impl WeaponMenu {
     pub fn selected_slot(&self) -> Option<u8> {
         self.select.map(|s| s.0)
     }
+
+    /// Close the selection row, picking nothing (`cancelselect`).
+    pub fn cancel(&mut self) {
+        self.shown_for = None;
+        self.choosing = false;
+        self.highlighted = None;
+    }
 }

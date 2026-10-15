@@ -193,6 +193,12 @@ fn module_of(src: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(src).ok()?;
     let mut parts = rel.components().map(|c| c.as_os_str().to_str().unwrap_or(""));
     let first = parts.next()?;
+    // `mashup`'s `client` re-exports the shell (engine_client) with the
+    // app's own `ClientPlugin` and CS:S's HUD: app glue, as the crate
+    // root.
+    if rel == Path::new("client.rs") && src.parent() == Some(root().as_path()) {
+        return Some("lib".to_string());
+    }
     if first == "games" && parts.nth(1) == Some("ui") {
         return Some("games_ui".to_string());
     }
@@ -715,10 +721,11 @@ fn workspace_crates() {
     const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
         on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
         plain data or give it a hook (a registry, a resource) that the crate above fills.";
-    const CLIENT: &str = "is the client shell's base (docs/ARCHITECTURE.md, \"Crates\"): the front end's \
-        interface, fonts, the widgets and binds, below the games' front ends; it knows nothing of the \
-        network, the simulation's frameworks or a game. Keep the piece that needs them in `mashup::client`, \
-        or give the base a hook (a resource, a registry) that the shell above fills.";
+    const CLIENT: &str = "is the client shell (docs/ARCHITECTURE.md, \"Crates\"): it sits on the engine's \
+        crates (the presentation and the network too) below the games' front ends and the app, and knows \
+        nothing of a game, the app or Source's logic. Give the shell a hook (a resource such as \
+        `client::AppHooks` or `debug_ui::GameDebug`, data in `core` or `map::logic_view`) that the crate \
+        above fills.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
@@ -730,7 +737,7 @@ fn workspace_crates() {
         ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         (
             "engine/client",
-            &["engine_present", "engine_sim", "source_logic", "bevy_replicon", "mashup", "cs_source", "combat_arms", "games"],
+            &["source_logic", "bevy_replicon", "mashup", "cs_source", "combat_arms", "games"],
             CLIENT,
         ),
     ];

@@ -324,7 +324,7 @@ fn init_pipeline(
         layout: vec![layout.clone()],
         vertex: fullscreen_shader.to_vertex_state(),
         fragment: Some(FragmentState {
-            shader: asset_server.load("embedded://mashup/client/hdr_tonemap.wgsl"),
+            shader: asset_server.load("embedded://engine_client/client/hdr_tonemap.wgsl"),
             targets: vec![Some(ColorTargetState {
                 format: TextureFormat::Rgba16Float,
                 blend: None,

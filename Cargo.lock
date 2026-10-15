@@ -3224,9 +3224,20 @@ name = "engine_client"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "arboard",
+ "avian3d",
  "bevy",
+ "bevy-inspector-egui",
+ "bevy_egui",
+ "dirs",
  "engine_core",
+ "engine_net",
+ "engine_present",
+ "engine_sim",
  "engine_world",
+ "image",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4667,8 +4678,6 @@ dependencies = [
  "arboard",
  "avian3d",
  "bevy",
- "bevy-inspector-egui",
- "bevy_egui",
  "bevy_replicon",
  "bevy_replicon_renet",
  "bzip2",

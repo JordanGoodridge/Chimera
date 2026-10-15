@@ -594,6 +594,24 @@ measurements):
       debug UI tabs, de_dust2, 1280x720) match before and after within
       the run-to-run noise (the version label aside). Architecture test:
       `client` lost `rules` and `objectives`.
+    - [x] (d) (2026-10-15) The rest of the shell into `engine_client`:
+      every file of `src/client/` moved whole (shaders at
+      `embedded://engine_client/client/`); the shell's `vgui` (the mouse
+      grab, `keys_live`) joined the base's (one `VguiPlugin`, its systems
+      in the same order). Decided: one crate, base and shell together,
+      on the presentation and the network (its picture settings are
+      render passes, its sound settings the mixer's, its glue the
+      network's): nothing uses the base without the shell (a game's front
+      end needs both), so a split bought no compile time; it still names
+      no Source logic, app or game (`workspace_crates`: no
+      `source_logic`, replicon, `mashup` or game). `mashup::client`
+      (src/client.rs, app glue: counted as the crate root's) re-exports
+      it, with `ClientPlugin { args }` (the shell's group with
+      `client_hooks` and CS:S's HUD), CS:S's HUD modules where the shell
+      had them, and `spectate` with the spectator's HUD. Three
+      `pub(crate)` cvar registrations became `pub`, `crc32fast` a
+      dev-dependency (only a test uses it), `profile` forwards to the
+      crate.
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`

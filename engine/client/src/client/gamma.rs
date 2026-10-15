@@ -152,7 +152,7 @@ fn init_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://mashup/client/gamma.wgsl");
+    let shader = asset_server.load("embedded://engine_client/client/gamma.wgsl");
     let pipelines = [TextureFormat::Rgba8UnormSrgb, TextureFormat::Rgba16Float].map(|format| {
         let id = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("monitor_gamma_pipeline".into()),
