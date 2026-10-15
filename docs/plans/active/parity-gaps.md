@@ -450,6 +450,9 @@ In order of impact over cost:
 
 ## Captures wanted
 
+The ones needing the CS:S client are grouped into sittings in
+[windows-captures.md](windows-captures.md).
+
 For the coordinator, on the reference client (listen server, de_dust2
 unless named; `sv_cheats 1`; bots with `bot_stop 1` as targets). Each
 says what decides the open point.

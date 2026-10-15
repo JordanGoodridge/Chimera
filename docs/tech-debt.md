@@ -112,6 +112,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Particle system operator meanings are interpretations (`chimera/present/src/render/psys.rs`)
 - map: Smoke stacks: env_particlelight not read, inputs kept as placed, the material's own lighting not applied (`chimera/present/src/render/emitters.rs`)
 - map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`chimera/world/src/map/buoyancy.rs`)
+- map, logic: Physics clips (func_clip_vphysics) from the public entity docs; ragdolls and loose items pass them (`chimera/world/src/map/physics_clip.rs`)
 - map, logic: Classes from the public entity docs only (func_water_analog, func_tanktrain, monitors, emitters...) (`source/logic/src/logic/community.rs`)
 - map, logic: Beams: placed ends only, noise and scroll by the spec's quirks, some inputs ignored (`chimera/present/src/render/beams.rs`)
 - weapon, map: Entities parented to a placed weapon: the weapon's pose is its owner's feet; riders have no collision (`source/logic/src/logic/anchors.rs`)

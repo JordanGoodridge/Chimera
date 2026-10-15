@@ -117,8 +117,13 @@ frames every 0.25 s).
   (`stripper_slide`) and on arrival in some arenas (`strippi`,
   `stripzomb`, `stripper_bw`), not in its lobby, and its "Normal" spawn
   mode goes to the lobby without a strip (so survivors walk in armed
-  there, in CS:S too). Left: other minigame maps' lobbies; compare with
-  CS:S.
+  there, in CS:S too). Checked 2026-10-15 on the other maps
+  (community-maps.md, round 6): all 29 strip triggers on the 7 mg_ maps
+  with strips fire (`heavy::map_flows::every_strip_trigger_strips`);
+  mg_lt_galaxy_v5's spawn hall strips survivors at each round start,
+  swag strips on the drop from its spawn room; the other 10 mg_ maps have
+  no strip, so survivors keep their guns there as in CS:S. Left: compare
+  galaxy's hall with CS:S on the reference server.
 
 - AK full-auto sounds choppy (user, 2026-10-11): fixed 2026-10-13, to
   playtest. `Weapon_AK47.Single` is one wave on CHAN_WEAPON at
@@ -412,7 +417,12 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   looks checked against CS:S, strike-generator env_beams, and three
   probes on the reference server (the plan's "Probes wanted": landing
   height, touch order of overlapping triggers, static props without a
-  collision model).
+  collision model). Round 6 (2026-10-15, to playtest): template copies of
+  props and physics brushes drawn, solid and shootable (hidden on 12 mg_
+  maps: block spawners, boats, karts, items, balls), func_clip_vphysics
+  (balls kept on the pitch, boats held at the start), models with odd
+  names, targeted func_wall/func_illusionary, server command lines,
+  overlay V-flip; three spec questions in the plan.
 
 ## 2b. HUD and debug views
 

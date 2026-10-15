@@ -69,6 +69,9 @@ pub enum PartKind {
     /// env_embers: embers drift through its volume while on (flag 1
     /// "Start On"; TurnOn/TurnOff/Toggle).
     Embers,
+    /// func_clip_vphysics: solid to physics objects while enabled
+    /// (StartDisabled, Enable/Disable; `map::physics_clip`).
+    PhysicsClip,
 }
 
 /// A sprite or dust volume: shown (sprites) or spawning (dust) while on.
@@ -106,7 +109,9 @@ pub(super) fn spawn_part(w: &LogicWorld, id: EntId, kind: PartKind) -> Part {
         PartKind::SmokeStack => e.kv_i("InitialState") != 0,
         PartKind::Particles => e.kv_i("start_active") != 0,
         PartKind::Tesla => false,
-        PartKind::ColorCorrection => !e.kv("StartDisabled").is_some_and(|v| v.trim_start().starts_with('1')),
+        PartKind::ColorCorrection | PartKind::PhysicsClip => {
+            !e.kv("StartDisabled").is_some_and(|v| v.trim_start().starts_with('1'))
+        }
         PartKind::Embers => e.has_flag(1),
     };
     Part {
@@ -149,12 +154,12 @@ pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str, _value: &Value) 
                 (PartKind::Sprite, "showsprite")
                 | (PartKind::Dust | PartKind::Steam | PartKind::SmokeStack, "turnon")
                 | (PartKind::Particles, "start")
-                | (PartKind::Soundscape | PartKind::ColorCorrection, "enable")
+                | (PartKind::Soundscape | PartKind::ColorCorrection | PartKind::PhysicsClip, "enable")
                 | (PartKind::Embers, "turnon") => true,
                 (PartKind::Sprite, "hidesprite")
                 | (PartKind::Dust | PartKind::Steam | PartKind::SmokeStack, "turnoff")
                 | (PartKind::Particles, "stop")
-                | (PartKind::Soundscape | PartKind::ColorCorrection, "disable")
+                | (PartKind::Soundscape | PartKind::ColorCorrection | PartKind::PhysicsClip, "disable")
                 | (PartKind::Embers, "turnoff") => false,
                 (PartKind::Sprite, "togglesprite")
                 | (PartKind::Steam | PartKind::SmokeStack, "toggle")

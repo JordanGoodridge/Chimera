@@ -543,6 +543,20 @@ impl Toggle {
         t
     }
 
+    /// func_wall (solid) and func_illusionary (never solid): still brushes
+    /// with no inputs of their own; the base ones (Kill, Color, Alpha)
+    /// show on the node a targeted one gets (`cs_source::bsp::brush_entities`).
+    pub(super) fn spawn_static(w: &mut LogicWorld, id: EntId, solid: bool) -> Toggle {
+        let e = w.get(id).unwrap();
+        let mut t = Toggle {
+            push: Pusher::at(e.origin, e.angles),
+            enabled: true,
+            solidity: if solid { 2 } else { 1 },
+        };
+        t.apply();
+        t
+    }
+
     fn apply(&mut self) {
         self.push.visible = self.enabled;
         self.push.solid = match self.solidity {

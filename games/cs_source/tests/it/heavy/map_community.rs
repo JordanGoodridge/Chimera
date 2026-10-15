@@ -48,6 +48,23 @@ fn maps_that_failed_load() {
     }
 }
 
+/// Models whose fixed 64-byte names aren't terminated or aren't UTF-8
+/// load (`props::terminate_names`): kz_hikari_od_nh_v2's bamboo,
+/// mg_kommando's sandbags, mg_creative_multigames_v8_ns's car,
+/// surf_surreal's butterflies.
+#[test]
+fn models_with_odd_names_load() {
+    for name in ["kz_hikari_od_nh_v2", "mg_kommando", "mg_creative_multigames_v8_ns", "surf_surreal"] {
+        let Some(map) = load(name) else { continue };
+        let bad: Vec<_> = map
+            .warnings
+            .iter()
+            .filter(|w| w.contains("not null-terminated") || w.contains("invalid utf-8"))
+            .collect();
+        assert!(bad.is_empty(), "{name}: {bad:#?}");
+    }
+}
+
 /// MP3 sounds packed in the map play (mg_lego_multigames_v2's music).
 #[test]
 fn packed_mp3_sounds_decode() {

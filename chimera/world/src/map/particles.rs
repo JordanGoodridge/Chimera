@@ -631,7 +631,7 @@ impl WorldTrace for WorldTracer<'_, '_> {
         let d = to - from;
         let len = d.length();
         let dir = Dir3::new(d).ok()?;
-        let filter = avian3d::prelude::SpatialQueryFilter::default();
+        let filter = avian3d::prelude::SpatialQueryFilter::default().with_mask(crate::core::NOT_SHADOW);
         self.query
             .cast_ray_predicate(from, dir, len, true, &filter, &|e| {
                 self.statics.get(e).is_ok_and(|b| b.is_static())
