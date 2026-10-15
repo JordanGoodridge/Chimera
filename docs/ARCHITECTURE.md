@@ -11,9 +11,9 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 `workspace_crates`).
 
 ```
-mashup (repository root: src/, tests/it/)   client, net, bots, CS:S's front end, tools
+mashup (repository root: src/, tests/it/)   client, net, CS:S's front end, tools
   |
-  |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules
+  |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots
   |    |
 engine_present (engine/present/)   render, audio, MapPlugin
   |    engine_sim (engine/sim/)   weapon, movement, rule_module
@@ -65,8 +65,8 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
 - `cs_source` is Counter-Strike: Source's simulation: `game` (its
   loaders, Source movement, weapons, effects, animation,
   `CsSourcePlugins`; `mashup::games::cs_source`, whose front end, `ui/`,
-  stays in `mashup` with the client shell), and CS:S's rules, `rules`
-  and `objectives` (`mashup::rules`, `mashup::objectives`: net, bots and
+  stays in `mashup` with the client shell), CS:S's rules, `rules`
+  and `objectives`, and its bots, `bot` (`mashup::rules`, ...: net and
   the client still name them). It uses the engine crates (not
   `engine_present`) and `source_formats`, never `mashup` or another
   game (checked). `cargo test -p cs_source --features dev` tests it
@@ -287,7 +287,7 @@ that the paths exist).
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `engine/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
-- `src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
+- `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
 

@@ -8,7 +8,6 @@
 //! `single_threaded_schedules`: the main world's schedules on Bevy's
 //! single-threaded executor (the game, the dedicated server, `perfgate`).
 
-pub mod bot;
 pub mod client;
 pub mod core;
 pub mod games;
@@ -41,7 +40,7 @@ pub use engine_sim::{movement, weapon};
 
 // CS:S's rules (games/cs_source: deathmatch, rounds, the bomb and the
 // hostages), at their old paths; `games::cs_source` re-exports the rest.
-pub use cs_source::{objectives, rules};
+pub use cs_source::{bot, objectives, rules};
 
 use bevy::prelude::*;
 

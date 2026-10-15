@@ -462,14 +462,20 @@ measurements):
     `map::state` (as `VisClusters` and its kin did) or their replication
     is registered by `source_logic`'s plugin. Each is its own commit
     with the network tests; (a) is the big one.
-  - `bot` (7.0k) could join `cs_source` as is (it uses only `weapon`,
-    `objectives`, `map` and the base); an engine bots framework needs
-    the bomb and hostage goals behind a bot-goal interface first.
+  - `bot` joined `cs_source` (next entry); an engine bots framework
+    (`engine_sim`) needs the bomb and hostage goals, buying and the
+    radio behind a bot-goal interface first.
   - `client` names `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`: the
     default game's install, map cycle, tick, binds, the movement cvars):
     a game registry resource the game fills would let the shell
     (`engine/client`) go below the games; the front end (`ui/`, 17.9k)
     then moves into `games/cs_source`.
+- [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
+  buying, radio, bomb and hostage goals) moved whole to
+  `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`
+  and the base); `mashup::bot` re-exports it. `mashup` keeps the client,
+  its front end (`games/cs_source/ui`), `net`, `harness`, `greybox`,
+  `games::load_map` and the binaries.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
