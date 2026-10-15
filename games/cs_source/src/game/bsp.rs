@@ -936,6 +936,21 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
         })
         .filter_map(|e| e.prop("targetname").map(|n| n.to_ascii_lowercase()))
         .collect();
+    // Names some output targets: a still brush (func_wall,
+    // func_illusionary) the logic can Kill or colour needs a node of its
+    // own to show it (mg_boatrace_scramble's projector screen,
+    // mg_creative_multigames_v8_ns's control lights).
+    let targeted: std::collections::BTreeSet<String> = bsp
+        .entities
+        .iter()
+        .flat_map(|e| {
+            e.properties()
+                .filter(|(k, _)| crate::map::entities::is_output_key(k))
+                .filter_map(|(_, v)| v.split([',', '\u{1b}']).next())
+                .map(|t| t.trim().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        })
+        .collect();
     let mut out = Vec::new();
     for (index, ent) in bsp.entities.iter().enumerate() {
         let Some(class) = ent.prop("classname") else { continue };
@@ -969,9 +984,15 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
         // de_nuke's door windows). Breakables get a node too, so they can
         // disappear.
         let parent = ent.prop("parentname").filter(|p| !p.is_empty());
+        let still_targeted = matches!(class, "func_wall" | "func_illusionary")
+            && parent.is_none()
+            && ent
+                .prop("targetname")
+                .is_some_and(|n| targeted.contains(&n.to_ascii_lowercase()));
         let mover = MOVERS.contains(&class)
             || parent.is_some_and(|p| moving_names.contains(&p.to_ascii_lowercase()))
-            || super::breakables::CLASSES.contains(&class);
+            || super::breakables::CLASSES.contains(&class)
+            || still_targeted;
         // A disabled func_brush that can toggle is drawn through its node
         // (the logic layer hides it).
         let drawn = render_mode != 10 && !(class == "func_brush" && start_disabled && !mover);

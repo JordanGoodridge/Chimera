@@ -1636,6 +1636,49 @@ fn template_copies_are_drawn_and_solid() {
     assert!(failed.is_empty(), "{failed:#?}");
 }
 
+/// Still brushes the logic targets get a node: mg_boatrace_scramble's
+/// projector screen (a func_illusionary) goes when killed (shooting the
+/// projector), mg_creative_multigames_v8_ns's control light (a func_wall)
+/// turns red by its Color input.
+#[test]
+fn targeted_still_brushes_show_their_inputs() {
+    use crate::stack::map::{BrushTint, LogicHidden, MapBrushEntity, entities::MapEntities};
+    fn node(f: &mut Flow, name: &str) -> Option<Entity> {
+        let w = f.sim.app.world_mut();
+        let ents = w.resource::<MapEntities>().entities.clone();
+        w.query::<(Entity, &MapBrushEntity)>()
+            .iter(w)
+            .find(|(_, b)| ents[b.0].get("targetname").is_some_and(|n| n.eq_ignore_ascii_case(name)))
+            .map(|(e, _)| e)
+    }
+    let fire = |f: &mut Flow, target: &str, input: &str, value: &str| {
+        f.sim.app.world_mut().resource_mut::<Logic>().world.queue_input(
+            target,
+            input,
+            crate::stack::logic::Value::Str(value.into()),
+            0.0,
+            None,
+        );
+        f.secs(0.2);
+    };
+    if let Some(mut f) = Flow::new("mg_boatrace_scramble", 1, 1) {
+        let screen = node(&mut f, "ProjectorScreen2");
+        f.check("the projector screen has a node", screen.is_some(), "");
+        fire(&mut f, "ProjectorScreen2", "Kill", "");
+        let gone = screen.is_some_and(|s| f.sim.app.world().get::<LogicHidden>(s).is_some());
+        f.check("killed: hidden", gone, "");
+        failed_now(f);
+    }
+    if let Some(mut f) = Flow::new("mg_creative_multigames_v8_ns", 1, 1) {
+        let light = node(&mut f, "autos_control_c");
+        f.check("the control light has a node", light.is_some(), "");
+        fire(&mut f, "autos_control_c", "Color", "255 0 0");
+        let tint = light.and_then(|l| f.sim.app.world().get::<BrushTint>(l).map(|t| t.0.color));
+        f.check("Color: red", tint == Some([255, 0, 0]), format!("{tint:?}"));
+        failed_now(f);
+    }
+}
+
 fn failed_now(f: Flow) {
     let failed = f.finish();
     assert!(failed.is_empty(), "{failed:#?}");
