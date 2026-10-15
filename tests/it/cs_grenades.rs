@@ -364,9 +364,9 @@ fn smoke_cloud_grows_blocks_bots_and_goes() {
     assert_eq!(cloud.grenade, Some(g));
     sim.ticks(5);
     assert_eq!(target(&sim), None, "hidden by the smoke");
-    // Gone by 22 s, with the spent grenade.
-    sim.seconds(19.0);
-    assert_eq!(clouds(&mut sim).len(), 1, "fading at 20 s");
+    // Gone by 20 s (measured), with the spent grenade.
+    sim.seconds(17.0);
+    assert_eq!(clouds(&mut sim).len(), 1, "fading at 18 s");
     sim.seconds(2.0);
     assert!(clouds(&mut sim).is_empty());
     assert!(sim.app.world().get_entity(g).is_err());
