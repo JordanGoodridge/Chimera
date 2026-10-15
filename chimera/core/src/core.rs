@@ -967,11 +967,24 @@ pub fn set_tick_length(world: &mut World, tick: std::time::Duration) {
     }
 }
 
+/// A recording plays (a game's demo playback, `playdemo`): the world
+/// shows what the recording says (its characters as puppets, their shots,
+/// sounds and effects) and decides no outcome, as a network client draws
+/// what its server sends: `authoritative` is false while it is there.
+#[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Playback;
+
 /// Run condition: this process owns the game's outcome (standalone or
 /// server; not a client, which only predicts its own player and draws
-/// what the server sends).
-pub fn authoritative(role: Option<Res<NetRole>>) -> bool {
-    role.is_none_or(|r| *r != NetRole::Client)
+/// what the server sends, nor a recording playing back, `Playback`).
+pub fn authoritative(role: Option<Res<NetRole>>, playback: Option<Res<Playback>>) -> bool {
+    role.is_none_or(|r| *r != NetRole::Client) && playback.is_none()
+}
+
+/// Run condition: others' actions arrive to be shown, not simulated: a
+/// network client, or a recording playing back (`Playback`).
+pub fn shows_others(role: Option<Res<NetRole>>, playback: Option<Res<Playback>>) -> bool {
+    role.is_some_and(|r| *r == NetRole::Client) || playback.is_some()
 }
 
 /// Whether the commands running now run for the first time (Source's

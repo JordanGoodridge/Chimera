@@ -127,4 +127,5 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - weapon: Sprays: reach, size and floor turn are well-known values and ours, unmeasured; world only; names, not pictures (`chimera/sim/src/weapon/spray.rs`)
 - map: Sprays drawn with one light value at the centre, no fog (`chimera/present/src/render/spray.rs`)
 - client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`chimera/client/src/client/night_vision.rs`)
+- games: Demo playback: bodies animated from velocity and look (CS:S demos carry no animation), no zoom, fixed sound level, map props still (`games/cs_source/src/game/demo.rs`)
 - tests: Test selection per crate, test module or feature folder: a Chimera, Source logic or CS:S sim edit still runs most tests (`checks/src/affected.rs`)

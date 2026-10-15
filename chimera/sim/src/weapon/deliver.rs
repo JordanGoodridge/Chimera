@@ -55,6 +55,7 @@ pub(super) struct World<'w, 's> {
     play: MessageWriter<'w, PlaySound>,
     first: Res<'w, FirstTimePredicted>,
     role: Option<Res<'w, NetRole>>,
+    playback: Option<Res<'w, crate::core::Playback>>,
     push_scale: Option<Res<'w, super::PushScale>>,
 }
 
@@ -80,7 +81,7 @@ impl World<'_, '_> {
     /// network client, which only predicts its own shots
     /// (`core::authoritative`).
     pub fn authoritative(&self) -> bool {
-        self.role.as_deref().is_none_or(|r| *r != NetRole::Client)
+        self.role.as_deref().is_none_or(|r| *r != NetRole::Client) && self.playback.is_none()
     }
 }
 

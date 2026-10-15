@@ -193,7 +193,8 @@ common console commands, against mashup's.
 | `impulse 100` (flashlight) | missing | L | M | `nightvision` is in (Weapons) |
 | `impulse 201` (spray), Import Spray | differs | M | M | sprays are in (see Sprays); the logo is `cl_logofile` (console), no Import Spray or picker in the options |
 | `+voicerecord` (voice chat), Voice tab | missing | M | L | players use Discord meanwhile |
-| `record`, `stop`, `playdemo`, `demoui` | missing | L | L | no demos |
+| `playdemo` | have (differs) | L | L | CS:S demos as puppets (`game::demo`, `ui::demo`), `demo_timescale`, `demo_pause`, `demo_gototick`, `stopdemo`; animation from velocity, no zoom (tech-debt) |
+| `record`, `stop`, `demoui` | missing | L | L | no recording; `demoui` panel missing (console commands instead) |
 | `fps_max` | have (fixed) | L | S | 300 as CS:S (`client::perf::FrameLimit`); off under `--bench` |
 | `timeleft` | have (fixed) | L | S | with `mp_timelimit` |
 | `users`, `ping` | have (fixed) | L | S | Source's layouts (`net::users_text`, `ping_text`) |
