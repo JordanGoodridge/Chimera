@@ -404,6 +404,13 @@ measurements):
   `mashup::logic`. The layering table covers source/logic/src;
   `workspace_crates` keeps it off `engine_present`, `mashup` and the
   games. Spawn dump identical on the five maps modulo moved paths.
+- [x] (3) `engine/sim` (package `engine_sim`, 2026-10-14): `weapon`,
+  `movement` (placeholder, noclip) and `rules::module` (as
+  `rule_module`: the `RuleModule` registry, `pick`, `mashup_rules`)
+  moved whole; they use only the engine crates. `mashup` re-exports
+  `weapon` and `movement` at their old paths and `rules::module` as
+  before; `rule_module::plugin` became `pub` (rules adds it). Spawn dump
+  identical on the five maps modulo moved paths.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

@@ -50,8 +50,10 @@
 //! docs/plans/active/parity-gaps.md.
 
 pub mod game_end;
-pub mod module;
 pub mod rounds;
+
+// The rule-module interface (engine/sim), at its old path.
+pub use engine_sim::rule_module as module;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

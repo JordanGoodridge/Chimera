@@ -3221,6 +3221,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_sim"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "engine_core",
+ "engine_world",
+ "postcard",
+ "serde",
+]
+
+[[package]]
 name = "engine_world"
 version = "0.1.0"
 dependencies = [
@@ -4609,6 +4621,7 @@ dependencies = [
  "dirs",
  "engine_core",
  "engine_present",
+ "engine_sim",
  "engine_world",
  "half",
  "igd-next",

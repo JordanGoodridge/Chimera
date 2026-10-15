@@ -36,6 +36,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // `render`), its systems in `core`'s sets.
     ("map_plugin", &["core", "map", "audio", "render"]),
     ("weapon", &["core", "console", "map"]),
+    // The rule-module interface (engine/sim): a game registers its modes
+    // by name; `rules::module` at its old path.
+    ("rule_module", &["console"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
     ("objectives", &["core", "console", "slots", "character", "map", "weapon"]),
@@ -164,7 +167,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
 
 /// The crates' source folders cut out of `mashup`, scanned with `src/`
 /// (their modules keep their names in `ALLOWED`).
-const CRATE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src", "source/logic/src"];
+const CRATE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src", "engine/sim/src", "source/logic/src"];
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -380,6 +383,7 @@ fn simulation_builds_no_drawn_parts() {
         "objectives",
         "bot",
         "movement",
+        "rule_module",
         "games",
     ];
     let mut files = Vec::new();
@@ -685,6 +689,9 @@ fn workspace_crates() {
     const PRESENT: &str = "is the engine's presentation (docs/ARCHITECTURE.md, \"Crates\"): it draws \
         and plays the map, and games build on it. Move the piece that needs the game up into `mashup`, or \
         give the presentation a hook (a registry, a drawn-part request, a resource) that the game fills.";
+    const SIM: &str = "is the simulation's frameworks (docs/ARCHITECTURE.md, \"Crates\"): the games \
+        fill them and sit above them. Move the piece that needs the game up into `mashup`, or give the \
+        framework a hook (a registry, a trait, data) that the game fills.";
     const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
         on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
         plain data or give it a hook (a registry, a resource) that the crate above fills.";
@@ -693,6 +700,7 @@ fn workspace_crates() {
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
         ("engine/world", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
         ("engine/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
+        ("engine/sim", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
         ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
     ];
     for (krate, forbidden, why) in FORBIDDEN {

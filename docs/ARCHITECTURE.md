@@ -14,8 +14,9 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 mashup (repository root: src/, tests/it/)   the game, engine and tools
   |
 engine_present (engine/present/)   render, audio, MapPlugin
-  |                 source_logic (source/logic/)   logic: Source entity I/O
-  |                /
+  |    engine_sim (engine/sim/)   weapon, movement, rule_module
+  |    |    source_logic (source/logic/)   logic: Source entity I/O
+  |    |   /
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
@@ -50,6 +51,13 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   `render` and `audio` at their old paths. An edit in it rebuilds it and
   `mashup`, not the map; an edit in `mashup` rebuilds neither.
   `cargo test -p engine_present --features dev` tests it alone.
+- `engine_sim` is the simulation's frameworks: `weapon` (the weapon
+  system), `movement` (the movement slot's placeholder and noclip) and
+  `rule_module` (the rule-module interface, `mashup::rules::module`).
+  They name no game; games fill them. It uses `engine_world` and
+  `engine_core`, never the presentation, `mashup` or a game (checked);
+  `mashup` re-exports them at their old paths. `cargo test -p engine_sim
+  --features dev` tests it alone.
 - `source_logic` is Source's map logic (`logic`: entity I/O, logic
   classes, triggers, movers, breakables, props, fire, the bridge to the
   map's entities). It uses `engine_world` and `engine_core`, never the
@@ -158,7 +166,7 @@ that the paths exist).
 - `engine/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
 - `engine/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `engine/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
-- `src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
+- `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
@@ -262,10 +270,10 @@ that the paths exist).
 ### Simulation above map (logic, weapon, objectives, rules, bot)
 
 - `source/logic/src/logic/`: Source map logic (crate `source_logic`): entity I/O, triggers, movers, breakables, props, fire, the bridge (logic)
-- `src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
+- `engine/sim/src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
 - `src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
-- `src/rules/module.rs`: rule modules a game registers by name; `mashup_rules` (rules)
+- `engine/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
 - `src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
