@@ -21,7 +21,7 @@ left is at the end.
 
 State machines the dialogs' models hold (unit-tested in
 `client::widgets`, the dialogs driven by scripted input in
-`tests/it/menus.rs`):
+`games/cs_source/tests/ui/menus.rs`):
 
 | VGUI | Ours | Behaviour |
 |---|---|---|

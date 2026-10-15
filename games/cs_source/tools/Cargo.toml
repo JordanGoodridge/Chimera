@@ -15,7 +15,7 @@ doctest = false
 # `SimPlugins` with Source's logic, the headless harness, map loading by
 # id; with `present`, as refcmp and perfgate run the map's drawing
 # registration too), Chimera's and Source's tools; never `mashup` or
-# another game (tests/it/architecture.rs checks it). Known shortcut: the
+# another game (checks/tests/it/architecture.rs checks it). Known shortcut: the
 # harness is the app's, so these game tools sit on the CS:S app
 # (docs/tech-debt.md).
 [dependencies]

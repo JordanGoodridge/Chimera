@@ -48,7 +48,7 @@
 //! ladder (normal +z) stuck you there (the climb velocity along a vertical
 //! normal left only sideways movement looking down, and a jump added the 270
 //! jump-off push to the jump). Before: 36 ladder tops on the stock maps grabbed
-//! you (`tests/it/heavy/map_ladders.rs`), now 0. Confirmed in the CS:S client
+//! you (`apps/cs_source/tests/it/heavy/map_ladders.rs`), now 0. Confirmed in the CS:S client
 //! (2026-10-10, feet at (1607, -114, -136) on de_train's ladder top, pitch 30
 //! down): forward walks off the top, a jump is a normal 302 one. Climbing
 //! ladder steps share the ground's step timer (sounds spec 3), so a short climb

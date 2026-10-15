@@ -6,7 +6,7 @@ One line per entry: the area, the shortcut, and where its detail lives.
 The detail (what exactly, and why it is OK for now) is in that file's
 `//!` doc under "Known shortcuts"; change it there with the code, and
 remove both when the debt is paid. Short entries carry their reason
-inline. Keep each line short (`tests/it/architecture.rs` checks).
+inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 
 - cs_source movement: Two deliberate departures from Source's box trace so surfing works (no rampbug stops) (`games/cs_source/src/game/movement.rs`)
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`games/cs_source/src/game/material.rs`)

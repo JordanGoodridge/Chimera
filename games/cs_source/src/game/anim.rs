@@ -20,7 +20,7 @@
 //! straight up and down (and crouched with a Galil), comparing where the
 //! magazine sits; if CS:S slides it too, put this behind an option. Why it's OK
 //! for now: The magazine stays under the gun at every pitch
-//! (tests/it/animation.rs).
+//! (games/cs_source/tests/it/animation.rs).
 
 use std::collections::HashMap;
 

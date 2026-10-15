@@ -12,7 +12,7 @@ license.workspace = true
 doctest = false
 
 # Bevy and physics (and the formats, for `mount`), never `mashup` or a
-# game (tests/it/architecture.rs checks it). Same versions and features as the game's (workspace
+# game (checks/tests/it/architecture.rs checks it). Same versions and features as the game's (workspace
 # dependencies), so `cargo test -p chimera_core` reuses the game's builds.
 [dependencies]
 # Bevy's development features (`dev`, `profile`).

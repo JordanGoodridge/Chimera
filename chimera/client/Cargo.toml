@@ -14,7 +14,7 @@ doctest = false
 # The engine's crates: its base, map data (HUD layouts, schemes), the
 # simulation's frameworks (weapons, movement), the presentation (render
 # passes, sound) and the network; never `mashup`, Source's logic or a game
-# (tests/it/architecture.rs checks it). Same versions and features as the
+# (checks/tests/it/architecture.rs checks it). Same versions and features as the
 # game's (workspace dependencies), so `cargo test -p chimera_client` reuses
 # the game's builds.
 [dependencies]

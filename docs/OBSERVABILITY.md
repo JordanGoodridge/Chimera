@@ -5,7 +5,7 @@ Prefer them, in this order, over asking a human to look.
 
 ## 1. Headless scenario tests (fastest, most precise)
 
-`cargo test` runs `tests/it/movement.rs` and friends on `harness::Sim`: no
+`cargo test` runs `apps/cs_source/tests/it/movement.rs` and friends on `harness::Sim`: no
 window, time advanced by exact fixed ticks, `Intent` driven directly.
 
 ```rust
@@ -24,10 +24,10 @@ checked against Bevy's extraction with `harness::emulate_mesh_extraction`
 (each frame it takes a `RENDER_WORLD`-only mesh's data as the render world
 does; `MeshExtraction::failures` lists meshes announced changed after their
 data was gone, which a real run logs as "cannot be extracted: The asset has
-already been extracted"; `tests/it/prop_shadows.rs` uses it).
+already been extracted"; `apps/cs_source/tests/it/prop_shadows.rs` uses it).
 
 Integration tests are one test crate, so the game links once for all of
-them (docs/performance.md, "Test cycle"): `tests/it/main.rs` lists each
+them (docs/performance.md, "Test cycle"): `apps/cs_source/tests/it/main.rs` lists each
 file as a module. A new test file goes in `tests/it/` with a `mod name;`
 line there, or in `tests/it/heavy/` (inside `mod heavy { }`) when it loads
 real maps from the install or simulates long (bot rounds). A file directly
@@ -122,7 +122,7 @@ every schedule's systems in the order they run, the main world's then the
 render world's, to the file instead of running. Dump before and after a
 refactor that moves the client's plugins or systems and `diff` the files
 (names differ by their module paths); the simulation's own order on real
-maps is `tests/it/heavy/map_spawn_dump.rs` (`MASHUP_SPAWN_DUMP`).
+maps is `apps/cs_source/tests/it/heavy/map_spawn_dump.rs` (`MASHUP_SPAWN_DUMP`).
 
 To photograph a live run step by step (e.g. before and after a round
 restart, where frame counts are too uncertain), run the game without
@@ -187,7 +187,7 @@ Only `Reflect`-registered types are visible; register new core components in
   `+openserverbrowser lan +wait 30 +vgui_windows servers 40 30 760 520`.
   The widget state machines (drop-down, slider, text entry, Tab order,
   frame drags and stacking) are unit-tested in `client::widgets`, the
-  dialogs driven by scripted input in `tests/it/menus.rs`. Cvars it shows are read
+  dialogs driven by scripted input in `games/cs_source/tests/ui/menus.rs`. Cvars it shows are read
   when it opens: put `+cl_crosshaircolor 3` before `+menu`. The log
   line `game menu: GameUI look (...)` says the install's look loaded,
   with how many main menu backgrounds and the title it found (else the
@@ -211,7 +211,7 @@ Only `Reflect`-registered types are visible; register new core components in
   `settings.toml`, then `--window 1280x720 --screenshot fr.png`;
   `+mashup_firstrun type <folder>` types into it, `+mashup_firstrun
   retry` presses Retry. Discovery is unit-tested with fake Steam trees
-  (`mount::install`), and `tests/it/mount_install.rs` mounts an install
+  (`mount::install`), and `games/cs_source/tests/it/mount_install.rs` mounts an install
   found through one.
 - Fonts: the startup log line `fonts: tahoma -> tahoma.ttf, ...` says
   which file each scheme family resolved to (`(stand-in)` when the
@@ -226,8 +226,8 @@ Only `Reflect`-registered types are visible; register new core components in
   +wait 30 +buymenu 4` (the `wait` lets the map's HUD and menu layouts
   load first, so the game-look pages are used). Their key and button
   logic is tested headless in `games::cs_source::ui::buy_menu` and `games::cs_source::ui::team_menu`
-  (the join flow's in `tests/it/join_flow.rs`);
-  `tests/it/heavy/map_de_dust2.rs` checks the install's layouts load.
+  (the join flow's in `apps/cs_source/tests/it/join_flow.rs`);
+  `apps/cs_source/tests/it/heavy/map_de_dust2.rs` checks the install's layouts load.
 - `ent_fire <target> <input> [value]` sends a map entity an input through
   the logic layer (names, `*` wildcards, classnames; the local player is
   the activator), e.g. `+wait 30 +ent_fire logic_timer Disable +ent_fire
@@ -278,7 +278,7 @@ Only `Reflect`-registered types are visible; register new core components in
   the nav areas, links, ladders, ladder brushes and entities (breakables
   with their keyvalues) around it (engine meters, as the report prints
   them; `MASHUP_NAV_BRUSHES=1` also lists every collision brush within
-  1 m, e.g. player clip flush with a ladder's face); add a case to `tests/it/heavy/bot_nav.rs` (a lone bot sent from a start
+  1 m, e.g. player clip flush with a ladder's face); add a case to `apps/cs_source/tests/it/heavy/bot_nav.rs` (a lone bot sent from a start
   to a goal, `MASHUP_BOT_CASE=<name>` to run one, `MASHUP_BOT_TRACE=0`
   for every tick of its intent, ladder and ground state), and try raw
   inputs with `probe_walk` (`P_AT=x,y,z P_OPT=yaw,crouch,jump,seconds,
@@ -305,12 +305,12 @@ Only `Reflect`-registered types are visible; register new core components in
   death cam turns to it, then the freeze cam (0.4 s toward it, the
   picture held 4 s with the freeze sound and panel; `cl_disablefreezecam
   1` skips it, `spec_freeze_traveltime`/`spec_freeze_time` time it;
-  `tests/it/spectate.rs`). The target ID (the name under the
+  `apps/cs_source/tests/it/spectate.rs`). The target ID (the name under the
   crosshair; `hud_centerid`, `mp_playerid`) is the `TargetId`
-  resource (`tests/it/target_id.rs`). Drive it
+  resource (`apps/cs_source/tests/it/target_id.rs`). Drive it
   with `spec_mode 4|5|6` (first person, chase, free look), `spec_next`
   and `spec_prev`, `mp_forcecamera 0` to watch enemies too; the state is
-  the `Spectator` resource (`tests/it/spectate.rs` drives it headless).
+  the `Spectator` resource (`apps/cs_source/tests/it/spectate.rs` drives it headless).
   The spectator bars on a real map: `--map cs_source:de_dust2 --window
   1280x720 --screenshot spec.png --frames 400 +mashup_rounds 1
   +mp_freezetime 0 +bot_add 2 +bot_add 2 +wait 60 +mashup_hurtme chest
@@ -318,15 +318,15 @@ Only `Reflect`-registered types are visible; register new core components in
   watched in first person, with their crosshair). The spectator team:
   `+spectate` (or `+jointeam 1`) flies free at once; `spec_player <name>`
   watches one; pressing duck opens the spectator menu; the scoreboard lists
-  spectators (`tests/it/spectate.rs::the_spectator_team`, over the
-  network `tests/it/net_rules.rs::a_client_spectates_then_joins_a_team`).
+  spectators (`apps/cs_source/tests/it/spectate.rs::the_spectator_team`, over the
+  network `apps/cs_source/tests/it/net_rules.rs::a_client_spectates_then_joins_a_team`).
   `spec_menuinput <options|players|view> [entry [subentry]]` opens the
   spectator menu's drop-down (screenshots) or picks an entry (0 first):
   `--map cs_source:de_dust2 --window 1280x720 --frames 400 --screenshot
   s.png +wait 30 +bot_add 1 +bot_add 2 +spectate +wait 120 +overview_mode 1
   +spec_menuinput options 2` shows Options with its Overview submenu over
   the small map (`overview_mode 2`, `overview_zoom 2`: the large one);
-  `tests/it/spectate.rs::the_spectator_menu_picks_the_camera_player_and_overview`.
+  `apps/cs_source/tests/it/spectate.rs::the_spectator_menu_picks_the_camera_player_and_overview`.
 - Scoreboard: `++showscores` holds it from the start (`--map
   cs_source:de_dust2 --window 1280x720 --screenshot sb.png +bot_add 1
   +bot_add 2 ++showscores`); a dead player shows the skull icon,
@@ -380,7 +380,7 @@ Only `Reflect`-registered types are visible; register new core components in
   release; a `setang` to another direction after the flash shows the
   frozen frame over the new view. Hearing (muffle, ringing) can't be
   photographed: `audio::hearing::Hearing` and its tests
-  (`cargo test --lib hearing`) show the curves; `tests/it/cs_grenades.rs`
+  (`cargo test --lib hearing`) show the curves; `apps/cs_source/tests/it/cs_grenades.rs`
   checks which effect each blast or flash gives.
 - `mashup_healthbars 1` draws a health bar over every other living
   character (green full, red nearly dead), e.g. to watch damage land in a
@@ -502,7 +502,7 @@ server holds 27015: never bind it there.** Use another port for every run
 
 Headless first: `harness::NetSim` runs a server and N clients in one
 process over an in-memory link (`net::memory`) with seeded latency, jitter
-and loss, stepped tick by tick (`tests/it/net.rs`):
+and loss, stepped tick by tick (`apps/cs_source/tests/it/net.rs`):
 
 ```rust
 let mut sim = NetSim::new(LinkConditions { latency: Duration::from_millis(30), ..default() }, 1, 2, |app| {
@@ -523,7 +523,7 @@ leave (ids are never given out again, as real clients' random ones
 aren't); the link counts the data bytes it carried to and from each
 client (`Link::bytes_to`, `bytes_from`: bandwidth per client).
 
-Prediction (`tests/it/net_prediction.rs`): a client's `net::predict::NetGraph`
+Prediction (`apps/cs_source/tests/it/net_prediction.rs`): a client's `net::predict::NetGraph`
 counts the server states it compared (`checked`), the ones that differed
 from its prediction (`errors`, `last_error`/`worst_error` in m, which
 components differed in the last one: `last_differing`, at server tick
@@ -538,7 +538,7 @@ component to see what differs (the soak's `MASHUP_SOAK_DIAGNOSE`
 decodes positions and velocities). `cargo test --features dev --test it net_prediction
 -- --nocapture` prints the numbers per latency, jitter and loss.
 
-**Soak** (`tests/it/heavy/net_soak.rs`, multiplayer.md "Soak"): a
+**Soak** (`apps/cs_source/tests/it/heavy/net_soak.rs`, multiplayer.md "Soak"): a
 server on de_dust2 with four clients on their own links (0, 50, 150 ms
 with 2 % loss, 300 ms with 5 % loss; one leaves, another joins), bots
 filling to twelve, scripted players (walking, shooting, buying,
@@ -565,7 +565,7 @@ client by step. It prints the summary tables (`cargo test --features dev
 --test it heavy::net_soak -- --nocapture`; ~1 real minute per game minute
 in the dev build).
 
-**Capacity** (`tests/it/heavy/net_capacity.rs`, multiplayer.md
+**Capacity** (`apps/cs_source/tests/it/heavy/net_capacity.rs`, multiplayer.md
 "Capacity"): a de_dust2 server full of players (32: a few `NetSim`
 clients, bots for the rest; deathmatch, so everyone is alive and
 moving) measured for 20 game seconds after a 10 s warm-up: the server's
@@ -609,7 +609,7 @@ through `mashup/console` (`+forward`/`-forward`, `setang`, `+attack`,
 `/proc/<pid>/status`; then grep the logs for `WARN`, `ERROR` and `hitch:`
 and read the server's `status` (missed commands per player).
 
-Interpolation and movers (`tests/it/net_interp.rs`, at 240 frames a
+Interpolation and movers (`apps/cs_source/tests/it/net_interp.rs`, at 240 frames a
 second with `NetSim::set_frame(1.0 / 240.0)`): `net::interp::InterpClock`
 has the render tick others are drawn at (fractional, server ticks) and
 the delay; `net::interp::Snapshots<NetBody>` on another player's character
@@ -622,7 +622,7 @@ teleports snapped, and `carried` (ticks the client's mover step pushed
 its own player). `cargo test --features dev --test it net_interp --
 --nocapture` prints the off-path, per-frame step and error numbers.
 
-Weapons (`tests/it/net_weapons.rs`, `tests/it/heavy/map_net_weapons.rs`):
+Weapons (`apps/cs_source/tests/it/net_weapons.rs`, `apps/cs_source/tests/it/heavy/map_net_weapons.rs`):
 what a client's player carries is part of the predicted state
 (`PredictedComponents::encode` includes `weapon::sync`'s blob), so the
 prediction checks above cover clips, timers, punch and zoom too. On the
@@ -640,7 +640,7 @@ moved); the server's `status` ends with a `lagcomp:` line. `cargo test
 without compensation, rewind times, prediction errors while firing and
 the pellet comparison.
 
-Rules (`tests/it/net_rules.rs`): a client's `RoundState`, `BuyWindow`,
+Rules (`apps/cs_source/tests/it/net_rules.rs`): a client's `RoundState`, `BuyWindow`,
 `BombState`, `HostageTally`, `PlantedBomb` and its own `Money` are the
 server's, with times on the client's fixed clock: compare a time left
 (e.g. `RoundState::clock`, `PlantedBomb::explode_at` less
@@ -717,7 +717,7 @@ the install's botprofile.db at `bot_difficulty` (0-3; `bot_prefix`),
 `listening on UDP ...`, `<name> joined`, `<name> left`, `disconnected:
 <reason>`.
 
-Bots (`tests/it/net_bots.rs`): `bot_add`, `bot_kick [name]`, `bot_quota
+Bots (`apps/cs_source/tests/it/net_bots.rs`): `bot_add`, `bot_kick [name]`, `bot_quota
 <n>` and `bot_quota_mode normal|fill|match` on the server's console (a
 client is refused: `console::SERVER_COMMANDS`); `bot::BotQuota` has the
 quota, and a server keeps it (fill counts the host and remote players).
@@ -728,7 +728,7 @@ radio as `RadioCall`. `cargo test --features dev --test it net_bots --
 --nocapture` prints what each client saw and the server's frame time
 with ten bots and two clients.
 
-Maps (`tests/it/net_maps.rs`): tests build maps in code from a folder of
+Maps (`apps/cs_source/tests/it/net_maps.rs`): tests build maps in code from a folder of
 files standing for an install (`harness::TestMaps`, `serve_maps`; a map
 id `test:<name>`, the file any bytes, hashed like a .bsp);
 `harness::begin_level_change` then `harness::load_level` on the server is
@@ -779,7 +779,7 @@ IGD, `net::upnp`): `status` shows `upnp : UDP <port> forwarded by
 router <ip>; friends connect to <public>:<port>`, why it failed, or a
 warning when the router's outside address is itself private (CGNAT);
 the mapping goes when serving stops. Tests use a fake router
-(`tests/it/net_upnp.rs`): never try it against this box's network.
+(`apps/cs_source/tests/it/net_upnp.rs`): never try it against this box's network.
 docs/plans/active/nat-traversal.md has the other options (Steam
 networking needs an app id of our own). The host's upload carries every client: about
 10-13 KB/s (~0.1 Mbit/s) each with twelve characters at the default
@@ -793,7 +793,7 @@ with `rate` (bytes a second) and `cl_updaterate`, the host with
 games must be the same build (`status` shows the version); another build
 is refused with a message.
 
-**Finding games** (slice 8; `tests/it/net_query.rs`). Every server
+**Finding games** (slice 8; `apps/cs_source/tests/it/net_query.rs`). Every server
 answers info queries on its own port (`net::query`, A2S_INFO's layout):
 `serverinfo <ip[:port]> ...` prints name, map, players/max (bots), ping,
 dedicated or listen, password; `lanscan` lists servers on the LAN
@@ -1022,7 +1022,7 @@ and keys typed into its fields don't reach binds.
 - Cvars: every cvar, searchable, "changed only", edited in place (Enter
   sets it), reset to default; matching commands with their help.
 
-Headless: `tests/it/debug_ui.rs` opens it, walks the tabs and runs the
+Headless: `apps/cs_source/tests/it/debug_ui.rs` opens it, walks the tabs and runs the
 lines its tabs run in a `Sim` (`DebugUiStatePlugin`).
 
 ## 4. Logs
@@ -1106,7 +1106,7 @@ of a minigame map sets off).
 
 The committed summary is in docs/plans/active/community-maps.md.
 
-Minigame maps' flows end to end: `tests/it/heavy/map_flows.rs` plays
+Minigame maps' flows end to end: `apps/cs_source/tests/it/heavy/map_flows.rs` plays
 each cached mg_ map headless (the whole game, rounds on) with scripted
 characters on both teams (`Flow`: `press` +uses an entity from each
 side until it fires, `touch` stands players in a trigger, `kill`,
@@ -1122,7 +1122,7 @@ names contain those. A live check of the same steps: run the game with
 `screenshot` over the remote console.
 
 Course maps (surf_, bhop_, kz_) and gungame arenas (gg_):
-`tests/it/heavy/map_courses.rs` plays each cached one with a scripted
+`apps/cs_source/tests/it/heavy/map_courses.rs` plays each cached one with a scripted
 player (one test per map, the same `Flow` and table) and checks, from
 the map's own entities: spawns; every trigger_teleport (stood in with
 the name or class its filter wants: lands on the destination the same
@@ -1236,7 +1236,7 @@ cargo run --features dev,tools --bin refcmp -- hudcmp --out <scratch> --hud-ref 
   red, ours green) go to `<out>/hud/report/`. Different text (the clock,
   ammo counts) still lines up by its left or right edge.
 - The measured reference rectangles are numbers in
-  `tests/it/heavy/hud_layout.rs`, checked against `game_hud::layout`,
+  `games/cs_source/tests/ui/heavy/hud_layout.rs`, checked against `game_hud::layout`,
   `weapon_select::selection_layout` and `history_layout` through
   `hud_text::ink_rect` (no images needed).
 

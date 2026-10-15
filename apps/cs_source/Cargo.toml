@@ -37,6 +37,22 @@ avian3d.workspace = true
 bevy.workspace = true
 workspace-hack.workspace = true
 
+# The tests' own crates: the network's (bevy_replicon's client side, the
+# netcode client), wire formats and compressed map downloads, BSP files.
+[dev-dependencies]
+bevy_replicon.workspace = true
+bevy_replicon_renet.workspace = true
+bzip2.workspace = true
+postcard.workspace = true
+vbsp.workspace = true
+
+# The integration tests (tests/it/: scenario tests on the harness and the
+# greybox, `heavy::` on real maps) drive the game with its presentation.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+required-features = ["present"]
+
 # The game: its window, the presentation, the client shell and CS:S's
 # front end (`--no-default-features` leaves them out).
 [[bin]]

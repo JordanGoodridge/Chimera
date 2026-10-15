@@ -16,12 +16,14 @@ slow-timeout = { period = "120s", terminate-after = 10 }
 # Five heavy tests at once (~6 GB typical); the big ones take more slots.
 heavy = { max-threads = 5 }
 
-# Overrides apply first match first, per setting.
+# Overrides apply first match first, per setting. Tests are named by test
+# binary (`binary_id(<package>::<binary>)`: each crate's tests/it/ is its
+# `it`) and module path (`heavy::<file>::<test>`).
 
 # The soak: 6.6 GB, and the longest test; start it first so it doesn't end
 # the run alone.
 [[profile.default.overrides]]
-filter = 'test(/^heavy::net_soak::/)'
+filter = 'binary_id(cs_source_app::it) & test(/^heavy::net_soak::/)'
 test-group = 'heavy'
 threads-required = 3
 priority = 100
@@ -29,7 +31,7 @@ priority = 100
 # The capacity test: a server and four clients like the soak, 32
 # characters; weighted like it until measured on its own.
 [[profile.default.overrides]]
-filter = 'test(/^heavy::net_capacity::/)'
+filter = 'binary_id(cs_source_app::it) & test(/^heavy::net_capacity::/)'
 test-group = 'heavy'
 threads-required = 3
 priority = 95
@@ -37,30 +39,34 @@ priority = 95
 # Heavy tests that peak at 3-5 GB take two slots.
 [[profile.default.overrides]]
 filter = '''
-test(/^heavy::map_stock::water_materials$/)
-| test(/^heavy::map_surf::/)
+(binary_id(cs_source::it) & test(/^heavy::map_stock::water_materials$/))
+| binary_id(cs_source_app::it) & (
+test(/^heavy::map_surf::/)
 | test(/^heavy::map_community::(other_rooms_items_and_water_are_culled_on_creative_multigames|moving_water_is_culled_on_jacks)$/)
 | test(/^heavy::map_brush_entities::brush_entities_(draw_merged_until_they_change|share_materials)$/)
 | test(/^heavy::map_net_weapons::/)
 | test(/^heavy::map_visuals::detail_props_load$/)
 | test(/^heavy::map_brush_decals::/)
 | test(/^heavy::map_ladders::/)
+)
 '''
 test-group = 'heavy'
 threads-required = 2
 
 # de_nuke's ladder tests climb in several worlds at once (threads): 6 GB.
 [[profile.default.overrides]]
-filter = 'test(/^heavy::map_de_nuke::/)'
+filter = 'binary_id(cs_source_app::it) & test(/^heavy::map_de_nuke::/)'
 test-group = 'heavy'
 threads-required = 3
 
 # The long ones (over a minute alone) start early.
 [[profile.default.overrides]]
-filter = 'test(/^heavy::map_courses::(kz_bhop_izanami|kz_bhop_skodna|bhop_myztek)$/)'
+filter = 'binary_id(cs_source_app::it) & test(/^heavy::map_courses::(kz_bhop_izanami|kz_bhop_skodna|bhop_myztek)$/)'
 test-group = 'heavy'
 priority = 90
 
+# Every crate's heavy tests (`heavy::` in its test binaries: cs_source_app's
+# and cs_source's today) share the slots.
 [[profile.default.overrides]]
 filter = 'test(/^heavy::/)'
 test-group = 'heavy'

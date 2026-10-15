@@ -2555,6 +2555,7 @@ dependencies = [
  "chimera_world",
  "half",
  "image",
+ "source_formats",
  "workspace-hack",
 ]
 
@@ -3062,9 +3063,11 @@ dependencies = [
  "chimera_present",
  "chimera_sim",
  "chimera_world",
+ "crc32fast",
  "half",
  "image",
  "serde",
+ "serde_json",
  "sha2",
  "source_formats",
  "source_logic",
@@ -3082,6 +3085,9 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet",
+ "bzip2",
  "chimera_client",
  "chimera_core",
  "chimera_net",
@@ -3089,8 +3095,10 @@ dependencies = [
  "chimera_sim",
  "chimera_world",
  "cs_source",
+ "postcard",
  "source_formats",
  "source_logic",
+ "vbsp",
  "workspace-hack",
 ]
 
@@ -4757,7 +4765,6 @@ dependencies = [
  "bevy_replicon",
  "bevy_replicon_renet",
  "bzip2",
- "crc32fast",
  "cs_source",
  "cs_source_app",
  "dirs",
@@ -6350,6 +6357,14 @@ checksum = "76bed9d6d190d20804b5645511932fef803145520ef4eb76d5e4b5a841980eac"
 dependencies = [
  "chacha20poly1305",
  "log",
+]
+
+[[package]]
+name = "repo_checks"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -8621,6 +8636,7 @@ dependencies = [
  "regex-syntax",
  "ron",
  "serde_core",
+ "serde_json",
  "slotmap",
  "smallvec",
  "syn 2.0.119",

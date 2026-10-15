@@ -4,7 +4,7 @@
 //! (apps/cs_source_server), the tools that drive the simulation and the
 //! integration tests (`mashup`, the repository root, re-exports this crate
 //! at the old `mashup::` paths). Module layering is documented in
-//! docs/ARCHITECTURE.md and enforced by tests/it/architecture.rs.
+//! docs/ARCHITECTURE.md and enforced by checks/tests/it/architecture.rs.
 //!
 //! `SimPlugins` (everything the simulation needs), `swap_map` (a map in place
 //! of the one playing, without the view: the dedicated server's `changelevel`,

@@ -36,7 +36,7 @@ This file is a map. Follow the links for detail; keep it short.
 - Scope: first-person games only; CS:S and Combat Arms first.
 
 `cargo test` enforces layering, the asset rule, the spec rule and this file's
-links (`tests/it/architecture.rs`). Its failure messages say how to fix things.
+links (`checks/tests/it/architecture.rs`). Its failure messages say how to fix things.
 
 ## Commands
 

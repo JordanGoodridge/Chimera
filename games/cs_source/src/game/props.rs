@@ -679,7 +679,7 @@ fn convert_model_in(
         // blade and handle have normals against the winding on about half
         // their triangles (smoothed thin parts), and a majority vote over
         // the mesh turned it inside out; every other CS:S model already
-        // agreed with the file. `tests/it/heavy/map_de_dust2.rs`
+        // agreed with the file. `apps/cs_source/tests/it/heavy/map_de_dust2.rs`
         // (`view_models_face_outward`) checks the knives.
         for (tri, tri_id) in tris.iter().zip(tri_ids) {
             let p: Vec<Vec3> = tri.iter().map(|t| place(t)).collect();

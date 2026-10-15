@@ -100,7 +100,7 @@ whole crate.
 ### 1.3 Dependencies between modules
 
 The top-level layering (docs/ARCHITECTURE.md, enforced by
-`tests/it/architecture.rs`'s `ALLOWED`) holds: no violations, no cycles
+`checks/tests/it/architecture.rs`'s `ALLOWED`) holds: no violations, no cycles
 between top-level modules. `crate::` references by edge (refs / files):
 
 ```
@@ -168,7 +168,7 @@ measured a `lib.rs` touch at 26 s at load 14); the ratios are the point.
 | a new `pub fn` in `client/window_icon.rs` (leaf) | 318 s | 260 s | 140 s | 39 s | 1-27 s each |
 | a new `pub fn` in `core.rs` (root) | 189 s | 153 s | 24 s | 21 s | 10-14 s each |
 | both reverted | 273 s | 211 s | 31 s | 42 s | 1-18 s each |
-| one test file (`tests/it/teams.rs`) | 39 s | - | - | 36 s | - |
+| one test file (`apps/cs_source/tests/it/teams.rs`) | 39 s | - | - | 36 s | - |
 | `cargo build --features dev --bin mashup` after a leaf body change | 83 s | 63 s | - | - | 19 s (`mashup`) |
 
 What this says:

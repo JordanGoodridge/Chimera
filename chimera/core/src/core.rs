@@ -1533,7 +1533,7 @@ pub fn start_tick(mut tick: ResMut<SimTick>, mut clock: ResMut<SimClock>, time: 
 /// network client's replay, which runs no physics. So the outcome of a
 /// tick hung on the physics' sleep state, which a server and its client
 /// don't share (found by the soak: a respawned player mispredicted by
-/// micrometres on each tick for half a second; tests/it/net_prediction.rs,
+/// micrometres on each tick for half a second; apps/cs_source/tests/it/net_prediction.rs,
 /// `a_float_step_below_the_physics_tolerance_is_predicted`).
 ///
 /// A change marks it changed, as the physics' own sync would (it wakes

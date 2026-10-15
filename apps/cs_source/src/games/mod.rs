@@ -1,5 +1,5 @@
 //! The app's games: `load_map("game:name")` dispatcher. A game module
-//! never uses another game's module (enforced by tests/it/architecture.rs).
+//! never uses another game's module (enforced by checks/tests/it/architecture.rs).
 //!
 //! `cs_source` is the `cs_source` crate's parts (games/cs_source,
 //! `cs_source::game`) with the game's front end (`cs_source::ui`).

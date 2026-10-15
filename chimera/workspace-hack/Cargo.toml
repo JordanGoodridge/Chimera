@@ -70,6 +70,7 @@ regex-automata = { version = "0.4" }
 regex-syntax = { version = "0.8" }
 ron = { version = "0.12" }
 serde_core = { version = "1", features = ["alloc"] }
+serde_json = { version = "1", features = ["raw_value"] }
 slotmap = { version = "1", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new", "serde", "union"] }
 thiserror = { version = "2" }

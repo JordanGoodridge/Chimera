@@ -1,0 +1,37 @@
+[package]
+name = "repo_checks"
+version = "0.1.0"
+description = "The repository's own checks: the architecture tests and the affected-test selection the git hooks run"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# Plain crates only: no Bevy and no workspace crate, so the checks build in
+# seconds even in a fresh clone (a docs-only commit runs nothing else), and
+# the selection tool can't be stale against the code it selects for. Kept
+# out of the workspace-hack (.config/hakari.toml, `final-excludes`).
+[dependencies]
+serde_json.workspace = true
+toml.workspace = true
+
+# Which packages' tests a change can affect (`cargo run -p repo_checks
+# --bin affected -- --help`): the git hooks run only those.
+[[bin]]
+name = "affected"
+test = false
+
+# The architecture tests (checks/tests/it/architecture.rs): the repository's
+# layering, asset, spec and docs rules.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[features]
+# Nothing: lets `--features dev` name this package alongside the others
+# (`cargo nextest run -p repo_checks -p <crate> --features dev`).
+dev = []

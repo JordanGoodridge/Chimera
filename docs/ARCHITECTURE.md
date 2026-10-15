@@ -7,7 +7,7 @@ file says where things are and which way dependencies may point.
 
 A Cargo workspace (docs/plans/active/engine-split.md, "Crates and compile
 time"); every member is a default member, so `cargo test` and `cargo
-nextest run` at the root test them all (`tests/it/architecture.rs`,
+nextest run` at the root test them all (`checks/tests/it/architecture.rs`,
 `workspace_crates`).
 
 ```
@@ -221,14 +221,14 @@ a gib carries its `GibLook` (which model of which gib list, skin, glass,
 fade distances) and a window its `BrushPanes`; render's systems react to
 them (added, changed, removed, without their drawn marker). Without `render` (a dedicated server) the requests stay
 unfulfilled and the simulation's parts (bodies, colliders) work alone
-(`tests/it/drawn_parts.rs`).
+(`apps/cs_source/tests/it/drawn_parts.rs`).
 
 `metrics` (per-thread CPU time and hardware counters, distributions, the
 tick's measurements) uses no other module of ours; any layer may use it
 (so far harness and client; `SimPlugins` adds its tick plugin).
 
 A module may use only the modules below it. Enforced by
-`tests/it/architecture.rs` (`ALLOWED`); update both together.
+`checks/tests/it/architecture.rs` (`ALLOWED`); update both together.
 
 - `core` never depends on anything in this crate.
 - Simulation code (everything except `client`) never depends on `client`, so
@@ -253,7 +253,7 @@ One line per module or folder, grouped by layer. The detail lives in each
 file's `//!` doc comment, which is the source of truth: when code changes
 what a file does, change its `//!` doc in the same commit, and touch this
 list only when a file is added, removed or changes its job. Keep each
-entry to one short line (`tests/it/architecture.rs` checks the length and
+entry to one short line (`checks/tests/it/architecture.rs` checks the length and
 that the paths exist).
 
 ### Foundations (core, console, slots, character, movement)

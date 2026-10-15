@@ -1,7 +1,8 @@
 # A Cargo workspace (docs/ARCHITECTURE.md, "Crates"): Chimera (chimera/),
 # Source's loaders (source/), the games as libraries (games/), the apps
-# (apps/) and the tools of each layer; the root package `mashup` holds
-# the integration tests. Commands run at the repository root act on every
+# (apps/), the tools of each layer and the repository's checks (checks/:
+# the architecture tests and the affected-test selection). Each crate
+# keeps its own tests (docs/OBSERVABILITY.md, section 1). Commands run at the repository root act on every
 # default member: `cargo test` tests them all, `cargo test -p
 # source_formats` one crate alone, `cargo run` the game (`default-run` of
 # apps/cs_source).
@@ -24,6 +25,7 @@ members = [
     "games/cs_source/tools",
     "apps/cs_source",
     "apps/cs_source_server",
+    "checks",
 ]
 default-members = [
     ".",
@@ -43,6 +45,7 @@ default-members = [
     "games/cs_source/tools",
     "apps/cs_source",
     "apps/cs_source_server",
+    "checks",
 ]
 resolver = "3"
 
@@ -145,9 +148,8 @@ license.workspace = true
 
 # `mashup`, the repository root's package, is now a thin shim: the CS:S
 # app's glue (`cs_source_app`, apps/cs_source) re-exported at the old
-# `mashup::` paths (src/lib.rs), for the one integration test crate
-# (tests/it/, which tests across the whole workspace), `dump` (an install
-# inspector for several games) and Combat Arms' local code
+# `mashup::` paths (src/lib.rs), for `dump` (an install inspector for
+# several games, tested in tests/it/) and Combat Arms' local code
 # (src/games/combat_arms/, git-ignored). The game binary is the app's,
 # the dedicated server apps/cs_source_server's, the tools their layers'
 # (docs/ARCHITECTURE.md, "Crates").
@@ -178,18 +180,14 @@ vmt-parser.workspace = true
 vtf.workspace = true
 workspace-hack.workspace = true
 
-[dev-dependencies]
-# Checksums of files read through the mount (tests/it/mount_cs_source.rs).
-crc32fast = "1.5.2"
-
 # Binaries without unit tests: `cargo test` skips building a test harness
 # of each (one more link apiece). A binary that gets tests loses its
-# `test = false`; tests/it/architecture.rs checks this in every member.
+# `test = false`; checks/tests/it/architecture.rs checks this in every member.
 [[bin]]
 name = "dump"
 test = false
 
-# The integration tests (tests/it/) drive the game with its presentation.
+# `dump`'s test and Combat Arms' local tests (tests/it/).
 [[test]]
 name = "it"
 path = "tests/it/main.rs"

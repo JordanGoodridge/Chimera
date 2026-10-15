@@ -12,7 +12,7 @@ license.workspace = true
 doctest = false
 
 # Pure data: what a format needs to be read and nothing else. No Bevy, no
-# avian, no `mashup` (tests/it/architecture.rs checks it).
+# avian, no `mashup` (checks/tests/it/architecture.rs checks it).
 [dependencies]
 glam.workspace = true
 lzma-rs.workspace = true

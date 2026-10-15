@@ -13,7 +13,7 @@ doctest = false
 
 # The engine's base, the simulation's map and frameworks, Bevy, physics
 # and the network crates; never the presentation (`chimera_present`),
-# Source's logic, `mashup` or a game (tests/it/architecture.rs checks it):
+# Source's logic, `mashup` or a game (checks/tests/it/architecture.rs checks it):
 # a game and Source's logic register what they replicate (`NetAppExt`).
 # Same versions and features as the game's (workspace dependencies), so
 # `cargo test -p chimera_net` reuses the game's builds.

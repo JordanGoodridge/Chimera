@@ -40,4 +40,4 @@ workspace-members = ["chimera_dev"]
 # (`cargo test -p source_formats` builds in seconds), and `chimera_dev`
 # isn't managed.
 [final-excludes]
-workspace-members = ["source_formats", "source_tools", "chimera_dev"]
+workspace-members = ["source_formats", "source_tools", "chimera_dev", "repo_checks"]

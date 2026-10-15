@@ -12,7 +12,7 @@ license.workspace = true
 doctest = false
 
 # The engine's base (its metrics) and plain crates; never Source's
-# crates, a game, an app or `mashup` (tests/it/architecture.rs checks
+# crates, a game, an app or `mashup` (checks/tests/it/architecture.rs checks
 # it): a tool that needs them lives in that layer's tools.
 [dependencies]
 chimera_core.workspace = true

@@ -57,7 +57,7 @@ Rules:
   player's install); the same library supplies parts to minigames. A
   game's own modes are minigame definitions, so both uses run the same
   code.
-- `tests/it/architecture.rs` already enforces most of this as layers;
+- `checks/tests/it/architecture.rs` already enforces most of this as layers;
   crates make the compiler enforce it.
 
 ## Crates and compile time (agreed 2026-10-13)
@@ -118,7 +118,7 @@ measurements):
 - [x] (2) `map/mod.rs` split (P1): `data` (MapData, plain data), `state`
   (what the logic writes), `spawn` (`spawn_map` as ~25 phase functions),
   `bodies`, `props`, `materials`, `images`, `collision`, `sky`; paths
-  outside `map` unchanged. `tests/it/heavy/map_spawn_dump.rs` dumps
+  outside `map` unchanged. `apps/cs_source/tests/it/heavy/map_spawn_dump.rs` dumps
   spawned maps for before/after comparisons.
 - [x] (2) `audio` out of `map` (P3, first slice): playback, live sounds,
   room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
@@ -216,7 +216,7 @@ measurements):
       added): drawn-part requests (docs/ARCHITECTURE.md): what the
       simulation makes in play says in plain data what it looks like
       and render's systems fulfil it; headless nothing is drawn
-      (`tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
+      (`apps/cs_source/tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
       models, the ragdoll's adoption of the dead's body), `render::loose`
       (`LooseItem`, `ShownItem`), `render::breakables` (a gib's
       `GibLook`, windows' `BrushPanes` clipped and made whole),
@@ -300,7 +300,7 @@ measurements):
     whole; their `pub(crate)` items became `pub`, the embedded shaders'
     paths are `embedded://chimera_present/render/...`; `mashup`
     re-exports `render` and `audio`. Spawn dump identical again (five
-    maps, modulo paths), `tests/it/drawn_parts.rs` passes, de_dust2 and
+    maps, modulo paths), `apps/cs_source/tests/it/drawn_parts.rs` passes, de_dust2 and
     gg_tbr_water_basin screenshots draw as before. Measured
     (docs/performance.md, "`chimera_world` and `chimera_present`"): a
     leaf edit in render or map, `cargo test --features dev --no-run`,
