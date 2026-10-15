@@ -186,8 +186,15 @@ name = "mapsweep"
 test = false
 required-features = ["tools"]
 
+# Source demo (.dem) inspector: game events, user messages, sounds,
+# entity props per tick (docs/OBSERVABILITY.md, "CS:S demos").
+[[bin]]
+name = "demodump"
+test = false
+required-features = ["tools"]
+
 [features]
-# The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep).
+# The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep, demodump).
 tools = []
 
 # The dedicated server binary (mashup_server).

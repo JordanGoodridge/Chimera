@@ -118,3 +118,21 @@ Notes:
 - Afterwards restore the movement setup: `bot_kick`, `bot_join_team ct`,
   `bot_quota 1`, `mp_friendlyfire 0` (and `changelevel de_dust2` if the map
   was changed).
+
+## Recording a SourceTV demo
+
+For questions answered by what the server sends (entity props per tick,
+game events, user messages, sounds; docs/OBSERVABILITY.md "CS:S demos"),
+record a demo on the probe server over RCON:
+
+1. `tv_enable 1`, `tv_delay 0`, `tv_transmitall 1` (all entities, not
+   only near the camera), and `tv_snapshotrate 66` for a frame every tick
+   (default 16 per second).
+2. `changelevel <map>`: SourceTV starts with the next map load (it joins
+   as a bot named SourceTV and takes a player slot).
+3. `tv_record <name>`, play the situation, `tv_stoprecord`. The file lands
+   in the server's `cstrike/<name>.dem`.
+4. `cargo run --features tools --bin demodump -- <path>.dem --summary`.
+
+Demos are game output: keep them out of the repo (e.g. under `target/`).
+Afterwards `tv_enable 0` and a changelevel give the slot back.

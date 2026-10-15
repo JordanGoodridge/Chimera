@@ -324,15 +324,16 @@ pub fn flash_model(distance: f32, facing: f32) -> Option<(f32, f32, f32)> {
     Some((alpha, time - fade, fade))
 }
 
-/// The smoke cloud (spec 7): 240 units across in 1 s, held to 17 s, gone
-/// by 22 s. Bots' sight is blocked through three quarters of its radius
+/// The smoke cloud (spec 7): 240 units across in 1 s, held to 15 s, gone
+/// by 20 s (measured: the cloud entity's fade start and end, grenades.md
+/// "CS:S values"). Bots' sight is blocked through three quarters of its radius
 /// (Q16 hypothesis: the sprites reach E/2 plus their 80-unit size).
 pub fn smoke() -> Smoke {
     Smoke {
         max_radius: 240.0 * UNIT,
         expand_time: 1.0,
-        fade_start: 17.0,
-        fade_end: 22.0,
+        fade_start: 15.0,
+        fade_end: 20.0,
         // Q15 hypothesis: it pops once (nearly) still.
         pop_speed: 0.1 * UNIT,
         sight_radius: 0.75,

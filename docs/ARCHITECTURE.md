@@ -336,6 +336,7 @@ that the paths exist).
 - `source/formats/src/pcf.rs`: particle files (binary DMX) and particle manifests
 - `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/src/game/nav.rs`)
 - `source/formats/src/wav.rs`: WAV (PCM, MS-ADPCM) and MP3 decoding to `SoundClip`
+- `source/formats/src/dem/`: Source demos (`.dem`): frames, net messages, string tables, events, sounds, entity props per tick
 
 ### Binaries and the test harness
 
@@ -349,6 +350,7 @@ that the paths exist).
 - `src/bin/tracesum.rs`: dev tool: summarize a Chrome trace
 - `src/bin/testmap.rs`: dev tool: write the entity test map
 - `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files
+- `src/bin/demodump.rs`: dev tool: print a CS:S demo's events, user messages, sounds and entity props by tick
 
 ### Client (window, input, camera, HUD, menus, debug)
 
