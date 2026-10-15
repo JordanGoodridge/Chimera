@@ -116,6 +116,14 @@ placed in logical pixels, e.g. the crosshair after a dialog; with
 floats under Hyprland instead of being tiled), for UI checked at a known
 resolution. `--help` lists all options.
 
+System order: `MASHUP_SYSTEM_DUMP=<file>` builds the game as it would
+run (with the same options and plugins; needs the display) and writes
+every schedule's systems in the order they run, the main world's then the
+render world's, to the file instead of running. Dump before and after a
+refactor that moves the client's plugins or systems and `diff` the files
+(names differ by their module paths); the simulation's own order on real
+maps is `tests/it/heavy/map_spawn_dump.rs` (`MASHUP_SPAWN_DUMP`).
+
 To photograph a live run step by step (e.g. before and after a round
 restart, where frame counts are too uncertain), run the game without
 `--screenshot` and send `screenshot <file.png>` over the remote console
