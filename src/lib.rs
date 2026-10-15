@@ -8,6 +8,9 @@
 //! `single_threaded_schedules`: the main world's schedules on Bevy's
 //! single-threaded executor (the game, the dedicated server, `perfgate`).
 
+// The client shell: window, input, camera, HUD; not in the dedicated
+// server's build (the `present` feature, Cargo.toml).
+#[cfg(feature = "present")]
 pub mod client;
 pub mod core;
 pub mod games;
@@ -20,14 +23,18 @@ pub mod net;
 pub use engine_core::{character, console, metrics, mount, slots};
 
 /// The engine's map (engine/world, crate `engine_world`) at its old path,
-/// with `MapPlugin` (engine/present's `map_plugin`: its registration
-/// includes `audio` and `render`).
+/// with `MapPlugin` (engine/present's `map_plugin`: map's registration
+/// with `audio` and `render`) when built with the presentation; the
+/// dedicated server adds `MapSimPlugin` (map's systems alone).
 pub mod map {
+    #[cfg(feature = "present")]
     pub use engine_present::MapPlugin;
     pub use engine_world::map::*;
 }
 
-// The engine's presentation (engine/present), at its old paths.
+// The engine's presentation (engine/present), at its old paths; not in
+// the dedicated server's build (the `present` feature, Cargo.toml).
+#[cfg(feature = "present")]
 pub use engine_present::{audio, render};
 
 // Source's map logic (source/logic: entity I/O, logic classes, triggers,

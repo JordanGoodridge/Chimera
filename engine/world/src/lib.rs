@@ -5,9 +5,11 @@
 //! (`engine_present`) sits above it, so an edit to drawing doesn't
 //! rebuild the simulation's map, and the other way round.
 //!
-//! The game crate re-exports `map` at its old path (`mashup::map`), with
-//! `MapPlugin`, whose registration lives above (`map::build_first` and its
-//! siblings are map's part of it).
+//! `map::MapSimPlugin` registers the map's systems alone (the dedicated
+//! server's); `engine_present`'s `MapPlugin` registers the same with what
+//! draws and plays the map at fixed places among them (`map::build`,
+//! `map::MapLayers`). The game crate re-exports `map` at its old path
+//! (`mashup::map`), with `MapPlugin` when it has the presentation.
 
 pub mod map;
 

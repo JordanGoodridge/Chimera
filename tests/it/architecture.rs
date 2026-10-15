@@ -751,6 +751,52 @@ fn workspace_crates() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
+/// The dedicated server builds without the presentation
+/// (docs/ARCHITECTURE.md, "Crates"): `mashup` without its default
+/// feature `present` depends on no `engine_present`, so the server links
+/// no render or audio code. (That it compiles that way the pre-push hook
+/// checks: `cargo check -p mashup --no-default-features --features server
+/// --bin mashup_server`.)
+#[test]
+fn server_builds_without_presentation() {
+    // The presentation and crates only the client shell uses (not those
+    // Bevy itself pulls in: ab_glyph, winit).
+    const CLIENT_ONLY: &[&str] = &["engine_present", "bevy_egui", "bevy-inspector-egui", "arboard"];
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let tree = |args: &[&str]| -> String {
+        let out = Command::new(&cargo)
+            .current_dir(root())
+            .args(["tree", "-p", "mashup", "-e", "normal", "--prefix", "none", "--offline", "--locked"])
+            .args(args)
+            .output()
+            .expect("running cargo tree");
+        assert!(
+            out.status.success(),
+            "cargo tree failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let uses_present = |tree: &str| tree.lines().any(|l| l.starts_with("engine_present "));
+    assert!(
+        uses_present(&tree(&[])),
+        "the game (`mashup` with its default features) no longer depends on engine_present: update this test \
+         and docs/ARCHITECTURE.md (\"Crates\")."
+    );
+    let server = tree(&["--no-default-features", "--features", "server"]);
+    let present: Vec<&str> = server
+        .lines()
+        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "`mashup --no-default-features --features server` (the dedicated server's build) depends on {present:?}. \
+         The presentation (engine_present) and the client-only crates are optional, behind the default \
+         feature `present` (Cargo.toml): make the new dependency optional and add it to `present`, or move \
+         what the simulation needs out of the presentation."
+    );
+}
+
 /// Integration tests are one test binary (tests/it/main.rs): any other
 /// file in `tests/` would be its own binary, linking the whole game again
 /// (docs/performance.md, "Test cycle"). And a file in tests/it/ without

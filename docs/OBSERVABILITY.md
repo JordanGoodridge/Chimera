@@ -57,7 +57,11 @@ need the game (ECS, conversion to engine types, real installs) stay in
   the playtest and release builds use that configuration and the tests
   don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
   built only with `--features tools`, the dedicated server with
-  `--features server` (so `cargo test` doesn't relink them).
+  `--features server` (so `cargo test` doesn't relink them). It also
+  checks the dedicated server as released, without the presentation
+  (`cargo check -p mashup --no-default-features --features server --bin
+  mashup_server`; `architecture::server_builds_without_presentation`
+  checks its dependencies).
 - Full suite, before a push or a merge to main (`.githooks/pre-push`, which
   `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
   8 tests at once and 5 heavy slots, the biggest heavy tests taking 2-3,

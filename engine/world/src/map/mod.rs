@@ -2,20 +2,20 @@
 //! engine spawns, and the map's systems. Units are meters, Y up (README:
 //! mounts own each game's units and axes; the engine sees only this).
 //!
-//! This file holds map's part of `MapPlugin` (`build_first` and its
-//! siblings: what runs while a map is loaded; the plugin type and the
-//! order are `map_plugin`'s, above map), unloading and changing maps,
-//! and the loaded map's resources. The rest:
+//! This file holds unloading and changing maps and the loaded map's
+//! resources; `registration` registers map's systems (`build`, with what
+//! draws and plays the map at fixed places, `MapLayers`; alone as
+//! `MapSimPlugin`, the dedicated server's). The rest:
 //! `data` (`MapData` and what it holds), `state` (what the logic writes on
 //! spawned parts), `spawn` (spawning a map, in phases), `bodies`
 //! (character bodies and hitboxes), `props` (placed props after
 //! spawning), `materials`, `images`, `collision` and `sky` (built from the
 //! data), each re-exported here, plus one submodule per feature.
 //!
-//! Map's registration (`build_first`, ...), `unload_map`/`change_map`
-//! (`MapHooks` for the layers above: what they reset at unload, the
-//! spawner `change_map` runs), the loaded map's resources;
-//! re-exports the files below and `core`'s collision types.
+//! Map's registration (`registration`: `build`, `MapSimPlugin`),
+//! `unload_map`/`change_map` (`MapHooks` for the layers above: what they
+//! reset at unload, the spawner `change_map` runs), the loaded map's
+//! resources; re-exports the files below and `core`'s collision types.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -94,6 +94,8 @@ mod collision;
 use collision::*;
 mod sky;
 pub use sky::*;
+mod registration;
+pub use registration::{Effects, LayerSystems, MapLayers, MapSimPlugin, Undrawn, build};
 mod spawn;
 pub use spawn::{Draws, DrawnResource, MapDrawer, MapSpawn, PropSpawn};
 pub use spawn::{merged_world, spawn_map};
@@ -215,33 +217,6 @@ pub struct MapFile {
 #[derive(Component)]
 pub struct MapPart;
 
-/// Map's registration before the sound plugin's, with the map to spawn
-/// at startup (`data`; None starts without one). `MapPlugin` (built above
-/// map, in the game crate's `map_plugin`: the orphan rule keeps a plugin's
-/// type beside its `impl Plugin`) runs it, then adds `audio`, then the
-/// systems of map and `render` (in the order they always had), then spawns
-/// the map at startup with render's drawer (`spawn_map`).
-pub fn build_first(app: &mut App, data: Option<&Arc<MapData>>, view: MapDebugView) {
-    if let Some(data) = data {
-        app.insert_resource(PendingMap(data.clone(), view))
-            .insert_resource(ActiveMapLook(data.look.clone()));
-    }
-    ragdoll::plugin(app);
-}
-
-/// Map's registration after render's ragdoll drawing (`map_plugin`):
-/// placed ragdolls.
-pub fn build_after_ragdolls(app: &mut App) {
-    placed_ragdoll::plugin(app);
-}
-
-/// The rest of map's registration before the sound plugin's, after
-/// render's light styles (`map_plugin`).
-pub fn build_after_light_styles(app: &mut App) {
-    app.add_plugins((controllers::ControllersPlugin, buoyancy::BuoyancyPlugin));
-    app.init_resource::<MonitorCamera>();
-}
-
 /// Height of the capsule center above the feet, so spawns start standing.
 pub const SPAWN_LIFT: f32 = 1.0;
 
@@ -317,7 +292,7 @@ pub struct MapHooks {
     /// soundscape and the long-lived sounds).
     pub unload: Vec<fn(&mut World)>,
     /// Spawns the pending map (`spawn_map` with the drawer
-    /// `map_plugin` picks), for `change_map`.
+    /// `build` picks: `MapLayers::Drawer`), for `change_map`.
     pub spawn: Option<fn(&mut World)>,
     /// What they do to a node copied at run time (`copies::copy_node`),
     /// once it is made, in the order they were added (`render`
@@ -333,7 +308,7 @@ pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
     world.insert_resource(PendingMap(data, view));
     match world.get_resource::<MapHooks>().and_then(|h| h.spawn) {
         Some(spawn) => spawn(world),
-        None => error!("spawning the map: no map spawner (MapPlugin missing)"),
+        None => error!("spawning the map: no map spawner (MapPlugin or MapSimPlugin missing)"),
     }
 }
 

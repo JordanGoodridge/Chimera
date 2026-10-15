@@ -7,9 +7,12 @@
 //! uses it. An edit here doesn't rebuild the map, and an edit in the
 //! simulation above the map (`mashup`) doesn't rebuild this.
 //!
-//! `MapPlugin` (`map_plugin`) registers map's, audio's and render's
-//! systems in one fixed order. The game crate re-exports `render` and
-//! `audio` at their old paths and `MapPlugin` as `mashup::map::MapPlugin`.
+//! `MapPlugin` (`map_plugin`) registers map's systems (`map::build`) with
+//! audio's and render's at the places map keeps for them
+//! (`map::MapLayers`), in one fixed order. The game crate re-exports
+//! `render` and `audio` at their old paths and `MapPlugin` as
+//! `mashup::map::MapPlugin`, when built with its `present` feature (the
+//! dedicated server is built without this crate: `map::MapSimPlugin`).
 
 pub mod audio;
 mod map_plugin;

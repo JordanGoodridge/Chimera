@@ -56,6 +56,14 @@ if [ "$pushing" = 1 ]; then
         echo "pre-push: the build without --features dev fails (log: target/pre-push-check.log); not pushing." >&2
         exit 1
     fi
+    # The dedicated server as released: without the presentation
+    # (engine_present, the client shell; Cargo.toml's `present`).
+    echo "pre-push: checking the dedicated server's build without the presentation..." >&2
+    if ! cargo check -p mashup --no-default-features --features server --bin mashup_server --quiet >target/pre-push-check-server.log 2>&1; then
+        grep -E "^error" -A6 target/pre-push-check-server.log | head -30
+        echo "pre-push: the dedicated server doesn't build without the presentation (log: target/pre-push-check-server.log); not pushing." >&2
+        exit 1
+    fi
 fi
 if [ "$pushing" = 1 ] && [ "${MASHUP_PUSH_TESTS:-1}" != 0 ]; then
     mkdir -p target
