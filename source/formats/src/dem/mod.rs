@@ -21,6 +21,9 @@
 //! read past. Compressed string tables are inflated (LZSS or Snappy, both
 //! small readers in `stringtable.rs`).
 //!
+//! `playback`: a demo read once into frames by tick through a game's
+//! `Mapper` (its entity values and events), for playing it back.
+//!
 //! Known shortcuts:
 //! - `svc_Sounds`' delta layout varies by branch (flag width, a special-DSP
 //!   field): the reader tries the known layouts and keeps the first one
@@ -33,6 +36,7 @@
 pub mod bits;
 pub mod entities;
 pub mod events;
+pub mod playback;
 pub mod sendtable;
 pub mod stringtable;
 

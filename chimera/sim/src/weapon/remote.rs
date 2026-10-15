@@ -26,7 +26,7 @@ use super::{
     AltModes, DamageEffect, Hitscan, Inventory, Penetration, SpreadShape, Weapon, WeaponEvent, WeaponEventKind,
     WeaponSounds, deliver, grenade::Throwable,
 };
-use crate::core::{NetRole, SimClock};
+use crate::core::SimClock;
 
 /// A round someone else fired, as the server traced it: draw it here.
 #[derive(Message, Clone, Debug)]
@@ -52,10 +52,7 @@ pub struct RemoteAction {
 pub(super) fn plugin(app: &mut App) {
     app.add_message::<RemoteShot>()
         .add_message::<RemoteAction>()
-        .add_systems(
-            Update,
-            (remote_shots, remote_actions).run_if(resource_equals(NetRole::Client)),
-        );
+        .add_systems(Update, (remote_shots, remote_actions).run_if(crate::core::shows_others));
 }
 
 /// Make `character` hold weapon `id` (None: nothing) in mode `mode`, its

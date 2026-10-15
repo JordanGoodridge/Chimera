@@ -518,7 +518,11 @@ our own (docs/plans/active/nat-traversal.md; UPnP mapping prototyped,
 Built: `demodump` reads CS:S `.dem` files (`source_formats::dem`; SourceTV
 and, untested, client demos; OBSERVABILITY.md "CS:S demos").
 
-- **`playdemo` in our engine.** Drive our game from a CS:S demo: every
+- **`playdemo` in our engine.** Built: `playdemo <file>` / `--playdemo`
+  (OBSERVABILITY.md "CS:S demos"). Left: a `demoui` panel, bodies' recorded
+  animation where a game sends it, zoom through a sniper's eyes, physics
+  props and doors from the demo, and comparing ticks against CS:S's own
+  `playdemo` (refcmp). Was: drive our game from a CS:S demo: every
   player's position, angles, weapon, animation sequence, shots
   (`CTEFireBullets`), grenades, smoke clouds, sounds and the round/HUD
   state come from the file; our renderer, animation, effects, HUD and
