@@ -167,7 +167,7 @@ impl<'a> MaterialLoader<'a> {
             .map(|k| k.trim_end_matches(".vtf").to_string())
     }
 
-    pub(crate) fn read_text(&self, path: &str) -> Option<String> {
+    pub fn read_text(&self, path: &str) -> Option<String> {
         self.read(path).map(|b| String::from_utf8_lossy(&b).into_owned())
     }
 

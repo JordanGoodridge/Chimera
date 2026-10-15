@@ -8,6 +8,7 @@
 //! across the workspace), in the file's own units and axes (Source:
 //! inches, Z up) unless a reader says otherwise.
 
+pub mod dem;
 pub mod detail;
 pub mod fs;
 pub mod keyvalues;

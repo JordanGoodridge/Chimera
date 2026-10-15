@@ -11,25 +11,31 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 `workspace_crates`).
 
 ```
-mashup (repository root: src/, tests/it/)   the game, engine and tools
+mashup (repository root: src/, tests/it/)   client, net, CS:S's front end, tools
   |
+  |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots
+  |    |
 engine_present (engine/present/)   render, audio, MapPlugin
-  |
+  |    engine_sim (engine/sim/)   weapon, movement, rule_module
+  |    |    source_logic (source/logic/)   logic: Source entity I/O
+  |    |   /
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (engine/core/)       core, console, slots, character, metrics
+ (engine/core/)       core, console, slots, character, metrics, mount
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
   Source units); it never depends on Bevy, avian or `mashup` (checked).
-  Conversion into engine types stays in `mashup` (`games/cs_source`),
-  which re-exports the readers at their old paths.
-- An edit in `source_formats` rebuilds it and `mashup`; `cargo test -p
-  source_formats` builds and runs only its own tests (seconds).
+  Conversion into engine types stays in the game (`cs_source`), which
+  re-exports the readers at their old paths.
+- An edit in `source_formats` rebuilds every crate (`mount` in
+  `engine_core` uses it); `cargo test -p source_formats` builds and runs
+  only its own tests (seconds).
 - `engine_core` is the engine's stable base: the modules every layer
   uses and that rarely change (`core` but the build's `VERSION`,
-  `console`, `slots`, `character`, `metrics`). It never depends on
+  `console`, `slots`, `character`, `metrics`, and `mount`, which uses
+  `source_formats`' VFS and KeyValues). It never depends on
   `mashup` or a game (checked); `mashup` re-exports its modules at their
   old paths (`mashup::core` adds `VERSION`, stamped in the app's crate
   so a commit doesn't rebuild the base). The layering table covers its
@@ -53,6 +59,27 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   paths. An edit in it rebuilds it and `mashup`, not the map; an edit in
   `mashup` rebuilds neither.
   `cargo test -p engine_present --features dev` tests it alone.
+- `engine_sim` is the simulation's frameworks: `weapon` (the weapon
+  system), `movement` (the movement slot's placeholder and noclip) and
+  `rule_module` (the rule-module interface, `mashup::rules::module`).
+  They name no game; games fill them. It uses `engine_world` and
+  `engine_core`, never the presentation, `mashup` or a game (checked);
+  `mashup` re-exports them at their old paths. `cargo test -p engine_sim
+  --features dev` tests it alone.
+- `cs_source` is Counter-Strike: Source's simulation: `game` (its
+  loaders, Source movement, weapons, effects, animation,
+  `CsSourcePlugins`; `mashup::games::cs_source`, whose front end, `ui/`,
+  stays in `mashup` with the client shell), CS:S's rules, `rules`
+  and `objectives`, and its bots, `bot` (`mashup::rules`, ...: net and
+  the client still name them). It uses the engine crates (not
+  `engine_present`) and `source_formats`, never `mashup` or another
+  game (checked). `cargo test -p cs_source --features dev` tests it
+  alone.
+- `source_logic` is Source's map logic (`logic`: entity I/O, logic
+  classes, triggers, movers, breakables, props, fire, the bridge to the
+  map's entities). It uses `engine_world` and `engine_core`, never the
+  presentation, `mashup` or a game (checked); `mashup::logic` re-exports
+  it. `cargo test -p source_logic --features dev` tests it alone.
 - `mashup` uses `engine_present` only with its default feature `present`
   (with the client shell `client`, the games' front ends `games::*::ui`
   and the client-only crates): the dedicated server builds without it
@@ -163,9 +190,9 @@ that the paths exist).
 - `engine/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
 - `engine/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `engine/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
-- `src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
+- `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
-- `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `engine/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
@@ -267,12 +294,12 @@ that the paths exist).
 
 ### Simulation above map (logic, weapon, objectives, rules, bot)
 
-- `src/logic/`: map logic for Source-style entities: entity I/O, triggers, movers, breakables, props, fire, the bridge to the world (logic)
-- `src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
-- `src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
-- `src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
-- `src/rules/module.rs`: rule modules a game registers by name; `mashup_rules` (rules)
-- `src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
+- `source/logic/src/logic/`: Source map logic (crate `source_logic`): entity I/O, triggers, movers, breakables, props, fire, the bridge (logic)
+- `engine/sim/src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
+- `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
+- `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
+- `engine/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
+- `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
 
@@ -304,8 +331,8 @@ that the paths exist).
 ### Games
 
 - `src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
-- `src/games/cs_source/rules.rs`: CS:S's rule modules (games)
-- `src/games/cs_source/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
+- `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
+- `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)
 
@@ -319,8 +346,9 @@ that the paths exist).
 - `source/formats/src/vhv.rs`: static props' baked per-vertex light (`.vhv`)
 - `source/formats/src/phy.rs`: collision models (`.phy`): solids, ragdolls, break blocks
 - `source/formats/src/pcf.rs`: particle files (binary DMX) and particle manifests
-- `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/nav.rs`)
+- `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/src/game/nav.rs`)
 - `source/formats/src/wav.rs`: WAV (PCM, MS-ADPCM) and MP3 decoding to `SoundClip`
+- `source/formats/src/dem/`: Source demos (`.dem`): frames, net messages, string tables, events, sounds, entity props per tick
 
 ### Binaries and the test harness
 
@@ -334,6 +362,7 @@ that the paths exist).
 - `src/bin/tracesum.rs`: dev tool: summarize a Chrome trace
 - `src/bin/testmap.rs`: dev tool: write the entity test map
 - `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files
+- `src/bin/demodump.rs`: dev tool: print a CS:S demo's events, user messages, sounds and entity props by tick
 
 ### Client (window, input, camera, HUD, menus, debug)
 

@@ -699,6 +699,11 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   unarmoured damage × 0.7375 (1.475 × 0.5, hypothesis H1) and armour loses
   half the difference: unarmoured 88 → 65 health + 11 armour; 70 → 52 + 9.
   The helmet changes nothing. Hitgroup 0.
+- **Q15 smoke:** a smoke grenade that stops early pops 105 ticks after its
+  projectile appears (as the HE's check); one still rolling pops later,
+  once it stops (172, 210 ticks for long throws). The cloud entity
+  (`env_particlesmokegrenade`) is created the tick it pops, with
+  `m_FadeStartTime` 15 and `m_FadeEndTime` 20 (seconds after it pops).
 - **Q10 HE falloff:** `sv_legacy_grenade_damage` defaults to 0 ("Enable to
   replicate grenade damage behavior of the original Counter-Strike Source
   game"). At 0: a bell, 100 × exp(−d² / 2σ²) with σ ≈ 115-117 (350/3) for d

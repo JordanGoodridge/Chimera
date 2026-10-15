@@ -393,6 +393,128 @@ measurements):
   --features dev --no-run`, 127-160 s as before (one crate below it
   less, but `mashup` is still ~160k lines); after an `engine_core` edit
   the same command took 28-81 s (`mashup` recompiles incrementally).
+- [x] (3) `mashup`'s module graph measured (2026-10-14, after the
+  engine crates): every `crate::`/`mashup::` path (grouped imports
+  split) from each top-level module to another, comments stripped.
+  Lines are the module's own; `cs_ui` is `games/cs_source/ui/`, `engine`
+  the modules re-exported from the engine crates (core, console, slots,
+  character, metrics, map, render, audio).
+
+  | Module (lines) | Uses (references) | Used by |
+  |---|---|---|
+  | `logic` (24.6k) | engine only (map 141, core 28, console 5) | net 8, client 8, cs_ui 2, harness 1 |
+  | `movement` (0.2k) | engine only | net 6, client 1 |
+  | `mount` (0.8k) | nothing of ours (source_formats) | cs_source 10, client 6, cs_ui 6, games 1, bins |
+  | `greybox` (0.3k) | engine only | client 3, cs_ui 1, bins |
+  | `weapon` (7.8k) | engine only (core 64, map 48, console 13) | cs_source 28, client 32, cs_ui 17, bot 15, net 12, rules 11, objectives 8 |
+  | `objectives` (2.2k) | weapon 8, engine | cs_source 11, rules 8, bot 7, cs_ui 7, client 5, net 4 |
+  | `rules` (2.0k) | objectives 8, weapon 11, engine | client 33, net 28, cs_ui 22, cs_source 2 |
+  | `cs_source` (28.3k) | weapon 28, objectives 11, mount 10, rules 2, engine (map 244) | client 13 (4 files, `CLIENT_GAME_EXCEPTIONS`), cs_ui 9, main, bins |
+  | `bot` (7.0k) | weapon 15, objectives 7, engine | net 6, cs_ui 5, client 6 |
+  | `net` (13.8k) | rules 28, weapon 12, logic 8, bot 6, movement 6, objectives 4, engine | client 41, cs_ui 35, harness 21 |
+  | `client` (23.3k) | everything (map 101, console 92, core 77, net 41, rules 33, weapon 32, cs_source 13) | cs_ui 138, main |
+  | `cs_ui` (17.9k) | client 138, map 71, console 41, net 35, rules 22, weapon 17, cs_source 9 | main |
+  | `harness` (0.5k) | net 21, lib, engine | tests |
+
+  Self-contained layers on the engine crates (no back-reference to
+  cut): `logic`, `movement`, `weapon`, `mount`, `greybox`; then
+  `objectives` (on weapon) and `rules` (on objectives, weapon). The
+  simulation of CS:S (`cs_source` without `ui/`) uses only those and
+  the engine: nothing of `net`, `bot`, `client` or `logic`. So, bottom
+  first: `logic` to `source/logic` (needs nothing); `weapon` and
+  `movement` to `engine/sim` (nothing); `mount` down to the engine
+  (its config's repository path); then `cs_source`'s simulation with
+  the CS:S rules (`objectives`, `rules`) to `games/cs_source` (its
+  `ui/` stays in `mashup` with the client, re-exported beside it).
+  `net` (to `engine/net`) is blocked by naming CS:S's rules (round
+  state, bomb, hostages: game-registered replication) and `logic`
+  (Source); `bot` by its bomb and hostage goals; `client` by
+  `CLIENT_GAME_EXCEPTIONS` (a game registry).
+- [x] (3) `source/logic` (package `source_logic`, 2026-10-14): `logic`
+  moved whole (it uses only `core`, `console` and `map`); one
+  `pub(crate)` item became `pub`; `mashup` re-exports it as
+  `mashup::logic`. The layering table covers source/logic/src;
+  `workspace_crates` keeps it off `engine_present`, `mashup` and the
+  games. Spawn dump identical on the five maps modulo moved paths.
+- [x] (3) `engine/sim` (package `engine_sim`, 2026-10-14): `weapon`,
+  `movement` (placeholder, noclip) and `rules::module` (as
+  `rule_module`: the `RuleModule` registry, `pick`, `mashup_rules`)
+  moved whole; they use only the engine crates. `mashup` re-exports
+  `weapon` and `movement` at their old paths and `rules::module` as
+  before; `rule_module::plugin` became `pub` (rules adds it). Spawn dump
+  identical on the five maps modulo moved paths.
+- [x] (3) `mount` down into `engine_core` (2026-10-14): the VFS and
+  KeyValues re-exports, `mashup.local.toml` and finding installs, so a
+  game crate can use it; `mashup::mount` re-exports it. `engine_core`
+  now depends on `source_formats` (the VFS, KeyValues) and on `dirs`,
+  `toml` and `windows-sys` (moved from `mashup`); the config's
+  checkout fallback is the repository root (`CARGO_MANIFEST_DIR/../..`).
+  No ECS types, so no spawn dump.
+- [x] (3) `games/cs_source` (package `cs_source`, 2026-10-14): the
+  game crate. `src/games/cs_source/*.rs` (without `ui/`) moved whole as
+  its module `game`, CS:S's rules with it: `rules` (deathmatch, team
+  joining, rounds, the end of a game) and `objectives` (bomb, hostages,
+  zones) at its root, so their paths and the game's (`super::`,
+  `crate::rules`, `crate::objectives`) didn't change; one path
+  (`crate::games::cs_source::movement`) became `crate::game::movement`
+  and 18 `pub(crate)` items of `vgui`, `gameui`, `hud`, `propdata`,
+  `material` (the front end uses them) became `pub`. `mashup` keeps
+  `games::cs_source` as `pub use ::cs_source::game::*` with `pub mod ui`
+  (the front end stays beside the client shell), and re-exports `rules`
+  and `objectives` at their old paths. The format crates the loaders use
+  (vbsp, vmdl, vtf, vmt-parser, bzip2, sha2) became workspace
+  dependencies. Architecture test: the crate's `game` module is `games`
+  in the layering table (`crate::game::` counts as its own game),
+  `workspace_crates` keeps it off `engine_present`, `mashup` and Combat
+  Arms. Spawn dump identical on the five maps modulo moved paths; the
+  heavy network tests and `cargo test -p cs_source --features dev` (106
+  tests) pass.
+- Remaining couplings (2026-10-14, what keeps the rest in `mashup`;
+  references counted as in the graph above):
+  - `net` (to `engine/net`) names CS:S's rules: `rules` 28 (the join
+    flow: `JoinChoice`, `join_team`/`join_class`/`join_spectators`,
+    `make_unassigned`, `hold_out`, `enter_game`; `Dead`, `Score`,
+    `MapLoads`; `rounds::{RoundState, Phase, FunFact, Mvp, RoundEnded,
+    ...}` and `frozen_intent`), `objectives` 4 (`Hostage`, `BombHold`,
+    `ObjectiveEvent`, `RoundOpen`), `bot` 6 (`Bot`, `BotQuota`,
+    `kick_bot`, `sync_quota`) and `logic` 8 (Source: `MapSay`, `HudShow`,
+    `LogicOneShot`, carried movers, `set_node_shown`). Proposed
+    interfaces: (a) game-registered replication: `net/game.rs` (the round,
+    scores, bomb, hostages over the network) moves to the game, which
+    registers its replicated components, events and client-side writers
+    through an `engine_net` API (`NetRound` and its kin become the
+    game's); (b) a join-flow hook (`JoinRules`: a resource of fn pointers
+    or a trait object the game inserts: spawn as the rules allow, join a
+    team/class/spectators, hold out while loading) in place of naming
+    `rules::*`; `Dead`, `Score` and `MapLoads` move down to `core` (shared
+    vocabulary); (c) a prediction hook for the game's holds
+    (`frozen_intent`, `BombHold`): a system set the game fills; (d) bots
+    as `core::Bot` plus a quota hook; (e) the Source pieces (`MapSay`,
+    `HudShow`, carried movers, `set_node_shown`) either move down into
+    `map::state` (as `VisClusters` and its kin did) or their replication
+    is registered by `source_logic`'s plugin. Each is its own commit
+    with the network tests; (a) is the big one.
+  - `bot` joined `cs_source` (next entry); an engine bots framework
+    (`engine_sim`) needs the bomb and hostage goals, buying and the
+    radio behind a bot-goal interface first.
+  - `client` names `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`: the
+    default game's install, map cycle, tick, binds, the movement cvars):
+    a game registry resource the game fills would let the shell
+    (`engine/client`) go below the games; the front end (`ui/`, 17.9k)
+    then moves into `games/cs_source`.
+- [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
+  buying, radio, bomb and hostage goals) moved whole to
+  `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`
+  and the base); `mashup::bot` re-exports it. `mashup` keeps the client,
+  its front end (`games/cs_source/ui`), `net`, `harness`, `greybox`,
+  `games::load_map` and the binaries.
+  Measured (docs/performance.md, "`engine_sim`, `source_logic` and
+  `cs_source`"; a new `pub fn`, load 9-32): `cargo test --features dev
+  --no-run` after a leaf edit in `cs_source` 22-27 s (was 127-176 s),
+  in `engine_sim` or `source_logic` about 20-28 s, in CS:S's front end
+  (still `mashup`) 18-41 s, in the client 77 s; `cargo test -p` builds
+  and runs `engine_sim` in 2 s, `source_logic` in 2-3 s, `cs_source` in
+  3-4 s.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -468,8 +590,8 @@ the full suite, and the coordinator batches merges.
 | Module | Goes to | Notes |
 |---|---|---|
 | `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `engine/core` |
-| `src/logic` | source | Source entity I/O and classes (func_door, triggers, ...) |
+| `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
-| `src/games/cs_source` | split | formats (bsp, vpk, material, mdl, phy, wav, sound) to source; CS:S rules, weapons, HUD, bots' CS:S parts stay |
+| `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |
 | `src/games/combat_arms` | games/combat_arms | local, git-ignored |
 | `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` private |

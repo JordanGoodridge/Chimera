@@ -156,7 +156,7 @@ env_laser, persistent env_beam and env_lightglow drawn (`render::beams`),
 env_spark's sparks; entities parented to a placed weapon follow it and
 its carrier, OnPlayerPickup (`map::entities` anchors). mg_item_battle_v4b:
 walking onto an item knife picks it up, its car rides along under the
-player and its speed change applies. Tests: `src/logic/game_tests.rs`,
+player and its speed change applies. Tests: `source/logic/src/logic/game_tests.rs`,
 `template_tests.rs`, `tests/it/map_game_entities.rs`,
 `tests/it/heavy/map_community.rs` (`item_children_follow_the_player`).
 Shortcuts are in docs/tech-debt.md; the specs' open questions stand.
@@ -186,7 +186,7 @@ then a round restart. Raw output stays in `target/mapsweep/{before,after}/`
 | Complaints the scripted runs logged | 2445 | 2096 |
 | Panics | 0 | 0 |
 
-Fixed, by maps affected (tests in `src/logic/community_tests.rs`,
+Fixed, by maps affected (tests in `source/logic/src/logic/community_tests.rs`,
 `logic::audit::tests`, `map::copies::tests`, `games::cs_source::sound`):
 
 | Problem | Maps | Fix |
@@ -349,7 +349,7 @@ parented to things, the remaining classes, and the scripted runs' noise.
 | Usable brushes +use didn't find | (every mover tried) | 7 (only solid ones tried now) |
 | Movers that didn't move / jumped / children left behind / panics | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
 
-Fixed, by maps affected (tests in `src/logic/community_tests.rs`,
+Fixed, by maps affected (tests in `source/logic/src/logic/community_tests.rs`,
 `map::emitters`, `map::psys`, `games::cs_source::pcf`, `render::tint`,
 `map::buoyancy`, `map::controllers`, `tests/it/logic_physics.rs`,
 `tests/it/heavy/map_community.rs::visual_entities_load`):
@@ -436,9 +436,9 @@ Fixed, by maps affected (tests: `tests/it/heavy/map_community.rs`
 `map_ragdolls_fall_and_take_shots`, `moving_water_follows_its_entity`,
 `visual_entities_load`; `tests/it/net_interp.rs`
 `map_ragdolls_are_drawn_as_the_server_simulates_them`;
-`tests/it/logic_physics.rs` (anchor, force limit); `src/logic/tests.rs`
+`tests/it/logic_physics.rs` (anchor, force limit); `source/logic/src/logic/tests.rs`
 `use_reaches_a_usable_parent`, `water_analog_moves`;
-`src/logic/community_tests.rs`
+`source/logic/src/logic/community_tests.rs`
 `view_punch_muzzle_flash_color_correction_and_noted_classes`;
 `render::color_correction`, `map::fish` unit tests):
 

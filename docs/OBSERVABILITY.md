@@ -1088,7 +1088,7 @@ children of movers that stay where they spawned, usable brushes +use
 didn't find, and panics. Physics props aren't simulated there (no
 bounds), so bodies never touch triggers in it. A unit test for it is in
 `logic::audit::tests`; small entity lists for the fixes it led to are in
-`src/logic/community_tests.rs`. `--fire <target>,<input>[,<value>]`
+`source/logic/src/logic/community_tests.rs`. `--fire <target>,<input>[,<value>]`
 (repeatable) skips the sweep: it loads the filtered maps' logic with one
 player, sends those inputs and prints every half second the queued
 messages, output connections, effects by kind and logic log lines for
@@ -1297,6 +1297,47 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   too), the per-tick contents cache at the water surface, and that a
   coincident player-clip face can win over a ladder brush (which one wins
   follows the BSP tree's order, `MapBrushTree`).
+
+## CS:S demos (demodump)
+
+A SourceTV demo recorded on the probe server (tools/css_probe/README.md,
+"Recording a SourceTV demo") holds everything the server sent, per
+snapshot: entity props, game events, user messages, sounds, temp
+entities. `demodump` prints it as `tick seconds kind ...` lines
+(parser: `source_formats::dem`; never commit `.dem` files):
+
+```
+cargo run --features tools --bin demodump -- <path>.dem --summary
+cargo run --features tools --bin demodump -- <path>.dem --events round_*,player_death,bomb_*
+cargo run --features tools --bin demodump -- <path>.dem --usermsgs TextMsg,HintText,Fade,Shake
+cargo run --features tools --bin demodump -- <path>.dem --sounds 'weapons/*'
+cargo run --features tools --bin demodump -- <path>.dem --entity CCSPlayer --props m_iAccount,m_flFlash*
+cargo run --features tools --bin demodump -- <path>.dem --list-props ParticleSmokeGrenade
+cargo run --features tools --bin demodump -- <path>.dem --tempents CTEFireBullets --ticks 1000..1100
+```
+
+- `--entity` takes a class name (glob) or an entity index; values print
+  when they change, players with their names. `--list-props <class>` shows
+  the flattened prop paths to pass to `--props` (nested tables as
+  `m_Local.m_flFallVelocity`, array elements as `m_iAmmo.003`).
+- Sound lines give the `soundprecache` name, entity, channel, volume,
+  level, pitch, flags and origin (8-unit steps). Levels of 256 and up are
+  "compatibility attenuation" sounds (256 + value; sounds.md).
+- What a SourceTV recording of the sample bot round on de_dust2 showed:
+  `round_end winner=3 reason=7 message="#CTs_Win"` then `round_start`
+  5 s later (tick 2510 to 2850); `m_iAccount` +300 on a kill and the new
+  round's money at `round_start`'s tick; two bots flashed by one flashbang
+  at tick 770 with `m_flFlashDuration` 6.84 and 6.65 and
+  `m_flFlashMaxAlpha` 255; `RadioText`/`SendAudio Radio.FireInTheHole`
+  for a thrown grenade; bot chatter as `RawAudio` (`bot/*.wav`).
+- Not in the sample SourceTV demos: the game events `player_hurt`,
+  `weapon_fire` and grenade detonations, and the user messages `Fade`,
+  `Shake`, `HintText`, `TextMsg` (SourceTV gets only some of what players
+  get), nor anything between snapshots (`tv_snapshotrate`, default 16/s:
+  one frame per ~4 ticks; set 66 for per-tick values). Their effects are
+  in the entity state (health, flash duration, smoke entities); gunshots
+  are `CTEFireBullets` temp entities, not sounds. For per-player messages
+  record a client demo (`record <name>` in a game client; same format).
 
 ## Planned
 

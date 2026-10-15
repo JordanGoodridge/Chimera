@@ -367,14 +367,14 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 
 - A test map with every supported entity (`mashup_logic_test`, generated
   `.vmf`, compiled with Valve's tools; plan section "Test map").
-- Entity I/O, triggers and moving brushes are in (`src/logic`, slices 3
+- Entity I/O, triggers and moving brushes are in (`source/logic/src/logic`, slices 3
   and 4 of the plan), and breakables (func_breakable, func_breakable_surf;
-  src/logic/breakables.rs), model doors (`prop_door_rotating`) and
+  source/logic/src/logic/breakables.rs), model doors (`prop_door_rotating`) and
   prop damage/outputs, skins, body groups and sequences
-  (src/logic/props.rs), sprites, dust and switchable lights
-  (src/logic/visuals.rs, lightmap styles relit at run time), env_global,
+  (source/logic/src/logic/props.rs), sprites, dust and switchable lights
+  (source/logic/src/logic/visuals.rs, lightmap styles relit at run time), env_global,
   trigger_soundscape through the touch code. Prop damage follows
-  specs/source/prop_damage.md (src/logic/prop_damage.rs: prop data,
+  specs/source/prop_damage.md (source/logic/src/logic/prop_damage.rs: prop data,
   pieces, impact damage, explosive props, client props, Wake/Sleep/motion
   inputs, OnAwakened/OnMotionEnabled, pressure). Left: breakable follow-ups
   (section 7), prop `OnAnimationBegun`/`OnAnimationDone`, train
@@ -513,6 +513,30 @@ our own (docs/plans/active/nat-traversal.md; UPnP mapping prototyped,
 (multiplayer.md "Capacity", `heavy::net_capacity`); 1 is moot
 (networking came first), 2 was taken as both.
 
+## 2d. CS:S demos as a parity check (user idea, 2026-10-14)
+
+Built: `demodump` reads CS:S `.dem` files (`source_formats::dem`; SourceTV
+and, untested, client demos; OBSERVABILITY.md "CS:S demos").
+
+- **`playdemo` in our engine.** Drive our game from a CS:S demo: every
+  player's position, angles, weapon, animation sequence, shots
+  (`CTEFireBullets`), grenades, smoke clouds, sounds and the round/HUD
+  state come from the file; our renderer, animation, effects, HUD and
+  audio show them. Uses: compare the same tick against CS:S's own
+  `playdemo` (screenshots via refcmp on the Windows PC or an unlocked
+  desktop), watch any CS:S demo in our game (CS:S's `playdemo`/`demoui`
+  are missing rows in parity-gaps.md), and record our own `.dem` later.
+- **Re-simulate recorded input.** A POV (client `record`) demo holds the
+  recording player's user commands every tick: feed them to our movement
+  and weapons (other players as puppets from the file) and compare
+  position, velocity, ducking, ammo, spread (the command's seed) and hits
+  per tick with what the demo recorded: movecmp at scale with human play
+  (bhop, ladders, surf, strafe-shooting). SourceTV and most pro demos have
+  no user commands, so they only serve `playdemo`. Order: our own probe
+  demos first (known server, maps and settings), then community demos on
+  current map versions; old pro demos (2005-2010) need the pre-Orange-Box
+  network protocol and their own map versions, and often run at tick 100.
+
 ## 3. Weapons, remaining
 
 In progress: [plans/active/weapons.md](plans/active/weapons.md). The
@@ -532,7 +556,7 @@ a first bot are in.
   (the game's textures, laid out by eye) with CS:S.
 - Rounds, money and buying: slice 1 done (`mashup_rounds 1`,
   [plans/active/rounds.md](plans/active/rounds.md)); ammo buying is in.
-- Objectives, remaining (bomb and hostages are in: `src/objectives/`,
+- Objectives, remaining (bomb and hostages are in: `games/cs_source/src/objectives/`,
   specs/cs_source/objectives.md): measure the spec's open questions on the
   probe (Q1 movement while arming, Q3 blast shape/walls/armour, Q4 beep
   schedule and loudness and where the LED sits, Q5 money, Q6 carrier
@@ -617,7 +641,7 @@ docs/plans/active/sound.md.
 
 ## 7. Physics props, remaining
 
-- Player physics shadow (src/games/cs_source/shadow.rs, tests/it/heavy/map_physics_shadow.rs)
+- Player physics shadow (games/cs_source/src/game/shadow.rs, tests/it/heavy/map_physics_shadow.rs)
   follow-ups (docs/tech-debt.md "Physics shadow"): the push speed limit
   (spec Q7), the shadow's weight on a prop stood on, the controller's
   velocity target when not touching (spec 4.1 step 5), measuring the push
@@ -633,7 +657,7 @@ docs/plans/active/sound.md.
   entries the hardware and surface pick; we read the model's
   `door_options` skin and `hardwareN` blocks, docs/tech-debt.md "Model
   doors").
-- Breakables, remaining (src/logic/breakables.rs,
+- Breakables, remaining (source/logic/src/logic/breakables.rs,
   tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof decals,
   propdata templates, the client's pane drawing (spec open question 8:
   edge piece selection, which side draws, the piece's offset; ours in

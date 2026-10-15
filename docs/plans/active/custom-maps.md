@@ -129,13 +129,13 @@ ourselves, so each can be checked in mashup and measured in real CS:S.
    measurements in their Open questions): specs/source/entity_io.md,
    specs/source/triggers.md. The install's `download/maps` is empty, so
    the target maps are still to be chosen.
-   Built 2026-10-06 (src/logic, game-independent; `MapData::entities`
+   Built 2026-10-06 (source/logic/src/logic, game-independent; `MapData::entities`
    from games): the event queue, target matching, AddOutput/Kill/
    FireUser, logic_auto/relay/timer/case/compare/branch, math_counter,
    filters, game_text (client draws it), point_servercommand/
    point_clientcommand with allowlists, trigger_multiple/once/hurt (moved
    from map/hurt.rs)/push/teleport/gravity/remove. The specs' test cases
-   are unit tests (src/logic/tests.rs); tests/it/map_logic.rs runs teleport
+   are unit tests (source/logic/src/logic/tests.rs); tests/it/map_logic.rs runs teleport
    and push with Source movement. Open: the target maps, the probe-server
    measurements in the specs' open questions.
 4. [x] Spec and build moving brush entities (doors, buttons, platforms,
@@ -154,16 +154,16 @@ ourselves, so each can be checked in mashup and measured in real CS:S.
    velocity on leaving). Tests: unit tests per spec case, a door on use
    and a lift (tests/it/map_logic.rs), de_nuke's door pairs
    (tests/it/heavy/map_de_nuke_doors.rs). Breakables built 2026-10-06
-   (src/logic/breakables.rs; nodes like movers, `core::Damageable`,
+   (source/logic/src/logic/breakables.rs; nodes like movers, `core::Damageable`,
    weapon damage routed through `LogicSet::Damage`; gibs and window panes
    in `map::breakables`; tests: spec cases as unit tests,
    tests/it/heavy/map_breakables.rs shoots and knifes de_nuke's vents and shoots a
    cs_office window). Model doors and props as logic entities built
-   2026-10-06 (src/logic/props.rs: prop_door_rotating as a pusher whose
+   2026-10-06 (source/logic/src/logic/props.rs: prop_door_rotating as a pusher whose
    node carries the door model as a rider, volumes from its `.phy`;
    prop_dynamic/prop_physics take weapon damage and fire
    OnTakeDamage/OnHealthChanged/OnBreak, Break/health/visibility inputs;
-   props put back at a round restart; tests: src/logic/prop_tests.rs,
+   props put back at a round restart; tests: source/logic/src/logic/prop_tests.rs,
    tests/it/heavy/map_props.rs: cs_assault's doors, de_nuke's steam, cs_office's
    projector). Left: breakable follow-ups (backlog 7), prop gibs, Skin/
    SetAnimation/SetBodyGroup inputs, train orientation and control.

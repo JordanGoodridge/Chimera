@@ -5,7 +5,7 @@
 //! env_fade on the local HUD (specs/source/game_entities.md,
 //! viewcontrol_and_templates.md), and phys_thruster pushing a
 //! func_physbox (physics_brushes.md). The logic's own spec tables are
-//! unit tests in src/logic/game_tests.rs and template_tests.rs.
+//! unit tests in source/logic/src/logic/game_tests.rs and template_tests.rs.
 
 use bevy::prelude::*;
 use mashup::{

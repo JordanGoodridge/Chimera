@@ -11,7 +11,7 @@
 //! on a prop (reconciliation). Multiplayer props are pushaway.rs's.
 //!
 //! Known shortcuts (docs/tech-debt.md): Physics shadow
-//! (specs/cs_source/physics_props.md 4.1, src/games/cs_source/shadow.rs): the
+//! (specs/cs_source/physics_props.md 4.1, games/cs_source/src/game/shadow.rs): the
 //! shadow controller is a velocity that reaches the target in one physics step
 //! (vphysics' controller and its push limits are engine-side, Q7), so props
 //! over 350 kg never touch the shadow (walls to the movement; the player's own
