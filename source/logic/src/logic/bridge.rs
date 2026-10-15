@@ -1787,6 +1787,7 @@ fn spawn_copy(world: &mut World, id: EntId, source: usize, origin: Vec3, angles:
                     logic.props.push((id, copy));
                 }
             }
+            copy_takes_damage(world, id, copy);
         }
         return;
     }
@@ -1802,6 +1803,22 @@ fn spawn_copy(world: &mut World, id: EntId, source: usize, origin: Vec3, angles:
         if let Some(mut logic) = world.get_resource_mut::<Logic>() {
             logic.props.push((id, copy));
         }
+        copy_takes_damage(world, id, copy);
+    }
+}
+
+/// A copy of a breakable or a prop takes weapons' damage as the map's own
+/// do (`attach_nodes`, `attach_props`): the template member it was cloned
+/// from was taken out of the map and so took none (shots passed through
+/// spawned items and balls, and didn't wake them).
+fn copy_takes_damage(world: &mut World, id: EntId, copy: Entity) {
+    let damageable = world.get_resource::<Logic>().is_some_and(|l| match l.world.get(id).map(|e| &e.class) {
+        Some(super::classes::Class::Breakable(_)) => true,
+        Some(super::classes::Class::Prop(_)) => l.world.prop_states().iter().any(|s| s.id == id && s.damageable),
+        _ => false,
+    });
+    if damageable && let Ok(mut e) = world.get_entity_mut(copy) {
+        e.insert(Damageable);
     }
 }
 

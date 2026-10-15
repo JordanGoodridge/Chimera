@@ -1552,7 +1552,7 @@ fn physics_clips_hold_boats_and_balls() {
 /// point_template's ForceSpawn makes copies that are drawn as their logic
 /// prop says (copies were hidden: their logic props had no map index)
 /// and, for physics ones, have their collision shape (a func_physbox's
-/// copy had none).
+/// copy had none), and take shots as their prop says (copies never did).
 #[test]
 fn template_copies_are_drawn_and_solid() {
     use crate::stack::map::{LogicHidden, PropEntity, copies::MapCopy};
@@ -1620,8 +1620,9 @@ fn template_copies_are_drawn_and_solid() {
                     || w.get::<Children>(node)
                         .is_some_and(|c| c.iter().any(|c| w.get::<avian3d::prelude::Collider>(c).is_some()));
                 let body = w.get::<avian3d::prelude::RigidBody>(node).is_some();
-                if hidden == state.visible || (body && state.solid && !shape) {
-                    wrong.push(format!("{node}: hidden {hidden}, shape {shape}, state {state:?}"));
+                let shot = w.get::<crate::stack::core::Damageable>(node).is_some();
+                if hidden == state.visible || (body && state.solid && !shape) || shot != state.damageable {
+                    wrong.push(format!("{node}: hidden {hidden}, shape {shape}, takes shots {shot}, state {state:?}"));
                 }
             }
             (copies, wrong)
