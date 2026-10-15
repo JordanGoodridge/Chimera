@@ -1,81 +1,46 @@
-//! Instructions-per-tick regression gate (docs/performance.md,
-//! "Regression gate"): headless scenarios with fixed inputs, measured by
-//! hardware counters (user-space instructions retired, summed over every
-//! thread), compared with a stored baseline. Unlike frame times, the
-//! counts barely move with the machine's load.
+//! An instructions-per-tick regression gate (docs/performance.md,
+//! "Regression gate"): scenarios with fixed inputs, measured by hardware
+//! counters (user-space instructions retired, summed over every thread),
+//! compared with a stored baseline per build profile. Unlike frame times,
+//! the counts barely move with the machine's load.
 //!
-//! Scenarios: `greybox` (always), `de_dust2` (rounds with 10 bots; needs a
-//! CS:S install), `mg_lego_multigames_v2` (a community map, when it is in
-//! the content cache). Each runs `--warmup` ticks, then measures `--ticks`
-//! ticks one by one.
-//!
-//! Dev tool: instructions-per-tick regression gate: headless scenarios
-//! (greybox, de_dust2 rounds with 10 bots, mg_lego_multigames_v2) measured with
-//! `metrics::AllThreads`, compared with `tools/perfgate/baseline.json` per
-//! build profile (`--update` rewrites it).
+//! The gate is game-neutral: an app or game names its scenarios and
+//! builds each as something to tick (`Gate`, `main`); this module parses
+//! the command line, measures, compares and updates the baseline. CS:S's
+//! scenarios and binary: games/cs_source/tools/src/bin/perfgate.rs.
 
 use std::{
-    path::{Path, PathBuf},
+    collections::BTreeMap,
+    path::PathBuf,
     time::Instant,
 };
 
-use bevy::prelude::*;
-use mashup::{
-    console::Console,
-    core::{Intent, Team},
-    games::{
-        self,
-        cs_source::{self, TICK_INTERVAL, movement::SourceMovementPlugin, weapons::CsWeaponsPlugin},
-    },
-    greybox::{self, GreyboxMapPlugin},
-    harness::Sim,
-    map::MapPlugin,
-    metrics::{AllThreads, Counts, Percentiles, ThreadCounters, hw_status, short},
-    mount::config::{LocalConfig, content_dir},
-};
+use chimera_core::metrics::{AllThreads, Counts, Percentiles, ThreadCounters, hw_status, short};
 use serde::{Deserialize, Serialize};
-
-const USAGE: &str = "\
-usage: perfgate [--scenario <name>]... [--ticks N] [--warmup N] [--tolerance PCT]
-                [--baseline <file>] [--update] [--json <file>]
-  Runs headless scenarios with fixed inputs and counts user-space
-  instructions per tick (all threads) with hardware counters; fails when a
-  scenario's total rises more than the tolerance above the baseline for
-  this build profile. Skips (exit 0) where counters are unavailable.
-  --scenario <name>  greybox, de_dust2, mg_lego_multigames_v2 (default: all
-                     available)
-  --ticks N          ticks measured per scenario (default 2000)
-  --warmup N         ticks run first, not measured (default 300)
-  --tolerance PCT    allowed rise in percent (default: the baseline's)
-  --baseline <file>  default tools/perfgate/baseline.json
-  --update           write this run's numbers as the baseline for this
-                     build profile (after checking a change is wanted)
-  --json <file>      also write this run's numbers there";
-
-const SCENARIOS: [&str; 3] = ["greybox", "de_dust2", "mg_lego_multigames_v2"];
 
 /// Default allowed rise (percent): see docs/performance.md, "Regression
 /// gate", for the measured run-to-run spread it is chosen from.
-const DEFAULT_TOLERANCE: f64 = 3.0;
+pub const DEFAULT_TOLERANCE: f64 = 3.0;
 
+/// One scenario's measurements.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-struct Result {
-    ticks: u64,
+pub struct Measured {
+    pub ticks: u64,
     /// Instructions per tick, all threads.
-    instructions_total: u64,
-    instructions_p50: f64,
-    instructions_p99: f64,
+    pub instructions_total: u64,
+    pub instructions_p50: f64,
+    pub instructions_p99: f64,
     /// Instructions per tick on the main thread only.
-    main_instructions_p50: f64,
-    main_instructions_total: u64,
+    pub main_instructions_p50: f64,
+    pub main_instructions_total: u64,
     /// CPU time per tick, all threads (ms), and wall time per tick: for
     /// reading, not gated (they follow the machine's load).
-    cpu_ms_p50: f64,
-    cpu_ms_p99: f64,
-    wall_ms_p50: f64,
-    wall_ms_p99: f64,
-    cycles_total: u64,
-    cache_misses_total: u64,
+    pub cpu_ms_p50: f64,
+    pub cpu_ms_p99: f64,
+    pub wall_ms_p50: f64,
+    pub wall_ms_p99: f64,
+    pub cycles_total: u64,
+    pub cache_misses_total: u64,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -85,9 +50,9 @@ struct Baselines {
     /// where the task pools' overhead weighs more).
     tolerance_pct: f64,
     #[serde(default)]
-    scenario_tolerance_pct: std::collections::BTreeMap<String, f64>,
+    scenario_tolerance_pct: BTreeMap<String, f64>,
     /// By build profile (`playtest`, `debug`, ...), then scenario.
-    profiles: std::collections::BTreeMap<String, Profile>,
+    profiles: BTreeMap<String, Profile>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -95,7 +60,16 @@ struct Profile {
     /// The commit the numbers were taken at, and the CPU.
     build: String,
     cpu: String,
-    scenarios: std::collections::BTreeMap<String, Result>,
+    scenarios: BTreeMap<String, Measured>,
+}
+
+/// What a gate measures: its scenarios' names, its baseline file and the
+/// build it runs (the commit, recorded with an updated baseline).
+pub struct Gate<'a> {
+    pub name: &'a str,
+    pub scenarios: &'a [&'a str],
+    pub baseline: PathBuf,
+    pub build: &'a str,
 }
 
 struct Args {
@@ -108,13 +82,37 @@ struct Args {
     json: Option<PathBuf>,
 }
 
-fn parse_args() -> std::result::Result<Args, String> {
+fn usage(gate: &Gate) -> String {
+    format!(
+        "\
+usage: {name} [--scenario <name>]... [--ticks N] [--warmup N] [--tolerance PCT]
+                [--baseline <file>] [--update] [--json <file>]
+  Runs headless scenarios with fixed inputs and counts user-space
+  instructions per tick (all threads) with hardware counters; fails when a
+  scenario's total rises more than the tolerance above the baseline for
+  this build profile. Skips (exit 0) where counters are unavailable.
+  --scenario <name>  {scenarios} (default: all
+                     available)
+  --ticks N          ticks measured per scenario (default 2000)
+  --warmup N         ticks run first, not measured (default 300)
+  --tolerance PCT    allowed rise in percent (default: the baseline's)
+  --baseline <file>  default {baseline}
+  --update           write this run's numbers as the baseline for this
+                     build profile (after checking a change is wanted)
+  --json <file>      also write this run's numbers there",
+        name = gate.name,
+        scenarios = gate.scenarios.join(", "),
+        baseline = gate.baseline.display()
+    )
+}
+
+fn parse_args(gate: &Gate) -> Result<Args, String> {
     let mut a = Args {
         scenarios: Vec::new(),
         ticks: 2000,
         warmup: 300,
         tolerance: None,
-        baseline: Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/perfgate/baseline.json"),
+        baseline: gate.baseline.clone(),
         update: false,
         json: None,
     };
@@ -134,43 +132,47 @@ fn parse_args() -> std::result::Result<Args, String> {
         }
     }
     for s in &a.scenarios {
-        if !SCENARIOS.contains(&s.as_str()) {
+        if !gate.scenarios.contains(&s.as_str()) {
             return Err(format!("unknown scenario {s}"));
         }
     }
     Ok(a)
 }
 
-fn main() {
-    let args = match parse_args() {
+/// The gate's binary: parse the command line, build each wanted scenario
+/// with `scenario` (None: skipped, e.g. its map isn't installed; Some: a
+/// function running one tick), measure, then compare with the baseline or
+/// (`--update`) write it. Exits the process with the verdict.
+pub fn main<'s>(gate: Gate, mut scenario: impl FnMut(&str) -> Option<Box<dyn FnMut() + 's>>) {
+    let args = match parse_args(&gate) {
         Ok(a) => a,
         Err(e) => {
             if !e.is_empty() {
                 eprintln!("{e}");
             }
-            eprintln!("{USAGE}");
+            eprintln!("{}", usage(&gate));
             std::process::exit(2);
         }
     };
     // Counters first: without them there is nothing to gate.
     let mut probe = ThreadCounters::current();
     if probe.read().hw.is_none() {
-        println!("perfgate: skipped, hardware counters {}", hw_status());
+        println!("{}: skipped, hardware counters {}", gate.name, hw_status());
         return;
     }
     let profile = build_profile();
     let wanted: Vec<&str> = if args.scenarios.is_empty() {
-        SCENARIOS.to_vec()
+        gate.scenarios.to_vec()
     } else {
         args.scenarios.iter().map(String::as_str).collect()
     };
-    let mut results = std::collections::BTreeMap::new();
+    let mut results = BTreeMap::new();
     for name in wanted {
-        let Some(sim) = scenario(name) else {
+        let Some(tick) = scenario(name) else {
             println!("{name}: skipped (map not installed or cached)");
             continue;
         };
-        let r = measure(sim, args.warmup, args.ticks);
+        let r = measure(tick, args.warmup, args.ticks);
         println!(
             "{name}: {} ticks, instructions per tick p50 {} p99 {} total {} (main thread p50 {}); \
              cpu ms p50 {:.3} p99 {:.3}; wall ms p50 {:.3} p99 {:.3}",
@@ -191,10 +193,10 @@ fn main() {
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or(Baselines {
             tolerance_pct: DEFAULT_TOLERANCE,
-            ..default()
+            ..Default::default()
         });
     let this = Profile {
-        build: mashup::core::BUILD.to_string(),
+        build: gate.build.to_string(),
         cpu: cpu_model(),
         scenarios: results.clone(),
     };
@@ -267,100 +269,22 @@ fn main() {
     }
     if !failed.is_empty() {
         eprintln!(
-            "perfgate: {} rose by more than the tolerance in instructions: find the cause (tracesum, \
-             mashup_hitch_ratio), or if the cost is wanted, `perfgate --update` (docs/performance.md)",
-            failed.join(", ")
+            "{}: {} rose by more than the tolerance in instructions: find the cause (tracesum, \
+             mashup_hitch_ratio), or if the cost is wanted, `{} --update` (docs/performance.md)",
+            gate.name,
+            failed.join(", "),
+            gate.name
         );
         std::process::exit(1);
     }
 }
 
-/// The scenario's simulation, ready to tick; None when its map is missing.
-fn scenario(name: &str) -> Option<Sim> {
-    let mut sim = match name {
-        "greybox" => {
-            let mut sim = Sim::new(GreyboxMapPlugin);
-            // Characters walking and turning on fixed patterns (`drive`).
-            for (i, at) in greybox::SPAWNS.iter().enumerate() {
-                let e = sim.spawn_character(*at, mashup::movement::placeholder::ID);
-                sim.app.world_mut().entity_mut(e).insert(Driven(i as u32));
-            }
-            sim.app.add_systems(FixedPreUpdate, drive);
-            sim
-        }
-        "de_dust2" => {
-            if !installed() {
-                return None;
-            }
-            let mut sim = cs_map("de_dust2")?;
-            for team in [1, 2] {
-                for _ in 0..5 {
-                    mashup::bot::add_bot(sim.app.world_mut(), Team(team)).expect("bot");
-                }
-            }
-            sim.app
-                .world_mut()
-                .resource_mut::<Console>()
-                .submit("mp_freezetime 2; mp_roundtime 2; mashup_rounds 1");
-            sim
-        }
-        "mg_lego_multigames_v2" => {
-            let cached =
-                content_dir(cs_source::GAME).is_some_and(|d| d.join("maps").join(format!("{name}.bsp")).is_file());
-            if !installed() || !cached {
-                return None;
-            }
-            cs_map(name)?
-        }
-        _ => return None,
-    };
-    single_threaded_schedules(&mut sim.app);
-    Some(sim)
-}
-
-fn installed() -> bool {
-    LocalConfig::load()
-        .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
-        .is_some_and(|p| p.join("cstrike").is_dir())
-}
-
-fn cs_map(name: &str) -> Option<Sim> {
-    let map = games::load_map(&format!("cs_source:{name}")).ok()?;
-    let mut sim = Sim::new((MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim.app.insert_resource(mashup::slots::Loadout {
-        movement: cs_source::movement::ID,
-    });
-    Some(sim)
-}
-
-/// A greybox character's pattern number.
-#[derive(Component)]
-struct Driven(u32);
-
-/// Walk, strafe, turn and jump on a schedule of the tick number: the same
-/// every run.
-fn drive(tick: Res<mashup::core::SimTick>, mut q: Query<(&Driven, &mut Intent)>) {
-    for (d, mut i) in &mut q {
-        let t = tick.0 + d.0 as u64 * 37;
-        let phase = (t / 64) % 4;
-        i.move_axis = [Vec2::Y, Vec2::X, -Vec2::Y, -Vec2::X][phase as usize];
-        i.yaw = (t % 360) as f32 * 0.0174533;
-        i.jump = t.is_multiple_of(97);
+/// Run `warmup` ticks, then measure `ticks` ticks one at a time (`tick`
+/// runs one).
+pub fn measure(mut tick: impl FnMut(), warmup: u64, ticks: u64) -> Measured {
+    for _ in 0..warmup {
+        tick();
     }
-}
-
-/// As the game runs them (apps/cs_source/src/main.rs): every per-frame and fixed schedule
-/// on one thread, so the counts don't depend on how work was handed out.
-fn single_threaded_schedules(app: &mut App) {
-    mashup::single_threaded_schedules(app);
-}
-
-/// Run `warmup` ticks, then measure `ticks` ticks one at a time (a `Sim`
-/// update is one tick).
-fn measure(mut sim: Sim, warmup: u64, ticks: u64) -> Result {
-    sim.ticks(warmup);
     let mut all = AllThreads::default();
     let mut main = ThreadCounters::current();
     let (mut ins, mut main_ins, mut cpu, mut wall) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -369,7 +293,7 @@ fn measure(mut sim: Sim, warmup: u64, ticks: u64) -> Result {
     all.read();
     for _ in 0..ticks {
         let (a0, m0, t0) = (all.read(), main.read(), Instant::now());
-        sim.ticks(1);
+        tick();
         let wall_ms = t0.elapsed().as_secs_f64() * 1e3;
         let (a, m) = (all.read() - a0, main.read() - m0);
         let hw = a.hw.unwrap_or_default();
@@ -384,7 +308,7 @@ fn measure(mut sim: Sim, warmup: u64, ticks: u64) -> Result {
     let p = |v: &[f64]| Percentiles::of(v).unwrap_or_default();
     let (pi, pm, pc, pw) = (p(&ins), p(&main_ins), p(&cpu), p(&wall));
     let hw = total.hw.unwrap_or_default();
-    Result {
+    Measured {
         ticks,
         instructions_total: hw.instructions,
         instructions_p50: pi.p50,
@@ -400,7 +324,8 @@ fn measure(mut sim: Sim, warmup: u64, ticks: u64) -> Result {
     }
 }
 
-/// Which build this binary is (`playtest`, `debug`, `release`).
+/// Which build this binary is (`playtest`, `debug`, `release`): the
+/// target folder it runs from.
 fn build_profile() -> String {
     std::env::current_exe()
         .ok()

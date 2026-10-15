@@ -2559,6 +2559,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "chimera_tools"
+version = "0.1.0"
+dependencies = [
+ "chimera_core",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chimera_world"
 version = "0.1.0"
 dependencies = [
@@ -3073,6 +3083,23 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "cs_source_app",
+]
+
+[[package]]
+name = "cs_source_tools"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_tools",
+ "cs_source",
+ "cs_source_app",
+ "image",
+ "serde",
+ "serde_json",
+ "source_tools",
+ "toml",
+ "vbsp",
 ]
 
 [[package]]
@@ -6763,6 +6790,13 @@ dependencies = [
  "chimera_net",
  "chimera_world",
  "serde",
+]
+
+[[package]]
+name = "source_tools"
+version = "0.1.0"
+dependencies = [
+ "source_formats",
 ]
 
 [[package]]

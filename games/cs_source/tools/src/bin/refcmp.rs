@@ -12,11 +12,6 @@
 //! (`shared/hudcmp.rs`) compare the HUD panel by panel with CS:S captures;
 //! `REFCMP_OUT` keeps a session's captures apart.
 
-#[path = "shared/hudcmp.rs"]
-mod hudcmp;
-#[path = "shared/rcon.rs"]
-mod rcon;
-use rcon::Rcon;
 use std::{
     path::{Path, PathBuf},
     process::{Command, ExitCode},
@@ -24,12 +19,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use image::{GenericImageView, Rgb, RgbImage, imageops};
-use mashup::{
+use chimera_tools::imgcmp::{self, linear_to_srgb, srgb_to_linear};
+use cs_source_app::{
     games::cs_source::bsp::to_engine,
     mount::config::{LocalConfig, default_dump_dir},
 };
+use cs_source_tools::hudcmp;
+use image::Rgb;
 use serde::Deserialize;
+use source_tools::rcon::Rcon;
 
 const USAGE: &str = "\
 usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|capture-hud|hudcmp] [--views <file>] [--only <name>] [--out <dir>] [--hud-ref <dir>] [--keep-running] [-- <mashup args>]
@@ -95,7 +93,7 @@ struct Args {
 fn main() -> ExitCode {
     let mut args = Args {
         command: "all".into(),
-        views: Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/refcmp/de_dust2.toml"),
+        views: cs_source_tools::repo_root().join("tools/refcmp/de_dust2.toml"),
         only: None,
         keep_running: false,
         out: None,
@@ -350,7 +348,7 @@ const VISCHECK_ALLOWED_PIXELS: usize = 4608;
 /// for pixel. Besides the file's views: from every spawn and from nav area
 /// centres (about 10 and 60), at eye height, looking four ways.
 fn vischeck(file: &mut ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
-    let map = mashup::games::load_map(&format!("cs_source:{}", file.map))?;
+    let map = cs_source_app::games::load_map(&format!("cs_source:{}", file.map))?;
     let eye = 64.0 * 0.0254;
     let mut eyes: Vec<(String, [f32; 3])> = map
         .spawns
@@ -570,81 +568,6 @@ fn hud(args: &Args) -> Result<(), String> {
 
 // ------------------------------------------------------------------ report
 
-#[derive(Default, serde::Serialize)]
-struct Stats {
-    /// Mean sRGB value per channel, 0..1.
-    rgb: [f32; 3],
-    luma: f32,
-    /// Mean HSV saturation.
-    saturation: f32,
-    /// Mean absolute Laplacian of luma (0..255 scale): higher = crisper.
-    sharpness: f32,
-}
-
-fn stats(img: &RgbImage) -> Stats {
-    let (w, h) = img.dimensions();
-    let n = (w * h) as f32;
-    let mut s = Stats::default();
-    let luma: Vec<f32> = img
-        .pixels()
-        .map(|Rgb([r, g, b])| {
-            let (r, g, b) = (*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0);
-            s.rgb[0] += r / n;
-            s.rgb[1] += g / n;
-            s.rgb[2] += b / n;
-            let (max, min) = (r.max(g).max(b), r.min(g).min(b));
-            s.saturation += if max > 0.0 { (max - min) / max } else { 0.0 } / n;
-            0.2126 * r + 0.7152 * g + 0.0722 * b
-        })
-        .collect();
-    s.luma = luma.iter().sum::<f32>() / n;
-    let at = |x: u32, y: u32| luma[(y * w + x) as usize] * 255.0;
-    let mut lap = 0.0;
-    for y in 1..h - 1 {
-        for x in 1..w - 1 {
-            lap += (4.0 * at(x, y) - at(x - 1, y) - at(x + 1, y) - at(x, y - 1) - at(x, y + 1)).abs();
-        }
-    }
-    s.sharpness = lap / ((w - 2) * (h - 2)) as f32;
-    s
-}
-
-/// Correlation of the two images' fine detail (Laplacian of luma): near 1
-/// when texture relief lines up, near 0 when unrelated, negative when
-/// inverted (e.g. normal maps lit from the wrong side).
-fn detail_correlation(a: &RgbImage, b: &RgbImage) -> f32 {
-    // Half resolution first: tolerant of sub-pixel differences between
-    // renderers, still sensitive to texture relief.
-    let half =
-        |img: &RgbImage| imageops::resize(img, img.width() / 2, img.height() / 2, imageops::FilterType::Triangle);
-    let (a, b) = (&half(a), &half(b));
-    let lap = |img: &RgbImage| {
-        let (w, h) = img.dimensions();
-        let l = |x: u32, y: u32| {
-            let p = img.get_pixel(x, y);
-            0.2126 * p[0] as f32 + 0.7152 * p[1] as f32 + 0.0722 * p[2] as f32
-        };
-        let mut out = Vec::with_capacity((w * h) as usize);
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                out.push(4.0 * l(x, y) - l(x - 1, y) - l(x + 1, y) - l(x, y - 1) - l(x, y + 1));
-            }
-        }
-        out
-    };
-    let (la, lb) = (lap(a), lap(b));
-    let n = la.len() as f32;
-    let (ma, mb) = (la.iter().sum::<f32>() / n, lb.iter().sum::<f32>() / n);
-    let (mut sab, mut saa, mut sbb) = (0.0f64, 0.0f64, 0.0f64);
-    for (x, y) in la.iter().zip(&lb) {
-        let (dx, dy) = ((x - ma) as f64, (y - mb) as f64);
-        sab += dx * dy;
-        saa += dx * dx;
-        sbb += dy * dy;
-    }
-    (sab / (saa.sqrt() * sbb.sqrt()).max(1e-9)) as f32
-}
-
 fn report(file: &ViewsFile, ref_dir: &Path, ours_dir: &Path, out: &Path) -> Result<(), String> {
     println!(
         "\n{:<14} {:>12} {:>12} {:>14} {:>9} {:>7}   (ref -> ours)",
@@ -660,33 +583,18 @@ fn report(file: &ViewsFile, ref_dir: &Path, ours_dir: &Path, out: &Path) -> Resu
             println!("{:<14} missing capture(s)", v.name);
             continue;
         };
-        let o = if o.dimensions() != r.dimensions() {
-            o.resize_exact(r.width(), r.height(), imageops::FilterType::Triangle)
-        } else {
-            o
-        };
-        let (r, o) = (r.to_rgb8(), o.to_rgb8());
-        let (rs, os) = (stats(&r), stats(&o));
-        let mut diff = RgbImage::new(r.width(), r.height());
-        let mut total = 0.0;
-        for (d, (a, b)) in diff.pixels_mut().zip(r.pixels().zip(o.pixels())) {
-            let px: [u8; 3] = std::array::from_fn(|c| (a[c] as i32 - b[c] as i32).unsigned_abs() as u8);
-            total += px.iter().map(|v| *v as f32).sum::<f32>() / (3.0 * 255.0);
-            *d = Rgb(px.map(|v| v.saturating_mul(4)));
-        }
-        let abs_diff = total / (r.width() * r.height()) as f32;
-        let detail = detail_correlation(&r, &o);
+        let imgcmp::Comparison {
+            reference: rs,
+            ours: os,
+            abs_diff,
+            detail,
+            sheet,
+        } = imgcmp::compare(&r, &o);
         println!(
             "{:<14} {:>5.3}->{:<5.3} {:>5.3}->{:<5.3} {:>6.1}->{:<6.1} {:>9.3} {:>7.3}",
             v.name, rs.luma, os.luma, rs.saturation, os.saturation, rs.sharpness, os.sharpness, abs_diff, detail
         );
         // Side by side: reference | ours | difference x4, at half size.
-        let (hw, hh) = (r.width() / 2, r.height() / 2);
-        let mut sheet = RgbImage::new(hw * 3, hh);
-        for (i, img) in [&r, &o, &diff].into_iter().enumerate() {
-            let small = imageops::resize(img, hw, hh, imageops::FilterType::Triangle);
-            imageops::replace(&mut sheet, &small, (i as u32 * hw) as i64, 0);
-        }
         let path = out.join(format!("{}.png", v.name));
         sheet.save(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         rows.push(serde_json::json!({"view": v.name, "ref": rs, "ours": os, "abs_diff": abs_diff, "detail_correlation": detail}));
@@ -701,23 +609,6 @@ fn report(file: &ViewsFile, ref_dir: &Path, ours_dir: &Path, out: &Path) -> Resu
 }
 
 // --------------------------------------------------------------------- fit
-
-fn srgb_to_linear(c: f32) -> f32 {
-    if c <= 0.04045 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-fn linear_to_srgb(c: f32) -> f32 {
-    let c = c.clamp(0.0, 1.0);
-    if c <= 0.0031308 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    }
-}
 
 /// Per-pixel samples: (reference sRGB, albedo sRGB, linear light) per channel.
 type Sample = ([f32; 3], [f32; 3], [f32; 3]);
@@ -926,16 +817,16 @@ fn skyconv(file: &ViewsFile, ref_dir: &Path, out: &Path) -> Result<(), String> {
 
     // 2. With the convention known, fit each face's texture and orientation
     //    to the reference sky on the CPU.
-    let map = mashup::games::load_map(&format!("cs_source:{}", file.map))?;
+    let map = cs_source_app::games::load_map(&format!("cs_source:{}", file.map))?;
     let sky = map.sky.as_ref().ok_or("map has no sky")?;
-    let suffix_textures: Vec<(&str, &mashup::map::MapTexture)> = {
-        use mashup::games::cs_source::sky::FACES;
+    let suffix_textures: Vec<(&str, &cs_source_app::map::MapTexture)> = {
+        use cs_source_app::games::cs_source::sky::FACES;
         FACES
             .iter()
             .map(|(sfx, face, _)| (*sfx, &map.textures[sky.faces[*face].0]))
             .collect()
     };
-    let sample = |t: &mashup::map::MapTexture, orient: u8, u: f32, v: f32| -> [f32; 3] {
+    let sample = |t: &cs_source_app::map::MapTexture, orient: u8, u: f32, v: f32| -> [f32; 3] {
         let size = t.width;
         let (x, y) = (
             ((u * size as f32) as u32).min(size - 1),
@@ -1022,9 +913,14 @@ fn warn_if_stale(exe: &std::path::Path) {
         }
         best
     }
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    // Every crate's sources: the Chimera, Source, games' and apps' folders.
+    let repo = cs_source_tools::repo_root();
+    let changed = ["chimera", "source", "games", "apps", "src"]
+        .iter()
+        .filter_map(|d| newest(&repo.join(d)))
+        .max();
     let built = std::fs::metadata(exe).and_then(|m| m.modified()).ok();
-    if let (Some(built), Some(changed)) = (built, newest(&src))
+    if let (Some(built), Some(changed)) = (built, changed)
         && changed > built
     {
         eprintln!(

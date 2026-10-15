@@ -14,9 +14,12 @@ members = [
     "chimera/sim",
     "chimera/client",
     "chimera/net",
+    "chimera/tools",
     "source/formats",
     "source/logic",
+    "source/tools",
     "games/cs_source",
+    "games/cs_source/tools",
     "apps/cs_source",
     "apps/cs_source_server",
 ]
@@ -28,9 +31,12 @@ default-members = [
     "chimera/sim",
     "chimera/client",
     "chimera/net",
+    "chimera/tools",
     "source/formats",
     "source/logic",
+    "source/tools",
     "games/cs_source",
+    "games/cs_source/tools",
     "apps/cs_source",
     "apps/cs_source_server",
 ]
@@ -53,6 +59,11 @@ chimera_net = { path = "chimera/net" }
 source_formats = { path = "source/formats" }
 source_logic = { path = "source/logic" }
 cs_source = { path = "games/cs_source" }
+# The layers' tools (docs/ARCHITECTURE.md, "Crates"): Chimera's (the
+# perf gate, image comparison) and Source's (RCON) libraries, for the
+# tools above them.
+chimera_tools = { path = "chimera/tools" }
+source_tools = { path = "source/tools" }
 # The CS:S app's glue; without its default `present` here so the dedicated
 # server can leave the presentation out (members that want it turn on
 # `present`).
@@ -175,50 +186,12 @@ name = "it"
 path = "tests/it/main.rs"
 required-features = ["present"]
 
-# Debugging tools (docs/OBSERVABILITY.md): `--features tools`, so `cargo
-# test` doesn't relink each (docs/performance.md, "Test cycle").
-[[bin]]
-name = "movecmp"
-test = false
-required-features = ["tools"]
-
-[[bin]]
-name = "refcmp"
-test = false
-required-features = ["tools"]
-
-[[bin]]
-name = "tracesum"
-test = false
-required-features = ["tools"]
-
-# Instructions-per-tick regression gate (docs/performance.md).
-[[bin]]
-name = "perfgate"
-test = false
-required-features = ["tools"]
-
-[[bin]]
-name = "mapsweep"
-test = false
-required-features = ["tools"]
-
-# Source demo (.dem) inspector: game events, user messages, sounds,
-# entity props per tick (docs/OBSERVABILITY.md, "CS:S demos").
-[[bin]]
-name = "demodump"
-test = false
-required-features = ["tools"]
-
 [features]
 default = ["present"]
 
 # The app with its presentation, client shell and CS:S's front end
 # (`cs_source_app`'s `present`): what the integration tests drive.
 present = ["cs_source_app/present"]
-
-# The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep, demodump).
-tools = ["present"]
 
 # Combat Arms loader: developed locally, git-ignored (src/games/combat_arms/).
 # Enable with --features combat_arms where that folder exists.

@@ -777,6 +777,9 @@ fn workspace_crates() {
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
+    const TOOLS: &str = "is a layer's tools (docs/ARCHITECTURE.md, \"Crates\"): a tool lives at the lowest \
+        layer whose knowledge it needs, and uses nothing above it. Move the tool (or the part of it that \
+        needs the layer above) into that layer's tools: chimera/tools, source/tools, games/<game>/tools.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("chimera/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
@@ -787,6 +790,9 @@ fn workspace_crates() {
         ("games/cs_source", &["chimera_present", "chimera_client", "source_logic", "cs_source_app", "mashup", "combat_arms"], GAME),
         ("source/logic", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
+        ("chimera/tools", &["source_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
+        ("source/tools", &["bevy", "avian", "chimera_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
+        ("games/cs_source/tools", &["mashup", "combat_arms"], TOOLS),
         (
             "apps/cs_source_server",
             &["chimera_present", "chimera_client", "bevy_egui", "bevy-inspector-egui", "arboard", "mashup"],

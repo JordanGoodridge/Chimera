@@ -15,8 +15,6 @@
 //!
 //! The server comes from `[games.cs_source_server]` in mashup.local.toml.
 
-#[path = "shared/rcon.rs"]
-mod rcon;
 
 use std::{
     f32::consts::FRAC_PI_2,
@@ -28,7 +26,7 @@ use std::{
 };
 
 use bevy::prelude::*;
-use mashup::{
+use cs_source_app::{
     core::Velocity,
     games::{
         self,
@@ -41,7 +39,7 @@ use mashup::{
     map::{MapData, MapDebugView, MapPlugin},
     mount::config::{LocalConfig, default_dump_dir},
 };
-use rcon::Rcon;
+use source_tools::rcon::Rcon;
 
 const RCON_ADDR: &str = "127.0.0.1:27030";
 const RCON_PASSWORD: &str = "mashup-probe";

@@ -1,0 +1,61 @@
+[package]
+name = "cs_source_tools"
+version = "0.1.0"
+description = "CS:S's tools: comparing with the real game (refcmp, movecmp, the HUD), the map sweep, the perf gate's scenarios"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# CS:S's simulation as the CS:S app composes it (`cs_source_app`: its
+# `SimPlugins` with Source's logic, the headless harness, map loading by
+# id; with `present`, as refcmp and perfgate run the map's drawing
+# registration too), Chimera's and Source's tools; never `mashup` or
+# another game (tests/it/architecture.rs checks it). Known shortcut: the
+# harness is the app's, so these game tools sit on the CS:S app
+# (docs/tech-debt.md).
+[dependencies]
+cs_source_app = { workspace = true, features = ["present"] }
+cs_source.workspace = true
+chimera_tools.workspace = true
+source_tools.workspace = true
+avian3d.workspace = true
+bevy.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+vbsp.workspace = true
+
+# Debugging tools (docs/OBSERVABILITY.md): `--features tools`.
+[[bin]]
+name = "movecmp"
+test = false
+required-features = ["tools"]
+
+[[bin]]
+name = "refcmp"
+test = false
+required-features = ["tools"]
+
+# Instructions-per-tick regression gate on CS:S's scenarios
+# (docs/performance.md), on `chimera_tools::perfgate`.
+[[bin]]
+name = "perfgate"
+test = false
+required-features = ["tools"]
+
+[[bin]]
+name = "mapsweep"
+test = false
+required-features = ["tools"]
+
+[features]
+# The debugging binaries (docs/OBSERVABILITY.md).
+tools = []
+# Bevy as a dynamic library, as the game's `dev`.
+dev = ["cs_source_app/dev", "chimera_tools/dev"]

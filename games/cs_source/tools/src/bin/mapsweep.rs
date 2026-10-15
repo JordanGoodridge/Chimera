@@ -23,7 +23,7 @@ use std::{
     time::Instant,
 };
 
-use mashup::{
+use cs_source_app::{
     games::{self, cs_source},
     logic::{
         LogicWorld, NoCollision,
@@ -43,7 +43,7 @@ usage: mapsweep [options]
                      a 1280x720 screenshot from the first spawn and mashup_perf_log's
                      frame times there (needs a display)
   --frames <n>       frames per --shots run (default 600)
-  --audit            also audit the map logic (mashup::logic::audit): connections whose
+  --audit            also audit the map logic (cs_source_app::logic::audit): connections whose
                      target or input is missing, outputs and keyvalues nothing reads, and a
                      scripted player's run through every trigger and button; writes
                      audit.md, audit.txt
@@ -354,7 +354,7 @@ fn sweep_map(name: &str, path: &Path, secs: f32, audit: bool) -> Row {
                 // Known gaps the logic notes (`classes::noted_class`).
                 if HANDLED_ELSEWHERE.contains(&class.as_str())
                     || class.starts_with("weapon_")
-                    || mashup::logic::classes::noted_class(&class).is_some()
+                    || cs_source_app::logic::classes::noted_class(&class).is_some()
                 {
                     continue;
                 }
@@ -465,7 +465,7 @@ fn main() -> ExitCode {
             eprintln!("== {name}");
             match games::load_map(&format!("{}:{name}", cs_source::GAME)) {
                 Ok(map) => {
-                    for line in mashup::logic::audit::trace_fire(&map.entities, &args.fire, args.secs) {
+                    for line in cs_source_app::logic::audit::trace_fire(&map.entities, &args.fire, args.secs) {
                         eprintln!("{line}");
                     }
                 }
@@ -668,7 +668,11 @@ fn source_literals() -> BTreeSet<String> {
         }
     }
     let mut out = BTreeSet::new();
-    walk(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut out);
+    // Every crate's sources (Source's logic classes are source/logic's).
+    let repo = cs_source_tools::repo_root();
+    for dir in ["chimera", "source", "games", "apps", "src"] {
+        walk(&repo.join(dir), &mut out);
+    }
     out
 }
 

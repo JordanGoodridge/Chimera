@@ -703,7 +703,8 @@ breaks indirect draws on that map (backlog).
 
 ### Regression gate
 
-`perfgate` (src/bin/perfgate.rs) runs three headless scenarios with
+`perfgate` (games/cs_source/tools/src/bin/perfgate.rs, on
+`chimera_tools::perfgate`) runs three headless scenarios with
 fixed inputs: `greybox` (two characters walking, turning and jumping on
 a fixed pattern), `de_dust2` (rounds, 5 bots a side, `mp_freezetime 2;
 mp_roundtime 2`), `mg_lego_multigames_v2` (the map's logic and props, no

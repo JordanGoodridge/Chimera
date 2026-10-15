@@ -904,7 +904,8 @@ Details and baseline numbers: [performance.md](performance.md).
   output folder (`<out>/<map>/bench/`) have every metric's n, mean, p50,
   p90, p99, p99.9, max per view and overall, for scripts
   (`jq '.overall.metrics.main_instructions.p50' bench.json`).
-- `perfgate` (`src/bin/perfgate.rs`): the instructions-per-tick
+- `perfgate` (`games/cs_source/tools/src/bin/perfgate.rs`, the gate
+  itself `chimera/tools/src/perfgate.rs`): the instructions-per-tick
   regression gate: `cargo build --profile playtest --features tools --bin perfgate &&
   target/playtest/perfgate` runs greybox, de_dust2 (rounds, 10 bots) and
   mg_lego_multigames_v2 headless for 2000 ticks each, prints instructions
@@ -950,7 +951,7 @@ Details and baseline numbers: [performance.md](performance.md).
   `TRACE_CHROME=<file>` names it (else `trace-*.json` in the working
   directory). Keep runs short (`--frames 400`: about 1.5 GB) and the
   file in your `target/`. `tracesum <file> [--skip N] [--top N]
-  [--filter text] [--by-total]` (`src/bin/tracesum.rs`) prints the main
+  [--filter text] [--by-total]` (`chimera/tools/src/bin/tracesum.rs`) prints the main
   world's (`main app`) and render world's (`sub app: name=RenderApp`)
   time per frame and the spans with the most self time per frame, by
   thread (systems run on the `workers`); open the file in
@@ -1266,7 +1267,7 @@ cargo run --features dev,tools --bin movecmp -- fuzz --runs 16 --ticks 150   # l
 cargo run --features dev,tools --bin movecmp -- --offline   # against the last CS:S logs, no server
 ```
 
-- Each scenario (in `src/bin/movecmp.rs`) is a start position and per-tick
+- Each scenario (in `games/cs_source/tools/src/bin/movecmp.rs`) is a start position and per-tick
   inputs. A CS:S dedicated server with the `tools/css_probe` SourceMod
   plugin plays them on a bot and logs every tick; mashup plays the same
   inputs from the game's tick-0 state on the same map at the same 0.015 s

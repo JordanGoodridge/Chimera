@@ -139,6 +139,15 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   integration test crate (tests/it/, which tests across the workspace),
   `dump` (an install inspector for several games) and Combat Arms' local
   loader (`games::combat_arms`, git-ignored). Nothing new goes in it.
+- Tools live at the lowest layer whose knowledge they need, each layer's
+  in its own crate, binaries behind `tools` (checked: `workspace_crates`):
+  `chimera_tools` (chimera/tools/: the perf gate, `imgcmp`, `tracesum`;
+  no Source, game or app), `source_tools` (source/tools/: RCON,
+  `demodump`, `testmap`; no Bevy, Chimera or game) and `cs_source_tools`
+  (games/cs_source/tools/: `refcmp`'s CS:S driver, `movecmp`, `mapsweep`,
+  `perfgate`'s scenarios). CS:S's tools drive the simulation through the
+  CS:S app's harness, so they depend on `cs_source_app` (tech-debt.md).
+  An app's own tools only for app concerns (launch, packaging, budgets).
 
 ## Layers
 
@@ -419,13 +428,21 @@ that the paths exist).
 - `apps/cs_source/src/main.rs`: the game binary (top)
 - `apps/cs_source/src/harness.rs`: `Sim` and `NetSim`: headless apps stepped by exact ticks, for tests (harness)
 - `apps/cs_source_server/src/main.rs`: the dedicated server, built without the presentation (top)
-- `src/bin/mapsweep.rs`: dev tool: load every cached map headless and report problems
-- `src/bin/perfgate.rs`: dev tool: instructions-per-tick regression gate
-- `src/bin/refcmp.rs`: dev tool: compare views against real CS:S
-- `src/bin/tracesum.rs`: dev tool: summarize a Chrome trace
-- `src/bin/testmap.rs`: dev tool: write the entity test map
-- `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files
-- `src/bin/demodump.rs`: dev tool: print a CS:S demo's events, user messages, sounds and entity props by tick
+- `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files (CS:S, local Combat Arms)
+
+### Tools (each layer's, `--features tools`)
+
+- `chimera/tools/src/perfgate.rs`: the instructions-per-tick regression gate; games name the scenarios
+- `chimera/tools/src/imgcmp.rs`: a reference picture and ours compared: stats, detail correlation, sheets
+- `chimera/tools/src/bin/tracesum.rs`: dev tool: summarize a Chrome trace
+- `source/tools/src/rcon.rs`: Source RCON client, for tools driving a real Source server
+- `source/tools/src/bin/demodump.rs`: dev tool: print a Source demo's events, user messages, sounds and entity props
+- `source/tools/src/bin/testmap.rs`: dev tool: write the entity test map
+- `games/cs_source/tools/src/bin/refcmp.rs`: dev tool: compare views against real CS:S (its reference driver)
+- `games/cs_source/tools/src/hudcmp.rs`: `refcmp hudcmp`: the HUD compared panel by panel with CS:S's
+- `games/cs_source/tools/src/bin/movecmp.rs`: dev tool: Source movement compared tick for tick with CS:S's
+- `games/cs_source/tools/src/bin/mapsweep.rs`: dev tool: load every cached map headless and report problems
+- `games/cs_source/tools/src/bin/perfgate.rs`: dev tool: CS:S's scenarios on the perf gate
 
 ### Client (window, input, camera, HUD, menus, debug)
 
