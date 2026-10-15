@@ -1,0 +1,90 @@
+# SG 552.
+id = "cs_source:weapon_sg552"
+base = "cs_source:gun"
+slot = 0
+draw = 0.8108
+max_speed = 235.0
+weight = 25
+
+[buy]
+price = 3500
+team = 1
+bot_weight = 3.0
+
+[trigger]
+automatic = true
+cycle = 0.09
+
+[magazine]
+clip = 30
+ammo = "cs_source:556mm"
+reload = 2.7568
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 33.0
+falloff = 0.955
+armor_ratio = 1.4
+
+[penetration]
+objects = 2
+
+# Measured M15: 55, off, stays zoomed (as the AUG); UNMEASURED: the
+# zoomed speed (unchanged, as the AUG's).
+[alt]
+kind = "scope"
+fov = [55.0]
+unzoom_after_shot = false
+overlay = false
+step = 0.3
+sound = "Default.Zoom"
+
+[sounds]
+fire = "Weapon_SG552.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.4325, "Weapon_SG552.Clipout"], [1.6486, "Weapon_SG552.Clipin"], [2.4326, "Weapon_SG552.Boltpull"]]
+draw = [[0.3243, "Weapon_SG552.Boltpull"]]
+
+[models]
+world = "models/weapons/w_rif_sg552.mdl"
+view = "models/weapons/v_rif_sg552.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_SG552"
+icon = "d_sg552"
+
+[anim]
+idle_after = 2.0
+idle_interval = 20.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0006
+crouch = 0.00405
+stand = 0.0054
+jump = 0.33464
+land = 0.06693
+fire = 0.01227
+movement = 0.06132
+recovery_crouch = 0.27631
+recovery_stand = 0.38683
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.0006
+crouch = 0.00284
+stand = 0.00378
+jump = 0.33464
+land = 0.06693
+fire = 0.00859
+movement = 0.06132
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# UNMEASURED: the M4A1's sets (scoped too).
+[hooks."cs_source:recoil"]
+standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
+moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }

@@ -139,55 +139,25 @@ pub fn muzzle_flash(materials: &mut super::material::MaterialLoader) -> MapMuzzl
     }
 }
 
-/// Script `TimeToIdle` (s): idle no sooner than this after an attack
-/// (spec weapons.md 3.7, legacy keys table). Weapons without one idle when
-/// their sequence ends, except the knife (`KNIFE_IDLE`).
-fn time_to_idle(weapon: &str) -> f32 {
-    super::weapons::GUNS
-        .iter()
-        .find(|g| g.id == weapon)
-        .map_or(0.0, |g| g.idle)
-}
-
-/// Script `IdleInterval` (s; spec weapons.md, legacy keys table): an idle
-/// that has played out starts again no sooner than this after it started
-/// (the spec's "probably" reading). Only non-looping idles that move show
-/// it: the TMP's 5 s sway (`dump --sequences` lists each idle's motion).
-const IDLE_INTERVALS: &[(&str, f32)] = &[
-    (super::weapons::AK47, 20.0),
-    (super::weapons::AUG, 20.0),
-    (super::weapons::AWP, 60.0),
-    (super::weapons::FAMAS, 20.0),
-    (super::weapons::G3SG1, 60.0),
-    (super::weapons::GALIL, 20.0),
-    (super::weapons::M249, 20.0),
-    (super::weapons::M4A1, 60.0),
-    (super::weapons::MAC10, 20.0),
-    (super::weapons::MP5NAVY, 20.0),
-    (super::weapons::P90, 20.0),
-    (super::weapons::SCOUT, 60.0),
-    (super::weapons::SG550, 60.0),
-    (super::weapons::SG552, 20.0),
-    (super::weapons::TMP, 20.0),
-    (super::weapons::UMP45, 20.0),
-];
-
 /// The knife has no idle keys, and CS:S's holds still at least 10 s after
 /// it is drawn (captures 2, 6 and 10 s after drawing it, identical: the
 /// draw's last frame, which the idle's still first quarter matches),
 /// where its 12.5 s idle would turn the blade from 3.4 s into it. So it
 /// idles this long after its draw or last attack, and as often: a guess
-/// longer than the captures (docs/tech-debt.md).
+/// longer than the captures (docs/tech-debt.md). Its data's `[anim]`.
 pub const KNIFE_IDLE: f32 = 20.0;
 
-/// When the weapon in hand may idle: (delay after its last attack, or for
-/// the knife its draw too; least time from one idle's start to the next).
-fn idle_timing(weapon: &str) -> (f32, f32) {
-    if weapon == super::weapons::KNIFE {
-        return (KNIFE_IDLE, KNIFE_IDLE);
-    }
-    let interval = IDLE_INTERVALS.iter().find(|(w, _)| *w == weapon).map_or(0.0, |(_, i)| *i);
-    (time_to_idle(weapon), interval)
+/// When the weapon in hand may idle, from its data's `[anim]`: (delay
+/// after its last attack: the script's `TimeToIdle`, spec weapons.md 3.7,
+/// legacy keys table; least time from one idle's start to the next: its
+/// `IdleInterval`, the spec's "probably" reading: only non-looping idles
+/// that move show it, the TMP's 5 s sway, `dump --sequences` lists each
+/// idle's motion; whether the draw counts as an attack: the knife).
+/// Weapons without data idle when their sequence ends.
+fn idle_timing(weapon: &str) -> (f32, f32, bool) {
+    crate::weapon::data::lookup(weapon).map_or((0.0, 0.0, false), |d| {
+        (d.anim.idle_after, d.anim.idle_interval, d.anim.idle_after_draw)
+    })
 }
 
 pub const DRAW: &str = "ACT_VM_DRAW";
@@ -411,7 +381,7 @@ fn drive(
         let (state, shells) = parts.map_or((None, None), |(.., x)| x);
         // No idle while a reload goes on (a shotgun's between shells).
         let reloading = state.is_some_and(|s| s.reloading());
-        let dual = weapon == Some(super::weapons::ELITE);
+        let dual = weapon.is_some_and(super::weapons::alternate_hands);
         // Snipers hide the view model behind the scope (spec view_models.md,
         // "Zoomed weapons").
         view.hidden = zoomed.is_some_and(|z| z.scope);
@@ -534,8 +504,8 @@ fn drive(
         // Idle once the sequence has played out and the weapon's idle delay
         // has passed (spec 3.7); a non-looping idle starts over after its
         // interval, holding its last frame meanwhile.
-        let (delay, interval) = idle_timing(weapon);
-        let since = if weapon == super::weapons::KNIFE {
+        let (delay, interval, after_draw) = idle_timing(weapon);
+        let since = if after_draw {
             dice.last_attack.max(dice.drawn_at)
         } else {
             dice.last_attack

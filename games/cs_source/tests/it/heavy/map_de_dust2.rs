@@ -1785,19 +1785,19 @@ fn every_gun_has_its_body_animations() {
         games::cs_source::{
             movement::{self, SourceMovementPlugin},
             player_anim::{PlayerAnimPlugin, suffix},
-            weapons::{CsWeaponsPlugin, ELITE, GUNS, M3},
+            weapons::{CsWeaponsPlugin, ELITE, M3, guns},
         },
         map::anim::Animator,
         weapon::{Inventory, Magazine, give},
     };
     let Some(map) = dust2() else { return };
     let set = map.characters[0].animations.clone().expect("player animations");
-    for g in GUNS {
-        let x = suffix(Some(g.id));
+    for g in guns() {
+        let x = suffix(Some(g.id.as_str()));
         for seq in [format!("Idle_Upper_{x}"), format!("Run_Upper_{x}"), format!("Crouch_Idle_Upper_{x}")] {
             assert!(set.sequence(&seq).is_some(), "{}: no {seq}", g.id);
         }
-        let reload = if g.shells.is_some() { "_start" } else { "" };
+        let reload = if g.magazine.as_ref().unwrap().shells.is_some() { "_start" } else { "" };
         assert!(
             set.sequence(&format!("Idle_Reload_{x}{reload}")).is_some(),
             "{}: no reload gesture",
@@ -1930,9 +1930,8 @@ fn bodies_animate_with_movement() {
         Some(Some(crate::stack::games::cs_source::weapons::AK47.to_string()))
     );
     let keys: Vec<&str> = map.held.iter().map(|h| h.key.as_str()).collect();
-    let all = crate::stack::games::cs_source::weapons::WORLD_MODELS.len()
-        + crate::stack::games::cs_source::weapons::SILENCED_WORLD_MODELS.len()
-        + crate::stack::games::cs_source::grenades::WORLD_MODELS.len()
+    let all = crate::stack::games::cs_source::weapons::world_models().len()
+        + crate::stack::games::cs_source::weapons::silenced_world_models().len()
         + crate::stack::games::cs_source::objectives::WORLD_MODELS.len();
     assert_eq!(keys.len(), all, "held models {keys:?}");
     // The drawn AK-47 picks the AK upper body at full weight.
@@ -2452,7 +2451,7 @@ fn game_hud_loads() {
 
 /// Which side of the eye each view model holds its weapon in the file
 /// (Source model space: +y is left), in its idle pose. Explains the
-/// handedness table in `weapons::VIEW_MODELS` (spec view_models.md 2).
+/// handedness in the weapon data's `view_right_handed` (spec view_models.md 2).
 #[test]
 fn view_model_handedness_in_the_files() {
     use crate::stack::games::cs_source::weapons::{AK47, KNIFE};
@@ -2595,17 +2594,17 @@ fn running_over_terrain_keeps_speed() {
 
 /// Every gun's models and death-notice icon load from the install, and
 /// each view model's muzzle sits on the side of the eye its
-/// `VIEW_MODELS` handedness says (Source model space: +y is left, so a
+/// data's `view_right_handed` says (Source model space: +y is left, so a
 /// muzzle left of the eye means built left-handed).
 #[test]
 fn gun_models_icons_and_handedness() {
-    use crate::stack::games::cs_source::weapons::{ELITE, GUNS, SILENCED_WORLD_MODELS, VIEW_MODELS, silenced_key};
+    use crate::stack::games::cs_source::weapons::{ELITE, guns, silenced_key, silenced_world_models, view_models};
     let Some(map) = dust2() else { return };
     let hud = map.hud.as_ref().expect("a HUD");
-    for (id, _) in SILENCED_WORLD_MODELS {
+    for (id, _) in silenced_world_models() {
         assert!(map.held.iter().any(|h| h.key == silenced_key(id)), "{id} silenced world model");
     }
-    for g in GUNS {
+    for g in guns() {
         let short = g.id.rsplit("weapon_").next().unwrap();
         assert!(hud.icons.contains_key(&format!("d_{short}")), "no d_{short} icon");
         assert!(map.held.iter().any(|h| h.key == g.id), "{} world model", g.id);
@@ -2629,7 +2628,7 @@ fn gun_models_icons_and_handedness() {
         let a = v.attachments.iter().find(|a| a.name == "1").expect("muzzle attachment");
         let (q, p) = global[a.bone];
         let muzzle = p + q * a.local.translation;
-        let right_handed = VIEW_MODELS.iter().find(|m| m.0 == g.id).unwrap().2;
+        let right_handed = view_models().iter().find(|m| m.0 == g.id).unwrap().2;
         eprintln!("{}: muzzle {muzzle}", g.id);
         assert_eq!(muzzle.y < 0.0, right_handed, "{}: muzzle at {muzzle}", g.id);
         // Draw and reload durations from the spec's view-model table.
@@ -2637,8 +2636,9 @@ fn gun_models_icons_and_handedness() {
         assert!((dur("ACT_VM_DRAW") - g.draw).abs() < 1e-3, "{} draw", g.id);
         // A shotgun's reload activity is one shell's insert; its start and
         // finish have their own.
-        assert!((dur("ACT_VM_RELOAD") - g.reload).abs() < 1e-3, "{} reload", g.id);
-        if g.shells.is_some() {
+        let magazine = g.magazine.as_ref().unwrap();
+        assert!((dur("ACT_VM_RELOAD") - magazine.reload).abs() < 1e-3, "{} reload", g.id);
+        if magazine.shells.is_some() {
             dur("ACT_SHOTGUN_RELOAD_START");
             dur("ACT_SHOTGUN_RELOAD_FINISH");
         }
@@ -2723,17 +2723,18 @@ fn bot_objectives_are_the_bomb_sites() {
 /// The grenades' models, sequences and sounds from the install
 /// (specs/cs_source/grenades.md): world and view models load, the view
 /// models have the pin, throw and draw sequences with the spec's
-/// durations and the handedness `grenades::VIEW_MODELS` says, the HE kill
+/// durations and the handedness their data says, the HE kill
 /// icon exists, and the materials and sound entries the effects use.
 #[test]
 fn grenade_models_and_sequences() {
-    use crate::stack::games::cs_source::grenades::{
-        DRAW_TIME, GRENADES, MATERIALS, PIN_TIME, SOUNDS, THROW_TIME, VIEW_MODELS,
+    use crate::stack::games::cs_source::{
+        grenades::{DRAW_TIME, FLASHBANG, HEGRENADE, MATERIALS, PIN_TIME, SMOKEGRENADE, SOUNDS, THROW_TIME},
+        weapons::view_models,
     };
     let Some(map) = dust2() else { return };
     let hud = map.hud.as_ref().expect("a HUD");
     assert!(hud.icons.contains_key("d_hegrenade"));
-    for (id, ..) in GRENADES {
+    for id in &[HEGRENADE, FLASHBANG, SMOKEGRENADE] {
         assert!(map.held.iter().any(|h| h.key == *id), "{id} world model: {:?}", map.warnings);
         let v = map
             .view_models
@@ -2763,7 +2764,7 @@ fn grenade_models_and_sequences() {
             .iter()
             .position(|b| b.name.to_lowercase().ends_with("_parent") && !b.name.to_lowercase().contains("hands"))
             .expect("a grenade parent bone");
-        let right_handed = VIEW_MODELS.iter().find(|m| m.0 == *id).unwrap().2;
+        let right_handed = view_models().iter().find(|m| m.0 == *id).unwrap().2;
         eprintln!("{id}: grenade at {}", global[grenade].1);
         assert_eq!(global[grenade].1.y < 0.0, right_handed, "{id} handedness");
     }

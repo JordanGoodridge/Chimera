@@ -319,9 +319,8 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
     timer.lap("characters, hud, particles");
     // What characters hold: the weapons' world models.
     if let Some(skeleton) = data.characters.first().map(|c| c.bones.clone()) {
-        for (weapon, path) in super::weapons::WORLD_MODELS
+        for (weapon, path) in super::weapons::world_models()
             .iter()
-            .chain(super::grenades::WORLD_MODELS)
             .chain(super::objectives::WORLD_MODELS)
         {
             match super::props::load_held(&mut materials, path, weapon, &skeleton) {
@@ -329,7 +328,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
                 Err(e) => data.warnings.push(e),
             }
         }
-        for (weapon, path) in super::weapons::SILENCED_WORLD_MODELS {
+        for (weapon, path) in super::weapons::silenced_world_models() {
             let key = super::weapons::silenced_key(weapon);
             match super::props::load_held(&mut materials, path, &key, &skeleton) {
                 Ok(h) => data.held.push(h),
@@ -338,12 +337,8 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         }
     }
     // What the local player sees of them: the view models.
-    for (weapon, path, right_handed) in super::weapons::VIEW_MODELS
-        .iter()
-        .chain(super::grenades::VIEW_MODELS)
-        .chain(super::objectives::VIEW_MODELS)
-    {
-        match super::props::load_view_model(&mut materials, path, weapon, *right_handed) {
+    for (weapon, path, right_handed) in super::weapons::view_models() {
+        match super::props::load_view_model(&mut materials, path, weapon, right_handed) {
             Ok(v) => data.view_models.push(v),
             Err(e) => data.warnings.push(e),
         }

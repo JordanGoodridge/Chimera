@@ -638,7 +638,7 @@ fn hold_weapons(
             .and_then(|w| weapons.get(w).ok())
             .map(|(w, modes)| {
                 let silenced = modes.is_some_and(|m| m.current == 1)
-                    && super::weapons::SILENCED_WORLD_MODELS.iter().any(|(id, _)| *id == w.id);
+                    && crate::weapon::data::lookup(w.id).is_some_and(|d| d.models.world_alt.is_some());
                 if silenced {
                     super::weapons::silenced_key(w.id)
                 } else {
@@ -673,7 +673,9 @@ impl Happened {
             let (shells, magazine) = loading.get(ev.weapon).unwrap_or((None, None));
             match ev.kind {
                 WeaponEventKind::Shot { .. } | WeaponEventKind::Swing { .. } | WeaponEventKind::ArmingStarted => {
-                    let dual = weapons.get(ev.weapon).is_ok_and(|(w, _)| w.id == super::weapons::ELITE);
+                    let dual = weapons
+                        .get(ev.weapon)
+                        .is_ok_and(|(w, _)| super::weapons::alternate_hands(w.id));
                     let side = match magazine {
                         Some(m) if dual => {
                             if super::weapons::elite_right_hand(m.clip) {

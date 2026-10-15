@@ -69,6 +69,7 @@ mod teams;
 mod view_model_spec;
 mod view_models;
 mod wav_decode;
+mod weapon_data;
 mod weapons;
 
 /// Slow tests: the fast tier (`-- --skip heavy::`) leaves them out.

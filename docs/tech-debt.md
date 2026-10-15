@@ -76,7 +76,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
 - map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`chimera/present/src/render/rope_sway.rs`)
-- weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`games/cs_source/src/game/weapons.rs`)
+- weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`games/cs_source/data/weapons/`, `games/cs_source/src/game/weapons.rs`)
+- weapon: Weapon data sets are leaked and process-wide; only a game's own set gets models; buy menu and spawn kit still Rust (`chimera/sim/src/weapon/data.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`games/cs_source/src/game/pain.rs`)
 - weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
 - weapon: mashup_usepickup (+use pickup) reach and rules are ours (`chimera/sim/src/weapon/drop.rs`)

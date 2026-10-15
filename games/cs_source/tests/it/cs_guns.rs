@@ -12,8 +12,8 @@ use crate::stack::{
     games::cs_source::{
         TICK_INTERVAL,
         weapons::{
-            AK47, AUG, AWP, CsWeaponsPlugin, DEAGLE, ELITE, FAMAS, FIVESEVEN, G3SG1, GALIL, GLOCK, GUNS, Gun, Inaccuracy,
-            M3, M4A1, M249, MAC10, MP5NAVY, P90, P228, SCOUT, SG550, SG552, TMP, UMP45, USP, XM1014,
+            AK47, AUG, AWP, CsWeaponsPlugin, DEAGLE, ELITE, FAMAS, FIVESEVEN, G3SG1, GALIL, GLOCK, AccuracyKeys, AccuracyParams, Inaccuracy,
+            M3, M4A1, M249, MAC10, MP5NAVY, P90, P228, SCOUT, SG550, SG552, TMP, UMP45, USP, XM1014, guns,
         },
     },
     greybox::{self, GreyboxMapPlugin},
@@ -33,8 +33,57 @@ fn sim() -> Sim {
     sim
 }
 
-fn gun(id: &str) -> &'static Gun {
-    GUNS.iter().find(|g| g.id == id).unwrap()
+/// A gun's values as its data gives them (games/cs_source/data/weapons),
+/// under the script's names.
+struct Gun {
+    id: &'static str,
+    draw: f32,
+    automatic: bool,
+    cycle: f32,
+    clip: u32,
+    ammo: Ammo,
+    reload: f32,
+    shells: Option<(f32, f32)>,
+    damage: f32,
+    range_modifier: f32,
+    armor_ratio: f32,
+    accuracy: AccuracyKeys,
+}
+
+struct Ammo {
+    max: u32,
+}
+
+fn all_guns() -> Vec<Gun> {
+    guns()
+        .map(|d| {
+            let (t, m, x) = (
+                d.trigger.as_ref().unwrap(),
+                d.magazine.as_ref().unwrap(),
+                d.damage.as_ref().unwrap(),
+            );
+            Gun {
+                id: d.id.as_str(),
+                draw: d.draw,
+                automatic: t.automatic,
+                cycle: t.cycle,
+                clip: m.clip,
+                ammo: Ammo {
+                    max: d.ammo.as_ref().unwrap().max,
+                },
+                reload: m.reload,
+                shells: m.shells.map(|s| (s.start, s.insert)),
+                damage: x.amount,
+                range_modifier: x.falloff,
+                armor_ratio: x.armor_ratio.unwrap(),
+                accuracy: d.hook::<AccuracyParams>("cs_source:accuracy").unwrap().keys(),
+            }
+        })
+        .collect()
+}
+
+fn gun(id: &str) -> Gun {
+    all_guns().into_iter().find(|g| g.id == id).unwrap()
 }
 
 fn active(sim: &Sim, p: Entity) -> Entity {
@@ -561,8 +610,9 @@ const TABLE: &[(&str, &str, u8, u8, u32, u32)] = &[
 
 #[test]
 fn every_gun_is_in_the_table_and_registered() {
-    assert_eq!(GUNS.len(), TABLE.len());
-    for g in GUNS {
+    let all = all_guns();
+    assert_eq!(all.len(), TABLE.len());
+    for g in &all {
         assert!(TABLE.iter().any(|t| t.1 == g.id), "{} not in the test table", g.id);
     }
 }
@@ -645,7 +695,7 @@ fn gun_price(id: &str) -> u32 {
 /// (semi-automatics: each press when the cycle has passed).
 #[test]
 fn every_gun_fires_at_its_cycle_time() {
-    for g in GUNS {
+    for g in &all_guns() {
         let mut sim = sim();
         let p = shooter_with(&mut sim, g.id);
         let w = active(&sim, p);
@@ -685,7 +735,7 @@ fn every_gun_fires_at_its_cycle_time() {
 
 #[test]
 fn deploy_and_reload_take_the_view_model_durations() {
-    for g in GUNS.iter().filter(|g| g.shells.is_none()) {
+    for g in all_guns().iter().filter(|g| g.shells.is_none()) {
         let mut sim = sim();
         let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
         sim.ticks(1);

@@ -265,7 +265,7 @@ pub fn place_weapons(world: &mut World, entities: &[crate::map::MapEntity], scal
             continue;
         }
         let Some(def) = world.resource::<WeaponRegistry>().find(&class) else { continue };
-        let (id, build) = (def.id, def.build);
+        let (id, build) = (def.id, def.build.clone());
         // The weapon itself remembers its map entity too (its pickup
         // outputs; what is parented to it follows it: `anchor_weapons`).
         let mut w = world.spawn((Name::new(id.to_string()), WeaponState::default(), MapWeapon(index)));

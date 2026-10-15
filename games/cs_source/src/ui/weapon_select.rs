@@ -361,45 +361,20 @@ fn short(id: &str) -> &str {
     name.strip_prefix("weapon_").unwrap_or(name)
 }
 
-/// The localised name's token of a CS:S weapon (`Cstrike_WPNHUD_*`).
+/// The localised name's token of a weapon by short name: its data's
+/// `hud.name` (CS:S's `Cstrike_WPNHUD_*`).
 fn name_token(short: &str) -> Option<&'static str> {
-    Some(match short {
-        "ak47" => "Cstrike_WPNHUD_AK47",
-        "aug" => "Cstrike_WPNHUD_Aug",
-        "awp" => "Cstrike_WPNHUD_AWP",
-        "deagle" => "Cstrike_WPNHUD_DesertEagle",
-        "elite" => "Cstrike_WPNHUD_Elites",
-        "famas" => "Cstrike_WPNHUD_Famas",
-        "fiveseven" => "Cstrike_WPNHUD_FiveSeven",
-        "flashbang" => "Cstrike_WPNHUD_Flashbang",
-        "g3sg1" => "Cstrike_WPNHUD_G3SG1",
-        "galil" => "Cstrike_WPNHUD_Galil",
-        "glock" => "Cstrike_WPNHUD_Glock18",
-        "hegrenade" => "Cstrike_WPNHUD_HE_Grenade",
-        "knife" => "Cstrike_WPNHUD_Knife",
-        "m249" => "Cstrike_WPNHUD_M249",
-        "m3" => "Cstrike_WPNHUD_m3",
-        "m4a1" => "Cstrike_WPNHUD_M4A1",
-        "mac10" => "Cstrike_WPNHUD_MAC10",
-        "mp5navy" => "Cstrike_WPNHUD_MP5",
-        "p228" => "Cstrike_WPNHUD_P228",
-        "p90" => "Cstrike_WPNHUD_P90",
-        "scout" => "Cstrike_WPNHUD_Scout",
-        "sg550" => "Cstrike_WPNHUD_SG550",
-        "sg552" => "Cstrike_WPNHUD_SG552",
-        "smokegrenade" => "Cstrike_WPNHUD_Smoke_Grenade",
-        "tmp" => "Cstrike_WPNHUD_Tmp",
-        "ump45" => "Cstrike_WPNHUD_UMP45",
-        "usp" => "Cstrike_WPNHUD_USP45",
-        "xm1014" => "Cstrike_WPNHUD_xm1014",
-        "c4" => "Cstrike_WPNHUD_C4",
-        _ => return None,
-    })
+    crate::weapon::data::lookup_name(short)?.hud.name.as_deref()
 }
 
-/// A weapon's letter in the weapon fonts: its kill icon's (`d_<weapon>`).
+/// A weapon's letter in the weapon fonts: its kill icon's (its data's
+/// `hud.icon`; `d_<weapon>` without data).
 fn letter(hud: &GameHud, short: &str) -> Option<char> {
-    hud.icons.get(&format!("d_{short}")).map(|(_, c)| *c)
+    match crate::weapon::data::lookup_name(short).and_then(|d| d.hud.icon.as_deref()) {
+        Some(icon) => hud.icons.get(icon),
+        None => hud.icons.get(&format!("d_{short}")),
+    }
+    .map(|(_, c)| *c)
 }
 
 /// What the row shows.
@@ -732,6 +707,7 @@ mod tests {
 
     #[test]
     fn weapon_names_and_tokens() {
+        crate::game::weapons::cs_weapons();
         assert_eq!(short("cs_source:weapon_mp5navy"), "mp5navy");
         assert_eq!(name_token("usp"), Some("Cstrike_WPNHUD_USP45"));
         assert_eq!(name_token("hegrenade"), Some("Cstrike_WPNHUD_HE_Grenade"));

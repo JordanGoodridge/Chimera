@@ -1,0 +1,90 @@
+# M4A1.
+id = "cs_source:weapon_m4a1"
+base = "cs_source:gun"
+slot = 0
+draw = 0.975
+max_speed = 230.0
+weight = 25
+
+[buy]
+price = 3100
+team = 2
+bot_weight = 8.0
+
+[trigger]
+automatic = true
+cycle = 0.09
+
+[magazine]
+clip = 30
+ammo = "cs_source:556mm"
+reload = 3.0541
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 33.0
+falloff = 0.97
+armor_ratio = 1.4
+
+[penetration]
+objects = 2
+
+# The silencer screws on or off; both attacks wait `time` (M16).
+[alt]
+kind = "silencer"
+time = 2.0
+
+# The silenced and unsilenced sequences play the same sounds.
+[sounds]
+fire = "Weapon_M4A1.Single"
+fire_alt = "Weapon_M4A1.Silenced"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.6756, "Weapon_M4A1.Clipout"], [1.4324, "Weapon_M4A1.Clipin"], [2.3785, "Weapon_M4A1.Boltpull"]]
+draw = [[0.025, "Weapon_M4A1.Deploy"], [0.425, "Weapon_M4A1.Boltpull"]]
+modes = [[1, 0.9333, "Weapon_M4A1.Silencer_On"], [0, 0.7, "Weapon_M4A1.Silencer_Off"]]
+
+[models]
+world = "models/weapons/w_rif_m4a1.mdl"
+world_alt = "models/weapons/w_rif_m4a1_silencer.mdl"
+view = "models/weapons/v_rif_m4a1.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_M4A1"
+icon = "d_m4a1"
+
+[anim]
+idle_after = 1.5
+idle_interval = 60.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0006
+crouch = 0.00525
+stand = 0.007
+jump = 0.34151
+land = 0.0683
+fire = 0.01266
+movement = 0.06872
+recovery_crouch = 0.26973
+recovery_stand = 0.37762
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.00054
+crouch = 0.00525
+stand = 0.007
+jump = 0.34846
+land = 0.06969
+fire = 0.01165
+movement = 0.07039
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# Measured M3: standing and crouched; UNMEASURED: moving and airborne as
+# standing (scoped, silenced and burst recoil are the normal ones).
+[hooks."cs_source:recoil"]
+standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
+moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }

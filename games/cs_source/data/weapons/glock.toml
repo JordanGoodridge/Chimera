@@ -1,0 +1,81 @@
+# Glock.
+id = "cs_source:weapon_glock"
+base = "cs_source:gun"
+slot = 1
+draw = 1.0667
+max_speed = 250.0
+weight = 5
+
+[buy]
+price = 400
+starting_reserve = 120
+
+[trigger]
+automatic = false
+cycle = 0.15
+
+[magazine]
+clip = 20
+ammo = "cs_source:9mm"
+reload = 2.1429
+
+[hitscan]
+range = 4096.0
+
+[damage]
+amount = 25.0
+falloff = 0.75
+armor_ratio = 1.05
+
+[penetration]
+objects = 1
+
+# Measured M16: rounds on ticks 0, 4 and 8. UNMEASURED: the next pull
+# 0.5 s after the first round. The switch is silent, with a centre print
+# (playtest 2026-10-14; the install's strings); 0.3 s secondary delay (M16).
+[alt]
+kind = "burst"
+interval = 0.06
+refire = 0.5
+count = 3
+step = 0.3
+texts = ["#Cstrike_TitlesTXT_Switch_To_SemiAuto", "#Cstrike_TitlesTXT_Switch_To_BurstFire"]
+
+[sounds]
+fire = "Weapon_Glock.Single"
+empty = "Default.ClipEmpty_Pistol"
+reload = [[0.0, "Weapon_Glock.Slideback"], [0.4001, "Weapon_Glock.Clipout"], [1.0858, "Weapon_Glock.Clipin"], [1.8285, "Weapon_Glock.Sliderelease"]]
+draw = [[0.3778, "Weapon_Glock.Sliderelease"]]
+
+[models]
+world = "models/weapons/w_pist_glock18.mdl"
+view = "models/weapons/v_pist_glock18.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_Glock18"
+icon = "d_glock"
+
+[hooks."cs_source:accuracy"]
+spread = 0.004
+crouch = 0.0075
+stand = 0.01
+jump = 0.2775
+land = 0.0555
+fire = 0.03167
+movement = 0.01665
+recovery_crouch = 0.21875
+recovery_stand = 0.26249
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.004
+crouch = 0.0075
+stand = 0.01
+jump = 0.2775
+land = 0.0555
+fire = 0.02217
+movement = 0.01665
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.5
+
+# Measured M3: the Glock doesn't punch the view at all (no recoil hook).

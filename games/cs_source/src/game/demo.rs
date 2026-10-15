@@ -1123,7 +1123,7 @@ fn grenade_effect(world: &mut World, p: &mut DemoPlayer, id: &'static str) -> Op
     let e = match p.templates.get(id) {
         Some(e) => *e,
         None => {
-            let build = world.resource::<WeaponRegistry>().find(id)?.build;
+            let build = world.resource::<WeaponRegistry>().find(id)?.build.clone();
             let mut e = world.spawn(Name::new(format!("Demo template {id}")));
             build(&mut e);
             let e = e.id();

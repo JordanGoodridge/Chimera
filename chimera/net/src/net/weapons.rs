@@ -121,7 +121,7 @@ fn template(world: &mut World, id: &'static str) -> Option<Entity> {
     {
         return Some(e);
     }
-    let build = world.resource::<WeaponRegistry>().find(id)?.build;
+    let build = world.resource::<WeaponRegistry>().find(id)?.build.clone();
     let mut e = world.spawn(Name::new(format!("Template {id}")));
     build(&mut e);
     let e = e.id();

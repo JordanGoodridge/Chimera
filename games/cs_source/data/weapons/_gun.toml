@@ -1,0 +1,60 @@
+# What every CS:S gun shares. Each gun's file gives its script values (key
+# names: draw is the view model's draw duration, max_speed
+# `MaxPlayerSpeed`, weight `weight`, buy `WeaponPrice`/`Team`, trigger
+# `FullAuto`/`CycleTime`, magazine `clip_size`/`primary_ammo` and the view
+# model's reload duration, hitscan `Range`/`Bullets`, damage
+# `Damage`/`RangeModifier`/`WeaponArmorRatio`, penetration `Penetration`,
+# anim `TimeToIdle`/`IdleInterval`) and its hooks' parameters:
+#
+# - buy.bot_weight: how much bots like it when buying (ours: CS:S's bot
+#   profiles aren't in the spec; they mostly buy the team rifles).
+# - sounds: `SoundData` (`single_shot`, the alternate mode's, `empty`) and
+#   the view model's sequences' sounds, seconds from the sequence's start:
+#   its animation events (event 5004, at cycle x duration), read from the
+#   install's model (`dump cs_source --sequences`): reload (a shotgun's
+#   from each shell's insert), draw, shot (a bolt worked by the fire
+#   sequence), finish (the end of a shell-by-shell reload), modes ([mode,
+#   s, entry]: the silencer going on, 1, and off, 0).
+# - models: the script's `playermodel` (world), `SilencerModel`
+#   (world_alt) and `viewmodel` (view); view_right_handed is the
+#   script's `BuiltRightHanded`, read off the models (the muzzle right of
+#   the eye: the knife, FAMAS, Galil, M249 and the Elites, whose first
+#   muzzle is the right pistol's).
+# - hooks."cs_source:accuracy": the accuracy penalty's `Spread`,
+#   `Inaccuracy*` and `RecoveryTime*` keys (tangent units, s; `alt`: the
+#   `*Alt` keys of the alternate mode), measured M1/M2.
+# - hooks."cs_source:recoil": view punch per shot, standing, crouched,
+#   moving and airborne kick sets in degrees (measured M3: up + up_step x
+#   n, sideways likewise, capped; up_max: a random whole number of
+#   degrees up to it instead). None: no punch.
+# - hooks."cs_source:hit_slowdown": below.
+id = "cs_source:gun"
+base = "cs_source:base"
+abstract = true
+
+[trigger]
+# Held: next = previous next + cycle; a fresh press: now + cycle (M4),
+# semi-automatics alike.
+timing = "carry_over"
+
+[hitscan]
+pellets = 1
+# Bullets go along view + 2 x punch (M3).
+punch_scale = 2.0
+
+[damage]
+# RangeModifier per 500 units (M5).
+falloff_step = 500.0
+# Hitgroup multipliers (measured M6).
+hitgroups = { head = 4.0, chest = 1.0, stomach = 1.25, arm = 1.0, leg = 0.75 }
+# UNMEASURED (Q8): the template's .50 AE impulse, kg x in/s.
+impulse = 2400.0
+# Damage is truncated to whole hit points (M5).
+quantum = 1.0
+
+# The victim's speed modifier after a hit (measured M18): `body` by weapon
+# class (rifles, snipers and shotguns 0.65; pistols, SMGs and the M249
+# 0.5; the G3SG1 and SG550 were seen hitting legs only: assumed 0.65 like
+# the other snipers); a leg hit 0.5 from any gun.
+[hooks."cs_source:hit_slowdown"]
+legs = 0.5
