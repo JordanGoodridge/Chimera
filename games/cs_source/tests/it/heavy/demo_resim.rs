@@ -4,8 +4,9 @@
 //! movecmp's and weapcmp's runs; `[games.cs_source_server]` in
 //! mashup.local.toml) on de_dust2 from the install. A pistol fired 120
 //! times while strafing (`spread`) and five recoil taps (`recoil`) match
-//! tick for tick: place, clip, accuracy penalty, the shots' commands; a
-//! walk and stop (`walk_stop`) stays within half a unit. Skipped without
+//! tick for tick: place, clip, accuracy penalty, the shots' commands; so
+//! does a walk and stop down de_dust2's terrain (`walk_stop`; its ground
+//! snap once missed a strip edge, 0.35 units for a tick). Skipped without
 //! the logs or the install.
 
 use std::sync::Arc;
@@ -76,9 +77,11 @@ fn the_probes_pistol_runs_replay_tick_for_tick() {
 }
 
 #[test]
-fn the_probes_walk_stays_close() {
+fn the_probes_walk_replays_tick_for_tick() {
     let Some(rec) = probe("walk_stop") else { return };
     let r = run(&rec);
-    assert!(r.max_position < 0.5, "{}", r.max_position);
+    assert_eq!(r.compared, rec.commands.len());
+    assert!(r.first.is_none(), "{:?}", r.first);
+    assert!(r.max_position < 0.01, "{}", r.max_position);
     assert_eq!((r.ground, r.ducked), (0, 0));
 }
