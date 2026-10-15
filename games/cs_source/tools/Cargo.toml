@@ -50,6 +50,13 @@ name = "perfgate"
 test = false
 required-features = ["tools"]
 
+# Recorded input (a client demo's, the probe's) played again and compared
+# (`cs_source::resim`).
+[[bin]]
+name = "demosim"
+test = false
+required-features = ["tools"]
+
 [[bin]]
 name = "mapsweep"
 test = false

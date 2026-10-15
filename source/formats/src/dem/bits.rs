@@ -239,6 +239,75 @@ pub fn log2(n: u32) -> u32 {
     31u32.saturating_sub(n.leading_zeros())
 }
 
+/// The writing side of `BitReader` (same bit order), for demos built in
+/// code: tests, and the frames `write` makes (`usercmd`, `writer`).
+#[derive(Clone, Debug, Default)]
+pub struct BitWriter {
+    data: Vec<u8>,
+    pos: usize,
+}
+
+impl BitWriter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Bits written so far.
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    /// The low `n` bits of `v` (up to 32), least significant first.
+    pub fn bits(&mut self, v: u32, n: u32) {
+        for i in 0..n {
+            if self.pos / 8 >= self.data.len() {
+                self.data.push(0);
+            }
+            if (v >> i) & 1 == 1 {
+                self.data[self.pos / 8] |= 1 << (self.pos % 8);
+            }
+            self.pos += 1;
+        }
+    }
+
+    pub fn bit(&mut self, v: bool) {
+        self.bits(v as u32, 1);
+    }
+
+    pub fn u8(&mut self, v: u8) {
+        self.bits(v as u32, 8);
+    }
+
+    pub fn u16(&mut self, v: u16) {
+        self.bits(v as u32, 16);
+    }
+
+    pub fn u32(&mut self, v: u32) {
+        self.bits(v, 32);
+    }
+
+    pub fn i32(&mut self, v: i32) {
+        self.bits(v as u32, 32);
+    }
+
+    pub fn f32(&mut self, v: f32) {
+        self.bits(v.to_bits(), 32);
+    }
+
+    /// A NUL-terminated string.
+    pub fn string(&mut self, s: &str) {
+        for b in s.bytes() {
+            self.u8(b);
+        }
+        self.u8(0);
+    }
+
+    /// The bytes (the last one padded with zero bits).
+    pub fn finish(self) -> Vec<u8> {
+        self.data
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -307,6 +376,29 @@ pub(crate) mod tests {
         assert_eq!(s.bits(4).unwrap(), 0xF);
         assert!(s.bit().is_err());
         assert_eq!(r.bits(4).unwrap(), 0xF);
+    }
+
+    #[test]
+    fn the_writer_writes_what_the_reader_reads() {
+        let mut w = BitWriter::new();
+        w.bits(5, 3);
+        w.u32(0xABCD_EF01);
+        w.bit(true);
+        w.f32(-1.5);
+        w.string("hi");
+        assert_eq!(w.pos(), 3 + 32 + 1 + 32 + 24);
+        let data = w.finish();
+        assert_eq!(data, {
+            let mut f = vec![(5, 3), (0xABCD_EF01, 32), (1, 1), ((-1.5f32).to_bits(), 32)];
+            f.extend(b"hi\0".iter().map(|&b| (b as u32, 8)));
+            pack(&f)
+        });
+        let mut r = BitReader::new(&data);
+        assert_eq!(r.bits(3).unwrap(), 5);
+        assert_eq!(r.u32().unwrap(), 0xABCD_EF01);
+        assert!(r.bit().unwrap());
+        assert_eq!(r.f32().unwrap(), -1.5);
+        assert_eq!(r.string().unwrap(), "hi");
     }
 
     #[test]

@@ -12,7 +12,7 @@
 //! caller can read new values from `reader.state()`.
 //!
 //! Frames: signon and packet (net messages), synctick, consolecmd, usercmd
-//! (skipped), datatables, stringtables, stop. Net messages decoded:
+//! (a client demo's own input, `usercmd`), datatables, stringtables, stop. Net messages decoded:
 //! net_Tick, net_SetConVar, net_StringCmd, net_SignonState, svc_Print,
 //! svc_ServerInfo, svc_ClassInfo, svc_Create/UpdateStringTable,
 //! svc_GameEventList, svc_GameEvent, svc_UserMessage (CS:S names and simple
@@ -23,6 +23,8 @@
 //!
 //! `playback`: a demo read once into frames by tick through a game's
 //! `Mapper` (its entity values and events), for playing it back.
+//! `usercmd`: a client demo's user commands; `writer`: demos written in
+//! code (tests), as `DemoReader` reads them.
 //!
 //! Known shortcuts:
 //! - `svc_Sounds`' delta layout varies by branch (flag width, a special-DSP
@@ -39,6 +41,8 @@ pub mod events;
 pub mod playback;
 pub mod sendtable;
 pub mod stringtable;
+pub mod usercmd;
+pub mod writer;
 
 use bits::{BitReader, Result};
 use entities::{Baselines, Entity, EntityChange, MAX_EDICTS, TempEntity};
@@ -124,6 +128,12 @@ pub enum Record {
     Entities(Vec<EntityChange>),
     TempEntities(Vec<TempEntity>),
     SetView(u32),
+    /// A command of the recording player (a client demo's `dem_usercmd`
+    /// frame): its outgoing sequence number and the command.
+    UserCmd {
+        sequence: i32,
+        cmd: usercmd::UserCmd,
+    },
     /// A message only read past (its name).
     Skipped(&'static str),
     /// A message or frame that failed to parse; the rest of its packet is
@@ -157,6 +167,8 @@ pub struct DemoState {
     /// Set by `set_sound_layout`: no detection.
     pub sound_layout_fixed: bool,
     pub server_tick: u32,
+    /// The last user command read (`Record::UserCmd`).
+    pub last_usercmd: Option<usercmd::UserCmd>,
 }
 
 impl DemoState {
@@ -239,6 +251,7 @@ impl<'a> DemoReader<'a> {
                 sound_layout: None,
                 sound_layout_fixed: false,
                 server_tick: 0,
+                last_usercmd: None,
             },
             queue: VecDeque::new(),
             done: false,
@@ -326,8 +339,28 @@ impl<'a> DemoReader<'a> {
                 push(&mut self.queue, Record::ConsoleCmd(s));
             }
             5 => {
-                self.i32()?;
-                self.sized()?;
+                let sequence = self.i32()?;
+                let data = self.sized()?;
+                let empty = usercmd::UserCmd::default();
+                let read = |from: &usercmd::UserCmd| usercmd::UserCmd::read(&mut BitReader::new(data), from);
+                let record = match read(&empty) {
+                    // No command number: encoded against the previous one.
+                    Ok((_, false)) if self.state.last_usercmd.is_some() => {
+                        let prev = self.state.last_usercmd.expect("checked");
+                        read(&prev).map(|(cmd, _)| cmd)
+                    }
+                    other => other.map(|(cmd, _)| cmd),
+                };
+                push(
+                    &mut self.queue,
+                    match record {
+                        Ok(cmd) => {
+                            self.state.last_usercmd = Some(cmd);
+                            Record::UserCmd { sequence, cmd }
+                        }
+                        Err(e) => Record::Error(format!("usercmd: {e}")),
+                    },
+                );
             }
             6 => {
                 let data = self.sized()?;

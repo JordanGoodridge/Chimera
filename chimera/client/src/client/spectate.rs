@@ -981,6 +981,49 @@ mod tests {
         }
     }
 
+    /// CS:S: only first person hides the watched player (its body and the
+    /// weapon in its hand); chase and free look show both, and the held
+    /// weapon is never hidden on its own (playdemo review, 2026-10-15).
+    #[test]
+    fn only_first_person_hides_the_watched_body_and_its_weapon() {
+        use crate::render::bodies::CharacterBody;
+        let mut app = App::new();
+        app.init_resource::<SpecView>().add_systems(Update, show_through_eyes);
+        let w = app.world_mut();
+        let target = w.spawn((Transform::default(), Visibility::default())).id();
+        let body = w
+            .spawn((
+                CharacterBody {
+                    model: 0,
+                    joints: Vec::new(),
+                    held: None,
+                    held_parts: Vec::new(),
+                },
+                Visibility::Inherited,
+                ChildOf(target),
+            ))
+            .id();
+        let held = w.spawn((Visibility::Inherited, ChildOf(body))).id();
+        let shown = |app: &App| {
+            (
+                *app.world().get::<Visibility>(body).unwrap(),
+                *app.world().get::<Visibility>(held).unwrap(),
+            )
+        };
+        for (in_eye, body_vis) in [
+            (Some(target), Visibility::Hidden),
+            (None, Visibility::Inherited),
+            (Some(target), Visibility::Hidden),
+            (None, Visibility::Inherited),
+        ] {
+            app.world_mut().resource_mut::<SpecView>().in_eye = in_eye;
+            app.update();
+            // The weapon follows its body (Inherited): drawn whenever the
+            // body is.
+            assert_eq!(shown(&app), (body_vis, Visibility::Inherited), "in eye: {in_eye:?}");
+        }
+    }
+
     #[test]
     fn force_camera_keeps_you_on_your_team_while_it_lives() {
         let living = [cand(1, 1, 1.0), cand(2, 2, 5.0), cand(3, 2, 9.0)];

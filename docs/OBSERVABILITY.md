@@ -1417,6 +1417,65 @@ with the remote console (`mashup/console` `{"line": "demo_gototick 3000"}`,
 then `demo_pause` and a capture). Tests: `demo_playback` (a demo built in
 code on the greybox) and `heavy::demo_playback` (the sample demos on
 de_dust2; skipped without them: `$MASHUP_DEMOS` or `target/demos/`).
+Spectating a demo: first person hides the watched player (body and
+weapon), chase and free look show both, as CS:S; the demo's players
+coming in say no "is joining" lines (`core::Playback`); a jump
+(`demo_gototick`) clears the death notices, which age by the demo's
+clock (`game::demo::DemoClock`: paused, they stay).
+
+### Re-simulating a client demo (`demosim`)
+
+A client (POV) demo holds the recording player's user commands every
+tick (`dem_usercmd` frames: buttons, move amounts, view angles, weapon
+picks, the command number that seeds spread and recoil;
+`source_formats::dem::usercmd`) and that player's own-client values
+(full-precision origin, velocity, ducked, tick base, clip, reserve,
+shots fired). `demosim` plays the commands again through our movement
+and weapons on the demo's map and compares, command by command
+(`games/cs_source/src/game/resim.rs`):
+
+```
+cargo run --features dev,tools --bin demosim -- <file.dem> [--player N] [--offset N] [--limit N] [--tolerance UNITS]
+cargo run --features dev,tools --bin demosim -- --probe <name> [--map de_dust2]
+```
+
+- It prints the first divergence (command, what differs: position past
+  0.1 u, velocity past 0.5 u/s, on ground, ducked, weapon, clip, reserve,
+  shots fired, accuracy penalty; both states), maxima, means and counts
+  per kind, and the shots (paired in order: same command, seed, the
+  recorded `CTEFireBullets` inaccuracy against ours, mean degrees off
+  the aim). Per-tick CSV: `~/.local/share/mashup/dump/demosim/`.
+- The server's settings in the demo (`net_SetConVar`: `sv_maxspeed`,
+  `sv_accelerate`, `sv_airaccelerate`, `sv_friction`, `sv_gravity`, ...)
+  are applied first and listed; the tick is the demo's (`svc_ServerInfo`);
+  move amounts above 400 (`cl_forwardspeed 450`) are taken as sent.
+- States are keyed by the player's tick base, which runs a fixed amount
+  ahead of the command numbers; `demosim` finds that offset by trying the
+  nearby ones on the first 64 commands (`--offset` sets it).
+- SourceTV demos (the sample ones, a dedicated server's `tv_record`) have
+  no user commands: "not a client demo".
+- `--probe <name>` reads the probe server's last run of `<name>` instead
+  (`cstrike/mashup/<name>.in`/`.out`, from movecmp's and weapcmp's runs;
+  tools/css_probe), the real game's states per tick: `spread` and
+  `recoil` (pistol fire while strafing) match tick for tick, clip and
+  accuracy penalty included; the bot's seeds don't come from its command
+  numbers, so they aren't compared there. Tests: `demo_resim` (a client
+  demo built in code: commands through the demo writer and reader),
+  `heavy::demo_resim` (the probe's logs; skipped without them).
+
+Recording one on the Windows PC (the user; nothing here can drive a CS:S
+client): start CS:S, open the console (enable it in Options, Keyboard,
+Advanced), start a game (Create Server, any stock map, or join any
+server), then `record <name>` once in the map (in the game, not the
+menu), play (bunny hops, ladders, strafing while shooting, reloads), and
+`stop`. The file is `<name>.dem` in the game's folder:
+`...\steamapps\common\Counter-Strike Source\cstrike\<name>.dem`
+(Steam: Properties, Installed Files, Browse). Recording on a listen server
+you host keeps its settings and lag known; set `cl_cmdrate 66` and
+`cl_updaterate 66` so every tick is sent and received. Then on that PC
+(after `scripts\playtest.ps1` has pulled) or after copying the file here
+(never into the repo): `cargo run --features dev,tools --bin demosim --
+"<path>\<name>.dem"`. The demo's map must be in the install.
 
 ## Planned
 

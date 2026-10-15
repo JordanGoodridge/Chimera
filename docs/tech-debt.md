@@ -128,4 +128,5 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Sprays drawn with one light value at the centre, no fog (`chimera/present/src/render/spray.rs`)
 - client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`chimera/client/src/client/night_vision.rs`)
 - games: Demo playback: bodies animated from velocity and look (CS:S demos carry no animation), no zoom, fixed sound level, map props still (`games/cs_source/src/game/demo.rs`)
+- games: Re-simulated input: our spread generator, no `upmove`, nothing else moving to collide with (`games/cs_source/src/game/resim.rs`); usercmd delta base unconfirmed on a real client demo (`source/formats/src/dem/usercmd.rs`)
 - tests: Test selection per crate, test module or feature folder: a Chimera, Source logic or CS:S sim edit still runs most tests (`checks/src/affected.rs`)

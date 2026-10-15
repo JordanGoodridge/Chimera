@@ -33,11 +33,19 @@
 //!   (`player_death`: the kill feed, ragdolls), chat and radio
 //!   (`SayText2`, `RadioText`: `DemoText`; `SendAudio`; bots' `RawAudio`).
 //!
+//! - **A client demo's own player** (`CsDemo::recorder`, from the server
+//!   info's player slot): its own-client values (`PlayerSnap::local`:
+//!   full-precision origin, velocity, ducked, tick base, clip, reserve,
+//!   weapons carried) and its commands (`Happening::Command`), with the
+//!   server's console variables (`CsDemo::cvars`), for re-simulating
+//!   (`resim`); playback shows it like any player.
+//!
 //! The clock: `DemoPlayer::tick` runs with virtual time, so
 //! `demo_timescale` is `Time<Virtual>`'s speed and `demo_pause` pauses it
 //! (everything stops, as in CS:S). `demo_gototick` jumps anywhere: every
 //! frame holds the whole state, so seeking rebuilds it from that frame
-//! (no events replayed).
+//! (no events replayed). `DemoClock` is the demo's own time and its jumps,
+//! for what ages with it (the HUD's death notices: cleared on a jump).
 //!
 //! Known shortcuts (docs/tech-debt.md): CS:S players carry no animation in
 //! demos (client-side animation: no `m_nSequence`, cycle or pose
@@ -62,6 +70,8 @@ use avian3d::prelude::ColliderDisabled;
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};
 use source_formats::dem::{
     DemoState, Record,
+    sendtable::PropValue,
+    usercmd::UserCmd,
     entities::Entity as DemEntity,
     events::{EventValue, GameEvent, SND_STOP, UserMessage},
     playback::{self, ClassProps, Mapper, Props, Timeline},
@@ -99,8 +109,8 @@ const ORIGIN_ABOVE_FEET: f32 = 36.0;
 const EYE_STANDING: f32 = 64.0;
 const EYE_DUCKED: f32 = 46.0;
 /// `m_fFlags` bits.
-const FL_ONGROUND: i64 = 1;
-const FL_DUCKING: i64 = 2;
+pub const FL_ONGROUND: i64 = 1;
+pub const FL_DUCKING: i64 = 2;
 /// Players' scores and deaths kept per index (`CCSPlayerResource`).
 const MAX_PLAYERS: usize = 65;
 
@@ -145,6 +155,31 @@ pub struct PlayerSnap {
     pub money: i32,
     pub night_vision: bool,
     pub defuser: bool,
+    /// What only the player's own client gets (a client demo's recording
+    /// player; SourceTV has none).
+    pub local: Option<LocalSnap>,
+}
+
+/// A player's own-client values (`localdata`, `cslocaldata`, its weapons'
+/// `LocalWeaponData`): the recording player's in a client (POV) demo.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LocalSnap {
+    /// Feet, at full precision.
+    pub origin: [f32; 3],
+    pub velocity: [f32; 3],
+    /// `m_Local.m_bDucked`, `m_bDucking`.
+    pub ducked: bool,
+    pub ducking: bool,
+    /// Commands run so far (`m_nTickBase`).
+    pub tick_base: i64,
+    /// `m_iShotsFired`.
+    pub shots_fired: i32,
+    /// The active weapon's clip and its ammo type's reserve
+    /// (`m_iClip1`, `m_iAmmo[m_iPrimaryAmmoType]`).
+    pub clip: Option<i32>,
+    pub reserve: Option<i32>,
+    /// The weapons carried, by server class (`m_hMyWeapons`).
+    pub weapons: Vec<u16>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -239,6 +274,12 @@ pub enum Happening {
     },
     /// A line for the chat area (chat, radio).
     Text(String),
+    /// A command of the recording player (client demos), with the server
+    /// class of the weapon it picks (`weaponselect`), if any.
+    Command {
+        cmd: UserCmd,
+        weapon: Option<u16>,
+    },
     /// A sound entry everyone hears (`SendAudio`: the radio, the announcer).
     Audio(String),
     /// A bot's chatter (`RawAudio`): its wave under `sound/`.
@@ -261,6 +302,12 @@ pub struct CsDemo {
     /// The waves its sounds and bots' chatter play (`Happening::Sound`'s
     /// and `Voice`'s files).
     pub sounds: Vec<String>,
+    /// The recording player's entity index (a client demo: its
+    /// `svc_ServerInfo` player slot + 1; None for SourceTV).
+    pub recorder: Option<u32>,
+    /// The server's console variables as it sent them (`net_SetConVar`,
+    /// in order: a later value overrides).
+    pub cvars: Vec<(String, String)>,
 }
 
 impl CsDemo {
@@ -299,6 +346,8 @@ pub fn read(data: &[u8]) -> Result<CsDemo, String> {
         models: mapper.models,
         names: mapper.names,
         sounds,
+        recorder: mapper.recorder,
+        cvars: mapper.cvars,
     })
 }
 
@@ -342,7 +391,23 @@ const PLAYER_PROPS: &[&str] = &[
     "m_iAccount",
     "m_bNightVisionOn",
     "m_bHasDefuser",
+    // 14.. the player's own client's (`LocalSnap`).
+    "cslocaldata.m_vecOrigin",
+    "cslocaldata.m_vecOrigin[2]",
+    "m_vecVelocity[0]",
+    "m_vecVelocity[1]",
+    "m_vecVelocity[2]",
+    "m_bDucked",
+    "m_bDucking",
+    "m_nTickBase",
+    "m_iShotsFired",
 ];
+/// Where `PLAYER_PROPS`' own-client props start, and the arrays after
+/// them: `m_iAmmo` then `m_hMyWeapons`.
+const LOCAL_AT: usize = 14;
+const AMMO_AT: usize = 23;
+const AMMO_TYPES: usize = 32;
+const MY_WEAPONS: usize = 48;
 const ENTITY_PROPS: &[&str] = &["m_vecOrigin", "m_angRotation", "m_nModelIndex"];
 const SMOKE_PROPS: &[&str] = &["m_vecOrigin", "m_flSpawnTime", "m_FadeStartTime", "m_FadeEndTime"];
 const BOMB_PROPS: &[&str] = &[
@@ -369,7 +434,7 @@ const BULLETS_PROPS: &[&str] = &[
     "m_fSpread",
 ];
 const ANIM_PROPS: &[&str] = &["m_hPlayer", "m_iEvent"];
-const WEAPON_PROPS: &[&str] = &["m_bSilencerOn", "m_bBurstMode"];
+const WEAPON_PROPS: &[&str] = &["m_bSilencerOn", "m_bBurstMode", "m_iClip1", "m_iPrimaryAmmoType"];
 
 /// CS:S's classes and props into `Thing`s and `Happening`s.
 #[derive(Default)]
@@ -385,6 +450,8 @@ pub struct CsMapper {
     grenades: HashMap<u32, GrenadeSnap>,
     over: Option<Option<u8>>,
     rounds: u32,
+    recorder: Option<u32>,
+    cvars: Vec<(String, String)>,
 }
 
 impl CsMapper {
@@ -398,21 +465,52 @@ impl CsMapper {
 
     fn player(&mut self, state: &DemoState, e: &DemEntity) -> PlayerSnap {
         let c = e.class;
-        let props: Vec<Option<usize>> = (0..PLAYER_PROPS.len()).map(|i| self.at(c, i)).collect();
+        let props: Vec<Option<usize>> = (0..AMMO_AT + AMMO_TYPES + MY_WEAPONS).map(|i| self.at(c, i)).collect();
         let p = |i: usize| props[i];
         let weapon = e.handle(p(10)).and_then(|i| state.entity(i)).map(|w| (w.class, w));
-        let weapon_mode = match weapon {
+        let (weapon_mode, clip, ammo_type) = match weapon {
             Some((class, w)) => {
                 let props = self.weapon_props.entry(class).or_insert_with(|| {
                     ClassProps::new(state.flat.get(class as usize).map_or(&[], Vec::as_slice), WEAPON_PROPS)
                 });
                 let on = |i| w.int(props.at(i)).unwrap_or(0) != 0;
-                u8::from(on(0) || on(1))
+                (
+                    u8::from(on(0) || on(1)),
+                    w.int(props.at(2)).map(|v| v as i32),
+                    w.int(props.at(3)),
+                )
             }
-            None => 0,
+            None => (0, None, None),
         };
+        // A client demo's own player: its origin only in `cslocaldata`
+        // (a vector, or its x and y with z apart).
+        let local = e.value(p(LOCAL_AT)).and_then(|v| {
+            let origin = match v {
+                PropValue::Vector(v) => *v,
+                PropValue::VectorXY([x, y]) => [*x, *y, e.float(p(LOCAL_AT + 1)).unwrap_or(0.0)],
+                _ => return None,
+            };
+            let f = |i| e.float(p(i)).unwrap_or(0.0);
+            Some(LocalSnap {
+                origin,
+                velocity: [f(LOCAL_AT + 2), f(LOCAL_AT + 3), f(LOCAL_AT + 4)],
+                ducked: e.int(p(LOCAL_AT + 5)).unwrap_or(0) != 0,
+                ducking: e.int(p(LOCAL_AT + 6)).unwrap_or(0) != 0,
+                tick_base: e.int(p(LOCAL_AT + 7)).unwrap_or(0),
+                shots_fired: e.int(p(LOCAL_AT + 8)).unwrap_or(0) as i32,
+                clip,
+                reserve: ammo_type
+                    .filter(|t| (0..AMMO_TYPES as i64).contains(t))
+                    .and_then(|t| e.int(p(AMMO_AT + t as usize)))
+                    .map(|v| v as i32),
+                weapons: (0..MY_WEAPONS)
+                    .filter_map(|i| e.handle(p(AMMO_AT + AMMO_TYPES + i)))
+                    .filter_map(|i| state.entity(i).map(|w| w.class))
+                    .collect(),
+            })
+        });
         PlayerSnap {
-            origin: e.vector(p(0)).unwrap_or_default(),
+            origin: e.vector(p(0)).or(local.as_ref().map(|l| l.origin)).unwrap_or_default(),
             pitch: e.float(p(1)).unwrap_or(0.0),
             yaw: e.float(p(2)).unwrap_or(0.0),
             team: e.int(p(3)).unwrap_or(0) as u8,
@@ -427,6 +525,7 @@ impl CsMapper {
             money: e.int(p(11)).unwrap_or(0) as i32,
             night_vision: e.int(p(12)).unwrap_or(0) != 0,
             defuser: e.int(p(13)).unwrap_or(0) != 0,
+            local,
         }
     }
 
@@ -580,13 +679,22 @@ impl Mapper for CsMapper {
             .flat_map(|p| (0..MAX_PLAYERS).map(move |i| format!("{p}.{i:03}")))
             .collect();
         let resource_paths: Vec<&str> = resource_paths.iter().map(String::as_str).collect();
+        let player_arrays: Vec<String> = (0..AMMO_TYPES)
+            .map(|i| format!("m_iAmmo.{i:03}"))
+            .chain((0..MY_WEAPONS).map(|i| format!("m_hMyWeapons.{i:03}")))
+            .collect();
+        let player_paths: Vec<&str> = PLAYER_PROPS
+            .iter()
+            .copied()
+            .chain(player_arrays.iter().map(String::as_str))
+            .collect();
         self.props = self
             .kinds
             .iter()
             .zip(&state.flat)
             .map(|(k, flat)| {
                 let paths = match k {
-                    Kind::Player => PLAYER_PROPS,
+                    Kind::Player => player_paths.as_slice(),
                     Kind::Grenade => ENTITY_PROPS,
                     Kind::Smoke => SMOKE_PROPS,
                     Kind::Bomb => BOMB_PROPS,
@@ -742,6 +850,16 @@ impl Mapper for CsMapper {
             }
             Record::GameEvent(e) => self.game_event(state, e, out),
             Record::UserMessage(m) => self.user_message(m, out),
+            Record::UserCmd { cmd, .. } => out.push(Happening::Command {
+                cmd: *cmd,
+                weapon: (cmd.weapon_select != 0)
+                    .then(|| state.entity(cmd.weapon_select).map(|w| w.class))
+                    .flatten(),
+            }),
+            Record::ServerInfo(info) => {
+                self.recorder = (!info.hltv).then_some(info.player_slot as u32 + 1);
+            }
+            Record::SetConVar(vars) => self.cvars.extend(vars.iter().cloned()),
             _ => {}
         }
     }
@@ -831,6 +949,15 @@ pub struct DemoThing(pub u32);
 /// end shows it).
 #[derive(Message, Clone, Debug, PartialEq)]
 pub struct DemoText(pub String);
+
+/// The demo's own clock, for what ages with it (the HUD's death notices):
+/// seconds of demo shown (standing still while paused) and how many jumps
+/// (`seek`, the start counts) it has made. Present while a demo plays.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct DemoClock {
+    pub seconds: f64,
+    pub seeks: u32,
+}
 
 /// The demo playing (`start`), until `stop`.
 #[derive(Resource)]
@@ -1035,6 +1162,7 @@ pub fn stop(world: &mut World) {
         }
     }
     world.remove_resource::<Playback>();
+    world.remove_resource::<DemoClock>();
     world.insert_resource(BombState::default());
     let mut t = world.resource_mut::<Time<Virtual>>();
     t.unpause();
@@ -1158,6 +1286,12 @@ fn play(world: &mut World) {
         return;
     };
     let seeking = p.seek;
+    let mut clock = world.get_resource::<DemoClock>().copied().unwrap_or_default();
+    clock.seconds = (p.tick - first as f64) * interval;
+    clock.seeks += u32::from(seeking);
+    if world.get_resource::<DemoClock>() != Some(&clock) {
+        world.insert_resource(clock);
+    }
     if seeking {
         // A jump: rebuild what lasts from the frame (smoke clouds started
         // at their age, the bomb on its clock); nothing in between plays.
@@ -1482,7 +1616,7 @@ fn happen(world: &mut World, p: &mut DemoPlayer, h: &Happening) {
                 summary: RoundSummary::default(),
             });
         }
-        Happening::RoundStart => {}
+        Happening::RoundStart | Happening::Command { .. } => {}
         Happening::Detonate { origin, model } => {
             let Some(name) = model.and_then(|m| grenade_name(p.demo.model(m))) else {
                 return;

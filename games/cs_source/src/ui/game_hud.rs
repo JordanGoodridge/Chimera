@@ -282,7 +282,18 @@ fn death_notices(
     mut notices: ResMut<DeathNotices>,
     settings: Option<Res<crate::net::NetSettings>>,
     time: Res<Time>,
+    demo: Option<Res<crate::game::demo::DemoClock>>,
+    mut clock: Local<NoticeClock>,
 ) {
+    // A demo's jump leaves no notice of the time jumped from.
+    let Some(dt) = clock.step(demo.as_deref(), time.delta_secs()) else {
+        died.clear();
+        if !notices.0.is_empty() {
+            notices.0.clear();
+            notices.1 += 1;
+        }
+        return;
+    };
     let name = |e: Entity| match who.get(e) {
         Ok((name, team, local, _, net)) => (
             crate::client::shown_name(e, local, net, name, settings.as_deref()),
@@ -328,7 +339,6 @@ fn death_notices(
         });
         notices.1 += 1;
     }
-    let dt = time.delta_secs();
     let before = notices.0.len();
     notices.0.retain_mut(|n| {
         n.left -= dt;
@@ -340,6 +350,28 @@ fn death_notices(
     }
     if notices.0.len() != before {
         notices.1 += 1;
+    }
+}
+
+/// What the death notices age by: the frame's time, or while a demo plays
+/// its own clock (`game::demo::DemoClock`: paused, they stay; played
+/// faster, they go faster), and a demo's jump (`demo_gototick`) clears
+/// them (`step` returns None).
+#[derive(Default)]
+struct NoticeClock {
+    /// The demo clock last seen.
+    demo: Option<crate::game::demo::DemoClock>,
+}
+
+impl NoticeClock {
+    fn step(&mut self, demo: Option<&crate::game::demo::DemoClock>, frame: f32) -> Option<f32> {
+        let last = std::mem::replace(&mut self.demo, demo.copied());
+        let Some(now) = demo else { return Some(frame) };
+        match last {
+            Some(last) if last.seeks != now.seeks => None,
+            Some(last) => Some((now.seconds - last.seconds).max(0.0) as f32),
+            None => Some(0.0),
+        }
     }
 }
 
@@ -888,6 +920,25 @@ mod tests {
         // Over after a second of pulses; healing never flashes.
         assert_eq!(f.colour(Some(0.8), 2.2, red, dim), None);
         assert_eq!(f.colour(Some(1.0), 2.3, red, dim), None);
+    }
+
+    #[test]
+    fn death_notices_age_with_a_demo_and_go_on_a_jump() {
+        use crate::game::demo::DemoClock;
+        let mut c = NoticeClock::default();
+        // No demo: the frame's time.
+        assert_eq!(c.step(None, 0.016), Some(0.016));
+        let at = |seconds: f64, seeks: u32| DemoClock { seconds, seeks };
+        // A demo starting: nothing yet, then its own seconds (twice the
+        // frame's at timescale 2; none while paused, whatever the frame).
+        assert_eq!(c.step(Some(&at(0.0, 1)), 0.016), Some(0.0));
+        assert_eq!(c.step(Some(&at(0.032, 1)), 0.016), Some(0.032));
+        assert_eq!(c.step(Some(&at(0.032, 1)), 0.016), Some(0.0));
+        // A jump (even back in time, while paused): cleared.
+        assert_eq!(c.step(Some(&at(10.0, 2)), 0.016), None);
+        assert_eq!(c.step(Some(&at(10.5, 2)), 0.016), Some(0.5));
+        // The demo stopped: the frame's time again.
+        assert_eq!(c.step(None, 0.016), Some(0.016));
     }
 
     #[test]

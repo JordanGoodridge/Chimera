@@ -18,7 +18,8 @@
 //! :") that takes the keyboard (the game sees no keys) until Enter or Esc, sent
 //! as `say` / `say_team` would (the game's `SayFormats`, the sender's nav place
 //! in team chat, its chat sound); a line when a character gets or changes its
-//! team ("Bot 2 is joining the Terrorist force", `SayFormats::joins`;
+//! team ("Bot 2 is joining the Terrorist force", `SayFormats::joins`; not
+//! while a recording plays back, `core::Playback`;
 //! `GameMessagesPlugin`, also headless, with `say`/`say_team`); in a network
 //! game `say` asks the server (`net::SayRequest`) and the lines it sends
 //! (`net::ChatMessage`) are formatted here, its refusals (`net::Notice`) shown
@@ -184,7 +185,8 @@ fn notices(mut notices: MessageReader<crate::net::Notice>, mut hints: MessageWri
 }
 
 /// A line when a character first has a team or changes it (once the
-/// map's strings are loaded).
+/// map's strings are loaded; none while a recording plays back,
+/// `core::Playback`).
 fn team_joins(
     radio: Option<Res<crate::map::radio::RadioCommands>>,
     who: Query<
@@ -200,9 +202,13 @@ fn team_joins(
     >,
     mut known: Local<std::collections::HashMap<Entity, u8>>,
     settings: Option<Res<crate::net::NetSettings>>,
+    playback: Option<Res<crate::core::Playback>>,
     mut chat: MessageWriter<ChatLine>,
 ) {
     let Some(radio) = radio else { return };
+    // A recording playing back (a demo's puppets coming and going) says
+    // only what the recording says: its teams are remembered, not told.
+    let quiet = playback.is_some();
     let mut now = std::collections::HashMap::with_capacity(known.len());
     for (e, team, name, local, net, (spectating, unassigned)) in &who {
         // On no team yet (the join menus): nothing to say.
@@ -212,7 +218,7 @@ fn team_joins(
         // The spectators by their own number (`SayFormats::joins`).
         let key = if spectating { crate::map::radio::SPECTATORS } else { team.0 };
         now.insert(e, key);
-        if known.get(&e) == Some(&key) {
+        if quiet || known.get(&e) == Some(&key) {
             continue;
         }
         // A network game names everyone (us too) as the server does.
