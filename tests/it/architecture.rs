@@ -175,7 +175,15 @@ const ALLOWED: &[(&str, &[&str])] = &[
 /// The crates' source folders cut out of `mashup`, scanned with `src/`
 /// (their modules keep their names in `ALLOWED`; a game crate's `game`
 /// module is `games`, as `src/games/<game>/` was).
-const CRATE_SRC: &[&str] = &["engine/core/src", "engine/world/src", "engine/present/src", "engine/sim/src", "source/logic/src", "games/cs_source/src"];
+const CRATE_SRC: &[&str] = &[
+    "engine/core/src",
+    "engine/world/src",
+    "engine/present/src",
+    "engine/sim/src",
+    "engine/client/src",
+    "source/logic/src",
+    "games/cs_source/src",
+];
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -717,6 +725,10 @@ fn workspace_crates() {
     const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
         on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
         plain data or give it a hook (a registry, a resource) that the crate above fills.";
+    const CLIENT: &str = "is the client shell's base (docs/ARCHITECTURE.md, \"Crates\"): the front end's \
+        interface, fonts, the widgets and binds, below the games' front ends; it knows nothing of the \
+        network, the simulation's frameworks or a game. Keep the piece that needs them in `mashup::client`, \
+        or give the base a hook (a resource, a registry) that the shell above fills.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
@@ -725,6 +737,11 @@ fn workspace_crates() {
         ("engine/sim", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
         ("games/cs_source", &["engine_present", "mashup", "combat_arms"], GAME),
         ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
+        (
+            "engine/client",
+            &["engine_present", "engine_sim", "source_logic", "bevy_replicon", "mashup", "cs_source", "combat_arms", "games"],
+            CLIENT,
+        ),
     ];
     for (krate, forbidden, why) in FORBIDDEN {
         let path = format!("{krate}/Cargo.toml");
@@ -760,7 +777,7 @@ fn workspace_crates() {
 fn server_builds_without_presentation() {
     // The presentation and crates only the client shell uses (not those
     // Bevy itself pulls in: ab_glyph, winit).
-    const CLIENT_ONLY: &[&str] = &["engine_present", "bevy_egui", "bevy-inspector-egui", "arboard"];
+    const CLIENT_ONLY: &[&str] = &["engine_present", "engine_client", "bevy_egui", "bevy-inspector-egui", "arboard"];
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let tree = |args: &[&str]| -> String {
         let out = Command::new(&cargo)

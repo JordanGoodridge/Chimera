@@ -317,7 +317,7 @@ impl From<&HudGlyphMaterial> for HudGlyphKey {
 
 impl UiMaterial for HudGlyphMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/client/hud_text.wgsl".into()
+        "embedded://engine_client/client/hud_text.wgsl".into()
     }
 
     fn specialize(descriptor: &mut RenderPipelineDescriptor, key: UiMaterialKey<Self>) {

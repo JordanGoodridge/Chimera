@@ -552,8 +552,8 @@ pub fn commands(app: &mut App) {
 }
 
 /// For tests of systems that read binds: the mouse's buttons and `game`'s
-/// built-in default binds in an app with the console.
-#[cfg(test)]
+/// built-in default binds in an app with the console (here and in a
+/// game front end's tests).
 pub fn test_binds(app: &mut App, game: &GameInfo) {
     app.init_resource::<ButtonInput<MouseButton>>();
     use_game_defaults(game.default_binds);
@@ -561,8 +561,8 @@ pub fn test_binds(app: &mut App, game: &GameInfo) {
 }
 
 /// CS:S's `cfg/config_default.cfg` as it reads (its bind lines; the
-/// file itself is the install's and never in the repo).
-#[cfg(test)]
+/// file itself is the install's and never in the repo), for tests here
+/// and the game's own (its built-in table must match it).
 pub const SAMPLE_CONFIG_DEFAULT: &str = r#"// first run
 unbindall
 

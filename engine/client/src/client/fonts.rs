@@ -504,7 +504,7 @@ fn index_fonts(dirs: &[PathBuf]) -> HashMap<String, PathBuf> {
 /// A TrueType file's line height in ems as Windows measures it (OS/2
 /// `usWinAscent + usWinDescent` over `head.unitsPerEm`; `hhea` without
 /// an OS/2 table).
-pub(crate) fn line_per_em(ttf: &[u8]) -> Option<f32> {
+pub fn line_per_em(ttf: &[u8]) -> Option<f32> {
     let u16_at = |o: usize| ttf.get(o..o + 2).map(|b| u16::from_be_bytes([b[0], b[1]]));
     let i16_at = |o: usize| u16_at(o).map(|v| v as i16);
     let u32_at = |o: usize| ttf.get(o..o + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
