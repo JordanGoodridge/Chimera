@@ -82,7 +82,7 @@ movement = 0.19097
 [hooks."cs_source:hit_slowdown"]
 body = 0.65
 
-# UNMEASURED: the AWP's (semi-automatic) kick.
+# Measured 2026-10-15 (weapons.md M3): 2 degrees straight up per shot.
 [hooks."cs_source:recoil"]
 standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
 crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

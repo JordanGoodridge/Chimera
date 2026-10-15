@@ -561,7 +561,7 @@ shell-by-shell reloads, the dual Elites), grenades, HUD, deathmatch and
 a first bot are in.
 
 - Probe the new guns' unmeasured rules (listed in the weapons plan):
-  recoil of most guns, the shotgun reload and pellets, the other ammo
+  recoil (the automatics: measured 2026-10-15), the shotgun reload and pellets, the other ammo
   types' penetration. Ammo, box sizes, `primammo`'s fill-up and the
   spawn pistols' reserves: measured and matched 2026-10-14 (M19).
 - The AWP's view model is in (MDL v48 reads like v44,

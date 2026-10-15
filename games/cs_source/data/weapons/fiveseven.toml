@@ -58,7 +58,7 @@ recovery_stand = 0.22353
 [hooks."cs_source:hit_slowdown"]
 body = 0.5
 
-# UNMEASURED: the USP's and Deagle's 2 degrees.
+# Measured 2026-10-15 (weapons.md M3): 2 degrees straight up per shot.
 [hooks."cs_source:recoil"]
 standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
 crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

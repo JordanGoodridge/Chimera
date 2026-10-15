@@ -1300,7 +1300,40 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   | AK-47 airborne | 2.0 | 0.5 | 1.0 | 0.35 | −9.0 | 6.0 (reached once) |
   | M4A1 standing (silencer off) | 0.65 | 0.25 | 0.35 | 0.015 | −3.5 | 2.25 |
   | M4A1 crouched | 0.6 | 0.2 | 0.3 | 0.0125 | −3.25 | 2.0 |
+  | FAMAS standing (2026-10-15) | 0.625 | 0.25 | 0.375 | 0.0125 | -3.5 | 2.25 |
+  | FAMAS crouched (2026-10-15) | 0.575 | 0.2 | 0.325 | 0.011 | -3.25 | 2.0 (not reached; the family's) |
+  | FAMAS moving (2026-10-15) | 1.0 | 0.275 | 0.45 | 0.05 | -4.0 | 2.5 |
+  | Galil standing (2026-10-15) | 0.65 | 0.25 | 0.35 | 0.015 | -3.5 | 2.25 |
+  | Galil crouched (2026-10-15) | 0.6 | 0.2 | 0.3 | 0.0125 | -3.25 | 2.0 |
+  | Galil moving (2026-10-15) | 1.0 | 0.28 | 0.45 | 0.045 | -3.75 | 3.0 |
+  | SG 552 standing (2026-10-15) | 0.625 | 0.25 | 0.375 | 0.0125 | -4.0 | 2.25 |
+  | SG 552 crouched (2026-10-15) | 0.6 | 0.2 | 0.35 | 0.0125 | -3.7 | 2.0 (not reached; the family's) |
+  | SG 552 moving (2026-10-15) | 1.0 | 0.28 | 0.45 | 0.04 | -4.25 | 2.5 |
+  | AUG standing (2026-10-15) | 0.625 | 0.25 | 0.375 | 0.0125 | -3.5 | 2.25 |
+  | AUG crouched (2026-10-15) | 0.575 | 0.2 | 0.325 | 0.011 | -3.25 | 2.0 |
+  | AUG moving (2026-10-15) | 1.0 | 0.275 | 0.45 | 0.05 | -4.0 | 2.5 |
+  | MP5 standing (2026-10-15) | 0.25 | 0.125 | 0.175 | 0.02 | -2.25 | 1.25 |
+  | MP5 crouched (2026-10-15) | 0.225 | 0.1 | 0.15 | 0.015 | -2.0 | 1.0 |
+  | MP5 moving (2026-10-15) | 0.5 | 0.2 | 0.275 | 0.03 | -3.0 | 2.0 |
+  | P90 standing (2026-10-15) | 0.3 | 0.125 | 0.225 | 0.02 | -3.25 | 1.25 |
+  | P90 crouched (2026-10-15) | 0.275 | 0.125 | 0.2 | 0.02 | -3.0 | 1.0 |
+  | P90 moving (2026-10-15) | 0.45 | 0.2 | 0.3 | 0.0275 | -4.0 | 2.25 |
+  | UMP standing (2026-10-15) | 0.275 | 0.15 | 0.2 | 0.0225 | -2.5 | 1.5 |
+  | UMP crouched (2026-10-15) | 0.25 | 0.125 | 0.175 | 0.02 | -2.25 | 1.25 |
+  | UMP moving (2026-10-15) | 0.55 | 0.225 | 0.3 | 0.03 | -3.5 | 1.5 |
+  | MAC-10 standing (2026-10-15) | 0.775 | 0.2 | 0.425 | 0.03 | -3.0 | 2.75 |
+  | MAC-10 crouched (2026-10-15) | 0.75 | 0.175 | 0.4 | 0.03 | -2.75 | 2.5 |
+  | MAC-10 moving (2026-10-15) | 0.9 | 0.25 | 0.45 | 0.035 | -3.5 | 2.75 |
+  | TMP standing (2026-10-15) | 0.725 | 0.15 | 0.375 | 0.025 | -2.75 | 2.25 |
+  | TMP crouched (2026-10-15) | 0.7 | 0.125 | 0.35 | 0.025 | -2.5 | 2.0 |
+  | TMP moving (2026-10-15) | 0.8 | 0.2 | 0.4 | 0.03 | -3.0 | 2.5 |
+  | M249 standing (2026-10-15) | 0.8 | 0.3 | 0.35 | 0.03 | -3.75 | 3.0 |
+  | M249 crouched (2026-10-15) | 0.75 | 0.25 | 0.325 | 0.025 | -3.5 | 2.5 |
+  | M249 moving (2026-10-15) | 1.1 | 0.3 | 0.5 | 0.06 | -4.0 | 3.0 |
 
+  The 2026-10-15 rows: one full clip each, side-running at 250 for
+  "moving"; airborne for those guns is unmeasured (the data uses the
+  moving set).
   "Moving" is decided by the speed on the shot tick: 5.06 u/s gives the
   moving set, 0 the standing one. Side flips: M4A1 13 of 116 (standing),
   18 of 116 (crouched); with M3's 17 of 145 overall 48 of 377 ≈ 1/8.
@@ -1309,6 +1342,11 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   presses so every shot is "shot 1". USP refired after 11 ticks adds to the
   remaining punch (−2.0, −2.25, −2.48, …). **Glock: no punch at all.**
   Burst/silenced/scoped modes not measured.
+- More guns (2026-10-15, five presses each at their refire, standing and
+  crouched alike): P228, Five-SeveN, Elites and Scout kick **2.0** straight
+  up like the USP; the G3SG1 kicks up 0.75 + random 0..1.0 and the SG 550
+  0.75 + random 0..0.5, both sideways random ±0.75 (no steps, no caps
+  reached); the M3 a whole 4-6 degrees up, the XM1014 a whole 3-5.
 - Bullets follow view + 2 × punch for the M4A1 as for the AK-47 (residuals
   inside the cone with 2×, up to 2.3° outside with 1×).
 

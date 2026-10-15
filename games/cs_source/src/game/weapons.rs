@@ -704,8 +704,13 @@ pub struct Kick {
     pub up_cap: f32,
     pub side_cap: f32,
     /// Above `up`: each shot kicks up a whole number of degrees from `up`
-    /// to this at random instead (the SDK template's shotgun).
+    /// to this at random instead (the shotguns, measured: M3 4-6, XM1014 3-5).
     pub up_max: f32,
+    /// Above 0: each shot kicks up `up` plus a random amount in
+    /// `0..up_spread` and sideways a random amount in `±side_spread`
+    /// instead of the set's steps (the G3SG1 and SG 550, measured).
+    pub up_spread: f32,
+    pub side_spread: f32,
 }
 
 impl Kick {
@@ -718,6 +723,8 @@ impl Kick {
             up_cap: caps.0,
             side_cap: caps.1,
             up_max: 0.0,
+            up_spread: 0.0,
+            side_spread: 0.0,
         }
     }
 
@@ -892,16 +899,23 @@ fn after_shots(
         } else {
             r.standing
         };
-        let (mut up, side) = (kick.up + kick.up_step * n, kick.side + kick.side_step * n);
+        let (mut up, mut side) = (kick.up + kick.up_step * n, kick.side + kick.side_step * n);
+        let mut direction = r.direction;
         if kick.up_max > kick.up {
             // A second roll from the same dice.
             let u = dice.next();
             up = (kick.up + (u * (kick.up_max - kick.up + 1.0)).floor()).min(kick.up_max);
         }
+        if kick.up_spread > 0.0 || kick.side_spread > 0.0 {
+            // Random both ways, from the same dice.
+            up = kick.up + dice.next() * kick.up_spread;
+            side = (dice.next() * 2.0 - 1.0) * kick.side_spread;
+            direction = 1.0;
+        }
         let old = punch.as_ref().map_or(Vec3::ZERO, |p| p.0);
         let kicked = Vec3::new(
             (old.x + up.to_radians()).min(kick.up_cap.to_radians()),
-            (old.y + side.to_radians() * r.direction).clamp(-kick.side_cap.to_radians(), kick.side_cap.to_radians()),
+            (old.y + side.to_radians() * direction).clamp(-kick.side_cap.to_radians(), kick.side_cap.to_radians()),
             old.z,
         );
         match punch {
