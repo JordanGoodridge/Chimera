@@ -1,20 +1,40 @@
 #!/usr/bin/env sh
-# Refuse commits while the fast tier of tests fails: unit tests and the
-# integration tests outside `heavy` of every workspace crate
-# (docs/OBSERVABILITY.md, section 1).
-# The full suite runs before a push (.githooks/pre-push).
+# Refuse commits while the fast tier of tests fails (unit tests and
+# integration tests outside `heavy::`, docs/OBSERVABILITY.md section 1)
+# for the packages the staged changes can affect: `repo_checks`' `affected`
+# maps the staged files to workspace packages and follows cargo's crate
+# graph up to every package whose tests depend on them (checks/src/affected.rs
+# has the rules: the lockfile, workspace manifest, .config/, the hooks or a
+# build.rs select everything; Markdown and docs only the repository checks).
+# MASHUP_COMMIT_TESTS=all runs the whole fast tier; =0 skips it.
+# The affected heavy tests run before a push (.githooks/pre-push).
 # Enable once per clone: git config core.hooksPath .githooks
 # Skip in an emergency with: git commit --no-verify
-set -e
-# Commits that change only Markdown (docs, specs, plans) don't build or
-# test here: in a fresh worktree that would be a cold build of everything.
-# Their links are still checked by the full suite before a push.
-if [ -z "$(git diff --cached --name-only --diff-filter=ACMRD | grep -v '\.md$')" ]; then
+mode=${MASHUP_COMMIT_TESTS:-affected}
+[ "$mode" = 0 ] && exit 0
+if [ -z "$(git diff --cached --name-only)" ]; then
     exit 0
 fi
 mkdir -p target
 log=target/pre-commit.log
-if ! cargo test --workspace --features dev --quiet --no-fail-fast -- --skip heavy:: >"$log" 2>&1; then
+if [ "$mode" = all ]; then
+    args=--workspace
+    echo "pre-commit: MASHUP_COMMIT_TESTS=all: the whole fast tier" >&2
+elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- --staged --format cargo 2>target/pre-commit-affected.txt); then
+    cat target/pre-commit-affected.txt >&2
+    echo "pre-commit: couldn't select the affected tests; running the whole fast tier." >&2
+    args=--workspace
+else
+    sed 's/^/pre-commit: /' target/pre-commit-affected.txt >&2
+fi
+# One argument per line (the selection prints them so).
+set -f
+IFS='
+'
+# shellcheck disable=SC2086
+set -- $args
+unset IFS
+if ! cargo test "$@" --features dev --quiet --no-fail-fast -- --skip heavy:: >"$log" 2>&1; then
     grep -E "panicked|FAILED|^error" "$log" | head -20
     echo "pre-commit: fast tests failed (full log: $log); not committing." >&2
     exit 1

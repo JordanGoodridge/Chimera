@@ -9,7 +9,7 @@ license.workspace = true
 
 # The CS:S app's glue without its default feature `present`: nothing of
 # chimera_present, the client shell or CS:S's front end links
-# (tests/it/architecture.rs, `server_builds_without_presentation`, checks
+# (checks/tests/it/architecture.rs, `server_builds_without_presentation`, checks
 # `cargo tree -p cs_source_server`). In a workspace build features unify,
 # so the released server is built alone: `cargo build --release -p
 # cs_source_server`.

@@ -14,7 +14,7 @@ doctest = false
 # The engine's crates and the formats, Bevy and physics, Source's file
 # readers; never `mashup` or another game, and the presentation
 # (`chimera_present`), the shell and Source's logic only for `ui`
-# (tests/it/architecture.rs checks it). Same versions and features
+# (checks/tests/it/architecture.rs checks it). Same versions and features
 # as the game's (workspace dependencies), so `cargo test -p cs_source`
 # reuses the game's builds.
 [dependencies]
@@ -48,6 +48,24 @@ winit = { workspace = true, optional = true }
 # Joining's progress (the loading dialog reads the netcode client).
 bevy_replicon_renet = { workspace = true, optional = true }
 workspace-hack.workspace = true
+
+# The tests' own crates: checksums of files read through the mount
+# (games/cs_source/tests/it/mount_cs_source.rs), the lightmap probe's JSON.
+[dev-dependencies]
+crc32fast = "1.5.2"
+serde_json.workspace = true
+
+# The simulation's integration tests (tests/it/): loaders and spec test
+# cases on the install, `heavy::` on real maps.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# The front end's (tests/ui/): built with `ui` only.
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"
+required-features = ["ui"]
 
 [features]
 # CS:S's front end (`ui`): its menus, panels and HUD on the client shell.

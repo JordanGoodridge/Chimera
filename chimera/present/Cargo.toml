@@ -12,7 +12,7 @@ license.workspace = true
 doctest = false
 
 # The map it presents (`chimera_world`), the engine's base, Bevy and
-# physics; never `mashup` or a game (tests/it/architecture.rs checks it).
+# physics; never `mashup` or a game (checks/tests/it/architecture.rs checks it).
 # Same versions and features as the game's (workspace dependencies), so
 # `cargo test -p chimera_present` reuses the game's builds.
 [dependencies]
@@ -23,6 +23,15 @@ bevy.workspace = true
 half.workspace = true
 image.workspace = true
 workspace-hack.workspace = true
+
+# Source's WAV reader decodes what playback writes (tests/it/wav_playback.rs).
+[dev-dependencies]
+source_formats.workspace = true
+
+# The integration tests (tests/it/): the renderer's and audio's spec cases.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
 
 [features]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):

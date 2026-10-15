@@ -8,7 +8,7 @@
 //! mutations it builds afterwards, so a value changed once on an entity
 //! whose body changes every tick (a dead player's last health, a score)
 //! was lost for good on a lossy link (found by the soak,
-//! tests/it/heavy/net_soak.rs; test `net::a_value_survives_held_back_
+//! apps/cs_source/tests/it/heavy/net_soak.rs; test `net::a_value_survives_held_back_
 //! mutations`).
 //!
 //! Here the client keeps them: a receive marker on every replicated

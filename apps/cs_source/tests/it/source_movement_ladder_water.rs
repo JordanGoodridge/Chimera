@@ -1,0 +1,595 @@
+//! Ladder and water test cases from specs/cs_source/movement.md, on a small
+//! map in Source units: a floor at z = 0, a ladder slab whose face (normal
+//! -X) is at x = 100, a pool 200 units deep, and a shallow pool with a
+//! ledge to climb out onto. 64 tick, the shared code's values; drowning
+//! (`games::cs_source::drown`, at the end) at CS:S's 0.015 s and values.
+
+use bevy::prelude::*;
+use cs_source_app::{
+    core::Velocity,
+    games::cs_source::movement::{
+        self, SourceMovement, SourceMovementConfig, SourceMovementPlugin, to_engine, to_source,
+    },
+    harness::Sim,
+    map::{MapBrush, MapBrushes, MapWater, MapWaterVolume},
+};
+
+fn brush(lo: Vec3, hi: Vec3, ladder: bool) -> MapBrush {
+    let (a, b) = (to_engine(lo), to_engine(hi));
+    MapBrush {
+        ladder,
+        ..MapBrush::from_box(a.min(b), a.max(b))
+    }
+}
+
+const LADDER_X: f32 = 100.0;
+/// Deep pool: x -2000..-1000, water up to z 200, floor at -200.
+const DEEP: Vec3 = Vec3::new(-1500.0, 0.0, 0.0);
+/// Shallow pool: water up to z 50 over the floor at 0, a ledge at x 1526
+/// whose top (60) is below eye height + 8.
+const SHALLOW: Vec3 = Vec3::new(1500.0, 0.0, 0.0);
+
+/// A 20-unit-tall prop (as a brush) standing on the floor.
+const PROP: Vec3 = Vec3::new(500.0, 0.0, 0.0);
+const PROP_TOP: f32 = 20.0;
+
+fn test_map(mut commands: Commands) {
+    let mut brushes = vec![
+        // Floor everywhere but the deep pool.
+        brush(
+            Vec3::new(-8192.0, -8192.0, -64.0),
+            Vec3::new(-2000.0, 8192.0, 0.0),
+            false,
+        ),
+        brush(
+            Vec3::new(-1000.0, -8192.0, -64.0),
+            Vec3::new(8192.0, 8192.0, 0.0),
+            false,
+        ),
+        brush(
+            Vec3::new(-2000.0, -8192.0, -264.0),
+            Vec3::new(-1000.0, 8192.0, -200.0),
+            false,
+        ),
+        // Ladder slab.
+        brush(
+            Vec3::new(LADDER_X, -64.0, 0.0),
+            Vec3::new(LADDER_X + 8.0, 64.0, 400.0),
+            true,
+        ),
+    ];
+    // Ledge out of the shallow pool: face 10 units in front of the box.
+    brushes.push(brush(
+        Vec3::new(SHALLOW.x + 26.0, -256.0, 0.0),
+        Vec3::new(SHALLOW.x + 600.0, 256.0, 60.0),
+        false,
+    ));
+    // A prop placed as a brush, with its own surface property.
+    brushes.push(MapBrush {
+        surface: Some("metal_box".into()),
+        ..brush(
+            PROP - Vec3::new(50.0, 50.0, 0.0),
+            PROP + Vec3::new(50.0, 50.0, PROP_TOP),
+            false,
+        )
+    });
+    let water = |lo: Vec3, hi: Vec3| MapWaterVolume {
+        brush: brush(lo, hi, false),
+        slime: false,
+    };
+    commands.insert_resource(MapBrushes(brushes));
+    commands.insert_resource(MapWater(vec![
+        water(Vec3::new(-2000.0, -8192.0, -200.0), Vec3::new(-1000.0, 8192.0, 200.0)),
+        water(
+            Vec3::new(SHALLOW.x - 400.0, -256.0, 0.0),
+            Vec3::new(SHALLOW.x + 26.0, 256.0, 50.0),
+        ),
+    ]));
+}
+
+struct TestMap;
+impl Plugin for TestMap {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, test_map);
+    }
+}
+
+struct Player {
+    sim: Sim,
+    p: Entity,
+}
+
+impl Player {
+    fn at(feet: Vec3, cfg: SourceMovementConfig) -> Self {
+        let mut sim = Sim::new((TestMap, SourceMovementPlugin));
+        sim.app.insert_resource(cfg);
+        let p = sim.spawn_character(to_engine(feet + Vec3::Z * 36.0), movement::ID);
+        let mut me = Self { sim, p };
+        me.look(0.0, 0.0);
+        me
+    }
+
+    /// In the air, the box 1 unit from the ladder face, already climbing.
+    fn on_ladder(cfg: SourceMovementConfig) -> Self {
+        let mut me = Self::at(Vec3::new(LADDER_X - 17.0, 0.0, 100.0), cfg);
+        me.sim.app.world_mut().get_mut::<SourceMovement>(me.p).unwrap().ladder = Some(Vec3::NEG_X);
+        me
+    }
+
+    /// Face Source yaw and pitch (degrees; pitch positive looks down).
+    fn look(&mut self, yaw: f32, pitch: f32) {
+        let mut i = self.sim.intent(self.p);
+        i.yaw = yaw.to_radians() - std::f32::consts::FRAC_PI_2;
+        i.pitch = -pitch.to_radians();
+    }
+
+    fn keys(&mut self, forward: f32, right: f32) {
+        self.sim.intent(self.p).move_axis = Vec2::new(right, forward);
+    }
+
+    fn feet(&self) -> Vec3 {
+        to_source(self.sim.position(self.p)) - Vec3::Z * 36.0
+    }
+
+    fn vel(&self) -> Vec3 {
+        to_source(self.sim.velocity(self.p))
+    }
+
+    fn state(&self) -> SourceMovement {
+        self.sim.app.world().get::<SourceMovement>(self.p).unwrap().clone()
+    }
+
+    fn tick(&mut self) {
+        self.sim.ticks(1);
+    }
+}
+
+fn close(actual: f32, expected: f32, tol: f32, what: &str) {
+    assert!(
+        (actual - expected).abs() <= tol,
+        "{what}: got {actual}, expected {expected} (±{tol})"
+    );
+}
+
+fn close3(actual: Vec3, expected: Vec3, tol: f32, what: &str) {
+    assert!(
+        (actual - expected).abs().max_element() <= tol,
+        "{what}: got {actual}, expected {expected} (±{tol})"
+    );
+}
+
+fn shared() -> SourceMovementConfig {
+    SourceMovementConfig::shared_code()
+}
+
+#[test]
+fn climbing_speed_follows_pitch() {
+    for (pitch, vz) in [
+        (0.0, 200.0),
+        (-45.0, 282.843),
+        (45.0, 0.0),
+        (60.0, -73.205),
+        (89.0, -196.48),
+        (-89.0, 203.46),
+    ] {
+        let mut pl = Player::on_ladder(shared());
+        pl.look(0.0, pitch);
+        pl.keys(1.0, 0.0);
+        let z0 = pl.feet().z;
+        pl.tick();
+        assert!(pl.state().ladder.is_some(), "pitch {pitch}: attached");
+        close3(
+            pl.vel(),
+            Vec3::new(0.0, 0.0, vz),
+            0.01,
+            &format!("pitch {pitch}: velocity"),
+        );
+        close(pl.feet().z - z0, vz / 64.0, 0.01, &format!("pitch {pitch}: climbed"));
+    }
+}
+
+#[test]
+fn ladder_back_and_sideways() {
+    let mut pl = Player::on_ladder(shared());
+    pl.keys(-1.0, 0.0);
+    pl.tick();
+    close3(pl.vel(), Vec3::new(0.0, 0.0, -200.0), 0.01, "hold back");
+
+    let mut pl = Player::on_ladder(shared());
+    pl.keys(0.0, 1.0);
+    pl.tick();
+    close3(pl.vel(), Vec3::new(0.0, -200.0, 0.0), 0.01, "hold right");
+
+    // Shared code: no dampening.
+    let mut pl = Player::on_ladder(shared());
+    pl.keys(1.0, 1.0);
+    pl.tick();
+    close3(
+        pl.vel(),
+        Vec3::new(0.0, -200.0, 200.0),
+        0.01,
+        "forward + right, undamped",
+    );
+}
+
+#[test]
+fn css_ladder_dampening() {
+    let mut cfg = shared();
+    cfg.set_cvar("sv_ladder_dampen", "0.2").unwrap();
+    let mut pl = Player::on_ladder(cfg.clone());
+    pl.keys(1.0, 1.0);
+    pl.tick();
+    close3(pl.vel(), Vec3::new(0.0, -40.0, 200.0), 0.01, "forward + right, damped");
+
+    // Looking up 45: the push isn't square enough to damp.
+    let mut pl = Player::on_ladder(cfg);
+    pl.look(0.0, -45.0);
+    pl.keys(1.0, 1.0);
+    pl.tick();
+    close3(pl.vel(), Vec3::new(0.0, -200.0, 282.843), 0.01, "looking up, undamped");
+}
+
+#[test]
+fn hanging_and_jumping_off() {
+    let mut pl = Player::on_ladder(shared());
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    pl.keys(0.0, 0.0);
+    let z = pl.feet().z;
+    pl.tick();
+    close3(pl.vel(), Vec3::ZERO, 1e-4, "no keys: hangs");
+    close(pl.feet().z, z, 1e-4, "no gravity");
+
+    let x0 = pl.feet().x;
+    pl.sim.intent(pl.p).jump = true;
+    pl.tick();
+    assert!(pl.state().ladder.is_none(), "jumped off");
+    close(pl.vel().x, -270.0, 0.01, "pushed off along the normal");
+    close(pl.vel().z, -12.5, 0.01, "then falls (two gravity halves)");
+    close(pl.feet().x - x0, -4.21875, 0.01, "moved away");
+    pl.sim.intent(pl.p).jump = false;
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    assert!(pl.state().ladder.is_none(), "4.22 units is beyond the 2-unit reach");
+}
+
+#[test]
+fn attaching_needs_input_and_reach() {
+    let mut pl = Player::at(Vec3::new(LADDER_X - 17.0, 0.0, 100.0), shared());
+    pl.tick();
+    assert!(pl.state().ladder.is_none(), "no keys: no probe");
+    assert!(pl.vel().z < 0.0, "falls");
+
+    let mut pl = Player::at(Vec3::new(LADDER_X - 19.0, 0.0, 100.0), shared());
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    assert!(pl.state().ladder.is_none(), "3 units away: out of reach");
+
+    let mut pl = Player::at(Vec3::new(LADDER_X - 17.0, 0.0, 100.0), shared());
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    assert!(pl.state().ladder.is_some(), "1 unit away, pressing into it: attached");
+    close3(pl.vel(), Vec3::new(0.0, 0.0, 200.0), 0.01, "climbing");
+}
+
+#[test]
+fn water_level_by_depth() {
+    // Standing box (72 tall, eye 64) with the deep pool's surface (z 200) H
+    // above the feet. One tick of sinking moves the feet by under 0.1.
+    for (h, level) in [(0.5, 0), (20.0, 1), (40.0, 2), (63.0, 2), (70.0, 3)] {
+        let mut pl = Player::at(DEEP + Vec3::Z * (200.0 - h), shared());
+        pl.tick();
+        assert_eq!(pl.state().water_level, level, "surface {h} above the feet");
+    }
+}
+
+#[test]
+fn sinking_with_no_input() {
+    let mut pl = Player::at(DEEP, shared());
+    let expected = [
+        (1, -3.75),
+        (2, -7.265625),
+        (23, -46.40),
+        (24, -47.25),
+        (25, -48.0),
+        (40, -48.0),
+    ];
+    let mut t = 0;
+    for (at, vz) in expected {
+        while t < at {
+            pl.tick();
+            t += 1;
+        }
+        assert_eq!(pl.state().water_level, 3);
+        close(pl.vel().z, vz, 0.01, &format!("sink speed after {at} ticks"));
+    }
+}
+
+#[test]
+fn swimming_forward() {
+    let mut pl = Player::at(DEEP, shared());
+    pl.keys(1.0, 0.0);
+    let expected = [(1, 15.625), (2, 30.273), (24, 196.88), (25, 200.0), (40, 200.0)];
+    let mut t = 0;
+    for (at, speed) in expected {
+        while t < at {
+            pl.tick();
+            t += 1;
+        }
+        close(
+            pl.vel().truncate().length(),
+            speed,
+            0.01,
+            &format!("swim speed after {at} ticks"),
+        );
+    }
+
+    // Looking up 30: swims 60 degrees up.
+    let mut pl = Player::at(DEEP, shared());
+    pl.look(0.0, -30.0);
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    close3(pl.vel(), Vec3::new(7.8125, 0.0, 13.5316), 0.01, "up-swim, tick 1");
+    pl.tick();
+    close(
+        pl.vel().length(),
+        19.287,
+        0.01,
+        "tick 2 (surface friction 0.25 while rising)",
+    );
+
+    // Looking down 30: no extra dive.
+    let mut pl = Player::at(DEEP, shared());
+    pl.look(0.0, 30.0);
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    close3(pl.vel(), Vec3::new(13.5316, 0.0, -7.8125), 0.01, "down-swim, tick 1");
+}
+
+#[test]
+fn holding_jump_in_water_rises() {
+    let mut pl = Player::at(DEEP, shared());
+    pl.sim.intent(pl.p).jump = true;
+    pl.tick();
+    close(pl.vel().z, 109.375, 0.01, "tick 1");
+    for _ in 0..5 {
+        pl.tick();
+        close(pl.vel().z, 102.34375, 0.01, "steady");
+    }
+}
+
+#[test]
+fn water_jump_onto_a_ledge() {
+    // Waist deep (the surface 50 above the feet), on the pool floor.
+    // Settle facing away: the check needs no input, only the wall ahead.
+    let mut pl = Player::at(SHALLOW, shared());
+    pl.look(180.0, 0.0);
+    pl.tick();
+    assert_eq!(pl.state().water_level, 2);
+    pl.look(0.0, 0.0);
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    assert!(pl.state().water_jump_time > 0.0, "water jump started");
+    close(pl.vel().z, 240.0, 0.01, "256 less a tick of swim friction");
+    close(pl.vel().truncate().length(), 0.0, 1e-3, "no horizontal speed yet");
+    pl.tick();
+    close(pl.vel().x, 50.0, 0.01, "pushed toward the ledge");
+    // Out of the water and onto the ledge within the 2 seconds.
+    for _ in 0..128 {
+        pl.tick();
+    }
+    let feet = pl.feet();
+    assert!(
+        feet.x > SHALLOW.x + 26.0 - 16.0 && feet.z >= 59.0,
+        "on the ledge: {feet}"
+    );
+}
+
+#[test]
+fn falling_into_deep_water_keeps_its_speed() {
+    let mut pl = Player::at(DEEP + Vec3::Z * 100.0, shared());
+    pl.sim.app.world_mut().get_mut::<Velocity>(pl.p).unwrap().0 = to_engine(Vec3::new(0.0, 0.0, -600.0));
+    pl.tick();
+    assert_eq!(pl.state().water_level, 3);
+    let v1 = pl.vel().z;
+    pl.tick();
+    close(pl.vel().z / v1, 0.9375, 0.002, "only proportional water friction");
+}
+
+/// Holding jump while a water jump starts doesn't cancel its lift (jump
+/// does nothing during a water jump): the player climbs out onto the ledge
+/// instead of bobbing at the wall, locked toward it.
+#[test]
+fn holding_jump_keeps_the_water_jump() {
+    let mut pl = Player::at(SHALLOW, shared());
+    pl.look(180.0, 0.0);
+    pl.tick();
+    pl.look(0.0, 0.0);
+    pl.sim.intent(pl.p).jump = true;
+    pl.keys(1.0, 0.0);
+    pl.tick();
+    assert!(pl.state().water_jump_time > 0.0, "water jump started");
+    close(pl.vel().z, 240.0, 0.01, "lift kept despite holding jump");
+    for _ in 0..128 {
+        pl.tick();
+    }
+    let feet = pl.feet();
+    assert!(feet.z >= 59.0, "climbed out: {feet}");
+}
+
+/// Sound spec 3: footsteps use the ground trace's surface. Standing on a
+/// prop gives the prop's surface property, not the world floor's.
+#[test]
+fn standing_on_a_prop_uses_its_surface() {
+    let mut on_prop = Player::at(PROP + Vec3::Z * (PROP_TOP + 0.5), shared());
+    on_prop.sim.ticks(4);
+    assert!(on_prop.state().on_ground, "should stand on the prop");
+    assert_eq!(on_prop.state().surface.as_deref(), Some("metal_box"));
+
+    // The world floor beside it carries no surface of its own (it comes
+    // from the map's faces, absent here).
+    let mut on_floor = Player::at(PROP + Vec3::new(300.0, 0.0, 0.5), shared());
+    on_floor.sim.ticks(4);
+    assert!(on_floor.state().on_ground);
+    assert_eq!(on_floor.state().surface, None);
+}
+
+/// Standing on a ladder brush's top (all its faces carry the ladder flag)
+/// is standing on a floor: holding forward while looking down walks (the
+/// probe hits the top face, which is no ladder: its normal is a floor's),
+/// and a jump is a plain jump, not the jump-off push plus a jump
+/// (movement spec, "Ladders"; the spec is silent on a ladder brush's top,
+/// see docs/tech-debt.md).
+#[test]
+fn a_ladder_top_is_a_floor() {
+    for pitch in [-20.0, 0.0, 20.0, 60.0] {
+        // On the slab's top (x 100..108, z 400), facing +y along it.
+        let mut pl = Player::at(Vec3::new(LADDER_X + 4.0, -40.0, 400.0), SourceMovementConfig::default());
+        pl.look(90.0, pitch);
+        pl.sim.ticks(4);
+        assert!(pl.state().on_ground, "pitch {pitch}: stands on the top");
+        pl.keys(1.0, 0.0);
+        for _ in 0..10 {
+            pl.tick();
+            assert!(pl.state().ladder.is_none(), "pitch {pitch}: the top is no ladder");
+        }
+        assert!(pl.feet().y > -40.0 + 8.0, "pitch {pitch}: walked forward to {}", pl.feet());
+        close(pl.feet().z, 400.0, 0.1, "still on the top");
+
+        pl.keys(0.0, 0.0);
+        pl.sim.intent(pl.p).jump = true;
+        pl.tick();
+        let vz = pl.vel().z;
+        assert!(vz > 250.0 && vz < 310.0, "pitch {pitch}: a plain jump, vz {vz}");
+    }
+}
+
+/// Drowning (`games::cs_source::drown`) at CS:S's 0.015 s tick: a player
+/// standing on dry floor, then put on the deep pool's bottom (head under).
+struct Diver {
+    sim: Sim,
+    p: Entity,
+}
+
+/// Dry floor, clear of the ladder and the prop.
+const DRY: Vec3 = Vec3::new(-500.0, 0.0, 0.0);
+/// The deep pool's bottom: the head is 136 units under.
+const BOTTOM: Vec3 = Vec3::new(-1500.0, 0.0, -200.0);
+
+impl Diver {
+    fn new() -> Self {
+        let mut sim = Sim::new((TestMap, SourceMovementPlugin));
+        sim.set_tick_interval(cs_source_app::games::cs_source::TICK_INTERVAL);
+        sim.app.insert_resource(SourceMovementConfig::default());
+        let p = sim.spawn_character(to_engine(DRY + Vec3::Z * 36.0), movement::ID);
+        let mut me = Self { sim, p };
+        me.sim.ticks(10);
+        me
+    }
+
+    fn put(&mut self, feet: Vec3) {
+        let w = self.sim.app.world_mut();
+        w.get_mut::<Transform>(self.p).unwrap().translation = to_engine(feet + Vec3::Z * 36.0);
+        w.get_mut::<Velocity>(self.p).unwrap().0 = Vec3::ZERO;
+    }
+
+    fn health(&self) -> i32 {
+        let h = self.sim.app.world().get::<cs_source_app::core::Health>(self.p).unwrap().current;
+        (h * 100.0).round() as i32
+    }
+
+    fn water(&self) -> u8 {
+        self.sim.app.world().get::<SourceMovement>(self.p).unwrap().water_level
+    }
+
+    /// Ticks until health changes (at most `max`): how many ticks and the
+    /// new health.
+    fn next_change(&mut self, max: u64) -> Option<(u64, i32)> {
+        let before = self.health();
+        for n in 1..=max {
+            self.sim.ticks(1);
+            if self.health() != before {
+                return Some((n, self.health()));
+            }
+        }
+        None
+    }
+
+    /// Goes under: the tick the head is first under water is tick 1.
+    fn dive(&mut self) {
+        assert_eq!(self.water(), 0);
+        self.put(BOTTOM);
+        self.sim.ticks(1);
+        assert_eq!(self.water(), 3, "head not under");
+    }
+}
+
+/// Measured (specs/cs_source/movement.md, "Drowning"): the first hit 12.0 s
+/// after going under (tick 801 at 0.015 s), then one every 67 ticks, 3, 4,
+/// then 5 each, until 100 health is dead at 32.1 s.
+#[test]
+fn drowning_as_measured() {
+    let mut d = Diver::new();
+    assert_eq!(d.health(), 100);
+    d.dive();
+    let (first, h) = d.next_change(900).expect("no drowning damage");
+    // Tick 1 under water was already run.
+    assert_eq!(first + 1, 801, "first hit's tick under water");
+    assert_eq!(h, 97, "first hit");
+    let mut tick = 801;
+    let mut health = h;
+    let mut hits = vec![3];
+    while health > 0 {
+        let (n, h) = d.next_change(200).expect("drowning stopped");
+        assert_eq!(n, 67, "ticks between hits (hit {})", hits.len() + 1);
+        tick += n;
+        hits.push(health - h);
+        health = h;
+    }
+    assert_eq!(&hits[..4], &[3, 4, 5, 5]);
+    assert!(hits[2..hits.len() - 1].iter().all(|&h| h == 5), "hits {hits:?}");
+    assert_eq!(hits.len(), 21, "hits {hits:?}");
+    let dead_at = tick as f64 * cs_source_app::games::cs_source::TICK_INTERVAL;
+    assert!((dead_at - 32.1).abs() < 0.05, "dead at {dead_at} s");
+}
+
+/// Measured: back on land after losing 37, health comes back 10 at a
+/// time about every 2 s (the first within the first second) until all the
+/// drowning damage is restored (63 -> 73 -> 83 -> 93 -> 100), no more.
+/// Surfacing starts the 12 s over (ours: unmeasured).
+#[test]
+fn drowning_damage_comes_back() {
+    let mut d = Diver::new();
+    d.dive();
+    while d.health() > 63 {
+        d.next_change(900).expect("no drowning damage");
+    }
+    assert_eq!(d.health(), 63);
+    d.put(DRY);
+    d.sim.ticks(1);
+    assert_eq!(d.water(), 0);
+    let (n, h) = d.next_change(200).expect("nothing restored");
+    assert!(n as f64 * cs_source_app::games::cs_source::TICK_INTERVAL < 1.0, "first restore after {n} ticks");
+    assert_eq!(h, 73);
+    for want in [83, 93, 100] {
+        let (n, h) = d.next_change(300).expect("restoring stopped");
+        let secs = n as f64 * cs_source_app::games::cs_source::TICK_INTERVAL;
+        assert!((secs - 2.0).abs() < 0.05, "{want}: {secs} s after the last");
+        assert_eq!(h, want);
+    }
+    assert_eq!(d.next_change(600), None, "restored more than was taken");
+    // Under again: a fresh 12 s.
+    d.dive();
+    let (first, h) = d.next_change(900).expect("no drowning damage");
+    assert_eq!((first + 1, h), (801, 97));
+}
+
+/// Waist-deep (the head out) never drowns.
+#[test]
+fn no_drowning_with_the_head_out() {
+    let mut d = Diver::new();
+    d.put(SHALLOW - Vec3::X * 100.0);
+    d.sim.ticks(1);
+    assert_eq!(d.water(), 2);
+    assert_eq!(d.next_change(1200), None);
+}

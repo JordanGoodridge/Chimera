@@ -28,7 +28,7 @@
 //! push for de_dust2's oil drum 390). With avian's warm starting off it
 //! settles, but other props then misbehave (one flew off at 50 m/s). Why
 //! it's OK for now: the rocking is about a degree, and every de_dust2 prop
-//! sleeps within a few seconds of a push (tests/it/heavy/map_prop_settle.rs).
+//! sleeps within a few seconds of a push (apps/cs_source/tests/it/heavy/map_prop_settle.rs).
 
 use avian3d::{
     dynamics::solver::islands::{BodyIslandNode, SleepBody},
@@ -294,7 +294,7 @@ pub fn pushable(p: &PhysicsProp) -> bool {
 /// displacement triangles (a flat one and one 3.7 degrees steeper) rocked
 /// by about 1.5 degrees at up to 0.5 rad/s forever, the solver putting
 /// back each tick the energy its contacts take out
-/// (tests/it/heavy/map_prop_settle.rs).
+/// (apps/cs_source/tests/it/heavy/map_prop_settle.rs).
 pub const SETTLE_DISTANCE: f32 = 0.0254;
 /// See `SETTLE_DISTANCE`, radians.
 pub const SETTLE_ANGLE: f32 = 0.087;

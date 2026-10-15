@@ -1,5 +1,5 @@
 //! Presentation of the map: what draws the parts `map` spawns and
-//! simulates. Nothing in the simulation uses it (`tests/it/architecture.rs`);
+//! simulates. Nothing in the simulation uses it (`checks/tests/it/architecture.rs`);
 //! `map_plugin` builds it into `map::MapPlugin`; only `map_plugin`,
 //! `client` and games' `ui/` use it.
 //!

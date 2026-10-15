@@ -531,7 +531,7 @@ fn extract_meshes(
 
 /// Every schedule's systems in the order they run (built now if they
 /// haven't run yet), one schedule after another by name: the spawn dump
-/// (`tests/it/heavy/map_spawn_dump.rs`) and the game's
+/// (`apps/cs_source/tests/it/heavy/map_spawn_dump.rs`) and the game's
 /// `MASHUP_SYSTEM_DUMP` (main.rs), for refactors that move systems
 /// between plugins or crates.
 pub fn system_order(world: &mut World) -> String {

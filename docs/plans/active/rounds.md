@@ -22,7 +22,7 @@ restarts.
   the weapon it replaces in the same slot.
 - HUD: `HudAccount` (money) and `HudRoundTimer` panels, the round result
   across the screen.
-- Tests: tests/it/rounds.rs, `weapon::economy` unit tests.
+- Tests: apps/cs_source/tests/it/rounds.rs, `weapon::economy` unit tests.
 
 ## Next
 
@@ -53,7 +53,7 @@ restarts.
    preserve list from the public multiplayer code the spec quotes
    (func_brush, func_wall, func_buyzone, info_target, soundscapes,
    ropes, sky_camera). Tests: logic unit tests (`restart_tests.rs`),
-   tests/it/map_logic.rs, de_nuke vents and doors, cs_office windows.
+   apps/cs_source/tests/it/map_logic.rs, de_nuke vents and doors, cs_office windows.
    Open (probe server, entity_io.md open question 1): CS:S's own keep
    list (does a func_brush disabled in round 1 stay disabled?); which
    logic_auto outputs fire each round (ours: OnNewGame, OnMapSpawn,
@@ -77,8 +77,8 @@ restarts.
    hostages as team-less characters led by +use over the nav mesh and
    rescued in `func_hostage_rescue`; Ts win on time on hostage maps.
    HUD icons, progress bar, messages, radar bomb marker. Tests:
-   tests/it/objectives.rs (O1, O5-O7, O10-O24 shape, O32-O41),
-   tests/it/heavy/map_objectives.rs (dust2 A, cs_office). Left: see backlog §3.
+   apps/cs_source/tests/it/objectives.rs (O1, O5-O7, O10-O24 shape, O32-O41),
+   apps/cs_source/tests/it/heavy/map_objectives.rs (dust2 A, cs_office). Left: see backlog §3.
 5. Done (2026-10-13, `rules::game_end`): `mp_timelimit`, `mp_maxrounds`,
    `mp_winlimit`, `mp_chattime`, the intermission and the next map of the
    install's map cycle; `timeleft`. Team balance

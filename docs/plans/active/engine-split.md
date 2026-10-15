@@ -57,7 +57,7 @@ Rules:
   player's install); the same library supplies parts to minigames. A
   game's own modes are minigame definitions, so both uses run the same
   code.
-- `tests/it/architecture.rs` already enforces most of this as layers;
+- `checks/tests/it/architecture.rs` already enforces most of this as layers;
   crates make the compiler enforce it.
 
 ## Crates and compile time (agreed 2026-10-13)
@@ -118,7 +118,7 @@ measurements):
 - [x] (2) `map/mod.rs` split (P1): `data` (MapData, plain data), `state`
   (what the logic writes), `spawn` (`spawn_map` as ~25 phase functions),
   `bodies`, `props`, `materials`, `images`, `collision`, `sky`; paths
-  outside `map` unchanged. `tests/it/heavy/map_spawn_dump.rs` dumps
+  outside `map` unchanged. `apps/cs_source/tests/it/heavy/map_spawn_dump.rs` dumps
   spawned maps for before/after comparisons.
 - [x] (2) `audio` out of `map` (P3, first slice): playback, live sounds,
   room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
@@ -216,7 +216,7 @@ measurements):
       added): drawn-part requests (docs/ARCHITECTURE.md): what the
       simulation makes in play says in plain data what it looks like
       and render's systems fulfil it; headless nothing is drawn
-      (`tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
+      (`apps/cs_source/tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
       models, the ragdoll's adoption of the dead's body), `render::loose`
       (`LooseItem`, `ShownItem`), `render::breakables` (a gib's
       `GibLook`, windows' `BrushPanes` clipped and made whole),
@@ -300,7 +300,7 @@ measurements):
     whole; their `pub(crate)` items became `pub`, the embedded shaders'
     paths are `embedded://chimera_present/render/...`; `mashup`
     re-exports `render` and `audio`. Spawn dump identical again (five
-    maps, modulo paths), `tests/it/drawn_parts.rs` passes, de_dust2 and
+    maps, modulo paths), `apps/cs_source/tests/it/drawn_parts.rs` passes, de_dust2 and
     gg_tbr_water_basin screenshots draw as before. Measured
     (docs/performance.md, "`chimera_world` and `chimera_present`"): a
     leaf edit in render or map, `cargo test --features dev --no-run`,
@@ -729,6 +729,34 @@ measurements):
   false`: the first `cargo test -p chimera_world --features dev` after a
   warm workspace build went from 560 s to 3 s (performance.md,
   "Workspace-hack"). Binary names users run are unchanged.
+- [x] Tests in their crates, affected-test selection (2026-10-15, one
+  session): the root's one test crate split by the lowest crate whose
+  API each file needs, one test binary per crate (`<crate>/tests/it/`,
+  `heavy::` kept): `cs_source_app` the scenario tests on its harness and
+  greybox and all but five heavy files (78 files, 706 tests);
+  `cs_source` its loaders' and spec tests (tests/it/, 80 tests: three
+  heavy map files) and its front end's (tests/ui/ with `ui`, 8 tests);
+  `chimera_present` its spec cases (10); the root `dump`'s test; the
+  architecture tests in a new plain crate, `repo_checks` (checks/), with
+  `affected`: changed files to packages, then every package whose tests
+  depend on them (dev-dependencies too) through `cargo metadata
+  --all-features`; a test file's change selects its module; the
+  lockfile, workspace manifest, .config/, hooks or a build.rs select
+  everything, docs only `repo_checks`. The hooks run that selection
+  (pre-commit: staged files, fast tier through `cargo test -p`;
+  pre-push: each pushed ref against the remote's, nextest with heavy
+  tests; `MASHUP_PUSH_TESTS=all`/`0`). 1616 tests before, 1624 after (8
+  unit tests of the selection; three renamed). Measured (warm, load from
+  other work): full suite 846 s; docs-only push 8 s, a CS:S tool's edit
+  8 s, one heavy test file's edit 101 s (41 tests), a `cs_source` front
+  end edit 847 s (1064 tests: the app's), a `chimera_core` edit 865 s (1588 tests); the
+  pre-commit fast tier 4 s for a test file, 82-91 s for a crate under the
+  app.
+  What it shows: the heavy tests are the app's (its harness runs the
+  app's `SimPlugins`), so any change under the app still runs nearly
+  all of them; next for shorter pushes: the greybox and a `Sim` taking
+  its base plugins below the app, so tests (heavy ones above all) can
+  sit on the layer they test (tech-debt.md).
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -738,8 +766,8 @@ measurements):
 
 Test selection (user, 2026-10-14): no coverage-based test selection;
 the crate split (with each crate's own tests and cargo's crate graph to
-pick affected tests) is the way to shorter pushes. Until then pushes run
-the full suite, and the coordinator batches merges.
+pick affected tests) is the way to shorter pushes. Since 2026-10-15
+pushes run the affected crates' tests (`repo_checks`' `affected`).
 
 ## Minigames (the middle layer)
 

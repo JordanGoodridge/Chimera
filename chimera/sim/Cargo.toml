@@ -13,7 +13,7 @@ doctest = false
 
 # The engine's base and the simulation's map, Bevy and physics; never the
 # presentation (`chimera_present`), `mashup` or a game
-# (tests/it/architecture.rs checks it). Same versions and features as the
+# (checks/tests/it/architecture.rs checks it). Same versions and features as the
 # game's (workspace dependencies), so `cargo test -p chimera_sim` reuses
 # the game's builds.
 [dependencies]

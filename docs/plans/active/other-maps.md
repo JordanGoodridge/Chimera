@@ -15,7 +15,7 @@ How to check:
   dev,tools --bin refcmp -- capture-ours --views tools/refcmp/<map>.toml`. The
   reference game is shared: ask the coordinating session before capturing
   it (`capture-ref`).
-- `tests/it/heavy/map_stock.rs` holds a test per fix, and ignored debug aids:
+- `games/cs_source/tests/it/heavy/map_stock.rs` holds a test per fix, and ignored debug aids:
   `props_near` (props and their light near a point), `dark_textures`
   (near-black textures, mips, mod2x details), `pick` (which surface a
   `--views` pixel shows).

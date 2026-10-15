@@ -39,7 +39,7 @@
 //! on the target's box instead of its hitboxes; bubbles are our sprite size.
 //! Why it's OK for now: The spec's numeric cases pass (tests in
 //! source/logic/src/logic/fire_tests.rs); de_dust2's A fires light 0.2 s after the bomb and
-//! burn a bot 26 a second (tests/it/heavy/map_fire.rs).
+//! burn a bot 26 a second (apps/cs_source/tests/it/heavy/map_fire.rs).
 
 use bevy::prelude::*;
 

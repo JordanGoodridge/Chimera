@@ -36,22 +36,28 @@ This file is a map. Follow the links for detail; keep it short.
 - Scope: first-person games only; CS:S and Combat Arms first.
 
 `cargo test` enforces layering, the asset rule, the spec rule and this file's
-links (`tests/it/architecture.rs`). Its failure messages say how to fix things.
+links (`checks/tests/it/architecture.rs`). Its failure messages say how to fix things.
 
 ## Commands
 
 ```
 cargo run --features dev       # the game, `mashup` (apps/cs_source); day-to-day
                                    # (dynamic linking + remote protocol)
-cargo test --features dev -- --skip heavy::   # fast tier; before every commit
+cargo test --features dev -- --skip heavy::   # whole fast tier
 cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
-                                   # 2x slower); before pushing or merging
-cargo test --features dev --test it weapons::   # one test file (tests/it/)
+                                   # 2x slower)
+cargo run -q -p repo_checks --bin affected -- --base main   # which crates' tests
+                                   # a branch can affect, and why (the hooks
+                                   # run only those: fast tier before a commit,
+                                   # with heavy tests before a push)
+cargo test -p cs_source_app --features dev --test it weapons::   # one test
+                                   # file (apps/cs_source/tests/it/weapons.rs)
 cargo test -p chimera_world --features dev   # one crate's own tests (also
                                    # chimera_core, chimera_present, chimera_sim, chimera_net,
-                                   # chimera_client, source_logic, cs_source)
+                                   # chimera_client, source_logic, cs_source, cs_source_app)
 cargo test -p cs_source --features dev,ui   # CS:S with its front end (menus, HUD)
 cargo test -p source_formats   # one workspace crate's tests (seconds)
+cargo test -p repo_checks      # architecture and docs checks (seconds)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`
 cargo run --features dev --bin mashup_server -- +map de_dust2   # dedicated server
@@ -60,17 +66,21 @@ cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 ```
 
-Integration tests are one crate, `tests/it/` (slow ones in `tests/it/heavy/`);
-docs/OBSERVABILITY.md section 1 says where new ones go.
+Each crate's integration tests are one binary, `<crate>/tests/it/` (slow
+ones in `tests/it/heavy/`), in the lowest crate whose API they need;
+docs/OBSERVABILITY.md section 1 says where new ones go. Pushes run the
+affected crates' tests (`MASHUP_PUSH_TESTS=all`: everything, `=0`: none).
 
 ## Working conventions
 
 - Verify your own work with tests, screenshots or remote queries
   (docs/OBSERVABILITY.md) before calling it done. New behavior gets a
   scenario test.
-- Commit at working milestones; the fast tier must pass, the full suite
-  before a push or merge to main. `.githooks/pre-commit` and `pre-push`
-  enforce it (enable per clone: `git config core.hooksPath .githooks`).
+- Commit at working milestones; the fast tier must pass, the affected
+  tests (heavy ones too) before a push or merge to main.
+  `.githooks/pre-commit` and `pre-push` enforce it, each for what its
+  change can affect (enable per clone: `git config core.hooksPath
+  .githooks`).
 - Propose a plan before writing a new mount adapter or loader. Multi-session
   work gets a plan in `docs/plans/active/`, kept updated.
 - When something was hard because a tool, doc or check was missing, add it.

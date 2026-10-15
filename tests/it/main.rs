@@ -1,78 +1,9 @@
-//! The integration tests, as one test binary: each file here is a module,
-//! so the game links once for all of them instead of once per file (see
-//! docs/performance.md, "Test cycle"). Run one file's tests with
-//! `cargo test --features dev --test it weapons::` (a name filter).
-//!
-//! A new test file goes here (or in `heavy/`) with a `mod` line below;
-//! `architecture::tests_are_one_crate` fails for a file anywhere else in
-//! `tests/` or one without its `mod` line.
-//!
-//! `heavy` holds the slow ones (real maps from the install, long bot
-//! simulations): the fast tier skips them with `-- --skip heavy::`
-//! (docs/OBSERVABILITY.md, section 1).
+//! The root package's (`mashup`) integration tests, as one test binary:
+//! `dump` (this package's install inspector, `CARGO_BIN_EXE_dump`) and
+//! Combat Arms' local, git-ignored tests. Every other test lives in the
+//! crate whose API it needs (docs/OBSERVABILITY.md, section 1).
 
-mod animation;
-mod architecture;
-mod auto_switch;
-mod bot_buying;
-mod bot_grenades;
-mod bot_manners;
-mod console_commands;
-mod cs_grenades;
-mod cs_guns;
-mod debug_ui;
-mod drawn_parts;
-mod hit_reaction;
-mod impact_effects;
-mod interpolation;
-mod join_flow;
-mod logic_physics;
-mod map_game_entities;
-mod map_logic;
-mod map_sound_fx;
-mod menus;
-mod metrics;
-mod mount_cs_source;
-mod mount_install;
-mod movement;
-mod nav;
-mod net;
-mod net_bots;
-mod net_interp;
-mod net_maps;
-mod net_players;
-mod net_prediction;
-mod net_query;
-mod net_rules;
-mod net_upnp;
-mod net_weapons;
-mod night_vision;
-mod objectives;
-mod pain_sounds;
-mod phy_spec;
-mod prediction;
-mod prop_lods;
-mod prop_shadows;
-mod radio;
-mod ragdoll;
-mod ragdoll_spec;
-mod rope_spec;
-mod rounds;
-mod shader_spec;
-mod shadow_spec;
-mod source_movement;
-mod source_movement_css;
-mod source_movement_ladder_water;
-mod source_movement_tricks;
-mod spectate;
-mod sprays;
-mod target_id;
-mod teams;
-mod view_model_spec;
-mod view_models;
-mod wav_decode;
-mod weapon_select;
-mod weapons;
+mod dump;
 
 // Combat Arms: local, git-ignored files (.gitignore), present where
 // src/games/combat_arms/ is.
@@ -80,45 +11,3 @@ mod weapons;
 mod mount_combat_arms;
 #[cfg(feature = "combat_arms")]
 mod rez_format;
-
-/// Slow tests: the fast tier (`-- --skip heavy::`) leaves them out.
-mod heavy {
-    mod bot_nav;
-    mod bot_radio;
-    mod bot_rounds;
-    mod hud_layout;
-    mod lightmap_probe;
-    mod map_ambient;
-    mod map_areaportals;
-    mod map_breakables;
-    mod map_brush_decals;
-    mod map_brush_entities;
-    mod map_community;
-    mod map_de_dust2;
-    mod map_de_nuke;
-    mod map_de_nuke_doors;
-    mod map_de_port;
-    mod map_net_changelevel;
-    mod net_big_map;
-    mod net_capacity;
-    mod map_net_weapons;
-    mod net_soak;
-    mod map_fire;
-    mod map_courses;
-    mod map_flows;
-    mod map_hdr;
-    mod map_ladders;
-    mod map_loose;
-    mod map_objectives;
-    mod map_occluders;
-    mod map_physics_shadow;
-    mod map_prop_damage;
-    mod map_prop_settle;
-    mod map_props;
-    mod map_sound_stock;
-    mod map_spawn_dump;
-    mod map_stock;
-    mod map_surf;
-    mod map_vis;
-    mod map_visuals;
-}

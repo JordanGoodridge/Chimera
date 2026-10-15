@@ -9,7 +9,7 @@
 //! `MapUvTransform` (`$basetexturetransform` parsed from its VMT string, or a
 //! TextureScroll proxy's scroll, sent as two rows plus a scroll rate),
 //! `DetailMode`, `MapSelfIllum`, and CPU mirrors of the shaders' detail combine
-//! and self-illum for the spec's test cases (tests/it/shader_spec.rs).
+//! and self-illum for the spec's test cases (chimera/present/tests/it/shader_spec.rs).
 //!
 //! Known shortcuts (docs/tech-debt.md): Material effects past the spec
 //! (`map::material_fx`, specs/cs_source/shaders.md open questions 16-19):

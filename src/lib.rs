@@ -1,7 +1,7 @@
 //! `mashup`: the old paths. The CS:S app's glue (crate `cs_source_app`,
 //! apps/cs_source: `SimPlugins`, `harness`, `greybox`, `games::load_map`,
 //! `client`, re-exports of Chimera, Source's logic and CS:S) under the
-//! names the integration tests (tests/it/) and `dump` use, plus Combat
+//! names `dump` and its test (tests/it/) use, plus Combat
 //! Arms' local loader (`games::combat_arms`, src/games/combat_arms/,
 //! git-ignored; the `combat_arms` feature).
 //!

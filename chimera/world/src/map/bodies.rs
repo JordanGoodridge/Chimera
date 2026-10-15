@@ -16,7 +16,7 @@
 //! player animation state a second time (twice the posing work per character on
 //! a listen server) and its hitboxes for tick N come from the end of tick N-1.
 //! Why it's OK for now: Matches what players see; lag compensation hits rewound
-//! poses (tests/it/heavy/map_net_weapons.rs).
+//! poses (apps/cs_source/tests/it/heavy/map_net_weapons.rs).
 //!
 #[allow(unused_imports)]
 use super::*;

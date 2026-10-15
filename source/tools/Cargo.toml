@@ -12,7 +12,7 @@ license.workspace = true
 doctest = false
 
 # Source's formats and plain crates; never Bevy, a game, an app or
-# `mashup` (tests/it/architecture.rs checks it): a tool that needs a
+# `mashup` (checks/tests/it/architecture.rs checks it): a tool that needs a
 # game's loaders lives in that game's tools.
 [dependencies]
 source_formats.workspace = true
