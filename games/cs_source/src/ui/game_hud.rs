@@ -305,8 +305,14 @@ fn death_notices(
                     .map(|w| w.id)
             })
             .and_then(|id| {
-                let short = id.rsplit([':', '_']).next().unwrap_or(id);
-                hud.0.icons.get(&format!("d_{short}")).cloned()
+                // The weapon's data's kill icon (`d_<weapon>` without).
+                match crate::weapon::data::lookup(id).and_then(|d| d.hud.icon.as_deref()) {
+                    Some(icon) => hud.0.icons.get(icon).cloned(),
+                    None => {
+                        let short = id.rsplit([':', '_']).next().unwrap_or(id);
+                        hud.0.icons.get(&format!("d_{short}")).cloned()
+                    }
+                }
             });
         // (A network client has no damage messages: the killing hit's.)
         let headshot = hits

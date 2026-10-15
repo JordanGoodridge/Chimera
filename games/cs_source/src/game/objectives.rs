@@ -1,35 +1,26 @@
 //! CS:S's bomb and hostages (specs/cs_source/objectives.md): the C4 as a
-//! weapon, its and the kit's models, the sound entries, the defusal kit's
+//! weapon (its data: games/cs_source/data/weapons/c4.toml; `c4_part`),
+//! its and the kit's models, the sound entries, the defusal kit's
 //! price, the hostage models. The rules themselves are game-neutral
 //! (`crate::objectives`); this fills in CS:S's data.
 
 use bevy::prelude::*;
 
-use crate::{
-    core::Team,
-    objectives::{
-        bomb::{BombRules, BombSounds, C4 as C4Part},
-        hostages::{HostageRules, HostageSounds},
-    },
-    weapon::{RegisterWeapons, Weapon, drop::PickupTeam},
+use crate::objectives::{
+    bomb::{BombRules, BombSounds, C4 as C4Part},
+    hostages::{HostageRules, HostageSounds},
 };
-
-const UNIT: f32 = 0.0254;
 
 pub const C4: &str = "cs_source:weapon_c4";
 /// Held-model keys of the planted bomb and a dropped defusal kit.
 pub const C4_PLANTED: &str = "cs_source:c4_planted";
 pub const DEFUSER: &str = "cs_source:item_defuser";
 
-/// World models (held, lying, planted).
+/// World models other than the C4's own (its data's): planted, the kit.
 pub const WORLD_MODELS: &[(&str, &str)] = &[
-    (C4, "models/weapons/w_c4.mdl"),
     (C4_PLANTED, "models/weapons/w_c4_planted.mdl"),
     (DEFUSER, "models/weapons/w_defuser.mdl"),
 ];
-
-/// The C4's view model (spec Constants: `v_c4`, press-button 2.7667 s).
-pub const VIEW_MODELS: &[(&str, &str, bool)] = &[(C4, "models/weapons/v_c4.mdl", false)];
 
 /// The only hostage models CS:S ships (spec Q9).
 pub const HOSTAGE_MODELS: &[&str] = &[
@@ -65,7 +56,6 @@ pub struct CsObjectivesPlugin;
 
 impl Plugin for CsObjectivesPlugin {
     fn build(&self, app: &mut App) {
-        app.register_weapon(C4, c4);
         let s = |x: &str| Some(x.to_string());
         let mut bomb = app.world_mut().get_resource_or_init::<BombRules>();
         bomb.weapon = Some(C4);
@@ -99,18 +89,8 @@ impl Plugin for CsObjectivesPlugin {
     }
 }
 
-/// weapon_c4: slot 5 (key 5), drawn in 1 s, the knife's 250 speed;
-/// terrorists only pick it up.
-fn c4(e: &mut EntityWorldMut) {
-    e.insert((
-        Weapon {
-            id: C4,
-            slot: 4,
-            owner: None,
-            draw_time: 1.0,
-            max_speed: Some(250.0 * UNIT),
-        },
-        C4Part,
-        PickupTeam(Team(1)),
-    ));
+/// The `cs_source:c4` hook: the weapon is the bomb (the bomb rules arm
+/// and plant it). Its slot, speed and pickup team are its data.
+pub fn c4_part(e: &mut EntityWorldMut) {
+    e.insert(C4Part);
 }

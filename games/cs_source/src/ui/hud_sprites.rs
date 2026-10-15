@@ -60,20 +60,10 @@ struct Pain(usize, f32);
 const LEFT: usize = 0;
 const RIGHT: usize = 1;
 
-/// The ammo icon for a weapon (CS:S ammo types by weapon).
+/// The ammo icon for a weapon: its ammo type's (weapon data,
+/// `hud_icon`).
 pub fn ammo_icon(weapon: &str) -> Option<&'static str> {
-    let short = weapon.rsplit([':', '_']).next().unwrap_or(weapon);
-    Some(match short {
-        "ak47" | "scout" | "g3sg1" => "ammo_762",
-        "m4a1" | "famas" | "galil" | "sg552" | "aug" | "sg550" | "m249" => "ammo_556",
-        "awp" => "ammo_338",
-        "deagle" => "ammo_50",
-        "usp" | "mac10" | "ump45" => "ammo_45",
-        "glock" | "mp5navy" | "tmp" | "elite" => "ammo_9mm",
-        "p90" | "fiveseven" => "ammo_57",
-        "p228" => "ammo_357",
-        _ => return None,
-    })
+    crate::weapon::data::lookup(weapon)?.ammo.as_ref()?.hud_icon.as_deref()
 }
 
 // The sprite sheets' additive pixels as alpha: the shell's (its HUD uses it
@@ -405,6 +395,7 @@ mod tests {
 
     #[test]
     fn ammo_icons_by_weapon() {
+        crate::game::weapons::cs_weapons();
         assert_eq!(ammo_icon("cs_source:weapon_ak47"), Some("ammo_762"));
         assert_eq!(ammo_icon("cs_source:weapon_usp"), Some("ammo_45"));
         assert_eq!(ammo_icon("cs_source:weapon_knife"), None);

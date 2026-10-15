@@ -3,7 +3,7 @@
 //!
 //! - **Slowdown.** Every hit sets the victim's velocity modifier
 //!   (`SourceMovement::velocity_modifier`) to the gun's value
-//!   (`HitSlowdown`, from `weapons::Gun::hit_slowdown`: 0.65 rifles,
+//!   (`HitSlowdown`, from the gun's data, `cs_source:hit_slowdown`: 0.65 rifles,
 //!   snipers and shotguns, 0.5 the rest; 0.5 for a leg hit from any gun).
 //!   The movement multiplies its max speed by it and lets it climb back
 //!   to 1 by 1/3 a second, so a player running faster slows by friction
@@ -45,8 +45,9 @@ use crate::{
 };
 
 /// The velocity modifier a gun's hit sets (M18): `legs` for a leg hit,
-/// `body` for any other.
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
+/// `body` for any other. Weapon data's `cs_source:hit_slowdown` hook.
+#[derive(Component, Clone, Copy, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HitSlowdown {
     pub body: f32,
     pub legs: f32,

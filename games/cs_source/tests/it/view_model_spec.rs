@@ -224,8 +224,8 @@ fn f5_attachments_reproject_to_the_world_fov() {
 
 #[test]
 fn h1_to_h3_handedness() {
-    use cs_source::game::weapons::{AK47, KNIFE, VIEW_MODELS};
-    let built_right = |key: &str| VIEW_MODELS.iter().find(|v| v.0 == key).unwrap().2;
+    use cs_source::game::weapons::{AK47, KNIFE, view_models};
+    let built_right = |key: &str| view_models().iter().find(|v| v.0 == key).unwrap().2;
     let flip = |key: &str, hand: u8| view_model::mirrored(built_right(key), true, hand != 0);
     // H1: cl_righthand 1 (the default) mirrors the left-handed AK but not
     // the knife (built right-handed): both end up in the right hand.

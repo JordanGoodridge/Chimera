@@ -1,0 +1,31 @@
+# The Flashbang (specs/cs_source/grenades.md): price `WeaponPrice`, carry
+# limit `ammo_*_max` (spec 1); the throw, flight and effect are the
+# `cs_source:grenade` hook's (games/cs_source/src/game/grenades.rs).
+id = "cs_source:weapon_flashbang"
+base = "cs_source:base"
+slot = 3
+# The view model's deploy.
+draw = 0.6667
+max_speed = 250.0
+weight = 1
+
+[buy]
+price = 200
+
+[sounds]
+
+# Held, and drawn in flight: the `_thrown` models have no bone in common
+# with the player skeleton, so the held one stands in. The view model
+# holds the grenade left of the eye, like the AK.
+[models]
+world = "models/weapons/w_eq_flashbang.mdl"
+view = "models/weapons/v_eq_flashbang.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_Flashbang"
+icon = "d_flashbang"
+
+[hooks."cs_source:grenade"]
+effect = "flash"
+max = 2
+bounce_sound = "Flashbang.Bounce"

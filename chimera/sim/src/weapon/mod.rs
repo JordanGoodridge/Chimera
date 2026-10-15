@@ -6,6 +6,10 @@
 //! (specs/cs_source/weapons.md, sections 3 and 4), which is general enough
 //! for other games' weapons: per-game feel goes in extra parts.
 //!
+//! Weapons can be data: `data` builds the parts from TOML documents a game
+//! ships or an app adds, with behaviour data can't express as hooks games
+//! register by name (docs/weapon-data.md).
+//!
 //! Units: meters, seconds, damage normalized like `Health`.
 //!
 //! Weapons as parts (README, "Weapons and items"): `Trigger`, `Magazine` (cost;
@@ -39,6 +43,7 @@
 //! marks unchecked), but tracers cover only the first segment. Why it's OK for
 //! now: Matches every measured damage and pass/stop case the spec lists.
 
+pub mod data;
 mod deliver;
 pub mod drop;
 pub mod economy;
@@ -418,11 +423,15 @@ fn select_local(
 // ---------------------------------------------------------------------------
 // Registry
 
-/// One weapon a game offers: `build` inserts its parts on a fresh entity.
+/// What builds a weapon's parts on a fresh entity.
+pub type BuildWeapon = Arc<dyn Fn(&mut EntityWorldMut) + Send + Sync>;
+
+/// One weapon a game offers (from its data, `data`, or code): `build`
+/// inserts its parts on a fresh entity.
 pub struct WeaponDef {
     /// Namespaced, e.g. `cs_source:weapon_ak47`.
     pub id: &'static str,
-    pub build: fn(&mut EntityWorldMut),
+    pub build: BuildWeapon,
 }
 
 #[derive(Resource, Default)]
@@ -446,16 +455,27 @@ impl WeaponRegistry {
 }
 
 pub trait RegisterWeapons {
-    fn register_weapon(&mut self, id: &'static str, build: fn(&mut EntityWorldMut)) -> &mut Self;
+    fn register_weapon(
+        &mut self,
+        id: &'static str,
+        build: impl Fn(&mut EntityWorldMut) + Send + Sync + 'static,
+    ) -> &mut Self;
 }
 
 impl RegisterWeapons for App {
-    fn register_weapon(&mut self, id: &'static str, build: fn(&mut EntityWorldMut)) -> &mut Self {
+    fn register_weapon(
+        &mut self,
+        id: &'static str,
+        build: impl Fn(&mut EntityWorldMut) + Send + Sync + 'static,
+    ) -> &mut Self {
         self.init_resource::<WeaponRegistry>()
             .world_mut()
             .resource_mut::<WeaponRegistry>()
             .0
-            .push(WeaponDef { id, build });
+            .push(WeaponDef {
+                id,
+                build: Arc::new(build),
+            });
         self
     }
 }
@@ -510,7 +530,7 @@ pub fn give(world: &mut World, owner: Entity, id: &str) -> Option<Entity> {
 /// A new weapon entity `id` (built from the registry) belonging to
 /// `owner`, not yet in its inventory.
 pub fn spawn_weapon(world: &mut World, id: &str, owner: Entity) -> Option<Entity> {
-    let build = world.resource::<WeaponRegistry>().find(id)?.build;
+    let build = world.resource::<WeaponRegistry>().find(id)?.build.clone();
     let mut e = world.spawn((Name::new(id.to_string()), WeaponState::default()));
     build(&mut e);
     let weapon = e.id();

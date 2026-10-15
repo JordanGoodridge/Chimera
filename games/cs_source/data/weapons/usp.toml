@@ -1,0 +1,85 @@
+# USP.
+id = "cs_source:weapon_usp"
+base = "cs_source:gun"
+slot = 1
+draw = 1.0
+max_speed = 250.0
+weight = 5
+
+[buy]
+price = 500
+starting_reserve = 100
+
+[trigger]
+automatic = false
+cycle = 0.15
+
+[magazine]
+clip = 12
+ammo = "cs_source:45acp"
+reload = 2.6757
+
+[hitscan]
+range = 4096.0
+
+[damage]
+amount = 34.0
+falloff = 0.79
+armor_ratio = 1.0
+
+[penetration]
+objects = 1
+
+# The silencer screws on or off; both attacks wait `time` (M16).
+[alt]
+kind = "silencer"
+time = 3.0
+
+[sounds]
+fire = "Weapon_USP.Single"
+fire_alt = "Weapon_USP.SilencedShot"
+empty = "Default.ClipEmpty_Pistol"
+reload = [[0.0, "Weapon_USP.Slideback2"], [0.4594, "Weapon_USP.Clipout"], [1.081, "Weapon_USP.Clipin"], [2.2163, "Weapon_USP.Sliderelease"]]
+draw = [[0.5417, "Weapon_USP.Slideback"]]
+modes = [[1, 1.027, "Weapon_USP.AttachSilencer"], [0, 0.7838, "Weapon_USP.DetachSilencer"]]
+
+[models]
+world = "models/weapons/w_pist_usp.mdl"
+world_alt = "models/weapons/w_pist_usp_silencer.mdl"
+view = "models/weapons/v_pist_usp.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_USP45"
+icon = "d_usp"
+
+[hooks."cs_source:accuracy"]
+spread = 0.004
+crouch = 0.006
+stand = 0.008
+jump = 0.28725
+land = 0.05745
+fire = 0.03495
+movement = 0.01724
+recovery_crouch = 0.23371
+recovery_stand = 0.28045
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.003
+crouch = 0.006
+stand = 0.008
+jump = 0.29625
+land = 0.05925
+fire = 0.02504
+movement = 0.01778
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.5
+
+# Measured M3: every shot kicks straight up 2 degrees (the semi-automatics: USP,
+# Deagle, AWP unscoped). Moving, airborne, silenced and scoped shots were not
+# measured (UNMEASURED: the same); no cap was seen (UNMEASURED: 90).
+[hooks."cs_source:recoil"]
+standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

@@ -785,6 +785,22 @@ measurements):
   pushes there: a Source map loader below the game (`source/`), so map
   tests that need Source's world but no CS:S rule can sit in
   `source_logic` or a Source crate.
+- [x] Data-driven weapons (2026-10-15, one session; docs/weapon-data.md):
+  a weapon is a TOML document (`chimera_sim`'s `weapon::data`: stats,
+  trigger, magazine and ammo types, hitscan, damage, penetration, melee,
+  scope/silencer/burst, sounds, models, HUD names, idle timing, prices
+  and bots' weights; `base` templates; units per document) built into
+  the parts at run time; behaviour data can't express is a hook a game
+  registers by name (`register_weapon_hook`; unknown names and bad
+  parameters are load errors). CS:S's 29 weapons (24 guns, knife, three
+  grenades, C4) are `games/cs_source/data/weapons/*.toml` with six hooks
+  (accuracy, recoil, hit slowdown, the Elites' hands, grenades, the C4);
+  the `GUNS`/`Gun`/ammo/model/weight/price tables are gone. Each weapon's
+  parts were compared with the old tables' component by component before
+  they went; the weapon tests pass unchanged in their expectations; a gun
+  defined only in a test's data file is bought, fired and played over the
+  network (`weapon_data.rs`). Next: the buy menu layout and the spawn kit
+  as data, then rule modules' settings, HUD layouts, minigames.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

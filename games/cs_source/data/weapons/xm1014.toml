@@ -1,0 +1,73 @@
+# XM1014.
+id = "cs_source:weapon_xm1014"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 240.0
+weight = 20
+
+[buy]
+price = 3000
+bot_weight = 1.0
+
+[trigger]
+automatic = true
+cycle = 0.25
+
+[magazine]
+clip = 7
+ammo = "cs_source:buckshot"
+reload = 0.3889
+# UNMEASURED (M9): as the M3 (the template's); the model's are
+# 0.6667/0.3889/0.4 s.
+shells = { start = 0.5, insert = 0.45 }
+
+[hitscan]
+range = 3000.0
+pellets = 6
+
+[damage]
+amount = 22.0
+falloff = 0.7
+armor_ratio = 1.0
+
+[penetration]
+objects = 1
+
+[sounds]
+fire = "Weapon_XM1014.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.0222, "Weapon_XM1014.InsertShell"]]
+draw = [[0.0333, "Weapon_DEagle.Deploy"]]
+
+[models]
+world = "models/weapons/w_shot_xm1014.mdl"
+view = "models/weapons/v_shot_xm1014.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_xm1014"
+icon = "d_xm1014"
+
+[hooks."cs_source:accuracy"]
+spread = 0.04
+crouch = 0.0075
+stand = 0.01
+jump = 0.41176
+land = 0.08235
+fire = 0.03644
+movement = 0.03544
+recovery_crouch = 0.32894
+recovery_stand = 0.46052
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# Shotguns: UNMEASURED; the SDK template's shotgun (spec weapons.md,
+# constants): a whole 4-6 degrees up on the ground, 8-11 in the air, no
+# sideways part; once per shot, whatever its pellets. The decay is the
+# rifles' measured rule (M3), so 6 degrees settle in about 0.45 s.
+[hooks."cs_source:recoil"]
+standing = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+crouched = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+moving = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+airborne = { up = 8.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 11.0 }

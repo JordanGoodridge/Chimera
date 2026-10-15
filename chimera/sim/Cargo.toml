@@ -23,6 +23,7 @@ avian3d.workspace = true
 bevy.workspace = true
 postcard.workspace = true
 serde.workspace = true
+toml.workspace = true
 workspace-hack.workspace = true
 
 # The integration tests (tests/it/): the engine's movement on the

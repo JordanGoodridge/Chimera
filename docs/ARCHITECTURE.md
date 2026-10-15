@@ -395,6 +395,7 @@ that the paths exist).
 
 - `source/logic/src/logic/`: Source map logic (crate `source_logic`): entity I/O, triggers, movers, breakables, props, fire, the bridge (logic)
 - `chimera/sim/src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
+- `chimera/sim/src/weapon/data.rs`: weapons as TOML data built into the parts; hooks by name (docs/weapon-data.md) (weapon)
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
@@ -435,6 +436,7 @@ that the paths exist).
 - `apps/cs_source/src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
 - `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
+- `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)
 

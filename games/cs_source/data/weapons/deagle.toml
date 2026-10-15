@@ -1,0 +1,67 @@
+# Desert Eagle.
+id = "cs_source:weapon_deagle"
+base = "cs_source:gun"
+slot = 1
+draw = 1.0
+max_speed = 250.0
+weight = 7
+
+[buy]
+price = 650
+
+[trigger]
+automatic = false
+cycle = 0.225
+
+[magazine]
+clip = 7
+ammo = "cs_source:50ae"
+reload = 2.1667
+
+[hitscan]
+range = 4096.0
+
+[damage]
+amount = 54.0
+falloff = 0.81
+armor_ratio = 1.5
+
+[penetration]
+objects = 2
+
+[sounds]
+fire = "Weapon_DEagle.Single"
+empty = "Default.ClipEmpty_Pistol"
+reload = [[0.0, "Weapon_DEagle.Slideback"], [0.4667, "Weapon_DEagle.Clipout"], [1.1334, "Weapon_DEagle.Clipin"]]
+draw = [[0.0333, "Weapon_DEagle.Deploy"]]
+
+[models]
+world = "models/weapons/w_pist_deagle.mdl"
+view = "models/weapons/v_pist_deagle.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_DesertEagle"
+icon = "d_deagle"
+
+[hooks."cs_source:accuracy"]
+spread = 0.004
+crouch = 0.00975
+stand = 0.013
+jump = 0.345
+land = 0.069
+fire = 0.055
+movement = 0.0207
+recovery_crouch = 0.32236
+recovery_stand = 0.38683
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.5
+
+# Measured M3: every shot kicks straight up 2 degrees (the semi-automatics: USP,
+# Deagle, AWP unscoped). Moving, airborne, silenced and scoped shots were not
+# measured (UNMEASURED: the same); no cap was seen (UNMEASURED: 90).
+[hooks."cs_source:recoil"]
+standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

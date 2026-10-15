@@ -1,0 +1,92 @@
+# AWP.
+id = "cs_source:weapon_awp"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 210.0
+weight = 30
+
+[buy]
+price = 4750
+bot_weight = 2.0
+
+[trigger]
+automatic = false
+cycle = 1.5
+
+[magazine]
+clip = 10
+ammo = "cs_source:338mag"
+reload = 3.6667
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 115.0
+falloff = 0.99
+armor_ratio = 1.95
+
+[penetration]
+objects = 3
+
+# Zoom levels, a shot unzooming until it may fire again, the zoomed speed
+# (M15); each step: next secondary in 0.3 s (M15).
+[alt]
+kind = "scope"
+fov = [40.0, 10.0]
+max_speed = 150.0
+unzoom_after_shot = true
+overlay = true
+step = 0.3
+sound = "Default.Zoom"
+
+# v_snip_awp.mdl is version 48, which `dump` doesn't read yet: no model
+# sounds.
+[sounds]
+fire = "Weapon_AWP.Single"
+empty = "Default.ClipEmpty_Rifle"
+
+[models]
+world = "models/weapons/w_snip_awp.mdl"
+view = "models/weapons/v_snip_awp.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_AWP"
+icon = "d_awp"
+
+[anim]
+idle_after = 2.0
+idle_interval = 60.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0002
+crouch = 0.0606
+stand = 0.0808
+jump = 0.546
+land = 0.0546
+fire = 0.14
+movement = 0.273
+recovery_crouch = 0.24671
+recovery_stand = 0.34539
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.0002
+crouch = 0.0015
+stand = 0.002
+jump = 0.546
+land = 0.0546
+fire = 0.14
+movement = 0.273
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# Measured M3: every shot kicks straight up 2 degrees (the semi-automatics: USP,
+# Deagle, AWP unscoped). Moving, airborne, silenced and scoped shots were not
+# measured (UNMEASURED: the same); no cap was seen (UNMEASURED: 90).
+[hooks."cs_source:recoil"]
+standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

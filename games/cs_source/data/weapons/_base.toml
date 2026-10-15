@@ -1,0 +1,8 @@
+# Every CS:S weapon: numbers in Source units (inches) and hit points.
+# The format: docs/weapon-data.md. Values are the spec's script tables
+# (specs/cs_source/weapons.md, "Weapon data", "Economy") and the measured
+# rules ("CS:S values (measured)", M1-M19), not files from the game: its
+# weapon scripts are encrypted, so nothing is read from them.
+id = "cs_source:base"
+abstract = true
+units = { length = 0.0254, damage = 0.01 }

@@ -1,6 +1,7 @@
 //! CS:S's grenades (specs/cs_source/grenades.md): the HE grenade,
 //! flashbang and smoke grenade as `weapon::grenade::Throwable` weapons with
-//! the spec's numbers, the HE explosion's particles (spec 5.4, built on
+//! the spec's numbers (their data: games/cs_source/data/weapons, the
+//! `cs_source:grenade` hook: `throwable`), the HE explosion's particles (spec 5.4, built on
 //! `map::particles`), the smoke cloud's 64 sprites (7.3), and the flash
 //! model (6.2, a fit pending the probe's measurement), and what blasts
 //! and flashes do to hearing (5.5, 6.4: the DSP presets as
@@ -22,7 +23,7 @@ use crate::{
         },
     },
     weapon::{
-        RegisterWeapons, Weapon, WeaponSounds,
+        data::WeaponData,
         grenade::{
             Blast, BlastHearing, Detonated, ExplosionRule, Flash, Flight, GrenadeEffect, GrenadeKind, RagdollBlast, Shake, Smoke,
             SmokeCloud, ThrowRule, Throwable,
@@ -35,26 +36,6 @@ const UNIT: f32 = 0.0254;
 pub const HEGRENADE: &str = "cs_source:weapon_hegrenade";
 pub const FLASHBANG: &str = "cs_source:weapon_flashbang";
 pub const SMOKEGRENADE: &str = "cs_source:weapon_smokegrenade";
-
-/// (weapon, price, carry limit): `WeaponPrice` and `ammo_*_max` (spec 1).
-pub const GRENADES: &[(&str, u32, u32)] = &[(HEGRENADE, 300, 1), (FLASHBANG, 200, 2), (SMOKEGRENADE, 300, 1)];
-
-/// World models (held, and drawn in flight: the `_thrown` models have no
-/// bone in common with the player skeleton, so the held ones stand in).
-pub const WORLD_MODELS: &[(&str, &str)] = &[
-    (HEGRENADE, "models/weapons/w_eq_fraggrenade.mdl"),
-    (FLASHBANG, "models/weapons/w_eq_flashbang.mdl"),
-    (SMOKEGRENADE, "models/weapons/w_eq_smokegrenade.mdl"),
-];
-
-/// View models and whether each is built right-handed (all three hold the
-/// grenade left of the eye, like the AK; checked by
-/// `games/cs_source/tests/it/heavy/map_de_dust2.rs::grenade_models_and_sequences`).
-pub const VIEW_MODELS: &[(&str, &str, bool)] = &[
-    (HEGRENADE, "models/weapons/v_eq_fraggrenade.mdl", false),
-    (FLASHBANG, "models/weapons/v_eq_flashbang.mdl", false),
-    (SMOKEGRENADE, "models/weapons/v_eq_smokegrenade.mdl", false),
-];
 
 /// Sound entries the grenades use.
 pub const SOUNDS: &[&str] = &[
@@ -90,10 +71,7 @@ pub struct GrenadesPlugin;
 
 impl Plugin for GrenadesPlugin {
     fn build(&self, app: &mut App) {
-        app.register_weapon(HEGRENADE, hegrenade)
-            .register_weapon(FLASHBANG, flashbang)
-            .register_weapon(SMOKEGRENADE, smokegrenade)
-            .add_message::<Detonated>()
+        app.add_message::<Detonated>()
             // Exploding props blast like the HE grenade (prop_damage.md
             // 7.5: the game's radius damage; spec Q3).
             // Linear: the bell is grenades' only (`sv_legacy_grenade_damage`
@@ -341,66 +319,55 @@ pub fn smoke() -> Smoke {
     }
 }
 
-fn grenade(e: &mut EntityWorldMut, id: &'static str, max_speed: f32, effect: GrenadeEffect, bounce: &str) {
-    let max = GRENADES.iter().find(|g| g.0 == id).map_or(1, |g| g.2);
-    e.insert((
-        Weapon {
-            id,
-            slot: 3,
-            owner: None,
-            draw_time: DRAW_TIME,
-            max_speed: Some(max_speed * UNIT),
-        },
-        Throwable {
-            count: 1,
-            max,
-            pin_time: PIN_TIME,
-            // Q1: the template's release + 0.1 s (not the throw event).
-            throw_delay: 0.1,
-            throw_time: THROW_TIME,
-            redraw_time: DRAW_TIME,
-            // Q8: the template's 1.5 s, checked every 0.2 s.
-            fuse: 1.5,
-            throw: throw_rule(),
-            flight: flight(),
-            effect,
-            pin_sounds: vec![(PIN_SOUND_AT, "Default.PullPin_Grenade".into())],
-            bounce_sound: Some(bounce.into()),
-            pin: false,
-            throw_at: None,
-            redraw_at: None,
-        },
-        WeaponSounds::default(),
-    ));
+/// The `cs_source:grenade` hook's parameters: which grenade, how many a
+/// player carries (`ammo_*_max`, spec 1) and its bounce sound.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GrenadeParams {
+    pub effect: GrenadeData,
+    pub max: u32,
+    pub bounce_sound: String,
 }
 
-fn hegrenade(e: &mut EntityWorldMut) {
-    grenade(
-        e,
-        HEGRENADE,
-        250.0,
-        GrenadeEffect::Blast(he_blast()),
-        "HEGrenade.Bounce",
-    );
+#[derive(serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GrenadeData {
+    He,
+    Flash,
+    Smoke,
 }
 
-fn flashbang(e: &mut EntityWorldMut) {
-    let effect = GrenadeEffect::Flash(Flash {
-        model: flash_model,
-        sound: Some("Flashbang.Explode".into()),
-        hearing: Some(flash_hearing),
+/// The `cs_source:grenade` hook: CS:S's throw, flight and effect on a
+/// grenade weapon (the data's `draw` is also the redraw after a throw).
+pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadeParams) {
+    let effect = match p.effect {
+        GrenadeData::He => GrenadeEffect::Blast(he_blast()),
+        GrenadeData::Flash => GrenadeEffect::Flash(Flash {
+            model: flash_model,
+            sound: Some("Flashbang.Explode".into()),
+            hearing: Some(flash_hearing),
+        }),
+        GrenadeData::Smoke => GrenadeEffect::Smoke(smoke()),
+    };
+    e.insert(Throwable {
+        count: 1,
+        max: p.max,
+        pin_time: PIN_TIME,
+        // Q1: the template's release + 0.1 s (not the throw event).
+        throw_delay: 0.1,
+        throw_time: THROW_TIME,
+        redraw_time: d.draw,
+        // Q8: the template's 1.5 s, checked every 0.2 s.
+        fuse: 1.5,
+        throw: throw_rule(),
+        flight: flight(),
+        effect,
+        pin_sounds: vec![(PIN_SOUND_AT, "Default.PullPin_Grenade".into())],
+        bounce_sound: Some(p.bounce_sound.clone()),
+        pin: false,
+        throw_at: None,
+        redraw_at: None,
     });
-    grenade(e, FLASHBANG, 250.0, effect, "Flashbang.Bounce");
-}
-
-fn smokegrenade(e: &mut EntityWorldMut) {
-    grenade(
-        e,
-        SMOKEGRENADE,
-        245.0,
-        GrenadeEffect::Smoke(smoke()),
-        "SmokeGrenade.Bounce",
-    );
 }
 
 // ---------------------------------------------------------------------------

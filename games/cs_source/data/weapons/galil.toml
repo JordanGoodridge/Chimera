@@ -1,0 +1,71 @@
+# Galil.
+id = "cs_source:weapon_galil"
+base = "cs_source:gun"
+slot = 0
+draw = 0.7812
+max_speed = 215.0
+weight = 25
+
+[buy]
+price = 2000
+team = 1
+bot_weight = 3.0
+
+[trigger]
+automatic = true
+cycle = 0.09
+
+[magazine]
+clip = 35
+ammo = "cs_source:556mm"
+reload = 2.9524
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 30.0
+falloff = 0.98
+armor_ratio = 1.55
+
+[penetration]
+objects = 2
+
+[sounds]
+fire = "Weapon_Galil.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.3809, "Weapon_Galil.Clipout"], [1.3094, "Weapon_Galil.Clipin"], [2.1668, "Weapon_Galil.Boltpull"]]
+
+[models]
+world = "models/weapons/w_rif_galil.mdl"
+view = "models/weapons/v_rif_galil.mdl"
+view_right_handed = true
+
+[hud]
+name = "Cstrike_WPNHUD_Galil"
+icon = "d_galil"
+
+[anim]
+idle_after = 1.28
+idle_interval = 20.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0006
+crouch = 0.00939
+stand = 0.01253
+jump = 0.45434
+land = 0.09087
+fire = 0.00984
+movement = 0.10561
+recovery_crouch = 0.35197
+recovery_stand = 0.49275
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# UNMEASURED: the M4A1's sets (a 5.56 rifle at 0.09 s).
+[hooks."cs_source:recoil"]
+standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
+moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }

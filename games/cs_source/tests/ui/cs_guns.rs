@@ -8,7 +8,7 @@ use crate::stack::{
     games::cs_source::{
         TICK_INTERVAL,
         ui::objectives_hud::{BombHudStatePlugin, centre_text},
-        weapons::{CsWeaponsPlugin, FAMAS, GLOCK, GUNS},
+        weapons::{CsWeaponsPlugin, FAMAS, GLOCK, data},
     },
     greybox::{self, GreyboxMapPlugin},
     harness::{CsSim, Sim},
@@ -36,7 +36,7 @@ fn shooter_with(sim: &mut Sim, id: &str) -> Entity {
     give(sim.app.world_mut(), p, id).unwrap();
     sim.ticks(1);
     assert_eq!(sim.app.world().get::<Weapon>(active(sim, p)).unwrap().id, id);
-    let draw = GUNS.iter().find(|g| g.id == id).unwrap().draw;
+    let draw = data(id).unwrap().draw;
     sim.seconds(draw as f64 + 0.05);
     p
 }

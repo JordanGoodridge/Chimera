@@ -1,0 +1,72 @@
+# TMP.
+id = "cs_source:weapon_tmp"
+base = "cs_source:gun"
+slot = 0
+draw = 0.8333
+max_speed = 250.0
+weight = 25
+
+[buy]
+price = 1250
+team = 2
+bot_weight = 1.0
+
+[trigger]
+automatic = true
+cycle = 0.07
+
+[magazine]
+clip = 30
+ammo = "cs_source:9mm"
+reload = 2.12
+
+[hitscan]
+range = 4096.0
+
+[damage]
+amount = 26.0
+falloff = 0.84
+armor_ratio = 1.0
+
+[penetration]
+objects = 1
+
+# Always silenced (its own fire sound), no toggle. The draw's event names
+# Weapon_TMP.Deploy, which no sound script defines (the game plays nothing).
+[sounds]
+fire = "Weapon_TMP.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.48, "Weapon_TMP.Clipout"], [1.28, "Weapon_TMP.Clipin"]]
+
+[models]
+world = "models/weapons/w_smg_tmp.mdl"
+view = "models/weapons/v_smg_tmp.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_Tmp"
+icon = "d_tmp"
+
+[anim]
+idle_after = 2.0
+idle_interval = 20.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.001
+crouch = 0.015
+stand = 0.02
+jump = 0.1118
+land = 0.02236
+fire = 0.01594
+movement = 0.00389
+recovery_crouch = 0.15131
+recovery_stand = 0.21184
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.5
+
+# UNMEASURED: the M4A1's sets.
+[hooks."cs_source:recoil"]
+standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
+moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }

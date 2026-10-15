@@ -71,8 +71,9 @@
 //! (`lightmap::face_extra_styles`); sprites, dust volumes and
 //! trigger_soundscape zones know their entity; prop entities' nodes carry
 //! `map::PropEntity` so a sound can follow them), footstep/jump/landing/water
-//! sounds in movement, the knife and the guns (`weapons.rs`: all 24 CS:S guns
-//! as `Gun` rows of script values built from the weapon parts (scopes,
+//! sounds in movement, the knife and the guns (`weapons.rs`: all 24 CS:S guns,
+//! the knife, grenades and C4 as data, games/cs_source/data/weapons, of script
+//! values built into the weapon parts with CS:S's hooks (scopes,
 //! silencers, bursts, pellets, shell-by-shell reloads), prices, team limits and
 //! the buy menu (ammo boxes per ammo type, unmeasured), measured rules: recoil
 //! sets, inaccuracy with alternate-mode keys, penetration materials and ammo;
@@ -114,8 +115,8 @@
 //! TextureScroll/AnimatedTexture/WaterLOD proxies, `water_lod_control`,
 //! animated normal-map frames, bottom materials, `$forceexpensive`, the
 //! `$underwateroverlay` Refract material as a `MapScreenWarp`), view models
-//! (`props.rs::load_view_model`, paths and handedness in
-//! `weapons.rs::VIEW_MODELS`; `anim.rs` also reads animation events and
+//! (`props.rs::load_view_model`, paths and handedness in the weapon data,
+//! `weapons.rs::view_models`; `anim.rs` also reads animation events and
 //! attachments), what they play from weapon events and the effects their
 //! animation events ask for (`view_anim.rs`: draw, fire, knife slash/stab,
 //! reload, idle by activity, silenced variants and silencer attach/detach, one
