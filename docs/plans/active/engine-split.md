@@ -525,7 +525,13 @@ measurements):
   `net`'s row lost `objectives`, `rules`, `bot`, `logic`; `logic` and
   `games` may use `net` (games also `bot`); `workspace_crates` keeps
   `engine_net` off `engine_present`, `source_logic`, `mashup` and the
-  games.
+  games. Spawn dump identical on the five maps modulo entity ids, moved
+  paths and two new resources (`NetParts`, `BuildVersion`); the network
+  tests and the heavy `net_*`/`map_net_*` pass. Measured
+  (docs/performance.md, "`engine_net`"; a new `pub fn`, load 17-19):
+  `cargo test --features dev --no-run` after a leaf edit in `engine_net`
+  27-32 s, in the client 19-23 s; `cargo test -p engine_net --features
+  dev` builds and runs its 29 tests in 6 s.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

@@ -1025,3 +1025,21 @@ A game edit's test build fell from 127-176 s to about 25 s; the crates
 above an edited one recompile incrementally (nothing they use changed).
 What stays slow is `mashup`'s own code (the client, net), the next cuts
 (engine-split.md, "Remaining couplings").
+
+### `engine_net` (2026-10-14)
+
+`net` moved into `engine/net` (13.4k lines; CS:S's round, bomb and
+hostages went to `cs_source::game::net`, the movers to
+`source_logic::logic::net`). Same setup, a new `pub fn` appended to one
+file, then reverted and timed again (load 17-19):
+
+| Edit | Command | Time |
+|---|---|---|
+| a leaf in `engine_net` (`net/delta.rs`) | `cargo test --features dev --no-run` | 27 s, 32 s |
+| the same | `cargo test -p engine_net --features dev` (29 tests) | 6 s |
+| a leaf in the client (`client/fonts.rs`) | `cargo test --features dev --no-run` | 19 s, 23 s |
+
+An edit in `engine_net` recompiles `source_logic`, `cs_source` and
+`mashup` above it (incrementally). The first `cargo test -p engine_net
+--features dev` builds its own Bevy (`-p` unifies only its features:
+31 minutes on this loaded box); later ones take seconds.
