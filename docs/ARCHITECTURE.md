@@ -19,12 +19,13 @@ mashup (repository root: src/, tests/it/)   client, CS:S's front end, tools
   |    engine_net (engine/net/)   net: transport, replication, prediction
   |    |
 engine_present (engine/present/)   render, audio, MapPlugin
+  |    engine_client (engine/client/)   client: front_end, fonts, hud_text, widgets, vgui, binds
   |    engine_sim (engine/sim/)   weapon, movement, rule_module
   |    |
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (engine/core/)       core, console, slots, character, metrics, mount
+ (engine/core/)       core, console, slots, character, metrics, mount, game_registry
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
@@ -46,17 +47,30 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   collision, spawning a map's simulated parts (the drawn ones through
   `map::MapDrawer`), the map's systems. It uses `engine_core` and
   `source_formats` of ours and never what draws or plays the map, `mashup`
-  or a game (checked). `mashup::map` re-exports it with `MapPlugin`,
-  whose type sits beside its registration in `map_plugin` (orphan rule);
-  map's part of that registration is `map::build_first` and its siblings.
+  or a game (checked). It registers the map's systems itself
+  (`map::build`): alone as `map::MapSimPlugin` (the dedicated server's,
+  nothing drawn or played), or with what draws and plays the map at
+  fixed places among them (`map::MapLayers`, filled by `engine_present`'s
+  `MapPlugin`; the client's order). `mashup::map` re-exports it, with
+  `MapPlugin` in builds with the presentation.
   `cargo test -p engine_world --features dev` tests it alone.
 - `engine_present` is the presentation beside the simulation: `render`,
-  `audio` and `map_plugin` (`MapPlugin`, registering map's, audio's and
-  render's systems in one order). It uses `engine_world` and
-  `engine_core`, never `mashup` or a game (checked); `mashup` re-exports
-  `render` and `audio` at their old paths. An edit in it rebuilds it and
-  `mashup`, not the map; an edit in `mashup` rebuilds neither.
+  `audio` and `map_plugin` (`MapPlugin`: map's registration with audio's
+  and render's systems at the places `map::MapLayers` keeps, in one
+  order). It uses `engine_world` and `engine_core`, never `mashup` or a
+  game (checked); `mashup` re-exports `render` and `audio` at their old
+  paths. An edit in it rebuilds it and `mashup`, not the map; an edit in
+  `mashup` rebuilds neither.
   `cargo test -p engine_present --features dev` tests it alone.
+- `engine_client` is the client shell's base (`client`, re-exported by
+  `mashup::client` at the old paths): the front end's interface
+  (`front_end`), the scheme's fonts, HUD text, the VGUI-like widgets, the
+  drawing of a game's VGUI layouts and the key binds. It uses
+  `engine_world` (HUD layouts) and `engine_core`, never the presentation,
+  the network, `mashup` or a game (checked), so a game's front end can
+  later build on it from the game's crate. The rest of the shell stays in
+  `mashup` (it names `net` and CS:S's rules: engine-split.md).
+  `cargo test -p engine_client --features dev` tests it alone.
 - `engine_sim` is the simulation's frameworks: `weapon` (the weapon
   system), `movement` (the movement slot's placeholder and noclip) and
   `rule_module` (the rule-module interface, `mashup::rules::module`).
@@ -91,6 +105,11 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   never the presentation, Source's logic, `mashup` or a game (checked);
   `mashup::net` re-exports it with the parts' replicated types.
   `cargo test -p engine_net --features dev` tests it alone.
+- `mashup` uses `engine_present` only with its default feature `present`
+  (with the client shell `client`, the games' front ends `games::*::ui`
+  and the client-only crates): the dedicated server builds without it
+  (`--no-default-features --features server`), linking no render or
+  audio code (checked: `server_builds_without_presentation`).
 
 ## Layers
 
@@ -140,8 +159,10 @@ spawns and simulates: the drawn phases of spawning a map, what is made
 in play, effects, culling, water, shadows, the sky, view models, the
 materials and their shaders) uses core and map, and only `client`,
 `map_plugin` and a game's `ui/` use it. `map_plugin` builds
-`map::MapPlugin` (its type, re-exported into `map`) from map's systems, audio's and
-render's, in one fixed order. Animation evaluation stays on the
+`map::MapPlugin` (its type, re-exported into `map`): map's registration
+(`map::build`) with audio's and render's systems at the places map keeps
+for them (`map::MapLayers`), in one fixed order; the dedicated server
+adds `map::MapSimPlugin` (map's alone). Animation evaluation stays on the
 simulation's side (the server poses hitboxes); see
 docs/plans/active/engine-split.md, "Crates and compile time".
 
@@ -172,8 +193,10 @@ A module may use only the modules below it. Enforced by
   `client` (the shell: input, camera, console UI, VGUI-like widgets, debug
   tools, net glue); the rest of the game never uses it. The shell reaches
   it only through `client::front_end` (hooks the game registers), and the
-  app adds it (main.rs). Client files that still name a game:
-  `CLIENT_GAME_EXCEPTIONS` (tests/it/architecture.rs).
+  app adds it (main.rs). The shell names no game (checked): what it needs
+  of one (install, map cycle, tick, default binds, movement cvars) is data
+  the game registers (`game_registry::GameInfo`, the first registered
+  being the default game).
 - Rule modules (`rules::module`): a game registers its modes by name
   (`cs_source:bomb`, ...), picked by the map and cvars; their code is
   still in `rules` and `objectives` (engine-split.md).
@@ -197,11 +220,13 @@ that the paths exist).
 - `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `engine/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `engine/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
 
-- `engine/world/src/lib.rs`, `engine/world/src/map/mod.rs`: map's registration (`build_first`, ...), `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `engine/world/src/lib.rs`, `engine/world/src/map/mod.rs`: `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `engine/world/src/map/registration.rs`: map's registration (`build`) with its presentation's places (`MapLayers`); `MapSimPlugin`, the `()` drawer (map)
 - `engine/world/src/map/data.rs`: `MapData` and everything it holds; plain data (map)
 - `engine/world/src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
 - `engine/world/src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
@@ -243,7 +268,7 @@ that the paths exist).
 - `engine/world/src/map/sound.rs`: the simulation's side of sounds (map)
 - `engine/world/src/map/radio.rs`: a game's team radio data and chat line format (map)
 - `engine/world/src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
-- `engine/present/src/map_plugin.rs`: `MapPlugin`, built from map's, audio's and render's systems in one order (above map, audio, render)
+- `engine/present/src/map_plugin.rs`: `MapPlugin`: map's registration with audio's and render's systems at its places (above map, audio, render)
 
 ### Render (crate `engine_present`, `engine/present/`: presentation beside the simulation)
 
@@ -361,7 +386,7 @@ that the paths exist).
 - `src/lib.rs`: `SimPlugins`, `swap_map` (crate root)
 - `src/main.rs`: the game binary (top)
 - `src/harness.rs`: `Sim` and `NetSim`: headless apps stepped by exact ticks, for tests (harness)
-- `src/bin/mashup_server.rs`: the dedicated server (top)
+- `src/bin/mashup_server.rs`: the dedicated server, built without the presentation (top)
 - `src/bin/mapsweep.rs`: dev tool: load every cached map headless and report problems
 - `src/bin/perfgate.rs`: dev tool: instructions-per-tick regression gate
 - `src/bin/refcmp.rs`: dev tool: compare views against real CS:S
@@ -373,7 +398,7 @@ that the paths exist).
 ### Client (window, input, camera, HUD, menus, debug)
 
 - `src/client/`: local input, the camera, captures, the plugin that adds the rest (client)
-- `src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
+- `engine/client/src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
 - `src/games/cs_source/ui/`: CS:S's front end on the shell, `CsSourceUiPlugin` (games_ui)
 - `src/client/net.rs`: the game's side of the network: joining, dropping, hosting (client)
 - `src/client/view.rs`: third-person, free and chase cameras (client)
@@ -385,7 +410,7 @@ that the paths exist).
 - `src/client/night_vision.rs`, `night_vision.wgsl`: night vision goggles turned on and their green view (client)
 - `src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
 - `src/client/audio.rs`: the options' sound settings (client)
-- `src/client/binds.rs`: every game key is a bind; default binds (client)
+- `engine/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
 - `src/client/video.rs`: field of view, video and texture settings (client)
 - `src/games/cs_source/ui/options.rs`: the options dialogs' settings (games_ui)
 - `src/client/console.rs`: the in-game console UI (client)
@@ -395,9 +420,10 @@ that the paths exist).
 - `src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
 - `src/games/cs_source/ui/window_icon.rs`: the window and taskbar icon (games_ui)
 - `src/games/cs_source/ui/first_run.rs`: finding CS:S on first run (games_ui)
-- `src/client/fonts.rs`: the one font service (client)
-- `src/client/widgets.rs`: VGUI control state machines and drawing (client)
-- `src/client/vgui.rs`: drawing a game's own menu layouts (client)
+- `engine/client/src/client/fonts.rs`: the one font service (client)
+- `engine/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
+- `engine/client/src/client/vgui.rs`: drawing a game's own menu layouts (client)
+- `src/client/vgui.rs`: the base's `vgui` with the mouse grab while one is open and `keys_live` (client)
 - `src/games/cs_source/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
 - `src/games/cs_source/ui/server_browser.rs`: the server browser (games_ui)
 - `src/games/cs_source/ui/team_menu.rs`: the team menu (games_ui)
@@ -411,7 +437,7 @@ that the paths exist).
 - `src/client/overview.rs`: the spectators' map overview (client)
 - `src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
 - `src/client/game_hud.rs`: the game's own HUD panels (client)
-- `src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
+- `engine/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `src/client/hud_sprites.rs`: HUD sprite icons and damage indicators (client)
 - `src/client/weapon_select.rs`: weapon selection and pickup history (client)
 - `src/games/cs_source/ui/objectives_hud.rs`: bomb, kit, hostage and zone icons, centre prints on the HUD (games_ui)

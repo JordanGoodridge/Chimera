@@ -1,8 +1,9 @@
 //! Key binds, as Source keeps them: key name -> console line
 //! (`console::Console::binds`), saved in config.cfg as `bind` lines.
-//! Every game key is a bind: the defaults (`default_binds`: CS:S's own
-//! from the install's `cfg/config_default.cfg`, else `CSS_DEFAULT_BINDS`,
-//! plus ours on the keys CS:S leaves free, `MASHUP_BINDS`) go in before
+//! Every game key is a bind: the defaults (`default_binds`: the default
+//! game's (`game_registry::GameInfo`), from its install's
+//! `cfg/config_default.cfg`, else its built-in table, plus ours on the
+//! keys it leaves free, `MASHUP_BINDS`) go in before
 //! config.cfg runs, `binddefaults` puts them back (the options' "Use
 //! Defaults"), and the options' keyboard tab rebinds them.
 //!
@@ -13,9 +14,10 @@
 //! leaves them alone. Every other bind runs its line through the console.
 //!
 //! Every game key is a bind (`Console::binds`, saved in config.cfg):
-//! `default_binds` (CS:S's: the install's `cfg/config_default.cfg`, read at
-//! start by `read_install_defaults`, else the same table in
-//! `CSS_DEFAULT_BINDS`; plus `MASHUP_BINDS` on keys CS:S leaves free: Alt free
+//! `default_binds` (the default game's: CS:S's install's
+//! `cfg/config_default.cfg`, read at start by `read_install_defaults`, else
+//! the same table in `GameInfo::default_binds`; plus `MASHUP_BINDS` on keys
+//! the game leaves free: Alt free
 //! look, V noclip, F9 `bug`, the debug keys F3 `toggle mashup_drawcollision`,
 //! F8 `debugui`, F11 `mashup_inspector`) go in before config.cfg runs
 //! (`binddefaults`; `binddefaults missing` for configs written before, which
@@ -34,7 +36,10 @@ use bevy::{
     prelude::*,
 };
 
-use crate::console::{Console, ConsoleAppExt};
+use crate::{
+    console::{Console, ConsoleAppExt},
+    game_registry::GameInfo,
+};
 
 /// Source key names for keyboard keys.
 pub const KEY_NAMES: &[(KeyCode, &str)] = &[
@@ -149,67 +154,6 @@ pub const MOUSE_NAMES: &[(MouseButton, &str)] = &[
 pub const WHEEL_UP: &str = "mwheelup";
 pub const WHEEL_DOWN: &str = "mwheeldown";
 
-/// CS:S's default binds as its `cfg/config_default.cfg` lists them (what a
-/// fresh CS:S config gets), in that file's order: the fallback when the
-/// install's file can't be read (`read_install_defaults` reads it at
-/// start). Esc (`cancelselect`) and ` (`toggleconsole`) are not binds here.
-/// Some have nothing to run yet (`impulse 100`, `commandmenu`,
-/// `showbriefing`, `cheer`, `+voicerecord`, `save`, `load`, `pause`): the
-/// keys are CS:S's all the same.
-pub const CSS_DEFAULT_BINDS: &[(&str, &str)] = &[
-    ("tab", "+showscores"),
-    ("space", "+jump"),
-    (",", "buyammo1"),
-    (".", "buyammo2"),
-    ("0", "slot10"),
-    ("1", "slot1"),
-    ("2", "slot2"),
-    ("3", "slot3"),
-    ("4", "slot4"),
-    ("5", "slot5"),
-    ("6", "slot6"),
-    ("7", "slot7"),
-    ("8", "slot8"),
-    ("9", "slot9"),
-    ("a", "+moveleft"),
-    ("b", "buymenu"),
-    ("c", "radio3"),
-    ("d", "+moveright"),
-    ("e", "+use"),
-    ("f", "impulse 100"),
-    ("g", "drop"),
-    ("h", "commandmenu"),
-    ("i", "showbriefing"),
-    ("j", "cheer"),
-    ("k", "+voicerecord"),
-    ("m", "chooseteam"),
-    ("n", "nightvision"),
-    ("o", "buyequip"),
-    ("q", "lastinv"),
-    ("r", "+reload"),
-    ("s", "+back"),
-    ("t", "impulse 201"),
-    ("u", "messagemode2"),
-    ("w", "+forward"),
-    ("x", "radio2"),
-    ("y", "messagemode"),
-    ("z", "radio1"),
-    ("ctrl", "+duck"),
-    ("shift", "+speed"),
-    ("f1", "autobuy"),
-    ("f2", "rebuy"),
-    ("f4", "bug"),
-    ("f5", "jpeg"),
-    ("f6", "save quick"),
-    ("f7", "load quick"),
-    ("f10", "quit prompt"),
-    ("mwheeldown", "invnext"),
-    ("mwheelup", "invprev"),
-    ("mouse1", "+attack"),
-    ("mouse2", "+attack2"),
-    ("pause", "pause"),
-];
-
 /// Mashup's own binds, each on a key CS:S's defaults leave free (and only
 /// while it is free): Alt looks around, V flies, F9 files a bug report
 /// (as F4 does), and the debug keys: F3 collision shapes, F8 the debug UI,
@@ -260,9 +204,9 @@ const OLD_DEFAULTS: &[(&str, &str)] = &[
     ("f9", "bug"),
 ];
 
-/// CS:S's defaults as read from the install (`read_install_defaults`);
-/// None: `CSS_DEFAULT_BINDS`.
-static INSTALL_DEFAULTS: RwLock<Option<Vec<(String, String)>>> = RwLock::new(None);
+/// The default game's binds (`read_install_defaults`, `use_game_defaults`);
+/// empty before (and without a game).
+static GAME_DEFAULTS: RwLock<Vec<(String, String)>> = RwLock::new(Vec::new());
 
 /// Whether a key name is one we know (keyboard, mouse or wheel).
 pub fn known_key(name: &str) -> bool {
@@ -302,10 +246,10 @@ pub fn cfg_binds(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// The defaults from CS:S's: those, then mashup's own on the keys they
-/// leave free (`MASHUP_BINDS`).
-pub fn defaults_from(css: &[(String, String)]) -> Vec<(String, String)> {
-    let mut out = css.to_vec();
+/// The defaults from the game's: those, then mashup's own on the keys
+/// they leave free (`MASHUP_BINDS`).
+pub fn defaults_from(game: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out = game.to_vec();
     for (key, command) in MASHUP_BINDS {
         if !out.iter().any(|(k, _)| k == key) {
             out.push((key.to_string(), command.to_string()));
@@ -315,31 +259,43 @@ pub fn defaults_from(css: &[(String, String)]) -> Vec<(String, String)> {
 }
 
 /// The binds a fresh config starts with (and "Use Defaults" restores):
-/// CS:S's from the install's `cfg/config_default.cfg` when it was read,
-/// else `CSS_DEFAULT_BINDS`, plus mashup's own (`MASHUP_BINDS`).
+/// the default game's (from its install's file when it was read, else its
+/// built-in table), plus mashup's own (`MASHUP_BINDS`).
 pub fn default_binds() -> Vec<(String, String)> {
-    let installed = INSTALL_DEFAULTS.read().ok().and_then(|d| d.clone());
-    let css = installed.unwrap_or_else(|| {
-        CSS_DEFAULT_BINDS
-            .iter()
-            .map(|(k, c)| (k.to_string(), c.to_string()))
-            .collect()
-    });
-    defaults_from(&css)
+    let game = GAME_DEFAULTS.read().map(|d| d.clone()).unwrap_or_default();
+    defaults_from(&game)
 }
 
-/// Read CS:S's defaults from the install's `cfg/config_default.cfg` (the
-/// configured, saved or found install). Without the file the defaults
-/// stay `CSS_DEFAULT_BINDS`. Returns whether it was read.
-pub fn read_install_defaults() -> bool {
-    let text = crate::mount::config::LocalConfig::load()
-        .ok()
-        .and_then(|c| c.game_path(crate::games::cs_source::GAME))
-        .and_then(|p| std::fs::read_to_string(p.join("cstrike").join("cfg").join("config_default.cfg")).ok());
-    let binds = text.map(|t| cfg_binds(&t)).filter(|b| !b.is_empty());
-    let found = binds.is_some();
-    if let Ok(mut d) = INSTALL_DEFAULTS.write() {
+/// Make `binds` (key, command) the game's defaults.
+pub fn use_game_defaults(binds: &[(&str, &str)]) {
+    let owned = binds.iter().map(|(k, c)| (k.to_string(), c.to_string())).collect();
+    set_game_defaults(owned);
+}
+
+fn set_game_defaults(binds: Vec<(String, String)>) {
+    if let Ok(mut d) = GAME_DEFAULTS.write() {
         *d = binds;
+    }
+}
+
+/// Read the default game's defaults from its install's file
+/// (`GameInfo::default_binds_cfg`: CS:S's `cfg/config_default.cfg`, in the
+/// configured, saved or found install). Without the file they are the
+/// game's built-in table (`GameInfo::default_binds`); without a game, none
+/// (mashup's own only). Returns whether the file was read.
+pub fn read_install_defaults(game: Option<&GameInfo>) -> bool {
+    let Some(game) = game else {
+        set_game_defaults(Vec::new());
+        return false;
+    };
+    let binds = game
+        .default_binds_text()
+        .map(|t| cfg_binds(&t))
+        .filter(|b| !b.is_empty());
+    let found = binds.is_some();
+    match binds {
+        Some(b) => set_game_defaults(b),
+        None => use_game_defaults(game.default_binds),
     }
     found
 }
@@ -595,29 +551,19 @@ pub fn commands(app: &mut App) {
     }
 }
 
-/// For tests of systems that read binds: the mouse's buttons and the
-/// default binds in an app with the console.
-#[cfg(test)]
-pub fn test_binds(app: &mut App) {
+/// For tests of systems that read binds: the mouse's buttons and `game`'s
+/// built-in default binds in an app with the console (here and in a
+/// game front end's tests).
+pub fn test_binds(app: &mut App, game: &GameInfo) {
     app.init_resource::<ButtonInput<MouseButton>>();
+    use_game_defaults(game.default_binds);
     bind_defaults(&mut app.world_mut().resource_mut::<Console>().binds, true);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn binds(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
-    }
-
-    fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
-    }
-
-    /// CS:S's `cfg/config_default.cfg` as it reads (its bind lines; the
-    /// file itself is the install's and never in the repo).
-    const SAMPLE_CONFIG_DEFAULT: &str = r#"// first run
+/// CS:S's `cfg/config_default.cfg` as it reads (its bind lines; the
+/// file itself is the install's and never in the repo), for tests here
+/// and the game's own (its built-in table must match it).
+pub const SAMPLE_CONFIG_DEFAULT: &str = r#"// first run
 unbindall
 
 bind "ESCAPE" "cancelselect"
@@ -676,13 +622,34 @@ bind "MOUSE2" "+attack2"
 bind "PAUSE" "pause"
 "#;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binds(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    /// The sample file's binds as the game's defaults (every test that
+    /// reads `default_binds` sets the same, so tests in parallel agree).
+    fn sample_defaults() -> Vec<(String, String)> {
+        let read = cfg_binds(SAMPLE_CONFIG_DEFAULT);
+        set_game_defaults(read.clone());
+        read
+    }
+
+
     #[test]
     fn defaults_are_config_default_cfgs_binds() {
-        // The fallback table is the file's binds, in its order (Esc and `
-        // aren't binds here).
-        let read = cfg_binds(SAMPLE_CONFIG_DEFAULT);
-        assert_eq!(read, owned(CSS_DEFAULT_BINDS));
-        // Mashup's own go only on keys CS:S leaves free.
+        // The file's binds, in its order (Esc and ` aren't binds here).
+        let read = sample_defaults();
+        assert_eq!(read.first(), Some(&("tab".into(), "+showscores".into())));
+        assert!(!read.iter().any(|(k, _)| k == "escape" || k == "`"));
+        // Mashup's own go only on keys the game leaves free.
         let defaults = defaults_from(&read);
         assert_eq!(&defaults[..read.len()], &read[..]);
         for (k, c) in MASHUP_BINDS {
@@ -703,16 +670,9 @@ bind "PAUSE" "pause"
     }
 
     #[test]
-    fn the_installs_config_default_matches_the_built_in_table() {
-        // Only with CS:S installed (MASHUP_CONFIG or a Steam library).
-        if read_install_defaults() {
-            assert_eq!(default_binds(), defaults_from(&owned(CSS_DEFAULT_BINDS)));
-        }
-    }
-
-    #[test]
     fn defaults_have_known_keys_and_one_line_per_key() {
-        let d = defaults_from(&owned(CSS_DEFAULT_BINDS));
+        let game = sample_defaults();
+        let d = defaults_from(&game);
         for (k, _) in &d {
             assert!(known_key(k), "{k} is not a key name");
         }
@@ -727,13 +687,14 @@ bind "PAUSE" "pause"
         assert!(d.contains(&("mwheeldown".into(), "invnext".into())));
         for c in ["debugui", "mashup_inspector", "toggle mashup_drawcollision"] {
             let k = &d.iter().find(|(_, v)| v == c).unwrap().0;
-            assert!(!CSS_DEFAULT_BINDS.iter().any(|(ck, _)| ck == k), "{c} on CS:S's {k}");
+            assert!(!game.iter().any(|(ck, _)| ck == k), "{c} on the game's {k}");
         }
     }
 
     #[test]
     fn added_defaults_reach_old_configs_on_free_keys() {
         // A config listing every bind, from before the defaults were CS:S's.
+        sample_defaults();
         let mut b = binds(&[("w", "+forward"), ("f2", "debugui"), ("mwheelup", "+jump")]);
         bind_added_defaults(&mut b);
         assert_eq!(b.get("f1").map(String::as_str), Some("autobuy"));
@@ -768,6 +729,7 @@ bind "PAUSE" "pause"
     #[test]
     fn missing_defaults_fill_only_free_keys_for_unbound_commands() {
         // An old config: only the player's own binds survived unbindall.
+        sample_defaults();
         let mut b = binds(&[("f", "+jump"), ("w", "say hello")]);
         bind_defaults(&mut b, false);
         assert_eq!(b.get("space"), None, "+jump already has a key");
@@ -781,6 +743,7 @@ bind "PAUSE" "pause"
 
     #[test]
     fn binds_save_to_config_and_load_back() {
+        sample_defaults();
         let mut app = App::new();
         app.add_plugins(crate::console::ConsolePlugin);
         commands(&mut app);

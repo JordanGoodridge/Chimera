@@ -17,6 +17,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("metrics", &[]),
     ("console", &["core"]),
     ("mount", &[]),
+    // What a game tells the shell about itself (its install, map cycle,
+    // tick, binds, movement cvars): data the game registers.
+    ("game_registry", &["mount"]),
     ("slots", &["core"]),
     ("character", &["core", "slots"]),
     ("movement", &["core", "slots", "character"]),
@@ -76,9 +79,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
     // The client shell: window, input, camera, console UI, the VGUI-like
     // widget layer, debug tools. `games` here is the game-neutral map
-    // loading (`games::load_map`); a game's own module only through
-    // `CLIENT_GAME_EXCEPTIONS`. A game's menus and HUD are that game's
-    // (`games_ui`), reached through `client::front_end`.
+    // loading (`games::load_map`); never a game's own module: what it
+    // needs of a game is data the game registers (`game_registry`). A
+    // game's menus and HUD are that game's (`games_ui`), reached through
+    // `client::front_end`.
     (
         "client",
         &[
@@ -97,6 +101,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "rules",
             "bot",
             "mount",
+            "game_registry",
             "games",
             "logic",
             "net",
@@ -124,6 +129,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "rules",
             "bot",
             "mount",
+            "game_registry",
             "games",
             "logic",
             "net",
@@ -144,6 +150,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "character",
             "movement",
             "mount",
+            "game_registry",
             "map",
             "weapon",
             "objectives",
@@ -164,6 +171,7 @@ const CRATE_SRC: &[&str] = &[
     "engine/world/src",
     "engine/present/src",
     "engine/sim/src",
+    "engine/client/src",
     "engine/net/src",
     "source/logic/src",
     "games/cs_source/src",
@@ -217,24 +225,24 @@ fn game_names(src: &Path) -> BTreeSet<String> {
         .collect()
 }
 
-/// Client files that still name a game's own module (`crate::games::<game>`),
-/// each with why. The client shell should reach a game only through
-/// registration (`client::front_end`, the app's plugins); shrink this list.
-const CLIENT_GAME_EXCEPTIONS: &[(&str, &str)] = &[
-    // TODO(engine-split): a game registry (the default game, its install,
-    // maps, map cycle and server tick) in place of naming CS:S.
-    ("src/client/console.rs", "map loading: CS:S's install, maps, map cycle, tick"),
-    ("src/client/binds.rs", "the default binds from CS:S's install"),
-    ("src/client/net.rs", "the map files a server offers: CS:S's install"),
-    // TODO(engine-split): movement cvars by the movement slot's registry.
-    ("src/client/debug_ui.rs", "the movement tab lists Source movement's cvars"),
-];
-
 fn ident(s: &str) -> String {
     s.trim_start()
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect()
+}
+
+/// The client shell (`src/client`) names no game: it learns what it needs
+/// of one from the game registry (`game_registry::Games`: the default
+/// game's install, maps, map cycle, tick, binds, movement cvars) and
+/// reaches its front end through `client::front_end`.
+fn client_names_game(rel: &str, game: &str) -> String {
+    format!(
+        "{rel}: the client shell uses game `{game}`. The shell knows a game only as data it registers \
+         (`game_registry::GameInfo`, read through `game_registry::Games`; add a field there) and reaches \
+         its menus, panels and HUD (`src/games/{game}/ui/`) through `client::front_end` hooks; the app adds \
+         the game's plugins (main.rs)."
+    )
 }
 
 /// Top-level paths used after `crate::` in `code` (comments already
@@ -327,6 +335,15 @@ fn module_layering() {
             code = code.replace("crate::game::", &format!("crate::games::{game}::"));
         }
         let rel = file.strip_prefix(root()).unwrap().to_string_lossy().replace('\\', "/");
+        // The shell names no game by any path (`::cs_source::`,
+        // `mashup::games::cs_source::` as well as `crate::games::...`).
+        if module == "client" {
+            for game in &games {
+                if code.contains(&format!("{game}::")) {
+                    errors.push(client_names_game(&rel, game));
+                }
+            }
+        }
         for r in crate_refs(&code, &modules) {
             // `games::load_map` and the like: the game-neutral map loading.
             let r = match r.strip_prefix("games::") {
@@ -342,15 +359,7 @@ fn module_layering() {
                     .map(|c| c.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string())
                     .or(crate_game.clone());
                 if module == "client" {
-                    if !CLIENT_GAME_EXCEPTIONS.iter().any(|(f, _)| *f == rel) {
-                        errors.push(format!(
-                            "{rel}: the client shell uses game `{game}`. A game's menus, panels and HUD live in \
-                             `src/games/{game}/ui/` and the shell reaches them through `client::front_end` \
-                             (hooks the game registers); the app adds the game's plugins (main.rs). Add a hook \
-                             there, or (with a TODO) list the file in CLIENT_GAME_EXCEPTIONS in \
-                             tests/it/architecture.rs."
-                        ));
-                    }
+                    errors.push(client_names_game(&rel, game));
                 } else if own.as_deref() != Some(game) && module != "lib" {
                     errors.push(format!(
                         "{}: uses game `{game}`. Games must not depend on each other, and shared layers must \
@@ -372,6 +381,7 @@ fn module_layering() {
             ));
         }
     }
+    errors.dedup();
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
@@ -459,8 +469,7 @@ fn simulation_builds_no_drawn_parts() {
 }
 
 /// A game's parts (weapons, movement, map loading ...) work without its
-/// front end: only its `ui/` uses `ui`. And `CLIENT_GAME_EXCEPTIONS` lists
-/// only files that still need it.
+/// front end: only its `ui/` uses `ui`.
 #[test]
 fn game_parts_do_not_use_their_ui() {
     let src = root().join("src");
@@ -488,15 +497,6 @@ fn game_parts_do_not_use_their_ui() {
                     file.display()
                 ));
             }
-        }
-    }
-    for (file, _) in CLIENT_GAME_EXCEPTIONS {
-        let text = fs::read_to_string(root().join(file)).unwrap_or_default();
-        if !game_names(&src).iter().any(|g| text.contains(&format!("games::{g}"))) {
-            errors.push(format!(
-                "{file} no longer uses a game's module: remove it from CLIENT_GAME_EXCEPTIONS in \
-                 tests/it/architecture.rs."
-            ));
         }
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
@@ -721,6 +721,10 @@ fn workspace_crates() {
     const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
         on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
         plain data or give it a hook (a registry, a resource) that the crate above fills.";
+    const CLIENT: &str = "is the client shell's base (docs/ARCHITECTURE.md, \"Crates\"): the front end's \
+        interface, fonts, the widgets and binds, below the games' front ends; it knows nothing of the \
+        network, the simulation's frameworks or a game. Keep the piece that needs them in `mashup::client`, \
+        or give the base a hook (a resource, a registry) that the shell above fills.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("engine/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
@@ -730,6 +734,11 @@ fn workspace_crates() {
         ("engine/net", &["engine_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
         ("games/cs_source", &["engine_present", "mashup", "combat_arms"], GAME),
         ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
+        (
+            "engine/client",
+            &["engine_present", "engine_sim", "source_logic", "bevy_replicon", "mashup", "cs_source", "combat_arms", "games"],
+            CLIENT,
+        ),
     ];
     for (krate, forbidden, why) in FORBIDDEN {
         let path = format!("{krate}/Cargo.toml");
@@ -753,6 +762,52 @@ fn workspace_crates() {
         }
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
+/// The dedicated server builds without the presentation
+/// (docs/ARCHITECTURE.md, "Crates"): `mashup` without its default
+/// feature `present` depends on no `engine_present`, so the server links
+/// no render or audio code. (That it compiles that way the pre-push hook
+/// checks: `cargo check -p mashup --no-default-features --features server
+/// --bin mashup_server`.)
+#[test]
+fn server_builds_without_presentation() {
+    // The presentation and crates only the client shell uses (not those
+    // Bevy itself pulls in: ab_glyph, winit).
+    const CLIENT_ONLY: &[&str] = &["engine_present", "engine_client", "bevy_egui", "bevy-inspector-egui", "arboard"];
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let tree = |args: &[&str]| -> String {
+        let out = Command::new(&cargo)
+            .current_dir(root())
+            .args(["tree", "-p", "mashup", "-e", "normal", "--prefix", "none", "--offline", "--locked"])
+            .args(args)
+            .output()
+            .expect("running cargo tree");
+        assert!(
+            out.status.success(),
+            "cargo tree failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let uses_present = |tree: &str| tree.lines().any(|l| l.starts_with("engine_present "));
+    assert!(
+        uses_present(&tree(&[])),
+        "the game (`mashup` with its default features) no longer depends on engine_present: update this test \
+         and docs/ARCHITECTURE.md (\"Crates\")."
+    );
+    let server = tree(&["--no-default-features", "--features", "server"]);
+    let present: Vec<&str> = server
+        .lines()
+        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "`mashup --no-default-features --features server` (the dedicated server's build) depends on {present:?}. \
+         The presentation (engine_present) and the client-only crates are optional, behind the default \
+         feature `present` (Cargo.toml): make the new dependency optional and add it to `present`, or move \
+         what the simulation needs out of the presentation."
+    );
 }
 
 /// Integration tests are one test binary (tests/it/main.rs): any other

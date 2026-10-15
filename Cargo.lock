@@ -3220,6 +3220,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_client"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "bevy",
+ "engine_core",
+ "engine_world",
+]
+
+[[package]]
 name = "engine_core"
 version = "0.1.0"
 dependencies = [
@@ -4654,7 +4664,6 @@ dependencies = [
 name = "mashup"
 version = "0.1.0"
 dependencies = [
- "ab_glyph",
  "arboard",
  "avian3d",
  "bevy",
@@ -4666,6 +4675,7 @@ dependencies = [
  "crc32fast",
  "cs_source",
  "dirs",
+ "engine_client",
  "engine_core",
  "engine_net",
  "engine_present",

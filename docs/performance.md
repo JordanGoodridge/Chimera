@@ -1026,6 +1026,24 @@ above an edited one recompile incrementally (nothing they use changed).
 What stays slow is `mashup`'s own code (the client, net), the next cuts
 (engine-split.md, "Remaining couplings").
 
+### `engine_client` (2026-10-14)
+
+The shell's base (`front_end`, `fonts`, `hud_text`, `widgets`, `binds`,
+`vgui`'s drawing: 4.2k lines) moved into `engine/client`; the rest of
+the shell and CS:S's front end stay in `mashup` (it needs `net`).
+Same setup, a new `pub fn` appended, two samples each (load 4-17):
+
+| Edit | Command | Time |
+|---|---|---|
+| a leaf in CS:S's front end (`games/cs_source/ui/window_icon.rs`) | `cargo test --features dev --no-run` | 18-20 s |
+| a leaf in the shell (`client/chat.rs`, `client/gamma.rs`) | the same | 36-64 s (was 77-78 s) |
+| a leaf in `engine_client` (`fonts.rs`, `widgets.rs`) | the same | 15-37 s |
+| the same | `cargo test -p engine_client --features dev` (28 tests) | 2 s |
+
+`mashup` is one crate less big but still one crate: a shell edit
+rebuilds it whole (the front end with it), so the win is small until the
+shell and the front end are crates of their own.
+
 ### `engine_net` (2026-10-14)
 
 `net` moved into `engine/net` (13.4k lines; CS:S's round, bomb and
@@ -1037,7 +1055,7 @@ file, then reverted and timed again (load 17-19):
 |---|---|---|
 | a leaf in `engine_net` (`net/delta.rs`) | `cargo test --features dev --no-run` | 27 s, 32 s |
 | the same | `cargo test -p engine_net --features dev` (29 tests) | 6 s |
-| a leaf in the client (`client/fonts.rs`) | `cargo test --features dev --no-run` | 19 s, 23 s |
+| a leaf in the client (`client/fonts.rs`, before it moved to `engine_client`) | `cargo test --features dev --no-run` | 19 s, 23 s |
 
 An edit in `engine_net` recompiles `source_logic`, `cs_source` and
 `mashup` above it (incrementally). The first `cargo test -p engine_net

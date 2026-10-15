@@ -219,6 +219,83 @@ pub use source_formats::{lumps, pak, phy, vhv, vpk, wav};
 
 pub const GAME: &str = "cs_source";
 
+/// What the client shell knows of CS:S (`game_registry`): its install
+/// and folder, map cycle, tick, default binds and movement cvars;
+/// registered by `CsSourcePlugins`.
+pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo {
+    id: GAME,
+    short_name: "CS:S",
+    content_dir: "cstrike",
+    tick_interval: TICK_INTERVAL,
+    open: mount::open,
+    map_cycle,
+    import_map: mount::import_map,
+    default_binds_cfg: "cfg/config_default.cfg",
+    default_binds: DEFAULT_BINDS,
+    movement_cvars: movement::CVARS,
+};
+
+/// CS:S's default binds as its `cfg/config_default.cfg` lists them (what a
+/// fresh CS:S config gets), in that file's order: the fallback when the
+/// install's file can't be read (the shell's `binds::read_install_defaults`
+/// reads it at start). Esc (`cancelselect`) and ` (`toggleconsole`) are
+/// not binds. Some have nothing to run yet (`impulse 100`, `commandmenu`,
+/// `showbriefing`, `cheer`, `+voicerecord`, `save`, `load`, `pause`): the
+/// keys are CS:S's all the same.
+pub const DEFAULT_BINDS: &[(&str, &str)] = &[
+    ("tab", "+showscores"),
+    ("space", "+jump"),
+    (",", "buyammo1"),
+    (".", "buyammo2"),
+    ("0", "slot10"),
+    ("1", "slot1"),
+    ("2", "slot2"),
+    ("3", "slot3"),
+    ("4", "slot4"),
+    ("5", "slot5"),
+    ("6", "slot6"),
+    ("7", "slot7"),
+    ("8", "slot8"),
+    ("9", "slot9"),
+    ("a", "+moveleft"),
+    ("b", "buymenu"),
+    ("c", "radio3"),
+    ("d", "+moveright"),
+    ("e", "+use"),
+    ("f", "impulse 100"),
+    ("g", "drop"),
+    ("h", "commandmenu"),
+    ("i", "showbriefing"),
+    ("j", "cheer"),
+    ("k", "+voicerecord"),
+    ("m", "chooseteam"),
+    ("n", "nightvision"),
+    ("o", "buyequip"),
+    ("q", "lastinv"),
+    ("r", "+reload"),
+    ("s", "+back"),
+    ("t", "impulse 201"),
+    ("u", "messagemode2"),
+    ("w", "+forward"),
+    ("x", "radio2"),
+    ("y", "messagemode"),
+    ("z", "radio1"),
+    ("ctrl", "+duck"),
+    ("shift", "+speed"),
+    ("f1", "autobuy"),
+    ("f2", "rebuy"),
+    ("f4", "bug"),
+    ("f5", "jpeg"),
+    ("f6", "save quick"),
+    ("f7", "load quick"),
+    ("f10", "quit prompt"),
+    ("mwheeldown", "invnext"),
+    ("mwheelup", "invprev"),
+    ("mouse1", "+attack"),
+    ("mouse2", "+attack2"),
+    ("pause", "pause"),
+];
+
 /// The map cycle a server plays in turn (`cfg/mapcycle.txt`, else the
 /// install's `cfg/mapcycle_default.txt`, else an old `mapcycle.txt`): its
 /// map names in order, those the install has.
@@ -261,7 +338,8 @@ mod cycle_tests {
 /// accelerates and applies friction in 0.015 s steps, so CS:S fixes it.
 pub const TICK_INTERVAL: f64 = 0.015;
 
-/// The faithful game's parts, after `SimPlugins`: Source movement, CS:S's
+/// The faithful game's parts, after `SimPlugins`: the game's registration
+/// (`INFO`, the default game when it's the first), Source movement, CS:S's
 /// weapons (with the bomb and the hostages), its rule modules, and the
 /// player and view model animation. The dedicated server leaves the
 /// animation out (`.build().disable::<..>()`), as it always has; a windowed game adds the
@@ -271,6 +349,7 @@ pub struct CsSourcePlugins;
 impl bevy::app::PluginGroup for CsSourcePlugins {
     fn build(self) -> bevy::app::PluginGroupBuilder {
         bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(crate::game_registry::RegisterGame(&INFO))
             .add(movement::SourceMovementPlugin)
             .add(weapons::CsWeaponsPlugin)
             .add(rules::CsRulesPlugin)

@@ -790,7 +790,7 @@ fn world_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         .map_or("greybox".to_string(), |m| m.0.clone());
     let loading = super::console::map_loading(world);
     ui.label(format!("{name}{}", if loading { " (loading...)" } else { "" }));
-    let maps = super::console::map_names();
+    let maps = super::console::map_names(crate::game_registry::default_game(world));
     ui.horizontal(|ui| {
         if state.map_pick.is_empty() {
             state.map_pick = name.rsplit(':').next().unwrap_or("").to_string();
@@ -853,8 +853,10 @@ fn movement_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         .single(world)
         .map_or(0.0, |v| units(v.0).truncate().length());
     ui.label(format!("speed {speed:.1} units/s"));
-    ui.heading("CS:S movement");
-    let names: Vec<&str> = crate::games::cs_source::movement::CVARS.iter().map(|(n, _)| *n).collect();
+    // The default game's movement cvars (`GameInfo::movement_cvars`).
+    let game = crate::game_registry::default_game(world);
+    ui.heading(format!("{} movement", game.map_or("Game", |g| g.short_name)));
+    let names: Vec<&str> = game.map_or(&[][..], |g| g.movement_cvars).iter().map(|(n, _)| *n).collect();
     cvar_grid(ui, world, state, "movement_cvars", &names);
     ui.horizontal(|ui| {
         command_button(

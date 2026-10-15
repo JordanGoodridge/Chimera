@@ -14,6 +14,8 @@ pub mod combat_arms;
 /// at their old paths, and its front end (`ui`).
 pub mod cs_source {
     pub use ::cs_source::game::*;
+    // The front end: built on the client shell (the `present` feature).
+    #[cfg(feature = "present")]
     pub mod ui;
 }
 

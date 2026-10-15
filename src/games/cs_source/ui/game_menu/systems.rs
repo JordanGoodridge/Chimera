@@ -206,7 +206,7 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
     let current = w
         .get_resource::<crate::map::LoadedMapName>()
         .map(|m| m.0.rsplit(':').next().unwrap_or(&m.0).to_string());
-    let maps = crate::client::console::map_names();
+    let maps = crate::client::console::map_names(crate::game_registry::default_game(w));
     let (mut bots, mut players) = ([0; 2], [0; 2]);
     let mut q = w.query_filtered::<(&Team, Has<crate::bot::Bot>), With<Intent>>();
     for (team, bot) in q.iter(w) {

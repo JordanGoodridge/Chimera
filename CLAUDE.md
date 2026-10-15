@@ -45,12 +45,14 @@ cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
                                    # 2x slower); before pushing or merging
 cargo test --features dev --test it weapons::   # one test file (tests/it/)
 cargo test -p engine_world --features dev   # one crate's own tests (also
-                                   # engine_core, engine_present, engine_sim,
+                                   # engine_core, engine_present, engine_sim, engine_client,
                                    # source_logic, cs_source)
 cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`;
                                    # the dedicated server `server`
+cargo build --release --no-default-features --features server --bin mashup_server
+                                   # the server as released: no render/audio
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 ```
 

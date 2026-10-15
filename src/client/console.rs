@@ -46,6 +46,7 @@ use super::{FirstPersonCamera, fonts::UiFonts};
 use crate::{
     console::{Console, ConsoleAppExt, Level, cfg_dir, parse, resource_cvar},
     core::{LocalPlayer, MovementState, Velocity},
+    game_registry::{GameInfo, Games},
     map::PlaySound,
 };
 
@@ -403,7 +404,10 @@ fn candidates(world: &mut World, input: &str) -> (String, Vec<(String, String)>)
                 out.extend(ACTIONS.iter().map(|a| (format!("+{a}"), String::new())));
                 out.extend(console.commands().map(|c| (c.name.clone(), c.help.clone())));
             }
-            "map" | "maps" if arg == 0 => out.extend(map_names().iter().map(|m| (m.clone(), String::new()))),
+            "map" | "maps" if arg == 0 => {
+                let game = crate::game_registry::default_game(world);
+                out.extend(map_names(game).iter().map(|m| (m.clone(), String::new())))
+            }
             "jointeam" if arg == 0 => {
                 out.push(("1".into(), "spectators".into()));
                 out.push(("2".into(), "terrorists".into()));
@@ -979,13 +983,15 @@ fn autoexec(
     mut console: ResMut<Console>,
     mut ui: ResMut<ConsoleUi>,
     args: Res<super::ClientArgs>,
+    games: Option<Res<Games>>,
     mut root: Query<&mut Visibility, With<ConsoleRoot>>,
 ) {
     // Every key is a bind: the defaults first, then the player's config.
     // A config written before that has only the player's own binds after
     // its `unbindall`: the defaults go back on the keys it left free.
-    // The defaults are CS:S's from the install's config_default.cfg.
-    super::binds::read_install_defaults();
+    // The defaults are the default game's, from its install's file
+    // (`GameInfo::default_binds_cfg`, CS:S's config_default.cfg).
+    super::binds::read_install_defaults(games.and_then(|g| g.default_game()));
     let config = crate::console::read_cfg("config.cfg");
     let marked = config.as_ref().is_none_or(|t| t.contains(super::binds::CONFIG_MARK));
     let current = config.as_ref().is_none_or(|t| t.contains(super::binds::DEFAULTS_MARK));
@@ -1745,29 +1751,28 @@ fn run_binds(
 
 // ------------------------------------------------------------- commands
 
-/// Maps in the CS:S install (for `map` completion), found once.
-/// Map names found by `map_names`, until an import changes them.
-static MAP_NAMES: Mutex<Option<Vec<String>>> = Mutex::new(None);
+/// Map names found by `map_names` (for `map` completion), with their
+/// game's id, until an import changes them.
+static MAP_NAMES: Mutex<Option<(&'static str, Vec<String>)>> = Mutex::new(None);
 
 /// The install changed: find its maps again.
 pub fn forget_map_names() {
     *MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
-/// Every map the game can load: the install's, its downloads and
-/// mashup's cache (cached; `import` refreshes it).
-pub fn map_names() -> Vec<String> {
+/// Every map `game` (the default game: `game_registry`) can load: the
+/// install's, its downloads and mashup's cache (cached; `import` refreshes
+/// it). None without a game.
+pub fn map_names(game: Option<&'static GameInfo>) -> Vec<String> {
+    let Some(game) = game else { return Vec::new() };
     let mut cached = MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if cached.as_ref().is_some_and(|(id, _)| *id != game.id) {
+        *cached = None;
+    }
     cached
         .get_or_insert_with(|| {
-            let Some(path) = crate::mount::config::LocalConfig::load()
-                .ok()
-                .and_then(|c| c.game_path(crate::games::cs_source::GAME))
-            else {
-                return Vec::new();
-            };
-            let Ok(mount) = crate::games::cs_source::mount::open(&path) else {
-                return Vec::new();
+            let Some(mount) = game.mount() else {
+                return (game.id, Vec::new());
             };
             let mut names: Vec<String> = mount
                 .entries()
@@ -1782,56 +1787,53 @@ pub fn map_names() -> Vec<String> {
                 .collect();
             names.sort();
             names.dedup();
-            names
+            (game.id, names)
         })
+        .1
         .clone()
 }
 
-/// The install's map cycle (`games::cs_source::map_cycle`), its maps
-/// those installed (cached).
-fn map_cycle() -> Vec<String> {
-    static CYCLE: Mutex<Option<Vec<String>>> = Mutex::new(None);
+/// The default game's map cycle (`GameInfo::map_cycle`), its maps those
+/// installed (cached).
+fn map_cycle(game: &'static GameInfo) -> Vec<String> {
+    static CYCLE: Mutex<Option<(&'static str, Vec<String>)>> = Mutex::new(None);
     let mut cached = CYCLE.lock().unwrap_or_else(|e| e.into_inner());
+    if cached.as_ref().is_some_and(|(id, _)| *id != game.id) {
+        *cached = None;
+    }
     cached
-        .get_or_insert_with(|| {
-            let Some(path) = crate::mount::config::LocalConfig::load()
-                .ok()
-                .and_then(|c| c.game_path(crate::games::cs_source::GAME))
-            else {
-                return Vec::new();
-            };
-            let Ok(mount) = crate::games::cs_source::mount::open(&path) else {
-                return Vec::new();
-            };
-            crate::games::cs_source::map_cycle(&mount)
-        })
+        .get_or_insert_with(|| (game.id, game.mount().map(|m| (game.map_cycle)(&m)).unwrap_or_default()))
+        .1
         .clone()
 }
 
 /// The rules' map cycle follows the map loaded (the end of a game moves
 /// on to the next one: `rules::game_end`).
-fn follow_map_cycle(name: Option<Res<crate::map::LoadedMapName>>, mut cycle: ResMut<crate::rules::game_end::MapCycle>) {
+fn follow_map_cycle(
+    name: Option<Res<crate::map::LoadedMapName>>,
+    games: Option<Res<Games>>,
+    mut cycle: ResMut<crate::rules::game_end::MapCycle>,
+) {
     let Some(name) = name.filter(|n| n.is_changed()) else { return };
     let short = crate::net::maps::map_name(&name.0).to_string();
     if cycle.current != short {
         cycle.current = short;
     }
-    if cycle.maps.is_empty() {
-        cycle.maps = map_cycle();
+    if cycle.maps.is_empty()
+        && let Some(game) = games.and_then(|g| g.default_game())
+    {
+        cycle.maps = map_cycle(game);
     }
 }
 
-/// Where a map comes from: the game's own content, its download folder, or
-/// mashup's cache.
-fn map_source(name: &str) -> &'static str {
+/// Where a map of `game`'s comes from: the game's own content, its
+/// download folder, or mashup's cache.
+fn map_source(game: &GameInfo, name: &str) -> &'static str {
     let file = format!("maps/{name}.bsp");
     let in_dir = |dir: Option<std::path::PathBuf>| dir.is_some_and(|d| d.join(&file).is_file());
-    let install = crate::mount::config::LocalConfig::load()
-        .ok()
-        .and_then(|c| c.game_path(crate::games::cs_source::GAME));
-    if in_dir(crate::mount::config::content_dir(crate::games::cs_source::GAME)) {
+    if in_dir(game.content_cache()) {
         "imported"
-    } else if in_dir(install.map(|p| p.join("cstrike/download"))) {
+    } else if in_dir(game.download_dir()) {
         "downloaded"
     } else {
         "game"
@@ -1879,16 +1881,16 @@ pub fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>)
 
 /// The server's map, for joining it (`net::NetEvent::LoadMap`): the
 /// greybox at once, another in the background (from the downloaded file
-/// when there is one). The handshake checks the result.
+/// when there is one; a bare name is the default game's). The handshake
+/// checks the result.
 pub fn load_server_map(w: &mut World, map: &str, file: Option<std::path::PathBuf>) {
     if map == crate::net::GREYBOX {
         load_greybox(w);
         return;
     }
-    let id = if map.contains(':') {
-        map.to_string()
-    } else {
-        format!("cs_source:{map}")
+    let id = match crate::game_registry::default_game(w) {
+        Some(game) if !map.contains(':') => game.map_id(map),
+        _ => map.to_string(),
     };
     start_map_load(w, &id, file);
 }
@@ -1917,9 +1919,11 @@ fn finish_map_load(w: &mut World) {
                 Some(crate::core::NetRole::Server) => {
                     // Still on the map that plays (its players were told of a
                     // change: `net::maps` calls it off).
+                    let game = crate::game_registry::default_game(w);
                     let back = w
                         .get_resource::<crate::map::MapFile>()
-                        .map(|f| format!("cs_source:{}", f.name))
+                        .zip(game)
+                        .map(|(f, game)| game.map_id(&f.name))
                         .unwrap_or_else(|| GREYBOX.into());
                     w.insert_resource(crate::map::LoadedMapName(back));
                     super::front_end::entered_game(w);
@@ -1936,10 +1940,12 @@ fn finish_map_load(w: &mut World) {
     );
     crate::greybox::unload(w);
     crate::map::change_map(w, data, crate::map::MapDebugView::Normal);
-    crate::core::set_tick_length(
-        w,
-        std::time::Duration::from_secs_f64(crate::games::cs_source::TICK_INTERVAL),
-    );
+    // At its game's server tick.
+    let tick = id
+        .split_once(':')
+        .and_then(|(game, _)| w.get_resource::<Games>()?.get(game))
+        .map_or(std::time::Duration::from_secs_f64(1.0 / crate::DEFAULT_TICK_HZ), |g| g.tick());
+    crate::core::set_tick_length(w, tick);
     // Follow the map's presentation (Source LDR: no tonemapping).
     let tonemapping = w.resource::<crate::map::ActiveMapLook>().0.tonemapping;
     let cams: Vec<Entity> = w
@@ -2004,18 +2010,18 @@ pub const GREYBOX: &str = "greybox";
 
 /// What `map <name>` and `changelevel <name>` load: None for the greybox
 /// (`greybox`, `mashup:greybox`), else the map's id and whether to check
-/// it against the install's list. A CS:S map by its name (`de_dust2`) or
-/// its id (`cs_source:de_dust2`, as the command line and `--map` take it);
-/// another game's id as given.
-pub fn map_target(name: &str) -> Option<(String, bool)> {
+/// it against the install's list. A map of the default game (`game`) by
+/// its name (`de_dust2`) or its id (`cs_source:de_dust2`, as the command
+/// line and `--map` take it); another game's id as given (a bare name
+/// too, without a default game).
+pub fn map_target(game: Option<&GameInfo>, name: &str) -> Option<(String, bool)> {
     if crate::net::normalize_map(name) == crate::net::GREYBOX {
         return None;
     }
-    let cs = crate::games::cs_source::GAME;
-    match name.split_once(':') {
-        Some((game, map)) if game.eq_ignore_ascii_case(cs) => Some((format!("{cs}:{map}"), true)),
-        Some(_) => Some((name.to_string(), false)),
-        None => Some((format!("{cs}:{name}"), true)),
+    match (name.split_once(':'), game) {
+        (Some((id, map)), Some(game)) if id.eq_ignore_ascii_case(game.id) => Some((game.map_id(map), true)),
+        (None, Some(game)) => Some((game.map_id(name), true)),
+        _ => Some((name.to_string(), false)),
     }
 }
 
@@ -2182,13 +2188,16 @@ pub fn client_commands(app: &mut App) {
     .console_command(
         "maps",
         "maps [filter]: list the maps that can be loaded (the game's, its downloads, imported).",
-        |_, a| {
+        |w, a| {
             let filter = a.first().map(|f| f.to_lowercase()).unwrap_or_default();
-            let lines: Vec<String> = map_names()
+            let Some(game) = crate::game_registry::default_game(w) else {
+                return Err("no game registered".into());
+            };
+            let lines: Vec<String> = map_names(Some(game))
                 .into_iter()
                 .filter(|m| m.contains(&filter))
                 .map(|m| {
-                    let from = map_source(&m);
+                    let from = map_source(game, &m);
                     format!(
                         "{m}{}",
                         if from == "game" {
@@ -2209,26 +2218,28 @@ pub fn client_commands(app: &mut App) {
     .console_command(
         "import",
         "import <file.bsp|file.bsp.bz2>: copy a map into mashup's content cache (never the game folder).",
-        |_, a| {
+        |w, a| {
             let path = a.join(" ");
             if path.is_empty() {
                 return Err("import <file.bsp|file.bsp.bz2>".into());
             }
-            let name = crate::games::cs_source::mount::import_map(std::path::Path::new(&path))?;
+            let game = crate::game_registry::default_game(w).ok_or("no game registered")?;
+            let name = (game.import_map)(std::path::Path::new(&path))?;
             *MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner()) = None;
             Ok(Some(format!("imported {name}; load it with: map {name}")))
         },
     )
     .console_command(
         "map",
-        "map <name>: load a CS:S map (Tab lists the install's maps); map greybox: mashup's test map. \
+        "map <name>: load a map of the game (Tab lists the install's maps); map greybox: mashup's test map. \
          Hosting, it takes the players along (as changelevel); on a client, it leaves the server first.",
         |w, a| {
             let name = a.first().ok_or("map <name>")?.clone();
             if w.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client) {
                 crate::net::disconnect(w, crate::net::client::BY_USER);
             }
-            let Some((id, check)) = map_target(&name) else {
+            let game = crate::game_registry::default_game(w);
+            let Some((id, check)) = map_target(game, &name) else {
                 w.resource_mut::<Console>().submit("bot_kick");
                 load_greybox(w);
                 super::front_end::entered_game(w);
@@ -2237,7 +2248,8 @@ pub fn client_commands(app: &mut App) {
                 return Ok(Some("loaded the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
-            if check && !map_names().is_empty() && !map_names().iter().any(|m| *m == short) {
+            let names = map_names(game);
+            if check && !names.is_empty() && !names.iter().any(|m| *m == short) {
                 return Err(format!("no map \"{short}\" in the install"));
             }
             start_map_load(w, &id, None);
@@ -2256,13 +2268,15 @@ pub fn client_commands(app: &mut App) {
                 // Source's words.
                 return Err("Can't changelevel, not running server.".into());
             }
-            let Some((id, check)) = map_target(&name) else {
+            let game = crate::game_registry::default_game(w);
+            let Some((id, check)) = map_target(game, &name) else {
                 load_greybox(w);
                 super::front_end::entered_game(w);
                 return Ok(Some("changed level to the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
-            if check && !map_names().is_empty() && !map_names().iter().any(|m| *m == short) {
+            let names = map_names(game);
+            if check && !names.is_empty() && !names.iter().any(|m| *m == short) {
                 return Err(format!("no map \"{short}\" in the install"));
             }
             start_map_load(w, &id, None);
@@ -2440,14 +2454,30 @@ mod tests {
 
     #[test]
     fn map_names_with_and_without_their_game() {
-        let cs = |m: &str| Some((format!("cs_source:{m}"), true));
-        assert_eq!(map_target("de_dust2"), cs("de_dust2"));
+        static GAME: GameInfo = GameInfo {
+            id: "some_game",
+            short_name: "SG",
+            content_dir: "sg",
+            tick_interval: 0.015,
+            open: |_| Err(std::io::ErrorKind::NotFound.into()),
+            map_cycle: |_| Vec::new(),
+            import_map: |_| Err("no".into()),
+            default_binds_cfg: "cfg/config_default.cfg",
+            default_binds: &[],
+            movement_cvars: &[],
+        };
+        let target = |name: &str| map_target(Some(&GAME), name);
+        let sg = |m: &str| Some((format!("some_game:{m}"), true));
+        assert_eq!(target("de_dust2"), sg("de_dust2"));
         // As `+map` and `--map` give it.
-        assert_eq!(map_target("cs_source:de_dust2"), cs("de_dust2"));
-        assert_eq!(map_target("CS_SOURCE:de_dust2"), cs("de_dust2"));
-        assert_eq!(map_target("greybox"), None);
-        assert_eq!(map_target("mashup:greybox"), None);
-        assert_eq!(map_target("other:arena"), Some(("other:arena".into(), false)));
+        assert_eq!(target("some_game:de_dust2"), sg("de_dust2"));
+        assert_eq!(target("SOME_GAME:de_dust2"), sg("de_dust2"));
+        assert_eq!(target("greybox"), None);
+        assert_eq!(target("mashup:greybox"), None);
+        assert_eq!(target("other:arena"), Some(("other:arena".into(), false)));
+        // Without a default game, maps need their game's id.
+        assert_eq!(map_target(None, "some_game:x"), Some(("some_game:x".into(), false)));
+        assert_eq!(map_target(None, "greybox"), None);
     }
 
     #[test]

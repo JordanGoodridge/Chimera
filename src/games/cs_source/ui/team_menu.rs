@@ -351,7 +351,7 @@ mod tests {
                 w.resource_mut::<Joined>().0.push(a.join(" "));
                 Ok(None)
             });
-        crate::client::binds::test_binds(&mut app);
+        crate::client::binds::test_binds(&mut app, &crate::games::cs_source::INFO);
         if game_look {
             let button = |name: &str, key: char, command: &str| {
                 let mut c = UiControl::new(name, UiKind::Button, 76.0, 116.0, 148.0, 20.0);

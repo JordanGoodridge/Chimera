@@ -27,7 +27,7 @@ pub mod objectives;
 pub mod rules;
 
 // `crate::core`, `crate::map` and the rest inside, as in the game crate.
-use engine_core::{character, console, core, mount, slots};
+use engine_core::{character, console, core, game_registry, mount, slots};
 use engine_sim::weapon;
 use engine_net::net;
 use engine_world::map;
