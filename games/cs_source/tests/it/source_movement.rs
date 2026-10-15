@@ -663,3 +663,69 @@ fn hard_landings_roll_the_view_and_play_the_damage_sound() {
         );
     }
 }
+
+/// Walking down a slope of displacement-like terrain (thin coplanar
+/// triangles in 12-unit strips whose long edges run a little off the x
+/// axis, as de_dust2's do) along a strip edge, the box's side a hair over
+/// the next strip: the ground snap (stay on ground) lands on the slope
+/// every tick. Before, the snap's trace met the neighbouring triangle (its
+/// side along the skewed edge leans out as it goes down) and the one under
+/// the box at the same back-off, took the neighbour's steep side and
+/// didn't snap: the player floated for a tick (the probe's `walk_stop` on
+/// de_dust2, 0.35 units off for a tick; `heavy::demo_resim`).
+#[test]
+fn walking_down_terrain_strips_stays_on_the_slope() {
+    use crate::stack::map::MapTerrain;
+    // z = SX x + SY y, Source units; strip edges at y = v + SKEW x.
+    const SX: f32 = 0.16;
+    const SY: f32 = 0.09;
+    const SKEW: f32 = 0.0016;
+    let height = |x: f32, y: f32| SX * x + SY * y;
+    let point = |u: f32, v: f32| {
+        let (x, y) = (u, v + SKEW * u);
+        to_engine(Vec3::new(x, y, height(x, y)))
+    };
+    let mut failures = Vec::new();
+    for start in [-0.2f32, -0.1, 0.0, 0.03, 0.06, 0.1, 0.15] {
+        for upward_first in [true, false] {
+            let mut cells: Vec<[Vec3; 3]> = Vec::new();
+            let mut strips: Vec<f32> = (-4..4).map(|k| k as f32 * 12.0).collect();
+            if upward_first {
+                strips.reverse();
+            }
+            for v in strips {
+                for u in [-192.0f32, -96.0, 0.0, 96.0] {
+                    let (u1, v1) = (u + 96.0, v + 12.0);
+                    cells.push([point(u, v), point(u1, v), point(u1, v1)]);
+                    cells.push([point(u, v), point(u1, v1), point(u, v1)]);
+                }
+            }
+            let mut sim = Sim::new(CsSim, SourceMovementPlugin);
+            sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
+            sim.app.insert_resource(MapTerrain::from_triangles(cells, 2.0 * 0.0254));
+            // The box's +y side `start` past the strip edge at v = 12
+            // (at the box's +x side).
+            let x = 120.0;
+            let y = 12.0 + SKEW * (x + 16.0) - 16.0 + start;
+            // The slope's highest point under the box.
+            let top = |x: f32| height(x + 16.0, y + 16.0);
+            let p = sim.spawn_character(to_engine(Vec3::new(x, y, top(x) + 0.5 + 36.0)), movement::ID);
+            sim.ticks(4);
+            let feet = |sim: &Sim| to_source(sim.position(p)) - Vec3::Z * 36.0;
+            let what = format!("start {start}, upward strips first {upward_first}");
+            assert!(sim.state(p).on_ground, "{what}: should land on the slope");
+            // Walk -x (downhill), along the strip edge.
+            sim.intent(p).yaw = std::f32::consts::PI - std::f32::consts::FRAC_PI_2;
+            sim.intent(p).move_axis = Vec2::new(0.0, 1.0);
+            for tick in 0..40 {
+                sim.ticks(1);
+                let f = feet(&sim);
+                if !sim.state(p).on_ground || (f.z - top(f.x)).abs() > 0.1 {
+                    failures.push(format!("{what}, tick {tick}: feet {f}, slope {}", top(f.x)));
+                }
+            }
+            assert!(feet(&sim).x < 20.0, "{what}: walked downhill");
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}

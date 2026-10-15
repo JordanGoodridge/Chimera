@@ -1458,8 +1458,11 @@ cargo run --features dev,tools --bin demosim -- --probe <name> [--map de_dust2]
   (`cstrike/mashup/<name>.in`/`.out`, from movecmp's and weapcmp's runs;
   tools/css_probe), the real game's states per tick: `spread` and
   `recoil` (pistol fire while strafing) match tick for tick, clip and
-  accuracy penalty included; the bot's seeds don't come from its command
-  numbers, so they aren't compared there. Tests: `demo_resim` (a client
+  accuracy penalty included, and so does `walk_stop` (down dust2's
+  terrain, within 0.001 u); the bot's seeds don't come from its command
+  numbers, so they aren't compared there. To see why a tick differs:
+  the per-tick CSV gives the tick, `MASHUP_SLIDE_DEBUG=1` prints every
+  sweep of the slide move. Tests: `demo_resim` (a client
   demo built in code: commands through the demo writer and reader),
   `heavy::demo_resim` (the probe's logs; skipped without them).
 

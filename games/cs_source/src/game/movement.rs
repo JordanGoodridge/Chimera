@@ -71,7 +71,10 @@
 //! surf rides dead), 206 of kz_hikari_od_nh_v2's 485, 55 of
 //! gg_fy_tactic_fight's, 44 of surf_halloween_tf2's. Why it's OK for now: Exact
 //! on crates and boxes; terrain matches CS:S in movecmp (landing on a slope
-//! picked a neighbouring triangle once: 0.15 u/s off for a tick). Probe for the
+//! picked a neighbouring triangle once: 0.15 u/s off for a tick). Of
+//! brushes or triangles stopping a trace at the same back-off, the one
+//! really reached first gives the normal (our rule, matching the probe's
+//! dust2 walk; movement.md open question 19). Probe for the
 //! prop rule: a map with a VPhysics static prop whose model has no `.phy`, walk
 //! into it (`getpos` stops or passes).
 
@@ -717,8 +720,9 @@ impl<'a> Tracer<'a, '_, '_> {
         let lo = from.min(to) - half - Vec3::splat(eps);
         let hi = from.max(to) + half + Vec3::splat(eps);
         let terrain = self.terrain_near(lo, hi);
-        // Brushes hit at the current fraction: (index, normal, ladder).
-        let mut tied: Vec<(usize, Vec3, bool)> = Vec::new();
+        // Brushes hit at the current fraction: (index, normal, ladder,
+        // where the box really reaches the brush).
+        let mut tied: Vec<(usize, Vec3, bool, f32)> = Vec::new();
         'brush: for (i, b) in self.world_near(lo, hi).chain(
             self.others
                 .iter()
@@ -796,25 +800,33 @@ impl<'a> Tracer<'a, '_, '_> {
                 continue;
             }
             let f = enter.max(0.0);
+            let hit = (i, clip, b.ladder, last_crossed);
             if out.fraction < 1.0 && (f - out.fraction).abs() < 1e-6 {
-                // The nearest first (the hit when nothing breaks the tie).
                 if f < out.fraction {
                     out.fraction = f;
-                    tied.insert(0, (i, clip, b.ladder));
+                    tied.insert(0, hit);
                 } else {
-                    tied.push((i, clip, b.ladder));
+                    tied.push(hit);
                 }
             } else if f < out.fraction {
                 out.fraction = f;
                 tied.clear();
-                tied.push((i, clip, b.ladder));
+                tied.push(hit);
             }
         }
         // A ladder flush with another face (maps flank ladders with player
         // clip): of the brushes hit at the same distance, the one the trace
         // reaches first through the BSP tree wins, as in Source. Otherwise
-        // the first in our list.
-        let mut winner = tied.first().copied();
+        // the one the box really reaches first (the earliest in our list
+        // of those): two brushes stop the box at the same back-off when
+        // one is met head-on and the other only after it, at a glancing
+        // plane whose back-off costs more of the move. A box coming down
+        // onto a terrain triangle next to a coplanar one it doesn't
+        // overlap met the neighbour's steep side (the 2-unit thickness
+        // overhangs the shared edge) at the same back-off as the face
+        // under it, took the side's normal and didn't stay on the ground
+        // (de_dust2, the probe's `walk_stop`: 0.35 u high for a tick).
+        let mut winner = tied.iter().copied().min_by(|a, b| a.3.total_cmp(&b.3));
         if tied.iter().any(|t| t.2) && tied.iter().any(|t| !t.2)
             && let Some(tree) = self.tree
         {
@@ -822,7 +834,7 @@ impl<'a> Tracer<'a, '_, '_> {
             let rank = |k: usize| order.iter().position(|&o| o as usize == k).unwrap_or(usize::MAX);
             winner = tied.iter().copied().min_by_key(|t| rank(t.0));
         }
-        if let Some((i, normal, ladder)) = winner {
+        if let Some((i, normal, ladder, _)) = winner {
             out.normal = normal;
             out.ladder = ladder;
             out.surface = brushes.get(i).and_then(|b| b.surface.is_some().then_some(i));
