@@ -11,7 +11,6 @@
 //! `<map>NNNN.png`) console commands (`capture.rs`), remote protocol.
 
 pub mod audio;
-pub mod binds;
 pub mod capture;
 pub mod chat;
 pub mod console;
@@ -19,12 +18,9 @@ pub mod debug;
 pub mod debug_ui;
 pub mod debug_views;
 pub mod effects;
-pub mod fonts;
-pub mod front_end;
 pub mod color_correction;
 pub mod gamma;
 pub mod hdr;
-pub mod hud_text;
 pub mod hud;
 pub mod input;
 pub mod interp;
@@ -45,7 +41,12 @@ pub mod vgui;
 pub mod video;
 pub mod view;
 pub mod weapon_select;
-pub mod widgets;
+
+// The shell's base (engine/client, crate `engine_client`): the front end's
+// interface, fonts, HUD text, the widgets, binds and the drawing of VGUI
+// layouts (`vgui` adds the mouse grab and `keys_live` to it), at their old
+// paths.
+pub use engine_client::client::{binds, fonts, front_end, hud_text, widgets};
 
 use std::path::PathBuf;
 

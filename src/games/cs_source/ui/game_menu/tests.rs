@@ -862,6 +862,7 @@ fn the_sensitivity_text_entry_beside_its_slider() {
 fn keyboard() -> GameMenu {
     let mut m = menu();
     let mut b = BTreeMap::new();
+    binds::use_game_defaults(crate::games::cs_source::DEFAULT_BINDS);
     binds::bind_defaults(&mut b, true);
     m.set_binds(b, BTreeSet::from(["bugreport".to_string()]));
     click(&mut m, MainItem::Options);
@@ -1147,7 +1148,7 @@ fn a_key_rebound_in_the_options_drives_the_action() {
         .init_resource::<RegrabCursor>()
         .add_systems(Update, keys.before(crate::client::console::toggle))
         .add_systems(Update, crate::client::console::toggle);
-    crate::client::binds::test_binds(&mut app);
+    crate::client::binds::test_binds(&mut app, &crate::games::cs_source::INFO);
     binds::commands(&mut app);
     app.world_mut()
         .spawn((crate::client::console::ConsoleRoot, Visibility::Hidden));

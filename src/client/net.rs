@@ -23,12 +23,12 @@ pub struct ClientNetPlugin;
 impl Plugin for ClientNetPlugin {
     fn build(&self, app: &mut App) {
         // Map files as the game loads them (the install, its downloads,
-        // mashup's content cache), for the server's offer and the client's
-        // checks and downloads.
-        let game = crate::games::cs_source::GAME;
+        // mashup's content cache: the default game's, `game_registry`), for
+        // the server's offer and the client's checks and downloads.
+        let game = crate::game_registry::default_game(app.world());
         app.insert_resource(MapFiles {
             read: Arc::new(crate::games::map_file_bytes),
-            cache: crate::mount::config::content_dir(game),
+            cache: game.and_then(|g| g.content_cache()),
         })
         .add_systems(Update, react);
     }

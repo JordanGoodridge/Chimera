@@ -16,13 +16,14 @@ mashup (repository root: src/, tests/it/)   client, net, CS:S's front end, tools
   |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots
   |    |
 engine_present (engine/present/)   render, audio, MapPlugin
+  |    engine_client (engine/client/)   client: front_end, fonts, hud_text, widgets, vgui, binds
   |    engine_sim (engine/sim/)   weapon, movement, rule_module
   |    |    source_logic (source/logic/)   logic: Source entity I/O
   |    |   /
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (engine/core/)       core, console, slots, character, metrics, mount
+ (engine/core/)       core, console, slots, character, metrics, mount, game_registry
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
@@ -59,6 +60,15 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   paths. An edit in it rebuilds it and `mashup`, not the map; an edit in
   `mashup` rebuilds neither.
   `cargo test -p engine_present --features dev` tests it alone.
+- `engine_client` is the client shell's base (`client`, re-exported by
+  `mashup::client` at the old paths): the front end's interface
+  (`front_end`), the scheme's fonts, HUD text, the VGUI-like widgets, the
+  drawing of a game's VGUI layouts and the key binds. It uses
+  `engine_world` (HUD layouts) and `engine_core`, never the presentation,
+  the network, `mashup` or a game (checked), so a game's front end can
+  later build on it from the game's crate. The rest of the shell stays in
+  `mashup` (it names `net` and CS:S's rules: engine-split.md).
+  `cargo test -p engine_client --features dev` tests it alone.
 - `engine_sim` is the simulation's frameworks: `weapon` (the weapon
   system), `movement` (the movement slot's placeholder and noclip) and
   `rule_module` (the rule-module interface, `mashup::rules::module`).
@@ -168,8 +178,10 @@ A module may use only the modules below it. Enforced by
   `client` (the shell: input, camera, console UI, VGUI-like widgets, debug
   tools, net glue); the rest of the game never uses it. The shell reaches
   it only through `client::front_end` (hooks the game registers), and the
-  app adds it (main.rs). Client files that still name a game:
-  `CLIENT_GAME_EXCEPTIONS` (tests/it/architecture.rs).
+  app adds it (main.rs). The shell names no game (checked): what it needs
+  of one (install, map cycle, tick, default binds, movement cvars) is data
+  the game registers (`game_registry::GameInfo`, the first registered
+  being the default game).
 - Rule modules (`rules::module`): a game registers its modes by name
   (`cs_source:bomb`, ...), picked by the map and cvars; their code is
   still in `rules` and `objectives` (engine-split.md).
@@ -193,6 +205,7 @@ that the paths exist).
 - `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `engine/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `engine/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
@@ -367,7 +380,7 @@ that the paths exist).
 ### Client (window, input, camera, HUD, menus, debug)
 
 - `src/client/`: local input, the camera, captures, the plugin that adds the rest (client)
-- `src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
+- `engine/client/src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
 - `src/games/cs_source/ui/`: CS:S's front end on the shell, `CsSourceUiPlugin` (games_ui)
 - `src/client/net.rs`: the game's side of the network: joining, dropping, hosting (client)
 - `src/client/view.rs`: third-person, free and chase cameras (client)
@@ -379,7 +392,7 @@ that the paths exist).
 - `src/client/night_vision.rs`, `night_vision.wgsl`: night vision goggles turned on and their green view (client)
 - `src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
 - `src/client/audio.rs`: the options' sound settings (client)
-- `src/client/binds.rs`: every game key is a bind; default binds (client)
+- `engine/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
 - `src/client/video.rs`: field of view, video and texture settings (client)
 - `src/games/cs_source/ui/options.rs`: the options dialogs' settings (games_ui)
 - `src/client/console.rs`: the in-game console UI (client)
@@ -389,9 +402,10 @@ that the paths exist).
 - `src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
 - `src/games/cs_source/ui/window_icon.rs`: the window and taskbar icon (games_ui)
 - `src/games/cs_source/ui/first_run.rs`: finding CS:S on first run (games_ui)
-- `src/client/fonts.rs`: the one font service (client)
-- `src/client/widgets.rs`: VGUI control state machines and drawing (client)
-- `src/client/vgui.rs`: drawing a game's own menu layouts (client)
+- `engine/client/src/client/fonts.rs`: the one font service (client)
+- `engine/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
+- `engine/client/src/client/vgui.rs`: drawing a game's own menu layouts (client)
+- `src/client/vgui.rs`: the base's `vgui` with the mouse grab while one is open and `keys_live` (client)
 - `src/games/cs_source/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
 - `src/games/cs_source/ui/server_browser.rs`: the server browser (games_ui)
 - `src/games/cs_source/ui/team_menu.rs`: the team menu (games_ui)
@@ -405,7 +419,7 @@ that the paths exist).
 - `src/client/overview.rs`: the spectators' map overview (client)
 - `src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
 - `src/client/game_hud.rs`: the game's own HUD panels (client)
-- `src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
+- `engine/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `src/client/hud_sprites.rs`: HUD sprite icons and damage indicators (client)
 - `src/client/weapon_select.rs`: weapon selection and pickup history (client)
 - `src/games/cs_source/ui/objectives_hud.rs`: bomb, kit, hostage and zone icons, centre prints on the HUD (games_ui)

@@ -497,11 +497,69 @@ measurements):
   - `bot` joined `cs_source` (next entry); an engine bots framework
     (`engine_sim`) needs the bomb and hostage goals, buying and the
     radio behind a bot-goal interface first.
-  - `client` names `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`: the
-    default game's install, map cycle, tick, binds, the movement cvars):
-    a game registry resource the game fills would let the shell
-    (`engine/client`) go below the games; the front end (`ui/`, 17.9k)
-    then moves into `games/cs_source`.
+  - [x] `client` named `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`:
+    the default game's install, map cycle, tick, binds, the movement
+    cvars). Done (2026-10-14): `engine_core::game_registry`: a game fills
+    a `GameInfo` (`static`: id, short name, its folder in the install,
+    tick, `open`/`map_cycle`/`import_map` as `fn`s, its default binds'
+    file and built-in table, movement cvars as data) and registers it
+    (`RegisterGame`, first in `CsSourcePlugins`); `Games` (a resource)
+    keeps them in order, the first is the default game. The console's map
+    commands, the map list and cycle, the downloads' folder, a loaded
+    map's tick (its game's), the bind defaults (`binds::GAME_DEFAULTS`,
+    read at start from `GameInfo`) and the debug UI's movement tab read
+    it; CS:S's bind table moved to `cs_source::game::DEFAULT_BINDS`. The
+    exceptions are gone; the architecture test forbids the shell any path
+    naming a game (`cs_source::` too, not only `crate::games::`).
+  - [~] The front end (`src/games/cs_source/ui`, 17.9k) into
+    `games/cs_source` behind a feature: blocked. It needs, besides the
+    engine crates and CS:S's own: `net` (35 references: `net::client`,
+    `NetSettings`, `NetCharacter`, `score_flags`, `query` (the server
+    browser), `motd`, `maps`, `RadioRequest`, `NetScore`, `NetEvent`),
+    which names CS:S's rules and sits in `mashup` until `engine_net`
+    (game-registered replication) lands; and nearly the whole shell
+    (138 references: `client::console` 29 (`ConsoleUi`, `map_names`),
+    `vgui` 26, `fonts` 16, `input` 9, `chat` 9, `spectate` 8, `binds` 8,
+    `hud` 5, `front_end` 5, `widgets`, `video`, `radar`, `perf`,
+    `audio`, `ClientArgs`, `FirstPersonCamera`, `shown_name`,
+    `zoom_camera`), whose files reach each other and `net` (`console`
+    uses nearly every other; `input` uses `chat`, `debug_ui`,
+    `spectate`, `vgui`, `weapon_select`). Every file of `ui/` uses
+    `game_menu`, and `game_menu` uses `net` and `client::console`, so no
+    part of it can move first.
+    - [x] (2026-10-14) The shell's base as a crate: `engine/client`
+      (package `engine_client`, module `client`): `front_end`, `fonts`,
+      `hud_text` (its shader at `embedded://engine_client/client/`),
+      `widgets`, `binds` and `vgui`'s drawing moved whole; they use only
+      `engine_core` and `engine_world` (no `engine_present`, no `net`).
+      `mashup::client` re-exports them at their old paths; its own
+      `vgui` re-exports the base's and adds what needs the console and
+      chat (the mouse grab while a game-look menu is open, `keys_live`),
+      its `VguiPlugin` adding the base's first (system order kept).
+      `binds::test_binds` and `SAMPLE_CONFIG_DEFAULT` are no longer
+      `cfg(test)` (the front end's tests use them across the crate
+      boundary). `workspace_crates` keeps the crate off
+      `engine_present`, `engine_sim`, `source_logic`, replicon,
+      `mashup` and the games; the server build check lists it as
+      client-only. Main menu and buy menu screenshots on de_dust2 are
+      pixel-identical before and after, the scoreboard differs in 4
+      pixels (bots). Measured (docs/performance.md, "`engine_client`"): a
+      leaf edit's `cargo test --features dev --no-run` 18-20 s in the
+      front end, 36-64 s in the shell (was 77-78 s), 15-37 s in
+      `engine_client`; `cargo test -p engine_client` 2 s.
+    - Left, in order: (a) `net` to `engine_net` (another session); (b)
+      the shell's references to CS:S's rules and bots (`rules` 33:
+      `JoinChoice`, `Dead`, `RoundState`/`Phase`, `MapCycle`,
+      `new_game`, `game_end::clock`; `objectives::bomb` in `radar` and
+      `game_hud`; `bot` in the debug UI and console) through the game
+      registry or `core` (`Dead`, the round phase as shared vocabulary);
+      (c) the CS:S-flavoured HUD still in the shell (`game_hud`,
+      `win_panel`, `weapon_select`, `spectate`, `radar`, `overview`,
+      `hud_sprites`) to the front end, or a HUD slot; (d) then the rest
+      of the shell to `engine_client`, and `ui/` to `cs_source` behind a
+      `ui` feature depending on `engine_client` (`workspace_crates`
+      keeps `engine_present` off `cs_source` today: the feature would
+      need that rule relaxed for the feature's dependencies only).
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`

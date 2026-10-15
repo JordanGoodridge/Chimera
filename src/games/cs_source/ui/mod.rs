@@ -52,3 +52,27 @@ impl Plugin for CsSourceUiPlugin {
         ));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        client::binds::{self, SAMPLE_CONFIG_DEFAULT, cfg_binds, default_binds, defaults_from},
+        games::cs_source::{DEFAULT_BINDS, INFO},
+    };
+
+    fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn the_default_binds_are_config_default_cfgs() {
+        // The built-in table is the file's binds, in its order (Esc and `
+        // aren't binds).
+        assert_eq!(cfg_binds(SAMPLE_CONFIG_DEFAULT), owned(DEFAULT_BINDS));
+        // Only with CS:S installed (MASHUP_CONFIG or a Steam library): the
+        // install's file says the same.
+        if binds::read_install_defaults(Some(&INFO)) {
+            assert_eq!(default_binds(), defaults_from(&owned(DEFAULT_BINDS)));
+        }
+    }
+}
