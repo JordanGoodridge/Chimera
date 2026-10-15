@@ -26,6 +26,12 @@ serde.workspace = true
 toml.workspace = true
 workspace-hack.workspace = true
 
+# The integration tests (tests/it/): the engine's movement on the
+# greybox, on the headless harness with the engine's base alone.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
 [features]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p chimera_sim --features dev` shares the game's Bevy build.

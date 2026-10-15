@@ -13,7 +13,7 @@ CS:S's weapons are `games/cs_source/data/weapons/*.toml`: our own numbers
 not files from the game. The game's weapon scripts are encrypted in the
 install and the key isn't ours to ship, so nothing is read from them; the
 data is checked against the spec's tables instead
-(`apps/cs_source/tests/it/cs_guns.rs`) and its model paths and sound entries
+(`games/cs_source/tests/it/cs_guns.rs`) and its model paths and sound entries
 against the install (`heavy::map_de_dust2`). The files are built into the
 game (`weapons::DATA`; a unit test fails for a file missing there) and parsed
 when the game starts.
@@ -155,8 +155,8 @@ let docs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str()))
 app.add_weapon_data(&docs)?;   // after the games whose hooks and bases it uses
 ```
 
-`apps/cs_source/tests/it/weapon_data.rs` loads a gun that exists only as
-data (apps/cs_source/tests/data/weapon_rail.toml), buys it, fires it and
+`games/cs_source/tests/it/weapon_data.rs` loads a gun that exists only as
+data (games/cs_source/tests/data/weapon_rail.toml), buys it, fires it and
 plays it over the network.
 
 What isn't data yet: CS:S's buy menu layout and the prices of what isn't a

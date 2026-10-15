@@ -4,10 +4,25 @@
 //!
 //! `load_map`: a CS:S map by id from the user's install, as the CS:S app
 //! loads it (`cs_source_app::games::load_map_level`, which tests here
-//! can't use: the app sits above this crate).
+//! can't use: the app sits above this crate); `load_map_file` from a
+//! downloaded copy and `map_file_bytes` (the file the network offers and
+//! hashes), as the app's `games` has them. `stack.rs`: what the scenario
+//! tests run on, at the app's paths.
 
 use chimera_core::mount::config::LocalConfig;
 use chimera_world::map::MapData;
+
+/// The install's mount for a `cs_source:<name>` id, and the name.
+fn mount_of(id: &str) -> Result<(chimera_core::mount::Mount, &str), String> {
+    let name = id
+        .strip_prefix("cs_source:")
+        .ok_or_else(|| format!("map ID `{id}` should look like cs_source:name"))?;
+    let install = LocalConfig::load()?
+        .game_path(cs_source::game::GAME)
+        .ok_or("no `cs_source` install found (mashup_install <folder>, or mashup.local.toml)")?;
+    let mount = cs_source::game::mount::open(&install).map_err(|e| e.to_string())?;
+    Ok((mount, name))
+}
 
 /// Map `id` (`cs_source:<name>`) from the install (mashup.local.toml,
 /// saved settings or Steam).
@@ -18,12 +33,23 @@ pub fn load_map(id: &str) -> Result<MapData, String> {
 
 /// `load_map` at a Source `mat_hdr_level` (0 LDR, 1 bloom, 2 HDR).
 pub fn load_map_level(id: &str, hdr_level: u8) -> Result<MapData, String> {
-    let name = id
-        .strip_prefix("cs_source:")
-        .ok_or_else(|| format!("map ID `{id}` should look like cs_source:name"))?;
-    let install = LocalConfig::load()?
-        .game_path(cs_source::game::GAME)
-        .ok_or("no `cs_source` install found (mashup_install <folder>, or mashup.local.toml)")?;
-    let mount = cs_source::game::mount::open(&install).map_err(|e| e.to_string())?;
+    let (mount, name) = mount_of(id)?;
     cs_source::game::bsp::load_level(&mount, name, hdr_level)
+}
+
+/// `load_map_level` from a file of the map (a downloaded copy), its
+/// content from the install.
+#[allow(dead_code)]
+pub fn load_map_file(id: &str, file: &std::path::Path, hdr_level: u8) -> Result<MapData, String> {
+    let (mount, name) = mount_of(id)?;
+    let bytes = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    cs_source::game::bsp::load_level_bytes(&mount, name, bytes, hdr_level)
+}
+
+/// The bytes of map `id`'s file as `load_map` reads it, for the network's
+/// map offer and hash checks (`net::maps::MapFiles`). None if there's none.
+#[allow(dead_code)]
+pub fn map_file_bytes(id: &str) -> Option<Vec<u8>> {
+    let (mount, name) = mount_of(id).ok()?;
+    mount.read(&format!("maps/{name}.bsp")).ok()
 }

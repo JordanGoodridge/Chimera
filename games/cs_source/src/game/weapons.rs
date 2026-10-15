@@ -8,7 +8,7 @@
 //! nothing is read from the scripts at run time; cs_guns.rs checks the data
 //! against the spec's tables. Sound entries and model paths are the
 //! install's own names (its sound scripts and model files), checked by
-//! `apps/cs_source/tests/it/heavy/map_de_dust2.rs`.
+//! `games/cs_source/tests/it/heavy/map_de_dust2.rs`.
 //!
 //! What data can't say is Rust here, registered as the hooks the data names
 //! (`register_hooks`): `cs_source:accuracy` (`Inaccuracy`, the accuracy
@@ -257,7 +257,7 @@ pub fn silenced_world_models() -> Vec<(&'static str, &'static str)> {
 /// right-handed (spec view_models.md 2). The scripts are encrypted, so
 /// handedness comes from the models: the AK is held left of the eye
 /// (left-handed), the knife right of it
-/// (`apps/cs_source/tests/it/heavy/map_de_dust2.rs::view_model_handedness_in_the_files`).
+/// (`games/cs_source/tests/it/heavy/map_de_dust2.rs::view_model_handedness_in_the_files`).
 /// With the default `cl_righthand 1` the left-handed ones are mirrored, so
 /// all end up in the right hand, as CS:S shows them.
 pub fn view_models() -> Vec<(&'static str, &'static str, bool)> {

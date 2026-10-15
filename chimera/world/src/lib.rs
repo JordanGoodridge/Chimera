@@ -10,7 +10,14 @@
 //! draws and plays the map at fixed places among them (`map::build`,
 //! `map::MapLayers`). The game crate re-exports `map` at its old path
 //! (`mashup::map`), with `MapPlugin` when it has the presentation.
+//!
+//! `greybox`: the map built in code (tests, the game without a map);
+//! `harness`: the headless `Sim` tests and tools step tick by tick, on
+//! whatever simulation plugins its caller passes as the base (a game's,
+//! or the engine's alone), so each crate's tests use it at their layer.
 
+pub mod greybox;
+pub mod harness;
 pub mod map;
 
 // `crate::core` inside `map`, as in the game crate.

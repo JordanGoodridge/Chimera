@@ -485,7 +485,7 @@ pub fn text_lumps_utf8(mut bytes: Vec<u8>) -> Vec<u8> {
 /// lightmap axis along the grid's second axis. This was established by
 /// measurement on de_dust2: that mapping makes lighting agree where
 /// neighbouring displacements meet (mean mismatch 1%, versus 48% for
-/// projection; apps/cs_source/tests/it/heavy/map_de_dust2.rs checks it).
+/// projection; games/cs_source/tests/it/heavy/map_de_dust2.rs checks it).
 pub fn face_triangles(face: &vbsp::Handle<'_, vbsp::Face>) -> Vec<[(vbsp::Vector, Vec2); 3]> {
     face_triangles_blend(face)
         .into_iter()

@@ -118,7 +118,7 @@ measurements):
 - [x] (2) `map/mod.rs` split (P1): `data` (MapData, plain data), `state`
   (what the logic writes), `spawn` (`spawn_map` as ~25 phase functions),
   `bodies`, `props`, `materials`, `images`, `collision`, `sky`; paths
-  outside `map` unchanged. `apps/cs_source/tests/it/heavy/map_spawn_dump.rs` dumps
+  outside `map` unchanged. `games/cs_source/tests/it/heavy/map_spawn_dump.rs` dumps
   spawned maps for before/after comparisons.
 - [x] (2) `audio` out of `map` (P3, first slice): playback, live sounds,
   room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
@@ -216,7 +216,7 @@ measurements):
       added): drawn-part requests (docs/ARCHITECTURE.md): what the
       simulation makes in play says in plain data what it looks like
       and render's systems fulfil it; headless nothing is drawn
-      (`apps/cs_source/tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
+      (`games/cs_source/tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
       models, the ragdoll's adoption of the dead's body), `render::loose`
       (`LooseItem`, `ShownItem`), `render::breakables` (a gib's
       `GibLook`, windows' `BrushPanes` clipped and made whole),
@@ -300,7 +300,7 @@ measurements):
     whole; their `pub(crate)` items became `pub`, the embedded shaders'
     paths are `embedded://chimera_present/render/...`; `mashup`
     re-exports `render` and `audio`. Spawn dump identical again (five
-    maps, modulo paths), `apps/cs_source/tests/it/drawn_parts.rs` passes, de_dust2 and
+    maps, modulo paths), `games/cs_source/tests/it/drawn_parts.rs` passes, de_dust2 and
     gg_tbr_water_basin screenshots draw as before. Measured
     (docs/performance.md, "`chimera_world` and `chimera_present`"): a
     leaf edit in render or map, `cargo test --features dev --no-run`,
@@ -757,6 +757,34 @@ measurements):
   all of them; next for shorter pushes: the greybox and a `Sim` taking
   its base plugins below the app, so tests (heavy ones above all) can
   sit on the layer they test (tech-debt.md).
+- [x] Harness below the app (2026-10-15, one session): `Sim` takes its
+  simulation plugins as a base and lives in `chimera_world` (`harness`,
+  with the greybox), `NetSim` in `chimera_net`; `chimera_sim::
+  SimBasePlugins` is the engine's base, `cs_source::SimPlugins` CS:S's
+  simulation (the old app set: the base, its rules, objectives, bots,
+  network part and Source's logic, so `cs_source` depends on
+  `source_logic`), `cs_source::harness::CsSim` that as the tests' and
+  tools' base, with its test maps; `swap_map` is the game's. The app's
+  `SimPlugins` adds its build's version and keeps the old paths. The
+  app's 711 tests moved, names unchanged: 623 to `cs_source`'s `it`
+  (the heavy map and network files; tests/common/stack.rs re-exports
+  what they use at the app's paths), 73 to its `ui` (state of the
+  shell or front end), 9 to `chimera_sim`, 3 to `chimera_present`, 2 to
+  `chimera_client`; the app keeps one (its version). `cs_source`'s tests
+  may use the presentation (`MapPlugin`; architecture.rs `TEST_ONLY`).
+  `affected` learned feature folders (cs_source's `src/ui/` runs its
+  `ui` tests and the crates above). 1643 tests before, 1644 after (one
+  selection test). Measured (pre-push selection, warm, binaries built):
+  full suite 826 s; a `cs_source` front end edit 48 s (217 tests; was
+  847 s), an app edit 2 s (23; was most of the suite), a `cs_source`
+  simulation edit 823 s (1051), a `chimera_world` edit 818 s (1568), a
+  `source_logic` edit 820 s (1268).
+  What it shows: edits above the game are cheap now; an edit to the game
+  or anything under it still runs its heavy map tests, which are
+  `cs_source`'s because its loader makes the maps. Next for shorter
+  pushes there: a Source map loader below the game (`source/`), so map
+  tests that need Source's world but no CS:S rule can sit in
+  `source_logic` or a Source crate.
 - [x] Data-driven weapons (2026-10-15, one session; docs/weapon-data.md):
   a weapon is a TOML document (`chimera_sim`'s `weapon::data`: stats,
   trigger, magazine and ammo types, hitscan, damage, penetration, melee,
@@ -847,7 +875,7 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 
 | Module | Goes to | Notes |
 |---|---|---|
-| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `chimera/core` |
+| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done: `chimera/core`; `harness.rs` split by layer: `Sim` in `chimera/world`, `NetSim` in `chimera/net`, CS:S's base in `games/cs_source` |
 | `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |

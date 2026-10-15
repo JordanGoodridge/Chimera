@@ -10,14 +10,18 @@
 //! - `perfgate` (src/bin/perfgate.rs): CS:S's scenarios on Chimera's
 //!   instructions-per-tick gate (`chimera_tools::perfgate`).
 //!
-//! Known shortcuts (docs/tech-debt.md): These tools drive CS:S's
-//! simulation through the CS:S app's harness and `SimPlugins`
-//! (`cs_source_app::harness`), so this game-layer crate depends on the
-//! app; `mapsweep` (and the root's `dump`) need CS:S's loaders
+//! Known shortcuts (docs/tech-debt.md): These tools still reach CS:S's
+//! simulation through the CS:S app (`cs_source_app`: the harness at its
+//! old path, with CS:S's base `CsSim`; the build stamp `perfgate`'s
+//! baselines name; map loading by id; `MapPlugin` through its
+//! presentation), so this game-layer crate depends on the app;
+//! `mapsweep` (and the root's `dump`) need CS:S's loaders
 //! (`cs_source::game::bsp`, `mount`), so they aren't Source's tools yet.
-//! Why it's OK for now: the crate is a leaf (nothing depends on it); a
-//! game-neutral harness in Chimera (the game's plugins passed in) and a
-//! Source map loader in `source/` would let them move down.
+//! Why it's OK for now: the crate is a leaf (nothing depends on it); the
+//! harness is Chimera's and CS:S's now (`chimera_world::harness`,
+//! `cs_source::harness`), so only the stamp and map loading keep it on
+//! the app, and a Source map loader in `source/` would let them move
+//! down.
 
 pub mod hudcmp;
 

@@ -34,7 +34,7 @@
 //! an unpunched victim); a shotgun's flinch uses all its pellets' damage on
 //! the player. The landing roll stays on the movement's spring (the
 //! shared code's), not this decay. Why it's OK for now: The measured cases
-//! are reproduced (apps/cs_source/tests/it/hit_reaction.rs); the rest needs the probe.
+//! are reproduced (games/cs_source/tests/it/hit_reaction.rs); the rest needs the probe.
 
 use bevy::prelude::*;
 

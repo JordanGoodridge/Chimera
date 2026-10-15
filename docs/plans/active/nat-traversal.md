@@ -129,5 +129,5 @@ address toward the router, lease `LEASE_SECS` = 1 h renewed at half) on a
 thread; `status` shows `upnp : UDP 27015 forwarded by router
 192.168.1.1; friends connect to <public>:27015`, the reason it failed, or
 the CGNAT warning; the mapping is removed when serving stops and when the
-game quits. Tests (`apps/cs_source/tests/it/net_upnp.rs`) use a fake router: no test
+game quits. Tests (`games/cs_source/tests/it/net_upnp.rs`) use a fake router: no test
 touches the real network.
