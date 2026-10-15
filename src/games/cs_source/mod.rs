@@ -207,6 +207,8 @@ pub mod sprites;
 pub mod steam;
 pub mod trails;
 pub mod surfaceprops;
+// The front end: built on the client shell (the `present` feature).
+#[cfg(feature = "present")]
 pub mod ui;
 pub mod view_anim;
 pub mod vgui;

@@ -50,6 +50,8 @@ cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`;
                                    # the dedicated server `server`
+cargo build --release --no-default-features --features server --bin mashup_server
+                                   # the server as released: no render/audio
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 ```
 

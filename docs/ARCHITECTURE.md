@@ -38,17 +38,26 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   collision, spawning a map's simulated parts (the drawn ones through
   `map::MapDrawer`), the map's systems. It uses `engine_core` and
   `source_formats` of ours and never what draws or plays the map, `mashup`
-  or a game (checked). `mashup::map` re-exports it with `MapPlugin`,
-  whose type sits beside its registration in `map_plugin` (orphan rule);
-  map's part of that registration is `map::build_first` and its siblings.
+  or a game (checked). It registers the map's systems itself
+  (`map::build`): alone as `map::MapSimPlugin` (the dedicated server's,
+  nothing drawn or played), or with what draws and plays the map at
+  fixed places among them (`map::MapLayers`, filled by `engine_present`'s
+  `MapPlugin`; the client's order). `mashup::map` re-exports it, with
+  `MapPlugin` in builds with the presentation.
   `cargo test -p engine_world --features dev` tests it alone.
 - `engine_present` is the presentation beside the simulation: `render`,
-  `audio` and `map_plugin` (`MapPlugin`, registering map's, audio's and
-  render's systems in one order). It uses `engine_world` and
-  `engine_core`, never `mashup` or a game (checked); `mashup` re-exports
-  `render` and `audio` at their old paths. An edit in it rebuilds it and
-  `mashup`, not the map; an edit in `mashup` rebuilds neither.
+  `audio` and `map_plugin` (`MapPlugin`: map's registration with audio's
+  and render's systems at the places `map::MapLayers` keeps, in one
+  order). It uses `engine_world` and `engine_core`, never `mashup` or a
+  game (checked); `mashup` re-exports `render` and `audio` at their old
+  paths. An edit in it rebuilds it and `mashup`, not the map; an edit in
+  `mashup` rebuilds neither.
   `cargo test -p engine_present --features dev` tests it alone.
+- `mashup` uses `engine_present` only with its default feature `present`
+  (with the client shell `client`, the games' front ends `games::*::ui`
+  and the client-only crates): the dedicated server builds without it
+  (`--no-default-features --features server`), linking no render or
+  audio code (checked: `server_builds_without_presentation`).
 
 ## Layers
 
@@ -98,8 +107,10 @@ spawns and simulates: the drawn phases of spawning a map, what is made
 in play, effects, culling, water, shadows, the sky, view models, the
 materials and their shaders) uses core and map, and only `client`,
 `map_plugin` and a game's `ui/` use it. `map_plugin` builds
-`map::MapPlugin` (its type, re-exported into `map`) from map's systems, audio's and
-render's, in one fixed order. Animation evaluation stays on the
+`map::MapPlugin` (its type, re-exported into `map`): map's registration
+(`map::build`) with audio's and render's systems at the places map keeps
+for them (`map::MapLayers`), in one fixed order; the dedicated server
+adds `map::MapSimPlugin` (map's alone). Animation evaluation stays on the
 simulation's side (the server poses hitboxes); see
 docs/plans/active/engine-split.md, "Crates and compile time".
 
@@ -159,7 +170,8 @@ that the paths exist).
 
 ### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
 
-- `engine/world/src/lib.rs`, `engine/world/src/map/mod.rs`: map's registration (`build_first`, ...), `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `engine/world/src/lib.rs`, `engine/world/src/map/mod.rs`: `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `engine/world/src/map/registration.rs`: map's registration (`build`) with its presentation's places (`MapLayers`); `MapSimPlugin`, the `()` drawer (map)
 - `engine/world/src/map/data.rs`: `MapData` and everything it holds; plain data (map)
 - `engine/world/src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
 - `engine/world/src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
@@ -201,7 +213,7 @@ that the paths exist).
 - `engine/world/src/map/sound.rs`: the simulation's side of sounds (map)
 - `engine/world/src/map/radio.rs`: a game's team radio data and chat line format (map)
 - `engine/world/src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
-- `engine/present/src/map_plugin.rs`: `MapPlugin`, built from map's, audio's and render's systems in one order (above map, audio, render)
+- `engine/present/src/map_plugin.rs`: `MapPlugin`: map's registration with audio's and render's systems at its places (above map, audio, render)
 
 ### Render (crate `engine_present`, `engine/present/`: presentation beside the simulation)
 
@@ -315,7 +327,7 @@ that the paths exist).
 - `src/lib.rs`: `SimPlugins`, `swap_map` (crate root)
 - `src/main.rs`: the game binary (top)
 - `src/harness.rs`: `Sim` and `NetSim`: headless apps stepped by exact ticks, for tests (harness)
-- `src/bin/mashup_server.rs`: the dedicated server (top)
+- `src/bin/mashup_server.rs`: the dedicated server, built without the presentation (top)
 - `src/bin/mapsweep.rs`: dev tool: load every cached map headless and report problems
 - `src/bin/perfgate.rs`: dev tool: instructions-per-tick regression gate
 - `src/bin/refcmp.rs`: dev tool: compare views against real CS:S
