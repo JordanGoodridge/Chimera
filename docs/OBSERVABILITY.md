@@ -1441,14 +1441,26 @@ cargo run --features dev,tools --bin demosim -- --probe <name> [--map de_dust2]
 
 - It prints the first divergence (command, what differs: position past
   0.1 u, velocity past 0.5 u/s, on ground, ducked, weapon, clip, reserve,
-  shots fired, accuracy penalty; both states), maxima, means and counts
-  per kind, and the shots (paired in order: same command, seed, the
+  shots fired, accuracy penalty, alt mode; both states), maxima, means
+  and counts per kind, and the shots (paired in order: same command, seed, the
   recorded `CTEFireBullets` inaccuracy against ours, mean degrees off
   the aim). Per-tick CSV: `~/.local/share/mashup/dump/demosim/`.
 - The server's settings in the demo (`net_SetConVar`: `sv_maxspeed`,
   `sv_accelerate`, `sv_airaccelerate`, `sv_friction`, `sv_gravity`, ...)
   are applied first and listed; the tick is the demo's (`svc_ServerInfo`);
   move amounts above 400 (`cl_forwardspeed 450`) are taken as sent.
+- The player starts as the first state has it: weapons, clip, reserve,
+  and (where recorded) the weapon's accuracy penalty, shots fired, its
+  timers (the probe's `next_primary`/`next_secondary`/`next_attack`) and
+  its alternate state, silencer on or burst mode (the probe's `special`,
+  a demo's `m_bSilencerOn`/`m_bBurstMode`). That alternate state is
+  compared every tick ("alt mode", silencer and burst weapons only): a
+  toggle in the recording is replayed as the command's attack2 (a probe
+  bot's own attack2 from the buttons its movement ran with); one without
+  attack2 in its command (a weapon drawn, a bot's AI) is set on ours as
+  recorded and counted apart ("set from the recording"), not a divergence.
+  So is a weapon switch no command picked (a bot's AI; the probe's bot
+  goes to its knife when the USP runs dry with no reserve).
 - States are keyed by the player's tick base, which runs a fixed amount
   ahead of the command numbers; `demosim` finds that offset by trying the
   nearby ones on the first 64 commands (`--offset` sets it).
@@ -1457,13 +1469,15 @@ cargo run --features dev,tools --bin demosim -- --probe <name> [--map de_dust2]
 - `--probe <name>` reads the probe server's last run of `<name>` instead
   (`cstrike/mashup/<name>.in`/`.out`, from movecmp's and weapcmp's runs;
   tools/css_probe), the real game's states per tick: `spread` and
-  `recoil` (pistol fire while strafing) match tick for tick, clip and
+  `recoil` (pistol fire while strafing; `recoil`'s USP silenced) match tick for tick, clip and
   accuracy penalty included, and so does `walk_stop` (down dust2's
   terrain, within 0.001 u); the bot's seeds don't come from its command
   numbers, so they aren't compared there. To see why a tick differs:
   the per-tick CSV gives the tick, `MASHUP_SLIDE_DEBUG=1` prints every
   sweep of the slide move. Tests: `demo_resim` (a client
-  demo built in code: commands through the demo writer and reader),
+  demo built in code: commands through the demo writer and reader;
+  synthetic recordings of a silenced USP, a FAMAS in burst mode and an
+  XM1014 started mid-recovery),
   `heavy::demo_resim` (the probe's logs; skipped without them).
 
 Recording one on the Windows PC (the user; nothing here can drive a CS:S

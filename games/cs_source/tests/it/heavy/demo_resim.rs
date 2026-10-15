@@ -3,7 +3,8 @@
 //! committed: the server's `cstrike/mashup/<name>.in` and `.out`, from
 //! movecmp's and weapcmp's runs; `[games.cs_source_server]` in
 //! mashup.local.toml) on de_dust2 from the install. A pistol fired 120
-//! times while strafing (`spread`) and five recoil taps (`recoil`) match
+//! times while strafing (`spread`) and five recoil taps (`recoil`, the
+//! bot's USP silenced; it goes to its knife once the clip is empty) match
 //! tick for tick: place, clip, accuracy penalty, the shots' commands; so
 //! does a walk and stop down de_dust2's terrain (`walk_stop`; its ground
 //! snap once missed a strip edge, 0.35 units for a tick). Skipped without
