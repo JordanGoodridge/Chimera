@@ -511,8 +511,9 @@ measurements):
     it; CS:S's bind table moved to `cs_source::game::DEFAULT_BINDS`. The
     exceptions are gone; the architecture test forbids the shell any path
     naming a game (`cs_source::` too, not only `crate::games::`).
-  - [~] The front end (`src/games/cs_source/ui`, 17.9k) into
-    `games/cs_source` behind a feature: blocked. It needs, besides the
+  - [x] The front end (`src/games/cs_source/ui`, 17.9k) into
+    `games/cs_source` behind a feature (done 2026-10-15: (b)-(d) below;
+    it was blocked: It needs, besides the
     engine crates and CS:S's own: `net` (35 references: `net::client`,
     `NetSettings`, `NetCharacter`, `score_flags`, `query` (the server
     browser), `motd`, `maps`, `RadioRequest`, `NetScore`, `NetEvent`),
@@ -527,7 +528,7 @@ measurements):
     uses nearly every other; `input` uses `chat`, `debug_ui`,
     `spectate`, `vgui`, `weapon_select`). Every file of `ui/` uses
     `game_menu`, and `game_menu` uses `net` and `client::console`, so no
-    part of it can move first.
+    part of it could move first).
     - [x] (2026-10-14) The shell's base as a crate: `engine/client`
       (package `engine_client`, module `client`): `front_end`, `fonts`,
       `hud_text` (its shader at `embedded://engine_client/client/`),
