@@ -698,6 +698,11 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   46.65° → launch 41.84°, 289 u/s; 17.58° → 9.53°, 482.8; −23.06° →
   −30.50°, 723.0; −69.35° → −71.64°, 750 (capped); 84.41° → 83.79°, 37.3.
   The projectile appears about 16 units ahead of the eye.
+- **Q17 dying primed:** a bot killed (`kill`) while holding attack with the
+  pin out leaves a live projectile on its death tick, 16 units ahead of the
+  eye with zero velocity (standing still), which goes off a full fuse later
+  (HE and flashbang 106 ticks, smoke 114 while settling); killed without
+  the pin out, no projectile. Moving at death: not measured.
 - **Q8 fuse:** HE and flashbang detonate 115 ticks after `weapon_fire`,
   about 109 after the projectile appears (1.6 s: the template's 1.5 s
   checked every 0.2 s); smoke 111 after the fire event while still rolling.

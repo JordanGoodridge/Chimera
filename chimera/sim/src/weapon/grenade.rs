@@ -779,7 +779,8 @@ fn exhaust(world: &mut World, owner: Entity, weapon: Entity) {
 }
 
 /// Dying with the pin out drops the grenade live where the eye was, with
-/// only the body's velocity (spec 9, hypothesis Q17); one released but not
+/// only the body's velocity (spec 9; measured standing still, grenades.md
+/// Q17: 16 units ahead of the eye, no velocity); one released but not
 /// yet thrown still goes (its throw is pending).
 fn drop_primed(
     mut died: MessageReader<Died>,
