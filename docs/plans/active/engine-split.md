@@ -476,6 +476,13 @@ measurements):
   and the base); `mashup::bot` re-exports it. `mashup` keeps the client,
   its front end (`games/cs_source/ui`), `net`, `harness`, `greybox`,
   `games::load_map` and the binaries.
+  Measured (docs/performance.md, "`engine_sim`, `source_logic` and
+  `cs_source`"; a new `pub fn`, load 9-32): `cargo test --features dev
+  --no-run` after a leaf edit in `cs_source` 22-27 s (was 127-176 s),
+  in `engine_sim` or `source_logic` about 20-28 s, in CS:S's front end
+  (still `mashup`) 18-41 s, in the client 77 s; `cargo test -p` builds
+  and runs `engine_sim` in 2 s, `source_logic` in 2-3 s, `cs_source` in
+  3-4 s.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
