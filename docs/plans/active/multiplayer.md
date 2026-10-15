@@ -366,7 +366,7 @@ in/out bytes per second, snapshot rate, prediction errors.
   `App` and N client `App`s built like `Sim`, stepped tick by tick,
   connected through an in-memory link (replicon's `test_app` exchange, or
   our own link) with seeded latency, jitter, loss and reordering. Fast,
-  deterministic, runs in `apps/cs_source/tests/it/net.rs` (heavy cases with real maps in
+  deterministic, runs in `games/cs_source/tests/it/net.rs` (heavy cases with real maps in
   `tests/it/heavy/`).
 - **Prediction determinism.** Script a client's intents (walk, strafe
   jumps, duck jumps, ladders, water, firing bursts with recoil) on the
@@ -437,7 +437,7 @@ with tests passing and something to see.
    - [x] Hitboxes posed per tick from simulation values (not the drawn,
      client-rate animation): done in slice 4 (a network server's
      `map::SimAnimator`).
-   - [x] Tests: `apps/cs_source/tests/it/prediction.rs` (100 commands of walking,
+   - [x] Tests: `games/cs_source/tests/it/prediction.rs` (100 commands of walking,
      jumping, ducking, an AK-47 spray and weapon switches replayed through
      `core::predict` from saved state: bit-identical, no sounds or damage;
      a client runs no damage or bots; pose history by tick).
@@ -485,7 +485,7 @@ with tests passing and something to see.
    - [x] Dedicated server `mashup_server` (`-port`, `+map greybox` or a
      CS:S map, `+maxplayers`, `+bot_add`; console on stdin).
    - [x] `harness::NetSim` (server + N clients in one process over
-     `net::memory`, seeded latency/jitter/loss) and `apps/cs_source/tests/it/net.rs`:
+     `net::memory`, seeded latency/jitter/loss) and `games/cs_source/tests/it/net.rs`:
      joining and seeing each other (and the host) move, looks and
      crouch, disconnect cleanup both ways, version refused with its
      reason, full server, map file mismatch, a lossy link converging,
@@ -554,7 +554,7 @@ with tests passing and something to see.
    - [x] `net_fakelag`, `net_fakejitter`, `net_fakeloss` (Source names) in
      the client's own UDP transport (`net::udp`, renetcode's netcode
      client; lag and jitter on what it receives, loss both ways).
-   - [x] Tests (`apps/cs_source/tests/it/net_prediction.rs`, `NetSim`): no loss at 50,
+   - [x] Tests (`games/cs_source/tests/it/net_prediction.rs`, `NetSim`): no loss at 50,
      100 and 150 ms: 0 prediction errors in ~260 compared states each
      (walking, strafing, turning, jumps, ducking, a duck jump, walk key),
      and on the greybox ladder; with jitter and loss (50±20 ms 5 %,
@@ -637,7 +637,7 @@ with tests passing and something to see.
      movers, ticks carried) in the perf overlay and debug UI Perf tab; cvars
      `cl_interp`, `cl_interp_ratio`, `cl_extrapolate`,
      `cl_extrapolate_amount`.
-   - [x] Tests (`apps/cs_source/tests/it/net_interp.rs`, `NetSim` at 240 frames a
+   - [x] Tests (`games/cs_source/tests/it/net_interp.rs`, `NetSim` at 240 frames a
      second): another player walking a curve at 50±10 ms, 100±40 ms 10 %
      loss and 150±60 ms 20 % loss is drawn exactly on the server's path
      without loss (0.000 mm off) and within 8 mm with loss (a lost
@@ -753,7 +753,7 @@ with tests passing and something to see.
    - [x] Dropping: `drop` on a client asks the server (`DropRequest`);
      picking up (walking over, +use) is the server's; `give`, `impulse
      101` and `buy` are refused on a client (buying is slice 5).
-   - [x] Tests (`apps/cs_source/tests/it/net_weapons.rs`, `NetSim`, greybox with CS:S's
+   - [x] Tests (`games/cs_source/tests/it/net_weapons.rs`, `NetSim`, greybox with CS:S's
      weapons): a client tapping single AK-47 shots at a player running
      across its view 10 m away, aimed where it draws it, hits 6 of 6 at
      100 and 150 ms with lag compensation (rewound 336 and 426 ms; the
@@ -772,7 +772,7 @@ with tests passing and something to see.
      lying by the other client, picked up again by walking over it; a bot
      on the server shoots a client: its health drops and the client draws
      the bot's shots (bots' rounds go out as `FireBullets` like anyone's).
-     `apps/cs_source/tests/it/heavy/map_net_weapons.rs` (de_dust2, the install's player
+     `games/cs_source/tests/it/heavy/map_net_weapons.rs` (de_dust2, the install's player
      models): head shots at a player as seen standing, fired once it has
      ducked on the server, at 100 ms: 6 of 6 heads with lag
      compensation, 0 of 6 without.
@@ -848,7 +848,7 @@ with tests passing and something to see.
      maps may not set it (point_servercommand).
    - [x] Spectating while dead works on a client as it was: it targets the
      interpolated others.
-   - [x] Tests (`apps/cs_source/tests/it/net_rules.rs`, `NetSim`, greybox with CS:S's
+   - [x] Tests (`games/cs_source/tests/ui/net_rules.rs`, `NetSim`, greybox with CS:S's
      weapons and rounds): a full round with two clients at 50±5 ms (the
      freeze clock on both clients within 0.06 s of the server's, money,
      buying a Desert Eagle in the freeze, the round going live, a win by
@@ -922,7 +922,7 @@ with tests passing and something to see.
    - [x] Deterministic: bot seeds come from their number and team (as
      before), the same with and without clients connected; two runs of
      the same network game put the bots in the same places bit for bit.
-   - [x] Tests (`apps/cs_source/tests/it/net_bots.rs`, `NetSim`, greybox): two clients
+   - [x] Tests (`games/cs_source/tests/it/net_bots.rs`, `NetSim`, greybox): two clients
      see both bots with the server's names, teams and positions (within
      5 cm) and "BOT"; their `bot_add`, `bot_kick` and `bot_quota` are
      refused; `bot_kick "Bot 1"` kicks one on every side; two bots 12 m
@@ -1000,7 +1000,7 @@ with tests passing and something to see.
      words; Close). `mashup_loading_details 1` (off by default) adds a
      panel: each stage's time, bytes and percentage, the server's name,
      address, map, players and ping.
-   - [x] Tests (`apps/cs_source/tests/it/net_maps.rs`, maps built in code from a folder
+   - [x] Tests (`games/cs_source/tests/it/net_maps.rs`, maps built in code from a folder
      of files: `harness::TestMaps`): a map change takes two clients
      along (told while it loads, the same connection and id, both on the
      new map's file, the round restarted at 0-0 and scores cleared, a
@@ -1016,7 +1016,7 @@ with tests passing and something to see.
      another build "newer server". Unit tests: the HTTP client (chunked,
      404), download checks, refusal kinds, the dialog's lines and the
      failure dialog.
-   - [x] `apps/cs_source/tests/it/heavy/map_net_changelevel.rs`: the greybox to de_dust2
+   - [x] `games/cs_source/tests/it/heavy/map_net_changelevel.rs`: the greybox to de_dust2
      from the install with a client and two bots (the client's copy
      checked by hash, followed on the same connection, the bots along).
    - [x] Two real games on the dev box (debug builds, a busy box): host
@@ -1219,7 +1219,7 @@ with tests passing and something to see.
      `games::cs_source::ui::server_browser` unit tests (sorting, filters, connect,
      double-click, password dialog, Internet greyed, Add a Server,
      history order, the saved file's round trip);
-     `apps/cs_source/tests/it/net_query.rs`: a server answers with its name, map,
+     `games/cs_source/tests/ui/net_query.rs`: a server answers with its name, map,
      players, bots, max, dedicated or listen, password, version, port and
      a ping, and its game connection on the same port checks the
      password; a LAN scan of two ports finds the two servers there once
@@ -1246,7 +1246,7 @@ with tests passing and something to see.
    Servers, `connect`, map rotation by the server's cvars). Revisit if
    Lucker Party later needs parties, minigame rotation or NAT relays.
 10. **[x] Soak before playing with friends** (2026-10-09). Headless:
-   `apps/cs_source/tests/it/heavy/net_soak.rs` (docs/OBSERVABILITY.md, "Soak"): a server
+   `games/cs_source/tests/it/heavy/net_soak.rs` (docs/OBSERVABILITY.md, "Soak"): a server
    on de_dust2 with four clients on their own links (0, 50, 150 ms with
    2 % loss, 300 ms with 5 % loss), bots filling to twelve, scripted
    players (walk, jump, duck, shoot at whoever they see, buy, grenades,

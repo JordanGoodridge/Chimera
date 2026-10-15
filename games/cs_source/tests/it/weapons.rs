@@ -1,0 +1,1116 @@
+//! Scenario tests for the weapon frame with CS:S's knife and AK-47 on the
+//! greybox map, at CS:S's tick (0.015 s). Expectations come from
+//! specs/cs_source/weapons.md's test cases (T5, T6, T8, T10, T11).
+
+use bevy::prelude::*;
+use crate::stack::{
+    core::{Health, Intent, MaxSpeed},
+    games::cs_source::{
+        TICK_INTERVAL,
+        weapons::{AK47, CsWeaponsPlugin, KNIFE},
+    },
+    greybox::{self, GreyboxMapPlugin},
+    harness::{CsSim, Sim},
+    movement::placeholder,
+    weapon::{Inventory, Magazine, Weapon},
+};
+
+fn sim() -> Sim {
+    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim
+}
+
+fn active(sim: &Sim, p: Entity) -> Entity {
+    sim.app
+        .world()
+        .get::<Inventory>(p)
+        .unwrap()
+        .active
+        .expect("no active weapon")
+}
+
+fn active_id(sim: &Sim, p: Entity) -> &'static str {
+    sim.app.world().get::<Weapon>(active(sim, p)).unwrap().id
+}
+
+fn magazine(sim: &Sim, p: Entity) -> Magazine {
+    sim.app.world().get::<Magazine>(active(sim, p)).unwrap().clone()
+}
+
+fn health(sim: &Sim, p: Entity) -> f32 {
+    sim.app.world().get::<Health>(p).unwrap().current
+}
+
+/// Look from `p`'s eye at `target`.
+fn aim_at(sim: &mut Sim, p: Entity, target: Vec3) {
+    let eye = sim.position(p) + sim.state(p).eye_offset;
+    let d = target - eye;
+    let mut i = sim.intent(p);
+    i.yaw = (-d.x).atan2(-d.z);
+    i.pitch = d.y.atan2(d.xz().length());
+}
+
+/// Ticks until the clip changes, holding `fire`; None within `limit`.
+fn ticks_until_shot(sim: &mut Sim, p: Entity, limit: u32) -> Option<u32> {
+    let clip = magazine(sim, p).clip;
+    for t in 1..=limit {
+        sim.ticks(1);
+        if magazine(sim, p).clip != clip {
+            return Some(t);
+        }
+    }
+    None
+}
+
+#[test]
+fn characters_start_with_knife_pistol_and_ak47_drawn() {
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(2);
+    let inv = sim.app.world().get::<Inventory>(p).unwrap();
+    assert_eq!(inv.weapons.len(), 3, "knife, USP (no team: CT), AK-47");
+    assert_eq!(active_id(&sim, p), AK47);
+    // The AK-47's MaxPlayerSpeed, 221 units/s.
+    let speed = sim.app.world().get::<MaxSpeed>(p).unwrap().0;
+    assert!((speed - 221.0 * 0.0254).abs() < 1e-4, "{speed}");
+}
+
+#[test]
+fn deploy_then_fire_every_seven_ticks() {
+    // T5: the first shot 67 ticks after the draw (1.0 s).
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(1); // weapons given and the AK-47 drawn this tick
+    sim.intent(p).fire = true;
+    let first = ticks_until_shot(&mut sim, p, 200).expect("never fired");
+    assert_eq!(first, 67, "first shot after the draw");
+    // Held: next = previous next + 0.1 s, one shot a tick at most, so the
+    // AK-47 fires 7, 7, 6 ticks apart (measured M4: exactly 600 rpm). The
+    // draw ends 1.0 s after it, so every third shot lands exactly on a tick
+    // and fires on it (`TIME_SLACK`); which of the three is the 6 depends
+    // on CS:S's float rounding (M4 logged 7, 7, 7, 6 from a fresh press).
+    let gaps: Vec<u32> = (0..6).map(|_| ticks_until_shot(&mut sim, p, 20).unwrap()).collect();
+    assert_eq!(gaps, [7, 6, 7, 7, 6, 7]);
+    assert_eq!(magazine(&sim, p).clip, 23);
+}
+
+#[test]
+fn reload_swaps_at_the_end_and_refuses_when_full() {
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.seconds(1.1);
+    // T10: full clip: nothing happens.
+    sim.intent(p).reload = true;
+    sim.ticks(2);
+    assert_eq!(magazine(&sim, p).clip, 30);
+    sim.intent(p).reload = false;
+    // T8: clip 10, reserve 90 -> after 163 ticks: 30 / 70, not before.
+    let w = active(&sim, p);
+    sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 10;
+    sim.intent(p).reload = true;
+    sim.ticks(1); // the reload starts on this tick
+    sim.intent(p).reload = false;
+    sim.ticks(162);
+    assert_eq!(magazine(&sim, p).clip, 10, "swapped too early");
+    sim.ticks(1);
+    let m = magazine(&sim, p);
+    assert_eq!((m.clip, m.reserve), (30, 70));
+}
+
+#[test]
+fn switching_cancels_a_reload() {
+    // T11: no ammo moves; the new weapon draws (1.0 s).
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.seconds(1.1);
+    let ak = active(&sim, p);
+    sim.app.world_mut().get_mut::<Magazine>(ak).unwrap().clip = 10;
+    sim.intent(p).reload = true;
+    sim.ticks(1);
+    sim.intent(p).reload = false;
+    sim.seconds(1.0);
+    sim.intent(p).select = Some(2);
+    sim.ticks(1);
+    sim.intent(p).select = None;
+    assert_eq!(active_id(&sim, p), KNIFE);
+    sim.seconds(3.0);
+    let m = sim.app.world().get::<Magazine>(ak).unwrap();
+    assert_eq!((m.clip, m.reserve), (10, 90));
+    // Knife speed.
+    let speed = sim.app.world().get::<MaxSpeed>(p).unwrap().0;
+    assert!((speed - 250.0 * 0.0254).abs() < 1e-4);
+}
+
+#[test]
+fn ak47_shot_damages_a_target_once_per_shot() {
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target_at = greybox::SPAWNS[0] - Vec3::Z * 8.0;
+    let target = sim.spawn_character(target_at, placeholder::ID);
+    sim.seconds(1.1);
+    // Chest height on the 1.8 m capsule (about 70 % up).
+    let chest = sim.position(target) + Vec3::Y * (1.8 * 0.72 - 0.9);
+    aim_at(&mut sim, shooter, chest);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+    let lost = 1.0 - health(&sim, target);
+    // 36 hp at ~8 m (about 315 units): int(36 * 0.98^(d/500)) = 35 (M5).
+    assert!((lost - 0.35).abs() < 1e-4, "lost {lost}");
+}
+
+#[test]
+fn headshots_and_deaths() {
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 5.0, placeholder::ID);
+    sim.seconds(1.1);
+    let head = sim.position(target) + Vec3::Y * (1.8 * 0.92 - 0.9);
+    aim_at(&mut sim, shooter, head);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+    let lost = 1.0 - health(&sim, target);
+    // UNMEASURED head multiplier 4: 144 hp kills.
+    assert_eq!(health(&sim, target), 0.0, "lost {lost}");
+}
+
+#[test]
+fn knife_slash_and_backstab() {
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 0.9, placeholder::ID);
+    sim.ticks(1);
+    sim.intent(p).select = Some(2);
+    sim.ticks(1);
+    sim.intent(p).select = None;
+    sim.seconds(1.1);
+    assert_eq!(active_id(&sim, p), KNIFE);
+    let chest = sim.position(target) + Vec3::Y * 0.3;
+    aim_at(&mut sim, p, chest);
+    // The target faces the attacker: a plain slash.
+    sim.intent(target).yaw = std::f32::consts::PI;
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    sim.ticks(1);
+    assert!(
+        (1.0 - health(&sim, target) - 0.20).abs() < 1e-4,
+        "{}",
+        health(&sim, target)
+    );
+    // Turned away: a stab from behind kills.
+    sim.intent(target).yaw = 0.0;
+    sim.seconds(0.6);
+    sim.intent(p).secondary = true;
+    sim.ticks(1);
+    sim.intent(p).secondary = false;
+    sim.ticks(1);
+    assert_eq!(health(&sim, target), 0.0);
+}
+
+#[test]
+fn empty_clip_reloads_itself() {
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.seconds(1.1);
+    let w = active(&sim, p);
+    sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 1;
+    sim.intent(p).fire = true;
+    sim.seconds(0.5);
+    sim.intent(p).fire = false;
+    assert_eq!(magazine(&sim, p).clip, 0);
+    sim.seconds(2.6);
+    let m = magazine(&sim, p);
+    assert_eq!((m.clip, m.reserve), (30, 60));
+    let _ = Intent::default();
+}
+
+#[test]
+fn the_dead_respawn_with_fresh_weapons_and_scores_count() {
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 5.0, placeholder::ID);
+    sim.seconds(1.1);
+    let head = sim.position(target) + Vec3::Y * (1.8 * 0.92 - 0.9);
+    aim_at(&mut sim, shooter, head);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+    assert_eq!(health(&sim, target), 0.0);
+    let score = |sim: &Sim, e| *sim.app.world().get::<crate::stack::rules::Score>(e).unwrap();
+    assert_eq!(score(&sim, shooter).kills, 1);
+    assert_eq!(score(&sim, target).deaths, 1);
+    // Dead: no firing, and still dead before the delay.
+    sim.seconds(1.5);
+    assert_eq!(health(&sim, target), 0.0);
+    sim.seconds(0.6);
+    assert_eq!(health(&sim, target), 1.0);
+    assert!(sim.app.world().get::<crate::stack::rules::Dead>(target).is_none());
+    assert_eq!(active_id(&sim, target), AK47);
+    assert_eq!(sim.app.world().get::<Inventory>(target).unwrap().weapons.len(), 3);
+}
+
+#[test]
+fn a_bot_shoots_an_enemy_in_sight() {
+    let mut sim = sim();
+    sim.app.insert_resource(crate::stack::slots::Loadout {
+        movement: placeholder::ID,
+    });
+    // In the open, 12 m from the bot's spawn (SPAWNS[1]).
+    let player = sim.spawn_character(greybox::SPAWNS[1] + Vec3::X * 12.0, placeholder::ID);
+    let bot = crate::stack::bot::add_bot(sim.app.world_mut(), crate::stack::core::Team(1)).expect("no bot");
+    sim.app.world_mut().resource_mut::<crate::stack::bot::BotConfig>().stop = 1;
+    // No wobble: this is about reaction time and turning.
+    sim.app.world_mut().resource_mut::<crate::stack::bot::BotConfig>().aim_error = 0.0;
+    // Reaction time, turning and the draw: hit within 2 s.
+    let mut hit_at = None;
+    for t in 0..(2.0 / TICK_INTERVAL) as u32 {
+        sim.ticks(1);
+        if health(&sim, player) < 1.0 {
+            hit_at = Some(t);
+            break;
+        }
+    }
+    assert!(hit_at.is_some(), "bot never hit the player");
+    assert_eq!(
+        sim.app.world().get::<crate::stack::bot::Bot>(bot).unwrap().target,
+        Some(player)
+    );
+}
+
+/// Bots' dice come from their number and team (`core::Seed`), not from
+/// entity ids, which shift with anything spawned before them (resources
+/// too): a bot with aim wobble on hurts the player on the same tick and
+/// by the same amount however many entities came first.
+#[test]
+fn bot_dice_do_not_depend_on_entity_ids() {
+    let run = |pad: usize| {
+        let mut sim = sim();
+        sim.pad(pad);
+        sim.app.insert_resource(crate::stack::slots::Loadout {
+            movement: placeholder::ID,
+        });
+        let player = sim.spawn_character(greybox::SPAWNS[1] + Vec3::X * 12.0, placeholder::ID);
+        let bot = crate::stack::bot::add_bot(sim.app.world_mut(), crate::stack::core::Team(1)).expect("no bot");
+        let other = crate::stack::bot::add_bot(sim.app.world_mut(), crate::stack::core::Team(2)).expect("no bot");
+        sim.app.world_mut().despawn(other);
+        sim.app.world_mut().resource_mut::<crate::stack::bot::BotConfig>().stop = 1;
+        let mut hits = Vec::new();
+        let mut last = health(&sim, player);
+        for t in 0..(3.0 / TICK_INTERVAL) as u32 {
+            sim.ticks(1);
+            let h = health(&sim, player);
+            if h != last {
+                hits.push((t, h));
+                last = h;
+            }
+        }
+        let seed = *sim.app.world().get::<crate::stack::core::Seed>(bot).unwrap();
+        (seed, hits)
+    };
+    let (seed, hits) = run(0);
+    assert!(!hits.is_empty(), "bot never hit the player");
+    for pad in [1, 7, 50] {
+        assert_eq!(run(pad), (seed, hits.clone()), "padded by {pad}");
+    }
+}
+
+#[test]
+fn knife_follow_up_slash_and_miss_refires() {
+    // Measured M11: 20, then 15 within 0.9 s of the last slash; a slash
+    // hit blocks both attacks 0.5 s.
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 0.9, placeholder::ID);
+    sim.ticks(1);
+    sim.intent(p).select = Some(2);
+    sim.ticks(1);
+    sim.intent(p).select = None;
+    sim.seconds(1.1);
+    let chest = sim.position(target) + Vec3::Y * 0.3;
+    aim_at(&mut sim, p, chest);
+    sim.intent(target).yaw = std::f32::consts::PI;
+    sim.intent(p).fire = true;
+    // Held: hits every 34 ticks (0.5 s), 20 then 15s.
+    sim.ticks(70);
+    sim.intent(p).fire = false;
+    sim.ticks(1);
+    let lost = ((1.0 - health(&sim, target)) * 100.0).round() as i32;
+    assert_eq!(lost, 20 + 15 + 15, "three slashes");
+}
+
+#[test]
+fn ak47_recoil_kicks_and_inaccuracy_grows() {
+    use crate::stack::{games::cs_source::weapons::Inaccuracy, weapon::ViewPunch};
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    // The spawn drop lands (+InaccuracyLand); let that recover too.
+    sim.seconds(3.0);
+    let w = active(&sim, p);
+    let rest = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
+    assert!((rest - 0.00916).abs() < 1e-5);
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    // First shot: 1 degree up, 0.375 sideways (M3), plus the fire penalty.
+    let punch = sim.app.world().get::<ViewPunch>(p).unwrap().0;
+    assert!((punch.x.to_degrees() - 1.0).abs() < 1e-3, "{punch}");
+    assert!((punch.y.to_degrees().abs() - 0.375).abs() < 1e-3, "{punch}");
+    let after = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
+    assert!((after - (0.00916 + 0.01158)).abs() < 1e-5, "{after}");
+    // Both recover: the punch is gone within a second, the penalty is
+    // back near rest after its recovery time.
+    sim.seconds(1.0);
+    assert_eq!(sim.app.world().get::<ViewPunch>(p).unwrap().0, Vec3::ZERO);
+    let v = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
+    assert!(v - 0.00916 < 0.0002, "{v}");
+}
+
+#[test]
+fn empty_clip_held_dry_fires_once_then_reloads_on_release() {
+    // Measured M10: no reload while attack stays held.
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.seconds(1.1);
+    let w = active(&sim, p);
+    sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 1;
+    sim.intent(p).fire = true;
+    sim.seconds(3.0);
+    assert_eq!(magazine(&sim, p).clip, 0, "reloaded while held");
+    sim.intent(p).fire = false;
+    sim.seconds(2.6);
+    assert_eq!(magazine(&sim, p).clip, 30);
+}
+
+#[test]
+fn armour_takes_its_share() {
+    use crate::stack::weapon::Armor;
+    // Measured M7/M11: a 20-damage slash on 100 armour: 17 health, 1 armour.
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 0.9, placeholder::ID);
+    sim.app.world_mut().entity_mut(target).insert(Armor {
+        amount: 1.0,
+        helmet: false,
+    });
+    sim.ticks(1);
+    sim.intent(p).select = Some(2);
+    sim.ticks(1);
+    sim.intent(p).select = None;
+    sim.seconds(1.1);
+    let chest = sim.position(target) + Vec3::Y * 0.3;
+    aim_at(&mut sim, p, chest);
+    sim.intent(target).yaw = std::f32::consts::PI;
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    sim.ticks(1);
+    let lost = ((1.0 - health(&sim, target)) * 100.0).round() as i32;
+    let armor = (sim.app.world().get::<Armor>(target).unwrap().amount * 100.0).round() as i32;
+    assert_eq!((lost, armor), (17, 99));
+}
+
+#[test]
+fn armour_without_helmet_leaves_headshots_alone() {
+    use crate::stack::weapon::Armor;
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 5.0, placeholder::ID);
+    sim.app.world_mut().entity_mut(target).insert(Armor {
+        amount: 1.0,
+        helmet: false,
+    });
+    sim.seconds(1.1);
+    let head = sim.position(target) + Vec3::Y * (1.8 * 0.92 - 0.9);
+    aim_at(&mut sim, shooter, head);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+    // 36 x 4 at ~200 units kills; the armour is untouched.
+    assert_eq!(health(&sim, target), 0.0);
+    assert_eq!(sim.app.world().get::<Armor>(target).unwrap().amount, 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// Penetration and collaterals (measured M13)
+
+const UNIT: f32 = 0.0254;
+
+/// Damage lost, in whole hit points.
+fn lost_hp(sim: &Sim, p: Entity) -> i32 {
+    ((1.0 - health(sim, p)) * 100.0).round() as i32
+}
+
+/// One AK-47 shot from `shooter` at `target`'s chest (72 % up the capsule),
+/// once the rifle is drawn.
+fn shoot_chest(sim: &mut Sim, shooter: Entity, target: Entity) {
+    sim.seconds(1.1);
+    let chest = sim.position(target) + Vec3::Y * (1.8 * 0.72 - 0.9);
+    aim_at(sim, shooter, chest);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+}
+
+#[test]
+fn ak47_collateral_carries_half_the_damage() {
+    // Spec M13 (through players): first at ~300 units, second at ~400,
+    // chest: 17 on the second (35 alone); the first takes its own 35.
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let first = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
+    let second = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 10.6, placeholder::ID);
+    shoot_chest(&mut sim, shooter, second);
+    assert_eq!((lost_hp(&sim, first), lost_hp(&sim, second)), (35, 17));
+}
+
+#[test]
+fn ak47_does_not_pass_two_players() {
+    // Two players use 2 x 21.5 of the AK-47's 39: the second is hit but
+    // not passed.
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let first = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
+    let second = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 10.6, placeholder::ID);
+    let third = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 13.0, placeholder::ID);
+    shoot_chest(&mut sim, shooter, third);
+    assert_eq!(
+        (lost_hp(&sim, first), lost_hp(&sim, second), lost_hp(&sim, third)),
+        (35, 17, 0)
+    );
+}
+
+#[test]
+fn awp_penetration_passes_two_players() {
+    // The AWP isn't in yet: the AK-47 with 338MAG's power 45 and three
+    // objects (M13) passes two players (2 x 21.5) and hits a third, with
+    // x 0.5 carried per player and falloff again at every hit:
+    // 35.57 x 0.5 x 0.98^(401/500) x 0.5 x 0.98^(495/500) = 8.6.
+    use crate::stack::weapon::Penetration;
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let first = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
+    let second = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 10.6, placeholder::ID);
+    let third = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 13.0, placeholder::ID);
+    sim.ticks(1);
+    let w = active(&sim, shooter);
+    sim.app.world_mut().entity_mut(w).insert(Penetration {
+        power: 45.0 * UNIT,
+        objects: 3,
+        max_distance: f32::INFINITY,
+    });
+    shoot_chest(&mut sim, shooter, third);
+    assert_eq!(
+        (lost_hp(&sim, first), lost_hp(&sim, second), lost_hp(&sim, third)),
+        (35, 17, 8)
+    );
+}
+
+#[test]
+fn knife_never_passes_a_player() {
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let first = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 0.9, placeholder::ID);
+    let second = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 1.75, placeholder::ID);
+    sim.ticks(1);
+    sim.intent(p).select = Some(2);
+    sim.ticks(1);
+    sim.intent(p).select = None;
+    sim.seconds(1.1);
+    let chest = sim.position(first) + Vec3::Y * 0.3;
+    aim_at(&mut sim, p, chest);
+    for e in [first, second] {
+        sim.intent(e).yaw = std::f32::consts::PI;
+    }
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    sim.ticks(1);
+    assert_eq!((lost_hp(&sim, first), lost_hp(&sim, second)), (20, 0));
+}
+
+/// A wall of `surface` across the line from SPAWNS[0] to -Z: front face
+/// `at` meters ahead, `thick` units thick. The surface scripts give wood
+/// and concrete their CS:S material classes.
+fn wall(sim: &mut Sim, at: f32, thick: f32, surface: &str) {
+    use avian3d::prelude::*;
+    use crate::stack::map::{MapSounds, MapSurface, PropSurface, sound::SoundBank};
+    let mut sounds = MapSounds::default();
+    for (name, class) in [("wood", 'W'), ("concrete", 'C')] {
+        sounds.surfaces.insert(
+            name.into(),
+            MapSurface {
+                game_material: class,
+                ..default()
+            },
+        );
+    }
+    sim.app.insert_resource(SoundBank(std::sync::Arc::new(sounds)));
+    let t = thick * UNIT;
+    let z = greybox::SPAWNS[0].z - at - t / 2.0;
+    sim.app.world_mut().spawn((
+        RigidBody::Static,
+        Collider::cuboid(4.0, 3.0, t),
+        Transform::from_xyz(0.0, 1.5, z),
+        PropSurface(surface.into()),
+    ));
+}
+
+/// Damage through a wall `thick` units of `surface` 3 m ahead to a target
+/// 6 m ahead.
+fn through_wall(thick: f32, surface: &str) -> i32 {
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 6.0, placeholder::ID);
+    wall(&mut sim, 3.0, thick, surface);
+    shoot_chest(&mut sim, shooter, target);
+    lost_hp(&sim, target)
+}
+
+#[test]
+fn ak47_passes_walls_thinner_than_its_limit() {
+    // Limits 39 x material scale: wood 78 units, concrete 15.6 (M13).
+    // Through: 36 x 0.98^(118/500) x factor x 0.98^(220/500), chest:
+    // wood x 0.6 -> 21, concrete x 0.25 -> 8 (35 with no wall).
+    assert_eq!(through_wall(70.0, "wood"), 21);
+    assert_eq!(through_wall(15.0, "concrete"), 8);
+}
+
+#[test]
+fn ak47_stops_in_walls_thicker_than_its_limit() {
+    assert_eq!(through_wall(85.0, "wood"), 0);
+    assert_eq!(through_wall(17.0, "concrete"), 0);
+}
+
+#[test]
+fn ak47_passes_two_doors_then_hits() {
+    // Two 8-unit wooden doors use 2 x 4 of 39 and both object passes: the
+    // target behind still takes damage, x 0.6 per door with falloff again
+    // at every hit: 36 x 0.98^(79/500) x 0.6 x 0.98^(158/500) x 0.6 x
+    // 0.98^(220/500) = 12.8.
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 6.0, placeholder::ID);
+    wall(&mut sim, 2.0, 8.0, "wood");
+    wall(&mut sim, 4.0, 8.0, "wood");
+    shoot_chest(&mut sim, shooter, target);
+    assert_eq!(lost_hp(&sim, target), 12);
+}
+
+#[test]
+fn ak47_recoil_sets_for_moving_and_airborne() {
+    use crate::stack::weapon::ViewPunch;
+    // Measured M3: first-shot kick up 1.5 moving, 2.0 airborne.
+    let first_kick = |setup: fn(&mut Sim, Entity)| {
+        let mut sim = sim();
+        let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        sim.seconds(1.1);
+        setup(&mut sim, p);
+        sim.intent(p).fire = true;
+        sim.ticks(1);
+        sim.intent(p).fire = false;
+        sim.app.world().get::<ViewPunch>(p).unwrap().0.x.to_degrees()
+    };
+    let moving = first_kick(|sim, p| {
+        sim.intent(p).move_axis = Vec2::new(0.0, 1.0);
+        sim.ticks(10);
+    });
+    assert!((moving - 1.5).abs() < 1e-3, "moving {moving}");
+    let airborne = first_kick(|sim, p| {
+        sim.intent(p).jump = true;
+        sim.ticks(3);
+        sim.intent(p).jump = false;
+        assert!(!sim.state(p).on_ground);
+    });
+    assert!((airborne - 2.0).abs() < 1e-3, "airborne {airborne}");
+}
+
+#[test]
+fn landing_adds_inaccuracy_by_fall_speed() {
+    use crate::stack::{core::Velocity, games::cs_source::weapons::Inaccuracy};
+    // Measured M1: I += InaccuracyLand x |v_z| / 301.99 on the landing tick
+    // (v_z from the tick before), then that tick's ground recovery.
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.seconds(3.0);
+    let w = active(&sim, p);
+    sim.intent(p).jump = true;
+    sim.ticks(2);
+    sim.intent(p).jump = false;
+    let (mut value, mut vz) = (0.0f32, 0.0f32);
+    for _ in 0..200 {
+        let was_airborne = !sim.state(p).on_ground;
+        sim.ticks(1);
+        if was_airborne && sim.state(p).on_ground {
+            let now = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
+            let raised = value + 0.08609 * vz.abs() / 301.99;
+            let expected = 0.00916 + (raised - 0.00916) * 0.1f32.powf(TICK_INTERVAL as f32 / 0.48815);
+            assert!(vz < -100.0, "fall speed {vz}");
+            assert!((now - expected).abs() < 1e-5, "{now} vs {expected}");
+            return;
+        }
+        value = sim.app.world().get::<Inaccuracy>(w).unwrap().value;
+        vz = sim.app.world().get::<Velocity>(p).unwrap().0.y / UNIT;
+    }
+    panic!("never landed");
+}
+
+#[test]
+fn dropped_weapons_lie_loose_and_are_picked_up_again() {
+    use crate::stack::weapon::drop::{Loose, drop_weapon};
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(2);
+    let ak = active(&sim, p);
+    let loose = drop_weapon(sim.app.world_mut(), p, true).expect("dropped");
+    sim.ticks(2);
+    let inv = sim.app.world().get::<Inventory>(p).unwrap();
+    assert!(!inv.weapons.contains(&ak));
+    assert_ne!(inv.active, Some(ak), "draws another weapon");
+    assert_eq!(sim.app.world().get::<Loose>(loose).unwrap().weapon, ak);
+    assert_eq!(sim.app.world().get::<Weapon>(ak).unwrap().owner, None);
+    // The knife stays.
+    let knife = inv
+        .weapons
+        .iter()
+        .copied()
+        .find(|w| sim.app.world().get::<Weapon>(*w).unwrap().id == KNIFE)
+        .unwrap();
+    sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(knife);
+    sim.ticks(2);
+    assert!(drop_weapon(sim.app.world_mut(), p, true).is_none(), "the knife can't be dropped");
+    // Lying at the dropper's feet: not taken back at once, then taken.
+    let at = sim.position(p);
+    let hold = |sim: &mut Sim| {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(loose) {
+            t.translation = at;
+        }
+    };
+    hold(&mut sim);
+    sim.ticks(10);
+    assert!(sim.app.world().get_entity(loose).is_ok(), "not re-picked within the delay");
+    for _ in 0..150 {
+        hold(&mut sim);
+        sim.ticks(1);
+    }
+    assert!(sim.app.world().get_entity(loose).is_err(), "picked up");
+    let inv = sim.app.world().get::<Inventory>(p).unwrap();
+    assert!(inv.weapons.contains(&ak));
+    assert_eq!(sim.app.world().get::<Weapon>(ak).unwrap().owner, Some(p));
+}
+
+/// The dead drop their weapon only when the rules ask for it (CS:S rounds),
+/// not in deathmatch; and a body never draws another weapon (no draw sound).
+#[test]
+fn the_dead_drop_weapons_only_in_rounds_and_draw_nothing() {
+    use crate::stack::weapon::drop::{DeathDrops, Loose};
+    for rounds in [false, true] {
+        let mut sim = sim();
+        let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        if rounds {
+            // The rules turn death drops on with rounds.
+            sim.app
+                .world_mut()
+                .resource_mut::<crate::stack::console::Console>()
+                .submit("mp_freezetime 0; mashup_rounds 1");
+        }
+        sim.ticks(4);
+        assert_eq!(sim.app.world().resource::<DeathDrops>().0, rounds);
+        let ak = active(&sim, p);
+        sim.app.world_mut().get_mut::<Health>(p).unwrap().current = 0.0;
+        sim.app.world_mut().write_message(crate::stack::core::Died {
+            entity: p,
+            attacker: None,
+            damage: crate::stack::core::Damage {
+                target: p,
+                attacker: None,
+                amount: 1.0,
+                point: Vec3::ZERO,
+                dir: Vec3::X,
+                hitgroup: Default::default(),
+                kind: Default::default(),
+                weapon: None,
+                force: Vec3::ZERO,
+            },
+        });
+        sim.ticks(3);
+        let loose = sim.app.world_mut().query::<&Loose>().iter(sim.app.world()).count();
+        assert_eq!(loose, rounds as usize, "rounds {rounds}: loose weapons");
+        let inv = sim.app.world().get::<Inventory>(p).unwrap();
+        if rounds {
+            assert!(!inv.weapons.contains(&ak));
+            assert_eq!(inv.active, None, "a body draws nothing");
+        } else {
+            assert_eq!(inv.active, Some(ak));
+        }
+    }
+}
+
+/// Picking up (specs/cs_source/weapons.md 3.9): a dropped gun is touched
+/// within its box grown 36 units sideways, by anyone, only from 1 s after
+/// the drop; with the slot free it is taken; carrying the same type takes
+/// only its ammo (up to the reserve's max) and leaves the rest lying.
+#[test]
+fn dropped_weapons_are_touched_in_the_grown_box_after_a_second() {
+    use crate::stack::weapon::drop::{Loose, TOUCH_DELAY, drop_this, drop_weapon};
+    let mut sim = sim();
+    let at = |x: f32| Vec3::new(x, greybox::SPAWNS[0].y, greybox::SPAWNS[0].z);
+    let dropper = sim.spawn_character(at(-8.0), placeholder::ID);
+    let taker = sim.spawn_character(at(0.0), placeholder::ID);
+    let owner = sim.spawn_character(at(8.0), placeholder::ID);
+    sim.ticks(2);
+    // The taker has no primary: its AK goes.
+    let theirs = active(&sim, taker);
+    assert_eq!(sim.app.world().get::<Weapon>(theirs).unwrap().id, AK47);
+    sim.app.world_mut().get_mut::<Inventory>(taker).unwrap().weapons.retain(|w| *w != theirs);
+    sim.app.world_mut().despawn(theirs);
+    let ak = active(&sim, dropper);
+    let loose = drop_weapon(sim.app.world_mut(), dropper, true).expect("dropped");
+    // Lying 1.2 m from the taker's centre: past the old 0.6 m reach,
+    // within the grown box (0.4 m half width + 0.91 m + its own half).
+    let hold = |sim: &mut Sim, to: Vec3| {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(loose) {
+            t.translation = to;
+        }
+    };
+    let spot = sim.position(taker) + Vec3::new(1.2, -0.75, 0.0);
+    let ticks = |s: f64| (s / TICK_INTERVAL).round() as u32;
+    for _ in 0..ticks(TOUCH_DELAY - 0.1) {
+        hold(&mut sim, spot);
+        sim.ticks(1);
+    }
+    assert!(sim.app.world().get_entity(loose).is_ok(), "touchable only after a second");
+    for _ in 0..ticks(0.2) {
+        hold(&mut sim, spot);
+        sim.ticks(1);
+    }
+    assert!(sim.app.world().get_entity(loose).is_err(), "taken");
+    assert!(sim.app.world().get::<Inventory>(taker).unwrap().weapons.contains(&ak));
+    // Out of reach: 2 m away stays lying.
+    let loose = drop_this(sim.app.world_mut(), taker, ak, true).expect("dropped");
+    let far = sim.position(taker) + Vec3::new(-2.0, -0.75, 0.0);
+    for _ in 0..ticks(TOUCH_DELAY + 0.3) {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(loose) {
+            t.translation = far;
+        }
+        sim.ticks(1);
+    }
+    assert!(sim.app.world().get_entity(loose).is_ok(), "out of reach");
+    // The owner carries an AK 10 rounds short: it takes 10 and the gun
+    // stays with the rest.
+    let mine = active(&sim, owner);
+    let max = {
+        let mut m = sim.app.world_mut().get_mut::<Magazine>(mine).unwrap();
+        m.reserve = m.reserve_max - 10;
+        m.reserve_max
+    };
+    let before = sim.app.world().get::<Magazine>(ak).unwrap().clone();
+    assert!(before.clip > 10);
+    let near_owner = sim.position(owner) + Vec3::new(0.5, -0.75, 0.0);
+    for _ in 0..ticks(0.3) {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(loose) {
+            t.translation = near_owner;
+        }
+        sim.ticks(1);
+    }
+    assert_eq!(sim.app.world().get::<Magazine>(mine).unwrap().reserve, max);
+    assert!(sim.app.world().get_entity(loose).is_ok(), "the rest stays lying");
+    assert_eq!(sim.app.world().get::<Magazine>(ak).unwrap().clip, before.clip - 10);
+    assert!(!sim.app.world().get::<Inventory>(owner).unwrap().weapons.contains(&ak));
+    let _ = sim.app.world().get::<Loose>(loose).unwrap();
+}
+
+/// `mashup_usepickup 1` (CS:GO's +use pickup; off by default as CS:S has
+/// none): a press of +use on a dropped gun looked at from beyond the touch
+/// box swaps it for the one in its slot, which is dropped; holding the key
+/// takes nothing more, and with the cvar at 0 the key does nothing.
+#[test]
+fn use_pickup_swaps_the_gun_looked_at_when_enabled() {
+    use crate::stack::{
+        games::cs_source::weapons::M4A1,
+        weapon::drop::{Loose, USE_REACH, UsePickup, drop_weapon},
+    };
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(2);
+    let ak = active(&sim, p);
+    let item = drop_weapon(sim.app.world_mut(), p, true).expect("dropped");
+    // Lying 1.6 m ahead (-Z): past the touch box (36 units sideways), within
+    // the use reach.
+    let floor_at = sim.position(p).with_y(0.1) - Vec3::Z * 1.6;
+    let eye = sim.position(p) + sim.state(p).eye_offset;
+    assert!(eye.distance(floor_at) < USE_REACH);
+    sim.app.world_mut().get_mut::<Transform>(item).unwrap().translation = floor_at;
+    let m4 = crate::stack::weapon::give(sim.app.world_mut(), p, M4A1).unwrap();
+    sim.seconds(1.5);
+    assert_eq!(active(&sim, p), m4);
+    let press = |sim: &mut Sim| {
+        sim.intent(p).use_key = true;
+        sim.ticks(2);
+        sim.intent(p).use_key = false;
+        sim.ticks(2);
+    };
+    // Off by default: looking at it and pressing +use does nothing.
+    assert_eq!(sim.app.world().resource::<UsePickup>().0, 0);
+    aim_at(&mut sim, p, floor_at);
+    press(&mut sim);
+    assert!(sim.app.world().get_entity(item).is_ok(), "the default leaves it lying");
+    sim.app
+        .world_mut()
+        .resource_mut::<crate::stack::console::Console>()
+        .submit("mashup_usepickup 1");
+    sim.ticks(1);
+    assert_eq!(sim.app.world().resource::<UsePickup>().0, 1);
+    // Looking away: nothing.
+    aim_at(&mut sim, p, floor_at + Vec3::X * 2.0);
+    press(&mut sim);
+    assert!(sim.app.world().get_entity(item).is_ok(), "not looked at");
+    // Held from before it's looked at: no new press, nothing.
+    sim.intent(p).use_key = true;
+    sim.ticks(1);
+    aim_at(&mut sim, p, floor_at);
+    sim.ticks(2);
+    assert!(sim.app.world().get_entity(item).is_ok(), "a held key is not a press");
+    sim.intent(p).use_key = false;
+    sim.ticks(1);
+    // A press: the AK is taken and drawn, the M4 dropped in its place.
+    press(&mut sim);
+    assert!(sim.app.world().get_entity(item).is_err(), "taken");
+    let inv = sim.app.world().get::<Inventory>(p).unwrap();
+    assert!(inv.weapons.contains(&ak) && !inv.weapons.contains(&m4));
+    assert_eq!(sim.app.world().get::<Weapon>(ak).unwrap().owner, Some(p));
+    sim.ticks(2);
+    assert_eq!(active(&sim, p), ak, "the taken gun is drawn");
+    let w = sim.app.world_mut();
+    let loose: Vec<Entity> = w.query::<&Loose>().iter(w).map(|l| l.weapon).collect();
+    assert_eq!(loose, vec![m4], "the M4 lies loose");
+}
+
+/// A map loaded after the game has run a while (the main menu, the last
+/// map), as the real game always does: `map` used to start the fixed clock
+/// over while the frame's clock ran on, so a gun dropped from the console
+/// (`drop`, G: a frame) was stamped that far in the tick clock's future
+/// and nobody could touch it for as long (half a minute at the menu: "I
+/// can't pick up guns after I drop them").
+fn sim_after_the_menu() -> Sim {
+    let mut sim = sim();
+    sim.seconds(30.0);
+    crate::stack::swap_map(
+        sim.app.world_mut(),
+        "greybox",
+        None,
+        std::time::Duration::from_secs_f64(TICK_INTERVAL),
+    );
+    sim.ticks(2);
+    sim
+}
+
+/// Walk `p` (placeholder movement) toward `to` until `done`; the ticks it
+/// took, None within `limit`.
+fn walk_to(
+    sim: &mut Sim,
+    p: Entity,
+    to: impl Fn(&Sim) -> Vec3,
+    limit: u32,
+    done: impl Fn(&Sim) -> bool,
+) -> Option<u32> {
+    for t in 0..limit {
+        if done(sim) {
+            sim.intent(p).move_axis = Vec2::ZERO;
+            return Some(t);
+        }
+        let d = to(sim) - sim.position(p);
+        let mut i = sim.intent(p);
+        i.yaw = (-d.x).atan2(-d.z);
+        i.move_axis = if d.xz().length() > 0.05 { Vec2::Y } else { Vec2::ZERO };
+        drop(i);
+        sim.ticks(1);
+    }
+    sim.intent(p).move_axis = Vec2::ZERO;
+    None
+}
+
+fn carries(sim: &Sim, p: Entity, weapon: Entity) -> bool {
+    sim.app.world().get::<Inventory>(p).unwrap().weapons.contains(&weapon)
+}
+
+/// Drop the held gun as G does (the console's `drop`, run in a frame),
+/// back off, then walk back over it: taken once a second has passed since
+/// the drop, not before; a rifle and a pistol; after time spent before
+/// the map loaded.
+#[test]
+fn a_dropped_gun_is_walked_over_and_taken_again() {
+    use crate::stack::{core::LocalPlayer, games::cs_source::weapons::USP, weapon::drop::Loose};
+    let mut sim = sim_after_the_menu();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+    sim.seconds(1.5);
+    for id in [AK47, USP] {
+        let gun = {
+            let inv = sim.app.world().get::<Inventory>(p).unwrap();
+            inv.weapons
+                .iter()
+                .copied()
+                .find(|w| sim.app.world().get::<Weapon>(*w).unwrap().id == id)
+                .unwrap()
+        };
+        sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(gun);
+        sim.seconds(1.5);
+        assert_eq!(active(&sim, p), gun);
+        crate::stack::console::execute(sim.app.world_mut(), &["drop".into()], 0);
+        let item = {
+            let w = sim.app.world_mut();
+            w.query::<(Entity, &Loose)>()
+                .iter(w)
+                .find(|(_, l)| l.weapon == gun)
+                .map(|(e, _)| e)
+                .expect("lying loose")
+        };
+        assert!(!carries(&sim, p, gun), "{id}: dropped");
+        // Straight back over it at once: not within the second.
+        let at = |s: &Sim| {
+            s.app
+                .world()
+                .get::<Transform>(item)
+                .map_or(Vec3::ZERO, |t| t.translation)
+        };
+        let ticks = |s: f64| (s / TICK_INTERVAL).round() as u32;
+        let early = walk_to(&mut sim, p, at, ticks(0.9), |s| carries(s, p, gun));
+        assert_eq!(early, None, "{id}: taken back within the touch delay");
+        // Off, and back after the delay: taken.
+        sim.intent(p).move_axis = Vec2::new(0.0, -1.0);
+        sim.seconds(0.6);
+        let took = walk_to(&mut sim, p, at, ticks(3.0), |s| carries(s, p, gun));
+        assert!(took.is_some(), "{id}: walked over after the delay and not taken");
+        assert!(sim.app.world().get_entity(item).is_err(), "{id}: the loose one is gone");
+    }
+}
+
+/// CS:S takes a gun touched only into an empty slot: with another
+/// primary carried the dropped one stays (and `mashup_debug_pickup 1`
+/// says why); dropping that one lets it be taken. The readout also says
+/// when it is too soon, and when it is taken.
+#[test]
+fn a_full_slot_refuses_a_gun_and_the_debug_readout_says_why() {
+    use crate::stack::{
+        core::LocalPlayer,
+        games::cs_source::weapons::M4A1,
+        weapon::drop::{Loose, drop_this, drop_weapon},
+    };
+    let mut sim = sim_after_the_menu();
+    sim.app
+        .world_mut()
+        .resource_mut::<crate::stack::console::Console>()
+        .submit("mashup_debug_pickup 1");
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.app
+        .world_mut()
+        .entity_mut(p)
+        .insert((LocalPlayer, Name::new("Tester")));
+    sim.seconds(1.5);
+    let ak = active(&sim, p);
+    let item = drop_weapon(sim.app.world_mut(), p, false).expect("dropped");
+    sim.ticks(2);
+    let m4 = crate::stack::weapon::give(sim.app.world_mut(), p, M4A1).unwrap();
+    // Standing on it well past the delay, the slot full: left lying.
+    let spot = sim.position(p);
+    for _ in 0..(2.0 / TICK_INTERVAL) as u32 {
+        sim.app.world_mut().get_mut::<Transform>(item).unwrap().translation = spot;
+        sim.ticks(1);
+    }
+    assert!(!carries(&sim, p, ak), "taken with the slot full");
+    assert!(sim.app.world().get_entity(item).is_ok());
+    // The M4 thrown away: the AK is taken.
+    let thrown = drop_this(sim.app.world_mut(), p, m4, true).unwrap();
+    for _ in 0..10 {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(item) {
+            t.translation = spot;
+        }
+        sim.app.world_mut().get_mut::<Transform>(thrown).unwrap().translation = spot + Vec3::X * 20.0;
+        sim.ticks(1);
+    }
+    assert!(carries(&sim, p, ak), "taken once the slot is empty");
+    let w = sim.app.world_mut();
+    assert_eq!(w.query::<&Loose>().iter(w).count(), 1, "only the M4 lies");
+    let said: Vec<String> = sim
+        .app
+        .world()
+        .resource::<crate::stack::console::Console>()
+        .output
+        .iter()
+        .map(|l| l.text.clone())
+        .filter(|t| t.starts_with("pickup Tester:"))
+        .collect();
+    let has = |s: &str| said.iter().any(|t| t.contains(s));
+    assert!(has("weapon_ak47: dropped 0.0 s ago, touchable from 1 s"), "{said:#?}");
+    assert!(
+        has("weapon_ak47: slot full (cs_source:weapon_m4a1 carried"),
+        "{said:#?}"
+    );
+    assert!(has("weapon_ak47: taken"), "{said:#?}");
+    // One line per change, not per tick.
+    assert!(said.len() < 8, "{said:#?}");
+}
+
+/// Run a tick; the `PlaySound`s still held (this tick's and the last's).
+fn sounds_this_tick(sim: &mut Sim) -> Vec<crate::stack::map::PlaySound> {
+    use bevy::ecs::message::{MessageCursor, Messages};
+    sim.ticks(1);
+    let m = sim.app.world().resource::<Messages<crate::stack::map::PlaySound>>();
+    MessageCursor::<crate::stack::map::PlaySound>::default().read(m).cloned().collect()
+}
+
+/// The local player's own AK-47 shot while strafing is heard centred:
+/// shots are emitted from the simulation's latest tick while the camera
+/// (the listener) is drawn a tick behind (`map::interp`), a few
+/// centimetres to the side, which panned the shot fully into one ear.
+/// Another player's shot from the side still pans.
+#[test]
+fn own_gunfire_is_centred_while_strafing_others_pan() {
+    use crate::stack::{audio::sound::Ear, map::SoundLevel};
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(1);
+    sim.intent(p).move_axis = Vec2::X;
+    sim.intent(p).fire = true;
+    let mut shot = None;
+    for _ in 0..200 {
+        if let Some(s) = sounds_this_tick(&mut sim)
+            .into_iter()
+            .find(|s| s.source == Some(p) && s.entry.contains("AK47"))
+        {
+            shot = Some(s);
+            break;
+        }
+    }
+    let shot = shot.expect("the AK-47 never sounded");
+    let v = sim.velocity(p);
+    assert!(v.xz().length() > 3.0, "strafing: {v}");
+    // The ear a tick behind the shot, facing the way the player looks.
+    let at = shot.at.expect("a spatial shot");
+    let look = sim.app.world().get::<Intent>(p).unwrap().look_rotation();
+    let ear_at = GlobalTransform::from(Transform::from_translation(at - v * TICK_INTERVAL as f32).with_rotation(look));
+    let level = SoundLevel::Db(140.0);
+    let mine = Ear {
+        at: ear_at,
+        owner: Some(p),
+    };
+    let (l, r, _) = mine.gains(at, shot.source, level);
+    assert!((l - r).abs() < 1e-4 && l > 0.99, "own shot centred: {l} {r}");
+    // The same shot from someone else's ears a tick behind (a spectator
+    // at the shooter's eye) is centred too: too close to pan.
+    let theirs = Ear { owner: None, ..mine };
+    let (l, r, _) = theirs.gains(at, shot.source, level);
+    assert!((l - r).abs() < 0.5, "a shot at the ear barely pans: {l} {r}");
+    // Another player's shot 10 m to the right pans right.
+    let right = ear_at.right().as_vec3();
+    let (l, r, _) = mine.gains(ear_at.translation() + right * 10.0, Some(Entity::PLACEHOLDER), level);
+    assert!(r > 0.9 && l < 0.1, "a shot from the right: {l} {r}");
+}

@@ -27,7 +27,7 @@
 //! map's own case back (`cs_source::bsp::restore_text_case`; vbsp lower-cases
 //! the whole entity lump; names, classes and paths stay lower case, matched
 //! without case anyway). Why it's OK for now: 17 mg_ maps' flows pass headless
-//! (`apps/cs_source/tests/it/heavy/map_flows.rs`); a probe-server round settles Q15.
+//! (`games/cs_source/tests/it/heavy/map_flows.rs`); a probe-server round settles Q15.
 
 use bevy::prelude::*;
 

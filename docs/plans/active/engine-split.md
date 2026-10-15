@@ -118,7 +118,7 @@ measurements):
 - [x] (2) `map/mod.rs` split (P1): `data` (MapData, plain data), `state`
   (what the logic writes), `spawn` (`spawn_map` as ~25 phase functions),
   `bodies`, `props`, `materials`, `images`, `collision`, `sky`; paths
-  outside `map` unchanged. `apps/cs_source/tests/it/heavy/map_spawn_dump.rs` dumps
+  outside `map` unchanged. `games/cs_source/tests/it/heavy/map_spawn_dump.rs` dumps
   spawned maps for before/after comparisons.
 - [x] (2) `audio` out of `map` (P3, first slice): playback, live sounds,
   room DSP, soundscapes, hearing; `map::sound` keeps the simulation's
@@ -216,7 +216,7 @@ measurements):
       added): drawn-part requests (docs/ARCHITECTURE.md): what the
       simulation makes in play says in plain data what it looks like
       and render's systems fulfil it; headless nothing is drawn
-      (`apps/cs_source/tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
+      (`games/cs_source/tests/it/drawn_parts.rs`). `render::bodies` (bodies, held
       models, the ragdoll's adoption of the dead's body), `render::loose`
       (`LooseItem`, `ShownItem`), `render::breakables` (a gib's
       `GibLook`, windows' `BrushPanes` clipped and made whole),
@@ -300,7 +300,7 @@ measurements):
     whole; their `pub(crate)` items became `pub`, the embedded shaders'
     paths are `embedded://chimera_present/render/...`; `mashup`
     re-exports `render` and `audio`. Spawn dump identical again (five
-    maps, modulo paths), `apps/cs_source/tests/it/drawn_parts.rs` passes, de_dust2 and
+    maps, modulo paths), `games/cs_source/tests/it/drawn_parts.rs` passes, de_dust2 and
     gg_tbr_water_basin screenshots draw as before. Measured
     (docs/performance.md, "`chimera_world` and `chimera_present`"): a
     leaf edit in render or map, `cargo test --features dev --no-run`,
@@ -831,7 +831,7 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 
 | Module | Goes to | Notes |
 |---|---|---|
-| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `chimera/core` |
+| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done: `chimera/core`; `harness.rs` split by layer: `Sim` in `chimera/world`, `NetSim` in `chimera/net`, CS:S's base in `games/cs_source` |
 | `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |

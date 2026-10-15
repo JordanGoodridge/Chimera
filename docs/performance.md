@@ -208,7 +208,7 @@ view, the PVS already culls most of what lies beyond, and what remains
 beyond an opening but outside its screen rectangle is mostly outside the
 frustum anyway (meshes drawn don't change). The win is behind shut doors
 (cs_militia: 54 map parts behind its front door, cs_assault: 15; see
-`apps/cs_source/tests/it/heavy/map_areaportals.rs`). `refcmp vischeck` on de_nuke lists the same
+`games/cs_source/tests/it/heavy/map_areaportals.rs`). `refcmp vischeck` on de_nuke lists the same
 15 views, pixel for pixel, with and without `+r_portalsopenall 1`, so none
 come from areaportals; one of them, nav1627_90 (16k pixels inside the
 glass of the door beside the A site door), is over vischeck's 0.5% limit.
@@ -527,7 +527,7 @@ two spawns), plus traces of a `--features profile` build.
   rewrites its own mesh asset in place (a new `Mesh3d` handle each frame
   made Bevy re-specialize the entity, and under the single-threaded
   executors a moving prop's shadow was never drawn until it rested;
-  `apps/cs_source/tests/it/prop_shadows.rs`).
+  `chimera/present/tests/it/prop_shadows.rs`).
 - **Resolution** barely matters on the dev box's RTX 3080: GPU time for
   the survey views 0.37 ms at 1280x720, 0.40 at 1920x1080, 0.49 at
   2560x1440, 0.53 at 3840x2160 (`--view-size`), frame times unchanged

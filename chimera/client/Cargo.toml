@@ -39,6 +39,12 @@ serde.workspace = true
 serde_json.workspace = true
 workspace-hack.workspace = true
 
+# The integration tests (tests/it/): the shell's parts on the headless
+# harness with the engine's base alone.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
 [features]
 # Bevy as a dynamic library and the remote protocol, as the game's `dev`
 # (which turns this on): `cargo test -p chimera_client --features dev`

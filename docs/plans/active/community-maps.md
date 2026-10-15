@@ -10,7 +10,7 @@ How to check: `cargo run --features dev,tools --bin mapsweep` (docs/OBSERVABILIT
 ranked by maps affected, then a row per map), `report.csv`,
 `warnings.txt`; `--shots target/playtest/mashup` adds a screenshot from
 the first spawn and the frame time there. The maps never enter the repo;
-`apps/cs_source/tests/it/heavy/map_community.rs` tests fixes on cached maps and skips
+`games/cs_source/tests/it/heavy/map_community.rs` tests fixes on cached maps and skips
 when a map is absent.
 
 ## Results
@@ -157,8 +157,8 @@ env_spark's sparks; entities parented to a placed weapon follow it and
 its carrier, OnPlayerPickup (`map::entities` anchors). mg_item_battle_v4b:
 walking onto an item knife picks it up, its car rides along under the
 player and its speed change applies. Tests: `source/logic/src/logic/game_tests.rs`,
-`template_tests.rs`, `apps/cs_source/tests/it/map_game_entities.rs`,
-`apps/cs_source/tests/it/heavy/map_community.rs` (`item_children_follow_the_player`).
+`template_tests.rs`, `games/cs_source/tests/it/map_game_entities.rs`,
+`games/cs_source/tests/it/heavy/map_community.rs` (`item_children_follow_the_player`).
 Shortcuts are in docs/tech-debt.md; the specs' open questions stand.
 
 Sweep (89 maps), entity classes nothing handles: 56 classes / 2945
@@ -235,7 +235,7 @@ What still fails, ranked by maps affected (after):
 ## Minigame flows (2026-10-10)
 
 The 17 mg_ maps played through headless as players meet them
-(`apps/cs_source/tests/it/heavy/map_flows.rs`: the whole game, rounds on, scripted
+(`games/cs_source/tests/it/heavy/map_flows.rs`: the whole game, rounds on, scripted
 characters on both teams pressing selectors with +use, standing in
 teleports and arenas, getting loadouts, dying, and the next round
 bringing the selection back; `MASHUP_FLOW_TABLE=1 cargo test --features
@@ -351,8 +351,8 @@ parented to things, the remaining classes, and the scripted runs' noise.
 
 Fixed, by maps affected (tests in `source/logic/src/logic/community_tests.rs`,
 `map::emitters`, `map::psys`, `games::cs_source::pcf`, `render::tint`,
-`map::buoyancy`, `map::controllers`, `apps/cs_source/tests/it/logic_physics.rs`,
-`apps/cs_source/tests/it/heavy/map_community.rs::visual_entities_load`):
+`map::buoyancy`, `map::controllers`, `games/cs_source/tests/it/logic_physics.rs`,
+`games/cs_source/tests/it/heavy/map_community.rs::visual_entities_load`):
 
 | Problem | Maps | Fix |
 |---|---|---|
@@ -432,11 +432,11 @@ flows on surf_/bhop_/kz_/gg_ maps were another session's). `mapsweep
 | Usable brushes +use didn't find | 7 | 0 (5 visits where the map moves the player away, listed apart) |
 | Movers that didn't move / jumped / children left behind / panics | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
 
-Fixed, by maps affected (tests: `apps/cs_source/tests/it/heavy/map_community.rs`
+Fixed, by maps affected (tests: `games/cs_source/tests/it/heavy/map_community.rs`
 `map_ragdolls_fall_and_take_shots`, `moving_water_follows_its_entity`,
-`visual_entities_load`; `apps/cs_source/tests/it/net_interp.rs`
+`visual_entities_load`; `games/cs_source/tests/it/net_interp.rs`
 `map_ragdolls_are_drawn_as_the_server_simulates_them`;
-`apps/cs_source/tests/it/logic_physics.rs` (anchor, force limit); `source/logic/src/logic/tests.rs`
+`games/cs_source/tests/it/logic_physics.rs` (anchor, force limit); `source/logic/src/logic/tests.rs`
 `use_reaches_a_usable_parent`, `water_analog_moves`;
 `source/logic/src/logic/community_tests.rs`
 `view_punch_muzzle_flash_color_correction_and_noted_classes`;
@@ -485,7 +485,7 @@ What still fails, ranked by maps affected (after; `target/mapsweep/round3/audit.
 ## Course flows (2026-10-10)
 
 The 30 surf_, bhop_ and kz_ maps and the 42 gg_ maps played through
-headless (`apps/cs_source/tests/it/heavy/map_courses.rs`, one test per map; how it
+headless (`games/cs_source/tests/it/heavy/map_courses.rs`, one test per map; how it
 works and its switches: docs/OBSERVABILITY.md after "Minigame maps'
 flows"). Nothing is per map: every check is derived from the map's
 entities, so each row counts items (teleports, checkpoints, blocks,

@@ -56,7 +56,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // client and harness (docs/plans/active/multiplayer.md, section 3): a
     // game registers what it replicates and fills its hooks (`net::parts`).
     ("net", &["core", "console", "slots", "character", "movement", "map", "weapon"]),
-    // `lib` = crate-root items such as `SimPlugins`.
+    // The headless harness (chimera_world's `Sim`, chimera_net's `NetSim`,
+    // cs_source's base and test maps). `lib` = crate-root items such as
+    // `SimPlugins`.
     (
         "harness",
         &[
@@ -174,9 +176,11 @@ const CRATE_SRC: &[&str] = &[
 ];
 
 /// The CS:S app's glue (crate `cs_source_app`): `lib.rs` (`SimPlugins`,
-/// `swap_map`, `client_hooks`) and `client.rs` are the crate root's
-/// (`lib`), `main.rs` the game binary's; its other modules keep the names
-/// they had in `mashup` (`harness`, `greybox`, `games`, ...).
+/// `client_hooks`, the harness's and greybox's old paths) and `client.rs`
+/// are the crate root's (`lib`), `main.rs` the game binary's; its other
+/// modules keep the names they had in `mashup` (`games`, `net`, ...).
+/// (`harness` and `greybox` are chimera_world's modules now, with
+/// chimera_net's and cs_source's `harness`.)
 const APP_SRC: &str = "apps/cs_source/src";
 
 /// The repository's root (this crate is checks/).
@@ -808,7 +812,7 @@ fn workspace_crates() {
         ("chimera/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
         ("chimera/sim", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
         ("chimera/net", &["chimera_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
-        ("games/cs_source", &["chimera_present", "chimera_client", "source_logic", "cs_source_app", "mashup", "combat_arms"], GAME),
+        ("games/cs_source", &["chimera_present", "chimera_client", "cs_source_app", "mashup", "combat_arms"], GAME),
         ("source/logic", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
         ("chimera/tools", &["source_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
@@ -857,19 +861,32 @@ fn workspace_crates() {
                     })
             })
         };
-        let mut tables: Vec<&toml::Table> = ["dependencies", "dev-dependencies", "build-dependencies"]
+        let mut tables: Vec<(&str, &toml::Table)> = ["dependencies", "dev-dependencies", "build-dependencies"]
             .iter()
-            .filter_map(|k| m.get(*k).and_then(|t| t.as_table()))
+            .filter_map(|k| m.get(*k).and_then(|t| t.as_table()).map(|t| (*k, t)))
             .collect();
         for target in m.get("target").and_then(|t| t.as_table()).into_iter().flat_map(|t| t.values()) {
             tables.extend(
                 ["dependencies", "dev-dependencies"]
                     .iter()
-                    .filter_map(|k| target.get(*k).and_then(|t| t.as_table())),
+                    .filter_map(|k| target.get(*k).and_then(|t| t.as_table()).map(|t| (*k, t))),
             );
         }
-        for dep in tables.iter().flat_map(|t| t.keys()) {
-            if forbidden.iter().any(|f| dep.starts_with(f)) && !ui_only(dep) {
+        // A test-only dependency (`TEST_ONLY`): in dev-dependencies, and
+        // nowhere else but as the front end's optional one.
+        let test_only = |dep: &str| {
+            TEST_ONLY.iter().any(|(k, deps, _)| k == krate && deps.contains(&dep))
+                && ["dependencies", "build-dependencies"].iter().all(|t| {
+                    m.get(*t)
+                        .and_then(|d| d.get(dep))
+                        .is_none_or(|d| d.get("optional").and_then(|o| o.as_bool()) == Some(true))
+                })
+        };
+        for (table, dep) in tables.iter().flat_map(|(name, t)| t.keys().map(move |k| (*name, k))) {
+            // The front end's optional dependencies in the build's tables;
+            // the test-only ones in the tests' (dev-dependencies).
+            let allowed = if table == "dev-dependencies" { test_only(dep) } else { ui_only(dep) };
+            if forbidden.iter().any(|f| dep.starts_with(f)) && !allowed {
                 errors.push(format!("{path} depends on `{dep}`: {krate} {why}"));
             }
         }
@@ -878,16 +895,25 @@ fn workspace_crates() {
 }
 
 /// A game crate's front end feature and the dependencies only it may
-/// turn on (optional ones): the presentation, the client shell and
-/// Source's logic, which the game's simulation never uses
-/// (`workspace_crates`; `game_ui_only_with_its_feature` checks the
-/// dependency tree).
-const UI_FEATURES: &[(&str, &str, &[&str])] =
-    &[("games/cs_source", "ui", &["chimera_present", "chimera_client", "source_logic"])];
+/// turn on (optional ones): the presentation and the client shell, which
+/// the game's simulation never uses (`workspace_crates`;
+/// `game_ui_only_with_its_feature` checks the dependency tree).
+const UI_FEATURES: &[(&str, &str, &[&str])] = &[("games/cs_source", "ui", &["chimera_present", "chimera_client"])];
+
+/// Crates a member's `FORBIDDEN` list names that its tests alone may use
+/// (dev-dependencies, never a normal or build one): crates below it, not
+/// above, so it is no way around the layering. `cs_source`'s scenario
+/// tests run the map as the game does, its drawn parts and sounds with it
+/// (`chimera_present`'s `MapPlugin`); the game's own build never links it
+/// (`game_ui_only_with_its_feature`).
+const TEST_ONLY: &[(&str, &[&str], &str)] = &[(
+    "games/cs_source",
+    &["chimera_present"],
+    "the scenario tests' maps with what draws and plays them",
+)];
 
 /// A game crate builds without its front end: `cs_source` alone depends
-/// on no presentation, shell or Source logic; with `ui` it does
-/// (`UI_FEATURES`). The dedicated server never turns `ui` on
+/// on no presentation or shell; with `ui` it does (`UI_FEATURES`). The dedicated server never turns `ui` on
 /// (`server_builds_without_presentation`).
 #[test]
 fn game_ui_only_with_its_feature() {

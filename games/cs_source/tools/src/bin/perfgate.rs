@@ -19,7 +19,7 @@ use cs_source_app::{
         cs_source::{self, TICK_INTERVAL, movement::SourceMovementPlugin, weapons::CsWeaponsPlugin},
     },
     greybox::{self, GreyboxMapPlugin},
-    harness::Sim,
+    harness::{CsSim, Sim},
     map::MapPlugin,
     mount::config::{LocalConfig, content_dir},
 };
@@ -43,7 +43,7 @@ fn main() {
 fn scenario(name: &str) -> Option<Sim> {
     let mut sim = match name {
         "greybox" => {
-            let mut sim = Sim::new(GreyboxMapPlugin);
+            let mut sim = Sim::new(CsSim, GreyboxMapPlugin);
             // Characters walking and turning on fixed patterns (`drive`).
             for (i, at) in greybox::SPAWNS.iter().enumerate() {
                 let e = sim.spawn_character(*at, cs_source_app::movement::placeholder::ID);
@@ -94,7 +94,7 @@ fn installed() -> bool {
 
 fn cs_map(name: &str) -> Option<Sim> {
     let map = games::load_map(&format!("cs_source:{name}")).ok()?;
-    let mut sim = Sim::new((MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app.insert_resource(cs_source_app::slots::Loadout {
         movement: cs_source::movement::ID,

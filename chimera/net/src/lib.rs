@@ -13,7 +13,11 @@
 //!
 //! The game crate re-exports `net` at its old path (`mashup::net`), with
 //! the game's replicated types beside it.
+//!
+//! `harness`: `NetSim`, a server and clients in one process over the
+//! in-memory link, each a headless `Sim` on the caller's base plugins.
 
+pub mod harness;
 pub mod net;
 
 // `crate::core`, `crate::map` and the rest inside `net`, as in the game

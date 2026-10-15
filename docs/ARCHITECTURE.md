@@ -14,21 +14,21 @@ nextest run` at the root test them all (`checks/tests/it/architecture.rs`,
 mashup (repository root: src/, tests/it/)   `dump`; `cs_source_app` at the old paths
   |    cs_source_server (apps/cs_source_server/)   the dedicated server: the app without `present`
   |   /
-cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins, harness, greybox, games::load_map
+cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ its version), games::load_map
   |
   |    cs_source[ui] (games/cs_source/src/ui/)   CS:S's front end: menus, panels, HUD (feature `ui`)
   |   /         \
   chimera_client  |  (chimera/client/)   client: the shell (input, camera, console UI, HUD base, widgets, debug)
   |    \        |
-  |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots
+  |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots, SimPlugins, harness::CsSim
   |    |    source_logic (source/logic/)   logic: Source entity I/O
   |    |   /
-  |    chimera_net (chimera/net/)   net: transport, replication, prediction
+  |    chimera_net (chimera/net/)   net: transport, replication, prediction; harness::NetSim
   |    |
 chimera_present (chimera/present/)   render, audio, MapPlugin
-  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module
+  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module; SimBasePlugins
   |    |
-chimera_world (chimera/world/)   map: map data, collision, sim-side spawning
+chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; greybox, harness::Sim
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
@@ -57,7 +57,10 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   (`map::build`): alone as `map::MapSimPlugin` (the dedicated server's,
   nothing drawn or played), or with what draws and plays the map at
   fixed places among them (`map::MapLayers`, filled by `chimera_present`'s
-  `MapPlugin`; the client's order). `mashup::map` re-exports it, with
+  `MapPlugin`; the client's order). It also holds the greybox (`greybox`:
+  the map built in code) and the headless harness (`harness::Sim`, on
+  the simulation plugins its caller passes as the base), so every crate
+  from here up tests on it at its own layer. `mashup::map` re-exports it, with
   `MapPlugin` in builds with the presentation.
   `cargo test -p chimera_world --features dev` tests it alone.
 - `chimera_present` is the presentation beside the simulation: `render`,
@@ -97,13 +100,19 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `mashup::games::cs_source::ui`; the GameUI menus and dialogs, the join
   flow, the buy, team, radio and spectator menus, the scoreboard and its
   HUD, on the shell, `with_hud` putting the HUD among the shell's
-  plugins). The simulation uses the engine crates (not `chimera_present`)
-  and `source_formats`, never `mashup` or another game (checked); only
-  `ui` uses the presentation, the shell and Source's logic, as optional
+  plugins). The simulation uses the engine crates (not `chimera_present`),
+  Source's logic and `source_formats`, never `mashup` or another game
+  (checked); only `ui` uses the presentation and the shell, as optional
   dependencies of the feature (checked: `workspace_crates`,
   `game_ui_only_with_its_feature`), and nothing else of the crate uses
-  `ui`. `cargo test -p cs_source --features dev` tests the simulation,
-  `--features dev,ui` the front end too.
+  `ui`; its tests may use the presentation too (a dev-dependency:
+  `TEST_ONLY`). `SimPlugins` is CS:S's simulation (Chimera's base,
+  `chimera_sim::SimBasePlugins`, with its rules, objectives, bots,
+  network part and Source's logic), which the app runs; `harness::CsSim`
+  is that as the tests' and tools' base, with its test maps for network
+  tests. `cargo test -p cs_source --features dev` tests the simulation
+  (its scenario tests, heavy map tests among them), `--features dev,ui`
+  the front end too.
 - `source_logic` is Source's map logic (`logic`: entity I/O, logic
   classes, triggers, movers, breakables, props, fire, the bridge to the
   map's entities) with its part of the network (`logic::net`: movers,
@@ -117,15 +126,15 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   of their own as parts (`net::NetAppExt::net_part`, applied in name
   order in `NetPlugin::finish`, after the engine's protocol) and fill
   its hooks (`net::parts`: `JoinRules`, `BotHooks`, `Holds`,
-  `NetHooks`). It uses `chimera_sim`, `chimera_world` and `chimera_core`,
+  `NetHooks`); `harness::NetSim` runs a server and clients over its
+  in-memory link. It uses `chimera_sim`, `chimera_world` and `chimera_core`,
   never the presentation, Source's logic, `mashup` or a game (checked);
   `mashup::net` re-exports it with the parts' replicated types.
   `cargo test -p chimera_net --features dev` tests it alone.
 - `cs_source_app` (apps/cs_source/) is the faithful CS:S app: the game
   binary (`mashup`, the workspace's `default-run`) and the app's glue:
-  `SimPlugins` (Chimera's simulation with CS:S's rules, bots and network
-  part and Source's logic), the test harness, `games::load_map`, the
-  greybox, `client_hooks` and `client` (the shell with this app's hooks
+  `SimPlugins` (`cs_source::SimPlugins` with the build's version),
+  `games::load_map`, `client_hooks` and `client` (the shell with this app's hooks
   and CS:S's HUD), re-exports at the old paths, and build.rs's stamp. It
   uses `chimera_present` only with its default feature `present` (with
   the client shell and CS:S's front end, `cs_source/ui`).
@@ -143,8 +152,11 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   tests in one binary per crate (`<crate>/tests/it/`, `heavy::` for the
   slow ones; `cs_source`'s front end's in tests/ui/ with `ui`), in the
   lowest crate whose API they need (docs/OBSERVABILITY.md, section 1;
-  checked: `tests_are_one_binary_per_crate`). The scenario tests sit on
-  the app (`cs_source_app`: its harness and greybox).
+  checked: `tests_are_one_binary_per_crate`). Scenario tests run on the
+  engine's harness (`chimera_world::harness::Sim`) with the base of
+  their layer: the engine's (`chimera_sim::SimBasePlugins`) in Chimera's
+  crates, CS:S's (`cs_source::harness::CsSim`) in `cs_source`'s, so
+  the app keeps only its own.
 - `repo_checks` (checks/) is the repository's own checks: the
   architecture tests (checks/tests/it/architecture.rs) and `affected`,
   the hooks' test selection (changed files to packages, then every
@@ -157,8 +169,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   no Source, game or app), `source_tools` (source/tools/: RCON,
   `demodump`, `testmap`; no Bevy, Chimera or game) and `cs_source_tools`
   (games/cs_source/tools/: `refcmp`'s CS:S driver, `movecmp`, `mapsweep`,
-  `perfgate`'s scenarios). CS:S's tools drive the simulation through the
-  CS:S app's harness, so they depend on `cs_source_app` (tech-debt.md).
+  `perfgate`'s scenarios). CS:S's tools still depend on `cs_source_app`
+  (its build stamp, map loading by id: tech-debt.md).
   An app's own tools only for app concerns (launch, packaging, budgets).
 - `workspace-hack` (chimera/workspace-hack/, generated by `cargo hakari`,
   .config/hakari.toml) unifies third-party features: every member but
@@ -233,7 +245,7 @@ a gib carries its `GibLook` (which model of which gib list, skin, glass,
 fade distances) and a window its `BrushPanes`; render's systems react to
 them (added, changed, removed, without their drawn marker). Without `render` (a dedicated server) the requests stay
 unfulfilled and the simulation's parts (bodies, colliders) work alone
-(`apps/cs_source/tests/it/drawn_parts.rs`).
+(`games/cs_source/tests/it/drawn_parts.rs`).
 
 `metrics` (per-thread CPU time and hardware counters, distributions, the
 tick's measurements) uses no other module of ours; any layer may use it
@@ -276,7 +288,7 @@ that the paths exist).
 - `chimera/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `chimera/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
-- `apps/cs_source/src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
+- `chimera/world/src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `chimera/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `chimera/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `chimera/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
@@ -442,11 +454,15 @@ that the paths exist).
 
 ### Apps, binaries and the test harness
 
-- `apps/cs_source/src/lib.rs`: `SimPlugins`, `swap_map`, `client_hooks` (crate `cs_source_app`'s root)
+- `apps/cs_source/src/lib.rs`: `SimPlugins` (with the version), `client_hooks`, the harness's old paths (crate `cs_source_app`'s root)
 - `apps/cs_source/build.rs`: stamps the build's commit and version (`core::VERSION`, `core::BUILD`)
 - `src/lib.rs`: `mashup`: `cs_source_app` at the old paths, for `dump` and its test (crate root)
 - `apps/cs_source/src/main.rs`: the game binary (top)
-- `apps/cs_source/src/harness.rs`: `Sim` and `NetSim`: headless apps stepped by exact ticks, for tests (harness)
+- `chimera/world/src/harness.rs`: `Sim`: a headless app on a given base stepped by exact ticks, for tests and tools (harness)
+- `chimera/net/src/harness.rs`: `NetSim`: a server and clients, each a `Sim`, over the in-memory link (harness)
+- `games/cs_source/src/harness.rs`: `CsSim` (CS:S's simulation as a `Sim`'s base) and maps for network tests (harness)
+- `games/cs_source/src/lib.rs`: `SimPlugins` (CS:S's simulation), `swap_map` (crate `cs_source`'s root)
+- `chimera/sim/src/lib.rs`: `SimBasePlugins`: the engine's simulation without a game (crate `chimera_sim`'s root)
 - `checks/src/affected.rs`: which packages' tests a change can affect, through cargo's crate graph (repo_checks)
 - `checks/src/bin/affected.rs`: dev tool: print the affected tests' `cargo nextest` arguments (the git hooks)
 - `apps/cs_source_server/src/main.rs`: the dedicated server, built without the presentation (top)

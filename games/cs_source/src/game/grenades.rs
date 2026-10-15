@@ -49,7 +49,7 @@ pub const WORLD_MODELS: &[(&str, &str)] = &[
 
 /// View models and whether each is built right-handed (all three hold the
 /// grenade left of the eye, like the AK; checked by
-/// `apps/cs_source/tests/it/heavy/map_de_dust2.rs::grenade_models_and_sequences`).
+/// `games/cs_source/tests/it/heavy/map_de_dust2.rs::grenade_models_and_sequences`).
 pub const VIEW_MODELS: &[(&str, &str, bool)] = &[
     (HEGRENADE, "models/weapons/v_eq_fraggrenade.mdl", false),
     (FLASHBANG, "models/weapons/v_eq_flashbang.mdl", false),

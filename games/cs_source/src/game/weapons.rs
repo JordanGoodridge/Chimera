@@ -11,7 +11,7 @@
 //! names its script key) built by `gun`. The scripts are encrypted; the
 //! values are the spec's tables, which were read from the user's install.
 //! Sound entries and model paths are the install's own names (its sound
-//! scripts and model files), checked by `apps/cs_source/tests/it/heavy/map_de_dust2.rs`.
+//! scripts and model files), checked by `games/cs_source/tests/it/heavy/map_de_dust2.rs`.
 //!
 //! Known shortcuts (docs/tech-debt.md): The CS:S guns (all 24 in
 //! `games/cs_source/weapons.rs`): unmeasured parts are marked `UNMEASURED`
@@ -131,7 +131,7 @@ pub fn silenced_key(id: &str) -> String {
 /// spec view_models.md 2). CS:S ships one knife view model for both teams.
 /// The scripts are encrypted, so handedness comes from the models: the AK
 /// is held left of the eye (left-handed), the knife right of it
-/// (`apps/cs_source/tests/it/heavy/map_de_dust2.rs::view_model_handedness_in_the_files`). With the
+/// (`games/cs_source/tests/it/heavy/map_de_dust2.rs::view_model_handedness_in_the_files`). With the
 /// default `cl_righthand 1` the left-handed ones are mirrored, so all end
 /// up in the right hand, as CS:S shows them. Built right-handed (muzzle
 /// right of the eye): the knife, FAMAS, Galil, M249 and the Elites (whose

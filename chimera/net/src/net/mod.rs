@@ -154,7 +154,7 @@
 //! gets earlier rounds'); quitting through the remote protocol (`mashup/console
 //! quit`) skips netcode's disconnect packet, so the server notices only when
 //! the client times out; soak (multiplayer.md, "Soak";
-//! apps/cs_source/tests/it/heavy/net_soak.rs): replicon (0.44.3) holds a client's mutations
+//! games/cs_source/tests/it/heavy/net_soak.rs): replicon (0.44.3) holds a client's mutations
 //! back until the update they follow arrives and by default applies only each
 //! entity's newest one, though it acknowledged them all on arrival, so on lossy
 //! links a value changed once on an entity whose body changes every tick was
@@ -186,9 +186,9 @@
 //! local client's ping reads ~60 ms and each client missed ~7 % of ticks'
 //! commands over a 12-minute live run (most during map loads). Why it's OK for
 //! now: Slice 8 and the open questions replace the rest; the rules are tested
-//! in `apps/cs_source/tests/it/net_rules.rs`; commands, clock sync, prediction and
-//! reconciliation are tested (`apps/cs_source/tests/it/net_prediction.rs`), the join, map
-//! check and replication too (`apps/cs_source/tests/it/net.rs`).
+//! in `games/cs_source/tests/ui/net_rules.rs`; commands, clock sync, prediction and
+//! reconciliation are tested (`games/cs_source/tests/it/net_prediction.rs`), the join, map
+//! check and replication too (`games/cs_source/tests/it/net.rs`).
 
 pub mod anchors;
 pub mod chat;
@@ -267,7 +267,7 @@ pub const GREYBOX: &str = "greybox";
 /// over its transform) would undo a small correction every tick: a
 /// player standing still 1 ULP away from the server's spot (below the
 /// physics' 0.01 mm tolerance) mispredicted on every tick (found by the
-/// soak, apps/cs_source/tests/it/heavy/net_soak.rs). Steps that small within a tick are
+/// soak, games/cs_source/tests/it/heavy/net_soak.rs). Steps that small within a tick are
 /// kept by `core::keep_moved_positions`.
 pub fn canonical_position(world: &mut World, e: Entity) {
     let Some(mut t) = world.get_mut::<Transform>(e) else { return };

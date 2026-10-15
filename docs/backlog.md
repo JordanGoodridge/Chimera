@@ -641,7 +641,7 @@ docs/plans/active/sound.md.
 
 ## 7. Physics props, remaining
 
-- Player physics shadow (games/cs_source/src/game/shadow.rs, apps/cs_source/tests/it/heavy/map_physics_shadow.rs)
+- Player physics shadow (games/cs_source/src/game/shadow.rs, games/cs_source/tests/it/heavy/map_physics_shadow.rs)
   follow-ups (docs/tech-debt.md "Physics shadow"): the push speed limit
   (spec Q7), the shadow's weight on a prop stood on, the controller's
   velocity target when not touching (spec 4.1 step 5), measuring the push
@@ -658,7 +658,7 @@ docs/plans/active/sound.md.
   `door_options` skin and `hardwareN` blocks, docs/tech-debt.md "Model
   doors").
 - Breakables, remaining (source/logic/src/logic/breakables.rs,
-  apps/cs_source/tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof decals,
+  games/cs_source/tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof decals,
   propdata templates, the client's pane drawing (spec open question 8:
   edge piece selection, which side draws, the piece's offset; ours in
   docs/tech-debt.md "Breakables"), the spec's open questions on the probe

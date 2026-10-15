@@ -28,7 +28,7 @@
 //! other physics prop (multiplayer props get pushaway.rs's scripted push only).
 //! Why it's OK for now: A light crate is shoved and followed, a 400 kg one
 //! blocks, standing on a crate is stable
-//! (apps/cs_source/tests/it/heavy/map_physics_shadow.rs); compare push speeds with CS:S.
+//! (games/cs_source/tests/it/heavy/map_physics_shadow.rs); compare push speeds with CS:S.
 
 use avian3d::prelude::*;
 use bevy::{ecs::system::SystemParam, prelude::*};

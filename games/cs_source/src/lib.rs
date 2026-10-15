@@ -13,11 +13,21 @@
 //! hostage goals); `game::net` is its part of the network (its round, bomb
 //! and hostages replicated, its join flow, bots and holds behind the
 //! network's hooks). It uses the engine crates
-//! (`chimera_core`, `chimera_world`, `chimera_sim`, `chimera_net`) and `source_formats`,
-//! never `mashup` or another game (checked); only `ui` uses the
-//! presentation, the shell and Source's logic (optional dependencies of
-//! the feature, checked), so a dedicated server builds and runs the game
-//! without drawing and nothing but `ui` uses `ui`.
+//! (`chimera_core`, `chimera_world`, `chimera_sim`, `chimera_net`),
+//! Source's map logic (`source_logic`) and `source_formats`, never
+//! `mashup` or another game (checked); only `ui` uses the presentation
+//! and the shell (optional dependencies of the feature, checked), so a
+//! dedicated server builds and runs the game without drawing and nothing
+//! but `ui` uses `ui`.
+//!
+//! `SimPlugins`: everything CS:S's simulation needs but its parts (the
+//! engine's base, Source's map logic, CS:S's rules, objectives, bots and
+//! network part; `game::CsSourcePlugins` adds the parts after it), what
+//! the app runs; `swap_map`: a map in place of the one playing, as the
+//! game's `map` does without the view (the dedicated server's
+//! `changelevel`, tests); `harness`: CS:S on the engine's headless
+//! harness (`harness::CsSim`, the base of its scenario tests, tests/it/
+//! and tests/ui/; maps for network tests).
 //!
 //! The game crate re-exports `game` as `mashup::games::cs_source` with
 //! `ui` beside it (with `present`), and `rules`, `objectives` and `bot` at
@@ -25,6 +35,7 @@
 
 pub mod bot;
 pub mod game;
+pub mod harness;
 pub mod objectives;
 pub mod rules;
 // The front end: built on the client shell (the `ui` feature).
@@ -37,10 +48,64 @@ use chimera_sim::weapon;
 use chimera_net::net;
 use chimera_world::map;
 
-// The front end's: the shell, the presentation, Source's logic.
+// Source's map logic: in `SimPlugins` (and the front end's objectives).
+use source_logic::logic;
+
+// The front end's: the shell, the presentation.
 #[cfg(feature = "ui")]
 use chimera_client::client;
 #[cfg(feature = "ui")]
 use chimera_present::{audio, render};
-#[cfg(feature = "ui")]
-use source_logic::logic;
+
+use bevy::prelude::*;
+
+/// Everything CS:S's simulation needs but its parts, with no window,
+/// rendering or input: the engine's base (`chimera_sim::SimBasePlugins`:
+/// the fixed tick, `core`, the console, movement, the weapon framework),
+/// CS:S's objectives, rules, bots and part of the network, Source's map
+/// logic, the tick metrics. The app runs it (with its build's version:
+/// `cs_source_app::SimPlugins`), with the game's parts
+/// (`game::CsSourcePlugins`) after it; tests and tools on the headless
+/// harness through `harness::CsSim`.
+pub struct SimPlugins;
+
+impl Plugin for SimPlugins {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(chimera_sim::SimBasePlugins)
+            .add_plugins((
+                objectives::ObjectivesPlugin,
+                rules::DeathmatchPlugin,
+                bot::BotPlugin,
+                // CS:S's part of the network (its round, bomb and hostages,
+                // its join flow and bots' hooks); nothing without `NetPlugin`.
+                game::net::CsSourceNetPlugin,
+            ))
+            .add_plugins((logic::LogicPlugin, chimera_core::metrics::TickMetricsPlugin));
+    }
+}
+
+/// Put a map in place of the one playing, as the game's `map` does
+/// without the view (the dedicated server's `changelevel`, tests): `data`
+/// for map `id`, or the greybox (None); the tick its game runs at;
+/// everyone respawned in a new game there. The fixed clock keeps running
+/// (`core::set_tick_length`); a network server takes its clients along
+/// (`net::maps`).
+pub fn swap_map(world: &mut World, id: &str, data: Option<map::MapData>, tick: std::time::Duration) {
+    use chimera_world::greybox;
+    match data {
+        Some(data) => {
+            greybox::unload(world);
+            map::change_map(world, data, map::MapDebugView::Normal);
+            world.insert_resource(map::LoadedMapName(id.to_string()));
+        }
+        None => {
+            map::unload_map(world);
+            greybox::unload(world);
+            greybox::respawn(world);
+            world.remove_resource::<map::ActiveMapLook>();
+            world.insert_resource(map::LoadedMapName(net::GREYBOX.into()));
+        }
+    }
+    core::set_tick_length(world, tick);
+    rules::new_game(world);
+}

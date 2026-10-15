@@ -15,6 +15,13 @@
 //!   read under the root's tools/): its tests and the tests of every
 //!   package that depends on it, as a dependency or a dev-dependency, at
 //!   any depth (`Workspace::test_deps`);
+//! - a feature's part (`Change::Feature`): a file under a folder only a
+//!   feature compiles, as its manifest says (`[package.metadata.affected]
+//!   feature-paths = { ui = ["src/ui/"] }`: cs_source's front end): the
+//!   package's test binaries built with that feature, its unit tests of
+//!   that module (`binary_id(cs_source) & test(/^ui::/)`) and the tests
+//!   of every package depending on it, not its other binaries (the
+//!   simulation's scenario and heavy map tests);
 //! - test code (`Change::Tests`): a file under a member's `tests/`: only
 //!   that package's tests, nothing above it can see them. A test module
 //!   (`apps/cs_source/tests/it/heavy/map_surf.rs`) selects that module's tests
@@ -28,17 +35,17 @@
 //! turns on. This crate's own tests (the architecture tests) always run:
 //! any change can break a layering or repository rule.
 //!
-//! Known shortcuts: the scenario tests (most tests' time, the heavy map
-//! tests above all) are `cs_source_app`'s, as the harness (`Sim` runs the
-//! app's `SimPlugins`) and the greybox are the app's, so a change to any
-//! crate under the app selects them; moving the greybox and a `Sim`
-//! taking its base plugins into a crate below the app would let tests of
-//! one layer sit there. The selection is per package (or test module), not per
-//! test binary's features: `cs_source`'s simulation tests run for a
-//! change to the presentation its `ui` feature uses. A test that reads a
-//! repository file at run time (not through `include_str!`) outside its
-//! package isn't known; none does today (`tools/testmap` is mapped to
-//! `source_tools`, the tools' data to `cs_source_tools`).
+//! Known shortcuts: the selection is per package (or test module, or a
+//! feature's folder), not per test binary's features beyond
+//! `feature-paths`: `cs_source`'s simulation tests run for a change to
+//! the presentation its `ui` feature uses (`chimera_present` is under
+//! both). The scenario tests of a crate run for any change below it:
+//! most of them (the heavy map tests above all) are `cs_source`'s, so an
+//! edit to Chimera or Source's logic still selects nearly the whole suite.
+//! A test that reads a repository file at run time (not through
+//! `include_str!`) outside its package isn't known; none does today
+//! (`tools/testmap` is mapped to `source_tools`, the tools' data to
+//! `cs_source_tools`).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -49,6 +56,10 @@ use std::{
 
 /// This crate: its tests run on every selection.
 pub const CHECKS: &str = "repo_checks";
+
+/// `Selection::partial`'s name for a package's unit tests (its library's
+/// test binary, nextest's `binary_id(<package>)`).
+pub const LIB: &str = "(unit tests)";
 
 /// A workspace member as the selection needs it.
 #[derive(Clone, Debug)]
@@ -64,6 +75,10 @@ pub struct Package {
     pub dev_deps: Vec<String>,
     /// Its integration test binaries.
     pub tests: Vec<TestBinary>,
+    /// Folders only a feature compiles (`[package.metadata.affected]
+    /// feature-paths` in its manifest): (path prefix inside the package,
+    /// e.g. `src/ui/`, and the feature).
+    pub feature_paths: Vec<(String, String)>,
 }
 
 /// An integration test binary (`[[test]]`, or one cargo found in `tests/`).
@@ -152,6 +167,13 @@ impl Workspace {
                         .collect(),
                 });
             }
+            // `feature-paths = { ui = ["src/ui/"] }`.
+            let mut feature_paths = Vec::new();
+            for (feature, paths) in p["metadata"]["affected"]["feature-paths"].as_object().into_iter().flatten() {
+                for path in paths.as_array().into_iter().flatten().filter_map(|v| v.as_str()) {
+                    feature_paths.push((path.to_string(), feature.clone()));
+                }
+            }
             names.insert(id.to_string(), name.clone());
             packages.insert(
                 id.to_string(),
@@ -161,6 +183,7 @@ impl Workspace {
                     deps: Vec::new(),
                     dev_deps: Vec::new(),
                     tests,
+                    feature_paths,
                 },
             );
         }
@@ -264,6 +287,15 @@ pub enum Change {
     /// A package's library or binaries: its tests and those of every
     /// package depending on it.
     Package(String),
+    /// A part of a package's library only `feature` compiles (`module`
+    /// of it, a `::` path): the package's test binaries built with the
+    /// feature, its unit tests of that module, and every package
+    /// depending on it.
+    Feature {
+        package: String,
+        feature: String,
+        module: String,
+    },
     /// A package's test code: its test `binary` (all of them if None),
     /// `module` of it if Some (a `::` path, e.g. `heavy::map_surf`).
     Tests {
@@ -341,6 +373,14 @@ pub fn classify(ws: &Workspace, path: &str, exists: bool) -> Change {
                 module: None,
             };
         }
+        if let Some((prefix, feature)) = package.feature_paths.iter().find(|(p, _)| rest.starts_with(p.as_str())) {
+            let module = prefix.trim_start_matches("src/").trim_end_matches('/').replace('/', "::");
+            return Change::Feature {
+                package: package.name.clone(),
+                feature: feature.clone(),
+                module,
+            };
+        }
         return Change::Package(package.name.clone());
     }
     let whole = Change::Tests {
@@ -406,6 +446,7 @@ impl Selection {
         let mut sel = Selection::default();
         let mut changed_packages: BTreeMap<String, String> = BTreeMap::new();
         let mut tests: Vec<(String, Option<String>, Option<String>, String)> = Vec::new();
+        let mut feature_parts: Vec<(String, String, String, String)> = Vec::new();
         for path in changed {
             let change = classify(ws, path, root.join(path).exists());
             let what = match &change {
@@ -417,6 +458,14 @@ impl Selection {
                 Change::Package(p) => {
                     changed_packages.entry(p.clone()).or_insert_with(|| path.clone());
                     format!("package {p}")
+                }
+                Change::Feature {
+                    package,
+                    feature,
+                    module,
+                } => {
+                    feature_parts.push((package.clone(), feature.clone(), module.clone(), path.clone()));
+                    format!("package {package}'s `{feature}` part ({module}::)")
                 }
                 Change::Tests { package, binary, module } => {
                     tests.push((package.clone(), binary.clone(), module.clone(), path.clone()));
@@ -451,6 +500,31 @@ impl Selection {
                 )
             };
             sel.packages.entry(p.name.clone()).or_insert(why);
+        }
+        // A feature's part: what depends on the package, and the package's
+        // own tests built with the feature.
+        for (package, feature, module, path) in &feature_parts {
+            for p in &ws.packages {
+                if p.name != *package && ws.test_deps(&p.name).contains(package) {
+                    sel.packages
+                        .entry(p.name.clone())
+                        .or_insert_with(|| format!("its tests depend on {package} (changed: {path})"));
+                }
+            }
+            if sel.packages.contains_key(package) {
+                continue;
+            }
+            let Some(p) = ws.package(package) else { continue };
+            let why = format!("its `{feature}` part changed ({path})");
+            let bins = sel.partial.entry(package.clone()).or_default();
+            for bin in p.tests.iter().filter(|b| b.required_features.contains(feature)) {
+                bins.insert(bin.name.clone(), (None, why.clone()));
+            }
+            let unit = bins.entry(LIB.to_string()).or_insert_with(|| (Some(BTreeSet::new()), why.clone()));
+            if let Some(modules) = &mut unit.0 {
+                modules.insert(module.clone());
+            }
+            sel.features.insert(format!("{package}/{feature}"));
         }
         for (package, binary, module, path) in tests {
             if sel.packages.contains_key(&package) {
@@ -516,7 +590,11 @@ impl Selection {
         let mut terms: Vec<String> = self.packages.keys().map(|p| format!("package({p})")).collect();
         for (package, bins) in &self.partial {
             for (bin, (modules, _)) in bins {
-                let id = format!("binary_id({package}::{bin})");
+                let id = if bin == LIB {
+                    format!("binary_id({package})")
+                } else {
+                    format!("binary_id({package}::{bin})")
+                };
                 let Some(modules) = modules else {
                     terms.push(id);
                     continue;
@@ -671,6 +749,7 @@ mod tests {
                     required_features: features.iter().map(|s| s.to_string()).collect(),
                 })
                 .collect(),
+            feature_paths: Vec::new(),
         }
     }
 
@@ -681,7 +760,10 @@ mod tests {
                 pkg("source_formats", "source/formats", &[], &[], &[]),
                 pkg("chimera_core", "chimera/core", &["source_formats"], &[], &[]),
                 pkg("chimera_present", "chimera/present", &["chimera_core"], &[], &[("it", &[])]),
-                pkg("cs_source", "games/cs_source", &["chimera_core", "chimera_present"], &["crc"], &[("it", &[]), ("ui", &["ui"])]),
+                Package {
+                    feature_paths: vec![("src/ui/".into(), "ui".into())],
+                    ..pkg("cs_source", "games/cs_source", &["chimera_core", "chimera_present"], &["crc"], &[("it", &[]), ("ui", &["ui"])])
+                },
                 pkg("cs_source_app", "apps/cs_source", &["cs_source"], &[], &[("it", &[])]),
                 pkg("cs_source_tools", "games/cs_source/tools", &["cs_source_app"], &[], &[]),
                 pkg("mashup", "", &["cs_source_app"], &[], &[("it", &["present"])]),
@@ -709,8 +791,17 @@ mod tests {
         assert_eq!(classify(&ws, "chimera/core/README.md", true), Change::Docs);
         assert_eq!(classify(&ws, "specs/cs_source/ropes.md", true), Change::Docs);
         assert_eq!(
-            classify(&ws, "games/cs_source/src/ui/radar.wgsl", true),
+            classify(&ws, "games/cs_source/src/rules.rs", true),
             Change::Package("cs_source".into())
+        );
+        // A folder only a feature compiles (`feature-paths`).
+        assert_eq!(
+            classify(&ws, "games/cs_source/src/ui/radar.wgsl", true),
+            Change::Feature {
+                package: "cs_source".into(),
+                feature: "ui".into(),
+                module: "ui".into()
+            }
         );
         // The deepest member: cs_source's tools aren't cs_source.
         assert_eq!(
@@ -771,6 +862,28 @@ mod tests {
         );
         assert!(s.features.contains("cs_source/ui"));
         assert!(s.features.contains("mashup/present"));
+    }
+
+    #[test]
+    fn a_feature_part_selects_its_binaries_and_whats_above() {
+        let s = select(&["games/cs_source/src/ui/game_hud.rs"]);
+        assert!(s.all.is_none());
+        let names: Vec<&str> = s.packages.keys().map(|s| s.as_str()).collect();
+        assert_eq!(names, ["cs_source_app", "cs_source_tools", "mashup", CHECKS]);
+        let bins = &s.partial["cs_source"];
+        assert_eq!(bins.keys().collect::<Vec<_>>(), [LIB, "ui"]);
+        assert!(bins["ui"].0.is_none(), "the whole `ui` binary");
+        assert_eq!(bins[LIB].0.as_ref().unwrap().iter().collect::<Vec<_>>(), ["ui"]);
+        assert!(s.features.contains("cs_source/ui"));
+        assert_eq!(
+            s.nextest_args(false).last().unwrap(),
+            "package(cs_source_app) | package(cs_source_tools) | package(mashup) | package(repo_checks) \
+             | (binary_id(cs_source) & (test(/^ui::/))) | binary_id(cs_source::ui)"
+        );
+        // With the rest of the crate changed too: all of it.
+        let s = select(&["games/cs_source/src/ui/game_hud.rs", "games/cs_source/src/rules.rs"]);
+        assert!(s.packages.contains_key("cs_source"));
+        assert!(s.partial.is_empty());
     }
 
     #[test]
