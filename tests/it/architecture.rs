@@ -102,7 +102,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "metrics",
         ],
     ),
-    // A game's front end (`src/games/<game>/ui/`: its menus, panels and
+    // A game's front end (its crate's `ui`, behind its feature: its menus, panels and
     // HUD): built on the client shell; its own game's modules too. Nothing
     // else in the game uses it (`game_parts_do_not_use_their_ui`).
     (
@@ -219,10 +219,13 @@ fn crate_game(src: &Path) -> Option<String> {
         .then(|| game.file_name().unwrap().to_string_lossy().to_string())
 }
 
-/// The games: `src/games/<name>/` folders.
+/// The games: `src/games/<name>/` folders and game crates
+/// (`games/<name>/`).
 fn game_names(src: &Path) -> BTreeSet<String> {
-    fs::read_dir(src.join("games"))
-        .unwrap()
+    [src.join("games"), root().join("games")]
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flatten()
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.is_dir())
         .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
@@ -244,7 +247,7 @@ fn client_names_game(rel: &str, game: &str) -> String {
     format!(
         "{rel}: the client shell uses game `{game}`. The shell knows a game only as data it registers \
          (`game_registry::GameInfo`, read through `game_registry::Games`; add a field there) and reaches \
-         its menus, panels and HUD (`src/games/{game}/ui/`) through `client::front_end` hooks; the app adds \
+         its menus, panels and HUD (its crate's `ui`, games/{game}/src/ui/) through `client::front_end` hooks; the app adds \
          the game's plugins (main.rs)."
     )
 }
@@ -480,7 +483,9 @@ fn game_parts_do_not_use_their_ui() {
     let mut errors = Vec::new();
     for game in game_names(&src) {
         let mut files = Vec::new();
-        rust_files(&src.join("games").join(&game), &mut files);
+        if src.join("games").join(&game).is_dir() {
+            rust_files(&src.join("games").join(&game), &mut files);
+        }
         let files = files.into_iter().map(|f| (src.clone(), f));
         // The game's crate (games/<game>/src), when it has one.
         let krate = root().join("games").join(&game).join("src");
@@ -732,8 +737,9 @@ fn workspace_crates() {
         network a hook (a part, a resource of fn pointers) that the crate above fills.";
     const GAME: &str = "is a game's simulation (docs/ARCHITECTURE.md, \"Crates\"): it builds on the \
         engine and runs on a dedicated server without drawing; its front end and the apps sit above it, \
-        and games never use each other. Move the piece up into `mashup` (the front end is \
-        `src/games/<game>/ui/`), or give the engine a hook the game fills.";
+        and games never use each other. Move the piece into its front end (`ui`, whose feature alone may \
+        turn on the presentation and the shell: UI_FEATURES) or up into `mashup`, or give the engine a hook \
+        the game fills.";
     const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
         on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
         plain data or give it a hook (a registry, a resource) that the crate above fills.";
