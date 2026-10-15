@@ -58,11 +58,7 @@ use crate::{
         FreezeTime, Health, Intent, LocalPlayer, MovementState, NetRole, PredictedComponents, Seed, SimClock, SimSet,
         SimTick, Team, Velocity,
     },
-    objectives::hostages::Hostage,
-    rules::{
-        Dead,
-        rounds::{Phase, RoundState},
-    },
+    core::{Dead, Npc},
     slots::{Loadout, MovementSlot, set_movement},
     weapon::{
         Armor, Inventory,
@@ -357,15 +353,15 @@ fn kick_by(world: &mut World, pick: impl Fn(&str, Option<u64>) -> bool, reason: 
         return Some(format!("kicked {name}"));
     }
     let bot = world
-        .query_filtered::<(Entity, &Name), With<crate::bot::Bot>>()
+        .query_filtered::<(Entity, &Name), With<crate::core::Bot>>()
         .iter(world)
         .find(|(_, n)| pick(n.as_str(), None))
         .map(|(e, n)| (e, n.as_str().to_string()));
     let (bot, name) = bot?;
-    crate::bot::kick_bot(world, bot);
-    if let Some(mut q) = world.get_resource_mut::<crate::bot::BotQuota>() {
-        q.quota = q.quota.saturating_sub(1);
-    }
+    // The game's (`BotHooks`): CS:S drops the bomb it carries and lowers
+    // `bot_quota`.
+    let hooks = world.get_resource::<super::BotHooks>().copied().unwrap_or_default();
+    (hooks.kick)(world, bot);
     Some(format!("kicked {name}"))
 }
 
@@ -471,7 +467,8 @@ pub fn start(world: &mut World) -> Result<(), String> {
     world.insert_resource(RenetServer::new(config));
     world.insert_resource(NetRole::Server);
     // Bots added before serving stay (`bot_quota` counts them).
-    crate::bot::sync_quota(world);
+    let hooks = world.get_resource::<super::BotHooks>().copied().unwrap_or_default();
+    (hooks.sync_quota)(world);
     Ok(())
 }
 
@@ -513,24 +510,19 @@ pub(super) fn stop(world: &mut World) {
                 Replicated,
                 NetCharacter,
                 NetBody,
-                super::NetMover,
                 super::NetProp,
                 super::NetRagdoll,
                 super::NetHeld,
                 super::NetItem,
                 super::NetSmoke,
                 super::NetScore,
-                super::NetBomb,
-                super::NetHostage,
             )>();
     }
-    // The round's entity goes.
-    let rounds: Vec<Entity> = world
-        .query_filtered::<Entity, With<super::NetRound>>()
-        .iter(world)
-        .collect();
-    for e in rounds {
-        world.despawn(e);
+    // The parts' own (`NetHooks::stopped_serving`: CS:S's round entity,
+    // bomb and hostages; Source's movers).
+    let hooks = world.resource::<super::NetHooks>().stopped_serving.clone();
+    for stopped in hooks {
+        stopped(world);
     }
 }
 
@@ -579,15 +571,14 @@ fn admit(world: &mut World, client: Entity, msg: Join) {
         return;
     }
     let name = clean_name(&msg.name, id);
-    // How it comes in (`rules::JoinChoice`, in its userinfo): on a team at
-    // once unless it asked for the join menus.
+    // How it comes in (`JoinRules`; CS:S's `rules::JoinChoice`, in its
+    // userinfo): on a team at once unless it asked for the join menus.
     let choice = msg
         .userinfo
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(JOIN_KEY))
-        .and_then(|(_, v)| crate::rules::JoinChoice::from_key(v))
-        .unwrap_or_default();
-    let character = spawn_player(world, id, &name, choice);
+        .map(|(_, v)| v.clone());
+    let character = spawn_player(world, id, &name, choice.as_deref());
     set_userinfo(world, character, &msg.userinfo);
     world.entity_mut(client).insert((
         AuthorizedClient,
@@ -657,11 +648,12 @@ pub(super) fn clean_name(name: &str, id: u64) -> String {
 
 /// A remote player's character: on the team with fewer players, out of
 /// the game (`core::Connecting`) until its client has loaded the map,
-/// then spawned as the rules allow (`rules::enter_game`).
-fn spawn_player(world: &mut World, id: u64, name: &str, choice: crate::rules::JoinChoice) -> Entity {
+/// then spawned as the rules allow (`JoinRules`; CS:S's
+/// `rules::enter_game`).
+fn spawn_player(world: &mut World, id: u64, name: &str, choice: Option<&str>) -> Entity {
     let mut counts = [0usize; 2];
-    for (team, hostage) in world.query::<(&Team, Has<Hostage>)>().iter(world) {
-        if !hostage && (1..=2).contains(&team.0) {
+    for (team, npc) in world.query::<(&Team, Has<Npc>)>().iter(world) {
+        if !npc && (1..=2).contains(&team.0) {
             counts[team.0 as usize - 1] += 1;
         }
     }
@@ -690,25 +682,15 @@ fn spawn_player(world: &mut World, id: u64, name: &str, choice: crate::rules::Jo
         .id();
     world.entity_mut(e).insert(Name::new(name.to_string()));
     set_movement(e, movement).apply(world);
-    // Out of the game until its client has the map (`receive_loaded`).
-    crate::rules::hold_out(world, e);
-    match choice {
-        // No team until it picks one (its client's join menus).
-        crate::rules::JoinChoice::Menus => crate::rules::make_unassigned(world, e),
-        crate::rules::JoinChoice::Team(t) if t.0 == 0 => {
-            if crate::rules::join_spectators(world, e).is_err() {
-                crate::rules::make_unassigned(world, e);
-            }
-        }
-        crate::rules::JoinChoice::Team(t) => {
-            world.entity_mut(e).insert(t);
-        }
-        crate::rules::JoinChoice::Auto => {}
-    }
+    // Out of the game until its client has the map (`receive_loaded`), on
+    // the team (or menus) it asked for: the game's join flow.
+    let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
+    (rules.joined)(world, e, choice);
     e
 }
 
-/// The userinfo key a client says how it joins with (`rules::JoinChoice::key`).
+/// The userinfo key a client says how it joins with (`JoinRules::choice`;
+/// CS:S's `rules::JoinChoice::key`).
 pub const JOIN_KEY: &str = "_jointeam";
 
 /// A client has the map loaded: its player comes into the game, if it's
@@ -727,7 +709,8 @@ fn receive_loaded(mut loaded: MessageReader<FromClient<super::Loaded>>, players:
                 info!("a client reported {map} loaded; the server is on {serving}");
                 return;
             }
-            crate::rules::enter_game(world, character);
+            let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
+            (rules.enter)(world, character);
             // What was shot up before it came.
             super::decals::send(world, client);
         });
@@ -901,9 +884,11 @@ fn capture_own_states(world: &mut World) {
     let tick_nanos = world.resource::<Time<Fixed>>().timestep().as_nanos() as u64;
     let time_nanos = world.resource::<Time<Fixed>>().elapsed().as_nanos() as u64;
     let frozen = world.get_resource::<FreezeTime>().is_some_and(|f| f.0);
-    // The freeze ends on the first tick at its end time (`rules::rounds`).
-    let frozen_until = match world.get_resource::<RoundState>().map(|r| r.phase) {
-        Some(Phase::Freeze { until }) if frozen => {
+    // The freeze ends on the first tick at its end time (`Holds`; CS:S's
+    // `rules::rounds`).
+    let holds = world.get_resource::<super::Holds>().copied().unwrap_or_default();
+    let frozen_until = match (holds.freeze_ends)(world) {
+        Some(until) if frozen => {
             let dt = clock.delta.as_secs_f64().max(1e-6);
             let k = ((until - clock.now) / dt - 1e-6).ceil().max(1.0);
             Some(clock.tick + k as u64)
@@ -1025,7 +1010,7 @@ fn lock_replication_tick(clock: Res<SimClock>, mut tick: ResMut<ServerTick>) {
 fn replicate_characters(
     q: Query<
         (Entity, Option<&Name>, Has<LocalPlayer>),
-        (With<Intent>, With<Health>, Without<Replicated>, Without<Hostage>),
+        (With<Intent>, With<Health>, Without<Replicated>, Without<Npc>),
     >,
     settings: Res<NetSettings>,
     mut commands: Commands,

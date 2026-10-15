@@ -52,12 +52,12 @@ use bevy_replicon::{
     },
 };
 
-use super::{NetBody, NetMover, NetProp, body_flags, predict::NetGraph};
+use super::{NetBody, NetProp, body_flags, predict::NetGraph};
 use crate::{
     console::resource_cvar,
     core::{Intent, LocalPlayer, MovementState, NetRole, Velocity},
     map::interp::{EyeView, InterpSystems, NetDrawn, RenderedView, SNAP_SPEED},
-    rules::Dead,
+    core::Dead,
 };
 
 /// Snapshots kept per entity (2 s at 64 Hz): more than any delay.
@@ -295,7 +295,7 @@ pub(super) fn plugin(app: &mut App) {
         .init_resource::<InterpClock>()
         .add_systems(
             PreUpdate,
-            hear_ticks.after(ClientSystems::Receive).run_if(client()),
+            hear_ticks.in_set(HearTicks).after(ClientSystems::Receive).run_if(client()),
         )
         .add_systems(
             RunFixedMainLoop,
@@ -356,7 +356,6 @@ fn hear_ticks(
     fixed: Res<Time<Fixed>>,
     mut clock: ResMut<InterpClock>,
     mut bodies: Query<&mut Snapshots<NetBody>>,
-    mut movers: Query<&mut Snapshots<NetMover>>,
     mut props: Query<&mut Snapshots<NetProp>>,
     mut items: Query<&mut Snapshots<super::NetItem>>,
 ) {
@@ -368,14 +367,32 @@ fn hear_ticks(
         for mut b in &mut bodies {
             b.hold(tick);
         }
-        for mut m in &mut movers {
-            m.hold(tick);
-        }
         for mut p in &mut props {
             p.hold(tick);
         }
         for mut i in &mut items {
             i.hold(tick);
+        }
+    }
+}
+
+/// Where a client hears the server's ticks (`hear_ticks`): a part's
+/// buffered components hold still at them after it (`hold_heard`).
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HearTicks;
+
+/// A part's buffered component (`write_snapshot`): every entity's
+/// `Snapshots<C>` without a value for a tick the server finished sending
+/// held still at it, as `hear_ticks` does the engine's (Source's movers:
+/// `logic::net`). Add it in `PreUpdate` after `HearTicks` on a client.
+pub fn hold_heard<C: Component + Clone>(
+    mut heard: MessageReader<MutateTickReceived>,
+    mut buffers: Query<&mut Snapshots<C>>,
+) {
+    for h in heard.read() {
+        let tick = h.tick.get() as u64;
+        for mut b in &mut buffers {
+            b.hold(tick);
         }
     }
 }

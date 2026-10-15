@@ -54,12 +54,16 @@ pub struct SimPlugins;
 impl Plugin for SimPlugins {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::<Fixed>::from_hz(DEFAULT_TICK_HZ))
+            .insert_resource(core::BuildVersion(core::VERSION))
             .add_plugins((core::CorePlugin, console::ConsolePlugin, movement::MovementPlugins))
             .add_plugins((
                 weapon::WeaponPlugin,
                 objectives::ObjectivesPlugin,
                 rules::DeathmatchPlugin,
                 bot::BotPlugin,
+                // CS:S's part of the network (its round, bomb and hostages,
+                // its join flow and bots' hooks); nothing without `NetPlugin`.
+                games::cs_source::net::CsSourceNetPlugin,
             ))
             .add_plugins((logic::LogicPlugin, metrics::TickMetricsPlugin));
     }

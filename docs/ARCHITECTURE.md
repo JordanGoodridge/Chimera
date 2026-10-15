@@ -11,14 +11,16 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 `workspace_crates`).
 
 ```
-mashup (repository root: src/, tests/it/)   client, net, CS:S's front end, tools
+mashup (repository root: src/, tests/it/)   client, CS:S's front end, tools
   |
   |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots
+  |    |    source_logic (source/logic/)   logic: Source entity I/O
+  |    |   /
+  |    engine_net (engine/net/)   net: transport, replication, prediction
   |    |
 engine_present (engine/present/)   render, audio, MapPlugin
   |    engine_sim (engine/sim/)   weapon, movement, rule_module
-  |    |    source_logic (source/logic/)   logic: Source entity I/O
-  |    |   /
+  |    |
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
@@ -66,16 +68,29 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   loaders, Source movement, weapons, effects, animation,
   `CsSourcePlugins`; `mashup::games::cs_source`, whose front end, `ui/`,
   stays in `mashup` with the client shell), CS:S's rules, `rules`
-  and `objectives`, and its bots, `bot` (`mashup::rules`, ...: net and
-  the client still name them). It uses the engine crates (not
-  `engine_present`) and `source_formats`, never `mashup` or another
-  game (checked). `cargo test -p cs_source --features dev` tests it
-  alone.
+  and `objectives`, and its bots, `bot` (`mashup::rules`, ...: the
+  client still names them), and its part of the network (`game::net`:
+  its round, bomb and hostages replicated, its join flow and bots behind
+  the network's hooks). It uses the engine crates (not `engine_present`)
+  and `source_formats`, never `mashup` or another game (checked). `cargo test -p cs_source --features dev` tests
+  it alone.
 - `source_logic` is Source's map logic (`logic`: entity I/O, logic
   classes, triggers, movers, breakables, props, fire, the bridge to the
-  map's entities). It uses `engine_world` and `engine_core`, never the
-  presentation, `mashup` or a game (checked); `mashup::logic` re-exports
-  it. `cargo test -p source_logic --features dev` tests it alone.
+  map's entities) with its part of the network (`logic::net`: movers,
+  HUD messages). It uses `engine_net`, `engine_world` and `engine_core`,
+  never the presentation, `mashup` or a game (checked); `mashup::logic`
+  re-exports it. `cargo test -p source_logic --features dev` tests it
+  alone.
+- `engine_net` is network play (`net`): the transport, the join
+  handshake, replication of what every game has, prediction and
+  interpolation. A game and Source's logic register what they replicate
+  of their own as parts (`net::NetAppExt::net_part`, applied in name
+  order in `NetPlugin::finish`, after the engine's protocol) and fill
+  its hooks (`net::parts`: `JoinRules`, `BotHooks`, `Holds`,
+  `NetHooks`). It uses `engine_sim`, `engine_world` and `engine_core`,
+  never the presentation, Source's logic, `mashup` or a game (checked);
+  `mashup::net` re-exports it with the parts' replicated types.
+  `cargo test -p engine_net --features dev` tests it alone.
 
 ## Layers
 
@@ -103,10 +118,10 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
              core                (shared vocabulary)
 ```
 
-Exact edges: net uses everything the simulation has (core, console,
-slots, character, movement, map, weapon, objectives, rules, bot, logic),
-and harness and client use net (games/<name> will, to register what they
-replicate: add it to their `ALLOWED` entry then); bot uses core, console,
+Exact edges: net uses the engine's simulation (core, console, slots,
+character, movement, map, weapon) and names no game or Source logic:
+logic and games/<name> use it to register what they replicate (their
+parts, `net::parts`), and harness and client use it; bot uses core, console,
 slots, character, map, weapon (grenades
 it carries and throws), objectives (planting, defusing); rules uses core,
 console, weapon, objectives; objectives uses core, console, slots,
@@ -115,8 +130,8 @@ hostages); weapon uses core, console, map; logic uses core, console,
 map (games feed it through `MapData::entities`; harness and client may use
 it); map uses only core. games/<name> uses core, console, slots,
 character, movement, mount, map, weapon, objectives and rules (to register
-its rule modules); its `ui/` uses those, client and the rest of the
-simulation.
+its rule modules), bot and net (its part of the network); its `ui/` uses
+those, client and the rest of the simulation.
 
 Presentation sits beside the simulation, above `map`: `audio` (sound
 playback, live sounds, room DSP, soundscapes, hearing) uses core and map,
@@ -291,30 +306,33 @@ that the paths exist).
 
 ### Network (net)
 
-- `src/net/mod.rs`: `NetPlugin`, the protocol, replicated components (net)
-- `src/net/server.rs`: the server: listening, the join handshake, update pacing, own states (net)
-- `src/net/client.rs`: the client: connecting, joining, the welcome (net)
-- `src/net/predict.rs`: the client's command clock and prediction (net)
-- `src/net/interp.rs`: others drawn in the past from snapshots (net)
-- `src/net/ordered.rs`: replicated values applied in tick order (net)
-- `src/net/delta.rs`: byte deltas (net)
-- `src/net/quant.rs`: `NetBody`'s, `NetProp`'s and `NetItem`'s quantized wire forms (net)
-- `src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
-- `src/net/movers.rs`: moving brushes over the network (net)
-- `src/net/props.rs`: physics props over the network (net)
-- `src/net/ragdolls.rs`: map-placed ragdolls over the network (net)
-- `src/net/anchors.rs`: placed weapons' anchor nodes over the network (net)
-- `src/net/weapons.rs`: held weapons, loose items, grenades and weapon events over the network (net)
-- `src/net/game.rs`: the round, scoreboard and game events over the network (net)
-- `src/net/chat.rs`: chat and radio over the network (net)
-- `src/net/cheats.rs`: cheat commands from clients (net)
-- `src/net/cvars.rs`: replicated cvars (net)
-- `src/net/mapfx.rs`: map effects for clients (net)
-- `src/net/decals.rs`: decals for late joiners, players' sprays (net)
-- `src/net/motd.rs`: the server's message of the day (net)
-- `src/net/udp.rs`: the UDP transports and fake network conditions (net)
-- `src/net/query.rs`: server queries and LAN discovery (net)
-- `src/net/memory.rs`: an in-memory transport for `NetSim` (net)
+- `engine/net/src/net/mod.rs`: `NetPlugin`, the protocol, replicated components (net)
+- `engine/net/src/net/parts.rs`: what games and Source's logic add: parts, join, bot and hold hooks (net)
+- `engine/net/src/net/server.rs`: the server: listening, the join handshake, update pacing, own states (net)
+- `engine/net/src/net/client.rs`: the client: connecting, joining, the welcome (net)
+- `engine/net/src/net/predict.rs`: the client's command clock and prediction (net)
+- `engine/net/src/net/interp.rs`: others drawn in the past from snapshots (net)
+- `engine/net/src/net/ordered.rs`: replicated values applied in tick order (net)
+- `engine/net/src/net/delta.rs`: byte deltas (net)
+- `engine/net/src/net/quant.rs`: `NetBody`'s, `NetProp`'s and `NetItem`'s quantized wire forms (net)
+- `engine/net/src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
+- `source/logic/src/logic/net.rs`: Source's logic's part of the network: movers, HUD messages (logic)
+- `games/cs_source/src/game/net.rs`: CS:S's part of the network: round, bomb, hostages, join and bot hooks (games)
+- `src/net.rs`: `mashup::net`: `engine_net` with the parts' replicated types (net)
+- `engine/net/src/net/props.rs`: physics props over the network (net)
+- `engine/net/src/net/ragdolls.rs`: map-placed ragdolls over the network (net)
+- `engine/net/src/net/anchors.rs`: placed weapons' anchor nodes over the network (net)
+- `engine/net/src/net/weapons.rs`: held weapons, loose items, grenades and weapon events over the network (net)
+- `engine/net/src/net/game.rs`: scoreboard, buying and the rules' sounds over the network (net)
+- `engine/net/src/net/chat.rs`: chat and radio over the network (net)
+- `engine/net/src/net/cheats.rs`: cheat commands from clients (net)
+- `engine/net/src/net/cvars.rs`: replicated cvars (net)
+- `engine/net/src/net/mapfx.rs`: map effects for clients (net)
+- `engine/net/src/net/decals.rs`: decals for late joiners, players' sprays (net)
+- `engine/net/src/net/motd.rs`: the server's message of the day (net)
+- `engine/net/src/net/udp.rs`: the UDP transports and fake network conditions (net)
+- `engine/net/src/net/query.rs`: server queries and LAN discovery (net)
+- `engine/net/src/net/memory.rs`: an in-memory transport for `NetSim` (net)
 
 ### Games
 
@@ -427,7 +445,7 @@ FixedUpdate:  bot brains, (server) each player's command for this tick ──> I
               RoundRestarts changed ──> logic world re-created, nodes back; gibs, panes reset
               LogicSet::Pre     thinks, movers push/carry characters, +use (Intent.use_key);
                                 (client) movers stepped to the command tick, our player carried
-                                (net::movers::place, also in each replayed command)
+                                (logic::net::place, also in each replayed command)
               SimSet::Commands  Intent.command stamped (tick + Seed)
               SimSet::Movement  Intent (+ MaxSpeed) ──> Transform, Velocity, MovementState  (Predict::Movement)
               AnchorSet         placed weapons (loose or carried) ──> EntityAnchors, anchor nodes

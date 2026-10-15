@@ -1,7 +1,7 @@
 //! Network play, slice 3 (docs/plans/active/multiplayer.md): others drawn
 //! in the past from snapshots keyed by server tick (`net::interp`,
 //! `cl_interp`), and moving brushes replicated and stepped by the client
-//! to the tick it predicts (`net::movers`), over `NetSim`'s in-memory link
+//! to the tick it predicts (`logic::net`), over `NetSim`'s in-memory link
 //! with seeded latency, jitter and loss.
 //!
 //! - Another player walking a curve, watched at 240 frames a second, is

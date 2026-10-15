@@ -29,10 +29,10 @@
 //! client's `name` change as `NameRequest`, the host's own, renamed for
 //! everyone and announced (`NameChanged`, "* X changed name to Y"); userinfo: a
 //! client's userinfo cvars go with `Join` and, changed, as `UserInfoRequest`,
-//! kept as its character's `core::UserInfo`; what map logic shows on HUDs
-//! (`logic::HudEvent`: game_text, env_fade, env_hudhint) as `MapHud` to the
-//! player it is for or everyone; map effects (`MapFx`: strikes, tesla sparks,
-//! env_spark) to every client.
+//! kept as its character's `core::UserInfo`; a map's `say` lines
+//! (`map::MapSay`) as the server console's; map effects (`MapFx`: strikes,
+//! tesla sparks, env_spark) to every client (`mapfx`). What map logic shows on
+//! HUDs is Source's logic's part (`logic::net`, `MapHud`).
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
@@ -44,7 +44,7 @@ use super::{
 use crate::{
     core::{Health, LocalPlayer, NetRole, Radio, Team},
     map::radio::{hears, sees_say},
-    rules::Dead,
+    core::Dead,
 };
 
 /// Most bytes a chat line keeps (Source's say limit).
@@ -52,7 +52,7 @@ pub const MAX_SAY: usize = 127;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_message::<Radio>()
-        .add_message::<crate::logic::MapSay>()
+        .add_message::<crate::map::MapSay>()
         .init_resource::<Flood>()
         .add_systems(
             PreUpdate,
@@ -62,13 +62,13 @@ pub(super) fn plugin(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
-            (forward_radio, rename_host, forward_hud, forward_map_says)
+            (forward_radio, rename_host, forward_map_says)
                 .before(ServerSystems::Send)
                 .run_if(resource_equals(NetRole::Server)),
         )
         .add_systems(
             PreUpdate,
-            (receive_calls, name_characters, receive_hud)
+            (receive_calls, name_characters)
                 .after(ClientSystems::Receive)
                 .run_if(resource_equals(NetRole::Client)),
         )
@@ -157,32 +157,10 @@ fn allowed(world: &mut World, who: Entity, radio: bool) -> bool {
     ok
 }
 
-/// What map logic shows on HUDs (`logic::HudEvent`) to the client of the
-/// player it is for, or to every client.
-fn forward_hud(
-    mut events: MessageReader<crate::logic::HudEvent>,
-    players: Query<(Entity, &Player)>,
-    mut out: MessageWriter<ToClients<super::MapHud>>,
-) {
-    for ev in events.read() {
-        let targets = match ev.to {
-            None => SendTargets::CLIENTS_ONLY,
-            Some(c) => match players.iter().find(|(_, p)| p.character == c) {
-                Some((client, _)) => SendTargets::Single(ClientId::Client(client)),
-                None => continue,
-            },
-        };
-        out.write(ToClients {
-            targets,
-            message: super::MapHud(ev.what.clone()),
-        });
-    }
-}
-
-/// A map's `say` lines (`logic::MapSay`), as Source's server console
+/// A map's `say` lines (`map::MapSay`, the logic's), as Source's server console
 /// says them: a listen server's host says it (its name, read by whoever
 /// reads the host's chat); a dedicated server as "Console", to everyone.
-fn forward_map_says(mut says: MessageReader<crate::logic::MapSay>, mut commands: Commands) {
+fn forward_map_says(mut says: MessageReader<crate::map::MapSay>, mut commands: Commands) {
     for s in says.read() {
         let text = clean_say(&s.0);
         if text.is_empty() {
@@ -211,15 +189,6 @@ fn forward_map_says(mut says: MessageReader<crate::logic::MapSay>, mut commands:
                 },
             });
         });
-    }
-}
-
-/// The server's HUD messages for this client's player.
-fn receive_hud(mut shows: MessageReader<super::MapHud>, time: Res<Time>, mut commands: Commands) {
-    let now = time.elapsed_secs_f64();
-    for s in shows.read() {
-        let what = s.0.clone();
-        commands.queue(move |w: &mut World| crate::logic::hud::show_on_hud(w, what, now));
     }
 }
 

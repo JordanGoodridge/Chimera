@@ -30,7 +30,7 @@ use crate::{
     character::character_bundle,
     core::{Intent, LocalPlayer, MovementState, NetRole, Team, Velocity},
     map::interp::NetDrawn,
-    rules::Dead,
+    core::Dead,
     weapon::Inventory,
 };
 
@@ -362,9 +362,10 @@ fn send_join(world: &mut World) {
         name: world.resource::<NetSettings>().name.clone(),
         userinfo: {
             let mut info: Vec<(String, String)> = crate::console::userinfo(world).into_iter().collect();
-            // How we come in: the join menus or straight onto a team.
-            let choice = world.get_resource::<crate::rules::JoinChoice>().copied().unwrap_or_default();
-            info.push((super::server::JOIN_KEY.to_string(), choice.key()));
+            // How we come in: the join menus or straight onto a team (the
+            // game's `JoinRules`).
+            let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
+            info.push((super::server::JOIN_KEY.to_string(), (rules.choice)(world)));
             info
         },
     };
@@ -631,7 +632,7 @@ fn check_map(world: &mut World) {
     let (map, hash, tick_nanos) = (h.welcome.map.clone(), h.welcome.map_hash, h.welcome.tick_nanos);
     // Asked for a load: wait for it (the map here may be the one asked
     // for, loaded before).
-    let loads = world.get_resource::<crate::rules::MapLoads>().map_or(0, |l| l.0);
+    let loads = world.get_resource::<crate::core::MapLoads>().map_or(0, |l| l.0);
     if h.loads_before.is_some_and(|before| loads <= before) {
         return;
     }

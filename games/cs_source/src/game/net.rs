@@ -1,156 +1,312 @@
-//! The game's rules in a network game (docs/plans/active/multiplayer.md,
-//! slice 5): everything here is the server's, and a client shows it.
+//! CS:S's rules over the network (docs/plans/active/multiplayer.md, slice
+//! 5): the game's part of the network (`net::NetAppExt::net_part`,
+//! registered by `CsSourceNetPlugin`), registered after the engine's own
+//! protocol. Everything here is the server's, and a client shows it.
 //!
 //! - **The round** (`NetRound`, one replicated entity): phase, its times,
 //!   the score, whether buying is open, the bomb's outcome and the
 //!   hostages' tally. A client writes them into the same resources single
 //!   player has (`rules::rounds::RoundState`, `weapon::economy::BuyWindow`,
 //!   `objectives::bomb::BombState`, `HostageTally`), times moved onto its
-//!   own clock (`ServerTime`), so the HUD, the scoreboard and the
-//!   spectator bars read them as they always did. A round's end comes as
-//!   `RoundOver` (the banner and the announcer).
-//! - **Scores** (`NetScore` on every character): kills, deaths, ping, a
-//!   bot, the bomb and a defusal kit, for the scoreboard. A client's own
-//!   money, armour and kit come in its `OwnState`: money is shown
-//!   only to its owner, as in CS:S.
-//! - **Requests**: buying (`BuyRequest`) and joining a team
-//!   (`TeamRequest`) are the server's to check (buy zone, buy time, money,
-//!   team-only items, `mp_limitteams`); a refusal comes back as `Notice`,
-//!   the game's hint.
+//!   own clock (`net::game::ServerTime`), so the HUD, the scoreboard and
+//!   the spectator bars read them as they always did. A round's end comes
+//!   as `RoundOver` (the banner and the announcer).
+//! - **Requests**: joining a team (`TeamRequest`) or a class
+//!   (`ClassRequest`) is the server's to check (`mp_limitteams`); a
+//!   refusal comes back as `net::Notice`, the game's hint.
 //! - **Objectives**: the planted bomb (`NetBomb`: where, its timer, who
 //!   defuses), hostages as characters (`NetHostage`), what happens as
-//!   `ObjectiveNews` (the HUD's words) and the rules' sounds as
-//!   `ServerSound` (`map::GameSound`: beeps, the plant, the defuse, the
-//!   blast, hostages).
+//!   `ObjectiveNews` (the HUD's words).
+//! - **Hooks** the network calls (`net::parts`): the join flow
+//!   (`net::JoinRules`: `rules::JoinChoice`, `hold_out`,
+//!   `make_unassigned`, `join_spectators`, `enter_game`), bots
+//!   (`net::BotHooks`: `bot::kick_bot` with the quota one lower,
+//!   `bot::sync_quota`), the holds a client predicts (`net::Holds`: the
+//!   freeze's end, `rules::rounds::frozen_intent`; arming and defusing,
+//!   `objectives::bomb::BombHold`, before `net::predict::RecordCommand`),
+//!   and what goes when serving stops (`net::NetHooks`: the round's
+//!   entity, `NetBomb`, `NetHostage`).
 //!
-//! The rules over the network (slice 5): the server writes the round
-//! (`NetRound`: phase and times in server ticks, score, buy window, bomb
-//! outcome, hostage tally), scoreboard lines (`NetScore`: kills, deaths, ping,
-//! bot/bomb/kit), the planted bomb (`NetBomb`) and hostages (`NetHostage`,
-//! replicated as characters), checks buy and team requests (`economy::buy`,
-//! `rules::join_team`; refusals as `Notice`), sends round ends, objective
-//! events and the rules' sounds (`map::GameSound`; a player's own predicted
-//! ones, `map::PredictedSound`, to everyone but that player's client); a client
-//! writes them into single player's resources and components (`RoundState`,
-//! `BuyWindow`, `BombState`, `HostageTally`, `PlantedBomb`, `Hostage`, `Score`,
-//! `DefuseKit`, its own `Money`, `Armor`) with times moved onto its clock
-//! (`ServerTime`).
+//! Scores, buying and the rules' sounds are every game's (`net::game`).
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use super::{
-    BuyRequest, NetBomb, NetCharacter, NetHostage, NetRound, NetScore, Notice, ObjectiveNews, OwnState, RoundOver,
-    ServerSound, TeamRequest, ClassRequest, bomb_outcome, interp::InterpClock, predict::CommandClock, round_phase, score_flags,
-    server::Player,
-};
 use crate::{
-    core::{LocalPlayer, NetRole, SimClock, Team},
+    core::{NetRole, SimClock, Team},
     map::{
-        BodyName, GameSound, PlaySound, PredictedSound,
+        BodyName,
         loose::{ShownItem, SitOnOrigin},
+    },
+    net::{
+        BotHooks, Holds, JoinRules, NetAppExt, NetCharacter, NetHooks,
+        game::{ServerTime, notify, tick_of},
+        ordered::OrderedAppExt,
+        predict::RecordCommand,
+        server::Player,
     },
     objectives::{
         ObjectiveEvent, RoundOpen,
-        bomb::{BombOutcome, BombRules, BombState, C4, Defuse, PlantedBomb},
+        bomb::{BombHold, BombOutcome, BombRules, BombState, Defuse, PlantedBomb},
         hostages::{Hostage, HostagePenalty, HostageTally},
     },
     rules::{
-        Score,
+        JoinChoice,
         rounds::{FunFact, Mvp, Phase, RoundEndReason, RoundEnded, RoundState, RoundSummary},
     },
-    weapon::{
-        Armor, Inventory,
-        economy::{BuyRequested, BuyWindow, DefuseKit, Money, NightVision},
-    },
+    weapon::economy::BuyWindow,
 };
 
-pub(super) fn plugin(app: &mut App) {
+/// CS:S's part of the network (`register`), named `cs_source`.
+pub struct CsSourceNetPlugin;
+
+impl Plugin for CsSourceNetPlugin {
+    fn build(&self, app: &mut App) {
+        app.net_part("cs_source", register);
+    }
+}
+
+/// The protocol (in this order on every side), the systems and the hooks.
+fn register(app: &mut App) {
+    app.replicate::<NetRound>()
+        .ordered::<NetRound>()
+        .replicate::<NetBomb>()
+        .ordered::<NetBomb>()
+        .replicate::<NetHostage>()
+        .ordered::<NetHostage>()
+        .add_client_message::<TeamRequest>(Channel::Ordered)
+        .add_client_message::<ClassRequest>(Channel::Ordered)
+        .add_mapped_server_message::<ObjectiveNews>(Channel::Ordered)
+        .add_mapped_server_message::<RoundOver>(Channel::Ordered)
+        .add_message::<crate::rules::TeamRequested>()
+        .add_message::<crate::rules::ClassRequested>()
+        .add_message::<RoundEnded>()
+        .add_message::<ObjectiveEvent>()
+        .add_message::<HostagePenalty>()
+        .insert_resource(JoinRules {
+            joined,
+            enter: crate::rules::enter_game,
+            choice: |w| w.get_resource::<JoinChoice>().copied().unwrap_or_default().key(),
+        })
+        .insert_resource(BotHooks {
+            kick: |w, bot| {
+                crate::bot::kick_bot(w, bot);
+                if let Some(mut q) = w.get_resource_mut::<crate::bot::BotQuota>() {
+                    q.quota = q.quota.saturating_sub(1);
+                }
+            },
+            sync_quota: crate::bot::sync_quota,
+        })
+        .insert_resource(Holds {
+            freeze_ends: |w| match w.get_resource::<RoundState>().map(|r| r.phase) {
+                Some(Phase::Freeze { until }) => Some(until),
+                _ => None,
+            },
+            frozen: crate::rules::rounds::frozen_intent,
+        })
+        // Arming and defusing hold the player as predicted, before its
+        // command is recorded.
+        .configure_sets(FixedUpdate, BombHold.before(RecordCommand));
+    {
+        let mut hooks = app.world_mut().resource_mut::<NetHooks>();
+        hooks.stopped_serving.push(stopped_serving);
+    }
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
-    app.add_systems(
-        FixedLast,
-        (write_round, write_scores, write_bombs, write_hostages).run_if(server()),
-    )
-    .add_systems(
-        PreUpdate,
-        (receive_buys, receive_teams, receive_classes)
-            .after(ServerSystems::Receive)
-            .run_if(in_state(ServerState::Running)),
-    )
-    .add_systems(
-        PostUpdate,
-        (replicate_hostages, send_round_over, send_objectives, send_sounds)
-            .before(ServerSystems::Send)
-            .run_if(server()),
-    )
-    .add_systems(
-        PreUpdate,
-        (
-            apply_round,
-            apply_scores,
-            apply_bombs,
-            apply_hostages,
-            apply_own,
-            receive_round_over,
-            receive_objectives,
-            receive_sounds,
+    app.add_systems(FixedLast, (write_round, write_bombs, write_hostages).run_if(server()))
+        .add_systems(
+            PreUpdate,
+            (receive_teams, receive_classes)
+                .after(ServerSystems::Receive)
+                .run_if(in_state(ServerState::Running)),
         )
-            .chain()
-            .after(ClientSystems::Receive)
-            .after(super::predict::rebuild_own_states)
-            .run_if(client()),
-    )
-    .add_systems(
-        PostUpdate,
-        (send_buys, send_teams, send_classes).before(ClientSystems::Send).run_if(client()),
-    );
+        .add_systems(
+            PostUpdate,
+            (replicate_hostages, send_round_over, send_objectives)
+                .before(ServerSystems::Send)
+                .run_if(server()),
+        )
+        .add_systems(
+            PreUpdate,
+            (apply_round, apply_bombs, apply_hostages, receive_round_over, receive_objectives)
+                .chain()
+                .after(ClientSystems::Receive)
+                .after(crate::net::predict::rebuild_own_states)
+                .run_if(client()),
+        )
+        .add_systems(
+            PostUpdate,
+            (send_teams, send_classes).before(ClientSystems::Send).run_if(client()),
+        );
 }
 
-// --- Time
-
-/// A server time (`SimClock::now`, s) as a server tick (fractional), by
-/// the tick `clock` is at.
-pub fn tick_of(clock: &SimClock, t: f64) -> f64 {
-    clock.tick as f64 + (t - clock.now) / clock.delta.as_secs_f64().max(1e-9)
-}
-
-/// A client's view of the server's clock: the server tick it is at now
-/// (as its updates arrive: the interpolation clock's render tick plus
-/// the delay), the tick length, and this client's fixed clock now. A
-/// server tick `t` is `fixed + (t - tick) × step` on the client's clock.
-#[derive(Clone, Copy, Debug)]
-pub struct ServerTime {
-    pub tick: f64,
-    pub step: f64,
-    pub fixed: f64,
-}
-
-impl ServerTime {
-    pub fn of(world: &World) -> Option<Self> {
-        let interp = world.get_resource::<InterpClock>()?;
-        if !interp.running {
-            return None;
+/// A remote player's character has just spawned (`net::JoinRules::joined`):
+/// out of the game until its client has the map, on the team (or the join
+/// menus) its client asked for (`JoinChoice`, its userinfo).
+fn joined(world: &mut World, e: Entity, choice: Option<&str>) {
+    let choice = choice.and_then(JoinChoice::from_key).unwrap_or_default();
+    crate::rules::hold_out(world, e);
+    match choice {
+        // No team until it picks one (its client's join menus).
+        JoinChoice::Menus => crate::rules::make_unassigned(world, e),
+        JoinChoice::Team(t) if t.0 == 0 => {
+            if crate::rules::join_spectators(world, e).is_err() {
+                crate::rules::make_unassigned(world, e);
+            }
         }
-        let fixed = world.resource::<Time<Fixed>>();
-        let step = world
-            .get_resource::<CommandClock>()
-            .and_then(|c| c.step())
-            .unwrap_or(fixed.timestep())
-            .as_secs_f64()
-            .max(1e-6);
-        Some(Self {
-            tick: interp.render_tick + interp.delay / step,
-            step,
-            fixed: fixed.elapsed_secs_f64(),
-        })
-    }
-
-    /// Server tick `t` on this client's fixed clock (s).
-    pub fn local(&self, t: f64) -> f64 {
-        self.fixed + (t - self.tick) * self.step
+        JoinChoice::Team(t) => {
+            world.entity_mut(e).insert(t);
+        }
+        JoinChoice::Auto => {}
     }
 }
+
+/// Serving stopped: the round's entity goes, the bomb and the hostages
+/// stop replicating (`net::NetHooks::stopped_serving`).
+fn stopped_serving(world: &mut World) {
+    let replicated: Vec<Entity> = world
+        .query_filtered::<Entity, Or<(With<NetBomb>, With<NetHostage>)>>()
+        .iter(world)
+        .collect();
+    for e in replicated {
+        world.entity_mut(e).remove::<(NetBomb, NetHostage)>();
+    }
+    let rounds: Vec<Entity> = world.query_filtered::<Entity, With<NetRound>>().iter(world).collect();
+    for e in rounds {
+        world.despawn(e);
+    }
+}
+
+// --- Protocol
+
+/// The round and the objectives' totals, on one replicated entity the
+/// server keeps (`write_round`). Times are server ticks
+/// (fractional), which a client turns into its own clock
+/// (`net::game::ServerTime`).
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct NetRound {
+    /// `round_phase::*`.
+    pub phase: u8,
+    /// Live: when it went live. Freeze: when it ends. Live: when time is
+    /// up. Over: when the next round starts.
+    pub since: f64,
+    pub until: f64,
+    /// Over: the winner's team number (None: a draw).
+    pub winner: Option<u8>,
+    pub number: u32,
+    /// Rounds won by the attackers and the defenders.
+    pub wins: [u32; 2],
+    /// Why buying is closed now (the rules' words); None: open.
+    pub buy_closed: Option<String>,
+    /// This round's bomb: `bomb_outcome::*`.
+    pub bomb: u8,
+    /// Hostages this round: total, rescued, killed.
+    pub hostages: [u32; 3],
+    /// The game on the map is over: the intermission (`RoundState::game_over`).
+    pub game_over: bool,
+    /// When the game on this map began (`RoundState::map_started`), for
+    /// the time left with `mp_timelimit`.
+    pub map_started: Option<f64>,
+}
+
+/// `NetRound::phase`.
+pub mod round_phase {
+    pub const OFF: u8 = 0;
+    pub const FREEZE: u8 = 1;
+    pub const LIVE: u8 = 2;
+    pub const OVER: u8 = 3;
+}
+
+/// `NetRound::bomb`.
+pub mod bomb_outcome {
+    pub const NONE: u8 = 0;
+    pub const PLANTED: u8 = 1;
+    pub const EXPLODED: u8 = 2;
+    pub const DEFUSED: u8 = 3;
+}
+
+/// The planted bomb (`objectives::bomb::PlantedBomb`), on its own
+/// replicated entity: where, its model, and its clock in server ticks.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct NetBomb {
+    pub origin: [f32; 3],
+    pub rotation: [f32; 4],
+    pub model: Option<String>,
+    pub site: Option<u32>,
+    pub planted: f64,
+    pub explode: f64,
+    pub timer: f32,
+    /// Who defuses it, since and until when (ticks), with a kit.
+    #[entities]
+    pub defuser: Option<Entity>,
+    pub defuse_since: f64,
+    pub defuse_until: f64,
+    pub defuse_kit: bool,
+    pub defused: bool,
+}
+
+/// A hostage (`objectives::hostages::Hostage`): which one, its model and
+/// whom it follows. With `NetCharacter` and `NetBody` like anyone.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct NetHostage {
+    pub index: u32,
+    pub model: Option<String>,
+    #[entities]
+    pub leader: Option<Entity>,
+}
+
+/// Client -> server: put me on this team (`jointeam`: our team number,
+/// 1 terrorists, 2 counter-terrorists; 0 the spectators).
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct TeamRequest {
+    pub team: u8,
+}
+
+/// Client -> server: my class (`joinclass`: CS:S's number, 0
+/// auto-select; `rules::join_class`).
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ClassRequest {
+    pub class: u8,
+}
+
+
+/// Server -> clients: an objective event (`objectives::ObjectiveEvent`,
+/// `hostages::HostagePenalty`) for the HUD's words and sounds: its kind
+/// (`encode_objective` numbers them), who, the other party, where, and the rest.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq, bevy::ecs::entity::MapEntities)]
+pub struct ObjectiveNews {
+    pub kind: u8,
+    #[entities]
+    pub who: Option<Entity>,
+    #[entities]
+    pub other: Option<Entity>,
+    pub at: [f32; 3],
+    pub flag: bool,
+    pub site: Option<u32>,
+    pub amount: f32,
+    pub reason: u8,
+}
+
+/// Server -> clients: the round ended (`rules::rounds::RoundEnded`):
+/// the winner's team number and why (`REASONS` numbers them), and the
+/// win panel's summary (`rules::rounds::RoundSummary`): the MVP and why
+/// (`Mvp::ALL`'s index), the fun fact (its string token, the player it
+/// names, its values) and the round's live seconds.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq, bevy::ecs::entity::MapEntities)]
+pub struct RoundOver {
+    pub winner: Option<u8>,
+    pub reason: u8,
+    #[entities]
+    pub mvp: Option<Entity>,
+    pub mvp_reason: u8,
+    pub fun_fact: Option<String>,
+    #[entities]
+    pub fun_fact_player: Option<Entity>,
+    pub fun_fact_values: Vec<String>,
+    pub seconds: f32,
+}
+
 
 // --- Server
 
@@ -195,66 +351,6 @@ fn write_round(world: &mut World) {
         }
         None => {
             world.spawn((Name::new("Round"), Replicated, now));
-        }
-    }
-}
-
-/// Each character's scoreboard line. Ping is measured again every
-/// `PING_TICKS` ticks (Source's scoreboard updates about once a second).
-#[allow(clippy::type_complexity)]
-fn write_scores(
-    mut q: Query<
-        (
-            Entity,
-            &NetCharacter,
-            Option<&Score>,
-            Option<&Inventory>,
-            Has<DefuseKit>,
-            Option<&mut NetScore>,
-        ),
-        Without<Hostage>,
-    >,
-    players: Query<(&Player, Option<&ConnectedClientStats>)>,
-    bombs: Query<(), With<C4>>,
-    clock: Res<SimClock>,
-    mut commands: Commands,
-) {
-    const PING_TICKS: u64 = 64;
-    let measure = clock.tick % PING_TICKS == 0;
-    for (e, c, score, inv, kit, have) in &mut q {
-        let s = score.copied().unwrap_or_default();
-        let mut flags = 0;
-        if c.owner.is_none() {
-            flags |= score_flags::BOT;
-        }
-        if inv.is_some_and(|i| i.weapons.iter().any(|w| bombs.contains(*w))) {
-            flags |= score_flags::BOMB;
-        }
-        if kit {
-            flags |= score_flags::KIT;
-        }
-        let ping = if measure || have.is_none() {
-            players
-                .iter()
-                .find(|(p, _)| p.character == e)
-                .and_then(|(_, stats)| stats)
-                .map_or(0, |s| (s.rtt * 1000.0).round().clamp(0.0, u16::MAX as f64) as u16)
-        } else {
-            have.as_ref().map_or(0, |h| h.ping)
-        };
-        let now = NetScore {
-            kills: s.kills,
-            deaths: s.deaths,
-            ping,
-            flags,
-        };
-        match have {
-            Some(mut h) => {
-                h.set_if_neq(now);
-            }
-            None => {
-                commands.entity(e).insert(now);
-            }
         }
     }
 }
@@ -318,31 +414,13 @@ fn replicate_hostages(
                 owner: None,
                 name: name.map_or_else(|| format!("Hostage {}", h.index + 1), |n| n.to_string()),
             },
-            super::NetBody::default(),
+            crate::net::NetBody::default(),
             NetHostage {
                 index: h.index as u32,
                 model: body.map(|b| b.0.clone()),
                 leader: None,
             },
         ));
-    }
-}
-
-/// A client asked to buy something: the rules decide (`economy::buy`);
-/// why not goes back as the game's hint.
-fn receive_buys(mut requests: MessageReader<FromClient<BuyRequest>>, players: Query<&Player>, mut commands: Commands) {
-    for r in requests.read() {
-        let Some(client) = r.client_id.entity() else { continue };
-        let Ok(p) = players.get(client) else { continue };
-        let (character, what) = (p.character, r.message.what.chars().take(64).collect::<String>());
-        commands.queue(move |w: &mut World| {
-            if w.get_entity(character).is_err() {
-                return;
-            }
-            if let Err(text) = crate::weapon::economy::buy(w, character, &what) {
-                notify(w, client, text);
-            }
-        });
     }
 }
 
@@ -384,14 +462,6 @@ fn receive_classes(mut requests: MessageReader<FromClient<ClassRequest>>, player
             }
         });
     }
-}
-
-/// The game's hint to one client.
-pub(super) fn notify(world: &mut World, client: Entity, text: String) {
-    world.write_message(ToClients {
-        targets: SendTargets::Single(ClientId::Client(client)),
-        message: Notice { text },
-    });
 }
 
 /// Round ends, to every client.
@@ -448,34 +518,6 @@ fn send_objectives(
         out.write(ToClients {
             targets: SendTargets::CLIENTS_ONLY,
             message,
-        });
-    }
-}
-
-/// The rules' sounds, to every client; a sound of a player's predicted
-/// action (`PredictedSound`) to every client but that player's, which
-/// played it already.
-fn send_sounds(
-    mut sounds: MessageReader<GameSound>,
-    mut predicted: MessageReader<PredictedSound>,
-    replicated: Query<(), With<Replicated>>,
-    players: Query<(Entity, &Player)>,
-    mut out: MessageWriter<ToClients<ServerSound>>,
-) {
-    let all = sounds.read().map(|s| (&s.0, None));
-    let own = predicted.read().map(|s| (&s.sound, Some(s.by)));
-    for (s, by) in all.chain(own) {
-        let client = by.and_then(|by| players.iter().find(|(_, p)| p.character == by).map(|(c, _)| c));
-        out.write(ToClients {
-            targets: client.map_or(SendTargets::CLIENTS_ONLY, |c| SendTargets::AllExcept(ClientId::Client(c))),
-            message: ServerSound {
-                entry: s.entry.clone(),
-                at: s.at.map(|a| a.to_array()),
-                volume: s.volume,
-                pitch: s.pitch,
-                source: s.source.filter(|e| replicated.contains(*e)),
-                channel: s.channel,
-            },
         });
     }
 }
@@ -726,28 +768,6 @@ fn apply_round(world: &mut World) {
     }
 }
 
-/// Scores and kits into `Score` and `DefuseKit` (the scoreboard and HUD
-/// read them as in single player).
-fn apply_scores(q: Query<(Entity, Ref<NetScore>, Option<&Score>, Has<DefuseKit>)>, mut commands: Commands) {
-    for (e, s, score, kit) in &q {
-        if !s.is_changed() && score.is_some() {
-            continue;
-        }
-        if score.is_none_or(|x| x.kills != s.kills || x.deaths != s.deaths) {
-            commands.entity(e).insert(Score {
-                kills: s.kills,
-                deaths: s.deaths,
-            });
-        }
-        let has = s.flags & score_flags::KIT != 0;
-        if has && !kit {
-            commands.entity(e).insert(DefuseKit);
-        } else if !has && kit {
-            commands.entity(e).remove::<DefuseKit>();
-        }
-    }
-}
-
 /// The planted bomb: drawn with its model where the server put it, its
 /// clock on ours.
 fn apply_bombs(world: &mut World) {
@@ -823,46 +843,6 @@ fn apply_hostages(
     }
 }
 
-/// Our money, armour and night vision from the server's newest state
-/// (arming and defusing are predicted: `objectives::bomb::arm`).
-fn apply_own(
-    mut states: MessageReader<OwnState>,
-    player: Option<Single<(Entity, Option<&Money>, Option<&Armor>, Has<NightVision>), With<LocalPlayer>>>,
-    mut commands: Commands,
-) {
-    let Some(s) = states.read().max_by_key(|s| s.tick).cloned() else {
-        return;
-    };
-    let Some((e, money, armor, nightvision)) = player.map(|p| *p) else {
-        return;
-    };
-    if s.nightvision != nightvision {
-        if s.nightvision {
-            commands.entity(e).insert(NightVision);
-        } else {
-            commands.entity(e).remove::<NightVision>();
-        }
-    }
-    match s.money {
-        Some(m) if money.map(|x| x.0) != Some(m) => {
-            commands.entity(e).insert(Money(m));
-        }
-        None if money.is_some() => {
-            commands.entity(e).remove::<Money>();
-        }
-        _ => {}
-    }
-    match s.armor {
-        Some((amount, helmet)) if armor.is_none_or(|a| a.amount != amount || a.helmet != helmet) => {
-            commands.entity(e).insert(Armor { amount, helmet });
-        }
-        None if armor.is_some() => {
-            commands.entity(e).remove::<Armor>();
-        }
-        _ => {}
-    }
-}
-
 /// The round's end: the banner and the announcer (`RoundEnded`).
 fn receive_round_over(mut over: MessageReader<RoundOver>, mut ended: MessageWriter<RoundEnded>) {
     for o in over.read() {
@@ -899,27 +879,6 @@ fn receive_objectives(
             }
             None => {}
         }
-    }
-}
-
-/// The rules' sounds the server played.
-fn receive_sounds(mut sounds: MessageReader<ServerSound>, mut play: MessageWriter<PlaySound>) {
-    for s in sounds.read() {
-        play.write(PlaySound {
-            entry: s.entry.clone(),
-            at: s.at.map(Vec3::from_array),
-            volume: s.volume,
-            pitch: s.pitch,
-            source: s.source.filter(|e| *e != Entity::PLACEHOLDER),
-            channel: s.channel,
-        });
-    }
-}
-
-/// Our buys, to the server.
-fn send_buys(mut asked: MessageReader<BuyRequested>, mut out: MessageWriter<BuyRequest>) {
-    for a in asked.read() {
-        out.write(BuyRequest { what: a.0.clone() });
     }
 }
 
@@ -978,21 +937,5 @@ mod tests {
         // An entity clients don't know: the event isn't sent.
         let none = |_: Entity| None;
         assert!(encode_objective(&ObjectiveEvent::GotBomb { who: a }, &none).is_none());
-    }
-
-    #[test]
-    fn server_times_become_ticks() {
-        let clock = SimClock {
-            tick: 100,
-            now: 1.5,
-            delta: std::time::Duration::from_secs_f64(0.015),
-        };
-        assert!((tick_of(&clock, 1.5 + 0.15) - 110.0).abs() < 1e-9);
-        let t = ServerTime {
-            tick: 105.0,
-            step: 0.015,
-            fixed: 20.0,
-        };
-        assert!((t.local(110.0) - 20.075).abs() < 1e-9);
     }
 }

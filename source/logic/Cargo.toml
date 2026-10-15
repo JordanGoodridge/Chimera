@@ -19,11 +19,15 @@ doctest = false
 [dependencies]
 engine_core.workspace = true
 engine_world.workspace = true
+# The network: the logic registers its movers and HUD messages there
+# (`logic::net`).
+engine_net.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
+bevy_replicon.workspace = true
 serde.workspace = true
 
 [features]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p source_logic --features dev` shares the game's Bevy build.
-dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev"]
+dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev", "engine_net/dev"]

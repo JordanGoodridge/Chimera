@@ -138,7 +138,7 @@ pub struct ServedMap {
 
 /// Maps loaded so far here (`rules::MapLoads`).
 fn map_loads(world: &World) -> u32 {
-    world.get_resource::<crate::rules::MapLoads>().map_or(0, |l| l.0)
+    world.get_resource::<crate::core::MapLoads>().map_or(0, |l| l.0)
 }
 
 /// On a client's server-side entity: the map file being sent to it.
@@ -292,7 +292,7 @@ pub(super) fn welcome(world: &mut World, you: u64) -> Welcome {
     let dl = world.resource::<DownloadSettings>().clone();
     let settings = world.resource::<super::NetSettings>().clone();
     let players = super::server::players(world).len()
-        + world.query_filtered::<(), With<crate::bot::Bot>>().iter(world).count();
+        + world.query_filtered::<(), With<crate::core::Bot>>().iter(world).count();
     Welcome {
         map: s.map,
         map_hash: s.hash,
@@ -402,11 +402,11 @@ fn new_level(world: &mut World) {
         }
     }
     let scored: Vec<Entity> = world
-        .query_filtered::<Entity, With<crate::rules::Score>>()
+        .query_filtered::<Entity, With<crate::core::Score>>()
         .iter(world)
         .collect();
     for e in scored {
-        world.entity_mut(e).remove::<crate::rules::Score>();
+        world.entity_mut(e).remove::<crate::core::Score>();
     }
     let uploads: Vec<Entity> = world.query_filtered::<Entity, With<Upload>>().iter(world).collect();
     for e in uploads {

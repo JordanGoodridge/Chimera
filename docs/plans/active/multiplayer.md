@@ -1639,3 +1639,21 @@ Bandwidth ("Capacity"): `NetProp` and `NetItem` lose their velocity (no
 client read it) and go quantized as `NetBody` does (`net::quant`: 1/32
 unit, 16-bit quaternion parts), the server keeping the quantized values,
 so a prop shaking below the grid sends nothing.
+
+### net24 (2026-10-14)
+
+`net` became a crate (`engine/net`, `engine_net`) that names no game:
+CS:S's round, bomb, hostages, team and class requests, round ends and
+objective news (`NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`,
+`ClassRequest`, `ObjectiveNews`, `RoundOver`: `cs_source::game::net`) and
+Source's logic's movers and HUD messages (`NetMover`, `MapHud`:
+`logic::net`) are parts the game and the logic register
+(`net::NetAppExt::net_part`), applied in name order (`cs_source`, then
+`source_logic`) after the engine's protocol in `NetPlugin::finish`. The
+types and their messages are unchanged, but they now come after
+everything else in the registration order (replicon's component and
+message ids, the protocol hash), so a new protocol number. Behaviour is
+the same: the join flow, bots, the freeze's hold and the bomb's
+predicted holds go through hooks the game fills (`net::parts`), and the
+bomb carrier's scoreboard flag comes from the weapon's
+`core::ScoreMark`.

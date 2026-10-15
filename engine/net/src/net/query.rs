@@ -464,8 +464,8 @@ fn update_info(
     hosting: Res<Hosting>,
     instance: Res<InstanceId>,
     characters: Query<
-        (Has<crate::bot::Bot>, Has<LocalPlayer>),
-        (With<Intent>, Without<crate::objectives::hostages::Hostage>),
+        (Has<crate::core::Bot>, Has<LocalPlayer>),
+        (With<Intent>, Without<crate::core::Npc>),
     >,
     map: Option<Res<crate::map::LoadedMapName>>,
     port: Option<Res<super::udp::UdpServer>>,

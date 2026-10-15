@@ -1,5 +1,12 @@
-//! Moving brushes in a network game (docs/plans/active/multiplayer.md,
-//! slice 3): doors, platforms, trains, rotating and parented brushes.
+//! Source's map logic in a network game: its part of the network
+//! (`net::NetAppExt::net_part`, named `source_logic`, registered by
+//! `LogicPlugin`): moving brushes (`NetMover`) and what the logic shows
+//! on HUDs (`MapHud`). Clients run no map logic; what it does reaches them
+//! through the map's state (`map::state`: render looks, tints, one-shot
+//! sounds, `say` lines, effects: the network's own) or here.
+//!
+//! Moving brushes (docs/plans/active/multiplayer.md, slice 3): doors,
+//! platforms, trains, rotating and parented brushes.
 //!
 //! - **Server.** After each tick, every mover node's motion state goes
 //!   into its `NetMover` (`write_movers`): the logic's pusher (where it
@@ -31,35 +38,167 @@
 //! does (`Stepper`), carries its own player with those steps
 //! (`logic::carry_player`) and places the nodes (`Transform`, `MovingSolid`,
 //! shown, collider) before movement, in each predicted and each replayed tick
-//! (`place`); `restore_ground` after a correction.
+//! (`place`; the replays through `net::NetHooks::replay`); the network puts
+//! the player back on the server's mover after a correction
+//! (`net::predict::restore_ground`).
+//!
+//! HUD messages: what map logic shows on HUDs (`logic::HudEvent`: game_text,
+//! env_fade, env_hudhint) as `MapHud` to the player it is for or everyone;
+//! a client shows it (`hud::show_on_hud`).
 
 use bevy::prelude::*;
+use bevy_replicon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use super::{NetMover, interp::Snapshots, mover_flags, predict::NetGraph};
 use crate::{
-    core::{MovementState, MovingSolid, NetRole, SimClock, SimSet},
-    logic::{CarriedMover, Logic, brush_to_engine, carry_player, classes::Class, movers::pusher, mover_brushes_at},
+    core::{MovingSolid, NetRole, SimClock, SimSet},
+    logic::{
+        CarriedMover, HudEvent, HudShow, Logic, brush_to_engine, carry_player, classes::Class, movers::pusher,
+        mover_brushes_at,
+    },
     map::{
         BrushTint, MapBrushEntity, MapEntities,
         entities::{entity_rotation, entity_to_engine, rotation_to_engine},
+    },
+    net::{
+        NetAppExt, NetHooks,
+        interp::{HearTicks, Snapshots, hold_heard, remove_snapshots, write_snapshot},
+        ordered::OrderedAppExt,
+        predict::{CommandClock, NetGraph, RecordCommand, predicted_player},
+        server::Player,
     },
 };
 
 /// Ticks a client steps a mover past its newest snapshot, at most.
 const MAX_STEPS: u64 = 512;
 
+/// The logic's part of the network (`register`), named `source_logic`
+/// (`LogicPlugin` adds it).
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(FixedLast, write_movers.run_if(resource_equals(NetRole::Server)))
+    app.net_part("source_logic", register);
+}
+
+/// The protocol (in this order on every side), the systems and the hooks.
+fn register(app: &mut App) {
+    let client = || resource_equals(NetRole::Client);
+    // Every value a client receives also goes into its snapshot buffer, by
+    // the server tick it is from.
+    app.replicate::<NetMover>()
+        .set_receive_fns::<NetMover>(write_snapshot::<NetMover>, remove_snapshots::<NetMover>)
+        .ordered_with::<NetMover>(write_snapshot::<NetMover>, remove_snapshots::<NetMover>)
+        .add_server_message::<MapHud>(Channel::Ordered)
+        .add_message::<HudEvent>()
+        .add_systems(FixedLast, write_movers.run_if(resource_equals(NetRole::Server)))
         .add_systems(
             FixedUpdate,
             place
-                .after(super::predict::record_command)
+                .after(RecordCommand)
                 .after(SimSet::Commands)
                 .before(SimSet::Movement)
-                .run_if(resource_equals(NetRole::Client)),
+                .run_if(client()),
         )
-        .add_systems(Update, copy_tints.run_if(resource_equals(NetRole::Client)));
+        .add_systems(Update, copy_tints.run_if(client()))
+        .add_systems(PreUpdate, hold_heard::<NetMover>.after(HearTicks).run_if(client()))
+        .add_systems(
+            PostUpdate,
+            forward_hud.before(ServerSystems::Send).run_if(resource_equals(NetRole::Server)),
+        )
+        .add_systems(PreUpdate, receive_hud.after(ClientSystems::Receive).run_if(client()));
+    let mut hooks = app.world_mut().resource_mut::<NetHooks>();
+    hooks.replay.push(place);
+    hooks.stopped_serving.push(stopped_serving);
 }
+
+/// Serving stopped: movers stop replicating.
+fn stopped_serving(world: &mut World) {
+    let movers: Vec<Entity> = world.query_filtered::<Entity, With<NetMover>>().iter(world).collect();
+    for e in movers {
+        world.entity_mut(e).remove::<NetMover>();
+    }
+}
+
+/// A moving brush's motion state (doors, platforms, trains, rotating and
+/// parented brushes; `logic::movers::Pusher`), entity space (angles in
+/// degrees), written by the server on the mover's node after each tick
+/// (`write_movers`). A client steps its own copy of the node
+/// (`map::MapBrushEntity` with this `index`) to the tick it predicts the
+/// way the logic does (`place`).
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct NetMover {
+    /// The map entity index (`map::MapBrushEntity`).
+    pub index: u32,
+    pub origin: [f32; 3],
+    pub angles: [f32; 3],
+    pub velocity: [f32; 3],
+    pub avelocity: [f32; 3],
+    /// The pusher's local time, its move's (or wait's) end, and where the
+    /// move ends.
+    pub ltime: f64,
+    pub move_done: Option<f64>,
+    pub goal_origin: Option<[f32; 3]>,
+    pub goal_angles: Option<[f32; 3]>,
+    /// `mover_flags::*` bits.
+    pub flags: u16,
+}
+
+/// `NetMover::flags` bits.
+pub mod mover_flags {
+    pub const VISIBLE: u16 = 1;
+    pub const SOLID: u16 = 1 << 1;
+    /// Steps land on whole ticks (func_rotating's spin).
+    pub const INEXACT: u16 = 1 << 2;
+    /// Angles kept in [0, 360) (func_rotating).
+    pub const SPIN: u16 = 1 << 3;
+    /// Rotations push by the box's leading corner (model doors).
+    pub const PHYSICS_SOLID: u16 = 1 << 4;
+    /// Players are moved through (trains flag 512).
+    pub const UNBLOCKABLE: u16 = 1 << 5;
+    /// Shots hit it (a broken breakable's aren't).
+    pub const SHOOTABLE: u16 = 1 << 6;
+    /// Its logic entity is gone (killed, broken) until a round restart.
+    pub const GONE: u16 = 1 << 7;
+    /// Moves with a parent (parented brushes, breakables): not stepped on
+    /// its own.
+    pub const ATTACHED: u16 = 1 << 8;
+}
+
+/// Server -> a client: what map logic shows on its player's HUD (a
+/// game_text, an env_fade, an env_hudhint: `logic::HudEvent`), to the
+/// player it is for or to everyone.
+#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MapHud(pub HudShow);
+
+/// What map logic shows on HUDs (`logic::HudEvent`) to the client of the
+/// player it is for, or to every client.
+fn forward_hud(
+    mut events: MessageReader<HudEvent>,
+    players: Query<(Entity, &Player)>,
+    mut out: MessageWriter<ToClients<MapHud>>,
+) {
+    for ev in events.read() {
+        let targets = match ev.to {
+            None => SendTargets::CLIENTS_ONLY,
+            Some(c) => match players.iter().find(|(_, p)| p.character == c) {
+                Some((client, _)) => SendTargets::Single(ClientId::Client(client)),
+                None => continue,
+            },
+        };
+        out.write(ToClients {
+            targets,
+            message: MapHud(ev.what.clone()),
+        });
+    }
+}
+
+/// The server's HUD messages for this client's player.
+fn receive_hud(mut shows: MessageReader<MapHud>, time: Res<Time>, mut commands: Commands) {
+    let now = time.elapsed_secs_f64();
+    for s in shows.read() {
+        let what = s.0.clone();
+        commands.queue(move |w: &mut World| crate::logic::hud::show_on_hud(w, what, now));
+    }
+}
+
 
 /// A client: a mover's render colour, alpha, mode and texture frame
 /// (`map::BrushTint`, replicated with its `NetMover`) onto its own
@@ -152,7 +291,7 @@ fn write_movers(world: &mut World) {
                 have.set_if_neq(m);
             }
             None => {
-                e.insert((bevy_replicon::prelude::Replicated, m));
+                e.insert((Replicated, m));
             }
         }
     }
@@ -249,7 +388,7 @@ struct Placed {
 /// one (`predict::reconcile`).
 pub fn place(world: &mut World) {
     if world.get_resource::<NetRole>() != Some(&NetRole::Client)
-        || world.resource::<super::predict::CommandClock>().tick.is_none()
+        || world.get_resource::<CommandClock>().is_none_or(|c| c.tick.is_none())
     {
         return;
     }
@@ -299,7 +438,7 @@ pub fn place(world: &mut World) {
     placed.sort_by_key(|p| p.index);
     let scale = entities.scale;
     // Our own player, carried and pushed.
-    if let Some(player) = super::predict::predicted_player(world) {
+    if let Some(player) = predicted_player(world) {
         let carried: Vec<CarriedMover> = placed
             .iter()
             .filter_map(|p| {
@@ -342,7 +481,7 @@ pub fn place(world: &mut World) {
         if moved && let Some(mut t) = e.get_mut::<Transform>() {
             *t = transform;
         }
-        crate::logic::set_node_shown(&mut e, visible);
+        super::set_node_shown(&mut e, visible);
         let same = !moved
             && e.get::<MovingSolid>()
                 .is_some_and(|m| m.solid == solid && m.velocity == velocity);
@@ -370,26 +509,9 @@ pub fn place(world: &mut World) {
         }
     }
     // Snapshots the replays can no longer need.
-    let keep = tick.saturating_sub(super::interp::MAX_SAMPLES as u64) as f64;
+    let keep = tick.saturating_sub(crate::net::interp::MAX_SAMPLES as u64) as f64;
     for mut buf in world.query::<&mut Snapshots<NetMover>>().iter_mut(world) {
         buf.prune(keep);
-    }
-}
-
-/// After a correction: the player stands on the server's mover again
-/// (`OwnState::ground`, a map entity index).
-pub fn restore_ground(world: &mut World, player: Entity, ground: Option<u32>) {
-    let node = ground.and_then(|i| {
-        world
-            .query::<(Entity, &MapBrushEntity)>()
-            .iter(world)
-            .find(|(_, n)| n.0 as u32 == i)
-            .map(|(e, _)| e)
-    });
-    if let Some(mut s) = world.get_mut::<MovementState>(player)
-        && s.ground != node
-    {
-        s.ground = node;
     }
 }
 

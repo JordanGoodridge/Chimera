@@ -7,8 +7,10 @@
 //! `objectives` (bomb, hostages, zones) are CS:S's rules, which its rule
 //! modules (`game::rules`) describe; `bot` is CS:S's bots (aim,
 //! navigation, team plans, radio, buying, grenades, the bomb and
-//! hostage goals). It uses the engine crates
-//! (`engine_core`, `engine_world`, `engine_sim`) and `source_formats`,
+//! hostage goals); `game::net` is its part of the network (its round, bomb
+//! and hostages replicated, its join flow, bots and holds behind the
+//! network's hooks). It uses the engine crates
+//! (`engine_core`, `engine_world`, `engine_sim`, `engine_net`) and `source_formats`,
 //! never the presentation, `mashup` or another game (checked), so a
 //! dedicated server runs it without drawing and an edit in the client
 //! doesn't rebuild it.
@@ -16,7 +18,7 @@
 //! The game crate re-exports `game` as `mashup::games::cs_source` (beside
 //! the front end, `ui/`, which stays with the client shell for now) and
 //! `rules`, `objectives` and `bot` at their old paths (`mashup::rules`,
-//! ...). The network and the client still name them
+//! ...). The client still names them
 //! (docs/plans/active/engine-split.md, "Remaining couplings").
 
 pub mod bot;
@@ -27,4 +29,5 @@ pub mod rules;
 // `crate::core`, `crate::map` and the rest inside, as in the game crate.
 use engine_core::{character, console, core, mount, slots};
 use engine_sim::weapon;
+use engine_net::net;
 use engine_world::map;

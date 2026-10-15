@@ -1,0 +1,23 @@
+//! Network play (docs/ARCHITECTURE.md, "Crates";
+//! docs/plans/active/multiplayer.md): the transport, the join handshake,
+//! replication of what every game has (characters, bodies, props, items,
+//! weapons' events, chat, cvars, maps), prediction and interpolation
+//! (`net`). A game, and Source's map logic, register what they replicate
+//! of their own through `net::NetAppExt::net_part` (CS:S's round, bomb
+//! and hostages; Source's movers and HUD messages) and fill the hooks the
+//! network calls (`net::parts`: how a player joins, bots, what the rules
+//! hold a predicted player to). It uses the engine's base
+//! (`engine_core`), the simulation's map (`engine_world`) and frameworks
+//! (`engine_sim`) and nothing above them, so an edit in a game or the
+//! client doesn't rebuild it.
+//!
+//! The game crate re-exports `net` at its old path (`mashup::net`), with
+//! the game's replicated types beside it.
+
+pub mod net;
+
+// `crate::core`, `crate::map` and the rest inside `net`, as in the game
+// crate.
+use engine_core::{character, console, core, slots};
+use engine_sim::{movement, weapon};
+use engine_world::map;

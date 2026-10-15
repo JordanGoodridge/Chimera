@@ -3,8 +3,8 @@
 # the repository root act on every default member: `cargo test` tests
 # them all, `cargo test -p source_formats` one crate alone.
 [workspace]
-members = [".", "engine/core", "engine/world", "engine/present", "engine/sim", "source/formats", "source/logic", "games/cs_source"]
-default-members = [".", "engine/core", "engine/world", "engine/present", "engine/sim", "source/formats", "source/logic", "games/cs_source"]
+members = [".", "engine/core", "engine/world", "engine/present", "engine/sim", "engine/net", "source/formats", "source/logic", "games/cs_source"]
+default-members = [".", "engine/core", "engine/world", "engine/present", "engine/sim", "engine/net", "source/formats", "source/logic", "games/cs_source"]
 resolver = "3"
 
 [workspace.package]
@@ -19,6 +19,7 @@ engine_core = { path = "engine/core" }
 engine_world = { path = "engine/world" }
 engine_present = { path = "engine/present" }
 engine_sim = { path = "engine/sim" }
+engine_net = { path = "engine/net" }
 source_formats = { path = "source/formats" }
 source_logic = { path = "source/logic" }
 cs_source = { path = "games/cs_source" }
@@ -40,6 +41,9 @@ libc = "0.2"
 # Networking (docs/plans/active/multiplayer.md): replication over renet's
 # netcode UDP transport.
 bevy_replicon = { version = "0.44.3", default-features = false, features = ["client", "server"] }
+bevy_replicon_renet = "0.20.0"
+renetcode = "2.0"
+igd-next = { version = "0.18", default-features = false, features = ["io_sync"] }
 half = "2.7.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tga"] }
 # Bevy's math types (`bevy::math::Vec3` is `glam::Vec3`): the version
@@ -100,18 +104,16 @@ engine_sim.workspace = true
 # `mashup::games::cs_source` (beside its front end, `ui/`, still here),
 # `mashup::rules` and `mashup::objectives` (lib.rs).
 cs_source.workspace = true
+# Network play: transport, replication, prediction (engine/net);
+# re-exported as `mashup::net` with the game's replicated types (lib.rs).
+engine_net.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
 bevy-inspector-egui = "0.37"
 # The inspector's egui, with egui drawn over Bevy's UI (the debug UI over the HUD).
 bevy_egui = { version = "0.40", default-features = false, features = ["bevy_ui"] }
 bevy_replicon.workspace = true
-bevy_replicon_renet = "0.20.0"
-# Netcode's client protocol, for our UDP client transport with
-# `net_fakelag`/`net_fakeloss` (net::udp); the one bevy_replicon_renet uses.
-renetcode = "2.0"
-# UPnP port mapping for hosts (`net_upnp`, net::upnp); sync client, no TLS.
-igd-next = { version = "0.18", default-features = false, features = ["io_sync"] }
+bevy_replicon_renet.workspace = true
 postcard.workspace = true
 bzip2.workspace = true
 # HUD glyphs rasterized and placed as Source's HUD does (client::hud_text).
@@ -206,7 +208,7 @@ combat_arms = ["dep:twofish"]
 
 # Faster iteration: link Bevy as a dynamic library. Use with
 # `cargo run --features dev`. Never enable for release builds.
-dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev", "engine_present/dev", "source_logic/dev", "engine_sim/dev", "cs_source/dev"]
+dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev", "engine_present/dev", "source_logic/dev", "engine_sim/dev", "engine_net/dev", "cs_source/dev"]
 
 # CPU profile: every system and render step as a span in a Chrome trace
 # (trace-<time>.json, open in https://ui.perfetto.dev). See

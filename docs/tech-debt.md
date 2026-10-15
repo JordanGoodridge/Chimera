@@ -104,7 +104,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Maps load synchronously before the app starts. OK for now: dust2 converts in well under a second.
 - deps: `vbsp` pulls `binrw` 0.14, which rustc flags as future-incompatible. OK for now: Upstream; watch on Rust upgrades.
 - build: Windows build not yet verified. OK for now: Needs the Windows PC set up (see plans).
-- net: The network so far: known mispredictions and gaps of slices 1-7 (`src/net/mod.rs`)
+- net: The network so far: known mispredictions and gaps of slices 1-7 (`engine/net/src/net/mod.rs`)
 - logic, core: Game entities beyond or short of the spec (weapon hiding, HUD suppression, speed, views) (`source/logic/src/logic/game.rs`)
 - logic, map: point_template copies are cloned nodes (not replicated); point_viewcontrol simplified (`source/logic/src/logic/templates.rs`)
 - map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`engine/world/src/map/placed_ragdoll.rs`)
@@ -117,11 +117,11 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - map: Detail props' shapes and sway are our readings, unmeasured (`engine/present/src/render/detail.rs`)
 - bot, weapon: Bot buying rules are ours (`games/cs_source/src/bot/buy.rs`)
 - bot: Bots on maps without a nav mesh step aside and wait (`games/cs_source/src/bot/aside.rs`)
-- net capacity: Every body goes to every client (no PVS relevance culling) (`src/net/server.rs`)
+- net capacity: Every body goes to every client (no PVS relevance culling) (`engine/net/src/net/server.rs`)
 - net capacity: Bots' sight in a crowded lobby is the cost limit (64 bots on jacks don't fit) (`games/cs_source/src/bot/mod.rs`)
-- net capacity: Client cost of drawing 31 others not profiled further (`src/net/interp.rs`)
+- net capacity: Client cost of drawing 31 others not profiled further (`engine/net/src/net/interp.rs`)
 - net capacity: Dedicated server capped at 300 frames a second, no cvar (`src/bin/mashup_server.rs`)
-- net: UPnP: IGD only (no NAT-PMP/PCP, no IPv6), nearest router only, untested on real routers (`src/net/upnp.rs`)
+- net: UPnP: IGD only (no NAT-PMP/PCP, no IPv6), nearest router only, untested on real routers (`engine/net/src/net/upnp.rs`)
 - weapon: Sprays: reach, size and floor turn are well-known values and ours, unmeasured; world only; names, not pictures (`engine/sim/src/weapon/spray.rs`)
 - map: Sprays drawn with one light value at the centre, no fog (`engine/present/src/render/spray.rs`)
 - client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`src/client/night_vision.rs`)

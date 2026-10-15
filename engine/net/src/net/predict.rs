@@ -428,9 +428,10 @@ pub(super) fn plugin(app: &mut App) {
             (
                 capture_command.before(SimSet::Rules),
                 hold_local.in_set(SimSet::Rules),
+                // A game's own holds (CS:S's `BombHold`) go before it.
                 record_command
+                    .in_set(RecordCommand)
                     .after(SimSet::Commands)
-                    .after(crate::objectives::bomb::BombHold)
                     .before(SimSet::Movement),
             )
                 .run_if(client()),
@@ -523,7 +524,7 @@ pub fn predicted_player(world: &mut World) -> Option<Entity> {
 /// whose base we no longer have is dropped: our acknowledgement says
 /// which we hold, and the server sends a whole state when it hasn't that
 /// one.
-pub(super) fn rebuild_own_states(
+pub fn rebuild_own_states(
     mut deltas: MessageReader<OwnStateDelta>,
     mut bases: ResMut<OwnStateBases>,
     mut out: MessageWriter<OwnState>,
@@ -765,7 +766,7 @@ fn reconcile(world: &mut World, player: Entity, server: OwnState) {
     super::canonical_position(world, player);
     // What it stands on isn't in the blob (an entity): the mover by its
     // map index, so the replay carries it as the server did.
-    super::movers::restore_ground(world, player, server.ground);
+    restore_ground(world, player, server.ground);
     let server_pos = world
         .get::<Transform>(player)
         .map(|t| t.translation)
@@ -796,7 +797,12 @@ fn reconcile(world: &mut World, player: Entity, server: OwnState) {
             *i = p.intent.clone();
         }
         world.insert_resource(p.clock);
-        super::movers::place(world);
+        // What the player moves against at that tick (`NetHooks::replay`:
+        // Source's movers).
+        let replay = world.resource::<super::NetHooks>().replay.clone();
+        for place in replay {
+            place(world);
+        }
         crate::core::predict(world);
         super::canonical_position(world, player);
         p.state = world.resource::<PredictedComponents>().encode(world, player);
@@ -905,12 +911,14 @@ fn capture_command(
     }
 }
 
-/// The rules hold our player as the server's do (`rules::hold_the_dead`:
-/// nothing but the look; `rules::rounds::hold_frozen`: the look, weapon
-/// picks and reload). Arming and defusing hold it as predicted (`objectives::bomb`'s
-/// `BombHold`, before the command is recorded).
+/// The rules hold our player as the server's do (the dead: nothing but
+/// the look; the freeze: what the game's `Holds::frozen` keeps, CS:S's
+/// `rules::rounds::frozen_intent`). A game's own predicted holds run in
+/// their sets before `RecordCommand` (CS:S's arming and defusing:
+/// `objectives::bomb`'s `BombHold`).
 fn hold_local(
     held: Res<Held>,
+    holds: Option<Res<super::Holds>>,
     clock: Res<CommandClock>,
     mut player: Option<Single<&mut Intent, (With<LocalPlayer>, With<MovementSlot>)>>,
 ) {
@@ -927,9 +935,16 @@ fn hold_local(
             ..default()
         };
     } else if frozen {
-        **intent = crate::rules::rounds::frozen_intent(intent);
+        let frozen = holds.map_or_else(|| super::Holds::default().frozen, |h| h.frozen);
+        **intent = frozen(intent);
     }
 }
+
+/// Where a client records the command it simulates this tick
+/// (`record_command`): a game orders its own predicted holds of the
+/// player's intent before it (`NetParts`).
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RecordCommand;
 
 /// The command as simulated this tick (held, numbered), into the history.
 pub(super) fn record_command(
@@ -1060,3 +1075,20 @@ fn update_graph(
     graph.errors_per_sec = graph.recent.len();
     graph.worst_recent = graph.recent.iter().map(|(_, d)| *d).fold(0.0, f32::max);
 }
+/// After a correction: the player stands on the server's mover again
+/// (`OwnState::ground`, a map entity index).
+pub fn restore_ground(world: &mut World, player: Entity, ground: Option<u32>) {
+    let node = ground.and_then(|i| {
+        world
+            .query::<(Entity, &crate::map::MapBrushEntity)>()
+            .iter(world)
+            .find(|(_, n)| n.0 as u32 == i)
+            .map(|(e, _)| e)
+    });
+    if let Some(mut s) = world.get_mut::<crate::core::MovementState>(player)
+        && s.ground != node
+    {
+        s.ground = node;
+    }
+}
+
