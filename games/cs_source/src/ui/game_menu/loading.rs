@@ -7,7 +7,7 @@ use super::*;
 /// loading dialog over the main menu's background (`label`: the address,
 /// then the map), as the game shows it, until the map is in
 /// (`entered_game`) or it fails (`show_failure`).
-pub(in crate::games::cs_source::ui) fn joining(w: &mut World, label: &str) {
+pub(in crate::ui) fn joining(w: &mut World, label: &str) {
     let Some(mut menu) = w.get_resource_mut::<GameMenu>() else { return };
     if menu.loading.as_deref() == Some(label) && menu.open && menu.failure.is_none() {
         return;
@@ -23,7 +23,7 @@ pub(in crate::games::cs_source::ui) fn joining(w: &mut World, label: &str) {
 
 /// Joining (or the game) failed: the loading dialog says why, in the
 /// game's words, until it's closed.
-pub(in crate::games::cs_source::ui) fn show_failure(w: &mut World) {
+pub(in crate::ui) fn show_failure(w: &mut World) {
     let Some(failure) = w
         .get_resource::<crate::net::client::JoinProgress>()
         .and_then(|p| p.failure.clone())
@@ -73,7 +73,7 @@ pub fn net_failure_text(menu: &GameMenu, kind: &crate::net::client::JoinFailure,
 }
 
 /// A `map` load failed: the main menu takes input again.
-pub(in crate::games::cs_source::ui) fn map_load_failed(w: &mut World) {
+pub(in crate::ui) fn map_load_failed(w: &mut World) {
     if let Some(mut menu) = w.get_resource_mut::<GameMenu>() {
         menu.loading = None;
     }

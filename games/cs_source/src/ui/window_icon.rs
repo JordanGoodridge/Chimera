@@ -102,7 +102,7 @@ fn decode_dib(d: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 fn load() -> Option<winit::window::Icon> {
     let install = crate::mount::config::LocalConfig::load()
         .ok()?
-        .game_path(crate::games::cs_source::GAME)?;
+        .game_path(crate::game::GAME)?;
     let path = icon_file(&install)?;
     let loaded = decode(&path).and_then(|(rgba, w, h)| {
         winit::window::Icon::from_rgba(rgba, w, h).map_err(|e| format!("{}: {e}", path.display()))
@@ -188,7 +188,7 @@ mod tests {
     fn the_installs_icon_decodes_when_there_is_one() {
         let Some(install) = crate::mount::config::LocalConfig::load()
             .ok()
-            .and_then(|c| c.game_path(crate::games::cs_source::GAME))
+            .and_then(|c| c.game_path(crate::game::GAME))
         else {
             return;
         };

@@ -869,7 +869,7 @@ mod tests {
                 ..default()
             })
             .add_systems(Update, keys);
-        crate::client::binds::test_binds(&mut app, &crate::games::cs_source::INFO);
+        crate::client::binds::test_binds(&mut app, &crate::game::INFO);
         if game_look {
             let hud = GameHud {
                 menus: Some(game_menus()),

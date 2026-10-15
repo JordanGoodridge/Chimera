@@ -255,7 +255,7 @@ pub(super) fn crosshair_preview(commands: &mut Commands, parent: Entity, look: &
 
 impl GameMenu {
     /// Settings' values now (those `which` picks).
-    pub(super) fn snapshot(&self, which: impl Fn(&crate::games::cs_source::ui::options::Setting) -> bool) -> Vec<(usize, Option<String>)> {
+    pub(super) fn snapshot(&self, which: impl Fn(&crate::ui::options::Setting) -> bool) -> Vec<(usize, Option<String>)> {
         SETTINGS
             .iter()
             .enumerate()
@@ -635,7 +635,7 @@ impl GameMenu {
             return;
         }
         self.aspect = Some(k);
-        let Some(i) = crate::games::cs_source::ui::options::setting_index("mashup_resolution") else { return };
+        let Some(i) = crate::ui::options::setting_index("mashup_resolution") else { return };
         let shown = self.shown_resolutions();
         let current = self.values.get(i).cloned().flatten().unwrap_or_default();
         if !shown.contains(&current)

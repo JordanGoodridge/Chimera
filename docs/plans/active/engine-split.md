@@ -612,6 +612,25 @@ measurements):
       `pub(crate)` cvar registrations became `pub`, `crc32fast` a
       dev-dependency (only a test uses it), `profile` forwards to the
       crate.
+    - [x] (d) (2026-10-15) CS:S's front end into `cs_source` behind its
+      feature `ui` (`games/cs_source/src/ui/`, moved whole; paths
+      `crate::games::cs_source::` became `crate::game::`, the radar's
+      shader `embedded://cs_source/ui/`): the feature turns on the shell
+      (`engine_client`), the presentation, Source's logic (the
+      objectives' HUD reads the map logic), replicon's netcode client
+      (the loading dialog), the clipboard and winit, all optional;
+      `mashup`'s `present` turns it on, so the dedicated server
+      (`--no-default-features --features server`) builds without it.
+      `mashup::games::cs_source::ui` re-exports it. Architecture test:
+      a game crate's `ui` is `games_ui`, its parts may not use
+      `crate::ui::`; `workspace_crates` keeps `engine_present`,
+      `engine_client` and `source_logic` off `cs_source` but as optional
+      dependencies only `ui` turns on (`UI_FEATURES`), and
+      `game_ui_only_with_its_feature` checks `cargo tree -p cs_source`
+      without and with the feature. `mashup` is now the app's glue: the
+      binaries, the harness, `SimPlugins`/`swap_map`, `games::load_map`,
+      the greybox, `client_hooks`, `mashup::client` (re-exports and
+      `ClientPlugin`) and re-exports at the old paths.
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`

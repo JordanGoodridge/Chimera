@@ -114,7 +114,7 @@ mod systems;
 mod tests;
 
 pub use self::{create_server::*, draw::MENU_Z, loading::*, main_menu::*, model::*};
-pub(in crate::games::cs_source::ui) use self::systems::*;
+pub(in crate::ui) use self::systems::*;
 use self::{draw::*, options_pages::*};
 
 use std::{
@@ -134,7 +134,7 @@ use bevy::{
     window::CursorOptions,
 };
 
-pub(in crate::games::cs_source::ui) use crate::client::widgets::{Look, bevel, label, place};
+pub(in crate::ui) use crate::client::widgets::{Look, bevel, label, place};
 use super::options::{Place, SETTINGS, SettingKind, TABS, Tab, VALUE_ENTRIES};
 use crate::client::{
     binds,

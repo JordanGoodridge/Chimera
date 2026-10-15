@@ -84,7 +84,7 @@ impl Plugin for CsSourceUiPlugin {
 mod tests {
     use crate::{
         client::binds::{self, SAMPLE_CONFIG_DEFAULT, cfg_binds, default_binds, defaults_from},
-        games::cs_source::{DEFAULT_BINDS, INFO},
+        game::{DEFAULT_BINDS, INFO},
     };
 
     fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {

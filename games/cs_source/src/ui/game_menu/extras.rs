@@ -41,7 +41,7 @@ impl GameMenu {
                 Action::Run(
                     format!(
                         "jointeam {}",
-                        crate::games::cs_source::ui::team_menu::auto_team(self.players[0], self.players[1])
+                        crate::ui::team_menu::auto_team(self.players[0], self.players[1])
                     ),
                     true,
                 ),

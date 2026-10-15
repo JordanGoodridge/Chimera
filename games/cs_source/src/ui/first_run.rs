@@ -39,7 +39,7 @@ use crate::client::{
 };
 use crate::{
     console::ConsoleAppExt,
-    games::cs_source::GAME,
+    game::GAME,
     mount::{
         config::LocalConfig,
         install::{self, Resolved},

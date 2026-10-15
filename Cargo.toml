@@ -131,12 +131,9 @@ bevy_replicon.workspace = true
 bevy_replicon_renet.workspace = true
 postcard.workspace = true
 bzip2.workspace = true
-arboard = { workspace = true, optional = true }
 dirs.workspace = true
 half.workspace = true
 image.workspace = true
-# The window icon (`winit::window::Icon`; the winit bevy_winit uses).
-winit = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 # The map file's hash in the connect handshake.
@@ -226,7 +223,7 @@ default = ["present"]
 # The presentation (engine_present: render, audio, `map::MapPlugin`), the
 # client shell (`client`) and the games' front ends (`games::*::ui`):
 # everything but the dedicated server.
-present = ["dep:engine_present", "dep:engine_client", "dep:arboard", "dep:winit"]
+present = ["dep:engine_present", "dep:engine_client", "cs_source/ui"]
 
 # The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep, demodump).
 tools = ["present"]

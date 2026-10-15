@@ -1,5 +1,5 @@
 use super::*;
-use crate::games::cs_source::ui::options::setting_index;
+use crate::ui::options::setting_index;
 use crate::map::hud::{GameUiItem, ServerSetting};
 
 const CVARS: [(&str, &str); 17] = [
@@ -224,7 +224,7 @@ fn the_player_name_in_the_multiplayer_options() {
 /// names you from Steam): it gets one in the spray words' place.
 #[test]
 fn the_multiplayer_layout_gets_a_name_entry() {
-    let root = crate::games::cs_source::gameui::layout_of_res(
+    let root = crate::game::gameui::layout_of_res(
         r#""Resource/OptionsSubMultiplayer.res" {
             "Label2" { "ControlName" "Label" "fieldName" "Label2" "xpos" "16" "ypos" "148" "wide" "150" "tall" "24" "labelText" "Spray" }
             "Label3" { "ControlName" "Label" "fieldName" "Label3" "xpos" "95" "ypos" "175" "wide" "150" "tall" "80" "labelText" "Note" }
@@ -232,14 +232,14 @@ fn the_multiplayer_layout_gets_a_name_entry() {
     );
     let mut layout = root.expect("a layout");
     let strings = HashMap::from([("gameui_playername".to_string(), "Player name".to_string())]);
-    crate::games::cs_source::gameui::add_player_name(&mut layout, &strings);
+    crate::game::gameui::add_player_name(&mut layout, &strings);
     let entry = layout.get("NameEntry").expect("added");
     let label = layout.get("NameLabel").expect("added");
     assert_eq!(label.text, "Player name");
     assert!(class_of(entry).eq_ignore_ascii_case("TextEntry"));
     assert!(!layout.get("Label2").unwrap().visible && !layout.get("Label3").unwrap().visible);
     let before = layout.controls.len();
-    crate::games::cs_source::gameui::add_player_name(&mut layout, &strings);
+    crate::game::gameui::add_player_name(&mut layout, &strings);
     assert_eq!(layout.controls.len(), before, "once");
 }
 
@@ -877,7 +877,7 @@ fn the_sensitivity_text_entry_beside_its_slider() {
 fn keyboard() -> GameMenu {
     let mut m = menu();
     let mut b = BTreeMap::new();
-    binds::use_game_defaults(crate::games::cs_source::DEFAULT_BINDS);
+    binds::use_game_defaults(crate::game::DEFAULT_BINDS);
     binds::bind_defaults(&mut b, true);
     m.set_binds(b, BTreeSet::from(["bugreport".to_string()]));
     click(&mut m, MainItem::Options);
@@ -1163,7 +1163,7 @@ fn a_key_rebound_in_the_options_drives_the_action() {
         .init_resource::<RegrabCursor>()
         .add_systems(Update, keys.before(crate::client::console::toggle))
         .add_systems(Update, crate::client::console::toggle);
-    crate::client::binds::test_binds(&mut app, &crate::games::cs_source::INFO);
+    crate::client::binds::test_binds(&mut app, &crate::game::INFO);
     binds::commands(&mut app);
     app.world_mut()
         .spawn((crate::client::console::ConsoleRoot, Visibility::Hidden));
@@ -1394,7 +1394,7 @@ fn advanced_menu() -> GameMenu {
 fn multiplayer_advanced_lists_the_scripts_options() {
     let mut m = advanced_menu();
     let rows = m.rows();
-    let labels: Vec<String> = rows.iter().map(crate::games::cs_source::ui::game_menu::label_of).collect();
+    let labels: Vec<String> = rows.iter().map(crate::ui::game_menu::label_of).collect();
     assert_eq!(labels, ["Decal limit", "Weapon alignment", "Clan Tag", "Defuse progress bar", "Auto-help", "OK", "Cancel"]);
     // Ours as controls with their values now; mashup lacks the clan tag
     // and auto-help: greyed, showing the script's defaults, not focused.
@@ -1446,7 +1446,7 @@ fn multiplayer_advanced_has_the_switch_names_and_freeze_cam() {
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(5), 0)]);
     click_on(&mut m, |m| button(m, Action::MultiplayerAdvanced));
-    let rows: Vec<String> = m.rows().iter().map(crate::games::cs_source::ui::game_menu::label_of).collect();
+    let rows: Vec<String> = m.rows().iter().map(crate::ui::game_menu::label_of).collect();
     assert_eq!(
         rows[1..4],
         [
@@ -1585,7 +1585,7 @@ fn the_brightness_dialog_sets_the_gamma() {
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
     let gamma_button = button(&m, Action::Gamma);
-    assert_eq!(crate::games::cs_source::ui::game_menu::label_of(&m.rows()[gamma_button]), "Adjust brightness levels...");
+    assert_eq!(crate::ui::game_menu::label_of(&m.rows()[gamma_button]), "Adjust brightness levels...");
     press(&mut m, &[Input::Click(Target::Row(gamma_button), 0)]);
     assert_eq!(m.page, Page::Gamma);
     let slider = row_of(&m, "mat_monitorgamma");
@@ -1599,7 +1599,7 @@ fn the_brightness_dialog_sets_the_gamma() {
     assert_eq!(o.lines, ["mat_monitorgamma 2.2"], "as it was");
     assert_eq!((m.page, m.focus), (Page::Settings, gamma_button));
     // VR mode is left out of the video tab on purpose.
-    assert!(crate::games::cs_source::ui::game_menu::draw::LEFT_OUT.contains(&"VRMode"));
+    assert!(crate::ui::game_menu::draw::LEFT_OUT.contains(&"VRMode"));
 }
 
 /// The dialogs' frames (`client::widgets`) draw over the menu's title and

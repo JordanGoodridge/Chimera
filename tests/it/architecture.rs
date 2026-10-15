@@ -187,8 +187,9 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// The top-level module a file belongs to: `src/greybox.rs` -> `greybox`.
-/// A game's front end (`src/games/<game>/ui/...`) is `games_ui`; a game
-/// crate's parts (`games/<game>/src/game/...`) are `games`.
+/// A game's front end (`src/games/<game>/ui/...`, a game crate's
+/// `games/<game>/src/ui/...`) is `games_ui`; a game crate's parts
+/// (`games/<game>/src/game/...`) are `games`.
 fn module_of(src: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(src).ok()?;
     let mut parts = rel.components().map(|c| c.as_os_str().to_str().unwrap_or(""));
@@ -204,6 +205,9 @@ fn module_of(src: &Path, file: &Path) -> Option<String> {
     }
     if first == "game" && crate_game(src).is_some() {
         return Some("games".to_string());
+    }
+    if (first == "ui" || first == "ui.rs") && crate_game(src).is_some() {
+        return Some("games_ui".to_string());
     }
     Some(first.trim_end_matches(".rs").to_string())
 }
@@ -477,8 +481,15 @@ fn game_parts_do_not_use_their_ui() {
     for game in game_names(&src) {
         let mut files = Vec::new();
         rust_files(&src.join("games").join(&game), &mut files);
-        for file in files {
-            if module_of(&src, &file).as_deref() == Some("games_ui") {
+        let files = files.into_iter().map(|f| (src.clone(), f));
+        // The game's crate (games/<game>/src), when it has one.
+        let krate = root().join("games").join(&game).join("src");
+        let mut crate_files = Vec::new();
+        if krate.is_dir() {
+            rust_files(&krate, &mut crate_files);
+        }
+        for (base, file) in files.chain(crate_files.into_iter().map(|f| (krate.clone(), f))) {
+            if module_of(&base, &file).as_deref() == Some("games_ui") {
                 continue;
             }
             let code: String = fs::read_to_string(&file)
@@ -487,7 +498,12 @@ fn game_parts_do_not_use_their_ui() {
                 .map(|l| l.split("//").next().unwrap_or(""))
                 .collect::<Vec<_>>()
                 .join(" ");
-            let names_ui = [format!("{game}::ui::"), "super::ui::".into(), "self::ui::".into()]
+            let names_ui = [
+                format!("{game}::ui::"),
+                "super::ui::".into(),
+                "self::ui::".into(),
+                "crate::ui::".into(),
+            ]
                 .iter()
                 .any(|p| code.contains(p.as_str()));
             if names_ui {
@@ -733,7 +749,7 @@ fn workspace_crates() {
         ("engine/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
         ("engine/sim", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
         ("engine/net", &["engine_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
-        ("games/cs_source", &["engine_present", "mashup", "combat_arms"], GAME),
+        ("games/cs_source", &["engine_present", "engine_client", "source_logic", "mashup", "combat_arms"], GAME),
         ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         (
             "engine/client",
@@ -745,6 +761,29 @@ fn workspace_crates() {
         let path = format!("{krate}/Cargo.toml");
         let text = fs::read_to_string(root().join(&path)).unwrap_or_else(|e| panic!("{path}: {e}"));
         let m: toml::Table = text.parse().unwrap();
+        // A game's front end (`UI_FEATURES`) may use the presentation, the
+        // shell and Source's logic: as optional dependencies only its
+        // feature turns on.
+        let ui_only = |dep: &str| {
+            UI_FEATURES.iter().any(|(k, feature, deps)| {
+                k == krate
+                    && deps.contains(&dep)
+                    && m.get("dependencies")
+                        .and_then(|d| d.get(dep))
+                        .and_then(|d| d.get("optional"))
+                        .and_then(|o| o.as_bool())
+                        == Some(true)
+                    && m.get("features").and_then(|f| f.as_table()).is_some_and(|features| {
+                        let turns_on = |list: &toml::Value| {
+                            list.as_array().into_iter().flatten().any(|v| {
+                                v.as_str()
+                                    .is_some_and(|v| v == format!("dep:{dep}") || v == dep || v.starts_with(&format!("{dep}/")))
+                            })
+                        };
+                        features.iter().all(|(name, list)| name == feature || !turns_on(list))
+                    })
+            })
+        };
         let mut tables: Vec<&toml::Table> = ["dependencies", "dev-dependencies", "build-dependencies"]
             .iter()
             .filter_map(|k| m.get(*k).and_then(|t| t.as_table()))
@@ -757,12 +796,61 @@ fn workspace_crates() {
             );
         }
         for dep in tables.iter().flat_map(|t| t.keys()) {
-            if forbidden.iter().any(|f| dep.starts_with(f)) {
+            if forbidden.iter().any(|f| dep.starts_with(f)) && !ui_only(dep) {
                 errors.push(format!("{path} depends on `{dep}`: {krate} {why}"));
             }
         }
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
+/// A game crate's front end feature and the dependencies only it may
+/// turn on (optional ones): the presentation, the client shell and
+/// Source's logic, which the game's simulation never uses
+/// (`workspace_crates`; `game_ui_only_with_its_feature` checks the
+/// dependency tree).
+const UI_FEATURES: &[(&str, &str, &[&str])] =
+    &[("games/cs_source", "ui", &["engine_present", "engine_client", "source_logic"])];
+
+/// A game crate builds without its front end: `cs_source` alone depends
+/// on no presentation, shell or Source logic; with `ui` it does
+/// (`UI_FEATURES`). The dedicated server never turns `ui` on
+/// (`server_builds_without_presentation`).
+#[test]
+fn game_ui_only_with_its_feature() {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    for (krate, feature, deps) in UI_FEATURES {
+        let package = krate.rsplit('/').next().unwrap();
+        let tree = |args: &[&str]| -> String {
+            let out = Command::new(&cargo)
+                .current_dir(root())
+                .args(["tree", "-p", package, "-e", "normal", "--prefix", "none", "--offline", "--locked"])
+                .args(args)
+                .output()
+                .expect("running cargo tree");
+            assert!(
+                out.status.success(),
+                "cargo tree failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        let has = |tree: &str, dep: &str| tree.lines().any(|l| l.starts_with(&format!("{dep} ")));
+        let bare = tree(&[]);
+        let present: Vec<&&str> = deps.iter().filter(|d| has(&bare, d)).collect();
+        assert!(
+            present.is_empty(),
+            "`{package}` without its `{feature}` feature depends on {present:?}: only its front end may. Make the \
+             dependency optional and turn it on in `{feature}` ({krate}/Cargo.toml), or move what needs it into \
+             the front end (`ui`)."
+        );
+        let with_ui = tree(&["--features", feature]);
+        assert!(
+            deps.iter().any(|d| has(&with_ui, d)),
+            "`{package}` with `{feature}` no longer depends on any of {deps:?}: update UI_FEATURES in \
+             tests/it/architecture.rs and docs/ARCHITECTURE.md (\"Crates\")."
+        );
+    }
 }
 
 /// The dedicated server builds without the presentation

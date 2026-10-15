@@ -120,7 +120,7 @@ pub(super) struct RadarParams {
 
 impl UiMaterial for RadarMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/games/cs_source/ui/radar.wgsl".into()
+        "embedded://cs_source/ui/radar.wgsl".into()
     }
 }
 

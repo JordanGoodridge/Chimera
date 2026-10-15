@@ -4,19 +4,19 @@
 //! `load_map("game:name")` dispatcher.
 //!
 //! `cs_source` is the `cs_source` crate's parts (games/cs_source,
-//! `cs_source::game`) with the game's front end (`ui/`, here beside the
-//! client shell it builds on).
+//! `cs_source::game`) with the game's front end (`cs_source::ui`).
 
 #[cfg(feature = "combat_arms")]
 pub mod combat_arms;
 
 /// Counter-Strike: Source: its parts (crate `cs_source`, games/cs_source)
-/// at their old paths, and its front end (`ui`).
+/// at their old paths, and its front end (`ui`, the crate's `ui`
+/// feature).
 pub mod cs_source {
     pub use ::cs_source::game::*;
     // The front end: built on the client shell (the `present` feature).
     #[cfg(feature = "present")]
-    pub mod ui;
+    pub use ::cs_source::ui;
 }
 
 use crate::{map::MapData, mount::config::LocalConfig};

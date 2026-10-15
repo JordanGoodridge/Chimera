@@ -2931,12 +2931,16 @@ dependencies = [
 name = "cs_source"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "avian3d",
  "bevy",
  "bevy_replicon",
+ "bevy_replicon_renet",
  "bzip2",
+ "engine_client",
  "engine_core",
  "engine_net",
+ "engine_present",
  "engine_sim",
  "engine_world",
  "half",
@@ -2944,10 +2948,12 @@ dependencies = [
  "serde",
  "sha2",
  "source_formats",
+ "source_logic",
  "vbsp",
  "vmdl",
  "vmt-parser",
  "vtf",
+ "winit",
 ]
 
 [[package]]
@@ -4675,7 +4681,6 @@ dependencies = [
 name = "mashup"
 version = "0.1.0"
 dependencies = [
- "arboard",
  "avian3d",
  "bevy",
  "bevy_replicon",
@@ -4704,7 +4709,6 @@ dependencies = [
  "vmdl",
  "vmt-parser",
  "vtf",
- "winit",
 ]
 
 [[package]]
