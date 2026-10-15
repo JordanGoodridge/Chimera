@@ -40,7 +40,7 @@ use crate::{
 };
 
 /// KeyValues as the Windows PC game reads them (`source_formats::keyvalues`).
-pub(crate) use source_formats::keyvalues::parse_pc;
+pub use source_formats::keyvalues::parse_pc;
 
 /// A `.res` file's root block, read as the PC game does, with its `#base`
 /// files merged in.
@@ -85,7 +85,7 @@ fn rgba(text: &str) -> Option<[u8; 4]> {
 
 /// A scheme's colours (named, then base settings naming them or each
 /// other) and its numeric base settings.
-pub(crate) fn scheme_settings(scheme: &Kv) -> (HashMap<String, [u8; 4]>, HashMap<String, f32>) {
+pub fn scheme_settings(scheme: &Kv) -> (HashMap<String, [u8; 4]>, HashMap<String, f32>) {
     let mut colors = HashMap::new();
     let mut numbers = HashMap::new();
     for (k, v) in scheme.get("Colors").map(Kv::items).unwrap_or_default() {
@@ -120,7 +120,7 @@ fn localise(text: &str, strings: &HashMap<String, String>) -> String {
 
 /// The game menu's entries (`GameMenu.res`), labels localised; an entry
 /// with no label or command is a gap.
-pub(crate) fn game_menu(root: &Kv, strings: &HashMap<String, String>) -> Vec<GameUiItem> {
+pub fn game_menu(root: &Kv, strings: &HashMap<String, String>) -> Vec<GameUiItem> {
     root.items()
         .iter()
         .filter(|(_, v)| matches!(v, Kv::Block(_)))
@@ -135,7 +135,7 @@ pub(crate) fn game_menu(root: &Kv, strings: &HashMap<String, String>) -> Vec<Gam
 /// The keyboard page's list (`kb_act.lst`): `"blank" "#Title"` starts a
 /// section (`"blank" "===="` lines are rules), every other pair is a
 /// console line and its description.
-pub(crate) fn key_actions(text: &str, strings: &HashMap<String, String>) -> Vec<KeyAction> {
+pub fn key_actions(text: &str, strings: &HashMap<String, String>) -> Vec<KeyAction> {
     let t = tokens(text, Escapes::Off);
     t.chunks_exact(2)
         .filter_map(|pair| {
@@ -220,7 +220,7 @@ const BACKGROUNDS: [&str; 2] = [
 ];
 
 /// The game's title lines from `gameinfo.txt` (`title`, then `title2`).
-pub(crate) fn game_title(gameinfo: &str) -> Vec<String> {
+pub fn game_title(gameinfo: &str) -> Vec<String> {
     let kv = parse_pc(gameinfo);
     let Some((_, root)) = kv.items().iter().find(|(_, v)| matches!(v, Kv::Block(_))) else {
         return Vec::new();
@@ -236,7 +236,7 @@ pub(crate) fn game_title(gameinfo: &str) -> Vec<String> {
 
 /// The title font in a client scheme: `ClientTitleFont`'s family and
 /// height (its first size), and the scheme's font files to find it in.
-pub(crate) fn title_font(scheme: &Kv) -> Option<(String, f32, Vec<String>)> {
+pub fn title_font(scheme: &Kv) -> Option<(String, f32, Vec<String>)> {
     let font = scheme.get("Fonts")?.get("ClientTitleFont")?;
     let (_, first) = font.items().iter().find(|(_, v)| matches!(v, Kv::Block(_)))?;
     let family = first.str("name")?.trim().to_string();
@@ -459,7 +459,7 @@ pub fn load(mount: &Mount) -> Option<GameUi> {
 /// each cvar's label (localised), its control and default. The script's
 /// form: `"cvar" { "#Label" { STRING | NUMBER min max | BOOL | LIST
 /// "label" "value" ... } { "default" } }` (a min or max of -1: none).
-pub(crate) fn scr_settings(text: &str, strings: &HashMap<String, String>) -> Vec<ServerSetting> {
+pub fn scr_settings(text: &str, strings: &HashMap<String, String>) -> Vec<ServerSetting> {
     let t = tokens(text, Escapes::Off);
     let Some(open) = t.iter().position(|s| s == "{") else {
         return Vec::new();

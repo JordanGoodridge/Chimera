@@ -10,7 +10,7 @@
 //! crushes), the hardware's handle sounds, Open/Close firing twice.
 //!
 //! Known shortcuts (docs/tech-debt.md): Model doors (prop_door_rotating,
-//! src/logic/props.rs) beyond the spec: the leaf side decides forward/back (a
+//! source/logic/src/logic/props.rs) beyond the spec: the leaf side decides forward/back (a
 //! leaf on the hinge's right swaps them: our reading of "hinge on the left");
 //! spawnpos 1/2/3 = open forward/back/ajar and flag 1 opens forward;
 //! OnOpen/OnClose/OnFullyOpen/OnFullyClosed use the door as activator (like

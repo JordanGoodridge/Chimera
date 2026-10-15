@@ -15,8 +15,6 @@ pub mod games;
 pub mod greybox;
 pub mod harness;
 pub mod net;
-pub mod objectives;
-pub mod rules;
 
 // The engine's stable base (engine/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
@@ -40,6 +38,10 @@ pub use source_logic::logic;
 // The simulation's frameworks (engine/sim: weapons, the movement
 // slot's own implementations), at their old paths.
 pub use engine_sim::{movement, weapon};
+
+// CS:S's rules (games/cs_source: deathmatch, rounds, the bomb and the
+// hostages), at their old paths; `games::cs_source` re-exports the rest.
+pub use cs_source::{objectives, rules};
 
 use bevy::prelude::*;
 

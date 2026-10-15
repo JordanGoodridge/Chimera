@@ -11,8 +11,10 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 `workspace_crates`).
 
 ```
-mashup (repository root: src/, tests/it/)   the game, engine and tools
+mashup (repository root: src/, tests/it/)   client, net, bots, CS:S's front end, tools
   |
+  |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules
+  |    |
 engine_present (engine/present/)   render, audio, MapPlugin
   |    engine_sim (engine/sim/)   weapon, movement, rule_module
   |    |    source_logic (source/logic/)   logic: Source entity I/O
@@ -25,8 +27,8 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
   Source units); it never depends on Bevy, avian or `mashup` (checked).
-  Conversion into engine types stays in `mashup` (`games/cs_source`),
-  which re-exports the readers at their old paths.
+  Conversion into engine types stays in the game (`cs_source`), which
+  re-exports the readers at their old paths.
 - An edit in `source_formats` rebuilds every crate (`mount` in
   `engine_core` uses it); `cargo test -p source_formats` builds and runs
   only its own tests (seconds).
@@ -60,6 +62,15 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   `engine_core`, never the presentation, `mashup` or a game (checked);
   `mashup` re-exports them at their old paths. `cargo test -p engine_sim
   --features dev` tests it alone.
+- `cs_source` is Counter-Strike: Source's simulation: `game` (its
+  loaders, Source movement, weapons, effects, animation,
+  `CsSourcePlugins`; `mashup::games::cs_source`, whose front end, `ui/`,
+  stays in `mashup` with the client shell), and CS:S's rules, `rules`
+  and `objectives` (`mashup::rules`, `mashup::objectives`: net, bots and
+  the client still name them). It uses the engine crates (not
+  `engine_present`) and `source_formats`, never `mashup` or another
+  game (checked). `cargo test -p cs_source --features dev` tests it
+  alone.
 - `source_logic` is Source's map logic (`logic`: entity I/O, logic
   classes, triggers, movers, breakables, props, fire, the bridge to the
   map's entities). It uses `engine_world` and `engine_core`, never the
@@ -273,8 +284,8 @@ that the paths exist).
 
 - `source/logic/src/logic/`: Source map logic (crate `source_logic`): entity I/O, triggers, movers, breakables, props, fire, the bridge (logic)
 - `engine/sim/src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
-- `src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
-- `src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
+- `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
+- `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `engine/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
 - `src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
@@ -308,8 +319,8 @@ that the paths exist).
 ### Games
 
 - `src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
-- `src/games/cs_source/rules.rs`: CS:S's rule modules (games)
-- `src/games/cs_source/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
+- `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
+- `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)
 
@@ -323,7 +334,7 @@ that the paths exist).
 - `source/formats/src/vhv.rs`: static props' baked per-vertex light (`.vhv`)
 - `source/formats/src/phy.rs`: collision models (`.phy`): solids, ragdolls, break blocks
 - `source/formats/src/pcf.rs`: particle files (binary DMX) and particle manifests
-- `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/nav.rs`)
+- `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/src/game/nav.rs`)
 - `source/formats/src/wav.rs`: WAV (PCM, MS-ADPCM) and MP3 decoding to `SoundClip`
 
 ### Binaries and the test harness

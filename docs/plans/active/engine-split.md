@@ -418,6 +418,58 @@ measurements):
   `toml` and `windows-sys` (moved from `mashup`); the config's
   checkout fallback is the repository root (`CARGO_MANIFEST_DIR/../..`).
   No ECS types, so no spawn dump.
+- [x] (3) `games/cs_source` (package `cs_source`, 2026-10-14): the
+  game crate. `src/games/cs_source/*.rs` (without `ui/`) moved whole as
+  its module `game`, CS:S's rules with it: `rules` (deathmatch, team
+  joining, rounds, the end of a game) and `objectives` (bomb, hostages,
+  zones) at its root, so their paths and the game's (`super::`,
+  `crate::rules`, `crate::objectives`) didn't change; one path
+  (`crate::games::cs_source::movement`) became `crate::game::movement`
+  and 18 `pub(crate)` items of `vgui`, `gameui`, `hud`, `propdata`,
+  `material` (the front end uses them) became `pub`. `mashup` keeps
+  `games::cs_source` as `pub use ::cs_source::game::*` with `pub mod ui`
+  (the front end stays beside the client shell), and re-exports `rules`
+  and `objectives` at their old paths. The format crates the loaders use
+  (vbsp, vmdl, vtf, vmt-parser, bzip2, sha2) became workspace
+  dependencies. Architecture test: the crate's `game` module is `games`
+  in the layering table (`crate::game::` counts as its own game),
+  `workspace_crates` keeps it off `engine_present`, `mashup` and Combat
+  Arms. Spawn dump identical on the five maps modulo moved paths; the
+  heavy network tests and `cargo test -p cs_source --features dev` (106
+  tests) pass.
+- Remaining couplings (2026-10-14, what keeps the rest in `mashup`;
+  references counted as in the graph above):
+  - `net` (to `engine/net`) names CS:S's rules: `rules` 28 (the join
+    flow: `JoinChoice`, `join_team`/`join_class`/`join_spectators`,
+    `make_unassigned`, `hold_out`, `enter_game`; `Dead`, `Score`,
+    `MapLoads`; `rounds::{RoundState, Phase, FunFact, Mvp, RoundEnded,
+    ...}` and `frozen_intent`), `objectives` 4 (`Hostage`, `BombHold`,
+    `ObjectiveEvent`, `RoundOpen`), `bot` 6 (`Bot`, `BotQuota`,
+    `kick_bot`, `sync_quota`) and `logic` 8 (Source: `MapSay`, `HudShow`,
+    `LogicOneShot`, carried movers, `set_node_shown`). Proposed
+    interfaces: (a) game-registered replication: `net/game.rs` (the round,
+    scores, bomb, hostages over the network) moves to the game, which
+    registers its replicated components, events and client-side writers
+    through an `engine_net` API (`NetRound` and its kin become the
+    game's); (b) a join-flow hook (`JoinRules`: a resource of fn pointers
+    or a trait object the game inserts: spawn as the rules allow, join a
+    team/class/spectators, hold out while loading) in place of naming
+    `rules::*`; `Dead`, `Score` and `MapLoads` move down to `core` (shared
+    vocabulary); (c) a prediction hook for the game's holds
+    (`frozen_intent`, `BombHold`): a system set the game fills; (d) bots
+    as `core::Bot` plus a quota hook; (e) the Source pieces (`MapSay`,
+    `HudShow`, carried movers, `set_node_shown`) either move down into
+    `map::state` (as `VisClusters` and its kin did) or their replication
+    is registered by `source_logic`'s plugin. Each is its own commit
+    with the network tests; (a) is the big one.
+  - `bot` (7.0k) could join `cs_source` as is (it uses only `weapon`,
+    `objectives`, `map` and the base); an engine bots framework needs
+    the bomb and hostage goals behind a bot-goal interface first.
+  - `client` names `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`: the
+    default game's install, map cycle, tick, binds, the movement cvars):
+    a game registry resource the game fills would let the shell
+    (`engine/client`) go below the games; the front end (`ui/`, 17.9k)
+    then moves into `games/cs_source`.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -495,6 +547,6 @@ the full suite, and the coordinator batches merges.
 | `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `engine/core` |
 | `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
-| `src/games/cs_source` | split | formats (bsp, vpk, material, mdl, phy, wav, sound) to source; CS:S rules, weapons, HUD, bots' CS:S parts stay |
+| `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |
 | `src/games/combat_arms` | games/combat_arms | local, git-ignored |
 | `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` private |

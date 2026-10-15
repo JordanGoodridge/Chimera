@@ -207,7 +207,6 @@ pub mod sprites;
 pub mod steam;
 pub mod trails;
 pub mod surfaceprops;
-pub mod ui;
 pub mod view_anim;
 pub mod vgui;
 pub mod view_motion;

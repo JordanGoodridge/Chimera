@@ -532,7 +532,7 @@ a first bot are in.
   (the game's textures, laid out by eye) with CS:S.
 - Rounds, money and buying: slice 1 done (`mashup_rounds 1`,
   [plans/active/rounds.md](plans/active/rounds.md)); ammo buying is in.
-- Objectives, remaining (bomb and hostages are in: `src/objectives/`,
+- Objectives, remaining (bomb and hostages are in: `games/cs_source/src/objectives/`,
   specs/cs_source/objectives.md): measure the spec's open questions on the
   probe (Q1 movement while arming, Q3 blast shape/walls/armour, Q4 beep
   schedule and loudness and where the LED sits, Q5 money, Q6 carrier
@@ -617,7 +617,7 @@ docs/plans/active/sound.md.
 
 ## 7. Physics props, remaining
 
-- Player physics shadow (src/games/cs_source/shadow.rs, tests/it/heavy/map_physics_shadow.rs)
+- Player physics shadow (games/cs_source/src/game/shadow.rs, tests/it/heavy/map_physics_shadow.rs)
   follow-ups (docs/tech-debt.md "Physics shadow"): the push speed limit
   (spec Q7), the shadow's weight on a prop stood on, the controller's
   velocity target when not touching (spec 4.1 step 5), measuring the push

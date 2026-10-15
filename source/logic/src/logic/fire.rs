@@ -19,7 +19,7 @@
 //! over.
 //!
 //! Known shortcuts (docs/tech-debt.md): Fire (specs/source/fire.md,
-//! src/logic/fire.rs, src/games/cs_source/fire.rs): the fire cvars are
+//! source/logic/src/logic/fire.rs, games/cs_source/src/game/fire.rs): the fire cvars are
 //! constants at their defaults; traces (the drop to the floor, the damage line
 //! of sight) go through the world's movement brushes minus player clips, grates
 //! and ladders (`map::MapTraceSkip`), the terrain and movers: static props
@@ -38,7 +38,7 @@
 //! `burning_character` without its 150-a-second `flames e` part and with flames
 //! on the target's box instead of its hitboxes; bubbles are our sprite size.
 //! Why it's OK for now: The spec's numeric cases pass (tests in
-//! src/logic/fire_tests.rs); de_dust2's A fires light 0.2 s after the bomb and
+//! source/logic/src/logic/fire_tests.rs); de_dust2's A fires light 0.2 s after the bomb and
 //! burn a bot 26 a second (tests/it/heavy/map_fire.rs).
 
 use bevy::prelude::*;

@@ -2928,6 +2928,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cs_source"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bzip2",
+ "engine_core",
+ "engine_sim",
+ "engine_world",
+ "half",
+ "image",
+ "serde",
+ "sha2",
+ "source_formats",
+ "vbsp",
+ "vmdl",
+ "vmt-parser",
+ "vtf",
+]
+
+[[package]]
 name = "ctrlc"
 version = "3.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4622,6 +4643,7 @@ dependencies = [
  "bevy_replicon_renet",
  "bzip2",
  "crc32fast",
+ "cs_source",
  "dirs",
  "engine_core",
  "engine_present",

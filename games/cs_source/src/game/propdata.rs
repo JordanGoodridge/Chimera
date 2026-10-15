@@ -125,13 +125,13 @@ fn apply(block: &Kv, templates: &Kv, pd: &mut PropData, depth: u32) {
 }
 
 /// propdata.txt's templates.
-pub(crate) fn templates(text: &str) -> Kv {
+pub fn templates(text: &str) -> Kv {
     hud::parse(text)
 }
 
 /// A model's prop data from its key values text, over `templates`
 /// (propdata.txt); None when the model has no `prop_data` block.
-pub(crate) fn resolve(model_kv: &str, templates: &Kv) -> Option<PropData> {
+pub fn resolve(model_kv: &str, templates: &Kv) -> Option<PropData> {
     let kv = hud::parse(model_kv);
     let own = find(&kv, "prop_data")?;
     let mut pd = PropData::default();
