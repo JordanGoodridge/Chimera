@@ -1,0 +1,90 @@
+# Scout.
+id = "cs_source:weapon_scout"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 260.0
+weight = 30
+
+[buy]
+price = 2750
+bot_weight = 1.0
+
+[trigger]
+automatic = false
+cycle = 1.25
+
+[magazine]
+clip = 10
+ammo = "cs_source:762mm"
+reload = 2.9
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 75.0
+falloff = 0.98
+armor_ratio = 1.7
+
+[penetration]
+objects = 3
+
+# Measured M15: 40, 15, off; a shot unzooms until it may fire again;
+# zoomed speed 220.
+[alt]
+kind = "scope"
+fov = [40.0, 15.0]
+max_speed = 220.0
+unzoom_after_shot = true
+overlay = true
+step = 0.3
+sound = "Default.Zoom"
+
+[sounds]
+fire = "Weapon_Scout.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.4333, "Weapon_Scout.Clipout"], [1.2334, "Weapon_Scout.Clipin"], [1.7333, "Weapon_Scout.Bolt"]]
+shot = [[0.3714, "Weapon_Scout.Bolt"]]
+
+[models]
+world = "models/weapons/w_snip_scout.mdl"
+view = "models/weapons/v_snip_scout.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_Scout"
+icon = "d_scout"
+
+[anim]
+idle_after = 1.8
+idle_interval = 60.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0003
+crouch = 0.02378
+stand = 0.0317
+jump = 0.38195
+land = 0.03819
+fire = 0.06667
+movement = 0.19097
+recovery_crouch = 0.17681
+recovery_stand = 0.24753
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.0003
+crouch = 0.003
+stand = 0.004
+jump = 0.38195
+land = 0.03819
+fire = 0.06667
+movement = 0.19097
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# UNMEASURED: the AWP's (semi-automatic) kick.
+[hooks."cs_source:recoil"]
+standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

@@ -1,0 +1,90 @@
+# FAMAS.
+id = "cs_source:weapon_famas"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 220.0
+weight = 75
+
+[buy]
+price = 2250
+team = 2
+bot_weight = 3.0
+
+[trigger]
+automatic = true
+cycle = 0.09
+
+[magazine]
+clip = 25
+ammo = "cs_source:556mm"
+reload = 3.3333
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 30.0
+falloff = 0.96
+armor_ratio = 1.4
+
+[penetration]
+objects = 2
+
+# Measured M16: 3 rounds 5-6 ticks apart, held a new burst every 36-37
+# ticks. The switch as the Glock's.
+[alt]
+kind = "burst"
+interval = 0.08
+refire = 0.55
+count = 3
+step = 0.3
+texts = ["#Cstrike_TitlesTXT_Switch_To_FullAuto", "#Cstrike_TitlesTXT_Switch_To_BurstFire"]
+
+[sounds]
+fire = "Weapon_FAMAS.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.5187, "Weapon_FAMAS.Clipout"], [1.4813, "Weapon_FAMAS.Clipin"], [2.3333, "Weapon_FAMAS.Forearm"]]
+
+[models]
+world = "models/weapons/w_rif_famas.mdl"
+view = "models/weapons/v_rif_famas.mdl"
+view_right_handed = true
+
+[hud]
+name = "Cstrike_WPNHUD_Famas"
+icon = "d_famas"
+
+[anim]
+idle_after = 1.1
+idle_interval = 20.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0006
+crouch = 0.00412
+stand = 0.00549
+jump = 0.36527
+land = 0.07305
+fire = 0.01186
+movement = 0.0698
+recovery_crouch = 0.30328
+recovery_stand = 0.4246
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.0006
+crouch = 0.00412
+stand = 0.00549
+jump = 0.36527
+land = 0.07305
+fire = 0.00593
+movement = 0.0698
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# UNMEASURED: the M4A1's sets (both 5.56 CT rifles at 0.09 s).
+[hooks."cs_source:recoil"]
+standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
+moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }

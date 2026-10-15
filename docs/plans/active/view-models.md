@@ -20,7 +20,7 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   vmdl mesh conversion as player bodies (reference-pose vertices,
   skinning weights) and our own `.mdl` decoder (`anim::load`) for the
   sequences and events, `anim::attachments` for attachments and the
-  illumination centre. Paths and handedness in `weapons.rs::VIEW_MODELS`,
+  illumination centre. Paths and handedness in the weapon data (`weapons.rs::view_models`),
   loaded with the map's characters.
 - **Sequence state** (simulation side, testable headless): a
   `ViewAnimator` component on characters (the weapon key and an
@@ -103,7 +103,7 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   right hand at `cl_righthand 1`, both in the left at 0) therefore means
   the knife's script says `BuiltRightHanded 1`, not 0 as the spec guessed.
   We mirrored both, which put the knife blade in the left hand; now
-  `VIEW_MODELS` carries the handedness per weapon
+  the weapon data carries the handedness per weapon (`view_right_handed`)
   (`view_model_handedness_in_the_files` checks the files).
 - The AK's attachment axes point sideways in model space (attachment `1`'s
   X is the model's left), so the flash plume follows the model's forward,

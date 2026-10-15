@@ -1,0 +1,72 @@
+# AK-47.
+id = "cs_source:weapon_ak47"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 221.0
+weight = 25
+
+[buy]
+price = 2500
+team = 1
+bot_weight = 8.0
+
+[trigger]
+automatic = true
+cycle = 0.1
+
+[magazine]
+clip = 30
+ammo = "cs_source:762mm"
+reload = 2.4324
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 36.0
+falloff = 0.98
+armor_ratio = 1.55
+
+[penetration]
+objects = 2
+
+[sounds]
+fire = "Weapon_AK47.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.35, "Weapon_AK47.Clipout"], [1.54, "Weapon_AK47.Clipin"]]
+draw = [[0.3667, "Weapon_AK47.BoltPull"]]
+
+[models]
+world = "models/weapons/w_rif_ak47.mdl"
+view = "models/weapons/v_rif_ak47.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_AK47"
+icon = "d_ak47"
+
+[anim]
+idle_after = 1.9
+idle_interval = 20.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0006
+crouch = 0.00687
+stand = 0.00916
+jump = 0.43044
+land = 0.08609
+fire = 0.01158
+movement = 0.09222
+recovery_crouch = 0.34868
+recovery_stand = 0.48815
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# Measured M3: standing, crouched, moving, airborne (crouched caps not
+# reached when measured: the standing ones).
+[hooks."cs_source:recoil"]
+standing = { up = 1.0, up_step = 0.175, side = 0.375, side_step = 0.0375, up_cap = 5.75, side_cap = 1.75 }
+crouched = { up = 0.9, up_step = 0.15, side = 0.35, side_step = 0.025, up_cap = 5.75, side_cap = 1.75 }
+moving = { up = 1.5, up_step = 0.225, side = 0.45, side_step = 0.05, up_cap = 6.5, side_cap = 2.5 }
+airborne = { up = 2.0, up_step = 0.5, side = 1.0, side_step = 0.35, up_cap = 9.0, side_cap = 6.0 }

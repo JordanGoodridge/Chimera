@@ -1,0 +1,68 @@
+# The knife. Measured (M11): slash 20, or 15 within 0.9 s of the last
+# slash, no backstab bonus; stab 65, 195 from behind. Hits are generic.
+# Reach: a +-16 box swept 48 (slash) / 32 (stab) units from the eye.
+id = "cs_source:weapon_knife"
+base = "cs_source:base"
+slot = 2
+draw = 1.0
+max_speed = 250.0
+weight = 0
+undroppable = true
+
+[melee.primary]
+range = 48.0
+hull = 16.0
+# Not measured: the SDK's.
+facing_cos = 0.70721
+damage = 20.0
+follow_up = [0.9, 15.0]
+hit_refire = 0.5
+miss_refire = 0.4
+miss_refire_other = 0.5
+# SDK melee push: 300 kg x in/s per hit point.
+force = 300.0
+# WeaponArmorRatio 1.7 (M7: knife hits are generic, always covered).
+armor_ratio = 1.7
+quantum = 1.0
+sound_hit = "Weapon_Knife.Hit"
+sound_hit_world = "Weapon_Knife.HitWall"
+sound_miss = "Weapon_Knife.Slash"
+
+[melee.secondary]
+range = 32.0
+hull = 16.0
+facing_cos = 0.70721
+damage = 65.0
+backstab = 195.0
+hit_refire = 1.1
+miss_refire = 1.0
+miss_refire_other = 1.0
+force = 300.0
+armor_ratio = 1.7
+quantum = 1.0
+sound_hit = "Weapon_Knife.Stab"
+sound_hit_world = "Weapon_Knife.HitWall"
+sound_miss = "Weapon_Knife.Slash"
+
+[sounds]
+deploy = "Weapon_Knife.Deploy"
+
+[models]
+# CS:S ships one knife view model for both teams.
+world = "models/weapons/w_knife_ct.mdl"
+view = "models/weapons/v_knife_t.mdl"
+view_right_handed = true
+
+[hud]
+name = "Cstrike_WPNHUD_Knife"
+icon = "d_knife"
+
+# The knife has no idle keys, and CS:S's holds still at least 10 s after
+# it is drawn (captures 2, 6 and 10 s after drawing it, identical), where
+# its 12.5 s idle would turn the blade from 3.4 s into it. So it idles
+# this long after its draw or last attack, and as often: a guess longer
+# than the captures (docs/tech-debt.md).
+[anim]
+idle_after = 20.0
+idle_interval = 20.0
+idle_after_draw = true

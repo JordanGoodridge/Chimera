@@ -1007,7 +1007,7 @@ mod tests {
         w.insert_resource(prices);
         w.resource_mut::<WeaponRegistry>().0.push(super::super::WeaponDef {
             id: "g:weapon_rifle",
-            build: |e| {
+            build: std::sync::Arc::new(|e: &mut EntityWorldMut| {
                 e.insert(Weapon {
                     id: "g:weapon_rifle",
                     slot: 0,
@@ -1015,7 +1015,7 @@ mod tests {
                     draw_time: 0.0,
                     max_speed: None,
                 });
-            },
+            }),
         });
         let p = w.spawn((Transform::default(), Inventory::default(), Money(3000))).id();
         (w, p)
@@ -1153,7 +1153,7 @@ mod tests {
         let (mut w, p) = world();
         w.resource_mut::<WeaponRegistry>().0.push(super::super::WeaponDef {
             id: "g:weapon_smg",
-            build: |e| {
+            build: std::sync::Arc::new(|e: &mut EntityWorldMut| {
                 e.insert((
                     Weapon {
                         id: "g:weapon_smg",
@@ -1171,7 +1171,7 @@ mod tests {
                         reload_while_held: false,
                     },
                 ));
-            },
+            }),
         });
         {
             let mut prices = w.resource_mut::<Prices>();

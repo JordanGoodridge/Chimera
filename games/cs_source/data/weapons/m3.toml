@@ -1,0 +1,74 @@
+# M3.
+id = "cs_source:weapon_m3"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 220.0
+weight = 20
+
+[buy]
+price = 1700
+bot_weight = 1.0
+
+[trigger]
+automatic = true
+cycle = 0.88
+
+[magazine]
+clip = 8
+ammo = "cs_source:buckshot"
+reload = 0.4909
+# UNMEASURED (M9): the SDK template's start 0.5 s and 0.45 s a shell (spec
+# T25); the model's start/insert/finish are 0.375/0.4909/0.875 s.
+shells = { start = 0.5, insert = 0.45 }
+
+[hitscan]
+range = 3000.0
+pellets = 9
+
+[damage]
+amount = 26.0
+falloff = 0.7
+armor_ratio = 1.0
+
+[penetration]
+objects = 1
+
+[sounds]
+fire = "Weapon_M3.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.0, "Weapon_M3.Insertshell"]]
+draw = [[0.3667, "Weapon_M3.Pump"]]
+finish = [[0.3, "Weapon_M3.Pump"]]
+
+[models]
+world = "models/weapons/w_shot_m3super90.mdl"
+view = "models/weapons/v_shot_m3super90.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_m3"
+icon = "d_m3"
+
+[hooks."cs_source:accuracy"]
+spread = 0.04
+crouch = 0.0075
+stand = 0.01
+jump = 0.42
+land = 0.084
+fire = 0.04164
+movement = 0.0432
+recovery_crouch = 0.29605
+recovery_stand = 0.41447
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# Shotguns: UNMEASURED; the SDK template's shotgun (spec weapons.md,
+# constants): a whole 4-6 degrees up on the ground, 8-11 in the air, no
+# sideways part; once per shot, whatever its pellets. The decay is the
+# rifles' measured rule (M3), so 6 degrees settle in about 0.45 s.
+[hooks."cs_source:recoil"]
+standing = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+crouched = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+moving = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+airborne = { up = 8.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 11.0 }

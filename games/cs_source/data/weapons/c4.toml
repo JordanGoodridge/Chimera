@@ -1,0 +1,21 @@
+# The C4 (specs/cs_source/objectives.md): slot 5 (key 5), drawn in 1 s,
+# the knife's 250 speed; terrorists only pick it up. Arming and planting
+# are the bomb rules' (`cs_source:c4` marks it as the bomb).
+id = "cs_source:weapon_c4"
+base = "cs_source:base"
+slot = 4
+draw = 1.0
+max_speed = 250.0
+weight = 0
+pickup_team = 1
+
+# The view model: spec Constants `v_c4`, press-button 2.7667 s.
+[models]
+world = "models/weapons/w_c4.mdl"
+view = "models/weapons/v_c4.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_C4"
+icon = "d_c4"
+
+[hooks."cs_source:c4"]

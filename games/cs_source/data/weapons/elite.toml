@@ -1,0 +1,71 @@
+# Dual Elites.
+id = "cs_source:weapon_elite"
+base = "cs_source:gun"
+slot = 1
+draw = 1.3333
+max_speed = 250.0
+weight = 5
+
+[buy]
+price = 800
+team = 1
+
+[trigger]
+automatic = false
+cycle = 0.12
+
+[magazine]
+clip = 30
+ammo = "cs_source:9mm"
+reload = 3.76
+
+[hitscan]
+range = 4096.0
+
+[damage]
+amount = 45.0
+falloff = 0.75
+armor_ratio = 1.05
+
+[penetration]
+objects = 1
+
+[sounds]
+fire = "Weapon_Elite.Single"
+empty = "Default.ClipEmpty_Pistol"
+reload = [[0.0, "Weapon_ELITE.Reloadstart"], [0.4802, "Weapon_ELITE.Clipout"], [1.4401, "Weapon_ELITE.Rclipin"], [2.3602, "Weapon_ELITE.Lclipin"], [3.24, "Weapon_ELITE.Sliderelease"]]
+draw = [[0.0333, "Weapon_ELITE.Deploy"]]
+
+[models]
+world = "models/weapons/w_pist_elite.mdl"
+view = "models/weapons/v_pist_elite.mdl"
+view_right_handed = true
+
+[hud]
+name = "Cstrike_WPNHUD_Elites"
+icon = "d_elite"
+
+[hooks."cs_source:accuracy"]
+spread = 0.004
+crouch = 0.006
+stand = 0.008
+jump = 0.29625
+land = 0.05925
+fire = 0.03162
+movement = 0.01778
+recovery_crouch = 0.24753
+recovery_stand = 0.29703
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.5
+
+# UNMEASURED: the USP's and Deagle's 2 degrees.
+[hooks."cs_source:recoil"]
+standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+
+# The hands alternate by the clip's parity, the right one on even counts
+# (ours: the full 30 fires left first); spec weapons.md, view-model table.
+[hooks."cs_source:alternate_hands"]

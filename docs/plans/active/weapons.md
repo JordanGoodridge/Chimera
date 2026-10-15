@@ -66,7 +66,8 @@ Started 2026-10-05, from specs/cs_source/weapons.md. MVP plan items 4–5.
 6. [ ] View models and world models; impact decals and effects; tracers.
 7. [ ] The other CS:S weapons from the script tables.
    - [x] M4A1, AWP, USP, Glock, Deagle (2026-10-06). Guns are `Gun`
-     rows of script values in `games/cs_source/weapons.rs` (the spec's
+     rows (since 2026-10-15 data: docs/weapon-data.md,
+     games/cs_source/data/weapons) of script values in `games/cs_source/weapons.rs` (the spec's
      tables; sound entries and model paths checked against the install
      by `apps/cs_source/tests/it/heavy/map_de_dust2.rs::gun_models_icons_and_handedness`; reload,
      draw and silencer sounds at the view models' event times from

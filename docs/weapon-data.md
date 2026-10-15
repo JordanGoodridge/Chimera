@@ -1,0 +1,165 @@
+# Weapon data
+
+Weapons are data loaded at run time (docs/plans/active/engine-split.md,
+"Data-driven first"): a TOML document per weapon, parsed and built by
+`chimera_sim`'s `weapon::data` into the weapon parts (README, "Weapons and
+items"). Behaviour data can't express is Rust, registered by a game under a
+name the data asks for (a hook). A game's weapons, another game's, or new
+ones become mixable: an app loads any documents on top of the games it runs,
+with no Rust (`App::add_weapon_data`).
+
+CS:S's weapons are `games/cs_source/data/weapons/*.toml`: our own numbers
+(the spec's script tables and the measured values, specs/cs_source/weapons.md),
+not files from the game. The game's weapon scripts are encrypted in the
+install and the key isn't ours to ship, so nothing is read from them; the
+data is checked against the spec's tables instead
+(`apps/cs_source/tests/it/cs_guns.rs`) and its model paths and sound entries
+against the install (`heavy::map_de_dust2`). The files are built into the
+game (`weapons::DATA`; a unit test fails for a file missing there) and parsed
+when the game starts.
+
+## Documents
+
+A document holds a weapon (a top-level `id`), ammo types (`[ammo."<id>"]`
+tables), or both. IDs are namespaced (`game:weapon_name`); `buy <name>` and
+`give` also find a weapon by the part after the namespace, with or without
+`weapon_`.
+
+```toml
+id = "cs_source:weapon_ak47"
+base = "cs_source:gun"          # merged under this entry's tables
+slot = 0                        # selection slot, 0 = first
+draw = 1.0                      # s until the first attack
+max_speed = 221.0               # length units/s while held
+weight = 25                     # auto-switch priority (SwitchWeight)
+
+[buy]                           # economy::Prices
+price = 2500
+team = 1                        # only this team buys it
+bot_weight = 8.0                # bots' liking when buying
+# starting_reserve = 120        # reserve when given at spawn, ammo sold
+
+[trigger]
+automatic = true
+cycle = 0.1                     # s between shots
+# timing = "carry_over"         # or "set", "accumulate" (from the base here)
+
+[magazine]
+clip = 30
+ammo = "cs_source:762mm"        # an ammo type: reserve max, box, penetration
+reload = 2.4324                 # s (a shell's, with `shells`)
+# shells = { start = 0.5, insert = 0.45 }   # one round at a time
+# reload_while_held = false
+
+[hitscan]
+range = 8192.0
+# pellets = 1, punch_scale = 2.0 (from the base)
+# spread = { disc = { inaccuracy = 0.0, spread = 0.0 } } or { template = 0.05 }
+
+[damage]
+amount = 36.0
+falloff = 0.98                  # x falloff^(distance / falloff_step)
+armor_ratio = 1.55
+# falloff_step, hitgroups { head, chest, stomach, arm, leg }, impulse,
+# quantum (from the base)
+
+[penetration]
+objects = 2                     # power and reach: the ammo's
+
+[alt]                           # attack2: one of
+kind = "scope"                  # fov = [..], max_speed, unzoom_after_shot,
+                                # overlay, step, sound
+# kind = "silencer", time = 2.0
+# kind = "burst", interval, refire, count, step, texts = [per mode]
+
+[sounds]                        # entries of the game's sound scripts
+fire = "Weapon_AK47.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.35, "Weapon_AK47.Clipout"], [1.54, "Weapon_AK47.Clipin"]]
+draw = [[0.3667, "Weapon_AK47.BoltPull"]]
+# fire_alt, deploy, shot, finish ([s, entry]); modes ([mode, s, entry])
+
+[models]                        # the game's model paths
+world = "models/weapons/w_rif_ak47.mdl"
+view = "models/weapons/v_rif_ak47.mdl"
+# world_alt (silenced), view_right_handed
+
+[hud]
+name = "Cstrike_WPNHUD_AK47"    # string token
+icon = "d_ak47"                 # kill icon
+
+[anim]                          # view-model idling
+idle_after = 1.9                # s after an attack
+idle_interval = 20.0            # s between idles
+# idle_after_draw = true        # the draw counts as an attack (the knife)
+
+[hooks."cs_source:recoil"]      # a game's behaviour, with its parameters
+standing = { up = 1.0, up_step = 0.175, side = 0.375, side_step = 0.0375, up_cap = 5.75, side_cap = 1.75 }
+# ...
+```
+
+Melee weapons give `[melee.primary]` and `[melee.secondary]` swings (range,
+hull, hull_reach, facing_cos, damage, follow_up = [window, damage], backstab,
+hitgroups, hit/miss refires, force per damage point, armor_ratio, quantum,
+sounds); `undroppable = true` and `pickup_team = 1` are flags. A table left
+out means the part isn't there (no `[sounds]`: no `WeaponSounds`).
+
+Ammo types:
+
+```toml
+units = { length = 0.0254 }     # for the ammo in this document
+
+[ammo."cs_source:762mm"]
+power = 39.0                    # penetration budget, length units
+max_distance = inf              # not passed from this far
+max = 90                        # most rounds carried
+box_price = 0
+box_rounds = 30                 # none: no ammo for sale
+hud_icon = "ammo_762"
+```
+
+## Rules
+
+- **Units.** `units = { length, damage }`: metres per length unit (Source's
+  inches: 0.0254) and health per damage point (hit points of 100: 0.01);
+  both default to 1. Speeds are length/s, impulses mass x length/s, a swing's
+  force per damage point.
+- **Bases.** `base` names an entry (this set's or one loaded before);
+  tables merge key by key, everything else replaces. `abstract = true`
+  entries are templates (not inherited, never registered). CS:S's:
+  `cs_source:base` (units) and `cs_source:gun` (the shared trigger timing,
+  hitgroups, falloff step, impulse, damage quantum, leg slowdown).
+- **Hooks.** `[hooks."<name>"]` asks for behaviour a game registered with
+  `register_weapon_hook::<Params>(name, fn)`; the table is read as `Params`.
+  The hook runs after the data's parts are on the weapon. CS:S's:
+  `cs_source:accuracy` (the accuracy penalty: `Spread`, `Inaccuracy*`,
+  `RecoveryTime*`, `alt` keys), `cs_source:recoil` (kick sets),
+  `cs_source:hit_slowdown` (`body`, `legs`), `cs_source:alternate_hands`
+  (the Elites), `cs_source:grenade` (`effect` he/flash/smoke, `max`,
+  `bounce_sound`), `cs_source:c4`.
+- **Errors.** Unknown keys, an unknown base, ammo type or hook, a loop of
+  bases, a duplicate ID and hook parameters the hook can't read are load
+  errors naming the document and key. A game's own data failing to load
+  panics at start (its tests catch it); `add_weapon_data` returns the error.
+- **Replacing.** Loading an ID again replaces the weapon in place (the
+  registry index, which the network names weapons by, stays). Server and
+  clients must load the same data (as they must run the same build).
+- **Order.** Weapons register in document order; a game keeps its order
+  stable (CS:S: knife, guns, grenades, C4).
+
+## Loading more
+
+```rust
+let docs = WeaponSet::read_dir(Path::new("my_weapons"))?;
+let docs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+app.add_weapon_data(&docs)?;   // after the games whose hooks and bases it uses
+```
+
+`apps/cs_source/tests/it/weapon_data.rs` loads a gun that exists only as
+data (apps/cs_source/tests/data/weapon_rail.toml), buys it, fires it and
+plays it over the network.
+
+What isn't data yet: CS:S's buy menu layout and the prices of what isn't a
+weapon (`weapons::prices`, `menu`), the spawn kit, the accuracy and recoil
+models themselves (hooks), and the map loader loads held and view models
+for CS:S's own set only (docs/tech-debt.md).

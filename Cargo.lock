@@ -2569,6 +2569,7 @@ dependencies = [
  "chimera_world",
  "postcard",
  "serde",
+ "toml",
  "workspace-hack",
 ]
 

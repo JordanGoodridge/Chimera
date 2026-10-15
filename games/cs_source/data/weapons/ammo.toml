@@ -1,0 +1,98 @@
+# CS:S's ammo types: penetration power (units of a scale-1 material) and
+# reach (measured M13), most rounds carried (`ammo_<type>_max`, M17), the
+# box it's bought in (M19: measured box sizes; ammo costs nothing in CS:S
+# today) and the HUD's ammo icon.
+units = { length = 0.0254 }
+
+# Power 39 (M13); it still passes at 4000 units, no farther limit was
+# found.
+[ammo."cs_source:762mm"]
+power = 39.0
+max_distance = inf
+max = 90
+box_price = 0
+box_rounds = 30
+hud_icon = "ammo_762"
+
+# Power 45, still passes at 4000 (M13).
+[ammo."cs_source:338mag"]
+power = 45.0
+max_distance = inf
+max = 30
+box_price = 0
+box_rounds = 10
+hud_icon = "ammo_338"
+
+# Power 30, passes a player at 1006 units, not at 1015 (M13).
+[ammo."cs_source:50ae"]
+power = 30.0
+max_distance = 1010.0
+max = 35
+box_price = 0
+box_rounds = 7
+hud_icon = "ammo_50"
+
+# Power 15 (M13). UNMEASURED distance: the community value 500 (the USP
+# passed doors at 100).
+[ammo."cs_source:45acp"]
+power = 15.0
+max_distance = 500.0
+max = 100
+box_price = 0
+box_rounds = 25
+hud_icon = "ammo_45"
+
+# UNMEASURED power and distance: the community values 35 / 4000 (the same
+# table's 45ACP, 50AE, 762MM and 338MAG powers match M13).
+[ammo."cs_source:556mm"]
+power = 35.0
+max_distance = 4000.0
+max = 90
+box_price = 0
+box_rounds = 30
+hud_icon = "ammo_556"
+
+# UNMEASURED power and distance: the community values 21 / 800.
+[ammo."cs_source:9mm"]
+power = 21.0
+max_distance = 800.0
+max = 120
+box_price = 0
+box_rounds = 30
+hud_icon = "ammo_9mm"
+
+# UNMEASURED power and distance: 45ACP's (the measured pistol round).
+[ammo."cs_source:357sig"]
+power = 15.0
+max_distance = 500.0
+max = 52
+box_price = 0
+box_rounds = 13
+hud_icon = "ammo_357"
+
+# UNMEASURED power and distance: 45ACP's.
+[ammo."cs_source:57mm"]
+power = 15.0
+max_distance = 500.0
+max = 100
+box_price = 0
+box_rounds = 50
+hud_icon = "ammo_57"
+
+# UNMEASURED power and distance (per pellet): 45ACP's. The HUD has no
+# glyph for it (it draws the sprite).
+[ammo."cs_source:buckshot"]
+power = 15.0
+max_distance = 500.0
+max = 32
+box_price = 0
+box_rounds = 8
+
+# The M249's. UNMEASURED power and distance: 556MM's.
+[ammo."cs_source:556mm_box"]
+power = 35.0
+max_distance = 4000.0
+max = 200
+box_price = 0
+box_rounds = 30
+hud_icon = "ammo_556"

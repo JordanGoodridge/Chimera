@@ -61,6 +61,7 @@ mod sprays;
 mod target_id;
 mod teams;
 mod view_models;
+mod weapon_data;
 mod weapon_select;
 mod weapons;
 

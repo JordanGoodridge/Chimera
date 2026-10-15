@@ -1,0 +1,90 @@
+# G3SG1.
+id = "cs_source:weapon_g3sg1"
+base = "cs_source:gun"
+slot = 0
+draw = 1.0
+max_speed = 210.0
+weight = 20
+
+[buy]
+price = 5000
+team = 1
+bot_weight = 0.5
+
+[trigger]
+automatic = true
+cycle = 0.25
+
+[magazine]
+clip = 20
+ammo = "cs_source:762mm"
+reload = 4.6667
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 80.0
+falloff = 0.98
+armor_ratio = 1.65
+
+[penetration]
+objects = 3
+
+# Measured M15: 40, 15, off; stays zoomed. UNMEASURED: the zoomed speed
+# (the SG550's 150).
+[alt]
+kind = "scope"
+fov = [40.0, 15.0]
+max_speed = 150.0
+unzoom_after_shot = false
+overlay = true
+step = 0.3
+sound = "Default.Zoom"
+
+[sounds]
+fire = "Weapon_G3SG1.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.5334, "Weapon_G3SG1.Slide"], [1.8, "Weapon_G3SG1.Clipout"], [2.8332, "Weapon_G3SG1.Clipin"], [3.8668, "Weapon_G3SG1.Slide"]]
+
+[models]
+world = "models/weapons/w_snip_g3sg1.mdl"
+view = "models/weapons/v_snip_g3sg1.mdl"
+
+[hud]
+name = "Cstrike_WPNHUD_G3SG1"
+icon = "d_g3sg1"
+
+[anim]
+idle_after = 1.8
+idle_interval = 60.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.0003
+crouch = 0.01935
+stand = 0.0258
+jump = 0.46557
+land = 0.04656
+fire = 0.04989
+movement = 0.23279
+recovery_crouch = 0.22245
+recovery_stand = 0.31142
+
+[hooks."cs_source:accuracy".alt]
+spread = 0.0003
+crouch = 0.0015
+stand = 0.002
+jump = 0.46557
+land = 0.04656
+fire = 0.04989
+movement = 0.23279
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.65
+
+# UNMEASURED: the AWP's kick.
+[hooks."cs_source:recoil"]
+standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }

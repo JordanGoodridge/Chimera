@@ -1,0 +1,70 @@
+# M249.
+id = "cs_source:weapon_m249"
+base = "cs_source:gun"
+slot = 0
+draw = 0.96
+max_speed = 220.0
+weight = 25
+
+[buy]
+price = 5750
+bot_weight = 0.5
+
+[trigger]
+automatic = true
+cycle = 0.08
+
+[magazine]
+clip = 100
+ammo = "cs_source:556mm_box"
+reload = 5.7
+
+[hitscan]
+range = 8192.0
+
+[damage]
+amount = 35.0
+falloff = 0.97
+armor_ratio = 1.6
+
+[penetration]
+objects = 2
+
+[sounds]
+fire = "Weapon_M249.Single"
+empty = "Default.ClipEmpty_Rifle"
+reload = [[0.4668, "Weapon_M249.Boxout"], [1.5002, "Weapon_M249.Coverup"], [2.6665, "Weapon_M249.Boxin"], [3.2997, "Weapon_M249.Chain"], [4.5002, "Weapon_M249.Coverdown"]]
+
+[models]
+world = "models/weapons/w_mach_m249para.mdl"
+view = "models/weapons/v_mach_m249para.mdl"
+view_right_handed = true
+
+[hud]
+name = "Cstrike_WPNHUD_M249"
+icon = "d_m249"
+
+[anim]
+idle_after = 1.6
+idle_interval = 20.0
+
+[hooks."cs_source:accuracy"]
+spread = 0.002
+crouch = 0.00763
+stand = 0.01017
+jump = 0.7083
+land = 0.14166
+fire = 0.00427
+movement = 0.10618
+recovery_crouch = 0.5592
+recovery_stand = 0.78288
+
+[hooks."cs_source:hit_slowdown"]
+body = 0.5
+
+# UNMEASURED: the AK-47's sets (the hardest-kicking measured automatic).
+[hooks."cs_source:recoil"]
+standing = { up = 1.0, up_step = 0.175, side = 0.375, side_step = 0.0375, up_cap = 5.75, side_cap = 1.75 }
+crouched = { up = 0.9, up_step = 0.15, side = 0.35, side_step = 0.025, up_cap = 5.75, side_cap = 1.75 }
+moving = { up = 1.5, up_step = 0.225, side = 0.45, side_step = 0.05, up_cap = 6.5, side_cap = 2.5 }
+airborne = { up = 2.0, up_step = 0.5, side = 1.0, side_step = 0.35, up_cap = 9.0, side_cap = 6.0 }
