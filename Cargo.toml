@@ -47,6 +47,13 @@ glam = "0.32"
 # LZMA-compressed BSP lumps and pakfile entries (bspzip -repack; vbsp
 # already depends on it).
 lzma-rs = "0.3"
+# The user's folders (mount::install's settings, captures).
+dirs = "7.0.0"
+toml = "1.1.6"
+# Where Steam is (`HKCU\Software\Valve\Steam` `SteamPath`) for finding the
+# CS:S install (engine_core's mount::install); already in the tree
+# through winit.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry"] }
 # MP3 sounds packed in community maps (music, minigame sounds).
 symphonia = { version = "0.5.5", default-features = false, features = ["mp3"] }
 
@@ -97,7 +104,7 @@ bzip2 = "0.6.1"
 ab_glyph = "0.2.32"
 arboard = "3.6"
 crc32fast = "1.5.2"
-dirs = "7.0.0"
+dirs.workspace = true
 half.workspace = true
 image.workspace = true
 # The window icon (`winit::window::Icon`; the winit bevy_winit uses).
@@ -106,17 +113,12 @@ serde.workspace = true
 serde_json = "1.0.151"
 # The map file's hash in the connect handshake.
 sha2 = "0.10"
-toml = "1.1.6"
+toml.workspace = true
 twofish = { version = "0.8", optional = true }
 vbsp = "0.9"
 vmdl = "0.2"
 vmt-parser = "0.2"
 vtf = "0.4"
-
-# Where Steam is (`HKCU\Software\Valve\Steam` `SteamPath`) for finding the
-# CS:S install (mount::install); already in the tree through winit.
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry"] }
 
 # Binaries without unit tests: `cargo test` skips building a test harness
 # of each (one more link of the game apiece). A binary that gets tests

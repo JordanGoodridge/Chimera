@@ -411,6 +411,13 @@ measurements):
   `weapon` and `movement` at their old paths and `rules::module` as
   before; `rule_module::plugin` became `pub` (rules adds it). Spawn dump
   identical on the five maps modulo moved paths.
+- [x] (3) `mount` down into `engine_core` (2026-10-14): the VFS and
+  KeyValues re-exports, `mashup.local.toml` and finding installs, so a
+  game crate can use it; `mashup::mount` re-exports it. `engine_core`
+  now depends on `source_formats` (the VFS, KeyValues) and on `dirs`,
+  `toml` and `windows-sys` (moved from `mashup`); the config's
+  checkout fallback is the repository root (`CARGO_MANIFEST_DIR/../..`).
+  No ECS types, so no spawn dump.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

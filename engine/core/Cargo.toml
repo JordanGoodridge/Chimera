@@ -11,14 +11,23 @@ license.workspace = true
 [lib]
 doctest = false
 
-# Bevy and physics, never `mashup` or a game (tests/it/architecture.rs
-# checks it). Same versions and features as the game's (workspace
+# Bevy and physics (and the formats, for `mount`), never `mashup` or a
+# game (tests/it/architecture.rs checks it). Same versions and features as the game's (workspace
 # dependencies), so `cargo test -p engine_core` reuses the game's builds.
 [dependencies]
 avian3d.workspace = true
 bevy.workspace = true
 postcard.workspace = true
 serde.workspace = true
+# `mount`: the VFS and KeyValues it re-exports, `mashup.local.toml`, the
+# user's settings and Steam libraries.
+source_formats.workspace = true
+dirs.workspace = true
+toml.workspace = true
+
+# Where Steam is (`mount::install`: the registry's `SteamPath`).
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
 
 # Per-thread hardware counters for `metrics::counters`; Linux only.
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -3202,10 +3202,14 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
+ "dirs",
  "libc",
  "perf-event2",
  "postcard",
  "serde",
+ "source_formats",
+ "toml",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4639,7 +4643,6 @@ dependencies = [
  "vmdl",
  "vmt-parser",
  "vtf",
- "windows-sys 0.61.2",
  "winit",
 ]
 

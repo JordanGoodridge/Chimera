@@ -20,18 +20,20 @@ engine_present (engine/present/)   render, audio, MapPlugin
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (engine/core/)       core, console, slots, character, metrics
+ (engine/core/)       core, console, slots, character, metrics, mount
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
   Source units); it never depends on Bevy, avian or `mashup` (checked).
   Conversion into engine types stays in `mashup` (`games/cs_source`),
   which re-exports the readers at their old paths.
-- An edit in `source_formats` rebuilds it and `mashup`; `cargo test -p
-  source_formats` builds and runs only its own tests (seconds).
+- An edit in `source_formats` rebuilds every crate (`mount` in
+  `engine_core` uses it); `cargo test -p source_formats` builds and runs
+  only its own tests (seconds).
 - `engine_core` is the engine's stable base: the modules every layer
   uses and that rarely change (`core` but the build's `VERSION`,
-  `console`, `slots`, `character`, `metrics`). It never depends on
+  `console`, `slots`, `character`, `metrics`, and `mount`, which uses
+  `source_formats`' VFS and KeyValues). It never depends on
   `mashup` or a game (checked); `mashup` re-exports its modules at their
   old paths (`mashup::core` adds `VERSION`, stamped in the app's crate
   so a commit doesn't rebuild the base). The layering table covers its
@@ -168,7 +170,7 @@ that the paths exist).
 - `engine/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
-- `src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `engine/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
