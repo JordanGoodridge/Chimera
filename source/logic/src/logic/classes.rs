@@ -549,6 +549,9 @@ impl Class {
                 Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::ColorCorrection))
             }
             "env_embers" => Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::Embers)),
+            "func_clip_vphysics" => {
+                Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::PhysicsClip))
+            }
             "info_particle_system" => {
                 Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::Particles))
             }

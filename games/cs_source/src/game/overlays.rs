@@ -4,7 +4,8 @@
 //! own plane, around an origin) with texture coordinates at the corners; its
 //! plane's U axis is packed into the corner points' unused third components.
 //! Each listed face is clipped to the quad, and the pieces reuse the face's
-//! lightmap, like decals.
+//! lightmap, like decals. The fourth corner's third component is the V-flip
+//! flag (specs/cs_source/overlays_decals.md, "Recovering the basis").
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -31,6 +32,15 @@ fn f32_at(b: &[u8], at: usize) -> f32 {
 
 fn v3(b: &[u8], at: usize) -> Vec3 {
     Vec3::new(f32_at(b, at), f32_at(b, at + 4), f32_at(b, at + 8))
+}
+
+/// The overlay's (U, V) basis from its corners' packed third components
+/// and its normal: U = (c0.z, c1.z, c2.z); V = N x U, negated when the
+/// fourth corner's z (the editor's flip flag) is 1.
+fn basis(corners: &[Vec3; 4], normal: Vec3) -> (Vec3, Vec3) {
+    let u = Vec3::new(corners[0].z, corners[1].z, corners[2].z).normalize_or_zero();
+    let v = normal.cross(u).normalize_or_zero();
+    (u, if corners[3].z == 1.0 { -v } else { v })
 }
 
 fn vb(v: Vec3) -> vbsp::Vector {
@@ -99,12 +109,11 @@ pub fn add_overlays(
             Vec2::new(f32_at(o, 264), f32_at(o, 268)),
             Vec2::new(f32_at(o, 272), f32_at(o, 276)),
         );
-        let corners: Vec<Vec3> = (0..4).map(|k| v3(o, 280 + k * 12)).collect();
+        let corners: [Vec3; 4] = std::array::from_fn(|k| v3(o, 280 + k * 12));
         let origin = v3(o, 328);
         let skybox = bounds.as_ref().is_some_and(|b| !b.contains_point(origin));
         let normal = v3(o, 340).normalize_or_zero();
-        let basis_u = Vec3::new(corners[0].z, corners[1].z, corners[2].z).normalize_or_zero();
-        let basis_v = normal.cross(basis_u).normalize_or_zero();
+        let (basis_u, basis_v) = basis(&corners, normal);
         // Corner texture coordinates: (U0,V0), (U0,V1), (U1,V1), (U1,V0).
         let quad: [(Vec2, Vec2); 4] = [
             (corners[0].truncate(), Vec2::new(u.x, v.x)),
@@ -241,4 +250,19 @@ pub fn add_overlays(
         data.warnings.push(format!("{empty} overlays produced no geometry"));
     }
     data.meshes.extend(meshes.into_values());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The spec's basis cases: V = N x U, negated by the flip flag.
+    #[test]
+    fn basis_follows_the_flip_flag() {
+        let wall = |flip: f32| [Vec3::ZERO, Vec3::ZERO, Vec3::Z, Vec3::new(0.0, 0.0, flip)];
+        assert_eq!(basis(&wall(0.0), Vec3::X), (Vec3::Z, -Vec3::Y));
+        assert_eq!(basis(&wall(1.0), Vec3::X), (Vec3::Z, Vec3::Y));
+        let floor = [Vec3::Z, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO];
+        assert_eq!(basis(&floor, Vec3::Z), (Vec3::X, Vec3::Y));
+    }
 }

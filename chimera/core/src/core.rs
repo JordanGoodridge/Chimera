@@ -658,14 +658,20 @@ pub const RAGDOLL_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMa
 /// Every layer but ragdolls, physics shadows (and the loose items' copy
 /// of the terrain): the mask for gameplay spatial queries.
 pub const SOLID_LAYERS: avian3d::prelude::LayerMask =
-    avian3d::prelude::LayerMask(!(1 << 1) & !(1 << 3) & !SHADOW_LAYER.0);
+    avian3d::prelude::LayerMask(!(1 << 1) & !(1 << 3) & !SHADOW_LAYER.0 & !PHYSICS_CLIP_LAYER.0);
+/// Physics layer of brushes solid to physics objects only (Source's
+/// func_clip_vphysics, `map::physics_clip`): props and physics brushes
+/// collide with them; characters, ragdolls, loose items and every
+/// spatial query (`SOLID_LAYERS`, `NOT_SHADOW`) pass through.
+pub const PHYSICS_CLIP_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(1 << 5);
 /// Physics layer of players' physics shadows (specs/cs_source/physics_props.md
 /// 4.1, `map::prop_physics::PhysicsShadow`): invisible bodies that only
 /// touch the physics props players push. No spatial query should see
 /// them: use `SOLID_LAYERS`, or `NOT_SHADOW` for queries of everything.
 pub const SHADOW_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(1 << 4);
-/// Every layer but physics shadows.
-pub const NOT_SHADOW: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(!SHADOW_LAYER.0);
+/// Every layer but physics shadows (and physics clips, which only
+/// physics objects meet).
+pub const NOT_SHADOW: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(!SHADOW_LAYER.0 & !PHYSICS_CLIP_LAYER.0);
 /// Physics layer of loose items (dropped weapons): they collide with the
 /// world, props and each other but never with characters (Source's
 /// weapon collision group), so a weapon thrown from inside its dropper

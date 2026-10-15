@@ -62,6 +62,7 @@ pub mod bot_profiles;
 pub mod monitor;
 pub mod nav;
 pub mod particles;
+pub mod physics_clip;
 pub mod placed_ragdoll;
 pub mod prop_physics;
 pub mod psys;

@@ -1828,9 +1828,13 @@ pub fn map_entities(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<crate::map::MapEntity>
                 .and_then(|m| m.parse::<usize>().ok())
                 .filter(|m| *m > 0);
             // Buy zones, bomb sites and rescue zones are trigger-like
-            // volumes too.
+            // volumes too, and physics clips (`map::physics_clip`: solid
+            // to physics objects only).
             let trigger = class.starts_with("trigger_")
-                || matches!(class, "func_buyzone" | "func_bomb_target" | "func_hostage_rescue");
+                || matches!(
+                    class,
+                    "func_buyzone" | "func_bomb_target" | "func_hostage_rescue" | "func_clip_vphysics"
+                );
             let mover = movers.contains(&index);
             let hulls = match model {
                 Some(model) if trigger || mover => brush_volumes_source(
