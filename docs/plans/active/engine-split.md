@@ -465,11 +465,20 @@ measurements):
   - `bot` joined `cs_source` (next entry); an engine bots framework
     (`engine_sim`) needs the bomb and hostage goals, buying and the
     radio behind a bot-goal interface first.
-  - `client` names `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`: the
-    default game's install, map cycle, tick, binds, the movement cvars):
-    a game registry resource the game fills would let the shell
-    (`engine/client`) go below the games; the front end (`ui/`, 17.9k)
-    then moves into `games/cs_source`.
+  - [x] `client` named `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`:
+    the default game's install, map cycle, tick, binds, the movement
+    cvars). Done (2026-10-14): `engine_core::game_registry`: a game fills
+    a `GameInfo` (`static`: id, short name, its folder in the install,
+    tick, `open`/`map_cycle`/`import_map` as `fn`s, its default binds'
+    file and built-in table, movement cvars as data) and registers it
+    (`RegisterGame`, first in `CsSourcePlugins`); `Games` (a resource)
+    keeps them in order, the first is the default game. The console's map
+    commands, the map list and cycle, the downloads' folder, a loaded
+    map's tick (its game's), the bind defaults (`binds::GAME_DEFAULTS`,
+    read at start from `GameInfo`) and the debug UI's movement tab read
+    it; CS:S's bind table moved to `cs_source::game::DEFAULT_BINDS`. The
+    exceptions are gone; the architecture test forbids the shell any path
+    naming a game (`cs_source::` too, not only `crate::games::`).
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`

@@ -22,7 +22,7 @@ engine_present (engine/present/)   render, audio, MapPlugin
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (engine/core/)       core, console, slots, character, metrics, mount
+ (engine/core/)       core, console, slots, character, metrics, mount, game_registry
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
@@ -157,8 +157,10 @@ A module may use only the modules below it. Enforced by
   `client` (the shell: input, camera, console UI, VGUI-like widgets, debug
   tools, net glue); the rest of the game never uses it. The shell reaches
   it only through `client::front_end` (hooks the game registers), and the
-  app adds it (main.rs). Client files that still name a game:
-  `CLIENT_GAME_EXCEPTIONS` (tests/it/architecture.rs).
+  app adds it (main.rs). The shell names no game (checked): what it needs
+  of one (install, map cycle, tick, default binds, movement cvars) is data
+  the game registers (`game_registry::GameInfo`, the first registered
+  being the default game).
 - Rule modules (`rules::module`): a game registers its modes by name
   (`cs_source:bomb`, ...), picked by the map and cvars; their code is
   still in `rules` and `objectives` (engine-split.md).
@@ -182,6 +184,7 @@ that the paths exist).
 - `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `engine/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `engine/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
 ### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)

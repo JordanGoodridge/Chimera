@@ -17,7 +17,7 @@ pub mod net;
 
 // The engine's stable base (engine/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
-pub use engine_core::{character, console, metrics, mount, slots};
+pub use engine_core::{character, console, game_registry, metrics, mount, slots};
 
 /// The engine's map (engine/world, crate `engine_world`) at its old path,
 /// with `MapPlugin` (engine/present's `map_plugin`: its registration

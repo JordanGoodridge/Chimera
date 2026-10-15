@@ -17,6 +17,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("metrics", &[]),
     ("console", &["core"]),
     ("mount", &[]),
+    // What a game tells the shell about itself (its install, map cycle,
+    // tick, binds, movement cvars): data the game registers.
+    ("game_registry", &["mount"]),
     ("slots", &["core"]),
     ("character", &["core", "slots"]),
     ("movement", &["core", "slots", "character"]),
@@ -89,9 +92,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
     // The client shell: window, input, camera, console UI, the VGUI-like
     // widget layer, debug tools. `games` here is the game-neutral map
-    // loading (`games::load_map`); a game's own module only through
-    // `CLIENT_GAME_EXCEPTIONS`. A game's menus and HUD are that game's
-    // (`games_ui`), reached through `client::front_end`.
+    // loading (`games::load_map`); never a game's own module: what it
+    // needs of a game is data the game registers (`game_registry`). A
+    // game's menus and HUD are that game's (`games_ui`), reached through
+    // `client::front_end`.
     (
         "client",
         &[
@@ -110,6 +114,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "rules",
             "bot",
             "mount",
+            "game_registry",
             "games",
             "logic",
             "net",
@@ -137,6 +142,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "rules",
             "bot",
             "mount",
+            "game_registry",
             "games",
             "logic",
             "net",
@@ -155,6 +161,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "character",
             "movement",
             "mount",
+            "game_registry",
             "map",
             "weapon",
             "objectives",
@@ -218,24 +225,24 @@ fn game_names(src: &Path) -> BTreeSet<String> {
         .collect()
 }
 
-/// Client files that still name a game's own module (`crate::games::<game>`),
-/// each with why. The client shell should reach a game only through
-/// registration (`client::front_end`, the app's plugins); shrink this list.
-const CLIENT_GAME_EXCEPTIONS: &[(&str, &str)] = &[
-    // TODO(engine-split): a game registry (the default game, its install,
-    // maps, map cycle and server tick) in place of naming CS:S.
-    ("src/client/console.rs", "map loading: CS:S's install, maps, map cycle, tick"),
-    ("src/client/binds.rs", "the default binds from CS:S's install"),
-    ("src/client/net.rs", "the map files a server offers: CS:S's install"),
-    // TODO(engine-split): movement cvars by the movement slot's registry.
-    ("src/client/debug_ui.rs", "the movement tab lists Source movement's cvars"),
-];
-
 fn ident(s: &str) -> String {
     s.trim_start()
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect()
+}
+
+/// The client shell (`src/client`) names no game: it learns what it needs
+/// of one from the game registry (`game_registry::Games`: the default
+/// game's install, maps, map cycle, tick, binds, movement cvars) and
+/// reaches its front end through `client::front_end`.
+fn client_names_game(rel: &str, game: &str) -> String {
+    format!(
+        "{rel}: the client shell uses game `{game}`. The shell knows a game only as data it registers \
+         (`game_registry::GameInfo`, read through `game_registry::Games`; add a field there) and reaches \
+         its menus, panels and HUD (`src/games/{game}/ui/`) through `client::front_end` hooks; the app adds \
+         the game's plugins (main.rs)."
+    )
 }
 
 /// Top-level paths used after `crate::` in `code` (comments already
@@ -328,6 +335,15 @@ fn module_layering() {
             code = code.replace("crate::game::", &format!("crate::games::{game}::"));
         }
         let rel = file.strip_prefix(root()).unwrap().to_string_lossy().replace('\\', "/");
+        // The shell names no game by any path (`::cs_source::`,
+        // `mashup::games::cs_source::` as well as `crate::games::...`).
+        if module == "client" {
+            for game in &games {
+                if code.contains(&format!("{game}::")) {
+                    errors.push(client_names_game(&rel, game));
+                }
+            }
+        }
         for r in crate_refs(&code, &modules) {
             // `games::load_map` and the like: the game-neutral map loading.
             let r = match r.strip_prefix("games::") {
@@ -343,15 +359,7 @@ fn module_layering() {
                     .map(|c| c.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string())
                     .or(crate_game.clone());
                 if module == "client" {
-                    if !CLIENT_GAME_EXCEPTIONS.iter().any(|(f, _)| *f == rel) {
-                        errors.push(format!(
-                            "{rel}: the client shell uses game `{game}`. A game's menus, panels and HUD live in \
-                             `src/games/{game}/ui/` and the shell reaches them through `client::front_end` \
-                             (hooks the game registers); the app adds the game's plugins (main.rs). Add a hook \
-                             there, or (with a TODO) list the file in CLIENT_GAME_EXCEPTIONS in \
-                             tests/it/architecture.rs."
-                        ));
-                    }
+                    errors.push(client_names_game(&rel, game));
                 } else if own.as_deref() != Some(game) && module != "lib" {
                     errors.push(format!(
                         "{}: uses game `{game}`. Games must not depend on each other, and shared layers must \
@@ -373,6 +381,7 @@ fn module_layering() {
             ));
         }
     }
+    errors.dedup();
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
@@ -460,8 +469,7 @@ fn simulation_builds_no_drawn_parts() {
 }
 
 /// A game's parts (weapons, movement, map loading ...) work without its
-/// front end: only its `ui/` uses `ui`. And `CLIENT_GAME_EXCEPTIONS` lists
-/// only files that still need it.
+/// front end: only its `ui/` uses `ui`.
 #[test]
 fn game_parts_do_not_use_their_ui() {
     let src = root().join("src");
@@ -489,15 +497,6 @@ fn game_parts_do_not_use_their_ui() {
                     file.display()
                 ));
             }
-        }
-    }
-    for (file, _) in CLIENT_GAME_EXCEPTIONS {
-        let text = fs::read_to_string(root().join(file)).unwrap_or_default();
-        if !game_names(&src).iter().any(|g| text.contains(&format!("games::{g}"))) {
-            errors.push(format!(
-                "{file} no longer uses a game's module: remove it from CLIENT_GAME_EXCEPTIONS in \
-                 tests/it/architecture.rs."
-            ));
         }
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
