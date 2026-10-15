@@ -82,9 +82,10 @@ movement = 0.23279
 [hooks."cs_source:hit_slowdown"]
 body = 0.65
 
-# UNMEASURED: the AWP's kick.
+# Measured 2026-10-15 (weapons.md M3): up 0.75 + random 0..1.0, sideways
+# random ±0.75, the same crouched; moving and airborne unmeasured.
 [hooks."cs_source:recoil"]
-standing = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
-crouched = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
-moving = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
-airborne = { up = 2.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0 }
+standing = { up = 0.75, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_spread = 1.0, side_spread = 0.75 }
+crouched = { up = 0.75, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_spread = 1.0, side_spread = 0.75 }
+moving = { up = 0.75, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_spread = 1.0, side_spread = 0.75 }
+airborne = { up = 0.75, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_spread = 1.0, side_spread = 0.75 }

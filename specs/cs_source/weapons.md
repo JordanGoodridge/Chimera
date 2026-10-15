@@ -1342,6 +1342,11 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   presses so every shot is "shot 1". USP refired after 11 ticks adds to the
   remaining punch (−2.0, −2.25, −2.48, …). **Glock: no punch at all.**
   Burst/silenced/scoped modes not measured.
+- More guns (2026-10-15, five presses each at their refire, standing and
+  crouched alike): P228, Five-SeveN, Elites and Scout kick **2.0** straight
+  up like the USP; the G3SG1 kicks up 0.75 + random 0..1.0 and the SG 550
+  0.75 + random 0..0.5, both sideways random ±0.75 (no steps, no caps
+  reached); the M3 a whole 4-6 degrees up, the XM1014 a whole 3-5.
 - Bullets follow view + 2 × punch for the M4A1 as for the AK-47 (residuals
   inside the cone with 2×, up to 2.3° outside with 1×).
 

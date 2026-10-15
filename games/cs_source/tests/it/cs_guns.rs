@@ -428,6 +428,19 @@ fn first_shot_kicks_from_the_measured_sets() {
         let k = first_kick(&id, true).unwrap();
         assert!(close(k, cup, cside), "{gun} crouched {k}");
     }
+    // Measured 2026-10-15: P228, Five-SeveN, Elites and Scout 2 straight up;
+    // the G3SG1 0.75-1.75 and the SG 550 0.75-1.25 up, both random ±0.75
+    // sideways; the XM1014 a whole 3-5 up.
+    for gun in ["p228", "fiveseven", "elite", "scout"] {
+        let k = first_kick(&format!("cs_source:weapon_{gun}"), false).unwrap();
+        assert!(close(k, 2.0, 0.0), "{gun} {k}");
+    }
+    for (gun, hi) in [("g3sg1", 1.75), ("sg550", 1.25)] {
+        let k = first_kick(&format!("cs_source:weapon_{gun}"), false).unwrap();
+        assert!(k.x >= 0.75 - 1e-3 && k.x <= hi + 1e-3 && k.y.abs() <= 0.75 + 1e-3, "{gun} {k}");
+    }
+    let k = first_kick("cs_source:weapon_xm1014", false).unwrap();
+    assert!([3.0, 4.0, 5.0].iter().any(|u| close(k, *u, 0.0)), "xm1014 {k}");
 }
 
 #[test]

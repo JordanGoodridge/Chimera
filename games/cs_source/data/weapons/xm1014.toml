@@ -63,11 +63,11 @@ recovery_stand = 0.46052
 body = 0.65
 
 # Shotguns: UNMEASURED; the SDK template's shotgun (spec weapons.md,
-# constants): a whole 4-6 degrees up on the ground, 8-11 in the air, no
+# constants; measured 2026-10-15: 3-5 on the ground): a whole 3-5 degrees up on the ground, 8-11 in the air, no
 # sideways part; once per shot, whatever its pellets. The decay is the
 # rifles' measured rule (M3), so 6 degrees settle in about 0.45 s.
 [hooks."cs_source:recoil"]
-standing = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
-crouched = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
-moving = { up = 4.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 6.0 }
+standing = { up = 3.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 5.0 }
+crouched = { up = 3.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 5.0 }
+moving = { up = 3.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 5.0 }
 airborne = { up = 8.0, up_step = 0.0, side = 0.0, side_step = 0.0, up_cap = 90.0, side_cap = 90.0, up_max = 11.0 }
