@@ -61,7 +61,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use super::{
+use crate::client::{
     fonts::UiFonts,
     hud_text::{Align, GlyphFont, HudText, width},
 };
@@ -285,7 +285,7 @@ fn death_notices(
 ) {
     let name = |e: Entity| match who.get(e) {
         Ok((name, team, local, _, net)) => (
-            super::shown_name(e, local, net, name, settings.as_deref()),
+            crate::client::shown_name(e, local, net, name, settings.as_deref()),
             team.copied(),
         ),
         Err(_) => (format!("{e}"), None),
@@ -540,7 +540,7 @@ pub fn layout(
                 Part::Icon(kind),
                 Drawn::Text(HudText {
                     font: f,
-                    tall: super::hud_text::proportional_tall(AMMO_GLYPH_TALL, h),
+                    tall: crate::client::hud_text::proportional_tall(AMMO_GLYPH_TALL, h),
                     text: c.to_string(),
                     color: colour,
                     at: at(panel.icon + AMMO_GLYPH_OFFSET),
@@ -564,7 +564,7 @@ fn update(
     rounds: Option<Res<RoundState>>,
     bomb: Option<Res<crate::objectives::bomb::BombState>>,
     (time, clock_now): (Res<Time<Fixed>>, Res<Time>),
-    bars: Option<Res<super::spectate::SpectatorBarsUp>>,
+    bars: Option<Res<super::spectator_hud::SpectatorBarsUp>>,
     mut built: Local<(u64, f32)>,
     mut flash: Local<HealthFlash>,
     mut parts: Query<(
@@ -747,7 +747,7 @@ fn round_banner(
             ))
             .id();
         let name = |e: Entity| match who.get(e) {
-            Ok((name, local, net)) => super::shown_name(e, local, net, name, settings.as_deref()),
+            Ok((name, local, net)) => crate::client::shown_name(e, local, net, name, settings.as_deref()),
             Err(_) => menus_string(hud, "winpanel_former_player", "A Former Player"),
         };
         if super::win_panel::spawn(&mut commands, root, hud, &fonts, Vec2::new(w, h), end, &name) {

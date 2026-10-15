@@ -27,7 +27,7 @@ use std::collections::{HashMap, VecDeque};
 use bevy::prelude::*;
 
 use super::radar::{RadarMaterial, RadarParams};
-use super::spectate::{SpecPhase, SpecView, Spectator};
+use crate::client::spectate::{SpecPhase, SpecView, Spectator};
 use crate::{
     console::{ConsoleAppExt, resource_cvar},
     core::{Health, Intent, Team},
@@ -40,7 +40,7 @@ pub struct OverviewPlugin;
 impl Plugin for OverviewPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(OverviewStatePlugin)
-            .add_systems(Update, draw.after(zoom).after(super::spectate::SpectateSet));
+            .add_systems(Update, draw.after(zoom).after(crate::client::spectate::SpectateSet));
     }
 }
 
@@ -236,7 +236,7 @@ fn draw(
     settings: Res<OverviewSettings>,
     overview: Option<Res<ActiveOverview>>,
     (spec, spec_view): (Res<Spectator>, Res<SpecView>),
-    bars: Res<super::spectate::SpectatorBarsUp>,
+    bars: Res<super::spectator_hud::SpectatorBarsUp>,
     windows: Query<&Window>,
     who: Query<(
         &GlobalTransform,
@@ -249,7 +249,7 @@ fn draw(
     map: Query<&MaterialNode<RadarMaterial>, With<OverviewMap>>,
     marks_q: Query<Entity, With<OverviewMarks>>,
     mut materials: ResMut<Assets<RadarMaterial>>,
-    fonts: Res<super::fonts::UiFonts>,
+    fonts: Res<crate::client::fonts::UiFonts>,
     time: Res<Time>,
     mut trails: Local<(HashMap<Entity, VecDeque<Vec3>>, f32)>,
     mut last: Local<Option<Shot>>,

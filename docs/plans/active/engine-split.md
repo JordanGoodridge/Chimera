@@ -577,6 +577,23 @@ measurements):
       and its entities for tools through `map::logic_view::LogicInspect`.
       Architecture test: `client` lost `lib`, `greybox`, `games`, `bot`
       and `logic`.
+    - [x] (c) (2026-10-15) CS:S's HUD to its front end: `game_hud`,
+      `win_panel`, `weapon_select`, `radar` (with its shader), `overview`,
+      `hud_sprites` moved whole to `src/games/cs_source/ui/`; spectating
+      split: the state and camera stay the shell's (`client::spectate`),
+      the bars and plain panel are `ui::spectator_hud`; the selection's
+      state the shell's input reads is `client::weapon_menu::WeaponMenu`
+      and `additive_as_alpha` is `client::hud`'s. The shell is a plugin
+      group (`client::ClientPlugins`: `ShellSetupPlugin` first,
+      `ShellCameraPlugin` last); the front end puts its HUD plugins where
+      they were (`ui::with_hud`, `PluginGroupBuilder::add_after`), so the
+      game's system order (`MASHUP_SYSTEM_DUMP`) is the same modulo paths
+      but for the bots' overlays, which now run after the ragdolls'
+      (gizmos only). Screenshots (main menu, options, buy, team menu,
+      scoreboard, HUD with weapon selection, spectator bars and overview,
+      debug UI tabs, de_dust2, 1280x720) match before and after within
+      the run-to-run noise (the version label aside). Architecture test:
+      `client` lost `rules` and `objectives`.
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`

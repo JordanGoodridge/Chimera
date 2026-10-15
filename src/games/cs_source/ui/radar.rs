@@ -120,7 +120,7 @@ pub(super) struct RadarParams {
 
 impl UiMaterial for RadarMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://mashup/client/radar.wgsl".into()
+        "embedded://mashup/games/cs_source/ui/radar.wgsl".into()
     }
 }
 
@@ -232,7 +232,7 @@ fn teardown(parts: Query<Entity, With<RadarPart>>, mut commands: Commands) {
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn update(
     overview: Res<ActiveOverview>,
-    (hud, fonts, options): (Option<Res<ActiveHud>>, Res<super::fonts::UiFonts>, Option<Res<RadarOptions>>),
+    (hud, fonts, options): (Option<Res<ActiveHud>>, Res<crate::client::fonts::UiFonts>, Option<Res<RadarOptions>>),
     nav: Option<Res<NavMesh>>,
     windows: Query<&Window>,
     me: Option<Single<(Entity, &GlobalTransform, &Intent, Option<&Team>, Has<Dead>), With<LocalPlayer>>>,
@@ -263,7 +263,7 @@ fn update(
     ),
     // Spectating: the watched player's radar.
     spectating: (
-        Option<Res<super::spectate::Spectator>>,
+        Option<Res<crate::client::spectate::Spectator>>,
         Query<(&GlobalTransform, &Intent, Option<&Team>, Option<&Dead>)>,
         Option<Res<super::overview::OverviewSettings>>,
     ),
@@ -295,13 +295,13 @@ fn update(
     // The spectators' overview replaces it.
     let watching = spectator
         .as_ref()
-        .is_some_and(|s| s.phase == super::spectate::SpecPhase::Watching);
+        .is_some_and(|s| s.phase == crate::client::spectate::SpecPhase::Watching);
     if watching && overview_shown.is_some_and(|o| o.mode > 0) {
         *frame_vis = Visibility::Hidden;
         return;
     }
     let target = spectator
-        .filter(|s| s.phase == super::spectate::SpecPhase::Watching)
+        .filter(|s| s.phase == crate::client::spectate::SpecPhase::Watching)
         .and_then(|s| s.target)
         .and_then(|t| watched.get(t).ok().map(|(g, i, tm, d)| (t, g, i, tm, d.is_some())));
     let (me_entity, at, intent, team, dead) = target.unwrap_or((me_entity, at, intent, team, dead));

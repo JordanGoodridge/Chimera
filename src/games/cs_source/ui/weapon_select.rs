@@ -53,9 +53,9 @@ use std::collections::HashSet;
 
 use bevy::{prelude::*, window::CursorOptions};
 
-use super::{
+use super::game_hud::{Drawn, scaled};
+use crate::client::{
     fonts::UiFonts,
-    game_hud::{Drawn, scaled},
     hud_text::{Align, GlyphFont, HudText, width},
 };
 use crate::{
@@ -75,7 +75,7 @@ impl Plugin for WeaponSelectPlugin {
             .add_systems(
                 Update,
                 (
-                    menu_input.before(super::input::write_local_intent),
+                    menu_input.before(crate::client::input::write_local_intent),
                     (track_pickups, show_deploys, draw)
                         .chain()
                         .after(menu_input)
@@ -147,44 +147,16 @@ const LARGE_BOX_ALPHA: f32 = 0.5;
 /// Unhighlighted slots' numbers draw at the panel's half alpha.
 const DIM: f32 = 0.5;
 
-/// The selection's state.
-#[derive(Resource, Default)]
-pub struct WeaponMenu {
-    /// The highlighted weapon while the row shows.
-    pub highlighted: Option<Entity>,
-    /// Seconds the row has shown; None when hidden.
-    shown_for: Option<f32>,
-    /// Open for a pick (fast switch off), not just showing a switch.
-    pub choosing: bool,
-    /// The slot or pick (`core::Intent::select`) to select and how long
-    /// it is still held in the intent.
-    pub select: Option<(u8, f32)>,
-    /// Attack has picked a weapon and is still held: no firing until it
-    /// is let go.
-    pub swallow_fire: bool,
-    /// Slot keys work through the selection (fast switch off and the game's
-    /// HUD has one); else they switch directly.
-    pub takes_slots: bool,
-    /// Slot commands run since last frame (console, binds of `slotN`).
-    pressed: Vec<u8>,
-    /// `invnext` (+1) and `invprev` (-1) run since last frame.
-    steps: Vec<i8>,
-}
+// The selection's state: the shell's (its input reads it), at its old path.
+pub use crate::client::weapon_menu::WeaponMenu;
 
-impl WeaponMenu {
-    /// The slot the input should select this frame.
-    pub fn selected_slot(&self) -> Option<u8> {
-        self.select.map(|s| s.0)
-    }
-
-    /// The row's opacity now (1 while showing, fading at the end), None
-    /// when hidden.
-    fn alpha(&self) -> Option<f32> {
-        let t = self.shown_for?;
-        let total = if self.choosing { MENU_SECONDS } else { SHOW_SECONDS };
-        let left = total - t;
-        (left > 0.0).then(|| (left / FADE_SECONDS).min(1.0))
-    }
+/// The row's opacity now (1 while showing, fading at the end), None
+/// when hidden.
+fn menu_alpha(menu: &WeaponMenu) -> Option<f32> {
+    let t = menu.shown_for?;
+    let total = if menu.choosing { MENU_SECONDS } else { SHOW_SECONDS };
+    let left = total - t;
+    (left > 0.0).then(|| (left / FADE_SECONDS).min(1.0))
 }
 
 /// What a slot key does with the selection open on `current` (or closed):
@@ -233,7 +205,7 @@ fn menu_input(
     cursor: Query<&CursorOptions>,
     player: Option<Single<&Inventory, With<LocalPlayer>>>,
     weapons: Query<&Weapon>,
-    panels: Option<Res<super::front_end::Panels>>,
+    panels: Option<Res<crate::client::front_end::Panels>>,
     time: Res<Time>,
     (sounds, mut play): (Option<Res<crate::map::RoundSounds>>, MessageWriter<crate::map::PlaySound>),
 ) {
@@ -253,16 +225,16 @@ fn menu_input(
     if let Some(t) = menu.shown_for.as_mut() {
         *t += dt;
     }
-    if menu.shown_for.is_some() && menu.alpha().is_none() {
+    if menu.shown_for.is_some() && menu_alpha(&menu).is_none() {
         menu.shown_for = None;
         menu.choosing = false;
     }
     let empty = std::collections::BTreeMap::new();
     let binds = console.as_ref().map_or(&empty, |c| &c.binds);
-    let playing = cursor.iter().next().is_some_and(super::input::cursor_grabbed)
+    let playing = cursor.iter().next().is_some_and(crate::client::input::cursor_grabbed)
         && !panels.is_some_and(|p| p.number_keys_taken());
-    let just = |c: &str| playing && super::binds::just_pressed(binds, &keys, &mouse, c);
-    let attack_held = playing && super::binds::pressed(binds, &keys, &mouse, "+attack");
+    let just = |c: &str| playing && crate::client::binds::just_pressed(binds, &keys, &mouse, c);
+    let attack_held = playing && crate::client::binds::pressed(binds, &keys, &mouse, "+attack");
     if !attack_held {
         menu.swallow_fire = false;
     }
@@ -623,7 +595,7 @@ fn draw(
     let (w, h) = (window.width(), window.height());
     let font = |name: &str| fonts.hud_font(name, h);
     let mut drawn = Vec::new();
-    if let (Some(alpha), Some(inv), Some(hl)) = (menu.alpha(), player.as_ref(), menu.highlighted)
+    if let (Some(alpha), Some(inv), Some(hl)) = (menu_alpha(&menu), player.as_ref(), menu.highlighted)
         && let Ok(hw) = weapons.get(hl)
     {
         let filled: Vec<u8> = inv
@@ -782,13 +754,13 @@ mod tests {
             choosing: true,
             ..default()
         };
-        assert_eq!(m.alpha(), Some(1.0));
+        assert_eq!(menu_alpha(&m), Some(1.0));
         m.shown_for = Some(MENU_SECONDS - FADE_SECONDS / 2.0);
-        assert!((m.alpha().unwrap() - 0.5).abs() < 1e-4);
+        assert!((menu_alpha(&m).unwrap() - 0.5).abs() < 1e-4);
         m.shown_for = Some(MENU_SECONDS);
-        assert_eq!(m.alpha(), None);
+        assert_eq!(menu_alpha(&m), None);
         m.choosing = false;
         m.shown_for = Some(SHOW_SECONDS - 0.01);
-        assert!(m.alpha().is_some());
+        assert!(menu_alpha(&m).is_some());
     }
 }

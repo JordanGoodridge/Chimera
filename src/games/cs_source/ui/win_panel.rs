@@ -87,7 +87,7 @@ pub fn spawn(
     commands: &mut Commands,
     root: Entity,
     hud: &ActiveHud,
-    fonts: &super::fonts::UiFonts,
+    fonts: &crate::client::fonts::UiFonts,
     size: Vec2,
     end: &RoundEnded,
     name: &dyn Fn(Entity) -> String,
@@ -96,7 +96,7 @@ pub fn spawn(
     let Some(layout) = menus.win_panel.as_ref().and_then(|p| menus.layouts.get(p)) else {
         return false;
     };
-    let painter = super::vgui::Painter::new(hud, fonts, size.y);
+    let painter = crate::client::vgui::Painter::new(hud, fonts, size.y);
     // Where the HUD layout puts it, else its values (c-110, 287, 220x138).
     let (x, y, wide, tall) = hud.0.panels.get("WinPanel_Round").map_or(
         (HudCoord::Centre(-110.0), HudCoord::Start(287.0), 220.0, 138.0),
@@ -132,7 +132,7 @@ pub fn spawn(
         }
     }
     let mut shown = |c: &crate::map::hud::UiControl| {
-        let mut sh = super::vgui::Shown::of(c);
+        let mut sh = crate::client::vgui::Shown::of(c);
         match c.name.to_lowercase().as_str() {
             "winlabel" => sh.text = Some(title.clone()),
             "windescription" => sh.text = Some(why.clone()),
@@ -153,7 +153,7 @@ pub fn spawn(
         }
         sh
     };
-    painter.spawn(commands, frame, box_size, &layout, super::vgui::VguiMenu::Spectator, &mut shown);
+    painter.spawn(commands, frame, box_size, &layout, crate::client::vgui::VguiMenu::Spectator, &mut shown);
     true
 }
 

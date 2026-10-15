@@ -96,8 +96,6 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "audio",
             "render",
             "weapon",
-            "objectives",
-            "rules",
             "mount",
             "game_registry",
             "net",

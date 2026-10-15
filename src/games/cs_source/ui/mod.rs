@@ -15,19 +15,45 @@ pub mod buy_menu;
 pub mod debug;
 pub mod first_run;
 pub mod freeze_cam;
+pub mod game_hud;
 pub mod game_menu;
+pub mod hud_sprites;
 pub mod join_menus;
 pub mod objectives_hud;
 pub mod options;
+pub mod overview;
+pub mod radar;
 pub mod radio;
 pub mod scoreboard;
 pub mod server_browser;
+pub mod spectator_hud;
 pub mod spectator_menu;
 pub mod target_id;
 pub mod team_menu;
+pub mod weapon_select;
+pub mod win_panel;
 pub mod window_icon;
 
-use bevy::prelude::*;
+use bevy::{app::PluginGroupBuilder, prelude::*};
+
+use crate::client;
+
+/// The client shell's plugins (`client::ClientPlugins`) with CS:S's HUD
+/// among them, each where it was when the HUD was the shell's (system
+/// order kept): the HUD panels and sprites after the fallback HUD, the
+/// radar after the map's HUD text, the weapon selection after the camera
+/// views, the spectator's HUD after spectating, the overview after the
+/// gamma, the bots' debug views after the shell's.
+pub fn with_hud(shell: PluginGroupBuilder) -> PluginGroupBuilder {
+    shell
+        .add_after::<client::debug_views::DebugViewsPlugin>(debug::BotDebugPlugin)
+        .add_after::<client::hud::HudPlugin>(game_hud::GameHudPlugin)
+        .add_after::<game_hud::GameHudPlugin>(hud_sprites::HudSpritesPlugin)
+        .add_after::<client::game_text::GameTextPlugin>(radar::RadarPlugin)
+        .add_after::<client::view::ViewPlugin>(weapon_select::WeaponSelectPlugin)
+        .add_after::<client::spectate::SpectatePlugin>(spectator_hud::SpectatorHudPlugin)
+        .add_after::<client::gamma::GammaPlugin>(overview::OverviewPlugin)
+}
 
 /// CS:S's menus, panels and HUD for a windowed game (after
 /// `client::ClientPlugin`).
@@ -50,7 +76,6 @@ impl Plugin for CsSourceUiPlugin {
             join_menus::JoinMenusPlugin,
             spectator_menu::SpectatorMenuPlugin,
             freeze_cam::FreezeCamPlugin,
-            debug::BotDebugPlugin,
         ));
     }
 }

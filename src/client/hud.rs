@@ -623,7 +623,7 @@ fn draw_crosshair(
     {
         let converted = images
             .get(handle)
-            .and_then(super::hud_sprites::additive_as_alpha)
+            .and_then(additive_as_alpha)
             .map(|i| images.add(i))
             .unwrap_or_else(|| handle.clone());
         *sprite = Some((handle.clone(), converted, rect));
@@ -967,4 +967,32 @@ mod tests {
         let faint = crosshair_after("cl_crosshairusealpha 1; cl_crosshairalpha 51").color();
         assert!((faint.alpha() - 0.2).abs() < 1e-4);
     }
+}
+
+/// A HUD sprite sheet as CS:S draws it, additively: black is
+/// nothing. Drawn alpha blended here, so each texel's brightness becomes
+/// its coverage (colour divided by it); otherwise the sprite's black
+/// surround shows as a dark box. `None` if the image isn't 8-bit RGBA.
+pub fn additive_as_alpha(image: &Image) -> Option<Image> {
+    use bevy::render::render_resource::TextureFormat;
+    if !matches!(
+        image.texture_descriptor.format,
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb
+    ) {
+        return None;
+    }
+    let mut out = image.clone();
+    let data = out.data.as_mut()?;
+    for px in data.chunks_exact_mut(4) {
+        let peak = px[0].max(px[1]).max(px[2]);
+        if peak == 0 {
+            px.copy_from_slice(&[0, 0, 0, 0]);
+            continue;
+        }
+        for c in &mut px[..3] {
+            *c = ((*c as u32 * 255 + peak as u32 / 2) / peak as u32) as u8;
+        }
+        px[3] = ((px[3] as u32 * peak as u32 + 127) / 255) as u8;
+    }
+    Some(out)
 }

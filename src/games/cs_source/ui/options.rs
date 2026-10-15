@@ -829,7 +829,7 @@ mod tests {
             .init_resource::<crate::client::input::MouseSettings>();
         crate::client::hud::crosshair_cvars(&mut app);
         crate::client::input::mouse_cvars(&mut app);
-        crate::client::radar::radar_cvars(&mut app);
+        crate::games::cs_source::ui::radar::radar_cvars(&mut app);
         crate::client::perf::decal_cvars(&mut app);
         crate::games::cs_source::ui::objectives_hud::c4_bar_cvar(&mut app);
         crate::net::maps::download_filter_cvar(&mut app);

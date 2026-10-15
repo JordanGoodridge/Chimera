@@ -8,12 +8,14 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use mashup::{
-    client::{
-        game_hud::{self, Drawn, HudValues, PanelKind, Part},
-        hud_text::{self, ink_rect},
-        weapon_select::{self, Row},
+    client::hud_text::{self, ink_rect},
+    games::{
+        self, cs_source,
+        cs_source::ui::{
+            game_hud::{self, Drawn, HudValues, PanelKind, Part},
+            weapon_select::{self, Row},
+        },
     },
-    games::{self, cs_source},
     map::hud::GameHud,
     mount::config::LocalConfig,
 };

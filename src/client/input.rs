@@ -248,7 +248,7 @@ fn drop_key(
 /// (Source) sees every notch, and spinning the wheel near a landing lands
 /// a press on the right tick.
 #[derive(Resource, Default)]
-pub(super) struct WheelJump {
+pub struct WheelJump {
     pending: u32,
     /// Jump held on the keyboard.
     key_held: bool,
@@ -287,7 +287,7 @@ impl FreeLook {
 const PITCH_LIMIT: f32 = 89f32.to_radians();
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn write_local_intent(
+pub fn write_local_intent(
     mut intent: Single<&mut Intent, With<LocalPlayer>>,
     cursor: Single<&CursorOptions>,
     (keys, mouse, motion, scroll): (
@@ -306,7 +306,7 @@ pub(super) fn write_local_intent(
     panels: Option<Res<super::front_end::Panels>>,
     zoomed: Query<&crate::weapon::Zoomed, With<LocalPlayer>>,
     spectator: Option<Res<super::spectate::Spectator>>,
-    weapon_menu: Option<Res<super::weapon_select::WeaponMenu>>,
+    weapon_menu: Option<Res<super::weapon_menu::WeaponMenu>>,
     mut last_motion: Local<Vec2>,
 ) {
     // The motion mouse look turns by (`m_filter`, `m_customaccel`).

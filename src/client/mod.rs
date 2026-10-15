@@ -28,19 +28,14 @@ pub mod map_screen;
 pub mod net;
 pub mod night_vision;
 pub mod frame_metrics;
-pub mod game_hud;
-pub mod hud_sprites;
-pub mod win_panel;
 pub mod perf;
-pub mod overview;
-pub mod radar;
 pub mod game_text;
 pub mod senses;
 pub mod spectate;
 pub mod vgui;
 pub mod video;
 pub mod view;
-pub mod weapon_select;
+pub mod weapon_menu;
 
 // The shell's base (engine/client, crate `engine_client`): the front end's
 // interface, fonts, HUD text, the widgets, binds and the drawing of VGUI
@@ -341,57 +336,80 @@ pub struct AppHooks {
     pub respawn_greybox: fn(&mut World),
 }
 
-pub struct ClientPlugin {
+/// The client shell's plugins, in order: its setup (the command line,
+/// `AppHooks`), then input, debug tools, captures, the console, the HUD
+/// base, cameras, chat, senses, spectating, video, network glue, sound
+/// and picture settings, and last the local player's camera
+/// (`ShellCameraPlugin`). A game's front end puts its HUD among them at
+/// its place (`PluginGroupBuilder::add_after`, CS:S's
+/// `games::cs_source::ui::with_hud`), so the systems keep their order.
+pub struct ClientPlugins {
     pub args: Args,
     pub hooks: AppHooks,
 }
 
-impl Plugin for ClientPlugin {
+impl PluginGroup for ClientPlugins {
+    fn build(self) -> bevy::app::PluginGroupBuilder {
+        bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(ShellSetupPlugin {
+                args: self.args,
+                hooks: self.hooks,
+            })
+            .add(fonts::FontsPlugin)
+            .add(input::LocalInputPlugin)
+            .add(debug::DebugPlugin)
+            .add(debug_views::DebugViewsPlugin)
+            .add(capture::CapturePlugin)
+            .add(perf::PerfPlugin)
+            .add(console::ConsoleUiPlugin)
+            .add(hud::HudPlugin)
+            .add(game_text::GameTextPlugin)
+            .add(effects::ShotEffectsPlugin)
+            .add(view::ViewPlugin)
+            .add(vgui::VguiPlugin)
+            .add(chat::ChatPlugin)
+            .add(senses::SensesPlugin)
+            .add(spectate::SpectatePlugin)
+            .add(hdr::HdrPlugin)
+            .add(video::VideoPlugin)
+            .add(hud_text::HudTextPlugin)
+            .add(interp::ClientInterpPlugin)
+            .add(color_correction::ColorCorrectionPlugin)
+            .add(net::ClientNetPlugin)
+            .add(map_screen::MapScreenPlugin)
+            .add(widgets::WidgetsPlugin)
+            .add(audio::SoundOptionsPlugin)
+            .add(gamma::GammaPlugin)
+            .add(night_vision::NightVisionPlugin)
+            .add(ShellCameraPlugin)
+    }
+}
+
+/// The shell's resources from the command line and the app: the map it
+/// starts on, `ClientArgs`, `AppHooks`, how the local player joins.
+struct ShellSetupPlugin {
+    args: Args,
+    hooks: AppHooks,
+}
+
+impl Plugin for ShellSetupPlugin {
     fn build(&self, app: &mut App) {
         if let Some(map) = &self.args.map {
             app.insert_resource(crate::map::LoadedMapName(map.clone()));
         }
         app.insert_resource(ClientArgs(self.args.clone()))
             .insert_resource(self.hooks)
-            .insert_resource(self.args.join_choice())
-            .add_plugins((
-                fonts::FontsPlugin,
-                input::LocalInputPlugin,
-                debug::DebugPlugin,
-                debug_views::DebugViewsPlugin,
-                capture::CapturePlugin,
-                perf::PerfPlugin,
-                console::ConsoleUiPlugin,
-                hud::HudPlugin,
-                game_hud::GameHudPlugin,
-                hud_sprites::HudSpritesPlugin,
-                game_text::GameTextPlugin,
-                radar::RadarPlugin,
-                effects::ShotEffectsPlugin,
-                view::ViewPlugin,
-            ))
-            .add_plugins((
-                weapon_select::WeaponSelectPlugin,
-                vgui::VguiPlugin,
-                chat::ChatPlugin,
-                senses::SensesPlugin,
-                spectate::SpectatePlugin,
-                hdr::HdrPlugin,
-                video::VideoPlugin,
-                hud_text::HudTextPlugin,
-            ))
-            .add_plugins((
-                interp::ClientInterpPlugin,
-                color_correction::ColorCorrectionPlugin,
-                net::ClientNetPlugin,
-                map_screen::MapScreenPlugin,
-                widgets::WidgetsPlugin,
-                audio::SoundOptionsPlugin,
-                gamma::GammaPlugin,
-                overview::OverviewPlugin,
-                night_vision::NightVisionPlugin,
-            ))
-            .add_systems(PostStartup, (spawn_local_player, join_at_start).chain())
+            .insert_resource(self.args.join_choice());
+    }
+}
+
+/// The local player and its first-person camera (last of the shell's
+/// plugins), and the remote protocol with `dev`.
+struct ShellCameraPlugin;
+
+impl Plugin for ShellCameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PostStartup, (spawn_local_player, join_at_start).chain())
             .add_systems(Update, camera_for_local_player)
             .add_systems(Update, (follow_eye, zoom_camera).after(spectate::SpectateSet));
 
