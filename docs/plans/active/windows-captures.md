@@ -38,6 +38,12 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
 7. **C15 muzzle flash**: in the lower tunnel, `host_timescale 0.1`,
    screenshots of the first two frames of an AK-47, USP, M3 and AWP shot.
 8. **C23 sprays** and **C24 night vision**: as in parity-gaps.md.
+9. **Empty gun with no reserve**: empty a pistol's last clip with no spare
+   ammo (`give weapon_deagle`, fire everything, then drop to 0 reserve
+   with `buy` disabled or after the buy time): does CS:S switch to another
+   weapon by itself after the last shot, or stay on the empty gun
+   clicking? The probe bot switched to its knife, but that may be its AI;
+   ours stays on the empty gun.
 
 ## Sitting 2: sound (about 20 min)
 
