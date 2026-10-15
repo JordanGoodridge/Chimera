@@ -4,7 +4,7 @@
 //! team and class menus), the buy, team and radio menus, the game HUD
 //! (`objectives_hud`, `bomb_fx`, `target_id`), the spectator menu and freeze
 //! cam panel, the
-//! scoreboard and the window icon. Built on the client
+//! scoreboard, the window icon and `playdemo` (`demo`). Built on the client
 //! shell (`client`: input, console, fonts, the VGUI-like widgets); the
 //! shell reaches these only through `client::front_end`'s hooks, and the
 //! app adds them (`CsSourceUiPlugin`). The simulation side of `cs_source`
@@ -13,6 +13,7 @@
 pub mod bomb_fx;
 pub mod buy_menu;
 pub mod debug;
+pub mod demo;
 pub mod first_run;
 pub mod freeze_cam;
 pub mod game_hud;
@@ -76,6 +77,7 @@ impl Plugin for CsSourceUiPlugin {
             join_menus::JoinMenusPlugin,
             spectator_menu::SpectatorMenuPlugin,
             freeze_cam::FreezeCamPlugin,
+            demo::DemoUiPlugin,
         ));
     }
 }

@@ -134,6 +134,7 @@ usage: mashup [options]
                             number (1 spectators, 2 terrorists, 3 counter-terrorists). Default:
                             menus, but auto in --screenshot/--views runs, with --spawn or --look,
                             and with +jointeam/+spectate (that team)
+  --playdemo <file.dem>     watch a demo (the game's playdemo command: its map loads, then it plays)
   -port <n>                 UDP port to host on (hostport; default 27015)
   +<command> [args...]      run a console command at startup, Source style
                             (e.g. +sv_airaccelerate 150 +cl_showpos 1 +bind f noclip;
@@ -266,6 +267,8 @@ impl Args {
                     out.cvars.push((name.to_string(), v.to_string()));
                 }
                 "--exec" => out.exec.push(value.into()),
+                // The game's `playdemo` (CS:S: `games::cs_source::ui::demo`).
+                "--playdemo" => out.console.push(format!("playdemo {}", crate::console::quote(&value))),
                 "--scale" => {
                     let s: f32 = value.parse().map_err(|_| format!("--scale: not a number: {value}"))?;
                     if !(0.5..=4.0).contains(&s) {

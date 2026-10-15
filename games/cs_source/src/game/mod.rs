@@ -164,7 +164,7 @@
 //! in model space, `props::load_held`), the `v_c4` press-button sequence on
 //! `ArmingStarted`, the third-person `*_Shoot_C4` gesture, sound entries, the
 //! $200 defusal kit for CTs, the four hostage models loaded on maps with
-//! hostages).
+//! hostages). CS:S demos played back with their players as puppets (`demo.rs`).
 
 pub mod ambient;
 pub mod anim;
@@ -172,6 +172,7 @@ pub mod beams;
 pub mod breakables;
 pub mod bsp;
 pub mod decals;
+pub mod demo;
 pub mod detail;
 pub mod drown;
 pub mod dust;
@@ -356,5 +357,6 @@ impl bevy::app::PluginGroup for CsSourcePlugins {
             .add(rules::CsRulesPlugin)
             .add(player_anim::PlayerAnimPlugin)
             .add(view_anim::ViewAnimPlugin)
+            .add(demo::DemoPlugin)
     }
 }

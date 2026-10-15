@@ -1404,6 +1404,20 @@ cargo run --features tools --bin demodump -- <path>.dem --tempents CTEFireBullet
   are `CTEFireBullets` temp entities, not sounds. For per-player messages
   record a client demo (`record <name>` in a game client; same format).
 
+### Playing a demo in our game (`playdemo`)
+
+`cargo run --features dev -- --playdemo <path>.dem` (or `playdemo <path>`
+in the console; a bare name is looked for in the install's `cstrike/`)
+loads the demo's map and plays it: its players are puppets
+(`games/cs_source/src/game/demo.rs`), the camera a spectator's (jump: mode;
+attack/attack2: next/previous player). `demo_timescale <x>`,
+`demo_pause`/`demo_resume`/`demo_togglepause`, `demo_gototick <tick> [1]`
+(relative with 1), `demo_info`, `stopdemo`. Screenshots of a tick: run it
+with the remote console (`mashup/console` `{"line": "demo_gototick 3000"}`,
+then `demo_pause` and a capture). Tests: `demo_playback` (a demo built in
+code on the greybox) and `heavy::demo_playback` (the sample demos on
+de_dust2; skipped without them: `$MASHUP_DEMOS` or `target/demos/`).
+
 ## Planned
 
 - Per-tick JSONL traces of chosen entities, for comparing movement against
