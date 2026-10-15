@@ -613,7 +613,7 @@ docs/tech-debt.md's bot rows.
 
 ## 5. Console, remaining
 
-The console and overlays are in (engine/core/src/console.rs, engine/client/src/client/console.rs).
+The console and overlays are in (chimera/core/src/console.rs, chimera/client/src/client/console.rs).
 
 - `net_graph` shows local numbers only (fps, frame time, tick rate,
   entities); ping and traffic once there is networking. `cl_showpos 2`.

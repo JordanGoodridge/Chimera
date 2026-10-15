@@ -2,7 +2,7 @@
 
 Goal: the menus' dialogs look and behave as CS:S's do. Their controls
 are the install's `.res` layouts read at run time (never committed),
-drawn with one shared widget layer (`engine/client/src/client/widgets.rs`) that
+drawn with one shared widget layer (`chimera/client/src/client/widgets.rs`) that
 behaves as VGUI's controls do; anything Lucker Party adds beyond CS:S
 stays out of CS:S's dialogs (our own dialog, Lucker Party Options, or an
 entry marked as ours).

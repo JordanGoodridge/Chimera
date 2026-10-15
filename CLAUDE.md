@@ -1,9 +1,11 @@
 # CLAUDE.md
 
-Lucker Party (private monorepo; "mashup" is its engine and dev sandbox):
-minigames built from other games' assets and behavior, with parts mixed
-across games (e.g. a Combat Arms character on a Counter-Strike: Source map),
-and later original minigames. Planned layout:
+Lucker Party (private monorepo; its engine is **Chimera**, `chimera/`;
+"mashup" is the old name of the whole and of the dev sandbox): minigames
+built from other games' assets and behavior, with parts mixed across games
+(e.g. a Combat Arms character on a Counter-Strike: Source map), and later
+original minigames. Layers: Chimera, loaders (`source/`), games as
+libraries (`games/`), apps (`apps/`). Planned layout:
 [docs/plans/active/engine-split.md](docs/plans/active/engine-split.md).
 
 This file is a map. Follow the links for detail; keep it short.
@@ -44,9 +46,9 @@ cargo test --features dev -- --skip heavy::   # fast tier; before every commit
 cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
                                    # 2x slower); before pushing or merging
 cargo test --features dev --test it weapons::   # one test file (tests/it/)
-cargo test -p engine_world --features dev   # one crate's own tests (also
-                                   # engine_core, engine_present, engine_sim, engine_net,
-                                   # engine_client, source_logic, cs_source)
+cargo test -p chimera_world --features dev   # one crate's own tests (also
+                                   # chimera_core, chimera_present, chimera_sim, chimera_net,
+                                   # chimera_client, source_logic, cs_source)
 cargo test -p cs_source --features dev,ui   # CS:S with its front end (menus, HUD)
 cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options

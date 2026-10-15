@@ -15,20 +15,20 @@ mashup (repository root: src/, tests/it/)   app glue: bins, harness, re-exports,
   |
   |    cs_source[ui] (games/cs_source/src/ui/)   CS:S's front end: menus, panels, HUD (feature `ui`)
   |   /         \
-  engine_client  |  (engine/client/)   client: the shell (input, camera, console UI, HUD base, widgets, debug)
+  chimera_client  |  (chimera/client/)   client: the shell (input, camera, console UI, HUD base, widgets, debug)
   |    \        |
   |    cs_source (games/cs_source/)   CS:S's simulation: loaders, parts, rules, bots
   |    |    source_logic (source/logic/)   logic: Source entity I/O
   |    |   /
-  |    engine_net (engine/net/)   net: transport, replication, prediction
+  |    chimera_net (chimera/net/)   net: transport, replication, prediction
   |    |
-engine_present (engine/present/)   render, audio, MapPlugin
-  |    engine_sim (engine/sim/)   weapon, movement, rule_module
+chimera_present (chimera/present/)   render, audio, MapPlugin
+  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module
   |    |
-engine_world (engine/world/)   map: map data, collision, sim-side spawning
+chimera_world (chimera/world/)   map: map data, collision, sim-side spawning
   |                \
-engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (engine/core/)       core, console, slots, character, metrics, mount, game_registry
+chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
+ (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
 ```
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
@@ -36,36 +36,36 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   Conversion into engine types stays in the game (`cs_source`), which
   re-exports the readers at their old paths.
 - An edit in `source_formats` rebuilds every crate (`mount` in
-  `engine_core` uses it); `cargo test -p source_formats` builds and runs
+  `chimera_core` uses it); `cargo test -p source_formats` builds and runs
   only its own tests (seconds).
-- `engine_core` is the engine's stable base: the modules every layer
+- `chimera_core` is the engine's stable base: the modules every layer
   uses and that rarely change (`core` but the build's `VERSION`,
   `console`, `slots`, `character`, `metrics`, and `mount`, which uses
   `source_formats`' VFS and KeyValues). It never depends on
   `mashup` or a game (checked); `mashup` re-exports its modules at their
   old paths (`mashup::core` adds `VERSION`, stamped in the app's crate
   so a commit doesn't rebuild the base). The layering table covers its
-  modules too. `cargo test -p engine_core --features dev` tests it alone.
-- `engine_world` is the simulation's map (`map`): the neutral map data,
+  modules too. `cargo test -p chimera_core --features dev` tests it alone.
+- `chimera_world` is the simulation's map (`map`): the neutral map data,
   collision, spawning a map's simulated parts (the drawn ones through
-  `map::MapDrawer`), the map's systems. It uses `engine_core` and
+  `map::MapDrawer`), the map's systems. It uses `chimera_core` and
   `source_formats` of ours and never what draws or plays the map, `mashup`
   or a game (checked). It registers the map's systems itself
   (`map::build`): alone as `map::MapSimPlugin` (the dedicated server's,
   nothing drawn or played), or with what draws and plays the map at
-  fixed places among them (`map::MapLayers`, filled by `engine_present`'s
+  fixed places among them (`map::MapLayers`, filled by `chimera_present`'s
   `MapPlugin`; the client's order). `mashup::map` re-exports it, with
   `MapPlugin` in builds with the presentation.
-  `cargo test -p engine_world --features dev` tests it alone.
-- `engine_present` is the presentation beside the simulation: `render`,
+  `cargo test -p chimera_world --features dev` tests it alone.
+- `chimera_present` is the presentation beside the simulation: `render`,
   `audio` and `map_plugin` (`MapPlugin`: map's registration with audio's
   and render's systems at the places `map::MapLayers` keeps, in one
-  order). It uses `engine_world` and `engine_core`, never `mashup` or a
+  order). It uses `chimera_world` and `chimera_core`, never `mashup` or a
   game (checked); `mashup` re-exports `render` and `audio` at their old
   paths. An edit in it rebuilds it and `mashup`, not the map; an edit in
   `mashup` rebuilds neither.
-  `cargo test -p engine_present --features dev` tests it alone.
-- `engine_client` is the client shell (`client`, re-exported by
+  `cargo test -p chimera_present --features dev` tests it alone.
+- `chimera_client` is the client shell (`client`, re-exported by
   `mashup::client` at its old paths): local input and binds, the local
   player's camera, the console UI, chat, the fallback HUD and HUD text,
   fonts, the VGUI-like widgets and the drawing of a game's VGUI layouts,
@@ -77,13 +77,13 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   logic, `mashup` or a game (checked): a game says what the shell needs as
   data (`game_registry`, `core`, `debug_ui::GameDebug`), the map logic as
   `map::logic_view`, the app as `client::AppHooks`.
-  `cargo test -p engine_client --features dev` tests it alone.
-- `engine_sim` is the simulation's frameworks: `weapon` (the weapon
+  `cargo test -p chimera_client --features dev` tests it alone.
+- `chimera_sim` is the simulation's frameworks: `weapon` (the weapon
   system), `movement` (the movement slot's placeholder and noclip) and
   `rule_module` (the rule-module interface, `mashup::rules::module`).
-  They name no game; games fill them. It uses `engine_world` and
-  `engine_core`, never the presentation, `mashup` or a game (checked);
-  `mashup` re-exports them at their old paths. `cargo test -p engine_sim
+  They name no game; games fill them. It uses `chimera_world` and
+  `chimera_core`, never the presentation, `mashup` or a game (checked);
+  `mashup` re-exports them at their old paths. `cargo test -p chimera_sim
   --features dev` tests it alone.
 - `cs_source` is Counter-Strike: Source: `game` (its loaders, Source
   movement, weapons, effects, animation, `CsSourcePlugins`;
@@ -94,7 +94,7 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   `mashup::games::cs_source::ui`; the GameUI menus and dialogs, the join
   flow, the buy, team, radio and spectator menus, the scoreboard and its
   HUD, on the shell, `with_hud` putting the HUD among the shell's
-  plugins). The simulation uses the engine crates (not `engine_present`)
+  plugins). The simulation uses the engine crates (not `chimera_present`)
   and `source_formats`, never `mashup` or another game (checked); only
   `ui` uses the presentation, the shell and Source's logic, as optional
   dependencies of the feature (checked: `workspace_crates`,
@@ -104,24 +104,24 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
 - `source_logic` is Source's map logic (`logic`: entity I/O, logic
   classes, triggers, movers, breakables, props, fire, the bridge to the
   map's entities) with its part of the network (`logic::net`: movers,
-  HUD messages). It uses `engine_net`, `engine_world` and `engine_core`,
+  HUD messages). It uses `chimera_net`, `chimera_world` and `chimera_core`,
   never the presentation, `mashup` or a game (checked); `mashup::logic`
   re-exports it. `cargo test -p source_logic --features dev` tests it
   alone.
-- `engine_net` is network play (`net`): the transport, the join
+- `chimera_net` is network play (`net`): the transport, the join
   handshake, replication of what every game has, prediction and
   interpolation. A game and Source's logic register what they replicate
   of their own as parts (`net::NetAppExt::net_part`, applied in name
   order in `NetPlugin::finish`, after the engine's protocol) and fill
   its hooks (`net::parts`: `JoinRules`, `BotHooks`, `Holds`,
-  `NetHooks`). It uses `engine_sim`, `engine_world` and `engine_core`,
+  `NetHooks`). It uses `chimera_sim`, `chimera_world` and `chimera_core`,
   never the presentation, Source's logic, `mashup` or a game (checked);
   `mashup::net` re-exports it with the parts' replicated types.
-  `cargo test -p engine_net --features dev` tests it alone.
+  `cargo test -p chimera_net --features dev` tests it alone.
 - `mashup` is the app: the binaries, the test harness, `SimPlugins`,
   `games::load_map`, the greybox and re-exports at the old paths
   (`mashup::client` adds the app's `ClientPlugin`). It uses
-  `engine_present` only with its default feature `present` (with the
+  `chimera_present` only with its default feature `present` (with the
   client shell `client` and the games' front ends, `cs_source/ui`): the dedicated server builds without it
   (`--no-default-features --features server`), linking no render or
   audio code (checked: `server_builds_without_presentation`).
@@ -227,153 +227,153 @@ that the paths exist).
 
 ### Foundations (core, console, slots, character, movement)
 
-- `engine/core/src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
-- `src/core.rs`: `engine_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
-- `engine/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
-- `engine/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
-- `engine/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
-- `engine/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
+- `chimera/core/src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
+- `src/core.rs`: `chimera_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
+- `chimera/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
+- `chimera/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
+- `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
+- `chimera/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
-- `engine/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
-- `engine/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
-- `engine/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
+- `chimera/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `chimera/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
+- `chimera/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
-### Map (crate `engine_world`, `engine/world/`: neutral map data, spawning, effects as data)
+### Map (crate `chimera_world`, `chimera/world/`: neutral map data, spawning, effects as data)
 
-- `engine/world/src/lib.rs`, `engine/world/src/map/mod.rs`: `unload_map`/`change_map`, `MapHooks`, resources (map)
-- `engine/world/src/map/registration.rs`: map's registration (`build`) with its presentation's places (`MapLayers`); `MapSimPlugin`, the `()` drawer (map)
-- `engine/world/src/map/data.rs`: `MapData` and everything it holds; plain data (map)
-- `engine/world/src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
-- `engine/world/src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
-- `engine/world/src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
-- `engine/world/src/map/loading.rs`: how far a map load has come, for a loading screen (map)
-- `engine/world/src/map/collision.rs`, `sky.rs`: colliders and the sky built from map data (map)
-- `engine/world/src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
-- `engine/world/src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
-- `engine/world/src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
-- `engine/world/src/map/logic_view.rs`: what map logic shows a player (HUD messages, fades, shakes) and tools (map)
-- `engine/world/src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
-- `engine/world/src/map/interp.rs`: drawing between simulation ticks (map)
-- `engine/world/src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
-- `engine/world/src/map/props.rs`: placed props after spawning: physics props, sequences (map)
-- `engine/world/src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
-- `engine/world/src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
-- `engine/world/src/map/ragdoll.rs`: ragdolls on character models (map)
-- `engine/world/src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
-- `engine/world/src/map/loose.rs`: loose items: dropped weapons' bodies, shown items, resting on the ground (map)
-- `engine/world/src/map/shells.rs`: spent shells' types and flight step (map)
-- `engine/world/src/map/breakables.rs`: gibs, broken panes and falling pieces: physics, and gibs' looks (map)
-- `engine/world/src/map/prop_physics.rs`: physics props' motion as the logic asks (map)
-- `engine/world/src/map/controllers.rs`: physics controllers and joints the logic switches (map)
-- `engine/world/src/map/buoyancy.rs`: bodies in water float (map)
-- `engine/world/src/map/copies.rs`: copies of map nodes made at run time (map)
-- `engine/world/src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
-- `engine/world/src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
-- `engine/world/src/map/color_correction.rs`: color_correction entities as data (map)
-- `engine/world/src/map/water.rs`: water materials, surfaces, moving water, the view's water state (map)
-- `engine/world/src/map/particles.rs`: the CPU particle pool (map)
-- `engine/world/src/map/psys.rs`: data-driven particle systems (`.pcf` effects) as data (map)
-- `engine/world/src/map/emitters.rs`: sprite trails, smoke stacks, tesla arcs, embers, muzzle flashes, strikes as data (map)
-- `engine/world/src/map/beams.rs`: beams and glows as data (map)
-- `engine/world/src/map/steam.rs`: steam jets as data (map)
-- `engine/world/src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
-- `engine/world/src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
-- `engine/world/src/map/decal.rs`: runtime decals and players' sprays as data, impacts' lift (map)
-- `engine/world/src/map/rope_sway.rs`: ropes' settling step and spline (map)
-- `engine/world/src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
-- `engine/world/src/map/sound.rs`: the simulation's side of sounds (map)
-- `engine/world/src/map/radio.rs`: a game's team radio data and chat line format (map)
-- `engine/world/src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
-- `engine/present/src/map_plugin.rs`: `MapPlugin`: map's registration with audio's and render's systems at its places (above map, audio, render)
+- `chimera/world/src/lib.rs`, `chimera/world/src/map/mod.rs`: `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `chimera/world/src/map/registration.rs`: map's registration (`build`) with its presentation's places (`MapLayers`); `MapSimPlugin`, the `()` drawer (map)
+- `chimera/world/src/map/data.rs`: `MapData` and everything it holds; plain data (map)
+- `chimera/world/src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)
+- `chimera/world/src/map/spawn.rs`: `spawn_map` in fixed phases, the drawn parts through a `MapDrawer` (map)
+- `chimera/world/src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
+- `chimera/world/src/map/loading.rs`: how far a map load has come, for a loading screen (map)
+- `chimera/world/src/map/collision.rs`, `sky.rs`: colliders and the sky built from map data (map)
+- `chimera/world/src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
+- `chimera/world/src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
+- `chimera/world/src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
+- `chimera/world/src/map/logic_view.rs`: what map logic shows a player (HUD messages, fades, shakes) and tools (map)
+- `chimera/world/src/map/surface_color.rs`: a surface's colour and light at a hit point, for tinted effects (map)
+- `chimera/world/src/map/interp.rs`: drawing between simulation ticks (map)
+- `chimera/world/src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
+- `chimera/world/src/map/props.rs`: placed props after spawning: physics props, sequences (map)
+- `chimera/world/src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
+- `chimera/world/src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
+- `chimera/world/src/map/ragdoll.rs`: ragdolls on character models (map)
+- `chimera/world/src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
+- `chimera/world/src/map/loose.rs`: loose items: dropped weapons' bodies, shown items, resting on the ground (map)
+- `chimera/world/src/map/shells.rs`: spent shells' types and flight step (map)
+- `chimera/world/src/map/breakables.rs`: gibs, broken panes and falling pieces: physics, and gibs' looks (map)
+- `chimera/world/src/map/prop_physics.rs`: physics props' motion as the logic asks (map)
+- `chimera/world/src/map/controllers.rs`: physics controllers and joints the logic switches (map)
+- `chimera/world/src/map/buoyancy.rs`: bodies in water float (map)
+- `chimera/world/src/map/copies.rs`: copies of map nodes made at run time (map)
+- `chimera/world/src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
+- `chimera/world/src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
+- `chimera/world/src/map/color_correction.rs`: color_correction entities as data (map)
+- `chimera/world/src/map/water.rs`: water materials, surfaces, moving water, the view's water state (map)
+- `chimera/world/src/map/particles.rs`: the CPU particle pool (map)
+- `chimera/world/src/map/psys.rs`: data-driven particle systems (`.pcf` effects) as data (map)
+- `chimera/world/src/map/emitters.rs`: sprite trails, smoke stacks, tesla arcs, embers, muzzle flashes, strikes as data (map)
+- `chimera/world/src/map/beams.rs`: beams and glows as data (map)
+- `chimera/world/src/map/steam.rs`: steam jets as data (map)
+- `chimera/world/src/map/fire.rs`: the fires and burning entities the logic says burn now (map)
+- `chimera/world/src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
+- `chimera/world/src/map/decal.rs`: runtime decals and players' sprays as data, impacts' lift (map)
+- `chimera/world/src/map/rope_sway.rs`: ropes' settling step and spline (map)
+- `chimera/world/src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
+- `chimera/world/src/map/sound.rs`: the simulation's side of sounds (map)
+- `chimera/world/src/map/radio.rs`: a game's team radio data and chat line format (map)
+- `chimera/world/src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
+- `chimera/present/src/map_plugin.rs`: `MapPlugin`: map's registration with audio's and render's systems at its places (above map, audio, render)
 
-### Render (crate `engine_present`, `engine/present/`: presentation beside the simulation)
+### Render (crate `chimera_present`, `chimera/present/`: presentation beside the simulation)
 
-- `engine/present/src/render/mod.rs`, `engine/present/src/render/spawn.rs`: the drawn phases of spawning a map (`MapAssets`, a `map::MapDrawer`) (render)
-- `engine/present/src/render/tint.rs`: entities' render colour, alpha and mode; brush texture frames (render)
-- `engine/present/src/render/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (render)
-- `engine/present/src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
-- `engine/present/src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
-- `engine/present/src/render/color_correction.rs`: color_correction volumes blended into one table (render)
-- `engine/present/src/render/light_styles.rs`: switchable and animated light styles at run time (render)
-- `engine/present/src/render/lod.rs`: props' levels of detail as drawn (render)
-- `engine/present/src/render/glow.rs`: glow sprites faded by how much of their proxy is seen (render)
-- `engine/present/src/render/psys.rs`: running and drawing the particle systems (render)
-- `engine/present/src/render/shells.rs`: spent shells thrown, flying and drawn (render)
-- `engine/present/src/render/rope_sway.rs`: ropes in the wind (render)
-- `engine/present/src/render/fish.rs`: func_fish_pool's fish swimming (render)
-- `engine/present/src/render/parts.rs`: drawn parts the logic switches on and off (render)
-- `engine/present/src/render/dust.rs`: dust motes; the effects' dynamic meshes (render)
-- `engine/present/src/render/steam.rs`: steam jets' puffs (render)
-- `engine/present/src/render/tracer.rs`: bullet tracers drawn from the muzzle (render)
-- `engine/present/src/render/emitters.rs`: trails, smoke stacks, teslas, embers, muzzle flashes, strikes through the pool (render)
-- `engine/present/src/render/particles.rs`, `particle.wgsl`: drawing the particle pool (render)
-- `engine/present/src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
-- `engine/present/src/render/spray.rs`, `spray.wgsl`: players' sprays drawn from the install's logos (render)
-- `engine/present/src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
-- `engine/present/src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
-- `engine/present/src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
-- `engine/present/src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (render)
-- `engine/present/src/render/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (render)
-- `engine/present/src/render/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders; the scene's fog (render)
-- `engine/present/src/render/probe_lit.rs`: moving models lit from the baked light field (render)
-- `engine/present/src/render/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (render)
-- `engine/present/src/render/sprite_material.rs`, `sprite.wgsl`: sprites and glows added or blended in gamma space (render)
-- `engine/present/src/render/materials.rs`, `images.rs`: materials, meshes and images built from map data (render)
-- `engine/present/src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
-- `engine/present/src/render/breakables.rs`: drawing gibs and windows' unbroken panes (render)
-- `engine/present/src/render/merge.rs`: brush entities drawn merged while at their spawn pose (render)
-- `engine/present/src/render/props.rs`: placed props' skins and body groups as drawn (render)
-- `engine/present/src/render/loose.rs`: drawn loose and shown items (render)
-- `engine/present/src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
-- `engine/present/src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
-- `engine/present/src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
+- `chimera/present/src/render/mod.rs`, `chimera/present/src/render/spawn.rs`: the drawn phases of spawning a map (`MapAssets`, a `map::MapDrawer`) (render)
+- `chimera/present/src/render/tint.rs`: entities' render colour, alpha and mode; brush texture frames (render)
+- `chimera/present/src/render/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (render)
+- `chimera/present/src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
+- `chimera/present/src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
+- `chimera/present/src/render/color_correction.rs`: color_correction volumes blended into one table (render)
+- `chimera/present/src/render/light_styles.rs`: switchable and animated light styles at run time (render)
+- `chimera/present/src/render/lod.rs`: props' levels of detail as drawn (render)
+- `chimera/present/src/render/glow.rs`: glow sprites faded by how much of their proxy is seen (render)
+- `chimera/present/src/render/psys.rs`: running and drawing the particle systems (render)
+- `chimera/present/src/render/shells.rs`: spent shells thrown, flying and drawn (render)
+- `chimera/present/src/render/rope_sway.rs`: ropes in the wind (render)
+- `chimera/present/src/render/fish.rs`: func_fish_pool's fish swimming (render)
+- `chimera/present/src/render/parts.rs`: drawn parts the logic switches on and off (render)
+- `chimera/present/src/render/dust.rs`: dust motes; the effects' dynamic meshes (render)
+- `chimera/present/src/render/steam.rs`: steam jets' puffs (render)
+- `chimera/present/src/render/tracer.rs`: bullet tracers drawn from the muzzle (render)
+- `chimera/present/src/render/emitters.rs`: trails, smoke stacks, teslas, embers, muzzle flashes, strikes through the pool (render)
+- `chimera/present/src/render/particles.rs`, `particle.wgsl`: drawing the particle pool (render)
+- `chimera/present/src/render/decal.rs`, `decal.wgsl`: runtime decals projected and drawn (render)
+- `chimera/present/src/render/spray.rs`, `spray.wgsl`: players' sprays drawn from the install's logos (render)
+- `chimera/present/src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
+- `chimera/present/src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
+- `chimera/present/src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
+- `chimera/present/src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (render)
+- `chimera/present/src/render/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (render)
+- `chimera/present/src/render/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders; the scene's fog (render)
+- `chimera/present/src/render/probe_lit.rs`: moving models lit from the baked light field (render)
+- `chimera/present/src/render/rope_material.rs`, `rope.wgsl`: ropes as camera-facing strips (render)
+- `chimera/present/src/render/sprite_material.rs`, `sprite.wgsl`: sprites and glows added or blended in gamma space (render)
+- `chimera/present/src/render/materials.rs`, `images.rs`: materials, meshes and images built from map data (render)
+- `chimera/present/src/render/bodies.rs`: drawn character bodies, held models, a ragdoll's drawn body (render)
+- `chimera/present/src/render/breakables.rs`: drawing gibs and windows' unbroken panes (render)
+- `chimera/present/src/render/merge.rs`: brush entities drawn merged while at their spawn pose (render)
+- `chimera/present/src/render/props.rs`: placed props' skins and body groups as drawn (render)
+- `chimera/present/src/render/loose.rs`: drawn loose and shown items (render)
+- `chimera/present/src/render/view_model.rs`: drawing view models, their screens and muzzle flashes (render)
+- `chimera/present/src/render/vis.rs`: visibility culling, areaportal windows' fade, the culling cvars and stats (render)
+- `chimera/present/src/render/water.rs`, `water.wgsl`, `screen_warp.wgsl`: drawing water: refraction, reflection, fog, overlays (render)
 
-### Audio (crate `engine_present`: presentation beside the simulation)
+### Audio (crate `chimera_present`: presentation beside the simulation)
 
-- `engine/present/src/audio/mod.rs`, `engine/present/src/audio/sound.rs`: `SoundPlugin`, one-shot playback, the listener (audio)
-- `engine/present/src/audio/live_sound.rs`: long-lived sounds started and stopped by `map::SoundControl` (audio)
-- `engine/present/src/audio/room.rs`: room DSP presets and the shared reverb bus (audio)
-- `engine/present/src/audio/soundscape.rs`: soundscape selection and playback (audio)
-- `engine/present/src/audio/hearing.rs`: blast and flash muffle and ringing, the underwater muffle (audio)
+- `chimera/present/src/audio/mod.rs`, `chimera/present/src/audio/sound.rs`: `SoundPlugin`, one-shot playback, the listener (audio)
+- `chimera/present/src/audio/live_sound.rs`: long-lived sounds started and stopped by `map::SoundControl` (audio)
+- `chimera/present/src/audio/room.rs`: room DSP presets and the shared reverb bus (audio)
+- `chimera/present/src/audio/soundscape.rs`: soundscape selection and playback (audio)
+- `chimera/present/src/audio/hearing.rs`: blast and flash muffle and ringing, the underwater muffle (audio)
 
 ### Simulation above map (logic, weapon, objectives, rules, bot)
 
 - `source/logic/src/logic/`: Source map logic (crate `source_logic`): entity I/O, triggers, movers, breakables, props, fire, the bridge (logic)
-- `engine/sim/src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
+- `chimera/sim/src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
-- `engine/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
+- `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
 - `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
 
-- `engine/net/src/net/mod.rs`: `NetPlugin`, the protocol, replicated components (net)
-- `engine/net/src/net/parts.rs`: what games and Source's logic add: parts, join, bot and hold hooks (net)
-- `engine/net/src/net/server.rs`: the server: listening, the join handshake, update pacing, own states (net)
-- `engine/net/src/net/client.rs`: the client: connecting, joining, the welcome (net)
-- `engine/net/src/net/predict.rs`: the client's command clock and prediction (net)
-- `engine/net/src/net/interp.rs`: others drawn in the past from snapshots (net)
-- `engine/net/src/net/ordered.rs`: replicated values applied in tick order (net)
-- `engine/net/src/net/delta.rs`: byte deltas (net)
-- `engine/net/src/net/quant.rs`: `NetBody`'s, `NetProp`'s and `NetItem`'s quantized wire forms (net)
-- `engine/net/src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
+- `chimera/net/src/net/mod.rs`: `NetPlugin`, the protocol, replicated components (net)
+- `chimera/net/src/net/parts.rs`: what games and Source's logic add: parts, join, bot and hold hooks (net)
+- `chimera/net/src/net/server.rs`: the server: listening, the join handshake, update pacing, own states (net)
+- `chimera/net/src/net/client.rs`: the client: connecting, joining, the welcome (net)
+- `chimera/net/src/net/predict.rs`: the client's command clock and prediction (net)
+- `chimera/net/src/net/interp.rs`: others drawn in the past from snapshots (net)
+- `chimera/net/src/net/ordered.rs`: replicated values applied in tick order (net)
+- `chimera/net/src/net/delta.rs`: byte deltas (net)
+- `chimera/net/src/net/quant.rs`: `NetBody`'s, `NetProp`'s and `NetItem`'s quantized wire forms (net)
+- `chimera/net/src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
 - `source/logic/src/logic/net.rs`: Source's logic's part of the network: movers, HUD messages (logic)
 - `games/cs_source/src/game/net.rs`: CS:S's part of the network: round, bomb, hostages, join and bot hooks (games)
-- `src/net.rs`: `mashup::net`: `engine_net` with the parts' replicated types (net)
-- `engine/net/src/net/props.rs`: physics props over the network (net)
-- `engine/net/src/net/ragdolls.rs`: map-placed ragdolls over the network (net)
-- `engine/net/src/net/anchors.rs`: placed weapons' anchor nodes over the network (net)
-- `engine/net/src/net/weapons.rs`: held weapons, loose items, grenades and weapon events over the network (net)
-- `engine/net/src/net/game.rs`: scoreboard, buying and the rules' sounds over the network (net)
-- `engine/net/src/net/chat.rs`: chat and radio over the network (net)
-- `engine/net/src/net/cheats.rs`: cheat commands from clients (net)
-- `engine/net/src/net/cvars.rs`: replicated cvars (net)
-- `engine/net/src/net/mapfx.rs`: map effects for clients (net)
-- `engine/net/src/net/decals.rs`: decals for late joiners, players' sprays (net)
-- `engine/net/src/net/motd.rs`: the server's message of the day (net)
-- `engine/net/src/net/udp.rs`: the UDP transports and fake network conditions (net)
-- `engine/net/src/net/query.rs`: server queries and LAN discovery (net)
-- `engine/net/src/net/memory.rs`: an in-memory transport for `NetSim` (net)
+- `src/net.rs`: `mashup::net`: `chimera_net` with the parts' replicated types (net)
+- `chimera/net/src/net/props.rs`: physics props over the network (net)
+- `chimera/net/src/net/ragdolls.rs`: map-placed ragdolls over the network (net)
+- `chimera/net/src/net/anchors.rs`: placed weapons' anchor nodes over the network (net)
+- `chimera/net/src/net/weapons.rs`: held weapons, loose items, grenades and weapon events over the network (net)
+- `chimera/net/src/net/game.rs`: scoreboard, buying and the rules' sounds over the network (net)
+- `chimera/net/src/net/chat.rs`: chat and radio over the network (net)
+- `chimera/net/src/net/cheats.rs`: cheat commands from clients (net)
+- `chimera/net/src/net/cvars.rs`: replicated cvars (net)
+- `chimera/net/src/net/mapfx.rs`: map effects for clients (net)
+- `chimera/net/src/net/decals.rs`: decals for late joiners, players' sprays (net)
+- `chimera/net/src/net/motd.rs`: the server's message of the day (net)
+- `chimera/net/src/net/udp.rs`: the UDP transports and fake network conditions (net)
+- `chimera/net/src/net/query.rs`: server queries and LAN discovery (net)
+- `chimera/net/src/net/memory.rs`: an in-memory transport for `NetSim` (net)
 
 ### Games
 
@@ -413,58 +413,58 @@ that the paths exist).
 
 ### Client (window, input, camera, HUD, menus, debug)
 
-- `engine/client/src/client/`: the shell's plugins (`ClientPlugins`), command line, local player's camera (client)
+- `chimera/client/src/client/`: the shell's plugins (`ClientPlugins`), command line, local player's camera (client)
 - `src/client.rs`: the shell at its old path, the app's `ClientPlugin` with CS:S's HUD (crate root)
-- `engine/client/src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
+- `chimera/client/src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
 - `games/cs_source/src/ui/`: CS:S's front end on the shell (feature `ui`), `CsSourceUiPlugin`, `with_hud` (games_ui)
-- `engine/client/src/client/net.rs`: the game's side of the network: joining, dropping, hosting (client)
-- `engine/client/src/client/view.rs`: third-person, free and chase cameras (client)
-- `engine/client/src/client/spectate.rs`: spectating while dead or on the spectator team: state and camera (client)
+- `chimera/client/src/client/net.rs`: the game's side of the network: joining, dropping, hosting (client)
+- `chimera/client/src/client/view.rs`: third-person, free and chase cameras (client)
+- `chimera/client/src/client/spectate.rs`: spectating while dead or on the spectator team: state and camera (client)
 - `games/cs_source/src/ui/spectator_hud.rs`: the spectator's bars and panel (games_ui)
 - `games/cs_source/src/ui/freeze_cam.rs`: the freeze cam's picture (games_ui)
-- `engine/client/src/client/senses.rs`, `flash.wgsl`: flashes and blasts on the local player's senses (client)
-- `engine/client/src/client/hdr.rs`, `hdr_tonemap.wgsl`: `mat_hdr_level` and the tonemapper (client)
-- `engine/client/src/client/gamma.rs`, `gamma.wgsl`: `mat_monitorgamma` (client)
-- `engine/client/src/client/night_vision.rs`, `night_vision.wgsl`: night vision goggles turned on and their green view (client)
-- `engine/client/src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
-- `engine/client/src/client/audio.rs`: the options' sound settings (client)
-- `engine/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
-- `engine/client/src/client/video.rs`: field of view, video and texture settings (client)
+- `chimera/client/src/client/senses.rs`, `flash.wgsl`: flashes and blasts on the local player's senses (client)
+- `chimera/client/src/client/hdr.rs`, `hdr_tonemap.wgsl`: `mat_hdr_level` and the tonemapper (client)
+- `chimera/client/src/client/gamma.rs`, `gamma.wgsl`: `mat_monitorgamma` (client)
+- `chimera/client/src/client/night_vision.rs`, `night_vision.wgsl`: night vision goggles turned on and their green view (client)
+- `chimera/client/src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
+- `chimera/client/src/client/audio.rs`: the options' sound settings (client)
+- `chimera/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
+- `chimera/client/src/client/video.rs`: field of view, video and texture settings (client)
 - `games/cs_source/src/ui/options.rs`: the options dialogs' settings (games_ui)
-- `engine/client/src/client/console.rs`: the in-game console UI (client)
-- `engine/client/src/client/debug_ui.rs`: the debug UI (F8) (client)
-- `engine/client/src/client/debug_views.rs`: gizmo debug overlays: nav, ragdolls (client)
+- `chimera/client/src/client/console.rs`: the in-game console UI (client)
+- `chimera/client/src/client/debug_ui.rs`: the debug UI (F8) (client)
+- `chimera/client/src/client/debug_views.rs`: gizmo debug overlays: nav, ragdolls (client)
 - `games/cs_source/src/ui/debug.rs`: CS:S in the debug tools: bot overlays, the debug UI's bots and rounds (games_ui)
-- `engine/client/src/client/perf.rs`: the `mashup_perf` overlay (client)
-- `engine/client/src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
+- `chimera/client/src/client/perf.rs`: the `mashup_perf` overlay (client)
+- `chimera/client/src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
 - `games/cs_source/src/ui/window_icon.rs`: the window and taskbar icon (games_ui)
 - `games/cs_source/src/ui/first_run.rs`: finding CS:S on first run (games_ui)
-- `engine/client/src/client/fonts.rs`: the one font service (client)
-- `engine/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
-- `engine/client/src/client/vgui.rs`: drawing a game's own menu layouts; the mouse free while one is open (client)
+- `chimera/client/src/client/fonts.rs`: the one font service (client)
+- `chimera/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
+- `chimera/client/src/client/vgui.rs`: drawing a game's own menu layouts; the mouse free while one is open (client)
 - `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
 - `games/cs_source/src/ui/server_browser.rs`: the server browser (games_ui)
 - `games/cs_source/src/ui/team_menu.rs`: the team menu (games_ui)
 - `games/cs_source/src/ui/join_menus.rs`: CS:S's join flow: MOTD, team and class menus (games_ui)
 - `games/cs_source/src/ui/buy_menu.rs`: the buy menu (games_ui)
 - `games/cs_source/src/ui/radio.rs`: the team radio menus and calls (games_ui)
-- `engine/client/src/client/chat.rs`: the chat area and hint text (client)
+- `chimera/client/src/client/chat.rs`: the chat area and hint text (client)
 - `games/cs_source/src/ui/scoreboard.rs`: the scoreboard (games_ui)
 - `games/cs_source/src/ui/win_panel.rs`: the round's win panel (games_ui)
 - `games/cs_source/src/ui/spectator_menu.rs`: the spectator menu (games_ui)
 - `games/cs_source/src/ui/overview.rs`: the spectators' map overview (games_ui)
-- `engine/client/src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
+- `chimera/client/src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
 - `games/cs_source/src/ui/game_hud.rs`: the game's own HUD panels (games_ui)
-- `engine/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
+- `chimera/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `games/cs_source/src/ui/hud_sprites.rs`: HUD sprite icons and damage indicators (games_ui)
 - `games/cs_source/src/ui/weapon_select.rs`: weapon selection and pickup history (games_ui)
-- `engine/client/src/client/weapon_menu.rs`: a HUD weapon selection's state, which input reads (client)
+- `chimera/client/src/client/weapon_menu.rs`: a HUD weapon selection's state, which input reads (client)
 - `games/cs_source/src/ui/objectives_hud.rs`: bomb, kit, hostage and zone icons, centre prints on the HUD (games_ui)
 - `games/cs_source/src/ui/bomb_fx.rs`: what the bomb shows: the code on the C4 screen, the LED glow (games_ui)
 - `games/cs_source/src/ui/radar.rs`, `radar.wgsl`: the radar (games_ui)
 - `games/cs_source/src/ui/target_id.rs`: the target ID under the crosshair (games_ui)
-- `engine/client/src/client/game_text.rs`: map HUD messages (game_text) (client)
-- `engine/client/src/client/map_screen.rs`: map fades, hints and screen overlays (client)
+- `chimera/client/src/client/game_text.rs`: map HUD messages (game_text) (client)
+- `chimera/client/src/client/map_screen.rs`: map fades, hints and screen overlays (client)
 
 ## Data flow per tick
 

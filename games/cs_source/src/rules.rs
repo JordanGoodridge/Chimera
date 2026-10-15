@@ -52,8 +52,8 @@
 pub mod game_end;
 pub mod rounds;
 
-// The rule-module interface (engine/sim), at its old path.
-pub use engine_sim::rule_module as module;
+// The rule-module interface (chimera/sim), at its old path.
+pub use chimera_sim::rule_module as module;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;

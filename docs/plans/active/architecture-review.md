@@ -605,7 +605,7 @@ parked: leave it until bots are picked up again.
   iteration-speed win**; its value is the publishing/sharing goal of
   the plan and compiler-enforced boundaries.
 - **To make it a speed win**, the engine has to be several crates whose
-  hot parts sit high in the graph: `engine_core` (core, console, slots,
+  hot parts sit high in the graph: `chimera_core` (core, console, slots,
   character, metrics), `map` (data, spawning, collision), `sim`
   (weapon, objectives, rules, bot, movement, logic or `source`),
   `render`, `audio`, `net`, `client`, then games and apps. Rough

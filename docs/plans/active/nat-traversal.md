@@ -122,7 +122,7 @@ Notes.
 
 ## 4. The prototype (b)
 
-`engine/net/src/net/upnp.rs`: `net_upnp` (0/1); while this process serves over UDP
+`chimera/net/src/net/upnp.rs`: `net_upnp` (0/1); while this process serves over UDP
 it asks `PortMapping` (UPnP IGD through `igd-next` 0.18: SSDP search with
 3 s timeouts, `AddPortMapping` of the same UDP port to this machine's
 address toward the router, lease `LEASE_SECS` = 1 h renewed at half) on a

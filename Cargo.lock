@@ -2479,6 +2479,100 @@ dependencies = [
 ]
 
 [[package]]
+name = "chimera_client"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "arboard",
+ "avian3d",
+ "bevy",
+ "bevy-inspector-egui",
+ "bevy_egui",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "dirs",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "chimera_core"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "dirs",
+ "libc",
+ "perf-event2",
+ "postcard",
+ "serde",
+ "source_formats",
+ "toml",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "chimera_net"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet",
+ "bzip2",
+ "chimera_core",
+ "chimera_sim",
+ "chimera_world",
+ "igd-next",
+ "postcard",
+ "renetcode",
+ "serde",
+ "sha2",
+]
+
+[[package]]
+name = "chimera_present"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_core",
+ "chimera_world",
+ "half",
+ "image",
+]
+
+[[package]]
+name = "chimera_sim"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_core",
+ "chimera_world",
+ "postcard",
+ "serde",
+]
+
+[[package]]
+name = "chimera_world"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bevy_replicon",
+ "chimera_core",
+ "half",
+ "image",
+ "serde",
+ "source_formats",
+]
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2937,12 +3031,12 @@ dependencies = [
  "bevy_replicon",
  "bevy_replicon_renet",
  "bzip2",
- "engine_client",
- "engine_core",
- "engine_net",
- "engine_present",
- "engine_sim",
- "engine_world",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
  "half",
  "image",
  "serde",
@@ -3223,100 +3317,6 @@ dependencies = [
  "rustversion",
  "scopeguard",
  "simdutf8",
-]
-
-[[package]]
-name = "engine_client"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "arboard",
- "avian3d",
- "bevy",
- "bevy-inspector-egui",
- "bevy_egui",
- "dirs",
- "engine_core",
- "engine_net",
- "engine_present",
- "engine_sim",
- "engine_world",
- "image",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "engine_core"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "dirs",
- "libc",
- "perf-event2",
- "postcard",
- "serde",
- "source_formats",
- "toml",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "engine_net"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "bevy_replicon",
- "bevy_replicon_renet",
- "bzip2",
- "engine_core",
- "engine_sim",
- "engine_world",
- "igd-next",
- "postcard",
- "renetcode",
- "serde",
- "sha2",
-]
-
-[[package]]
-name = "engine_present"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "engine_core",
- "engine_world",
- "half",
- "image",
-]
-
-[[package]]
-name = "engine_sim"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "engine_core",
- "engine_world",
- "postcard",
- "serde",
-]
-
-[[package]]
-name = "engine_world"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "bevy_replicon",
- "engine_core",
- "half",
- "image",
- "serde",
- "source_formats",
 ]
 
 [[package]]
@@ -4686,15 +4686,15 @@ dependencies = [
  "bevy_replicon",
  "bevy_replicon_renet",
  "bzip2",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
  "crc32fast",
  "cs_source",
  "dirs",
- "engine_client",
- "engine_core",
- "engine_net",
- "engine_present",
- "engine_sim",
- "engine_world",
  "half",
  "image",
  "postcard",
@@ -6740,9 +6740,9 @@ dependencies = [
  "avian3d",
  "bevy",
  "bevy_replicon",
- "engine_core",
- "engine_net",
- "engine_world",
+ "chimera_core",
+ "chimera_net",
+ "chimera_world",
  "serde",
 ]
 

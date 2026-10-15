@@ -13,17 +13,17 @@ doctest = false
 
 # The engine's crates and the formats, Bevy and physics, Source's file
 # readers; never `mashup` or another game, and the presentation
-# (`engine_present`), the shell and Source's logic only for `ui`
+# (`chimera_present`), the shell and Source's logic only for `ui`
 # (tests/it/architecture.rs checks it). Same versions and features
 # as the game's (workspace dependencies), so `cargo test -p cs_source`
 # reuses the game's builds.
 [dependencies]
-engine_core.workspace = true
-engine_world.workspace = true
-engine_sim.workspace = true
+chimera_core.workspace = true
+chimera_world.workspace = true
+chimera_sim.workspace = true
 # The network: the game registers its round, bomb and hostages there and
 # fills its hooks (`game::net`).
-engine_net.workspace = true
+chimera_net.workspace = true
 source_formats.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
@@ -40,8 +40,8 @@ vtf.workspace = true
 # The front end (`ui`, the `ui` feature): the client shell, the
 # presentation it draws with, Source's logic (the objectives' map
 # entities), the clipboard and the window icon.
-engine_client = { workspace = true, optional = true }
-engine_present = { workspace = true, optional = true }
+chimera_client = { workspace = true, optional = true }
+chimera_present = { workspace = true, optional = true }
 source_logic = { workspace = true, optional = true }
 arboard = { workspace = true, optional = true }
 winit = { workspace = true, optional = true }
@@ -52,17 +52,17 @@ bevy_replicon_renet = { workspace = true, optional = true }
 # CS:S's front end (`ui`): its menus, panels and HUD on the client shell.
 # The game's client turns it on (`mashup`'s `present`); the dedicated
 # server and the simulation's tests build without it.
-ui = ["dep:engine_client", "dep:engine_present", "dep:source_logic", "dep:arboard", "dep:winit", "dep:bevy_replicon_renet"]
+ui = ["dep:chimera_client", "dep:chimera_present", "dep:source_logic", "dep:arboard", "dep:winit", "dep:bevy_replicon_renet"]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p cs_source --features dev` shares the game's Bevy build.
 dev = [
     "bevy/dynamic_linking",
     "bevy/bevy_remote",
-    "engine_core/dev",
-    "engine_world/dev",
-    "engine_sim/dev",
-    "engine_net/dev",
-    "engine_client?/dev",
-    "engine_present?/dev",
+    "chimera_core/dev",
+    "chimera_world/dev",
+    "chimera_sim/dev",
+    "chimera_net/dev",
+    "chimera_client?/dev",
+    "chimera_present?/dev",
     "source_logic?/dev",
 ]

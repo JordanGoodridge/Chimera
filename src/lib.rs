@@ -18,32 +18,32 @@ pub mod greybox;
 pub mod harness;
 pub mod net;
 
-// The engine's stable base (engine/core), at its old paths; `core` is
+// The engine's stable base (chimera/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
-pub use engine_core::{character, console, game_registry, metrics, mount, slots};
+pub use chimera_core::{character, console, game_registry, metrics, mount, slots};
 
-/// The engine's map (engine/world, crate `engine_world`) at its old path,
-/// with `MapPlugin` (engine/present's `map_plugin`: map's registration
+/// The engine's map (chimera/world, crate `chimera_world`) at its old path,
+/// with `MapPlugin` (chimera/present's `map_plugin`: map's registration
 /// with `audio` and `render`) when built with the presentation; the
 /// dedicated server adds `MapSimPlugin` (map's systems alone).
 pub mod map {
     #[cfg(feature = "present")]
-    pub use engine_present::MapPlugin;
-    pub use engine_world::map::*;
+    pub use chimera_present::MapPlugin;
+    pub use chimera_world::map::*;
 }
 
-// The engine's presentation (engine/present), at its old paths; not in
+// The engine's presentation (chimera/present), at its old paths; not in
 // the dedicated server's build (the `present` feature, Cargo.toml).
 #[cfg(feature = "present")]
-pub use engine_present::{audio, render};
+pub use chimera_present::{audio, render};
 
 // Source's map logic (source/logic: entity I/O, logic classes, triggers,
 // movers), at its old path.
 pub use source_logic::logic;
 
-// The simulation's frameworks (engine/sim: weapons, the movement
+// The simulation's frameworks (chimera/sim: weapons, the movement
 // slot's own implementations), at their old paths.
-pub use engine_sim::{movement, weapon};
+pub use chimera_sim::{movement, weapon};
 
 // CS:S's rules (games/cs_source: deathmatch, rounds, the bomb and the
 // hostages), at their old paths; `games::cs_source` re-exports the rest.
@@ -53,7 +53,7 @@ use bevy::prelude::*;
 
 /// Default fixed tick rate until a ruleset or movement spec sets one
 /// (`core::DEFAULT_TICK_HZ`).
-pub use engine_core::core::DEFAULT_TICK_HZ;
+pub use chimera_core::core::DEFAULT_TICK_HZ;
 
 /// Everything the simulation needs, with no window, rendering or input.
 /// Used by the game, headless tests and (later) a dedicated server.

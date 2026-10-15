@@ -12,7 +12,7 @@
 //! (`single_threaded_schedules`). The map's systems alone
 //! (`map::MapSimPlugin`: nothing drawn or played); released built without
 //! the presentation (`cargo build --release --no-default-features
-//! --features server --bin mashup_server`: no engine_present, client
+//! --features server --bin mashup_server`: no chimera_present, client
 //! shell or front end linked).
 //!
 //! Known shortcuts (docs/tech-debt.md): The dedicated server runs at most
