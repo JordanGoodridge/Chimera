@@ -15,7 +15,9 @@
 //!
 //! [`resimulate`] places a character where the first recorded state has
 //! the player (velocity, ground, duck, weapons, clip and reserve as
-//! recorded), runs each later command for one tick (the command number
+//! recorded; the weapon's accuracy penalty, shots fired, timers and
+//! alternate state, its silencer on or burst mode, as far as recorded),
+//! runs each later command for one tick (the command number
 //! stamped, so spread and recoil take the command's seed), and compares
 //! our state after each command with the state recorded for it: the one
 //! whose key is the command's plus `offset` (a demo's tick base runs a
@@ -24,6 +26,18 @@
 //! first difference beyond the tolerances is, and how large and how
 //! frequent the differences are; shots are paired in order and compared
 //! by tick, seed, accuracy and how far off the aim they went.
+//!
+//! The alternate state (`Observed::alt_mode`: the probe's `special`, a
+//! demo's `m_bSilencerOn`/`m_bBurstMode`; our `AltModes` on weapons that
+//! don't zoom) is compared per tick ("alt mode"). A toggle in the
+//! recording is replayed as the command's attack2 (a probe bot's own
+//! attack2 is in the buttons its movement ran with); one that shows
+//! without attack2 in its command came from outside the commands (a
+//! weapon drawn, a bot's AI) and is set on ours as recorded
+//! (`Report::alt_mode_applied`), not counted as a divergence. Likewise a
+//! weapon switch no command picked (a bot's AI, or the switch to the knife
+//! when the probe's USP runs dry with no reserve) is made on ours as
+//! recorded (`Report::weapon_applied`).
 //!
 //! The server's console variables the demo carries (`net_SetConVar`:
 //! `sv_maxspeed`, `sv_accelerate`, ...) are applied to the movement first
@@ -49,8 +63,8 @@ use super::{
     weapons::Inaccuracy,
 };
 use crate::{
-    core::{Seed, SimTick, Velocity},
-    weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, WeaponState, give},
+    core::{Seed, SimClock, SimTick, Velocity},
+    weapon::{AltModes, Inventory, Magazine, NetPart, Weapon, WeaponEvent, WeaponEventKind, WeaponState, Zoom, give},
 };
 use chimera_world::harness::Sim;
 
@@ -98,6 +112,15 @@ pub struct Observed {
     pub shots_fired: Option<i32>,
     /// The accuracy penalty (the probe's `penalty`).
     pub inaccuracy: Option<f32>,
+    /// The weapon's alternate state: its silencer on or burst mode (our
+    /// `AltModes` mode 1; the probe's `special`, a demo's `m_bSilencerOn`
+    /// or `m_bBurstMode`). Not compared on weapons that zoom instead.
+    pub alt_mode: Option<u8>,
+    /// Seconds from this state until the weapon may fire again, its
+    /// secondary attack, and the player may attack at all (the probe's
+    /// `next_primary`, `next_secondary`, `next_attack` less its tick
+    /// base's time), for the start.
+    pub waits: Option<[f32; 3]>,
     /// Other weapons carried (`weapon_knife`), for the start.
     pub carried: Vec<String>,
 }
@@ -222,6 +245,8 @@ impl Recording {
                 reserve: l.reserve,
                 shots_fired: Some(l.shots_fired),
                 inaccuracy: None,
+                alt_mode: Some(p.weapon_mode),
+                waits: None,
                 carried: l.weapons.iter().filter_map(|c| class_weapon(*c)).collect(),
             });
         }
@@ -320,19 +345,31 @@ impl Recording {
         for s in &mut rec.states {
             let Some(w) = weapons.get(&s.key) else { continue };
             s.weapon = Some(w[2].to_string());
-            s.clip = field(w, "clip").and_then(|v| v.parse().ok());
-            s.reserve = field(w, "reserve").and_then(|v| v.parse().ok());
+            // No ammo type (a knife: clip 255, reserve -1): neither.
+            s.reserve = field(w, "reserve").and_then(|v| v.parse().ok()).filter(|r| *r >= 0);
+            s.clip = field(w, "clip")
+                .and_then(|v| v.parse().ok())
+                .filter(|_| s.reserve.is_some());
             s.shots_fired = field(w, "shots").and_then(|v| v.parse().ok());
             s.inaccuracy = field(w, "penalty").and_then(|v| v.parse().ok());
+            s.alt_mode = field(w, "special").and_then(|v| v.parse().ok());
+            let time = |key: &str| field(w, key).and_then(|v| v.parse::<f64>().ok());
+            if let Some(base) = time("tickbase") {
+                let now = base * rec.tick_interval as f64;
+                let wait = |key: &str| time(key).map_or(0.0, |t| (t - now) as f32);
+                s.waits = Some([wait("next_primary"), wait("next_secondary"), wait("next_attack")]);
+            }
         }
         // CS:S bots duck-jump on their own, inside the game rather than
         // through their buttons (movecmp, OBSERVABILITY.md): jump and duck
         // as the movement ran them, and duck held while the bot is ducked
-        // in the air.
+        // in the air. Its own attack2 (the AI putting the silencer on) is
+        // taken as pressed too.
         let after: HashMap<i64, (bool, bool)> = rec.states.iter().map(|s| (s.key, (s.ducked, s.on_ground))).collect();
         for c in &mut rec.commands {
             if let Some(b) = ran_with.get(&(c.key + 1)) {
-                c.buttons = (c.buttons & !(buttons::JUMP | buttons::DUCK)) | (b & (buttons::JUMP | buttons::DUCK));
+                c.buttons = (c.buttons & !(buttons::JUMP | buttons::DUCK))
+                    | (b & (buttons::JUMP | buttons::DUCK | buttons::ATTACK2));
             }
             if ran_with.contains_key(&(c.key + 1)) && after.get(&(c.key + 1)).is_some_and(|(d, g)| *d && !*g) {
                 c.buttons |= buttons::DUCK;
@@ -404,6 +441,9 @@ pub struct Ours {
     pub reserve: Option<i32>,
     pub shots_fired: Option<i32>,
     pub inaccuracy: Option<f32>,
+    /// The active weapon's `AltModes` mode, when it has modes that don't
+    /// zoom (silencer, burst).
+    pub alt_mode: Option<u8>,
 }
 
 /// A shot we fired.
@@ -498,6 +538,18 @@ pub struct Report {
     pub reserve: usize,
     pub shots_fired: usize,
     pub inaccuracy: usize,
+    /// Ticks where the weapon's alternate state (silencer, burst) differed
+    /// after a command with attack2 (a divergence: our toggle isn't the
+    /// game's).
+    pub alt_mode: usize,
+    /// Times the recording's alternate state was set on ours because it
+    /// changed without attack2 (from outside the commands: a weapon
+    /// switched to, a bot's AI).
+    pub alt_mode_applied: usize,
+    /// Times ours switched to the recorded weapon because it changed
+    /// without a command picking it (a bot's AI, the game's own switch
+    /// when a weapon runs dry).
+    pub weapon_applied: usize,
     pub shots: ShotStats,
     /// The console variables applied (name, value).
     pub cvars: Vec<(String, String)>,
@@ -510,13 +562,13 @@ impl Report {
         let mut out = String::from(
             "key,css_x,css_y,css_z,css_vx,css_vy,css_vz,css_ground,css_ducked,css_clip,\
              ours_x,ours_y,ours_z,ours_vx,ours_vy,ours_vz,ours_ground,ours_ducked,ours_clip,pos_diff,\
-             css_inaccuracy,ours_inaccuracy\n",
+             css_inaccuracy,ours_inaccuracy,css_alt_mode,ours_alt_mode\n",
         );
         for r in &self.rows {
             let v = r.theirs.velocity.unwrap_or_default();
             let o = &r.ours;
             out += &format!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
                 r.key,
                 r.theirs.origin[0],
                 r.theirs.origin[1],
@@ -539,6 +591,8 @@ impl Report {
                 dist(r.theirs.origin, o.origin),
                 r.theirs.inaccuracy.map_or(String::new(), |v| v.to_string()),
                 o.inaccuracy.map_or(String::new(), |v| v.to_string()),
+                r.theirs.alt_mode.map_or(String::new(), |v| v.to_string()),
+                o.alt_mode.map_or(String::new(), |v| v.to_string()),
             );
         }
         out
@@ -563,9 +617,30 @@ impl fmt::Display for Report {
         )?;
         writeln!(
             f,
-            "  ticks differing: on ground {}, ducked {}, weapon {}, clip {}, reserve {}, shots fired {}, accuracy {}",
-            self.ground, self.ducked, self.weapon, self.clip, self.reserve, self.shots_fired, self.inaccuracy
+            "  ticks differing: on ground {}, ducked {}, weapon {}, clip {}, reserve {}, shots fired {}, accuracy {}, alt mode {}",
+            self.ground,
+            self.ducked,
+            self.weapon,
+            self.clip,
+            self.reserve,
+            self.shots_fired,
+            self.inaccuracy,
+            self.alt_mode
         )?;
+        if self.weapon_applied > 0 {
+            writeln!(
+                f,
+                "  weapon switched to as recorded {} times (changed without a pick)",
+                self.weapon_applied
+            )?;
+        }
+        if self.alt_mode_applied > 0 {
+            writeln!(
+                f,
+                "  alt mode (silencer, burst) set from the recording {} times (changed without attack2)",
+                self.alt_mode_applied
+            )?;
+        }
         let s = &self.shots;
         writeln!(
             f,
@@ -690,7 +765,51 @@ fn ours(sim: &Sim, p: Entity) -> Ours {
         reserve: magazine.map(|m| m.reserve as i32),
         shots_fired: active.and_then(|a| w.get::<WeaponState>(a)).map(|s| s.burst as i32),
         inaccuracy: active.and_then(|a| w.get::<Inaccuracy>(a)).map(|i| i.value),
+        alt_mode: active.and_then(|a| toggle(w, a)).map(|m| m.current),
     }
+}
+
+/// The weapon's modes when they toggle a state (silencer, burst) rather
+/// than zoom.
+fn toggle(w: &World, weapon: Entity) -> Option<&AltModes> {
+    if w.get::<Zoom>(weapon).is_some() {
+        return None;
+    }
+    w.get::<AltModes>(weapon)
+}
+
+/// Switch to the carried weapon `name` (given if not carried); false if
+/// there is no such weapon.
+fn switch_to(world: &mut World, p: Entity, name: &str) -> bool {
+    let carried = world.get::<Inventory>(p).and_then(|i| {
+        i.weapons
+            .iter()
+            .copied()
+            .find(|e| world.get::<Weapon>(*e).is_some_and(|w| w.id.ends_with(name)))
+    });
+    let Some(target) = carried.or_else(|| give(world, p, name)) else {
+        return false;
+    };
+    let Some(mut i) = world.get_mut::<Inventory>(p) else {
+        return false;
+    };
+    i.wanted = Some(target);
+    true
+}
+
+/// Set the active weapon's alternate mode (silencer, burst) to `mode`.
+fn set_alt_mode(world: &mut World, p: Entity, mode: u8) -> bool {
+    let Some(a) = world.get::<Inventory>(p).and_then(|i| i.active) else {
+        return false;
+    };
+    if toggle(world, a).is_none() {
+        return false;
+    }
+    let Some(mut m) = world.get_mut::<AltModes>(a) else {
+        return false;
+    };
+    m.current = mode.min(m.count.saturating_sub(1));
+    true
 }
 
 /// Our view angles from Source's degrees.
@@ -773,6 +892,16 @@ fn run(sim: &mut Sim, rec: &Recording, offset: i64, opts: Options) -> Result<Rep
             .ok_or("no Source movement (add its plugin)")?;
         me.on_ground = start.on_ground;
         me.ducked = start.ducked;
+        // The weapon's timers as recorded (ready unless the recording
+        // says to wait), counted from the first command's time.
+        let next = world.resource::<SimClock>().now + rec.tick_interval as f64;
+        let [primary, secondary, attack] = start
+            .waits
+            .unwrap_or_default()
+            .map(|w| if w > 0.0 { next + w as f64 } else { 0.0 });
+        if let Some(m) = start.alt_mode {
+            set_alt_mode(world, p, m);
+        }
         if let Some(a) = world.get::<Inventory>(p).and_then(|i| i.active) {
             if let Some(mut m) = world.get_mut::<Magazine>(a) {
                 if let Some(c) = start.clip {
@@ -782,16 +911,24 @@ fn run(sim: &mut Sim, rec: &Recording, offset: i64, opts: Options) -> Result<Rep
                     m.reserve = r.max(0) as u32;
                 }
             }
-            if let (Some(v), Some(mut i)) = (start.inaccuracy, world.get_mut::<Inaccuracy>(a)) {
-                i.value = v;
+            // The penalty as recorded, and where it recovers from: on the
+            // ground or not, falling as recorded (not what the placement
+            // ticks left).
+            if let Some(mut i) = world.get_mut::<Inaccuracy>(a) {
+                let (value, _, _) = i.net();
+                let fall = start.velocity.map_or(0.0, |v| v[2]);
+                i.set_net((start.inaccuracy.unwrap_or(value), start.on_ground, fall));
             }
             if let Some(mut s) = world.get_mut::<WeaponState>(a) {
-                s.next_primary = 0.0;
-                s.next_secondary = 0.0;
+                s.next_primary = primary;
+                s.next_secondary = secondary;
+                if let Some(n) = start.shots_fired {
+                    s.burst = n.max(0) as u32;
+                }
             }
         }
         if let Some(mut i) = world.get_mut::<Inventory>(p) {
-            i.next_attack = 0.0;
+            i.next_attack = attack;
         }
     }
 
@@ -885,7 +1022,7 @@ fn run(sim: &mut Sim, rec: &Recording, offset: i64, opts: Options) -> Result<Rep
         let Some(theirs) = states.get(&(c.key + offset)) else {
             continue;
         };
-        let ours = ours(sim, p);
+        let mut ours = ours(sim, p);
         report.compared += 1;
         let dp = dist(theirs.origin, ours.origin);
         sum_position += dp;
@@ -909,8 +1046,20 @@ fn run(sim: &mut Sim, rec: &Recording, offset: i64, opts: Options) -> Result<Rep
         count(theirs.on_ground != ours.on_ground, &mut report.ground, "on ground");
         count(theirs.ducked != ours.ducked, &mut report.ducked, "ducked");
         let weapon_differs = theirs.weapon.is_some() && theirs.weapon != ours.weapon;
-        count(weapon_differs, &mut report.weapon, "weapon");
-        let differs = |a: Option<i32>, b: Option<i32>| a.is_some() && a != b;
+        // A switch no command picked (a bot's AI, the game's own when a
+        // weapon runs dry): switched to as recorded, from the next command
+        // on; its weapon's values aren't compared this once.
+        let switched = weapon_differs
+            && c.weapon.is_none()
+            && theirs
+                .weapon
+                .as_deref()
+                .is_some_and(|name| switch_to(sim.app.world_mut(), p, name));
+        if switched {
+            report.weapon_applied += 1;
+        }
+        count(weapon_differs && !switched, &mut report.weapon, "weapon");
+        let differs = |a: Option<i32>, b: Option<i32>| !switched && a.is_some() && a != b;
         count(differs(theirs.clip, ours.clip), &mut report.clip, "clip");
         count(differs(theirs.reserve, ours.reserve), &mut report.reserve, "reserve");
         count(
@@ -918,13 +1067,32 @@ fn run(sim: &mut Sim, rec: &Recording, offset: i64, opts: Options) -> Result<Rep
             &mut report.shots_fired,
             "shots fired",
         );
-        let di = theirs.inaccuracy.zip(ours.inaccuracy).map(|(a, b)| (a - b).abs());
+        let di = theirs
+            .inaccuracy
+            .zip(ours.inaccuracy)
+            .filter(|_| !switched)
+            .map(|(a, b)| (a - b).abs());
         report.max_inaccuracy = report.max_inaccuracy.max(di.unwrap_or(0.0));
         count(
             di.is_some_and(|d| d > tol.inaccuracy),
             &mut report.inaccuracy,
             "accuracy",
         );
+        // The silencer or burst (of the same weapon): a toggle by this
+        // command's attack2 must match; a change without one came from
+        // outside the commands (a weapon drawn, a bot's AI) and is taken as
+        // recorded.
+        if let (Some(a), Some(b)) = (theirs.alt_mode, ours.alt_mode)
+            && a != b
+            && !weapon_differs
+        {
+            if c.buttons & buttons::ATTACK2 != 0 {
+                count(true, &mut report.alt_mode, "alt mode");
+            } else if set_alt_mode(sim.app.world_mut(), p, a) {
+                report.alt_mode_applied += 1;
+                ours.alt_mode = Some(a);
+            }
+        }
         if report.first.is_none() && !what.is_empty() {
             report.first = Some(Divergence {
                 index,

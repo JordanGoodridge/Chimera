@@ -7,8 +7,10 @@
 //! here without the harness under test. Played again it must match tick
 //! for tick (the offset found, seeds and accuracy equal), a state changed
 //! by a unit is found at its command, and the server's settings
-//! (`net_SetConVar`) are applied. The probe's real CS:S runs:
-//! `heavy::demo_resim`.
+//! (`net_SetConVar`) are applied. Synthetic recordings of a gun's state
+//! at the start: a silenced USP (its attack2 toggle replayed), a FAMAS in
+//! burst mode, an XM1014 mid-recovery and mid-cycle. The probe's real
+//! CS:S runs: `heavy::demo_resim`.
 
 use bevy::{ecs::message::Messages, prelude::*};
 use source_formats::dem::{
@@ -18,17 +20,17 @@ use source_formats::dem::{
 };
 
 use crate::stack::{
-    core::{Seed, SimTick},
+    core::{Seed, SimClock, SimTick},
     games::cs_source::{
         TICK_INTERVAL,
         demo::{self, CsDemo, FL_DUCKING, FL_ONGROUND, Happening, LocalSnap, PlayerSnap, Thing},
         movement::{self as source, SourceMovement, SourceMovementConfig, SourceMovementPlugin, to_source},
         resim::{self, Options, Recording},
-        weapons::CsWeaponsPlugin,
+        weapons::{CsWeaponsPlugin, Inaccuracy},
     },
     greybox::{self, GreyboxMapPlugin},
     harness::{CsSim, Sim},
-    weapon::{Inventory, Magazine, SpreadShape, WeaponEvent, WeaponEventKind, WeaponState, give},
+    weapon::{AltModes, Inventory, Magazine, SpreadShape, WeaponEvent, WeaponEventKind, WeaponState, give},
 };
 
 /// Tick base minus command number (a server's count runs ahead of the
@@ -253,6 +255,7 @@ fn a_client_demo_replays_tick_for_tick() {
     assert_eq!(rec.commands.len(), cmds.len());
     assert_eq!(rec.states.len(), cmds.len());
     assert_eq!(rec.commands[40].buttons, buttons::FORWARD | buttons::JUMP);
+    assert!(rec.states.iter().all(|s| s.alt_mode == Some(0)), "no silencer or burst");
     let r = run(&rec);
     assert_eq!(r.offset, OFFSET, "the tick base's lead found");
     // The last state is in no frame (its frame would be the next command's).
@@ -309,4 +312,221 @@ fn the_servers_settings_are_applied() {
     let r = run(&rec);
     let d = r.first.expect("a divergence without the settings");
     assert!((10..20).contains(&d.index), "{}: {}", d.index, d.what);
+}
+
+// ---------------------------------------------------------------------------
+// A gun's state at the start: a synthetic recording (the probe's
+// convention: command t leads to state t + 1) of a run of ours with the
+// weapon's alternate state (silencer, burst), accuracy penalty and timers
+// as they were.
+
+/// `count` commands, each with the buttons whose range holds its place.
+fn gun_commands(press: &[(u32, std::ops::Range<u32>)], count: u32) -> Vec<UserCmd> {
+    (0..count)
+        .map(|i| UserCmd {
+            command_number: FIRST + i,
+            tick_count: 10_000 + i,
+            view_angles: [5.0, 90.0, 0.0],
+            buttons: press
+                .iter()
+                .filter(|(_, at)| at.contains(&i))
+                .fold(0, |b, (k, _)| b | k),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Our run of `cmds` with `weapon` in alternate mode `mode`: the state
+/// before the first command and after each (the weapon's alternate mode,
+/// penalty and timers included), and the shots.
+fn gun_run(weapon: &str, mode: u8, cmds: &[UserCmd]) -> (Vec<resim::Observed>, Vec<resim::RecordedShot>) {
+    let mut sim = make();
+    let p = sim.spawn_character(greybox::SPAWNS[0], source::ID);
+    sim.ticks(1);
+    let w = give(sim.app.world_mut(), p, weapon).unwrap();
+    sim.seconds(1.5);
+    if let Some(mut m) = sim.app.world_mut().get_mut::<AltModes>(w) {
+        m.current = mode;
+    }
+    let snap = |sim: &Sim, key: i64| -> resim::Observed {
+        let world = sim.app.world();
+        let me = world.get::<SourceMovement>(p).unwrap();
+        let st = world.get::<WeaponState>(w).unwrap();
+        let m = world.get::<Magazine>(w).unwrap();
+        // The next command runs at the next tick's time.
+        let next = world.resource::<SimClock>().now + TICK_INTERVAL;
+        let wait = |t: f64| (t - next) as f32;
+        resim::Observed {
+            key,
+            tick: key as i32,
+            origin: (to_source(sim.position(p)) - Vec3::Z * 36.0).to_array(),
+            velocity: Some(to_source(sim.velocity(p)).to_array()),
+            on_ground: me.on_ground,
+            ducked: me.ducked,
+            weapon: Some(weapon.into()),
+            clip: Some(m.clip as i32),
+            reserve: Some(m.reserve as i32),
+            shots_fired: Some(st.burst as i32),
+            inaccuracy: world.get::<Inaccuracy>(w).map(|i| i.value),
+            alt_mode: world.get::<AltModes>(w).map(|m| m.current),
+            waits: Some([
+                wait(st.next_primary),
+                wait(st.next_secondary),
+                wait(world.get::<Inventory>(p).unwrap().next_attack),
+            ]),
+            carried: Vec::new(),
+        }
+    };
+    let mut states = vec![snap(&sim, 0)];
+    let mut shots = Vec::new();
+    let mut cursor = sim.app.world().resource::<Messages<WeaponEvent>>().get_cursor();
+    for (i, c) in cmds.iter().enumerate() {
+        let next = sim.app.world().resource::<SimTick>().0 + 1;
+        sim.app
+            .world_mut()
+            .entity_mut(p)
+            .insert(Seed(c.command_number.wrapping_sub(next as u32) as u64));
+        {
+            let mut it = sim.intent(p);
+            it.yaw = c.view_angles[1].to_radians() - std::f32::consts::FRAC_PI_2;
+            it.pitch = -c.view_angles[0].to_radians();
+            it.fire = c.buttons & buttons::ATTACK != 0;
+            it.secondary = c.buttons & buttons::ATTACK2 != 0;
+        }
+        sim.ticks(1);
+        for e in cursor.read(sim.app.world().resource::<Messages<WeaponEvent>>()) {
+            if let WeaponEventKind::Fired {
+                seed,
+                spread: SpreadShape::Disc { inaccuracy, spread },
+                ..
+            } = e.kind
+            {
+                shots.push(resim::RecordedShot {
+                    key: i as i64,
+                    seed: Some(seed),
+                    inaccuracy: Some(inaccuracy),
+                    spread: Some(spread),
+                    ..Default::default()
+                });
+            }
+        }
+        states.push(snap(&sim, i as i64 + 1));
+    }
+    (states, shots)
+}
+
+/// The recording of `cmds` from state `from` on.
+fn synthetic(cmds: &[UserCmd], states: &[resim::Observed], shots: &[resim::RecordedShot], from: usize) -> Recording {
+    Recording {
+        name: "synthetic".into(),
+        map: "greybox".into(),
+        tick_interval: TICK_INTERVAL as f32,
+        commands: cmds
+            .iter()
+            .enumerate()
+            .skip(from)
+            .map(|(i, c)| resim::Command {
+                key: i as i64,
+                tick: i as i32,
+                number: c.command_number,
+                buttons: c.buttons,
+                pitch: c.view_angles[0],
+                yaw: c.view_angles[1],
+                ..Default::default()
+            })
+            .collect(),
+        states: states[from..].to_vec(),
+        shots: shots.iter().filter(|s| s.key >= from as i64).cloned().collect(),
+        offset: Some(1),
+        ..Default::default()
+    }
+}
+
+fn assert_tick_for_tick(r: &resim::Report, shots: usize) {
+    assert!(r.first.is_none(), "{:?}", r.first);
+    assert_eq!(
+        (r.shots.recorded, r.shots.ours),
+        (shots, shots),
+        "{:?}",
+        r.shots.first_mismatch
+    );
+    assert_eq!(r.shots.same_tick, shots);
+    assert_eq!(r.shots.seeds_equal, shots);
+    assert!(r.shots.max_inaccuracy_diff < 1e-6, "{}", r.shots.max_inaccuracy_diff);
+    assert!(r.max_inaccuracy < 1e-6, "{}", r.max_inaccuracy);
+}
+
+#[test]
+fn a_silenced_usp_starts_silenced_and_its_toggle_replays() {
+    // Taps with the silencer on, attack2 takes it off (3 s), taps again.
+    let taps = [10..11, 30..31, 50..51, 290..291, 310..311];
+    let mut press: Vec<(u32, std::ops::Range<u32>)> = taps.iter().map(|t| (buttons::ATTACK, t.clone())).collect();
+    press.push((buttons::ATTACK2, 70..71));
+    let cmds = gun_commands(&press, 330);
+    let (states, shots) = gun_run("weapon_usp", 1, &cmds);
+    assert_eq!(states[0].alt_mode, Some(1));
+    assert_eq!(states.last().unwrap().alt_mode, Some(0), "attack2 took it off");
+    assert_eq!(shots.len(), taps.len());
+    let r = run(&synthetic(&cmds, &states, &shots, 0));
+    assert_tick_for_tick(&r, shots.len());
+    assert_eq!(
+        (r.alt_mode, r.alt_mode_applied),
+        (0, 0),
+        "the toggle replayed as attack2"
+    );
+
+    // Without the state recorded ours starts unsilenced: each shot adds
+    // the unsilenced USP's penalty.
+    let mut rec = synthetic(&cmds, &states, &shots, 0);
+    rec.states.iter_mut().for_each(|s| s.alt_mode = None);
+    let r = run(&rec);
+    let d = r.first.expect("the penalty differs");
+    assert!(d.what.contains("accuracy"), "{}", d.what);
+    assert!(r.max_inaccuracy > 0.005, "{}", r.max_inaccuracy);
+
+    // Placed unsilenced, the recording's silencer (on before the first
+    // command, no attack2) is set at the first state that shows it.
+    let mut rec = synthetic(&cmds, &states, &shots, 0);
+    rec.states[0].alt_mode = Some(0);
+    let r = run(&rec);
+    assert_tick_for_tick(&r, shots.len());
+    assert_eq!((r.alt_mode, r.alt_mode_applied), (0, 1));
+
+    // Without the attack2, the recorded change is applied, not a divergence.
+    let mut rec = synthetic(&cmds, &states, &shots, 0);
+    rec.commands.iter_mut().for_each(|c| c.buttons &= !buttons::ATTACK2);
+    let r = run(&rec);
+    assert_eq!((r.alt_mode, r.alt_mode_applied), (0, 1));
+    assert_eq!(r.shots.same_tick, shots.len());
+}
+
+#[test]
+fn a_famas_starts_in_burst_mode() {
+    let cmds = gun_commands(&[(buttons::ATTACK, 10..11), (buttons::ATTACK, 60..61)], 90);
+    let (states, shots) = gun_run("weapon_famas", 1, &cmds);
+    assert_eq!(shots.len(), 6, "two bursts of three");
+    let r = run(&synthetic(&cmds, &states, &shots, 0));
+    assert_tick_for_tick(&r, shots.len());
+
+    // Started in single shots (the state not recorded): one a pull.
+    let mut rec = synthetic(&cmds, &states, &shots, 0);
+    rec.states.iter_mut().for_each(|s| s.alt_mode = None);
+    let r = run(&rec);
+    assert_eq!(r.shots.ours, 2);
+    assert!(r.first.is_some());
+}
+
+#[test]
+fn a_replay_starts_mid_recovery_and_mid_cycle() {
+    // An XM1014 shot, then the recording starts 6 commands later: penalty
+    // still recovering, the next shot not yet allowed; fire held through.
+    let cmds = gun_commands(&[(buttons::ATTACK, 5..6), (buttons::ATTACK, 12..40)], 60);
+    let (states, shots) = gun_run("weapon_xm1014", 0, &cmds);
+    let from = 11;
+    assert!(states[from].waits.unwrap()[0] > 0.05, "{:?}", states[from].waits);
+    assert!(states[from].inaccuracy.unwrap() > 0.02, "{:?}", states[from].inaccuracy);
+    let rec = synthetic(&cmds, &states, &shots, from);
+    assert!(!rec.shots.is_empty());
+    let r = run(&rec);
+    assert_tick_for_tick(&r, rec.shots.len());
 }
