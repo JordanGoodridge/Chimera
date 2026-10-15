@@ -606,7 +606,7 @@ quiet machine and on the Windows PC are still to be taken.
 
 Every number in "Frame time pass" was taken at load 6-33, where single
 runs swing 2-10x. What now measures besides wall time (`engine/core/src/metrics/`,
-`src/client/frame_metrics.rs`; OBSERVABILITY.md 3c says where each shows):
+`engine/client/src/client/frame_metrics.rs`; OBSERVABILITY.md 3c says where each shows):
 
 - **Thread CPU time** of the main world (between marks before `First` and
   after `Last`), the render world (before `ExtractCommands` to after
@@ -1061,3 +1061,30 @@ An edit in `engine_net` recompiles `source_logic`, `cs_source` and
 `mashup` above it (incrementally). The first `cargo test -p engine_net
 --features dev` builds its own Bevy (`-p` unifies only its features:
 31 minutes on this loaded box); later ones take seconds.
+
+### The shell in `engine_client`, CS:S's front end in `cs_source` (2026-10-15)
+
+The rest of the client shell moved into `engine/client` (19.3k lines
+with the base) and CS:S's front end with its HUD into `cs_source`
+behind its `ui` feature (22.1k lines beside the simulation's 40.5k);
+`mashup`'s library is the app's glue (1.4k lines; the binaries 5.6k).
+Same setup, a new `pub fn` appended to one file, then reverted and timed
+again (load 6-18):
+
+| Edit | Command | Time |
+|---|---|---|
+| a leaf in CS:S's front end (`games/cs_source/src/ui/window_icon.rs`) | `cargo test --features dev --no-run` | 14 s, 15 s (was 18-20 s) |
+| the same | `cargo test -p cs_source --features dev,ui` (249 tests) | 5 s, 5 s |
+| a leaf in the shell (`engine/client/src/client/chat.rs`) | `cargo test --features dev --no-run` | 21 s, 22 s (was 19-23 s, 36-64 s before `engine_net`) |
+| the same | `cargo test -p engine_client --features dev` (85 tests) | 6 s, 3 s |
+| a leaf in CS:S's simulation (`games/cs_source/src/game/pain.rs`) | `cargo test --features dev --no-run` | 23 s, 19 s (was 22-27 s) |
+| the same | `cargo test -p cs_source --features dev` (136 tests, no `ui`) | 3 s, 3 s |
+
+A front end edit no longer rebuilds the shell, an edit in the shell no
+longer rebuilds `mashup`'s old 23k-line shell. A simulation edit
+recompiles the front end too (one crate, `cs_source` with `ui` in the
+game's build), which costs no more than the old `mashup` rebuild did;
+`-p cs_source` without `ui` checks the simulation alone. The first
+`cargo test -p cs_source --features dev` and `-p engine_client` build
+their own feature sets of the dependencies (9 minutes here for
+`cs_source` on a loaded box); later ones take seconds.

@@ -129,6 +129,7 @@ fn main() {
     })
     // Network play: a listen server, or a client (`connect`).
     .add_plugins(mashup::net::NetPlugin)
+    // The client shell with CS:S's HUD in it.
     .add_plugins(client::ClientPlugin { args })
     // CS:S's menus, panels and HUD (the shell reaches them through
     // `client::front_end`).
@@ -136,7 +137,35 @@ fn main() {
     if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
         single_threaded_schedules(&mut app);
     }
+    if let Some(path) = std::env::var_os("MASHUP_SYSTEM_DUMP") {
+        dump_systems(&mut app, std::path::Path::new(&path));
+        // Without the event loop having run, dropping the app crashes.
+        std::process::exit(0);
+    }
     app.run();
+}
+
+/// `MASHUP_SYSTEM_DUMP=<file>`: the app built as it would run (plugins
+/// finished), every schedule's systems in the order they run, the main
+/// world's then the render world's (`harness::system_order`), written to
+/// the file instead of running; for refactors that move the client's
+/// systems between plugins or crates (docs/OBSERVABILITY.md).
+fn dump_systems(app: &mut App, path: &std::path::Path) {
+    use bevy::app::PluginsState;
+    while app.plugins_state() == PluginsState::Adding {
+        bevy::tasks::tick_global_task_pools_on_main_thread();
+    }
+    app.finish();
+    app.cleanup();
+    let mut text = mashup::harness::system_order(app.world_mut());
+    if let Some(sub) = app.get_sub_app_mut(bevy::render::RenderApp) {
+        text += "render world:\n";
+        text += &mashup::harness::system_order(sub.world_mut());
+    }
+    match std::fs::write(path, text) {
+        Ok(()) => eprintln!("systems in order written to {}", path.display()),
+        Err(e) => eprintln!("error: MASHUP_SYSTEM_DUMP {}: {e}", path.display()),
+    }
 }
 
 /// Run the per-frame schedules on one thread each instead of Bevy's

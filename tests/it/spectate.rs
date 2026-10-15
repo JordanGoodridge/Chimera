@@ -334,8 +334,10 @@ fn a_network_clients_freeze_cam_finds_its_killer() {
 #[test]
 fn the_spectator_menu_picks_the_camera_player_and_overview() {
     use mashup::{
-        client::overview::{OverviewSettings, OverviewStatePlugin},
-        games::cs_source::ui::spectator_menu::{SpectatorMenu, SpectatorMenuPlugin},
+        games::cs_source::ui::{
+            overview::{OverviewSettings, OverviewStatePlugin},
+            spectator_menu::{SpectatorMenu, SpectatorMenuPlugin},
+        },
     };
     let mut sim = Sim::with(|app| {
         app.init_resource::<ButtonInput<KeyCode>>()

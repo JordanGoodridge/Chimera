@@ -100,28 +100,6 @@ fn dump(world: &mut World) -> String {
     out
 }
 
-/// Every schedule's systems in the order they run (built now if they
-/// haven't run yet: the fixed ones on the first update).
-fn system_order(world: &mut World) -> String {
-    let mut labels: Vec<(String, bevy::ecs::schedule::InternedScheduleLabel)> = world
-        .resource::<Schedules>()
-        .iter()
-        .map(|(label, s)| (format!("{label:?}"), s.label()))
-        .collect();
-    labels.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut out = String::new();
-    for (name, label) in labels {
-        let _ = writeln!(out, "{name}:");
-        world.schedule_scope(label, |world, schedule| {
-            schedule.initialize(world).expect("schedule builds");
-            for (_, system) in schedule.systems().expect("initialized") {
-                let _ = writeln!(out, "  {}", system.name());
-            }
-        });
-    }
-    out
-}
-
 #[test]
 fn dump_spawned_maps() {
     let Some(dir) = std::env::var_os("MASHUP_SPAWN_DUMP").map(PathBuf::from) else {
@@ -145,7 +123,7 @@ fn dump_spawned_maps() {
         eprintln!("{name}: {} lines to {}", text.lines().count(), path.display());
         // After the world's dump: building a schedule initializes its
         // systems (which may add resources).
-        let order = system_order(sim.app.world_mut());
+        let order = mashup::harness::system_order(sim.app.world_mut());
         std::fs::write(dir.join(format!("{name}.systems.txt")), order).unwrap();
     }
 }

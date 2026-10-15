@@ -51,8 +51,9 @@ pub use cs_source::{bot, objectives, rules};
 
 use bevy::prelude::*;
 
-/// Default fixed tick rate until a ruleset or movement spec sets one.
-pub const DEFAULT_TICK_HZ: f64 = 64.0;
+/// Default fixed tick rate until a ruleset or movement spec sets one
+/// (`core::DEFAULT_TICK_HZ`).
+pub use engine_core::core::DEFAULT_TICK_HZ;
 
 /// Everything the simulation needs, with no window, rendering or input.
 /// Used by the game, headless tests and (later) a dedicated server.
@@ -73,6 +74,21 @@ impl Plugin for SimPlugins {
                 games::cs_source::net::CsSourceNetPlugin,
             ))
             .add_plugins((logic::LogicPlugin, metrics::TickMetricsPlugin));
+    }
+}
+
+/// What this app tells the client shell (`client::AppHooks`): its commit,
+/// how it loads maps (`games::load_map_level`, `load_map_file`,
+/// `map_file_bytes`) and its greybox.
+#[cfg(feature = "present")]
+pub fn client_hooks() -> client::AppHooks {
+    client::AppHooks {
+        build: env!("MASHUP_GIT"),
+        load_map: games::load_map_level,
+        load_map_file: games::load_map_file,
+        map_file_bytes: games::map_file_bytes,
+        unload_greybox: greybox::unload,
+        respawn_greybox: greybox::respawn,
     }
 }
 

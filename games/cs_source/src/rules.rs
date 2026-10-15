@@ -68,6 +68,8 @@ pub struct DeathmatchPlugin;
 
 impl Plugin for DeathmatchPlugin {
     fn build(&self, app: &mut App) {
+        // A map loaded (the client's `map`, the greybox) starts a new game.
+        app.insert_resource(crate::core::NewGame(new_game));
         app.init_resource::<Deathmatch>().add_message::<Died>().add_systems(
             FixedUpdate,
             (
@@ -216,46 +218,6 @@ pub fn auto_assign(w: &mut World) -> Team {
         }
     }
     if counts[2] < counts[1] { Team(2) } else { Team(1) }
-}
-
-/// How a player comes into a game it starts or joins: CS:S's way, the
-/// join menus (`Menus`: the server's message of the day, then the team
-/// menu, then the class menu; until it picks it is `core::Unassigned`),
-/// or straight onto a team, as tests and scripted runs want: `Auto` the
-/// smaller team (counter-terrorists on a tie), `Team` that one (`Team(0)`
-/// the spectators). The local player's (single player, a listen server's
-/// host) and, for a network client, the one it asks the server for
-/// (`net`). The game's interactive runs use `Menus`
-/// (`client::Args::join_choice`); the default is `Auto`.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum JoinChoice {
-    Menus,
-    #[default]
-    Auto,
-    Team(Team),
-}
-
-impl JoinChoice {
-    /// As a userinfo value (`net`'s join handshake): `menus`, `auto`, or
-    /// the `jointeam` number.
-    pub fn key(self) -> String {
-        match self {
-            Self::Menus => "menus".into(),
-            Self::Auto => "auto".into(),
-            Self::Team(t) => (t.0 + 1).to_string(),
-        }
-    }
-
-    pub fn from_key(key: &str) -> Option<Self> {
-        match key.trim() {
-            "menus" => Some(Self::Menus),
-            "auto" | "0" => Some(Self::Auto),
-            "1" => Some(Self::Team(Team(0))),
-            "2" => Some(Self::Team(Team(1))),
-            "3" => Some(Self::Team(Team(2))),
-            _ => None,
-        }
-    }
 }
 
 /// Put `player` in the game on no team (`core::Unassigned`, as CS:S has
@@ -501,14 +463,10 @@ impl Default for Deathmatch {
     }
 }
 
-/// `mp_fadetoblack` (CS:S's default 0): the dead see black
-/// (`client::senses`).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct FadeToBlack(pub u8);
-
-// Kills and deaths, the dead and the map loads counted: the engine's
-// vocabulary (`core`), at their old paths here.
-pub use crate::core::{Dead, MapLoads, Score};
+// Kills and deaths, the dead, the map loads counted, how a player joins
+// and `mp_fadetoblack`: the engine's vocabulary (`core`), at their old
+// paths here.
+pub use crate::core::{Dead, FadeToBlack, JoinChoice, MapLoads, Score};
 
 /// Respawn every character on the next tick (after a map change), with
 /// fresh weapons, at the spawn points.

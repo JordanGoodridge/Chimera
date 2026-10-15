@@ -8,10 +8,10 @@ use bevy::{
     prelude::*,
 };
 use mashup::{
-    client::weapon_select::{WeaponMenu, WeaponSelectPlugin},
     console::Console,
     core::{Intent, LocalPlayer, Team},
     games::cs_source::{
+        ui::weapon_select::{WeaponMenu, WeaponSelectPlugin},
         TICK_INTERVAL,
         grenades::{FLASHBANG, HEGRENADE},
         weapons::{AK47, CsWeaponsPlugin, ITEM_SOUND, KNIFE, PICKUP_SOUND},

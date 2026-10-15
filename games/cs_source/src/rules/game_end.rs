@@ -48,24 +48,9 @@ impl Default for GameLimits {
     }
 }
 
-/// The maps played in turn (a game's `mapcycle.txt`, by short name, as
-/// `changelevel` takes them) and the one loaded now. Games and the client
-/// fill it.
-#[derive(Resource, Clone, Debug, Default, PartialEq)]
-pub struct MapCycle {
-    pub maps: Vec<String>,
-    pub current: String,
-}
-
-impl MapCycle {
-    /// The map after the current one (wrapping; the first when the current
-    /// one isn't in the cycle); None without a cycle.
-    pub fn next(&self) -> Option<String> {
-        let i = self.maps.iter().position(|m| m.eq_ignore_ascii_case(&self.current));
-        let next = i.map_or(0, |i| (i + 1) % self.maps.len());
-        self.maps.get(next).cloned()
-    }
-}
+/// The maps played in turn: the engine's (`core`, the client follows it),
+/// at its old path.
+pub use crate::core::MapCycle;
 
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<GameLimits>().init_resource::<MapCycle>();

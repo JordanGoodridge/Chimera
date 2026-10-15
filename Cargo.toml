@@ -73,6 +73,15 @@ symphonia = { version = "0.5.5", default-features = false, features = ["mp3"] }
 # HUD glyphs rasterized and placed as Source's HUD does (engine_client's
 # `hud_text`).
 ab_glyph = "0.2.32"
+# The client shell's debug UI and inspector (engine_client); egui drawn
+# over Bevy's UI (the debug UI over the HUD).
+bevy-inspector-egui = "0.37"
+bevy_egui = { version = "0.40", default-features = false, features = ["bevy_ui"] }
+# Copy and paste (the console, the front end's text fields).
+arboard = "3.6"
+serde_json = "1.0.151"
+# The window icon (`winit::window::Icon`; the winit bevy_winit uses).
+winit = { version = "0.30", default-features = false }
 
 [package]
 name = "mashup"
@@ -97,9 +106,9 @@ engine_world.workspace = true
 # (engine/present); re-exported at their old paths (lib.rs). Behind the
 # default feature `present`: the dedicated server builds without it.
 engine_present = { workspace = true, optional = true }
-# The client shell's base: the front end's interface, fonts, HUD text, the
-# VGUI-like widgets, binds (engine/client); re-exported at their old paths
-# in `client` (src/client/mod.rs). With `present`, as the client.
+# The client shell: window, input, camera, console UI, HUD base, widgets,
+# debug tools, network glue (engine/client); re-exported as
+# `mashup::client` (src/client.rs). With `present`, as the client.
 engine_client = { workspace = true, optional = true }
 # Source's map logic: entity I/O, logic classes, triggers, movers
 # (source/logic); re-exported as `mashup::logic` (lib.rs).
@@ -118,22 +127,15 @@ cs_source.workspace = true
 engine_net.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
-bevy-inspector-egui = { version = "0.37", optional = true }
-# The inspector's egui, with egui drawn over Bevy's UI (the debug UI over the HUD).
-bevy_egui = { version = "0.40", default-features = false, features = ["bevy_ui"], optional = true }
 bevy_replicon.workspace = true
 bevy_replicon_renet.workspace = true
 postcard.workspace = true
 bzip2.workspace = true
-arboard = { version = "3.6", optional = true }
-crc32fast = { version = "1.5.2", optional = true }
 dirs.workspace = true
 half.workspace = true
 image.workspace = true
-# The window icon (`winit::window::Icon`; the winit bevy_winit uses).
-winit = { version = "0.30", default-features = false, optional = true }
 serde.workspace = true
-serde_json = "1.0.151"
+serde_json.workspace = true
 # The map file's hash in the connect handshake.
 sha2.workspace = true
 toml.workspace = true
@@ -142,6 +144,10 @@ vbsp.workspace = true
 vmdl.workspace = true
 vmt-parser.workspace = true
 vtf.workspace = true
+
+[dev-dependencies]
+# Checksums of files read through the mount (tests/it/mount_cs_source.rs).
+crc32fast = "1.5.2"
 
 # Binaries without unit tests: `cargo test` skips building a test harness
 # of each (one more link of the game apiece). A binary that gets tests
@@ -217,7 +223,7 @@ default = ["present"]
 # The presentation (engine_present: render, audio, `map::MapPlugin`), the
 # client shell (`client`) and the games' front ends (`games::*::ui`):
 # everything but the dedicated server.
-present = ["dep:engine_present", "dep:engine_client", "dep:bevy-inspector-egui", "dep:bevy_egui", "dep:arboard", "dep:crc32fast", "dep:winit"]
+present = ["dep:engine_present", "dep:engine_client", "cs_source/ui"]
 
 # The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep, demodump).
 tools = ["present"]
@@ -237,7 +243,7 @@ dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_wo
 # CPU profile: every system and render step as a span in a Chrome trace
 # (trace-<time>.json, open in https://ui.perfetto.dev). See
 # docs/performance.md. Slower; only for measuring.
-profile = ["bevy/trace_chrome"]
+profile = ["bevy/trace_chrome", "engine_client?/profile"]
 
 # Our own code: a little optimization so the game is playable in debug.
 [profile.dev]

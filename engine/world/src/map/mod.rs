@@ -54,6 +54,7 @@ pub mod hud;
 pub mod interp;
 pub mod loading;
 pub mod lod;
+pub mod logic_view;
 pub mod loose;
 pub mod material_fx;
 pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform, parameter_gamma_to_linear};

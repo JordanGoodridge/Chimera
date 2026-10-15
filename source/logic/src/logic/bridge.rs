@@ -123,6 +123,21 @@ impl Plugin for LogicPlugin {
     fn build(&self, app: &mut App) {
         // The logic's part of the network (movers, HUD messages).
         super::net::plugin(app);
+        // Its entities for tools (the client's console and debug UI).
+        app.insert_resource(crate::map::logic_view::LogicInspect {
+            names: |w| {
+                let logic = w.get_resource::<Logic>()?;
+                let ids = logic.world.ids().into_iter();
+                Some(ids.filter_map(|id| logic.world.get(id)).map(|e| (e.targetname.clone(), e.classname.clone())).collect())
+            },
+            entities: inspect_entities,
+            summary: |w| w.get_resource::<Logic>().map(|l| (l.world.ids().len(), l.world.round)),
+            fired: inspect_fired,
+            messages: |w, n| {
+                w.get_resource::<Logic>()
+                    .map_or_else(Vec::new, |l| l.world.log.iter().rev().take(n).cloned().collect())
+            },
+        });
         app.init_resource::<HudMessages>()
             .init_resource::<ScreenFades>()
             .add_message::<HudEvent>()
@@ -2441,4 +2456,59 @@ fn fire_outputs(mut asks: MessageReader<crate::map::entities::FireEntityOutput>,
             }
         }
     }
+}
+
+/// The logic's entities for tools (`map::logic_view::LogicInspect`).
+fn inspect_entities(world: &World) -> Option<Vec<crate::map::logic_view::LogicEntity>> {
+    let logic = world.get_resource::<Logic>()?;
+    Some(
+        logic
+            .world
+            .ids()
+            .into_iter()
+            .filter_map(|id| logic.world.get(id))
+            .map(|e| crate::map::logic_view::LogicEntity {
+                name: e.targetname.clone(),
+                class: e.classname.clone(),
+                origin: e.origin,
+                keys: e.keyvalues.clone(),
+                outputs: e
+                    .outputs
+                    .iter()
+                    .flat_map(|(o, cs)| {
+                        cs.iter().map(move |c| {
+                            format!(
+                                "{o} -> {} {}{} after {} s{}",
+                                c.target,
+                                c.input,
+                                c.param.as_ref().map_or(String::new(), |p| format!(" ({p})")),
+                                c.delay,
+                                if c.times > 0 { format!(", {} more times", c.times) } else { String::new() }
+                            )
+                        })
+                    })
+                    .collect(),
+            })
+            .collect(),
+    )
+}
+
+/// The latest `n` outputs fired, newest first, for tools.
+fn inspect_fired(world: &World, n: usize) -> Vec<String> {
+    let Some(logic) = world.get_resource::<Logic>() else {
+        return Vec::new();
+    };
+    logic
+        .world
+        .fired
+        .iter()
+        .rev()
+        .take(n)
+        .map(|(tick, id, out)| {
+            let who = logic.world.get(*id).map_or("?".to_string(), |e| {
+                if e.targetname.is_empty() { e.classname.clone() } else { e.targetname.clone() }
+            });
+            format!("tick {tick}: {who} {out}")
+        })
+        .collect()
 }

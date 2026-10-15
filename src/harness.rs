@@ -528,3 +528,29 @@ fn extract_meshes(
         }
     }
 }
+
+/// Every schedule's systems in the order they run (built now if they
+/// haven't run yet), one schedule after another by name: the spawn dump
+/// (`tests/it/heavy/map_spawn_dump.rs`) and the game's
+/// `MASHUP_SYSTEM_DUMP` (main.rs), for refactors that move systems
+/// between plugins or crates.
+pub fn system_order(world: &mut World) -> String {
+    use std::fmt::Write as _;
+    let mut labels: Vec<(String, bevy::ecs::schedule::InternedScheduleLabel)> = world
+        .resource::<Schedules>()
+        .iter()
+        .map(|(label, s)| (format!("{label:?}"), s.label()))
+        .collect();
+    labels.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = String::new();
+    for (name, label) in labels {
+        let _ = writeln!(out, "{name}:");
+        world.schedule_scope(label, |world, schedule| {
+            schedule.initialize(world).expect("schedule builds");
+            for (_, system) in schedule.systems().expect("initialized") {
+                let _ = writeln!(out, "  {}", system.name());
+            }
+        });
+    }
+    out
+}

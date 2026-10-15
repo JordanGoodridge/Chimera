@@ -511,8 +511,9 @@ measurements):
     it; CS:S's bind table moved to `cs_source::game::DEFAULT_BINDS`. The
     exceptions are gone; the architecture test forbids the shell any path
     naming a game (`cs_source::` too, not only `crate::games::`).
-  - [~] The front end (`src/games/cs_source/ui`, 17.9k) into
-    `games/cs_source` behind a feature: blocked. It needs, besides the
+  - [x] The front end (`src/games/cs_source/ui`, 17.9k) into
+    `games/cs_source` behind a feature (done 2026-10-15: (b)-(d) below;
+    it was blocked: It needs, besides the
     engine crates and CS:S's own: `net` (35 references: `net::client`,
     `NetSettings`, `NetCharacter`, `score_flags`, `query` (the server
     browser), `motd`, `maps`, `RadioRequest`, `NetScore`, `NetEvent`),
@@ -527,7 +528,7 @@ measurements):
     uses nearly every other; `input` uses `chat`, `debug_ui`,
     `spectate`, `vgui`, `weapon_select`). Every file of `ui/` uses
     `game_menu`, and `game_menu` uses `net` and `client::console`, so no
-    part of it can move first.
+    part of it could move first).
     - [x] (2026-10-14) The shell's base as a crate: `engine/client`
       (package `engine_client`, module `client`): `front_end`, `fonts`,
       `hud_text` (its shader at `embedded://engine_client/client/`),
@@ -561,6 +562,76 @@ measurements):
       `ui` feature depending on `engine_client` (`workspace_crates`
       keeps `engine_present` off `cs_source` today: the feature would
       need that rule relaxed for the feature's dependencies only).
+    - [x] (b) (2026-10-15) The shell names none of CS:S's rules, bots or
+      objectives outside the HUD files of (c), nor the app or Source's
+      logic: `Dead`/`Score` from `core`; `JoinChoice`, `MapCycle`,
+      `FadeToBlack` moved down to `core` (re-exported by `rules`); the
+      rules' `new_game` behind `core::NewGame` (the rules insert it,
+      `core::new_game` calls it); bots by `core::Bot`, hostages by
+      `core::Npc`; the debug UI's Bots and Rounds tabs through
+      `debug_ui::GameDebug` and the bots' overlays (`mashup_drawbots`,
+      `bot_debug`) in the front end (`ui::debug`); the app's map loading,
+      greybox and commit through `client::AppHooks` (mashup's
+      `client_hooks`), its version through `core::BuildVersion`;
+      `DEFAULT_TICK_HZ` in `core`; the logic's HUD messages, fades and
+      shakes as data in `map::logic_view` (re-exported by `logic::hud`)
+      and its entities for tools through `map::logic_view::LogicInspect`.
+      Architecture test: `client` lost `lib`, `greybox`, `games`, `bot`
+      and `logic`.
+    - [x] (c) (2026-10-15) CS:S's HUD to its front end: `game_hud`,
+      `win_panel`, `weapon_select`, `radar` (with its shader), `overview`,
+      `hud_sprites` moved whole to `src/games/cs_source/ui/`; spectating
+      split: the state and camera stay the shell's (`client::spectate`),
+      the bars and plain panel are `ui::spectator_hud`; the selection's
+      state the shell's input reads is `client::weapon_menu::WeaponMenu`
+      and `additive_as_alpha` is `client::hud`'s. The shell is a plugin
+      group (`client::ClientPlugins`: `ShellSetupPlugin` first,
+      `ShellCameraPlugin` last); the front end puts its HUD plugins where
+      they were (`ui::with_hud`, `PluginGroupBuilder::add_after`), so the
+      game's system order (`MASHUP_SYSTEM_DUMP`) is the same modulo paths
+      but for the bots' overlays, which now run after the ragdolls'
+      (gizmos only). Screenshots (main menu, options, buy, team menu,
+      scoreboard, HUD with weapon selection, spectator bars and overview,
+      debug UI tabs, de_dust2, 1280x720) match before and after within
+      the run-to-run noise (the version label aside). Architecture test:
+      `client` lost `rules` and `objectives`.
+    - [x] (d) (2026-10-15) The rest of the shell into `engine_client`:
+      every file of `src/client/` moved whole (shaders at
+      `embedded://engine_client/client/`); the shell's `vgui` (the mouse
+      grab, `keys_live`) joined the base's (one `VguiPlugin`, its systems
+      in the same order). Decided: one crate, base and shell together,
+      on the presentation and the network (its picture settings are
+      render passes, its sound settings the mixer's, its glue the
+      network's): nothing uses the base without the shell (a game's front
+      end needs both), so a split bought no compile time; it still names
+      no Source logic, app or game (`workspace_crates`: no
+      `source_logic`, replicon, `mashup` or game). `mashup::client`
+      (src/client.rs, app glue: counted as the crate root's) re-exports
+      it, with `ClientPlugin { args }` (the shell's group with
+      `client_hooks` and CS:S's HUD), CS:S's HUD modules where the shell
+      had them, and `spectate` with the spectator's HUD. Three
+      `pub(crate)` cvar registrations became `pub`, `crc32fast` a
+      dev-dependency (only a test uses it), `profile` forwards to the
+      crate.
+    - [x] (d) (2026-10-15) CS:S's front end into `cs_source` behind its
+      feature `ui` (`games/cs_source/src/ui/`, moved whole; paths
+      `crate::games::cs_source::` became `crate::game::`, the radar's
+      shader `embedded://cs_source/ui/`): the feature turns on the shell
+      (`engine_client`), the presentation, Source's logic (the
+      objectives' HUD reads the map logic), replicon's netcode client
+      (the loading dialog), the clipboard and winit, all optional;
+      `mashup`'s `present` turns it on, so the dedicated server
+      (`--no-default-features --features server`) builds without it.
+      `mashup::games::cs_source::ui` re-exports it. Architecture test:
+      a game crate's `ui` is `games_ui`, its parts may not use
+      `crate::ui::`; `workspace_crates` keeps `engine_present`,
+      `engine_client` and `source_logic` off `cs_source` but as optional
+      dependencies only `ui` turns on (`UI_FEATURES`), and
+      `game_ui_only_with_its_feature` checks `cargo tree -p cs_source`
+      without and with the feature. `mashup` is now the app's glue: the
+      binaries, the harness, `SimPlugins`/`swap_map`, `games::load_map`,
+      the greybox, `client_hooks`, `mashup::client` (re-exports and
+      `ClientPlugin`) and re-exports at the old paths.
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`
