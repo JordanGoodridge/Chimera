@@ -9,8 +9,8 @@
 > relying on it.
 
 Exploratory design for building minigames out of other games' assets, behavior
-and UI, and mixing those parts across games; "mashup" is the engine and dev
-sandbox it runs on. Everything here is a prototype: allowed to be messy, and
+and UI, and mixing those parts across games; Chimera is the engine it runs on
+("mashup", the old name of the whole, is now the dev sandbox's). Everything here is a prototype: allowed to be messy, and
 expected to change as each imported game teaches us something.
 
 Status: Bevy project set up (see CLAUDE.md for build commands). Working on the
@@ -28,6 +28,40 @@ weapons, its HUD) and make it playable in Lucker Party. Then mix parts freely:
   Combat Arms.
 
 Element swaps double as Roll the Dice modifiers.
+
+## Vision
+
+Layers, each using only those below it:
+
+```
+apps            one faithful app per game (apps/cs_source: CS:S as CS:S),
+                mashup apps that mix several games, Lucker Party the rich one
+games           each game a library (games/cs_source, later combat_arms, ...):
+                its parts (loaders, movement, weapons, rules, HUD, menus)
+loaders         a family's formats and shared behaviour (source/: Source's
+                files, its map logic)
+Chimera         the engine (chimera/): game-agnostic slots, simulation,
+                presentation, network, client shell
+Bevy, Rust
+```
+
+- **Chimera** knows no game. A game fills its slots and hooks (movement,
+  weapons, rules, HUD, replicated parts) with data and registered code.
+- **Games as libraries.** A game crate is the faithful game's parts; its
+  own app runs them as the original (parity first), and any other app can
+  take single parts: a Combat Arms character on a CS:S map is an app
+  picking two games' parts, never one game reaching into another.
+- **Apps on top.** The faithful apps are the parity baselines; mashup apps
+  mix games; Lucker Party adds the party (lobby, rotation, minigames as
+  data). Later, users mash games up themselves: minigame definitions pick
+  parts by id at run time, no rebuild.
+- **Performance holds as games are added**: a game costs only what an app
+  uses of it (crates and features), the simulation runs without the
+  presentation (the dedicated server), and tools sit at the lowest layer
+  whose knowledge they need.
+
+docs/ARCHITECTURE.md ("Crates") has the crates; the plan is
+docs/plans/active/engine-split.md.
 
 ## Scope for now
 

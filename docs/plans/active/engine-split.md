@@ -33,13 +33,19 @@ chimera/             neutral: app shell, console, slots/mounts, physics,
 source/              Source engine formats and shared Source behaviour:
                      BSP/VPK/VTF/VMT/MDL/PHY, entity I/O and logic classes,
                      soundscapes, Source materials and shaders
-games/cs_source/     CS:S: library (plugins) + standalone app
-games/combat_arms/   Combat Arms: library + standalone app (local, git-ignored for now)
+games/cs_source/     CS:S: library (plugins); its tools in games/cs_source/tools
+games/combat_arms/   Combat Arms: library (local, git-ignored for now)
 games/originals/     Lucker Party's own games and assets
 minigames/           minigame definitions + rule modules that mix games
+apps/cs_source/      the faithful CS:S app (done: `cs_source_app`, binary `mashup`)
+apps/cs_source_server/  its dedicated server (done: binary `mashup_server`)
 apps/mashup/         dev sandbox: any game, any map, all debug tools
 apps/lucker_party/   the party product
 ```
+
+Each game's faithful app is its own crate under `apps/` (decided
+2026-10-15, superseding "library + standalone app" in one crate); the
+game crate stays a library.
 
 Rules:
 - `engine` knows no game. `source` depends on `engine` only. Games depend
@@ -75,7 +81,8 @@ source/
   source    entity I/O and logic classes, Source materials/shaders, soundscapes, Source movement
 games/cs_source/   parts (weapons, rule modules, HUD, GameUI menus, bot behaviour)
                    + CsSourcePlugins (the faithful game) + its app
-minigames/, games/originals/, apps/*, tools/ (debug binaries: not built by `cargo test`)
+minigames/, games/originals/, apps/*
+chimera/tools, source/tools, games/<game>/tools   each layer's tools (behind `tools`)
 ```
 
 - Parts depend on engine (and source) interfaces only, never on each
@@ -704,6 +711,24 @@ measurements):
   `cargo test --features dev --no-run` after a leaf edit in `chimera_net`
   27-32 s, in the client 19-23 s; `cargo test -p chimera_net --features
   dev` builds and runs its 29 tests in 6 s.
+- [x] (3) Chimera, apps, layer tools, workspace-hack (2026-10-15, one
+  session; user decisions of the day): `engine/` became `chimera/`
+  (crates `chimera_*`); the root package's app glue moved to
+  `apps/cs_source` (`cs_source_app`: the game binary `mashup`, the
+  workspace's `default-run`; `SimPlugins`, the harness, the greybox,
+  `games::load_map`, `client_hooks`, build.rs), the dedicated server to
+  `apps/cs_source_server` (`mashup_server`, the app without `present`:
+  `cargo build --release -p cs_source_server`); `mashup` is a thin shim
+  (`cs_source_app` at the old paths, for tests/it, `dump` and Combat
+  Arms' local loader). Tools by layer: `chimera_tools` (the perf gate as
+  a library, `imgcmp`, `tracesum`), `source_tools` (RCON, `demodump`,
+  `testmap`), `cs_source_tools` (refcmp's CS:S driver, movecmp,
+  mapsweep, perfgate's scenarios; on the app's harness, tech-debt.md).
+  `chimera/workspace-hack` (`cargo hakari`) with Bevy's development
+  features in `chimera_dev` and `[profile.dev.build-override] debug =
+  false`: the first `cargo test -p chimera_world --features dev` after a
+  warm workspace build went from 560 s to 3 s (performance.md,
+  "Workspace-hack"). Binary names users run are unchanged.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
