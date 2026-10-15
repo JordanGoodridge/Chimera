@@ -136,13 +136,16 @@ impl Default for GrenadeRng {
 // Parts
 
 /// How the throw direction and speed follow the view (spec 3): the pitch
-/// is bent `p' = lift + p x scale` (degrees, positive down), the speed is
+/// is bent `p' = lift + p x scale` (degrees, positive down; `scale_up`
+/// while looking up, `scale` looking down), the speed is
 /// `min(max, per_deg x (90 - p'))`, the projectile starts `forward` ahead
 /// of the eye and takes the thrower's velocity on top.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ThrowRule {
     pub pitch_lift: f32,
     pub pitch_scale: f32,
+    /// The scale while looking up (`p` < 0).
+    pub pitch_scale_up: f32,
     /// m/s per degree.
     pub speed_per_deg: f32,
     pub speed_max: f32,
@@ -152,7 +155,8 @@ pub struct ThrowRule {
 impl ThrowRule {
     /// The bent pitch for a view pitch `p` (degrees, positive down).
     pub fn pitch(&self, p: f32) -> f32 {
-        self.pitch_lift + p * self.pitch_scale
+        let scale = if p < 0.0 { self.pitch_scale_up } else { self.pitch_scale };
+        self.pitch_lift + p * scale
     }
 
     /// Speed for a bent pitch, m/s.
@@ -1469,6 +1473,7 @@ mod tests {
         ThrowRule {
             pitch_lift: -10.0,
             pitch_scale: 100.0 / 90.0,
+            pitch_scale_up: 80.0 / 90.0,
             speed_per_deg: 6.0 * U,
             speed_max: 750.0 * U,
             forward: 16.0 * U,
@@ -1511,13 +1516,11 @@ mod tests {
         // (view pitch, Source degrees positive down; spawn offset; velocity)
         let cases = [
             (0.0, Some(Vec3::new(15.757, 0.0, 2.778)), Vec3::new(590.88, 0.0, 104.19)),
-            (-22.5, None, Vec3::new(614.36, 0.0, 430.18)),
-            (-45.0, None, Vec3::new(375.0, 0.0, 649.52)),
-            (
-                -89.0,
-                Some(Vec3::new(-5.18, 0.0, 15.138)),
-                Vec3::new(-242.8, 0.0, 709.61),
-            ),
+            // Looking up bends by 80/90, not the template's 100/90
+            // (measured on CS:S, grenades.md Q5).
+            (-22.5, Some(Vec3::new(13.856, 0.0, 8.0)), Vec3::new(623.54, 0.0, 360.0)),
+            (-45.0, None, Vec3::new(482.09, 0.0, 574.53)),
+            (-89.0, Some(Vec3::new(0.248, 0.0, 15.998)), Vec3::new(11.64, 0.0, 749.91)),
             (45.0, None, Vec3::new(229.81, 0.0, -192.84)),
             (89.0, Some(Vec3::new(0.31, 0.0, -15.997)), Vec3::new(0.13, 0.0, -6.67)),
         ];
@@ -1528,7 +1531,12 @@ mod tests {
                 assert!(close(src(start - eye), o, 0.01), "pitch {p}: {}", src(start - eye));
             }
         }
-        assert!((r.pitch(-22.5) + 35.0).abs() < 1e-4 && (r.speed(-35.0) / U - 750.0).abs() < 1e-3);
+        assert!((r.pitch(-22.5) + 30.0).abs() < 1e-4 && (r.speed(-30.0) / U - 720.0).abs() < 1e-3);
+        // The probe's throws (grenades.md "CS:S values", Q5).
+        for (view, bent, speed) in [(46.65, 41.84, 289.0), (17.58, 9.53, 482.8), (-23.06, -30.50, 723.0), (-69.35, -71.64, 750.0)] {
+            assert!((r.pitch(view) - bent).abs() < 0.02, "{view}: {}", r.pitch(view));
+            assert!((r.speed(r.pitch(view)) / U - speed).abs() < 0.2, "{view}");
+        }
         // G7: running forward at 250 adds it all.
         let run = Vec3::new(0.0, 0.0, -250.0 * U);
         let (_, v) = r.throw(eye, 0.0, 0.0, run);

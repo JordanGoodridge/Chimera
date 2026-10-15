@@ -692,6 +692,12 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
 - **Q1 release:** the projectile appears 6 ticks (about 0.09 s) after the
   throw's `weapon_fire`, whether attack was tapped (1 tick) or held 30 or 70
   ticks: a tap throws at once, as the template's release + 0.1 s.
+- **Q5 pitch form:** the throw's launch follows the template's bend with
+  the sign split: looking down (Source pitch p > 0) p' = -10 + p × 100/90,
+  looking up p' = -10 + p × 80/90; speed = min(750, 6 × (90 − p')). Aim
+  46.65° → launch 41.84°, 289 u/s; 17.58° → 9.53°, 482.8; −23.06° →
+  −30.50°, 723.0; −69.35° → −71.64°, 750 (capped); 84.41° → 83.79°, 37.3.
+  The projectile appears about 16 units ahead of the eye.
 - **Q8 fuse:** HE and flashbang detonate 115 ticks after `weapon_fire`,
   about 109 after the projectile appears (1.6 s: the template's 1.5 s
   checked every 0.2 s); smoke 111 after the fire event while still rolling.

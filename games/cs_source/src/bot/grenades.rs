@@ -405,6 +405,7 @@ mod tests_support {
         ThrowRule {
             pitch_lift: -10.0,
             pitch_scale: 100.0 / 90.0,
+            pitch_scale_up: 80.0 / 90.0,
             speed_per_deg: 6.0 * UNIT,
             speed_max: 750.0 * UNIT,
             forward: 16.0 * UNIT,
