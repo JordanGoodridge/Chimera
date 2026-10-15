@@ -153,6 +153,8 @@ fn built() -> CsDemo {
         models: Vec::new(),
         names: HashMap::from([(1, "Mark".to_string())]),
         sounds: Vec::new(),
+        recorder: None,
+        cvars: Vec::new(),
     }
 }
 

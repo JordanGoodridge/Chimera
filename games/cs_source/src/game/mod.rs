@@ -164,7 +164,9 @@
 //! in model space, `props::load_held`), the `v_c4` press-button sequence on
 //! `ArmingStarted`, the third-person `*_Shoot_C4` gesture, sound entries, the
 //! $200 defusal kit for CTs, the four hostage models loaded on maps with
-//! hostages). CS:S demos played back with their players as puppets (`demo.rs`).
+//! hostages). CS:S demos played back with their players as puppets (`demo.rs`);
+//! a client demo's (or the probe's) recorded input played again through our
+//! movement and weapons and compared (`resim.rs`, the `demosim` tool).
 
 pub mod ambient;
 pub mod anim;
@@ -200,6 +202,7 @@ pub mod props;
 pub mod pushaway;
 pub mod radio;
 pub mod ropes;
+pub mod resim;
 pub mod rules;
 pub mod scrapes;
 pub mod shadow;

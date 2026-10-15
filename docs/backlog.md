@@ -530,16 +530,18 @@ and, untested, client demos; OBSERVABILITY.md "CS:S demos").
   `playdemo` (screenshots via refcmp on the Windows PC or an unlocked
   desktop), watch any CS:S demo in our game (CS:S's `playdemo`/`demoui`
   are missing rows in parity-gaps.md), and record our own `.dem` later.
-- **Re-simulate recorded input.** A POV (client `record`) demo holds the
-  recording player's user commands every tick: feed them to our movement
-  and weapons (other players as puppets from the file) and compare
-  position, velocity, ducking, ammo, spread (the command's seed) and hits
-  per tick with what the demo recorded: movecmp at scale with human play
-  (bhop, ladders, surf, strafe-shooting). SourceTV and most pro demos have
-  no user commands, so they only serve `playdemo`. Order: our own probe
-  demos first (known server, maps and settings), then community demos on
-  current map versions; old pro demos (2005-2010) need the pre-Orange-Box
-  network protocol and their own map versions, and often run at tick 100.
+- **Re-simulate recorded input.** Built: `demosim` (OBSERVABILITY.md
+  "Re-simulating a client demo"): a client demo's user commands decoded
+  and played again through our movement and weapons, compared per
+  command; the probe's logs as a real reference (`--probe`). Remaining:
+  record a client demo on the Windows PC (bhop, ladders, surf,
+  strafe-shooting; the doc says how) and run it, which also confirms the
+  usercmd delta base and the own-client prop names
+  (`cslocaldata.m_vecOrigin`, `m_nTickBase`) on a real file; other
+  players as colliding puppets; doors and movers as recorded. Community
+  demos on current map versions next; old pro demos (2005-2010) need the
+  pre-Orange-Box network protocol and their own map versions, and often
+  run at tick 100.
 
 ## 3. Weapons, remaining
 

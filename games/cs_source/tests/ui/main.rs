@@ -22,6 +22,7 @@ use common::{load_map, load_map_level};
 mod console_commands;
 mod cs_guns;
 mod debug_ui;
+mod demo_chat;
 mod join_flow;
 mod menus;
 mod net_players;

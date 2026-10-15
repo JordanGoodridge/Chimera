@@ -168,7 +168,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `chimera_tools` (chimera/tools/: the perf gate, `imgcmp`, `tracesum`;
   no Source, game or app), `source_tools` (source/tools/: RCON,
   `demodump`, `testmap`; no Bevy, Chimera or game) and `cs_source_tools`
-  (games/cs_source/tools/: `refcmp`'s CS:S driver, `movecmp`, `mapsweep`,
+  (games/cs_source/tools/: `refcmp`'s CS:S driver, `movecmp`, `demosim`, `mapsweep`,
   `perfgate`'s scenarios). CS:S's tools still depend on `cs_source_app`
   (its build stamp, map loading by id: tech-debt.md).
   An app's own tools only for app concerns (launch, packaging, budgets).
@@ -452,7 +452,7 @@ that the paths exist).
 - `source/formats/src/pcf.rs`: particle files (binary DMX) and particle manifests
 - `source/formats/src/nav.rs`: `.nav` file records (linked into a `NavMesh` by `games/cs_source/src/game/nav.rs`)
 - `source/formats/src/wav.rs`: WAV (PCM, MS-ADPCM) and MP3 decoding to `SoundClip`
-- `source/formats/src/dem/`: Source demos (`.dem`): frames, net messages, string tables, events, sounds, entity props per tick, playback timeline
+- `source/formats/src/dem/`: Source demos (`.dem`): frames, messages, tables, events, sounds, props, user commands, playback, a test writer
 
 ### Apps, binaries and the test harness
 
@@ -481,6 +481,7 @@ that the paths exist).
 - `games/cs_source/tools/src/bin/refcmp.rs`: dev tool: compare views against real CS:S (its reference driver)
 - `games/cs_source/tools/src/hudcmp.rs`: `refcmp hudcmp`: the HUD compared panel by panel with CS:S's
 - `games/cs_source/tools/src/bin/movecmp.rs`: dev tool: Source movement compared tick for tick with CS:S's
+- `games/cs_source/tools/src/bin/demosim.rs`: dev tool: a client demo's recorded input re-simulated and compared (`game/resim.rs`)
 - `games/cs_source/tools/src/bin/mapsweep.rs`: dev tool: load every cached map headless and report problems
 - `games/cs_source/tools/src/bin/perfgate.rs`: dev tool: CS:S's scenarios on the perf gate
 

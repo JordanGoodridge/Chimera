@@ -33,6 +33,7 @@ mod bot_manners;
 mod cs_grenades;
 mod cs_guns;
 mod demo_playback;
+mod demo_resim;
 mod drawn_parts;
 mod hit_reaction;
 mod impact_effects;
@@ -77,6 +78,7 @@ mod heavy {
     mod bot_nav;
     mod bot_rounds;
     mod demo_playback;
+    mod demo_resim;
     mod map_ambient;
     mod map_areaportals;
     mod map_breakables;
