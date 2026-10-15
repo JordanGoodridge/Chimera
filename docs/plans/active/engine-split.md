@@ -543,7 +543,10 @@ measurements):
       `mashup` and the games; the server build check lists it as
       client-only. Main menu and buy menu screenshots on de_dust2 are
       pixel-identical before and after, the scoreboard differs in 4
-      pixels (bots).
+      pixels (bots). Measured (docs/performance.md, "`engine_client`"): a
+      leaf edit's `cargo test --features dev --no-run` 18-20 s in the
+      front end, 36-64 s in the shell (was 77-78 s), 15-37 s in
+      `engine_client`; `cargo test -p engine_client` 2 s.
     - Left, in order: (a) `net` to `engine_net` (another session); (b)
       the shell's references to CS:S's rules and bots (`rules` 33:
       `JoinChoice`, `Dead`, `RoundState`/`Phase`, `MapCycle`,
