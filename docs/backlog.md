@@ -513,6 +513,30 @@ our own (docs/plans/active/nat-traversal.md; UPnP mapping prototyped,
 (multiplayer.md "Capacity", `heavy::net_capacity`); 1 is moot
 (networking came first), 2 was taken as both.
 
+## 2d. CS:S demos as a parity check (user idea, 2026-10-14)
+
+Built: `demodump` reads CS:S `.dem` files (`source_formats::dem`; SourceTV
+and, untested, client demos; OBSERVABILITY.md "CS:S demos").
+
+- **`playdemo` in our engine.** Drive our game from a CS:S demo: every
+  player's position, angles, weapon, animation sequence, shots
+  (`CTEFireBullets`), grenades, smoke clouds, sounds and the round/HUD
+  state come from the file; our renderer, animation, effects, HUD and
+  audio show them. Uses: compare the same tick against CS:S's own
+  `playdemo` (screenshots via refcmp on the Windows PC or an unlocked
+  desktop), watch any CS:S demo in our game (CS:S's `playdemo`/`demoui`
+  are missing rows in parity-gaps.md), and record our own `.dem` later.
+- **Re-simulate recorded input.** A POV (client `record`) demo holds the
+  recording player's user commands every tick: feed them to our movement
+  and weapons (other players as puppets from the file) and compare
+  position, velocity, ducking, ammo, spread (the command's seed) and hits
+  per tick with what the demo recorded: movecmp at scale with human play
+  (bhop, ladders, surf, strafe-shooting). SourceTV and most pro demos have
+  no user commands, so they only serve `playdemo`. Order: our own probe
+  demos first (known server, maps and settings), then community demos on
+  current map versions; old pro demos (2005-2010) need the pre-Orange-Box
+  network protocol and their own map versions, and often run at tick 100.
+
 ## 3. Weapons, remaining
 
 In progress: [plans/active/weapons.md](plans/active/weapons.md). The
