@@ -486,6 +486,10 @@ fn the_camera_and_crosshair_are_the_windows_after_every_dialog() {
     }
 }
 
+/// The app's greybox in `disconnect_and_the_greybox_on_the_world`.
+#[derive(Component)]
+struct GreyboxPart;
+
 /// `disconnect` and `map greybox` on a world (headless): the map gives
 /// way to the greybox, the menu follows.
 #[test]
@@ -497,12 +501,23 @@ fn disconnect_and_the_greybox_on_the_world() {
             ..default()
         })
         .init_resource::<RegrabCursor>()
-        .insert_resource(crate::map::LoadedMapName("cs_source:de_dust2".into()));
+        .insert_resource(crate::map::LoadedMapName("cs_source:de_dust2".into()))
+        // The app's greybox (`client::AppHooks`): a marker here.
+        .insert_resource(crate::client::AppHooks {
+            build: "test",
+            load_map: |_, _| Err("no maps here".into()),
+            load_map_file: |_, _, _| Err("no maps here".into()),
+            map_file_bytes: |_| None,
+            unload_greybox: |_| {},
+            respawn_greybox: |w| {
+                w.spawn(GreyboxPart);
+            },
+        });
     let w = app.world_mut();
     crate::client::console::load_greybox(w);
     left_game(w);
     let parts = w
-        .query_filtered::<(), With<crate::greybox::GreyboxPart>>()
+        .query_filtered::<(), With<GreyboxPart>>()
         .iter(w)
         .count();
     assert!(parts > 0, "the greybox is back behind the main menu");

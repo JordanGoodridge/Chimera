@@ -89,7 +89,7 @@ impl Plugin for ConsoleUiPlugin {
                 (
                     overlay_text,
                     watch_text,
-                    follow_map_cycle.run_if(resource_exists::<crate::rules::game_end::MapCycle>),
+                    follow_map_cycle.run_if(resource_exists::<crate::core::MapCycle>),
                 ),
             )
             .add_systems(Last, save_on_exit);
@@ -503,7 +503,7 @@ const ENT_INPUTS: &[&str] = &[
 
 /// The bots' names ("Bot 3"), in order.
 pub fn bot_names(world: &World) -> Vec<String> {
-    let Some(mut q) = world.try_query_filtered::<&Name, With<crate::bot::Bot>>() else {
+    let Some(mut q) = world.try_query_filtered::<&Name, With<crate::core::Bot>>() else {
         return Vec::new();
     };
     let mut names: Vec<String> = q.iter(world).map(|n| n.to_string()).collect();
@@ -514,18 +514,19 @@ pub fn bot_names(world: &World) -> Vec<String> {
 /// The loaded map's named entities and their classes, then the classes
 /// (`ent_fire` takes either).
 pub fn logic_names(world: &World) -> Vec<(String, String)> {
-    let Some(logic) = world.get_resource::<crate::logic::Logic>() else {
+    let Some(entities) = world
+        .get_resource::<crate::map::logic_view::LogicInspect>()
+        .and_then(|inspect| (inspect.names)(world))
+    else {
         return Vec::new();
     };
     let mut named = Vec::new();
     let mut classes = std::collections::BTreeSet::new();
-    for id in logic.world.ids() {
-        if let Some(e) = logic.world.get(id) {
-            if !e.targetname.is_empty() {
-                named.push((e.targetname.clone(), e.classname.clone()));
-            }
-            classes.insert(e.classname.clone());
+    for (name, class) in entities {
+        if !name.is_empty() {
+            named.push((name, class.clone()));
         }
+        classes.insert(class);
     }
     named.sort();
     named.dedup();
@@ -1812,7 +1813,7 @@ fn map_cycle(game: &'static GameInfo) -> Vec<String> {
 fn follow_map_cycle(
     name: Option<Res<crate::map::LoadedMapName>>,
     games: Option<Res<Games>>,
-    mut cycle: ResMut<crate::rules::game_end::MapCycle>,
+    mut cycle: ResMut<crate::core::MapCycle>,
 ) {
     let Some(name) = name.filter(|n| n.is_changed()) else { return };
     let short = crate::net::maps::map_name(&name.0).to_string();
@@ -1867,12 +1868,15 @@ pub fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>)
     // At the HDR level set now (mat_hdr_level), as the game does.
     let hdr_level = w.get_resource::<super::hdr::HdrSettings>().map_or(0, |s| s.level);
     crate::map::loading::reset();
+    // The app loads it (`AppHooks`).
+    let hooks = w.get_resource::<super::AppHooks>().copied();
     let task = bevy::tasks::AsyncComputeTaskPool::get().spawn({
         let id = id.to_string();
         async move {
+            let hooks = hooks.ok_or("this app loads no maps")?;
             match file {
-                Some(f) => crate::games::load_map_file(&id, &f, hdr_level),
-                None => crate::games::load_map_level(&id, hdr_level),
+                Some(f) => (hooks.load_map_file)(&id, &f, hdr_level),
+                None => (hooks.load_map)(&id, hdr_level),
             }
         }
     });
@@ -1938,13 +1942,13 @@ fn finish_map_load(w: &mut World) {
         data.triangle_count(),
         data.spawns.len()
     );
-    crate::greybox::unload(w);
+    unload_greybox(w);
     crate::map::change_map(w, data, crate::map::MapDebugView::Normal);
     // At its game's server tick.
     let tick = id
         .split_once(':')
         .and_then(|(game, _)| w.get_resource::<Games>()?.get(game))
-        .map_or(std::time::Duration::from_secs_f64(1.0 / crate::DEFAULT_TICK_HZ), |g| g.tick());
+        .map_or(std::time::Duration::from_secs_f64(1.0 / crate::core::DEFAULT_TICK_HZ), |g| g.tick());
     crate::core::set_tick_length(w, tick);
     // Follow the map's presentation (Source LDR: no tonemapping).
     let tonemapping = w.resource::<crate::map::ActiveMapLook>().0.tonemapping;
@@ -1960,7 +1964,7 @@ fn finish_map_load(w: &mut World) {
         };
         w.entity_mut(c).insert(t);
     }
-    crate::rules::new_game(w);
+    crate::core::new_game(w);
     w.resource_mut::<Console>().info(summary);
     super::front_end::entered_game(w);
     super::net::listen_if_hosting(w);
@@ -1981,11 +1985,13 @@ struct FreshGame;
 pub fn load_greybox(w: &mut World) {
     w.remove_resource::<MapLoad>();
     crate::map::unload_map(w);
-    crate::greybox::unload(w);
-    crate::greybox::respawn(w);
+    unload_greybox(w);
+    if let Some(hooks) = w.get_resource::<super::AppHooks>().copied() {
+        (hooks.respawn_greybox)(w);
+    }
     w.remove_resource::<crate::map::ActiveMapLook>();
     w.insert_resource(crate::map::LoadedMapName(GREYBOX.into()));
-    crate::core::set_tick_length(w, std::time::Duration::from_secs_f64(1.0 / crate::DEFAULT_TICK_HZ));
+    crate::core::set_tick_length(w, std::time::Duration::from_secs_f64(1.0 / crate::core::DEFAULT_TICK_HZ));
     let cams: Vec<Entity> = w
         .query_filtered::<Entity, With<super::FirstPersonCamera>>()
         .iter(w)
@@ -2002,7 +2008,7 @@ pub fn load_greybox(w: &mut World) {
     for mut camera in skies.iter_mut(w) {
         camera.is_active = false;
     }
-    crate::rules::new_game(w);
+    crate::core::new_game(w);
 }
 
 /// The greybox map's name for `map` and `--map`.
@@ -2107,7 +2113,7 @@ pub fn client_commands(app: &mut App) {
     )
     .console_command("kill", "Kill yourself (CS:S's suicide: you die where you stand, which can end the round).", |w, _| {
         use crate::core::{Damage, DamageKind, Health, Hitgroup};
-        use crate::rules::Dead;
+        use crate::core::Dead;
         let p = local_player(w)?;
         if w.get::<Dead>(p).is_some() {
             return Ok(None);
@@ -2687,5 +2693,12 @@ mod tests {
             split_last("bind space +j"),
             ("bind space ".to_string(), "+j".to_string())
         );
+    }
+}
+
+/// Take the app's greybox out (`AppHooks::unload_greybox`) for a map.
+fn unload_greybox(w: &mut World) {
+    if let Some(hooks) = w.get_resource::<super::AppHooks>().copied() {
+        (hooks.unload_greybox)(w);
     }
 }

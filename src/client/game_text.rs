@@ -1,11 +1,11 @@
 //! Map HUD messages (game_text; specs/source/entity_io.md, "game_text"):
-//! one message per channel from `logic::HudMessages`, faded or scanned out
+//! one message per channel from `map::logic_view::HudMessages`, faded or scanned out
 //! and placed as the client does. Rebuilt every frame (six channels at
 //! most).
 
 use bevy::{prelude::*, window::PrimaryWindow};
 
-use crate::logic::{HudMessage, HudMessages};
+use crate::map::logic_view::{HudMessage, HudMessages};
 
 /// HUD messages' font: the client scheme's Trebuchet 24 (its size where
 /// the scheme lacks it, at 480 lines).

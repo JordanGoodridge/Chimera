@@ -129,7 +129,10 @@ fn main() {
     })
     // Network play: a listen server, or a client (`connect`).
     .add_plugins(mashup::net::NetPlugin)
-    .add_plugins(client::ClientPlugin { args })
+    .add_plugins(client::ClientPlugin {
+        args,
+        hooks: mashup::client_hooks(),
+    })
     // CS:S's menus, panels and HUD (the shell reaches them through
     // `client::front_end`).
     .add_plugins(mashup::games::cs_source::ui::CsSourceUiPlugin);

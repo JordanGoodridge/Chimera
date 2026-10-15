@@ -101,7 +101,7 @@ pub struct Args {
     pub view_size: Option<UVec2>,
     /// `--join`: how the local player comes into games, in place of
     /// `join_choice`'s pick.
-    pub join: Option<crate::rules::JoinChoice>,
+    pub join: Option<crate::core::JoinChoice>,
 }
 
 const USAGE: &str = "\
@@ -163,8 +163,8 @@ impl Args {
     /// player placed (`--spawn`, `--look`) comes in on the smaller team,
     /// and a team asked for on the command line (`+jointeam <n>`,
     /// `+spectate`) on that one.
-    pub fn join_choice(&self) -> crate::rules::JoinChoice {
-        use crate::rules::JoinChoice;
+    pub fn join_choice(&self) -> crate::core::JoinChoice {
+        use crate::core::JoinChoice;
         if let Some(j) = self.join {
             return j;
         }
@@ -260,7 +260,7 @@ impl Args {
                 "--look" => out.look = Some(Vec2::from_array(floats::<2>(&flag, &value)?)),
                 "--join" => {
                     out.join = Some(
-                        crate::rules::JoinChoice::from_key(&value)
+                        crate::core::JoinChoice::from_key(&value)
                             .ok_or_else(|| format!("--join: expected menus, auto, 1, 2 or 3, got {value}"))?,
                     )
                 }
@@ -319,8 +319,31 @@ pub fn shown_name(
     }
 }
 
+/// What the app tells the shell about itself: its build's commit, how it
+/// loads a game's map (by id, or from a downloaded file) and reads a
+/// map's file, and its built-in test map (the greybox). The app fills it
+/// (mashup: `games::load_map_level`, `greybox`), so the shell names
+/// neither a game's loaders nor the greybox. Without it (tests), maps
+/// don't load and the greybox isn't put back.
+#[derive(Resource, Clone, Copy)]
+pub struct AppHooks {
+    /// The build's commit (`git describe`), for bench files.
+    pub build: &'static str,
+    /// Map `id` (`game:name`) at a `mat_hdr_level`.
+    pub load_map: fn(&str, u8) -> Result<crate::map::MapData, String>,
+    /// Map `id` from a copy of its file (a server's map downloaded).
+    pub load_map_file: fn(&str, &std::path::Path, u8) -> Result<crate::map::MapData, String>,
+    /// The bytes of map `id`'s file, for the network's map offer.
+    pub map_file_bytes: fn(&str) -> Option<Vec<u8>>,
+    /// Take the greybox out (a map loads in its place).
+    pub unload_greybox: fn(&mut World),
+    /// Put the greybox back and everyone on it.
+    pub respawn_greybox: fn(&mut World),
+}
+
 pub struct ClientPlugin {
     pub args: Args,
+    pub hooks: AppHooks,
 }
 
 impl Plugin for ClientPlugin {
@@ -329,6 +352,7 @@ impl Plugin for ClientPlugin {
             app.insert_resource(crate::map::LoadedMapName(map.clone()));
         }
         app.insert_resource(ClientArgs(self.args.clone()))
+            .insert_resource(self.hooks)
             .insert_resource(self.args.join_choice())
             .add_plugins((
                 fonts::FontsPlugin,
@@ -662,7 +686,7 @@ mod tests {
 
     #[test]
     fn the_join_menus_unless_scripted_or_asked_for_a_team() {
-        use crate::rules::JoinChoice;
+        use crate::core::JoinChoice;
         assert_eq!(args("").join_choice(), JoinChoice::Menus);
         assert_eq!(args("--map cs_source:de_dust2").join_choice(), JoinChoice::Menus);
         assert_eq!(args("--map cs_source:de_dust2 --screenshot a.png").join_choice(), JoinChoice::Auto);

@@ -5,6 +5,10 @@
 //! it. While it is open the mouse is free (the game takes no input), and
 //! typing in one of its fields goes to the field, not to binds.
 //!
+//! The Bots and Rounds tabs show a game's bots and round through
+//! `GameDebug` (its front end fills it); the Logic tab the map logic
+//! through `map::logic_view::LogicInspect`.
+//!
 //! Tabs: Player (position, state, health/armour/money, god, noclip,
 //! spawns and bookmarks, weapons), World (map, time scale, gravity, tick),
 //! Movement (the movement and mouse cvars), Bots (add, kick, skill, each
@@ -37,6 +41,19 @@ use crate::{
     console::{Console, ConsoleAppExt, quote},
     core::{Health, LocalPlayer, MovementState, SpawnPoint, Team, Velocity},
 };
+
+/// What the Bots and Rounds tabs show of a game, filled by its front end
+/// (CS:S's: `games::cs_source::ui`), so the shell names no game: each is
+/// left out without it.
+#[derive(Resource, Clone, Copy, Default)]
+pub struct GameDebug {
+    /// The bots' skill presets: (button label, console line).
+    pub bot_skills: Option<fn() -> Vec<(String, String)>>,
+    /// A bot's (`core::Bot`) role and activity, for its row.
+    pub bot_state: Option<fn(&World, Entity) -> Option<(String, String)>>,
+    /// The round's state in a line ("round 2: live, 80 s left; wins ...").
+    pub round_status: Option<fn(&World) -> Option<String>>,
+}
 
 /// The debug window's state (client only; nothing here is simulated).
 #[derive(Resource, Default)]
@@ -540,7 +557,7 @@ fn player_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
     let god = world.get::<crate::core::God>(p).is_some();
     let movement = world.get::<crate::slots::MovementSlot>(p).map(|m| m.0).unwrap_or("?");
     let noclip = movement == crate::movement::noclip::ID;
-    let dead = world.get::<crate::rules::Dead>(p).is_some();
+    let dead = world.get::<crate::core::Dead>(p).is_some();
     // The feet, as setpos takes them (bookmarks are setpos lines).
     let pos = units(t + state_c.as_ref().map_or(Vec3::ZERO, |s| Vec3::Y * s.hull_min.y));
     let vel = units(v);
@@ -811,8 +828,8 @@ fn world_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         }
     });
     let logic = world
-        .get_resource::<crate::logic::Logic>()
-        .map(|l| (l.world.ids().len(), l.world.round));
+        .get_resource::<crate::map::logic_view::LogicInspect>()
+        .and_then(|inspect| (inspect.summary)(world));
     let restarts = world.get_resource::<crate::core::RoundRestarts>().map_or(0, |r| r.0);
     let tick = world.get_resource::<crate::core::SimTick>().map_or(0, |t| t.0);
     let rate = 1.0 / world.resource::<Time<Fixed>>().timestep().as_secs_f64();
@@ -886,17 +903,16 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         command_button(ui, world, "Kick all", "bot_kick");
         command_button(ui, world, "Back to orders", "bot_goto");
     });
-    ui.horizontal(|ui| {
-        ui.label("skill");
-        for (name, reaction, aim, turn) in crate::bot::DIFFICULTIES {
-            command_button(
-                ui,
-                world,
-                name,
-                &format!("bot_reaction {reaction}; bot_aim_error {aim}; bot_turn_rate {turn}"),
-            );
-        }
-    });
+    // The game's bots (`GameDebug`, from its front end).
+    let game = world.get_resource::<GameDebug>().copied().unwrap_or_default();
+    if let Some(skills) = game.bot_skills {
+        ui.horizontal(|ui| {
+            ui.label("skill");
+            for (name, line) in skills() {
+                command_button(ui, world, &name, &line);
+            }
+        });
+    }
     cvar_grid(
         ui,
         world,
@@ -917,18 +933,30 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         ],
     );
     ui.separator();
-    let mut rows: Vec<_> = world
-        .query::<(&crate::bot::Bot, &Team, &Health, Option<&Name>, &Transform, Option<&MovementState>)>()
+    // Each bot's role and activity as its game says (a bot the game
+    // doesn't run, none: not listed); without the game's word, unknown.
+    let state_of = |w: &World, e: Entity| match game.bot_state {
+        Some(f) => f(w, e),
+        None => Some(("?".to_string(), "?".to_string())),
+    };
+    let found: Vec<_> = world
+        .query_filtered::<(Entity, &Team, &Health, Option<&Name>, &Transform, Option<&MovementState>), With<crate::core::Bot>>()
         .iter(world)
-        .map(|(b, t, h, n, at, m)| {
+        .map(|(e, t, h, n, at, m)| {
             (
+                e,
                 n.map_or("?".to_string(), |n| n.to_string()),
                 t.0,
                 h.current * 100.0,
-                format!("{:?}", b.role()),
-                format!("{:?}", b.activity()),
                 at.translation + m.map_or(Vec3::ZERO, |m| Vec3::Y * m.hull_min.y),
             )
+        })
+        .collect();
+    let mut rows: Vec<_> = found
+        .into_iter()
+        .filter_map(|(e, name, team, health, at)| {
+            let (role, activity) = state_of(world, e)?;
+            Some((name, team, health, role, activity, at))
         })
         .collect();
     rows.sort_by_key(|r| (r.1, r.0.strip_prefix("Bot ").and_then(|n| n.parse::<u32>().ok())));
@@ -1232,60 +1260,15 @@ fn audio_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
 }
 
 fn logic_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
-    let Some(logic) = world.get_resource::<crate::logic::Logic>() else {
+    // The entities: name, class, origin, keyvalues, outputs
+    // (`map::logic_view::LogicInspect`, filled by the map's logic).
+    let inspect = world.get_resource::<crate::map::logic_view::LogicInspect>().copied();
+    let Some((inspect, mut rows)) = inspect.and_then(|i| Some((i, (i.entities)(world)?))) else {
         ui.label("No map logic (the greybox map has none).");
         return;
     };
-    // The entities: name, class, origin, keyvalues, outputs.
-    struct Row {
-        name: String,
-        class: String,
-        origin: Vec3,
-        keys: Vec<(String, String)>,
-        outputs: Vec<String>,
-    }
-    let mut rows: Vec<Row> = logic
-        .world
-        .ids()
-        .into_iter()
-        .filter_map(|id| logic.world.get(id))
-        .map(|e| Row {
-            name: e.targetname.clone(),
-            class: e.classname.clone(),
-            origin: e.origin,
-            keys: e.keyvalues.clone(),
-            outputs: e
-                .outputs
-                .iter()
-                .flat_map(|(o, cs)| {
-                    cs.iter().map(move |c| {
-                        format!(
-                            "{o} -> {} {}{} after {} s{}",
-                            c.target,
-                            c.input,
-                            c.param.as_ref().map_or(String::new(), |p| format!(" ({p})")),
-                            c.delay,
-                            if c.times > 0 { format!(", {} more times", c.times) } else { String::new() }
-                        )
-                    })
-                })
-                .collect(),
-        })
-        .collect();
-    let fired: Vec<String> = logic
-        .world
-        .fired
-        .iter()
-        .rev()
-        .take(40)
-        .map(|(tick, id, out)| {
-            let who = logic.world.get(*id).map_or("?".to_string(), |e| {
-                if e.targetname.is_empty() { e.classname.clone() } else { e.targetname.clone() }
-            });
-            format!("tick {tick}: {who} {out}")
-        })
-        .collect();
-    let messages: Vec<String> = logic.world.log.iter().rev().take(20).cloned().collect();
+    let fired = (inspect.fired)(world, 40);
+    let messages = (inspect.messages)(world, 20);
     let total = rows.len();
     let filter = state.logic_filter.to_lowercase();
     rows.retain(|r| filter.is_empty() || r.name.to_lowercase().contains(&filter) || r.class.to_lowercase().contains(&filter));
@@ -1362,26 +1345,10 @@ fn logic_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
 }
 
 fn rounds_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
-    if let Some(r) = world.get_resource::<crate::rules::rounds::RoundState>().cloned() {
-        let now = world.resource::<Time>().elapsed_secs_f64();
-        let phase = match r.phase {
-            crate::rules::rounds::Phase::Off => "off (deathmatch)".to_string(),
-            crate::rules::rounds::Phase::Freeze { until } => format!("freeze time, {:.0} s left", until - now),
-            crate::rules::rounds::Phase::Live { ends, .. } => format!("live, {:.0} s left", ends - now),
-            crate::rules::rounds::Phase::Over { until, winner } => format!(
-                "over ({}), next in {:.0} s",
-                match winner.map(|t| t.0) {
-                    Some(1) => "terrorists won",
-                    Some(2) => "counter-terrorists won",
-                    _ => "draw",
-                },
-                until - now
-            ),
-        };
-        ui.label(format!(
-            "round {}: {phase}; wins T {} CT {}",
-            r.number, r.wins[0], r.wins[1]
-        ));
+    // The game's round (`GameDebug`, from its front end).
+    let status = world.get_resource::<GameDebug>().and_then(|g| g.round_status);
+    if let Some(line) = status.and_then(|f| f(world)) {
+        ui.label(line);
     }
     ui.horizontal(|ui| {
         command_button(ui, world, "Restart game", "mp_restartgame 1");

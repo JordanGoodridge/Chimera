@@ -78,32 +78,28 @@ const ALLOWED: &[(&str, &[&str])] = &[
         ],
     ),
     // The client shell: window, input, camera, console UI, the VGUI-like
-    // widget layer, debug tools. `games` here is the game-neutral map
-    // loading (`games::load_map`); never a game's own module: what it
-    // needs of a game is data the game registers (`game_registry`). A
-    // game's menus and HUD are that game's (`games_ui`), reached through
-    // `client::front_end`.
+    // widget layer, debug tools. Never a game's module, the app's
+    // (`lib`, `games`, `greybox`: `client::AppHooks`) or the map logic
+    // (`map::logic_view`): what it needs of a game is data the game
+    // registers (`game_registry`, `core`'s vocabulary and hooks,
+    // `debug_ui::GameDebug`). A game's menus and HUD are that game's
+    // (`games_ui`), reached through `client::front_end`.
     (
         "client",
         &[
-            "lib",
             "core",
             "console",
             "slots",
             "character",
             "movement",
-            "greybox",
             "map",
             "audio",
             "render",
             "weapon",
             "objectives",
             "rules",
-            "bot",
             "mount",
             "game_registry",
-            "games",
-            "logic",
             "net",
             "metrics",
         ],

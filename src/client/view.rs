@@ -26,9 +26,8 @@ use bevy::prelude::*;
 use super::FirstPersonCamera;
 use crate::{
     console::{ConsoleAppExt, resource_cvar},
-    core::{Health, Intent, LocalPlayer},
+    core::{Dead, Health, Intent, LocalPlayer},
     map::ShowLocalBody,
-    rules::Dead,
 };
 
 /// Source units to meters (cam_idealdist is in CS:S units).

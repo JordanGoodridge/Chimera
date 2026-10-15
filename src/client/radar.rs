@@ -18,12 +18,11 @@ use bevy::{
 };
 
 use crate::{
-    core::{Health, Intent, LocalPlayer, Team},
+    core::{Dead, Health, Intent, LocalPlayer, Team},
     map::{
         hud::{ActiveHud, ActiveOverview, HudCoord},
         nav::NavMesh,
     },
-    rules::Dead,
 };
 
 pub struct RadarPlugin;

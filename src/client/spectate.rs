@@ -74,14 +74,12 @@ use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::CursorOptio
 use super::view::{CameraMode, FreeCam, camera_offset};
 use crate::{
     console::{ConsoleAppExt, resource_cvar},
-    core::{Died, Health, Intent, LocalPlayer, MovementState, Spectating, Team},
+    core::{Dead, Died, Health, Intent, LocalPlayer, MovementState, Npc, Spectating, Team},
     map::{
         ViewModelAnchor, ViewModelSource,
         interp::{EyeView, RenderedView},
         ragdoll::Ragdoll,
     },
-    objectives::hostages::Hostage,
-    rules::Dead,
     weapon::{Inventory, ViewPunch, Weapon, Zoomed},
 };
 
@@ -501,7 +499,7 @@ impl Plugin for SpectateStatePlugin {
                 return Err("spec_player <name>".into());
             }
             let found = w
-                .query_filtered::<(Entity, &Name), (With<Intent>, Without<LocalPlayer>, Without<Hostage>)>()
+                .query_filtered::<(Entity, &Name), (With<Intent>, Without<LocalPlayer>, Without<Npc>)>()
                 .iter(w)
                 .find(|(_, n)| n.as_str().eq_ignore_ascii_case(&want))
                 .map(|(e, _)| e)
@@ -590,7 +588,7 @@ type Living<'a> = (
 fn track(
     time: Res<Time>,
     local: Option<Single<(&Transform, Option<&Team>, Has<Dead>, Has<Spectating>), With<LocalPlayer>>>,
-    characters: Query<Living, (With<Intent>, Without<LocalPlayer>, Without<Hostage>)>,
+    characters: Query<Living, (With<Intent>, Without<LocalPlayer>, Without<Npc>)>,
     killed: Res<KilledBy>,
     force: Res<ForceCamera>,
     freeze: Res<FreezeCamSettings>,

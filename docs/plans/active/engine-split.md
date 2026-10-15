@@ -561,6 +561,22 @@ measurements):
       `ui` feature depending on `engine_client` (`workspace_crates`
       keeps `engine_present` off `cs_source` today: the feature would
       need that rule relaxed for the feature's dependencies only).
+    - [x] (b) (2026-10-15) The shell names none of CS:S's rules, bots or
+      objectives outside the HUD files of (c), nor the app or Source's
+      logic: `Dead`/`Score` from `core`; `JoinChoice`, `MapCycle`,
+      `FadeToBlack` moved down to `core` (re-exported by `rules`); the
+      rules' `new_game` behind `core::NewGame` (the rules insert it,
+      `core::new_game` calls it); bots by `core::Bot`, hostages by
+      `core::Npc`; the debug UI's Bots and Rounds tabs through
+      `debug_ui::GameDebug` and the bots' overlays (`mashup_drawbots`,
+      `bot_debug`) in the front end (`ui::debug`); the app's map loading,
+      greybox and commit through `client::AppHooks` (mashup's
+      `client_hooks`), its version through `core::BuildVersion`;
+      `DEFAULT_TICK_HZ` in `core`; the logic's HUD messages, fades and
+      shakes as data in `map::logic_view` (re-exported by `logic::hud`)
+      and its entities for tools through `map::logic_view::LogicInspect`.
+      Architecture test: `client` lost `lib`, `greybox`, `games`, `bot`
+      and `logic`.
 - [x] (3) `bot` into `cs_source` (2026-10-14): CS:S's bots (their
   buying, radio, bomb and hostage goals) moved whole to
   `games/cs_source/src/bot` (it uses only `weapon`, `objectives`, `map`

@@ -72,6 +72,7 @@ pub(super) fn draw(
     mut windows: ResMut<Windows>,
     frame_backing: Option<ResMut<widgets::FrameBacking>>,
     mut last: Local<(Vec2, Option<Page>)>,
+    version: Option<Res<crate::core::BuildVersion>>,
     mut commands: Commands,
 ) {
     let size = windows_q
@@ -178,7 +179,8 @@ pub(super) fn draw(
         }
         return;
     }
-    main_list(&mut commands, root, &menu, &look, size, title_font);
+    let version = version.map_or("", |v| v.0);
+    main_list(&mut commands, root, &menu, &look, size, title_font, version);
     if menu.page == Page::Main {
         return;
     }

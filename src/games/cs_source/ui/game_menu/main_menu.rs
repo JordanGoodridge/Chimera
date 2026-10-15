@@ -178,6 +178,7 @@ pub(super) fn main_list(
     look: &Look,
     size: Vec2,
     title_font: Option<(Handle<Font>, f32, f32)>,
+    version: &str,
 ) {
     let entries = menu.entries();
     let item_h = look.number("MainMenu.MenuItemHeight", 22.0);
@@ -272,7 +273,7 @@ pub(super) fn main_list(
         root,
         look,
         (size.x / look.s - 408.0, size.y / look.s - 20.0, 400.0, 16.0),
-        crate::core::VERSION,
+        version,
         look.font("DefaultSmall", (13.0, false)),
         look.disabled(),
         1,
@@ -280,7 +281,7 @@ pub(super) fn main_list(
     commands.entity(version).insert(VersionLabel);
 }
 
-/// The main menu's version text (`core::VERSION`).
+/// The main menu's version text (the build's, `core::BuildVersion`).
 #[derive(Component)]
 pub struct VersionLabel;
 

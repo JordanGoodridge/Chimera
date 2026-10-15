@@ -70,8 +70,8 @@ pub fn black_alpha(since: Option<f32>) -> f32 {
 /// HUD) and stays black until it lives again; spectators and the living
 /// see as usual.
 fn fade_to_black(
-    rule: Option<Res<crate::rules::FadeToBlack>>,
-    me: Option<Single<(Has<crate::rules::Dead>, Has<crate::core::Spectating>), With<LocalPlayer>>>,
+    rule: Option<Res<crate::core::FadeToBlack>>,
+    me: Option<Single<(Has<crate::core::Dead>, Has<crate::core::Spectating>), With<LocalPlayer>>>,
     overlay: Query<(Entity, &mut BackgroundColor), With<BlackOverlay>>,
     time: Res<Time>,
     mut died_at: Local<Option<f32>>,
@@ -305,7 +305,7 @@ pub fn shake_offset(a: f32, frequency: f32, t: f32) -> (Vec3, f32) {
 
 fn shake(
     mut detonated: MessageReader<Detonated>,
-    mut map_shakes: MessageReader<crate::logic::MapShake>,
+    mut map_shakes: MessageReader<crate::map::logic_view::MapShake>,
     camera: Query<&GlobalTransform, With<FirstPersonCamera>>,
     mut view: ResMut<ViewShake>,
     time: Res<Time>,

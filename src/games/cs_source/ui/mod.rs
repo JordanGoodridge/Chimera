@@ -12,6 +12,7 @@
 
 pub mod bomb_fx;
 pub mod buy_menu;
+pub mod debug;
 pub mod first_run;
 pub mod freeze_cam;
 pub mod game_menu;
@@ -49,6 +50,7 @@ impl Plugin for CsSourceUiPlugin {
             join_menus::JoinMenusPlugin,
             spectator_menu::SpectatorMenuPlugin,
             freeze_cam::FreezeCamPlugin,
+            debug::BotDebugPlugin,
         ));
     }
 }

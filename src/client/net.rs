@@ -25,9 +25,11 @@ impl Plugin for ClientNetPlugin {
         // Map files as the game loads them (the install, its downloads,
         // mashup's content cache: the default game's, `game_registry`), for
         // the server's offer and the client's checks and downloads.
+        // The app reads them (`AppHooks::map_file_bytes`).
         let game = crate::game_registry::default_game(app.world());
+        let read = app.world().get_resource::<super::AppHooks>().map(|h| h.map_file_bytes);
         app.insert_resource(MapFiles {
-            read: Arc::new(crate::games::map_file_bytes),
+            read: Arc::new(move |id: &str| read.and_then(|f| f(id))),
             cache: game.and_then(|g| g.content_cache()),
         })
         .add_systems(Update, react);

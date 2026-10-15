@@ -25,9 +25,8 @@ use super::{
 };
 
 use crate::{
-    core::{DamageTaken, Intent, LocalPlayer},
+    core::{DamageTaken, Dead, Intent, LocalPlayer},
     map::hud::{ActiveHud, GameHud},
-    rules::Dead,
     weapon::{Inventory, Weapon},
 };
 

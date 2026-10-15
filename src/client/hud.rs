@@ -12,8 +12,7 @@ use bevy::prelude::*;
 
 use super::FirstPersonCamera;
 use crate::{
-    core::{Died, Health, Intent, LocalPlayer, Team},
-    rules::{Dead, Score},
+    core::{Dead, Died, Health, Intent, LocalPlayer, Score, Team},
     weapon::{Hitscan, Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, Zoomed},
 };
 

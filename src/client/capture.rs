@@ -313,7 +313,7 @@ fn start_views(
 #[allow(clippy::too_many_arguments)]
 fn run_views(
     mut commands: Commands,
-    args: Res<ClientArgs>,
+    (args, hooks): (Res<ClientArgs>, Option<Res<super::AppHooks>>),
     run: Option<ResMut<ViewRun>>,
     mut player: Query<(&mut Transform, &mut Intent, &mut Velocity), With<LocalPlayer>>,
     mut exit: MessageWriter<AppExit>,
@@ -337,7 +337,8 @@ fn run_views(
         if args.0.bench {
             print_bench(&run.results);
             let overall = run.all.summary();
-            write_bench_files(&run.dir, &run.results, &overall, args.0.view_size.unwrap_or(VIEW_SIZE));
+            let build = hooks.map_or("unknown", |h| h.build);
+            write_bench_files(&run.dir, &run.results, &overall, args.0.view_size.unwrap_or(VIEW_SIZE), build);
         } else {
             info!("all views captured");
         }
@@ -556,7 +557,7 @@ fn print_bench_dist(rows: &[BenchRow], overall: &Dist) {
 
 /// `bench.json` and `bench.csv` in the capture folder: every metric's
 /// percentiles per view and over all views, for scripts.
-fn write_bench_files(dir: &std::path::Path, rows: &[BenchRow], overall: &Dist, size: UVec2) {
+fn write_bench_files(dir: &std::path::Path, rows: &[BenchRow], overall: &Dist, size: UVec2, build: &str) {
     print_bench_dist(rows, overall);
     let dist_json = |d: &Dist| {
         serde_json::Value::Object(
@@ -581,7 +582,7 @@ fn write_bench_files(dir: &std::path::Path, rows: &[BenchRow], overall: &Dist, s
         })
         .collect();
     let json = serde_json::json!({
-        "build": env!("MASHUP_GIT"),
+        "build": build,
         "view_size": [size.x, size.y],
         "hardware_counters": crate::metrics::hw_status(),
         "views": views,
@@ -623,7 +624,8 @@ fn chrono_stamp() -> String {
 /// What a bug report says besides the screenshot.
 fn report_text(w: &mut World, note: &str) -> String {
     use crate::{console::Console, core::LocalPlayer};
-    let mut out = format!("mashup build {} ({})\n", crate::core::VERSION, crate::net::NET_VERSION);
+    let version = w.get_resource::<crate::core::BuildVersion>().map_or("unknown", |v| v.0);
+    let mut out = format!("mashup build {version} ({})\n", crate::net::NET_VERSION);
     if !note.is_empty() {
         out += &format!("note: {note}\n");
     }

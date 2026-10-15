@@ -62,7 +62,10 @@
 //! `ScoreChange` (game_score, applied by the rules); the players' standing
 //! every game has: `Score`, `Dead`, `MapLoads`, `Bot` (a computer player),
 //! `Npc` (a character that isn't a player: hostages), `ScoreMark` (what a
-//! carried item marks on the scoreboard); `BuildVersion` (the app's stamp).
+//! carried item marks on the scoreboard); `BuildVersion` (the app's stamp);
+//! `DEFAULT_TICK_HZ`; what the client shell reads of a game's rules without
+//! naming them: `JoinChoice` (how a player comes into a game), `MapCycle`,
+//! `FadeToBlack` and the `NewGame` hook (`new_game`).
 //!
 //! `BrushGrid`: a grid over brushes' bounds, the Source movement's broad
 //! phase over `MapBrushes` (identical results to testing every brush).
@@ -764,6 +767,88 @@ pub struct ScoreMark(pub u8);
 /// `version` command).
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuildVersion(pub &'static str);
+
+/// The fixed tick rate until a game's map sets its own (the greybox, a
+/// game without a tick: `game_registry::GameInfo::tick_interval`).
+pub const DEFAULT_TICK_HZ: f64 = 64.0;
+
+/// How a player comes into a game it starts or joins: CS:S's way, the
+/// join menus (`Menus`: the server's message of the day, then the team
+/// menu, then the class menu; until it picks it is `core::Unassigned`),
+/// or straight onto a team, as tests and scripted runs want: `Auto` the
+/// smaller team (counter-terrorists on a tie), `Team` that one (`Team(0)`
+/// the spectators). The local player's (single player, a listen server's
+/// host) and, for a network client, the one it asks the server for
+/// (`net`). The game's interactive runs use `Menus`
+/// (`client::Args::join_choice`); the default is `Auto`.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum JoinChoice {
+    Menus,
+    #[default]
+    Auto,
+    Team(Team),
+}
+
+impl JoinChoice {
+    /// As a userinfo value (`net`'s join handshake): `menus`, `auto`, or
+    /// the `jointeam` number.
+    pub fn key(self) -> String {
+        match self {
+            Self::Menus => "menus".into(),
+            Self::Auto => "auto".into(),
+            Self::Team(t) => (t.0 + 1).to_string(),
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key.trim() {
+            "menus" => Some(Self::Menus),
+            "auto" | "0" => Some(Self::Auto),
+            "1" => Some(Self::Team(Team(0))),
+            "2" => Some(Self::Team(Team(1))),
+            "3" => Some(Self::Team(Team(2))),
+            _ => None,
+        }
+    }
+}
+
+/// The maps played in turn (a game's `mapcycle.txt`, by short name, as
+/// `changelevel` takes them) and the one loaded now. Games and the client
+/// fill it.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct MapCycle {
+    pub maps: Vec<String>,
+    pub current: String,
+}
+
+impl MapCycle {
+    /// The map after the current one (wrapping; the first when the current
+    /// one isn't in the cycle); None without a cycle.
+    pub fn next(&self) -> Option<String> {
+        let i = self.maps.iter().position(|m| m.eq_ignore_ascii_case(&self.current));
+        let next = i.map_or(0, |i| (i + 1) % self.maps.len());
+        self.maps.get(next).cloned()
+    }
+}
+
+/// `mp_fadetoblack` (CS:S's default 0): the dead see black
+/// (`client::senses`; set by the rules' `mp_fadetoblack`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FadeToBlack(pub u8);
+
+/// The rules' fresh game on a newly loaded map (CS:S's `rules::new_game`:
+/// everyone respawned, rounds from the start), which the rules register so
+/// what loads maps (the client's `map` command, the greybox) names none.
+#[derive(Resource, Clone, Copy)]
+pub struct NewGame(pub fn(&mut World));
+
+/// Start a fresh game on the map just loaded (`NewGame`); nothing without
+/// rules.
+pub fn new_game(world: &mut World) {
+    if let Some(hook) = world.get_resource::<NewGame>().copied() {
+        (hook.0)(world);
+    }
+}
 
 /// A remote player whose client is still loading the map (joining, or
 /// after a map change): not in the game yet. It is dead, not solid and

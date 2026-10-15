@@ -93,7 +93,7 @@ impl Plugin for GameMessagesPlugin {
             .add_message::<crate::net::NameChanged>()
             .add_message::<crate::net::PlayerCame>()
             .add_message::<crate::map::PlaySound>()
-            .add_message::<crate::logic::MapSay>()
+            .add_message::<crate::map::MapSay>()
             .add_systems(
                 Update,
                 (team_joins, heard_says, notices, name_changes, comings_and_goings, map_says),
@@ -136,7 +136,7 @@ fn heard_says(
 /// listen server's host says them; a network game's go through the
 /// server, `net::chat`).
 fn map_says(
-    mut says: MessageReader<crate::logic::MapSay>,
+    mut says: MessageReader<crate::map::MapSay>,
     role: Option<Res<crate::core::NetRole>>,
     mut commands: Commands,
 ) {
@@ -256,7 +256,7 @@ pub fn say(w: &mut World, text: &str, team_only: bool) {
     type Me<'a> = (
         Option<&'a Team>,
         Option<&'a Health>,
-        Has<crate::rules::Dead>,
+        Has<crate::core::Dead>,
         Option<&'a GlobalTransform>,
         Has<crate::core::Spectating>,
     );

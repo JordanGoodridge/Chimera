@@ -67,9 +67,8 @@ use super::{
 };
 
 use crate::{
-    core::{Damage, Died, Health, Hitgroup, LocalPlayer, Team},
+    core::{Damage, Dead, Died, Health, Hitgroup, LocalPlayer, Team},
     map::hud::{ActiveHud, GameHud, HudCoord, HudPanel},
-    rules::Dead,
     rules::rounds::RoundState,
     weapon::{Armor, Inventory, Magazine, Weapon, economy::Money},
 };

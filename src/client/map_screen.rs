@@ -14,7 +14,7 @@
 use bevy::prelude::*;
 
 use crate::core::{Health, LocalPlayer};
-use crate::logic::ScreenFades;
+use crate::map::logic_view::ScreenFades;
 
 #[derive(Component)]
 struct FadeNode;
