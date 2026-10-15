@@ -59,7 +59,10 @@
 //! rules, on the server and on the client predicting it: a predicted part; a
 //! respawn resets the clock and the camera), `MapView` (the map camera a
 //! character views through), `buttons` (Source's command button bits),
-//! `ScoreChange` (game_score, applied by the rules).
+//! `ScoreChange` (game_score, applied by the rules); the players' standing
+//! every game has: `Score`, `Dead`, `MapLoads`, `Bot` (a computer player),
+//! `Npc` (a character that isn't a player: hostages), `ScoreMark` (what a
+//! carried item marks on the scoreboard); `BuildVersion` (the app's stamp).
 //!
 //! `BrushGrid`: a grid over brushes' bounds, the Source movement's broad
 //! phase over `MapBrushes` (identical results to testing every brush).
@@ -715,6 +718,52 @@ impl UserInfo {
 #[derive(Component, Reflect, Default, Clone, Copy, Debug)]
 #[reflect(Component)]
 pub struct RemotePlayer;
+
+/// A computer player (a bot): the game's bot module puts its brain
+/// beside it (CS:S's `bot::Bot` requires it). The network counts and
+/// kicks bots by it (`net`'s `BotHooks`) without naming a game.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component)]
+pub struct Bot;
+
+/// A character that isn't a player (CS:S's hostages): on no team's count,
+/// not among a server's players, and replicated by its game rather than
+/// as a player.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component)]
+pub struct Npc;
+
+/// Kills and deaths (the scoreboard's).
+#[derive(Component, Default, Clone, Copy, Debug, Reflect)]
+#[reflect(Component)]
+pub struct Score {
+    pub kills: i32,
+    pub deaths: u32,
+}
+
+/// Dead since this time (fixed-tick seconds).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Dead {
+    pub since: f64,
+}
+
+/// Maps loaded so far (the rules' `new_game`): a map change, or the same
+/// map loaded again, counts one. A network server notices a reload of
+/// the same map by it (`net::maps`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MapLoads(pub u32);
+
+/// Bits a carried item marks its carrier's scoreboard line with
+/// (`net::score_flags`: CS:S's bomb sets `2`), ORed over everything the
+/// character carries.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScoreMark(pub u8);
+
+/// This build's version text (the app stamps it: `mashup::core::VERSION`),
+/// for what reports it without being rebuilt by every commit (`net`'s
+/// `version` command).
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BuildVersion(pub &'static str);
 
 /// A remote player whose client is still loading the map (joining, or
 /// after a map change): not in the game yet. It is dead, not solid and

@@ -624,8 +624,10 @@ impl Default for BotConfig {
     }
 }
 
-/// A bot's brain state.
+/// A bot's brain state; a bot is the engine's `core::Bot` too (the
+/// network counts and kicks bots by it).
 #[derive(Component, Clone, Debug, Default)]
+#[require(crate::core::Bot)]
 pub struct Bot {
     pub target: Option<Entity>,
     /// Seconds the current target has been in sight.

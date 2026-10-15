@@ -506,19 +506,9 @@ impl Default for Deathmatch {
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FadeToBlack(pub u8);
 
-/// Kills and deaths.
-#[derive(Component, Default, Clone, Copy, Debug, Reflect)]
-#[reflect(Component)]
-pub struct Score {
-    pub kills: i32,
-    pub deaths: u32,
-}
-
-/// Dead since this time (fixed-tick seconds).
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Dead {
-    pub since: f64,
-}
+// Kills and deaths, the dead and the map loads counted: the engine's
+// vocabulary (`core`), at their old paths here.
+pub use crate::core::{Dead, MapLoads, Score};
 
 /// Respawn every character on the next tick (after a map change), with
 /// fresh weapons, at the spawn points.
@@ -545,11 +535,6 @@ pub fn new_game(world: &mut World) {
     world.get_resource_or_init::<MapLoads>().0 += 1;
 }
 
-/// Maps loaded so far (`new_game`): a map change, or the same map loaded
-/// again, counts one. A network server notices a reload of the same map
-/// by it (`net::maps`).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct MapLoads(pub u32);
 
 /// Keep a remote player out of the game while its client loads the map
 /// (`core::Connecting`): dead, not solid, no health, so nothing hits it

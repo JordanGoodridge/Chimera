@@ -88,8 +88,9 @@ impl Default for HostageRules {
     }
 }
 
-/// A hostage.
+/// A hostage: a character that isn't a player (`core::Npc`).
 #[derive(Component, Clone, Debug, Default)]
+#[require(crate::core::Npc)]
 pub struct Hostage {
     /// Its index in `MapObjectives::hostages`.
     pub index: usize,

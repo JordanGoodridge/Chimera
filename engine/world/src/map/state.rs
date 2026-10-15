@@ -352,3 +352,17 @@ impl ParticleRng {
         Vec3::new(self.float(a, b), self.float(a, b), self.float(a, b))
     }
 }
+
+/// A one-shot sound map logic played here (a locked door, a break, a
+/// spark); a network server sends it to every client, which runs no map
+/// logic (`net::mapfx`). The logic writes it (`logic::bridge`).
+#[derive(Message, Clone, Debug)]
+pub struct LogicOneShot(pub super::PlaySound);
+
+/// A map's `say` line (point_servercommand): chat from the server, as
+/// Source's server console says it: on a listen server under the host's
+/// name (its own chat line), on a dedicated server as "Console"
+/// (`net::chat`); in a game of one, the local player's line
+/// (`client::chat`). The logic writes it (`logic::hud`).
+#[derive(Message, Clone, Debug, PartialEq)]
+pub struct MapSay(pub String);

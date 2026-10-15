@@ -46,9 +46,14 @@ use crate::{
 const TIME_SLACK: f64 = 1e-5;
 
 /// Weapon part: this weapon is the bomb. Its primary attack arms it
-/// (no shots); it can't be bought.
+/// (no shots); it can't be bought. Its carrier's scoreboard line shows it
+/// (`core::ScoreMark`, `net::score_flags::BOMB`).
 #[derive(Component, Clone, Copy, Debug, Default)]
+#[require(crate::core::ScoreMark(BOMB_MARK))]
 pub struct C4;
+
+/// The bomb's scoreboard mark (`net::score_flags::BOMB`).
+pub const BOMB_MARK: u8 = 1 << 1;
 
 /// Sound entries the bomb uses (the game's names; None: silent).
 #[derive(Clone, Debug, Default)]
