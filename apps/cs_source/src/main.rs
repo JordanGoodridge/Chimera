@@ -4,7 +4,7 @@
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use mashup::{
+use cs_source_app::{
     SimPlugins, client, games, greybox,
     map::{MapDebugView, MapPlugin},
     slots::Loadout,
@@ -96,44 +96,44 @@ fn main() {
         // Rendering eases between ticks with `map::interp` (characters'
         // eyes and looks too), not avian's transform interpolation.
         PhysicsPlugins::default()
-            .with_collision_hooks::<mashup::map::MapCollisionHooks>()
+            .with_collision_hooks::<cs_source_app::map::MapCollisionHooks>()
             .build()
             .disable::<PhysicsInterpolationPlugin>(),
         SimPlugins,
-        mashup::games::cs_source::CsSourcePlugins,
-        mashup::render::world_material::WorldMaterialPlugin,
-        mashup::render::rope_material::RopeMaterialPlugin,
-        mashup::render::sprite_material::SpriteMaterialPlugin,
-        mashup::render::prop_material::PropMaterialPlugin,
-        mashup::render::shadows::ShadowMaterialPlugin,
-        mashup::render::decal::DecalMaterialPlugin,
-        mashup::render::spray::SprayMaterialPlugin,
-        mashup::render::water::WaterMaterialPlugin,
-        mashup::render::particles::ParticleMaterialPlugin,
+        cs_source_app::games::cs_source::CsSourcePlugins,
+        cs_source_app::render::world_material::WorldMaterialPlugin,
+        cs_source_app::render::rope_material::RopeMaterialPlugin,
+        cs_source_app::render::sprite_material::SpriteMaterialPlugin,
+        cs_source_app::render::prop_material::PropMaterialPlugin,
+        cs_source_app::render::shadows::ShadowMaterialPlugin,
+        cs_source_app::render::decal::DecalMaterialPlugin,
+        cs_source_app::render::spray::SprayMaterialPlugin,
+        cs_source_app::render::water::WaterMaterialPlugin,
+        cs_source_app::render::particles::ParticleMaterialPlugin,
     ))
     .add_plugins((
-        mashup::render::beams::BeamMaterialPlugin,
-        mashup::render::sky_occluder::SkyOccluderPlugin,
-        mashup::render::detail::DetailMaterialPlugin,
+        cs_source_app::render::beams::BeamMaterialPlugin,
+        cs_source_app::render::sky_occluder::SkyOccluderPlugin,
+        cs_source_app::render::detail::DetailMaterialPlugin,
     ))
     // A game's maps run at that game's server tick.
     .insert_resource(match args.game_map() {
         Some(id) if id.starts_with("cs_source:") => {
-            Time::<Fixed>::from_seconds(mashup::games::cs_source::TICK_INTERVAL)
+            Time::<Fixed>::from_seconds(cs_source_app::games::cs_source::TICK_INTERVAL)
         }
-        _ => Time::<Fixed>::from_hz(mashup::DEFAULT_TICK_HZ),
+        _ => Time::<Fixed>::from_hz(cs_source_app::DEFAULT_TICK_HZ),
     })
     .insert_resource(movement_config(&args))
     .insert_resource(Loadout {
-        movement: mashup::games::cs_source::movement::ID,
+        movement: cs_source_app::games::cs_source::movement::ID,
     })
     // Network play: a listen server, or a client (`connect`).
-    .add_plugins(mashup::net::NetPlugin)
+    .add_plugins(cs_source_app::net::NetPlugin)
     // The client shell with CS:S's HUD in it.
     .add_plugins(client::ClientPlugin { args })
     // CS:S's menus, panels and HUD (the shell reaches them through
     // `client::front_end`).
-    .add_plugins(mashup::games::cs_source::ui::CsSourceUiPlugin);
+    .add_plugins(cs_source_app::games::cs_source::ui::CsSourceUiPlugin);
     if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
         single_threaded_schedules(&mut app);
     }
@@ -157,10 +157,10 @@ fn dump_systems(app: &mut App, path: &std::path::Path) {
     }
     app.finish();
     app.cleanup();
-    let mut text = mashup::harness::system_order(app.world_mut());
+    let mut text = cs_source_app::harness::system_order(app.world_mut());
     if let Some(sub) = app.get_sub_app_mut(bevy::render::RenderApp) {
         text += "render world:\n";
-        text += &mashup::harness::system_order(sub.world_mut());
+        text += &cs_source_app::harness::system_order(sub.world_mut());
     }
     match std::fs::write(path, text) {
         Ok(()) => eprintln!("systems in order written to {}", path.display()),
@@ -169,7 +169,7 @@ fn dump_systems(app: &mut App, path: &std::path::Path) {
 }
 
 /// Run the per-frame schedules on one thread each instead of Bevy's
-/// multi-threaded executor (`mashup::single_threaded_schedules` for the
+/// multi-threaded executor (`cs_source_app::single_threaded_schedules` for the
 /// main world, the render world's here).
 ///
 /// A frame runs about 1500 systems (main and render world), nearly all of
@@ -186,7 +186,7 @@ fn single_threaded_schedules(app: &mut App) {
         intern::Interned,
         schedule::{ScheduleLabel, SingleThreadedExecutor},
     };
-    mashup::single_threaded_schedules(app);
+    cs_source_app::single_threaded_schedules(app);
     // On macOS the render world keeps Bevy's executor: it runs on the
     // pipelined render thread, and the window surface must be created on
     // the main thread (AppKit's NSView), which only the multi-threaded
@@ -212,8 +212,8 @@ fn single_threaded_schedules(app: &mut App) {
 }
 
 /// Source movement settings: CS:S's, then `--exec` files, then `--cvar`s.
-fn movement_config(args: &client::Args) -> mashup::games::cs_source::movement::SourceMovementConfig {
-    let mut config = mashup::games::cs_source::movement::SourceMovementConfig::default();
+fn movement_config(args: &client::Args) -> cs_source_app::games::cs_source::movement::SourceMovementConfig {
+    let mut config = cs_source_app::games::cs_source::movement::SourceMovementConfig::default();
     for file in &args.exec {
         match std::fs::read_to_string(file) {
             Ok(text) => {

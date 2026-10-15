@@ -1,13 +1,10 @@
-//! One module per game. A game module never uses another game's module
-//! (enforced by tests/it/architecture.rs).
-//!
-//! `load_map("game:name")` dispatcher.
+//! The app's games: `load_map("game:name")` dispatcher. A game module
+//! never uses another game's module (enforced by tests/it/architecture.rs).
 //!
 //! `cs_source` is the `cs_source` crate's parts (games/cs_source,
 //! `cs_source::game`) with the game's front end (`cs_source::ui`).
-
-#[cfg(feature = "combat_arms")]
-pub mod combat_arms;
+//! (Combat Arms, local and git-ignored, is `mashup::games::combat_arms`:
+//! the repository root's package, src/games/combat_arms/.)
 
 /// Counter-Strike: Source: its parts (crate `cs_source`, games/cs_source)
 /// at their old paths, and its front end (`ui`, the crate's `ui`

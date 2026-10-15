@@ -159,8 +159,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
 
 /// The crates' source folders cut out of `mashup`, scanned with `src/`
 /// (their modules keep their names in `ALLOWED`; a game crate's `game`
-/// module is `games`, as `src/games/<game>/` was).
+/// module is `games`, as `src/games/<game>/` was). The CS:S app's glue
+/// (`APP_SRC`) keeps the names it had as `mashup`'s.
 const CRATE_SRC: &[&str] = &[
+    APP_SRC,
     "chimera/core/src",
     "chimera/world/src",
     "chimera/present/src",
@@ -170,6 +172,12 @@ const CRATE_SRC: &[&str] = &[
     "source/logic/src",
     "games/cs_source/src",
 ];
+
+/// The CS:S app's glue (crate `cs_source_app`): `lib.rs` (`SimPlugins`,
+/// `swap_map`, `client_hooks`) and `client.rs` are the crate root's
+/// (`lib`), `main.rs` the game binary's; its other modules keep the names
+/// they had in `mashup` (`harness`, `greybox`, `games`, ...).
+const APP_SRC: &str = "apps/cs_source/src";
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -194,10 +202,10 @@ fn module_of(src: &Path, file: &Path) -> Option<String> {
     let rel = file.strip_prefix(src).ok()?;
     let mut parts = rel.components().map(|c| c.as_os_str().to_str().unwrap_or(""));
     let first = parts.next()?;
-    // `mashup`'s `client` re-exports the shell (chimera_client) with the
+    // The app's `client` re-exports the shell (chimera_client) with the
     // app's own `ClientPlugin` and CS:S's HUD: app glue, as the crate
     // root.
-    if rel == Path::new("client.rs") && src.parent() == Some(root().as_path()) {
+    if rel == Path::new("client.rs") && src == root().join(APP_SRC) {
         return Some("lib".to_string());
     }
     if first == "games" && parts.nth(1) == Some("ui") {
@@ -667,34 +675,49 @@ fn docs_stay_one_line_per_entry() {
 /// must have no unit tests, or those would never run.
 #[test]
 fn untested_binaries_have_no_tests() {
-    let manifest: toml::Table = fs::read_to_string(root().join("Cargo.toml")).unwrap().parse().unwrap();
     let mut errors = Vec::new();
-    for bin in manifest.get("bin").and_then(|b| b.as_array()).into_iter().flatten() {
-        if bin.get("test").and_then(|t| t.as_bool()) != Some(false) {
-            continue;
-        }
-        let name = bin["name"].as_str().unwrap();
-        let path = bin
-            .get("path")
-            .and_then(|p| p.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| format!("src/bin/{name}.rs"));
-        let text = fs::read_to_string(root().join(&path)).unwrap();
-        if text.contains("#[test]") || text.contains("#[cfg(test)]") {
-            errors.push(format!(
-                "{path} has tests, but its [[bin]] `{name}` in Cargo.toml says `test = false`, so they never \
-                 run. Remove that `test = false`."
-            ));
+    for member in workspace_members() {
+        let dir = root().join(&member);
+        let manifest: toml::Table = fs::read_to_string(dir.join("Cargo.toml")).unwrap().parse().unwrap();
+        for bin in manifest.get("bin").and_then(|b| b.as_array()).into_iter().flatten() {
+            if bin.get("test").and_then(|t| t.as_bool()) != Some(false) {
+                continue;
+            }
+            let name = bin["name"].as_str().unwrap();
+            let path = bin
+                .get("path")
+                .and_then(|p| p.as_str())
+                .map(String::from)
+                .unwrap_or_else(|| format!("src/bin/{name}.rs"));
+            let text = fs::read_to_string(dir.join(&path)).unwrap();
+            if text.contains("#[test]") || text.contains("#[cfg(test)]") {
+                errors.push(format!(
+                    "{member}/{path} has tests, but its [[bin]] `{name}` in {member}/Cargo.toml says \
+                     `test = false`, so they never run. Remove that `test = false`."
+                ));
+            }
         }
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
+/// The workspace's members (`[workspace] members` in Cargo.toml), as
+/// folders relative to the root.
+fn workspace_members() -> Vec<String> {
+    let manifest: toml::Table = fs::read_to_string(root().join("Cargo.toml")).unwrap().parse().unwrap();
+    manifest["workspace"]["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m.as_str().map(String::from))
+        .collect()
+}
+
 /// The workspace (docs/ARCHITECTURE.md, "Crates"): every member is a
 /// default member, so `cargo test` and `cargo nextest run` at the root (the
 /// hooks' commands) test them all; the format crates stay pure data, with
-/// no Bevy, physics or game crate under them; and the engine's crates
-/// depend on no game crate (`mashup` is the game today).
+/// no Bevy, physics or game crate under them; the engine's crates
+/// depend on no game crate, and nothing on the apps above.
 #[test]
 fn workspace_crates() {
     let manifest: toml::Table = fs::read_to_string(root().join("Cargo.toml")).unwrap().parse().unwrap();
@@ -718,18 +741,18 @@ fn workspace_crates() {
     // Each member's dependencies that may not be (name prefixes), and why.
     const PURE_DATA: &str = "is pure data (docs/ARCHITECTURE.md, \"Crates\"). Keep the parsing there and \
         move what needs it (ECS types, components, conversion to engine types) into the crate that uses \
-        it, e.g. `mashup::games::cs_source`.";
+        it, e.g. `cs_source`.";
     const ENGINE: &str = "is the engine's base (docs/ARCHITECTURE.md, \"Crates\"): games build on it, \
-        never the other way. Move the piece that needs the game up into `mashup`, or give the engine a \
+        never the other way. Move the piece that needs the game up into the game or the app (`cs_source_app`), or give the engine a \
         hook (a registry, a trait, a resource) that the game fills.";
     const WORLD: &str = "is the simulation's map (docs/ARCHITECTURE.md, \"Crates\"): what draws and \
         plays it (`chimera_present`) and the games sit above it. Say what is needed in plain data (a \
         drawn-part request, a `MapDrawer` or `MapHooks` hook) and let the crate above fill it in.";
     const PRESENT: &str = "is the engine's presentation (docs/ARCHITECTURE.md, \"Crates\"): it draws \
-        and plays the map, and games build on it. Move the piece that needs the game up into `mashup`, or \
+        and plays the map, and games build on it. Move the piece that needs the game up into the game or the app (`cs_source_app`), or \
         give the presentation a hook (a registry, a drawn-part request, a resource) that the game fills.";
     const SIM: &str = "is the simulation's frameworks (docs/ARCHITECTURE.md, \"Crates\"): the games \
-        fill them and sit above them. Move the piece that needs the game up into `mashup`, or give the \
+        fill them and sit above them. Move the piece that needs the game up into the game or the app (`cs_source_app`), or give the \
         framework a hook (a registry, a trait, data) that the game fills.";
     const NET: &str = "is the engine's network (docs/ARCHITECTURE.md, \"Crates\"): Source's logic \
         and the games register what they replicate there (`net::NetAppExt::net_part`) and fill its hooks \
@@ -738,7 +761,7 @@ fn workspace_crates() {
     const GAME: &str = "is a game's simulation (docs/ARCHITECTURE.md, \"Crates\"): it builds on the \
         engine and runs on a dedicated server without drawing; its front end and the apps sit above it, \
         and games never use each other. Move the piece into its front end (`ui`, whose feature alone may \
-        turn on the presentation and the shell: UI_FEATURES) or up into `mashup`, or give the engine a hook \
+        turn on the presentation and the shell: UI_FEATURES) or up into the app (`cs_source_app`), or give the engine a hook \
         the game fills.";
     const SOURCE: &str = "is Source's shared behaviour (docs/ARCHITECTURE.md, \"Crates\"): it sits \
         on the engine's simulation, and what presents it and the games sit above it. Say what is needed in \
@@ -748,6 +771,12 @@ fn workspace_crates() {
         nothing of a game, the app or Source's logic. Give the shell a hook (a resource such as \
         `client::AppHooks` or `debug_ui::GameDebug`, data in `core` or `map::logic_view`) that the crate \
         above fills.";
+    const APP: &str = "is the CS:S app's glue (docs/ARCHITECTURE.md, \"Crates\"): the dedicated server, the \
+        tools and the integration tests (`mashup`) sit above it. Give it what it needs as a hook or move \
+        the piece into the crate that needs it.";
+    const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
+        presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
+        into the client's side or behind `cs_source_app`'s `present`.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
         ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
         ("chimera/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
@@ -755,8 +784,14 @@ fn workspace_crates() {
         ("chimera/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
         ("chimera/sim", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
         ("chimera/net", &["chimera_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
-        ("games/cs_source", &["chimera_present", "chimera_client", "source_logic", "mashup", "combat_arms"], GAME),
+        ("games/cs_source", &["chimera_present", "chimera_client", "source_logic", "cs_source_app", "mashup", "combat_arms"], GAME),
         ("source/logic", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
+        ("apps/cs_source", &["mashup", "combat_arms"], APP),
+        (
+            "apps/cs_source_server",
+            &["chimera_present", "chimera_client", "bevy_egui", "bevy-inspector-egui", "arboard", "mashup"],
+            SERVER,
+        ),
         (
             "chimera/client",
             &["source_logic", "bevy_replicon", "mashup", "cs_source", "combat_arms", "games"],
@@ -860,22 +895,21 @@ fn game_ui_only_with_its_feature() {
 }
 
 /// The dedicated server builds without the presentation
-/// (docs/ARCHITECTURE.md, "Crates"): `mashup` without its default
-/// feature `present` depends on no `chimera_present`, so the server links
-/// no render or audio code. (That it compiles that way the pre-push hook
-/// checks: `cargo check -p mashup --no-default-features --features server
-/// --bin mashup_server`.)
+/// (docs/ARCHITECTURE.md, "Crates"): `cs_source_server` uses the app's
+/// glue (`cs_source_app`) without its default feature `present`, so it
+/// depends on no `chimera_present` and links no render or audio code.
+/// (That it compiles that way the pre-push hook checks: `cargo check -p
+/// cs_source_server`.)
 #[test]
 fn server_builds_without_presentation() {
     // The presentation and crates only the client shell uses (not those
     // Bevy itself pulls in: ab_glyph, winit).
     const CLIENT_ONLY: &[&str] = &["chimera_present", "chimera_client", "bevy_egui", "bevy-inspector-egui", "arboard"];
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let tree = |args: &[&str]| -> String {
+    let tree = |package: &str| -> String {
         let out = Command::new(&cargo)
             .current_dir(root())
-            .args(["tree", "-p", "mashup", "-e", "normal", "--prefix", "none", "--offline", "--locked"])
-            .args(args)
+            .args(["tree", "-p", package, "-e", "normal", "--prefix", "none", "--offline", "--locked"])
             .output()
             .expect("running cargo tree");
         assert!(
@@ -887,21 +921,21 @@ fn server_builds_without_presentation() {
     };
     let uses_present = |tree: &str| tree.lines().any(|l| l.starts_with("chimera_present "));
     assert!(
-        uses_present(&tree(&[])),
-        "the game (`mashup` with its default features) no longer depends on chimera_present: update this test \
-         and docs/ARCHITECTURE.md (\"Crates\")."
+        uses_present(&tree("cs_source_app")),
+        "the game (`cs_source_app` with its default features) no longer depends on chimera_present: update this \
+         test and docs/ARCHITECTURE.md (\"Crates\")."
     );
-    let server = tree(&["--no-default-features", "--features", "server"]);
+    let server = tree("cs_source_server");
     let present: Vec<&str> = server
         .lines()
         .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
         .collect();
     assert!(
         present.is_empty(),
-        "`mashup --no-default-features --features server` (the dedicated server's build) depends on {present:?}. \
-         The presentation (chimera_present) and the client-only crates are optional, behind the default \
-         feature `present` (Cargo.toml): make the new dependency optional and add it to `present`, or move \
-         what the simulation needs out of the presentation."
+        "`cs_source_server` (the dedicated server's build) depends on {present:?}. The presentation \
+         (chimera_present) and the client-only crates are optional in `cs_source_app`, behind its default \
+         feature `present` (apps/cs_source/Cargo.toml): make the new dependency optional and add it to \
+         `present`, or move what the simulation needs out of the presentation."
     );
 }
 

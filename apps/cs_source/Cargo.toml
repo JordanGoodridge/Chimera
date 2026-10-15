@@ -1,0 +1,72 @@
+[package]
+name = "cs_source_app"
+version = "0.1.0"
+description = "The faithful Counter-Strike: Source app: the game binary and its glue (the composed simulation, harness, map loading, client hooks)"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+default-run = "mashup"
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The app composes Chimera, Source's logic and CS:S: `SimPlugins` (the
+# simulation every CS:S build runs: the game's rules, bots and network
+# part with Source's map logic), the headless harness tools and tests
+# drive (`harness`), the greybox, map loading by id (`games`), and with
+# the presentation the client (`client`: the shell with this app's hooks
+# and CS:S's HUD) and the game binary. Above it: the dedicated server
+# (apps/cs_source_server), the tools that drive this simulation
+# (games/cs_source/tools) and `mashup` (the repository root: the
+# integration tests).
+[dependencies]
+source_formats.workspace = true
+chimera_core.workspace = true
+chimera_world.workspace = true
+# The presentation and the client shell: behind the default feature
+# `present`; the dedicated server builds without them.
+chimera_present = { workspace = true, optional = true }
+chimera_client = { workspace = true, optional = true }
+chimera_sim.workspace = true
+chimera_net.workspace = true
+source_logic.workspace = true
+cs_source.workspace = true
+avian3d.workspace = true
+bevy.workspace = true
+
+# The game: its window, the presentation, the client shell and CS:S's
+# front end (`--no-default-features` leaves them out).
+[[bin]]
+name = "mashup"
+path = "src/main.rs"
+test = false
+required-features = ["present"]
+
+[features]
+default = ["present"]
+
+# The presentation (chimera_present: render, audio, `map::MapPlugin`), the
+# client shell (`client`) and CS:S's front end (`cs_source/ui`):
+# everything but the dedicated server.
+present = ["dep:chimera_present", "dep:chimera_client", "cs_source/ui"]
+
+# Faster iteration: link Bevy as a dynamic library. Use with
+# `cargo run --features dev`. Never enable for release builds.
+dev = [
+    "bevy/dynamic_linking",
+    "bevy/bevy_remote",
+    "chimera_core/dev",
+    "chimera_world/dev",
+    "chimera_present?/dev",
+    "chimera_client?/dev",
+    "source_logic/dev",
+    "chimera_sim/dev",
+    "chimera_net/dev",
+    "cs_source/dev",
+]
+
+# CPU profile: every system and render step as a span in a Chrome trace
+# (docs/performance.md). Slower; only for measuring.
+profile = ["bevy/trace_chrome", "chimera_client?/profile"]

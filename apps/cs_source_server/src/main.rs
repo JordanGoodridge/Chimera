@@ -11,9 +11,9 @@
 //! At most 300 frames a second (`FPS_MAX`), schedules on one thread each
 //! (`single_threaded_schedules`). The map's systems alone
 //! (`map::MapSimPlugin`: nothing drawn or played); released built without
-//! the presentation (`cargo build --release --no-default-features
-//! --features server --bin mashup_server`: no chimera_present, client
-//! shell or front end linked).
+//! the presentation (`cargo build --release -p cs_source_server`: the
+//! package uses `cs_source_app` without its `present`, so no
+//! chimera_present, client shell or front end links).
 //!
 //! Known shortcuts (docs/tech-debt.md): The dedicated server runs at most
 //! 300 frames a second (`FPS_MAX`, srcds's `fps_max` default as documented
@@ -29,7 +29,7 @@ use std::{
 };
 
 use bevy::{app::ScheduleRunnerPlugin, prelude::*};
-use mashup::{
+use cs_source_app::{
     console::{Console, ConsoleAppExt},
     games::{self, cs_source},
     greybox::GreyboxMapPlugin,
@@ -87,7 +87,7 @@ fn parse() -> Result<Options, String> {
             console.push(
                 words
                     .iter()
-                    .map(|w| mashup::console::quote(w))
+                    .map(|w| cs_source_app::console::quote(w))
                     .collect::<Vec<_>>()
                     .join(" "),
             );
@@ -116,7 +116,7 @@ fn main() {
     if map_id == net::GREYBOX {
         // The map systems too: `changelevel` loads one later.
         app.add_plugins((GreyboxMapPlugin, MapSimPlugin::empty()))
-            .insert_resource(Time::<Fixed>::from_hz(mashup::DEFAULT_TICK_HZ));
+            .insert_resource(Time::<Fixed>::from_hz(cs_source_app::DEFAULT_TICK_HZ));
     } else {
         let id = if map_id.contains(':') {
             map_id.clone()
@@ -155,7 +155,7 @@ fn main() {
     // reads it.
     .insert_resource(net::maps::MapFiles {
         read: Arc::new(games::map_file_bytes),
-        cache: mashup::mount::config::content_dir(cs_source::GAME),
+        cache: cs_source_app::mount::config::content_dir(cs_source::GAME),
     })
     .add_systems(Update, (finish_level_change, follow_map_cycle))
     .console_command(
@@ -204,7 +204,7 @@ fn main() {
     // Bevy's multi-threaded executor on a full server; multiplayer.md,
     // "Capacity"). `MASHUP_EXECUTOR=multi` keeps Bevy's default.
     if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
-        mashup::single_threaded_schedules(&mut app);
+        cs_source_app::single_threaded_schedules(&mut app);
     }
     app.run();
 }
@@ -217,18 +217,18 @@ struct Stdin(Mutex<mpsc::Receiver<String>>);
 #[derive(Resource)]
 struct LevelLoad {
     id: String,
-    task: bevy::tasks::Task<Result<mashup::map::MapData, String>>,
+    task: bevy::tasks::Task<Result<cs_source_app::map::MapData, String>>,
 }
 
 /// `changelevel <map>`: the greybox at once; a CS:S map loaded in the
 /// background (the game plays on), then swapped in (`finish_level_change`).
 /// The rules' map cycle (`rules::game_end`: the next map when a game
 /// ends) follows the map loaded; its maps from the install's map cycle.
-fn follow_map_cycle(name: Option<Res<LoadedMapName>>, mut cycle: ResMut<mashup::rules::game_end::MapCycle>) {
+fn follow_map_cycle(name: Option<Res<LoadedMapName>>, mut cycle: ResMut<cs_source_app::rules::game_end::MapCycle>) {
     let Some(name) = name.filter(|n| n.is_changed()) else { return };
     cycle.current = net::maps::map_name(&name.0).to_string();
     if cycle.maps.is_empty() {
-        cycle.maps = mashup::mount::config::LocalConfig::load()
+        cycle.maps = cs_source_app::mount::config::LocalConfig::load()
             .ok()
             .and_then(|c| c.game_path(cs_source::GAME))
             .and_then(|path| cs_source::mount::open(&path).ok())
@@ -240,11 +240,11 @@ fn follow_map_cycle(name: Option<Res<LoadedMapName>>, mut cycle: ResMut<mashup::
 fn change_level(world: &mut World, name: &str) -> Result<Option<String>, String> {
     let id = net::normalize_map(name);
     if id == net::GREYBOX {
-        mashup::swap_map(
+        cs_source_app::swap_map(
             world,
             net::GREYBOX,
             None,
-            Duration::from_secs_f64(1.0 / mashup::DEFAULT_TICK_HZ),
+            Duration::from_secs_f64(1.0 / cs_source_app::DEFAULT_TICK_HZ),
         );
         return Ok(Some("changed level to the greybox".into()));
     }
@@ -278,7 +278,7 @@ fn finish_level_change(world: &mut World) {
     match result {
         Ok(data) => {
             let summary = format!("loaded {id}: {} spawns", data.spawns.len());
-            mashup::swap_map(
+            cs_source_app::swap_map(
                 world,
                 &id,
                 Some(data),
@@ -289,13 +289,13 @@ fn finish_level_change(world: &mut World) {
         Err(e) => {
             // Back to the map that plays: clients never left it.
             let back = world
-                .get_resource::<mashup::map::MapFile>()
+                .get_resource::<cs_source_app::map::MapFile>()
                 .map(|f| format!("{}:{}", cs_source::GAME, f.name))
                 .unwrap_or_else(|| net::GREYBOX.into());
             world.insert_resource(LoadedMapName(back));
             world
                 .resource_mut::<Console>()
-                .print(mashup::console::Level::Error, format!("changelevel {id}: {e}"));
+                .print(cs_source_app::console::Level::Error, format!("changelevel {id}: {e}"));
         }
     }
 }
@@ -303,7 +303,7 @@ fn finish_level_change(world: &mut World) {
 fn read_stdin(stdin: Res<Stdin>, mut console: ResMut<Console>) {
     let rx = stdin.0.lock().unwrap();
     while let Ok(line) = rx.try_recv() {
-        console.print(mashup::console::Level::Input, format!("] {line}"));
+        console.print(cs_source_app::console::Level::Input, format!("] {line}"));
         console.submit(line);
     }
 }
@@ -321,7 +321,7 @@ fn start_serving(world: &mut World, mut started: Local<bool>) {
             let map = net::current_map(world);
             world.resource_mut::<Console>().info(format!(
                 "mashup dedicated server {} ({}): {map} on UDP {addr}, {max} players",
-                mashup::core::VERSION,
+                cs_source_app::core::VERSION,
                 net::NET_VERSION
             ));
         }
@@ -338,7 +338,7 @@ fn print_console(console: Res<Console>, mut printed: Local<u64>) {
     *printed = console.printed;
     let lines = &console.output;
     for line in &lines[lines.len().saturating_sub(new)..] {
-        if line.level != mashup::console::Level::Input {
+        if line.level != cs_source_app::console::Level::Input {
             println!("{}", line.text);
         }
     }

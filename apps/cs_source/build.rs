@@ -11,7 +11,7 @@
 //! relink everything), so a `-dirty` mark is as of the last commit change.
 use std::{path::Path, process::Command};
 
-include!("chimera/core/src/core/version.rs");
+include!("../../chimera/core/src/core/version.rs");
 
 fn git(args: &[&str]) -> Option<String> {
     Command::new("git")
@@ -42,7 +42,7 @@ fn main() {
     println!("cargo:rustc-env=MASHUP_VERSION={version}");
     // Without git: rerun only when this script changes.
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=chimera/core/src/core/version.rs");
+    println!("cargo:rerun-if-changed=../../chimera/core/src/core/version.rs");
     let Some(head) = git(&["rev-parse", "--git-path", "HEAD"]) else { return };
     println!("cargo:rerun-if-changed={head}");
     // The branch's own ref, or packed-refs when it is packed (a detached

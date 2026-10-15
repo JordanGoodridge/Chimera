@@ -120,7 +120,7 @@ inline. Keep each line short (`tests/it/architecture.rs` checks).
 - net capacity: Every body goes to every client (no PVS relevance culling) (`chimera/net/src/net/server.rs`)
 - net capacity: Bots' sight in a crowded lobby is the cost limit (64 bots on jacks don't fit) (`games/cs_source/src/bot/mod.rs`)
 - net capacity: Client cost of drawing 31 others not profiled further (`chimera/net/src/net/interp.rs`)
-- net capacity: Dedicated server capped at 300 frames a second, no cvar (`src/bin/mashup_server.rs`)
+- net capacity: Dedicated server capped at 300 frames a second, no cvar (`apps/cs_source_server/src/main.rs`)
 - net: UPnP: IGD only (no NAT-PMP/PCP, no IPv6), nearest router only, untested on real routers (`chimera/net/src/net/upnp.rs`)
 - weapon: Sprays: reach, size and floor turn are well-known values and ours, unmeasured; world only; names, not pictures (`chimera/sim/src/weapon/spray.rs`)
 - map: Sprays drawn with one light value at the centre, no fog (`chimera/present/src/render/spray.rs`)

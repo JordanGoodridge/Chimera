@@ -1,0 +1,32 @@
+[package]
+name = "cs_source_server"
+version = "0.1.0"
+description = "The CS:S dedicated server: the app's simulation and the network, no window, render or audio"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# The CS:S app's glue without its default feature `present`: nothing of
+# chimera_present, the client shell or CS:S's front end links
+# (tests/it/architecture.rs, `server_builds_without_presentation`, checks
+# `cargo tree -p cs_source_server`). In a workspace build features unify,
+# so the released server is built alone: `cargo build --release -p
+# cs_source_server`.
+[dependencies]
+cs_source_app.workspace = true
+bevy.workspace = true
+
+# No unit tests (`test = false`: `cargo test` builds no harness of it);
+# its smoke test is docs/OBSERVABILITY.md's ("Dedicated server").
+[[bin]]
+name = "mashup_server"
+path = "src/main.rs"
+test = false
+
+[features]
+# Bevy as a dynamic library, as the game's `dev`.
+dev = ["cs_source_app/dev"]
+# Nothing: kept so the old command line (`--features dev,server --bin
+# mashup_server`, `--features tools,server`) still works.
+server = []

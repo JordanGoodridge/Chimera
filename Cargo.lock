@@ -3051,6 +3051,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "cs_source_app"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "cs_source",
+ "source_formats",
+ "source_logic",
+]
+
+[[package]]
+name = "cs_source_server"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "cs_source_app",
+]
+
+[[package]]
 name = "ctrlc"
 version = "3.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4686,14 +4711,9 @@ dependencies = [
  "bevy_replicon",
  "bevy_replicon_renet",
  "bzip2",
- "chimera_client",
- "chimera_core",
- "chimera_net",
- "chimera_present",
- "chimera_sim",
- "chimera_world",
  "crc32fast",
  "cs_source",
+ "cs_source_app",
  "dirs",
  "half",
  "image",
@@ -4702,7 +4722,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "source_formats",
- "source_logic",
  "toml",
  "twofish",
  "vbsp",

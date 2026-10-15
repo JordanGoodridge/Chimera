@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
-          # Tags too, so `git describe` (build.rs) names the release tag.
+          # Tags too, so `git describe` (apps/cs_source/build.rs) names the release tag.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux build dependencies
@@ -46,11 +46,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         # The game, then the dedicated server without the presentation
-        # (no render or audio code: Cargo.toml's `present` feature).
+        # alone (no render or audio code: apps/cs_source_server uses the app
+        # without its `present` feature).
         shell: bash
         run: |
-          cargo build --release --locked -p mashup --bin mashup
-          cargo build --release --locked -p mashup --no-default-features --features server --bin mashup_server
+          cargo build --release --locked -p cs_source_app --bin mashup
+          cargo build --release --locked -p cs_source_server --bin mashup_server
       - name: Package
         shell: bash
         run: |

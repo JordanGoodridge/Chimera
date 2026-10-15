@@ -194,7 +194,7 @@ fn main() {
             ..default()
         });
     let this = Profile {
-        build: env!("MASHUP_GIT").to_string(),
+        build: mashup::core::BUILD.to_string(),
         cpu: cpu_model(),
         scenarios: results.clone(),
     };
@@ -351,7 +351,7 @@ fn drive(tick: Res<mashup::core::SimTick>, mut q: Query<(&Driven, &mut Intent)>)
     }
 }
 
-/// As the game runs them (src/main.rs): every per-frame and fixed schedule
+/// As the game runs them (apps/cs_source/src/main.rs): every per-frame and fixed schedule
 /// on one thread, so the counts don't depend on how work was handed out.
 fn single_threaded_schedules(app: &mut App) {
     mashup::single_threaded_schedules(app);

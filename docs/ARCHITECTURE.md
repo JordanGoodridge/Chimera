@@ -11,7 +11,10 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 `workspace_crates`).
 
 ```
-mashup (repository root: src/, tests/it/)   app glue: bins, harness, re-exports, games::load_map
+mashup (repository root: src/, tests/it/)   the integration tests; `cs_source_app` at the old paths
+  |    cs_source_server (apps/cs_source_server/)   the dedicated server: the app without `present`
+  |   /
+cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins, harness, greybox, games::load_map
   |
   |    cs_source[ui] (games/cs_source/src/ui/)   CS:S's front end: menus, panels, HUD (feature `ui`)
   |   /         \
@@ -118,13 +121,24 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   never the presentation, Source's logic, `mashup` or a game (checked);
   `mashup::net` re-exports it with the parts' replicated types.
   `cargo test -p chimera_net --features dev` tests it alone.
-- `mashup` is the app: the binaries, the test harness, `SimPlugins`,
-  `games::load_map`, the greybox and re-exports at the old paths
-  (`mashup::client` adds the app's `ClientPlugin`). It uses
-  `chimera_present` only with its default feature `present` (with the
-  client shell `client` and the games' front ends, `cs_source/ui`): the dedicated server builds without it
-  (`--no-default-features --features server`), linking no render or
-  audio code (checked: `server_builds_without_presentation`).
+- `cs_source_app` (apps/cs_source/) is the faithful CS:S app: the game
+  binary (`mashup`, the workspace's `default-run`) and the app's glue:
+  `SimPlugins` (Chimera's simulation with CS:S's rules, bots and network
+  part and Source's logic), the test harness, `games::load_map`, the
+  greybox, `client_hooks` and `client` (the shell with this app's hooks
+  and CS:S's HUD), re-exports at the old paths, and build.rs's stamp. It
+  uses `chimera_present` only with its default feature `present` (with
+  the client shell and CS:S's front end, `cs_source/ui`).
+- `cs_source_server` (apps/cs_source_server/) is the dedicated server
+  (`mashup_server`): `cs_source_app` without `present`, so built alone it
+  links no render or audio code (checked:
+  `server_builds_without_presentation`, `workspace_crates`); in a
+  workspace build features unify, so releases build it with `-p`.
+- `mashup` (the repository root) is a thin shim: `cs_source_app`
+  re-exported at the old `mashup::` paths (src/lib.rs) for the one
+  integration test crate (tests/it/, which tests across the workspace),
+  `dump` (an install inspector for several games) and Combat Arms' local
+  loader (`games::combat_arms`, git-ignored). Nothing new goes in it.
 
 ## Layers
 
@@ -228,12 +242,12 @@ that the paths exist).
 ### Foundations (core, console, slots, character, movement)
 
 - `chimera/core/src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
-- `src/core.rs`: `chimera_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
+- `apps/cs_source/src/core.rs`: `chimera_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
 - `chimera/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
 - `chimera/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `chimera/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
-- `src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
+- `apps/cs_source/src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
 - `chimera/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
 - `chimera/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `chimera/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
@@ -359,7 +373,7 @@ that the paths exist).
 - `chimera/net/src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
 - `source/logic/src/logic/net.rs`: Source's logic's part of the network: movers, HUD messages (logic)
 - `games/cs_source/src/game/net.rs`: CS:S's part of the network: round, bomb, hostages, join and bot hooks (games)
-- `src/net.rs`: `mashup::net`: `chimera_net` with the parts' replicated types (net)
+- `apps/cs_source/src/net.rs`: `mashup::net`: `chimera_net` with the parts' replicated types (net)
 - `chimera/net/src/net/props.rs`: physics props over the network (net)
 - `chimera/net/src/net/ragdolls.rs`: map-placed ragdolls over the network (net)
 - `chimera/net/src/net/anchors.rs`: placed weapons' anchor nodes over the network (net)
@@ -377,7 +391,7 @@ that the paths exist).
 
 ### Games
 
-- `src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
+- `apps/cs_source/src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
 - `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 
@@ -397,12 +411,14 @@ that the paths exist).
 - `source/formats/src/wav.rs`: WAV (PCM, MS-ADPCM) and MP3 decoding to `SoundClip`
 - `source/formats/src/dem/`: Source demos (`.dem`): frames, net messages, string tables, events, sounds, entity props per tick
 
-### Binaries and the test harness
+### Apps, binaries and the test harness
 
-- `src/lib.rs`: `SimPlugins`, `swap_map` (crate root)
-- `src/main.rs`: the game binary (top)
-- `src/harness.rs`: `Sim` and `NetSim`: headless apps stepped by exact ticks, for tests (harness)
-- `src/bin/mashup_server.rs`: the dedicated server, built without the presentation (top)
+- `apps/cs_source/src/lib.rs`: `SimPlugins`, `swap_map`, `client_hooks` (crate `cs_source_app`'s root)
+- `apps/cs_source/build.rs`: stamps the build's commit and version (`core::VERSION`, `core::BUILD`)
+- `src/lib.rs`: `mashup`: `cs_source_app` at the old paths, for tests/it and `dump` (crate root)
+- `apps/cs_source/src/main.rs`: the game binary (top)
+- `apps/cs_source/src/harness.rs`: `Sim` and `NetSim`: headless apps stepped by exact ticks, for tests (harness)
+- `apps/cs_source_server/src/main.rs`: the dedicated server, built without the presentation (top)
 - `src/bin/mapsweep.rs`: dev tool: load every cached map headless and report problems
 - `src/bin/perfgate.rs`: dev tool: instructions-per-tick regression gate
 - `src/bin/refcmp.rs`: dev tool: compare views against real CS:S
@@ -414,7 +430,7 @@ that the paths exist).
 ### Client (window, input, camera, HUD, menus, debug)
 
 - `chimera/client/src/client/`: the shell's plugins (`ClientPlugins`), command line, local player's camera (client)
-- `src/client.rs`: the shell at its old path, the app's `ClientPlugin` with CS:S's HUD (crate root)
+- `apps/cs_source/src/client.rs`: the shell at its old path, the app's `ClientPlugin` with CS:S's HUD (crate root)
 - `chimera/client/src/client/front_end.rs`: how the shell reaches a game's menus: `FrontEnd` hooks, `MenuStatus`, `Panels` (client)
 - `games/cs_source/src/ui/`: CS:S's front end on the shell (feature `ui`), `CsSourceUiPlugin`, `with_hud` (games_ui)
 - `chimera/client/src/client/net.rs`: the game's side of the network: joining, dropping, hosting (client)

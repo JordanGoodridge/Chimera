@@ -41,7 +41,8 @@ cover every crate; `-p <crate>` picks one: `cargo test -p source_formats`
 builds and runs only the format readers' tests, in seconds, without
 building the game. Tests of a pure reader belong in its crate; tests that
 need the game (ECS, conversion to engine types, real installs) stay in
-`mashup`.
+`tests/it/` (the root package `mashup`, which re-exports the CS:S app's
+glue, `cs_source_app`, at the old `mashup::` paths).
 
 - Fast tier, before every commit (`.githooks/pre-commit`): `cargo test
   --features dev -- --skip heavy::` (unit tests and everything outside
@@ -53,15 +54,14 @@ need the game (ECS, conversion to engine types, real installs) stay in
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
 - Before every push, `.githooks/pre-push` also checks the build without
-  `--features dev` (`cargo check --workspace --lib --bins --features tools,server`;
+  `--features dev` (`cargo check --workspace --lib --bins --features tools`;
   the playtest and release builds use that configuration and the tests
   don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
-  built only with `--features tools`, the dedicated server with
-  `--features server` (so `cargo test` doesn't relink them). It also
-  checks the dedicated server as released, without the presentation
-  (`cargo check -p mashup --no-default-features --features server --bin
-  mashup_server`; `architecture::server_builds_without_presentation`
-  checks its dependencies).
+  built only with `--features tools` (so `cargo test` doesn't link them).
+  It also checks the dedicated server as released, alone and so without
+  the presentation (`cargo check -p cs_source_server`;
+  `architecture::server_builds_without_presentation` checks its
+  dependencies).
 - Full suite, before a push or a merge to main (`.githooks/pre-push`, which
   `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
   8 tests at once and 5 heavy slots, the biggest heavy tests taking 2-3,
@@ -401,7 +401,7 @@ Only `Reflect`-registered types are visible; register new core components in
   describe`, short commit hash and the commit's UTC date, e.g.
   `v0.1.0-playtest3 (feac156, 2026-10-11)` (no tag: `feac156,
   2026-10-11`; `-dirty` on the hash with uncommitted changes), then the
-  network protocol (`NET_VERSION`). build.rs stamps it
+  network protocol (`NET_VERSION`). apps/cs_source/build.rs stamps it
   (`core::VERSION`); the main menu shows it bottom right and
   `mashup_server` prints it at startup.
 - `thirdperson` (back with `firstperson`; distance `cam_idealdist`, CS:S
@@ -712,7 +712,7 @@ renames it for everyone ("* X changed name to Y"); bots take names from
 the install's botprofile.db at `bot_difficulty` (0-3; `bot_prefix`),
 `bot_kick t|ct|easy|...|expert|<name>`, and with `bot_join_after_player 1`
 (the default) the quota waits for a player. The dedicated server:
-`cargo run --features dev,server --bin mashup_server -- -port 27032 +map greybox
+`cargo run --features dev --bin mashup_server -- -port 27032 +map greybox
 +bot_add` (console on stdin: `status`, `bot_add`, `bot_quota 6`, `changelevel de_dust2`, `quit`). Logs show
 `listening on UDP ...`, `<name> joined`, `<name> left`, `disconnected:
 <reason>`.
@@ -816,8 +816,8 @@ server, `password` on a client (the browser asks for it). Two dedicated
 servers and a client on this box:
 
 ```
-cargo run --features dev,server --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
-cargo run --features dev,server --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
+cargo run --features dev --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
+cargo run --features dev --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
 cargo run --features dev -- --window 1280x720 +net_lan_ports 27031-27032 +openserverbrowser lan
 ```
 
