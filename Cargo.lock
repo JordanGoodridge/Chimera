@@ -2479,6 +2479,125 @@ dependencies = [
 ]
 
 [[package]]
+name = "chimera_client"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "arboard",
+ "avian3d",
+ "bevy",
+ "bevy-inspector-egui",
+ "bevy_egui",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "dirs",
+ "image",
+ "serde",
+ "serde_json",
+ "workspace-hack",
+]
+
+[[package]]
+name = "chimera_core"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_dev",
+ "dirs",
+ "libc",
+ "perf-event2",
+ "postcard",
+ "serde",
+ "source_formats",
+ "toml",
+ "windows-sys 0.61.2",
+ "workspace-hack",
+]
+
+[[package]]
+name = "chimera_dev"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
+name = "chimera_net"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet",
+ "bzip2",
+ "chimera_core",
+ "chimera_sim",
+ "chimera_world",
+ "igd-next",
+ "postcard",
+ "renetcode",
+ "serde",
+ "sha2",
+ "workspace-hack",
+]
+
+[[package]]
+name = "chimera_present"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_core",
+ "chimera_world",
+ "half",
+ "image",
+ "workspace-hack",
+]
+
+[[package]]
+name = "chimera_sim"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_core",
+ "chimera_world",
+ "postcard",
+ "serde",
+ "workspace-hack",
+]
+
+[[package]]
+name = "chimera_tools"
+version = "0.1.0"
+dependencies = [
+ "chimera_core",
+ "image",
+ "serde",
+ "serde_json",
+ "workspace-hack",
+]
+
+[[package]]
+name = "chimera_world"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "bevy_replicon",
+ "chimera_core",
+ "half",
+ "image",
+ "serde",
+ "source_formats",
+ "workspace-hack",
+]
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2937,12 +3056,12 @@ dependencies = [
  "bevy_replicon",
  "bevy_replicon_renet",
  "bzip2",
- "engine_client",
- "engine_core",
- "engine_net",
- "engine_present",
- "engine_sim",
- "engine_world",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
  "half",
  "image",
  "serde",
@@ -2954,6 +3073,52 @@ dependencies = [
  "vmt-parser",
  "vtf",
  "winit",
+ "workspace-hack",
+]
+
+[[package]]
+name = "cs_source_app"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "cs_source",
+ "source_formats",
+ "source_logic",
+ "workspace-hack",
+]
+
+[[package]]
+name = "cs_source_server"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "cs_source_app",
+ "workspace-hack",
+]
+
+[[package]]
+name = "cs_source_tools"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_tools",
+ "cs_source",
+ "cs_source_app",
+ "image",
+ "serde",
+ "serde_json",
+ "source_tools",
+ "toml",
+ "vbsp",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -3223,100 +3388,6 @@ dependencies = [
  "rustversion",
  "scopeguard",
  "simdutf8",
-]
-
-[[package]]
-name = "engine_client"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "arboard",
- "avian3d",
- "bevy",
- "bevy-inspector-egui",
- "bevy_egui",
- "dirs",
- "engine_core",
- "engine_net",
- "engine_present",
- "engine_sim",
- "engine_world",
- "image",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "engine_core"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "dirs",
- "libc",
- "perf-event2",
- "postcard",
- "serde",
- "source_formats",
- "toml",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "engine_net"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "bevy_replicon",
- "bevy_replicon_renet",
- "bzip2",
- "engine_core",
- "engine_sim",
- "engine_world",
- "igd-next",
- "postcard",
- "renetcode",
- "serde",
- "sha2",
-]
-
-[[package]]
-name = "engine_present"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "engine_core",
- "engine_world",
- "half",
- "image",
-]
-
-[[package]]
-name = "engine_sim"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "engine_core",
- "engine_world",
- "postcard",
- "serde",
-]
-
-[[package]]
-name = "engine_world"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "bevy_replicon",
- "engine_core",
- "half",
- "image",
- "serde",
- "source_formats",
 ]
 
 [[package]]
@@ -4688,13 +4759,8 @@ dependencies = [
  "bzip2",
  "crc32fast",
  "cs_source",
+ "cs_source_app",
  "dirs",
- "engine_client",
- "engine_core",
- "engine_net",
- "engine_present",
- "engine_sim",
- "engine_world",
  "half",
  "image",
  "postcard",
@@ -4702,13 +4768,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "source_formats",
- "source_logic",
  "toml",
  "twofish",
  "vbsp",
  "vmdl",
  "vmt-parser",
  "vtf",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -6740,10 +6806,18 @@ dependencies = [
  "avian3d",
  "bevy",
  "bevy_replicon",
- "engine_core",
- "engine_net",
- "engine_world",
+ "chimera_core",
+ "chimera_net",
+ "chimera_world",
  "serde",
+ "workspace-hack",
+]
+
+[[package]]
+name = "source_tools"
+version = "0.1.0"
+dependencies = [
+ "source_formats",
 ]
 
 [[package]]
@@ -8485,6 +8559,84 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+]
+
+[[package]]
+name = "workspace-hack"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "ahash",
+ "approx 0.5.1",
+ "arrayvec",
+ "bevy_a11y",
+ "bevy_app",
+ "bevy_asset",
+ "bevy_diagnostic",
+ "bevy_ecs",
+ "bevy_image",
+ "bevy_input_focus",
+ "bevy_math",
+ "bevy_mesh",
+ "bevy_picking",
+ "bevy_reflect",
+ "bevy_reflect_derive",
+ "bevy_state",
+ "bevy_tasks",
+ "bevy_time",
+ "bevy_transform",
+ "bevy_utils",
+ "bevy_winit",
+ "bitflags 2.13.2",
+ "blake3",
+ "bytemuck",
+ "bytes",
+ "constant_time_eq",
+ "crossbeam-channel",
+ "crossbeam-utils",
+ "derive_more",
+ "disqualified",
+ "downcast-rs 2.0.2",
+ "either",
+ "fixedbitset",
+ "foldhash 0.2.0",
+ "getrandom 0.4.3",
+ "glam",
+ "half",
+ "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
+ "image",
+ "indexmap",
+ "itertools 0.14.0",
+ "linebender_resource_handle",
+ "log",
+ "memchr",
+ "nix",
+ "nonmax",
+ "num-traits",
+ "postcard",
+ "proc-macro2",
+ "rand",
+ "regex-automata",
+ "regex-syntax",
+ "ron",
+ "serde_core",
+ "slotmap",
+ "smallvec",
+ "syn 2.0.119",
+ "syn 3.0.6",
+ "thiserror 2.0.21",
+ "toml_datetime",
+ "toml_parser",
+ "tracing",
+ "typenum",
+ "uuid",
+ "wayland-backend",
+ "wayland-sys",
+ "wgpu-types",
+ "windows",
+ "windows-sys 0.61.2",
+ "winnow",
 ]
 
 [[package]]

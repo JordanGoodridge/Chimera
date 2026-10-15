@@ -48,20 +48,27 @@ if [ "$pushing" = 1 ]; then
     # The tests build with --features dev; playtest and release builds
     # don't. Check that configuration too (always: the suite can't catch
     # a dev-only dependency), with the binaries behind features (the
-    # debugging tools, the dedicated server: Cargo.toml).
+    # debugging tools: `tools`).
     mkdir -p target
     echo "pre-push: checking the build without --features dev..." >&2
-    if ! cargo check --workspace --lib --bins --features tools,server --quiet >target/pre-push-check.log 2>&1; then
+    if ! cargo check --workspace --lib --bins --features tools --quiet >target/pre-push-check.log 2>&1; then
         grep -E "^error" -A6 target/pre-push-check.log | head -30
         echo "pre-push: the build without --features dev fails (log: target/pre-push-check.log); not pushing." >&2
         exit 1
     fi
     # The dedicated server as released: without the presentation
-    # (engine_present, the client shell; Cargo.toml's `present`).
+    # (chimera_present, the client shell): its package alone, which uses the
+    # app without `present` (apps/cs_source_server/Cargo.toml).
     echo "pre-push: checking the dedicated server's build without the presentation..." >&2
-    if ! cargo check -p mashup --no-default-features --features server --bin mashup_server --quiet >target/pre-push-check-server.log 2>&1; then
+    if ! cargo check -p cs_source_server --quiet >target/pre-push-check-server.log 2>&1; then
         grep -E "^error" -A6 target/pre-push-check-server.log | head -30
         echo "pre-push: the dedicated server doesn't build without the presentation (log: target/pre-push-check-server.log); not pushing." >&2
+        exit 1
+    fi
+    # The workspace-hack matches the dependencies (where cargo-hakari is
+    # installed: `cargo install cargo-hakari --locked`).
+    if cargo hakari --version >/dev/null 2>&1 && ! cargo hakari generate --diff --quiet >/dev/null 2>&1; then
+        echo "pre-push: chimera/workspace-hack is out of date: run \`cargo hakari generate\` (and \`cargo hakari manage-deps -y\`) and commit it; not pushing." >&2
         exit 1
     fi
 fi

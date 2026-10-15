@@ -41,7 +41,8 @@ cover every crate; `-p <crate>` picks one: `cargo test -p source_formats`
 builds and runs only the format readers' tests, in seconds, without
 building the game. Tests of a pure reader belong in its crate; tests that
 need the game (ECS, conversion to engine types, real installs) stay in
-`mashup`.
+`tests/it/` (the root package `mashup`, which re-exports the CS:S app's
+glue, `cs_source_app`, at the old `mashup::` paths).
 
 - Fast tier, before every commit (`.githooks/pre-commit`): `cargo test
   --features dev -- --skip heavy::` (unit tests and everything outside
@@ -53,15 +54,14 @@ need the game (ECS, conversion to engine types, real installs) stay in
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
 - Before every push, `.githooks/pre-push` also checks the build without
-  `--features dev` (`cargo check --workspace --lib --bins --features tools,server`;
+  `--features dev` (`cargo check --workspace --lib --bins --features tools`;
   the playtest and release builds use that configuration and the tests
   don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
-  built only with `--features tools`, the dedicated server with
-  `--features server` (so `cargo test` doesn't relink them). It also
-  checks the dedicated server as released, without the presentation
-  (`cargo check -p mashup --no-default-features --features server --bin
-  mashup_server`; `architecture::server_builds_without_presentation`
-  checks its dependencies).
+  built only with `--features tools` (so `cargo test` doesn't link them).
+  It also checks the dedicated server as released, alone and so without
+  the presentation (`cargo check -p cs_source_server`;
+  `architecture::server_builds_without_presentation` checks its
+  dependencies).
 - Full suite, before a push or a merge to main (`.githooks/pre-push`, which
   `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
   8 tests at once and 5 heavy slots, the biggest heavy tests taking 2-3,
@@ -136,13 +136,13 @@ With `--features dev`, the game serves JSON-RPC on `localhost:15702`.
 
 ```
 curl -s localhost:15702 -d '{"jsonrpc":"2.0","id":1,"method":"world.query","params":{
-  "data":{"components":["engine_core::core::MovementState","engine_core::core::Velocity"]},
-  "filter":{"with":["engine_core::core::LocalPlayer"]}}}'
+  "data":{"components":["chimera_core::core::MovementState","chimera_core::core::Velocity"]},
+  "filter":{"with":["chimera_core::core::LocalPlayer"]}}}'
 ```
 
 ```
 curl -s localhost:15702 -d '{"jsonrpc":"2.0","id":2,"method":"world.get_resources",
-  "params":{"resource":"engine_core::core::SimTick"}}'
+  "params":{"resource":"chimera_core::core::SimTick"}}'
 ```
 
 Other methods: `world.list_components`, `world.get_components`,
@@ -370,7 +370,7 @@ Only `Reflect`-registered types are visible; register new core components in
   log line `ragdoll ... (death pose Some((Front, 1)))` names the death
   pose. To shoot a body after death, run live with `+bot_stop 1
   +bot_dont_shoot 1 +bot_add 1`, find the bot with a `world.query` of
-  `Transform` on `engine_core::core::Intent` entities, `setpos` near it, and
+  `Transform` on `chimera_core::core::Intent` entities, `setpos` near it, and
   tap `+attack`/`-attack` over the remote console between
   `screenshot`s.
 - Flashbang look (white plus the frozen after-image): run live on
@@ -401,7 +401,7 @@ Only `Reflect`-registered types are visible; register new core components in
   describe`, short commit hash and the commit's UTC date, e.g.
   `v0.1.0-playtest3 (feac156, 2026-10-11)` (no tag: `feac156,
   2026-10-11`; `-dirty` on the hash with uncommitted changes), then the
-  network protocol (`NET_VERSION`). build.rs stamps it
+  network protocol (`NET_VERSION`). apps/cs_source/build.rs stamps it
   (`core::VERSION`); the main menu shows it bottom right and
   `mashup_server` prints it at startup.
 - `thirdperson` (back with `firstperson`; distance `cam_idealdist`, CS:S
@@ -712,7 +712,7 @@ renames it for everyone ("* X changed name to Y"); bots take names from
 the install's botprofile.db at `bot_difficulty` (0-3; `bot_prefix`),
 `bot_kick t|ct|easy|...|expert|<name>`, and with `bot_join_after_player 1`
 (the default) the quota waits for a player. The dedicated server:
-`cargo run --features dev,server --bin mashup_server -- -port 27032 +map greybox
+`cargo run --features dev --bin mashup_server -- -port 27032 +map greybox
 +bot_add` (console on stdin: `status`, `bot_add`, `bot_quota 6`, `changelevel de_dust2`, `quit`). Logs show
 `listening on UDP ...`, `<name> joined`, `<name> left`, `disconnected:
 <reason>`.
@@ -816,8 +816,8 @@ server, `password` on a client (the browser asks for it). Two dedicated
 servers and a client on this box:
 
 ```
-cargo run --features dev,server --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
-cargo run --features dev,server --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
+cargo run --features dev --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
+cargo run --features dev --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
 cargo run --features dev -- --window 1280x720 +net_lan_ports 27031-27032 +openserverbrowser lan
 ```
 
@@ -904,7 +904,8 @@ Details and baseline numbers: [performance.md](performance.md).
   output folder (`<out>/<map>/bench/`) have every metric's n, mean, p50,
   p90, p99, p99.9, max per view and overall, for scripts
   (`jq '.overall.metrics.main_instructions.p50' bench.json`).
-- `perfgate` (`src/bin/perfgate.rs`): the instructions-per-tick
+- `perfgate` (`games/cs_source/tools/src/bin/perfgate.rs`, the gate
+  itself `chimera/tools/src/perfgate.rs`): the instructions-per-tick
   regression gate: `cargo build --profile playtest --features tools --bin perfgate &&
   target/playtest/perfgate` runs greybox, de_dust2 (rounds, 10 bots) and
   mg_lego_multigames_v2 headless for 2000 ticks each, prints instructions
@@ -950,7 +951,7 @@ Details and baseline numbers: [performance.md](performance.md).
   `TRACE_CHROME=<file>` names it (else `trace-*.json` in the working
   directory). Keep runs short (`--frames 400`: about 1.5 GB) and the
   file in your `target/`. `tracesum <file> [--skip N] [--top N]
-  [--filter text] [--by-total]` (`src/bin/tracesum.rs`) prints the main
+  [--filter text] [--by-total]` (`chimera/tools/src/bin/tracesum.rs`) prints the main
   world's (`main app`) and render world's (`sub app: name=RenderApp`)
   time per frame and the spans with the most self time per frame, by
   thread (systems run on the `workers`); open the file in
@@ -1266,7 +1267,7 @@ cargo run --features dev,tools --bin movecmp -- fuzz --runs 16 --ticks 150   # l
 cargo run --features dev,tools --bin movecmp -- --offline   # against the last CS:S logs, no server
 ```
 
-- Each scenario (in `src/bin/movecmp.rs`) is a start position and per-tick
+- Each scenario (in `games/cs_source/tools/src/bin/movecmp.rs`) is a start position and per-tick
   inputs. A CS:S dedicated server with the `tools/css_probe` SourceMod
   plugin plays them on a bot and logs every tick; mashup plays the same
   inputs from the game's tick-0 state on the same map at the same 0.015 s

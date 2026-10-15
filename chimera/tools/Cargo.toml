@@ -1,0 +1,36 @@
+[package]
+name = "chimera_tools"
+version = "0.1.0"
+description = "Chimera's tools: the perf regression gate, image comparison, trace summaries"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The engine's base (its metrics) and plain crates; never Source's
+# crates, a game, an app or `mashup` (tests/it/architecture.rs checks
+# it): a tool that needs them lives in that layer's tools.
+[dependencies]
+chimera_core.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+workspace-hack.workspace = true
+
+# Summarize a Chrome trace written by a `--features profile` build
+# (docs/performance.md, "Measuring"). Built only with `tools`, as every
+# debugging binary.
+[[bin]]
+name = "tracesum"
+test = false
+required-features = ["tools"]
+
+[features]
+# The debugging binaries (docs/OBSERVABILITY.md).
+tools = []
+# Bevy as a dynamic library, as the game's `dev`.
+dev = ["chimera_core/dev"]

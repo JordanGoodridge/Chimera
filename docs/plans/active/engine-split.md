@@ -3,7 +3,17 @@
 Status: decided 2026-10-07: one private monorepo (`r0pi0x/LuckerParty`,
 history rewritten to the new identity), restructured into the crates
 below. Separate repos only if a good reason comes up later; crates keep
-that a folder move. Nothing moved yet.
+that a folder move.
+
+Naming and layering (user, 2026-10-15): the engine is **Chimera**
+(folder `chimera/`, crates `chimera_core`, `chimera_world`, `chimera_sim`,
+`chimera_net`, `chimera_present`, `chimera_client`; were `engine/` and
+`engine_*`, the names this plan's history below still uses). Layers:
+Rust, Bevy, Chimera, the loaders (`source_formats`, `source_logic`), games
+as libraries (`cs_source`, later `combat_arms`, ...), apps on top (one
+faithful app per game, mashup apps using several, Lucker Party the rich
+one). A tool lives at the lowest layer whose knowledge it needs (Chimera's,
+Source's, a game's; an app's only for app concerns).
 
 ## Why
 
@@ -18,18 +28,24 @@ that a folder move. Nothing moved yet.
 ## Target layout
 
 ```
-engine/              neutral: app shell, console, slots/mounts, physics,
+chimera/             neutral: app shell, console, slots/mounts, physics,
                      movement framework, weapons/rounds/bots, HUD, net
 source/              Source engine formats and shared Source behaviour:
                      BSP/VPK/VTF/VMT/MDL/PHY, entity I/O and logic classes,
                      soundscapes, Source materials and shaders
-games/cs_source/     CS:S: library (plugins) + standalone app
-games/combat_arms/   Combat Arms: library + standalone app (local, git-ignored for now)
+games/cs_source/     CS:S: library (plugins); its tools in games/cs_source/tools
+games/combat_arms/   Combat Arms: library (local, git-ignored for now)
 games/originals/     Lucker Party's own games and assets
 minigames/           minigame definitions + rule modules that mix games
+apps/cs_source/      the faithful CS:S app (done: `cs_source_app`, binary `mashup`)
+apps/cs_source_server/  its dedicated server (done: binary `mashup_server`)
 apps/mashup/         dev sandbox: any game, any map, all debug tools
 apps/lucker_party/   the party product
 ```
+
+Each game's faithful app is its own crate under `apps/` (decided
+2026-10-15, superseding "library + standalone app" in one crate); the
+game crate stays a library.
 
 Rules:
 - `engine` knows no game. `source` depends on `engine` only. Games depend
@@ -53,7 +69,7 @@ recompiles all 165k lines, and one `engine` crate at the bottom wouldn't
 help).
 
 ```
-engine/   game-agnostic, several crates with stable interfaces
+chimera/  game-agnostic, several crates with stable interfaces
   core      core, console, slots/registries, version, metrics
   world     map data, collision, sim-side spawning
   sim       frameworks: movement slot, weapon system, rule-module interface, bots framework
@@ -65,7 +81,8 @@ source/
   source    entity I/O and logic classes, Source materials/shaders, soundscapes, Source movement
 games/cs_source/   parts (weapons, rule modules, HUD, GameUI menus, bot behaviour)
                    + CsSourcePlugins (the faithful game) + its app
-minigames/, games/originals/, apps/*, tools/ (debug binaries: not built by `cargo test`)
+minigames/, games/originals/, apps/*
+chimera/tools, source/tools, games/<game>/tools   each layer's tools (behind `tools`)
 ```
 
 - Parts depend on engine (and source) interfaces only, never on each
@@ -227,18 +244,18 @@ measurements):
     Client post passes (`client::hdr`, `gamma`,
     `color_correction`) stay in client: they hang off
     `FirstPersonCamera`/`UiCamera`/`ClientArgs`.
-  - [x] A server without rendering (2026-10-14): `engine_world`
+  - [x] A server without rendering (2026-10-14): `chimera_world`
     registers all of map's systems itself (`map::build`, in
     `map/registration.rs`), with what draws and plays the map at fixed
     places among them (`map::MapLayers`: hooks that register at a place,
     and the drawing systems of chains that mix map's and render's, e.g.
     the gibs' and the culling's, handed over as `ScheduleConfigs` so each
     stays one chain). `map::MapSimPlugin` is map's alone (the `()`
-    drawer: nothing drawn, no headless stand-ins); `engine_present`'s
+    drawer: nothing drawn, no headless stand-ins); `chimera_present`'s
     `MapPlugin` fills the places (`Present`). The client's order is
     unchanged: the spawn dump (five maps) and each schedule's system
     order (now in the dump too, `<map>.systems.txt`) are identical
-    before and after. `mashup`'s `engine_present` dependency and the
+    before and after. `mashup`'s `chimera_present` dependency and the
     client shell (`client`, `games::*::ui`, egui, glyph, clipboard,
     winit crates) are behind the default feature `present`;
     `mashup_server` adds `MapSimPlugin` and builds with
@@ -250,7 +267,7 @@ measurements):
     differ from before (it never matched a client's). Measured
     (`cargo build --release`, this box, 4 jobs, sccache): the server
     binary 117.3 MB (77.6 stripped) before, 106.3 (69.4) after; no
-    `engine_present`, egui, client or cpal/rodio symbols left, wgpu's
+    `chimera_present`, egui, client or cpal/rodio symbols left, wgpu's
     halved (Bevy's own); a rebuild after a game file's edit 255 s
     before, 204 s after; 548 crates compiled before, 518 after. Left: Bevy's
     own render, window, audio and gamepad crates (bevy_render/wgpu,
@@ -260,7 +277,7 @@ measurements):
     simulation needs bevy_asset, bevy_image, bevy_mesh, bevy_camera,
     bevy_light, none of which needs bevy_render in 0.19), `present`
     adding `bevy/default` (the client's features unchanged) and
-    `engine_world`/`engine_core` taking it as a dev-dependency (their
+    `chimera_world`/`chimera_core` taking it as a dev-dependency (their
     own tests keep sharing the game's Bevy build); what stands in the
     way: avian3d's default features (`debug-plugin`, `bevy_picking`,
     `bevy_scene` pull the render crates; the solver's features must
@@ -268,9 +285,9 @@ measurements):
     `Face`), `map::monitor`'s `bevy::pbr::DistanceFog`, `map::sky`'s
     `bevy::render::render_resource` types, and the headless harness's
     plugins.
-  - [x] Cutting the crates (`map` to `engine/world`, `render` to
-    `engine/present`). Done (2026-10-14): `engine/world` (package
-    `engine_world`, module `map`): `MapPlugin`'s type moved up into
+  - [x] Cutting the crates (`map` to `chimera/world`, `render` to
+    `chimera/present`). Done (2026-10-14): `chimera/world` (package
+    `chimera_world`, module `map`): `MapPlugin`'s type moved up into
     `map_plugin` beside its `impl Plugin` (re-exported as
     `map::MapPlugin`; map's part is `map::build_first`,
     `build_after_ragdolls`, `build_after_light_styles`), map's
@@ -278,18 +295,18 @@ measurements):
     (the data's in map, `render::beams::beam_params` in render), a
     `#[cfg(test)]` stand-in inlined into render's test; spawn dump
     identical on the five maps modulo moved paths (no masking needed).
-    Then `engine/present` (package `engine_present`): `render`, `audio`
+    Then `chimera/present` (package `chimera_present`): `render`, `audio`
     and `map_plugin` (`MapPlugin`, `pub use`d by `mashup::map`) moved
     whole; their `pub(crate)` items became `pub`, the embedded shaders'
-    paths are `embedded://engine_present/render/...`; `mashup`
+    paths are `embedded://chimera_present/render/...`; `mashup`
     re-exports `render` and `audio`. Spawn dump identical again (five
     maps, modulo paths), `tests/it/drawn_parts.rs` passes, de_dust2 and
     gg_tbr_water_basin screenshots draw as before. Measured
-    (docs/performance.md, "`engine_world` and `engine_present`"): a
+    (docs/performance.md, "`chimera_world` and `chimera_present`"): a
     leaf edit in render or map, `cargo test --features dev --no-run`,
     30-72 s (was 210 s); in a game file still 127-176 s (mashup's 134k
-    lines); `cargo test -p engine_world` 9 s, `-p engine_present` 12 s.
-    Left: the simulation's other layers (`engine/sim`), `mashup` itself
+    lines); `cargo test -p chimera_world` 9 s, `-p chimera_present` 12 s.
+    Left: the simulation's other layers (`chimera/sim`), `mashup` itself
     (`render` behind a feature for the server: done, above).
     What it needed (2026-10-14): (a)
     `impl Plugin for MapPlugin` lives in `map_plugin` (root crate) for a
@@ -301,7 +318,7 @@ measurements):
     fields: `LooseAsset`, `GibAssets`, `FlyingGib`, `Ragdoll`,
     `PendingMap`, `PlayableArea`, the props' and bodies' types) that
     `render`/`map_plugin`/`audio` use become `pub`; (c) `map` uses only
-    `core` (`engine_core`) of ours, plus avian, replicon and Bevy's
+    `core` (`chimera_core`) of ours, plus avian, replicon and Bevy's
     image and camera types (`map::sky`'s images, the camera markers):
     no blocker; (d) the root crate re-exports `world::map` and
     `present::render` so `crate::map`/`mashup::map` paths keep working;
@@ -377,21 +394,21 @@ measurements):
   and MDL conversion (they build engine types; vbsp/vmdl do the
   parsing), surface properties, sound scripts and soundscapes (their
   parsing is mixed with the loading), `.res` layout conversion.
-- [x] (3) `engine/core` (package `engine_core`, 2026-10-14): `core`,
+- [x] (3) `chimera/core` (package `chimera_core`, 2026-10-14): `core`,
   `console`, `slots`, `character`, `metrics` and `core::version`
   (`format_version`) moved whole; they used nothing above each other,
   so no interface was needed. `mashup` re-exports them at their old
   paths; `mashup::core` (src/core.rs) adds `VERSION`, stamped by
   build.rs in the app's crate so a commit doesn't rebuild the base.
   `movement` (placeholder, noclip) stays: it is a slot implementation,
-  `engine/sim` material. The layering table covers engine/core/src too;
+  `chimera/sim` material. The layering table covers chimera/core/src too;
   `workspace_crates` keeps it off `mashup` and the games. `dev` forwards
-  to `engine_core/dev` (same Bevy build for `cargo test -p engine_core
+  to `chimera_core/dev` (same Bevy build for `cargo test -p chimera_core
   --features dev`). Measured (a new `pub fn`, load 10-40): an edit in
-  `engine_core` checked with `cargo test -p engine_core --features dev`
+  `chimera_core` checked with `cargo test -p chimera_core --features dev`
   (build and run) in 4-7 s; a leaf edit in `mashup`, `cargo test
   --features dev --no-run`, 127-160 s as before (one crate below it
-  less, but `mashup` is still ~160k lines); after an `engine_core` edit
+  less, but `mashup` is still ~160k lines); after an `chimera_core` edit
   the same command took 28-81 s (`mashup` recompiles incrementally).
 - [x] (3) `mashup`'s module graph measured (2026-10-14, after the
   engine crates): every `crate::`/`mashup::` path (grouped imports
@@ -422,11 +439,11 @@ measurements):
   simulation of CS:S (`cs_source` without `ui/`) uses only those and
   the engine: nothing of `net`, `bot`, `client` or `logic`. So, bottom
   first: `logic` to `source/logic` (needs nothing); `weapon` and
-  `movement` to `engine/sim` (nothing); `mount` down to the engine
+  `movement` to `chimera/sim` (nothing); `mount` down to the engine
   (its config's repository path); then `cs_source`'s simulation with
   the CS:S rules (`objectives`, `rules`) to `games/cs_source` (its
   `ui/` stays in `mashup` with the client, re-exported beside it).
-  `net` (to `engine/net`) is blocked by naming CS:S's rules (round
+  `net` (to `chimera/net`) is blocked by naming CS:S's rules (round
   state, bomb, hostages: game-registered replication) and `logic`
   (Source); `bot` by its bomb and hostage goals; `client` by
   `CLIENT_GAME_EXCEPTIONS` (a game registry).
@@ -434,18 +451,18 @@ measurements):
   moved whole (it uses only `core`, `console` and `map`); one
   `pub(crate)` item became `pub`; `mashup` re-exports it as
   `mashup::logic`. The layering table covers source/logic/src;
-  `workspace_crates` keeps it off `engine_present`, `mashup` and the
+  `workspace_crates` keeps it off `chimera_present`, `mashup` and the
   games. Spawn dump identical on the five maps modulo moved paths.
-- [x] (3) `engine/sim` (package `engine_sim`, 2026-10-14): `weapon`,
+- [x] (3) `chimera/sim` (package `chimera_sim`, 2026-10-14): `weapon`,
   `movement` (placeholder, noclip) and `rules::module` (as
   `rule_module`: the `RuleModule` registry, `pick`, `mashup_rules`)
   moved whole; they use only the engine crates. `mashup` re-exports
   `weapon` and `movement` at their old paths and `rules::module` as
   before; `rule_module::plugin` became `pub` (rules adds it). Spawn dump
   identical on the five maps modulo moved paths.
-- [x] (3) `mount` down into `engine_core` (2026-10-14): the VFS and
+- [x] (3) `mount` down into `chimera_core` (2026-10-14): the VFS and
   KeyValues re-exports, `mashup.local.toml` and finding installs, so a
-  game crate can use it; `mashup::mount` re-exports it. `engine_core`
+  game crate can use it; `mashup::mount` re-exports it. `chimera_core`
   now depends on `source_formats` (the VFS, KeyValues) and on `dirs`,
   `toml` and `windows-sys` (moved from `mashup`); the config's
   checkout fallback is the repository root (`CARGO_MANIFEST_DIR/../..`).
@@ -465,13 +482,13 @@ measurements):
   (vbsp, vmdl, vtf, vmt-parser, bzip2, sha2) became workspace
   dependencies. Architecture test: the crate's `game` module is `games`
   in the layering table (`crate::game::` counts as its own game),
-  `workspace_crates` keeps it off `engine_present`, `mashup` and Combat
+  `workspace_crates` keeps it off `chimera_present`, `mashup` and Combat
   Arms. Spawn dump identical on the five maps modulo moved paths; the
   heavy network tests and `cargo test -p cs_source --features dev` (106
   tests) pass.
 - Remaining couplings (2026-10-14, what keeps the rest in `mashup`;
   references counted as in the graph above):
-  - [x] `net` (done 2026-10-14: `engine/net`, next entries but one) named CS:S's rules: `rules` 28 (the join
+  - [x] `net` (done 2026-10-14: `chimera/net`, next entries but one) named CS:S's rules: `rules` 28 (the join
     flow: `JoinChoice`, `join_team`/`join_class`/`join_spectators`,
     `make_unassigned`, `hold_out`, `enter_game`; `Dead`, `Score`,
     `MapLoads`; `rounds::{RoundState, Phase, FunFact, Mvp, RoundEnded,
@@ -482,7 +499,7 @@ measurements):
     interfaces: (a) game-registered replication: `net/game.rs` (the round,
     scores, bomb, hostages over the network) moves to the game, which
     registers its replicated components, events and client-side writers
-    through an `engine_net` API (`NetRound` and its kin become the
+    through an `chimera_net` API (`NetRound` and its kin become the
     game's); (b) a join-flow hook (`JoinRules`: a resource of fn pointers
     or a trait object the game inserts: spawn as the rules allow, join a
     team/class/spectators, hold out while loading) in place of naming
@@ -495,11 +512,11 @@ measurements):
     is registered by `source_logic`'s plugin. Each is its own commit
     with the network tests; (a) is the big one.
   - `bot` joined `cs_source` (next entry); an engine bots framework
-    (`engine_sim`) needs the bomb and hostage goals, buying and the
+    (`chimera_sim`) needs the bomb and hostage goals, buying and the
     radio behind a bot-goal interface first.
   - [x] `client` named `cs_source` in 4 files (`CLIENT_GAME_EXCEPTIONS`:
     the default game's install, map cycle, tick, binds, the movement
-    cvars). Done (2026-10-14): `engine_core::game_registry`: a game fills
+    cvars). Done (2026-10-14): `chimera_core::game_registry`: a game fills
     a `GameInfo` (`static`: id, short name, its folder in the install,
     tick, `open`/`map_cycle`/`import_map` as `fn`s, its default binds'
     file and built-in table, movement cvars as data) and registers it
@@ -517,7 +534,7 @@ measurements):
     engine crates and CS:S's own: `net` (35 references: `net::client`,
     `NetSettings`, `NetCharacter`, `score_flags`, `query` (the server
     browser), `motd`, `maps`, `RadioRequest`, `NetScore`, `NetEvent`),
-    which named CS:S's rules and sat in `mashup` until `engine_net`
+    which named CS:S's rules and sat in `mashup` until `chimera_net`
     (game-registered replication; now done: `cs_source` may use `net`,
     with CS:S's replicated types in `cs_source::game::net`); and nearly the whole shell
     (138 references: `client::console` 29 (`ConsoleUi`, `map_names`),
@@ -529,11 +546,11 @@ measurements):
     `spectate`, `vgui`, `weapon_select`). Every file of `ui/` uses
     `game_menu`, and `game_menu` uses `net` and `client::console`, so no
     part of it could move first).
-    - [x] (2026-10-14) The shell's base as a crate: `engine/client`
-      (package `engine_client`, module `client`): `front_end`, `fonts`,
-      `hud_text` (its shader at `embedded://engine_client/client/`),
+    - [x] (2026-10-14) The shell's base as a crate: `chimera/client`
+      (package `chimera_client`, module `client`): `front_end`, `fonts`,
+      `hud_text` (its shader at `embedded://chimera_client/client/`),
       `widgets`, `binds` and `vgui`'s drawing moved whole; they use only
-      `engine_core` and `engine_world` (no `engine_present`, no `net`).
+      `chimera_core` and `chimera_world` (no `chimera_present`, no `net`).
       `mashup::client` re-exports them at their old paths; its own
       `vgui` re-exports the base's and adds what needs the console and
       chat (the mouse grab while a game-look menu is open, `keys_live`),
@@ -541,15 +558,15 @@ measurements):
       `binds::test_binds` and `SAMPLE_CONFIG_DEFAULT` are no longer
       `cfg(test)` (the front end's tests use them across the crate
       boundary). `workspace_crates` keeps the crate off
-      `engine_present`, `engine_sim`, `source_logic`, replicon,
+      `chimera_present`, `chimera_sim`, `source_logic`, replicon,
       `mashup` and the games; the server build check lists it as
       client-only. Main menu and buy menu screenshots on de_dust2 are
       pixel-identical before and after, the scoreboard differs in 4
-      pixels (bots). Measured (docs/performance.md, "`engine_client`"): a
+      pixels (bots). Measured (docs/performance.md, "`chimera_client`"): a
       leaf edit's `cargo test --features dev --no-run` 18-20 s in the
       front end, 36-64 s in the shell (was 77-78 s), 15-37 s in
-      `engine_client`; `cargo test -p engine_client` 2 s.
-    - Left, in order: (a) `net` to `engine_net` (another session); (b)
+      `chimera_client`; `cargo test -p chimera_client` 2 s.
+    - Left, in order: (a) `net` to `chimera_net` (another session); (b)
       the shell's references to CS:S's rules and bots (`rules` 33:
       `JoinChoice`, `Dead`, `RoundState`/`Phase`, `MapCycle`,
       `new_game`, `game_end::clock`; `objectives::bomb` in `radar` and
@@ -558,9 +575,9 @@ measurements):
       (c) the CS:S-flavoured HUD still in the shell (`game_hud`,
       `win_panel`, `weapon_select`, `spectate`, `radar`, `overview`,
       `hud_sprites`) to the front end, or a HUD slot; (d) then the rest
-      of the shell to `engine_client`, and `ui/` to `cs_source` behind a
-      `ui` feature depending on `engine_client` (`workspace_crates`
-      keeps `engine_present` off `cs_source` today: the feature would
+      of the shell to `chimera_client`, and `ui/` to `cs_source` behind a
+      `ui` feature depending on `chimera_client` (`workspace_crates`
+      keeps `chimera_present` off `cs_source` today: the feature would
       need that rule relaxed for the feature's dependencies only).
     - [x] (b) (2026-10-15) The shell names none of CS:S's rules, bots or
       objectives outside the HUD files of (c), nor the app or Source's
@@ -595,9 +612,9 @@ measurements):
       debug UI tabs, de_dust2, 1280x720) match before and after within
       the run-to-run noise (the version label aside). Architecture test:
       `client` lost `rules` and `objectives`.
-    - [x] (d) (2026-10-15) The rest of the shell into `engine_client`:
+    - [x] (d) (2026-10-15) The rest of the shell into `chimera_client`:
       every file of `src/client/` moved whole (shaders at
-      `embedded://engine_client/client/`); the shell's `vgui` (the mouse
+      `embedded://chimera_client/client/`); the shell's `vgui` (the mouse
       grab, `keys_live`) joined the base's (one `VguiPlugin`, its systems
       in the same order). Decided: one crate, base and shell together,
       on the presentation and the network (its picture settings are
@@ -617,15 +634,15 @@ measurements):
       feature `ui` (`games/cs_source/src/ui/`, moved whole; paths
       `crate::games::cs_source::` became `crate::game::`, the radar's
       shader `embedded://cs_source/ui/`): the feature turns on the shell
-      (`engine_client`), the presentation, Source's logic (the
+      (`chimera_client`), the presentation, Source's logic (the
       objectives' HUD reads the map logic), replicon's netcode client
       (the loading dialog), the clipboard and winit, all optional;
       `mashup`'s `present` turns it on, so the dedicated server
       (`--no-default-features --features server`) builds without it.
       `mashup::games::cs_source::ui` re-exports it. Architecture test:
       a game crate's `ui` is `games_ui`, its parts may not use
-      `crate::ui::`; `workspace_crates` keeps `engine_present`,
-      `engine_client` and `source_logic` off `cs_source` but as optional
+      `crate::ui::`; `workspace_crates` keeps `chimera_present`,
+      `chimera_client` and `source_logic` off `cs_source` but as optional
       dependencies only `ui` turns on (`UI_FEATURES`), and
       `game_ui_only_with_its_feature` checks `cargo tree -p cs_source`
       without and with the feature. `mashup` is now the app's glue: the
@@ -638,14 +655,14 @@ measurements):
   and the base); `mashup::bot` re-exports it. `mashup` keeps the client,
   its front end (`games/cs_source/ui`), `net`, `harness`, `greybox`,
   `games::load_map` and the binaries.
-  Measured (docs/performance.md, "`engine_sim`, `source_logic` and
+  Measured (docs/performance.md, "`chimera_sim`, `source_logic` and
   `cs_source`"; a new `pub fn`, load 9-32): `cargo test --features dev
   --no-run` after a leaf edit in `cs_source` 22-27 s (was 127-176 s),
-  in `engine_sim` or `source_logic` about 20-28 s, in CS:S's front end
+  in `chimera_sim` or `source_logic` about 20-28 s, in CS:S's front end
   (still `mashup`) 18-41 s, in the client 77 s; `cargo test -p` builds
-  and runs `engine_sim` in 2 s, `source_logic` in 2-3 s, `cs_source` in
+  and runs `chimera_sim` in 2 s, `source_logic` in 2-3 s, `cs_source` in
   3-4 s.
-- [x] (3) `engine/net` (package `engine_net`, 2026-10-14): `net` moved
+- [x] (3) `chimera/net` (package `chimera_net`, 2026-10-14): `net` moved
   whole and names no game or Source logic; (a)-(e) above as proposed:
   - (a) Parts: a game or Source's logic registers a function by name
     (`net::NetAppExt::net_part`; `net::NetParts`), which
@@ -680,20 +697,38 @@ measurements):
     the movers through `net::NetHooks::replay`, stopping serving takes
     the parts' components off through `NetHooks::stopped_serving`).
   The registration order changed (the parts last): `NET_VERSION` net24
-  (multiplayer.md). `source_logic` now depends on `engine_net` (and so
-  on `engine_sim`). `mashup::net` re-exports `engine_net::net` with the
+  (multiplayer.md). `source_logic` now depends on `chimera_net` (and so
+  on `chimera_sim`). `mashup::net` re-exports `chimera_net::net` with the
   parts' types at their old paths; `version_text` takes the build
   (`core::BuildVersion`, which `SimPlugins` inserts). Architecture test:
   `net`'s row lost `objectives`, `rules`, `bot`, `logic`; `logic` and
   `games` may use `net` (games also `bot`); `workspace_crates` keeps
-  `engine_net` off `engine_present`, `source_logic`, `mashup` and the
+  `chimera_net` off `chimera_present`, `source_logic`, `mashup` and the
   games. Spawn dump identical on the five maps modulo entity ids, moved
   paths and two new resources (`NetParts`, `BuildVersion`); the network
   tests and the heavy `net_*`/`map_net_*` pass. Measured
-  (docs/performance.md, "`engine_net`"; a new `pub fn`, load 17-19):
-  `cargo test --features dev --no-run` after a leaf edit in `engine_net`
-  27-32 s, in the client 19-23 s; `cargo test -p engine_net --features
+  (docs/performance.md, "`chimera_net`"; a new `pub fn`, load 17-19):
+  `cargo test --features dev --no-run` after a leaf edit in `chimera_net`
+  27-32 s, in the client 19-23 s; `cargo test -p chimera_net --features
   dev` builds and runs its 29 tests in 6 s.
+- [x] (3) Chimera, apps, layer tools, workspace-hack (2026-10-15, one
+  session; user decisions of the day): `engine/` became `chimera/`
+  (crates `chimera_*`); the root package's app glue moved to
+  `apps/cs_source` (`cs_source_app`: the game binary `mashup`, the
+  workspace's `default-run`; `SimPlugins`, the harness, the greybox,
+  `games::load_map`, `client_hooks`, build.rs), the dedicated server to
+  `apps/cs_source_server` (`mashup_server`, the app without `present`:
+  `cargo build --release -p cs_source_server`); `mashup` is a thin shim
+  (`cs_source_app` at the old paths, for tests/it, `dump` and Combat
+  Arms' local loader). Tools by layer: `chimera_tools` (the perf gate as
+  a library, `imgcmp`, `tracesum`), `source_tools` (RCON, `demodump`,
+  `testmap`), `cs_source_tools` (refcmp's CS:S driver, movecmp,
+  mapsweep, perfgate's scenarios; on the app's harness, tech-debt.md).
+  `chimera/workspace-hack` (`cargo hakari`) with Bevy's development
+  features in `chimera_dev` and `[profile.dev.build-override] debug =
+  false`: the first `cargo test -p chimera_world --features dev` after a
+  warm workspace build went from 560 s to 3 s (performance.md,
+  "Workspace-hack"). Binary names users run are unchanged.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -768,7 +803,7 @@ the full suite, and the coordinator batches merges.
 
 | Module | Goes to | Notes |
 |---|---|---|
-| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `engine/core` |
+| `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `chimera/core` |
 | `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |

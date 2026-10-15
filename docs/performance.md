@@ -605,8 +605,8 @@ quiet machine and on the Windows PC are still to be taken.
 ## Load-independent metrics
 
 Every number in "Frame time pass" was taken at load 6-33, where single
-runs swing 2-10x. What now measures besides wall time (`engine/core/src/metrics/`,
-`engine/client/src/client/frame_metrics.rs`; OBSERVABILITY.md 3c says where each shows):
+runs swing 2-10x. What now measures besides wall time (`chimera/core/src/metrics/`,
+`chimera/client/src/client/frame_metrics.rs`; OBSERVABILITY.md 3c says where each shows):
 
 - **Thread CPU time** of the main world (between marks before `First` and
   after `Last`), the render world (before `ExtractCommands` to after
@@ -703,7 +703,8 @@ breaks indirect draws on that map (backlog).
 
 ### Regression gate
 
-`perfgate` (src/bin/perfgate.rs) runs three headless scenarios with
+`perfgate` (games/cs_source/tools/src/bin/perfgate.rs, on
+`chimera_tools::perfgate`) runs three headless scenarios with
 fixed inputs: `greybox` (two characters walking, turning and jumping on
 a fixed pattern), `de_dust2` (rounds, 5 bots a side, `mp_freezetime 2;
 mp_roundtime 2`), `mg_lego_multigames_v2` (the map's logic and props, no
@@ -975,10 +976,10 @@ it (a dependent crate always does), so the hooks still test both; the
 win grows as more crates are cut and edits land in crates with fewer
 dependents (engine-split.md, "Crates and compile time").
 
-### `engine_world` and `engine_present` (2026-10-14)
+### `chimera_world` and `chimera_present` (2026-10-14)
 
-`map` moved into `engine/world` (15.6k lines), `render`, `audio` and
-`map_plugin` into `engine/present` (20.7k); `mashup` keeps 134k. Same
+`map` moved into `chimera/world` (15.6k lines), `render`, `audio` and
+`map_plugin` into `chimera/present` (20.7k); `mashup` keeps 134k. Same
 setup as above (own `target/`, sccache, `CARGO_BUILD_JOBS=4`, other
 agents building), a new `pub fn` appended to one file, then reverted and
 rebuilt untimed before the next sample:
@@ -989,21 +990,21 @@ rebuilt untimed before the next sample:
 | a leaf in `render`, after | the same | 30-72 s (14-27) |
 | a leaf in `map` (`map/fish.rs`), after | the same | 37-64 s (15-28) |
 | a leaf in a game (`games/cs_source/ui/window_icon.rs`) | the same | 127-176 s (13-27) |
-| a leaf in `map` | `cargo test -p engine_world --features dev` (build and run its 41 tests) | 8.6 s (32-34) |
-| a leaf in `render` | `cargo test -p engine_present --features dev` (99 tests) | 12 s (28-32) |
+| a leaf in `map` | `cargo test -p chimera_world --features dev` (build and run its 41 tests) | 8.6 s (32-34) |
+| a leaf in `render` | `cargo test -p chimera_present --features dev` (99 tests) | 12 s (28-32) |
 
 An edit in either crate rebuilds it and the crates above (`mashup`
 recompiles incrementally, nothing in it changed); an edit in `mashup`
 still costs `mashup`'s own 134k lines. The first `cargo test -p
-engine_world` builds Bevy once more (about 20 minutes at load 20): a
+chimera_world` builds Bevy once more (about 20 minutes at load 20): a
 crate alone unifies Bevy's features without what `mashup`'s other
 dependencies turn on, so it has its own Bevy build, cached afterwards.
 
-### `engine_sim`, `source_logic` and `cs_source` (2026-10-14)
+### `chimera_sim`, `source_logic` and `cs_source` (2026-10-14)
 
 `logic` moved into `source/logic` (24.6k lines), `weapon`, `movement`
-and the rule-module interface into `engine/sim` (8.1k), `mount` into
-`engine_core`, and CS:S's simulation with its rules and bots into
+and the rule-module interface into `chimera/sim` (8.1k), `mount` into
+`chimera_core`, and CS:S's simulation with its rules and bots into
 `games/cs_source` (39.5k: the game's parts, `rules`, `objectives`,
 `bot`); `mashup` keeps 61.5k (client 23.3k, the CS:S front end 17.9k,
 net 13.8k, the binaries). Same setup (own `target/`, sccache,
@@ -1012,8 +1013,8 @@ to one file, then reverted and rebuilt untimed; two samples each:
 
 | Edit | Command | Time (load) |
 |---|---|---|
-| a leaf in `engine_sim` (`movement/noclip.rs`) | `cargo test --features dev --no-run` | 20 s, 126 s (9-32) |
-| the same | `cargo test -p engine_sim --features dev` (build and run) | 1.6-1.9 s |
+| a leaf in `chimera_sim` (`movement/noclip.rs`) | `cargo test --features dev --no-run` | 20 s, 126 s (9-32) |
+| the same | `cargo test -p chimera_sim --features dev` (build and run) | 1.6-1.9 s |
 | a leaf in `source_logic` (`logic/value.rs`) | `cargo test --features dev --no-run` | 19-28 s (11-23) |
 | the same | `cargo test -p source_logic --features dev` (216 tests) | 1.8-2.5 s |
 | a leaf in `cs_source` (`game/radio.rs`) | `cargo test --features dev --no-run` | 22-27 s (12-23) |
@@ -1026,10 +1027,10 @@ above an edited one recompile incrementally (nothing they use changed).
 What stays slow is `mashup`'s own code (the client, net), the next cuts
 (engine-split.md, "Remaining couplings").
 
-### `engine_client` (2026-10-14)
+### `chimera_client` (2026-10-14)
 
 The shell's base (`front_end`, `fonts`, `hud_text`, `widgets`, `binds`,
-`vgui`'s drawing: 4.2k lines) moved into `engine/client`; the rest of
+`vgui`'s drawing: 4.2k lines) moved into `chimera/client`; the rest of
 the shell and CS:S's front end stay in `mashup` (it needs `net`).
 Same setup, a new `pub fn` appended, two samples each (load 4-17):
 
@@ -1037,34 +1038,34 @@ Same setup, a new `pub fn` appended, two samples each (load 4-17):
 |---|---|---|
 | a leaf in CS:S's front end (`games/cs_source/ui/window_icon.rs`) | `cargo test --features dev --no-run` | 18-20 s |
 | a leaf in the shell (`client/chat.rs`, `client/gamma.rs`) | the same | 36-64 s (was 77-78 s) |
-| a leaf in `engine_client` (`fonts.rs`, `widgets.rs`) | the same | 15-37 s |
-| the same | `cargo test -p engine_client --features dev` (28 tests) | 2 s |
+| a leaf in `chimera_client` (`fonts.rs`, `widgets.rs`) | the same | 15-37 s |
+| the same | `cargo test -p chimera_client --features dev` (28 tests) | 2 s |
 
 `mashup` is one crate less big but still one crate: a shell edit
 rebuilds it whole (the front end with it), so the win is small until the
 shell and the front end are crates of their own.
 
-### `engine_net` (2026-10-14)
+### `chimera_net` (2026-10-14)
 
-`net` moved into `engine/net` (13.4k lines; CS:S's round, bomb and
+`net` moved into `chimera/net` (13.4k lines; CS:S's round, bomb and
 hostages went to `cs_source::game::net`, the movers to
 `source_logic::logic::net`). Same setup, a new `pub fn` appended to one
 file, then reverted and timed again (load 17-19):
 
 | Edit | Command | Time |
 |---|---|---|
-| a leaf in `engine_net` (`net/delta.rs`) | `cargo test --features dev --no-run` | 27 s, 32 s |
-| the same | `cargo test -p engine_net --features dev` (29 tests) | 6 s |
-| a leaf in the client (`client/fonts.rs`, before it moved to `engine_client`) | `cargo test --features dev --no-run` | 19 s, 23 s |
+| a leaf in `chimera_net` (`net/delta.rs`) | `cargo test --features dev --no-run` | 27 s, 32 s |
+| the same | `cargo test -p chimera_net --features dev` (29 tests) | 6 s |
+| a leaf in the client (`client/fonts.rs`, before it moved to `chimera_client`) | `cargo test --features dev --no-run` | 19 s, 23 s |
 
-An edit in `engine_net` recompiles `source_logic`, `cs_source` and
-`mashup` above it (incrementally). The first `cargo test -p engine_net
+An edit in `chimera_net` recompiles `source_logic`, `cs_source` and
+`mashup` above it (incrementally). The first `cargo test -p chimera_net
 --features dev` builds its own Bevy (`-p` unifies only its features:
 31 minutes on this loaded box); later ones take seconds.
 
-### The shell in `engine_client`, CS:S's front end in `cs_source` (2026-10-15)
+### The shell in `chimera_client`, CS:S's front end in `cs_source` (2026-10-15)
 
-The rest of the client shell moved into `engine/client` (19.3k lines
+The rest of the client shell moved into `chimera/client` (19.3k lines
 with the base) and CS:S's front end with its HUD into `cs_source`
 behind its `ui` feature (22.1k lines beside the simulation's 40.5k);
 `mashup`'s library is the app's glue (1.4k lines; the binaries 5.6k).
@@ -1075,8 +1076,8 @@ again (load 6-18):
 |---|---|---|
 | a leaf in CS:S's front end (`games/cs_source/src/ui/window_icon.rs`) | `cargo test --features dev --no-run` | 14 s, 15 s (was 18-20 s) |
 | the same | `cargo test -p cs_source --features dev,ui` (249 tests) | 5 s, 5 s |
-| a leaf in the shell (`engine/client/src/client/chat.rs`) | `cargo test --features dev --no-run` | 21 s, 22 s (was 19-23 s, 36-64 s before `engine_net`) |
-| the same | `cargo test -p engine_client --features dev` (85 tests) | 6 s, 3 s |
+| a leaf in the shell (`chimera/client/src/client/chat.rs`) | `cargo test --features dev --no-run` | 21 s, 22 s (was 19-23 s, 36-64 s before `chimera_net`) |
+| the same | `cargo test -p chimera_client --features dev` (85 tests) | 6 s, 3 s |
 | a leaf in CS:S's simulation (`games/cs_source/src/game/pain.rs`) | `cargo test --features dev --no-run` | 23 s, 19 s (was 22-27 s) |
 | the same | `cargo test -p cs_source --features dev` (136 tests, no `ui`) | 3 s, 3 s |
 
@@ -1085,6 +1086,43 @@ longer rebuilds `mashup`'s old 23k-line shell. A simulation edit
 recompiles the front end too (one crate, `cs_source` with `ui` in the
 game's build), which costs no more than the old `mashup` rebuild did;
 `-p cs_source` without `ui` checks the simulation alone. The first
-`cargo test -p cs_source --features dev` and `-p engine_client` build
+`cargo test -p cs_source --features dev` and `-p chimera_client` build
 their own feature sets of the dependencies (9 minutes here for
-`cs_source` on a loaded box); later ones take seconds.
+`cs_source` on a loaded box); later ones take seconds. (Fixed by the
+workspace-hack, below.)
+
+### Workspace-hack (2026-10-15)
+
+`cargo test -p <crate>` used to build Bevy and its neighbours again with
+that crate's own feature set: 21 third-party crates (`bevy_reflect`,
+`bevy_winit`, `indexmap`, `hashbrown`, ...) got fewer features than in the
+workspace's build, and every proc macro's dependencies a different
+debuginfo setting (cargo keeps a build-time dependency's debuginfo only
+when a runtime dependency shares it, and `-p` has fewer). Two fixes:
+
+- `chimera/workspace-hack` (`cargo hakari`, .config/hakari.toml): every
+  member depends on it, so third-party crates build with the workspace's
+  features whatever is selected. Hakari simulates each member with all
+  its features, so Bevy's development features moved to `chimera_dev`
+  (every crate's `dev`/`profile` turns them on through `chimera_core`),
+  which hakari leaves out: the hack never turns on dynamic linking, the
+  remote protocol or Chrome traces. `source_formats` and `source_tools`
+  stay off it (no Bevy). The dedicated server's build (`-p
+  cs_source_server`) keeps the same crates (only the hack added) with
+  nearly the same features (`bevy_reflect`'s `reflect_documentation`,
+  `bevy_utils`' `debug`).
+- `[profile.dev.build-override] debug = false`: build-time units never
+  carry debuginfo, shared or not.
+
+Measured (load 9-26), the first `cargo test -p chimera_world --features
+dev` after a warm `cargo test --workspace --features dev --no-run`:
+
+| | Time | Crates compiled |
+|---|---|---|
+| before | 560 s | 134 (Bevy, wgpu, avian3d, ...) |
+| the hack alone | 507 s | 57 (every proc macro, then Bevy) |
+| the hack and the build-override | 3 s | 3 (the hack, `chimera_core`, `chimera_world`) |
+
+Then `-p cs_source --features dev` 15 s (4 crates), `-p chimera_client
+--features dev` 7 s (2), `-p source_formats` 5 s. The workspace's own
+build after the change: one full rebuild (16 min here).

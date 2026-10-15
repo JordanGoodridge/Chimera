@@ -1642,7 +1642,7 @@ so a prop shaking below the grid sends nothing.
 
 ### net24 (2026-10-14)
 
-`net` became a crate (`engine/net`, `engine_net`) that names no game:
+`net` became a crate (`chimera/net`, `chimera_net`) that names no game:
 CS:S's round, bomb, hostages, team and class requests, round ends and
 objective news (`NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`,
 `ClassRequest`, `ObjectiveNews`, `RoundOver`: `cs_source::game::net`) and

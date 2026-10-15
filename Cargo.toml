@@ -1,10 +1,49 @@
-# A Cargo workspace (docs/ARCHITECTURE.md, "Crates"): the game itself
-# (`mashup`, this package) and the crates cut out of it. Commands run at
-# the repository root act on every default member: `cargo test` tests
-# them all, `cargo test -p source_formats` one crate alone.
+# A Cargo workspace (docs/ARCHITECTURE.md, "Crates"): Chimera (chimera/),
+# Source's loaders (source/), the games as libraries (games/), the apps
+# (apps/) and the tools of each layer; the root package `mashup` holds
+# the integration tests. Commands run at the repository root act on every
+# default member: `cargo test` tests them all, `cargo test -p
+# source_formats` one crate alone, `cargo run` the game (`default-run` of
+# apps/cs_source).
 [workspace]
-members = [".", "engine/core", "engine/world", "engine/present", "engine/sim", "engine/client", "engine/net", "source/formats", "source/logic", "games/cs_source"]
-default-members = [".", "engine/core", "engine/world", "engine/present", "engine/sim", "engine/client", "engine/net", "source/formats", "source/logic", "games/cs_source"]
+members = [
+    ".",
+    "chimera/core",
+    "chimera/dev",
+    "chimera/workspace-hack",
+    "chimera/world",
+    "chimera/present",
+    "chimera/sim",
+    "chimera/client",
+    "chimera/net",
+    "chimera/tools",
+    "source/formats",
+    "source/logic",
+    "source/tools",
+    "games/cs_source",
+    "games/cs_source/tools",
+    "apps/cs_source",
+    "apps/cs_source_server",
+]
+default-members = [
+    ".",
+    "chimera/core",
+    "chimera/dev",
+    "chimera/workspace-hack",
+    "chimera/world",
+    "chimera/present",
+    "chimera/sim",
+    "chimera/client",
+    "chimera/net",
+    "chimera/tools",
+    "source/formats",
+    "source/logic",
+    "source/tools",
+    "games/cs_source",
+    "games/cs_source/tools",
+    "apps/cs_source",
+    "apps/cs_source_server",
+]
 resolver = "3"
 
 [workspace.package]
@@ -15,15 +54,28 @@ license = "MIT OR Apache-2.0"
 
 # Dependencies more than one member uses (or may): one version for all.
 [workspace.dependencies]
-engine_core = { path = "engine/core" }
-engine_world = { path = "engine/world" }
-engine_present = { path = "engine/present" }
-engine_sim = { path = "engine/sim" }
-engine_client = { path = "engine/client" }
-engine_net = { path = "engine/net" }
+chimera_core = { path = "chimera/core" }
+chimera_dev = { path = "chimera/dev" }
+# Third-party crates' features unified for every build (`cargo hakari`,
+# .config/hakari.toml; chimera/workspace-hack/Cargo.toml).
+workspace-hack = { path = "chimera/workspace-hack" }
+chimera_world = { path = "chimera/world" }
+chimera_present = { path = "chimera/present" }
+chimera_sim = { path = "chimera/sim" }
+chimera_client = { path = "chimera/client" }
+chimera_net = { path = "chimera/net" }
 source_formats = { path = "source/formats" }
 source_logic = { path = "source/logic" }
 cs_source = { path = "games/cs_source" }
+# The layers' tools (docs/ARCHITECTURE.md, "Crates"): Chimera's (the
+# perf gate, image comparison) and Source's (RCON) libraries, for the
+# tools above them.
+chimera_tools = { path = "chimera/tools" }
+source_tools = { path = "source/tools" }
+# The CS:S app's glue; without its default `present` here so the dedicated
+# server can leave the presentation out (members that want it turn on
+# `present`).
+cs_source_app = { path = "apps/cs_source", default-features = false }
 avian3d = "0.7"
 # serialize: predicted components (Transform among them) travel as serde
 # (`core::PredictedAppExt::predicted_net`); `dev` got it through
@@ -57,7 +109,7 @@ lzma-rs = "0.3"
 dirs = "7.0.0"
 toml = "1.1.6"
 # Where Steam is (`HKCU\Software\Valve\Steam` `SteamPath`) for finding the
-# CS:S install (engine_core's mount::install); already in the tree
+# CS:S install (chimera_core's mount::install); already in the tree
 # through winit.
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry"] }
 # Source's maps, models and materials (`cs_source`'s loaders; `dump`,
@@ -70,10 +122,10 @@ bzip2 = "0.6.1"
 sha2 = "0.10"
 # MP3 sounds packed in community maps (music, minigame sounds).
 symphonia = { version = "0.5.5", default-features = false, features = ["mp3"] }
-# HUD glyphs rasterized and placed as Source's HUD does (engine_client's
+# HUD glyphs rasterized and placed as Source's HUD does (chimera_client's
 # `hud_text`).
 ab_glyph = "0.2.32"
-# The client shell's debug UI and inspector (engine_client); egui drawn
+# The client shell's debug UI and inspector (chimera_client); egui drawn
 # over Bevy's UI (the debug UI over the HUD).
 bevy-inspector-egui = "0.37"
 bevy_egui = { version = "0.40", default-features = false, features = ["bevy_ui"] }
@@ -90,41 +142,22 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
-default-run = "mashup"
+
+# `mashup`, the repository root's package, is now a thin shim: the CS:S
+# app's glue (`cs_source_app`, apps/cs_source) re-exported at the old
+# `mashup::` paths (src/lib.rs), for the one integration test crate
+# (tests/it/, which tests across the whole workspace), `dump` (an install
+# inspector for several games) and Combat Arms' local code
+# (src/games/combat_arms/, git-ignored). The game binary is the app's,
+# the dedicated server apps/cs_source_server's, the tools their layers'
+# (docs/ARCHITECTURE.md, "Crates").
+[lib]
+doctest = false
 
 [dependencies]
-# The file formats (VPK, pakfile, KeyValues and .res, DMX/PCF, nav, ...):
-# pure data, no Bevy (source/formats).
-source_formats.workspace = true
-# The engine's stable base: core, console, slots, character, metrics
-# (engine/core); its modules re-exported at their old paths (lib.rs).
-engine_core.workspace = true
-# The engine's map: map data, collision, sim-side spawning (engine/world);
-# re-exported as `mashup::map` with `MapPlugin` (lib.rs).
-engine_world.workspace = true
-# The engine's presentation: render, audio and `MapPlugin`
-# (engine/present); re-exported at their old paths (lib.rs). Behind the
-# default feature `present`: the dedicated server builds without it.
-engine_present = { workspace = true, optional = true }
-# The client shell: window, input, camera, console UI, HUD base, widgets,
-# debug tools, network glue (engine/client); re-exported as
-# `mashup::client` (src/client.rs). With `present`, as the client.
-engine_client = { workspace = true, optional = true }
-# Source's map logic: entity I/O, logic classes, triggers, movers
-# (source/logic); re-exported as `mashup::logic` (lib.rs).
-source_logic.workspace = true
-# The simulation's frameworks: weapons, movement implementations, the
-# rule-module interface (engine/sim); re-exported at their old paths
-# (lib.rs, `rules::module`).
-engine_sim.workspace = true
-# Counter-Strike: Source's simulation: its loaders and parts with its
-# rules (round, bomb, hostages) (games/cs_source); re-exported as
-# `mashup::games::cs_source` (beside its front end, `ui/`, still here),
-# `mashup::rules` and `mashup::objectives` (lib.rs).
+cs_source_app.workspace = true
 cs_source.workspace = true
-# Network play: transport, replication, prediction (engine/net);
-# re-exported as `mashup::net` with the game's replicated types (lib.rs).
-engine_net.workspace = true
+source_formats.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
 bevy_replicon.workspace = true
@@ -136,7 +169,6 @@ half.workspace = true
 image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# The map file's hash in the connect handshake.
 sha2.workspace = true
 toml.workspace = true
 twofish = { version = "0.8", optional = true }
@@ -144,20 +176,15 @@ vbsp.workspace = true
 vmdl.workspace = true
 vmt-parser.workspace = true
 vtf.workspace = true
+workspace-hack.workspace = true
 
 [dev-dependencies]
 # Checksums of files read through the mount (tests/it/mount_cs_source.rs).
 crc32fast = "1.5.2"
 
 # Binaries without unit tests: `cargo test` skips building a test harness
-# of each (one more link of the game apiece). A binary that gets tests
-# loses its `test = false`; tests/it/architecture.rs checks this.
-[[bin]]
-name = "mashup"
-path = "src/main.rs"
-test = false
-required-features = ["present"]
-
+# of each (one more link apiece). A binary that gets tests loses its
+# `test = false`; tests/it/architecture.rs checks this in every member.
 [[bin]]
 name = "dump"
 test = false
@@ -168,82 +195,24 @@ name = "it"
 path = "tests/it/main.rs"
 required-features = ["present"]
 
-# Binaries no test runs are built only with a feature (`required-features`):
-# cargo builds every binary of the package for its integration tests, so
-# without one each would relink the whole game on every `cargo test`
-# (docs/performance.md, "Test cycle"). The pre-push hook checks them with
-# `cargo check --lib --bins --features tools,server`.
-
-# The dedicated server: the simulation and `net`, no window, render or
-# audio (`map::MapSimPlugin`); built without `present` so nothing of
-# engine_present links (`cargo run --no-default-features --features server
-# --bin mashup_server`; tests/it/architecture.rs checks the dependency).
-[[bin]]
-name = "mashup_server"
-test = false
-required-features = ["server"]
-
-# Debugging tools (docs/OBSERVABILITY.md): `--features tools`.
-[[bin]]
-name = "movecmp"
-test = false
-required-features = ["tools"]
-
-[[bin]]
-name = "refcmp"
-test = false
-required-features = ["tools"]
-
-[[bin]]
-name = "tracesum"
-test = false
-required-features = ["tools"]
-
-# Instructions-per-tick regression gate (docs/performance.md).
-[[bin]]
-name = "perfgate"
-test = false
-required-features = ["tools"]
-
-[[bin]]
-name = "mapsweep"
-test = false
-required-features = ["tools"]
-
-# Source demo (.dem) inspector: game events, user messages, sounds,
-# entity props per tick (docs/OBSERVABILITY.md, "CS:S demos").
-[[bin]]
-name = "demodump"
-test = false
-required-features = ["tools"]
-
 [features]
 default = ["present"]
 
-# The presentation (engine_present: render, audio, `map::MapPlugin`), the
-# client shell (`client`) and the games' front ends (`games::*::ui`):
-# everything but the dedicated server.
-present = ["dep:engine_present", "dep:engine_client", "cs_source/ui"]
-
-# The debugging binaries (refcmp, movecmp, perfgate, tracesum, mapsweep, demodump).
-tools = ["present"]
-
-# The dedicated server binary (mashup_server); with
-# `--no-default-features` it builds without the presentation.
-server = []
+# The app with its presentation, client shell and CS:S's front end
+# (`cs_source_app`'s `present`): what the integration tests drive.
+present = ["cs_source_app/present"]
 
 # Combat Arms loader: developed locally, git-ignored (src/games/combat_arms/).
 # Enable with --features combat_arms where that folder exists.
 combat_arms = ["dep:twofish"]
 
-# Faster iteration: link Bevy as a dynamic library. Use with
-# `cargo run --features dev`. Never enable for release builds.
-dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev", "engine_present?/dev", "engine_client?/dev", "source_logic/dev", "engine_sim/dev", "engine_net/dev", "cs_source/dev"]
+# Faster iteration: link Bevy as a dynamic library (the app's `dev` and
+# every crate's under it). Never enable for release builds.
+dev = ["cs_source_app/dev"]
 
 # CPU profile: every system and render step as a span in a Chrome trace
-# (trace-<time>.json, open in https://ui.perfetto.dev). See
-# docs/performance.md. Slower; only for measuring.
-profile = ["bevy/trace_chrome", "engine_client?/profile"]
+# (docs/performance.md). Slower; only for measuring.
+profile = ["cs_source_app/profile"]
 
 # Our own code: a little optimization so the game is playable in debug.
 [profile.dev]
@@ -252,6 +221,15 @@ opt-level = 1
 # Dependencies (Bevy, parsers): fully optimized, compiled once and cached.
 [profile.dev.package."*"]
 opt-level = 3
+
+# Build scripts, proc macros and their dependencies: no debuginfo, always.
+# Left to cargo, a build-time dependency keeps debuginfo only when a
+# runtime dependency shares it, so `cargo test -p <crate>` (fewer runtime
+# dependencies) built every proc macro again, and Bevy after them, for
+# all the workspace-hack's unified features (docs/performance.md,
+# "Workspace-hack").
+[profile.dev.build-override]
+debug = false
 
 [profile.release]
 codegen-units = 1
