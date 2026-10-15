@@ -294,8 +294,9 @@ pub(super) fn activate(w: &mut LogicWorld, id: EntId) {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PropState {
     pub id: EntId,
-    /// Index in the map's entity list.
-    pub index: usize,
+    /// Index in the map's entity list (None: a template's copy, which
+    /// the map draws too: `bridge::spawn_copy`).
+    pub index: Option<usize>,
     pub visible: bool,
     pub solid: bool,
     /// Takes damage from weapons (every prop does, if only as events).
@@ -943,7 +944,7 @@ impl LogicWorld {
                 let Class::Prop(p) = &e.class else { return None };
                 Some(PropState {
                     id,
-                    index: e.map_index?,
+                    index: e.map_index,
                     visible: p.visible,
                     solid: p.solid && !p.broken,
                     damageable: !p.broken,

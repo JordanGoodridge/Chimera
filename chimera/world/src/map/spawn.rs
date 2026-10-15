@@ -139,6 +139,7 @@ pub fn spawn_map<D: MapDrawer>(mut commands: Commands, pending: Res<PendingMap>,
     let view = pending.1;
     let (root, statics) = spawn_roots(&mut commands, data, D::world_material(assets));
     spawn_world_collision(&mut commands, data, root);
+    super::physics_clip::spawn_clips(&mut commands, data, root);
     let entity_nodes = spawn_entity_nodes(&mut commands, data, root);
     let s = MapSpawn {
         data,

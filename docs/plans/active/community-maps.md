@@ -739,6 +739,186 @@ flows 17 of 17; course flows 72 of 72 (checked items 3330 -> 3630 of
 4242; known 890 -> 612: 235 no room, 166 filtered, 153 overlapping
 teleports, 42 chained, 8 missing destinations, the rest single cases).
 
+## Round 6 (2026-10-15)
+
+The whole sweep again, most-played kinds first (mg_, gg_, surf_, bhop_,
+kz_): `mapsweep --audit` before and after, the heavy map suites
+(`heavy::map_flows`, `heavy::map_community`, `heavy::map_courses`: 122
+tests, all passing after), and the backlog's lobby-strip check. Raw
+output in this session's `target/sweep/{before,after2}/`.
+
+| | Before | After |
+|---|---|---|
+| Maps loading | 89 of 89 | 89 of 89 |
+| Models unreadable | 9 (4 maps) | 1 (surf_surreal's apple: its `.vtx` and `.vvd` disagree) |
+| Inputs to brushes baked into the world (can't show) | 4 kinds, 79 connections (4 maps) | 0 |
+| Connections to inputs the target's class lacks | 22 (5 kinds, map mistakes) | 22 |
+| Run-time complaints / notes / panics | 18 / 129 / 0 | 18 / 129 / 0 (surf_jive's settings line now applies all but `sv_cheats 1`) |
+| Template copies of props and physics brushes drawn | none (12 mg_ maps) | all |
+
+Fixed, by maps affected (tests: `heavy::map_flows`
+`template_copies_are_drawn_and_solid`, `physics_clips_hold_boats_and_balls`,
+`targeted_still_brushes_show_their_inputs`, `every_strip_trigger_strips`,
+`galaxy_strips_survivors_at_the_next_round`; `heavy::map_community`
+`models_with_odd_names_load`; unit tests in `map::physics_clip`,
+`map::copies`, `overlays`, `props`, `logic::tests::command_allowlists`,
+`prop_tests`):
+
+| Problem | Maps | Fix |
+|---|---|---|
+| Template copies of props and physics brushes never showed: a copy's logic prop has no map index, so the bridge found no prop state and hid it every tick; a func_physbox's copy also had no collision shape (the clone left it out), its collider named the template member's disabled body, and it took no shots; copies of movers had no avian island, so two touching panicked the physics ("neither body is in an island", found on mg_randomizer_v5) | 12 mg_ (smash_lego_copter's block spawners, boatrace's 22 boats and pins, crazykart's karts, creative's ball and boats, item_battle's 26 items, jacks' 62, kommando, galaxy, randomizer, starwars, swag, wipeout2) | `PropState::index` is optional (copies listed); `bridge::spawn_copy` shows physics brush copies, pairs them as props, gives copies of props and breakables `Damageable`; `copies::copy_node` keeps a body's own shape, makes the copy its colliders' body, re-inserts bodies awake with their island |
+| func_clip_vphysics did nothing (a volume): balls left the pitch, boats left before the start | 5 (boatrace's start wall, creative's and lego_multigames' pitch walls, galaxy's course ends, gg_fy_funtimes) | `map::physics_clip`: a static collider per clip on `core::PHYSICS_CLIP_LAYER` (props and physics brushes collide; characters, ragdolls, loose items and every spatial query pass), switched by the logic (StartDisabled, Enable/Disable, Kill), `filtername` limiting it to the bodies the filter passes (`MapCollisionHooks`). No spec (question 1 below) |
+| Models with an unterminated 64-byte name or Latin-1 bone names refused by vmdl | 4 (kz_hikari_od_nh_v2's bamboo, mg_kommando's 5 sandbags, mg_creative_multigames_v8_ns's car, surf_surreal's butterflies) | `props::terminate_names` on the second read |
+| Killing or colouring a still brush (func_illusionary, func_wall) showed nothing: baked into the world | 2 (boatrace's projector screen, creative's control lights) | A targeted func_wall/func_illusionary gets a node (`bsp::brush_entities`), a Toggle brush in the logic (wall always solid, illusionary never) |
+| A point_servercommand line with a refused command dropped the whole line | 1 (surf_jive: `sv_cheats 1;sv_airaccelerate 150;sv_accelerate 5;...`) | Each command of the line on its own (entity_io.md: the line goes to the console buffer); `;` in quotes doesn't split |
+| Overlays ignored the V-flip flag (overlays_decals.md, "Recovering the basis") | 0 community (none set it), stock de_dust (3), de_dust2 (8), de_inferno (3) | `overlays::basis` |
+
+Lobby strips (backlog: "Weapons after a round on minigame maps"): 7 of
+the 17 mg_ maps have player_weaponstrips, fired by 29 triggers; each
+trigger was switched on and stood in by an armed player of each team:
+every one strips whoever its filter passes (one, jacks' `stripzomb`,
+wants a name only its zombie game hands out). Where they sit:
+mg_lt_galaxy_v5's spawn hall is one big strip trigger around all 64
+spawns (survivors are stripped where they spawn; checked across a round
+end); mg_swag_multigames_v1 strips on the drop from the spawn room
+(`spawn_strip`, 4) and the chooser's path; mg_lego_multigames_v2 and
+mg_kommando near the spawns (arena teleports); creative and randomizer
+when a mode switches theirs on; jacks on the slide course's end and some
+arena arrivals. The other 10 (3k_smash, boatrace, crazykart,
+escape_prison, item_battle, lego_course, n64, starwars, wipeout,
+wipeout2) have no strip at all, so survivors keep their weapons into the
+next round, as CS:S keeps them. Left: compare with CS:S on the reference
+server (does a survivor walk into galaxy's hall and lose the gun at
+once?).
+
+Each map after (status from `mapsweep`; "top issue left" is the worst
+the sweep, the audit or the kind's known gap leaves; "fixed" those this
+round changed):
+
+| Map | Status | Top issue left | Fixed 2026-10-15 |
+|---|---|---|---|
+| mg_3k_smash_lego_copter | ok, fixed | sound missing: paulsounds/another one bites the dust.wav | block spawners' 5 template physboxes drawn and solid |
+| mg_boatrace_scramble | ok, fixed | 3 output target(s) the map names but lacks | start wall (func_clip_vphysics) holds the boats till the race; 22 template boats/pins drawn and solid; projector screen goes when shot |
+| mg_crazykart_v1_1 | ok, fixed | material not found in any of ["models/luff_cv/target/metalwall085a"] | 7 template karts/props drawn and solid |
+| mg_creative_multigames_v8_ns | ok, fixed | 2 overlays produced no geometry | football pitch walls keep the template ball in; ball/boat copies drawn and solid; car model loads; control lights colour |
+| mg_escape_prison_beta | ok | none found; bots don't play the minigame |  |
+| mg_item_battle_v4b | ok, fixed | 1 output target(s) the map names but lacks | 26 template item physboxes drawn and solid |
+| mg_jacks_multigames_v1 | ok, fixed | map mistake: input the class lacks: func_rotating.addoutput entitytemplate | 62 template physboxes drawn and solid; 11 strip triggers checked |
+| mg_kommando | ok, fixed | func_tracktrain: no path_track '' | 3 template physboxes drawn; sandbag models load; strip checked |
+| mg_lego_course | ok | none found; bots don't play the minigame |  |
+| mg_lego_multigames_v2 | ok, fixed | none found; bots don't play the minigame | football pitch clips (func_clip_vphysics) hold the ball |
+| mg_lt_galaxy_v5 | ok, fixed | 1 output target(s) the map names but lacks | course-end physics clips; 4 template props drawn; spawn-hall strip checked |
+| mg_n64_goldeneye_v2 | ok | none found; bots don't play the minigame |  |
+| mg_randomizer_v5 | ok, fixed | point_servercommand: refused 'rcon ma_csay 16 maps in 1' (not a game setting) | 11 template physboxes drawn and solid (copies of movers no longer crash the physics) |
+| mg_starwars_v1 | ok, fixed | sound missing: star wars/star wars.wav | 3 template props drawn and solid |
+| mg_swag_multigames_v1 | ok, fixed | point_template: no entity 'hr_3d' | 12 template props drawn and solid; 8 strip triggers checked |
+| mg_wipeout | ok | none found; bots don't play the minigame |  |
+| mg_wipeout2 | ok, fixed | AddOutput without a value: '' | template physbox drawn and solid |
+| gg_4mida_arena | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_beacon | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_bk_warehouse_v1 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_blue_arena_32a | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_cb_arctic | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_churches_x_final_fixed | ok | map mistake: input the class lacks: trigger_once.playsound |  |
+| gg_construct_city | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_deagle7k | ok | sky sky_say01_09rt: no texture |  |
+| gg_desert_paintball | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_dev_moment_v1 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_dinoiceworld | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_fusion_trx | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_future | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_fy_funtimes | ok, fixed | none found; gungame ladder is a server plugin (plays as an arena) | 5 physics clips solid to props |
+| gg_fy_tactic_fight | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_hex | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_iceworld_l33t | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_ilu | ok | materials/vgui/logos/tsamp.vmt: not found |  |
+| gg_legendary_fun_v1a | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_lego_2floor_v2 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_lego_mafia_arena | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_lego_spacetower2 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_mario_vs_wario | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_mario_world_2 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_minesweeper | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_mr_pillar_v1 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_nukkon_hdr | ok | map mistake: input the class lacks: env_soundscape.playsound |  |
+| gg_nutty | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_pokemonz | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_sex_fix | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_simpsons_arabtoon | ok | 1 output target(s) the map names but lacks |  |
+| gg_simpsons_bam | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_simpsons_d | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_simpsons_dusty_2 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_simpsons_funfreaks_v2 | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_spacoid_pg | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_tbr_water_basin | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_tip_octal | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_toondorf | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_towerwars_v2 | ok | map mistake: input the class lacks: func_breakable.open |  |
+| gg_usp_deagle | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| gg_wolfenstein_3d | ok | none found; gungame ladder is a server plugin (plays as an arena) |  |
+| surf_apollo | ok | materials/environment maps/metal_generic_003.vtf: not found |  |
+| surf_boreas | ok | point_servercommand: refused 'sv_cheats 1' (a setting maps may not change) |  |
+| surf_botanica | ok | none found; timer is a server plugin |  |
+| surf_demise | ok | materials/liquidpack/water/unique/water_tar_beneath.vmf.vmt: not found |  |
+| surf_halloween_tf2 | ok | particle systems not found (not drawn): burning_torch, candle_light2, eyeboss_doorway_vort |  |
+| surf_happyhands | ok | 30 overlays produced no geometry |  |
+| surf_hellenic | ok | none found; timer is a server plugin |  |
+| surf_holiday | ok | materials/environment maps/metal_generic_002.vtf: not found |  |
+| surf_inferno | ok | none found; timer is a server plugin |  |
+| surf_jive | ok, fixed | point_servercommand: refused 'sv_cheats 1' (a setting maps may not change) | settings line after `sv_cheats 1` applies (sv_airaccelerate 150...) |
+| surf_kismet | ok | none found; timer is a server plugin |  |
+| surf_nebula | ok | none found; timer is a server plugin |  |
+| surf_nsz_fix | ok | sound missing: mymusic/fuk me.mp3 |  |
+| surf_sacrifice | ok | none found; timer is a server plugin |  |
+| surf_sedona | ok | map mistake: input the class lacks: math_counter.unlock |  |
+| surf_slob | ok | none found; timer is a server plugin |  |
+| surf_stickybutt_alpha | ok | 1 output target(s) the map names but lacks |  |
+| surf_surreal | ok, fixed | models/apple.mdl: mesh indices outside its vertices (.vtx and .vvd disagree) | butterfly model loads |
+| surf_threnody | ok | none found; timer is a server plugin |  |
+| bhop_addict_v2_3xl | ok | sound missing: bhop_addict/12 - lost (acoustic version).mp3 |  |
+| bhop_backport_css | ok | none found; timer is a server plugin |  |
+| bhop_flatzone | ok | none found; timer is a server plugin |  |
+| bhop_myztek | ok | 3 decals found no surface to project onto |  |
+| kz_11342 | ok | none found; timer is a server plugin |  |
+| kz_ancient_ruins | ok | none found; timer is a server plugin |  |
+| kz_bhop_izanami | ok | 1 output target(s) the map names but lacks |  |
+| kz_bhop_sakura | ok | none found; timer is a server plugin |  |
+| kz_bhop_skodna | ok | materials/vgui/logos/ui/feshk.vmt: not found |  |
+| kz_hikari_od_nh_v2 | ok, fixed | materials/cubemaps/cubemap_cave01.vtf: not found | bamboo model loads |
+| kz_rockb1ock | ok | materials/us-expert/us-expert.vmt: not found |  |
+
+Spec questions (nothing in `specs/` covers these; implemented from the
+public entity documentation, small, with Known shortcuts):
+
+1. **func_clip_vphysics**: which bodies it blocks (props and physics
+   brushes here; ragdolls, gibs and dropped weapons pass), how
+   `filtername` applies (here: only the bodies the filter passes are
+   blocked), and whether Enable/Disable exist in CS:S.
+2. **game_player_equip / player_weaponstrip** have no spec at all (their
+   strip, Use and spawn rules are round 1's reading); with them, whether
+   CS:S's spawn equipment adds to or replaces a survivor's weapons.
+3. **func_physbox with "Motion Disabled" (32768)**: mg_creative_multigames_v8_ns's
+   football (`ballon`, flags 37888, no EnableMotion anywhere in the map)
+   hangs where its template spawns it, as physics_brushes.md 2.1 step 6
+   says; check in CS:S whether that ball can be played (if it can, the
+   spec misses a way motion gets enabled).
+
+Left after this round, by maps affected:
+
+1. **Bots don't play minigames** (17 mg_), **the gungame ladder** (42 gg_)
+   and **surf/kz timers** are server plugins or AI, not map logic.
+2. Files the maps' authors didn't pack: 17 textures (8 maps), 11
+   materials (8), 14 sounds (7), 1 sky (gg_deagle7k); nothing to fix.
+3. Overlays without geometry (6 maps; surf_happyhands 30,
+   surf_surreal 26): checked, the maps' own: their listed faces are
+   thousands of units from the overlay (happyhands' blood stains all
+   name one far face; surreal's lilypads sit 300 units above the
+   displacements they list).
+4. Map mistakes the audit lists (22 connections, 5 kinds) and 46
+   connections to names nothing has.
+5. creative's envmap textures that aren't cubemaps (2) and its
+   Screenspace_General material (no spec).
+
 ## Left, ranked by maps affected
 
 Generic, by maps affected (counts from the sweep after the fixes):
@@ -757,10 +937,9 @@ Generic, by maps affected (counts from the sweep after the fixes):
    over 8 maps and 11 materials over 8 (custom cubemaps and files the
    map's author didn't pack), 1 unreadable (an empty file,
    mg_jacks_multigames_v1), 1 unknown shader (Screenspace_General,
-   mg_creative_multigames_v8_ns), 9 models unreadable over 4 maps (7 of
-   them "String is not null-terminated" in the vmdl reader: kz_hikari's
-   sandbags and bamboo, a car). Sounds: 14 missing (7 maps; not
-   packed).
+   mg_creative_multigames_v8_ns), 1 model unreadable (surf_surreal's
+   apple; the other 8 load since round 6). Sounds: 14 missing (7 maps;
+   not packed).
 6. **Decals/overlays without a surface** (11 / 5 maps, one each mostly),
    as on the stock maps (other-maps.md #11).
 7. **Server commands** maps send that we refuse: SourceMod/Mani admin

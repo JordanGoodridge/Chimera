@@ -71,7 +71,66 @@ pub fn read_mdl(bytes: &[u8]) -> Result<vmdl::mdl::Mdl, String> {
     if let Some(n) = copy.get_mut(MDL_NUM_LOCAL_ANIM..MDL_NUM_LOCAL_ANIM + 4) {
         n.copy_from_slice(&0i32.to_le_bytes());
     }
+    terminate_names(&mut copy);
     read(&copy)
+}
+
+/// Offsets of the body part count and offset in the MDL header, and the
+/// sizes of a body part and a model record (specs/cs_source/mdl_v48.md 11).
+const MDL_BODY_PARTS: usize = 232;
+/// The bone count and offset, and a bone record's size.
+const MDL_BONES: usize = 156;
+const BONE_SIZE: usize = 216;
+const BODY_PART_SIZE: usize = 16;
+const MODEL_SIZE: usize = 148;
+const NAME_LEN: usize = 64;
+
+/// The model's fixed 64-byte names (the header's, each body part model's)
+/// made readable: a name filling all 64 bytes is cut at 63 and bytes past
+/// ASCII become `?` (in bone names too). vmdl refuses such models ("String is not
+/// null-terminated", "invalid utf-8"); the names are only labels, so the
+/// meshes are read as they are (community props: kz_hikari_od_nh_v2's
+/// bamboo, mg_kommando's sandbags, mg_creative_multigames_v8_ns's car,
+/// surf_surreal's butterflies).
+fn terminate_names(mdl: &mut [u8]) {
+    fn fix(name: Option<&mut [u8]>) {
+        let Some(name) = name else { return };
+        let end = name.iter().position(|c| *c == 0).unwrap_or(NAME_LEN - 1);
+        name[end] = 0;
+        for c in &mut name[..end] {
+            if !c.is_ascii() {
+                *c = b'?';
+            }
+        }
+    }
+    let i32_at = |b: &[u8], at: usize| b.get(at..at + 4).map_or(0, |v| i32::from_le_bytes(v.try_into().unwrap()));
+    fix(mdl.get_mut(12..12 + NAME_LEN));
+    // Bone names (animation.md 1: 216-byte records, +0 the name's offset
+    // from the record): German umlauts in surf_surreal's butterflies.
+    let bones = i32_at(mdl, MDL_BONES).clamp(0, 1024) as usize;
+    let first = i32_at(mdl, MDL_BONES + 4).max(0) as usize;
+    for b in 0..bones {
+        let bone = first + b * BONE_SIZE;
+        let at = (bone as i64 + i32_at(mdl, bone) as i64).max(0) as usize;
+        if let Some(rest) = mdl.get_mut(at..) {
+            for c in rest.iter_mut().take_while(|c| **c != 0) {
+                if !c.is_ascii() {
+                    *c = b'?';
+                }
+            }
+        }
+    }
+    let parts = i32_at(mdl, MDL_BODY_PARTS).clamp(0, 256) as usize;
+    let first = i32_at(mdl, MDL_BODY_PARTS + 4).max(0) as usize;
+    for p in 0..parts {
+        let part = first + p * BODY_PART_SIZE;
+        let models = i32_at(mdl, part + 4).clamp(0, 256) as usize;
+        let at = part as i64 + i32_at(mdl, part + 12) as i64;
+        for m in 0..models {
+            let start = (at + (m * MODEL_SIZE) as i64).max(0) as usize;
+            fix(mdl.get_mut(start..start + NAME_LEN));
+        }
+    }
 }
 
 /// A model and its key values text (`$keyvalues`: `prop_data`,
@@ -2040,6 +2099,38 @@ pub fn probe_with(
         })
         .collect();
     LightProbe { cube: cube.0, lights }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    /// A header name filling its 64 bytes and a model name with a Latin-1
+    /// byte come out terminated and ASCII; nothing else changes.
+    #[test]
+    fn fixed_names_are_terminated() {
+        let mut mdl = vec![0u8; 600];
+        mdl[12..12 + NAME_LEN].fill(b'a');
+        mdl[MDL_BODY_PARTS..MDL_BODY_PARTS + 4].copy_from_slice(&1i32.to_le_bytes());
+        mdl[MDL_BODY_PARTS + 4..MDL_BODY_PARTS + 8].copy_from_slice(&300i32.to_le_bytes());
+        // One model, 40 bytes after its body part.
+        mdl[304..308].copy_from_slice(&1i32.to_le_bytes());
+        mdl[312..316].copy_from_slice(&40i32.to_le_bytes());
+        mdl[340..344].copy_from_slice(b"b\xfcx\0");
+        // One bone at 400, its name 100 bytes on.
+        mdl[MDL_BONES..MDL_BONES + 4].copy_from_slice(&1i32.to_le_bytes());
+        mdl[MDL_BONES + 4..MDL_BONES + 8].copy_from_slice(&400i32.to_le_bytes());
+        mdl[400..404].copy_from_slice(&100i32.to_le_bytes());
+        mdl[500..504].copy_from_slice(b"K\xf6r\0");
+        let before = mdl.clone();
+        terminate_names(&mut mdl);
+        assert_eq!(&mdl[12..12 + NAME_LEN - 1], &[b'a'; NAME_LEN - 1][..]);
+        assert_eq!(mdl[12 + NAME_LEN - 1], 0);
+        assert_eq!(&mdl[340..344], b"b?x\0");
+        assert_eq!(&mdl[500..504], b"K?r\0");
+        let changed = (0..mdl.len()).filter(|i| mdl[*i] != before[*i]).count();
+        assert_eq!(changed, 3);
+    }
 }
 
 #[cfg(test)]

@@ -300,7 +300,7 @@ pub fn is_plugin_command(line: &str) -> bool {
 /// what it may do, or why it is refused.
 pub fn check_server_command(line: &str) -> Result<ServerLine, &'static str> {
     let line = line.trim();
-    if line.contains([';', '\n', '\r']) {
+    if split_commands(line).len() > 1 {
         return Err("more than one command");
     }
     let (name, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
@@ -333,6 +333,29 @@ pub fn check_server_command(line: &str) -> Result<ServerLine, &'static str> {
         None => value.to_string(),
     };
     Ok(ServerLine::Set { name, value })
+}
+
+/// A console line's commands: split at `;` and line breaks outside
+/// double quotes, trimmed, empty ones dropped.
+pub fn split_commands(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quoted = false;
+    for c in line.chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                cur.push(c);
+            }
+            ';' | '\n' | '\r' if !quoted => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(c),
+        }
+    }
+    out.push(cur);
+    out.into_iter()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .collect()
 }
 
 /// Check a client command against the allowlist.
@@ -413,6 +436,10 @@ impl Class {
         let e = w.get(id).unwrap();
         match lower.as_str() {
             "func_wall_toggle" => Class::Brush(Box::new(Toggle::spawn_wall_toggle(w, id))),
+            // Unless parented (they follow their parent: `Attached`, below).
+            "func_wall" | "func_illusionary" if e.kv("parentname").is_none_or(|p| p.is_empty()) => {
+                Class::Brush(Box::new(Toggle::spawn_static(w, id, lower == "func_wall")))
+            }
             "point_template" => Class::Template(Box::default()),
             "env_entity_maker" => Class::Maker(Box::default()),
             "point_viewcontrol" => Class::Camera(Box::new(super::camera::spawn(e))),
@@ -549,6 +576,9 @@ impl Class {
                 Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::ColorCorrection))
             }
             "env_embers" => Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::Embers)),
+            "func_clip_vphysics" => {
+                Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::PhysicsClip))
+            }
             "info_particle_system" => {
                 Class::Part(super::visuals::spawn_part(w, id, super::visuals::PartKind::Particles))
             }
@@ -1111,17 +1141,20 @@ pub(super) fn class_input(
         Class::ServerCommand => match input {
             "command" => {
                 let Some(line) = w.need_str(value, input) else { return true };
-                if line.is_empty() {
-                    return true;
-                }
-                match check_server_command(&line) {
-                    Ok(ok) => w.effects.push(Effect::ServerCommand(ok)),
-                    // Server plugins' commands (SourceMod, Mani): a server
-                    // without the plugin ignores them.
-                    Err(_) if is_plugin_command(&line) => {
-                        w.note("server plugin commands not run (SourceMod, Mani)", line.clone())
+                // The server console runs each command of the line
+                // (entity_io.md: the line goes to its buffer): each is
+                // checked on its own, so a refused one (`sv_cheats 1`)
+                // doesn't take the allowed ones after it with it.
+                for line in split_commands(&line) {
+                    match check_server_command(&line) {
+                        Ok(ok) => w.effects.push(Effect::ServerCommand(ok)),
+                        // Server plugins' commands (SourceMod, Mani): a server
+                        // without the plugin ignores them.
+                        Err(_) if is_plugin_command(&line) => {
+                            w.note("server plugin commands not run (SourceMod, Mani)", line.clone())
+                        }
+                        Err(why) => w.log.push(format!("point_servercommand: refused '{line}' ({why})")),
                     }
-                    Err(why) => w.log.push(format!("point_servercommand: refused '{line}' ({why})")),
                 }
             }
             _ => return false,

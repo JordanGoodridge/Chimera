@@ -667,6 +667,20 @@ fn command_allowlists() {
     w.deliver(Who::Ent(s), "Command", Value::Str("rcon_password x".into()), None, None);
     assert_eq!(w.effects, vec![Effect::ServerCommand(ServerLine::Set { name: "sv_gravity".into(), value: "400".into() })]);
     assert!(w.log.iter().any(|l| l.contains("refused")));
+    // A line of several commands: each on its own (surf_jive's settings
+    // line starts with `sv_cheats 1`); `;` inside quotes doesn't split.
+    w.effects.clear();
+    w.log.clear();
+    let line = "sv_cheats 1;sv_airaccelerate 150; say \"a;b\"";
+    w.deliver(Who::Ent(s), "Command", Value::Str(line.into()), None, None);
+    assert_eq!(
+        w.effects,
+        vec![
+            Effect::ServerCommand(ServerLine::Set { name: "sv_airaccelerate".into(), value: "150".into() }),
+            Effect::ServerCommand(ServerLine::Say("a;b".into())),
+        ]
+    );
+    assert_eq!(w.log.iter().filter(|l| l.contains("refused 'sv_cheats 1'")).count(), 1, "{:?}", w.log);
 
     let c = spawn(&mut w, &[("classname", "point_clientcommand")]);
     let p = player_at(&mut w, 0, Vec3::ZERO);

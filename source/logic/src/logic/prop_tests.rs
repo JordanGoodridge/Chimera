@@ -885,8 +885,10 @@ fn prop_visibility_and_collision_inputs() {
     let p = spawn(&mut w, &[("classname", "prop_dynamic"), ("targetname", "screen")]);
     w.activate();
     let shown = |w: &LogicWorld| w.prop_states().iter().find(|s| s.id == p).map(|s| (s.visible, s.solid));
-    // Not a map entity: no map index, so not listed.
-    assert_eq!(shown(&w), None);
+    // Not a map entity (a template's copy): listed too, without a map
+    // index (the map draws copies: `bridge::spawn_copy`).
+    assert_eq!(shown(&w), Some((true, true)));
+    assert_eq!(w.prop_states().iter().find(|s| s.id == p).unwrap().index, None);
     w.get_mut(p).unwrap().map_index = Some(0);
     assert_eq!(shown(&w), Some((true, true)));
     w.queue_input("screen", "Disable", Value::Void, 0.0, None);

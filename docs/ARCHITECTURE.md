@@ -322,6 +322,7 @@ that the paths exist).
 - `chimera/world/src/map/controllers.rs`: physics controllers and joints the logic switches (map)
 - `chimera/world/src/map/buoyancy.rs`: bodies in water float (map)
 - `chimera/world/src/map/copies.rs`: copies of map nodes made at run time (map)
+- `chimera/world/src/map/physics_clip.rs`: brushes solid to physics objects only (func_clip_vphysics) and their filters (map)
 - `chimera/world/src/map/monitor.rs`: monitor screen cameras' markers, point_camera fog as a view fog (map)
 - `chimera/world/src/map/fish.rs`: func_fish_pool's fish and where they swim next (map)
 - `chimera/world/src/map/color_correction.rs`: color_correction entities as data (map)

@@ -348,7 +348,8 @@ impl RagdollShot {
 /// (spec 1.3), bodies of different ragdolls never (spec 4: both are
 /// debris). Players' physics shadows keep only the props they push, and
 /// shadowed characters touch no physics prop
-/// (`prop_physics::ShadowContacts`). Pairs no solver or event uses are
+/// (`prop_physics::ShadowContacts`). Filtered physics clips block only
+/// what their filter passes (`physics_clip`). Pairs no solver or event uses are
 /// dropped (`contact_filter`). Everything else is left to collision
 /// layers.
 #[derive(SystemParam)]
@@ -356,6 +357,7 @@ pub struct MapCollisionHooks<'w, 's> {
     bodies: Query<'w, 's, &'static RagdollBody>,
     used: super::contact_filter::UsedContacts<'w, 's>,
     shadows: super::prop_physics::ShadowContacts<'w, 's>,
+    clips: super::physics_clip::ClipContacts<'w, 's>,
 }
 
 impl CollisionHooks for MapCollisionHooks<'_, '_> {
@@ -363,6 +365,10 @@ impl CollisionHooks for MapCollisionHooks<'_, '_> {
         // Players' physics shadows touch only the props they push, and
         // their characters no physics prop.
         if let Some(keep) = self.shadows.filter(a, b) {
+            return keep;
+        }
+        // Filtered physics clips block only the bodies their filter passes.
+        if let Some(keep) = self.clips.filter(a, b) {
             return keep;
         }
         if !self.used.used(a, b) {

@@ -548,6 +548,54 @@ fn sync_removed_weapons(world: &mut World, logic: &Logic) {
     }
 }
 
+/// Physics clips (`map::physics_clip`) follow their logic entity: solid
+/// to physics objects while it exists and is enabled; a filtered one
+/// blocks the props and brush entities its filter passes (of those, only
+/// physics bodies meet it). Components
+/// are written only when they change.
+fn sync_physics_clips(world: &mut World, logic: &Logic) {
+    use crate::map::physics_clip::{ClipPasses, PhysicsClip};
+    let clips: Vec<(Entity, usize)> = world
+        .query::<(Entity, &PhysicsClip)>()
+        .iter(world)
+        .map(|(e, c)| (e, c.0))
+        .collect();
+    for (clip, index) in clips {
+        let w = &logic.world;
+        let id = w.by_map_index(index).filter(|id| w.get(*id).is_some_and(|e| !e.killed));
+        let on = id.is_some_and(|id| {
+            matches!(w.get(id).map(|e| &e.class), Some(super::classes::Class::Part(p)) if p.on)
+        });
+        let filter = id
+            .and_then(|id| w.get(id))
+            .and_then(|e| e.kv("filtername"))
+            .filter(|f| !f.trim().is_empty())
+            .map(|f| w.find(f));
+        let passes = ClipPasses(filter.map(|f| {
+            // Props and physics brushes, templates' copies too (the
+            // football's ball is a func_physbox a template spawns).
+            logic
+                .props
+                .iter()
+                .chain(&logic.nodes)
+                .filter(|(p, _)| f.is_none_or(|f| super::classes::filter_passes(w, f, Some(Who::Ent(*p)))))
+                .map(|(_, node)| *node)
+                .collect()
+        }));
+        let Ok(mut e) = world.get_entity_mut(clip) else { continue };
+        if on == e.contains::<ColliderDisabled>() {
+            if on {
+                e.remove::<ColliderDisabled>();
+            } else {
+                e.insert(ColliderDisabled);
+            }
+        }
+        if e.get::<ClipPasses>() != Some(&passes) {
+            e.insert(passes);
+        }
+    }
+}
+
 /// Prop nodes follow their logic prop: hidden and not solid once it is
 /// gone (broken, killed) until a round restart, or as its inputs say.
 fn sync_props(world: &mut World, logic: &mut Logic) {
@@ -1724,10 +1772,22 @@ fn spawn_copy(world: &mut World, id: EntId, source: usize, origin: Vec3, angles:
         .find(|(_, b)| b.0 == source)
         .map(|(e, _)| e);
     if let Some(node) = brush {
-        if let Some(copy) = copy_node(world, node, pose)
-            && let Some(mut logic) = world.get_resource_mut::<Logic>()
-        {
-            logic.nodes.push((id, copy));
+        if let Some(copy) = copy_node(world, node, pose) {
+            // A physics brush (func_physbox) is a prop too, as the map's
+            // own are (`attach_nodes`, `attach_props`): its copy of a
+            // template member, which was taken out of the map (hidden, its
+            // body off), is shown with its body on.
+            let physics = world.get::<PropEntity>(copy).is_some();
+            if physics {
+                set_prop_shown(world, copy, true, true, true);
+            }
+            if let Some(mut logic) = world.get_resource_mut::<Logic>() {
+                logic.nodes.push((id, copy));
+                if physics {
+                    logic.props.push((id, copy));
+                }
+            }
+            copy_takes_damage(world, id, copy);
         }
         return;
     }
@@ -1743,6 +1803,22 @@ fn spawn_copy(world: &mut World, id: EntId, source: usize, origin: Vec3, angles:
         if let Some(mut logic) = world.get_resource_mut::<Logic>() {
             logic.props.push((id, copy));
         }
+        copy_takes_damage(world, id, copy);
+    }
+}
+
+/// A copy of a breakable or a prop takes weapons' damage as the map's own
+/// do (`attach_nodes`, `attach_props`): the template member it was cloned
+/// from was taken out of the map and so took none (shots passed through
+/// spawned items and balls, and didn't wake them).
+fn copy_takes_damage(world: &mut World, id: EntId, copy: Entity) {
+    let damageable = world.get_resource::<Logic>().is_some_and(|l| match l.world.get(id).map(|e| &e.class) {
+        Some(super::classes::Class::Breakable(_)) => true,
+        Some(super::classes::Class::Prop(_)) => l.world.prop_states().iter().any(|s| s.id == id && s.damageable),
+        _ => false,
+    });
+    if damageable && let Ok(mut e) = world.get_entity_mut(copy) {
+        e.insert(Damageable);
     }
 }
 
@@ -1892,6 +1968,7 @@ fn run_phase(world: &mut World, phase: impl FnOnce(&mut LogicWorld, &dyn Collisi
     sync_views(world, &logic);
     sync_controls(world, &logic);
     sync_removed_weapons(world, &logic);
+    sync_physics_clips(world, &logic);
     drop(span);
     let effects = std::mem::take(&mut logic.world.effects);
     for line in logic.world.log.drain(..) {

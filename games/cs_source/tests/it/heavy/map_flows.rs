@@ -1352,3 +1352,356 @@ fn smash_lego_copter_survival() {
     let failed = f.finish();
     assert!(failed.is_empty(), "{failed:#?}");
 }
+
+/// The mg_ maps' weapon strips (backlog: "Weapons after a round on
+/// minigame maps"). Every trigger whose output fires a
+/// player_weaponstrip, on every cached mg_ map that has one: switched on
+/// (several start disabled until their game), stood in by an armed
+/// player of each team: whoever its filter lets through is stripped.
+/// Survivors keep their weapons into the next round in CS:S, so a strip
+/// is the map's own: these are the triggers that do it.
+#[test]
+fn every_strip_trigger_strips() {
+    const MAPS: [&str; 7] = [
+        "mg_creative_multigames_v8_ns",
+        "mg_jacks_multigames_v1",
+        "mg_kommando",
+        "mg_lego_multigames_v2",
+        "mg_lt_galaxy_v5",
+        "mg_randomizer_v5",
+        "mg_swag_multigames_v1",
+    ];
+    let mut failed = Vec::new();
+    for map in MAPS {
+        let Some(mut f) = Flow::new(map, 1, 1) else { continue };
+        let (t0, ct0) = (f.t[0], f.ct[0]);
+        let triggers: Vec<(EntId, String)> = {
+            let w = &f.sim.app.world().resource::<Logic>().world;
+            let strips: Vec<String> = w
+                .ids()
+                .into_iter()
+                .filter_map(|id| w.get(id))
+                .filter(|e| e.classname == "player_weaponstrip")
+                .map(|e| e.targetname.to_ascii_lowercase())
+                .collect();
+            w.ids()
+                .into_iter()
+                .filter(|id| {
+                    w.get(*id).is_some_and(|e| {
+                        e.classname.starts_with("trigger_")
+                            && e.outputs
+                                .iter()
+                                .any(|(_, cs)| cs.iter().any(|c| strips.contains(&c.target.to_ascii_lowercase())))
+                    })
+                })
+                .map(|id| (id, w.get(id).unwrap().targetname.clone()))
+                .collect()
+        };
+        f.check("strip triggers found", !triggers.is_empty(), format!("{}", triggers.len()));
+        for (i, (id, name)) in triggers.into_iter().enumerate() {
+            let filter = f
+                .sim
+                .app
+                .world()
+                .resource::<Logic>()
+                .world
+                .get(id)
+                .and_then(|e| e.kv("filtername").map(String::from));
+            f.sim.app.world_mut().resource_mut::<Logic>().world.deliver(
+                Who::Ent(id),
+                "Enable",
+                crate::stack::logic::Value::Void,
+                None,
+                None,
+            );
+            // Away from it first, so standing in it is a new touch.
+            for p in [t0, ct0] {
+                f.put(p, Vec3::new(0.0, 0.0, 30000.0));
+                crate::stack::weapon::equip::give_item(f.sim.app.world_mut(), p, "weapon_ak47", 1);
+            }
+            f.secs(0.1);
+            f.touch(&[t0, ct0], id);
+            f.secs(0.2);
+            // The AK gone from either (a trigger_once strips its first
+            // toucher only; arenas hand out their own kit just after).
+            let left = [f.weapons(t0), f.weapons(ct0)];
+            let stripped = left.iter().any(|w| !w.iter().any(|w| w == "weapon_ak47"));
+            let step = format!("trigger {i} '{name}' strips");
+            match filter {
+                // A filter neither player passes (a name the map's own
+                // logic hands out): not checked here.
+                Some(filter) if !stripped => f.note(&step, false, format!("filter '{filter}': {left:?}")),
+                _ => f.check(&step, stripped, format!("{left:?}")),
+            }
+        }
+        failed.extend(f.finish());
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// Physics clips (func_clip_vphysics, `map::physics_clip`):
+/// mg_boatrace_scramble's start wall blocks only its boats (a class
+/// filter: func_physbox) until the start trigger kills it;
+/// mg_creative_multigames_v8_ns's pitch walls only its ball (a name
+/// filter: `ballon`).
+#[test]
+fn physics_clips_hold_boats_and_balls() {
+    use crate::stack::map::{PropEntity, entities::MapEntities, physics_clip::{ClipPasses, PhysicsClip}};
+    fn clips(f: &mut Flow, name: &str) -> Vec<(Entity, bool, Option<Vec<String>>)> {
+        let w = f.sim.app.world_mut();
+        let ents = w.resource::<MapEntities>().entities.clone();
+        let props: std::collections::HashMap<Entity, usize> =
+            w.query::<(Entity, &PropEntity)>().iter(w).map(|(e, p)| (e, p.0)).collect();
+        w.query::<(Entity, &PhysicsClip, &ClipPasses, Has<avian3d::prelude::ColliderDisabled>)>()
+            .iter(w)
+            .filter(|(_, c, _, _)| ents[c.0].get("targetname").is_some_and(|n| n.eq_ignore_ascii_case(name)) || name.is_empty())
+            .map(|(e, _, p, off)| {
+                let passes = p.0.as_ref().map(|s| {
+                    s.iter()
+                        .filter_map(|b| props.get(b))
+                        .map(|i| format!("{} {}", ents[*i].classname(), ents[*i].get("targetname").unwrap_or("")))
+                        .collect()
+                });
+                (e, !off, passes)
+            })
+            .collect()
+    }
+    if let Some(mut f) = Flow::new("mg_boatrace_scramble", 1, 1) {
+        let wall = clips(&mut f, "Start-Wall");
+        f.check("start wall clips", wall.len() == 2, format!("{}", wall.len()));
+        let held = wall.iter().all(|(_, on, p)| {
+            *on && p.as_ref().is_some_and(|p| !p.is_empty() && p.iter().all(|b| b.starts_with("func_physbox")))
+        });
+        f.check("on, blocking the boats only", held, format!("{wall:?}"));
+        // Both pieces share the name, as the start trigger's Kill finds them.
+        f.sim.app.world_mut().resource_mut::<Logic>().world.queue_input(
+            "Start-Wall",
+            "Kill",
+            crate::stack::logic::Value::Void,
+            0.0,
+            None,
+        );
+        f.secs(0.2);
+        let gone = clips(&mut f, "Start-Wall").iter().all(|(_, on, _)| !on);
+        f.check("killed: boats pass", gone, "");
+        failed_now(f);
+    }
+    if let Some(mut f) = Flow::new("mg_creative_multigames_v8_ns", 1, 1) {
+        // The football mode's ball: a template's func_physbox.
+        f.sim.app.world_mut().resource_mut::<Logic>().world.queue_input(
+            "spball",
+            "ForceSpawn",
+            crate::stack::logic::Value::Void,
+            0.0,
+            None,
+        );
+        f.secs(0.2);
+        let all = clips(&mut f, "");
+        let ball = all
+            .iter()
+            .filter(|(_, on, p)| *on && p.as_ref().is_some_and(|p| !p.is_empty() && p.iter().all(|b| b.ends_with(" ballon"))))
+            .count();
+        f.check("pitch walls block the ball only", ball >= 7, format!("{all:?}"));
+        // The spawned ball is there (shown, with its shape: a template's
+        // func_physbox copy had none) and, kicked at a wall from 1 m in
+        // front of it, stays on its side (it starts asleep: woken here as
+        // a player's touch would).
+        let w = f.sim.app.world_mut();
+        let ents = w.resource::<MapEntities>().entities.clone();
+        let ball = w
+            .query_filtered::<(Entity, &PropEntity), With<crate::stack::map::copies::MapCopy>>()
+            .iter(w)
+            .find(|(_, p)| ents[p.0].get("targetname") == Some("ballon"))
+            .map(|(e, _)| e);
+        let wall = w
+            .query::<(&PhysicsClip, &avian3d::prelude::ColliderAabb)>()
+            .iter(w)
+            .map(|(_, a)| (a.min, a.max))
+            .next();
+        if let (Some(ball), Some((lo, hi))) = (ball, wall) {
+            let shown = w.get::<crate::stack::map::LogicHidden>(ball).is_none()
+                && w.get::<avian3d::prelude::RigidBodyDisabled>(ball).is_none()
+                && w.get::<avian3d::prelude::ColliderDisabled>(ball).is_none();
+            let size = hi - lo;
+            let axis = if size.x < size.z { Vec3::X } else { Vec3::Z };
+            let centre = (lo + hi) / 2.0;
+            let start = centre - axis * (size.dot(axis) / 2.0 + 1.0);
+            let mut e = w.entity_mut(ball);
+            e.get_mut::<Transform>().unwrap().translation = start;
+            e.insert((avian3d::prelude::RigidBody::Dynamic, avian3d::prelude::LinearVelocity(axis * 8.0)));
+            f.secs(0.6);
+            let at = f.sim.app.world().get::<Transform>(ball).unwrap().translation;
+            let shape = f.sim.app.world().get::<avian3d::prelude::Collider>(ball).is_some();
+            f.check("the template's ball is shown and solid", shown && shape, format!("shape {shape}"));
+            let held = (at - centre).dot(axis) < 0.0 && at.distance(start) > 0.05;
+            let body = f.sim.app.world().get::<avian3d::prelude::RigidBody>(ball).copied();
+            f.check(
+                "a ball kicked at a wall stays in",
+                held,
+                format!("{body:?} from {start:.2} to {at:.2}, wall {lo:.2}..{hi:.2}"),
+            );
+        } else {
+            f.check("the ball and a wall", false, format!("{ball:?} {wall:?}"));
+        }
+        failed_now(f);
+    }
+}
+
+/// Templates' copies of props and physics brushes (12 mg_ maps spawn
+/// them: block spawners, boats, karts, item boxes, balls): every
+/// point_template's ForceSpawn makes copies that are drawn as their logic
+/// prop says (copies were hidden: their logic props had no map index)
+/// and, for physics ones, have their collision shape (a func_physbox's
+/// copy had none), and take shots as their prop says (copies never did).
+#[test]
+fn template_copies_are_drawn_and_solid() {
+    use crate::stack::map::{LogicHidden, PropEntity, copies::MapCopy};
+    const MAPS: [&str; 12] = [
+        "mg_3k_smash_lego_copter",
+        "mg_boatrace_scramble",
+        "mg_crazykart_v1_1",
+        "mg_creative_multigames_v8_ns",
+        "mg_item_battle_v4b",
+        "mg_jacks_multigames_v1",
+        "mg_kommando",
+        "mg_lt_galaxy_v5",
+        "mg_randomizer_v5",
+        "mg_starwars_v1",
+        "mg_swag_multigames_v1",
+        "mg_wipeout2",
+    ];
+    let mut failed = Vec::new();
+    for map in MAPS {
+        let Some(mut f) = Flow::new(map, 1, 1) else { continue };
+        let templates: Vec<String> = {
+            let w = &f.sim.app.world().resource::<Logic>().world;
+            w.ids()
+                .into_iter()
+                .filter_map(|id| w.get(id))
+                .filter(|e| matches!(e.class, Class::Template(_)) && !e.targetname.is_empty())
+                .map(|e| e.targetname.clone())
+                .collect()
+        };
+        for t in &templates {
+            f.sim.app.world_mut().resource_mut::<Logic>().world.queue_input(
+                t,
+                "ForceSpawn",
+                crate::stack::logic::Value::Void,
+                0.0,
+                None,
+            );
+        }
+        // Copies of movers and physics brushes touching each other ran
+        // into an avian panic (bodies without islands: `copies`).
+        f.secs(0.3);
+        let (copies, wrong) = {
+            let w = f.sim.app.world_mut();
+            let logic = w.resource::<Logic>();
+            let states = logic.world.prop_states();
+            let props = logic.props.clone();
+            let live: Vec<EntId> = props.iter().map(|(id, _)| *id).filter(|id| logic.world.get(*id).is_some()).collect();
+            let mut copies = 0;
+            let mut wrong = Vec::new();
+            let nodes: Vec<Entity> = w.query_filtered::<Entity, (With<MapCopy>, With<PropEntity>)>().iter(w).collect();
+            for node in nodes {
+                // Copies of a copied node's prop children aren't logic
+                // props of their own (they go with it).
+                let Some((id, _)) = props.iter().find(|(_, n)| *n == node) else { continue };
+                copies += 1;
+                let hidden = w.get::<LogicHidden>(node).is_some();
+                let Some(state) = states.iter().find(|s| s.id == *id) else {
+                    // A live logic prop the bridge has no state for: hidden.
+                    if live.contains(id) {
+                        wrong.push(format!("{node}: no prop state, hidden {hidden}"));
+                    }
+                    continue;
+                };
+                let shape = w.get::<avian3d::prelude::Collider>(node).is_some()
+                    || w.get::<Children>(node)
+                        .is_some_and(|c| c.iter().any(|c| w.get::<avian3d::prelude::Collider>(c).is_some()));
+                let body = w.get::<avian3d::prelude::RigidBody>(node).is_some();
+                let shot = w.get::<crate::stack::core::Damageable>(node).is_some();
+                if hidden == state.visible || (body && state.solid && !shape) || shot != state.damageable {
+                    wrong.push(format!("{node}: hidden {hidden}, shape {shape}, takes shots {shot}, state {state:?}"));
+                }
+            }
+            (copies, wrong)
+        };
+        f.check(
+            "templates' prop copies drawn and solid",
+            wrong.is_empty(),
+            format!("{copies} copies of {} templates: {wrong:?}", templates.len()),
+        );
+        failed.extend(f.finish());
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// Still brushes the logic targets get a node: mg_boatrace_scramble's
+/// projector screen (a func_illusionary) goes when killed (shooting the
+/// projector), mg_creative_multigames_v8_ns's control light (a func_wall)
+/// turns red by its Color input.
+#[test]
+fn targeted_still_brushes_show_their_inputs() {
+    use crate::stack::map::{BrushTint, LogicHidden, MapBrushEntity, entities::MapEntities};
+    fn node(f: &mut Flow, name: &str) -> Option<Entity> {
+        let w = f.sim.app.world_mut();
+        let ents = w.resource::<MapEntities>().entities.clone();
+        w.query::<(Entity, &MapBrushEntity)>()
+            .iter(w)
+            .find(|(_, b)| ents[b.0].get("targetname").is_some_and(|n| n.eq_ignore_ascii_case(name)))
+            .map(|(e, _)| e)
+    }
+    let fire = |f: &mut Flow, target: &str, input: &str, value: &str| {
+        f.sim.app.world_mut().resource_mut::<Logic>().world.queue_input(
+            target,
+            input,
+            crate::stack::logic::Value::Str(value.into()),
+            0.0,
+            None,
+        );
+        f.secs(0.2);
+    };
+    if let Some(mut f) = Flow::new("mg_boatrace_scramble", 1, 1) {
+        let screen = node(&mut f, "ProjectorScreen2");
+        f.check("the projector screen has a node", screen.is_some(), "");
+        fire(&mut f, "ProjectorScreen2", "Kill", "");
+        let gone = screen.is_some_and(|s| f.sim.app.world().get::<LogicHidden>(s).is_some());
+        f.check("killed: hidden", gone, "");
+        failed_now(f);
+    }
+    if let Some(mut f) = Flow::new("mg_creative_multigames_v8_ns", 1, 1) {
+        let light = node(&mut f, "autos_control_c");
+        f.check("the control light has a node", light.is_some(), "");
+        fire(&mut f, "autos_control_c", "Color", "255 0 0");
+        let tint = light.and_then(|l| f.sim.app.world().get::<BrushTint>(l).map(|t| t.0.color));
+        f.check("Color: red", tint == Some([255, 0, 0]), format!("{tint:?}"));
+        failed_now(f);
+    }
+}
+
+fn failed_now(f: Flow) {
+    let failed = f.finish();
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// mg_lt_galaxy_v5's spawn hall is inside a trigger that strips
+/// (`weaponstrip`): a survivor carried into the next round is stripped
+/// where it spawns, as the map means it.
+#[test]
+fn galaxy_strips_survivors_at_the_next_round() {
+    let Some(mut f) = Flow::new("mg_lt_galaxy_v5", 1, 1) else { return };
+    let t0 = f.t[0];
+    // Given in the hall, after its touch: the map's strip had its turn.
+    crate::stack::weapon::equip::give_item(f.sim.app.world_mut(), t0, "weapon_ak47", 1);
+    f.secs(0.2);
+    let armed = f.weapons(t0).iter().any(|w| w == "weapon_ak47");
+    f.check("the survivor is armed", armed, format!("{:?}", f.weapons(t0)));
+    let ct = f.ct.clone();
+    next_round(&mut f, &ct);
+    f.secs(0.5);
+    let left = f.weapons(t0);
+    f.check("stripped in the spawn hall", left.is_empty(), format!("{left:?}"));
+    let failed = f.finish();
+    assert!(failed.is_empty(), "{failed:#?}");
+}
