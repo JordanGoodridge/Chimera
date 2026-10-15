@@ -757,6 +757,34 @@ measurements):
   all of them; next for shorter pushes: the greybox and a `Sim` taking
   its base plugins below the app, so tests (heavy ones above all) can
   sit on the layer they test (tech-debt.md).
+- [x] Harness below the app (2026-10-15, one session): `Sim` takes its
+  simulation plugins as a base and lives in `chimera_world` (`harness`,
+  with the greybox), `NetSim` in `chimera_net`; `chimera_sim::
+  SimBasePlugins` is the engine's base, `cs_source::SimPlugins` CS:S's
+  simulation (the old app set: the base, its rules, objectives, bots,
+  network part and Source's logic, so `cs_source` depends on
+  `source_logic`), `cs_source::harness::CsSim` that as the tests' and
+  tools' base, with its test maps; `swap_map` is the game's. The app's
+  `SimPlugins` adds its build's version and keeps the old paths. The
+  app's 711 tests moved, names unchanged: 623 to `cs_source`'s `it`
+  (the heavy map and network files; tests/common/stack.rs re-exports
+  what they use at the app's paths), 73 to its `ui` (state of the
+  shell or front end), 9 to `chimera_sim`, 3 to `chimera_present`, 2 to
+  `chimera_client`; the app keeps one (its version). `cs_source`'s tests
+  may use the presentation (`MapPlugin`; architecture.rs `TEST_ONLY`).
+  `affected` learned feature folders (cs_source's `src/ui/` runs its
+  `ui` tests and the crates above). 1643 tests before, 1644 after (one
+  selection test). Measured (pre-push selection, warm, binaries built):
+  full suite 826 s; a `cs_source` front end edit 48 s (217 tests; was
+  847 s), an app edit 2 s (23; was most of the suite), a `cs_source`
+  simulation edit 823 s (1051), a `chimera_world` edit 818 s (1568), a
+  `source_logic` edit 820 s (1268).
+  What it shows: edits above the game are cheap now; an edit to the game
+  or anything under it still runs its heavy map tests, which are
+  `cs_source`'s because its loader makes the maps. Next for shorter
+  pushes there: a Source map loader below the game (`source/`), so map
+  tests that need Source's world but no CS:S rule can sit in
+  `source_logic` or a Source crate.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
