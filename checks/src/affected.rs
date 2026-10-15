@@ -28,7 +28,12 @@
 //! turns on. This crate's own tests (the architecture tests) always run:
 //! any change can break a layering or repository rule.
 //!
-//! Known shortcuts: the selection is per package (or test module), not per
+//! Known shortcuts: the scenario tests (most tests' time, the heavy map
+//! tests above all) are `cs_source_app`'s, as the harness (`Sim` runs the
+//! app's `SimPlugins`) and the greybox are the app's, so a change to any
+//! crate under the app selects them; moving the greybox and a `Sim`
+//! taking its base plugins into a crate below the app would let tests of
+//! one layer sit there. The selection is per package (or test module), not per
 //! test binary's features: `cs_source`'s simulation tests run for a
 //! change to the presentation its `ui` feature uses. A test that reads a
 //! repository file at run time (not through `include_str!`) outside its

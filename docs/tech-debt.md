@@ -126,3 +126,4 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - weapon: Sprays: reach, size and floor turn are well-known values and ours, unmeasured; world only; names, not pictures (`chimera/sim/src/weapon/spray.rs`)
 - map: Sprays drawn with one light value at the centre, no fog (`chimera/present/src/render/spray.rs`)
 - client: Night vision's colour (frame plus frame times green) is ours; toggle sound to the owner only (`chimera/client/src/client/night_vision.rs`)
+- tests: Scenario tests sit on the app (its harness and greybox), so any engine change runs them; selection per crate, not per feature (`checks/src/affected.rs`)

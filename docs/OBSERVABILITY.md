@@ -26,28 +26,53 @@ does; `MeshExtraction::failures` lists meshes announced changed after their
 data was gone, which a real run logs as "cannot be extracted: The asset has
 already been extracted"; `apps/cs_source/tests/it/prop_shadows.rs` uses it).
 
-Integration tests are one test crate, so the game links once for all of
-them (docs/performance.md, "Test cycle"): `apps/cs_source/tests/it/main.rs` lists each
-file as a module. A new test file goes in `tests/it/` with a `mod name;`
-line there, or in `tests/it/heavy/` (inside `mod heavy { }`) when it loads
-real maps from the install or simulates long (bot rounds). A file directly
-in `tests/` would be another test binary: `architecture::tests_are_one_crate`
-fails and says how to move it. Test names read `weapons::name` and
-`heavy::map_de_dust2::name`.
+Each crate keeps its own tests, so a change runs only the tests of the
+crates it can affect (cargo's crate graph; the hooks below). A test goes
+in the lowest crate whose public API it needs:
 
-The other workspace crates (docs/ARCHITECTURE.md, "Crates") keep their
-tests as unit tests beside their code. Commands at the repository root
-cover every crate; `-p <crate>` picks one: `cargo test -p source_formats`
-builds and runs only the format readers' tests, in seconds, without
-building the game. Tests of a pure reader belong in its crate; tests that
-need the game (ECS, conversion to engine types, real installs) stay in
-`tests/it/` (the root package `mashup`, which re-exports the CS:S app's
-glue, `cs_source_app`, at the old `mashup::` paths).
+- unit tests beside the code (`#[cfg(test)]`), for one module's logic;
+- a crate's integration tests, one test binary per crate:
+  `<crate>/tests/it/main.rs` lists each file as a module (the crate links
+  once for all of them: docs/performance.md, "Test cycle");
+  `tests/it/heavy/` (inside `mod heavy { }`) for tests that load real
+  maps from the install or simulate long (bot rounds);
+- `cs_source_app` (apps/cs_source/tests/it/): anything on `harness::Sim`
+  or `NetSim`, the greybox or `games::load_map`, the app's simulation
+  (`SimPlugins`): most scenario tests, network tests, the heavy map
+  tests;
+- `cs_source` (games/cs_source/tests/it/): CS:S's loaders and spec test
+  cases that need only the game and the engine below it (the install
+  through `mount`, `bsp::load_level`; tests/common/'s `load_map`); its
+  front end's (menus, HUD) in tests/ui/, built with `ui`;
+- `chimera_present` (chimera/present/tests/it/): the renderer's and
+  audio's spec cases with nothing of a game;
+- `repo_checks` (checks/tests/it/architecture.rs): the repository's
+  rules (layering, assets, specs, docs);
+- `mashup` (the root, tests/it/): `dump`'s test and Combat Arms' local
+  ones.
 
-- Fast tier, before every commit (`.githooks/pre-commit`): `cargo test
-  --features dev -- --skip heavy::` (unit tests and everything outside
-  `heavy`; under a minute when warm). Commits that change only Markdown
-  skip it (their links are checked by the full suite before a push).
+A file directly in a `tests/` folder would be another test binary:
+`architecture::tests_are_one_binary_per_crate` fails and says how to move
+it. Test names read `weapons::name` and `heavy::map_de_dust2::name` within
+their binary (nextest: `cs_source_app::it heavy::map_de_dust2::name`).
+Commands at the repository root cover every crate; `-p <crate>` picks one:
+`cargo test -p source_formats` builds and runs only the format readers'
+tests, in seconds, without building the game.
+
+Which crates' tests a change can affect: `cargo run -q -p repo_checks
+--bin affected -- --base main` (or `--staged`, `--files <paths>`) prints
+what it picked and why, and the arguments for `cargo nextest run`
+(checks/src/affected.rs has the rules). A crate's change selects its
+tests and those of every crate depending on it (dev-dependencies too);
+a test file's change only its own test module (and modules naming it);
+the lockfile, the workspace manifest, .config/, the hooks or a build.rs
+select everything; Markdown and docs only `repo_checks`.
+
+- Fast tier, before every commit (`.githooks/pre-commit`): unit tests and
+  everything outside `heavy` of the crates the staged changes can affect
+  (`affected --staged`; `cargo test -p <crates> --features dev -- --skip
+  heavy::`). `MASHUP_COMMIT_TESTS=all` runs the whole fast tier (`cargo
+  test --features dev -- --skip heavy::`, about 90 s warm), `=0` none.
 - Before every push, `.githooks/pre-push` refuses personal traces in what's
   pushed (commit messages and added lines): machine paths (`/home/<name>/`,
   `/Users/<name>/`, `C:\\Users\\<name>`) always, plus the extended regexes in
@@ -62,20 +87,26 @@ glue, `cs_source_app`, at the old `mashup::` paths).
   the presentation (`cargo check -p cs_source_server`;
   `architecture::server_builds_without_presentation` checks its
   dependencies).
-- Full suite, before a push or a merge to main (`.githooks/pre-push`, which
-  `MASHUP_PUSH_TESTS=0` skips): `cargo nextest run --features dev` (at most
-  8 tests at once and 5 heavy slots, the biggest heavy tests taking 2-3,
+- Before a push or a merge to main (`.githooks/pre-push`): the tests,
+  heavy ones included, of the crates what's pushed can affect (each
+  pushed ref against the remote's copy, a new branch against its
+  merge-base with origin/main; the hook prints the selection and why).
+  `MASHUP_PUSH_TESTS=all` runs the full suite, `=0` no tests. The full
+  suite is `cargo nextest run --features dev` (at most 8 tests at once
+  and 5 heavy slots, the biggest heavy tests taking 2-3,
   `.config/nextest.toml`: memory, not CPU, is the limit with other builds
   running; a heavy test that loops over maps belongs split into one test
   per map, as `map_courses`, `map_surf` and `map_ladders` are), or
   `cargo test --features dev` without nextest (twice as slow: in one
   process the heavy tests contend). nextest runs each test in its own
   process; install it once with `cargo install cargo-nextest --locked` (or
-  its prebuilt binary, https://nexte.st). It accepts the same `-- --skip
-  heavy::` filter. It doesn't run doctests (there are none);
-  `cargo test --doc` does.
-- One file: `cargo test --features dev --test it weapons::`; one test:
-  `cargo test --features dev --test it weapons::name`; `-- --ignored` runs
+  its prebuilt binary, https://nexte.st); without it the hook runs whole
+  crates through `cargo test`. It accepts the same `-- --skip heavy::`
+  filter. It doesn't run doctests (there are none); `cargo test --doc`
+  does.
+- One file: `cargo test -p cs_source_app --features dev --test it
+  weapons::`; one test: `cargo test -p cs_source_app --features dev
+  --test it weapons::name`; `-- --ignored` runs
   the ignored debug aids (filters work the same).
 
 ## 2. Screenshots

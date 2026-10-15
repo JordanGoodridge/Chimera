@@ -1,9 +1,10 @@
 //! The faithful Counter-Strike: Source app's glue (apps/cs_source, crate
 //! `cs_source_app`): what composes Chimera, Source's logic and CS:S into
 //! the game (the `mashup` binary, `main.rs`), the dedicated server
-//! (apps/cs_source_server), the tools that drive the simulation and the
-//! integration tests (`mashup`, the repository root, re-exports this crate
-//! at the old `mashup::` paths). Module layering is documented in
+//! (apps/cs_source_server), the tools that drive the simulation, and its
+//! own integration tests (tests/it/: the scenario tests on `harness`).
+//! `mashup`, the repository root, re-exports this crate at the old
+//! `mashup::` paths. Module layering is documented in
 //! docs/ARCHITECTURE.md and enforced by checks/tests/it/architecture.rs.
 //!
 //! `SimPlugins` (everything the simulation needs), `swap_map` (a map in place

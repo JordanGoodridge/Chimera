@@ -19,8 +19,7 @@ doctest = false
 # the presentation the client (`client`: the shell with this app's hooks
 # and CS:S's HUD) and the game binary. Above it: the dedicated server
 # (apps/cs_source_server), the tools that drive this simulation
-# (games/cs_source/tools) and `mashup` (the repository root: the
-# integration tests).
+# (games/cs_source/tools) and `mashup` (the repository root: `dump`).
 [dependencies]
 source_formats.workspace = true
 chimera_core.workspace = true
