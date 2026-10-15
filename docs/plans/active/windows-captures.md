@@ -52,7 +52,11 @@ Record the game's audio (OBS, 48 kHz) for:
 1. **C5 under water**: in de_nuke's deep water (de_aztec's river is too
    shallow to go under), head under, a bot firing an AK-47 at about 500
    units; then the same with the head above.
-2. **Sound distance falloff** (parity-gaps "Distance falloff curves", the
+2. **The planted bomb's beeps** (objectives.md Q4: the server sends none,
+   the client makes them): plant on de_dust2 B (`mp_c4timer 45`), stand
+   next to it and record until the explosion; the beep times give the
+   schedule.
+3. **Sound distance falloff** (parity-gaps "Distance falloff curves", the
    last high-impact gap): `bot_stop 1`, a bot firing an AK-47 from 250, 500,
    1000, 2000 and 3000 units in a straight open line (de_dust2 long A), you
    standing still facing it; say the distance into the mic or note the times.

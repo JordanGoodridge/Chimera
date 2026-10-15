@@ -611,7 +611,7 @@ a first bot are in.
   the look in play).
 - Dropping weapons, remaining (`drop`/G, pickup, death drops, bullets
   and blasts pushing loose weapons and the optional `mashup_usepickup`
-  swap are in, `weapon/drop.rs`): throw speed, the re-pick delay, pickup
+  swap are in, `weapon/drop.rs`): the throw and slide are measured (M20, 2026-10-15; ours stops at 72 of 95 units); the re-pick delay, pickup
   reach and mass, friction (0.5) and the box collider are guesses
   (measure on the probe server: how far a shot weapon skids).
 - Ragdolls, remaining (`map/ragdoll.rs` has the spec's bodies, joints,

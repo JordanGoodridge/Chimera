@@ -93,6 +93,23 @@ Status: draft
 | c4_drop_anim | 1.0 | s | `v_c4` secondary activity (31 frames at 30 fps); cosmetic |
 | beep_interval_start / end | ~1 / ~0.1 | s | *hyp.* (Q4); provisional rule below |
 
+Measured 2026-10-15 (probe server, de_dust2 site B, `mp_c4timer 45`, the
+plugin logging every sound the C4 entities emit):
+- Holding attack with the C4 drawn: seven `weapons/c4/c4_click.wav` keypad
+  clicks (channel 1, level 326) at 0.86, 1.13, 1.35, 1.50, 1.67, 1.83 and
+  1.94 s after the press (gaps 18, 15, 10, 11, 11, 7 ticks), then
+  `c4_plant.wav` (channel 2) and the plant at 3.09 s. The press came 0.9 s
+  after drawing the C4, so arming started when its 1 s deploy ended (tick
+  67): arming took 3.0 s, and the clicks fall 0.765, 1.035, 1.26, 1.41,
+  1.575, 1.74 and 1.845 s into it: the server's own timer, quicker than
+  the view model's press-button events (0.9 to 2.233 s at 30 fps), which
+  still pace the digits on the bomb's screen. Ours had the click sounds on
+  the events too (fixed: sounds on the measured times).
+- The explosion (`c4_explode1.wav`, level 140) 45.18 s after the plant.
+- **No beep is emitted by the server**: the planted bomb's beeps are the
+  client's own, from the bomb's timer, so Q4's schedule needs the client's
+  audio (docs/plans/active/windows-captures.md, sitting 2).
+
 Stock map bomb radii (from the entity lumps):
 
 | Map | `bombradius` | blast range (×3.5, hyp.) |

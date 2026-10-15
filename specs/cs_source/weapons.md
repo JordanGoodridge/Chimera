@@ -1423,6 +1423,20 @@ Probe server, bots driven by `mashup_botcmd`, read with `mashup_state`:
   1700, P90 2350, XM1014 3000, M4A1 3100, FAMAS 2250, AUG 3500, SG 550
   4200, TMP 1250, Five-SeveN 750, Deagle 650, P228 600.
 
+### M20 Dropping a weapon (2026-10-15)
+
+Probe server, de_dust2's open line at (-2000, -872), the bot holding an
+AK-47 and dropping it (`drop`) at rest; the weapon's origin logged every
+tick (`mashup_track`; its own velocity reads 0, so velocities are from
+positions):
+- It leaves the hand about 14 units ahead, 7 to the right and 11 below
+  the eye (level pitch), at about 130 u/s forward (horizontal) and 150 u/s
+  up, plus about 22 u/s to the right; falls at 800 u/s². Looking 45° down:
+  100 forward, 170 up; 45° up: 105 forward, 215 up. Running at 226 u/s
+  adds the player's velocity (352 forward).
+- At level pitch it lands about 0.6 s later and stops 95 units from where
+  it left the hand, 1.26 s after the drop (65 looking down, 121 up).
+
 ### Not measured yet
 
 M9 shotgun reload, M12 hitbox reach, M14 drop/pickup, silenced damage, the

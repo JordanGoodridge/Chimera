@@ -92,8 +92,14 @@ pub struct BombRules {
     pub radius: f32,
     /// The blast reaches this many times the radius (*hyp.* H1).
     pub range_factor: f32,
-    /// Seconds into arming of each key press (`sounds.click`).
+    /// Seconds into arming of each key press sound (`sounds.click`): the
+    /// server's own timer in CS:S, measured 2026-10-15 (objectives.md
+    /// "Measured"), quicker than the view model's fingers.
     pub clicks: Vec<f32>,
+    /// Seconds into arming when the screen shows each next character: the
+    /// view model's press-button sequence's events (7001 at 30 fps,
+    /// spec Constants `plant_vm_clicks`).
+    pub typed: Vec<f32>,
     /// What the key presses type on the bomb's little screen, a character
     /// each (spec Constants, `plant_vm_code`), and when the screen masks
     /// it with `*`s, seconds into arming.
@@ -122,7 +128,8 @@ impl Default for BombRules {
             defuse_time_kit: 5.0,
             radius: 500.0,
             range_factor: 3.5,
-            clicks: vec![0.9, 1.2333, 1.5, 1.7, 1.9, 2.1, 2.2333],
+            clicks: vec![0.765, 1.035, 1.26, 1.41, 1.575, 1.74, 1.845],
+            typed: vec![0.9, 1.2333, 1.5, 1.7, 1.9, 2.1, 2.2333],
             code: "7355608".into(),
             code_masked: 2.6,
             sounds: BombSounds::default(),
@@ -142,7 +149,7 @@ impl BombRules {
         if elapsed >= self.code_masked {
             return "*".repeat(self.code.chars().count());
         }
-        let typed = self.clicks.iter().filter(|t| **t <= elapsed).count();
+        let typed = self.typed.iter().filter(|t| **t <= elapsed).count();
         self.code.chars().take(typed).collect()
     }
 }
@@ -1068,6 +1075,8 @@ mod tests {
     fn the_screen_types_the_code_then_masks_it() {
         let r = BombRules::default();
         assert_eq!(r.screen_text(0.0), "");
+        // The view model's key presses (0.9 ... 2.233 s); the click sounds
+        // run on their own, quicker timer.
         assert_eq!(r.screen_text(0.9), "7");
         assert_eq!(r.screen_text(1.3), "73");
         assert_eq!(r.screen_text(2.0), "73556");

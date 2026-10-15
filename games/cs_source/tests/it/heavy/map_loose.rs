@@ -305,3 +305,25 @@ fn guns_dropped_on_dust2_are_walked_over_and_taken() {
     let took = walk_to(&mut sim, taker, lying, ticks(8.0), |s| carries(s, taker, rifle));
     assert!(took.is_some(), "the dead's rifle at {lying} not taken");
 }
+
+/// A weapon thrown standing lands and stops about as far as CS:S's: on the
+/// probe server an AK-47 dropped at level pitch on de_dust2's open line
+/// at (-2000, -872) came to rest 95 units from where it left the hand,
+/// 1.3 s later (2026-10-15, weapons drop measurements).
+#[test]
+fn a_thrown_weapon_lands_about_where_css_puts_it() {
+    let Some(map) = load("de_dust2") else { return };
+    let mut sim = sim(map);
+    // Facing Source +x (Source yaw 0 is intent yaw -90 degrees).
+    let at = cs_source::movement::to_engine(Vec3::new(-2000.0, -872.0, 132.0));
+    let p = stand(&mut sim, at, 1, -std::f32::consts::FRAC_PI_2);
+    sim.seconds(1.5);
+    let item = drop_weapon(sim.app.world_mut(), p, true).expect("dropped");
+    let start = sim.position(item);
+    sim.seconds(1.8);
+    let end = sim.position(item);
+    let travelled = (end - start).xz().length() / 0.0254;
+    eprintln!("slid {travelled:.1} units");
+    // Ours lands a little sooner (about 72 units): within a third of it.
+    assert!((63.0..127.0).contains(&travelled), "{travelled:.1} units (CS:S 95)");
+}

@@ -791,7 +791,7 @@ fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
     // A digit a key press, on the tick its press's time is reached.
     let texts: Vec<&str> = seen.iter().map(|s| s.1.as_str()).collect();
     assert_eq!(texts, ["", "7", "73", "735", "7355", "73556", "735560", "7355608", "*******"]);
-    for ((at, text), press) in seen[1..].iter().zip(rules.clicks.iter().chain([&rules.code_masked])) {
+    for ((at, text), press) in seen[1..].iter().zip(rules.typed.iter().chain([&rules.code_masked])) {
         let (at, press) = (*at as f64 * TICK_INTERVAL, *press as f64);
         assert!(
             at >= press - 1e-4 && at - TICK_INTERVAL < press - 1e-4,

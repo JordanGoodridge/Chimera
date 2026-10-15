@@ -78,6 +78,8 @@ int g_extra[4];
 int g_shooter;
 int g_shootTick = -1;
 int g_shootHold = 1;
+// mashup_track: an entity whose origin and velocity are logged every run tick.
+int g_track = -1;
 float g_shootAimZ;
 float g_extraYaw[4];
 
@@ -108,6 +110,8 @@ public void OnPluginStart()
         "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz> [hold ticks]: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
     RegServerCmd("mashup_state", Command_State,
         "mashup_state <userid>: that player's money, armour, helmet, kit and each weapon's clip and reserve");
+    RegServerCmd("mashup_track", Command_Track,
+        "mashup_track <slot|-1>: from now on log the run bot's weapon in that slot (the entity, even after it is dropped) as T rows; -1 stops");
     RegServerCmd("mashup_botcmd", Command_BotCmd,
         "mashup_botcmd <userid> <command...>: run a client command as that bot (buy, drop, use; pickup and buy sound captures)");
     HookEvent("weapon_fire", Event_Any);
@@ -505,6 +509,13 @@ public Action SoundHook_Run(int clients[MAXPLAYERS], int &numClients, char sampl
 {
     if (g_out != null && g_bot != 0 && entity == g_bot) {
         g_out.WriteLine("S %d %d %.3f %d %d %d %s", g_cursor, channel, volume, level, pitch, flags, sample);
+    } else if (g_out != null && entity > MaxClients && IsValidEntity(entity)) {
+        // The planted bomb's beeps and the like: "SE tick class channel volume level pitch sample".
+        char cls[64];
+        GetEntityClassname(entity, cls, sizeof(cls));
+        if (StrContains(cls, "c4") != -1) {
+            g_out.WriteLine("SE %d %s %d %.3f %d %d %s", g_cursor, cls, channel, volume, level, pitch, sample);
+        }
     }
     return Plugin_Continue;
 }
@@ -566,6 +577,21 @@ public Action Command_State(int args)
         int reserve = type >= 0 ? GetEntProp(c, Prop_Send, "m_iAmmo", _, type) : -1;
         PrintToServer("mashup_state slot %d %s clip %d reserve %d", k, cls, GetEntProp(w, Prop_Send, "m_iClip1"), reserve);
     }
+    return Plugin_Handled;
+}
+
+public Action Command_Track(int args)
+{
+    int slot = GetCmdArgInt(1);
+    int bot = FindBot();
+    g_track = -1;
+    if (slot >= 0 && bot != 0) {
+        int w = GetPlayerWeaponSlot(bot, slot);
+        if (w != -1) {
+            g_track = EntIndexToEntRef(w);
+        }
+    }
+    PrintToServer("mashup: tracking %d", g_track);
     return Plugin_Handled;
 }
 
@@ -1027,6 +1053,18 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
         v[2], (flags & FL_ONGROUND) ? 1 : 0, (flags & FL_DUCKING) ? 1 : 0, maxs[2], view[2], buttons, water, ladder);
     if (g_wlog) {
         WriteWeaponRow(client);
+    }
+    // Tracked entity: "T tick x y z vx vy vz owner".
+    if (g_track != -1) {
+        int e = EntRefToEntIndex(g_track);
+        if (e != INVALID_ENT_REFERENCE) {
+            float to[3];
+            float tv[3];
+            GetEntPropVector(e, Prop_Data, "m_vecAbsOrigin", to);
+            GetEntPropVector(e, Prop_Data, "m_vecAbsVelocity", tv);
+            g_out.WriteLine("T %d %.3f %.3f %.3f %.3f %.3f %.3f %d", g_cursor, to[0], to[1], to[2], tv[0], tv[1], tv[2],
+                GetEntPropEnt(e, Prop_Send, "m_hOwnerEntity"));
+        }
     }
     // Flashed: "F tick duration max_alpha health armor".
     float flash = GetEntPropFloat(client, Prop_Send, "m_flFlashDuration");

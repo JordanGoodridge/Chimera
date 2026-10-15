@@ -62,9 +62,12 @@ pub struct Loose {
     pub since: f64,
 }
 
-/// Throw speed forward and up, m/s (a guess, not measured).
-const THROW_FORWARD: f32 = 4.0;
-const THROW_UP: f32 = 1.0;
+/// Throw speed forward (horizontal, along the yaw) and up, m/s: CS:S's,
+/// measured 2026-10-15 on the probe server (an AK-47 dropped standing:
+/// about 130 u/s forward and 150 u/s up at level pitch; looking 45 degrees
+/// down or up gave 100/170 and 105/215, which we don't model).
+const THROW_FORWARD: f32 = 130.0 * 0.0254;
+const THROW_UP: f32 = 150.0 * 0.0254;
 /// A thrown weapon starts this far under the eye (12 units; spec 3.9).
 const DROP_UNDER_EYE: f32 = 12.0 * 0.0254;
 /// Seconds after a drop before anyone can pick the weapon up
@@ -184,7 +187,7 @@ pub fn drop_this(world: &mut World, owner: Entity, weapon: Entity, thrown: bool)
     let (start, velocity) = if thrown {
         (
             at + eye - Vec3::Y * DROP_UNDER_EYE + forward.with_y(0.0).normalize_or_zero() * 0.3,
-            carried + forward * THROW_FORWARD + Vec3::Y * THROW_UP,
+            carried + forward.with_y(0.0).normalize_or_zero() * THROW_FORWARD + Vec3::Y * THROW_UP,
         )
     } else {
         (at, carried)
