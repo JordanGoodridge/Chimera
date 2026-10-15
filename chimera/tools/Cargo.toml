@@ -19,6 +19,7 @@ chimera_core.workspace = true
 image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+workspace-hack.workspace = true
 
 # Summarize a Chrome trace written by a `--features profile` build
 # (docs/performance.md, "Measuring"). Built only with `tools`, as every

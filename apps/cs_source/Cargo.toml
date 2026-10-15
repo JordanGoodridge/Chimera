@@ -35,6 +35,7 @@ source_logic.workspace = true
 cs_source.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
+workspace-hack.workspace = true
 
 # The game: its window, the presentation, the client shell and CS:S's
 # front end (`--no-default-features` leaves them out).
@@ -55,8 +56,6 @@ present = ["dep:chimera_present", "dep:chimera_client", "cs_source/ui"]
 # Faster iteration: link Bevy as a dynamic library. Use with
 # `cargo run --features dev`. Never enable for release builds.
 dev = [
-    "bevy/dynamic_linking",
-    "bevy/bevy_remote",
     "chimera_core/dev",
     "chimera_world/dev",
     "chimera_present?/dev",
@@ -69,4 +68,4 @@ dev = [
 
 # CPU profile: every system and render step as a span in a Chrome trace
 # (docs/performance.md). Slower; only for measuring.
-profile = ["bevy/trace_chrome", "chimera_client?/profile"]
+profile = ["chimera_core/profile", "chimera_client?/profile"]

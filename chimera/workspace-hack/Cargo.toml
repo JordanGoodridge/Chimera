@@ -1,0 +1,121 @@
+# The workspace-hack: every member depends on it, so third-party crates
+# (Bevy's above all) build with the same features whether the whole
+# workspace or one crate (`cargo test -p <crate>`) is built, and builds
+# are shared (docs/performance.md, "Workspace-hack"). Settings:
+# .config/hakari.toml. After changing a dependency or its features:
+#     cargo hakari generate
+# (cargo install cargo-hakari --locked; the pre-push hook checks it).
+
+[package]
+name = "workspace-hack"
+version = "0.1.0"
+edition = "2021"
+description = "workspace-hack package, managed by hakari"
+publish = false
+license = "MIT OR Apache-2.0"
+
+# The parts of the file between the BEGIN HAKARI SECTION and END HAKARI SECTION comments
+# are managed by hakari.
+
+### BEGIN HAKARI SECTION
+[dependencies]
+accesskit = { version = "0.24", default-features = false, features = ["serde"] }
+ahash = { version = "0.8", features = ["no-rng"] }
+approx = { version = "0.5" }
+arrayvec = { version = "0.7" }
+bevy_a11y = { version = "0.19", features = ["serialize"] }
+bevy_app = { version = "0.19", features = ["reflect_auto_register"] }
+bevy_asset = { version = "0.19", default-features = false, features = ["multi_threaded"] }
+bevy_diagnostic = { version = "0.19", features = ["sysinfo_plugin"] }
+bevy_ecs = { version = "0.19", features = ["multi_threaded", "reflect_auto_register", "serialize"] }
+bevy_image = { version = "0.19", features = ["hdr", "ktx2", "png", "serialize", "zstd_rust"] }
+bevy_input_focus = { version = "0.19", features = ["bevy_picking"] }
+bevy_math = { version = "0.19", features = ["approx", "bevy_reflect", "nostd-libm", "serialize"] }
+bevy_mesh = { version = "0.19", features = ["bevy_mikktspace", "morph", "serialize"] }
+bevy_picking = { version = "0.19", default-features = false, features = ["mesh_picking"] }
+bevy_reflect = { version = "0.19", features = ["glam", "petgraph", "reflect_documentation", "smol_str", "uuid", "wgpu-types"] }
+bevy_state = { version = "0.19" }
+bevy_tasks = { version = "0.19", features = ["multi_threaded"] }
+bevy_time = { version = "0.19", features = ["serialize"] }
+bevy_transform = { version = "0.19", features = ["multi_threaded", "serialize"] }
+bevy_utils = { version = "0.19", features = ["debug", "std"] }
+bevy_winit = { version = "0.19", features = ["custom_cursor", "serialize", "wayland"] }
+bitflags = { version = "2", default-features = false, features = ["bytemuck", "serde", "std"] }
+blake3 = { version = "1" }
+bytemuck = { version = "1", default-features = false, features = ["aarch64_simd", "derive", "extern_crate_alloc", "min_const_generics", "must_cast", "wasm_simd"] }
+bytes = { version = "1" }
+constant_time_eq = { version = "0.4", default-features = false, features = ["std"] }
+crossbeam-channel = { version = "0.5" }
+crossbeam-utils = { version = "0.8" }
+derive_more = { version = "2", features = ["as_ref", "deref", "deref_mut", "display", "from", "into"] }
+disqualified = { version = "1" }
+downcast-rs = { version = "2", default-features = false, features = ["std", "sync"] }
+either = { version = "1", features = ["use_std"] }
+fixedbitset = { version = "0.5" }
+foldhash = { version = "0.2", default-features = false, features = ["std"] }
+glam = { version = "0.32", features = ["approx", "bytemuck", "encase", "nostd-libm", "rand", "serde"] }
+half = { version = "2", features = ["bytemuck", "num-traits", "serde"] }
+hashbrown-9067fe90e8c1f593 = { package = "hashbrown", version = "0.17", default-features = false, features = ["default-hasher", "raw-entry"] }
+hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", features = ["serde"] }
+image = { version = "0.25", default-features = false, features = ["hdr", "jpeg", "png", "tga"] }
+indexmap = { version = "2", features = ["serde"] }
+itertools = { version = "0.14" }
+linebender_resource_handle = { version = "0.1", default-features = false, features = ["std"] }
+log = { version = "0.4", default-features = false, features = ["std"] }
+nonmax = { version = "0.5" }
+num-traits = { version = "0.2", features = ["i128", "libm"] }
+postcard = { version = "1", default-features = false, features = ["alloc", "experimental-derive"] }
+rand = { version = "0.10" }
+regex-automata = { version = "0.4" }
+regex-syntax = { version = "0.8" }
+ron = { version = "0.12" }
+serde_core = { version = "1", features = ["alloc"] }
+slotmap = { version = "1", default-features = false, features = ["std"] }
+smallvec = { version = "1", default-features = false, features = ["const_new", "serde", "union"] }
+thiserror = { version = "2" }
+toml_datetime = { version = "1", features = ["serde"] }
+toml_parser = { version = "1" }
+tracing = { version = "0.1" }
+typenum = { version = "1", default-features = false, features = ["const-generics"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+wgpu-types = { version = "29", features = ["fragile-send-sync-non-atomic-wasm", "serde", "web"] }
+winnow = { version = "1" }
+
+[build-dependencies]
+bevy_reflect_derive = { version = "0.19", features = ["auto_register_inventory", "reflect_documentation"] }
+either = { version = "1", features = ["use_std"] }
+foldhash = { version = "0.2", default-features = false, features = ["std"] }
+hashbrown-9067fe90e8c1f593 = { package = "hashbrown", version = "0.17", default-features = false, features = ["default-hasher", "raw-entry"] }
+indexmap = { version = "2", features = ["serde"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+regex-automata = { version = "0.4" }
+regex-syntax = { version = "0.8" }
+serde_core = { version = "1", features = ["alloc"] }
+syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit"] }
+syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "full", "visit", "visit-mut"] }
+toml_datetime = { version = "1", features = ["serde"] }
+toml_parser = { version = "1" }
+winnow = { version = "1" }
+
+[target.x86_64-unknown-linux-gnu.dependencies]
+getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
+memchr = { version = "2" }
+nix = { version = "0.31", default-features = false, features = ["event", "ioctl", "signal"] }
+tracing = { version = "0.1", default-features = false, features = ["log"] }
+wayland-backend = { version = "0.3", default-features = false, features = ["client_system", "dlopen"] }
+wayland-sys = { version = "0.31", default-features = false, features = ["client", "dlopen"] }
+
+[target.x86_64-unknown-linux-gnu.build-dependencies]
+memchr = { version = "2" }
+
+[target.x86_64-pc-windows-msvc.dependencies]
+getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
+image = { version = "0.25", default-features = false, features = ["bmp"] }
+memchr = { version = "2" }
+windows = { version = "0.62", features = ["Devices_Power", "Foundation_Collections", "Gaming_Input_ForceFeedback", "System_Power", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Properties", "Win32_Globalization", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Media_Audio", "Win32_Media_KernelStreaming", "Win32_Media_Multimedia", "Win32_Security_Authorization", "Win32_System_Com_StructuredStorage", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.x86_64-pc-windows-msvc.build-dependencies]
+memchr = { version = "2" }
+
+### END HAKARI SECTION

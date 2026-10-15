@@ -16,6 +16,7 @@ license.workspace = true
 [dependencies]
 cs_source_app.workspace = true
 bevy.workspace = true
+workspace-hack.workspace = true
 
 # No unit tests (`test = false`: `cargo test` builds no harness of it);
 # its smoke test is docs/OBSERVABILITY.md's ("Dedicated server").

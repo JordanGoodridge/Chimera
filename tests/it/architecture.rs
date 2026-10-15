@@ -738,6 +738,23 @@ fn workspace_crates() {
              (and the git hooks) never test it. Add it there."
         ));
     }
+    // Every member builds third-party crates with the workspace's features
+    // (the workspace-hack), so `cargo test -p <crate>` reuses the
+    // workspace's builds; but the hack itself, Bevy's development features
+    // and the crates that stay free of Bevy (.config/hakari.toml).
+    const NO_HACK: &[&str] = &["chimera/workspace-hack", "chimera/dev", "source/formats", "source/tools"];
+    for m in members.iter().filter(|m| !NO_HACK.contains(&m.as_str())) {
+        let path = if m == "." { "Cargo.toml".to_string() } else { format!("{m}/Cargo.toml") };
+        let text = fs::read_to_string(root().join(&path)).unwrap();
+        let manifest: toml::Table = text.parse().unwrap();
+        if manifest.get("dependencies").and_then(|d| d.get("workspace-hack")).is_none() {
+            errors.push(format!(
+                "{path} doesn't depend on `workspace-hack`, so `cargo test -p` of it builds Bevy and the rest \
+                 again with its own features (docs/performance.md, \"Workspace-hack\"). Run `cargo hakari \
+                 manage-deps -y` and `cargo hakari generate` (cargo install cargo-hakari)."
+            ));
+        }
+    }
     // Each member's dependencies that may not be (name prefixes), and why.
     const PURE_DATA: &str = "is pure data (docs/ARCHITECTURE.md, \"Crates\"). Keep the parsing there and \
         move what needs it (ECS types, components, conversion to engine types) into the crate that uses \

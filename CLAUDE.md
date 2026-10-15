@@ -57,6 +57,7 @@ cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`
 cargo run --features dev --bin mashup_server -- +map de_dust2   # dedicated server
 cargo build --release -p cs_source_server   # the server as released: no render/audio
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
+cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 ```
 
 Integration tests are one crate, `tests/it/` (slow ones in `tests/it/heavy/`);

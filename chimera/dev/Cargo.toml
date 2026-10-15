@@ -1,0 +1,29 @@
+[package]
+name = "chimera_dev"
+version = "0.1.0"
+description = "Bevy's development-only features (dynamic linking, the remote protocol, Chrome traces) in one place"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# Every crate's `dev` (and `profile`) turns these on through
+# `chimera_core`'s, never by naming the Bevy features itself: the
+# workspace-hack (chimera/workspace-hack, `cargo hakari`) simulates every
+# member with all its features, and would otherwise record dynamic
+# linking and tracing as the workspace's Bevy features, forcing them onto
+# release builds. This crate is excluded from that simulation
+# (.config/hakari.toml, `traversal-excludes`).
+[dependencies]
+bevy.workspace = true
+
+[features]
+# Bevy as a dynamic library and the remote protocol (`cargo run
+# --features dev`). Never in release builds.
+dev = ["bevy/dynamic_linking", "bevy/bevy_remote"]
+# Every system as a span in a Chrome trace (docs/performance.md).
+profile = ["bevy/trace_chrome"]

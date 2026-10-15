@@ -1,0 +1,43 @@
+# `cargo hakari` settings (https://docs.rs/cargo-hakari/latest/cargo_hakari/config).
+#
+# The workspace-hack (chimera/workspace-hack) lists the third-party crates
+# the members build with different features, with all of them, and every
+# member depends on it: so `cargo test -p <crate>` builds Bevy and the rest
+# with the same features as the whole workspace and reuses its builds
+# instead of building them again (docs/performance.md, "Workspace-hack").
+#
+# After changing a dependency or its features: `cargo hakari generate`
+# (and `cargo hakari manage-deps -y` for a new member); `cargo hakari
+# verify` checks it is current.
+
+hakari-package = "workspace-hack"
+
+# Format version for hakari's output. Version 4 requires cargo-hakari 0.9.22 or above.
+dep-format-version = "4"
+
+# `workspace-hack.workspace = true` in the members (the root's
+# [workspace.dependencies] has the path).
+workspace-hack-line-style = "workspace-dotted"
+
+resolver = "2"
+
+# The game builds on Linux and Windows.
+platforms = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+
+# Not simulated: `chimera_dev` carries Bevy's development features
+# (dynamic linking, the remote protocol, Chrome traces), which every
+# crate's `dev`/`profile` turns on through it. Hakari simulates each member
+# with all its features; without this, the hack would turn them on for
+# every build, release builds included.
+[traversal-excludes]
+workspace-members = ["chimera_dev"]
+
+# Simulated (their dependencies' features count) but not given the hack:
+# the format readers and Source's tools stay plain data without Bevy
+# (`cargo test -p source_formats` builds in seconds), and `chimera_dev`
+# isn't managed.
+[final-excludes]
+workspace-members = ["source_formats", "source_tools", "chimera_dev"]

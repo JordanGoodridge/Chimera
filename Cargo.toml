@@ -9,6 +9,8 @@
 members = [
     ".",
     "chimera/core",
+    "chimera/dev",
+    "chimera/workspace-hack",
     "chimera/world",
     "chimera/present",
     "chimera/sim",
@@ -26,6 +28,8 @@ members = [
 default-members = [
     ".",
     "chimera/core",
+    "chimera/dev",
+    "chimera/workspace-hack",
     "chimera/world",
     "chimera/present",
     "chimera/sim",
@@ -51,6 +55,10 @@ license = "MIT OR Apache-2.0"
 # Dependencies more than one member uses (or may): one version for all.
 [workspace.dependencies]
 chimera_core = { path = "chimera/core" }
+chimera_dev = { path = "chimera/dev" }
+# Third-party crates' features unified for every build (`cargo hakari`,
+# .config/hakari.toml; chimera/workspace-hack/Cargo.toml).
+workspace-hack = { path = "chimera/workspace-hack" }
 chimera_world = { path = "chimera/world" }
 chimera_present = { path = "chimera/present" }
 chimera_sim = { path = "chimera/sim" }
@@ -168,6 +176,7 @@ vbsp.workspace = true
 vmdl.workspace = true
 vmt-parser.workspace = true
 vtf.workspace = true
+workspace-hack.workspace = true
 
 [dev-dependencies]
 # Checksums of files read through the mount (tests/it/mount_cs_source.rs).
@@ -212,6 +221,15 @@ opt-level = 1
 # Dependencies (Bevy, parsers): fully optimized, compiled once and cached.
 [profile.dev.package."*"]
 opt-level = 3
+
+# Build scripts, proc macros and their dependencies: no debuginfo, always.
+# Left to cargo, a build-time dependency keeps debuginfo only when a
+# runtime dependency shares it, so `cargo test -p <crate>` (fewer runtime
+# dependencies) built every proc macro again, and Bevy after them, for
+# all the workspace-hack's unified features (docs/performance.md,
+# "Workspace-hack").
+[profile.dev.build-override]
+debug = false
 
 [profile.release]
 codegen-units = 1

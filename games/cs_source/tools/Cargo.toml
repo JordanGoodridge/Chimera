@@ -30,6 +30,7 @@ serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 vbsp.workspace = true
+workspace-hack.workspace = true
 
 # Debugging tools (docs/OBSERVABILITY.md): `--features tools`.
 [[bin]]

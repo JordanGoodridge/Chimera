@@ -47,6 +47,7 @@ arboard = { workspace = true, optional = true }
 winit = { workspace = true, optional = true }
 # Joining's progress (the loading dialog reads the netcode client).
 bevy_replicon_renet = { workspace = true, optional = true }
+workspace-hack.workspace = true
 
 [features]
 # CS:S's front end (`ui`): its menus, panels and HUD on the client shell.
@@ -56,8 +57,6 @@ ui = ["dep:chimera_client", "dep:chimera_present", "dep:source_logic", "dep:arbo
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p cs_source --features dev` shares the game's Bevy build.
 dev = [
-    "bevy/dynamic_linking",
-    "bevy/bevy_remote",
     "chimera_core/dev",
     "chimera_world/dev",
     "chimera_sim/dev",

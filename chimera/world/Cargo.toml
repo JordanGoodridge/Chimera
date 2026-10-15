@@ -25,8 +25,9 @@ bevy_replicon.workspace = true
 half.workspace = true
 image.workspace = true
 serde.workspace = true
+workspace-hack.workspace = true
 
 [features]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p chimera_world --features dev` shares the game's Bevy build.
-dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "chimera_core/dev"]
+dev = ["chimera_core/dev"]

@@ -1088,4 +1088,41 @@ game's build), which costs no more than the old `mashup` rebuild did;
 `-p cs_source` without `ui` checks the simulation alone. The first
 `cargo test -p cs_source --features dev` and `-p chimera_client` build
 their own feature sets of the dependencies (9 minutes here for
-`cs_source` on a loaded box); later ones take seconds.
+`cs_source` on a loaded box); later ones take seconds. (Fixed by the
+workspace-hack, below.)
+
+### Workspace-hack (2026-10-15)
+
+`cargo test -p <crate>` used to build Bevy and its neighbours again with
+that crate's own feature set: 21 third-party crates (`bevy_reflect`,
+`bevy_winit`, `indexmap`, `hashbrown`, ...) got fewer features than in the
+workspace's build, and every proc macro's dependencies a different
+debuginfo setting (cargo keeps a build-time dependency's debuginfo only
+when a runtime dependency shares it, and `-p` has fewer). Two fixes:
+
+- `chimera/workspace-hack` (`cargo hakari`, .config/hakari.toml): every
+  member depends on it, so third-party crates build with the workspace's
+  features whatever is selected. Hakari simulates each member with all
+  its features, so Bevy's development features moved to `chimera_dev`
+  (every crate's `dev`/`profile` turns them on through `chimera_core`),
+  which hakari leaves out: the hack never turns on dynamic linking, the
+  remote protocol or Chrome traces. `source_formats` and `source_tools`
+  stay off it (no Bevy). The dedicated server's build (`-p
+  cs_source_server`) keeps the same crates (only the hack added) with
+  nearly the same features (`bevy_reflect`'s `reflect_documentation`,
+  `bevy_utils`' `debug`).
+- `[profile.dev.build-override] debug = false`: build-time units never
+  carry debuginfo, shared or not.
+
+Measured (load 9-26), the first `cargo test -p chimera_world --features
+dev` after a warm `cargo test --workspace --features dev --no-run`:
+
+| | Time | Crates compiled |
+|---|---|---|
+| before | 560 s | 134 (Bevy, wgpu, avian3d, ...) |
+| the hack alone | 507 s | 57 (every proc macro, then Bevy) |
+| the hack and the build-override | 3 s | 3 (the hack, `chimera_core`, `chimera_world`) |
+
+Then `-p cs_source --features dev` 15 s (4 crates), `-p chimera_client
+--features dev` 7 s (2), `-p source_formats` 5 s. The workspace's own
+build after the change: one full rebuild (16 min here).

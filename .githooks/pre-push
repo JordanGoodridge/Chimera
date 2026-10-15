@@ -65,6 +65,12 @@ if [ "$pushing" = 1 ]; then
         echo "pre-push: the dedicated server doesn't build without the presentation (log: target/pre-push-check-server.log); not pushing." >&2
         exit 1
     fi
+    # The workspace-hack matches the dependencies (where cargo-hakari is
+    # installed: `cargo install cargo-hakari --locked`).
+    if cargo hakari --version >/dev/null 2>&1 && ! cargo hakari generate --diff --quiet >/dev/null 2>&1; then
+        echo "pre-push: chimera/workspace-hack is out of date: run \`cargo hakari generate\` (and \`cargo hakari manage-deps -y\`) and commit it; not pushing." >&2
+        exit 1
+    fi
 fi
 if [ "$pushing" = 1 ] && [ "${MASHUP_PUSH_TESTS:-1}" != 0 ]; then
     mkdir -p target
