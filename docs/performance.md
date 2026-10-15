@@ -1043,3 +1043,21 @@ Same setup, a new `pub fn` appended, two samples each (load 4-17):
 `mashup` is one crate less big but still one crate: a shell edit
 rebuilds it whole (the front end with it), so the win is small until the
 shell and the front end are crates of their own.
+
+### `engine_net` (2026-10-14)
+
+`net` moved into `engine/net` (13.4k lines; CS:S's round, bomb and
+hostages went to `cs_source::game::net`, the movers to
+`source_logic::logic::net`). Same setup, a new `pub fn` appended to one
+file, then reverted and timed again (load 17-19):
+
+| Edit | Command | Time |
+|---|---|---|
+| a leaf in `engine_net` (`net/delta.rs`) | `cargo test --features dev --no-run` | 27 s, 32 s |
+| the same | `cargo test -p engine_net --features dev` (29 tests) | 6 s |
+| a leaf in the client (`client/fonts.rs`, before it moved to `engine_client`) | `cargo test --features dev --no-run` | 19 s, 23 s |
+
+An edit in `engine_net` recompiles `source_logic`, `cs_source` and
+`mashup` above it (incrementally). The first `cargo test -p engine_net
+--features dev` builds its own Bevy (`-p` unifies only its features:
+31 minutes on this loaded box); later ones take seconds.

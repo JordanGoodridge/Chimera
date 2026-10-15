@@ -26,9 +26,8 @@ use bevy_replicon::prelude::*;
 use super::{LogicSound, LogicSoundKind, MapFx, ServerSound};
 use crate::{
     core::NetRole,
-    logic::LogicOneShot,
     map::{
-        BeamStrike, MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, SparkBurst,
+        BeamStrike, LogicOneShot, MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, SparkBurst,
         StartSound, TeslaSpark,
     },
 };

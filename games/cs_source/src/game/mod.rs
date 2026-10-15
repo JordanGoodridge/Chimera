@@ -187,6 +187,7 @@ pub mod material;
 pub mod mount;
 pub mod movement;
 pub mod nav;
+pub mod net;
 pub mod objectives;
 pub mod overlays;
 pub mod pain;

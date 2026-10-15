@@ -47,28 +47,15 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("objectives", &["core", "console", "slots", "character", "map", "weapon"]),
     ("rules", &["core", "console", "weapon", "objectives"]),
     // Map logic (entity I/O, triggers, movers): game-independent; games
-    // feed it through `map::MapData::entities`.
-    ("logic", &["core", "console", "map"]),
+    // feed it through `map::MapData::entities`. `net`: it registers its
+    // movers and HUD messages as its part of the network (`logic::net`).
+    ("logic", &["core", "console", "map", "net"]),
     ("bot", &["core", "console", "slots", "character", "map", "weapon", "objectives"]),
     // Network play: transport, replication, the join handshake. Above the
-    // simulation it serves, below the client and harness
-    // (docs/plans/active/multiplayer.md, section 3).
-    (
-        "net",
-        &[
-            "core",
-            "console",
-            "slots",
-            "character",
-            "movement",
-            "map",
-            "weapon",
-            "objectives",
-            "rules",
-            "bot",
-            "logic",
-        ],
-    ),
+    // engine's simulation it serves, below Source's logic, the games, the
+    // client and harness (docs/plans/active/multiplayer.md, section 3): a
+    // game registers what it replicates and fills its hooks (`net::parts`).
+    ("net", &["core", "console", "slots", "character", "movement", "map", "weapon"]),
     // `lib` = crate-root items such as `SimPlugins`.
     (
         "harness",
@@ -151,7 +138,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
         ],
     ),
     // Game plugins: may use the shared layers, never another game. `rules`:
-    // a game registers its rule modules (`rules::module`).
+    // a game registers its rule modules (`rules::module`); `net` and `bot`:
+    // its part of the network (`game::net`: its round, bomb and hostages
+    // replicated, its join flow and bots behind the network's hooks).
     (
         "games",
         &[
@@ -166,6 +155,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "weapon",
             "objectives",
             "rules",
+            "bot",
+            "net",
         ],
     ),
     // Binaries use the library through `mashup::`, not `crate::`.
@@ -181,6 +172,7 @@ const CRATE_SRC: &[&str] = &[
     "engine/present/src",
     "engine/sim/src",
     "engine/client/src",
+    "engine/net/src",
     "source/logic/src",
     "games/cs_source/src",
 ];
@@ -718,6 +710,10 @@ fn workspace_crates() {
     const SIM: &str = "is the simulation's frameworks (docs/ARCHITECTURE.md, \"Crates\"): the games \
         fill them and sit above them. Move the piece that needs the game up into `mashup`, or give the \
         framework a hook (a registry, a trait, data) that the game fills.";
+    const NET: &str = "is the engine's network (docs/ARCHITECTURE.md, \"Crates\"): Source's logic \
+        and the games register what they replicate there (`net::NetAppExt::net_part`) and fill its hooks \
+        (`net::parts`); it never names them, and a dedicated server runs it without drawing. Give the \
+        network a hook (a part, a resource of fn pointers) that the crate above fills.";
     const GAME: &str = "is a game's simulation (docs/ARCHITECTURE.md, \"Crates\"): it builds on the \
         engine and runs on a dedicated server without drawing; its front end and the apps sit above it, \
         and games never use each other. Move the piece up into `mashup` (the front end is \
@@ -735,6 +731,7 @@ fn workspace_crates() {
         ("engine/world", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
         ("engine/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
         ("engine/sim", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
+        ("engine/net", &["engine_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
         ("games/cs_source", &["engine_present", "mashup", "combat_arms"], GAME),
         ("source/logic", &["engine_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         (

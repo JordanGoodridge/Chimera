@@ -107,11 +107,9 @@ pub enum LogicSet {
     Damage,
 }
 
-/// A one-shot sound map logic played here (a locked door, a break, a
-/// spark); a network server sends it to every client, which runs no map
-/// logic (`net::mapfx`).
-#[derive(Message, Clone, Debug)]
-pub struct LogicOneShot(pub PlaySound);
+// A one-shot sound map logic played here: `map::LogicOneShot` (the
+// network forwards it without naming the logic), at its old path.
+pub use crate::map::LogicOneShot;
 
 /// Play a one-shot logic sound here and tell clients (`LogicOneShot`).
 fn logic_sound(world: &mut World, sound: PlaySound) {
@@ -123,6 +121,8 @@ pub struct LogicPlugin;
 
 impl Plugin for LogicPlugin {
     fn build(&self, app: &mut App) {
+        // The logic's part of the network (movers, HUD messages).
+        super::net::plugin(app);
         app.init_resource::<HudMessages>()
             .init_resource::<ScreenFades>()
             .add_message::<HudEvent>()

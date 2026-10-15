@@ -23,6 +23,7 @@ pub mod fire;
 pub mod game;
 pub mod hud;
 pub mod movers;
+pub mod net;
 pub mod physics;
 pub mod prop_damage;
 pub mod props;

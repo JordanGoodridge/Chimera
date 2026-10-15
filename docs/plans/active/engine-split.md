@@ -471,7 +471,7 @@ measurements):
   tests) pass.
 - Remaining couplings (2026-10-14, what keeps the rest in `mashup`;
   references counted as in the graph above):
-  - `net` (to `engine/net`) names CS:S's rules: `rules` 28 (the join
+  - [x] `net` (done 2026-10-14: `engine/net`, next entries but one) named CS:S's rules: `rules` 28 (the join
     flow: `JoinChoice`, `join_team`/`join_class`/`join_spectators`,
     `make_unassigned`, `hold_out`, `enter_game`; `Dead`, `Score`,
     `MapLoads`; `rounds::{RoundState, Phase, FunFact, Mvp, RoundEnded,
@@ -516,8 +516,9 @@ measurements):
     engine crates and CS:S's own: `net` (35 references: `net::client`,
     `NetSettings`, `NetCharacter`, `score_flags`, `query` (the server
     browser), `motd`, `maps`, `RadioRequest`, `NetScore`, `NetEvent`),
-    which names CS:S's rules and sits in `mashup` until `engine_net`
-    (game-registered replication) lands; and nearly the whole shell
+    which named CS:S's rules and sat in `mashup` until `engine_net`
+    (game-registered replication; now done: `cs_source` may use `net`,
+    with CS:S's replicated types in `cs_source::game::net`); and nearly the whole shell
     (138 references: `client::console` 29 (`ConsoleUi`, `map_names`),
     `vgui` 26, `fonts` 16, `input` 9, `chat` 9, `spectate` 8, `binds` 8,
     `hud` 5, `front_end` 5, `widgets`, `video`, `radar`, `perf`,
@@ -573,6 +574,55 @@ measurements):
   (still `mashup`) 18-41 s, in the client 77 s; `cargo test -p` builds
   and runs `engine_sim` in 2 s, `source_logic` in 2-3 s, `cs_source` in
   3-4 s.
+- [x] (3) `engine/net` (package `engine_net`, 2026-10-14): `net` moved
+  whole and names no game or Source logic; (a)-(e) above as proposed:
+  - (a) Parts: a game or Source's logic registers a function by name
+    (`net::NetAppExt::net_part`; `net::NetParts`), which
+    `NetPlugin::finish` calls in name order after the engine's protocol
+    (after every plugin's `build`, so the order an app adds its plugins
+    in doesn't matter; before replicon's `finish`, which seals the
+    protocol). A part registers its replicated components and messages
+    (with `ordered`, `interp::write_snapshot`, `interp::hold_heard`),
+    its systems on both sides and its hooks. CS:S's
+    (`cs_source::game::net`, `CsSourceNetPlugin`, added by `SimPlugins`):
+    `NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`, `ClassRequest`,
+    `ObjectiveNews`, `RoundOver` and their systems (was most of
+    `net/game.rs`; scores, buying, the rules' sounds and the client's own
+    money stay the engine's). Source's logic's (`logic::net`, added by
+    `LogicPlugin`): `NetMover` (was `net/movers.rs`) and `MapHud`.
+  - (b) `net::JoinRules` (fn pointers: a joined player held out and put
+    where it asked, entering when its client has the map, a client's
+    choice as userinfo), filled with `rules::JoinChoice`, `hold_out`,
+    `make_unassigned`, `join_spectators`, `enter_game`; `Dead`, `Score`
+    and `MapLoads` moved down to `core` (re-exported by `rules`).
+  - (c) `net::Holds` (the freeze's end for `OwnState::frozen_until`,
+    `frozen_intent`) and `net::predict::RecordCommand` (a set: CS:S
+    orders `BombHold` before it).
+  - (d) `core::Bot` (CS:S's `bot::Bot` requires it) and `net::BotHooks`
+    (kick with the quota one lower, `sync_quota`); hostages require
+    `core::Npc` (not players: not counted, replicated by their game);
+    the bomb carrier's scoreboard flag is the weapon's `core::ScoreMark`
+    (C4 requires it), so `NetScore` stays the engine's.
+  - (e) `LogicOneShot` and `MapSay` moved down to `map::state` (the
+    network forwards them without the logic); movers and HUD messages
+    are the logic's part (`logic::net`; a client's replayed ticks place
+    the movers through `net::NetHooks::replay`, stopping serving takes
+    the parts' components off through `NetHooks::stopped_serving`).
+  The registration order changed (the parts last): `NET_VERSION` net24
+  (multiplayer.md). `source_logic` now depends on `engine_net` (and so
+  on `engine_sim`). `mashup::net` re-exports `engine_net::net` with the
+  parts' types at their old paths; `version_text` takes the build
+  (`core::BuildVersion`, which `SimPlugins` inserts). Architecture test:
+  `net`'s row lost `objectives`, `rules`, `bot`, `logic`; `logic` and
+  `games` may use `net` (games also `bot`); `workspace_crates` keeps
+  `engine_net` off `engine_present`, `source_logic`, `mashup` and the
+  games. Spawn dump identical on the five maps modulo entity ids, moved
+  paths and two new resources (`NetParts`, `BuildVersion`); the network
+  tests and the heavy `net_*`/`map_net_*` pass. Measured
+  (docs/performance.md, "`engine_net`"; a new `pub fn`, load 17-19):
+  `cargo test --features dev --no-run` after a leaf edit in `engine_net`
+  27-32 s, in the client 19-23 s; `cargo test -p engine_net --features
+  dev` builds and runs its 29 tests in 6 s.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),

@@ -14,14 +14,16 @@
 //! snapshots keyed by server tick (`cl_interp`): `interp`. Moving brushes
 //! replicate their motion state (`NetMover`) and a client steps them to
 //! the tick it predicts, carrying its own player as the server does:
-//! `movers`. Physics props are drawn from snapshots like others: `props`.
+//! Source's logic's part (`logic::net`). Physics props are drawn from
+//! snapshots like others: `props`.
 //! Weapons: the client predicts its own with its movement (what it
 //! carries goes in `OwnState`), the server hits with lag compensation,
 //! others' shots, items, grenades and deaths come from the server:
 //! `weapons`.
 //!
-//! Rounds, money, chat and cvars: `game`, `chat`, `cvars`. Bots are the
-//! server's like any character (`bot_quota`). Maps (`maps`): the server
+//! Scores, money, chat and cvars: `game`, `chat`, `cvars`; a game's own
+//! rules (CS:S's rounds, bomb and hostages) are its part (`parts`). Bots
+//! are the server's like any character (`core::Bot`, `BotHooks`). Maps (`maps`): the server
 //! offers its map (name, hash, size); a client without that file fetches
 //! it over the connection or from `sv_downloadurl` into the content
 //! cache, and a map change on the server takes every client along.
@@ -45,16 +47,17 @@
 //! `core::MapView`); replicated `NetCharacter`, `Spectating`, `Unassigned`,
 //! `ChoosingClass`, `PlayerClass`, `NetBody` (quantized: `quant`;
 //! `body_flags::TELEPORTS` counts the server's teleports), `Team`, `Health`,
-//! `NetMover`, the map render looks `map::RenderLook` (players) and
+//! the map render looks `map::RenderLook` (players) and
 //! `BrushTint` (movers), `NetProp`, `NetHeld`, `NetItem`, `NetSmoke`, the body,
-//! mover, prop and item ones also into each entity's `interp::Snapshots` by
+//! prop and item ones also into each entity's `interp::Snapshots` by
 //! server tick, all written in tick order (`ordered`); weapons' messages
 //! `FireBullets`, `WeaponFx`, `Detonation`, `Senses`, `Killed`, `HitConfirm`,
-//! `Hurt`, `DropRequest`; game rules' `NetRound`, `NetScore`, `NetBomb`,
-//! `NetHostage`, `BuyRequest`, `TeamRequest`, `ClassRequest`, `ServerMotd`
+//! `Hurt`, `DropRequest`; game rules' `NetScore`, `BuyRequest`, `ServerMotd`
 //! (`motd.rs`), `SayRequest`, `RadioRequest`, `Notice`, `ChatMessage`,
-//! `RadioCall`, `ObjectiveNews`, `RoundOver`, `ServerSound`, `CvarValues`,
-//! `NameRequest`, `NameChanged`, `decals::Decals`; `OwnState` also carries
+//! `RadioCall`, `ServerSound`, `CvarValues`, `NameRequest`, `NameChanged`,
+//! `decals::Decals`; then the parts' (`parts`, in name order: CS:S's
+//! `NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`, `ClassRequest`,
+//! `ObjectiveNews`, `RoundOver`; Source's logic's `NetMover`, `MapHud`); `OwnState` also carries
 //! money, armour, kit and the freeze's end tick (arming and defusing the bomb
 //! are in its predicted state; `epoch`: the client clock epoch its `lead` is
 //! from)), `canonical_position` (a predicted player's zeros as +0.0 at the end
@@ -201,8 +204,8 @@ pub mod mapfx;
 pub mod maps;
 pub mod memory;
 pub mod motd;
-pub mod movers;
 pub mod ordered;
+pub mod parts;
 pub mod predict;
 pub mod props;
 pub mod quant;
@@ -220,6 +223,7 @@ use bevy_replicon::prelude::*;
 use bevy_replicon_renet::{RenetChannelsExt, RenetClient, RenetServer, RepliconRenetPlugins, renet::ConnectionConfig};
 use serde::{Deserialize, Serialize};
 
+pub use self::parts::{BotHooks, Holds, JoinRules, NetAppExt, NetHooks, NetParts};
 use self::ordered::OrderedAppExt;
 use crate::{
     console::{ConsoleAppExt, resource_cvar},
@@ -238,7 +242,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net23");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net24");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -686,51 +690,6 @@ pub mod body_flags {
     pub const TELEPORT_ONE: u8 = 1 << 4;
 }
 
-/// A moving brush's motion state (doors, platforms, trains, rotating and
-/// parented brushes; `logic::movers::Pusher`), entity space (angles in
-/// degrees), written by the server on the mover's node after each tick
-/// (`movers::write_movers`). A client steps its own copy of the node
-/// (`map::MapBrushEntity` with this `index`) to the tick it predicts the
-/// way the logic does (`movers::place`).
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct NetMover {
-    /// The map entity index (`map::MapBrushEntity`).
-    pub index: u32,
-    pub origin: [f32; 3],
-    pub angles: [f32; 3],
-    pub velocity: [f32; 3],
-    pub avelocity: [f32; 3],
-    /// The pusher's local time, its move's (or wait's) end, and where the
-    /// move ends.
-    pub ltime: f64,
-    pub move_done: Option<f64>,
-    pub goal_origin: Option<[f32; 3]>,
-    pub goal_angles: Option<[f32; 3]>,
-    /// `mover_flags::*` bits.
-    pub flags: u16,
-}
-
-/// `NetMover::flags` bits.
-pub mod mover_flags {
-    pub const VISIBLE: u16 = 1;
-    pub const SOLID: u16 = 1 << 1;
-    /// Steps land on whole ticks (func_rotating's spin).
-    pub const INEXACT: u16 = 1 << 2;
-    /// Angles kept in [0, 360) (func_rotating).
-    pub const SPIN: u16 = 1 << 3;
-    /// Rotations push by the box's leading corner (model doors).
-    pub const PHYSICS_SOLID: u16 = 1 << 4;
-    /// Players are moved through (trains flag 512).
-    pub const UNBLOCKABLE: u16 = 1 << 5;
-    /// Shots hit it (a broken breakable's aren't).
-    pub const SHOOTABLE: u16 = 1 << 6;
-    /// Its logic entity is gone (killed, broken) until a round restart.
-    pub const GONE: u16 = 1 << 7;
-    /// Moves with a parent (parented brushes, breakables): not stepped on
-    /// its own.
-    pub const ATTACHED: u16 = 1 << 8;
-}
-
 /// A physics prop's pose (engine space) and whether it is there, written
 /// by the server on the prop's node after each tick (`props::write_props`);
 /// a client draws its own copy (the node with the same `map::PropIndex`)
@@ -861,12 +820,6 @@ pub struct Detonation {
     pub ground: Option<([f32; 3], [f32; 3])>,
 }
 
-/// Server -> a client: what map logic shows on its player's HUD (a
-/// game_text, an env_fade, an env_hudhint: `logic::HudEvent`), to the
-/// player it is for or to everyone.
-#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct MapHud(pub crate::logic::HudShow);
-
 /// Server -> clients: map logic's long-lived sounds (`map::SoundControl`
 /// under the logic's keys: ambient_generic, a mover's loop, fire), which
 /// clients, running no map logic, would not hear otherwise (`mapfx`).
@@ -982,52 +935,6 @@ pub struct DropRequest;
 
 // --- Game rules (slice 5): `game`, `chat`, `cvars`.
 
-/// The round and the objectives' totals, on one replicated entity the
-/// server keeps (`game::write_round`). Times are server ticks
-/// (fractional), which a client turns into its own clock
-/// (`game::ServerTime`).
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct NetRound {
-    /// `round_phase::*`.
-    pub phase: u8,
-    /// Live: when it went live. Freeze: when it ends. Live: when time is
-    /// up. Over: when the next round starts.
-    pub since: f64,
-    pub until: f64,
-    /// Over: the winner's team number (None: a draw).
-    pub winner: Option<u8>,
-    pub number: u32,
-    /// Rounds won by the attackers and the defenders.
-    pub wins: [u32; 2],
-    /// Why buying is closed now (the rules' words); None: open.
-    pub buy_closed: Option<String>,
-    /// This round's bomb: `bomb_outcome::*`.
-    pub bomb: u8,
-    /// Hostages this round: total, rescued, killed.
-    pub hostages: [u32; 3],
-    /// The game on the map is over: the intermission (`RoundState::game_over`).
-    pub game_over: bool,
-    /// When the game on this map began (`RoundState::map_started`), for
-    /// the time left with `mp_timelimit`.
-    pub map_started: Option<f64>,
-}
-
-/// `NetRound::phase`.
-pub mod round_phase {
-    pub const OFF: u8 = 0;
-    pub const FREEZE: u8 = 1;
-    pub const LIVE: u8 = 2;
-    pub const OVER: u8 = 3;
-}
-
-/// `NetRound::bomb`.
-pub mod bomb_outcome {
-    pub const NONE: u8 = 0;
-    pub const PLANTED: u8 = 1;
-    pub const EXPLODED: u8 = 2;
-    pub const DEFUSED: u8 = 3;
-}
-
 /// A character's line on the scoreboard (`game::write_scores`): kills,
 /// deaths, ping (ms, from the server's measure of its client's round
 /// trip; 0 for the host and bots) and `score_flags::*`.
@@ -1048,54 +955,10 @@ pub mod score_flags {
     pub const KIT: u8 = 1 << 2;
 }
 
-/// The planted bomb (`objectives::bomb::PlantedBomb`), on its own
-/// replicated entity: where, its model, and its clock in server ticks.
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct NetBomb {
-    pub origin: [f32; 3],
-    pub rotation: [f32; 4],
-    pub model: Option<String>,
-    pub site: Option<u32>,
-    pub planted: f64,
-    pub explode: f64,
-    pub timer: f32,
-    /// Who defuses it, since and until when (ticks), with a kit.
-    #[entities]
-    pub defuser: Option<Entity>,
-    pub defuse_since: f64,
-    pub defuse_until: f64,
-    pub defuse_kit: bool,
-    pub defused: bool,
-}
-
-/// A hostage (`objectives::hostages::Hostage`): which one, its model and
-/// whom it follows. With `NetCharacter` and `NetBody` like anyone.
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct NetHostage {
-    pub index: u32,
-    pub model: Option<String>,
-    #[entities]
-    pub leader: Option<Entity>,
-}
-
 /// Client -> server: buy this (`buy <what>`, the buy menu, `buyammo1`).
 #[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct BuyRequest {
     pub what: String,
-}
-
-/// Client -> server: put me on this team (`jointeam`: our team number,
-/// 1 terrorists, 2 counter-terrorists; 0 the spectators).
-#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct TeamRequest {
-    pub team: u8,
-}
-
-/// Client -> server: my class (`joinclass`: CS:S's number, 0
-/// auto-select; `rules::join_class`).
-#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct ClassRequest {
-    pub class: u8,
 }
 
 /// The server's message of the day (CS:S's `motd.txt`), shown as a
@@ -1159,42 +1022,6 @@ pub struct RadioCall {
     #[entities]
     pub sender: Entity,
     pub command: String,
-}
-
-/// Server -> clients: an objective event (`objectives::ObjectiveEvent`,
-/// `hostages::HostagePenalty`) for the HUD's words and sounds: its kind
-/// (`game` numbers them), who, the other party, where, and the rest.
-#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq, bevy::ecs::entity::MapEntities)]
-pub struct ObjectiveNews {
-    pub kind: u8,
-    #[entities]
-    pub who: Option<Entity>,
-    #[entities]
-    pub other: Option<Entity>,
-    pub at: [f32; 3],
-    pub flag: bool,
-    pub site: Option<u32>,
-    pub amount: f32,
-    pub reason: u8,
-}
-
-/// Server -> clients: the round ended (`rules::rounds::RoundEnded`):
-/// the winner's team number and why (`game` numbers the reasons), and the
-/// win panel's summary (`rules::rounds::RoundSummary`): the MVP and why
-/// (`Mvp::ALL`'s index), the fun fact (its string token, the player it
-/// names, its values) and the round's live seconds.
-#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq, bevy::ecs::entity::MapEntities)]
-pub struct RoundOver {
-    pub winner: Option<u8>,
-    pub reason: u8,
-    #[entities]
-    pub mvp: Option<Entity>,
-    pub mvp_reason: u8,
-    pub fun_fact: Option<String>,
-    #[entities]
-    pub fun_fact_player: Option<Entity>,
-    pub fun_fact_values: Vec<String>,
-    pub seconds: f32,
 }
 
 /// Server -> clients: a sound of the game's rules (`map::GameSound`: the
@@ -1320,9 +1147,9 @@ impl Plugin for NetPlugin {
             .ordered::<crate::core::PlayerClass>()
             .replicate::<Health>()
             .ordered::<Health>()
-            .replicate::<NetMover>()
             // Map render looks: players' (invisibility, team colours) and
-            // movers' (colour, alpha, texture frame), only when they change.
+            // movers' (colour, alpha, texture frame; the movers themselves
+            // are Source's logic's part, `NetParts`), only when they change.
             .replicate::<crate::map::RenderLook>()
             .ordered::<crate::map::RenderLook>()
             .replicate::<crate::map::BrushTint>()
@@ -1331,8 +1158,6 @@ impl Plugin for NetPlugin {
             // buffer, by the server tick it is from.
             .set_receive_fns::<NetBody>(interp::write_snapshot::<NetBody>, interp::remove_snapshots::<NetBody>)
             .ordered_with::<NetBody>(interp::write_snapshot::<NetBody>, interp::remove_snapshots::<NetBody>)
-            .set_receive_fns::<NetMover>(interp::write_snapshot::<NetMover>, interp::remove_snapshots::<NetMover>)
-            .ordered_with::<NetMover>(interp::write_snapshot::<NetMover>, interp::remove_snapshots::<NetMover>)
             .replicate::<NetProp>()
             .set_receive_fns::<NetProp>(interp::write_snapshot::<NetProp>, interp::remove_snapshots::<NetProp>)
             .ordered_with::<NetProp>(interp::write_snapshot::<NetProp>, interp::remove_snapshots::<NetProp>)
@@ -1361,18 +1186,11 @@ impl Plugin for NetPlugin {
             .add_mapped_server_message::<HitConfirm>(Channel::Unordered)
             .add_server_message::<Hurt>(Channel::Unordered)
             .make_message_independent::<Hurt>()
-            // Game rules (slice 5).
-            .replicate::<NetRound>()
-            .ordered::<NetRound>()
+            // Game rules (slice 5): what every game has; a game's own (CS:S's
+            // round, bomb and hostages) are its part (`NetParts`).
             .replicate::<NetScore>()
             .ordered::<NetScore>()
-            .replicate::<NetBomb>()
-            .ordered::<NetBomb>()
-            .replicate::<NetHostage>()
-            .ordered::<NetHostage>()
             .add_client_message::<BuyRequest>(Channel::Ordered)
-            .add_client_message::<TeamRequest>(Channel::Ordered)
-            .add_client_message::<ClassRequest>(Channel::Ordered)
             .add_server_message::<ServerMotd>(Channel::Ordered)
             .make_message_independent::<ServerMotd>()
             .add_client_message::<SayRequest>(Channel::Ordered)
@@ -1381,8 +1199,6 @@ impl Plugin for NetPlugin {
             .make_message_independent::<Notice>()
             .add_mapped_server_message::<ChatMessage>(Channel::Ordered)
             .add_mapped_server_message::<RadioCall>(Channel::Ordered)
-            .add_mapped_server_message::<ObjectiveNews>(Channel::Ordered)
-            .add_mapped_server_message::<RoundOver>(Channel::Ordered)
             .add_mapped_server_message::<ServerSound>(Channel::Unreliable)
             .add_server_message::<CvarValues>(Channel::Ordered)
             .make_message_independent::<CvarValues>()
@@ -1390,7 +1206,6 @@ impl Plugin for NetPlugin {
             .add_client_message::<UserInfoRequest>(Channel::Ordered)
             .add_server_message::<NameChanged>(Channel::Ordered)
             .make_message_independent::<NameChanged>()
-            .add_server_message::<MapHud>(Channel::Ordered)
             .add_server_message::<MapFx>(Channel::Unreliable)
             .make_message_independent::<MapFx>()
             .add_mapped_server_message::<LogicSound>(Channel::Ordered)
@@ -1402,6 +1217,7 @@ impl Plugin for NetPlugin {
             .make_message_independent::<PlayerCame>()
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
+            .init_resource::<NetHooks>()
             .add_message::<NetEvent>()
             .add_systems(Update, log_events);
         app.world_mut().resource_mut::<ProtocolHasher>().add_custom(NET_VERSION);
@@ -1410,7 +1226,6 @@ impl Plugin for NetPlugin {
         motd::plugin(app);
         predict::plugin(app);
         interp::plugin(app);
-        movers::plugin(app);
         props::plugin(app);
         anchors::plugin(app);
         ragdolls::plugin(app);
@@ -1427,6 +1242,14 @@ impl Plugin for NetPlugin {
         query::plugin(app);
         memory::plugin(app);
         commands(app);
+    }
+
+    /// The parts games and Source's logic registered (`NetAppExt::net_part`),
+    /// in name order, after every plugin's `build` (so whichever order the
+    /// app adds them in) and before replicon's own `finish`, which seals
+    /// the protocol (this plugin adds replicon's, so it finishes first).
+    fn finish(&self, app: &mut App) {
+        parts::apply(app);
     }
 }
 
@@ -1590,8 +1413,9 @@ fn commands(app: &mut App) {
     .console_command("status", "Server, map and players (with ping).", |w, _| {
         Ok(Some(status(w)))
     })
-    .console_command("version", "This build's version and network protocol.", |_, _| {
-        Ok(Some(version_text()))
+    .console_command("version", "This build's version and network protocol.", |w, _| {
+        let build = w.get_resource::<crate::core::BuildVersion>().map_or("unknown", |b| b.0);
+        Ok(Some(version_text(build)))
     })
     .console_command("ping", "Each player's ping, as the scoreboard has it.", |w, _| {
         Ok(Some(ping_text(w)))
@@ -1638,9 +1462,10 @@ pub fn users_text(world: &mut World) -> String {
     out.join("\n")
 }
 
-/// `version`: the build (`core::VERSION`) and its network protocol.
-pub fn version_text() -> String {
-    format!("Lucker Party {}\nProtocol version {NET_VERSION}", crate::core::VERSION)
+/// `version`: the build (`core::BuildVersion`, the app's stamp) and its
+/// network protocol.
+pub fn version_text(build: &str) -> String {
+    format!("Lucker Party {build}\nProtocol version {NET_VERSION}")
 }
 
 /// `status`: Source's layout, roughly.

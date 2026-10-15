@@ -131,7 +131,7 @@ pub(super) fn plugin(app: &mut App) {
 /// Keep the world's new decals (a new map starts the log over).
 fn record(
     mut asks: MessageReader<PlaceDecal>,
-    loads: Option<Res<crate::rules::MapLoads>>,
+    loads: Option<Res<crate::core::MapLoads>>,
     movable: Query<(), Or<(With<PropIndex>, With<MapBrushEntity>)>>,
     parents: Query<&ChildOf>,
     mut log: ResMut<DecalLog>,
