@@ -361,6 +361,49 @@ measurements):
   --features dev --no-run`, 127-160 s as before (one crate below it
   less, but `mashup` is still ~160k lines); after an `engine_core` edit
   the same command took 28-81 s (`mashup` recompiles incrementally).
+- [x] (3) `mashup`'s module graph measured (2026-10-14, after the
+  engine crates): every `crate::`/`mashup::` path (grouped imports
+  split) from each top-level module to another, comments stripped.
+  Lines are the module's own; `cs_ui` is `games/cs_source/ui/`, `engine`
+  the modules re-exported from the engine crates (core, console, slots,
+  character, metrics, map, render, audio).
+
+  | Module (lines) | Uses (references) | Used by |
+  |---|---|---|
+  | `logic` (24.6k) | engine only (map 141, core 28, console 5) | net 8, client 8, cs_ui 2, harness 1 |
+  | `movement` (0.2k) | engine only | net 6, client 1 |
+  | `mount` (0.8k) | nothing of ours (source_formats) | cs_source 10, client 6, cs_ui 6, games 1, bins |
+  | `greybox` (0.3k) | engine only | client 3, cs_ui 1, bins |
+  | `weapon` (7.8k) | engine only (core 64, map 48, console 13) | cs_source 28, client 32, cs_ui 17, bot 15, net 12, rules 11, objectives 8 |
+  | `objectives` (2.2k) | weapon 8, engine | cs_source 11, rules 8, bot 7, cs_ui 7, client 5, net 4 |
+  | `rules` (2.0k) | objectives 8, weapon 11, engine | client 33, net 28, cs_ui 22, cs_source 2 |
+  | `cs_source` (28.3k) | weapon 28, objectives 11, mount 10, rules 2, engine (map 244) | client 13 (4 files, `CLIENT_GAME_EXCEPTIONS`), cs_ui 9, main, bins |
+  | `bot` (7.0k) | weapon 15, objectives 7, engine | net 6, cs_ui 5, client 6 |
+  | `net` (13.8k) | rules 28, weapon 12, logic 8, bot 6, movement 6, objectives 4, engine | client 41, cs_ui 35, harness 21 |
+  | `client` (23.3k) | everything (map 101, console 92, core 77, net 41, rules 33, weapon 32, cs_source 13) | cs_ui 138, main |
+  | `cs_ui` (17.9k) | client 138, map 71, console 41, net 35, rules 22, weapon 17, cs_source 9 | main |
+  | `harness` (0.5k) | net 21, lib, engine | tests |
+
+  Self-contained layers on the engine crates (no back-reference to
+  cut): `logic`, `movement`, `weapon`, `mount`, `greybox`; then
+  `objectives` (on weapon) and `rules` (on objectives, weapon). The
+  simulation of CS:S (`cs_source` without `ui/`) uses only those and
+  the engine: nothing of `net`, `bot`, `client` or `logic`. So, bottom
+  first: `logic` to `source/logic` (needs nothing); `weapon` and
+  `movement` to `engine/sim` (nothing); `mount` down to the engine
+  (its config's repository path); then `cs_source`'s simulation with
+  the CS:S rules (`objectives`, `rules`) to `games/cs_source` (its
+  `ui/` stays in `mashup` with the client, re-exported beside it).
+  `net` (to `engine/net`) is blocked by naming CS:S's rules (round
+  state, bomb, hostages: game-registered replication) and `logic`
+  (Source); `bot` by its bomb and hostage goals; `client` by
+  `CLIENT_GAME_EXCEPTIONS` (a game registry).
+- [x] (3) `source/logic` (package `source_logic`, 2026-10-14): `logic`
+  moved whole (it uses only `core`, `console` and `map`); one
+  `pub(crate)` item became `pub`; `mashup` re-exports it as
+  `mashup::logic`. The layering table covers source/logic/src;
+  `workspace_crates` keeps it off `engine_present`, `mashup` and the
+  games. Spawn dump identical on the five maps modulo moved paths.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
@@ -436,7 +479,7 @@ the full suite, and the coordinator batches merges.
 | Module | Goes to | Notes |
 |---|---|---|
 | `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done but `harness.rs`: `engine/core` |
-| `src/logic` | source | Source entity I/O and classes (func_door, triggers, ...) |
+| `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | formats (bsp, vpk, material, mdl, phy, wav, sound) to source; CS:S rules, weapons, HUD, bots' CS:S parts stay |
 | `src/games/combat_arms` | games/combat_arms | local, git-ignored |

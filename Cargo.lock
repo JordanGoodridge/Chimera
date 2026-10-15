@@ -4619,6 +4619,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "source_formats",
+ "source_logic",
  "toml",
  "twofish",
  "vbsp",
@@ -6649,6 +6650,17 @@ dependencies = [
  "glam",
  "lzma-rs",
  "symphonia",
+]
+
+[[package]]
+name = "source_logic"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "engine_core",
+ "engine_world",
+ "serde",
 ]
 
 [[package]]

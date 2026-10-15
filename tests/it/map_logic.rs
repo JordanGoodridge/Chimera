@@ -1,7 +1,7 @@
 //! Map logic in the running simulation (specs/source/entity_io.md,
 //! triggers.md, doors_buttons.md): a small map built in Source units with
 //! entities, a Source player, the logic layer and movement together. The
-//! logic's own spec tables are unit tests in src/logic/tests.rs.
+//! logic's own spec tables are unit tests in source/logic/src/logic/tests.rs.
 
 use bevy::prelude::*;
 use mashup::{

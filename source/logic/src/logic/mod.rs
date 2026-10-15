@@ -37,7 +37,7 @@ mod tests;
 #[cfg(test)]
 mod community_tests;
 
-pub(crate) use bridge::set_node_shown;
+pub use bridge::set_node_shown;
 pub use bridge::{
     CarriedMover, Logic, LogicOneShot, LogicPlugin, LogicSeed, LogicSet, brush_to_engine, carry_player,
     mover_brushes_at,

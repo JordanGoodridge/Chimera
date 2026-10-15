@@ -1084,7 +1084,7 @@ children of movers that stay where they spawned, usable brushes +use
 didn't find, and panics. Physics props aren't simulated there (no
 bounds), so bodies never touch triggers in it. A unit test for it is in
 `logic::audit::tests`; small entity lists for the fixes it led to are in
-`src/logic/community_tests.rs`. `--fire <target>,<input>[,<value>]`
+`source/logic/src/logic/community_tests.rs`. `--fire <target>,<input>[,<value>]`
 (repeatable) skips the sweep: it loads the filtered maps' logic with one
 player, sends those inputs and prints every half second the queued
 messages, output connections, effects by kind and logic log lines for

@@ -14,7 +14,6 @@ pub mod core;
 pub mod games;
 pub mod greybox;
 pub mod harness;
-pub mod logic;
 pub mod mount;
 pub mod movement;
 pub mod net;
@@ -36,6 +35,10 @@ pub mod map {
 
 // The engine's presentation (engine/present), at its old paths.
 pub use engine_present::{audio, render};
+
+// Source's map logic (source/logic: entity I/O, logic classes, triggers,
+// movers), at its old path.
+pub use source_logic::logic;
 
 use bevy::prelude::*;
 

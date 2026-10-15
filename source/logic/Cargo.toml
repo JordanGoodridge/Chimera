@@ -1,0 +1,29 @@
+[package]
+name = "source_logic"
+version = "0.1.0"
+description = "Source's map logic: entity I/O, logic classes, triggers, movers"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The engine's base and the simulation's map, Bevy and physics; never the
+# presentation (`engine_present`), `mashup` or a game
+# (tests/it/architecture.rs checks it). Same versions and features as the
+# game's (workspace dependencies), so `cargo test -p source_logic` reuses
+# the game's builds.
+[dependencies]
+engine_core.workspace = true
+engine_world.workspace = true
+avian3d.workspace = true
+bevy.workspace = true
+serde.workspace = true
+
+[features]
+# Bevy as a dynamic library, as the game's `dev` (which turns this on):
+# `cargo test -p source_logic --features dev` shares the game's Bevy build.
+dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev"]

@@ -14,7 +14,8 @@ nextest run` at the root test them all (`tests/it/architecture.rs`,
 mashup (repository root: src/, tests/it/)   the game, engine and tools
   |
 engine_present (engine/present/)   render, audio, MapPlugin
-  |
+  |                 source_logic (source/logic/)   logic: Source entity I/O
+  |                /
 engine_world (engine/world/)   map: map data, collision, sim-side spawning
   |                \
 engine_core          source_formats (source/formats/)   formats as plain data: no Bevy
@@ -49,6 +50,11 @@ engine_core          source_formats (source/formats/)   formats as plain data: n
   `render` and `audio` at their old paths. An edit in it rebuilds it and
   `mashup`, not the map; an edit in `mashup` rebuilds neither.
   `cargo test -p engine_present --features dev` tests it alone.
+- `source_logic` is Source's map logic (`logic`: entity I/O, logic
+  classes, triggers, movers, breakables, props, fire, the bridge to the
+  map's entities). It uses `engine_world` and `engine_core`, never the
+  presentation, `mashup` or a game (checked); `mashup::logic` re-exports
+  it. `cargo test -p source_logic --features dev` tests it alone.
 
 ## Layers
 
@@ -255,7 +261,7 @@ that the paths exist).
 
 ### Simulation above map (logic, weapon, objectives, rules, bot)
 
-- `src/logic/`: map logic for Source-style entities: entity I/O, triggers, movers, breakables, props, fire, the bridge to the world (logic)
+- `source/logic/src/logic/`: Source map logic (crate `source_logic`): entity I/O, triggers, movers, breakables, props, fire, the bridge (logic)
 - `src/weapon/`: weapons as parts, inventory, the weapon frame, economy, grenades, drops, lag compensation, sprays (weapon)
 - `src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)

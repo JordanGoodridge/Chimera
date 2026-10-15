@@ -367,14 +367,14 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 
 - A test map with every supported entity (`mashup_logic_test`, generated
   `.vmf`, compiled with Valve's tools; plan section "Test map").
-- Entity I/O, triggers and moving brushes are in (`src/logic`, slices 3
+- Entity I/O, triggers and moving brushes are in (`source/logic/src/logic`, slices 3
   and 4 of the plan), and breakables (func_breakable, func_breakable_surf;
-  src/logic/breakables.rs), model doors (`prop_door_rotating`) and
+  source/logic/src/logic/breakables.rs), model doors (`prop_door_rotating`) and
   prop damage/outputs, skins, body groups and sequences
-  (src/logic/props.rs), sprites, dust and switchable lights
-  (src/logic/visuals.rs, lightmap styles relit at run time), env_global,
+  (source/logic/src/logic/props.rs), sprites, dust and switchable lights
+  (source/logic/src/logic/visuals.rs, lightmap styles relit at run time), env_global,
   trigger_soundscape through the touch code. Prop damage follows
-  specs/source/prop_damage.md (src/logic/prop_damage.rs: prop data,
+  specs/source/prop_damage.md (source/logic/src/logic/prop_damage.rs: prop data,
   pieces, impact damage, explosive props, client props, Wake/Sleep/motion
   inputs, OnAwakened/OnMotionEnabled, pressure). Left: breakable follow-ups
   (section 7), prop `OnAnimationBegun`/`OnAnimationDone`, train
@@ -633,7 +633,7 @@ docs/plans/active/sound.md.
   entries the hardware and surface pick; we read the model's
   `door_options` skin and `hardwareN` blocks, docs/tech-debt.md "Model
   doors").
-- Breakables, remaining (src/logic/breakables.rs,
+- Breakables, remaining (source/logic/src/logic/breakables.rs,
   tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof decals,
   propdata templates, the client's pane drawing (spec open question 8:
   edge piece selection, which side draws, the piece's offset; ours in

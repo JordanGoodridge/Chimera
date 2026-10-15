@@ -3,8 +3,8 @@
 # the repository root act on every default member: `cargo test` tests
 # them all, `cargo test -p source_formats` one crate alone.
 [workspace]
-members = [".", "engine/core", "engine/world", "engine/present", "source/formats"]
-default-members = [".", "engine/core", "engine/world", "engine/present", "source/formats"]
+members = [".", "engine/core", "engine/world", "engine/present", "source/formats", "source/logic"]
+default-members = [".", "engine/core", "engine/world", "engine/present", "source/formats", "source/logic"]
 resolver = "3"
 
 [workspace.package]
@@ -19,6 +19,7 @@ engine_core = { path = "engine/core" }
 engine_world = { path = "engine/world" }
 engine_present = { path = "engine/present" }
 source_formats = { path = "source/formats" }
+source_logic = { path = "source/logic" }
 avian3d = "0.7"
 # serialize: predicted components (Transform among them) travel as serde
 # (`core::PredictedAppExt::predicted_net`); `dev` got it through
@@ -70,6 +71,9 @@ engine_world.workspace = true
 # The engine's presentation: render, audio and `MapPlugin`
 # (engine/present); re-exported at their old paths (lib.rs).
 engine_present.workspace = true
+# Source's map logic: entity I/O, logic classes, triggers, movers
+# (source/logic); re-exported as `mashup::logic` (lib.rs).
+source_logic.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
 bevy-inspector-egui = "0.37"
@@ -174,7 +178,7 @@ combat_arms = ["dep:twofish"]
 
 # Faster iteration: link Bevy as a dynamic library. Use with
 # `cargo run --features dev`. Never enable for release builds.
-dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev", "engine_present/dev"]
+dev = ["bevy/dynamic_linking", "bevy/bevy_remote", "engine_core/dev", "engine_world/dev", "engine_present/dev", "source_logic/dev"]
 
 # CPU profile: every system and render step as a span in a Chrome trace
 # (trace-<time>.json, open in https://ui.perfetto.dev). See
