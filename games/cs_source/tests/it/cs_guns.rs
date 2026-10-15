@@ -408,6 +408,26 @@ fn first_shot_kicks_from_the_measured_sets() {
         assert!(close(k, 2.0, 0.0), "{id} {k}");
     }
     assert!(first_kick(GLOCK, false).is_none_or(|k| k == Vec2::ZERO));
+    // The other automatics (measured 2026-10-15): (gun, standing up, side,
+    // crouched up, side).
+    for (gun, up, side, cup, cside) in [
+        ("famas", 0.625, 0.375, 0.575, 0.325),
+        ("galil", 0.65, 0.35, 0.6, 0.3),
+        ("sg552", 0.625, 0.375, 0.6, 0.35),
+        ("aug", 0.625, 0.375, 0.575, 0.325),
+        ("mp5navy", 0.25, 0.175, 0.225, 0.15),
+        ("p90", 0.3, 0.225, 0.275, 0.2),
+        ("ump45", 0.275, 0.2, 0.25, 0.175),
+        ("mac10", 0.775, 0.425, 0.75, 0.4),
+        ("tmp", 0.725, 0.375, 0.7, 0.35),
+        ("m249", 0.8, 0.35, 0.75, 0.325),
+    ] {
+        let id = format!("cs_source:weapon_{gun}");
+        let k = first_kick(&id, false).unwrap();
+        assert!(close(k, up, side), "{gun} {k}");
+        let k = first_kick(&id, true).unwrap();
+        assert!(close(k, cup, cside), "{gun} crouched {k}");
+    }
 }
 
 #[test]

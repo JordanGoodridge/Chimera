@@ -64,9 +64,11 @@ recovery_stand = 0.21184
 [hooks."cs_source:hit_slowdown"]
 body = 0.5
 
-# UNMEASURED: the M4A1's sets.
+# Measured on the probe server, 2026-10-15 (specs/cs_source/weapons.md M3, more
+# weapons): full-clip holds standing, crouched and side-running. Airborne
+# UNMEASURED: the moving set.
 [hooks."cs_source:recoil"]
-standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
-crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
-moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
-airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+standing = { up = 0.725, up_step = 0.15, side = 0.375, side_step = 0.025, up_cap = 2.75, side_cap = 2.25 }
+crouched = { up = 0.7, up_step = 0.125, side = 0.35, side_step = 0.025, up_cap = 2.5, side_cap = 2.0 }
+moving = { up = 0.8, up_step = 0.2, side = 0.4, side_step = 0.03, up_cap = 3.0, side_cap = 2.5 }
+airborne = { up = 0.8, up_step = 0.2, side = 0.4, side_step = 0.03, up_cap = 3.0, side_cap = 2.5 }

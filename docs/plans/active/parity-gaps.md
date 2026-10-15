@@ -114,7 +114,7 @@ report folders):
 | Picking the second grenade from the HUD selection | have (fixed) | M | S | the pick drew the first weapon of the slot; now `Intent::pick` names it |
 | `autobuy` / `rebuy` (F1 / F2) | have (fixed) | H | S | were missing (the buy menu's buttons greyed); details unmeasured (tech-debt), capture C4 |
 | Spread generator | differs | L | M | tech-debt "CS:S's spread and recoil": seeded as CS:S, our generator (spec Q1) |
-| Other automatics' recoil, scoped/silenced/burst | differs | M | S | spec weapons.md Q3 |
+| Other automatics' recoil, scoped/silenced/burst | differs | M | S | measured and in the data 2026-10-15 for FAMAS, Galil, SG 552, AUG, MP5, P90, UMP, MAC-10, TMP, M249 (standing, crouched, moving); airborne, the snipers' and scoped/silenced/burst modes left (Q3) |
 | Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7 |
 | Unmeasured gun values (556/9mm penetration...) | differs | L | S | tech-debt "The CS:S guns" |
 | Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), the throw pitch bend (80/90 looking up: fixed), fuses, HE vs armour (×0.7375) measured and matching; HE falloff fixed (a bell σ 350/3, linear with sv_legacy_grenade_damage 1); flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); redraw, pin open (grenades.md Q2, Q3, Q12) |
