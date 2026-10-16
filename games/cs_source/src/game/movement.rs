@@ -170,6 +170,18 @@ pub struct SourceMovementConfig {
     /// with movecmp fuzz). The shared code scales only when already ducked
     /// on the ground.
     pub duck_slows_everywhere: bool,
+    /// CS:S: releasing duck partway down leaves the duck timer running, so
+    /// the unduck has as long behind it as the duck had (released 105 ms
+    /// in, the eye drops to the unduck curve's 105 ms point, 56.1, and is
+    /// up 7 ticks later; measured with movecmp `duck_release_7`). The
+    /// shared code starts the unduck from the matching point instead.
+    pub unduck_keeps_duck_timer: bool,
+    /// CS:S: a jump pressed on the ground while standing up from a duck
+    /// (refused, as in the shared code) still sets the jump stamina, drops
+    /// the eye to the ducked height, and ends the unduck on the next tick
+    /// (measured with movecmp `unduck_jump_5`/`_10`). The shared code just
+    /// ignores the press.
+    pub unduck_jump_ducks: bool,
     /// Fall damage (specs/cs_source/fall_damage.md): landing faster than
     /// `fall_safe` (units/s) out of water deals (speed - safe) x
     /// `fall_damage_per_speed` health points, truncated to whole points.
@@ -321,6 +333,8 @@ impl SourceMovementConfig {
             step_min_speed: 90.0,
             duck_slows_ladder: false,
             duck_slows_everywhere: false,
+            unduck_keeps_duck_timer: false,
+            unduck_jump_ducks: false,
             fall_safe: 580.0,
             fall_damage_per_speed: 100.0 / (1024.0 - 580.0),
         }
@@ -365,6 +379,8 @@ impl Default for SourceMovementConfig {
             step_min_speed: 150.0,
             duck_slows_ladder: true,
             duck_slows_everywhere: true,
+            unduck_keeps_duck_timer: true,
+            unduck_jump_ducks: true,
             // Measured on the probe server: 100 damage at 996, not 1024.
             fall_damage_per_speed: 100.0 / 416.0,
             ..Self::shared_code()
@@ -1594,6 +1610,19 @@ impl Mover<'_, '_, '_, '_> {
         let tr = self
             .trace
             .sweep(self.me.ducked, self.feet, self.feet + dir * LADDER_REACH);
+        // `MASHUP_SLIDE_DEBUG=1`: the ladder probe too.
+        static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *DEBUG.get_or_init(|| std::env::var("MASHUP_SLIDE_DEBUG").is_ok()) {
+            eprintln!(
+                "    ladder probe: feet {:.3?} dir {:.3?} frac {:.5} normal {:.4?} ladder {} start_solid {}",
+                self.feet.to_array(),
+                dir.to_array(),
+                tr.fraction,
+                tr.normal.to_array(),
+                tr.ladder,
+                tr.start_solid
+            );
+        }
         // A ladder brush's top is a floor (standing on it, looking down
         // while walking must not grab it: the ladder velocity along a
         // vertical normal leaves only sideways movement, and the jump-off
@@ -1818,12 +1847,15 @@ impl Mover<'_, '_, '_, '_> {
             }
         } else if self.me.ducked || self.me.ducking {
             if released {
-                self.me.duck_timer = if self.me.ducking && !self.me.ducked {
+                if !self.me.ducking || self.me.ducked {
+                    self.me.duck_timer = DUCK_TIMER_START;
+                } else if !self.cfg.unduck_keeps_duck_timer {
+                    // Released partway down: the unduck starts from the
+                    // matching point (shared code).
                     let fraction = (elapsed / TIME_TO_DUCK).clamp(0.0, 1.0);
-                    DUCK_TIMER_START - TIME_TO_UNDUCK * 1000.0 + fraction * TIME_TO_UNDUCK * 1000.0
-                } else {
-                    DUCK_TIMER_START
-                };
+                    self.me.duck_timer =
+                        DUCK_TIMER_START - TIME_TO_UNDUCK * 1000.0 + fraction * TIME_TO_UNDUCK * 1000.0;
+                }
                 self.me.ducking = true;
             }
             if self.can_stand() {
@@ -1970,7 +2002,16 @@ impl Mover<'_, '_, '_, '_> {
         f *= scale;
         s *= scale;
 
-        self.ladder(intent, f, s, scale);
+        // CS:S (measured, movecmp fuzz): the climb is slowed by the duck as
+        // it stands after this tick's ducking: releasing duck while ducked
+        // on a ladder in the air (an instant unduck) climbs at full speed
+        // that tick (272.8 up, not 92.7).
+        let ladder_scale = if self.cfg.duck_slows_everywhere && !(intent.crouch || self.me.ducked || self.me.ducking) {
+            1.0
+        } else {
+            scale
+        };
+        self.ladder(intent, f, s, ladder_scale);
         if self.me.ladder.is_some() {
             // Ladder move: no gravity, friction or ground snapping.
             self.water_check();
@@ -2038,6 +2079,17 @@ impl Mover<'_, '_, '_, '_> {
             if self.me.on_ground && fresh && !(self.me.ducked && self.me.ducking) {
                 self.jump();
             } else {
+                if self.cfg.unduck_jump_ducks && self.me.on_ground && fresh && self.me.ducked && self.me.ducking {
+                    // CS:S (measured, movecmp `unduck_jump_*`): a jump
+                    // pressed while standing up from a duck doesn't jump,
+                    // but it costs the jump's stamina, the view drops back
+                    // to the ducked eye, and the player stands up at once
+                    // on the next tick (timer run out).
+                    self.me.stamina = self.cfg.jump_stamina;
+                    self.me.eye = self.cfg.eye_duck;
+                    self.me.ducking = false;
+                    self.me.duck_timer = 0.0;
+                }
                 self.me.jump_held = true;
             }
         } else {
