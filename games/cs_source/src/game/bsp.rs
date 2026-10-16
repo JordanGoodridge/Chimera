@@ -208,7 +208,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         }
     }
     if let [bottom] = bottoms.as_slice() {
-        for m in data.water_materials.iter_mut().filter(|m| !m.above_water) {
+        for m in data.water_materials.iter_mut().filter(|m| !m.above_water && !m.fog_only) {
             *m = bottom.clone();
         }
     }

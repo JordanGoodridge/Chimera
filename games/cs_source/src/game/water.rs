@@ -6,6 +6,8 @@
 //! AnimatedTexture on `$normalmap`, WaterLOD), the map's
 //! `water_lod_control` distances, the `$bottommaterial` and the
 //! `$underwateroverlay` (a Refract material drawn as a screen warp).
+//! Water brushes with another shader (de_nuke's LightmappedGeneric pool)
+//! keep their look and give only their fog volume (`fog_volume_vmt`).
 
 use std::collections::HashMap;
 
@@ -251,6 +253,35 @@ pub fn water_vmt(name: &str, body: &[(String, Node)], lod: (f32, f32)) -> WaterV
     }
 }
 
+/// A water brush's material that isn't the Water shader (`%compilewater`
+/// set; de_nuke's pool is an additive LightmappedGeneric): the map draws
+/// the surface itself, and only its fog volume follows the water spec
+/// (sections 1 and 10): `$fogcolor` (the `srgb?` form first, as Water's),
+/// `$fogstart`, `$fogend` and `$abovewater` from the material whatever its
+/// shader. None for other materials.
+pub fn fog_volume_vmt(name: &str, body: &[(String, Node)]) -> Option<MapWaterMaterial> {
+    let (keys, _) = keys_and_proxies(body);
+    let get = |k: &str| keys.get(k).map(|v| v.trim().to_string());
+    let num = |k: &str| get(k).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+    if get("%compilewater").is_none_or(|v| v.is_empty() || v == "0") {
+        return None;
+    }
+    Some(MapWaterMaterial {
+        name: name.to_string(),
+        fog_only: true,
+        refract: false,
+        force_expensive: false,
+        fog_color: get("srgb?$fogcolor")
+            .or_else(|| get("$fogcolor"))
+            .and_then(|v| colour(&v))
+            .unwrap_or([1.0, 0.0, 0.0]),
+        fog_start: num("$fogstart") * METERS_PER_UNIT,
+        fog_end: num("$fogend") * METERS_PER_UNIT,
+        above_water: get("$abovewater").is_none_or(|v| v != "0"),
+        ..Default::default()
+    })
+}
+
 /// `$bumptransform`'s scale ("center u v scale su sv rotate r translate
 /// x y"); 1 when absent.
 fn transform_scale(v: &str) -> Vec2 {
@@ -322,8 +353,9 @@ fn load_screen_warp(materials: &mut MaterialLoader, name: &str) -> Option<MapScr
 }
 
 /// The Water material `name` (as the BSP names it), with its normal-map
-/// frames, cubemap and bottom material loaded. None when it isn't a Water
-/// material.
+/// frames, cubemap and bottom material loaded; another shader's water
+/// material as its fog volume only (`fog_volume_vmt`). None when it isn't
+/// water.
 pub fn load(materials: &mut MaterialLoader, name: &str, lod: (f32, f32)) -> Option<MapWaterMaterial> {
     load_inner(materials, name, lod, 0)
 }
@@ -337,7 +369,7 @@ fn load_inner(materials: &mut MaterialLoader, name: &str, lod: (f32, f32), depth
     let read = |p: &str| materials.read_text(p);
     let (shader, body) = resolve(&text, &read, 0)?;
     if !shader.eq_ignore_ascii_case("water") {
-        return None;
+        return fog_volume_vmt(name, &body);
     }
     let vmt = water_vmt(name, &body, lod);
     let mut m = vmt.material;
@@ -545,6 +577,39 @@ mod tests {
         assert_eq!((m.reflect_tint, m.refract_tint, m.fog_color), ([1.0; 3], [1.0; 3], [1.0, 0.0, 0.0]));
         assert_eq!(m.fixed_reflect_weight, None);
         assert_eq!(vmt.normal_map, "dev/water_normal");
+    }
+
+    /// de_nuke's pool: LightmappedGeneric with `%compilewater`, only its
+    /// fog volume is water (spec section 10: {150 200 200}, 64 / 512).
+    #[test]
+    fn fog_volume_of_other_shaders() {
+        let text = r#"
+"LightmappedGeneric"
+{
+	"$basetexture" "dev/water_moving"
+	"$additive" "1"
+	"%compilewater" 1
+	"$abovewater" 1
+	"$bottommaterial" "de_nuke/nukwater_movingplane_beneath"
+	"$fogenable" 1
+	"$fogcolor" "{150 200 200}"
+	"$fogstart" 64.00
+	"$fogend" 512.00
+}
+"#;
+        let (shader, body) = resolve(text, &|_| None, 0).unwrap();
+        assert_eq!(shader, "LightmappedGeneric");
+        let m = fog_volume_vmt("de_nuke/nukwater_movingplane", &body).expect("a fog volume");
+        assert!(m.fog_only && m.above_water && !m.refract && !m.reflect && m.bottom.is_none());
+        assert_eq!(m.fog_color, [150.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0]);
+        let u = METERS_PER_UNIT;
+        assert!((m.fog_start - 64.0 * u).abs() < 1e-6 && (m.fog_end - 512.0 * u).abs() < 1e-6);
+        // The surface seen from below (UnlitGeneric, `$abovewater 0`).
+        let (_, body) = resolve(r#""UnlitGeneric" { "%compilewater" 1 "$abovewater" 0 }"#, &|_| None, 0).unwrap();
+        assert!(!fog_volume_vmt("x", &body).unwrap().above_water);
+        // Not water: no `%compilewater`.
+        let (_, body) = resolve(r#""LightmappedGeneric" { "$fogcolor" "{1 2 3}" }"#, &|_| None, 0).unwrap();
+        assert_eq!(fog_volume_vmt("x", &body), None);
     }
 
     #[test]

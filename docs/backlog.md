@@ -733,7 +733,8 @@ docs/plans/active/sound.md.
 
 - **Water surfaces** (specs/cs_source/water.md, `render::water`): refraction,
   planar reflection, the cheap cubemap pass, under-water fog (world,
-  props, ropes, decals, particles), bottom materials, the
+  props, ropes, decals, particles; also in water of other shaders, de_nuke's
+  pool, from its material's fog keys), bottom materials, the
   `$underwateroverlay` screen warp (with its `$bluramount` blur, which is
   what shows on de_port), the intersection view's height fog
   the water cvars, `$blurrefract` with `$refracttint` and the "Water

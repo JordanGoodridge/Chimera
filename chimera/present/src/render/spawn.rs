@@ -574,7 +574,9 @@ fn spawn_world_meshes(
     // Brush entity nodes' mesh bounds (node space), for culling them.
     let mut node_bounds: HashMap<Entity, (Vec3, Vec3)> = HashMap::new();
     for m in &data.meshes {
-        if water_drawn && m.water.is_some() {
+        // Fog-only water (another shader: de_nuke's pool) is drawn as the
+        // world.
+        if water_drawn && m.water.is_some_and(|i| !data.water_materials[i].fog_only) {
             continue;
         }
         let own_node = s.parent_of(m) != root;
