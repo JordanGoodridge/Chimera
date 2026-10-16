@@ -2,8 +2,8 @@
 //! and Esc menus and their dialogs (`game_menu`, `options`, `first_run`,
 //! `server_browser`), the join flow (`join_menus`: the message of the day,
 //! team and class menus), the buy, team and radio menus, the game HUD
-//! (`objectives_hud`, `bomb_fx`, `target_id`), the spectator menu and freeze
-//! cam panel, the
+//! (`objectives_hud`, `bomb_fx`, `target_id`, `voice_hud`), the spectator
+//! menu and freeze cam panel, the
 //! scoreboard, the window icon and `playdemo` (`demo`). Built on the client
 //! shell (`client`: input, console, fonts, the VGUI-like widgets); the
 //! shell reaches these only through `client::front_end`'s hooks, and the
@@ -31,6 +31,7 @@ pub mod spectator_hud;
 pub mod spectator_menu;
 pub mod target_id;
 pub mod team_menu;
+pub mod voice_hud;
 pub mod weapon_select;
 pub mod win_panel;
 pub mod window_icon;
@@ -79,6 +80,7 @@ impl Plugin for CsSourceUiPlugin {
             freeze_cam::FreezeCamPlugin,
             demo::DemoUiPlugin,
         ));
+        app.add_plugins(voice_hud::VoiceHudPlugin);
     }
 }
 

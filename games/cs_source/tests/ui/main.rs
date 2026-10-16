@@ -32,6 +32,7 @@ mod night_vision;
 mod objectives;
 mod spectate;
 mod target_id;
+mod voice;
 mod weapon_select;
 
 /// Slow tests: the fast tier (`-- --skip heavy::`) leaves them out.

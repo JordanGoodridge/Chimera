@@ -61,7 +61,8 @@ which events are reliable vs unreliable; how a usercmd is encoded (fields,
 deltas, `sv_maxusrcmdprocessticks`); lag compensation details beyond
 spec 4.6 (what is rewound: origin, angles, animation layers, pose
 parameters; the teleport rule); how a late joiner and a dead player are
-handled (`mp_*` join rules); voice is out of scope.
+handled (`mp_*` join rules); voice has its own plan
+(docs/plans/active/voice-chat.md).
 
 ## 1. Model (recommendation: Source's, with one simplification)
 
@@ -354,7 +355,7 @@ cvar (server-only; `bot_add`/`bot_kick` today).
 **Chat and radio.** `say`/`say_team` and the radio commands become
 client → server requests; the server decides who receives each line
 (`map::radio::sees_say`, `hears`) and sends `ChatLine`/radio messages to
-those clients. No voice.
+those clients. Voice: docs/plans/active/voice-chat.md.
 
 **Scoreboard and net_graph.** Ping from renet's RTT replicated per player
 (the scoreboard's latency column, 0 today); `net_graph` adds ping, loss,
@@ -1657,3 +1658,10 @@ the same: the join flow, bots, the freeze's hold and the bomb's
 predicted holds go through hooks the game fills (`net::parts`), and the
 bomb carrier's scoreboard flag comes from the weapon's
 `core::ScoreMark`.
+
+### net25 (2026-10-15)
+
+Voice chat (docs/plans/active/voice-chat.md): `net::voice::VoiceData`
+(client to server) and `VoiceRelay` (server to each listener), both
+unreliable, registered after `PlayerCame`; nothing is sent while nobody
+talks.

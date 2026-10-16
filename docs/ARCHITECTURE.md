@@ -414,6 +414,7 @@ that the paths exist).
 - `chimera/net/src/net/delta.rs`: byte deltas (net)
 - `chimera/net/src/net/quant.rs`: `NetBody`'s, `NetProp`'s and `NetItem`'s quantized wire forms (net)
 - `chimera/net/src/net/upnp.rs`: UPnP port mapping while hosting, `net_upnp` (net)
+- `chimera/net/src/net/voice.rs`: voice chat's relay: who hears whom (a game's hook), `sv_voiceenable` (net)
 - `source/logic/src/logic/net.rs`: Source's logic's part of the network: movers, HUD messages (logic)
 - `games/cs_source/src/game/net.rs`: CS:S's part of the network: round, bomb, hostages, join and bot hooks (games)
 - `apps/cs_source/src/net.rs`: `mashup::net`: `chimera_net` with the parts' replicated types (net)
@@ -505,6 +506,7 @@ that the paths exist).
 - `chimera/client/src/client/audio.rs`: the options' sound settings (client)
 - `chimera/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
 - `chimera/client/src/client/video.rs`: field of view, video and texture settings (client)
+- `chimera/client/src/client/voice.rs`: voice chat: `+voicerecord`, microphone, Opus, playback (client)
 - `games/cs_source/src/ui/options.rs`: the options dialogs' settings (games_ui)
 - `chimera/client/src/client/console.rs`: the in-game console UI (client)
 - `chimera/client/src/client/debug_ui.rs`: the debug UI (F8) (client)
@@ -539,6 +541,7 @@ that the paths exist).
 - `games/cs_source/src/ui/radar.rs`, `radar.wgsl`: the radar (games_ui)
 - `games/cs_source/src/ui/demo.rs`: `playdemo`: a demo's map loaded, then played with the spectator camera (games_ui)
 - `games/cs_source/src/ui/target_id.rs`: the target ID under the crosshair (games_ui)
+- `games/cs_source/src/ui/voice_hud.rs`: who is talking: the voice icon and list (games_ui)
 - `chimera/client/src/client/game_text.rs`: map HUD messages (game_text) (client)
 - `chimera/client/src/client/map_screen.rs`: map fades, hints and screen overlays (client)
 
