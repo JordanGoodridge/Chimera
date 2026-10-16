@@ -222,6 +222,7 @@ common console commands, against mashup's.
 | Player shadows | differs | M | | blob only (tech-debt "Dynamic shadows"); decals under shadows and steadier shadows merged from main 2026-10-13 |
 | World reflections | differs | L | S | the cubemaps now carry their mips (round 2: cs_office mean 0.0189 -> 0.0185, `cam0` 0.041 -> 0.038; de_aztec 0.0408 -> 0.0405; dust2, nuke unchanged); the highlight stays narrower on dust2's bumped tunnel floor (`tunnel_floor_e` 0.016 before and after): per-vertex tangents next |
 | Water refraction | differs | L | M | tech-debt "Water" |
+| Under-water screen overlay | have (fixed) | L | S | de_port's `water_warp01` was drawn but invisible (a warp of about a pixel, `$bluramount` ignored); now blurred, 5 x 5 taps a pixel apart (no Refract spec: a guess; tech-debt "Water"). de_nuke's pool has none in either game |
 | Particles blend in linear space | differs | L | M | tech-debt |
 | Glow occlusion by rays | differs | L | M | tech-debt |
 | LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail"; capture C21 |

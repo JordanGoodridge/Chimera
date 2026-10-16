@@ -483,7 +483,8 @@ fn frame_end(world: &mut World, now: Instant) {
 }
 
 /// GPU time of the latest measured frame: the top-level passes' latest
-/// timestamps (not smoothed). None without GPU timestamps.
+/// timestamps, every camera's (`perf::frame_latest`; not smoothed). None
+/// without GPU timestamps.
 pub fn gpu_latest_ms(diagnostics: &DiagnosticsStore) -> Option<f64> {
     let mut any = false;
     let mut sum = 0.0;
@@ -496,7 +497,7 @@ pub fn gpu_latest_ms(diagnostics: &DiagnosticsStore) -> Option<f64> {
             && !pass.contains('/')
         {
             any = true;
-            sum += d.value().unwrap_or(0.0);
+            sum += super::perf::frame_latest(d).unwrap_or(0.0);
         }
     }
     any.then_some(sum)

@@ -15,6 +15,14 @@
 //! trace solid open (Q). Box-solid props (most dust2 windows) are exact. Why
 //! it's OK for now: No stock map's solid prop_dynamic lacks a `.phy` that we
 //! know of; a probe check: shoot and walk into such a prop.
+//!
+//! Known shortcuts (docs/tech-debt.md): A broken prop's piece and chunk
+//! models load without their `.phy` (`load_shell`), so their bodies are
+//! their boxes (`map::breakables`), not their hulls. Why it's OK for now:
+//! loaded with their hulls (cut or not), half of de_inferno's broken
+//! crates' and pots' pieces never slept (up to 49 rad/s) until they faded:
+//! pieces of one prop start touching and collide with each other, which
+//! Source's debris doesn't; that comes first (docs/backlog.md 9).
 
 use std::collections::HashMap;
 

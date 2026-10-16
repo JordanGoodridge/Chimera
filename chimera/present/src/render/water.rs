@@ -15,8 +15,8 @@
 //! colour; under water (`WaterView`) the view clears to the water's fog colour,
 //! what lies below the surface takes its fog, and the material's
 //! `$underwateroverlay` (`MapScreenWarp`, `ScreenWarpMaterial`,
-//! screen_warp.wgsl) warps the finished frame from the view-model camera's
-//! transmissive phase; when the near plane crosses a surface from above
+//! screen_warp.wgsl) warps and blurs the finished frame from the view-model
+//! camera's transmissive phase (its layer then turns that camera on); when the near plane crosses a surface from above
 //! (`WaterView::intersect`) what lies below takes the water's height fog and
 //! that surface reads it already fogged; `WaterSettings` (the water cvars,
 //! registered by the client: `r_waterforceexpensive`,
@@ -48,7 +48,11 @@
 //! camera's transmissive phase; it is a Refract material with no spec:
 //! `$refractamount` taken as screen uv per unit of normal xy (as the Water
 //! shader's), `$bumptransform` scale and TextureScroll over the screen,
-//! `$bluramount` ignored. `$blurrefract` blurs the main view's copy in 25 taps
+//! `$bluramount` (0-2) as a 5 x 5 box of taps that many pixels apart. Its
+//! blur is what shows: de_port's `water_warp01` (`$refractamount` .04 over
+//! the near-flat `water_coast01_normal`, |xy| about 0.025) moves the screen
+//! by about a pixel, so without the blur the overlay, though drawn, looked
+//! absent (tests/it/underwater_overlay.rs covers when it shows). `$blurrefract` blurs the main view's copy in 25 taps
 //! per pixel (cost only where a material sets it; none stock) and the
 //! `$basetexture` variant (section 6.6, lit base with bump lightmaps) is not
 //! drawn: such a material shows as plain water. Intersection view: the
@@ -1231,7 +1235,8 @@ pub struct ScreenWarpParams {
     pub refract_amount: f32,
     pub frame_rate: f32,
     pub frame_count: f32,
-    pub _pad: f32,
+    /// Spacing of the 5 x 5 blur's taps in pixels (0: one tap).
+    pub blur: f32,
 }
 
 /// The under-water screen warp: drawn by the view-model camera in its
@@ -1300,7 +1305,7 @@ pub fn screen_warp_params(w: &MapScreenWarp) -> ScreenWarpParams {
         refract_amount: w.refract_amount,
         frame_rate: w.frame_rate,
         frame_count: w.normal_frames.len().max(1) as f32,
-        _pad: 0.0,
+        blur: w.blur,
     }
 }
 
@@ -1684,6 +1689,7 @@ mod tests {
             frame_rate: 0.0,
             refract_amount: 0.05,
             tint: [1.0; 3],
+            blur: 1.0,
             scale: Vec2::ONE,
             scroll: Vec2::ZERO,
         };

@@ -652,8 +652,8 @@ fn live_outcome(world: &mut World, time_up: bool) -> Option<(Option<Team>, Round
     } else if present[0] + present[1] > 0 && alive == [0, 0] && !planted {
         // Players on one side only (a lone player; minigame maps with one
         // team's spawns: races, obstacle courses): all of them dead is a
-        // draw and the next round, not a wait for the clock. Our reading
-        // of CS:S (objectives.md question 15).
+        // draw and the next round, not a wait for the clock (measured,
+        // objectives.md question 15).
         return Some((None, RoundEndReason::Draw));
     }
     if kind == MapKind::Hostage && world.get_resource::<HostageTally>().is_some_and(|t| t.all_rescued()) {

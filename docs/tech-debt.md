@@ -12,7 +12,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`games/cs_source/src/game/material.rs`)
 - client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`games/cs_source/src/ui/options.rs`)
 - render: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`chimera/present/src/render/merge.rs`)
-- map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices (`chimera/present/src/render/water.rs`)
+- map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices, among them the under-water overlay's warp and `$bluramount` blur (no Refract spec) (`chimera/present/src/render/water.rs`)
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`chimera/present/src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`source/logic/src/logic/ambient.rs`)
 - render: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`chimera/present/src/render/world_material.rs`)
@@ -57,7 +57,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source: Player physics shadow reaches its target in one step; heavy-prop and push limits are ours (`games/cs_source/src/game/shadow.rs`)
 - logic: Workaround for avian 0.7's stale "body disabled" flag when re-enabling a prop body (`source/logic/src/logic/bridge.rs`)
 - map: Physics props rocking on uneven ground, and props placed wedged in solid, are put to sleep by our own stillness and depth tests, not a solver fix (`chimera/world/src/map/prop_physics.rs`)
-- map: Convex hulls cut into pieces with faces of four corners at most, working around parry clipping only four corners of a face; ragdoll and gib hulls are not cut yet (`chimera/world/src/map/collision.rs`)
+- map: Convex hulls cut into pieces with faces of four corners at most, working around parry clipping only four corners of a face (`chimera/world/src/map/collision.rs`)
 - logic: Pushers: no bevels for rotated brushes, push tests skip players and props, simplified riding (`source/logic/src/logic/movers.rs`)
 - logic: Community-map behaviour the specs leave open: physics bodies in triggers, AddOutput, render inputs, parenting (`source/logic/src/logic/community.rs`)
 - logic, weapon: Community-map entities from public docs: game_player_equip, placed weapons, basevelocity, damage filters (`chimera/sim/src/weapon/equip.rs`)
@@ -70,6 +70,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`chimera/present/src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`games/cs_source/src/game/props.rs`)
+- map: Broken props' pieces load without their `.phy`: their bodies are boxes (`games/cs_source/src/game/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`chimera/present/src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`chimera/present/src/render/shadows.rs`)
 - map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
