@@ -4,8 +4,13 @@ Goal: the menus' dialogs look and behave as CS:S's do. Their controls
 are the install's `.res` layouts read at run time (never committed),
 drawn with one shared widget layer (`chimera/client/src/client/widgets.rs`) that
 behaves as VGUI's controls do; anything Lucker Party adds beyond CS:S
-stays out of CS:S's dialogs (our own dialog, Lucker Party Options, or an
-entry marked as ours).
+stays out of CS:S's dialogs and out of its menus' entries (our own
+dialog, Lucker Party Options, opened from the console: `menu extras`).
+The main menu and the Esc menu list only `GameMenu.res`'s entries
+(2026-10-16: ours, Quick Start, Greybox Test Map, Bots, Team, Call Vote,
+Lucker Party Options and Console, moved to the console:
+`mashup_quickstart`, `map greybox`, `menu bots`, `menu team`,
+`callvote`, `menu extras`, the console key).
 
 Status: the widget layer, movable frames, the options dialog (all six
 tabs), its three Advanced dialogs (Multiplayer > Advanced
@@ -115,7 +120,7 @@ Drawn with the shared widgets in the GameUI scheme (CS:S draws them in the
 client scheme); the lists open upward. The bar's own text (the player's
 name, the mode) is hidden while the menu is open.
 
-Lucker Party Options (ours, from our main-menu entries): zoom
+Lucker Party Options (ours, `menu extras`; no menu entry): zoom
 sensitivity ratio, room reverb (`dsp_volume`), crosshair scale, view
 model FOV, show FPS. Before they were rows on CS:S's tabs. The weapon
 hand (`cl_righthand`) moved to CS:S's place for it, Multiplayer >

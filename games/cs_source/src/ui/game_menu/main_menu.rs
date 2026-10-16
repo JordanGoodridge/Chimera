@@ -1,5 +1,7 @@
-//! The main menu: the left-hand entries (the game's, then ours) and what
-//! each does.
+//! The main menu: the left-hand entries (the game's `GameMenu.res`, none
+//! of ours) and what each does. What our entries used to open is in the
+//! console: `mashup_quickstart`, `map greybox`, `menu bots`, `menu team`,
+//! `callvote`, `menu extras`, `toggleconsole` (`~`).
 
 use super::*;
 
@@ -15,21 +17,9 @@ pub enum MainItem {
     FindServers,
     /// Create Server.
     NewGame,
-    Bots,
-    Team,
     Options,
     BugReport,
     Quit,
-    /// Ours: a rounds game on `QUICK_MAP` with bots, at once.
-    QuickStart,
-    /// Ours: mashup's greybox test map (`map greybox`).
-    Greybox,
-    /// Ours: open the console (`toggleconsole`).
-    Console,
-    /// Ours: Lucker Party Options.
-    Extras,
-    /// Ours: the vote setup dialog (`callvote`).
-    CallVote,
 }
 
 /// The game's entries without its menu file, in CS:S's order and words:
@@ -45,19 +35,7 @@ pub const MAIN: [(MainItem, &str, bool); 8] = [
     (MainItem::Quit, "Quit", false),
 ];
 
-/// Ours, after the game's entries (and a gap): item, text, shown only in a
-/// game.
-pub const OURS: [(MainItem, &str, bool); 7] = [
-    (MainItem::QuickStart, "Quick Start", false),
-    (MainItem::Greybox, "Greybox Test Map", false),
-    (MainItem::Bots, "Bots", true),
-    (MainItem::Team, "Team", true),
-    (MainItem::CallVote, "Call Vote", true),
-    (MainItem::Extras, "Lucker Party Options", false),
-    (MainItem::Console, "Console", false),
-];
-
-/// The map a quick start plays (rounds, `QUICK_BOTS` normal bots: five
+/// The map a quick start (`mashup_quickstart`) plays (rounds, `QUICK_BOTS` normal bots: five
 /// terrorists and four counter-terrorists besides you); the first map
 /// when the install lacks it.
 pub const QUICK_MAP: &str = "de_dust2";
@@ -67,12 +45,8 @@ impl MainItem {
     pub(super) fn page(self) -> Option<Page> {
         match self {
             MainItem::NewGame => Some(Page::NewGame),
-            MainItem::Bots => Some(Page::Bots),
-            MainItem::Team => Some(Page::Team),
             MainItem::Options => Some(Page::Settings),
-            MainItem::Extras => Some(Page::Extras),
             MainItem::PlayerList => Some(Page::PlayerList),
-            MainItem::CallVote => Some(Page::Vote),
             _ => None,
         }
     }
@@ -106,8 +80,7 @@ impl MainEntry {
 
 /// Every left-hand entry, shown or not: the game's (`GameMenu.res`) that
 /// mashup has, in its order and words (built-in ones in CS:S's order
-/// without the file); then, after a gap, ours (quick start, the greybox,
-/// bots, team, our options, console). Entries mashup can't do
+/// without the file); none of ours. Entries mashup can't do
 /// (achievements, benchmark ...) are left out. `GameMenu::entries`
 /// picks those shown in or out of a game.
 pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
@@ -168,11 +141,6 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
                 out.insert(at, builtin(*item));
             }
         }
-    }
-    for (k, (item, label, in_game)) in OURS.iter().enumerate() {
-        let mut e = MainEntry::new(*item, label, *in_game);
-        e.gap = k == 0;
-        out.push(e);
     }
     out
 }
@@ -349,11 +317,6 @@ impl GameMenu {
                 self.create_tab = 0;
                 self.new_game.host = true;
             }
-            if page == Page::Vote {
-                // The server answers with its issues (`show_vote_setup`).
-                out.lines.push("callvote".into());
-                self.vote.from_menu = true;
-            }
             if self.page != page {
                 self.go_to(page);
             }
@@ -373,27 +336,8 @@ impl GameMenu {
                 out.lines.push("bugreport".into());
             }
             MainItem::Quit => out.lines.push("quit".into()),
-            MainItem::QuickStart => {
-                self.quick_setup();
-                self.start(out);
-            }
-            MainItem::Greybox => {
-                out.lines.push(format!("map {}", crate::client::console::GREYBOX));
-                if self.in_game {
-                    self.close(out);
-                } else {
-                    self.loading = Some(crate::client::console::GREYBOX.into());
-                }
-            }
-            MainItem::Console => out.lines.push("toggleconsole".into()),
             MainItem::FindServers => out.lines.push("openserverbrowser".into()),
-            MainItem::NewGame
-            | MainItem::Bots
-            | MainItem::Team
-            | MainItem::Options
-            | MainItem::Extras
-            | MainItem::PlayerList
-            | MainItem::CallVote => {}
+            MainItem::NewGame | MainItem::Options | MainItem::PlayerList => {}
         }
     }
 }

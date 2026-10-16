@@ -105,7 +105,7 @@ pub enum SettingKind {
 
 /// Where a setting is shown: an options tab, one of the options' own
 /// dialogs, or ours (settings CS:S's options don't have, kept out of its
-/// dialogs: the main menu's "Lucker Party Options").
+/// dialogs: "Lucker Party Options", `menu extras`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Place {
     Options(Tab),

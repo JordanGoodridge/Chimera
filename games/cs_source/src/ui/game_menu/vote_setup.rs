@@ -4,16 +4,15 @@
 //! kick, the map cycle for a change of level) in the right one, Call Vote
 //! and Close. It opens when the server answers `callvote` alone with its
 //! issues (`net::vote::VoteView::setups`, Source's `VoteSetup` message):
-//! the console's `callvote`, or our Esc menu entry, Call Vote, which sends
-//! it. Call Vote runs `callvote <issue> <choice>` and closes the menu.
+//! the console's `callvote` (no menu entry: CS:S's `GameMenu.res` has
+//! none). Call Vote runs `callvote <issue> <choice>` and closes the menu.
 //! Placed and sized by the install's layout (300 x 300, the lists' and
 //! buttons' boxes, `linespacing`), the file's numbers without it.
 //!
 //! Known shortcuts (docs/tech-debt.md): Vote setup dialog: CS:S's game menu
 //! has no entry for it (its `GameMenu.res` lists none) and how CS:S opens it
 //! is unmeasured: the server answering `callvote` alone opens it (Source's
-//! `VoteSetup` message; a guess for CS:S) and the Esc entry "Call Vote" is
-//! ours; its title ("Call Vote"), the issues' names ("Kick Player", "Change
+//! `VoteSetup` message; a guess for CS:S); its title ("Call Vote"), the issues' names ("Kick Player", "Change
 //! Level", "Restart Game": CS:S's localization has none) and the lists' look
 //! (plain rows, the picked one in the scheme's selection colours, no
 //! `SectionedListPanel` headers or scroll bar: a long list scrolls only to
@@ -30,9 +29,6 @@ pub struct VoteSetup {
     pub issues: Vec<IssueInfo>,
     pub issue: Option<usize>,
     pub choice: Option<usize>,
-    /// Opened from the menu's entry (Close goes back to it), not by the
-    /// console's `callvote` (Close closes the menu).
-    pub from_menu: bool,
 }
 
 impl VoteSetup {
@@ -140,9 +136,8 @@ impl GameMenu {
             action: Action::CallVote,
             enabled: v.line().is_some(),
         });
-        // Close: back to the menu it was opened from, else back to the game.
-        let close = if v.from_menu { Action::Back } else { Action::Main(MainItem::Resume) };
-        rows.push(Self::button_row(&self.text("#GameUI_Close", "Close"), close));
+        // Close: back to the game (or the main menu out of one).
+        rows.push(Self::button_row(&self.text("#GameUI_Close", "Close"), Action::Main(MainItem::Resume)));
         rows
     }
 
@@ -170,9 +165,6 @@ impl GameMenu {
     /// alone): over the menu when it is open on the dialog already.
     pub fn show_vote_setup(&mut self, issues: Vec<IssueInfo>) {
         self.vote.set_issues(issues);
-        if !(self.open && self.page == Page::Vote) {
-            self.vote.from_menu = false;
-        }
     }
 }
 

@@ -433,6 +433,8 @@ fn candidates(world: &mut World, input: &str) -> (String, Vec<(String, String)>)
                 "audio",
                 "video",
                 "multiplayer",
+                "extras",
+                "players",
             ])),
             "debugui" if arg == 0 => {
                 out.extend(super::debug_ui::Tab::ALL.iter().map(|t| (t.name().to_string(), t.title().to_string())));
