@@ -313,7 +313,16 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
     data.particles = super::impact_effects::load_materials(&mut materials);
     super::trails::add_trails_and_stacks(&bsp, &mut materials, &mut data);
     super::beams::add_strikes(&bsp, &mut materials, &mut data);
-    super::pcf::add_particle_systems(&bsp, &mut materials, &mut data, name);
+    // Slime splashes (`.pcf` systems) on maps with slime.
+    let (extra, extra_files): (&[&str], &[&str]) = if data.water.iter().any(|w| w.slime) {
+        (
+            &super::impact_effects::SLIME_SPLASHES,
+            &[super::impact_effects::SLIME_SPLASH_FILE],
+        )
+    } else {
+        (&[], &[])
+    };
+    super::pcf::add_particle_systems(&bsp, &mut materials, &mut data, name, extra, extra_files);
     super::props::add_attachment_keys(&materials, &mut data);
     data.camera_texture = materials.camera_texture;
     timer.lap("characters, hud, particles");

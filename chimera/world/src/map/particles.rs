@@ -15,7 +15,9 @@
 //! motion rule: gravity, decay, damping, drag, bounce planes probed once per
 //! group; a cap, a frame-step clamp, near fade, merging), `WorldTracer` (traces
 //! against the world only), `MapParticles` materials (texture, blend, vertex
-//! colour/alpha, sprite sheet); `ParticleSet` (Step, Draw) lets games show
+//! colour/alpha, sprite sheet), `Shape::Tumble` (3D shards: three spinning
+//! angles, `tumble_axes`, settling flat, `settle_flat`); `ParticleSet`
+//! (Step, Draw) lets games show
 //! one-frame groups (smoke clouds) between stepping and drawing.
 
 use bevy::prelude::*;
@@ -205,6 +207,15 @@ pub enum Shape {
     /// A square in the plane with `normal`, turned `yaw` degrees about it;
     /// `size` is its full side.
     Flat { normal: Vec3, yaw: f32, yaw_speed: f32 },
+    /// A square tumbling in 3D (old-style shards): turned by `angles`
+    /// (pitch, yaw, roll in degrees, `tumble_axes`), its face across the
+    /// turned side and up axes (the forward axis is its normal), one corner
+    /// on the particle's position; `size` is its full side. All three
+    /// angles turn at the particle's `roll_speed`, here in degrees a
+    /// second (a bounce scales it by -0.25 and landing stops it, as for
+    /// rolls). `settle`: on a frame it bounced, and every frame once it has
+    /// stopped spinning, it is pulled toward lying flat (`settle_flat`).
+    Tumble { angles: Vec3, settle: bool },
     /// A quad with these corners (bottom-left, top-left, top-right,
     /// bottom-right; engine space) showing this texture rectangle (min u,
     /// min v, max u, max v): a segment of a trail.
@@ -549,6 +560,7 @@ impl Particles {
 /// One particle's frame: velocity rule, position, age, roll.
 pub fn step_particle(p: &mut Particle, m: &Motion, dt: f32, world: &impl WorldTrace, rng: &mut ParticleRng) {
     let moving = !(m.bounce.is_some() && p.velocity == Vec3::ZERO);
+    let mut struck = false;
     if moving {
         if let Some((time, floor)) = m.decay {
             let before = p.velocity;
@@ -562,7 +574,7 @@ pub fn step_particle(p: &mut Particle, m: &Motion, dt: f32, world: &impl WorldTr
             p.velocity *= (1.0 - m.drag).max(0.0);
         }
         match &m.bounce {
-            Some(b) => bounce_move(p, b, dt, world, rng),
+            Some(b) => struck = bounce_move(p, b, dt, world, rng),
             None => p.position += p.velocity * dt,
         }
         if m.damping > 0.0 {
@@ -577,13 +589,53 @@ pub fn step_particle(p: &mut Particle, m: &Motion, dt: f32, world: &impl WorldTr
             p.roll_speed = floor.copysign(p.roll_speed);
         }
     }
-    if let Shape::Flat { yaw, yaw_speed, .. } = &mut p.shape {
-        *yaw = (*yaw + *yaw_speed * dt).rem_euclid(360.0);
+    match &mut p.shape {
+        Shape::Flat { yaw, yaw_speed, .. } => *yaw = (*yaw + *yaw_speed * dt).rem_euclid(360.0),
+        Shape::Tumble { angles, settle } => {
+            *angles += Vec3::splat(p.roll_speed * dt);
+            if *settle && (struck || p.roll_speed == 0.0) {
+                settle_flat(angles);
+            }
+        }
+        _ => {}
     }
 }
 
-/// Move with bounce planes (velocity already has this frame's gravity).
-fn bounce_move(p: &mut Particle, b: &Bounce, dt: f32, world: &impl WorldTrace, rng: &mut ParticleRng) {
+/// The axes a tumbling square's `angles` (pitch, yaw, roll, degrees)
+/// turn it to, in engine space: (forward, side, up). Source's convention
+/// in its axes (X forward, Y left, Z up: yaw about Z, then pitch about Y,
+/// positive down, then roll about X), mapped to engine space (Source Z is
+/// our Y); at zero angles forward is +X, the side (Source's left) -Z, up +Y.
+pub fn tumble_axes(angles: Vec3) -> (Vec3, Vec3, Vec3) {
+    let q = Quat::from_rotation_z(angles.y.to_radians())
+        * Quat::from_rotation_y(angles.x.to_radians())
+        * Quat::from_rotation_x(angles.z.to_radians());
+    let engine = |v: Vec3| Vec3::new(v.x, v.z, -v.y);
+    (engine(q * Vec3::X), engine(q * Vec3::Y), engine(q * Vec3::Z))
+}
+
+/// One frame's pull of a shard toward lying flat (specs/cs_source/
+/// impact_effects.md 9): pitch `p <- 0.5p + 46` below 180 (settling at
+/// 92), else `p <- 0.5p + 135` (settling at 270), unless already within
+/// 0.5 of 90 or 270; the yaw becomes half the roll while the roll is over
+/// 0.5 (a quirk, kept).
+pub fn settle_flat(angles: &mut Vec3) {
+    let p = angles.x;
+    if p < 180.0 {
+        if (p - 90.0).abs() > 0.5 {
+            angles.x = 0.5 * p + 46.0;
+        }
+    } else if (p - 270.0).abs() > 0.5 {
+        angles.x = 0.5 * p + 135.0;
+    }
+    if angles.z.abs() > 0.5 {
+        angles.y = 0.5 * angles.z;
+    }
+}
+
+/// Move with bounce planes (velocity already has this frame's gravity);
+/// true when it hit something this frame.
+fn bounce_move(p: &mut Particle, b: &Bounce, dt: f32, world: &impl WorldTrace, rng: &mut ParticleRng) -> bool {
     let to = p.position + p.velocity * dt;
     let crosses = b.planes.iter().any(|(n, d)| {
         let (a, z) = (n.dot(p.position) - d, n.dot(to) - d);
@@ -594,12 +646,17 @@ fn bounce_move(p: &mut Particle, b: &Bounce, dt: f32, world: &impl WorldTrace, r
         Some((f, _)) if f <= 0.0 => {
             p.velocity = Vec3::ZERO;
             p.roll_speed = 0.0;
+            true
         }
         Some((f, n)) => {
             let draw = rng.float(b.keep - 0.1, b.keep + 0.1);
             bounce(p, f, n, dt, b, draw);
+            true
         }
-        None => p.position = to,
+        None => {
+            p.position = to;
+            false
+        }
     }
 }
 
@@ -740,6 +797,49 @@ mod tests {
         step_particle(&mut p, &m, 0.1, &floor, &mut ParticleRng::new(1));
         assert_eq!(p.velocity, Vec3::ZERO);
         assert!(p.position.y >= 0.0);
+    }
+
+    #[test]
+    fn tumbling_shards_spin_all_three_angles_and_settle_flat() {
+        // Pitch 90 faces down: the square lies flat.
+        let (f, side, up) = tumble_axes(Vec3::new(90.0, 0.0, 0.0));
+        assert!(f.abs_diff_eq(Vec3::NEG_Y, 1e-5), "{f}");
+        assert!(side.abs_diff_eq(Vec3::NEG_Z, 1e-5) && up.abs_diff_eq(Vec3::X, 1e-5));
+        // Spec section 9: below 180 toward 92, above toward 270; yaw half
+        // the roll.
+        let mut a = Vec3::new(10.0, 40.0, 30.0);
+        settle_flat(&mut a);
+        assert_eq!(a, Vec3::new(51.0, 15.0, 30.0));
+        for _ in 0..40 {
+            settle_flat(&mut a);
+        }
+        assert!((a.x - 92.0).abs() < 1e-3);
+        let mut b = Vec3::new(300.0, 7.0, 0.2);
+        settle_flat(&mut b);
+        assert_eq!(b, Vec3::new(285.0, 7.0, 0.2));
+        let mut c = Vec3::new(90.3, 0.0, 0.0);
+        settle_flat(&mut c);
+        assert_eq!(c.x, 90.3);
+        // In flight every angle turns at the spin; once stopped (spin 0)
+        // it settles each frame.
+        let mut p = Particle::new(Vec3::ZERO, 5.0, 0, 0.1);
+        p.velocity = Vec3::X;
+        p.roll_speed = 100.0;
+        p.shape = Shape::Tumble {
+            angles: Vec3::new(10.0, 20.0, 30.0),
+            settle: true,
+        };
+        let m = Motion::default();
+        let mut rng = ParticleRng::new(1);
+        step_particle(&mut p, &m, 0.1, &NoWorld, &mut rng);
+        assert!(
+            matches!(p.shape, Shape::Tumble { angles, .. } if angles.abs_diff_eq(Vec3::new(20.0, 30.0, 40.0), 1e-4))
+        );
+        p.roll_speed = 0.0;
+        step_particle(&mut p, &m, 0.1, &NoWorld, &mut rng);
+        assert!(
+            matches!(p.shape, Shape::Tumble { angles, .. } if angles.abs_diff_eq(Vec3::new(56.0, 20.0, 40.0), 1e-4))
+        );
     }
 
     #[test]

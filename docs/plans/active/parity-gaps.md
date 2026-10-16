@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 7 | 8 | 3 | 4 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 6 | 15 | 2 | 2 |
+| Rendering, lighting, materials | 6 | 17 | 2 | 2 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **65** | **61** | **21** | **30** |
+| **Total** | **65** | **63** | **21** | **30** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -210,7 +210,9 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Lightmaps, bump, envmaps, two-texture blend, sky, fog | have | | | refcmp above |
-| Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone |
+| Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone; glass shards tumble and settle, slime splashes from the `.pcf` (2026-10-15) |
+| Impact effects of others' shots beyond the shooter's PAS | differs | L | M | every client makes them (impact_effects.md 1; no network relevance yet, `net::server`) |
+| Knife slash mark | differs | L | S | `ManhackCut` is a guess; no spec names it (backlog 3 "Decals, remaining") |
 | Ropes, sprites, dust motes, beams | have | | | specs |
 | View models | have | | | view-models.md |
 | HDR (`mat_hdr_level 2`, CS:S's default) | differs | M | M | tech-debt "Lightmaps": stand-in exposure and bloom; references are LDR, capture C17 |

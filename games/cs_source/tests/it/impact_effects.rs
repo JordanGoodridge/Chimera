@@ -169,11 +169,25 @@ fn about_three_in_ten_bullet_impacts_ricochet() {
 }
 
 /// Spec section 12: a knife swing from the dry into water splashes with a
-/// fixed scale (8) and makes nothing else (no flecks, no slash decal).
+/// fixed scale (8) and makes nothing else (no flecks, no slash decal);
+/// into slime it starts `slime_splash_03` instead.
 #[test]
 fn a_knife_swing_into_water_splashes() {
-    use crate::stack::{games::cs_source::weapons::KNIFE, map::PlaceDecal, weapon::Weapon};
+    for slime in [false, true] {
+        knife_into_water(slime);
+    }
+}
+
+fn knife_into_water(slime: bool) {
+    use crate::stack::{
+        games::cs_source::weapons::KNIFE,
+        map::{PlaceDecal, psys::StartParticleSystem},
+        weapon::Weapon,
+    };
     let mut sim = sim();
+    if slime {
+        make_slime(&mut sim);
+    }
     let centre = (greybox::TANK_MIN + greybox::TANK_MAX) / 2.0;
     let p = sim.spawn_character(Vec3::new(centre.x, 4.0, centre.y), noclip::ID);
     sim.ticks(2);
@@ -198,12 +212,27 @@ fn a_knife_swing_into_water_splashes() {
         i.pitch = -std::f32::consts::FRAC_PI_2 + 0.01;
         i.fire = true;
     }
+    let mut started = sim
+        .app
+        .world()
+        .resource::<Messages<StartParticleSystem>>()
+        .get_cursor_current();
     let decals = collect::<PlaceDecal>(&mut sim, 1);
     sim.intent(p).fire = false;
     let sounds = collect::<PlaySound>(&mut sim, 1);
+    let started: Vec<String> = started
+        .read(sim.app.world().resource::<Messages<StartParticleSystem>>())
+        .map(|s| s.name.clone())
+        .collect();
     let pool = sim.app.world().resource::<Particles>();
-    // 16 drops + 8 gouts + 1 ripple, nothing else.
-    assert_eq!(pool.capped_count(), 25);
+    if slime {
+        assert_eq!(started, ["slime_splash_03"]);
+        assert_eq!(pool.capped_count(), 0);
+    } else {
+        // 16 drops + 8 gouts + 1 ripple, nothing else.
+        assert!(started.is_empty());
+        assert_eq!(pool.capped_count(), 25);
+    }
     assert!(decals.is_empty(), "no slash mark under water: {decals:?}");
     assert!(sounds.iter().all(|s| s.entry != RICOCHET));
 }
@@ -258,4 +287,114 @@ fn blood_stains_the_wall_behind_unless_team_rules_refuse_the_hit() {
             assert!(decals.is_empty());
         }
     }
+}
+
+/// Turn the greybox's water tank into slime.
+fn make_slime(sim: &mut Sim) {
+    sim.ticks(2);
+    let mut water = sim.app.world_mut().resource_mut::<crate::stack::core::MapWater>();
+    assert!(!water.0.is_empty(), "the greybox has a tank");
+    for v in &mut water.0 {
+        v.slime = true;
+    }
+}
+
+/// Spec section 11: a bullet into slime starts the slime splash system
+/// (`slime_splash_03`: a bullet's scale is 8-12) pointing up at the
+/// entry point, with the splash sound; no water splash, no impact.
+#[test]
+fn a_bullet_into_slime_starts_the_slime_splash() {
+    use crate::stack::{games::cs_source::impact_effects::slime_splash_name, map::psys::StartParticleSystem};
+    assert_eq!(
+        [1.0, 2.0, 3.9, 4.0, 8.0, 12.0].map(slime_splash_name),
+        [
+            "slime_splash_01",
+            "slime_splash_02",
+            "slime_splash_02",
+            "slime_splash_03",
+            "slime_splash_03",
+            "slime_splash_03"
+        ]
+    );
+    let mut sim = sim();
+    make_slime(&mut sim);
+    let centre = (greybox::TANK_MIN + greybox::TANK_MAX) / 2.0;
+    let p = sim.spawn_character(Vec3::new(centre.x, 6.0, centre.y - 3.0), noclip::ID);
+    sim.seconds(1.1);
+    sim.app.world_mut().resource_mut::<Particles>().groups.clear();
+    aim_at(&mut sim, p, Vec3::new(centre.x, 0.5, centre.y));
+    sim.intent(p).fire = true;
+    let mut started = sim
+        .app
+        .world()
+        .resource::<Messages<StartParticleSystem>>()
+        .get_cursor_current();
+    let mut sounds = sim.app.world().resource::<Messages<PlaySound>>().get_cursor_current();
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    sim.ticks(1);
+    let started: Vec<StartParticleSystem> = started
+        .read(sim.app.world().resource::<Messages<StartParticleSystem>>())
+        .cloned()
+        .collect();
+    let sounds: Vec<PlaySound> = sounds.read(sim.app.world().resource::<Messages<PlaySound>>()).cloned().collect();
+    assert_eq!(started.len(), 1, "{started:?}");
+    assert_eq!(started[0].name, "slime_splash_03");
+    assert_eq!(started[0].forward, Vec3::Y);
+    assert!((started[0].position.y - greybox::TANK_WATER_DEPTH).abs() < 0.01, "{:?}", started[0]);
+    assert!(sounds.iter().any(|s| s.entry == "Physics.WaterSplash"));
+    assert_eq!(sim.app.world().resource::<Particles>().count(), 0);
+}
+
+/// Spec section 2 step 2: while at most one ragdoll simulates, a shot whose
+/// line crosses one makes no surface particles; with two awake the check
+/// is off.
+#[test]
+fn a_ragdoll_on_the_line_takes_the_impact_while_it_is_the_only_one_awake() {
+    use bevy::ecs::system::RunSystemOnce;
+    use crate::{
+        ragdoll::{SCALE, floor_map, kill, model},
+        stack::{
+            core::Hitgroup,
+            games::cs_source::impact_effects::RagdollsOnLine,
+            map::{MapPlugin, Ragdoll},
+            rules::Deathmatch,
+        },
+    };
+    let mut sim = Sim::new(CsSim, MapPlugin::new(floor_map(model())));
+    sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
+    let a = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
+    let b = sim.spawn_character(Vec3::new(4.0, 0.9, 0.0), noclip::ID);
+    sim.ticks(10);
+    kill(&mut sim, a, Hitgroup::Chest, Vec3::new(0.0, 1.2, 0.0), Vec3::NEG_Z);
+    kill(&mut sim, b, Hitgroup::Chest, Vec3::new(4.0, 1.2, 0.0), Vec3::NEG_Z);
+    sim.ticks(1);
+    // The first ragdoll's pelvis.
+    let pelvis = |sim: &mut Sim| {
+        let world = sim.app.world_mut();
+        let first = world
+            .query::<(Entity, &Ragdoll)>()
+            .iter(world)
+            .min_by_key(|(_, r)| r.owner == b)
+            .map(|(_, r)| r.bodies[0])
+            .unwrap();
+        world.get::<Transform>(first).unwrap().translation
+    };
+    let at = pelvis(&mut sim);
+    let across = (at - Vec3::X, at + Vec3::X);
+    let hit = |sim: &mut Sim, (from, to): (Vec3, Vec3)| {
+        sim.app
+            .world_mut()
+            .run_system_once(move |r: RagdollsOnLine| r.hit(from, to))
+            .unwrap()
+    };
+    // Both just fell: two simulating, no check.
+    assert!(!hit(&mut sim, across));
+    // Both settled and asleep: the check is on.
+    sim.seconds(8.0);
+    let at = pelvis(&mut sim);
+    assert!(hit(&mut sim, (at - Vec3::X * 0.5, at + Vec3::X * 0.5)));
+    // A line above it misses.
+    let over = at + Vec3::Y * 40.0 * SCALE;
+    assert!(!hit(&mut sim, (over - Vec3::X * 0.5, over + Vec3::X * 0.5)));
 }
