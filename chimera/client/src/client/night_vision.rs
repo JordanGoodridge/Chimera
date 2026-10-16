@@ -68,7 +68,12 @@ pub struct NightVisionPlugin;
 impl Plugin for NightVisionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<NightVisionOn>()
-            .add_systems(Update, (lose_sight, pass_camera).chain());
+            .add_systems(Update, lose_sight)
+            // After the view-model cameras decide whether they draw this frame.
+            .add_systems(
+                PostUpdate,
+                pass_camera.after(crate::render::view_model::ViewModelCameraSet),
+            );
         app.console_command(
             "nightvision",
             "Turn your night vision goggles on or off (N; buy them with buy nvgs).",

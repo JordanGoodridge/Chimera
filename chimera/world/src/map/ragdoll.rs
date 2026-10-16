@@ -17,9 +17,10 @@
 //!   and their own bodies with each other only for the model's collision
 //!   pairs (`MapCollisionHooks`, which the app's physics plugins must use);
 //!   later bullets push them (`RagdollShot`), joints that stay pulled
-//!   apart are repaired, they sleep after 5 s of stillness, and go away at
-//!   a round restart and when their owner lives again (respawn) or is
-//!   gone.
+//!   apart are repaired, they sleep after 5 s of stillness (their bodies'
+//!   velocities zeroed unmarked, or avian wakes them right away), and go
+//!   away at a round restart and when their owner lives again (respawn)
+//!   or is gone.
 //!
 //! Ragdolls for any game (specs/cs_source/ragdolls.md): `MapRagdoll` on a
 //! character model (bodies on bones, joints with per-axis limits),
@@ -30,7 +31,8 @@
 //! hit's impulse, bone velocities aimed at the hit's death pose (`deathpose_*`
 //! sequences: side from the push and facing, frame from the hit group), held by
 //! `RagdollJoint` (a custom XPBD constraint: ball and socket plus X-Y-Z Euler
-//! limits), on `core::RAGDOLL_LAYER`, its own bodies colliding only for the
+//! limits), its bodies' `.phy` hulls cut for contacts
+//! (`collision::contact_hulls`), on `core::RAGDOLL_LAYER`, its own bodies colliding only for the
 //! model's `.phy` collision pairs (`MapCollisionHooks`, the app's avian
 //! collision hooks), friction and elasticity from the surface property;
 //! `RagdollShot` (the weapon layer sends one per bullet path) pushes the pelvis
@@ -809,7 +811,9 @@ impl BodyShape {
         let hulls: Vec<_> = body
             .pieces
             .iter()
-            .filter_map(|p| Collider::convex_hull(p.iter().map(|v| *v * scale).collect()))
+            // Cut for contacts (`collision::contact_hulls`), as props' are:
+            // a face of more than four corners touches by four of them.
+            .flat_map(|p| super::collision::contact_hulls(&p.iter().map(|v| *v * scale).collect::<Vec<_>>()))
             .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
             .collect();
         let collider = if hulls.is_empty() {
@@ -1133,9 +1137,11 @@ fn settle_ragdolls(
             r.last_moved = now;
         } else if !asleep && now - r.last_moved >= settings.sleep_after as f64 {
             for b in &r.bodies {
+                // Unmarked: a changed velocity wakes a sleeping body (avian
+                // `wake_on_changed`), which undid this every tick.
                 if let Ok((_, mut v, mut w, _)) = bodies.get_mut(*b) {
-                    v.0 = Vec3::ZERO;
-                    w.0 = Vec3::ZERO;
+                    v.bypass_change_detection().0 = Vec3::ZERO;
+                    w.bypass_change_detection().0 = Vec3::ZERO;
                 }
                 commands.queue(SleepBody(*b));
             }
