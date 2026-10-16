@@ -3,7 +3,10 @@
 # `rule_module::parse_settings`. Timers and start money are CS:S's
 # defaults read from a fresh dedicated server over RCON (2026-10-14,
 # docs/plans/active/parity-gaps.md C9); the rewards are its well-known
-# amounts (unmeasured, docs/plans/active/rounds.md; objectives' spec 8).
+# amounts: the kill reward, the elimination win and the loss bonus with its
+# step checked against a SourceTV demo of a CS:S bot round (2026-10-15);
+# the bomb, hostage and time rewards unmeasured (docs/plans/active/rounds.md;
+# objectives' spec 8).
 
 # Seconds frozen at a round's start (mp_freezetime).
 freeze_time = 6.0
