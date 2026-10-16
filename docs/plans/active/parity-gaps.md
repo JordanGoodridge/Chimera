@@ -193,7 +193,7 @@ common console commands, against mashup's.
 | Options apply at once | differs | L | | ui-parity.md: deliberate |
 | `impulse 100` (flashlight) | missing | L | M | `nightvision` is in (Weapons) |
 | `impulse 201` (spray), Import Spray | differs | M | M | sprays are in (see Sprays); the logo is `cl_logofile` (console), no Import Spray or picker in the options |
-| `+voicerecord` (voice chat), Voice tab | have (new) | M | L | K held talks (docs/plans/active/voice-chat.md); the Voice tab's enable box and receive volume work, its microphone boost, test and meter stay greyed |
+| `+voicerecord` (voice chat), Voice tab | have (new) | M | L | K held talks (docs/plans/active/voice-chat.md); the Voice tab's enable box, receive volume, microphone boost, Test Microphone and meter work; its transmit volume isn't drawn |
 | `playdemo` | have (differs) | L | L | CS:S demos as puppets (`game::demo`, `ui::demo`), `demo_timescale`, `demo_pause`, `demo_gototick`, `stopdemo`; animation from velocity, no zoom (tech-debt) |
 | `record`, `stop`, `demoui` | missing | L | L | no recording; `demoui` panel missing (console commands instead) |
 | `fps_max` | have (fixed) | L | S | 300 as CS:S (`client::perf::FrameLimit`); off under `--bench` |
@@ -204,7 +204,8 @@ common console commands, against mashup's.
 | `commandmenu`, `showbriefing`, `cheer` | missing | L | S | what each shows in CS:S is unclear from the data (no capture planned) |
 | `cl_radaralpha`, `hud_saytext_time` | have (fixed) | L | S | 200 and 12 s, as CS:S |
 | `cl_minmodels` | missing | L | S | needs player models per class (class menu) |
-| Player list (mute), stats, achievements dialogs | missing | L | M | |
+| Player list (mute) | have (new) | L | M | the game menu's Player List (`PlayerListDialog.res`): select a player, Mute in-game voice; client-side, for the session (voice-chat.md) |
+| Stats, achievements dialogs | missing | L | M | |
 
 ## Rendering, lighting, materials
 
@@ -284,7 +285,7 @@ common console commands, against mashup's.
 | `cl_interp`, `cl_updaterate`, `rate`, `cl_lagcompensation` | have | | | |
 | Movers mispredicted for a round trip | differs | L | M | tech-debt "The network so far" |
 | `cl_cmdrate` | differs | L | S | missing as a cvar (one command per tick) |
-| Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; no per-player mute, open mic or icons over heads (voice-chat.md) |
+| Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; per-player mute (the player list), open microphone (`voice_vox`); no icons over heads (voice-chat.md) |
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
 | Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; setup dialog (`callvote` alone, Esc entry ours); joiners vote; bots vote (ours); cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |

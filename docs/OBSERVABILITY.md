@@ -232,7 +232,7 @@ Only `Reflect`-registered types are visible; register new core components in
   origin, Source's: the feet. So the same `setpos` line puts our camera
   where CS:S's was (64 above its z standing), and `setpos` with `getpos`'s
   numbers lands a view offset higher, in both games.
-- `menu [main|newgame|game|bot|bots|team|options|mpadvanced|extras]` opens the
+- `menu [main|newgame|game|bot|bots|team|options|mpadvanced|extras|players]` opens the
   game menu (Esc) on a page, for screenshots of it: `--window 1280x720
   --screenshot menu.png +menu options`; `menu newgame` is Create Server
   (`game`, `bot`: its other pages), `menu keyboard` (or `mouse`, `audio`,
@@ -241,7 +241,7 @@ Only `Reflect`-registered types are visible; register new core components in
   video tab's, `menu gamma` its brightness dialog (with
   `+mat_monitorgamma 1.6` or `2.6` before it: the whole frame lighter or
   darker), `menu mpadvanced` the multiplayer tab's (its list from the
-  install's `cfg/user.scr`), `menu extras` Lucker Party Options. `menuinput <input>` drives
+  install's `cfg/user.scr`), `menu extras` Lucker Party Options, `menu players` the player list (mute). `menuinput <input>` drives
   the open dialog as keys would (`focus <cvar|map|bots|botcount|botteam|
   difficulty|aspect>`, `row <n>` (the page's nth row), `open` a focused combo box's list, `down`, `up`, `enter`,
   `space`, `escape`, `tab`, `backtab`, `type <text>`, `pick <n>`, `sheet

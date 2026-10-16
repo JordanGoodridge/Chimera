@@ -617,16 +617,65 @@ pub(super) fn pointer(
     }
 }
 
-/// Bots and players per team (bots and team pages), and the binds (the
-/// keyboard tab), while open.
+/// Bots and players per team (bots and team pages), the binds (the
+/// keyboard tab) and the players and whom this client muted (the player
+/// list), while open.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn sync(
     mut menu: ResMut<GameMenu>,
     console: Res<Console>,
     characters: Query<(&Team, Has<crate::bot::Bot>), With<Intent>>,
+    people: Query<
+        (
+            Option<&crate::net::NetCharacter>,
+            Option<&Name>,
+            Has<crate::core::LocalPlayer>,
+            Has<crate::bot::Bot>,
+        ),
+        With<Intent>,
+    >,
+    mutes: Option<Res<crate::net::voice::VoiceMutes>>,
+    net: Option<Res<crate::net::NetSettings>>,
+    test: Option<ResMut<crate::client::voice::VoiceTest>>,
     rules: Option<Res<crate::rules::Deathmatch>>,
 ) {
+    // The microphone test runs while the Voice tab shows (CS:S's stops
+    // with it).
+    if let Some(mut test) = test {
+        if test.0 && !(menu.open && menu.page == Page::Settings && menu.tab == Tab::Voice) {
+            test.0 = false;
+        }
+        if menu.voice_testing != test.0 {
+            menu.voice_testing = test.0;
+        }
+    }
     if !menu.open {
         return;
+    }
+    if menu.page == Page::PlayerList {
+        let mut roster: Vec<ListedPlayer> = people
+            .iter()
+            .filter(|(character, _, me, bot)| character.is_some() || *me || *bot)
+            .map(|(character, name, me, _)| {
+                let id = character.and_then(|n| n.owner);
+                // One's own name in single player: `name`.
+                let own = me.then(|| net.as_ref().map(|n| n.name.clone())).flatten();
+                ListedPlayer {
+                    id,
+                    name: character
+                        .map(|n| n.name.clone())
+                        .or(own)
+                        .or_else(|| name.map(|n| n.to_string()))
+                        .unwrap_or_default(),
+                    me,
+                    muted: id.is_some_and(|id| mutes.as_ref().is_some_and(|m| m.0.contains(&id))),
+                }
+            })
+            .collect();
+        roster.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then(a.id.cmp(&b.id)));
+        if menu.roster != roster {
+            menu.set_roster(roster);
+        }
     }
     let no_spectators = !crate::ui::team_menu::spectators_allowed(rules.as_deref());
     if menu.no_spectators != no_spectators {

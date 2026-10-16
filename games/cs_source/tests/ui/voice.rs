@@ -15,6 +15,7 @@ use crate::stack::{
     greybox::GreyboxMapPlugin,
     harness::{CsSim, NetSim},
     net::{
+        NetCharacter,
         memory::LinkConditions,
         voice::{VoiceActivity, alive},
     },
@@ -91,6 +92,21 @@ fn a_teammate_hears_you_and_an_enemy_only_with_alltalk() {
     let (mate, enemy) = (speakers[1].total() - heard, speakers[2].total());
     println!("alltalk 1: the teammate heard {mate} samples, the enemy {enemy}");
     assert!(mate >= 18_000 && enemy >= 18_000, "{mate} {enemy}");
+
+    // Client 2 mutes client 0 (by user id, as the player list does): it
+    // neither hears nor shows them talking; the teammate still hears.
+    let talker = sim.character_of(0).unwrap();
+    let id = sim.server.app.world().get::<NetCharacter>(talker).unwrap().owner.unwrap();
+    run(sim.clients[2].app.world_mut(), &format!("voice_mute {id}"));
+    sim.clients[2].app.world_mut().resource_mut::<VoiceActivity>().heard.clear();
+    let (mate, enemy) = (speakers[1].total(), speakers[2].total());
+    talk(&mut sim, &mic, 0.4);
+    assert!(speakers[1].total() - mate >= 18_000, "the teammate still hears");
+    assert_eq!(speakers[2].total(), enemy, "muted: not played");
+    assert!(sim.clients[2].app.world().resource::<VoiceActivity>().heard.is_empty(), "nor shown talking");
+    run(sim.clients[2].app.world_mut(), &format!("voice_unmute {id}"));
+    talk(&mut sim, &mic, 0.4);
+    assert!(speakers[2].total() - enemy >= 18_000, "unmuted: heard again");
 
     // sv_voiceenable 0: nobody.
     run(sim.server.app.world_mut(), "sv_voiceenable 0");
