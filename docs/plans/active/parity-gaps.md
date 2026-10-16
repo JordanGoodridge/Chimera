@@ -287,7 +287,7 @@ common console commands, against mashup's.
 | Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; no per-player mute, open mic or icons over heads (voice-chat.md) |
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
-| Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
+| Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; setup dialog (`callvote` alone, Esc entry ours); joiners vote; bots vote (ours); cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
 
 ## Fixed in this pass
 
