@@ -1466,11 +1466,29 @@ pub fn combo_box(
     commands: &mut Commands,
     parent: Entity,
     look: &Look,
+    rect: (f32, f32, f32, f32),
+    value: &str,
+    enabled: bool,
+    open: bool,
+    focused: bool,
+    hit: impl Bundle,
+) -> Entity {
+    combo_box_aligned(commands, parent, look, rect, value, enabled, open, focused, -1, hit)
+}
+
+/// `combo_box` with its value aligned as its `textAlignment` says: -1
+/// west (left), 0 centre, 1 east.
+#[allow(clippy::too_many_arguments)]
+pub fn combo_box_aligned(
+    commands: &mut Commands,
+    parent: Entity,
+    look: &Look,
     (x, y, w, h): (f32, f32, f32, f32),
     value: &str,
     enabled: bool,
     open: bool,
     focused: bool,
+    align: i32,
     hit: impl Bundle,
 ) -> Entity {
     let mut e = commands.spawn((
@@ -1489,7 +1507,7 @@ pub fn combo_box(
     let font = look.default_font();
     let text_w = w - 22.0;
     if !enabled {
-        engraved(commands, e, look, (4.0, 0.0, text_w - 4.0, h - 2.0), value, font, -1);
+        engraved(commands, e, look, (4.0, 0.0, text_w - 4.0, h - 2.0), value, font, align);
     } else if focused && !open {
         // Focused: the value shown selected, as VGUI's text entry.
         let at = label(
@@ -1513,7 +1531,7 @@ pub fn combo_box(
             value,
             font,
             look.color("TextEntry.SelectedTextColor", [0, 0, 0, 255]),
-            -1,
+            align,
         );
     } else {
         let color = look.color("TextEntry.TextColor", [221, 221, 221, 255]);
@@ -1525,7 +1543,7 @@ pub fn combo_box(
             value,
             font,
             color,
-            -1,
+            align,
         );
     }
     let a = commands

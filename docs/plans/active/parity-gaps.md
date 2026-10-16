@@ -166,8 +166,9 @@ report folders):
 | Damage direction indicator | have (fixed) | H | M | was the CS 1.6 `pain_*` arcs around the crosshair and only where the damage was dealt (never on a network client); now `HudDamageIndicator`'s red side bars (hudlayout.res: `dmg_xpos` 30, `dmg_ypos` 100, `dmg_wide` 36, `dmg_tall1` 240, `dmg_tall2` 200) from damage that reached the health, sent to the victim's client (`net::Hurt`). Which bar for hits from in front/behind (both), the fade (1 s) and alpha are ours: C8 |
 | Radar look (zoom, translucency, range) | differs | M | S | backlog 2b: ours; `cl_radaralpha` (CS:S's 200) now sets the map's opacity |
 | Scoreboard row spacing, dead rows | differs | M | S | tech-debt "Game-look HUD parts" |
-| Spectator menu look | differs | L | S | backlog 2b (`bottomspectator.res`) |
-| Freeze cam panel (`freezepanel_basic.res`) | differs | M | S | backlog 2b |
+| Spectator menu look | have (fixed) | L | S | `bottomspectator.res`'s bar of drop-downs and `<` `>`, values aligned as the file says; the lists' look is GameUI's widgets (CS:S: the client scheme's) |
+| Freeze cam panel (`freezepanel_basic.res`) | have (fixed) | M | S | name, "KILLED YOU", "[F5] Save this moment", the killer's health gauge (colours ours); no avatar or nemesis lines. Timings CS:S's server cvars (`spec_freeze_time` 5, `spec_freeze_traveltime` 0.7, replicated); its 2 s death cam before it unmeasured (specs/cs_source/spectating.md open questions) |
+| Death cam and spectating timings | have (fixed) | M | S | measured on bots in a SourceTV demo (specs/cs_source/spectating.md): 6.5 s death cam without a freeze cam, 3 s on a dead target, first target in order (not the nearest), no enemies under `mp_forcecamera 1` (ours flies free where CS:S shows a fixed camera) |
 | Map time left on the scoreboard | have (fixed) | L | S | beside the clock icon (`WinConditionLabel`) with `mp_timelimit`; a client has the map's start in `NetRound` |
 | Class menu (`classmenu_*.res`) | have (fixed) | M | M | after picking a team; the eight classes' models (`models/player/*.mdl`) on bodies, auto-select a random one; the menu's 3D model preview (`CSClassImagePanel`) not drawn |
 | MOTD on joining (`motd.res`, `cfg/motd_default.txt`) | have (fixed) | L | S | then the team menu, then the class menu; HTML shown as its text (we don't render HTML) |

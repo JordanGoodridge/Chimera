@@ -83,8 +83,15 @@ pub const SERVER_PREFIXES: &[&str] = &["sv_", "mp_", "phys_", "bot_", "ammo_"];
 
 /// Game rules without a server prefix that are the server's and
 /// replicated all the same: ours, and Source's `decalfrequency` (the
-/// seconds between a player's sprays).
-pub const SERVER_NAMES: &[&str] = &["mashup_rounds", "mashup_noblock", "decalfrequency"];
+/// seconds between a player's sprays) and the freeze cam's timings
+/// (`spec_freeze_time`, `spec_freeze_traveltime`; replicated in CS:S).
+pub const SERVER_NAMES: &[&str] = &[
+    "mashup_rounds",
+    "mashup_noblock",
+    "decalfrequency",
+    "spec_freeze_time",
+    "spec_freeze_traveltime",
+];
 
 /// The player's own settings with a server prefix (Source's client cvars:
 /// `mp_decals`, Multiplayer > Advanced's decal limit).
@@ -1035,6 +1042,9 @@ mod tests {
         assert_eq!(CvarScope::of("sv_gravity"), CvarScope::Replicated);
         assert_eq!(CvarScope::of("mp_friendlyfire"), CvarScope::Replicated);
         assert_eq!(CvarScope::of("mp_decals"), CvarScope::Local, "the player's own");
+        assert_eq!(CvarScope::of("spec_freeze_time"), CvarScope::Replicated);
+        assert_eq!(CvarScope::of("spec_freeze_traveltime"), CvarScope::Replicated);
+        assert_eq!(CvarScope::of("cl_disablefreezecam"), CvarScope::Local);
         assert_eq!(CvarScope::of("bot_stop"), CvarScope::Server);
         assert_eq!(CvarScope::of("sv_password"), CvarScope::Server);
         assert_eq!(CvarScope::of("cl_crosshairscale"), CvarScope::Local);

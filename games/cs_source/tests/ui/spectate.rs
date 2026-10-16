@@ -1,11 +1,12 @@
 //! Spectating while dead in a rounds game: the death cam on the killer,
 //! then living teammates (`mp_forcecamera 1`), moving on when the target
-//! dies, anyone once the team is gone, back to playing at the next round.
+//! dies, no one once the team is gone, back to playing at the next round
+//! (CS:S's timings: specs/cs_source/spectating.md).
 
 use bevy::prelude::*;
 use crate::stack::{
     client::spectate::{
-        DEATH_CAM_SECONDS, FREEZE_HOLD, FREEZE_TRAVEL, SpecMode, SpecPhase, SpecView, SpectateCameraPlugin,
+        DEATH_CAM_ALONE, DEATH_CAM_SECONDS, FREEZE_HOLD, FREEZE_TRAVEL, SpecMode, SpecPhase, SpecView, SpectateCameraPlugin,
         SpectateStatePlugin, Spectator, TARGET_DEATH_HOLD,
     },
     console::Console,
@@ -49,8 +50,9 @@ fn dead_players_watch_their_team_then_play_again() {
     };
     let me = add(&mut sim, 0.0, 2, "Player");
     sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
-    let near = add(&mut sim, 3.0, 2, "Bot 1");
-    let far = add(&mut sim, 9.0, 2, "Bot 2");
+    // The far one first in order (by name).
+    let near = add(&mut sim, 3.0, 2, "Bot 2");
+    let far = add(&mut sim, 9.0, 2, "Bot 1");
     let enemy = add(&mut sim, -2.0, 1, "Bot 3");
     console(&mut sim, "mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
     sim.seconds(0.5);
@@ -74,13 +76,16 @@ fn dead_players_watch_their_team_then_play_again() {
         spec(&sim).phase
     );
     sim.seconds((FREEZE_TRAVEL + FREEZE_HOLD) as f64);
-    // Then the nearest teammate (not the nearer enemy), first person.
+    // Then the first teammate in order (not the nearest, nor the nearer
+    // enemy), first person.
     let s = spec(&sim);
     assert_eq!(s.phase, SpecPhase::Watching);
-    assert_eq!(s.target, Some(near));
+    assert_eq!(s.target, Some(far));
     assert_eq!(s.effective_mode(), SpecMode::InEye);
 
     // Attack: the next teammate, around and back; never the enemy.
+    console(&mut sim, "spec_next");
+    assert_eq!(spec(&sim).target, Some(near));
     console(&mut sim, "spec_next");
     assert_eq!(spec(&sim).target, Some(far));
     console(&mut sim, "spec_next");
@@ -92,11 +97,13 @@ fn dead_players_watch_their_team_then_play_again() {
     assert_eq!(spec(&sim).effective_mode(), SpecMode::Roaming);
     console(&mut sim, "spec_mode 4");
 
-    // The watched teammate dies: on its body a moment, then the other.
+    // The watched teammate dies: on its body CS:S's 3 s, then the other.
     kill(&mut sim, enemy, near);
     assert_eq!(spec(&sim).target, Some(near));
     assert_eq!(spec(&sim).effective_mode(), SpecMode::Chase);
-    sim.seconds(TARGET_DEATH_HOLD + 0.1);
+    sim.seconds(TARGET_DEATH_HOLD - 0.2);
+    assert_eq!(spec(&sim).target, Some(near), "still on the body");
+    sim.seconds(0.3);
     assert_eq!(spec(&sim).target, Some(far));
 
     // mp_forcecamera 0: the enemy may be watched too.
@@ -106,11 +113,12 @@ fn dead_players_watch_their_team_then_play_again() {
     sim.seconds(TARGET_DEATH_HOLD + 0.1);
     assert_eq!(spec(&sim).target, Some(far), "back on the team");
 
-    // The last teammate dies: the round is lost and the enemy is all
-    // that's left to watch.
+    // The last teammate dies: the round is lost, and the enemy is not
+    // watched (CS:S's dead went to no one): flying free.
     kill(&mut sim, enemy, far);
     sim.seconds(TARGET_DEATH_HOLD + 0.1);
-    assert_eq!(spec(&sim).target, Some(enemy));
+    assert_eq!(spec(&sim).target, None);
+    assert_eq!(spec(&sim).effective_mode(), SpecMode::Roaming);
 
     // The next round: playing again, in first person.
     sim.seconds(10.0);
@@ -251,6 +259,8 @@ fn freeze_cam_turns_to_the_killer_then_spectating() {
     assert_eq!(s.target, Some(mate));
 }
 
+/// Without the freeze cam the death cam lasts CS:S's 6.5 s (its bots'),
+/// then spectating.
 #[test]
 fn disabling_the_freeze_cam_goes_straight_to_spectating() {
     let (mut sim, me, mate, enemy) = freeze_sim();
@@ -264,7 +274,9 @@ fn disabling_the_freeze_cam_goes_straight_to_spectating() {
             .archive
     );
     kill(&mut sim, enemy, me);
-    sim.seconds(DEATH_CAM_SECONDS);
+    sim.seconds(DEATH_CAM_ALONE - 0.2);
+    assert!(matches!(spec(&sim).phase, SpecPhase::DeathCam { .. }), "{:?}", spec(&sim).phase);
+    sim.seconds(0.3);
     let s = spec(&sim);
     assert_eq!(s.phase, SpecPhase::Watching);
     assert_eq!(s.target, Some(mate));
@@ -277,12 +289,17 @@ fn no_freeze_cam_on_a_dead_killer() {
     // The killer dies during the death cam.
     kill(&mut sim, mate, enemy);
     sim.seconds(DEATH_CAM_SECONDS);
-    assert_eq!(spec(&sim).phase, SpecPhase::Watching);
+    assert!(matches!(spec(&sim).phase, SpecPhase::DeathCam { .. }), "no freeze cam: the death cam goes on");
+    // (Its 6.5 s outlast the round: the killer was the last terrorist, so
+    // the next round respawns us first, as in CS:S's demo.)
+    sim.seconds(1.0);
+    assert!(matches!(spec(&sim).phase, SpecPhase::DeathCam { .. }), "{:?}", spec(&sim).phase);
 }
 
 /// The freeze cam on a network client: the server's death message names
 /// the killer (mapped to the client's entity for it), so the client's
-/// camera turns to it, freezes, then spectates.
+/// camera turns to it, freezes, then spectates; its timings are the
+/// server's (`spec_freeze_time`, `spec_freeze_traveltime` replicated).
 #[test]
 fn a_network_clients_freeze_cam_finds_its_killer() {
     use crate::stack::{greybox::GreyboxMapPlugin, harness::NetSim, net::memory::LinkConditions};
@@ -298,8 +315,10 @@ fn a_network_clients_freeze_cam_finds_its_killer() {
         .app
         .world_mut()
         .resource_mut::<crate::stack::console::Console>()
-        .submit("mp_respawn_delay 30");
-    sim.ticks(2);
+        .submit("mp_respawn_delay 30; spec_freeze_time 1.5; spec_freeze_traveltime 0.25");
+    sim.ticks(10);
+    let rules = *sim.clients[0].app.world().resource::<crate::stack::core::SpectatorRules>();
+    assert_eq!((rules.freeze_hold, rules.freeze_travel), (1.5, 0.25), "the server's");
     sim.server.app.world_mut().write_message(Damage {
         force: Vec3::ZERO,
         target: victim,
@@ -323,6 +342,11 @@ fn a_network_clients_freeze_cam_finds_its_killer() {
     let ok = sim.until(400, |s| matches!(phase(s), SpecPhase::FreezeCam { .. }));
     assert!(ok, "{:?}", phase(&sim));
     assert!(matches!(phase(&sim), SpecPhase::FreezeCam { killer, .. } if killer == theirs));
+    assert!(
+        matches!(phase(&sim), SpecPhase::FreezeCam { travel, hold, .. } if (travel, hold) == (0.25, 1.5)),
+        "the server's timings: {:?}",
+        phase(&sim)
+    );
     let ok = sim.until(600, |s| phase(s) == SpecPhase::Watching);
     assert!(ok, "{:?}", phase(&sim));
 }
