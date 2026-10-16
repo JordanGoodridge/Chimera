@@ -35,7 +35,7 @@ use crate::{
     map::hud::{ActiveHud, GameMenus, UiControl, UiKind, UiLayout, layout_key},
     weapon::{
         Armor, Inventory, Weapon, WeaponRegistry,
-        economy::{AMMO_BUYS, BuyWindow, Money, NightVision, Prices},
+        economy::{AMMO_BUYS, BuyWindow, DefuseKit, Money, NightVision, Prices},
     },
 };
 
@@ -127,17 +127,27 @@ fn current_page<'a>(menus: &'a GameMenus, menu: &BuyMenu, team: Option<u8>) -> O
         .or_else(|| main_page(menus, team))
 }
 
-/// What the buy button's `buy X` names, as `Prices` knows it: `vest`,
-/// `vesthelm`, `defuser`, `nvgs` or a weapon ID.
-fn priced(what: &str, registry: &WeaponRegistry) -> Option<String> {
+/// What the buy button's `buy X` names, as `Prices` knows it: an item's
+/// ID (`Prices::items`) or a weapon ID.
+fn priced(what: &str, prices: &Prices, registry: &WeaponRegistry) -> Option<String> {
     let what = what.to_lowercase();
-    match what.as_str() {
-        "vest" | "vesthelm" | "defuser" | "nvgs" => Some(what),
-        _ => registry
+    match prices.item(&what) {
+        Some(item) => Some(item.id.clone()),
+        None => registry
             .find(&format!("weapon_{what}"))
             .or_else(|| registry.find(&what))
             .map(|d| d.id.to_string()),
     }
+}
+
+/// The item parts (`economy::ItemParts`) the menus see carried: the
+/// engine's night vision and defuse kit.
+fn carried_parts(nightvision: bool, kit: bool) -> Vec<&'static str> {
+    use crate::weapon::economy::{DEFUSE_KIT_PART, NIGHT_VISION_PART};
+    [(nightvision, NIGHT_VISION_PART), (kit, DEFUSE_KIT_PART)]
+        .into_iter()
+        .filter_map(|(has, p)| has.then_some(p))
+        .collect()
 }
 
 /// What the player's state makes of the game's buttons.
@@ -149,8 +159,11 @@ struct BuyState<'a> {
     team: Option<u8>,
     /// The weapons carried: (slot, ID).
     held: Vec<(u8, &'static str)>,
-    /// Carries night vision goggles (its button is greyed: owned).
-    nightvision: bool,
+    /// The armour worn and the item parts carried (`carried_parts`): an
+    /// item the game's menu greys while owned (`menu_greys_owned`, CS:S's
+    /// night vision) is greyed.
+    armor: Option<Armor>,
+    parts: Vec<&'static str>,
 }
 
 impl BuyState<'_> {
@@ -166,15 +179,17 @@ impl BuyState<'_> {
                 .find_map(|(s, id)| (*s == *slot).then(|| self.prices.ammo.get(id))?)
                 .map(|b| b.price);
         }
-        let id = priced(what, self.registry)?;
-        if id == "nvgs" && self.nightvision {
+        let id = priced(what, self.prices, self.registry)?;
+        if let Some(item) = self.prices.item(&id)
+            && item.menu_greys_owned
+            && item.owned_by(self.armor.as_ref(), &|p| self.parts.contains(&p))
+        {
             return None;
         }
         if self
             .prices
-            .team_only
-            .get(id.as_str())
-            .is_some_and(|t| self.team.is_some_and(|me| me != *t))
+            .team_of(id.as_str())
+            .is_some_and(|t| self.team.is_some_and(|me| me != t))
         {
             return None;
         }
@@ -290,7 +305,7 @@ fn categories(prices: &Prices, slots: &[(&'static str, u8)], team: Option<u8>) -
             buy: buy.to_string(),
             label,
             price: prices.of(buy)?,
-            team: prices.team_only.get(buy).copied(),
+            team: prices.team_of(buy),
         })
     };
     let mut out: Vec<Category> = if prices.menu.is_empty() {
@@ -303,9 +318,10 @@ fn categories(prices: &Prices, slots: &[(&'static str, u8)], team: Option<u8>) -
             items.sort_by_key(|i| (i.price, i.label.clone()));
             items
         };
-        let mut equipment: Vec<Item> = [("vest", "Kevlar"), ("vesthelm", "Kevlar + Helmet")]
-            .into_iter()
-            .filter_map(|(b, l)| item(b, l.into()))
+        let mut equipment: Vec<Item> = prices
+            .items
+            .iter()
+            .filter_map(|i| item(&i.id, i.label.clone()))
             .collect();
         // Grenades (slot 3) are equipment.
         equipment.extend(by_slot(3));
@@ -336,9 +352,9 @@ fn categories(prices: &Prices, slots: &[(&'static str, u8)], team: Option<u8>) -
             .iter()
             .map(|c| Category {
                 key: c.key,
-                name: c.name.into(),
-                items: c.items.iter().filter_map(|i| item(i.buy, i.label.into())).collect(),
-                direct: c.direct.map(str::to_string),
+                name: c.name.clone(),
+                items: c.items.iter().filter_map(|i| item(&i.buy, i.label.clone())).collect(),
+                direct: c.direct.clone(),
             })
             .collect()
     };
@@ -400,7 +416,12 @@ fn keys(
     mut menu: ResMut<BuyMenu>,
     (prices, registry, hud, mut console): (Res<Prices>, Res<WeaponRegistry>, Option<Res<ActiveHud>>, ResMut<Console>),
     (player, weapons): (
-        Option<Single<(Option<&Team>, Option<&Money>, Option<&Inventory>, Has<NightVision>), With<LocalPlayer>>>,
+        Option<
+            Single<
+                (Option<&Team>, Option<&Money>, Option<&Inventory>, Option<&Armor>, Has<NightVision>, Has<DefuseKit>),
+                With<LocalPlayer>,
+            >,
+        >,
         Query<&Weapon>,
     ),
     mut slots: Local<Option<Vec<(&'static str, u8)>>>,
@@ -446,7 +467,8 @@ fn keys(
             money: player.as_ref().and_then(|p| p.1).map(|m| m.0),
             team,
             held: held_slots(player.as_ref().and_then(|p| p.2), &weapons),
-            nightvision: player.as_ref().is_some_and(|p| p.3),
+            armor: player.as_ref().and_then(|p| p.3).copied(),
+            parts: player.as_ref().map_or(Vec::new(), |p| carried_parts(p.4, p.5)),
         };
         let pressed = crate::client::vgui::hotkey_button(page, key, &mut |c| state.shown(c)).and_then(|c| c.command.clone());
         if let Some(command) = pressed {
@@ -503,7 +525,10 @@ fn draw(
     registry: Res<WeaponRegistry>,
     window: Res<BuyWindow>,
     player: Option<
-        Single<(Option<&Money>, Option<&Team>, Option<&Inventory>, Option<&Armor>, Has<NightVision>), With<LocalPlayer>>,
+        Single<
+            (Option<&Money>, Option<&Team>, Option<&Inventory>, Option<&Armor>, Has<NightVision>, Has<DefuseKit>),
+            With<LocalPlayer>,
+        >,
     >,
     weapons: Query<&Weapon>,
     windows: Query<&Window>,
@@ -512,7 +537,9 @@ fn draw(
     (hud, fonts): (Option<Res<ActiveHud>>, Res<UiFonts>),
     mut commands: Commands,
 ) {
-    let (money, team, inv, armor, nightvision) = player.map(|p| *p).unwrap_or((None, None, None, None, false));
+    let (money, team, inv, armor, nightvision, kit) =
+        player.map(|p| *p).unwrap_or((None, None, None, None, false, false));
+    let parts = carried_parts(nightvision, kit);
     // The game's own look draws it instead (`draw_vgui`).
     let game_look = hud
         .as_ref()
@@ -550,8 +577,9 @@ fn draw(
             lines.push(c.name.to_uppercase());
             for (i, item) in c.items.iter().enumerate() {
                 let have = held.contains(&item.buy.as_str())
-                    || (item.buy == "vest" && armor.is_some_and(|a| a.amount >= 1.0))
-                    || (item.buy == "nvgs" && nightvision);
+                    || prices
+                        .item(&item.buy)
+                        .is_some_and(|i| i.owned_by(armor, &|p| parts.contains(&p)));
                 let broke = money.is_some_and(|m| m.0 < item.price);
                 let note = if have {
                     "  (owned)"
@@ -662,7 +690,12 @@ fn draw_vgui(
     hud: Option<Res<ActiveHud>>,
     fonts: Res<UiFonts>,
     (prices, registry, console): (Res<Prices>, Res<WeaponRegistry>, Res<Console>),
-    player: Option<Single<(Option<&Money>, Option<&Team>, Option<&Inventory>, Has<NightVision>), With<LocalPlayer>>>,
+    player: Option<
+        Single<
+            (Option<&Money>, Option<&Team>, Option<&Inventory>, Option<&Armor>, Has<NightVision>, Has<DefuseKit>),
+            With<LocalPlayer>,
+        >,
+    >,
     weapons: Query<&Weapon>,
     windows: Query<&Window>,
     roots: Query<Entity, With<VguiRoot>>,
@@ -671,7 +704,8 @@ fn draw_vgui(
     mut slots: Local<Option<Vec<(&'static str, u8)>>>,
     mut commands: Commands,
 ) {
-    let (money, team, inv, nightvision) = player.map(|p| *p).unwrap_or((None, None, None, false));
+    let (money, team, inv, armor, nightvision, kit) =
+        player.map(|p| *p).unwrap_or((None, None, None, None, false, false));
     let (money, team) = (money.map(|m| m.0), team.map(|t| t.0));
     let menus = hud.as_ref().and_then(|h| h.0.menus.as_ref());
     let page = menus.filter(|_| menu.open).and_then(|m| current_page(m, &menu, team));
@@ -695,7 +729,7 @@ fn draw_vgui(
         .collect();
     held.sort();
     let (w, h) = (window.width(), window.height());
-    let key = format!("{:?}|{team:?}|{money:?}|{w}x{h}|{held:?}|{nightvision}", menu.page);
+    let key = format!("{:?}|{team:?}|{money:?}|{w}x{h}|{held:?}|{nightvision}|{kit}|{armor:?}", menu.page);
     let state = BuyState {
         prices: &prices,
         registry: &registry,
@@ -703,7 +737,8 @@ fn draw_vgui(
         money,
         team,
         held: held_slots(inv, &weapons),
-        nightvision,
+        armor: armor.copied(),
+        parts: carried_parts(nightvision, kit),
     };
     let painter = Painter::new(hud, &fonts, h);
     if drawn.page != key || roots.is_empty() {
@@ -814,6 +849,7 @@ fn draw_vgui(
 mod tests {
     use super::*;
     use crate::map::hud::GameHud;
+    use crate::weapon::economy::{NIGHT_VISION_PART, ShopItem};
     use bevy::window::CursorGrabMode;
     use std::collections::HashMap;
 
@@ -862,11 +898,11 @@ mod tests {
             .init_resource::<VguiOpen>()
             .init_resource::<WeaponRegistry>()
             .init_resource::<BuyWindow>()
-            .insert_resource(Prices {
-                vest: 650,
-                vest_helmet: 1000,
-                helmet: 350,
-                ..default()
+            .insert_resource({
+                let mut p = Prices::default();
+                p.add_item(ShopItem::armor("vest", "Kevlar", 650, false, "owned"));
+                p.add_item(ShopItem::armor("vesthelm", "Kevlar + Helmet", 1000, true, "owned"));
+                p
             })
             .add_systems(Update, keys);
         crate::client::binds::test_binds(&mut app, &crate::game::INFO);
@@ -947,12 +983,12 @@ mod tests {
             run: std::sync::Arc::new(|_, _| Ok(None)),
             complete: None,
         });
-        let (prices, registry) = (
-            Prices {
-                vest: 650,
-                vest_helmet: 1000,
-                ..default()
-            },
+        let (prices, registry) = ({
+            let mut p = Prices::default();
+            p.add_item(ShopItem::armor("vest", "Kevlar", 650, false, "owned"));
+            p.add_item(ShopItem::armor("vesthelm", "Kevlar + Helmet", 1000, true, "owned"));
+            p
+        },
             WeaponRegistry::default(),
         );
         let state = BuyState {
@@ -962,17 +998,18 @@ mod tests {
             money: Some(800),
             team: Some(2),
             held: Vec::new(),
-            nightvision: false,
+            armor: None,
+            parts: Vec::new(),
         };
         let enabled = |c: &str| state.shown(&button("b", '1', c)).enabled;
         assert!(enabled("buy vest"));
         assert!(!enabled("buy vesthelm"), "can't afford");
         assert!(!enabled("buy nvgs"), "not sold");
         // Night vision for sale: greyed while too dear or owned.
-        let sold = Prices {
-            nightvision: 700,
-            ..prices.clone()
-        };
+        let mut sold = prices.clone();
+        let mut goggles = ShopItem::part("nvgs", "Nightvision Goggles", 700, NIGHT_VISION_PART, "owned");
+        goggles.menu_greys_owned = true;
+        sold.add_item(goggles);
         let mut nv = BuyState {
             prices: &sold,
             registry: &registry,
@@ -980,10 +1017,11 @@ mod tests {
             money: Some(800),
             team: Some(2),
             held: Vec::new(),
-            nightvision: false,
+            armor: None,
+            parts: Vec::new(),
         };
         assert!(nv.shown(&button("b", '1', "buy nvgs")).enabled);
-        nv.nightvision = true;
+        nv.parts = vec![NIGHT_VISION_PART];
         assert!(!nv.shown(&button("b", '1', "buy nvgs")).enabled, "owned");
         assert!(enabled("Resource/UI/BuyPistols_CT.res"));
         assert!(enabled("vguicancel"));
@@ -1010,11 +1048,9 @@ mod tests {
 
     #[test]
     fn menu_items_by_category_cheapest_first() {
-        let mut p = Prices {
-            vest: 650,
-            vest_helmet: 1000,
-            ..default()
-        };
+        let mut p = Prices::default();
+        p.add_item(ShopItem::armor("vest", "Kevlar", 650, false, "owned"));
+        p.add_item(ShopItem::armor("vesthelm", "Kevlar + Helmet", 1000, true, "owned"));
         p.weapons.insert("cs_source:weapon_usp", 500);
         p.weapons.insert("cs_source:weapon_glock", 400);
         p.weapons.insert("cs_source:weapon_ak47", 2500);
@@ -1046,41 +1082,39 @@ mod tests {
     #[test]
     fn a_games_own_layout_keeps_its_keys_and_order() {
         use crate::weapon::economy::{BuyCategory, BuyItem};
-        let mut p = Prices {
-            vest: 650,
-            ..default()
-        };
+        let mut p = Prices::default();
+        p.add_item(ShopItem::armor("vest", "Kevlar", 650, false, "owned"));
         p.weapons.insert("g:weapon_b", 100);
         p.weapons.insert("g:weapon_a", 200);
         p.menu = vec![
             BuyCategory {
                 key: 4,
                 direct: None,
-                name: "Rifles",
+                name: "Rifles".into(),
                 items: vec![
                     BuyItem {
-                        buy: "g:weapon_a",
-                        label: "A",
+                        buy: "g:weapon_a".into(),
+                        label: "A".into(),
                     },
                     BuyItem {
-                        buy: "g:weapon_b",
-                        label: "B",
+                        buy: "g:weapon_b".into(),
+                        label: "B".into(),
                     },
                 ],
             },
             BuyCategory {
                 key: 8,
                 direct: None,
-                name: "Equipment",
+                name: "Equipment".into(),
                 items: vec![BuyItem {
-                    buy: "vest",
-                    label: "Kevlar",
+                    buy: "vest".into(),
+                    label: "Kevlar".into(),
                 }],
             },
             BuyCategory {
                 key: 6,
-                direct: Some("primammo"),
-                name: "Primary Ammo",
+                direct: Some("primammo".into()),
+                name: "Primary Ammo".into(),
                 items: Vec::new(),
             },
         ];

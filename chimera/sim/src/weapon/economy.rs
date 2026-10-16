@@ -1,10 +1,14 @@
-//! Money and buying for any game: prices by weapon ID and for armour
-//! (`Prices`, filled by games), a character's `Money`, and whether buying
-//! is open now (`BuyWindow`, set by the rules). Characters without `Money`
-//! buy for free (deathmatch, testing).
+//! Money and buying for any game: prices by weapon ID and what else is for
+//! sale (`Prices`, filled by games' data: weapon data's `[buy]`, the shop's
+//! `economy_data`), a character's `Money`, and whether buying is open now
+//! (`BuyWindow`, set by the rules). Characters without `Money` buy for free
+//! (deathmatch, testing).
 //!
-//! Covers: `Money`, `Prices` (games fill them, with their buy menu
-//! `BuyCategory`s and bots' `bot_weights`), `buy` charging and checking
+//! Covers: `Money`, `Prices` (with the buy menu's `BuyCategory`s, bots'
+//! `bot_weights` and the `ShopItem`s: armour, with the helmet alone over
+//! armour worn, or a part registered by name in `ItemParts`, each refused
+//! in its own words when owned; the rules find items by what they give,
+//! not by name: `armor_item`, `part_item`), `buy` charging and checking
 //! `BuyWindow`; ammo by the box (`Prices::ammo`, `AmmoBox` per weapon:
 //! `primammo`/`secammo` fill the primary's or pistol's reserve,
 //! `buyammo1`/`buyammo2` buy one box, up to the reserve maximum; a gun bought
@@ -16,8 +20,8 @@
 //! play `Prices::pickup_sound`/`item_sound`/`ammo_sound` (`owner_sound`);
 //! `autobuy` for bots (a primary by weight among the dearer half they can
 //! afford, its ammo and the pistol's, armour, then now and then grenades:
-//! `BOT_GRENADE_CHANCE`); night vision goggles (`buy nvgs`: `NightVision`,
-//! `Prices::nightvision`, kept across rounds, lost at death: `lose_on_death`;
+//! `BOT_GRENADE_CHANCE`); night vision goggles (the `night_vision` part:
+//! `NightVision`, kept across rounds, lost at death: `lose_on_death`;
 //! the `nightvision` command and its look are the client's).
 //!
 //! Known shortcuts (docs/tech-debt.md): Buy zones on maps without
@@ -77,13 +81,12 @@ pub struct Prices {
     pub weapons: HashMap<&'static str, u32>,
     /// Weapons only one team may buy (weapon ID -> `core::Team` number).
     pub team_only: HashMap<&'static str, u8>,
-    /// Kevlar; kevlar and helmet; the helmet alone (over full kevlar).
-    pub vest: u32,
-    pub vest_helmet: u32,
-    pub helmet: u32,
-    /// A bomb defusal kit (`DefuseKit`); 0: not sold. Team-only through
-    /// `team_only["defuser"]`.
-    pub defuser: u32,
+    /// What isn't a weapon (armour, kits, goggles), in the data's order
+    /// (`economy_data`).
+    pub items: Vec<ShopItem>,
+    /// Other names `autobuy` lists use for a weapon's buy name (`mp5` ->
+    /// `mp5navy`).
+    pub aliases: HashMap<String, String>,
     /// The buy menu as the game lays it out (empty: pistols, primaries and
     /// equipment by slot).
     pub menu: Vec<BuyCategory>,
@@ -105,11 +108,8 @@ pub struct Prices {
     pub ammo_sound: Option<String>,
     /// Sound entry played when a weapon is bought or picked up.
     pub pickup_sound: Option<String>,
-    /// Sound entry played when armour, a defuse kit or night vision is
-    /// bought.
+    /// Sound entry played when an item (`items`) is bought.
     pub item_sound: Option<String>,
-    /// Night vision goggles (`NightVision`); 0: not sold.
-    pub nightvision: u32,
     /// Sound entries night vision plays turned on and off.
     pub nightvision_on: Option<String>,
     pub nightvision_off: Option<String>,
@@ -139,29 +139,210 @@ pub const AMMO_BUYS: [(&str, u8, bool); 4] = [
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuyCategory {
     pub key: u8,
-    pub name: &'static str,
+    pub name: String,
     pub items: Vec<BuyItem>,
-    pub direct: Option<&'static str>,
+    pub direct: Option<String>,
 }
 
-/// One buy-menu line: what `buy` gets (a weapon ID, `vest`, `vesthelm`)
-/// and its name.
+/// One buy-menu line: what `buy` gets (a weapon or item ID) and its name.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuyItem {
-    pub buy: &'static str,
-    pub label: &'static str,
+    pub buy: String,
+    pub label: String,
+}
+
+/// Something for sale that isn't a weapon (`Prices::items`, from the
+/// game's data: `economy_data`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShopItem {
+    /// Namespaced (`game:vest`); `buy` also takes the part after the
+    /// namespace.
+    pub id: String,
+    /// Its name in a menu.
+    pub label: String,
+    pub price: u32,
+    /// Only this team buys it (`core::Team` number).
+    pub team: Option<u8>,
+    pub gives: ItemGives,
+    /// Why buying it again is refused (the game's words).
+    pub owned: String,
+    /// A game-look menu greys it out while carried (CS:S: night vision).
+    pub menu_greys_owned: bool,
+}
+
+/// What buying a `ShopItem` gives.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ItemGives {
+    /// Armour of this amount (1: full), keeping a helmet already worn,
+    /// with one if `helmet`. With the amount already worn but no helmet, a
+    /// helmet item sells the helmet alone for `helmet_price` (its price
+    /// when not given).
+    Armor {
+        amount: f32,
+        helmet: bool,
+        helmet_price: Option<u32>,
+    },
+    /// A part registered by name (`ItemParts`: `defuse_kit`,
+    /// `night_vision`, or a game's).
+    Part(String),
+}
+
+impl ShopItem {
+    /// An item of full armour (`ItemGives::Armor`), with or without a
+    /// helmet.
+    pub fn armor(id: &str, label: &str, price: u32, helmet: bool, owned: &str) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            price,
+            team: None,
+            gives: ItemGives::Armor {
+                amount: 1.0,
+                helmet,
+                helmet_price: None,
+            },
+            owned: owned.into(),
+            menu_greys_owned: false,
+        }
+    }
+
+    /// An item giving the registered part `part`.
+    pub fn part(id: &str, label: &str, price: u32, part: &str, owned: &str) -> Self {
+        Self {
+            gives: ItemGives::Part(part.into()),
+            ..Self::armor(id, label, price, false, owned)
+        }
+    }
+
+    /// The part of the ID after the namespace.
+    pub fn short(&self) -> &str {
+        self.id.rsplit(':').next().unwrap_or(&self.id)
+    }
+
+    /// Whether `name` (the ID or its short part, any case) names it.
+    pub fn named(&self, name: &str) -> bool {
+        self.id.eq_ignore_ascii_case(name) || self.short().eq_ignore_ascii_case(name)
+    }
+
+    /// Whether someone wearing `armor` and carrying the parts `has_part`
+    /// says has it already (buying it would be refused).
+    pub fn owned_by(&self, armor: Option<&Armor>, has_part: &dyn Fn(&str) -> bool) -> bool {
+        match &self.gives {
+            ItemGives::Armor { amount, helmet, .. } => {
+                armor.is_some_and(|a| a.amount >= *amount && (!*helmet || a.helmet))
+            }
+            ItemGives::Part(p) => has_part(p),
+        }
+    }
 }
 
 impl Prices {
-    /// What `buy` (a weapon ID, `vest`, `vesthelm`) costs.
+    /// What `buy` (a weapon ID, or an item's ID or short name) costs.
     pub fn of(&self, buy: &str) -> Option<u32> {
-        match buy {
-            "vest" => Some(self.vest),
-            "vesthelm" => Some(self.vest_helmet),
-            "defuser" => (self.defuser > 0).then_some(self.defuser),
-            "nvgs" => (self.nightvision > 0).then_some(self.nightvision),
-            id => self.weapons.get(id).copied(),
+        match self.item(buy) {
+            Some(i) => Some(i.price),
+            None => self.weapons.get(buy).copied(),
         }
+    }
+
+    /// The item `name` names: by ID, else by short name (the latest
+    /// added).
+    pub fn item(&self, name: &str) -> Option<&ShopItem> {
+        self.items
+            .iter()
+            .find(|i| i.id.eq_ignore_ascii_case(name))
+            .or_else(|| self.items.iter().rev().find(|i| i.named(name)))
+    }
+
+    /// The team that alone may buy `buy` (a weapon ID or an item), if any.
+    pub fn team_of(&self, buy: &str) -> Option<u8> {
+        match self.item(buy) {
+            Some(i) => i.team,
+            None => self.team_only.get(buy).copied(),
+        }
+    }
+
+    /// The first armour item with (or without) a helmet.
+    pub fn armor_item(&self, with_helmet: bool) -> Option<&ShopItem> {
+        self.items
+            .iter()
+            .find(|i| matches!(i.gives, ItemGives::Armor { helmet, .. } if helmet == with_helmet))
+    }
+
+    /// The first item giving the part `part`.
+    pub fn part_item(&self, part: &str) -> Option<&ShopItem> {
+        self.items
+            .iter()
+            .find(|i| matches!(&i.gives, ItemGives::Part(p) if p == part))
+    }
+
+    /// Add `item`, replacing one of the same ID in place.
+    pub fn add_item(&mut self, item: ShopItem) {
+        match self.items.iter_mut().find(|i| i.id == item.id) {
+            Some(old) => *old = item,
+            None => self.items.push(item),
+        }
+    }
+}
+
+/// The parts items can give by name (`ItemGives::Part`): the engine's
+/// (`DEFUSE_KIT_PART`, `NIGHT_VISION_PART`) and what games register.
+#[derive(Resource, Clone)]
+pub struct ItemParts(HashMap<String, ItemPart>);
+
+/// A part an item gives: putting it on its buyer, and whether someone
+/// carries it.
+#[derive(Clone)]
+pub struct ItemPart {
+    pub give: std::sync::Arc<dyn Fn(&mut EntityWorldMut) + Send + Sync>,
+    pub has: std::sync::Arc<dyn Fn(&EntityRef) -> bool + Send + Sync>,
+}
+
+/// The engine's item parts: a `DefuseKit`, `NightVision`.
+pub const DEFUSE_KIT_PART: &str = "defuse_kit";
+pub const NIGHT_VISION_PART: &str = "night_vision";
+
+impl Default for ItemParts {
+    fn default() -> Self {
+        let mut parts = Self(HashMap::new());
+        parts.register_component::<DefuseKit>(DEFUSE_KIT_PART);
+        parts.register_component::<NightVision>(NIGHT_VISION_PART);
+        parts
+    }
+}
+
+impl ItemParts {
+    /// Name a part: `give` puts it on a buyer, `has` tells whether someone
+    /// carries it. Register before the data naming it loads.
+    pub fn register(
+        &mut self,
+        name: &str,
+        give: impl Fn(&mut EntityWorldMut) + Send + Sync + 'static,
+        has: impl Fn(&EntityRef) -> bool + Send + Sync + 'static,
+    ) {
+        let part = ItemPart {
+            give: std::sync::Arc::new(give),
+            has: std::sync::Arc::new(has),
+        };
+        self.0.insert(name.to_string(), part);
+    }
+
+    /// Name a marker component as a part.
+    pub fn register_component<C: Component + Default>(&mut self, name: &str) {
+        let give = |e: &mut EntityWorldMut| {
+            e.insert(C::default());
+        };
+        self.register(name, give, |e| e.contains::<C>());
+    }
+
+    pub fn get(&self, name: &str) -> Option<&ItemPart> {
+        self.0.get(name)
+    }
+
+    pub fn names(&self) -> Vec<&str> {
+        let mut n: Vec<&str> = self.0.keys().map(String::as_str).collect();
+        n.sort();
+        n
     }
 }
 
@@ -179,7 +360,7 @@ pub struct DefuseKit;
 pub struct NightVision;
 
 pub(super) fn plugin(app: &mut App) {
-    app.register_type::<NightVision>().add_systems(
+    app.register_type::<NightVision>().init_resource::<ItemParts>().add_systems(
         FixedUpdate,
         lose_on_death
             .after(crate::core::SimSet::Weapons)
@@ -235,8 +416,8 @@ pub fn buy_or_ask(world: &mut World, owner: Entity, name: &str) -> Result<Option
     buy(world, owner, name).map(Some)
 }
 
-/// Buy `name` (a weapon ID, `weapon_ak47`, `ak47`, `vest`, `vesthelm`,
-/// `defuser`, `nvgs`, or ammo: `AMMO_BUYS`) for `owner`: checks the window and the
+/// Buy `name` (a weapon ID, `weapon_ak47`, `ak47`, an item's ID or short
+/// name, or ammo: `AMMO_BUYS`) for `owner`: checks the window and the
 /// money, replaces a weapon in the same slot (dropped, as CS:S does).
 /// Returns what happened.
 pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, String> {
@@ -253,7 +434,7 @@ pub fn buy(world: &mut World, owner: Entity, name: &str) -> Result<String, Strin
     let prices = world.resource::<Prices>();
     let sound = if AMMO_BUYS.iter().any(|(n, ..)| *n == lower) {
         prices.ammo_sound.clone()
-    } else if matches!(lower.as_str(), "vest" | "vesthelm" | "defuser" | "nvgs") {
+    } else if prices.item(&lower).is_some() {
         prices.item_sound.clone()
     } else {
         prices.pickup_sound.clone()
@@ -299,12 +480,12 @@ fn user_list(world: &World, owner: Entity, key: &str, default: &str) -> Vec<Stri
     list.split_whitespace().map(str::to_lowercase).take(32).collect()
 }
 
-/// CS:S's buy aliases that aren't the weapon's own name.
-fn alias(name: &str) -> &str {
-    match name {
-        "mp5" => "mp5navy",
-        other => other,
-    }
+/// The buy name `name` stands for (`Prices::aliases`), else itself.
+fn alias(world: &World, name: &str) -> String {
+    world
+        .get_resource::<Prices>()
+        .and_then(|p| p.aliases.get(name).cloned())
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// The slot of the weapon `name` buys, if it names one.
@@ -340,7 +521,7 @@ fn autobuy_list(world: &mut World, owner: Entity) -> Result<String, String> {
     let mut primary = carried_in(world, owner, 0).is_some();
     let mut secondary = false;
     for entry in list {
-        let name = alias(&entry).to_string();
+        let name = alias(world, &entry);
         let slot = weapon_slot(world, &name);
         if (slot == Some(0) && primary) || (slot == Some(1) && secondary) {
             continue;
@@ -404,6 +585,14 @@ fn rebuy(world: &mut World, owner: Entity) -> Result<String, String> {
         return Err("Nothing to rebuy.".into());
     };
     let list = user_list(world, owner, REBUY_KEY, REBUY_DEFAULT);
+    // The items by what they give (by short name, as a player buys them).
+    let prices = world.resource::<Prices>();
+    let short = |i: Option<&ShopItem>| i.map(|i| i.short().to_string());
+    let (kit, goggles) = (
+        short(prices.part_item(DEFUSE_KIT_PART)),
+        short(prices.part_item(NIGHT_VISION_PART)),
+    );
+    let (vest, vest_helmet) = (short(prices.armor_item(false)), short(prices.armor_item(true)));
     let mut wanted: Vec<String> = Vec::new();
     for category in list {
         let now = RebuySnapshot::of(world, owner);
@@ -423,12 +612,12 @@ fn rebuy(world: &mut World, owner: Entity) -> Result<String, String> {
                 .collect(),
             "primaryammo" => vec!["primammo".into()],
             "secondaryammo" => vec!["secammo".into()],
-            "defuser" if snap.defuser && !now.defuser => vec!["defuser".into()],
-            "nightvision" if snap.nightvision && !now.nightvision => vec!["nvgs".into()],
+            "defuser" if snap.defuser && !now.defuser => kit.clone().into_iter().collect(),
+            "nightvision" if snap.nightvision && !now.nightvision => goggles.clone().into_iter().collect(),
             "armor" => match (snap.armor, now.armor) {
                 (Some(true), Some(true)) | (Some(false), Some(_)) | (None, _) => Vec::new(),
-                (Some(true), _) => vec!["vesthelm".into()],
-                (Some(false), None) => vec!["vest".into()],
+                (Some(true), _) => vest_helmet.clone().into_iter().collect(),
+                (Some(false), None) => vest.clone().into_iter().collect(),
             },
             "hegrenade" => grenade(GrenadeKind::Blast),
             "flashbang" => grenade(GrenadeKind::Flash),
@@ -505,50 +694,48 @@ fn buy_quietly(world: &mut World, owner: Entity, name: &str) -> Result<String, S
         }
         Ok(())
     };
-    if name == "vest" || name == "vesthelm" {
-        let armor = world.get::<Armor>(owner).copied().unwrap_or_default();
-        let full = armor.amount >= 1.0;
-        let (cost, helmet) = match (name.as_str(), full, armor.helmet) {
-            ("vest", true, _) => return Err("You already have Kevlar!".into()),
-            ("vesthelm", true, true) => return Err("You already have Kevlar and a helmet!".into()),
-            ("vest", false, h) => (prices.vest, h),
-            (_, true, false) => (prices.helmet, true),
-            _ => (prices.vest_helmet, true),
-        };
-        pay(world, cost)?;
-        world.entity_mut(owner).insert(Armor { amount: 1.0, helmet });
-        return Ok(format!("bought {name}"));
-    }
     if let Some((_, slot, fill)) = AMMO_BUYS.iter().find(|(n, ..)| *n == name) {
         return buy_ammo(world, owner, *slot, *fill);
     }
-    if name == "defuser" {
-        if prices.defuser == 0 {
-            return Err("no defuser for sale".into());
-        }
-        if let Some(team) = prices.team_only.get("defuser")
-            && world.get::<crate::core::Team>(owner).is_some_and(|t| t.0 != *team)
+    if let Some(item) = prices.item(&name) {
+        if let Some(team) = item.team
+            && world.get::<crate::core::Team>(owner).is_some_and(|t| t.0 != team)
         {
             return Err("Your team can't buy that.".into());
         }
-        if world.get::<DefuseKit>(owner).is_some() {
-            return Err("You already have a defuse kit.".into());
+        match &item.gives {
+            ItemGives::Armor {
+                amount,
+                helmet,
+                helmet_price,
+            } => {
+                let worn = world.get::<Armor>(owner).copied().unwrap_or_default();
+                let full = worn.amount >= *amount;
+                let cost = match (full, *helmet, worn.helmet) {
+                    // Has it all already.
+                    (true, false, _) | (true, true, true) => return Err(item.owned.clone()),
+                    // The helmet alone.
+                    (true, true, false) => helmet_price.unwrap_or(item.price),
+                    _ => item.price,
+                };
+                pay(world, cost)?;
+                let armor = Armor {
+                    amount: amount.max(worn.amount),
+                    helmet: *helmet || worn.helmet,
+                };
+                world.entity_mut(owner).insert(armor);
+            }
+            ItemGives::Part(part) => {
+                let parts = world.get_resource::<ItemParts>().cloned().unwrap_or_default();
+                let part = parts.get(part).ok_or_else(|| format!("no item part {part}"))?;
+                if (part.has)(&world.entity(owner)) {
+                    return Err(item.owned.clone());
+                }
+                pay(world, item.price)?;
+                (part.give)(&mut world.entity_mut(owner));
+            }
         }
-        pay(world, prices.defuser)?;
-        world.entity_mut(owner).insert(DefuseKit);
-        return Ok("bought defuser".into());
-    }
-    if name == "nvgs" {
-        if prices.nightvision == 0 {
-            return Err("no night vision for sale".into());
-        }
-        if world.get::<NightVision>(owner).is_some() {
-            // CS:S's words (`#Cstrike_TitlesTXT_Already_Have_One`).
-            return Err("You already have one!".into());
-        }
-        pay(world, prices.nightvision)?;
-        world.entity_mut(owner).insert(NightVision);
-        return Ok("bought nvgs".into());
+        return Ok(format!("bought {name}"));
     }
     let wanted = if name.contains(':') || name.starts_with("weapon_") {
         name
@@ -886,23 +1073,35 @@ pub fn autobuy_rolling(world: &mut World, owner: Entity, roll: &mut dyn FnMut() 
     let kind = autobuy_gun(world, owner, wish.as_ref(), roll);
     let money = |world: &World| world.get::<Money>(owner).map_or(u32::MAX, |m| m.0);
     let kit = wish.as_ref().is_some_and(|w| w.kit);
+    // The game's items by what they give.
+    let prices = world.resource::<Prices>();
+    let id = |i: Option<&ShopItem>| i.map(|i| i.id.clone());
+    let (kit_item, vest, vest_helmet) = (
+        id(prices.part_item(DEFUSE_KIT_PART)),
+        id(prices.armor_item(false)),
+        id(prices.armor_item(true)),
+    );
+    let buy_item = |world: &mut World, item: &Option<String>| match item {
+        Some(i) => buy(world, owner, i),
+        None => Err(String::new()),
+    };
     if kind == BuyKind::Eco {
         if kit && money(world) >= BOT_ECO_KIT_MONEY {
-            let _ = buy(world, owner, "defuser");
+            let _ = buy_item(world, &kit_item);
         }
         return kind;
     }
     // Ammo for what it carries, before armour (a gun is no use empty);
     // a pistol round's money goes on kevlar first.
     if kind == BuyKind::Pistol {
-        let _ = buy(world, owner, "vest");
+        let _ = buy_item(world, &vest);
         let _ = buy(world, owner, "secammo");
     } else {
         let _ = buy(world, owner, "primammo");
         let _ = buy(world, owner, "secammo");
-        let _ = buy(world, owner, "vesthelm").or_else(|_| buy(world, owner, "vest"));
+        let _ = buy_item(world, &vest_helmet).or_else(|_| buy_item(world, &vest));
         if kit {
-            let _ = buy(world, owner, "defuser");
+            let _ = buy_item(world, &kit_item);
         }
     }
     let grenades = grenade_kinds(world.resource::<WeaponRegistry>());
@@ -942,7 +1141,8 @@ fn autobuy_gun(world: &mut World, owner: Entity, wish: Option<&BotBuying>, roll:
         return BuyKind::Kept;
     }
     // Free buying (no money) keeps nothing back.
-    let reserve = if has_money { BOT_ARMOUR_RESERVE.min(prices.vest) } else { 0 };
+    let vest = prices.armor_item(false).map_or(0, |i| i.price);
+    let reserve = if has_money { BOT_ARMOUR_RESERVE.min(vest) } else { 0 };
     let ok = |id: &str, price: u32| {
         price.saturating_add(reserve) <= money && prices.team_only.get(id).is_none_or(|t| Some(*t) == team)
     };
@@ -997,12 +1197,15 @@ mod tests {
         w.init_resource::<Time>();
         w.init_resource::<WeaponRegistry>();
         w.init_resource::<BuyWindow>();
-        let mut prices = Prices {
-            vest: 650,
-            vest_helmet: 1000,
-            helmet: 350,
-            ..default()
+        let mut prices = Prices::default();
+        prices.add_item(ShopItem::armor("g:vest", "Kevlar", 650, false, "You already have Kevlar!"));
+        let mut helmet = ShopItem::armor("g:vesthelm", "Kevlar + Helmet", 1000, true, "owned");
+        helmet.gives = ItemGives::Armor {
+            amount: 1.0,
+            helmet: true,
+            helmet_price: Some(350),
         };
+        prices.add_item(helmet);
         prices.weapons.insert("g:weapon_rifle", 2500);
         w.insert_resource(prices);
         w.resource_mut::<WeaponRegistry>().0.push(super::super::WeaponDef {

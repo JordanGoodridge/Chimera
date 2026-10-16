@@ -17,9 +17,11 @@
 //! `cs_source:alternate_hands` (the Elites), `cs_source:grenade`
 //! (`grenades::throwable`) and `cs_source:c4` (`objectives::c4_part`).
 //! Bullet penetration is the shared `Penetration` part with CS:S's numbers
-//! (`pass_materials`, measured M13; each ammo type's power and reach in
-//! ammo.toml). Prices of what isn't a weapon, the buy menu's layout and the
-//! spawn kit are still Rust (`prices`, `menu`, the plugin).
+//! (data/penetration.toml: `pass_materials`, measured M13; each ammo type's
+//! power and reach in ammo.toml). The shop is data too
+//! (data/economy.toml, docs/economy-data.md: `cs_economy`): the items that
+//! aren't weapons, the buy menu's layout, the spawn kit and the shop's
+//! sounds, loaded after the weapons.
 //!
 //! Known shortcuts (docs/tech-debt.md): The CS:S guns (all 24, data in
 //! `games/cs_source/data/weapons`): unmeasured parts are marked `UNMEASURED`
@@ -59,9 +61,10 @@ use serde::Deserialize;
 use crate::{
     core::{Intent, MovementState, Velocity},
     weapon::{
-        AltModes, CarriedAppExt, CharacterPass, Hitscan, Inventory, NetPart, PassMaterial, PassMaterials, SpreadShape,
-        StartingWeapons, ViewPunch, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame,
+        AltModes, CarriedAppExt, Hitscan, Inventory, NetPart, PassMaterials, SpreadShape, StartingWeapons, ViewPunch,
+        Weapon, WeaponEvent, WeaponEventKind, WeaponFrame,
         data::{WeaponData, WeaponDataAppExt, WeaponSet},
+        economy_data::{EconomyData, EconomyDataAppExt},
     },
 };
 
@@ -300,11 +303,13 @@ pub fn silenced_key(id: &str) -> String {
 }
 
 /// Sound entries the weapons use, for precaching with the map's sounds:
-/// `SOUNDS` and every weapon's (its data's).
+/// `SOUNDS`, every weapon's (its data's) and the shop's (`cs_economy`).
 pub fn sounds() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = SOUNDS.to_vec();
     out.extend(super::grenades::SOUNDS);
     out.extend(super::objectives::SOUNDS);
+    // The shop's: buying ammo, a weapon, an item; night vision on and off.
+    out.extend(cs_economy().sounds.entries());
     for w in &cs_weapons().weapons {
         let swings = w
             .melee
@@ -341,71 +346,46 @@ pub const SOUNDS: &[&str] = &[
     "Bounce.ShotgunShell",
 ];
 
-/// How bullets pass things (measured M13). A wall passes when its
-/// thickness along the path is at most the ammo's power x the material's
-/// scale; each object passed scales the damage carried on.
+/// CS:S's other data (the formats: docs/economy-data.md, and
+/// docs/weapon-data.md for penetration), built in and parsed at run time:
+/// the shop (items, buy menu, spawn kit, its sounds) and how bullets pass
+/// materials (measured M13).
+const ECONOMY_DATA: (&str, &str) = ("economy.toml", include_str!("../../data/economy.toml"));
+const PENETRATION_DATA: (&str, &str) = ("penetration.toml", include_str!("../../data/penetration.toml"));
+
+/// CS:S's economy document, parsed once per process.
+pub fn cs_economy() -> &'static EconomyData {
+    static DOC: OnceLock<EconomyData> = OnceLock::new();
+    DOC.get_or_init(|| {
+        EconomyData::parse(ECONOMY_DATA.0, ECONOMY_DATA.1).unwrap_or_else(|e| panic!("CS:S economy data: {e}"))
+    })
+}
+
+/// How CS:S's bullets pass things (games/cs_source/data/penetration.toml).
 pub fn pass_materials() -> PassMaterials {
-    PassMaterials {
-        by_class: vec![
-            // Wood: scale and damage measured.
-            (
-                'W',
-                PassMaterial {
-                    scale: 2.0,
-                    damage: 0.6,
-                },
-            ),
-            // Metal, sand (dirt): scales measured; damage factors are not
-            // (UNMEASURED: halfway between wood and concrete, as players).
-            (
-                'M',
-                PassMaterial {
-                    scale: 1.0,
-                    damage: 0.5,
-                },
-            ),
-            (
-                'D',
-                PassMaterial {
-                    scale: 0.5,
-                    damage: 0.5,
-                },
-            ),
-            // Concrete: both measured.
-            (
-                'C',
-                PassMaterial {
-                    scale: 0.4,
-                    damage: 0.25,
-                },
-            ),
-        ],
-        // UNMEASURED (tile, grate, glass, plastic, ...): metal's scale and a
-        // halved damage.
-        default: PassMaterial {
-            scale: 1.0,
-            damage: 0.5,
-        },
-        character: CharacterPass {
-            // A fit to the measured stop cases (21-22 units per player).
-            cost: 21.5 * UNIT,
-            damage: 0.5,
-            // The range left beyond a player's exit is halved.
-            range_scale: 0.5,
-        },
-    }
+    PassMaterials::parse(PENETRATION_DATA.0, PENETRATION_DATA.1).unwrap_or_else(|e| panic!("CS:S penetration data: {e}"))
 }
 
 pub struct CsWeaponsPlugin;
 
 impl Plugin for CsWeaponsPlugin {
     fn build(&self, app: &mut App) {
-        // The prices of what isn't a weapon first: the data adds the
-        // weapons'.
-        app.insert_resource(prices());
         register_hooks(app);
         if let Err(e) = app.add_weapon_set(cs_weapons()) {
             panic!("CS:S weapon data: {e}");
+        }
+        // The shop after the weapons it names; a spawn kit the app set
+        // before the game (tests) stays.
+        let kept = app
+            .world()
+            .get_resource::<StartingWeapons>()
+            .filter(|s| !s.is_empty())
+            .cloned();
+        if let Err(e) = app.add_economy_data(&[ECONOMY_DATA]) {
+            panic!("CS:S economy data: {e}");
+        }
+        if let Some(kit) = kept {
+            app.insert_resource(kit);
         }
         app.insert_resource(crate::weapon::spray::SprayRules {
             sound: Some(SPRAY_SOUND.into()),
@@ -434,141 +414,11 @@ impl Plugin for CsWeaponsPlugin {
         if !app.is_plugin_added::<super::pain::PainSoundsPlugin>() {
             app.add_plugins(super::pain::PainSoundsPlugin);
         }
-        let mut start = app.world_mut().get_resource_or_init::<StartingWeapons>();
-        if start.is_empty() {
-            // CS:S's spawn kit: the knife and the team's pistol (Terrorists,
-            // team 1, the Glock; everyone else the USP). Deathmatch adds the
-            // AK-47 for all; the best weapon is drawn: given last.
-            *start = StartingWeapons {
-                team: vec![(Some(1), vec![KNIFE, GLOCK]), (None, vec![KNIFE, USP])],
-                all: vec![AK47],
-            };
-        }
     }
 }
 
-/// Prices of what isn't a weapon (the weapons' are their data's `[buy]`,
-/// spec weapons.md, "Economy"): armour from the game's buy menu: kevlar
-/// 650, kevlar and helmet 1000, the helmet alone 350.
-fn prices() -> crate::weapon::economy::Prices {
-    let mut p = crate::weapon::economy::Prices {
-        vest: 650,
-        vest_helmet: 1000,
-        helmet: 350,
-        ..default()
-    };
-    // The defusal kit, counter-terrorists only (spec 5, "Kit").
-    p.defuser = super::objectives::DEFUSER_PRICE;
-    p.team_only.insert("defuser", 2);
-    // Night vision goggles, either team: $1250 (the install's buy menu
-    // text, `#Cstrike_NightvisionPrice`), with the game's sound entries.
-    p.nightvision = NIGHTVISION_PRICE;
-    p.nightvision_on = Some(NIGHTVISION_ON.into());
-    p.nightvision_off = Some(NIGHTVISION_OFF.into());
-    p.menu = menu();
-    // Ammo by the box per ammo type (the data's), free in CS:S today;
-    // bought guns and the spawn pistols come full (measured: weapons.md
-    // M19).
-    p.bought_full = true;
-    p.ammo_sound = Some(AMMO_SOUND.into());
-    p.pickup_sound = Some(PICKUP_SOUND.into());
-    p.item_sound = Some(ITEM_SOUND.into());
-    p
-}
-
-/// Night vision's price (the install's `#Cstrike_NightvisionPrice`,
-/// ": $1250").
-pub const NIGHTVISION_PRICE: u32 = 1250;
-/// Night vision turned on and off (the install's game_sounds.txt:
-/// `items/nvg_on.wav`, `items/nvg_off.wav`).
-pub const NIGHTVISION_ON: &str = "Player.NightVisionOn";
-pub const NIGHTVISION_OFF: &str = "Player.NightVisionOff";
 /// A spray (`impulse 201`; game_sounds.txt: `player/sprayer.wav`).
 pub const SPRAY_SOUND: &str = "SprayCan.Paint";
-
-/// The sound of buying ammo (Source's generic ammo pickup entry).
-pub const AMMO_SOUND: &str = "BaseCombatCharacter.AmmoPickup";
-/// A weapon picked up or bought (`items/itempickup.wav`).
-pub const PICKUP_SOUND: &str = "Player.PickupWeapon";
-/// Kevlar, a helmet or a defuse kit bought (`items/ammopickup.wav`; which
-/// entry CS:S plays for items is inferred, docs/tech-debt.md).
-pub const ITEM_SOUND: &str = "BaseCombatCharacter.ItemPickup2";
-
-/// CS:S's buy menu: its categories on their number keys (6 and 7 buy
-/// primary and secondary ammo at once) and items in its order; each team
-/// sees its own.
-fn menu() -> Vec<crate::weapon::economy::BuyCategory> {
-    use crate::weapon::economy::{BuyCategory, BuyItem};
-    let category = |key: u8, name: &'static str, items: &[(&'static str, &'static str)]| BuyCategory {
-        key,
-        name,
-        items: items.iter().map(|(buy, label)| BuyItem { buy, label }).collect(),
-        direct: None,
-    };
-    let direct = |key: u8, name: &'static str, buy: &'static str| BuyCategory {
-        direct: Some(buy),
-        ..category(key, name, &[])
-    };
-    use super::grenades::{FLASHBANG, HEGRENADE, SMOKEGRENADE};
-    vec![
-        category(
-            1,
-            "Pistols",
-            &[
-                (GLOCK, "Glock"),
-                (USP, "USP"),
-                (P228, "P228"),
-                (DEAGLE, "Desert Eagle"),
-                (ELITE, "Dual Elites"),
-                (FIVESEVEN, "Five-SeveN"),
-            ],
-        ),
-        category(2, "Shotguns", &[(M3, "M3"), (XM1014, "XM1014")]),
-        category(
-            3,
-            "Sub-Machine Guns",
-            &[
-                (MAC10, "MAC-10"),
-                (TMP, "TMP"),
-                (MP5NAVY, "MP5"),
-                (UMP45, "UMP45"),
-                (P90, "P90"),
-            ],
-        ),
-        category(
-            4,
-            "Rifles",
-            &[
-                (GALIL, "Galil"),
-                (FAMAS, "FAMAS"),
-                (AK47, "AK-47"),
-                (M4A1, "M4A1"),
-                (SCOUT, "Scout"),
-                (SG552, "SG 552"),
-                (AUG, "AUG"),
-                (AWP, "AWP"),
-                (G3SG1, "G3SG1"),
-                (SG550, "SG 550"),
-            ],
-        ),
-        category(5, "Machine Guns", &[(M249, "M249")]),
-        direct(6, "Primary Ammo", "primammo"),
-        direct(7, "Secondary Ammo", "secammo"),
-        category(
-            8,
-            "Equipment",
-            &[
-                ("vest", "Kevlar"),
-                ("vesthelm", "Kevlar + Helmet"),
-                (FLASHBANG, "Flashbang"),
-                (HEGRENADE, "HE Grenade"),
-                (SMOKEGRENADE, "Smoke Grenade"),
-                ("defuser", "Defusal Kit"),
-                ("nvgs", "Nightvision Goggles"),
-            ],
-        ),
-    ]
-}
 
 /// Which hand of the dual Elites fires the shot that leaves `clip` rounds:
 /// they alternate (spec weapons.md, view-model table), the right one on

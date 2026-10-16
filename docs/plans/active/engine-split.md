@@ -801,6 +801,23 @@ measurements):
   defined only in a test's data file is bought, fired and played over the
   network (`weapon_data.rs`). Next: the buy menu layout and the spawn kit
   as data, then rule modules' settings, HUD layouts, minigames.
+- [x] Data-driven shop and penetration (2026-10-15, one session;
+  docs/economy-data.md): an economy document (`chimera_sim`'s
+  `weapon::economy_data`) gives the items that aren't weapons
+  (`ShopItem`: armour, or a part registered by name in `ItemParts`; the
+  buying rules find them by what they give, not by CS:S's names), the
+  buy menu's categories and order, the spawn kit per team, the shop's
+  sounds and buy aliases; penetration by surface material is a document
+  too (`PassMaterials::parse`), and CS:S's round numbers
+  (`RoundSettings`) are read with `rule_module::parse_settings`. CS:S's
+  are `games/cs_source/data/{economy,penetration,rounds}.toml`; its
+  `prices`/`menu`/`pass_materials` tables and spawn-kit code are gone
+  (compared with the loaded data before they went). The economy, buy
+  menu and penetration tests pass unchanged in their expectations; an
+  item and a menu category defined only in a test's data file are
+  bought (`economy_data.rs`). Next: bots' buying thresholds and the
+  default autobuy/rebuy lists, rule modules' other settings, HUD
+  layouts, minigames.
 - Order: (1) the `tools` package; (2) inside today's single crate, move
   code to its future home (the `map` sort, CS:S UI out of `client`,
   rules behind a rule-module interface, game-registered replication),
