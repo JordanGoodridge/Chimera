@@ -423,6 +423,11 @@ pub struct GameMenus {
     /// The round's win panel (`resource/ui/win_round.res`: winner, why,
     /// MVP, a fun fact), placed by the HUD layout's `WinPanel_Round`.
     pub win_panel: Option<String>,
+    /// The vote panels' file (Source's `resource/ui/votehud.res`): its
+    /// layout holds the panels' frames (`VoteActive`, `VotePassed`,
+    /// `VoteFailed`, `CallVoteFailed`), and `<file>#<panel>` what is in
+    /// each.
+    pub vote_hud: Option<String>,
     /// The message of the day's panel (CS:S's `resource/ui/textwindow.res`
     /// style info panel: a title, the message, an OK button).
     pub motd: Option<String>,

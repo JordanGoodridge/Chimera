@@ -526,6 +526,15 @@ our own (docs/plans/active/nat-traversal.md; UPnP mapping prototyped,
 (multiplayer.md "Capacity", `heavy::net_capacity`); 1 is moot
 (networking came first), 2 was taken as both.
 
+Votes (`callvote`, `net::vote`; CS:S's issues `game::votes`, panels
+`ui::vote_hud`) are in: kick, change level, restart game, F1/F2. Left:
+the vote setup dialog (`VoteSetupDialog` in hl2's votehud.res; the
+server already answers `callvote` alone with the issues and their
+choices, `VoteNews::Setup`, printed to the console), a way to open it
+(CS:S's menus have none that we know of), bot ballots for
+`sv_vote_bots_allowed 1`, and CS:S's rules and look from capture C25
+(parity-gaps.md).
+
 ## 2d. CS:S demos as a parity check (user idea, 2026-10-14)
 
 Built: `demodump` reads CS:S `.dem` files (`source_formats::dem`; SourceTV

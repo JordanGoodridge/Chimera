@@ -365,6 +365,16 @@ fn kick_by(world: &mut World, pick: impl Fn(&str, Option<u64>) -> bool, reason: 
     Some(format!("kicked {name}"))
 }
 
+/// Kick the person with user id `id` (`kickid`'s path: told `reason`,
+/// dropped a moment later); a listen server's host can't be kicked.
+/// What happened, or None when nobody has that id.
+pub fn kick_userid(world: &mut World, id: u64, reason: &str) -> Option<String> {
+    if id == HOST_ID {
+        return None;
+    }
+    kick_by(world, |_, i| i == Some(id), reason)
+}
+
 /// Drop refused clients that didn't hang up.
 fn drop_refused(q: Query<(Entity, &RefusedAt)>, time: Res<Time<Real>>, mut out: MessageWriter<DisconnectRequest>) {
     let now = time.elapsed_secs_f64();

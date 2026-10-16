@@ -64,6 +64,7 @@ pub struct CsSourceNetPlugin;
 impl Plugin for CsSourceNetPlugin {
     fn build(&self, app: &mut App) {
         app.net_part("cs_source", register);
+        super::votes::register(app);
     }
 }
 

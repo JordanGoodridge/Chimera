@@ -44,6 +44,10 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
    weapon by itself after the last shot, or stay on the empty gun
    clicking? The probe bot switched to its knife, but that may be its AI;
    ours stays on the empty gun.
+10. **C25 votes** (needs a second human player on the listen server):
+   `callvote` alone, a kick vote and a changelevel vote, F1 during a
+   vote, a refused call; screenshots of each panel, as in parity-gaps.md
+   C25.
 
 ## Sitting 2: sound (about 20 min)
 

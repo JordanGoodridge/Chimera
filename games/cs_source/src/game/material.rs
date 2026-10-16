@@ -146,6 +146,11 @@ impl<'a> MaterialLoader<'a> {
         }
     }
 
+    /// The game's files.
+    pub fn mount(&self) -> &'a Mount {
+        self.mount
+    }
+
     /// A file from the map's pakfile, else the game's files.
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
         self.read_packed(path).or_else(|| self.mount.read(&normalize(path)).ok())

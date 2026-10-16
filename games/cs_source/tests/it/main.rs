@@ -53,6 +53,7 @@ mod net_interp;
 mod net_maps;
 mod net_prediction;
 mod net_upnp;
+mod net_votes;
 mod net_weapons;
 mod pain_sounds;
 mod phy_spec;
