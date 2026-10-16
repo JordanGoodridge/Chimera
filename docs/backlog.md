@@ -796,6 +796,11 @@ dithered fade bands. Left:
   (performance.md, "Checks"). Capture C27 says whether CS:S hides them
   too; if it shows them, find the engine's rule for static props seen
   past sky brushes. Until then cs_assault's vischeck failure is expected.
+- `refcmp ordercheck` on cs_assault: 9 views still differ by up to 50
+  pixels (`nav1847_90` by one level in a lamp-lit corner, `nav1567_180` a
+  rail's highlight; performance.md, "Checks"): find what they keep from
+  earlier views (the opaque phases' batch order by pipeline id is a
+  candidate).
 - Measure on the Windows PC (`refcmp bench` there) and set a budget.
 - Frame-time follow-ups (performance.md, "Frame time pass"): before/after
   numbers on a quiet machine and on the Windows PC (`refcmp bench`, also

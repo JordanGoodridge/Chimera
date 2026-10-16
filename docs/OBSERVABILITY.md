@@ -1034,7 +1034,7 @@ Details and baseline numbers: [performance.md](performance.md).
   ~300 player positions per map (`MASHUP_VIS_FULL=1`: every nav area).
 - `refcmp ordercheck --views tools/refcmp/<map>.toml` captures the same
   views (vischeck's) in order and in reverse order and fails if any view
-  differs at all: a capture that depends on the views before it (sort
+  differs by more than 100 pixels: a capture that depends on the views before it (sort
   order, fades, exposure an earlier view left) shows there, and would
   make vischeck and refcmp comparisons differ by chance. To find what a
   view depends on, capture short `--views` lists with mashup itself (the

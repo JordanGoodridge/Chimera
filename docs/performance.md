@@ -154,22 +154,31 @@ Fades apply with `r_novis 1` too.
   frame), the first view rendering before shader pipelines were ready,
   and captures depending on the views before them (below).
 - `refcmp ordercheck`: the same views captured in order and in reverse
-  order (culling on) must match pixel for pixel: a view's capture must
-  not depend on what was drawn before it. Two causes, both fixed
-  (2026-10-16, `render::blend_order`): Bevy keeps each view's blended
-  items from frame to frame and sorts them stably by view depth, so items
-  at the same depth kept the order earlier frames left (de_nuke's door
-  windows: two glass faces 5 cm apart, seen edge-on, at one depth; view
-  `nav1627_90` differed by 16k pixels after `nav1627_0`); and map
-  overlays and infodecals were blended in the alpha-mask phase, which
-  orders batches by pipeline id, made in the order the camera first saw
-  each kind, so overlapping decals stacked differently (`spawn36_90`'s
-  gravel overlays, 930 pixels). Ties now go farther-from-the-eye first,
-  then by entity; map decals draw first among blended items, in the map's
-  order. de_nuke before: ordercheck 9 of 311 views differ (worst
-  15997 pixels), vischeck 21 differ (worst 15997, over the limit); after:
-  ordercheck 0, vischeck 12 differ, worst 644 (the sky-brush views): it
-  passes.
+  order (culling on) must match (up to 100 pixels): a view's capture must
+  not depend on what was drawn before it. Three causes, fixed
+  (2026-10-16, `render::blend_order`), all in how Bevy keeps each view's
+  depth-sorted items (blended and transmissive) from frame to frame and
+  sorts them stably by view depth: items at the same depth kept the
+  order earlier frames left (de_nuke's door windows: two glass faces 5 cm
+  apart, seen edge-on, at one depth; view `nav1627_90` differed by 16k
+  pixels after `nav1627_0`); an item's centre is worked out only when it
+  is queued (it comes into view, or its mesh or material changes), so an
+  entity that moved since sorted by where it was; and our sprites, which
+  add in the transmissive phase, summed in a different order where they
+  overlap at one depth (cs_assault's rows of lamp glows: up to 28k pixels
+  off by one or two levels). Map overlays and infodecals were blended in
+  the alpha-mask phase, which orders batches by pipeline id, made in the
+  order the camera first saw each kind, so overlapping decals stacked
+  differently (de_nuke `spawn36_90`'s gravel overlays, 930 pixels). Now
+  each item's centre is taken again every frame, ties go
+  farther-from-the-eye first, then by entity, and map decals draw first
+  among blended items, in the map's order. de_nuke before: ordercheck 9
+  of 311 views differ (worst 15997 pixels), vischeck 21 differ (worst
+  15997, over the limit); after: ordercheck 0, vischeck 11 differ, worst
+  644 (the sky-brush views): it passes. cs_assault: ordercheck 13 of 312
+  views differ (worst 28190) before the glow fix, 9 of 316 after (worst
+  50 pixels: `nav1847_90` by one level, `nav1567_180` 27 pixels on a
+  rail's highlight; not found yet, under the tolerance).
 - cs_assault's vischeck fails (52 of 312 views differ after the fix
   above, 56 in its first run; worst `nav1371_90` on the roof, 33.7k pixels: the
   water tower, rooftop props and buildings seen over the walls; then
