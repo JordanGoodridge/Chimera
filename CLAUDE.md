@@ -14,7 +14,8 @@ This file is a map. Follow the links for detail; keep it short.
 
 | Need | Read |
 |---|---|
-| Design decisions and why (slots, mounts, weapon model, legal rules) | [README.md](README.md) |
+| What the project is, installing and playing | [README.md](README.md) |
+| Design decisions and why (slots, mounts, weapon model, legal rules) | [docs/DESIGN.md](docs/DESIGN.md) |
 | Code layout, layers, data flow | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | How to check your work (tests, screenshots, live ECS queries) | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
 | Current plan and progress | [docs/plans/active/](docs/plans/active/engine-split.md) |
@@ -99,8 +100,9 @@ personal emails or machine paths in commits or files.
 
 ## Testing on Windows
 
-Remote: https://github.com/r0pi0x/LuckerParty (private). The games and the
+Remote: https://github.com/r0pi0x/Chimera (private; renamed from
+LuckerParty on 2026-10-16, the old URL redirects). The games and the
 original source live on the Windows PC, which has its own checkout
-(`git clone https://github.com/r0pi0x/LuckerParty`); `scripts\playtest.ps1`
+(`git clone https://github.com/r0pi0x/Chimera`); `scripts\playtest.ps1`
 pulls and runs an optimized build. Spec sessions there write into `specs/`
 in that checkout and push; implementation sessions pull them.

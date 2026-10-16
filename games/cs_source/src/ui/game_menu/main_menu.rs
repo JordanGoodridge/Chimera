@@ -1,5 +1,7 @@
-//! The main menu: the left-hand entries (the game's, then ours) and what
-//! each does.
+//! The main menu: the left-hand entries (the game's `GameMenu.res`, none
+//! of ours) and what each does. What our entries used to open is in the
+//! console: `mashup_quickstart`, `map greybox`, `menu bots`, `menu team`,
+//! `callvote`, `menu extras`, `toggleconsole` (`~`).
 
 use super::*;
 
@@ -9,30 +11,23 @@ pub enum MainItem {
     Resume,
     /// Leave the game for the main menu (`disconnect`).
     Disconnect,
+    /// The player list: mute players' voice (`PlayerListDialog.res`).
+    PlayerList,
     /// The server browser (`openserverbrowser`).
     FindServers,
     /// Create Server.
     NewGame,
-    Bots,
-    Team,
     Options,
     BugReport,
     Quit,
-    /// Ours: a rounds game on `QUICK_MAP` with bots, at once.
-    QuickStart,
-    /// Ours: mashup's greybox test map (`map greybox`).
-    Greybox,
-    /// Ours: open the console (`toggleconsole`).
-    Console,
-    /// Ours: Lucker Party Options.
-    Extras,
 }
 
 /// The game's entries without its menu file, in CS:S's order and words:
 /// item, text, shown only in a game.
-pub const MAIN: [(MainItem, &str, bool); 7] = [
+pub const MAIN: [(MainItem, &str, bool); 8] = [
     (MainItem::Resume, "Resume Game", true),
     (MainItem::Disconnect, "Disconnect", true),
+    (MainItem::PlayerList, "Player List", true),
     (MainItem::FindServers, "Find Servers", false),
     (MainItem::NewGame, "Create Server", false),
     (MainItem::BugReport, "Report a Bug", false),
@@ -40,18 +35,7 @@ pub const MAIN: [(MainItem, &str, bool); 7] = [
     (MainItem::Quit, "Quit", false),
 ];
 
-/// Ours, after the game's entries (and a gap): item, text, shown only in a
-/// game.
-pub const OURS: [(MainItem, &str, bool); 6] = [
-    (MainItem::QuickStart, "Quick Start", false),
-    (MainItem::Greybox, "Greybox Test Map", false),
-    (MainItem::Bots, "Bots", true),
-    (MainItem::Team, "Team", true),
-    (MainItem::Extras, "Lucker Party Options", false),
-    (MainItem::Console, "Console", false),
-];
-
-/// The map a quick start plays (rounds, `QUICK_BOTS` normal bots: five
+/// The map a quick start (`mashup_quickstart`) plays (rounds, `QUICK_BOTS` normal bots: five
 /// terrorists and four counter-terrorists besides you); the first map
 /// when the install lacks it.
 pub const QUICK_MAP: &str = "de_dust2";
@@ -61,10 +45,8 @@ impl MainItem {
     pub(super) fn page(self) -> Option<Page> {
         match self {
             MainItem::NewGame => Some(Page::NewGame),
-            MainItem::Bots => Some(Page::Bots),
-            MainItem::Team => Some(Page::Team),
             MainItem::Options => Some(Page::Settings),
-            MainItem::Extras => Some(Page::Extras),
+            MainItem::PlayerList => Some(Page::PlayerList),
             _ => None,
         }
     }
@@ -98,9 +80,8 @@ impl MainEntry {
 
 /// Every left-hand entry, shown or not: the game's (`GameMenu.res`) that
 /// mashup has, in its order and words (built-in ones in CS:S's order
-/// without the file); then, after a gap, ours (quick start, the greybox,
-/// bots, team, our options, console). Entries mashup can't do (player
-/// list, achievements, benchmark ...) are left out. `GameMenu::entries`
+/// without the file); none of ours. Entries mashup can't do
+/// (achievements, benchmark ...) are left out. `GameMenu::entries`
 /// picks those shown in or out of a game.
 pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
     let builtin = |item: MainItem| {
@@ -111,9 +92,9 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
     match ui.filter(|u| !u.menu.is_empty()) {
         None => {
             out.extend(MAIN.iter().map(|(item, ..)| builtin(*item)));
-            // CS:S's gap under Disconnect, shown in a game.
-            out[2].gap = true;
-            out[2].gap_in_game_only = true;
+            // CS:S's gap under the player list, shown in a game.
+            out[3].gap = true;
+            out[3].gap_in_game_only = true;
         }
         Some(ui) => {
             let mut gap: Option<bool> = None;
@@ -127,6 +108,7 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
                 let item = match e.command.trim().to_lowercase().as_str() {
                     "resumegame" => MainItem::Resume,
                     "disconnect" => MainItem::Disconnect,
+                    "openplayerlistdialog" => MainItem::PlayerList,
                     "openserverbrowser" => MainItem::FindServers,
                     "opennewgamedialog" | "opencreatemultiplayergamedialog" => MainItem::NewGame,
                     "openoptionsdialog" => MainItem::Options,
@@ -153,16 +135,12 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
                 let at = match i {
                     0 => 0,
                     1 => out.iter().position(|m| m.item == MainItem::Resume).map_or(0, |p| p + 1),
+                    2 => out.iter().position(|m| m.item == MainItem::Disconnect).map_or(0, |p| p + 1),
                     _ => out.iter().position(|m| m.item == MainItem::Quit).unwrap_or(out.len()),
                 };
                 out.insert(at, builtin(*item));
             }
         }
-    }
-    for (k, (item, label, in_game)) in OURS.iter().enumerate() {
-        let mut e = MainEntry::new(*item, label, *in_game);
-        e.gap = k == 0;
-        out.push(e);
     }
     out
 }
@@ -358,21 +336,8 @@ impl GameMenu {
                 out.lines.push("bugreport".into());
             }
             MainItem::Quit => out.lines.push("quit".into()),
-            MainItem::QuickStart => {
-                self.quick_setup();
-                self.start(out);
-            }
-            MainItem::Greybox => {
-                out.lines.push(format!("map {}", crate::client::console::GREYBOX));
-                if self.in_game {
-                    self.close(out);
-                } else {
-                    self.loading = Some(crate::client::console::GREYBOX.into());
-                }
-            }
-            MainItem::Console => out.lines.push("toggleconsole".into()),
             MainItem::FindServers => out.lines.push("openserverbrowser".into()),
-            MainItem::NewGame | MainItem::Bots | MainItem::Team | MainItem::Options | MainItem::Extras => {}
+            MainItem::NewGame | MainItem::Options | MainItem::PlayerList => {}
         }
     }
 }

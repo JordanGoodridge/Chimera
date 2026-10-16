@@ -1,7 +1,9 @@
 //! The options dialog's pages (Keyboard, Mouse, Audio, Video,
 //! Multiplayer) and its two Advanced dialogs: their rows, OK / Cancel /
 //! Apply, the keyboard list and the crosshair preview; the multiplayer
-//! tab's Advanced dialog (its options from the install's `cfg/user.scr`).
+//! tab's Advanced dialog (its options from the install's `cfg/user.scr`);
+//! the Voice tab's Test Microphone (`voice_test`, "Stop Microphone Test"
+//! while it runs; the test stops when the tab or the dialog closes).
 
 use super::*;
 
@@ -505,6 +507,22 @@ impl GameMenu {
             Tab::Multiplayer => &[Action::MultiplayerAdvanced],
             _ => &[],
         };
+        if self.tab == Tab::Voice && self.known_command("voice_test") {
+            // Test Microphone / Stop Microphone Test (`voice_test`), where
+            // the layout has it.
+            let (label, line) = if self.voice_testing {
+                (self.text("#GameUI_StopTestMicrophone", "Stop Microphone Test"), "voice_test 0")
+            } else {
+                (self.text("#GameUI_TestMicrophone", "Test Microphone"), "voice_test 1")
+            };
+            let at = self.layout().and_then(|l| l.controls.iter().position(|c| c.name == TEST_MICROPHONE));
+            let before = at.map_or(rows.len(), |at| {
+                rows.iter()
+                    .position(|r| self.row_order(r) > at)
+                    .unwrap_or(rows.len())
+            });
+            rows.insert(before, Self::button_row(&label, Action::Run(line.into(), false)));
+        }
         for action in buttons.iter().cloned() {
             let label = if action == Action::Gamma {
                 self.text("#GameUI_AdjustGamma", "Adjust brightness levels...")

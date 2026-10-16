@@ -165,7 +165,7 @@ economy until CS:GO). The first three rows are already in our
 
 | Name (ours) | Value | Unit | Meaning |
 |---|---|---|---|
-| hostage_health | 100 | hp | *hyp.* (Q8) |
+| hostage_health | 100 | hp | measured (Q8); a float; damage by the rule below |
 | hostage_models | `characters/hostage_01..04` | – | the only hostage models shipped; maps name `models/hostage.mdl` (cs_havana, cs_office) or `HostageType` 0/1 (cs_assault, cs_compound), neither of which selects them (Q9) |
 | hostage_anims | HL2 `Humans/male_shared`, `male_gestures`, `male_postures` (included) | – | own file has only a 101-frame ragdoll sequence |
 | hostage_follow_* | see Behaviour, *hyp.* | – | Q10 |
@@ -175,6 +175,83 @@ Stock maps: cs_assault 4, cs_compound 3, cs_havana 4, cs_italy 4,
 cs_militia 4, cs_office 4 hostages. Every cs_ map has 1–4
 `func_hostage_rescue` brushes; no stock map uses the point entity
 `info_hostage_rescue`, `info_bomb_target`, or any VIP entity.
+
+Measured 2026-10-16, **hostage damage (Q8), the rule** (probe server,
+cs_office, hostage 121 as below, AK-47 and Desert Eagle from 150 units, a
+SourceMod hook on the hostage's TraceAttack and OnTakeDamage logging each
+hit's damage before the multiplier, its hitgroup, and the damage taken;
+three shots per aim height 66, 60, 48, 36, 24, 12):
+
+- Each hit takes the shot's damage (after range falloff) × a hostage-only
+  hitgroup multiplier: **head 2.5, chest 1.5, stomach 1.75, left and right
+  arm 0.75, left and right leg 0.6** (exact to 3 decimals on both guns,
+  e.g. AK 35.79 → head 89.47, chest 53.69; Deagle 50.82 → stomach 88.94).
+- A bullet often hits the same hostage **twice**: after the first box it
+  goes on through the hostage and hits another box (or the same group
+  again) with half the damage, range falloff applied again (AK 35.79 →
+  17.78, Deagle 50.85 → 23.78: × 0.5 × RangeModifier^(d/500)), the
+  rule M13 found for a player a bullet passes; whether it does depends
+  on where the spread puts the line (z 60: chest, then chest again in 2
+  of 3 shots).
+- Health is a float: the hits add up and the lost health shown is
+  truncated after (53.69 + 26.67 → 80, not 79).
+- Every damage below and in the repeat fits this; the table that follows
+  is the first, single-shot pass, kept for the record (its "ours"
+  columns are from before ours followed the rule; ours now does: the
+  heavy test `map_objectives::office_hostage_shots_from_150_units`
+  checks each shot against the rule on the boxes ours crosses).
+
+Measured 2026-10-16, **hostage damage (Q8), no rule found**: probe
+server, cs_office, hostage 121 (the map's first `hostage_entity`) with its
+feet at (1784, 734, −159.9), health 100; the shooter standing at
+(1634, 734, −159.9), eye 64 above his feet; one shot per round restart at
+the hostage's feet + (0, 0, z), its health read after. Ours: the same
+shots on our cs_office (heavy test
+`map_objectives::office_hostage_shots_from_150_units`), the hostage's
+player hitgroups on its model's first hitbox set (all four hostage
+models have the same boxes) and the player multipliers.
+
+| Weapon | z | CS:S damage | ratio to the shot's damage after falloff | ours | our hitgroup (boxes the ray crosses) |
+|---|---|---|---|---|---|
+| AK-47 (36) | 66 | 89 | 2.49 | killed (143) | head (head only) |
+| AK-47 | 60 | 53 | 1.49 | 35 | chest (chest only) |
+| AK-47 | 48 | 53 | 1.49 | 35 | chest (chest, left arm) |
+| AK-47 | 36 | 26 | 0.73 | 44 | stomach (stomach, both legs) |
+| AK-47 | 18 | 21 | 0.59 | 26 | right leg (both legs) |
+| Desert Eagle (54) | 66 | killed | ≥ 1.97 | killed (203) | head (head only) |
+| Desert Eagle | 60 | 76 | 1.50 | 50 | chest (chest only) |
+| Desert Eagle | 48 | 38 | 0.75 | 50 | chest (chest, stomach) |
+| Desert Eagle | 36 | 38 | 0.75 | 63 | stomach (stomach, both legs) |
+| Desert Eagle | 18 | 44 | 0.87 | 37 | right leg (both legs) |
+
+(Falloff at ~145 units: AK 35.8, Deagle 50.9.) No single rule fits all
+ten: at z 48 and 18 the two weapons, aimed at the same point, take
+different shares (1.49 vs 0.75; 0.59 vs 0.87), and per-weapon falloff
+would only make the Deagle's share smaller, so whatever decides it isn't
+the aim point alone: most likely the first-shot spread (about ±1.5 units
+for the AK, ±2.5 for the Deagle at this range) landing on different
+boxes, or the bullet hitting the hostage more than once (the probe bot
+logged up to 3 impacts per shot). On our geometry no set of hitgroup
+multipliers fits either: the Deagle's z 60 shot crosses only the chest
+(share 1.5) but its z 48 shot, entering the chest first, took 0.75. The
+shares that agree between weapons (head about 2.5, chest 1.5, z 36 0.75)
+hint at a hostage-only table or a second hit at half damage (head 2 +
+0.5, chest 1 + 0.5), but ten single shots can't pin it. Ours keeps the
+player rule. To settle it: several shots per point, from close range (32
+units, where spread is under 0.5 units) at each hitbox's centre, with
+the hitgroup logged (`hostage_hurt` has none: hook the hostage's damage
+with the hit's hitgroup) and every impact per shot.
+
+Repeated 2026-10-16 (the same hostage; four AK-47 shots per aim point,
+each after a round restart; damage taken per shot): from 150 units, z 60:
+80, 53, 53, 53; z 48: 53, 53, 53, 67; z 36: 62, 62, 26, 21; z 24: 21, 21,
+32, 37. From 40 units, z 60: 80, 53, 53, 53; z 48: 85, 53, 26, 85; z 36:
+62 ×4; z 24: 79, 73, 62, 21. Every shot logged 2–3 bullet impacts. The
+same aim gives different damage (spread lands on different boxes), and
+the values cluster on 21, 26, 53, 62, 80, 85: chains of hits at halving
+damage explain several (chest + chest 53, stomach + chest 62, leg 26 alone)
+but not 21 or 32. Still open; settling it needs the hitgroup of each hit
+(a plugin hook on the hostage's damage, not `hostage_hurt`).
 
 ### HUD (from `hudlayout.res`, `clientscheme.res`, `mod_textures.txt`)
 
@@ -663,19 +740,21 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    preference? After a plant: kill all CTs (`kill` via RCON) — does the
    round end at once? Defuse with the round already over? Which announcers
    play on a defuse (BombDefused then CTWin, or one)?
-7. **Q7 Planted bomb physics.** Is the planted bomb solid to players and
+7. **Q7 Partly answered (2026-10-16, probe server, dust2 B, a CT bot
+   40 units from the planted bomb holding use on it):** the defuser can't
+   move (forward held: speed 0, no displacement over 250 ticks), can duck
+   (ducked 30 ticks after the press, still defusing), and
+   `weapons/c4/c4_disarm.wav` plays on the press tick; as ours. The
+   bomb's solidity and riding platforms not measured. Was: **Q7 Planted bomb physics.** Is the planted bomb solid to players and
    bullets? Where exactly (origin vs player origin, angles)? Does it ride
    a moving platform? Dump its position and collision group after a plant.
    Can the defuser move or crouch while defusing (`mashup_wrun` with Use and
    forward held, looking at the bomb)?
-8. **Q8 Partly measured (2026-10-16, cs_office, one shot from 150 units
-   at hostage 121, its health read after; one shot per round restart):**
-   health 100. AK-47 (36): aimed 66 above its feet → 89 taken, 60 → 53,
-   48 → 53, 36 → 26, 18 → 21; Desert Eagle (54): 66 → killed, 60 → 76,
-   48 → 38, 36 → 38, 18 → 44. These don't match the player hitgroup
-   multipliers (head 4, chest 1, stomach 1.25, legs 0.75) on 36 or 54;
-   the hitgroups weren't logged (`hostage_hurt` not hooked), so the rule
-   is still open. Was: **Q8 Hostage health and damage.** Shoot a hostage once with a known
+8. **Q8 Answered (2026-10-16): see Constants, Hostages, "the rule" (hostage hitgroup multipliers, a second hit through the hostage).** Earlier: health 100; ten single shots from
+   150 units and ours beside them under Constants, Hostages ("hostage
+   damage, no rule found"): they don't follow the player multipliers
+   and no single rule fits them; the re-measure needed is described
+   there. Was: **Q8 Hostage health and damage.** Shoot a hostage once with a known
    weapon at a known hitgroup (`player_hurt` doesn't fire; use
    `hostage_hurt` and read its health netprop). Does armour/hitgroup
    apply?
@@ -683,7 +762,22 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    1) and cs_compound (`HostageType` 1): which of `hostage_01..04` does
    each hostage use (dump each `hostage_entity`'s model name) and does it
    change per round?
-10. **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
+10. **Q10 Partly measured (2026-10-16, probe server, cs_office, a CT bot
+    using hostage 121 from 60 units, then running or walking (the walk
+    key) about 400 units away along a clear line; the hostage's origin
+    logged every server frame with `mashup_htrack`):** the server moves a
+    hostage only every 7 ticks (0.105 s; its origin steps, the client
+    smooths it). Following, its step per update grows toward ≈ 26 units
+    (≈ 250 u/s), each step closing about a fifth of the gap to that
+    (6.1, 11.0, 14.9, 18.0, 20.5, 22.5, 24.1, 25.2, 26.0), the same whether
+    the leader ran (250) or walked (130); near the leader each step is
+    ≈ 0.8 of the last (26.0, 20.8, 16.7, 13.3, ...), and it stopped 40
+    units from a runner and 77 from a walker. It started 0.1 s after the
+    leader did. With the leader moved 1230 units away (straight line,
+    another room, out of sight) the hostage still followed, found its way
+    round and reached him in 7 s; the give-up distance and time are
+    beyond that (ours: 1500 units or 10 s out of sight). Corners and
+    jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
     hostage's position and speed every tick while the CT walks away at
     250 in/s, stops, turns corners, jumps a crate, and teleports 2000 in
     away. Measure: stop distance, walk/run speeds and the threshold, the

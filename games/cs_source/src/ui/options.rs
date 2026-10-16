@@ -105,7 +105,7 @@ pub enum SettingKind {
 
 /// Where a setting is shown: an options tab, one of the options' own
 /// dialogs, or ours (settings CS:S's options don't have, kept out of its
-/// dialogs: the main menu's "Lucker Party Options").
+/// dialogs: "Lucker Party Options", `menu extras`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Place {
     Options(Tab),
@@ -369,9 +369,11 @@ pub const SETTINGS: &[Setting] = &[
     // (`VALUE_ENTRIES`). `client::gamma` applies it to the whole screen.
     setting(Gamma, "mat_monitorgamma", Some("Gamma"), Some("#GameUI_Gamma"), "Gamma", range(1.6, 2.6, 0.05, 2)),
     // Voice (`OptionsSubVoice.res`): voice chat's (`client::voice`); the
-    // microphone boost, test and meter stay greyed.
+    // tab's Test Microphone button (`voice_test`) and its meter are
+    // `game_menu`'s own.
     setting(Options(Tab::Voice), "voice_modenable", Some("voice_modenable"), Some("#GameUI_EnableVoice"), "Enable voice", SettingKind::Toggle),
     setting(Options(Tab::Voice), "voice_scale", Some("VoiceReceive"), Some("#GameUI_VoiceReceiveVolume"), "Voice receive volume", range(0.0, 1.0, 0.05, 2)),
+    setting(Options(Tab::Voice), "voice_boost", Some("MicBoost"), Some("#GameUI_BoostMicrophone"), "Boost microphone gain", SettingKind::Toggle),
     // Multiplayer (`OptionsSubMultiplayer.res`). The player name: older
     // CS:S had it here ("Player name", `#GameUI_PlayerName`); the
     // install's layout doesn't, so `gameui` adds it in the spray image's

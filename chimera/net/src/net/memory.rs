@@ -1,7 +1,9 @@
 //! An in-memory transport for renet, in place of netcode's UDP: a server
 //! and clients in one process (`harness::NetSim`) exchange packets
 //! through a shared `Link` that delays, jitters and drops them with a
-//! seeded generator, so network tests are fast and repeat exactly.
+//! seeded generator, so network tests are fast and repeat exactly. A
+//! client's packets are counted as the UDP transport's are
+//! (`stats::Traffic`).
 
 use std::{
     sync::{Arc, Mutex},
@@ -236,7 +238,12 @@ fn server_send(transport: Res<MemoryServer>, mut server: ResMut<RenetServer>) {
     }
 }
 
-fn client_receive(mut transport: ResMut<MemoryClient>, mut client: ResMut<RenetClient>) {
+fn client_receive(
+    mut transport: ResMut<MemoryClient>,
+    mut client: ResMut<RenetClient>,
+    time: Res<Time<Real>>,
+    mut traffic: ResMut<super::stats::Traffic>,
+) {
     let id = transport.id;
     if !transport.connected {
         // The handshake netcode would do: the server takes the connection
@@ -248,14 +255,22 @@ fn client_receive(mut transport: ResMut<MemoryClient>, mut client: ResMut<RenetC
     let due = transport.link.lock().unwrap().take(Some(id));
     for (_, kind) in due {
         match kind {
-            Kind::Data(bytes) => client.process_packet(&bytes),
+            Kind::Data(bytes) => {
+                traffic.incoming.record(time.elapsed_secs_f64(), bytes.len());
+                client.process_packet(&bytes);
+            }
             Kind::Disconnect => client.disconnect_due_to_transport(),
             Kind::Connect => {}
         }
     }
 }
 
-fn client_send(mut transport: ResMut<MemoryClient>, mut client: ResMut<RenetClient>) {
+fn client_send(
+    mut transport: ResMut<MemoryClient>,
+    mut client: ResMut<RenetClient>,
+    time: Res<Time<Real>>,
+    mut traffic: ResMut<super::stats::Traffic>,
+) {
     let id = transport.id;
     if client.is_disconnected() {
         if !transport.told_disconnect {
@@ -267,6 +282,7 @@ fn client_send(mut transport: ResMut<MemoryClient>, mut client: ResMut<RenetClie
     let packets = client.get_packets_to_send();
     let mut link = transport.link.lock().unwrap();
     for p in packets {
+        traffic.outgoing.record(time.elapsed_secs_f64(), p.len());
         link.send(true, id, Kind::Data(p));
     }
 }

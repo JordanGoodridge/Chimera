@@ -25,7 +25,9 @@
 //! (`map::interp::NetDrawn`) never run it), `WeaponEvent`s (`replay`: written
 //! while a client re-ran a command; effects skip those; `Fired`: a round's
 //! origin, angles, spread seed and spread, enough to draw it again:
-//! `pellet_dirs`); damage, armour and pushes only where `core::authoritative`,
+//! `pellet_dirs`); `BulletTarget` (a target's own hitgroup multipliers, hits on
+//! more than one of its boxes, exact damage); damage, armour and pushes only
+//! where `core::authoritative`,
 //! with a `BulletHit` for each bullet hit on something with health (games'
 //! reactions: CS:S's slowdown and flinch); `ViewPunch` (pitch, yaw, roll) on
 //! the view and, scaled, on the shots.
@@ -956,7 +958,7 @@ impl Armor {
 }
 
 /// Damage multiplier per hitgroup.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HitgroupScale {
     pub head: f32,
     pub chest: f32,
@@ -989,6 +991,26 @@ impl HitgroupScale {
             Hitgroup::LeftLeg | Hitgroup::RightLeg => self.leg,
         }
     }
+}
+
+/// How bullets treat a target other than by the weapon's numbers (CS:S's
+/// hostages, specs/cs_source/objectives.md Q8). Games put it on the
+/// target; without it the weapon's rules apply.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct BulletTarget {
+    /// Its own hitgroup multipliers, instead of the weapon's
+    /// (`DamageEffect::hitgroups`).
+    pub hitgroups: Option<HitgroupScale>,
+    /// A bullet that passes one of its hitboxes goes on inside it from
+    /// that box's exit and may hit another of its boxes (or another box of
+    /// the same group): each box passed is charged and scales the damage
+    /// carried on as a passed character does (`PassMaterials::character`),
+    /// and falloff applies again at every hit. Without it a passed
+    /// character is left whole.
+    pub hits_inside: bool,
+    /// Its damage is kept exact (health a float), not truncated to the
+    /// weapon's `DamageEffect::quantum`.
+    pub exact: bool,
 }
 
 /// Sound entries a weapon plays.

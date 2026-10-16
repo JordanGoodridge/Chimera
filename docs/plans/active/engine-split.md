@@ -1,6 +1,6 @@
 # Plan: engine, Source and games as crates in one monorepo
 
-Status: decided 2026-10-07: one private monorepo (`r0pi0x/LuckerParty`,
+Status: decided 2026-10-07: one private monorepo (`r0pi0x/LuckerParty`, renamed `r0pi0x/Chimera` on 2026-10-16,
 history rewritten to the new identity), restructured into the crates
 below. Separate repos only if a good reason comes up later; crates keep
 that a folder move.

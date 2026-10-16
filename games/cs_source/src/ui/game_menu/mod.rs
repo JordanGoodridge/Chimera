@@ -11,7 +11,8 @@
 //! Server, Game and Bot pages: `CreateMultiplayerGame*Page.res`, the Game
 //! page's options from `cfg/settings.scr`); controls the game has and
 //! mashup lacks are drawn greyed. Ours (settings CS:S's options don't
-//! have) are in our own dialog, Lucker Party Options, from our entries.
+//! have) are in our own dialog, Lucker Party Options (`menu extras`; the
+//! menus list only `GameMenu.res`'s entries, none of ours).
 //! In the install's GameUI scheme (`map::hud::GameUi`); without the
 //! install, in built-in colours and words, controls in a column. The game
 //! keeps running while it is open; the mouse is free, so the local
@@ -23,9 +24,12 @@
 //! The main menu and the game menu (one module per dialog: `main_menu.rs` the
 //! left-hand entries, `options_pages.rs` the options' tabs and their Advanced
 //! dialogs, `create_server.rs`, `loading.rs` the loading and Disconnected
-//! dialogs, `extras.rs` ours (Lucker Party Options, Bots, Team); `model.rs` the
-//! shared model, `draw.rs` the drawing, `systems.rs` input and the Bevy
-//! systems, `tests.rs`): Esc, `menu [page or options tab]`,
+//! dialogs, `player_list.rs` the player list (mute players' voice), `extras.rs`
+//! ours (Lucker Party Options, Bots, Team: `menu extras|bots|team`);
+//! `vote_setup.rs` the vote setup dialog (the server's issues and
+//! their choices, opened by `callvote` alone); `model.rs` the shared model,
+//! `draw.rs` the drawing, `systems.rs` input and the Bevy systems,
+//! `tests.rs`): Esc, `menu [page or options tab]`,
 //! `gameui_activate`/`gameui_hide`), one implementation drawn as CS:S's GameUI.
 //! Out of a game (startup without a map, `Args::starts_in_game`; after
 //! `disconnect`) it is the main menu: open for good over the game's background
@@ -49,11 +53,12 @@
 //! `mashup_loading_details 1` adds a detailed view under it (`LoadTimeline`:
 //! each stage's time, bytes and percentage; the server's name, address, map,
 //! players and ping). The entries at the left: the game's `GameMenu.res`
-//! entries mashup can do, in its words and order (Resume and Disconnect only in
-//! a game, Find Servers opens the server browser (`server_browser.rs`), Create
-//! Server, report a bug), then ours after a gap (quick start: rounds on
-//! de_dust2 with bots; the greybox test map; bots and team in a game; Lucker
-//! Party Options: the settings CS:S's options don't have; console), under the
+//! entries mashup can do, in its words and order (Resume, Disconnect and the
+//! Player List only in a game, Find Servers opens the server browser (`server_browser.rs`), Create
+//! Server, report a bug), none of ours (they are console commands:
+//! `mashup_quickstart` rounds on de_dust2 with bots, `map greybox`, `menu
+//! bots`, `menu team` (or `chooseteam`), `callvote`, `menu extras` Lucker
+//! Party Options, the console key), under the
 //! game's title (`gameinfo.txt` title lines in the scheme's title font, else
 //! `MASHUP`); each dialog a VGUI frame (`widgets.rs`: moved by its title bar,
 //! brought to the front by a click, closed from its X, centred the first time
@@ -82,8 +87,8 @@
 //! install's `gamma` test picture; its "Advanced...":
 //! `OptionsSubVideoAdvancedDlg.res`, texture detail, antialiasing, filtering,
 //! water detail, vertical sync, HDR, field of view; Virtual Reality Mode left
-//! out, `draw::LEFT_OUT`), Voice (enable and receive volume; the microphone's
-//! controls greyed), Multiplayer (the
+//! out, `draw::LEFT_OUT`), Voice (enable, receive volume, microphone boost,
+//! Test Microphone and its meter), Multiplayer (the
 //! controls of `OptionsSub*.res` for the archived cvars in `options.rs`:
 //! sliders with tick marks, drop-downs, check boxes, the sensitivity's text
 //! entry, the crosshair preview; its "Advanced...":
@@ -110,13 +115,23 @@ mod loading;
 mod main_menu;
 mod model;
 mod options_pages;
+mod player_list;
 mod systems;
+mod vote_setup;
 #[cfg(test)]
 mod tests;
 
-pub use self::{create_server::*, draw::MENU_Z, loading::*, main_menu::*, model::*};
+pub use self::{
+    create_server::*,
+    draw::MENU_Z,
+    loading::*,
+    main_menu::*,
+    model::*,
+    player_list::ListedPlayer,
+    vote_setup::{VoteSetup, issue_label},
+};
 pub(in crate::ui) use self::systems::*;
-use self::{draw::*, options_pages::*};
+use self::{draw::*, options_pages::*, vote_setup::*};
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -195,7 +210,8 @@ impl Plugin for GameMenuPlugin {
                     .chain()
                     .in_set(MenuSystems),
             )
-            .add_systems(Update, world_behind_dialogs.after(MenuSystems));
+            .add_systems(Update, (world_behind_dialogs, mic_meter).after(MenuSystems))
+            .add_systems(Update, vote_setup_arrived.before(MenuSystems));
         // The shell's view of the menu (`client::front_end`).
         app.init_resource::<MenuStatus>()
             .add_systems(First, sync_status.in_set(FrontEndSync))
@@ -218,9 +234,10 @@ impl Plugin for GameMenuPlugin {
         app.console_command(
             "menu",
             "menu [main|newgame|game|bot|bots|team|options|keyboard|mouse|audio|video|voice|multiplayer|advanced|\
-             videoadvanced|gamma|mpadvanced|extras]: open the game menu (Esc) on a page (newgame: Create Server, game and \
-             bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced the \
-             video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party Options).",
+             videoadvanced|gamma|mpadvanced|extras|players]: open the game menu (Esc) on a page (newgame: Create Server, \
+             game and bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced \
+             the video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party \
+             Options; bots: add and kick bots; team: join a team; players: the player list, to mute players).",
             |w, a| {
                 let arg = a.first().map(|s| s.to_lowercase());
                 let tab = TABS.iter().find(|(t, ..)| Some(t.page()) == arg.as_deref()).map(|(t, ..)| *t);
@@ -232,6 +249,7 @@ impl Plugin for GameMenuPlugin {
                     Some("team") => Page::Team,
                     Some("options" | "settings" | "advanced" | "videoadvanced" | "gamma" | "mpadvanced") => Page::Settings,
                     Some("extras") => Page::Extras,
+                    Some("players" | "playerlist") => Page::PlayerList,
                     Some(p) => return Err(format!("no menu page \"{p}\"")),
                 };
                 open_menu(w, page);
@@ -266,7 +284,8 @@ impl Plugin for GameMenuPlugin {
         .console_command(
             "menuinput",
             "menuinput <input>: drive the open game menu as keys and clicks would (screenshots, tests): \
-             focus <cvar|map|bots|botcount|botteam|difficulty|aspect> | open (the focused combo box's list) | \
+             focus <cvar|map|bots|botcount|botteam|difficulty|aspect> | row <n> (the page's nth row: list rows, \
+             buttons) | open (the focused combo box's list) | \
              down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n>; prints \
              the focused control.",
             |w, a| {
@@ -281,6 +300,33 @@ impl Plugin for GameMenuPlugin {
                     console.submit(line);
                 }
                 Ok(Some(state))
+            },
+        )
+        .console_command(
+            "mashup_quickstart",
+            "Ours: start a game at once: rounds on de_dust2 (else the first map) with 9 normal bots (five \
+             terrorists, four counter-terrorists besides you), single player; Create Server's other settings as \
+             they are.",
+            |w, _| {
+                // The settings read from the console, as opening the menu does.
+                open_menu(w, Page::Main);
+                let mut out = Outcome::default();
+                w.resource_mut::<GameMenu>().quick_start(&mut out);
+                if out.lines.is_empty() {
+                    return Err("no maps to start".into());
+                }
+                let mut console = w.resource_mut::<Console>();
+                for line in out.lines {
+                    console.submit(line);
+                }
+                *w.resource_mut::<AfterLoad>() = AfterLoad {
+                    lines: out.after_load,
+                    ..default()
+                };
+                if out.close {
+                    w.resource_mut::<RegrabCursor>().0 = true;
+                }
+                Ok(None)
             },
         )
         .console_command("gameui_activate", "Open the game menu (Esc).", |w, _| {
@@ -324,6 +370,10 @@ pub enum Page {
     MultiplayerAdvanced,
     /// Ours: Lucker Party Options (what CS:S's options don't have).
     Extras,
+    /// The player list (`PlayerListDialog.res`): mute players' voice.
+    PlayerList,
+    /// The vote setup dialog (`vote_setup.rs`).
+    Vote,
 }
 
 impl Page {
@@ -340,6 +390,8 @@ impl Page {
             Page::Gamma => "gamma",
             Page::MultiplayerAdvanced => "multiplayeradvanced",
             Page::Extras => "extras",
+            Page::PlayerList => "playerlist",
+            Page::Vote => "votesetup",
         }
     }
 

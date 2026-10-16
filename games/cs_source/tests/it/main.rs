@@ -50,6 +50,7 @@ mod movement;
 mod nav;
 mod net;
 mod net_bots;
+mod net_graph;
 mod net_interp;
 mod net_maps;
 mod net_prediction;

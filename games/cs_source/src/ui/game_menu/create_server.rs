@@ -212,6 +212,14 @@ impl GameMenu {
         }
     }
 
+    /// A quick start (`mashup_quickstart`): rounds on `QUICK_MAP` with
+    /// `QUICK_BOTS` normal bots, started at once as Create Server's Start
+    /// would (single player).
+    pub fn quick_start(&mut self, out: &mut Outcome) {
+        self.quick_setup();
+        self.start(out);
+    }
+
     /// The quick start's settings in Create Server.
     pub(super) fn quick_setup(&mut self) {
         let map = self.maps.iter().position(|m| m == QUICK_MAP).unwrap_or(0);

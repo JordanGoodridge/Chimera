@@ -4,11 +4,16 @@ Goal: the menus' dialogs look and behave as CS:S's do. Their controls
 are the install's `.res` layouts read at run time (never committed),
 drawn with one shared widget layer (`chimera/client/src/client/widgets.rs`) that
 behaves as VGUI's controls do; anything Lucker Party adds beyond CS:S
-stays out of CS:S's dialogs (our own dialog, Lucker Party Options, or an
-entry marked as ours).
+stays out of CS:S's dialogs and out of its menus' entries (our own
+dialog, Lucker Party Options, opened from the console: `menu extras`).
+The main menu and the Esc menu list only `GameMenu.res`'s entries
+(2026-10-16: ours, Quick Start, Greybox Test Map, Bots, Team, Call Vote,
+Lucker Party Options and Console, moved to the console:
+`mashup_quickstart`, `map greybox`, `menu bots`, `menu team`,
+`callvote`, `menu extras`, the console key).
 
 Status: the widget layer, movable frames, the options dialog (all six
-tabs, Voice greyed), its three Advanced dialogs (Multiplayer > Advanced
+tabs), its three Advanced dialogs (Multiplayer > Advanced
 from the install's `cfg/user.scr`), the cvars behind its controls
 (second pass, 2026-10), Create Server, Find Servers (filters, Add Server,
 password), the loading dialog and the first-run dialog are done (first
@@ -88,7 +93,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::video::TextureSettings`), from the next map |
 | | `FilteringMode` | ComboBox | `mat_trilinear` and `mat_forceaniso` together: Bilinear (0 1, CS:S's default), Trilinear (1 1), Anisotropic 2X-16X (0 N); from the next map |
 | | `ShaderDetail`, `ColorCorrection`, `MotionBlur`, `Multicore` | ComboBox | greyed (see below; the plan: docs/plans/active/video-settings.md) |
-| Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | `voice_modenable` and `voice_scale` (voice chat, `client::voice`); `MicBoost`, `TestMicrophone`, `MicMeter` greyed |
+| Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | `voice_modenable` and `voice_scale` (voice chat, `client::voice`); `MicBoost`: `voice_boost` (ours: x4 on the microphone; CS:S's sets the sound card's boost); `TestMicrophone`: `voice_test` ("Stop Microphone Test" while it runs: one's voice through the encoder and decoder to the speakers, nothing sent; stops when the tab or dialog closes); `MicMeter` / `MicMeter2`: the install's dark and lit bar pictures at their own size, `barCount` 19 lit bars `barSpacing` 8 apart following the microphone's level (decibels from -48, ours); `#GameUI_MicrophoneVolume` (transmit volume: a Panel CS:S fills in code) not drawn |
 | Multiplayer (`cstrike/resource/OptionsSubMultiplayer.res`) | `CrosshairColorComboBox` | ComboBox | `cl_crosshaircolor`: Green, Red, Blue, Yellow, Cyan, Custom (5) |
 | | `Red/Green/Blue Color Slider` | CCvarSlider | `cl_crosshaircolor_r`, `_g`, `_b` (50, 250, 50): the Custom colour |
 | | `Size Slider`, `Thickness Slider` | CCvarSlider | `cl_crosshairsize` (5; 0 to 10), `cl_crosshairthickness` (0.5; 0 to 3): line length and width, 5 and 0.5 our lines as they were |
@@ -115,7 +120,7 @@ Drawn with the shared widgets in the GameUI scheme (CS:S draws them in the
 client scheme); the lists open upward. The bar's own text (the player's
 name, the mode) is hidden while the menu is open.
 
-Lucker Party Options (ours, from our main-menu entries): zoom
+Lucker Party Options (ours, `menu extras`; no menu entry): zoom
 sensitivity ratio, room reverb (`dsp_volume`), crosshair scale, view
 model FOV, show FPS. Before they were rows on CS:S's tabs. The weapon
 hand (`cl_righthand`) moved to CS:S's place for it, Multiplayer >
@@ -136,7 +141,6 @@ defaults are CS:S's (`games::cs_source::ui::options` tests
 | Video > Advanced `ShaderDetail` | one shader path (docs/plans/active/video-settings.md) |
 | Video > Advanced `ColorCorrection`, `MotionBlur` | the renderer has neither (no colour correction or motion blur at all; same plan) |
 | Video > Advanced `Multicore` | Bevy always renders multi-threaded |
-| Voice `MicBoost`, `TestMicrophone`, `MicMeter` | no microphone boost, test or meter yet (voice-chat.md) |
 | Multiplayer `ImportSprayImage`, `LogoImage` | sprays are in (`impulse 201`), but the logo is picked with `cl_logofile` in the console: no picture of it or importer yet (backlog) |
 | Multiplayer `ResetStats` | no stats |
 | Multiplayer > Advanced `cl_clanid`, `cl_cloud_settings`, `hud_takesshots` | no clans, no Steam Cloud, no end-of-map screenshots |
@@ -180,7 +184,8 @@ chosen here; a capture of the reference client would settle each:
   is the script's starting value, not the cvar's).
 - Whether CS:S shows the video Advanced dialog's FOV slider at all
   (the file has it visible; multiplayer mods may hide it).
-- The Voice tab's layout with its meters, for the greyed look.
+- The Voice tab with its meter lit (its scale and fall) and the transmit
+  volume slider CS:S puts in `#GameUI_MicrophoneVolume`.
 
 The options' words now come from every copy of the strings files along
 the search path (CS:S merges them): cstrike's `gameui_english.txt` lacks
@@ -231,6 +236,7 @@ frame, a property sheet (Server, Game, Bot), Start (default) / Cancel.
 | Loading (`LoadingDialogNoBanner.res`: Frame, Label, ProgressBar, Button) | install | movable frame (no close box, as CS:S's), Cancel the default button |
 | Disconnected (failure) | ours, in the loading dialog's look | movable frame, Close |
 | CS:S Not Found (first run) | ours | modal frame; folder text entry with caret, selection, paste; Retry default, Tab order |
+| Player list (`PlayerListDialog.res`: CPlayerListDialog 467 x 388, ListPanel `PlayerList`, Button `MuteButton` (default), `Button1` Close) | install | the game menu's in-game "Player List" (`menu players`): the list where the layout puts it (headings `#GameUI_PlayerName`, `#GameUI_Properties`; a row per player, "Muted" or "Bot" in its properties, the selected one lit), Mute / Unmute in-game voice for the selected player (`voice_mute`, `voice_unmute`; greyed for oneself and bots; Enter presses it), Close; title `#GameUI_PlayerListDialogTitle` with `hostname` (`game_menu::player_list`) |
 | Bots, Team (in a game) | ours | frames with widget buttons (column) |
 | Console | ours (a drop-down console, not VGUI) | unchanged: CS:S's console is a sizeable VGUI frame; see Left |
 | Buy and team menus | the map's `resource/ui/*.res` through `client::vgui` | unchanged: full-screen VGUI panels in CS:S too, not movable |

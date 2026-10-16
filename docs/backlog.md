@@ -476,14 +476,16 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 - The main menu is in: startup without a map shows CS:S's (its
   background picture, the title in its logo font, `GameMenu.res`'s
   entries; Resume and Disconnect only in a game, Find Servers greyed),
-  the same menu over the game on Esc, `disconnect` back to it, and ours
-  after CS:S's (quick start, greybox, bots, team, console). Left: the
+  the same menu over the game on Esc, `disconnect` back to it; none of
+  our entries (done 2026-10-16: `mashup_quickstart`, `map greybox`,
+  `menu bots`, `menu team`, `callvote`, `menu extras`, the console key
+  instead). Left: the
   title's exact place and the entries' spacing checked against CS:S at a
   few resolutions (the loading dialog, `LoadingDialogNoBanner.res`,
   and the interface sounds are in; CS:S has no menu music: its install
   holds none), whether keyboard moves in the menu make the rollover
   sound, a loading dialog for maps changed from inside a game (the old
-  map plays on until the new one is in), the player list,
+  map plays on until the new one is in),
   the server browser (needs networking), a mashup debug-options page
   (the overlay cvars as check boxes).
 - Debug overlays: `mashup_drawhitboxes`, `mashup_healthbars`,
@@ -531,20 +533,20 @@ Voice chat (2026-10-15, docs/plans/active/voice-chat.md): K held talks
 (`+voicerecord`), Opus over the game's connection, `sv_alltalk`,
 `sv_voiceenable`, `voice_*`, the HUD's talking icon and list. To
 playtest with friends on Windows and Linux (real microphones and
-speakers: only fakes are tested). Left: per-player mute (the
-scoreboard), open microphone (`voice_vox`), the Voice tab's microphone
-test, meter and boost, icons over talking players' heads, a capture of
+speakers: only fakes are tested). Per-player mute is in (the game
+menu's player list, `voice_mute`; client-side, for the session), and
+the open microphone (`voice_vox`, `voice_threshold`), and the Voice
+tab's microphone test, meter and boost. Left: the tab's transmit
+volume, icons over talking players' heads, a capture of
 CS:S's voice HUD and client `voice_*` defaults (Windows), and checking
 the dead-hear-the-dead rule with two clients on the probe server.
 
 Votes (`callvote`, `net::vote`; CS:S's issues `game::votes`, panels
-`ui::vote_hud`) are in: kick, change level, restart game, F1/F2. Left:
-the vote setup dialog (`VoteSetupDialog` in hl2's votehud.res; the
-server already answers `callvote` alone with the issues and their
-choices, `VoteNews::Setup`, printed to the console), a way to open it
-(CS:S's menus have none that we know of), bot ballots for
-`sv_vote_bots_allowed 1`, and CS:S's rules and look from capture C25
-(parity-gaps.md).
+`ui::vote_hud`) are in: kick, change level, restart game, F1/F2, the
+vote setup dialog (`ui::game_menu::vote_setup`: `callvote` alone or our
+no menu entry, as CS:S), players joining a running vote, bots voting with
+`sv_vote_bots_allowed 1` (our rule). Left: CS:S's rules, issues, look
+and how its setup dialog opens, from capture C25 (parity-gaps.md).
 
 - Missing server kicks (measured defaults 2026-10-16, objectives.md Q2):
   `mp_autokick` 1 (kick idle and team-killing players) and
@@ -669,8 +671,14 @@ docs/tech-debt.md's bot rows.
 
 The console and overlays are in (chimera/core/src/console.rs, chimera/client/src/client/console.rs).
 
-- `net_graph` shows local numbers only (fps, frame time, tick rate,
-  entities); ping and traffic once there is networking. `cl_showpos 2`.
+- `net_graph` (chimera/client/src/client/net_graph.rs): compare the
+  layout, colours and graph with CS:S's own (a capture of `net_graph 1`
+  to `3` on a server); `net_graph 3`'s per-message bands, `net_graph 4`,
+  `net_scale`, `net_graphmsecs`, `net_graphtext`, `net_graphsolid`.
+  At the default `net_graphheight` 64 its last lines overlap the HUD's
+  ammo bottom right (1280x720); check where CS:S's sits.
+- `cl_showpos 2`: what CS:S shows with it is unknown here (no public
+  description found); look in the game.
 - Mouse selection copies whole lines (drag over the output); selecting
   part of a line isn't possible.
 

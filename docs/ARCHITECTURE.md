@@ -1,6 +1,6 @@
 # Architecture
 
-A map of the code. Design rationale lives in the [README](../README.md); this
+A map of the code. Design rationale lives in [DESIGN.md](DESIGN.md); this
 file says where things are and which way dependencies may point.
 
 ## Crates
@@ -435,13 +435,14 @@ that the paths exist).
 - `chimera/net/src/net/udp.rs`: the UDP transports and fake network conditions (net)
 - `chimera/net/src/net/query.rs`: server queries and LAN discovery (net)
 - `chimera/net/src/net/memory.rs`: an in-memory transport for `NetSim` (net)
+- `chimera/net/src/net/stats.rs`: `net_graph`'s numbers: traffic, the server's frame rate, choke (net)
 - `chimera/net/src/net/vote.rs`: player votes: issues games register, who votes, quorum, timers, `callvote`/`vote` (net)
 
 ### Games
 
 - `apps/cs_source/src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
 - `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
-- `games/cs_source/src/game/votes.rs`: CS:S's vote issues: kick, change level, restart game (games)
+- `games/cs_source/src/game/votes.rs`: CS:S's vote issues: kick, change level, restart game; how bots vote (games)
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
@@ -519,13 +520,14 @@ that the paths exist).
 - `chimera/client/src/client/debug_views.rs`: gizmo debug overlays: nav, ragdolls (client)
 - `games/cs_source/src/ui/debug.rs`: CS:S in the debug tools: bot overlays, the debug UI's bots and rounds (games_ui)
 - `chimera/client/src/client/perf.rs`: the `mashup_perf` overlay (client)
+- `chimera/client/src/client/net_graph.rs`: `net_graph`: Source's network readout and graph (client)
 - `chimera/client/src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
 - `games/cs_source/src/ui/window_icon.rs`: the window and taskbar icon (games_ui)
 - `games/cs_source/src/ui/first_run.rs`: finding CS:S on first run (games_ui)
 - `chimera/client/src/client/fonts.rs`: the one font service (client)
 - `chimera/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
 - `chimera/client/src/client/vgui.rs`: drawing a game's own menu layouts; the mouse free while one is open (client)
-- `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
+- `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs, the vote setup dialog (games_ui)
 - `games/cs_source/src/ui/server_browser.rs`: the server browser (games_ui)
 - `games/cs_source/src/ui/team_menu.rs`: the team menu (games_ui)
 - `games/cs_source/src/ui/join_menus.rs`: CS:S's join flow: MOTD, team and class menus (games_ui)

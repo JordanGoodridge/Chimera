@@ -19,14 +19,14 @@
 //! planting), `round_start` (called by the rules).
 //!
 //! Known shortcuts (docs/tech-debt.md): The bomb and hostages follow spec
-//! objectives.md's hypotheses where CS:S is unmeasured: planting and defusing
-//! hold the player still, the blast is H1 (linear to 3.5 × bombradius, the HE
-//! rule's walls, armour and body heights), the planter is the attacker (so
+//! objectives.md's hypotheses where CS:S is unmeasured: the blast's walls and
+//! body heights are the HE rule's (its falloff, a bell to 3.5 × bombradius,
+//! and armour are measured; holding still while planting and defusing too),
+//! the planter is the attacker (so
 //! `mp_friendlyfire 0` spares terrorists), beeps on the provisional schedule at
 //! a fixed level, the planted bomb isn't solid and doesn't ride movers,
 //! `info_bomb_target`/`info_hostage_rescue` radii are guesses, the carrier is
-//! chosen by a round-seeded hash, money values Q5, hostage health 100 and
-//! follow distances/speeds Q10, hostage models spread by index (Q9), a hostage
+//! chosen by a round-seeded hash, money values Q5, hostage follow distances/speeds Q10, hostage models spread by index (Q9), a hostage
 //! hurt costs nothing (Q5), a removed local player is only told; the planted
 //! model is turned by a fixed rotation (`BombRules::planted_turn`) because the
 //! item loads standing on end; hostage animation (`hostage_anim.rs`:
