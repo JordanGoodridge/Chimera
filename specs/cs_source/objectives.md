@@ -663,7 +663,12 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    preference? After a plant: kill all CTs (`kill` via RCON) — does the
    round end at once? Defuse with the round already over? Which announcers
    play on a defuse (BombDefused then CTWin, or one)?
-7. **Q7 Planted bomb physics.** Is the planted bomb solid to players and
+7. **Q7 Partly answered (2026-10-16, probe server, dust2 B, a CT bot
+   40 units from the planted bomb holding use on it):** the defuser can't
+   move (forward held: speed 0, no displacement over 250 ticks), can duck
+   (ducked 30 ticks after the press, still defusing), and
+   `weapons/c4/c4_disarm.wav` plays on the press tick; as ours. The
+   bomb's solidity and riding platforms not measured. Was: **Q7 Planted bomb physics.** Is the planted bomb solid to players and
    bullets? Where exactly (origin vs player origin, angles)? Does it ride
    a moving platform? Dump its position and collision group after a plant.
    Can the defuser move or crouch while defusing (`mashup_wrun` with Use and
