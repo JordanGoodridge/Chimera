@@ -96,6 +96,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source ui, rules: Round win panel MVP and fun-fact rules are ours (`games/cs_source/src/ui/win_panel.rs`)
 - games/cs_source ui: Damage indicator: which bar lights and its fade are ours (`games/cs_source/src/ui/hud_sprites.rs`)
 - rules: Team balance: when and who moves are ours; no warning message (`games/cs_source/src/rules.rs`)
+- rules: Automatic hints (`cl_autohelp`): every trigger, once per map, the gap and `cl_autohelp 0` not counting are guesses from the hints' wording (`games/cs_source/src/rules/hints.rs`)
+- games/cs_source ui: Automatic hints on screen: as long as other hints, no key-binding hint panel (`games/cs_source/src/ui/hints.rs`)
 - map, sound: Under water (`audio::hearing::UNDERWATER`): a steady low-pass (600 Hz, 0.8) on everything while the eye is in water; Source switches to its `dsp_water` room preset, engine-side and unmeasured. OK for now: Better than no change at all; capture wanted.
 - client: Third-person camera follows at once (no easing) and sweeps a sphere (`chimera/client/src/client/view.rs`)
 - sound: Scrape friction energy is our stand-in for Source's (`games/cs_source/src/game/scrapes.rs`)

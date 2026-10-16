@@ -401,6 +401,7 @@ that the paths exist).
 - `chimera/sim/src/weapon/pass_data.rs`: penetration by surface material as TOML data (`PassMaterials::parse`) (weapon)
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
+- `games/cs_source/src/rules/hints.rs`: automatic hints (`cl_autohelp`): data-named triggers, once per player per map (rules)
 - `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
 - `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
@@ -538,6 +539,7 @@ that the paths exist).
 - `games/cs_source/src/ui/weapon_select.rs`: weapon selection and pickup history (games_ui)
 - `chimera/client/src/client/weapon_menu.rs`: a HUD weapon selection's state, which input reads (client)
 - `games/cs_source/src/ui/objectives_hud.rs`: bomb, kit, hostage and zone icons, centre prints on the HUD (games_ui)
+- `games/cs_source/src/ui/hints.rs`: the automatic hints' text (the install's strings) and sound (games_ui)
 - `games/cs_source/src/ui/bomb_fx.rs`: what the bomb shows: the code on the C4 screen, the LED glow (games_ui)
 - `games/cs_source/src/ui/radar.rs`, `radar.wgsl`: the radar (games_ui)
 - `games/cs_source/src/ui/demo.rs`: `playdemo`: a demo's map loaded, then played with the spectator camera (games_ui)

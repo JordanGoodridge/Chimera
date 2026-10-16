@@ -41,20 +41,34 @@ fn link(latency_ms: u64, jitter_ms: u64, loss: f64) -> LinkConditions {
     }
 }
 
+use crate::stack::net::server::DEFAULT_UPDATERATE;
+
 /// A server and `clients` clients, joined, respawned and predicting with
 /// their clocks settled.
 fn joined(conditions: LinkConditions, seed: u64, clients: usize) -> NetSim {
-    joined_at(conditions, seed, clients, crate::stack::net::server::DEFAULT_UPDATERATE)
+    joined_at(conditions, seed, clients, DEFAULT_UPDATERATE)
 }
 
 /// `joined`, the clients asking for `updaterate` updates a second.
 fn joined_at(conditions: LinkConditions, seed: u64, clients: usize, updaterate: f32) -> NetSim {
+    joined_with(conditions, seed, clients, updaterate, |_| {})
+}
+
+/// `joined_at`, `more` set up on every side too.
+fn joined_with(
+    conditions: LinkConditions,
+    seed: u64,
+    clients: usize,
+    updaterate: f32,
+    more: impl Fn(&mut App) + Clone + Send + Sync + 'static,
+) -> NetSim {
     let mut sim = NetSim::new(CsSim, conditions, seed, clients, move |app: &mut App| {
         greybox(app);
         app.insert_resource(crate::stack::net::predict::RateSettings {
             updaterate,
             ..default()
         });
+        more(app);
     });
     sim.until_joined(600);
     // Respawn, the first states, the clock sync settling.
@@ -230,7 +244,11 @@ fn with_loss_and_jitter_mistakes_are_corrected() {
         (150, 60, 0.2, 33),
         (100, 120, 0.35, 34),
     ] {
-        let mut sim = joined(link(latency, jitter, loss), seed, 1);
+        // Without the automatic hints' messages: the seeds' losses fall
+        // as they were picked to (one correction on the worst link).
+        let mut sim = joined_with(link(latency, jitter, loss), seed, 1, DEFAULT_UPDATERATE, |app| {
+            app.insert_resource(crate::stack::rules::hints::AutoHelp(0));
+        });
         reset_graph(&mut sim, 0);
         run_script(&mut sim, 0, 180);
         // Settled: nothing left to correct.

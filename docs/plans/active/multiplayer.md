@@ -1657,3 +1657,11 @@ the same: the join flow, bots, the freeze's hold and the bomb's
 predicted holds go through hooks the game fills (`net::parts`), and the
 bomb carrier's scoreboard flag comes from the weapon's
 `core::ScoreMark`.
+
+### net25 (2026-10-15)
+
+Automatic hints (`cl_autohelp`, `cs_source::rules::hints`): the server
+sends a remote player its hints as `HintNews` (the game's localization
+token; its client reads the text from its own install) in CS:S's part,
+and `cl_autohelp` goes to the server as userinfo; a new message, so a
+new protocol number.

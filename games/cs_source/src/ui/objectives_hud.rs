@@ -208,7 +208,8 @@ fn spawn(mut commands: Commands, fonts: Res<UiFonts>) {
 }
 
 /// The game's words for what happened: centre text for everyone, hints
-/// to the local player, chat lines to the terrorists.
+/// to the local player, chat lines to the terrorists. Being given the
+/// bomb and a hostage following are automatic hints (`rules::hints`).
 #[allow(clippy::too_many_arguments)]
 fn messages(
     mut events: MessageReader<ObjectiveEvent>,
@@ -233,9 +234,6 @@ fn messages(
     for ev in events.read() {
         use ObjectiveEvent as E;
         let hint: Option<String> = match ev {
-            E::GotBomb { who } if *who == me => {
-                Some("You have the bomb. Find the target zone or DROP the bomb for another Terrorist.".into())
-            }
             E::PickedUpBomb { who } => {
                 if carriers && *who != me {
                     chat.write(ChatLine::plain(format!("{} picked up the bomb.", name(*who))));
@@ -268,10 +266,6 @@ fn messages(
                 None
             }
             E::PickedUpKit { who } if *who == me => Some("You picked up a defuse kit!".into()),
-            E::HostageFollows { leader, .. } if *leader == me => Some(
-                "Lead the hostage to the rescue point! You may USE the hostage again to stop him from following."
-                    .into(),
-            ),
             E::HostageRefused { who } if *who == me => Some("Only Counter-Terrorists can move the hostages.".into()),
             E::HostageHurt { attacker, .. } if *attacker == Some(me) => Some("You injured a hostage!".into()),
             E::HostageKilled { attacker, .. } if *attacker == Some(me) => Some("You killed a hostage!".into()),

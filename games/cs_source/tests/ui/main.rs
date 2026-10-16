@@ -23,6 +23,7 @@ mod console_commands;
 mod cs_guns;
 mod debug_ui;
 mod demo_chat;
+mod hints;
 mod join_flow;
 mod menus;
 mod net_players;

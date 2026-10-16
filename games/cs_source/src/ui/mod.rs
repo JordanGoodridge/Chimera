@@ -2,7 +2,8 @@
 //! and Esc menus and their dialogs (`game_menu`, `options`, `first_run`,
 //! `server_browser`), the join flow (`join_menus`: the message of the day,
 //! team and class menus), the buy, team and radio menus, the game HUD
-//! (`objectives_hud`, `bomb_fx`, `target_id`), the spectator menu and freeze
+//! (`objectives_hud`, `bomb_fx`, `target_id`, the automatic hints:
+//! `hints`), the spectator menu and freeze
 //! cam panel, the
 //! scoreboard, the window icon and `playdemo` (`demo`). Built on the client
 //! shell (`client`: input, console, fonts, the VGUI-like widgets); the
@@ -18,6 +19,7 @@ pub mod first_run;
 pub mod freeze_cam;
 pub mod game_hud;
 pub mod game_menu;
+pub mod hints;
 pub mod hud_sprites;
 pub mod join_menus;
 pub mod objectives_hud;
@@ -78,7 +80,8 @@ impl Plugin for CsSourceUiPlugin {
             spectator_menu::SpectatorMenuPlugin,
             freeze_cam::FreezeCamPlugin,
             demo::DemoUiPlugin,
-        ));
+        ))
+        .add_plugins(hints::HintsHudPlugin);
     }
 }
 

@@ -44,6 +44,10 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
    weapon by itself after the last shot, or stay on the empty gun
    clicking? The probe bot switched to its knife, but that may be its AI;
    ours stays on the empty gun.
+10. **C25 automatic hints**: on a fresh profile with `cl_autohelp 1`
+    (rename `cfg\config.cfg` first, put it back after), which hints
+    appear when, as described in parity-gaps.md C25 (a video of the
+    first two rounds is easiest; note each hint's time).
 
 ## Sitting 2: sound (about 20 min)
 

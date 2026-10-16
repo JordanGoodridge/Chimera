@@ -37,7 +37,9 @@
 //! intermission (`mp_chattime`; the scoreboard shows, replicated in
 //! `NetRound`), then `map`/`changelevel` to the next of `MapCycle` (filled by
 //! the client and `mashup_server` from the install's map cycle,
-//! `games::cs_source::map_cycle`), or a fresh game without one.
+//! `games::cs_source::map_cycle`), or a fresh game without one;
+//! `hints.rs`: the automatic hints (`cl_autohelp`: data-named triggers,
+//! each hint once per player per map).
 //!
 //! Known shortcuts (docs/tech-debt.md): Team balance (`rules::balance_teams`,
 //! `mp_autoteambalance`; bots never move, measured; the rest unmeasured):
@@ -50,6 +52,7 @@
 //! docs/plans/active/parity-gaps.md.
 
 pub mod game_end;
+pub mod hints;
 pub mod rounds;
 
 // The rule-module interface (chimera/sim), at its old path.
@@ -83,6 +86,7 @@ impl Plugin for DeathmatchPlugin {
         );
         rounds::plugin(app);
         game_end::plugin(app);
+        hints::plugin(app);
         module::plugin(app);
         resource_cvar::<Deathmatch, f32>(app, "mp_respawn_delay", "Seconds before the dead respawn.", |d| {
             &mut d.respawn_delay
