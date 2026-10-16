@@ -782,7 +782,14 @@ probe bot, `sv_soundemitter_trace 1`; the server's emitted entries per hit
    - Measure on a dedicated server: the engine's sound interface for server plugins exposes the distance-gain query used by ambient_generic. A small server plugin can print gain for L ∈ {60, 70, 75, 80, 88, 100, 140} and also L + 256 (the compatibility range) at d = 0, 36, 100, 250, 500, 1000, 2000, 4000.
    - Cross-check by ear: record loopback audio of `playgamesound Weapon_AK47.Single` emitted by a bot at known distances.
    - Also: the stereo pan law, and whether sound passes through walls without occlusion.
-2. **Wave choice.** Is the rndwave pick uniform, or does it avoid repeating the previous wave? Is the "count" (number of waves) used anywhere else?
+2. **Partly answered (2026-10-16, probe server, a bot running back and
+   forth on dust2's sand, 109 footsteps logged):** footsteps alternate
+   left and right entries (sand1/sand3 then sand2/sand4, every step), and
+   within a foot's two waves the pick is random with repeats (the right
+   foot: 2, 4, 2, 4, 4, 4, 4, 2, ...); counts 30/24/24/31; never the same
+   wave twice in a row only because the feet alternate. As ours
+   (`movement` `step_left`, a uniform pick). Other entries' picks
+   unmeasured. Was: **Wave choice.** Is the rndwave pick uniform, or does it avoid repeating the previous wave? Is the "count" (number of waves) used anywhere else?
    - Measure: `sv_soundemitter_trace 1` (replicated cvar) prints every emit as "'<entry>' emitted as '<wave>'". Fire 200 shots of a 3-wave entry and look at the repeat statistics.
 3. **CS:S footstep rules.** CS:S overrides the shared bands or rule: walking (+speed) is silent, and probably crouch-walking. What are the CS:S speed bands, volumes and periods? Is there a per-weapon effect (max speed 210–250)? Does CS:S keep the "knee in water" wading?
    - Measure on a dedicated server with sv_soundemitter_trace 1 and the movecmp harness: drive a bot or second client at fixed speeds (walk, run, duck, duck-walk, each weapon class), and log emit ticks and entry names. Volume isn't printed. Compare loudness by recording, or test whether the emit happens at all.

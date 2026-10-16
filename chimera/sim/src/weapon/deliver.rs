@@ -1,7 +1,10 @@
 //! Deliveries: hitscan shots (spec 4) and melee swings (spec 6.1), and the
 //! damage they deal. Damage to one target within one firing call is summed
 //! and applied once (spec 4.5). Bullets of weapons with `Penetration` go on
-//! through walls and characters (measured M13). Each bullet hit on
+//! through walls and characters (measured M13); a target's `BulletTarget`
+//! may give its own hitgroup multipliers, let a bullet go on inside it
+//! from the box it passed (so it hits another of its boxes) and keep its
+//! damage exact (CS:S's hostages, objectives.md Q8). Each bullet hit on
 //! something with health is also told as a `BulletHit` (the damage before
 //! armour and truncation, whether armour covered it, a helmet).
 
@@ -11,7 +14,8 @@ use bevy::prelude::*;
 use super::{
     lagcomp::Rewound,
     random::Rng,
-    Armor, DamageEffect, Hitscan, PassMaterials, Penetration, SpreadShape, Swing, WeaponEvent, WeaponEventKind,
+    Armor, BulletTarget, DamageEffect, Hitscan, PassMaterials, Penetration, SpreadShape, Swing, WeaponEvent,
+    WeaponEventKind,
 };
 use crate::{
     core::{Damage, DamageKind, Damageable, FirstTimePredicted, Health, Hitboxes, Hitgroup, Intent, NetRole, SOLID_LAYERS},
@@ -35,6 +39,7 @@ pub(super) struct Target {
     damageable: Option<&'static Damageable>,
     intent: Option<&'static Intent>,
     hitboxes: Option<&'static Hitboxes>,
+    bullet: Option<&'static BulletTarget>,
 }
 
 /// The world access deliveries need.
@@ -110,23 +115,30 @@ pub fn aim_of(yaw: f32, pitch: f32) -> Quat {
     Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0)
 }
 
+/// The box a ray enters first among `boxes` (local space) within `limit`:
+/// where it enters and leaves it, and its group.
+fn nearest_box(boxes: &[crate::core::Hitbox], o: Vec3, d: Vec3, limit: f32) -> Option<(f32, f32, Hitgroup)> {
+    boxes
+        .iter()
+        .filter_map(|b| b.ray_span(o, d).map(|(enter, leave)| (enter, leave, b.group)))
+        .filter(|(t, ..)| *t < limit)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+}
+
 /// What a ray hits of a character's volume: the nearest hitbox entered
-/// (distance and group) or, without hitboxes, its box.
-fn volume_entry(r: &Rewound, from: Vec3, dir: Dir3, limit: f32) -> Option<(f32, Option<Hitgroup>)> {
+/// (distance, where it leaves that box, and its group) or, without
+/// hitboxes, its box.
+fn volume_entry(r: &Rewound, from: Vec3, dir: Dir3, limit: f32) -> Option<(f32, Option<f32>, Option<Hitgroup>)> {
     match &r.hitboxes {
         Some(boxes) => {
             let (feet, turn) = r.frame();
             let (o, d) = (turn * (from - feet), turn * *dir);
-            boxes
-                .iter()
-                .filter_map(|b| Some((b.ray_entry(o, d)?, Some(b.group))))
-                .filter(|(t, _)| *t < limit)
-                .min_by(|a, b| a.0.total_cmp(&b.0))
+            nearest_box(boxes, o, d, limit).map(|(enter, leave, group)| (enter, Some(leave), Some(group)))
         }
         None => {
             let b = r.aabb();
             let (enter, _) = aabb_span(&b, from, *dir)?;
-            (enter < limit).then(|| (enter, Some(hitgroup_at(&b, from + *dir * enter))))
+            (enter < limit).then(|| (enter, None, Some(hitgroup_at(&b, from + *dir * enter))))
         }
     }
 }
@@ -157,6 +169,8 @@ struct Hit {
     normal: Vec3,
     /// The hitbox's group, when the target has hitboxes.
     group: Option<Hitgroup>,
+    /// Where the ray leaves that hitbox, from the eye.
+    box_exit: Option<f32>,
 }
 
 impl Shot<'_, '_, '_> {
@@ -217,6 +231,7 @@ impl Shot<'_, '_, '_> {
                 distance: start + hit.distance,
                 normal: hit.normal,
                 group: None,
+                box_exit: None,
             });
         for e in boxed.into_iter().filter(|e| !skip.contains(e)) {
             let Some((o, d)) = self.local_ray(e, from, dir) else {
@@ -226,13 +241,7 @@ impl Shot<'_, '_, '_> {
                 continue;
             };
             let limit = best.as_ref().map_or(end, |b| b.distance) - start;
-            let nearest = boxes
-                .0
-                .iter()
-                .filter_map(|b| Some((b.ray_entry(o, d)?, b.group)))
-                .filter(|(t, _)| *t < limit)
-                .min_by(|a, b| a.0.total_cmp(&b.0));
-            if let Some((distance, group)) = nearest {
+            if let Some((distance, leave, group)) = nearest_box(&boxes.0, o, d, limit) {
                 best = Some(Hit {
                     entity: e,
                     collider: e,
@@ -241,13 +250,14 @@ impl Shot<'_, '_, '_> {
                     distance: start + distance,
                     normal: -*dir,
                     group: Some(group),
+                    box_exit: Some(start + leave),
                 });
             }
         }
         // Characters where the shooter saw them (lag compensation).
         for r in self.rewound.iter().filter(|r| !skip.contains(&r.entity) && !dead.contains(&r.entity)) {
             let limit = best.as_ref().map_or(end, |b| b.distance) - start;
-            if let Some((distance, group)) = volume_entry(r, from, dir, limit) {
+            if let Some((distance, leave, group)) = volume_entry(r, from, dir, limit) {
                 best = Some(Hit {
                     entity: r.entity,
                     collider: r.entity,
@@ -256,6 +266,7 @@ impl Shot<'_, '_, '_> {
                     distance: start + distance,
                     normal: -*dir,
                     group,
+                    box_exit: leave.map(|l| start + l),
                 });
             }
         }
@@ -409,7 +420,8 @@ impl Shot<'_, '_, '_> {
                         (None, Some(_)) => t.aabb.map_or(Hitgroup::Generic, |b| hitgroup_at(b, hit.point)),
                         (None, None) => Hitgroup::Generic,
                     };
-                    let amount = carried * effect.hitgroups.get(group);
+                    let scale = t.bullet.and_then(|b| b.hitgroups).unwrap_or(effect.hitgroups);
+                    let amount = carried * scale.get(group);
                     match total.iter_mut().find(|t| t.0 == hit.entity) {
                         Some(t) => {
                             t.1 += amount;
@@ -425,9 +437,21 @@ impl Shot<'_, '_, '_> {
                     break;
                 }
                 let character = self.is_character(hit.entity);
+                // Through only the box hit, and on inside the character
+                // (`BulletTarget::hits_inside`), or out of it whole.
+                let inside = character
+                    && hit.box_exit.is_some()
+                    && self
+                        .w
+                        .targets
+                        .get(hit.entity)
+                        .ok()
+                        .and_then(|t| t.bullet)
+                        .is_some_and(|b| b.hits_inside);
                 let (exit, cost, factor) = if character {
                     let pass = self.w.materials.character;
-                    let Some(exit) = self.character_exit(&hit) else { break };
+                    let exit = if inside { hit.box_exit } else { self.character_exit(&hit) };
+                    let Some(exit) = exit else { break };
                     (exit, pass.cost, pass.damage)
                 } else {
                     let m = self.w.materials.get(self.material_class(&hit));
@@ -446,7 +470,9 @@ impl Shot<'_, '_, '_> {
                 carried *= factor;
                 passed += 1;
                 if character {
-                    skip.push(hit.entity);
+                    if !inside {
+                        skip.push(hit.entity);
+                    }
                     end = exit + (end - exit) * self.w.materials.character.range_scale;
                 }
                 start = exit.max(hit.distance) + STEP;
@@ -456,11 +482,12 @@ impl Shot<'_, '_, '_> {
             }
         }
         for (target, amount, hitgroup, point, dir) in total {
+            let exact = self.w.targets.get(target).ok().and_then(|t| t.bullet).is_some_and(|b| b.exact);
             self.apply(
                 target,
                 amount,
                 effect.armor_ratio,
-                effect.quantum,
+                if exact { 0.0 } else { effect.quantum },
                 hitgroup,
                 point,
                 dir,
@@ -577,6 +604,7 @@ impl Shot<'_, '_, '_> {
                         distance: h.distance,
                         normal: -h.normal1,
                         group: None,
+                        box_exit: None,
                     });
                 }
             }

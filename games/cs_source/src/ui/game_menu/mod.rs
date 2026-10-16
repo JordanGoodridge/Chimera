@@ -23,7 +23,8 @@
 //! The main menu and the game menu (one module per dialog: `main_menu.rs` the
 //! left-hand entries, `options_pages.rs` the options' tabs and their Advanced
 //! dialogs, `create_server.rs`, `loading.rs` the loading and Disconnected
-//! dialogs, `extras.rs` ours (Lucker Party Options, Bots, Team);
+//! dialogs, `player_list.rs` the player list (mute players' voice), `extras.rs`
+//! ours (Lucker Party Options, Bots, Team);
 //! `vote_setup.rs` the vote setup dialog (Call Vote: the server's issues and
 //! their choices, opened by `callvote` alone); `model.rs` the shared model,
 //! `draw.rs` the drawing, `systems.rs` input and the Bevy systems,
@@ -51,8 +52,8 @@
 //! `mashup_loading_details 1` adds a detailed view under it (`LoadTimeline`:
 //! each stage's time, bytes and percentage; the server's name, address, map,
 //! players and ping). The entries at the left: the game's `GameMenu.res`
-//! entries mashup can do, in its words and order (Resume and Disconnect only in
-//! a game, Find Servers opens the server browser (`server_browser.rs`), Create
+//! entries mashup can do, in its words and order (Resume, Disconnect and the
+//! Player List only in a game, Find Servers opens the server browser (`server_browser.rs`), Create
 //! Server, report a bug), then ours after a gap (quick start: rounds on
 //! de_dust2 with bots; the greybox test map; bots and team in a game; Lucker
 //! Party Options: the settings CS:S's options don't have; console), under the
@@ -84,8 +85,8 @@
 //! install's `gamma` test picture; its "Advanced...":
 //! `OptionsSubVideoAdvancedDlg.res`, texture detail, antialiasing, filtering,
 //! water detail, vertical sync, HDR, field of view; Virtual Reality Mode left
-//! out, `draw::LEFT_OUT`), Voice (enable and receive volume; the microphone's
-//! controls greyed), Multiplayer (the
+//! out, `draw::LEFT_OUT`), Voice (enable, receive volume, microphone boost,
+//! Test Microphone and its meter), Multiplayer (the
 //! controls of `OptionsSub*.res` for the archived cvars in `options.rs`:
 //! sliders with tick marks, drop-downs, check boxes, the sensitivity's text
 //! entry, the crosshair preview; its "Advanced...":
@@ -112,6 +113,7 @@ mod loading;
 mod main_menu;
 mod model;
 mod options_pages;
+mod player_list;
 mod systems;
 mod vote_setup;
 #[cfg(test)]
@@ -123,6 +125,7 @@ pub use self::{
     loading::*,
     main_menu::*,
     model::*,
+    player_list::ListedPlayer,
     vote_setup::{VoteSetup, issue_label},
 };
 pub(in crate::ui) use self::systems::*;
@@ -205,7 +208,7 @@ impl Plugin for GameMenuPlugin {
                     .chain()
                     .in_set(MenuSystems),
             )
-            .add_systems(Update, world_behind_dialogs.after(MenuSystems))
+            .add_systems(Update, (world_behind_dialogs, mic_meter).after(MenuSystems))
             .add_systems(Update, vote_setup_arrived.before(MenuSystems));
         // The shell's view of the menu (`client::front_end`).
         app.init_resource::<MenuStatus>()
@@ -229,9 +232,10 @@ impl Plugin for GameMenuPlugin {
         app.console_command(
             "menu",
             "menu [main|newgame|game|bot|bots|team|options|keyboard|mouse|audio|video|voice|multiplayer|advanced|\
-             videoadvanced|gamma|mpadvanced|extras]: open the game menu (Esc) on a page (newgame: Create Server, game and \
-             bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced the \
-             video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party Options).",
+             videoadvanced|gamma|mpadvanced|extras|players]: open the game menu (Esc) on a page (newgame: Create Server, \
+             game and bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced \
+             the video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party \
+             Options; players: the player list, to mute players).",
             |w, a| {
                 let arg = a.first().map(|s| s.to_lowercase());
                 let tab = TABS.iter().find(|(t, ..)| Some(t.page()) == arg.as_deref()).map(|(t, ..)| *t);
@@ -243,6 +247,7 @@ impl Plugin for GameMenuPlugin {
                     Some("team") => Page::Team,
                     Some("options" | "settings" | "advanced" | "videoadvanced" | "gamma" | "mpadvanced") => Page::Settings,
                     Some("extras") => Page::Extras,
+                    Some("players" | "playerlist") => Page::PlayerList,
                     Some(p) => return Err(format!("no menu page \"{p}\"")),
                 };
                 open_menu(w, page);
@@ -336,6 +341,8 @@ pub enum Page {
     MultiplayerAdvanced,
     /// Ours: Lucker Party Options (what CS:S's options don't have).
     Extras,
+    /// The player list (`PlayerListDialog.res`): mute players' voice.
+    PlayerList,
     /// The vote setup dialog (`vote_setup.rs`).
     Vote,
 }
@@ -354,6 +361,7 @@ impl Page {
             Page::Gamma => "gamma",
             Page::MultiplayerAdvanced => "multiplayeradvanced",
             Page::Extras => "extras",
+            Page::PlayerList => "playerlist",
             Page::Vote => "votesetup",
         }
     }

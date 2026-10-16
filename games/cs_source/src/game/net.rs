@@ -60,7 +60,7 @@ use crate::{
     objectives::{
         ObjectiveEvent, RoundOpen,
         bomb::{BombHold, BombOutcome, BombRules, BombState, Defuse, PlantedBomb},
-        hostages::{Hostage, HostagePenalty, HostageTally},
+        hostages::{Hostage, HostagePenalty, HostageRules, HostageTally},
     },
     rules::{
         JoinChoice,
@@ -885,11 +885,13 @@ fn apply_bombs(world: &mut World) {
     }
 }
 
-/// Hostages: characters without a team, with their model and leader.
+/// Hostages: characters without a team, with their model and leader (and
+/// how bullets treat them, for the shots this client draws).
 #[allow(clippy::type_complexity)]
 fn apply_hostages(
     teams: Query<Entity, (With<NetHostage>, With<Team>)>,
     mut q: Query<(Entity, &NetHostage, Option<&mut Hostage>)>,
+    rules: Option<Res<HostageRules>>,
     mut commands: Commands,
 ) {
     for e in &teams {
@@ -906,6 +908,9 @@ fn apply_hostages(
             None => {
                 let mut ent = commands.entity(e);
                 ent.insert(Hostage::shown(n.index as usize, leader));
+                if let Some(r) = &rules {
+                    ent.insert(r.bullets);
+                }
                 if let Some(m) = &n.model {
                     ent.insert(BodyName(m.clone()));
                 }

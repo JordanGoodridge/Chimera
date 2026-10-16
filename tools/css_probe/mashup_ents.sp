@@ -6,6 +6,7 @@ public Plugin myinfo = { name = "mashup_ents", author = "mashup", description = 
 
 public void OnPluginStart()
 {
+    RegServerCmd("mashup_htrack", Command_HTrack, "mashup_htrack <entity|-1> [file]: log that entity's origin every server frame to the file (game time x y z); -1 stops");
     RegServerCmd("mashup_hosthook", Command_HostHook, "mashup_hosthook: hook every hostage's TraceAttack and OnTakeDamage (logged)");
     RegServerCmd("mashup_hostages", Command_Hostages, "mashup_hostages: each hostage_entity's index, health and origin");
     RegServerCmd("mashup_ents", Command_Ents,
@@ -64,6 +65,34 @@ public Action Command_Hostages(int args)
         PrintToServer("hostage %d health %d at %.1f %.1f %.1f", e, GetEntProp(e, Prop_Data, "m_iHealth"), o[0], o[1], o[2]);
     }
     return Plugin_Handled;
+}
+
+int g_htrack = -1;
+File g_hfile = null;
+
+public Action Command_HTrack(int args)
+{
+    if (g_hfile != null) {
+        delete g_hfile;
+    }
+    g_htrack = GetCmdArgInt(1);
+    if (g_htrack > 0) {
+        char path[PLATFORM_MAX_PATH];
+        GetCmdArg(2, path, sizeof(path));
+        g_hfile = OpenFile(path, "w");
+    }
+    return Plugin_Handled;
+}
+
+public void OnGameFrame()
+{
+    if (g_hfile == null || g_htrack <= 0 || !IsValidEntity(g_htrack)) {
+        return;
+    }
+    float o[3];
+    GetEntPropVector(g_htrack, Prop_Send, "m_vecOrigin", o);
+    g_hfile.WriteLine("%.4f %.3f %.3f %.3f", GetGameTime(), o[0], o[1], o[2]);
+    g_hfile.Flush();
 }
 
 public Action Command_HostHook(int args)

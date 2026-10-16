@@ -296,42 +296,71 @@ fn office_hostage_walks_after_its_leader() {
     eprintln!("hostage played {seen:?}");
 }
 
+
 /// Q8, the CS:S probe's shots again: one AK-47 or Desert Eagle shot from
 /// 150 units at hostage 1 (fresh each time), aimed `z` units above its
-/// feet. Ours: the player hitgroups on the hostage model's first hitbox
-/// set (the same for all four models). CS:S's numbers don't follow one
-/// rule (objectives.md "Hostage damage"); this pins what ours does and
-/// prints both.
+/// feet, on the hostage model's first hitbox set (the same for all four
+/// models) posed by its idle animation. CS:S's rule (objectives.md
+/// Constants, Hostages, "the rule"): each hit takes the shot's damage
+/// after falloff x the hostage's own multiplier; a bullet through one of
+/// its boxes may hit another at x 0.5 with falloff again; the hits add
+/// up, truncated after. Every shot is checked against that rule on the
+/// boxes ours crosses, and against CS:S's number where ours crosses the
+/// boxes CS:S's damage says it hit. Where they differ the spread put the
+/// line elsewhere: CS:S's seeds aren't ours, its spread at 150 units
+/// (about 1.5 units for the AK-47, 2.5 for the Deagle) is enough to move
+/// a line between boxes, and its own repeats of the same aim took other
+/// boxes (the spec's repeat), so a different box isn't a different rule.
 #[test]
 fn office_hostage_shots_from_150_units() {
     use crate::stack::{
-        core::{Health, Hitgroup},
+        core::{Health, Hitboxes, Hitgroup, Intent},
         games::cs_source::weapons::{AK47, DEAGLE},
-        weapon::{WeaponEvent, WeaponEventKind},
+        objectives::hostages::HOSTAGE_HITGROUPS,
+        weapon::{DamageEffect, WeaponEvent, WeaponEventKind, falloff},
     };
+    use avian3d::prelude::ColliderAabb;
     #[derive(Resource, Default)]
-    struct Hits(Vec<(Entity, Hitgroup)>);
-    fn record(mut e: MessageReader<WeaponEvent>, mut hits: ResMut<Hits>) {
+    struct Segments(Vec<(Vec3, Vec3, Option<Entity>)>);
+    fn record(mut e: MessageReader<WeaponEvent>, mut segments: ResMut<Segments>) {
         for e in e.read() {
-            if let WeaponEventKind::Hit { target, hitgroup, .. } = e.kind {
-                hits.0.push((target, hitgroup));
+            if let WeaponEventKind::Shot { from, to, hit, .. } | WeaponEventKind::ShotContinued { from, to, hit, .. } =
+                e.kind
+            {
+                segments.0.push((from, to, hit));
             }
         }
     }
     use Hitgroup::*;
-    // (weapon, z, CS:S's damage (100: killed), ours, our hitgroup).
-    let shots = [
-        (AK47, 66.0, 89, 100, Head),
-        (AK47, 60.0, 53, 35, Chest),
-        (AK47, 48.0, 53, 35, Chest),
-        (AK47, 36.0, 26, 44, Stomach),
-        (AK47, 18.0, 21, 26, RightLeg),
-        (DEAGLE, 66.0, 100, 100, Head),
-        (DEAGLE, 60.0, 76, 50, Chest),
-        (DEAGLE, 48.0, 38, 50, Chest),
-        (DEAGLE, 36.0, 38, 63, Stomach),
-        (DEAGLE, 18.0, 44, 37, RightLeg),
+    // (weapon, z, CS:S's damage (100: killed), the hits that damage fits
+    // by the rule (AK 35.79 x 2.5 = 89, x 1.5 = 53, x 0.75 = 26, x 0.6 =
+    // 21; Deagle 50.85 x 1.5 = 76, x 0.75 = 38, x 0.6 + 23.78 x 0.6 =
+    // 44), the hits ours makes). Five of ours cross CS:S's boxes and take
+    // its damage. The others: AK z 48 goes on from the chest into the
+    // stomach (84.81; CS:S's own repeats at z 48 took 85 twice in four),
+    // AK z 36 takes the stomach, not an arm (62.64; CS:S's repeats at z
+    // 36: 62 in six of eight), AK z 18 both legs (32.13; CS:S's z 24
+    // repeats: 32 once), the Deagle at z 48 chest and stomach (killed)
+    // and at z 36 the stomach (88.93), where CS:S's took an arm.
+    let shots: [(&str, f32, i32, &[Hitgroup], &[Hitgroup]); 10] = [
+        (AK47, 66.0, 89, &[Head], &[Head]),
+        (AK47, 60.0, 53, &[Chest], &[Chest]),
+        (AK47, 48.0, 53, &[Chest], &[Chest, Stomach]),
+        (AK47, 36.0, 26, &[LeftArm], &[Stomach]),
+        (AK47, 18.0, 21, &[LeftLeg], &[RightLeg, LeftLeg]),
+        (DEAGLE, 66.0, 100, &[Head], &[Head]),
+        (DEAGLE, 60.0, 76, &[Chest], &[Chest]),
+        (DEAGLE, 48.0, 38, &[LeftArm], &[Chest, Stomach]),
+        (DEAGLE, 36.0, 38, &[LeftArm], &[Stomach]),
+        (DEAGLE, 18.0, 44, &[LeftLeg, LeftLeg], &[RightLeg, LeftLeg]),
     ];
+    // Left and right count alike (the same multiplier).
+    let same = |a: &[Hitgroup], b: &[Hitgroup]| {
+        a.len() == b.len()
+            && a.iter()
+                .zip(b)
+                .all(|(x, y)| HOSTAGE_HITGROUPS.get(*x) == HOSTAGE_HITGROUPS.get(*y))
+    };
     let Some(map) = load("cs_office") else { return };
     // Hitboxes posed by its idle animation, as CS:S's stood.
     let mut sim = Sim::new(CsSim, (
@@ -342,11 +371,12 @@ fn office_hostage_shots_from_150_units() {
     ));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.ticks(2);
-    sim.app.init_resource::<Hits>().add_systems(Last, record);
+    sim.app.init_resource::<Segments>().add_systems(Last, record);
     let shooter_feet = Vec3::new(1634.0, 734.0, -159.9);
     let p = character(&mut sim, shooter_feet, 2);
     sim.seconds(1.0);
-    for (weapon, z, theirs, ours, group) in shots {
+    let (mut matched, mut moved) = (0, Vec::new());
+    for (weapon, z, theirs, their_hits, our_hits) in shots {
         crate::stack::objectives::hostages::spawn_all(sim.app.world_mut());
         *sim.app.world_mut().get_mut::<Inventory>(p).unwrap() = Inventory::default();
         give(sim.app.world_mut(), p, weapon).unwrap();
@@ -381,16 +411,68 @@ fn office_hostage_shots_from_150_units() {
         sim.intent(p).yaw = (-d.x).atan2(-d.z);
         sim.intent(p).pitch = d.y.atan2(d.xz().length());
         sim.ticks(2);
-        sim.app.world_mut().resource_mut::<Hits>().0.clear();
+        sim.app.world_mut().resource_mut::<Segments>().0.clear();
         sim.intent(p).fire = true;
         sim.ticks(1);
         sim.intent(p).fire = false;
+        // The hostage's boxes as the shot met them, in their frame.
+        let (boxes, frame) = {
+            let w = sim.app.world();
+            let t = w.get::<Transform>(h).unwrap();
+            let floor = w.get::<ColliderAabb>(h).unwrap().min.y;
+            let turn = w.get::<Intent>(h).unwrap().yaw_rotation().inverse();
+            (w.get::<Hitboxes>(h).unwrap().0.clone(), (t.translation.with_y(floor), turn))
+        };
+        let effect = {
+            let gun = sim.app.world().get::<Inventory>(p).unwrap().active.unwrap();
+            sim.app.world().get::<DamageEffect>(gun).unwrap().clone()
+        };
         sim.ticks(3);
         let health = sim.app.world().get::<Health>(h).map_or(0.0, |x| x.current);
-        let taken = ((1.0 - health) * 100.0).round() as i32;
-        let hits = std::mem::take(&mut sim.app.world_mut().resource_mut::<Hits>().0);
-        eprintln!("{weapon} z {z}: ours {taken} ({hits:?}), CS:S {theirs}");
-        assert_eq!(hits, [(h, group)], "{weapon} at {z}");
-        assert!((taken - ours).abs() <= 1, "{weapon} at {z}: {taken}, was {ours}");
+        let taken = (1.0 - health) * 100.0;
+        // Each segment that ends on the hostage: the box entered there (the
+        // nearest one along it, as the engine picks) and the rule's damage.
+        let segments = std::mem::take(&mut sim.app.world_mut().resource_mut::<Segments>().0);
+        let mut hits = Vec::new();
+        let (mut carried, mut rule) = (effect.amount, 0.0);
+        // The bullet's line (its later segments may start inside a box).
+        let dir = segments.first().map(|(from, to, _)| (*to - *from).normalize()).expect("a shot");
+        for (from, to, hit) in segments {
+            if hit != Some(h) {
+                continue;
+            }
+            let (o, dl) = (frame.1 * (from - frame.0), frame.1 * dir);
+            let group = boxes
+                .iter()
+                .filter_map(|b| Some((b.ray_entry(o, dl)?, b.group)))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, g)| g)
+                .expect("a box where the bullet stopped");
+            if !hits.is_empty() {
+                carried *= 0.5;
+            }
+            carried *= falloff(effect.falloff, effect.falloff_step, (to - eye).length());
+            rule += carried * HOSTAGE_HITGROUPS.get(group) * 100.0;
+            hits.push(group);
+        }
+        eprintln!(
+            "{weapon} z {z}: ours {taken:.2} by {hits:?} (rule {rule:.2}), CS:S {theirs} by {their_hits:?}"
+        );
+        assert!(!hits.is_empty(), "{weapon} at {z}: hit the hostage");
+        if health > 0.0 {
+            assert!((taken - rule).abs() < 0.01, "{weapon} at {z}: {taken}, the rule says {rule}");
+        } else {
+            assert!(rule >= 100.0, "{weapon} at {z}: killed, the rule says {rule}");
+        }
+        if same(&hits, their_hits) {
+            matched += 1;
+            let ours = if health > 0.0 { (taken + 1e-3).floor() as i32 } else { 100 };
+            assert!((ours - theirs).abs() <= 1, "{weapon} at {z}: {ours}, CS:S {theirs}");
+        }
+        if !same(&hits, our_hits) {
+            moved.push(format!("{weapon} at {z}: ours hit {hits:?}, was {our_hits:?}"));
+        }
     }
+    eprintln!("{matched} of 10 shots crossed the boxes CS:S's did");
+    assert!(moved.is_empty(), "our shots crossed other boxes: {moved:#?}");
 }

@@ -165,7 +165,7 @@ economy until CS:GO). The first three rows are already in our
 
 | Name (ours) | Value | Unit | Meaning |
 |---|---|---|---|
-| hostage_health | 100 | hp | measured (Q8); damage rule not found (below) |
+| hostage_health | 100 | hp | measured (Q8); a float; damage by the rule below |
 | hostage_models | `characters/hostage_01..04` | – | the only hostage models shipped; maps name `models/hostage.mdl` (cs_havana, cs_office) or `HostageType` 0/1 (cs_assault, cs_compound), neither of which selects them (Q9) |
 | hostage_anims | HL2 `Humans/male_shared`, `male_gestures`, `male_postures` (included) | – | own file has only a 101-frame ragdoll sequence |
 | hostage_follow_* | see Behaviour, *hyp.* | – | Q10 |
@@ -196,7 +196,10 @@ three shots per aim height 66, 60, 48, 36, 24, 12):
 - Health is a float: the hits add up and the lost health shown is
   truncated after (53.69 + 26.67 → 80, not 79).
 - Every damage below and in the repeat fits this; the table that follows
-  is the first, single-shot pass, kept for the record.
+  is the first, single-shot pass, kept for the record (its "ours"
+  columns are from before ours followed the rule; ours now does: the
+  heavy test `map_objectives::office_hostage_shots_from_150_units`
+  checks each shot against the rule on the boxes ours crosses).
 
 Measured 2026-10-16, **hostage damage (Q8), no rule found**: probe
 server, cs_office, hostage 121 (the map's first `hostage_entity`) with its
@@ -759,7 +762,22 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    1) and cs_compound (`HostageType` 1): which of `hostage_01..04` does
    each hostage use (dump each `hostage_entity`'s model name) and does it
    change per round?
-10. **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
+10. **Q10 Partly measured (2026-10-16, probe server, cs_office, a CT bot
+    using hostage 121 from 60 units, then running or walking (the walk
+    key) about 400 units away along a clear line; the hostage's origin
+    logged every server frame with `mashup_htrack`):** the server moves a
+    hostage only every 7 ticks (0.105 s; its origin steps, the client
+    smooths it). Following, its step per update grows toward ≈ 26 units
+    (≈ 250 u/s), each step closing about a fifth of the gap to that
+    (6.1, 11.0, 14.9, 18.0, 20.5, 22.5, 24.1, 25.2, 26.0), the same whether
+    the leader ran (250) or walked (130); near the leader each step is
+    ≈ 0.8 of the last (26.0, 20.8, 16.7, 13.3, ...), and it stopped 40
+    units from a runner and 77 from a walker. It started 0.1 s after the
+    leader did. With the leader moved 1230 units away (straight line,
+    another room, out of sight) the hostage still followed, found its way
+    round and reached him in 7 s; the give-up distance and time are
+    beyond that (ours: 1500 units or 10 s out of sight). Corners and
+    jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
     hostage's position and speed every tick while the CT walks away at
     250 in/s, stops, turns corners, jumps a crate, and teleports 2000 in
     away. Measure: stop distance, walk/run speeds and the threshold, the

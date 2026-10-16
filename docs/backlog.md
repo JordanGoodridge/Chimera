@@ -473,6 +473,19 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   in the console; Import Spray needs an image-to-VTF converter),
   comparing the look with CS:S's
   (refcmp has no menu views).
+- **Remove our own entries from the main menu and the Esc menu** (user
+  request, 2026-10-16): both menus should list only what CS:S's
+  `GameMenu.res` has (Resume Game, Disconnect, Player List, Find Servers,
+  Create Server, Report a Bug, Options, Quit). Ours today, after a gap
+  (`games/cs_source/ui/game_menu/main_menu.rs` `OURS`): Quick Start,
+  Greybox Test Map, Bots, Team, Call Vote, Lucker Party Options,
+  Console. Keep each reachable another way: the console (`~`; `map`,
+  `bot_add`/`bot_kick`, `chooseteam` (M), `callvote`), and a console
+  command for the Lucker Party options page; if some should stay in a
+  menu, behind an opt-in cvar off by default (parity first). Update the
+  tests that list the entries (`game_menu` tests, the menu-entry tests),
+  docs/OBSERVABILITY.md where screenshots open pages through these
+  entries (`menuinput`), and ui-parity.md.
 - The main menu is in: startup without a map shows CS:S's (its
   background picture, the title in its logo font, `GameMenu.res`'s
   entries; Resume and Disconnect only in a game, Find Servers greyed),
@@ -483,7 +496,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   and the interface sounds are in; CS:S has no menu music: its install
   holds none), whether keyboard moves in the menu make the rollover
   sound, a loading dialog for maps changed from inside a game (the old
-  map plays on until the new one is in), the player list,
+  map plays on until the new one is in),
   the server browser (needs networking), a mashup debug-options page
   (the overlay cvars as check boxes).
 - Debug overlays: `mashup_drawhitboxes`, `mashup_healthbars`,
@@ -531,9 +544,11 @@ Voice chat (2026-10-15, docs/plans/active/voice-chat.md): K held talks
 (`+voicerecord`), Opus over the game's connection, `sv_alltalk`,
 `sv_voiceenable`, `voice_*`, the HUD's talking icon and list. To
 playtest with friends on Windows and Linux (real microphones and
-speakers: only fakes are tested). Left: per-player mute (the
-scoreboard), open microphone (`voice_vox`), the Voice tab's microphone
-test, meter and boost, icons over talking players' heads, a capture of
+speakers: only fakes are tested). Per-player mute is in (the game
+menu's player list, `voice_mute`; client-side, for the session), and
+the open microphone (`voice_vox`, `voice_threshold`), and the Voice
+tab's microphone test, meter and boost. Left: the tab's transmit
+volume, icons over talking players' heads, a capture of
 CS:S's voice HUD and client `voice_*` defaults (Windows), and checking
 the dead-hear-the-dead rule with two clients on the probe server.
 
@@ -544,15 +559,6 @@ Esc entry, Call Vote), players joining a running vote, bots voting with
 `sv_vote_bots_allowed 1` (our rule). Left: CS:S's rules, issues, look
 and how its setup dialog opens, from capture C25 (parity-gaps.md).
 
-- Hostage damage (measured 2026-10-16, objectives.md Constants, Hostages,
-  "the rule"): hostages use their own hitgroup multipliers (head 2.5,
-  chest 1.5, stomach 1.75, arms 0.75, legs 0.6; ours: the player table),
-  and a bullet passing through a hostage can hit another of its boxes at
-  half damage with falloff again (ours skips a character once passed:
-  `weapon::deliver` `skip`, `character_exit` leaves the whole body). The
-  heavy test `map_objectives::office_hostage_shots_from_150_units`
-  replays the probe's shots; health is a float (losses add up, then
-  truncate).
 - Missing server kicks (measured defaults 2026-10-16, objectives.md Q2):
   `mp_autokick` 1 (kick idle and team-killing players) and
   `mp_spawnprotectiontime` 5 (kick a player who team-kills within 5 s of a
