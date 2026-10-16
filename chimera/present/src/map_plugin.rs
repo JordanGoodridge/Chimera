@@ -165,6 +165,7 @@ impl MapLayers for Present {
                 render::emitters::update_muzzle_flashes,
                 render::fish::swim,
                 render::psys::update_systems,
+                render::psys::run_started_systems,
             )
                 .after(particles::ParticleSet::Step)
                 .before(particles::ParticleSet::Draw),

@@ -7,7 +7,9 @@
 //! `Instance` (simulated in the game's units, one per start; stopping lets
 //! particles finish), `SystemEmitter` per info_particle_system following its
 //! entity, switched by `EntityPart`, drawn as one-frame pool groups (sprites,
-//! sprite trails, ropes; the material's overbright).
+//! sprite trails, ropes; the material's overbright); `run_started_systems`
+//! runs the one-shot systems games start (`StartParticleSystem`) to their
+//! end.
 //!
 //! Known shortcuts (docs/tech-debt.md): Particle systems (`render::psys`,
 //! `map::psys`, `games/cs_source/pcf.rs`): the operator meanings are
@@ -753,6 +755,106 @@ pub fn update_systems(
     }
 }
 
+/// One-shot systems games started (`StartParticleSystem`), with the
+/// definitions they index (dropped when the map's change).
+#[derive(Default)]
+pub struct StartedSystems {
+    defs: Option<std::sync::Arc<MapParticleSystems>>,
+    running: Vec<(Instance, ControlPoint)>,
+    rng: Option<ParticleRng>,
+}
+
+impl StartedSystems {
+    /// Start `name` at `position` facing `forward` (game space); false
+    /// when the definitions lack it.
+    pub fn start(
+        &mut self,
+        defs: &std::sync::Arc<MapParticleSystems>,
+        name: &str,
+        position: Vec3,
+        forward: Vec3,
+    ) -> bool {
+        if !self.defs.as_ref().is_some_and(|d| std::sync::Arc::ptr_eq(d, defs)) {
+            self.defs = Some(defs.clone());
+            self.running.clear();
+        }
+        let Some(def) = defs.find(name) else { return false };
+        let rotation = Quat::from_rotation_arc(Vec3::X, forward.try_normalize().unwrap_or(Vec3::X));
+        self.running
+            .push((Instance::new(&defs.defs, def), ControlPoint { position, rotation }));
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.running.iter().map(|(i, _)| i.count()).sum()
+    }
+
+    /// Advance every started system by `dt`; finished ones go.
+    pub fn step(&mut self, dt: f32, sheets: &impl Sheets) {
+        let Some(defs) = self.defs.clone() else { return };
+        let rng = self.rng.get_or_insert_with(|| ParticleRng::new(0x5_1A5));
+        for (i, cp) in &mut self.running {
+            i.step(&defs.defs, &[*cp; MAX_CONTROL_POINTS], dt, rng, sheets);
+        }
+        self.running.retain(|(i, _)| !i.finished(&defs.defs));
+    }
+}
+
+/// Run and show the one-shot systems games start (`StartParticleSystem`,
+/// e.g. CS:S's slime splashes), each to its end.
+#[allow(clippy::type_complexity)]
+pub fn run_started_systems(
+    time: Res<Time>,
+    mut starts: MessageReader<StartParticleSystem>,
+    defs: Option<Res<ParticleSystemDefs>>,
+    materials: Option<Res<crate::map::particles::ParticleMaterials>>,
+    eyes: Query<
+        &GlobalTransform,
+        (
+            With<Camera3d>,
+            Without<monitor::ScreenCamera>,
+            Without<SkyboxCamera>,
+            Without<ViewModelCamera>,
+            Without<water::WaterReflectionCamera>,
+        ),
+    >,
+    mut started: Local<StartedSystems>,
+    mut pool: ResMut<Particles>,
+) {
+    let Some(defs) = defs else {
+        starts.clear();
+        return;
+    };
+    let defs = &defs.0;
+    let scale = defs.scale.max(1e-6);
+    let to_game = |v: Vec3| Vec3::new(v.x, -v.z, v.y) / scale;
+    let to_engine = |v: Vec3| Vec3::new(v.x, v.z, -v.y) * scale;
+    for s in starts.read() {
+        let f = Vec3::new(s.forward.x, -s.forward.z, s.forward.y);
+        started.start(defs, &s.name, to_game(s.position), f);
+    }
+    if started.running.is_empty() {
+        return;
+    }
+    let sheets = MaterialSheets(materials.as_ref().map(|m| &m.0));
+    started.step(time.delta_secs().min(0.25), &sheets);
+    let Some(eye) = eyes.iter().next().map(|e| e.translation()) else {
+        return;
+    };
+    let mut out = Vec::new();
+    for (i, _) in &started.running {
+        i.draw(&defs.defs, &to_engine, scale, eye, &sheets, &mut out);
+    }
+    if !out.is_empty() {
+        let mut g = ParticleGroup::new(default());
+        g.particles = out;
+        g.capped = false;
+        g.skip_first = true;
+        g.kill_after = Some(0.0);
+        pool.add(g);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -900,6 +1002,32 @@ mod tests {
         assert!(i.children[0].1.is_none());
         i.step(&defs, &cps, 0.15, &mut rng, &none);
         assert!(i.children[0].1.is_some());
+    }
+
+    #[test]
+    fn started_systems_run_to_their_end_and_unknown_names_show_nothing() {
+        let defs = std::sync::Arc::new(MapParticleSystems {
+            defs: vec![system()],
+            placed: Vec::new(),
+            scale: 0.0254,
+        });
+        let mut started = StartedSystems::default();
+        assert!(!started.start(&defs, "nothing", Vec3::ZERO, Vec3::Z));
+        assert!(started.start(&defs, "TEST", Vec3::ZERO, Vec3::Z));
+        // Pointing up: the frame's forward axis is +Z.
+        let (_, cp) = &started.running[0];
+        assert!((cp.rotation * Vec3::X).abs_diff_eq(Vec3::Z, 1e-5));
+        started.step(0.1, &none);
+        assert!(started.count() > 0);
+        for _ in 0..20 {
+            started.step(0.1, &none);
+        }
+        assert!(started.running.is_empty(), "finished and gone");
+        // New definitions (another map) drop what ran on the old ones.
+        started.start(&defs, "test", Vec3::ZERO, Vec3::Z);
+        let other = std::sync::Arc::new((*defs).clone());
+        started.start(&other, "test", Vec3::ZERO, Vec3::Z);
+        assert_eq!(started.running.len(), 1);
     }
 
     #[test]

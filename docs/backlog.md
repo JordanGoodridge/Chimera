@@ -598,16 +598,25 @@ a first bot are in.
   `<Move>_Reload_<weapon>` by activity, an assumption for the spec's
   `reload_<suffix>`, with the shotguns' `_start/_loop/_end`).
 - Impact effects, remaining (specs/cs_source/impact_effects.md; the
-  surface effects, blood, bullet and knife splashes, the ricochet sound,
-  pane glass shards and section 9's burst at the hit point are in): slime
-  splashes (`.pcf` systems), the glass shards' three-angle spin and
-  settling (ours spin about one axis); check the spec's open questions in
-  the game. The muzzle flash's light on nearby walls is part of the
-  view-model work (1C follow-up).
+  section-by-section list is in `impact_effects.rs`'s `//!` doc):
+
+  | Section | State |
+  |---|---|
+  | 1 who and when | in; missing: other players' shots go to every client, not the shooter's PAS (network relevance, `net::server`) |
+  | 2 per impact, 3 letters | in, with the ragdoll check (no particles while one awake ragdoll is on the line) |
+  | 4-8 old-style machinery, debris, dust, sparks | in; electric flares depth tested, no visibility test |
+  | 9 glass | in: shards tumble on three angles and settle flat |
+  | 10 blood | in from the spec's table; sprite-card size limits, goop spin stop and yaw flip, mist light tint left out |
+  | 11 splash | in: water's own effect; slime's `slime_splash_03` from the install's `.pcf` (no stock map has slime) |
+  | 12 knife | in; its decal: no spec names it (below) |
+
+  Check the spec's open questions in the game. The muzzle flash's light on
+  nearby walls is part of the view-model work (1C follow-up).
 - Decals, remaining: on characters (blood; no spec covers model decals,
-  overlays_decals.md's open questions); check the knife's mark
-  (`ManhackCut` is a guess) and lit decals (wood, glass) against the
-  game; tracers are in (every 4th bullet, spec tracers.md; check N and
+  overlays_decals.md's open questions); the knife's mark (`ManhackCut` is
+  a guess and no spec names it: impact_effects.md 12 points to
+  overlays_decals.md, which has no knife entry; a spec session or a
+  capture) and lit decals (wood, glass) against the game; tracers are in (every 4th bullet, spec tracers.md; check N and
   the look in play).
 - Dropping weapons, remaining (`drop`/G, pickup, death drops, bullets
   and blasts pushing loose weapons and the optional `mashup_usepickup`
