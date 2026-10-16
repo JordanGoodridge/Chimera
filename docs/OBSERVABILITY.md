@@ -115,7 +115,9 @@ build.rs select everything; Markdown and docs only `repo_checks`.
   heavy ones included, of the crates what's pushed can affect (each
   pushed ref against the remote's copy, a new branch against its
   merge-base with origin/main; the hook prints the selection and why).
-  `MASHUP_PUSH_TESTS=all` runs the full suite, `=0` no tests. The full
+  `MASHUP_PUSH_TESTS=all` runs the full suite, `=0` no tests. Afterwards
+  it trims the clone's `target/` to 150 GB with `cargo sweep` (install it
+  with `cargo install cargo-sweep`; skipped without it). The full
   suite is `cargo nextest run --features dev` (at most 8 tests at once
   and 5 heavy slots, the biggest heavy tests taking 2-3,
   `.config/nextest.toml`: memory, not CPU, is the limit with other builds
