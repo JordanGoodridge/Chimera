@@ -17,7 +17,8 @@
 //! (Ctrl+Backspace/W/Delete words, Ctrl+U/K, Ctrl+V paste, Ctrl+L clear,
 //! Ctrl+Home/End), output lines that fit the window's height,
 //! scrollback/filter/timestamps, row selection to the clipboard (clicks never
-//! grab the mouse while open), binds with `+`/`-` actions, log mirroring,
+//! grab the mouse while open), binds with `+`/`-` actions (F1 and F2
+//! vote while a vote waits for ours: `VOTE_KEYS`), log mirroring,
 //! overlays (cl_showpos, cl_showfps, snd_show, watch), client commands (noclip,
 //! god, getpos/setpos/setang, kill, `mashup_hurtme` (a bullet hit on yourself
 //! at a hitbox), map (in place, `map::change_map`; `map greybox` puts the
@@ -1688,14 +1689,23 @@ const ACTIONS: &[&str] = &[
     "freelook",
 ];
 
+/// Keys that vote while a vote waits for ours (`net::vote::VoteView::
+/// awaiting`), in place of their binds: F1 yes, F2 no, as the vote
+/// panel's "Press F1 to vote YES" says (CS:S binds F1 and F2 to autobuy
+/// and rebuy; whether they still buy during a vote is unmeasured).
+pub const VOTE_KEYS: [(&str, &str); 2] = [("f1", "vote option1"), ("f2", "vote option2")];
+
 /// Run bound commands: on press, and the `-` half of `+` actions on
-/// release; wheel notches run once.
+/// release; wheel notches run once. F1 and F2 vote while a vote waits for
+/// ours (`VOTE_KEYS`).
 fn run_binds(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<MouseWheel>,
     mut console: ResMut<Console>,
+    vote: Option<Res<crate::net::vote::VoteView>>,
 ) {
+    let voting = vote.is_some_and(|v| v.awaiting());
     if console.binds.is_empty() {
         wheel.clear();
         return;
@@ -1727,6 +1737,12 @@ fn run_binds(
         events.push((name.into(), false));
     }
     for (key, pressed) in events {
+        if voting && let Some((_, line)) = VOTE_KEYS.iter().find(|(k, _)| *k == key) {
+            if pressed {
+                console.submit(*line);
+            }
+            continue;
+        }
         let Some(cmd) = console.binds.get(&key).cloned() else {
             continue;
         };

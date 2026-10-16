@@ -590,6 +590,15 @@ leave (ids are never given out again, as real clients' random ones
 aren't); the link counts the data bytes it carried to and from each
 client (`Link::bytes_to`, `bytes_from`: bandwidth per client).
 
+Votes (`games/cs_source/tests/it/net_votes.rs`): the server's
+`net::vote::Votes` has the running vote (voters, ballots) and the passed
+and failed counts, each side's `VoteView` what it shows (the vote,
+its end, a refused call). To photograph the panels alone on a listen
+server: `-port 27016 --window 1280x720 --join 3 +maxplayers 4 +map de_dust2
++sv_vote_holder_may_vote_no 1 +wait 300 +callvote restartgame` (the vote
+stays open; add `+wait 60 +vote option1 +wait 60 +screenshot <file>` for
+the passed panel).
+
 Prediction (`games/cs_source/tests/it/net_prediction.rs`): a client's `net::predict::NetGraph`
 counts the server states it compared (`checked`), the ones that differed
 from its prediction (`errors`, `last_error`/`worst_error` in m, which

@@ -434,11 +434,13 @@ that the paths exist).
 - `chimera/net/src/net/udp.rs`: the UDP transports and fake network conditions (net)
 - `chimera/net/src/net/query.rs`: server queries and LAN discovery (net)
 - `chimera/net/src/net/memory.rs`: an in-memory transport for `NetSim` (net)
+- `chimera/net/src/net/vote.rs`: player votes: issues games register, who votes, quorum, timers, `callvote`/`vote` (net)
 
 ### Games
 
 - `apps/cs_source/src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
 - `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
+- `games/cs_source/src/game/votes.rs`: CS:S's vote issues: kick, change level, restart game (games)
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
@@ -531,6 +533,7 @@ that the paths exist).
 - `chimera/client/src/client/chat.rs`: the chat area and hint text (client)
 - `games/cs_source/src/ui/scoreboard.rs`: the scoreboard (games_ui)
 - `games/cs_source/src/ui/win_panel.rs`: the round's win panel (games_ui)
+- `games/cs_source/src/ui/vote_hud.rs`: the vote panels: the running vote, its outcome, a refused call (games_ui)
 - `games/cs_source/src/ui/spectator_menu.rs`: the spectator menu (games_ui)
 - `games/cs_source/src/ui/overview.rs`: the spectators' map overview (games_ui)
 - `chimera/client/src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)

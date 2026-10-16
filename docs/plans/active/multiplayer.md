@@ -1665,3 +1665,9 @@ Voice chat (docs/plans/active/voice-chat.md): `net::voice::VoiceData`
 (client to server) and `VoiceRelay` (server to each listener), both
 unreliable, registered after `PlayerCame`; nothing is sent while nobody
 talks.
+
+### net26 (2026-10-16)
+
+Player votes (`net::vote`): `CallVote` and `CastVote` (client to server)
+and `VoteNews` (server to players: the vote as each sees it, its end, a
+refused call, the issues), all ordered, registered after voice's.

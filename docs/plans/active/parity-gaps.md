@@ -287,7 +287,7 @@ common console commands, against mashup's.
 | Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; no per-player mute, open mic or icons over heads (voice-chat.md) |
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
-| Votes (kick, map) | missing | L | M | |
+| Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
 
 ## Fixed in this pass
 
@@ -616,3 +616,14 @@ says what decides the open point.
   with `snd_show 1` on the second. Decides the overlay's colour and
   brightening (ours: the frame plus the frame times green), any light
   around the player, and who hears the toggle (ours: the owner).
+- **C25 Votes.** A listen server on de_dust2 with a second human client
+  (a second PC, or a friend): `callvote` alone (the setup dialog or the
+  console's issue list: which issues CS:S offers), then `callvote kick
+  <userid>` (`users` lists them) and `callvote changelevel de_dust2`; a
+  `jpeg` of the running vote's panel, of the passed and failed panels and
+  of a refused call (call twice in a row); press F1 during a vote (does
+  it vote, or autobuy as bound?), and a vote where only the caller votes
+  (does it end at once or after 15 s?). Decides the issue list, the
+  panel's look and place (CS:S's HUD layout turns `CHudVote` off, the
+  only panel file is hl2's, "likely out-of-date"), the issues' words and
+  the early finish (ours: once everyone voted).

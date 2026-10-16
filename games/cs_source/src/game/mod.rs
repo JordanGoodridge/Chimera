@@ -216,6 +216,7 @@ pub mod surfaceprops;
 pub mod view_anim;
 pub mod vgui;
 pub mod view_motion;
+pub mod votes;
 pub mod water;
 pub mod weapons;
 

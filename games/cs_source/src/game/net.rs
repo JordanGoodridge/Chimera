@@ -80,6 +80,7 @@ impl Plugin for CsSourceNetPlugin {
             "Players can hear all other players, no team restrictions.",
             |a| &mut a.0,
         );
+        super::votes::register(app);
     }
 }
 

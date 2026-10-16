@@ -2,8 +2,10 @@
 //! (`map::hud::GameMenus`): the buy menu (`resource/ui/buymenu_ter.res` /
 //! `_ct`, the category pages its buttons open, each item's description
 //! panel `classes/<item>.res`), the team menu (`resource/ui/teammenu.res`)
-//! with the map's description (`maps/<map>.txt`), labels localised from
-//! `resource/cstrike_english.txt`, pictures from `materials/vgui/`; and
+//! with the map's description (`maps/<map>.txt`), the vote panels (hl2's
+//! `resource/ui/votehud.res`, each panel's inside as its own layout),
+//! labels localised from `resource/cstrike_english.txt` (and the GameUI's
+//! `GameUI_vote_*` words), pictures from `materials/vgui/`; and
 //! the client scheme's text fonts (`fonts`, onto `GameHud::text_fonts`).
 //!
 //! The `.res` reader is generic Source VGUI: KeyValues blocks per control
@@ -222,6 +224,11 @@ const SCOREBOARD: &str = "resource/ui/scoreboard.res";
 const SPECTATOR: &str = "resource/ui/spectator.res";
 const SPECTATOR_MENU: &str = "resource/ui/bottomspectator.res";
 const WIN_PANEL: &str = "resource/ui/win_round.res";
+/// The vote panels (the engine's, hl2's; CS:S has no copy of its own) and
+/// the ones drawn: the running vote, its passing, its failing, a call
+/// refused.
+const VOTE_HUD: &str = "resource/ui/votehud.res";
+const VOTE_PANELS: [&str; 4] = ["VoteActive", "VotePassed", "VoteFailed", "CallVoteFailed"];
 /// The message of the day's panel, and the class menus by team.
 const MOTD_PANEL: &str = "resource/ui/motd.res";
 const CLASS_PAGES: [(u8, &str); 2] = [(1, "resource/ui/classmenu_ter.res"), (2, "resource/ui/classmenu_ct.res")];
@@ -303,6 +310,16 @@ pub fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str) -> Opt
             strings.extend(super::radio::localization(&super::radio::decode(&b)));
         }
     }
+    // The GameUI's vote words (`GameUI_vote_*`: hl2's copy; cstrike's
+    // `gameui_english.txt` lacks them), from every copy along the path.
+    let path = crate::mount::normalize("resource/gameui_english.txt");
+    for bytes in materials.mount().layers().filter_map(|l| l.read(&path)?.ok()) {
+        for (k, v) in super::radio::localization(&super::radio::decode(&bytes)) {
+            if k.starts_with("gameui_vote") {
+                strings.entry(k).or_insert(v);
+            }
+        }
+    }
     let colors = hud.colors.clone();
     let mut menus = GameMenus::default();
     let mut sprites: Vec<(String, HudSprite)> = Vec::new();
@@ -354,6 +371,24 @@ pub fn load(materials: &mut MaterialLoader, hud: &mut GameHud, map: &str) -> Opt
             }
         }
         menus.layouts.insert(key, l);
+    }
+    // The vote panels (hl2's `resource/ui/votehud.res`): their frames as
+    // one layout, what is in each as its own (`VOTE_PANELS`).
+    if let Some(root) = read_res_at(materials, VOTE_HUD) {
+        let outer = layout(&root, &strings, &colors, &mut |_| None);
+        for name in VOTE_PANELS {
+            let block = root
+                .items()
+                .iter()
+                .find(|(k, c)| k.eq_ignore_ascii_case(name) && matches!(c, Kv::Block(_)))
+                .map(|(_, c)| c.clone());
+            if let Some(block) = block {
+                let inner = layout(&block, &strings, &colors, &mut |p| image(materials, &mut sprites, p));
+                menus.layouts.insert(format!("{VOTE_HUD}#{name}"), inner);
+            }
+        }
+        menus.layouts.insert(VOTE_HUD.into(), outer);
+        menus.vote_hud = Some(VOTE_HUD.into());
     }
     for (key, s) in sprites {
         hud.sprites.insert(key, s);
