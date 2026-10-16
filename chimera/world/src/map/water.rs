@@ -86,7 +86,7 @@ pub struct MapWaterMaterial {
 
 /// A full-screen refraction of the finished frame (Source's Refract shader
 /// as an overlay): the screen sampled at an offset from a scrolling normal
-/// map, tinted.
+/// map, blurred and tinted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapScreenWarp {
     /// The game's material name.
@@ -99,6 +99,9 @@ pub struct MapScreenWarp {
     pub refract_amount: f32,
     /// Multiplies the refracted colour (gamma 0..1).
     pub tint: [f32; 3],
+    /// Blur of the refracted screen (`$bluramount`): 0 none, n a 5 x 5
+    /// box of taps n pixels apart.
+    pub blur: f32,
     /// Normal-map repeats across the screen (u, v), and its scroll in
     /// repeats per second.
     pub scale: Vec2,

@@ -7,8 +7,10 @@ Performance").
 ## Measuring
 
 - `mashup_perf 1` in the console: frame times, main-world CPU, GPU time
-  per render pass (Vulkan/DX12 timestamps), entities, meshes and
-  triangles drawn, the camera's visibility cluster. `mashup_perf_log 1`
+  per render pass (Vulkan/DX12 timestamps; every camera's run of a pass
+  summed per frame: Bevy reports each as its own measurement under the
+  pass's name), entities, meshes and triangles drawn, cameras drawing,
+  the camera's visibility cluster. `mashup_perf_log 1`
   logs it as text once a second; `bugreport` saves it in report.txt.
 - `refcmp bench --views tools/refcmp/<map>.toml`: 200 frames per view
   after settling, vsync off, offscreen at 1280x720 (`-- --view-size
@@ -661,6 +663,76 @@ only the moving prop's own subtree. At these counts neither is worth
 restructuring (props as roots of their own changed how a dust2 prop
 settled before, see "Cheap wins found"); a map with thousands of static
 props with collision would be the case for it.
+
+Ragdolls and broken props' pieces (2026-10-16). Ragdoll hulls and gib
+hulls now go through `contact_hulls` too: a CS:S player's ragdoll has 7
+of its 16 bodies cut (16 hulls become 29 pieces). That changed nothing
+measurable: killed at 10 spawns each on de_dust2 and de_inferno, every
+ragdoll slept 5.25-5.7 s after dying with cut hulls or not, and in both
+a limb or two kept jittering against the floor (over 10 rad/s at times,
+pressed 1-3 cm in) until then: something else (joints against contacts),
+not the four-corner clipping. What did matter: the forced sleep
+(`ragdoll_sleepaftertime`, 5 s still) zeroed the bodies' velocities
+marked as changed, which avian takes as a push and wakes the body again,
+so on real maps no ragdoll ever slept (de_dust2: still awake 9 s in);
+it now writes them unmarked as `settle_props` does. Gib pieces have no
+hulls on CS:S yet: piece and chunk models load without their `.phy`, so
+their bodies are boxes (four corners a face). Loaded with their hulls
+(tried), half of de_inferno's broken crates and pots had pieces that
+never slept until they faded 21 s later (up to 49 rad/s, cut or not):
+pieces of one prop start touching and collide with each other, which
+Source's debris doesn't. `heavy::map_debris_settle` checks that the 20
+ragdolls sleep within 7 s and twelve de_inferno props' pieces within 8 s
+(1.2-6.9 s).
+
+## Fewer cameras per frame (2026-10-16)
+
+The view-model camera ran its passes every frame: clearing its depth,
+its (empty) opaque, transparent and post-processing passes, and the copy
+of the resolved image back into the multisampled one
+(`msaa_writeback`), with nothing on its layer whenever no view model is
+drawn (spectating in free look, dead, in menus, `r_drawviewmodel 0`, a
+scoped AWP, no weapon). `render::view_model::view_model_cameras_draw`
+now turns it off unless something visible is on `VIEW_MODEL_LAYER` (the
+view model, a shell, the under-water overlay, a muzzle flash), and the
+post-processing that goes on the last camera drawing the view (night
+vision, colour correction) then goes on the world's camera; they are
+placed after it in PostUpdate, so the frame it turns on or off has them
+right. In HDR (`mat_hdr_level` 1-2) it always draws: its auto exposure
+keeps a state per camera. Alive with a weapon nothing changes.
+
+`refcmp bench`, de_dust2 (32 views; refcmp hides the view model), dev
+build, three interleaved rounds at load 10-16; p50 over all frames,
+median of the rounds (range):
+
+| | cameras drawing | render-world instructions / frame | GPU ms | render world ms |
+|---|---|---|---|---|
+| 1280x720 before | 4 | 15.48M (15.47-15.51) | 0.97 (0.92-1.03) | 4.46 (4.42-5.61) |
+| 1280x720 after | 3 | 13.47M (13.40-13.55) | 0.84 (0.83-1.74) | 4.73 (4.21-6.77) |
+| 3840x2160 before | 4 | 15.53M (15.48-15.67) | 1.60 (1.60-1.63) | 4.66 (4.43-4.79) |
+| 3840x2160 after | 3 | 13.54M (13.50-13.60) | 1.31 (1.29-2.50) | 4.43 (3.56-4.69) |
+
+So 13% fewer render-world instructions and 14-19% less GPU time a frame
+whenever no view model is drawn (wall times move with the load). GPU
+times before this were misread: Bevy reports each camera's run of a pass
+as its own measurement under the pass's name, and `mashup_perf` and
+`bench` took the latest (the view-model camera's empty passes: dust2's
+"0.2 ms") or a moving average over the cameras; they now sum each
+frame's (`perf::frame_mean`, `frame_latest`), and both show cameras
+drawing (`cameras_drawing` in `bench.json`). Pictures: screenshots of
+the old and new builds (de_dust2 with and without the view model, night
+vision with and without, shooting with shells in the air, spectating;
+de_port under water with and without; surf_demise's colour correction
+with and without) differ by no more than two runs of the old build do
+(0 pixels for spectating and the colour correction ones); dead, the
+ragdoll lands differently (its hulls are cut, above) and the death
+camera that looks at it with it; `refcmp
+capture-ours` of `survey_b_site` matches to the pixel. de_port's
+under-water overlay turned out not to show at all, before as after: it
+was drawn, but its warp moves the screen by about a pixel and its
+`$bluramount` was ignored (now a blur; `render::water`'s doc,
+`chimera/present/tests/it/underwater_overlay.rs`); the camera's part
+there is covered by `chimera/present/tests/it/view_model_camera.rs`.
 
 ## Load-independent metrics
 

@@ -88,7 +88,11 @@ impl Plugin for HdrPlugin {
             |s| &mut s.level,
         );
         app.world_mut().resource_mut::<Console>().archive("mat_hdr_level");
-        app.add_systems(Update, hdr_cameras);
+        // After the view-model cameras decide whether they draw this frame.
+        app.add_systems(
+            PostUpdate,
+            hdr_cameras.after(crate::render::view_model::ViewModelCameraSet),
+        );
 
         // The render side only exists with a renderer (not in headless tests).
         if app.get_sub_app(RenderApp).is_none() {

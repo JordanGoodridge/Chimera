@@ -1,0 +1,204 @@
+//! Ragdolls and broken props' pieces settle and sleep on real CS:S maps,
+//! headless: a CS:S player killed at a map's spawns lies still and its
+//! bodies go to sleep, and a broken prop's pieces come to rest and sleep,
+//! rather than moving for good. Their hulls are cut for contacts like
+//! props' (`map::collision::contact_hulls`). Skipped without an install.
+
+use avian3d::prelude::*;
+use bevy::prelude::*;
+use crate::stack::{
+    core::{Damage, DamageKind, Hitgroup},
+    games::{
+        self, cs_source,
+        cs_source::{
+            movement::{SourceMovementPlugin, to_engine},
+            weapons::CsWeaponsPlugin,
+        },
+    },
+    harness::{CsSim, Sim},
+    map::{MapData, MapPlugin, PropEntity, Ragdoll},
+    mount::config::LocalConfig,
+    movement::noclip,
+    rules::Deathmatch,
+};
+
+fn load(name: &str) -> Option<MapData> {
+    let installed = LocalConfig::load()
+        .ok()?
+        .game_path(cs_source::GAME)
+        .is_some_and(|p| p.join("cstrike").is_dir());
+    if !installed {
+        eprintln!("skipping: no CS:S install configured");
+        return None;
+    }
+    Some(games::load_map(&format!("cs_source:{name}")).expect("load map"))
+}
+
+fn sim(map: MapData) -> Sim {
+    let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
+    sim.set_tick_interval(cs_source::TICK_INTERVAL);
+    // The dead stay dead for the test.
+    sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
+    sim.ticks(2);
+    sim
+}
+
+/// Each body's (asleep, angular rad/s); a removed one is left out.
+fn motion(sim: &Sim, bodies: &[Entity]) -> Vec<(bool, f32)> {
+    let w = sim.app.world();
+    bodies
+        .iter()
+        .filter_map(|b| Some((w.get::<Sleeping>(*b).is_some(), w.get::<AngularVelocity>(*b)?.0.length())))
+        .collect()
+}
+
+/// Ticks until every body of `bodies` sleeps, up to `limit` seconds: the
+/// time it took, and the fastest angular speed of an awake body after
+/// `quiet` seconds (jitter after the fall), for the log.
+fn settle(sim: &mut Sim, bodies: &[Entity], limit: f64, quiet: f64) -> (Option<f64>, f32) {
+    let ticks = (limit / cs_source::TICK_INTERVAL).round() as u64;
+    let mut jitter = 0.0f32;
+    for t in 1..=ticks {
+        sim.ticks(1);
+        let now = t as f64 * cs_source::TICK_INTERVAL;
+        let m = motion(sim, bodies);
+        if now > quiet {
+            jitter = m.iter().filter(|b| !b.0).map(|b| b.1).fold(jitter, f32::max);
+        }
+        // All still there: a removed body would count as asleep.
+        if m.len() == bodies.len() && m.iter().all(|b| b.0) {
+            return (Some(now), jitter);
+        }
+    }
+    (None, jitter)
+}
+
+/// The spawn points of a class (Source units).
+fn spawns(map: &MapData, class: &str) -> Vec<Vec3> {
+    map.entities
+        .iter()
+        .filter(|e| e.classname() == class)
+        .map(|e| e.origin())
+        .collect()
+}
+
+/// A CS:S player killed by a head shot at each of ten of a map's spawns,
+/// one after another, pushed a different way each time: its ragdoll lies
+/// down and every body sleeps within `LIMIT` s. They sleep by the forced
+/// rule (still for `ragdoll_sleepaftertime`, 5 s: 5.25-5.7 s measured),
+/// rarely by avian's own measure: a limb or two keep jittering against
+/// the floor (over 10 rad/s at times, cut hulls or not; docs/backlog.md
+/// 9). Before the forced rule stopped waking what it put to sleep, none
+/// slept.
+#[test]
+fn ragdolls_settle_and_sleep() {
+    const LIMIT: f64 = 7.0;
+    for (name, class) in [
+        ("de_dust2", "info_player_terrorist"),
+        ("de_inferno", "info_player_counterterrorist"),
+    ] {
+        let Some(map) = load(name) else { return };
+        let points = spawns(&map, class);
+        assert!(!points.is_empty(), "{name}: no {class}");
+        let mut sim = sim(map);
+        for (k, at) in points.iter().take(10).enumerate() {
+            let p = sim.spawn_character(to_engine(*at) + Vec3::Y * 0.95, noclip::ID);
+            sim.ticks(10);
+            let head = sim.position(p) + Vec3::Y * 0.7;
+            let dir = Quat::from_rotation_y(k as f32 * 2.1) * Vec3::NEG_Z;
+            sim.app.world_mut().write_message(Damage {
+                force: Vec3::ZERO,
+                target: p,
+                attacker: None,
+                amount: 5.0,
+                point: head,
+                dir,
+                hitgroup: Hitgroup::Head,
+                kind: DamageKind::Bullet,
+                weapon: None,
+            });
+            sim.ticks(1);
+            let ragdoll = {
+                let world = sim.app.world_mut();
+                let mut q = world.query::<&Ragdoll>();
+                q.iter(world).last().cloned().expect("a ragdoll")
+            };
+            let (took, jitter) = settle(&mut sim, &ragdoll.bodies, LIMIT, 2.0);
+            let at = sim.app.world().get::<Transform>(ragdoll.bodies[0]).unwrap().translation;
+            eprintln!("{name} ragdoll at {at}: asleep after {took:?} s, jitter up to {jitter:.3} rad/s");
+            assert!(took.is_some(), "{name}: a ragdoll at {at} still awake after {LIMIT} s");
+        }
+    }
+}
+
+/// Props that break into pieces (their models' own break pieces, else a
+/// gib list's chunks): each of de_inferno's first twelve crates and pots,
+/// broken by a big bullet, has pieces that all sleep within `LIMIT` s
+/// (1.2-6.9 s measured).
+#[test]
+fn broken_prop_pieces_settle_and_sleep() {
+    const LIMIT: f64 = 8.0;
+    let models = ["wood_crate", "pot", "bucket", "wood_pallet"];
+    let Some(map) = load("de_inferno") else { return };
+    let props: Vec<usize> = (0..map.entities.len())
+        .filter(|i| {
+            let e = &map.entities[*i];
+            e.classname().starts_with("prop_physics")
+                && e.get("model").is_some_and(|m| {
+                    let m = m.to_ascii_lowercase();
+                    models.iter().any(|k| m.contains(k))
+                })
+        })
+        .collect();
+    let mut sim = sim(map);
+    sim.seconds(1.0);
+    let mut broke = 0;
+    for i in props.into_iter().take(12) {
+        let node = {
+            let world = sim.app.world_mut();
+            world
+                .query::<(Entity, &PropEntity)>()
+                .iter(world)
+                .find(|(_, p)| p.0 == i)
+                .map(|(e, _)| e)
+        };
+        let Some(target) = node else { continue };
+        let before = gibs(&mut sim);
+        let point = sim.app.world().get::<Transform>(target).unwrap().translation;
+        sim.app.world_mut().write_message(Damage {
+            target,
+            attacker: None,
+            amount: 50.0,
+            point,
+            dir: Vec3::NEG_Y,
+            hitgroup: Hitgroup::Generic,
+            kind: DamageKind::Bullet,
+            weapon: None,
+            force: Vec3::ZERO,
+        });
+        sim.ticks(3);
+        let pieces: Vec<Entity> = gibs(&mut sim).into_iter().filter(|g| !before.contains(g)).collect();
+        if pieces.is_empty() {
+            continue;
+        }
+        broke += 1;
+        let (took, jitter) = settle(&mut sim, &pieces, LIMIT, 3.0);
+        eprintln!(
+            "de_inferno prop {i} at {point}: {} pieces asleep after {took:?} s, jitter up to {jitter:.3} rad/s",
+            pieces.len()
+        );
+        assert!(took.is_some(), "prop {i}'s pieces still awake after {LIMIT} s");
+    }
+    assert!(broke >= 10, "only {broke} props broke into pieces");
+}
+
+/// Broken props' pieces with bodies.
+fn gibs(sim: &mut Sim) -> Vec<Entity> {
+    let world = sim.app.world_mut();
+    world
+        .query::<(Entity, &Name, &RigidBody)>()
+        .iter(world)
+        .filter(|(_, n, rb)| n.as_str() == "Gib" && rb.is_dynamic())
+        .map(|(e, ..)| e)
+        .collect()
+}

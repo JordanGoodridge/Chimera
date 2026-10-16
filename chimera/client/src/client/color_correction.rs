@@ -76,7 +76,11 @@ impl Plugin for ColorCorrectionPlugin {
             |s| &mut s.enabled,
         );
         app.world_mut().resource_mut::<Console>().archive("mat_colorcorrection");
-        app.add_systems(Update, pass_camera);
+        // After the view-model cameras decide whether they draw this frame.
+        app.add_systems(
+            PostUpdate,
+            pass_camera.after(crate::render::view_model::ViewModelCameraSet),
+        );
 
         // The render side only exists with a renderer (not in headless tests).
         if app.get_sub_app(RenderApp).is_none() {

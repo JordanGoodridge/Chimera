@@ -1,12 +1,13 @@
 //! Colliders and brushes built from map models: convex hulls as brush
 //! planes, smoothed terrain for loose items, a model's collider, and
 //! `contact_hulls` (a convex hull as pieces whose faces have four corners
-//! at most, for props', the world's and brush entities' colliders).
+//! at most, for props', the world's, brush entities', ragdolls' and broken
+//! props' pieces' colliders).
 //!
 //! Known shortcuts (docs/tech-debt.md): `contact_hulls` works around parry
 //! clipping only the first four corners of a face in contact manifolds (a
-//! TODO in parry) by cutting hulls into more pieces; ragdoll and gib hulls
-//! are not cut yet. A fix in parry would make it unneeded.
+//! TODO in parry) by cutting hulls into more pieces. A fix in parry would
+//! make it unneeded.
 
 #[allow(unused_imports)]
 use super::*;

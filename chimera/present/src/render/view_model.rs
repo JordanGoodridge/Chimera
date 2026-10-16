@@ -21,7 +21,8 @@
 //! `ViewModelSource` on it: a spectator in first person; a child camera on
 //! `VIEW_MODEL_LAYER` with its own depth and FOV, so the model never clips into
 //! walls; mirrored when its hand differs from the player's; lit per pixel by
-//! the `LightField` at its lighting origin); muzzle flashes from
+//! the `LightField` at its lighting origin; it draws only while something
+//! on its layer is visible, or in HDR: `view_model_cameras_draw`); muzzle flashes from
 //! `ViewModelEvent`s (sprites re-projected into the world view, or at a held
 //! weapon's muzzle, and a pooled `DynamicLight`); `ViewModelScreen`: a picture
 //! on the model's screen between its `controlpanel0_ll`/`_ur` attachments
@@ -274,9 +275,9 @@ pub fn draw_view_models(
             }
             continue;
         };
-        if cam.order != anchor_camera.order + 1 || cam.is_active != anchor_camera.is_active {
+        // Whether it draws at all is `view_model_cameras_draw`'s.
+        if cam.order != anchor_camera.order + 1 {
             cam.order = anchor_camera.order + 1;
-            cam.is_active = anchor_camera.is_active;
         }
         if let Some(t) = tonemapping
             && cam_tonemapping != Some(t)
@@ -396,6 +397,42 @@ pub fn draw_view_models(
                 }
             }
             body.cubemap = nearest;
+        }
+    }
+}
+
+/// Where `view_model_cameras_draw` runs (PostUpdate, after visibility
+/// propagation and before each view's visibility check): systems that put
+/// post-processing on the last camera drawing the view run after it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ViewModelCameraSet;
+
+/// A view-model camera draws only while its anchor's camera does and
+/// something is on `VIEW_MODEL_LAYER` to draw (a view model, a shell, the
+/// under-water overlay, a muzzle flash): with nothing there (spectating
+/// in free look, dead, in menus, no weapon drawn) it would still run its
+/// passes, clear its depth and copy the resolved image back into the
+/// multisampled one (`msaa_writeback`) for an unchanged picture. The
+/// post-processing that goes on the last camera drawing the view (night
+/// vision, colour correction) then goes on the anchor's own camera.
+/// A camera in HDR (`mat_hdr_level` 1 or 2: `Hdr` on it) always draws:
+/// its auto exposure keeps a state per view, which moving it to another
+/// camera would restart.
+pub fn view_model_cameras_draw(
+    anchors: Query<&Camera, (With<ViewModelAnchor>, Without<ViewModelCamera>)>,
+    mut cameras: Query<(&ChildOf, &mut Camera, Has<bevy::camera::Hdr>), With<ViewModelCamera>>,
+    drawn: Query<(&RenderLayers, &InheritedVisibility), With<Mesh3d>>,
+) {
+    if cameras.is_empty() {
+        return;
+    }
+    let layer = RenderLayers::layer(VIEW_MODEL_LAYER);
+    let something = drawn.iter().any(|(l, v)| v.get() && l.intersects(&layer));
+    for (parent, mut cam, hdr) in &mut cameras {
+        let anchor = anchors.get(parent.parent()).is_ok_and(|c| c.is_active);
+        let active = anchor && (something || hdr);
+        if cam.is_active != active {
+            cam.is_active = active;
         }
     }
 }

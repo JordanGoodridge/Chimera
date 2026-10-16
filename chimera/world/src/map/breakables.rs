@@ -17,7 +17,8 @@
 //! render, at most `MAX_GIBS`), broken props' pieces
 //! (`BreakProp` → the model's `MapBreak`: its own break pieces at its pose
 //! moving outward, or chunks of a gib list in its box; `break_pieces`; avian
-//! bodies from the piece model's `.phy` hulls, else its box, on
+//! bodies from the piece model's `.phy` hulls cut for contacts
+//! (`collision::contact_hulls`), else its box, on
 //! `core::RAGDOLL_LAYER`: they tumble and rest on the world and props,
 //! characters and shots pass; built headless too), `BrushPanes` (a broken
 //! window's unbroken panes: a collider of pane boxes that shots hit and bodies
@@ -511,7 +512,8 @@ fn gib_body(model: &MapModel) -> GibBody {
         .collision
         .iter()
         .flat_map(|c| &c.pieces)
-        .filter_map(|p| Collider::convex_hull(p.points.clone()))
+        // Cut for contacts (`collision::contact_hulls`), as props' are.
+        .flat_map(|p| super::collision::contact_hulls(&p.points))
         .map(|hull| (-centre, Quat::IDENTITY, hull))
         .collect();
     let collider = if hulls.is_empty() {

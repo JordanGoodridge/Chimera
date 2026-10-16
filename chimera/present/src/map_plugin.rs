@@ -241,6 +241,15 @@ impl MapLayers for Present {
             // Props' levels of detail from where the eye is this frame.
             render::lod::switch_lods.after(bevy::transform::TransformSystems::Propagate),
         )
+        .add_systems(
+            PostUpdate,
+            // This frame's visibility of what is on the view-model layer
+            // (propagated), before the cameras check what they see.
+            render::view_model::view_model_cameras_draw
+                .in_set(render::view_model::ViewModelCameraSet)
+                .after(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate)
+                .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
+        )
         .add_systems(Update, render::bodies::uncull_placed_ragdolls)
         .add_systems(
             PostUpdate,

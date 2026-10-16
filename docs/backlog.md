@@ -734,11 +734,13 @@ docs/plans/active/sound.md.
 - **Water surfaces** (specs/cs_source/water.md, `render::water`): refraction,
   planar reflection, the cheap cubemap pass, under-water fog (world,
   props, ropes, decals, particles), bottom materials, the
-  `$underwateroverlay` screen warp, the intersection view's height fog
+  `$underwateroverlay` screen warp (with its `$bluramount` blur, which is
+  what shows on de_port), the intersection view's height fog
   the water cvars, `$blurrefract` with `$refracttint` and the "Water
   detail" choices (`render::water::WATER_DETAIL`, for the Video Advanced
   menu) are in. Left: a Refract shader spec (the warp's
-  strength and blur are guesses: de_port's `water_warp01` looks subtle),
+  strength and blur are guesses: de_port's `water_warp01` moves the
+  screen about a pixel, its blur is 5 x 5 taps a pixel apart),
   the `$basetexture` variant (no stock material uses it), and a
   refcmp comparison of de_port/de_chateau water (no reference captures
   yet; it would settle de_port's dark speckles: refraction lookups at
@@ -808,13 +810,17 @@ dithered fade bands. Left:
   `MASHUP_EXECUTOR=multi`, `-- --view-size 3840x2160`); props as
   hierarchies of their own (cheaper collider propagation) only if a map
   shows it (stock maps walk 240-710 colliders a tick: performance.md,
-  "Props that never sleep"); fewer cameras per frame (the view
-  model camera runs its passes and an MSAA copy even with nothing on its
-  layer; shells and the under-water overlay draw there too); a render
+  "Props that never sleep"); a render
   scale (`mat_render_scale`) only if a GPU turns out to be the limit (the
-  dev box's RTX 3080 draws dust2 at 4K in about 1.5 ms). Props that never
-  slept are done (performance.md, "Props that never sleep"); left there:
-  ragdoll and gib hulls not cut for contacts.
+  dev box's RTX 3080 draws dust2 at 4K in about 1.3 ms). Done: props that
+  never slept, ragdoll and gib hulls cut, ragdolls' forced sleep, the
+  view-model camera off with nothing on its layer (performance.md,
+  "Props that never sleep", "Fewer cameras per frame"). Left there:
+  ragdoll limbs jitter against the floor until the forced sleep (5 s;
+  joints against contacts, not hull corners); broken props' pieces with
+  their `.phy` hulls (they load as boxes: with hulls, pieces of one prop
+  collide with each other and never sleep; Source's debris doesn't
+  collide with debris).
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).
