@@ -738,7 +738,13 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    T bonus after a defused bomb, a hostage first-use, a rescue, hostage
    damage (one shot of known damage) and a hostage kill. `mp_startmoney
    10000` so nobody hits 0 or 16000.
-6. **Q6 Round edge rules.** Who gets the bomb: run 50 round restarts with
+6. **Q6 Partly answered (2026-10-16, probe server, one T and one CT
+   bot, `mp_ignore_round_win_conditions 0`):** after a plant, the last CT's
+   death ends the round at once as a terrorist win by elimination (log
+   `Terrorists_Win`, not `Target_Bombed`); the last terrorist's death
+   doesn't: the round waits for the bomb (`Target_Bombed` when it went off
+   10 s later). Both as ours (O19, O20). Who gets the bomb with humans
+   present and the announcers on a defuse are open. Was: **Q6 Round edge rules.** Who gets the bomb: run 50 round restarts with
    2 human-like bots + 3 bots and count carriers; does a human get
    preference? After a plant: kill all CTs (`kill` via RCON) — does the
    round end at once? Defuse with the round already over? Which announcers
