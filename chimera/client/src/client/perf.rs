@@ -5,7 +5,7 @@
 //!
 //! `mashup_perf` overlay (frame times, main-world CPU, render-world time
 //! (`RenderTime`, written by the render world), GPU per render pass, entities,
-//! meshes and triangles drawn, visibility, dynamic bodies awake), the same as text (`mashup_perf_log
+//! meshes and triangles drawn, cameras drawing, visibility, dynamic bodies awake), the same as text (`mashup_perf_log
 //! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
 //! `mashup_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
 //! sleeps at the end of a frame; off without a window and under `--bench`), the
@@ -401,10 +401,35 @@ pub fn gpu_ms(diagnostics: &DiagnosticsStore) -> Option<f64> {
             && !pass.contains('/')
         {
             any = true;
-            sum += d.smoothed().unwrap_or(0.0);
+            sum += frame_mean(d).unwrap_or(0.0);
         }
     }
     any.then_some(sum)
+}
+
+/// A render pass's time per frame over its recent frames, all cameras
+/// together. Each camera's run of a pass is its own measurement under the
+/// same name (one sync of the render world's diagnostics gives them one
+/// time), so the latest value or the moving average alone would be one
+/// camera's: before the view-model camera stopped drawing with nothing
+/// on its layer, mostly its empty passes.
+pub fn frame_mean(d: &bevy::diagnostic::Diagnostic) -> Option<f64> {
+    let (mut frames, mut sum, mut last) = (0u32, 0.0, None);
+    for m in d.measurements() {
+        if last != Some(m.time) {
+            frames += 1;
+            last = Some(m.time);
+        }
+        sum += m.value;
+    }
+    (frames > 0).then(|| sum / frames as f64)
+}
+
+/// A render pass's time in the latest frame, all cameras together (see
+/// `frame_mean`).
+pub fn frame_latest(d: &bevy::diagnostic::Diagnostic) -> Option<f64> {
+    let t = d.measurement()?.time;
+    Some(d.measurements().filter(|m| m.time == t).map(|m| m.value).sum())
 }
 
 /// CPU time this process has used so far, all threads (seconds); None
@@ -574,6 +599,7 @@ fn perf_report(
         Option<Res<crate::metrics::TickMetrics>>,
     ),
     bodies: (crate::map::prop_physics::BodyCounts, Query<&Name>),
+    cameras: Query<&Camera>,
 ) {
     let now = Instant::now();
     let due = report.at.is_none_or(|t| (now - t).as_secs_f32() >= 1.0);
@@ -582,6 +608,12 @@ fn perf_report(
     }
     report.at = Some(now);
     report.lines = perf_lines(perf.show.max(log.0), &churn, &times, &diagnostics, &vis, parts.iter().count(), &meshes, &assets);
+    // Each camera drawing runs its own passes (the view model's only with
+    // something on its layer).
+    let drawing = cameras.iter().filter(|c| c.is_active).count();
+    if let Some(line) = report.lines.iter_mut().find(|l| l.starts_with("entities ")) {
+        line.push_str(&format!(", cameras {drawing}/{} drawing", cameras.iter().count()));
+    }
     if let Some(r) = render_time
         && let Some(line) = report.lines.get_mut(1)
     {
@@ -662,9 +694,9 @@ fn perf_lines(
         if let Some(pass) = path.strip_prefix("render/").and_then(|p| p.strip_suffix("/elapsed_gpu")) {
             let cpu = diagnostics
                 .get(&bevy::diagnostic::DiagnosticPath::new(format!("render/{pass}/elapsed_cpu")))
-                .and_then(|c| c.smoothed())
+                .and_then(frame_mean)
                 .unwrap_or(0.0);
-            passes.push((pass.to_string(), d.smoothed().unwrap_or(0.0), cpu));
+            passes.push((pass.to_string(), frame_mean(d).unwrap_or(0.0), cpu));
         }
     }
     passes.sort_by(|a, b| b.1.total_cmp(&a.1));

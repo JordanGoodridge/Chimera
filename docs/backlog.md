@@ -808,13 +808,17 @@ dithered fade bands. Left:
   `MASHUP_EXECUTOR=multi`, `-- --view-size 3840x2160`); props as
   hierarchies of their own (cheaper collider propagation) only if a map
   shows it (stock maps walk 240-710 colliders a tick: performance.md,
-  "Props that never sleep"); fewer cameras per frame (the view
-  model camera runs its passes and an MSAA copy even with nothing on its
-  layer; shells and the under-water overlay draw there too); a render
+  "Props that never sleep"); a render
   scale (`mat_render_scale`) only if a GPU turns out to be the limit (the
-  dev box's RTX 3080 draws dust2 at 4K in about 1.5 ms). Props that never
-  slept are done (performance.md, "Props that never sleep"); left there:
-  ragdoll and gib hulls not cut for contacts.
+  dev box's RTX 3080 draws dust2 at 4K in about 1.3 ms). Done: props that
+  never slept, ragdoll and gib hulls cut, ragdolls' forced sleep, the
+  view-model camera off with nothing on its layer (performance.md,
+  "Props that never sleep", "Fewer cameras per frame"). Left there:
+  ragdoll limbs jitter against the floor until the forced sleep (5 s;
+  joints against contacts, not hull corners); broken props' pieces with
+  their `.phy` hulls (they load as boxes: with hulls, pieces of one prop
+  collide with each other and never sleep; Source's debris doesn't
+  collide with debris).
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).

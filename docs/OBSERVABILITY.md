@@ -919,8 +919,9 @@ Details and baseline numbers: [performance.md](performance.md).
 
 - `mashup_perf 1` (2: every render pass) shows frame times (avg, p95,
   max), the main world's CPU time and the render world's time (its
-  `Render` schedule), GPU time per render pass, entity,
-  mesh and triangle counts and visibility culling (camera cluster,
+  `Render` schedule), GPU time per render pass (every camera's run of
+  it together), entity, mesh and triangle counts, cameras drawing (the
+  view model's draws only with something on its layer) and visibility culling (camera cluster,
   clusters and map parts potentially visible), and what changes each
   frame (transforms written, under the map's root, mesh and material
   assets modified), and `physics: N dynamic bodies, M awake` (an awake
@@ -989,7 +990,8 @@ Details and baseline numbers: [performance.md](performance.md).
   table gives per view and over all views (`ALL`) frame ms p50/p99/p99.9/max,
   1% low fps, each world's CPU ms and instructions per frame (p50, p99)
   and the ticks' mean instructions; `bench.json` also has
-  `bodies_awake` per frame (`jq '.overall.metrics.bodies_awake'`);
+  `bodies_awake` and `cameras_drawing` per frame
+  (`jq '.overall.metrics.bodies_awake'`);
   `bench.json` and `bench.csv` in the
   output folder (`<out>/<map>/bench/`) have every metric's n, mean, p50,
   p90, p99, p99.9, max per view and overall, for scripts
@@ -1265,7 +1267,8 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   in the repo). `--out <dir>` writes our captures, reports, bench and
   vischeck output under `<dir>/<map>/` instead (reference captures are
   still read from the shared folder), so parallel worktrees don't
-  overwrite each other's captures. Our captures currently show the view model.
+  overwrite each other's captures. Our captures hide the view model, as
+  the references do (`+r_drawviewmodel 0`; `bench` and `vischeck` too).
   They hang ropes still (`+rope_wind_dist 0`): a reference is one moment
   of its wind, and swaying cables would move views by chance.
 - Load warnings of every stock map: `cargo test --features dev --test
