@@ -368,7 +368,8 @@ pub const SETTINGS: &[Setting] = &[
     // the slider (LIGHT at its left) and the entry beside it
     // (`VALUE_ENTRIES`). `client::gamma` applies it to the whole screen.
     setting(Gamma, "mat_monitorgamma", Some("Gamma"), Some("#GameUI_Gamma"), "Gamma", range(1.6, 2.6, 0.05, 2)),
-    // Voice (`OptionsSubVoice.res`): mashup has no voice chat.
+    // Voice (`OptionsSubVoice.res`): voice chat's (`client::voice`); the
+    // microphone boost, test and meter stay greyed.
     setting(Options(Tab::Voice), "voice_modenable", Some("voice_modenable"), Some("#GameUI_EnableVoice"), "Enable voice", SettingKind::Toggle),
     setting(Options(Tab::Voice), "voice_scale", Some("VoiceReceive"), Some("#GameUI_VoiceReceiveVolume"), "Voice receive volume", range(0.0, 1.0, 0.05, 2)),
     // Multiplayer (`OptionsSubMultiplayer.res`). The player name: older

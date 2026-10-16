@@ -82,7 +82,8 @@
 //! install's `gamma` test picture; its "Advanced...":
 //! `OptionsSubVideoAdvancedDlg.res`, texture detail, antialiasing, filtering,
 //! water detail, vertical sync, HDR, field of view; Virtual Reality Mode left
-//! out, `draw::LEFT_OUT`), Voice (greyed: no voice chat), Multiplayer (the
+//! out, `draw::LEFT_OUT`), Voice (enable and receive volume; the microphone's
+//! controls greyed), Multiplayer (the
 //! controls of `OptionsSub*.res` for the archived cvars in `options.rs`:
 //! sliders with tick marks, drop-downs, check boxes, the sensitivity's text
 //! entry, the crosshair preview; its "Advanced...":

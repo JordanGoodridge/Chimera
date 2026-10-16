@@ -55,7 +55,8 @@
 //! `Hurt`, `DropRequest`; game rules' `NetScore`, `BuyRequest`, `ServerMotd`
 //! (`motd.rs`), `SayRequest`, `RadioRequest`, `Notice`, `ChatMessage`,
 //! `RadioCall`, `ServerSound`, `CvarValues`, `NameRequest`, `NameChanged`,
-//! `decals::Decals`, votes' `CallVote`, `CastVote`, `VoteNews` (`vote`); then the parts' (`parts`, in name order: CS:S's
+//! `decals::Decals`, voice (`voice::VoiceData`, `VoiceRelay`), votes' `CallVote`,
+//! `CastVote`, `VoteNews` (`vote`); then the parts' (`parts`, in name order: CS:S's
 //! `NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`, `ClassRequest`,
 //! `ObjectiveNews`, `RoundOver`; Source's logic's `NetMover`, `MapHud`); `OwnState` also carries
 //! money, armour, kit and the freeze's end tick (arming and defusing the bomb
@@ -214,6 +215,7 @@ pub mod ragdolls;
 pub mod server;
 pub mod udp;
 pub mod upnp;
+pub mod voice;
 pub mod vote;
 pub mod weapons;
 
@@ -243,7 +245,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net25");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net26");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -1216,7 +1218,10 @@ impl Plugin for NetPlugin {
             .make_message_independent::<cheats::ConsoleText>()
             .add_server_message::<PlayerCame>(Channel::Ordered)
             .make_message_independent::<PlayerCame>()
-            // Votes (net25).
+            // Voice chat (net25): unreliable, as Source's; nothing at rest.
+            .add_client_message::<voice::VoiceData>(Channel::Unreliable)
+            .add_mapped_server_message::<voice::VoiceRelay>(Channel::Unreliable)
+            // Votes (net26).
             .add_client_message::<vote::CallVote>(Channel::Ordered)
             .add_client_message::<vote::CastVote>(Channel::Ordered)
             .add_server_message::<vote::VoteNews>(Channel::Ordered)
@@ -1245,6 +1250,7 @@ impl Plugin for NetPlugin {
         decals::plugin(app);
         udp::plugin(app);
         upnp::plugin(app);
+        voice::plugin(app);
         query::plugin(app);
         memory::plugin(app);
         vote::plugin(app);

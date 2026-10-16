@@ -1474,8 +1474,28 @@ fn the_voice_tab_is_there_and_greyed() {
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(4), 0)]);
     assert_eq!(m.tab, Tab::Voice);
-    // No voice chat: only the dialog's buttons.
+    // Without voice chat's cvars: only the dialog's buttons.
     assert!(m.rows().iter().all(|r| matches!(r, Row::Button { .. })));
+}
+
+/// With voice chat (`client::voice`'s cvars) the tab's enable box and
+/// receive volume work; the microphone's controls stay greyed.
+#[test]
+fn the_voice_tab_sets_voice_chats_cvars() {
+    let mut m = GameMenu {
+        in_game: true,
+        ..default()
+    };
+    let cvars = |n: &str| match n {
+        "voice_modenable" | "voice_scale" => Some("1".to_string()),
+        n => get(n),
+    };
+    m.open(Page::Main, vec!["de_dust2".into()], None, cvars);
+    click(&mut m, MainItem::Options);
+    press(&mut m, &[Input::Click(Target::Tab(4), 0)]);
+    assert_eq!(m.tab, Tab::Voice);
+    let settings = m.rows().iter().filter(|r| !matches!(r, Row::Button { .. })).count();
+    assert_eq!(settings, 2, "{:?}", m.rows());
 }
 
 /// The menu with the cvars of the Audio tab's drop-downs, the texture
