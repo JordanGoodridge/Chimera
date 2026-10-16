@@ -21,7 +21,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source: Third-person magazine tracks dropped from additive and aim animations to hide the files' stray clip offsets (`games/cs_source/src/game/anim.rs`)
 - weapon: Buy zones on maps without func_buyzone: our box around each team spawn (`chimera/sim/src/weapon/economy.rs`)
 - weapon, games/cs_source: Ammo buying measured (M19); the generic priced-ammo rules (partial boxes) are ours (`chimera/sim/src/weapon/economy.rs`)
-- objectives: Bomb and hostages follow the spec's hypotheses where CS:S is unmeasured (`games/cs_source/src/objectives/mod.rs`)
+- objectives: Bomb and hostages follow the spec's hypotheses where CS:S is unmeasured; bullets hurt hostages by the player hitgroups (Q8 unresolved) (`games/cs_source/src/objectives/mod.rs`)
 - games/cs_source ui: CS:S HUD matched to Linux-client captures (substitute fonts); a few sizes differ from them (`games/cs_source/src/ui/game_hud.rs`)
 - games/cs_source ui: Game-look HUD, scoreboard, spectator bars, C4 screen and loading progress: guesses where the layouts stop (`games/cs_source/src/ui/game_hud.rs`)
 - games/cs_source: Impact effects built from the spec's tables, with listed parts left out or read as the spec reads (`games/cs_source/src/game/impact_effects.rs`)

@@ -155,3 +155,11 @@ entity, networked or not, as `ref class hammerid targetname`.
 before and after `mp_restartgame 1` and prints which classes were kept
 (same reference) and which re-created (specs/source/entity_io.md
 question 1; `world::ROUND_KEEP`).
+
+The same plugin logs every logic_auto output as it fires to
+`addons/sourcemod/logs/mashup_auto.log`. `mashup_hostages` prints each
+hostage's index, health and origin; `mashup_hosthook` hooks every
+hostage's TraceAttack and OnTakeDamage (each hit's damage before the
+multiplier, hitbox, hitgroup, and the damage taken) into
+`addons/sourcemod/logs/mashup_host.log` (objectives.md Q8); hostages are
+re-created at each round restart, so hook again after one.
