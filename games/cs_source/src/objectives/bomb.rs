@@ -317,7 +317,8 @@ pub(super) fn plugin(app: &mut App) {
     );
 }
 
-/// Arming and defusing hold the character still (*hyp.*, Q1, Q7).
+/// Arming and defusing hold the character still; crouching still works
+/// (arming measured, objectives.md Q1; defusing *hyp.*, Q7).
 fn hold_still(mut intents: Query<&mut Intent, Or<(With<Arming>, With<Defusing>)>>) {
     for mut i in &mut intents {
         i.move_axis = Vec2::ZERO;

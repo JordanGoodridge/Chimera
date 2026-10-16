@@ -113,6 +113,9 @@ Notes:
   switch to the knife and toggles silencers. Deploy timing is therefore
   measured by giving the gun mid-run (`weapmeas.deploy`).
 - A bot that joins mid-round waits dead; `mashup_target` respawns it.
+- The first ~60 ticks after a run's start are unreliable for ducking (a
+  duck held from the start took effect only after ~70 ticks, once not at
+  all): settle with ~150 idle ticks before what's measured.
 - Give a run a start position (`weapcmp.run(..., start=...)`): runs
   without one were seen to ignore the inputs' buttons (a reload pressed
   never happened), even with no freeze time.
