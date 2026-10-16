@@ -176,15 +176,15 @@ Fades apply with `r_novis 1` too.
   farther-from-the-eye first, then by entity, and map decals draw first
   among blended items, in the map's order. de_nuke before: ordercheck 9
   of 311 views differ (worst 15997 pixels), vischeck 21 differ (worst
-  15997, over the limit); after: ordercheck 0, vischeck 11 differ, worst
+  15997, over the limit); after: ordercheck 0, vischeck 12 differ, worst
   644 (the sky-brush views): it passes. cs_assault: ordercheck 13 of 312
   views differ (worst 28190) before the glow fix, 9 of 316 after (worst
   50 pixels: `nav1847_90` by one level, `nav1567_180` 27 pixels on a
   rail's highlight; not found yet, under the tolerance).
-- cs_assault's vischeck fails (52 of 312 views differ after the fix
-  above, 56 in its first run; worst `nav1371_90` on the roof, 33.7k pixels: the
-  water tower, rooftop props and buildings seen over the walls; then
-  `nav1371_180` 22.0k, `nav2507_180` 20.2k, the T spawns looking west
+- cs_assault's vischeck fails (57 of 316 views differ after the fixes
+  above, the four `pvs_*` views included; 56 of 312 in its first run;
+  worst `nav1371_90` on the roof, 33.7k pixels: the water tower, rooftop
+  props and buildings seen over the walls; then `nav1371_180` 22.0k, `nav2507_180` 20.2k, the T spawns looking west
   14-18k). Not a culling bug, from the map data (2026-10-16): every static
   prop's clusters here cover the leaves the map's static prop lump lists
   for it (all 561; the same on de_dust2, cs_office, cs_compound, de_port,

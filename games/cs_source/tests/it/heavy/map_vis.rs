@@ -279,7 +279,7 @@ fn cs_office_never_hides_what_the_eye_reaches() {
     check("cs_office");
 }
 
-/// cs_assault's `refcmp vischeck` differs in 52 views (docs/performance.md,
+/// cs_assault's `refcmp vischeck` differs in 57 views (docs/performance.md,
 /// "Checks"): props and buildings seen over walls through sky brushes.
 /// No surface the eye reaches without crossing solid is hidden.
 #[test]
