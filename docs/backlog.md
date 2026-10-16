@@ -473,6 +473,19 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   in the console; Import Spray needs an image-to-VTF converter),
   comparing the look with CS:S's
   (refcmp has no menu views).
+- **Remove our own entries from the main menu and the Esc menu** (user
+  request, 2026-10-16): both menus should list only what CS:S's
+  `GameMenu.res` has (Resume Game, Disconnect, Player List, Find Servers,
+  Create Server, Report a Bug, Options, Quit). Ours today, after a gap
+  (`games/cs_source/ui/game_menu/main_menu.rs` `OURS`): Quick Start,
+  Greybox Test Map, Bots, Team, Call Vote, Lucker Party Options,
+  Console. Keep each reachable another way: the console (`~`; `map`,
+  `bot_add`/`bot_kick`, `chooseteam` (M), `callvote`), and a console
+  command for the Lucker Party options page; if some should stay in a
+  menu, behind an opt-in cvar off by default (parity first). Update the
+  tests that list the entries (`game_menu` tests, the menu-entry tests),
+  docs/OBSERVABILITY.md where screenshots open pages through these
+  entries (`menuinput`), and ui-parity.md.
 - The main menu is in: startup without a map shows CS:S's (its
   background picture, the title in its logo font, `GameMenu.res`'s
   entries; Resume and Disconnect only in a game, Find Servers greyed),
