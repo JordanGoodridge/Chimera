@@ -1,6 +1,9 @@
 # Views of cs_assault for benchmarking occluders (docs/performance.md),
 # generated from its entities: the first three T and CT spawns,
 # looking four ways. Source eye positions; angles [pitch, yaw].
+# `pvs_*`: views where the PVS hides props and buildings seen over the
+# walls through sky brushes (capture C27, docs/plans/active/parity-gaps.md;
+# `refcmp vischeck`'s nav1371, spawn12 and nav2507 views).
 
 map = "cs_assault"
 camera = "point_viewcontrol"
@@ -124,3 +127,23 @@ angles = [0, 180]
 name = "ct2_270"
 position = [5120, 6464, -807]
 angles = [0, 270]
+
+[[view]]
+name = "pvs_roof_90"
+position = [5075, 4437.5, -308.8]
+angles = [0, 90]
+
+[[view]]
+name = "pvs_roof_180"
+position = [5075, 4437.5, -308.8]
+angles = [0, 180]
+
+[[view]]
+name = "pvs_street_180"
+position = [5248, 6464, -807]
+angles = [0, 180]
+
+[[view]]
+name = "pvs_yard_180"
+position = [5237.5, 6681.9, -797.6]
+angles = [0, 180]

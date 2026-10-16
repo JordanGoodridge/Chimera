@@ -7,8 +7,9 @@
 //! per-user folder, never the repository (it contains game imagery).
 //!
 //! Dev tool: compare views against real CS:S (RCON-driven capture, metrics,
-//! side-by-sides); `bench` (frame times per view) and `vischeck` (culling
-//! on/off renders must match) need no CS:S; `capture-hud` and `hudcmp`
+//! side-by-sides); `bench` (frame times per view), `vischeck` (culling
+//! on/off renders must match) and `ordercheck` (views captured in reverse
+//! order must match) need no CS:S; `capture-hud` and `hudcmp`
 //! (`shared/hudcmp.rs`) compare the HUD panel by panel with CS:S captures;
 //! `REFCMP_OUT` keeps a session's captures apart.
 
@@ -30,7 +31,7 @@ use serde::Deserialize;
 use source_tools::rcon::Rcon;
 
 const USAGE: &str = "\
-usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|capture-hud|hudcmp] [--views <file>] [--only <name>] [--out <dir>] [--hud-ref <dir>] [--keep-running] [-- <mashup args>]
+usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|ordercheck|capture-hud|hudcmp] [--views <file>] [--only <name>] [--out <dir>] [--hud-ref <dir>] [--keep-running] [-- <mashup args>]
   all            capture both, then report (default)
   capture-ref    capture views in CS:S (Steam must be logged in on this machine)
   capture-ours   capture views in mashup
@@ -44,13 +45,16 @@ usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|ca
   vischeck       render each view, plus views from the map's spawns and nav
                  areas, with visibility culling on and off (no CS:S); every
                  pair must be identical
+  ordercheck     render the same views (vischeck's) in order and in reverse
+                 order (no CS:S); every pair must be identical: a view's
+                 capture must not depend on the views before it
   capture-hud    capture our HUD on de_dust2 in the reference HUD states (`ak`:
                  selection open on slot 1, `select`: on slot 2) at 1280x720,
                  1920x1080 and 1024x768
   hudcmp         compare the HUD panel by panel with CS:S captures
                  (hudref_<state>_<W>x<H>.jpg in --hud-ref): offsets and sizes
   --hud-ref <dir> HUD reference captures (default: <dump>/refcmp/hud/ref)
-  -- <args>      bench, vischeck, capture-hud: pass the rest to mashup (e.g. +r_novis 1)
+  -- <args>      bench, vischeck, ordercheck, capture-hud: pass the rest to mashup (e.g. +r_novis 1)
   --views <file> views file (default: tools/refcmp/de_dust2.toml)
   --only <name>  only views whose name contains <name>
   --out <dir>    write our captures, reports, bench and vischeck output under
@@ -104,7 +108,7 @@ fn main() -> ExitCode {
     while let Some(a) = it.next() {
         match a.as_str() {
             "all" | "capture-ref" | "capture-ours" | "report" | "fit" | "skyconv" | "bench" | "vischeck"
-            | "capture-hud" | "hudcmp" => {
+            | "ordercheck" | "capture-hud" | "hudcmp" => {
                 args.command = a
             }
             "--" => args.extra.extend(it.by_ref()),
@@ -154,6 +158,9 @@ fn run(args: &Args) -> Result<(), String> {
     }
     if args.command == "vischeck" {
         return vischeck(&mut file, &out.join("vischeck"), &extra);
+    }
+    if args.command == "ordercheck" {
+        return ordercheck(&mut file, &out.join("ordercheck"), &extra);
     }
     let all = args.command == "all";
     if all || args.command == "capture-ref" {
@@ -344,10 +351,9 @@ fn build_profile() -> String {
 /// 1280x720 capture.
 const VISCHECK_ALLOWED_PIXELS: usize = 4608;
 
-/// Render views with visibility culling off and on and compare them pixel
-/// for pixel. Besides the file's views: from every spawn and from nav area
-/// centres (about 10 and 60), at eye height, looking four ways.
-fn vischeck(file: &mut ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
+/// Adds views from every spawn and from nav area centres (about 10 and
+/// 60), at eye height, looking four ways (`vischeck`, `ordercheck`).
+fn add_eye_views(file: &mut ViewsFile) -> Result<(), String> {
     let map = cs_source_app::games::load_map(&format!("cs_source:{}", file.map))?;
     let eye = 64.0 * 0.0254;
     let mut eyes: Vec<(String, [f32; 3])> = map
@@ -375,24 +381,25 @@ fn vischeck(file: &mut ViewsFile, out: &Path, extra: &[&str]) -> Result<(), Stri
             });
         }
     }
-    let (off, on) = (out.join("novis"), out.join("vis"));
-    for d in [&off, &on] {
+    Ok(())
+}
+
+/// Empty folders `a` and `b`.
+fn fresh_dirs(a: &Path, b: &Path) -> Result<(), String> {
+    for d in [a, b] {
         let _ = std::fs::remove_dir_all(d);
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
-    // Game time frozen, so dust motes and physics props are the same in
-    // both runs.
-    // Occluders off too: they cull without the PVS.
-    let mut a: Vec<&str> = vec!["+host_timescale", "0", "+r_novis", "1", "+r_occlusion", "0"];
-    a.extend_from_slice(extra);
-    capture_ours(file, &off, &a)?;
-    let mut b: Vec<&str> = vec!["+host_timescale", "0", "+r_novis", "0"];
-    b.extend_from_slice(extra);
-    capture_ours(file, &on, &b)?;
+    Ok(())
+}
+
+/// Compares each view's captures in `a` and `b` pixel for pixel and lists
+/// the views that differ, most first; returns the most pixels any differs by.
+fn compare_runs(file: &ViewsFile, a: &Path, b: &Path) -> Result<usize, String> {
     let mut worst: Vec<(usize, String)> = Vec::new();
     for v in &file.view {
         let name = format!("{}.png", v.name);
-        let (Ok(x), Ok(y)) = (image::open(off.join(&name)), image::open(on.join(&name))) else {
+        let (Ok(x), Ok(y)) = (image::open(a.join(&name)), image::open(b.join(&name))) else {
             return Err(format!("missing capture {name}"));
         };
         let (x, y) = (x.to_rgb8(), y.to_rgb8());
@@ -405,16 +412,57 @@ fn vischeck(file: &mut ViewsFile, out: &Path, extra: &[&str]) -> Result<(), Stri
     for (n, name) in differ.iter().take(20) {
         println!("  {name}: {n} pixels differ");
     }
-    println!("captures in {} and {}", off.display(), on.display());
+    println!("captures in {} and {}", a.display(), b.display());
+    Ok(worst.first().map_or(0, |w| w.0))
+}
+
+/// Render views with visibility culling off and on and compare them pixel
+/// for pixel. Besides the file's views: from every spawn and from nav area
+/// centres (`add_eye_views`).
+fn vischeck(file: &mut ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
+    add_eye_views(file)?;
+    let (off, on) = (out.join("novis"), out.join("vis"));
+    fresh_dirs(&off, &on)?;
+    // Game time frozen, so dust motes and physics props are the same in
+    // both runs.
+    // Occluders off too: they cull without the PVS.
+    let mut a: Vec<&str> = vec!["+host_timescale", "0", "+r_novis", "1", "+r_occlusion", "0"];
+    a.extend_from_slice(extra);
+    capture_ours(file, &off, &a)?;
+    let mut b: Vec<&str> = vec!["+host_timescale", "0", "+r_novis", "0"];
+    b.extend_from_slice(extra);
+    capture_ours(file, &on, &b)?;
+    let worst = compare_runs(file, &off, &on)?;
     // Small differences are expected where culling is closer to the game
     // than drawing everything: geometry seen through sky brushes (the game
     // draws them as sky, hiding what's behind; we don't draw them) and
     // through sub-pixel cracks between faces; inspect the listed views. A
     // missing wall or prop shows as a large difference: that fails.
-    if differ.iter().all(|(n, _)| *n <= VISCHECK_ALLOWED_PIXELS) {
+    if worst <= VISCHECK_ALLOWED_PIXELS {
         Ok(())
     } else {
         Err("culling changed what is drawn".into())
+    }
+}
+
+/// Render the same views (`vischeck`'s) in the file's order and in reverse
+/// order and compare them pixel for pixel: a capture that depends on the
+/// views before it (state an earlier view left: sort order, fades,
+/// exposure) differs. No tolerance: the same view must draw the same.
+fn ordercheck(file: &mut ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
+    add_eye_views(file)?;
+    let (fwd, rev) = (out.join("forward"), out.join("reverse"));
+    fresh_dirs(&fwd, &rev)?;
+    // Game time frozen, as vischeck's.
+    let mut a: Vec<&str> = vec!["+host_timescale", "0"];
+    a.extend_from_slice(extra);
+    capture_ours(file, &fwd, &a)?;
+    file.view.reverse();
+    capture_ours(file, &rev, &a)?;
+    if compare_runs(file, &fwd, &rev)? == 0 {
+        Ok(())
+    } else {
+        Err("a view's capture depends on the views before it".into())
     }
 }
 

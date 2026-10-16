@@ -1032,6 +1032,14 @@ Details and baseline numbers: [performance.md](performance.md).
   geometry seen through sky brushes, which culling hides as the game
   does; see performance.md). `cargo test --features dev --test it map_vis::` checks the same with rays from
   ~300 player positions per map (`MASHUP_VIS_FULL=1`: every nav area).
+- `refcmp ordercheck --views tools/refcmp/<map>.toml` captures the same
+  views (vischeck's) in order and in reverse order and fails if any view
+  differs at all: a capture that depends on the views before it (sort
+  order, fades, exposure an earlier view left) shows there, and would
+  make vischeck and refcmp comparisons differ by chance. To find what a
+  view depends on, capture short `--views` lists with mashup itself (the
+  view, then the views before it in the run, dropping one at a time) and
+  compare the view's PNGs (`magick compare -metric AE a.png b.png null:`).
 - `REFCMP_OUT=<dir> refcmp ...` writes mashup's captures, reports, bench
   and vischeck output under `<dir>/<map>` (references are still read from
   the shared dump folder): use a folder in your own `target/` when other

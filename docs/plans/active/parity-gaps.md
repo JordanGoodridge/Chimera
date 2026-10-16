@@ -638,4 +638,11 @@ says what decides the open point.
   `mp_restartgame 1`, after `changelevel`; how long one stays; how far
   apart two come; whether `cl_autohelp 0` stops them and whether ones
   missed then come once it's back on; whether bots' events show any.
+- **C27 Props seen past sky brushes (cs_assault).** `refcmp capture-ref
+  --views tools/refcmp/cs_assault.toml --only pvs_`: from the roof
+  (`pvs_roof_90`, `pvs_roof_180`) and the T side's street (`pvs_street_180`,
+  `pvs_yard_180`). Our PVS culling hides the water tower, rooftop props
+  and buildings there, seen over the walls through sky brushes, and the
+  map's data agrees (docs/performance.md, "Checks"); the captures say
+  whether CS:S hides them too (sky there) or draws them.
   Decides every trigger in `games/cs_source/data/hints.toml` (all ours).
