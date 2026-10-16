@@ -213,6 +213,7 @@ pub mod quant;
 pub mod query;
 pub mod ragdolls;
 pub mod server;
+pub mod stats;
 pub mod udp;
 pub mod upnp;
 pub mod voice;
@@ -1226,6 +1227,9 @@ impl Plugin for NetPlugin {
             .add_client_message::<vote::CastVote>(Channel::Ordered)
             .add_server_message::<vote::VoteNews>(Channel::Ordered)
             .make_message_independent::<vote::VoteNews>()
+            // The net graph's server numbers (`stats`).
+            .add_server_message::<stats::ServerStats>(Channel::Unreliable)
+            .make_message_independent::<stats::ServerStats>()
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
             .init_resource::<NetHooks>()
@@ -1254,6 +1258,7 @@ impl Plugin for NetPlugin {
         query::plugin(app);
         memory::plugin(app);
         vote::plugin(app);
+        stats::plugin(app);
         commands(app);
     }
 

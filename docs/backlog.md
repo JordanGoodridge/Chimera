@@ -671,8 +671,14 @@ docs/tech-debt.md's bot rows.
 
 The console and overlays are in (chimera/core/src/console.rs, chimera/client/src/client/console.rs).
 
-- `net_graph` shows local numbers only (fps, frame time, tick rate,
-  entities); ping and traffic once there is networking. `cl_showpos 2`.
+- `net_graph` (chimera/client/src/client/net_graph.rs): compare the
+  layout, colours and graph with CS:S's own (a capture of `net_graph 1`
+  to `3` on a server); `net_graph 3`'s per-message bands, `net_graph 4`,
+  `net_scale`, `net_graphmsecs`, `net_graphtext`, `net_graphsolid`.
+  At the default `net_graphheight` 64 its last lines overlap the HUD's
+  ammo bottom right (1280x720); check where CS:S's sits.
+- `cl_showpos 2`: what CS:S shows with it is unknown here (no public
+  description found); look in the game.
 - Mouse selection copies whole lines (drag over the output); selecting
   part of a line isn't possible.
 

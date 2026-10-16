@@ -4,7 +4,7 @@
 //! command arguments; repeated Tab cycles), ranked fuzzy suggestions as
 //! you type, history (Up/Down, persisted, Ctrl+R reverse search), and the
 //! usual editing keys. Binds run when it's closed (`+action` while held).
-//! Also the CS:S-style overlays (cl_showpos, cl_showfps, net_graph, snd_show, watch)
+//! Also the CS:S-style overlays (cl_showpos, cl_showfps, snd_show, watch; `net_graph` is `net_graph`'s)
 //! and the client's commands (noclip, getpos/setpos, kill, map, quit, ...).
 //!
 //! The in-game console UI (`~`): completion (names, cvar values, each argument
@@ -1307,9 +1307,6 @@ pub struct Overlays {
     pub showpos: u8,
     pub showfps: u8,
     pub snd_show: u8,
-    /// `net_graph`: frame rate, frame time, simulation tick rate and
-    /// entity count (no network yet, so no ping or traffic).
-    pub net_graph: u8,
     /// `developer`: 1 shows console output top left for a few seconds.
     pub developer: u8,
     /// Notify lines and seconds left, and console lines already taken.
@@ -1325,7 +1322,6 @@ impl Default for Overlays {
             showpos: 0,
             showfps: 0,
             snd_show: 0,
-            net_graph: 0,
             developer: 0,
             notify: VecDeque::new(),
             notify_seen: 0,
@@ -1402,12 +1398,6 @@ fn overlay_cvars(app: &mut App) {
     );
     resource_cvar::<Overlays, u8>(
         app,
-        "net_graph",
-        "1: fps, frame time, simulation tick rate and entity count (no network yet).",
-        |o| &mut o.net_graph,
-    );
-    resource_cvar::<Overlays, u8>(
-        app,
         "snd_show",
         "1: mark where sounds play, with their names, for a few seconds; show the soundscape and room DSP preset.",
         |o| &mut o.snd_show,
@@ -1464,8 +1454,6 @@ fn draw_overlays(
     player: Option<Single<(&Transform, &Velocity, &crate::core::Intent), With<LocalPlayer>>>,
     map: Option<Res<crate::map::ActiveMapLook>>,
     console: Res<Console>,
-    fixed: Res<Time<Fixed>>,
-    entities: Query<Entity>,
     sound: (
         Option<Res<crate::audio::soundscape::ScapeState>>,
         Option<Res<crate::audio::room::RoomDsp>>,
@@ -1478,19 +1466,6 @@ fn draw_overlays(
         o.frames.pop_front();
     }
     let mut lines = Vec::new();
-    if o.net_graph > 0 {
-        let n = o.frames.len().max(1) as f32;
-        let avg = o.frames.iter().sum::<f32>() / n;
-        let max = o.frames.iter().cloned().fold(0.0f32, f32::max);
-        lines.push(format!(
-            "fps {:.0}  frame {:.1} ms (max {:.1})  tick {:.1}/s  entities {}  local",
-            1.0 / avg.max(1e-6),
-            avg * 1e3,
-            max * 1e3,
-            1.0 / fixed.timestep().as_secs_f64(),
-            entities.iter().count()
-        ));
-    }
     if o.showfps > 0 {
         let n = o.frames.len().max(1) as f32;
         let avg = o.frames.iter().sum::<f32>() / n;
@@ -2519,16 +2494,6 @@ mod tests {
     fn selections_cover_rows_dragged_either_way() {
         assert_eq!(row_range((5, 2)), 2..=5);
         assert_eq!(row_range((3, 3)), 3..=3);
-    }
-
-    #[test]
-    fn net_graph_is_a_cvar() {
-        let mut app = App::new();
-        app.add_plugins(ConsolePlugin).init_resource::<Overlays>();
-        overlay_cvars(&mut app);
-        app.world_mut().resource_mut::<Console>().submit("net_graph 1");
-        app.update();
-        assert_eq!(app.world().resource::<Overlays>().net_graph, 1);
     }
 
     #[test]

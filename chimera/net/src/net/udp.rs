@@ -6,7 +6,8 @@
 //! conditions for testing by hand: `net_fakelag` and `net_fakejitter`
 //! delay what this process receives, `net_fakeloss` drops a share of
 //! what it receives and sends (so lost commands and lost snapshots both
-//! happen). Off (0) by default.
+//! happen). Off (0) by default. A client's packets in and out are counted
+//! for `net_graph` (`stats::Traffic`).
 
 use std::{net::UdpSocket, time::Duration};
 
@@ -20,6 +21,7 @@ use renetcode::{
     ServerConfig, ServerResult,
 };
 
+use super::stats::Traffic;
 use crate::console::resource_cvar;
 
 /// Copies of netcode's disconnect packet sent on hanging up.
@@ -102,7 +104,8 @@ impl UdpClient {
         lost
     }
 
-    fn send(&mut self, packet: &[u8], addr: std::net::SocketAddr, fake: &FakeLag) {
+    fn send(&mut self, packet: &[u8], addr: std::net::SocketAddr, fake: &FakeLag, traffic: &mut Traffic, now: f64) {
+        traffic.outgoing.record(now, packet.len());
         if self.lost(fake) {
             return;
         }
@@ -113,7 +116,13 @@ impl UdpClient {
 
     /// Advance by `dt`, receive (holding packets back as `fake` says) and
     /// hand what's due to renet.
-    fn update(&mut self, dt: Duration, client: &mut RenetClient, fake: &FakeLag) -> Result<(), String> {
+    fn update(
+        &mut self,
+        dt: Duration,
+        client: &mut RenetClient,
+        fake: &FakeLag,
+        (traffic, now): (&mut Traffic, f64),
+    ) -> Result<(), String> {
         self.clock += dt;
         if let Some(reason) = self.netcode.disconnect_reason() {
             client.disconnect_due_to_transport();
@@ -158,18 +167,24 @@ impl UdpClient {
         self.held.sort_by_key(|(due, _)| *due);
         let n = self.held.partition_point(|(due, _)| *due <= self.clock);
         for (_, mut packet) in self.held.drain(..n).collect::<Vec<_>>() {
+            traffic.incoming.record(now, packet.len());
             if let Some(payload) = self.netcode.process_packet(&mut packet) {
                 client.process_packet(payload);
             }
         }
         if let Some((packet, addr)) = self.netcode.update(dt) {
             let packet = packet.to_vec();
-            self.send(&packet, addr, fake);
+            self.send(&packet, addr, fake, traffic, now);
         }
         Ok(())
     }
 
-    fn send_packets(&mut self, client: &mut RenetClient, fake: &FakeLag) -> Result<(), String> {
+    fn send_packets(
+        &mut self,
+        client: &mut RenetClient,
+        fake: &FakeLag,
+        (traffic, now): (&mut Traffic, f64),
+    ) -> Result<(), String> {
         if let Some(reason) = self.netcode.disconnect_reason() {
             return Err(format!("{reason:?}"));
         }
@@ -179,7 +194,7 @@ impl UdpClient {
                 .generate_payload_packet(&packet)
                 .map_err(|e| e.to_string())?;
             let payload = payload.to_vec();
-            self.send(&payload, addr, fake);
+            self.send(&payload, addr, fake, traffic, now);
         }
         Ok(())
     }
@@ -448,14 +463,23 @@ fn receive(
     mut client: ResMut<RenetClient>,
     fake: Res<FakeLag>,
     time: Res<Time<Real>>,
+    mut traffic: ResMut<Traffic>,
 ) {
-    if let Err(e) = transport.update(time.delta(), &mut client, &fake) {
+    let now = time.elapsed_secs_f64();
+    if let Err(e) = transport.update(time.delta(), &mut client, &fake, (&mut traffic, now)) {
         debug!("UDP transport: {e}");
     }
 }
 
-fn send(mut transport: ResMut<UdpClient>, mut client: ResMut<RenetClient>, fake: Res<FakeLag>) {
-    if let Err(e) = transport.send_packets(&mut client, &fake) {
+fn send(
+    mut transport: ResMut<UdpClient>,
+    mut client: ResMut<RenetClient>,
+    fake: Res<FakeLag>,
+    time: Res<Time<Real>>,
+    mut traffic: ResMut<Traffic>,
+) {
+    let now = time.elapsed_secs_f64();
+    if let Err(e) = transport.send_packets(&mut client, &fake, (&mut traffic, now)) {
         debug!("UDP transport: {e}");
     }
 }

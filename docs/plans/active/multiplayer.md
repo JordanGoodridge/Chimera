@@ -359,7 +359,10 @@ those clients. Voice: docs/plans/active/voice-chat.md.
 
 **Scoreboard and net_graph.** Ping from renet's RTT replicated per player
 (the scoreboard's latency column, 0 today); `net_graph` adds ping, loss,
-in/out bytes per second, snapshot rate, prediction errors.
+in/out bytes per second, snapshot rate, prediction errors. Done:
+`net_graph` 1-3 (`client::net_graph`, `net::stats`: transport counts,
+the server's frame rate, update rate and choke once a second); the
+prediction readout is the perf overlay's.
 
 ## 4. Testing
 

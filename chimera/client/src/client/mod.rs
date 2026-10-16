@@ -30,6 +30,7 @@ pub mod input;
 pub mod interp;
 pub mod map_screen;
 pub mod net;
+pub mod net_graph;
 pub mod night_vision;
 pub mod frame_metrics;
 pub mod perf;
@@ -366,6 +367,7 @@ impl PluginGroup for ClientPlugins {
             .add(capture::CapturePlugin)
             .add(perf::PerfPlugin)
             .add(console::ConsoleUiPlugin)
+            .add(net_graph::NetGraphPlugin)
             .add(hud::HudPlugin)
             .add(game_text::GameTextPlugin)
             .add(effects::ShotEffectsPlugin)

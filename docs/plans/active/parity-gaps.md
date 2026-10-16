@@ -186,7 +186,8 @@ common console commands, against mashup's.
 | `autobuy` (F1), `rebuy` (F2) | have (fixed) | H | S | commands added, on F1 and F2 by default (the debug UI and inspector moved to F8 and F11) |
 | `invnext`, `invprev` | have (fixed) | H | S | see Weapons |
 | `jpeg` (F5) | have (fixed) | L | S | a PNG in the screenshots folder named `<map>NNNN` |
-| `kill`, `explode`, `retry`, `connect`, `status`, `exec`, `alias`, `bind`, `toggle`, `incrementvar`, `net_graph`, `cl_showfps`, `cl_showpos` | have | | | |
+| `kill`, `explode`, `retry`, `connect`, `status`, `exec`, `alias`, `bind`, `toggle`, `incrementvar`, `cl_showfps`, `cl_showpos` | have | | | |
+| `net_graph` 1-3, `net_graphpos`, `net_graphheight`, `net_graphproportionalfont` | have (differs) | L | S | the transport's numbers (ping, in/out, loss, choke, sv, up/cmd, lerp) and a latency and bytes graph; layout and colours from public descriptions, unmeasured; no `net_graph 4`, `net_scale` (backlog section 5) |
 | Default binds | have (fixed) | M | S | every `config_default.cfg` bind (read from the install at start, the same table built in otherwise; `client::binds`); mashup's own only on keys it leaves free: Alt free look, V noclip, F9 bug report, F3/F8/F11 debug keys. Saved configs keep their binds (defaults added since go on their free keys once). F, H, I, J, F6, F7, PAUSE run commands mashup lacks (`impulse 100`, `commandmenu`, `showbriefing`, `cheer`, `save`/`load`, `pause`: an error line in the console); F10's `quit prompt` opens the game menu (no quit dialog) |
 | Console | differs | L | M | a drop-down, not CS:S's VGUI frame (ui-parity.md) |
 | `con_enable` and `volume` defaults | differs | L | | ui-parity.md: undecided |

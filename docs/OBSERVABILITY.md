@@ -734,7 +734,13 @@ dead: `mp_restartgame 1` puts everyone in play. `cargo test --features
 dev --test it net_rules -- --nocapture` prints the clocks and
 scoreboards.
 
-In a game: the perf overlay (`mashup_perf 1`) and the debug UI's Perf tab show,
+In a game: `net_graph 1` shows Source's readout bottom right (fps,
+ping, lerp, in and out per packet, k/s and packets/s, loss, choke, the
+server's frame rate, tick, update and command rates; `net_graph 2` and
+`3` add the latency and bytes graph; `net::stats` has the numbers, the
+server's once a second; a listen server's host shows its own: ping 0,
+no traffic; `games/cs_source/tests/it/net_graph.rs`). The perf overlay
+(`mashup_perf 1`) and the debug UI's Perf tab show,
 while connected, `net:` (ping, loss, KB/s), `cmds:` (lead in ticks and
 its target, the clock's speed nudge and jumps, the server's buffer of
 our commands, missed and late), `prediction:` (errors per second and
