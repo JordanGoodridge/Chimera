@@ -1486,8 +1486,9 @@ fn the_voice_tab_is_there_and_greyed() {
     assert!(m.rows().iter().all(|r| matches!(r, Row::Button { .. })));
 }
 
-/// With voice chat (`client::voice`'s cvars) the tab's enable box and
-/// receive volume work; the microphone's controls stay greyed.
+/// With voice chat (`client::voice`'s cvars and `voice_test`) the tab's
+/// enable box, receive volume and microphone boost work, and Test
+/// Microphone starts the test (and, once running, stops it).
 #[test]
 fn the_voice_tab_sets_voice_chats_cvars() {
     let mut m = GameMenu {
@@ -1496,14 +1497,46 @@ fn the_voice_tab_sets_voice_chats_cvars() {
     };
     let cvars = |n: &str| match n {
         "voice_modenable" | "voice_scale" => Some("1".to_string()),
+        "voice_boost" => Some("0".to_string()),
         n => get(n),
     };
     m.open(Page::Main, vec!["de_dust2".into()], None, cvars);
+    m.known.insert("voice_test".into());
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(4), 0)]);
     assert_eq!(m.tab, Tab::Voice);
-    let settings = m.rows().iter().filter(|r| !matches!(r, Row::Button { .. })).count();
-    assert_eq!(settings, 2, "{:?}", m.rows());
+    let rows = m.rows();
+    let settings = rows.iter().filter(|r| !matches!(r, Row::Button { .. })).count();
+    assert_eq!(settings, 3, "{rows:?}");
+    let boost = rows
+        .iter()
+        .position(|r| matches!(r, Row::Control { field: Field::Setting(i), .. } if SETTINGS[*i].cvar == "voice_boost"))
+        .unwrap();
+    assert_eq!(press(&mut m, &[Input::Click(Target::Row(boost), 0)]).lines, ["voice_boost 1"]);
+    let test = |m: &GameMenu| {
+        m.rows()
+            .iter()
+            .position(|r| matches!(r, Row::Button { action: Action::Run(l, _), .. } if l.starts_with("voice_test")))
+            .unwrap()
+    };
+    let t = test(&m);
+    assert!(matches!(&m.rows()[t], Row::Button { label, .. } if label == "Test Microphone"));
+    assert_eq!(press(&mut m, &[Input::Click(Target::Row(t), 0)]).lines, ["voice_test 1"]);
+    m.voice_testing = true;
+    let t = test(&m);
+    assert!(matches!(&m.rows()[t], Row::Button { label, .. } if label == "Stop Microphone Test"));
+    assert_eq!(press(&mut m, &[Input::Click(Target::Row(t), 0)]).lines, ["voice_test 0"]);
+}
+
+/// The Voice tab's meter: none lit in silence, all at full scale, on a
+/// decibel scale between.
+#[test]
+fn the_microphone_meter_is_in_decibels() {
+    assert_eq!(draw::meter_bars(0.0, 19), 0);
+    assert_eq!(draw::meter_bars(1.0, 19), 19);
+    assert_eq!(draw::meter_bars(0.001, 19), 0, "-60 dB: under the floor");
+    // -24 dB, half way down to the floor.
+    assert_eq!(draw::meter_bars(10f32.powf(-24.0 / 20.0), 19), 10);
 }
 
 /// The menu with the cvars of the Audio tab's drop-downs, the texture

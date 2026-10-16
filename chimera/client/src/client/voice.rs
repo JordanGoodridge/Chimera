@@ -8,7 +8,9 @@
 //!   20 ms frame whose loudest sample reaches `voice_threshold` opens the
 //!   gate for `VOX_HANG` seconds of audio (frames under it while it is
 //!   closed are dropped, the key still talks).
-//!   The microphone's samples (48 kHz mono, `VoiceInput`) are cut into
+//!   The microphone's samples (48 kHz mono, `VoiceInput`), times `BOOST`
+//!   with `voice_boost 1` (the Voice tab's "Boost microphone gain"), are
+//!   cut into
 //!   20 ms frames, each encoded with Opus (VoIP, `BITRATE`) and sent as
 //!   `net::voice::VoiceData`, at most `net::voice::MAX_FRAMES` a frame;
 //!   the rest of a key press's audio follows in the next frames, and what
@@ -16,6 +18,11 @@
 //!   sent outside a network game (no one to hear), nor with `voice_enable`
 //!   or `voice_modenable` 0. `voice_loopback 1` plays one's own voice
 //!   back (decoded here: the server never sends a talker its own).
+//! - **Microphone test** (`voice_test`, the Voice tab's Test Microphone):
+//!   the microphone open, each frame encoded and decoded here and played
+//!   back to the speakers (as `voice_loopback` does), nothing sent.
+//!   `VoiceLevel` is the last frame's loudest sample (0 to 1, boost
+//!   included) while the microphone is open, else 0: the tab's meter.
 //! - **Hearing**: each talker's `net::voice::VoiceRelay` is decoded with
 //!   its own decoder, unless its player is muted (`net::voice::VoiceMutes`,
 //!   the player list's mute: dropped undecoded); a gap of up to `MAX_CONCEALED` frames (lost
@@ -36,7 +43,9 @@
 //! (`VoiceInput`, `VoiceOutput`: cpal's default devices, fakes for tests),
 //! Opus at 48 kHz mono in 20 ms frames (`mousiki`), per-talker decoders with
 //! loss concealment, muted players dropped (`VoiceMutes`), a jitter-buffered
-//! mixer, `voice_enable`, `voice_modenable`, `voice_scale`, `voice_loopback`.
+//! mixer, `voice_enable`, `voice_modenable`, `voice_scale`, `voice_loopback`,
+//! `voice_boost`, `voice_test` and `VoiceLevel` (the Voice tab's microphone
+//! test and meter).
 //!
 //! Known shortcuts (docs/tech-debt.md): Voice chat (`client::voice`): the
 //! client cvars' defaults (`voice_enable` 1, `voice_modenable` 1,
@@ -48,8 +57,10 @@
 //! trips its own debug assertion) is ours
 //! (CS:S's `sv_voicecodec` is Steam's voice, also Opus-based); linear
 //! resampling; a 60 ms jitter buffer and at most 0.5 s of microphone backlog
-//! (ours); the system's default devices only (no device choice); no
-//! microphone test or meter; `voice_loopback` decodes locally (Source's server echoes it).
+//! (ours); the system's default devices only (no device choice);
+//! `voice_boost` (CS:S's box sets the sound card's microphone boost; here
+//! x4, +12 dB) and `voice_test` (CS:S's button runs its voice tweak mode)
+//! are ours; `voice_loopback` decodes locally (Source's server echoes it).
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -88,6 +99,8 @@ const MAX_BACKLOG: usize = RATE as usize / 2;
 /// How long the open microphone's gate stays open after a frame at
 /// `voice_threshold` (s of audio; ours).
 pub const VOX_HANG: f32 = 0.5;
+/// The microphone's gain with `voice_boost 1` (+12 dB; ours).
+pub const BOOST: f32 = 4.0;
 
 /// A microphone: 48 kHz mono samples.
 pub trait VoiceInput: Send + Sync + 'static {
@@ -187,6 +200,16 @@ impl VoiceDevices {
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VoiceRecord(pub bool);
 
+/// The microphone test runs (`voice_test`, the Voice tab's Test
+/// Microphone): one's voice played back, nothing sent.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VoiceTest(pub bool);
+
+/// The microphone's level: the last 20 ms frame's loudest sample (0 to 1,
+/// boost included) while it is open, else 0.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct VoiceLevel(pub f32);
+
 /// The player's voice settings.
 #[derive(Resource, Clone, Copy, Debug, PartialEq)]
 pub struct VoiceSettings {
@@ -203,6 +226,9 @@ pub struct VoiceSettings {
     /// `voice_threshold`: the loudest sample of a 20 ms frame (of 32767)
     /// that opens the open microphone's gate.
     pub threshold: f32,
+    /// `voice_boost` (ours; the Voice tab's "Boost microphone gain"): 1
+    /// multiplies the microphone by `BOOST`.
+    pub boost: u8,
 }
 
 impl Default for VoiceSettings {
@@ -214,6 +240,7 @@ impl Default for VoiceSettings {
             loopback: 0,
             vox: 0,
             threshold: 4000.0,
+            boost: 0,
         }
     }
 }
@@ -280,6 +307,8 @@ impl Plugin for VoicePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<VoiceDevices>()
             .init_resource::<VoiceRecord>()
+            .init_resource::<VoiceTest>()
+            .init_resource::<VoiceLevel>()
             .init_resource::<VoiceSettings>()
             .init_resource::<VoiceActivity>()
             .init_resource::<VoiceMutes>()
@@ -305,6 +334,19 @@ impl Plugin for VoicePlugin {
                 },
             );
         }
+        app.console_command(
+            "voice_test",
+            "voice_test [0|1]: test the microphone: hear yourself, nothing sent (the Voice tab's Test Microphone; \
+             toggles without a value).",
+            |w, a| {
+                let on = match a.first() {
+                    Some(v) => v.parse::<f32>().map_err(|_| "voice_test [0|1]")? != 0.0,
+                    None => !w.resource::<VoiceTest>().0,
+                };
+                w.resource_mut::<VoiceTest>().0 = on;
+                Ok(None)
+            },
+        );
         resource_cvar::<VoiceSettings, u8>(app, "voice_enable", "1: voice chat on (sent and heard); 0: off.", |s| {
             &mut s.enable
         });
@@ -332,8 +374,14 @@ impl Plugin for VoicePlugin {
             "The open microphone's (voice_vox) level: a 20 ms frame's loudest sample, of 32767.",
             |s| &mut s.threshold,
         );
+        resource_cvar::<VoiceSettings, u8>(
+            app,
+            "voice_boost",
+            "1: boost the microphone's gain (+12 dB; the Voice tab's \"Boost microphone gain\").",
+            |s| &mut s.boost,
+        );
         let mut console = app.world_mut().resource_mut::<crate::console::Console>();
-        for c in ["voice_enable", "voice_modenable", "voice_scale", "voice_vox", "voice_threshold"] {
+        for c in ["voice_enable", "voice_modenable", "voice_scale", "voice_vox", "voice_threshold", "voice_boost"] {
             console.archive(c);
         }
         console.set_range("voice_scale", 0.0, 1.0);
@@ -347,16 +395,30 @@ fn master(global: Option<&GlobalVolume>) -> f32 {
     global.map_or(1.0, |g| g.volume.to_linear())
 }
 
+/// Open the system's speakers when first needed.
+fn ensure_output(devices: &mut VoiceDevices) {
+    if devices.output.is_none() && devices.open_system && !devices.output_failed {
+        match cpal_devices::open_output() {
+            Ok(output) => devices.output = Some(Box::new(output)),
+            Err(e) => {
+                warn!("voice: no speakers: {e}");
+                devices.output_failed = true;
+            }
+        }
+    }
+}
+
 /// The loudest sample of a frame, 0 to 1.
 pub fn peak(pcm: &[i16]) -> f32 {
     pcm.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0) as f32 / 32768.0
 }
 
 /// Record, encode and send while `+voicerecord` is held or the open
-/// microphone's gate is open.
+/// microphone's gate is open; play back for the microphone test.
 #[allow(clippy::too_many_arguments)]
 fn capture(
     record: Res<VoiceRecord>,
+    test: Res<VoiceTest>,
     settings: Res<VoiceSettings>,
     role: Res<NetRole>,
     global: Option<Res<GlobalVolume>>,
@@ -364,11 +426,12 @@ fn capture(
     mut devices: ResMut<VoiceDevices>,
     mut state: ResMut<Capture>,
     mut activity: ResMut<VoiceActivity>,
+    mut level: ResMut<VoiceLevel>,
     mut out: MessageWriter<VoiceData>,
 ) {
     let key = record.0 && settings.on();
     let vox = settings.vox != 0 && settings.on();
-    let open = key || vox;
+    let open = key || vox || test.0;
     let devices = &mut *devices;
     if open && devices.input.is_none() && devices.open_system && !devices.input_failed {
         match cpal_devices::open_input() {
@@ -378,6 +441,9 @@ fn capture(
                 devices.input_failed = true;
             }
         }
+    }
+    if test.0 {
+        ensure_output(devices);
     }
     let state = &mut *state;
     if open != state.was_open {
@@ -399,6 +465,7 @@ fn capture(
     state.was_key = key;
     let Some(input) = devices.input.as_mut() else {
         activity.local = false;
+        level.set_if_neq(VoiceLevel(0.0));
         return;
     };
     let mut fresh = Vec::new();
@@ -413,23 +480,44 @@ fn capture(
         state.pending.clear();
     }
     let hang = (VOX_HANG * RATE as f32 / FRAME as f32).round() as u32;
+    let gain = if settings.boost != 0 { BOOST } else { 1.0 };
     let mut frames = Vec::new();
+    let mut back = Vec::new();
+    let mut loudest = None;
     while state.pending.len() >= FRAME && frames.len() < MAX_FRAMES {
-        let pcm: Vec<i16> = state.pending.drain(..FRAME).collect();
+        let mut pcm: Vec<i16> = state.pending.drain(..FRAME).collect();
+        if gain != 1.0 {
+            for x in &mut pcm {
+                *x = (*x as f32 * gain).clamp(-32768.0, 32767.0) as i16;
+            }
+        }
+        let p = peak(&pcm);
+        loudest = Some(loudest.map_or(p, |l: f32| l.max(p)));
         let gate = vox && {
-            if peak(&pcm) * 32768.0 >= settings.threshold {
+            if p * 32768.0 >= settings.threshold {
                 state.vox_left = hang;
             }
             let on = state.vox_left > 0;
             state.vox_left = state.vox_left.saturating_sub(1);
             on
         };
-        if !(key || state.flushing || gate) {
+        let send = key || state.flushing || gate;
+        // Played back: the microphone test, or `voice_loopback` while
+        // talking.
+        let echo = test.0 || (send && settings.loopback != 0);
+        if !send && !echo {
             continue;
         }
         let mut packet = [0u8; 1500];
         match state.encoder.get_mut().unwrap().encode(&pcm, &mut packet) {
-            Ok(n) => frames.push(packet[..n].to_vec()),
+            Ok(n) => {
+                if echo {
+                    back.push(packet[..n].to_vec());
+                }
+                if send {
+                    frames.push(packet[..n].to_vec());
+                }
+            }
             Err(e) => warn!("voice: encoding failed: {e:?}"),
         }
     }
@@ -437,21 +525,23 @@ fn capture(
         state.flushing = false;
     }
     activity.local = key || state.flushing || (vox && state.vox_left > 0);
-    if frames.is_empty() {
-        return;
-    }
-    if settings.loopback != 0
+    let shown = if open { loudest.unwrap_or(level.0) } else { 0.0 };
+    level.set_if_neq(VoiceLevel(shown));
+    if !back.is_empty()
         && let Some(output) = devices.output.as_mut()
     {
         let decoder = state.loopback.get_mut().unwrap();
         let gain = settings.scale * master(global.as_deref());
         let me = me.iter().next().unwrap_or(Entity::PLACEHOLDER);
-        for f in &frames {
+        for f in &back {
             let mut pcm = [0i16; FRAME];
             if let Ok(n) = decoder.decode(f, &mut pcm, false) {
                 output.play(me, &pcm[..n], gain);
             }
         }
+    }
+    if frames.is_empty() {
+        return;
     }
     let seq = state.seq;
     state.seq = state.seq.wrapping_add(frames.len() as u16);
@@ -485,15 +575,7 @@ fn play(
         if r.speaker == Entity::PLACEHOLDER || mutes.muted(characters.get(r.speaker).ok()) {
             continue;
         }
-        if devices.output.is_none() && devices.open_system && !devices.output_failed {
-            match cpal_devices::open_output() {
-                Ok(output) => devices.output = Some(Box::new(output)),
-                Err(e) => {
-                    warn!("voice: no speakers: {e}");
-                    devices.output_failed = true;
-                }
-            }
-        }
+        ensure_output(devices);
         let Some(output) = devices.output.as_mut() else { continue };
         let talker = talkers.0.entry(r.speaker).or_insert_with(|| {
             Mutex::new(Talker {
@@ -961,6 +1043,34 @@ mod tests {
         speak(&mut app, &mic, 0.0, 0.2);
         let n = Sent::frames(&app) - before;
         assert!((10..=11).contains(&n), "the key's 0.2 s: {n} frames");
+    }
+
+    /// The microphone test plays one's voice back and sends nothing; the
+    /// level follows the microphone (boosted with `voice_boost`) and is 0
+    /// once the test stops.
+    #[test]
+    fn the_microphone_test_plays_back_and_meters() {
+        let mic = FakeInput::default();
+        let out = FakeOutput::default();
+        let mut app = app(mic.clone(), out.clone());
+        app.world_mut().resource_mut::<crate::console::Console>().submit("voice_test");
+        app.update();
+        assert!(app.world().resource::<VoiceTest>().0, "voice_test toggles it on");
+        speak(&mut app, &mic, 300.0, 0.2);
+        assert_eq!(Sent::frames(&app), 0, "nothing sent");
+        assert_eq!(out.samples(Entity::PLACEHOLDER), 10 * FRAME, "heard back");
+        let level = app.world().resource::<VoiceLevel>().0;
+        // The tone's peak, 8000 of 32768.
+        assert!((level - 8000.0 / 32768.0).abs() < 0.01, "{level}");
+        app.world_mut().resource_mut::<VoiceSettings>().boost = 1;
+        speak(&mut app, &mic, 300.0, 0.06);
+        let boosted = app.world().resource::<VoiceLevel>().0;
+        assert!((boosted - BOOST * level).abs() < 0.02, "{boosted}");
+        app.world_mut().resource_mut::<crate::console::Console>().submit("voice_test 0");
+        app.update();
+        speak(&mut app, &mic, 300.0, 0.1);
+        assert_eq!(app.world().resource::<VoiceLevel>().0, 0.0, "closed");
+        assert_eq!(out.samples(Entity::PLACEHOLDER), 13 * FRAME, "no more played back");
     }
 
     #[test]

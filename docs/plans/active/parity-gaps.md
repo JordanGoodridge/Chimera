@@ -193,7 +193,7 @@ common console commands, against mashup's.
 | Options apply at once | differs | L | | ui-parity.md: deliberate |
 | `impulse 100` (flashlight) | missing | L | M | `nightvision` is in (Weapons) |
 | `impulse 201` (spray), Import Spray | differs | M | M | sprays are in (see Sprays); the logo is `cl_logofile` (console), no Import Spray or picker in the options |
-| `+voicerecord` (voice chat), Voice tab | have (new) | M | L | K held talks (docs/plans/active/voice-chat.md); the Voice tab's enable box and receive volume work, its microphone boost, test and meter stay greyed |
+| `+voicerecord` (voice chat), Voice tab | have (new) | M | L | K held talks (docs/plans/active/voice-chat.md); the Voice tab's enable box, receive volume, microphone boost, Test Microphone and meter work; its transmit volume isn't drawn |
 | `playdemo` | have (differs) | L | L | CS:S demos as puppets (`game::demo`, `ui::demo`), `demo_timescale`, `demo_pause`, `demo_gototick`, `stopdemo`; animation from velocity, no zoom (tech-debt) |
 | `record`, `stop`, `demoui` | missing | L | L | no recording; `demoui` panel missing (console commands instead) |
 | `fps_max` | have (fixed) | L | S | 300 as CS:S (`client::perf::FrameLimit`); off under `--bench` |

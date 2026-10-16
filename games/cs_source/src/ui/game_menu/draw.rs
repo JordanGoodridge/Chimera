@@ -1,5 +1,13 @@
 //! Drawing the open dialog: its frame, tabs, controls where the install's
-//! layout puts them (greyed where mashup lacks them), columns without it.
+//! layout puts them (greyed where mashup lacks them), columns without it;
+//! the player list's list; the Voice tab's microphone meter (`MicMeter`,
+//! `MicMeter2`: the dark bars' picture, the lit one cut to the bars the
+//! microphone's level lights, `mic_meter`, `meter_bars`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Game menu drawing
+//! (`game_menu::draw`): the microphone meter's scale (decibels from
+//! `METER_FLOOR_DB`, -48) and fall (`METER_FALL`) are ours (CS:S's meter
+//! is code: capture C-voice).
 
 use super::*;
 
@@ -320,6 +328,56 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
     }
 }
 
+/// The Voice tab's meter's lit bars' picture (`OptionsSubVoice.res`'s
+/// `MicMeter2`).
+pub(super) const METER_LIT: &str = "resource/mic_meter_live";
+/// The Voice tab's meter's pictures (dark and lit bars).
+pub(super) const METER: &str = "resource/mic_meter";
+
+/// The Voice tab's meter's lit bars: `bars` of them, `step` window pixels
+/// apart; `mic_meter` shows as many as the microphone's level.
+#[derive(Component)]
+pub(super) struct MicMeter {
+    pub(super) bars: u32,
+    pub(super) step: f32,
+}
+
+/// The meter's bars lit for a microphone level (0 to 1, a frame's loudest
+/// sample): on a decibel scale from `METER_FLOOR_DB` (none) to full scale
+/// (all).
+pub fn meter_bars(level: f32, bars: u32) -> u32 {
+    if level <= 0.0 {
+        return 0;
+    }
+    let db = 20.0 * level.log10();
+    let f = ((db - METER_FLOOR_DB) / -METER_FLOOR_DB).clamp(0.0, 1.0);
+    (f * bars as f32).round() as u32
+}
+
+/// The meter's quietest level shown (dB below full scale; ours).
+pub const METER_FLOOR_DB: f32 = -48.0;
+
+/// The meter follows the microphone: a new peak at once, falling by
+/// `METER_FALL` a second (ours).
+pub(super) fn mic_meter(
+    level: Option<Res<crate::client::voice::VoiceLevel>>,
+    time: Res<Time<Real>>,
+    mut shown: Local<f32>,
+    mut meters: Query<(&mut Node, &MicMeter)>,
+) {
+    let now = level.map_or(0.0, |l| l.0);
+    *shown = now.max(*shown * (-METER_FALL * time.delta_secs()).exp());
+    for (mut node, m) in &mut meters {
+        let w = px(meter_bars(*shown, m.bars) as f32 * m.step);
+        if node.width != w {
+            node.width = w;
+        }
+    }
+}
+
+/// How fast the meter falls (its level times e^-METER_FALL a second).
+const METER_FALL: f32 = 6.0;
+
 /// Controls of the game's layouts left out on purpose (a deliberate
 /// difference, docs/plans/active/ui-parity.md): Virtual Reality Mode and
 /// its label (mashup won't support VR).
@@ -571,6 +629,11 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
             Row::Button {
                 action: Action::Back, ..
             } if menu.page == Page::PlayerList => name == "Button1",
+            // The Voice tab's Test Microphone.
+            Row::Button {
+                action: Action::Run(line, _),
+                ..
+            } if line.starts_with("voice_test") => name == TEST_MICROPHONE,
             Row::Button { action, .. } => advanced_button(action).is_some_and(|b| b == name),
             _ => false,
         })
@@ -619,7 +682,8 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
             continue;
         }
         let text = if c.text.starts_with('#') { "" } else { c.text.as_str() };
-        let picture = c.keys.get("image").and_then(|n| ctx.pictures.get(&n.to_lowercase()));
+        let image_name = c.keys.get("image").map(|n| n.to_lowercase()).unwrap_or_default();
+        let picture = ctx.pictures.get(&image_name);
         match class.to_ascii_lowercase().as_str() {
             "label" => {
                 // Not over a control we draw (the video Advanced dialog's
@@ -700,6 +764,46 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
                 widgets::text_entry(commands, parent, look, (rect.0, rect.1, rect.2, rect.3.min(24.0)), "", None, false, false, ());
             }
             "crosshairimagepanelcs" => crosshair_preview(commands, parent, look, menu, rect),
+            "imagepanel" if picture.is_some() && image_name.starts_with(METER) => {
+                // The Voice tab's meter (`MicMeter`, `MicMeter2`): its
+                // pictures at their own size (VGUI doesn't stretch them; the
+                // bars fill the panel's left), the dark bars, then as many
+                // lit ones as the microphone's level (`mic_meter`).
+                let lit = image_name == METER_LIT;
+                let bars = c.keys.get("barcount").and_then(|n| n.parse().ok()).unwrap_or(19);
+                let spacing = c.keys.get("barspacing").and_then(|n| n.parse().ok()).unwrap_or(8.0);
+                let size = menu
+                    .ui
+                    .0
+                    .as_ref()
+                    .and_then(|u| u.option_images.get(&image_name))
+                    .map_or((rect.2, rect.3), |p| (p.width as f32, p.height as f32));
+                let mut clip = commands.spawn((
+                    Node {
+                        overflow: Overflow::clip(),
+                        ..place(look, rect.0, rect.1, rect.2, rect.3)
+                    },
+                    ChildOf(parent),
+                ));
+                if lit {
+                    clip.insert(MicMeter {
+                        bars,
+                        step: spacing * look.s,
+                    })
+                    .entry::<Node>()
+                    .and_modify(|mut n| n.width = px(0.0));
+                }
+                let clip = clip.id();
+                commands.spawn((
+                    place(look, 0.0, 0.0, size.0, size.1),
+                    ImageNode {
+                        image: picture.cloned().unwrap_or_default(),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                    ChildOf(clip),
+                ));
+            }
             "imagepanel" if picture.is_some() => {
                 // Its picture over its box, as the brightness dialog's
                 // test lines.

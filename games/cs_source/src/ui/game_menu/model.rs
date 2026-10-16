@@ -306,6 +306,8 @@ pub struct GameMenu {
     pub roster: Vec<ListedPlayer>,
     /// The server's name, for the player list's title.
     pub server_name: String,
+    /// The Voice tab's microphone test runs (`client::voice::VoiceTest`).
+    pub voice_testing: bool,
 }
 
 /// Keyboard list rows shown at once.
@@ -317,6 +319,8 @@ pub(super) const KEY_BUTTONS: usize = 4;
 pub const ADVANCED_ROWS: usize = 11;
 /// Rows of Create Server's Game page list shown at once.
 pub const GAME_ROWS: usize = 12;
+/// The Voice tab's microphone test button (`OptionsSubVoice.res`).
+pub(super) const TEST_MICROPHONE: &str = "TestMicrophone";
 /// Rows of the player list shown at once.
 pub const PLAYER_ROWS: usize = 12;
 
@@ -701,6 +705,10 @@ impl GameMenu {
         let Some(layout) = self.layout() else { return usize::MAX };
         let name = match row {
             Row::Control { field, .. } => self.field_name(*field),
+            Row::Button {
+                action: Action::Run(line, _),
+                ..
+            } if line.starts_with("voice_test") => Some(TEST_MICROPHONE),
             Row::Button { action, .. } => advanced_button(action),
             _ => None,
         };

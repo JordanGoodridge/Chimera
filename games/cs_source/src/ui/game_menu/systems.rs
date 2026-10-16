@@ -636,8 +636,19 @@ pub(super) fn sync(
     >,
     mutes: Option<Res<crate::net::voice::VoiceMutes>>,
     net: Option<Res<crate::net::NetSettings>>,
+    test: Option<ResMut<crate::client::voice::VoiceTest>>,
     rules: Option<Res<crate::rules::Deathmatch>>,
 ) {
+    // The microphone test runs while the Voice tab shows (CS:S's stops
+    // with it).
+    if let Some(mut test) = test {
+        if test.0 && !(menu.open && menu.page == Page::Settings && menu.tab == Tab::Voice) {
+            test.0 = false;
+        }
+        if menu.voice_testing != test.0 {
+            menu.voice_testing = test.0;
+        }
+    }
     if !menu.open {
         return;
     }

@@ -82,8 +82,8 @@
 //! install's `gamma` test picture; its "Advanced...":
 //! `OptionsSubVideoAdvancedDlg.res`, texture detail, antialiasing, filtering,
 //! water detail, vertical sync, HDR, field of view; Virtual Reality Mode left
-//! out, `draw::LEFT_OUT`), Voice (enable and receive volume; the microphone's
-//! controls greyed), Multiplayer (the
+//! out, `draw::LEFT_OUT`), Voice (enable, receive volume, microphone boost,
+//! Test Microphone and its meter), Multiplayer (the
 //! controls of `OptionsSub*.res` for the archived cvars in `options.rs`:
 //! sliders with tick marks, drop-downs, check boxes, the sensitivity's text
 //! entry, the crosshair preview; its "Advanced...":
@@ -196,7 +196,7 @@ impl Plugin for GameMenuPlugin {
                     .chain()
                     .in_set(MenuSystems),
             )
-            .add_systems(Update, world_behind_dialogs.after(MenuSystems));
+            .add_systems(Update, (world_behind_dialogs, mic_meter).after(MenuSystems));
         // The shell's view of the menu (`client::front_end`).
         app.init_resource::<MenuStatus>()
             .add_systems(First, sync_status.in_set(FrontEndSync))

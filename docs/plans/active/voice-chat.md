@@ -73,6 +73,7 @@ headless.
 | `voice_loopback` | 0 | guess: hear yourself (ours: decoded locally, not echoed by the server) |
 | `voice_vox` | 0 | guess: open microphone (Source has the cvar; its default not captured) |
 | `voice_threshold` | 4000 | ours: a 20 ms frame's loudest sample (of 32767) that opens the open microphone's gate, held `VOX_HANG` (0.5 s, ours) after the last such frame |
+| `voice_boost` | 0 | ours: the Voice tab's "Boost microphone gain" (x4) |
 | `voice_inputfromfile` | 0 | measured on the probe server (exists, 0); not implemented (the fake input does the tests' part) |
 
 The client cvars' CS:S defaults are open questions for a Windows capture
@@ -119,9 +120,20 @@ docs), to confirm with two clients on the probe server.
    frame rate); frames under it while closed are dropped, the key still
    talks. The HUD's own icon shows while the gate is open.
 
+3. The Voice tab (done): Test Microphone runs `voice_test` (ours): the
+   microphone open, each frame encoded and decoded locally and played
+   back, nothing sent, "Stop Microphone Test" while it runs, stopped
+   when the tab or the dialog closes. The meter (`MicMeter`,
+   `MicMeter2` from `OptionsSubVoice.res`: the install's dark and lit
+   bar pictures) lights `barCount` bars for `client::voice::VoiceLevel`
+   (a frame's loudest sample, on a decibel scale from -48 dB, falling
+   smoothly; ours). "Boost microphone gain" is `voice_boost` (ours: x4,
+   +12 dB; CS:S's sets the sound card's boost).
+
 ## Left for later
 
-- The Voice tab's microphone test, meter and boost.
+- The Voice tab's transmit volume (`#GameUI_MicrophoneVolume`, a slider
+  CS:S makes in code over the system's microphone level).
 - Talking icons over heads (`voice/icntlk_pl`), Steam avatars in the
   voice panel.
 - `voice_inputfromfile`, `voice_recordtofile`.
