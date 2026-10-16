@@ -28,6 +28,8 @@ pub enum MainItem {
     Console,
     /// Ours: Lucker Party Options.
     Extras,
+    /// Ours: the vote setup dialog (`callvote`).
+    CallVote,
 }
 
 /// The game's entries without its menu file, in CS:S's order and words:
@@ -45,11 +47,12 @@ pub const MAIN: [(MainItem, &str, bool); 8] = [
 
 /// Ours, after the game's entries (and a gap): item, text, shown only in a
 /// game.
-pub const OURS: [(MainItem, &str, bool); 6] = [
+pub const OURS: [(MainItem, &str, bool); 7] = [
     (MainItem::QuickStart, "Quick Start", false),
     (MainItem::Greybox, "Greybox Test Map", false),
     (MainItem::Bots, "Bots", true),
     (MainItem::Team, "Team", true),
+    (MainItem::CallVote, "Call Vote", true),
     (MainItem::Extras, "Lucker Party Options", false),
     (MainItem::Console, "Console", false),
 ];
@@ -69,6 +72,7 @@ impl MainItem {
             MainItem::Options => Some(Page::Settings),
             MainItem::Extras => Some(Page::Extras),
             MainItem::PlayerList => Some(Page::PlayerList),
+            MainItem::CallVote => Some(Page::Vote),
             _ => None,
         }
     }
@@ -345,6 +349,11 @@ impl GameMenu {
                 self.create_tab = 0;
                 self.new_game.host = true;
             }
+            if page == Page::Vote {
+                // The server answers with its issues (`show_vote_setup`).
+                out.lines.push("callvote".into());
+                self.vote.from_menu = true;
+            }
             if self.page != page {
                 self.go_to(page);
             }
@@ -383,7 +392,8 @@ impl GameMenu {
             | MainItem::Team
             | MainItem::Options
             | MainItem::Extras
-            | MainItem::PlayerList => {}
+            | MainItem::PlayerList
+            | MainItem::CallVote => {}
         }
     }
 }

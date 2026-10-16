@@ -179,6 +179,11 @@ const OPTION_PAGES: [(&str, &str); 14] = [
     ("player_list", "resource/playerlistdialog.res"),
 ];
 
+/// The vote setup dialog's layouts in `GameUi::options` (from hl2's
+/// `resource/ui/votehud.res`): the file's frames (the dialog's size), the
+/// dialog's controls.
+pub const VOTE_SETUP: (&str, &str) = ("vote_hud", "vote_setup");
+
 /// Create Server's Game page options: the install's own, else the
 /// default one.
 const SERVER_SCRIPTS: [&str; 2] = ["cfg/settings.scr", "cfg/settings_default.scr"];
@@ -409,6 +414,22 @@ pub fn load(mount: &Mount) -> Option<GameUi> {
                 }
             }
             ui.options.insert(page.to_string(), layout);
+        }
+    }
+    // The vote setup dialog (hl2's `votehud.res`, its `VoteSetupDialog`
+    // block): the file's frames as `VOTE_SETUP.0`, the dialog's controls
+    // as `VOTE_SETUP.1`.
+    if let Some(root) = read_res_pc(&mut read, "resource/ui/votehud.res") {
+        let block = root
+            .items()
+            .iter()
+            .find(|(k, c)| k.eq_ignore_ascii_case("VoteSetupDialog") && matches!(c, Kv::Block(_)))
+            .map(|(_, c)| c.clone());
+        if let Some(block) = block {
+            let outer = super::vgui::layout(&root, &strings, &ui.colors, &mut |_| None);
+            let inner = super::vgui::layout(&block, &strings, &ui.colors, &mut |_| None);
+            ui.options.insert(VOTE_SETUP.0.into(), outer);
+            ui.options.insert(VOTE_SETUP.1.into(), inner);
         }
     }
     // The loading dialog: CS:S shows the one without the banner.

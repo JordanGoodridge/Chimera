@@ -271,7 +271,7 @@ common console commands, against mashup's.
 | Team balance (`mp_autoteambalance`, `mp_limitteams`) | have (fixed) | M | S | `mp_limitteams` was in; `mp_autoteambalance` (1) moves players as the next round starts (`rules::balance_teams`); who moves and the warning unmeasured: C11 |
 | `mp_tkpunish`, `mp_fadetoblack` | have (fixed) | L | S | both 0 as CS:S; a team killer dies as the next round starts; the dead fade to black over 1 s (ours) |
 | Ammo prices and sizes | have (fixed) | M | S | measured (weapons.md M19): ammo free, bought guns and spawn pistols full, the .45 box 25; we charged per box and sold guns with the clip only |
-| Bomb and hostage details | differs | M | | tech-debt; objectives.md open questions; the bomb blast measured and fixed 2026-10-15 (a bell, σ = reach / 3, was linear; armour ratio 1, armour running out spills onto health) |
+| Bomb and hostage details | differs | M | | tech-debt; objectives.md open questions; the bomb blast measured and fixed 2026-10-15 (a bell, σ = reach / 3, was linear; armour ratio 1, armour running out spills onto health); hostage damage measured 2026-10-16 (ten single shots, objectives.md Q8): CS:S's shares fit no single rule, ours keeps the player hitgroups, a re-measure is described |
 | Draw rules on one-sided maps | differs | L | | tech-debt "Minigame flows" |
 | Freeze-time reload | have | L | | measured 2026-10-15 on the probe server: CS:S reloads in the freeze time at the usual pace, no firing or moving; as ours |
 
@@ -288,7 +288,7 @@ common console commands, against mashup's.
 | Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; per-player mute (the player list), open microphone (`voice_vox`); no icons over heads (voice-chat.md) |
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
-| Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
+| Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; setup dialog (`callvote` alone, Esc entry ours); joiners vote; bots vote (ours); cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
 
 ## Fixed in this pass
 

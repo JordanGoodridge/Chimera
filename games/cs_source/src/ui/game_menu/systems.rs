@@ -925,3 +925,20 @@ pub(super) fn world_behind_dialogs(
 fn size_now(windows: &Query<&Window, With<bevy::window::PrimaryWindow>>) -> Option<Vec2> {
     windows.iter().next().map(|w| w.resolution.physical_size().as_vec2())
 }
+
+/// The server's issues arrived (an answer to `callvote` alone, ours or the
+/// menu's): the vote setup dialog opens with them.
+pub(super) fn vote_setup_arrived(w: &mut World, mut seen: Local<u32>) {
+    let Some(view) = w.get_resource::<crate::net::vote::VoteView>() else { return };
+    if view.setups == *seen {
+        return;
+    }
+    *seen = view.setups;
+    let issues = view.setup.clone();
+    let mut menu = w.resource_mut::<GameMenu>();
+    let shown = menu.open && menu.page == Page::Vote;
+    menu.show_vote_setup(issues);
+    if !shown {
+        open_menu(w, Page::Vote);
+    }
+}

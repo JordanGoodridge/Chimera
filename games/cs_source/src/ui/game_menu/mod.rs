@@ -23,9 +23,12 @@
 //! The main menu and the game menu (one module per dialog: `main_menu.rs` the
 //! left-hand entries, `options_pages.rs` the options' tabs and their Advanced
 //! dialogs, `create_server.rs`, `loading.rs` the loading and Disconnected
-//! dialogs, `player_list.rs` the player list (mute players' voice), `extras.rs` ours (Lucker Party Options, Bots, Team); `model.rs` the
-//! shared model, `draw.rs` the drawing, `systems.rs` input and the Bevy
-//! systems, `tests.rs`): Esc, `menu [page or options tab]`,
+//! dialogs, `player_list.rs` the player list (mute players' voice), `extras.rs`
+//! ours (Lucker Party Options, Bots, Team);
+//! `vote_setup.rs` the vote setup dialog (Call Vote: the server's issues and
+//! their choices, opened by `callvote` alone); `model.rs` the shared model,
+//! `draw.rs` the drawing, `systems.rs` input and the Bevy systems,
+//! `tests.rs`): Esc, `menu [page or options tab]`,
 //! `gameui_activate`/`gameui_hide`), one implementation drawn as CS:S's GameUI.
 //! Out of a game (startup without a map, `Args::starts_in_game`; after
 //! `disconnect`) it is the main menu: open for good over the game's background
@@ -112,12 +115,21 @@ mod model;
 mod options_pages;
 mod player_list;
 mod systems;
+mod vote_setup;
 #[cfg(test)]
 mod tests;
 
-pub use self::{create_server::*, draw::MENU_Z, loading::*, main_menu::*, model::*, player_list::ListedPlayer};
+pub use self::{
+    create_server::*,
+    draw::MENU_Z,
+    loading::*,
+    main_menu::*,
+    model::*,
+    player_list::ListedPlayer,
+    vote_setup::{VoteSetup, issue_label},
+};
 pub(in crate::ui) use self::systems::*;
-use self::{draw::*, options_pages::*};
+use self::{draw::*, options_pages::*, vote_setup::*};
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -196,7 +208,8 @@ impl Plugin for GameMenuPlugin {
                     .chain()
                     .in_set(MenuSystems),
             )
-            .add_systems(Update, (world_behind_dialogs, mic_meter).after(MenuSystems));
+            .add_systems(Update, (world_behind_dialogs, mic_meter).after(MenuSystems))
+            .add_systems(Update, vote_setup_arrived.before(MenuSystems));
         // The shell's view of the menu (`client::front_end`).
         app.init_resource::<MenuStatus>()
             .add_systems(First, sync_status.in_set(FrontEndSync))
@@ -269,7 +282,8 @@ impl Plugin for GameMenuPlugin {
         .console_command(
             "menuinput",
             "menuinput <input>: drive the open game menu as keys and clicks would (screenshots, tests): \
-             focus <cvar|map|bots|botcount|botteam|difficulty|aspect> | open (the focused combo box's list) | \
+             focus <cvar|map|bots|botcount|botteam|difficulty|aspect> | row <n> (the page's nth row: list rows, \
+             buttons) | open (the focused combo box's list) | \
              down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n>; prints \
              the focused control.",
             |w, a| {
@@ -329,6 +343,8 @@ pub enum Page {
     Extras,
     /// The player list (`PlayerListDialog.res`): mute players' voice.
     PlayerList,
+    /// The vote setup dialog (`vote_setup.rs`).
+    Vote,
 }
 
 impl Page {
@@ -346,6 +362,7 @@ impl Page {
             Page::MultiplayerAdvanced => "multiplayeradvanced",
             Page::Extras => "extras",
             Page::PlayerList => "playerlist",
+            Page::Vote => "votesetup",
         }
     }
 

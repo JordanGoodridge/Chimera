@@ -263,8 +263,21 @@ fn in_game_entries_show_only_in_a_game() {
     assert_eq!(
         shown(&m),
         [
-            Resume, Disconnect, PlayerList, FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Bots, Team,
-            Extras, Console
+            Resume,
+            Disconnect,
+            PlayerList,
+            FindServers,
+            NewGame,
+            BugReport,
+            Options,
+            Quit,
+            QuickStart,
+            Greybox,
+            Bots,
+            Team,
+            CallVote,
+            Extras,
+            Console
         ]
     );
     let e = m.entries();
@@ -1021,8 +1034,21 @@ fn the_games_menu_entries_with_ours_added() {
     assert_eq!(
         items,
         [
-            Resume, Disconnect, PlayerList, FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Bots, Team,
-            Extras, Console
+            Resume,
+            Disconnect,
+            PlayerList,
+            FindServers,
+            NewGame,
+            BugReport,
+            Options,
+            Quit,
+            QuickStart,
+            Greybox,
+            Bots,
+            Team,
+            CallVote,
+            Extras,
+            Console
         ]
     );
     assert_eq!(e[4].label, "CREATE SERVER", "the game's words");
@@ -1720,4 +1746,87 @@ fn the_player_list_mutes_the_selected_player() {
     // Close: back to the menu.
     press(&mut m, &[Input::Click(Target::Row(4), 0)]);
     assert_eq!(m.page, Page::Main);
+}
+
+fn issues() -> Vec<crate::net::vote::IssueInfo> {
+    use crate::net::vote::IssueInfo;
+    vec![
+        IssueInfo {
+            name: "kick".into(),
+            choices: vec![("2".into(), "Bob".into()), ("3".into(), "Eve".into())],
+        },
+        IssueInfo {
+            name: "changelevel".into(),
+            choices: vec![("de_dust2".into(), "de_dust2".into()), ("cs_office".into(), "cs_office".into())],
+        },
+        IssueInfo {
+            name: "restartgame".into(),
+            choices: Vec::new(),
+        },
+    ]
+}
+
+fn vote_row(m: &GameMenu, action: Action) -> usize {
+    m.rows()
+        .iter()
+        .position(|r| matches!(r, Row::Button { action: a, .. } if *a == action))
+        .unwrap_or_else(|| panic!("no {action:?} row"))
+}
+
+fn call_enabled(m: &GameMenu) -> bool {
+    m.rows()
+        .iter()
+        .any(|r| matches!(r, Row::Button { action: Action::CallVote, enabled: true, .. }))
+}
+
+#[test]
+fn the_vote_setup_dialog_asks_the_server_then_calls_the_picked_vote() {
+    let mut m = menu();
+    let entry = m.entries().iter().position(|e| e.item == MainItem::CallVote).unwrap();
+    // The entry asks the server for its issues and shows the dialog.
+    let out = m.handle(Input::Click(Target::Main(entry), 0));
+    assert_eq!(out.lines, vec!["callvote".to_string()]);
+    assert_eq!(m.page, Page::Vote);
+    assert!(!call_enabled(&m), "nothing to call yet");
+    m.show_vote_setup(issues());
+    let labels: Vec<String> = m.rows().iter().map(label_of).collect();
+    assert_eq!(&labels[..3], ["Kick Player", "Change Level", "Restart Game"]);
+    // A kick needs a player: picked, the players show, one is picked.
+    let kick = vote_row(&m, Action::VoteIssue(0));
+    m.handle(Input::Click(Target::Row(kick), 0));
+    assert!(!call_enabled(&m));
+    let eve = vote_row(&m, Action::VoteChoice(1));
+    assert_eq!(label_of(&m.rows()[eve]), "Eve");
+    m.handle(Input::Click(Target::Row(eve), 0));
+    assert!(call_enabled(&m));
+    // The issues again (the server's answer to another `callvote`): the
+    // picks stay.
+    m.show_vote_setup(issues());
+    assert_eq!((m.vote.issue, m.vote.choice), (Some(0), Some(1)));
+    // Another issue drops the choice; the maps show.
+    let level = vote_row(&m, Action::VoteIssue(1));
+    m.handle(Input::Click(Target::Row(level), 0));
+    assert_eq!(m.vote.choice, None);
+    let office = vote_row(&m, Action::VoteChoice(1));
+    assert_eq!(label_of(&m.rows()[office]), "cs_office");
+    m.handle(Input::Click(Target::Row(office), 0));
+    let call = vote_row(&m, Action::CallVote);
+    let out = m.handle(Input::Click(Target::Row(call), 0));
+    assert_eq!(out.lines, vec!["callvote changelevel cs_office".to_string()]);
+    assert!(out.close && !m.open, "calling closes the menu");
+}
+
+#[test]
+fn the_vote_setup_dialog_opened_by_callvote_closes_back_to_the_game() {
+    let mut m = menu();
+    m.open = false;
+    m.show_vote_setup(issues());
+    m.open(Page::Vote, Vec::new(), None, get);
+    let restart = vote_row(&m, Action::VoteIssue(2));
+    m.handle(Input::Click(Target::Row(restart), 0));
+    // No choices: callable at once.
+    assert_eq!(m.vote.line().as_deref(), Some("callvote restartgame"));
+    let close = m.rows().len() - 1;
+    let out = m.handle(Input::Click(Target::Row(close), 0));
+    assert!(out.close && !m.open, "Close goes back to the game");
 }

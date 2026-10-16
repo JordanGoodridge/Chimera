@@ -71,6 +71,7 @@ pub(super) fn dialog_size(menu: &GameMenu, page: Page) -> (f32, f32) {
             .and_then(|u| u.options.get("player_list"))
             .and_then(|l| l.get("PlayerListDialog"))
             .map_or((467.0, 388.0), |c| (c.wide, c.tall)),
+        Page::Vote => vote_boxes(menu).size,
         _ => (360.0, 230.0),
     }
 }
@@ -244,6 +245,8 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
         Page::MultiplayerAdvanced => menu.text("#GameUI_MultiplayerAdvanced", "Multiplayer Advanced"),
         Page::Extras => "Lucker Party Options".into(),
         Page::PlayerList => menu.player_list_title(),
+        // Ours (the file gives none).
+        Page::Vote => "Call Vote".into(),
     };
     let mut spec = FrameSpec::new(page.window());
     if page.over_options() {
@@ -324,6 +327,7 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
                 }
             }
         }
+        Page::Vote => vote_dialog(commands, ctx, frame),
         _ => column(commands, ctx, frame, (16.0, 36.0, w - 32.0), false),
     }
 }
