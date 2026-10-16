@@ -244,7 +244,7 @@ common console commands, against mashup's.
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |
 | Pushers (no bevels, no players or props pushed) | differs | L | M | tech-debt "Pushers" |
-| Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto's per-round outputs still capture C16 |
+| Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap again each round, never OnMultiNewRound (was ours: OnMultiNewRound) |
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
 | func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |
@@ -576,10 +576,10 @@ says what decides the open point.
   `muzzleflash_light 1` and `0`; then the eye in shadow under a lit edge
   (B doors' arch) with `r_DrawModelLightOrigin 1`. Decides view_models.md
   Q5 (material, size, duration, wall light) and Q7 (lighting point).
-- **C16 Round restart keep-list.** entity_io.md Q1's test map on the
-  probe server (logic_auto OnMapSpawn / OnMultiNewRound `say`, a
-  func_brush toggled by a button, two rounds). Decides
-  `world::ROUND_KEEP` and logic_auto's firing.
+- **C16 Round restart keep-list.** Done 2026-10-15 on the probe server
+  without a test map (tools/css_probe/roundkeep.py and the mashup_ents
+  plugin's logic_auto hook): `world::ROUND_KEEP` and logic_auto's firing
+  are measured (entity_io.md Q1).
 - **C17 HDR references.** `refcmp capture-ref` on de_dust2 and de_nuke
   with `mat_hdr_level 2` (the game's default; restart the map after
   setting it), 5 s after each view is placed (auto-exposure settles), into

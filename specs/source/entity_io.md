@@ -711,8 +711,10 @@ dt = 0.015 s. "Tick N" means server time N × dt.
    spotlight_end, trigger_hurt, trigger_multiple, trigger_once,
    water_lod_control, dropped weapons. No class was kept on one map and
    re-created on another. Classes absent from the stock maps (logic_auto
-   removes itself once fired) are unmeasured. Still open below: the
-   logic_auto outputs per round. Was: **CS:S round restart**: CS:S re-creates most map entities at each round
+   removes itself once fired) are unmeasured. logic_auto (all seven stock
+   maps with one, its outputs hooked by the plugin): at map load and again
+   at every restart it fires OnNewGame, OnMapSpawn and OnMultiNewMap, in
+   that order on the same tick; OnMultiNewRound never fired. Was: **CS:S round restart**: CS:S re-creates most map entities at each round
    restart, keeping a preserve list (in the public HL2DM code that list
    includes func_brush, func_wall, func_buyzone, info_target,
    env_soundscape*, trigger_soundscape, keyframe_rope, move_rope, sky_camera,

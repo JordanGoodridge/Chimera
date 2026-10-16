@@ -7,6 +7,20 @@ public void OnPluginStart()
 {
     RegServerCmd("mashup_ents", Command_Ents,
         "mashup_ents <file>: every entity (networked or not) as 'ref class hammerid targetname' lines");
+    // logic_auto's outputs, each as it fires (entity_io.md question 1).
+    char outs[][] = {"OnMapSpawn", "OnNewGame", "OnLoadGame", "OnMapTransition", "OnBackgroundMap",
+        "OnMultiNewMap", "OnMultiNewRound"};
+    for (int i = 0; i < sizeof(outs); i++) {
+        HookEntityOutput("logic_auto", outs[i], Output_Auto);
+    }
+}
+
+public void Output_Auto(const char[] output, int caller, int activator, float delay)
+{
+    char map[64];
+    GetCurrentMap(map, sizeof(map));
+    int hammer = IsValidEntity(caller) && HasEntProp(caller, Prop_Data, "m_iHammerID") ? GetEntProp(caller, Prop_Data, "m_iHammerID") : -1;
+    LogToFile("addons/sourcemod/logs/mashup_auto.log", "%s logic_auto %d %s t=%.3f", map, hammer, output, GetGameTime());
 }
 
 public Action Command_Ents(int args)

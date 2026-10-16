@@ -22,8 +22,8 @@
 //! spec): "Set initial state" sets a global only if unset, globals outlive
 //! round restarts, Remove makes it dead; `!pvsplayer`/`!picker` are slot 1;
 //! round restarts keep CS:S's measured classes (`world::ROUND_KEEP`), fire
-//! logic_auto's OnNewGame, OnMapSpawn and
-//! OnMultiNewRound each round (CS:S unmeasured), leave decals as they are
+//! logic_auto's OnNewGame, OnMapSpawn and OnMultiNewMap each round (measured;
+//! never OnMultiNewRound), leave decals as they are
 //! (entity props are put back where they spawned, at rest, and shown again).
 //! Why it's OK for now: Each is a listed open question; the test map and probe
 //! server settle them.

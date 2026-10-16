@@ -111,10 +111,10 @@ fn round_restart_recreates_map_entities() {
         .filter(|(_, e, _)| *e == ids[0])
         .map(|(_, _, o)| o.as_str())
         .collect();
-    assert_eq!(outputs, ["OnNewGame", "OnMapSpawn", "OnMultiNewRound"]);
-    assert_eq!(counter(&w, ids[1]), 101.0);
+    assert_eq!(outputs, ["OnNewGame", "OnMapSpawn", "OnMultiNewMap"], "as CS:S: never OnMultiNewRound");
+    assert_eq!(counter(&w, ids[1]), 11.0);
     run_to(&mut w, tick + 3000);
-    assert_eq!(counter(&w, ids[1]), 1101.0, "this round's own +1000 only");
+    assert_eq!(counter(&w, ids[1]), 1011.0, "this round's own +1000 only");
 
     // Round 2: the trigger works again.
     player_at(&mut w, 0, Vec3::new(-300.0, 0.0, 0.0));
