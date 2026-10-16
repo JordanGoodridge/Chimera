@@ -686,6 +686,8 @@ The console and overlays are in (chimera/core/src/console.rs, chimera/client/src
   layout, colours and graph with CS:S's own (a capture of `net_graph 1`
   to `3` on a server); `net_graph 3`'s per-message bands, `net_graph 4`,
   `net_scale`, `net_graphmsecs`, `net_graphtext`, `net_graphsolid`.
+  At the default `net_graphheight` 64 its last lines overlap the HUD's
+  ammo bottom right (1280x720); check where CS:S's sits.
 - `cl_showpos 2`: what CS:S shows with it is unknown here (no public
   description found); look in the game.
 - Mouse selection copies whole lines (drag over the output); selecting
