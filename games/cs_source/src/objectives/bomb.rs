@@ -876,7 +876,9 @@ fn tick_bomb(
                 radius: radius * rules.range_factor * UNIT,
                 bell_sigma: rules.bell_divisor.map(|k| radius * rules.range_factor / k * UNIT),
                 armor_ratio: Some(rules.armor_ratio),
-                attacker: bomb.planter,
+                // No attacker: the world's blast, so friendly fire doesn't
+                // spare the planter's team (measured, objectives.md Q3).
+                attacker: None,
                 inflictor: Some(e),
                 sound: rules.sounds.explode.clone(),
                 weapon: rules.weapon,

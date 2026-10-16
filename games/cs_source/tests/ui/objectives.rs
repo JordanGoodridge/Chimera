@@ -165,6 +165,27 @@ fn arming_takes_three_seconds_and_starts_over_when_let_go() {
     assert!(sim.app.world().resource::<BombState>().planted.is_some());
 }
 
+/// The bomb's blast has no attacker (measured: objectives.md Q3, every
+/// `player_hurt` from it with attacker 0), so with `mp_friendlyfire 0` it
+/// still hurts the planter's teammates (and the planter).
+#[test]
+fn the_bomb_hurts_terrorists_with_friendly_fire_off() {
+    let mut sim = sim(bomb_map());
+    sim.app
+        .world_mut()
+        .resource_mut::<Console>()
+        .submit("mp_friendlyfire 0; mp_c4timer 10");
+    sim.ticks(2);
+    let t = carrier(&mut sim);
+    let mate = character(&mut sim, Vec3::new(3.0, 1.0, 12.0), 1);
+    plant(&mut sim, t);
+    sim.seconds(10.5);
+    assert!(first(&sim, |e| matches!(e, ObjectiveEvent::Exploded { .. })).is_some(), "exploded");
+    let hurt = |e: Entity| sim.app.world().get::<Health>(e).is_none_or(|h| h.current < h.max);
+    assert!(hurt(mate), "a teammate near the bomb is hurt with friendly fire off");
+    assert!(hurt(t), "and the planter");
+}
+
 /// A planted bomb and a defender beside it, looking at it.
 fn planted_with_defender(kit: bool) -> (Sim, Entity, Entity, u64) {
     let mut sim = sim(bomb_map());

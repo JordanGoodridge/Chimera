@@ -121,7 +121,10 @@ plugin logging every sound the C4 entities emit):
   armour half of the rest (376 → 188 and 94; 26 → 13 and 6), and when the
   armour can't cover its part it is all used and health takes the rest
   minus twice the armour (447 on 100 armour → 247 health, armour 0).
-  Walls between bomb and target, other radii and the kill credit not
+  Every hurt from the blast has **attacker 0** (the world, not the
+  planter): with `mp_friendlyfire 0` it still killed two terrorists near
+  it and the planter (2026-10-16), so no one is spared and the planter
+  isn't credited. Walls between bomb and target and other radii not
   measured.
 
 Stock map bomb radii (from the entity lumps):
