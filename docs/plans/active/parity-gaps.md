@@ -244,7 +244,7 @@ common console commands, against mashup's.
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |
 | Pushers (no bevels, no players or props pushed) | differs | L | M | tech-debt "Pushers" |
-| Round restart keep-list | differs | M | S | entity_io.md Q1; capture C16 |
+| Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto's per-round outputs still capture C16 |
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
 | func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |

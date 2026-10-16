@@ -685,7 +685,34 @@ dt = 0.015 s. "Tick N" means server time N × dt.
 
 ## Open questions
 
-1. **CS:S round restart**: CS:S re-creates most map entities at each round
+1. **Partly answered (measured 2026-10-15, probe server, all 18 stock
+   maps; each entity's reference before and after `mp_restartgame 1`, an
+   unchanged reference = the same entity kept).** Kept: worldspawn, ai_hint,
+   env_fog_controller, env_soundscape, env_soundscape_proxy,
+   env_soundscape_triggerable, env_sun, env_wind, func_bomb_target,
+   func_brush, func_buyzone, func_hostage_rescue, func_illusionary,
+   func_wall, info_map_parameters, info_player_counterterrorist,
+   info_player_terrorist, info_target, keyframe_rope, move_rope,
+   point_viewcontrol, shadow_control, sky_camera, trigger_soundscape (and
+   the game's own: players, view models, managers, gamerules, ai_network,
+   soundent, scene_manager). Re-created, every one of them on every map:
+   ambient_generic, beam, env_beam, env_detail_controller, env_embers,
+   env_explosion, env_fire, env_lightglow, env_physexplosion, env_shooter,
+   env_smokestack, env_spark, env_sprite, env_steam, env_tonemap_controller,
+   filter_activator_name, fish, func_areaportal, func_areaportalwindow,
+   func_breakable, func_breakable_surf, func_button, func_door,
+   func_door_rotating, func_dustcloud, func_dustmotes, func_fish_pool,
+   func_footstep_control, func_lod, func_occluder, func_precipitation,
+   func_rotating, hostage_entity, info_lighting_relative, info_player_start,
+   light, light_spot, logic_case, logic_relay, logic_timer, math_counter,
+   phys_ballsocket, phys_bone_follower, phys_hinge, phys_ragdollconstraint,
+   phys_ragdollmagnet, phys_torque, point_spotlight, point_template,
+   prop_door_rotating, prop_dynamic, prop_physics, prop_physics_multiplayer,
+   spotlight_end, trigger_hurt, trigger_multiple, trigger_once,
+   water_lod_control, dropped weapons. No class was kept on one map and
+   re-created on another. Classes absent from the stock maps (logic_auto
+   removes itself once fired) are unmeasured. Still open below: the
+   logic_auto outputs per round. Was: **CS:S round restart**: CS:S re-creates most map entities at each round
    restart, keeping a preserve list (in the public HL2DM code that list
    includes func_brush, func_wall, func_buyzone, info_target,
    env_soundscape*, trigger_soundscape, keyframe_rope, move_rope, sky_camera,
