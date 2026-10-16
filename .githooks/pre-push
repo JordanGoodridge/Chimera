@@ -127,3 +127,12 @@ if [ "$pushing" = 1 ] && [ "$mode" != 0 ]; then
         exit 1
     fi
 fi
+
+# Keep this clone's build folder from growing without bound: cargo never
+# deletes the artifacts of older code, feature sets or renamed crates
+# (it reached 580 GB). Drop the oldest ones beyond 150 GB, quietly, when
+# cargo-sweep is installed (`cargo install cargo-sweep`). sccache keeps the
+# compile cache separately, so nothing here is needed to build fast.
+if command -v cargo-sweep >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/cargo-sweep" ]; then
+    PATH="$HOME/.cargo/bin:$PATH" cargo sweep --maxsize 150GB . >/dev/null 2>&1 || true
+fi
