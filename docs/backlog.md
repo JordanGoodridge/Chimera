@@ -156,9 +156,8 @@ on the server with its `sv_cheats`, noclip predicted; `mashup_noblock`
   `net::predict::hold_local`); now reload and lastinv go through, moving
   and attacking stay held (`rounds::survivors_keep_their_clip_and_reload_in_the_freeze`).
   The clip isn't refilled at a round start: survivors keep their weapons
-  and ammo as they are (parity, unchanged). Capture to confirm: in CS:S,
-  empty half a clip, survive the round, press R in the freeze time
-  (reloads at once, or only once it ends?).
+  and ammo as they are (parity, unchanged). Confirmed on the probe server
+  2026-10-15: CS:S reloads in the freeze time at once, at the usual pace.
 
 Looks:
 - Third-person player models "not rigged right" (fixed 2026-10-10, to
@@ -444,10 +443,14 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   (`client/vgui.rs`), as do the message of the day and the class menu
   (`games/cs_source/ui/join_menus.rs`). Left:
   the scoreboard's row spacing (16 units, a guess) and dead rows' look
-  checked against CS:S, its map time left beside the clock
-  (`mp_timelimit` is in: `rules::game_end::time_left`), the spectator menu in `bottomspectator.res`'s look
-  (ours is two plain lists; duck opens it) and the freeze cam panel (`freezepanel_basic.res`),
-  the buy menu's favourites (autobuy and rebuy are in: `cl_autobuy`,
+  checked against CS:S (its map time left beside the clock is in), the
+  spectator menu (`bottomspectator.res`'s bar, done 2026-10-10; its
+  values aligned as the file says 2026-10-15) and the freeze cam panel
+  (`freezepanel_basic.res`: name, "KILLED YOU", "[F5] Save this moment",
+  the killer's health gauge; 2026-10-15, timings now CS:S's server cvars
+  and the death cam's measured: specs/cs_source/spectating.md) checked
+  against a capture of a human's freeze cam (the avatar and nemesis lines
+  are still out), the buy menu's favourites (autobuy and rebuy are in: `cl_autobuy`,
   `cl_rebuy`), checking the widescreen placement against
   the game, other game messages in the chat (team joins, bomb pickups
   and drops are in), bots' answers checked against a bot behaviour spec
@@ -786,16 +789,9 @@ dithered fade bands. Left:
   props on cs_office never fall asleep (they rock by a tenth of a
   millimetre forever: transform propagation and shadow checks every
   frame).
-- Some order of Bevy's render systems breaks indirect draws on
-  cs_office: with marks between the `Render` sets
-  (`MASHUP_RENDER_PHASES=1`, `client::frame_metrics`) 2 of 5 `refcmp
-  bench` runs quit on "Indirect draw ... overruns indirect buffer"
-  (performance.md, "Load-independent metrics"). Find which ambiguous
-  render systems need an order (Bevy's ambiguity detection on the
-  `Render` schedule), then make the marks default.
-- `perfgate` in the pre-push hook once its run time (about 3 minutes with
-  map loading, playtest build) is acceptable; a Windows-side check needs
-  another counter source (none there yet).
+- `perfgate` in the pre-push hook (budgets per game app): deferred by
+  the user (2026-10-15), pushes aren't blocked on performance for now.
+  A Windows-side check needs another counter source (none there yet).
 
 ## 10. Long tail
 

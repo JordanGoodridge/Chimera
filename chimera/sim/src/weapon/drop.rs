@@ -7,11 +7,11 @@
 //!
 //! Covers: `drop` (G) throws the held weapon out as a `Loose` item from 12
 //! units under the eye (spec 3.9; the dead drop their best one where they lie), touching one (its box grown 36 units sideways and 18
-//! up, 1 s after the drop, in sight of the eye; specs/cs_source/weapons.md 3.9)
+//! up, 0.75 s after the drop (measured: M20), in sight of the eye; specs/cs_source/weapons.md 3.9)
 //! takes it when its slot is empty (and draws it when the player's
 //! `cl_autowepswitch` userinfo is on, its `SwitchWeight` is above the one in
 //! hand's and attack isn't held), or only its ammo when the same type is
-//! carried (`Undroppable`: the knife; `Verdict`: why one is or isn't taken,
+//! carried (none with `SameTypeAmmo(false)`, CS:S's; `Undroppable`: the knife; `Verdict`: why one is or isn't taken,
 //! which `mashup_debug_pickup` prints; a drop is stamped on the tick's clock,
 //! `Time<Fixed>`, wherever it's asked from); with `mashup_usepickup 1`, a +use
 //! press on one looked at within `USE_REACH` swaps it for the weapon in its
@@ -30,7 +30,7 @@
 //! Known shortcuts (docs/tech-debt.md): `mashup_usepickup` (CS:GO's +use
 //! pickup; no spec, CS:S has none): reach 100 units from the eye to the
 //! weapon's centre, the view line within its half size plus 12 units of the
-//! centre, the nearest by angle; same 1 s touch delay and line of sight as
+//! centre, the nearest by angle; same touch delay and line of sight as
 //! walking over it; the weapon in its slot (the held one if there) is thrown as
 //! with `drop`, and the taken one drawn when the dropped one was held; a press
 //! can also start a door, button or defuse in the same tick. Why it's OK for
@@ -54,6 +54,19 @@ pub struct Undroppable;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PickupTeam(pub crate::core::Team);
 
+/// Whether touching a loose weapon of a type already carried takes its
+/// ammo (`take_ammo`; the shared template's rule, spec 3.9; on when the
+/// resource is absent). CS:S takes nothing (`SameTypeAmmo(false)`:
+/// measured 2026-10-15, specs/cs_source/weapons.md M20).
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SameTypeAmmo(pub bool);
+
+impl Default for SameTypeAmmo {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
 /// A weapon lying in the world: the weapon entity, who dropped it and when.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Loose {
@@ -70,9 +83,10 @@ const THROW_FORWARD: f32 = 130.0 * 0.0254;
 const THROW_UP: f32 = 150.0 * 0.0254;
 /// A thrown weapon starts this far under the eye (12 units; spec 3.9).
 const DROP_UNDER_EYE: f32 = 12.0 * 0.0254;
-/// Seconds after a drop before anyone can pick the weapon up
-/// (specs/cs_source/weapons.md 3.9).
-pub const TOUCH_DELAY: f64 = 1.0;
+/// Seconds after a drop before anyone can pick the weapon up: CS:S's,
+/// measured 2026-10-15 (specs/cs_source/weapons.md M20: taken back 49 to 50
+/// ticks after the drop; the shared template's 1 s, spec 3.9, isn't CS:S's).
+pub const TOUCH_DELAY: f64 = 0.75;
 /// The touch volume: the weapon's box grown this much on each horizontal
 /// side and on top, none below (36 and 18 units; spec 3.9).
 const GROW_SIDES: f32 = 36.0 * 0.0254;
@@ -384,18 +398,21 @@ fn verdict(
 }
 
 /// Living characters touching a loose weapon (spec 3.9): its box grown
-/// 36 units sideways and 18 up, touchable 1 s after the drop, seen from
+/// 36 units sideways and 18 up, touchable `TOUCH_DELAY` after it, seen from
 /// the eye (solid geometry and windows block). Taken when nothing is in
-/// its slot; when the same type is carried, only its ammo is taken.
+/// its slot; when the same type is carried, only its ammo is taken (unless
+/// `SameTypeAmmo` is off).
 pub(super) fn pick_up(
     loose: LooseItems,
     owners: Owners,
     weapons: Query<(&Weapon, Option<&PickupTeam>)>,
     spatial: avian3d::prelude::SpatialQuery,
     time: Res<Time>,
+    same_type: Option<Res<SameTypeAmmo>>,
     mut commands: Commands,
 ) {
     let now = time.elapsed_secs_f64();
+    let same_type_ammo = same_type.is_none_or(|s| s.0);
     let mut taken = Vec::new();
     for (owner, at, inv, health, team, state) in &owners {
         if health.current <= 0.0 {
@@ -415,7 +432,7 @@ pub(super) fn pick_up(
                     commands.queue(move |w: &mut World| take(w, owner, weapon));
                     break;
                 }
-                Some(Verdict::Ammo(mine)) => {
+                Some(Verdict::Ammo(mine)) if same_type_ammo => {
                     commands.queue(move |w: &mut World| take_ammo(w, item, weapon, mine));
                 }
                 _ => {}
@@ -455,6 +472,7 @@ pub(super) fn debug_pickups(
     names: Query<&Name>,
     spatial: avian3d::prelude::SpatialQuery,
     time: Res<Time>,
+    same_type: Option<Res<SameTypeAmmo>>,
     mut console: Option<ResMut<crate::console::Console>>,
 ) {
     if setting.0 == 0 {
@@ -489,7 +507,10 @@ pub(super) fn debug_pickups(
             match verdict(&me, l, item, t, b, &weapons, &spatial, now, |c| owners.contains(c)) {
                 None => ("gone", format!("{what}: its weapon is gone")),
                 Some(Verdict::Take) => ("take", format!("{what}: taking it")),
-                Some(Verdict::Ammo(_)) => ("ammo", format!("{what}: same weapon carried, takes only its ammo")),
+                Some(Verdict::Ammo(_)) if same_type.as_ref().is_none_or(|s| s.0) => {
+                    ("ammo", format!("{what}: same weapon carried, takes only its ammo"))
+                }
+                Some(Verdict::Ammo(_)) => ("same", format!("{what}: same weapon carried, nothing taken")),
                 Some(Verdict::TooSoon(s)) => (
                     "soon",
                     format!("{what}: dropped {s:.1} s ago, touchable from {TOUCH_DELAY} s"),

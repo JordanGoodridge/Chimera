@@ -837,6 +837,36 @@ impl MapCycle {
     }
 }
 
+/// The dead's camera rules, the server's (replicated to clients; set by
+/// the rules' cvars, CS:S's defaults measured on its dedicated server
+/// 2026-10-15): `mp_forcecamera` (`force_camera`: 1 the dead on a team
+/// watch only their team), `spec_freeze_time` (`freeze_hold`, seconds the
+/// freeze cam's picture holds) and `spec_freeze_traveltime`
+/// (`freeze_travel`, seconds its camera takes to reach the killer; at
+/// least `FREEZE_TRAVEL_MIN`). Read by `client::spectate`.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct SpectatorRules {
+    pub force_camera: u8,
+    pub freeze_hold: f32,
+    pub freeze_travel: f32,
+}
+
+/// `spec_freeze_traveltime` and `spec_freeze_time` defaults, seconds.
+pub const FREEZE_TRAVEL: f32 = 0.7;
+pub const FREEZE_HOLD: f32 = 5.0;
+/// `spec_freeze_traveltime`'s minimum, seconds.
+pub const FREEZE_TRAVEL_MIN: f32 = 0.01;
+
+impl Default for SpectatorRules {
+    fn default() -> Self {
+        Self {
+            force_camera: 1,
+            freeze_hold: FREEZE_HOLD,
+            freeze_travel: FREEZE_TRAVEL,
+        }
+    }
+}
+
 /// `mp_fadetoblack` (CS:S's default 0): the dead see black
 /// (`client::senses`; set by the rules' `mp_fadetoblack`).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]

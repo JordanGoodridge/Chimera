@@ -927,13 +927,14 @@ fn switching_away_stops_a_shotgun_reload() {
 #[test]
 fn scopes_zoom_to_their_fovs() {
     // M15: AWP 40, 10; scout, SG550, G3SG1 40, 15; AUG, SG552 55. Only the
-    // snipers draw a scope; the scout and AWP unzoom after a shot.
+    // snipers draw a scope; the scout and AWP unzoom after a shot. Zoomed
+    // speeds measured (movement.md Q1): the G3SG1 keeps 210, the SG 552 200.
     for (id, fovs, scope, unzoom, speed) in [
         (SCOUT, &[40.0, 15.0][..], true, true, Some(220.0)),
         (SG550, &[40.0, 15.0][..], true, false, Some(150.0)),
-        (G3SG1, &[40.0, 15.0][..], true, false, None),
+        (G3SG1, &[40.0, 15.0][..], true, false, Some(210.0)),
         (AUG, &[55.0][..], false, false, Some(221.0)),
-        (SG552, &[55.0][..], false, false, None),
+        (SG552, &[55.0][..], false, false, Some(200.0)),
     ] {
         let mut sim = sim();
         let p = shooter_with(&mut sim, id);

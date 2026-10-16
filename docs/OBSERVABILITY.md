@@ -177,9 +177,16 @@ resolution. `--help` lists all options.
 System order: `MASHUP_SYSTEM_DUMP=<file>` builds the game as it would
 run (with the same options and plugins; needs the display) and writes
 every schedule's systems in the order they run, the main world's then the
-render world's, to the file instead of running. Dump before and after a
+render world's (taken before pipelined rendering moves it to its own
+thread), to the file instead of running. Dump before and after a
 refactor that moves the client's plugins or systems and `diff` the files
-(names differ by their module paths); the simulation's own order on real
+(names differ by their module paths); also with and without an added
+system, to see which others it reorders (the single-threaded executors
+run unordered systems in whatever order the graph sorts to).
+`MASHUP_AMBIGUITY=1` with it logs the `Render` schedule's ambiguous
+pairs (systems with conflicting access and no order; Bevy exempts its
+own shared render resources): one today, ours (`frame_metrics`'
+`render_start` and `apply_extract_commands`). The simulation's own order on real
 maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`MASHUP_SPAWN_DUMP`).
 
 To photograph a live run step by step (e.g. before and after a round
@@ -358,11 +365,13 @@ Only `Reflect`-registered types are visible; register new core components in
   +cam_idealdist 600 +cam_idealyaw 70 ++attack --frames 130` shows the bot
   hearing you behind the long crate and lobbing an HE over it.
 - Spectating: `mashup_hurtme chest 500` (in a rounds game, `+mashup_rounds 1`) starts the
-  death cam; 2 s later the camera watches a living teammate.
+  death cam; 6.5 s after the death (no freeze cam) the camera watches a
+  living teammate (CS:S's timings: specs/cs_source/spectating.md).
   `mashup_hurtme chest 500 0 <name>` is a hit from that player: its
-  death cam turns to it, then the freeze cam (0.4 s toward it, the
-  picture held 4 s with the freeze sound and panel; `cl_disablefreezecam
-  1` skips it, `spec_freeze_traveltime`/`spec_freeze_time` time it;
+  death cam turns to it, then 2 s after the death the freeze cam (0.7 s
+  toward it, the picture held 5 s with the freeze sound and panel;
+  `cl_disablefreezecam 1` skips it, the server's
+  `spec_freeze_traveltime`/`spec_freeze_time` time it;
   `games/cs_source/tests/ui/spectate.rs`). The target ID (the name under the
   crosshair; `hud_centerid`, `mp_playerid`) is the `TargetId`
   resource (`games/cs_source/tests/ui/target_id.rs`). Drive it
@@ -372,7 +381,7 @@ Only `Reflect`-registered types are visible; register new core components in
   The spectator bars on a real map: `--map cs_source:de_dust2 --window
   1280x720 --screenshot spec.png --frames 400 +mashup_rounds 1
   +mp_freezetime 0 +bot_add 2 +bot_add 2 +wait 60 +mashup_hurtme chest
-  500` (the death cam ends 2 s after the death, then a teammate is
+  500` (the death cam ends 6.5 s after the death, then a teammate is
   watched in first person, with their crosshair). The spectator team:
   `+spectate` (or `+jointeam 1`) flies free at once; `spec_player <name>`
   watches one; pressing duck opens the spectator menu; the scoreboard lists
@@ -928,8 +937,8 @@ Details and baseline numbers: [performance.md](performance.md).
   5.1x median 8.07; main world ... (cpu ..., N instr, ... ticks):
   RunFixedMainLoop 30.10 (cpu 3.00), ...; between frames ...; render
   world ...: queue ...`): the main world's slowest schedules and the
-  render world's time and, with `MASHUP_RENDER_PHASES=1`, its slowest
-  `Render` sets (opt-in: performance.md, "Baseline"), each with wall
+  render world's time and its slowest `Render` sets
+  (`MASHUP_RENDER_PHASES=0` leaves their marks out), each with wall
   and thread CPU ms, at most two lines a second (`(N more since the last)`). A profile
   build adds the frame's spans with the most self time (`spans by self
   ms: <system> 12.3 x2, ...`). The debug UI Perf tab has the same percentiles as

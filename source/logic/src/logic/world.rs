@@ -21,10 +21,9 @@
 //! think after their push step; env_global follows the public entity docs (no
 //! spec): "Set initial state" sets a global only if unset, globals outlive
 //! round restarts, Remove makes it dead; `!pvsplayer`/`!picker` are slot 1;
-//! round restarts keep the public multiplayer preserve list
-//! (`world::ROUND_KEEP`: func_brush, func_wall, info_target, soundscapes...;
-//! CS:S's own list unknown), fire logic_auto's OnNewGame, OnMapSpawn and
-//! OnMultiNewRound each round (CS:S unmeasured), leave decals as they are
+//! round restarts keep CS:S's measured classes (`world::ROUND_KEEP`), fire
+//! logic_auto's OnNewGame, OnMapSpawn and OnMultiNewMap each round (measured;
+//! never OnMultiNewRound), leave decals as they are
 //! (entity props are put back where they spawned, at rest, and shown again).
 //! Why it's OK for now: Each is a listed open question; the test map and probe
 //! server settle them.
@@ -660,20 +659,34 @@ pub enum GlobalState {
 }
 
 /// Classes a round restart keeps as they are instead of re-creating
-/// them (entity_io.md open question 1: the preserve list the spec quotes
-/// from the public multiplayer code; CS:S's own list is unknown). Matched
-/// case-insensitively; a trailing `*` matches a prefix.
+/// them: CS:S's, measured 2026-10-15 on every stock map (entity_io.md
+/// question 1: each entity's reference before and after `mp_restartgame`;
+/// the map's classes only, not the game's own managers). Every other class
+/// seen was re-created. Matched case-insensitively; a trailing `*` matches
+/// a prefix.
 pub const ROUND_KEEP: &[&str] = &[
     "worldspawn",
-    "func_brush",
-    "func_wall",
-    "func_buyzone",
-    "info_target",
+    "ai_hint",
+    "env_fog_controller",
     "env_soundscape*",
-    "trigger_soundscape",
+    "env_sun",
+    "env_wind",
+    "func_bomb_target",
+    "func_brush",
+    "func_buyzone",
+    "func_hostage_rescue",
+    "func_illusionary",
+    "func_wall",
+    "info_map_parameters",
+    "info_player_counterterrorist",
+    "info_player_terrorist",
+    "info_target",
     "keyframe_rope",
     "move_rope",
+    "point_viewcontrol",
+    "shadow_control",
     "sky_camera",
+    "trigger_soundscape",
 ];
 
 /// Whether a round restart keeps entities of this class.

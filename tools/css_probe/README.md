@@ -136,3 +136,13 @@ record a demo on the probe server over RCON:
 
 Demos are game output: keep them out of the repo (e.g. under `target/`).
 Afterwards `tv_enable 0` and a changelevel give the slot back.
+
+## Round restart keep-list
+
+`mashup_ents.sp` is a second plugin (compile it like `mashup_probe.sp`
+and `sm plugins load mashup_ents`): `mashup_ents <file>` writes every
+entity, networked or not, as `ref class hammerid targetname`.
+`roundkeep.py out.json` changes to each stock map, lists the entities
+before and after `mp_restartgame 1` and prints which classes were kept
+(same reference) and which re-created (specs/source/entity_io.md
+question 1; `world::ROUND_KEEP`).

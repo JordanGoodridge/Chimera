@@ -11,7 +11,9 @@
 //! maps rescuing every hostage wins for the counter-terrorists and the
 //! terrorists win on time; each reason pays its own bonus.
 //!
-//! Defaults are CS:S's (mp_freezetime 6, mp_roundtime 2.5, mp_buytime 1.5,
+//! Defaults are data (games/cs_source/data/rounds.toml, read with
+//! `rules::module::parse_settings`; the cvars set them after), CS:S's
+//! (mp_freezetime 6, mp_roundtime 2.5, mp_buytime 1.5,
 //! mp_startmoney 800: read from a fresh dedicated server over RCON,
 //! 2026-10-14, parity-gaps.md C9) and its well-known reward amounts: the
 //! kill reward (300), the elimination win (3250) and the loss bonus with its
@@ -51,9 +53,14 @@ use crate::{
 pub const ATTACKERS: Team = Team(1);
 pub const DEFENDERS: Team = Team(2);
 
-#[derive(Resource, Clone, Debug, PartialEq)]
+/// The module's numbers: CS:S's are data (games/cs_source/data/rounds.toml,
+/// `Default`); the cvars set them after.
+#[derive(Resource, Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoundSettings {
-    /// 1: play rounds (instead of deathmatch respawns).
+    /// 1: play rounds (instead of deathmatch respawns): `mashup_rounds`,
+    /// not data.
+    #[serde(skip)]
     pub enabled: u8,
     /// Seconds frozen at the start of a round (mp_freezetime).
     pub freeze_time: f32,
@@ -95,34 +102,19 @@ pub struct RoundSettings {
     pub hostage_kill_penalty: u32,
 }
 
+/// CS:S's round numbers (built in, parsed at run time).
+const ROUNDS_DATA: (&str, &str) = ("rounds.toml", include_str!("../../data/rounds.toml"));
+
 impl Default for RoundSettings {
+    /// CS:S's (`ROUNDS_DATA`); bad data panics (its tests load it).
     fn default() -> Self {
-        Self {
-            enabled: 0,
-            freeze_time: 6.0,
-            round_time: 2.5,
-            buy_time: 1.5,
-            start_money: 800,
-            max_money: 16000,
-            end_delay: 5.0,
-            win_bonus: 3250,
-            loss_bonus: 1400,
-            loss_step: 500,
-            loss_max: 3400,
-            kill_reward: 300,
-            teamkill_penalty: 3300,
-            tk_punish: 0,
-            win_bomb: 3500,
-            win_target_saved: 3250,
-            win_rescued: 3500,
-            win_not_rescued: 3250,
-            plant_loss_bonus: 800,
-            planter_reward: 300,
-            defuser_reward: 0,
-            hostage_touch: 150,
-            hostage_rescue: 1000,
-            hostage_kill_penalty: 1500,
-        }
+        static SETTINGS: std::sync::OnceLock<RoundSettings> = std::sync::OnceLock::new();
+        SETTINGS
+            .get_or_init(|| {
+                crate::rules::module::parse_settings(ROUNDS_DATA.0, ROUNDS_DATA.1)
+                    .unwrap_or_else(|e| panic!("CS:S round data: {e}"))
+            })
+            .clone()
     }
 }
 

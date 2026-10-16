@@ -40,8 +40,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`chimera/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
-- client: Spectating numbers (death cam, chase distance, forcecamera) from general knowledge, not measured (`chimera/client/src/client/spectate.rs`)
-- client: Freeze cam timings and distances are guesses (local cvars) (`games/cs_source/src/ui/freeze_cam.rs`)
+- client: Spectating numbers partly measured (bots in a SourceTV demo: specs/cs_source/spectating.md); the death cam before the freeze cam, chase distance, our "fixed" mode from general knowledge (`chimera/client/src/client/spectate.rs`)
+- client: Freeze cam distances, flash and when it starts are guesses (timings measured, server cvars) (`games/cs_source/src/ui/freeze_cam.rs`)
 - client: Target ID range, placement and smoke rule are guesses (`games/cs_source/src/ui/target_id.rs`)
 - weapon, games/cs_source: cl_autowepswitch weights from the spec's table; switching rules partly ours (`chimera/sim/src/weapon/drop.rs`)
 - games/cs_source: View-model idle timing for the knife and TMP is our reading, captures wanted (`games/cs_source/src/game/view_anim.rs`)
@@ -77,9 +77,9 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
 - map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`chimera/present/src/render/rope_sway.rs`)
 - weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`games/cs_source/data/weapons/`, `games/cs_source/src/game/weapons.rs`)
-- weapon: Weapon data sets are leaked and process-wide; only a game's own set gets models; buy menu and spawn kit still Rust (`chimera/sim/src/weapon/data.rs`)
+- weapon: Weapon data sets are leaked and process-wide; only a game's own set gets models (`chimera/sim/src/weapon/data.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`games/cs_source/src/game/pain.rs`)
-- weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
+- weapon: A dropped gun carries its reserve (as CS:S's measured, M20; we have no per-player ammo pools); a refused touch is retried every tick. OK for now: Matches CS:S in every measured case.
 - weapon: mashup_usepickup (+use pickup) reach and rules are ours (`chimera/sim/src/weapon/drop.rs`)
 - movement: Source movement lacks base velocity; the landing roll keeps the shared code's spring; some fall-damage cases ignored (`games/cs_source/src/game/movement.rs`)
 - games/cs_source: Hit slowdown a tick late (after movement); flinch set, not added (`games/cs_source/src/game/hit_reaction.rs`)

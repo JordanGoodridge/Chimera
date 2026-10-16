@@ -10,7 +10,7 @@ use crate::stack::{
     core::{Damage, Hitgroup, LocalPlayer, Team},
     games::cs_source::{
         TICK_INTERVAL,
-        weapons::{CsWeaponsPlugin, NIGHTVISION_OFF, NIGHTVISION_ON, NIGHTVISION_PRICE},
+        weapons::CsWeaponsPlugin,
     },
     greybox::GreyboxMapPlugin,
     harness::{CsSim, Sim},
@@ -19,6 +19,12 @@ use crate::stack::{
     rules::rounds::RoundState,
     weapon::economy::{Money, NightVision, buy},
 };
+
+/// CS:S's night vision price and sound entries (its shop data,
+/// games/cs_source/data/economy.toml).
+const NIGHTVISION_PRICE: u32 = 1250;
+const NIGHTVISION_ON: &str = "Player.NightVisionOn";
+const NIGHTVISION_OFF: &str = "Player.NightVisionOff";
 
 fn setup() -> (Sim, Entity, Entity) {
     let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin, NightVisionPlugin));

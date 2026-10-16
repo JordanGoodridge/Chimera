@@ -1300,6 +1300,7 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   | AK-47 airborne | 2.0 | 0.5 | 1.0 | 0.35 | −9.0 | 6.0 (reached once) |
   | M4A1 standing (silencer off) | 0.65 | 0.25 | 0.35 | 0.015 | −3.5 | 2.25 |
   | M4A1 crouched | 0.6 | 0.2 | 0.3 | 0.0125 | −3.25 | 2.0 |
+  | M4A1 moving (2026-10-15; silencer on and off alike) | 1.0 | 0.28 | 0.45 | 0.045 | −3.75 | 3.0 |
   | FAMAS standing (2026-10-15) | 0.625 | 0.25 | 0.375 | 0.0125 | -3.5 | 2.25 |
   | FAMAS crouched (2026-10-15) | 0.575 | 0.2 | 0.325 | 0.011 | -3.25 | 2.0 (not reached; the family's) |
   | FAMAS moving (2026-10-15) | 1.0 | 0.275 | 0.45 | 0.05 | -4.0 | 2.5 |
@@ -1332,8 +1333,30 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   | M249 moving (2026-10-15) | 1.1 | 0.3 | 0.5 | 0.06 | -4.0 | 3.0 |
 
   The 2026-10-15 rows: one full clip each, side-running at 250 for
-  "moving"; airborne for those guns is unmeasured (the data uses the
-  moving set).
+  "moving"; airborne in the table below.
+- Airborne (2026-10-15; full-auto held from the tick after a jump until
+  landing, about 44 airborne ticks, 7-10 shots; only shots fired in the air
+  counted; repeated runs identical; caps marked "≥" were not reached within
+  one jump, the data uses the value in brackets):
+
+  | weapon airborne | a | b | c | e | pitch cap | yaw cap |
+  |---|---|---|---|---|---|---|
+  | M4A1 | 1.2 | 0.23 | 0.5 | 0.15 | −5.5 | 3.5 |
+  | FAMAS | 1.25 | 0.22 | 0.45 | 0.18 | −5.5 | 4.0 |
+  | Galil | 1.2 | 0.23 | 0.5 | 0.15 | −5.5 | 3.5 |
+  | SG 552 | 1.25 | 0.22 | 0.45 | 0.18 | −6.0 | 4.0 |
+  | AUG | 1.25 | 0.22 | 0.45 | 0.18 | −5.5 | ≥ 3.54 (4.0, as FAMAS and SG 552) |
+  | MP5 | 0.9 | 0.35 | 0.475 | 0.0425 | −5.0 | ≥ 2.74 (3.0) |
+  | P90 | 0.9 | 0.35 | 0.45 | 0.04 | −5.25 | ≥ 2.57 (3.0) |
+  | UMP | 0.125 | 0.55 | 0.65 | 0.0475 | −5.5 | ≥ 2.75 (3.0) |
+  | MAC-10 | 1.3 | 0.4 | 0.55 | 0.05 | −4.75 | 3.75 |
+  | TMP | 1.1 | 0.35 | 0.5 | 0.045 | −4.5 | ≥ 2.61 (3.0) |
+  | M249 | 1.8 | 0.45 | 0.65 | 0.125 | −5.0 | 3.5 |
+
+  The UMP's first airborne kick really is 0.125 (n = 1), then 1.225, 1.775,
+  2.325 (a + b n). The M4A1 rows are with its silencer toggled once after
+  the give (a fresh give fired once and stopped; the silencer state of the
+  measured runs isn't logged).
   "Moving" is decided by the speed on the shot tick: 5.06 u/s gives the
   moving set, 0 the standing one. Side flips: M4A1 13 of 116 (standing),
   18 of 116 (crouched); with M3's 17 of 145 overall 48 of 377 ≈ 1/8.
@@ -1436,6 +1459,20 @@ positions):
   adds the player's velocity (352 forward).
 - At level pitch it lands about 0.6 s later and stops 95 units from where
   it left the hand, 1.26 s after the drop (65 looking down, 121 up).
+- Taking it back (the dropper standing or walking onto it, `mashup_track`
+  owner per tick): never before 49 ticks after the first tick it lies loose
+  (about 0.75 s; three drops at the feet, taken on the same tick whether it
+  had landed 5 ticks before or was still falling), then at once when in
+  reach. Not the shared template's 1.0 s (section 3.9).
+- Same type carried (a fresh AK-47 with 5 in the clip and 0 reserve, standing
+  3 s on a dropped one holding 30 + 50): nothing is taken, neither clip nor
+  reserve, and the dropped gun stays. Thrown the fresh one away, the old one
+  is taken with 30 in the clip and **50 in reserve**: a dropped gun carries
+  its reserve with it.
+- Reach: taken with the bot's origin 59.0 units (horizontally) from the
+  AK-47's origin lying on the floor, not at 58.9 the other way round
+  (looking 60° down, it came to rest 58.9 away and stayed): the 36-unit grown
+  box of 3.9 plus the box halves.
 
 ### Not measured yet
 
@@ -1443,8 +1480,8 @@ M9 shotgun reload, M12 hitbox reach, M14 drop/pickup, silenced damage, the
 knife's hitbox/hull interplay, the RNG (Q1); for M13 the damage factors of
 metal, sand and other materials, penetration distances of other ammo types,
 whether the range halving applies after walls, and shotgun pellets; recoil
-of the other automatic weapons, crouched-moving and burst/scoped/silenced
-modes; the airborne inaccuracy target.
+in crouched-moving and burst/scoped/silenced modes; the airborne
+inaccuracy target.
 
 ## Open questions
 

@@ -54,10 +54,10 @@ restarts.
    (func_brush, func_wall, func_buyzone, info_target, soundscapes,
    ropes, sky_camera). Tests: logic unit tests (`restart_tests.rs`),
    games/cs_source/tests/it/map_logic.rs, de_nuke vents and doors, cs_office windows.
-   Open (probe server, entity_io.md open question 1): CS:S's own keep
-   list (does a func_brush disabled in round 1 stay disabled?); which
-   logic_auto outputs fire each round (ours: OnNewGame, OnMapSpawn,
-   OnMultiNewRound; OnMultiNewMap only at map load); whether decals,
+   Measured 2026-10-15 (entity_io.md question 1): CS:S's keep list (now
+   `ROUND_KEEP`; a func_brush is kept, so stays as it was) and
+   logic_auto's outputs each round (OnNewGame, OnMapSpawn, OnMultiNewMap,
+   as at map load; never OnMultiNewRound). Open: whether decals,
    prop_physics and env_global states reset; whether the restart runs
    at the freeze's start (ours) or the round's end. Also done: the
    announcer (`map::RoundSounds`: `Event.TERWin`/`Event.CTWin`/
