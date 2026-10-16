@@ -10,7 +10,10 @@
 //! model) spawned at each round start, +use to lead/stop (defenders only),
 //! following over the nav mesh (stop/walk/run distances, give up when far or
 //! unseen), rescue in a rescue zone (or near a defender spawn), `HostageTally`,
-//! hurt/killed events, `mp_hostagepenalty` (`HostagePenalty`).
+//! hurt/killed events, `mp_hostagepenalty` (`HostagePenalty`), how bullets
+//! hurt them (`HostageRules::bullets` as each one's `weapon::BulletTarget`:
+//! CS:S's own hitgroup multipliers, a second hit through the body, health
+//! a float; measured, spec Q8).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -26,7 +29,7 @@ use crate::{
     core::{Damage, Died, Health, Intent, LocalPlayer, MaxSpeed, MovementState, SimSet, SpawnPoint, Team},
     map::{BodyName, GameSound, PlaySound, nav::NavMesh},
     slots::{Loadout, MovementSlot, set_movement},
-    weapon::Inventory,
+    weapon::{BulletTarget, HitgroupScale, Inventory},
 };
 
 /// Sound entries hostages use (the game's names).
@@ -66,12 +69,31 @@ pub struct HostageRules {
     pub spawn_rescue_radius: f32,
     /// `mp_hostagepenalty`: hostage kills before being removed (0: never).
     pub penalty: u32,
+    /// How bullets hurt them (on each hostage as its `BulletTarget`).
+    pub bullets: BulletTarget,
     pub sounds: HostageSounds,
 }
+
+/// CS:S's hostage hitgroup multipliers (measured, spec Constants,
+/// Hostages, "the rule"): not the players'.
+pub const HOSTAGE_HITGROUPS: HitgroupScale = HitgroupScale {
+    head: 2.5,
+    chest: 1.5,
+    stomach: 1.75,
+    arm: 0.75,
+    leg: 0.6,
+};
 
 impl Default for HostageRules {
     fn default() -> Self {
         Self {
+            // Measured (spec Q8): their own multipliers, a bullet through
+            // one of their boxes may hit another, health a float.
+            bullets: BulletTarget {
+                hitgroups: Some(HOSTAGE_HITGROUPS),
+                hits_inside: true,
+                exact: true,
+            },
             models: Vec::new(),
             leader_team: Team(2),
             health: 1.0,
@@ -529,6 +551,7 @@ fn spawn_hostage(
         // No weapons for them.
         Inventory::default(),
         MaxSpeed(rules.walk_speed * UNIT),
+        rules.bullets,
     ));
     // Which model: the map's `HostageType` doesn't pick one of the shipped
     // four (spec Q9); spread them by index.

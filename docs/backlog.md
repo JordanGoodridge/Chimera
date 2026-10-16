@@ -546,15 +546,6 @@ Esc entry, Call Vote), players joining a running vote, bots voting with
 `sv_vote_bots_allowed 1` (our rule). Left: CS:S's rules, issues, look
 and how its setup dialog opens, from capture C25 (parity-gaps.md).
 
-- Hostage damage (measured 2026-10-16, objectives.md Constants, Hostages,
-  "the rule"): hostages use their own hitgroup multipliers (head 2.5,
-  chest 1.5, stomach 1.75, arms 0.75, legs 0.6; ours: the player table),
-  and a bullet passing through a hostage can hit another of its boxes at
-  half damage with falloff again (ours skips a character once passed:
-  `weapon::deliver` `skip`, `character_exit` leaves the whole body). The
-  heavy test `map_objectives::office_hostage_shots_from_150_units`
-  replays the probe's shots; health is a float (losses add up, then
-  truncate).
 - Missing server kicks (measured defaults 2026-10-16, objectives.md Q2):
   `mp_autokick` 1 (kick idle and team-killing players) and
   `mp_spawnprotectiontime` 5 (kick a player who team-kills within 5 s of a
