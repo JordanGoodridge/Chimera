@@ -175,9 +175,16 @@ resolution. `--help` lists all options.
 System order: `MASHUP_SYSTEM_DUMP=<file>` builds the game as it would
 run (with the same options and plugins; needs the display) and writes
 every schedule's systems in the order they run, the main world's then the
-render world's, to the file instead of running. Dump before and after a
+render world's (taken before pipelined rendering moves it to its own
+thread), to the file instead of running. Dump before and after a
 refactor that moves the client's plugins or systems and `diff` the files
-(names differ by their module paths); the simulation's own order on real
+(names differ by their module paths); also with and without an added
+system, to see which others it reorders (the single-threaded executors
+run unordered systems in whatever order the graph sorts to).
+`MASHUP_AMBIGUITY=1` with it logs the `Render` schedule's ambiguous
+pairs (systems with conflicting access and no order; Bevy exempts its
+own shared render resources): one today, ours (`frame_metrics`'
+`render_start` and `apply_extract_commands`). The simulation's own order on real
 maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`MASHUP_SPAWN_DUMP`).
 
 To photograph a live run step by step (e.g. before and after a round
@@ -926,8 +933,8 @@ Details and baseline numbers: [performance.md](performance.md).
   5.1x median 8.07; main world ... (cpu ..., N instr, ... ticks):
   RunFixedMainLoop 30.10 (cpu 3.00), ...; between frames ...; render
   world ...: queue ...`): the main world's slowest schedules and the
-  render world's time and, with `MASHUP_RENDER_PHASES=1`, its slowest
-  `Render` sets (opt-in: performance.md, "Baseline"), each with wall
+  render world's time and its slowest `Render` sets
+  (`MASHUP_RENDER_PHASES=0` leaves their marks out), each with wall
   and thread CPU ms, at most two lines a second (`(N more since the last)`). A profile
   build adds the frame's spans with the most self time (`spans by self
   ms: <system> 12.3 x2, ...`). The debug UI Perf tab has the same percentiles as

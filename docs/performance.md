@@ -693,13 +693,30 @@ sets, below.) Read the render instructions and the tick column across
 builds; the main world's instructions only for large changes.
 
 Marks between the render world's sets (each set's share in the hitch
-log) are opt-in, `MASHUP_RENDER_PHASES=1`: with them always on, two of
-five cs_office benches quit on a wgpu validation error ("Indirect draw
-uses bytes 840..4700 using count 193 which overruns indirect buffer of
-size 4660"); without them, and with main's build before this work, none
-of seven did. Extra systems reorder the single-threaded executor's
-ambiguous render systems, so some order of Bevy's render systems
-breaks indirect draws on that map (backlog).
+log) were opt-in at first: with them on, two of five cs_office benches
+(2026-10-09) quit on a wgpu validation error ("Indirect draw uses bytes
+840..4700 using count 193 which overruns indirect buffer of size
+4660"), and without them none of seven did. Extra systems reorder the
+single-threaded executor's unordered systems, so the guess was an order
+of Bevy's render systems that breaks indirect draws.
+
+Rechecked 2026-10-15 (same Bevy, 0.19.1): it doesn't reproduce. With
+the marks, 0 of 7 cs_office benches (dev build) and 0 of 8 (playtest
+build) failed at load 17-44, and 0 of 6 with prop shadows redrawn with
+a new mesh handle every frame as in that build (fixed hours later:
+"Frame time pass"). The `Render` schedule's order with and without the
+marks (`MASHUP_SYSTEM_DUMP`, OBSERVABILITY.md) differs only in systems
+that don't touch the indirect buffers: asset preparation of materials,
+view preparation (TAA jitter, decals, depth usages), the phase sorts
+among themselves, pipeline preparation, and the cleanup's
+`reset_render_asset_bytes_per_frame`; batching, the phase buffers'
+collection and `write_indirect_parameters_buffers` keep their order.
+Bevy's ambiguity detection (`MASHUP_AMBIGUITY=1`) reports one
+unordered pair in `Render`, ours (`render_start` and
+`apply_extract_commands`, harmless). So the marks are on by default
+now; `MASHUP_RENDER_PHASES=0` leaves them out if the error comes back
+(then: the frame's views and phases, and whether a view's binned phase
+was drawn without being batched that frame).
 
 ### Regression gate
 
