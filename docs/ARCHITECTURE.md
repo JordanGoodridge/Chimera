@@ -1,6 +1,6 @@
 # Architecture
 
-A map of the code. Design rationale lives in the [README](../README.md); this
+A map of the code. Design rationale lives in [DESIGN.md](DESIGN.md); this
 file says where things are and which way dependencies may point.
 
 ## Crates
