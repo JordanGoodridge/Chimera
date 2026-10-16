@@ -513,6 +513,85 @@ fn awp_penetration_passes_two_players() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Targets bullets treat their own way (`BulletTarget`: CS:S's hostages,
+// objectives.md Q8)
+
+/// The hostages' multipliers (head 2.5, chest 1.5, stomach 1.75, arms
+/// 0.75, legs 0.6).
+fn hostage_like(hits_inside: bool, exact: bool) -> crate::stack::weapon::BulletTarget {
+    crate::stack::weapon::BulletTarget {
+        hitgroups: Some(crate::stack::objectives::hostages::HOSTAGE_HITGROUPS),
+        hits_inside,
+        exact,
+    }
+}
+
+/// One AK-47 shot at a target 8 m ahead (about 315 units) given
+/// `bullet` and two boxes one behind the other at chest height: the
+/// front one (nearer the shooter) chest, the back one stomach. The
+/// damage it lost, in hit points (unrounded).
+fn shoot_boxes(bullet: crate::stack::weapon::BulletTarget) -> f32 {
+    use crate::stack::core::{Hitbox, Hitboxes, Hitgroup};
+    let at = |z: f32, group| Hitbox {
+        center: Vec3::new(0.0, 1.3, z),
+        half: Vec3::new(0.15, 0.15, 0.05),
+        rotation: Quat::IDENTITY,
+        group,
+    };
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
+    sim.app
+        .world_mut()
+        .entity_mut(target)
+        .insert((bullet, Hitboxes(vec![at(0.1, Hitgroup::Chest), at(-0.1, Hitgroup::Stomach)])));
+    sim.intent(target).yaw = 0.0;
+    sim.seconds(1.1);
+    let chest = sim.position(target) + Vec3::Y * (1.3 - 0.9);
+    aim_at(&mut sim, shooter, chest);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+    (1.0 - health(&sim, target)) * 100.0
+}
+
+#[test]
+fn a_target_s_own_hitgroup_multipliers_replace_the_weapon_s() {
+    // The front (chest) box only: 36 x 0.98^(315/500) = 35.55 x the
+    // hostage's chest 1.5 = 53.33 (a player's chest: x 1.0, 35), kept
+    // exact; truncated to 53 without `exact`.
+    let exact = shoot_boxes(hostage_like(false, true));
+    assert!((exact - 53.33).abs() < 0.05, "{exact}");
+    let whole = shoot_boxes(hostage_like(false, false));
+    assert!((whole - 53.0).abs() < 1e-3, "{whole}");
+    let player = shoot_boxes(crate::stack::weapon::BulletTarget::default());
+    assert!((player - 35.0).abs() < 1e-3, "{player}");
+}
+
+#[test]
+fn a_bullet_goes_on_inside_a_target_that_allows_it() {
+    // Only with `hits_inside` does the bullet, having passed the front
+    // box, hit the back one: x 0.5 carried (a passed character's factor,
+    // using 21.5 units of the AK-47's 39), falloff again by the distance
+    // from the eye (0.987 here, as for a collateral), the stomach's 1.75:
+    // 53.33 + 35.55 x 0.5 x 0.987 x 1.75 = 53.33 + 30.71 = 84.04. Without
+    // it, the front box alone (the target left whole, as players are).
+    let alone = shoot_boxes(hostage_like(false, true));
+    let inside = shoot_boxes(hostage_like(true, true));
+    let first = alone / 1.5;
+    let falloff = first / 36.0;
+    assert!((alone - 53.33).abs() < 0.05, "front box alone: {alone}");
+    let second = first * 0.5 * falloff * 1.75;
+    assert!(
+        (inside - (alone + second)).abs() < 0.05,
+        "front then back box: {inside}, the rule says {}",
+        alone + second
+    );
+}
+
+
 #[test]
 fn knife_never_passes_a_player() {
     let mut sim = sim();

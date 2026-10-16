@@ -165,7 +165,7 @@ economy until CS:GO). The first three rows are already in our
 
 | Name (ours) | Value | Unit | Meaning |
 |---|---|---|---|
-| hostage_health | 100 | hp | measured (Q8); damage rule not found (below) |
+| hostage_health | 100 | hp | measured (Q8); a float; damage by the rule below |
 | hostage_models | `characters/hostage_01..04` | – | the only hostage models shipped; maps name `models/hostage.mdl` (cs_havana, cs_office) or `HostageType` 0/1 (cs_assault, cs_compound), neither of which selects them (Q9) |
 | hostage_anims | HL2 `Humans/male_shared`, `male_gestures`, `male_postures` (included) | – | own file has only a 101-frame ragdoll sequence |
 | hostage_follow_* | see Behaviour, *hyp.* | – | Q10 |
@@ -196,7 +196,10 @@ three shots per aim height 66, 60, 48, 36, 24, 12):
 - Health is a float: the hits add up and the lost health shown is
   truncated after (53.69 + 26.67 → 80, not 79).
 - Every damage below and in the repeat fits this; the table that follows
-  is the first, single-shot pass, kept for the record.
+  is the first, single-shot pass, kept for the record (its "ours"
+  columns are from before ours followed the rule; ours now does: the
+  heavy test `map_objectives::office_hostage_shots_from_150_units`
+  checks each shot against the rule on the boxes ours crosses).
 
 Measured 2026-10-16, **hostage damage (Q8), no rule found**: probe
 server, cs_office, hostage 121 (the map's first `hostage_entity`) with its
