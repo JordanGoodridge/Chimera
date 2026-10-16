@@ -11,7 +11,8 @@
 //! Server, Game and Bot pages: `CreateMultiplayerGame*Page.res`, the Game
 //! page's options from `cfg/settings.scr`); controls the game has and
 //! mashup lacks are drawn greyed. Ours (settings CS:S's options don't
-//! have) are in our own dialog, Lucker Party Options, from our entries.
+//! have) are in our own dialog, Lucker Party Options (`menu extras`; the
+//! menus list only `GameMenu.res`'s entries, none of ours).
 //! In the install's GameUI scheme (`map::hud::GameUi`); without the
 //! install, in built-in colours and words, controls in a column. The game
 //! keeps running while it is open; the mouse is free, so the local
@@ -24,8 +25,8 @@
 //! left-hand entries, `options_pages.rs` the options' tabs and their Advanced
 //! dialogs, `create_server.rs`, `loading.rs` the loading and Disconnected
 //! dialogs, `player_list.rs` the player list (mute players' voice), `extras.rs`
-//! ours (Lucker Party Options, Bots, Team);
-//! `vote_setup.rs` the vote setup dialog (Call Vote: the server's issues and
+//! ours (Lucker Party Options, Bots, Team: `menu extras|bots|team`);
+//! `vote_setup.rs` the vote setup dialog (the server's issues and
 //! their choices, opened by `callvote` alone); `model.rs` the shared model,
 //! `draw.rs` the drawing, `systems.rs` input and the Bevy systems,
 //! `tests.rs`): Esc, `menu [page or options tab]`,
@@ -54,9 +55,10 @@
 //! players and ping). The entries at the left: the game's `GameMenu.res`
 //! entries mashup can do, in its words and order (Resume, Disconnect and the
 //! Player List only in a game, Find Servers opens the server browser (`server_browser.rs`), Create
-//! Server, report a bug), then ours after a gap (quick start: rounds on
-//! de_dust2 with bots; the greybox test map; bots and team in a game; Lucker
-//! Party Options: the settings CS:S's options don't have; console), under the
+//! Server, report a bug), none of ours (they are console commands:
+//! `mashup_quickstart` rounds on de_dust2 with bots, `map greybox`, `menu
+//! bots`, `menu team` (or `chooseteam`), `callvote`, `menu extras` Lucker
+//! Party Options, the console key), under the
 //! game's title (`gameinfo.txt` title lines in the scheme's title font, else
 //! `MASHUP`); each dialog a VGUI frame (`widgets.rs`: moved by its title bar,
 //! brought to the front by a click, closed from its X, centred the first time
@@ -235,7 +237,7 @@ impl Plugin for GameMenuPlugin {
              videoadvanced|gamma|mpadvanced|extras|players]: open the game menu (Esc) on a page (newgame: Create Server, \
              game and bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced \
              the video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party \
-             Options; players: the player list, to mute players).",
+             Options; bots: add and kick bots; team: join a team; players: the player list, to mute players).",
             |w, a| {
                 let arg = a.first().map(|s| s.to_lowercase());
                 let tab = TABS.iter().find(|(t, ..)| Some(t.page()) == arg.as_deref()).map(|(t, ..)| *t);
@@ -298,6 +300,33 @@ impl Plugin for GameMenuPlugin {
                     console.submit(line);
                 }
                 Ok(Some(state))
+            },
+        )
+        .console_command(
+            "mashup_quickstart",
+            "Ours: start a game at once: rounds on de_dust2 (else the first map) with 9 normal bots (five \
+             terrorists, four counter-terrorists besides you), single player; Create Server's other settings as \
+             they are.",
+            |w, _| {
+                // The settings read from the console, as opening the menu does.
+                open_menu(w, Page::Main);
+                let mut out = Outcome::default();
+                w.resource_mut::<GameMenu>().quick_start(&mut out);
+                if out.lines.is_empty() {
+                    return Err("no maps to start".into());
+                }
+                let mut console = w.resource_mut::<Console>();
+                for line in out.lines {
+                    console.submit(line);
+                }
+                *w.resource_mut::<AfterLoad>() = AfterLoad {
+                    lines: out.after_load,
+                    ..default()
+                };
+                if out.close {
+                    w.resource_mut::<RegrabCursor>().0 = true;
+                }
+                Ok(None)
             },
         )
         .console_command("gameui_activate", "Open the game menu (Esc).", |w, _| {

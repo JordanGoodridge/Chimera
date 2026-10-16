@@ -1,5 +1,6 @@
 //! Our own dialogs: Lucker Party Options (the settings CS:S's options
-//! don't have) and, in a game, Bots and Team.
+//! don't have; `menu extras`) and Bots and Team (`menu bots`, `menu
+//! team`). No menu entry opens them: CS:S's `GameMenu.res` has none.
 
 use super::*;
 

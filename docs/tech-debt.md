@@ -96,7 +96,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source ui, rules: Round win panel MVP and fun-fact rules are ours (`games/cs_source/src/ui/win_panel.rs`)
 - net: Votes: cvars measured, the pass rule, early finish, timers' keys, who may vote (joiners too) are ours (`chimera/net/src/net/vote.rs`)
 - games/cs_source: Vote issues (kick, change level, restart game), the kick's reason and bots' votes are ours (`games/cs_source/src/game/votes.rs`)
-- games/cs_source ui: Vote setup dialog: its Esc entry, title, issue names and list look are ours (`games/cs_source/src/ui/game_menu/vote_setup.rs`)
+- games/cs_source ui: Vote setup dialog: how it opens (`callvote` alone), title, issue names and list look are ours (`games/cs_source/src/ui/game_menu/vote_setup.rs`)
 - games/cs_source ui: Vote panels are hl2's out-of-date file as it stands; issue words ours (`games/cs_source/src/ui/vote_hud.rs`)
 - games/cs_source ui: Damage indicator: which bar lights and its fade are ours (`games/cs_source/src/ui/hud_sprites.rs`)
 - rules: Team balance: when and who moves are ours; no warning message (`games/cs_source/src/rules.rs`)

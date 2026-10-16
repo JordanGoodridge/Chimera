@@ -241,7 +241,7 @@ Only `Reflect`-registered types are visible; register new core components in
   video tab's, `menu gamma` its brightness dialog (with
   `+mat_monitorgamma 1.6` or `2.6` before it: the whole frame lighter or
   darker), `menu mpadvanced` the multiplayer tab's (its list from the
-  install's `cfg/user.scr`), `menu extras` Lucker Party Options, `menu players` the player list (mute). `menuinput <input>` drives
+  install's `cfg/user.scr`), `menu extras` Lucker Party Options, `menu bots` and `menu team` our Bots and Team dialogs, `menu players` the player list (mute); the menus list only CS:S's entries, so these (and `mashup_quickstart`: rounds on de_dust2 with bots; `map greybox`; `callvote` alone for the vote setup dialog) are how ours open. `menuinput <input>` drives
   the open dialog as keys would (`focus <cvar|map|bots|botcount|botteam|
   difficulty|aspect>`, `row <n>` (the page's nth row), `open` a focused combo box's list, `down`, `up`, `enter`,
   `space`, `escape`, `tab`, `backtab`, `type <text>`, `pick <n>`, `sheet
