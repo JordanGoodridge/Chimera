@@ -70,8 +70,8 @@
 //! models over player-clip ramps; their meshes as colliders stopped 13 of 84
 //! surf rides dead), 206 of kz_hikari_od_nh_v2's 485, 55 of
 //! gg_fy_tactic_fight's, 44 of surf_halloween_tf2's. Why it's OK for now: Exact
-//! on crates and boxes; terrain matches CS:S in movecmp (landing on a slope
-//! picked a neighbouring triangle once: 0.15 u/s off for a tick). Of
+//! on crates and boxes; terrain matches CS:S in movecmp (a crease's edge
+//! bevels count, as in CS:S: movement.md open question 19). Of
 //! brushes or triangles stopping a trace at the same back-off, the one
 //! really reached first gives the normal (our rule, matching the probe's
 //! dust2 walk; movement.md open question 19). Probe for the
