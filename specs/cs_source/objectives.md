@@ -613,7 +613,13 @@ reads). Useful observable fields on a probe: the player's money, his
 defuse length/countdown and "blow" time, and the round's remaining
 hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
 
-1. **Q1 Plant time and movement.** Give the probe bot a C4
+1. **Q1 Answered (2026-10-16, probe server, dust2 B):** the plant completes
+   200 ticks (3.0 s) after the attack press, the tick of `c4_plant.wav`
+   (also Q14); with forward held the planter's speed stays 0 throughout;
+   ducking still works while arming (duck pressed with attack: ducked 30
+   ticks later, planted ducked); releasing attack before then aborts
+   (no more clicks, the C4 stays in hand). Teleported out of the zone:
+   not tried. Was: **Q1 Plant time and movement.** Give the probe bot a C4
    (`mashup_give weapon_c4`), place it inside dust2 A, `mashup_wrun` with
    primary held for 250 ticks: log the tick of `bomb_beginplant` and
    `bomb_planted` (expect 200 ticks). Repeat with forward held: does the bot
