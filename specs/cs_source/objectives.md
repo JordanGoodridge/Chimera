@@ -176,6 +176,28 @@ cs_militia 4, cs_office 4 hostages. Every cs_ map has 1–4
 `func_hostage_rescue` brushes; no stock map uses the point entity
 `info_hostage_rescue`, `info_bomb_target`, or any VIP entity.
 
+Measured 2026-10-16, **hostage damage (Q8), the rule** (probe server,
+cs_office, hostage 121 as below, AK-47 and Desert Eagle from 150 units, a
+SourceMod hook on the hostage's TraceAttack and OnTakeDamage logging each
+hit's damage before the multiplier, its hitgroup, and the damage taken;
+three shots per aim height 66, 60, 48, 36, 24, 12):
+
+- Each hit takes the shot's damage (after range falloff) × a hostage-only
+  hitgroup multiplier: **head 2.5, chest 1.5, stomach 1.75, left and right
+  arm 0.75, left and right leg 0.6** (exact to 3 decimals on both guns,
+  e.g. AK 35.79 → head 89.47, chest 53.69; Deagle 50.82 → stomach 88.94).
+- A bullet often hits the same hostage **twice**: after the first box it
+  goes on through the hostage and hits another box (or the same group
+  again) with half the damage, range falloff applied again (AK 35.79 →
+  17.78, Deagle 50.85 → 23.78: × 0.5 × RangeModifier^(d/500)), the
+  rule M13 found for a player a bullet passes; whether it does depends
+  on where the spread puts the line (z 60: chest, then chest again in 2
+  of 3 shots).
+- Health is a float: the hits add up and the lost health shown is
+  truncated after (53.69 + 26.67 → 80, not 79).
+- Every damage below and in the repeat fits this; the table that follows
+  is the first, single-shot pass, kept for the record.
+
 Measured 2026-10-16, **hostage damage (Q8), no rule found**: probe
 server, cs_office, hostage 121 (the map's first `hostage_entity`) with its
 feet at (1784, 734, −159.9), health 100; the shooter standing at
@@ -725,7 +747,7 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    a moving platform? Dump its position and collision group after a plant.
    Can the defuser move or crouch while defusing (`mashup_wrun` with Use and
    forward held, looking at the bomb)?
-8. **Q8 Partly measured (2026-10-16):** health 100; ten single shots from
+8. **Q8 Answered (2026-10-16): see Constants, Hostages, "the rule" (hostage hitgroup multipliers, a second hit through the hostage).** Earlier: health 100; ten single shots from
    150 units and ours beside them under Constants, Hostages ("hostage
    damage, no rule found"): they don't follow the player multipliers
    and no single rule fits them; the re-measure needed is described
