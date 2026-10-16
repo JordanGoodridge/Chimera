@@ -3,8 +3,9 @@
 //! server's case), one calls a kick vote on another, the votes go to the
 //! server and the kick goes through `kickid`'s path; a failed vote can't
 //! be called again for `sv_vote_failure_timer`, a caller can't call again
-//! for `sv_vote_creation_timer`, bots don't vote, the host can't be voted
-//! off.
+//! for `sv_vote_creation_timer`, bots don't vote (with
+//! `sv_vote_bots_allowed 1` they do), the host can't be voted off; a
+//! player who joins or rejoins while a vote runs sees it and may vote.
 
 use std::time::Duration;
 
@@ -215,4 +216,72 @@ fn the_host_cant_be_voted_off() {
     run(sim.clients[1].app.world_mut(), "vote option2");
     assert!(sim.until(60, |s| !voting(s)));
     assert!(sim.until(200, |s| s.clients[1].app.world().resource::<NetRole>() == &NetRole::Standalone));
+}
+
+/// The server's running vote.
+fn active(sim: &NetSim) -> crate::stack::net::vote::ActiveVote {
+    sim.server.app.world().resource::<Votes>().active.clone().expect("a vote runs")
+}
+
+#[test]
+fn a_player_joining_or_rejoining_a_running_vote_sees_it_and_may_vote() {
+    let mut sim = three();
+    run(sim.server.app.world_mut(), "sv_vote_timer_duration 60");
+    assert!(call(&mut sim, 0, "restartgame"));
+    assert_eq!(active(&sim).voters.len(), 3);
+    // A fourth player joins: once in, they see the vote and may vote.
+    let late = sim.add_client(|_| {});
+    sim.until_joined(400);
+    assert!(sim.until(80, |s| view(s, late).active.is_some()), "the joiner wasn't shown the vote");
+    assert!(voting(&sim), "the vote ended while they joined");
+    let v = view(&sim, late).active.unwrap();
+    assert_eq!((v.issue.as_str(), v.yes, v.eligible, v.mine), ("restartgame", 1, 4, None));
+    assert!(v.may_vote && view(&sim, late).awaiting());
+    // Everyone else sees one more who may vote.
+    assert!(sim.until(40, |s| view(s, 1).active.is_some_and(|v| v.eligible == 4)));
+    run(sim.clients[late].app.world_mut(), "vote option1");
+    assert!(sim.until(40, |s| active(s).count(1) == 2), "the joiner's vote wasn't counted");
+    assert!(sim.until(40, |s| view(s, late).active.is_some_and(|v| v.mine == Some(1) && v.yes == 2)));
+
+    // Client 1 leaves before voting and comes back: taken off, then
+    // shown the vote again and able to vote.
+    sim.remove_client(1);
+    assert!(sim.until(40, |s| active(s).voters.len() == 3), "the leaver stayed a voter");
+    let back = sim.add_client(|_| {});
+    sim.until_joined(400);
+    assert!(sim.until(80, |s| view(s, back).active.as_ref().is_some_and(|v| v.may_vote)));
+    assert!(voting(&sim));
+    assert_eq!(active(&sim).voters.len(), 4);
+    run(sim.clients[back].app.world_mut(), "vote option2");
+    // The last one (client 2, now index 1) votes: everyone has, it ends
+    // early and passes with 3 yes of 4.
+    run(sim.clients[1].app.world_mut(), "vote option1");
+    assert!(sim.until(60, |s| !voting(s)), "the vote didn't end");
+    assert_eq!(sim.server.app.world().resource::<Votes>().passed, 1);
+}
+
+#[test]
+fn bots_vote_with_sv_vote_bots_allowed() {
+    let mut sim = three();
+    run(
+        sim.server.app.world_mut(),
+        "sv_vote_bots_allowed 1; sv_vote_timer_duration 30; bot_add 1; bot_add 2",
+    );
+    sim.ticks(20);
+    assert!(call(&mut sim, 0, "restartgame"));
+    assert_eq!(active(&sim).voters.len(), 5, "the bots may vote");
+    // Not at once: a second at least.
+    sim.ticks(40);
+    assert_eq!(active(&sim).ballots.len(), 1, "a bot voted at once");
+    // Within 1 to 4 s each bot has voted (the people haven't).
+    assert!(
+        sim.until(4 * 64, |s| active(s).ballots.len() == 3),
+        "the bots didn't vote: {:?}",
+        active(&sim).ballots
+    );
+    // The players see their votes counted.
+    assert!(sim.until(40, |s| view(s, 1).active.is_some_and(|v| v.yes + v.no == 3)));
+    run(sim.clients[1].app.world_mut(), "vote option2");
+    run(sim.clients[2].app.world_mut(), "vote option2");
+    assert!(sim.until(60, |s| !voting(s)), "everyone voted: it ends");
 }
