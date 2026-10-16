@@ -2,14 +2,25 @@
 //! game_sounds manifest's files and the map's own `maps/<map>_level_sounds.txt`
 //! define named entries (waves, volume, pitch, sound level or
 //! attenuation, channel). A map loads the entries it uses, decoding their
-//! waves once (like Source's precache).
+//! waves once (like Source's precache). The map's `func_footstep_control`
+//! volumes become `StepRemap`s (`step_remaps`): a player whose feet are
+//! inside one steps on its `source` surface with its `destination`'s
+//! sounds (`movement`'s `play_step`).
+//!
+//! Known shortcuts (docs/tech-debt.md): func_footstep_control as the
+//! public FGD describes it, unmeasured: the feet point decides "inside"
+//! (not the box touching it), the step volume and timing stay the
+//! replaced surface's, and the first matching volume wins where several
+//! overlap. Why it's OK for now: stock maps have two such volumes
+//! (cs_militia's, remapping ladder steps by the deck), and no spec covers
+//! the entity.
 
 use std::collections::{HashMap, HashSet};
 
 use source_formats::keyvalues::{Escapes, tokens};
 
 use super::{material::MaterialLoader, surfaceprops::SurfaceProps};
-use crate::map::{MapEntity, MapSoundEntry, MapSounds, MapSurface, SoundLevel, sound::Interval};
+use crate::map::{MapEntity, MapSoundEntry, MapSounds, MapSurface, SoundLevel, StepRemap, sound::Interval};
 
 /// An entry as written: its keys, and its waves in order.
 #[derive(Clone, Debug, Default)]
@@ -440,7 +451,42 @@ pub fn load(materials: &mut MaterialLoader, map: &str, surfaces: &SurfaceProps, 
     if failed > 0 {
         bevy::log::warn!("sounds: {failed} waves couldn't be read or decoded");
     }
+    out.step_remaps = step_remaps(entities);
     out
+}
+
+/// The map's `func_footstep_control` volumes (the public FGD: "source" is
+/// the surface whose footsteps are replaced, "destination" the surface
+/// whose footsteps play instead, for players inside it): their brushes in
+/// engine space. One without both keys or without a volume is skipped.
+pub fn step_remaps(entities: &[MapEntity]) -> Vec<StepRemap> {
+    use crate::map::entities::{entity_rotation, entity_to_engine};
+    const METERS_PER_UNIT: f32 = 0.0254;
+    entities
+        .iter()
+        .filter(|e| e.classname().eq_ignore_ascii_case("func_footstep_control"))
+        .filter_map(|e| {
+            let key = |k: &str| e.get(k).map(str::trim).filter(|v| !v.is_empty()).map(str::to_lowercase);
+            let (from, to) = (key("source")?, key("destination")?);
+            let (origin, rotation) = (e.origin(), entity_rotation(e.angles()));
+            // Local `n . x <= d` is `(R n) . X <= d + (R n) . origin` in
+            // entity space, then the axes swap and units scale to meters.
+            let hulls: Vec<Vec<(bevy::math::Vec3, f32)>> = e
+                .hulls
+                .iter()
+                .map(|h| {
+                    h.planes
+                        .iter()
+                        .map(|(n, d)| {
+                            let n = rotation * *n;
+                            (entity_to_engine(n, 1.0), (d + n.dot(origin)) * METERS_PER_UNIT)
+                        })
+                        .collect()
+                })
+                .collect();
+            (!hulls.is_empty()).then_some(StepRemap { hulls, from, to })
+        })
+        .collect()
 }
 
 /// Wave files (name, bytes when found) decoded on up to 8 threads, the
