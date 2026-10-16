@@ -145,7 +145,7 @@ report folders):
 | Scrapes | differs | L | S | spec Q8 |
 | Ricochets (`Bounce.Shrapnel`) | have | M | S | 30 % of bullet impacts (impact_effects.md section 2, the template's rule; `game::impact_effects`); the rate unmeasured (impact_effects.md Q2) |
 | Drowning (`Player.DrownStart`/`DrownContinue`, damage) | differs | L | S | damage and restore as measured (C6, `games/cs_source/drown.rs`); the client's own drown sounds (if CS:S plays any) not played; reset on surfacing unmeasured |
-| Hint sound (`Hud.Hint`) with `cl_autohelp` hints | missing | M | M | hints not in (ui-parity.md, greyed) |
+| Hint sound (`Hud.Hint`) with `cl_autohelp` hints | have (fixed) | M | M | the hints' data names it (`games/cs_source/data/hints.toml`); played with each automatic hint (`ui::hints`) |
 | Spray sound, night vision and flashlight sounds | differs | L | | `SprayCan.Paint` (all hear it) and `Player.NightVisionOn`/`Off` (the owner only) play; the flashlight is missing |
 | AK full-auto choppy | | | | other work in flight |
 
@@ -172,7 +172,7 @@ report folders):
 | Map time left on the scoreboard | have (fixed) | L | S | beside the clock icon (`WinConditionLabel`) with `mp_timelimit`; a client has the map's start in `NetRound` |
 | Class menu (`classmenu_*.res`) | have (fixed) | M | M | after picking a team; the eight classes' models (`models/player/*.mdl`) on bodies, auto-select a random one; the menu's 3D model preview (`CSClassImagePanel`) not drawn |
 | MOTD on joining (`motd.res`, `cfg/motd_default.txt`) | have (fixed) | L | S | then the team menu, then the class menu; HTML shown as its text (we don't render HTML) |
-| Hint panel messages (`cl_autohelp`) | missing | M | M | |
+| Hint panel messages (`cl_autohelp`) | differs | M | M | the game's `Cstrike_TitlesTXT_Hint_*` texts from the install in `HudHintDisplay`, once per player per map, `cl_autohelp` (userinfo) turns them off, a 5 s gap, humans only (`rules::hints`, data `hints.toml`, over the network as `HintNews`); every trigger and rule is ours, guessed from the wording: capture C26 |
 
 ## Menus and commands
 
@@ -430,13 +430,10 @@ common console commands, against mashup's.
 
 In order of impact over cost:
 
-1. Hint messages (`cl_autohelp`, `HudHintDisplay`, the game's `#Hint_*`
-   strings, `Hud.Hint`): when each shows is game logic not in the data;
-   a spec session or capture first (M).
-2. `cl_cmdrate` (CS:S's default 30 sends commands in fewer packets than
+1. `cl_cmdrate` (CS:S's default 30 sends commands in fewer packets than
    ours, one a frame): a choice for the network feel, not a gap players
    see; left (S).
-3. Ricochet sounds once spec Q7 says when they play (spec session).
+2. Ricochet sounds once spec Q7 says when they play (spec session).
 
 1. The scoreboard's map time left (`game_end::time_left`) (S).
 2. Team balance: `mp_limitteams` on joining, `mp_autoteambalance` at a
@@ -627,3 +624,16 @@ says what decides the open point.
   panel's look and place (CS:S's HUD layout turns `CHudVote` off, the
   only panel file is hl2's, "likely out-of-date"), the issues' words and
   the early finish (ours: once everyone voted).
+- **C26 Automatic hints (`cl_autohelp`).** A fresh profile (or
+  `cl_autohelp 1` after deleting `cfg/config.cfg`), a listen server with
+  bots on de_dust2, then cs_office: note (screenshot or a short video)
+  every hint in the hint panel and when it came: spawning in the buy
+  zone, the first enemy and teammate seen, a kill, hurting and killing a
+  teammate (`mp_friendlyfire 1`), getting the bomb, entering a bomb
+  site with it, emptying a gun with no spare ammo, buying night vision,
+  near a hostage as T and CT, leading one, the rescue zone, killing one.
+  Then: does a hint come again later on the same map, after
+  `mp_restartgame 1`, after `changelevel`; how long one stays; how far
+  apart two come; whether `cl_autohelp 0` stops them and whether ones
+  missed then come once it's back on; whether bots' events show any.
+  Decides every trigger in `games/cs_source/data/hints.toml` (all ours).

@@ -1671,3 +1671,12 @@ talks.
 Player votes (`net::vote`): `CallVote` and `CastVote` (client to server)
 and `VoteNews` (server to players: the vote as each sees it, its end, a
 refused call, the issues), all ordered, registered after voice's.
+
+### net27 (2026-10-16)
+
+Automatic hints (`cl_autohelp`, `cs_source::rules::hints`): the server
+sends a remote player its hints as `HintNews` (the game's localization
+token; its client reads the text from its own install) in CS:S's part,
+and `cl_autohelp` goes to the server as userinfo; a new message, so a
+new protocol number.
+

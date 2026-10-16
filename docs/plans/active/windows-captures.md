@@ -48,6 +48,10 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
    `callvote` alone, a kick vote and a changelevel vote, F1 during a
    vote, a refused call; screenshots of each panel, as in parity-gaps.md
    C25.
+11. **C26 automatic hints**: on a fresh profile with `cl_autohelp 1`
+    (rename `cfg\config.cfg` first, put it back after), which hints
+    appear when, as described in parity-gaps.md C26 (a video of the
+    first two rounds is easiest; note each hint's time).
 
 ## Sitting 2: sound (about 20 min)
 

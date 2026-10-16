@@ -435,7 +435,8 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   "Fire in the hole!" on throws, bots' enemy spotted/down and need
   backup, and bots' own commands and reports: go / stick together /
   follow me from the attackers' leader, cover me, sector clear, in
-  position, regroup), with a chat area and hint text (`client/chat.rs`), the scoreboard
+  position, regroup), with a chat area and hint text (`client/chat.rs`; the automatic
+  `cl_autohelp` hints: `rules/hints.rs`, triggers ours until capture C26), the scoreboard
   in the game's `scoreboard.res` look (its status icons, "BOT" latency),
   the spectator bars (`spectator.res`), the radio icon over a teammate's
   head (`sprites/radio`, hidden by walls), and

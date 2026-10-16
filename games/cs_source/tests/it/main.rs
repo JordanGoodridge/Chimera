@@ -36,6 +36,7 @@ mod demo_playback;
 mod demo_resim;
 mod drawn_parts;
 mod economy_data;
+mod hints;
 mod hit_reaction;
 mod impact_effects;
 mod interpolation;

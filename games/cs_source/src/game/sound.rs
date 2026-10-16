@@ -289,6 +289,8 @@ pub fn load(materials: &mut MaterialLoader, map: &str, surfaces: &SurfaceProps, 
         .chain(super::fire::SOUNDS.iter().copied())
         .chain(super::pain::SOUNDS.iter().copied())
         .map(|s| s.to_lowercase())
+        // The automatic hints' (their data's: `rules::hints`).
+        .chain(crate::rules::hints::sound_entry().map(|s| s.to_lowercase()))
         .chain(ambient_entries)
         // Props' break and explosion sounds (props.rs), breakables' own.
         .chain(entities.iter().flat_map(|e| {

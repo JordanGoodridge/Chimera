@@ -16,7 +16,8 @@
 //!   refusal comes back as `net::Notice`, the game's hint.
 //! - **Objectives**: the planted bomb (`NetBomb`: where, its timer, who
 //!   defuses), hostages as characters (`NetHostage`), what happens as
-//!   `ObjectiveNews` (the HUD's words).
+//!   `ObjectiveNews` (the HUD's words); a player's automatic hints
+//!   (`rules::hints`) to its client as `HintNews`.
 //! - **Hooks** the network calls (`net::parts`): the join flow
 //!   (`net::JoinRules`: `rules::JoinChoice`, `hold_out`,
 //!   `make_unassigned`, `join_spectators`, `enter_game`), bots
@@ -63,6 +64,7 @@ use crate::{
     },
     rules::{
         JoinChoice,
+        hints::AutoHint,
         rounds::{FunFact, Mvp, Phase, RoundEndReason, RoundEnded, RoundState, RoundSummary},
     },
     weapon::economy::BuyWindow,
@@ -137,6 +139,8 @@ fn register(app: &mut App) {
         .add_client_message::<ClassRequest>(Channel::Ordered)
         .add_mapped_server_message::<ObjectiveNews>(Channel::Ordered)
         .add_mapped_server_message::<RoundOver>(Channel::Ordered)
+        .add_server_message::<HintNews>(Channel::Ordered)
+        .make_message_independent::<HintNews>()
         .add_message::<crate::rules::TeamRequested>()
         .add_message::<crate::rules::ClassRequested>()
         .add_message::<RoundEnded>()
@@ -182,13 +186,13 @@ fn register(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
-            (replicate_hostages, send_round_over, send_objectives)
+            (replicate_hostages, send_round_over, send_objectives, send_hints)
                 .before(ServerSystems::Send)
                 .run_if(server()),
         )
         .add_systems(
             PreUpdate,
-            (apply_round, apply_bombs, apply_hostages, receive_round_over, receive_objectives)
+            (apply_round, apply_bombs, apply_hostages, receive_round_over, receive_objectives, receive_hints)
                 .chain()
                 .after(ClientSystems::Receive)
                 .after(crate::net::predict::rebuild_own_states)
@@ -329,6 +333,14 @@ pub struct ClassRequest {
     pub class: u8,
 }
 
+
+/// Server -> a client: an automatic hint for its player
+/// (`rules::hints::AutoHint`: the game's localization token, which the
+/// client reads from its own install).
+#[derive(Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct HintNews {
+    pub token: String,
+}
 
 /// Server -> clients: an objective event (`objectives::ObjectiveEvent`,
 /// `hostages::HostagePenalty`) for the HUD's words and sounds: its kind
@@ -937,6 +949,39 @@ fn receive_objectives(
                 penalties.write(p);
             }
             None => {}
+        }
+    }
+}
+
+/// A hint for a remote player, to its client (the local player's shows
+/// here).
+fn send_hints(
+    mut hints: MessageReader<AutoHint>,
+    players: Query<(Entity, &Player)>,
+    mut out: MessageWriter<ToClients<HintNews>>,
+) {
+    for h in hints.read() {
+        if let Some((client, _)) = players.iter().find(|(_, p)| p.character == h.to) {
+            out.write(ToClients {
+                targets: SendTargets::Single(ClientId::Client(client)),
+                message: HintNews { token: h.token.clone() },
+            });
+        }
+    }
+}
+
+/// The server's hints for our player.
+fn receive_hints(
+    mut news: MessageReader<HintNews>,
+    local: Query<Entity, With<crate::core::LocalPlayer>>,
+    mut out: MessageWriter<AutoHint>,
+) {
+    for n in news.read() {
+        if let Some(to) = local.iter().next() {
+            out.write(AutoHint {
+                to,
+                token: n.token.clone(),
+            });
         }
     }
 }

@@ -722,3 +722,62 @@ fn map_effects_reach_clients() {
     }
     assert!(seen.contains(&strike), "{seen:?}");
 }
+
+/// An automatic hint the server gives a remote player (`rules::hints`:
+/// killing an enemy, which only the server sees) reaches that player's
+/// client as its own player's hint (`game::net`'s `HintNews`), and no one
+/// else's.
+#[test]
+fn hints_reach_a_remote_player() {
+    use bevy::ecs::message::Messages;
+    use crate::stack::{
+        core::{Damage, DamageKind, Hitgroup},
+        rules::hints::{AutoHint, HintRules},
+    };
+    const KILLED_ENEMY: &str = "Cstrike_TitlesTXT_Hint_win_round_by_killing_enemy";
+    let mut sim = NetSim::new(CsSim, lan(), 34, 2, greybox);
+    // No gap: the buy zone's hint comes first.
+    sim.server.app.world_mut().resource_mut::<HintRules>().gap = 0.0;
+    let host = host(&mut sim);
+    sim.until_joined(200);
+    sim.ticks(10);
+    let killer = sim.character_of(0).expect("client 1's character");
+    // The host's enemy, in the game.
+    sim.server.app.world_mut().entity_mut(killer).insert(Team(1));
+    let alive = sim.until(600, |s| {
+        s.server.app.world().get::<crate::stack::core::Dead>(killer).is_none()
+    });
+    assert!(alive, "client 1's player spawns");
+    sim.server.app.world_mut().write_message(Damage {
+        target: host,
+        attacker: Some(killer),
+        amount: 5.0,
+        point: Vec3::new(6.0, 1.0, 0.0),
+        dir: Vec3::X,
+        hitgroup: Hitgroup::Generic,
+        kind: DamageKind::Generic,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    let mut seen: Vec<Vec<AutoHint>> = vec![Vec::new(); 2];
+    let mut cursors: Vec<_> = sim
+        .clients
+        .iter()
+        .map(|c| c.app.world().resource::<Messages<AutoHint>>().get_cursor_current())
+        .collect();
+    let mut given = Vec::new();
+    let mut server = sim.server.app.world().resource::<Messages<AutoHint>>().get_cursor_current();
+    for _ in 0..60 {
+        sim.ticks(1);
+        given.extend(server.read(sim.server.app.world().resource::<Messages<AutoHint>>()).cloned());
+        for (i, c) in sim.clients.iter().enumerate() {
+            seen[i].extend(cursors[i].read(c.app.world().resource::<Messages<AutoHint>>()).cloned());
+        }
+    }
+    assert!(given.iter().any(|h| h.to == killer && h.token == KILLED_ENEMY), "the server's: {given:?}");
+    let mine = sim.local_player(0).expect("client 1's player");
+    let killed: Vec<_> = seen[0].iter().filter(|h| h.token == KILLED_ENEMY).collect();
+    assert_eq!(killed.len(), 1, "{:?}", seen[0]);
+    assert_eq!(killed[0].to, mine);
+    assert!(seen[1].iter().all(|h| h.token != KILLED_ENEMY), "{:?}", seen[1]);
+}

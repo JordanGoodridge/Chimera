@@ -1,0 +1,99 @@
+# CS:S's automatic help (`cl_autohelp`, `rules::hints`): which of the
+# game's hint strings (its localization tokens; the text is read from the
+# install at run time) shows on which trigger. A trigger is a hook the
+# code registers by name (`HintAppExt::add_hint_trigger`). When CS:S shows
+# each hint isn't public and no spec covers it: every trigger below is
+# OURS, guessed from the hint's own wording (docs/tech-debt.md; capture
+# item in docs/plans/active/windows-captures.md, sitting 1).
+
+[settings]
+# The sound a hint plays (the install's game_sounds entry).
+sound = "Hud.Hint"
+# Seconds at least between two hints to one player; one that comes sooner
+# waits (ours).
+gap = 5.0
+
+# Standing in a buy zone while buying is open.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_press_buy_to_purchase"
+when = "buy_zone"
+
+# An enemy, then a teammate, first in view (a 90 degree cone, a clear line).
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_spotted_an_enemy"
+when = "spotted_enemy"
+
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_spotted_a_friend"
+when = "spotted_friend"
+
+# Killing an enemy; hurting, killing a teammate.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_win_round_by_killing_enemy"
+when = "killed_enemy"
+
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_try_not_to_injure_teammates"
+when = "hurt_teammate"
+
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_careful_around_teammates"
+when = "killed_teammate"
+
+# The bomb: given it at a round's start; carrying it inside a bomb target.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_you_have_the_bomb"
+when = "got_bomb"
+
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_you_are_in_targetzone"
+when = "bomb_target"
+
+# The gun in hand with neither a round in the clip nor a spare.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_out_of_ammo"
+when = "out_of_ammo"
+
+# Night vision bought.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_use_nightvision"
+when = "night_vision"
+
+# Hostage maps: alive on one, by team (1 terrorists, 2 counter-terrorists).
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_rescue_the_hostages"
+when = "hostage_map"
+team = 2
+
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_prevent_hostage_rescue"
+when = "hostage_map"
+team = 1
+
+# Within use reach of a hostage nobody leads.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_press_use_so_hostage_will_follow"
+when = "near_hostage"
+team = 2
+
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_careful_around_hostages"
+when = "near_hostage"
+team = 1
+
+# A hostage starts following you.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_lead_hostage_to_rescue_point"
+when = "hostage_follows"
+
+# Inside a hostage rescue zone.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_hostage_rescue_zone"
+when = "rescue_zone"
+team = 2
+
+# Killing a hostage: after the HUD's own message about it has shown.
+[[hint]]
+token = "Cstrike_TitlesTXT_Hint_lost_money"
+when = "killed_hostage"
+delay = 4.0
