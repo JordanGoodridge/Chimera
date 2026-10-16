@@ -745,7 +745,10 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    move (forward held: speed 0, no displacement over 250 ticks), can duck
    (ducked 30 ticks after the press, still defusing), and
    `weapons/c4/c4_disarm.wav` plays on the press tick; as ours. The
-   bomb's solidity and riding platforms not measured. Was: **Q7 Planted bomb physics.** Is the planted bomb solid to players and
+   planted bomb is **not solid**: a bot walking across it (two
+   directions) passed within 3 units of its centre without stopping or
+   stepping up, and a Desert Eagle shot aimed at its top struck the floor
+   4 units beyond it; as ours. Riding moving platforms not measured. Was: **Q7 Planted bomb physics.** Is the planted bomb solid to players and
    bullets? Where exactly (origin vs player origin, angles)? Does it ride
    a moving platform? Dump its position and collision group after a plant.
    Can the defuser move or crouch while defusing (`mashup_wrun` with Use and

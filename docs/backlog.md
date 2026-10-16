@@ -552,7 +552,9 @@ and how its setup dialog opens, from capture C25 (parity-gaps.md).
   `mp_autokick` 1 (kick idle and team-killing players) and
   `mp_spawnprotectiontime` 5 (kick a player who team-kills within 5 s of a
   round restart). What counts as idle and how many team kills are
-  unmeasured; probe-server measurable with a bot that stops moving.
+  unmeasured, and not measurable with bots on the probe server (kicks
+  very likely spare bots; the probe plugin heals its targets): needs a
+  human client (a Windows sitting).
 
 ## 2d. CS:S demos as a parity check (user idea, 2026-10-14)
 
