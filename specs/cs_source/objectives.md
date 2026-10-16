@@ -217,6 +217,17 @@ units, where spread is under 0.5 units) at each hitbox's centre, with
 the hitgroup logged (`hostage_hurt` has none: hook the hostage's damage
 with the hit's hitgroup) and every impact per shot.
 
+Repeated 2026-10-16 (the same hostage; four AK-47 shots per aim point,
+each after a round restart; damage taken per shot): from 150 units, z 60:
+80, 53, 53, 53; z 48: 53, 53, 53, 67; z 36: 62, 62, 26, 21; z 24: 21, 21,
+32, 37. From 40 units, z 60: 80, 53, 53, 53; z 48: 85, 53, 26, 85; z 36:
+62 ×4; z 24: 79, 73, 62, 21. Every shot logged 2–3 bullet impacts. The
+same aim gives different damage (spread lands on different boxes), and
+the values cluster on 21, 26, 53, 62, 80, 85: chains of hits at halving
+damage explain several (chest + chest 53, stomach + chest 62, leg 26 alone)
+but not 21 or 32. Still open; settling it needs the hitgroup of each hit
+(a plugin hook on the hostage's damage, not `hostage_hurt`).
+
 ### HUD (from `hudlayout.res`, `clientscheme.res`, `mod_textures.txt`)
 
 | Element | Position, size (640×480) | Look |
