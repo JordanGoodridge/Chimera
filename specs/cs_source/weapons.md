@@ -1363,6 +1363,10 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   | TMP | 1.1 | 0.35 | 0.5 | 0.045 | −4.5 | ≥ 2.61 (3.0) |
   | M249 | 1.8 | 0.45 | 0.65 | 0.125 | −5.0 | 3.5 |
 
+  Zoomed (2026-10-15, standing full clip, fov 55 logged): the AUG and SG 552
+  kick as unzoomed (same a, b, c, e and pitch cap). The M4A1 with the
+  silencer: not measured (the bot's AI takes it off again; `m_bSilencerOn`
+  read 0 in every run).
   The UMP's first airborne kick really is 0.125 (n = 1), then 1.225, 1.775,
   2.325 (a + b n). The M4A1 rows are with its silencer toggled once after
   the give (a fresh give fired once and stopped; the silencer state of the

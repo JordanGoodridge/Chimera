@@ -113,6 +113,12 @@ Notes:
   switch to the knife and toggles silencers. Deploy timing is therefore
   measured by giving the gun mid-run (`weapmeas.deploy`).
 - A bot that joins mid-round waits dead; `mashup_target` respawns it.
+- Give a run a start position (`weapcmp.run(..., start=...)`): runs
+  without one were seen to ignore the inputs' buttons (a reload pressed
+  never happened), even with no freeze time.
+- `movemeas.py` (scoped speeds, backpedal, duck timing), `recoilall.py`
+  (recoil fits), `dropmeas.py` (drops) are the 2026-10-15 measurement
+  scripts; airborne recoil used a jump before holding attack.
 - With the server's `maxplayers 4` only three bots joined (the shooter and two
   targets).
 - Afterwards restore the movement setup: `bot_kick`, `bot_join_team ct`,
