@@ -1,0 +1,18 @@
+# A shop addition that exists only as data (docs/economy-data.md): a new
+# item and a new buy-menu category, loaded on top of CS:S's shop
+# (games/cs_source/tests/it/economy_data.rs).
+
+[[item]]
+id = "mashup_test:light_vest"
+label = "Light Vest"
+price = 300
+armor = { amount = 0.5 }
+owned = "You already have a light vest."
+
+[[menu]]
+key = 9
+name = "Specials"
+items = [
+    { buy = "mashup_test:light_vest" },
+    { buy = "cs_source:weapon_deagle", label = "Hand Cannon" },
+]

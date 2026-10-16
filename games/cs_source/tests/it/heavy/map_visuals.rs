@@ -307,3 +307,49 @@ fn detail_props_load() {
         .count();
     assert_eq!(bushes, 53, "its 53 detail bushes");
 }
+
+/// Slime splashes (specs/cs_source/impact_effects.md 11): the three
+/// `slime_splash_0x` systems build from the install's water_impact.pcf for
+/// a map with no info_particle_system (de_aztec: its loader reads only
+/// that file), each with something to emit and draw.
+#[test]
+fn slime_splash_systems_load_from_the_install() {
+    use cs_source::impact_effects::{SLIME_SPLASH_FILE, SLIME_SPLASHES};
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(cs_source::GAME)) else {
+        eprintln!("skipping: no CS:S install configured");
+        return;
+    };
+    if !install.join("cstrike").is_dir() {
+        eprintln!("skipping: no CS:S install configured");
+        return;
+    }
+    let mount = cs_source::mount::open(&install).expect("mount");
+    let bytes = mount.read("maps/de_aztec.bsp").expect("de_aztec");
+    let bsp = vbsp::Bsp::read(&bytes).expect("bsp");
+    let mut materials = cs_source::material::MaterialLoader::new(&bsp, &mount, &[]);
+    let mut data = MapData::default();
+    cs_source::pcf::add_particle_systems(
+        &bsp,
+        &mut materials,
+        &mut data,
+        "de_aztec",
+        &SLIME_SPLASHES,
+        &[SLIME_SPLASH_FILE],
+    );
+    let ps = &data.particle_systems;
+    assert!(ps.placed.is_empty());
+    for name in SLIME_SPLASHES {
+        let i = ps.find(name).unwrap_or_else(|| panic!("{name}: {:?}", data.warnings));
+        // The system or its children emit and draw.
+        let mut todo = vec![i];
+        let (mut emits, mut draws) = (false, false);
+        while let Some(i) = todo.pop() {
+            let d = &ps.defs[i];
+            emits |= !d.emitters.is_empty() || d.initial_particles > 0;
+            draws |= d.material.is_some() && d.renderer != crate::stack::map::psys::Render::None;
+            todo.extend(d.children.iter().map(|c| c.0));
+        }
+        eprintln!("{name}: emits {emits}, draws {draws}");
+        assert!(emits && draws, "{name}");
+    }
+}

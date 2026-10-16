@@ -163,8 +163,10 @@ fn in_water(from: Vec3, to: Vec3, water: Option<&MapWater>) -> bool {
     water.is_some_and(|w| super::impact_effects::water_shot(from, to, &w.0) != super::impact_effects::WaterShot::Dry)
 }
 
-/// The knife's mark on walls. Not in the public data: a guess from the
-/// decal script's slash group, to check against the game.
+/// The knife's mark on walls. Not in the public data and no spec names it
+/// (impact_effects.md 12 points to overlays_decals.md, which has no knife
+/// entry): a guess from the decal script's slash group, to check against
+/// the game.
 const SLASH_DECAL: &str = "ManhackCut";
 
 /// Decals where shots and knife swings hit the world: the hit surface's

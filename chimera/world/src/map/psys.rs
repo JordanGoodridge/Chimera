@@ -10,7 +10,9 @@
 //! Data-driven particle systems for any game (Source `.pcf` effects) as
 //! data: `SystemDef` (emitters, initializers, operators, forces, renderer,
 //! children with delays), `MapParticleSystems` (the definitions and the
-//! placed info_particle_systems), `Pick` (a biased random pick).
+//! placed info_particle_systems), `Pick` (a biased random pick),
+//! `StartParticleSystem` (a one-shot effect a game starts at a point, e.g.
+//! a splash; the presentation runs it).
 
 use bevy::prelude::*;
 
@@ -308,4 +310,16 @@ pub struct PlacedSystem {
     /// Index into `MapParticleSystems::defs`.
     pub system: usize,
     pub start_on: bool,
+}
+
+/// Start a one-shot particle system by its definition's name at
+/// `position` (engine space), its forward axis along `forward` (engine
+/// space). The presentation runs it to its end (`render::psys`); a name
+/// the map's definitions lack shows nothing. Games load the systems they
+/// start with the map's.
+#[derive(Message, Clone, Debug, PartialEq)]
+pub struct StartParticleSystem {
+    pub name: String,
+    pub position: Vec3,
+    pub forward: Vec3,
 }

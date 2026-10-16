@@ -4,8 +4,28 @@
 //! vent) or electric sparks (computer); flecks and dust take the hit
 //! surface's colour. Players bleed (`blood_impact_red_01`, built from the
 //! spec's table of the install's `.pcf`) and stain the walls behind them;
-//! bullets into water splash instead. The particle machinery is
-//! `map::particles`; the numbers and choices are here.
+//! bullets into water splash instead, into slime they start the install's
+//! `slime_splash_03` (`map::psys::StartParticleSystem`, run by
+//! `render::psys`). Shattered glass throws tumbling shards that settle flat
+//! (`Shape::Tumble`). The particle machinery is `map::particles`; the
+//! numbers and choices are here.
+//!
+//! The spec by section (have / ours / missing):
+//! 1 who and when: per bullet, pellet and penetrated surface; sky and
+//!   nodraw skipped; water splashes instead. Missing: other players' shots
+//!   reach every client, not only the shooter's PAS (`net::server`).
+//! 2 per impact: material effect, 30 % ricochet, impact sound
+//!   (`impacts.rs`), decal (`decals.rs`); the ragdoll check
+//!   (`RagdollsOnLine`). 3 letters: all. 4 machinery: plain, dust, fleck,
+//!   trail and flat sprites, bounce planes, fleck merging, the cap, near
+//!   fade, `dt` clamp; surface colour (base: Q5). 5-8 debris, dust puff,
+//!   metal and electric sparks: all (flare depth and visibility test:
+//!   below). 9 glass: shards (three angles, settling), grit, cap. 10
+//!   blood: the burst from the table, wall stains; partly (below). 11
+//!   splash: water's drops, gouts, ripple, sound; slime's systems. 12
+//!   knife: as bullets, splash at 8, no ricochet; its mark: no spec says
+//!   which decal (`impacts.rs`). 13 no light; sounds. 14 operators:
+//!   `render::psys` for slime.
 //!
 //! Units: the spec's inches and in/s, converted to meters at the end
 //! (`UNIT`). Source's up (z) is our y.
@@ -22,14 +42,18 @@
 //! nodraw) makes no particles. The 30 % ricochet (`Bounce.Shrapnel`, section 2)
 //! plays for bullet hits on anything but characters with a visible surface;
 //! whether hits on players or surfaces with no decal name (Q9) ricochet is
-//! unknown, both left out. A knife swing from the dry into water (section 12)
-//! splashes at scale 8 when `cl_show_splashes` is on and makes no particles or
-//! slash mark, but the knife's own hit sound still plays. The glass impact
-//! (section 9) goes out for tile windows too (the breakables spec's hit rule
-//! doesn't limit it to glass); its shards spin about one axis from a random
-//! facing (the spec's three spinning angles and the lying-flat settling are
-//! left out). Why it's OK for now: Spec defaults; the open questions need the
-//! game.
+//! unknown, both left out. A knife swing from the dry into water or slime
+//! (section 12) splashes at scale 8 when `cl_show_splashes` is on and makes no
+//! particles or slash mark, but the knife's own hit sound still plays. Slime
+//! splashes run the `.pcf` operators as `render::psys` reads them (no stock map
+//! has slime to compare), their frame's forward axis up and its side axes our
+//! pick. The ragdoll check counts awake player ragdolls as "simulating" (map
+//! ragdolls never count); the push itself is `map::ragdoll`'s, on every ragdoll
+//! on the line (ragdolls.md 6.2). The glass impact (section 9) goes out for
+//! tile windows too (the breakables spec's hit rule doesn't limit it to glass);
+//! the pane bursts' shards are ours (counts, sizes, speeds) with section 9's
+//! tumbling and settling. Why it's OK for now: Spec defaults; the open
+//! questions need the game.
 //!
 //! Known shortcuts (docs/tech-debt.md): Loose items' landing dust (a dropped
 //! weapon or the bomb hitting the ground at 320 u/s or more,
@@ -49,6 +73,7 @@ use crate::{
             Bounce, Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, Particles,
             Ramp, Shape, WorldTrace, WorldTracer, probe_planes,
         },
+        psys::StartParticleSystem,
         sound::{SoundBank, SurfaceGrid},
         surface_color::{SurfaceColors, SurfaceLook},
     },
@@ -929,13 +954,31 @@ pub fn water_shot(from: Vec3, to: Vec3, water: &[MapWaterVolume]) -> WaterShot {
     }
 }
 
-/// Where a knife swing's line (eye to where it stopped) entered water, if
-/// it started dry and ended in water (not slime: its splash is a
-/// particle system not done yet). Spec section 12.
-pub fn knife_splash(line: (Vec3, Vec3), water: Option<&MapWater>) -> Option<Vec3> {
+/// Where a knife swing's line (eye to where it stopped) entered water or
+/// slime (true), if it started dry and ended in it. Spec section 12.
+pub fn knife_splash(line: (Vec3, Vec3), water: Option<&MapWater>) -> Option<(Vec3, bool)> {
     match water_shot(line.0, line.1, &water?.0) {
-        WaterShot::Entered { at, slime: false } => Some(at),
+        WaterShot::Entered { at, slime } => Some((at, slime)),
         _ => None,
+    }
+}
+
+/// The slime splash systems (`SLIME_SPLASH_FILE`), loaded with maps that
+/// have slime.
+pub const SLIME_SPLASHES: [&str; 3] = ["slime_splash_01", "slime_splash_02", "slime_splash_03"];
+/// The install's file with the slime splash systems.
+pub const SLIME_SPLASH_FILE: &str = "particles/water_impact.pcf";
+
+/// The slime splash for splash scale `s` (spec section 11): `_01` below
+/// 2, `_02` below 4, else `_03` (bullets' 8-12 and the knife's 8 always
+/// get `_03`).
+pub fn slime_splash_name(s: f32) -> &'static str {
+    if s < 2.0 {
+        SLIME_SPLASHES[0]
+    } else if s < 4.0 {
+        SLIME_SPLASHES[1]
+    } else {
+        SLIME_SPLASHES[2]
     }
 }
 
@@ -1033,6 +1076,13 @@ pub fn water_splash(rng: &mut ParticleRng, m: &EffectMaterials, o: Vec3, s: f32,
     out
 }
 
+/// A glass shard's random angles (pitch, yaw, roll, degrees) and the spin
+/// all three turn at, U(-800, 800) degrees a second (spec section 9).
+fn shard_spin(rng: &mut ParticleRng) -> (Vec3, f32) {
+    let angles = Vec3::new(rng.float(0.0, 360.0), rng.float(0.0, 360.0), rng.float(0.0, 360.0));
+    (angles, rng.float(-800.0, 800.0))
+}
+
 /// Shards of a shattered window pane (spec section 9's glass shards,
 /// spread over the pane): flat translucent squares from the pane's area,
 /// thrown along its push and normal, falling, bouncing (keep 0.3) and
@@ -1091,15 +1141,12 @@ pub fn glass_shards(
             along
         };
         let v = (push * rng.float(20.0, 120.0) + rng.vec3(-30.0, 30.0)) * UNIT;
-        let normal = (n + rng.vec3(-0.8, 0.8)).normalize_or(n);
+        let (angles, spin) = shard_spin(rng);
         g.particles.push(Particle {
             fade: Fade::Tail(2.0),
             size: Ramp::constant(side * UNIT),
-            shape: Shape::Flat {
-                normal,
-                yaw: rng.float(0.0, 360.0),
-                yaw_speed: rng.float(-800.0, 800.0),
-            },
+            roll_speed: spin,
+            shape: Shape::Tumble { angles, settle: true },
             ..sprite(at, v, rng.float(2.5, 5.0), mat, color)
         });
     }
@@ -1148,17 +1195,12 @@ pub fn glass_impact(
             for i in 0..3 {
                 v[i] = (n[i] + rng.float(-0.8, 0.8)) * rng.float(1.0, 300.0);
             }
-            let facing = random_dir(rng);
-            let yaw = rng.float(0.0, 360.0);
-            let spin = rng.float(-800.0, 800.0);
+            let (angles, spin) = shard_spin(rng);
             g.particles.push(Particle {
                 fade: Fade::Tail(2.0),
                 size: Ramp::constant(side * UNIT),
-                shape: Shape::Flat {
-                    normal: facing,
-                    yaw,
-                    yaw_speed: spin,
-                },
+                roll_speed: spin,
+                shape: Shape::Tumble { angles, settle: true },
                 ..sprite(p, v * UNIT, life, mat, color)
             });
         }
@@ -1305,6 +1347,7 @@ impl Plugin for ImpactEffectsPlugin {
             .add_message::<PlaySound>()
             .add_message::<crate::map::GlassShatter>()
             .add_message::<crate::map::GlassImpact>()
+            .add_message::<StartParticleSystem>()
             .add_message::<crate::map::SparkBurst>()
             .add_message::<crate::map::tracer::Tracer>()
             .add_systems(
@@ -1384,6 +1427,40 @@ fn light_below(colors: &SurfaceColors, world: &impl WorldTrace, p: Vec3) -> Vec3
         .map_or(Vec3::ONE, |l| l.light)
 }
 
+/// The ragdoll check of an impact (spec section 2 step 2): while at most
+/// one player ragdoll is simulating (awake), a shot whose line from its
+/// start to the hit crosses one makes no surface particles (the ragdoll
+/// takes the push, `map::ragdoll`; the decal and sounds stay).
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct RagdollsOnLine<'w, 's> {
+    spatial: avian3d::prelude::SpatialQuery<'w, 's>,
+    parts: Query<'w, 's, &'static crate::map::ragdoll::RagdollBody>,
+    ragdolls: Query<'w, 's, &'static crate::map::ragdoll::Ragdoll>,
+    sleeping: Query<'w, 's, (), With<avian3d::prelude::Sleeping>>,
+}
+
+impl RagdollsOnLine<'_, '_> {
+    /// Whether a ragdoll on `from -> to` takes this impact.
+    pub fn hit(&self, from: Vec3, to: Vec3) -> bool {
+        let players = || self.ragdolls.iter().filter(|r| !r.placed);
+        let simulating = players()
+            .filter(|r| r.bodies.first().is_some_and(|b| !self.sleeping.contains(*b)))
+            .count();
+        if players().next().is_none() || simulating > 1 {
+            return false;
+        }
+        let Ok(dir) = Dir3::new(to - from) else { return false };
+        let filter = avian3d::prelude::SpatialQueryFilter::from_mask(crate::core::RAGDOLL_LAYER);
+        self.spatial
+            .cast_ray_predicate(from, dir, from.distance(to), true, &filter, &|e| {
+                self.parts
+                    .get(e)
+                    .is_ok_and(|p| self.ragdolls.get(p.ragdoll).is_ok_and(|r| !r.placed))
+            })
+            .is_some()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn impact_effects(
     mut events: MessageReader<WeaponEvent>,
@@ -1400,6 +1477,8 @@ fn impact_effects(
     mut rng: ResMut<EffectRng>,
     world: WorldTracer,
     mut play: MessageWriter<PlaySound>,
+    mut systems: MessageWriter<StartParticleSystem>,
+    ragdolls: RagdollsOnLine,
 ) {
     // Without materials (headless) there are no particles; sounds still
     // play.
@@ -1425,19 +1504,41 @@ fn impact_effects(
             WeaponEventKind::Shot { from, to, .. } | WeaponEventKind::ShotContinued { from, to, .. } => {
                 // Misses can still end in water.
                 if let Some(w) = &water
-                    && let WaterShot::Entered { at, slime: false } = water_shot(*from, *to, &w.0)
+                    && let WaterShot::Entered { at, slime } = water_shot(*from, *to, &w.0)
                     && settings.cl_show_splashes != 0
                 {
-                    splash(rng, mats, at, None, colors.as_deref(), &world, &mut particles, &mut play);
+                    splash(
+                        rng,
+                        mats,
+                        at,
+                        None,
+                        slime,
+                        colors.as_deref(),
+                        &world,
+                        &mut particles,
+                        &mut play,
+                        &mut systems,
+                    );
                 }
                 continue;
             }
             WeaponEventKind::Swing { at, line, .. } => {
                 // A swing from the dry into water splashes (fixed scale
                 // 8) and does nothing else, hit or miss (spec section 12).
-                if let Some(at) = knife_splash(*line, water.as_deref()) {
+                if let Some((at, slime)) = knife_splash(*line, water.as_deref()) {
                     if settings.cl_show_splashes != 0 {
-                        splash(rng, mats, at, Some(8.0), colors.as_deref(), &world, &mut particles, &mut play);
+                        splash(
+                            rng,
+                            mats,
+                            at,
+                            Some(8.0),
+                            slime,
+                            colors.as_deref(),
+                            &world,
+                            &mut particles,
+                            &mut play,
+                            &mut systems,
+                        );
                     }
                     continue;
                 }
@@ -1451,9 +1552,19 @@ fn impact_effects(
             match water_shot(from, point, &w.0) {
                 WaterShot::Dry => {}
                 WaterShot::Entered { at, slime } => {
-                    // Slime splashes are particle systems not done yet.
-                    if !slime && settings.cl_show_splashes != 0 {
-                        splash(rng, mats, at, None, colors.as_deref(), &world, &mut particles, &mut play);
+                    if settings.cl_show_splashes != 0 {
+                        splash(
+                            rng,
+                            mats,
+                            at,
+                            None,
+                            slime,
+                            colors.as_deref(),
+                            &world,
+                            &mut particles,
+                            &mut play,
+                            &mut systems,
+                        );
                     }
                     continue;
                 }
@@ -1482,6 +1593,10 @@ fn impact_effects(
             play.write(PlaySound::at(RICOCHET, point));
         }
         let Some(mats) = mats else { continue };
+        // A ragdoll on the line takes the impact: no particles.
+        if ragdolls.hit(from, point) {
+            continue;
+        }
         let c = surface_color(look);
         let groups = match effect {
             Effect::Debris { wood } => debris(rng, mats, point, normal, wood, c, settings.r_drawflecks != 0, &world),
@@ -1558,20 +1673,30 @@ fn loose_item_dust(
     }
 }
 
-/// A water splash at `at` of scale `size` (None: a bullet's, U(8, 12)).
+/// A splash at `at` of scale `size` (None: a bullet's, U(8, 12)): water's
+/// drops, gouts and ripple, or for slime its particle system
+/// (`slime_splash_name`) pointing up; the same sound either way.
 #[allow(clippy::too_many_arguments)]
 fn splash(
     rng: &mut ParticleRng,
     mats: Option<&EffectMaterials>,
     at: Vec3,
     size: Option<f32>,
+    slime: bool,
     colors: Option<&SurfaceColors>,
     world: &impl WorldTrace,
     particles: &mut Particles,
     play: &mut MessageWriter<PlaySound>,
+    systems: &mut MessageWriter<StartParticleSystem>,
 ) {
     let s = size.unwrap_or_else(|| rng.float(8.0, 12.0));
-    if let Some(mats) = mats {
+    if slime {
+        systems.write(StartParticleSystem {
+            name: slime_splash_name(s).to_string(),
+            position: at,
+            forward: Vec3::Y,
+        });
+    } else if let Some(mats) = mats {
         let light = colors.map_or(Vec3::ONE, |c| light_below(c, world, at + Vec3::Y * s * UNIT));
         for g in water_splash(rng, mats, at, s, light.min(Vec3::ONE)) {
             particles.add(g);
@@ -1878,7 +2003,7 @@ mod tests {
         );
     }
 
-    /// Section 9: 2-4 flat glass shards of one shared size draw, spinning,
+    /// Section 9: 2-4 flat glass shards of one shared size draw, tumbling,
     /// fading over their last 2 s, thrown along the normal per axis; 4
     /// white grit sprites and one white cap.
     #[test]
@@ -1894,7 +2019,11 @@ mod tests {
             for s in shards {
                 assert!((2.5..=5.0).contains(&s.life));
                 assert!(matches!(s.fade, Fade::Tail(t) if t == 2.0));
-                assert!(matches!(s.shape, Shape::Flat { yaw_speed, .. } if yaw_speed.abs() <= 800.0));
+                // Three random angles, all turning at one spin draw,
+                // settling flat once down.
+                assert!(s.roll_speed.abs() <= 800.0);
+                assert!(matches!(s.shape, Shape::Tumble { angles, settle: true }
+                    if angles.min_element() >= 0.0 && angles.max_element() <= 360.0));
                 let side = s.size.start / UNIT;
                 assert!((1.0..=9.0).contains(&side) && side.fract().abs() < 1e-3, "{side}");
                 // Per axis (n + U(-0.8, 0.8)) × U(1, 300).

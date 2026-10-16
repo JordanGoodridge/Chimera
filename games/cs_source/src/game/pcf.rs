@@ -4,7 +4,8 @@
 //! the install: map files replace systems of the same name), the files
 //! they list (Valve's DMX, binary encoding 2: the public "DMX/Binary
 //! format" description), and the systems the map's info_particle_systems
-//! name with their children, into `map::psys`. Files are read at load
+//! name (and those the game starts itself: slime splashes) with their
+//! children, into `map::psys`. Files are read at load
 //! time from the user's install and the map; nothing is copied.
 
 use std::collections::HashMap;
@@ -300,8 +301,18 @@ fn build(
 }
 
 /// Load the map's particle systems (the ones its info_particle_systems
-/// name) into `data.particle_systems`.
-pub fn add_particle_systems(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData, map: &str) {
+/// name, and `extra`: ones the game starts itself, e.g. slime splashes,
+/// from the install's `extra_files`) into `data.particle_systems`. A map
+/// with no info_particle_systems reads only `extra_files` of the install,
+/// not every file of its manifest.
+pub fn add_particle_systems(
+    bsp: &Bsp,
+    materials: &mut MaterialLoader,
+    data: &mut MapData,
+    map: &str,
+    extra: &[&str],
+    extra_files: &[&str],
+) {
     let placed: Vec<(usize, String, Vec3, Vec3, bool)> = bsp
         .entities
         .iter()
@@ -329,16 +340,25 @@ pub fn add_particle_systems(bsp: &Bsp, materials: &mut MaterialLoader, data: &mu
             Some((i, name.to_string(), v3("origin"), v3("angles"), on))
         })
         .collect();
-    if placed.is_empty() {
+    if placed.is_empty() && extra.is_empty() {
         return;
     }
     let mut systems: Systems = HashMap::new();
     let mut warnings = Vec::new();
-    for f in materials
-        .read_text("particles/particles_manifest.txt")
-        .map(|t| manifest_files(&t))
-        .unwrap_or_default()
-    {
+    let mut install_files = if placed.is_empty() {
+        Vec::new()
+    } else {
+        materials
+            .read_text("particles/particles_manifest.txt")
+            .map(|t| manifest_files(&t))
+            .unwrap_or_default()
+    };
+    for f in extra_files {
+        if !install_files.iter().any(|i| i.eq_ignore_ascii_case(f)) {
+            install_files.push(f.to_string());
+        }
+    }
+    for f in install_files {
         if let Some(b) = materials.read(&f) {
             add_file(&mut systems, &b, &mut warnings, &f);
         }
@@ -362,7 +382,11 @@ pub fn add_particle_systems(bsp: &Bsp, materials: &mut MaterialLoader, data: &mu
             }
         }
     }
-    let names: Vec<String> = placed.iter().map(|p| p.1.clone()).collect();
+    let names: Vec<String> = placed
+        .iter()
+        .map(|p| p.1.clone())
+        .chain(extra.iter().map(|n| n.to_string()))
+        .collect();
     let mut unknown = std::collections::BTreeSet::new();
     let (defs, index) = build(&systems, &names, materials, data, &mut unknown);
     let mut missing = std::collections::BTreeSet::new();
@@ -371,6 +395,9 @@ pub fn add_particle_systems(bsp: &Bsp, materials: &mut MaterialLoader, data: &mu
         placed: Vec::new(),
         scale: METERS_PER_UNIT,
     };
+    for name in extra.iter().filter(|n| !index.contains_key(&n.to_lowercase())) {
+        missing.insert(name.to_string());
+    }
     for (entity, name, origin, angles, on) in placed {
         let Some(&system) = index.get(&name.to_lowercase()) else {
             missing.insert(name);

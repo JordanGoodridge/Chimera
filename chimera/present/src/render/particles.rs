@@ -290,6 +290,13 @@ pub fn draw_particles(
                 Shape::Quad { corners, rect } => {
                     b.quad(corners.map(|c| c - centre), rect, rgba);
                 }
+                Shape::Tumble { angles, .. } => {
+                    // One corner on the particle; the face across the side
+                    // and up axes.
+                    let (_, side, up) = crate::map::particles::tumble_axes(angles);
+                    let (r, u) = (-side * size, up * size);
+                    b.quad([at, at + u, at + u + r, at + r], rect, rgba);
+                }
                 Shape::Flat { normal, yaw, .. } => {
                     let n = normal.normalize_or_zero();
                     let t = n.any_orthonormal_vector();

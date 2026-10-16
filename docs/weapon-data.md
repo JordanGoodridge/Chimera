@@ -159,7 +159,32 @@ app.add_weapon_data(&docs)?;   // after the games whose hooks and bases it uses
 data (games/cs_source/tests/data/weapon_rail.toml), buys it, fires it and
 plays it over the network.
 
-What isn't data yet: CS:S's buy menu layout and the prices of what isn't a
-weapon (`weapons::prices`, `menu`), the spawn kit, the accuracy and recoil
-models themselves (hooks), and the map loader loads held and view models
-for CS:S's own set only (docs/tech-debt.md).
+## Penetration by material
+
+How bullets pass walls and characters (`PassMaterials`) is a game's
+document too, read by `PassMaterials::parse` (`weapon::pass_data`); each
+ammo type's power and reach are its `[ammo]` entry's. CS:S's is
+`games/cs_source/data/penetration.toml` (measured M13):
+
+```toml
+units = { length = 0.0254 }
+[[material]]                    # a surface material class (one letter,
+class = "W"                     # the install's `gamematerial`)
+scale = 2.0                     # material passed per unit of power
+damage = 0.6                    # damage carried on, as a factor
+[default]                       # classes not listed (default 1.0, 0.5)
+scale = 1.0
+damage = 0.5
+[character]                     # (default: characters stop bullets)
+cost = 21.5                     # power one character uses, length units
+damage = 0.5
+range_scale = 0.5               # range left beyond its exit
+```
+
+Unknown keys, a class that isn't one letter or is given twice are load
+errors.
+
+The shop (items that aren't weapons, the buy menu, the spawn kit) is
+data too: docs/economy-data.md. What isn't data yet: the accuracy and
+recoil models themselves (hooks), and the map loader loads held and view
+models for CS:S's own set only (docs/tech-debt.md).
