@@ -1332,6 +1332,8 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                     sound: None,
                     weapon: None,
                     round_scorch: false,
+                    bell_sigma: None,
+                    armor_ratio: None,
                 });
             }
             Effect::GlassImpact { at, normal } => {
@@ -2285,6 +2287,8 @@ fn prop_broke(world: &mut World, id: EntId, sound: Option<String>, explode: Opti
             sound: x.sound,
             weapon: None,
             round_scorch: false,
+            bell_sigma: None,
+            armor_ratio: None,
         });
     }
     if let Some(index) = world.get::<PropIndex>(node).map(|p| p.0) {

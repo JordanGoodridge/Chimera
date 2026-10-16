@@ -90,8 +90,17 @@ pub struct BombRules {
     /// Bomb radius when the map gives none, units (blast damage at the
     /// centre).
     pub radius: f32,
-    /// The blast reaches this many times the radius (*hyp.* H1).
+    /// The blast reaches this many times the radius.
     pub range_factor: f32,
+    /// Falloff: a bell whose σ is the reach (radius × `range_factor`)
+    /// divided by this, None: linear to the reach. CS:S's, measured
+    /// 2026-10-15 (objectives.md Q3): a bell, reach / 3 (500 at the
+    /// centre, 111 at 1015, 11 at 1609 on dust2), not the linear H1.
+    pub bell_divisor: Option<f32>,
+    /// Armour: as `DamageEffect::armor_ratio` (measured: half the damage
+    /// to health, half the rest off the armour, ratio 1.0; the HE
+    /// grenade's 1.475 doesn't apply).
+    pub armor_ratio: f32,
     /// Seconds into arming of each key press sound (`sounds.click`): the
     /// server's own timer in CS:S, measured 2026-10-15 (objectives.md
     /// "Measured"), quicker than the view model's fingers.
@@ -128,6 +137,8 @@ impl Default for BombRules {
             defuse_time_kit: 5.0,
             radius: 500.0,
             range_factor: 3.5,
+            bell_divisor: Some(3.0),
+            armor_ratio: 1.0,
             clicks: vec![0.765, 1.035, 1.26, 1.41, 1.575, 1.74, 1.845],
             typed: vec![0.9, 1.2333, 1.5, 1.7, 1.9, 2.1, 2.2333],
             code: "7355608".into(),
@@ -862,6 +873,8 @@ fn tick_bomb(
                 origin: at + Vec3::Y * 8.0 * UNIT,
                 damage: radius * 0.01,
                 radius: radius * rules.range_factor * UNIT,
+                bell_sigma: rules.bell_divisor.map(|k| radius * rules.range_factor / k * UNIT),
+                armor_ratio: Some(rules.armor_ratio),
                 attacker: bomb.planter,
                 inflictor: Some(e),
                 sound: rules.sounds.explode.clone(),
@@ -1100,24 +1113,25 @@ mod tests {
     }
 
     #[test]
-    fn blast_falls_off_over_three_and_a_half_radii() {
-        use crate::weapon::grenade::blast_damage;
-        // O24, O26, O27 (H1).
-        let h1 = |d: f32, r: f32| blast_damage(d, d * 3.5, r);
+    fn blast_is_the_measured_bell() {
+        use crate::weapon::grenade::blast_damage_bell;
+        // objectives.md Q3, dust2 (radius 500): damage at the distance from
+        // the bomb, measured 2026-10-15, within 2 points.
+        let rules = BombRules::default();
+        let reach = rules.radius * rules.range_factor;
+        let sigma = reach / rules.bell_divisor.unwrap();
         for (dist, want) in [
-            (0.0, 500.0),
-            (500.0, 357.14),
-            (1000.0, 214.29),
-            (1500.0, 71.43),
-            (1750.0, 0.0),
+            (136.0, 486.0),
+            (330.7, 427.0),
+            (529.1, 330.0),
+            (714.0, 238.0),
+            (1015.0, 111.0),
+            (1411.1, 26.0),
+            (1608.8, 11.0),
         ] {
-            assert!((h1(500.0, dist) - want).abs() < 0.01, "{dist}");
+            let got = blast_damage_bell(rules.radius, sigma, reach, dist);
+            assert!((got - want).abs() < 2.0, "{dist}: {got} not {want}");
         }
-        for (dist, want) in [(500.0, 257.14), (1000.0, 114.29), (1500.0, 0.0)] {
-            assert!((h1(400.0, dist) - want).abs() < 0.01, "{dist}");
-        }
-        for (dist, want) in [(250.0, 228.57), (500.0, 157.14), (1000.0, 14.29)] {
-            assert!((h1(300.0, dist) - want).abs() < 0.01, "{dist}");
-        }
+        assert_eq!(blast_damage_bell(rules.radius, sigma, reach, reach), 0.0);
     }
 }

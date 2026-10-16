@@ -401,6 +401,8 @@ fn explosions_break_windows_and_vents() {
         sound: None,
         weapon: None,
         round_scorch: false,
+        bell_sigma: None,
+        armor_ratio: None,
     });
     office.ticks(3);
     let id = id_of(&office, win);
@@ -424,6 +426,8 @@ fn explosions_break_windows_and_vents() {
             sound: None,
             weapon: None,
             round_scorch: false,
+            bell_sigma: None,
+            armor_ratio: None,
         });
     }
     nuke.ticks(3);

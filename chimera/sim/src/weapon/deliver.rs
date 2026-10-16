@@ -498,10 +498,9 @@ impl Shot<'_, '_, '_> {
             && let Ok(mut armor) = self.w.armor.get_mut(target)
             && armor.covers(hitgroup)
         {
-            let (to_health, to_armor) = armor_split(raw, ratio, quantum);
+            let (to_health, to_armor) = armor_split(raw, ratio, armor.amount, quantum);
             amount = to_health;
             covered = true;
-            // Armour running out mid-hit isn't measured: clamped.
             armor.amount = (armor.amount - to_armor).max(0.0);
         }
         let damage = Damage {
@@ -681,10 +680,17 @@ const BACKSTAB_COS: f32 = 0.8;
 
 /// A hit of `raw` damage on covering armour (CS:S, measured M7): health
 /// takes `raw x ratio x 0.5`, armour half the rest, both truncated to
-/// `quantum`. Returns (to health, to armour).
-pub fn armor_split(raw: f32, ratio: f32, quantum: f32) -> (f32, f32) {
+/// `quantum`. When `available` armour can't take its part, it is all used
+/// and health takes `raw - 2 x available` (measured on C4 blasts,
+/// objectives.md Q3; bullets assumed alike: CS:S's player damage code is
+/// shared). Returns (to health, to armour).
+pub fn armor_split(raw: f32, ratio: f32, available: f32, quantum: f32) -> (f32, f32) {
     let to_health = raw * ratio * 0.5;
-    (quantize(to_health, quantum), quantize((raw - to_health) * 0.5, quantum))
+    let to_armor = (raw - to_health) * 0.5;
+    if to_armor > available {
+        return (quantize(raw - available * 2.0, quantum), available);
+    }
+    (quantize(to_health, quantum), quantize(to_armor, quantum))
 }
 
 /// `amount` truncated to whole multiples of `quantum` (0: unchanged),
@@ -735,6 +741,15 @@ pub fn hitgroup_at(b: &ColliderAabb, point: Vec3) -> Hitgroup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn armour_that_runs_out_passes_the_rest_to_health() {
+        // objectives.md Q3 (a C4 blast, ratio 1): 376 on 100 armour takes
+        // 188 and 94; 447 on 100 armour takes all 100 and 247 health.
+        assert_eq!(armor_split(376.0, 1.0, 100.0, 1.0), (188.0, 94.0));
+        assert_eq!(armor_split(447.0, 1.0, 100.0, 1.0), (247.0, 100.0));
+        assert_eq!(armor_split(26.0, 1.0, 100.0, 1.0), (13.0, 6.0));
+    }
 
     #[test]
     fn falloff_matches_spec_t12() {

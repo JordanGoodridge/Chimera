@@ -311,6 +311,11 @@ pub struct Explosion {
     /// Its scorch mark goes at the next round restart (the bomb's, as in
     /// CS:S; `map::PlaceDecal::round`); others stay with the map.
     pub round_scorch: bool,
+    /// Falloff override: a bell of this σ (m) instead of the explosion
+    /// rule's (`weapon::grenade::Blast::bell_sigma`); None: the rule's.
+    pub bell_sigma: Option<f32>,
+    /// Armour override (`Blast::armor_ratio`); None: the rule's.
+    pub armor_ratio: Option<f32>,
 }
 
 /// How damage was dealt (Source damage types, as far as anything here

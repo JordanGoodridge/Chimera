@@ -1193,6 +1193,12 @@ fn explosions(
         }
         b.damage = e.damage;
         b.radius = e.radius;
+        if e.bell_sigma.is_some() {
+            b.bell_sigma = e.bell_sigma;
+        }
+        if e.armor_ratio.is_some() {
+            b.armor_ratio = e.armor_ratio;
+        }
         let (origin, probe) = explode_at(
             e.origin,
             &b,
@@ -1302,7 +1308,7 @@ fn blast(
             && let Ok(mut armor) = world.armor.get_mut(target)
             && armor.covers(Hitgroup::Generic)
         {
-            let (to_health, to_armor) = armor_split(raw, ratio, b.quantum);
+            let (to_health, to_armor) = armor_split(raw, ratio, armor.amount, b.quantum);
             amount = to_health;
             armor.amount = (armor.amount - to_armor).max(0.0);
         }

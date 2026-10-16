@@ -109,6 +109,20 @@ plugin logging every sound the C4 entities emit):
 - **No beep is emitted by the server**: the planted bomb's beeps are the
   client's own, from the bomb's timer, so Q4's schedule needs the client's
   audio (docs/plans/active/windows-captures.md, sitting 2).
+- **The blast (Q3, H2)**: `mp_c4timer 10`, planted at site B
+  (−1478, 2768, 4), hovering targets of 1000 health on clear lines, every
+  `player_hurt`: unarmoured damage 486 at 136 units, 447 at 286, 427 at 331,
+  376 at 436, 330 at 529, 283 at 625, 238 at 714, 145 at 917, 111 at 1015,
+  58 at 1213, 26 at 1411, 11 at 1609 (distances from 16 above the bomb's
+  origin to 28 above the target's chest). That is the bell
+  `500 × exp(−d² / 2σ²)`, σ = 1750 / 3 (reach = 3.5 × radius), within
+  1.5 points everywhere; the linear H1 is off by up to 112. The planter at
+  the bomb took 497–498. Armour (100, no helmet): health takes half, the
+  armour half of the rest (376 → 188 and 94; 26 → 13 and 6), and when the
+  armour can't cover its part it is all used and health takes the rest
+  minus twice the armour (447 on 100 armour → 247 health, armour 0).
+  Walls between bomb and target, other radii and the kill credit not
+  measured.
 
 Stock map bomb radii (from the entity lumps):
 
@@ -359,7 +373,7 @@ At `explode_at` (if not defused):
 1. Effects at the bomb: a large fireball and smoke (the base explosion
    effect, scale *hyp.*), screen shake for players nearby (Q3), the
    `c4.explode` sound (140 dB, heard map-wide in practice).
-2. Damage, *hyp.* H1 (template radius damage, as the HE grenade in
+2. Damage: **H2, measured** (see Measured above). Was *hyp.* H1 (template radius damage, as the HE grenade in
    grenades.md 5.3) with `D = bomb_radius` and `R = 3.5 · D`:
    `damage = D − d · D / R` for each player/entity within R whose
    line from the bomb is not blocked by world brushes. Alternative H2

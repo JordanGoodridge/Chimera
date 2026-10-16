@@ -539,6 +539,8 @@ fn blast(sim: &mut Sim, at: Vec3) {
         sound: None,
         weapon: None,
         round_scorch: false,
+        bell_sigma: None,
+        armor_ratio: None,
     });
 }
 
