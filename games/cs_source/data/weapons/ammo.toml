@@ -42,8 +42,8 @@ box_price = 0
 box_rounds = 25
 hud_icon = "ammo_45"
 
-# Power 35 (M13, 2026-10-15: the M4A1 passes wood 67.8, not 71.5).
-# UNMEASURED distance: the community value 4000.
+# Power 35 (M13, 2026-10-15: the M4A1 passes wood 67.8, not 71.5). Reach:
+# still passes a door at 818; UNMEASURED beyond: the community value 4000.
 [ammo."cs_source:556mm"]
 power = 35.0
 max_distance = 4000.0
@@ -52,8 +52,8 @@ box_price = 0
 box_rounds = 30
 hud_icon = "ammo_556"
 
-# Power 21 (M13, 2026-10-15: the Glock passes wood 41.5, not 49.2).
-# UNMEASURED distance: the community value 800.
+# Power 21 (M13, 2026-10-15: the Glock passes wood 41.5, not 49.2); reach
+# 800 (an 8-unit door passed at 788, not at 803).
 [ammo."cs_source:9mm"]
 power = 21.0
 max_distance = 800.0
@@ -63,21 +63,22 @@ box_rounds = 30
 hud_icon = "ammo_9mm"
 
 # Power 24 (M13, 2026-10-15: the P228 passes wood 47.7, not 48.5; was
-# 45ACP's 15). Doors 650 units away stopped it at any thickness, so its
-# reach is under 650; UNMEASURED closer: 45ACP's 500.
+# 45ACP's 15); reach 800 (an 8-unit door passed at 788, not at 803; was
+# 500).
 [ammo."cs_source:357sig"]
 power = 24.0
-max_distance = 500.0
+max_distance = 800.0
 max = 52
 box_price = 0
 box_rounds = 13
 hud_icon = "ammo_357"
 
 # Power 30 (M13, 2026-10-15: the Five-SeveN passes wood 57.8, not 60.0;
-# was 45ACP's 15). UNMEASURED distance: 45ACP's 500.
+# was 45ACP's 15). Reach: still passes a door at 818 (no longer line
+# found; was 500); UNMEASURED beyond: the community value 2000.
 [ammo."cs_source:57mm"]
 power = 30.0
-max_distance = 500.0
+max_distance = 2000.0
 max = 100
 box_price = 0
 box_rounds = 50
