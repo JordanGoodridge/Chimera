@@ -76,7 +76,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
 - map: Rope wind gusts never compared with CS:S; env_wind not simulated; no rope collision (`chimera/present/src/render/rope_sway.rs`)
-- weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`games/cs_source/data/weapons/`, `games/cs_source/src/game/weapons.rs`)
+- weapon: Unmeasured gun values (marked UNMEASURED): penetration distances and buckshot, recoil of scoped/silenced/burst modes and the snipers (`games/cs_source/data/weapons/`, `games/cs_source/src/game/weapons.rs`)
 - weapon: Weapon data sets are leaked and process-wide; only a game's own set gets models (`chimera/sim/src/weapon/data.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`games/cs_source/src/game/pain.rs`)
 - weapon: A dropped gun carries its reserve (as CS:S's measured, M20; we have no per-player ammo pools); a refused touch is retried every tick. OK for now: Matches CS:S in every measured case.

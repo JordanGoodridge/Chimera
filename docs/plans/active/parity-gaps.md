@@ -116,7 +116,7 @@ report folders):
 | Spread generator | differs | L | M | tech-debt "CS:S's spread and recoil": seeded as CS:S, our generator (spec Q1) |
 | Other automatics' recoil, scoped/silenced/burst | differs | M | S | measured and in the data 2026-10-15 for M4A1, FAMAS, Galil, SG 552, AUG, MP5, P90, UMP, MAC-10, TMP, M249 (standing, crouched, moving, airborne; five airborne yaw caps not reached); the snipers' and scoped/silenced/burst modes left (Q3) |
 | Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7 |
-| Unmeasured gun values (556/9mm penetration...) | differs | L | S | tech-debt "The CS:S guns" |
+| Unmeasured gun values (penetration...) | differs | L | S | tech-debt "The CS:S guns"; 2026-10-15 measured the powers of 5.56, 9 mm (as the data), .357 (24, was 15) and 5.7 (30, was 15); distances and buckshot left |
 | Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), the throw pitch bend (80/90 looking up: fixed), fuses, HE vs armour (×0.7375) measured and matching; HE falloff fixed (a bell σ 350/3, linear with sv_legacy_grenade_damage 1); flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); redraw, pin open (grenades.md Q2, Q3, Q12) |
 | Same-type pickup takes nothing | have (fixed) | L | S | measured (weapons.md M20): CS:S takes no ammo from a gun of a type carried (ours took clip and reserve); a dropped gun carries its reserve, as ours; the re-pick delay (0.75 s, was 1 s) and reach measured too |
 | `cl_autowepswitch` while firing | differs | L | S | tech-debt row |
