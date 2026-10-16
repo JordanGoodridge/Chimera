@@ -56,6 +56,7 @@ pub(super) fn dialog_size(menu: &GameMenu, page: Page) -> (f32, f32) {
             let n = menu.rows().len() as f32;
             (420.0, 44.0 + n * 28.0 + 12.0)
         }
+        Page::Vote => vote_boxes(menu).size,
         _ => (360.0, 230.0),
     }
 }
@@ -228,6 +229,8 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
         Page::Gamma => menu.text("#GameUI_AdjustGamma_Title", "Adjust brightness levels"),
         Page::MultiplayerAdvanced => menu.text("#GameUI_MultiplayerAdvanced", "Multiplayer Advanced"),
         Page::Extras => "Lucker Party Options".into(),
+        // Ours (the file gives none).
+        Page::Vote => "Call Vote".into(),
     };
     let mut spec = FrameSpec::new(page.window());
     if page.over_options() {
@@ -288,6 +291,7 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
             column(commands, ctx, frame, (16.0, 36.0, w - 32.0), true);
             dialog_buttons(commands, ctx, frame, (w, h), &[Action::Ok, Action::Cancel]);
         }
+        Page::Vote => vote_dialog(commands, ctx, frame),
         _ => column(commands, ctx, frame, (16.0, 36.0, w - 32.0), false),
     }
 }

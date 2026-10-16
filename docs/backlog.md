@@ -538,13 +538,11 @@ CS:S's voice HUD and client `voice_*` defaults (Windows), and checking
 the dead-hear-the-dead rule with two clients on the probe server.
 
 Votes (`callvote`, `net::vote`; CS:S's issues `game::votes`, panels
-`ui::vote_hud`) are in: kick, change level, restart game, F1/F2. Left:
-the vote setup dialog (`VoteSetupDialog` in hl2's votehud.res; the
-server already answers `callvote` alone with the issues and their
-choices, `VoteNews::Setup`, printed to the console), a way to open it
-(CS:S's menus have none that we know of), bot ballots for
-`sv_vote_bots_allowed 1`, and CS:S's rules and look from capture C25
-(parity-gaps.md).
+`ui::vote_hud`) are in: kick, change level, restart game, F1/F2, the
+vote setup dialog (`ui::game_menu::vote_setup`: `callvote` alone or our
+Esc entry, Call Vote), players joining a running vote, bots voting with
+`sv_vote_bots_allowed 1` (our rule). Left: CS:S's rules, issues, look
+and how its setup dialog opens, from capture C25 (parity-gaps.md).
 
 - Missing server kicks (measured defaults 2026-10-16, objectives.md Q2):
   `mp_autokick` 1 (kick idle and team-killing players) and

@@ -243,7 +243,7 @@ Only `Reflect`-registered types are visible; register new core components in
   darker), `menu mpadvanced` the multiplayer tab's (its list from the
   install's `cfg/user.scr`), `menu extras` Lucker Party Options. `menuinput <input>` drives
   the open dialog as keys would (`focus <cvar|map|bots|botcount|botteam|
-  difficulty|aspect>`, `open` a focused combo box's list, `down`, `up`, `enter`,
+  difficulty|aspect>`, `row <n>` (the page's nth row), `open` a focused combo box's list, `down`, `up`, `enter`,
   `space`, `escape`, `tab`, `backtab`, `type <text>`, `pick <n>`, `sheet
   <n>`) and prints the focused control: a drop-down open in a screenshot
   is `+menu newgame +menuinput open`. `vgui_windows` lists the frames
@@ -597,7 +597,10 @@ its end, a refused call). To photograph the panels alone on a listen
 server: `-port 27016 --window 1280x720 --join 3 +maxplayers 4 +map de_dust2
 +sv_vote_holder_may_vote_no 1 +wait 300 +callvote restartgame` (the vote
 stays open; add `+wait 60 +vote option1 +wait 60 +screenshot <file>` for
-the passed panel).
+the passed panel). The vote setup dialog: `+wait 2000 +callvote +wait 60
++menuinput row 1 +menuinput space +menuinput row 4 +menuinput space`
+(Change Level, then the second map; `menuinput row <n>` focuses the
+page's nth row); a joiner's and bots' votes: `net_votes.rs`.
 
 Prediction (`games/cs_source/tests/it/net_prediction.rs`): a client's `net::predict::NetGraph`
 counts the server states it compared (`checked`), the ones that differed

@@ -525,7 +525,7 @@ that the paths exist).
 - `chimera/client/src/client/fonts.rs`: the one font service (client)
 - `chimera/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
 - `chimera/client/src/client/vgui.rs`: drawing a game's own menu layouts; the mouse free while one is open (client)
-- `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
+- `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs, the vote setup dialog (games_ui)
 - `games/cs_source/src/ui/server_browser.rs`: the server browser (games_ui)
 - `games/cs_source/src/ui/team_menu.rs`: the team menu (games_ui)
 - `games/cs_source/src/ui/join_menus.rs`: CS:S's join flow: MOTD, team and class menus (games_ui)

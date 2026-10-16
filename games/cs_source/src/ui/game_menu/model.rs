@@ -82,6 +82,11 @@ pub enum Action {
     Cancel,
     /// The options' Apply: keep the changes so far, stay open.
     Apply,
+    /// The vote setup dialog: an issue picked (index into its issues), a
+    /// choice of it, Call Vote.
+    VoteIssue(usize),
+    VoteChoice(usize),
+    CallVote,
 }
 
 /// A row of a page: its controls in tab order.
@@ -300,6 +305,8 @@ pub struct GameMenu {
     pub editing: Option<(Field, String)>,
     /// Text settings typed and not set yet (OK or Apply sets them).
     pub typed: Vec<usize>,
+    /// The vote setup dialog's issues and picks.
+    pub vote: VoteSetup,
 }
 
 /// Keyboard list rows shown at once.
@@ -384,6 +391,7 @@ pub(super) fn menu_input(menu: &GameMenu, a: &[String]) -> Result<Input, String>
                 .ok_or(format!("no control \"{what}\" on this page"))?;
             Ok(Input::FocusRow(i))
         }
+        Some("row") => Ok(Input::FocusRow(a.get(1).and_then(|n| n.parse().ok()).ok_or("row <n>")?)),
         Some("open") => Ok(Input::Space),
         Some("down") => Ok(Input::Down),
         Some("up") => Ok(Input::Up),
@@ -398,7 +406,7 @@ pub(super) fn menu_input(menu: &GameMenu, a: &[String]) -> Result<Input, String>
             0,
         )),
         Some("sheet") => Ok(Input::Click(Target::Tab(a.get(1).and_then(|n| n.parse().ok()).ok_or("sheet <n>")?), 0)),
-        _ => Err("menuinput focus <control> | open | down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n>".into()),
+        _ => Err("menuinput focus <control> | row <n> | open | down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n>".into()),
     }
 }
 
@@ -664,6 +672,7 @@ impl GameMenu {
             Page::KeyboardAdvanced | Page::VideoAdvanced | Page::Gamma => self.advanced_rows(),
             Page::MultiplayerAdvanced => self.multiplayer_advanced_rows(),
             Page::Extras => self.extras_rows(),
+            Page::Vote => self.vote_rows(),
         }
     }
 
@@ -1308,6 +1317,7 @@ impl GameMenu {
                 self.apply_typed(out);
                 self.options_before = self.snapshot(|_| true);
             }
+            Action::VoteIssue(_) | Action::VoteChoice(_) | Action::CallVote => self.vote_action(action, out),
         }
     }
 
