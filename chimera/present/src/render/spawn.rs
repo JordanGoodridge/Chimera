@@ -573,6 +573,8 @@ fn spawn_world_meshes(
     let mut standard_shared: HashMap<(bool, Option<usize>, String), Handle<StandardMaterial>> = HashMap::new();
     // Brush entity nodes' mesh bounds (node space), for culling them.
     let mut node_bounds: HashMap<Entity, (Vec3, Vec3)> = HashMap::new();
+    // Overlays and infodecals draw in the map's order (`blend_order`).
+    let mut decal_order = 0u32;
     for m in &data.meshes {
         if water_drawn && m.water.is_some() {
             continue;
@@ -616,6 +618,7 @@ fn spawn_world_meshes(
             if let Some((_, node, home, centre)) = &merged {
                 world_merger.add((material.clone(), blended), *node, home, *centre, m);
             }
+            let decal = is_decal(m);
             for (chunk, clusters, centre) in chunks {
                 let mut e = commands.spawn((
                     Name::new(chunk.material.clone()),
@@ -639,6 +642,10 @@ fn spawn_world_meshes(
                 }
                 if m.pane_look != PaneLook::Whole {
                     e.insert((PanePart(m.pane_look), Visibility::Hidden));
+                }
+                if decal {
+                    e.insert(super::blend_order::DecalOrder(decal_order));
+                    decal_order += 1;
                 }
                 s.tag(&mut e, clusters);
             }
@@ -815,10 +822,15 @@ fn lit_world_material(
         alpha_mode: m.alpha.shader_alpha_mode(),
         double_sided: m.double_sided,
         // Map overlays and infodecals (see WorldMaterial::decal).
-        decal: m.material.starts_with("decal:") && m.alpha != MapAlpha::Opaque,
+        decal: is_decal(m),
         modulate: m.modulate,
     };
     (material, blended)
+}
+
+/// A map overlay or infodecal drawn as one (`WorldMaterial::decal`).
+fn is_decal(m: &MapMesh) -> bool {
+    m.material.starts_with("decal:") && m.alpha != MapAlpha::Opaque
 }
 
 /// Brush entities drawn merged (`merge`): the combined meshes, under the

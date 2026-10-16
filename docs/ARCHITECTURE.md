@@ -350,6 +350,7 @@ that the paths exist).
 - `chimera/present/src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
 - `chimera/present/src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)
 - `chimera/present/src/render/color_correction.rs`: color_correction volumes blended into one table (render)
+- `chimera/present/src/render/blend_order.rs`: blended meshes at the same depth drawn in an order of their own (render)
 - `chimera/present/src/render/light_styles.rs`: switchable and animated light styles at run time (render)
 - `chimera/present/src/render/lod.rs`: props' levels of detail as drawn (render)
 - `chimera/present/src/render/glow.rs`: glow sprites faded by how much of their proxy is seen (render)
