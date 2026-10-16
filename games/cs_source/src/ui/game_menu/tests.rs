@@ -262,11 +262,14 @@ fn in_game_entries_show_only_in_a_game() {
     let m = menu();
     assert_eq!(
         shown(&m),
-        [Resume, Disconnect, FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Bots, Team, Extras, Console]
+        [
+            Resume, Disconnect, PlayerList, FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Bots, Team,
+            Extras, Console
+        ]
     );
     let e = m.entries();
-    assert!(e[2].gap && e[2].enabled, "a gap under Disconnect, then Find Servers");
-    assert!(e[7].gap, "ours after a gap");
+    assert!(e[3].gap && e[3].enabled, "a gap under the player list, then Find Servers");
+    assert!(e[8].gap, "ours after a gap");
     let m = main_menu();
     assert_eq!(shown(&m), [FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Extras, Console]);
     let e = m.entries();
@@ -1014,22 +1017,26 @@ fn the_games_menu_entries_with_ours_added() {
     let e = main_entries(Some(&ui));
     let items: Vec<MainItem> = e.iter().map(|e| e.item).collect();
     use MainItem::*;
+    // The player list the file lacks: under Disconnect, as CS:S's.
     assert_eq!(
         items,
-        [Resume, Disconnect, FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Bots, Team, Extras, Console]
+        [
+            Resume, Disconnect, PlayerList, FindServers, NewGame, BugReport, Options, Quit, QuickStart, Greybox, Bots, Team,
+            Extras, Console
+        ]
     );
-    assert_eq!(e[3].label, "CREATE SERVER", "the game's words");
-    assert!(e[2].gap && !e[2].gap_in_game_only, "the file's blank entry");
-    assert!(e[0].in_game_only && e[1].in_game_only, "resume and disconnect only in a game");
-    assert_eq!(e[4].label, "REPORT BUG");
+    assert_eq!(e[4].label, "CREATE SERVER", "the game's words");
+    assert!(e[3].gap && !e[3].gap_in_game_only, "the file's blank entry");
+    assert!(e[0].in_game_only && e[1].in_game_only && e[2].in_game_only, "resume, disconnect, the player list only in a game");
+    assert_eq!(e[5].label, "REPORT BUG");
     // Without the file: CS:S's entries, ours.
     assert_eq!(main_entries(None).len(), MAIN.len() + OURS.len());
     let mut m = menu();
     m.set_ui(Some(Arc::new(ui)));
-    press(&mut m, &[Input::Click(Target::Main(5), 0)]);
+    press(&mut m, &[Input::Click(Target::Main(6), 0)]);
     assert_eq!(m.page, Page::Settings);
     press(&mut m, &[Input::Back]);
-    assert_eq!(m.focus, 5, "back on its entry");
+    assert_eq!(m.focus, 6, "back on its entry");
 }
 
 #[test]
@@ -1060,9 +1067,10 @@ fn the_install_menu_file_hides_its_gap_out_of_a_game() {
     assert!(!e[0].gap);
     m.in_game = true;
     let e = m.entries();
-    assert_eq!(e[2].item, MainItem::FindServers);
-    assert!(e[2].gap);
-    assert!(!e.iter().any(|e| e.label == "ACHIEVEMENTS" || e.label == "PLAYERS"), "what mashup lacks is left out");
+    assert_eq!(e[2].item, MainItem::PlayerList);
+    assert_eq!(e[3].item, MainItem::FindServers);
+    assert!(e[3].gap);
+    assert!(!e.iter().any(|e| e.label == "ACHIEVEMENTS"), "what mashup lacks is left out");
 }
 
 #[test]
@@ -1627,4 +1635,56 @@ fn the_brightness_dialog_sets_the_gamma() {
 #[test]
 fn frames_draw_over_the_menu() {
     assert!(MENU_Z < crate::client::widgets::FRAME_Z);
+}
+
+/// The player list (CS:S's `PlayerListDialog`): a player selected, Mute
+/// in-game voice mutes it by user id; once muted the button unmutes;
+/// oneself and bots can't be muted.
+#[test]
+fn the_player_list_mutes_the_selected_player() {
+    let mut m = menu();
+    let entries = m.entries();
+    let at = entries.iter().position(|e| e.item == MainItem::PlayerList).expect("an in-game entry");
+    assert_eq!(at, 2, "under Disconnect, as CS:S's");
+    press(&mut m, &[Input::Click(Target::Main(at), 0)]);
+    assert_eq!(m.page, Page::PlayerList);
+    let player = |id: Option<u64>, name: &str, me: bool, muted: bool| ListedPlayer {
+        id,
+        name: name.into(),
+        me,
+        muted,
+    };
+    m.set_roster(vec![
+        player(Some(3), "alice", false, false),
+        player(None, "Bot Bob", false, false),
+        player(Some(0), "me", true, false),
+    ]);
+    let rows = m.rows();
+    assert_eq!(rows.len(), 5, "three players, Mute, Close");
+    assert!(matches!(&rows[1], Row::Player { properties, .. } if properties == "Bot"));
+    // Nothing selected: Mute greyed.
+    assert!(matches!(&rows[3], Row::Button { enabled: false, .. }));
+    let out = press(&mut m, &[Input::Click(Target::Row(0), 0), Input::Click(Target::Row(3), 0)]);
+    assert_eq!(out.lines, vec!["voice_mute 3".to_string()]);
+    // The game muted it: the list says so and the button unmutes.
+    m.set_roster(vec![
+        player(Some(3), "alice", false, true),
+        player(None, "Bot Bob", false, false),
+        player(Some(0), "me", true, false),
+    ]);
+    assert_eq!(m.key_row, Some(0), "still selected");
+    let rows = m.rows();
+    assert!(matches!(&rows[0], Row::Player { properties, .. } if properties == "Muted"));
+    assert!(matches!(&rows[3], Row::Button { label, enabled: true, .. } if label.contains("Unmute")));
+    // Enter on the selected player presses the default button.
+    m.focus = 0;
+    assert_eq!(press(&mut m, &[Input::Activate]).lines, vec!["voice_unmute 3".to_string()]);
+    // A bot and oneself: greyed.
+    for r in [1, 2] {
+        press(&mut m, &[Input::Click(Target::Row(r), 0)]);
+        assert!(matches!(&m.rows()[3], Row::Button { enabled: false, .. }), "row {r}");
+    }
+    // Close: back to the menu.
+    press(&mut m, &[Input::Click(Target::Row(4), 0)]);
+    assert_eq!(m.page, Page::Main);
 }

@@ -13,7 +13,8 @@
 //!   or `voice_modenable` 0. `voice_loopback 1` plays one's own voice
 //!   back (decoded here: the server never sends a talker its own).
 //! - **Hearing**: each talker's `net::voice::VoiceRelay` is decoded with
-//!   its own decoder; a gap of up to `MAX_CONCEALED` frames (lost
+//!   its own decoder, unless its player is muted (`net::voice::VoiceMutes`,
+//!   the player list's mute: dropped undecoded); a gap of up to `MAX_CONCEALED` frames (lost
 //!   packets) is filled by Opus's concealment, older or repeated frames
 //!   are dropped. The samples go to `VoiceOutput` at `voice_scale` times
 //!   the master volume (Bevy's `GlobalVolume`), flat (CS:S's voice isn't
@@ -29,8 +30,8 @@
 //! Voice chat on the client: `+voicerecord`, the microphone and speakers
 //! (`VoiceInput`, `VoiceOutput`: cpal's default devices, fakes for tests),
 //! Opus at 48 kHz mono in 20 ms frames (`mousiki`), per-talker decoders with
-//! loss concealment, a jitter-buffered mixer, `voice_enable`,
-//! `voice_modenable`, `voice_scale`, `voice_loopback`.
+//! loss concealment, muted players dropped (`VoiceMutes`), a jitter-buffered
+//! mixer, `voice_enable`, `voice_modenable`, `voice_scale`, `voice_loopback`.
 //!
 //! Known shortcuts (docs/tech-debt.md): Voice chat (`client::voice`): the
 //! client cvars' defaults (`voice_enable` 1, `voice_modenable` 1,
@@ -40,8 +41,7 @@
 //! (CS:S's `sv_voicecodec` is Steam's voice, also Opus-based); linear
 //! resampling; a 60 ms jitter buffer and at most 0.5 s of microphone backlog
 //! (ours); the system's default devices only (no device choice); no
-//! `voice_vox` (open microphone), no per-player mute, no microphone test or
-//! meter; `voice_loopback` decodes locally (Source's server echoes it).
+//! `voice_vox` (open microphone), no microphone test or meter; `voice_loopback` decodes locally (Source's server echoes it).
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -59,7 +59,10 @@ use mousiki::{Application, Bandwidth, Bitrate, Channels, Decoder, Encoder, Signa
 use crate::{
     console::{ConsoleAppExt, resource_cvar},
     core::{LocalPlayer, NetRole},
-    net::voice::{MAX_FRAMES, VoiceActivity, VoiceData, VoiceRelay},
+    net::{
+        NetCharacter,
+        voice::{MAX_FRAMES, VoiceActivity, VoiceData, VoiceMutes, VoiceRelay},
+    },
 };
 
 /// The codec's sample rate (Hz) and frame (samples: 20 ms).
@@ -254,6 +257,7 @@ impl Plugin for VoicePlugin {
             .init_resource::<VoiceRecord>()
             .init_resource::<VoiceSettings>()
             .init_resource::<VoiceActivity>()
+            .init_resource::<VoiceMutes>()
             .init_resource::<Talkers>()
             .insert_resource(Capture {
                 pending: Vec::new(),
@@ -387,10 +391,13 @@ fn capture(
     }
 }
 
-/// Decode the voice that reached us and play it.
+/// Decode the voice that reached us and play it (not muted players').
+#[allow(clippy::too_many_arguments)]
 fn play(
     mut relays: MessageReader<VoiceRelay>,
     settings: Res<VoiceSettings>,
+    mutes: Res<VoiceMutes>,
+    characters: Query<&NetCharacter>,
     global: Option<Res<GlobalVolume>>,
     time: Res<Time<Real>>,
     mut devices: ResMut<VoiceDevices>,
@@ -405,7 +412,7 @@ fn play(
     let devices = &mut *devices;
     let gain = settings.scale.max(0.0) * master(global.as_deref());
     for r in relays.read() {
-        if r.speaker == Entity::PLACEHOLDER {
+        if r.speaker == Entity::PLACEHOLDER || mutes.muted(characters.get(r.speaker).ok()) {
             continue;
         }
         if devices.output.is_none() && devices.open_system && !devices.output_failed {
@@ -758,6 +765,82 @@ mod tests {
         // Concealing a lost frame gives a frame.
         let mut lost = [0i16; FRAME];
         assert_eq!(dec.conceal(&mut lost).unwrap(), FRAME);
+    }
+
+    /// An app with voice chat on fake devices, as a network client.
+    fn app(input: FakeInput, output: FakeOutput) -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, crate::console::ConsolePlugin))
+            .add_message::<VoiceData>()
+            .add_message::<VoiceRelay>()
+            .insert_resource(NetRole::Client)
+            .add_plugins(VoicePlugin)
+            .insert_resource(VoiceDevices::fake(input, output))
+            .init_resource::<Sent>()
+            .add_systems(PostUpdate, |mut data: MessageReader<VoiceData>, mut sent: ResMut<Sent>| {
+                for d in data.read() {
+                    sent.0.push(d.frames.len());
+                }
+            });
+        app
+    }
+
+    /// The frames of each `VoiceData` sent.
+    #[derive(Resource, Default)]
+    struct Sent(Vec<usize>);
+
+    impl Sent {
+        fn frames(app: &App) -> usize {
+            app.world().resource::<Sent>().0.iter().sum()
+        }
+    }
+
+    /// `n` frames of a tone (amplitude 8000) encoded as a talker sends them.
+    fn packets(n: usize) -> Vec<Vec<u8>> {
+        let mic = FakeInput::default();
+        mic.push_tone(300.0, n as f32 * FRAME as f32 / RATE as f32);
+        let pcm: Vec<i16> = mic.0.lock().unwrap().drain(..).collect();
+        let mut enc = encoder();
+        pcm.chunks(FRAME)
+            .map(|c| {
+                let mut p = [0u8; 1500];
+                let len = enc.encode(c, &mut p).unwrap();
+                p[..len].to_vec()
+            })
+            .collect()
+    }
+
+    /// A muted player's voice is never played; others' is; unmuted, it is
+    /// again. Bots (no user id) can't be muted.
+    #[test]
+    fn a_muted_talker_is_not_played() {
+        let out = FakeOutput::default();
+        let mut app = app(FakeInput::default(), out.clone());
+        let player = |owner| NetCharacter {
+            owner,
+            name: "x".into(),
+        };
+        let a = app.world_mut().spawn(player(Some(5))).id();
+        let b = app.world_mut().spawn(player(Some(6))).id();
+        app.world_mut().resource_mut::<VoiceMutes>().set(5, true);
+        let mut seq = 0;
+        let mut say = |app: &mut App, who: Entity| {
+            app.world_mut().write_message(VoiceRelay {
+                speaker: who,
+                seq,
+                frames: packets(4),
+            });
+            seq += 4;
+            app.update();
+        };
+        say(&mut app, a);
+        say(&mut app, b);
+        assert_eq!(out.samples(a), 0, "muted");
+        assert_eq!(out.samples(b), 4 * FRAME);
+        app.world_mut().resource_mut::<VoiceMutes>().set(5, false);
+        say(&mut app, a);
+        assert_eq!(out.samples(a), 4 * FRAME, "heard once unmuted");
+        assert_eq!(Sent::frames(&app), 0, "nothing sent without talking");
     }
 
     #[test]

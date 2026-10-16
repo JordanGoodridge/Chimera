@@ -23,7 +23,7 @@
 //! The main menu and the game menu (one module per dialog: `main_menu.rs` the
 //! left-hand entries, `options_pages.rs` the options' tabs and their Advanced
 //! dialogs, `create_server.rs`, `loading.rs` the loading and Disconnected
-//! dialogs, `extras.rs` ours (Lucker Party Options, Bots, Team); `model.rs` the
+//! dialogs, `player_list.rs` the player list (mute players' voice), `extras.rs` ours (Lucker Party Options, Bots, Team); `model.rs` the
 //! shared model, `draw.rs` the drawing, `systems.rs` input and the Bevy
 //! systems, `tests.rs`): Esc, `menu [page or options tab]`,
 //! `gameui_activate`/`gameui_hide`), one implementation drawn as CS:S's GameUI.
@@ -49,8 +49,8 @@
 //! `mashup_loading_details 1` adds a detailed view under it (`LoadTimeline`:
 //! each stage's time, bytes and percentage; the server's name, address, map,
 //! players and ping). The entries at the left: the game's `GameMenu.res`
-//! entries mashup can do, in its words and order (Resume and Disconnect only in
-//! a game, Find Servers opens the server browser (`server_browser.rs`), Create
+//! entries mashup can do, in its words and order (Resume, Disconnect and the
+//! Player List only in a game, Find Servers opens the server browser (`server_browser.rs`), Create
 //! Server, report a bug), then ours after a gap (quick start: rounds on
 //! de_dust2 with bots; the greybox test map; bots and team in a game; Lucker
 //! Party Options: the settings CS:S's options don't have; console), under the
@@ -110,11 +110,12 @@ mod loading;
 mod main_menu;
 mod model;
 mod options_pages;
+mod player_list;
 mod systems;
 #[cfg(test)]
 mod tests;
 
-pub use self::{create_server::*, draw::MENU_Z, loading::*, main_menu::*, model::*};
+pub use self::{create_server::*, draw::MENU_Z, loading::*, main_menu::*, model::*, player_list::ListedPlayer};
 pub(in crate::ui) use self::systems::*;
 use self::{draw::*, options_pages::*};
 
@@ -218,9 +219,10 @@ impl Plugin for GameMenuPlugin {
         app.console_command(
             "menu",
             "menu [main|newgame|game|bot|bots|team|options|keyboard|mouse|audio|video|voice|multiplayer|advanced|\
-             videoadvanced|gamma|mpadvanced|extras]: open the game menu (Esc) on a page (newgame: Create Server, game and \
-             bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced the \
-             video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party Options).",
+             videoadvanced|gamma|mpadvanced|extras|players]: open the game menu (Esc) on a page (newgame: Create Server, \
+             game and bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced \
+             the video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party \
+             Options; players: the player list, to mute players).",
             |w, a| {
                 let arg = a.first().map(|s| s.to_lowercase());
                 let tab = TABS.iter().find(|(t, ..)| Some(t.page()) == arg.as_deref()).map(|(t, ..)| *t);
@@ -232,6 +234,7 @@ impl Plugin for GameMenuPlugin {
                     Some("team") => Page::Team,
                     Some("options" | "settings" | "advanced" | "videoadvanced" | "gamma" | "mpadvanced") => Page::Settings,
                     Some("extras") => Page::Extras,
+                    Some("players" | "playerlist") => Page::PlayerList,
                     Some(p) => return Err(format!("no menu page \"{p}\"")),
                 };
                 open_menu(w, page);
@@ -324,6 +327,8 @@ pub enum Page {
     MultiplayerAdvanced,
     /// Ours: Lucker Party Options (what CS:S's options don't have).
     Extras,
+    /// The player list (`PlayerListDialog.res`): mute players' voice.
+    PlayerList,
 }
 
 impl Page {
@@ -340,6 +345,7 @@ impl Page {
             Page::Gamma => "gamma",
             Page::MultiplayerAdvanced => "multiplayeradvanced",
             Page::Extras => "extras",
+            Page::PlayerList => "playerlist",
         }
     }
 

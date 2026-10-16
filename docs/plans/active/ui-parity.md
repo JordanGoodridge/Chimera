@@ -231,6 +231,7 @@ frame, a property sheet (Server, Game, Bot), Start (default) / Cancel.
 | Loading (`LoadingDialogNoBanner.res`: Frame, Label, ProgressBar, Button) | install | movable frame (no close box, as CS:S's), Cancel the default button |
 | Disconnected (failure) | ours, in the loading dialog's look | movable frame, Close |
 | CS:S Not Found (first run) | ours | modal frame; folder text entry with caret, selection, paste; Retry default, Tab order |
+| Player list (`PlayerListDialog.res`: CPlayerListDialog 467 x 388, ListPanel `PlayerList`, Button `MuteButton` (default), `Button1` Close) | install | the game menu's in-game "Player List" (`menu players`): the list where the layout puts it (headings `#GameUI_PlayerName`, `#GameUI_Properties`; a row per player, "Muted" or "Bot" in its properties, the selected one lit), Mute / Unmute in-game voice for the selected player (`voice_mute`, `voice_unmute`; greyed for oneself and bots; Enter presses it), Close; title `#GameUI_PlayerListDialogTitle` with `hostname` (`game_menu::player_list`) |
 | Bots, Team (in a game) | ours | frames with widget buttons (column) |
 | Console | ours (a drop-down console, not VGUI) | unchanged: CS:S's console is a sizeable VGUI frame; see Left |
 | Buy and team menus | the map's `resource/ui/*.res` through `client::vgui` | unchanged: full-screen VGUI panels in CS:S too, not movable |

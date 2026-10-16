@@ -98,13 +98,15 @@ pub enum Row {
     Info(String),
     /// A control mashup lacks the cvar for: drawn greyed, not focused.
     Greyed { label: String, control: Control },
+    /// A player in the player list: name and properties ("Muted").
+    Player { name: String, properties: String },
 }
 
 impl Row {
     pub(super) fn focusable(&self) -> bool {
         match self {
             Row::Button { enabled, .. } => *enabled,
-            Row::Control { .. } | Row::Bind { .. } => true,
+            Row::Control { .. } | Row::Bind { .. } | Row::Player { .. } => true,
             Row::Info(_) | Row::Heading(_) | Row::Greyed { .. } => false,
         }
     }
@@ -300,6 +302,10 @@ pub struct GameMenu {
     pub editing: Option<(Field, String)>,
     /// Text settings typed and not set yet (OK or Apply sets them).
     pub typed: Vec<usize>,
+    /// The players the player list shows (in a game).
+    pub roster: Vec<ListedPlayer>,
+    /// The server's name, for the player list's title.
+    pub server_name: String,
 }
 
 /// Keyboard list rows shown at once.
@@ -311,6 +317,8 @@ pub(super) const KEY_BUTTONS: usize = 4;
 pub const ADVANCED_ROWS: usize = 11;
 /// Rows of Create Server's Game page list shown at once.
 pub const GAME_ROWS: usize = 12;
+/// Rows of the player list shown at once.
+pub const PLAYER_ROWS: usize = 12;
 
 /// The layout control of an options tab's button opening one of its
 /// Advanced dialogs.
@@ -332,6 +340,7 @@ pub(super) fn layout_name(page: Page, tab: Tab, create_tab: usize) -> Option<&'s
         Page::Gamma => Some("video_gamma"),
         Page::MultiplayerAdvanced => Some("multiplayer_advanced"),
         Page::NewGame => Some(["create_server", "create_game", "create_bot"][create_tab.min(2)]),
+        Page::PlayerList => Some("player_list"),
         _ => None,
     }
 }
@@ -450,6 +459,7 @@ impl GameMenu {
         self.new_game.cvars = self.server_cvars(&get);
         self.new_game.random = false;
         self.user_cvars = self.user_cvars_now(&get);
+        self.server_name = get("hostname").unwrap_or_default();
         self.go_to(page);
     }
 
@@ -664,6 +674,7 @@ impl GameMenu {
             Page::KeyboardAdvanced | Page::VideoAdvanced | Page::Gamma => self.advanced_rows(),
             Page::MultiplayerAdvanced => self.multiplayer_advanced_rows(),
             Page::Extras => self.extras_rows(),
+            Page::PlayerList => self.player_list_rows(),
         }
     }
 
@@ -832,6 +843,12 @@ impl GameMenu {
                 }
             }
             Input::Activate => match focused.as_ref() {
+                // The player list's default button: Mute in-game voice.
+                Some(Row::Player { .. }) => {
+                    if let Some(action) = self.mute_action() {
+                        self.press_action_into(&action, &mut out);
+                    }
+                }
                 Some(Row::Button { .. } | Row::Bind { .. }) => self.activate(self.focus, &mut out),
                 _ if self.page == Page::Main => self.activate(self.focus, &mut out),
                 _ => {
@@ -864,8 +881,9 @@ impl GameMenu {
             }
             Input::Click(Target::Row(i), _) => {
                 if self.page != Page::Main && rows.get(i).is_some_and(Row::focusable) {
-                    // A list row: the first click selects, the next edits.
-                    if matches!(rows[i], Row::Bind { .. }) && self.key_row != Some(i) {
+                    // A list row: the first click selects, the next edits
+                    // (a player is only selected).
+                    if matches!(rows[i], Row::Player { .. }) || (matches!(rows[i], Row::Bind { .. }) && self.key_row != Some(i)) {
                         self.focus = i;
                         self.key_row = Some(i);
                     } else {
@@ -1122,6 +1140,9 @@ impl GameMenu {
         {
             self.key_row = Some(self.focus);
         }
+        if self.page == Page::PlayerList && matches!(self.rows().get(self.focus), Some(Row::Player { .. })) {
+            self.key_row = Some(self.focus);
+        }
     }
 
     /// The open list's length and rows shown (0, 0 without one).
@@ -1130,6 +1151,7 @@ impl GameMenu {
             Page::Settings if self.tab == Tab::Keyboard => (self.rows().len() - KEY_BUTTONS - 3, KEY_ROWS),
             Page::NewGame if self.create_tab == 1 => (self.rows().len() - 2, GAME_ROWS),
             Page::MultiplayerAdvanced => (self.rows().len() - 2, ADVANCED_ROWS),
+            Page::PlayerList => (self.roster.len(), PLAYER_ROWS),
             _ => (0, 0),
         }
     }
@@ -1200,6 +1222,7 @@ impl GameMenu {
                 self.key_row = Some(i);
                 self.capture = Some(command);
             }
+            Row::Player { .. } => self.key_row = Some(i),
             Row::Control { field, control, .. } => match control {
                 Control::Combo { entries, selected, .. } => {
                     if !entries.is_empty() {

@@ -97,11 +97,24 @@ docs), to confirm with two clients on the probe server.
    `sv_alltalk 0`, by both with 1).
 6. Docs: module docs, ARCHITECTURE.md, parity-gaps rows, backlog.
 
+## Follow-ups (2026-10-16)
+
+1. Per-player mute (done): the game menu's Player List (CS:S's
+   `CPlayerListDialog`, the install's `PlayerListDialog.res`; in a game,
+   under Disconnect): select a player, "Mute in-game voice" (the
+   default button) runs `voice_mute <userid>`, the row's properties say
+   "Muted" and the button unmutes. `net::voice::VoiceMutes` keeps the
+   user ids (`NetCharacter::owner`) for the session; a muted talker's
+   relay is dropped on the client (not decoded, played or shown in the
+   HUD). CS:S's own scoreboard (`scoreboard.res`) has no mute control,
+   so the dialog is the way, as in CS:S. Not as CS:S: the server still
+   sends the muted voice (Source's `vban` stops it there) and mutes
+   aren't saved (CS:S keeps them by Steam id in `voice_ban.dt`).
+
 ## Left for later
 
-- Per-player mute (the scoreboard's mute button, `vban`), `voice_vox`
-  (open microphone), the Voice tab's controls (stay greyed but the
-  ones a cvar backs), the microphone test and meter.
+- `voice_vox` (open microphone), the Voice tab's microphone test, meter
+  and boost.
 - Talking icons over heads (`voice/icntlk_pl`), Steam avatars in the
   voice panel.
 - `voice_inputfromfile`, `voice_recordtofile`.

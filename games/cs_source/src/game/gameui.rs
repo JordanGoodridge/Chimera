@@ -155,7 +155,7 @@ pub fn key_actions(text: &str, strings: &HashMap<String, String>) -> Vec<KeyActi
 }
 
 /// The options pages' and Create Server's layout files, by page.
-const OPTION_PAGES: [(&str, &str); 13] = [
+const OPTION_PAGES: [(&str, &str); 14] = [
     // The video tab's brightness dialog (Adjust brightness levels...).
     ("video_gamma", "resource/optionssubvideogammadlg.res"),
     ("keyboard", "resource/optionssubkeyboard.res"),
@@ -175,6 +175,8 @@ const OPTION_PAGES: [(&str, &str); 13] = [
     ("create_server", "resource/createmultiplayergameserverpage.res"),
     ("create_game", "resource/createmultiplayergamegameplaypage.res"),
     ("create_bot", "resource/createmultiplayergamebotpage.res"),
+    // The game menu's player list (mute players' voice).
+    ("player_list", "resource/playerlistdialog.res"),
 ];
 
 /// Create Server's Game page options: the install's own, else the

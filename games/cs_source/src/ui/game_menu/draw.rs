@@ -56,6 +56,13 @@ pub(super) fn dialog_size(menu: &GameMenu, page: Page) -> (f32, f32) {
             let n = menu.rows().len() as f32;
             (420.0, 44.0 + n * 28.0 + 12.0)
         }
+        Page::PlayerList => menu
+            .ui
+            .0
+            .as_ref()
+            .and_then(|u| u.options.get("player_list"))
+            .and_then(|l| l.get("PlayerListDialog"))
+            .map_or((467.0, 388.0), |c| (c.wide, c.tall)),
         _ => (360.0, 230.0),
     }
 }
@@ -228,6 +235,7 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
         Page::Gamma => menu.text("#GameUI_AdjustGamma_Title", "Adjust brightness levels"),
         Page::MultiplayerAdvanced => menu.text("#GameUI_MultiplayerAdvanced", "Multiplayer Advanced"),
         Page::Extras => "Lucker Party Options".into(),
+        Page::PlayerList => menu.player_list_title(),
     };
     let mut spec = FrameSpec::new(page.window());
     if page.over_options() {
@@ -288,6 +296,26 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
             column(commands, ctx, frame, (16.0, 36.0, w - 32.0), true);
             dialog_buttons(commands, ctx, frame, (w, h), &[Action::Ok, Action::Cancel]);
         }
+        Page::PlayerList => {
+            let at = menu
+                .layout()
+                .and_then(|l| l.get("PlayerList"))
+                .map(|c| (coord(c.x), coord(c.y), c.wide, c.tall));
+            player_list(commands, ctx, frame, at.unwrap_or((28.0, 38.0, w - 57.0, h - 109.0)));
+            if menu.layout().is_some() {
+                page_controls(commands, ctx, frame, (w, h));
+            } else {
+                // Mute and Close under the list.
+                let n = ctx.rows.len();
+                for (k, i) in [n - 2, n - 1].into_iter().enumerate() {
+                    if let Row::Button { label: text, enabled, .. } = &ctx.rows[i] {
+                        let state = Btn::enabled(*enabled).focused(menu.focus == i);
+                        let rect = (28.0 + k as f32 * 170.0, h - 62.0, 160.0, 24.0);
+                        widgets::button(commands, frame, look, rect, text, state, 0, Hit(Target::Row(i), 0));
+                    }
+                }
+            }
+        }
         _ => column(commands, ctx, frame, (16.0, 36.0, w - 32.0), false),
     }
 }
@@ -337,6 +365,7 @@ pub(super) fn label_of(row: &Row) -> String {
         Row::Button { label, .. } | Row::Control { label, .. } | Row::Bind { label, .. } => label.clone(),
         Row::Heading(t) | Row::Info(t) => t.clone(),
         Row::Greyed { label, .. } => label.clone(),
+        Row::Player { name, .. } => name.clone(),
     }
 }
 
@@ -534,6 +563,14 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
                 action: Action::Cancel,
                 ..
             } => name == "Button2" && menu.page.over_options(),
+            // The player list's (`PlayerListDialog.res`).
+            Row::Button {
+                action: Action::Run(..),
+                ..
+            } if menu.page == Page::PlayerList => name.eq_ignore_ascii_case("MuteButton"),
+            Row::Button {
+                action: Action::Back, ..
+            } if menu.page == Page::PlayerList => name == "Button1",
             Row::Button { action, .. } => advanced_button(action).is_some_and(|b| b == name),
             _ => false,
         })
@@ -714,7 +751,7 @@ pub(super) fn column(commands: &mut Commands, ctx: &Ctx, parent: Entity, (x, y, 
                 let state = Btn::enabled(*enabled).focused(menu.focus == i);
                 widgets::button(commands, parent, look, (x, ry, w.min(260.0), 24.0), text, state, -1, Hit(Target::Row(i), 0));
             }
-            Row::Bind { .. } => continue,
+            Row::Bind { .. } | Row::Player { .. } => continue,
             Row::Control { label: text, control: c, .. } => {
                 if matches!(c, Control::Check(_) | Control::Radio(_)) {
                     control(commands, ctx, parent, i, row, (x, ry, w, 24.0), Some(text), None);
@@ -731,6 +768,68 @@ pub(super) fn column(commands: &mut Commands, ctx: &Ctx, parent: Entity, (x, y, 
         }
         ry += row_h;
     }
+}
+
+/// The player list's list (VGUI's `ListPanel`): its column headings
+/// ("Player name", "Properties"), a row per player (the selected one lit),
+/// a scroll bar.
+pub(super) fn player_list(commands: &mut Commands, ctx: &Ctx, parent: Entity, (lx, ly, lw, lh): (f32, f32, f32, f32)) {
+    let (look, menu) = (ctx.look, ctx.menu);
+    let list = commands
+        .spawn((
+            Node {
+                border: UiRect::all(px(1.0)),
+                overflow: Overflow::clip(),
+                ..place(look, lx, ly, lw, lh)
+            },
+            bevel(look, false),
+            BackgroundColor(look.color("ListPanel.BgColor", [0, 0, 0, 128])),
+            RelativeCursorPosition::default(),
+            WheelList,
+            ChildOf(parent),
+        ))
+        .id();
+    let (len, shown) = menu.list();
+    let bar_w = look.number("ScrollBar.Wide", 17.0);
+    let row_h = ((lh - 22.0) / shown.max(1) as f32).floor();
+    let width = lw - bar_w - 4.0;
+    let props_x = (width * 0.6).round();
+    let header = look.font("DefaultBold", (16.0, true));
+    let font = look.default_font();
+    let header_color = look.color("SectionedListPanel.HeaderTextColor", [255, 255, 255, 255]);
+    let name_head = menu.text("#GameUI_PlayerName", "Player name");
+    label(commands, list, look, (6.0, 1.0, props_x - 8.0, 20.0), &name_head, header.clone(), header_color, -1);
+    let props_head = menu.text("#GameUI_Properties", "Properties");
+    label(commands, list, look, (props_x, 1.0, width - props_x, 20.0), &props_head, header, header_color, -1);
+    commands.spawn((
+        place(look, 2.0, 21.0, width - 2.0, 1.0),
+        BackgroundColor(look.color("SectionedListPanel.DividerColor", [0, 0, 0, 255])),
+        ChildOf(list),
+    ));
+    let text = look.color("ListPanel.TextColor", [190, 190, 190, 255]);
+    for (k, i) in (menu.scroll..(menu.scroll + shown).min(len)).enumerate() {
+        let Row::Player { name, properties } = &ctx.rows[i] else { continue };
+        let y = 22.0 + k as f32 * row_h;
+        let selected = menu.key_row == Some(i);
+        let (bg, fg) = if selected {
+            (look.selected_bg(), look.selected_text())
+        } else {
+            (Color::NONE, text)
+        };
+        let e = commands
+            .spawn((
+                place(look, 1.0, y, width, row_h),
+                BackgroundColor(bg),
+                Hit(Target::Row(i), 0),
+                Button,
+                Interaction::default(),
+                ChildOf(list),
+            ))
+            .id();
+        label(commands, e, look, (5.0, 0.0, props_x - 8.0, row_h), name, font.clone(), fg, -1);
+        label(commands, e, look, (props_x - 1.0, 0.0, width - props_x, row_h), properties, font.clone(), fg, -1);
+    }
+    scroll_bar(commands, list, look, (lw - bar_w - 2.0, 0.0, lh - 2.0), (len, shown, menu.scroll));
 }
 
 /// A scrolled list of labelled controls (VGUI's `CPanelListPanel`: Create
