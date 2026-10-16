@@ -773,7 +773,11 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     the leader ran (250) or walked (130); near the leader each step is
     ≈ 0.8 of the last (26.0, 20.8, 16.7, 13.3, ...), and it stopped 40
     units from a runner and 77 from a walker. It started 0.1 s after the
-    leader did. Give-up rules, corners, jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
+    leader did. With the leader moved 1230 units away (straight line,
+    another room, out of sight) the hostage still followed, found its way
+    round and reached him in 7 s; the give-up distance and time are
+    beyond that (ours: 1500 units or 10 s out of sight). Corners and
+    jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
     hostage's position and speed every tick while the CT walks away at
     250 in/s, stops, turns corners, jumps a crate, and teleports 2000 in
     away. Measure: stop distance, walk/run speeds and the threshold, the
