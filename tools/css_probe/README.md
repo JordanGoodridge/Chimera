@@ -163,3 +163,5 @@ hostage's TraceAttack and OnTakeDamage (each hit's damage before the
 multiplier, hitbox, hitgroup, and the damage taken) into
 `addons/sourcemod/logs/mashup_host.log` (objectives.md Q8); hostages are
 re-created at each round restart, so hook again after one.
+`mashup_htrack <entity> <file>` logs that entity's origin every server
+frame (`game_time x y z`); `mashup_htrack -1` stops (objectives.md Q10).

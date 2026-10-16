@@ -759,7 +759,18 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    1) and cs_compound (`HostageType` 1): which of `hostage_01..04` does
    each hostage use (dump each `hostage_entity`'s model name) and does it
    change per round?
-10. **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
+10. **Q10 Partly measured (2026-10-16, probe server, cs_office, a CT bot
+    using hostage 121 from 60 units, then running or walking (the walk
+    key) about 400 units away along a clear line; the hostage's origin
+    logged every server frame with `mashup_htrack`):** the server moves a
+    hostage only every 7 ticks (0.105 s; its origin steps, the client
+    smooths it). Following, its step per update grows toward ≈ 26 units
+    (≈ 250 u/s), each step closing about a fifth of the gap to that
+    (6.1, 11.0, 14.9, 18.0, 20.5, 22.5, 24.1, 25.2, 26.0), the same whether
+    the leader ran (250) or walked (130); near the leader each step is
+    ≈ 0.8 of the last (26.0, 20.8, 16.7, 13.3, ...), and it stopped 40
+    units from a runner and 77 from a walker. It started 0.1 s after the
+    leader did. Give-up rules, corners, jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
     hostage's position and speed every tick while the CT walks away at
     250 in/s, stops, turns corners, jumps a crate, and teleports 2000 in
     away. Measure: stop distance, walk/run speeds and the threshold, the
