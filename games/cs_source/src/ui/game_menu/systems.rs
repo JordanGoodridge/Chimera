@@ -620,7 +620,7 @@ pub(super) fn pointer(
 /// Bots and players per team (bots and team pages), the binds (the
 /// keyboard tab) and the players and whom this client muted (the player
 /// list), while open.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn sync(
     mut menu: ResMut<GameMenu>,
     console: Res<Console>,
