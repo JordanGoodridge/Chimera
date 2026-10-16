@@ -14,7 +14,7 @@
 //! distributions (`FrameMetrics::lines`/`stats`, shown by `mashup_perf`, the
 //! debug UI's Perf tab and `--bench`), the hitch log (`mashup_hitch_ratio`: a
 //! frame over that many times the median logs its slowest schedules (and render
-//! sets with `MASHUP_RENDER_PHASES=1`); `span_times`, profile builds: spans'
+//! sets; `MASHUP_RENDER_PHASES=0` leaves those marks out); `span_times`, profile builds: spans'
 //! self time).
 
 use std::{
@@ -69,16 +69,15 @@ impl Plugin for FrameMetricsPlugin {
                 ("cleanup", RenderSystems::Cleanup),
             ];
             // Start and end inside the first and last sets, as the
-            // render-world time was always taken. Marks between the sets
-            // (each set's share, for the hitch log) only with
-            // `MASHUP_RENDER_PHASES=1`: with them, 2 of 5 cs_office
-            // benches quit on a wgpu indirect-draw validation error
-            // (docs/performance.md, "Load-independent metrics"); extra
-            // systems reorder the single-threaded executor's ambiguous
-            // render systems.
+            // render-world time was always taken. Marks between the sets:
+            // each set's share, for the hitch log; `MASHUP_RENDER_PHASES=0`
+            // leaves them out. (They were opt-in after 2 of 5 cs_office
+            // benches quit on a wgpu indirect-draw validation error; that no
+            // longer reproduces, and they move no system that touches the
+            // indirect buffers: docs/performance.md, "Baseline".)
             render.add_systems(Render, render_start.in_set(RenderSystems::ExtractCommands));
             render.add_systems(Render, render_end.in_set(RenderSystems::Cleanup));
-            let phases = std::env::var("MASHUP_RENDER_PHASES").as_deref() == Ok("1");
+            let phases = std::env::var("MASHUP_RENDER_PHASES").as_deref() != Ok("0");
             for (i, (name, set)) in sets.iter().enumerate().filter(|_| phases) {
                 let name: &'static str = name;
                 let mark = move |mut m: ResMut<RenderMarks>| m.mark(name);

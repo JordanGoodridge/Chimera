@@ -149,18 +149,40 @@ fn main() {
 /// finished), every schedule's systems in the order they run, the main
 /// world's then the render world's (`harness::system_order`), written to
 /// the file instead of running; for refactors that move the client's
-/// systems between plugins or crates (docs/OBSERVABILITY.md).
+/// systems between plugins or crates, and for what an added system does
+/// to the order of others (docs/OBSERVABILITY.md). `MASHUP_AMBIGUITY=1`
+/// also logs the render world's `Render` schedule's ambiguous pairs.
 fn dump_systems(app: &mut App, path: &std::path::Path) {
     use bevy::app::PluginsState;
     while app.plugins_state() == PluginsState::Adding {
         bevy::tasks::tick_global_task_pools_on_main_thread();
     }
     app.finish();
+    // The render world before `cleanup`: pipelined rendering's cleanup
+    // moves it to its own thread, out of the app. Its extract systems
+    // need a main world to initialize against: an empty one.
+    let render = app.get_sub_app_mut(bevy::render::RenderApp).map(|sub| {
+        sub.world_mut().init_resource::<bevy::render::MainWorld>();
+        // `MASHUP_AMBIGUITY=1`: log the `Render` schedule's ambiguous
+        // system pairs (systems with conflicting access and no order;
+        // the single-threaded executor runs them in whatever order the
+        // graph sorts to, which other systems' constraints can change).
+        if std::env::var("MASHUP_AMBIGUITY").as_deref() == Ok("1") {
+            sub.edit_schedule(bevy::render::Render, |s| {
+                let mut settings = s.get_build_settings();
+                settings.ambiguity_detection = bevy::ecs::schedule::LogLevel::Warn;
+                s.set_build_settings(settings);
+            });
+        }
+        let text = cs_source_app::harness::system_order(sub.world_mut());
+        sub.world_mut().remove_resource::<bevy::render::MainWorld>();
+        text
+    });
     app.cleanup();
     let mut text = cs_source_app::harness::system_order(app.world_mut());
-    if let Some(sub) = app.get_sub_app_mut(bevy::render::RenderApp) {
+    if let Some(render) = render {
         text += "render world:\n";
-        text += &cs_source_app::harness::system_order(sub.world_mut());
+        text += &render;
     }
     match std::fs::write(path, text) {
         Ok(()) => eprintln!("systems in order written to {}", path.display()),

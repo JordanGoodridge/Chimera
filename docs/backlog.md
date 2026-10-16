@@ -776,16 +776,9 @@ dithered fade bands. Left:
   props on cs_office never fall asleep (they rock by a tenth of a
   millimetre forever: transform propagation and shadow checks every
   frame).
-- Some order of Bevy's render systems breaks indirect draws on
-  cs_office: with marks between the `Render` sets
-  (`MASHUP_RENDER_PHASES=1`, `client::frame_metrics`) 2 of 5 `refcmp
-  bench` runs quit on "Indirect draw ... overruns indirect buffer"
-  (performance.md, "Load-independent metrics"). Find which ambiguous
-  render systems need an order (Bevy's ambiguity detection on the
-  `Render` schedule), then make the marks default.
-- `perfgate` in the pre-push hook once its run time (about 3 minutes with
-  map loading, playtest build) is acceptable; a Windows-side check needs
-  another counter source (none there yet).
+- `perfgate` in the pre-push hook (budgets per game app): deferred by
+  the user (2026-10-15), pushes aren't blocked on performance for now.
+  A Windows-side check needs another counter source (none there yet).
 
 ## 10. Long tail
 
