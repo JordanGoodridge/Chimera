@@ -1,6 +1,7 @@
 //! Objectives on stock maps (specs/cs_source/objectives.md): planting at
 //! de_dust2's A site and the site's BombExplode outputs, cs_office's
-//! hostages and rescue. Skipped without a CS:S install.
+//! hostages and rescue, shots at a hostage (Q8). Skipped without a CS:S
+//! install.
 
 use avian3d::prelude::Position;
 use bevy::prelude::*;
@@ -293,4 +294,103 @@ fn office_hostage_walks_after_its_leader() {
         "it never walked or ran: {seen:?}"
     );
     eprintln!("hostage played {seen:?}");
+}
+
+/// Q8, the CS:S probe's shots again: one AK-47 or Desert Eagle shot from
+/// 150 units at hostage 1 (fresh each time), aimed `z` units above its
+/// feet. Ours: the player hitgroups on the hostage model's first hitbox
+/// set (the same for all four models). CS:S's numbers don't follow one
+/// rule (objectives.md "Hostage damage"); this pins what ours does and
+/// prints both.
+#[test]
+fn office_hostage_shots_from_150_units() {
+    use crate::stack::{
+        core::{Health, Hitgroup},
+        games::cs_source::weapons::{AK47, DEAGLE},
+        weapon::{WeaponEvent, WeaponEventKind},
+    };
+    #[derive(Resource, Default)]
+    struct Hits(Vec<(Entity, Hitgroup)>);
+    fn record(mut e: MessageReader<WeaponEvent>, mut hits: ResMut<Hits>) {
+        for e in e.read() {
+            if let WeaponEventKind::Hit { target, hitgroup, .. } = e.kind {
+                hits.0.push((target, hitgroup));
+            }
+        }
+    }
+    use Hitgroup::*;
+    // (weapon, z, CS:S's damage (100: killed), ours, our hitgroup).
+    let shots = [
+        (AK47, 66.0, 89, 100, Head),
+        (AK47, 60.0, 53, 35, Chest),
+        (AK47, 48.0, 53, 35, Chest),
+        (AK47, 36.0, 26, 44, Stomach),
+        (AK47, 18.0, 21, 26, RightLeg),
+        (DEAGLE, 66.0, 100, 100, Head),
+        (DEAGLE, 60.0, 76, 50, Chest),
+        (DEAGLE, 48.0, 38, 50, Chest),
+        (DEAGLE, 36.0, 38, 63, Stomach),
+        (DEAGLE, 18.0, 44, 37, RightLeg),
+    ];
+    let Some(map) = load("cs_office") else { return };
+    // Hitboxes posed by its idle animation, as CS:S's stood.
+    let mut sim = Sim::new(CsSim, (
+        MapPlugin::new(map),
+        SourceMovementPlugin,
+        CsWeaponsPlugin,
+        crate::stack::games::cs_source::player_anim::PlayerAnimPlugin,
+    ));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim.ticks(2);
+    sim.app.init_resource::<Hits>().add_systems(Last, record);
+    let shooter_feet = Vec3::new(1634.0, 734.0, -159.9);
+    let p = character(&mut sim, shooter_feet, 2);
+    sim.seconds(1.0);
+    for (weapon, z, theirs, ours, group) in shots {
+        crate::stack::objectives::hostages::spawn_all(sim.app.world_mut());
+        *sim.app.world_mut().get_mut::<Inventory>(p).unwrap() = Inventory::default();
+        give(sim.app.world_mut(), p, weapon).unwrap();
+        teleport(&mut sim, p, shooter_feet);
+        sim.seconds(1.5);
+        let h = {
+            let w = sim.app.world_mut();
+            w.query::<(Entity, &Hostage)>()
+                .iter(w)
+                .find(|(_, h)| h.index == 0)
+                .map(|(e, _)| e)
+                .expect("hostage 1")
+        };
+        let feet = sim.position(h) - Vec3::Y * LIFT;
+        assert!(
+            (feet / UNIT - to_engine(Vec3::new(1784.0, 734.0, -159.9)) / UNIT).length() < 1.0,
+            "hostage 1 stands where CS:S's did: {}",
+            feet / UNIT
+        );
+        let eye = sim.position(p) + sim.state(p).eye_offset;
+        let shooter = sim.position(p) - Vec3::Y * LIFT;
+        assert!(((eye - shooter).y / UNIT - 64.0).abs() < 0.5, "a standing eye");
+        // Ours stands 2 units higher there than CS:S's -159.9.
+        assert!(sim.state(p).on_ground);
+        assert!(
+            ((shooter - feet).y / UNIT).abs() < 2.5,
+            "on the same floor: {} vs {}",
+            shooter / UNIT,
+            feet / UNIT
+        );
+        let d = feet + Vec3::Y * z * UNIT - eye;
+        sim.intent(p).yaw = (-d.x).atan2(-d.z);
+        sim.intent(p).pitch = d.y.atan2(d.xz().length());
+        sim.ticks(2);
+        sim.app.world_mut().resource_mut::<Hits>().0.clear();
+        sim.intent(p).fire = true;
+        sim.ticks(1);
+        sim.intent(p).fire = false;
+        sim.ticks(3);
+        let health = sim.app.world().get::<Health>(h).map_or(0.0, |x| x.current);
+        let taken = ((1.0 - health) * 100.0).round() as i32;
+        let hits = std::mem::take(&mut sim.app.world_mut().resource_mut::<Hits>().0);
+        eprintln!("{weapon} z {z}: ours {taken} ({hits:?}), CS:S {theirs}");
+        assert_eq!(hits, [(h, group)], "{weapon} at {z}");
+        assert!((taken - ours).abs() <= 1, "{weapon} at {z}: {taken}, was {ours}");
+    }
 }
