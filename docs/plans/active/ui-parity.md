@@ -88,7 +88,7 @@ from its `.res`, controls mashup lacks greyed.
 | | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::video::TextureSettings`), from the next map |
 | | `FilteringMode` | ComboBox | `mat_trilinear` and `mat_forceaniso` together: Bilinear (0 1, CS:S's default), Trilinear (1 1), Anisotropic 2X-16X (0 N); from the next map |
 | | `ShaderDetail`, `ColorCorrection`, `MotionBlur`, `Multicore` | ComboBox | greyed (see below; the plan: docs/plans/active/video-settings.md) |
-| Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | the tab, all greyed: mashup has no voice chat |
+| Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | `voice_modenable` and `voice_scale` (voice chat, `client::voice`); `MicBoost`, `TestMicrophone`, `MicMeter` greyed |
 | Multiplayer (`cstrike/resource/OptionsSubMultiplayer.res`) | `CrosshairColorComboBox` | ComboBox | `cl_crosshaircolor`: Green, Red, Blue, Yellow, Cyan, Custom (5) |
 | | `Red/Green/Blue Color Slider` | CCvarSlider | `cl_crosshaircolor_r`, `_g`, `_b` (50, 250, 50): the Custom colour |
 | | `Size Slider`, `Thickness Slider` | CCvarSlider | `cl_crosshairsize` (5; 0 to 10), `cl_crosshairthickness` (0.5; 0 to 3): line length and width, 5 and 0.5 our lines as they were |
@@ -136,7 +136,7 @@ defaults are CS:S's (`games::cs_source::ui::options` tests
 | Video > Advanced `ShaderDetail` | one shader path (docs/plans/active/video-settings.md) |
 | Video > Advanced `ColorCorrection`, `MotionBlur` | the renderer has neither (no colour correction or motion blur at all; same plan) |
 | Video > Advanced `Multicore` | Bevy always renders multi-threaded |
-| Voice (all) | no voice chat |
+| Voice `MicBoost`, `TestMicrophone`, `MicMeter` | no microphone boost, test or meter yet (voice-chat.md) |
 | Multiplayer `ImportSprayImage`, `LogoImage` | sprays are in (`impulse 201`), but the logo is picked with `cl_logofile` in the console: no picture of it or importer yet (backlog) |
 | Multiplayer `ResetStats` | no stats |
 | Multiplayer > Advanced `cl_clanid`, `cl_cloud_settings`, `hud_takesshots` | no clans, no Steam Cloud, no end-of-map screenshots |

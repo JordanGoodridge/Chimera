@@ -208,7 +208,7 @@ pub fn clean_say(text: &str) -> String {
 /// The character a request came from: a client's, or the listen server
 /// host's own (`ClientId::Server`: replicon hands a host's messages to
 /// the server as its own).
-fn speaker(world: &mut World, client: ClientId) -> Option<Entity> {
+pub(super) fn speaker(world: &mut World, client: ClientId) -> Option<Entity> {
     match client.entity() {
         Some(c) => world.get::<Player>(c).map(|p| p.character),
         None => world

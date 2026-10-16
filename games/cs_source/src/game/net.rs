@@ -27,6 +27,16 @@
 //!   `objectives::bomb::BombHold`, before `net::predict::RecordCommand`),
 //!   and what goes when serving stops (`net::NetHooks`: the round's
 //!   entity, `NetBomb`, `NetHostage`).
+//! - **Voice** (`net::voice::VoiceRules::can_hear`): who hears whom,
+//!   `hears_voice`: `sv_alltalk 1` everyone; 0 (CS:S's default) the
+//!   team, a dead talker only by the dead (spectators a team of their
+//!   own).
+//!
+//! Known shortcuts (docs/tech-debt.md): Voice's hearing rule
+//! (`game::net::hears_voice`): `sv_alltalk`'s default and help are measured
+//! (probe server), the dead-talk-to-the-dead rule is CS:S's documented
+//! behaviour, unconfirmed with two clients; unassigned players are a team of
+//! their own (ours).
 //!
 //! Scores, buying and the rules' sounds are every game's (`net::game`).
 
@@ -65,8 +75,55 @@ pub struct CsSourceNetPlugin;
 
 impl Plugin for CsSourceNetPlugin {
     fn build(&self, app: &mut App) {
-        app.net_part("cs_source", register);
+        app.init_resource::<AllTalk>().net_part("cs_source", register);
+        crate::console::resource_cvar::<AllTalk, u8>(
+            app,
+            "sv_alltalk",
+            "Players can hear all other players, no team restrictions.",
+            |a| &mut a.0,
+        );
     }
+}
+
+/// `sv_alltalk`: 1 lets everyone hear everyone's voice; 0 (CS:S's
+/// default, measured on the probe server 2026-10-15) keeps it within the
+/// team (`hears_voice`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AllTalk(pub u8);
+
+/// Whether a listener hears a talker's voice, CS:S's way: with
+/// `sv_alltalk` everyone; else a teammate's, and a dead talker's only
+/// when dead too (a living talker is heard by the whole team, the dead
+/// included). Teams as `voice_team` gives them.
+pub fn hears_voice(
+    alltalk: bool,
+    listener_alive: bool,
+    listener_team: Option<u8>,
+    talker_alive: bool,
+    talker_team: Option<u8>,
+) -> bool {
+    alltalk || (listener_team.is_some() && listener_team == talker_team && (talker_alive || !listener_alive))
+}
+
+/// A character's team for voice: its `Team`, spectators and players who
+/// haven't picked one each a team of their own (as Source's spectator and
+/// unassigned teams).
+pub fn voice_team(world: &World, e: Entity) -> Option<u8> {
+    if world.get::<crate::core::Spectating>(e).is_some() {
+        Some(u8::MAX)
+    } else if world.get::<crate::core::Unassigned>(e).is_some() {
+        Some(u8::MAX - 1)
+    } else {
+        world.get::<Team>(e).map(|t| t.0)
+    }
+}
+
+/// `net::voice::VoiceRules::can_hear`: `hears_voice` on the server's
+/// characters.
+fn can_hear(world: &World, listener: Entity, talker: Entity) -> bool {
+    let alltalk = world.get_resource::<AllTalk>().is_some_and(|a| a.0 != 0);
+    let alive = |e| crate::net::voice::alive(world, e);
+    hears_voice(alltalk, alive(listener), voice_team(world, listener), alive(talker), voice_team(world, talker))
 }
 
 /// The protocol (in this order on every side), the systems and the hooks.
@@ -116,6 +173,7 @@ fn register(app: &mut App) {
         let mut hooks = app.world_mut().resource_mut::<NetHooks>();
         hooks.stopped_serving.push(stopped_serving);
     }
+    app.world_mut().resource_mut::<crate::net::voice::VoiceRules>().can_hear = can_hear;
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
     app.add_systems(FixedLast, (write_round, write_bombs, write_hostages).run_if(server()))
@@ -944,6 +1002,29 @@ fn send_teams(mut asked: MessageReader<crate::rules::TeamRequested>, mut out: Me
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CS:S's voice rule: the team hears a living talker, only the dead
+    /// hear a dead one, the enemy nobody; alltalk lets everyone hear.
+    #[test]
+    fn who_hears_whose_voice() {
+        let (t, ct, spec) = (Some(1), Some(2), Some(u8::MAX));
+        // (listener alive, team), (talker alive, team), heard
+        let cases = [
+            ((true, t), (true, t), true),
+            ((false, t), (true, t), true),
+            ((true, t), (false, t), false),
+            ((false, t), (false, t), true),
+            ((true, ct), (true, t), false),
+            ((false, ct), (false, t), false),
+            ((false, spec), (false, spec), true),
+            ((false, spec), (true, t), false),
+            ((true, None), (true, None), false),
+        ];
+        for ((la, lt), (ta, tt), heard) in cases {
+            assert_eq!(hears_voice(false, la, lt, ta, tt), heard, "{la} {lt:?} hearing {ta} {tt:?}");
+            assert!(hears_voice(true, la, lt, ta, tt));
+        }
+    }
 
     #[test]
     fn objective_news_round_trips() {

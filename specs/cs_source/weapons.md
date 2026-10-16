@@ -1202,7 +1202,17 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
 
   All pins fit `limit = P × m` with P per ammo type 45ACP 15, 50AE 30,
   762MM 39, 338MAG 45 and m wood 2.0, metal 1.0, sand (dirt) 0.5,
-  concrete 0.4. Only products are measured: P and m are fixed up to a common
+  concrete 0.4. More ammo (2026-10-15, the same wooden crates at
+  ≈100–200 units, a second crate within 10 units behind excluded: it stops
+  the bullet as one thick layer): 556MM 35 (M4A1 wood 67.8 / 71.5, M249
+  64.0 / 73.7), 9MM 21 (Glock 41.5 / 49.2), 357SIG 24 (P228 47.7 / 48.5),
+  57MM 30 (Five-SeveN 57.8 / 60.0); every one fails the 16.1 sand wall
+  (power < 32). Buckshot unmeasured (pellet spread). Reach through B's
+  8.06 door (straight on, the shooter backing off): 9MM and 357SIG pass at
+  788 and not at 803 (≈ 800; one Glock stop at 738 unexplained); 57MM and
+  556MM still pass at 818 (the farthest clear spot). Unexplained: the
+  P228 was stopped by oblique 42–47-unit doors 650 away, which its power
+  and reach should pass. Only products are measured: P and m are fixed up to a common
   factor (choosing m metal = 1). Other materials (tile, grate, glass,
   plaster, …) not measured.
 - **Number of objects**: walls and players count alike. A bullet passes
@@ -1353,6 +1363,10 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   | TMP | 1.1 | 0.35 | 0.5 | 0.045 | −4.5 | ≥ 2.61 (3.0) |
   | M249 | 1.8 | 0.45 | 0.65 | 0.125 | −5.0 | 3.5 |
 
+  Zoomed (2026-10-15, standing full clip, fov 55 logged): the AUG and SG 552
+  kick as unzoomed (same a, b, c, e and pitch cap). The M4A1 with the
+  silencer: not measured (the bot's AI takes it off again; `m_bSilencerOn`
+  read 0 in every run).
   The UMP's first airborne kick really is 0.125 (n = 1), then 1.225, 1.775,
   2.325 (a + b n). The M4A1 rows are with its silencer toggled once after
   the give (a fresh give fired once and stopped; the silencer state of the

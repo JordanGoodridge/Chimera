@@ -245,7 +245,7 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
 /// install's file can't be read (the shell's `binds::read_install_defaults`
 /// reads it at start). Esc (`cancelselect`) and ` (`toggleconsole`) are
 /// not binds. Some have nothing to run yet (`impulse 100`, `commandmenu`,
-/// `showbriefing`, `cheer`, `+voicerecord`, `save`, `load`, `pause`): the
+/// `showbriefing`, `cheer`, `save`, `load`, `pause`): the
 /// keys are CS:S's all the same.
 pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("tab", "+showscores"),

@@ -2493,8 +2493,10 @@ dependencies = [
  "chimera_present",
  "chimera_sim",
  "chimera_world",
+ "cpal",
  "dirs",
  "image",
+ "mousiki",
  "serde",
  "serde_json",
  "workspace-hack",
@@ -4854,6 +4856,18 @@ checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "mousiki"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "025feef2fc01604ee1fac4ae254b33480574b16210945d0096d665009ba9c666"
+dependencies = [
+ "bitflags 2.13.2",
+ "cfg-if",
+ "libm",
+ "log",
 ]
 
 [[package]]

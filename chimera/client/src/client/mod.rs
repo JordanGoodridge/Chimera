@@ -39,6 +39,7 @@ pub mod spectate;
 pub mod vgui;
 pub mod video;
 pub mod view;
+pub mod voice;
 pub mod weapon_menu;
 pub mod widgets;
 
@@ -341,8 +342,8 @@ pub struct AppHooks {
 
 /// The client shell's plugins, in order: its setup (the command line,
 /// `AppHooks`), then input, debug tools, captures, the console, the HUD
-/// base, cameras, chat, senses, spectating, video, network glue, sound
-/// and picture settings, and last the local player's camera
+/// base, cameras, chat, senses, spectating, video, network glue, voice,
+/// sound and picture settings, and last the local player's camera
 /// (`ShellCameraPlugin`). A game's front end puts its HUD among them at
 /// its place (`PluginGroupBuilder::add_after`, CS:S's
 /// `games::cs_source::ui::with_hud`), so the systems keep their order.
@@ -379,6 +380,7 @@ impl PluginGroup for ClientPlugins {
             .add(interp::ClientInterpPlugin)
             .add(color_correction::ColorCorrectionPlugin)
             .add(net::ClientNetPlugin)
+            .add(voice::VoicePlugin)
             .add(map_screen::MapScreenPlugin)
             .add(widgets::WidgetsPlugin)
             .add(audio::SoundOptionsPlugin)

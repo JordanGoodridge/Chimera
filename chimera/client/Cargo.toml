@@ -30,6 +30,9 @@ ab_glyph.workspace = true
 # The debug UI and the inspector (`debug_ui`, `debug`).
 bevy-inspector-egui.workspace = true
 bevy_egui.workspace = true
+# Voice chat (`voice`): the microphone and speakers, the Opus codec.
+cpal.workspace = true
+mousiki.workspace = true
 # The console's copy and paste.
 arboard.workspace = true
 dirs.workspace = true
