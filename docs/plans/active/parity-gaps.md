@@ -187,13 +187,13 @@ common console commands, against mashup's.
 | `invnext`, `invprev` | have (fixed) | H | S | see Weapons |
 | `jpeg` (F5) | have (fixed) | L | S | a PNG in the screenshots folder named `<map>NNNN` |
 | `kill`, `explode`, `retry`, `connect`, `status`, `exec`, `alias`, `bind`, `toggle`, `incrementvar`, `net_graph`, `cl_showfps`, `cl_showpos` | have | | | |
-| Default binds | have (fixed) | M | S | every `config_default.cfg` bind (read from the install at start, the same table built in otherwise; `client::binds`); mashup's own only on keys it leaves free: Alt free look, V noclip, F9 bug report, F3/F8/F11 debug keys. Saved configs keep their binds (defaults added since go on their free keys once). F, K, H, I, J, F6, F7, PAUSE run commands mashup lacks (`impulse 100`, `+voicerecord`, `commandmenu`, `showbriefing`, `cheer`, `save`/`load`, `pause`: an error line in the console); F10's `quit prompt` opens the game menu (no quit dialog) |
+| Default binds | have (fixed) | M | S | every `config_default.cfg` bind (read from the install at start, the same table built in otherwise; `client::binds`); mashup's own only on keys it leaves free: Alt free look, V noclip, F9 bug report, F3/F8/F11 debug keys. Saved configs keep their binds (defaults added since go on their free keys once). F, H, I, J, F6, F7, PAUSE run commands mashup lacks (`impulse 100`, `commandmenu`, `showbriefing`, `cheer`, `save`/`load`, `pause`: an error line in the console); F10's `quit prompt` opens the game menu (no quit dialog) |
 | Console | differs | L | M | a drop-down, not CS:S's VGUI frame (ui-parity.md) |
 | `con_enable` and `volume` defaults | differs | L | | ui-parity.md: undecided |
 | Options apply at once | differs | L | | ui-parity.md: deliberate |
 | `impulse 100` (flashlight) | missing | L | M | `nightvision` is in (Weapons) |
 | `impulse 201` (spray), Import Spray | differs | M | M | sprays are in (see Sprays); the logo is `cl_logofile` (console), no Import Spray or picker in the options |
-| `+voicerecord` (voice chat), Voice tab | missing | M | L | players use Discord meanwhile |
+| `+voicerecord` (voice chat), Voice tab | have (new) | M | L | K held talks (docs/plans/active/voice-chat.md); the Voice tab's enable box and receive volume work, its microphone boost, test and meter stay greyed |
 | `playdemo` | have (differs) | L | L | CS:S demos as puppets (`game::demo`, `ui::demo`), `demo_timescale`, `demo_pause`, `demo_gototick`, `stopdemo`; animation from velocity, no zoom (tech-debt) |
 | `record`, `stop`, `demoui` | missing | L | L | no recording; `demoui` panel missing (console commands instead) |
 | `fps_max` | have (fixed) | L | S | 300 as CS:S (`client::perf::FrameLimit`); off under `--bench` |
@@ -284,7 +284,7 @@ common console commands, against mashup's.
 | `cl_interp`, `cl_updaterate`, `rate`, `cl_lagcompensation` | have | | | |
 | Movers mispredicted for a round trip | differs | L | M | tech-debt "The network so far" |
 | `cl_cmdrate` | differs | L | S | missing as a cvar (one command per tick) |
-| Voice chat | missing | M | L | |
+| Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; no per-player mute, open mic or icons over heads (voice-chat.md) |
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
 | Votes (kick, map) | missing | L | M | |

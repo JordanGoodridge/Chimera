@@ -465,9 +465,9 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   (`client/widgets.rs`; docs/plans/active/ui-parity.md). Left: what
   that plan lists as left (the console as a VGUI frame, the greyed
   controls whose features may come), binds for
-  the keyboard actions greyed in the options (`+voicerecord`,
-  `impulse 100`, ...; `invnext`/`invprev`, `autobuy`, `rebuy`, `jpeg`,
-  `nightvision` and `impulse 201` are in), the Multiplayer tab's spray
+  the keyboard actions greyed in the options (`impulse 100`, ...;
+  `invnext`/`invprev`, `autobuy`, `rebuy`, `jpeg`, `nightvision`,
+  `impulse 201` and `+voicerecord` are in), the Multiplayer tab's spray
   logo picture and a way to pick it there (sprays are in: `cl_logofile`
   in the console; Import Spray needs an image-to-VTF converter),
   comparing the look with CS:S's
@@ -525,6 +525,16 @@ our own (docs/plans/active/nat-traversal.md; UPnP mapping prototyped,
 `net_upnp 1`), and a server holds 32 players within the tick
 (multiplayer.md "Capacity", `heavy::net_capacity`); 1 is moot
 (networking came first), 2 was taken as both.
+
+Voice chat (2026-10-15, docs/plans/active/voice-chat.md): K held talks
+(`+voicerecord`), Opus over the game's connection, `sv_alltalk`,
+`sv_voiceenable`, `voice_*`, the HUD's talking icon and list. To
+playtest with friends on Windows and Linux (real microphones and
+speakers: only fakes are tested). Left: per-player mute (the
+scoreboard), open microphone (`voice_vox`), the Voice tab's microphone
+test, meter and boost, icons over talking players' heads, a capture of
+CS:S's voice HUD and client `voice_*` defaults (Windows), and checking
+the dead-hear-the-dead rule with two clients on the probe server.
 
 ## 2d. CS:S demos as a parity check (user idea, 2026-10-14)
 

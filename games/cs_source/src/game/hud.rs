@@ -15,6 +15,11 @@ use crate::map::hud::{GameHud, HudCoord, HudFont, HudPanel};
 /// dropped), from `source_formats::keyvalues`.
 pub use source_formats::keyvalues::{Kv, parse_res as parse};
 
+/// The base HUD's icons (`scripts/hud_textures.txt`) CS:S draws: the
+/// default crosshair and voice chat's (`voice_self`: the talking player's
+/// own, `voice_player`: others'). The rest of the file is HL2's.
+pub const BASE_ICONS: &[&str] = &["crosshair_default", "voice_self", "voice_player"];
+
 fn color(text: &str) -> Option<[u8; 4]> {
     let v: Vec<u8> = text.split_whitespace().filter_map(|x| x.parse().ok()).collect();
     match v.as_slice() {
@@ -133,10 +138,10 @@ pub fn load(materials: &mut MaterialLoader, map: &str) -> Option<GameHud> {
         }
         let t = find(&t).cloned().unwrap_or(t);
         let num = |v: &Kv, k: &str| v.str(k).and_then(|x| x.trim().parse::<f32>().ok());
-        // Of the base HUD's, only the default crosshair (the rest is HL2's).
+        // Of the base HUD's, only `BASE_ICONS`.
         let base = script.starts_with("scripts/hud_");
         for (name, v) in t.items() {
-            if base && !name.eq_ignore_ascii_case("crosshair_default") {
+            if base && !BASE_ICONS.iter().any(|k| name.eq_ignore_ascii_case(k)) {
                 continue;
             }
             if let (Some(font), Some(ch)) = (v.str("font"), v.str("character").and_then(|c| c.chars().next())) {
