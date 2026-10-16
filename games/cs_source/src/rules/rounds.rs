@@ -13,8 +13,11 @@
 //!
 //! Defaults are CS:S's (mp_freezetime 6, mp_roundtime 2.5, mp_buytime 1.5,
 //! mp_startmoney 800: read from a fresh dedicated server over RCON,
-//! 2026-10-14, parity-gaps.md C9) and its well-known reward amounts
-//! (unmeasured, docs/plans/active/rounds.md).
+//! 2026-10-14, parity-gaps.md C9) and its well-known reward amounts: the
+//! kill reward (300), the elimination win (3250) and the loss bonus with its
+//! streak step (1400, +500) checked against a SourceTV demo of a CS:S bot
+//! round (2026-10-15, `demodump --entity CCSPlayer --props m_iAccount`); the
+//! bomb, hostage and time rewards are unmeasured (docs/plans/active/rounds.md).
 //!
 //! Known shortcuts (docs/tech-debt.md): Minigame flows
 //! (docs/plans/active/community-maps.md, "Minigame flows"), our readings: with
