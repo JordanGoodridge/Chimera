@@ -128,6 +128,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - net capacity: Every body goes to every client (no PVS relevance culling) (`chimera/net/src/net/server.rs`)
 - net capacity: Bots' sight in a crowded lobby is the cost limit (64 bots on jacks don't fit) (`games/cs_source/src/bot/mod.rs`)
 - net capacity: Client cost of drawing 31 others not profiled further (`chimera/net/src/net/interp.rs`)
+- net: `net_graph`'s packet sizes exclude UDP/IP headers; a host counts no traffic (`chimera/net/src/net/stats.rs`)
+- client: `net_graph`'s layout, colours and graph bands from public descriptions, not compared with CS:S (`chimera/client/src/client/net_graph.rs`)
 - tools: CS:S's tools still use the CS:S app (its build stamp, map loading by id, its re-exports), so games/cs_source/tools depends on it; mapsweep and dump need CS:S's loaders, not Source's alone (`games/cs_source/tools/src/lib.rs`)
 - net capacity: Dedicated server capped at 300 frames a second, no cvar (`apps/cs_source_server/src/main.rs`)
 - net: UPnP: IGD only (no NAT-PMP/PCP, no IPv6), nearest router only, untested on real routers (`chimera/net/src/net/upnp.rs`)

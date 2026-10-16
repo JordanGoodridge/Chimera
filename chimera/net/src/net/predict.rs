@@ -268,6 +268,13 @@ pub struct NetGraph {
     pub loss: f64,
     pub in_kbs: f64,
     pub out_kbs: f64,
+    /// The transport's packets in and out (`stats::Traffic`): the last
+    /// one's size, packets and bytes a second; commands sent a second.
+    pub incoming: super::stats::FlowRate,
+    pub outgoing: super::stats::FlowRate,
+    pub cmd_rate: f64,
+    /// The server's latest numbers for us (`stats::ServerStats`).
+    pub server: Option<super::stats::ServerStats>,
     pub lead: f64,
     pub target: f64,
     pub nudge: f64,
@@ -1025,6 +1032,7 @@ fn send_commands(
     clock: Res<CommandClock>,
     mut bases: ResMut<OwnStateBases>,
     mut out: MessageWriter<UserCmds>,
+    (time, mut traffic): (Res<Time<Real>>, ResMut<super::stats::Traffic>),
 ) {
     let ack = bases.newest();
     if outgoing.fresh == 0 {
@@ -1043,6 +1051,7 @@ fn send_commands(
     let start = outgoing.cmds.len() - n;
     let cmds: Vec<NetCmd> = outgoing.cmds.iter().skip(start).cloned().collect();
     outgoing.fresh = 0;
+    traffic.commands.push(time.elapsed_secs_f64(), 1.0);
     out.write(UserCmds {
         cmds,
         epoch: clock.jumps,
@@ -1056,7 +1065,12 @@ fn update_graph(
     clock: Res<CommandClock>,
     time: Res<Time<Real>>,
     mut graph: ResMut<NetGraph>,
+    mut traffic: ResMut<super::stats::Traffic>,
 ) {
+    let real = time.elapsed_secs_f64();
+    graph.incoming = traffic.incoming.rate(real);
+    graph.outgoing = traffic.outgoing.rate(real);
+    graph.cmd_rate = traffic.commands.per_second(real).0;
     if let Some(c) = client {
         let info = c.network_info();
         graph.ping_ms = info.rtt * 1000.0;

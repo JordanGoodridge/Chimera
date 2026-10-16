@@ -435,6 +435,7 @@ that the paths exist).
 - `chimera/net/src/net/udp.rs`: the UDP transports and fake network conditions (net)
 - `chimera/net/src/net/query.rs`: server queries and LAN discovery (net)
 - `chimera/net/src/net/memory.rs`: an in-memory transport for `NetSim` (net)
+- `chimera/net/src/net/stats.rs`: `net_graph`'s numbers: traffic, the server's frame rate, choke (net)
 - `chimera/net/src/net/vote.rs`: player votes: issues games register, who votes, quorum, timers, `callvote`/`vote` (net)
 
 ### Games
@@ -519,6 +520,7 @@ that the paths exist).
 - `chimera/client/src/client/debug_views.rs`: gizmo debug overlays: nav, ragdolls (client)
 - `games/cs_source/src/ui/debug.rs`: CS:S in the debug tools: bot overlays, the debug UI's bots and rounds (games_ui)
 - `chimera/client/src/client/perf.rs`: the `mashup_perf` overlay (client)
+- `chimera/client/src/client/net_graph.rs`: `net_graph`: Source's network readout and graph (client)
 - `chimera/client/src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
 - `games/cs_source/src/ui/window_icon.rs`: the window and taskbar icon (games_ui)
 - `games/cs_source/src/ui/first_run.rs`: finding CS:S on first run (games_ui)
