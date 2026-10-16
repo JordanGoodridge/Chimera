@@ -18,26 +18,38 @@
 //! - **Hearing**: a client's `VoiceRelay`s are the client layer's to
 //!   decode; `VoiceActivity` keeps who was heard when (and whether we are
 //!   talking, `VoiceActivity::local`), for the HUD.
+//! - **Muting** (CS:S's player list, "Mute in-game voice"): `VoiceMutes`
+//!   holds the players this client muted, by user id (`NetCharacter::owner`,
+//!   the id `status` and `users` list), for the session: kept through map
+//!   changes and new characters, not saved. A muted talker's voice is
+//!   dropped here (not heard, never shown talking) and by the client layer
+//!   (never decoded or played). `voice_mute <userid>`, `voice_unmute
+//!   <userid|all>`, `voice_show_mute` (ours; CS:S mutes from the dialog).
 //!
 //! Voice chat's transport: `VoiceData` (client, unreliable) relayed as
 //! `VoiceRelay` (mapped, unreliable) to each listener `VoiceRules::can_hear`
 //! allows (default: everyone), `sv_voiceenable`, per-talker limits,
-//! `VoiceActivity` (who talks, for the HUD).
+//! `VoiceActivity` (who talks, for the HUD), `VoiceMutes` (players this client
+//! muted, by user id, for the session; `voice_mute`, `voice_unmute`,
+//! `voice_show_mute`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Voice transport (`net::voice`): the
 //! per-talker byte allowance (16 kB burst, 8 kB/s) and the frame limits are
-//! ours (Source's aren't known); no per-player mute (`vban`) on the server; a
-//! talker is "talking" for `TALK_SECONDS` after its last packet (ours).
+//! ours (Source's aren't known); a talker is "talking" for `TALK_SECONDS`
+//! after its last packet (ours). Muting is the client's alone: the server
+//! still sends a muted talker's voice (Source tells it, `vban`, and it
+//! stops); mutes are by user id for the session (CS:S keeps them by Steam
+//! id across runs, `voice_ban.dt`); the console commands are ours.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::server::Player;
+use super::{NetCharacter, server::Player};
 use crate::{
-    console::resource_cvar,
+    console::{ConsoleAppExt, resource_cvar},
     core::{Dead, Health, LocalPlayer, NetRole, Spectating},
 };
 
@@ -117,6 +129,57 @@ impl VoiceActivity {
     }
 }
 
+/// The players this client muted (CS:S's player list), by user id
+/// (`NetCharacter::owner`; a listen server's host is `HOST_ID`), for the
+/// session. Their voice isn't played or shown.
+#[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
+pub struct VoiceMutes(pub BTreeSet<u64>);
+
+impl VoiceMutes {
+    /// Whether a character's player is muted (bots never talk: never).
+    pub fn muted(&self, character: Option<&NetCharacter>) -> bool {
+        character.and_then(|c| c.owner).is_some_and(|id| self.0.contains(&id))
+    }
+
+    /// Mute (`on`) or unmute a player; whether that changed anything.
+    pub fn set(&mut self, id: u64, on: bool) -> bool {
+        if on { self.0.insert(id) } else { self.0.remove(&id) }
+    }
+}
+
+/// The players a client knows: user id and name (bots have no id).
+fn known_players(w: &mut World) -> Vec<(u64, String)> {
+    let mut out: Vec<(u64, String)> = w
+        .query::<&NetCharacter>()
+        .iter(w)
+        .filter_map(|c| Some((c.owner?, c.name.clone())))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// A user id from `voice_mute`'s argument: the id, or a player's name.
+fn user_id(w: &mut World, arg: &str) -> Result<u64, String> {
+    let players = known_players(w);
+    if let Ok(id) = arg.parse::<u64>() {
+        return Ok(id);
+    }
+    players
+        .iter()
+        .find(|(_, n)| n.eq_ignore_ascii_case(arg))
+        .map(|(id, _)| *id)
+        .ok_or_else(|| format!("No player {arg:?} (status lists the user ids)"))
+}
+
+/// A user id's name, as players are known now.
+fn name_of(w: &mut World, id: u64) -> String {
+    known_players(w)
+        .into_iter()
+        .find(|(i, _)| *i == id)
+        .map_or_else(|| format!("#{id}"), |(_, n)| n)
+}
+
 /// Whether a character is alive (not `Dead`, health above 0).
 pub fn alive(world: &World, e: Entity) -> bool {
     world.get::<Dead>(e).is_none()
@@ -127,6 +190,7 @@ pub fn alive(world: &World, e: Entity) -> bool {
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<VoiceRules>()
         .init_resource::<VoiceActivity>()
+        .init_resource::<VoiceMutes>()
         .init_resource::<Allowances>()
         .add_systems(
             PreUpdate,
@@ -145,6 +209,37 @@ pub(super) fn plugin(app: &mut App) {
     app.world_mut()
         .resource_mut::<crate::console::Console>()
         .archive("sv_voiceenable");
+    app.console_command(
+        "voice_mute",
+        "voice_mute <userid|name>: stop hearing a player's voice (this session; status lists user ids).",
+        |w, a| {
+            let id = user_id(w, a.first().ok_or("voice_mute <userid|name>")?)?;
+            w.resource_mut::<VoiceMutes>().set(id, true);
+            Ok(Some(format!("You have muted {}.", name_of(w, id))))
+        },
+    )
+    .console_command(
+        "voice_unmute",
+        "voice_unmute <userid|name|all>: hear a muted player again.",
+        |w, a| {
+            let arg = a.first().ok_or("voice_unmute <userid|name|all>")?;
+            if arg.eq_ignore_ascii_case("all") {
+                w.resource_mut::<VoiceMutes>().0.clear();
+                return Ok(Some("Unmuted everyone.".into()));
+            }
+            let id = user_id(w, arg)?;
+            w.resource_mut::<VoiceMutes>().set(id, false);
+            Ok(Some(format!("Unmuted {}.", name_of(w, id))))
+        },
+    )
+    .console_command("voice_show_mute", "List the players you muted.", |w, _| {
+        let ids: Vec<u64> = w.resource::<VoiceMutes>().0.iter().copied().collect();
+        let mut out = vec![format!("{} muted", ids.len())];
+        for id in ids {
+            out.push(format!("{id}: {}", name_of(w, id)));
+        }
+        Ok(Some(out.join("\n")))
+    });
 }
 
 /// Each talker's byte allowance (`BURST_BYTES`, `BYTES_PER_SECOND`).
@@ -231,11 +326,17 @@ fn relay_one(w: &mut World, client: ClientId, seq: u16, frames: Vec<Vec<u8>>) {
     }
 }
 
-/// Voice that reached us: its talker is talking.
-fn heard(mut relays: MessageReader<VoiceRelay>, time: Res<Time<Real>>, mut activity: ResMut<VoiceActivity>) {
+/// Voice that reached us: its talker is talking (unless muted).
+fn heard(
+    mut relays: MessageReader<VoiceRelay>,
+    time: Res<Time<Real>>,
+    mutes: Res<VoiceMutes>,
+    characters: Query<&NetCharacter>,
+    mut activity: ResMut<VoiceActivity>,
+) {
     let now = time.elapsed_secs_f64();
     for r in relays.read() {
-        if r.speaker == Entity::PLACEHOLDER {
+        if r.speaker == Entity::PLACEHOLDER || mutes.muted(characters.get(r.speaker).ok()) {
             continue;
         }
         activity.heard.insert(r.speaker, now);
@@ -258,6 +359,24 @@ mod tests {
         // Half a second later: half the rate.
         assert!(spend(&mut map, e, 0.5, 4_000));
         assert!(!spend(&mut map, e, 0.5, 1));
+    }
+
+    /// Mutes are by player (user id): bots and unknown talkers never are.
+    #[test]
+    fn mutes_are_by_user_id() {
+        let mut m = VoiceMutes::default();
+        let player = |owner| NetCharacter {
+            owner,
+            name: "a".into(),
+        };
+        assert!(m.set(7, true));
+        assert!(!m.set(7, true), "already");
+        assert!(m.muted(Some(&player(Some(7)))));
+        assert!(!m.muted(Some(&player(Some(8)))));
+        assert!(!m.muted(Some(&player(None))), "a bot");
+        assert!(!m.muted(None));
+        assert!(m.set(7, false));
+        assert!(!m.muted(Some(&player(Some(7)))));
     }
 
     #[test]

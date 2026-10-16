@@ -16,12 +16,18 @@
 //!   detail), for an issue nobody registered, and by the issue's own check
 //!   (`VoteIssue::check`: a player not there, the host, a map not in the
 //!   cycle). `callvote` alone asks the server for its issues and their
-//!   choices (`VoteNews::Setup`), printed to the console.
+//!   choices (`VoteNews::Setup`), printed to the console and counted in
+//!   `VoteView::setups` (a front end opens its setup dialog on each:
+//!   CS:S's `ui::game_menu`).
 //! - **Who votes**: the people in the game when the vote starts (not
 //!   bots unless `sv_vote_bots_allowed`, not spectators unless
-//!   `sv_vote_allow_spectators`, not players still loading); one who
-//!   leaves is taken off. The caller's vote is yes from the start unless
-//!   `sv_vote_holder_may_vote_no` (then they vote as anyone).
+//!   `sv_vote_allow_spectators`, not players still loading), and anyone
+//!   who becomes able to while it runs (a player who joins or rejoins,
+//!   once loaded; a spectator who picks a team; `join_running_vote`); one
+//!   who leaves is taken off (and their vote with them). The caller's vote
+//!   is yes from the start unless `sv_vote_holder_may_vote_no` (then they
+//!   vote as anyone). A game's bots vote through `cast_for` (CS:S's rule:
+//!   `cs_source::game::votes`).
 //! - **Ending**: after `sv_vote_timer_duration`, or once everyone has
 //!   voted (`sv_vote_timer_allow_early_finish`). It passes when the yes
 //!   votes are at least `sv_vote_quorum_ratio` of those who may vote
@@ -30,7 +36,9 @@
 //!   at all, else "not enough voted yes".
 //! - **News** (`VoteNews`, server -> clients): each voter gets the vote as
 //!   it stands for them (`Shown`: the issue, the caller, the counts, time
-//!   left, their own vote) when it starts and on every vote; everyone gets
+//!   left, their own vote) when it starts, on every vote and on each
+//!   change of who may vote (a player joining while it runs gets it once
+//!   loaded); everyone gets
 //!   how it ended (`Ended`). A listen server's host gets its copies through
 //!   replicon's local resend, as chat's.
 //!
@@ -46,13 +54,14 @@
 //! may vote, rounded up, and more yes than no), which failure reason shows, an
 //! early finish only once everyone has voted, the creation timer counted from
 //! the call (not the vote's end), the failure timer keyed by issue and detail,
-//! who may vote fixed when the vote starts (later joiners can't; the kick's
-//! target may), players still loading neither voting nor calling, and bots
-//! counted with `sv_vote_bots_allowed 1` but never voting (we have no bot
-//! ballots) are ours; every `sv_vote_*` cvar is replicated (our prefix rule;
-//! CS:S replicates `sv_vote_holder_may_vote_no` only); `sv_vote_ui_hide_disabled_issues`
-//! is kept but nothing reads it (no disabled issues); a player joining during a
-//! vote doesn't see it; only two options (yes, no: `vote option3`-`option5` are
+//! who may vote (those able when it starts, plus anyone who becomes able while
+//! it runs, joiners and rejoiners included, a rejoiner's earlier vote lost with
+//! their old character; one who becomes unable, e.g. by spectating, stays; the
+//! kick's target may vote), players still loading neither voting nor calling,
+//! and how bots vote (the game's rule) are ours; every `sv_vote_*` cvar is
+//! replicated (our prefix rule; CS:S replicates `sv_vote_holder_may_vote_no`
+//! only); `sv_vote_ui_hide_disabled_issues` is kept but nothing reads it (no
+//! disabled issues); only two options (yes, no: `vote option3`-`option5` are
 //! refused). Why it's OK for now: votes need CS:S's rules measured on its
 //! dedicated server with players (docs/plans/active/windows-captures.md).
 
@@ -283,6 +292,9 @@ pub struct ActiveVote {
     /// Those who may vote (characters), and their votes.
     pub voters: Vec<Entity>,
     pub ballots: HashMap<Entity, u8>,
+    /// The characters told about it so far (a player joining while it
+    /// runs is told once loaded).
+    pub told: Vec<Entity>,
 }
 
 impl ActiveVote {
@@ -315,6 +327,9 @@ pub struct VoteView {
     pub ended: Option<(VoteNews, f64)>,
     pub refused: Option<(CallRefusal, f64)>,
     pub setup: Vec<IssueInfo>,
+    /// How many times the server sent them (`callvote` alone): a front
+    /// end opens its vote setup dialog on each (Source's `VoteSetup`).
+    pub setups: u32,
 }
 
 impl VoteView {
@@ -570,6 +585,7 @@ pub fn call_vote(world: &mut World, client: ClientId, issue: &str, detail: &str)
         ends: now + settings.duration.max(0.0) as f64,
         voters,
         ballots: HashMap::new(),
+        told: Vec::new(),
     };
     if settings.holder_may_vote_no == 0 && vote.voters.contains(&caller) {
         vote.ballots.insert(caller, 1);
@@ -597,10 +613,16 @@ fn receive_ballots(mut requests: MessageReader<FromClient<CastVote>>, mut comman
 
 /// `client`'s vote: counted once, from a player who may vote, yes or no.
 pub fn cast(world: &mut World, client: ClientId, option: u8) -> bool {
+    let Some((voter, _)) = requester(world, client) else { return false };
+    cast_for(world, voter, option)
+}
+
+/// A vote for `voter` (a character: a player's, or a bot's from the
+/// game's bot rule), counted as `cast` counts it.
+pub fn cast_for(world: &mut World, voter: Entity, option: u8) -> bool {
     if !(1..=2).contains(&option) {
         return false;
     }
-    let Some((voter, _)) = requester(world, client) else { return false };
     let mut votes = world.resource_mut::<Votes>();
     let Some(vote) = votes.active.as_mut() else { return false };
     if !vote.voters.contains(&voter) || vote.ballots.contains_key(&voter) {
@@ -615,7 +637,13 @@ pub fn cast(world: &mut World, client: ClientId, option: u8) -> bool {
 fn send_state(world: &mut World) {
     let Some(vote) = world.resource::<Votes>().active.clone() else { return };
     let left = (vote.ends - now(world)).max(0.0) as f32;
+    let mut told = Vec::new();
     for (character, client) in recipients(world) {
+        // Told once loaded (`join_running_vote`).
+        if world.get::<Connecting>(character).is_some() {
+            continue;
+        }
+        told.push(character);
         let state = VoteState {
             id: vote.id,
             issue: vote.issue.clone(),
@@ -630,6 +658,29 @@ fn send_state(world: &mut World) {
         };
         tell(world, client, VoteNews::Shown(state));
     }
+    if let Some(v) = world.resource_mut::<Votes>().active.as_mut() {
+        v.told = told;
+    }
+}
+
+/// Those who may vote now and couldn't when it started (a player who
+/// joined, or rejoined, and has loaded; a spectator who picked a team; a
+/// bot added with `sv_vote_bots_allowed`) may vote too; players not told
+/// about it yet are. Whether anything changed.
+fn join_running_vote(world: &mut World, vote: &mut ActiveVote, settings: &VoteSettings) -> bool {
+    let mut q = world.query_filtered::<Entity, With<NetCharacter>>();
+    let all: Vec<Entity> = q.iter(world).collect();
+    let mut changed = false;
+    for e in all {
+        if !vote.voters.contains(&e) && may_vote(world, e, settings) {
+            vote.voters.push(e);
+            changed = true;
+        }
+    }
+    let untold = recipients(world)
+        .into_iter()
+        .any(|(c, _)| !vote.told.contains(&c) && world.get::<Connecting>(c).is_none());
+    changed || untold
 }
 
 /// The running vote: voters who left taken off, ended when its time is up
@@ -648,10 +699,11 @@ fn run_votes(world: &mut World) {
     vote.voters.retain(|e| world.get_entity(*e).is_ok());
     vote.ballots.retain(|e, _| world.get_entity(*e).is_ok());
     let settings = world.resource::<VoteSettings>().clone();
+    let joined = join_running_vote(world, &mut vote, &settings);
     let everyone = vote.ballots.len() >= vote.voters.len();
     let over = now(world) >= vote.ends || (settings.early_finish != 0 && everyone);
     if !over {
-        if vote.voters.len() != before {
+        if vote.voters.len() != before || joined {
             world.resource_mut::<Votes>().active = Some(vote);
             send_state(world);
         }
@@ -735,7 +787,9 @@ fn show_news(world: &mut World, mut cursor: Local<bevy::ecs::message::MessageCur
                 Some(format!("Vote refused: {r:?}"))
             }
             VoteNews::Setup(issues) => {
-                world.resource_mut::<VoteView>().setup = issues.clone();
+                let mut view = world.resource_mut::<VoteView>();
+                view.setup = issues.clone();
+                view.setups += 1;
                 let mut lines = vec!["callvote <issue> [detail]; issues:".to_string()];
                 for i in issues {
                     let choices: Vec<String> = i.choices.iter().map(|(v, s)| format!("{v} ({s})")).collect();

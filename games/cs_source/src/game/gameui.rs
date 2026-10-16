@@ -155,7 +155,7 @@ pub fn key_actions(text: &str, strings: &HashMap<String, String>) -> Vec<KeyActi
 }
 
 /// The options pages' and Create Server's layout files, by page.
-const OPTION_PAGES: [(&str, &str); 13] = [
+const OPTION_PAGES: [(&str, &str); 14] = [
     // The video tab's brightness dialog (Adjust brightness levels...).
     ("video_gamma", "resource/optionssubvideogammadlg.res"),
     ("keyboard", "resource/optionssubkeyboard.res"),
@@ -175,7 +175,14 @@ const OPTION_PAGES: [(&str, &str); 13] = [
     ("create_server", "resource/createmultiplayergameserverpage.res"),
     ("create_game", "resource/createmultiplayergamegameplaypage.res"),
     ("create_bot", "resource/createmultiplayergamebotpage.res"),
+    // The game menu's player list (mute players' voice).
+    ("player_list", "resource/playerlistdialog.res"),
 ];
+
+/// The vote setup dialog's layouts in `GameUi::options` (from hl2's
+/// `resource/ui/votehud.res`): the file's frames (the dialog's size), the
+/// dialog's controls.
+pub const VOTE_SETUP: (&str, &str) = ("vote_hud", "vote_setup");
 
 /// Create Server's Game page options: the install's own, else the
 /// default one.
@@ -407,6 +414,22 @@ pub fn load(mount: &Mount) -> Option<GameUi> {
                 }
             }
             ui.options.insert(page.to_string(), layout);
+        }
+    }
+    // The vote setup dialog (hl2's `votehud.res`, its `VoteSetupDialog`
+    // block): the file's frames as `VOTE_SETUP.0`, the dialog's controls
+    // as `VOTE_SETUP.1`.
+    if let Some(root) = read_res_pc(&mut read, "resource/ui/votehud.res") {
+        let block = root
+            .items()
+            .iter()
+            .find(|(k, c)| k.eq_ignore_ascii_case("VoteSetupDialog") && matches!(c, Kv::Block(_)))
+            .map(|(_, c)| c.clone());
+        if let Some(block) = block {
+            let outer = super::vgui::layout(&root, &strings, &ui.colors, &mut |_| None);
+            let inner = super::vgui::layout(&block, &strings, &ui.colors, &mut |_| None);
+            ui.options.insert(VOTE_SETUP.0.into(), outer);
+            ui.options.insert(VOTE_SETUP.1.into(), inner);
         }
     }
     // The loading dialog: CS:S shows the one without the banner.

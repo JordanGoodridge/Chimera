@@ -9,6 +9,8 @@ pub enum MainItem {
     Resume,
     /// Leave the game for the main menu (`disconnect`).
     Disconnect,
+    /// The player list: mute players' voice (`PlayerListDialog.res`).
+    PlayerList,
     /// The server browser (`openserverbrowser`).
     FindServers,
     /// Create Server.
@@ -26,13 +28,16 @@ pub enum MainItem {
     Console,
     /// Ours: Lucker Party Options.
     Extras,
+    /// Ours: the vote setup dialog (`callvote`).
+    CallVote,
 }
 
 /// The game's entries without its menu file, in CS:S's order and words:
 /// item, text, shown only in a game.
-pub const MAIN: [(MainItem, &str, bool); 7] = [
+pub const MAIN: [(MainItem, &str, bool); 8] = [
     (MainItem::Resume, "Resume Game", true),
     (MainItem::Disconnect, "Disconnect", true),
+    (MainItem::PlayerList, "Player List", true),
     (MainItem::FindServers, "Find Servers", false),
     (MainItem::NewGame, "Create Server", false),
     (MainItem::BugReport, "Report a Bug", false),
@@ -42,11 +47,12 @@ pub const MAIN: [(MainItem, &str, bool); 7] = [
 
 /// Ours, after the game's entries (and a gap): item, text, shown only in a
 /// game.
-pub const OURS: [(MainItem, &str, bool); 6] = [
+pub const OURS: [(MainItem, &str, bool); 7] = [
     (MainItem::QuickStart, "Quick Start", false),
     (MainItem::Greybox, "Greybox Test Map", false),
     (MainItem::Bots, "Bots", true),
     (MainItem::Team, "Team", true),
+    (MainItem::CallVote, "Call Vote", true),
     (MainItem::Extras, "Lucker Party Options", false),
     (MainItem::Console, "Console", false),
 ];
@@ -65,6 +71,8 @@ impl MainItem {
             MainItem::Team => Some(Page::Team),
             MainItem::Options => Some(Page::Settings),
             MainItem::Extras => Some(Page::Extras),
+            MainItem::PlayerList => Some(Page::PlayerList),
+            MainItem::CallVote => Some(Page::Vote),
             _ => None,
         }
     }
@@ -99,8 +107,8 @@ impl MainEntry {
 /// Every left-hand entry, shown or not: the game's (`GameMenu.res`) that
 /// mashup has, in its order and words (built-in ones in CS:S's order
 /// without the file); then, after a gap, ours (quick start, the greybox,
-/// bots, team, our options, console). Entries mashup can't do (player
-/// list, achievements, benchmark ...) are left out. `GameMenu::entries`
+/// bots, team, our options, console). Entries mashup can't do
+/// (achievements, benchmark ...) are left out. `GameMenu::entries`
 /// picks those shown in or out of a game.
 pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
     let builtin = |item: MainItem| {
@@ -111,9 +119,9 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
     match ui.filter(|u| !u.menu.is_empty()) {
         None => {
             out.extend(MAIN.iter().map(|(item, ..)| builtin(*item)));
-            // CS:S's gap under Disconnect, shown in a game.
-            out[2].gap = true;
-            out[2].gap_in_game_only = true;
+            // CS:S's gap under the player list, shown in a game.
+            out[3].gap = true;
+            out[3].gap_in_game_only = true;
         }
         Some(ui) => {
             let mut gap: Option<bool> = None;
@@ -127,6 +135,7 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
                 let item = match e.command.trim().to_lowercase().as_str() {
                     "resumegame" => MainItem::Resume,
                     "disconnect" => MainItem::Disconnect,
+                    "openplayerlistdialog" => MainItem::PlayerList,
                     "openserverbrowser" => MainItem::FindServers,
                     "opennewgamedialog" | "opencreatemultiplayergamedialog" => MainItem::NewGame,
                     "openoptionsdialog" => MainItem::Options,
@@ -153,6 +162,7 @@ pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
                 let at = match i {
                     0 => 0,
                     1 => out.iter().position(|m| m.item == MainItem::Resume).map_or(0, |p| p + 1),
+                    2 => out.iter().position(|m| m.item == MainItem::Disconnect).map_or(0, |p| p + 1),
                     _ => out.iter().position(|m| m.item == MainItem::Quit).unwrap_or(out.len()),
                 };
                 out.insert(at, builtin(*item));
@@ -339,6 +349,11 @@ impl GameMenu {
                 self.create_tab = 0;
                 self.new_game.host = true;
             }
+            if page == Page::Vote {
+                // The server answers with its issues (`show_vote_setup`).
+                out.lines.push("callvote".into());
+                self.vote.from_menu = true;
+            }
             if self.page != page {
                 self.go_to(page);
             }
@@ -372,7 +387,13 @@ impl GameMenu {
             }
             MainItem::Console => out.lines.push("toggleconsole".into()),
             MainItem::FindServers => out.lines.push("openserverbrowser".into()),
-            MainItem::NewGame | MainItem::Bots | MainItem::Team | MainItem::Options | MainItem::Extras => {}
+            MainItem::NewGame
+            | MainItem::Bots
+            | MainItem::Team
+            | MainItem::Options
+            | MainItem::Extras
+            | MainItem::PlayerList
+            | MainItem::CallVote => {}
         }
     }
 }

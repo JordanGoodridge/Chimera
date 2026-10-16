@@ -1,5 +1,13 @@
 //! Drawing the open dialog: its frame, tabs, controls where the install's
-//! layout puts them (greyed where mashup lacks them), columns without it.
+//! layout puts them (greyed where mashup lacks them), columns without it;
+//! the player list's list; the Voice tab's microphone meter (`MicMeter`,
+//! `MicMeter2`: the dark bars' picture, the lit one cut to the bars the
+//! microphone's level lights, `mic_meter`, `meter_bars`).
+//!
+//! Known shortcuts (docs/tech-debt.md): Game menu drawing
+//! (`game_menu::draw`): the microphone meter's scale (decibels from
+//! `METER_FLOOR_DB`, -48) and fall (`METER_FALL`) are ours (CS:S's meter
+//! is code: capture C-voice).
 
 use super::*;
 
@@ -56,6 +64,14 @@ pub(super) fn dialog_size(menu: &GameMenu, page: Page) -> (f32, f32) {
             let n = menu.rows().len() as f32;
             (420.0, 44.0 + n * 28.0 + 12.0)
         }
+        Page::PlayerList => menu
+            .ui
+            .0
+            .as_ref()
+            .and_then(|u| u.options.get("player_list"))
+            .and_then(|l| l.get("PlayerListDialog"))
+            .map_or((467.0, 388.0), |c| (c.wide, c.tall)),
+        Page::Vote => vote_boxes(menu).size,
         _ => (360.0, 230.0),
     }
 }
@@ -228,6 +244,9 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
         Page::Gamma => menu.text("#GameUI_AdjustGamma_Title", "Adjust brightness levels"),
         Page::MultiplayerAdvanced => menu.text("#GameUI_MultiplayerAdvanced", "Multiplayer Advanced"),
         Page::Extras => "Lucker Party Options".into(),
+        Page::PlayerList => menu.player_list_title(),
+        // Ours (the file gives none).
+        Page::Vote => "Call Vote".into(),
     };
     let mut spec = FrameSpec::new(page.window());
     if page.over_options() {
@@ -288,9 +307,80 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
             column(commands, ctx, frame, (16.0, 36.0, w - 32.0), true);
             dialog_buttons(commands, ctx, frame, (w, h), &[Action::Ok, Action::Cancel]);
         }
+        Page::PlayerList => {
+            let at = menu
+                .layout()
+                .and_then(|l| l.get("PlayerList"))
+                .map(|c| (coord(c.x), coord(c.y), c.wide, c.tall));
+            player_list(commands, ctx, frame, at.unwrap_or((28.0, 38.0, w - 57.0, h - 109.0)));
+            if menu.layout().is_some() {
+                page_controls(commands, ctx, frame, (w, h));
+            } else {
+                // Mute and Close under the list.
+                let n = ctx.rows.len();
+                for (k, i) in [n - 2, n - 1].into_iter().enumerate() {
+                    if let Row::Button { label: text, enabled, .. } = &ctx.rows[i] {
+                        let state = Btn::enabled(*enabled).focused(menu.focus == i);
+                        let rect = (28.0 + k as f32 * 170.0, h - 62.0, 160.0, 24.0);
+                        widgets::button(commands, frame, look, rect, text, state, 0, Hit(Target::Row(i), 0));
+                    }
+                }
+            }
+        }
+        Page::Vote => vote_dialog(commands, ctx, frame),
         _ => column(commands, ctx, frame, (16.0, 36.0, w - 32.0), false),
     }
 }
+
+/// The Voice tab's meter's lit bars' picture (`OptionsSubVoice.res`'s
+/// `MicMeter2`).
+pub(super) const METER_LIT: &str = "resource/mic_meter_live";
+/// The Voice tab's meter's pictures (dark and lit bars).
+pub(super) const METER: &str = "resource/mic_meter";
+
+/// The Voice tab's meter's lit bars: `bars` of them, `step` window pixels
+/// apart; `mic_meter` shows as many as the microphone's level.
+#[derive(Component)]
+pub(super) struct MicMeter {
+    pub(super) bars: u32,
+    pub(super) step: f32,
+}
+
+/// The meter's bars lit for a microphone level (0 to 1, a frame's loudest
+/// sample): on a decibel scale from `METER_FLOOR_DB` (none) to full scale
+/// (all).
+pub fn meter_bars(level: f32, bars: u32) -> u32 {
+    if level <= 0.0 {
+        return 0;
+    }
+    let db = 20.0 * level.log10();
+    let f = ((db - METER_FLOOR_DB) / -METER_FLOOR_DB).clamp(0.0, 1.0);
+    (f * bars as f32).round() as u32
+}
+
+/// The meter's quietest level shown (dB below full scale; ours).
+pub const METER_FLOOR_DB: f32 = -48.0;
+
+/// The meter follows the microphone: a new peak at once, falling by
+/// `METER_FALL` a second (ours).
+pub(super) fn mic_meter(
+    level: Option<Res<crate::client::voice::VoiceLevel>>,
+    time: Res<Time<Real>>,
+    mut shown: Local<f32>,
+    mut meters: Query<(&mut Node, &MicMeter)>,
+) {
+    let now = level.map_or(0.0, |l| l.0);
+    *shown = now.max(*shown * (-METER_FALL * time.delta_secs()).exp());
+    for (mut node, m) in &mut meters {
+        let w = px(meter_bars(*shown, m.bars) as f32 * m.step);
+        if node.width != w {
+            node.width = w;
+        }
+    }
+}
+
+/// How fast the meter falls (its level times e^-METER_FALL a second).
+const METER_FALL: f32 = 6.0;
 
 /// Controls of the game's layouts left out on purpose (a deliberate
 /// difference, docs/plans/active/ui-parity.md): Virtual Reality Mode and
@@ -337,6 +427,7 @@ pub(super) fn label_of(row: &Row) -> String {
         Row::Button { label, .. } | Row::Control { label, .. } | Row::Bind { label, .. } => label.clone(),
         Row::Heading(t) | Row::Info(t) => t.clone(),
         Row::Greyed { label, .. } => label.clone(),
+        Row::Player { name, .. } => name.clone(),
     }
 }
 
@@ -534,6 +625,19 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
                 action: Action::Cancel,
                 ..
             } => name == "Button2" && menu.page.over_options(),
+            // The player list's (`PlayerListDialog.res`).
+            Row::Button {
+                action: Action::Run(..),
+                ..
+            } if menu.page == Page::PlayerList => name.eq_ignore_ascii_case("MuteButton"),
+            Row::Button {
+                action: Action::Back, ..
+            } if menu.page == Page::PlayerList => name == "Button1",
+            // The Voice tab's Test Microphone.
+            Row::Button {
+                action: Action::Run(line, _),
+                ..
+            } if line.starts_with("voice_test") => name == TEST_MICROPHONE,
             Row::Button { action, .. } => advanced_button(action).is_some_and(|b| b == name),
             _ => false,
         })
@@ -582,7 +686,8 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
             continue;
         }
         let text = if c.text.starts_with('#') { "" } else { c.text.as_str() };
-        let picture = c.keys.get("image").and_then(|n| ctx.pictures.get(&n.to_lowercase()));
+        let image_name = c.keys.get("image").map(|n| n.to_lowercase()).unwrap_or_default();
+        let picture = ctx.pictures.get(&image_name);
         match class.to_ascii_lowercase().as_str() {
             "label" => {
                 // Not over a control we draw (the video Advanced dialog's
@@ -663,6 +768,46 @@ pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, 
                 widgets::text_entry(commands, parent, look, (rect.0, rect.1, rect.2, rect.3.min(24.0)), "", None, false, false, ());
             }
             "crosshairimagepanelcs" => crosshair_preview(commands, parent, look, menu, rect),
+            "imagepanel" if picture.is_some() && image_name.starts_with(METER) => {
+                // The Voice tab's meter (`MicMeter`, `MicMeter2`): its
+                // pictures at their own size (VGUI doesn't stretch them; the
+                // bars fill the panel's left), the dark bars, then as many
+                // lit ones as the microphone's level (`mic_meter`).
+                let lit = image_name == METER_LIT;
+                let bars = c.keys.get("barcount").and_then(|n| n.parse().ok()).unwrap_or(19);
+                let spacing = c.keys.get("barspacing").and_then(|n| n.parse().ok()).unwrap_or(8.0);
+                let size = menu
+                    .ui
+                    .0
+                    .as_ref()
+                    .and_then(|u| u.option_images.get(&image_name))
+                    .map_or((rect.2, rect.3), |p| (p.width as f32, p.height as f32));
+                let mut clip = commands.spawn((
+                    Node {
+                        overflow: Overflow::clip(),
+                        ..place(look, rect.0, rect.1, rect.2, rect.3)
+                    },
+                    ChildOf(parent),
+                ));
+                if lit {
+                    clip.insert(MicMeter {
+                        bars,
+                        step: spacing * look.s,
+                    })
+                    .entry::<Node>()
+                    .and_modify(|mut n| n.width = px(0.0));
+                }
+                let clip = clip.id();
+                commands.spawn((
+                    place(look, 0.0, 0.0, size.0, size.1),
+                    ImageNode {
+                        image: picture.cloned().unwrap_or_default(),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                    ChildOf(clip),
+                ));
+            }
             "imagepanel" if picture.is_some() => {
                 // Its picture over its box, as the brightness dialog's
                 // test lines.
@@ -714,7 +859,7 @@ pub(super) fn column(commands: &mut Commands, ctx: &Ctx, parent: Entity, (x, y, 
                 let state = Btn::enabled(*enabled).focused(menu.focus == i);
                 widgets::button(commands, parent, look, (x, ry, w.min(260.0), 24.0), text, state, -1, Hit(Target::Row(i), 0));
             }
-            Row::Bind { .. } => continue,
+            Row::Bind { .. } | Row::Player { .. } => continue,
             Row::Control { label: text, control: c, .. } => {
                 if matches!(c, Control::Check(_) | Control::Radio(_)) {
                     control(commands, ctx, parent, i, row, (x, ry, w, 24.0), Some(text), None);
@@ -731,6 +876,68 @@ pub(super) fn column(commands: &mut Commands, ctx: &Ctx, parent: Entity, (x, y, 
         }
         ry += row_h;
     }
+}
+
+/// The player list's list (VGUI's `ListPanel`): its column headings
+/// ("Player name", "Properties"), a row per player (the selected one lit),
+/// a scroll bar.
+pub(super) fn player_list(commands: &mut Commands, ctx: &Ctx, parent: Entity, (lx, ly, lw, lh): (f32, f32, f32, f32)) {
+    let (look, menu) = (ctx.look, ctx.menu);
+    let list = commands
+        .spawn((
+            Node {
+                border: UiRect::all(px(1.0)),
+                overflow: Overflow::clip(),
+                ..place(look, lx, ly, lw, lh)
+            },
+            bevel(look, false),
+            BackgroundColor(look.color("ListPanel.BgColor", [0, 0, 0, 128])),
+            RelativeCursorPosition::default(),
+            WheelList,
+            ChildOf(parent),
+        ))
+        .id();
+    let (len, shown) = menu.list();
+    let bar_w = look.number("ScrollBar.Wide", 17.0);
+    let row_h = ((lh - 22.0) / shown.max(1) as f32).floor();
+    let width = lw - bar_w - 4.0;
+    let props_x = (width * 0.6).round();
+    let header = look.font("DefaultBold", (16.0, true));
+    let font = look.default_font();
+    let header_color = look.color("SectionedListPanel.HeaderTextColor", [255, 255, 255, 255]);
+    let name_head = menu.text("#GameUI_PlayerName", "Player name");
+    label(commands, list, look, (6.0, 1.0, props_x - 8.0, 20.0), &name_head, header.clone(), header_color, -1);
+    let props_head = menu.text("#GameUI_Properties", "Properties");
+    label(commands, list, look, (props_x, 1.0, width - props_x, 20.0), &props_head, header, header_color, -1);
+    commands.spawn((
+        place(look, 2.0, 21.0, width - 2.0, 1.0),
+        BackgroundColor(look.color("SectionedListPanel.DividerColor", [0, 0, 0, 255])),
+        ChildOf(list),
+    ));
+    let text = look.color("ListPanel.TextColor", [190, 190, 190, 255]);
+    for (k, i) in (menu.scroll..(menu.scroll + shown).min(len)).enumerate() {
+        let Row::Player { name, properties } = &ctx.rows[i] else { continue };
+        let y = 22.0 + k as f32 * row_h;
+        let selected = menu.key_row == Some(i);
+        let (bg, fg) = if selected {
+            (look.selected_bg(), look.selected_text())
+        } else {
+            (Color::NONE, text)
+        };
+        let e = commands
+            .spawn((
+                place(look, 1.0, y, width, row_h),
+                BackgroundColor(bg),
+                Hit(Target::Row(i), 0),
+                Button,
+                Interaction::default(),
+                ChildOf(list),
+            ))
+            .id();
+        label(commands, e, look, (5.0, 0.0, props_x - 8.0, row_h), name, font.clone(), fg, -1);
+        label(commands, e, look, (props_x - 1.0, 0.0, width - props_x, row_h), properties, font.clone(), fg, -1);
+    }
+    scroll_bar(commands, list, look, (lw - bar_w - 2.0, 0.0, lh - 2.0), (len, shown, menu.scroll));
 }
 
 /// A scrolled list of labelled controls (VGUI's `CPanelListPanel`: Create

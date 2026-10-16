@@ -441,7 +441,7 @@ that the paths exist).
 
 - `apps/cs_source/src/games/mod.rs`: the `load_map("game:name")` dispatcher (games)
 - `games/cs_source/src/game/rules.rs`: CS:S's rule modules (games)
-- `games/cs_source/src/game/votes.rs`: CS:S's vote issues: kick, change level, restart game (games)
+- `games/cs_source/src/game/votes.rs`: CS:S's vote issues: kick, change level, restart game; how bots vote (games)
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
@@ -525,7 +525,7 @@ that the paths exist).
 - `chimera/client/src/client/fonts.rs`: the one font service (client)
 - `chimera/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
 - `chimera/client/src/client/vgui.rs`: drawing a game's own menu layouts; the mouse free while one is open (client)
-- `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs (games_ui)
+- `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs, the vote setup dialog (games_ui)
 - `games/cs_source/src/ui/server_browser.rs`: the server browser (games_ui)
 - `games/cs_source/src/ui/team_menu.rs`: the team menu (games_ui)
 - `games/cs_source/src/ui/join_menus.rs`: CS:S's join flow: MOTD, team and class menus (games_ui)

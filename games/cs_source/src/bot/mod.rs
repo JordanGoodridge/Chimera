@@ -1097,6 +1097,12 @@ impl Bot {
         self.rng = path::hash64(self.seed ^ 0x2545_F491_4F6C_DD1D, round as usize) | 1;
     }
 
+    /// A roll of its dice, 0 to 1 (seeded: `reseed`), for rules outside
+    /// the brain (its votes: `game::votes`).
+    pub fn roll(&mut self) -> f32 {
+        self.rand()
+    }
+
     fn rand(&mut self) -> f32 {
         // xorshift64*
         self.rng ^= self.rng >> 12;
