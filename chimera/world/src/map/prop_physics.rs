@@ -17,10 +17,16 @@
 //! shadow is on `core::SHADOW_LAYER`, which no spatial query sees);
 //! `settle_props`: a moving prop that keeps within 1 in and 5 degrees of
 //! one pose for 1 s is stopped and put to sleep (`Settling`), as Source's
-//! physics sleeps nearly still bodies.
+//! physics sleeps nearly still bodies; one sunk more than 1 in into the
+//! world or a static prop (`WEDGED_DEPTH`) sleeps at once when the map
+//! placed it so (`WedgeCheck`) and after 1 s wedged otherwise; `BodyCounts`:
+//! dynamic bodies and how many are awake (the perf readout, `--bench`).
 //!
 //! Known shortcuts (docs/tech-debt.md): The settle thresholds (1 in, 5
 //! degrees, 1 s) are ours: spec 3.5 leaves vphysics' sleep thresholds open.
+//! So is putting wedged props to sleep (cs_italy's jugs inside a cabinet's
+//! base were pushed out every tick and crawled or fell through the floor;
+//! what Source does with props placed in solid is unknown).
 //! They stand in for a fix in the solver, which on uneven ground (a convex
 //! hull bridging two displacement triangles) puts back the energy its
 //! contacts take out, so such a prop rocks at speeds above avian's sleep
@@ -189,6 +195,8 @@ pub fn reset(world: &mut World, node: Entity, asleep: bool) {
     }
     if asleep && e.contains::<PhysicsProp>() {
         e.insert((StartAsleep, RigidBody::Static));
+    } else if e.get::<RigidBody>().is_some_and(|b| b.is_dynamic()) && e.contains::<PhysicsProp>() {
+        e.insert(WedgeCheck::default());
     }
 }
 
@@ -284,6 +292,36 @@ pub fn pushable(p: &PhysicsProp) -> bool {
     p.push == super::PushAway::Collide && p.mass <= SHADOW_PUSH_MASS
 }
 
+/// How many simulated bodies there are and how many of them are awake
+/// (the perf readout, `--bench`'s `bodies_awake`, tests): dynamic,
+/// enabled bodies; a sleeping one costs the solver nothing.
+#[derive(SystemParam)]
+pub struct BodyCounts<'w, 's> {
+    bodies: Query<'w, 's, (Entity, &'static RigidBody, Has<Sleeping>), Without<RigidBodyDisabled>>,
+}
+
+impl BodyCounts<'_, '_> {
+    /// (dynamic bodies, awake ones)
+    pub fn counts(&self) -> (usize, usize) {
+        let mut n = (0, 0);
+        for (_, rb, asleep) in &self.bodies {
+            if rb.is_dynamic() {
+                n.0 += 1;
+                n.1 += usize::from(!asleep);
+            }
+        }
+        n
+    }
+
+    /// The dynamic bodies awake.
+    pub fn awake(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.bodies
+            .iter()
+            .filter(|(_, rb, asleep)| rb.is_dynamic() && !asleep)
+            .map(|(e, ..)| e)
+    }
+}
+
 /// A moving physics prop that stays within `SETTLE_DISTANCE` and
 /// `SETTLE_ANGLE` of one pose for `SETTLE_TIME` is stopped and put to
 /// sleep (with its island), as Source's physics puts nearly still bodies
@@ -301,20 +339,45 @@ pub const SETTLE_ANGLE: f32 = 0.087;
 /// See `SETTLE_DISTANCE`, seconds.
 pub const SETTLE_TIME: f64 = 1.0;
 
-/// Where an awake physics prop has stayed since when (`settle_props`).
+/// A prop sunk deeper than this (meters) into something that doesn't move
+/// (the world, a static prop) is wedged: placed so, it is put to sleep
+/// where it is (`WedgeCheck`); knocked awake, it sleeps once it has stayed
+/// wedged for `SETTLE_TIME`, wherever it rocks.
+pub const WEDGED_DEPTH: f32 = 0.0254;
+/// How long after its first step a placed prop is checked for being
+/// wedged, seconds (a few ticks: the step right after spawning wakes
+/// what was put to sleep in it).
+pub const WEDGE_CHECK_TIME: f64 = 0.1;
+
+/// A physics prop placed by the map, checked for being wedged in its first
+/// steps (`settle_props`; the time of the first, once seen): one placed
+/// sunk into the world or a static prop (cs_italy's glass jugs inside a
+/// cabinet's base, de_inferno's milk carton between two pieces of a junk
+/// pile) is pushed out at up to avian's overlap speed every tick and
+/// jitters, crawls or falls through the floor (a jug did) without ever
+/// resting. It is put to sleep where it is instead; a shot, a push or a
+/// moving body wakes it as any other. A round restart checks again
+/// (`reset`).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct WedgeCheck(Option<f64>);
+
+/// Where an awake physics prop has stayed since when, and since when it
+/// is wedged (`settle_props`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Settling {
     at: Vec3,
     rotation: Quat,
     since: f64,
+    wedged: Option<f64>,
 }
 
-/// After each physics step: props that kept still (`SETTLE_DISTANCE`)
-/// sleep. An island sleeps as a whole, so it waits for every prop in it
+/// After each physics step: props that kept still (`SETTLE_DISTANCE`) or
+/// stayed wedged (`WEDGED_DEPTH`) sleep. An island sleeps as a whole, so it waits for every prop in it
 /// to have kept still and every other body in it to be resting by avian's
 /// own measure. Their velocities are zeroed without marking them changed
 /// (a change wakes a sleeping body); a prop that sleeps (by this or by
 /// avian) forgets its pose, so one woken by a push starts its wait again.
+/// A prop placed wedged (`WedgeCheck`) sleeps at once, with its island.
 #[allow(clippy::type_complexity)]
 pub fn settle_props(
     time: Res<Time>,
@@ -329,11 +392,13 @@ pub fn settle_props(
             &mut LinearVelocity,
             &mut AngularVelocity,
             Option<&mut Settling>,
+            Option<&mut WedgeCheck>,
         ),
         (With<PhysicsProp>, Without<Sleeping>),
     >,
     others: Query<(&RigidBody, &BodyIslandNode, &SleepTimer), (Without<PhysicsProp>, Without<Sleeping>)>,
     asleep: Query<Entity, (With<Settling>, Or<(With<Sleeping>, Without<PhysicsProp>)>)>,
+    (contacts, bodies): (Res<ContactGraph>, Query<&RigidBody>),
     mut commands: Commands,
     mut still: Local<Vec<(Entity, u32)>>,
     mut moving: Local<bevy::platform::collections::HashSet<u32>>,
@@ -344,27 +409,45 @@ pub fn settle_props(
     let now = time.elapsed_secs_f64();
     still.clear();
     moving.clear();
-    for (e, rb, p, r, island, _, _, settling) in &mut props {
+    let mut wedged = Vec::new();
+    for (e, rb, p, r, island, _, _, settling, check) in &mut props {
         if !rb.is_dynamic() {
             if settling.is_some() {
                 commands.entity(e).remove::<Settling>();
             }
             continue;
         }
+        let stuck = wedged_depth(&contacts, &bodies, e) > WEDGED_DEPTH;
+        if let Some(mut check) = check {
+            // Only in its first steps: one woken later (by a shot) moves.
+            if now - *check.0.get_or_insert(now) < WEDGE_CHECK_TIME {
+                if stuck {
+                    wedged.push(e);
+                }
+            } else {
+                commands.entity(e).remove::<WedgeCheck>();
+            }
+        }
         let fresh = Settling {
             at: p.0,
             rotation: r.0,
             since: now,
+            wedged: stuck.then_some(now),
         };
         let Some(mut s) = settling else {
             commands.entity(e).insert(fresh);
             moving.insert(island.island_id().0);
             continue;
         };
-        if s.at.distance(p.0) > SETTLE_DISTANCE || s.rotation.angle_between(r.0) > SETTLE_ANGLE {
-            *s = fresh;
+        if !stuck {
+            s.wedged = None;
+        } else if s.wedged.is_none() {
+            s.wedged = Some(now);
         }
-        if now - s.since >= SETTLE_TIME {
+        if s.at.distance(p.0) > SETTLE_DISTANCE || s.rotation.angle_between(r.0) > SETTLE_ANGLE {
+            *s = Settling { wedged: s.wedged, ..fresh };
+        }
+        if now - s.since >= SETTLE_TIME || s.wedged.is_some_and(|t| now - t >= SETTLE_TIME) {
             still.push((e, island.island_id().0));
         } else {
             moving.insert(island.island_id().0);
@@ -376,11 +459,21 @@ pub fn settle_props(
         }
     }
     let mut slept = bevy::platform::collections::HashSet::new();
+    for e in wedged {
+        if let Ok((.., island, mut v, mut w, _, _)) = props.get_mut(e) {
+            v.bypass_change_detection().0 = Vec3::ZERO;
+            w.bypass_change_detection().0 = Vec3::ZERO;
+            if slept.insert(island.island_id().0) {
+                commands.entity(e).remove::<Settling>();
+                commands.queue(SleepBody(e));
+            }
+        }
+    }
     for &(e, island) in still.iter() {
-        if moving.contains(&island) {
+        if moving.contains(&island) || slept.contains(&island) {
             continue;
         }
-        if let Ok((.., mut v, mut w, _)) = props.get_mut(e) {
+        if let Ok((.., mut v, mut w, _, _)) = props.get_mut(e) {
             v.bypass_change_detection().0 = Vec3::ZERO;
             w.bypass_change_detection().0 = Vec3::ZERO;
         }
@@ -391,4 +484,16 @@ pub fn settle_props(
             commands.queue(SleepBody(e));
         }
     }
+}
+
+/// How deep (meters) body `e` is sunk into anything that doesn't move.
+fn wedged_depth(contacts: &ContactGraph, bodies: &Query<&RigidBody>, e: Entity) -> f32 {
+    contacts
+        .contact_pairs_with(e)
+        .filter(|pair| {
+            let other = if pair.body1 == Some(e) { pair.body2 } else { pair.body1 };
+            other.is_none_or(|o| bodies.get(o).is_ok_and(|rb| !rb.is_dynamic()))
+        })
+        .flat_map(|pair| pair.manifolds.iter().flat_map(|m| m.points.iter().map(|p| p.penetration)))
+        .fold(0.0, f32::max)
 }

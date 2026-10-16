@@ -804,15 +804,15 @@ dithered fade bands. Left:
 - Frame-time follow-ups (performance.md, "Frame time pass"): before/after
   numbers on a quiet machine and on the Windows PC (`refcmp bench`, also
   `MASHUP_EXECUTOR=multi`, `-- --view-size 3840x2160`); props as
-  hierarchies of their own (cheaper collider propagation) without
-  changing how physics props settle; fewer cameras per frame (the view
+  hierarchies of their own (cheaper collider propagation) only if a map
+  shows it (stock maps walk 240-710 colliders a tick: performance.md,
+  "Props that never sleep"); fewer cameras per frame (the view
   model camera runs its passes and an MSAA copy even with nothing on its
   layer; shells and the under-water overlay draw there too); a render
   scale (`mat_render_scale`) only if a GPU turns out to be the limit (the
-  dev box's RTX 3080 draws dust2 at 4K in about 1.5 ms); seven physics
-  props on cs_office never fall asleep (they rock by a tenth of a
-  millimetre forever: transform propagation and shadow checks every
-  frame).
+  dev box's RTX 3080 draws dust2 at 4K in about 1.5 ms). Props that never
+  slept are done (performance.md, "Props that never sleep"); left there:
+  ragdoll and gib hulls not cut for contacts.
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).

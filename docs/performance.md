@@ -512,8 +512,8 @@ two spawns), plus traces of a `--features profile` build.
   changes (a ragdoll at rest no longer dirties ~50 joints a frame).
   `map::pose_tests` checks it.
 - **Prop shadows of physics props that never sleep.** Seven props on
-  cs_office rock by a tenth of a millimetre and a hundredth of a degree
-  forever (avian never puts them to sleep), so every frame
+  cs_office rocked by a tenth of a millimetre and a hundredth of a degree
+  forever (avian never put them to sleep; `settle_props` does since), so every frame
   `update_prop_shadows` redrew their shadows: silhouettes (0.8 ms for a
   1074-triangle desk in a 256-texel cell), meshes, and then the whole
   shadow atlas converted from floats to bytes and uploaded again: 16 ms a
@@ -596,11 +596,71 @@ the logic bridge's sync (`logic: sync to the ECS`, ~0.27 ms a call on
 cs_office, twice a tick) and transform propagation twice a tick (ours
 after restoring eased transforms, and avian's); these measurements
 predate the static parts' own root (above), which keeps the world out of
-that propagation. Physics props that never sleep (cs_office) are
-worth a look on the physics side. On a quiet machine (load 3) the old
+that propagation. Physics props that never sleep: see "Props that
+never sleep" below. On a quiet machine (load 3) the old
 build drew dust2's 32 views at 4.9 ms a frame (main world 4.3): the
 per-frame cost a 240 Hz monitor (4.2 ms) has to beat; new numbers on a
 quiet machine and on the Windows PC are still to be taken.
+
+## Props that never sleep (2026-10-16)
+
+Counted with `physics: N dynamic bodies, M awake` (`mashup_perf`) and
+`bodies_awake` per frame in `refcmp bench` (both new), and headless 4-20 s
+after loading. The "seven props on cs_office" above slept since
+`settle_props` (2026-10-14): 0 awake in the app at every view. Still
+awake for good, all `prop_physics_multiplayer`:
+
+- **de_inferno potted plants 666 and 654** wobbled by up to ten degrees
+  at 1.5-2 rad/s forever. Their floor brushes' top faces have six and
+  nine corners, and parry's contact manifolds between convex polyhedra
+  clip only a face's first four corners (a TODO in parry's
+  `ConvexPolyhedron::local_support_feature`): the strip of floor kept
+  missed the pot, one contact point was left, and it hopped around the
+  octagonal base every tick. The pot's own base (eight corners) had the
+  same problem. Fix: `map::collision::contact_hulls` cuts props', the
+  world's and brush entities' hulls along diagonals of their wider faces
+  into pieces whose faces have four corners at most (the same solid;
+  pieces are checked before parry builds them, since a hull whose merged
+  faces don't have simple rims makes parry's `from_convex_mesh` loop
+  forever). The plants now sleep about 1 s after loading and again 1.3 s
+  after a bullet push.
+- **cs_italy glass jugs 511, 512 and de_inferno milk carton 761** were
+  placed sunk 5-17 cm into a static prop (a cabinet's base, a junk pile):
+  pushed out at avian's overlap speed every tick, they jittered and
+  crawled, and with the cut hulls one fell through the floor and kept
+  falling. Fix: `settle_props` puts a prop the map placed more than 1 in
+  deep into something that doesn't move to sleep in its first 0.1 s
+  (`WedgeCheck`), and one that stays that deep for 1 s later (after a
+  shot) too. A shot still wakes and moves them.
+
+A knocked de_dust2 oil drum (375) now tips over on the ramp near (34, 3,
+-70) and rolls about 19 m before it sleeps (18 s; the test allows 24).
+
+`refcmp bench`, dev build, same views, before / after (load 15-30, so
+read the counts and instructions, not the times):
+
+| map (views) | bodies awake, mean (max) | instructions per tick |
+|---|---|---|
+| cs_italy (6) | 2.0 (2) / 0 (0) | 7.27M / 6.77M |
+| de_inferno (29) | 0.29 (2) / 0 (0) | 11.38M / 11.04M |
+| cs_office (23) | 0 / 0 | |
+| de_nuke (27) | 0 / 0 | 11.15M / 10.75M |
+
+(de_nuke had nothing awake either way: about 4% is run-to-run spread.)
+`heavy::map_prop_settle::map_settles_with_no_body_awake` checks that
+de_inferno, cs_italy, cs_office and de_nuke have no body awake 10 s in,
+and that the plant and a wedged jug still wake, move and sleep again
+when shot.
+
+Hierarchies: avian's `propagate_collider_transforms` walks every
+collider under a root each tick, whether it moved or not: 240 (de_dust2),
+429 (cs_office), 498 (cs_italy), 580 (de_inferno) and 712 (de_nuke)
+colliders, about two thirds of them static props under "Map static
+parts". Bevy's propagation skips trees that didn't change and visits
+only the moving prop's own subtree. At these counts neither is worth
+restructuring (props as roots of their own changed how a dust2 prop
+settled before, see "Cheap wins found"); a map with thousands of static
+props with collision would be the case for it.
 
 ## Load-independent metrics
 

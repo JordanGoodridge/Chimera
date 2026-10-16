@@ -108,7 +108,7 @@ impl BenchSamples {
 }
 
 /// What `--bench` records per frame (JSON and CSV keys).
-const BENCH_METRICS: [&str; 14] = [
+const BENCH_METRICS: [&str; 15] = [
     "frame_ms",
     "main_ms",
     "main_cpu_ms",
@@ -123,6 +123,7 @@ const BENCH_METRICS: [&str; 14] = [
     "render_cycles",
     "render_cache_misses",
     "gpu_ms",
+    "bodies_awake",
 ];
 
 /// A view's simulation ticks: count and means per tick.
@@ -328,6 +329,7 @@ fn run_views(
         Res<super::frame_metrics::FrameMetrics>,
         Option<Res<crate::metrics::TickMetrics>>,
     ),
+    bodies: crate::map::prop_physics::BodyCounts,
 ) {
     let Some(mut run) = run else { return };
     if run.waiting {
@@ -393,6 +395,7 @@ fn run_views(
         if let Some(g) = m.last.gpu_ms {
             s.push("gpu_ms", g);
         }
+        s.push("bodies_awake", bodies.counts().1 as f64);
         if let Some((_, main)) = frame_times.frames.back() {
             run.main_times.push(*main);
         }

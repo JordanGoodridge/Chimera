@@ -5,7 +5,7 @@
 //!
 //! `mashup_perf` overlay (frame times, main-world CPU, render-world time
 //! (`RenderTime`, written by the render world), GPU per render pass, entities,
-//! meshes and triangles drawn, visibility), the same as text (`mashup_perf_log
+//! meshes and triangles drawn, visibility, dynamic bodies awake), the same as text (`mashup_perf_log
 //! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
 //! `mashup_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
 //! sleeps at the end of a frame; off without a window and under `--bench`), the
@@ -573,6 +573,7 @@ fn perf_report(
         Option<ResMut<super::frame_metrics::FrameMetrics>>,
         Option<Res<crate::metrics::TickMetrics>>,
     ),
+    bodies: (crate::map::prop_physics::BodyCounts, Query<&Name>),
 ) {
     let now = Instant::now();
     let due = report.at.is_none_or(|t| (now - t).as_secs_f32() >= 1.0);
@@ -595,6 +596,7 @@ fn perf_report(
     if let Some(i) = interp.0 {
         report.lines.push(interp_line(&i, &interp.1));
     }
+    report.lines.push(bodies_line(perf.show.max(log.0), &bodies.0, &bodies.1));
     if let Some(g) = net.0.filter(|_| net.1.is_some_and(|r| *r == crate::core::NetRole::Client)) {
         report.lines.extend(g.lines());
     }
@@ -602,6 +604,23 @@ fn perf_report(
         report.logged = Some(now);
         info!("mashup_perf: {}", report.lines.join(" | "));
     }
+}
+
+/// Simulated bodies: dynamic ones and how many are awake (each awake one
+/// costs the solver, transform propagation and its shadow's checks every
+/// tick); `show` 3 or more names the awake ones (up to 12).
+fn bodies_line(show: u8, bodies: &crate::map::prop_physics::BodyCounts, names: &Query<&Name>) -> String {
+    let (dynamic, awake) = bodies.counts();
+    let mut line = format!("physics: {dynamic} dynamic bodies, {awake} awake");
+    if show >= 3 && awake > 0 {
+        let named: Vec<String> = bodies
+            .awake()
+            .take(12)
+            .map(|e| names.get(e).map_or_else(|_| format!("{e}"), |n| n.as_str().to_string()))
+            .collect();
+        line.push_str(&format!(" ({})", named.join(", ")));
+    }
+    line
 }
 
 /// Drawing between ticks (`cl_interpolate`, `map::interp`): the tick

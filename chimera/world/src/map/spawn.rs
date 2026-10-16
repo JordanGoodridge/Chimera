@@ -233,7 +233,7 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
         let hulls: Vec<_> = data
             .collision_hulls
             .iter()
-            .filter_map(|h| Collider::convex_hull(h.iter().map(|p| Vec3::from(*p)).collect()))
+            .flat_map(|h| contact_hulls(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
             .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
             .collect();
         commands.entity(root).with_child((
@@ -314,6 +314,8 @@ fn spawn_entity_nodes(commands: &mut Commands, data: &MapData, root: Entity) -> 
                         node.insert(prop_physics::dynamic_body(p, bounds));
                         if p.asleep {
                             node.insert((prop_physics::StartAsleep, RigidBody::Static));
+                        } else {
+                            node.insert(prop_physics::WedgeCheck::default());
                         }
                     }
                 }
@@ -632,6 +634,8 @@ fn insert_prop_collider(
             ));
             if p.asleep && prop.entity.is_some() {
                 e.insert((prop_physics::StartAsleep, RigidBody::Static));
+            } else {
+                e.insert(prop_physics::WedgeCheck::default());
             }
             if let Some(s) = &model.surfaceprop {
                 e.insert(PropSurface(s.clone()));
