@@ -1,6 +1,7 @@
 //! CS:S maps (BSP v20) to neutral `MapData`. Parsing is the `vbsp` crate;
 //! this module owns Source's conventions: Z-up inches to Y-up meters, which
-//! surfaces draw and collide, and which entities are spawns.
+//! surfaces draw and collide (by surface flags, and only brush entity
+//! classes CS:S draws: `draws_brushes`), and which entities are spawns.
 //!
 //! Known shortcuts (docs/tech-debt.md): Brushes carrying displacements are
 //! found by matching plane and centre (compiled maps don't record it).
@@ -909,10 +910,40 @@ pub const MOVERS: &[&str] = &[
     "func_physbox_multiplayer",
 ];
 
+/// Brush entity classes that draw their brushes in CS:S (besides `MOVERS`
+/// and breakables). Any other class doesn't: triggers and volumes are
+/// invisible, effect entities (`env_embers`, `env_bubbles`, dust) draw
+/// particles in their brush instead, and a class CS:S doesn't have isn't
+/// created at all. Their brushes carry `tools/toolstrigger`, which stock
+/// maps compiled without the trigger surface flag, so a face rule alone
+/// can't tell (cs_militia's `func_footstep_control` deck volumes drew).
+const DRAWN_STILL: &[&str] = &[
+    "func_wall",
+    "func_illusionary",
+    "func_lod",
+    "func_pushable",
+    "func_water",
+    "func_train",
+    "func_plat",
+    "func_platrot",
+    "func_trackchange",
+    "func_trackautochange",
+    "func_guntarget",
+];
+
+/// Whether CS:S draws a brush entity of this class (`DRAWN_STILL`).
+pub fn draws_brushes(class: &str) -> bool {
+    MOVERS.contains(&class) || super::breakables::CLASSES.contains(&class) || DRAWN_STILL.contains(&class)
+}
+
 /// Brush entities that render or collide. Volumes (triggers, buy zones,
-/// bomb sites, area portals, occluders, precipitation, dust) do neither.
+/// bomb sites, area portals, occluders, precipitation, dust, footstep
+/// volumes, embers) do neither; only `draws_brushes` classes draw.
 pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
     const VOLUMES: &[&str] = &[
+        "func_footstep_control",
+        "env_embers",
+        "env_bubbles",
         "func_buyzone",
         "func_bomb_target",
         "func_hostage_rescue",
@@ -1004,7 +1035,7 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
             || still_targeted;
         // A disabled func_brush that can toggle is drawn through its node
         // (the logic layer hides it).
-        let drawn = render_mode != 10 && !(class == "func_brush" && start_disabled && !mover);
+        let drawn = draws_brushes(class) && render_mode != 10 && !(class == "func_brush" && start_disabled && !mover);
         let solid = !NOT_SOLID.contains(&class)
             // func_brush "Solidity": 0 toggle (with the brush), 1 never, 2 always.
             && !(class == "func_brush" && (num("Solidity") == Some(1.0) || (start_disabled && num("Solidity") != Some(2.0))))

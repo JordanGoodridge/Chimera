@@ -222,6 +222,7 @@ common console commands, against mashup's.
 | Player shadows | differs | M | | blob only (tech-debt "Dynamic shadows"); decals under shadows and steadier shadows merged from main 2026-10-13 |
 | World reflections | differs | L | S | the cubemaps now carry their mips (round 2: cs_office mean 0.0189 -> 0.0185, `cam0` 0.041 -> 0.038; de_aztec 0.0408 -> 0.0405; dust2, nuke unchanged); the highlight stays narrower on dust2's bumped tunnel floor (`tunnel_floor_e` 0.016 before and after): per-vertex tangents next |
 | Water refraction | differs | L | M | tech-debt "Water" |
+| Under-water screen overlay | have (fixed) | L | S | de_port's `water_warp01` was drawn but invisible (a warp of about a pixel, `$bluramount` ignored); now blurred, 5 x 5 taps a pixel apart (no Refract spec: a guess; tech-debt "Water"). de_nuke's pool has none in either game |
 | Particles blend in linear space | differs | L | M | tech-debt |
 | Glow occlusion by rays | differs | L | M | tech-debt |
 | LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail"; capture C21 |
@@ -250,6 +251,8 @@ common console commands, against mashup's.
 | Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap again each round, never OnMultiNewRound (was ours: OnMultiNewRound) |
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
+| Tool-textured volumes drawn | have (fixed) | M | S | cs_militia's two `func_footstep_control` volumes (one by the Deck ladder) and its skybox `env_embers` drew as yellow `tools/toolstrigger` walls: stock maps compile trigger brushes without the trigger surface flag, so only brush entity classes CS:S draws (`bsp::draws_brushes`) draw now; also env_embers on 2 community maps, env_bubbles on 1 |
+| func_footstep_control's footstep sounds | missing | L | S | cs_militia's deck volumes (its `source`/`destination` surface keys) aren't read |
 | func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |
 | Steam heat-wave jets (`Type` 1) | missing | L | S | tech-debt; no stock map has one (every stock env_steam is Type 0) |
 | Beams' noise and scroll | have (fixed) | L | S | round 2: fractal noise each frame, segments, texture repeat, TextureScroll (the spec's s² quirk) and sprite frames on lasers and env_beams (de_cbble's and de_inferno's chimney smoke scroll); the scroll speed is capture C19 |

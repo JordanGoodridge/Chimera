@@ -728,9 +728,11 @@ with and without) differ by no more than two runs of the old build do
 ragdoll lands differently (its hulls are cut, above) and the death
 camera that looks at it with it; `refcmp
 capture-ours` of `survey_b_site` matches to the pixel. de_port's
-under-water overlay turned out not to show at all, before as after (a
-separate fix): the camera's part there is covered by
-`chimera/present/tests/it/view_model_camera.rs`.
+under-water overlay turned out not to show at all, before as after: it
+was drawn, but its warp moves the screen by about a pixel and its
+`$bluramount` was ignored (now a blur; `render::water`'s doc,
+`chimera/present/tests/it/underwater_overlay.rs`); the camera's part
+there is covered by `chimera/present/tests/it/view_model_camera.rs`.
 
 ## Load-independent metrics
 
