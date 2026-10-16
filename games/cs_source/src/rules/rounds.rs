@@ -113,39 +113,6 @@ impl Default for RoundSettings {
     }
 }
 
-impl RoundSettings {
-    /// TEMPORARY: the table the data replaced, for the comparison test.
-    #[cfg(test)]
-    pub(crate) fn old_default() -> Self {
-        Self {
-            enabled: 0,
-            freeze_time: 6.0,
-            round_time: 2.5,
-            buy_time: 1.5,
-            start_money: 800,
-            max_money: 16000,
-            end_delay: 5.0,
-            win_bonus: 3250,
-            loss_bonus: 1400,
-            loss_step: 500,
-            loss_max: 3400,
-            kill_reward: 300,
-            teamkill_penalty: 3300,
-            tk_punish: 0,
-            win_bomb: 3500,
-            win_target_saved: 3250,
-            win_rescued: 3500,
-            win_not_rescued: 3250,
-            plant_loss_bonus: 800,
-            planter_reward: 300,
-            defuser_reward: 0,
-            hostage_touch: 150,
-            hostage_rescue: 1000,
-            hostage_kill_penalty: 1500,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Phase {
     /// Rounds are off.

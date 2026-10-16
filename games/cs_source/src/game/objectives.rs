@@ -49,9 +49,6 @@ pub const SOUNDS: &[&str] = &[
     "Hostage.StopFollowCT",
 ];
 
-/// The defusal kit's price (localization "DEFUSAL KIT: $200"; CTs only).
-pub const DEFUSER_PRICE: u32 = 200;
-
 pub struct CsObjectivesPlugin;
 
 impl Plugin for CsObjectivesPlugin {
