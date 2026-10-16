@@ -1,6 +1,7 @@
 // A full-screen refraction of the finished frame: the under-water overlay
 // (Source's `$underwateroverlay`, a Refract material). The screen is read
-// at an offset from a scrolling, animated normal map and tinted.
+// at an offset from a scrolling, animated normal map, blurred (a 5 x 5
+// box of taps `blur` pixels apart) and tinted.
 //
 // Drawn by the view-model camera in its transmissive phase: the
 // transmission texture then holds the world and the view models.
@@ -18,7 +19,8 @@ struct ScreenWarpParams {
     refract_amount: f32,
     frame_rate: f32,
     frame_count: f32,
-    _pad: f32,
+    // Spacing of the 5 x 5 blur's taps, pixels (0: one tap).
+    blur: f32,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: ScreenWarpParams;
@@ -53,6 +55,18 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = screen * params.scale_scroll.xy + fract(params.scale_scroll.zw * t);
     let n = textureSample(normal_texture, normal_sampler, uv, layer).xyz * 2.0 - 1.0;
     let at = clamp(screen + params.refract_amount * n.xy, vec2<f32>(0.0), vec2<f32>(1.0));
-    let c = textureSampleLevel(vb::view_transmission_texture, vb::view_transmission_sampler, at, 0.0).rgb;
+    var c = vec3<f32>(0.0);
+    if params.blur > 0.0 {
+        for (var i = -2; i <= 2; i++) {
+            for (var j = -2; j <= 2; j++) {
+                let o = vec2<f32>(f32(i), f32(j)) * params.blur / view.viewport.zw;
+                let p = clamp(at + o, vec2<f32>(0.0), vec2<f32>(1.0));
+                c += textureSampleLevel(vb::view_transmission_texture, vb::view_transmission_sampler, p, 0.0).rgb;
+            }
+        }
+        c /= 25.0;
+    } else {
+        c = textureSampleLevel(vb::view_transmission_texture, vb::view_transmission_sampler, at, 0.0).rgb;
+    }
     return vec4<f32>(c * params.tint.rgb, 1.0);
 }

@@ -734,11 +734,13 @@ docs/plans/active/sound.md.
 - **Water surfaces** (specs/cs_source/water.md, `render::water`): refraction,
   planar reflection, the cheap cubemap pass, under-water fog (world,
   props, ropes, decals, particles), bottom materials, the
-  `$underwateroverlay` screen warp, the intersection view's height fog
+  `$underwateroverlay` screen warp (with its `$bluramount` blur, which is
+  what shows on de_port), the intersection view's height fog
   the water cvars, `$blurrefract` with `$refracttint` and the "Water
   detail" choices (`render::water::WATER_DETAIL`, for the Video Advanced
   menu) are in. Left: a Refract shader spec (the warp's
-  strength and blur are guesses: de_port's `water_warp01` looks subtle),
+  strength and blur are guesses: de_port's `water_warp01` moves the
+  screen about a pixel, its blur is 5 x 5 taps a pixel apart),
   the `$basetexture` variant (no stock material uses it), and a
   refcmp comparison of de_port/de_chateau water (no reference captures
   yet; it would settle de_port's dark speckles: refraction lookups at

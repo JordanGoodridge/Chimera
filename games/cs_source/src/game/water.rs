@@ -264,8 +264,9 @@ fn transform_scale(v: &str) -> Vec2 {
 /// A Refract material drawn full screen (the `$underwateroverlay`): its
 /// normal map, strength, tint, `$bumptransform` scale and the proxies that
 /// move it. There is no Refract spec yet: `$refractamount` is taken as the
-/// Water shader's (screen uv per unit of normal xy); `$bluramount` and
-/// `$refracttinttexture` are ignored.
+/// Water shader's (screen uv per unit of normal xy), `$bluramount` (0, 1
+/// or 2) as a 5 x 5 box of taps that many pixels apart (a guess);
+/// `$refracttinttexture` is ignored.
 pub fn screen_warp_vmt(name: &str, body: &[(String, Node)]) -> (MapScreenWarp, String) {
     let (keys, proxies) = keys_and_proxies(body);
     let get = |k: &str| keys.get(k).map(|v| v.trim().to_string());
@@ -275,6 +276,7 @@ pub fn screen_warp_vmt(name: &str, body: &[(String, Node)]) -> (MapScreenWarp, S
         frame_rate: 0.0,
         refract_amount: get("$refractamount").and_then(|v| v.parse().ok()).unwrap_or(0.0),
         tint: get("$refracttint").and_then(|v| colour(&v)).unwrap_or([1.0; 3]),
+        blur: get("$bluramount").and_then(|v| v.parse().ok()).unwrap_or(0.0),
         scale: get("$bumptransform").map_or(Vec2::ONE, |v| transform_scale(&v)),
         scroll: Vec2::ZERO,
     };
@@ -461,6 +463,7 @@ mod tests {
 	"$normalmap" "effects/warp_normal"
 	"$refractamount" ".04"
 	"$refracttint" "{128 255 255}"
+	"$bluramount" "1"
 	"$bumptransform" "center .5 .5 scale 2 3 rotate 0 translate 0 0"
 	"Proxies"
 	{
@@ -476,12 +479,13 @@ mod tests {
         assert!((w.refract_amount - 0.04).abs() < 1e-6);
         assert!((w.tint[0] - 128.0 / 255.0).abs() < 1e-6 && w.tint[1] == 1.0);
         assert_eq!(w.scale, Vec2::new(2.0, 3.0));
+        assert_eq!(w.blur, 1.0);
         assert_eq!(w.frame_rate, 10.0);
         assert!((w.scroll - Vec2::new(0.0, 0.1)).length() < 1e-6);
         // Defaults: no transform, no proxies.
         let (_, body) = resolve(r#""Refract" { }"#, &|_| None, 0).unwrap();
         let (w, normal) = screen_warp_vmt("x", &body);
-        assert_eq!((w.scale, w.scroll, w.refract_amount), (Vec2::ONE, Vec2::ZERO, 0.0));
+        assert_eq!((w.scale, w.scroll, w.refract_amount, w.blur), (Vec2::ONE, Vec2::ZERO, 0.0, 0.0));
         assert_eq!(normal, "dev/water_normal");
     }
 
