@@ -620,7 +620,15 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    move (velocity) while arming? With duck held? With a release at tick
    190 (expect `bomb_abortplant`)? Leaving the zone by being pushed
    (teleport): which message?
-2. **Q2 Defaults and bounds.** RCON `cvarlist mp_c4`, `help mp_c4timer`,
+2. **Q2 Answered (2026-10-16, probe server):** `mp_c4timer` 45 (10–90),
+   `mp_hostagepenalty` 13, `mp_roundtime` 2.5 (1–9), `mp_freezetime` 6
+   (0–60), `mp_buytime` 1.5 (min 0.25), `mp_startmoney` 800 (800–16000),
+   `mp_tkpunish` 0, `mp_limitteams` 2 (0–30), `mp_autoteambalance` 1
+   (0–2: 2 asks volunteers), `mp_chattime` 10 (1–120), `mp_playerid` 0
+   (0–2), `mp_fadetoblack` 0: all as ours. Not in ours: `mp_autokick` 1
+   (kick idle and team-killing players) and `mp_spawnprotectiontime` 5
+   (kick a player who team-kills within this many seconds of a round
+   restart). Was: **Q2 Defaults and bounds.** RCON `cvarlist mp_c4`, `help mp_c4timer`,
    `help mp_hostagepenalty`, `help mp_roundtime`: defaults, min/max.
    Expect `mp_c4timer` 45 (10–90).
 3. **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
@@ -654,7 +662,14 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    a moving platform? Dump its position and collision group after a plant.
    Can the defuser move or crouch while defusing (`mashup_wrun` with Use and
    forward held, looking at the bomb)?
-8. **Q8 Hostage health and damage.** Shoot a hostage once with a known
+8. **Q8 Partly measured (2026-10-16, cs_office, one shot from 150 units
+   at hostage 121, its health read after; one shot per round restart):**
+   health 100. AK-47 (36): aimed 66 above its feet → 89 taken, 60 → 53,
+   48 → 53, 36 → 26, 18 → 21; Desert Eagle (54): 66 → killed, 60 → 76,
+   48 → 38, 36 → 38, 18 → 44. These don't match the player hitgroup
+   multipliers (head 4, chest 1, stomach 1.25, legs 0.75) on 36 or 54;
+   the hitgroups weren't logged (`hostage_hurt` not hooked), so the rule
+   is still open. Was: **Q8 Hostage health and damage.** Shoot a hostage once with a known
    weapon at a known hitgroup (`player_hurt` doesn't fire; use
    `hostage_hurt` and read its health netprop). Does armour/hitgroup
    apply?
@@ -683,7 +698,11 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
 14. **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
     defuse on 333 or 334, and does a defuse finishing on the same tick as
     the explosion win? Log tick numbers of begin/complete events in Q1/Q3.
-15. **Q15 One side only.** (Added by an implementation session, not from
+15. **Q15 Answered (2026-10-16, probe server, one bot alone on CT, killed
+    with `bot_kill`):** the round ends at once as a draw (log `World
+    triggered "Round_Draw"`, scores unchanged, then `Round_End`), and the
+    server prints "Game will not start until both teams have players.";
+    as ours. Was: **Q15 One side only.** (Added by an implementation session, not from
     the source.) With players on one team and nobody on the other (a lone
     player; mg_ maps with one team's spawns: mg_lego_course,
     mg_escape_prison_beta, mg_crazykart_v1_1 all T, mg_wipeout2 and

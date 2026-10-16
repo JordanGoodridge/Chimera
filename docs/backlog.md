@@ -546,6 +546,12 @@ choices, `VoteNews::Setup`, printed to the console), a way to open it
 `sv_vote_bots_allowed 1`, and CS:S's rules and look from capture C25
 (parity-gaps.md).
 
+- Missing server kicks (measured defaults 2026-10-16, objectives.md Q2):
+  `mp_autokick` 1 (kick idle and team-killing players) and
+  `mp_spawnprotectiontime` 5 (kick a player who team-kills within 5 s of a
+  round restart). What counts as idle and how many team kills are
+  unmeasured; probe-server measurable with a bot that stops moving.
+
 ## 2d. CS:S demos as a parity check (user idea, 2026-10-14)
 
 Built: `demodump` reads CS:S `.dem` files (`source_formats::dem`; SourceTV
