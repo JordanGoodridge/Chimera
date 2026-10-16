@@ -97,9 +97,9 @@ report folders):
 | Surf ramps | differs | L | | tech-debt "cs_source movement": the rampbug patched out (our choice) |
 | Slowdown when shot ("tagging") | have | | | Fixed 2026-10-14: weapons.md M18 (0.5/0.65 by gun, legs 0.5, +1/3 a second); the speed trace to 0.05 (`games/cs_source/hit_reaction.rs`) |
 | View punch when hit (flinch) | have (fixed) | H | S | Fixed 2026-10-14 to M18 (bare head −12/±9 roll, unarmoured body −dmg/10 up to 4, helmeted head none: measured, matches) |
-| Scoped speeds (AWP, Scout, autos zoomed) | differs | M | S | spec movement.md Q1 |
-| Duck spam limit, duck transition times | differs | M | S | spec movement.md Q6 |
-| Backpedal speed (`sv_backspeed`) | differs | L | S | spec movement.md Q10 |
+| Scoped speeds (AWP, Scout, autos zoomed) | have (fixed) | M | S | measured (movement.md Q1): the G3SG1 keeps 210 zoomed (was 150), the SG 552 slows to 200 (was 235); the rest matched |
+| Duck spam limit, duck transition times | have | M | S | measured (movement.md Q6): 0.4 s / 0.2 s, no spam limit, as ours |
+| Backpedal speed (`sv_backspeed`) | have | L | S | measured (movement.md Q10): not applied in CS:S (full speed backwards), as ours |
 | Base velocity (conveyors, water currents) | differs | L | M | tech-debt "Source movement"; spec Q15 |
 | Camera under a low ceiling | differs | M | | other work in flight (mg_jacks) |
 | Tick rate 66.67 vs community 100 | differs | L | | spec Q17 |
@@ -114,11 +114,11 @@ report folders):
 | Picking the second grenade from the HUD selection | have (fixed) | M | S | the pick drew the first weapon of the slot; now `Intent::pick` names it |
 | `autobuy` / `rebuy` (F1 / F2) | have (fixed) | H | S | were missing (the buy menu's buttons greyed); details unmeasured (tech-debt), capture C4 |
 | Spread generator | differs | L | M | tech-debt "CS:S's spread and recoil": seeded as CS:S, our generator (spec Q1) |
-| Other automatics' recoil, scoped/silenced/burst | differs | M | S | measured and in the data 2026-10-15 for FAMAS, Galil, SG 552, AUG, MP5, P90, UMP, MAC-10, TMP, M249 (standing, crouched, moving); airborne, the snipers' and scoped/silenced/burst modes left (Q3) |
+| Other automatics' recoil, scoped/silenced/burst | differs | M | S | measured and in the data 2026-10-15 for M4A1, FAMAS, Galil, SG 552, AUG, MP5, P90, UMP, MAC-10, TMP, M249 (standing, crouched, moving, airborne; five airborne yaw caps not reached); the snipers' and scoped/silenced/burst modes left (Q3) |
 | Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7 |
 | Unmeasured gun values (556/9mm penetration...) | differs | L | S | tech-debt "The CS:S guns" |
 | Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), the throw pitch bend (80/90 looking up: fixed), fuses, HE vs armour (×0.7375) measured and matching; HE falloff fixed (a bell σ 350/3, linear with sv_legacy_grenade_damage 1); flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); redraw, pin open (grenades.md Q2, Q3, Q12) |
-| Same-type pickup takes clip and reserve | differs | L | S | tech-debt "Picking up a dropped gun" |
+| Same-type pickup takes nothing | have (fixed) | L | S | measured (weapons.md M20): CS:S takes no ammo from a gun of a type carried (ours took clip and reserve); a dropped gun carries its reserve, as ours; the re-pick delay (0.75 s, was 1 s) and reach measured too |
 | `cl_autowepswitch` while firing | differs | L | S | tech-debt row |
 | Knife idle timing | differs | L | | tech-debt "View-model idle" |
 | Flashlight (`impulse 100`, F) | missing | L | M | `mp_flashlight` decides on a server; capture C9 for the default |
@@ -143,7 +143,7 @@ report folders):
 | Wave choice (repeat avoidance) | differs | L | S | spec Q2 |
 | ambient_generic levels | differs | L | S | spec Q11 |
 | Scrapes | differs | L | S | spec Q8 |
-| Ricochets (`FX_RicochetSound.Ricochet`) | missing | M | S | never played; spec sounds.md Q7 |
+| Ricochets (`Bounce.Shrapnel`) | have | M | S | 30 % of bullet impacts (impact_effects.md section 2, the template's rule; `game::impact_effects`); the rate unmeasured (impact_effects.md Q2) |
 | Drowning (`Player.DrownStart`/`DrownContinue`, damage) | differs | L | S | damage and restore as measured (C6, `games/cs_source/drown.rs`); the client's own drown sounds (if CS:S plays any) not played; reset on surfacing unmeasured |
 | Hint sound (`Hud.Hint`) with `cl_autohelp` hints | missing | M | M | hints not in (ui-parity.md, greyed) |
 | Spray sound, night vision and flashlight sounds | differs | L | | `SprayCan.Paint` (all hear it) and `Player.NightVisionOn`/`Off` (the owner only) play; the flashlight is missing |
@@ -271,7 +271,7 @@ common console commands, against mashup's.
 | Ammo prices and sizes | have (fixed) | M | S | measured (weapons.md M19): ammo free, bought guns and spawn pistols full, the .45 box 25; we charged per box and sold guns with the clip only |
 | Bomb and hostage details | differs | M | | tech-debt; objectives.md open questions |
 | Draw rules on one-sided maps | differs | L | | tech-debt "Minigame flows" |
-| Freeze-time reload | differs | L | | backlog: capture to confirm |
+| Freeze-time reload | have | L | | measured 2026-10-15 on the probe server: CS:S reloads in the freeze time at the usual pace, no firing or moving; as ours |
 
 ## Networking feel
 

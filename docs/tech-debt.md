@@ -79,7 +79,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - weapon: Unmeasured gun values (marked UNMEASURED): penetration powers, recoil of most guns (`games/cs_source/data/weapons/`, `games/cs_source/src/game/weapons.rs`)
 - weapon: Weapon data sets are leaked and process-wide; only a game's own set gets models (`chimera/sim/src/weapon/data.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`games/cs_source/src/game/pain.rs`)
-- weapon: Picking up a dropped gun of a type already carried takes its clip and then its reserve (our guns carry their reserve; the spec's CS:S gives the clip only); a refused touch is retried every tick. OK for now: Matches what a player expects; per-player ammo pools would settle it.
+- weapon: A dropped gun carries its reserve (as CS:S's measured, M20; we have no per-player ammo pools); a refused touch is retried every tick. OK for now: Matches CS:S in every measured case.
 - weapon: mashup_usepickup (+use pickup) reach and rules are ours (`chimera/sim/src/weapon/drop.rs`)
 - movement: Source movement lacks base velocity; the landing roll keeps the shared code's spring; some fall-damage cases ignored (`games/cs_source/src/game/movement.rs`)
 - games/cs_source: Hit slowdown a tick late (after movement); flinch set, not added (`games/cs_source/src/game/hit_reaction.rs`)

@@ -735,16 +735,16 @@ level 3), `sv_soundemitter_trace 1`; health read with `mashup_info`:
 
 ## Open questions
 
-1. **Scoped speeds:** weapon speeds are now read from the scripts. Still to check: scoped speeds (AWP/scout/autos are slower zoomed; that is in CS:S code, not in scripts).
+1. **Answered (measured 2026-10-15, probe server, top speed running forward after one or two zoom presses):** AWP 210 → 150 at both zoom levels; Scout 260 → 220; SG550 210 → 150; **G3SG1 stays 210** zoomed; SG 552 235 → 200 zoomed; AUG 221 zoomed too (unchanged).
 2. **Answered:** sv_accelerate 5 and sv_stopspeed 75 come from CS:S's stock cfg/skill1.cfg, which the engine runs on every map load. They are CS:S's effective defaults; the registered defaults 10 and 100 are the shared code's.
 3. **Answered:** sv_stopspeed is 75 (see CS:S values).
 4. **Answered:** the CS:S jump impulse is 301.993 (see CS:S values).
 5. **Answered (see CS:S values):** hulls 62/45, eyes 64/47, air duck shift 8.5. Was: **CS:S hulls and eye heights:** CS:S is believed to use a 32×32×62 ducked box (not 36) and ducked eye ≈46, standing eye 64. The air-duck lift and the in-air unduck clearance both equal (standing height − ducked height), so they change with it (36 with the shared boxes). Measure with `cl_showpos`/getpos while standing vs ducked, and by finding the smallest vent you can enter.
-6. **CS:S duck behavior:** duck speed (CS:S slows while ducking/ducked: is it ×1/3 of input or a fixed fraction of max speed?), duck spam limit (sv_timebetweenducks or similar), whether the transition is still 0.4 s / 0.2 s, and any air-duck differences.
+6. **Partly answered (measured 2026-10-15):** holding duck the eye goes 64 → 47 in 26 ticks (0.4 s) and back in 13 ticks (0.2 s) on release; pressing and releasing every 2, 4, 8 or 14 ticks gives the same partial dip every cycle (released mid-duck, the eye jumps to the unduck curve's matching point), so no duck spam limit and no slowdown of repeated ducks. Still open below: air-duck differences. Was: **CS:S duck behavior:** duck speed (CS:S slows while ducking/ducked: is it ×1/3 of input or a fixed fraction of max speed?), duck spam limit (sv_timebetweenducks or similar), whether the transition is still 0.4 s / 0.2 s, and any air-duck differences.
 7. **Answered (see CS:S values: jump stamina).** Was: **Landing slowdown / stamina:** CS:S reduces horizontal speed after landing and after jumps (a "stamina" or velocity modifier). This is not in shared code. Measure speed in the ticks after landing from walking jumps, bhop chains, and a fall.
 8. **Answered (see CS:S values: bunny-hop cap, 286).** Was: **Bunny-hop limit:** with sv_enablebunnyhopping 0, CS:S caps speed on jump (believed: if speed > 1.1 × max speed, scale down to 1.1 × max speed). Measure by jumping at > 275 units/s with a knife.
 9. **Answered (measured):** the walk key lowers the player's max speed to 0.52 × the weapon speed (see Walking). Still open: whether CS:S applies any delay when pressing or releasing it. The measurements show it acting on the same tick.
-10. **Backpedal:** whether sv_backspeed 0.6 is applied in CS:S. Measure backward top speed.
+10. **Answered (measured 2026-10-15):** `sv_backspeed` exists (0.6, archive, replicated) but isn't applied: backward, sideways and forward all reach 250 with the knife (the same speeds over the first 35 ticks).
 11. **Answered (specs/cs_source/fall_damage.md):** floor((fall − 580) × 100/416), no ×1.25. Was: **Fall damage formula as applied by CS:S:** the shared header gives the slope 100/(1024 − 580). CS:S applies the actual damage (and may scale it, e.g. ×1.25 is sometimes cited). Measure HP lost from known drop heights.
 12. **Answered (SDK client input code, CS:S build):** cl_forwardspeed, cl_sidespeed and cl_backspeed are 400 (cheat-protected), and cl_upspeed is 320. All are above every weapon speed, so the server rescale always applies.
 13. **Ladder climb speed in CS:S:** shared is 200. Confirm.

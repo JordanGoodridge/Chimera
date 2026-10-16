@@ -36,7 +36,7 @@ objects = 3
 [alt]
 kind = "scope"
 fov = [40.0, 15.0]
-max_speed = 150.0
+# Zoomed, the G3SG1 keeps its 210 (measured 2026-10-15, movement.md Q1).
 unzoom_after_shot = false
 overlay = true
 step = 0.3

@@ -36,6 +36,8 @@ objects = 2
 [alt]
 kind = "scope"
 fov = [55.0]
+# Zoomed speed (measured 2026-10-15, movement.md Q1).
+max_speed = 200.0
 unzoom_after_shot = false
 overlay = false
 step = 0.3
@@ -83,10 +85,10 @@ movement = 0.06132
 body = 0.65
 
 # Measured on the probe server, 2026-10-15 (specs/cs_source/weapons.md M3, more
-# weapons): full-clip holds standing, crouched and side-running. Airborne
-# UNMEASURED: the moving set.
+# weapons): full-clip holds standing, crouched and side-running; airborne
+# (a jump's worth of shots, M3 airborne table).
 [hooks."cs_source:recoil"]
 standing = { up = 0.625, up_step = 0.25, side = 0.375, side_step = 0.0125, up_cap = 4.0, side_cap = 2.25 }
 crouched = { up = 0.6, up_step = 0.2, side = 0.35, side_step = 0.0125, up_cap = 3.7, side_cap = 2.0 }
 moving = { up = 1.0, up_step = 0.28, side = 0.45, side_step = 0.04, up_cap = 4.25, side_cap = 2.5 }
-airborne = { up = 1.0, up_step = 0.28, side = 0.45, side_step = 0.04, up_cap = 4.25, side_cap = 2.5 }
+airborne = { up = 1.25, up_step = 0.22, side = 0.45, side_step = 0.18, up_cap = 6.0, side_cap = 4.0 }

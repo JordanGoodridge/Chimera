@@ -156,9 +156,8 @@ on the server with its `sv_cheats`, noclip predicted; `mashup_noblock`
   `net::predict::hold_local`); now reload and lastinv go through, moving
   and attacking stay held (`rounds::survivors_keep_their_clip_and_reload_in_the_freeze`).
   The clip isn't refilled at a round start: survivors keep their weapons
-  and ammo as they are (parity, unchanged). Capture to confirm: in CS:S,
-  empty half a clip, survive the round, press R in the freeze time
-  (reloads at once, or only once it ends?).
+  and ammo as they are (parity, unchanged). Confirmed on the probe server
+  2026-10-15: CS:S reloads in the freeze time at once, at the usual pace.
 
 Looks:
 - Third-person player models "not rigged right" (fixed 2026-10-10, to

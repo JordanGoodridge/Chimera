@@ -387,6 +387,8 @@ impl Plugin for CsWeaponsPlugin {
         if let Some(kit) = kept {
             app.insert_resource(kit);
         }
+        // Touching a gun of a type carried takes nothing (measured: M20).
+        app.insert_resource(crate::weapon::drop::SameTypeAmmo(false));
         app.insert_resource(crate::weapon::spray::SprayRules {
             sound: Some(SPRAY_SOUND.into()),
             ..default()

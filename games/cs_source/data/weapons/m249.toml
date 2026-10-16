@@ -63,10 +63,10 @@ recovery_stand = 0.78288
 body = 0.5
 
 # Measured on the probe server, 2026-10-15 (specs/cs_source/weapons.md M3, more
-# weapons): full-clip holds standing, crouched and side-running. Airborne
-# UNMEASURED: the moving set.
+# weapons): full-clip holds standing, crouched and side-running; airborne
+# (a jump's worth of shots, M3 airborne table).
 [hooks."cs_source:recoil"]
 standing = { up = 0.8, up_step = 0.3, side = 0.35, side_step = 0.03, up_cap = 3.75, side_cap = 3.0 }
 crouched = { up = 0.75, up_step = 0.25, side = 0.325, side_step = 0.025, up_cap = 3.5, side_cap = 2.5 }
 moving = { up = 1.1, up_step = 0.3, side = 0.5, side_step = 0.06, up_cap = 4.0, side_cap = 3.0 }
-airborne = { up = 1.1, up_step = 0.3, side = 0.5, side_step = 0.06, up_cap = 4.0, side_cap = 3.0 }
+airborne = { up = 1.8, up_step = 0.45, side = 0.65, side_step = 0.125, up_cap = 5.0, side_cap = 3.5 }

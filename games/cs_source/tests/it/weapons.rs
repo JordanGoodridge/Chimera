@@ -754,12 +754,14 @@ fn the_dead_drop_weapons_only_in_rounds_and_draw_nothing() {
 }
 
 /// Picking up (specs/cs_source/weapons.md 3.9): a dropped gun is touched
-/// within its box grown 36 units sideways, by anyone, only from 1 s after
-/// the drop; with the slot free it is taken; carrying the same type takes
-/// only its ammo (up to the reserve's max) and leaves the rest lying.
+/// within its box grown 36 units sideways, by anyone, only from
+/// `TOUCH_DELAY` after the drop; with the slot free it is taken; carrying
+/// the same type takes nothing (CS:S, M20), or with the template's rule
+/// (`SameTypeAmmo(true)`) only its ammo (up to the reserve's max), leaving
+/// the rest lying.
 #[test]
-fn dropped_weapons_are_touched_in_the_grown_box_after_a_second() {
-    use crate::stack::weapon::drop::{Loose, TOUCH_DELAY, drop_this, drop_weapon};
+fn dropped_weapons_are_touched_in_the_grown_box_after_the_delay() {
+    use crate::stack::weapon::drop::{Loose, SameTypeAmmo, TOUCH_DELAY, drop_this, drop_weapon};
     let mut sim = sim();
     let at = |x: f32| Vec3::new(x, greybox::SPAWNS[0].y, greybox::SPAWNS[0].z);
     let dropper = sim.spawn_character(at(-8.0), placeholder::ID);
@@ -786,7 +788,7 @@ fn dropped_weapons_are_touched_in_the_grown_box_after_a_second() {
         hold(&mut sim, spot);
         sim.ticks(1);
     }
-    assert!(sim.app.world().get_entity(loose).is_ok(), "touchable only after a second");
+    assert!(sim.app.world().get_entity(loose).is_ok(), "touchable only after the delay");
     for _ in 0..ticks(0.2) {
         hold(&mut sim, spot);
         sim.ticks(1);
@@ -803,8 +805,8 @@ fn dropped_weapons_are_touched_in_the_grown_box_after_a_second() {
         sim.ticks(1);
     }
     assert!(sim.app.world().get_entity(loose).is_ok(), "out of reach");
-    // The owner carries an AK 10 rounds short: it takes 10 and the gun
-    // stays with the rest.
+    // The owner carries an AK 10 rounds short: CS:S's rule takes nothing;
+    // the template's takes 10 and the gun stays with the rest.
     let mine = active(&sim, owner);
     let max = {
         let mut m = sim.app.world_mut().get_mut::<Magazine>(mine).unwrap();
@@ -814,6 +816,15 @@ fn dropped_weapons_are_touched_in_the_grown_box_after_a_second() {
     let before = sim.app.world().get::<Magazine>(ak).unwrap().clone();
     assert!(before.clip > 10);
     let near_owner = sim.position(owner) + Vec3::new(0.5, -0.75, 0.0);
+    for _ in 0..ticks(0.3) {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(loose) {
+            t.translation = near_owner;
+        }
+        sim.ticks(1);
+    }
+    assert_eq!(sim.app.world().get::<Magazine>(mine).unwrap().reserve, max - 10, "CS:S takes nothing");
+    assert_eq!(sim.app.world().get::<Magazine>(ak).unwrap().clip, before.clip);
+    sim.app.insert_resource(SameTypeAmmo(true));
     for _ in 0..ticks(0.3) {
         if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(loose) {
             t.translation = near_owner;
@@ -947,7 +958,11 @@ fn carries(sim: &Sim, p: Entity, weapon: Entity) -> bool {
 /// the map loaded.
 #[test]
 fn a_dropped_gun_is_walked_over_and_taken_again() {
-    use crate::stack::{core::LocalPlayer, games::cs_source::weapons::USP, weapon::drop::Loose};
+    use crate::stack::{
+        core::LocalPlayer,
+        games::cs_source::weapons::USP,
+        weapon::drop::{Loose, TOUCH_DELAY},
+    };
     let mut sim = sim_after_the_menu();
     let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
     sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
@@ -974,7 +989,7 @@ fn a_dropped_gun_is_walked_over_and_taken_again() {
                 .expect("lying loose")
         };
         assert!(!carries(&sim, p, gun), "{id}: dropped");
-        // Straight back over it at once: not within the second.
+        // Straight back over it at once: not within the touch delay.
         let at = |s: &Sim| {
             s.app
                 .world()
@@ -982,7 +997,7 @@ fn a_dropped_gun_is_walked_over_and_taken_again() {
                 .map_or(Vec3::ZERO, |t| t.translation)
         };
         let ticks = |s: f64| (s / TICK_INTERVAL).round() as u32;
-        let early = walk_to(&mut sim, p, at, ticks(0.9), |s| carries(s, p, gun));
+        let early = walk_to(&mut sim, p, at, ticks(TOUCH_DELAY - 0.05), |s| carries(s, p, gun));
         assert_eq!(early, None, "{id}: taken back within the touch delay");
         // Off, and back after the delay: taken.
         sim.intent(p).move_axis = Vec2::new(0.0, -1.0);
@@ -1049,7 +1064,7 @@ fn a_full_slot_refuses_a_gun_and_the_debug_readout_says_why() {
         .filter(|t| t.starts_with("pickup Tester:"))
         .collect();
     let has = |s: &str| said.iter().any(|t| t.contains(s));
-    assert!(has("weapon_ak47: dropped 0.0 s ago, touchable from 1 s"), "{said:#?}");
+    assert!(has("weapon_ak47: dropped 0.0 s ago, touchable from 0.75 s"), "{said:#?}");
     assert!(
         has("weapon_ak47: slot full (cs_source:weapon_m4a1 carried"),
         "{said:#?}"
@@ -1057,6 +1072,59 @@ fn a_full_slot_refuses_a_gun_and_the_debug_readout_says_why() {
     assert!(has("weapon_ak47: taken"), "{said:#?}");
     // One line per change, not per tick.
     assert!(said.len() < 8, "{said:#?}");
+}
+
+/// CS:S takes nothing from a dropped gun of a type carried (measured,
+/// weapons.md M20): standing on a full AK-47 with an empty one in hand
+/// leaves both as they are; the dropped one keeps its reserve and gives it
+/// back with the gun once the slot is free.
+#[test]
+fn a_gun_of_a_type_carried_gives_no_ammo() {
+    use crate::stack::{
+        core::LocalPlayer,
+        weapon::{
+            Magazine,
+            drop::{drop_this, drop_weapon},
+        },
+    };
+    let mut sim = sim_after_the_menu();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+    sim.seconds(1.5);
+    let old = active(&sim, p);
+    assert_eq!(sim.app.world().get::<Weapon>(old).unwrap().id, AK47);
+    let (clip, reserve) = {
+        let m = sim.app.world().get::<Magazine>(old).unwrap();
+        (m.clip, m.reserve)
+    };
+    let item = drop_weapon(sim.app.world_mut(), p, false).expect("dropped");
+    sim.ticks(2);
+    let new = crate::stack::weapon::give(sim.app.world_mut(), p, AK47).unwrap();
+    {
+        let mut m = sim.app.world_mut().get_mut::<Magazine>(new).unwrap();
+        m.clip = 5;
+        m.reserve = 0;
+    }
+    let spot = sim.position(p);
+    for _ in 0..(2.0 / TICK_INTERVAL) as u32 {
+        sim.app.world_mut().get_mut::<Transform>(item).unwrap().translation = spot;
+        sim.ticks(1);
+    }
+    let m = sim.app.world().get::<Magazine>(new).unwrap();
+    assert_eq!((m.clip, m.reserve), (5, 0), "ammo taken from the dropped AK");
+    assert!(sim.app.world().get_entity(item).is_ok(), "the dropped AK still lies");
+    // The new one thrown away: the old one is taken with its clip and reserve.
+    let thrown = drop_this(sim.app.world_mut(), p, new, true).unwrap();
+    for _ in 0..10 {
+        if let Some(mut t) = sim.app.world_mut().get_mut::<Transform>(item) {
+            t.translation = spot;
+        }
+        sim.app.world_mut().get_mut::<Transform>(thrown).unwrap().translation = spot + Vec3::X * 20.0;
+        sim.ticks(1);
+    }
+    assert!(carries(&sim, p, old), "taken once the slot is empty");
+    let m = sim.app.world().get::<Magazine>(old).unwrap();
+    assert_eq!((m.clip, m.reserve), (clip, reserve));
 }
 
 /// Run a tick; the `PlaySound`s still held (this tick's and the last's).

@@ -81,10 +81,10 @@ movement = 0.07039
 [hooks."cs_source:hit_slowdown"]
 body = 0.65
 
-# Measured M3: standing and crouched; UNMEASURED: moving and airborne as
-# standing (scoped, silenced and burst recoil are the normal ones).
+# Measured M3: standing, crouched, moving and airborne (moving the same with
+# the silencer on or off; scoped, silenced and burst recoil are the normal ones).
 [hooks."cs_source:recoil"]
 standing = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
 crouched = { up = 0.6, up_step = 0.2, side = 0.3, side_step = 0.0125, up_cap = 3.25, side_cap = 2.0 }
-moving = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
-airborne = { up = 0.65, up_step = 0.25, side = 0.35, side_step = 0.015, up_cap = 3.5, side_cap = 2.25 }
+moving = { up = 1.0, up_step = 0.28, side = 0.45, side_step = 0.045, up_cap = 3.75, side_cap = 3.0 }
+airborne = { up = 1.2, up_step = 0.23, side = 0.5, side_step = 0.15, up_cap = 5.5, side_cap = 3.5 }
