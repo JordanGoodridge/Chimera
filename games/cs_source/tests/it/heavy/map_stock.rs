@@ -560,6 +560,35 @@ fn packed_materials_resolve_case_insensitively() {
     assert!(missing.is_empty(), "{missing:#?}");
 }
 
+/// Trigger-like brush entities draw nothing (`bsp::draws_brushes`):
+/// cs_militia's two `func_footstep_control` volumes by the Deck ladder and
+/// its 3D skybox `env_embers` are `tools/toolstrigger` brushes compiled
+/// without the trigger surface flag, and drew as yellow walls. The only
+/// tool material CS:S draws is `tools/toolsblack`.
+#[test]
+fn tool_textured_volumes_are_not_drawn() {
+    let Some(map) = load("cs_militia") else { return };
+    let tools: Vec<_> = map
+        .meshes
+        .iter()
+        .filter(|m| m.material.starts_with("tools/") && !m.material.starts_with("tools/toolsblack"))
+        .map(|m| (m.material.as_str(), m.skybox, m.entity, m.indices.len() / 3))
+        .collect();
+    assert!(tools.is_empty(), "drawn tool materials: {tools:?}");
+    let footsteps = map
+        .entities
+        .iter()
+        .filter(|e| e.classname() == "func_footstep_control")
+        .count();
+    assert_eq!(footsteps, 2, "cs_militia's footstep volumes still load (their sounds)");
+    for class in ["func_footstep_control", "env_embers", "env_bubbles", "trigger_multiple", "func_buyzone"] {
+        assert!(!cs_source::bsp::draws_brushes(class), "{class}");
+    }
+    for class in ["func_wall", "func_illusionary", "func_brush", "func_door", "func_breakable", "func_lod"] {
+        assert!(cs_source::bsp::draws_brushes(class), "{class}");
+    }
+}
+
 /// The seam `map::sky_seam_error` measures for each of the eight ways to
 /// lay a sky's cube layer.
 fn seam_errors(map: &MapData, layer: usize) -> Vec<f32> {

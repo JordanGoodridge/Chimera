@@ -252,6 +252,8 @@ common console commands, against mashup's.
 | Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap again each round, never OnMultiNewRound (was ours: OnMultiNewRound) |
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
+| Tool-textured volumes drawn | have (fixed) | M | S | cs_militia's two `func_footstep_control` volumes (one by the Deck ladder) and its skybox `env_embers` drew as yellow `tools/toolstrigger` walls: stock maps compile trigger brushes without the trigger surface flag, so only brush entity classes CS:S draws (`bsp::draws_brushes`) draw now; also env_embers on 2 community maps, env_bubbles on 1 |
+| func_footstep_control's footstep sounds | missing | L | S | cs_militia's deck volumes (its `source`/`destination` surface keys) aren't read |
 | func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |
 | Steam heat-wave jets (`Type` 1) | missing | L | S | tech-debt; no stock map has one (every stock env_steam is Type 0) |
 | Beams' noise and scroll | have (fixed) | L | S | round 2: fractal noise each frame, segments, texture repeat, TextureScroll (the spec's s² quirk) and sprite frames on lasers and env_beams (de_cbble's and de_inferno's chimney smoke scroll); the scroll speed is capture C19 |
@@ -640,4 +642,11 @@ says what decides the open point.
   `mp_restartgame 1`, after `changelevel`; how long one stays; how far
   apart two come; whether `cl_autohelp 0` stops them and whether ones
   missed then come once it's back on; whether bots' events show any.
+- **C27 Props seen past sky brushes (cs_assault).** `refcmp capture-ref
+  --views tools/refcmp/cs_assault.toml --only pvs_`: from the roof
+  (`pvs_roof_90`, `pvs_roof_180`) and the T side's street (`pvs_street_180`,
+  `pvs_yard_180`). Our PVS culling hides the water tower, rooftop props
+  and buildings there, seen over the walls through sky brushes, and the
+  map's data agrees (docs/performance.md, "Checks"); the captures say
+  whether CS:S hides them too (sky there) or draws them.
   Decides every trigger in `games/cs_source/data/hints.toml` (all ours).

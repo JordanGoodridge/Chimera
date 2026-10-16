@@ -218,6 +218,11 @@ impl MapLayers for Present {
     }
 
     fn drawing(&self, app: &mut App) {
+        // Blended meshes at the same depth in an order of their own, not
+        // the one earlier frames left.
+        if !app.is_plugin_added::<render::blend_order::BlendOrderPlugin>() {
+            app.add_plugins(render::blend_order::BlendOrderPlugin);
+        }
         app.add_systems(
             PostUpdate,
             (
