@@ -914,9 +914,12 @@ Details and baseline numbers: [performance.md](performance.md).
   mesh and triangle counts and visibility culling (camera cluster,
   clusters and map parts potentially visible), and what changes each
   frame (transforms written, under the map's root, mesh and material
-  assets modified). `mashup_perf 3` also logs each second which entities
-  (by name) write transforms: anything writing every frame for nothing
-  costs transform propagation and GPU re-preparation.
+  assets modified), and `physics: N dynamic bodies, M awake` (an awake
+  body costs the solver, transform propagation and its shadow's checks
+  every tick; a settled map has none awake). `mashup_perf 3` also logs
+  each second which entities (by name) write transforms and which bodies
+  are awake: anything writing every frame for nothing costs transform
+  propagation and GPU re-preparation.
 - Load times: a Source map load logs `<map>: loaded in <total> s
   (<slowest stages>)` and keeps every stage's seconds in
   `MapData::load_times` (`map::loading::LoadTimer`; a heavy test can
@@ -976,7 +979,9 @@ Details and baseline numbers: [performance.md](performance.md).
   executor instead of ours (performance.md, "Frame time pass"). A second
   table gives per view and over all views (`ALL`) frame ms p50/p99/p99.9/max,
   1% low fps, each world's CPU ms and instructions per frame (p50, p99)
-  and the ticks' mean instructions; `bench.json` and `bench.csv` in the
+  and the ticks' mean instructions; `bench.json` also has
+  `bodies_awake` per frame (`jq '.overall.metrics.bodies_awake'`);
+  `bench.json` and `bench.csv` in the
   output folder (`<out>/<map>/bench/`) have every metric's n, mean, p50,
   p90, p99, p99.9, max per view and overall, for scripts
   (`jq '.overall.metrics.main_instructions.p50' bench.json`).

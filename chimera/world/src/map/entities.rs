@@ -184,7 +184,10 @@ pub fn brush_collider(e: &MapEntity, scale: f32) -> Option<avian3d::prelude::Col
     let hulls: Vec<_> = e
         .hulls
         .iter()
-        .filter_map(|h| Collider::convex_hull(h.points.iter().map(|p| entity_to_engine(*p, scale)).collect()))
+        .flat_map(|h| {
+            let points: Vec<Vec3> = h.points.iter().map(|p| entity_to_engine(*p, scale)).collect();
+            super::collision::contact_hulls(&points)
+        })
         .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
         .collect();
     (!hulls.is_empty()).then(|| Collider::compound(hulls))
