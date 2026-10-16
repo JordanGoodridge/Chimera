@@ -1,0 +1,44 @@
+# CS:S's team rounds with money (`rules::rounds::RoundSettings`; the
+# cvars set them after): the rule module's numbers, read with
+# `rule_module::parse_settings`. Timers and start money are CS:S's
+# defaults read from a fresh dedicated server over RCON (2026-10-14,
+# docs/plans/active/parity-gaps.md C9); the rewards are its well-known
+# amounts (unmeasured, docs/plans/active/rounds.md; objectives' spec 8).
+
+# Seconds frozen at a round's start (mp_freezetime).
+freeze_time = 6.0
+# Minutes a round lasts (mp_roundtime).
+round_time = 2.5
+# Minutes after the freeze that buying stays open (mp_buytime).
+buy_time = 1.5
+# mp_startmoney, and the most anyone holds.
+start_money = 800
+max_money = 16000
+# Seconds between a round's end and the next one.
+end_delay = 5.0
+# The winners' bonus by elimination; the losers' grows by `loss_step` a
+# consecutive loss up to `loss_max`.
+win_bonus = 3250
+loss_bonus = 1400
+loss_step = 500
+loss_max = 3400
+kill_reward = 300
+teamkill_penalty = 3300
+# mp_tkpunish.
+tk_punish = 0
+# Objective wins: the bomb exploded or was defused; time ran out on a bomb
+# map with no plant; all hostages rescued; time ran out on a hostage map.
+win_bomb = 3500
+win_target_saved = 3250
+win_rescued = 3500
+win_not_rescued = 3250
+# Every terrorist, on top of the loss bonus, when the bomb was planted and
+# they lost anyway; the planter's and the defuser's own reward.
+plant_loss_bonus = 800
+planter_reward = 300
+defuser_reward = 0
+# The defender who first leads a hostage this round; the one whose hostage
+# is rescued; whoever kills one loses this.
+hostage_touch = 150
+hostage_rescue = 1000
+hostage_kill_penalty = 1500

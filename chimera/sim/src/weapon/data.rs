@@ -41,9 +41,8 @@
 //! (one allocation per load; IDs are `&'static str` throughout the weapon
 //! code) and published process-wide (`lookup`) for code without a world;
 //! a game's map loader loads held and view models for its own set only, so
-//! a weapon added by an app draws no model unless the game loads it; the
-//! buy menu's layout, prices of what isn't a weapon and the spawn kit are
-//! still the game's Rust. Why it's OK for now: Loads happen at start;
+//! a weapon added by an app draws no model unless the game loads it. Why
+//! it's OK for now: Loads happen at start;
 //! weapons from data play (buy, fire, network) without models.
 
 use std::{

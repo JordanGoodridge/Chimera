@@ -48,6 +48,14 @@ impl RuleModules {
     }
 }
 
+/// A module's settings document (TOML; `name` for errors) read as its
+/// settings type `T`: a game ships its modes' numbers as data and reads
+/// them here (`T` with `#[serde(deny_unknown_fields)]` makes unknown keys
+/// load errors). The cvars set them after.
+pub fn parse_settings<T: serde::de::DeserializeOwned>(name: &str, text: &str) -> Result<T, String> {
+    toml::from_str(text).map_err(|e| format!("{name}: {e}"))
+}
+
 /// The first registered module that applies.
 pub fn pick(world: &World) -> Option<&'static str> {
     let modules = world.get_resource::<RuleModules>()?;

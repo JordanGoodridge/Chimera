@@ -48,9 +48,14 @@ use crate::{
 pub const ATTACKERS: Team = Team(1);
 pub const DEFENDERS: Team = Team(2);
 
-#[derive(Resource, Clone, Debug, PartialEq)]
+/// The module's numbers: CS:S's are data (games/cs_source/data/rounds.toml,
+/// `Default`); the cvars set them after.
+#[derive(Resource, Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoundSettings {
-    /// 1: play rounds (instead of deathmatch respawns).
+    /// 1: play rounds (instead of deathmatch respawns): `mashup_rounds`,
+    /// not data.
+    #[serde(skip)]
     pub enabled: u8,
     /// Seconds frozen at the start of a round (mp_freezetime).
     pub freeze_time: f32,
@@ -92,8 +97,26 @@ pub struct RoundSettings {
     pub hostage_kill_penalty: u32,
 }
 
+/// CS:S's round numbers (built in, parsed at run time).
+const ROUNDS_DATA: (&str, &str) = ("rounds.toml", include_str!("../../data/rounds.toml"));
+
 impl Default for RoundSettings {
+    /// CS:S's (`ROUNDS_DATA`); bad data panics (its tests load it).
     fn default() -> Self {
+        static SETTINGS: std::sync::OnceLock<RoundSettings> = std::sync::OnceLock::new();
+        SETTINGS
+            .get_or_init(|| {
+                crate::rules::module::parse_settings(ROUNDS_DATA.0, ROUNDS_DATA.1)
+                    .unwrap_or_else(|e| panic!("CS:S round data: {e}"))
+            })
+            .clone()
+    }
+}
+
+impl RoundSettings {
+    /// TEMPORARY: the table the data replaced, for the comparison test.
+    #[cfg(test)]
+    pub(crate) fn old_default() -> Self {
         Self {
             enabled: 0,
             freeze_time: 6.0,

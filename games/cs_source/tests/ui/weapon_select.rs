@@ -14,7 +14,7 @@ use crate::stack::{
         ui::weapon_select::{WeaponMenu, WeaponSelectPlugin},
         TICK_INTERVAL,
         grenades::{FLASHBANG, HEGRENADE},
-        weapons::{AK47, CsWeaponsPlugin, ITEM_SOUND, KNIFE, PICKUP_SOUND},
+        weapons::{AK47, CsWeaponsPlugin, KNIFE},
     },
     greybox::{self, GreyboxMapPlugin},
     harness::{CsSim, Sim},
@@ -22,6 +22,11 @@ use crate::stack::{
     movement::placeholder,
     weapon::{Inventory, Weapon, economy::buy, give},
 };
+
+/// CS:S's sounds of a weapon and an item bought (its shop data,
+/// games/cs_source/data/economy.toml).
+const PICKUP_SOUND: &str = "Player.PickupWeapon";
+const ITEM_SOUND: &str = "BaseCombatCharacter.ItemPickup2";
 
 fn sim() -> (Sim, Entity) {
     let mut sim = Sim::with(CsSim, |app| {

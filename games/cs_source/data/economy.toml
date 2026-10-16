@@ -1,0 +1,156 @@
+# CS:S's shop (the format: docs/economy-data.md): what is for sale besides
+# the weapons (whose prices are their own data's `[buy]`), the buy menu's
+# layout and the spawn kit. Our own numbers from the spec and the game's
+# menus (specs/cs_source/weapons.md, "Economy"; specs/cs_source/objectives.md
+# 5, "Kit"), not a file from the game. The sound entries are names in the
+# install's sound scripts.
+
+[sounds]
+# Source's generic ammo pickup entry.
+ammo = "BaseCombatCharacter.AmmoPickup"
+# A weapon picked up or bought (items/itempickup.wav).
+pickup = "Player.PickupWeapon"
+# Kevlar, a helmet, a defuse kit or night vision bought
+# (items/ammopickup.wav; which entry CS:S plays for items is inferred,
+# docs/tech-debt.md).
+item = "BaseCombatCharacter.ItemPickup2"
+# Night vision turned on and off (game_sounds.txt: items/nvg_on.wav,
+# items/nvg_off.wav).
+night_vision_on = "Player.NightVisionOn"
+night_vision_off = "Player.NightVisionOff"
+
+# Ammo is sold by the box per ammo type (the weapon data's), free in CS:S
+# today; bought guns and the spawn pistols come full (measured: weapons.md
+# M19).
+[ammo]
+bought_full = true
+
+# The game's buy aliases that aren't the weapon's own name (autobuy lists).
+[aliases]
+mp5 = "mp5navy"
+
+# Armour, from the game's buy menu: kevlar 650, kevlar and helmet 1000, the
+# helmet alone over full kevlar 350. Refusals in the game's words.
+[[item]]
+id = "cs_source:vest"
+label = "Kevlar"
+price = 650
+armor = { amount = 1.0 }
+owned = "You already have Kevlar!"
+
+[[item]]
+id = "cs_source:vesthelm"
+label = "Kevlar + Helmet"
+price = 1000
+armor = { amount = 1.0, helmet = true, helmet_price = 350 }
+owned = "You already have Kevlar and a helmet!"
+
+# The defusal kit, counter-terrorists only (localization "DEFUSAL KIT:
+# $200"; spec objectives.md 5, "Kit").
+[[item]]
+id = "cs_source:defuser"
+label = "Defusal Kit"
+price = 200
+team = 2
+part = "defuse_kit"
+owned = "You already have a defuse kit."
+
+# Night vision goggles, either team: $1250 (the install's buy menu text,
+# `#Cstrike_NightvisionPrice`); "already have one" is
+# `#Cstrike_TitlesTXT_Already_Have_One`. The game's menu greys them out
+# while carried.
+[[item]]
+id = "cs_source:nvgs"
+label = "Nightvision Goggles"
+price = 1250
+part = "night_vision"
+owned = "You already have one!"
+menu_greys_owned = true
+
+# The buy menu: its categories on their number keys (6 and 7 buy primary
+# and secondary ammo at once) and items in its order; each team sees its
+# own (items only the other team buys are left out).
+[[menu]]
+key = 1
+name = "Pistols"
+items = [
+    { buy = "cs_source:weapon_glock", label = "Glock" },
+    { buy = "cs_source:weapon_usp", label = "USP" },
+    { buy = "cs_source:weapon_p228", label = "P228" },
+    { buy = "cs_source:weapon_deagle", label = "Desert Eagle" },
+    { buy = "cs_source:weapon_elite", label = "Dual Elites" },
+    { buy = "cs_source:weapon_fiveseven", label = "Five-SeveN" },
+]
+
+[[menu]]
+key = 2
+name = "Shotguns"
+items = [
+    { buy = "cs_source:weapon_m3", label = "M3" },
+    { buy = "cs_source:weapon_xm1014", label = "XM1014" },
+]
+
+[[menu]]
+key = 3
+name = "Sub-Machine Guns"
+items = [
+    { buy = "cs_source:weapon_mac10", label = "MAC-10" },
+    { buy = "cs_source:weapon_tmp", label = "TMP" },
+    { buy = "cs_source:weapon_mp5navy", label = "MP5" },
+    { buy = "cs_source:weapon_ump45", label = "UMP45" },
+    { buy = "cs_source:weapon_p90", label = "P90" },
+]
+
+[[menu]]
+key = 4
+name = "Rifles"
+items = [
+    { buy = "cs_source:weapon_galil", label = "Galil" },
+    { buy = "cs_source:weapon_famas", label = "FAMAS" },
+    { buy = "cs_source:weapon_ak47", label = "AK-47" },
+    { buy = "cs_source:weapon_m4a1", label = "M4A1" },
+    { buy = "cs_source:weapon_scout", label = "Scout" },
+    { buy = "cs_source:weapon_sg552", label = "SG 552" },
+    { buy = "cs_source:weapon_aug", label = "AUG" },
+    { buy = "cs_source:weapon_awp", label = "AWP" },
+    { buy = "cs_source:weapon_g3sg1", label = "G3SG1" },
+    { buy = "cs_source:weapon_sg550", label = "SG 550" },
+]
+
+[[menu]]
+key = 5
+name = "Machine Guns"
+items = [{ buy = "cs_source:weapon_m249", label = "M249" }]
+
+[[menu]]
+key = 6
+name = "Primary Ammo"
+direct = "primammo"
+
+[[menu]]
+key = 7
+name = "Secondary Ammo"
+direct = "secammo"
+
+[[menu]]
+key = 8
+name = "Equipment"
+items = [
+    { buy = "cs_source:vest" },
+    { buy = "cs_source:vesthelm" },
+    { buy = "cs_source:weapon_flashbang", label = "Flashbang" },
+    { buy = "cs_source:weapon_hegrenade", label = "HE Grenade" },
+    { buy = "cs_source:weapon_smokegrenade", label = "Smoke Grenade" },
+    { buy = "cs_source:defuser" },
+    { buy = "cs_source:nvgs" },
+]
+
+# The spawn kit: the knife and the team's pistol (terrorists, team 1, the
+# Glock; everyone else the USP); the best weapon is drawn: given last.
+# Deathmatch adds the AK-47 for all (`all`; rounds with money leave it out).
+[spawn]
+kits = [
+    { team = 1, weapons = ["cs_source:weapon_knife", "cs_source:weapon_glock"] },
+    { weapons = ["cs_source:weapon_knife", "cs_source:weapon_usp"] },
+]
+all = ["cs_source:weapon_ak47"]
