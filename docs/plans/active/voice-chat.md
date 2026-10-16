@@ -71,6 +71,8 @@ headless.
 | `voice_modenable` | 1 | guess: the Voice tab's "Enable voice in this game" |
 | `voice_scale` | 1 | guess: the received voices' volume |
 | `voice_loopback` | 0 | guess: hear yourself (ours: decoded locally, not echoed by the server) |
+| `voice_vox` | 0 | guess: open microphone (Source has the cvar; its default not captured) |
+| `voice_threshold` | 4000 | ours: a 20 ms frame's loudest sample (of 32767) that opens the open microphone's gate, held `VOX_HANG` (0.5 s, ours) after the last such frame |
 | `voice_inputfromfile` | 0 | measured on the probe server (exists, 0); not implemented (the fake input does the tests' part) |
 
 The client cvars' CS:S defaults are open questions for a Windows capture
@@ -111,10 +113,15 @@ docs), to confirm with two clients on the probe server.
    sends the muted voice (Source's `vban` stops it there) and mutes
    aren't saved (CS:S keeps them by Steam id in `voice_ban.dt`).
 
+2. Open microphone (done): `voice_vox 1` keeps the microphone open;
+   a frame whose loudest sample reaches `voice_threshold` opens the
+   gate for `VOX_HANG` of audio (counted in frames, so steady at any
+   frame rate); frames under it while closed are dropped, the key still
+   talks. The HUD's own icon shows while the gate is open.
+
 ## Left for later
 
-- `voice_vox` (open microphone), the Voice tab's microphone test, meter
-  and boost.
+- The Voice tab's microphone test, meter and boost.
 - Talking icons over heads (`voice/icntlk_pl`), Steam avatars in the
   voice panel.
 - `voice_inputfromfile`, `voice_recordtofile`.

@@ -3,7 +3,11 @@
 //! side (what goes on the wire, the server's relay and who hears whom) is
 //! `net::voice`.
 //!
-//! - **Talking**: `+voicerecord` (CS:S binds it to K) records while held.
+//! - **Talking**: `+voicerecord` (CS:S binds it to K) records while held;
+//!   with `voice_vox 1` (open microphone) the microphone stays open and a
+//!   20 ms frame whose loudest sample reaches `voice_threshold` opens the
+//!   gate for `VOX_HANG` seconds of audio (frames under it while it is
+//!   closed are dropped, the key still talks).
 //!   The microphone's samples (48 kHz mono, `VoiceInput`) are cut into
 //!   20 ms frames, each encoded with Opus (VoIP, `BITRATE`) and sent as
 //!   `net::voice::VoiceData`, at most `net::voice::MAX_FRAMES` a frame;
@@ -27,7 +31,8 @@
 //!   speakers' mixer holds each talker's samples and starts a talker after
 //!   `PREBUFFER` seconds of them (a jitter buffer).
 //!
-//! Voice chat on the client: `+voicerecord`, the microphone and speakers
+//! Voice chat on the client: `+voicerecord`, `voice_vox` (open microphone,
+//! `voice_threshold`), the microphone and speakers
 //! (`VoiceInput`, `VoiceOutput`: cpal's default devices, fakes for tests),
 //! Opus at 48 kHz mono in 20 ms frames (`mousiki`), per-talker decoders with
 //! loss concealment, muted players dropped (`VoiceMutes`), a jitter-buffered
@@ -35,13 +40,16 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): Voice chat (`client::voice`): the
 //! client cvars' defaults (`voice_enable` 1, `voice_modenable` 1,
-//! `voice_scale` 1, `voice_loopback` 0) are guesses (the dedicated server
-//! doesn't list client cvars: a Windows capture); Opus at 24 kbit/s in wideband (SILK only: `mousiki`'s CELT layer
+//! `voice_scale` 1, `voice_loopback` 0, `voice_vox` 0) are guesses (the
+//! dedicated server doesn't list client cvars: a Windows capture);
+//! `voice_threshold` (4000, a frame's loudest sample) and the gate's
+//! `VOX_HANG` (0.5 s) are ours (Source's open microphone's measure and
+//! hold aren't known); Opus at 24 kbit/s in wideband (SILK only: `mousiki`'s CELT layer
 //! trips its own debug assertion) is ours
 //! (CS:S's `sv_voicecodec` is Steam's voice, also Opus-based); linear
 //! resampling; a 60 ms jitter buffer and at most 0.5 s of microphone backlog
 //! (ours); the system's default devices only (no device choice); no
-//! `voice_vox` (open microphone), no microphone test or meter; `voice_loopback` decodes locally (Source's server echoes it).
+//! microphone test or meter; `voice_loopback` decodes locally (Source's server echoes it).
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -77,6 +85,9 @@ pub const MAX_CONCEALED: u16 = 5;
 pub const PREBUFFER: f32 = 0.06;
 /// Most microphone audio waiting to be sent (s): older is dropped.
 const MAX_BACKLOG: usize = RATE as usize / 2;
+/// How long the open microphone's gate stays open after a frame at
+/// `voice_threshold` (s of audio; ours).
+pub const VOX_HANG: f32 = 0.5;
 
 /// A microphone: 48 kHz mono samples.
 pub trait VoiceInput: Send + Sync + 'static {
@@ -187,6 +198,11 @@ pub struct VoiceSettings {
     pub scale: f32,
     /// `voice_loopback`: 1 plays one's own voice back.
     pub loopback: u8,
+    /// `voice_vox`: 1 is an open microphone (no key; `threshold` gates it).
+    pub vox: u8,
+    /// `voice_threshold`: the loudest sample of a 20 ms frame (of 32767)
+    /// that opens the open microphone's gate.
+    pub threshold: f32,
 }
 
 impl Default for VoiceSettings {
@@ -196,6 +212,8 @@ impl Default for VoiceSettings {
             modenable: 1,
             scale: 1.0,
             loopback: 0,
+            vox: 0,
+            threshold: 4000.0,
         }
     }
 }
@@ -215,7 +233,14 @@ struct Capture {
     /// Our own voice decoded for `voice_loopback`.
     loopback: Mutex<Decoder>,
     seq: u16,
-    was_on: bool,
+    /// The microphone was open last frame.
+    was_open: bool,
+    /// The talk key was held last frame.
+    was_key: bool,
+    /// The key came up: the rest of its audio is still going out.
+    flushing: bool,
+    /// Frames the open microphone's gate stays open for.
+    vox_left: u32,
 }
 
 /// Each talker's decoder and the frame number it expects next.
@@ -264,7 +289,10 @@ impl Plugin for VoicePlugin {
                 encoder: Mutex::new(encoder()),
                 loopback: Mutex::new(decoder()),
                 seq: 0,
-                was_on: false,
+                was_open: false,
+                was_key: false,
+                flushing: false,
+                vox_left: 0,
             })
             .add_systems(Update, (capture, play));
         for (sign, on) in [("+", true), ("-", false)] {
@@ -292,11 +320,24 @@ impl Plugin for VoicePlugin {
         resource_cvar::<VoiceSettings, u8>(app, "voice_loopback", "1: hear your own voice while you talk.", |s| {
             &mut s.loopback
         });
+        resource_cvar::<VoiceSettings, u8>(
+            app,
+            "voice_vox",
+            "1: open microphone: your voice goes out whenever it is louder than voice_threshold (no key).",
+            |s| &mut s.vox,
+        );
+        resource_cvar::<VoiceSettings, f32>(
+            app,
+            "voice_threshold",
+            "The open microphone's (voice_vox) level: a 20 ms frame's loudest sample, of 32767.",
+            |s| &mut s.threshold,
+        );
         let mut console = app.world_mut().resource_mut::<crate::console::Console>();
-        for c in ["voice_enable", "voice_modenable", "voice_scale"] {
+        for c in ["voice_enable", "voice_modenable", "voice_scale", "voice_vox", "voice_threshold"] {
             console.archive(c);
         }
         console.set_range("voice_scale", 0.0, 1.0);
+        console.set_range("voice_threshold", 0.0, 32767.0);
     }
 }
 
@@ -306,7 +347,13 @@ fn master(global: Option<&GlobalVolume>) -> f32 {
     global.map_or(1.0, |g| g.volume.to_linear())
 }
 
-/// Record, encode and send while `+voicerecord` is held.
+/// The loudest sample of a frame, 0 to 1.
+pub fn peak(pcm: &[i16]) -> f32 {
+    pcm.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0) as f32 / 32768.0
+}
+
+/// Record, encode and send while `+voicerecord` is held or the open
+/// microphone's gate is open.
 #[allow(clippy::too_many_arguments)]
 fn capture(
     record: Res<VoiceRecord>,
@@ -319,9 +366,11 @@ fn capture(
     mut activity: ResMut<VoiceActivity>,
     mut out: MessageWriter<VoiceData>,
 ) {
-    let on = record.0 && settings.on();
+    let key = record.0 && settings.on();
+    let vox = settings.vox != 0 && settings.on();
+    let open = key || vox;
     let devices = &mut *devices;
-    if on && devices.input.is_none() && devices.open_system && !devices.input_failed {
+    if open && devices.input.is_none() && devices.open_system && !devices.input_failed {
         match cpal_devices::open_input() {
             Ok(input) => devices.input = Some(Box::new(input)),
             Err(e) => {
@@ -331,42 +380,63 @@ fn capture(
         }
     }
     let state = &mut *state;
-    if on != state.was_on {
-        state.was_on = on;
+    if open != state.was_open {
+        state.was_open = open;
         if let Some(input) = devices.input.as_mut() {
-            input.set_active(on);
+            input.set_active(open);
         }
-        if on {
+        if open && !state.flushing {
             state.pending.clear();
-        } else if !state.pending.is_empty() {
-            // The key came up: what is left, padded to a whole frame.
-            let n = state.pending.len().div_ceil(FRAME) * FRAME;
-            state.pending.resize(n, 0);
         }
+        state.vox_left = 0;
     }
+    if state.was_key && !key && !vox && !state.pending.is_empty() {
+        // The key came up: what is left goes out, padded to a whole frame.
+        state.flushing = true;
+        let n = state.pending.len().div_ceil(FRAME) * FRAME;
+        state.pending.resize(n, 0);
+    }
+    state.was_key = key;
     let Some(input) = devices.input.as_mut() else {
         activity.local = false;
         return;
     };
     let mut fresh = Vec::new();
     input.read(&mut fresh);
-    if on {
+    if open {
         state.pending.extend_from_slice(&fresh);
         if state.pending.len() > MAX_BACKLOG {
             let drop = state.pending.len() - MAX_BACKLOG;
             state.pending.drain(..drop.div_ceil(FRAME) * FRAME);
         }
+    } else if !state.flushing {
+        state.pending.clear();
     }
-    activity.local = on;
+    let hang = (VOX_HANG * RATE as f32 / FRAME as f32).round() as u32;
     let mut frames = Vec::new();
     while state.pending.len() >= FRAME && frames.len() < MAX_FRAMES {
         let pcm: Vec<i16> = state.pending.drain(..FRAME).collect();
+        let gate = vox && {
+            if peak(&pcm) * 32768.0 >= settings.threshold {
+                state.vox_left = hang;
+            }
+            let on = state.vox_left > 0;
+            state.vox_left = state.vox_left.saturating_sub(1);
+            on
+        };
+        if !(key || state.flushing || gate) {
+            continue;
+        }
         let mut packet = [0u8; 1500];
         match state.encoder.get_mut().unwrap().encode(&pcm, &mut packet) {
             Ok(n) => frames.push(packet[..n].to_vec()),
             Err(e) => warn!("voice: encoding failed: {e:?}"),
         }
     }
+    if state.pending.is_empty() {
+        state.flushing = false;
+    }
+    activity.local = key || state.flushing || (vox && state.vox_left > 0);
     if frames.is_empty() {
         return;
     }
@@ -841,6 +911,56 @@ mod tests {
         say(&mut app, a);
         assert_eq!(out.samples(a), 4 * FRAME, "heard once unmuted");
         assert_eq!(Sent::frames(&app), 0, "nothing sent without talking");
+    }
+
+    /// Push `seconds` of a tone (or of silence: `hz` 0) a frame per update,
+    /// as a microphone in real time.
+    fn speak(app: &mut App, mic: &FakeInput, hz: f32, seconds: f32) {
+        for _ in 0..(seconds * RATE as f32 / FRAME as f32).round() as usize {
+            if hz > 0.0 {
+                mic.push_tone(hz, FRAME as f32 / RATE as f32);
+            } else {
+                mic.0.lock().unwrap().extend(std::iter::repeat_n(0i16, FRAME));
+            }
+            app.update();
+        }
+    }
+
+    /// The open microphone sends nothing in silence, what is louder than
+    /// `voice_threshold` and `VOX_HANG` after it, then stops; a quiet
+    /// tone stays under the threshold; with `voice_vox 0` nothing goes
+    /// without the key.
+    #[test]
+    fn the_open_microphone_gates_on_loudness() {
+        let mic = FakeInput::default();
+        let mut app = app(mic.clone(), FakeOutput::default());
+        app.world_mut().resource_mut::<VoiceSettings>().vox = 1;
+        app.update();
+        speak(&mut app, &mic, 0.0, 0.4);
+        assert_eq!(Sent::frames(&app), 0, "silence");
+        assert!(!app.world().resource::<VoiceActivity>().local);
+        // 0.2 s of a tone (peak 8000, over 4000): ten frames, and the hang.
+        speak(&mut app, &mic, 300.0, 0.2);
+        assert!(app.world().resource::<VoiceActivity>().local, "talking");
+        speak(&mut app, &mic, 0.0, 1.0);
+        let hang = (VOX_HANG * RATE as f32 / FRAME as f32).round() as usize;
+        assert_eq!(Sent::frames(&app), 10 + hang - 1, "the tone and the hang");
+        assert!(!app.world().resource::<VoiceActivity>().local, "quiet again");
+        // A tone under the threshold: nothing.
+        app.world_mut().resource_mut::<VoiceSettings>().threshold = 9000.0;
+        let before = Sent::frames(&app);
+        speak(&mut app, &mic, 300.0, 0.3);
+        assert_eq!(Sent::frames(&app), before, "under voice_threshold");
+        // voice_vox 0: the microphone closes; only the key talks.
+        app.world_mut().resource_mut::<VoiceSettings>().vox = 0;
+        speak(&mut app, &mic, 300.0, 0.3);
+        assert_eq!(Sent::frames(&app), before, "no key");
+        app.world_mut().resource_mut::<VoiceRecord>().0 = true;
+        speak(&mut app, &mic, 300.0, 0.2);
+        app.world_mut().resource_mut::<VoiceRecord>().0 = false;
+        speak(&mut app, &mic, 0.0, 0.2);
+        let n = Sent::frames(&app) - before;
+        assert!((10..=11).contains(&n), "the key's 0.2 s: {n} frames");
     }
 
     #[test]

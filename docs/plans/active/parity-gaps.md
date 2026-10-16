@@ -285,7 +285,7 @@ common console commands, against mashup's.
 | `cl_interp`, `cl_updaterate`, `rate`, `cl_lagcompensation` | have | | | |
 | Movers mispredicted for a round trip | differs | L | M | tech-debt "The network so far" |
 | `cl_cmdrate` | differs | L | S | missing as a cvar (one command per tick) |
-| Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; per-player mute (the player list); no open mic or icons over heads (voice-chat.md) |
+| Voice chat | have (new) | M | L | Opus over the game's connection, `sv_alltalk` (teams, the dead to the dead), `sv_voiceenable`, `voice_*`; the HUD's talking icon and list; per-player mute (the player list), open microphone (`voice_vox`); no icons over heads (voice-chat.md) |
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
 | Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
