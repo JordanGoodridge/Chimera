@@ -1,6 +1,7 @@
 //! Spectating while dead, as CS:S does it: a death cam turning to your
-//! killer (or looking down at your body) for `DEATH_CAM_SECONDS`, then the
-//! camera follows a living player. Jump cycles the mode (first person
+//! killer (or looking down at your body), then the freeze cam or, without
+//! one, `DEATH_CAM_ALONE` after the death, the camera follows a living
+//! player. Jump cycles the mode (first person
 //! through the target's eyes with its view model, a chase camera orbited
 //! with the mouse, free roaming), attack and attack2 the next and previous
 //! target; `mp_forcecamera 1` keeps you on your own team while it has
@@ -19,13 +20,15 @@
 //! cam, starts flying free, anyone may be watched, `spec_player <name>` picks
 //! one): `Spectator` (a pure state machine: death cam on the killer or your
 //! body for `DEATH_CAM_SECONDS`, then, killed by someone still alive, the
-//! freeze cam (`FreezeCamSettings`: `cl_disablefreezecam`,
-//! `spec_freeze_traveltime`, `spec_freeze_time`; the camera zooms toward the
-//! killer and holds), then the nearest allowed living player; jump / `spec_mode
+//! freeze cam (`FreezeCamSettings`: `cl_disablefreezecam`, the server's
+//! replicated `spec_freeze_traveltime` 0.7 s and `spec_freeze_time` 5 s; the
+//! camera zooms toward the killer and holds), else the death cam until
+//! `DEATH_CAM_ALONE` (6.5 s), then the first allowed living player in order
+//! (specs/cs_source/spectating.md); jump / `spec_mode
 //! [4\|5\|6]` cycles first person, chase and free look; attack/attack2 /
 //! `spec_next`/`spec_prev` the target; a dead target lingers
-//! `TARGET_DEATH_HOLD` then the next; back to the eye on living again),
-//! `mp_forcecamera` (`ForceCamera`: 1 only teammates while any lives),
+//! `TARGET_DEATH_HOLD` (3 s) then the next; back to the eye on living again),
+//! `mp_forcecamera` (`ForceCamera`: 1 only teammates, none once all are dead),
 //! `SpecView` (the camera pose `follow_eye` uses; the first-person target,
 //! whose body is hidden, whose zoom the camera takes and whose view model the
 //! anchor draws through `map::ViewModelSource`), the spectator bars (the
@@ -41,14 +44,17 @@
 //! the radar follows the target; `SpectateStatePlugin` runs the state without a
 //! window (tests), `SpectateCameraPlugin` the camera's pose too.
 //!
-//! Known shortcuts (docs/tech-debt.md): Spectating (`client::spectate`) is from
-//! general CS:S knowledge, not measured: the death cam's length (2 s), rise
-//! (1.4 m back, 0.9 m up over 0.8 s) and look; the first target is the nearest
-//! allowed one; a dead target holds 2 s; chase distance 96 units, starting 15
-//! degrees above the target's view; `mp_forcecamera` defaults to 1 and free
-//! look stays allowed under it; the mode is kept across deaths, starting in
-//! first person; no fade to black, auto-director (its menu entry greyed) or
-//! HLTV modes; the map overview (`client::overview`, `overview_mode`): its
+//! Known shortcuts (docs/tech-debt.md): Spectating (`client::spectate`) is
+//! measured only in part (specs/cs_source/spectating.md, from bots in a
+//! SourceTV demo: the 6.5 s without a freeze cam, the 3 s on a dead target,
+//! the first target in order not the nearest, no enemies under
+//! `mp_forcecamera 1`); the rest is general CS:S knowledge: the death cam's 2 s
+//! before the freeze cam, its rise (1.4 m back, 0.9 m up over 0.8 s) and look;
+//! our order is by name (CS:S's by entity index); with no teammate left we fly
+//! free where CS:S shows a fixed camera (mode 3); chase distance 96 units,
+//! starting 15 degrees above the target's view; free look stays allowed under
+//! `mp_forcecamera 1`; the mode is kept across deaths, starting in first
+//! person; no auto-director (its menu entry greyed) or HLTV modes; the map overview (`client::overview`, `overview_mode`): its
 //! boxes' places and sizes (small: 192 x 144 at the top left under the top bar;
 //! large: between the bars), the defaults (off; not turning, names, health and
 //! tracks on), zoom 1 fitting the whole picture, zooming toward the watched
@@ -83,20 +89,25 @@ use crate::{
     weapon::{ViewPunch, Zoomed},
 };
 
-/// Seconds the death cam shows your killer (or your body) before
-/// spectating starts. CS:S's feels about this long; not measured.
+/// Seconds the death cam shows your killer before the freeze cam takes
+/// over (a guess: specs/cs_source/spectating.md, open questions).
 pub const DEATH_CAM_SECONDS: f64 = 2.0;
-/// `spec_freeze_traveltime` and `spec_freeze_time` defaults, seconds
-/// (guesses; docs/tech-debt.md).
-pub const FREEZE_TRAVEL: f32 = 0.4;
-pub const FREEZE_HOLD: f32 = 4.0;
+/// Seconds from the death to spectating when no freeze cam follows (the
+/// killer dead or none, `cl_disablefreezecam 1`): CS:S's bots' 6.48 to
+/// 6.54 s (specs/cs_source/spectating.md, measured on a SourceTV demo).
+pub const DEATH_CAM_ALONE: f64 = 6.5;
+/// `spec_freeze_traveltime` and `spec_freeze_time` defaults, seconds: the
+/// CS:S dedicated server's (measured 2026-10-15), server cvars replicated
+/// to clients (`core::SpectatorRules`, `console::SERVER_NAMES`).
+pub use crate::core::{FREEZE_HOLD, FREEZE_TRAVEL};
+use crate::core::{FREEZE_TRAVEL_MIN, SpectatorRules};
 /// How far from the killer's eye the freeze cam stops, CS:S units (at
 /// most; nearer when the death cam was nearer). A guess.
 const FREEZE_DISTANCE: f32 = 128.0;
 const UNIT: f32 = 0.0254;
-/// Seconds the camera stays on a target that died before moving on (a
-/// guess at CS:S's, which lingers on the body a moment).
-pub const TARGET_DEATH_HOLD: f64 = 2.0;
+/// Seconds the camera stays on a target that died before moving on:
+/// CS:S's 3.0 s (200 ticks; specs/cs_source/spectating.md, measured).
+pub const TARGET_DEATH_HOLD: f64 = 3.0;
 /// Chase camera distance behind the target's eye, CS:S units (a guess
 /// near CS:S's).
 const CHASE_DISTANCE: f32 = 96.0;
@@ -234,60 +245,32 @@ pub struct Spectator {
     pub pending: SpecInput,
 }
 
-/// `mp_forcecamera`: 0 watch anyone; 1 only your own team while it has
-/// anyone alive. Free roaming stays allowed either way (here; CS:S may
-/// restrict it).
-#[derive(Resource, Clone, Copy, Debug, PartialEq)]
-pub struct ForceCamera(pub u8);
-
-impl Default for ForceCamera {
-    fn default() -> Self {
-        Self(1)
-    }
-}
-
-/// The freeze cam's settings (CS:S's cvars): `cl_disablefreezecam`
-/// (Multiplayer > Advanced "Disable freeze cam", default 0),
-/// `spec_freeze_traveltime` (seconds to zoom toward the killer) and
-/// `spec_freeze_time` (seconds the picture holds). The two times are
-/// guesses (docs/tech-debt.md): no spec or capture gives CS:S's.
-#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+/// The player's own freeze cam setting: `cl_disablefreezecam`
+/// (Multiplayer > Advanced "Disable freeze cam", default 0). Its timings
+/// are the server's (`core::SpectatorRules`: `spec_freeze_traveltime`,
+/// `spec_freeze_time`), as is `mp_forcecamera`.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub struct FreezeCamSettings {
     pub disabled: u8,
-    pub travel: f32,
-    pub hold: f32,
-}
-
-impl Default for FreezeCamSettings {
-    fn default() -> Self {
-        Self {
-            disabled: 0,
-            travel: FREEZE_TRAVEL,
-            hold: FREEZE_HOLD,
-        }
-    }
 }
 
 impl FreezeCamSettings {
-    /// Travel and hold, None when disabled.
-    pub fn timing(&self) -> Option<(f32, f32)> {
-        (self.disabled == 0).then_some((self.travel.max(0.0), self.hold.max(0.0)))
+    /// Travel and hold under the server's `rules`, None when disabled.
+    pub fn timing(&self, rules: &SpectatorRules) -> Option<(f32, f32)> {
+        (self.disabled == 0).then_some((rules.freeze_travel.max(FREEZE_TRAVEL_MIN), rules.freeze_hold.max(0.0)))
     }
 }
 
-/// The candidates you may watch: everyone living, or with `force` 1 only
-/// your teammates while any of them lives.
+/// The candidates you may watch: everyone living, or with `force` 1 (and
+/// a team) only your living teammates, none once they are all dead (CS:S
+/// put its dead on no one rather than an enemy: specs/cs_source/
+/// spectating.md).
 pub fn allowed(living: &[Candidate], team: Option<Team>, force: u8) -> Vec<Entity> {
-    let mates: Vec<Entity> = living
+    living
         .iter()
-        .filter(|c| team.is_some() && c.team == team)
+        .filter(|c| force == 0 || team.is_none() || c.team == team)
         .map(|c| c.entity)
-        .collect();
-    if force >= 1 && !mates.is_empty() {
-        mates
-    } else {
-        living.iter().map(|c| c.entity).collect()
-    }
+        .collect()
 }
 
 /// The target `step` places from `current` in `allowed` (wrapping); from
@@ -351,7 +334,8 @@ impl Spectator {
             if now - since < DEATH_CAM_SECONDS {
                 return;
             }
-            // The freeze cam, on a killer still alive.
+            // The freeze cam, on a killer still alive; without one the
+            // death cam lasts CS:S's `DEATH_CAM_ALONE`.
             let alive = |k: Entity| living.iter().any(|c| c.entity == k);
             match (me.freeze, killer.filter(|k| alive(*k))) {
                 (Some((travel, hold)), Some(killer)) => {
@@ -363,6 +347,7 @@ impl Spectator {
                     };
                     return;
                 }
+                _ if now - since < DEATH_CAM_ALONE => return,
                 _ => self.phase = SpecPhase::Watching,
             }
         }
@@ -405,16 +390,9 @@ impl Spectator {
             self.target = cycle(&allowed, self.target, input.target_step).or(self.target);
             self.target_lost = None;
         } else if self.target.is_none() {
-            // The nearest one first.
-            self.target = living
-                .iter()
-                .filter(|c| allowed.contains(&c.entity))
-                .min_by(|a, b| {
-                    a.position
-                        .distance_squared(me.position)
-                        .total_cmp(&b.position.distance_squared(me.position))
-                })
-                .map(|c| c.entity);
+            // The first in order, not the nearest (CS:S's: the lowest
+            // entity index; ours: by name).
+            self.target = allowed.first().copied();
         }
     }
 }
@@ -435,7 +413,9 @@ pub struct SpectateStatePlugin;
 impl Plugin for SpectateStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Spectator>()
-            .init_resource::<ForceCamera>()
+            // The server's rules (their cvars are the game rules': CS:S's
+            // in `games::cs_source::rules`); defaults without them.
+            .init_resource::<SpectatorRules>()
             .init_resource::<KilledBy>()
             .init_resource::<FreezeCamSettings>()
             .add_systems(Update, (remember_killer, track).chain().in_set(SpectateSet));
@@ -445,27 +425,9 @@ impl Plugin for SpectateStatePlugin {
             "1: no freeze cam after you are killed (the death cam goes straight to spectating).",
             |f| &mut f.disabled,
         );
-        resource_cvar::<FreezeCamSettings, f32>(
-            app,
-            "spec_freeze_traveltime",
-            "Seconds the freeze cam takes to zoom toward your killer.",
-            |f| &mut f.travel,
-        );
-        resource_cvar::<FreezeCamSettings, f32>(
-            app,
-            "spec_freeze_time",
-            "Seconds the freeze cam's picture holds still.",
-            |f| &mut f.hold,
-        );
         app.world_mut()
             .resource_mut::<crate::console::Console>()
             .archive("cl_disablefreezecam");
-        resource_cvar::<ForceCamera, u8>(
-            app,
-            "mp_forcecamera",
-            "Spectating while dead: 0 any living player, 1 only your team while it has anyone alive.",
-            |f| &mut f.0,
-        );
         app.console_command(
             "spec_mode",
             "spec_mode [4|5|6]: next spectator mode, or first person (4), chase (5), free look (6).",
@@ -586,7 +548,7 @@ fn track(
     local: Option<Single<(&Transform, Option<&Team>, Has<Dead>, Has<Spectating>), With<LocalPlayer>>>,
     characters: Query<Living, (With<Intent>, Without<LocalPlayer>, Without<Npc>)>,
     killed: Res<KilledBy>,
-    force: Res<ForceCamera>,
+    rules: Res<SpectatorRules>,
     freeze: Res<FreezeCamSettings>,
     mut spec: ResMut<Spectator>,
 ) {
@@ -598,7 +560,7 @@ fn track(
         killer: killed.0.flatten(),
         team: team.copied().filter(|_| !spectator),
         position: at.translation,
-        freeze: freeze.timing(),
+        freeze: freeze.timing(&rules),
         spectator,
     };
     let mut living: Vec<(String, Candidate)> = characters
@@ -619,7 +581,7 @@ fn track(
     living.sort_by(|(a, ca), (b, cb)| natural(a).cmp(&natural(b)).then(ca.entity.cmp(&cb.entity)));
     let living: Vec<Candidate> = living.into_iter().map(|(_, c)| c).collect();
     let input = std::mem::take(&mut spec.pending);
-    spec.step(time.elapsed_secs_f64(), &me, &living, force.0, input);
+    spec.step(time.elapsed_secs_f64(), &me, &living, rules.force_camera, input);
 }
 
 /// A sort key that orders the numbers in names by value.
@@ -1029,8 +991,10 @@ mod tests {
         let living = [cand(1, 1, 1.0), cand(2, 2, 5.0), cand(3, 2, 9.0)];
         assert_eq!(allowed(&living, Some(Team(2)), 1), vec![e(2), e(3)]);
         assert_eq!(allowed(&living, Some(Team(2)), 0), vec![e(1), e(2), e(3)]);
-        // No teammate left: anyone.
-        assert_eq!(allowed(&living[..1], Some(Team(2)), 1), vec![e(1)]);
+        // No teammate left: no one (CS:S's dead didn't take an enemy).
+        assert!(allowed(&living[..1], Some(Team(2)), 1).is_empty());
+        // The spectator team (no team): anyone.
+        assert_eq!(allowed(&living, None, 1), vec![e(1), e(2), e(3)]);
         assert!(allowed(&[], Some(Team(2)), 1).is_empty());
     }
 
@@ -1057,7 +1021,7 @@ mod tests {
     }
 
     #[test]
-    fn death_cam_then_the_nearest_teammate() {
+    fn death_cam_then_the_first_teammate_in_order() {
         let living = [cand(1, 1, 1.0), cand(2, 2, 9.0), cand(3, 2, 4.0)];
         let mut s = Spectator::default();
         s.step(10.0, &dead_ct(true), &living, 1, SpecInput::default());
@@ -1077,27 +1041,33 @@ mod tests {
         s.step(11.0, &dead_ct(true), &living, 1, next);
         assert!(matches!(s.phase, SpecPhase::DeathCam { .. }) && s.target.is_none());
         assert_eq!(s.mode, SpecMode::InEye);
+        // No freeze cam: the death cam lasts CS:S's 6.5 s.
         s.step(10.0 + DEATH_CAM_SECONDS, &dead_ct(true), &living, 1, SpecInput::default());
+        assert!(matches!(s.phase, SpecPhase::DeathCam { .. }));
+        s.step(10.0 + DEATH_CAM_ALONE - 0.1, &dead_ct(true), &living, 1, SpecInput::default());
+        assert!(matches!(s.phase, SpecPhase::DeathCam { .. }));
+        s.step(10.0 + DEATH_CAM_ALONE, &dead_ct(true), &living, 1, SpecInput::default());
         assert_eq!(s.phase, SpecPhase::Watching);
-        // Not the nearer enemy: the nearest teammate.
-        assert_eq!(s.target, Some(e(3)));
+        // Not the nearer enemy nor the nearer teammate: the first teammate
+        // in order.
+        assert_eq!(s.target, Some(e(2)));
         // Attack: the next teammate, wrapping; never the enemy.
         let step = |n| SpecInput {
             target_step: n,
             ..default()
         };
-        s.step(13.0, &dead_ct(true), &living, 1, step(1));
-        assert_eq!(s.target, Some(e(2)));
-        s.step(13.1, &dead_ct(true), &living, 1, step(1));
+        s.step(17.0, &dead_ct(true), &living, 1, step(1));
         assert_eq!(s.target, Some(e(3)));
-        s.step(13.2, &dead_ct(true), &living, 1, step(-1));
+        s.step(17.1, &dead_ct(true), &living, 1, step(1));
         assert_eq!(s.target, Some(e(2)));
+        s.step(17.2, &dead_ct(true), &living, 1, step(-1));
+        assert_eq!(s.target, Some(e(3)));
         // mp_forcecamera 0: the enemy too.
-        s.step(13.3, &dead_ct(true), &living, 0, step(-1));
+        s.step(17.3, &dead_ct(true), &living, 0, step(1));
         assert_eq!(s.target, Some(e(1)));
         // Jump: the next mode.
         s.step(
-            13.4,
+            17.4,
             &dead_ct(true),
             &living,
             1,

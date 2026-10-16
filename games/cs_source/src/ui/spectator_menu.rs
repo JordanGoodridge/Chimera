@@ -18,8 +18,10 @@
 //! - The camera (`viewcombo`): the install's `resource/spectatormodes.res`
 //!   (First Person, Chase Camera, Free Look), the mode now shown.
 //!
-//! The lists open upward (the bar is at the bottom of the screen). Without
-//! the install, the same controls at the file's places with our words.
+//! The lists open upward (the bar is at the bottom of the screen); each
+//! box's value sits as its `textAlignment` says (the players' centred).
+//! Without the install, the same controls at the file's places with our
+//! words.
 //!
 //! The spectator menu (duck while spectating, or `spec_menu [0|1]`): CS:S's
 //! bottom bar from the install's `bottomspectator.res`, drawn with the shared
@@ -282,6 +284,17 @@ fn mode_row(modes: &[CommandMenuItem], mode: SpecMode) -> Option<usize> {
         .position(|m| m.command.as_deref().map(str::trim) == Some(want.as_str()))
 }
 
+/// A control's `textAlignment` as the widgets' -1 (west), 0 (centre) or 1
+/// (east).
+pub fn align_of(a: crate::map::hud::UiAlign) -> i32 {
+    use crate::map::hud::UiAlign::*;
+    match a {
+        West | NorthWest | SouthWest => -1,
+        Center | North | South => 0,
+        East | NorthEast | SouthEast => 1,
+    }
+}
+
 /// The bottom bar's controls in 640 x 480 units when the install lacks
 /// `bottomspectator.res` (its numbers).
 fn fallback_layout() -> UiLayout {
@@ -292,11 +305,13 @@ fn fallback_layout() -> UiLayout {
         c
     };
     let combo = || UiKind::Other("ComboBox".into());
+    let mut players = c("playercombo", combo(), HudCoord::Centre(-141.0), 282.0);
+    players.align = crate::map::hud::UiAlign::Center;
     UiLayout {
         controls: vec![
             UiControl::new("specmenu", UiKind::Frame, 0.0, 428.0, 640.0, 55.0),
             c("settingscombo", combo(), HudCoord::Start(5.0), 126.0),
-            c("playercombo", combo(), HudCoord::Centre(-141.0), 282.0),
+            players,
             c("viewcombo", combo(), HudCoord::End(131.0), 126.0),
             c("specprev", UiKind::Button, HudCoord::Centre(-166.0), 20.0),
             c("specnext", UiKind::Button, HudCoord::Centre(146.0), 20.0),
@@ -726,7 +741,14 @@ fn draw(
     ] {
         let Some(r) = rect(name) else { continue };
         let enabled = list != List::Players || !player_entries.is_empty();
-        widgets::combo_box(
+        // The value placed as its `textAlignment` says (the players'
+        // centred, the others west).
+        let align = layout
+            .controls
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(name))
+            .map_or(-1, |c| align_of(c.align));
+        widgets::combo_box_aligned(
             &mut commands,
             root,
             &look,
@@ -735,6 +757,7 @@ fn draw(
             enabled,
             open(list).is_some(),
             false,
+            align,
             Hit::Box(list),
         );
     }

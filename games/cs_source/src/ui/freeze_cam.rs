@@ -4,26 +4,21 @@
 //! flash fades from it, the install's freeze sound plays
 //! (`sound/ui/freeze_cam.wav`, `map::hud::UiSound::FreezeCam`), and the
 //! game's freeze panel (`resource/ui/freezepanel_basic.res`) names the
-//! killer. The flash's strength and length are guesses
-//! (docs/tech-debt.md).
-//!
-//! The freeze cam's picture: the window's screenshot held over the world once
-//! the camera reaches the killer, a white flash fading from it, the install's
-//! freeze sound (`UiSound::FreezeCam`) and the game's freeze panel
-//! (`GameMenus::freeze_panel`, `freezepanel_basic.res`: the killer's name,
-//! "KILLED YOU").
+//! killer. Its timings are the server's `spec_freeze_traveltime` (0.7 s)
+//! and `spec_freeze_time` (5 s), CS:S's defaults (measured on its
+//! dedicated server; replicated, `core::SpectatorRules`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Freeze cam (`client::spectate`,
-//! `client::freeze_cam`; from the game's files and general CS:S knowledge, no
-//! spec or capture): it follows the 2 s death cam only when killed by someone
-//! still alive; `spec_freeze_traveltime` 0.4 s and `spec_freeze_time` 4 s are
-//! guesses (Orange Box-era defaults), local cvars here (CS:S's are the
-//! server's); the camera stops 128 units from the killer's eye (no closer than
-//! the death cam was); the held picture is a screenshot of the window, so the
+//! `client::freeze_cam`; the timings measured, the rest from the game's files
+//! and general CS:S knowledge): it follows a 2 s death cam (a guess; no
+//! capture of a human's freeze cam: specs/cs_source/spectating.md) only when
+//! killed by someone still alive; the camera stops 128 units from the killer's
+//! eye (no closer than the death cam was); the held picture is a screenshot of the window, so the
 //! HUD of that moment is in it and live HUD parts drawn over it (chat, notices)
 //! can double; the white flash (70 % fading over 0.35 s) is a guess; the panel
-//! shows the killer's name and "KILLED YOU" only (no avatar, nemesis/revenge,
-//! health gauge or "[F5] Save this moment"); keys wait until spectating starts;
+//! shows the killer's name, "KILLED YOU", "[F5] Save this moment" and the
+//! killer's health gauge (its colours ours: the file gives none) but no avatar
+//! or nemesis/revenge lines; keys wait until spectating starts;
 //! the spectator bars hide during it (and so are not in its picture). Captures
 //! to confirm: in CS:S, killed by a bot at a known spot (`bot_stop 1`,
 //! `setpos`/`setang` both), frames every 0.1 s from the death to 8 s after
@@ -78,7 +73,7 @@ fn freeze(
     overlay: Query<Entity, With<FreezeOverlay>>,
     mut flash: Query<&mut BackgroundColor, With<FreezeFlash>>,
     window: Query<&Window, With<PrimaryWindow>>,
-    who: Query<Option<&Name>>,
+    who: Query<(Option<&Name>, Option<&crate::core::Health>)>,
     hud: Option<Res<ActiveHud>>,
     fonts: Res<crate::client::fonts::UiFonts>,
     menu: Option<Res<super::game_menu::GameMenu>>,
@@ -158,9 +153,11 @@ fn freeze(
         ));
         let height = window.single().map_or(480.0, |w| w.height());
         let width = window.single().map_or(640.0, |w| w.width());
-        let name = who.get(killer).ok().flatten().map_or("Player", |n| n.as_str()).to_string();
+        let (name, health) = who.get(killer).unwrap_or((None, None));
+        let name = name.map_or("Player", |n| n.as_str()).to_string();
+        let health = health.map_or(0.0, |h| h.current.clamp(0.0, 1.0));
         if let Some(hud) = hud.as_deref() {
-            panel(&mut commands, root, hud, &fonts, Vec2::new(width, height), &name);
+            panel(&mut commands, root, hud, &fonts, Vec2::new(width, height), &name, health);
         }
     }
     // The flash fades from when the picture shows.
@@ -171,9 +168,12 @@ fn freeze(
     }
 }
 
-/// The game's freeze panel: its frame and, in it, the killer's name and
-/// the words over it (the avatar, nemesis icon, screenshot hint and health
-/// gauge are left out).
+/// The game's freeze panel: its frame and, in it, the killer's name, the
+/// words over it, the screenshot hint (`ScreenshotLabel`, "[F5] Save this
+/// moment": F5 is bound to `jpeg`) and the killer's health (`KillerHealth`,
+/// a gauge `health` 0..1 full). The avatar is left out (no avatars), as are
+/// the nemesis icon (no domination counts) and the avatar's glow (its
+/// picture isn't in the install).
 fn panel(
     commands: &mut Commands,
     root: Entity,
@@ -181,6 +181,7 @@ fn panel(
     fonts: &crate::client::fonts::UiFonts,
     size: Vec2,
     killer: &str,
+    health: f32,
 ) {
     let Some(menus) = hud.0.menus.as_ref() else { return };
     let Some((outer, inner)) = menus
@@ -222,12 +223,53 @@ fn panel(
             "killername" => s.text = Some(words.0.clone()),
             "infolabel1" => s.text = Some(words.1.clone()),
             "infolabel2" => s.text = Some(words.2.clone()),
+            "screenshotlabel" => {}
             _ => s.visible = false,
         }
         s
     };
     painter.spawn(commands, e, r.size(), inner, crate::client::vgui::VguiMenu::Spectator, &mut shown);
+    // The health gauge (a `HorizontalGauge`, which the painter doesn't
+    // draw): the panel's foreground colour over a dark track (ours).
+    let inner_rects = inner.rects(Rect::from_corners(Vec2::ZERO, r.size()), painter.scale);
+    if let Some((_, g)) = inner
+        .controls
+        .iter()
+        .zip(&inner_rects)
+        .find(|(c, _)| c.name.eq_ignore_ascii_case("KillerHealth") && c.visible)
+    {
+        let fg = frame.fg.map_or(Color::srgba_u8(251, 176, 59, 255), |[r, g, b, a]| Color::srgba_u8(r, g, b, a));
+        let track = commands
+            .spawn((
+                KillerHealthGauge(health),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(g.min.x),
+                    top: px(g.min.y),
+                    width: px(g.width()),
+                    height: px(g.height().max(1.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+                ZIndex(2),
+                ChildOf(e),
+            ))
+            .id();
+        commands.spawn((
+            Node {
+                width: percent(health * 100.0),
+                height: percent(100.0),
+                ..default()
+            },
+            BackgroundColor(fg),
+            ChildOf(track),
+        ));
+    }
 }
+
+/// The freeze panel's killer health gauge, how full (0..1).
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
+pub struct KillerHealthGauge(pub f32);
 
 /// The freeze panel's three lines: the killer's name, then the game's
 /// `FreezePanel_Killer1` and `FreezePanel_Killer2` ("KILLED YOU", "").

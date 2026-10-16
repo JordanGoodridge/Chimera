@@ -444,10 +444,14 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   (`client/vgui.rs`), as do the message of the day and the class menu
   (`games/cs_source/ui/join_menus.rs`). Left:
   the scoreboard's row spacing (16 units, a guess) and dead rows' look
-  checked against CS:S, its map time left beside the clock
-  (`mp_timelimit` is in: `rules::game_end::time_left`), the spectator menu in `bottomspectator.res`'s look
-  (ours is two plain lists; duck opens it) and the freeze cam panel (`freezepanel_basic.res`),
-  the buy menu's favourites (autobuy and rebuy are in: `cl_autobuy`,
+  checked against CS:S (its map time left beside the clock is in), the
+  spectator menu (`bottomspectator.res`'s bar, done 2026-10-10; its
+  values aligned as the file says 2026-10-15) and the freeze cam panel
+  (`freezepanel_basic.res`: name, "KILLED YOU", "[F5] Save this moment",
+  the killer's health gauge; 2026-10-15, timings now CS:S's server cvars
+  and the death cam's measured: specs/cs_source/spectating.md) checked
+  against a capture of a human's freeze cam (the avatar and nemesis lines
+  are still out), the buy menu's favourites (autobuy and rebuy are in: `cl_autobuy`,
   `cl_rebuy`), checking the widescreen placement against
   the game, other game messages in the chat (team joins, bomb pickups
   and drops are in), bots' answers checked against a bot behaviour spec

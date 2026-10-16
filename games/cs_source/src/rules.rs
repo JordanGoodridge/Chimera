@@ -98,6 +98,25 @@ impl Plugin for DeathmatchPlugin {
             "1: a dead player's view fades to black until the next round (no spectating).",
             |f| &mut f.0,
         );
+        app.init_resource::<crate::core::SpectatorRules>();
+        resource_cvar::<crate::core::SpectatorRules, u8>(
+            app,
+            "mp_forcecamera",
+            "Spectating while dead: 0 any living player, 1 only your team.",
+            |r| &mut r.force_camera,
+        );
+        resource_cvar::<crate::core::SpectatorRules, f32>(
+            app,
+            "spec_freeze_traveltime",
+            "Seconds the freeze cam takes to zoom toward the killer.",
+            |r| &mut r.freeze_travel,
+        );
+        resource_cvar::<crate::core::SpectatorRules, f32>(
+            app,
+            "spec_freeze_time",
+            "Seconds the freeze cam's picture holds still.",
+            |r| &mut r.freeze_hold,
+        );
         app.init_resource::<crate::core::PlayerIdMode>();
         resource_cvar::<crate::core::PlayerIdMode, u8>(
             app,

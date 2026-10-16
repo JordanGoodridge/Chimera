@@ -358,11 +358,13 @@ Only `Reflect`-registered types are visible; register new core components in
   +cam_idealdist 600 +cam_idealyaw 70 ++attack --frames 130` shows the bot
   hearing you behind the long crate and lobbing an HE over it.
 - Spectating: `mashup_hurtme chest 500` (in a rounds game, `+mashup_rounds 1`) starts the
-  death cam; 2 s later the camera watches a living teammate.
+  death cam; 6.5 s after the death (no freeze cam) the camera watches a
+  living teammate (CS:S's timings: specs/cs_source/spectating.md).
   `mashup_hurtme chest 500 0 <name>` is a hit from that player: its
-  death cam turns to it, then the freeze cam (0.4 s toward it, the
-  picture held 4 s with the freeze sound and panel; `cl_disablefreezecam
-  1` skips it, `spec_freeze_traveltime`/`spec_freeze_time` time it;
+  death cam turns to it, then 2 s after the death the freeze cam (0.7 s
+  toward it, the picture held 5 s with the freeze sound and panel;
+  `cl_disablefreezecam 1` skips it, the server's
+  `spec_freeze_traveltime`/`spec_freeze_time` time it;
   `games/cs_source/tests/ui/spectate.rs`). The target ID (the name under the
   crosshair; `hud_centerid`, `mp_playerid`) is the `TargetId`
   resource (`games/cs_source/tests/ui/target_id.rs`). Drive it
@@ -372,7 +374,7 @@ Only `Reflect`-registered types are visible; register new core components in
   The spectator bars on a real map: `--map cs_source:de_dust2 --window
   1280x720 --screenshot spec.png --frames 400 +mashup_rounds 1
   +mp_freezetime 0 +bot_add 2 +bot_add 2 +wait 60 +mashup_hurtme chest
-  500` (the death cam ends 2 s after the death, then a teammate is
+  500` (the death cam ends 6.5 s after the death, then a teammate is
   watched in first person, with their crosshair). The spectator team:
   `+spectate` (or `+jointeam 1`) flies free at once; `spec_player <name>`
   watches one; pressing duck opens the spectator menu; the scoreboard lists

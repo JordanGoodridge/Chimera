@@ -40,8 +40,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`chimera/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
-- client: Spectating numbers (death cam, chase distance, forcecamera) from general knowledge, not measured (`chimera/client/src/client/spectate.rs`)
-- client: Freeze cam timings and distances are guesses (local cvars) (`games/cs_source/src/ui/freeze_cam.rs`)
+- client: Spectating numbers partly measured (bots in a SourceTV demo: specs/cs_source/spectating.md); the death cam before the freeze cam, chase distance, our "fixed" mode from general knowledge (`chimera/client/src/client/spectate.rs`)
+- client: Freeze cam distances, flash and when it starts are guesses (timings measured, server cvars) (`games/cs_source/src/ui/freeze_cam.rs`)
 - client: Target ID range, placement and smoke rule are guesses (`games/cs_source/src/ui/target_id.rs`)
 - weapon, games/cs_source: cl_autowepswitch weights from the spec's table; switching rules partly ours (`chimera/sim/src/weapon/drop.rs`)
 - games/cs_source: View-model idle timing for the knife and TMP is our reading, captures wanted (`games/cs_source/src/game/view_anim.rs`)
