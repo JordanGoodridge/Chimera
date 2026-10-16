@@ -238,7 +238,7 @@ fn scenarios() -> Vec<Scenario> {
         v.extend(vec![Input::idle(w).forward(); 40]);
         v
     };
-    // In the air (a drop from 80 units up, no jump, so no bot duck): duck
+    // In the air (a drop from 60 units up, no jump, so no bot duck): duck
     // for a tick, then release with forward held.
     let air = |duck_ticks: usize| {
         let mut v = vec![Input::idle(w); 4];
@@ -258,7 +258,7 @@ fn scenarios() -> Vec<Scenario> {
         ("air_duck_release", air(1)),
         ("air_duck_release_5", air(5)),
     ] {
-        let start = if name.starts_with("air_") { t_spawn + Vec3::Z * 200.0 } else { t_spawn };
+        let start = if name.starts_with("air_") { t_spawn + Vec3::Z * 60.0 } else { t_spawn };
         all.push(Scenario {
             name: name.to_string(),
             map: MAP.to_string(),
@@ -277,6 +277,18 @@ fn scenarios() -> Vec<Scenario> {
         start: Vec3::new(443.6, 2345.9, -110.0),
         yaw,
         inputs: here,
+    });
+    // Running into a wall at a slant and along it (the CT-side wall at
+    // y = 2048, whose face the bhop runs met): what a stopped move keeps.
+    let mut wall = vec![Input::idle(250.0); 20];
+    wall.extend(vec![Input::idle(250.0).forward(); 50]);
+    wall.extend(vec![Input::idle(250.0); 20]);
+    all.push(Scenario {
+        name: "wall_slide".to_string(),
+        map: MAP.to_string(),
+        start: Vec3::new(300.0, 2090.0, -120.0),
+        yaw: 250.0,
+        inputs: wall,
     });
     all
 }
@@ -302,6 +314,8 @@ struct Args {
     /// Compare with the CS:S logs of the last online run (no server).
     offline: bool,
     fuzz: Option<Fuzz>,
+    /// Fuzz: play only the runs whose name contains this (same inputs).
+    run: Option<String>,
 }
 
 struct Fuzz {
@@ -318,6 +332,7 @@ fn main() -> ExitCode {
         keep_running: false,
         offline: false,
         fuzz: None,
+        run: None,
     };
     if std::env::args().nth(1).as_deref() == Some("brushes") {
         let a: Vec<String> = std::env::args().skip(2).collect();
@@ -350,6 +365,10 @@ fn main() -> ExitCode {
                 args.only = it.next();
                 Ok(())
             }
+            "--run" => {
+                args.run = it.next();
+                Ok(())
+            }
             "--keep-running" => {
                 args.keep_running = true;
                 Ok(())
@@ -361,7 +380,7 @@ fn main() -> ExitCode {
             "-h" | "--help" => {
                 println!(
                     "usage: movecmp [--only <name>] [--keep-running] [--offline]\n       \
-                     movecmp fuzz [--seed N] [--runs N] [--ticks N] [--tolerance UNITS] [--only <map or kind>]\n  \
+                     movecmp fuzz [--seed N] [--runs N] [--ticks N] [--tolerance UNITS] [--only <map or kind>] [--run <name>]\n  \
                      scenarios: {}\n  fuzz: random inputs at de_nuke ladders and de_aztec water",
                     scenarios()
                         .iter()
@@ -464,6 +483,7 @@ fn run(args: &Args) -> Result<bool, String> {
                 }
                 all.extend(fuzz_scenarios(map, &load(map)?, f, args.only.as_deref()));
             }
+            all.retain(|s| args.run.as_deref().is_none_or(|r| s.name.contains(r)));
             all
         }
         None => scenarios()

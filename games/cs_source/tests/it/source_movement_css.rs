@@ -318,3 +318,45 @@ fn a_jump_while_standing_up_ducks_and_costs_stamina() {
     assert!(pl.on_ground() && !me.ducked && !me.ducking && me.eye == 64.0, "{me:?}");
     assert!((pl.speed() - 51.6101).abs() < 0.15, "speed {}", pl.speed());
 }
+
+struct WallMap;
+impl Plugin for WallMap {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, |mut commands: Commands| {
+            let b = |lo: Vec3, hi: Vec3| {
+                let (a, b) = (to_engine(lo), to_engine(hi));
+                MapBrush::from_box(a.min(b), a.max(b))
+            };
+            commands.insert_resource(MapBrushes(vec![
+                b(Vec3::new(-4096.0, -4096.0, -64.0), Vec3::new(4096.0, 4096.0, 0.0)),
+                // A wall whose face (normal -y) is at y = 100.
+                b(Vec3::new(-4096.0, 100.0, 0.0), Vec3::new(4096.0, 200.0, 200.0)),
+            ]));
+        });
+    }
+}
+
+/// Measured (movecmp `wall_slide` on de_dust2 and the fuzz runs,
+/// 2026-10-16): a move stopped by a surface leaves 1/32 unit/s of velocity
+/// away from it. Running along a wall pressed into it at a slant, CS:S
+/// logs 0.0312 along the wall's normal every tick, and the box settles
+/// 0.0317 from the face (the 1/32 back-off plus 1/32 x 0.015 s), where the
+/// shared code's clip leaves it at 0.03125 with no velocity off the wall.
+#[test]
+fn a_stopped_move_keeps_a_32nd_of_a_unit_away_from_the_wall() {
+    let mut sim = Sim::new(CsSim, (WallMap, SourceMovementPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim.app.insert_resource(SourceMovementConfig::default());
+    let p = sim.spawn_character(to_engine(Vec3::new(0.0, 60.0, 36.5)), movement::ID);
+    sim.ticks(10);
+    // Source yaw 70: mostly into the wall (+y), partly along it (+x).
+    sim.intent(p).yaw = 70f32.to_radians() - std::f32::consts::FRAC_PI_2;
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.ticks(40);
+    let feet = to_source(sim.position(p)) - Vec3::Z * 36.0;
+    let v = to_source(sim.velocity(p));
+    assert!(v.x > 50.0, "slides along the wall: {v}");
+    assert!((v.y + 1.0 / 32.0).abs() < 1e-4, "off the wall: {v}");
+    let gap = 100.0 - (feet.y + 16.0);
+    assert!((gap - (1.0 + 0.015) / 32.0).abs() < 2e-4, "gap {gap}");
+}

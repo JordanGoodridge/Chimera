@@ -182,6 +182,11 @@ pub struct SourceMovementConfig {
     /// (measured with movecmp `unduck_jump_5`/`_10`). The shared code just
     /// ignores the press.
     pub unduck_jump_ducks: bool,
+    /// CS:S: a move stopped by a surface leaves this much velocity (1/32
+    /// unit/s) away from it, so a player pressed along a wall settles 0.0317
+    /// from it, not at the 1/32 back-off (measured with movecmp
+    /// `wall_slide`: 0.0312 off the wall every tick). 0 in the shared code.
+    pub clip_push_out: f32,
     /// Fall damage (specs/cs_source/fall_damage.md): landing faster than
     /// `fall_safe` (units/s) out of water deals (speed - safe) x
     /// `fall_damage_per_speed` health points, truncated to whole points.
@@ -335,6 +340,7 @@ impl SourceMovementConfig {
             duck_slows_everywhere: false,
             unduck_keeps_duck_timer: false,
             unduck_jump_ducks: false,
+            clip_push_out: 0.0,
             fall_safe: 580.0,
             fall_damage_per_speed: 100.0 / (1024.0 - 580.0),
         }
@@ -381,6 +387,7 @@ impl Default for SourceMovementConfig {
             duck_slows_everywhere: true,
             unduck_keeps_duck_timer: true,
             unduck_jump_ducks: true,
+            clip_push_out: 1.0 / 32.0,
             // Measured on the probe server: 100 damage at 996, not 1024.
             fall_damage_per_speed: 100.0 / 416.0,
             ..Self::shared_code()
@@ -1244,7 +1251,7 @@ impl Mover<'_, '_, '_, '_> {
                 } else {
                     1.0 + self.cfg.bounce * (1.0 - self.me.surface_friction)
                 };
-                self.v = clip_velocity(original, tr.normal, overbounce);
+                self.v = clip_velocity(original, tr.normal, overbounce) + tr.normal * self.cfg.clip_push_out;
             } else {
                 let found = planes.iter().enumerate().find_map(|(i, n)| {
                     let clipped = clip_velocity(original, *n, 1.0);
@@ -1255,7 +1262,7 @@ impl Mover<'_, '_, '_, '_> {
                         .then_some(clipped)
                 });
                 match found {
-                    Some(v) => self.v = v,
+                    Some(v) => self.v = v + tr.normal * self.cfg.clip_push_out,
                     None if planes.len() == 2 => {
                         let dir = planes[0].cross(planes[1]).normalize_or_zero();
                         self.v = dir * dir.dot(self.v);

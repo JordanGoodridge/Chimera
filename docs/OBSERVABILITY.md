@@ -1405,10 +1405,15 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   partway down, a jump pressed while unducking (no jump, stamina spent,
   stands up next tick) and the ladder's duck scale taken after the tick's
   unduck; the `duck_release_*` and `unduck_jump_*` scenarios replay them.
+  With the bot's jump duck taken out of the report, the base scenarios
+  showed a crease bevel our terrain triangles dropped and the 1/32 u/s a
+  stopped move keeps off the surface (`wall_slide`).
 - `movecmp brushes <map> <x> <y> <z> [radius]` lists the collision
   brushes near a point (index, ladder flag, bounds, planes in Source
-  units): what a diverging run's trace there can hit. With
-  `MASHUP_SLIDE_DEBUG=1` the ladder probe prints its sweep each tick too.
+  units) and the terrain triangles: what a diverging run's trace there
+  can hit. `movecmp fuzz ... --offline --run <name>` replays one fuzz run
+  (same seed and options); with `MASHUP_SLIDE_DEBUG=1` the ladder probe
+  prints its sweep each tick too.
 
 ## CS:S demos (demodump)
 
