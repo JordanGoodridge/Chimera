@@ -82,6 +82,11 @@ pub struct MapWaterMaterial {
     /// A full-screen warp drawn while the eye is in this water, after the
     /// view models.
     pub underwater_overlay: Option<MapScreenWarp>,
+    /// Not a water shader: the map draws the surface with its own material
+    /// (de_nuke's additive pool) and only the volume's fog applies (`fog_*`,
+    /// `above_water`; nothing else is read). Under water its range fog
+    /// covers the whole view, with no refraction or intersection view.
+    pub fog_only: bool,
 }
 
 /// A full-screen refraction of the finished frame (Source's Refract shader
@@ -137,6 +142,7 @@ impl Default for MapWaterMaterial {
             fixed_reflect_weight: None,
             bottom: None,
             underwater_overlay: None,
+            fog_only: false,
         }
     }
 }

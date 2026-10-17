@@ -576,7 +576,9 @@ fn spawn_world_meshes(
     // Overlays and infodecals draw in the map's order (`blend_order`).
     let mut decal_order = 0u32;
     for m in &data.meshes {
-        if water_drawn && m.water.is_some() {
+        // Fog-only water (another shader: de_nuke's pool) is drawn as the
+        // world.
+        if water_drawn && m.water.is_some_and(|i| !data.water_materials[i].fog_only) {
             continue;
         }
         let own_node = s.parent_of(m) != root;

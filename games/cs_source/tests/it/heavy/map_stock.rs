@@ -300,6 +300,21 @@ fn water_materials() {
     assert!(m.refract && !m.reflect && m.envmap.is_some());
     assert_eq!(m.refract_amount, 0.0);
     assert!((m.cheap_start - units(512.0)).abs() < 1e-4 && (m.cheap_end - units(960.0)).abs() < 1e-4);
+    // de_nuke's pool isn't the Water shader: a fog volume only, drawn as
+    // the world (spec section 10: {150 200 200}, 64 / 512).
+    let Some(nuke) = load("de_nuke") else { return };
+    let pool = nuke
+        .water_materials
+        .iter()
+        .find(|w| w.name.contains("nukwater_movingplane") && !w.name.contains("beneath"))
+        .expect("nuke pool");
+    assert!(pool.fog_only && pool.above_water && !pool.refract && !pool.reflect);
+    assert_eq!(pool.fog_color, [b(150.0), b(200.0), b(200.0)]);
+    assert!((pool.fog_start - units(64.0)).abs() < 1e-4 && (pool.fog_end - units(512.0)).abs() < 1e-4);
+    assert!(
+        port.water_materials.iter().chain(&aztec.water_materials).all(|m| !m.fog_only),
+        "Water-shader water stays drawn as water"
+    );
 }
 
 /// Infodecals find their surfaces: displacement terrain too (cs_compound,
