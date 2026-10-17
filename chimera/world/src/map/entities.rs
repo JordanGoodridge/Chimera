@@ -98,6 +98,10 @@ pub const PROP_TABLE_KEY: &str = "mashup_prop_damage_table";
 pub const PROP_CLIENT_KEY: &str = "mashup_prop_client";
 pub const PROP_BREAK_SOUND_KEY: &str = "mashup_prop_break_sound";
 pub const PROP_MASS_KEY: &str = "mashup_prop_mass";
+/// A breakable brush's gib list from its prop data template (Source
+/// "propdata" on func_breakable: the template's `breakable_model`); its
+/// health and multipliers go in `PROP_HEALTH_KEY` and `PROP_DAMAGE_KEY`.
+pub const PROP_GIBS_KEY: &str = "mashup_prop_gibs";
 pub const DOOR_MOVE_KEY: &str = "mashup_door_move";
 pub const DOOR_OPEN_KEY: &str = "mashup_door_open";
 pub const DOOR_CLOSE_KEY: &str = "mashup_door_close";

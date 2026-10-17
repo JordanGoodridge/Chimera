@@ -11,7 +11,8 @@
 //
 // Other decals ("lit" decals, alpha blended and lightmapped in the game)
 // are approximated the same way, as a stain: factor = texel colour where
-// the texel is opaque.
+// the texel is opaque; on glass (where a stain on what shows through
+// wouldn't show) they are alpha-blended, lit by the light probe there.
 
 #import bevy_pbr::forward_io::VertexOutput
 #import mashup::fog::source_fog
@@ -36,6 +37,9 @@ struct FogUniform {
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> fog: FogUniform;
+// rgb: the surface's light; w 1: a lit decal drawn alpha-blended (on
+// glass), texel x light over what is there.
+@group(#{MATERIAL_BIND_GROUP}) @binding(4) var<uniform> light: vec4<f32>;
 
 // Share of the decal's width over which its edge fades out (about 3
 // texels of a 64-texel decal).
@@ -44,6 +48,21 @@ const EDGE_FADE: f32 = 0.05;
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let texel = textureSample(base_texture, base_sampler, in.uv);
+    if light.w > 0.5 {
+        // Lit, alpha-blended (the game's lightmapped alpha decals): the
+        // texel lit by the light where it lies, fogged like a surface.
+        var alpha = texel.a;
+#ifdef VERTEX_UVS_B
+        let e = min(min(in.uv_b.x, 1.0 - in.uv_b.x), min(in.uv_b.y, 1.0 - in.uv_b.y));
+        alpha = alpha * smoothstep(0.0, EDGE_FADE, e);
+#endif
+        if alpha < 0.004 {
+            discard;
+        }
+        let lf = source_fog(fog.color, fog.range, fog.water_color, fog.water_range, in.world_position.xyz);
+        let lit = mix(texel.rgb * light.rgb, lf.rgb, lf.a);
+        return vec4(lit, alpha);
+    }
     // The texture is sRGB: back to the game's gamma-space value.
     let gamma = pow(max(texel.rgb, vec3(0.0)), vec3(1.0 / 2.2));
     var factor: vec3<f32>;

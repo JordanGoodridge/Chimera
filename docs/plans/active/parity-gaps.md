@@ -244,6 +244,8 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Entity I/O, triggers, movers, breakables, doors, fire | have | | | specs/source |
+| Breakable glass decals, brush propdata templates | have (new) | L | S | glass takes "GlassBreak", bulletproof glass "BulletProof" and never breaks; a brush's `propdata` template sets its health, multipliers and gibs (our reading of "fills in", tech-debt "Breakables") |
+| Breakables' damage types, broken-window drawing | differs | L | M | backlog 7 "Breakables, remaining": spec open questions 1, 2, 4, 5 and 8 need the probe server or captures |
 | Soundscapes | have | | | |
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |

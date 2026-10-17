@@ -147,6 +147,96 @@ pub fn resolve(model_kv: &str, templates: &Kv) -> Option<PropData> {
     Some(pd)
 }
 
+/// The templates a breakable brush's "propdata" keyvalue picks, by
+/// number 1..=24 (0: none). The spec gives the ends (breakables.md: 1
+/// Wooden.Tiny .. 24 Glass.Window); the order between is the Hammer
+/// entity definitions' list as the public wiki gives it (docs/tech-debt.md
+/// "Breakables").
+pub const BRUSH_TEMPLATES: [&str; 24] = [
+    "Wooden.Tiny",
+    "Wooden.Small",
+    "Wooden.Medium",
+    "Wooden.Large",
+    "Wooden.Huge",
+    "Metal.Small",
+    "Metal.Medium",
+    "Metal.Large",
+    "Cardboard.Small",
+    "Cardboard.Medium",
+    "Cardboard.Large",
+    "Stone.Small",
+    "Stone.Medium",
+    "Stone.Large",
+    "Stone.Huge",
+    "Glass.Small",
+    "Plastic.Small",
+    "Plastic.Medium",
+    "Plastic.Large",
+    "Pottery.Small",
+    "Pottery.Medium",
+    "Pottery.Large",
+    "Pottery.Huge",
+    "Glass.Window",
+];
+
+/// Brush classes with a "propdata" keyvalue (breakables.md,
+/// physics_brushes.md 2).
+pub const BRUSH_CLASSES: &[&str] = &[
+    "func_breakable",
+    "func_breakable_surf",
+    "func_physbox",
+    "func_physbox_multiplayer",
+];
+
+/// A template's prop data by name (its `base` chain first); None when
+/// propdata.txt has no such template.
+pub fn template(name: &str, templates: &Kv) -> Option<PropData> {
+    let block = find(templates, name)?;
+    let mut pd = PropData::default();
+    apply(block, templates, &mut pd, 0);
+    Some(pd)
+}
+
+/// What a breakable brush's "propdata" template fills in, as the keys the
+/// logic reads (`map::entities::PROP_HEALTH_KEY`, `PROP_DAMAGE_KEY`,
+/// `PROP_GIBS_KEY`): the template's health (when it sets one), its
+/// bullet/club/blast multipliers, and its chunk list (`breakable_model`,
+/// resolved against `lists`) as the gib list. Empty for other classes, no
+/// template (0 or out of range) or a template propdata.txt lacks.
+pub fn brush_keys(
+    classname: &str,
+    propdata: i32,
+    templates: &Kv,
+    lists: &[(String, Vec<String>)],
+) -> Vec<(String, String)> {
+    use crate::map::entities::{PROP_DAMAGE_KEY, PROP_GIBS_KEY, PROP_HEALTH_KEY};
+    if !BRUSH_CLASSES.iter().any(|c| c.eq_ignore_ascii_case(classname)) {
+        return Vec::new();
+    }
+    let Some(name) = usize::try_from(propdata)
+        .ok()
+        .and_then(|i| i.checked_sub(1))
+        .and_then(|i| BRUSH_TEMPLATES.get(i))
+    else {
+        return Vec::new();
+    };
+    let Some(pd) = template(name, templates) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if let Some(h) = pd.health {
+        out.push((PROP_HEALTH_KEY.to_string(), h.to_string()));
+    }
+    out.push((
+        PROP_DAMAGE_KEY.to_string(),
+        format!("{} {} {}", pd.bullets, pd.club, pd.explosive),
+    ));
+    if let Some((list, _)) = pd.breakable_model.as_deref().and_then(|m| chunk_list(lists, m)) {
+        out.push((PROP_GIBS_KEY.to_string(), list.clone()));
+    }
+    out
+}
+
 /// A gib list for a chunk name: the first list whose name starts with it
 /// (spec 2.1).
 pub fn chunk_list<'a>(lists: &'a [(String, Vec<String>)], name: &str) -> Option<&'a (String, Vec<String>)> {
@@ -276,6 +366,32 @@ mod tests {
         let pd = resolve(r#""prop_data" { "base" "Nope" }"#, &t).unwrap();
         assert!(pd.missing_template);
         assert!(resolve(r#""physgun_interactions" { }"#, &t).is_none());
+    }
+
+    #[test]
+    fn brush_propdata_picks_a_template_by_number() {
+        use crate::map::entities::{PROP_DAMAGE_KEY, PROP_GIBS_KEY, PROP_HEALTH_KEY};
+        let t = templates(TEMPLATES);
+        let lists = vec![("WoodChunks".to_string(), vec!["models/gibs/wood_gib01e.mdl".to_string()])];
+        // The spec's ends: 1 Wooden.Tiny .. 24 Glass.Window.
+        assert_eq!(BRUSH_TEMPLATES[0], "Wooden.Tiny");
+        assert_eq!(BRUSH_TEMPLATES[23], "Glass.Window");
+        let get = |keys: &[(String, String)], k: &str| keys.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+        // 3: Wooden.Medium, through Wooden.Base.
+        let keys = brush_keys("func_breakable", 3, &t, &lists);
+        assert_eq!(get(&keys, PROP_HEALTH_KEY).as_deref(), Some("30"));
+        assert_eq!(get(&keys, PROP_DAMAGE_KEY).as_deref(), Some("0.75 2 1.5"));
+        assert_eq!(get(&keys, PROP_GIBS_KEY).as_deref(), Some("WoodChunks"));
+        // 7: Metal.Medium: health 0 from Metal.Base, no chunks.
+        let keys = brush_keys("func_physbox", 7, &t, &lists);
+        assert_eq!(get(&keys, PROP_HEALTH_KEY).as_deref(), Some("0"));
+        assert_eq!(get(&keys, PROP_DAMAGE_KEY).as_deref(), Some("1 1 1"));
+        assert_eq!(get(&keys, PROP_GIBS_KEY), None);
+        // None, out of range, a template the file lacks, other classes.
+        assert!(brush_keys("func_breakable", 0, &t, &lists).is_empty());
+        assert!(brush_keys("func_breakable", 25, &t, &lists).is_empty());
+        assert!(brush_keys("func_breakable", 24, &t, &lists).is_empty());
+        assert!(brush_keys("func_door", 3, &t, &lists).is_empty());
     }
 
     #[test]

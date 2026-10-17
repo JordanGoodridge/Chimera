@@ -7,7 +7,10 @@
 //! A hit prop or brush entity (door, breakable, func_brush) takes the decal
 //! on its own triangles, as its child: it moves with it, and goes when the
 //! entity is removed or broken (and at a round restart, which re-creates
-//! brush entities). Characters take no decals yet. They stay until the
+//! brush entities). A brush entity's translucent faces take them too
+//! (breakable glass), without the depth copy, and on a broken window only
+//! over its unbroken panes (`breakables::clip_panes` keeps them to the
+//! panes left). Characters take no decals yet. They stay until the
 //! map changes, as in the game; `ClearDecals` (the `r_cleardecals`
 //! command) removes them all, and `DecalSettings::round_clear`
 //! (`mashup_round_cleardecals 1`) at every round start; a decal placed
@@ -30,7 +33,11 @@
 //! Known shortcuts (docs/tech-debt.md): Runtime decals: world and props
 //! (projected onto the prop's own model triangles, as a child so they move with
 //! it), none on characters (blood); lit decals (wood, glass: lightmapped and
-//! alpha-blended in the game) drawn as a modulate-style stain; modulate 2x
+//! alpha-blended in the game) drawn as a modulate-style stain, except on a
+//! brush entity's glass, where they are alpha-blended and lit by the light
+//! probe at the hit (not the lightmap) and drawn with the see-through
+//! things; glass takes them from either side and from its drawn face up to
+//! 0.25 m (10 units) behind the hit (the world's glass takes none); modulate 2x
 //! brightening is capped at 2x in linear light (the game's gamma-space 2x can
 //! reach about 3x for its lightest texels; an 8-bit target can't hold more in
 //! one blend); a 5% edge fade hides atlas bleeding; orientation follows the map
@@ -64,6 +71,7 @@ use super::fog;
 use crate::map::{
     DecalGroup, LogicHidden, MAX_DECALS, MapAlpha, MapBrushEntity, MapData, MapMesh, MapPart, PaneLook, PlaceDecal,
     PropIndex,
+    breakables::BrushPanes,
     decal::{DEPTH_DROP, DecalBlend, LIFT, MapDecal, MapDecals},
 };
 
@@ -75,6 +83,10 @@ pub struct ImpactDecals;
 /// Triangles whose plane passes farther than this from the point (meters)
 /// take no part of the decal.
 const REACH: f32 = 0.1;
+/// The same on glass (`TriSet::translucent`): its drawn face may be the
+/// far side of the brush that was hit (cs_office's windows are 4 units,
+/// 0.1 m, thick).
+const GLASS_REACH: f32 = 0.25;
 const CELL: f32 = 1.0;
 
 /// Triangles (corners and normal) in a uniform grid; those spanning more
@@ -83,6 +95,8 @@ const CELL: f32 = 1.0;
 #[derive(Default)]
 pub struct TriSet {
     tris: Vec<[Vec3; 4]>,
+    /// Some triangles are translucent (a glass brush entity's).
+    pub translucent: bool,
     cells: HashMap<IVec3, Vec<u32>>,
     big: Vec<(u32, Vec3, Vec3)>,
 }
@@ -169,19 +183,24 @@ impl TriSet {
     }
 
     /// The opaque surfaces of `meshes`, which are a brush entity's own
-    /// (node space) with `entity`, else world or model meshes.
+    /// (node space) with `entity`, else world or model meshes. A brush
+    /// entity's alpha-blended faces take decals too (glass breakables'
+    /// "GlassBreak" and "BulletProof" marks; the world's glass takes none
+    /// yet).
     fn from_meshes<'a>(meshes: impl Iterator<Item = &'a MapMesh>, entity: bool) -> Self {
         let mut out = Self::default();
         for m in meshes {
+            let blended = m.alpha == MapAlpha::Blend && entity;
             if m.skybox
                 || m.entity.is_some() != entity
                 || m.pane_look != PaneLook::Whole
                 || m.unlit
                 || m.material.starts_with("decal:")
-                || matches!(m.alpha, MapAlpha::Blend | MapAlpha::Add)
+                || (matches!(m.alpha, MapAlpha::Blend | MapAlpha::Add) && !blended)
             {
                 continue;
             }
+            out.translucent |= blended;
             for t in m.indices.chunks_exact(3) {
                 let [a, b, c] = [t[0], t[1], t[2]].map(|i| Vec3::from(m.positions[i as usize]));
                 let n = (b - a).cross(c - a).normalize_or_zero();
@@ -286,7 +305,12 @@ pub fn project(
     let (mut pos, mut nor, mut uvs, mut local, mut idx) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for i in surfaces.near(point, r) {
         let [a, b, c, tn] = surfaces.tris[i as usize];
-        if tn.dot(n) < 0.5 || tn.dot(point - a).abs() > REACH {
+        // Glass is seen, and shot, from either side: from its back the
+        // decal faces the other way (winding too).
+        let back = surfaces.translucent && tn.dot(n) < 0.0;
+        let (tn, b, c) = if back { (-tn, c, b) } else { (tn, b, c) };
+        let reach = if surfaces.translucent { GLASS_REACH } else { REACH };
+        if tn.dot(n) < 0.5 || tn.dot(point - a).abs() > reach {
             continue;
         }
         let uv = |p: Vec3| {
@@ -389,12 +413,14 @@ pub fn place_decals(
     mut asks: MessageReader<PlaceDecal>,
     surfaces: Option<Res<DecalSurfaces>>,
     props: Query<(&PropIndex, &GlobalTransform)>,
-    brushes: Query<(&MapBrushEntity, &GlobalTransform, Has<LogicHidden>)>,
+    brushes: Query<(&MapBrushEntity, &GlobalTransform, Has<LogicHidden>, Option<&BrushPanes>)>,
     parents: Query<&ChildOf>,
     assets: Option<ResMut<DecalAssets>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     materials: Option<ResMut<Assets<DecalMaterial>>>,
     fog: Option<Res<fog::SceneFog>>,
+    light_field: Option<Res<crate::map::LightField>>,
+    light_scale: Option<Res<super::probe_lit::ProbeLightScale>>,
     settings: Option<Res<DecalSettings>>,
     mut commands: Commands,
 ) {
@@ -423,7 +449,14 @@ pub fn place_decals(
         let brush = ask
             .target
             .filter(|_| prop.is_none())
-            .and_then(|t| hit(t).find_map(|e| brushes.get(e).ok().map(|(b, at, gone)| (e, b.0, at, gone))));
+            .and_then(|t| {
+                hit(t).find_map(|e| {
+                    brushes
+                        .get(e)
+                        .ok()
+                        .map(|(b, at, gone, panes)| (e, b.0, at, gone, panes))
+                })
+            });
         // A removed or broken brush entity takes none (nor does the world
         // behind where it was).
         if brush.is_some_and(|b| b.3) {
@@ -434,7 +467,7 @@ pub fn place_decals(
             .or(brush.map(|b| b.2.affine().inverse()));
         let set = match (prop, brush) {
             (Some((_, index, _)), _) => surfaces.props.get(index).and_then(|m| surfaces.models.get(*m)),
-            (None, Some((_, index, _, _))) => surfaces.entities.get(&index),
+            (None, Some((_, index, ..))) => surfaces.entities.get(&index),
             (None, None) => Some(&surfaces.world),
         };
         let Some(set) = set else { continue };
@@ -454,13 +487,35 @@ pub fn place_decals(
             }
             None => project(set, &decal, ask.point, ask.normal, right, down).map(|m| (m, None)),
         };
-        let Some((mesh, parent)) = projected else {
+        let Some((mut mesh, parent)) = projected else {
             continue;
         };
+        // On a broken window: only over its unbroken panes, now and as
+        // more go (`breakables::clip_panes` keeps it to them).
+        let panes = brush.and_then(|b| b.4);
+        let source = panes.map(|_| meshes.add(mesh.clone()));
+        if let Some(panes) = panes {
+            match super::breakables::clip_to_panes(&mesh, panes) {
+                Some(m) if m.indices().is_some_and(|i| !i.is_empty()) => mesh = m,
+                _ => continue,
+            }
+        }
+        // Translucent glass: no depth copy (it would hide what is seen
+        // through the glass, and through holes as panes go).
+        let translucent = set.translucent;
         let Some(texture) = assets.textures.get(decal.texture).cloned() else {
             continue;
         };
-        let mut material = |depth_only: bool| match assets.materials.get(&(index, depth_only)) {
+        // A lit decal on glass: its own material, alpha-blended and lit by
+        // the light where it lands.
+        let lit_on_glass = set.translucent && decal.blend == DecalBlend::Alpha;
+        let light = lit_on_glass.then(|| {
+            let probe = light_field.as_ref().map(|f| (f.0.0)(ask.point));
+            let scale = light_scale.as_ref().map_or(1.0, |s| s.0);
+            probe.map_or(Vec3::ONE, |p| p.eval(ask.normal.normalize_or_zero()) * scale).extend(1.0)
+        });
+        let shared = light.is_none();
+        let mut material = |depth_only: bool| match assets.materials.get(&(index, depth_only)).filter(|_| shared) {
             Some(m) => m.clone(),
             None => {
                 let m = materials.add(DecalMaterial {
@@ -476,13 +531,17 @@ pub fn place_decals(
                     ),
                     texture: texture.clone(),
                     fog: fog.as_ref().map_or_else(Default::default, |f| f.0),
+                    light: light.unwrap_or(Vec4::ZERO),
                     depth_only,
                 });
-                assets.materials.insert((index, depth_only), m.clone());
+                if light.is_none() {
+                    assets.materials.insert((index, depth_only), m.clone());
+                }
                 m
             }
         };
-        let (colour, depth) = (material(false), material(true));
+        let colour = material(false);
+        let depth = (!translucent).then(|| material(true));
         let mesh = meshes.add(mesh);
         // The decal's surface normal where it lies (the prop's space for
         // decals on props).
@@ -498,15 +557,20 @@ pub fn place_decals(
             Transform::default(),
             Visibility::default(),
             MapPart,
-            children![(
+        ));
+        if let Some(depth) = depth {
+            decal_entity.with_child((
                 Name::new("Decal depth"),
                 Mesh3d(mesh),
                 MeshMaterial3d(depth),
                 Transform::from_translation(drop),
                 Visibility::default(),
                 MapPart,
-            )],
-        ));
+            ));
+        }
+        if let Some(source) = source {
+            decal_entity.insert(super::breakables::PaneSource(source));
+        }
         if let Some(p) = parent {
             decal_entity.insert(ChildOf(p));
         }
@@ -602,6 +666,11 @@ pub struct DecalMaterial {
     /// neutral.
     #[uniform(3)]
     pub fog: fog::FogUniform,
+    /// rgb: the light on the surface (linear); w 1: drawn alpha-blended,
+    /// texel times that light (a lit decal on glass, where a stain
+    /// multiplying what shows through would not show), else 0.
+    #[uniform(4)]
+    pub light: Vec4,
     /// Writes depth only (no colour): the copy that keeps overlays off.
     pub depth_only: bool,
 }
@@ -611,11 +680,15 @@ pub struct DecalMaterial {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DecalMaterialKey {
     depth_only: bool,
+    alpha_blend: bool,
 }
 
 impl From<&DecalMaterial> for DecalMaterialKey {
     fn from(m: &DecalMaterial) -> Self {
-        Self { depth_only: m.depth_only }
+        Self {
+            depth_only: m.depth_only,
+            alpha_blend: m.light.w > 0.5,
+        }
     }
 }
 
@@ -627,8 +700,14 @@ impl Material for DecalMaterial {
     /// Drawn right after the opaque world (alpha-mask phase), before
     /// anything see-through, so particles, smoke, dust and muzzle flashes
     /// draw over impacts rather than being sorted against them.
+    /// Lit decals on glass draw with the see-through things instead,
+    /// after the glass they lie on (they are nearer the eye).
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Mask(0.001)
+        if self.light.w > 0.5 {
+            AlphaMode::Blend
+        } else {
+            AlphaMode::Mask(0.001)
+        }
     }
 
     /// Kept out of the depth prepass (main views get one on maps with
@@ -659,6 +738,12 @@ impl Material for DecalMaterial {
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
         let depth_only = key.bind_group_data.depth_only;
+        // A lit decal on glass: over what is there by its alpha.
+        let over = BlendComponent {
+            src_factor: BlendFactor::SrcAlpha,
+            dst_factor: BlendFactor::OneMinusSrcAlpha,
+            operation: BlendOperation::Add,
+        };
         // src x dst + dst x src = 2 x src x dst.
         let multiply = BlendComponent {
             src_factor: BlendFactor::Dst,
@@ -673,7 +758,7 @@ impl Material for DecalMaterial {
         if let Some(fragment) = descriptor.fragment.as_mut() {
             for target in fragment.targets.iter_mut().flatten() {
                 target.blend = Some(BlendState {
-                    color: multiply,
+                    color: if key.bind_group_data.alpha_blend { over } else { multiply },
                     alpha: keep,
                 });
                 if depth_only {
@@ -775,5 +860,39 @@ mod tests {
         let (right, down) = basis(Vec3::Z);
         assert!(project(&s, &decal(0.1), Vec3::new(0.0, 0.0, 0.5), Vec3::Z, right, down).is_none());
         assert!(project(&s, &decal(0.1), Vec3::ZERO, Vec3::X, Vec3::Z, Vec3::NEG_Y).is_none());
+    }
+
+    /// Breakable glass (a brush entity's alpha-blended face) takes decals;
+    /// the world's blended faces and additive ones still don't.
+    #[test]
+    fn brush_entity_glass_takes_decals() {
+        let glass = |entity: Option<usize>, alpha: MapAlpha| MapMesh {
+            positions: vec![[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            entity,
+            alpha,
+            ..default()
+        };
+        let (right, down) = basis(Vec3::Z);
+        let window = [glass(Some(3), MapAlpha::Blend)];
+        let s = TriSet::from_meshes(window.iter(), true);
+        assert!(s.translucent);
+        assert!(project(&s, &decal(0.1), Vec3::ZERO, Vec3::Z, right, down).is_some());
+        // From behind, 0.15 m from the face (the near side of a thick
+        // pane): facing the shot, wound to face it too.
+        let (r2, d2) = basis(Vec3::NEG_Z);
+        let m = project(&s, &decal(0.1), Vec3::new(0.0, 0.0, -0.15), Vec3::NEG_Z, r2, d2).expect("from behind");
+        let p = positions(&m);
+        assert!(p.iter().all(|v| (v.z + LIFT).abs() < 1e-5), "lifted toward the shot: {p:?}");
+        let Some(bevy::mesh::Indices::U32(idx)) = m.indices() else { panic!() };
+        let [a, b, c] = [idx[0], idx[1], idx[2]].map(|i| p[i as usize]);
+        assert!((b - a).cross(c - a).z < 0.0, "faces -Z");
+        let opaque = [glass(Some(3), MapAlpha::Opaque)];
+        assert!(!TriSet::from_meshes(opaque.iter(), true).translucent);
+        let additive = [glass(Some(3), MapAlpha::Add)];
+        let s = TriSet::from_meshes(additive.iter(), true);
+        assert!(project(&s, &decal(0.1), Vec3::ZERO, Vec3::Z, right, down).is_none());
+        let s = TriSet::new(&[glass(None, MapAlpha::Blend)]);
+        assert!(project(&s, &decal(0.1), Vec3::ZERO, Vec3::Z, right, down).is_none());
     }
 }

@@ -23,6 +23,21 @@ const BOUNCE: f32 = 0.5;
 /// through their own node so they can disappear.
 pub const CLASSES: &[&str] = &["func_breakable", "func_breakable_surf"];
 
+/// The decal group a bullet or knife hit leaves on a breakable brush in
+/// place of its surface's own (specs/source/breakables.md "func_breakable:
+/// keyvalues and spawn"): glass (material 0, or func_breakable_surf glass,
+/// surfacetype 0) "GlassBreak", unbreakable glass (material 7)
+/// "BulletProof"; None: the surface's.
+pub fn impact_decal(classname: &str, material: i32, surfacetype: i32) -> Option<&'static str> {
+    let surf = classname.eq_ignore_ascii_case("func_breakable_surf");
+    match material {
+        _ if surf && surfacetype != 1 => Some("GlassBreak"),
+        0 => Some("GlassBreak"),
+        7 => Some("BulletProof"),
+        _ => None,
+    }
+}
+
 /// The gib lists every breakable material uses.
 const LISTS: &[&str] = &["WoodChunks", "GlassChunks", "MetalChunks", "ConcreteChunks"];
 
@@ -176,6 +191,27 @@ fn pane_pieces(materials: &mut MaterialLoader) -> Result<Vec<MapModel>, String> 
         .collect())
 }
 
+/// Breakable brushes that name a "propdata" template get what it fills in
+/// (`propdata::brush_keys`) from the install's `scripts/propdata.txt`.
+pub fn apply_brush_templates(materials: &mut MaterialLoader, entities: &mut [MapEntity]) {
+    let named = |e: &MapEntity| {
+        super::propdata::BRUSH_CLASSES.contains(&e.classname()) && e.get("propdata").is_some_and(|p| p.trim() != "0")
+    };
+    if !entities.iter().any(named) {
+        return;
+    }
+    let text = materials
+        .read("scripts/propdata.txt")
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    let (templates, lists) = (super::propdata::templates(&text), breakable_models(&text));
+    for e in entities.iter_mut().filter(|e| named(e)) {
+        let index = e.get("propdata").map_or(0, |p| p.trim().parse::<f32>().map_or(0, |x| x as i32));
+        let keys = super::propdata::brush_keys(e.classname(), index, &templates, &lists);
+        e.keyvalues.extend(keys);
+    }
+}
+
 /// Load the gib lists the map's breakables can use.
 pub fn load_gibs(materials: &mut MaterialLoader, entities: &[MapEntity], warnings: &mut Vec<String>) -> Vec<MapGibSet> {
     if !entities.iter().any(|e| CLASSES.contains(&e.classname())) {
@@ -197,10 +233,15 @@ pub fn load_gibs(materials: &mut MaterialLoader, entities: &[MapEntity], warning
         .unwrap_or_default();
     let mut wanted: Vec<String> = LISTS.iter().map(|s| s.to_string()).collect();
     for e in entities.iter().filter(|e| e.classname() == "func_breakable") {
-        if let Some(g) = e.get("gibmodel").filter(|g| !g.is_empty())
-            && !wanted.iter().any(|w| w.eq_ignore_ascii_case(g))
+        // Its own list or model, and its propdata template's list.
+        for g in [e.get("gibmodel"), e.get(crate::map::entities::PROP_GIBS_KEY)]
+            .into_iter()
+            .flatten()
+            .filter(|g| !g.is_empty())
         {
-            wanted.push(g.to_string());
+            if !wanted.iter().any(|w| w.eq_ignore_ascii_case(g)) {
+                wanted.push(g.to_string());
+            }
         }
     }
     for name in wanted {
@@ -231,6 +272,17 @@ pub fn load_gibs(materials: &mut MaterialLoader, entities: &[MapEntity], warning
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn glass_takes_glass_break_decals_and_bulletproof_glass_its_own() {
+        assert_eq!(impact_decal("func_breakable", 0, 0), Some("GlassBreak"));
+        assert_eq!(impact_decal("func_breakable", 7, 0), Some("BulletProof"));
+        assert_eq!(impact_decal("func_breakable", 1, 0), None);
+        assert_eq!(impact_decal("func_breakable", 2, 0), None);
+        // A glass window whatever its "material"; tile by its material.
+        assert_eq!(impact_decal("func_breakable_surf", 2, 0), Some("GlassBreak"));
+        assert_eq!(impact_decal("func_breakable_surf", 1, 1), None);
+    }
 
     #[test]
     fn reads_breakable_model_lists() {

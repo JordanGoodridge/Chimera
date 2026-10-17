@@ -722,8 +722,11 @@ docs/plans/active/sound.md.
   `door_options` skin and `hardwareN` blocks, docs/tech-debt.md "Model
   doors").
 - Breakables, remaining (source/logic/src/logic/breakables.rs,
-  games/cs_source/tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof decals,
-  propdata templates, the client's pane drawing (spec open question 8:
+  games/cs_source/tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof
+  decals and brush propdata templates are in (their readings in
+  docs/tech-debt.md "Breakables"); left: bulletproof glass's ricochet and
+  the computer material's sparks on bullet traces, the client's pane
+  drawing (spec open question 8:
   edge piece selection, which side draws, the piece's offset; ours in
   docs/tech-debt.md "Breakables"), the spec's open questions on the probe
   server (bullet/knife damage types, broken brush visibility, shots after
