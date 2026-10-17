@@ -1307,6 +1307,18 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   on bump-mapped walls: it preferred a green-flipped normal map that crops
   show is wrong. Check close-up crops (`magick ... -crop`) side by side
   before trusting it.
+- A texture mismatch reported at a `setpos`/`setang` spot: `MASHUP_VIEW_MAP=cs_militia
+  MASHUP_VIEW_POS="261 -334 -94" MASHUP_VIEW_ANG="10 178 0" cargo test -p
+  cs_source --features dev --test it heavy::map_surfaces::surfaces_in_view
+  -- --ignored --nocapture` casts rays over that view (a 1280x720
+  window's framing) and prints a letter map of the surfaces it hits (world
+  faces, displacements, overlays, brush entities, props), then each one
+  with its share of the view and what we resolved its material to (base
+  and blend textures, detail, alpha, tint, transform, surface property).
+  Screenshots of the spot: run live and send `noclip`, the `setpos`/`setang`
+  line and `screenshot` over the remote console (on cs_militia a
+  `--screenshot` run's `+noclip +wait 30 +setpos ...` photographed
+  another place; `getpos` says where you are).
 - Measuring thin features (cables): sample columns of the reference and
   ours for dark pixels (`magick <img> -crop 1x260+X+0 txt:-`) and compare
   their rows; that's how rope gravity was found.
