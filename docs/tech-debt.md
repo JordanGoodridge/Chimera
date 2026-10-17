@@ -117,7 +117,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - logic, core: Game entities beyond or short of the spec (weapon hiding, HUD suppression, speed, views) (`source/logic/src/logic/game.rs`)
 - logic, map: point_template copies are cloned nodes (not replicated); point_viewcontrol simplified (`source/logic/src/logic/templates.rs`)
 - map, logic: Physics brushes and helpers: placed ragdolls, constraints and physboxes by our readings (`chimera/world/src/map/placed_ragdoll.rs`)
-- map: Particle system operator meanings are interpretations (`chimera/present/src/render/psys.rs`)
+- map: Particle system operator meanings are interpretations, `tint_perc` toward the light field included (`chimera/present/src/render/psys.rs`)
 - map: Smoke stacks: env_particlelight not read, inputs kept as placed, the material's own lighting not applied (`chimera/present/src/render/emitters.rs`)
 - map, logic: Buoyancy and phys_motor numbers are ours (no spec) (`chimera/world/src/map/buoyancy.rs`)
 - map, logic: Physics clips (func_clip_vphysics) from the public entity docs; ragdolls and loose items pass them (`chimera/world/src/map/physics_clip.rs`)
