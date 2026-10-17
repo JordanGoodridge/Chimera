@@ -360,3 +360,68 @@ fn a_stopped_move_keeps_a_32nd_of_a_unit_away_from_the_wall() {
     let gap = 100.0 - (feet.y + 16.0);
     assert!((gap - (1.0 + 0.015) / 32.0).abs() < 2e-4, "gap {gap}");
 }
+
+/// cs_militia's back porch, in its own Source coordinates: the floor
+/// (z -16) and the concrete wall whose sloped face (normal 0, 0.9231,
+/// 0.3846: too steep to stand on) meets the floor at y 216.
+struct PorchMap;
+impl Plugin for PorchMap {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, |mut commands: Commands| {
+            let b = |lo: Vec3, hi: Vec3| {
+                let (a, b) = (to_engine(lo), to_engine(hi));
+                MapBrush::from_box(a.min(b), a.max(b))
+            };
+            let mut wall = b(Vec3::new(-192.0, 80.0, -16.0), Vec3::new(136.0, 216.0, 80.0));
+            // The face as a Source plane (n . p = d), in engine space.
+            let n = Vec3::new(0.0, 0.9231, 0.3846);
+            wall.planes.push((to_engine(n).normalize(), 193.231 * to_engine(Vec3::X).x));
+            commands.insert_resource(MapBrushes(vec![
+                b(Vec3::new(-192.0, 80.0, -180.0), Vec3::new(136.0, 216.0, -16.0)),
+                b(Vec3::new(-144.0, 216.0, -18.0), Vec3::new(-56.0, 272.0, -16.0)),
+                b(Vec3::new(-56.0, 216.0, -18.0), Vec3::new(120.0, 336.0, -16.0)),
+                wall,
+            ]));
+        });
+    }
+}
+
+/// Measured (movecmp `militia_porch_wall_right`, 2026-10-17): walking along
+/// the porch wall into its sloped face, the clip against the face lifts the
+/// feet about 0.105 units a tick while the floor still holds them. The tick
+/// they end 2.0024 units above the floor (z -13.9976), CS:S's 2-unit ground
+/// probe no longer finds it, though it ends only 0.0024 short of the
+/// floor's plane, within the 1/32 back-off: a trace that ends in front of a
+/// plane doesn't hit it. That tick the player is airborne, keeping the
+/// clip's vz (1.0236 after the second half of gravity), and lands the next.
+#[test]
+fn a_floor_just_beyond_the_ground_probe_is_not_ground() {
+    let mut sim = Sim::new(CsSim, (PorchMap, SourceMovementPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim.app.insert_resource(SourceMovementConfig::default());
+    let p = sim.spawn_character(to_engine(Vec3::new(-69.83, 256.39, -15.97 + 36.0)), movement::ID);
+    sim.app.world_mut().get_mut::<SourceMovement>(p).unwrap().on_ground = true;
+    sim.intent(p).yaw = 245.27f32.to_radians() - std::f32::consts::FRAC_PI_2;
+    sim.ticks(20);
+    sim.intent(p).move_axis = Vec2::Y;
+    let state = |sim: &Sim| {
+        let me = sim.app.world().get::<SourceMovement>(p).unwrap();
+        (to_source(sim.position(p)) - Vec3::Z * 36.0, to_source(sim.velocity(p)), me.on_ground)
+    };
+    // CS:S's ticks 50-52: feet, velocity, on the ground.
+    let css = [
+        (Vec3::new(-102.0175, 231.2438, -14.1028), Vec3::new(-109.6449, -2.8926, 0.0), true),
+        (Vec3::new(-103.6811, 231.2, -13.9976), Vec3::new(-110.9101, -2.8926, 1.0236), false),
+        (Vec3::new(-105.3448, 231.2201, -14.0458), Vec3::new(-110.9101, 1.3676, 0.0), true),
+    ];
+    sim.ticks(29);
+    for (t, (feet, vel, ground)) in css.into_iter().enumerate() {
+        sim.ticks(1);
+        let (f, v, g) = state(&sim);
+        assert!(
+            f.distance(feet) < 0.02 && v.distance(vel) < 0.02 && g == ground,
+            "tick {}: feet {f} v {v} ground {g}; CS:S {feet} {vel} {ground}",
+            50 + t
+        );
+    }
+}
