@@ -655,7 +655,7 @@ fn spawn_world_meshes(
         }
         // Window edge pieces need the world shader's mask (a map without
         // lightmaps draws its broken windows without them).
-        if m.pane_mask.is_some() {
+        if matches!(m.pane_look, PaneLook::Edge(_)) {
             continue;
         }
         let material = build_material(m, textures, view, data.look.light_scale);

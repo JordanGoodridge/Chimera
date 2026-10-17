@@ -98,8 +98,10 @@ pub struct WorldParams {
     /// not lit by the lightmap.
     pub unlit: f32,
     pub unlit_tint: Vec4,
-    /// 1: a window's edge piece (`MapMesh::pane_mask`): its alpha times
-    /// `blend_mask`'s, sampled at the vertex colour's red and green.
+    /// 1: a window's broken look (`MapMesh::pane_mask`): an edge piece's
+    /// alpha times its tile of `blend_mask` (the vertex colour's blue),
+    /// sampled at the colour's red and green (meshes without vertex
+    /// colours, the cracked face, are left as they are).
     pub pane_mask: f32,
 }
 

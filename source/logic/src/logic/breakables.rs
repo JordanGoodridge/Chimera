@@ -37,7 +37,8 @@
 //! shape in their alpha: read as masks over the crack material, which keeps
 //! the face's texture coordinates, so the shards continue the pane's crack
 //! texture and lighting, not drawn white as their UnlitGeneric material
-//! would), each side of an unbroken pane facing a broken neighbour picking one
+//! would; laid side by side in one texture of ours so a crack material's
+//! pieces share one material), each side of an unbroken pane facing a broken neighbour picking one
 //! by its place, a strip half a pane deep into the neighbour, the shard's base
 //! on the pane (maps without lightmaps draw no edge pieces); tile
 //! windows get no edge pieces (no tilebroken textures in the install). The
