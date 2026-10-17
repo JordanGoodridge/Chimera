@@ -734,6 +734,55 @@ was drawn, but its warp moves the screen by about a pixel and its
 `chimera/present/tests/it/underwater_overlay.rs`); the camera's part
 there is covered by `chimera/present/tests/it/view_model_camera.rs`.
 
+## Back faces in the depth prepass (2026-10-17)
+
+Main views get a depth prepass on maps with water (`render::water`;
+also with `mashup_skyocclude 1`). Bevy's main pass culls back faces by
+default, but its prepass pipeline culls nothing unless the material sets
+a cull mode, and the world and prop materials only ever set one for
+`$nocull` (none) and mirrored view models (front). So on those maps every
+back face was drawn into the prepass's depth and then culled in the main
+pass: where one lay in front of something (a one-sided face seen from
+behind, the inner side of a house wall seen through its window), the
+pixel kept the cleared colour, which composites to the sky (alpha 0) or
+shows black. cs_militia's windows showed the sky instead of the boards
+behind them; de_aztec's `cam2` a sky wedge across a beam. Now both
+materials set the cull mode on every pipeline
+(`render::prop_material::face_cull`): back faces culled except `$nocull`
+materials, as Source does. Maps without water (de_dust2) never had a
+prepass and are unchanged.
+
+What was culled before and now: main pass, world and props: back faces
+(Bevy's default; unchanged). Prepass: nothing before, now the same faces
+as the main pass. Two-sided everywhere, before and after: `$nocull`
+materials, ropes, sprites, particles, beams, detail sprites, dust
+and steam, the sky occluder, func_breakable_surf's cracked and edge
+pieces. Winding: the heavy test
+`world_and_props_wind_their_fronts_counter_clockwise` (de_dust2: 27663 of
+27685 world and 31027 of 31068 static prop triangles wind
+counter-clockwise toward their normals) confirms the faces kept are the
+fronts.
+
+GPU time of the prepass (`mashup_perf 2`, `early prepass`, dev build,
+three interleaved rounds of 900 frames each, mean of the last five
+readouts; the shared GPU's clock moved totals 2x between rounds, so
+compare within a round):
+
+| view | prepass ms before | after | prepass / opaque pass before | after |
+|---|---|---|---|---|
+| de_aztec (-400 -900 -100) | 0.31, 0.33, 0.23 | 0.26, 0.23, 0.14 | 0.31-0.39 | 0.21-0.27 |
+| cs_militia windows | 1.52, 1.54, 0.31 | 1.29, 0.57, 0.63 | 0.97-1.50 | 0.75-0.88 |
+| de_port (700 2700 235) | 0.30, 0.32, 0.18 | 0.25, 0.14, 0.12 | 0.44-0.59 | 0.41-0.48 |
+
+So the prepass costs about a fifth less relative to the opaque pass
+(fewer fragments; the vertex work is the same). Frame times and
+`refcmp bench` (de_aztec, de_port) moved within the load's noise (load
+20-28). `refcmp report`: de_aztec mean abs diff 0.0405 -> 0.0402 (cam2
+0.029 -> 0.026, cam1 0.019 -> 0.018), de_nuke 0.0242 and de_dust2 0.0309
+unchanged; captures of de_inferno and cs_italy (no references) differ
+from the old build's by at most 0.2% of pixels (moving water and
+particles).
+
 ## Load-independent metrics
 
 Every number in "Frame time pass" was taken at load 6-33, where single

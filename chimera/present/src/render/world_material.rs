@@ -8,6 +8,9 @@
 //! `$detailtint`, `$selfillum`, `$basetexturetransform` (and
 //! `$basetexturetransform2` on the second layer).
 //!
+//! Back faces are culled, in the depth prepass too, except on `$nocull`
+//! materials (`prop_material::face_cull`), as Source draws them.
+//!
 //! Known shortcuts (docs/tech-debt.md): World reflections take the bumped
 //! normal through a screen-space tangent frame (no per-vertex tangents); the
 //! cubemaps carry their mips (nearest mip, the reference's bilinear filtering);
@@ -189,9 +192,7 @@ impl Material for WorldMaterial {
         _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
-        if key.bind_group_data.double_sided {
-            descriptor.primitive.cull_mode = None;
-        }
+        descriptor.primitive.cull_mode = super::prop_material::face_cull(key.bind_group_data.double_sided, false);
         // Decals: blended in the alpha-mask phase (see `decal`).
         let blend = match key.bind_group_data.decal_blend {
             1 => Some(bevy::render::render_resource::BlendState::ALPHA_BLENDING),
