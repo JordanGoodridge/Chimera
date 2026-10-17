@@ -275,6 +275,12 @@ pub struct BreakPiece {
     /// Outward speed, units/s.
     pub burst: f32,
     pub motion_disabled: bool,
+    /// Debris (spec 7.3: `debris` > 0, else interactive; a `fadetime`
+    /// without `debris` makes it debris too): it collides with the world
+    /// and props, not with other debris (other pieces, ragdolls). A block
+    /// without either key is debris (*inferred*: the spec gives the key no
+    /// default; the fade default of 20 s is a debris piece's).
+    pub debris: bool,
     /// `fademindist` and `fademaxdist` (units), when both are set and
     /// the max is at least the min (spec 7.3).
     pub fade_dist: Option<(f32, f32)>,
@@ -303,6 +309,10 @@ pub fn break_pieces(blocks: &[Vec<(String, String)>]) -> Vec<BreakPiece> {
                 fadetime: num("fadetime", 20.0),
                 burst: num("burst", 100.0),
                 motion_disabled: num("motiondisabled", 0.0) != 0.0,
+                debris: match get("debris").and_then(|v| v.parse::<f32>().ok()) {
+                    Some(d) => d > 0.0 || get("fadetime").is_some(),
+                    None => true,
+                },
                 fade_dist: match (
                     get("fademindist").and_then(|v| v.parse::<f32>().ok()),
                     get("fademaxdist").and_then(|v| v.parse::<f32>().ok()),
@@ -434,12 +444,20 @@ mod tests {
                 ("model".into(), "models/b.mdl".into()),
                 ("fademindist".into(), "500".into()),
                 ("fademaxdist".into(), "400".into()),
+                ("debris".into(), "0".into()),
+            ],
+            vec![
+                ("model".into(), "models/c.mdl".into()),
+                ("debris".into(), "0".into()),
+                ("fadetime".into(), "5".into()),
             ],
         ];
         let p = break_pieces(&blocks);
         assert_eq!(p[0].model, "models/props_junk/wood_crate001a_chunk01.mdl");
         assert_eq!((p[0].fadetime, p[0].burst), (10.0, 100.0));
         assert!(p[1].motion_disabled && p[1].fadetime == 20.0);
+        // Debris unless `debris` 0 without a `fadetime`.
+        assert_eq!(p.iter().map(|p| p.debris).collect::<Vec<_>>(), [true, true, false, true]);
         // Fade distances need both, max at least min.
         assert_eq!(p[0].fade_dist, None);
         assert_eq!(p[1].fade_dist, Some((200.0, 400.0)));

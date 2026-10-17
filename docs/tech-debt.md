@@ -48,7 +48,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Mouse capture fights the inspector (`mashup_inspector`, F11, releases it; click recaptures). OK for now: Debug-only.
 - tests: `no_game_assets_tracked` blocks all .wav/.ogg/.mp3, including our own future sounds. OK for now: Revisit when we have original audio.
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
-- map: Displacement brushes matched by plane and centre; non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
+- map: Non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
 - logic: Logic spec choices where the original is unmeasured (tick rounding, trigger timing, use traces) (`source/logic/src/logic/world.rs`)
 - logic: Breakables: damage factors, window behaviour, what a propdata template fills in and the bullet-trace sparks/ricochet's look by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
 - logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking (`source/logic/src/logic/props.rs`)
@@ -70,7 +70,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`chimera/present/src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`games/cs_source/src/game/props.rs`)
-- map: Broken props' pieces load without their `.phy`: their bodies are boxes (`games/cs_source/src/game/props.rs`)
+- map: Broken props' pieces load without their `.phy`: their bodies are boxes (with hulls some keep rocking; `games/cs_source/src/game/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`chimera/present/src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`chimera/present/src/render/shadows.rs`)
 - map: Prop light probes: props without `.vhv` lit from one point (sun whole or not at all; spec Q11), shadow rays ignore props, ambient blend and dynamic-light falloff ours (`games/cs_source/src/game/props.rs`)

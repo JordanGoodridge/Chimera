@@ -20,7 +20,9 @@
 //! bodies from the piece model's `.phy` hulls cut for contacts
 //! (`collision::contact_hulls`), else its box, on
 //! `core::RAGDOLL_LAYER`: they tumble and rest on the world and props,
-//! characters and shots pass; built headless too), `BrushPanes` (a broken
+//! characters and shots pass; debris pieces (`MapBreakPiece::debris`,
+//! chunks) don't collide with other debris, pieces or ragdolls, as Source's
+//! debris group; built headless too), `BrushPanes` (a broken
 //! window's unbroken panes: a collider of pane boxes that shots hit and bodies
 //! pass; render clips the node's meshes to them), falling pane
 //! pieces (`FallingPane`: a body of the `PANE_PIECES` list that shatters on
@@ -99,6 +101,9 @@ pub struct GibPiece {
     pub skin: i32,
     /// Fades out between these distances from the view (meters).
     pub fade_dist: Option<(f32, f32)>,
+    /// A prop's debris piece: its body collides with the world and props,
+    /// not with other debris (pieces, ragdolls).
+    pub debris: bool,
 }
 
 impl GibPiece {
@@ -114,6 +119,7 @@ impl GibPiece {
             frozen: false,
             skin: 0,
             fade_dist: None,
+            debris: false,
         }
     }
 }
@@ -174,6 +180,10 @@ pub struct MapBreakPiece {
     /// Outward speed added (m/s).
     pub burst: f32,
     pub frozen: bool,
+    /// Debris (Source's debris collision group, prop_damage.md 7.3):
+    /// collides with the world and props, not with other debris (pieces
+    /// of any prop, ragdolls); else interactive (collides with those too).
+    pub debris: bool,
     /// Fades out between these distances from the view (meters; the
     /// break block's `fademindist`, `fademaxdist`).
     pub fade_dist: Option<(f32, f32)>,
@@ -260,6 +270,7 @@ pub fn break_pieces(
                     frozen: p.frozen,
                     skin,
                     fade_dist: p.fade_dist,
+                    debris: p.debris,
                 }
             })
             .collect(),
@@ -303,6 +314,7 @@ pub fn break_pieces(
                         frozen: false,
                         skin: *chunk_skin,
                         fade_dist: None,
+                        debris: true,
                     }
                 })
                 .collect()
@@ -742,9 +754,14 @@ pub fn spawn_gibs(
                 resting: piece.frozen,
             };
             // A prop's pieces are physics bodies (Source's client props):
-            // they tumble, collide with the world, props and each other,
-            // and come to rest; characters and shots pass through them
-            // (the ragdoll layer: debris). Brush gibs fly on their own.
+            // they tumble, collide with the world and props, and come to
+            // rest; characters and shots pass through them (the ragdoll
+            // layer). Debris pieces (most) don't collide with other debris
+            // (pieces of any prop, ragdolls: Source's debris group), so a
+            // broken prop's pieces fall through each other onto the floor
+            // rather than piling into a stack that rocks on itself; an
+            // interactive piece collides with those too. Brush gibs fly on
+            // their own.
             let body = ev.prop;
             let mut gib = commands.spawn((
                 Name::new("Gib"),
@@ -788,7 +805,14 @@ pub fn spawn_gibs(
                         RigidBody::Dynamic
                     },
                     b.collider.clone(),
-                    CollisionLayers::new(crate::core::RAGDOLL_LAYER, LayerMask::DEFAULT | crate::core::RAGDOLL_LAYER),
+                    CollisionLayers::new(
+                        crate::core::RAGDOLL_LAYER,
+                        if piece.debris {
+                            LayerMask::DEFAULT
+                        } else {
+                            LayerMask::DEFAULT | crate::core::RAGDOLL_LAYER
+                        },
+                    ),
                     Mass(b.mass),
                     LinearVelocity(piece.velocity),
                     AngularVelocity(piece.spin),

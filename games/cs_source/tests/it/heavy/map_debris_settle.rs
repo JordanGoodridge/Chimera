@@ -1,7 +1,7 @@
 //! Ragdolls and broken props' pieces settle and sleep on real CS:S maps,
 //! headless: a CS:S player killed at a map's spawns lies still and its
-//! bodies go to sleep, and a broken prop's pieces come to rest and sleep,
-//! rather than moving for good. Their hulls are cut for contacts like
+//! bodies go to sleep, and a broken prop's pieces come to rest apart and
+//! sleep, rather than moving for good. Their hulls are cut for contacts like
 //! props' (`map::collision::contact_hulls`). Skipped without an install.
 
 use avian3d::prelude::*;
@@ -133,11 +133,18 @@ fn ragdolls_settle_and_sleep() {
 
 /// Props that break into pieces (their models' own break pieces, else a
 /// gib list's chunks): each of de_inferno's first twelve crates and pots,
-/// broken by a big bullet, has pieces that all sleep within `LIMIT` s
-/// (1.2-6.9 s measured).
+/// broken by a big bullet, has pieces that all sleep within `LIMIT` s and
+/// end up touching no other piece (debris doesn't collide with debris).
+/// Run three ways, so the bound holds whatever order the solver meets the
+/// contacts in (other entities, colliders and random draws before each
+/// break): the props broken in map order, in reverse, and every other one
+/// first. 0.9-2.9 s measured; before debris stopped colliding with debris,
+/// one prop's pieces piled up, one rocking on the others kept the pile
+/// awake, and how long hung on the solver's order (prop 121: 1.6 s on
+/// one base, 15 s with 110 more world brushes).
 #[test]
 fn broken_prop_pieces_settle_and_sleep() {
-    const LIMIT: f64 = 8.0;
+    const LIMIT: f64 = 5.0;
     let models = ["wood_crate", "pot", "bucket", "wood_pallet"];
     let Some(map) = load("de_inferno") else { return };
     let props: Vec<usize> = (0..map.entities.len())
@@ -149,47 +156,71 @@ fn broken_prop_pieces_settle_and_sleep() {
                     models.iter().any(|k| m.contains(k))
                 })
         })
+        .take(12)
         .collect();
-    let mut sim = sim(map);
-    sim.seconds(1.0);
-    let mut broke = 0;
-    for i in props.into_iter().take(12) {
-        let node = {
-            let world = sim.app.world_mut();
-            world
-                .query::<(Entity, &PropEntity)>()
-                .iter(world)
-                .find(|(_, p)| p.0 == i)
-                .map(|(e, _)| e)
-        };
-        let Some(target) = node else { continue };
-        let before = gibs(&mut sim);
-        let point = sim.app.world().get::<Transform>(target).unwrap().translation;
-        sim.app.world_mut().write_message(Damage {
-            target,
-            attacker: None,
-            amount: 50.0,
-            point,
-            dir: Vec3::NEG_Y,
-            hitgroup: Hitgroup::Generic,
-            kind: DamageKind::Bullet,
-            weapon: None,
-            force: Vec3::ZERO,
-        });
-        sim.ticks(3);
-        let pieces: Vec<Entity> = gibs(&mut sim).into_iter().filter(|g| !before.contains(g)).collect();
-        if pieces.is_empty() {
-            continue;
+    let mut late = Vec::new();
+    let reversed: Vec<usize> = props.iter().rev().copied().collect();
+    let skipping: Vec<usize> = props.iter().step_by(2).chain(props.iter().skip(1).step_by(2)).copied().collect();
+    for (run, order) in [props, reversed, skipping].into_iter().enumerate() {
+        let mut sim = sim(map.clone());
+        sim.seconds(1.0);
+        let mut broke = 0;
+        for i in order {
+            let node = {
+                let world = sim.app.world_mut();
+                world
+                    .query::<(Entity, &PropEntity)>()
+                    .iter(world)
+                    .find(|(_, p)| p.0 == i)
+                    .map(|(e, _)| e)
+            };
+            let Some(target) = node else { continue };
+            let before = gibs(&mut sim);
+            let point = sim.app.world().get::<Transform>(target).unwrap().translation;
+            sim.app.world_mut().write_message(Damage {
+                target,
+                attacker: None,
+                amount: 50.0,
+                point,
+                dir: Vec3::NEG_Y,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            });
+            sim.ticks(3);
+            let pieces: Vec<Entity> = gibs(&mut sim).into_iter().filter(|g| !before.contains(g)).collect();
+            if pieces.is_empty() {
+                continue;
+            }
+            broke += 1;
+            let (took, jitter) = settle(&mut sim, &pieces, LIMIT, 3.0);
+            let stacked = touching_pairs(&sim, &pieces);
+            eprintln!(
+                "run {run}: de_inferno prop {i} at {point}: {} pieces asleep after {took:?} s, \
+                 jitter up to {jitter:.3} rad/s, {stacked} piece pairs touching",
+                pieces.len()
+            );
+            assert_eq!(stacked, 0, "run {run}: prop {i}'s pieces touch each other");
+            if took.is_none() {
+                late.push((run, i));
+            }
         }
-        broke += 1;
-        let (took, jitter) = settle(&mut sim, &pieces, LIMIT, 3.0);
-        eprintln!(
-            "de_inferno prop {i} at {point}: {} pieces asleep after {took:?} s, jitter up to {jitter:.3} rad/s",
-            pieces.len()
-        );
-        assert!(took.is_some(), "prop {i}'s pieces still awake after {LIMIT} s");
+        assert!(broke >= 10, "run {run}: only {broke} props broke into pieces");
     }
-    assert!(broke >= 10, "only {broke} props broke into pieces");
+    assert!(late.is_empty(), "(run, prop) {late:?}: pieces still awake after {LIMIT} s");
+}
+
+/// Touching contact pairs between two of `bodies`.
+fn touching_pairs(sim: &Sim, bodies: &[Entity]) -> usize {
+    let graph = sim.app.world().resource::<ContactGraph>();
+    graph
+        .iter_active_touching()
+        .chain(graph.iter_sleeping_touching())
+        .filter(|p| {
+            p.body1.is_some_and(|b| bodies.contains(&b)) && p.body2.is_some_and(|b| bodies.contains(&b))
+        })
+        .count()
 }
 
 /// Broken props' pieces with bodies.
