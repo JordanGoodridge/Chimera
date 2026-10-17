@@ -31,15 +31,17 @@
 //! shard per shard-size square of a burst, at most 48). Broken looks (spec Q8,
 //! the client's pane drawing is not specced): the face's `$crackmaterial`
 //! (ShatteredGlass drawn as a translucent LightmappedGeneric with its crack
-//! texture on the face's own texture coordinates; its BreakableSurface proxy is
-//! not modelled) over the unbroken panes, both sides drawn; jagged edges cut by
+//! texture on the face's own texture coordinates, its lighting
+//! `$unlitfactor` (unset: 0.3, measured from a CS:S screenshot) of the way
+//! toward full brightness; its BreakableSurface proxy is not modelled) over the unbroken panes, both sides drawn; jagged edges cut by
 //! the install's 12 `models/brokenglass/glassbroken_*` textures (white, the
 //! shape in their alpha: read as masks over the crack material, which keeps
 //! the face's texture coordinates, so the shards continue the pane's crack
 //! texture and lighting, not drawn white as their UnlitGeneric material
 //! would; laid side by side in one texture of ours so a crack material's
 //! pieces share one material), each side of an unbroken pane facing a broken neighbour picking one
-//! by its place, a strip half a pane deep into the neighbour, the shard's base
+//! by its place, a strip a whole pane deep into the neighbour (the square
+//! texture square on it; half a pane drew shards a third of CS:S's), the shard's base
 //! on the pane (maps without lightmaps draw no edge pieces); tile
 //! windows get no edge pieces (no tilebroken textures in the install). The
 //! falling pane piece (`brokenglass_piece.mdl`, bodies 0..2) goes where the
