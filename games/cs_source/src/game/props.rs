@@ -30,15 +30,6 @@
 //! shadows (prop.wgsl). Why it's OK for now: the model matches the maps' lightmaps at a
 //! median ratio of 1.05 (`prop_lighting_model_predicts_lightmaps`); the
 //! rule needs a spec session or a capture (plans/active/parity-gaps.md).
-//!
-//! Known shortcuts (docs/tech-debt.md): A broken prop's piece and chunk
-//! models load without their `.phy` (`load_shell`), so their bodies are
-//! their boxes (`map::breakables`), not their hulls. Why it's OK for now:
-//! loaded with their hulls, five of de_inferno's twelve broken crates and
-//! pots had pieces still rocking 5 s on (0.3-1.9 rad/s, alone on the
-//! floor: debris no longer collides with debris), where boxes sleep in
-//! 0.8-2.9 s; small light hulls resting on the world come first
-//! (docs/backlog.md 9).
 
 use std::collections::HashMap;
 
@@ -498,6 +489,14 @@ pub fn load_view_model(
 pub fn load_shell(materials: &mut MaterialLoader, path: &str) -> Result<crate::map::MapModel, String> {
     let (model, _) = load_model(materials, path)?;
     Ok(convert_model(&model, 0, materials, &[]))
+}
+
+/// A broken prop's piece or chunk model with its collision model (its
+/// body's hulls, mass and damping; prop_damage.md 7.3).
+fn load_piece(materials: &mut MaterialLoader, path: &str) -> Result<crate::map::MapModel, String> {
+    let mut model = load_shell(materials, path)?;
+    model.collision = load_collision(materials, path);
+    Ok(model)
 }
 
 /// A weapon's world model held by characters: its meshes in the frame of
@@ -1889,7 +1888,7 @@ fn model_breaks(
     let parent_placement = placement(materials, path);
     for p in super::propdata::break_pieces(&blocks) {
         let offset = p.offset - (placement(materials, &p.model) - parent_placement);
-        match load_shell(materials, &p.model) {
+        match load_piece(materials, &p.model) {
             Ok(m) => {
                 pieces.push(MapBreakPiece {
                     model: models.len(),
@@ -1928,7 +1927,7 @@ fn model_breaks(
         if !data.gibs.iter().any(|g| g.name.eq_ignore_ascii_case(list)) {
             let mut models = Vec::new();
             for p in paths {
-                match load_shell(materials, p) {
+                match load_piece(materials, p) {
                     Ok(m) => models.push(m),
                     Err(e) => data.warnings.push(e),
                 }

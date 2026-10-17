@@ -20,7 +20,8 @@
 //! bodies from the piece model's `.phy` hulls cut for contacts
 //! (`collision::contact_hulls`), else its box, on
 //! `core::RAGDOLL_LAYER`: they tumble and rest on the world and props,
-//! characters and shots pass; debris pieces (`MapBreakPiece::debris`,
+//! characters and shots pass, and sleep once kept still as props do
+//! (`prop_physics::SettlesLikeProp`); debris pieces (`MapBreakPiece::debris`,
 //! chunks) don't collide with other debris, pieces or ragdolls, as Source's
 //! debris group; built headless too), `BrushPanes` (a broken
 //! window's unbroken panes: a collider of pane boxes that shots hit and bodies
@@ -823,6 +824,10 @@ pub fn spawn_gibs(
                     GravityScale(gravity_scale),
                     MaxLinearSpeed(2000.0 * 0.0254),
                     MaxAngularSpeed(3600f32.to_radians()),
+                    // Asleep once kept still, as props (a light shard
+                    // rocking on its curve slows down but may not get
+                    // under avian's own threshold).
+                    super::prop_physics::SettlesLikeProp,
                 ));
             }
         }
