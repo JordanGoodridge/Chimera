@@ -102,6 +102,7 @@ impl Plugin for PainSoundsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ArmorBeforeShots>()
             .add_message::<Damage>()
+            .add_message::<crate::weapon::BulletHit>()
             .add_message::<Died>()
             .add_message::<GameSound>()
             .add_message::<PlaySound>()
@@ -152,6 +153,7 @@ pub fn death_sound(kind: DamageKind, group: Hitgroup) -> &'static str {
 #[allow(clippy::type_complexity)]
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
+    mut shots: MessageReader<crate::weapon::BulletHit>,
     before: Res<ArmorBeforeShots>,
     victims: Query<(&Health, &Transform, Has<God>, Has<Team>), (With<Intent>, Without<Hostage>)>,
     rules: DamageRules,
@@ -163,6 +165,9 @@ fn hurt_sounds(
         .as_ref()
         .and_then(|b| super::impacts::surface(&b.0, FLESH))
         .and_then(|s| s.bullet_impact.clone());
+    // Who guns' bullets hit this tick (a knife's hit deals bullet damage
+    // too, but makes its own sound, not a bullet's impact).
+    let shot: Vec<Entity> = shots.read().map(|h| h.damage.target).collect();
     // Health left as this tick's hits land (several can hit one victim).
     let mut left: HashMap<Entity, f32> = HashMap::new();
     for d in damage.read() {
@@ -185,6 +190,7 @@ fn hurt_sounds(
                 ..PlaySound::at(entry, at.translation)
             }));
         } else if d.kind == DamageKind::Bullet
+            && shot.contains(&d.target)
             && let Some(entry) = &flesh
             && !under_water(d.point, water.as_deref())
         {

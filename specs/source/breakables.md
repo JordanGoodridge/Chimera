@@ -21,7 +21,8 @@ func_breakable is a solid brush with health and a material. Damage lowers
 its health (bullets do half, clubs 1.5×, blasts 1.25×); at 0 it plays the
 material's break sound, throws up to 15 gib models from the material's
 gib list from random points inside it, becomes non-solid and loses its
-name at once, and deletes itself 0.1 s later. de_nuke's vents are
+name at once, and deletes itself (0.1 s later in the code read; at once in
+CS:S, measured: Open question 4). de_nuke's vents are
 func_breakable with material Metal and 1 health: one bullet opens them.
 func_breakable_surf is a glass (or tile) window made of a grid of 12×12
 unit panes: the first hit "breaks" the window as an entity (it becomes
@@ -52,7 +53,7 @@ numbers are the "material" keyvalue values Hammer writes.
 | gib_life | 2.5 + U(0,1) | s | gib lifetime before removal (fades out) |
 | gib_glass_alpha | 128 | 0..255 | glass gibs are translucent |
 | gib_glass_bounce | 0.3 | — | glass gib bounce factor |
-| remove_delay | 0.1 | s | broken func_breakable deleted after this (7 ticks) |
+| remove_delay | 0.1 (CS:S: 0, measured) | s | broken func_breakable deleted after this (7 ticks; CS:S: gone by the next frame, Open question 4) |
 | pane_size | 12 | units | func_breakable_surf nominal pane size |
 | max_panes_axis | 16 | panes | per axis |
 | pane_full_support | 6.75 | — | support normaliser |
@@ -99,8 +100,13 @@ On a damage event with amount A and type T:
    effect).
 3. Scale A: bullet type: × 0.5 (× 1.0 if also buckshot); club: × 1.5;
    blast: × 1.25 (each modifier applies if its bit is set, multiplying).
-4. New health = trunc_toward_zero(health − A) (integer health minus a
-   float, truncated: 50 − 17.5 = 32.5 → 32).
+   CS:S's guns and knife deal bullet (+ never-gib) damage, no buckshot
+   (measured, Open questions 1–2).
+4. New health = health − trunc_toward_zero(A) (the scaled amount
+   truncated, then taken off: 50 − 17.5 → 50 − 17 = 33). *Measured
+   2026-10-17: a 100-health func_breakable (material 0) hit by a Glock
+   round of 23.443 has 89 left (11.72 → 11), not trunc(88.28) = 88; M3
+   pellets of 24.017 take 12 each, one of 23.997 takes 11.*
 5. If health changed: fire **OnHealthChanged** with
    clamp(health/maxhealth, 0, 1) (float), activator = attacker. If ≤ 0:
    **break** with the attacker as breaker. Else stay damageable (unless
@@ -164,13 +170,14 @@ Touch flags (players only):
    origin is inside its box grown by 1 down and 8 up).
 7. **Clear its targetname** (later outputs naming it find nothing), make it
    **non-solid immediately**, fire **OnBreak** (activator = breaker),
-   remove its physics object, schedule deletion in 0.1 s (7 ticks).
+   remove its physics object, schedule deletion in 0.1 s (7 ticks; CS:S
+   deletes it at once: gone by the next server frame, measured).
 8. If explodemagnitude/ExplodeDamage is set: an explosion at the centre
    (out of scope until grenades/explosions are specified).
 
 So bullets that killed it and any player behind it pass through on the
-same tick; the brush is still drawn until it is deleted 7 ticks later
-(Open questions: CS:S may hide it at once).
+same tick; in CS:S the entity is gone by the next frame (Open question 4),
+so clients stop drawing it with the next snapshot.
 
 ### de_nuke's vents and windows (real data)
 
@@ -295,12 +302,13 @@ tilebroken_* for tile). Details of edge selection are not specced here.
    think-list order), cascading one step per tick.
 4. OnBreak / OnHealthChanged are delivered in the event queue at the end
    of the frame (specs/source/entity_io.md).
-5. A broken func_breakable is deleted 7 ticks after breaking.
+5. A broken func_breakable is deleted at once (CS:S, measured; the code
+   read schedules 7 ticks).
 
 ## Edge cases
 
 - A func_breakable named "box" that broke cannot be targeted as "box"
-  anymore, even during its 7 remaining ticks.
+  anymore (in the code read even during its 7 remaining ticks).
 - Health 0 non-glass without flag 1 is unbreakable by damage (but Break
   works).
 - RemoveHealth 5 on a not-damageable breakable with health 1 breaks it.
@@ -326,12 +334,13 @@ tilebroken_* for tile). Details of edge selection are not specced here.
 
 | Setup | Input | After | Expected |
 |---|---|---|---|
-| func_breakable material 0, health 1 (nuke window) | one bullet of 26 damage | same tick | breaks: "Breakable.Glass", OnBreak, non-solid, name cleared; deleted 7 ticks later |
+| func_breakable material 0, health 1 (nuke window) | one bullet of 26 damage | same tick | breaks: "Breakable.Glass", OnBreak, non-solid, name cleared; deleted at once (CS:S) |
 | func_breakable material 2, health 1 (nuke vent), 64×8×32 brush | one bullet | — | breaks; floor((512 + 256 + 2048)/432) = 6 MetalChunks gibs |
 | func_breakable wood, health 50 | bullets of 36 damage | — | health 32, 14, then −4 → breaks on the 3rd shot |
 | same | one club hit of 34 | — | 50 − 51 = −1 → breaks |
 | same | blast 40 | — | 50 − 50 = 0 → breaks |
-| func_breakable wood, health 50 | bullet 35 | — | health 32 (50 − 17.5 truncated) |
+| func_breakable wood, health 50 | bullet 35 | — | health 33 (50 − trunc(17.5)) |
+| func_breakable, health 100 (measured) | Glock 23.443 / knife slash 20 / stab 65 / AWP 114.743 | — | 89 / 90 / 68 / 43 |
 | func_breakable wood, health 50, minhealthdmg 20 | bullet 36 (raw 36 ≥ 20, scaled 18) | — | health 32 |
 | same | bullet 18 (raw 18 < 20) | — | ignored, health 50 |
 | func_breakable glass, health 0 | bullets | — | not damageable, never breaks; Break input breaks it |
@@ -357,16 +366,37 @@ tilebroken_* for tile). Details of edge selection are not specced here.
    (×0.5)? Probe: func_breakable wood health 100, shoot one Glock round
    (25 damage at short range); read health via `ent_text`-like output or
    OnHealthChanged → logic_compare → say. Expect 88 (100 − 12.5).
+   *Measured 2026-10-17 (probe server, `tools/css_probe/mashup_props.sp`; a func_breakable spawned with de_dust2's brush model `*1`): bullet + never-gib
+   (4098), no buckshot bit on shotgun pellets: ×0.5. Health 100, Glock
+   23.443 → 89; AWP 114.743 → 43; M3 pellets 24.017 → −12 each.*
 2. **CS:S knife** damage type on breakables (slash/club?) and multiplier;
    same probe with the knife.
+   *Measured 2026-10-17 (probe server, `tools/css_probe/mashup_props.sp`; a func_breakable spawned with de_dust2's brush model `*1`): bullet + never-gib too: slash 20 →
+   90, stab 65 → 68 (×0.5).*
 3. **minhealthdmg**: is it compared before scaling? (Code: yes, the raw
    amount.) Confirm with minhealthdmg 20 and a 26-damage shot.
+   *Measured 2026-10-17 (probe server, `tools/css_probe/mashup_props.sp`; a func_breakable spawned with de_dust2's brush model `*1`): yes, the raw amount: with
+   minhealthdmg 20 a Glock round (23.44 raw, 11.7 scaled) damages it; with
+   24 it does nothing (no OnHealthChanged).*
 4. **Broken brush visibility**: is the broken func_breakable hidden the
    moment it breaks or drawn for 7 more ticks? Screenshot sequence on the
    reference client.
+   *Measured 2026-10-17 (probe server, `tools/css_probe/mashup_props.sp`; a func_breakable spawned with de_dust2's brush model `*1`): the server deletes it at
+   once: broken on tick k, gone at the start of tick k + 1 (logged every
+   frame), so clients stop drawing it with the next snapshot. de_nuke's
+   vent `*1` broken by a 26 bullet hit from the console between frames:
+   still there (not solid, takes no damage) in the next frame, gone in the
+   one after; so it goes at the end of the frame, not 0.1 s later.
+   OnHealthChanged comes before OnBreak.*
 5. **Shots through a broken window**: do bullets keep hitting a
    func_breakable_surf after its first break (it is non-solid then)? Shoot
    the same cracked window twice and watch pane loss.
+   *Measured 2026-10-17 (probe server, cs_office's window `*2`, Deagle
+   shots from 110 units, `mashup_panes` reading `m_RawPanelBitVec`): yes.
+   The first shot breaks the window (OnBreak; it turns non-solid + trigger,
+   solid flags 12) and knocks out 1–3 panes; every later shot still hits it
+   (OnHealthChanged each time, health going −7, −38, −69...) and knocks out
+   1–2 more panes where it lands, the same spot or unbroken panes beside.*
 6. **Gib physics**: client gibs use "slow gravity" (half) and bounce with
    the material flag sounds; confirm visually that metal vent gibs fall at
    half gravity.

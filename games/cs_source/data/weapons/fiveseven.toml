@@ -26,6 +26,8 @@ range = 4096.0
 amount = 25.0
 falloff = 0.885
 armor_ratio = 1.5
+# Its ammo's push (measured, _gun.toml).
+impulse = 2000.0
 
 [penetration]
 objects = 1

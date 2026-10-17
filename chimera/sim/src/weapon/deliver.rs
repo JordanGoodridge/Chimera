@@ -492,6 +492,7 @@ impl Shot<'_, '_, '_> {
                 point,
                 dir,
                 DamageKind::Bullet,
+                true,
                 dir * effect.impulse,
             );
         }
@@ -510,6 +511,7 @@ impl Shot<'_, '_, '_> {
         point: Vec3,
         dir: Vec3,
         kind: DamageKind,
+        shot: bool,
         force: Vec3,
     ) {
         // Damage is dealt once, not again when a command is re-run, and
@@ -518,6 +520,15 @@ impl Shot<'_, '_, '_> {
         if !self.w.first.0 || !self.w.authoritative() {
             return;
         }
+        // Only characters' health is whole points: objects (props,
+        // breakables) take the exact amount and truncate it after their
+        // own multipliers (CS:S, measured 2026-10-17;
+        // specs/source/prop_damage.md 4).
+        let quantum = if self.w.targets.get(target).is_ok_and(|t| t.health.is_some()) {
+            quantum
+        } else {
+            0.0
+        };
         let mut amount = quantize(raw, quantum);
         let mut covered = false;
         let helmet = self.w.armor.get(target).is_ok_and(|a| a.amount > 0.0 && a.helmet);
@@ -541,7 +552,9 @@ impl Shot<'_, '_, '_> {
             kind,
             weapon: None,
         };
-        if kind == DamageKind::Bullet && self.w.targets.get(target).is_ok_and(|t| t.health.is_some()) {
+        // A gun's bullet (a knife's hit deals bullet damage in CS:S too,
+        // but isn't one).
+        if shot && kind == DamageKind::Bullet && self.w.targets.get(target).is_ok_and(|t| t.health.is_some()) {
             self.w.hits.write(super::BulletHit {
                 damage: damage.clone(),
                 weapon: self.weapon,
@@ -641,7 +654,7 @@ impl Shot<'_, '_, '_> {
                 amount = back;
             }
         }
-        self.push(hit.entity, hit.point, hit.dir * amount * swing.force);
+        self.push(hit.entity, hit.point, hit.dir * swing.force);
         let sound = if alive {
             &swing.sound_hit
         } else {
@@ -663,7 +676,8 @@ impl Shot<'_, '_, '_> {
                 group,
                 hit.point,
                 hit.dir,
-                DamageKind::Melee,
+                swing.kind,
+                false,
                 Vec3::ZERO,
             );
         }

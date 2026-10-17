@@ -165,3 +165,33 @@ multiplier, hitbox, hitgroup, and the damage taken) into
 re-created at each round restart, so hook again after one.
 `mashup_htrack <entity> <file>` logs that entity's origin every server
 frame (`game_time x y z`); `mashup_htrack -1` stops (objectives.md Q10).
+
+## Prop damage, breakables, doors
+
+`mashup_props.sp` is a third plugin (compile it like the others, `sm
+plugins load mashup_props`). It logs to
+`addons/sourcemod/logs/mashup_props.log`, one `t=<time> k=<tick> ...` line
+per event: `dmg`/`post` rows (each hit's damage, damage type bits,
+attacker, inflictor, damage force and position, health before and after;
+`mashup_dmghook <class|index>` hooks the entities, `mashup_spawn` hooks what
+it creates), every prop/breakable/door output as it fires (`out` rows) and,
+with `mashup_sndlog 1`, every emitted sound (`snd` rows). Commands:
+`mashup_spawn <class> <model|-> x y z pitch yaw [key value]...`,
+`mashup_fire <userid> x y z pitch yaw <weapon> <buttons> <start tick>
+<ticks>` (hold a bot there with only that weapon and press attack/attack2),
+`mashup_hurt <victim> <attacker> <damage> <type bits> [x y z]`,
+`mashup_input <index> <input> [parameter] [activator]`, `mashup_find
+<class> [model part]`, `mashup_einfo`, `mashup_getprop <index|-1> <field>
+[f]`, `mashup_watch <index> <frames>` (health, effects, solid flags every
+frame, and when it is gone), `mashup_panes <index>` (a func_breakable_surf's
+pane grid), `mashup_tp`, `mashup_hp`, `mashup_kill`.
+
+`propmeas.py` holds the 2026-10-17 measurements (specs/source/prop_damage.md,
+breakables.md and doors_buttons.md open questions): `shot` (a fresh crate on
+de_dust2's CT spawn shot by the bot), `gascan` (a gas can broken next to the
+bot), `drop_on` (a prop thrown down onto the bot), `door` (a model door's
+sounds through Open/Close/Lock/Use).
+
+Notes: on cs_office the probe bot did not move at all (not even fall) in
+`mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
+(feet at its height) leaves it stuck: start 0.02 or more above.

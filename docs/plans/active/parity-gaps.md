@@ -239,7 +239,7 @@ common console commands, against mashup's.
 | Rope wind sway | have (fixed) | L | S | round 2: the spec's gusts near the camera (`render::rope_sway`, `rope_wind_dist`); maps with an env_wind hang still (not simulated); refcmp captures with `rope_wind_dist 0`; amplitude unmeasured, capture C18 |
 | Detail props layout | differs | L | S | tech-debt "Detail props"; capture C22 |
 | Player animation (feet slide, no death layer) | differs | M | M | tech-debt "Player animation": SDK template speeds; animation.md's open question needs a demo, capture C14 |
-| Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls": the ammo impulses aren't public (ragdolls.md Q2, weapons.md Q8); capture C13 |
+| Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls": the ammo impulses are measured on props since 2026-10-17 (weapons.md Q8: 2000 9 mm to 2800 .338, buckshot 600 a pellet, the knife 300 flat; `[damage] impulse` per gun); whether a player's death push uses the same force is capture C13 |
 | Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models"; view_models.md Q5, Q7; capture C15 |
 | Prop light probes | differs | M | M | tech-debt: the engine's weighting isn't public (needs a spec session); props without `.vhv` (all of cs_militia's) take the sun from one point, whole or not at all: militia's crates by the shed (x 1344-1353) much darker than the next ones out, as the reading predicts (2026-10-17); whether CS:S does that or lights them per vertex at load is shaders.md Q11, capture C28 |
 | Model reflections masked by the normal map's alpha (`$normalmapalphaenvmapmask`) | have (fixed) | M | S | 2026-10-17: the mask was dropped on props, so those materials were mirrors: militia's ammo can, cable spool, pallet, car battery, APC; the same props on nuke, inferno, train, assault, port, prodigy, compound, havana, piranesi, aztec (vents, pallets, spools, `metalwall001a`, `pi_apc`, `pi_boat`); the hands now reflect through it too. refcmp: nuke 0.0242 -> 0.0241, aztec, dust2 unchanged, office within capture noise (`cam0`'s sky) |
@@ -259,14 +259,14 @@ common console commands, against mashup's.
 |---|---|---|---|---|
 | Entity I/O, triggers, movers, breakables, doors, fire | have | | | specs/source |
 | Breakable glass decals, brush propdata templates, bullet trace effects | have (new) | L | S | glass takes "GlassBreak", bulletproof glass "BulletProof" and never breaks; a brush's `propdata` template sets its health, multipliers and gibs (our reading of "fills in", tech-debt "Breakables"); half the bullets on a computer brush spark (electric sparks, "Breakable.Computer"), half on bulletproof glass ricochet (`Bounce.Shrapnel`; no spec gives the ricochet a look) |
-| Breakables' damage types, broken-window drawing | differs | L | M | backlog 7 "Breakables, remaining": spec open questions 1, 2, 4, 5 and 8 need the probe server or captures; the jagged edge pieces are the edge textures read as masks over the crack material, a whole pane deep (were drawn plain white; which edge goes where and how deep is ours); the crack material (ShatteredGlass) lit `$unlitfactor` toward full brightness, unset 0.3 measured from a cs_militia screenshot (was lightmap only: too dark in shade) |
+| Breakables' damage types, broken-window drawing | differs | L | M | damage types measured 2026-10-17 (breakables.md Q1-Q5: guns and knife deal bullet damage, x0.5; scaled damage truncated then taken off; a broken func_breakable gone at once, was 7 ticks; shots keep knocking panes out of a broken window, as ours); open question 8 needs captures; the jagged edge pieces are the edge textures read as masks over the crack material, a whole pane deep (were drawn plain white; which edge goes where and how deep is ours); the crack material (ShatteredGlass) lit `$unlitfactor` toward full brightness, unset 0.3 measured from a cs_militia screenshot (was lightmap only: too dark in shade) |
 | Soundscapes | have | | | |
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |
 | Pushers (no bevels, no players or props pushed) | differs | L | M | tech-debt "Pushers" |
 | Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap again each round, never OnMultiNewRound (was ours: OnMultiNewRound) |
 | Physics shadow controller | differs | L | M | tech-debt |
-| Prop damage left-outs | differs | L | S | tech-debt |
+| Prop damage left-outs | differs | L | S | tech-debt; measured 2026-10-17 (prop_damage.md Q1-Q14): knife hits are bullets (were clubs), scaled damage truncated then taken off (was the result truncated: one more point left), exploding props and env_explosions fall off as a bell σ = R/3 past R (were linear), a player shoving a sleeping prop wakes it (OnAwakened); still ours: one impact where CS:S counts two contacts when a prop lands on a player, players' contacts don't damage prop_physics; client halves are capture C29 |
 | Tool-textured volumes drawn | have (fixed) | M | S | cs_militia's two `func_footstep_control` volumes (one by the Deck ladder) and its skybox `env_embers` drew as yellow `tools/toolstrigger` walls: stock maps compile trigger brushes without the trigger surface flag, so only brush entity classes CS:S draws (`bsp::draws_brushes`) draw now; also env_embers on 2 community maps, env_bubbles on 1 |
 | Brushes under displacements solid | have (fixed) | H | S | a playtest walked through cs_militia's concrete wall by the back porch: the world brush a displacement is built from was dropped from collision (matched by plane and base corners), but CS:S keeps it solid (probe traces start solid inside all 58 such solid brushes on cs_militia, de_aztec and de_dust2; the bullet mask can't test player clips); now every player-solid brush collides by its contents (`bsp::brush_kept`). Back: 13 on cs_militia (7 of them player clips), 43 dust2, 11 de_aztec and de_prodigy, 8 de_piranesi, 7 cs_compound, 6 de_cbble, 5 cs_office, 3 de_inferno, 2 cs_havana, 1 de_nuke. movecmp `militia_porch_wall` matches CS:S exactly |
 | func_footstep_control's footstep sounds | have (fixed) | L | S | feet inside play the `destination` surface's steps for the `source` surface's (public FGD; `sound::step_remaps`): cs_militia's two turn ladder steps into concrete and wood_plank; feet-point test, kept step volume and timing unmeasured (tech-debt) |
@@ -276,7 +276,7 @@ common console commands, against mashup's.
 | Community-map entity readings | differs | M | | tech-debt rows "Community-map", "Minigame flows" |
 | Water and physics (buoyancy) | differs | L | M | tech-debt |
 | LOD and fading of props (`fademindist`) | differs | L | S | performance backlog |
-| Model doors beyond the spec | differs | L | S | tech-debt |
+| Model doors beyond the spec | differs | L | S | tech-debt; sounds measured 2026-10-17 (doors_buttons.md Q8): the model's `door_options` skin and hardware blocks as ours; fixed: an unlocked +use moves the door 0.2 s after the handle sound (was at once), an Open input plays the handle too |
 | Buy zones round spawns on maps without | have | | | merged from main 2026-10-13 |
 | `info_map_parameters` buying | have | | | |
 
@@ -674,3 +674,14 @@ says what decides the open point.
   vertex (their tops in the sun) decides shaders.md Q11 for maps without
   `.vhv`; the truck (its lighting point inside its cargo's nodraw
   collision block, dark here) is in the same view.
+- **C29 Client props and break sounds (cs_italy, de_inferno).** On a
+  listen server: knife and shoot a client-side cardboard box
+  (Cardboard.breakclient 10) and a mug or bottle (Pottery 20) on cs_italy:
+  how many hits each takes (does the knife count as the "other" 50 or as a
+  bullet's 30?), and record the audio: does a bottle breaking make a sound
+  beyond the bullet impact? Then shoot one of de_inferno's `Glass `
+  windows (its surface name ends in a space): `Glass.Break` or no break
+  sound? Break a client bottle and `mp_restartgame 1`: is it back?
+  Decides prop_damage.md open questions 2 (client half), 4, 7, 8 and 9
+  (client half).
+

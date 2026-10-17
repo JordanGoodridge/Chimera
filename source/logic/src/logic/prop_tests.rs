@@ -56,23 +56,29 @@ fn cs_assault_door_opens_away_and_closes_after_its_delay() {
     w.players[0].use_key = true;
     run_to(&mut w, 0);
     w.players[0].use_key = false;
-    assert_eq!(fired(&w, d, "OnOpen"), vec![0], "the use opens it");
+    // The handle first; the door moves 0.2 s (14 ticks) later (CS:S,
+    // measured 2026-10-17; doors_buttons.md Q8).
+    assert!(fired(&w, d, "OnOpen").is_empty());
+    run_to(&mut w, 13);
+    assert!(fired(&w, d, "OnOpen").is_empty());
+    run_to(&mut w, 14);
+    assert_eq!(fired(&w, d, "OnOpen"), vec![14], "the use opens it");
     assert_eq!(sounds(&mut w), vec!["Doors.Move1"]);
     // Away from the user: back, +90, over 0.9 s.
-    run_to(&mut w, 59);
+    run_to(&mut w, 73);
     let a = angles_of(&w, d).y;
     assert!(a > 85.0 && a < 90.0, "{a}");
-    run_to(&mut w, 60);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, 90.0);
-    assert_eq!(fired(&w, d, "OnFullyOpen"), vec![60]);
+    assert_eq!(fired(&w, d, "OnFullyOpen"), vec![74]);
     assert_eq!(sounds(&mut w), vec!["Doors.FullOpen1"]);
     // Closes 20.1 s (1340 ticks) after fully open.
-    run_to(&mut w, 60 + 1339);
+    run_to(&mut w, 74 + 1339);
     assert!(fired(&w, d, "OnClose").is_empty());
-    run_to(&mut w, 60 + 1340);
-    assert_eq!(fired(&w, d, "OnClose"), vec![1400]);
-    run_to(&mut w, 1460);
-    assert_eq!(fired(&w, d, "OnFullyClosed"), vec![1460]);
+    run_to(&mut w, 74 + 1340);
+    assert_eq!(fired(&w, d, "OnClose"), vec![1414]);
+    run_to(&mut w, 1474);
+    assert_eq!(fired(&w, d, "OnFullyClosed"), vec![1474]);
     assert_eq!(angles_of(&w, d).y, 0.0);
     assert_eq!(state(&w, d), DoorState::Closed);
 }
@@ -87,11 +93,14 @@ fn second_use_closes_an_open_door() {
     run_to(&mut w, 99);
     assert_eq!(state(&w, d), DoorState::Open);
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 100);
-    assert_eq!(fired(&w, d, "OnClose"), vec![100]);
-    run_to(&mut w, 160);
+    // The close waits 0.2 s after the handle too (measured).
+    run_to(&mut w, 113);
+    assert!(fired(&w, d, "OnClose").is_empty());
+    run_to(&mut w, 114);
+    assert_eq!(fired(&w, d, "OnClose"), vec![114]);
+    run_to(&mut w, 174);
     assert_eq!(angles_of(&w, d).y, 0.0);
-    assert_eq!(fired(&w, d, "OnFullyClosed"), vec![160]);
+    assert_eq!(fired(&w, d, "OnFullyClosed"), vec![174]);
 
     // Without "Use closes", a use on the open door does nothing.
     let mut w = world();
@@ -113,7 +122,7 @@ fn opens_forward_for_a_user_behind_it_and_obeys_opendir() {
     w.activate();
     let p = player_at(&mut w, 0, Vec3::new(-40.0, 26.0, 0.0));
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 70);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, -90.0);
 
     // opendir 2: back only, whoever opens it.
@@ -123,7 +132,7 @@ fn opens_forward_for_a_user_behind_it_and_obeys_opendir() {
     // Behind it but out of the swing.
     let p = player_at(&mut w, 0, Vec3::new(-200.0, 26.0, 0.0));
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 70);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, 90.0);
 
     // A leaf on the hinge's right turns the other way for the same side.
@@ -139,7 +148,7 @@ fn opens_forward_for_a_user_behind_it_and_obeys_opendir() {
     w.activate();
     let p = player_at(&mut w, 0, Vec3::new(40.0, -26.0, 0.0));
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 70);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, -90.0, "swings away from the user");
 }
 
@@ -210,8 +219,8 @@ fn locked_door_fires_on_locked_use() {
     w.queue_input("door", "Unlock", Value::Void, 0.0, None);
     run_to(&mut w, 11);
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 12);
-    assert_eq!(fired(&w, d, "OnOpen"), vec![12]);
+    run_to(&mut w, 26);
+    assert_eq!(fired(&w, d, "OnOpen"), vec![26]);
 }
 
 #[test]
@@ -350,6 +359,15 @@ fn model_door_plays_its_hardware_sounds() {
     w.queue_input("door", "Unlock", Value::Void, 0.0, None);
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
     run_to(&mut w, 1);
+    assert_eq!(sounds(&mut w), vec!["DoorHandles.Unlocked1"]);
+    run_to(&mut w, 15);
+    assert_eq!(sounds(&mut w), vec!["Doors.Move1"], "0.2 s later");
+    // An Open input plays the handle as it starts the move (measured).
+    w.queue_input("door", "Close", Value::Void, 0.0, None);
+    run_to(&mut w, 100);
+    sounds(&mut w);
+    w.queue_input("door", "Open", Value::Void, 0.0, None);
+    run_to(&mut w, 101);
     assert_eq!(sounds(&mut w), vec!["DoorHandles.Unlocked1", "Doors.Move1"]);
 
     let mut w = world();
@@ -378,7 +396,7 @@ fn model_door_swings_the_other_way_past_the_world_and_props() {
     w.activate();
     let p = player_at(&mut w, 0, user);
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 70);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, -90.0, "forward, past the wall");
 
     let mut w = world();
@@ -388,7 +406,7 @@ fn model_door_swings_the_other_way_past_the_world_and_props() {
     w.set_prop_bounds(c, (Vec3::new(-40.0, 10.0, 0.0), Vec3::new(-20.0, 30.0, 20.0)));
     let p = player_at(&mut w, 0, user);
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 70);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, -90.0, "forward, past the crate");
 
     // Nothing in the way: back, away from the user.
@@ -397,7 +415,7 @@ fn model_door_swings_the_other_way_past_the_world_and_props() {
     w.activate();
     let p = player_at(&mut w, 0, user);
     w.queue_input("door", "Use", Value::Void, 0.0, Some(Who::Player(p)));
-    run_to(&mut w, 70);
+    run_to(&mut w, 74);
     assert_eq!(angles_of(&w, d).y, 90.0);
 }
 
@@ -603,8 +621,10 @@ fn health_needs_something_to_break_into() {
 }
 
 #[test]
-fn integer_truncation_breaks_a_file_box() {
-    // Cardboard.break: health 10, bullets 0.5; 19 -> 9.5 -> 0.5 -> 0.
+fn integer_truncation_leaves_a_file_box_one_point() {
+    // Cardboard.break: health 10, bullets 0.5; 19 -> 9.5, truncated to 9
+    // and taken off: 1 left (CS:S truncates the scaled damage, measured
+    // 2026-10-17: a 30-health crate takes 25.9 x 0.75 = 19.4 as 19).
     let mut w = world();
     let p = spawn(
         &mut w,
@@ -618,7 +638,47 @@ fn integer_truncation_breaks_a_file_box() {
     w.activate();
     run_to(&mut w, 1);
     w.prop_hit(p, hit(19.0, DamageKind::Bullet, None));
+    assert!(breaks(&w).is_empty());
+    assert_eq!(w.prop_health(p), Some((1, 10)));
+    w.prop_hit(p, hit(1.9, DamageKind::Bullet, None));
+    assert!(breaks(&w).is_empty(), "0.95 truncates to nothing");
+    w.prop_hit(p, hit(2.5, DamageKind::Bullet, None));
     assert_eq!(breaks(&w).len(), 1);
+}
+
+/// Measured 2026-10-17 (probe server, wood_crate001a: Wooden.Medium,
+/// health 30, bullets x0.75; specs/source/prop_damage.md Q1): a Glock
+/// round of 23.51 leaves 13 (17.63 taken as 17), the same round's second
+/// hit after passing through (13.09) then 4; exact hits of 25.9 leave 11,
+/// 1.9 leave 29, 0.9 nothing; a knife slash (bullet damage, 20) leaves 15.
+#[test]
+fn bullet_hits_take_the_truncated_scaled_damage() {
+    let crate_ = |w: &mut LogicWorld| {
+        let p = spawn(
+            w,
+            &[
+                ("classname", "prop_physics_multiplayer"),
+                (PROP_HEALTH_KEY, "30"),
+                (PROP_DAMAGE_KEY, "0.75 2 1.5"),
+                (PROP_PIECES_KEY, "4"),
+            ],
+        );
+        w.activate();
+        run_to(w, 1);
+        p
+    };
+    let mut w = world();
+    let p = crate_(&mut w);
+    w.prop_hit(p, hit(23.51, DamageKind::Bullet, None));
+    assert_eq!(w.prop_health(p), Some((13, 30)));
+    w.prop_hit(p, hit(13.09, DamageKind::Bullet, None));
+    assert_eq!(w.prop_health(p), Some((4, 30)));
+    for (amount, left) in [(25.9, 11), (1.9, 29), (0.9, 30), (20.0, 15)] {
+        let mut w = world();
+        let p = crate_(&mut w);
+        w.prop_hit(p, hit(amount, DamageKind::Bullet, None));
+        assert_eq!(w.prop_health(p), Some((left, 30)), "{amount}");
+    }
 }
 
 #[test]

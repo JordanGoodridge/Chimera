@@ -19,8 +19,11 @@ follow_up = [0.9, 15.0]
 hit_refire = 0.5
 miss_refire = 0.4
 miss_refire_other = 0.5
-# SDK melee push: 300 kg x in/s per hit point.
+# Measured 2026-10-17 (prop_damage.md Q2, probe server): every knife hit
+# deals bullet damage (DMG_BULLET | DMG_NEVERGIB: props take their bullet
+# multiplier, func_breakable x0.5) and pushes 300 kg x in/s, slash or stab.
 force = 300.0
+kind = "bullet"
 # WeaponArmorRatio 1.7 (M7: knife hits are generic, always covered).
 armor_ratio = 1.7
 quantum = 1.0
@@ -38,6 +41,7 @@ hit_refire = 1.1
 miss_refire = 1.0
 miss_refire_other = 1.0
 force = 300.0
+kind = "bullet"
 armor_ratio = 1.7
 quantum = 1.0
 sound_hit = "Weapon_Knife.Stab"

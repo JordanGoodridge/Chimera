@@ -320,8 +320,13 @@ p. Order:
    carries force (not generic, not burn/drown/time-based/crush/prevent-
    force/plasma/physgun... as physics_props.md 5.1) → apply J at p. A
    motion-disabled body ignores it (but see step 13).
-10. **Health**: unless events only, health := trunc(health − A′) (toward
-    zero). If ≤ 0 → **killed** (step 11). Otherwise continue.
+10. **Health**: unless events only, health := health − trunc(A′) (the
+    scaled amount truncated toward zero, then taken off; A arrives exact,
+    not whole points). If ≤ 0 → **killed** (step 11). Otherwise continue.
+    *Measured 2026-10-17 (probe server): a 30-health wooden crate (bullets
+    ×0.75) hit by exact 25.9 has 11 left (19.425 → 19; trunc(raw) first
+    would leave 12), by 1.9 29, by 0.9 30; a Glock round of 23.51 leaves 13,
+    not trunc(30 − 17.63) = 12.*
 11. **Killed**: if the physics body is motion-disabled, enable its motion
     (no OnMotionEnabled) and apply the push now; then **break** (section 7)
     with breaker = the **inflictor**; the prop stops taking damage.
@@ -342,9 +347,10 @@ Damage types CS:S produces (as far as the SDK shows):
 
 | Source | Type | Prop multiplier used |
 |---|---|---|
-| Gun bullets | bullet (Open question 1: buckshot bit on shotguns) | dmg.bullets |
-| Knife | Open question 2 (breakables.md Q2) | – |
-| HE grenade / env_explosion / exploding props | blast | dmg.explosive |
+| Gun bullets | bullet + never-gib (4098; measured: no buckshot bit on the M3/XM1014 pellets) | dmg.bullets |
+| Knife | bullet + never-gib (4098, slash and stab; measured) | dmg.bullets |
+| HE grenade / env_explosion | blast (64, env_explosion measured) | dmg.explosive |
+| Exploding props | blast + blast-surface (64 + 2^27, measured) | dmg.explosive |
 | Physics impacts (section 5) | crush (+ slash for spin) | none |
 | Entity flame | burn (+ direct on the burning prop) | none |
 | Break-on-touch | crush | none |
@@ -427,6 +433,14 @@ warning). The `player_vehicle` table is irrelevant to CS:S.
   Damage: crush, attacker = the object (the player who last touched it
   within 1 s if any), force = the player's post velocity × 85 kg (cvar
   `phys_impactforcescale` 1). Queued and applied after the physics step.
+  *Measured 2026-10-17 (Open question 6): CS:S's player keeps the
+  impacts: a 30 kg prop_physics crate thrown down onto a standing player
+  hits it as two contacts (the box's corners), 5 + 5 at 544 in/s, 5 + 10 at
+  827, 10 + 20 at 1219; a 500 kg cupboard 10 + 100 resting down onto the
+  head, 100 + 500 at 800, 500 + 500 at 1500 (crush, attacker = the prop).
+  Multiplayer props never hit a player (their collision group passes
+  through players): the same crate as a prop_physics_multiplayer did
+  nothing at any speed.*
 - **Stress (crushing)**: each physics update, the player's received stress
   is measured from contact forces with moveable, non-friendly, not
   player-held objects (in kg after dividing by gravity). With scale
@@ -434,8 +448,8 @@ warning). The `player_vehicle` table is irrelevant to CS:S.
   least one non-static object, stress' > 5 and one contact is a ≥ 500 kg
   object that is not the player's ground entity, and the player is not
   stuck in solid: 200 crush damage (attacker = world, force (0, 0,
-  −received·gravity·frame time)). Whether CS:S's player keeps this is Open
-  question 6.
+  −received·gravity·frame time)). *Not seen in CS:S (2026-10-17): the
+  cupboards above never did 200.*
 
 ### 7. Breaking
 
@@ -568,8 +582,15 @@ watermelon, rubber → none.
 - The explosion entity: scorch decal on a surface within 40 in below
   (8 in above → 32 in below the point), fireball temp entity (fireball,
   pushes client objects per 3.2 with its radius and magnitude), radius
-  damage = the game's (CS:S: grenades.md 5.3 with D = magnitude, R =
-  radius; Open question 3).
+  damage = the game's: grenades.md 5.3 with D = magnitude, R = radius and,
+  in CS:S, the bell **D · exp(−d² / 2σ²), σ = R/3** in place of the linear
+  step 4, whatever `sv_legacy_grenade_damage` says, and with no cut-off at R
+  (the bounds test of 5.3 decides who is reached). *Measured 2026-10-17
+  (Open question 3): env_explosions of magnitude 100 and radius 100 to a
+  crate's centre: 23.811 at 56.5 units, 8.459 at 74.11, 4.451 at 83.18,
+  1.998 at 93.27, 1.259 at 98.61, 0.555 at 107.44 (the bell within 0.01);
+  radius 250 and 150 and magnitude 50 the same shape; a gas can (25/80) to
+  a standing player: 2.7–5.0 at 30 units, 0.013–0.024 at 90.*
 - Map keyvalues `ExplodeDamage` / `ExplodeRadius` are the defaults that
   prop data overrides (all 0 in stock maps).
 
@@ -852,55 +873,113 @@ Bullet damages are examples, not CS:S weapon values.
 
 ## Open questions
 
+Answered 2026-10-17 on the probe server unless marked client only
+(`tools/css_probe/mashup_props.sp`, `propmeas.py`; the client-only parts
+are Windows capture C29 in docs/plans/active/windows-captures.md).
+
 1. **Bullet damage type** to props in CS:S (bullet bit? buckshot bit on
    the M3/XM1014?). Shared with breakables.md Q1. Check: shoot de_dust's
    `woodbarrel001`-style prop (Wooden.Large 50) — on de_cbble or cs_italy —
    with one Glock round at point blank and read health through an
    OnHealthChanged → logic test map; expect 50 − 0.75 × damage.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): every gun's bullet is
+   bullet + never-gib (type 4098), the M3's and XM1014's pellets too (no
+   buckshot bit, so no ×2): wood_crate001a (Wooden.Medium 30, bullets
+   ×0.75) shot with a Glock at 120 units: 23.51 → 13 left; func_breakable
+   ×0.5 (breakables.md Q1).*
 2. **Knife damage type** (bullet, slash or club) and whether the client
    treats knife hits on client props as "other" (50). Check: knife a
    `wood_crate001a` (health 30: club ×2 breaks it with one 15+ hit, slash
    ×1 doesn't).
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): slash and stab are bullet
+   + never-gib (4098): the crate takes them ×0.75 (20 → 15 left, 65 →
+   breaks), a func_breakable ×0.5. The force is 300 kg·in/s along the view
+   for both (not damage × 300). The client-prop half is Windows capture C29.*
 3. **CS:S radius damage** for exploding props (env_explosion goes through
    the game rules' radius damage): same formula as the HE grenade
    (grenades.md Q10)? Check: gas can on cs_militia next to a bot at
    measured distances.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): the bell D·exp(−d²/2σ²) with
+   σ = R/3, as the HE grenade at `sv_legacy_grenade_damage 0`, but for
+   env_explosion and exploding props also at 1; no cut-off at R. Numbers in
+   7.5.*
 4. **Client "other" impact damage** (50) and which effect types reach client
    props in CS:S (bullets certainly; knife, grenade bounce?). Check: knife a
    client-side cardboard (Cardboard.breakclient 10) vs a mug (Pottery 20).
+   *Client only: Windows capture C29.*
 5. **Gas can ignites players**: the onbreak-explode rule asks every
    combat character within 80 in to ignite for 30 s with the NPC-only rule,
    which the SDK's player refuses (specs/source/fire.md 4.2, Q3). Does
    CS:S's player override that? Check: break the de_inferno gas can next
    to a bot.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): no. A bot 20–90 units
+   from a breaking gas can took the blast (type blast + blast-surface,
+   attacker = the breaker) and no burn damage after it; no entityflame
+   appeared.*
 6. **Player stress (200 crush) and impact damage** from props: does CS:S's
    player keep the base rules? Check: drop a crate onto a bot from 390 in
    (≥ 10 by the table) and watch health.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): impacts
+   yes (two contacts per landing, section 6); the 200 stress crush was not
+   seen.*
 7. **Client break sounds**: client props and pieces queue none in the SDK;
    does breaking a bottle in CS:S make a sound beyond the bullet impact?
    Check by ear on cs_italy.
+   *Client only: Windows capture C29.*
 8. **Surface name with a trailing space** (`Glass ` on de_inferno's
    windows): does the engine trim it (glass, `Glass.Break`) or fall back to
    default (no break sound)? Check by ear.
+   *Client only (by ear): Windows capture C29.*
 9. **Round restart**: are broken server props respawned each round (not in
    CS:S's preserve list?) and does the client recreate its client props
    (the SDK does it only on level load)? Check: break a client bottle and a
    server crate, then restart the round.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): broken server props come back each
+   round (de_dust2's grain basket broken, then `mp_restartgame 1`: back with
+   20 health), and moved ones go back to their place. The client props'
+   half is Windows capture C29.*
 10. **`breakable_multiplayer`** default and existence in CS:S (`cvarlist`
     on a local server): if 0, pieces would be server-side.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): it exists, default 1
+   (`cvarlist break`: `breakable_multiplayer`, `breakable_disable_gib_limit`
+   0).*
 11. **Bullet impulses** per CS:S calibre (physics_props.md Q): needed for
     the extinguishers' 2250 threshold. Check: shoot cs_office's
     extinguisher with each pistol and see which unfreeze it.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): the force each hit hands the prop
+   (OnTakeDamage's damage force, phys_pushscale 1) is fixed by ammo, not by
+   damage: 9 mm (Glock, MP5, TMP; the Elites, whose shots missed, share
+   the ammo), .357 SIG (P228) and 5.7 mm
+   (Five-SeveN, P90) 2000; .45 ACP (USP, MAC-10, UMP45) 2100; buckshot 600 a
+   pellet; .50 AE, 5.56 and 7.62 mm (rifles, Scout, auto-snipers, M249) 2400;
+   .338 (AWP) 2800. cs_office's extinguisher (forcetoenablemotion 2250):
+   Glock and Five-SeveN hits leave it, a Deagle hit frees it
+   (OnMotionEnabled, it falls).*
 12. **Model box for size rules**: the auto mode (15³) and chunk size limit
     use the entity's collision box; I assumed it is the `.mdl` header's hull
     box. Check `ent_bbox`-style output on a cardboard box (24 placements,
     13.1×14.4×10.8 → mode 3).
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): the server's collision
+   box of a prop is the `.mdl` header's hull box exactly (pottery08a:
+   −5.0812 −4.9303 0 / 4.7794 4.9303 34.7496 both ways), so the rule reads
+   that box: pottery08a (3378.8, Pottery.Medium, no physicsmode) stays
+   server-side (mode 1), windowbreakable (3364.3) is removed as mode 3;
+   of 60 models within 2000–5500 every one sat on its side of 3375.*
 13. **Player-shadow contacts as impacts**: does a player walking into a
     health-1 glass prop (mode 1, glass table) break it through the impact
     rule? Check: walk and sprint into cs_militia's `wndw01`.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): a bot walking
+   (250) through a motion-disabled wndw01 (Glass.CSWindow2, health 1, mode
+   1) neither breaks nor damages it (multiplayer props don't touch players).
+   A prop_physics landing on a player does take the contact as an impact
+   with the player as attacker (a crate at 1219 in/s lost 5).*
 14. **OnAwakened on cs_office's phones/keyboards/trash cans**: do players
     bumping them (push-away impulses) wake and so break them? Check by
     walking into one.
+   *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`):
+   yes, a player walking into a sleeping one (cs_office's trash can,
+   spawnflags 257, at 250 units/s) wakes it: OnAwakened (activator the
+   prop) fires once, no damage.*
 
 ## For mashup's current code (docs/tech-debt.md "Model doors... Prop damage has no spec")
 

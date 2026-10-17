@@ -425,3 +425,46 @@ fn a_floor_just_beyond_the_ground_probe_is_not_ground() {
         );
     }
 }
+
+/// A flat floor whose top (z 0) is a prop's surface (`MapBrush::surface`
+/// set, as props' hulls are), or the world's.
+struct TopMap(bool);
+impl Plugin for TopMap {
+    fn build(&self, app: &mut App) {
+        let prop = self.0;
+        app.add_systems(Startup, move |mut commands: Commands| {
+            let (a, b) = (
+                to_engine(Vec3::new(-512.0, -512.0, -64.0)),
+                to_engine(Vec3::new(512.0, 512.0, 0.0)),
+            );
+            let mut top = MapBrush::from_box(a.min(b), a.max(b));
+            if prop {
+                top.surface = Some("wood".into());
+            }
+            commands.insert_resource(MapBrushes(vec![top]));
+        });
+    }
+}
+
+/// Measured (probe server, 2026-10-17; specs/cs_source/movement.md "Ground
+/// detection"): a bot placed still above de_dust2's static prop at (-312,
+/// 1416), whose flat top is at z -32, keeps the ground up to 2.031 units
+/// above it and falls from 2.0315: the 2-unit probe still finds a prop's
+/// surface it ends within the 1/32 back-off of (2 + 1/32 = 2.03125). A
+/// world brush is not found 2.01 above (the porch measurement).
+#[test]
+fn a_prop_top_within_the_back_off_past_the_ground_probe_is_ground() {
+    for (prop, gap, ground) in [(true, 2.025, true), (true, 2.04, false), (false, 2.01, false), (false, 1.99, true)] {
+        let mut sim = Sim::new(CsSim, (TopMap(prop), SourceMovementPlugin));
+        sim.set_tick_interval(TICK_INTERVAL);
+        sim.app.insert_resource(SourceMovementConfig::default());
+        let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, gap + 36.0)), movement::ID);
+        sim.ticks(3);
+        let feet = to_source(sim.position(p)).z - 36.0;
+        if ground {
+            assert!((feet - gap).abs() < 1e-3, "prop {prop} gap {gap}: held at {feet}");
+        } else {
+            assert!(feet < gap - 0.05, "prop {prop} gap {gap}: fell, at {feet}");
+        }
+    }
+}

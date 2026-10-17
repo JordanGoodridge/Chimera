@@ -47,7 +47,10 @@ punch_scale = 2.0
 falloff_step = 500.0
 # Hitgroup multipliers (measured M6).
 hitgroups = { head = 4.0, chest = 1.0, stomach = 1.25, arm = 1.0, leg = 0.75 }
-# UNMEASURED (Q8): the template's .50 AE impulse, kg x in/s.
+# The bullet's push, kg x in/s: CS:S's damage force by ammo type (measured
+# 2026-10-17 on the probe server, weapons.md Q8): 9 mm, .357 SIG and 5.7 mm
+# 2000, .45 ACP 2100, buckshot 600 a pellet, .338 2800, the rest (.50 AE,
+# 5.56 and 7.62 mm) 2400. Guns of other ammo set their own.
 impulse = 2400.0
 # Damage is truncated to whole hit points (M5).
 quantum = 1.0

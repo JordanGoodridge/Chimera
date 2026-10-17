@@ -721,7 +721,9 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   to a body point about 54 units over the feet (fit over 13 throws on
   de_dust2's open line: 23 → 95, 81 → 72, 132 → 49, 169 → 32, 285 → 4-5,
   none from 354). At 1: linear 100 − d/3.5 (44 → 89, 60 → 84, 81 → 75).
-  The thrower takes damage from its own grenade.
+  The thrower takes damage from its own grenade. Map explosions
+  (env_explosion, exploding props) keep the bell with σ = R/3 at either
+  setting, with no cut-off at R (2026-10-17, prop_damage.md Q3).
 - **Q12 flash (partial, 10-100 units):** facing the grenade: duration
   6.7-7.1 s, max alpha 255; side-on (90°): 4.7-4.9 s, 255; facing away
   (180°): 2.7-2.8 s, 200. `player_blind` fires for the victim and the

@@ -51,9 +51,9 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
 - map: Non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
 - logic: Logic spec choices where the original is unmeasured (tick rounding, trigger timing, use traces) (`source/logic/src/logic/world.rs`)
-- logic: Breakables: damage factors, window behaviour, what a propdata template fills in and the bullet-trace sparks/ricochet's look by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
-- logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking (`source/logic/src/logic/props.rs`)
-- logic: Prop damage parts left out or approximated (explosive_resist, buckshot doubling, break-on-touch...) (`source/logic/src/logic/prop_damage.rs`)
+- logic: Breakables: window pane facing and shards, sound draws, what a propdata template fills in and the bullet-trace sparks/ricochet's look are ours (`source/logic/src/logic/breakables.rs`)
+- logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking; a missing hardware block plays nothing (CS:S: a null sound) (`source/logic/src/logic/props.rs`)
+- logic: Prop damage parts left out or approximated (explosive_resist, break-on-touch, players' contacts, one impact per landing...) (`source/logic/src/logic/prop_damage.rs`)
 - logic: Fire: cvars as constants, simplified traces and our readings of the spec's open questions (`source/logic/src/logic/fire.rs`)
 - games/cs_source: Player physics shadow reaches its target in one step; heavy-prop and push limits are ours (`games/cs_source/src/game/shadow.rs`)
 - logic: Workaround for avian 0.7's stale "body disabled" flag when re-enabling a prop body (`source/logic/src/logic/bridge.rs`)

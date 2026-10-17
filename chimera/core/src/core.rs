@@ -312,7 +312,8 @@ pub struct Explosion {
     /// CS:S; `map::PlaceDecal::round`); others stay with the map.
     pub round_scorch: bool,
     /// Falloff override: a bell of this σ (m) instead of the explosion
-    /// rule's (`weapon::grenade::Blast::bell_sigma`); None: the rule's.
+    /// rule's (`weapon::grenade::Blast::bell_sigma`); None: the rule's,
+    /// its σ scaled with this radius.
     pub bell_sigma: Option<f32>,
     /// Armour override (`Blast::armor_ratio`); None: the rule's.
     pub armor_ratio: Option<f32>,
@@ -320,7 +321,8 @@ pub struct Explosion {
 
 /// How damage was dealt (Source damage types, as far as anything here
 /// tells them apart).
-#[derive(Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DamageKind {
     #[default]
     Generic,

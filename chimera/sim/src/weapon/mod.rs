@@ -908,8 +908,11 @@ pub struct Swing {
     /// After a miss: until this swing again, and until the other one.
     pub miss_refire: f32,
     pub miss_refire_other: f32,
-    /// Impulse per unit of damage, kg·m/s.
+    /// Impulse per hit, kg·m/s (CS:S's knife: 300 kg·in/s for a slash or
+    /// a stab alike, measured).
     pub force: f32,
+    /// The damage type its hits deal (CS:S's knife: bullet, measured).
+    pub kind: crate::core::DamageKind,
     /// As `DamageEffect::armor_ratio`; damage truncation as its `quantum`.
     pub armor_ratio: Option<f32>,
     pub quantum: f32,

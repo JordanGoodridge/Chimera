@@ -301,8 +301,8 @@ pub struct MeleeData {
     pub secondary: Option<SwingData>,
 }
 
-/// A `Swing` (lengths and damage in the units; `force` per damage point,
-/// mass x length/s).
+/// A `Swing` (lengths and damage in the units; `force` per hit, mass x
+/// length/s).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SwingData {
@@ -325,6 +325,9 @@ pub struct SwingData {
     pub miss_refire: f32,
     pub miss_refire_other: f32,
     pub force: f32,
+    /// The damage type its hits deal (default melee).
+    #[serde(default)]
+    pub kind: Option<crate::core::DamageKind>,
     #[serde(default)]
     pub armor_ratio: Option<f32>,
     #[serde(default)]
@@ -896,7 +899,8 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
             hit_refire: s.hit_refire,
             miss_refire: s.miss_refire,
             miss_refire_other: s.miss_refire_other,
-            force: s.force * len / dmg,
+            force: s.force * len,
+            kind: s.kind.unwrap_or(crate::core::DamageKind::Melee),
             armor_ratio: s.armor_ratio,
             quantum: s.quantum * dmg,
             sound_hit: s.sound_hit.clone(),

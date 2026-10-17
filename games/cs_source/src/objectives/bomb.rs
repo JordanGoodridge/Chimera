@@ -1132,9 +1132,8 @@ mod tests {
             (1411.1, 26.0),
             (1608.8, 11.0),
         ] {
-            let got = blast_damage_bell(rules.radius, sigma, reach, dist);
+            let got = blast_damage_bell(rules.radius, sigma, dist);
             assert!((got - want).abs() < 2.0, "{dist}: {got} not {want}");
         }
-        assert_eq!(blast_damage_bell(rules.radius, sigma, reach, reach), 0.0);
     }
 }

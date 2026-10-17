@@ -1538,6 +1538,15 @@ inaccuracy target.
   nodraw back face that stopped the AWP; the player-against-wall merge.*
 - **Q8 Ammo impulses** for physics props (shared with physics_props.md Q11):
   shoot a known-mass prop and measure Δv.
+  *Resolved 2026-10-17 (probe server: the damage force each hit hands a
+  prop's OnTakeDamage, phys_pushscale 1; prop_damage.md Q11): by ammo, not
+  damage: 9 mm, .357 SIG and 5.7 mm 2000 kg·in/s; .45 ACP 2100; buckshot
+  600 a pellet; .50 AE, 5.56 and 7.62 mm 2400; .338 2800 (per weapon:
+  Glock, P228, Five-SeveN, MP5, TMP, P90 2000; USP, MAC-10, UMP45 2100;
+  M3, XM1014 600; Deagle, Galil, FAMAS, AK-47, M4A1, SG552, AUG, Scout,
+  G3SG1, SG550, M249 2400; AWP 2800). The knife: 300 for a slash or a stab,
+  along the view, and its damage is bullet damage (prop_damage.md Q2).
+  Whether a player's death push uses the same force is capture C13.*
 - **Q9 Knife** damages, ranges, refire, backstab: M11.
   *Resolved (measured section, M11): 20/15 slash, 65/195 stab, refire, reach
   48/32 box sweep, backstab at ≤ 36° (dot ≥ 0.8).*

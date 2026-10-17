@@ -97,13 +97,10 @@ fn nuke_vent_breaks_from_one_bullet() {
     assert_eq!(sounds(&w), vec!["Breakable.Metal"]);
     assert!(w.find("vent").is_none(), "name cleared");
     assert!(w.fired.iter().any(|(_, e, o)| *e == vent && o == "OnBreak"));
-    // Deleted 7 ticks later (in tick 7's frame).
-    for _ in 0..7 {
-        w.frame(&NoCollision);
-        assert!(w.get(vent).is_some());
-    }
+    // Deleted at once: gone by the next frame (CS:S, measured 2026-10-17:
+    // a broken func_breakable is gone the next server frame).
     w.frame(&NoCollision);
-    assert!(w.get(vent).is_none(), "removed after 0.1 s");
+    assert!(w.get(vent).is_none(), "removed at once");
 }
 
 #[test]
@@ -133,7 +130,19 @@ fn damage_scaling_and_truncation() {
     let mut w = world();
     let wood = breakable(&mut w, &[("material", "1"), ("health", "50")], Vec3::splat(32.0));
     w.damage(wood, 35.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
-    assert_eq!(health(&w, wood), 32, "50 - 17.5 truncated");
+    assert_eq!(health(&w, wood), 33, "50 - trunc(17.5)");
+
+    // Measured 2026-10-17 (probe server, a material-0 func_breakable of
+    // 100, breakables.md Q1-Q2): a Glock round of 23.443 leaves 89, a knife
+    // slash (bullet damage) of 20 leaves 90, a stab of 65 leaves 68, an AWP
+    // round of 114.743 leaves 43; M3 pellets of 24.017 take 12 each, one
+    // of 23.997 takes 11.
+    for (amount, left) in [(23.443, 89), (20.0, 90), (65.0, 68), (114.743, 43), (24.017, 88), (23.997, 89)] {
+        let mut w = world();
+        let pane = breakable(&mut w, &[("material", "0"), ("health", "100")], Vec3::splat(32.0));
+        w.damage(pane, amount, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
+        assert_eq!(health(&w, pane), left, "{amount}");
+    }
 
     let mut w = world();
     let wood = breakable(&mut w, &[("material", "1"), ("health", "50")], Vec3::splat(32.0));

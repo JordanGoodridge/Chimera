@@ -72,14 +72,11 @@ pub struct GrenadesPlugin;
 impl Plugin for GrenadesPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Detonated>()
-            // Exploding props blast like the HE grenade (prop_damage.md
-            // 7.5: the game's radius damage; spec Q3).
-            // Linear: the bell is grenades' only (`sv_legacy_grenade_damage`
-            // names grenade damage).
-            .insert_resource(ExplosionRule(Blast {
-                bell_sigma: None,
-                ..he_blast()
-            }))
+            // Exploding props and env_explosions blast like the HE
+            // grenade (prop_damage.md 7.5: the game's radius damage):
+            // the bell with σ = R/3, `sv_legacy_grenade_damage` or not
+            // (measured 2026-10-17, prop_damage.md Q3).
+            .insert_resource(ExplosionRule(he_blast()))
             .init_resource::<crate::weapon::grenade::LegacyBlastDamage>()
             .init_resource::<Particles>()
             .init_resource::<FxRng>()
@@ -148,6 +145,7 @@ pub fn he_blast() -> Blast {
         damage: 100.0 * HP,
         radius: 350.0 * UNIT,
         bell_sigma: Some(350.0 / 3.0 * UNIT),
+        legacy: true,
         // Measured (Q4): the HE script's WeaponArmorRatio, × 0.5.
         armor_ratio: Some(1.475),
         quantum: HP,
