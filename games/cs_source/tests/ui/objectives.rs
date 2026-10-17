@@ -592,6 +592,32 @@ fn hostages(sim: &mut Sim) -> Vec<(Entity, Hostage, Vec3)> {
         .collect()
 }
 
+/// Spec 9 "Spawn" (measured): a hostage placed above the floor falls onto
+/// it and rests 1/32 unit above it, whatever the local player moves with
+/// (one flying with noclip gave them noclip: they hung in the air).
+#[test]
+fn hostages_fall_onto_the_floor_while_the_player_flies() {
+    use crate::stack::{
+        core::LocalPlayer,
+        games::cs_source::movement::{self, SourceMovementPlugin},
+        movement::noclip,
+        slots::MovementSlot,
+    };
+    let mut map = hostage_map();
+    map.hostages[0].feet.y = 40.0 * 0.0254;
+    let mut sim = sim_with(map, SourceMovementPlugin);
+    let flyer = sim.spawn_character(Vec3::new(0.0, 3.0, 12.0), noclip::ID);
+    sim.app.world_mut().entity_mut(flyer).insert((Team(2), LocalPlayer));
+    character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 1);
+    rounds(&mut sim);
+    sim.seconds(1.5);
+    let (h, _, _) = hostages(&mut sim).pop().expect("hostage spawned");
+    assert_eq!(sim.app.world().get::<MovementSlot>(h).map(|m| m.0), Some(movement::ID));
+    assert!(sim.state(h).on_ground);
+    let feet = (sim.position(h).y - sim.state(h).hull_min.y.abs()) / 0.0254;
+    assert!((feet - 0.031_25).abs() < 0.01, "feet {feet} units: on the floor");
+}
+
 #[test]
 fn a_hostage_follows_its_leader_to_the_rescue_zone() {
     let mut sim = sim(hostage_map());

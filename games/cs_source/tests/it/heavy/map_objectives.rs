@@ -581,3 +581,57 @@ fn office_hostage_shots_from_150_units() {
     eprintln!("{matched} of 10 shots crossed the boxes CS:S's did");
     assert!(moved.is_empty(), "our shots crossed other boxes: {moved:#?}");
 }
+
+/// Where every hostage stands once spawned, against CS:S's origins on the
+/// probe server (`mashup_hostages` after a map load, 2026-10-17; spec 9,
+/// "Spawn"): on the floor within a unit, on six stock hostage maps. The
+/// local player flies with noclip meanwhile: hostages keep the game's own
+/// movement (they took the player's and hung at the map's origins,
+/// cs_office's first two 36 units up).
+#[test]
+fn hostages_stand_where_css_puts_them() {
+    use crate::stack::{core::LocalPlayer, movement::noclip, objectives::hostages::spawn_all};
+    #[rustfmt::skip]
+    let measured: &[(&str, &[[f32; 3]])] = &[
+        ("cs_office", &[[1784.0, 734.0, -159.9], [1744.0, 802.0, -159.9], [2048.0, -344.0, -159.9], [1984.0, -344.0, -159.9]]),
+        ("cs_italy", &[[976.0, 2392.0, 0.0], [833.0, 2339.0, 128.0], [944.0, 2320.0, 0.0], [917.0, 2336.0, 128.0]]),
+        ("cs_assault", &[[6718.3, 3895.2, -607.9], [6639.3, 3889.9, -607.9], [6482.5, 3839.5, -607.9], [6537.5, 3836.8, -607.9]]),
+        ("cs_compound", &[[1578.8, -1581.6, 16.0], [1768.0, -1465.0, 16.0], [1776.0, -1592.0, 16.0]]),
+        ("cs_havana", &[[80.0, 814.0, 248.0], [348.0, 817.0, 248.0], [128.0, 1280.0, 248.0], [240.0, 1280.0, 248.0]]),
+        ("cs_militia", &[[608.0, 896.0, -151.9], [552.0, 864.0, -151.9], [1256.0, 400.0, -151.9], [832.0, 600.0, -151.9]]),
+    ];
+    let (mut report, mut bad) = (Vec::new(), 0);
+    for (name, theirs) in measured {
+        let Some(map) = load(name) else { return };
+        let mut sim = sim(map);
+        let flyer = sim.spawn_character(Vec3::new(0.0, 50.0, 0.0), noclip::ID);
+        sim.app.world_mut().entity_mut(flyer).insert(LocalPlayer);
+        spawn_all(sim.app.world_mut());
+        sim.seconds(2.0);
+        let ours: Vec<Entity> = {
+            let w = sim.app.world_mut();
+            w.query_filtered::<Entity, With<Hostage>>().iter(w).collect()
+        };
+        assert_eq!(ours.len(), theirs.len(), "{name}: hostages");
+        for e in ours {
+            let p = sim.position(e) - Vec3::Y * LIFT;
+            // Engine metres to Source units (x, -z, y).
+            let feet = Vec3::new(p.x, -p.z, p.y) / UNIT;
+            let want = theirs
+                .iter()
+                .map(|w| Vec3::from_array(*w))
+                .min_by(|a, b| a.xy().distance(feet.xy()).total_cmp(&b.xy().distance(feet.xy())))
+                .unwrap();
+            let off = feet - want;
+            let ok = off.length() < 1.0 && sim.state(e).on_ground;
+            bad += usize::from(!ok);
+            report.push(format!(
+                "{name}: ours {feet:.2} theirs {want:.1} off {off:.2}{}",
+                if ok { "" } else { "  <- wrong" }
+            ));
+        }
+    }
+    let report = report.join("\n");
+    eprintln!("{report}");
+    assert_eq!(bad, 0, "{report}");
+}
