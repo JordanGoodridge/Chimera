@@ -245,8 +245,12 @@ Only `Reflect`-registered types are visible; register new core components in
   the open dialog as keys would (`focus <cvar|map|bots|botcount|botteam|
   difficulty|aspect>`, `row <n>` (the page's nth row), `open` a focused combo box's list, `down`, `up`, `enter`,
   `space`, `escape`, `tab`, `backtab`, `type <text>`, `pick <n>`, `sheet
-  <n>`) and prints the focused control: a drop-down open in a screenshot
-  is `+menu newgame +menuinput open`. `vgui_windows` lists the frames
+  <n>`, `scroll <rows>` the open list as the wheel) and prints the focused
+  control: a drop-down open in a screenshot is `+menu newgame +menuinput
+  open` (after `+menu`, `+wait 10` before inputs that need the page drawn).
+  `ui_click <x> <y>` and `ui_drag <x0> <y0> <x1> <y1> [<frames>]` drive the
+  real pointer path (Bevy's input, `Interaction`) in window pixels over the
+  remote console: a scroll bar's thumb dragged, a drop-down's box clicked. `vgui_windows` lists the frames
   (place, size, stacking); `vgui_windows <frame> <x> <y> [<wide> <tall>]`
   moves one as a title-bar drag would (and sizes a sizeable one), e.g.
   `+openserverbrowser lan +wait 30 +vgui_windows servers 40 30 760 520`.
@@ -654,10 +658,15 @@ and instructions per tick (stable under load: compare those between
 runs), its main thread's share, bytes a second to each client, each
 client's CPU per frame (headless), memory, the share of character pairs
 in each other's PVS (what Source-style culling would keep), updates
-choked by each client's `rate`. It asserts, at the default size, p50
-under two thirds of the 66-tick budget, p99 under it, under 50M
-instructions a tick (~25M in the dev build), and under 40 KB/s a
-client. Bigger runs print the same table:
+choked by each client's `rate`. It asserts, at the default size, the
+server's instructions a tick (p50 and mean under 35M, p99 under 75M;
+~28M in the dev build, within 5% from load 1 to 5 per CPU), CPU time
+p50 under two thirds of the 66-tick budget and p99 under it only while
+the 1-minute load average stays under half the CPUs (CPU time a tick
+grows with load: 6.5 ms at 1.2 per CPU, 10.5 ms at 3.8, same
+instructions) or where there are no hardware counters (Windows: the
+mean), and under 40 KB/s a client. Instructions count the whole
+process: run it alone in its process (nextest does). Bigger runs print the same table:
 `MASHUP_CAPACITY_PLAYERS=64 MASHUP_CAPACITY_CLIENTS=8
 MASHUP_CAPACITY_MAP=mg_jacks_multigames_v1 MASHUP_CAPACITY_SECONDS=30
 cargo test --profile playtest --features dev --test it heavy::net_capacity

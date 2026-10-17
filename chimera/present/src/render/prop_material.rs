@@ -13,6 +13,10 @@
 //! alpha, bound as `envmap_mask`), and the model
 //! shaders' `$detail` (every blend mode, 5 and 6 after lighting), `$selfillum`
 //! (base alpha or `$selfillummask`) and `$basetexturetransform`.
+//!
+//! Faces: back ones culled except on `$nocull` materials, front ones on
+//! mirrored (left-handed) view models, in the depth prepass as in the main
+//! pass (`face_cull`).
 
 use bevy::{
     asset::embedded_asset, prelude::*, reflect::TypePath, render::render_resource::AsBindGroup, shader::ShaderRef,
@@ -152,12 +156,23 @@ impl Material for PropMaterial {
                 targets: Vec::new(),
             });
         }
-        if key.bind_group_data.double_sided {
-            descriptor.primitive.cull_mode = None;
-        } else if key.bind_group_data.cull_front {
-            descriptor.primitive.cull_mode = Some(bevy::render::render_resource::Face::Front);
-        }
+        descriptor.primitive.cull_mode = face_cull(key.bind_group_data.double_sided, key.bind_group_data.cull_front);
         Ok(())
+    }
+}
+
+/// The faces a world or prop pipeline culls: back faces (Source culls them
+/// on everything but `$nocull` materials), none when `double_sided`, front
+/// ones on a mirrored model. Set on every pipeline, the depth prepass's too:
+/// Bevy's main pass culls back faces by default but its prepass culls
+/// nothing, so a back face left in the prepass's depth hid what lies behind
+/// it while the main pass culled it (the sky or black showed through).
+pub(crate) fn face_cull(double_sided: bool, cull_front: bool) -> Option<bevy::render::render_resource::Face> {
+    use bevy::render::render_resource::Face;
+    match (double_sided, cull_front) {
+        (true, _) => None,
+        (false, true) => Some(Face::Front),
+        (false, false) => Some(Face::Back),
     }
 }
 
@@ -190,5 +205,31 @@ impl Plugin for PropMaterialPlugin {
         bevy::shader::load_shader_library!(app, "dither.wgsl");
         bevy::asset::load_internal_asset!(app, DITHER_PREPASS_SHADER, "prop_dither_prepass.wgsl", Shader::from_wgsl);
         app.add_plugins((super::fog::FogShaderPlugin, MaterialPlugin::<PropMaterial>::default()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::render::render_resource::{Face, FrontFace, RenderPipelineDescriptor};
+
+    /// Back faces are culled except on `$nocull` (double-sided) materials,
+    /// front ones on mirrored models.
+    #[test]
+    fn culls_back_faces_unless_two_sided() {
+        assert_eq!(face_cull(false, false), Some(Face::Back));
+        assert_eq!(face_cull(true, false), None);
+        assert_eq!(face_cull(true, true), None);
+        assert_eq!(face_cull(false, true), Some(Face::Front));
+    }
+
+    /// Why `specialize` must set the cull mode itself: a pipeline Bevy
+    /// builds without one (its depth prepass's) culls nothing, with
+    /// counter-clockwise front faces (the map's and models' winding).
+    #[test]
+    fn a_pipeline_left_alone_culls_nothing() {
+        let d = RenderPipelineDescriptor::default();
+        assert_eq!(d.primitive.cull_mode, None);
+        assert_eq!(d.primitive.front_face, FrontFace::Ccw);
     }
 }

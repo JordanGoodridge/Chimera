@@ -28,7 +28,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source: Loose items' landing dust is the bullet dust puff over a guessed speed, no spec (`games/cs_source/src/game/impact_effects.rs`)
 - map: Particles blend in linear space and sort per material mesh (`chimera/present/src/render/particles.rs`)
 - weapon: Hitgroup fallback by height bands; single-player hitboxes follow the drawn (eased) look (`chimera/world/src/map/bodies.rs`)
-- map: Runtime decals: none on characters, lit decals as modulate stains, 2x modulate capped (`chimera/present/src/render/decal.rs`)
+- map: Runtime decals: none on characters, lit decals as modulate stains (probe-lit on breakable glass), 2x modulate capped (`chimera/present/src/render/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
 - render: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`chimera/present/src/render/world_material.rs`)
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`games/cs_source/src/game/player_anim.rs`)
@@ -50,7 +50,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
 - map: Displacement brushes matched by plane and centre; non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
 - logic: Logic spec choices where the original is unmeasured (tick rounding, trigger timing, use traces) (`source/logic/src/logic/world.rs`)
-- logic: Breakables: damage factors and window behaviour by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
+- logic: Breakables: damage factors, window behaviour and what a propdata template fills in by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
 - logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking (`source/logic/src/logic/props.rs`)
 - logic: Prop damage parts left out or approximated (explosive_resist, buckshot doubling, break-on-touch...) (`source/logic/src/logic/prop_damage.rs`)
 - logic: Fire: cvars as constants, simplified traces and our readings of the spec's open questions (`source/logic/src/logic/fire.rs`)

@@ -366,6 +366,9 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
     }
     data.shell_physics = Some(super::view_anim::shell_physics());
     // Props' break pieces are in already (`props::add_static_props`).
+    // Breakable brushes' propdata templates first: one may name a gib
+    // list.
+    super::breakables::apply_brush_templates(&mut materials, &mut data.entities);
     for set in super::breakables::load_gibs(&mut materials, &data.entities, &mut data.warnings) {
         if !data.gibs.iter().any(|g| g.name.eq_ignore_ascii_case(&set.name)) {
             data.gibs.push(set);

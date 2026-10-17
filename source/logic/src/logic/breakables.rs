@@ -58,8 +58,25 @@
 //! tiles as concrete, Material None silent) by the shell bounce rule of
 //! specs/cs_source/view_models.md 8 (one bounce in 6, entry volume × min(1,
 //! vertical speed / 450 u/s), pitch from the entry's range one time in 4, else
-//! its start), breakables.md Q9; propdata templates and the
-//! GlassBreak/BulletProof decals are not done. Why it's OK for now: One bullet
+//! its start), breakables.md Q9. "propdata" templates (the game's loader
+//! resolves them into `PROP_HEALTH_KEY`/`PROP_DAMAGE_KEY`/`PROP_GIBS_KEY`):
+//! the spec says only that one "fills in health and other values first", so
+//! ours: the template's health (when it sets one) replaces the map's, its
+//! bullet/club/blast multipliers replace func_breakdmg_*, its chunk list
+//! replaces the material's gibs (a map "gibmodel" still wins) with the
+//! spec's brush-size count, not the template's `breakable_count`; its
+//! explosion keys, physics mode and damage table are not read; the numbers
+//! 2..23 follow the public Hammer list (the spec names 1 and 24); windows
+//! take a template's health but their pane hits stay unscaled. So a template
+//! with health makes a health-0 brush damageable (cs_havana's 10 wooden
+//! func_breakables, Wooden.Large: 50) and de_piranesi's Wooden.Tiny crates
+//! take 6, not their map 30: unchecked against the game. Glass and
+//! bulletproof glass take the spec's "GlassBreak"/"BulletProof" decals
+//! (the game picks them: CS:S `game::breakables::impact_decal`) from bullets
+//! and the knife alike; bulletproof
+//! glass loses health and fires OnHealthChanged like any breakable but
+//! never breaks; its 50 % ricochet effect and the computer material's
+//! sparks on bullet traces are not done. Why it's OK for now: One bullet
 //! or a knife opens de_nuke's vents; cs_office windows lose the shot panes; the
 //! spec's numeric cases pass.
 
@@ -70,7 +87,7 @@ use super::movers::Attached;
 use super::value::Value;
 use super::world::{Effect, EntId, LogicWorld, Who, box_touches, place_hull};
 use crate::core::DamageKind;
-use crate::map::entities::entity_rotation;
+use crate::map::entities::{PROP_DAMAGE_KEY, PROP_GIBS_KEY, PROP_HEALTH_KEY, entity_rotation};
 
 /// func_breakdmg_bullet: bullets do half damage.
 pub const DMG_MOD_BULLET: f32 = 0.5;
@@ -175,6 +192,17 @@ impl Material {
 
     pub fn is_glass(self) -> bool {
         matches!(self, Self::Glass | Self::UnbreakableGlass)
+    }
+
+    /// A breakable brush's material from its class and keyvalues
+    /// ("material"; func_breakable_surf glass, surfacetype 0, is always
+    /// glass).
+    pub fn of_entity(classname: &str, material: i32, surfacetype: i32) -> Self {
+        if classname.eq_ignore_ascii_case("func_breakable_surf") && surfacetype != 1 {
+            Self::Glass
+        } else {
+            Self::from_index(material)
+        }
     }
 
     /// The sound entry its gibs make when they bounce (the spec's break
@@ -386,18 +414,18 @@ pub struct Breakable {
     /// Break on pressure (flag 4): who stood on it; the break is
     /// scheduled once someone did.
     pub pressure: Option<Who>,
+    /// Damage multipliers (bullet, club, blast): the func_breakdmg_*
+    /// values, or its propdata template's.
+    pub dmg: [f32; 3],
 }
 
 impl Breakable {
     pub(super) fn spawn(w: &mut LogicWorld, id: EntId) -> Breakable {
         let e = w.get(id).unwrap();
-        let mut material = Material::from_index(e.kv_i("material"));
+        let material = Material::of_entity(&e.classname, e.kv_i("material"), e.kv_i("surfacetype"));
         let surf = e.classname.eq_ignore_ascii_case("func_breakable_surf");
         let window = surf.then(|| {
             let tile = e.kv_i("surfacetype") == 1;
-            if !tile {
-                material = Material::Glass;
-            }
             let fragility = e.kv("fragility").map_or(100.0, |_| e.kv_f("fragility"));
             Box::new(Window::new(
                 e.vector_kv("lowerleft"),
@@ -409,7 +437,17 @@ impl Breakable {
                 fragility,
             ))
         });
-        let mut health = e.kv_i("health");
+        // A "propdata" template fills in health and the damage
+        // multipliers first (the game's loader resolves it into these
+        // keys, `PROP_HEALTH_KEY`/`PROP_DAMAGE_KEY`); else the map's
+        // health and the func_breakdmg_* multipliers.
+        let mut health = e.kv(PROP_HEALTH_KEY).map_or_else(|| e.kv_i("health"), super::value::atoi);
+        let mut dmg = [DMG_MOD_BULLET, DMG_MOD_CLUB, DMG_MOD_BLAST];
+        if let Some(v) = e.kv(PROP_DAMAGE_KEY) {
+            for (i, x) in v.split_whitespace().take(3).enumerate() {
+                dmg[i] = super::value::atof(x);
+            }
+        }
         let trigger_only = e.has_flag(1) && !surf;
         let damageable = !(health == 0 || trigger_only);
         if health == 0 && material.is_glass() {
@@ -428,6 +466,7 @@ impl Breakable {
             broken: false,
             window,
             pressure: None,
+            dmg,
         }
     }
 }
@@ -476,12 +515,13 @@ pub fn gib_count(size: Vec3, performance_mode: i32) -> usize {
     }
 }
 
-/// Scale damage by its kind (spec "Damage" step 3).
-pub fn scale_damage(amount: f32, kind: DamageKind) -> f32 {
+/// Scale damage by its kind (spec "Damage" step 3) with the multipliers
+/// (bullet, club, blast; `Breakable::dmg`).
+pub fn scale_damage(amount: f32, kind: DamageKind, dmg: [f32; 3]) -> f32 {
     match kind {
-        DamageKind::Bullet => amount * DMG_MOD_BULLET,
-        DamageKind::Melee => amount * DMG_MOD_CLUB,
-        DamageKind::Blast => amount * DMG_MOD_BLAST,
+        DamageKind::Bullet => amount * dmg[0],
+        DamageKind::Melee => amount * dmg[1],
+        DamageKind::Blast => amount * dmg[2],
         _ => amount,
     }
 }
@@ -518,11 +558,14 @@ impl LogicWorld {
             window_hit(self, id, amount, kind, attacker, point, dir);
             return true;
         }
-        let (damageable, material) = (b.damageable, b.material);
+        let (damageable, material, dmg) = (b.damageable, b.material, b.dmg);
         let Some(e) = self.get(id) else { return true };
         let min = e.kv_f("minhealthdmg");
         let filter = e.kv("damagefilter").unwrap_or("").to_string();
-        if !damageable || amount < min || material == Material::UnbreakableGlass {
+        // Unbreakable glass takes damage like any other (health, outputs,
+        // its damage sound while above 0) but never breaks
+        // (`break_entity`).
+        if !damageable || amount < min {
             return true;
         }
         if !filter.is_empty()
@@ -531,7 +574,7 @@ impl LogicWorld {
         {
             return true;
         }
-        let a = scale_damage(amount, kind);
+        let a = scale_damage(amount, kind, dmg);
         let b = breakable(self, id).unwrap();
         let new = (b.health as f32 - a).trunc() as i32;
         let changed = new != b.health;
@@ -620,9 +663,12 @@ impl LogicWorld {
             2 => super::triggers::forward(e.vector_kv("gibdir")) * GIB_DIRECTED_SPEED,
             _ => Vec3::ZERO,
         };
+        // The map's "gibmodel", else its propdata template's chunk list,
+        // else the material's.
         let set = e
             .kv("gibmodel")
             .filter(|g| !g.is_empty())
+            .or_else(|| e.kv(PROP_GIBS_KEY).filter(|g| !g.is_empty()))
             .map_or_else(|| material.gibs().to_string(), str::to_string);
         let mode = e.kv_i("PerformanceMode");
         let (lo, hi) = local_bounds(self, id);

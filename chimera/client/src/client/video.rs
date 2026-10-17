@@ -7,15 +7,18 @@
 //! `fov_desired` (`PlayerFov`: the world camera's unzoomed field of view, 75
 //! to 90, CS:S's 90); the video cvars (`mat_vsync`, `mashup_fullscreen`,
 //! `mashup_resolution`, `mat_antialias`; archived) set the window's present
-//! mode, mode and size when they change (not in `--window` or automated runs)
-//! and every camera's MSAA; the texture settings (`TextureSettings`:
+//! mode, mode and size when they change (not in `--window` or automated runs;
+//! `window_mode`: full screen in the primary monitor's mode of that size,
+//! else of its own size, else borderless; the size only for a window) and
+//! every camera's MSAA; the options' video tab shows the window as it is
+//! (`resolutions` lists its size with the monitor's modes, `mode_value`); the texture settings (`TextureSettings`:
 //! `mat_picmip`, `mat_trilinear`, `mat_forceaniso`) each repeating, mipmapped
 //! texture takes as it is added (`apply_texture_settings`, before it goes to
 //! the GPU; so from the next map load).
 
 use bevy::{
     prelude::*,
-    window::{MonitorSelection, PresentMode, PrimaryMonitor, PrimaryWindow, VideoModeSelection, WindowMode},
+    window::{MonitorSelection, PresentMode, PrimaryMonitor, PrimaryWindow, VideoMode, VideoModeSelection, WindowMode},
 };
 
 use crate::console::{Console, ConsoleAppExt, resource_cvar};
@@ -295,8 +298,10 @@ pub fn parse_resolution(s: &str) -> Option<UVec2> {
 }
 
 /// The window sizes to offer: the primary monitor's modes, largest
-/// first, else common ones.
-pub fn resolutions(monitors: &[(UVec2, Vec<UVec2>)]) -> Vec<String> {
+/// first, else common ones; and the window's own size (`current`) when
+/// it isn't one of them, as CS:S lists the display's modes plus the one
+/// it runs at.
+pub fn resolutions(monitors: &[(UVec2, Vec<UVec2>)], current: Option<UVec2>) -> Vec<String> {
     let mut sizes: Vec<UVec2> = monitors.iter().flat_map(|(_, modes)| modes.iter().copied()).collect();
     if sizes.is_empty() {
         sizes = [
@@ -317,6 +322,7 @@ pub fn resolutions(monitors: &[(UVec2, Vec<UVec2>)]) -> Vec<String> {
         }
     }
     sizes.retain(|s| s.x >= 640 && s.y >= 480);
+    sizes.extend(current.filter(|c| c.x > 0 && c.y > 0));
     sizes.sort_by_key(|s| (std::cmp::Reverse(s.x), std::cmp::Reverse(s.y)));
     sizes.dedup();
     sizes.iter().map(|s| format!("{}x{}", s.x, s.y)).collect()
@@ -333,6 +339,44 @@ pub fn monitor_modes(monitors: &Query<&bevy::window::Monitor, With<PrimaryMonito
             )
         })
         .collect()
+}
+
+/// `mashup_fullscreen`'s value for a window mode: 0 windowed, 1 full
+/// screen, 2 borderless full screen.
+pub fn mode_value(mode: &WindowMode) -> u8 {
+    match mode {
+        WindowMode::Windowed => 0,
+        WindowMode::Fullscreen(..) => 1,
+        WindowMode::BorderlessFullscreen(_) => 2,
+    }
+}
+
+/// The window mode `mashup_fullscreen` asks for: 0 windowed, 2 borderless
+/// on the window's monitor, 1 full screen in the primary monitor's mode
+/// of `size` (else of the monitor's own size; the highest refresh rate);
+/// borderless when the monitor has neither (Bevy would warn and leave
+/// the window as it was). `monitor`: its size and modes, when known.
+pub fn window_mode(fullscreen: u8, size: Option<UVec2>, monitor: Option<(UVec2, &[VideoMode])>) -> WindowMode {
+    match fullscreen {
+        1 => {
+            let Some((native, modes)) = monitor else {
+                return WindowMode::Fullscreen(MonitorSelection::Primary, VideoModeSelection::Current);
+            };
+            let best = |want: UVec2| {
+                modes
+                    .iter()
+                    .filter(|m| m.physical_size == want)
+                    .max_by_key(|m| (m.refresh_rate_millihertz, m.bit_depth))
+                    .copied()
+            };
+            match size.and_then(best).or_else(|| best(native)) {
+                Some(m) => WindowMode::Fullscreen(MonitorSelection::Primary, VideoModeSelection::Specific(m)),
+                None => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+            }
+        }
+        2 => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+        _ => WindowMode::Windowed,
+    }
 }
 
 /// Set the window as the video cvars say, when they change. Runs given a
@@ -360,26 +404,16 @@ fn apply_video(
         window.present_mode = present;
     }
     let size = parse_resolution(&settings.resolution);
-    let mode = match settings.fullscreen {
-        1 => {
-            // The monitor's mode of that size, else its current one.
-            let modes = monitors
-                .iter()
-                .flat_map(|m| m.video_modes.iter())
-                .filter(|v| Some(v.physical_size) == size);
-            let best = modes.max_by_key(|v| (v.refresh_rate_millihertz, v.bit_depth)).copied();
-            WindowMode::Fullscreen(
-                MonitorSelection::Current,
-                best.map_or(VideoModeSelection::Current, VideoModeSelection::Specific),
-            )
-        }
-        2 => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
-        _ => WindowMode::Windowed,
-    };
+    let monitor = monitors.iter().next();
+    let mode = window_mode(
+        settings.fullscreen,
+        size,
+        monitor.map(|m| (UVec2::new(m.physical_width, m.physical_height), m.video_modes.as_slice())),
+    );
     if window.mode != mode {
         window.mode = mode;
     }
-    if settings.fullscreen != 2
+    if matches!(mode, WindowMode::Windowed)
         && let Some(size) = size
         && window.resolution.physical_size() != size
     {
@@ -390,6 +424,38 @@ fn apply_video(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each display mode gives exactly that mode: full screen in the
+    /// monitor's mode of the size asked for (its fastest refresh), else of
+    /// the monitor's own size, else borderless rather than nothing; and a
+    /// window's mode reads back as the same value.
+    #[test]
+    fn display_modes_give_exactly_that_mode() {
+        let mode = |w, h, hz| VideoMode {
+            physical_size: UVec2::new(w, h),
+            bit_depth: 32,
+            refresh_rate_millihertz: hz,
+        };
+        let modes = [mode(1920, 1080, 60_000), mode(1920, 1080, 144_000), mode(1280, 720, 60_000)];
+        let native = UVec2::new(1920, 1080);
+        let monitor = Some((native, &modes[..]));
+        assert_eq!(window_mode(0, Some(native), monitor), WindowMode::Windowed);
+        assert_eq!(
+            window_mode(2, None, monitor),
+            WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+        );
+        let full = |m| WindowMode::Fullscreen(MonitorSelection::Primary, VideoModeSelection::Specific(m));
+        assert_eq!(window_mode(1, Some(UVec2::new(1280, 720)), monitor), full(modes[2]));
+        assert_eq!(window_mode(1, None, monitor), full(modes[1]), "as started: the monitor's size, fastest");
+        assert_eq!(window_mode(1, Some(UVec2::new(1000, 700)), monitor), full(modes[1]));
+        assert_eq!(
+            window_mode(1, None, Some((native, &[]))),
+            WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+        );
+        for v in 0..=2 {
+            assert_eq!(mode_value(&window_mode(v, None, monitor)), v);
+        }
+    }
 
     /// Texture detail and filtering set a map texture's sampler; pictures
     /// that clamp (HUD, UI) or have no mips are left alone.

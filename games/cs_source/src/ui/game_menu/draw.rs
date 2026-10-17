@@ -1008,58 +1008,12 @@ pub(super) fn coord(c: crate::map::hud::HudCoord) -> f32 {
     }
 }
 
-/// A scroll bar `h` tall at (x, y): arrows at the ends, a thumb for the
-/// shown part; clicks scroll a row (arrows) or a page (the track).
-pub(super) fn scroll_bar(commands: &mut Commands, parent: Entity, look: &Look, (x, y, h): (f32, f32, f32), (len, shown, first): (usize, usize, usize)) {
-    let w = look.number("ScrollBar.Wide", 17.0);
-    let fg = look.color("ScrollBarButton.FgColor", [255, 255, 255, 255]);
-    let track = commands
-        .spawn((place(look, x, y, w, h), BackgroundColor(look.sunken_bg()), ChildOf(parent)))
-        .id();
-    let font = look.font("Marlett", (12.0, false));
-    for (ty, text, step) in [(0.0, "\u{25B2}", -1), (h - w, "\u{25BC}", 1)] {
-        let b = commands
-            .spawn((
-                Node {
-                    border: UiRect::all(px(1.0)),
-                    ..place(look, 0.0, ty, w, w)
-                },
-                bevel(look, true),
-                Hit(Target::Scroll, step),
-                Button,
-                Interaction::default(),
-                ChildOf(track),
-            ))
-            .id();
-        label(commands, b, look, (0.0, 0.0, w - 2.0, w - 2.0), text, font.clone(), fg, 0);
-    }
-    let room = h - 2.0 * w;
-    if len > shown && room > 8.0 {
-        let thumb_h = (room * shown as f32 / len as f32).max(10.0);
-        let at = w + (room - thumb_h) * first as f32 / (len - shown) as f32;
-        let page = shown as i32;
-        commands.spawn((
-            place(look, 0.0, w, w, at - w),
-            Hit(Target::Scroll, -page),
-            Button,
-            Interaction::default(),
-            ChildOf(track),
-        ));
-        commands.spawn((
-            place(look, 0.0, at + thumb_h, w, h - w - at - thumb_h),
-            Hit(Target::Scroll, page),
-            Button,
-            Interaction::default(),
-            ChildOf(track),
-        ));
-        commands.spawn((
-            Node {
-                border: UiRect::all(px(1.0)),
-                ..place(look, 1.0, at, w - 2.0, thumb_h)
-            },
-            bevel(look, true),
-            BackgroundColor(look.color("ScrollBarSlider.BgColor", [255, 255, 255, 64])),
-            ChildOf(track),
-        ));
-    }
+/// Whose scroll bar thumb (`widgets::ScrollThumb`): the open page's list.
+pub(super) const MENU_SCROLL: widgets::WindowId = "menu";
+
+/// The open list's scroll bar (`widgets::scroll_bar`): arrows and the
+/// track scroll (`Target::Scroll`, by its step), the thumb drags
+/// (`MENU_SCROLL`).
+pub(super) fn scroll_bar(commands: &mut Commands, parent: Entity, look: &Look, rect: (f32, f32, f32), list: (usize, usize, usize)) {
+    widgets::scroll_bar(commands, parent, look, rect, list, (MENU_SCROLL, 0), |step| Hit(Target::Scroll, step));
 }
