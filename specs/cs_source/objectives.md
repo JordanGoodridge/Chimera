@@ -171,6 +171,7 @@ economy until CS:GO). The first three rows are already in our
 | hostage_health | 100 | hp | measured (Q8); a float; damage by the rule below |
 | hostage_models | `characters/hostage_01..04` | – | the only hostage models shipped; maps name `models/hostage.mdl` (cs_havana, cs_office) or `HostageType` 0/1 (cs_assault, cs_compound), neither of which selects them: each hostage spawned takes the next of the four in turn, over rounds and maps (measured, Q9) |
 | hostage_hull | 26 × 26 × 72 | in | its collision box, −13..13 by 0..72 (measured, Q11) |
+| hostage_rest | floor + 1/32 | in | where a hostage's origin (its feet) settles: −159.968 on cs_office's −160 floor (measured, "Spawn" below) |
 | hostage_anims | HL2 `Humans/male_shared`, `male_gestures`, `male_postures` (included) | – | own file has only a 101-frame ragdoll sequence |
 | hostage_follow_* | see Behaviour, *hyp.* | – | Q10 |
 | hostage_penalty | `mp_hostagepenalty` (default *hyp.* 13) | kills | kick after this many hostage kills; a warning hint one kill before |
@@ -529,6 +530,22 @@ the round):
 
 - **Spawn:** each `hostage_entity` spawns at its origin with its yaw,
   standing, health 100 (*hyp.*), as an NPC that players collide with (Q10).
+  The origin is its feet. It is not dropped to the floor: it falls under
+  gravity (moving every 7 ticks, Q10) and rests 1/32 unit above the floor
+  (measured 2026-10-17 on the probe: `mashup_spawn hostage_entity` 36 or
+  50 units over cs_office's floor at (1700, 760) fell in 3–4 steps to
+  −159.968; with its box in the ceiling, 60+ units up, it stayed there,
+  stuck). Several stock hostages are placed above the floor, so they drop
+  at each round start: cs_office's first two by 36 (origin z −124, floor
+  −160), its other two by 4. Where they stand, `mashup_hostages` after a
+  map load (x y z):
+  cs_office 1784 734 / 1744 802 / 2048 −344 / 1984 −344, all −159.97;
+  cs_italy 976 2392 0, 833 2339 128, 944 2320 0, 917 2336 128;
+  cs_assault 6718.3 3895.2 / 6639.3 3889.9 / 6482.5 3839.5 /
+  6537.5 3836.8, all −607.97; cs_compound 1578.8 −1581.6 / 1768 −1465 /
+  1776 −1592, all 16; cs_havana 80 814 / 348 817 / 128 1280 / 240 1280,
+  all 248; cs_militia 608 896 / 552 864 / 1256 400 / 832 600, all
+  −151.97.
   Model: the next of `characters/hostage_01..04` in turn (a counter that
   goes on over rounds and maps; the map's model and `HostageType` don't
   matter; measured, Q9). Hostages are restored at

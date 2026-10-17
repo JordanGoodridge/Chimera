@@ -16,7 +16,9 @@
 //! second after each move. A head under water too long drowns
 //! (`super::drown`, from the water level kept here). Footsteps play the
 //! surface underfoot's steps, or a footstep volume's replacement
-//! (func_footstep_control, `super::sound::step_remaps`).
+//! (func_footstep_control, `super::sound::step_remaps`). A character with
+//! `SettleOnGround` (hostages) goes down onto the floor its ground test
+//! finds (players keep the gap of up to 2 units, as Source's do).
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -490,6 +492,14 @@ const PARALLEL_SLOP: f32 = 2.5e-5;
 /// Solid tests use the box shrunk by this much, so resting contact (within
 /// the back-off) doesn't count as stuck.
 const SOLID_SKIN: f32 = 0.01;
+
+/// A character that rests on the floor it stands on (hostages): when the
+/// ground test finds a floor within its reach (2 units), the feet go down
+/// onto it. A player doesn't (Source's movement keeps the gap); CS:S's
+/// hostages, with their own movement, land 1/32 above the floor from any
+/// height (measured, objectives.md 9 "Spawn").
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct SettleOnGround;
 
 /// Per-character movement state. Units and seconds as in the spec.
 #[derive(Component, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -1098,6 +1108,8 @@ struct Mover<'a, 'b, 'w, 's> {
     touched: Vec<Entity>,
     ground_collider: Option<Entity>,
     wish: Vec3,
+    /// Down onto the floor found (`SettleOnGround`).
+    settle: bool,
 }
 
 impl Mover<'_, '_, '_, '_> {
@@ -1438,6 +1450,9 @@ impl Mover<'_, '_, '_, '_> {
                 _ => None,
             };
             if let Some(tr) = ground {
+                if self.settle && !tr.start_solid {
+                    self.feet = tr.end;
+                }
                 self.me.ground_normal = tr.normal;
                 self.v.z = 0.0;
                 let hit = tr.surface.and_then(|h| self.trace.surface_name(h));
@@ -2201,6 +2216,7 @@ fn step(
         Option<&EntityGravity>,
         Option<&mut super::shadow::PhysicsTouch>,
         Option<&crate::core::MapControls>,
+        Has<SettleOnGround>,
     )>,
     query: SpatialQuery,
     brushes: Option<Res<MapBrushes>>,
@@ -2310,7 +2326,7 @@ fn step(
         *grid = Some(crate::core::BrushGrid::new(&b.0));
     }
     let grid = grid.as_ref().filter(|_| brushes.is_some());
-    for (entity, intent, mut me, mut transform, mut vel, mut state, weapon_speed, mut base, gravity, touch, controls) in
+    for (entity, intent, mut me, mut transform, mut vel, mut state, weapon_speed, mut base, gravity, touch, controls, settle) in
         &mut q
     {
         // player_speedmod: the movement runs as if this many ticks passed
@@ -2385,6 +2401,7 @@ fn step(
             touched: Vec::new(),
             ground_collider: None,
             wish: Vec3::ZERO,
+            settle,
         };
         let start = mover.feet;
         mover.tick(intent);

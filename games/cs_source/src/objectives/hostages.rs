@@ -10,7 +10,11 @@
 //! Covers: `Hostage` characters (no team, the game's movement, `map::BodyName`
 //! model, the four handed out in turn: `HostageModelCycle`, Q9; the map's
 //! `skin` as `map::BodySkin`) spawned at
-//! each round start, +use to lead/stop (defenders only), following over the
+//! each round start at the map's origins, falling from there onto the
+//! floor and resting 1/32 above it (`movement::SettleOnGround`; measured,
+//! spec 9 "Spawn"), always with the match's own movement (`Loadout`, else
+//! CS:S's), never the local player's current one (noclip left them in the
+//! air), +use to lead/stop (defenders only), following over the
 //! nav mesh (stop/walk/run distances, give up when far or unseen), rescue in
 //! a rescue zone (only while following and walking; none without zones),
 //! `HostageTally`,
@@ -522,23 +526,39 @@ pub(super) fn round_start(world: &mut World) {
         return;
     }
     let rules = world.resource::<HostageRules>().clone();
-    let movement = world
-        .query_filtered::<&MovementSlot, With<LocalPlayer>>()
-        .iter(world)
-        .next()
-        .map(|m| m.0)
-        .or_else(|| world.get_resource::<Loadout>().map(|l| l.movement))
-        .or_else(|| {
-            // Anyone's (a headless game without a loadout).
-            world
-                .query_filtered::<&MovementSlot, Without<Hostage>>()
-                .iter(world)
-                .next()
-                .map(|m| m.0)
-        });
+    let movement = hostage_movement(world);
     for (i, s) in spawns.iter().enumerate() {
         spawn_hostage(world, i, s, &rules, movement);
     }
+}
+
+/// How hostages move: the match's movement (`Loadout`), else the game's
+/// own (CS:S's, when registered), else whatever a player not flying has
+/// (headless tests with another movement). Never the local player's
+/// current slot: a player flying with noclip (or a `--movement
+/// mashup:noclip` screenshot run) gave every hostage noclip, so they hung
+/// where the map puts them, cs_office's first two 36 units over the floor,
+/// instead of falling onto it as CS:S's do (measured, spec 9 "Spawn").
+fn hostage_movement(world: &mut World) -> Option<&'static str> {
+    let registered = |w: &World, id: &str| {
+        w.get_resource::<crate::slots::MovementRegistry>()
+            .is_some_and(|r| r.get(id).is_some())
+    };
+    let noclip = chimera_sim::movement::noclip::ID;
+    if let Some(l) = world.get_resource::<Loadout>()
+        && l.movement != noclip
+    {
+        return Some(l.movement);
+    }
+    let own = crate::game::movement::ID;
+    if registered(world, own) {
+        return Some(own);
+    }
+    world
+        .query_filtered::<&MovementSlot, Without<Hostage>>()
+        .iter(world)
+        .map(|m| m.0)
+        .find(|m| *m != noclip)
 }
 
 fn spawn_hostage(
@@ -565,6 +585,9 @@ fn spawn_hostage(
         Inventory::default(),
         MaxSpeed(rules.walk_speed * UNIT),
         rules.bullets,
+        // They fall from the map's origin and rest on the floor, 1/32
+        // above it, as CS:S's do (measured, spec 9 "Spawn").
+        crate::game::movement::SettleOnGround,
     ));
     let id = e.id();
     // The map's skin stays, whatever the model (measured, spec Q9).
