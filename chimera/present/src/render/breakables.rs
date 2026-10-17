@@ -179,8 +179,10 @@ fn fade(gib: &FlyingGib, own: &[Handle<PropMaterial>], p: MapGibPhysics, materia
 pub struct PanePart(pub PaneLook);
 
 /// How far (in panes) a jagged edge piece reaches into the broken pane
-/// beside it (ours: the spec leaves edge pieces to the client).
-pub const EDGE_DEPTH: f32 = 0.5;
+/// beside it: a whole pane, the square edge texture square on it (ours:
+/// the spec leaves edge pieces to the client; half a pane drew shards a
+/// third the length of CS:S's on cs_militia's windows).
+pub const EDGE_DEPTH: f32 = 1.0;
 
 /// A rectangle of pane space to cut a mesh to; `uv` maps a point `p` of
 /// it to mask coordinates ((p − o)·x, (p − o)·y), which ride in the
@@ -587,6 +589,9 @@ mod tests {
         // One edge kind: the left pane's right side, into the broken one.
         let rects = edge_strips(&p, 0, 1);
         assert_eq!(rects.len(), 1);
+        // The square edge texture square on the broken pane: the strip
+        // covers all of it.
+        assert_eq!((rects[0].lo, rects[0].hi), (Vec2::new(1.0, 0.0), Vec2::new(2.0, 1.0)));
         let strip = clip_to_rects(&mesh, &p, &rects).unwrap();
         let Some(VertexAttributeValues::Float32x3(pos)) = strip.attribute(Mesh::ATTRIBUTE_POSITION) else {
             panic!()

@@ -137,6 +137,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         // times $color; lightmapped ones' lighting is times $color
         // (`Resolved::tint`).
         mesh.unlit = r.unlit;
+        mesh.unlit_factor = r.unlit_factor;
         mesh.tint = r.tint;
         // A blend's weights also pick its `$surfaceprop2`.
         if mesh.blend.is_none() && r.surfaceprop2.is_none() {

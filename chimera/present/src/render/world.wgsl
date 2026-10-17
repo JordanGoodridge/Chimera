@@ -374,12 +374,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     light = light + dynamic_light(in.world_position.xyz, normalize(in.world_normal), in.position.xy);
     // UnlitGeneric on a brush: the texture's own brightness x $color;
-    // lit, the lighting x $color (shaders.md 2, modulation).
-    if params.unlit > 0.5 {
-        light = params.modulation.rgb;
-    } else {
-        light = light * params.modulation.rgb;
-    }
+    // lit, the lighting x $color (shaders.md 2, modulation); between
+    // (ShatteredGlass's $unlitfactor), the lighting that far toward 1.
+    light = mix(light, vec3<f32>(1.0), params.unlit) * params.modulation.rgb;
     var color = albedo.rgb * light;
     // $selfillum: toward tint x albedo, unlit, by the base texture's alpha.
     if params.selfillum > 0.5 {

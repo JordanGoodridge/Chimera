@@ -33,7 +33,8 @@
 //! skips: stock HL2 walls' `$bumpmap`);
 //! shaders the specs don't cover are stand-ins: WindowImposter shows its
 //! cubemap as if infinitely far (no parallax), ShatteredGlass has no per-pane
-//! proxy, LightmappedReflective is an opaque surface of its `$refracttint` (no
+//! proxy and its unset `$unlitfactor` is 0.3, measured from one CS:S
+//! screenshot (`SHATTERED_GLASS_UNLIT_FACTOR`), LightmappedReflective is an opaque surface of its `$refracttint` (no
 //! reflection or refraction); `$emissiveblend*` (surf_demise's glowing banner
 //! and credits) isn't drawn (black additive, the spec's envmap-only rule;
 //! shaders.md open question 17); loose items' swept-CCD thresholds (0.5 m/s, 6
@@ -90,6 +91,10 @@ pub struct Resolved {
     pub detail: Option<crate::map::MapDetail>,
     /// UnlitGeneric: drawn at the texture's own brightness, unlit.
     pub unlit: bool,
+    /// How much of the lighting full brightness replaces (0 lit, 1 the
+    /// texture's own brightness): ShatteredGlass's `$unlitfactor`
+    /// (`MapMesh::unlit_factor`); 0 for every other shader.
+    pub unlit_factor: f32,
     /// `$surfaceprop`: footstep and impact sounds, physics.
     pub surfaceprop: Option<String>,
     /// `$surfaceprop2` of a WorldVertexTransition material: the surface
@@ -228,6 +233,7 @@ impl<'a> MaterialLoader<'a> {
                     blend: None,
                     detail: None,
                     unlit: false,
+                    unlit_factor: 0.0,
                     surfaceprop: None,
                     surfaceprop2: None,
                     envmap: None,
@@ -251,6 +257,7 @@ impl<'a> MaterialLoader<'a> {
             blend: None,
             detail: None,
             unlit: false,
+            unlit_factor: 0.0,
             surfaceprop: None,
             surfaceprop2: None,
             envmap: None,
@@ -420,6 +427,11 @@ impl<'a> MaterialLoader<'a> {
             blend,
             detail,
             unlit: matches!(material, vmt_parser::material::Material::UnlitGeneric(_)),
+            unlit_factor: if stand_in == Some(StandIn::ShatteredGlass) {
+                shattered_unlit_factor(&keys)
+            } else {
+                0.0
+            },
             surfaceprop: material.surface_prop().map(str::to_lowercase),
             surfaceprop2: keys
                 .get("$surfaceprop2")
@@ -1325,8 +1337,10 @@ enum StandIn {
     Decal,
     /// ShatteredGlass (a breakable window's `$crackmaterial`): a
     /// translucent LightmappedGeneric showing its crack texture (`$detail`,
-    /// the same image as its "dummy" base in stock materials) as the base;
-    /// its per-pane proxy isn't modelled (the panes are cut from the mesh).
+    /// the same image as its "dummy" base in stock materials) as the base,
+    /// its lighting `$unlitfactor` of the way toward full brightness
+    /// (`Resolved::unlit_factor`); its per-pane proxy isn't modelled (the
+    /// panes are cut from the mesh).
     ShatteredGlass,
     /// LightmappedReflective (reflective glass, no base texture): drawn by
     /// `MaterialLoader::reflective`.
@@ -1358,6 +1372,25 @@ const PARSER_SHADERS: &[&str] = &[
     "replacements",
     "patch",
 ];
+
+/// ShatteredGlass's `$unlitfactor` when the material leaves it unset. The
+/// Valve Developer Wiki documents the parameter (0 multiplies by the
+/// lightmap, 1 by one); the default here is measured, not specced: in a
+/// CS:S screenshot of cs_militia's broken windows in the house's shade
+/// (`glass/glasswindowbreak070b`, alpha ~0.33 over a dark room) the glass
+/// averages (55, 61, 55); lit by the lightmap alone we drew (28, 24, 17),
+/// fully unlit (93, 103, 97), at 0.3 (58, 62, 56) (specs/cs_source/
+/// shaders.md open question 15).
+pub const SHATTERED_GLASS_UNLIT_FACTOR: f32 = 0.3;
+
+/// How much of a ShatteredGlass material's lighting full brightness
+/// replaces: its `$unlitfactor`, clamped to 0..1, else
+/// `SHATTERED_GLASS_UNLIT_FACTOR`.
+fn shattered_unlit_factor(keys: &HashMap<String, String>) -> f32 {
+    keys.get("$unlitfactor")
+        .and_then(|v| v.trim().trim_matches('"').parse::<f32>().ok())
+        .map_or(SHATTERED_GLASS_UNLIT_FACTOR, |f| f.clamp(0.0, 1.0))
+}
 
 /// `text` with an unknown shader name replaced by its stand-in.
 fn stand_in_shader(text: &str) -> (std::borrow::Cow<'_, str>, Option<StandIn>) {
@@ -1846,6 +1879,20 @@ mod tests {
         assert!((t[0] - 0.5).abs() < 1e-6 && (t[1] - (128.0f32 / 255.0).powf(2.2)).abs() < 1e-6 && t[2] == 0.0);
         assert_eq!(tint(&keys(&[("$color", "[1 1 1]")])), None);
         assert_eq!(tint(&keys(&[])), None);
+    }
+
+    /// ShatteredGlass keeps that much of its brightness out of the light:
+    /// `$unlitfactor` (clamped to 0..1), else the measured default.
+    #[test]
+    fn shattered_glass_unlit_factor() {
+        let keys = |pairs: &[(&str, &str)]| -> HashMap<String, String> {
+            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        };
+        assert_eq!(shattered_unlit_factor(&keys(&[])), SHATTERED_GLASS_UNLIT_FACTOR);
+        assert_eq!(shattered_unlit_factor(&keys(&[("$unlitfactor", "0.6")])), 0.6);
+        assert_eq!(shattered_unlit_factor(&keys(&[("$unlitfactor", "2")])), 1.0);
+        assert_eq!(shattered_unlit_factor(&keys(&[("$unlitfactor", "x")])), SHATTERED_GLASS_UNLIT_FACTOR);
+        assert!((0.0..1.0).contains(&SHATTERED_GLASS_UNLIT_FACTOR) && SHATTERED_GLASS_UNLIT_FACTOR > 0.0);
     }
 
     #[test]

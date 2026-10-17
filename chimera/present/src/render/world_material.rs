@@ -95,7 +95,8 @@ pub struct WorldParams {
     pub selfillum_tint: Vec4,
     /// 1: drawn at the texture's own brightness times `modulation` (an
     /// UnlitGeneric material on a brush, or the `$emissiveblend` stand-in),
-    /// not lit by the lightmap.
+    /// not lit by the lightmap; between 0 and 1, the lighting that far
+    /// toward full brightness (`MapMesh::unlit_factor`).
     pub unlit: f32,
     /// `$color`: the lighting's multiplier (lightmap, bump pages and
     /// dynamic lights; not the reflection or self-illumination,

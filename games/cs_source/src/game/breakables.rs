@@ -152,6 +152,7 @@ pub fn add_window_looks(materials: &mut MaterialLoader, entities: &[MapEntity], 
             envmap: r.envmap,
             tint: r.tint,
             unlit: r.unlit,
+            unlit_factor: r.unlit_factor,
             pane_look: PaneLook::Cracked,
             pane_mask: masks.map(|(t, _)| t),
             ..m.clone()

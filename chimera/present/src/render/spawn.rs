@@ -765,7 +765,7 @@ fn lit_world_material(
             base2_uv_u: blend.transform.shader_rows()[0],
             base2_uv_v: blend.transform.shader_rows()[1],
             selfillum: if m.selfillum.is_some() { 1.0 } else { 0.0 },
-            unlit: if m.unlit { 1.0 } else { 0.0 },
+            unlit: if m.unlit { 1.0 } else { m.unlit_factor },
             modulation: m.tint.map_or(Vec4::ONE, |t| Vec3::from_array(t).extend(1.0)),
             pane_mask: if m.pane_mask.is_some() { 1.0 } else { 0.0 },
             selfillum_tint: m.selfillum.map_or(Vec4::ONE, |s| Vec3::from_array(s.tint).extend(1.0)),

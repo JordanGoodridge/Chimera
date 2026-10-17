@@ -110,6 +110,10 @@ pub struct MapMesh {
     /// Drawn at the texture's own brightness, ignoring lighting (Source's
     /// UnlitGeneric).
     pub unlit: bool,
+    /// How much of the lighting full brightness replaces, 0..1 (Source's
+    /// ShatteredGlass `$unlitfactor`: a broken window's cracked panes keep
+    /// most of their brightness in the shade); `unlit` wins.
+    pub unlit_factor: f32,
     /// A map decal or overlay that multiplies the surface under it by 2 x
     /// its texel (Source's DecalModulate: 0.5 grey leaves it unchanged),
     /// unlit; with `alpha` Blend.
