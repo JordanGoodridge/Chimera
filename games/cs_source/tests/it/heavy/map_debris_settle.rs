@@ -16,7 +16,7 @@ use crate::stack::{
         },
     },
     harness::{CsSim, Sim},
-    map::{MapData, MapPlugin, PropEntity, Ragdoll},
+    map::{MapData, MapPlugin, PropEntity, Ragdoll, ragdoll::RagdollSettings},
     mount::config::LocalConfig,
     movement::noclip,
     rules::Deathmatch,
@@ -83,52 +83,94 @@ fn spawns(map: &MapData, class: &str) -> Vec<Vec3> {
 }
 
 /// A CS:S player killed by a head shot at each of ten of a map's spawns,
-/// one after another, pushed a different way each time: its ragdoll lies
-/// down and every body sleeps within `LIMIT` s. They sleep by the forced
-/// rule (still for `ragdoll_sleepaftertime`, 5 s: 5.25-5.7 s measured),
-/// rarely by avian's own measure: a limb or two keep jittering against
-/// the floor (over 10 rad/s at times, cut hulls or not; docs/backlog.md
-/// 9). Before the forced rule stopped waking what it put to sleep, none
-/// slept.
+/// one after another, pushed a different way each time, with the forced
+/// sleep (`ragdoll_sleepaftertime`) off: its ragdoll lies down, from
+/// `QUIET` s on no body turns faster than `REST` rad/s, and every body
+/// sleeps within `LIMIT` s, half of them within 4 s. Run three ways in
+/// fresh sims, so the bounds hold whatever the solver's order (the spawns
+/// in map order, in reverse, and every other one first). Measured: up to
+/// 1.74 rad/s after 3 s (a hand still swinging from its wrist), asleep in
+/// 1.9-7.0 s, median 3.2 s, 51 of 60 by 5 s. Before ragdoll joints were
+/// solved in the contacts' passes (and lost avian's gyroscopic torque), a
+/// limb or two kept jittering against the floor at up to 10-16 rad/s and
+/// almost none slept but by the forced rule (5.25-5.7 s; docs/performance.md,
+/// "Props that never sleep").
 #[test]
 fn ragdolls_settle_and_sleep() {
-    const LIMIT: f64 = 7.0;
+    const QUIET: f64 = 3.0;
+    const REST: f32 = 2.5;
+    const LIMIT: f64 = 8.0;
+    let mut late = Vec::new();
+    let mut restless = Vec::new();
+    let mut times = Vec::new();
     for (name, class) in [
         ("de_dust2", "info_player_terrorist"),
         ("de_inferno", "info_player_counterterrorist"),
     ] {
         let Some(map) = load(name) else { return };
-        let points = spawns(&map, class);
-        assert!(!points.is_empty(), "{name}: no {class}");
-        let mut sim = sim(map);
-        for (k, at) in points.iter().take(10).enumerate() {
-            let p = sim.spawn_character(to_engine(*at) + Vec3::Y * 0.95, noclip::ID);
-            sim.ticks(10);
-            let head = sim.position(p) + Vec3::Y * 0.7;
-            let dir = Quat::from_rotation_y(k as f32 * 2.1) * Vec3::NEG_Z;
-            sim.app.world_mut().write_message(Damage {
-                force: Vec3::ZERO,
-                target: p,
-                attacker: None,
-                amount: 5.0,
-                point: head,
-                dir,
-                hitgroup: Hitgroup::Head,
-                kind: DamageKind::Bullet,
-                weapon: None,
-            });
-            sim.ticks(1);
-            let ragdoll = {
-                let world = sim.app.world_mut();
-                let mut q = world.query::<&Ragdoll>();
-                q.iter(world).last().cloned().expect("a ragdoll")
-            };
-            let (took, jitter) = settle(&mut sim, &ragdoll.bodies, LIMIT, 2.0);
-            let at = sim.app.world().get::<Transform>(ragdoll.bodies[0]).unwrap().translation;
-            eprintln!("{name} ragdoll at {at}: asleep after {took:?} s, jitter up to {jitter:.3} rad/s");
-            assert!(took.is_some(), "{name}: a ragdoll at {at} still awake after {LIMIT} s");
+        let points: Vec<Vec3> = spawns(&map, class).into_iter().take(10).collect();
+        assert!(points.len() >= 10, "{name}: only {} {class}", points.len());
+        let order: Vec<usize> = (0..points.len()).collect();
+        let reversed: Vec<usize> = order.iter().rev().copied().collect();
+        let skipping: Vec<usize> = order.iter().step_by(2).chain(order.iter().skip(1).step_by(2)).copied().collect();
+        for (run, order) in [order, reversed, skipping].into_iter().enumerate() {
+            let mut sim = sim(map.clone());
+            sim.app.world_mut().resource_mut::<RagdollSettings>().sleep_after = 1000.0;
+            for k in order {
+                let p = sim.spawn_character(to_engine(points[k]) + Vec3::Y * 0.95, noclip::ID);
+                sim.ticks(10);
+                let head = sim.position(p) + Vec3::Y * 0.7;
+                let dir = Quat::from_rotation_y(k as f32 * 2.1) * Vec3::NEG_Z;
+                sim.app.world_mut().write_message(Damage {
+                    force: Vec3::ZERO,
+                    target: p,
+                    attacker: None,
+                    amount: 5.0,
+                    point: head,
+                    dir,
+                    hitgroup: Hitgroup::Head,
+                    kind: DamageKind::Bullet,
+                    weapon: None,
+                });
+                sim.ticks(1);
+                let ragdoll = {
+                    let world = sim.app.world_mut();
+                    let mut q = world.query::<&Ragdoll>();
+                    q.iter(world).last().cloned().expect("a ragdoll")
+                };
+                let (took, jitter) = settle(&mut sim, &ragdoll.bodies, LIMIT, QUIET);
+                let at = sim.app.world().get::<Transform>(ragdoll.bodies[0]).unwrap().translation;
+                eprintln!(
+                    "run {run}: {name} spawn {k} ragdoll at {at}: asleep after {took:?} s, \
+                     up to {jitter:.3} rad/s after {QUIET} s"
+                );
+                times.push(took.unwrap_or(f64::INFINITY));
+                if took.is_none() {
+                    late.push((run, name, k));
+                }
+                if jitter > REST {
+                    restless.push((run, name, k, jitter));
+                }
+            }
         }
     }
+    times.sort_by(f64::total_cmp);
+    let by = |t: f64| times.iter().filter(|x| **x <= t).count();
+    eprintln!(
+        "{} ragdolls: asleep by 3 s {}, by 4 s {}, by 5 s {}, median {:.2} s, last {:.2} s",
+        times.len(),
+        by(3.0),
+        by(4.0),
+        by(5.0),
+        times[times.len() / 2],
+        times[times.len() - 1]
+    );
+    assert!(
+        restless.is_empty(),
+        "(run, map, spawn, rad/s) {restless:?}: turning faster than {REST} rad/s after {QUIET} s"
+    );
+    assert!(late.is_empty(), "(run, map, spawn) {late:?}: still awake after {LIMIT} s");
+    assert!(times[times.len() / 2] <= 4.0, "half the ragdolls still awake after 4 s");
 }
 
 /// Props that break into pieces (their models' own break pieces, else a
