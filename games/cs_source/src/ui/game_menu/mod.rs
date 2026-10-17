@@ -105,8 +105,12 @@
 //! model (`GameMenu::handle`: keys and clicks in, console lines out) and its
 //! drawing; a new game's bots are added once the `map` load finishes. While
 //! open the mouse is free (so the local player's input is ignored), binds don't
-//! run, the other menus close; Esc with the console open only closes the
-//! console. Text in the GameUI scheme's fonts (`fonts.rs`: Tahoma and Verdana
+//! run; it and its dialogs draw over every in-game panel (the message of the
+//! day, team, class, buy, radio and spectator menus: `widgets::GAME_UI_Z`;
+//! the scoreboard hides), its backdrop taking their clicks and their keys
+//! idle (`vgui::keys_live`), and they are back as they were when it closes
+//! (the mouse left free for them), as under CS:S's GameUI; Esc with the
+//! console open only closes the console. Text in the GameUI scheme's fonts (`fonts.rs`: Tahoma and Verdana
 //! where installed). The interface sounds (`GameUi::sounds`:
 //! `ui/buttonrollover` as the pointer comes onto an entry, `ui/buttonclick` and
 //! `ui/buttonclickrelease` as one is pressed and let go); no menu music (the

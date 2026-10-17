@@ -2031,7 +2031,7 @@ fn draw(
             // The frames inside stack with the menu's (`widgets`); the
             // root itself catches nothing.
             bevy::ui::FocusPolicy::Pass,
-            GlobalZIndex(47),
+            GlobalZIndex(super::game_menu::MENU_Z + 1),
         ))
         .id();
     let layouts = ui.as_ref().map(|u| &u.servers);
