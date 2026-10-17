@@ -2167,8 +2167,7 @@ fn server_list(
                 bevel(look, true),
                 BackgroundColor(look.color("Button.BgColor", [0, 0, 0, 0])),
                 Hit(Target::Header(*column)),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();
@@ -2228,8 +2227,7 @@ fn server_list(
                     column: *column,
                     width: *cw,
                 },
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ZIndex(3),
                 ChildOf(list),
             ));
@@ -2251,8 +2249,7 @@ fn server_list(
                     Color::NONE
                 }),
                 Hit(Target::Row(k)),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();
@@ -2837,8 +2834,7 @@ fn add_server_dialog(commands: &mut Commands, root: Entity, look: &Look, b: &Ser
                     Color::NONE
                 }),
                 Hit(Target::Row(0)),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();

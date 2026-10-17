@@ -214,6 +214,8 @@ fn spawn_ui(mut commands: Commands, fonts: Res<UiFonts>) {
                 ..default()
             },
             BackgroundColor(Color::srgba(0.05, 0.05, 0.07, 0.88)),
+            // A click on the console stops there, not on a menu under it.
+            bevy::ui::FocusPolicy::Block,
             GlobalZIndex(100),
             Visibility::Hidden,
         ))
@@ -255,6 +257,7 @@ fn spawn_ui(mut commands: Commands, fonts: Res<UiFonts>) {
             ..default()
         },
         BackgroundColor(Color::srgba(0.1, 0.1, 0.14, 0.95)),
+        bevy::ui::FocusPolicy::Block,
         GlobalZIndex(101),
         Visibility::Hidden,
     ));

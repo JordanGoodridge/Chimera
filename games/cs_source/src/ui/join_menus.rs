@@ -488,6 +488,10 @@ fn draw_vgui(
                     ..default()
                 },
                 BackgroundColor(painter.color("Frame.BgColor", [0, 0, 0, 196])),
+                // Only its buttons stop a click: the game menu can open
+                // with these still up (under them, `MENU_Z`) and must
+                // stay clickable.
+                bevy::ui::FocusPolicy::Pass,
                 GlobalZIndex(50),
             ))
             .id();
