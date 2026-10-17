@@ -15,8 +15,10 @@ use super::*;
 pub(super) struct MenuRoot;
 
 /// The menu's own layer (its backdrop, title and entries): over the HUD
-/// (40-45), under every dialog's frame (`widgets::FRAME_Z` and up).
-pub const MENU_Z: i32 = 46;
+/// and every in-game panel (the message of the day, team, class, buy,
+/// radio and spectator menus, the scoreboard: `widgets::GAME_UI_Z`), under
+/// every dialog's frame (`widgets::FRAME_Z` and up).
+pub const MENU_Z: i32 = widgets::GAME_UI_Z;
 
 /// What a page is drawn with: the root (open lists' outside clicks), the
 /// look, the menu and its rows.
@@ -160,8 +162,9 @@ pub(super) fn draw(
                 ..default()
             },
             BackgroundColor(backdrop),
-            // Over the HUD (40-45), under the frames (`widgets::FRAME_Z`),
-            // the scoreboard and the console; a click on it stops here.
+            // Over the HUD and the in-game panels, under the frames
+            // (`widgets::FRAME_Z`) and the console; a click on it stops
+            // here, so the panels under it take none while it is open.
             bevy::ui::FocusPolicy::Block,
             GlobalZIndex(MENU_Z),
         ))
