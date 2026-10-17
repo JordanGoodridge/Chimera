@@ -142,7 +142,7 @@ Fades apply with `r_novis 1` too.
 ### Checks
 
 - `cargo test --features dev --test it map_vis::`: from every spawn and ~250 nav area centres
-  per map (de_dust2, de_nuke, cs_office), 400 rays from eye height; every
+  per map (de_dust2, de_nuke, cs_office, cs_assault), 400 rays from eye height; every
   world surface a ray reaches (translucent ones on the way, then the
   first opaque one) must be in a potentially visible chunk, unless the ray
   passed through solid first (sky brushes, which the game draws as sky and
@@ -150,11 +150,53 @@ Fades apply with `r_novis 1` too.
 - `refcmp vischeck`: renders with culling off and on must match. Results
   (de_dust2: 316 views, de_nuke: 311): a handful of views differ by a few
   to a few hundred pixels, all inspected: geometry visible through sky
-  brushes and sub-pixel cracks (culling hides it, as the game would), and
-  one de_nuke view that also differs between two runs without culling.
-  Two real bugs it found are fixed: physics props settling differently
+  brushes and sub-pixel cracks (culling hides it, as the game would).
+  Three real bugs it found are fixed: physics props settling differently
   between runs (`host_timescale 0` now freezes physics from the first
-  frame) and the first view rendering before shader pipelines were ready.
+  frame), the first view rendering before shader pipelines were ready,
+  and captures depending on the views before them (below).
+- `refcmp ordercheck`: the same views captured in order and in reverse
+  order (culling on) must match (up to 100 pixels): a view's capture must
+  not depend on what was drawn before it. Three causes, fixed
+  (2026-10-16, `render::blend_order`), all in how Bevy keeps each view's
+  depth-sorted items (blended and transmissive) from frame to frame and
+  sorts them stably by view depth: items at the same depth kept the
+  order earlier frames left (de_nuke's door windows: two glass faces 5 cm
+  apart, seen edge-on, at one depth; view `nav1627_90` differed by 16k
+  pixels after `nav1627_0`); an item's centre is worked out only when it
+  is queued (it comes into view, or its mesh or material changes), so an
+  entity that moved since sorted by where it was; and our sprites, which
+  add in the transmissive phase, summed in a different order where they
+  overlap at one depth (cs_assault's rows of lamp glows: up to 28k pixels
+  off by one or two levels). Map overlays and infodecals were blended in
+  the alpha-mask phase, which orders batches by pipeline id, made in the
+  order the camera first saw each kind, so overlapping decals stacked
+  differently (de_nuke `spawn36_90`'s gravel overlays, 930 pixels). Now
+  each item's centre is taken again every frame, ties go
+  farther-from-the-eye first, then by entity, and map decals draw first
+  among blended items, in the map's order. de_nuke before: ordercheck 9
+  of 311 views differ (worst 15997 pixels), vischeck 21 differ (worst
+  15997, over the limit); after: ordercheck 0, vischeck 12 differ, worst
+  644 (the sky-brush views): it passes. cs_assault: ordercheck 13 of 312
+  views differ (worst 28190) before the glow fix, 9 of 316 after (worst
+  50 pixels: `nav1847_90` by one level, `nav1567_180` 27 pixels on a
+  rail's highlight; not found yet, under the tolerance).
+- cs_assault's vischeck fails (57 of 316 views differ after the fixes
+  above, the four `pvs_*` views included; 56 of 312 in its first run;
+  worst `nav1371_90` on the roof, 33.7k pixels: the water tower, rooftop
+  props and buildings seen over the walls; then `nav1371_180` 22.0k, `nav2507_180` 20.2k, the T spawns looking west
+  14-18k). Not a culling bug, from the map data (2026-10-16): every static
+  prop's clusters here cover the leaves the map's static prop lump lists
+  for it (all 561; the same on de_dust2, cs_office, cs_compound, de_port,
+  and 675 of 676 on de_nuke: one car's lump lists a leaf next to its
+  box), so the game's PVS can't show a prop ours hides; every culled prop
+  seen in these views is seen along lines that cross solid leaves (sky
+  brushes over the walls), which vvis's PVS doesn't see through and which
+  the game draws as sky; and the ray check above passes on cs_assault
+  with every nav area (1562 eyes, 2048 rays). The 3D skybox isn't culled,
+  and prop fades apply with culling off too. Whether CS:S shows the water
+  tower from the roof is capture C27 (docs/plans/active/parity-gaps.md;
+  refcmp views `pvs_*` in tools/refcmp/cs_assault.toml).
 
 ## Baseline and results
 

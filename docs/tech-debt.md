@@ -12,7 +12,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - cs_source maps: Textures decoded to RGBA8 at load (~1 GB on surf_sedona); HDR-only maps lit at level 2 with dark sunk props (`games/cs_source/src/game/material.rs`)
 - client: Options dialog: only the keyboard tab uses the game's layout; GameUI scaled by window height; some values from general knowledge (`games/cs_source/src/ui/options.rs`)
 - render: Merged brush entities keep hidden per-entity meshes; splits re-check pipelines; decals on brush entities reset at restarts (`chimera/present/src/render/merge.rs`)
-- map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices, among them the under-water overlay's warp and `$bluramount` blur (no Refract spec) (`chimera/present/src/render/water.rs`)
+- map: Water refraction from the main view's opaque copy, not a separate refraction render; several unmeasured choices, among them the overlay's blur (no Refract spec), fog-only water (de_nuke), the background under refracting water (`chimera/present/src/render/water.rs`)
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`chimera/present/src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`source/logic/src/logic/ambient.rs`)
 - render: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`chimera/present/src/render/world_material.rs`)
@@ -147,3 +147,4 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Voice chat: client cvar defaults guessed, Opus bit rate, jitter buffer and resampling ours, default devices only, open mic's threshold measure and hang, microphone boost gain and `voice_test` ours (`chimera/client/src/client/voice.rs`)
 - games/cs_source: Voice hearing rule's dead-talk-to-the-dead part unconfirmed with two clients (`games/cs_source/src/game/net.rs`)
 - games/cs_source ui: Voice HUD rows' order and box guessed; no avatars, fades or icons over heads (`games/cs_source/src/ui/voice_hud.rs`)
+- games/cs_source: func_footstep_control from the public FGD only: feet point inside, the replaced surface's step volume and timing (`games/cs_source/src/game/sound.rs`)

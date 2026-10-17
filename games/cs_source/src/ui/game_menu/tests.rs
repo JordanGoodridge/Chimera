@@ -991,6 +991,97 @@ fn the_keyboard_list_scrolls_to_the_focus() {
     assert!(m.scroll <= m.focus && m.focus < m.scroll + shown, "{} in {}+{shown}", m.focus, m.scroll);
 }
 
+/// The wheel, the scroll bar's arrows, its track and its thumb move the
+/// view free of the selection (VGUI's lists): past the selected row, and
+/// the pointer over rows drawn again (hovers) leaves it there; moving the
+/// selection brings the view back to it.
+#[test]
+fn the_keyboard_list_scrolls_past_the_selection() {
+    let mut m = keyboard();
+    let selected = m.key_row;
+    assert_eq!(selected, Some(1));
+    let (len, shown) = m.list();
+    press(&mut m, &[Input::Scroll(9)]);
+    assert_eq!(m.scroll, 9, "the wheel: three notches");
+    press(&mut m, &[Input::Hover(Target::Row(12)), Input::Click(Target::Scroll, 1), Input::Hover(Target::Scroll)]);
+    assert_eq!(m.scroll, 10, "an arrow: a row; hovers keep it");
+    press(&mut m, &[Input::Click(Target::Scroll, shown as i32)]);
+    assert_eq!(m.scroll, 10 + shown, "the track: a page");
+    // The thumb dragged to the bottom (`ScrollDrag` as a step).
+    press(&mut m, &[Input::Scroll(1000), Input::Hover(Target::Row(len - 1))]);
+    assert_eq!(m.scroll, len - shown, "to the last row, not past it");
+    assert_eq!((m.key_row, m.focus), (selected, 1), "the selection stays");
+    // A row clicked down there selects it and the view stays.
+    let row = (len - 3..len).find(|&i| matches!(m.rows()[i], Row::Bind { .. })).unwrap();
+    press(&mut m, &[Input::Click(Target::Row(row), 0)]);
+    assert_eq!((m.key_row, m.scroll), (Some(row), len - shown));
+    // The selection moved by keys: the view follows it.
+    press(&mut m, &[Input::Scroll(-1000)]);
+    assert_eq!(m.scroll, 0);
+    press(&mut m, &[Input::Up]);
+    assert!(m.scroll <= m.focus && m.focus < m.scroll + shown, "{} in {}+{shown}", m.focus, m.scroll);
+}
+
+/// A click on an open drop-down's box closes it (VGUI's `ComboBox`
+/// toggles), as a click anywhere outside its list does; the next opens it.
+#[test]
+fn a_click_on_an_open_drop_downs_box_closes_it() {
+    let mut m = menu();
+    m.resolutions = vec!["1920x1080".into(), "1280x720".into()];
+    click(&mut m, MainItem::Options);
+    press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
+    let mode = row_of(&m, "mashup_resolution");
+    press(&mut m, &[Input::Click(Target::Row(mode), 0)]);
+    assert_eq!(m.combo.map(|c| c.owner), Some(mode));
+    let o = press(&mut m, &[Input::Click(Target::Row(mode), 0)]);
+    assert_eq!((m.combo, o.lines.len()), (None, 0), "closed, nothing picked");
+    press(&mut m, &[Input::Click(Target::Row(mode), 0)]);
+    assert!(m.combo.is_some(), "open again");
+    press(&mut m, &[Input::Click(Target::Outside, 0)]);
+    assert!(m.combo.is_none());
+}
+
+/// The video tab shows the window as it is: its size, picked in the
+/// resolution list (added to the monitor's modes when not one of them),
+/// never "As started"; its real display mode. Each mode picked sets
+/// exactly that one; Cancel puts back the one it was.
+#[test]
+fn the_video_tab_shows_the_window_as_it_is() {
+    let mut values: HashMap<String, String> =
+        CVARS.iter().map(|(k, v)| (k.to_string(), v.to_string())).chain([("mashup_fullscreen".into(), "0".into())]).collect();
+    let monitor = [(UVec2::new(1920, 1080), vec![UVec2::new(1920, 1080), UVec2::new(1280, 720)])];
+    let window = UVec2::new(1600, 900);
+    window_values(&mut values, Some(window), Some(2));
+    let mut m = GameMenu {
+        in_game: true,
+        resolutions: crate::client::video::resolutions(&monitor, Some(window)),
+        ..default()
+    };
+    m.open(Page::Main, vec!["de_dust2".into()], None, |n| values.get(n).cloned());
+    click(&mut m, MainItem::Options);
+    press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
+    let res = row_of(&m, "mashup_resolution");
+    let Control::Combo { entries, selected, text } = control(&m, res) else { panic!() };
+    assert_eq!(entries, ["1920x1080", "1600x900", "1280x720"]);
+    assert_eq!((selected, text.as_str()), (Some(1), "1600x900"));
+    let mode = row_of(&m, "mashup_fullscreen");
+    let Control::Combo { entries, selected, text } = control(&m, mode) else { panic!() };
+    assert_eq!(entries, ["Fullscreen", "Windowed", "Borderless fullscreen"]);
+    assert_eq!((selected, text.as_str()), (Some(2), "Borderless fullscreen"));
+    // Each entry: exactly its mode.
+    for (k, value) in [(1, "0"), (0, "1"), (2, "2")] {
+        let o = press(&mut m, &[Input::Click(Target::Row(mode), 0), Input::Click(Target::ComboItem(k), 0)]);
+        assert_eq!(o.lines, [format!("mashup_fullscreen {value}")]);
+    }
+    press(&mut m, &[Input::Click(Target::Row(mode), 0), Input::Click(Target::ComboItem(1), 0)]);
+    let o = click_on(&mut m, |m| button(m, Action::Cancel));
+    assert_eq!(o.lines, ["mashup_fullscreen 2"], "back to the mode it was");
+    // No window (headless): the cvar as it is.
+    let mut values = HashMap::from([("mashup_resolution".to_string(), String::new())]);
+    window_values(&mut values, None, None);
+    assert_eq!(values["mashup_resolution"], "");
+}
+
 #[test]
 fn the_games_menu_entries_and_none_of_ours() {
     let item = |label: &str, command: &str| GameUiItem {

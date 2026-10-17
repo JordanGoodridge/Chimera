@@ -2291,7 +2291,10 @@ fn walking_on_terrain_never_stubs() {
                 let speed = sim.velocity(p).xz().length() / 0.0254;
                 let (was_ground, was_speed) = prev[k];
                 prev[k] = (me.on_ground, speed);
-                if !(was_ground && me.on_ground && was_speed > 60.0 && speed < was_speed * 0.5) {
+                // A new heading (every 20 ticks) may turn against the run:
+                // turning round at a landing's stamina slowdown halves the
+                // speed for real (60.8 -> 25.0, stamina 1181).
+                if tick % 20 == 0 || !(was_ground && me.on_ground && was_speed > 60.0 && speed < was_speed * 0.5) {
                     continue;
                 }
                 // Something solid nearby (brushes, other characters) may

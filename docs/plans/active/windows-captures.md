@@ -73,7 +73,7 @@ Record the game's audio (OBS, 48 kHz) for:
 
 `scripts\playtest.ps1` builds the game; refcmp drives CS:S by itself
 (docs/OBSERVABILITY.md, refcmp). Run the capture modes listed in C10, C17,
-C18, C19, C20, C21 and C22 (each names its views and settings). The output
+C18, C19, C20, C21, C22 and C27 (each names its views and settings). The output
 folder is printed at the end: send it.
 
 ## What each sitting unlocks
@@ -83,4 +83,5 @@ folder is printed at the end: send it.
   flash, sprays and night vision values.
 - Sitting 2: the sound falloff curve (the last high-impact parity gap) and
   the underwater muffle.
-- Sitting 3: HDR, 3D skybox fog, ropes, beams, sky, LOD and detail props.
+- Sitting 3: HDR, 3D skybox fog, ropes, beams, sky, LOD, detail props and
+  what cs_assault's PVS hides past sky brushes.

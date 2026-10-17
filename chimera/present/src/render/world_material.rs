@@ -155,10 +155,13 @@ pub struct WorldMaterial {
     pub envmap_mask: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub double_sided: bool,
-    /// A map overlay or decal lying on a surface: drawn right after the
-    /// opaque world (alpha-mask phase) with its own blend and no depth
-    /// writes, so everything see-through (particles, smoke, glows, muzzle
-    /// flashes) draws over it rather than being sorted against it.
+    /// A map overlay or decal lying on a surface: drawn with its own blend
+    /// and no depth writes before everything else see-through (particles,
+    /// smoke, glows, muzzle flashes draw over it rather than being sorted
+    /// against it), overlapping ones in the map's order
+    /// (`blend_order::DecalOrder`; blended phase, as only that phase's
+    /// order can be set: in the alpha-mask phase overlapping decals drew
+    /// in pipeline creation order, which depends on what was seen first).
     pub decal: bool,
     /// A decal that multiplies the surface: blended as `src x dst + dst x
     /// src` (Source's DecalModulate), the shader returning half the factor.
@@ -174,7 +177,7 @@ impl Material for WorldMaterial {
     /// views with water) runs `world_prepass.wgsl` and drops the same texels.
     fn alpha_mode(&self) -> AlphaMode {
         if self.decal {
-            return AlphaMode::Mask(0.001);
+            return AlphaMode::Blend;
         }
         if self.alpha_mode == AlphaMode::Opaque && self.params.alpha_cutoff > 0.0 {
             return AlphaMode::Mask(self.params.alpha_cutoff);
@@ -193,7 +196,7 @@ impl Material for WorldMaterial {
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
         descriptor.primitive.cull_mode = super::prop_material::face_cull(key.bind_group_data.double_sided, false);
-        // Decals: blended in the alpha-mask phase (see `decal`).
+        // Decals: their own blend (see `decal`).
         let blend = match key.bind_group_data.decal_blend {
             1 => Some(bevy::render::render_resource::BlendState::ALPHA_BLENDING),
             2 => Some(bevy::render::render_resource::BlendState {

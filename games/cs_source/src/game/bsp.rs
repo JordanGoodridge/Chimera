@@ -209,7 +209,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         }
     }
     if let [bottom] = bottoms.as_slice() {
-        for m in data.water_materials.iter_mut().filter(|m| !m.above_water) {
+        for m in data.water_materials.iter_mut().filter(|m| !m.above_water && !m.fog_only) {
             *m = bottom.clone();
         }
     }
@@ -1888,13 +1888,18 @@ pub fn map_entities(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<crate::map::MapEntity>
                 .and_then(|m| m.strip_prefix('*'))
                 .and_then(|m| m.parse::<usize>().ok())
                 .filter(|m| *m > 0);
-            // Buy zones, bomb sites and rescue zones are trigger-like
-            // volumes too, and physics clips (`map::physics_clip`: solid
-            // to physics objects only).
+            // Buy zones, bomb sites, rescue zones and footstep volumes
+            // (`sound::step_remaps`) are trigger-like volumes too, and
+            // physics clips (`map::physics_clip`: solid to physics
+            // objects only).
             let trigger = class.starts_with("trigger_")
                 || matches!(
                     class,
-                    "func_buyzone" | "func_bomb_target" | "func_hostage_rescue" | "func_clip_vphysics"
+                    "func_buyzone"
+                        | "func_bomb_target"
+                        | "func_hostage_rescue"
+                        | "func_clip_vphysics"
+                        | "func_footstep_control"
                 );
             let mover = movers.contains(&index);
             let hulls = match model {

@@ -272,6 +272,26 @@ fn attaching_needs_input_and_reach() {
     close3(pl.vel(), Vec3::new(0.0, 0.0, 200.0), 0.01, "climbing");
 }
 
+/// CS:S (measured, movecmp fuzz seed 101 run 6, de_nuke, 2026-10-16):
+/// climbing ducked in the air is slowed (x 0.34), and the tick duck is
+/// released, the player unducks at once (feet down 8.5) and climbs at full
+/// speed that very tick (272.8 up there, not 92.7).
+#[test]
+fn css_releasing_duck_on_a_ladder_climbs_at_full_speed_at_once() {
+    let mut pl = Player::on_ladder(SourceMovementConfig::default());
+    pl.keys(1.0, 0.0);
+    pl.sim.intent(pl.p).crouch = true;
+    pl.sim.ticks(3);
+    assert!(pl.state().ducked && pl.state().ladder.is_some());
+    close(pl.vel().z, 200.0 * 0.34, 0.01, "ducked climb");
+    pl.sim.intent(pl.p).crouch = false;
+    let z = pl.feet().z;
+    pl.tick();
+    assert!(!pl.state().ducked && pl.state().ladder.is_some());
+    close(pl.vel().z, 200.0, 0.01, "climb on the release tick");
+    close(pl.feet().z - z, 200.0 / 64.0 - 8.5, 0.01, "unducked and climbed");
+}
+
 #[test]
 fn water_level_by_depth() {
     // Standing box (72 tall, eye 64) with the deep pool's surface (z 200) H

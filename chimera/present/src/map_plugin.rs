@@ -218,6 +218,11 @@ impl MapLayers for Present {
     }
 
     fn drawing(&self, app: &mut App) {
+        // Blended meshes at the same depth in an order of their own, not
+        // the one earlier frames left.
+        if !app.is_plugin_added::<render::blend_order::BlendOrderPlugin>() {
+            app.add_plugins(render::blend_order::BlendOrderPlugin);
+        }
         app.add_systems(
             PostUpdate,
             (
@@ -257,6 +262,8 @@ impl MapLayers for Present {
             // eye rather than the last physics tick's; before frusta.
             render::sky::follow_sky_camera
                 .after(bevy::transform::TransformSystems::Propagate)
+                // This frame's `WaterView` (under water or not).
+                .after(render::water::update_water)
                 .before(bevy::camera::visibility::VisibilitySystems::UpdateFrusta),
         );
     }

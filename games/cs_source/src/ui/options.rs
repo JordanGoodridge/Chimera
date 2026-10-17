@@ -719,12 +719,17 @@ mod tests {
     #[test]
     fn resolutions_from_the_monitor_or_common_sizes() {
         let r = setting("mashup_resolution");
-        let sizes = resolutions(&[(UVec2::new(1920, 1080), vec![UVec2::new(1280, 720), UVec2::new(1920, 1080)])]);
+        let monitor = [(UVec2::new(1920, 1080), vec![UVec2::new(1280, 720), UVec2::new(1920, 1080)])];
+        let sizes = resolutions(&monitor, None);
         assert_eq!(sizes, ["1920x1080", "1280x720"]);
+        // The window's own size joins the list when it isn't a mode (a
+        // window the window manager sized), once when it is.
+        assert_eq!(resolutions(&monitor, Some(UVec2::new(1600, 1000))), ["1920x1080", "1600x1000", "1280x720"]);
+        assert_eq!(resolutions(&monitor, Some(UVec2::new(1280, 720))), sizes);
         assert_eq!(r.step("", 1, &sizes), "1920x1080");
         assert_eq!(r.step("1920x1080", 1, &sizes), "1280x720");
         assert_eq!(r.step("1280x720", 1, &sizes), "1280x720", "stops at the end");
-        let common = resolutions(&[(UVec2::new(1600, 900), vec![])]);
+        let common = resolutions(&[(UVec2::new(1600, 900), vec![])], None);
         assert_eq!(common.first().map(String::as_str), Some("1600x900"));
         assert!(!common.contains(&"1920x1080".to_string()));
         assert_eq!(parse_resolution("1280x720"), Some(UVec2::new(1280, 720)));
