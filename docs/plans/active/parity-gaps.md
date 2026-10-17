@@ -224,6 +224,7 @@ common console commands, against mashup's.
 | Water refraction | differs | L | M | tech-debt "Water" |
 | Under-water screen overlay | have (fixed) | L | S | de_port's `water_warp01` was drawn but invisible (a warp of about a pixel, `$bluramount` ignored); now blurred, 5 x 5 taps a pixel apart (no Refract spec: a guess; tech-debt "Water"). de_nuke's pool has none in either game |
 | Under-water fog in non-Water-shader water (de_nuke's pool) | have (fixed) | M | S | no fog at all with the eye in nuke's pool (an additive LightmappedGeneric, which the water loader skipped); now its material's fog ({150 200 200}, 64-512) over the whole view; how the engine reads fog from other shaders is unspecified (tech-debt "Water") |
+| Sky under water | have (fixed) | M | S | under refracting water (de_port) the surface from below showed flat fog colour, no sky: the sky camera was off under all water and the 3D skybox sea's under side drew black. Now the sky draws behind the view (the original's refraction view in the back buffer, spec water.md 9) and skybox water is hidden under water; fog-only water (de_nuke) and refraction off still clear to the fog colour with no sky (tests/it/underwater_sky.rs) |
 | Particles blend in linear space | differs | L | M | tech-debt |
 | Glow occlusion by rays | differs | L | M | tech-debt |
 | LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail"; capture C21 |

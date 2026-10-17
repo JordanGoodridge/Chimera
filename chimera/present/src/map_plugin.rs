@@ -262,6 +262,8 @@ impl MapLayers for Present {
             // eye rather than the last physics tick's; before frusta.
             render::sky::follow_sky_camera
                 .after(bevy::transform::TransformSystems::Propagate)
+                // This frame's `WaterView` (under water or not).
+                .after(render::water::update_water)
                 .before(bevy::camera::visibility::VisibilitySystems::UpdateFrusta),
         );
     }

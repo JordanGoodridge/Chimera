@@ -736,8 +736,9 @@ docs/plans/active/sound.md.
   props, ropes, decals, particles; also in water of other shaders, de_nuke's
   pool, from its material's fog keys), bottom materials, the
   `$underwateroverlay` screen warp (with its `$bluramount` blur, which is
-  what shows on de_port), the intersection view's height fog
-  the water cvars, `$blurrefract` with `$refracttint` and the "Water
+  what shows on de_port), the intersection view's height fog, the sky
+  under water (through the surface from below when the water refracts,
+  none in fog-only water), the water cvars, `$blurrefract` with `$refracttint` and the "Water
   detail" choices (`render::water::WATER_DETAIL`, for the Video Advanced
   menu) are in. Left: a Refract shader spec (the warp's
   strength and blur are guesses: de_port's `water_warp01` moves the
