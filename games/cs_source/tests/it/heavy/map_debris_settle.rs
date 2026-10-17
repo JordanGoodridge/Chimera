@@ -94,7 +94,8 @@ fn spawns(map: &MapData, class: &str) -> Vec<Vec3> {
 /// solved in the contacts' passes (and lost avian's gyroscopic torque), a
 /// limb or two kept jittering against the floor at up to 10-16 rad/s and
 /// almost none slept but by the forced rule (5.25-5.7 s; docs/performance.md,
-/// "Props that never sleep").
+/// "Props that never sleep"). The forced rule has its own test
+/// (`ragdoll::a_ragdoll_kept_moving_is_put_to_sleep_after_five_seconds`).
 #[test]
 fn ragdolls_settle_and_sleep() {
     const QUIET: f64 = 3.0;
@@ -180,10 +181,13 @@ fn ragdolls_settle_and_sleep() {
 /// Run three ways, so the bound holds whatever order the solver meets the
 /// contacts in (other entities, colliders and random draws before each
 /// break): the props broken in map order, in reverse, and every other one
-/// first. 0.9-2.9 s measured; before debris stopped colliding with debris,
-/// one prop's pieces piled up, one rocking on the others kept the pile
-/// awake, and how long hung on the solver's order (prop 121: 1.6 s on
-/// one base, 15 s with 110 more world brushes).
+/// first. Pieces have their `.phy` hulls: 1.5-4.2 s measured (as boxes
+/// 0.8-2.9 s). With hulls but without props' stillness sleep, 14 of the 36
+/// breaks had a light piece rocking alone on the floor past 5 s (0.3-1.9
+/// rad/s). Before debris stopped colliding with debris, one prop's pieces
+/// piled up, one rocking on the others kept the pile awake, and how long
+/// hung on the solver's order (prop 121: 1.6 s on one base, 15 s with 110
+/// more world brushes).
 #[test]
 fn broken_prop_pieces_settle_and_sleep() {
     const LIMIT: f64 = 5.0;

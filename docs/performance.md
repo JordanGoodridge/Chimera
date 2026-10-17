@@ -744,7 +744,8 @@ is something else: different ragdolls already didn't collide and a
 ragdoll's own bodies collide only for its `.phy` pairs. Pieces loaded
 with their `.phy` hulls (tried again with debris apart) no longer pile
 up, but five of the twelve props have a light piece still rocking alone
-on the floor 5 s on (0.3-1.9 rad/s), so they stay boxes for now.
+on the floor 5 s on (0.3-1.9 rad/s), so they stayed boxes (now hulls:
+see below).
 
 Ragdoll limbs jittered against the floor (2026-10-17). Ragdoll joints
 were avian XPBD constraints solved after the contacts in each substep:
@@ -768,6 +769,29 @@ stillness bounds (1 in, 5 degrees) for 1 s sleeps, as props do.
 (10 spawns on de_dust2 and de_inferno, three orders): all asleep in
 1.9-7.0 s, median 3.2 s, 51 by 5 s; after 3 s no body over 1.74 rad/s
 (a hand swinging from its wrist, rotdamping 1, dying down by 7 s).
+`ragdoll::a_ragdoll_kept_moving_is_put_to_sleep_after_five_seconds` (a
+toy scene) covers the forced rule, which the map test turns off.
+
+Broken props' pieces with their hulls (2026-10-17). Piece and chunk
+models now load with their `.phy` (prop_damage.md 7.3: pieces are
+physics objects), and pieces sleep by props' stillness rule (1 in, 5
+degrees for 1 s; `prop_physics::SettlesLikeProp`). The ragdoll fix's
+other ingredient, no gyroscopic torque, was tried and left out: it
+doesn't help pieces. `heavy::map_debris_settle`, twelve de_inferno props
+in three break orders (36 breaks), time until every piece sleeps:
+
+| pieces | asleep in | breaks still awake at 5 s |
+|---|---|---|
+| boxes (before) | 0.8-2.9 s | 0 |
+| hulls | 1.5-4.9 s | 14 (light pieces rocking alone, 0.3-1.9 rad/s) |
+| hulls, no gyroscopic torque | 1.8-9.2 s | 12 still awake at 15 s (up to 1.6 rad/s) |
+| hulls, stillness sleep (kept) | 1.5-4.2 s, median 2.4 s | 0 |
+| hulls, both | 1.7-4.8 s | 0 |
+
+The rocking pieces are curved pot shards and thin planks that keep
+rolling slowly on their curve, above avian's sleep threshold but over
+5 degrees a second, so only the stillness rule's time stops them once
+they slow down.
 
 ## Fewer cameras per frame (2026-10-16)
 
