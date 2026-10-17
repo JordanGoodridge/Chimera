@@ -219,8 +219,14 @@ impl Prop {
             });
         let physbox = is_physbox(&class);
         // A physbox breaks as a func_breakable: by its own health, unless
-        // "Only Break on Trigger" (physics_brushes.md 2.1 step 2).
-        let health = if physbox { map_health } else { health };
+        // "Only Break on Trigger" (physics_brushes.md 2.1 step 2); its
+        // "propdata" template's health first, as func_breakable's (the
+        // game's loader puts it in `PROP_HEALTH_KEY`).
+        let health = if physbox {
+            model_health.unwrap_or(map_health)
+        } else {
+            health
+        };
         let events_only = if physbox {
             health <= 0 || e.has_flag(SF_PHYSBOX_ONLY_BREAK_ON_TRIGGER)
         } else if client {

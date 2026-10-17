@@ -18,7 +18,7 @@ use bevy::{
     prelude::*,
 };
 
-use super::{bodies::PlayModels, prop_material::PropMaterial};
+use super::{bodies::PlayModels, decal::RuntimeDecal, prop_material::PropMaterial};
 use crate::map::{
     LightField, MapData, MapDebugView, PaneLook,
     breakables::{BrushPanes, FlyingGib, GibAssets, GibLook, MapGibPhysics, gib_alpha},
@@ -396,14 +396,14 @@ fn clip_triangle(pts: [Vec2; 3], lo: Vec2, hi: Vec2) -> Vec<Vec3> {
 /// A mesh drawn under a node with `BrushPanes`: its whole (unclipped)
 /// mesh, from which the unbroken panes are cut.
 #[derive(Component)]
-pub struct PaneSource(Handle<Mesh>);
+pub struct PaneSource(pub(crate) Handle<Mesh>);
 
 /// Keep a window's meshes to its unbroken panes (`map::breakables::update_panes`
 /// its collider).
 #[allow(clippy::type_complexity)]
 pub fn clip_panes(
     nodes: Query<(&BrushPanes, Option<&Children>), Changed<BrushPanes>>,
-    mut parts: Query<(&mut Mesh3d, Option<&PaneSource>, Option<&PanePart>, &mut Visibility)>,
+    mut parts: Query<(&mut Mesh3d, Option<&PaneSource>, Option<&PanePart>, &mut Visibility, Has<RuntimeDecal>)>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mut commands: Commands,
 ) {
@@ -420,7 +420,7 @@ pub fn clip_panes(
         let cracked = looks.contains(&PaneLook::Cracked);
         let edges = looks.iter().filter(|l| matches!(l, PaneLook::Edge(_))).count() as u8;
         for child in children.iter() {
-            let Ok((mut mesh3d, source, look, mut visibility)) = parts.get_mut(child) else {
+            let Ok((mut mesh3d, source, look, mut visibility, decal)) = parts.get_mut(child) else {
                 continue;
             };
             let look = look.map_or(PaneLook::Whole, |l| l.0);
@@ -432,7 +432,8 @@ pub fn clip_panes(
                     s
                 }
             };
-            if look == PaneLook::Whole && cracked {
+            // A bullet mark stays on the panes left, over the crack look.
+            if look == PaneLook::Whole && cracked && !decal {
                 visibility.set_if_neq(Visibility::Hidden);
                 continue;
             }
