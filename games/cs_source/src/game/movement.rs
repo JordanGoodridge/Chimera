@@ -14,7 +14,9 @@
 //! its sound. A bullet hit's velocity modifier (CS:S, weapons.md M18,
 //! set by `hit_reaction`) multiplies the max speed and recovers by 1/3 a
 //! second after each move. A head under water too long drowns
-//! (`super::drown`, from the water level kept here).
+//! (`super::drown`, from the water level kept here). Footsteps play the
+//! surface underfoot's steps, or a footstep volume's replacement
+//! (func_footstep_control, `super::sound::step_remaps`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -1415,15 +1417,15 @@ impl Mover<'_, '_, '_, '_> {
 
     /// Play a footstep on `surface` (unknown names: "default"): its left or
     /// right step, alternating
-    /// (the first after spawn is a right step), at `volume`.
+    /// (the first after spawn is a right step), at `volume`. With the feet
+    /// in a footstep volume that replaces `surface` (func_footstep_control,
+    /// `MapSounds::step_surface`), its destination surface's step plays.
     fn play_step(&mut self, surface: &str, volume: f32) {
+        let Some(bank) = self.trace.sounds else { return };
+        let surface = bank.step_surface(surface, to_engine(self.feet));
         // A name the surface scripts don't define (dust2's "stone" props)
         // uses "default", whose steps every surface inherits.
-        let Some(s) = self
-            .trace
-            .sounds
-            .and_then(|b| b.surface(surface).or_else(|| b.surface("default")))
-        else {
+        let Some(s) = bank.surface(surface).or_else(|| bank.surface("default")) else {
             return;
         };
         let entry = if self.me.step_left { &s.step_left } else { &s.step_right };

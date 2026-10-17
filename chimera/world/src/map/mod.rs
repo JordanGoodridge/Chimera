@@ -75,7 +75,7 @@ pub mod sound;
 pub mod steam;
 pub use sound::{
     GameSound, MapSoundClip, MapSoundEntry, MapSounds, MapSurface, PlaySound, PredictedSound, SoundControl, SoundKey,
-    SoundLevel, StartSound,
+    SoundLevel, StartSound, StepRemap,
 };
 pub mod shells;
 pub mod surface_color;

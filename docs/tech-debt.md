@@ -147,3 +147,4 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Voice chat: client cvar defaults guessed, Opus bit rate, jitter buffer and resampling ours, default devices only, open mic's threshold measure and hang, microphone boost gain and `voice_test` ours (`chimera/client/src/client/voice.rs`)
 - games/cs_source: Voice hearing rule's dead-talk-to-the-dead part unconfirmed with two clients (`games/cs_source/src/game/net.rs`)
 - games/cs_source ui: Voice HUD rows' order and box guessed; no avatars, fades or icons over heads (`games/cs_source/src/ui/voice_hud.rs`)
+- games/cs_source: func_footstep_control from the public FGD only: feet point inside, the replaced surface's step volume and timing (`games/cs_source/src/game/sound.rs`)
