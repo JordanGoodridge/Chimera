@@ -14,8 +14,9 @@
 //! --ignored --nocapture` (the position is `setpos`'s: the feet, the eye
 //! 64 units above).
 //!
-//! `displacement_textures_follow_the_grid`: the rule that spot led to
-//! (specs/cs_source/shaders.md open question 20).
+//! The rules that spot led to: `displacement_textures_follow_the_grid`
+//! (specs/cs_source/shaders.md open question 20) and
+//! `dx9_fallback_blocks_give_their_bump_maps`.
 
 use bevy::math::Vec3;
 
@@ -245,4 +246,27 @@ fn displacement_textures_follow_the_grid() {
     }
     eprintln!("{dragged} of {vertices} displacement vertices map differently from a projection");
     assert!(vertices > 10_000 && dragged > vertices / 4, "{dragged} of {vertices}");
+}
+
+/// A material's DirectX 9 fallback block counts: cs_militia's
+/// `concrete/concretewall004a_c17` (in view of the reported spot) names
+/// its `$bumpmap` only inside `"LightmappedGeneric_DX9" { }`, which the
+/// strict parser skipped, so the wall drew unbumped.
+#[test]
+fn dx9_fallback_blocks_give_their_bump_maps() {
+    let Ok(map) = crate::load_map("cs_source:cs_militia") else {
+        eprintln!("skipping: no cs_militia");
+        return;
+    };
+    let walls: Vec<_> = map
+        .meshes
+        .iter()
+        .filter(|m| m.material == "concrete/concretewall004a_c17")
+        .collect();
+    assert!(!walls.is_empty(), "the wall is on the map");
+    for m in walls {
+        let normal = m.normal_map.map(|t| map.textures[t].name.as_str());
+        assert_eq!(normal, Some("materials/concrete/concretewall004a_normal.vtf"));
+        assert!(m.detail.is_some(), "its $detail stays");
+    }
 }

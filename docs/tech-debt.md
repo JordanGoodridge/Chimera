@@ -16,7 +16,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Room DSP presets are unmeasured stand-ins derived from the preset names (`chimera/present/src/audio/room.rs`)
 - logic: ambient_generic levels for script entries vs raw waves guessed; presets and sentences ignored (`source/logic/src/logic/ambient.rs`)
 - render: World reflections use a screen-space tangent frame; dust2's tunnel highlight slightly broader than CS:S (`chimera/present/src/render/world_material.rs`)
-- map: Community materials: lenient VMT rewrite and stand-in shaders (WindowImposter, ShatteredGlass, LightmappedReflective) (`games/cs_source/src/game/material.rs`)
+- map: Community materials (and stock ones with DirectX 9 fallback blocks): lenient VMT rewrite and stand-in shaders (WindowImposter, ShatteredGlass, LightmappedReflective) (`games/cs_source/src/game/material.rs`)
 - client, bot, games/cs_source: Radio pairing, hearing rules and rate limits are ours (no spec) (`games/cs_source/src/ui/radio.rs`)
 - games/cs_source: Third-person magazine tracks dropped from additive and aim animations to hide the files' stray clip offsets (`games/cs_source/src/game/anim.rs`)
 - weapon: Buy zones on maps without func_buyzone: our box around each team spawn (`chimera/sim/src/weapon/economy.rs`)

@@ -12,7 +12,9 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): Community maps' materials
 //! (`games/cs_source/material.rs`): what the VMT parser refuses is rewritten
-//! (`lenient_vmt`) and parsed again rather than read by a parser of our own;
+//! (`lenient_vmt`) and parsed again rather than read by a parser of our own
+//! (so are materials with a DirectX 9 fallback block, whose keys the parser
+//! skips: stock HL2 walls' `$bumpmap`);
 //! shaders the specs don't cover are stand-ins: WindowImposter shows its
 //! cubemap as if infinitely far (no parallax), ShatteredGlass has no per-pane
 //! proxy, LightmappedReflective is an opaque surface of its `$refracttint` (no
@@ -237,10 +239,15 @@ impl<'a> MaterialLoader<'a> {
             _ => {}
         }
         // Strictly first; what the parser refuses is read again leniently,
-        // the way the game reads it (`lenient_vmt`).
+        // the way the game reads it (`lenient_vmt`). A material with a block
+        // that applies at DirectX 9 (`LightmappedGeneric_DX9 { $bumpmap
+        // ... }`: 181 stock materials, about 110 of them HL2 `_c17`/`_cheap`
+        // walls and floors with their bump map there) is read leniently first:
+        // the parser skips nested blocks, which lost those bump maps.
+        let dx9 = self.has_dx9_block(&text);
         let material = self
-            .parse_vmt(&text, false)
-            .or_else(|e| self.parse_vmt(&text, true).map_err(|_| e))
+            .parse_vmt(&text, dx9)
+            .or_else(|e| self.parse_vmt(&text, !dx9).map_err(|_| e))
             .map(|(m, included)| {
                 // A patch of a ShatteredGlass material (a window's
                 // cubemap-patched `$crackmaterial`) reads as one.
@@ -508,6 +515,21 @@ impl<'a> MaterialLoader<'a> {
                 | F::Rgba16161616f
                 | F::Rgba16161616
         )
+    }
+
+    /// Whether material `text` (or the material a patch includes) has a
+    /// block in its shader's block that applies at DirectX 9
+    /// (`dx_block_applies`), whose keys the strict parser would miss.
+    fn has_dx9_block(&self, text: &str) -> bool {
+        let t = tokens(text, Escapes::Off);
+        if t.first().is_some_and(|s| s.eq_ignore_ascii_case("patch")) {
+            return t
+                .windows(2)
+                .find(|w| w[0].eq_ignore_ascii_case("include"))
+                .and_then(|w| self.read_text(&w[1]))
+                .is_some_and(|inner| dx9_block(&inner));
+        }
+        dx9_block(text)
     }
 
     /// A material's text parsed, patches resolved through their included
@@ -1262,6 +1284,26 @@ fn dx_variant_of(shader: &str) -> Option<&'static str> {
     PARSER_SHADERS.iter().copied().find(|s| *s == base)
 }
 
+/// Whether a material's shader block holds a block that applies at
+/// DirectX level 9 (`dx_block_applies`).
+fn dx9_block(text: &str) -> bool {
+    let t = tokens(text, Escapes::Off);
+    let mut level = 0;
+    for (i, tok) in t.iter().enumerate() {
+        match tok.as_str() {
+            "{" => level += 1,
+            "}" => level -= 1,
+            name if level == 1 && t.get(i + 1).is_some_and(|v| v == "{") => {
+                if dx_block_applies(name) == Some(true) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Whether a block in the shader's block applies at DirectX level 9
 /// (Some(true): its keys count; Some(false): dropped; None: kept).
 fn dx_block_applies(name: &str) -> Option<bool> {
@@ -1402,16 +1444,20 @@ fn lenient_vmt(text: &str) -> String {
             continue;
         };
         let mut body = Vec::new();
+        // Blocks that apply at DirectX 9 override the shader's own keys
+        // wherever they stand (as `MaterialLoader::keys` reads them).
+        let mut dx9 = Vec::new();
         for kid in kids {
             match kid {
                 Node::Block(name, inner) => match dx_block_applies(&name) {
-                    Some(true) => body.extend(inner),
+                    Some(true) => dx9.extend(inner),
                     Some(false) => {}
                     None => body.push(Node::Block(name, inner)),
                 },
                 pair => body.push(pair),
             }
         }
+        body.extend(dx9);
         let shader = if shader.eq_ignore_ascii_case("worldvertextransition") && !has_base2 {
             "LightmappedGeneric".to_string()
         } else {
@@ -1734,6 +1780,25 @@ mod tests {
             Material::Water(w) => assert!((w.fog_color.0[1] - 248.0 / 255.0).abs() < 1e-4),
             m => panic!("{m:?}"),
         }
+        // A DirectX 9 fallback block (HL2's `_c17`/`_cheap` walls) that the
+        // strict parser takes but skips: its keys count and override; an
+        // HDR block doesn't count.
+        let dx9 = "\"LightmappedGeneric\"\n{\n\t\"$basetexture\" \"Metal/wall\"\n\t\"$surfaceprop\" \"metal\"\n\t\"LightmappedGeneric_DX9\"\n\t{\n\t\t\"$bumpmap\" \"Metal/wall_normal\"\n\t\t\"$surfaceprop\" \"metalpanel\"\n\t}\n\t\"lightmappedgeneric_HDR_dx9\" { \"$surfaceprop\" \"glass\" }\n}\n";
+        assert!(dx9_block(dx9));
+        assert_eq!(strict(dx9).expect("the parser takes it").bump_map(), None);
+        match lenient(dx9) {
+            Material::LightMappedGeneric(m) => {
+                assert_eq!(m.bump_map.as_deref(), Some("metal/wall_normal"));
+                assert_eq!(m.surface_prop.as_deref(), Some("metalpanel"));
+            }
+            m => panic!("{m:?}"),
+        }
+        let hdr_only =
+            "LightmappedGeneric { $basetexture x \"lightmappedgeneric_HDR_dx9\" { $envmaptint \"[.25 .25 .25]\" } }";
+        assert!(!dx9_block(hdr_only));
+        assert!(!dx9_block(
+            "\"Water\" { \"$normalmap\" \"n\" \"Proxies\" { \"WaterLOD\" { } } }"
+        ));
         // Materials the parser takes read the same leniently.
         let fine = "\"LightmappedGeneric\" { \"$basetexture\" \"x/y\" \"$detailscale\" \"4\" \"$surfaceprop\" \"metal\" }";
         assert_eq!(

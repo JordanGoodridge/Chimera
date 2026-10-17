@@ -217,6 +217,7 @@ common console commands, against mashup's.
 |---|---|---|---|---|
 | Lightmaps, bump, envmaps, two-texture blend, sky, fog | have | | | refcmp above |
 | Displacement texture mapping | have (fixed) | M | S | displacements projected their texture through the sculpted surface, smearing it in streaks wherever vertices move sideways (reported on cs_militia's rock walls at its front yard); now mapped from the undisplaced grid as their lightmaps are (shaders.md open question 20: measured, refcmp detail correlation up on every map, de_aztec 0.54 -> 0.72) |
+| Bump maps in DirectX 9 fallback blocks | have (fixed) | L | S | 181 stock materials have a `LightmappedGeneric_DX9` (or `>=DX90`) block, which the VMT parser skipped; about 110 name their `$bumpmap` only there (HL2's `_c17`/`_cheap` walls and floors: cs_militia's sewer-concrete wall by the reported spot, cs_assault, cs_compound, de_port, de_inferno), drawn flat; now read with the block's keys (`lenient_vmt`) |
 | Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone; glass shards tumble and settle, slime splashes from the `.pcf` (2026-10-15) |
 | Impact effects of others' shots beyond the shooter's PAS | differs | L | M | every client makes them (impact_effects.md 1; no network relevance yet, `net::server`) |
 | Knife slash mark | differs | L | S | `ManhackCut` is a guess; no spec names it (backlog 3 "Decals, remaining") |
