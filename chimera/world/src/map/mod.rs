@@ -57,7 +57,7 @@ pub mod lod;
 pub mod logic_view;
 pub mod loose;
 pub mod material_fx;
-pub use material_fx::{DetailMode, MapSelfIllum, MapUvTransform, parameter_gamma_to_linear};
+pub use material_fx::{DetailMode, MapSelfIllum, MapTextureAnim, MapUvTransform, parameter_gamma_to_linear};
 pub mod bot_profiles;
 pub mod monitor;
 pub mod nav;

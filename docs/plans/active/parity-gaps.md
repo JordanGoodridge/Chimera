@@ -26,14 +26,14 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 |---|---|---|---|---|
 | Movement | 3 | 8 | 0 | 2 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
-| Sounds | 7 | 8 | 3 | 4 |
+| Sounds | 8 | 8 | 3 | 5 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 8 | 17 | 2 | 4 |
+| Rendering, lighting, materials | 10 | 17 | 2 | 6 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **67** | **63** | **21** | **32** |
+| **Total** | **70** | **63** | **21** | **35** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -140,6 +140,7 @@ report folders):
 | HUD weapon selection sounds | have (fixed) | H | S | `Player.WeaponSelectionMoveSlot`/`WeaponSelected`/`DenyWeaponSelection` were never played; when each plays is inferred, capture C3 |
 | Under water muffle | have (fixed) | M | S | nothing changed with the head under water; now a steady low-pass (Source's `dsp_water` is engine-side: values ours, capture C5) |
 | Distance falloff curves | differs | H | S | spec sounds.md Q1 (H1/H2 hypotheses) |
+| Footsteps and impacts on blended ground (`$surfaceprop2`) | have (fixed) | M | S | 2026-10-17: blended displacements always played their first surface (cs_militia's grass as dirt; cs_compound, de_aztec's mud, de_port, 6 community maps); now a triangle whose corners' mean vertex alpha is over one half takes the second (`sound::second_surface`); the threshold is ours (no spec), check by ear on militia's yard |
 | Footstep silence rules, jump sound | have (fixed) | H | S | measured (sounds.md "Footsteps"): silent below 150 (was: by the walk/duck keys), 0.25 / 0.4 s under 220, 0.55 / 0.3 s above, jump 1.0; duck + jump from standing silent in CS:S, ours plays the jump step |
 | Room DSP presets | differs | M | M | tech-debt "Room DSP": every value ours |
 | `dsp_player`, `soundmixer` | missing | M | M | read, not played (spec Q14) |
@@ -240,6 +241,8 @@ common console commands, against mashup's.
 | Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models"; view_models.md Q5, Q7; capture C15 |
 | Prop light probes | differs | M | M | tech-debt: the engine's weighting isn't public (needs a spec session); props without `.vhv` (all of cs_militia's) take the sun from one point, whole or not at all: militia's crates by the shed (x 1344-1353) much darker than the next ones out, as the reading predicts (2026-10-17); whether CS:S does that or lights them per vertex at load is shaders.md Q11, capture C28 |
 | Model reflections masked by the normal map's alpha (`$normalmapalphaenvmapmask`) | have (fixed) | M | S | 2026-10-17: the mask was dropped on props, so those materials were mirrors: militia's ammo can, cable spool, pallet, car battery, APC; the same props on nuke, inferno, train, assault, port, prodigy, compound, havana, piranesi, aztec (vents, pallets, spools, `metalwall001a`, `pi_apc`, `pi_boat`); the hands now reflect through it too. refcmp: nuke 0.0242 -> 0.0241, aztec, dust2 unchanged, office within capture noise (`cam0`'s sky) |
+| Animated textures (AnimatedTexture proxy), `$frame` | have (fixed) | L | S | 2026-10-17: drawn on their first frame; now the frames in turn (`render::texture_anim`): de_nuke's pool's bump map (29 frames at 21 fps; its base has one frame), cs_office's projector slide (7 slides, one every 10 s), 7 community maps (DirectX 7 water stand-ins, mg_escape_prison_beta's slime bump); a static `$frame` (no stock map sets one) picks its frame. From the public wiki, no spec (tech-debt) |
+| LightmappedGeneric `$color` | have (fixed) | L | S | 2026-10-17: ignored; now the lighting times `$color`, raw (shaders.md 2). No stock world material sets it; 6 community maps' DirectX 7 water stand-ins do (bhop_backport_css, gg_pokemonz, surf_stickybutt_alpha) |
 | Props whose material names its cubemap | have (fixed) | L | S | 2026-10-17: drew no reflection; now that cubemap (no stock map's props do this) |
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C20 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
