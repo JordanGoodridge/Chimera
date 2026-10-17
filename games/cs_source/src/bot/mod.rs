@@ -1,6 +1,7 @@
 //! Bots: characters whose intent comes from a brain instead of a keyboard
 //! (README, "Characters and control"), so they use the same movement and
-//! weapons as players. The brain turns toward the nearest enemy it can see
+//! weapons as players (the match's movement, `movement::match_movement`,
+//! not the local player's current one). The brain turns toward the nearest enemy it can see
 //! at a limited turn rate, strafes, and fires once it has seen them for a
 //! reaction time and is on target. With nobody in sight it follows its
 //! team's plan (`tactics`): attackers walk to a site as a group and hold
@@ -226,9 +227,8 @@ use crate::{
     character::CAPSULE_HEIGHT,
     character::spawn_character,
     console::{Command, Console, resource_cvar},
-    core::{Health, Intent, LocalPlayer, MapBrush, MapBrushes, MovementState, SimSet, SpawnPoint, Team},
+    core::{Health, Intent, MapBrush, MapBrushes, MovementState, SimSet, SpawnPoint, Team},
     map::nav::{NavLadder, NavMesh, STEP_HEIGHT, flags},
-    slots::{Loadout, MovementSlot},
     weapon::{Inventory, grenade::Projectile},
 };
 
@@ -1000,7 +1000,7 @@ fn hear(
 }
 
 /// Spawn a bot on `team` at a spawn point (the team's, if the map has
-/// them), using the local player's movement or the loadout's.
+/// them), moving with the match's movement (`game::movement::match_movement`).
 pub fn add_bot(world: &mut World, team: Team) -> Option<Entity> {
     let e = spawn_bot(world, team)?;
     if let Some(mut q) = world.get_resource_mut::<BotQuota>() {
@@ -1031,12 +1031,9 @@ fn spawn_bot(world: &mut World, team: Team) -> Option<Entity> {
     };
     // Skip the first spawn, where the local player starts.
     let at = **pool.get((bots + 1) % pool.len().max(1)).or(pool.first())?;
-    let movement = world
-        .query_filtered::<&MovementSlot, With<LocalPlayer>>()
-        .iter(world)
-        .next()
-        .map(|m| m.0)
-        .or_else(|| world.get_resource::<Loadout>().map(|l| l.movement))?;
+    // The match's movement, not the local player's current one (a bot
+    // added while the player flew with noclip flew too).
+    let movement = crate::game::movement::match_movement(world)?;
     let yaw = at.rotation.to_euler(EulerRot::YXZ).0;
     // A name from the game's bot profiles at `bot_difficulty` (one no bot
     // here has), else "Bot <number>".

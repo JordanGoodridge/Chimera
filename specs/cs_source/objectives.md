@@ -548,9 +548,15 @@ the round):
   −151.97.
   Model: the next of `characters/hostage_01..04` in turn (a counter that
   goes on over rounds and maps; the map's model and `HostageType` don't
-  matter; measured, Q9). Hostages are restored at
-  every round start (they are map entities; our round restart re-creates
-  them).
+  matter; measured, Q9). Every round start re-creates them (measured
+  2026-10-17 on the probe, `mashup_ents` before and after: after
+  `mp_restartgame 1` and after rounds that ended by elimination and as a
+  draw, each hostage_entity had a new reference in the same edict slot,
+  back at its origin, with the next models in turn; cs_office's four keep
+  their model per hostage only because there are four models, while
+  cs_compound's three move on one each round). A hostage teleported idle
+  into the air stays there until the next round re-creates it. Ours: the
+  round start despawns and spawns them.
 - **Use:** pressing Use (one press, use search §5) on a hostage:
   - CT, hostage idle: it starts following him. `Hostage.StartFollowCT`,
     event `hostage_follows`, log `triggered "Touched_A_Hostage"`,
@@ -804,7 +810,9 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    round (four a round), cs_compound's three got 04 01 02, then 03 04 01,
    02 03 04, 01 02 03 (its first round went on from where cs_office left
    it), and cs_office after it 03 04 01 02. The map's skin stays (cs_office
-   1, cs_compound 0). Ours: `HostageModelCycle`, and the map's skin as
+   1, cs_compound 0). The same hostage having the same model round after
+   round on cs_office is the turn too (four hostages, four models), not a
+   hostage kept: every round start re-creates them ("Spawn"). Ours: `HostageModelCycle`, and the map's skin as
    `map::BodySkin` (every stock hostage and player model has one skin
    family, so skin 1 draws as skin 0, as in CS:S). Was: **Q9 Hostage model choice.** On cs_office (`models/hostage.mdl`, skin
    1) and cs_compound (`HostageType` 1): which of `hostage_01..04` does
