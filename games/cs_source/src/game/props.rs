@@ -1858,12 +1858,24 @@ fn model_breaks(
         .unwrap_or_default();
     let mut models = Vec::new();
     let mut pieces = Vec::new();
+    // A piece goes at its block's offset minus its model's
+    // "placementOrigin" attachment relative to the parent's (spec 7.3):
+    // pieces modelled around their own origin land where they were in the
+    // whole prop.
+    let placement = |materials: &MaterialLoader, model: &str| {
+        model_attachments(&|p: &str| materials.read(p), model)
+            .ok()
+            .and_then(|list| list.into_iter().find(|(n, _)| n == "placementorigin").map(|(_, at)| at))
+            .unwrap_or(Vec3::ZERO)
+    };
+    let parent_placement = placement(materials, path);
     for p in super::propdata::break_pieces(&blocks) {
+        let offset = p.offset - (placement(materials, &p.model) - parent_placement);
         match load_shell(materials, &p.model) {
             Ok(m) => {
                 pieces.push(MapBreakPiece {
                     model: models.len(),
-                    offset: to_engine(v_src(p.offset)),
+                    offset: to_engine(v_src(offset)),
                     centre: (m.bounds.0 + m.bounds.1) / 2.0,
                     life: if p.fadetime > 0.0 { p.fadetime } else { f32::INFINITY },
                     burst: p.burst * METERS_PER_UNIT,

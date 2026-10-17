@@ -695,3 +695,99 @@ fn gibs_carry_their_bounce_sound() {
     assert_eq!(Material::Rocks.bounce_sound(), Some("Bounce.Concrete"));
     assert_eq!(Material::None.bounce_sound(), None);
 }
+
+#[test]
+fn breakable_materials_by_class() {
+    // func_breakable_surf glass is glass whatever its "material"; tile
+    // keeps its keyvalue.
+    assert_eq!(Material::of_entity("func_breakable_surf", 2, 0), Material::Glass);
+    assert_eq!(Material::of_entity("func_breakable_surf", 1, 1), Material::Wood);
+    assert_eq!(Material::of_entity("func_breakable", 7, 0), Material::UnbreakableGlass);
+}
+
+#[test]
+fn bulletproof_glass_takes_hits_without_breaking() {
+    // UnbreakableGlass (7): damage lowers health and reports it, the glass
+    // damage sound plays while it is above 0, but it never breaks, not
+    // even by the Break input.
+    let mut w = world();
+    let glass = breakable(
+        &mut w,
+        &[("material", "7"), ("health", "20")],
+        Vec3::new(64.0, 2.0, 64.0),
+    );
+    w.damage(glass, 26.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
+    assert_eq!(health(&w, glass), 7, "20 - 13");
+    assert!(w.fired.iter().any(|(_, e, o)| *e == glass && o == "OnHealthChanged"));
+    assert_eq!(sounds(&w), vec!["Breakable.MatGlass"]);
+    w.effects.clear();
+    w.damage(glass, 26.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
+    assert_eq!(health(&w, glass), -6);
+    assert!(w.mover_solid(glass).is_some(), "still solid at health -6");
+    assert!(w.shootable(glass));
+    assert_eq!(gibs(&w), 0);
+    assert!(sounds(&w).is_empty(), "no damage sound at 0 or below, no break sound");
+    w.deliver(Who::Ent(glass), "Break", Value::Void, None, None);
+    assert!(w.mover_solid(glass).is_some(), "Break does nothing");
+    assert!(!w.fired.iter().any(|(_, e, o)| *e == glass && o == "OnBreak"));
+}
+
+#[test]
+fn a_propdata_template_fills_in_health_multipliers_and_gibs() {
+    use crate::map::entities::{PROP_DAMAGE_KEY, PROP_GIBS_KEY, PROP_HEALTH_KEY};
+    // A metal brush (map health 1) naming Wooden.Medium (the loader's
+    // keys: health 30, bullets 0.75, club 2, blast 1.5, WoodChunks).
+    let template = [
+        ("material", "2"),
+        ("health", "1"),
+        ("propdata", "3"),
+        (PROP_HEALTH_KEY, "30"),
+        (PROP_DAMAGE_KEY, "0.75 2 1.5"),
+        (PROP_GIBS_KEY, "WoodChunks"),
+    ];
+    let mut w = world();
+    let b = breakable(&mut w, &template, Vec3::new(64.0, 8.0, 32.0));
+    assert_eq!(health(&w, b), 30, "the template's health, not the map's");
+    w.damage(b, 36.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
+    assert_eq!(health(&w, b), 3, "30 - 36 x 0.75");
+    w.damage(b, 1.0, DamageKind::Melee, None, Vec3::ZERO, Vec3::X);
+    assert_eq!(health(&w, b), 1, "3 - 1 x 2");
+    w.damage(b, 1.0, DamageKind::Blast, None, Vec3::ZERO, Vec3::X);
+    assert!(w.mover_solid(b).is_none(), "1 - 1.5 breaks it");
+    assert!(
+        w.effects
+            .iter()
+            .any(|e| matches!(e, Effect::Gibs { set, .. } if set == "WoodChunks")),
+        "the template's chunks"
+    );
+    // Its break sound is still the material's.
+    assert!(sounds(&w).contains(&"Breakable.Metal".to_string()));
+
+    // "gibmodel" wins over the template's list.
+    let mut w = world();
+    let mut keys = template.to_vec();
+    keys.push(("gibmodel", "MetalChunks"));
+    let b = breakable(&mut w, &keys, Vec3::new(64.0, 8.0, 32.0));
+    w.deliver(Who::Ent(b), "Break", Value::Void, None, None);
+    assert!(
+        w.effects
+            .iter()
+            .any(|e| matches!(e, Effect::Gibs { set, .. } if set == "MetalChunks"))
+    );
+
+    // A template with health 0 (Metal.Base's) leaves it to the Break input.
+    let mut w = world();
+    let b = breakable(
+        &mut w,
+        &[("material", "2"), ("health", "50"), (PROP_HEALTH_KEY, "0")],
+        Vec3::splat(32.0),
+    );
+    w.damage(b, 1000.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
+    assert!(w.mover_solid(b).is_some(), "not damageable");
+
+    // Without a template: the map's health and func_breakdmg_*.
+    let mut w = world();
+    let b = breakable(&mut w, &[("material", "1"), ("health", "50")], Vec3::splat(32.0));
+    w.damage(b, 36.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
+    assert_eq!(health(&w, b), 32);
+}
