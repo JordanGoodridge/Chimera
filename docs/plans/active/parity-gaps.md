@@ -24,7 +24,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 
 | Area | have | differs | missing | fixed now |
 |---|---|---|---|---|
-| Movement | 4 | 9 | 0 | 3 |
+| Movement | 5 | 8 | 0 | 4 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
 | Sounds | 8 | 8 | 3 | 5 |
 | HUD | 14 | 4 | 1 | 5 |
@@ -33,7 +33,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **72** | **64** | **21** | **37** |
+| **Total** | **73** | **63** | **21** | **38** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -104,7 +104,7 @@ report folders):
 | Duck spam limit, duck transition times | have | M | S | measured (movement.md Q6): 0.4 s / 0.2 s, no spam limit, as ours |
 | Backpedal speed (`sv_backspeed`) | have | L | S | measured (movement.md Q10): not applied in CS:S (full speed backwards), as ours |
 | Noclip across spawns | have (fixed) | M | S | measured 2026-10-17 (movement.md "Noclip and spawning"): every spawn walks (`mp_restartgame`, the next round, a respawn after death); ours kept the noclip, now `put_at_spawn` ends it and a server never spawns a client noclipping |
-| Noclip takes no damage | differs | L | S | measured 2026-10-17 (movement.md "Noclip and spawning"): CS:S's noclipping player took none; ours takes it (`god` does that) |
+| Noclip takes no damage | have (fixed) | L | S | measured 2026-10-17 (movement.md "Noclip and spawning"): CS:S's noclipping player takes nothing from bullets, blasts, trigger_hurt or the world, nor loses armour, but is still hit (bullets meet its body and go on through) and falls hurt once it walks; ours took it all, now `core::Noclip` is refused by `DamageRules` and spared armour (a suicide still kills), and flies below the map unharmed |
 | Base velocity (conveyors, water currents) | differs | L | M | tech-debt "Source movement"; spec Q15 |
 | Camera under a low ceiling | differs | M | | other work in flight (mg_jacks) |
 | Tick rate 66.67 vs community 100 | differs | L | | spec Q17 |

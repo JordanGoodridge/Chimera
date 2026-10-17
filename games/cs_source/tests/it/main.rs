@@ -58,6 +58,7 @@ mod net_prediction;
 mod net_upnp;
 mod net_votes;
 mod net_weapons;
+mod noclip_damage;
 mod pain_sounds;
 mod phy_spec;
 mod prediction;

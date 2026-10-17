@@ -18,7 +18,6 @@ use crate::stack::{
     harness::{CsSim, Sim},
     map::{MapData, MapPlugin, PropEntity, Ragdoll, ragdoll::RagdollSettings},
     mount::config::LocalConfig,
-    movement::noclip,
     rules::Deathmatch,
 };
 
@@ -118,7 +117,7 @@ fn ragdolls_settle_and_sleep() {
             let mut sim = sim(map.clone());
             sim.app.world_mut().resource_mut::<RagdollSettings>().sleep_after = 1000.0;
             for k in order {
-                let p = sim.spawn_character(to_engine(points[k]) + Vec3::Y * 0.95, noclip::ID);
+                let p = crate::common::spawn_still(&mut sim, to_engine(points[k]) + Vec3::Y * 0.95);
                 sim.ticks(10);
                 let head = sim.position(p) + Vec3::Y * 0.7;
                 let dir = Quat::from_rotation_y(k as f32 * 2.1) * Vec3::NEG_Z;

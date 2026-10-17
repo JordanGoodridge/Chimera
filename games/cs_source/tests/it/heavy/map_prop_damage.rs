@@ -26,7 +26,6 @@ use crate::stack::{
     audio::live_sound::LiveSounds,
     map::{BreakProp, MapData, MapPlugin, PropEntity, PropLook, SpawnGibs},
     mount::config::LocalConfig,
-    movement::noclip,
 };
 
 fn load(name: &str) -> Option<MapData> {
@@ -351,7 +350,7 @@ fn cs_militia_gas_can_explodes() {
     let (h, _) = health(&sim, can).expect("a gas can");
     assert!(h > 0);
     // Someone standing 40 units away.
-    let victim = sim.spawn_character(to_engine(origin + Vec3::new(40.0, 0.0, 0.0)), noclip::ID);
+    let victim = crate::common::spawn_still(&mut sim, to_engine(origin + Vec3::new(40.0, 0.0, 0.0)));
     sim.ticks(2);
     let before = sim.app.world().get::<Health>(victim).unwrap().current;
     shoot(&mut sim, can, 500.0, None);

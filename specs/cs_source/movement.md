@@ -771,6 +771,33 @@ bot added for round ends:
   bullet damage from the terrorist, 30 and 1000: health stayed 100); the
   same hit while walking did. Its `m_takedamage` stayed 2 (yes).
 
+Damage in noclip (measured 2026-10-17, same server; the victim a second
+bot held in place by `mashup_fire` with no buttons, its damage hooked with
+`mashup_dmghook`, `player_hurt` from the `hurt` rows):
+- **Gunfire** (the run bot's AK-47 from 300 units at the chest): a
+  noclipping player is still traced and hit. The bullet left an impact on
+  its body (`bullet_impact` at its chest) and a second one on the wall
+  behind, as through a walking player (45 vs 47 units from the same
+  wall), and its OnTakeDamage got the full 44.47 bullet damage, but
+  health stayed 100, armour 100 (with a helmet) and no `player_hurt`
+  came. Walking, the same shot: 34 health and 5 armour (a stomach hit).
+  `mashup_trace` (bullet mask) along the line ends on the noclipping
+  player too (hitgroup 3).
+- **HE grenade** (thrown at the feet of the run bot 100 units away): the
+  blast reached it (OnTakeDamage 35.95, blast) and took nothing; walking,
+  37.
+- **trigger_hurt** (spawned on the CT buy zone's brush, damage 20): the
+  trigger still touches and hands on 10 every 0.5 s; nothing taken.
+  Walking: 10 a pass.
+- **Falling after noclip:** noclip turned off in the air and thrown down
+  at 700 from 107 units over the floor, the landing took 54, as the same
+  throw walking did (54). Falls count as soon as it walks again.
+- So noclip refuses all damage after it is dealt (no health, no armour,
+  no `player_hurt`), which is not god mode's way of never being hit:
+  bullets meet the body and go on through. Not measured: whether a blast
+  still pushes it or a hit still slows or punches it (held in place), and
+  blood on hits (a suicide, `kill`, ends a noclipping life as above).
+
 ## Open questions
 
 1. **Answered (measured 2026-10-15, probe server, top speed running forward after one or two zoom presses):** AWP 210 → 150 at both zoom levels; Scout 260 → 220; SG550 210 → 150; **G3SG1 stays 210** zoomed; SG 552 235 → 200 zoomed; AUG 221 zoomed too (unchanged).

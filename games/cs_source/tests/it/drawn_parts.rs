@@ -17,7 +17,6 @@ use crate::stack::{
         change_map,
         loose::{LooseItem, ShownItem},
     },
-    movement::noclip,
     render::{bodies::CharacterBody, prop_material::PropMaterial, vis::VisStats},
     rules::Deathmatch,
 };
@@ -79,7 +78,7 @@ fn sim(drawn: bool) -> (Sim, Entity) {
         Sim::new(CsSim, MapPlugin::new(map()))
     };
     sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
-    let p = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
+    let p = crate::common::spawn_still(&mut sim, Vec3::new(0.0, 0.9, 0.0));
     sim.ticks(10);
     (sim, p)
 }
@@ -192,7 +191,7 @@ fn headless_the_same_requests_draw_nothing() {
 fn the_map_alone_makes_the_same_parts() {
     let mut sim = Sim::new(CsSim, MapSimPlugin::new(map()));
     sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
-    let p = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
+    let p = crate::common::spawn_still(&mut sim, Vec3::new(0.0, 0.9, 0.0));
     sim.ticks(10);
     let parts = |sim: &mut Sim| {
         let world = sim.app.world_mut();

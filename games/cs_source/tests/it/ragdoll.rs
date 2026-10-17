@@ -18,7 +18,6 @@ use crate::stack::{
         anim::{AnimSet, Animation, Sequence, Track},
         ragdoll::{DeathSide, RagdollJoint, RagdollSettings, Ragdolled, death_pose_frame, needs_repair},
     },
-    movement::noclip,
     rules::Deathmatch,
 };
 
@@ -142,7 +141,7 @@ pub(crate) fn model() -> MapCharacterModel {
 }
 
 /// A floor whose top is at y = 0 and the model, with a character standing
-/// on it (noclip: it stays put).
+/// on it (`spawn_still`: it stays put).
 fn sim() -> (Sim, Entity) {
     sim_with(model())
 }
@@ -162,7 +161,7 @@ fn sim_with(model: MapCharacterModel) -> (Sim, Entity) {
     let mut sim = Sim::new(CsSim, MapPlugin::new(floor_map(model)));
     // The dead stay dead for the test.
     sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
-    let p = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
+    let p = crate::common::spawn_still(&mut sim, Vec3::new(0.0, 0.9, 0.0));
     sim.ticks(10);
     (sim, p)
 }
@@ -587,7 +586,7 @@ fn bodies_take_their_surface_friction() {
 }
 
 /// The floor map with CS:S's weapons (guns, HE blasts) and one character
-/// standing still (noclip) at the centre.
+/// standing still (`spawn_still`) at the centre.
 fn armed_sim() -> (Sim, Entity) {
     let mut sim = Sim::new(CsSim, (
         MapPlugin::new(floor_map(model())),
@@ -595,7 +594,7 @@ fn armed_sim() -> (Sim, Entity) {
     ));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
-    let p = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
+    let p = crate::common::spawn_still(&mut sim, Vec3::new(0.0, 0.9, 0.0));
     sim.ticks(10);
     (sim, p)
 }

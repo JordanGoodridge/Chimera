@@ -862,7 +862,8 @@ struct GrenadeWorld<'w, 's> {
     ragdolls: Query<'w, 's, (Entity, &'static crate::map::Ragdoll)>,
     ragdoll_bodies: Query<'w, 's, &'static Position, With<crate::map::RagdollBody>>,
     ragdoll_shots: MessageWriter<'w, crate::map::RagdollShot>,
-    armor: Query<'w, 's, &'static mut Armor>,
+    // A noclipping character's armour takes none (`core::Noclip`).
+    armor: Query<'w, 's, &'static mut Armor, Without<crate::core::Noclip>>,
     blinded: Query<'w, 's, &'static Blinded>,
     water: Option<Res<'w, MapWater>>,
     damage: MessageWriter<'w, Damage>,

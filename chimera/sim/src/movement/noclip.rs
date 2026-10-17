@@ -5,6 +5,8 @@
 //! remembers the movement it left (`NoclipBack`); a game's spawn ends
 //! that noclip (`end_toggled`), as CS:S puts every player it spawns back
 //! to walking (specs/cs_source/movement.md "Noclip and spawning").
+//! Its marker (`core::Noclip`) keeps damage off the character, as CS:S's
+//! noclip does (`core::DamageRules`; armour in `weapon`'s hits and blasts).
 
 use bevy::prelude::*;
 
@@ -18,8 +20,9 @@ pub const ID: &str = "mashup:noclip";
 const SPEED: f32 = 10.0;
 const FAST_MULTIPLIER: f32 = 3.0;
 
-#[derive(Component, Default)]
-pub struct Noclip;
+/// The marker lives in `core` (`core::Noclip`), where damage refuses a
+/// noclipping character.
+pub use crate::core::Noclip;
 
 /// The movement a character had when the `noclip` command turned noclip
 /// on, which it goes back to when noclip ends.
