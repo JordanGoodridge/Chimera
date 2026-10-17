@@ -59,6 +59,44 @@ fn with_model(map: &MapData, model: &str) -> Vec<usize> {
     (0..map.entities.len()).filter(|i| model_is(map, *i, model)).collect()
 }
 
+/// cs_militia's skylight glass and roof-hole boards break into pieces
+/// modelled around their own origins, each with a "placementOrigin"
+/// attachment (spec 7.3: a piece goes at its block's offset minus that
+/// attachment): every piece starts where it was in the whole prop, inside
+/// its box, not stacked at the prop's origin.
+#[test]
+fn militia_break_pieces_start_where_they_were() {
+    use crate::stack::map::breakables::MapBreak;
+    let Some(map) = load("cs_militia") else { return };
+    for (model, count) in [
+        ("models/props/cs_militia/skylight_glass.mdl", 13),
+        ("models/props/cs_militia/roofholeboards.mdl", 7),
+    ] {
+        let m = map
+            .models
+            .iter()
+            .find(|m| matches!(&m.breaks, Some(MapBreak::Pieces { set, .. }) if set.eq_ignore_ascii_case(model)))
+            .unwrap_or_else(|| panic!("{model} breaks into its pieces"));
+        let Some(MapBreak::Pieces { pieces, .. }) = &m.breaks else { unreachable!() };
+        assert_eq!(pieces.len(), count, "{model}");
+        let (lo, hi) = m.bounds;
+        let grow = Vec3::splat(4.0 * 0.0254);
+        let mut starts: Vec<Vec3> = Vec::new();
+        for p in pieces {
+            let mid = p.offset + p.centre;
+            assert!(
+                mid.cmpge(lo - grow).all() && mid.cmple(hi + grow).all(),
+                "{model}: a piece's centre {mid} outside the prop's box {lo}..{hi}"
+            );
+            starts.push(mid);
+        }
+        for (i, a) in starts.iter().enumerate() {
+            let apart = starts[i + 1..].iter().filter(|b| a.distance(**b) > 0.05).count();
+            assert_eq!(apart, starts.len() - i - 1, "{model}: pieces start apart: {starts:?}");
+        }
+    }
+}
+
 fn id_of(sim: &Sim, index: usize) -> Option<EntId> {
     let logic = sim.app.world().resource::<Logic>();
     logic
