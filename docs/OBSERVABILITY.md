@@ -1039,6 +1039,14 @@ Details and baseline numbers: [performance.md](performance.md).
   geometry seen through sky brushes, which culling hides as the game
   does; see performance.md). `cargo test --features dev --test it map_vis::` checks the same with rays from
   ~300 player positions per map (`MASHUP_VIS_FULL=1`: every nav area).
+- `refcmp ordercheck --views tools/refcmp/<map>.toml` captures the same
+  views (vischeck's) in order and in reverse order and fails if any view
+  differs by more than 100 pixels: a capture that depends on the views before it (sort
+  order, fades, exposure an earlier view left) shows there, and would
+  make vischeck and refcmp comparisons differ by chance. To find what a
+  view depends on, capture short `--views` lists with mashup itself (the
+  view, then the views before it in the run, dropping one at a time) and
+  compare the view's PNGs (`magick compare -metric AE a.png b.png null:`).
 - `REFCMP_OUT=<dir> refcmp ...` writes mashup's captures, reports, bench
   and vischeck output under `<dir>/<map>` (references are still read from
   the shared dump folder): use a folder in your own `target/` when other
@@ -1382,7 +1390,12 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   CS:S bots duck-jump on their own (inside the game, not through their
   buttons): movecmp holds duck on our side while the bot is ducked in the
   air, so jumps differ only by the bot's instant 8.5-unit duck on the jump
-  tick.
+  tick. On that tick the bot's duck makes the jump set vz like a ducked
+  one (289.99, not 284) but doesn't slow its input as a held key would
+  (0.34; a strafe there got the full 37.5 u/s of air acceleration), so
+  movecmp plays it unslowed. The report compares those ticks without the
+  8.5-unit lift and counts them ("bot ducks"), so "max pos diff" is our
+  movement's own difference.
 - `--offline` replays the scenarios against the CS:S logs the last online
   run left in the server's `cstrike/mashup/<name>.out` (same inputs), for
   checking movement changes without starting the server.
@@ -1403,7 +1416,20 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   rule (duck held, or ducked/mid-duck at the tick's start; on ladders
   too), the per-tick contents cache at the water surface, and that a
   coincident player-clip face can win over a ladder brush (which one wins
-  follows the BSP tree's order, `MapBrushTree`).
+  follows the BSP tree's order, `MapBrushTree`). Fuzzing seeds 101-110
+  (2026-10-16) found CS:S's duck timer left running when duck is released
+  partway down, a jump pressed while unducking (no jump, stamina spent,
+  stands up next tick) and the ladder's duck scale taken after the tick's
+  unduck; the `duck_release_*` and `unduck_jump_*` scenarios replay them.
+  With the bot's jump duck taken out of the report, the base scenarios
+  showed a crease bevel our terrain triangles dropped and the 1/32 u/s a
+  stopped move keeps off the surface (`wall_slide`).
+- `movecmp brushes <map> <x> <y> <z> [radius]` lists the collision
+  brushes near a point (index, ladder flag, bounds, planes in Source
+  units) and the terrain triangles: what a diverging run's trace there
+  can hit. `movecmp fuzz ... --offline --run <name>` replays one fuzz run
+  (same seed and options); with `MASHUP_SLIDE_DEBUG=1` the ladder probe
+  prints its sweep each tick too.
 
 ## CS:S demos (demodump)
 

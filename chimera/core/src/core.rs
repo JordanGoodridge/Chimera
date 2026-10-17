@@ -1894,10 +1894,16 @@ impl MapBrush {
         for axis in axes {
             let Some(m) = axis.try_normalize() else { continue };
             for m in [m, -m] {
-                if planes.iter().any(|(q, _)| q.dot(m) > 1.0 - 1e-6) {
+                let d = corners.iter().map(|p| m.dot(*p)).fold(f32::MIN, f32::max);
+                // Only true repeats: a bevel a hair off another plane (an
+                // edge across a gentle crease, tilted 0.07 degrees from the
+                // axis) is a different plane through a different point. Kept
+                // apart, a box rests on the crease where it really is (de_dust2's
+                // T spawn ridge: 0.038 units lower, as CS:S) and lands on it
+                // with the edge's normal, as CS:S does.
+                if planes.iter().any(|(q, e)| q.dot(m) > 1.0 - 1e-6 && (e - d).abs() < 1e-5) {
                     continue;
                 }
-                let d = corners.iter().map(|p| m.dot(*p)).fold(f32::MIN, f32::max);
                 planes.push((m, d));
             }
         }

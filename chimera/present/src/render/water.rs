@@ -12,8 +12,14 @@
 //! (`WaterReflectionCamera`, oblique clip at the surface, world brushes on
 //! `REFLECT_LAYER`), the cheap cubemap pass by distance, Fresnel and shore
 //! fade; 3D skybox water samples the main view's planar reflection over the fog
-//! colour; under water (`WaterView`) the view clears to the water's fog colour,
-//! what lies below the surface takes its fog, and the material's
+//! colour; under water (`WaterView`) what lies below the surface takes the
+//! water's fog; refracting water keeps the sky camera drawing behind the
+//! view (`WaterView::sky_through_surface`: the original's refraction view,
+//! above-water world and sky, is in the back buffer under the main view,
+//! which clears only depth), so the sky shows through the surface from
+//! below, and hides the 3D skybox's water (its under side covered the sky
+//! in black); other water (fog-only, refraction off) clears to its fog
+//! colour with no sky; and the material's
 //! `$underwateroverlay` (`MapScreenWarp`, `ScreenWarpMaterial`,
 //! screen_warp.wgsl) warps and blurs the finished frame from the view-model
 //! camera's transmissive phase (its layer then turns that camera on); when the near plane crosses a surface from above
@@ -22,7 +28,13 @@
 //! registered by the client: `r_waterforceexpensive`,
 //! `r_waterforcereflectentities`, `r_WaterDrawReflection`,
 //! `r_WaterDrawRefraction`, `mat_drawwater`); surfaces drawn only by main views
-//! (`WATER_LAYER`).
+//! (`WATER_LAYER`). Fog-only water (`MapWaterMaterial::fog_only`: a water
+//! brush of another shader, de_nuke's additive pool) is drawn as the world;
+//! only its bounds are spawned (a `WaterSurface` with no material), so the
+//! eye in its volume gets its range fog over the whole view (no refraction
+//! view: the original draws the above-water leaves through the translucent
+//! surface in the same, water-fogged view), with no intersection view and
+//! no depth prepass.
 //!
 //! Known shortcuts (docs/tech-debt.md): Water (specs/cs_source/water.md): the
 //! refraction is the main view's opaque colour (Bevy's transmission copy) and
@@ -59,9 +71,18 @@
 //! near-plane test reads "within 7 units" as the rectangle grown by 7 units
 //! crossing the surface; while it holds, everything below that surface (any
 //! volume, in the world, props, ropes, decals, particles) takes its height fog,
-//! so lower water elsewhere is fogged twice; the eye under water uses range
+//! so lower water elsewhere is fogged twice; fog-only water takes the fog
+//! values of the brush's top material whatever its shader (spec section 10's
+//! de_nuke row: the material's own `$fogcolor` {150 200 200}, 64 / 512; the
+//! spec doesn't say how the engine reads them for other shaders) and fogs
+//! above-water geometry seen through the surface by range too (spec section
+//! 9 with refraction off); the eye under water uses range
 //! fog, so crossing the surface switches fog formulas (as the original's views
-//! do). Why it's OK for now: Matches the de_aztec reference (cam1 abs diff
+//! do). Under refracting water the background is our main view's own
+//! (the above-water world drawn unclipped with world fog, the sky camera
+//! behind), standing in for the refraction view's back buffer; the 3D
+//! skybox isn't clipped at the surface, its water is hidden instead. Why
+//! it's OK for now: Matches the de_aztec reference (cam1 abs diff
 //! 0.027 -> 0.019, unchanged by the overlay, intersection and fog work); each
 //! question names its check in the spec.
 
@@ -565,13 +586,15 @@ pub fn spawn_surfaces(
             max = max.max(Vec3::from(*p));
         }
         let centre = (min + max) / 2.0;
-        info!(
-            "water {}: {min:.2}..{max:.2} m, refract {}, reflect {}, cubemap {}",
-            top.name,
-            top.refract,
-            top.reflect,
-            top.envmap.is_some()
-        );
+        if !top.fog_only {
+            info!(
+                "water {}: {min:.2}..{max:.2} m, refract {}, reflect {}, cubemap {}",
+                top.name,
+                top.refract,
+                top.reflect,
+                top.envmap.is_some()
+            );
+        }
         let nearest = data
             .cubemap_samples
             .iter()
@@ -595,6 +618,33 @@ pub fn spawn_surfaces(
             .copied()
             .collect();
         if flat.indices.is_empty() {
+            continue;
+        }
+        if top.fog_only {
+            // Drawn as the world: only its bounds, for the eye's fog volume.
+            if !m.skybox {
+                let (min, max) = flat.indices.iter().fold((Vec3::MAX, Vec3::MIN), |(a, b), &i| {
+                    let p = Vec3::from(m.positions[i as usize]);
+                    (a.min(p), b.max(p))
+                });
+                info!("water {}: {min:.2}..{max:.2} m, fog volume only", top.name);
+                let mut e = commands.spawn((
+                    Name::new(format!("{} (fog volume)", top.name)),
+                    crate::map::MapPart,
+                    WaterSurface {
+                        material: index,
+                        min,
+                        max,
+                        below: !top.above_water,
+                        skybox: false,
+                    },
+                    Transform::default(),
+                    ChildOf(node.unwrap_or(root)),
+                ));
+                if node.is_some() {
+                    e.insert(MovingWaterSurface { min, max });
+                }
+            }
             continue;
         }
         {
@@ -860,7 +910,7 @@ pub type MainCameraFilter = (
 );
 
 /// Main views draw water surfaces, with a depth prepass (the refraction's
-/// fog reads it).
+/// fog reads it); not for fog-only water, which draws as the world.
 #[allow(clippy::type_complexity)]
 pub fn prepare_main_cameras(
     mut commands: Commands,
@@ -874,7 +924,7 @@ pub fn prepare_main_cameras(
         MainCameraFilter,
     >,
 ) {
-    if render.is_none() {
+    if render.is_none_or(|r| r.materials.iter().all(|m| m.fog_only)) {
         return;
     }
     let water = RenderLayers::layer(WATER_LAYER);
@@ -942,6 +992,8 @@ pub fn update_water(
     )>,
     mut materials: ResMut<Assets<WaterMaterial>>,
     view: Option<ResMut<WaterView>>,
+    // Every surface, fog-only ones (no water material) included.
+    all_surfaces: Query<&WaterSurface>,
 ) {
     let (Some(render), Some(mut view)) = (render, view) else {
         return;
@@ -953,21 +1005,28 @@ pub fn update_water(
         return;
     };
     let eye = eye_tf.translation();
-    let list: Vec<WaterSurface> = surfaces
-        .iter()
-        .filter(|(s, ..)| !s.skybox)
-        .map(|(s, ..)| s.clone())
-        .collect();
+    let list: Vec<WaterSurface> = all_surfaces.iter().filter(|s| !s.skybox).cloned().collect();
     let none: &[crate::core::MapWaterVolume] = &[];
     let volumes = volumes.as_ref().map_or(none, |v| &v.0);
     let under = under_water(eye, volumes, &list);
+    // No intersection view for fog-only water: the original renders one
+    // only for a Water material's refraction.
+    let drawn: Vec<WaterSurface> = list
+        .iter()
+        .filter(|s| !render.materials[s.material].fog_only)
+        .cloned()
+        .collect();
     let intersect = match (under, projection) {
-        (None, Projection::Perspective(p)) => crossed_surface(&near_plane_corners(eye_tf, p), volumes, &list),
+        (None, Projection::Perspective(p)) => crossed_surface(&near_plane_corners(eye_tf, p), volumes, &drawn),
         _ => None,
     };
     let state = WaterView {
         under: under.map(|u| u.0),
         clear: under.map(|u| render.materials[u.0].fog_color),
+        sky_through_surface: under.is_some_and(|u| {
+            let m = &render.materials[u.0];
+            settings.draw_water != 0 && !m.fog_only && surface_mode(m, &settings, 0.0).refract
+        }),
         plane: under.map(|u| u.1),
         intersect,
     };
@@ -977,8 +1036,13 @@ pub fn update_water(
     let flag = |b: bool| if b { 1.0 } else { 0.0 };
     let draw = settings.draw_water != 0;
     for (s, handle, mut visibility, clusters) in &mut surfaces {
-        // Drawn while `mat_drawwater` and the map's visibility allow.
-        let shown = if draw && clusters.is_none_or(|c| c.potentially_visible) {
+        // Drawn while `mat_drawwater` and the map's visibility allow. The
+        // 3D skybox's water not while the eye is under water: the sky then
+        // shows through the surface from below, as the original's
+        // refraction view draws it (3D skybox clipped, no water surfaces;
+        // spec section 9); its under side would cover it in black.
+        let skybox_hidden = s.skybox && under.is_some();
+        let shown = if draw && !skybox_hidden && clusters.is_none_or(|c| c.potentially_visible) {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -1119,6 +1183,9 @@ pub fn update_water(
 /// No pre-fogged surface (`WaterParams::prefog_plane`).
 const NO_PREFOG: f32 = -1.0e9;
 
+/// A water fog plane above everything (fog-only water fogs the whole view).
+const FOG_EVERYWHERE: f32 = 1.0e9;
+
 /// The water's fog on everything drawn below its surface (spec sections 8
 /// and 9), when the eye enters or leaves a water volume or the near plane
 /// starts or stops crossing a surface:
@@ -1162,6 +1229,10 @@ pub fn underwater_fog(
     *last = Some(state);
     let fog = state.map(|(i, plane, mode)| {
         let m = &render.materials[i];
+        // Fog-only water has no refraction view: the original draws the
+        // above-water world through its (translucent) surface in the same
+        // view, with the water's fog (spec section 9, refraction off).
+        let plane = if m.fog_only { FOG_EVERYWHERE } else { plane };
         let (color, range) = water_fog_uniforms(m, plane, mode);
         (
             color,
@@ -1711,6 +1782,7 @@ mod tests {
         let under = WaterView {
             under: Some(0),
             clear: Some(port.fog_color),
+            sky_through_surface: true,
             plane: Some(1.0),
             intersect: None,
         };

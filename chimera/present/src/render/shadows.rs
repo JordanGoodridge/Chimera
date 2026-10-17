@@ -747,8 +747,8 @@ impl Material for ShadowMaterial {
     }
 
     /// Sort before every other see-through surface: Source draws shadows
-    /// with the world, its decals and overlays already on it (ours are in
-    /// the alpha-mask phase, before this one) and before anything
+    /// with the world, its decals and overlays already on it (ours draw
+    /// before every other blended item, `blend_order`) and before anything
     /// translucent, so smoke, particles and windows cover a shadow behind
     /// them. (For custom materials this only moves the sort key, not the
     /// depth.)

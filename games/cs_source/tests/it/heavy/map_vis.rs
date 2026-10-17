@@ -279,6 +279,14 @@ fn cs_office_never_hides_what_the_eye_reaches() {
     check("cs_office");
 }
 
+/// cs_assault's `refcmp vischeck` differs in 57 views (docs/performance.md,
+/// "Checks"): props and buildings seen over walls through sky brushes.
+/// No surface the eye reaches without crossing solid is hidden.
+#[test]
+fn cs_assault_never_hides_what_the_eye_reaches() {
+    check("cs_assault");
+}
+
 #[test]
 fn outside_the_map_has_no_cluster() {
     let Some(map) = load("de_dust2") else { return };

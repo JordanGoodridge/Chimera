@@ -232,3 +232,131 @@ fn walking() {
         assert!((pl.speed() - 3.3149).abs() < 1e-3, "duck-walk speed {}", pl.speed());
     }
 }
+
+/// Measured (movecmp `bhop_scroll`, 2026-10-16): running at (-2.1734,
+/// -250) and jumping with only a right strafe held, looking at yaw 267.5,
+/// the jump tick gets the full air acceleration (10 x 250 x 0.015 = 37.5,
+/// cut to what the 30 cap leaves): (-39.6377, -248.3642) after the tick.
+/// The bot ducks on its own as it jumps; that doesn't slow this tick's
+/// input as a held duck key would (x 0.34 gives (-22.55, -249.11)).
+#[test]
+fn a_strafe_on_the_jump_tick_gets_the_full_air_acceleration() {
+    let mut pl = Player::new(&[]);
+    let i = pl.p;
+    pl.set_vel(Vec3::new(-2.1734, -250.0, 0.0));
+    pl.sim.intent(i).yaw = 267.5f32.to_radians() - std::f32::consts::FRAC_PI_2;
+    pl.sim.intent(i).move_axis = Vec2::X;
+    pl.sim.intent(i).jump = true;
+    pl.tick();
+    let v = pl.vel();
+    assert!(!pl.on_ground());
+    assert!((v.x - -39.6377).abs() < 0.01 && (v.y - -248.3642).abs() < 0.01, "{v:?}");
+}
+
+impl Player {
+    fn me(&self) -> SourceMovement {
+        self.sim.app.world().get::<SourceMovement>(self.p).unwrap().clone()
+    }
+}
+
+/// Measured (movecmp `duck_release_7`, 2026-10-16): duck held 7 ticks
+/// from standing, then released. The duck timer keeps running: on the
+/// release tick the eye drops to the unduck curve's 105 ms point (64 - 17
+/// x S(1 - 105/200) = 56.137), then rises along it and the player stands 7
+/// ticks later. Forward is slowed (x 0.34) up to that tick, then not.
+#[test]
+fn duck_released_partway_keeps_its_timer() {
+    let mut pl = Player::new(&[]);
+    let i = pl.p;
+    pl.sim.intent(i).move_axis = Vec2::Y;
+    pl.sim.intent(i).crouch = true;
+    pl.sim.ticks(7);
+    pl.sim.intent(i).crouch = false;
+    let eyes = [56.1369, 58.0159, 59.7802, 61.3437, 62.6203, 63.5239, 63.9686];
+    for e in eyes {
+        pl.tick();
+        let me = pl.me();
+        assert!((me.eye - e).abs() < 1e-3, "eye {} vs {e}", me.eye);
+        assert!(me.ducking, "still standing up");
+    }
+    let before = pl.speed();
+    pl.tick();
+    let me = pl.me();
+    assert!(!me.ducking && !me.ducked && me.eye == 64.0, "stood up: {me:?}");
+    // Below the stop speed friction takes 4.5 a tick; the tick it stands
+    // up is still slowed (it started mid-duck): + 5 x 85 x 0.015.
+    assert!((pl.speed() - before - (6.375 - 4.5)).abs() < 0.01, "{} -> {}", before, pl.speed());
+    let before = pl.speed();
+    pl.tick();
+    assert!((pl.speed() - before - (18.75 - 4.5)).abs() < 0.01, "{} -> {}", before, pl.speed());
+}
+
+/// Measured (movecmp `unduck_jump_5`/`_10`, 2026-10-16): fully ducked and
+/// walking at 85, duck released, and jump pressed while standing back up.
+/// No jump, but the view drops back to the ducked eye (47), the jump's
+/// stamina is spent (85 -> 65.44 that tick, against 85 without it), and
+/// the player is standing on the next tick (eye 64), the jump key still
+/// counting as held.
+#[test]
+fn a_jump_while_standing_up_ducks_and_costs_stamina() {
+    let mut pl = Player::new(&[]);
+    let i = pl.p;
+    pl.sim.intent(i).move_axis = Vec2::Y;
+    pl.sim.intent(i).crouch = true;
+    pl.sim.ticks(60);
+    assert!(pl.me().ducked && (pl.speed() - 85.0).abs() < 0.01, "{}", pl.speed());
+    pl.sim.intent(i).crouch = false;
+    pl.sim.ticks(5);
+    assert!(pl.me().ducking && pl.me().eye > 50.0);
+    pl.sim.intent(i).jump = true;
+    pl.tick();
+    let me = pl.me();
+    assert!(pl.on_ground() && me.ducked && me.eye == 47.0, "{me:?}");
+    assert!((pl.speed() - 65.4442).abs() < 0.15, "speed {}", pl.speed());
+    pl.tick();
+    let me = pl.me();
+    assert!(pl.on_ground() && !me.ducked && !me.ducking && me.eye == 64.0, "{me:?}");
+    assert!((pl.speed() - 51.6101).abs() < 0.15, "speed {}", pl.speed());
+}
+
+struct WallMap;
+impl Plugin for WallMap {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, |mut commands: Commands| {
+            let b = |lo: Vec3, hi: Vec3| {
+                let (a, b) = (to_engine(lo), to_engine(hi));
+                MapBrush::from_box(a.min(b), a.max(b))
+            };
+            commands.insert_resource(MapBrushes(vec![
+                b(Vec3::new(-4096.0, -4096.0, -64.0), Vec3::new(4096.0, 4096.0, 0.0)),
+                // A wall whose face (normal -y) is at y = 100.
+                b(Vec3::new(-4096.0, 100.0, 0.0), Vec3::new(4096.0, 200.0, 200.0)),
+            ]));
+        });
+    }
+}
+
+/// Measured (movecmp `wall_slide` on de_dust2 and the fuzz runs,
+/// 2026-10-16): a move stopped by a surface leaves 1/32 unit/s of velocity
+/// away from it. Running along a wall pressed into it at a slant, CS:S
+/// logs 0.0312 along the wall's normal every tick, and the box settles
+/// 0.0317 from the face (the 1/32 back-off plus 1/32 x 0.015 s), where the
+/// shared code's clip leaves it at 0.03125 with no velocity off the wall.
+#[test]
+fn a_stopped_move_keeps_a_32nd_of_a_unit_away_from_the_wall() {
+    let mut sim = Sim::new(CsSim, (WallMap, SourceMovementPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim.app.insert_resource(SourceMovementConfig::default());
+    let p = sim.spawn_character(to_engine(Vec3::new(0.0, 60.0, 36.5)), movement::ID);
+    sim.ticks(10);
+    // Source yaw 70: mostly into the wall (+y), partly along it (+x).
+    sim.intent(p).yaw = 70f32.to_radians() - std::f32::consts::FRAC_PI_2;
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.ticks(40);
+    let feet = to_source(sim.position(p)) - Vec3::Z * 36.0;
+    let v = to_source(sim.velocity(p));
+    assert!(v.x > 50.0, "slides along the wall: {v}");
+    assert!((v.y + 1.0 / 32.0).abs() < 1e-4, "off the wall: {v}");
+    let gap = 100.0 - (feet.y + 16.0);
+    assert!((gap - (1.0 + 0.015) / 32.0).abs() < 2e-4, "gap {gap}");
+}

@@ -606,11 +606,18 @@ fn other_rooms_items_and_water_are_culled_on_creative_multigames() {
     let mut q = world.query_filtered::<&crate::stack::map::VisClusters, With<crate::stack::map::loose::LooseItem>>();
     let items = q.iter(world).map(|c| (c.clusters.clone(), c.potentially_visible)).collect();
     check("placed weapons", items);
-    let mut q = world.query::<(&crate::stack::map::water::WaterSurface, Option<&crate::stack::map::VisClusters>)>();
+    // Drawn surfaces only: fog-only water (another shader's water brush,
+    // drawn as the world) spawns a bare `WaterSurface` with its bounds,
+    // for the eye's fog volume, which draws nothing to cull.
+    let mut q = world.query::<(
+        &crate::stack::map::water::WaterSurface,
+        Option<&crate::stack::map::VisClusters>,
+        Has<MeshMaterial3d<crate::stack::render::water::WaterMaterial>>,
+    )>();
     let water = q
         .iter(world)
-        .filter(|(s, _)| !s.skybox)
-        .map(|(_, c)| c.map_or((Box::default(), true), |c| (c.clusters.clone(), c.potentially_visible)))
+        .filter(|(s, _, drawn)| !s.skybox && *drawn)
+        .map(|(_, c, _)| c.map_or((Box::default(), true), |c| (c.clusters.clone(), c.potentially_visible)))
         .collect();
     check("water surfaces", water);
 }
