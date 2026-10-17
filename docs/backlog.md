@@ -736,10 +736,12 @@ docs/plans/active/sound.md.
 
 - **Water surfaces** (specs/cs_source/water.md, `render::water`): refraction,
   planar reflection, the cheap cubemap pass, under-water fog (world,
-  props, ropes, decals, particles), bottom materials, the
+  props, ropes, decals, particles; also in water of other shaders, de_nuke's
+  pool, from its material's fog keys), bottom materials, the
   `$underwateroverlay` screen warp (with its `$bluramount` blur, which is
-  what shows on de_port), the intersection view's height fog
-  the water cvars, `$blurrefract` with `$refracttint` and the "Water
+  what shows on de_port), the intersection view's height fog, the sky
+  under water (through the surface from below when the water refracts,
+  none in fog-only water), the water cvars, `$blurrefract` with `$refracttint` and the "Water
   detail" choices (`render::water::WATER_DETAIL`, for the Video Advanced
   menu) are in. Left: a Refract shader spec (the warp's
   strength and blur are guesses: de_port's `water_warp01` moves the
@@ -795,18 +797,17 @@ them; views clipped through openings; window brushes fade in and close
 their portal), occluders (func_occluder), prop fade distances with
 dithered fade bands. Left:
 - Fading physics/animated props; LOD models.
-- de_nuke `refcmp vischeck` view nav1627_90 (16k pixels, over the 0.5%
-  limit) isn't culling: the culled capture matches a fresh capture of
-  that view alone, with or without culling; the unculled run differs
-  only right after view nav1627_0 (the door window's glass draws
-  differently, even with game time running). Find what a previous view
-  leaves behind in the capture (performance.md, Checks).
-- cs_assault `refcmp vischeck` (first run there) fails with occluders
-  off too: 56 of 312 views differ, up to 34k pixels (nav1371_90 on the
-  roof: the water tower and far buildings over the walls are culled by
-  the PVS). Check against a CS:S capture whether the game hides them too
-  (props touching clusters the roof can't see) before changing anything.
-  cs_compound and de_port pass.
+- cs_assault `refcmp vischeck` fails (57 of 316 views, worst 33.7k
+  pixels on the roof): the PVS hides props and buildings seen over the
+  walls through sky brushes, consistent with the map's own data
+  (performance.md, "Checks"). Capture C27 says whether CS:S hides them
+  too; if it shows them, find the engine's rule for static props seen
+  past sky brushes. Until then cs_assault's vischeck failure is expected.
+- `refcmp ordercheck` on cs_assault: 9 views still differ by up to 50
+  pixels (`nav1847_90` by one level in a lamp-lit corner, `nav1567_180` a
+  rail's highlight; performance.md, "Checks"): find what they keep from
+  earlier views (the opaque phases' batch order by pipeline id is a
+  candidate).
 - Measure on the Windows PC (`refcmp bench` there) and set a budget.
 - Frame-time follow-ups (performance.md, "Frame time pass"): before/after
   numbers on a quiet machine and on the Windows PC (`refcmp bench`, also

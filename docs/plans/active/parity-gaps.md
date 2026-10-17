@@ -223,6 +223,8 @@ common console commands, against mashup's.
 | World reflections | differs | L | S | the cubemaps now carry their mips (round 2: cs_office mean 0.0189 -> 0.0185, `cam0` 0.041 -> 0.038; de_aztec 0.0408 -> 0.0405; dust2, nuke unchanged); the highlight stays narrower on dust2's bumped tunnel floor (`tunnel_floor_e` 0.016 before and after): per-vertex tangents next |
 | Water refraction | differs | L | M | tech-debt "Water" |
 | Under-water screen overlay | have (fixed) | L | S | de_port's `water_warp01` was drawn but invisible (a warp of about a pixel, `$bluramount` ignored); now blurred, 5 x 5 taps a pixel apart (no Refract spec: a guess; tech-debt "Water"). de_nuke's pool has none in either game |
+| Under-water fog in non-Water-shader water (de_nuke's pool) | have (fixed) | M | S | no fog at all with the eye in nuke's pool (an additive LightmappedGeneric, which the water loader skipped); now its material's fog ({150 200 200}, 64-512) over the whole view; how the engine reads fog from other shaders is unspecified (tech-debt "Water") |
+| Sky under water | have (fixed) | M | S | under refracting water (de_port) the surface from below showed flat fog colour, no sky: the sky camera was off under all water and the 3D skybox sea's under side drew black. Now the sky draws behind the view (the original's refraction view in the back buffer, spec water.md 9) and skybox water is hidden under water; fog-only water (de_nuke) and refraction off still clear to the fog colour with no sky (tests/it/underwater_sky.rs) |
 | Particles blend in linear space | differs | L | M | tech-debt |
 | Glow occlusion by rays | differs | L | M | tech-debt |
 | LOD switch metric, no hysteresis | differs | L | S | tech-debt "Levels of detail"; capture C21 |
@@ -254,7 +256,7 @@ common console commands, against mashup's.
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
 | Tool-textured volumes drawn | have (fixed) | M | S | cs_militia's two `func_footstep_control` volumes (one by the Deck ladder) and its skybox `env_embers` drew as yellow `tools/toolstrigger` walls: stock maps compile trigger brushes without the trigger surface flag, so only brush entity classes CS:S draws (`bsp::draws_brushes`) draw now; also env_embers on 2 community maps, env_bubbles on 1 |
-| func_footstep_control's footstep sounds | missing | L | S | cs_militia's deck volumes (its `source`/`destination` surface keys) aren't read |
+| func_footstep_control's footstep sounds | have (fixed) | L | S | feet inside play the `destination` surface's steps for the `source` surface's (public FGD; `sound::step_remaps`): cs_militia's two turn ladder steps into concrete and wood_plank; feet-point test, kept step volume and timing unmeasured (tech-debt) |
 | func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |
 | Steam heat-wave jets (`Type` 1) | missing | L | S | tech-debt; no stock map has one (every stock env_steam is Type 0) |
 | Beams' noise and scroll | have (fixed) | L | S | round 2: fractal noise each frame, segments, texture repeat, TextureScroll (the spec's s² quirk) and sprite frames on lasers and env_beams (de_cbble's and de_inferno's chimney smoke scroll); the scroll speed is capture C19 |
@@ -643,4 +645,11 @@ says what decides the open point.
   `mp_restartgame 1`, after `changelevel`; how long one stays; how far
   apart two come; whether `cl_autohelp 0` stops them and whether ones
   missed then come once it's back on; whether bots' events show any.
+- **C27 Props seen past sky brushes (cs_assault).** `refcmp capture-ref
+  --views tools/refcmp/cs_assault.toml --only pvs_`: from the roof
+  (`pvs_roof_90`, `pvs_roof_180`) and the T side's street (`pvs_street_180`,
+  `pvs_yard_180`). Our PVS culling hides the water tower, rooftop props
+  and buildings there, seen over the walls through sky brushes, and the
+  map's data agrees (docs/performance.md, "Checks"); the captures say
+  whether CS:S hides them too (sky there) or draws them.
   Decides every trigger in `games/cs_source/data/hints.toml` (all ours).

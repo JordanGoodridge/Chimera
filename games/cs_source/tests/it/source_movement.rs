@@ -729,3 +729,56 @@ fn walking_down_terrain_strips_stays_on_the_slope() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// de_dust2's T spawn runway (CS:S measured with movecmp, 2026-10-16): four
+/// displacement triangles meeting at a crease that runs along y, tilted
+/// 0.067 degrees (here moved so the crease's low end is the origin). A box
+/// standing over the crease's low part rests on the crease where it is
+/// under the box (CS:S: 0.0146 above the low end, + the 1/32 back-off), not
+/// at the height of its far end outside the box (0.056 higher), where the
+/// triangles' axial bevel would hold it if the edge's own bevel, a hair off
+/// the axis, were dropped as a duplicate. Falling onto the crease running
+/// along x, the landing clips the velocity along that edge's bevel
+/// (normal (0.0202, 0, 1)): (6.2771, 0, 0) as CS:S, not along the face
+/// (with 0.36 sideways).
+#[test]
+fn terrain_creases_hold_the_box_where_they_are() {
+    use crate::stack::map::MapTerrain;
+    use crate::stack::games::cs_source::TICK_INTERVAL;
+    let o = Vec3::new(-1120.142, -783.879, 131.996);
+    let v = |x: f32, y: f32, z: f32| to_engine(Vec3::new(x, y, z) - o);
+    let (a, b, c) = (v(-1232.062, -783.948, 129.739), v(-1120.144, -831.878, 132.052), v(-1120.142, -783.879, 131.996));
+    let (d, e) = (v(-1008.062, -783.948, 129.737), v(-1120.127, -735.892, 131.581));
+    let triangles = vec![[a, b, c], [b, d, c], [a, c, e], [c, d, e]];
+    let sim_at = |feet: Vec3, vel: Vec3| {
+        let mut sim = Sim::new(CsSim, SourceMovementPlugin);
+        sim.set_tick_interval(TICK_INTERVAL);
+        sim.app.insert_resource(MapTerrain::from_triangles(triangles.clone(), 2.0 * 0.0254));
+        let p = sim.spawn_character(to_engine(feet - o + Vec3::Z * 36.0), movement::ID);
+        sim.app.world_mut().get_mut::<Velocity>(p).unwrap().0 = to_engine(vel);
+        (sim, p)
+    };
+    let feet = |sim: &Sim, p: Entity| to_source(sim.position(p)) - Vec3::Z * 36.0 + o;
+
+    // Running -x over the crease at 250 (CS:S: tspawn_run_jump_hold ticks
+    // 230-239, flat at z 132.0458 from x -1104.3 to -1134.3).
+    let (mut sim, p) = sim_at(Vec3::new(-1100.517, -784.0, 131.9728), Vec3::new(-250.0, 0.0, 0.0));
+    sim.app.world_mut().get_mut::<SourceMovement>(p).unwrap().on_ground = true;
+    sim.intent(p).yaw = std::f32::consts::PI - std::f32::consts::FRAC_PI_2;
+    sim.intent(p).move_axis = Vec2::Y;
+    for k in 1..=9 {
+        sim.ticks(1);
+        let f = feet(&sim, p);
+        close(f.x, -1100.517 - 3.75 * k as f32, 0.002, "running");
+        close(f.z, 132.0458, 0.002, &format!("over the crease, tick {k}"));
+    }
+
+    // Landing on the crease along x (CS:S: tick 251 of tspawn_repeat_jumps).
+    let (mut sim, p) = sim_at(Vec3::new(-1024.0, -784.0, 132.495), Vec3::new(0.0, 0.0, -298.0066));
+    sim.app.world_mut().get_mut::<SourceMovement>(p).unwrap().on_ground = false;
+    sim.ticks(1);
+    let vel = to_source(sim.velocity(p));
+    assert!(sim.state(p).on_ground);
+    close(feet(&sim, p).z, 130.4272, 0.002, "landed");
+    assert!((vel - Vec3::new(6.2771, 0.0, 0.0)).abs().max_element() < 0.01, "landing velocity {vel}");
+}

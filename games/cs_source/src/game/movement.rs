@@ -14,7 +14,9 @@
 //! its sound. A bullet hit's velocity modifier (CS:S, weapons.md M18,
 //! set by `hit_reaction`) multiplies the max speed and recovers by 1/3 a
 //! second after each move. A head under water too long drowns
-//! (`super::drown`, from the water level kept here).
+//! (`super::drown`, from the water level kept here). Footsteps play the
+//! surface underfoot's steps, or a footstep volume's replacement
+//! (func_footstep_control, `super::sound::step_remaps`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -70,8 +72,8 @@
 //! models over player-clip ramps; their meshes as colliders stopped 13 of 84
 //! surf rides dead), 206 of kz_hikari_od_nh_v2's 485, 55 of
 //! gg_fy_tactic_fight's, 44 of surf_halloween_tf2's. Why it's OK for now: Exact
-//! on crates and boxes; terrain matches CS:S in movecmp (landing on a slope
-//! picked a neighbouring triangle once: 0.15 u/s off for a tick). Of
+//! on crates and boxes; terrain matches CS:S in movecmp (a crease's edge
+//! bevels count, as in CS:S: movement.md open question 19). Of
 //! brushes or triangles stopping a trace at the same back-off, the one
 //! really reached first gives the normal (our rule, matching the probe's
 //! dust2 walk; movement.md open question 19). Probe for the
@@ -170,6 +172,23 @@ pub struct SourceMovementConfig {
     /// with movecmp fuzz). The shared code scales only when already ducked
     /// on the ground.
     pub duck_slows_everywhere: bool,
+    /// CS:S: releasing duck partway down leaves the duck timer running, so
+    /// the unduck has as long behind it as the duck had (released 105 ms
+    /// in, the eye drops to the unduck curve's 105 ms point, 56.1, and is
+    /// up 7 ticks later; measured with movecmp `duck_release_7`). The
+    /// shared code starts the unduck from the matching point instead.
+    pub unduck_keeps_duck_timer: bool,
+    /// CS:S: a jump pressed on the ground while standing up from a duck
+    /// (refused, as in the shared code) still sets the jump stamina, drops
+    /// the eye to the ducked height, and ends the unduck on the next tick
+    /// (measured with movecmp `unduck_jump_5`/`_10`). The shared code just
+    /// ignores the press.
+    pub unduck_jump_ducks: bool,
+    /// CS:S: a move stopped by a surface leaves this much velocity (1/32
+    /// unit/s) away from it, so a player pressed along a wall settles 0.0317
+    /// from it, not at the 1/32 back-off (measured with movecmp
+    /// `wall_slide`: 0.0312 off the wall every tick). 0 in the shared code.
+    pub clip_push_out: f32,
     /// Fall damage (specs/cs_source/fall_damage.md): landing faster than
     /// `fall_safe` (units/s) out of water deals (speed - safe) x
     /// `fall_damage_per_speed` health points, truncated to whole points.
@@ -321,6 +340,9 @@ impl SourceMovementConfig {
             step_min_speed: 90.0,
             duck_slows_ladder: false,
             duck_slows_everywhere: false,
+            unduck_keeps_duck_timer: false,
+            unduck_jump_ducks: false,
+            clip_push_out: 0.0,
             fall_safe: 580.0,
             fall_damage_per_speed: 100.0 / (1024.0 - 580.0),
         }
@@ -365,6 +387,9 @@ impl Default for SourceMovementConfig {
             step_min_speed: 150.0,
             duck_slows_ladder: true,
             duck_slows_everywhere: true,
+            unduck_keeps_duck_timer: true,
+            unduck_jump_ducks: true,
+            clip_push_out: 1.0 / 32.0,
             // Measured on the probe server: 100 damage at 996, not 1024.
             fall_damage_per_speed: 100.0 / 416.0,
             ..Self::shared_code()
@@ -1228,7 +1253,7 @@ impl Mover<'_, '_, '_, '_> {
                 } else {
                     1.0 + self.cfg.bounce * (1.0 - self.me.surface_friction)
                 };
-                self.v = clip_velocity(original, tr.normal, overbounce);
+                self.v = clip_velocity(original, tr.normal, overbounce) + tr.normal * self.cfg.clip_push_out;
             } else {
                 let found = planes.iter().enumerate().find_map(|(i, n)| {
                     let clipped = clip_velocity(original, *n, 1.0);
@@ -1239,7 +1264,7 @@ impl Mover<'_, '_, '_, '_> {
                         .then_some(clipped)
                 });
                 match found {
-                    Some(v) => self.v = v,
+                    Some(v) => self.v = v + tr.normal * self.cfg.clip_push_out,
                     None if planes.len() == 2 => {
                         let dir = planes[0].cross(planes[1]).normalize_or_zero();
                         self.v = dir * dir.dot(self.v);
@@ -1415,15 +1440,15 @@ impl Mover<'_, '_, '_, '_> {
 
     /// Play a footstep on `surface` (unknown names: "default"): its left or
     /// right step, alternating
-    /// (the first after spawn is a right step), at `volume`.
+    /// (the first after spawn is a right step), at `volume`. With the feet
+    /// in a footstep volume that replaces `surface` (func_footstep_control,
+    /// `MapSounds::step_surface`), its destination surface's step plays.
     fn play_step(&mut self, surface: &str, volume: f32) {
+        let Some(bank) = self.trace.sounds else { return };
+        let surface = bank.step_surface(surface, to_engine(self.feet));
         // A name the surface scripts don't define (dust2's "stone" props)
         // uses "default", whose steps every surface inherits.
-        let Some(s) = self
-            .trace
-            .sounds
-            .and_then(|b| b.surface(surface).or_else(|| b.surface("default")))
-        else {
+        let Some(s) = bank.surface(surface).or_else(|| bank.surface("default")) else {
             return;
         };
         let entry = if self.me.step_left { &s.step_left } else { &s.step_right };
@@ -1594,6 +1619,19 @@ impl Mover<'_, '_, '_, '_> {
         let tr = self
             .trace
             .sweep(self.me.ducked, self.feet, self.feet + dir * LADDER_REACH);
+        // `MASHUP_SLIDE_DEBUG=1`: the ladder probe too.
+        static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *DEBUG.get_or_init(|| std::env::var("MASHUP_SLIDE_DEBUG").is_ok()) {
+            eprintln!(
+                "    ladder probe: feet {:.3?} dir {:.3?} frac {:.5} normal {:.4?} ladder {} start_solid {}",
+                self.feet.to_array(),
+                dir.to_array(),
+                tr.fraction,
+                tr.normal.to_array(),
+                tr.ladder,
+                tr.start_solid
+            );
+        }
         // A ladder brush's top is a floor (standing on it, looking down
         // while walking must not grab it: the ladder velocity along a
         // vertical normal leaves only sideways movement, and the jump-off
@@ -1818,12 +1856,15 @@ impl Mover<'_, '_, '_, '_> {
             }
         } else if self.me.ducked || self.me.ducking {
             if released {
-                self.me.duck_timer = if self.me.ducking && !self.me.ducked {
+                if !self.me.ducking || self.me.ducked {
+                    self.me.duck_timer = DUCK_TIMER_START;
+                } else if !self.cfg.unduck_keeps_duck_timer {
+                    // Released partway down: the unduck starts from the
+                    // matching point (shared code).
                     let fraction = (elapsed / TIME_TO_DUCK).clamp(0.0, 1.0);
-                    DUCK_TIMER_START - TIME_TO_UNDUCK * 1000.0 + fraction * TIME_TO_UNDUCK * 1000.0
-                } else {
-                    DUCK_TIMER_START
-                };
+                    self.me.duck_timer =
+                        DUCK_TIMER_START - TIME_TO_UNDUCK * 1000.0 + fraction * TIME_TO_UNDUCK * 1000.0;
+                }
                 self.me.ducking = true;
             }
             if self.can_stand() {
@@ -1970,7 +2011,16 @@ impl Mover<'_, '_, '_, '_> {
         f *= scale;
         s *= scale;
 
-        self.ladder(intent, f, s, scale);
+        // CS:S (measured, movecmp fuzz): the climb is slowed by the duck as
+        // it stands after this tick's ducking: releasing duck while ducked
+        // on a ladder in the air (an instant unduck) climbs at full speed
+        // that tick (272.8 up, not 92.7).
+        let ladder_scale = if self.cfg.duck_slows_everywhere && !(intent.crouch || self.me.ducked || self.me.ducking) {
+            1.0
+        } else {
+            scale
+        };
+        self.ladder(intent, f, s, ladder_scale);
         if self.me.ladder.is_some() {
             // Ladder move: no gravity, friction or ground snapping.
             self.water_check();
@@ -2038,6 +2088,17 @@ impl Mover<'_, '_, '_, '_> {
             if self.me.on_ground && fresh && !(self.me.ducked && self.me.ducking) {
                 self.jump();
             } else {
+                if self.cfg.unduck_jump_ducks && self.me.on_ground && fresh && self.me.ducked && self.me.ducking {
+                    // CS:S (measured, movecmp `unduck_jump_*`): a jump
+                    // pressed while standing up from a duck doesn't jump,
+                    // but it costs the jump's stamina, the view drops back
+                    // to the ducked eye, and the player stands up at once
+                    // on the next tick (timer run out).
+                    self.me.stamina = self.cfg.jump_stamina;
+                    self.me.eye = self.cfg.eye_duck;
+                    self.me.ducking = false;
+                    self.me.duck_timer = 0.0;
+                }
                 self.me.jump_held = true;
             }
         } else {

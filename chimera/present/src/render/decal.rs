@@ -50,11 +50,13 @@
 //! Known shortcuts (docs/tech-debt.md): Decal reach (plane within 4 units or
 //! half the decal's smaller side, in front of the face) and floor/ceiling
 //! orientation (aligned to world X) are inferred, not from a spec; overlapping
-//! decals have no defined draw order. The infodecal probe (origin ∓ (5,5,5)) is
-//! tested against solid drawn brush entities' bounding boxes, not their
-//! brushes, and a decal its entity's faces don't take falls back to the world;
-//! decals by props stay unplaced (13 over the stock maps). Why it's OK for now:
-//! All dust2 wall decals read correctly; floors unverified.
+//! map decals draw in the order the map lists them (`blend_order::DecalOrder`;
+//! the game's order between them is overlays_decals.md open question 5). The
+//! infodecal probe (origin ∓ (5,5,5)) is tested against solid drawn brush
+//! entities' bounding boxes, not their brushes, and a decal its entity's
+//! faces don't take falls back to the world; decals by props stay unplaced
+//! (13 over the stock maps). Why it's OK for now: All dust2 wall decals read
+//! correctly; floors unverified.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 

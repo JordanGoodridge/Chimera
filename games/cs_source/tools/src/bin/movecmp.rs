@@ -13,6 +13,9 @@
 //! de_aztec, and fails when a run's position drifts past a tolerance or the
 //! water level or ladder state disagree.
 //!
+//! `movecmp brushes <map> <x> <y> <z> [radius]` lists the collision brushes
+//! near a point, for finding what a diverging run's trace hit.
+//!
 //! The server comes from `[games.cs_source_server]` in mashup.local.toml.
 
 
@@ -217,15 +220,49 @@ fn scenarios() -> Vec<Scenario> {
         hops.push(Input::idle(w).jump());
         hops.extend(vec![Input::idle(w); 49]);
     }
+    // Duck transitions cut short (fuzz found both): releasing duck partway
+    // down, pressing it again partway up, and jumping while unducking.
+    let ducking = |down: usize, up: usize, again: usize| {
+        let mut v = vec![Input::idle(w); 60];
+        v.extend(vec![Input::idle(w).forward().duck(); down]);
+        v.extend(vec![Input::idle(w).forward(); up]);
+        v.extend(vec![Input::idle(w).forward().duck(); again]);
+        v.extend(vec![Input::idle(w).forward(); 40]);
+        v
+    };
+    let unduck_jump = |up: usize| {
+        let mut v = vec![Input::idle(w); 60];
+        v.extend(vec![Input::idle(w).forward().duck(); 40]);
+        v.extend(vec![Input::idle(w).forward(); up]);
+        v.push(Input::idle(w).forward().jump());
+        v.extend(vec![Input::idle(w).forward(); 40]);
+        v
+    };
+    // In the air (a drop from 60 units up, no jump, so no bot duck): duck
+    // for a tick, then release with forward held.
+    let air = |duck_ticks: usize| {
+        let mut v = vec![Input::idle(w); 4];
+        v.extend(vec![Input::idle(w).duck(); duck_ticks]);
+        v.extend(vec![Input::idle(w).forward(); 30]);
+        v
+    };
     for (name, inputs) in [
         ("tspawn_run_jump_hold", hold),
         ("tspawn_run_jump_release", release),
         ("tspawn_repeat_jumps", hops),
+        ("duck_release_7", ducking(7, 40, 0)),
+        ("duck_release_18", ducking(18, 40, 0)),
+        ("duck_release_12_repress", ducking(12, 4, 10)),
+        ("unduck_jump_5", unduck_jump(5)),
+        ("unduck_jump_10", unduck_jump(10)),
+        ("air_duck_release", air(1)),
+        ("air_duck_release_5", air(5)),
     ] {
+        let start = if name.starts_with("air_") { t_spawn + Vec3::Z * 60.0 } else { t_spawn };
         all.push(Scenario {
             name: name.to_string(),
             map: MAP.to_string(),
-            start: t_spawn,
+            start,
             yaw: w,
             inputs,
         });
@@ -240,6 +277,18 @@ fn scenarios() -> Vec<Scenario> {
         start: Vec3::new(443.6, 2345.9, -110.0),
         yaw,
         inputs: here,
+    });
+    // Running into a wall at a slant and along it (the CT-side wall at
+    // y = 2048, whose face the bhop runs met): what a stopped move keeps.
+    let mut wall = vec![Input::idle(250.0); 20];
+    wall.extend(vec![Input::idle(250.0).forward(); 50]);
+    wall.extend(vec![Input::idle(250.0); 20]);
+    all.push(Scenario {
+        name: "wall_slide".to_string(),
+        map: MAP.to_string(),
+        start: Vec3::new(300.0, 2090.0, -120.0),
+        yaw: 250.0,
+        inputs: wall,
     });
     all
 }
@@ -265,6 +314,8 @@ struct Args {
     /// Compare with the CS:S logs of the last online run (no server).
     offline: bool,
     fuzz: Option<Fuzz>,
+    /// Fuzz: play only the runs whose name contains this (same inputs).
+    run: Option<String>,
 }
 
 struct Fuzz {
@@ -281,9 +332,20 @@ fn main() -> ExitCode {
         keep_running: false,
         offline: false,
         fuzz: None,
+        run: None,
     };
+    if std::env::args().nth(1).as_deref() == Some("brushes") {
+        let a: Vec<String> = std::env::args().skip(2).collect();
+        return match print_brushes(&a) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
     let mut it = std::env::args().skip(1);
-    let num = |v: Option<String>, what: &str| -> Result<f64, String> {
+    let num =|v: Option<String>, what: &str| -> Result<f64, String> {
         v.and_then(|v| v.parse().ok()).ok_or(format!("{what} needs a number"))
     };
     while let Some(a) = it.next() {
@@ -303,6 +365,10 @@ fn main() -> ExitCode {
                 args.only = it.next();
                 Ok(())
             }
+            "--run" => {
+                args.run = it.next();
+                Ok(())
+            }
             "--keep-running" => {
                 args.keep_running = true;
                 Ok(())
@@ -314,7 +380,7 @@ fn main() -> ExitCode {
             "-h" | "--help" => {
                 println!(
                     "usage: movecmp [--only <name>] [--keep-running] [--offline]\n       \
-                     movecmp fuzz [--seed N] [--runs N] [--ticks N] [--tolerance UNITS] [--only <map or kind>]\n  \
+                     movecmp fuzz [--seed N] [--runs N] [--ticks N] [--tolerance UNITS] [--only <map or kind>] [--run <name>]\n  \
                      scenarios: {}\n  fuzz: random inputs at de_nuke ladders and de_aztec water",
                     scenarios()
                         .iter()
@@ -343,6 +409,46 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// `movecmp brushes <map> <x> <y> <z> [radius]`: the collision brushes
+/// (world, in stored order, and terrain) within `radius` (default 48) of a
+/// point, in Source units, with their planes: what a run's trace there can
+/// hit.
+fn print_brushes(a: &[String]) -> Result<(), String> {
+    let usage = "usage: movecmp brushes <map> <x> <y> <z> [radius]";
+    let n = |i: usize| -> Result<f32, String> { a.get(i).and_then(|v| v.parse().ok()).ok_or(usage.to_string()) };
+    let map = a.first().ok_or(usage)?;
+    let p = Vec3::new(n(1)?, n(2)?, n(3)?);
+    let r = if a.len() > 4 { n(4)? } else { 48.0 };
+    let data = games::load_map(&format!("cs_source:{map}"))?;
+    for (i, b) in data.collision_brushes.iter().enumerate() {
+        let (lo, hi) = (to_source(b.min).min(to_source(b.max)), to_source(b.min).max(to_source(b.max)));
+        if (lo - Vec3::splat(r)).cmple(p).all() && (hi + Vec3::splat(r)).cmpge(p).all() {
+            println!("brush {i}{} {:.3?} .. {:.3?}", if b.ladder { " ladder" } else { "" }, lo.to_array(), hi.to_array());
+            for (normal, d) in &b.planes {
+                // Planes are in engine space: n . x <= d.
+                let s = to_source(*normal).normalize();
+                println!("    n {:.4?} d {:.3}", s.to_array(), d / to_engine(Vec3::X).length());
+            }
+        }
+    }
+    // Terrain triangles (displacements) with a corner or their middle near.
+    for (k, tri) in data.collision_indices.iter().enumerate() {
+        let c = tri.map(|i| to_source(Vec3::from_array(data.collision_positions[i as usize])));
+        let mid = (c[0] + c[1] + c[2]) / 3.0;
+        if c.iter().chain([&mid]).any(|q| (*q - p).abs().max_element() <= r) {
+            let n = (c[1] - c[0]).cross(c[2] - c[0]).normalize_or_zero();
+            println!(
+                "triangle {k} {:.3?} {:.3?} {:.3?} normal {:.5?}",
+                c[0].to_array(),
+                c[1].to_array(),
+                c[2].to_array(),
+                n.to_array()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Runs the scenarios; false when a fuzz run failed.
@@ -377,6 +483,7 @@ fn run(args: &Args) -> Result<bool, String> {
                 }
                 all.extend(fuzz_scenarios(map, &load(map)?, f, args.only.as_deref()));
             }
+            all.retain(|s| args.run.as_deref().is_none_or(|r| s.name.contains(r)));
             all
         }
         None => scenarios()
@@ -386,7 +493,7 @@ fn run(args: &Args) -> Result<bool, String> {
     };
 
     println!(
-        "\nscenario                  ticks  max pos diff  max vel diff  first tick > 0.1 u (or water/ladder mismatch)"
+        "\nscenario                  ticks  max pos diff  max vel diff  bot ducks  first tick > 0.1 u (or water/ladder mismatch)"
     );
     let mut failed = 0;
     for s in &list {
@@ -761,6 +868,11 @@ fn parse_row(line: &str) -> Option<State> {
 
 // ------------------------------------------------------------- mashup side
 
+/// How far a CS:S bot's own duck on its jump tick lifts its feet (measured:
+/// 8.5 units in every jump scenario; see run_ours). The report compares
+/// those ticks without it and counts them under "bot ducks".
+const BOT_JUMP_DUCK_LIFT: f32 = 8.5;
+
 /// The transform is the standing box's centre, 36 units above the feet.
 const ORIGIN_ABOVE_FEET: f32 = 36.0;
 
@@ -798,6 +910,7 @@ fn run_ours(map: &Arc<MapData>, s: &Scenario, theirs: &[State]) -> Vec<State> {
             buttons: None,
         }
     };
+    let duck_speed = SourceMovementConfig::default().duck_speed;
     let mut out = vec![state(&sim)];
     for (t, i) in s.inputs.iter().enumerate() {
         let buttons = theirs.get(t + 1).and_then(|x| x.buttons).unwrap_or(i.buttons);
@@ -816,6 +929,16 @@ fn run_ours(map: &Arc<MapData>, s: &Scenario, theirs: &[State]) -> Vec<State> {
                 .is_some_and(|x| x.ducked && !x.ground && x.buttons.is_some());
             intent.crouch = buttons & IN_DUCK != 0 || bot_ducked;
             intent.walk = buttons & IN_SPEED != 0;
+            // On the jump tick itself the bot's duck (from standing, on the
+            // ground) makes the jump set vz like a ducked one (289.99, not
+            // 284) but doesn't slow that tick's input, as a held key would
+            // (0.34): bhop_scroll's strafe got the full 37.5 u/s of air
+            // acceleration there. Play that tick unslowed.
+            let bot_jump_duck = bot_ducked
+                && buttons & IN_DUCK == 0
+                && theirs.get(t).is_some_and(|x| x.ground && !x.ducked);
+            sim.app.world_mut().resource_mut::<SourceMovementConfig>().duck_speed =
+                if bot_jump_duck { 1.0 } else { duck_speed };
         }
         sim.ticks(1);
         out.push(state(&sim));
@@ -852,15 +975,26 @@ fn report(s: &Scenario, theirs: &[State], ours: &[State], out_dir: &Path) -> Res
             x.ladder as u8
         )
     };
+    let mut bot_ducks = 0;
     for t in 0..n {
         let (a, b) = (theirs[t], ours[t]);
-        let dp = a.pos.distance(b.pos);
+        let mut dp = a.pos.distance(b.pos);
+        // The bot's own instant duck on a jump tick lifts its feet (run_ours
+        // can't play it): compare that tick without the lift.
+        let lifted = a.pos - Vec3::Z * BOT_JUMP_DUCK_LIFT;
+        let bot_duck =
+            t > 0 && theirs[t - 1].ground && !a.ground && a.ducked && !b.ducked && lifted.distance(b.pos) < 0.1;
+        if bot_duck {
+            dp = lifted.distance(b.pos);
+            bot_ducks += 1;
+        }
         max_pos = max_pos.max(dp);
         max_vel = max_vel.max(a.vel.distance(b.vel));
         // Tick 0 is the placement, before either side has categorized it.
         let state_differs = t > 0 && (a.water != b.water || a.ladder != b.ladder);
         mismatched += state_differs as usize;
-        if first.is_none() && (dp > 0.1 || a.ground != b.ground || a.ducked != b.ducked || state_differs) {
+        let duck_differs = a.ducked != b.ducked && !bot_duck;
+        if first.is_none() && (dp > 0.1 || a.ground != b.ground || duck_differs || state_differs) {
             first = Some(t);
         }
         csv += &format!("{t},{},{}\n", row(&a), row(&b));
@@ -882,8 +1016,8 @@ fn report(s: &Scenario, theirs: &[State], ours: &[State], out_dir: &Path) -> Res
         Some(t) => format!("{t}: css {} | ours {}", show(&theirs[t]), show(&ours[t])),
     };
     println!(
-        "{:<25} {:>6} {:>13.3} {:>13.3}  {first_text}",
-        s.name, n, max_pos, max_vel
+        "{:<25} {:>6} {:>13.3} {:>13.3} {:>9}  {first_text}",
+        s.name, n, max_pos, max_vel, bot_ducks
     );
     Ok((max_pos, mismatched))
 }
