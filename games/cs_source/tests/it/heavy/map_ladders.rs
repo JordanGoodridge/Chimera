@@ -1,7 +1,8 @@
 //! Every ladder on the stock maps (and, with `MASHUP_LADDER_MAPS`, any
 //! others: a comma-separated list of map names, or `@file` holding one),
 //! headless: climbing plays CS:S's ladder steps (specs/cs_source/sounds.md,
-//! "Ladder"; the nav mesh's ladders walked onto from their foot, or each
+//! "Ladder", or a footstep volume's replacement for them, as on
+//! cs_militia; the nav mesh's ladders walked onto from their foot, or each
 //! ladder brush on a map without them), and standing on a ladder brush's
 //! top is standing on a floor (no ladder mode: walking forward works and
 //! a jump is a normal jump). Skipped without an install.
@@ -17,7 +18,7 @@ use crate::stack::{
         cs_source::movement::{self, SourceMovement, SourceMovementPlugin},
     },
     harness::{CsSim, Sim},
-    map::{MapBrush, MapData, MapPlugin, PlaySound},
+    map::{MapBrush, MapData, MapPlugin, PlaySound, entities::entity_to_engine},
     mount::config::{LocalConfig, content_dir},
 };
 
@@ -95,6 +96,10 @@ fn listen(mut m: MessageReader<PlaySound>, mut heard: ResMut<Heard>) {
 struct Tester {
     sim: Sim,
     p: Entity,
+    /// The entries that count as ladder steps: Ladder.StepLeft/Right, and
+    /// the steps of the surfaces footstep volumes play for "ladder"
+    /// (cs_militia's func_footstep_control).
+    steps: Vec<String>,
 }
 
 impl Tester {
@@ -105,7 +110,18 @@ impl Tester {
             .init_resource::<Heard>()
             .add_systems(FixedUpdate, listen.after(SimSet::Movement));
         let p = sim.spawn_character(Vec3::ZERO, movement::ID);
-        Self { sim, p }
+        let mut steps = vec!["Ladder.StepLeft".to_string(), "Ladder.StepRight".to_string()];
+        for r in map.sounds.step_remaps.iter().filter(|r| r.from == "ladder") {
+            let s = map.sounds.surface(&r.to);
+            steps.extend(s.into_iter().flat_map(|s| [s.step_left.clone(), s.step_right.clone()]).flatten());
+        }
+        Self { sim, p, steps }
+    }
+
+    /// Ladder steps (`steps`) heard since the last call.
+    fn ladder_steps(&mut self) -> usize {
+        let heard = self.heard();
+        heard.iter().filter(|s| self.steps.iter().any(|e| e.eq_ignore_ascii_case(&s.entry))).count()
     }
 
     /// Put the character's transform at `at` (engine), at rest, facing
@@ -173,7 +189,7 @@ fn climb(t: &mut Tester, b: &MapBrush) -> Option<(usize, u32)> {
             }
             // On it a while, climbing 20 units at least.
             if on >= 8 && rise > 20.0 {
-                let steps = t.heard().iter().filter(|s| s.entry.starts_with("Ladder.Step")).count();
+                let steps = t.ladder_steps();
                 return Some((steps, on));
             }
         }
@@ -213,7 +229,7 @@ fn climb_nav(t: &mut Tester, l: &crate::stack::map::nav::NavLadder, trace: bool)
     if std::env::var_os("MASHUP_LADDER_DEBUG").is_some() {
         eprintln!("  nav try from {:?} out {out}: on {on} ticks, rose {rise:.0}, at {:?}", at / M, t.sim.position(t.p) / M);
     }
-    (on >= 8 && rise > 20.0).then(|| (t.heard().iter().filter(|s| s.entry.starts_with("Ladder.Step")).count(), on))
+    (on >= 8 && rise > 20.0).then(|| (t.ladder_steps(), on))
 }
 
 /// Stand on `b`'s top (when there's room): holding forward one tick in
@@ -332,6 +348,50 @@ fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
     eprintln!("{}", report.join("\n"));
     assert_eq!(silent_total, 0, "silent ladders:\n{}", report.join("\n"));
     assert_eq!(stuck_total, 0, "ladder tops that aren't floors:\n{}", report.join("\n"));
+}
+
+/// cs_militia's two func_footstep_control volumes ("source" ladder,
+/// "destination" concrete and wood_plank) load as step remaps where their
+/// brushes are, and climbing a ladder whose path runs through one plays
+/// the destination's steps there (`games::cs_source::sound::step_remaps`).
+#[test]
+fn militia_footstep_volumes_remap_ladder_steps() {
+    let Some(map) = load("cs_militia") else { return };
+    let sounds = map.sounds.clone();
+    let mut pairs: Vec<(&str, &str)> = sounds.step_remaps.iter().map(|r| (r.from.as_str(), r.to.as_str())).collect();
+    pairs.sort();
+    assert_eq!(pairs, [("ladder", "concrete"), ("ladder", "wood_plank")]);
+    for e in map.entities.iter().filter(|e| e.classname() == "func_footstep_control") {
+        let points: Vec<Vec3> =
+            e.hulls.iter().flat_map(|h| h.points.iter()).map(|p| entity_to_engine(*p + e.origin(), M)).collect();
+        assert!(!points.is_empty(), "a footstep volume without brushes");
+        let centre = points.iter().sum::<Vec3>() / points.len() as f32;
+        let to = e.get("destination").unwrap();
+        assert_eq!(sounds.step_surface("ladder", centre), to, "inside at {:?}", centre / M);
+        assert_eq!(sounds.step_surface("concrete", centre), "concrete", "other surfaces unchanged");
+        assert_eq!(sounds.step_surface("ladder", centre + Vec3::Y * 2000.0 * M), "ladder", "outside");
+    }
+    // Nav ladders whose climb passes through a volume (one into
+    // wood_plank, one into concrete): climbed, they play the
+    // destination's steps.
+    let nav = map.nav.clone().expect("cs_militia's nav mesh");
+    let mut t = Tester::new(&map);
+    let mut climbed = Vec::new();
+    for (i, l) in nav.ladders.iter().enumerate() {
+        let Some(r) = (0..=20)
+            .map(|k| l.bottom.lerp(l.top, k as f32 / 20.0) + l.normal * 16.0 * M)
+            .find_map(|p| sounds.step_remaps.iter().find(|r| r.from == "ladder" && r.contains(p)))
+        else {
+            continue;
+        };
+        let s = sounds.surface(&r.to).expect("the destination surface");
+        t.steps = [s.step_left.clone(), s.step_right.clone()].into_iter().flatten().collect();
+        // Not every nav ladder climbs from its foot (`stock` counts them).
+        let Some((steps, _)) = climb_nav(&mut t, l, false) else { continue };
+        assert!(steps > 0, "nav ladder {i} (into the {} volume): no {:?} heard", r.to, t.steps);
+        climbed.push(r.to.clone());
+    }
+    assert!(climbed.iter().any(|to| to == "wood_plank"), "the ladder into wood_plank climbed: {climbed:?}");
 }
 
 /// The maps `MASHUP_LADDER_MAPS` names (nothing without it).

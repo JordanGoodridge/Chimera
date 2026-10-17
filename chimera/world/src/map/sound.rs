@@ -3,7 +3,8 @@
 //! soundscapes); game code writes `PlaySound`, and starts, changes and
 //! stops long-lived sounds with `SoundControl` under a `SoundKey`; the
 //! distance model (`distance_gain`, also for bots' hearing) and the
-//! surface under a point (`SurfaceGrid`, footsteps). Playback is
+//! surface under a point (`SurfaceGrid`, footsteps) and volumes that
+//! swap one surface's footsteps for another's (`StepRemap`). Playback is
 //! `audio`.
 
 use std::{collections::HashMap, sync::Arc};
@@ -92,6 +93,30 @@ pub struct MapSounds {
     pub soundscapes: Vec<Soundscape>,
     pub soundscape_zones: Vec<SoundscapeZone>,
     pub soundscape_emitters: Vec<SoundscapeEmitter>,
+    /// Volumes that swap one surface's footsteps for another's.
+    pub step_remaps: Vec<StepRemap>,
+}
+
+/// A volume in which footsteps on one surface play another surface's
+/// (Source's func_footstep_control): a character whose feet are inside
+/// steps on `from` with `to`'s step sounds.
+#[derive(Clone, Debug)]
+pub struct StepRemap {
+    /// Convex volumes (engine space), each as planes `(normal, offset)`
+    /// with the outward normal: inside when `normal . p <= offset` for all.
+    pub hulls: Vec<Vec<(Vec3, f32)>>,
+    /// Lower-case surface names.
+    pub from: String,
+    pub to: String,
+}
+
+impl StepRemap {
+    /// Whether an engine-space point is inside (on a face counts).
+    pub fn contains(&self, p: Vec3) -> bool {
+        self.hulls
+            .iter()
+            .any(|h| !h.is_empty() && h.iter().all(|(n, d)| n.dot(p) <= *d))
+    }
 }
 
 /// A map's background ambience (Source soundscapes): loops that fade in
@@ -187,6 +212,15 @@ impl MapSounds {
     }
     pub fn surface(&self, name: &str) -> Option<&MapSurface> {
         self.surfaces.get(&name.to_lowercase())
+    }
+    /// The surface whose steps play for a step on `surface` with the feet
+    /// at `feet` (engine space): the first remap volume holding the feet
+    /// that remaps `surface`, else `surface` itself.
+    pub fn step_surface<'a>(&'a self, surface: &'a str, feet: Vec3) -> &'a str {
+        self.step_remaps
+            .iter()
+            .find(|r| r.from.eq_ignore_ascii_case(surface) && r.contains(feet))
+            .map_or(surface, |r| r.to.as_str())
     }
 }
 
