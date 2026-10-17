@@ -191,14 +191,17 @@ fn office_hostages_follow_and_are_rescued() {
     sim.seconds(4.0);
     let moved = (sim.position(h) - at).xz().length() / UNIT;
     assert!(moved > 100.0, "it moved only {moved} units");
-    // Into a rescue zone: rescued.
+    // Into a rescue zone, its leader there 300 units on: on its way to
+    // him, rescued (only a hostage following and walking is, Q11).
     let zone = objectives.rescue_zones[0].floor_centre();
     {
         let w = sim.app.world_mut();
         let to = zone + Vec3::Y * (LIFT + 0.1);
-        w.get_mut::<Transform>(h).unwrap().translation = to;
-        if let Some(mut p) = w.get_mut::<Position>(h) {
-            p.0 = to;
+        for (e, at) in [(h, to), (ct, to + Vec3::X * 300.0 * UNIT)] {
+            w.get_mut::<Transform>(e).unwrap().translation = at;
+            if let Some(mut p) = w.get_mut::<Position>(e) {
+                p.0 = at;
+            }
         }
     }
     sim.ticks(3);
@@ -296,6 +299,103 @@ fn office_hostage_walks_after_its_leader() {
     eprintln!("hostage played {seen:?}");
 }
 
+/// Q9 and Q11, measured on the probe server 2026-10-17 (cs_office and
+/// cs_compound, specs/cs_source/objectives.md): each hostage spawned takes
+/// the next of the four models in turn, the turn going on over rounds (a
+/// 3-hostage map's rounds start one model later each time); a hostage is
+/// rescued only while it follows and walks, when its 26-unit-wide hull
+/// reaches into a rescue zone (cs_office's zone face at y -1719: rescued
+/// at origin y -1710, 9 units outside); idle in a zone, or standing by its
+/// leader there, it isn't; and a map without rescue zones rescues nobody,
+/// not even across the defenders' spawns.
+#[test]
+fn office_hostage_models_turn_and_rescue_rules() {
+    use crate::stack::{map::BodyName, objectives::hostages::{HostageRules, spawn_all}};
+    let Some(map) = load("cs_office") else { return };
+    let mut sim = sim(map);
+    let ct = character(&mut sim, Vec3::new(-1112.0, -1552.0, -330.0), 2);
+    sim.app
+        .world_mut()
+        .resource_mut::<Console>()
+        .submit("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+    sim.seconds(1.0);
+    let models = sim.app.world().resource::<HostageRules>().models.clone();
+    assert_eq!(models.len(), 4, "the four hostage models");
+    let round = |sim: &mut Sim| -> Vec<(Entity, usize, String)> {
+        let w = sim.app.world_mut();
+        let mut v: Vec<(Entity, usize, String)> = w
+            .query::<(Entity, &Hostage, &BodyName)>()
+            .iter(w)
+            .map(|(e, h, b)| (e, h.index, b.0.clone()))
+            .collect();
+        v.sort_by_key(|x| x.1);
+        v
+    };
+    let which = |name: &str| models.iter().position(|m| m == name).unwrap();
+    // Q9: four in a row, then (three hostages, as cs_compound) one later
+    // each round.
+    let first = round(&mut sim);
+    assert_eq!(first.len(), 4);
+    let k0 = which(&first[0].2);
+    for (i, (_, _, m)) in first.iter().enumerate() {
+        assert_eq!(which(m), (k0 + i) % 4, "round 1, hostage {i}");
+    }
+    sim.app.world_mut().resource_mut::<MapObjectives>().hostages.truncate(3);
+    for r in 0..3 {
+        spawn_all(sim.app.world_mut());
+        let got: Vec<usize> = round(&mut sim).iter().map(|x| which(&x.2)).collect();
+        let want: Vec<usize> = (0..3).map(|i| (k0 + 4 + 3 * r + i) % 4).collect();
+        assert_eq!(got, want, "three hostages, round {}", r + 2);
+    }
+    // Q11: one hostage at a time (Source units, feet on the floor).
+    let floor = -335.9;
+    let place = |sim: &mut Sim, leader: Option<(f32, f32)>, at: (f32, f32)| -> Entity {
+        spawn_all(sim.app.world_mut());
+        let h = round(sim)[0].0;
+        teleport(sim, h, Vec3::new(at.0, at.1, floor));
+        if let Some(l) = leader {
+            teleport(sim, ct, Vec3::new(l.0, l.1, floor));
+        }
+        sim.app.world_mut().get_mut::<Hostage>(h).unwrap().leader = leader.map(|_| ct);
+        h
+    };
+    let gone = |sim: &Sim, h: Entity| sim.app.world().get_entity(h).is_err();
+    // Idle in the middle of the zone: stays.
+    let h = place(&mut sim, None, (-600.0, -1870.0));
+    sim.seconds(0.5);
+    assert!(!gone(&sim, h), "an idle hostage in a zone isn't rescued");
+    // Following, but standing by its leader in the zone: stays.
+    let h = place(&mut sim, Some((-560.0, -1870.0)), (-600.0, -1870.0));
+    sim.seconds(0.5);
+    assert!(!gone(&sim, h), "one standing by its leader isn't rescued");
+    // Walking along the face (its leader 400 units east) with its origin
+    // 9 units outside, its hull 4 in: rescued at once.
+    let h = place(&mut sim, Some((-400.0, -1710.0)), (-800.0, -1710.0));
+    sim.ticks(2);
+    assert!(gone(&sim, h), "the hull reaching in rescues");
+    // 19 units outside, its hull 6 short: stays.
+    let h = place(&mut sim, Some((-400.0, -1700.0)), (-800.0, -1700.0));
+    let start = sim.position(h);
+    sim.seconds(0.3);
+    assert!(!gone(&sim, h), "a hull short of the zone isn't rescued");
+    assert!((sim.position(h) - start).length() / UNIT > 10.0, "it walked");
+    // Walking into the zone: rescued.
+    let h = place(&mut sim, Some((-752.0, -1950.0)), (-752.0, -1600.0));
+    sim.seconds(3.0);
+    assert!(gone(&sim, h), "walking in rescues");
+    // No rescue zones: led straight over a CT spawn (-752, -1744), it
+    // stays.
+    sim.app.world_mut().resource_mut::<MapObjectives>().rescue_zones.clear();
+    let h = place(&mut sim, Some((-752.0, -1950.0)), (-752.0, -1600.0));
+    let mut nearest = f32::MAX;
+    for _ in 0..30 {
+        sim.seconds(0.1);
+        assert!(!gone(&sim, h), "no rescue without zones");
+        let at = sim.position(h) / UNIT;
+        nearest = nearest.min(Vec2::new(at.x - (-752.0), -at.z - (-1744.0)).length());
+    }
+    assert!(nearest < 40.0, "it passed the CT spawn: nearest {nearest} units");
+}
 
 /// Q8, the CS:S probe's shots again: one AK-47 or Desert Eagle shot from
 /// 150 units at hostage 1 (fresh each time), aimed `z` units above its

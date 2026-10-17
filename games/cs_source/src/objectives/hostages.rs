@@ -3,13 +3,16 @@
 //! the game's own movement. A defender's +use makes one follow him (again:
 //! stay); a following hostage walks the navigation mesh to its leader
 //! (*hyp.*, Q10: stop within 100 units, walk within 250, run beyond; give
-//! up beyond 1500 or after 10 s out of sight). Touching a rescue zone
-//! rescues it. Hurting and killing them is reported for the rules' money.
+//! up beyond 1500 or after 10 s out of sight). A following hostage on its
+//! way whose 26-unit-wide hull touches a rescue zone is rescued (measured,
+//! Q11). Hurting and killing them is reported for the rules' money.
 //!
 //! Covers: `Hostage` characters (no team, the game's movement, `map::BodyName`
-//! model) spawned at each round start, +use to lead/stop (defenders only),
-//! following over the nav mesh (stop/walk/run distances, give up when far or
-//! unseen), rescue in a rescue zone (or near a defender spawn), `HostageTally`,
+//! model, the four handed out in turn: `HostageModelCycle`, Q9) spawned at
+//! each round start, +use to lead/stop (defenders only), following over the
+//! nav mesh (stop/walk/run distances, give up when far or unseen), rescue in
+//! a rescue zone (only while following and walking; none without zones),
+//! `HostageTally`,
 //! hurt/killed events, `mp_hostagepenalty` (`HostagePenalty`), how bullets
 //! hurt them (`HostageRules::bullets` as each one's `weapon::BulletTarget`:
 //! CS:S's own hitgroup multipliers, a second hit through the body, health
@@ -26,7 +29,7 @@ use super::{
 use crate::{
     character::character_bundle,
     console::resource_cvar,
-    core::{Damage, Died, Health, Intent, LocalPlayer, MaxSpeed, MovementState, SimSet, SpawnPoint, Team},
+    core::{Damage, Died, Health, Intent, LocalPlayer, MaxSpeed, MovementState, SimSet, Team},
     map::{BodyName, GameSound, PlaySound, nav::NavMesh},
     slots::{Loadout, MovementSlot, set_movement},
     weapon::{BulletTarget, HitgroupScale, Inventory},
@@ -64,9 +67,9 @@ pub struct HostageRules {
     /// sight (seconds).
     pub give_up_distance: f32,
     pub give_up_unseen: f32,
-    /// On a map with no rescue zone, this near a leader-team spawn
-    /// rescues (units; *hyp.*, Q11).
-    pub spawn_rescue_radius: f32,
+    /// Half the width of the box that must touch a rescue zone (units;
+    /// CS:S's hostage hull is 26 x 26 x 72, measured, Q11).
+    pub rescue_half_width: f32,
     /// `mp_hostagepenalty`: hostage kills before being removed (0: never).
     pub penalty: u32,
     /// How bullets hurt them (on each hostage as its `BulletTarget`).
@@ -103,7 +106,7 @@ impl Default for HostageRules {
             walk_within: 250.0,
             give_up_distance: 1500.0,
             give_up_unseen: 10.0,
-            spawn_rescue_radius: 256.0,
+            rescue_half_width: 13.0,
             penalty: 13,
             sounds: HostageSounds::default(),
         }
@@ -140,6 +143,12 @@ impl Hostage {
     }
 }
 
+/// The next hostage model (an index into `HostageRules::models`): CS:S
+/// hands them out in turn to every hostage spawned, round after round and
+/// across maps (measured, spec Q9).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct HostageModelCycle(pub usize);
+
 /// This round's hostages: how many, rescued, killed.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct HostageTally {
@@ -174,6 +183,7 @@ pub enum HostagePenalty {
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<HostageRules>()
         .init_resource::<HostageTally>()
+        .init_resource::<HostageModelCycle>()
         .add_message::<HostagePenalty>()
         .add_systems(
             FixedUpdate,
@@ -381,12 +391,13 @@ fn follow(
     }
 }
 
-/// Hostages touching a rescue zone (or, without any, near a leader-team
-/// spawn) are rescued: gone, counted.
+/// Following hostages whose hull touches a rescue zone while they walk
+/// are rescued: gone, counted (measured, Q11: an idle hostage in a zone,
+/// or one standing near its leader there, is not; a map without rescue
+/// zones rescues nobody, not even at the defenders' spawns).
 #[allow(clippy::type_complexity)]
 fn rescue(
-    hostages: Query<(Entity, &Hostage, &Transform, Option<&MovementState>, &Health)>,
-    spawns: Query<(&Transform, &SpawnPoint)>,
+    hostages: Query<(Entity, &Hostage, &Transform, Option<&MovementState>, &Health, &Intent)>,
     objectives: Res<MapObjectives>,
     rules: Res<HostageRules>,
     mut tally: ResMut<HostageTally>,
@@ -394,20 +405,13 @@ fn rescue(
     mut play: MessageWriter<GameSound>,
     mut commands: Commands,
 ) {
-    for (e, h, t, state, health) in &hostages {
-        if health.current <= 0.0 {
+    for (e, h, t, state, health, intent) in &hostages {
+        // Following and on its way (`follow` set this tick's move).
+        if health.current <= 0.0 || h.leader.is_none() || intent.move_axis == Vec2::ZERO {
             continue;
         }
-        let (lo, hi) = hull(t, state);
-        let rescued = if objectives.rescue_zones.is_empty() {
-            let r = rules.spawn_rescue_radius * UNIT;
-            spawns.iter().any(|(st, s)| {
-                s.team == Some(rules.leader_team) && st.translation.clamp(lo, hi).distance(st.translation) <= r
-            })
-        } else {
-            objectives.rescue_zones.iter().any(|z| z.overlaps(lo, hi))
-        };
-        if !rescued {
+        let (lo, hi) = rescue_box(t, state, rules.rescue_half_width);
+        if !objectives.rescue_zones.iter().any(|z| z.overlaps(lo, hi)) {
             continue;
         }
         tally.rescued += 1;
@@ -420,6 +424,14 @@ fn rescue(
             leader: h.leader,
         });
     }
+}
+
+/// The box that must touch a rescue zone: the movement hull's height,
+/// CS:S's hostage width around its middle.
+fn rescue_box(t: &Transform, state: Option<&MovementState>, half_width_units: f32) -> (Vec3, Vec3) {
+    let (lo, hi) = hull(t, state);
+    let (c, w) = ((lo + hi) / 2.0, half_width_units * UNIT);
+    (Vec3::new(c.x - w, lo.y, c.z - w), Vec3::new(c.x + w, hi.y, c.z + w))
 }
 
 /// Hostages hurt and killed (spec 9, "Damage"), and the penalty for
@@ -553,13 +565,16 @@ fn spawn_hostage(
         MaxSpeed(rules.walk_speed * UNIT),
         rules.bullets,
     ));
-    // Which model: the map's `HostageType` doesn't pick one of the shipped
-    // four (spec Q9); spread them by index.
-    if !rules.models.is_empty() {
-        let k = s.kind.unwrap_or(0).max(0) as usize + index;
-        e.insert(BodyName(rules.models[k % rules.models.len()].clone()));
-    }
     let id = e.id();
+    // Which model: neither the map's model nor its `HostageType` picks one;
+    // each hostage spawned takes the next of the four in turn, the turn
+    // going on over rounds and maps (measured, spec Q9).
+    if !rules.models.is_empty() {
+        let mut cycle = world.get_resource_or_init::<HostageModelCycle>();
+        let k = cycle.0 % rules.models.len();
+        cycle.0 = k + 1;
+        world.entity_mut(id).insert(BodyName(rules.models[k].clone()));
+    }
     if let Some(m) = movement {
         set_movement(id, m).apply(world);
     }
@@ -581,6 +596,9 @@ mod tests {
         assert!(!t(4, 3, 0).all_rescued());
         assert!(t(4, 4, 0).all_rescued());
         assert!(t(4, 3, 1).all_rescued(), "the fourth is dead");
-        assert!(!t(4, 0, 4).all_rescued(), "none rescued: Q11, the round goes on");
+        // Measured (Q11, 2026-10-17): 3 rescued and the 4th dead, or 2 and
+        // 2, end the round (CTs win, all rescued); all 4 dead doesn't.
+        assert!(t(4, 2, 2).all_rescued());
+        assert!(!t(4, 0, 4).all_rescued(), "none rescued: the round goes on");
     }
 }

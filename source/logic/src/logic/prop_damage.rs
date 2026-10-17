@@ -37,12 +37,15 @@
 //! `props_break_max_pieces` and the per-frame cap (pieces are capped at 300
 //! alive); the `break_prop` game event; the other body's velocity restore after
 //! an impact breaks a prop (5 step 9); stress crush (200 to a squeezed player,
-//! 6; not seen in CS:S under a 500 kg cupboard dropped at up to 1500 in/s);
-//! a prop meeting a player counts as two contacts in CS:S (measured: a 30 kg
-//! crate landing on a player at 544, 827 and 1219 in/s did 5+5, 5+10 and
-//! 10+20 to it and lost 5 itself at 1219, with the player as attacker, Q6 and
-//! Q13): the host splits one avian contact into two that take fixed shares
-//! (35% and 50%) of the speed it took away, fitted to those numbers, and the
+//! 6; CS:S dealt it once, the tick after a 500 kg cupboard landed at 1500 in/s
+//! on a 5000-health player, never at 1000 or less); a prop meeting a player
+//! counts as two contacts in CS:S (measured: a 30 kg crate landing at 544, 827
+//! and 1219 in/s did 5+5, 5+10 and 10+20 and lost 5 itself at 1219; a 500 kg
+//! cupboard 5+50 at 0 up to 500+500 at 1500, losing 5 from 800 and 10 at 1500;
+//! the player as attacker, Q6 and Q13): the host splits one avian contact into
+//! two, each the prop losing a share of the speed it came with, by its mass
+//! (fitted to those numbers: 33.5%/48% at 30 kg, 27.2%/67% at 500, between by
+//! the log of the mass; ours may land a second time after a bounce), and the
 //! player's side is an 85 kg body whose speed change isn't measured; a
 //! player's crush damage has no force (spec: its post velocity × 85 kg) and
 //! names the prop, not the player who last touched it, as attacker; a client
@@ -478,6 +481,15 @@ impl Impactor {
         let (u, u2) = (self.before.length(), self.after.length());
         Impactor {
             after: self.before.normalize_or_zero() * (u - share * (u - u2)),
+            ..self
+        }
+    }
+
+    /// It lost `fraction` of the speed it came with (a prop meeting a
+    /// player: Source's player shadow stops it, ours may not).
+    pub fn lost(self, fraction: f32) -> Impactor {
+        Impactor {
+            after: self.before * (1.0 - fraction),
             ..self
         }
     }

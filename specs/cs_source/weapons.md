@@ -978,8 +978,8 @@ facing by rotating the target.
 
 | attack | front | back (backstab) | armour 100 (health / armour) | refire on hit | refire on miss |
 |---|---|---|---|---|---|
-| slash (attack) | 20 first, 15 follow-up | same as front (20 / 15) | 20 → 17 / 1 | 0.5 s both timers (34 ticks held) | 0.4 s primary, 0.5 s secondary (27 ticks held) |
-| stab (attack2) | 65 | 195 | 65 → 55 / 4, 195 → 165 / 14 | 1.1 s both timers (74 ticks held) | 1.0 s both timers (67 ticks held) |
+| slash (attack) | 20 first, 15 follow-up | same as front (20 / 15) | 20 → 17 / 1 (armour 98 left: M7), 15 → 12 / 1 (2 off) | 0.5 s both timers (34 ticks held) | 0.4 s primary, 0.5 s secondary (27 ticks held) |
+| stab (attack2) | 65 | 195 | 65 → 55 / 4 (armour 95 left: M7), 195 → 165 / 14 | 1.1 s both timers (74 ticks held) | 1.0 s both timers (67 ticks held) |
 
 - Slash damage: 20 if at least 0.9 s (60 ticks) passed since the previous
   slash, else 15 (59 ticks → 15, 60 → 20). Holding attack on a target gives
@@ -1023,7 +1023,15 @@ and 3000 units (AK-47, USP; no armour, armour 100 without and with helmet),
 - Protected: `health_damage = damage × WeaponArmorRatio × 0.5`,
   `armour_damage = (damage − health_damage) × 0.5`; unprotected:
   `health_damage = damage`, no armour damage.
-- Both are truncated to integers (35.86 → 35, 15.75 → 15).
+- Both are truncated to integers (35.86 → 35, 15.75 → 15) in
+  `player_hurt` (dmg_health, dmg_armor). The armour itself loses more: what
+  is left is truncated, so a fraction of a point costs a whole one
+  (measured 2026-10-17, `tools/css_probe/knifearmor.py`, the victim's
+  `armor` after each hit: a knife slash 20 on 100 armour leaves 98 while
+  dmg_armor says 1; stab 65 leaves 95 (dmg_armor 4); the 15 follow-up
+  slash on 98 leaves 96; a Glock chest hit of 24.48 leaves 94 (dmg_armor
+  5), an AK-47 chest hit of 35.95 leaves 95 (dmg_armor 4)). Health takes
+  the truncated health damage (AK-47: 27.86 → 73 left).
 
 - 482 of 491 hits match exactly. The other 9 are all within one point, all on
   the strongly falling pistols (USP, Deagle, Glock) right at an integer

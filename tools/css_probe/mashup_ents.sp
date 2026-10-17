@@ -8,7 +8,15 @@ public void OnPluginStart()
 {
     RegServerCmd("mashup_htrack", Command_HTrack, "mashup_htrack <entity|-1> [file]: log that entity's origin every server frame to the file (game time x y z); -1 stops");
     RegServerCmd("mashup_hosthook", Command_HostHook, "mashup_hosthook: hook every hostage's TraceAttack and OnTakeDamage (logged)");
-    RegServerCmd("mashup_hostages", Command_Hostages, "mashup_hostages: each hostage_entity's index, health and origin");
+    // Hostage and round events with the hostage's origin (objectives.md Q11).
+    char evs[][] = {"hostage_follows", "hostage_stops_following", "hostage_rescued", "hostage_rescued_all",
+        "hostage_killed", "hostage_hurt", "round_end", "round_start"};
+    for (int i = 0; i < sizeof(evs); i++) {
+        HookEvent(evs[i], Event_Host);
+    }
+    RegServerCmd("mashup_norescue", Command_NoRescue,
+        "mashup_norescue <0|1>: remove every func_hostage_rescue as it spawns (then changelevel: a map with none)");
+    RegServerCmd("mashup_hostages", Command_Hostages, "mashup_hostages: each hostage_entity's index, health, origin, model and skin");
     RegServerCmd("mashup_ents", Command_Ents,
         "mashup_ents <file>: every entity (networked or not) as 'ref class hammerid targetname' lines");
     // logic_auto's outputs, each as it fires (entity_io.md question 1).
@@ -17,6 +25,18 @@ public void OnPluginStart()
     for (int i = 0; i < sizeof(outs); i++) {
         HookEntityOutput("logic_auto", outs[i], Output_Auto);
     }
+}
+
+public void Event_Host(Event event, const char[] name, bool dontBroadcast)
+{
+    int h = event.GetInt("hostage");
+    float o[3];
+    if (h > 0 && IsValidEntity(h)) {
+        GetEntPropVector(h, Prop_Send, "m_vecOrigin", o);
+    }
+    LogToFile("addons/sourcemod/logs/mashup_host.log", "event %s t=%.3f k=%d user=%d hostage=%d at %.1f %.1f %.1f winner=%d reason=%d",
+        name, GetGameTime(), GetGameTickCount(), event.GetInt("userid"), h, o[0], o[1], o[2],
+        event.GetInt("winner"), event.GetInt("reason"));
 }
 
 public void Output_Auto(const char[] output, int caller, int activator, float delay)
@@ -62,9 +82,36 @@ public Action Command_Hostages(int args)
     while ((e = FindEntityByClassname(e, "hostage_entity")) != -1) {
         float o[3];
         GetEntPropVector(e, Prop_Send, "m_vecOrigin", o);
-        PrintToServer("hostage %d health %d at %.1f %.1f %.1f", e, GetEntProp(e, Prop_Data, "m_iHealth"), o[0], o[1], o[2]);
+        char model[PLATFORM_MAX_PATH];
+        GetEntPropString(e, Prop_Data, "m_ModelName", model, sizeof(model));
+        PrintToServer("hostage %d health %d at %.1f %.1f %.1f model %s skin %d", e, GetEntProp(e, Prop_Data, "m_iHealth"), o[0], o[1], o[2],
+            model, GetEntProp(e, Prop_Send, "m_nSkin"));
     }
     return Plugin_Handled;
+}
+
+// mashup_norescue: remove every func_hostage_rescue as it is created, so a
+// map (re)loads with none (objectives.md Q11).
+bool g_noRescue;
+
+public Action Command_NoRescue(int args)
+{
+    g_noRescue = GetCmdArgInt(1) != 0;
+    PrintToServer("mashup_norescue %d", g_noRescue);
+    return Plugin_Handled;
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+    if (g_noRescue && StrEqual(classname, "func_hostage_rescue")) {
+        SDKHook(entity, SDKHook_SpawnPost, Spawned_Rescue);
+    }
+}
+
+public void Spawned_Rescue(int entity)
+{
+    RemoveEntity(entity);
+    LogToFile("addons/sourcemod/logs/mashup_host.log", "removed func_hostage_rescue %d t=%.3f", entity, GetGameTime());
 }
 
 int g_htrack = -1;

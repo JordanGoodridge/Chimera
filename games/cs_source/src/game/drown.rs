@@ -91,7 +91,7 @@ fn drown(
     let now = clock.now;
     for (entity, me, mut health, at, state) in &mut players {
         let Some(mut state) = state else {
-            commands.entity(entity).insert(Drowning::default());
+            commands.entity(entity).try_insert(Drowning::default());
             continue;
         };
         if !state.started || health.current <= 0.0 {

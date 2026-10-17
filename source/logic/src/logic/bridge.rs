@@ -2324,12 +2324,21 @@ fn record_velocities(mut pre: ResMut<PreStep>, bodies: Query<(Entity, &RigidBody
 /// A player's mass for impacts (kg; Source's player shadow).
 const PLAYER_MASS: f32 = 85.0;
 /// A prop and a player meet as two contacts in CS:S (measured 2026-10-17,
-/// prop_damage.md 6 and Q13: a 30 kg crate landing on a player at 544,
-/// 827 and 1219 in/s hurt it 5 + 5, 5 + 10 and 10 + 20, and lost 5 itself
-/// at 1219); each takes this share of the speed the collision took away.
-/// Ours, fitted to those numbers with avian stopping the crate (it takes
-/// 96% of the speed): any share in 0.33-0.38 then 0.45-0.55 gives them.
-const PLAYER_CONTACT_SHARES: [f32; 2] = [0.35, 0.5];
+/// prop_damage.md 6 and Q13, `tools/css_probe/impacts.py`); each counts
+/// as the prop losing this share of its speed into the player, by the
+/// prop's mass (kg): (mass, first, second). Fitted to the landings: a
+/// 30 kg crate at 576, 848 and 1233 in/s hurt the player 5 + 5, 5 + 10 and
+/// 10 + 20 (shares 0.31-0.35, then 0.43-0.52); a 500 kg cupboard at 259
+/// to 1522 in/s 5 + 50 up to 500 + 500 (0.262-0.274, then 0.62-0.73).
+/// Between and beyond, by the logarithm of the mass, clamped.
+const PLAYER_CONTACT_SHARES: [(f32, [f32; 2]); 2] = [(30.0, [0.335, 0.48]), (500.0, [0.272, 0.67])];
+
+/// `PLAYER_CONTACT_SHARES` for a prop of `mass` kg.
+fn player_contact_shares(mass: f32) -> [f32; 2] {
+    let [(m0, a), (m1, b)] = PLAYER_CONTACT_SHARES;
+    let t = ((mass.max(1e-3).ln() - m0.ln()) / (m1.ln() - m0.ln())).clamp(0.0, 1.0);
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+}
 /// Damage (health points) that breaks any breakable: an impact on one
 /// that breaks on the first physics impact (flag 512).
 const BREAK_NOW: f32 = 1.0e6;
@@ -2487,14 +2496,20 @@ fn impacts(
         } else {
             side(1, i.other, mass(i.other))
         };
-        // A prop meeting a player counts as two contacts (CS:S, measured).
-        let shares: &[f32] = if by_player || i.receiver == Receiver::Player {
-            &PLAYER_CONTACT_SHARES
+        // A prop meeting a player counts as two contacts (CS:S, measured),
+        // each the prop losing a share of its speed (by its mass).
+        let player_contact = by_player || i.receiver == Receiver::Player;
+        let shares: Vec<f32> = if player_contact {
+            let prop_mass = match i.receiver {
+                Receiver::Prop(_, _, m) => m,
+                _ => theirs.mass,
+            };
+            player_contact_shares(prop_mass).to_vec()
         } else {
-            &[1.0]
+            vec![1.0]
         };
         let point = positions.get(i.me).map_or(Vec3::ZERO, |p| p.0);
-        for &share in shares {
+        for &share in &shares {
             let (amount, force) = match i.receiver {
                 Receiver::Prop(table, energy, m) => {
                     let mine = super::prop_damage::Impactor {
@@ -2502,7 +2517,7 @@ fn impacts(
                         fixed: false,
                         ..side(0, i.me, m)
                     };
-                    let mine = mine.share(share);
+                    let mine = if by_player { mine.lost(share) } else { mine.share(share) };
                     let amount = super::prop_damage::impact_damage(&table, energy, mine, theirs, false);
                     (amount, velocity(i.me) * m)
                 }
@@ -2523,7 +2538,7 @@ fn impacts(
                         &super::prop_damage::PLAYER_TABLE,
                         1.0,
                         player,
-                        theirs.share(share),
+                        theirs.lost(share),
                         true,
                     );
                     (amount, Vec3::ZERO)

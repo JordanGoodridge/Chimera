@@ -12,7 +12,11 @@
 //!   arms, generic): `Player.DamageKevlar` (CHAN_BODY) only.
 //! - Any other bullet hit (bare body, legs with or without armour, a hit
 //!   refused by team rules or god mode): the `flesh` surface's bullet
-//!   impact (`Flesh.BulletImpact`) at the hit. It is the only impact sound
+//!   impact (`Flesh.BulletImpact`) at the hit. Knife hits are bullet damage
+//!   and sound the same (measured 2026-10-17, weapons.md M11: kevlar on an
+//!   armoured player, whatever was aimed at, as knife hits are generic;
+//!   the flesh impact on a bare one; both besides the knife's own hit
+//!   sound). It is the only impact sound
 //!   a hit on a player makes: `impacts.rs` leaves players' hits to this
 //!   module (hostages keep theirs there).
 //! - A landing that takes health: `Player.FallDamage` (CHAN_BODY;
@@ -153,7 +157,6 @@ pub fn death_sound(kind: DamageKind, group: Hitgroup) -> &'static str {
 #[allow(clippy::type_complexity)]
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
-    mut shots: MessageReader<crate::weapon::BulletHit>,
     before: Res<ArmorBeforeShots>,
     victims: Query<(&Health, &Transform, Has<God>, Has<Team>), (With<Intent>, Without<Hostage>)>,
     rules: DamageRules,
@@ -165,9 +168,6 @@ fn hurt_sounds(
         .as_ref()
         .and_then(|b| super::impacts::surface(&b.0, FLESH))
         .and_then(|s| s.bullet_impact.clone());
-    // Who guns' bullets hit this tick (a knife's hit deals bullet damage
-    // too, but makes its own sound, not a bullet's impact).
-    let shot: Vec<Entity> = shots.read().map(|h| h.damage.target).collect();
     // Health left as this tick's hits land (several can hit one victim).
     let mut left: HashMap<Entity, f32> = HashMap::new();
     for d in damage.read() {
@@ -190,12 +190,14 @@ fn hurt_sounds(
                 ..PlaySound::at(entry, at.translation)
             }));
         } else if d.kind == DamageKind::Bullet
-            && shot.contains(&d.target)
             && let Some(entry) = &flesh
             && !under_water(d.point, water.as_deref())
         {
             // A bullet no hurt sound covers: the hit surface's impact
-            // (players' hitboxes are `flesh`), where it hit.
+            // (players' hitboxes are `flesh`), where it hit. A knife's hit
+            // too (bullet damage; measured 2026-10-17: an unarmoured
+            // player knifed sounds `flesh_impact_bullet*` besides the
+            // knife's own hit sound).
             out.write(GameSound(PlaySound::at(entry.clone(), d.point)));
         }
     }

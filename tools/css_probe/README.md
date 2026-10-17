@@ -158,7 +158,13 @@ question 1; `world::ROUND_KEEP`).
 
 The same plugin logs every logic_auto output as it fires to
 `addons/sourcemod/logs/mashup_auto.log`. `mashup_hostages` prints each
-hostage's index, health and origin; `mashup_hosthook` hooks every
+hostage's index, health, origin, model and skin (objectives.md Q9);
+hostage and round events (`hostage_follows`, `hostage_rescued`,
+`hostage_rescued_all`, `hostage_killed`, `round_end` with winner and
+reason, ...) go to `mashup_host.log` with the hostage's origin (Q11);
+`mashup_norescue 1` removes every func_hostage_rescue as it spawns (then
+`changelevel`: the map loads with none); a bot leads a hostage with
+`mashup_input <hostage> Use "" <client>` (mashup_props). `mashup_hosthook` hooks every
 hostage's TraceAttack and OnTakeDamage (each hit's damage before the
 multiplier, hitbox, hitgroup, and the damage taken) into
 `addons/sourcemod/logs/mashup_host.log` (objectives.md Q8); hostages are
@@ -178,19 +184,31 @@ it creates), every prop/breakable/door output as it fires (`out` rows) and,
 with `mashup_sndlog 1`, every emitted sound (`snd` rows). Commands:
 `mashup_spawn <class> <model|-> x y z pitch yaw [key value]...`,
 `mashup_fire <userid> x y z pitch yaw <weapon> <buttons> <start tick>
-<ticks>` (hold a bot there with only that weapon and press attack/attack2),
+<ticks>` (hold a bot there with only that weapon and press attack/attack2;
+start at tick 100 or later: earlier presses were lost while the weapon
+drew),
 `mashup_hurt <victim> <attacker> <damage> <type bits> [x y z]`,
 `mashup_input <index> <input> [parameter] [activator]`, `mashup_find
 <class> [model part]`, `mashup_einfo`, `mashup_getprop <index|-1> <field>
 [f]`, `mashup_watch <index> <frames>` (health, effects, solid flags every
 frame, and when it is gone), `mashup_panes <index>` (a func_breakable_surf's
-pane grid), `mashup_tp`, `mashup_hp`, `mashup_kill`.
+pane grid), `mashup_tp`, `mashup_hp <index> <health> [armor] [helmet]`,
+`mashup_kill`. Every `player_hurt` is logged as a `hurt` row (health and
+armour left, dmg_health, dmg_armor, hitgroup, weapon).
 
 `propmeas.py` holds the 2026-10-17 measurements (specs/source/prop_damage.md,
 breakables.md and doors_buttons.md open questions): `shot` (a fresh crate on
 de_dust2's CT spawn shot by the bot), `gascan` (a gas can broken next to the
 bot), `drop_on` (a prop thrown down onto the bot), `door` (a model door's
 sounds through Open/Close/Lock/Use).
+
+`impacts.py` (prop_damage.md 6): `drop <speed>` throws the 500 kg cupboard
+(or a given model) down onto the bot while a `mashup_run` logs its velocity
+(`HP=5000` for a bot that survives every contact, `HOOK=1` to hook its
+damage once), `walk <250|130>` runs or walks the bot into a resting
+prop_physics. `knifearmor.py <1 slash|2 stab> <armor>` knifes the first bot
+from 40 units with a second (`bot_add_t`; `WPN=weapon_ak47` for a gun,
+`HOLD=40` for a held attack) and prints the `hurt` row and the sounds.
 
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor

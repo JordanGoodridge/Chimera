@@ -441,6 +441,20 @@ warning). The `player_vehicle` table is irrelevant to CS:S.
   Multiplayer props never hit a player (their collision group passes
   through players): the same crate as a prop_physics_multiplayer did
   nothing at any speed.*
+  *Measured 2026-10-17, second round (`tools/css_probe/impacts.py drop`:
+  `furniturecupboard001a`, 500 kg, health 50, thrown straight down from
+  120 units above the feet of a de_dust2 bot with 5000 health; speeds are
+  the throw, about 260–1520 in/s at the head after the fall): the player
+  takes, contact by contact: 0 → 5 + 50, 100 → 10 + 50, 200 and 300 →
+  10 + 100, 400 → 10 + 500, 600 → 50 + 500, 800 and 1000 → 100 + 500,
+  1500 → 500 + 500; the cupboard takes 5 from the player (attacker the
+  player) at 800 and 1000, 5 + 5 at 1500, nothing below. At 1500 the
+  player also took 200 crush from the world (attacker 0, force straight
+  down) the next tick: the stress rule. The player isn't knocked: its
+  speed stayed under 13 units/s. Running (250) or walking (130) into a
+  prop_physics resting on the floor (the 30 kg crate, the cupboard)
+  damages neither; the player stops at it (speed 0 the next tick) and
+  shoves the crate on in bursts; the cupboard barely moved (2.5 units).*
 - **Stress (crushing)**: each physics update, the player's received stress
   is measured from contact forces with moveable, non-friendly, not
   player-held objects (in kg after dividing by gravity). With scale
@@ -448,8 +462,11 @@ warning). The `player_vehicle` table is irrelevant to CS:S.
   least one non-static object, stress' > 5 and one contact is a ≥ 500 kg
   object that is not the player's ground entity, and the player is not
   stuck in solid: 200 crush damage (attacker = world, force (0, 0,
-  −received·gravity·frame time)). *Not seen in CS:S (2026-10-17): the
-  cupboards above never did 200.*
+  −received·gravity·frame time)). *Seen once in CS:S (2026-10-17, second
+  round): the tick after the 500 kg cupboard landed at 1500 in/s on a
+  5000-health player, 200 crush, attacker the world, force straight down;
+  never at 1000 or less. Not in ours (a 100-health player is dead from
+  the landing first).*
 
 ### 7. Breaking
 
@@ -921,7 +938,10 @@ are Windows capture C29 in docs/plans/active/windows-captures.md).
    (≥ 10 by the table) and watch health.
    *Measured 2026-10-17 (probe server: `tools/css_probe/mashup_props.sp` damage hooks, `propmeas.py`): impacts
    yes (two contacts per landing, section 6); the 200 stress crush was not
-   seen.*
+   seen.* *Second round (2026-10-17, `tools/css_probe/impacts.py`): the
+   500 kg cupboard at nine speeds (section 6): 5 + 50 up to 500 + 500, and
+   one 200 stress crush after the 1500 in/s landing; running into props
+   hurts nobody.*
 7. **Client break sounds**: client props and pieces queue none in the SDK;
    does breaking a bottle in CS:S make a sound beyond the bullet impact?
    Check by ear on cs_italy.
@@ -994,6 +1014,6 @@ forcetoenablemotion, OnAwakened or OnMotionEnabled.
 
 Since then (2026-10-17): Q6 and Q13's measurements are implemented in
 `source/logic/src/logic/bridge.rs` (`impacts`): a prop_physics meeting a
-player counts as two contacts hurting both, with speed shares fitted to the
-measured crate (scenario tests in
-`games/cs_source/tests/it/logic_physics.rs`).
+player counts as two contacts hurting both, each the prop losing a share of
+its speed by its mass, fitted to the measured crate and cupboard (scenario
+tests in `games/cs_source/tests/it/logic_physics.rs`).
