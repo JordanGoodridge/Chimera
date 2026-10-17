@@ -291,6 +291,14 @@ pub struct Damage {
     pub force: Vec3,
 }
 
+impl Damage {
+    /// A suicide (the `kill` command: generic damage from the target
+    /// itself), which CS:S carries out even in noclip (`Noclip`).
+    pub fn is_suicide(&self) -> bool {
+        self.attacker == Some(self.target) && self.kind == DamageKind::Generic && self.weapon.is_none()
+    }
+}
+
 /// An explosion to apply (radius damage and pushes, as a grenade's blast
 /// with this magnitude and radius): from map logic (exploding props).
 /// `damage` is normalized like `Damage::amount`, `radius` in meters.
@@ -624,6 +632,17 @@ impl NoBlock {
 #[derive(Component, Reflect, Default, Clone, Copy, Debug)]
 #[reflect(Component)]
 pub struct God;
+
+/// Flies through walls: the noclip movement's marker (`chimera_sim`'s
+/// `movement::noclip`; Source's noclip move type). Not `God`: CS:S still
+/// traces a noclipping player's hitboxes (bullets hit it and go on through
+/// as through any body) and hands its damage on, but it takes none, from
+/// anything (bullets, blasts, trigger_hurt, the world), nor loses armour;
+/// falls count again once it walks (specs/cs_source/movement.md "Noclip
+/// and spawning"). `DamageRules` refuses it.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component)]
+pub struct Noclip;
 
 /// A character says a radio command to its team (Counter-Strike's radio):
 /// `command` is the game's console name for it (`coverme`, `enemyspot`,
@@ -1487,10 +1506,11 @@ pub fn refused_by_team(d: &Damage, teams: &Query<&Team>, friendly_fire: Option<&
 }
 
 /// What decides whether damage is refused before it reaches health:
-/// team rules, a map's invulnerability and damage filters (not `God`,
-/// which the health query leaves out).
+/// team rules, a map's invulnerability and damage filters, a noclipping
+/// target (`Noclip`; not `God`, which the health query leaves out).
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct DamageRules<'w, 's> {
+    noclip: Query<'w, 's, (), With<Noclip>>,
     teams: Query<'w, 's, &'static Team>,
     filters: Query<'w, 's, &'static DamageFilter>,
     controls: Query<'w, 's, &'static MapControls>,
@@ -1499,7 +1519,8 @@ pub struct DamageRules<'w, 's> {
 
 impl DamageRules<'_, '_> {
     pub fn refuse(&self, d: &Damage) -> bool {
-        refused_by_team(d, &self.teams, self.friendly_fire.as_deref())
+        (self.noclip.contains(d.target) && !d.is_suicide())
+            || refused_by_team(d, &self.teams, self.friendly_fire.as_deref())
             || self.controls.get(d.target).is_ok_and(|c| c.invulnerable)
             || self.filters.get(d.target).is_ok_and(|f| f.blocked.contains(&d.kind))
     }

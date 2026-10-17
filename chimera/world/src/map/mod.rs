@@ -137,7 +137,8 @@ pub struct PendingMap(Arc<MapData>, MapDebugView);
 pub struct KillHeight(pub f32);
 
 /// Falling out of the map kills; characters that can't die (god mode, no
-/// health) go back to a spawn point instead.
+/// health) go back to a spawn point instead. A noclipping character
+/// (`core::Noclip`) flies where it likes: below the map too.
 #[allow(clippy::type_complexity)]
 pub fn fall_out_of_map(
     kill: Option<Res<KillHeight>>,
@@ -150,7 +151,7 @@ pub fn fall_out_of_map(
             Has<crate::core::God>,
             Option<&Team>,
         ),
-        With<crate::core::Intent>,
+        (With<crate::core::Intent>, Without<crate::core::Noclip>),
     >,
     spawns: Query<(&Transform, &crate::core::SpawnPoint), Without<crate::core::Intent>>,
     mut damage: MessageWriter<crate::core::Damage>,

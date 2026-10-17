@@ -597,3 +597,62 @@ fn map_server_settings_last_until_the_map_unloads() {
     sim.ticks(5);
     assert_eq!(maxvelocity(&mut sim), "3500");
 }
+
+fn health(sim: &Sim, p: Entity) -> f32 {
+    sim.app.world().get::<crate::stack::core::Health>(p).unwrap().current
+}
+
+fn set_movement(sim: &mut Sim, p: Entity, id: &'static str) {
+    crate::stack::slots::set_movement(p, id).apply(sim.app.world_mut());
+}
+
+/// A trigger_hurt of 20 a second over the player: walking it takes 10 a
+/// pass; noclipping, nothing (CS:S, measured on the probe 2026-10-17:
+/// the trigger still hands its damage on, the player takes none;
+/// specs/cs_source/movement.md "Noclip and spawning").
+#[test]
+fn trigger_hurt_hurts_walking_but_not_noclipping_players() {
+    let hurt = || {
+        entity(
+            &[("classname", "trigger_hurt"), ("spawnflags", "1"), ("damage", "20"), ("origin", "0 0 0")],
+            vec![hull(Vec3::new(-64.0, -64.0, 0.0), Vec3::new(64.0, 64.0, 128.0))],
+            false,
+        )
+    };
+    // The first pass comes while the player lands (`sim`'s ten ticks):
+    // count what the next 1.2 s take.
+    let (mut walking, p) = sim(vec![hurt()], Vec3::ZERO, 0.0);
+    let before = health(&walking, p);
+    walking.seconds(1.2);
+    assert!(before - health(&walking, p) > 0.15, "walking: {before} -> {}", health(&walking, p));
+    let (mut flying, p) = sim(vec![hurt()], Vec3::ZERO, 0.0);
+    set_movement(&mut flying, p, crate::stack::movement::noclip::ID);
+    let before = health(&flying, p);
+    flying.seconds(1.2);
+    assert_eq!(health(&flying, p), before, "noclip");
+}
+
+/// Noclip turned off in the air: the fall that follows hurts as one from
+/// the same height walking (CS:S: 54 points either way for the same drop,
+/// measured on the probe 2026-10-17).
+#[test]
+fn a_fall_after_noclip_ends_in_the_air_hurts_as_any_fall() {
+    let drop = |noclipping: bool| {
+        let (mut sim, p) = sim(Vec::new(), Vec3::ZERO, 0.0);
+        if noclipping {
+            set_movement(&mut sim, p, crate::stack::movement::noclip::ID);
+        }
+        sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = to_engine(Vec3::new(0.0, 0.0, 400.0));
+        sim.ticks(5);
+        if noclipping {
+            assert!(to_source(sim.position(p)).z > 399.0, "noclip hovers");
+            set_movement(&mut sim, p, movement::ID);
+        }
+        sim.seconds(2.0);
+        assert!(feet(&sim, p).z.abs() < 1.0, "landed: {}", feet(&sim, p));
+        1.0 - health(&sim, p)
+    };
+    let walking = drop(false);
+    assert!(walking > 0.0, "a 364-unit fall hurts");
+    assert_eq!(drop(true), walking);
+}

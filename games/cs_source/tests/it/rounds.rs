@@ -682,7 +682,6 @@ fn noclip_lasts_to_the_next_round() {
 /// (measured with the death and a respawn, CS_RespawnPlayer).
 #[test]
 fn the_dead_respawn_out_of_noclip() {
-    use crate::stack::movement::noclip;
     for rounds in [true, false] {
         let (mut sim, t, ct, ct2) = setup();
         if !rounds {
@@ -691,7 +690,11 @@ fn the_dead_respawn_out_of_noclip() {
         }
         sim.seconds(1.2);
         noclipped(&mut sim, ct);
+        // Others' damage doesn't reach a noclipping player: it dies by
+        // its own hand (the `kill` command, as measured).
         kill(&mut sim, t, ct);
+        assert!(sim.app.world().get::<crate::stack::rules::Dead>(ct).is_none(), "noclip takes no damage");
+        kill(&mut sim, ct, ct);
         assert!(sim.app.world().get::<crate::stack::rules::Dead>(ct).is_some());
         if rounds {
             kill(&mut sim, t, ct2);

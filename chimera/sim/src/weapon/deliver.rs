@@ -50,7 +50,8 @@ pub(super) struct World<'w, 's> {
     colliders: Query<'w, 's, &'static ColliderOf>,
     bodies: Query<'w, 's, (&'static RigidBody, Forces)>,
     damage: MessageWriter<'w, Damage>,
-    armor: Query<'w, 's, &'static mut Armor>,
+    // A noclipping character's armour takes none (`core::Noclip`).
+    armor: Query<'w, 's, &'static mut Armor, Without<crate::core::Noclip>>,
     props: Query<'w, 's, &'static PropSurface>,
     bank: Option<Res<'w, SoundBank>>,
     grid: Option<Res<'w, SurfaceGrid>>,

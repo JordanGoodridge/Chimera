@@ -397,8 +397,8 @@ fn a_ragdoll_on_the_line_takes_the_impact_while_it_is_the_only_one_awake() {
     };
     let mut sim = Sim::new(CsSim, MapPlugin::new(floor_map(model())));
     sim.app.world_mut().resource_mut::<Deathmatch>().respawn_delay = 1000.0;
-    let a = sim.spawn_character(Vec3::new(0.0, 0.9, 0.0), noclip::ID);
-    let b = sim.spawn_character(Vec3::new(4.0, 0.9, 0.0), noclip::ID);
+    let a = crate::common::spawn_still(&mut sim, Vec3::new(0.0, 0.9, 0.0));
+    let b = crate::common::spawn_still(&mut sim, Vec3::new(4.0, 0.9, 0.0));
     sim.ticks(10);
     kill(&mut sim, a, Hitgroup::Chest, Vec3::new(0.0, 1.2, 0.0), Vec3::NEG_Z);
     kill(&mut sim, b, Hitgroup::Chest, Vec3::new(4.0, 1.2, 0.0), Vec3::NEG_Z);

@@ -53,3 +53,14 @@ pub fn map_file_bytes(id: &str) -> Option<Vec<u8>> {
     let (mount, name) = mount_of(id).ok()?;
     mount.read(&format!("maps/{name}.bsp")).ok()
 }
+
+/// A character that stays where it is put and can be hurt: noclip's
+/// movement slot without its marker, so no movement runs and damage isn't
+/// refused (a noclipping character takes none, `core::Noclip`). The
+/// victims of the ragdoll and drawn-part tests.
+#[allow(dead_code)]
+pub fn spawn_still(sim: &mut chimera_world::harness::Sim, at: bevy::math::Vec3) -> bevy::ecs::entity::Entity {
+    let p = sim.spawn_character(at, chimera_sim::movement::noclip::ID);
+    sim.app.world_mut().entity_mut(p).remove::<chimera_core::core::Noclip>();
+    p
+}
