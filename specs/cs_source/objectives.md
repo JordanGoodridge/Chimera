@@ -787,8 +787,9 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    round (four a round), cs_compound's three got 04 01 02, then 03 04 01,
    02 03 04, 01 02 03 (its first round went on from where cs_office left
    it), and cs_office after it 03 04 01 02. The map's skin stays (cs_office
-   1, cs_compound 0). Ours: `HostageModelCycle` (characters take no skin
-   yet). Was: **Q9 Hostage model choice.** On cs_office (`models/hostage.mdl`, skin
+   1, cs_compound 0). Ours: `HostageModelCycle`, and the map's skin as
+   `map::BodySkin` (every stock hostage and player model has one skin
+   family, so skin 1 draws as skin 0, as in CS:S). Was: **Q9 Hostage model choice.** On cs_office (`models/hostage.mdl`, skin
    1) and cs_compound (`HostageType` 1): which of `hostage_01..04` does
    each hostage use (dump each `hostage_entity`'s model name) and does it
    change per round?

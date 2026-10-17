@@ -957,6 +957,7 @@ mod tests {
             .spawn((
                 CharacterBody {
                     model: 0,
+                    skin: 0,
                     joints: Vec::new(),
                     held: None,
                     held_parts: Vec::new(),

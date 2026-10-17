@@ -1322,6 +1322,7 @@ mod tests {
                 crate::render::bodies::CharacterBody {
                     held_parts: Vec::new(),
                     model: 0,
+                    skin: 0,
                     joints: Vec::new(),
                     held: None,
                 },
