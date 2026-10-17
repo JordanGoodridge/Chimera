@@ -175,6 +175,46 @@ fn old_maps_light_props_with_ambient_cubes() {
     }
 }
 
+/// cs_militia's props (specs/cs_source/shaders.md 2 and 4): the ammo can
+/// and the cable spool reflect `env_cubemap` through the normal map's alpha
+/// (`$normalmapalphaenvmapmask`), so their meshes carry the normal map the
+/// renderer masks with (without it they were mirrors). Its crates by the
+/// shed are lit each from one point (the documented reading).
+#[test]
+fn militia_props_mask_reflections_and_light_from_one_point() {
+    use crate::stack::map::EnvmapMask;
+    let Some(map) = load("cs_militia") else { return };
+    let src = |x: f32, y: f32, z: f32| bevy::math::Vec3::new(x, z, -y) * 0.0254;
+    let prop_at = |p: bevy::math::Vec3| {
+        map.props
+            .iter()
+            .min_by(|a, b| a.translation.distance(p).total_cmp(&b.translation.distance(p)))
+            .unwrap()
+    };
+    for (at, material) in [
+        (src(170.0, 633.0, 19.2), "ammo_can_01"),
+        (src(1786.0, 511.0, -150.2), "spool"),
+    ] {
+        let prop = prop_at(at);
+        let m = &map.models[prop.model].meshes[0];
+        assert_eq!(m.material, material);
+        let env = m.envmap.expect("reflects");
+        assert_eq!(env.mask, EnvmapMask::NormalAlpha, "{material}");
+        assert!(m.normal_map.is_some(), "{material}: the mask's normal map");
+    }
+    // The crates by the shed: no `.vhv` in the map, so each is lit from its
+    // centre (docs/tech-debt.md "Prop light probes"): the one against the
+    // shed's wall is in its shadow, the one beside it in the sun.
+    assert!(map.props.iter().all(|p| p.vertex_light.is_none()));
+    let sun = |x: f32, y: f32| {
+        let p = prop_at(src(x, y, -161.0));
+        assert_eq!(map.models[p.model].meshes[0].material, "crate_extrasmallmil");
+        p.lighting.as_ref().expect("probe").lights.iter().any(|(_, c)| c.max_element() > 1.0)
+    };
+    assert!(!sun(1353.5, 759.8), "by the shed");
+    assert!(sun(1402.5, 757.8), "outer");
+}
+
 /// Brush entities draw and collide where they stand: cs_office's first
 /// window (func_breakable_surf, model *1, Source x -628..-508 at y -344..-340,
 /// z -148..-52) is a breakable, so it has its own node: drawn there and
@@ -505,7 +545,8 @@ fn pick() {
 }
 
 /// Debug aid: `MAP=de_aztec AT=-280,-1512,-160 R=600 cargo test ...
-/// --ignored props_near -- --nocapture` lists props near a Source point.
+/// --ignored props_near -- --nocapture` lists props near a Source point
+/// (Source coordinates): their materials, reflections and lighting.
 #[test]
 #[ignore = "debug aid"]
 fn props_near() {
@@ -518,13 +559,22 @@ fn props_near() {
     let r: f32 = std::env::var("R").ok().and_then(|s| s.parse().ok()).unwrap_or(500.0) * 0.0254;
     for prop in map.props.iter().filter(|q| q.translation.distance(p) < r) {
         let m = &map.models[prop.model];
+        // Each mesh: material, textured, reflection (cubemap, mask, tint),
+        // normal map.
         let mats: Vec<_> = m
             .meshes
             .iter()
-            .map(|x| (x.material.as_str(), x.texture.is_some()))
+            .map(|x| {
+                let env = x.envmap.map(|e| (e.cubemap, e.mask, e.tint));
+                (x.material.as_str(), x.texture.is_some(), env, x.normal_map.is_some())
+            })
             .collect();
         let cube = prop.lighting.as_ref().map(|l| (l.cube, l.lights.len()));
-        println!("{:?} {mats:?} light {cube:?}", prop.translation / 0.0254);
+        let source = bevy::math::Vec3::new(prop.translation.x, -prop.translation.z, prop.translation.y) / 0.0254;
+        println!(
+            "{source:?} {mats:?} light {cube:?} baked per vertex {}",
+            prop.vertex_light.is_some()
+        );
     }
 }
 

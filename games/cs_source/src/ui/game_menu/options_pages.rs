@@ -169,8 +169,7 @@ pub(super) fn keyboard_tab(commands: &mut Commands, content: Entity, look: &Look
                         place(look, 1.0, y, width, row_h),
                         BackgroundColor(bg),
                         Hit(Target::Row(i), 0),
-                        Button,
-                        Interaction::default(),
+                        widgets::clickable(),
                         ChildOf(list),
                     ))
                     .id();

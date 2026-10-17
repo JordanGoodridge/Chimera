@@ -161,7 +161,8 @@ pub(super) fn draw(
             },
             BackgroundColor(backdrop),
             // Over the HUD (40-45), under the frames (`widgets::FRAME_Z`),
-            // the scoreboard and the console.
+            // the scoreboard and the console; a click on it stops here.
+            bevy::ui::FocusPolicy::Block,
             GlobalZIndex(MENU_Z),
         ))
         .id();
@@ -929,8 +930,7 @@ pub(super) fn player_list(commands: &mut Commands, ctx: &Ctx, parent: Entity, (l
                 place(look, 1.0, y, width, row_h),
                 BackgroundColor(bg),
                 Hit(Target::Row(i), 0),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();
