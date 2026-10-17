@@ -195,9 +195,22 @@ restart, where frame counts are too uncertain), run the game without
 (section 3b) between other commands: `setpos ...; setang ...`, `+attack`,
 `-attack`, then `screenshot /scratch/after.png`.
 
+Ports: tool runs (`--screenshot`, `--views`, `--frames`, `--bench`, so
+also refcmp and mapsweep) never bind UDP 27015, so several agents can
+capture at once beside a real CS:S. They start with `ip 127.0.0.1;
+hostport 0`: a run that hosts (`+maxplayers 4 +map ...`) listens on
+loopback on a port the system picks (`status` shows it; `-port <n>`
+still names one), and one that doesn't host opens no game socket at all
+(single player). With `dev` their remote protocol (section 3) takes a
+free loopback port too, logged as `remote protocol on 127.0.0.1:<port>`,
+unless `MASHUP_REMOTE_PORT` names one. Headless tests use the in-memory
+link or loopback ports the system picks. Check with `ss -lunp` / `ss
+-ltnp` while runs are going.
+
 ## 3. Live ECS over HTTP (Bevy Remote Protocol)
 
-With `--features dev`, the game serves JSON-RPC on `localhost:15702`.
+With `--features dev`, the game serves JSON-RPC on `localhost:15702`
+(tool runs: a free port, section 2).
 
 ```
 curl -s localhost:15702 -d '{"jsonrpc":"2.0","id":1,"method":"world.query","params":{
@@ -569,7 +582,9 @@ Only `Reflect`-registered types are visible; register new core components in
 Plan and progress: [plans/active/multiplayer.md](plans/active/multiplayer.md).
 The default port is UDP 27015 (Source's). **On the Linux dev box a CS:S
 server holds 27015: never bind it there.** Use another port for every run
-(`-port 27016`, `hostport 27016`); tests use ports the system picks.
+(`-port 27016`, `hostport 27016`); tests use ports the system picks, and
+tool runs host on loopback on one (section 2). `ip <address>` (Source's)
+is the address a server binds: every interface (0.0.0.0) by default.
 
 Headless first: `harness::NetSim` runs a server and N clients in one
 process over an in-memory link (`net::memory`) with seeded latency, jitter
@@ -1307,6 +1322,18 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   on bump-mapped walls: it preferred a green-flipped normal map that crops
   show is wrong. Check close-up crops (`magick ... -crop`) side by side
   before trusting it.
+- A texture mismatch reported at a `setpos`/`setang` spot: `MASHUP_VIEW_MAP=cs_militia
+  MASHUP_VIEW_POS="261 -334 -94" MASHUP_VIEW_ANG="10 178 0" cargo test -p
+  cs_source --features dev --test it heavy::map_surfaces::surfaces_in_view
+  -- --ignored --nocapture` casts rays over that view (a 1280x720
+  window's framing) and prints a letter map of the surfaces it hits (world
+  faces, displacements, overlays, brush entities, props), then each one
+  with its share of the view and what we resolved its material to (base
+  and blend textures, detail, alpha, tint, transform, surface property).
+  Screenshots of the spot: run live and send `noclip`, the `setpos`/`setang`
+  line and `screenshot` over the remote console (on cs_militia a
+  `--screenshot` run's `+noclip +wait 30 +setpos ...` photographed
+  another place; `getpos` says where you are).
 - Measuring thin features (cables): sample columns of the reference and
   ours for dark pixels (`magick <img> -crop 1x260+X+0 txt:-`) and compare
   their rows; that's how rope gravity was found.

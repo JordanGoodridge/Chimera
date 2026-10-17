@@ -10,7 +10,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 
 use super::{
-    DetailMode, MapEntity, MapRagdoll, MapSelfIllum, MapSounds, MapUvTransform, MapViewModel, anim, beams,
+    DetailMode, MapEntity, MapRagdoll, MapSelfIllum, MapSounds, MapTextureAnim, MapUvTransform, MapViewModel, anim, beams,
     bot_profiles, breakables, color_correction, decal, emitters, hud, lod, nav, particles, psys, radio, rope_sway,
     shells, steam, vis, water,
 };
@@ -116,6 +116,11 @@ pub struct MapMesh {
     pub modulate: bool,
     /// Surface property name (footsteps, impacts), lower-case.
     pub surface: Option<String>,
+    /// A blended surface's second surface property (Source `$surfaceprop2`
+    /// on WorldVertexTransition), lower-case: the triangles where the
+    /// second texture shows (`blend_weights`) take it
+    /// (`sound::SurfaceGrid`).
+    pub surface2: Option<String>,
     /// Reflection of a baked cubemap (Source `$envmap`).
     pub envmap: Option<MapEnvmap>,
     /// Part of a mover brush entity (index into `MapData::entities`):
@@ -143,9 +148,12 @@ pub struct MapMesh {
     /// Its base texture's frames (indices into `MapData::textures`), when a
     /// map entity can pick one (env_texturetoggle; `render::tint::TextureFrames`).
     pub frames: Vec<usize>,
-    /// A window's edge piece (`PaneLook::Edge`): the jagged mask whose
-    /// alpha cuts it (index into `MapData::textures`), laid over each strip
-    /// by its own coordinates while the material keeps the face's.
+    /// A window's broken looks (`PaneLook::Cracked` and `Edge`): the jagged
+    /// edge masks, square tiles side by side in one texture (index into
+    /// `MapData::textures`), whose alpha cuts each edge strip (the strip
+    /// picks its tile and lays it out by its vertex colour, while the
+    /// material keeps the face's coordinates). The cracked face carries it
+    /// too, unused, so a window's broken looks share one material.
     pub pane_mask: Option<usize>,
 }
 
@@ -790,6 +798,11 @@ pub struct MapData {
     pub entity_scale: f32,
     /// How water surfaces look (`MapMesh::water` indexes these).
     pub water_materials: Vec<water::MapWaterMaterial>,
+    /// Animated textures (Source's AnimatedTexture proxy): materials of
+    /// meshes and models bind each one's first frame, and the renderer
+    /// shows its frames in turn wherever that is bound
+    /// (`render::texture_anim`).
+    pub texture_anims: Vec<MapTextureAnim>,
     /// Dynamic prop shadows, when the game draws them.
     pub shadows: Option<MapShadows>,
     /// The announcer's round sounds (sound entries), when the game has them.

@@ -26,14 +26,14 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 |---|---|---|---|---|
 | Movement | 3 | 8 | 0 | 2 |
 | Weapons, recoil, spread | 5 | 8 | 2 | 3 |
-| Sounds | 7 | 8 | 3 | 4 |
+| Sounds | 8 | 8 | 3 | 5 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 8 | 17 | 2 | 4 |
+| Rendering, lighting, materials | 10 | 17 | 2 | 6 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **67** | **63** | **21** | **32** |
+| **Total** | **70** | **63** | **21** | **35** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -54,10 +54,10 @@ measured rectangles live in `games/cs_source/tests/ui/heavy/hud_layout.rs` and p
 
 | Map | Views | Mean abs diff (this branch) | Before (2026-10-07 captures) | Mean luma error | Worst three views |
 |---|---|---|---|---|---|
-| de_dust2 | 32 | 0.0308 | 0.0308 | 0.0029 | `sky_n` 0.060 (luma 0.753/0.743), `a_sign_e` 0.052, `a_sign_w` 0.047 |
-| de_nuke | 27 | 0.0241 | 0.0250 | 0.0057 | `cam6` 0.043, `cam16` 0.041 (sharpness 13.0/10.8), `cam4` 0.034 |
-| cs_office | 23 | 0.0185 | 0.0204 | 0.0019 | `cam0` 0.036, `zone1_180` 0.028, `zone1_90` 0.027 |
-| de_aztec | 13 | 0.0406 | 0.0409 | 0.0015 | `zone0_270` 0.064, `zone0_180` 0.059, `zone1_90` 0.054 |
+| de_dust2 | 32 | 0.0303 | 0.0308 | 0.0029 | `sky_n` 0.060 (luma 0.753/0.743), `a_sign_e` 0.052, `a_sign_w` 0.047 |
+| de_nuke | 27 | 0.0239 | 0.0250 | 0.0057 | `cam6` 0.042, `cam16` 0.041 (sharpness 13.0/10.8), `cam4` 0.034 |
+| cs_office | 23 | 0.0181 | 0.0204 | 0.0019 | `cam0` 0.029, `zone1_180` 0.028, `zone1_90` 0.027 |
+| de_aztec | 13 | 0.0354 | 0.0409 | 0.0015 | `zone1_90` 0.051, `zone0_270` 0.050, `zone1_0` 0.046 |
 
 Reading: abs diff is the mean absolute difference per pixel (0-1);
 luma is each image's mean. Brightness matches everywhere (mean luma
@@ -81,8 +81,11 @@ report folders):
   a VertexLitGeneric static prop in the 3D skybox, no baked `.vhv`) show
   dark teal where CS:S's are light grey: their light probe in the
   skybox is wrong (a separate gap, listed under Rendering).
-- de_aztec `zone0_*`: the difference is texture-level noise over the
-  bump-mapped walls and the grass blend (luma equal to 0.001), plus
+- de_aztec `zone0_*`: the difference was mostly the displacements'
+  texture mapping (projected through the sculpted surface; now from the
+  undisplaced grid, 2026-10-17: `zone0_180` 0.059 -> 0.045, its detail
+  correlation 0.15 -> 0.62); what is left is texture-level noise over
+  the bump-mapped walls and the grass blend (luma equal to 0.001), plus
   the sky at the top: filtering, not light.
 - de_dust2 `sky_*`, `a_sign_*`: the sky's rope and far hills (known:
   rope sag, haze) and the bump-mapped walls' detail.
@@ -137,6 +140,7 @@ report folders):
 | HUD weapon selection sounds | have (fixed) | H | S | `Player.WeaponSelectionMoveSlot`/`WeaponSelected`/`DenyWeaponSelection` were never played; when each plays is inferred, capture C3 |
 | Under water muffle | have (fixed) | M | S | nothing changed with the head under water; now a steady low-pass (Source's `dsp_water` is engine-side: values ours, capture C5) |
 | Distance falloff curves | differs | H | S | spec sounds.md Q1 (H1/H2 hypotheses) |
+| Footsteps and impacts on blended ground (`$surfaceprop2`) | have (fixed) | M | S | 2026-10-17: blended displacements always played their first surface (cs_militia's grass as dirt; cs_compound, de_aztec's mud, de_port, 6 community maps); now a triangle whose corners' mean vertex alpha is over one half takes the second (`sound::second_surface`); the threshold is ours (no spec), check by ear on militia's yard |
 | Footstep silence rules, jump sound | have (fixed) | H | S | measured (sounds.md "Footsteps"): silent below 150 (was: by the walk/duck keys), 0.25 / 0.4 s under 220, 0.55 / 0.3 s above, jump 1.0; duck + jump from standing silent in CS:S, ours plays the jump step |
 | Room DSP presets | differs | M | M | tech-debt "Room DSP": every value ours |
 | `dsp_player`, `soundmixer` | missing | M | M | read, not played (spec Q14) |
@@ -213,6 +217,8 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Lightmaps, bump, envmaps, two-texture blend, sky, fog | have | | | refcmp above |
+| Displacement texture mapping | have (fixed) | M | S | displacements projected their texture through the sculpted surface, smearing it in streaks wherever vertices move sideways (reported on cs_militia's rock walls at its front yard); now mapped from the undisplaced grid as their lightmaps are (shaders.md open question 20: measured, refcmp detail correlation up on every map, de_aztec 0.54 -> 0.72) |
+| Bump maps in DirectX 9 fallback blocks | have (fixed) | L | S | 181 stock materials have a `LightmappedGeneric_DX9` (or `>=DX90`) block, which the VMT parser skipped; about 110 name their `$bumpmap` only there (HL2's `_c17`/`_cheap` walls and floors: cs_militia's sewer-concrete wall by the reported spot, cs_assault, cs_compound, de_port, de_inferno), drawn flat; now read with the block's keys (`lenient_vmt`) |
 | Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone; glass shards tumble and settle, slime splashes from the `.pcf` (2026-10-15) |
 | Impact effects of others' shots beyond the shooter's PAS | differs | L | M | every client makes them (impact_effects.md 1; no network relevance yet, `net::server`) |
 | Knife slash mark | differs | L | S | `ManhackCut` is a guess; no spec names it (backlog 3 "Decals, remaining") |
@@ -235,6 +241,8 @@ common console commands, against mashup's.
 | Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models"; view_models.md Q5, Q7; capture C15 |
 | Prop light probes | differs | M | M | tech-debt: the engine's weighting isn't public (needs a spec session); props without `.vhv` (all of cs_militia's) take the sun from one point, whole or not at all: militia's crates by the shed (x 1344-1353) much darker than the next ones out, as the reading predicts (2026-10-17); whether CS:S does that or lights them per vertex at load is shaders.md Q11, capture C28 |
 | Model reflections masked by the normal map's alpha (`$normalmapalphaenvmapmask`) | have (fixed) | M | S | 2026-10-17: the mask was dropped on props, so those materials were mirrors: militia's ammo can, cable spool, pallet, car battery, APC; the same props on nuke, inferno, train, assault, port, prodigy, compound, havana, piranesi, aztec (vents, pallets, spools, `metalwall001a`, `pi_apc`, `pi_boat`); the hands now reflect through it too. refcmp: nuke 0.0242 -> 0.0241, aztec, dust2 unchanged, office within capture noise (`cam0`'s sky) |
+| Animated textures (AnimatedTexture proxy), `$frame` | have (fixed) | L | S | 2026-10-17: drawn on their first frame; now the frames in turn (`render::texture_anim`): de_nuke's pool's bump map (29 frames at 21 fps; its base has one frame), cs_office's projector slide (7 slides, one every 10 s), 7 community maps (DirectX 7 water stand-ins, mg_escape_prison_beta's slime bump); a static `$frame` (no stock map sets one) picks its frame. From the public wiki, no spec (tech-debt) |
+| LightmappedGeneric `$color` | have (fixed) | L | S | 2026-10-17: ignored; now the lighting times `$color`, raw (shaders.md 2). No stock world material sets it; 6 community maps' DirectX 7 water stand-ins do (bhop_backport_css, gg_pokemonz, surf_stickybutt_alpha) |
 | Props whose material names its cubemap | have (fixed) | L | S | 2026-10-17: drew no reflection; now that cubemap (no stock map's props do this) |
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C20 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |

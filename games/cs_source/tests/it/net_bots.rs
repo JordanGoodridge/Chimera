@@ -330,10 +330,15 @@ fn bot_seeds_dont_depend_on_clients() {
 
 /// What bots cost a server with clients connected: ten bots fighting on
 /// the greybox with two clients joined, the server's frame time and what
-/// each client receives.
+/// each client receives. The frame time is the server thread's CPU time
+/// (its schedules single-threaded, as `heavy::net_capacity` runs them),
+/// not wall time: on a busy machine a wall-time frame is mostly waiting
+/// for a core, and two measurements a moment apart differ by more than
+/// the bots cost.
 #[test]
 fn ten_bots_with_two_clients_cost() {
     let mut sim = NetSim::new(CsSim, link(), 66, 2, setup);
+    crate::stack::single_threaded_schedules(&mut sim.server.app);
     sim.until_joined(400);
     sim.ticks(64);
     let (base, base_p95) = server_frames(&mut sim, 320);
@@ -357,23 +362,28 @@ fn ten_bots_with_two_clients_cost() {
         "2 clients, no bots: server frame {base:.2} ms mean, {base_p95:.2} ms p95; 10 bots: {mean:.2} ms mean, {p95:.2} ms p95; \
          {packets} packets in 10 s; clients receive {kbs:.1?} KB/s"
     );
-    // Relative and generous (a debug build on a shared, often busy box):
-    // ten bots cost a fraction of what the rest of the frame does.
+    // Relative and generous (a debug build; CPU time still moves a little
+    // with load: caches, clock speed): ten bots cost a fraction of what
+    // the rest of the frame does.
     assert!(mean < base * 3.0 + 5.0, "server frame {mean:.2} ms with bots, {base:.2} ms without");
     for k in kbs {
         assert!(k < 200.0, "{k} KB/s to a client");
     }
 }
 
-/// `n` frames everywhere; the server's frame time, mean and 95th
-/// percentile, ms.
+/// `n` frames everywhere; the server's frame time (its thread's CPU time;
+/// wall time where that can't be read), mean and 95th percentile, ms.
 fn server_frames(sim: &mut NetSim, n: usize) -> (f64, f64) {
+    use crate::stack::metrics::counters::thread_cpu_ns;
     let mut ms = Vec::new();
     for _ in 0..n {
         sim.link.lock().unwrap().advance(Duration::from_secs_f64(1.0 / 64.0));
-        let t = Instant::now();
+        let (t, cpu) = (Instant::now(), thread_cpu_ns());
         sim.server.app.update();
-        ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        ms.push(match (cpu, thread_cpu_ns()) {
+            (Some(a), Some(b)) => b.saturating_sub(a) as f64 / 1e6,
+            _ => t.elapsed().as_secs_f64() * 1000.0,
+        });
         for c in &mut sim.clients {
             c.app.update();
         }

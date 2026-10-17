@@ -346,6 +346,7 @@ that the paths exist).
 
 - `chimera/present/src/render/mod.rs`, `chimera/present/src/render/spawn.rs`: the drawn phases of spawning a map (`MapAssets`, a `map::MapDrawer`) (render)
 - `chimera/present/src/render/tint.rs`: entities' render colour, alpha and mode; brush texture frames (render)
+- `chimera/present/src/render/texture_anim.rs`: animated textures (AnimatedTexture proxy) swapped into the materials binding them (render)
 - `chimera/present/src/render/detail.rs`, `detail.wgsl`: detail sprites (grass and weeds) (render)
 - `chimera/present/src/render/sky_occluder.rs`, `sky_occluder.wgsl`: opt-in depth-only sky faces (render)
 - `chimera/present/src/render/beams.rs`, `beam.wgsl`: drawing beams, glows and spark bursts (render)

@@ -265,8 +265,8 @@ fn a_lossy_link_still_converges() {
     assert!(sim.link.lock().unwrap().lost > 0, "the link dropped packets");
 }
 
-/// The real transport: netcode over UDP on loopback, on a port the system
-/// picks (never 27015: a CS:S server may hold it).
+/// The real transport: netcode over UDP on loopback (`ip`), on a port the
+/// system picks (never 27015: a CS:S server may hold it).
 #[test]
 fn netcode_over_loopback() {
     let make = || {
@@ -279,11 +279,13 @@ fn netcode_over_loopback() {
     {
         let world = server.app.world_mut();
         let mut s = world.resource_mut::<NetSettings>();
+        s.ip = std::net::Ipv4Addr::LOCALHOST.into();
         s.hostport = 0;
         s.maxplayers = 4;
     }
     let addr = net::server::listen(server.app.world_mut()).expect("listen");
     assert_ne!(addr.port(), 0);
+    assert!(addr.ip().is_loopback(), "{addr}");
     let mut client = make();
     let to = std::net::SocketAddr::from(([127, 0, 0, 1], addr.port()));
     net::client::connect(client.app.world_mut(), to).expect("connect");
@@ -330,6 +332,7 @@ fn udp_pair() -> (crate::stack::harness::Sim, crate::stack::harness::Sim) {
     {
         let world = server.app.world_mut();
         let mut s = world.resource_mut::<NetSettings>();
+        s.ip = std::net::Ipv4Addr::LOCALHOST.into();
         s.hostport = 0;
         s.maxplayers = 4;
     }
@@ -406,6 +409,7 @@ fn a_client_quiet_for_20_s_stays_connected() {
     {
         let world = server.app.world_mut();
         let mut s = world.resource_mut::<NetSettings>();
+        s.ip = std::net::Ipv4Addr::LOCALHOST.into();
         s.hostport = 0;
         s.maxplayers = 4;
     }
@@ -459,6 +463,7 @@ fn fake_lag_delays_what_the_client_receives() {
     {
         let world = server.app.world_mut();
         let mut s = world.resource_mut::<NetSettings>();
+        s.ip = std::net::Ipv4Addr::LOCALHOST.into();
         s.hostport = 0;
         s.maxplayers = 4;
     }
