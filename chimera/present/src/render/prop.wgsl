@@ -185,7 +185,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         let v = view.world_position - in.world_position.xyz;
         let r = 2.0 * dot(n, v) * n - dot(n, n) * v;
         var spec = textureSample(envmap_texture, envmap_sampler, vec3<f32>(r.x, -r.z, r.y)).rgb;
-        if params.envmap_mask > 1.5 && params.envmap_mask < 2.5 {
+        if params.envmap_mask > 0.5 && params.envmap_mask < 1.5 {
+            // $normalmapalphaenvmapmask: the normal map's alpha (raw).
+            spec = spec * textureSample(envmap_mask_texture, base_sampler, uv).a;
+        } else if params.envmap_mask > 1.5 && params.envmap_mask < 2.5 {
             spec = spec * (1.0 - color.a);
         } else if params.envmap_mask > 2.5 {
             spec = spec * textureSample(envmap_mask_texture, base_sampler, uv).rgb;
