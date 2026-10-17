@@ -22,7 +22,12 @@
 //! `MASHUP_CAPACITY_SECONDS` (20 game seconds measured) for bigger runs,
 //! `MASHUP_CAPACITY_CONSOLE` server console lines (e.g. `bot_stop 1`, to
 //! tell what costs);
-//! the budget is asserted only at the default size. Prints a table:
+//! the budget is asserted only at the default size: instructions a tick
+//! (p50, mean, p99; the server's own cost whatever the machine's load),
+//! CPU time against the 66-tick budget only while the box is quiet
+//! (1-minute load average under half the CPUs) or without hardware
+//! counters (Windows: the mean, its thread clock being coarse). Prints a
+//! table:
 //! `cargo test --features dev --test it heavy::net_capacity -- --nocapture`.
 //! Skipped without a CS:S install.
 
@@ -58,6 +63,18 @@ use crate::stack::{
 
 /// The 66-tick budget (CS:S's tick), ms.
 const TICK_BUDGET_MS: f64 = 15.0;
+
+/// Instructions a server tick may take, millions (all threads, user
+/// space), in the dev build: measured p50 26.6-28.9, mean 28.5-29.9, p99
+/// 44-54 over eight runs at load 1-5 per CPU (2026-10-16); the playtest
+/// build takes fewer. A fixed 8.6M added to every tick fails the p50.
+const INS_P50_MAX: f64 = 35.0;
+const INS_MEAN_MAX: f64 = 35.0;
+const INS_P99_MAX: f64 = 75.0;
+
+/// The 1-minute load average per logical CPU under which CPU time is
+/// checked too.
+const QUIET_LOAD_PER_CPU: f64 = 0.5;
 
 fn installed() -> bool {
     let ok = LocalConfig::load()
@@ -188,9 +205,27 @@ struct Results {
     kb_per_client: Vec<f64>,
     client_p50: f64,
     client_p99: f64,
+    /// Mean CPU ms per tick: what a coarse clock (Windows' 15.6 ms
+    /// steps) can still tell.
+    tick_mean: f64,
     rss: Option<f64>,
-    /// Mean instructions per tick, millions (None without counters).
-    ins_mean: Option<f64>,
+    /// Instructions per tick, millions, p50 / p99 / mean (None without
+    /// counters).
+    ins: Option<(f64, f64, f64)>,
+    /// The highest 1-minute load average per logical CPU seen at the
+    /// start and end of the measured stretch (None outside Linux).
+    load: Option<f64>,
+}
+
+/// The 1-minute load average per logical CPU (Linux; None elsewhere).
+fn load_per_cpu() -> Option<f64> {
+    let l: f64 = std::fs::read_to_string("/proc/loadavg")
+        .ok()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()?;
+    Some(l / std::thread::available_parallelism().ok()?.get() as f64)
 }
 
 fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
@@ -284,8 +319,10 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
     let (mut pairs, mut in_pvs) = (0u64, 0u64);
     let (mut alive_sum, mut alive_samples) = (0u64, 0u64);
     let started = Instant::now();
+    let mut load = None;
     for step in 0..warm + measured {
         if step == warm {
+            load = load_per_cpu();
             let l = sim.link.lock().unwrap();
             bytes_at_start = (0..clients)
                 .map(|i| l.bytes_to.get(&sim.client_id(i)).copied().unwrap_or(0))
@@ -357,6 +394,7 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
             }
         }
     }
+    let load = load.zip(load_per_cpu()).map(|(a, b)| a.max(b));
     let world = sim.server.app.world_mut();
     // Updates each client was sent and those its `rate` choked.
     let paced: Vec<(u64, u64)> = world
@@ -401,11 +439,19 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
         clients,
         tick_p50: percentile(&tick_ms, 0.5),
         tick_p99: percentile(&tick_ms, 0.99),
+        tick_mean: tick_ms.iter().sum::<f64>() / tick_ms.len().max(1) as f64,
         kb_per_client,
         client_p50: percentile(&client_ms, 0.5),
         client_p99: percentile(&client_ms, 0.99),
         rss: rss_mb(),
-        ins_mean: (!ins.is_empty()).then(|| ins.iter().sum::<f64>() / ins.len() as f64),
+        ins: (!ins.is_empty()).then(|| {
+            (
+                percentile(&ins, 0.5),
+                percentile(&ins, 0.99),
+                ins.iter().sum::<f64>() / ins.len() as f64,
+            )
+        }),
+        load,
     }
 }
 
@@ -436,26 +482,70 @@ fn a_full_server_keeps_its_tick() {
         r.rss.map_or("?".into(), |m| format!("{m:.0}")),
     );
     let default_size = std::env::var("MASHUP_CAPACITY_PLAYERS").is_err() && map == "de_dust2";
+    if let Some((p50, p99, mean)) = r.ins {
+        eprintln!("[capacity] server instructions a tick (M, all threads) p50 {p50:.2} p99 {p99:.2} mean {mean:.2}");
+    }
+    eprintln!(
+        "[capacity] server tick CPU ms mean {:.2}; load average per CPU {}",
+        r.tick_mean,
+        r.load.map_or("?".into(), |l| format!("{l:.2}"))
+    );
     if default_size && !cfg!(feature = "profile") {
-        // CPU time (the box's load moves it less than wall time, but
-        // still: 2.8-4.4 ms p50 in the playtest build from run to run):
-        // two thirds of the 66-tick budget for the median, all of it for
-        // the p99, in the dev build. Before the capacity pass (multiplayer.md
-        // "Capacity") the p50 was ~13 ms in the playtest build.
-        assert!(
-            r.tick_p50 < TICK_BUDGET_MS * 2.0 / 3.0,
-            "server tick p50 {:.2} ms over two thirds of the 66-tick budget",
-            r.tick_p50
-        );
-        assert!(
-            r.tick_p99 < TICK_BUDGET_MS,
-            "server tick p99 {:.2} ms over the 66-tick budget",
-            r.tick_p99
-        );
-        // Instructions hardly move with load: ~25M a tick in the dev
-        // build, ~20M in the playtest one.
-        if let Some(m) = r.ins_mean {
-            assert!(m < 50.0, "{m:.1}M instructions a tick (~25M expected)");
+        // The server's own cost, first in instructions a tick (user
+        // space, every thread; Linux hardware counters): unlike CPU time
+        // they hardly move with the machine's load (mean within 5%
+        // between load 1 and 5 per CPU). Counted over the whole process,
+        // so run it alone in its process (nextest does; `cargo test`
+        // counts the heavy tests running beside it too).
+        if let Some((p50, p99, mean)) = r.ins {
+            assert!(
+                p50 < INS_P50_MAX,
+                "server tick p50 {p50:.1}M instructions (limit {INS_P50_MAX}M)"
+            );
+            assert!(
+                mean < INS_MEAN_MAX,
+                "server tick mean {mean:.1}M instructions (limit {INS_MEAN_MAX}M)"
+            );
+            assert!(
+                p99 < INS_P99_MAX,
+                "server tick p99 {p99:.1}M instructions (limit {INS_P99_MAX}M)"
+            );
+        }
+        // CPU time against the 66-tick budget, where it means the
+        // server's cost. CPU time a tick grows with the box's load
+        // (shared cores and caches, clock speed): the same build ran p50
+        // 6.5 ms at load 1.2 per CPU, 10.5 ms at 3.8 (over the old 10 ms
+        // limit) with the same instructions. So on Linux it is checked
+        // only while the 1-minute load average stays under half the
+        // logical CPUs at both ends of the measured stretch; without
+        // hardware counters always (then it is the only guard). Two
+        // thirds of the budget for the median, all of it for the p99, in
+        // the dev build. Windows' thread clock moves in 15.6 ms steps:
+        // only the mean says anything there. Before the capacity pass
+        // (multiplayer.md "Capacity") the p50 was ~13 ms in the playtest
+        // build.
+        let quiet = r.load.is_none_or(|l| l < QUIET_LOAD_PER_CPU);
+        if quiet || r.ins.is_none() {
+            if cfg!(target_os = "linux") {
+                assert!(
+                    r.tick_p50 < TICK_BUDGET_MS * 2.0 / 3.0,
+                    "server tick p50 {:.2} ms CPU over two thirds of the 66-tick budget",
+                    r.tick_p50
+                );
+                assert!(
+                    r.tick_p99 < TICK_BUDGET_MS,
+                    "server tick p99 {:.2} ms CPU over the 66-tick budget",
+                    r.tick_p99
+                );
+            } else {
+                assert!(
+                    r.tick_mean < TICK_BUDGET_MS * 2.0 / 3.0,
+                    "server tick mean {:.2} ms CPU over two thirds of the 66-tick budget",
+                    r.tick_mean
+                );
+            }
+        } else {
+            eprintln!("[capacity] CPU time not checked: the box is busy (instructions are)");
         }
         // At the default 20 updates a second: the soak's 18 KB/s for
         // twelve characters plus each other character's body.
