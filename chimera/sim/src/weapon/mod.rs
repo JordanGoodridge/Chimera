@@ -986,6 +986,11 @@ pub struct HitArmor<'w, 's> {
 }
 
 impl HitArmor<'_, '_> {
+    /// Whether `damage` lands (`core::DamageRules::lands`).
+    pub fn lands(&self, damage: &crate::core::Damage) -> bool {
+        self.rules.lands(damage)
+    }
+
     /// Split `raw` damage (before armour, normalized like `Health`) of
     /// `damage` between armour and health (`armor_split` with the weapon's
     /// `ratio`, truncated to `quantum`): sets `damage.amount` to health's

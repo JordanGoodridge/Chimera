@@ -334,8 +334,10 @@ the projectile, attacker the thrower.
 - No damage falloff by facing; damage passes through players and props
   (they don't block). Walls block completely; thin brush walls and grates
   too (grates are in the mask).
-- Applies to the thrower and teammates as for any damage (friendly fire
-  rules: `mp_friendlyfire`; Q10).
+- Applies to teammates as for any damage (friendly fire rules:
+  `mp_friendlyfire`). The thrower always takes his own blast, by the same
+  falloff and armour rule as anyone, whatever `mp_friendlyfire` says
+  (measured, "Self damage" below).
 - Players (*inferred*): blast damage has no hitgroup (generic, 0), so
   armour protects without a helmet. Formula for HE is Q4. Hypothesis H1: the M7 rule with the
   HE script's ratio, `health = trunc(damage · 1.475 · 0.5)`, `armour =
@@ -413,7 +415,8 @@ probe hit when there was one) → every client in hearing range runs:
 
 #### 5.5 Hearing effects (base player; CS:S Q11)
 
-When a player takes blast damage: distance `r` = |player origin − grenade
+When a player takes blast damage (a blast refused by the friendly fire
+rules or a noclipping player gets none: *inferred*, see Q11): distance `r` = |player origin − grenade
 origin|. If damage ≥ 30, set that player's DSP to a random preset 35–37
 ("shock muffle": diffusor plus a 3 kHz sine LFO at gain 0.25 = ringing; mix
 0.2–0.7; 1.6 s, then an exponential fade back). Else if `r < 240`, a random
@@ -724,6 +727,27 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   The thrower takes damage from its own grenade. Map explosions
   (env_explosion, exploding props) keep the bell with σ = R/3 at either
   setting, with no cut-off at R (2026-10-17, prop_damage.md Q3).
+- **Self damage (2026-10-17):** the thrower (`mashup_shooter`, de_dust2's
+  CT spawn line, the HE thrown at the run bot's feet 60-350 units away)
+  takes his own blast exactly as another player at his distance, with
+  `mp_friendlyfire` 0 or 1, the run bot an enemy or a teammate. Paired
+  throws (same detonation point), thrower's damage before armour, ff 0 /
+  ff 1: 20 units from the blast 86.3, 87.0 / 89.6, 90.0; 64-66 units
+  74.3-79.5 (8 throws) / 74.1-79.9 (8); 161 units 33.5 / 35.0; 214 units
+  16.4 / 16.3; 314 units 2.5 / 2.4. All on the bell above (body point 54
+  over the feet). With 100 armour, ff 0: 76.1 → 56 health, 9 armour (H1).
+  Only the teammate's damage changes with ff: refused at 0
+  (weapons.md "Refused hits"). An earlier note of 78 vs 7.5 for one
+  throw did not reproduce. The first throw after a bot joined or a
+  changelevel hurt the thrower less every time (58.6, 58.9 at 65 units,
+  the bell's value for a point 100 units over the blast: the bot not yet
+  settled where the probe put it); such throws are left out above.
+- **Q11 who gets the ear-ringing (2026-10-17, unmeasurable on the
+  probe):** the server's DSP change goes only to the hurt player's own
+  client: a SourceTV demo of the throws above had no trace of it (no user
+  message, string command or convar), nor did the server console at
+  `developer 2`. Ours rings only players the blast hurts (capture C31 in
+  docs/plans/active/parity-gaps.md decides).
 - **Q12 flash (partial, 10-100 units):** facing the grenade: duration
   6.7-7.1 s, max alpha 255; side-on (90°): 4.7-4.9 s, 255; facing away
   (180°): 2.7-2.8 s, 200. `player_blind` fires for the victim and the
@@ -781,7 +805,9 @@ per-tick logging of netprops and events) unless they need the client.
     confirm walls block, players and props don't.
 11. **Q11 HE hearing.** Which DSP presets a hurt player gets (32–37 or
     137–139): the client console with `dsp_player` echo or `snd_show`; and
-    whether undamaged nearby players get the ring.
+    whether undamaged nearby players get the ring (a teammate with
+    `mp_friendlyfire 0`, a noclipping player): needs a client (C31), the
+    server shows nothing of it.
 12. **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
     1500, 2000, 3000 in, view angle to the grenade 0°, 30°, 60°, 90°, 120°,
     180°; log `m_flFlashDuration` and `m_flFlashMaxAlpha` on the tick after

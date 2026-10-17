@@ -12,13 +12,17 @@
 //!   like the refused hits, no armour, sound, slowdown or flinch.
 //! - Hits that land: armour and sounds as before; an HE blast now sounds
 //!   kevlar on an armoured player, the flesh impact on a bare one.
+//! - The thrower's own HE hurts him the same with friendly fire on or off
+//!   (measured 2026-10-17, grenades.md "Self damage"); its ear-ringing
+//!   (`Deafened`) reaches only players the blast hurts (inferred: the
+//!   server's DSP message can't be seen from the probe, capture C31).
 
 use std::sync::Arc;
 
 use avian3d::prelude::ColliderAabb;
 use bevy::prelude::*;
 use crate::stack::{
-    core::{FriendlyFire, God, Health, Team},
+    core::{Deafened, FriendlyFire, God, Health, Team},
     games::cs_source::{
         TICK_INTERVAL,
         grenades::HEGRENADE,
@@ -42,6 +46,14 @@ fn hear(mut sounds: MessageReader<PlaySound>, mut heard: ResMut<Heard>) {
             heard.0.push(s.entry.clone());
         }
     }
+}
+
+/// Whose hearing blasts hit.
+#[derive(Resource, Default)]
+struct Deaf(Vec<Entity>);
+
+fn deaf(mut deafened: MessageReader<Deafened>, mut deaf: ResMut<Deaf>) {
+    deaf.0.extend(deafened.read().map(|d| d.target));
 }
 
 fn flat_floor(mut commands: Commands) {
@@ -86,7 +98,8 @@ fn sim_on(greybox: bool) -> Sim {
     sim.app
         .insert_resource(SoundBank(Arc::new(sounds)))
         .init_resource::<Heard>()
-        .add_systems(Last, hear);
+        .init_resource::<Deaf>()
+        .add_systems(Last, (hear, deaf));
     sim
 }
 
@@ -115,6 +128,8 @@ struct Outcome {
     modifier: f32,
     /// Its view punch, Source degrees.
     punch: Vec3,
+    /// Its hearing hit (`Deafened`).
+    deafened: bool,
 }
 
 /// A victim standing at the origin with `armor`, 500 health (it lives
@@ -158,6 +173,7 @@ fn outcome(sim: &Sim, target: Entity, armor: Option<Armor>) -> Outcome {
         heard: w.resource::<Heard>().0.clone(),
         modifier: w.get::<SourceMovement>(target).map_or(1.0, |m| m.velocity_modifier),
         punch: Vec3::new(-v.x, v.y, v.z).map(f32::to_degrees),
+        deafened: w.resource::<Deaf>().0.contains(&target),
     }
 }
 
@@ -195,6 +211,13 @@ fn blast(victim: Victim, armor: Option<Armor>) -> Outcome {
     let mut sim = sim_on(true);
     let at = Vec3::new(0.0, 0.93, 10.0);
     let (target, thrower) = scene_at(&mut sim, at, victim, armor, 1000.0);
+    he(&mut sim, thrower, at.with_y(0.05) + to_engine(Vec3::new(-100.0, 0.0, 0.0)));
+    outcome(&sim, target, armor)
+}
+
+/// An HE of `thrower`'s going off at `at` (engine space), and 1.8 s for
+/// it to.
+fn he(sim: &mut Sim, thrower: Entity, at: Vec3) {
     give(sim.app.world_mut(), thrower, HEGRENADE).unwrap();
     sim.seconds(1.5);
     let weapon = sim
@@ -208,9 +231,24 @@ fn blast(victim: Victim, armor: Option<Armor>) -> Outcome {
         .find(|w| sim.app.world().get::<Weapon>(*w).is_some_and(|x| x.id == HEGRENADE))
         .unwrap();
     sim.app.world_mut().resource_mut::<Heard>().0.clear();
-    spawn_projectile(sim.app.world_mut(), weapon, at.with_y(0.05) + to_engine(Vec3::new(-100.0, 0.0, 0.0)), Vec3::ZERO).unwrap();
+    spawn_projectile(sim.app.world_mut(), weapon, at, Vec3::ZERO).unwrap();
     sim.seconds(1.8);
-    outcome(&sim, target, armor)
+}
+
+/// The thrower's own HE on the floor 64 units in front of him, a teammate
+/// 300 units away, `mp_friendlyfire ff`: what it did to the thrower.
+fn own_blast(ff: u8) -> Outcome {
+    let mut sim = sim_on(true);
+    let at = Vec3::new(0.0, 0.93, 10.0);
+    let (_, thrower) = scene_at(&mut sim, at, Teammate, None, 300.0);
+    sim.app.world_mut().entity_mut(thrower).insert(Health {
+        current: 5.0,
+        max: 5.0,
+    });
+    sim.app.insert_resource(FriendlyFire(ff));
+    let feet = sim.position(thrower).with_y(0.05);
+    he(&mut sim, thrower, feet + to_engine(Vec3::new(64.0, 0.0, 0.0)));
+    outcome(&sim, thrower, None)
 }
 
 const VEST: Armor = Armor {
@@ -266,6 +304,31 @@ fn blasts_take_armour_and_sound_only_where_they_land() {
         assert_eq!((o.health, o.armour), (0.0, 0.0), "{victim:?}: {o:?}");
         assert!(o.heard.is_empty(), "{victim:?}: {:?}", o.heard);
     }
+}
+
+/// Inferred (grenades.md 5.5, capture C31): the ear-ringing goes with the
+/// blast's damage, so players it can't hurt don't get it.
+#[test]
+fn only_players_a_blast_hurts_have_their_ears_ring() {
+    let enemy = blast(Enemy, Some(VEST));
+    assert!(enemy.deafened, "{enemy:?}");
+    for victim in [Teammate, Noclipping, Godlike] {
+        let o = blast(victim, Some(VEST));
+        assert!(!o.deafened, "{victim:?}: {o:?}");
+    }
+}
+
+/// Measured (grenades.md "Self damage"): the same throws hurt the thrower
+/// alike with `mp_friendlyfire` 0 and 1 (64 units from the blast 74-79
+/// either way, 161 units 34-35), by the bell every player gets; his ears
+/// ring either way.
+#[test]
+fn the_throwers_own_he_hurts_him_whatever_friendly_fire_says() {
+    let off = own_blast(0);
+    let on = own_blast(1);
+    assert!(off.health > 60.0 && off.health < 90.0, "{off:?}");
+    assert_eq!(off.health, on.health, "{off:?} {on:?}");
+    assert!(off.deafened && on.deafened, "{off:?} {on:?}");
 }
 
 /// Measured on a noclipping bot: an AK-47 in the bare chest took nothing,

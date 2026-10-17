@@ -75,6 +75,9 @@ bool g_tHelmet;
 // Extra targets (mashup_targetn 1..3), held at their yaw like the target.
 int g_extra[4];
 // mashup_shooter: another bot that turns to the run's bot and fires once.
+// Cleared when the run ends (or by `mashup_shooter -1`): while set, its
+// command hook strips that bot's attack button, so mashup_fire and the
+// like could not make it shoot.
 int g_shooter;
 int g_shootTick = -1;
 int g_shootHold = 1;
@@ -107,7 +110,7 @@ public void OnPluginStart()
         "mashup_health <hp> [armor] [helmet 0|1]: respawn the probe bot if dead and set its health and armour (fall damage runs)");
     RegServerCmd("mashup_info", Command_Info, "mashup_info: position and angles of all living players");
     RegServerCmd("mashup_shooter", Command_Shooter,
-        "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz> [hold ticks]: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never)");
+        "mashup_shooter <x> <y> <z> <weapon> <tick> <aimz> [hold ticks]: the first other living player stands there with that weapon, turns toward the run's bot (its origin + aimz) and fires once at that run tick (-1: never); lasts one run; `mashup_shooter -1` clears it");
     RegServerCmd("mashup_state", Command_State,
         "mashup_state <userid>: that player's money, armour, helmet, kit and each weapon's clip and reserve");
     RegServerCmd("mashup_track", Command_Track,
@@ -524,6 +527,12 @@ public Action SoundHook_Run(int clients[MAXPLAYERS], int &numClients, char sampl
 
 public Action Command_Shooter(int args)
 {
+    if (args < 4) {
+        g_shooter = 0;
+        g_shootTick = -1;
+        PrintToServer("mashup: shooter cleared");
+        return Plugin_Handled;
+    }
     int t = FindTarget2();
     if (t == 0) {
         PrintToServer("mashup: no shooter");
@@ -1056,6 +1065,9 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
     if (g_cursor >= g_count) {
         delete g_out;
         g_out = null;
+        // The shooter lasts one run (see g_shooter).
+        g_shooter = 0;
+        g_shootTick = -1;
         PrintToServer("mashup: done");
         return;
     }

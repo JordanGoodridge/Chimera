@@ -74,7 +74,11 @@ Being hit (M18 in specs/cs_source/weapons.md): `hitmeas.py <weapon> <aim
 height> [armor]` uses `mashup_shooter x y z weapon tick aimz` (the first
 other living player stands there with only that gun, turns to the run's bot
 and fires once at that run tick) and prints the victim's speed modifier and
-view punch after the hit. Needs a second bot (it adds a terrorist).
+view punch after the hit. Needs a second bot (it adds a terrorist). The
+shooter lasts one run (or until `mashup_shooter -1`): while set, the
+plugin strips that bot's own attack presses, so `mashup_fire` couldn't
+make it shoot (plugins built before 2026-10-17 kept it forever: reload
+the plugin or rebuild it).
 
 `weapcmp.py` (driver, Python 3, no dependencies; `rcon.py` is a minimal
 Source RCON client) and `weapmeas.py` (one function per measurement) produce
@@ -209,6 +213,14 @@ breakables.md and doors_buttons.md open questions): `shot` (a fresh crate on
 de_dust2's CT spawn shot by the bot), `gascan` (a gas can broken next to the
 bot), `drop_on` (a prop thrown down onto the bot), `door` (a model door's
 sounds through Open/Close/Lock/Use).
+
+`hemeas.py` (grenades.md "Self damage", 2026-10-17): `python3
+tools/css_probe/hemeas.py '{"vpos": [250, 2384, -126.2], "spos": [150,
+2384, -126.2], "aimz": 0, "ff": 0, "reps": 2}'` throws an HE from the
+second bot (`spos`) at the run bot's feet (`vpos`) and prints the
+detonation point and each player's horizontal distance from it, the damage
+before armour (`mashup_dmghook player` first) and the `hurt` row
+(`t_armor`, `v_armor`: armour of the thrower and the run bot).
 
 `impacts.py` (prop_damage.md 6): `drop <speed>` throws the 500 kg cupboard
 (or a given model) down onto the bot while a `mashup_run` logs its velocity
