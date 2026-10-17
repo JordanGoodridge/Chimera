@@ -155,10 +155,14 @@ pub enum Init {
         fps: f32,
     },
     Radius(Pick),
-    /// A blend between two colours (0-1).
+    /// A blend between two colours (0-1), then `tint` (`tint_perc`) of the
+    /// way toward the light at control point `cp` (gamma space:
+    /// specs/cs_source/impact_effects.md 14).
     Color {
         a: Vec3,
         b: Vec3,
+        tint: f32,
+        cp: usize,
     },
     /// Alpha 0-1.
     Alpha(Pick),
