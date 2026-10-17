@@ -137,7 +137,8 @@ usage: mashup [options]
                             menus, but auto in --screenshot/--views runs, with --spawn or --look,
                             and with +jointeam/+spectate (that team)
   --playdemo <file.dem>     watch a demo (the game's playdemo command: its map loads, then it plays)
-  -port <n>                 UDP port to host on (hostport; default 27015)
+  -port <n>                 UDP port to host on (hostport; default 27015; tool runs: --screenshot,
+                            --views, --frames, --bench host on 127.0.0.1 on a port the system picks)
   +<command> [args...]      run a console command at startup, Source style
                             (e.g. +sv_airaccelerate 150 +cl_showpos 1 +bind f noclip;
                             ++attack holds an action, e.g. to fire in a --screenshot run)
@@ -293,7 +294,26 @@ impl Args {
                 _ => return Err(format!("unknown option {flag}")),
             }
         }
+        // A tool run hosts (if `maxplayers` asks it to) on loopback, on a
+        // port the system picks unless `-port` names one: several at once
+        // on one machine, or beside a real CS:S, don't fight over 27015.
+        if out.tool_run() {
+            let explicit_port = out.console.first().is_some_and(|l| l.starts_with("hostport "));
+            if !explicit_port {
+                out.console.insert(0, "hostport 0".into());
+            }
+            out.console.insert(0, "ip 127.0.0.1".into());
+        }
         Ok(out)
+    }
+
+    /// Whether this is a scripted run that captures or exits by itself
+    /// (`--screenshot`, `--views`, `--frames`, `--bench`): the tools'
+    /// (refcmp, mapsweep, agents' screenshots). It hosts on loopback on a
+    /// port the system picks (see `parse_from`), and with `dev` serves
+    /// the remote protocol on one too unless `MASHUP_REMOTE_PORT` says.
+    pub fn tool_run(&self) -> bool {
+        self.screenshot.is_some() || self.views.is_some() || self.frames.is_some() || self.bench
     }
 }
 
@@ -425,16 +445,41 @@ impl Plugin for ShellCameraPlugin {
         // once, e.g. a host and a client). See docs/OBSERVABILITY.md.
         #[cfg(feature = "dev")]
         {
+            use bevy::remote::http::{DEFAULT_PORT, DEFAULT_RENDER_PORT, HostPort};
+            let tool_run = app.world().get_resource::<ClientArgs>().is_some_and(|a| a.0.tool_run());
             let port = std::env::var("MASHUP_REMOTE_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
-                .unwrap_or(bevy::remote::http::DEFAULT_PORT);
+                // A tool run: a free port (printed), so runs at once don't
+                // answer each other's queries on 15702.
+                .or_else(|| tool_run.then(free_loopback_port).flatten())
+                .unwrap_or(DEFAULT_PORT);
+            if port != DEFAULT_PORT {
+                info!("remote protocol on 127.0.0.1:{port}");
+            }
             app.add_plugins((
                 bevy::remote::RemotePlugin::default().with_method_main("mashup/console", console::remote_exec),
                 bevy::remote::http::RemoteHttpPlugin::default().with_port(port),
             ));
+            // The render world's server (15703, no setter): beside the
+            // default only; elsewhere a port the system picks.
+            if port != DEFAULT_PORT
+                && let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp)
+                && render.world().get_resource::<HostPort>().is_some_and(|p| p.0 == DEFAULT_RENDER_PORT)
+            {
+                render.insert_resource(HostPort(0));
+            }
         }
     }
+}
+
+/// A TCP port free on loopback now (for the remote protocol of a tool
+/// run; another process could take it before the game binds it, which
+/// costs only remote queries).
+#[cfg(feature = "dev")]
+fn free_loopback_port() -> Option<u16> {
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).ok()?;
+    listener.local_addr().ok().map(|a| a.port())
 }
 
 #[derive(Component)]
@@ -722,5 +767,20 @@ mod tests {
         assert_eq!(args("--screenshot a.png --join menus").join_choice(), JoinChoice::Menus);
         assert_eq!(args("--join 3").join_choice(), JoinChoice::Team(Team(2)));
         assert!(Args::parse_from(["--join".to_string(), "x".to_string()]).is_err());
+    }
+
+    #[test]
+    fn tool_runs_host_on_loopback_on_a_port_the_system_picks() {
+        // Normal play: Source's 27015 on every interface (the defaults).
+        assert!(args("+maxplayers 4 +map de_dust2").console.iter().all(|l| !l.starts_with("ip ")));
+        assert_eq!(args("-port 27016 +map de_dust2").console[0], "hostport 27016");
+        for run in ["--screenshot a.png", "--views v.json", "--frames 100", "--bench --views v.json"] {
+            let a = args(&format!("{run} +maxplayers 4 +map de_dust2"));
+            assert!(a.tool_run(), "{run}");
+            assert_eq!(a.console[..2], ["ip 127.0.0.1", "hostport 0"], "{run}");
+        }
+        // `-port` still names one (on loopback).
+        let a = args("--screenshot a.png -port 27031 +maxplayers 4");
+        assert_eq!(a.console[..2], ["ip 127.0.0.1", "hostport 27031"]);
     }
 }
