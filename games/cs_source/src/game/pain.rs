@@ -8,11 +8,13 @@
 //! - A bullet in a bare head: `Player.DamageHeadShot` (CHAN_VOICE), the
 //!   killing one included. In a helmet: `Player.DamageHelmet` (CHAN_BODY;
 //!   unmeasured, below).
-//! - A bullet where armour covers (the vest takes part: chest, stomach,
-//!   arms, generic): `Player.DamageKevlar` (CHAN_BODY) only.
-//! - Any other bullet hit (bare body, legs with or without armour, a hit
-//!   refused by team rules or god mode): the `flesh` surface's bullet
-//!   impact (`Flesh.BulletImpact`) at the hit. Knife hits are bullet damage
+//! - A bullet or an HE blast where armour covers (the vest takes part:
+//!   chest, stomach, arms, generic; a blast is generic):
+//!   `Player.DamageKevlar` (CHAN_BODY) only.
+//! - Any other bullet or blast hit (bare body, legs with or without
+//!   armour): the `flesh` surface's bullet impact (`Flesh.BulletImpact`) at
+//!   the hit (an HE blast on a bare player: measured 2026-10-17, as its
+//!   kevlar sound on an armoured one). Knife hits are bullet damage
 //!   and sound the same (measured 2026-10-17, weapons.md M11: kevlar on an
 //!   armoured player, whatever was aimed at, as knife hits are generic;
 //!   the flesh impact on a bare one; both besides the knife's own hit
@@ -24,8 +26,11 @@
 //! - A death: `Player.DeathHeadShot` for a bullet in the head, else
 //!   `Player.Death` (both CHAN_VOICE).
 //!
-//! Hurt sounds count only damage that is taken (not refused by team
-//! rules, map filters or god mode). Hit sounds are the server's
+//! Only damage that is taken sounds (`core::DamageRules::lands`): a hit
+//! refused makes none of these, not even the flesh impact (measured
+//! 2026-10-17, weapons.md "Refused hits": a teammate's bullet, knife or HE
+//! with friendly fire off, a bullet on a noclipping player; the knife's
+//! own hit sound still plays). Hit sounds are the server's
 //! (`map::GameSound`: every client hears them once, the victim's and the
 //! shooter's own included: a client knows no one else's armour, so it
 //! can't predict which plays); death sounds play wherever the death is
@@ -50,9 +55,9 @@
 //! sounds"); the rest is ours from the install's game_sounds.txt entries: a
 //! helmeted head plays `Player.DamageHelmet` (measured), arms and
 //! generic hits count as covered like the chest (the damage rule's), and a
-//! hit refused by team rules or god mode plays the flesh impact. The knife,
-//! grenades, fire and crushing play no hurt sound (the knife has its own hit
-//! sounds); `Player.PlasmaDamage`/`SonicDamage` (null waves) are unused;
+//! hit under god mode or refused by a map's filter is silent like the
+//! measured refused hits (`god` couldn't be given to the probe's bots).
+//! Fire and crushing play no hurt sound; `Player.PlasmaDamage`/`SonicDamage` (null waves) are unused;
 //! drowning plays no hurt sound (measured: the server emits none; the client's
 //! own `Player.DrownStart`/`DrownContinue`, if any, aren't played). Played
 //! from the victim's origin (its body centre; the flesh impact at the hit),
@@ -74,7 +79,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::{
-    core::{Damage, DamageKind, DamageRules, Died, God, Health, Hitgroup, Intent, MapWater, SimSet, Team},
+    core::{Damage, DamageKind, DamageRules, Died, Health, Hitgroup, Intent, MapWater, SimSet, Team},
     map::{GameSound, PlaySound, sound::SoundBank},
     objectives::hostages::Hostage,
     weapon::Armor,
@@ -140,7 +145,9 @@ pub fn hurt_sound(kind: DamageKind, group: Hitgroup, armor: Option<Armor>) -> Op
     match kind {
         DamageKind::Fall => Some(FALL_DAMAGE),
         DamageKind::Bullet if group == Hitgroup::Head => Some(if covered { DAMAGE_HELMET } else { DAMAGE_HEADSHOT }),
-        DamageKind::Bullet if covered => Some(DAMAGE_KEVLAR),
+        // An HE blast too (measured 2026-10-17: kevlar on an armoured
+        // player, the flesh impact on a bare one).
+        DamageKind::Bullet | DamageKind::Blast if covered => Some(DAMAGE_KEVLAR),
         _ => None,
     }
 }
@@ -158,7 +165,7 @@ pub fn death_sound(kind: DamageKind, group: Hitgroup) -> &'static str {
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
     before: Res<ArmorBeforeShots>,
-    victims: Query<(&Health, &Transform, Has<God>, Has<Team>), (With<Intent>, Without<Hostage>)>,
+    victims: Query<(&Health, &Transform, Has<Team>), (With<Intent>, Without<Hostage>)>,
     rules: DamageRules,
     bank: Option<Res<SoundBank>>,
     water: Option<Res<MapWater>>,
@@ -171,14 +178,17 @@ fn hurt_sounds(
     // Health left as this tick's hits land (several can hit one victim).
     let mut left: HashMap<Entity, f32> = HashMap::new();
     for d in damage.read() {
-        let Ok((health, at, god, team)) = victims.get(d.target) else {
+        let Ok((health, at, team)) = victims.get(d.target) else {
             continue;
         };
         let h = left.entry(d.target).or_insert(health.current);
-        if *h <= 0.0 {
+        // A hit not taken makes no sound at all: a teammate's with
+        // friendly fire off, a noclipping player's (measured 2026-10-17,
+        // weapons.md "Refused hits"), and ours: god mode, a map's filter.
+        if *h <= 0.0 || !rules.lands(d) {
             continue;
         }
-        let hurt = if team && !god && !rules.refuse(d) {
+        let hurt = if team {
             *h -= d.amount;
             hurt_sound(d.kind, d.hitgroup, before.0.get(&d.target).copied())
         } else {
@@ -189,15 +199,16 @@ fn hurt_sounds(
                 source: Some(d.target),
                 ..PlaySound::at(entry, at.translation)
             }));
-        } else if d.kind == DamageKind::Bullet
+        } else if matches!(d.kind, DamageKind::Bullet | DamageKind::Blast)
             && let Some(entry) = &flesh
             && !under_water(d.point, water.as_deref())
         {
-            // A bullet no hurt sound covers: the hit surface's impact
-            // (players' hitboxes are `flesh`), where it hit. A knife's hit
-            // too (bullet damage; measured 2026-10-17: an unarmoured
-            // player knifed sounds `flesh_impact_bullet*` besides the
-            // knife's own hit sound).
+            // A bullet or blast no hurt sound covers: the hit surface's
+            // impact (players' hitboxes are `flesh`), where it hit. A
+            // knife's hit too (bullet damage; measured 2026-10-17: an
+            // unarmoured player knifed sounds `flesh_impact_bullet*`
+            // besides the knife's own hit sound), and an HE blast's on a
+            // bare player (measured 2026-10-17).
             out.write(GameSound(PlaySound::at(entry.clone(), d.point)));
         }
     }
@@ -263,7 +274,13 @@ mod tests {
             Some(FALL_DAMAGE)
         );
         assert_eq!(hurt_sound(DamageKind::Melee, Hitgroup::Chest, Some(HELMET)), None);
-        assert_eq!(hurt_sound(DamageKind::Blast, Hitgroup::Generic, Some(HELMET)), None);
+        // An HE blast on armour sounds kevlar; on a bare body, the flesh
+        // impact (`hurt_sounds`).
+        assert_eq!(
+            hurt_sound(DamageKind::Blast, Hitgroup::Generic, Some(HELMET)),
+            Some(DAMAGE_KEVLAR)
+        );
+        assert_eq!(hurt_sound(DamageKind::Blast, Hitgroup::Generic, None), None);
         assert_eq!(hurt_sound(DamageKind::Burn, Hitgroup::Generic, None), None);
         assert_eq!(death_sound(DamageKind::Bullet, Hitgroup::Head), DEATH_HEADSHOT);
         assert_eq!(death_sound(DamageKind::Melee, Hitgroup::Head), DEATH);

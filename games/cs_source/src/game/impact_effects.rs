@@ -3,8 +3,11 @@
 //! (concrete, tile, wood), a dust puff (dirt, sand), metal sparks (metal,
 //! vent) or electric sparks (computer); flecks and dust take the hit
 //! surface's colour. Players bleed (`blood_impact_red_01`, built from the
-//! spec's table of the install's `.pcf`) and stain the walls behind them;
-//! bullets into water splash instead, into slime they start the install's
+//! spec's table of the install's `.pcf`) and stain the walls behind them,
+//! a noclipping player too though its hit is refused, a teammate's hit
+//! with friendly fire off not (CS:S's server sent the blood effect and
+//! decals for the one, nothing for the other: measured 2026-10-17 in a
+//! SourceTV demo, specs/cs_source/weapons.md "Refused hits"); bullets into water splash instead, into slime they start the install's
 //! `slime_splash_03` (`map::psys::StartParticleSystem`, run by
 //! `render::psys`). Shattered glass throws tumbling shards that settle flat
 //! (`Shape::Tumble`). The particle machinery is `map::particles`; the

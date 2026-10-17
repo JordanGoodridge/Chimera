@@ -1505,12 +1505,32 @@ pub fn refused_by_team(d: &Damage, teams: &Query<&Team>, friendly_fire: Option<&
     teammate && !friendly_fire.is_some_and(|f| f.0 != 0)
 }
 
+/// Why damage is refused (`DamageRules::refusal`). What a refused hit
+/// still does depends on why (CS:S, measured 2026-10-17;
+/// specs/cs_source/weapons.md "Refused hits"): a teammate's hit with
+/// friendly fire off does nothing at all (no armour, sound, blood,
+/// slowdown or flinch); a noclipping player's hit still bleeds and
+/// flinches, nothing else.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// The target noclips (`Noclip`).
+    Noclip,
+    /// A teammate's, friendly fire off (`refused_by_team`).
+    Team,
+    /// The map made the target invulnerable (`MapControls`).
+    Invulnerable,
+    /// The target's damage filter blocks this kind (`DamageFilter`).
+    Filter,
+}
+
 /// What decides whether damage is refused before it reaches health:
 /// team rules, a map's invulnerability and damage filters, a noclipping
-/// target (`Noclip`; not `God`, which the health query leaves out).
+/// target (`Noclip`); and whether it lands (`lands`: not refused, and not
+/// on a `God` target, which `apply_damage`'s health query leaves out).
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct DamageRules<'w, 's> {
     noclip: Query<'w, 's, (), With<Noclip>>,
+    god: Query<'w, 's, (), With<God>>,
     teams: Query<'w, 's, &'static Team>,
     filters: Query<'w, 's, &'static DamageFilter>,
     controls: Query<'w, 's, &'static MapControls>,
@@ -1519,10 +1539,29 @@ pub struct DamageRules<'w, 's> {
 
 impl DamageRules<'_, '_> {
     pub fn refuse(&self, d: &Damage) -> bool {
-        (self.noclip.contains(d.target) && !d.is_suicide())
-            || refused_by_team(d, &self.teams, self.friendly_fire.as_deref())
-            || self.controls.get(d.target).is_ok_and(|c| c.invulnerable)
-            || self.filters.get(d.target).is_ok_and(|f| f.blocked.contains(&d.kind))
+        self.refusal(d).is_some()
+    }
+
+    /// Why `d` is refused, if it is.
+    pub fn refusal(&self, d: &Damage) -> Option<Refusal> {
+        if self.noclip.contains(d.target) && !d.is_suicide() {
+            Some(Refusal::Noclip)
+        } else if refused_by_team(d, &self.teams, self.friendly_fire.as_deref()) {
+            Some(Refusal::Team)
+        } else if self.controls.get(d.target).is_ok_and(|c| c.invulnerable) {
+            Some(Refusal::Invulnerable)
+        } else if self.filters.get(d.target).is_ok_and(|f| f.blocked.contains(&d.kind)) {
+            Some(Refusal::Filter)
+        } else {
+            None
+        }
+    }
+
+    /// Whether `d` is taken: not refused, the target not under `God`.
+    /// Only such hits cost armour (`weapon::HitArmor`), make hurt sounds
+    /// and slow the victim down.
+    pub fn lands(&self, d: &Damage) -> bool {
+        !self.god.contains(d.target) && !self.refuse(d)
     }
 }
 

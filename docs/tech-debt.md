@@ -91,7 +91,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - render: Sprite glow visibility by line tests, gamma-space adds in the transmissive phase (`chimera/present/src/render/sprite_material.rs`)
 - map: trigger_hurt: constant rate only, touch by collider bounds, one half-second timer per trigger (`source/logic/src/logic/triggers.rs`)
 - map: Dust motes and clouds: spawn tries, no wind, the clouds' material (`games/cs_source/src/game/dust.rs`)
-- sound, games/cs_source: Hurt and death sounds: arms, generic hits and refused hits unmeasured (`games/cs_source/src/game/pain.rs`)
+- sound, games/cs_source: Hurt and death sounds: arms, generic hits, god mode and map filters unmeasured (`games/cs_source/src/game/pain.rs`)
 - games/cs_source ui, weapon: Weapon selection, pickup and buy sounds inferred from entry names (`games/cs_source/src/ui/weapon_select.rs`)
 - weapon: autobuy / rebuy rules read from the install's comments, unmeasured (`chimera/sim/src/weapon/economy.rs`)
 - rules: End of a map's game: intermission timing measured (C9), what shows during it unmeasured (`games/cs_source/src/rules/game_end.rs`)

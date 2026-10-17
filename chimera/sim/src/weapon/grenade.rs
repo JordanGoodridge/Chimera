@@ -64,7 +64,7 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use super::{Armor, CHAN_WEAPON, Inventory, Weapon, WeaponEvent, WeaponEventKind, WeaponState, armor_split};
+use super::{CHAN_WEAPON, HitArmor, Inventory, Weapon, WeaponEvent, WeaponEventKind, WeaponState};
 use crate::{
     core::{
         Blinded, Damage, DamageKind, Damageable, Deafened, Died, Explosion, FirstTimePredicted, Health, HearingEffect,
@@ -862,8 +862,7 @@ struct GrenadeWorld<'w, 's> {
     ragdolls: Query<'w, 's, (Entity, &'static crate::map::Ragdoll)>,
     ragdoll_bodies: Query<'w, 's, &'static Position, With<crate::map::RagdollBody>>,
     ragdoll_shots: MessageWriter<'w, crate::map::RagdollShot>,
-    // A noclipping character's armour takes none (`core::Noclip`).
-    armor: Query<'w, 's, &'static mut Armor, Without<crate::core::Noclip>>,
+    armor: HitArmor<'w, 's>,
     blinded: Query<'w, 's, &'static Blinded>,
     water: Option<Res<'w, MapWater>>,
     damage: MessageWriter<'w, Damage>,
@@ -1319,33 +1318,27 @@ fn blast(
         // Whole points for characters only; objects truncate after their
         // multipliers (as `deliver`'s hits).
         let character = world.bodies.get(target).is_ok_and(|t| t.health.is_some());
-        let mut amount = if character { super::quantize(raw, b.quantum) } else { raw };
-        if let Some(ratio) = b.armor_ratio
-            && let Ok(mut armor) = world.armor.get_mut(target)
-            && armor.covers(Hitgroup::Generic)
-        {
-            let (to_health, to_armor) = armor_split(raw, ratio, armor.amount, b.quantum);
-            amount = to_health;
-            armor.amount = (armor.amount - to_armor).max(0.0);
-        }
+        let dir = (end - src).normalize_or_zero();
+        let mut damage = Damage {
+            force: dir * b.force,
+            target,
+            attacker: thrower,
+            amount: if character { super::quantize(raw, b.quantum) } else { raw },
+            point: end,
+            dir,
+            hitgroup: Hitgroup::Generic,
+            kind: DamageKind::Blast,
+            weapon: Some(weapon),
+        };
+        // Armour takes its share only if the blast lands (`HitArmor`).
+        world.armor.apply(&mut damage, raw, b.armor_ratio, b.quantum);
         if let Some(hearing) = &b.hearing
             && let Some(&(_, at)) = origins.iter().find(|(e, _)| *e == target)
             && let Some(effect) = hearing.effect(raw, at.distance(origin))
         {
             world.deafened.write(Deafened { target, effect });
         }
-        let dir = (end - src).normalize_or_zero();
-        world.damage.write(Damage {
-            force: dir * b.force,
-            target,
-            attacker: thrower,
-            amount,
-            point: end,
-            dir,
-            hitgroup: Hitgroup::Generic,
-            kind: DamageKind::Blast,
-            weapon: Some(weapon),
-        });
+        world.damage.write(damage);
     }
     // Loose bodies in reach and in the open get the push (physics_props.md
     // 5.3: the undecayed force), capped to a sane speed.

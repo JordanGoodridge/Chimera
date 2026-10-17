@@ -58,6 +58,11 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
     on de_inferno, shoot a window (break sound or none?); then break a
     bottle and `mp_restartgame 1` (is it back?). As in parity-gaps.md
     C29.
+13. **C30 refused hits**: with `mp_friendlyfire 0`, shoot and knife a
+    teammate bot (audio recorded, screenshots 0.1 s after: blood, a
+    flesh impact?); then `god` with kevlar and get shot by an enemy bot
+    (armour on the HUD, sounds, flinch, slowdown, blood). As in
+    parity-gaps.md C30.
 
 ## Sitting 2: sound (about 20 min)
 

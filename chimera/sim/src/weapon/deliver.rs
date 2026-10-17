@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use super::{
     lagcomp::Rewound,
     random::Rng,
-    Armor, BulletTarget, DamageEffect, Hitscan, PassMaterials, Penetration, SpreadShape, Swing, WeaponEvent,
+    BulletTarget, DamageEffect, Hitscan, PassMaterials, Penetration, SpreadShape, Swing, WeaponEvent,
     WeaponEventKind,
 };
 use crate::{
@@ -50,8 +50,7 @@ pub(super) struct World<'w, 's> {
     colliders: Query<'w, 's, &'static ColliderOf>,
     bodies: Query<'w, 's, (&'static RigidBody, Forces)>,
     damage: MessageWriter<'w, Damage>,
-    // A noclipping character's armour takes none (`core::Noclip`).
-    armor: Query<'w, 's, &'static mut Armor, Without<crate::core::Noclip>>,
+    armor: super::HitArmor<'w, 's>,
     props: Query<'w, 's, &'static PropSurface>,
     bank: Option<Res<'w, SoundBank>>,
     grid: Option<Res<'w, SurfaceGrid>>,
@@ -530,29 +529,20 @@ impl Shot<'_, '_, '_> {
         } else {
             0.0
         };
-        let mut amount = quantize(raw, quantum);
-        let mut covered = false;
-        let helmet = self.w.armor.get(target).is_ok_and(|a| a.amount > 0.0 && a.helmet);
-        if let Some(ratio) = armor_ratio
-            && let Ok(mut armor) = self.w.armor.get_mut(target)
-            && armor.covers(hitgroup)
-        {
-            let (to_health, to_armor) = armor_split(raw, ratio, armor.amount, quantum);
-            amount = to_health;
-            covered = true;
-            armor.amount = (armor.amount - to_armor).max(0.0);
-        }
-        let damage = Damage {
+        let mut damage = Damage {
             force,
             target,
             attacker: Some(self.owner),
-            amount,
+            amount: quantize(raw, quantum),
             point,
             dir,
             hitgroup,
             kind,
             weapon: None,
         };
+        // Armour takes its share only if the hit lands (`HitArmor`).
+        let super::ArmorHit { covered, helmet } = self.w.armor.apply(&mut damage, raw, armor_ratio, quantum);
+        let amount = damage.amount;
         // A gun's bullet (a knife's hit deals bullet damage in CS:S too,
         // but isn't one).
         if shot && kind == DamageKind::Bullet && self.w.targets.get(target).is_ok_and(|t| t.health.is_some()) {

@@ -27,7 +27,8 @@
 //! origin, angles, spread seed and spread, enough to draw it again:
 //! `pellet_dirs`); `BulletTarget` (a target's own hitgroup multipliers, hits on
 //! more than one of its boxes, exact damage); damage, armour and pushes only
-//! where `core::authoritative`,
+//! where `core::authoritative`, armour only from hits that land (`HitArmor`,
+//! the one place bullets, knives and blasts take it),
 //! with a `BulletHit` for each bullet hit on something with health (games'
 //! reactions: CS:S's slowdown and flinch); `ViewPunch` (pitch, yaw, roll) on
 //! the view and, scaled, on the shots.
@@ -957,6 +958,58 @@ impl Armor {
                 Hitgroup::LeftLeg | Hitgroup::RightLeg => false,
                 _ => true,
             }
+    }
+}
+
+/// What armour did to one hit (`HitArmor::apply`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ArmorHit {
+    /// Armour covered the hitgroup (it had some, and a helmet for the
+    /// head) and the weapon's ratio applies: health got its share only.
+    /// True for a refused hit as well, which takes no armour (CS:S: a
+    /// noclipping player's covered hit doesn't flinch, as a walking one's).
+    pub covered: bool,
+    /// The target wore armour with a helmet before the hit.
+    pub helmet: bool,
+}
+
+/// The one place hits take armour: bullets, knives (`deliver`) and blasts
+/// (`grenade`). A hit takes armour only when it lands (`core::DamageRules::lands`):
+/// a teammate's hit with friendly fire off, a noclipping or `God` target,
+/// a map's invulnerability or damage filter leave it whole (CS:S, measured
+/// 2026-10-17 for teammates and noclip: specs/cs_source/weapons.md
+/// "Refused hits").
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct HitArmor<'w, 's> {
+    armor: Query<'w, 's, &'static mut Armor>,
+    rules: crate::core::DamageRules<'w, 's>,
+}
+
+impl HitArmor<'_, '_> {
+    /// Split `raw` damage (before armour, normalized like `Health`) of
+    /// `damage` between armour and health (`armor_split` with the weapon's
+    /// `ratio`, truncated to `quantum`): sets `damage.amount` to health's
+    /// share, and takes armour's from the target if the hit lands.
+    pub fn apply(&mut self, damage: &mut crate::core::Damage, raw: f32, ratio: Option<f32>, quantum: f32) -> ArmorHit {
+        let lands = self.rules.lands(damage);
+        let Ok(mut armor) = self.armor.get_mut(damage.target) else {
+            return ArmorHit::default();
+        };
+        let mut hit = ArmorHit {
+            covered: false,
+            helmet: armor.amount > 0.0 && armor.helmet,
+        };
+        if let Some(ratio) = ratio
+            && armor.covers(damage.hitgroup)
+        {
+            let (to_health, to_armor) = armor_split(raw, ratio, armor.amount, quantum);
+            damage.amount = to_health;
+            hit.covered = true;
+            if lands {
+                armor.amount = (armor.amount - to_armor).max(0.0);
+            }
+        }
+        hit
     }
 }
 
