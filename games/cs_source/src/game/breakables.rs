@@ -106,9 +106,10 @@ pub const GLASS_EDGES: [&str; 12] = [
 ];
 
 /// Each window's broken looks (`MapMesh::pane_look`): its face again in
-/// the face material's `$crackmaterial`, and, for glass, the face as a
-/// template for each edge material. Both are double sided (the spec
-/// leaves which side the client draws open).
+/// the face material's `$crackmaterial`, and, for glass, that cracked face
+/// as a template for each edge piece, cut by the edge texture's alpha
+/// (`MapMesh::pane_mask`). Both are double sided (the spec leaves which
+/// side the client draws open). No crack material: no broken look.
 pub fn add_window_looks(materials: &mut MaterialLoader, entities: &[MapEntity], meshes: &mut Vec<MapMesh>) {
     let windows: Vec<(usize, bool)> = entities
         .iter()
@@ -127,52 +128,45 @@ pub fn add_window_looks(materials: &mut MaterialLoader, entities: &[MapEntity], 
         if m.pane_look != PaneLook::Whole || m.texture.is_none() {
             continue;
         }
-        if let Some(crack) = materials.material_value(&m.material, "$crackmaterial") {
-            let crack = crack.replace('\\', "/");
-            let r = materials.resolve(&crack);
-            if r.texture.is_some() {
+        let Some(crack) = materials.material_value(&m.material, "$crackmaterial") else {
+            continue;
+        };
+        let crack = crack.replace('\\', "/");
+        let r = materials.resolve(&crack);
+        if r.texture.is_none() {
+            continue;
+        }
+        let cracked = MapMesh {
+            material: crack,
+            texture: r.texture,
+            normal_map: r.normal_map,
+            detail: r.detail,
+            base_transform: r.base_transform,
+            selfillum: r.selfillum,
+            alpha: r.alpha,
+            double_sided: true,
+            envmap: r.envmap,
+            tint: r.tint,
+            unlit: r.unlit,
+            pane_look: PaneLook::Cracked,
+            ..m.clone()
+        };
+        // Glass edges: the cracked face again, cut by each jagged mask (the
+        // edge textures are white with the shape in their alpha, so the
+        // pieces continue the crack texture past the pane's edge).
+        if !tile {
+            for (k, name) in GLASS_EDGES.iter().enumerate() {
+                let Some(mask) = materials.resolve(name).texture else {
+                    continue;
+                };
                 extra.push(MapMesh {
-                    material: crack,
-                    texture: r.texture,
-                    normal_map: r.normal_map,
-                    detail: r.detail,
-                    base_transform: r.base_transform,
-                    selfillum: r.selfillum,
-                    alpha: r.alpha,
-                    double_sided: true,
-                    envmap: r.envmap,
-                    tint: r.tint,
-                    unlit: r.unlit,
-                    pane_look: PaneLook::Cracked,
-                    ..m.clone()
+                    pane_look: PaneLook::Edge(k as u8),
+                    pane_mask: Some(mask),
+                    ..cracked.clone()
                 });
             }
         }
-        if tile {
-            continue;
-        }
-        for (k, name) in GLASS_EDGES.iter().enumerate() {
-            let r = materials.resolve(name);
-            if r.texture.is_none() {
-                continue;
-            }
-            extra.push(MapMesh {
-                material: name.to_string(),
-                texture: r.texture,
-                normal_map: None,
-                detail: None,
-                blend: None,
-                alpha: r.alpha,
-                double_sided: true,
-                envmap: None,
-                tint: None,
-                unlit: r.unlit,
-                // Drawn by its own texture's light (UnlitGeneric).
-                lightmap_uvs: Vec::new(),
-                pane_look: PaneLook::Edge(k as u8),
-                ..m.clone()
-            });
-        }
+        extra.push(cracked);
     }
     meshes.extend(extra);
 }

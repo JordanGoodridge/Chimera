@@ -98,6 +98,9 @@ pub struct WorldParams {
     /// not lit by the lightmap.
     pub unlit: f32,
     pub unlit_tint: Vec4,
+    /// 1: a window's edge piece (`MapMesh::pane_mask`): its alpha times
+    /// `blend_mask`'s, sampled at the vertex colour's red and green.
+    pub pane_mask: f32,
 }
 
 impl WorldParams {
@@ -143,6 +146,8 @@ pub struct WorldMaterial {
     pub base2: Option<Handle<Image>>,
     #[texture(11)]
     pub normal2: Option<Handle<Image>>,
+    /// The blend's shaping mask, or a window edge piece's jagged mask
+    /// (`WorldParams::pane_mask`).
     #[texture(12)]
     pub blend_mask: Option<Handle<Image>>,
     #[texture(13)]
