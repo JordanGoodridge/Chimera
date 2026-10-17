@@ -13,7 +13,8 @@
 //! damage with its push and attacker, physics impacts on props, breakables and
 //! players after the physics step (crush damage by the spec's tables, from each
 //! body's velocity before and after it; a prop meeting a player as two
-//! contacts that hurt both, as measured in CS:S), a broken prop's sound,
+//! contacts that hurt both, as measured in CS:S; players crushed by the props
+//! pressing on them past the stress limit), a broken prop's sound,
 //! `core::Explosion` and `map::BreakProp` pieces from where its body is, motion
 //! requests through `map::prop_physics`, `PropAwakened` into OnAwakened,
 //! players' ground prop for pressure, hidden with `map::LogicHidden` and
@@ -186,7 +187,7 @@ impl Plugin for LogicPlugin {
                 FixedPostUpdate,
                 record_velocities.before(PhysicsSystems::StepSimulation),
             )
-            .add_systems(FixedPostUpdate, impacts.after(PhysicsSystems::Writeback));
+            .add_systems(FixedPostUpdate, (impacts, stress).chain().after(PhysicsSystems::Writeback));
         app.console_command(
             "ent_fire",
             "ent_fire <target> <input> [value]: send a map entity an input (names, wildcards, classnames), \
@@ -2368,6 +2369,9 @@ struct Impact {
     before: [Vec3; 2],
     slowest: [Vec3; 2],
     steps: u32,
+    /// The contact's normal when it began, from `me` toward `other`
+    /// (engine space; None: no contact points yet).
+    normal: Option<Vec3>,
 }
 
 #[derive(Resource, Default)]
@@ -2394,6 +2398,7 @@ fn impacts(
     characters: Query<&MovementState, With<Intent>>,
     shadows: Query<&crate::map::prop_physics::PhysicsShadow>,
     positions: Query<&Position>,
+    collisions: avian3d::prelude::Collisions,
     mut damage: MessageWriter<Damage>,
 ) {
     let Some(logic) = logic else {
@@ -2443,6 +2448,12 @@ fn impacts(
                 continue;
             }
             let before = [me, other].map(|e| pre.0.get(&e).copied().unwrap_or_else(|| velocity(e)));
+            // The manifolds' normals point from collider1 to collider2.
+            let normal = collisions.get(s.collider1, s.collider2).and_then(|pair| {
+                let n: Vec3 = pair.manifolds.iter().map(|m| m.normal * m.points.len() as f32).sum();
+                let from_first = player(pair.body1.unwrap_or(pair.collider1)) == me;
+                n.try_normalize().map(|n| if from_first { n } else { -n })
+            });
             pending.0.push(Impact {
                 me,
                 other,
@@ -2450,6 +2461,7 @@ fn impacts(
                 before,
                 slowest: before,
                 steps: 0,
+                normal,
             });
         }
     }
@@ -2509,6 +2521,9 @@ fn impacts(
             vec![1.0]
         };
         let point = positions.get(i.me).map_or(Vec3::ZERO, |p| p.0);
+        // Where the prop loses speed into the player: along the contact's
+        // normal (entity space), when it has one.
+        let toward = |n: Option<Vec3>| n.map(|n| engine_to_entity(n, 1.0).normalize_or_zero());
         for &share in &shares {
             let (amount, force) = match i.receiver {
                 Receiver::Prop(table, energy, m) => {
@@ -2517,7 +2532,11 @@ fn impacts(
                         fixed: false,
                         ..side(0, i.me, m)
                     };
-                    let mine = if by_player { mine.lost(share) } else { mine.share(share) };
+                    let mine = if by_player {
+                        mine.lost_toward(share, toward(i.normal))
+                    } else {
+                        mine.share(share)
+                    };
                     let amount = super::prop_damage::impact_damage(&table, energy, mine, theirs, false);
                     (amount, velocity(i.me) * m)
                 }
@@ -2538,7 +2557,9 @@ fn impacts(
                         &super::prop_damage::PLAYER_TABLE,
                         1.0,
                         player,
-                        theirs.lost(share),
+                        // The prop moves toward the player against the
+                        // normal (from the player to it).
+                        theirs.lost_toward(share, toward(i.normal.map(|n| -n))),
                         true,
                     );
                     (amount, Vec3::ZERO)
@@ -2557,6 +2578,94 @@ fn impacts(
                     force,
                 });
             }
+        }
+    }
+}
+
+/// Physics stress on players (prop_damage.md 6, "Stress"): what a
+/// player's received stress is scaled by (`player_stress_scale`, over its
+/// 85 kg), the stress past which it is crushed, the crush damage and the
+/// mass of a "large object" one of its contacts must be.
+const PLAYER_STRESS_SCALE: f32 = 0.125;
+const STRESS_LIMIT: f32 = 5.0;
+const STRESS_DAMAGE: f32 = 200.0;
+const STRESS_LARGE_MASS: f32 = 500.0;
+/// Avian 0.7's contact `normal_impulse` adds each substep's impulse after
+/// both its solve and its relax pass (`normal_part.rs`, `total_impulse`):
+/// twice what the step applied (a 4000 kg box resting on a player read
+/// 7900 kg).
+const AVIAN_IMPULSE_PASSES: f32 = 2.0;
+
+/// Player stress (prop_damage.md 6): each physics step, the force (kg
+/// of weight) moving props press on a player with, through its own
+/// collider or its physics shadow, not counting what it stands on; past
+/// `STRESS_LIMIT` (scaled by `PLAYER_STRESS_SCALE` over its 85 kg) with a
+/// `STRESS_LARGE_MASS` prop among them: `STRESS_DAMAGE` crush from the
+/// world, pushing straight down.
+#[allow(clippy::type_complexity)]
+fn stress(
+    logic: Option<Res<Logic>>,
+    collisions: avian3d::prelude::Collisions,
+    time: Res<Time>,
+    gravity: Option<Res<avian3d::prelude::Gravity>>,
+    characters: Query<(Entity, &MovementState, &Health, Option<&crate::map::prop_physics::Shadowed>), With<Intent>>,
+    props: Query<(&RigidBody, &crate::map::PhysicsProp)>,
+    of: Query<&avian3d::prelude::ColliderOf>,
+    impacts: Res<Impacts>,
+    mut damage: MessageWriter<Damage>,
+) {
+    if logic.is_none() {
+        return;
+    }
+    let dt = time.delta_secs();
+    let g = gravity.map_or(0.0, |g| g.0.length());
+    if dt <= 0.0 || g <= 0.0 {
+        return;
+    }
+    let body = |e: Entity| of.get(e).map_or(e, |o| o.body);
+    for (player, state, health, shadow) in &characters {
+        if health.current <= 0.0 {
+            continue;
+        }
+        let mut received = 0.0;
+        let mut large = false;
+        for me in std::iter::once(player).chain(shadow.map(|s| s.0)) {
+            for pair in collisions.collisions_with(me) {
+                if !pair.flags.contains(avian3d::prelude::ContactPairFlags::TOUCHING) {
+                    continue;
+                }
+                let other = body(if body(pair.collider1) == me {
+                    pair.collider2
+                } else {
+                    pair.collider1
+                });
+                // What it stands on doesn't count, nor a contact still
+                // being measured as an impact (its first steps: the blow
+                // of a landing is impact damage; CS:S's landings of the
+                // 500 kg cupboard didn't crush, measured).
+                if state.ground == Some(other) || impacts.0.iter().any(|i| i.me == player && i.other == other) {
+                    continue;
+                }
+                let Ok((rb, prop)) = props.get(other) else { continue };
+                if !rb.is_dynamic() {
+                    continue;
+                }
+                received += pair.total_normal_impulse_magnitude() / AVIAN_IMPULSE_PASSES / dt / g;
+                large |= prop.mass >= STRESS_LARGE_MASS;
+            }
+        }
+        if large && received * PLAYER_STRESS_SCALE / PLAYER_MASS > STRESS_LIMIT {
+            damage.write(Damage {
+                target: player,
+                attacker: None,
+                amount: STRESS_DAMAGE / 100.0,
+                point: Vec3::ZERO,
+                dir: Vec3::NEG_Y,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Crush,
+                weapon: None,
+                force: Vec3::NEG_Y * received * g * dt,
+            });
         }
     }
 }

@@ -486,8 +486,9 @@ fn drop_prop_on_player(class: &str, push: PushAway, speed: f32, prop: &Dropped) 
     data.gravity = Some(800.0 * SCALE);
     let mut sim = sim(data);
     let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
-    // Health enough to take every contact (the probe's bot had 5000).
-    sim.app.world_mut().get_mut::<crate::stack::core::Health>(p).unwrap().current = 50.0;
+    // Health enough to take every contact (the probe's bot had 5000; the
+    // squeeze tests crush it for longer).
+    sim.app.world_mut().get_mut::<crate::stack::core::Health>(p).unwrap().current = 1000.0;
     sim.ticks(1);
     let node = {
         let world = sim.app.world_mut();
@@ -549,11 +550,45 @@ fn a_cupboard_landing_on_a_player() {
             drop_prop_on_player("prop_physics", PushAway::Collide, speed, &CUPBOARD_500);
         let amounts: Vec<i32> = hits.iter().map(|h| h.0).collect();
         eprintln!("cupboard {speed}: player hits {amounts:?}, cupboard health {health}, player pushed {pushed}");
-        // The landing (ours may land a second time after a bounce: 5 + 50
-        // more at 300; docs/tech-debt.md, prop damage).
-        assert_eq!(amounts[..2], want, "{speed} in/s");
+        // The landing only: sliding off the head afterwards hurts nobody
+        // (CS:S, measured at 0, 300 and 1000 in/s: the cupboard rose 2 to
+        // 10 units, slid off and fell past the player with no more
+        // damage), nor does the landing crush (no stress damage at any of
+        // 13 speeds up to 2000 but 1450 to 1500, prop_damage.md 6).
+        assert_eq!(amounts, want, "{speed} in/s");
         assert_eq!(CUPBOARD_500.health - health, lost, "the cupboard at {speed} in/s");
         assert!(pushed < 20.0, "the player knocked to {pushed} units/s");
+    }
+}
+
+/// The cupboard made 4000 kg, set down on a standing player's head: its
+/// weight past the stress limit (4000 × 0.125 / 85 = 5.9 > 5) crushes
+/// the player by 200 from the world nearly every tick it rests there;
+/// made 3000 kg (4.4), it doesn't once it rests (CS:S, measured
+/// 2026-10-17 with `massScale` 8 and 6, prop_damage.md 6 "Stress": 200
+/// on 26 of the first 30 ticks, force ≈ the weight; at 3000 kg only on
+/// two bounces).
+#[test]
+fn a_heavy_prop_resting_on_a_player_crushes_it() {
+    for (mass, crushed) in [(4000.0, true), (3000.0, false)] {
+        let prop = Dropped {
+            mass,
+            // Centred over the head (the probe's was moved 11 units so).
+            lo: Vec3::new(-11.02, -17.97, -5.72),
+            hi: Vec3::new(6.97, 18.0, 25.23),
+            height: 80.0,
+            ..CUPBOARD_500
+        };
+        let (hits, ..) = drop_prop_on_player("prop_physics", PushAway::Collide, 0.0, &prop);
+        let stress: Vec<&(i32, Option<Entity>)> = hits.iter().filter(|h| h.1.is_none()).collect();
+        eprintln!("{mass} kg: {} stress hits of {} hits", stress.len(), hits.len());
+        assert!(stress.iter().all(|h| h.0 == 200), "{mass} kg: {stress:?}");
+        if crushed {
+            // Ours rolls off the head after about 40 ticks.
+            assert!(stress.len() >= 26, "{mass} kg crushed on {} ticks", stress.len());
+        } else {
+            assert!(stress.len() <= 3, "{mass} kg crushed on {} ticks", stress.len());
+        }
     }
 }
 
