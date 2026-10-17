@@ -82,8 +82,8 @@ struct WorldParams {
     selfillum_tint: vec4<f32>,
     unlit: f32,
     modulation: vec4<f32>,
-    // A window's edge piece: alpha x the jagged mask's at the vertex
-    // colour's red and green.
+    // A window's broken look: an edge piece's alpha x its jagged mask's
+    // (tile: the vertex colour's blue; within it: red and green).
     pane_mask: f32,
 }
 
@@ -308,9 +308,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // unsquared weights.
 #ifdef VERTEX_COLORS
     if params.pane_mask > 0.5 {
-        // Clamped half a texel in: the mask's solid edge doesn't wrap.
+        // Square tiles side by side, the blue picking one; clamped half a
+        // texel inside it, so the solid edge doesn't wrap or bleed.
+        let size = vec2<f32>(textureDimensions(blend_mask));
+        let tiles = max(1.0, round(size.x / size.y));
         let m = clamp(in.color.xy, vec2<f32>(0.004), vec2<f32>(0.996));
-        albedo.a = albedo.a * textureSample(blend_mask, normal_sampler, m).a;
+        let at = vec2<f32>((in.color.z + m.x) / tiles, m.y);
+        albedo.a = albedo.a * textureSample(blend_mask, normal_sampler, at).a;
     }
 #endif
     if params.alpha_cutoff > 0.0 && albedo.a < params.alpha_cutoff {

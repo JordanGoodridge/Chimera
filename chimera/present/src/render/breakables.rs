@@ -184,7 +184,8 @@ pub const EDGE_DEPTH: f32 = 0.5;
 
 /// A rectangle of pane space to cut a mesh to; `uv` maps a point `p` of
 /// it to mask coordinates ((p − o)·x, (p − o)·y), which ride in the
-/// vertex colour's red and green for the edge piece's jagged mask
+/// vertex colour's red and green, and `tile` in its blue, for the edge
+/// piece's jagged mask
 /// (`MapMesh::pane_mask`; the mesh's own coordinates are kept, so the
 /// piece's texture lines up with its pane's).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -192,6 +193,8 @@ pub struct PaneRect {
     pub lo: Vec2,
     pub hi: Vec2,
     pub uv: Option<(Vec2, Vec2, Vec2)>,
+    /// Which tile of the mask texture (the vertex colour's blue).
+    pub tile: u8,
 }
 
 /// The edge strips of edge material `k` of `kinds`: along each side of an
@@ -258,6 +261,7 @@ pub fn edge_strips(panes: &BrushPanes, k: u8, kinds: u8) -> Vec<PaneRect> {
                     lo,
                     hi,
                     uv: Some((o, ux, vy)),
+                    tile: k,
                 });
             }
         }
@@ -278,6 +282,7 @@ pub fn clip_to_panes(mesh: &Mesh, panes: &BrushPanes) -> Option<Mesh> {
                     lo,
                     hi: lo + Vec2::ONE,
                     uv: None,
+                    tile: 0,
                 });
             }
         }
@@ -288,7 +293,8 @@ pub fn clip_to_panes(mesh: &Mesh, panes: &BrushPanes) -> Option<Mesh> {
 /// A triangle mesh cut to rectangles of pane space: every triangle
 /// clipped to each rectangle it overlaps (in the window's plane), its
 /// float attributes interpolated, and the rectangles' own mask
-/// coordinates, where they have them, as the vertex colour (u, v, 0, 1).
+/// coordinates, where they have them, as the vertex colour (u, v, tile,
+/// 1).
 pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Option<Mesh> {
     let positions: Vec<Vec3> = match mesh.try_attribute(Mesh::ATTRIBUTE_POSITION).ok()? {
         VertexAttributeValues::Float32x3(v) => v.iter().map(|p| Vec3::from(*p)).collect(),
@@ -301,7 +307,7 @@ pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Opt
     let st: Vec<Vec2> = positions.iter().map(|p| panes.pane_at(*p)).collect();
     // Output vertices as weights over a source triangle, and their own
     // texture coordinates.
-    let mut out: Vec<([u32; 3], Vec3, Option<Vec2>)> = Vec::new();
+    let mut out: Vec<([u32; 3], Vec3, Option<Vec3>)> = Vec::new();
     let mut tris: Vec<[u32; 3]> = Vec::new();
     for t in indices.chunks_exact(3) {
         let tri = [t[0], t[1], t[2]];
@@ -320,7 +326,7 @@ pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Opt
             out.extend(poly.iter().map(|w| {
                 let uv = rect.uv.map(|(o, x, y)| {
                     let p = pts[0] * w.x + pts[1] * w.y + pts[2] * w.z - o;
-                    Vec2::new(p.dot(x), p.dot(y))
+                    Vec3::new(p.dot(x), p.dot(y), rect.tile as f32)
                 });
                 (tri, *w, uv)
             }));
@@ -361,7 +367,7 @@ pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Opt
             .iter()
             .map(|(_, _, uv)| {
                 let uv = uv.unwrap_or_default();
-                [uv.x, uv.y, 0.0, 1.0]
+                [uv.x, uv.y, uv.z, 1.0]
             })
             .collect();
         clipped.insert_attribute(Mesh::ATTRIBUTE_COLOR, mask);
@@ -597,6 +603,7 @@ mod tests {
             // v = 1 on the pane's edge (x = 1), 0 at the strip's far side.
             assert!((m[1] - (1.0 - (p[0] - 1.0) / EDGE_DEPTH)).abs() < 1e-4, "mask v {m:?} at {p:?}");
             assert!((m[0] - p[1]).abs() < 1e-4, "mask u along the side: {m:?} at {p:?}");
+            assert_eq!(m[2], 0.0, "the one kind's tile");
         }
     }
 }
