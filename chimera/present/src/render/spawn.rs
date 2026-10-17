@@ -1541,11 +1541,17 @@ fn spawn_baked_prop_meshes(
     let mut spawned_materials: Vec<Handle<PropMaterial>> = Vec::new();
     for (mesh_index, (m, material)) in model.meshes.iter().zip(mats).enumerate() {
         let mut material = material[prop.skybox as usize].clone();
-        // `env_cubemap`: the cubemap baked nearest to the prop.
-        if let (Some(env), Some(prop_materials)) = (m.envmap.filter(|e| e.cubemap.is_none()), prop_materials.as_mut())
-            && let Some(&(_, cube)) = data.cubemap_samples.iter().min_by(|a, b| {
-                a.0.distance(prop.translation)
-                    .total_cmp(&b.0.distance(prop.translation))
+        // `$envmap`: the cubemap it names, or for `env_cubemap` the one
+        // baked nearest to the prop.
+        if let (Some(env), Some(prop_materials)) = (m.envmap, prop_materials.as_mut())
+            && let Some(cube) = env.cubemap.or_else(|| {
+                data.cubemap_samples
+                    .iter()
+                    .min_by(|a, b| {
+                        a.0.distance(prop.translation)
+                            .total_cmp(&b.0.distance(prop.translation))
+                    })
+                    .map(|s| s.1)
             })
             && let Some(cube_handle) = drawn.cubemaps.get(cube)
         {
@@ -1555,7 +1561,7 @@ fn spawn_baked_prop_meshes(
                 .entry(key)
                 .or_insert_with(|| {
                     let mut variant = prop_materials.get(&material).cloned().expect("prop material");
-                    set_prop_envmap(&mut variant, &env, cube_handle.clone(), &drawn.textures);
+                    set_prop_envmap(&mut variant, &env, cube_handle.clone(), &drawn.textures, m.normal_map);
                     prop_materials.add(variant)
                 })
                 .clone();

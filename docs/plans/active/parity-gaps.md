@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 7 | 8 | 3 | 4 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 6 | 17 | 2 | 2 |
+| Rendering, lighting, materials | 8 | 17 | 2 | 4 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **65** | **63** | **21** | **30** |
+| **Total** | **67** | **63** | **21** | **32** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -233,7 +233,9 @@ common console commands, against mashup's.
 | Player animation (feet slide, no death layer) | differs | M | M | tech-debt "Player animation": SDK template speeds; animation.md's open question needs a demo, capture C14 |
 | Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls": the ammo impulses aren't public (ragdolls.md Q2, weapons.md Q8); capture C13 |
 | Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models"; view_models.md Q5, Q7; capture C15 |
-| Prop light probes | differs | L | M | tech-debt: the engine's weighting isn't public (needs a spec session) |
+| Prop light probes | differs | M | M | tech-debt: the engine's weighting isn't public (needs a spec session); props without `.vhv` (all of cs_militia's) take the sun from one point, whole or not at all: militia's crates by the shed (x 1344-1353) much darker than the next ones out, as the reading predicts (2026-10-17); whether CS:S does that or lights them per vertex at load is shaders.md Q11, capture C28 |
+| Model reflections masked by the normal map's alpha (`$normalmapalphaenvmapmask`) | have (fixed) | M | S | 2026-10-17: the mask was dropped on props, so those materials were mirrors: militia's ammo can, cable spool, pallet, car battery, APC; the same props on nuke, inferno, train, assault, port, prodigy, compound, havana, piranesi, aztec (vents, pallets, spools, `metalwall001a`, `pi_apc`, `pi_boat`); the hands now reflect through it too. refcmp: nuke 0.0242 -> 0.0241, aztec, dust2 unchanged, office within capture noise (`cam0`'s sky) |
+| Props whose material names its cubemap | have (fixed) | L | S | 2026-10-17: drew no reflection; now that cubemap (no stock map's props do this) |
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C20 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
 | Static props lit in the 3D skybox (nuke's cooling towers teal, CS:S light grey) | differs | M | M | seen once the sky fog is off; their light probe (no `.vhv`); capture C10 |
@@ -651,3 +653,11 @@ says what decides the open point.
   map's data agrees (docs/performance.md, "Checks"); the captures say
   whether CS:S hides them too (sky there) or draws them.
   Decides every trigger in `games/cs_source/data/hints.toml` (all ours).
+- **C28 Static props without baked light (cs_militia).** In CS:S at
+  `mat_hdr_level 0`: `setpos 1536.72 928.09 -65.93; setang 9.81 227.75 0`
+  (the crates on and beside the truck by the shed), once as is and once
+  with `r_drawmodellightorigin 1`. Whether the crates by the shed are as
+  dark as ours (lit from one point in the shed's shadow) or shaded per
+  vertex (their tops in the sun) decides shaders.md Q11 for maps without
+  `.vhv`; the truck (its lighting point inside its cargo's nodraw
+  collision block, dark here) is in the same view.

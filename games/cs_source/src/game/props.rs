@@ -16,6 +16,21 @@
 //! it's OK for now: No stock map's solid prop_dynamic lacks a `.phy` that we
 //! know of; a probe check: shoot and walk into such a prop.
 //!
+//! Known shortcuts (docs/tech-debt.md): Static props without baked
+//! per-vertex light (no `sp_<n>.vhv` in the map, e.g. cs_militia) are
+//! lit from one point, the lighting origin or the model's illumination
+//! position (`probe`): ambient cube plus the world lights that reach that
+//! point, so a prop takes the sun whole or not at all. Whether the engine
+//! does that or lights such props per vertex at load is shaders.md open
+//! question 11. cs_militia's crates by the shed (Source x 1344-1353) have
+//! their centres in the shed's shadow and come out much darker than those
+//! a crate further out. Shadow rays ignore other props; a leaf's ambient
+//! samples are blended by inverse distance (the engine's weighting is not
+//! public); dynamic lights add a simple 1 − d²/r² × cosine term without
+//! shadows (prop.wgsl). Why it's OK for now: the model matches the maps' lightmaps at a
+//! median ratio of 1.05 (`prop_lighting_model_predicts_lightmaps`); the
+//! rule needs a spec session or a capture (plans/active/parity-gaps.md).
+//!
 //! Known shortcuts (docs/tech-debt.md): A broken prop's piece and chunk
 //! models load without their `.phy` (`load_shell`), so their bodies are
 //! their boxes (`map::breakables`), not their hulls. Why it's OK for now:
@@ -664,6 +679,7 @@ fn mesh_look(materials: &mut MaterialLoader, dirs: &[String], name: &str) -> Map
         alpha: r.alpha,
         double_sided: r.double_sided,
         unlit: r.unlit,
+        normal_map: r.normal_map,
         envmap: r.envmap,
         tint: r.tint,
         detail: r.detail,
@@ -803,6 +819,7 @@ fn convert_model_in(
                             alpha: m.alpha,
                             double_sided: m.double_sided,
                             unlit: m.unlit,
+                            normal_map: m.normal_map,
                             envmap: m.envmap,
                             tint: m.tint,
                             detail: m.detail,
@@ -2153,5 +2170,45 @@ mod prop_data_tests {
         assert_eq!(d.get("physicsmode").map(String::as_str), Some("1"));
         assert_eq!(d.get("health").map(String::as_str), Some("20"));
         assert!(prop_data("\"physgun_interactions\" { }").is_none());
+    }
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::*;
+
+    /// A box of light-blocking brush from (-1, 0, -1) to (1, 0.5, 1) m, the
+    /// sun straight overhead and ambient everywhere.
+    fn scene() -> (MapLighting, Occluders) {
+        let mut lighting = MapLighting::fullbright();
+        lighting.lights = vec![ambient::WorldLight::Sky {
+            direction: -Vec3::Y,
+            intensity: Vec3::ONE,
+        }];
+        let mut corners = Vec::new();
+        for k in 0..8 {
+            corners.push([
+                if k & 1 == 0 { -1.0 } else { 1.0 },
+                if k & 2 == 0 { 0.0 } else { 0.5 },
+                if k & 4 == 0 { -1.0 } else { 1.0 },
+            ]);
+        }
+        (lighting, Occluders::new(&[corners], (&[], &[])))
+    }
+
+    /// The documented reading for maps without baked per-vertex light
+    /// (shaders.md open question 11; docs/tech-debt.md "Prop light
+    /// probes"): a prop is lit from its one lighting point, so it takes the
+    /// sun whole or not at all. cs_militia's crates by the shed are dark
+    /// because their centres are in its shadow, the outer ones lit.
+    #[test]
+    fn a_prop_takes_the_sun_whole_or_not_at_all() {
+        let (lighting, occluders) = scene();
+        let ambient = |_: Vec3| ambient::AmbientCube([Vec3::splat(0.1); 6]);
+        let under = probe_with(&ambient, &lighting, &occluders, Vec3::new(0.0, -0.1, 0.0));
+        assert!(under.lights.is_empty(), "{under:?}");
+        let aside = probe_with(&ambient, &lighting, &occluders, Vec3::new(1.2, -0.1, 0.0));
+        assert_eq!(aside.lights.len(), 1, "{aside:?}");
+        assert_eq!(under.cube, aside.cube);
     }
 }

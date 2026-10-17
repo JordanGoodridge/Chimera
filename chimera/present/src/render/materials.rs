@@ -125,25 +125,37 @@ pub fn lit_prop_material(
 }
 
 /// Make `material` reflect `cube` as `env` says (Source `$envmap`).
+/// `normal_map`: the mesh's `$bumpmap`, whose alpha is the mask under
+/// `$normalmapalphaenvmapmask` (specs/cs_source/shaders.md 2 and 4).
 pub fn set_prop_envmap(
     material: &mut PropMaterial,
     env: &MapEnvmap,
     cube: Handle<Image>,
     textures: &[Handle<Image>],
+    normal_map: Option<usize>,
 ) {
     material.envmap = Some(cube);
     material.params.envmap = 1.0;
-    material.params.envmap_mask = match env.mask {
-        EnvmapMask::BaseAlphaInverted => 2.0,
-        EnvmapMask::Texture(_) => 3.0,
-        _ => 0.0,
-    };
-    if let EnvmapMask::Texture(t) = env.mask {
-        material.envmap_mask = textures.get(t).cloned();
-    }
+    let (mode, mask) = prop_envmap_mask(env.mask, normal_map);
+    material.params.envmap_mask = mode;
+    material.envmap_mask = mask.and_then(|t| textures.get(t).cloned());
     material.params.envmap_contrast = env.contrast;
     material.params.envmap_saturation = env.saturation;
     material.params.envmap_tint = Vec3::from_array(env.tint.map(parameter_gamma_to_linear)).extend(1.0);
+}
+
+/// The prop shader's mask mode for `mask` (`PropParams::envmap_mask`) and
+/// the texture it samples: the normal map's alpha (1), one minus the base
+/// alpha (2), a mask texture's colour (3), or none (0). A normal-alpha mask
+/// without a normal map masks nothing (the loader only gives it to bumped
+/// materials).
+pub fn prop_envmap_mask(mask: EnvmapMask, normal_map: Option<usize>) -> (f32, Option<usize>) {
+    match (mask, normal_map) {
+        (EnvmapMask::NormalAlpha, Some(n)) => (1.0, Some(n)),
+        (EnvmapMask::BaseAlphaInverted, _) => (2.0, None),
+        (EnvmapMask::Texture(t), _) => (3.0, Some(t)),
+        _ => (0.0, None),
+    }
 }
 
 /// Fog color for shaders: linear RGB, w = 1 when fog is on.
@@ -225,5 +237,22 @@ mod fog_tests {
         };
         assert!(material_fog(&unfogged, MapDebugView::Normal, true).is_none());
         assert!(material_fog(&unfogged, MapDebugView::Normal, false).is_some());
+    }
+}
+
+#[cfg(test)]
+mod envmap_mask_tests {
+    use super::*;
+
+    /// `$normalmapalphaenvmapmask` on a model masks by the normal map's
+    /// alpha (specs/cs_source/shaders.md 2, 4): cs_militia's ammo can and
+    /// cable spool were mirrors when the mask was dropped.
+    #[test]
+    fn model_reflections_keep_their_masks() {
+        assert_eq!(prop_envmap_mask(EnvmapMask::NormalAlpha, Some(7)), (1.0, Some(7)));
+        assert_eq!(prop_envmap_mask(EnvmapMask::NormalAlpha, None), (0.0, None));
+        assert_eq!(prop_envmap_mask(EnvmapMask::BaseAlphaInverted, Some(7)), (2.0, None));
+        assert_eq!(prop_envmap_mask(EnvmapMask::Texture(3), Some(7)), (3.0, Some(3)));
+        assert_eq!(prop_envmap_mask(EnvmapMask::None, Some(7)), (0.0, None));
     }
 }
