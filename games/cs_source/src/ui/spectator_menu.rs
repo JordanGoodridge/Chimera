@@ -707,7 +707,9 @@ fn draw(
                 height: percent(100.0),
                 ..default()
             },
-            // Over the spectator bars (43) and the overview (42).
+            // Over the spectator bars (43) and the overview (42); the
+            // whole screen, so only its controls stop a click.
+            bevy::ui::FocusPolicy::Pass,
             GlobalZIndex(52),
         ))
         .id();

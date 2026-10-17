@@ -281,6 +281,98 @@ fn office_windows_lose_shot_panes() {
     assert!(done, "no window could be shot");
 }
 
+/// A shot cs_office window takes the spec's "GlassBreak" decal (not the
+/// glass surface's own impact decal), on the window's node; the install's
+/// decal script has both breakable glass groups.
+#[test]
+fn office_window_shots_leave_glass_break_decals() {
+    use crate::stack::map::{DecalGroup, PlaceDecal};
+    let Some(map) = load("cs_office") else { return };
+    for group in ["glassbreak", "bulletproof"] {
+        let g = map.decals.groups.get(group);
+        assert!(g.is_some_and(|v| !v.is_empty()), "decals_subrect.txt has {group}");
+    }
+    let windows: Vec<usize> = map
+        .entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.classname() == "func_breakable_surf")
+        .map(|(i, _)| i)
+        .collect();
+    let entities = map.entities.clone();
+    let mut sim = sim(map);
+    for &win in &windows {
+        let (centre, sides) = approaches(&entities[win], 24.0);
+        for eye in sides {
+            let p = shooter(&mut sim, eye, centre, AK47);
+            if ray(&mut sim, eye, centre, p) > eye.distance(centre) + 8.0 {
+                continue;
+            }
+            let n = node(&mut sim, win).unwrap();
+            let mut cursor = sim
+                .app
+                .world()
+                .resource::<bevy::ecs::message::Messages<PlaceDecal>>()
+                .get_cursor_current();
+            let mut decals: Vec<PlaceDecal> = Vec::new();
+            sim.intent(p).fire = true;
+            for _ in 0..3 {
+                sim.ticks(1);
+                sim.intent(p).fire = false;
+                let messages = sim.app.world().resource::<bevy::ecs::message::Messages<PlaceDecal>>();
+                decals.extend(cursor.read(messages).cloned());
+            }
+            let on_window: Vec<&PlaceDecal> = decals
+                .iter()
+                .filter(|d| {
+                    d.target.is_some_and(|t| {
+                        t == n || sim.app.world().get::<ChildOf>(t).is_some_and(|c| c.parent() == n)
+                    })
+                })
+                .collect();
+            assert!(!on_window.is_empty(), "the shot marks the window: {decals:?}");
+            assert!(
+                on_window
+                    .iter()
+                    .all(|d| matches!(&d.group, DecalGroup::Named(g) if g == "GlassBreak")),
+                "{on_window:?}"
+            );
+            return;
+        }
+    }
+    panic!("no window could be shot");
+}
+
+/// de_piranesi's wooden func_breakables name propdata templates: number 1
+/// (Wooden.Tiny: health 6 over the map's 30, Wooden.Base's multipliers
+/// and WoodChunks) from the install's propdata.txt, which the logic's
+/// breakable takes.
+#[test]
+fn piranesi_breakables_take_their_propdata_template() {
+    use crate::stack::map::entities::{PROP_DAMAGE_KEY, PROP_GIBS_KEY, PROP_HEALTH_KEY};
+    let Some(map) = load("de_piranesi") else { return };
+    let tiny: Vec<usize> = map
+        .entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.classname() == "func_breakable" && e.get("propdata") == Some("1"))
+        .map(|(i, _)| i)
+        .collect();
+    assert!(!tiny.is_empty(), "de_piranesi has Wooden.Tiny breakables");
+    let e = &map.entities[tiny[0]];
+    assert_eq!(e.get("health"), Some("30"), "the map's own health");
+    assert_eq!(e.get(PROP_HEALTH_KEY), Some("6"));
+    assert_eq!(e.get(PROP_DAMAGE_KEY), Some("0.75 2 1.5"));
+    assert_eq!(e.get(PROP_GIBS_KEY), Some("WoodChunks"));
+    assert!(map.gibs.iter().any(|g| g.name == "WoodChunks" && !g.models.is_empty()));
+    let sim = sim(map);
+    let Some(Class::Breakable(b)) = class(&sim, tiny[0]) else {
+        panic!("not a breakable")
+    };
+    assert_eq!((b.health, b.dmg), (6, [0.75, 2.0, 1.5]));
+    assert!(b.damageable);
+}
+
 /// cs_office's windows load their broken looks: the face again in its
 /// `$crackmaterial` (glass/offwndwb_break), and the glass edge pieces.
 #[test]

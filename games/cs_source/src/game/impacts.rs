@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use crate::{
     core::{Intent, MapWater},
     map::{
-        DecalGroup, PhysicsProp, PlaceDecal, PlaySound, PropSurface,
+        DecalGroup, MapBrushEntity, MapEntities, PhysicsProp, PlaceDecal, PlaySound, PropSurface,
         breakables::PieceBody,
         sound::{MapSounds, MapSurface, SoundBank, SurfaceGrid},
     },
@@ -169,16 +169,41 @@ fn in_water(from: Vec3, to: Vec3, water: Option<&MapWater>) -> bool {
 /// the game.
 const SLASH_DECAL: &str = "ManhackCut";
 
+/// A breakable brush's own impact decal (specs/source/breakables.md:
+/// glass "GlassBreak", unbreakable glass "BulletProof"), when `hit` (or
+/// its parent) is the node of one.
+fn breakable_decal(
+    hit: Entity,
+    brushes: &Query<&MapBrushEntity>,
+    parents: &Query<&ChildOf>,
+    map: Option<&MapEntities>,
+) -> Option<&'static str> {
+    let node = std::iter::once(hit)
+        .chain(parents.get(hit).ok().map(|c| c.parent()))
+        .find_map(|e| brushes.get(e).ok())?;
+    let e = map?.entities.get(node.0)?;
+    let class = e.classname();
+    if !super::breakables::CLASSES.iter().any(|c| c.eq_ignore_ascii_case(class)) {
+        return None;
+    }
+    let int = |k: &str| e.get(k).map_or(0, |v| v.trim().parse::<f32>().map_or(0, |x| x as i32));
+    super::breakables::impact_decal(class, int("material"), int("surfacetype"))
+}
+
 /// Decals where shots and knife swings hit the world: the hit surface's
-/// impact decal ("TranslationData" by its game material), the knife's
-/// slash, on the world or the prop that was hit. Characters take none
-/// yet.
+/// impact decal ("TranslationData" by its game material), or a breakable
+/// brush's own (`breakable_decal`), the knife's slash, on the world, the
+/// prop or the brush entity that was hit. Characters take none yet.
+#[allow(clippy::too_many_arguments)]
 fn impact_decals(
     mut events: MessageReader<WeaponEvent>,
     bank: Option<Res<SoundBank>>,
     grid: Option<Res<SurfaceGrid>>,
     props: Query<&PropSurface>,
     characters: Query<(), With<Intent>>,
+    brushes: Query<&MapBrushEntity>,
+    parents: Query<&ChildOf>,
+    map: Option<Res<MapEntities>>,
     water: Option<Res<MapWater>>,
     mut decals: MessageWriter<PlaceDecal>,
 ) {
@@ -201,17 +226,23 @@ fn impact_decals(
                 hit: Some(hit),
                 normal: Some(normal),
             } if marked(*hit) && !in_water(*from, *to, water.as_deref()) => {
-                let name = surface_of(Some(*hit), *to, &props, &characters, grid.as_deref());
-                let Some(material) = bank
-                    .as_ref()
-                    .and_then(|b| surface(&b.0, &name))
-                    .map(|s| s.game_material)
-                else {
-                    continue;
+                let group = match breakable_decal(*hit, &brushes, &parents, map.as_deref()) {
+                    Some(name) => DecalGroup::Named(name.into()),
+                    None => {
+                        let name = surface_of(Some(*hit), *to, &props, &characters, grid.as_deref());
+                        let Some(material) = bank
+                            .as_ref()
+                            .and_then(|b| surface(&b.0, &name))
+                            .map(|s| s.game_material)
+                        else {
+                            continue;
+                        };
+                        DecalGroup::Material(material)
+                    }
                 };
                 decals.write(PlaceDecal {
                     target: Some(*hit),
-                    group: DecalGroup::Material(material),
+                    group,
                     point: *to,
                     normal: *normal,
                     dir: (*to - *from).normalize_or_zero(),
@@ -225,9 +256,10 @@ fn impact_decals(
                 line,
                 ..
             } if marked(*hit) && super::impact_effects::knife_splash(*line, water.as_deref()).is_none() => {
+                let name = breakable_decal(*hit, &brushes, &parents, map.as_deref()).unwrap_or(SLASH_DECAL);
                 decals.write(PlaceDecal {
                     target: Some(*hit),
-                    group: DecalGroup::Named(SLASH_DECAL.into()),
+                    group: DecalGroup::Named(name.into()),
                     point: *point,
                     normal: *normal,
                     dir: -*normal,

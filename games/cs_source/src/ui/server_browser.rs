@@ -1663,6 +1663,7 @@ fn pointer(
     grips: Query<(&Interaction, &ColumnGrip), Changed<Interaction>>,
     lists: Query<&RelativeCursorPosition, With<WheelList>>,
     scroll: Option<Res<AccumulatedMouseScroll>>,
+    thumb: Option<Res<widgets::ScrollDrag>>,
     mouse: Res<ButtonInput<MouseButton>>,
     window: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Res<UiFonts>,
@@ -1736,6 +1737,20 @@ fn pointer(
             inputs.push(Input::Scroll(-notches));
         } else if lists.iter().any(|l| l.cursor_over()) {
             inputs.push(Input::Scroll(-notches * 3));
+        }
+    }
+    // A scroll bar's thumb dragged: the list (or the open drop-down's)
+    // there, wherever the selection is.
+    if let Some(drag) = thumb.filter(|d| d.is_changed())
+        && let Some((owner, _, first)) = drag.at
+    {
+        let now = match (owner, browser.combo) {
+            (widgets::COMBO_SCROLL, Some(c)) => Some(c.first),
+            (BROWSER_SCROLL, None) => Some(browser.scroll),
+            _ => None,
+        };
+        if let Some(now) = now.filter(|n| *n != first) {
+            inputs.push(Input::Scroll(first as i32 - now as i32));
         }
     }
     for input in inputs {
@@ -2152,8 +2167,7 @@ fn server_list(
                 bevel(look, true),
                 BackgroundColor(look.color("Button.BgColor", [0, 0, 0, 0])),
                 Hit(Target::Header(*column)),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();
@@ -2213,8 +2227,7 @@ fn server_list(
                     column: *column,
                     width: *cw,
                 },
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ZIndex(3),
                 ChildOf(list),
             ));
@@ -2236,8 +2249,7 @@ fn server_list(
                     Color::NONE
                 }),
                 Hit(Target::Row(k)),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();
@@ -2330,63 +2342,19 @@ fn server_list(
     );
 }
 
-/// A scroll bar `h` tall at (x, y).
+/// Whose scroll bar thumb (`widgets::ScrollThumb`): the server list.
+const BROWSER_SCROLL: widgets::WindowId = "servers";
+
+/// The list's scroll bar (`widgets::scroll_bar`): arrows and the track
+/// scroll (`Target::Scroll`), the thumb drags (`BROWSER_SCROLL`).
 fn scroll_bar(
     commands: &mut Commands,
     parent: Entity,
     look: &Look,
-    (x, y, h): (f32, f32, f32),
-    (len, shown, first): (usize, usize, usize),
+    rect: (f32, f32, f32),
+    list: (usize, usize, usize),
 ) {
-    let w = look.number("ScrollBar.Wide", 17.0);
-    let track = commands
-        .spawn((
-            place(look, x, y, w, h),
-            BackgroundColor(look.sunken_bg()),
-            ChildOf(parent),
-        ))
-        .id();
-    let font = look.font("Marlett", (12.0, false));
-    let fg = look.color("ScrollBarButton.FgColor", [255, 255, 255, 255]);
-    for (ty, text, step) in [(0.0, "\u{25B2}", -1), (h - w, "\u{25BC}", 1)] {
-        let e = commands
-            .spawn((
-                Node {
-                    border: UiRect::all(px(1.0)),
-                    ..place(look, 0.0, ty, w, w)
-                },
-                bevel(look, true),
-                Hit(Target::Scroll(step)),
-                Button,
-                Interaction::default(),
-                ChildOf(track),
-            ))
-            .id();
-        label(
-            commands,
-            e,
-            look,
-            (0.0, 0.0, w - 2.0, w - 2.0),
-            text,
-            font.clone(),
-            fg,
-            0,
-        );
-    }
-    let room = h - 2.0 * w;
-    if len > shown && room > 8.0 {
-        let thumb = (room * shown as f32 / len as f32).max(10.0);
-        let at = w + (room - thumb) * first as f32 / (len - shown) as f32;
-        commands.spawn((
-            Node {
-                border: UiRect::all(px(1.0)),
-                ..place(look, 1.0, at, w - 2.0, thumb)
-            },
-            bevel(look, true),
-            BackgroundColor(look.color("ScrollBarSlider.BgColor", [255, 255, 255, 64])),
-            ChildOf(track),
-        ));
-    }
+    widgets::scroll_bar(commands, parent, look, rect, list, (BROWSER_SCROLL, 0), |step| Hit(Target::Scroll(step)));
 }
 
 /// The page's buttons: those the open tab shows, where the file puts
@@ -2866,8 +2834,7 @@ fn add_server_dialog(commands: &mut Commands, root: Entity, look: &Look, b: &Ser
                     Color::NONE
                 }),
                 Hit(Target::Row(0)),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(list),
             ))
             .id();

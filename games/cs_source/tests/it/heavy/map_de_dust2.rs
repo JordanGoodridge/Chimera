@@ -2920,6 +2920,52 @@ fn view_models_face_outward() {
     assert!(knives > 0, "the knife's view models load");
 }
 
+/// The faces kept are the front ones: the world and model pipelines cull
+/// back faces with Bevy's counter-clockwise front face
+/// (`render::prop_material::face_cull`), so after the Z-up to Y-up
+/// conversion (a rotation) world and static prop triangles must still wind
+/// counter-clockwise toward the side their normals face. Wound the other
+/// way, the game would show back faces and cull the fronts.
+#[test]
+fn world_and_props_wind_their_fronts_counter_clockwise() {
+    let Some(map) = dust2() else { return };
+    // (triangles wound toward their vertex normals, all triangles)
+    let count = |meshes: &mut dyn Iterator<Item = &crate::stack::map::MapMesh>| {
+        let (mut agree, mut total) = (0usize, 0usize);
+        for m in meshes.filter(|m| m.normals.len() == m.positions.len()) {
+            let p = |i: u32| Vec3::from(m.positions[i as usize]);
+            for t in m.indices.chunks_exact(3) {
+                let n = (p(t[1]) - p(t[0])).cross(p(t[2]) - p(t[0]));
+                if n.length_squared() < 1e-10 {
+                    continue;
+                }
+                let vn: Vec3 = t.iter().map(|&i| Vec3::from(m.normals[i as usize])).sum();
+                total += 1;
+                agree += usize::from(n.dot(vn) > 0.0);
+            }
+        }
+        (agree, total)
+    };
+    let (agree, total) = count(&mut map.meshes.iter());
+    eprintln!("world: {agree} of {total} triangles wound toward their normals");
+    assert!(total > 10_000 && agree as f64 > total as f64 * 0.99, "world: {agree} of {total}");
+    let (mut agree, mut total) = (0, 0);
+    for (i, model) in map.models.iter().enumerate() {
+        if !map.props.iter().any(|p| p.model == i) {
+            continue;
+        }
+        let (a, t) = count(&mut model.meshes.iter());
+        if a * 10 < t * 9 {
+            let names: Vec<_> = model.meshes.iter().map(|m| m.material.as_str()).collect();
+            eprintln!("model {i} {names:?}: {a} of {t}");
+        }
+        agree += a;
+        total += t;
+    }
+    eprintln!("props: {agree} of {total} triangles wound toward their normals");
+    assert!(total > 10_000 && agree as f64 > total as f64 * 0.99, "props: {agree} of {total}");
+}
+
 /// Model detail (`map::lod`): models keep their `.vtx` levels of detail,
 /// each coarser than the one before, aligned to LOD 0's meshes, with
 /// rising switch points.

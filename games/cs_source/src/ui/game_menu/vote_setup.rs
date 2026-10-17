@@ -227,8 +227,7 @@ pub(super) fn vote_dialog(commands: &mut Commands, ctx: &Ctx, frame: Entity) {
                 place(look, 0.0, y, w, b.line),
                 BackgroundColor(bg),
                 Hit(Target::Row(i), 0),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 ChildOf(lists[list]),
             ))
             .id();

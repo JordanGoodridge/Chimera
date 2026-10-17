@@ -232,8 +232,7 @@ pub(super) fn main_list(
             .spawn((
                 place(look, inset - 4.0, y, 260.0, item_h),
                 Hit(Target::Main(i), 0),
-                Button,
-                Interaction::default(),
+                widgets::clickable(),
                 BackgroundColor(if focused && !look.has_scheme() {
                     look.accent.with_alpha(0.12)
                 } else {

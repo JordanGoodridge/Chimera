@@ -12,7 +12,10 @@
 //! As VGUI: a `ComboBox` opens a list under itself on a click (its
 //! arrow button drawn as the scheme's `ComboBoxButton`), the pointer
 //! highlights an entry, a click picks it, Esc or a click outside closes
-//! it, Up/Down/wheel step a focused closed one; a `Slider` follows the
+//! it, a click on its box toggles it, Up/Down/wheel step a focused closed
+//! one; a `ScrollBar` (`scroll_bar`) scrolls its list a row by its arrows,
+//! a page by its track, and follows the pointer by its thumb while held
+//! (`ScrollDrag`), the view free of the list's selection; a `Slider` follows the
 //! mouse while held, with tick marks under it; a `TextEntry` has a caret,
 //! a selection (Shift with the arrows, a drag, Ctrl+A), copy, cut and
 //! paste; a `Frame` moves by its title bar (kept on screen), comes to the
@@ -20,6 +23,24 @@
 //! server browser) resize from their edges and corner down to their
 //! minimum size. Nothing is remembered across runs: a frame is centred
 //! the first time it opens in a session, then stays where it was left.
+//!
+//! Clicks: a press reaches the topmost node under the pointer that stops
+//! it (`FocusPolicy::Block`) and every node above that one, so whatever
+//! is clickable must block, or a click on it also lands on what is under
+//! it (a row under a scroll bar's thumb, the box under an open list's
+//! catcher). Bevy's `Button` asks for `Block`, but `Node` requires `Pass`
+//! and wins when it comes first in the bundle or the button is inserted
+//! later, as most of ours are; so clickables spawn with `clickable()`,
+//! and `block_clicks` makes anything that gains an `Interaction` block
+//! (`PassClicks` opts out, for a node that only watches the pointer).
+//! Plain nodes keep Bevy's `Pass`: labels and pictures on a button, HUD
+//! panels (scoreboard, chat, spectator bars, radio menu: nothing there
+//! takes a click), full-screen roots whose controls alone take clicks
+//! (the spectator menu, the server browser, the MOTD and class menus,
+//! which the game menu must stay clickable under). Panels that swallow
+//! clicks say `Block` themselves: frames, an open list's backing, the
+//! game menu's backdrop, the team and buy menus' dim screen, the
+//! console.
 //!
 //! VGUI's controls, one layer shared by the GameUI dialogs (`game_menu`,
 //! `server_browser`, `first_run`): the state machines the dialogs' models hold
@@ -32,7 +53,10 @@
 //! `style_buttons`), `check_button`, `radio_button`, `combo_box` and
 //! `combo_popup`, `slider` with tick marks, `text_entry` with caret and
 //! selection placed by `UiFonts::char_offsets`, `tabs`), and the systems
-//! moving, raising and resizing frames (`frames_pointer`, `place_frames`: each
+//! moving, raising and resizing frames, holding a scroll bar's thumb
+//! (`scroll_pointer`) and running `ui_click` / `ui_drag` (`PointerScript`: the
+//! pointer driven from the console through Bevy's input, for checking the menus
+//! live) (`frames_pointer`, `place_frames`: each
 //! frame over what it hides, `FrameBacking`: the main menu's picture, in a game
 //! the world drawn again at `WORLD_UNDER_DIALOGS` brightness from
 //! `WorldPicture`) and following a held slider (`SliderDrag`); `vgui_windows`
@@ -60,10 +84,15 @@ impl Plugin for WidgetsPlugin {
             .init_resource::<SliderDrag>()
             .init_resource::<FrameBacking>()
             .init_resource::<WorldPicture>()
+            .init_resource::<ScrollDrag>()
+            .init_resource::<PointerScript>()
+            .add_observer(block_clicks)
+            .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems))
             .add_systems(
                 PreUpdate,
                 (frames_pointer, slider_pointer).after(bevy::input::InputSystems),
             )
+            .add_systems(PreUpdate, scroll_pointer.after(bevy::ui::UiSystems::Focus))
             .add_systems(Update, style_buttons)
             .add_systems(PostUpdate, place_frames.before(bevy::ui::UiSystems::Layout));
         app.console_command(
@@ -89,6 +118,89 @@ impl Plugin for WidgetsPlugin {
                 Ok(Some(windows.describe()))
             },
         );
+        app.console_command(
+            "ui_click",
+            "ui_click <x> <y>: click the left button there (window pixels), as the pointer would; tests and \
+             screenshots of the menus.",
+            |w, a| {
+                let at = point(a, 0).ok_or("ui_click <x> <y>")?;
+                w.resource_mut::<PointerScript>().click(at);
+                Ok(None)
+            },
+        );
+        app.console_command(
+            "ui_drag",
+            "ui_drag <x0> <y0> <x1> <y1> [<frames>]: press the left button at x0 y0, move to x1 y1 over that \
+             many frames (default 10) and let go (window pixels): a scroll bar's thumb, a slider, a frame.",
+            |w, a| {
+                let (Some(from), Some(to)) = (point(a, 0), point(a, 2)) else {
+                    return Err("ui_drag <x0> <y0> <x1> <y1> [<frames>]".into());
+                };
+                let steps = a.get(4).and_then(|n| n.parse().ok()).unwrap_or(10);
+                w.resource_mut::<PointerScript>().drag(from, to, steps);
+                Ok(None)
+            },
+        );
+    }
+}
+
+/// Two numbers of a command's words from `i` on, as a point.
+fn point(a: &[String], i: usize) -> Option<Vec2> {
+    let num = |k: usize| a.get(k).and_then(|v| v.parse::<f32>().ok());
+    Some(Vec2::new(num(i)?, num(i + 1)?))
+}
+
+// ---------------------------------------------------------------------------
+// Clicks: what stops them.
+
+/// What a clickable node spawns with: a `Button` (its `Interaction`)
+/// that stops the pointer (`FocusPolicy::Block`), so a press reaches it
+/// and nothing under it. Spelled out because `Button`'s own `Block` loses
+/// to the `Pass` that `Node` requires whenever `Node` comes first in the
+/// bundle or the node was spawned before the button was inserted (as most
+/// of ours are); `block_clicks` makes the same correction for anything
+/// that forgets.
+pub fn clickable() -> impl Bundle {
+    (Button, bevy::ui::FocusPolicy::Block)
+}
+
+/// A node with an `Interaction` that lets the pointer through to what is
+/// under it as well (`Pass`, whichever of it and the `Interaction` came
+/// first; `block_clicks` leaves it so): for a node that only watches the
+/// pointer over a region other clickables sit in.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_add = pass_clicks)]
+pub struct PassClicks;
+
+fn pass_clicks(mut world: bevy::ecs::world::DeferredWorld, ctx: bevy::ecs::lifecycle::HookContext) {
+    match world.get_mut::<bevy::ui::FocusPolicy>(ctx.entity) {
+        Some(mut policy) => *policy = bevy::ui::FocusPolicy::Pass,
+        None => {
+            world.commands().entity(ctx.entity).try_insert(bevy::ui::FocusPolicy::Pass);
+        }
+    }
+}
+
+/// Anything the pointer can press or hover (an `Interaction` added: a
+/// `Button`, a hover-lit row) stops the pointer at itself, as `Button`
+/// means to, unless marked `PassClicks`.
+fn block_clicks(
+    add: On<Add, Interaction>,
+    mut nodes: Query<&mut bevy::ui::FocusPolicy, Without<PassClicks>>,
+    pass: Query<(), With<PassClicks>>,
+    mut commands: Commands,
+) {
+    let e = add.entity;
+    match nodes.get_mut(e) {
+        Ok(mut policy) => {
+            if *policy != bevy::ui::FocusPolicy::Block {
+                *policy = bevy::ui::FocusPolicy::Block;
+            }
+        }
+        Err(_) if !pass.contains(e) => {
+            commands.entity(e).try_insert(bevy::ui::FocusPolicy::Block);
+        }
+        Err(_) => {}
     }
 }
 
@@ -712,6 +824,254 @@ fn slider_pointer(
 }
 
 // ---------------------------------------------------------------------------
+// ScrollBar: a list's bar, its view free of the list's selection.
+
+/// The first row a list of `len` rows showing `shown` can start at, from
+/// `first` (clamped to the rows there are).
+pub fn scroll_clamp(first: i32, len: usize, shown: usize) -> usize {
+    first.clamp(0, len.saturating_sub(shown) as i32) as usize
+}
+
+/// A scroll bar's thumb in its track (`room` tall, between the arrows):
+/// its top and height, None when every row shows (no thumb, as VGUI's).
+pub fn scroll_thumb(len: usize, shown: usize, first: usize, room: f32) -> Option<(f32, f32)> {
+    if len <= shown || room <= 8.0 {
+        return None;
+    }
+    let thumb = (room * shown as f32 / len as f32).max(10.0).min(room);
+    let top = (room - thumb) * first.min(len - shown) as f32 / (len - shown) as f32;
+    Some((top, thumb))
+}
+
+/// The first row shown with the thumb's top dragged to `top` (track
+/// pixels; VGUI's `ScrollBarSlider` maps the nob's travel to the range).
+pub fn scroll_first_at(len: usize, shown: usize, room: f32, thumb: f32, top: f32) -> usize {
+    let travel = room - thumb;
+    if len <= shown || travel <= 0.0 {
+        return 0;
+    }
+    let f = (top / travel).clamp(0.0, 1.0);
+    (f * (len - shown) as f32).round() as usize
+}
+
+/// A scroll bar's thumb: pressing it grabs it (`ScrollDrag`); `owner` and
+/// `id` say whose list it is, the rest where it was drawn (scheme pixels).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct ScrollThumb {
+    pub owner: WindowId,
+    pub id: usize,
+    pub len: usize,
+    pub shown: usize,
+    /// The track's height between the arrows, the thumb's top in it and
+    /// its height.
+    pub room: f32,
+    pub top: f32,
+    pub thumb: f32,
+}
+
+/// The owner of an open drop-down's list (`combo_popup`): its thumb's
+/// drag scrolls whichever list is open.
+pub const COMBO_SCROLL: WindowId = "combo";
+
+/// A scroll bar's thumb held: which list and where it was grabbed; each
+/// frame it's held, the first row the pointer puts at the top.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct ScrollDrag {
+    pub held: Option<ScrollHeld>,
+    /// This frame's first row of the held list (owner, id, first).
+    pub at: Option<(WindowId, usize, usize)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollHeld {
+    pub thumb: ScrollThumb,
+    /// The pointer's y when pressed, window pixels, and window pixels per
+    /// scheme pixel.
+    pub grab: f32,
+    pub scale: f32,
+}
+
+impl ScrollHeld {
+    /// The first row with the pointer at `y` (window pixels).
+    pub fn first_at(&self, y: f32) -> usize {
+        let t = self.thumb;
+        let top = t.top + (y - self.grab) / self.scale.max(0.01);
+        scroll_first_at(t.len, t.shown, t.room, t.thumb, top)
+    }
+}
+
+/// A thumb pressed is held (as lists draw again) until the button is let
+/// go; each frame it reports the first row the pointer puts at the top.
+fn scroll_pointer(
+    mouse: Res<ButtonInput<MouseButton>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    thumbs: Query<(&ScrollThumb, &Interaction, &ComputedNode), Changed<Interaction>>,
+    mut drag: ResMut<ScrollDrag>,
+) {
+    let y = window.iter().next().and_then(Window::cursor_position).map(|p| p.y);
+    if drag.held.is_some() && !mouse.pressed(MouseButton::Left) {
+        drag.held = None;
+    }
+    if let Some(y) = y {
+        for (thumb, interaction, node) in &thumbs {
+            if *interaction == Interaction::Pressed {
+                let tall = node.size().y * node.inverse_scale_factor();
+                drag.held = Some(ScrollHeld {
+                    thumb: *thumb,
+                    grab: y,
+                    scale: tall / thumb.thumb.max(1.0),
+                });
+            }
+        }
+    }
+    let now = match (drag.held, y) {
+        (Some(h), Some(y)) => Some((h.thumb.owner, h.thumb.id, h.first_at(y))),
+        _ => None,
+    };
+    if drag.at != now {
+        drag.at = now;
+    }
+}
+
+/// A `ScrollBar` `h` tall at (x, y) in `parent` for a list of `len` rows
+/// showing `shown` from `first`: its arrows (`hit(-1)`, `hit(1)`: a row),
+/// the track above and below the thumb (`hit(-shown)`, `hit(shown)`: a
+/// page, as VGUI's), the thumb, dragged (`ScrollDrag`, `owner`/`id`).
+#[allow(clippy::too_many_arguments)]
+pub fn scroll_bar<B: Bundle>(
+    commands: &mut Commands,
+    parent: Entity,
+    look: &Look,
+    (x, y, h): (f32, f32, f32),
+    (len, shown, first): (usize, usize, usize),
+    (owner, id): (WindowId, usize),
+    hit: impl Fn(i32) -> B,
+) -> Entity {
+    let w = look.number("ScrollBar.Wide", 17.0);
+    let fg = look.color("ScrollBarButton.FgColor", [255, 255, 255, 255]);
+    let track = commands
+        .spawn((place(look, x, y, w, h), BackgroundColor(look.sunken_bg()), ChildOf(parent)))
+        .id();
+    let font = look.font("Marlett", (12.0, false));
+    for (ty, text, step) in [(0.0, "\u{25B2}", -1), (h - w, "\u{25BC}", 1)] {
+        let b = commands
+            .spawn((
+                Node {
+                    border: UiRect::all(px(1.0)),
+                    ..place(look, 0.0, ty, w, w)
+                },
+                bevel(look, true),
+                hit(step),
+                clickable(),
+                ChildOf(track),
+            ))
+            .id();
+        label(commands, b, look, (0.0, 0.0, w - 2.0, w - 2.0), text, font.clone(), fg, 0);
+    }
+    let room = h - 2.0 * w;
+    if let Some((top, thumb)) = scroll_thumb(len, shown, first, room) {
+        let page = shown as i32;
+        commands.spawn((
+            place(look, 0.0, w, w, top),
+            hit(-page),
+            clickable(),
+            ChildOf(track),
+        ));
+        commands.spawn((
+            place(look, 0.0, w + top + thumb, w, room - top - thumb),
+            hit(page),
+            clickable(),
+            ChildOf(track),
+        ));
+        commands.spawn((
+            Node {
+                border: UiRect::all(px(1.0)),
+                ..place(look, 1.0, w + top, w - 2.0, thumb)
+            },
+            bevel(look, true),
+            BackgroundColor(look.color("ScrollBarSlider.BgColor", [255, 255, 255, 64])),
+            ScrollThumb {
+                owner,
+                id,
+                len,
+                shown,
+                room,
+                top,
+                thumb,
+            },
+            clickable(),
+            ChildOf(track),
+        ));
+    }
+    track
+}
+
+// ---------------------------------------------------------------------------
+// Synthetic clicks: the pointer driven from the console (tests, screenshots).
+
+/// Pointer steps the console queued (`ui_click`, `ui_drag`): each frame
+/// the next one moves the cursor and presses or lets go of the left
+/// button, as a real pointer would through Bevy's input.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct PointerScript(pub std::collections::VecDeque<PointerStep>);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointerStep {
+    /// The cursor's place, window pixels.
+    pub at: Vec2,
+    /// Some: the left button pressed (true) or let go (false).
+    pub button: Option<bool>,
+}
+
+impl PointerScript {
+    /// A click at `at`: there, pressed, let go a few frames later.
+    pub fn click(&mut self, at: Vec2) {
+        self.drag(at, at, 0);
+    }
+
+    /// Press at `from`, move to `to` in `steps` frames, let go.
+    pub fn drag(&mut self, from: Vec2, to: Vec2, steps: usize) {
+        let q = &mut self.0;
+        q.push_back(PointerStep { at: from, button: None });
+        q.push_back(PointerStep { at: from, button: Some(true) });
+        q.push_back(PointerStep { at: from, button: None });
+        for k in 1..=steps {
+            q.push_back(PointerStep {
+                at: from.lerp(to, k as f32 / steps as f32),
+                button: None,
+            });
+        }
+        q.push_back(PointerStep { at: to, button: None });
+        q.push_back(PointerStep { at: to, button: Some(false) });
+        q.push_back(PointerStep { at: to, button: None });
+    }
+}
+
+/// The next queued pointer step: the cursor moved there, the button's
+/// press or release sent as Bevy's input messages.
+fn run_pointer_script(
+    mut script: ResMut<PointerScript>,
+    mut window: Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    mut buttons: MessageWriter<bevy::input::mouse::MouseButtonInput>,
+) {
+    let Some(step) = script.0.pop_front() else { return };
+    let Ok((entity, mut win)) = window.single_mut() else { return };
+    // As the system reports a pointer (no warp: Wayland refuses one).
+    win.bypass_change_detection().set_cursor_position(Some(step.at));
+    if let Some(down) = step.button {
+        buttons.write(bevy::input::mouse::MouseButtonInput {
+            button: MouseButton::Left,
+            state: if down {
+                bevy::input::ButtonState::Pressed
+            } else {
+                bevy::input::ButtonState::Released
+            },
+            window: entity,
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // TextEntry: caret and selection.
 
 /// A text entry's caret and the other end of its selection (char
@@ -1167,8 +1527,7 @@ pub fn frame(
                 },
                 bevel(look, true),
                 BackgroundColor(look.color("Button.BgColor", [0, 0, 0, 0])),
-                Button,
-                Interaction::default(),
+                clickable(),
                 ChildOf(e),
             ))
             .id();
@@ -1314,8 +1673,7 @@ pub fn button(
     };
     if state.enabled {
         commands.entity(e).insert((
-            Button,
-            Interaction::default(),
+            clickable(),
             ButtonStyle {
                 enabled: true,
                 latched: state.latched,
@@ -1402,7 +1760,7 @@ fn check_like(
     let radius = if round { BorderRadius::MAX } else { BorderRadius::ZERO };
     let mut e = commands.spawn((place(look, x, y, w, h), ChildOf(parent)));
     if enabled {
-        e.insert((Button, Interaction::default(), hit));
+        e.insert((clickable(), hit));
     }
     if focused {
         e.insert(Outline::new(
@@ -1501,7 +1859,7 @@ pub fn combo_box_aligned(
         ChildOf(parent),
     ));
     if enabled {
-        e.insert((Button, Interaction::default(), hit));
+        e.insert((clickable(), hit));
     }
     let e = e.id();
     let font = look.default_font();
@@ -1598,8 +1956,10 @@ pub fn combo_popup<B: Bundle>(
             height: percent(100.0),
             ..default()
         },
-        Button,
-        Interaction::default(),
+        // Blocking (`clickable`): a click passing through reached the
+        // box under it too, which opened the list again as the catcher
+        // closed it.
+        clickable(),
         outside,
         GlobalZIndex(POPUP_Z - 1),
         ChildOf(root),
@@ -1648,8 +2008,7 @@ pub fn combo_popup<B: Bundle>(
                 } else {
                     Color::NONE
                 }),
-                Button,
-                Interaction::default(),
+                clickable(),
                 hit(i),
                 ChildOf(menu),
             ))
@@ -1679,17 +2038,28 @@ pub fn combo_popup<B: Bundle>(
             ))
             .id();
         let room = rows as f32 * row_h;
-        let thumb = (room * rows as f32 / entries.len() as f32).max(10.0);
-        let at = (room - thumb) * list.first as f32 / (entries.len() - rows).max(1) as f32;
-        commands.spawn((
-            Node {
-                border: UiRect::all(px(1.0)),
-                ..place(look, 1.0, at, bar - 2.0, thumb)
-            },
-            bevel(look, true),
-            BackgroundColor(look.color("ScrollBarSlider.BgColor", [255, 255, 255, 64])),
-            ChildOf(track),
-        ));
+        if let Some((top, thumb)) = scroll_thumb(entries.len(), rows, list.first, room) {
+            // Dragged, it scrolls the list (`COMBO_SCROLL`).
+            commands.spawn((
+                Node {
+                    border: UiRect::all(px(1.0)),
+                    ..place(look, 1.0, top, bar - 2.0, thumb)
+                },
+                bevel(look, true),
+                BackgroundColor(look.color("ScrollBarSlider.BgColor", [255, 255, 255, 64])),
+                ScrollThumb {
+                    owner: COMBO_SCROLL,
+                    id: list.owner,
+                    len: entries.len(),
+                    shown: rows,
+                    room,
+                    top,
+                    thumb,
+                },
+                clickable(),
+                ChildOf(track),
+            ));
+        }
     }
 }
 
@@ -1712,8 +2082,7 @@ pub fn slider(
     if enabled {
         e.insert((
             SliderTrack { inset: NOB, ..track },
-            Button,
-            Interaction::default(),
+            clickable(),
             bevy::ui::RelativeCursorPosition::default(),
         ));
     }
@@ -1783,8 +2152,7 @@ pub fn text_entry(
     ));
     if enabled {
         e.insert((
-            Button,
-            Interaction::default(),
+            clickable(),
             bevy::ui::RelativeCursorPosition::default(),
             hit,
         ));
@@ -1899,7 +2267,7 @@ pub fn tabs<B: Bundle>(
             ChildOf(parent),
         ));
         if *enabled {
-            e.insert((Button, Interaction::default(), hit(i)));
+            e.insert((clickable(), hit(i)));
         }
         let e = e.id();
         let color = if is_open {
@@ -1964,6 +2332,281 @@ mod tests {
     use super::*;
 
     const SCREEN: Vec2 = Vec2::new(1280.0, 720.0);
+
+    /// A scroll bar's thumb: sized for the rows shown, placed for the
+    /// first; dragged, its travel maps onto every first row there is, the
+    /// ends past it clamped; none when everything shows.
+    #[test]
+    fn a_scroll_bars_thumb_maps_its_travel_onto_the_rows() {
+        let (len, shown, room) = (100, 10, 200.0);
+        assert_eq!(scroll_thumb(len, shown, 0, room), Some((0.0, 20.0)));
+        assert_eq!(scroll_thumb(len, shown, 90, room), Some((180.0, 20.0)));
+        assert_eq!(scroll_thumb(len, shown, 45, room), Some((90.0, 20.0)));
+        assert_eq!(scroll_thumb(5, shown, 0, room), None);
+        // A long list: no thinner than 10.
+        assert_eq!(scroll_thumb(10_000, shown, 0, room).map(|t| t.1), Some(10.0));
+        assert_eq!(scroll_first_at(len, shown, room, 20.0, 90.0), 45);
+        assert_eq!(scroll_first_at(len, shown, room, 20.0, -50.0), 0);
+        assert_eq!(scroll_first_at(len, shown, room, 20.0, 500.0), 90);
+        assert_eq!(scroll_clamp(-3, len, shown), 0);
+        assert_eq!(scroll_clamp(95, len, shown), 90);
+        // Held at its top, drawn at 1.5 window pixels per scheme pixel:
+        // the pointer 45 window pixels down is 30 scheme pixels: 15 rows.
+        let held = ScrollHeld {
+            thumb: ScrollThumb {
+                owner: "menu",
+                id: 0,
+                len,
+                shown,
+                room,
+                top: 0.0,
+                thumb: 20.0,
+            },
+            grab: 300.0,
+            scale: 1.5,
+        };
+        assert_eq!(held.first_at(300.0), 0);
+        assert_eq!(held.first_at(345.0), 15);
+        assert_eq!(held.first_at(1000.0), 90);
+    }
+
+    /// An open drop-down's catcher (the screen behind its list) takes a
+    /// click whole: nothing under it, its own box included, sees the
+    /// press (else a click on the box closed the list and opened it
+    /// again).
+    #[test]
+    fn an_open_lists_catcher_blocks_the_click() {
+        let mut app = App::new();
+        let root = app.world_mut().spawn(Node::default()).id();
+        let parent = app.world_mut().spawn(Node::default()).id();
+        let mut commands_queue = bevy::ecs::world::CommandQueue::default();
+        let mut commands = Commands::new(&mut commands_queue, app.world());
+        let fonts = UiFonts::default();
+        let look = Look {
+            ui: None,
+            fonts: &fonts,
+            s: 1.0,
+            height: 720.0,
+            accent: Color::WHITE,
+        };
+        #[derive(Component)]
+        struct Outside;
+        let list = ComboList::open(0, 3, 0);
+        let entries = ["a".to_string(), "b".into(), "c".into()];
+        combo_popup(&mut commands, parent, root, &look, (0.0, 0.0, 100.0, 24.0), &entries, &list, |_| (), Outside);
+        commands_queue.apply(app.world_mut());
+        let mut q = app.world_mut().query_filtered::<&bevy::ui::FocusPolicy, With<Outside>>();
+        assert_eq!(q.single(app.world()).ok(), Some(&bevy::ui::FocusPolicy::Block));
+    }
+
+    /// Bevy's UI as the game runs it (layout, stacking, focus: what the
+    /// pointer presses) in a 400x300 window, with `block_clicks`, the
+    /// pointer driven by `PointerScript`; nothing drawn.
+    fn pointer_app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::image::ImagePlugin::default(),
+            bevy::input::InputPlugin,
+            bevy::window::WindowPlugin {
+                primary_window: None,
+                exit_condition: bevy::window::ExitCondition::DontExit,
+                close_when_requested: false,
+                ..default()
+            },
+            TransformPlugin,
+            bevy::text::TextPlugin,
+            bevy::ui::UiPlugin,
+        ))
+        // What the UI's picking backend reads (the focus system is what
+        // the menus use).
+        .add_plugins((bevy::picking::PickingPlugin, bevy::picking::InteractionPlugin))
+        .init_asset::<bevy::image::TextureAtlasLayout>()
+        // Hidden nodes take no clicks: the focus system reads visibility.
+        .add_plugins(bevy::camera::visibility::VisibilityPlugin)
+        .init_asset::<Mesh>()
+        .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>()
+        .init_resource::<PointerScript>()
+        .add_observer(block_clicks)
+        .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems));
+        let mut window = Window::default();
+        window.resolution.set(400.0, 300.0);
+        app.world_mut().spawn((window, PrimaryWindow));
+        let size = UVec2::new(400, 300);
+        app.world_mut().spawn((
+            Camera2d,
+            Camera {
+                computed: bevy::camera::ComputedCameraValues {
+                    target_info: Some(bevy::camera::RenderTargetInfo {
+                        physical_size: size,
+                        scale_factor: 1.0,
+                    }),
+                    ..default()
+                },
+                viewport: Some(bevy::camera::Viewport {
+                    physical_size: size,
+                    ..default()
+                }),
+                ..default()
+            },
+        ));
+        app
+    }
+
+    /// Who a press reached.
+    #[derive(Component)]
+    struct Clicked(&'static str);
+
+    /// A UI spawned through `Commands` as the menus do, in the scheme's
+    /// look at 1:1 (rects are window pixels) on a root filling the
+    /// window; then a press at `at`: the `Clicked` nodes it reached,
+    /// sorted, and whether a scroll bar's thumb took it.
+    fn press(at: Vec2, ui: impl FnOnce(&mut Commands, &Look, Entity)) -> (Vec<&'static str>, bool) {
+        let mut app = pointer_app();
+        let fonts = UiFonts::default();
+        let look = Look {
+            ui: None,
+            fonts: &fonts,
+            s: 1.0,
+            height: 300.0,
+            accent: Color::WHITE,
+        };
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let mut commands = Commands::new(&mut queue, app.world());
+        let root = commands
+            .spawn(Node {
+                width: percent(100.0),
+                height: percent(100.0),
+                ..default()
+            })
+            .id();
+        ui(&mut commands, &look, root);
+        queue.apply(app.world_mut());
+        // Laid out first, then the cursor there, then the press.
+        app.update();
+        app.update();
+        let mut script = PointerScript::default();
+        script.0.push_back(PointerStep { at, button: None });
+        script.0.push_back(PointerStep { at, button: Some(true) });
+        app.insert_resource(script);
+        app.update();
+        app.update();
+        let mut q = app.world_mut().query::<(&Clicked, &Interaction)>();
+        let mut hit: Vec<_> = q
+            .iter(app.world())
+            .filter(|(_, i)| **i == Interaction::Pressed)
+            .map(|(c, _)| c.0)
+            .collect();
+        hit.sort();
+        let mut q = app.world_mut().query::<(&ScrollThumb, &Interaction)>();
+        let thumb = q.iter(app.world()).any(|(_, i)| *i == Interaction::Pressed);
+        (hit, thumb)
+    }
+
+    /// A button drawn over another clickable takes the click alone: the
+    /// one under it (here a list row) never sees the press. Before
+    /// `clickable`, `Node` ahead of `Button` left every button `Pass`, and
+    /// both were pressed.
+    #[test]
+    fn a_button_over_another_takes_the_click_alone() {
+        let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+            let row = commands
+                .spawn((place(look, 10.0, 10.0, 300.0, 40.0), clickable(), Clicked("row"), ChildOf(root)))
+                .id();
+            let state = ButtonState::enabled(true);
+            button(commands, row, look, (200.0, 5.0, 80.0, 30.0), "OK", state, 0, Clicked("button"));
+        };
+        assert_eq!(press(Vec2::new(250.0, 30.0), ui).0, ["button"]);
+        // Beside the button: the row.
+        assert_eq!(press(Vec2::new(50.0, 30.0), ui).0, ["row"]);
+    }
+
+    /// A scroll bar laid over a list's right edge: its thumb and arrows
+    /// take a press without the row under them seeing it (a drag of the
+    /// thumb picked the row too).
+    #[test]
+    fn a_scroll_bars_thumb_over_a_row_takes_the_click_alone() {
+        let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+            commands.spawn((place(look, 0.0, 0.0, 300.0, 220.0), clickable(), Clicked("row"), ChildOf(root)));
+            let bar = scroll_bar(commands, root, look, (283.0, 0.0, 220.0), (100, 10, 0), ("menu", 0), |step| {
+                Clicked(if step == 1 { "arrow" } else { "other" })
+            });
+            commands.entity(bar).insert(ZIndex(1));
+        };
+        // The thumb: the first rows shown, at the bar's top past its arrow.
+        assert_eq!(press(Vec2::new(290.0, 25.0), ui), (vec![], true));
+        // The down arrow at its bottom.
+        assert_eq!(press(Vec2::new(290.0, 212.0), ui), (vec!["arrow"], false));
+        // Off the bar: the row.
+        assert_eq!(press(Vec2::new(100.0, 100.0), ui), (vec!["row"], false));
+    }
+
+    /// A frame's close box takes the click (not the frame under it); a
+    /// frame stops a click on its blank face from reaching the menu row
+    /// under the dialog.
+    #[test]
+    fn a_frame_and_its_close_box_stop_the_click() {
+        let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+            commands.spawn((place(look, 0.0, 0.0, 400.0, 300.0), clickable(), Clicked("menu row"), ChildOf(root)));
+            let parts = frame(commands, root, look, FrameSpec::new("test"), (210.0, 200.0), "Test");
+            // `place_frames` puts it on screen; here at the corner.
+            commands.entity(parts.frame).insert(Clicked("frame")).entry::<Node>().and_modify(|mut n| {
+                n.left = px(0.0);
+                n.top = px(0.0);
+            });
+            commands.entity(parts.close.unwrap()).insert(Clicked("close"));
+        };
+        assert_eq!(press(Vec2::new(195.0, 14.0), ui).0, ["close"]);
+        assert_eq!(press(Vec2::new(100.0, 100.0), ui).0, ["frame"]);
+        assert_eq!(press(Vec2::new(300.0, 250.0), ui).0, ["menu row"]);
+    }
+
+    /// Anything with an `Interaction` stops the pointer however it was
+    /// spawned (`block_clicks`): `Node` first and `Button` inserted after
+    /// included; `PassClicks` lets the press through as well.
+    #[test]
+    fn an_interaction_blocks_unless_it_passes_clicks() {
+        for (pass, want) in [(false, vec!["top"]), (true, vec!["top", "under"])] {
+            let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+                commands.spawn((place(look, 0.0, 0.0, 100.0, 100.0), Clicked("under"), ChildOf(root))).insert(Button);
+                let mut top = commands.spawn((place(look, 0.0, 0.0, 50.0, 50.0), ChildOf(root)));
+                top.insert((Button, Clicked("top")));
+                if pass {
+                    top.insert(PassClicks);
+                }
+            };
+            assert_eq!(press(Vec2::new(20.0, 20.0), ui).0, want, "PassClicks {pass}");
+        }
+    }
+
+    /// `ui_click` and `ui_drag`: the cursor there, the button pressed and
+    /// let go as Bevy's input messages, one step a frame.
+    #[test]
+    fn scripted_pointer_clicks_and_drags() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin)
+            .init_resource::<PointerScript>()
+            .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems));
+        app.world_mut().spawn((Window::default(), PrimaryWindow));
+        app.world_mut()
+            .resource_mut::<PointerScript>()
+            .drag(Vec2::new(10.0, 20.0), Vec2::new(10.0, 60.0), 4);
+        let mut seen = Vec::new();
+        for _ in 0..12 {
+            app.update();
+            let down = app.world().resource::<ButtonInput<MouseButton>>().pressed(MouseButton::Left);
+            let mut q = app.world_mut().query::<&Window>();
+            let at = q.single(app.world()).unwrap().cursor_position();
+            seen.push((at.map(|p| p.y), down));
+        }
+        assert_eq!(seen[0], (Some(20.0), false));
+        assert_eq!(seen[1], (Some(20.0), true), "pressed");
+        assert!(seen[2..8].iter().all(|(_, down)| *down), "held while it moves");
+        assert_eq!(seen[7], (Some(60.0), true));
+        assert_eq!(seen[8], (Some(60.0), false), "let go at the end");
+        assert!(app.world().resource::<PointerScript>().0.is_empty());
+    }
 
     /// A dialog's frame stacks over the game menu's layer and hides what
     /// of the menu is under it: drawn over the main menu's picture (the
