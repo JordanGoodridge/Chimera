@@ -143,6 +143,10 @@ pub struct MapMesh {
     /// Its base texture's frames (indices into `MapData::textures`), when a
     /// map entity can pick one (env_texturetoggle; `render::tint::TextureFrames`).
     pub frames: Vec<usize>,
+    /// A window's edge piece (`PaneLook::Edge`): the jagged mask whose
+    /// alpha cuts it (index into `MapData::textures`), laid over each strip
+    /// by its own coordinates while the material keeps the face's.
+    pub pane_mask: Option<usize>,
 }
 
 impl MapMesh {
@@ -169,9 +173,11 @@ pub enum PaneLook {
     /// The face in its broken material (Source `$crackmaterial`): the
     /// same triangles, drawn over the unbroken panes once broken.
     Cracked,
-    /// An edge material (one of several, numbered): the face's triangles
-    /// as a template, from which strips along the edges of unbroken panes
-    /// facing broken ones are cut (`breakables::edge_strips`).
+    /// An edge piece (one of several, numbered): the face's triangles in
+    /// its broken material as a template, from which strips along the edges
+    /// of unbroken panes facing broken ones are cut
+    /// (`breakables::edge_strips`), each cut by its jagged mask
+    /// (`MapMesh::pane_mask`).
     Edge(u8),
 }
 

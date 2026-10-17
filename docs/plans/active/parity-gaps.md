@@ -248,8 +248,8 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Entity I/O, triggers, movers, breakables, doors, fire | have | | | specs/source |
-| Breakable glass decals, brush propdata templates | have (new) | L | S | glass takes "GlassBreak", bulletproof glass "BulletProof" and never breaks; a brush's `propdata` template sets its health, multipliers and gibs (our reading of "fills in", tech-debt "Breakables") |
-| Breakables' damage types, broken-window drawing | differs | L | M | backlog 7 "Breakables, remaining": spec open questions 1, 2, 4, 5 and 8 need the probe server or captures |
+| Breakable glass decals, brush propdata templates, bullet trace effects | have (new) | L | S | glass takes "GlassBreak", bulletproof glass "BulletProof" and never breaks; a brush's `propdata` template sets its health, multipliers and gibs (our reading of "fills in", tech-debt "Breakables"); half the bullets on a computer brush spark (electric sparks, "Breakable.Computer"), half on bulletproof glass ricochet (`Bounce.Shrapnel`; no spec gives the ricochet a look) |
+| Breakables' damage types, broken-window drawing | differs | L | M | backlog 7 "Breakables, remaining": spec open questions 1, 2, 4, 5 and 8 need the probe server or captures; the jagged edge pieces are the edge textures read as masks over the crack material (were drawn plain white; which edge goes where is ours) |
 | Soundscapes | have | | | |
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |

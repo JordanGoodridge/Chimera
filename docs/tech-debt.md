@@ -50,7 +50,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
 - map: Displacement brushes matched by plane and centre; non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
 - logic: Logic spec choices where the original is unmeasured (tick rounding, trigger timing, use traces) (`source/logic/src/logic/world.rs`)
-- logic: Breakables: damage factors, window behaviour and what a propdata template fills in by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
+- logic: Breakables: damage factors, window behaviour, what a propdata template fills in and the bullet-trace sparks/ricochet's look by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
 - logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking (`source/logic/src/logic/props.rs`)
 - logic: Prop damage parts left out or approximated (explosive_resist, buckshot doubling, break-on-touch...) (`source/logic/src/logic/prop_damage.rs`)
 - logic: Fire: cvars as constants, simplified traces and our readings of the spec's open questions (`source/logic/src/logic/fire.rs`)
