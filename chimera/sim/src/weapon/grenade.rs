@@ -47,7 +47,9 @@
 //! top of the mix range, a diffusor as a 2.5 kHz low-pass, the 3 kHz LFO as an
 //! added tone, a fade time of -1 read as a 1 s exponential fade); which flash
 //! muffle by blindness (60 %/30 % of the longest) is a hypothesis (Q14), HE
-//! uses the base player's rule, not presets 137-139 (Q11). The HE view shake is
+//! uses the base player's rule, not presets 137-139, and rings only players
+//! the blast hurts (Q11, capture C31: the server's message isn't
+//! observable on the probe). The HE view shake is
 //! a guess (2 units, 700-unit radius, 1 s; Q9). Bots' sight through smoke:
 //! blocked when more than the blocker's radius (0.75 × the cloud's) of the line
 //! is inside (Q16 hypothesis). A breakable hit is assumed broken (×0.4, no
@@ -1330,9 +1332,13 @@ fn blast(
             kind: DamageKind::Blast,
             weapon: Some(weapon),
         };
-        // Armour takes its share only if the blast lands (`HitArmor`).
+        // Armour takes its share only if the blast lands (`HitArmor`);
+        // so does the hearing effect (spec 5.5: a player that takes blast
+        // damage; not a teammate's with friendly fire off, a noclipping or
+        // `God` player). The thrower's own blast always lands.
         world.armor.apply(&mut damage, raw, b.armor_ratio, b.quantum);
         if let Some(hearing) = &b.hearing
+            && world.armor.lands(&damage)
             && let Some(&(_, at)) = origins.iter().find(|(e, _)| *e == target)
             && let Some(effect) = hearing.effect(raw, at.distance(origin))
         {

@@ -63,6 +63,10 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
     flesh impact?); then `god` with kevlar and get shot by an enemy bot
     (armour on the HUD, sounds, flinch, slowdown, blood). As in
     parity-gaps.md C30.
+14. **C31 HE ear-ringing**: with `mp_friendlyfire 0`, a teammate bot's
+    HE at your feet (audio recorded, `dsp_player` in the console right
+    after); again in `noclip`; once with `mp_friendlyfire 1`. As in
+    parity-gaps.md C31.
 
 ## Sitting 2: sound (about 20 min)
 

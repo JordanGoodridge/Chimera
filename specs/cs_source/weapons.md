@@ -1091,8 +1091,9 @@ shots (`demodump --tempents`).
   FL_GODMODE); what the shooter's own client draws or plays for a
   refused hit (client-side effects; capture C30 in
   docs/plans/active/parity-gaps.md).
-- Aside: the thrower of the same HE throw took 78 with friendly fire on
-  and 7.5 with it off (same detonation point); not looked into.
+- The thrower's own HE hurts him with friendly fire on or off alike
+  (grenades.md "Self damage"; an earlier aside here of 78 vs 7.5 did not
+  reproduce over 14 paired throws).
 
 ### M4, M8, M10 Fire timing, deploy, reload, empty clip
 

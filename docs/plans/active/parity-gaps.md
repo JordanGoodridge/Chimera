@@ -115,6 +115,7 @@ report folders):
 |---|---|---|---|---|
 | Damage, falloff, hitgroups, armour | have | | | measured M5-M7; 2026-10-17: the armour left is truncated, so a fraction of a point costs a whole one (a knife slash on 100 leaves 98, was 99; `weapon::armor_split`) |
 | Refused hits (teammates with friendly fire off, noclip, god) | have (fixed) | M | S | measured 2026-10-17 (weapons.md "Refused hits"): a teammate's bullet, knife or HE with `mp_friendlyfire 0` does nothing (no armour, sound, blood, slowdown or flinch); a noclipping player's bullet hit bleeds and flinches, nothing else. Ours took armour from every refused hit but noclip's and played the flesh impact; now armour only where a hit lands (`weapon::HitArmor`), refused hits are silent, noclip flinches. God mode unmeasured (C30); an HE blast now sounds kevlar or the flesh impact as measured (was silent) |
+| HE self damage and ear-ringing | have (fixed) | L | S | measured 2026-10-17 (grenades.md "Self damage"): the thrower takes his own blast as anyone at his distance, `mp_friendlyfire` 0 or 1 alike (as ours). Who hears the ring is unmeasurable on the server (Q11, C31); ours rang every player in reach, now only those the blast hurts (not a teammate with friendly fire off, noclip, god) |
 | AK-47/M4A1/pistols/AWP recoil, inaccuracy | have | | | measured M1-M4 |
 | `invnext` / `invprev` (the mouse wheel's weapon commands) | have (fixed) | H | S | were missing; on the wheel by default as CS:S (MWHEELUP invprev, MWHEELDOWN invnext; wheel jumping: `bind mwheeldown +jump`) |
 | Picking the second grenade from the HUD selection | have (fixed) | M | S | the pick drew the first weapon of the slot; now `Intent::pick` names it |
@@ -696,4 +697,13 @@ says what decides the open point.
   bot shoot you: armour left on the HUD, any hurt or kevlar sound, the
   flinch and slowdown, blood. Decides weapons.md "Refused hits" (god mode
   is ours: like a refused hit, no armour, sound, slowdown or flinch).
+- **C31 HE ear-ringing for players it can't hurt.** A listen server on
+  de_dust2, `sv_cheats 1`, `bot_stop 1`, `mp_friendlyfire 0`, a bot on
+  your team: let it throw an HE at your feet (`bot_add_ct`, or throw it
+  yourself off a wall so it lands at a teammate) with the game's audio
+  recorded, then `dsp_player` in the console right after; the same in
+  `noclip`, and once with `mp_friendlyfire 1` as the control (hurt: DSP
+  32-37). Does a refused blast ring your ears? The server's DSP change
+  goes to the hurt player's client only (a SourceTV demo shows nothing).
+  Decides grenades.md Q11 (ours: only players the blast hurts).
 
