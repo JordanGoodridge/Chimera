@@ -2,6 +2,9 @@
 //! this module owns Source's conventions: Z-up inches to Y-up meters, which
 //! surfaces draw and collide (by surface flags, and only brush entity
 //! classes CS:S draws: `draws_brushes`), and which entities are spawns.
+//! Displacements take their texture coordinates and lightmap samples from
+//! the undisplaced grid (`face_triangles_blend`), not by projecting the
+//! sculpted surface (specs/cs_source/shaders.md open question 20).
 //!
 //! World collision is every player-solid brush by its contents (the brush
 //! a displacement was built from included, as in CS:S: `brush_kept`), plus
@@ -504,19 +507,24 @@ pub fn text_lumps_utf8(mut bytes: Vec<u8>) -> Vec<u8> {
 pub fn face_triangles(face: &vbsp::Handle<'_, vbsp::Face>) -> Vec<[(vbsp::Vector, Vec2); 3]> {
     face_triangles_blend(face)
         .into_iter()
-        .map(|t| t.map(|(v, l, _)| (v, l)))
+        .map(|t| t.map(|(v, l, _, _)| (v, l)))
         .collect()
 }
 
 /// `face_triangles` with each vertex's blend weight for two-texture
-/// (WorldVertexTransition) materials: the displacement vertex alpha / 255;
-/// 0 on brush faces.
-pub fn face_triangles_blend(face: &vbsp::Handle<'_, vbsp::Face>) -> Vec<[(vbsp::Vector, Vec2, f32); 3]> {
+/// (WorldVertexTransition) materials (the displacement vertex alpha / 255;
+/// 0 on brush faces) and the point its texture coordinates project from
+/// (`TexInfo::uv`): the vertex itself on brush faces, the undisplaced grid
+/// point on displacements, so the texture follows the sculpted surface
+/// (stretching where the grid stretches) rather than being projected
+/// through it, which smeared it in streaks where a displacement moves
+/// its vertices sideways (cs_militia's rock walls).
+pub fn face_triangles_blend(face: &vbsp::Handle<'_, vbsp::Face>) -> Vec<[(vbsp::Vector, Vec2, f32, vbsp::Vector); 3]> {
     let tex = face.texture();
     let Some(disp) = face.displacement() else {
         return face
             .triangulate()
-            .map(|t| t.map(|v| (v, lightmap::luxel_coords(&tex, face, v), 0.0)))
+            .map(|t| t.map(|v| (v, lightmap::luxel_coords(&tex, face, v), 0.0, v)))
             .collect();
     };
     // Base grid: bilinear over the face's corners, starting at the corner
@@ -551,7 +559,7 @@ pub fn face_triangles_blend(face: &vbsp::Handle<'_, vbsp::Face>) -> Vec<[(vbsp::
     let grid = |x: usize, y: usize| {
         let (fx, fy) = (x as f32 / steps as f32, y as f32 / steps as f32);
         let base = lerp(lerp(corners[0], corners[1], fx), lerp(corners[3], corners[2], fx), fy);
-        (base + offsets[x * n + y], Vec2::new(fy, fx) * size, alphas[x * n + y])
+        (base + offsets[x * n + y], Vec2::new(fy, fx) * size, alphas[x * n + y], base)
     };
     // Every triangle below runs the grid's way round (x, then y). The
     // whole surface faces the side the base face does, decided once from
@@ -710,10 +718,10 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
         let displaced_face = face.displacement().is_some();
         // Re-wind triangles to face the plane normal (displacements come
         // wound per surface, folds included: `face_triangles_blend`).
-        let tris: Vec<[(vbsp::Vector, Vec2, f32); 3]> = face_triangles_blend(&face)
+        let tris: Vec<[(vbsp::Vector, Vec2, f32, vbsp::Vector); 3]> = face_triangles_blend(&face)
             .into_iter()
             .map(|t| {
-                let [a, b, c] = t.map(|(v, _, _)| to_engine(place(v)));
+                let [a, b, c] = t.map(|(v, _, _, _)| to_engine(place(v)));
                 if !displaced_face && (b - a).cross(c - a).dot(face_normal) < 0.0 {
                     [t[0], t[2], t[1]]
                 } else {
@@ -728,7 +736,7 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
             for t in &tris {
                 let base = data.collision_positions.len() as u32;
                 data.collision_positions
-                    .extend(t.iter().map(|(v, _, _)| to_engine(*v).to_array()));
+                    .extend(t.iter().map(|(v, _, _, _)| to_engine(*v).to_array()));
                 data.collision_indices.push([base, base + 1, base + 2]);
             }
         }
@@ -783,18 +791,18 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
         let lm = pending_lm.entry(key).or_default();
         let displaced = face.displacement().is_some();
         for t in &tris {
-            let p: [Vec3; 3] = t.map(|(v, _, _)| to_engine(place(v)));
+            let p: [Vec3; 3] = t.map(|(v, _, _, _)| to_engine(place(v)));
             // Brush faces are flat; displacements get per-triangle normals.
             let n = if displaced {
                 (p[1] - p[0]).cross(p[2] - p[0]).normalize_or_zero()
             } else {
                 face_normal
             };
-            for (v, luxel, blend) in t {
+            for (v, luxel, blend, uv_at) in t {
                 mesh.indices.push(mesh.positions.len() as u32);
                 mesh.positions.push(to_engine(place(*v)).to_array());
                 mesh.normals.push(n.to_array());
-                mesh.uvs.push(tex.uv(*v));
+                mesh.uvs.push(tex.uv(*uv_at));
                 mesh.blend_weights.push(*blend);
                 lm.push((slot, *luxel));
             }

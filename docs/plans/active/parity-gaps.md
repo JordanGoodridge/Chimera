@@ -54,10 +54,10 @@ measured rectangles live in `games/cs_source/tests/ui/heavy/hud_layout.rs` and p
 
 | Map | Views | Mean abs diff (this branch) | Before (2026-10-07 captures) | Mean luma error | Worst three views |
 |---|---|---|---|---|---|
-| de_dust2 | 32 | 0.0308 | 0.0308 | 0.0029 | `sky_n` 0.060 (luma 0.753/0.743), `a_sign_e` 0.052, `a_sign_w` 0.047 |
-| de_nuke | 27 | 0.0241 | 0.0250 | 0.0057 | `cam6` 0.043, `cam16` 0.041 (sharpness 13.0/10.8), `cam4` 0.034 |
-| cs_office | 23 | 0.0185 | 0.0204 | 0.0019 | `cam0` 0.036, `zone1_180` 0.028, `zone1_90` 0.027 |
-| de_aztec | 13 | 0.0406 | 0.0409 | 0.0015 | `zone0_270` 0.064, `zone0_180` 0.059, `zone1_90` 0.054 |
+| de_dust2 | 32 | 0.0303 | 0.0308 | 0.0029 | `sky_n` 0.060 (luma 0.753/0.743), `a_sign_e` 0.052, `a_sign_w` 0.047 |
+| de_nuke | 27 | 0.0239 | 0.0250 | 0.0057 | `cam6` 0.042, `cam16` 0.041 (sharpness 13.0/10.8), `cam4` 0.034 |
+| cs_office | 23 | 0.0181 | 0.0204 | 0.0019 | `cam0` 0.029, `zone1_180` 0.028, `zone1_90` 0.027 |
+| de_aztec | 13 | 0.0354 | 0.0409 | 0.0015 | `zone1_90` 0.051, `zone0_270` 0.050, `zone1_0` 0.046 |
 
 Reading: abs diff is the mean absolute difference per pixel (0-1);
 luma is each image's mean. Brightness matches everywhere (mean luma
@@ -81,8 +81,11 @@ report folders):
   a VertexLitGeneric static prop in the 3D skybox, no baked `.vhv`) show
   dark teal where CS:S's are light grey: their light probe in the
   skybox is wrong (a separate gap, listed under Rendering).
-- de_aztec `zone0_*`: the difference is texture-level noise over the
-  bump-mapped walls and the grass blend (luma equal to 0.001), plus
+- de_aztec `zone0_*`: the difference was mostly the displacements'
+  texture mapping (projected through the sculpted surface; now from the
+  undisplaced grid, 2026-10-17: `zone0_180` 0.059 -> 0.045, its detail
+  correlation 0.15 -> 0.62); what is left is texture-level noise over
+  the bump-mapped walls and the grass blend (luma equal to 0.001), plus
   the sky at the top: filtering, not light.
 - de_dust2 `sky_*`, `a_sign_*`: the sky's rope and far hills (known:
   rope sag, haze) and the bump-mapped walls' detail.
@@ -213,6 +216,8 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Lightmaps, bump, envmaps, two-texture blend, sky, fog | have | | | refcmp above |
+| Displacement texture mapping | have (fixed) | M | S | displacements projected their texture through the sculpted surface, smearing it in streaks wherever vertices move sideways (reported on cs_militia's rock walls at its front yard); now mapped from the undisplaced grid as their lightmaps are (shaders.md open question 20: measured, refcmp detail correlation up on every map, de_aztec 0.54 -> 0.72) |
+| Bump maps in DirectX 9 fallback blocks | have (fixed) | L | S | 181 stock materials have a `LightmappedGeneric_DX9` (or `>=DX90`) block, which the VMT parser skipped; about 110 name their `$bumpmap` only there (HL2's `_c17`/`_cheap` walls and floors: cs_militia's sewer-concrete wall by the reported spot, cs_assault, cs_compound, de_port, de_inferno), drawn flat; now read with the block's keys (`lenient_vmt`) |
 | Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone; glass shards tumble and settle, slime splashes from the `.pcf` (2026-10-15) |
 | Impact effects of others' shots beyond the shooter's PAS | differs | L | M | every client makes them (impact_effects.md 1; no network relevance yet, `net::server`) |
 | Knife slash mark | differs | L | S | `ManhackCut` is a guess; no spec names it (backlog 3 "Decals, remaining") |
