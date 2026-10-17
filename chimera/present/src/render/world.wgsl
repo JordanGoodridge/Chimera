@@ -81,7 +81,7 @@ struct WorldParams {
     selfillum: f32,
     selfillum_tint: vec4<f32>,
     unlit: f32,
-    unlit_tint: vec4<f32>,
+    modulation: vec4<f32>,
     // A window's broken look: an edge piece's alpha x its jagged mask's
     // (tile: the vertex colour's blue; within it: red and green).
     pane_mask: f32,
@@ -373,9 +373,12 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         return albedo;
     }
     light = light + dynamic_light(in.world_position.xyz, normalize(in.world_normal), in.position.xy);
-    // UnlitGeneric on a brush: the texture's own brightness x $color.
+    // UnlitGeneric on a brush: the texture's own brightness x $color;
+    // lit, the lighting x $color (shaders.md 2, modulation).
     if params.unlit > 0.5 {
-        light = params.unlit_tint.rgb;
+        light = params.modulation.rgb;
+    } else {
+        light = light * params.modulation.rgb;
     }
     var color = albedo.rgb * light;
     // $selfillum: toward tint x albedo, unlit, by the base texture's alpha.

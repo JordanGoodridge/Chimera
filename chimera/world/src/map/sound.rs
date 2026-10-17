@@ -332,12 +332,26 @@ impl SurfaceGrid {
             .filter(|m| !m.skybox && m.entity.is_none() && !m.material.starts_with("decal:"))
         {
             let Some(surface) = &m.surface else { continue };
-            let id = *index.entry(surface.clone()).or_insert_with(|| {
-                me.names.push(surface.clone());
-                (me.names.len() - 1) as u16
-            });
+            let mut id_of = |surface: &String| {
+                *index.entry(surface.clone()).or_insert_with(|| {
+                    me.names.push(surface.clone());
+                    (me.names.len() - 1) as u16
+                })
+            };
+            let first = id_of(surface);
+            // A blended surface's second property, where the vertex alphas
+            // say the second texture shows.
+            let second = m
+                .surface2
+                .as_ref()
+                .filter(|_| m.blend_weights.len() == m.positions.len())
+                .map(&mut id_of);
             for t in m.indices.as_chunks::<3>().0 {
                 let tri = t.map(|i| Vec3::from(m.positions[i as usize]));
+                let id = match second {
+                    Some(id2) if second_surface(t.map(|i| m.blend_weights[i as usize])) => id2,
+                    _ => first,
+                };
                 let i = me.tris.len() as u32;
                 let lo = tri[0].min(tri[1]).min(tri[2]);
                 let hi = tri[0].max(tri[1]).max(tri[2]);
@@ -401,6 +415,16 @@ impl SurfaceGrid {
         }
         best.map(|(_, id)| self.names[id as usize].as_str())
     }
+}
+
+/// Whether a blended surface's triangle (its corners' blend weights,
+/// the displacement vertex alpha / 255) takes the material's
+/// `$surfaceprop2`: when their mean is over one half, i.e. the second
+/// texture is the one mostly showing (Source picks the surface per
+/// displacement collision triangle from its vertices' alpha; the exact
+/// threshold isn't in the specs: docs/plans/active/parity-gaps.md).
+pub fn second_surface(weights: [f32; 3]) -> bool {
+    weights.iter().sum::<f32>() > 1.5
 }
 
 /// The point of triangle `t` closest to `p`.
@@ -488,4 +512,54 @@ pub struct StartSound {
     pub looping: bool,
     /// Bypass the room (Source's `#` waves).
     pub dry: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::map::{MapData, MapMesh};
+
+    /// A blended surface's triangles take `$surfaceprop2` where their
+    /// corners' mean blend weight is over one half.
+    #[test]
+    fn blended_surfaces_pick_the_second_property() {
+        assert!(!second_surface([0.0, 0.0, 0.0]));
+        assert!(!second_surface([1.0, 0.5, 0.0]));
+        assert!(second_surface([1.0, 0.5, 0.01]));
+        assert!(second_surface([1.0, 1.0, 1.0]));
+        // Two floor triangles side by side: the left one's corners show
+        // the first texture, the right one's the second.
+        let mesh = MapMesh {
+            positions: vec![
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [3.0, 0.0, 1.0],
+                [4.0, 0.0, 0.0],
+            ],
+            indices: vec![0, 1, 2, 3, 4, 5],
+            blend_weights: vec![0.0, 0.2, 0.1, 1.0, 0.9, 0.7],
+            surface: Some("dirt".into()),
+            surface2: Some("grass".into()),
+            ..Default::default()
+        };
+        let data = MapData {
+            meshes: vec![mesh.clone()],
+            ..Default::default()
+        };
+        let grid = SurfaceGrid::new(&data);
+        assert_eq!(grid.below(Vec3::new(0.2, 0.1, 0.2), 0.5), Some("dirt"));
+        assert_eq!(grid.below(Vec3::new(3.2, 0.1, 0.2), 0.5), Some("grass"));
+        assert_eq!(grid.nearest(Vec3::new(3.2, 0.05, 0.2), 0.3), Some("grass"));
+        // Without weights (or a second property) the first everywhere.
+        let data = MapData {
+            meshes: vec![MapMesh {
+                blend_weights: Vec::new(),
+                ..mesh.clone()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(SurfaceGrid::new(&data).below(Vec3::new(3.2, 0.1, 0.2), 0.5), Some("dirt"));
+    }
 }

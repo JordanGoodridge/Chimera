@@ -93,11 +93,14 @@ pub struct WorldParams {
     /// albedo, unlit.
     pub selfillum: f32,
     pub selfillum_tint: Vec4,
-    /// 1: drawn at the texture's own brightness times `unlit_tint` (an
+    /// 1: drawn at the texture's own brightness times `modulation` (an
     /// UnlitGeneric material on a brush, or the `$emissiveblend` stand-in),
     /// not lit by the lightmap.
     pub unlit: f32,
-    pub unlit_tint: Vec4,
+    /// `$color`: the lighting's multiplier (lightmap, bump pages and
+    /// dynamic lights; not the reflection or self-illumination,
+    /// specs/cs_source/shaders.md 2), or the unlit surface's brightness.
+    pub modulation: Vec4,
     /// 1: a window's broken look (`MapMesh::pane_mask`): an edge piece's
     /// alpha times its tile of `blend_mask` (the vertex colour's blue),
     /// sampled at the colour's red and green (meshes without vertex
@@ -117,7 +120,7 @@ impl WorldParams {
             base2_uv_v: v,
             detail_tint: Vec4::ONE,
             selfillum_tint: Vec4::ONE,
-            unlit_tint: Vec4::ONE,
+            modulation: Vec4::ONE,
             ..Default::default()
         }
     }

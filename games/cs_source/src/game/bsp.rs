@@ -134,12 +134,12 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         mesh.base_transform = r.base_transform;
         mesh.selfillum = r.selfillum;
         // UnlitGeneric brushes (neon signs) draw at their own brightness
-        // times $color; lightmapped ones ignore the tint for now.
+        // times $color; lightmapped ones' lighting is times $color
+        // (`Resolved::tint`).
         mesh.unlit = r.unlit;
-        if r.unlit {
-            mesh.tint = r.tint;
-        }
-        if mesh.blend.is_none() {
+        mesh.tint = r.tint;
+        // A blend's weights also pick its `$surfaceprop2`.
+        if mesh.blend.is_none() && r.surfaceprop2.is_none() {
             mesh.blend_weights.clear();
         }
         mesh.alpha = r.alpha;
@@ -149,6 +149,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         }
         mesh.double_sided = r.double_sided;
         mesh.surface = r.surfaceprop;
+        mesh.surface2 = r.surfaceprop2;
         mesh.envmap = r.envmap;
     }
     // Brush entities an env_texturetoggle targets: their textures' frames.
@@ -452,6 +453,7 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         }
     }
     data.warnings.extend(materials.missing);
+    data.texture_anims = materials.texture_anims;
     data.textures = materials.textures;
     data.cubemaps = materials.cubemaps;
     timer.lap("cubemaps");

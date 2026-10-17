@@ -52,6 +52,7 @@ pub mod spray;
 pub mod sprite_material;
 pub mod steam;
 mod spawn;
+pub mod texture_anim;
 pub mod tint;
 pub mod tracer;
 pub mod view_model;

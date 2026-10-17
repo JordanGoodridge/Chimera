@@ -133,6 +133,7 @@ impl MapLayers for Present {
                     .before(render::glow::glow_visibility),
                 render::beams::animate_beams.after(render::parts::switch_parts),
                 render::rope_sway::sway_ropes,
+                render::texture_anim::animate_textures,
             )
                 .into_configs(),
         ])
