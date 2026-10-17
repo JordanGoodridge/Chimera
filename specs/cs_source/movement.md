@@ -196,6 +196,14 @@ Run at the end of every walking tick, and at the start of the tick for non-walki
 - If vz > 140 (relative to the ground entity's own vz when standing on something), or if on a ladder and moving up, the player has no ground.
 - Otherwise sweep the current box from the origin to 2 units below. If it hits something whose plane normal z ≥ 0.7, that is the ground. If not, or the plane is too steep, sweep each of the four quadrant sub-boxes (the box split at its centre in X and Y, full height). The first quadrant that finds a plane with normal z ≥ 0.7 counts as ground. This lets a player stand on the peak of a ridge or on a thin edge. The origin is not moved by this test, so a player can rest up to 2 units above a floor until the next ground move snaps them down (see Staying on the ground).
   - Measured (CS:S, 2026-10-17): the reach is exactly 2 units. A world brush floor whose plane the sweep's end stays in front of is not hit, even when the end is nearer to it than the 1/32 back-off a hit stops at: feet 2.0024 above the floor (0.0024 short) have no ground, 1.99 above do. See "A trace ending just short of a plane" under the movecmp measurements.
+  - Measured (CS:S, 2026-10-17, probe server, a bot placed still above
+    de_dust2's static prop at (−312, 1416) whose flat top is at z −32):
+    over a **prop** the ground is found up to 2.031 units up and lost from
+    2.0315: a VPhysics surface counts a sweep ending within the 1/32
+    back-off of it as a hit (2 + 1/32 = 2.03125), unlike a brush. 0.02 up
+    stands; placed exactly on the top (0) the bot starts stuck. movecmp
+    `prop_hover_2_025` (stays) and `prop_hover_2_040` (falls a tick, to
+    1.95) match.
 - Surface friction 0.25: this applies **only** when the downward sweep actually ran (vz ≤ 140, not on a ladder moving up), found no walkable ground, and vz > 0 (not noclip). In the "moving up rapidly" case (vz > 140) and the "ladder moving up" case, ground is removed without a sweep, and surface friction stays at the 1 set at the start of this step. The value lasts until the next ground detection, which runs at the end of the next tick. So it applies to that next tick's air acceleration.
   - During a jump, ground detection on the jump tick and the following ticks sees vz > 140, so surface friction is 1. Once the move velocity has dropped into (0, 140] (from tick 11 of a standing shared-impulse jump, jump tick = 1, through the apex on tick 21), detection sets 0.25. Air acceleration therefore runs at 0.25 on ticks 12–22 and at 1 otherwise. After the apex vz ≤ 0, so it is 1 again.
 - On finding ground: the ground's material sets surface friction and the material (see Surface materials), the water-jump timer is cleared, and vz is set to 0.

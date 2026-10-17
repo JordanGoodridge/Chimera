@@ -25,9 +25,9 @@
 //! instead and a damageable one takes its health as crush damage (each tick it
 //! is pinned); sounds are the model's `door_options` move/open/close for its
 //! skin and locked/unlocked from its `hardwareN` block for the door's
-//! `hardware` (our reading of the model data, spec Q8; no latch entries exist
-//! in the stock models) or the map's sound overrides, the unlocked one on an
-//! unlocked +use only, no 1 s wait between them; collision is the `.phy` pieces
+//! `hardware` (measured, spec Q8: a model without that block plays
+//! `DoorSound.Null`, ours nothing) or the map's sound overrides, the unlocked
+//! one on an unlocked +use (the move 0.2 s later) and on an Open input; collision is the `.phy` pieces
 //! as pusher brushes. Skin/SetBodyGroup/SetAnimation follow
 //! specs/source/prop_damage.md 8-9 except: a skin the model lacks is ignored,
 //! OnAnimationBegun/OnAnimationDone don't fire (the map plays sequences, the
@@ -90,7 +90,15 @@ pub struct PropDoor {
     pub close_sound: String,
     pub locked_sound: String,
     pub unlocked_sound: String,
+    /// A +use waiting out `PROPDOOR_USE_DELAY` after its handle sound:
+    /// open (true, with the user) or close.
+    pub pending_use: Option<(bool, Option<Who>)>,
 }
+
+/// An unlocked +use plays the handle sound, and the door starts moving
+/// this long after (CS:S, measured 2026-10-17: 14 ticks later; an Open
+/// input moves at once; doors_buttons.md Q8).
+pub const PROPDOOR_USE_DELAY: f32 = 0.2;
 
 impl PropDoor {
     pub(super) fn spawn(w: &mut LogicWorld, id: EntId) -> PropDoor {
@@ -143,6 +151,7 @@ impl PropDoor {
             close_sound: sound(&["soundcloseoverride", DOOR_CLOSE_KEY]),
             locked_sound: sound(&["soundlockedoverride", DOOR_LOCKED_KEY]),
             unlocked_sound: sound(&["soundunlockedoverride", DOOR_UNLOCKED_KEY]),
+            pending_use: None,
         };
         // Spawn position: 1 open forward, 2 open back, 3 ajar; the "starts
         // open" flag opens it forward.
@@ -387,11 +396,16 @@ pub(super) fn door_use(w: &mut LogicWorld, id: EntId, user: Option<Who>) {
             if d.locked {
                 sound(w, id, &d.locked_sound);
                 w.fire_output(id, "OnLockedUse", user, Value::Void);
-            } else if d.state == DoorState::Closed {
-                sound(w, id, &d.unlocked_sound);
-                open(w, id, user);
             } else {
-                close(w, id);
+                // The handle, then the move a moment later (measured: as
+                // much for a use that closes it).
+                sound(w, id, &d.unlocked_sound);
+                let opening = d.state == DoorState::Closed;
+                door(w, id).unwrap().pending_use = Some((opening, user));
+                let at = w.tick + w.delay_ticks(PROPDOOR_USE_DELAY);
+                if let Some(e) = w.get_mut(id) {
+                    e.next_think = Some(at);
+                }
             }
         }
         DoorState::Opening if use_closes => close(w, id),
@@ -417,6 +431,9 @@ pub(super) fn door_input(w: &mut LogicWorld, id: EntId, input: &str, value: &Val
             } else {
                 None
             };
+            // The handle sound too (measured: an Open input plays the
+            // unlocked one as it starts the move).
+            sound(w, id, &d.unlocked_sound);
             w.fire_output(id, "OnOpen", Some(Who::Ent(id)), Value::Void);
             open(w, id, user);
         }
@@ -464,10 +481,19 @@ pub(super) fn door_arrived(w: &mut LogicWorld, id: EntId, opened: bool) {
     }
 }
 
-/// The auto-close think: close if nobody is in the way, else try again
-/// after the return delay.
+/// A +use's delayed move (`PROPDOOR_USE_DELAY`), or the auto-close think:
+/// close if nobody is in the way, else try again after the return delay.
 pub(super) fn door_think(w: &mut LogicWorld, id: EntId) {
     let Some(d) = door(w, id).cloned() else { return };
+    if let Some((opening, user)) = d.pending_use {
+        door(w, id).unwrap().pending_use = None;
+        if opening {
+            open(w, id, user);
+        } else {
+            close(w, id);
+        }
+        return;
+    }
     if d.state != DoorState::Open {
         return;
     }

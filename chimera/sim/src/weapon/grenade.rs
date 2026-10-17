@@ -25,7 +25,8 @@
 //! (`core::Blinded` from a game's `FlashModel`) and smoke (`SmokeCloud` with a
 //! `core::SightBlocker`), `Detonated` for games' effects; `core::Explosion`s
 //! blast the same way with a game's `ExplosionRule` (the HE blast for CS:S) at
-//! their magnitude and radius; a throw says `core::Radio` "fireinhole" (unless
+//! their magnitude and radius (a bell's σ scaled with the radius, never
+//! linear by `LegacyBlastDamage`; only characters' damage is whole points); a throw says `core::Radio` "fireinhole" (unless
 //! `sv_ignoregrenaderadio`); dying primed drops it live; cleared at a round
 //! restart; buying stacks grenades up to their limit and keeps the hand.
 //!
@@ -247,11 +248,13 @@ pub fn blast_damage(damage: f32, radius: f32, distance: f32) -> f32 {
     (damage - distance * damage / radius).max(0.0)
 }
 
-/// Radius damage as a bell: `damage` × exp(−d² / 2σ²), none past `radius`.
-pub fn blast_damage_bell(damage: f32, sigma: f32, radius: f32, distance: f32) -> f32 {
-    if distance >= radius {
-        return 0.0;
-    }
+/// Radius damage as a bell: `damage` × exp(−d² / 2σ²). No cut-off of its
+/// own: what a blast reaches is its bounds test (bounds touching the
+/// sphere of its radius), and a target there whose point is beyond the
+/// radius still takes the bell's tail (CS:S, measured 2026-10-17: an
+/// env_explosion of radius 100 does 0.555 at 107.4 units;
+/// specs/source/prop_damage.md Q3).
+pub fn blast_damage_bell(damage: f32, sigma: f32, distance: f32) -> f32 {
     damage * (-(distance * distance) / (2.0 * sigma * sigma)).exp()
 }
 
@@ -265,9 +268,13 @@ pub struct LegacyBlastDamage(pub u8);
 pub struct Blast {
     pub damage: f32,
     pub radius: f32,
-    /// Falloff: a bell of this σ (`blast_damage_bell`) unless
-    /// `LegacyBlastDamage`; None: linear to `radius`.
+    /// Falloff: a bell of this σ (`blast_damage_bell`; linear instead
+    /// when `legacy` and `LegacyBlastDamage`); None: linear to `radius`.
     pub bell_sigma: Option<f32>,
+    /// `LegacyBlastDamage` turns the bell linear (CS:S's grenades; map
+    /// explosions and exploding props keep the bell, measured 2026-10-17,
+    /// specs/source/prop_damage.md Q3).
+    pub legacy: bool,
     /// As `DamageEffect::armor_ratio`; blasts hit no hitgroup, so armour
     /// without a helmet covers them.
     pub armor_ratio: Option<f32>,
@@ -1167,7 +1174,8 @@ fn explode_at(
 
 /// The blast rules explosions from map logic (`core::Explosion`) follow:
 /// a game's grenade blast, with the explosion's damage and radius (the
-/// push scaled with the damage). Without one, explosions do nothing.
+/// push scaled with the damage, a bell's σ with the radius). Without one,
+/// explosions do nothing.
 #[derive(Resource, Clone, Debug)]
 pub struct ExplosionRule(pub Blast);
 
@@ -1191,11 +1199,16 @@ fn explosions(
         if let Some(r) = &mut b.ragdolls {
             r.length *= scale;
         }
+        // The rule's bell keeps its shape: σ in proportion to the radius
+        // (CS:S: σ = R/3 for every explosion, measured 2026-10-17 on
+        // env_explosions of radius 100, 150, 250 and a gas can;
+        // specs/source/prop_damage.md Q3), whatever
+        // `LegacyBlastDamage` says.
+        let sigma = rule.0.bell_sigma.filter(|_| rule.0.radius > 0.0).map(|s| s * e.radius / rule.0.radius);
         b.damage = e.damage;
         b.radius = e.radius;
-        if e.bell_sigma.is_some() {
-            b.bell_sigma = e.bell_sigma;
-        }
+        b.bell_sigma = e.bell_sigma.or(sigma);
+        b.legacy = false;
         if e.armor_ratio.is_some() {
             b.armor_ratio = e.armor_ratio;
         }
@@ -1292,10 +1305,9 @@ fn blast(
         };
         *point = end;
         let d = end.distance(src);
+        let legacy = b.legacy && world.legacy.as_ref().is_some_and(|l| l.0 != 0);
         *amount = match b.bell_sigma {
-            Some(sigma) if world.legacy.as_ref().is_none_or(|l| l.0 == 0) => {
-                blast_damage_bell(b.damage, sigma, b.radius, d)
-            }
+            Some(sigma) if !legacy => blast_damage_bell(b.damage, sigma, d),
             _ => blast_damage(b.damage, b.radius, d),
         };
     }
@@ -1303,7 +1315,10 @@ fn blast(
         if raw <= 0.0 {
             continue;
         }
-        let mut amount = super::quantize(raw, b.quantum);
+        // Whole points for characters only; objects truncate after their
+        // multipliers (as `deliver`'s hits).
+        let character = world.bodies.get(target).is_ok_and(|t| t.health.is_some());
+        let mut amount = if character { super::quantize(raw, b.quantum) } else { raw };
         if let Some(ratio) = b.armor_ratio
             && let Ok(mut armor) = world.armor.get_mut(target)
             && armor.covers(Hitgroup::Generic)

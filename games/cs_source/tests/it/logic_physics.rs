@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use crate::stack::{
     games::cs_source::{
         self,
-        movement::{SourceMovementPlugin, to_engine, to_source},
+        movement::{self, SourceMovementPlugin, to_engine, to_source},
         weapons::CsWeaponsPlugin,
     },
     harness::{CsSim, Sim},
@@ -75,6 +75,11 @@ fn solid(data: &mut MapData, lo: Vec3, hi: Vec3) {
 
 /// A 20 kg, 32-unit physics crate (map entity `index`) at `at`.
 fn add_crate(data: &mut MapData, index: usize, at: Vec3) {
+    add_prop(data, index, at, PushAway::Collide, false);
+}
+
+/// `add_crate` with how players meet it and whether it starts asleep.
+fn add_prop(data: &mut MapData, index: usize, at: Vec3, push: PushAway, asleep: bool) {
     let half = 16.0 * SCALE;
     let (lo, hi) = (Vec3::splat(-half), Vec3::splat(half));
     let corners = (0..8)
@@ -106,9 +111,9 @@ fn add_crate(data: &mut MapData, index: usize, at: Vec3) {
             elasticity: 0.0,
             damping: 0.0,
             rotdamping: 0.0,
-            push: PushAway::Collide,
+            push,
             frozen: false,
-            asleep: false,
+            asleep,
         }),
         fade: None,
         parent: None,
@@ -249,6 +254,110 @@ fn an_exploding_breakable_breaks_its_neighbour() {
     assert!(broken(&sim, 0));
     assert!(broken(&sim, 1), "the blast broke its neighbour");
     assert!(!broken(&sim, 2), "out of reach");
+}
+
+/// Map explosions fall off as CS:S's radius damage: 100 exp(-d^2 / 2σ^2)
+/// with σ = R/3, reaching past the radius (measured 2026-10-17 on the probe
+/// server: an env_explosion of magnitude 100 and radius 100 does 23.811 at
+/// 56.5 units, 8.459 at 74.11, 1.998 at 93.27 and 0.555 at 107.44 from a
+/// crate's centre, the bell within 0.01; specs/source/prop_damage.md Q3).
+/// A brush is reached where the trace meets its face (16 units nearer than
+/// its centre here), and takes blasts x1.25, truncated.
+#[test]
+fn an_explosion_falls_off_as_a_bell_past_its_radius() {
+    let barrel = entity(
+        &[
+            ("classname", "func_breakable"),
+            ("targetname", "barrel"),
+            ("origin", "0 0 31"),
+            ("material", "2"),
+            ("health", "10"),
+            ("ExplodeDamage", "100"),
+            ("ExplodeRadius", "100"),
+        ],
+        vec![hull(Vec3::splat(-8.0), Vec3::splat(8.0))],
+        true,
+    );
+    // One each way, so none shields another (the blast's src is 1 unit
+    // above the barrel's centre: level with the targets' centres).
+    let at = [(56.5, 0.0), (0.0, 74.11), (-93.27, 0.0), (0.0, -107.44)];
+    let mut entities = vec![barrel];
+    for (x, y) in at {
+        entities.push(entity(
+            &[
+                ("classname", "func_breakable"),
+                ("origin", &format!("{x} {y} 32")),
+                ("material", "1"),
+                ("health", "1000"),
+            ],
+            vec![hull(Vec3::splat(-16.0), Vec3::splat(16.0))],
+            true,
+        ));
+    }
+    let mut sim = sim(map(entities));
+    sim.ticks(5);
+    sim.app
+        .world_mut()
+        .resource_mut::<Logic>()
+        .world
+        .queue_input("barrel", "Break", Value::Void, 0.0, None);
+    sim.ticks(10);
+    let logic = sim.app.world().resource::<Logic>();
+    let health = |index: usize| {
+        let id = logic
+            .world
+            .ids()
+            .into_iter()
+            .find(|id| logic.world.get(*id).unwrap().map_index == Some(index))
+            .unwrap();
+        match &logic.world.get(id).unwrap().class {
+            Class::Breakable(b) => b.health,
+            _ => panic!(),
+        }
+    };
+    // The bell at 40.5, 58.11, 77.27 and 91.44 units: 47.8, 21.9, 6.8 and
+    // 2.3, x1.25 (linear would lose 74, 52, 28 and 10).
+    let lost: Vec<i32> = (1..=4).map(|i| 1000 - health(i)).collect();
+    assert_eq!(lost, vec![59, 27, 8, 2]);
+}
+
+/// A player walking into a "solid" multiplayer prop asleep since it
+/// spawned wakes it, firing OnAwakened, and takes no damage from it (CS:S,
+/// measured 2026-10-17: cs_office's trash can, walked into at 250 units/s;
+/// specs/source/prop_damage.md Q14).
+#[test]
+fn walking_into_a_sleeping_prop_wakes_it() {
+    let can = entity(
+        &[
+            ("classname", "prop_physics_multiplayer"),
+            ("origin", "100 0 17"),
+            ("spawnflags", "257"),
+            ("OnAwakened", "c,Add,1,0,-1"),
+        ],
+        Vec::new(),
+        false,
+    );
+    let counter = entity(&[("classname", "math_counter"), ("targetname", "c")], Vec::new(), false);
+    let mut data = map(vec![can, counter]);
+    add_prop(&mut data, 0, Vec3::new(100.0, 0.0, 17.0), PushAway::Solid, true);
+    let mut sim = sim(data);
+    let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
+    // Source yaw 0: toward +X.
+    sim.intent(p).yaw = -std::f32::consts::FRAC_PI_2;
+    sim.ticks(10);
+    let count = |sim: &Sim| {
+        let logic = sim.app.world().resource::<Logic>();
+        let id = logic.world.find("c").unwrap();
+        match &logic.world.get(id).unwrap().class {
+            Class::Counter(c) => Some(c.value),
+            _ => None,
+        }
+    };
+    assert_eq!(count(&sim), Some(0.0), "asleep");
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.seconds(1.0);
+    assert_eq!(count(&sim), Some(1.0), "woken once");
+    assert!(crate_at(&mut sim).x > 100.5, "shoved away: {}", crate_at(&mut sim));
 }
 
 /// A model door open back (its leaf along -X) closing on a crate that

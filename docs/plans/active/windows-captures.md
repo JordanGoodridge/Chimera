@@ -52,6 +52,12 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
     (rename `cfg\config.cfg` first, put it back after), which hints
     appear when, as described in parity-gaps.md C26 (a video of the
     first two rounds is easiest; note each hint's time).
+12. **C29 client props**: on cs_italy, knife and shoot a small cardboard
+    box and a mug or bottle (count the hits each takes), with the game's
+    audio recorded (any sound when a bottle breaks, beyond the bullet's?);
+    on de_inferno, shoot a window (break sound or none?); then break a
+    bottle and `mp_restartgame 1` (is it back?). As in parity-gaps.md
+    C29.
 
 ## Sitting 2: sound (about 20 min)
 

@@ -141,7 +141,11 @@ fn cs_assault_model_doors_open_away_on_use() {
     sim.intent(p).use_key = true;
     sim.ticks(1);
     sim.intent(p).use_key = false;
-    sim.ticks(59);
+    // The handle first, the move 0.2 s (14 ticks) later (CS:S, measured;
+    // doors_buttons.md Q8).
+    sim.ticks(13);
+    assert_eq!(door_state(&sim, lower), (DoorState::Closed, 0.0), "waits for the handle");
+    sim.ticks(14 + 59 - 13);
     let (state, yaw) = door_state(&sim, lower);
     assert_eq!(state, DoorState::Opening, "still turning after 59 ticks");
     assert!(yaw.abs() > 80.0 && yaw.abs() < 90.0, "{yaw}");

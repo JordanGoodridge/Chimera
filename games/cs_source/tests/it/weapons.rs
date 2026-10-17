@@ -1261,3 +1261,67 @@ fn own_gunfire_is_centred_while_strafing_others_pan() {
     let (l, r, _) = mine.gains(ear_at.translation() + right * 10.0, Some(Entity::PLACEHOLDER), level);
     assert!(r > 0.9 && l < 0.1, "a shot from the right: {l} {r}");
 }
+
+/// What hits push and how they count (CS:S, measured 2026-10-17 on the
+/// probe server: the damage force and damage type each hit hands a prop;
+/// specs/cs_source/weapons.md Q8, specs/source/prop_damage.md Q1, Q2, Q11):
+/// bullets by ammo (9 mm, .357 SIG, 5.7 mm 2000 kg·in/s; .45 ACP 2100;
+/// buckshot 600 a pellet; .338 2800; .50 AE, 5.56 and 7.62 mm 2400), and
+/// the knife's slash and stab both deal bullet damage and push 300.
+#[test]
+fn hits_push_by_ammo_and_the_knife_deals_bullet_damage() {
+    use crate::stack::{
+        core::DamageKind,
+        games::cs_source::weapons as w,
+        weapon::{DamageEffect, Melee, give},
+    };
+    const UNIT: f32 = 0.0254;
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(1);
+    for (id, impulse) in [
+        (w::GLOCK, 2000.0),
+        (w::ELITE, 2000.0),
+        (w::P228, 2000.0),
+        (w::FIVESEVEN, 2000.0),
+        (w::TMP, 2000.0),
+        (w::MP5NAVY, 2000.0),
+        (w::P90, 2000.0),
+        (w::USP, 2100.0),
+        (w::MAC10, 2100.0),
+        (w::UMP45, 2100.0),
+        (w::M3, 600.0),
+        (w::XM1014, 600.0),
+        (w::DEAGLE, 2400.0),
+        (w::GALIL, 2400.0),
+        (w::FAMAS, 2400.0),
+        (w::AK47, 2400.0),
+        (w::M4A1, 2400.0),
+        (w::SG552, 2400.0),
+        (w::AUG, 2400.0),
+        (w::SCOUT, 2400.0),
+        (w::G3SG1, 2400.0),
+        (w::SG550, 2400.0),
+        (w::M249, 2400.0),
+        (w::AWP, 2800.0),
+    ] {
+        let gun = give(sim.app.world_mut(), p, id).unwrap();
+        let got = sim.app.world().get::<DamageEffect>(gun).unwrap().impulse / UNIT;
+        assert!((got - impulse).abs() < 0.01, "{id}: {got}");
+    }
+    let knife = sim
+        .app
+        .world()
+        .get::<Inventory>(p)
+        .unwrap()
+        .weapons
+        .iter()
+        .copied()
+        .find(|&e| sim.app.world().get::<Weapon>(e).is_some_and(|w| w.id == KNIFE))
+        .expect("a knife");
+    let melee = sim.app.world().get::<Melee>(knife).unwrap();
+    for swing in [&melee.primary, melee.secondary.as_ref().unwrap()] {
+        assert_eq!(swing.kind, DamageKind::Bullet);
+        assert!((swing.force / UNIT - 300.0).abs() < 0.01, "{}", swing.force / UNIT);
+    }
+}

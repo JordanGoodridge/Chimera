@@ -1,6 +1,6 @@
 //! Breakable brushes (specs/source/breakables.md): func_breakable (health,
-//! material, damage scaling, break sound, gibs, OnBreak, removal 0.1 s
-//! later) and func_breakable_surf (glass windows as a grid of panes that
+//! material, damage scaling, break sound, gibs, OnBreak, removal at once)
+//! and func_breakable_surf (glass windows as a grid of panes that
 //! shatter where hit or touched and collapse when they lose support).
 //!
 //! Both are pushers that never move, so they get a mover node: the host
@@ -18,10 +18,7 @@
 //! (`LogicWorld::breakable_impact`); `LogicWorld::damage`.
 //!
 //! Known shortcuts (docs/tech-debt.md): Breakables
-//! (specs/source/breakables.md): the knife counts as a club (×1.5; spec Q2) and
-//! bullets as the bullet type (×0.5; Q1); a broken func_breakable stays drawn
-//! until removed 7 ticks later (Q4) and shots keep hitting a broken window's
-//! unbroken panes (Q5); a window's panes turn to face its first attack (a
+//! (specs/source/breakables.md): a window's panes turn to face its first attack (a
 //! Shatter input or a touch keeps the placed side); damage sounds draw the
 //! spec's volume U(0.75, 1) and pitch (window panes' damage sounds too: the
 //! spec says "the damage sound"), break sounds its pitch 95 + I(0, 29) and
@@ -115,8 +112,10 @@ pub const MAX_PIECES: usize = 15;
 const GIB_AREA: f32 = 432.0;
 pub const GIB_SPEED_RAND: f32 = 100.0;
 pub const GIB_DIRECTED_SPEED: f32 = 200.0;
-/// Broken func_breakables are removed this long after breaking.
-pub const REMOVE_DELAY: f32 = 0.1;
+/// Broken func_breakables are removed this long after breaking: at once
+/// in CS:S (measured 2026-10-17: gone by the next server frame; the
+/// template's 0.1 s is not CS:S's; breakables.md Q4).
+pub const REMOVE_DELAY: f32 = 0.0;
 pub const PANE_SIZE: f32 = 12.0;
 pub const MAX_PANES_AXIS: usize = 16;
 pub const PANE_FULL_SUPPORT: f32 = 6.75;
@@ -601,7 +600,9 @@ impl LogicWorld {
         }
         let a = scale_damage(amount, kind, dmg);
         let b = breakable(self, id).unwrap();
-        let new = (b.health as f32 - a).trunc() as i32;
+        // The scaled damage is truncated, then taken off (measured
+        // 2026-10-17: 100 health hit by 23.44 × 0.5 = 11.72 has 89 left).
+        let new = b.health - a.trunc() as i32;
         let changed = new != b.health;
         b.health = new;
         let ratio = (new as f32 / b.max_health as f32).clamp(0.0, 1.0);

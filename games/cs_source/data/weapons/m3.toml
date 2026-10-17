@@ -30,6 +30,8 @@ pellets = 9
 amount = 26.0
 falloff = 0.7
 armor_ratio = 1.0
+# Its ammo's push (measured, _gun.toml).
+impulse = 600.0
 
 [penetration]
 objects = 1

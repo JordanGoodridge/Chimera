@@ -14,7 +14,8 @@
 //! Covers: specs/source/prop_damage.md: prop_dynamic/prop_physics* health and
 //! multipliers from the model's prop data (`map::entities::PROP_*_KEY`; the
 //! map's health only on `_override`), damageable only with something to break
-//! into (else events only), integer health, minhealthdmg, damage filter,
+//! into (else events only), integer health (the scaled damage truncated,
+//! then taken off), minhealthdmg, damage filter,
 //! spawn-tick hits as events, OnHealthChanged/OnTakeDamage every hit (after
 //! OnBreak on a killing one), breaking (`Effect::PropBreak`: sound, explosion
 //! with the last attacker, pieces; name cleared, parented entities removed),
@@ -29,17 +30,20 @@
 //! (specs/source/prop_damage.md, source/logic/src/logic/prop_damage.rs) left out or
 //! approximated: the explosive_resist fire rule (needs the blast's inflictor
 //! position; no stock prop has it; flammable props otherwise ignite and burn,
-//! see the Fire row); the onbreak-explode interaction doesn't ignite players
-//! (Q5); the buckshot doubling (no damage kind marks buckshot, Q1); the knife
-//! counts as a club (Q2); break-on-touch (flag 16, unused in stock maps);
+//! see the Fire row); break-on-touch (flag 16, unused in stock maps);
 //! spawn-time deletion of props whose template is missing or prop_dynamic with
 //! prop data (none in stock maps; cs_havana's prop_physics without prop data
 //! are not placed but keep a logic entity); `PerformanceMode`,
 //! `props_break_max_pieces` and the per-frame cap (pieces are capped at 300
 //! alive); the `break_prop` game event; the other body's velocity restore after
 //! an impact breaks a prop (5 step 9); stress crush (200 to a squeezed player,
-//! 6); players' contacts damaging props (Q13: their physics shadows' contacts
-//! count as the player's and are left out); a client prop's push from bullets
+//! 6; not seen in CS:S under a 500 kg cupboard dropped at up to 1500 in/s);
+//! players' contacts damaging props (Q13: CS:S counts them, with the player
+//! as attacker: a crate landing on a player at 1219 in/s took 5; left out
+//! here); a player struck by a falling prop takes one impact here where CS:S
+//! counts two contacts (measured: a 30 kg crate at 544, 827 and 1219 in/s did
+//! 5+5, 5+10 and 10+20; a 500 kg cupboard at 0-1500 in/s 10+100 up to
+//! 500+500); a client prop's push from bullets
 //! and blasts (avian pushes it as any body); pieces are avian bodies on the
 //! ragdoll layer (a box when the piece model has no `.phy`; mass and damping
 //! from the `.phy`, friction 0.8 and elasticity 0.25 ours; chunks keep the
@@ -50,11 +54,11 @@
 //! its own; client break sounds stay silent, Q7); the killing hit on a frozen
 //! prop doesn't unfreeze it first (it's gone anyway); props that start asleep
 //! are static bodies until woken (a push from damage, a moving body touching
-//! them, Wake); OnAwakened has no other trigger (players' push-away, Q14);
+//! them, Wake, a player shoving it, as CS:S: Q14);
 //! impact damage reads a pair's velocities before and after the whole physics
-//! step at its first contact; an exploding prop blasts like CS:S's HE grenade
-//! at its magnitude and radius (Q3) with the HE fireball particles; the
-//! explosion sound is the onbreak-explode `PropaneTank.Burst` only. Why it's OK
+//! step at its first contact; an exploding prop's blast (CS:S's radius
+//! damage, measured: Q3) draws the HE fireball particles; the explosion sound
+//! is the onbreak-explode `PropaneTank.Burst` only. Why it's OK
 //! for now: The spec's numeric cases pass (unit tests); cs_office monitors,
 //! computer cases, sleeping phones; cs_italy's drawer; a crate's pieces;
 //! cs_militia's gas can and roof boards on the real maps.
@@ -86,8 +90,8 @@ pub const CLIENT_OTHER_DAMAGE: i32 = 50;
 pub const CLIENT_BLAST_LIFT: f32 = 32.0;
 /// An explosion with radius 0 reaches this times its magnitude.
 pub const EXPLODE_RADIUS_FACTOR: f32 = 2.5;
-/// Buckshot doubles the bullet multiplier (unused: no damage kind marks
-/// buckshot yet).
+/// Buckshot doubles the bullet multiplier (unused: CS:S's shotgun pellets
+/// are plain bullets, DMG_BULLET | DMG_NEVERGIB, measured 2026-10-17, Q1).
 pub const BUCKSHOT_FACTOR: f32 = 2.0;
 
 /// A prop entity's damage and visibility state.
@@ -534,8 +538,8 @@ pub struct Hit {
     pub direct: bool,
 }
 
-/// The multiplier for a kind of damage (spec 4 step 6; the knife counts
-/// as a club, breakables.md Q2).
+/// The multiplier for a kind of damage (spec 4 step 6; CS:S's knife deals
+/// bullet damage, measured: Q2).
 fn multiplier(p: &Prop, kind: DamageKind) -> f32 {
     match kind {
         DamageKind::Bullet => p.dmg[0],
@@ -598,7 +602,10 @@ pub(super) fn prop_damage(w: &mut LogicWorld, id: EntId, hit: Hit) -> bool {
     }
     let mut killed = false;
     if !p.events_only && !spawn_tick {
-        p.health = (p.health as f32 - scaled).trunc() as i32;
+        // The scaled damage is truncated, then taken off (measured
+        // 2026-10-17: a 30-health crate hit by 23.51 × 0.75 = 17.63 has 13
+        // left, not 12).
+        p.health -= scaled.trunc() as i32;
         killed = p.health <= 0;
     }
     let ratio = if p.events_only {

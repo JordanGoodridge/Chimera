@@ -1,7 +1,8 @@
 //! Players and multiplayer physics props (specs/cs_source/physics_props.md
 //! 4.2): players walk through them; each tick a player shoves the props
-//! around them (an impulse at the player's centre, so they spin too), and
-//! "solid"-mode props push the player back through the move input.
+//! around them (an impulse at the player's centre, so they spin too; one
+//! asleep since it spawned wakes, with OnAwakened), and "solid"-mode props
+//! push the player back through the move input.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -9,7 +10,10 @@ use bevy::prelude::*;
 use super::movement::{SourceMovement, SourceMovementConfig, to_source};
 use crate::{
     core::{SimSet, Velocity},
-    map::{PhysicsProp, PushAway},
+    map::{
+        PhysicsProp, PushAway,
+        prop_physics::{PropAwakened, StartAsleep},
+    },
 };
 
 /// The query box is the player's box grown by this much, units.
@@ -31,7 +35,8 @@ pub struct PushAwayPlugin;
 
 impl Plugin for PushAwayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, push_props.after(SimSet::Movement));
+        app.add_message::<PropAwakened>()
+            .add_systems(FixedUpdate, push_props.after(SimSet::Movement));
     }
 }
 
@@ -63,14 +68,20 @@ fn overlap(a: (Vec3, Vec3), b: (Vec3, Vec3)) -> bool {
     a.0.cmple(b.1).all() && b.0.cmple(a.1).all()
 }
 
-/// Shove props away from players (spec 4.2.2).
+/// Shove props away from players (spec 4.2.2). A prop asleep since it
+/// spawned wakes when a player shoves it (CS:S, measured 2026-10-17: a
+/// player walking into cs_office's trash can fires its OnAwakened;
+/// specs/source/prop_damage.md Q14).
+#[allow(clippy::type_complexity)]
 fn push_props(
     players: Query<(&Transform, &Velocity, &SourceMovement, Option<&crate::core::MapControls>)>,
     mut props: Query<
-        (&Transform, &PhysicsProp, Forces),
+        (Entity, &Transform, &PhysicsProp, Forces, Has<StartAsleep>),
         (Without<SourceMovement>, Without<RigidBodyDisabled>, Without<ColliderDisabled>),
     >,
     cfg: Res<SourceMovementConfig>,
+    mut commands: Commands,
+    mut awakened: MessageWriter<PropAwakened>,
 ) {
     for (pt, pv, me, controls) in &players {
         if controls.is_some_and(|c| c.parented) {
@@ -81,7 +92,7 @@ fn push_props(
         player.0 -= Vec3::splat(QUERY_EXPAND);
         player.1 += Vec3::splat(QUERY_EXPAND);
         let speed = to_source(pv.0).truncate().length();
-        for (t, p, mut forces) in &mut props {
+        for (e, t, p, mut forces, asleep) in &mut props {
             if matches!(p.push, PushAway::Collide | PushAway::Ignore) {
                 continue;
             }
@@ -90,6 +101,11 @@ fn push_props(
             }
             let b = prop_box(t, p.bounds);
             if !overlap(player, b) {
+                continue;
+            }
+            if asleep {
+                commands.entity(e).remove::<StartAsleep>().insert(RigidBody::Dynamic);
+                awakened.write(PropAwakened(e));
                 continue;
             }
             // kg.in/s to kg.m/s (to_engine scales units to meters), at the

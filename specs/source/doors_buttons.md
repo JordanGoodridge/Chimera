@@ -329,7 +329,10 @@ locked, 4096 silent, 8192 "Use closes", 16384 silent to NPCs, 32768
   (swapped if the model's hinge is on the left).
 - **Use**: if closed (or open with "Use closes"): locked → locked sound,
   OnLockedUse; else open. If opening and "Use closes": close. If closing
-  or ajar: open again.
+  or ajar: open again. *Measured in CS:S (2026-10-17, Open question 8): an
+  unlocked use plays the unlocked (handle) sound at once and the door
+  starts moving 0.2 s later (14 ticks; OnOpen fires then, once), the same
+  for a use that closes it.*
 - **Direction** (opendir 0): opens "back" if the user's origin is in front
   of the door (dot(door forward, user) > dot(door forward, door origin)),
   else forward. If the chosen side's swept volume is blocked when a player
@@ -338,8 +341,19 @@ locked, 4096 silent, 8192 "Use closes", 16384 silent to NPCs, 32768
   after returndelay + 0.1 s; if something is in the way, retry after the
   same delay.
 - Inputs Open (if unlocked; fires OnOpen twice: once in the input and once
-  when the motion starts, quirk), OpenAwayFrom (name), Close (fires OnClose
-  twice similarly), Toggle, Lock, Unlock.
+  when the motion starts, quirk; plays the unlocked sound as it starts,
+  measured), OpenAwayFrom (name), Close (fires OnClose twice similarly; no
+  handle sound), Toggle, Lock, Unlock.
+- **Sounds** (measured in CS:S, Open question 8): the model's
+  `door_options` block (in the `.mdl` key values) picks them: move, open
+  (played when fully open) and close (fully closed) from the block
+  `skinN` for the door's skin, else `default`; locked and unlocked from
+  `hardwareN` for the `hardware` keyvalue (stock door models: hardware0
+  `DoorSound.Null`, 1 `DoorHandles.Locked1`/`Unlocked1`, 2
+  `DoorHandles.Locked2`/`Unlocked2`); a hardware number the model has no
+  block for plays `DoorSound.Null` (`common/null.wav`). The blocks'
+  `surfaceprop` keys pick no sound. The map's `sound*override` keyvalues
+  win. Reaching an end stops the move sound.
 - Blocked: the door stops (no damage) and fires OnBlockedOpening/Closing;
   it resumes when unblocked. With forceclosed, physics objects are pushed
   through and damageable physics objects take their full health as crush
@@ -613,6 +627,15 @@ dt = 0.015. Brush sizes are the model bounding box.
    model surface pick (not traced in this pass); and whether the CS:S
    model doors behave the same (only cs_assault/de_port/cs_compound use
    them).
+   *Measured 2026-10-17 (probe server: a prop_door_rotating with
+   `models/props_c17/door01_left.mdl` spawned on de_dust2, skins 0, 1, 2, 7
+   and hardware 0-3, Open/Close/Lock/Unlock/Use inputs, every emitted sound
+   logged by `mashup_props.sp`'s `mashup_sndlog`): see "Sounds" under
+   prop_door_rotating. Skin 1 played `Doors.Move4` / `Doors.FullOpen4` /
+   `Doors.FullClose4` waves, skin 7 the `...2` ones, skin 0 the `...1`
+   ones; hardware 1 `DoorHandles.Locked1` / `Unlocked1`, 2 the `...2`
+   ones, 0 and 3 `common/null.wav`. An unlocked use moves the door 0.2 s
+   after the handle sound.*
 9. **Touch Opens and a player standing on the door.** (Added by an
    implementation session, not from the source.) Classic bhop blocks are
    func_doors with flag 1024 moving down under the player. A landing can

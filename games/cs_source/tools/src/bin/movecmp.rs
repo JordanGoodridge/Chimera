@@ -321,6 +321,18 @@ fn scenarios() -> Vec<Scenario> {
             inputs: vec![Input::idle(270.0); 30],
         });
     }
+    // The same over a static prop's flat top (de_dust2, z -32): CS:S keeps
+    // the ground up to 2.031 above it and falls from 2.0315 (2026-10-17): a
+    // VPhysics surface counts a probe ending within the 1/32 back-off.
+    for (name, gap) in [("prop_hover_2_025", 2.025), ("prop_hover_2_040", 2.04)] {
+        all.push(Scenario {
+            name: name.to_string(),
+            map: "de_dust2".to_string(),
+            start: Vec3::new(-312.0, 1416.0, -32.0 + gap),
+            yaw: 270.0,
+            inputs: vec![Input::idle(270.0); 30],
+        });
+    }
     all
 }
 
