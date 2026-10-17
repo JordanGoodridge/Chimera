@@ -169,7 +169,8 @@ economy until CS:GO). The first three rows are already in our
 | Name (ours) | Value | Unit | Meaning |
 |---|---|---|---|
 | hostage_health | 100 | hp | measured (Q8); a float; damage by the rule below |
-| hostage_models | `characters/hostage_01..04` | – | the only hostage models shipped; maps name `models/hostage.mdl` (cs_havana, cs_office) or `HostageType` 0/1 (cs_assault, cs_compound), neither of which selects them (Q9) |
+| hostage_models | `characters/hostage_01..04` | – | the only hostage models shipped; maps name `models/hostage.mdl` (cs_havana, cs_office) or `HostageType` 0/1 (cs_assault, cs_compound), neither of which selects them: each hostage spawned takes the next of the four in turn, over rounds and maps (measured, Q9) |
+| hostage_hull | 26 × 26 × 72 | in | its collision box, −13..13 by 0..72 (measured, Q11) |
 | hostage_anims | HL2 `Humans/male_shared`, `male_gestures`, `male_postures` (included) | – | own file has only a 101-frame ragdoll sequence |
 | hostage_follow_* | see Behaviour, *hyp.* | – | Q10 |
 | hostage_penalty | `mp_hostagepenalty` (default *hyp.* 13) | kills | kick after this many hostage kills; a warning hint one kill before |
@@ -509,7 +510,9 @@ the round):
 - Hostage maps: "all rescued" counts only living hostages; if all
   remaining hostages are dead and some were rescued, CT win; if all are
   dead and none rescued, the round continues to elimination or time
-  (*hyp.*, Q11).
+  (measured, Q11: 3 rescued and the 4th dead, or 2 and 2, end the round at
+  the last rescue, CT win, reason 10 "all hostages rescued"; all 4 dead:
+  it goes on).
 - Win announcements: `Event.TERWin` / `Event.CTWin` as now; on a defuse
   `Event.BombDefused` plays first (*hyp.* both play, Q6).
 
@@ -526,7 +529,9 @@ the round):
 
 - **Spawn:** each `hostage_entity` spawns at its origin with its yaw,
   standing, health 100 (*hyp.*), as an NPC that players collide with (Q10).
-  Model: one of `characters/hostage_01..04` (Q9). Hostages are restored at
+  Model: the next of `characters/hostage_01..04` in turn (a counter that
+  goes on over rounds and maps; the map's model and `HostageType` don't
+  matter; measured, Q9). Hostages are restored at
   every round start (they are map entities; our round restart re-creates
   them).
 - **Use:** pressing Use (one press, use search §5) on a hostage:
@@ -559,9 +564,12 @@ the round):
   kill count rises, and at `mp_hostagepenalty` − 1 he is warned ("If you
   kill one more hostage, you will be removed from the server."), at
   `mp_hostagepenalty` he is kicked (0 = never).
-- **Rescue:** a hostage whose hull touches a `func_hostage_rescue` brush
-  (or comes near an `info_hostage_rescue` point; or, on a map with no
-  rescue zone at all, comes near a CT spawn: *hyp.*, Q11) is rescued: it
+- **Rescue:** a hostage that follows a leader and is walking (not
+  standing near him) and whose hull (26 units wide) touches a
+  `func_hostage_rescue` brush (or comes near an `info_hostage_rescue`
+  point, Q13) is rescued (measured, Q11: an idle hostage, or one standing
+  by its leader, inside a zone is not; a map without rescue zones rescues
+  nobody, CT spawns included): it
   stops, disappears, its leader gets the rescue reward, announcer
   `Event.HostageRescued` for everyone, event `hostage_rescued` (site), log
   `triggered "Rescued_A_Hostage"`. When the last one is rescued: event
@@ -770,7 +778,17 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    weapon at a known hitgroup (`player_hurt` doesn't fire; use
    `hostage_hurt` and read its health netprop). Does armour/hitgroup
    apply?
-9. **Q9 Hostage model choice.** On cs_office (`models/hostage.mdl`, skin
+9. **Q9 Answered (measured 2026-10-17, probe server, `mashup_hostages`
+   printing each hostage_entity's `m_ModelName` and skin, several
+   `mp_restartgame 1` rounds and map changes):** neither the map's model
+   nor `HostageType` picks one. Each hostage spawned takes the next of
+   `Hostage_01`, `02`, `hostage_03`, `04` in turn, in entity order, and the
+   turn goes on over rounds and maps: cs_office's four got 01–04 every
+   round (four a round), cs_compound's three got 04 01 02, then 03 04 01,
+   02 03 04, 01 02 03 (its first round went on from where cs_office left
+   it), and cs_office after it 03 04 01 02. The map's skin stays (cs_office
+   1, cs_compound 0). Ours: `HostageModelCycle` (characters take no skin
+   yet). Was: **Q9 Hostage model choice.** On cs_office (`models/hostage.mdl`, skin
    1) and cs_compound (`HostageType` 1): which of `hostage_01..04` does
    each hostage use (dump each `hostage_entity`'s model name) and does it
    change per round?
@@ -795,7 +813,29 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     away. Measure: stop distance, walk/run speeds and the threshold, the
     give-up rule (distance or time), and whether hostages block players or
     get pushed.
-11. **Q11 Rescue rules.** Hostage at the rescue zone edge: hull overlap or
+11. **Q11 Answered (measured 2026-10-17, probe server, cs_office, the
+    probe bot made leader with `mashup_input <hostage> Use "" 1`, hostage
+    and leader placed with `mashup_tp`, hostage and round events logged by
+    mashup_ents):**
+    - Only a following hostage on its way is rescued: one teleported idle
+      into the middle of a zone stayed; one following but within its stop
+      distance of the leader (70 units) stayed, even mid-zone; with the
+      leader 300 units off it was rescued 9–12 ticks after it started
+      following (its first moves).
+    - Hull overlap, not the origin: the hostage's box is −13..13 × 0..72.
+      Walking south into zone 428 (its face at y −1719), it was rescued at
+      origin y −1710.3, −1709.8, −1712.5, −1718.3, −1710.5 (five runs), all
+      outside the face, the box reaching 3–9 in; walking along the face
+      with the origin at −1712 or −1700 it stayed (its path drifted away).
+    - No rescue zones (both removed with `mashup_kill` mid-map, and a map
+      load with them removed as they spawned, `mashup_norescue 1`; they
+      aren't re-created by a round restart): hostages led straight over
+      two CT spawns were never rescued. No radius: nobody is rescued.
+    - Round end: 3 rescued and the 4th killed (killed first), and 2 and
+      2: `hostage_rescued_all`, then the round ends at the last rescue, CT
+      win (reason 10). All 4 killed: no round end.
+    Ours now: rescue needs a leader and a walking hostage, a 26-wide box,
+    no spawn fallback. Was: **Q11 Rescue rules.** Hostage at the rescue zone edge: hull overlap or
     origin inside? On a map with all rescue zones removed (`ent_remove`
     them, then `mp_restartgame 1`): do CT spawns rescue, and at what
     radius? Round end when 3 of 4 are rescued and the 4th is dead?

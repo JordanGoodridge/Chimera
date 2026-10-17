@@ -390,7 +390,9 @@ fn empty_clip_held_dry_fires_once_then_reloads_on_release() {
 #[test]
 fn armour_takes_its_share() {
     use crate::stack::weapon::Armor;
-    // Measured M7/M11: a 20-damage slash on 100 armour: 17 health, 1 armour.
+    // Measured M7/M11: a 20-damage slash on 100 armour: 17 health, and 98
+    // armour left (1.5 armour damage; what is left is truncated, measured
+    // 2026-10-17: `player_hurt` says 1).
     let mut sim = sim();
     let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
     let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 0.9, placeholder::ID);
@@ -412,7 +414,7 @@ fn armour_takes_its_share() {
     sim.ticks(1);
     let lost = ((1.0 - health(&sim, target)) * 100.0).round() as i32;
     let armor = (sim.app.world().get::<Armor>(target).unwrap().amount * 100.0).round() as i32;
-    assert_eq!((lost, armor), (17, 99));
+    assert_eq!((lost, armor), (17, 98));
 }
 
 #[test]

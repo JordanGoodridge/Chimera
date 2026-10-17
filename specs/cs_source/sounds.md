@@ -775,6 +775,15 @@ probe bot, `sv_soundemitter_trace 1`; the server's emitted entries per hit
 - A lethal non-head hit: its hit sound above, then `Player.Death`.
 - A helmeted head: `Player.DamageHelmet` only (USP, Glock, AK-47); a killing
   helmeted headshot not caught.
+- The knife (measured 2026-10-17, `tools/css_probe/knifearmor.py`, the
+  mashup_props sound hook; slash and stab from 40 units, aimed at the
+  chest and at the head): its hits are bullet damage with hitgroup generic,
+  so they sound as a bullet in the chest: with armour `player/kevlar1-5`
+  (`Player.DamageKevlar`, CHAN_BODY, from the victim) only, aimed at the
+  head too; without armour `physics/flesh/flesh_impact_bullet*`
+  (`Flesh.BulletImpact`, from the victim, volume 0.69). The knife's own
+  hit sound (`knife_hit1-4` for a slash, `knife_stab` for a stab) plays
+  besides, about 7 ticks later in the log (the weapon's sound).
 
 ## Open questions
 

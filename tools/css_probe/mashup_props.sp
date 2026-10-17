@@ -42,7 +42,7 @@ public void OnPluginStart()
         "mashup_einfo <index>: class, health, origin, velocity, effects, solid, movetype, flags, physics mode");
     RegServerCmd("mashup_fire", Command_Fire,
         "mashup_fire <userid> <x> <y> <z> <pitch> <yaw> <weapon> <buttons 1=attack 2=attack2> <start tick> <ticks>: hold that bot there with the weapon and press the buttons");
-    RegServerCmd("mashup_hp", Command_Hp, "mashup_hp <index> <health>: set an entity's health (players: respawn if dead)");
+    RegServerCmd("mashup_hp", Command_Hp, "mashup_hp <index> <health> [armor] [helmet]: set an entity's health (players: respawn if dead, and armour)");
     RegServerCmd("mashup_kill", Command_Kill, "mashup_kill <index>: remove an entity");
     RegServerCmd("mashup_input", Command_Input, "mashup_input <index> <input> [parameter] [activator]: fire an input on an entity");
     RegServerCmd("mashup_watch", Command_Watch, "mashup_watch <index> <frames>: log the entity's health, effects, solid flags and render mode every frame (and when it is gone)");
@@ -63,6 +63,19 @@ public void OnPluginStart()
         }
     }
     AddNormalSoundHook(SoundHook);
+    HookEvent("player_hurt", Event_Hurt);
+}
+
+// "hurt <victim> att=<attacker> hp=<health left> armor=<armour left>
+// dh=<dmg_health> da=<dmg_armor> hg=<hitgroup> wpn=<weapon>" (the knife
+// against armour, prop_damage.md / weapons.md).
+public void Event_Hurt(Event event, const char[] name, bool dontBroadcast)
+{
+    char wpn[64];
+    event.GetString("weapon", wpn, sizeof(wpn));
+    Log("hurt %d att=%d hp=%d armor=%d dh=%d da=%d hg=%d wpn=%s", GetClientOfUserId(event.GetInt("userid")),
+        GetClientOfUserId(event.GetInt("attacker")), event.GetInt("health"), event.GetInt("armor"),
+        event.GetInt("dmg_health"), event.GetInt("dmg_armor"), event.GetInt("hitgroup"), wpn);
 }
 
 void Log(const char[] fmt, any ...)
@@ -285,6 +298,11 @@ public Action Command_Hp(int args)
             CS_RespawnPlayer(e);
         }
         SetEntityHealth(e, hp);
+        // Optional armour and helmet (players only).
+        if (args >= 3) {
+            SetEntProp(e, Prop_Send, "m_ArmorValue", GetCmdArgInt(3));
+            SetEntProp(e, Prop_Send, "m_bHasHelmet", args >= 4 ? GetCmdArgInt(4) : 0);
+        }
     } else {
         SetEntProp(e, Prop_Data, "m_iHealth", hp);
     }

@@ -721,18 +721,26 @@ pub fn pellet_dirs(aim: Quat, seed: u32, spread: SpreadShape, pellets: u32) -> V
 const BACKSTAB_COS: f32 = 0.8;
 
 /// A hit of `raw` damage on covering armour (CS:S, measured M7): health
-/// takes `raw x ratio x 0.5`, armour half the rest, both truncated to
-/// `quantum`. When `available` armour can't take its part, it is all used
-/// and health takes `raw - 2 x available` (measured on C4 blasts,
-/// objectives.md Q3; bullets assumed alike: CS:S's player damage code is
-/// shared). Returns (to health, to armour).
+/// takes `raw x ratio x 0.5` truncated to `quantum`, armour half the
+/// rest, and what armour is left is truncated: a fraction of a point
+/// costs a whole one (measured 2026-10-17, weapons.md M7: a knife slash
+/// on 100 armour leaves 98, `player_hurt`'s dmg_armor says 1; an AK-47
+/// chest hit's 4.04 leaves 95). When `available` armour can't take its
+/// part, it is all used and health takes `raw - 2 x available` (measured
+/// on C4 blasts, objectives.md Q3; bullets assumed alike: CS:S's player
+/// damage code is shared). Returns (to health, armour taken).
 pub fn armor_split(raw: f32, ratio: f32, available: f32, quantum: f32) -> (f32, f32) {
     let to_health = raw * ratio * 0.5;
     let to_armor = (raw - to_health) * 0.5;
     if to_armor > available {
         return (quantize(raw - available * 2.0, quantum), available);
     }
-    (quantize(to_health, quantum), quantize(to_armor, quantum))
+    let left = if quantum > 0.0 {
+        quantize(available - to_armor, quantum)
+    } else {
+        available - to_armor
+    };
+    (quantize(to_health, quantum), available - left)
 }
 
 /// `amount` truncated to whole multiples of `quantum` (0: unchanged),
@@ -790,7 +798,28 @@ mod tests {
         // 188 and 94; 447 on 100 armour takes all 100 and 247 health.
         assert_eq!(armor_split(376.0, 1.0, 100.0, 1.0), (188.0, 94.0));
         assert_eq!(armor_split(447.0, 1.0, 100.0, 1.0), (247.0, 100.0));
-        assert_eq!(armor_split(26.0, 1.0, 100.0, 1.0), (13.0, 6.0));
+        // 6.5 armour damage costs 7 points (what is left is truncated).
+        assert_eq!(armor_split(26.0, 1.0, 100.0, 1.0), (13.0, 7.0));
+    }
+
+    #[test]
+    fn a_fraction_of_an_armour_point_costs_a_whole_one() {
+        // Measured 2026-10-17 (weapons.md M7, probe server): the knife
+        // (ratio 1.7) on 100 armour: slash 20 -> 17 health, 98 armour
+        // left; stab 65 -> 55, 95 left; the 15 follow-up slash on 98 -> 12,
+        // 96 left. A Glock chest hit 24.477 (1.05) -> 12, 94 left; an AK-47
+        // chest hit 35.946 (1.55) -> 27, 95 left.
+        for (raw, ratio, armour, health, left) in [
+            (20.0, 1.7, 100.0, 17.0, 98.0),
+            (65.0, 1.7, 100.0, 55.0, 95.0),
+            (15.0, 1.7, 98.0, 12.0, 96.0),
+            (65.0, 1.7, 10.0, 55.0, 5.0),
+            (24.477, 1.05, 100.0, 12.0, 94.0),
+            (35.946, 1.55, 100.0, 27.0, 95.0),
+        ] {
+            let (h, taken) = armor_split(raw, ratio, armour, 1.0);
+            assert_eq!((h, armour - taken), (health, left), "{raw} x {ratio} on {armour}");
+        }
     }
 
     #[test]

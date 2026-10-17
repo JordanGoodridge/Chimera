@@ -15,7 +15,7 @@ use crate::stack::{
     core::{Health, Team},
     games::cs_source::{
         TICK_INTERVAL,
-        weapons::{AK47, CsWeaponsPlugin, DEAGLE},
+        weapons::{AK47, CsWeaponsPlugin, DEAGLE, KNIFE},
     },
     greybox::{self, GreyboxMapPlugin},
     harness::{CsSim, Sim},
@@ -297,4 +297,71 @@ fn a_bots_hits_play_the_victims_sounds() {
         .filter(|s| s.source == Some(enemy) && (s.entry == "Player.DamageKevlar" || s.entry == "Player.DamageHelmet"))
         .count();
     assert!(hurt >= 5, "the bot's hits: {:?}", entries(&sim));
+}
+
+/// One knife hit (slash, or a stab) from 1 m on a target with 100 health
+/// and `armor`; returns the sim and the target.
+fn knifed(stab: bool, armor: Option<Armor>) -> (Sim, Entity) {
+    let mut sim = sim();
+    let attacker = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 1.0, placeholder::ID);
+    if let Some(a) = armor {
+        sim.app.world_mut().entity_mut(target).insert(a);
+    }
+    // Facing the attacker (a stab in the back would be 195).
+    sim.intent(target).yaw = std::f32::consts::PI;
+    sim.ticks(1);
+    give(sim.app.world_mut(), attacker, KNIFE).unwrap();
+    sim.seconds(1.2);
+    let d = sim.position(target) + Vec3::Y * 0.4 - (sim.position(attacker) + sim.state(attacker).eye_offset);
+    {
+        let mut i = sim.intent(attacker);
+        i.yaw = (-d.x).atan2(-d.z);
+        i.pitch = d.y.atan2(d.xz().length());
+    }
+    sim.app.world_mut().resource_mut::<Heard>().0.clear();
+    sim.app.world_mut().resource_mut::<Impacts>().0.clear();
+    if stab {
+        sim.intent(attacker).secondary = true;
+    } else {
+        sim.intent(attacker).fire = true;
+    }
+    sim.ticks(1);
+    {
+        let mut i = sim.intent(attacker);
+        i.fire = false;
+        i.secondary = false;
+    }
+    sim.seconds(0.3);
+    (sim, target)
+}
+
+/// The knife (bullet damage, hitgroup generic; measured 2026-10-17 on
+/// the probe server, specs/cs_source/weapons.md M11): on 100 armour a
+/// slash takes 17 health and leaves 98 armour, a stab 55 and 95, and the
+/// victim sounds `Player.DamageKevlar` (no flesh impact); on a bare
+/// player 20 and 65, and the flesh bullet impact.
+#[test]
+fn the_knife_on_kevlar_plays_the_kevlar_hit_and_splits_like_a_bullet() {
+    let full = Armor {
+        amount: 1.0,
+        helmet: false,
+    };
+    for (stab, health, armour) in [(false, 83.0, 98.0), (true, 45.0, 95.0)] {
+        let (sim, target) = knifed(stab, Some(full));
+        let w = sim.app.world();
+        let left = w.get::<Health>(target).unwrap().current * 100.0;
+        let vest = w.get::<Armor>(target).unwrap().amount * 100.0;
+        assert!((left - health).abs() < 1e-3, "stab {stab}: health {left}");
+        assert!((vest - armour).abs() < 1e-3, "stab {stab}: armour {vest}");
+        assert_eq!(entries(&sim), ["Player.DamageKevlar"], "stab {stab}");
+        assert_eq!(flesh(&sim), 0, "stab {stab}");
+    }
+    for (stab, health) in [(false, 80.0), (true, 35.0)] {
+        let (sim, target) = knifed(stab, None);
+        let left = sim.app.world().get::<Health>(target).unwrap().current * 100.0;
+        assert!((left - health).abs() < 1e-3, "stab {stab}: health {left}");
+        assert!(entries(&sim).is_empty(), "{:?}", entries(&sim));
+        assert_eq!(flesh(&sim), 1, "the flesh impact, stab {stab}");
+    }
 }
