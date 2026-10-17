@@ -333,6 +333,32 @@ impl FrameMetrics {
         &self.schedule_names
     }
 
+    /// Count a finished frame that took `frame_ms` (start to start) and
+    /// say whether it is a hitch: over `hitch_ratio` times the median frame
+    /// time (refreshed every 30 frames; none before frame 61, nor with a
+    /// ratio of 0). A hitch's frame number goes to `hitch_frames`. The
+    /// frame marks call it with the measured wall time; tests feed it
+    /// made-up times, so the rule is checked without a clock.
+    pub fn record_frame(&mut self, frame_ms: f64, hitch_ratio: f32) -> bool {
+        self.frame_ms.ring.push(frame_ms);
+        self.last.frame_ms = frame_ms;
+        self.frames += 1;
+        if self.frames % 30 == 1 {
+            self.median_ms = self.frame_ms.ring.percentiles().map_or(0.0, |p| p.p50);
+        }
+        let hitch = hitch_ratio > 0.0
+            && self.frames > 60
+            && self.median_ms > 0.0
+            && frame_ms > hitch_ratio as f64 * self.median_ms;
+        if hitch {
+            self.hitch_frames.push(self.frames);
+            if self.hitch_frames.len() > 16 {
+                self.hitch_frames.remove(0);
+            }
+        }
+        hitch
+    }
+
     /// Forget every distribution (e.g. between benchmark views).
     pub fn clear(&mut self) {
         self.frame_ms.ring.clear();
@@ -436,18 +462,13 @@ fn frame_start(world: &mut World) {
     let c = m.counters.read();
     if let Some((t, _)) = m.start {
         let frame = (now - t).as_secs_f64() * 1e3;
-        m.frame_ms.ring.push(frame);
-        m.last.frame_ms = frame;
-        m.frames += 1;
+        let is_hitch = m.record_frame(frame, ratio);
         m.ticks_in_frame = ticks - m.prev_ticks;
-        if m.frames % 30 == 1 {
-            m.median_ms = m.frame_ms.ring.percentiles().map_or(0.0, |p| p.p50);
-        }
         #[cfg(feature = "profile")]
         {
             m.prev_spans = span_times::take();
         }
-        if ratio > 0.0 && m.frames > 60 && m.median_ms > 0.0 && frame > ratio as f64 * m.median_ms {
+        if is_hitch {
             let phases = shared.0.lock().map(|s| s.phases.clone()).unwrap_or_default();
             hitch(&mut m, frame, now, &phases);
         }
@@ -508,11 +529,6 @@ pub fn gpu_latest_ms(diagnostics: &DiagnosticsStore) -> Option<f64> {
 /// waited or was descheduled), the render world's slowest sets, and with
 /// the profile feature the spans with the most self time.
 fn hitch(m: &mut FrameMetrics, frame: f64, now: Instant, phases: &[(&'static str, f64, f64)]) {
-    let n = m.frames;
-    m.hitch_frames.push(n);
-    if m.hitch_frames.len() > 16 {
-        m.hitch_frames.remove(0);
-    }
     if m.last_hitch_log.is_some_and(|t| (now - t).as_secs_f32() < 0.5) {
         m.hitches_unlogged += 1;
         return;

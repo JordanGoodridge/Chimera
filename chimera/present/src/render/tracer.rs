@@ -121,12 +121,16 @@ mod tests {
     #[test]
     fn tracers_start_at_the_muzzle_or_after_a_wait_at_the_shot() {
         let mut app = app();
+        // Each update after the first is 60 ms of game time, past `WAIT`
+        // (no real sleep: the clock is the test's).
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(60),
+        ));
         let owner = app.world_mut().spawn_empty().id();
         // A long shot with no muzzle flash yet: waits, then starts at the eye.
         shoot(&mut app, owner, Vec3::new(0.0, 0.0, -20.0));
         app.update();
         assert_eq!(app.world().resource::<Particles>().count(), 0, "waits for the flash");
-        std::thread::sleep(std::time::Duration::from_millis(60));
         app.update();
         let streak = |app: &App| match app.world().resource::<Particles>().groups.last().unwrap().particles[0].shape {
             Shape::Streak { start, distance, .. } => (start, distance),
