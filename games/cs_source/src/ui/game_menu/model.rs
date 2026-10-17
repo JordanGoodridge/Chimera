@@ -419,7 +419,8 @@ pub(super) fn menu_input(menu: &GameMenu, a: &[String]) -> Result<Input, String>
             0,
         )),
         Some("sheet") => Ok(Input::Click(Target::Tab(a.get(1).and_then(|n| n.parse().ok()).ok_or("sheet <n>")?), 0)),
-        _ => Err("menuinput focus <control> | row <n> | open | down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n>".into()),
+        Some("scroll") => Ok(Input::Scroll(a.get(1).and_then(|n| n.parse().ok()).ok_or("scroll <rows>")?)),
+        _ => Err("menuinput focus <control> | row <n> | open | down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n> | scroll <rows>".into()),
     }
 }
 
@@ -815,6 +816,7 @@ impl GameMenu {
         let rows = self.rows();
         let focused = rows.get(self.focus).cloned();
         let text_focused = matches!(focused, Some(Row::Control { control: Control::Text { .. }, .. }));
+        let was = (self.page, self.tab, self.create_tab, self.focus);
         match input {
             Input::Close if self.page != Page::Main && self.default_action().is_some() => {
                 self.press_action_into(&Action::Cancel, &mut out)
@@ -930,7 +932,7 @@ impl GameMenu {
             Input::Click(Target::Cancel | Target::ComboItem(_) | Target::Outside, _) => {}
             Input::Click(Target::Scroll, step) | Input::Scroll(step) => {
                 let (len, shown) = self.list();
-                self.scroll = (self.scroll as i32 + step).clamp(0, len.saturating_sub(shown) as i32) as usize;
+                self.scroll = widgets::scroll_clamp(self.scroll as i32 + step, len, shown);
                 return out;
             }
             Input::Wheel(i, notches) => {
@@ -1031,7 +1033,15 @@ impl GameMenu {
             }
         }
         self.select_focused_key();
-        self.keep_visible();
+        // The view follows the focus only when the focus moved (VGUI's
+        // lists: the wheel, the scroll bar and a hover leave it where it
+        // was scrolled, the selection off screen).
+        if was != (self.page, self.tab, self.create_tab, self.focus) {
+            self.keep_visible();
+        } else {
+            let (len, shown) = self.list();
+            self.scroll = widgets::scroll_clamp(self.scroll as i32, len, shown);
+        }
         out
     }
 

@@ -200,9 +200,46 @@ pub(super) fn refresh_script_cvars(w: &mut World) {
     menu.user_cvars = menu.user_cvars_now(&get);
 }
 
+/// The video tab shows the window as it is, as CS:S's shows the mode it
+/// runs in: its size (`mashup_resolution` may be empty, "as started", or
+/// a size the window manager didn't give) and its display mode
+/// (`mashup_fullscreen`), each where the console has the cvar.
+pub(super) fn window_values(get: &mut HashMap<String, String>, size: Option<UVec2>, mode: Option<u8>) {
+    if let (Some(v), Some(size)) = (get.get_mut("mashup_resolution"), size.filter(|s| s.x > 0 && s.y > 0)) {
+        *v = format!("{}x{}", size.x, size.y);
+    }
+    if let (Some(v), Some(mode)) = (get.get_mut("mashup_fullscreen"), mode) {
+        *v = mode.to_string();
+    }
+}
+
+/// The window's display mode as the system has it (winit's window; 0
+/// windowed, 1 full screen, 2 borderless), read each frame on the main
+/// thread: the video tab shows it, not only what `Window::mode` asked for.
+#[derive(Resource, Default)]
+pub(super) struct RealWindowMode(pub(super) Option<u8>);
+
+pub(super) fn read_window_mode(
+    _main_thread: bevy::ecs::system::NonSendMarker,
+    window: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    mut real: ResMut<RealWindowMode>,
+) {
+    let Ok(e) = window.single() else { return };
+    let mode = bevy::winit::WINIT_WINDOWS.with_borrow(|windows| {
+        windows.get_window(e).map(|w| match w.fullscreen() {
+            None => 0,
+            Some(winit::window::Fullscreen::Exclusive(_)) => 1,
+            Some(winit::window::Fullscreen::Borderless(_)) => 2,
+        })
+    });
+    if real.0 != mode {
+        real.0 = mode;
+    }
+}
+
 /// Open the menu on a page, reading the settings from the console.
 pub(super) fn open_menu(w: &mut World, page: Page) {
-    let (get, binds, known) = menu_values(w);
+    let (mut get, binds, known) = menu_values(w);
     let current = w
         .get_resource::<crate::map::LoadedMapName>()
         .map(|m| m.0.rsplit(':').next().unwrap_or(&m.0).to_string());
@@ -226,13 +263,17 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
         })
         .collect();
     let mut windows = w.query_filtered::<&Window, With<bevy::window::PrimaryWindow>>();
-    let window = windows.iter(w).next().map(|w| w.resolution.physical_size());
+    let shown = windows.iter(w).next().map(|w| (w.resolution.physical_size(), crate::client::video::mode_value(&w.mode)));
+    let window = shown.map(|(size, _)| size);
+    // The display mode as the system has it, else as asked for.
+    let mode = w.get_resource::<RealWindowMode>().and_then(|r| r.0).or(shown.map(|(_, m)| m));
+    window_values(&mut get, window, mode);
     let no_spectators = !crate::ui::team_menu::spectators_allowed(w.get_resource::<crate::rules::Deathmatch>());
     let mut menu = w.resource_mut::<GameMenu>();
     menu.set_counts(bots, players);
     menu.no_spectators = no_spectators;
     menu.set_binds(binds, known);
-    menu.resolutions = crate::client::video::resolutions(&modes);
+    menu.resolutions = crate::client::video::resolutions(&modes, window);
     menu.open(page, maps, current.as_deref(), |n| get.get(n).cloned());
     // The aspect ratio of the window as it is when the size is as started.
     if menu.aspect.is_none()
@@ -554,7 +595,7 @@ pub(super) fn pointer(
     lists: Query<&RelativeCursorPosition, With<WheelList>>,
     combos: Query<(&WheelCombo, &RelativeCursorPosition)>,
     scroll: Option<Res<AccumulatedMouseScroll>>,
-    slider: Res<SliderDrag>,
+    (slider, thumb): (Res<SliderDrag>, Option<Res<widgets::ScrollDrag>>),
     fonts: Res<UiFonts>,
     windows_q: Query<&Window>,
     mut menu: ResMut<GameMenu>,
@@ -596,6 +637,20 @@ pub(super) fn pointer(
         && slider.is_changed()
     {
         inputs.push(Input::Slide(row, f));
+    }
+    // A scroll bar's thumb dragged: the list (or the open drop-down's)
+    // there, wherever the selection is.
+    if let Some(drag) = thumb.filter(|d| d.is_changed())
+        && let Some((owner, _, first)) = drag.at
+    {
+        let now = match (owner, menu.combo) {
+            (widgets::COMBO_SCROLL, Some(c)) => Some(c.first),
+            (MENU_SCROLL, None) => Some(menu.scroll),
+            _ => None,
+        };
+        if let Some(now) = now.filter(|n| *n != first) {
+            inputs.push(Input::Scroll(first as i32 - now as i32));
+        }
     }
     if let Some(scroll) = scroll
         && scroll.delta.y != 0.0

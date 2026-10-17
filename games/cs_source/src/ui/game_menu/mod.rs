@@ -82,7 +82,9 @@
 //! "Use Defaults"; actions mashup lacks are greyed; "Advanced...": the dialog
 //! of `OptionsSubKeyboardAdvancedDlg.res`, fast weapon switch and developer
 //! console (`con_enable`), OK keeps, Cancel or Esc puts back), Mouse, Audio,
-//! Video (an aspect ratio filtering the resolutions; "Adjust brightness
+//! Video (the window as it is: its size, added to the monitor's modes when not
+//! one of them, and its real display mode, `systems::RealWindowMode`; an aspect
+//! ratio filtering the resolutions; "Adjust brightness
 //! levels...": `OptionsSubVideoGammaDlg.res`, `mat_monitorgamma` with the
 //! install's `gamma` test picture; its "Advanced...":
 //! `OptionsSubVideoAdvancedDlg.res`, texture detail, antialiasing, filtering,
@@ -97,7 +99,9 @@
 //! set on OK); docs/plans/active/ui-parity.md lists every control, its cvar and
 //! why the rest are greyed; `bugreport`; `quit`. Tab and Shift+Tab walk a
 //! dialog's controls, Ctrl+Tab its tabs, Enter presses the default button (OK,
-//! Start), Space the focused control, Esc cancels; `menuinput` drives it. A
+//! Start), Space the focused control, Esc cancels; lists scroll by the wheel
+//! and their scroll bars (`widgets::scroll_bar`) free of their selection, which
+//! the view follows only as it moves; `menuinput` drives it. A
 //! model (`GameMenu::handle`: keys and clicks in, console lines out) and its
 //! drawing; a new game's bots are added once the `map` load finishes. While
 //! open the mouse is free (so the local player's input is ignored), binds don't
@@ -192,7 +196,9 @@ impl Plugin for GameMenuPlugin {
             .init_resource::<AfterLoad>()
             .init_resource::<RegrabCursor>()
             .init_resource::<MenuUi>()
+            .init_resource::<RealWindowMode>()
             .add_systems(Startup, (start_loading_ui, start_session))
+            .add_systems(Update, read_window_mode.before(MenuSystems))
             .add_systems(
                 Update,
                 (
@@ -286,7 +292,8 @@ impl Plugin for GameMenuPlugin {
             "menuinput <input>: drive the open game menu as keys and clicks would (screenshots, tests): \
              focus <cvar|map|bots|botcount|botteam|difficulty|aspect> | row <n> (the page's nth row: list rows, \
              buttons) | open (the focused combo box's list) | \
-             down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n>; prints \
+             down | up | enter | space | escape | tab | backtab | type <text> | pick <n> | sheet <n> | scroll <rows> \
+             (the open list or drop-down, as the wheel); prints \
              the focused control.",
             |w, a| {
                 let input = menu_input(&w.resource::<GameMenu>(), a)?;

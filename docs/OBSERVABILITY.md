@@ -245,8 +245,12 @@ Only `Reflect`-registered types are visible; register new core components in
   the open dialog as keys would (`focus <cvar|map|bots|botcount|botteam|
   difficulty|aspect>`, `row <n>` (the page's nth row), `open` a focused combo box's list, `down`, `up`, `enter`,
   `space`, `escape`, `tab`, `backtab`, `type <text>`, `pick <n>`, `sheet
-  <n>`) and prints the focused control: a drop-down open in a screenshot
-  is `+menu newgame +menuinput open`. `vgui_windows` lists the frames
+  <n>`, `scroll <rows>` the open list as the wheel) and prints the focused
+  control: a drop-down open in a screenshot is `+menu newgame +menuinput
+  open` (after `+menu`, `+wait 10` before inputs that need the page drawn).
+  `ui_click <x> <y>` and `ui_drag <x0> <y0> <x1> <y1> [<frames>]` drive the
+  real pointer path (Bevy's input, `Interaction`) in window pixels over the
+  remote console: a scroll bar's thumb dragged, a drop-down's box clicked. `vgui_windows` lists the frames
   (place, size, stacking); `vgui_windows <frame> <x> <y> [<wide> <tall>]`
   moves one as a title-bar drag would (and sizes a sizeable one), e.g.
   `+openserverbrowser lan +wait 30 +vgui_windows servers 40 30 760 520`.
