@@ -8,7 +8,8 @@
 //! Q11). Hurting and killing them is reported for the rules' money.
 //!
 //! Covers: `Hostage` characters (no team, the game's movement, `map::BodyName`
-//! model, the four handed out in turn: `HostageModelCycle`, Q9) spawned at
+//! model, the four handed out in turn: `HostageModelCycle`, Q9; the map's
+//! `skin` as `map::BodySkin`) spawned at
 //! each round start, +use to lead/stop (defenders only), following over the
 //! nav mesh (stop/walk/run distances, give up when far or unseen), rescue in
 //! a rescue zone (only while following and walking; none without zones),
@@ -30,7 +31,7 @@ use crate::{
     character::character_bundle,
     console::resource_cvar,
     core::{Damage, Died, Health, Intent, LocalPlayer, MaxSpeed, MovementState, SimSet, Team},
-    map::{BodyName, GameSound, PlaySound, nav::NavMesh},
+    map::{BodyName, BodySkin, GameSound, PlaySound, nav::NavMesh},
     slots::{Loadout, MovementSlot, set_movement},
     weapon::{BulletTarget, HitgroupScale, Inventory},
 };
@@ -566,6 +567,10 @@ fn spawn_hostage(
         rules.bullets,
     ));
     let id = e.id();
+    // The map's skin stays, whatever the model (measured, spec Q9).
+    if s.skin != 0 {
+        world.entity_mut(id).insert(BodySkin(s.skin));
+    }
     // Which model: neither the map's model nor its `HostageType` picks one;
     // each hostage spawned takes the next of the four in turn, the turn
     // going on over rounds and maps (measured, spec Q9).

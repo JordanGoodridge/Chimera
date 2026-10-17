@@ -181,13 +181,15 @@ impl Zone {
 }
 
 /// A hostage the map places (`hostage_entity`): feet (engine space), yaw
-/// (radians, our convention: 0 looks down -Z), and its keyvalues' model
-/// choice (`HostageType`, `model`).
-#[derive(Clone, Debug, PartialEq)]
+/// (radians, our convention: 0 looks down -Z), its keyvalues' model
+/// choice (`HostageType`, `model`) and its `skin`, which the hostage keeps
+/// whatever model it gets (measured, objectives.md Q9: cs_office's are 1).
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct HostageSpawn {
     pub feet: Vec3,
     pub yaw: f32,
     pub kind: Option<i32>,
+    pub skin: i32,
 }
 
 /// The objectives the loaded map has (spec 1, 9): bomb targets, rescue
@@ -243,6 +245,7 @@ impl MapObjectives {
                     // Source yaw 0 looks down +X (engine +X); ours 0 is -Z.
                     yaw: (e.angles().y - 90.0).to_radians(),
                     kind: e.get("HostageType").and_then(|v| v.trim().parse().ok()),
+                    skin: e.get("skin").and_then(|v| v.trim().parse().ok()).unwrap_or(0),
                 }),
                 "info_map_parameters" => {
                     out.bomb_radius = e.get("bombradius").and_then(|v| v.trim().parse().ok());

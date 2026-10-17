@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     core::{NetRole, SimClock, Team},
     map::{
-        BodyName,
+        BodyName, BodySkin,
         loose::{ShownItem, SitOnOrigin},
     },
     net::{
@@ -315,6 +315,8 @@ pub struct NetBomb {
 pub struct NetHostage {
     pub index: u32,
     pub model: Option<String>,
+    /// Its skin family (`map::BodySkin`).
+    pub skin: i32,
     #[entities]
     pub leader: Option<Entity>,
 }
@@ -475,10 +477,10 @@ fn write_hostages(mut q: Query<(&Hostage, &mut NetHostage)>, replicated: Query<(
 /// Hostages replicate as characters (`NetCharacter`, `NetBody`) with
 /// `NetHostage`.
 fn replicate_hostages(
-    q: Query<(Entity, &Hostage, Option<&Name>, Option<&BodyName>), Without<Replicated>>,
+    q: Query<(Entity, &Hostage, Option<&Name>, Option<&BodyName>, Option<&BodySkin>), Without<Replicated>>,
     mut commands: Commands,
 ) {
-    for (e, h, name, body) in &q {
+    for (e, h, name, body, skin) in &q {
         commands.entity(e).insert((
             Replicated,
             NetCharacter {
@@ -489,6 +491,7 @@ fn replicate_hostages(
             NetHostage {
                 index: h.index as u32,
                 model: body.map(|b| b.0.clone()),
+                skin: skin.map_or(0, |s| s.0),
                 leader: None,
             },
         ));
@@ -913,6 +916,9 @@ fn apply_hostages(
                 }
                 if let Some(m) = &n.model {
                     ent.insert(BodyName(m.clone()));
+                }
+                if n.skin != 0 {
+                    ent.insert(BodySkin(n.skin));
                 }
             }
         }

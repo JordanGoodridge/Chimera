@@ -466,7 +466,19 @@ warning). The `player_vehicle` table is irrelevant to CS:S.
   round): the tick after the 500 kg cupboard landed at 1500 in/s on a
   5000-health player, 200 crush, attacker the world, force straight down;
   never at 1000 or less. Not in ours (a 100-health player is dead from
-  the landing first).*
+  the landing first).* *Third round (2026-10-17, `impacts.py`-style drops
+  polling the prop's origin, and the cupboard with `massScale` set down
+  on the head from 6 units): the landing crush is narrow and repeatable:
+  every throw at 1450, 1480 and 1500 in/s (force z −173423, −177283,
+  −179850: received ≈ 10 × the speed in kg), none at 1000–1400, 1520–1700
+  or 2000. A resting weight crushes as the rule says: the cupboard at
+  4000 kg (massScale 8) on the head dealt 200 on 26 of the first 30 ticks
+  (force z −41000 to −52000: received ≈ its weight; it stopped on the
+  ticks just under 3400), at 3750 kg nearly every tick, at 3000 kg only
+  on two bounces (received 5300–6500), never while resting.*
+  *Bounces (same round): after landing the cupboard rose 2 to 28 units
+  (0, 300, 1000, 1500 in/s), slid off the head and fell past the player
+  to the floor: no damage after the landing's two contacts.*
 
 ### 7. Breaking
 
@@ -941,7 +953,9 @@ are Windows capture C29 in docs/plans/active/windows-captures.md).
    seen.* *Second round (2026-10-17, `tools/css_probe/impacts.py`): the
    500 kg cupboard at nine speeds (section 6): 5 + 50 up to 500 + 500, and
    one 200 stress crush after the 1500 in/s landing; running into props
-   hurts nobody.*
+   hurts nobody.* *Third round (2026-10-17): the landing crush only at
+   1450–1500 in/s, a resting 4000 kg prop crushes every tick, 3000 kg
+   doesn't; nothing after a landing's two contacts (section 6).*
 7. **Client break sounds**: client props and pieces queue none in the SDK;
    does breaking a bottle in CS:S make a sound beyond the bullet impact?
    Check by ear on cs_italy.
@@ -1016,4 +1030,9 @@ Since then (2026-10-17): Q6 and Q13's measurements are implemented in
 `source/logic/src/logic/bridge.rs` (`impacts`): a prop_physics meeting a
 player counts as two contacts hurting both, each the prop losing a share of
 its speed by its mass, fitted to the measured crate and cupboard (scenario
-tests in `games/cs_source/tests/it/logic_physics.rs`).
+tests in `games/cs_source/tests/it/logic_physics.rs`), the speed taken
+along the contact's normal (sliding off the head after landing hurts
+nobody); and the stress crush, from avian's contact impulses, past a
+contact's impact steps (`stress`; a 4000 kg prop resting on a player
+crushes it, 3000 kg doesn't; the 1450–1500 in/s landing crush isn't
+reproduced).

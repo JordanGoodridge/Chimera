@@ -4,7 +4,8 @@
 //! headless, for the server's hit tests). The drawn body, held model and
 //! their posing are `render::bodies`, which draws what these say.
 //!
-//! `CharacterModels`, `BodyModel`, `BodyName`, `Held`, `ShowLocalBody`;
+//! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `Held`,
+//! `ShowLocalBody`;
 //! hitboxes on the skeleton (also headless), `SimAnimator`/`SimPose`.
 //!
 //! Known shortcuts (docs/tech-debt.md): Maps without character models fall back
@@ -73,6 +74,11 @@ impl CharacterModels {
 /// instead of its team's: a hostage.
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct BodyName(pub String);
+
+/// Which skin family a character's body shows (Source `skin`: a map's
+/// hostage keeps its own); without it, the model's first.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BodySkin(pub i32);
 
 /// Whether the local player's own body is drawn (third person). The
 /// client sets it; the body is there either way, animated, and hidden

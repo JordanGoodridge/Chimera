@@ -578,6 +578,7 @@ fn hostage_map() -> MapObjectives {
             feet: Vec3::new(0.0, 0.0, 5.0),
             yaw: 0.0,
             kind: None,
+            ..Default::default()
         }],
         ..default()
     }
@@ -685,6 +686,7 @@ fn killing_a_hostage_costs_money_and_too_many_get_you_removed() {
                 feet: Vec3::new(i as f32 * 2.0, 0.0, 5.0),
                 yaw: 0.0,
                 kind: None,
+                ..Default::default()
             })
             .collect(),
         ..hostage_map()

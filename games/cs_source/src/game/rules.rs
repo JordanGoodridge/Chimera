@@ -110,6 +110,7 @@ mod tests {
                 feet: Vec3::ZERO,
                 yaw: 0.0,
                 kind: None,
+                ..Default::default()
             }],
             ..default()
         });

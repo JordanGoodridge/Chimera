@@ -302,7 +302,8 @@ fn office_hostage_walks_after_its_leader() {
 /// Q9 and Q11, measured on the probe server 2026-10-17 (cs_office and
 /// cs_compound, specs/cs_source/objectives.md): each hostage spawned takes
 /// the next of the four models in turn, the turn going on over rounds (a
-/// 3-hostage map's rounds start one model later each time); a hostage is
+/// 3-hostage map's rounds start one model later each time) and keeps the
+/// map's skin (cs_office's 1); a hostage is
 /// rescued only while it follows and walks, when its 26-unit-wide hull
 /// reaches into a rescue zone (cs_office's zone face at y -1719: rescued
 /// at origin y -1710, 9 units outside); idle in a zone, or standing by its
@@ -310,7 +311,7 @@ fn office_hostage_walks_after_its_leader() {
 /// not even across the defenders' spawns.
 #[test]
 fn office_hostage_models_turn_and_rescue_rules() {
-    use crate::stack::{map::BodyName, objectives::hostages::{HostageRules, spawn_all}};
+    use crate::stack::{map::{BodyName, BodySkin}, objectives::hostages::{HostageRules, spawn_all}};
     let Some(map) = load("cs_office") else { return };
     let mut sim = sim(map);
     let ct = character(&mut sim, Vec3::new(-1112.0, -1552.0, -330.0), 2);
@@ -336,6 +337,10 @@ fn office_hostage_models_turn_and_rescue_rules() {
     // each round.
     let first = round(&mut sim);
     assert_eq!(first.len(), 4);
+    // The map's skin stays whatever the model (cs_office's: 1, measured).
+    for (e, i, _) in &first {
+        assert_eq!(sim.app.world().get::<BodySkin>(*e), Some(&BodySkin(1)), "hostage {i}'s skin");
+    }
     let k0 = which(&first[0].2);
     for (i, (_, _, m)) in first.iter().enumerate() {
         assert_eq!(which(m), (k0 + i) % 4, "round 1, hostage {i}");
