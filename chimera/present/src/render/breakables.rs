@@ -183,8 +183,10 @@ pub struct PanePart(pub PaneLook);
 pub const EDGE_DEPTH: f32 = 0.5;
 
 /// A rectangle of pane space to cut a mesh to; `uv` maps a point `p` of
-/// it to texture coordinates ((p − o)·x, (p − o)·y) instead of
-/// interpolating the mesh's.
+/// it to mask coordinates ((p − o)·x, (p − o)·y), which ride in the
+/// vertex colour's red and green for the edge piece's jagged mask
+/// (`MapMesh::pane_mask`; the mesh's own coordinates are kept, so the
+/// piece's texture lines up with its pane's).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaneRect {
     pub lo: Vec2,
@@ -194,9 +196,10 @@ pub struct PaneRect {
 
 /// The edge strips of edge material `k` of `kinds`: along each side of an
 /// unbroken pane whose neighbour inside the window broke, reaching
-/// `EDGE_DEPTH` into the neighbour; its texture's u runs along the side
-/// and its bottom (v = 1) lies on the pane. Each side picks one of the `kinds` edge
-/// materials by its place (ours).
+/// `EDGE_DEPTH` into the neighbour; its mask's u runs along the side
+/// and its solid bottom (v = 1) lies on the pane, its shards rising into
+/// the hole. Each side picks one of the `kinds` edge masks by its place
+/// (ours).
 pub fn edge_strips(panes: &BrushPanes, k: u8, kinds: u8) -> Vec<PaneRect> {
     let (cols, rows) = (panes.cols as i32, panes.rows as i32);
     let broken = |c: i32, r: i32| c >= 0 && r >= 0 && c < cols && r < rows && !panes.whole(c as usize, r as usize);
@@ -284,8 +287,8 @@ pub fn clip_to_panes(mesh: &Mesh, panes: &BrushPanes) -> Option<Mesh> {
 
 /// A triangle mesh cut to rectangles of pane space: every triangle
 /// clipped to each rectangle it overlaps (in the window's plane), its
-/// float attributes interpolated, its texture coordinates the
-/// rectangle's own where it has them.
+/// float attributes interpolated, and the rectangles' own mask
+/// coordinates, where they have them, as the vertex colour (u, v, 0, 1).
 pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Option<Mesh> {
     let positions: Vec<Vec3> = match mesh.try_attribute(Mesh::ATTRIBUTE_POSITION).ok()? {
         VertexAttributeValues::Float32x3(v) => v.iter().map(|p| Vec3::from(*p)).collect(),
@@ -354,8 +357,14 @@ pub fn clip_to_rects(mesh: &Mesh, panes: &BrushPanes, rects: &[PaneRect]) -> Opt
         clipped.insert_attribute(attribute.clone(), values);
     }
     if out.iter().any(|(_, _, uv)| uv.is_some()) {
-        let uvs: Vec<[f32; 2]> = out.iter().map(|(_, _, uv)| uv.unwrap_or_default().to_array()).collect();
-        clipped.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        let mask: Vec<[f32; 4]> = out
+            .iter()
+            .map(|(_, _, uv)| {
+                let uv = uv.unwrap_or_default();
+                [uv.x, uv.y, 0.0, 1.0]
+            })
+            .collect();
+        clipped.insert_attribute(Mesh::ATTRIBUTE_COLOR, mask);
     }
     clipped.insert_indices(Indices::U32(tris.into_iter().flatten().collect()));
     Some(clipped)
@@ -546,5 +555,48 @@ mod tests {
             panic!()
         };
         assert!(uv.iter().all(|u| u[0] <= 0.5 + 1e-5));
+    }
+
+    /// An edge piece keeps the face's texture coordinates (its crack
+    /// texture runs on from the pane's) and carries its mask's in the
+    /// vertex colour: solid (v = 1) on the pane, shards (v = 0) toward the
+    /// hole.
+    #[test]
+    fn edge_strips_keep_the_face_coordinates_and_carry_the_mask() {
+        let mut mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        );
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_UV_0,
+            vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+        );
+        mesh.insert_indices(Indices::U32(vec![0, 1, 2, 0, 2, 3]));
+        let mut p = panes(2, 1);
+        p.broken[1] = true;
+        // One edge kind: the left pane's right side, into the broken one.
+        let rects = edge_strips(&p, 0, 1);
+        assert_eq!(rects.len(), 1);
+        let strip = clip_to_rects(&mesh, &p, &rects).unwrap();
+        let Some(VertexAttributeValues::Float32x3(pos)) = strip.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            panic!()
+        };
+        let Some(VertexAttributeValues::Float32x2(uv)) = strip.attribute(Mesh::ATTRIBUTE_UV_0) else {
+            panic!()
+        };
+        let Some(VertexAttributeValues::Float32x4(mask)) = strip.attribute(Mesh::ATTRIBUTE_COLOR) else {
+            panic!("mask coordinates in the colour")
+        };
+        for ((p, uv), m) in pos.iter().zip(uv).zip(mask) {
+            assert!((1.0 - 1e-4..=1.0 + EDGE_DEPTH + 1e-4).contains(&p[0]), "in the strip: {p:?}");
+            assert!((uv[0] - p[0] / 2.0).abs() < 1e-4, "the face's own u: {uv:?} at {p:?}");
+            // v = 1 on the pane's edge (x = 1), 0 at the strip's far side.
+            assert!((m[1] - (1.0 - (p[0] - 1.0) / EDGE_DEPTH)).abs() < 1e-4, "mask v {m:?} at {p:?}");
+            assert!((m[0] - p[1]).abs() < 1e-4, "mask u along the side: {m:?} at {p:?}");
+        }
     }
 }

@@ -724,8 +724,9 @@ docs/plans/active/sound.md.
 - Breakables, remaining (source/logic/src/logic/breakables.rs,
   games/cs_source/tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof
   decals and brush propdata templates are in (their readings in
-  docs/tech-debt.md "Breakables"); left: bulletproof glass's ricochet and
-  the computer material's sparks on bullet traces, the client's pane
+  docs/tech-debt.md "Breakables"), and so are bulletproof glass's ricochet
+  and the computer material's sparks on bullet traces; left: whether the
+  ricochet has a look (the specs give it only `Bounce.Shrapnel`), the client's pane
   drawing (spec open question 8:
   edge piece selection, which side draws, the piece's offset; ours in
   docs/tech-debt.md "Breakables"), the spec's open questions on the probe

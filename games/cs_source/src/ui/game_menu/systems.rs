@@ -284,15 +284,15 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
     menu.random_seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos() as u64 / 1000);
-    // Menus close each other.
-    if let Some(mut b) = w.get_resource_mut::<crate::ui::buy_menu::BuyMenu>() {
-        *b = default();
-    }
-    if let Some(mut t) = w.get_resource_mut::<crate::ui::team_menu::TeamMenu>() {
-        t.0 = false;
-    }
-    if let Some(mut r) = w.get_resource_mut::<crate::ui::radio::RadioMenu>() {
-        r.0 = None;
+    // The in-game panels (message of the day, team, class, buy, radio and
+    // spectator menus) stay, under the menu (`MENU_Z`), taking no input
+    // until it closes, as under CS:S's GameUI; the spectator menu's open
+    // drop-down (a popup, over everything) closes.
+    if let Some(mut l) = w.get_resource_mut::<crate::ui::spectator_menu::MenuLists>()
+        && (l.open.is_some() || l.sub.is_some())
+    {
+        l.open = None;
+        l.sub = None;
     }
     if page != Page::Main
         && let Some(mut windows) = w.get_resource_mut::<Windows>()
@@ -755,12 +755,14 @@ pub(super) fn sync(
 }
 
 /// The mouse is free while the menu is open (whoever grabbed it); once
-/// closed, grabbed again when the mouse button is up.
+/// closed, grabbed again when the mouse button is up, unless an in-game
+/// panel it covered (`VguiOpen`) is still up and wants it.
 pub(super) fn cursor(
     menu: Res<GameMenu>,
     mut regrab: ResMut<RegrabCursor>,
     mouse: Res<ButtonInput<MouseButton>>,
     ui: Res<crate::client::console::ConsoleUi>,
+    panels: Option<Res<crate::client::vgui::VguiOpen>>,
     cursor: Option<Single<&mut CursorOptions>>,
 ) {
     let Some(mut cursor) = cursor else { return };
@@ -770,7 +772,7 @@ pub(super) fn cursor(
         }
     } else if regrab.0 && !mouse.pressed(MouseButton::Left) {
         regrab.0 = false;
-        if !ui.open {
+        if !ui.open && !panels.is_some_and(|p| p.any()) {
             crate::client::input::capture_cursor(&mut cursor);
         }
     }

@@ -716,20 +716,70 @@ fn bulletproof_glass_takes_hits_without_breaking() {
         &[("material", "7"), ("health", "20")],
         Vec3::new(64.0, 2.0, 64.0),
     );
+    // (Ricochets, half of the bullet traces, are left out here.)
+    let damage_sounds = |w: &LogicWorld| -> Vec<String> {
+        sounds(w).into_iter().filter(|s| s != RICOCHET_SOUND).collect()
+    };
     w.damage(glass, 26.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
     assert_eq!(health(&w, glass), 7, "20 - 13");
     assert!(w.fired.iter().any(|(_, e, o)| *e == glass && o == "OnHealthChanged"));
-    assert_eq!(sounds(&w), vec!["Breakable.MatGlass"]);
+    assert_eq!(damage_sounds(&w), vec!["Breakable.MatGlass"]);
     w.effects.clear();
     w.damage(glass, 26.0, DamageKind::Bullet, None, Vec3::ZERO, Vec3::X);
     assert_eq!(health(&w, glass), -6);
     assert!(w.mover_solid(glass).is_some(), "still solid at health -6");
     assert!(w.shootable(glass));
     assert_eq!(gibs(&w), 0);
-    assert!(sounds(&w).is_empty(), "no damage sound at 0 or below, no break sound");
+    assert!(damage_sounds(&w).is_empty(), "no damage sound at 0 or below, no break sound");
     w.deliver(Who::Ent(glass), "Break", Value::Void, None, None);
     assert!(w.mover_solid(glass).is_some(), "Break does nothing");
     assert!(!w.fired.iter().any(|(_, e, o)| *e == glass && o == "OnBreak"));
+}
+
+/// Spec "Damage": bullet traces on Computer spark half the time (sparks
+/// and "Breakable.Computer" at the hit), on UnbreakableGlass ricochet half
+/// the time; other materials and other damage do neither.
+#[test]
+fn computers_spark_and_bulletproof_glass_ricochets_on_half_the_bullets() {
+    let count = |material: &str, kind: DamageKind| {
+        let mut w = world();
+        // Undamageable (health 0): the trace effect doesn't need damage.
+        let id = breakable(&mut w, &[("material", material)], Vec3::new(32.0, 32.0, 32.0));
+        let (mut sparks, mut computer, mut ricochets) = (0, 0, 0);
+        let at = Vec3::new(-16.0, 0.0, 4.0);
+        for _ in 0..200 {
+            w.effects.clear();
+            w.damage(id, 10.0, kind, None, at, Vec3::X);
+            for e in &w.effects {
+                match e {
+                    Effect::Spark { at: a, dir, magnitude } => {
+                        assert_eq!((*a, *dir, *magnitude), (at, -Vec3::X, 1.0), "at the hit, facing the shooter");
+                        sparks += 1;
+                    }
+                    Effect::Sound { entry, at: a, .. } if entry == COMPUTER_SPARK_SOUND => {
+                        assert_eq!(*a, at);
+                        computer += 1;
+                    }
+                    Effect::Sound { entry, at: a, .. } if entry == RICOCHET_SOUND => {
+                        assert_eq!(*a, at);
+                        ricochets += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        (sparks, computer, ricochets)
+    };
+    let (sparks, computer, ricochets) = count("6", DamageKind::Bullet);
+    assert!((70..=130).contains(&sparks), "{sparks} of 200");
+    assert_eq!(computer, sparks, "a sound with every spark");
+    assert_eq!(ricochets, 0);
+    let (sparks, computer, ricochets) = count("7", DamageKind::Bullet);
+    assert!((70..=130).contains(&ricochets), "{ricochets} of 200");
+    assert_eq!((sparks, computer), (0, 0));
+    assert_eq!(count("6", DamageKind::Melee), (0, 0, 0), "bullet traces only");
+    assert_eq!(count("7", DamageKind::Blast), (0, 0, 0));
+    assert_eq!(count("2", DamageKind::Bullet), (0, 0, 0), "metal: neither");
 }
 
 #[test]

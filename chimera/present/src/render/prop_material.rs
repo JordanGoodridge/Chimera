@@ -7,7 +7,10 @@
 //! Props lit by a light probe (vertex colours, or per pixel from uniforms for
 //! moving models such as view models), plus the scene's point lights
 //! (`DynamicLight`, read from Bevy's light clusters), Source range fog,
-//! `env_cubemap` reflections of the nearest baked cubemap, and the model
+//! `$envmap` reflections (the cubemap a material names, or for `env_cubemap`
+//! the nearest baked one) masked as the material says (`$envmapmask`,
+//! `$basealphaenvmapmask`, `$normalmapalphaenvmapmask`: the normal map's
+//! alpha, bound as `envmap_mask`), and the model
 //! shaders' `$detail` (every blend mode, 5 and 6 after lighting), `$selfillum`
 //! (base alpha or `$selfillummask`) and `$basetexturetransform`.
 //!
@@ -38,7 +41,8 @@ pub struct PropParams {
     /// 1 when the prop reflects `envmap` (Source VertexLitGeneric
     /// `$envmap`: no fresnel).
     pub envmap: f32,
-    /// 0 no mask, 2 one minus base alpha, 3 `envmap_mask` colour.
+    /// 0 no mask, 1 `envmap_mask` alpha (the normal map's: `$normalmapalphaenvmapmask`),
+    /// 2 one minus base alpha, 3 `envmap_mask` colour.
     pub envmap_mask: f32,
     pub envmap_contrast: f32,
     pub envmap_saturation: f32,
