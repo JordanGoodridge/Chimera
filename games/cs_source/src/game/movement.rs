@@ -782,12 +782,15 @@ impl<'a> Tracer<'a, '_, '_> {
                 let d2 = d1 + n.dot(delta);
                 gets_out |= d2 > 0.0;
                 starts_out |= d1 > 0.0;
-                // Entirely in front of this plane: misses the brush. Moving
-                // parallel to it counts as not entering, within float noise
-                // (planes and positions are meters at map scale), or a
-                // velocity just clipped along an angled surface would catch
-                // on it forever.
-                if d1 > 0.0 && (d2 >= eps || d2 >= d1 - PARALLEL_SLOP) {
+                // Entirely in front of this plane: misses the brush, even
+                // when the end is nearer than the back-off (CS:S: a ground
+                // probe ending 0.0024 short of the floor finds no ground;
+                // movecmp `militia_porch_wall_right`, `hover_2_010`).
+                // Moving parallel to it counts as not entering, within
+                // float noise (planes and positions are meters at map
+                // scale), or a velocity just clipped along an angled
+                // surface would catch on it forever.
+                if d1 > 0.0 && (d2 > 0.0 || d2 >= d1 - PARALLEL_SLOP) {
                     continue 'brush;
                 }
                 if d1 <= 0.0 && d2 <= 0.0 {

@@ -1427,7 +1427,10 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   unduck; the `duck_release_*` and `unduck_jump_*` scenarios replay them.
   With the bot's jump duck taken out of the report, the base scenarios
   showed a crease bevel our terrain triangles dropped and the 1/32 u/s a
-  stopped move keeps off the surface (`wall_slide`).
+  stopped move keeps off the surface (`wall_slide`). The cs_militia porch
+  runs (`militia_porch_wall*`, `hover_*`) found that a trace ending short
+  of a plane, however near, doesn't hit it (the 2-unit ground probe's
+  exact reach).
 - `movecmp brushes <map> <x> <y> <z> [radius]` lists the collision
   brushes near a point (index, ladder flag, bounds, planes in Source
   units) and the terrain triangles: what a diverging run's trace there

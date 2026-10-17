@@ -306,6 +306,21 @@ fn scenarios() -> Vec<Scenario> {
             inputs,
         });
     }
+    // Standing still just over 2 units above a flat floor (the porch's,
+    // z -16): how near the end of the 2-unit ground probe a floor still
+    // counts as ground (`militia_porch_wall_right` left the ground 2.0024
+    // units up). The probe places the bot before its tick 0, so CS:S's
+    // tick 0 already shows it: 1.99 up stays, 2.01 and more fall a tick
+    // (to 1.92-1.94 up).
+    for (name, gap) in [("hover_1_990", 1.99), ("hover_2_010", 2.01), ("hover_2_020", 2.02), ("hover_2_030", 2.03)] {
+        all.push(Scenario {
+            name: name.to_string(),
+            map: "cs_militia".to_string(),
+            start: Vec3::new(-69.83, 256.39, -16.0 + gap),
+            yaw: 270.0,
+            inputs: vec![Input::idle(270.0); 30],
+        });
+    }
     all
 }
 
