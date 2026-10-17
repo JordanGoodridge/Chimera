@@ -823,11 +823,9 @@ dithered fade bands. Left:
   as debris that doesn't collide with debris, ragdoll limbs that jittered
   against the floor (joints now solved in the contacts' passes, no
   gyroscopic torque; performance.md, "Props that never sleep", "Fewer
-  cameras per frame"). Left there: broken props' pieces with their `.phy` hulls (they load as
-  boxes: debris no longer collides with debris, but with hulls five of
-  de_inferno's twelve test props keep a light piece rocking alone on the
-  floor past 5 s, 0.3-1.9 rad/s; performance.md "Props that never
-  sleep").
+  cameras per frame"), broken props' pieces with their `.phy` hulls
+  (sleeping by props' stillness rule), a toy-scene test of ragdolls'
+  forced sleep.
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).
