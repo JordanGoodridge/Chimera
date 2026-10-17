@@ -274,8 +274,7 @@ impl<'a> Painter<'a> {
                             },
                             BackgroundColor(c.bg.map_or(bg, rgba)),
                             ZIndex(c.z),
-                            Button,
-                            Interaction::default(),
+                            super::widgets::clickable(),
                             VguiButton {
                                 menu,
                                 name: c.name.clone(),

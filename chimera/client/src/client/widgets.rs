@@ -24,6 +24,24 @@
 //! minimum size. Nothing is remembered across runs: a frame is centred
 //! the first time it opens in a session, then stays where it was left.
 //!
+//! Clicks: a press reaches the topmost node under the pointer that stops
+//! it (`FocusPolicy::Block`) and every node above that one, so whatever
+//! is clickable must block, or a click on it also lands on what is under
+//! it (a row under a scroll bar's thumb, the box under an open list's
+//! catcher). Bevy's `Button` asks for `Block`, but `Node` requires `Pass`
+//! and wins when it comes first in the bundle or the button is inserted
+//! later, as most of ours are; so clickables spawn with `clickable()`,
+//! and `block_clicks` makes anything that gains an `Interaction` block
+//! (`PassClicks` opts out, for a node that only watches the pointer).
+//! Plain nodes keep Bevy's `Pass`: labels and pictures on a button, HUD
+//! panels (scoreboard, chat, spectator bars, radio menu: nothing there
+//! takes a click), full-screen roots whose controls alone take clicks
+//! (the spectator menu, the server browser, the MOTD and class menus,
+//! which the game menu must stay clickable under). Panels that swallow
+//! clicks say `Block` themselves: frames, an open list's backing, the
+//! game menu's backdrop, the team and buy menus' dim screen, the
+//! console.
+//!
 //! VGUI's controls, one layer shared by the GameUI dialogs (`game_menu`,
 //! `server_browser`, `first_run`): the state machines the dialogs' models hold
 //! (`ComboList`: a drop-down's open list, highlight, pick, wheel, keys;
@@ -68,6 +86,7 @@ impl Plugin for WidgetsPlugin {
             .init_resource::<WorldPicture>()
             .init_resource::<ScrollDrag>()
             .init_resource::<PointerScript>()
+            .add_observer(block_clicks)
             .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems))
             .add_systems(
                 PreUpdate,
@@ -129,6 +148,60 @@ impl Plugin for WidgetsPlugin {
 fn point(a: &[String], i: usize) -> Option<Vec2> {
     let num = |k: usize| a.get(k).and_then(|v| v.parse::<f32>().ok());
     Some(Vec2::new(num(i)?, num(i + 1)?))
+}
+
+// ---------------------------------------------------------------------------
+// Clicks: what stops them.
+
+/// What a clickable node spawns with: a `Button` (its `Interaction`)
+/// that stops the pointer (`FocusPolicy::Block`), so a press reaches it
+/// and nothing under it. Spelled out because `Button`'s own `Block` loses
+/// to the `Pass` that `Node` requires whenever `Node` comes first in the
+/// bundle or the node was spawned before the button was inserted (as most
+/// of ours are); `block_clicks` makes the same correction for anything
+/// that forgets.
+pub fn clickable() -> impl Bundle {
+    (Button, bevy::ui::FocusPolicy::Block)
+}
+
+/// A node with an `Interaction` that lets the pointer through to what is
+/// under it as well (`Pass`, whichever of it and the `Interaction` came
+/// first; `block_clicks` leaves it so): for a node that only watches the
+/// pointer over a region other clickables sit in.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_add = pass_clicks)]
+pub struct PassClicks;
+
+fn pass_clicks(mut world: bevy::ecs::world::DeferredWorld, ctx: bevy::ecs::lifecycle::HookContext) {
+    match world.get_mut::<bevy::ui::FocusPolicy>(ctx.entity) {
+        Some(mut policy) => *policy = bevy::ui::FocusPolicy::Pass,
+        None => {
+            world.commands().entity(ctx.entity).try_insert(bevy::ui::FocusPolicy::Pass);
+        }
+    }
+}
+
+/// Anything the pointer can press or hover (an `Interaction` added: a
+/// `Button`, a hover-lit row) stops the pointer at itself, as `Button`
+/// means to, unless marked `PassClicks`.
+fn block_clicks(
+    add: On<Add, Interaction>,
+    mut nodes: Query<&mut bevy::ui::FocusPolicy, Without<PassClicks>>,
+    pass: Query<(), With<PassClicks>>,
+    mut commands: Commands,
+) {
+    let e = add.entity;
+    match nodes.get_mut(e) {
+        Ok(mut policy) => {
+            if *policy != bevy::ui::FocusPolicy::Block {
+                *policy = bevy::ui::FocusPolicy::Block;
+            }
+        }
+        Err(_) if !pass.contains(e) => {
+            commands.entity(e).try_insert(bevy::ui::FocusPolicy::Block);
+        }
+        Err(_) => {}
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -889,8 +962,7 @@ pub fn scroll_bar<B: Bundle>(
                 },
                 bevel(look, true),
                 hit(step),
-                Button,
-                Interaction::default(),
+                clickable(),
                 ChildOf(track),
             ))
             .id();
@@ -902,15 +974,13 @@ pub fn scroll_bar<B: Bundle>(
         commands.spawn((
             place(look, 0.0, w, w, top),
             hit(-page),
-            Button,
-            Interaction::default(),
+            clickable(),
             ChildOf(track),
         ));
         commands.spawn((
             place(look, 0.0, w + top + thumb, w, room - top - thumb),
             hit(page),
-            Button,
-            Interaction::default(),
+            clickable(),
             ChildOf(track),
         ));
         commands.spawn((
@@ -929,8 +999,7 @@ pub fn scroll_bar<B: Bundle>(
                 top,
                 thumb,
             },
-            Button,
-            Interaction::default(),
+            clickable(),
             ChildOf(track),
         ));
     }
@@ -1458,8 +1527,7 @@ pub fn frame(
                 },
                 bevel(look, true),
                 BackgroundColor(look.color("Button.BgColor", [0, 0, 0, 0])),
-                Button,
-                Interaction::default(),
+                clickable(),
                 ChildOf(e),
             ))
             .id();
@@ -1605,8 +1673,7 @@ pub fn button(
     };
     if state.enabled {
         commands.entity(e).insert((
-            Button,
-            Interaction::default(),
+            clickable(),
             ButtonStyle {
                 enabled: true,
                 latched: state.latched,
@@ -1693,7 +1760,7 @@ fn check_like(
     let radius = if round { BorderRadius::MAX } else { BorderRadius::ZERO };
     let mut e = commands.spawn((place(look, x, y, w, h), ChildOf(parent)));
     if enabled {
-        e.insert((Button, Interaction::default(), hit));
+        e.insert((clickable(), hit));
     }
     if focused {
         e.insert(Outline::new(
@@ -1792,7 +1859,7 @@ pub fn combo_box_aligned(
         ChildOf(parent),
     ));
     if enabled {
-        e.insert((Button, Interaction::default(), hit));
+        e.insert((clickable(), hit));
     }
     let e = e.id();
     let font = look.default_font();
@@ -1889,13 +1956,10 @@ pub fn combo_popup<B: Bundle>(
             height: percent(100.0),
             ..default()
         },
-        Button,
-        Interaction::default(),
-        // Explicitly: `Node` (first in the bundle) requires the default
-        // `FocusPolicy::Pass` before `Button` asks for `Block`, and a
-        // click passing through reached the box under it too, which
-        // opened the list again as the catcher closed it.
-        bevy::ui::FocusPolicy::Block,
+        // Blocking (`clickable`): a click passing through reached the
+        // box under it too, which opened the list again as the catcher
+        // closed it.
+        clickable(),
         outside,
         GlobalZIndex(POPUP_Z - 1),
         ChildOf(root),
@@ -1944,8 +2008,7 @@ pub fn combo_popup<B: Bundle>(
                 } else {
                     Color::NONE
                 }),
-                Button,
-                Interaction::default(),
+                clickable(),
                 hit(i),
                 ChildOf(menu),
             ))
@@ -1993,8 +2056,7 @@ pub fn combo_popup<B: Bundle>(
                     top,
                     thumb,
                 },
-                Button,
-                Interaction::default(),
+                clickable(),
                 ChildOf(track),
             ));
         }
@@ -2020,8 +2082,7 @@ pub fn slider(
     if enabled {
         e.insert((
             SliderTrack { inset: NOB, ..track },
-            Button,
-            Interaction::default(),
+            clickable(),
             bevy::ui::RelativeCursorPosition::default(),
         ));
     }
@@ -2091,8 +2152,7 @@ pub fn text_entry(
     ));
     if enabled {
         e.insert((
-            Button,
-            Interaction::default(),
+            clickable(),
             bevy::ui::RelativeCursorPosition::default(),
             hit,
         ));
@@ -2207,7 +2267,7 @@ pub fn tabs<B: Bundle>(
             ChildOf(parent),
         ));
         if *enabled {
-            e.insert((Button, Interaction::default(), hit(i)));
+            e.insert((clickable(), hit(i)));
         }
         let e = e.id();
         let color = if is_open {
@@ -2337,6 +2397,187 @@ mod tests {
         commands_queue.apply(app.world_mut());
         let mut q = app.world_mut().query_filtered::<&bevy::ui::FocusPolicy, With<Outside>>();
         assert_eq!(q.single(app.world()).ok(), Some(&bevy::ui::FocusPolicy::Block));
+    }
+
+    /// Bevy's UI as the game runs it (layout, stacking, focus: what the
+    /// pointer presses) in a 400x300 window, with `block_clicks`, the
+    /// pointer driven by `PointerScript`; nothing drawn.
+    fn pointer_app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::image::ImagePlugin::default(),
+            bevy::input::InputPlugin,
+            bevy::window::WindowPlugin {
+                primary_window: None,
+                exit_condition: bevy::window::ExitCondition::DontExit,
+                close_when_requested: false,
+                ..default()
+            },
+            TransformPlugin,
+            bevy::text::TextPlugin,
+            bevy::ui::UiPlugin,
+        ))
+        // What the UI's picking backend reads (the focus system is what
+        // the menus use).
+        .add_plugins((bevy::picking::PickingPlugin, bevy::picking::InteractionPlugin))
+        .init_asset::<bevy::image::TextureAtlasLayout>()
+        // Hidden nodes take no clicks: the focus system reads visibility.
+        .add_plugins(bevy::camera::visibility::VisibilityPlugin)
+        .init_asset::<Mesh>()
+        .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>()
+        .init_resource::<PointerScript>()
+        .add_observer(block_clicks)
+        .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems));
+        let mut window = Window::default();
+        window.resolution.set(400.0, 300.0);
+        app.world_mut().spawn((window, PrimaryWindow));
+        let size = UVec2::new(400, 300);
+        app.world_mut().spawn((
+            Camera2d,
+            Camera {
+                computed: bevy::camera::ComputedCameraValues {
+                    target_info: Some(bevy::camera::RenderTargetInfo {
+                        physical_size: size,
+                        scale_factor: 1.0,
+                    }),
+                    ..default()
+                },
+                viewport: Some(bevy::camera::Viewport {
+                    physical_size: size,
+                    ..default()
+                }),
+                ..default()
+            },
+        ));
+        app
+    }
+
+    /// Who a press reached.
+    #[derive(Component)]
+    struct Clicked(&'static str);
+
+    /// A UI spawned through `Commands` as the menus do, in the scheme's
+    /// look at 1:1 (rects are window pixels) on a root filling the
+    /// window; then a press at `at`: the `Clicked` nodes it reached,
+    /// sorted, and whether a scroll bar's thumb took it.
+    fn press(at: Vec2, ui: impl FnOnce(&mut Commands, &Look, Entity)) -> (Vec<&'static str>, bool) {
+        let mut app = pointer_app();
+        let fonts = UiFonts::default();
+        let look = Look {
+            ui: None,
+            fonts: &fonts,
+            s: 1.0,
+            height: 300.0,
+            accent: Color::WHITE,
+        };
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let mut commands = Commands::new(&mut queue, app.world());
+        let root = commands
+            .spawn(Node {
+                width: percent(100.0),
+                height: percent(100.0),
+                ..default()
+            })
+            .id();
+        ui(&mut commands, &look, root);
+        queue.apply(app.world_mut());
+        // Laid out first, then the cursor there, then the press.
+        app.update();
+        app.update();
+        let mut script = PointerScript::default();
+        script.0.push_back(PointerStep { at, button: None });
+        script.0.push_back(PointerStep { at, button: Some(true) });
+        app.insert_resource(script);
+        app.update();
+        app.update();
+        let mut q = app.world_mut().query::<(&Clicked, &Interaction)>();
+        let mut hit: Vec<_> = q
+            .iter(app.world())
+            .filter(|(_, i)| **i == Interaction::Pressed)
+            .map(|(c, _)| c.0)
+            .collect();
+        hit.sort();
+        let mut q = app.world_mut().query::<(&ScrollThumb, &Interaction)>();
+        let thumb = q.iter(app.world()).any(|(_, i)| *i == Interaction::Pressed);
+        (hit, thumb)
+    }
+
+    /// A button drawn over another clickable takes the click alone: the
+    /// one under it (here a list row) never sees the press. Before
+    /// `clickable`, `Node` ahead of `Button` left every button `Pass`, and
+    /// both were pressed.
+    #[test]
+    fn a_button_over_another_takes_the_click_alone() {
+        let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+            let row = commands
+                .spawn((place(look, 10.0, 10.0, 300.0, 40.0), clickable(), Clicked("row"), ChildOf(root)))
+                .id();
+            let state = ButtonState::enabled(true);
+            button(commands, row, look, (200.0, 5.0, 80.0, 30.0), "OK", state, 0, Clicked("button"));
+        };
+        assert_eq!(press(Vec2::new(250.0, 30.0), ui).0, ["button"]);
+        // Beside the button: the row.
+        assert_eq!(press(Vec2::new(50.0, 30.0), ui).0, ["row"]);
+    }
+
+    /// A scroll bar laid over a list's right edge: its thumb and arrows
+    /// take a press without the row under them seeing it (a drag of the
+    /// thumb picked the row too).
+    #[test]
+    fn a_scroll_bars_thumb_over_a_row_takes_the_click_alone() {
+        let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+            commands.spawn((place(look, 0.0, 0.0, 300.0, 220.0), clickable(), Clicked("row"), ChildOf(root)));
+            let bar = scroll_bar(commands, root, look, (283.0, 0.0, 220.0), (100, 10, 0), ("menu", 0), |step| {
+                Clicked(if step == 1 { "arrow" } else { "other" })
+            });
+            commands.entity(bar).insert(ZIndex(1));
+        };
+        // The thumb: the first rows shown, at the bar's top past its arrow.
+        assert_eq!(press(Vec2::new(290.0, 25.0), ui), (vec![], true));
+        // The down arrow at its bottom.
+        assert_eq!(press(Vec2::new(290.0, 212.0), ui), (vec!["arrow"], false));
+        // Off the bar: the row.
+        assert_eq!(press(Vec2::new(100.0, 100.0), ui), (vec!["row"], false));
+    }
+
+    /// A frame's close box takes the click (not the frame under it); a
+    /// frame stops a click on its blank face from reaching the menu row
+    /// under the dialog.
+    #[test]
+    fn a_frame_and_its_close_box_stop_the_click() {
+        let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+            commands.spawn((place(look, 0.0, 0.0, 400.0, 300.0), clickable(), Clicked("menu row"), ChildOf(root)));
+            let parts = frame(commands, root, look, FrameSpec::new("test"), (210.0, 200.0), "Test");
+            // `place_frames` puts it on screen; here at the corner.
+            commands.entity(parts.frame).insert(Clicked("frame")).entry::<Node>().and_modify(|mut n| {
+                n.left = px(0.0);
+                n.top = px(0.0);
+            });
+            commands.entity(parts.close.unwrap()).insert(Clicked("close"));
+        };
+        assert_eq!(press(Vec2::new(195.0, 14.0), ui).0, ["close"]);
+        assert_eq!(press(Vec2::new(100.0, 100.0), ui).0, ["frame"]);
+        assert_eq!(press(Vec2::new(300.0, 250.0), ui).0, ["menu row"]);
+    }
+
+    /// Anything with an `Interaction` stops the pointer however it was
+    /// spawned (`block_clicks`): `Node` first and `Button` inserted after
+    /// included; `PassClicks` lets the press through as well.
+    #[test]
+    fn an_interaction_blocks_unless_it_passes_clicks() {
+        for (pass, want) in [(false, vec!["top"]), (true, vec!["top", "under"])] {
+            let ui = |commands: &mut Commands, look: &Look, root: Entity| {
+                commands.spawn((place(look, 0.0, 0.0, 100.0, 100.0), Clicked("under"), ChildOf(root))).insert(Button);
+                let mut top = commands.spawn((place(look, 0.0, 0.0, 50.0, 50.0), ChildOf(root)));
+                top.insert((Button, Clicked("top")));
+                if pass {
+                    top.insert(PassClicks);
+                }
+            };
+            assert_eq!(press(Vec2::new(20.0, 20.0), ui).0, want, "PassClicks {pass}");
+        }
     }
 
     /// `ui_click` and `ui_drag`: the cursor there, the button pressed and
