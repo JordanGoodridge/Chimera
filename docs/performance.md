@@ -719,13 +719,32 @@ marked as changed, which avian takes as a push and wakes the body again,
 so on real maps no ragdoll ever slept (de_dust2: still awake 9 s in);
 it now writes them unmarked as `settle_props` does. Gib pieces have no
 hulls on CS:S yet: piece and chunk models load without their `.phy`, so
-their bodies are boxes (four corners a face). Loaded with their hulls
-(tried), half of de_inferno's broken crates and pots had pieces that
-never slept until they faded 21 s later (up to 49 rad/s, cut or not):
-pieces of one prop start touching and collide with each other, which
-Source's debris doesn't. `heavy::map_debris_settle` checks that the 20
-ragdolls sleep within 7 s and twelve de_inferno props' pieces within 8 s
-(1.2-6.9 s).
+their bodies are boxes (four corners a face). `heavy::map_debris_settle`
+checks that the 20 ragdolls sleep within 7 s and twelve de_inferno
+props' pieces within 5 s.
+
+Broken props' pieces collided with each other (2026-10-17). A broken
+prop's pieces start where they were in the whole prop, their boxes
+overlapping, and collided with each other: they piled up, and a piece
+resting only on others (de_inferno crate 121's piece 4: touching two
+pieces and nothing else) rocked at 1-2.5 rad/s, which kept the whole pile
+(one island) awake. How long it lasted hung on the solver's order: with
+110 more world brushes restored (none near the crate) the twelve props'
+pieces slept in 1.0-15.1 s instead of 1.2-6.9 s (crate 113 3.99 s,
+5.7 rad/s; 121 15.1 s). Source's break pieces are debris (prop_damage.md
+7.3: `debris` > 0, or a `fadetime`; a block with neither taken as debris,
+inferred), and debris doesn't collide with debris (ragdolls.md 4): pieces
+now keep to the world and props (`MapBreakPiece::debris`; chunks always),
+filtering out the ragdoll layer, so they no longer collide with other
+pieces or ragdolls either. All twelve sleep in 0.8-2.9 s, with no
+awake piece over 0.05 rad/s after 3 s and no two of a prop's pieces
+touching, whichever order the props are broken in (map order, reverse,
+every other one first; the test runs all three). Ragdolls' limb jitter
+is something else: different ragdolls already didn't collide and a
+ragdoll's own bodies collide only for its `.phy` pairs. Pieces loaded
+with their `.phy` hulls (tried again with debris apart) no longer pile
+up, but five of the twelve props have a light piece still rocking alone
+on the floor 5 s on (0.3-1.9 rad/s), so they stay boxes for now.
 
 ## Fewer cameras per frame (2026-10-16)
 

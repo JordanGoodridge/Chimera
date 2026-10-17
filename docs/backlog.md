@@ -818,13 +818,16 @@ dithered fade bands. Left:
   scale (`mat_render_scale`) only if a GPU turns out to be the limit (the
   dev box's RTX 3080 draws dust2 at 4K in about 1.3 ms). Done: props that
   never slept, ragdoll and gib hulls cut, ragdolls' forced sleep, the
-  view-model camera off with nothing on its layer (performance.md,
-  "Props that never sleep", "Fewer cameras per frame"). Left there:
+  view-model camera off with nothing on its layer, broken props' pieces
+  as debris that doesn't collide with debris (performance.md, "Props that
+  never sleep", "Fewer cameras per frame"). Left there:
   ragdoll limbs jitter against the floor until the forced sleep (5 s;
-  joints against contacts, not hull corners); broken props' pieces with
-  their `.phy` hulls (they load as boxes: with hulls, pieces of one prop
-  collide with each other and never sleep; Source's debris doesn't
-  collide with debris).
+  joints against contacts, not hull corners, nor other ragdolls or
+  pieces); broken props' pieces with their `.phy` hulls (they load as
+  boxes: debris no longer collides with debris, but with hulls five of
+  de_inferno's twelve test props keep a light piece rocking alone on the
+  floor past 5 s, 0.3-1.9 rad/s; performance.md "Props that never
+  sleep").
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).

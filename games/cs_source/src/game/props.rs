@@ -19,10 +19,11 @@
 //! Known shortcuts (docs/tech-debt.md): A broken prop's piece and chunk
 //! models load without their `.phy` (`load_shell`), so their bodies are
 //! their boxes (`map::breakables`), not their hulls. Why it's OK for now:
-//! loaded with their hulls (cut or not), half of de_inferno's broken
-//! crates' and pots' pieces never slept (up to 49 rad/s) until they faded:
-//! pieces of one prop start touching and collide with each other, which
-//! Source's debris doesn't; that comes first (docs/backlog.md 9).
+//! loaded with their hulls, five of de_inferno's twelve broken crates and
+//! pots had pieces still rocking 5 s on (0.3-1.9 rad/s, alone on the
+//! floor: debris no longer collides with debris), where boxes sleep in
+//! 0.8-2.9 s; small light hulls resting on the world come first
+//! (docs/backlog.md 9).
 
 use std::collections::HashMap;
 
@@ -1880,6 +1881,7 @@ fn model_breaks(
                     life: if p.fadetime > 0.0 { p.fadetime } else { f32::INFINITY },
                     burst: p.burst * METERS_PER_UNIT,
                     frozen: p.motion_disabled,
+                    debris: p.debris,
                     fade_dist: p.fade_dist.map(|(a, b)| (a * METERS_PER_UNIT, b * METERS_PER_UNIT)),
                 });
                 models.push(m);

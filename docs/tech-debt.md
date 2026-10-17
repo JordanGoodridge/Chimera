@@ -70,7 +70,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`chimera/present/src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`games/cs_source/src/game/props.rs`)
-- map: Broken props' pieces load without their `.phy`: their bodies are boxes (`games/cs_source/src/game/props.rs`)
+- map: Broken props' pieces load without their `.phy`: their bodies are boxes (with hulls some keep rocking; `games/cs_source/src/game/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`chimera/present/src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`chimera/present/src/render/shadows.rs`)
 - map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
