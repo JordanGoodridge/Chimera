@@ -713,7 +713,9 @@ impl<'a> MaterialLoader<'a> {
     /// A particle or effect material (specs/cs_source/impact_effects.md):
     /// its base texture, blend (`$additive`), whether vertex colour and
     /// alpha apply (`$vertexcolor`, `$vertexalpha`; SpriteCard always
-    /// takes both), `$ignorez`, and the texture's sprite sheet if it has one.
+    /// takes both), `$ignorez`, the texture's sprite sheet if it has one,
+    /// and a sprite card's screen-size limits (`$maxsize`,
+    /// `$startfadesize`, `$endfadesize`).
     pub fn particle(&mut self, name: &str) -> Option<crate::map::particles::ParticleMaterial> {
         use crate::map::particles::{ParticleBlend, ParticleMaterial};
         let text = self.read_text(&format!("materials/{}.vmt", normalize(name).trim_end_matches(".vmt")))?;
@@ -723,6 +725,11 @@ impl<'a> MaterialLoader<'a> {
             .unwrap_or_default();
         let keys = self.keys(&text, 0);
         let flag = |k: &str| keys.get(k).is_some_and(|v| v.trim() != "0");
+        let number = |k: &str| {
+            keys.get(k)
+                .and_then(|v| v.trim().parse::<f32>().ok())
+                .unwrap_or(0.0)
+        };
         let sprite_card = shader == "spritecard";
         let base = keys.get("$basetexture").cloned()?;
         let texture = self.texture(&base, true);
@@ -742,10 +749,17 @@ impl<'a> MaterialLoader<'a> {
             vertex_alpha: sprite_card || flag("$vertexalpha"),
             no_depth: flag("$ignorez"),
             sequences,
-            overbright: keys
-                .get("$overbrightfactor")
-                .and_then(|v| v.trim().parse::<f32>().ok())
-                .unwrap_or(0.0),
+            overbright: number("$overbrightfactor"),
+            // Sprite cards' screen-size limits (impact_effects.md 14).
+            screen: if sprite_card {
+                crate::map::particles::ScreenSize {
+                    max: number("$maxsize"),
+                    fade_start: number("$startfadesize"),
+                    fade_end: number("$endfadesize"),
+                }
+            } else {
+                Default::default()
+            },
         })
     }
 

@@ -501,7 +501,9 @@ impl Instance {
                         q.age = p.age;
                         q.color = Self::color(d, p) * sheets.overbright(material);
                         q.alpha = alpha;
-                        q.roll = p.roll.to_radians() * if p.flip { -1.0 } else { 1.0 };
+                        q.roll = p.roll.to_radians();
+                        // Yaw flip: the sprite mirrored (impact_effects.md 14).
+                        q.flip = p.flip;
                         q.sequence = p.sequence as u16;
                         match *render {
                             Render::Sprites {

@@ -2,8 +2,9 @@
 //! install or the community map): `$surfaceprop2` on blended
 //! displacements (cs_militia's ground: grass where its second texture
 //! shows), AnimatedTexture proxies (de_nuke's pool, cs_office's projector
-//! slide) and LightmappedGeneric `$color` (a community map's DirectX 7
-//! water stand-in; no stock map's world material sets it).
+//! slide), LightmappedGeneric `$color` (a community map's DirectX 7
+//! water stand-in; no stock map's world material sets it) and sprite
+//! cards' screen-size limits (the blood and fire particles).
 
 use bevy::math::Vec3;
 
@@ -143,4 +144,31 @@ fn lightmapped_color_is_raw() {
             .collect();
         assert!(tinted.is_empty(), "{tinted:?}");
     }
+}
+
+/// Sprite cards' screen-size limits read from the install's materials
+/// (specs/cs_source/impact_effects.md 14): the blood mist's `$maxsize`,
+/// the blood smoke's and the fire smoke's fades; commented-out keys
+/// (the goop's fades) and UnlitGeneric materials (the smoke grenade's)
+/// set none.
+#[test]
+fn sprite_cards_read_their_screen_size_limits() {
+    let Some(data) = load("de_dust2") else { return };
+    let screen = |name: &str| {
+        data.particles
+            .materials
+            .iter()
+            .find(|m| m.name == name)
+            .unwrap_or_else(|| panic!("{name}"))
+            .screen
+    };
+    let core = screen("particle/blood_core");
+    assert_eq!((core.max, core.fade_start, core.fade_end), (0.25, 0.0, 0.0));
+    let goop = screen("particle/antlion_goop3/antlion_goop3");
+    assert_eq!((goop.max, goop.fade_start, goop.fade_end), (0.35, 0.0, 0.0));
+    let smoke = screen("particle/smoke1/smoke1_nearcull2");
+    assert_eq!((smoke.max, smoke.fade_start, smoke.fade_end), (0.0, 0.075, 0.1));
+    let fire = screen("particle/vistasmokev1/vistasmokev1");
+    assert_eq!((fire.fade_start, fire.fade_end), (1.0, 1.4));
+    assert!(screen("particle/particle_smokegrenade").is_none());
 }
