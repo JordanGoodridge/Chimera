@@ -1436,7 +1436,9 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   units) and the terrain triangles: what a diverging run's trace there
   can hit. `movecmp fuzz ... --offline --run <name>` replays one fuzz run
   (same seed and options); with `MASHUP_SLIDE_DEBUG=1` the ladder probe
-  prints its sweep each tick too.
+  prints its sweep each tick too, and `MASHUP_GROUND_DEBUG=1` prints each
+  ground test (feet, the full box's sweep, the ground found and the brush
+  it is).
 
 ## CS:S demos (demodump)
 

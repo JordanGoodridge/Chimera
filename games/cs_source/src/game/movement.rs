@@ -762,6 +762,7 @@ impl<'a> Tracer<'a, '_, '_> {
             let (mut enter, mut leave) = (-1.0f32, 1.0f32);
             let (mut starts_out, mut gets_out) = (false, false);
             let mut clip = Vec3::ZERO;
+            let prop = b.surface.is_some();
             // The last plane the box really crosses (no back-off): the
             // contact's normal.
             let mut last_crossed = -1.0f32;
@@ -786,11 +787,17 @@ impl<'a> Tracer<'a, '_, '_> {
                 // when the end is nearer than the back-off (CS:S: a ground
                 // probe ending 0.0024 short of the floor finds no ground;
                 // movecmp `militia_porch_wall_right`, `hover_2_010`).
+                // A prop's hull (its own surface; VPhysics collision in
+                // CS:S, not a BSP brush) still counts an end within the
+                // back-off as a hit: de_nuke's fuzz water runs land on a
+                // prop's near-flat top from 0.0008 above the probe's reach
+                // in CS:S (our hull's planes are only that exact).
                 // Moving parallel to it counts as not entering, within
                 // float noise (planes and positions are meters at map
                 // scale), or a velocity just clipped along an angled
                 // surface would catch on it forever.
-                if d1 > 0.0 && (d2 > 0.0 || d2 >= d1 - PARALLEL_SLOP) {
+                let reach = if prop { eps } else { 0.0 };
+                if d1 > 0.0 && (d2 > reach || d2 >= d1 - PARALLEL_SLOP) {
                     continue 'brush;
                 }
                 if d1 <= 0.0 && d2 <= 0.0 {
@@ -1411,6 +1418,19 @@ impl Mover<'_, '_, '_, '_> {
                     let tr = self.trace.sweep_box(*a, *b, self.feet, down);
                     (tr.hit() && tr.normal.z >= WALKABLE_NORMAL_Z).then_some(tr)
                 });
+            }
+            // `MASHUP_GROUND_DEBUG=1`: every ground test printed
+            // (docs/OBSERVABILITY.md, movecmp).
+            static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+            if *DEBUG.get_or_init(|| std::env::var("MASHUP_GROUND_DEBUG").is_ok()) {
+                eprintln!(
+                    "    ground: feet {:.4} full frac {:.5} n {:.4} surf {:?} -> {:?}",
+                    self.feet,
+                    full.fraction,
+                    full.normal,
+                    full.surface,
+                    ground.map(|g| (g.fraction, g.normal, g.surface))
+                );
             }
             self.set_ground(ground.is_some(), ground.and_then(|g| g.owner));
             self.ground_collider = match ground.and_then(|g| g.surface) {
