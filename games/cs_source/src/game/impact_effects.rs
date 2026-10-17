@@ -21,7 +21,9 @@
 //!   fade, `dt` clamp; surface colour (base: Q5). 5-8 debris, dust puff,
 //!   metal and electric sparks: all (flare depth and visibility test:
 //!   below). 9 glass: shards (three angles, settling), grit, cap. 10
-//!   blood: the burst from the table, wall stains; partly (below). 11
+//!   blood: the burst from the table (the goop's spin stop and yaw
+//!   flip, the mist's and goop's light tint), wall stains; the sprite
+//!   cards' screen-size limits are the materials' (`render::particles`). 11
 //!   splash: water's drops, gouts, ripple, sound; slime's systems. 12
 //!   knife: as bullets, splash at 8, no ricochet; its mark: no spec says
 //!   which decal (`impacts.rs`). 13 no light; sounds. 14 operators:
@@ -32,10 +34,15 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): Impact effects
 //! (specs/cs_source/impact_effects.md): blood is built from the spec's table of
-//! `blood_impact_red_01`, not by reading the `.pcf`; its sprite-card size
-//! limits and screen-size fades, the goop's spin stop and yaw flip, and the
-//! mist's light tint are left out; particle-system drag is applied per frame as
-//! the spec reads it (Q7). The surface colour's base is the texture's average
+//! `blood_impact_red_01`, not by reading the `.pcf`; particle-system drag is
+//! applied per frame as the spec reads it (Q7); `tint_perc` (the mist and goop,
+//! 0.1) is read as a blend that far toward the light at the hit, in gamma space,
+//! with the light the lightmap of the surface below the hit (Q7); the yaw flip
+//! mirrors the sprite's texture left to right. Sprite cards' screen sizes
+//! (section 14, `map::particles::ScreenSize`) are taken as the sprite's width
+//! over the view's height, and the fade between the two sizes as linear (the
+//! spec says "of the screen" and names no curve); `$minsize` (no spec) isn't
+//! read. The surface colour's base is the texture's average
 //! sRGB colour (Q5). Electric-spark flares are depth tested (`$ignorez` not
 //! supported) and skip the visibility test. Splash light comes from the
 //! lightmap of the surface below. A world hit with no visible surface (sky,
@@ -686,6 +693,8 @@ struct BloodPart {
     gravity: f32,
     drag: f32,
     colors: ([f32; 3], [f32; 3]),
+    /// Blend toward the light at the hit (`tint_perc`).
+    tint: f32,
     alpha: (f32, f32),
 }
 
@@ -693,9 +702,25 @@ struct BloodPart {
 /// chunks (`blood_impact_red_01`, spec section 10).
 pub const BLOOD_COUNTS: [usize; 5] = [7, 2, 3, 40, 15];
 
+/// The goop's spin stops this long after it starts, s (spin stop time).
+pub const GOOP_SPIN_STOP: f32 = 1.0;
+/// The share of goop sprites drawn mirrored (yaw flip random).
+pub const GOOP_FLIP: f32 = 0.5;
+
 /// The blood burst at `p` for a hit travelling along `d`: the forward
-/// axis points back at the shooter.
-pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p: Vec3, d: Vec3) -> Vec<ParticleGroup> {
+/// axis points back at the shooter. `light` is the light at the hit (0-1
+/// linear), which the mist and goop take a tenth of (`tint_perc` 0.1:
+/// their colour blended that far toward the light's, in gamma space; our
+/// reading of spec section 14, Q7).
+pub fn blood(
+    rng: &mut ParticleRng,
+    m: &EffectMaterials,
+    mats: &MapParticles,
+    p: Vec3,
+    d: Vec3,
+    light: Vec3,
+) -> Vec<ParticleGroup> {
+    let light = light.clamp(Vec3::ZERO, Vec3::ONE).powf(1.0 / 2.2);
     let f = (-d).normalize_or_zero();
     let right = f.cross(Vec3::Y).try_normalize().unwrap_or(Vec3::X);
     let up = right.cross(f);
@@ -716,6 +741,7 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             gravity: -5.0,
             drag: 0.125,
             colors: ([205.0, 188.0, 173.0], [124.0, 106.0, 86.0]),
+            tint: 0.0,
             alpha: (25.0, 40.0),
         },
         BloodPart {
@@ -731,6 +757,7 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             gravity: 175.0,
             drag: 0.125,
             colors: ([107.0, 16.0, 16.0], [14.0, 1.0, 1.0]),
+            tint: 0.1,
             alpha: (80.0, 255.0),
         },
         BloodPart {
@@ -746,6 +773,7 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             gravity: 400.0,
             drag: 0.025,
             colors: ([93.0, 8.0, 8.0], [48.0, 9.0, 5.0]),
+            tint: 0.1,
             alpha: (255.0, 255.0),
         },
         BloodPart {
@@ -761,6 +789,7 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             gravity: 500.0,
             drag: 0.015,
             colors: ([134.0, 1.0, 1.0], [27.0, 3.0, 3.0]),
+            tint: 0.0,
             alpha: (128.0, 200.0),
         },
         BloodPart {
@@ -776,6 +805,7 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             gravity: 400.0,
             drag: 0.1,
             colors: ([0.0, 0.0, 0.0], [17.0, 53.0, 81.0]),
+            tint: 0.0,
             alpha: (255.0, 255.0),
         },
     ];
@@ -795,7 +825,7 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             let (lo, hi) = part.local;
             let jitter = Vec3::new(rng.float(lo.x, hi.x), rng.float(lo.y, hi.y), rng.float(lo.z, hi.z));
             let v = (random_dir(rng) * rng.float(part.speed.0, part.speed.1) + local(jitter)) * UNIT;
-            let color = color_between(rng, part.colors.0, part.colors.1);
+            let color = color_between(rng, part.colors.0, part.colors.1).lerp(light, part.tint);
             let alpha = rng.float(part.alpha.0, part.alpha.1) / 255.0;
             let (life, radius, size, fade) = match i {
                 // Smoke: grows to 4x; in over the first 12.5 %, out from 25 %.
@@ -879,7 +909,16 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
             };
             let _ = radius;
             let roll = rng.float(0.0, std::f32::consts::TAU);
-            let roll_speed = if i == 2 { rng.float(0.0, 4.0).to_radians() } else { 0.0 };
+            // The goop spins until its stop time; half of it is mirrored.
+            let (roll_speed, roll_stop, flip) = if i == 2 {
+                (
+                    rng.float(0.0, 4.0).to_radians(),
+                    GOOP_SPIN_STOP,
+                    rng.random() < GOOP_FLIP,
+                )
+            } else {
+                (0.0, f32::INFINITY, false)
+            };
             g.particles.push(Particle {
                 sequence,
                 fps: part.fps,
@@ -892,6 +931,8 @@ pub fn blood(rng: &mut ParticleRng, m: &EffectMaterials, mats: &MapParticles, p:
                 },
                 roll,
                 roll_speed,
+                roll_stop,
+                flip,
                 ..sprite(at, v, life, material, color)
             });
         }
@@ -1717,6 +1758,7 @@ fn blood_effects(
     settings: Res<ImpactEffectSettings>,
     bank: Option<Res<SoundBank>>,
     grid: Option<Res<SurfaceGrid>>,
+    colors: Option<Res<SurfaceColors>>,
     mut particles: ResMut<Particles>,
     mut rng: ResMut<EffectRng>,
     world: WorldTracer,
@@ -1735,7 +1777,8 @@ fn blood_effects(
         }
         if let Some(m) = &materials {
             let mats = EffectMaterials::new(&m.0);
-            for g in blood(rng, &mats, &m.0, hit.point, hit.dir) {
+            let light = colors.as_deref().map_or(Vec3::ONE, |c| light_below(c, &world, hit.point));
+            for g in blood(rng, &mats, &m.0, hit.point, hit.dir, light) {
                 particles.add(g);
             }
         }
@@ -2109,7 +2152,7 @@ mod tests {
     fn blood_is_the_same_for_any_damage() {
         let mats = EffectMaterials::all(0);
         let mut rng = ParticleRng::new(5);
-        let groups = blood(&mut rng, &mats, &MapParticles::default(), Vec3::ZERO, Vec3::NEG_Z);
+        let groups = blood(&mut rng, &mats, &MapParticles::default(), Vec3::ZERO, Vec3::NEG_Z, Vec3::ONE);
         let counts: Vec<usize> = groups.iter().map(|g| g.particles.len()).collect();
         assert_eq!(counts, BLOOD_COUNTS.to_vec());
         assert_eq!(counts.iter().sum::<usize>(), 67);
@@ -2118,5 +2161,38 @@ mod tests {
         assert_eq!(bleed_traces(10.0), (2, 0.2));
         assert_eq!(bleed_traces(24.0), (2, 0.2));
         assert_eq!(bleed_traces(25.0), (4, 0.3));
+    }
+
+    #[test]
+    fn blood_goop_spins_a_second_mirrored_half_the_time_and_takes_the_light() {
+        let mats = EffectMaterials::all(0);
+        let mut flipped = 0;
+        let mut goops = 0;
+        for seed in 0..40 {
+            let mut rng = ParticleRng::new(seed);
+            let dark = blood(&mut rng, &mats, &MapParticles::default(), Vec3::ZERO, Vec3::NEG_Z, Vec3::ZERO);
+            let mut rng = ParticleRng::new(seed);
+            let lit = blood(&mut rng, &mats, &MapParticles::default(), Vec3::ZERO, Vec3::NEG_Z, Vec3::ONE);
+            for p in &dark[2].particles {
+                assert_eq!(p.roll_stop, GOOP_SPIN_STOP);
+                flipped += p.flip as usize;
+                goops += 1;
+            }
+            // Mist and goop: a tenth toward the light; the rest untouched.
+            for part in [1, 2] {
+                for (d, l) in dark[part].particles.iter().zip(&lit[part].particles) {
+                    assert!((l.color - d.color).abs_diff_eq(Vec3::splat(0.1), 1e-4), "{} {}", l.color, d.color);
+                }
+            }
+            for part in [0, 3, 4] {
+                for (d, l) in dark[part].particles.iter().zip(&lit[part].particles) {
+                    assert_eq!(d.color, l.color);
+                    assert_eq!(d.roll_stop, f32::INFINITY);
+                    assert!(!d.flip);
+                }
+            }
+        }
+        // About half of 120.
+        assert!((40..80).contains(&flipped), "{flipped} of {goops}");
     }
 }

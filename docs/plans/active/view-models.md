@@ -176,7 +176,10 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   for 3.4 s, then turning the blade over 9 s) and the TMP's (a 5 s sway
   of up to 9 degrees) move; every other idle is a still pose matching
   its draw's end.
-- **Not done:** sound events on view-model sequences (5004:
-  `Weapon_AK47.BoltPull` etc.), shake at 10 %, brass for other players
+- **Done:** sound events on view-model sequences (5004:
+  `Weapon_AK47.BoltPull` etc.) are the weapon data's timed sounds
+  (`WeaponSounds::reload`/`draw`/`shot`/`finish`/`modes`, seconds read
+  off the install's sequences: `games/cs_source/data/weapons/_gun.toml`).
+- **Not done:** shake at 10 %, brass for other players
   (world models have no ejection attachment), `viewmodel_fov` is archived
   here though cheat-protected in CS:S.

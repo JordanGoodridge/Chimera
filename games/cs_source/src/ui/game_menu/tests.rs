@@ -1759,10 +1759,161 @@ fn the_brightness_dialog_sets_the_gamma() {
 }
 
 /// The dialogs' frames (`client::widgets`) draw over the menu's title and
-/// entries.
+/// entries; the menu over every in-game panel (the message of the day,
+/// team, class, buy, radio and spectator menus at 50-52, the scoreboard
+/// at 60), as CS:S's GameUI sits over the viewport's panels.
 #[test]
-fn frames_draw_over_the_menu() {
+fn frames_draw_over_the_menu_and_the_menu_over_the_panels() {
     assert!(MENU_Z < crate::client::widgets::FRAME_Z);
+    assert!(MENU_Z > 60, "over the scoreboard and the VGUI panels");
+}
+
+/// Who a press reached, in order: "entry" (a game-menu entry), "panel" (a
+/// join menu's button); "panel hovered" if the pointer reached a panel
+/// at all.
+#[derive(Resource, Default)]
+struct Reached(Vec<&'static str>);
+
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+struct Panels;
+
+fn record_reached(
+    q: Query<(&Interaction, Option<&Hit>, Option<&crate::client::vgui::VguiButton>), Changed<Interaction>>,
+    mut reached: ResMut<Reached>,
+) {
+    for (i, hit, panel) in &q {
+        match (i, hit, panel) {
+            (Interaction::Pressed, Some(Hit(Target::Main(_), _)), _) => reached.0.push("entry"),
+            (Interaction::Pressed, _, Some(_)) => reached.0.push("panel"),
+            (Interaction::Hovered, _, Some(_)) => reached.0.push("panel hovered"),
+            _ => {}
+        }
+    }
+}
+
+/// Playtest 2026-10-17: Esc over the message of the day or the class menu
+/// (z 50) left them drawn over the game menu's entries (46), and the
+/// panels' buttons took the clicks meant for the entries. The game menu
+/// now draws over them and its backdrop takes their clicks: a press on an
+/// entry reaches only it, with a panel button covering the whole screen
+/// under it. Closed, the panels are back and take the press.
+#[test]
+fn the_game_menu_takes_the_clicks_over_the_join_menus_and_gives_them_back() {
+    use crate::{
+        client::{vgui::VguiOpen, widgets::PointerScript},
+        map::hud::{ActiveHud, GameHud, GameMenus, UiControl, UiKind, UiLayout},
+        ui::{join_menus::JoinMenus, team_menu::TeamMenu},
+    };
+    use std::collections::HashMap;
+    for class in [false, true] {
+        let mut app = crate::client::widgets::pointer_test_app();
+        app.add_plugins(crate::console::ConsolePlugin);
+        crate::ui::join_menus::motd_cvar(&mut app);
+        // A panel button over the whole 640x480 screen (the window is
+        // 400x300: the same 4:3).
+        let mut ok = UiControl::new("ok", UiKind::Button, 0.0, 0.0, 640.0, 480.0);
+        ok.command = Some(if class { "joinclass 5" } else { "okay" }.into());
+        let page = UiLayout { controls: vec![ok] };
+        let menus = GameMenus {
+            layouts: HashMap::from([("panel.res".to_string(), page)]),
+            motd: (!class).then(|| "panel.res".into()),
+            class: if class { HashMap::from([(2, "panel.res".to_string())]) } else { HashMap::new() },
+            ..default()
+        };
+        let hud = GameHud {
+            menus: Some(menus),
+            ..default()
+        };
+        app.insert_resource(ActiveHud(Arc::new(hud), HashMap::new()))
+            .insert_resource({
+                let mut j = JoinMenus::default();
+                (j.motd, j.joining, j.class) = (!class, !class, class.then_some(2));
+                j
+            })
+            .init_resource::<TeamMenu>()
+            .init_resource::<VguiOpen>()
+            .insert_resource(menu())
+            .init_resource::<MenuUi>()
+            .init_resource::<LoadingDetails>()
+            .init_resource::<crate::client::fonts::UiFonts>()
+            .init_resource::<Windows>()
+            .init_resource::<Reached>()
+            // Recorded before a press closes a panel (and despawns it).
+            .configure_sets(Update, Panels.after(record_reached).before(draw))
+            .add_systems(Update, (record_reached, draw));
+        crate::ui::join_menus::add_panels(&mut app, Panels);
+        app.update();
+        app.update();
+        assert!(app.world().resource::<VguiOpen>().any(), "the panel is up");
+        // An entry's centre.
+        let mut q = app.world_mut().query::<(&Hit, &bevy::ui::UiGlobalTransform)>();
+        let at = q
+            .iter(app.world())
+            .find(|(h, _)| matches!(h.0, Target::Main(_)))
+            .map(|(_, t)| t.translation)
+            .expect("the menu's entries are drawn");
+        let click = |app: &mut App| {
+            app.world_mut().resource_mut::<PointerScript>().click(at);
+            for _ in 0..8 {
+                app.update();
+            }
+            std::mem::take(&mut app.world_mut().resource_mut::<Reached>().0)
+        };
+        assert_eq!(click(&mut app), ["entry"], "class menu: {class}");
+        let joins = app.world().resource::<JoinMenus>().clone();
+        assert_eq!((joins.motd, joins.class), (!class, class.then_some(2)), "the panel stays under the menu");
+        // Closed (Resume): the panel takes the press again.
+        app.world_mut().resource_mut::<GameMenu>().open = false;
+        app.update();
+        assert!(click(&mut app).contains(&"panel"), "class menu: {class}");
+        let joins = app.world().resource::<JoinMenus>().clone();
+        assert_eq!((joins.motd, joins.class), (false, None), "its button worked");
+        assert_eq!(app.world().resource::<TeamMenu>().0, !class, "the message's OK opens the team menu");
+    }
+}
+
+/// Opening the game menu keeps the in-game panels for when it closes
+/// (CS:S's GameUI over the viewport), the mouse left free for them.
+#[test]
+fn opening_the_game_menu_keeps_the_panels_and_the_mouse_for_them() {
+    use crate::client::vgui::VguiOpen;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, crate::console::ConsolePlugin))
+        .init_resource::<crate::net::NetSettings>()
+        .insert_resource(GameMenu {
+            in_game: true,
+            ..default()
+        })
+        .init_resource::<RegrabCursor>()
+        .init_resource::<crate::client::console::ConsoleUi>()
+        .init_resource::<ButtonInput<MouseButton>>()
+        .insert_resource(VguiOpen {
+            team: true,
+            ..default()
+        })
+        .insert_resource(crate::ui::team_menu::TeamMenu(true))
+        .insert_resource(crate::ui::radio::RadioMenu(Some(0)))
+        .add_systems(Update, cursor);
+    app.world_mut().spawn(CursorOptions::default());
+    open_menu(app.world_mut(), Page::Main);
+    assert!(app.world().resource::<crate::ui::team_menu::TeamMenu>().0);
+    assert_eq!(app.world().resource::<crate::ui::radio::RadioMenu>().0, Some(0));
+    app.update();
+    // Resume.
+    app.world_mut().resource_mut::<GameMenu>().open = false;
+    app.world_mut().resource_mut::<RegrabCursor>().0 = true;
+    app.update();
+    let mut q = app.world_mut().query::<&CursorOptions>();
+    assert!(!crate::client::input::cursor_grabbed(q.single(app.world()).unwrap()), "the team menu has the mouse");
+    // With no panel up the mouse is grabbed again.
+    *app.world_mut().resource_mut::<VguiOpen>() = VguiOpen::default();
+    app.world_mut().resource_mut::<GameMenu>().open = true;
+    app.update();
+    app.world_mut().resource_mut::<GameMenu>().open = false;
+    app.world_mut().resource_mut::<RegrabCursor>().0 = true;
+    app.update();
+    let mut q = app.world_mut().query::<&CursorOptions>();
+    assert!(crate::client::input::cursor_grabbed(q.single(app.world()).unwrap()));
 }
 
 /// The player list (CS:S's `PlayerListDialog`): a player selected, Mute

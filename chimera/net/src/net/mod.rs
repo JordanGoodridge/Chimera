@@ -3,7 +3,7 @@
 //! and clients, over bevy_replicon with renet's netcode UDP transport.
 //!
 //! So far (slices 1 to 7): connect and disconnect (`connect`,
-//! `disconnect`, `listen`, `status`; `hostport`, `maxplayers`, `name`),
+//! `disconnect`, `listen`, `status`; `ip`, `hostport`, `maxplayers`, `name`),
 //! a join handshake (build version, protocol hash, then the map by name
 //! and file hash), a character spawned on the server per client, and
 //! characters replicated to every client (`NetCharacter`, `NetBody`,
@@ -62,7 +62,7 @@
 //! money, armour, kit and the freeze's end tick (arming and defusing the bomb
 //! are in its predicted state; `epoch`: the client clock epoch its `lead` is
 //! from)), `canonical_position` (a predicted player's zeros as +0.0 at the end
-//! of a tick), `NetSettings` (cvars `hostport` 27015, `maxplayers`, `name`),
+//! of a tick), `NetSettings` (cvars `ip`, `hostport` 27015, `maxplayers`, `name`),
 //! the server's `status` with `hostname` and query counts, `NET_VERSION` (also
 //! in replicon's protocol hash), `NetEvent` for the client layer, `disconnect`,
 //! `status`, the `connect`/`listen`/`status`/`ping`/`users` commands, the map
@@ -290,10 +290,14 @@ pub fn canonical_position(world: &mut World, e: Entity) {
     }
 }
 
-/// Network settings (console: `hostport`, `maxplayers`, `name`).
+/// Network settings (console: `ip`, `hostport`, `maxplayers`, `name`).
 #[derive(Resource, Clone, Debug)]
 pub struct NetSettings {
-    /// UDP port a server listens on.
+    /// The address a server listens on (Source's `ip`): every interface
+    /// by default; tool runs (`--screenshot`, `--views`, `--frames`) use
+    /// loopback.
+    pub ip: std::net::IpAddr,
+    /// UDP port a server listens on (0: one the system picks).
     pub hostport: u16,
     /// Players a server takes, the host's own included on a listen
     /// server (Source's `maxplayers`; 1 is single player).
@@ -306,6 +310,7 @@ pub struct NetSettings {
 impl Default for NetSettings {
     fn default() -> Self {
         Self {
+            ip: std::net::Ipv4Addr::UNSPECIFIED.into(),
             hostport: DEFAULT_PORT,
             maxplayers: 1,
             name: "Player".into(),
@@ -1393,10 +1398,16 @@ pub fn parse_address(text: &str) -> Result<SocketAddr, String> {
 }
 
 fn commands(app: &mut App) {
+    resource_cvar::<NetSettings, std::net::IpAddr>(
+        app,
+        "ip",
+        "Address a server listens on (0.0.0.0: every interface; 127.0.0.1: this machine only).",
+        |s| &mut s.ip,
+    );
     resource_cvar::<NetSettings, u16>(
         app,
         "hostport",
-        "UDP port a server listens on (Source's default 27015).",
+        "UDP port a server listens on (Source's default 27015; 0: one the system picks).",
         |s| &mut s.hostport,
     );
     resource_cvar::<NetSettings, u32>(
@@ -1525,7 +1536,11 @@ pub fn status(world: &mut World) -> String {
         NetRole::Server => {
             let settings = world.resource::<NetSettings>().clone();
             out.insert(0, format!("hostname: {}", world.resource::<query::Hosting>().hostname));
-            out.push(format!("udp/ip  : 0.0.0.0:{}", settings.hostport));
+            let addr = world.get_resource::<udp::UdpServer>().and_then(|t| t.local_addr());
+            out.push(match addr {
+                Some(a) => format!("udp/ip  : {a}"),
+                None => format!("udp/ip  : {}:{}", settings.ip, settings.hostport),
+            });
             if let Some(line) = world.resource::<upnp::Upnp>().state.line() {
                 out.push(format!("upnp    : {line}"));
             }

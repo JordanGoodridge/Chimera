@@ -37,7 +37,7 @@
 //! "Capacity"); a rented server has bandwidth to spare.
 
 use std::{
-    net::{Ipv4Addr, SocketAddr, UdpSocket},
+    net::{SocketAddr, UdpSocket},
     time::SystemTime,
 };
 
@@ -439,12 +439,12 @@ impl OwnStateOut {
     }
 }
 
-/// Start serving the loaded map on `hostport` (a listen server: this
+/// Start serving the loaded map on `ip`:`hostport` (a listen server: this
 /// process's own player plays too). Fails if a network game is running
 /// or the port is taken.
 pub fn listen(world: &mut World) -> Result<SocketAddr, String> {
-    let port = world.resource::<NetSettings>().hostport;
-    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).map_err(|e| format!("UDP port {port}: {e}"))?;
+    let NetSettings { ip, hostport: port, .. } = *world.resource::<NetSettings>();
+    let socket = UdpSocket::bind((ip, port)).map_err(|e| format!("UDP {ip} port {port}: {e}"))?;
     let addr = socket.local_addr().map_err(|e| e.to_string())?;
     let max_clients = remote_slots(world);
     let config = ServerConfig {

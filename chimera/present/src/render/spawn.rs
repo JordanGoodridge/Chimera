@@ -307,6 +307,7 @@ fn load_images(
                 .collect(),
         ));
     }
+    commands.insert_resource(super::texture_anim::TextureAnims::new(data, &textures));
     let cubemaps: Vec<Handle<Image>> = data.cubemaps.iter().map(|c| images.add(cube_image(c))).collect();
     (textures, cubemaps)
 }
@@ -653,6 +654,11 @@ fn spawn_world_meshes(
             }
             continue;
         }
+        // Window edge pieces need the world shader's mask (a map without
+        // lightmaps draws its broken windows without them).
+        if matches!(m.pane_look, PaneLook::Edge(_)) {
+            continue;
+        }
         let material = build_material(m, textures, view, data.look.light_scale);
         let material = standard_shared
             .entry((m.skybox, own(m), format!("{material:?}")))
@@ -759,8 +765,9 @@ fn lit_world_material(
             base2_uv_u: blend.transform.shader_rows()[0],
             base2_uv_v: blend.transform.shader_rows()[1],
             selfillum: if m.selfillum.is_some() { 1.0 } else { 0.0 },
-            unlit: if m.unlit { 1.0 } else { 0.0 },
-            unlit_tint: m.tint.map_or(Vec4::ONE, |t| Vec3::from_array(t).extend(1.0)),
+            unlit: if m.unlit { 1.0 } else { m.unlit_factor },
+            modulation: m.tint.map_or(Vec4::ONE, |t| Vec3::from_array(t).extend(1.0)),
+            pane_mask: if m.pane_mask.is_some() { 1.0 } else { 0.0 },
             selfillum_tint: m.selfillum.map_or(Vec4::ONE, |s| Vec3::from_array(s.tint).extend(1.0)),
             fog_color: fog_color(material_fog(data, view, m.skybox).as_ref()),
             fog_range: fog_range(material_fog(data, view, m.skybox).as_ref()),
@@ -819,7 +826,10 @@ fn lit_world_material(
             .normal_map
             .filter(|_| blended && bumped)
             .map(|i| textures[i].clone()),
-        blend_mask: blend.mask.filter(|_| blended).map(|i| textures[i].clone()),
+        blend_mask: match m.pane_mask {
+            Some(i) => Some(textures[i].clone()),
+            None => blend.mask.filter(|_| blended).map(|i| textures[i].clone()),
+        },
         detail: m.detail.map(|d| textures[d.texture].clone()),
         alpha_mode: m.alpha.shader_alpha_mode(),
         double_sided: m.double_sided,

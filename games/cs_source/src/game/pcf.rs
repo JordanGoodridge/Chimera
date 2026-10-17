@@ -112,7 +112,12 @@ fn add_operator(def: &mut SystemDef, list: &str, op: &Element) -> bool {
         ("initializers", "color random") => {
             let a = op.color("color1").map_or(Vec3::ONE, |c| c.0);
             let b = op.color("color2").map_or(Vec3::ONE, |c| c.0);
-            def.initializers.push(Init::Color { a, b });
+            def.initializers.push(Init::Color {
+                a,
+                b,
+                tint: op.float("tint_perc", 0.0).clamp(0.0, 1.0),
+                cp: cp("tint control point"),
+            });
         }
         ("initializers", "alpha random") => {
             let p = pick(op, "alpha_min", "alpha_max", "alpha_random_exponent");

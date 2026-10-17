@@ -10,7 +10,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 
 use super::{
-    DetailMode, MapEntity, MapRagdoll, MapSelfIllum, MapSounds, MapUvTransform, MapViewModel, anim, beams,
+    DetailMode, MapEntity, MapRagdoll, MapSelfIllum, MapSounds, MapTextureAnim, MapUvTransform, MapViewModel, anim, beams,
     bot_profiles, breakables, color_correction, decal, emitters, hud, lod, nav, particles, psys, radio, rope_sway,
     shells, steam, vis, water,
 };
@@ -110,12 +110,21 @@ pub struct MapMesh {
     /// Drawn at the texture's own brightness, ignoring lighting (Source's
     /// UnlitGeneric).
     pub unlit: bool,
+    /// How much of the lighting full brightness replaces, 0..1 (Source's
+    /// ShatteredGlass `$unlitfactor`: a broken window's cracked panes keep
+    /// most of their brightness in the shade); `unlit` wins.
+    pub unlit_factor: f32,
     /// A map decal or overlay that multiplies the surface under it by 2 x
     /// its texel (Source's DecalModulate: 0.5 grey leaves it unchanged),
     /// unlit; with `alpha` Blend.
     pub modulate: bool,
     /// Surface property name (footsteps, impacts), lower-case.
     pub surface: Option<String>,
+    /// A blended surface's second surface property (Source `$surfaceprop2`
+    /// on WorldVertexTransition), lower-case: the triangles where the
+    /// second texture shows (`blend_weights`) take it
+    /// (`sound::SurfaceGrid`).
+    pub surface2: Option<String>,
     /// Reflection of a baked cubemap (Source `$envmap`).
     pub envmap: Option<MapEnvmap>,
     /// Part of a mover brush entity (index into `MapData::entities`):
@@ -143,6 +152,13 @@ pub struct MapMesh {
     /// Its base texture's frames (indices into `MapData::textures`), when a
     /// map entity can pick one (env_texturetoggle; `render::tint::TextureFrames`).
     pub frames: Vec<usize>,
+    /// A window's broken looks (`PaneLook::Cracked` and `Edge`): the jagged
+    /// edge masks, square tiles side by side in one texture (index into
+    /// `MapData::textures`), whose alpha cuts each edge strip (the strip
+    /// picks its tile and lays it out by its vertex colour, while the
+    /// material keeps the face's coordinates). The cracked face carries it
+    /// too, unused, so a window's broken looks share one material.
+    pub pane_mask: Option<usize>,
 }
 
 impl MapMesh {
@@ -169,9 +185,11 @@ pub enum PaneLook {
     /// The face in its broken material (Source `$crackmaterial`): the
     /// same triangles, drawn over the unbroken panes once broken.
     Cracked,
-    /// An edge material (one of several, numbered): the face's triangles
-    /// as a template, from which strips along the edges of unbroken panes
-    /// facing broken ones are cut (`breakables::edge_strips`).
+    /// An edge piece (one of several, numbered): the face's triangles in
+    /// its broken material as a template, from which strips along the edges
+    /// of unbroken panes facing broken ones are cut
+    /// (`breakables::edge_strips`), each cut by its jagged mask
+    /// (`MapMesh::pane_mask`).
     Edge(u8),
 }
 
@@ -784,6 +802,11 @@ pub struct MapData {
     pub entity_scale: f32,
     /// How water surfaces look (`MapMesh::water` indexes these).
     pub water_materials: Vec<water::MapWaterMaterial>,
+    /// Animated textures (Source's AnimatedTexture proxy): materials of
+    /// meshes and models bind each one's first frame, and the renderer
+    /// shows its frames in turn wherever that is bound
+    /// (`render::texture_anim`).
+    pub texture_anims: Vec<MapTextureAnim>,
     /// Dynamic prop shadows, when the game draws them.
     pub shadows: Option<MapShadows>,
     /// The announcer's round sounds (sound entries), when the game has them.

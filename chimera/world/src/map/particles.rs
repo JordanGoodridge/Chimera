@@ -15,7 +15,8 @@
 //! motion rule: gravity, decay, damping, drag, bounce planes probed once per
 //! group; a cap, a frame-step clamp, near fade, merging), `WorldTracer` (traces
 //! against the world only), `MapParticles` materials (texture, blend, vertex
-//! colour/alpha, sprite sheet), `Shape::Tumble` (3D shards: three spinning
+//! colour/alpha, sprite sheet, a sprite card's screen-size limits
+//! `ScreenSize`), rolls that stop at an age and mirrored sprites, `Shape::Tumble` (3D shards: three spinning
 //! angles, `tumble_axes`, settling flat, `settle_flat`); `ParticleSet`
 //! (Step, Draw) lets games show
 //! one-frame groups (smoke clouds) between stepping and drawing.
@@ -56,6 +57,62 @@ pub struct ParticleMaterial {
     /// given, 1). Particle systems apply it (`psys`); hand-built effects
     /// use their own.
     pub overbright: f32,
+    /// Sprite cards' screen-size limits (`ScreenSize`), for sprites.
+    pub screen: ScreenSize,
+}
+
+/// A sprite card's limits on a sprite's size on screen
+/// (specs/cs_source/impact_effects.md 14: `$maxsize` caps a sprite's
+/// size to that fraction of the screen; `$startfadesize`/`$endfadesize`
+/// fade it out as its screen size grows from the first fraction to the
+/// second). A sprite's screen size is its width (twice its half-width)
+/// over the view's height at its depth (our reading: the spec says "of
+/// the screen"). Zero: no limit.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ScreenSize {
+    pub max: f32,
+    pub fade_start: f32,
+    pub fade_end: f32,
+}
+
+impl ScreenSize {
+    /// No limit at all.
+    pub fn is_none(&self) -> bool {
+        self.max <= 0.0 && self.fade_end <= 0.0
+    }
+
+    /// A sprite of half-width `size` at view depth `depth` (both meters)
+    /// under a vertical field of view whose half-angle has tangent
+    /// `tan_half_fov`: its half-width capped by `max` and the alpha
+    /// factor of the fade (1 below `fade_start`, 0 from `fade_end`,
+    /// linear between: ours, the spec names no curve). The fade looks at
+    /// the size before the cap.
+    pub fn apply(&self, size: f32, depth: f32, tan_half_fov: f32) -> (f32, f32) {
+        if self.is_none() || size <= 0.0 {
+            return (size, 1.0);
+        }
+        // The view's height at this depth; at or behind the eye, any
+        // sprite fills the screen.
+        let view = 2.0 * depth.max(1e-4) * tan_half_fov.max(1e-4);
+        let screen = 2.0 * size / view;
+        let alpha = if self.fade_end > 0.0 {
+            if self.fade_end > self.fade_start {
+                1.0 - ((screen - self.fade_start) / (self.fade_end - self.fade_start)).clamp(0.0, 1.0)
+            } else if screen >= self.fade_end {
+                0.0
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+        let size = if self.max > 0.0 && screen > self.max {
+            size * self.max / screen
+        } else {
+            size
+        };
+        (size, alpha)
+    }
 }
 
 /// The particle materials a map's game uses, found by name.
@@ -260,6 +317,11 @@ pub struct Particle {
     /// Radians and radians per second.
     pub roll: f32,
     pub roll_speed: f32,
+    /// Age (seconds) at which the roll stops turning (a particle system's
+    /// spin stop time); infinite: never.
+    pub roll_stop: f32,
+    /// Drawn mirrored left to right (a particle system's yaw flip).
+    pub flip: bool,
     pub shape: Shape,
 }
 
@@ -282,6 +344,8 @@ impl Particle {
             size: Ramp::constant(size),
             roll: 0.0,
             roll_speed: 0.0,
+            roll_stop: f32::INFINITY,
+            flip: false,
             shape: Shape::Sprite,
         }
     }
@@ -581,8 +645,10 @@ pub fn step_particle(p: &mut Particle, m: &Motion, dt: f32, world: &impl WorldTr
             p.velocity *= (1.0 - m.damping * dt).max(0.0);
         }
     }
+    // The roll turns only until its stop time.
+    let turning = (p.roll_stop - p.age).clamp(0.0, dt);
     p.age += dt;
-    p.roll += p.roll_speed * dt;
+    p.roll += p.roll_speed * turning;
     if let Some((rate, floor)) = m.roll_decay {
         p.roll_speed += p.roll_speed * (-rate * dt);
         if p.roll_speed.abs() < floor {
@@ -856,5 +922,44 @@ mod tests {
         assert_eq!(w.at(0.0, 1.0), 0.0);
         assert_eq!(w.at(0.2, 1.0), 1.0);
         assert!((w.at(0.625, 1.0) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sprite_cards_cap_and_fade_by_screen_size() {
+        // blood_core: $maxsize .25. A 45° half-angle: the view is twice
+        // the depth high.
+        let core = ScreenSize {
+            max: 0.25,
+            ..default()
+        };
+        // 1 m wide at 10 m: 0.05 of the screen, untouched.
+        assert_eq!(core.apply(0.5, 10.0, 1.0), (0.5, 1.0));
+        // 1 m wide at 1 m: half the screen, capped to a quarter.
+        let (size, alpha) = core.apply(0.5, 1.0, 1.0);
+        assert!((size - 0.25).abs() < 1e-6 && alpha == 1.0);
+        // smoke1_nearcull2: fades from .075 to .1 of the screen.
+        let smoke = ScreenSize {
+            fade_start: 0.075,
+            fade_end: 0.1,
+            ..default()
+        };
+        assert_eq!(smoke.apply(0.05, 2.0, 1.0).1, 1.0); // 0.025
+        assert!((smoke.apply(0.175, 2.0, 1.0).1 - 0.5).abs() < 1e-4); // 0.0875
+        assert_eq!(smoke.apply(0.5, 2.0, 1.0), (0.5, 0.0)); // 0.25
+        // At the eye a sprite fills the screen.
+        assert_eq!(smoke.apply(0.01, 0.0, 1.0).1, 0.0);
+        assert_eq!(ScreenSize::default().apply(3.0, 0.1, 1.0), (3.0, 1.0));
+    }
+
+    #[test]
+    fn rolls_stop_at_their_stop_time() {
+        let mut p = Particle::new(Vec3::ZERO, 5.0, 0, 0.1);
+        p.roll_speed = 1.0;
+        p.roll_stop = 0.25;
+        let (m, mut rng) = (Motion::default(), ParticleRng::new(1));
+        for _ in 0..4 {
+            step_particle(&mut p, &m, 0.1, &NoWorld, &mut rng);
+        }
+        assert!((p.roll - 0.25).abs() < 1e-6, "{}", p.roll);
     }
 }

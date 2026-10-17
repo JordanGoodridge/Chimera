@@ -25,7 +25,10 @@
 //! opens the class menu (`classmenu_ter.res`/`classmenu_ct.res`, the hovered
 //! class's picture; `joinclass`), else plain lists; `motd` shows it again;
 //! `JoinMenusStatePlugin` follows the player without drawing (tests). Whether
-//! it runs: `rules::JoinChoice` (`Args::join_choice`, `--join`).
+//! it runs: `rules::JoinChoice` (`Args::join_choice`, `--join`). The game
+//! menu (Esc) draws over them and takes their clicks and keys while open;
+//! they stay up under it and work again once it closes, as under CS:S's
+//! GameUI.
 
 use bevy::{prelude::*, window::CursorOptions};
 
@@ -47,6 +50,13 @@ impl Plugin for JoinMenusPlugin {
         app.add_plugins(JoinMenusStatePlugin)
             .add_systems(Update, (keys, pointer, draw, draw_vgui).chain().after(follow_player));
     }
+}
+
+/// The game-look panels' clicks and drawing, in `set` (tests of what
+/// draws over them).
+#[cfg(test)]
+pub(super) fn add_panels(app: &mut App, set: impl SystemSet) {
+    app.add_systems(Update, (pointer, draw_vgui).chain().in_set(set));
 }
 
 /// Which join menu is open, following the local player, without drawing
@@ -488,10 +498,10 @@ fn draw_vgui(
                     ..default()
                 },
                 BackgroundColor(painter.color("Frame.BgColor", [0, 0, 0, 196])),
-                // Only its buttons stop a click: the game menu can open
-                // with these still up (under them, `MENU_Z`) and must
-                // stay clickable.
-                bevy::ui::FocusPolicy::Pass,
+                // A click on it stops here. The game menu opens over it
+                // (`game_menu::MENU_Z`), its backdrop taking the clicks
+                // until it closes.
+                bevy::ui::FocusPolicy::Block,
                 GlobalZIndex(50),
             ))
             .id();

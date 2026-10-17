@@ -16,7 +16,7 @@ use crate::stack::{
         MapRagdollJoint, Ragdoll, RagdollBody,
         RagdollShot,
         anim::{AnimSet, Animation, Sequence, Track},
-        ragdoll::{DeathSide, RagdollJoint, Ragdolled, death_pose_frame, needs_repair},
+        ragdoll::{DeathSide, RagdollJoint, RagdollSettings, Ragdolled, death_pose_frame, needs_repair},
     },
     movement::noclip,
     rules::Deathmatch,
@@ -384,6 +384,74 @@ fn bullets_push_a_dead_body() {
     assert!(bodies(&mut sim)[0].1.translation.distance(still.translation) < 1e-3);
 }
 
+/// Lets a ragdoll fall, then keeps its head swinging (its angular velocity
+/// set each tick, ±4 rad/s about the vertical, turning every 0.25 s, as
+/// the solver's own motion: not marked changed) while
+/// it is awake, for `secs` seconds: when the root body (the pelvis) last
+/// moved more than 1 in along an axis in a tick, and when the ragdoll fell
+/// asleep (None: never), s since the death.
+fn swing_head(sim: &mut Sim, p: Entity, secs: f64) -> (f64, Option<f64>) {
+    use avian3d::prelude::{AngularVelocity, Sleeping};
+    kill(sim, p, Hitgroup::Chest, Vec3::new(0.0, 1.2, 0.0), Vec3::NEG_Z);
+    sim.ticks(1);
+    let r = ragdoll(sim).expect("a ragdoll");
+    let (root, head) = (r.bodies[0], r.bodies[2]);
+    let dt = sim.tick_hz().recip();
+    let mut last = sim.app.world().get::<Position>(root).unwrap().0;
+    let (mut moved, mut slept) = (0.0, None);
+    for t in 1..=(secs / dt).round() as u64 {
+        let now = t as f64 * dt;
+        let world = sim.app.world_mut();
+        if world.get::<Sleeping>(head).is_none() {
+            let side = if (now / 0.25) as u64 % 2 == 0 { 1.0 } else { -1.0 };
+            // Unmarked, as the solver's own motion (a changed velocity
+            // would wake it right after the rule put it to sleep).
+            world.get_mut::<AngularVelocity>(head).unwrap().bypass_change_detection().0 = Vec3::Y * 4.0 * side;
+        }
+        sim.ticks(1);
+        let at = sim.app.world().get::<Position>(root).unwrap().0;
+        if (at - last).abs().max_element() > SCALE {
+            moved = now;
+        }
+        last = at;
+        let asleep = r.bodies.iter().all(|b| sim.app.world().get::<Sleeping>(*b).is_some());
+        if asleep && slept.is_none() {
+            slept = Some(now);
+        }
+    }
+    (moved, slept)
+}
+
+/// Spec 6.1's forced settling: a ragdoll that keeps moving (its head
+/// swung, so it never keeps within props' stillness bounds) while its
+/// root body (the pelvis) moves at most 1 in along each axis a tick is
+/// stopped and put to sleep `ragdoll_sleepaftertime` (5 s) after the root
+/// last moved more, and stays asleep. With the rule off it stays awake.
+#[test]
+fn a_ragdoll_kept_moving_is_put_to_sleep_after_five_seconds() {
+    let (mut sim, p) = sim();
+    let after = sim.app.world().resource::<RagdollSettings>().sleep_after as f64;
+    assert_eq!(after, 5.0, "ragdoll_sleepaftertime");
+    let (moved, slept) = swing_head(&mut sim, p, 10.0);
+    let slept = slept.expect("asleep within 10 s");
+    let dt = sim.tick_hz().recip();
+    assert!(moved > 0.1, "the root never moved: {moved} s");
+    assert!(
+        (slept - (moved + after)).abs() <= 2.0 * dt + 1e-9,
+        "asleep at {slept} s, the root last moved at {moved} s"
+    );
+    // Asleep for good: nothing swings it any more.
+    let r = ragdoll(&mut sim).unwrap();
+    assert!(r.bodies.iter().all(|b| sim.app.world().get::<avian3d::prelude::Sleeping>(*b).is_some()));
+
+    // The rule off: the swinging head keeps it awake (so the sleep above
+    // was the forced rule's, not the stillness one's).
+    let (mut sim, p) = self::sim();
+    sim.app.world_mut().resource_mut::<RagdollSettings>().sleep_after = 1000.0;
+    let (_, slept) = swing_head(&mut sim, p, 10.0);
+    assert_eq!(slept, None, "asleep without the forced rule");
+}
+
 /// The model with a front death pose: frames 1–6 bend the spine 30° back
 /// (its top, and the head on it, toward Source -X).
 fn posed_model() -> MapCharacterModel {
@@ -497,6 +565,10 @@ fn a_joint_held_apart_gets_repaired() {
     }
     let tick = repaired_at.expect("repaired");
     assert!(tick >= 14, "repaired after {tick} ticks, before the error lasted 15");
+    // The repair puts back the light children; the joints pull the rest
+    // (here the spine, pulled up with the head) back together within a few
+    // ticks (they are soft constraints, like the contacts).
+    sim.ticks(5);
     assert!(worst_separation(&mut sim) < 0.03, "{}", worst_separation(&mut sim));
 }
 

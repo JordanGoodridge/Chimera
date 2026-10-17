@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use crate::stack::{
     games::cs_source::{
         TICK_INTERVAL,
-        impact_effects::{BLOOD_COUNTS, ImpactEffectSettings, MATERIALS, RICOCHET},
+        impact_effects::{BLOOD_COUNTS, GOOP_SPIN_STOP, ImpactEffectSettings, MATERIALS, RICOCHET},
         weapons::CsWeaponsPlugin,
     },
     greybox::{self, GreyboxMapPlugin},
@@ -124,6 +124,40 @@ fn a_hit_player_bleeds_unless_violence_hblood_is_0() {
     let chest = sim.position(target) + Vec3::Y * (1.8 * 0.72 - 0.9);
     let (capped, free) = shoot(&mut sim, shooter, chest);
     assert_eq!((capped, free), (0, 0));
+}
+
+/// Spec section 10's mist and goop: the goop spins until its stop time
+/// (1 s) and some of it is drawn mirrored; mist and goop take a tenth of
+/// the light at the hit (the greybox has no lightmaps: full light).
+#[test]
+fn hit_blood_goop_stops_spinning_and_mist_takes_the_light() {
+    let mut sim = sim();
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
+    sim.ticks(2);
+    let chest = sim.position(target) + Vec3::Y * (1.8 * 0.72 - 0.9);
+    shoot(&mut sim, shooter, chest);
+    let index = |name: &str| MATERIALS.iter().position(|m| *m == name).unwrap();
+    let (core, goop) = (
+        index("particle/blood_core"),
+        index("particle/antlion_goop3/antlion_goop3"),
+    );
+    let pool = sim.app.world().resource::<Particles>();
+    let all: Vec<_> = pool.groups.iter().flat_map(|g| &g.particles).collect();
+    let spinning: Vec<_> = all.iter().filter(|p| p.roll_stop == GOOP_SPIN_STOP).collect();
+    assert_eq!(spinning.len(), BLOOD_COUNTS[2]);
+    assert!(spinning.iter().all(|p| p.material == goop));
+    assert!(all.iter().filter(|p| p.flip).all(|p| p.material == goop));
+    // Untinted mist is at most 16/255 green; a tenth of white adds 0.1.
+    let mist: Vec<_> = all.iter().filter(|p| p.material == core).collect();
+    assert_eq!(mist.len(), BLOOD_COUNTS[1]);
+    for p in mist {
+        assert!(
+            p.color.y >= 0.1 - 1e-4 && p.color.y <= 0.1 + 0.9 * 16.0 / 255.0 + 1e-4,
+            "{}",
+            p.color
+        );
+    }
 }
 
 /// Messages of type `M` written over `ticks` ticks.

@@ -9,7 +9,10 @@
 //! entity, switched by `EntityPart`, drawn as one-frame pool groups (sprites,
 //! sprite trails, ropes; the material's overbright); `run_started_systems`
 //! runs the one-shot systems games start (`StartParticleSystem`) to their
-//! end.
+//! end. Colour random's `tint_perc` blends each new particle's colour that
+//! far toward the light at its control point (`ControlPoint::light`: the
+//! map's `LightField` there, sampled when the system starts or its entity
+//! moves; white without one).
 //!
 //! Known shortcuts (docs/tech-debt.md): Particle systems (`render::psys`,
 //! `map::psys`, `games/cs_source/pcf.rs`): the operator meanings are
@@ -22,7 +25,11 @@
 //! times a second; oscillate scalar, collision via traces and the visibility,
 //! cull and sleep settings aren't run (an unseen system freezes); control
 //! points 1-63 (`cpointN`) all sit on the entity; `$addself` sprite cards are
-//! blended with the overbright factor, not part-added; only binary DMX
+//! blended with the overbright factor, not part-added; `tint_perc` is read
+//! as a blend in gamma space toward the light probe averaged over its six
+//! directions and clamped to 0-1, sampled again when the entity moves a
+//! unit (not the file's movement threshold; the tint clamps, always 0-255
+//! in the install, aren't read); only binary DMX
 //! encoding 2 is read; a system's look isn't compared with CS:S. Why it's OK
 //! for now: Draws the maps' effects (7 maps, 307 systems) from their own data;
 //! a reference capture would tune the meanings.
@@ -36,11 +43,14 @@ use crate::map::{
     water,
 };
 
-/// A control point: position and orientation in game axes.
+/// A control point: position and orientation in game axes, and the light
+/// there (linear, lightmap units: 1 = a texture's own brightness), which
+/// `tint_perc` blends colours toward.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ControlPoint {
     pub position: Vec3,
     pub rotation: Quat,
+    pub light: Vec3,
 }
 
 impl Default for ControlPoint {
@@ -48,8 +58,30 @@ impl Default for ControlPoint {
         Self {
             position: Vec3::ZERO,
             rotation: Quat::IDENTITY,
+            light: Vec3::ONE,
         }
     }
+}
+
+/// The light at a point for `tint_perc` (the game's point-lighting query,
+/// as ropes take it): the probe averaged over its six axis directions,
+/// clamped to 0-1.
+pub fn point_light(probe: &crate::map::LightProbe) -> Vec3 {
+    let sum: Vec3 = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z]
+        .into_iter()
+        .map(|d| probe.eval(d))
+        .sum();
+    (sum / 6.0).clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+/// `color` blended `tint` of the way toward `light` (linear, clamped to
+/// 0-1), in gamma space (specs/cs_source/impact_effects.md 14, as the
+/// blood's mist and goop take it).
+pub fn tint_toward_light(color: Vec3, light: Vec3, tint: f32) -> Vec3 {
+    if tint <= 0.0 {
+        return color;
+    }
+    color.lerp(light.clamp(Vec3::ZERO, Vec3::ONE).powf(1.0 / 2.2), tint.min(1.0))
 }
 
 #[derive(Clone, Debug)]
@@ -176,6 +208,16 @@ impl Instance {
                 .filter_map(|c| c.1.as_ref())
                 .map(Instance::count)
                 .sum::<usize>()
+    }
+
+    /// The live particles' colours (0-1, before any colour fade), its
+    /// children's too.
+    pub fn colors(&self) -> Vec<Vec3> {
+        let mut out: Vec<Vec3> = self.particles.iter().map(|p| p.color).collect();
+        for c in self.children.iter().filter_map(|c| c.1.as_ref()) {
+            out.extend(c.colors());
+        }
+        out
     }
 
     /// Stop emitting (its children too); live particles finish.
@@ -438,7 +480,9 @@ impl Instance {
                     }
                 }
                 Init::Radius(pick) => p.radius = pick.draw(rng),
-                Init::Color { a, b } => p.color = a.lerp(b, rng.random()),
+                Init::Color { a, b, tint, cp: c } => {
+                    p.color = tint_toward_light(a.lerp(b, rng.random()), cp(c).light, tint);
+                }
                 Init::Alpha(pick) => p.alpha = pick.draw(rng),
                 Init::Rotation { initial, offset } => p.roll = initial + offset.draw(rng),
                 Init::YawFlip { fraction } => p.flip = rng.random() < fraction,
@@ -501,7 +545,9 @@ impl Instance {
                         q.age = p.age;
                         q.color = Self::color(d, p) * sheets.overbright(material);
                         q.alpha = alpha;
-                        q.roll = p.roll.to_radians() * if p.flip { -1.0 } else { 1.0 };
+                        q.roll = p.roll.to_radians();
+                        // Yaw flip: the sprite mirrored (impact_effects.md 14).
+                        q.flip = p.flip;
                         q.sequence = p.sequence as u16;
                         match *render {
                             Render::Sprites {
@@ -644,6 +690,9 @@ pub struct SystemEmitter {
     pub instances: Vec<Instance>,
     was_on: bool,
     rng: ParticleRng,
+    /// The light last sampled for its control point and where (game
+    /// space): sampled again only when the entity moves.
+    light: Option<(Vec3, Vec3)>,
 }
 
 impl SystemEmitter {
@@ -653,6 +702,7 @@ impl SystemEmitter {
             instances: Vec::new(),
             was_on: false,
             rng: ParticleRng::new(seed),
+            light: None,
         }
     }
 
@@ -701,6 +751,7 @@ pub fn update_systems(
         Option<&EntityPart>,
         Option<&Visibility>,
     )>,
+    light_field: Option<Res<crate::map::LightField>>,
     mut pool: ResMut<Particles>,
 ) {
     let Some(defs) = defs else { return };
@@ -729,12 +780,23 @@ pub fn update_systems(
         if visibility == Some(&Visibility::Hidden) || !near {
             continue;
         }
+        let position = to_game(origin);
+        let e = &mut *e;
+        let light = match (e.light, light_field.as_deref()) {
+            (Some((at, light)), _) if at.distance_squared(position) < 1.0 => light,
+            (_, Some(field)) => {
+                let light = point_light(&(field.0.0)(origin));
+                e.light = Some((position, light));
+                light
+            }
+            (_, None) => Vec3::ONE,
+        };
         let cp = ControlPoint {
-            position: to_game(origin),
+            position,
             rotation: Quat::from_xyzw(rotation.x, -rotation.z, rotation.y, rotation.w),
+            light,
         };
         let cps = [cp; MAX_CONTROL_POINTS];
-        let e = &mut *e;
         for i in &mut e.instances {
             i.step(&defs.defs, &cps, dt, &mut e.rng, &sheets);
         }
@@ -765,14 +827,16 @@ pub struct StartedSystems {
 }
 
 impl StartedSystems {
-    /// Start `name` at `position` facing `forward` (game space); false
-    /// when the definitions lack it.
+    /// Start `name` at `position` facing `forward` (game space) with
+    /// `light` there (`ControlPoint::light`); false when the definitions
+    /// lack it.
     pub fn start(
         &mut self,
         defs: &std::sync::Arc<MapParticleSystems>,
         name: &str,
         position: Vec3,
         forward: Vec3,
+        light: Vec3,
     ) -> bool {
         if !self.defs.as_ref().is_some_and(|d| std::sync::Arc::ptr_eq(d, defs)) {
             self.defs = Some(defs.clone());
@@ -780,8 +844,14 @@ impl StartedSystems {
         }
         let Some(def) = defs.find(name) else { return false };
         let rotation = Quat::from_rotation_arc(Vec3::X, forward.try_normalize().unwrap_or(Vec3::X));
-        self.running
-            .push((Instance::new(&defs.defs, def), ControlPoint { position, rotation }));
+        self.running.push((
+            Instance::new(&defs.defs, def),
+            ControlPoint {
+                position,
+                rotation,
+                light,
+            },
+        ));
         true
     }
 
@@ -819,6 +889,7 @@ pub fn run_started_systems(
         ),
     >,
     mut started: Local<StartedSystems>,
+    light_field: Option<Res<crate::map::LightField>>,
     mut pool: ResMut<Particles>,
 ) {
     let Some(defs) = defs else {
@@ -831,7 +902,10 @@ pub fn run_started_systems(
     let to_engine = |v: Vec3| Vec3::new(v.x, v.z, -v.y) * scale;
     for s in starts.read() {
         let f = Vec3::new(s.forward.x, -s.forward.z, s.forward.y);
-        started.start(defs, &s.name, to_game(s.position), f);
+        let light = light_field
+            .as_deref()
+            .map_or(Vec3::ONE, |field| point_light(&(field.0.0)(s.position)));
+        started.start(defs, &s.name, to_game(s.position), f, light);
     }
     if started.running.is_empty() {
         return;
@@ -989,6 +1063,64 @@ mod tests {
         assert!((Instance::color(&d, &p(0.25)) - Vec3::splat(0.75)).length() < 1e-5);
     }
 
+    /// `tint_perc` blends the random colour that far toward the light at
+    /// its control point, in gamma space; 0 leaves it alone.
+    #[test]
+    fn color_random_tints_toward_the_control_points_light() {
+        let mut d = system();
+        d.emitters = vec![Emitter::Instantaneously { start: 0.0, count: 4 }];
+        d.initializers = vec![
+            Init::Lifetime(Pick::new(1.0, 1.0, 1.0)),
+            Init::Color {
+                a: Vec3::Z,
+                b: Vec3::Z,
+                tint: 0.5,
+                cp: 1,
+            },
+        ];
+        let plain = SystemDef {
+            initializers: vec![
+                Init::Lifetime(Pick::new(1.0, 1.0, 1.0)),
+                Init::Color {
+                    a: Vec3::Z,
+                    b: Vec3::Z,
+                    tint: 0.0,
+                    cp: 1,
+                },
+            ],
+            ..d.clone()
+        };
+        let defs = vec![d, plain];
+        let lit = ControlPoint {
+            light: Vec3::new(1.0, 0.25, 0.0),
+            ..default()
+        };
+        // Control point 1 carries the light; 0 is plain white.
+        let cps = [ControlPoint::default(), lit];
+        let mut rng = ParticleRng::new(4);
+        let gamma = 0.25f32.powf(1.0 / 2.2);
+        let want = Vec3::new(0.5, 0.5 * gamma, 0.5);
+        let mut i = Instance::new(&defs, 0);
+        i.step(&defs, &cps, 0.05, &mut rng, &none);
+        assert_eq!(i.count(), 4);
+        for p in &i.particles {
+            assert!(p.color.abs_diff_eq(want, 1e-5), "{}", p.color);
+        }
+        let mut i = Instance::new(&defs, 1);
+        i.step(&defs, &cps, 0.05, &mut rng, &none);
+        assert!(i.particles.iter().all(|p| p.color == Vec3::Z));
+        // Light past 1 counts as 1.
+        assert_eq!(tint_toward_light(Vec3::ZERO, Vec3::splat(4.0), 0.1), Vec3::splat(0.1));
+        // The point light: the probe's six directions averaged.
+        let mut cube = [Vec3::ZERO; 6];
+        cube[0] = Vec3::splat(0.6);
+        let probe = crate::map::LightProbe {
+            cube,
+            lights: Vec::new(),
+        };
+        assert!(point_light(&probe).abs_diff_eq(Vec3::splat(0.1), 1e-6));
+    }
+
     #[test]
     fn children_start_after_their_delay() {
         let mut parent = system();
@@ -1012,8 +1144,8 @@ mod tests {
             scale: 0.0254,
         });
         let mut started = StartedSystems::default();
-        assert!(!started.start(&defs, "nothing", Vec3::ZERO, Vec3::Z));
-        assert!(started.start(&defs, "TEST", Vec3::ZERO, Vec3::Z));
+        assert!(!started.start(&defs, "nothing", Vec3::ZERO, Vec3::Z, Vec3::ONE));
+        assert!(started.start(&defs, "TEST", Vec3::ZERO, Vec3::Z, Vec3::ONE));
         // Pointing up: the frame's forward axis is +Z.
         let (_, cp) = &started.running[0];
         assert!((cp.rotation * Vec3::X).abs_diff_eq(Vec3::Z, 1e-5));
@@ -1024,9 +1156,9 @@ mod tests {
         }
         assert!(started.running.is_empty(), "finished and gone");
         // New definitions (another map) drop what ran on the old ones.
-        started.start(&defs, "test", Vec3::ZERO, Vec3::Z);
+        started.start(&defs, "test", Vec3::ZERO, Vec3::Z, Vec3::ONE);
         let other = std::sync::Arc::new((*defs).clone());
-        started.start(&other, "test", Vec3::ZERO, Vec3::Z);
+        started.start(&other, "test", Vec3::ZERO, Vec3::Z, Vec3::ONE);
         assert_eq!(started.running.len(), 1);
     }
 

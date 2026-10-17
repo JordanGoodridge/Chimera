@@ -232,3 +232,54 @@ pub fn parameter_gamma_to_linear(v: f32) -> f32 {
     if v >= 0.95 { 1.0 } else { v.powf(2.2) }
 }
 
+
+/// A texture whose frames show in turn (Source's AnimatedTexture proxy
+/// on a material's `$basetexture` or `$bumpmap`): its frames (indices into
+/// `MapData::textures`; a material drawing it binds `frames[0]` and
+/// `render::texture_anim` swaps the frames in) and the proxy's
+/// `animatedtextureframerate`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapTextureAnim {
+    pub frames: Vec<usize>,
+    /// Frames per second.
+    pub rate: f32,
+}
+
+impl MapTextureAnim {
+    /// The frame shown `t` seconds into the map (an index into `frames`):
+    /// floor(rate · t) mod the frame count, a hard switch, no blending
+    /// (specs/cs_source/water.md 4, AnimatedTexture). A rate of zero or
+    /// less holds the first frame.
+    pub fn frame(&self, t: f32) -> usize {
+        let n = self.frames.len().max(1);
+        if self.rate <= 0.0 || t <= 0.0 {
+            return 0;
+        }
+        ((self.rate as f64 * t as f64).floor() as u64 % n as u64) as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// floor(rate · t) mod count, a hard switch; no rate holds frame 0.
+    #[test]
+    fn texture_anim_frames() {
+        let anim = MapTextureAnim { frames: vec![10, 11, 12], rate: 21.0 };
+        assert_eq!(anim.frame(0.0), 0);
+        assert_eq!(anim.frame(0.047), 0);
+        assert_eq!(anim.frame(0.048), 1);
+        assert_eq!(anim.frame(2.0 / 21.0 + 1e-4), 2);
+        assert_eq!(anim.frame(3.0 / 21.0 + 1e-4), 0);
+        // cs_office's slide: a new slide every 10 s.
+        let slide = MapTextureAnim { frames: vec![0; 5], rate: 0.1 };
+        assert_eq!(slide.frame(9.9), 0);
+        assert_eq!(slide.frame(10.1), 1);
+        assert_eq!(slide.frame(49.0), 4);
+        assert_eq!(slide.frame(51.0), 0);
+        assert_eq!(MapTextureAnim { frames: vec![1, 2], rate: 0.0 }.frame(5.0), 0);
+        // Hours into a map stays exact enough.
+        assert_eq!(anim.frame(3600.0 + 1.0 / 42.0), (3600 * 21) % 3);
+    }
+}

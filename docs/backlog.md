@@ -639,7 +639,7 @@ a first bot are in.
   | 2 per impact, 3 letters | in, with the ragdoll check (no particles while one awake ragdoll is on the line) |
   | 4-8 old-style machinery, debris, dust, sparks | in; electric flares depth tested, no visibility test |
   | 9 glass | in: shards tumble on three angles and settle flat |
-  | 10 blood | in from the spec's table; sprite-card size limits, goop spin stop and yaw flip, mist light tint left out |
+  | 10 blood | in from the spec's table, with the sprite cards' screen-size limits (2026-10-17, every sprite-card material), the goop's spin stop and yaw flip and the mist and goop light tint; `tint_perc` and the screen-size measure are our readings (Q7) |
   | 11 splash | in: water's own effect; slime's `slime_splash_03` from the install's `.pcf` (no stock map has slime) |
   | 12 knife | in; its decal: no spec names it (below) |
 
@@ -724,8 +724,9 @@ docs/plans/active/sound.md.
 - Breakables, remaining (source/logic/src/logic/breakables.rs,
   games/cs_source/tests/it/heavy/map_breakables.rs): the GlassBreak/BulletProof
   decals and brush propdata templates are in (their readings in
-  docs/tech-debt.md "Breakables"); left: bulletproof glass's ricochet and
-  the computer material's sparks on bullet traces, the client's pane
+  docs/tech-debt.md "Breakables"), and so are bulletproof glass's ricochet
+  and the computer material's sparks on bullet traces; left: whether the
+  ricochet has a look (the specs give it only `Bounce.Shrapnel`), the client's pane
   drawing (spec open question 8:
   edge piece selection, which side draws, the piece's offset; ours in
   docs/tech-debt.md "Breakables"), the spec's open questions on the probe
@@ -818,13 +819,13 @@ dithered fade bands. Left:
   scale (`mat_render_scale`) only if a GPU turns out to be the limit (the
   dev box's RTX 3080 draws dust2 at 4K in about 1.3 ms). Done: props that
   never slept, ragdoll and gib hulls cut, ragdolls' forced sleep, the
-  view-model camera off with nothing on its layer (performance.md,
-  "Props that never sleep", "Fewer cameras per frame"). Left there:
-  ragdoll limbs jitter against the floor until the forced sleep (5 s;
-  joints against contacts, not hull corners); broken props' pieces with
-  their `.phy` hulls (they load as boxes: with hulls, pieces of one prop
-  collide with each other and never sleep; Source's debris doesn't
-  collide with debris).
+  view-model camera off with nothing on its layer, broken props' pieces
+  as debris that doesn't collide with debris, ragdoll limbs that jittered
+  against the floor (joints now solved in the contacts' passes, no
+  gyroscopic torque; performance.md, "Props that never sleep", "Fewer
+  cameras per frame"), broken props' pieces with their `.phy` hulls
+  (sleeping by props' stillness rule), a toy-scene test of ragdolls'
+  forced sleep.
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).

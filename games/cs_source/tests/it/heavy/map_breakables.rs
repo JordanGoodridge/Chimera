@@ -405,6 +405,40 @@ fn office_windows_have_their_broken_looks() {
     assert!(pieces.models.iter().all(|m| !m.meshes.is_empty()));
 }
 
+/// cs_militia's broken windows (their `$crackmaterial` a cubemap patch of
+/// the ShatteredGlass glass/glasswindowbreak070b) keep most of their
+/// brightness in the house's shade: the cracked face and its edge pieces
+/// are lit only `SHATTERED_GLASS_UNLIT_FACTOR` of the way toward full
+/// brightness; the whole face (LightmappedGeneric) is lit.
+#[test]
+fn militia_cracked_glass_is_partly_unlit() {
+    use crate::stack::map::PaneLook;
+    use cs_source::material::SHATTERED_GLASS_UNLIT_FACTOR;
+    let Some(map) = load("cs_militia") else { return };
+    let windows: Vec<usize> = map
+        .entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.classname() == "func_breakable_surf")
+        .map(|(i, _)| i)
+        .collect();
+    assert!(!windows.is_empty());
+    let looks: Vec<_> = map
+        .meshes
+        .iter()
+        .filter(|m| m.entity.is_some_and(|e| windows.contains(&e)))
+        .collect();
+    let broken: Vec<_> = looks.iter().filter(|m| m.pane_look != PaneLook::Whole).collect();
+    assert!(broken.iter().any(|m| m.material.contains("glasswindowbreak070b")));
+    for m in &broken {
+        assert_eq!(m.unlit_factor, SHATTERED_GLASS_UNLIT_FACTOR, "{}", m.material);
+        assert!(!m.unlit);
+    }
+    for m in looks.iter().filter(|m| m.pane_look == PaneLook::Whole) {
+        assert_eq!(m.unlit_factor, 0.0, "{}", m.material);
+    }
+}
+
 /// The logic id of map entity `index`.
 fn id_of(sim: &Sim, index: usize) -> crate::stack::logic::EntId {
     let logic = sim.app.world().resource::<Logic>();

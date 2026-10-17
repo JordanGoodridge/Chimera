@@ -93,11 +93,20 @@ pub struct WorldParams {
     /// albedo, unlit.
     pub selfillum: f32,
     pub selfillum_tint: Vec4,
-    /// 1: drawn at the texture's own brightness times `unlit_tint` (an
+    /// 1: drawn at the texture's own brightness times `modulation` (an
     /// UnlitGeneric material on a brush, or the `$emissiveblend` stand-in),
-    /// not lit by the lightmap.
+    /// not lit by the lightmap; between 0 and 1, the lighting that far
+    /// toward full brightness (`MapMesh::unlit_factor`).
     pub unlit: f32,
-    pub unlit_tint: Vec4,
+    /// `$color`: the lighting's multiplier (lightmap, bump pages and
+    /// dynamic lights; not the reflection or self-illumination,
+    /// specs/cs_source/shaders.md 2), or the unlit surface's brightness.
+    pub modulation: Vec4,
+    /// 1: a window's broken look (`MapMesh::pane_mask`): an edge piece's
+    /// alpha times its tile of `blend_mask` (the vertex colour's blue),
+    /// sampled at the colour's red and green (meshes without vertex
+    /// colours, the cracked face, are left as they are).
+    pub pane_mask: f32,
 }
 
 impl WorldParams {
@@ -112,7 +121,7 @@ impl WorldParams {
             base2_uv_v: v,
             detail_tint: Vec4::ONE,
             selfillum_tint: Vec4::ONE,
-            unlit_tint: Vec4::ONE,
+            modulation: Vec4::ONE,
             ..Default::default()
         }
     }
@@ -143,6 +152,8 @@ pub struct WorldMaterial {
     pub base2: Option<Handle<Image>>,
     #[texture(11)]
     pub normal2: Option<Handle<Image>>,
+    /// The blend's shaping mask, or a window edge piece's jagged mask
+    /// (`WorldParams::pane_mask`).
     #[texture(12)]
     pub blend_mask: Option<Handle<Image>>,
     #[texture(13)]

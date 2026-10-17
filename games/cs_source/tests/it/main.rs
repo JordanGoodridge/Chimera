@@ -101,6 +101,7 @@ mod heavy {
     mod map_hdr;
     mod map_ladders;
     mod map_loose;
+    mod map_material_extras;
     mod map_militia_walls;
     mod map_net_changelevel;
     mod map_net_weapons;
@@ -114,6 +115,7 @@ mod heavy {
     mod map_spawn_dump;
     mod map_stock;
     mod map_surf;
+    mod map_surfaces;
     mod map_vis;
     mod map_visuals;
     mod net_big_map;

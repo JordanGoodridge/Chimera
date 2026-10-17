@@ -2,6 +2,22 @@
 //! Looks in the map's embedded pak first (maps ship patched materials there),
 //! then the game's search path.
 //!
+//! Besides the look: `$surfaceprop2` of blended (WorldVertexTransition)
+//! materials, which the triangles showing the second texture take
+//! (`sound::second_surface`); the world shaders' `$color`, raw, on the
+//! lighting (`world_tint`, specs/cs_source/shaders.md 2); AnimatedTexture
+//! proxies on `$basetexture`/`$bumpmap` (`MapData::texture_anims`, run by
+//! `render::texture_anim`) and a static `$frame`/`$bumpframe`
+//! (`MaterialLoader::frames`).
+//!
+//! Known shortcuts (docs/tech-debt.md): AnimatedTexture and `$frame` follow
+//! the public Valve Developer Wiki and water.md's frame rule (no spec covers
+//! them on other shaders): a `$frame` past the last frame draws frame 0;
+//! `$surfaceprop2` goes to a triangle whose corners' mean blend weight is
+//! over one half (not in the specs). Why it's OK for now: cs_militia's
+//! grass and dirt, de_nuke's pool and cs_office's slide behave as in the
+//! game by eye; a spec session can settle both.
+//!
 //! Known shortcuts (docs/tech-debt.md): Textures are decoded to RGBA8 at load
 //! (`material::decode`): surf_sedona's 244 packed textures (up to 4096 square)
 //! come to ~270 M texels, about 1 GB in memory and on the GPU; and a map with
@@ -12,10 +28,13 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): Community maps' materials
 //! (`games/cs_source/material.rs`): what the VMT parser refuses is rewritten
-//! (`lenient_vmt`) and parsed again rather than read by a parser of our own;
+//! (`lenient_vmt`) and parsed again rather than read by a parser of our own
+//! (so are materials with a DirectX 9 fallback block, whose keys the parser
+//! skips: stock HL2 walls' `$bumpmap`);
 //! shaders the specs don't cover are stand-ins: WindowImposter shows its
 //! cubemap as if infinitely far (no parallax), ShatteredGlass has no per-pane
-//! proxy, LightmappedReflective is an opaque surface of its `$refracttint` (no
+//! proxy and its unset `$unlitfactor` is 0.3, measured from one CS:S
+//! screenshot (`SHATTERED_GLASS_UNLIT_FACTOR`), LightmappedReflective is an opaque surface of its `$refracttint` (no
 //! reflection or refraction); `$emissiveblend*` (surf_demise's glowing banner
 //! and credits) isn't drawn (black additive, the spec's envmap-only rule;
 //! shaders.md open question 17); loose items' swept-CCD thresholds (0.5 m/s, 6
@@ -72,12 +91,22 @@ pub struct Resolved {
     pub detail: Option<crate::map::MapDetail>,
     /// UnlitGeneric: drawn at the texture's own brightness, unlit.
     pub unlit: bool,
+    /// How much of the lighting full brightness replaces (0 lit, 1 the
+    /// texture's own brightness): ShatteredGlass's `$unlitfactor`
+    /// (`MapMesh::unlit_factor`); 0 for every other shader.
+    pub unlit_factor: f32,
     /// `$surfaceprop`: footstep and impact sounds, physics.
     pub surfaceprop: Option<String>,
+    /// `$surfaceprop2` of a WorldVertexTransition material: the surface
+    /// where the second texture shows (`sound::SurfaceGrid`).
+    pub surfaceprop2: Option<String>,
     /// `$envmap` with a baked cubemap.
     pub envmap: Option<crate::map::MapEnvmap>,
     /// `$color` x `$color2` (linear multiplier; the `srgb?` variants, which
-    /// the game uses as it renders in sRGB, win).
+    /// the game uses as it renders in sRGB, win). On the world shaders
+    /// (LightmappedGeneric, WorldVertexTransition) `$color` alone, raw,
+    /// multiplying the lighting (specs/cs_source/shaders.md 2,
+    /// "modulation"; `world_tint`); WorldTwoTextureBlend has none.
     pub tint: Option<[f32; 3]>,
     /// `$basetexturetransform`, or the TextureScroll proxy driving it.
     pub base_transform: crate::map::MapUvTransform,
@@ -102,6 +131,12 @@ pub struct MaterialLoader<'a> {
     pak: super::pak::Pak<'a>,
     /// Materials or textures that couldn't be loaded, with the reason.
     pub missing: Vec<String>,
+    /// Textures animated by AnimatedTexture proxies (`MapData::texture_anims`).
+    pub texture_anims: Vec<crate::map::MapTextureAnim>,
+    /// Frames decoded for animations and `$frame`: by texture, sRGB, and
+    /// the animation's rate (None: a static `$frame`, kept apart so an
+    /// animation elsewhere doesn't move it).
+    frames_by_path: HashMap<(String, bool, Option<u32>), Vec<usize>>,
     /// The monitor screen texture (`_rt_camera`), once a material uses it.
     pub camera_texture: Option<usize>,
 }
@@ -122,6 +157,8 @@ impl<'a> MaterialLoader<'a> {
             cube_by_path: HashMap::new(),
             pak,
             missing: Vec::new(),
+            texture_anims: Vec::new(),
+            frames_by_path: HashMap::new(),
             camera_texture: None,
         }
     }
@@ -196,7 +233,9 @@ impl<'a> MaterialLoader<'a> {
                     blend: None,
                     detail: None,
                     unlit: false,
+                    unlit_factor: 0.0,
                     surfaceprop: None,
+                    surfaceprop2: None,
                     envmap: None,
                     tint: None,
                     base_transform: Default::default(),
@@ -218,7 +257,9 @@ impl<'a> MaterialLoader<'a> {
             blend: None,
             detail: None,
             unlit: false,
+            unlit_factor: 0.0,
             surfaceprop: None,
+            surfaceprop2: None,
             envmap: None,
             tint: None,
             base_transform: Default::default(),
@@ -237,10 +278,15 @@ impl<'a> MaterialLoader<'a> {
             _ => {}
         }
         // Strictly first; what the parser refuses is read again leniently,
-        // the way the game reads it (`lenient_vmt`).
+        // the way the game reads it (`lenient_vmt`). A material with a block
+        // that applies at DirectX 9 (`LightmappedGeneric_DX9 { $bumpmap
+        // ... }`: 181 stock materials, about 110 of them HL2 `_c17`/`_cheap`
+        // walls and floors with their bump map there) is read leniently first:
+        // the parser skips nested blocks, which lost those bump maps.
+        let dx9 = self.has_dx9_block(&text);
         let material = self
-            .parse_vmt(&text, false)
-            .or_else(|e| self.parse_vmt(&text, true).map_err(|_| e))
+            .parse_vmt(&text, dx9)
+            .or_else(|e| self.parse_vmt(&text, !dx9).map_err(|_| e))
             .map(|(m, included)| {
                 // A patch of a ShatteredGlass material (a window's
                 // cubemap-patched `$crackmaterial`) reads as one.
@@ -312,6 +358,13 @@ impl<'a> MaterialLoader<'a> {
             texture = Some(self.solid([0.0; 3]));
         }
         let normal_map = bump.and_then(|t| self.texture(t, false));
+        // AnimatedTexture proxies and `$frame` (Water's `$normalmap`
+        // frames are the water loader's).
+        let (texture, normal_map) = if matches!(material, vmt_parser::material::Material::Water(_)) {
+            (texture, normal_map)
+        } else {
+            self.frames(&text, &keys, (base, texture), (bump, normal_map))
+        };
         let decal_scale = match &material {
             vmt_parser::material::Material::LightMappedGeneric(m) if m.decal => Some(m.decal_scale),
             _ => None,
@@ -374,9 +427,25 @@ impl<'a> MaterialLoader<'a> {
             blend,
             detail,
             unlit: matches!(material, vmt_parser::material::Material::UnlitGeneric(_)),
+            unlit_factor: if stand_in == Some(StandIn::ShatteredGlass) {
+                shattered_unlit_factor(&keys)
+            } else {
+                0.0
+            },
             surfaceprop: material.surface_prop().map(str::to_lowercase),
+            surfaceprop2: keys
+                .get("$surfaceprop2")
+                .filter(|_| world_blend)
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty()),
             envmap: self.envmap(&text, normal_map.is_some()),
-            tint: tint(&keys),
+            tint: match &material {
+                vmt_parser::material::Material::LightMappedGeneric(_)
+                | vmt_parser::material::Material::WorldVertexTransition(_) => {
+                    matches!(stand_in, None | Some(StandIn::DxVariant)).then(|| world_tint(&keys)).flatten()
+                }
+                _ => tint(&keys),
+            },
             base_transform,
             selfillum,
             modulate: matches!(material, vmt_parser::material::Material::DecalModulate(_)),
@@ -458,6 +527,68 @@ impl<'a> MaterialLoader<'a> {
         })
     }
 
+    /// The base texture and bump map as AnimatedTexture proxies and
+    /// `$frame`/`$bumpframe` leave them: an animated one becomes its first
+    /// frame, with its frames in `texture_anims` (the renderer shows them
+    /// in turn); a static frame other than 0 becomes that frame. Which
+    /// texture a proxy animates is the frame variable it writes
+    /// (`animatedtextureframenumvar`: `$frame` the base, `$bumpframe` the
+    /// bump map; without one, `animatedtexturevar` says); its rate is
+    /// `animatedtextureframerate` (default 15, as water's). A `$frame` past
+    /// the texture's last frame draws frame 0 (a guess). Valve Developer
+    /// Wiki, "AnimatedTexture" and "$frame"; specs/cs_source/water.md 4
+    /// for the frame rule.
+    fn frames(
+        &mut self,
+        text: &str,
+        keys: &HashMap<String, String>,
+        (base, texture): (Option<&str>, Option<usize>),
+        (bump, normal_map): (Option<&str>, Option<usize>),
+    ) -> (Option<usize>, Option<usize>) {
+        let proxies = super::water::resolve(text, &|p| self.read_text(p), 0)
+            .map(|(_, body)| super::water::keys_and_proxies(&body).1)
+            .unwrap_or_default();
+        let rates = animated_rates(&proxies);
+        let mut out = [texture, normal_map];
+        for (slot, (name, frame_key, srgb)) in [(base, "$frame", true), (bump, "$bumpframe", false)].into_iter().enumerate()
+        {
+            let Some(name) = name.filter(|_| out[slot].is_some()) else { continue };
+            if let Some(rate) = rates[slot] {
+                let frames = self.decoded_frames(name, srgb, Some(rate));
+                if frames.len() > 1 {
+                    out[slot] = Some(frames[0]);
+                    let anim = crate::map::MapTextureAnim { frames, rate };
+                    if !self.texture_anims.contains(&anim) {
+                        self.texture_anims.push(anim);
+                    }
+                }
+                continue;
+            }
+            let frame = keys
+                .get(frame_key)
+                .and_then(|v| v.trim().parse::<f32>().ok())
+                .map_or(0, |f| f.max(0.0) as usize);
+            if frame > 0 {
+                let frames = self.decoded_frames(name, srgb, None);
+                if let Some(&f) = frames.get(frame) {
+                    out[slot] = Some(f);
+                }
+            }
+        }
+        (out[0], out[1])
+    }
+
+    /// A texture's frames, decoded once per (texture, sRGB, rate).
+    fn decoded_frames(&mut self, name: &str, srgb: bool, rate: Option<f32>) -> Vec<usize> {
+        let key = (normalize(name).to_lowercase(), srgb, rate.map(f32::to_bits));
+        if let Some(f) = self.frames_by_path.get(&key) {
+            return f.clone();
+        }
+        let frames = self.texture_frames(name, srgb);
+        self.frames_by_path.insert(key, frames.clone());
+        frames
+    }
+
     /// `$basetexturetransform`, unless a TextureScroll proxy writes it
     /// (then the scroll replaces it, as for water's `$bumptransform`,
     /// specs/cs_source/water.md). Other proxies on it (TextureTransform
@@ -508,6 +639,21 @@ impl<'a> MaterialLoader<'a> {
                 | F::Rgba16161616f
                 | F::Rgba16161616
         )
+    }
+
+    /// Whether material `text` (or the material a patch includes) has a
+    /// block in its shader's block that applies at DirectX 9
+    /// (`dx_block_applies`), whose keys the strict parser would miss.
+    fn has_dx9_block(&self, text: &str) -> bool {
+        let t = tokens(text, Escapes::Off);
+        if t.first().is_some_and(|s| s.eq_ignore_ascii_case("patch")) {
+            return t
+                .windows(2)
+                .find(|w| w[0].eq_ignore_ascii_case("include"))
+                .and_then(|w| self.read_text(&w[1]))
+                .is_some_and(|inner| dx9_block(&inner));
+        }
+        dx9_block(text)
     }
 
     /// A material's text parsed, patches resolved through their included
@@ -579,7 +725,9 @@ impl<'a> MaterialLoader<'a> {
     /// A particle or effect material (specs/cs_source/impact_effects.md):
     /// its base texture, blend (`$additive`), whether vertex colour and
     /// alpha apply (`$vertexcolor`, `$vertexalpha`; SpriteCard always
-    /// takes both), `$ignorez`, and the texture's sprite sheet if it has one.
+    /// takes both), `$ignorez`, the texture's sprite sheet if it has one,
+    /// and a sprite card's screen-size limits (`$maxsize`,
+    /// `$startfadesize`, `$endfadesize`).
     pub fn particle(&mut self, name: &str) -> Option<crate::map::particles::ParticleMaterial> {
         use crate::map::particles::{ParticleBlend, ParticleMaterial};
         let text = self.read_text(&format!("materials/{}.vmt", normalize(name).trim_end_matches(".vmt")))?;
@@ -589,6 +737,11 @@ impl<'a> MaterialLoader<'a> {
             .unwrap_or_default();
         let keys = self.keys(&text, 0);
         let flag = |k: &str| keys.get(k).is_some_and(|v| v.trim() != "0");
+        let number = |k: &str| {
+            keys.get(k)
+                .and_then(|v| v.trim().parse::<f32>().ok())
+                .unwrap_or(0.0)
+        };
         let sprite_card = shader == "spritecard";
         let base = keys.get("$basetexture").cloned()?;
         let texture = self.texture(&base, true);
@@ -608,10 +761,17 @@ impl<'a> MaterialLoader<'a> {
             vertex_alpha: sprite_card || flag("$vertexalpha"),
             no_depth: flag("$ignorez"),
             sequences,
-            overbright: keys
-                .get("$overbrightfactor")
-                .and_then(|v| v.trim().parse::<f32>().ok())
-                .unwrap_or(0.0),
+            overbright: number("$overbrightfactor"),
+            // Sprite cards' screen-size limits (impact_effects.md 14).
+            screen: if sprite_card {
+                crate::map::particles::ScreenSize {
+                    max: number("$maxsize"),
+                    fade_start: number("$startfadesize"),
+                    fade_end: number("$endfadesize"),
+                }
+            } else {
+                Default::default()
+            },
         })
     }
 
@@ -1177,8 +1337,10 @@ enum StandIn {
     Decal,
     /// ShatteredGlass (a breakable window's `$crackmaterial`): a
     /// translucent LightmappedGeneric showing its crack texture (`$detail`,
-    /// the same image as its "dummy" base in stock materials) as the base;
-    /// its per-pane proxy isn't modelled (the panes are cut from the mesh).
+    /// the same image as its "dummy" base in stock materials) as the base,
+    /// its lighting `$unlitfactor` of the way toward full brightness
+    /// (`Resolved::unlit_factor`); its per-pane proxy isn't modelled (the
+    /// panes are cut from the mesh).
     ShatteredGlass,
     /// LightmappedReflective (reflective glass, no base texture): drawn by
     /// `MaterialLoader::reflective`.
@@ -1210,6 +1372,25 @@ const PARSER_SHADERS: &[&str] = &[
     "replacements",
     "patch",
 ];
+
+/// ShatteredGlass's `$unlitfactor` when the material leaves it unset. The
+/// Valve Developer Wiki documents the parameter (0 multiplies by the
+/// lightmap, 1 by one); the default here is measured, not specced: in a
+/// CS:S screenshot of cs_militia's broken windows in the house's shade
+/// (`glass/glasswindowbreak070b`, alpha ~0.33 over a dark room) the glass
+/// averages (55, 61, 55); lit by the lightmap alone we drew (28, 24, 17),
+/// fully unlit (93, 103, 97), at 0.3 (58, 62, 56) (specs/cs_source/
+/// shaders.md open question 15).
+pub const SHATTERED_GLASS_UNLIT_FACTOR: f32 = 0.3;
+
+/// How much of a ShatteredGlass material's lighting full brightness
+/// replaces: its `$unlitfactor`, clamped to 0..1, else
+/// `SHATTERED_GLASS_UNLIT_FACTOR`.
+fn shattered_unlit_factor(keys: &HashMap<String, String>) -> f32 {
+    keys.get("$unlitfactor")
+        .and_then(|v| v.trim().trim_matches('"').parse::<f32>().ok())
+        .map_or(SHATTERED_GLASS_UNLIT_FACTOR, |f| f.clamp(0.0, 1.0))
+}
 
 /// `text` with an unknown shader name replaced by its stand-in.
 fn stand_in_shader(text: &str) -> (std::borrow::Cow<'_, str>, Option<StandIn>) {
@@ -1260,6 +1441,26 @@ fn dx_variant_of(shader: &str) -> Option<&'static str> {
         return None;
     }
     PARSER_SHADERS.iter().copied().find(|s| *s == base)
+}
+
+/// Whether a material's shader block holds a block that applies at
+/// DirectX level 9 (`dx_block_applies`).
+fn dx9_block(text: &str) -> bool {
+    let t = tokens(text, Escapes::Off);
+    let mut level = 0;
+    for (i, tok) in t.iter().enumerate() {
+        match tok.as_str() {
+            "{" => level += 1,
+            "}" => level -= 1,
+            name if level == 1 && t.get(i + 1).is_some_and(|v| v == "{") => {
+                if dx_block_applies(name) == Some(true) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Whether a block in the shader's block applies at DirectX level 9
@@ -1402,16 +1603,20 @@ fn lenient_vmt(text: &str) -> String {
             continue;
         };
         let mut body = Vec::new();
+        // Blocks that apply at DirectX 9 override the shader's own keys
+        // wherever they stand (as `MaterialLoader::keys` reads them).
+        let mut dx9 = Vec::new();
         for kid in kids {
             match kid {
                 Node::Block(name, inner) => match dx_block_applies(&name) {
-                    Some(true) => body.extend(inner),
+                    Some(true) => dx9.extend(inner),
                     Some(false) => {}
                     None => body.push(Node::Block(name, inner)),
                 },
                 pair => body.push(pair),
             }
         }
+        body.extend(dx9);
         let shader = if shader.eq_ignore_ascii_case("worldvertextransition") && !has_base2 {
             "LightmappedGeneric".to_string()
         } else {
@@ -1447,6 +1652,37 @@ fn tint(keys: &HashMap<String, String>) -> Option<[f32; 3]> {
         (Some(a), None) | (None, Some(a)) => a,
         (Some(a), Some(b)) => [a[0] * b[0], a[1] * b[1], a[2] * b[2]],
     };
+    (t != [1.0, 1.0, 1.0]).then_some(t)
+}
+
+/// The frame rates AnimatedTexture proxies give the base texture and the
+/// bump map (`MaterialLoader::frames`): which one a proxy animates is the
+/// frame variable it writes (`$frame`, `$bumpframe`), else the texture
+/// variable it names; the rate defaults to 15.
+fn animated_rates(proxies: &[(String, super::water::Keys)]) -> [Option<f32>; 2] {
+    let mut rates = [None, None];
+    for (_, p) in proxies.iter().filter(|(n, _)| n == "animatedtexture") {
+        let var = |k: &str| p.get(k).map(|v| v.trim().to_ascii_lowercase());
+        let slot = match (var("animatedtextureframenumvar").as_deref(), var("animatedtexturevar").as_deref()) {
+            (Some("$frame"), _) | (None, Some("$basetexture")) => 0,
+            (Some("$bumpframe"), _) | (None, Some("$bumpmap")) => 1,
+            _ => continue,
+        };
+        let rate = p
+            .get("animatedtextureframerate")
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .unwrap_or(15.0);
+        rates[slot] = Some(rate);
+    }
+    rates
+}
+
+/// The world shader's modulation (specs/cs_source/shaders.md 2): `$color`
+/// as written (`[r g b]`, or `{r g b}` bytes / 255), not gamma-converted,
+/// the `srgb?` form first; `$color2` is a model shader's. None when white.
+fn world_tint(keys: &HashMap<String, String>) -> Option<[f32; 3]> {
+    let v = keys.get("srgb?$color").or_else(|| keys.get("$color"))?;
+    let t = super::water::colour(v)?;
     (t != [1.0, 1.0, 1.0]).then_some(t)
 }
 
@@ -1645,6 +1881,20 @@ mod tests {
         assert_eq!(tint(&keys(&[])), None);
     }
 
+    /// ShatteredGlass keeps that much of its brightness out of the light:
+    /// `$unlitfactor` (clamped to 0..1), else the measured default.
+    #[test]
+    fn shattered_glass_unlit_factor() {
+        let keys = |pairs: &[(&str, &str)]| -> HashMap<String, String> {
+            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        };
+        assert_eq!(shattered_unlit_factor(&keys(&[])), SHATTERED_GLASS_UNLIT_FACTOR);
+        assert_eq!(shattered_unlit_factor(&keys(&[("$unlitfactor", "0.6")])), 0.6);
+        assert_eq!(shattered_unlit_factor(&keys(&[("$unlitfactor", "2")])), 1.0);
+        assert_eq!(shattered_unlit_factor(&keys(&[("$unlitfactor", "x")])), SHATTERED_GLASS_UNLIT_FACTOR);
+        assert!((0.0..1.0).contains(&SHATTERED_GLASS_UNLIT_FACTOR) && SHATTERED_GLASS_UNLIT_FACTOR > 0.0);
+    }
+
     #[test]
     fn unknown_shaders_parse_as_their_stand_in() {
         let wttb = "\"WorldTwoTextureBlend\"\n{\n\t\"$basetexture\" \"a/base\"\n\t\"$detail\" \"a/detail\"\n}\n";
@@ -1734,11 +1984,82 @@ mod tests {
             Material::Water(w) => assert!((w.fog_color.0[1] - 248.0 / 255.0).abs() < 1e-4),
             m => panic!("{m:?}"),
         }
+        // A DirectX 9 fallback block (HL2's `_c17`/`_cheap` walls) that the
+        // strict parser takes but skips: its keys count and override; an
+        // HDR block doesn't count.
+        let dx9 = "\"LightmappedGeneric\"\n{\n\t\"$basetexture\" \"Metal/wall\"\n\t\"$surfaceprop\" \"metal\"\n\t\"LightmappedGeneric_DX9\"\n\t{\n\t\t\"$bumpmap\" \"Metal/wall_normal\"\n\t\t\"$surfaceprop\" \"metalpanel\"\n\t}\n\t\"lightmappedgeneric_HDR_dx9\" { \"$surfaceprop\" \"glass\" }\n}\n";
+        assert!(dx9_block(dx9));
+        assert_eq!(strict(dx9).expect("the parser takes it").bump_map(), None);
+        match lenient(dx9) {
+            Material::LightMappedGeneric(m) => {
+                assert_eq!(m.bump_map.as_deref(), Some("metal/wall_normal"));
+                assert_eq!(m.surface_prop.as_deref(), Some("metalpanel"));
+            }
+            m => panic!("{m:?}"),
+        }
+        let hdr_only =
+            "LightmappedGeneric { $basetexture x \"lightmappedgeneric_HDR_dx9\" { $envmaptint \"[.25 .25 .25]\" } }";
+        assert!(!dx9_block(hdr_only));
+        assert!(!dx9_block(
+            "\"Water\" { \"$normalmap\" \"n\" \"Proxies\" { \"WaterLOD\" { } } }"
+        ));
         // Materials the parser takes read the same leniently.
         let fine = "\"LightmappedGeneric\" { \"$basetexture\" \"x/y\" \"$detailscale\" \"4\" \"$surfaceprop\" \"metal\" }";
         assert_eq!(
             format!("{:?}", strict(fine).unwrap()),
             format!("{:?}", lenient(fine))
         );
+    }
+
+    /// AnimatedTexture proxies: which texture each animates (by the frame
+    /// variable it writes, else the texture it names) and its rate; a
+    /// patch's empty `Proxies` block keeps the included material's
+    /// (water.md open question 8: merged), as de_nuke's pool needs.
+    #[test]
+    fn animated_texture_proxies() {
+        let rates = |text: &str, read: &dyn Fn(&str) -> Option<String>| {
+            let proxies = super::super::water::resolve(text, read, 0)
+                .map(|(_, body)| super::super::water::keys_and_proxies(&body).1)
+                .unwrap_or_default();
+            animated_rates(&proxies)
+        };
+        let none = |_: &str| None;
+        // cs_office's projector slide.
+        let slide = "\"LightmappedGeneric\"\n{\n\t\"$additive\" 1\n\t\"$basetexture\" \"decals/slide\"\n \"Proxies\"\n {\n  \"AnimatedTexture\"\n  {\n    \"animatedTextureVar\" \"$basetexture\"\n    \"animatedTextureFrameNumVar\" \"$frame\"\n    \"animatedTextureFrameRate\" \".1\"\n  }\n }\n}\n";
+        assert_eq!(rates(slide, &none), [Some(0.1), None]);
+        // Base and bump at their own rates; the frame variable decides.
+        let both = "\"LightmappedGeneric\" { \"$basetexture\" \"dev/water_moving\" \"Proxies\" { \"AnimatedTexture\" { \"animatedtexturevar\" \"$basetexture\" \"animatedtextureframenumvar\" \"$frame\" \"animatedtextureframerate\" 21.00 } \"AnimatedTexture\" { \"animatedtexturevar\" \"$bumpmap\" \"animatedtextureframenumvar\" \"$bumpframe\" \"animatedtextureframerate\" 7 } } }";
+        assert_eq!(rates(both, &none), [Some(21.0), Some(7.0)]);
+        // No frame variable: the texture variable; no rate: 15.
+        let bare = "\"VertexLitGeneric\" { \"Proxies\" { \"AnimatedTexture\" { \"animatedtexturevar\" \"$basetexture\" } } }";
+        assert_eq!(rates(bare, &none), [Some(15.0), None]);
+        // A proxy writing some other variable animates neither.
+        let other = "\"LightmappedGeneric\" { \"Proxies\" { \"AnimatedTexture\" { \"animatedtexturevar\" \"$detail\" \"animatedtextureframenumvar\" \"$detailframe\" } } }";
+        assert_eq!(rates(other, &none), [None, None]);
+        // de_nuke's cubemap patch of its pool replaces Proxies with an
+        // empty block: the included material's proxies stay.
+        let patch = "\"patch\"\n{\n\t\"include\"\t\"materials/DE_NUKE/NUKWATER_MOVINGPLANE.vmt\"\n\t\"replace\"\n\t{\n\t\t\"$envmap\"\t\"maps/de_nuke/c640_-976_-734\"\n\t\t\"Proxies\"\n\t\t{\n\t\t}\n\t}\n}\n";
+        let read = |p: &str| (p.eq_ignore_ascii_case("materials/DE_NUKE/NUKWATER_MOVINGPLANE.vmt")).then(|| both.to_string());
+        assert_eq!(rates(patch, &read), [Some(21.0), Some(7.0)]);
+    }
+
+    /// The world shader's `$color` (shaders.md 2): raw, `{}` bytes / 255,
+    /// the `srgb?` form first, white is none.
+    #[test]
+    fn world_tint_is_raw() {
+        let keys = |pairs: &[(&str, &str)]| -> HashMap<String, String> {
+            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        };
+        assert_eq!(world_tint(&keys(&[("$color", "[0.5 0.25 1]")])), Some([0.5, 0.25, 1.0]));
+        let bytes = world_tint(&keys(&[("$color", "{130 144 169}")])).unwrap();
+        assert!((bytes[0] - 130.0 / 255.0).abs() < 1e-6 && (bytes[2] - 169.0 / 255.0).abs() < 1e-6);
+        assert_eq!(
+            world_tint(&keys(&[("$color", "[1 1 1]"), ("srgb?$color", "[0.5 0.5 0.5]")])),
+            Some([0.5; 3])
+        );
+        assert_eq!(world_tint(&keys(&[("$color", "[1 1 1]")])), None);
+        assert_eq!(world_tint(&keys(&[("$color2", "[0.5 0.5 0.5]")])), None);
+        // Models' tint converts the same braces from gamma.
+        assert_ne!(tint(&keys(&[("$color", "{128 128 128}")])), world_tint(&keys(&[("$color", "{128 128 128}")])));
     }
 }

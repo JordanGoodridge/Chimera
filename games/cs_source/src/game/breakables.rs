@@ -106,9 +106,11 @@ pub const GLASS_EDGES: [&str; 12] = [
 ];
 
 /// Each window's broken looks (`MapMesh::pane_look`): its face again in
-/// the face material's `$crackmaterial`, and, for glass, the face as a
-/// template for each edge material. Both are double sided (the spec
-/// leaves which side the client draws open).
+/// the face material's `$crackmaterial`, and, for glass, that cracked face
+/// as a template for each edge piece, cut by the edge textures' alpha
+/// (one texture of them all, `MapMesh::pane_mask`, so all of a crack
+/// material's pieces share one material). Both are double sided (the spec leaves which
+/// side the client draws open). No crack material: no broken look.
 pub fn add_window_looks(materials: &mut MaterialLoader, entities: &[MapEntity], meshes: &mut Vec<MapMesh>) {
     let windows: Vec<(usize, bool)> = entities
         .iter()
@@ -119,6 +121,9 @@ pub fn add_window_looks(materials: &mut MaterialLoader, entities: &[MapEntity], 
     if windows.is_empty() {
         return;
     }
+    // The edge masks as one texture, so a material's broken looks share one
+    // material (`MapMesh::pane_mask`): None without any glass window.
+    let masks = windows.iter().any(|(_, tile)| !tile).then(|| edge_mask_atlas(materials)).flatten();
     let mut extra = Vec::new();
     for m in meshes.iter() {
         let Some(&(_, tile)) = m.entity.and_then(|i| windows.iter().find(|(w, _)| *w == i)) else {
@@ -127,54 +132,80 @@ pub fn add_window_looks(materials: &mut MaterialLoader, entities: &[MapEntity], 
         if m.pane_look != PaneLook::Whole || m.texture.is_none() {
             continue;
         }
-        if let Some(crack) = materials.material_value(&m.material, "$crackmaterial") {
-            let crack = crack.replace('\\', "/");
-            let r = materials.resolve(&crack);
-            if r.texture.is_some() {
+        let Some(crack) = materials.material_value(&m.material, "$crackmaterial") else {
+            continue;
+        };
+        let crack = crack.replace('\\', "/");
+        let r = materials.resolve(&crack);
+        if r.texture.is_none() {
+            continue;
+        }
+        let cracked = MapMesh {
+            material: crack,
+            texture: r.texture,
+            normal_map: r.normal_map,
+            detail: r.detail,
+            base_transform: r.base_transform,
+            selfillum: r.selfillum,
+            alpha: r.alpha,
+            double_sided: true,
+            envmap: r.envmap,
+            tint: r.tint,
+            unlit: r.unlit,
+            unlit_factor: r.unlit_factor,
+            pane_look: PaneLook::Cracked,
+            pane_mask: masks.map(|(t, _)| t),
+            ..m.clone()
+        };
+        // Glass edges: the cracked face again, cut by each jagged mask (the
+        // edge textures are white with the shape in their alpha, so the
+        // pieces continue the crack texture past the pane's edge).
+        if let Some((_, kinds)) = masks.filter(|_| !tile) {
+            for k in 0..kinds {
                 extra.push(MapMesh {
-                    material: crack,
-                    texture: r.texture,
-                    normal_map: r.normal_map,
-                    detail: r.detail,
-                    base_transform: r.base_transform,
-                    selfillum: r.selfillum,
-                    alpha: r.alpha,
-                    double_sided: true,
-                    envmap: r.envmap,
-                    tint: r.tint,
-                    unlit: r.unlit,
-                    pane_look: PaneLook::Cracked,
-                    ..m.clone()
+                    pane_look: PaneLook::Edge(k),
+                    ..cracked.clone()
                 });
             }
         }
-        if tile {
-            continue;
-        }
-        for (k, name) in GLASS_EDGES.iter().enumerate() {
-            let r = materials.resolve(name);
-            if r.texture.is_none() {
-                continue;
-            }
-            extra.push(MapMesh {
-                material: name.to_string(),
-                texture: r.texture,
-                normal_map: None,
-                detail: None,
-                blend: None,
-                alpha: r.alpha,
-                double_sided: true,
-                envmap: None,
-                tint: None,
-                unlit: r.unlit,
-                // Drawn by its own texture's light (UnlitGeneric).
-                lightmap_uvs: Vec::new(),
-                pane_look: PaneLook::Edge(k as u8),
-                ..m.clone()
-            });
-        }
+        extra.push(cracked);
     }
     meshes.extend(extra);
+}
+
+/// The glass edge textures that load, as square tiles side by side in one
+/// new texture (the first's size; others are skipped), and how many.
+fn edge_mask_atlas(materials: &mut MaterialLoader) -> Option<(usize, u8)> {
+    let tiles: Vec<usize> = GLASS_EDGES
+        .iter()
+        .filter_map(|name| materials.resolve(name).texture)
+        .collect();
+    let first = materials.textures.get(*tiles.first()?)?;
+    let size = first.width;
+    let srgb = first.srgb;
+    let tiles: Vec<&crate::map::MapTexture> = tiles
+        .iter()
+        .map(|&i| &materials.textures[i])
+        .filter(|t| t.width == size && t.height == size && t.rgba8.len() == (size * size * 4) as usize)
+        .collect();
+    let n = tiles.len();
+    let row = size as usize * 4;
+    let mut rgba8 = vec![0u8; row * n * size as usize];
+    for (k, t) in tiles.iter().enumerate() {
+        for y in 0..size as usize {
+            let to = y * row * n + k * row;
+            rgba8[to..to + row].copy_from_slice(&t.rgba8[y * row..(y + 1) * row]);
+        }
+    }
+    materials.textures.push(crate::map::MapTexture {
+        name: "models/brokenglass/glassbroken_edges".into(),
+        srgb,
+        mips: Vec::new(),
+        width: size * n as u32,
+        height: size,
+        rgba8,
+    });
+    Some((materials.textures.len() - 1, n as u8))
 }
 
 /// The falling pane piece's models, one per body.

@@ -353,3 +353,83 @@ fn slime_splash_systems_load_from_the_install() {
         assert!(emits && draws, "{name}");
     }
 }
+
+/// `tint_perc` (impact_effects.md 14): `slime_splash_03` (water_impact.pcf;
+/// its parts 0.45 and 0.3 toward the light) takes the colour of the light
+/// where it starts, sampled from de_aztec's light field: started at a
+/// spawn, each particle sits its part's tint of the way from its unlit
+/// colour toward that light (gamma space); a system with no tint would
+/// not change.
+#[test]
+fn slime_splash_colours_take_the_light_where_they_start() {
+    use crate::stack::{
+        map::{ParticleRng, psys::Init},
+        render::psys::{ControlPoint, Instance, point_light},
+    };
+    use cs_source::impact_effects::{SLIME_SPLASH_FILE, SLIME_SPLASHES};
+    let Some(map) = load("de_aztec") else { return };
+    let install = LocalConfig::load()
+        .ok()
+        .and_then(|c| c.game_path(cs_source::GAME))
+        .expect("install");
+    let mount = cs_source::mount::open(&install).expect("mount");
+    let bytes = mount.read("maps/de_aztec.bsp").expect("de_aztec");
+    let bsp = vbsp::Bsp::read(&bytes).expect("bsp");
+    let mut materials = cs_source::material::MaterialLoader::new(&bsp, &mount, &[]);
+    let mut data = MapData::default();
+    cs_source::pcf::add_particle_systems(
+        &bsp,
+        &mut materials,
+        &mut data,
+        "de_aztec",
+        &SLIME_SPLASHES,
+        &[SLIME_SPLASH_FILE],
+    );
+    let ps = &data.particle_systems;
+    let system = ps.find("slime_splash_03").expect("slime_splash_03");
+    // The tints of it and its children, as read from the file.
+    let mut tints = Vec::new();
+    let mut todo = vec![system];
+    while let Some(i) = todo.pop() {
+        for init in &ps.defs[i].initializers {
+            if let Init::Color { tint, .. } = init {
+                tints.push(*tint);
+            }
+        }
+        todo.extend(ps.defs[i].children.iter().map(|c| c.0));
+    }
+    eprintln!("tints {tints:?}");
+    assert!(tints.iter().any(|t| (t - 0.45).abs() < 1e-4), "{tints:?}");
+    // The light 32 units above a spawn.
+    let field = map.light_field.as_ref().expect("de_aztec's light field");
+    let at = map.spawns[0].0 + Vec3::Y * 32.0 * cs_source::bsp::METERS_PER_UNIT;
+    let light = point_light(&(field.0)(at));
+    eprintln!("light at {at}: {light}");
+    assert!(light.max_element() > 0.05 && light.min_element() < 1.0, "{light}");
+    let run = |light: Vec3| {
+        let cps = [ControlPoint { light, ..default() }];
+        let mut i = Instance::new(&ps.defs, system);
+        let mut rng = ParticleRng::new(7);
+        for _ in 0..5 {
+            i.step(&ps.defs, &cps, 0.02, &mut rng, &|_: usize, _: u32| 1);
+        }
+        i.colors()
+    };
+    let (lit, dark) = (run(light), run(Vec3::ZERO));
+    assert!(!lit.is_empty());
+    assert_eq!(lit.len(), dark.len());
+    let gamma = light.powf(1.0 / 2.2);
+    let mut tinted = 0;
+    for (l, d) in lit.iter().zip(&dark) {
+        // l = c + t (g - c), d = c - t c: l - d = t g for the part's t.
+        let diff = *l - *d;
+        let t = tints
+            .iter()
+            .find(|t| diff.abs_diff_eq(gamma * **t, 1e-4))
+            .unwrap_or_else(|| panic!("{l} vs {d}: not a part's tint toward {gamma}"));
+        if *t > 0.0 {
+            tinted += 1;
+        }
+    }
+    assert!(tinted > 0, "some particles tinted");
+}

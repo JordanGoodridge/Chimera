@@ -81,7 +81,10 @@ struct WorldParams {
     selfillum: f32,
     selfillum_tint: vec4<f32>,
     unlit: f32,
-    unlit_tint: vec4<f32>,
+    modulation: vec4<f32>,
+    // A window's broken look: an edge piece's alpha x its jagged mask's
+    // (tile: the vertex colour's blue; within it: red and green).
+    pane_mask: f32,
 }
 
 // A texture transform (map::MapUvTransform): rows . (u, v, 1), plus the
@@ -303,6 +306,17 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // WorldTwoTextureBlend lights with one bilinear lightmap tap times a
     // fixed 2.0, not 2^2.2; its bump uses the detail coordinates and
     // unsquared weights.
+#ifdef VERTEX_COLORS
+    if params.pane_mask > 0.5 {
+        // Square tiles side by side, the blue picking one; clamped half a
+        // texel inside it, so the solid edge doesn't wrap or bleed.
+        let size = vec2<f32>(textureDimensions(blend_mask));
+        let tiles = max(1.0, round(size.x / size.y));
+        let m = clamp(in.color.xy, vec2<f32>(0.004), vec2<f32>(0.996));
+        let at = vec2<f32>((in.color.z + m.x) / tiles, m.y);
+        albedo.a = albedo.a * textureSample(blend_mask, normal_sampler, at).a;
+    }
+#endif
     if params.alpha_cutoff > 0.0 && albedo.a < params.alpha_cutoff {
         discard;
     }
@@ -359,10 +373,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         return albedo;
     }
     light = light + dynamic_light(in.world_position.xyz, normalize(in.world_normal), in.position.xy);
-    // UnlitGeneric on a brush: the texture's own brightness x $color.
-    if params.unlit > 0.5 {
-        light = params.unlit_tint.rgb;
-    }
+    // UnlitGeneric on a brush: the texture's own brightness x $color;
+    // lit, the lighting x $color (shaders.md 2, modulation); between
+    // (ShatteredGlass's $unlitfactor), the lighting that far toward 1.
+    light = mix(light, vec3<f32>(1.0), params.unlit) * params.modulation.rgb;
     var color = albedo.rgb * light;
     // $selfillum: toward tint x albedo, unlit, by the base texture's alpha.
     if params.selfillum > 0.5 {

@@ -31,11 +31,18 @@
 //! shard per shard-size square of a burst, at most 48). Broken looks (spec Q8,
 //! the client's pane drawing is not specced): the face's `$crackmaterial`
 //! (ShatteredGlass drawn as a translucent LightmappedGeneric with its crack
-//! texture on the face's own texture coordinates; its BreakableSurface proxy is
-//! not modelled) over the unbroken panes, both sides drawn; jagged edges from
-//! the install's 12 `models/brokenglass/glassbroken_*` textures, each side of
-//! an unbroken pane facing a broken neighbour picking one by its place, a strip
-//! half a pane deep into the neighbour, the shard's base on the pane; tile
+//! texture on the face's own texture coordinates, its lighting
+//! `$unlitfactor` (unset: 0.3, measured from a CS:S screenshot) of the way
+//! toward full brightness; its BreakableSurface proxy is not modelled) over the unbroken panes, both sides drawn; jagged edges cut by
+//! the install's 12 `models/brokenglass/glassbroken_*` textures (white, the
+//! shape in their alpha: read as masks over the crack material, which keeps
+//! the face's texture coordinates, so the shards continue the pane's crack
+//! texture and lighting, not drawn white as their UnlitGeneric material
+//! would; laid side by side in one texture of ours so a crack material's
+//! pieces share one material), each side of an unbroken pane facing a broken neighbour picking one
+//! by its place, a strip a whole pane deep into the neighbour (the square
+//! texture square on it; half a pane drew shards a third of CS:S's), the shard's base
+//! on the pane (maps without lightmaps draw no edge pieces); tile
 //! windows get no edge pieces (no tilebroken textures in the install). The
 //! falling pane piece (`brokenglass_piece.mdl`, bodies 0..2) goes where the
 //! spec says, the pane's corner, though the model is centred on its origin (so
@@ -75,8 +82,15 @@
 //! (the game picks them: CS:S `game::breakables::impact_decal`) from bullets
 //! and the knife alike; bulletproof
 //! glass loses health and fires OnHealthChanged like any breakable but
-//! never breaks; its 50 % ricochet effect and the computer material's
-//! sparks on bullet traces are not done. Why it's OK for now: One bullet
+//! never breaks. Bullet traces (spec "Damage"): a computer's 50 % sparks are
+//! the electric sparks (impact_effects.md 8, via `Effect::Spark`, as
+//! env_spark's) and its "Breakable.Computer" plays at the hit point, the entry's
+//! own volume and pitch; bulletproof glass's 50 % "ricochet effect" is the
+//! ricochet sound only (`Bounce.Shrapnel` at the hit: impact_effects.md 2
+//! and 13 make the ricochet a sound; no spec gives it a look); both come
+//! before the damage checks (undamageable ones too), not for the knife or
+//! blasts, and not from func_breakable_surf windows (glass or tile), and the
+//! sparks face back along the shot (no trace normal reaches the logic). Why it's OK for now: One bullet
 //! or a knife opens de_nuke's vents; cs_office windows lose the shot panes; the
 //! spec's numeric cases pass.
 
@@ -115,6 +129,14 @@ pub const LARGE_SHARD: f32 = 7.0;
 pub const BLAST_FORCE: f32 = 3000.0;
 /// A falling pane piece spins up to this fast about each axis (deg/s).
 pub const PANE_PIECE_SPIN: f32 = 120.0;
+/// Share of bullet traces on a computer that spark, and on bulletproof
+/// glass that ricochet.
+pub const TRACE_EFFECT_CHANCE: f32 = 0.5;
+/// The sound of a computer's sparks.
+pub const COMPUTER_SPARK_SOUND: &str = "Breakable.Computer";
+/// The ricochet's sound (specs/cs_source/impact_effects.md sections 2 and
+/// 13: the ricochet is `Bounce.Shrapnel`).
+pub const RICOCHET_SOUND: &str = "Bounce.Shrapnel";
 /// Glass breakables count this mass (kg) against physics impacts.
 pub const GLASS_IMPACT_MASS: f32 = 2.0;
 
@@ -559,6 +581,9 @@ impl LogicWorld {
             return true;
         }
         let (damageable, material, dmg) = (b.damageable, b.material, b.dmg);
+        if kind == DamageKind::Bullet {
+            self.bullet_trace_effect(material, point, dir);
+        }
         let Some(e) = self.get(id) else { return true };
         let min = e.kv_f("minhealthdmg");
         let filter = e.kv("damagefilter").unwrap_or("").to_string();
@@ -592,6 +617,35 @@ impl LogicWorld {
             }
         }
         true
+    }
+
+    /// What a bullet trace makes on a func_breakable before its damage
+    /// (spec "Damage"): Computer, half the time, sparks and
+    /// "Breakable.Computer"; UnbreakableGlass, half the time, the
+    /// ricochet. Both at the hit; the sparks face back along the shot (the
+    /// logic gets no trace normal).
+    fn bullet_trace_effect(&mut self, material: Material, point: Vec3, dir: Vec3) {
+        if !matches!(material, Material::Computer | Material::UnbreakableGlass) || self.random() >= TRACE_EFFECT_CHANCE {
+            return;
+        }
+        if material == Material::Computer {
+            self.effects.push(Effect::Spark {
+                at: point,
+                dir: -dir.normalize_or_zero(),
+                magnitude: 1.0,
+            });
+        }
+        let entry = if material == Material::Computer {
+            COMPUTER_SPARK_SOUND
+        } else {
+            RICOCHET_SOUND
+        };
+        self.effects.push(Effect::Sound {
+            entry: entry.into(),
+            at: point,
+            volume: None,
+            pitch: None,
+        });
     }
 
     /// The window state of a func_breakable_surf.
