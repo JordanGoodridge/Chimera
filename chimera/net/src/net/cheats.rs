@@ -5,7 +5,9 @@
 //! sends back what they printed (`ConsoleText`): Source's way, where the
 //! client sends cheats on and the server decides. A player's movement
 //! implementation is in its state from the server (`OwnState::movement`),
-//! so a client's prediction follows the server's `noclip`.
+//! so a client's prediction follows the server's `noclip`. `noclip`
+//! remembers the movement it left (`movement::noclip::NoclipBack`), which
+//! a game's spawn goes back to (`noclip::end_toggled`).
 //!
 //! Also the player commands both a game and a dedicated server run for a
 //! player: `noclip`, `god`, `setpos`, `setang` (the game's client adds
@@ -19,6 +21,7 @@ use super::server::Player;
 use crate::{
     console::{CommandPlayer, Console, ConsoleAppExt, Level, cheats_allowed, command_player, execute, is_cheat, parse},
     core::{MovementState, NetRole, Velocity},
+    movement::noclip::NoclipBack,
     slots::{Loadout, MovementSlot, set_movement},
 };
 
@@ -132,10 +135,6 @@ pub fn run_for(world: &mut World, client: Entity, line: &str) {
     }
 }
 
-/// The movement a player goes back to when noclip turns off.
-#[derive(Component)]
-struct NoclipBack(&'static str);
-
 /// The eye and the feet relative to a character's origin
 /// (`MovementState::eye_offset`, `hull_min`); see `setpos`.
 fn eye_and_feet(w: &World, p: Entity) -> (Vec3, Vec3) {
@@ -154,7 +153,8 @@ pub fn player_commands(app: &mut App) {
             let p = command_player(w)?;
             let current = w.get::<MovementSlot>(p).map(|s| s.0).ok_or("no movement")?;
             let next = if current == crate::movement::noclip::ID {
-                w.get::<NoclipBack>(p)
+                w.entity_mut(p)
+                    .take::<NoclipBack>()
                     .map(|b| b.0)
                     .or_else(|| w.get_resource::<Loadout>().map(|l| l.movement))
                     .filter(|m| *m != crate::movement::noclip::ID)

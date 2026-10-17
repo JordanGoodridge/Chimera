@@ -786,3 +786,20 @@ fn hints_reach_a_remote_player() {
     assert_eq!(killed[0].to, mine);
     assert!(seen[1].iter().all(|h| h.token != KILLED_ENEMY), "{:?}", seen[1]);
 }
+
+/// A server whose match movement is noclip still spawns its clients'
+/// players walking: CS:S never spawns a player noclipping
+/// (specs/cs_source/movement.md "Noclip and spawning").
+#[test]
+fn the_server_never_spawns_a_player_noclipping() {
+    use crate::stack::{movement::noclip, slots::MovementSlot};
+    let mut sim = NetSim::new(CsSim, lan(), 1, 1, |app: &mut App| {
+        greybox(app);
+        app.insert_resource(Loadout { movement: noclip::ID });
+    });
+    host(&mut sim);
+    sim.until_joined(200);
+    let a = sim.character_of(0).expect("server character for the client");
+    let slot = sim.server.app.world().get::<MovementSlot>(a).unwrap().0;
+    assert_ne!(slot, noclip::ID);
+}

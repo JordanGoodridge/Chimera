@@ -4,8 +4,11 @@
 //!
 //! Deathmatch: the dead (`Dead`, with their collider disabled so bodies don't
 //! block anyone) stop acting and respawn at their team's spawn points (one
-//! nobody alive stands on) with fresh weapons after `mp_respawn_delay`; a
-//! network server's remote players are kept out of the game while their client
+//! nobody alive stands on) with fresh weapons after `mp_respawn_delay`;
+//! every spawn (`put_at_spawn`: a respawn, a round's start, survivors too)
+//! ends a noclip the `noclip` command turned on, as CS:S's spawns put
+//! players back to walking (specs/cs_source/movement.md "Noclip and
+//! spawning"); a network server's remote players are kept out of the game while their client
 //! loads the map (`hold_out`, `core::Connecting`) and come in as the rules
 //! allow (`enter_game`: at once in deathmatch, in the freeze time and when
 //! nobody of its team is alive, else at the next round); `MapLoads` counts map
@@ -697,8 +700,8 @@ fn respawn(world: &mut World) {
 const SPAWN_CLEARANCE: f32 = 32.0 * 0.0254;
 
 /// Bring a character back at one of its team's spawn points (round robin,
-/// skipping those another living character stands on) with full health
-/// and no velocity; with `fresh` weapons its old ones go and it gets the
+/// skipping those another living character stands on) with full health,
+/// no velocity and out of a toggled noclip; with `fresh` weapons its old ones go and it gets the
 /// starting weapons, otherwise it keeps what it carries.
 pub fn put_at_spawn(world: &mut World, e: Entity, fresh: bool) {
     let spawns: Vec<(Transform, Option<Team>)> = world
@@ -754,6 +757,10 @@ pub fn put_at_spawn(world: &mut World, e: Entity, fresh: bool) {
                 world.despawn(w);
             }
         }
+        // A noclip turned on with the console command ends: CS:S spawns
+        // every player walking (a respawn, a round start, survivors too;
+        // specs/cs_source/movement.md "Noclip and spawning").
+        chimera_sim::movement::noclip::end_toggled(world, e);
         let Ok(mut ent) = world.get_entity_mut(e) else { return };
         ent.remove::<(Dead, ColliderDisabled)>();
         if fresh {

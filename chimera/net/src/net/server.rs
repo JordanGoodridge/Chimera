@@ -669,9 +669,13 @@ fn spawn_player(world: &mut World, id: u64, name: &str, choice: Option<&str>) ->
     }
     // Counter-terrorists (2) on a tie, as the local player starts.
     let team = if counts[0] < counts[1] { Team(1) } else { Team(2) };
+    // The match's movement, never noclip (CS:S spawns every player
+    // walking; specs/cs_source/movement.md "Noclip and spawning").
     let movement = world
         .get_resource::<Loadout>()
-        .map_or(crate::movement::placeholder::ID, |l| l.movement);
+        .map(|l| l.movement)
+        .filter(|m| *m != crate::movement::noclip::ID)
+        .unwrap_or(crate::movement::placeholder::ID);
     let e = world
         .spawn((
             character_bundle(Transform::default(), team),

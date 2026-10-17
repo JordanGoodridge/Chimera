@@ -56,7 +56,10 @@ It uses `mashup_health <hp> [armor]` (respawns the probe bot if dead, sets
 its health and armour) and `mashup_wrun`'s `player_hurt` rows.
 
 `mashup_botcmd <userid> <command...>` runs a client command as a bot
-(`buy ak47`, `drop`); with `sv_soundemitter_trace 1` it shows which sound
+(`buy ak47`, `drop`, `noclip`, `kill`); `mashup_mt <userid> [1]` prints
+that player's move type, life state, health, team and origin (1 first
+respawns it with `CS_RespawnPlayer`; specs/cs_source/movement.md "Noclip
+and spawning"); with `sv_soundemitter_trace 1` it shows which sound
 entries buying emits on the server (parity-gaps.md C2).
 
 ## Sounds
