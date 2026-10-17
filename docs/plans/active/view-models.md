@@ -158,8 +158,8 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
 - **Lighting** (spec Q7). We sample at the illumination centre, as the
   spec infers; `r_lightinterp` smoothing and `r_ambient*` boosts are not
   done; the probe is re-sampled when the point moves 0.5 units. The hands'
-  `$envmap` mask is in their normal map's alpha, which `PropMaterial`
-  doesn't sample, so the hands get no reflection.
+  `$envmap` is masked by their normal map's alpha (`PropMaterial` samples
+  it for `$normalmapalphaenvmapmask`, 2026-10-17).
 - **Bob** (spec Q1–2): the TF2-style model the spec measured; state is one
   per local player (not per weapon); no ground check. The HL2MP
   alternative (B13) is not implemented.

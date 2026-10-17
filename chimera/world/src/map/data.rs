@@ -184,6 +184,9 @@ pub struct MapMeshLook {
     pub alpha: MapAlpha,
     pub double_sided: bool,
     pub unlit: bool,
+    /// `$bumpmap` (index into `MapData::textures`, linear): on models only
+    /// its alpha is read, as a `$normalmapalphaenvmapmask` reflection mask.
+    pub normal_map: Option<usize>,
     pub envmap: Option<MapEnvmap>,
     pub tint: Option<[f32; 3]>,
     pub detail: Option<MapDetail>,
@@ -200,6 +203,7 @@ impl MapMeshLook {
             alpha: self.alpha,
             double_sided: self.double_sided,
             unlit: self.unlit,
+            normal_map: self.normal_map,
             envmap: self.envmap.clone(),
             tint: self.tint,
             detail: self.detail,

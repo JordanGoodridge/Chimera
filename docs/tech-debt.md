@@ -73,7 +73,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Broken props' pieces load without their `.phy`: their bodies are boxes (`games/cs_source/src/game/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`chimera/present/src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`chimera/present/src/render/shadows.rs`)
-- map: Prop light probes: shadow rays ignore other props; samples in a leaf are blended by inverse distance (the engine's exact weighting is unknown); dynamic lights add a simple 1 − d²/r² × cosine term, without shadows. OK for now: Matches the map's lightmaps at a median ratio of 1.05 (test).
+- map: Prop light probes: props without `.vhv` lit from one point (sun whole or not at all; spec Q11), shadow rays ignore props, ambient blend and dynamic-light falloff ours (`games/cs_source/src/game/props.rs`)
 - map: Decal reach, orientation and infodecal probes inferred, not specced (`chimera/present/src/render/decal.rs`)
 - map: 3D skybox content is found by the world's world_mins/world_maxs (computed by the map compiler without the skybox), with a 64-unit margin, not by BSP areas (the sky camera sits in area 0 with solid leaves). OK for now: Correct on dust2.
 - map: Sky: the down face's orientation is assumed (never visible in the fitted views). OK for now: Rarely visible on dust2.
