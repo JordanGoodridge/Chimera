@@ -639,7 +639,7 @@ a first bot are in.
   | 2 per impact, 3 letters | in, with the ragdoll check (no particles while one awake ragdoll is on the line) |
   | 4-8 old-style machinery, debris, dust, sparks | in; electric flares depth tested, no visibility test |
   | 9 glass | in: shards tumble on three angles and settle flat |
-  | 10 blood | in from the spec's table; sprite-card size limits, goop spin stop and yaw flip, mist light tint left out |
+  | 10 blood | in from the spec's table, with the sprite cards' screen-size limits (2026-10-17, every sprite-card material), the goop's spin stop and yaw flip and the mist and goop light tint; `tint_perc` and the screen-size measure are our readings (Q7) |
   | 11 splash | in: water's own effect; slime's `slime_splash_03` from the install's `.pcf` (no stock map has slime) |
   | 12 knife | in; its decal: no spec names it (below) |
 

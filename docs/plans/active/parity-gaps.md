@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 8 | 8 | 3 | 5 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 10 | 17 | 2 | 6 |
+| Rendering, lighting, materials | 11 | 17 | 2 | 7 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **70** | **63** | **21** | **35** |
+| **Total** | **71** | **63** | **21** | **36** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -221,6 +221,7 @@ common console commands, against mashup's.
 | Bump maps in DirectX 9 fallback blocks | have (fixed) | L | S | 181 stock materials have a `LightmappedGeneric_DX9` (or `>=DX90`) block, which the VMT parser skipped; about 110 name their `$bumpmap` only there (HL2's `_c17`/`_cheap` walls and floors: cs_militia's sewer-concrete wall by the reported spot, cs_assault, cs_compound, de_port, de_inferno), drawn flat; now read with the block's keys (`lenient_vmt`) |
 | Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone; glass shards tumble and settle, slime splashes from the `.pcf` (2026-10-15) |
 | Impact effects of others' shots beyond the shooter's PAS | differs | L | M | every client makes them (impact_effects.md 1; no network relevance yet, `net::server`) |
+| Blood bursts up close (sprite-card size limits, goop spin and flip, mist tint) | have (fixed) | H | S | were left out (2026-10-17): every sprite-card material's `$maxsize` and `$startfadesize`/`$endfadesize` from the install (the blood mist capped at a quarter of the screen, the blood smoke gone once a tenth of it, fire smoke and flames too), the goop's spin stopping at 1 s and half of it mirrored, the mist and goop a tenth toward the light (impact_effects.md 10, 14); the screen-size measure and `tint_perc` are our readings (Q7) |
 | Knife slash mark | differs | L | S | `ManhackCut` is a guess; no spec names it (backlog 3 "Decals, remaining") |
 | Ropes, sprites, dust motes, beams | have | | | specs |
 | View models | have | | | view-models.md |
