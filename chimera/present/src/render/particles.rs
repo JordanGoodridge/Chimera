@@ -3,6 +3,10 @@
 //! 3D skybox, in a mesh of their own on the sky camera's layer)
 //! (`ParticleDrawMaterial`, particle.wgsl: fogged, added ones toward
 //! black), camera-facing sprites, trails and flat quads, back to front.
+//! Sprites of sprite-card materials keep to their screen-size limits
+//! (`ParticleMaterial::screen`: capped and faded by their size on screen,
+//! specs/cs_source/impact_effects.md 14); flipped particles show their
+//! texture mirrored.
 //!
 //! Known shortcuts (docs/tech-debt.md): Particles blend in linear space (Source
 //! blends in gamma), and each material is one mesh sorted against other
@@ -133,7 +137,7 @@ pub fn draw_particles(
     particles: Res<Particles>,
     assets: Option<ResMut<ParticleAssets>>,
     cameras: Query<
-        &GlobalTransform,
+        (&GlobalTransform, Option<&Projection>),
         (
             With<Camera3d>,
             Without<monitor::ScreenCamera>,
@@ -151,7 +155,14 @@ pub fn draw_particles(
     mut commands: Commands,
 ) {
     let Some(mut assets) = assets else { return };
-    let Some(eye) = cameras.iter().next() else { return };
+    let Some((eye, projection)) = cameras.iter().next() else {
+        return;
+    };
+    // Sprite cards' screen sizes are taken against the view's height.
+    let tan_half_fov = match projection {
+        Some(Projection::Perspective(p)) => (p.fov / 2.0).tan(),
+        _ => 1.0,
+    };
     let (from, forward, right, up) = (
         eye.translation(),
         eye.forward().as_vec3(),
@@ -230,7 +241,7 @@ pub fn draw_particles(
             list.iter().map(|(_, p, _)| p.position).sum::<Vec3>() / list.len() as f32
         };
         let mut b = QuadBuilder::default();
-        for (_, p, near) in list {
+        for (depth, p, near) in list {
             let alpha = if def.vertex_alpha {
                 p.current_alpha() * near
             } else {
@@ -246,11 +257,19 @@ pub fn draw_particles(
                 LinearRgba::WHITE
             };
             let rgba = [color.red, color.green, color.blue, alpha];
-            let rect = frame_rect(&def, p);
+            let mut rect = frame_rect(&def, p);
+            if p.flip {
+                rect = [rect[2], rect[1], rect[0], rect[3]];
+            }
             let size = p.current_size();
             let at = p.position - centre;
             match p.shape {
                 Shape::Sprite => {
+                    let (size, fade) = def.screen.apply(size, depth, tan_half_fov);
+                    if fade < 0.001 {
+                        continue;
+                    }
+                    let rgba = [rgba[0], rgba[1], rgba[2], rgba[3] * fade];
                     let (s, c) = p.roll.sin_cos();
                     let (r, u) = ((right * c + up * s) * size, (up * c - right * s) * size);
                     b.quad([at - r - u, at - r + u, at + r + u, at + r - u], rect, rgba);
