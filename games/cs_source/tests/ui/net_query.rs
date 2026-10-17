@@ -33,6 +33,11 @@ fn server(hostname: &str, port: u16, maxplayers: u32) -> Result<(Sim, SocketAddr
     {
         let world = sim.app.world_mut();
         let mut s = world.resource_mut::<NetSettings>();
+        // Port 0 (a port the system picks): loopback only. The LAN tests
+        // name their ports and take broadcasts, so every interface.
+        if port == 0 {
+            s.ip = Ipv4Addr::LOCALHOST.into();
+        }
         s.hostport = port;
         s.maxplayers = maxplayers;
         world.resource_mut::<Hosting>().hostname = hostname.into();
