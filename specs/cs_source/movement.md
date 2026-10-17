@@ -751,6 +751,26 @@ level 3), `sv_soundemitter_trace 1`; health read with `mashup_info`:
   2 s (+10 within the first second), until all the drowning damage was
   restored (63 -> 73 -> 83 -> 93 -> 100), no more.
 
+### Noclip and spawning (measured 2026-10-17, probe server, de_dust2)
+
+A CT bot put in noclip (`sv_cheats 1`, `mashup_botcmd <userid> noclip`);
+its move type read with the probe's `mashup_mt <userid> [respawn]`
+(`GetEntityMoveType`: 8 noclip, 2 walk, 0 none, 10 observer), a terrorist
+bot added for round ends:
+- `mp_restartgame 1`: noclip until the restart, walking (2) at the spawn
+  after it.
+- A round won (the terrorist killed, `round_end` reason 7): the survivor
+  keeps noclip through the 5 s after the round's end (still flying), and
+  walks at the next round's spawn.
+- Death while noclipping (the `kill` command): move type 0 while dying,
+  then the dead player's; spawned again by the next round, by
+  `mp_restartgame` or by `CS_RespawnPlayer`, it walks. A dead (observer)
+  player given noclip also spawns walking.
+- No spawn handed out noclip: every spawn sets walking.
+- A noclipping player took no damage (`SDKHooks_TakeDamage`, world and
+  bullet damage from the terrorist, 30 and 1000: health stayed 100); the
+  same hit while walking did. Its `m_takedamage` stayed 2 (yes).
+
 ## Open questions
 
 1. **Answered (measured 2026-10-15, probe server, top speed running forward after one or two zoom presses):** AWP 210 → 150 at both zoom levels; Scout 260 → 220; SG550 210 → 150; **G3SG1 stays 210** zoomed; SG 552 235 → 200 zoomed; AUG 221 zoomed too (unchanged).

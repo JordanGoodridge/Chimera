@@ -114,6 +114,8 @@ public void OnPluginStart()
         "mashup_track <slot|-1>: from now on log the run bot's weapon in that slot (the entity, even after it is dropped) as T rows; -1 stops");
     RegServerCmd("mashup_botcmd", Command_BotCmd,
         "mashup_botcmd <userid> <command...>: run a client command as that bot (buy, drop, use; pickup and buy sound captures)");
+    RegServerCmd("mashup_mt", Command_Mt,
+        "mashup_mt <userid> [respawn 0|1]: that player's move type, life state, health, team and origin; 1 first respawns it (CS_RespawnPlayer)");
     HookEvent("weapon_fire", Event_Any);
     HookEvent("bullet_impact", Event_Any);
     HookEvent("player_hurt", Event_Any);
@@ -608,6 +610,26 @@ public Action Command_BotCmd(int args)
     GetCmdArg(1, first, sizeof(first));
     FakeClientCommand(bot, "%s", full[strlen(first) + 1]);
     PrintToServer("mashup: bot %d ran '%s'", bot, full[strlen(first) + 1]);
+    return Plugin_Handled;
+}
+
+// "mashup_mt <client> mt <move type> life <life state> hp <health> team
+// <team> origin x y z" (noclip across respawns and round starts,
+// specs/cs_source/movement.md "Noclip").
+public Action Command_Mt(int args)
+{
+    int c = GetClientOfUserId(GetCmdArgInt(1));
+    if (c == 0) {
+        PrintToServer("mashup: no player with that userid");
+        return Plugin_Handled;
+    }
+    if (args >= 2 && GetCmdArgInt(2) != 0) {
+        CS_RespawnPlayer(c);
+    }
+    float o[3];
+    GetClientAbsOrigin(c, o);
+    PrintToServer("mashup_mt %d mt %d life %d hp %d team %d origin %.1f %.1f %.1f", c, view_as<int>(GetEntityMoveType(c)),
+        GetEntProp(c, Prop_Data, "m_lifeState"), GetEntProp(c, Prop_Data, "m_iHealth"), GetClientTeam(c), o[0], o[1], o[2]);
     return Plugin_Handled;
 }
 

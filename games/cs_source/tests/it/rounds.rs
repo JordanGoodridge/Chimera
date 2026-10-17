@@ -613,3 +613,94 @@ fn tkpunish_kills_team_killers_as_the_next_round_starts() {
         assert!(alive(ct2) && alive(t), "the others live");
     }
 }
+
+/// The movement `e` has now.
+fn movement(sim: &Sim, e: Entity) -> &'static str {
+    sim.app.world().get::<crate::stack::slots::MovementSlot>(e).unwrap().0
+}
+
+/// `setup`'s counter-terrorist `ct` as the local player, flying with the
+/// `noclip` command (the game's and the server's, which the headless
+/// `CsSim` lacks).
+fn noclipped(sim: &mut Sim, ct: Entity) {
+    use crate::stack::{core::LocalPlayer, movement::noclip};
+    if !sim.app.world().resource::<Console>().command("noclip").is_some() {
+        crate::stack::net::cheats::player_commands(&mut sim.app);
+    }
+    sim.app.world_mut().entity_mut(ct).insert(LocalPlayer);
+    sim.app.world_mut().resource_mut::<Console>().submit("noclip");
+    sim.ticks(1);
+    assert_eq!(movement(sim, ct), noclip::ID);
+}
+
+/// CS:S puts a noclipping player back to walking at `mp_restartgame`
+/// (measured on the probe, specs/cs_source/movement.md "Noclip and
+/// spawning"); ours did keep the noclip. A character given noclip as its
+/// movement outright (a test's, `--movement mashup:noclip`) keeps it.
+#[test]
+fn restartgame_ends_noclip() {
+    use crate::stack::movement::noclip;
+    let (mut sim, t, ct, _) = setup();
+    sim.seconds(1.2);
+    noclipped(&mut sim, ct);
+    let flyer = sim.spawn_character(Vec3::new(12.0, 1.0, 0.0), noclip::ID);
+    sim.app.world_mut().entity_mut(flyer).insert(Team(2));
+    sim.app.world_mut().resource_mut::<Console>().submit("mp_restartgame 1");
+    sim.seconds(0.5);
+    assert_eq!(movement(&sim, ct), noclip::ID, "until the restart");
+    sim.seconds(0.7);
+    assert_eq!(sim.app.world().resource::<RoundState>().number, 1);
+    assert_eq!(movement(&sim, ct), placeholder::ID, "walking again");
+    assert_eq!(movement(&sim, t), placeholder::ID);
+    assert_eq!(movement(&sim, flyer), noclip::ID, "noclip as its movement");
+    // The toggle still works afterwards.
+    sim.app.world_mut().resource_mut::<Console>().submit("noclip");
+    sim.ticks(1);
+    assert_eq!(movement(&sim, ct), noclip::ID);
+}
+
+/// A round won while a survivor flies: it keeps the noclip through the
+/// round's end and walks at the next round's start (CS:S, measured).
+#[test]
+fn noclip_lasts_to_the_next_round() {
+    use crate::stack::movement::noclip;
+    let (mut sim, t, ct, _) = setup();
+    sim.seconds(1.2);
+    noclipped(&mut sim, ct);
+    kill(&mut sim, ct, t);
+    assert!(matches!(phase(&sim), Phase::Over { .. }), "{:?}", phase(&sim));
+    sim.seconds(4.0);
+    assert!(matches!(phase(&sim), Phase::Over { .. }));
+    assert_eq!(movement(&sim, ct), noclip::ID, "still flying after the round's end");
+    sim.seconds(1.2);
+    assert_eq!(sim.app.world().resource::<RoundState>().number, 2);
+    assert_eq!(movement(&sim, ct), placeholder::ID, "walking in the next round");
+}
+
+/// Dying while noclipping: the player comes back walking, at the next
+/// round (rounds) or its respawn (deathmatch), as CS:S respawns it
+/// (measured with the death and a respawn, CS_RespawnPlayer).
+#[test]
+fn the_dead_respawn_out_of_noclip() {
+    use crate::stack::movement::noclip;
+    for rounds in [true, false] {
+        let (mut sim, t, ct, ct2) = setup();
+        if !rounds {
+            sim.app.world_mut().resource_mut::<Console>().submit("mashup_rounds 0; mp_respawn_delay 1");
+            sim.ticks(3);
+        }
+        sim.seconds(1.2);
+        noclipped(&mut sim, ct);
+        kill(&mut sim, t, ct);
+        assert!(sim.app.world().get::<crate::stack::rules::Dead>(ct).is_some());
+        if rounds {
+            kill(&mut sim, t, ct2);
+            sim.seconds(5.2);
+            assert_eq!(sim.app.world().resource::<RoundState>().number, 2);
+        } else {
+            sim.seconds(1.2);
+        }
+        assert!(sim.app.world().get::<crate::stack::rules::Dead>(ct).is_none(), "rounds {rounds}: back");
+        assert_eq!(movement(&sim, ct), placeholder::ID, "rounds {rounds}: walking");
+    }
+}
