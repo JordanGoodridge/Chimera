@@ -7,8 +7,9 @@
 //!   while (`SkeletonPose`): hitboxes use the newest, ragdolls take bone
 //!   velocities from it.
 //! - On `Died` a `Ragdoll` entity is spawned with its `RagdollBody`s and
-//!   `RagdollJoint`s (a custom XPBD constraint: ball and socket plus
-//!   X-then-Y-then-Z Euler limits, spec Open question 5's proposal); the
+//!   `RagdollJoint`s (ball and socket plus X-then-Y-then-Z Euler limits,
+//!   spec Open question 5's proposal, solved in avian's contact passes as
+//!   soft velocity constraints, so joints and contacts settle together); the
 //!   owner gets `Ragdolled` and loses its drawn body to the ragdoll.
 //! - Bone velocities aim at a death pose (spec 2.3) when the game's
 //!   animations have one for the hit: the side from the killing push and
@@ -17,8 +18,9 @@
 //!   and their own bodies with each other only for the model's collision
 //!   pairs (`MapCollisionHooks`, which the app's physics plugins must use);
 //!   later bullets push them (`RagdollShot`), joints that stay pulled
-//!   apart are repaired, they sleep after 5 s of stillness (their bodies'
-//!   velocities zeroed unmarked, or avian wakes them right away), and go
+//!   apart are repaired, they sleep once every body kept still for 1 s (as
+//!   props do) or by the forced rule after 5 s (their bodies' velocities
+//!   zeroed unmarked, or avian wakes them right away), and go
 //!   away at a round restart and when their owner lives again (respawn)
 //!   or is gone.
 //!
@@ -30,8 +32,9 @@
 //! `Ragdoll` of avian bodies at the pose with bone velocities and the killing
 //! hit's impulse, bone velocities aimed at the hit's death pose (`deathpose_*`
 //! sequences: side from the push and facing, frame from the hit group), held by
-//! `RagdollJoint` (a custom XPBD constraint: ball and socket plus X-Y-Z Euler
-//! limits), its bodies' `.phy` hulls cut for contacts
+//! `RagdollJoint` (ball and socket plus X-Y-Z Euler limits, a row per angle,
+//! solved with avian's contacts: warm start, biased pass, relax), no
+//! gyroscopic torque on ragdoll bodies, its bodies' `.phy` hulls cut for contacts
 //! (`collision::contact_hulls`), on `core::RAGDOLL_LAYER`, its own bodies colliding only for the
 //! model's `.phy` collision pairs (`MapCollisionHooks`, the app's avian
 //! collision hooks), friction and elasticity from the surface property;
@@ -54,7 +57,11 @@
 //! direction); self-collision needs `MapCollisionHooks` in the app's physics
 //! plugins (main and `harness::Sim` have them; without them every ragdoll body
 //! collides); joint limits clamp X-then-Y-then-Z Euler angles (spec Q5's
-//! proposal); damping uses avian's law; ragdolls collide with every prop
+//! proposal); damping uses avian's law; joints are soft (twice avian's contact
+//! stiffness, as Box2D's), not rigid, so a yanked chain closes over a few
+//! ticks; gyroscopic torque is cleared on avian's solver bodies each step
+//! (avian 0.7 has no switch); resting uses props' stillness thresholds (ours,
+//! Source's are inside vphysics); ragdolls collide with every prop
 //! (CS:S's client world has no server props); the dead's drawn body never
 //! culls. Why it's OK for now: Bodies fall, settle and look right; each item is
 //! a listed open question or follow-up.
@@ -64,14 +71,15 @@ use std::collections::VecDeque;
 use avian3d::{
     collision::hooks::CollisionHooks,
     dynamics::{
+        integrator::IntegrationSystems,
         joints::EntityConstraint,
         solver::{
+            SolverConfig,
             joint_graph::JointGraphPlugin,
-            solver_body::{SolverBody, SolverBodyInertia},
-            xpbd::{
-                AngularConstraint, PositionConstraint, XpbdConstraint, XpbdConstraintSolverData, XpbdSolverSystems,
-                joints::PointConstraintShared, prepare_xpbd_joint, solve_xpbd_joint,
-            },
+            schedule::SubstepSolverSystems,
+            softness_parameters::{SoftnessCoefficients, SoftnessParameters},
+            solver_body::{SolverBody, SolverBodyFlags, SolverBodyInertia},
+            xpbd::XpbdSolverSystems,
         },
     },
     prelude::*,
@@ -271,6 +279,11 @@ pub struct Ragdoll {
     born: f64,
     /// Ticks in a row some joint was pulled apart beyond the tolerance.
     error_ticks: u32,
+    /// Resting (`settle_ragdolls`): each body's pose when it last moved
+    /// by more than `prop_physics::SETTLE_DISTANCE` or `SETTLE_ANGLE`, and
+    /// when that was.
+    still: Vec<(Vec3, Quat)>,
+    still_since: f64,
     /// A map-placed ragdoll (`placed_ragdoll::PlacedRagdoll`): `owner` is
     /// its prop node, `model` unused.
     pub placed: bool,
@@ -302,6 +315,8 @@ impl Ragdoll {
             // Shots push it from the first tick.
             born: now - 1.0,
             error_ticks: 0,
+            still: Vec::new(),
+            still_since: now,
             placed: true,
         }
     }
@@ -476,13 +491,26 @@ pub fn plugin(app: &mut App) {
         .add_plugins(JointGraphPlugin::<RagdollJoint>::default())
         .add_systems(
             PhysicsSchedule,
-            prepare_xpbd_joint::<RagdollJoint>
+            (prepare_ragdoll_joints, no_gyroscopic_torque)
                 .in_set(SolverSystems::PrepareJoints)
                 .ambiguous_with_all(),
         )
+        // Joints take the contacts' passes (avian's soft step): warm start,
+        // the biased solve, then the relax.
         .add_systems(
             SubstepSchedule,
-            solve_xpbd_joint::<RagdollJoint>.in_set(XpbdSolverSystems::SolveUserConstraints),
+            (
+                warm_start_ragdoll_joints
+                    .after(SubstepSolverSystems::WarmStart)
+                    .before(SubstepSolverSystems::SolveConstraints),
+                solve_ragdoll_joints::<true>
+                    .after(SubstepSolverSystems::SolveConstraints)
+                    .before(IntegrationSystems::Position),
+                solve_ragdoll_joints::<false>
+                    .after(SubstepSolverSystems::Relax)
+                    .before(XpbdSolverSystems::SolveConstraints)
+                    .before(SubstepSolverSystems::Damping),
+            ),
         )
         .add_systems(
             FixedUpdate,
@@ -789,6 +817,8 @@ pub fn spawn_ragdoll(
         last_moved: now,
         born: now,
         error_ticks: 0,
+        still: Vec::new(),
+        still_since: now,
         placed: false,
     });
     ragdoll_entity
@@ -1117,44 +1147,80 @@ fn repair_ragdolls(
     }
 }
 
-/// Forced settling (spec 6.1): a ragdoll whose root body moved at most
-/// 1 in per axis each tick for `sleep_after` seconds is stopped and put
-/// to sleep.
+/// Settling: a ragdoll is stopped and put to sleep (its bodies'
+/// velocities zeroed unmarked, or avian wakes them right away)
+/// - when every body stayed within `prop_physics::SETTLE_DISTANCE` and
+///   `SETTLE_ANGLE` of one pose for `SETTLE_TIME`, as nearly still props are
+///   (Source's physics puts nearly still bodies to sleep, spec 6.1's
+///   "engine's own sleep thresholds"; its thresholds are inside vphysics,
+///   so these are ours): avian's own sleep wants every body under its speed
+///   threshold for half a second, which a light limb trembling by a
+///   fraction of a degree on the floor may not get;
+/// - forced (spec 6.1): when its root body moved at most 1 in per axis each
+///   tick for `sleep_after` seconds.
 fn settle_ragdolls(
     mut ragdolls: Query<&mut Ragdoll>,
-    mut bodies: Query<(&Position, &mut LinearVelocity, &mut AngularVelocity, Has<Sleeping>), With<RagdollBody>>,
+    mut bodies: Query<
+        (&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, Has<Sleeping>),
+        With<RagdollBody>,
+    >,
     settings: Res<RagdollSettings>,
     time: Res<Time>,
     mut commands: Commands,
 ) {
+    use super::prop_physics::{SETTLE_ANGLE, SETTLE_DISTANCE, SETTLE_TIME};
     let now = time.elapsed_secs_f64();
     for mut r in &mut ragdolls {
         let Some(root) = r.bodies.first().and_then(|b| bodies.get(*b).ok()) else {
             continue;
         };
-        let (at, asleep) = (root.0.0, root.3);
+        let (at, asleep) = (root.0.0, root.4);
+        let mut stop = false;
         if (at - r.last_root).abs().max_element() > SETTLE_TOLERANCE {
             r.last_moved = now;
         } else if !asleep && now - r.last_moved >= settings.sleep_after as f64 {
-            for b in &r.bodies {
-                // Unmarked: a changed velocity wakes a sleeping body (avian
-                // `wake_on_changed`), which undid this every tick.
-                if let Ok((_, mut v, mut w, _)) = bodies.get_mut(*b) {
-                    v.bypass_change_detection().0 = Vec3::ZERO;
-                    w.bypass_change_detection().0 = Vec3::ZERO;
-                }
-                commands.queue(SleepBody(*b));
-            }
+            stop = true;
         }
         r.last_root = at;
+        // Every body kept still?
+        let poses: Vec<(Vec3, Quat, bool)> =
+            r.bodies.iter().filter_map(|b| bodies.get(*b).ok()).map(|(p, q, .., s)| (p.0, q.0, s)).collect();
+        if poses.len() != r.bodies.len() || poses.iter().all(|p| p.2) {
+            r.still.clear();
+            r.still_since = now;
+        } else if r.still.len() != poses.len()
+            || r.still.iter().zip(&poses).any(|(a, b)| {
+                a.0.distance(b.0) > SETTLE_DISTANCE || a.1.angle_between(b.1) > SETTLE_ANGLE
+            })
+        {
+            r.still = poses.iter().map(|p| (p.0, p.1)).collect();
+            r.still_since = now;
+        } else if now - r.still_since >= SETTLE_TIME {
+            stop = true;
+        }
+        if !stop {
+            continue;
+        }
+        for b in &r.bodies {
+            // Unmarked: a changed velocity wakes a sleeping body (avian
+            // `wake_on_changed`), which undid this every tick.
+            if let Ok((_, _, mut v, mut w, _)) = bodies.get_mut(*b) {
+                v.bypass_change_detection().0 = Vec3::ZERO;
+                w.bypass_change_detection().0 = Vec3::ZERO;
+            }
+            commands.queue(SleepBody(*b));
+        }
+        r.still.clear();
+        r.still_since = now;
     }
 }
 
-
-/// A ragdoll joint (avian custom XPBD constraint): the child body's origin
-/// stays at `anchor` in the parent body (ball and socket), and the child's
-/// rotation relative to `bind` in the parent's frame stays inside `limits`
-/// as X-then-Y-then-Z Euler angles about the child's axes.
+/// A ragdoll joint: the child body's origin stays at `anchor` in the parent
+/// body (ball and socket), and the child's rotation relative to `bind` in
+/// the parent's frame stays inside `limits` as X-then-Y-then-Z Euler angles
+/// about the child's axes. Solved like avian's contacts (a soft velocity
+/// constraint with a position bias, then relaxed without it, warm started),
+/// in the same substep passes, so joints and contacts settle together.
 #[derive(Component, Clone, Debug)]
 #[require(RagdollJointSolverData)]
 pub struct RagdollJoint {
@@ -1167,20 +1233,30 @@ pub struct RagdollJoint {
     pub limits: [(f32, f32); 3],
 }
 
+/// A ragdoll joint's solver state: the bodies at the step's start, the
+/// ball and socket's accumulated impulse (kept for warm starting), and the
+/// limit's axis and impulse this substep.
 #[derive(Component, Clone, Debug, Default)]
 pub struct RagdollJointSolverData {
-    point: PointConstraintShared,
+    /// Both bodies have solver bodies this step.
+    active: bool,
+    /// Anchor offsets from the mass centres (world, at the step's start).
+    r1: Vec3,
+    r2: Vec3,
+    /// Mass centre 2 minus mass centre 1 at the step's start.
+    centre_difference: Vec3,
     rotation1: Quat,
     rotation2: Quat,
+    point_impulse: Vec3,
+    /// The limits' accumulated impulses: each angle's lower, then upper.
+    limit_impulse: [[f32; 2]; 3],
 }
 
-impl XpbdConstraintSolverData for RagdollJointSolverData {
-    fn clear_lagrange_multipliers(&mut self) {
-        self.point.clear_lagrange_multipliers();
-    }
-
-    fn total_position_lagrange(&self) -> Vec3 {
-        self.point.total_position_lagrange()
+impl RagdollJointSolverData {
+    /// The limits' accumulated angular impulse on the child (the parent
+    /// takes its opposite) along the angles' axes `dual`.
+    fn limit_torque(&self, dual: &[Vec3; 3]) -> Vec3 {
+        (0..3).map(|i| dual[i] * (self.limit_impulse[i][0] - self.limit_impulse[i][1])).sum()
     }
 }
 
@@ -1211,49 +1287,191 @@ impl RagdollJoint {
         }
         Some(frame * Quat::from_euler(EulerRot::XYZ, clamped.0, clamped.1, clamped.2))
     }
-}
 
-impl XpbdConstraint<2> for RagdollJoint {
-    type SolverData = RagdollJointSolverData;
-
-    fn prepare(&mut self, bodies: [&RigidBodyQueryReadOnlyItem; 2], data: &mut RagdollJointSolverData) {
-        data.point.prepare(bodies, self.anchor, Vec3::ZERO);
-        data.rotation1 = bodies[0].rotation.0;
-        data.rotation2 = bodies[1].rotation.0;
-    }
-
-    fn solve(
-        &mut self,
-        bodies: [&mut SolverBody; 2],
-        inertias: [&SolverBodyInertia; 2],
-        data: &mut RagdollJointSolverData,
-        dt: f32,
-    ) {
-        let [body1, body2] = bodies;
-        let [inertia1, inertia2] = inertias;
-        data.point.solve([body1, body2], [inertia1, inertia2], 0.0, dt);
-        let parent = body1.delta_rotation.0 * data.rotation1;
-        let child = body2.delta_rotation.0 * data.rotation2;
-        let Some(target) = self.clamp(parent, child) else { return };
-        // Turning body 2 by `d` reaches the target; the solver turns body 1
-        // along its argument and body 2 against it.
-        let d = rotation_between(child, target);
-        self.align_orientation(
-            body1,
-            body2,
-            inertia1.effective_inv_angular_inertia(),
-            inertia2.effective_inv_angular_inertia(),
-            -d,
-            0.0,
-            0.0,
-            dt,
-        );
+    /// The child's three limited angles relative to the parent, and for
+    /// each the world axis whose share of the relative angular velocity
+    /// (child minus parent) is that angle's rate (the dual basis of the
+    /// Euler axes), so each angle's limits are a constraint row of their own.
+    pub fn limit_axes(&self, parent: Quat, child: Quat) -> ([f32; 3], [Vec3; 3]) {
+        let frame = parent * self.bind;
+        let (x, y, z) = (frame.inverse() * child).to_euler(EulerRot::XYZ);
+        let qx = Quat::from_rotation_x(x);
+        let ax = frame * Vec3::X;
+        let ay = frame * (qx * Vec3::Y);
+        let az = frame * (qx * Quat::from_rotation_y(y) * Vec3::Z);
+        let det = ax.dot(ay.cross(az));
+        let dual = if det.abs() > 1e-3 {
+            [ay.cross(az) / det, az.cross(ax) / det, ax.cross(ay) / det]
+        } else {
+            [ax, ay, az]
+        };
+        ([x, y, z], dual)
     }
 }
 
-impl PositionConstraint for RagdollJoint {}
+/// Joint stiffness: twice avian's contact frequency against dynamic bodies
+/// (as Box2D's soft step makes its joints), with the contacts' damping
+/// ratio; `step` and `substep` are the step's and a substep's length, s.
+fn joint_softness(config: &SolverConfig, step: f32, substep: f32) -> SoftnessCoefficients {
+    let max_hz = 1.0 / (step * 2.0);
+    let hz = 2.0 * config.contact_frequency_factor * max_hz.min(0.25 / substep);
+    SoftnessParameters::new(config.contact_damping_ratio, hz).compute_coefficients(substep)
+}
 
-impl AngularConstraint for RagdollJoint {}
+/// Ragdoll bodies turn without gyroscopic torque (avian adds it to every
+/// body whose inertia isn't the same about every axis, keeping the angular
+/// momentum's size, not the energy): on thin light limbs held at their
+/// limits (clavicles, 1 kg) it kept feeding a tremble of up to 7 rad/s that
+/// never died down. Source's physics of the time had no such term
+/// (*inferred*). Avian 0.7 has no switch for it, so the solver bodies' flag
+/// is cleared each step after avian sets it.
+fn no_gyroscopic_torque(mut bodies: Query<&mut SolverBody, With<RagdollBody>>) {
+    for mut b in &mut bodies {
+        b.flags.set(SolverBodyFlags::GYROSCOPIC_MOTION, false);
+    }
+}
+
+/// Each joint's bodies at the step's start (before the substeps).
+fn prepare_ragdoll_joints(
+    bodies: Query<(&Position, &Rotation, &ComputedCenterOfMass), With<SolverBody>>,
+    mut joints: Query<(&RagdollJoint, &mut RagdollJointSolverData), Without<JointDisabled>>,
+) {
+    for (joint, mut data) in &mut joints {
+        let (Ok((p1, q1, c1)), Ok((p2, q2, c2))) = (bodies.get(joint.parent), bodies.get(joint.child)) else {
+            data.active = false;
+            data.point_impulse = Vec3::ZERO;
+            data.limit_impulse = Default::default();
+            continue;
+        };
+        data.active = true;
+        data.r1 = q1.0 * (joint.anchor - c1.0);
+        data.r2 = q2.0 * -c2.0;
+        data.centre_difference = (p2.0 + q2.0 * c2.0) - (p1.0 + q1.0 * c1.0);
+        data.rotation1 = q1.0;
+        data.rotation2 = q2.0;
+    }
+}
+
+/// Apply an impulse at the anchors (`impulse` on body 2, its opposite on
+/// body 1) and an angular one (`torque` likewise).
+fn apply_joint_impulse(
+    b1: &mut SolverBody,
+    b2: &mut SolverBody,
+    i1: &SolverBodyInertia,
+    i2: &SolverBodyInertia,
+    (r1, r2): (Vec3, Vec3),
+    impulse: Vec3,
+    torque: Vec3,
+) {
+    let (a1, a2) = (Mat3::from(i1.effective_inv_angular_inertia()), Mat3::from(i2.effective_inv_angular_inertia()));
+    b1.linear_velocity -= impulse * i1.effective_inv_mass();
+    b1.angular_velocity -= a1 * (r1.cross(impulse) + torque);
+    b2.linear_velocity += impulse * i2.effective_inv_mass();
+    b2.angular_velocity += a2 * (r2.cross(impulse) + torque);
+}
+
+/// Warm start: the ball and socket's impulse from the last substep.
+fn warm_start_ragdoll_joints(
+    bodies: Query<(&mut SolverBody, &SolverBodyInertia)>,
+    joints: Query<(&RagdollJoint, &RagdollJointSolverData)>,
+    config: Res<SolverConfig>,
+) {
+    for (joint, data) in &joints {
+        if !data.active || joint.parent == joint.child {
+            continue;
+        }
+        // SAFETY: a joint's two bodies are different entities, and nothing
+        // else holds them.
+        let (Ok((mut b1, i1)), Ok((mut b2, i2))) =
+            (unsafe { bodies.get_unchecked(joint.parent) }, unsafe { bodies.get_unchecked(joint.child) })
+        else {
+            continue;
+        };
+        let r = (b1.delta_rotation * data.r1, b2.delta_rotation * data.r2);
+        let (_, dual) = joint.limit_axes(b1.delta_rotation.0 * data.rotation1, b2.delta_rotation.0 * data.rotation2);
+        let c = config.warm_start_coefficient;
+        apply_joint_impulse(&mut b1, &mut b2, i1, i2, r, data.point_impulse * c, data.limit_torque(&dual) * c);
+    }
+}
+
+/// One velocity pass over the joints: with the position bias (soft, after
+/// the contacts' biased pass) or without it (relax, after theirs).
+fn solve_ragdoll_joints<const BIAS: bool>(
+    bodies: Query<(&mut SolverBody, &SolverBodyInertia)>,
+    mut joints: Query<(&RagdollJoint, &mut RagdollJointSolverData)>,
+    config: Res<SolverConfig>,
+    time: Res<Time>,
+    step: Res<Time<Physics>>,
+) {
+    let h = time.delta_secs();
+    if h <= 0.0 {
+        return;
+    }
+    let soft = joint_softness(&config, step.delta_secs().max(h), h);
+    for (joint, mut data) in &mut joints {
+        if !data.active || joint.parent == joint.child {
+            continue;
+        }
+        // SAFETY: a joint's two bodies are different entities, and nothing
+        // else holds them.
+        let (Ok((mut b1, i1)), Ok((mut b2, i2))) =
+            (unsafe { bodies.get_unchecked(joint.parent) }, unsafe { bodies.get_unchecked(joint.child) })
+        else {
+            continue;
+        };
+        let (r1, r2) = (b1.delta_rotation * data.r1, b2.delta_rotation * data.r2);
+        let (a1, a2) = (Mat3::from(i1.effective_inv_angular_inertia()), Mat3::from(i2.effective_inv_angular_inertia()));
+        // Ball and socket: the anchors meet.
+        let separation = (b2.delta_position - b1.delta_position) + (r2 - r1) + data.centre_difference;
+        let velocity =
+            (b2.linear_velocity + b2.angular_velocity.cross(r2)) - (b1.linear_velocity + b1.angular_velocity.cross(r1));
+        let (s1, s2) = (skew(r1), skew(r2));
+        let k = Mat3::from_diagonal(i1.effective_inv_mass() + i2.effective_inv_mass()) - s1 * a1 * s1 - s2 * a2 * s2;
+        let mass = k.inverse();
+        let impulse = if BIAS {
+            -(mass * (velocity + separation * soft.bias)) * soft.mass_scale - data.point_impulse * soft.impulse_scale
+        } else {
+            -(mass * velocity)
+        };
+        if impulse.is_finite() {
+            data.point_impulse += impulse;
+            apply_joint_impulse(&mut b1, &mut b2, i1, i2, (r1, r2), impulse, Vec3::ZERO);
+        }
+        // Limits: a row per angle and side (Box2D's joint limits): soft
+        // when past the limit, else speculative (it may come up to the
+        // limit, not past it).
+        let (angles, dual) = joint.limit_axes(b1.delta_rotation.0 * data.rotation1, b2.delta_rotation.0 * data.rotation2);
+        for i in 0..3 {
+            let (lo, hi) = joint.limits[i];
+            for (side, sign, gap) in [(0, 1.0, angles[i] - lo), (1, -1.0, hi - angles[i])] {
+                let n = dual[i] * sign;
+                let k = n.dot((a1 + a2) * n);
+                if k <= 0.0 {
+                    continue;
+                }
+                let speed = (b2.angular_velocity - b1.angular_velocity).dot(n);
+                let held = data.limit_impulse[i][side];
+                let lambda = if gap > 0.0 {
+                    -(speed + gap / h) / k
+                } else if BIAS {
+                    -(speed + gap * soft.bias) * soft.mass_scale / k - held * soft.impulse_scale
+                } else {
+                    -speed / k
+                };
+                // It only pushes back into the limits.
+                let total = (held + lambda).max(0.0);
+                data.limit_impulse[i][side] = total;
+                apply_joint_impulse(&mut b1, &mut b2, i1, i2, (r1, r2), Vec3::ZERO, n * (total - held));
+            }
+        }
+    }
+}
+
+/// The cross-product matrix of `v` (`skew(v) * x == v.cross(x)`).
+fn skew(v: Vec3) -> Mat3 {
+    Mat3::from_cols(Vec3::new(0.0, v.z, -v.y), Vec3::new(-v.z, 0.0, v.x), Vec3::new(v.y, -v.x, 0.0))
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -1276,6 +1494,31 @@ mod tests {
         // A twist about X is removed.
         let t = j.clamp(Quat::IDENTITY, Quat::from_rotation_x(0.5)).unwrap();
         assert!(t.angle_between(Quat::IDENTITY) < 1e-4);
+    }
+
+    /// Turning the child a little about a world axis changes each limited
+    /// angle by that axis's share along the angle's dual axis.
+    #[test]
+    fn limit_axes_give_the_angle_rates() {
+        let j = RagdollJoint {
+            parent: Entity::PLACEHOLDER,
+            child: Entity::PLACEHOLDER,
+            anchor: Vec3::ZERO,
+            bind: Quat::from_rotation_y(0.4),
+            limits: [(-1.0, 1.0); 3],
+        };
+        let parent = Quat::from_rotation_x(0.3) * Quat::from_rotation_z(-0.7);
+        let child = parent * j.bind * Quat::from_euler(EulerRot::XYZ, 0.2, -0.3, 0.5);
+        let (angles, dual) = j.limit_axes(parent, child);
+        assert!((Vec3::from(angles) - Vec3::new(0.2, -0.3, 0.5)).length() < 1e-4, "{angles:?}");
+        for w in [Vec3::X, Vec3::Y, Vec3::Z, Vec3::new(0.3, -0.5, 0.8).normalize()] {
+            let step = 1e-3;
+            let (moved, _) = j.limit_axes(parent, Quat::from_axis_angle(w, step) * child);
+            for i in 0..3 {
+                let rate = (moved[i] - angles[i]) / step;
+                assert!((rate - dual[i].dot(w)).abs() < 1e-2, "angle {i} about {w}: {rate} vs {}", dual[i].dot(w));
+            }
+        }
     }
 
     #[test]

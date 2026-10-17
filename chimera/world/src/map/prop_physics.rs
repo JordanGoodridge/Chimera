@@ -19,7 +19,8 @@
 //! one pose for 1 s is stopped and put to sleep (`Settling`), as Source's
 //! physics sleeps nearly still bodies; one sunk more than 1 in into the
 //! world or a static prop (`WEDGED_DEPTH`) sleeps at once when the map
-//! placed it so (`WedgeCheck`) and after 1 s wedged otherwise; `BodyCounts`:
+//! placed it so (`WedgeCheck`) and after 1 s wedged otherwise (bodies with
+//! `SettlesLikeProp`, broken props' pieces, too); `BodyCounts`:
 //! dynamic bodies and how many are awake (the perf readout, `--bench`).
 //!
 //! Known shortcuts (docs/tech-debt.md): The settle thresholds (1 in, 5
@@ -361,6 +362,11 @@ pub const WEDGE_CHECK_TIME: f64 = 0.1;
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct WedgeCheck(Option<f64>);
 
+/// A body that isn't a physics prop but settles as one (`settle_props`'
+/// stillness and wedge rules): a broken prop's piece.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct SettlesLikeProp;
+
 /// Where an awake physics prop has stayed since when, and since when it
 /// is wedged (`settle_props`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -371,7 +377,7 @@ pub struct Settling {
     wedged: Option<f64>,
 }
 
-/// After each physics step: props that kept still (`SETTLE_DISTANCE`) or
+/// After each physics step: props (and `SettlesLikeProp` bodies) that kept still (`SETTLE_DISTANCE`) or
 /// stayed wedged (`WEDGED_DEPTH`) sleep. An island sleeps as a whole, so it waits for every prop in it
 /// to have kept still and every other body in it to be resting by avian's
 /// own measure. Their velocities are zeroed without marking them changed
@@ -394,10 +400,19 @@ pub fn settle_props(
             Option<&mut Settling>,
             Option<&mut WedgeCheck>,
         ),
-        (With<PhysicsProp>, Without<Sleeping>),
+        (Or<(With<PhysicsProp>, With<SettlesLikeProp>)>, Without<Sleeping>),
     >,
-    others: Query<(&RigidBody, &BodyIslandNode, &SleepTimer), (Without<PhysicsProp>, Without<Sleeping>)>,
-    asleep: Query<Entity, (With<Settling>, Or<(With<Sleeping>, Without<PhysicsProp>)>)>,
+    others: Query<
+        (&RigidBody, &BodyIslandNode, &SleepTimer),
+        (Without<PhysicsProp>, Without<SettlesLikeProp>, Without<Sleeping>),
+    >,
+    asleep: Query<
+        Entity,
+        (
+            With<Settling>,
+            Or<(With<Sleeping>, (Without<PhysicsProp>, Without<SettlesLikeProp>))>,
+        ),
+    >,
     (contacts, bodies): (Res<ContactGraph>, Query<&RigidBody>),
     mut commands: Commands,
     mut still: Local<Vec<(Entity, u32)>>,

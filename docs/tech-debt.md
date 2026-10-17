@@ -38,7 +38,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - weapon, games/cs_source: Grenades: release, fuse, HE armour and flash by distance and facing measured (grenades.md); flash through walls and smoke, redraw, pin rules still the template (`chimera/sim/src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`games/cs_source/src/bot/mod.rs`)
 - map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`chimera/present/src/render/view_model.rs`)
-- map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`chimera/world/src/map/ragdoll.rs`)
+- map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions); our joint solver (soft, no gyroscopic torque) and resting thresholds (`chimera/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
 - client: Spectating numbers partly measured (bots in a SourceTV demo: specs/cs_source/spectating.md); the death cam before the freeze cam, chase distance, our "fixed" mode from general knowledge (`chimera/client/src/client/spectate.rs`)
@@ -57,7 +57,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - logic: Fire: cvars as constants, simplified traces and our readings of the spec's open questions (`source/logic/src/logic/fire.rs`)
 - games/cs_source: Player physics shadow reaches its target in one step; heavy-prop and push limits are ours (`games/cs_source/src/game/shadow.rs`)
 - logic: Workaround for avian 0.7's stale "body disabled" flag when re-enabling a prop body (`source/logic/src/logic/bridge.rs`)
-- map: Physics props rocking on uneven ground, and props placed wedged in solid, are put to sleep by our own stillness and depth tests, not a solver fix (`chimera/world/src/map/prop_physics.rs`)
+- map: Physics props (and broken props' pieces) rocking on uneven ground, and props placed wedged in solid, are put to sleep by our own stillness and depth tests, not a solver fix (`chimera/world/src/map/prop_physics.rs`)
 - map: Convex hulls cut into pieces with faces of four corners at most, working around parry clipping only four corners of a face (`chimera/world/src/map/collision.rs`)
 - logic: Pushers: no bevels for rotated brushes, push tests skip players and props, simplified riding (`source/logic/src/logic/movers.rs`)
 - logic: Community-map behaviour the specs leave open: physics bodies in triggers, AddOutput, render inputs, parenting (`source/logic/src/logic/community.rs`)
@@ -71,7 +71,6 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Visibility: no per-leaf frustum culling; several things never culled; areaportal open questions taken our way (`chimera/present/src/render/vis.rs`)
 - map: Textures decode on every load (no cache yet); mips are box-filtered only for VTFs without a full chain. OK for now: dust2 loads in about a second, now in the background for `map`.
 - map: Props without a `.phy` collide as their visible mesh where the spec leaves it open (`games/cs_source/src/game/props.rs`)
-- map: Broken props' pieces load without their `.phy`: their bodies are boxes (with hulls some keep rocking; `games/cs_source/src/game/props.rs`)
 - map: LOD metric is our reading of Source's, unmeasured; no hysteresis; some models keep LOD 0 (`chimera/present/src/render/lod.rs`)
 - map: Characters cast blob shadows only; shadow details ours (`chimera/present/src/render/shadows.rs`)
 - map: Prop light probes: props without `.vhv` lit from one point (sun whole or not at all; spec Q11), shadow rays ignore props, ambient blend and dynamic-light falloff ours (`games/cs_source/src/game/props.rs`)

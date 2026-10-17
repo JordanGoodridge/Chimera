@@ -720,8 +720,8 @@ so on real maps no ragdoll ever slept (de_dust2: still awake 9 s in);
 it now writes them unmarked as `settle_props` does. Gib pieces have no
 hulls on CS:S yet: piece and chunk models load without their `.phy`, so
 their bodies are boxes (four corners a face). `heavy::map_debris_settle`
-checks that the 20 ragdolls sleep within 7 s and twelve de_inferno
-props' pieces within 5 s.
+checked that the 20 ragdolls sleep within 7 s (now: see below) and
+twelve de_inferno props' pieces within 5 s.
 
 Broken props' pieces collided with each other (2026-10-17). A broken
 prop's pieces start where they were in the whole prop, their boxes
@@ -744,7 +744,54 @@ is something else: different ragdolls already didn't collide and a
 ragdoll's own bodies collide only for its `.phy` pairs. Pieces loaded
 with their `.phy` hulls (tried again with debris apart) no longer pile
 up, but five of the twelve props have a light piece still rocking alone
-on the floor 5 s on (0.3-1.9 rad/s), so they stay boxes for now.
+on the floor 5 s on (0.3-1.9 rad/s), so they stayed boxes (now hulls:
+see below).
+
+Ragdoll limbs jittered against the floor (2026-10-17). Ragdoll joints
+were avian XPBD constraints solved after the contacts in each substep:
+rigid position corrections whose velocity (Δx/h) stayed in the bodies,
+while the contacts are soft and relaxed. Wherever a limb's joints and
+the floor disagreed (a hand held 4 cm into a displacement by its arm,
+an arm folded at two limits) they undid each other every substep, and
+the bodies kept 0.3-3 m/s and 2-16 rad/s while not moving at all: with
+the forced sleep off, 1 of 20 ragdolls slept within 8 s, with limits
+or self-collision off still none. The joints are now solved in the
+contacts' own passes (warm start, biased soft pass, relax; ball and
+socket as one 3x3 row, each Euler angle's limits as rows of their own
+along the dual axes, speculative before the limit), twice as stiff as
+the contacts as Box2D makes them. That alone let 31 of 40 sleep within
+8 s. What was left was mostly the 1 kg clavicles trembling at their
+limits at up to 7 rad/s: avian's gyroscopic torque (it keeps the
+angular momentum's size, not the energy) fed them; ragdoll bodies now
+turn without it. And a ragdoll whose bodies all keep within props'
+stillness bounds (1 in, 5 degrees) for 1 s sleeps, as props do.
+`heavy::map_debris_settle` with the forced sleep off, 60 ragdolls
+(10 spawns on de_dust2 and de_inferno, three orders): all asleep in
+1.9-7.0 s, median 3.2 s, 51 by 5 s; after 3 s no body over 1.74 rad/s
+(a hand swinging from its wrist, rotdamping 1, dying down by 7 s).
+`ragdoll::a_ragdoll_kept_moving_is_put_to_sleep_after_five_seconds` (a
+toy scene) covers the forced rule, which the map test turns off.
+
+Broken props' pieces with their hulls (2026-10-17). Piece and chunk
+models now load with their `.phy` (prop_damage.md 7.3: pieces are
+physics objects), and pieces sleep by props' stillness rule (1 in, 5
+degrees for 1 s; `prop_physics::SettlesLikeProp`). The ragdoll fix's
+other ingredient, no gyroscopic torque, was tried and left out: it
+doesn't help pieces. `heavy::map_debris_settle`, twelve de_inferno props
+in three break orders (36 breaks), time until every piece sleeps:
+
+| pieces | asleep in | breaks still awake at 5 s |
+|---|---|---|
+| boxes (before) | 0.8-2.9 s | 0 |
+| hulls | 1.5-4.9 s | 14 (light pieces rocking alone, 0.3-1.9 rad/s) |
+| hulls, no gyroscopic torque | 1.8-9.2 s | 12 still awake at 15 s (up to 1.6 rad/s) |
+| hulls, stillness sleep (kept) | 1.5-4.2 s, median 2.4 s | 0 |
+| hulls, both | 1.7-4.8 s | 0 |
+
+The rocking pieces are curved pot shards and thin planks that keep
+rolling slowly on their curve, above avian's sleep threshold but over
+5 degrees a second, so only the stillness rule's time stops them once
+they slow down.
 
 ## Fewer cameras per frame (2026-10-16)
 
