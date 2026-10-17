@@ -114,6 +114,7 @@ report folders):
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Damage, falloff, hitgroups, armour | have | | | measured M5-M7; 2026-10-17: the armour left is truncated, so a fraction of a point costs a whole one (a knife slash on 100 leaves 98, was 99; `weapon::armor_split`) |
+| Refused hits (teammates with friendly fire off, noclip, god) | have (fixed) | M | S | measured 2026-10-17 (weapons.md "Refused hits"): a teammate's bullet, knife or HE with `mp_friendlyfire 0` does nothing (no armour, sound, blood, slowdown or flinch); a noclipping player's bullet hit bleeds and flinches, nothing else. Ours took armour from every refused hit but noclip's and played the flesh impact; now armour only where a hit lands (`weapon::HitArmor`), refused hits are silent, noclip flinches. God mode unmeasured (C30); an HE blast now sounds kevlar or the flesh impact as measured (was silent) |
 | AK-47/M4A1/pistols/AWP recoil, inaccuracy | have | | | measured M1-M4 |
 | `invnext` / `invprev` (the mouse wheel's weapon commands) | have (fixed) | H | S | were missing; on the wheel by default as CS:S (MWHEELUP invprev, MWHEELDOWN invnext; wheel jumping: `bind mwheeldown +jump`) |
 | Picking the second grenade from the HUD selection | have (fixed) | M | S | the pick drew the first weapon of the slot; now `Intent::pick` names it |
@@ -137,7 +138,7 @@ report folders):
 | Weapon fire, reload parts, empty, deploy, zoom | have | | | spec sounds.md; reload parts at our times (Q9) |
 | Footsteps, ladders, water, landing | have | | | spec; silence rules unmeasured (below) |
 | Round announcer, radio, chat blip, bomb | have | | | |
-| Hurt and death sounds | have (fixed) | H | S | measured per hit (sounds.md): a killing headshot plays DamageHeadShot and DeathHeadShot, armour-covered hits only DamageKevlar (no flesh impact), heads no flesh impact; helmeted heads unmeasured (tech-debt "Hurt and death sounds"); the knife (2026-10-17): kevlar on armour, the flesh impact on a bare player (was silent) |
+| Hurt and death sounds | have (fixed) | H | S | measured per hit (sounds.md): a killing headshot plays DamageHeadShot and DeathHeadShot, armour-covered hits only DamageKevlar (no flesh impact), heads no flesh impact; helmeted heads unmeasured (tech-debt "Hurt and death sounds"); the knife (2026-10-17): kevlar on armour, the flesh impact on a bare player (was silent); an HE blast the same (2026-10-17, was silent); a refused hit (a teammate with friendly fire off, noclip) none at all (2026-10-17, was the flesh impact) |
 | Weapon pickup and buy sounds | have (fixed) | H | S | `Player.PickupWeapon`, `BaseCombatCharacter.ItemPickup2` were never played; which plays when is inferred (tech-debt), capture C2 |
 | HUD weapon selection sounds | have (fixed) | H | S | `Player.WeaponSelectionMoveSlot`/`WeaponSelected`/`DenyWeaponSelection` were never played; when each plays is inferred, capture C3 |
 | Under water muffle | have (fixed) | M | S | nothing changed with the head under water; now a steady low-pass (Source's `dsp_water` is engine-side: values ours, capture C5) |
@@ -686,4 +687,13 @@ says what decides the open point.
   sound? Break a client bottle and `mp_restartgame 1`: is it back?
   Decides prop_damage.md open questions 2 (client half), 4, 7, 8 and 9
   (client half).
+- **C30 Refused hits, client side and god mode.** A listen server on
+  de_dust2, `sv_cheats 1`, `bot_stop 1`, `mp_friendlyfire 0`, a bot on
+  your team: shoot it in the chest (AK-47) and knife it, with the game's
+  audio recorded and screenshots 0.1 s after: does your own client draw
+  blood or play a flesh impact for the refused hit (the server sends
+  neither)? Then `god`, buy kevlar, `mp_friendlyfire 1` and let an enemy
+  bot shoot you: armour left on the HUD, any hurt or kevlar sound, the
+  flinch and slowdown, blood. Decides weapons.md "Refused hits" (god mode
+  is ours: like a refused hit, no armour, sound, slowdown or flinch).
 

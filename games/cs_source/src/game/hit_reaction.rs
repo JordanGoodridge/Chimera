@@ -17,8 +17,12 @@
 //!   or a hit the vest took part of. It decays with recoil's rule
 //!   (`weapons::decay_punch`, over all three angles).
 //!
-//! Only hits that are taken count (not refused by team rules, map filters
-//! or god mode; not on the dead). The server decides hits: the slowdown
+//! Only hits on the living count. The slowdown comes only with a hit that
+//! is taken (not refused by team rules, noclip or map filters, not under
+//! god mode); a noclipping player's hit, refused, still flinches by the same
+//! rule, armour counting as covering though it takes nothing; a teammate's
+//! with friendly fire off does neither (measured 2026-10-17,
+//! specs/cs_source/weapons.md "Refused hits"). The server decides hits: the slowdown
 //! and punch reach the victim's predicting client with its own state
 //! (`SourceMovement` and `ViewPunch` are predicted and sent to the owner),
 //! where the first state after the hit corrects the prediction once and
@@ -40,7 +44,7 @@ use bevy::prelude::*;
 
 use super::movement::SourceMovement;
 use crate::{
-    core::{DamageRules, Died, God, Health, Hitgroup, Intent, SimSet},
+    core::{DamageRules, Died, God, Health, Hitgroup, Intent, Refusal, SimSet},
     weapon::{BulletHit, ViewPunch},
 };
 
@@ -127,11 +131,19 @@ fn react(
         let Ok((health, god, intent, movement, punch)) = victims.get_mut(d.target) else {
             continue;
         };
-        // Taken, by the living (this runs after the damage is applied).
-        if god || rules.refuse(d) || health.current <= 0.0 {
+        // By the living (this runs after the damage is applied). A hit
+        // taken slows and flinches; a noclipping player's (refused) only
+        // flinches; any other refused one does neither (measured
+        // 2026-10-17, weapons.md "Refused hits").
+        if health.current <= 0.0 {
             continue;
         }
-        if let Ok(slow) = guns.get(hit.weapon)
+        let refusal = rules.refusal(d);
+        if god || refusal.is_some_and(|r| r != Refusal::Noclip) {
+            continue;
+        }
+        if refusal.is_none()
+            && let Ok(slow) = guns.get(hit.weapon)
             && let Some(mut m) = movement
         {
             m.velocity_modifier = slow.of(d.hitgroup);

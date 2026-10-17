@@ -6,7 +6,8 @@
 //! that noclip (`end_toggled`), as CS:S puts every player it spawns back
 //! to walking (specs/cs_source/movement.md "Noclip and spawning").
 //! Its marker (`core::Noclip`) keeps damage off the character, as CS:S's
-//! noclip does (`core::DamageRules`; armour in `weapon`'s hits and blasts).
+//! noclip does (`core::DamageRules`, which `weapon::HitArmor` asks before armour
+//! takes a hit; games may still react to the refused hit, `core::Refusal`).
 
 use bevy::prelude::*;
 

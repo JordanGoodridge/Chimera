@@ -63,6 +63,7 @@ mod pain_sounds;
 mod phy_spec;
 mod prediction;
 mod radio;
+mod refused_hits;
 mod ragdoll;
 mod ragdoll_spec;
 mod rope_spec;

@@ -67,7 +67,7 @@ use crate::client::{
 };
 
 use crate::{
-    core::{Damage, Dead, Died, Health, Hitgroup, LocalPlayer, Team},
+    core::{Damage, DamageRules, Dead, Died, Health, Hitgroup, LocalPlayer, Team},
     map::hud::{ActiveHud, GameHud, HudCoord, HudPanel},
     rules::rounds::RoundState,
     weapon::{Armor, Inventory, Magazine, Weapon, economy::Money},
@@ -260,8 +260,11 @@ fn teardown(parts: Query<Entity, With<GameHudPart>>, mut commands: Commands) {
     }
 }
 
-fn remember_hits(mut damage: MessageReader<Damage>, mut hits: ResMut<LastHits>) {
-    for d in damage.read() {
+/// A hit not taken (`DamageRules::lands`: a teammate's with friendly fire
+/// off, on a noclipping player, ...) isn't remembered: it can't be the one
+/// that killed.
+fn remember_hits(mut damage: MessageReader<Damage>, rules: DamageRules, mut hits: ResMut<LastHits>) {
+    for d in damage.read().filter(|d| rules.lands(d)) {
         hits.0.insert(d.target, (d.attacker, d.hitgroup));
     }
 }

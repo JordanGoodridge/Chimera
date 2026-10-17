@@ -1050,6 +1050,50 @@ and 3000 units (AK-47, USP; no armour, armour 100 without and with helmet),
   1.05, knife 1.7 all follow the same formula. A victim with less armour
   than `armour_damage` was not tested.
 
+### Refused hits (measured 2026-10-17)
+
+Probe server, de_dust2: the run bot as the victim, a second bot on the
+same team (CT) shooting it once with `mashup_shooter` (AK-47 from 202
+units at its chest or head, the knife from 30, an HE thrown at it from
+102), the victim's OnTakeDamage hooked (`mashup_dmghook player`), every
+emitted sound logged (`mashup_sndlog 1`), its velocity modifier and view
+punch from the run's per-tick rows; blood from a SourceTV demo of the same
+shots (`demodump --tempents`).
+
+- **A teammate, `mp_friendlyfire 0`:** the bullet hits the body (its
+  `bullet_impact`, then one on the wall behind) and OnTakeDamage gets the
+  full damage (35.6 or 44.5), but health and armour stay 100, no
+  `player_hurt`, and nothing else of a hit: no kevlar sound, no flesh
+  impact sound, velocity modifier 1, no view punch, and the server sends
+  no blood (no `EffectDispatch` at the hit, no blood decals). The knife
+  (armour 100): its own hit sound (`knife_hit*`), nothing else; armour
+  stays 100. An HE: the teammate takes nothing, armour 100, no sound.
+- Control, `mp_friendlyfire 1`, the same shots: chest on armour 100 →
+  91 health, 98 armour, `player/kevlar*`, modifier 0.65; bare chest → 85,
+  `physics/flesh/flesh_impact_bullet*` (CHAN_AUTO, from the victim),
+  punch −4 (−3.82 a tick later); the knife on armour → 95 / 99, kevlar,
+  modifier 0.5. The server sent the blood `EffectDispatch` at the hit
+  (magnitude = the damage) and blood decals behind.
+- **A noclipping player** (`mashup_botcmd <userid> noclip`, held still),
+  shot by a teammate with friendly fire on: nothing taken, no
+  `player_hurt`, no sound at all, velocity modifier 1, but **the view
+  flinches** as a walking player's: bare chest −4 (−3.82 a tick later),
+  bare head (−12, 0, −9 → −11.79, 0, −8.84); a chest on armour 100 none
+  (the vest covers, as walking, though it takes nothing). The server
+  sent the blood effect and decals as for a hit taken. An HE: nothing
+  taken, no sound, no push, no punch.
+- **HE blasts that land** sound like a generic bullet hit: an armoured
+  player `player/kevlar*`, a bare one the flesh impact (the thrower hit
+  by its own HE too).
+- **Pushes:** no blast moved a player, walking (86 damage at 36 units:
+  velocity stayed 0) or noclipping.
+- Not measured: `god` (FakeClientCommand `god` on a bot set no
+  FL_GODMODE); what the shooter's own client draws or plays for a
+  refused hit (client-side effects; capture C30 in
+  docs/plans/active/parity-gaps.md).
+- Aside: the thrower of the same HE throw took 78 with friendly fire on
+  and 7.5 with it off (same detonation point); not looked into.
+
 ### M4, M8, M10 Fire timing, deploy, reload, empty clip
 
 Method: per-tick `weapon_fire` ticks and weapon timers, attack held, or

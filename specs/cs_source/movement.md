@@ -794,9 +794,13 @@ bot held in place by `mashup_fire` with no buttons, its damage hooked with
   throw walking did (54). Falls count as soon as it walks again.
 - So noclip refuses all damage after it is dealt (no health, no armour,
   no `player_hurt`), which is not god mode's way of never being hit:
-  bullets meet the body and go on through. Not measured: whether a blast
-  still pushes it or a hit still slows or punches it (held in place), and
-  blood on hits (a suicide, `kill`, ends a noclipping life as above).
+  bullets meet the body and go on through (a suicide, `kill`, ends a
+  noclipping life as above).
+- **What a hit still does** (measured 2026-10-17, weapons.md "Refused
+  hits"): the view flinches as walking (bare chest −4, bare head −12/±9,
+  none on a vest) and the server sends blood; no sound, no slowdown
+  (velocity modifier stays 1), and no blast pushed it (nor a walking
+  player).
 
 ## Open questions
 
