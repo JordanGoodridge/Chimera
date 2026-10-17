@@ -550,16 +550,25 @@ fn place_frames(
             node.height = px(p.size.y);
         }
         let rank = windows.rank(f.id) as i32;
-        let want = GlobalZIndex(FRAME_Z + rank * 2 + if f.modal { 40 } else { 0 });
+        let want = GlobalZIndex(if f.modal { MODAL_Z } else { FRAME_Z } + rank * 2);
         if *z != want {
             *z = want;
         }
     }
 }
 
-/// Frames stack from here (over the menu's own backdrop, 46, under the
-/// scoreboard and the console).
-pub const FRAME_Z: i32 = 50;
+/// The game menu (GameUI: its backdrop, entries and dialogs) stacks from
+/// here, over every in-game panel (the HUD 30-45, the message of the day,
+/// team, class, buy, radio and spectator menus 50-52, the scoreboard 60),
+/// as CS:S's GameUI sits over the game's viewport panels; its backdrop
+/// takes the clicks meant for them while it is open.
+pub const GAME_UI_Z: i32 = 62;
+/// Frames stack from here (over the menu's own backdrop, `GAME_UI_Z`),
+/// two apart by stacking rank.
+pub const FRAME_Z: i32 = GAME_UI_Z + 2;
+/// Modal frames stack from here, over the others, under the console
+/// (100).
+pub const MODAL_Z: i32 = 90;
 /// An open drop-down list: over every frame.
 pub const POPUP_Z: i32 = 150;
 
@@ -2327,6 +2336,62 @@ pub fn wheel_notches(scroll: &bevy::input::mouse::AccumulatedMouseScroll) -> i32
     notches as i32
 }
 
+/// Bevy's UI as the game runs it (layout, stacking, focus: what the
+/// pointer presses) in a 400x300 window, with `block_clicks`, the
+/// pointer driven by `PointerScript`; nothing drawn. For tests of what a
+/// press reaches through the menus' stacking (here and the games' menus).
+pub fn pointer_test_app() -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        bevy::image::ImagePlugin::default(),
+        bevy::input::InputPlugin,
+        bevy::window::WindowPlugin {
+            primary_window: None,
+            exit_condition: bevy::window::ExitCondition::DontExit,
+            close_when_requested: false,
+            ..default()
+        },
+        TransformPlugin,
+        bevy::text::TextPlugin,
+        bevy::ui::UiPlugin,
+    ))
+    // What the UI's picking backend reads (the focus system is what
+    // the menus use).
+    .add_plugins((bevy::picking::PickingPlugin, bevy::picking::InteractionPlugin))
+    .init_asset::<bevy::image::TextureAtlasLayout>()
+    // Hidden nodes take no clicks: the focus system reads visibility.
+    .add_plugins(bevy::camera::visibility::VisibilityPlugin)
+    .init_asset::<Mesh>()
+    .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>()
+    .init_resource::<PointerScript>()
+    .add_observer(block_clicks)
+    .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems));
+    let mut window = Window::default();
+    window.resolution.set(400.0, 300.0);
+    app.world_mut().spawn((window, PrimaryWindow));
+    let size = UVec2::new(400, 300);
+    app.world_mut().spawn((
+        Camera2d,
+        Camera {
+            computed: bevy::camera::ComputedCameraValues {
+                target_info: Some(bevy::camera::RenderTargetInfo {
+                    physical_size: size,
+                    scale_factor: 1.0,
+                }),
+                ..default()
+            },
+            viewport: Some(bevy::camera::Viewport {
+                physical_size: size,
+                ..default()
+            }),
+            ..default()
+        },
+    ));
+    app
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2399,60 +2464,6 @@ mod tests {
         assert_eq!(q.single(app.world()).ok(), Some(&bevy::ui::FocusPolicy::Block));
     }
 
-    /// Bevy's UI as the game runs it (layout, stacking, focus: what the
-    /// pointer presses) in a 400x300 window, with `block_clicks`, the
-    /// pointer driven by `PointerScript`; nothing drawn.
-    fn pointer_app() -> App {
-        let mut app = App::new();
-        app.add_plugins((
-            MinimalPlugins,
-            AssetPlugin::default(),
-            bevy::image::ImagePlugin::default(),
-            bevy::input::InputPlugin,
-            bevy::window::WindowPlugin {
-                primary_window: None,
-                exit_condition: bevy::window::ExitCondition::DontExit,
-                close_when_requested: false,
-                ..default()
-            },
-            TransformPlugin,
-            bevy::text::TextPlugin,
-            bevy::ui::UiPlugin,
-        ))
-        // What the UI's picking backend reads (the focus system is what
-        // the menus use).
-        .add_plugins((bevy::picking::PickingPlugin, bevy::picking::InteractionPlugin))
-        .init_asset::<bevy::image::TextureAtlasLayout>()
-        // Hidden nodes take no clicks: the focus system reads visibility.
-        .add_plugins(bevy::camera::visibility::VisibilityPlugin)
-        .init_asset::<Mesh>()
-        .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>()
-        .init_resource::<PointerScript>()
-        .add_observer(block_clicks)
-        .add_systems(PreUpdate, run_pointer_script.before(bevy::input::InputSystems));
-        let mut window = Window::default();
-        window.resolution.set(400.0, 300.0);
-        app.world_mut().spawn((window, PrimaryWindow));
-        let size = UVec2::new(400, 300);
-        app.world_mut().spawn((
-            Camera2d,
-            Camera {
-                computed: bevy::camera::ComputedCameraValues {
-                    target_info: Some(bevy::camera::RenderTargetInfo {
-                        physical_size: size,
-                        scale_factor: 1.0,
-                    }),
-                    ..default()
-                },
-                viewport: Some(bevy::camera::Viewport {
-                    physical_size: size,
-                    ..default()
-                }),
-                ..default()
-            },
-        ));
-        app
-    }
 
     /// Who a press reached.
     #[derive(Component)]
@@ -2463,7 +2474,7 @@ mod tests {
     /// window; then a press at `at`: the `Clicked` nodes it reached,
     /// sorted, and whether a scroll bar's thumb took it.
     fn press(at: Vec2, ui: impl FnOnce(&mut Commands, &Look, Entity)) -> (Vec<&'static str>, bool) {
-        let mut app = pointer_app();
+        let mut app = pointer_test_app();
         let fonts = UiFonts::default();
         let look = Look {
             ui: None,

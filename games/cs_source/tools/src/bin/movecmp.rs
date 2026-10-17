@@ -290,6 +290,22 @@ fn scenarios() -> Vec<Scenario> {
         yaw: 250.0,
         inputs: wall,
     });
+    // cs_militia's back porch: walking into the sloped concrete wall whose
+    // top is a displacement's base (a playtest walked through it while
+    // brushes carrying displacements were dropped), straight and along
+    // the view's right.
+    for (name, yaw) in [("militia_porch_wall", 270.0), ("militia_porch_wall_right", 245.27)] {
+        let mut inputs = vec![Input::idle(yaw); 20];
+        inputs.extend(vec![Input::idle(yaw).forward(); 60]);
+        inputs.extend(vec![Input::idle(yaw); 20]);
+        all.push(Scenario {
+            name: name.to_string(),
+            map: "cs_militia".to_string(),
+            start: Vec3::new(-69.83, 256.39, -15.97),
+            yaw,
+            inputs,
+        });
+    }
     all
 }
 

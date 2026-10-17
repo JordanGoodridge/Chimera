@@ -653,6 +653,11 @@ fn spawn_world_meshes(
             }
             continue;
         }
+        // Window edge pieces need the world shader's mask (a map without
+        // lightmaps draws its broken windows without them).
+        if m.pane_mask.is_some() {
+            continue;
+        }
         let material = build_material(m, textures, view, data.look.light_scale);
         let material = standard_shared
             .entry((m.skybox, own(m), format!("{material:?}")))
@@ -761,6 +766,7 @@ fn lit_world_material(
             selfillum: if m.selfillum.is_some() { 1.0 } else { 0.0 },
             unlit: if m.unlit { 1.0 } else { 0.0 },
             unlit_tint: m.tint.map_or(Vec4::ONE, |t| Vec3::from_array(t).extend(1.0)),
+            pane_mask: if m.pane_mask.is_some() { 1.0 } else { 0.0 },
             selfillum_tint: m.selfillum.map_or(Vec4::ONE, |s| Vec3::from_array(s.tint).extend(1.0)),
             fog_color: fog_color(material_fog(data, view, m.skybox).as_ref()),
             fog_range: fog_range(material_fog(data, view, m.skybox).as_ref()),
@@ -819,7 +825,10 @@ fn lit_world_material(
             .normal_map
             .filter(|_| blended && bumped)
             .map(|i| textures[i].clone()),
-        blend_mask: blend.mask.filter(|_| blended).map(|i| textures[i].clone()),
+        blend_mask: match m.pane_mask {
+            Some(i) => Some(textures[i].clone()),
+            None => blend.mask.filter(|_| blended).map(|i| textures[i].clone()),
+        },
         detail: m.detail.map(|d| textures[d.texture].clone()),
         alpha_mode: m.alpha.shader_alpha_mode(),
         double_sided: m.double_sided,
@@ -1541,11 +1550,17 @@ fn spawn_baked_prop_meshes(
     let mut spawned_materials: Vec<Handle<PropMaterial>> = Vec::new();
     for (mesh_index, (m, material)) in model.meshes.iter().zip(mats).enumerate() {
         let mut material = material[prop.skybox as usize].clone();
-        // `env_cubemap`: the cubemap baked nearest to the prop.
-        if let (Some(env), Some(prop_materials)) = (m.envmap.filter(|e| e.cubemap.is_none()), prop_materials.as_mut())
-            && let Some(&(_, cube)) = data.cubemap_samples.iter().min_by(|a, b| {
-                a.0.distance(prop.translation)
-                    .total_cmp(&b.0.distance(prop.translation))
+        // `$envmap`: the cubemap it names, or for `env_cubemap` the one
+        // baked nearest to the prop.
+        if let (Some(env), Some(prop_materials)) = (m.envmap, prop_materials.as_mut())
+            && let Some(cube) = env.cubemap.or_else(|| {
+                data.cubemap_samples
+                    .iter()
+                    .min_by(|a, b| {
+                        a.0.distance(prop.translation)
+                            .total_cmp(&b.0.distance(prop.translation))
+                    })
+                    .map(|s| s.1)
             })
             && let Some(cube_handle) = drawn.cubemaps.get(cube)
         {
@@ -1555,7 +1570,7 @@ fn spawn_baked_prop_meshes(
                 .entry(key)
                 .or_insert_with(|| {
                     let mut variant = prop_materials.get(&material).cloned().expect("prop material");
-                    set_prop_envmap(&mut variant, &env, cube_handle.clone(), &drawn.textures);
+                    set_prop_envmap(&mut variant, &env, cube_handle.clone(), &drawn.textures, m.normal_map);
                     prop_materials.add(variant)
                 })
                 .clone();

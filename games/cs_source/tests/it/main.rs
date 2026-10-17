@@ -101,6 +101,7 @@ mod heavy {
     mod map_hdr;
     mod map_ladders;
     mod map_loose;
+    mod map_militia_walls;
     mod map_net_changelevel;
     mod map_net_weapons;
     mod map_objectives;

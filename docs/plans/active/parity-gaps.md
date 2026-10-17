@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 7 | 8 | 3 | 4 |
 | HUD | 14 | 4 | 1 | 5 |
 | Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 6 | 17 | 2 | 2 |
+| Rendering, lighting, materials | 8 | 17 | 2 | 4 |
 | Maps and entities | 8 | 8 | 1 | 3 |
 | Rules and economy | 7 | 4 | 0 | 3 |
 | Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **65** | **63** | **21** | **30** |
+| **Total** | **67** | **63** | **21** | **32** |
 
 "Fixed now" counts rows that moved from missing or differs to have in
 the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
@@ -238,7 +238,9 @@ common console commands, against mashup's.
 | Player animation (feet slide, no death layer) | differs | M | M | tech-debt "Player animation": SDK template speeds; animation.md's open question needs a demo, capture C14 |
 | Ragdoll push per weapon | differs | M | S | tech-debt "Ragdolls": the ammo impulses aren't public (ragdolls.md Q2, weapons.md Q8); capture C13 |
 | Muzzle flash look, view model lighting | differs | M | S | tech-debt "View models"; view_models.md Q5, Q7; capture C15 |
-| Prop light probes | differs | L | M | tech-debt: the engine's weighting isn't public (needs a spec session) |
+| Prop light probes | differs | M | M | tech-debt: the engine's weighting isn't public (needs a spec session); props without `.vhv` (all of cs_militia's) take the sun from one point, whole or not at all: militia's crates by the shed (x 1344-1353) much darker than the next ones out, as the reading predicts (2026-10-17); whether CS:S does that or lights them per vertex at load is shaders.md Q11, capture C28 |
+| Model reflections masked by the normal map's alpha (`$normalmapalphaenvmapmask`) | have (fixed) | M | S | 2026-10-17: the mask was dropped on props, so those materials were mirrors: militia's ammo can, cable spool, pallet, car battery, APC; the same props on nuke, inferno, train, assault, port, prodigy, compound, havana, piranesi, aztec (vents, pallets, spools, `metalwall001a`, `pi_apc`, `pi_boat`); the hands now reflect through it too. refcmp: nuke 0.0242 -> 0.0241, aztec, dust2 unchanged, office within capture noise (`cam0`'s sky) |
+| Props whose material names its cubemap | have (fixed) | L | S | 2026-10-17: drew no reflection; now that cubemap (no stock map's props do this) |
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C20 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
 | Static props lit in the 3D skybox (nuke's cooling towers teal, CS:S light grey) | differs | M | M | seen once the sky fog is off; their light probe (no `.vhv`); capture C10 |
@@ -251,8 +253,8 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Entity I/O, triggers, movers, breakables, doors, fire | have | | | specs/source |
-| Breakable glass decals, brush propdata templates | have (new) | L | S | glass takes "GlassBreak", bulletproof glass "BulletProof" and never breaks; a brush's `propdata` template sets its health, multipliers and gibs (our reading of "fills in", tech-debt "Breakables") |
-| Breakables' damage types, broken-window drawing | differs | L | M | backlog 7 "Breakables, remaining": spec open questions 1, 2, 4, 5 and 8 need the probe server or captures |
+| Breakable glass decals, brush propdata templates, bullet trace effects | have (new) | L | S | glass takes "GlassBreak", bulletproof glass "BulletProof" and never breaks; a brush's `propdata` template sets its health, multipliers and gibs (our reading of "fills in", tech-debt "Breakables"); half the bullets on a computer brush spark (electric sparks, "Breakable.Computer"), half on bulletproof glass ricochet (`Bounce.Shrapnel`; no spec gives the ricochet a look) |
+| Breakables' damage types, broken-window drawing | differs | L | M | backlog 7 "Breakables, remaining": spec open questions 1, 2, 4, 5 and 8 need the probe server or captures; the jagged edge pieces are the edge textures read as masks over the crack material (were drawn plain white; which edge goes where is ours) |
 | Soundscapes | have | | | |
 | Stock objectives (bomb, hostages) | have | | | hypotheses: tech-debt "The bomb and hostages" |
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |
@@ -261,6 +263,7 @@ common console commands, against mashup's.
 | Physics shadow controller | differs | L | M | tech-debt |
 | Prop damage left-outs | differs | L | S | tech-debt |
 | Tool-textured volumes drawn | have (fixed) | M | S | cs_militia's two `func_footstep_control` volumes (one by the Deck ladder) and its skybox `env_embers` drew as yellow `tools/toolstrigger` walls: stock maps compile trigger brushes without the trigger surface flag, so only brush entity classes CS:S draws (`bsp::draws_brushes`) draw now; also env_embers on 2 community maps, env_bubbles on 1 |
+| Brushes under displacements solid | have (fixed) | H | S | a playtest walked through cs_militia's concrete wall by the back porch: the world brush a displacement is built from was dropped from collision (matched by plane and base corners), but CS:S keeps it solid (probe traces start solid inside all 58 such solid brushes on cs_militia, de_aztec and de_dust2; the bullet mask can't test player clips); now every player-solid brush collides by its contents (`bsp::brush_kept`). Back: 13 on cs_militia (7 of them player clips), 43 dust2, 11 de_aztec and de_prodigy, 8 de_piranesi, 7 cs_compound, 6 de_cbble, 5 cs_office, 3 de_inferno, 2 cs_havana, 1 de_nuke. movecmp `militia_porch_wall` matches CS:S exactly |
 | func_footstep_control's footstep sounds | have (fixed) | L | S | feet inside play the `destination` surface's steps for the `source` surface's (public FGD; `sound::step_remaps`): cs_militia's two turn ladder steps into concrete and wood_plank; feet-point test, kept step volume and timing unmeasured (tech-debt) |
 | func_dustcloud | have (fixed) | L | S | round 2: drawn as dust with world-sized motes (sprites_dust.md 7), inside their brushes; de_train's two after the bomb; frozen dust volumes too |
 | Steam heat-wave jets (`Type` 1) | missing | L | S | tech-debt; no stock map has one (every stock env_steam is Type 0) |
@@ -658,3 +661,11 @@ says what decides the open point.
   map's data agrees (docs/performance.md, "Checks"); the captures say
   whether CS:S hides them too (sky there) or draws them.
   Decides every trigger in `games/cs_source/data/hints.toml` (all ours).
+- **C28 Static props without baked light (cs_militia).** In CS:S at
+  `mat_hdr_level 0`: `setpos 1536.72 928.09 -65.93; setang 9.81 227.75 0`
+  (the crates on and beside the truck by the shed), once as is and once
+  with `r_drawmodellightorigin 1`. Whether the crates by the shed are as
+  dark as ours (lit from one point in the shed's shadow) or shaded per
+  vertex (their tops in the sun) decides shaders.md Q11 for maps without
+  `.vhv`; the truck (its lighting point inside its cargo's nodraw
+  collision block, dark here) is in the same view.

@@ -30,8 +30,7 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): View models: near plane 1 cm (not the
 //! spec's 1 unit) and their own depth buffer (not a squeezed depth range); no
-//! light smoothing or ambient boost; the hands get no reflections (mask in the
-//! normal map); muzzle flash look and light falloff, and the shell direction,
+//! light smoothing or ambient boost; muzzle flash look and light falloff, and the shell direction,
 //! are our choices from the spec's data (plans/active/view-models.md open
 //! questions). Why it's OK for now: Each needs a CS:S comparison to settle.
 
@@ -72,6 +71,9 @@ pub struct ViewModelPart {
     mesh: Handle<Mesh>,
     materials: [Handle<PropMaterial>; 2],
     envmap: Option<MapEnvmap>,
+    /// Its `$bumpmap` (`MapData::textures`): the reflection mask under
+    /// `$normalmapalphaenvmapmask` (the hands').
+    normal_map: Option<usize>,
 }
 
 pub struct ViewModelAsset {
@@ -132,12 +134,8 @@ pub fn build_assets(
                     ViewModelPart {
                         mesh: meshes.add(mesh),
                         materials: [materials.add(material), materials.add(mirrored)],
-                        // `PropMaterial` has no normal map, so a mask in its
-                        // alpha (the hands') can't apply: no reflection
-                        // rather than an unmasked one.
-                        envmap: m
-                            .envmap
-                            .filter(|e| view == MapDebugView::Normal && e.mask != crate::map::EnvmapMask::NormalAlpha),
+                        envmap: m.envmap.filter(|_| view == MapDebugView::Normal),
+                        normal_map: m.normal_map,
                     }
                 })
                 .collect();
@@ -393,7 +391,7 @@ pub fn draw_view_models(
                         .cubemap
                         .and_then(|c| assets.cubemap_images.get(c).cloned())
                         .unwrap_or_else(|| assets.cubemaps[i].1.clone());
-                    crate::render::set_prop_envmap(&mut material, &env, cube, &assets.textures);
+                    crate::render::set_prop_envmap(&mut material, &env, cube, &assets.textures, part.normal_map);
                 }
             }
             body.cubemap = nearest;

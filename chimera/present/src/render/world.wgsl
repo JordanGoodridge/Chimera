@@ -82,6 +82,9 @@ struct WorldParams {
     selfillum_tint: vec4<f32>,
     unlit: f32,
     unlit_tint: vec4<f32>,
+    // A window's edge piece: alpha x the jagged mask's at the vertex
+    // colour's red and green.
+    pane_mask: f32,
 }
 
 // A texture transform (map::MapUvTransform): rows . (u, v, 1), plus the
@@ -303,6 +306,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // WorldTwoTextureBlend lights with one bilinear lightmap tap times a
     // fixed 2.0, not 2^2.2; its bump uses the detail coordinates and
     // unsquared weights.
+#ifdef VERTEX_COLORS
+    if params.pane_mask > 0.5 {
+        // Clamped half a texel in: the mask's solid edge doesn't wrap.
+        let m = clamp(in.color.xy, vec2<f32>(0.004), vec2<f32>(0.996));
+        albedo.a = albedo.a * textureSample(blend_mask, normal_sampler, m).a;
+    }
+#endif
     if params.alpha_cutoff > 0.0 && albedo.a < params.alpha_cutoff {
         discard;
     }

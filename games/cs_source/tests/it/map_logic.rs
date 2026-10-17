@@ -352,6 +352,72 @@ fn round_restart_puts_the_map_back() {
     assert!(exists(&sim, 1), "the player is out of the trigger: still armed");
 }
 
+/// Bullets on a computer brush and on bulletproof glass in the running
+/// simulation (specs/source/breakables.md "Damage"): about half spark (the
+/// electric sparks as a `SparkBurst`, with "Breakable.Computer") and about
+/// half ricochet (`Bounce.Shrapnel`), at the hit. The logic's random
+/// stream is seeded, so the counts are fixed.
+#[test]
+fn computers_spark_and_bulletproof_glass_ricochets_about_half_the_time() {
+    use crate::stack::map::{PlaySound, SparkBurst};
+    let entities = vec![
+        // 0: a computer, undamageable (health 0) so it lasts.
+        entity(
+            &[("classname", "func_breakable"), ("material", "6"), ("origin", "200 0 32")],
+            vec![hull(Vec3::new(-8.0, -8.0, -16.0), Vec3::new(8.0, 8.0, 16.0))],
+            true,
+        ),
+        // 1: bulletproof glass with plenty of health.
+        entity(
+            &[("classname", "func_breakable"), ("material", "7"), ("health", "100000"), ("origin", "0 200 64")],
+            vec![hull(Vec3::new(-32.0, -1.0, -32.0), Vec3::new(32.0, 1.0, 32.0))],
+            true,
+        ),
+    ];
+    let (mut sim, _) = sim(entities, Vec3::new(-300.0, -300.0, 0.0), 0.0);
+    let targets = [(node(&mut sim, 0), Vec3::new(192.0, 0.0, 32.0)), (node(&mut sim, 1), Vec3::new(0.0, 199.0, 64.0))];
+    let shots = 60;
+    let mut counts = [(0, 0, 0); 2];
+    for (i, (target, at)) in targets.into_iter().enumerate() {
+        let mut sounds = sim.app.world().resource::<Messages<PlaySound>>().get_cursor_current();
+        let mut sparks = sim.app.world().resource::<Messages<SparkBurst>>().get_cursor_current();
+        for _ in 0..shots {
+            sim.app.world_mut().write_message(Damage {
+                force: Vec3::ZERO,
+                target,
+                attacker: None,
+                amount: 0.3,
+                point: to_engine(at),
+                dir: Vec3::NEG_Z,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Bullet,
+                weapon: None,
+            });
+            sim.ticks(1);
+            let world = sim.app.world();
+            for s in sparks.read(world.resource::<Messages<SparkBurst>>()) {
+                assert!(s.at.distance(to_engine(at)) < 0.01, "at the hit");
+                counts[i].0 += 1;
+            }
+            for s in sounds.read(world.resource::<Messages<PlaySound>>()) {
+                let near = s.at.is_some_and(|p| p.distance(to_engine(at)) < 0.01);
+                match s.entry.as_str() {
+                    "Breakable.Computer" if near => counts[i].1 += 1,
+                    "Bounce.Shrapnel" if near => counts[i].2 += 1,
+                    _ => {}
+                }
+            }
+        }
+    }
+    eprintln!("computer (sparks, sounds, ricochets): {:?}; glass: {:?}", counts[0], counts[1]);
+    let [(sparks, computer, ricochets), glass] = counts;
+    assert!((18..=42).contains(&sparks), "{sparks} of {shots}");
+    assert_eq!(computer, sparks, "the sound with every spark");
+    assert_eq!(ricochets, 0, "computers don't ricochet");
+    assert!((18..=42).contains(&glass.2), "{} of {shots}", glass.2);
+    assert_eq!((glass.0, glass.1), (0, 0), "glass doesn't spark");
+}
+
 /// Every contact pair avian links into an island once: a pair still
 /// waiting to switch its constraints on must not be in one yet, and a
 /// collider of an enabled body must not carry a "body disabled" proxy.

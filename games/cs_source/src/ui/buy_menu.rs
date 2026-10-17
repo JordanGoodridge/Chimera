@@ -758,7 +758,8 @@ fn draw_vgui(
                 },
                 BackgroundColor(painter.color("Frame.BgColor", [0, 0, 0, 196])),
                 // Modal: a click anywhere on it stops here (the game
-                // menu, under it, closes it when it opens).
+                // menu opens over it, `game_menu::MENU_Z`, and takes the
+                // clicks).
                 bevy::ui::FocusPolicy::Block,
                 GlobalZIndex(50),
             ))

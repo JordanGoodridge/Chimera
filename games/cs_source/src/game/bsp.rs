@@ -6,9 +6,11 @@
 //! the undisplaced grid (`face_triangles_blend`), not by projecting the
 //! sculpted surface (specs/cs_source/shaders.md open question 20).
 //!
-//! Known shortcuts (docs/tech-debt.md): Brushes carrying displacements are
-//! found by matching plane and centre (compiled maps don't record it).
-//! Non-mover brush entities (other than breakables) are static where they spawn
+//! World collision is every player-solid brush by its contents (the brush
+//! a displacement was built from included, as in CS:S: `brush_kept`), plus
+//! the displacement surfaces as triangles.
+//!
+//! Known shortcuts (docs/tech-debt.md): Non-mover brush entities (other than breakables) are static where they spawn
 //! and ignore render modes other than 10. Overlays and infodecals on movers go
 //! with them (infodecals whose probe hits the mover's bounding box, overlays
 //! listing its faces); props parented to movers ride them but aren't solid and
@@ -2063,39 +2065,18 @@ fn brush_volumes_source(
     transform: Option<(Quat, Vec3)>,
     triggers: bool,
 ) -> Vec<(usize, Vec<Vec3>, Vec<(Vec3, f32)>)> {
-    const EPS: f32 = 0.01;
-    // Plane index (either side) -> corners of displacement base faces on it.
-    let mut disp_bases: std::collections::HashMap<u16, Vec<Vec<Vec3>>> = Default::default();
-    let Some(world) = bsp.models().next() else {
-        return Vec::new();
-    };
-    for face in world.faces() {
-        if face.displacement().is_none() {
-            continue;
-        }
-        let corners: Vec<Vec3> = face
-            .vertices()
-            .map(|v| Vec3::new(v.position.x, v.position.y, v.position.z))
-            .collect();
-        disp_bases.entry(face.plane_num & !1).or_default().push(corners);
-    }
     let mut out = Vec::new();
     for index in brushes {
         let brush = &bsp.brushes[index];
-        if !triggers && !brush.flags.intersects(mask) {
-            continue;
-        }
         let first = brush.brush_side as usize;
         let sides = &bsp.brush_sides[first..first + brush.num_brush_sides as usize];
-        // Trigger volumes (buy zones, soundscapes) can carry solid contents
-        // and appear in the world tree, but players never collide with them.
-        let trigger = sides.iter().any(|side| {
+        let trigger_textured = sides.iter().any(|side| {
             side.texture_info >= 0
                 && bsp.texture_info(side.texture_info as usize).is_some_and(|t| {
                     t.flags.intersects(TextureFlags::TRIGGER) || t.name().eq_ignore_ascii_case("tools/toolstrigger")
                 })
         });
-        if trigger && !triggers {
+        if !brush_kept(brush.flags, mask, trigger_textured, triggers) {
             continue;
         }
         let planes: Vec<(Vec3, f32)> = sides
@@ -2112,48 +2093,97 @@ fn brush_volumes_source(
                 }
             })
             .collect();
-        // A brush carrying a displacement collides as the displacement
-        // surface (added as triangles), not as its original volume. Compiled
-        // maps don't record which brush that was (the brush side field is
-        // always 0), so match a side's plane and the displacement's base
-        // face, all of whose corners lie on that side. (Only its centre is
-        // not enough: dust2's walls stand on floor displacements that share
-        // their bottom plane and reach under them.)
-        let carries_displacement = transform.is_none()
-            && sides.iter().any(|side| {
-                disp_bases.get(&(side.plane & !1)).is_some_and(|faces| {
-                    faces
-                        .iter()
-                        .any(|corners| corners.iter().all(|c| planes.iter().all(|(n, d)| n.dot(*c) <= d + 1.0)))
-                })
-            });
-        if carries_displacement {
-            continue;
-        }
-        let mut points: Vec<Vec3> = Vec::new();
-        for i in 0..planes.len() {
-            for j in i + 1..planes.len() {
-                for k in j + 1..planes.len() {
-                    let (n1, d1) = planes[i];
-                    let (n2, d2) = planes[j];
-                    let (n3, d3) = planes[k];
-                    let denom = n1.dot(n2.cross(n3));
-                    if denom.abs() < 1e-6 {
-                        continue;
-                    }
-                    let p = (n2.cross(n3) * d1 + n3.cross(n1) * d2 + n1.cross(n2) * d3) / denom;
-                    let inside = planes.iter().all(|(n, d)| n.dot(p) <= d + EPS);
-                    if inside && !points.iter().any(|q| q.distance_squared(p) < EPS) {
-                        points.push(p);
-                    }
-                }
-            }
-        }
+        let points = hull_corners(&planes);
         if points.len() >= 4 {
             out.push((index, points, planes));
         }
     }
     out
+}
+
+/// Whether a brush with these contents is one of `mask`'s volumes.
+/// Trigger volumes (buy zones, soundscapes) can carry solid contents and
+/// appear in the world tree, but players never collide with them: a brush
+/// with a trigger-textured side counts only when `triggers` asks for
+/// trigger volumes (then whatever its contents).
+///
+/// A brush a displacement was made from is an ordinary brush here: CS:S
+/// keeps its whole volume solid (its displaced side compiles as
+/// `tools/toolsnodraw`; probe traces start solid inside every such brush
+/// on cs_militia, de_aztec and de_dust2, and cross cs_militia's concrete
+/// wall under its displacement top), the displacement surface colliding
+/// besides it. Contents decide, not displacements: the 20 m block over
+/// dust2's CT side that once made us drop these brushes is a hint brush
+/// (no contents).
+fn brush_kept(contents: BrushFlags, mask: BrushFlags, trigger_textured: bool, triggers: bool) -> bool {
+    triggers || (contents.intersects(mask) && !trigger_textured)
+}
+
+/// A convex brush's corners: where three of its planes (outward normal,
+/// distance) meet and no other plane cuts the point off.
+fn hull_corners(planes: &[(Vec3, f32)]) -> Vec<Vec3> {
+    const EPS: f32 = 0.01;
+    let mut points: Vec<Vec3> = Vec::new();
+    for i in 0..planes.len() {
+        for j in i + 1..planes.len() {
+            for k in j + 1..planes.len() {
+                let (n1, d1) = planes[i];
+                let (n2, d2) = planes[j];
+                let (n3, d3) = planes[k];
+                let denom = n1.dot(n2.cross(n3));
+                if denom.abs() < 1e-6 {
+                    continue;
+                }
+                let p = (n2.cross(n3) * d1 + n3.cross(n1) * d2 + n1.cross(n2) * d3) / denom;
+                let inside = planes.iter().all(|(n, d)| n.dot(p) <= d + EPS);
+                if inside && !points.iter().any(|q| q.distance_squared(p) < EPS) {
+                    points.push(p);
+                }
+            }
+        }
+    }
+    points
+}
+
+#[cfg(test)]
+mod brush_tests {
+    use super::*;
+
+    /// The world brush a displacement was built from stays solid, as in
+    /// CS:S: cs_militia's concrete wall by the back porch (brush 684, its
+    /// top the base of a dirt displacement) was walked through when such
+    /// brushes were dropped.
+    #[test]
+    fn displacement_brushes_stay_solid() {
+        let players = PLAYER_SOLID.union(BrushFlags::LADDER);
+        assert!(brush_kept(BrushFlags::SOLID, players, false, false));
+        // Player clips under displacements (cs_militia's, de_aztec's) too.
+        let clip = BrushFlags::PLAYERCLIP.union(BrushFlags::MONSTERCLIP).union(BrushFlags::DETAIL);
+        assert!(brush_kept(clip, players, false, false));
+        // What isn't solid stays out: hint brushes (no contents) and
+        // trigger-textured volumes, unless trigger volumes are asked for.
+        assert!(!brush_kept(BrushFlags::empty(), players, false, false));
+        assert!(!brush_kept(BrushFlags::SOLID, players, true, false));
+        assert!(brush_kept(BrushFlags::empty(), players, true, true));
+
+        // cs_militia's brush 684: a box with a sloped concrete face, its
+        // top (z 80) the displacement's base face.
+        let planes = [
+            (Vec3::NEG_X, 192.0),
+            (Vec3::X, 136.0),
+            (Vec3::NEG_Y, -80.0),
+            (Vec3::Y, 216.0),
+            (Vec3::NEG_Z, 16.0),
+            (Vec3::Z, 80.0),
+            (Vec3::new(0.0, 0.923_077, 0.384_615), 193.230_77),
+        ];
+        let corners = hull_corners(&planes);
+        assert_eq!(corners.len(), 8, "{corners:?}");
+        let has = |p: Vec3| corners.iter().any(|c| c.distance(p) < 0.1);
+        assert!(has(Vec3::new(-192.0, 216.0, -16.0)), "{corners:?}");
+        assert!(has(Vec3::new(136.0, 176.0, 80.0)), "{corners:?}");
+        assert!(has(Vec3::new(136.0, 80.0, 80.0)), "{corners:?}");
+    }
 }
 
 fn parse_vector(s: &str) -> Option<vbsp::Vector> {
