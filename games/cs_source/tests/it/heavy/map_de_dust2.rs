@@ -209,7 +209,7 @@ fn most_surfaces_get_textures() {
 #[test]
 fn collision_comes_from_world_brushes() {
     let Some(map) = dust2() else { return };
-    // ~2,100 player-solid world brushes, minus those carrying displacements.
+    // ~2,100 player-solid world brushes (those under displacements included).
     assert!(
         (1900..2100).contains(&map.collision_hulls.len()),
         "{} hulls",
@@ -2016,8 +2016,8 @@ fn bodies_animate_with_movement() {
 }
 
 /// The walls below T spawn by top of mid stand on floor displacements that
-/// share their bottom plane; they must still be solid (a displacement's own
-/// brush collides only as its surface).
+/// share their bottom plane; they must be solid (as every player-solid
+/// brush is, the displacements' own ones included).
 #[test]
 fn walls_on_displacements_are_solid() {
     use crate::stack::games::cs_source::movement::{self, SourceMovementPlugin};

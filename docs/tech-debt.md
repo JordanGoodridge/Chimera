@@ -48,7 +48,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Mouse capture fights the inspector (`mashup_inspector`, F11, releases it; click recaptures). OK for now: Debug-only.
 - tests: `no_game_assets_tracked` blocks all .wav/.ogg/.mp3, including our own future sounds. OK for now: Revisit when we have original audio.
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
-- map: Displacement brushes matched by plane and centre; non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
+- map: Non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
 - logic: Logic spec choices where the original is unmeasured (tick rounding, trigger timing, use traces) (`source/logic/src/logic/world.rs`)
 - logic: Breakables: damage factors and window behaviour by the spec's open-question guesses (`source/logic/src/logic/breakables.rs`)
 - logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking (`source/logic/src/logic/props.rs`)
