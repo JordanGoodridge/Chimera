@@ -5,18 +5,21 @@
 //! breakable that explodes when it breaks breaks the one next to it. Model
 //! doors (specs/source/doors_buttons.md, prop_door_rotating "Blocked"): a
 //! crate pinned against a wall stops a closing door, unless it is
-//! forceclosed.
+//! forceclosed. Props and players (specs/source/prop_damage.md 6): a
+//! prop_physics crate landing on a player hurts it as two contacts and is
+//! hurt by it; a multiplayer one passes through.
 
-use avian3d::prelude::Position;
-use bevy::prelude::*;
+use avian3d::prelude::{LinearVelocity, Position};
+use bevy::{ecs::message::Messages, prelude::*};
 use crate::stack::{
+    core::{Damage, DamageKind},
     games::cs_source::{
         self,
         movement::{self, SourceMovementPlugin, to_engine, to_source},
         weapons::CsWeaponsPlugin,
     },
     harness::{CsSim, Sim},
-    logic::{Logic, Value, classes::Class},
+    logic::{Logic, Value, Who, classes::Class},
     map::{
         MapBrush, MapCollision, MapConvex, MapData, MapEntity, MapHull, MapModel, MapPhysics, MapPlugin, MapProp,
         PropEntity, PropSolid, PushAway,
@@ -75,11 +78,12 @@ fn solid(data: &mut MapData, lo: Vec3, hi: Vec3) {
 
 /// A 20 kg, 32-unit physics crate (map entity `index`) at `at`.
 fn add_crate(data: &mut MapData, index: usize, at: Vec3) {
-    add_prop(data, index, at, PushAway::Collide, false);
+    add_prop(data, index, at, PushAway::Collide, false, 20.0);
 }
 
-/// `add_crate` with how players meet it and whether it starts asleep.
-fn add_prop(data: &mut MapData, index: usize, at: Vec3, push: PushAway, asleep: bool) {
+/// `add_crate` with how players meet it, whether it starts asleep and its
+/// mass (kg).
+fn add_prop(data: &mut MapData, index: usize, at: Vec3, push: PushAway, asleep: bool, mass: f32) {
     let half = 16.0 * SCALE;
     let (lo, hi) = (Vec3::splat(-half), Vec3::splat(half));
     let corners = (0..8)
@@ -89,7 +93,7 @@ fn add_prop(data: &mut MapData, index: usize, at: Vec3, push: PushAway, asleep: 
         bounds: (lo, hi),
         collision: Some(MapCollision {
             pieces: vec![MapConvex { points: corners, planes: Vec::new() }],
-            mass: 20.0,
+            mass,
             ..default()
         }),
         ..default()
@@ -106,7 +110,7 @@ fn add_prop(data: &mut MapData, index: usize, at: Vec3, push: PushAway, asleep: 
         vertex_light: None,
         casts_shadow: false,
         physics: Some(MapPhysics {
-            mass: 20.0,
+            mass,
             friction: 0.8,
             elasticity: 0.0,
             damping: 0.0,
@@ -339,7 +343,7 @@ fn walking_into_a_sleeping_prop_wakes_it() {
     );
     let counter = entity(&[("classname", "math_counter"), ("targetname", "c")], Vec::new(), false);
     let mut data = map(vec![can, counter]);
-    add_prop(&mut data, 0, Vec3::new(100.0, 0.0, 17.0), PushAway::Solid, true);
+    add_prop(&mut data, 0, Vec3::new(100.0, 0.0, 17.0), PushAway::Solid, true, 20.0);
     let mut sim = sim(data);
     let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
     // Source yaw 0: toward +X.
@@ -358,6 +362,96 @@ fn walking_into_a_sleeping_prop_wakes_it() {
     sim.seconds(1.0);
     assert_eq!(count(&sim), Some(1.0), "woken once");
     assert!(crate_at(&mut sim).x > 100.5, "shoved away: {}", crate_at(&mut sim));
+}
+
+/// A 30 kg crate (`class`, health 100) thrown straight down at `speed`
+/// from 110 units above a standing player's feet, as the probe did: the
+/// crush damage each hit dealt the player (with its attacker), the player,
+/// the crate's node, and the crate's health and last attacker after.
+type Drop = (Vec<(i32, Option<Entity>)>, Entity, Entity, i32, Option<Who>);
+
+fn drop_on_player(class: &str, push: PushAway, speed: f32) -> Drop {
+    use crate::stack::map::entities::{PROP_HEALTH_KEY, PROP_MASS_KEY, PROP_PIECES_KEY};
+    let at = Vec3::new(0.0, 0.0, 110.0);
+    let box_ = entity(
+        &[
+            ("classname", class),
+            ("origin", "0 0 110"),
+            (PROP_HEALTH_KEY, "100"),
+            (PROP_PIECES_KEY, "1"),
+            (PROP_MASS_KEY, "30"),
+        ],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![box_]);
+    add_prop(&mut data, 0, at, push, false, 30.0);
+    let mut sim = sim(data);
+    let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
+    sim.ticks(1);
+    let node = {
+        let world = sim.app.world_mut();
+        world.query::<(Entity, &PropEntity)>().iter(world).next().unwrap().0
+    };
+    {
+        let world = sim.app.world_mut();
+        let mut e = world.entity_mut(node);
+        e.get_mut::<Position>().unwrap().0 = to_engine(at);
+        e.get_mut::<LinearVelocity>().unwrap().0 = to_engine(Vec3::new(0.0, 0.0, -speed));
+    }
+    let mut cursor = sim.app.world().resource::<Messages<Damage>>().get_cursor_current();
+    let mut hits = Vec::new();
+    for _ in 0..(1.5 / cs_source::TICK_INTERVAL) as usize {
+        sim.ticks(1);
+        let world = sim.app.world();
+        for d in cursor.read(world.resource::<Messages<Damage>>()) {
+            if d.target == p {
+                assert_eq!(d.kind, DamageKind::Crush);
+                hits.push(((d.amount * 100.0).round() as i32, d.attacker));
+            }
+        }
+    }
+    let logic = sim.app.world().resource::<Logic>();
+    let id = logic
+        .world
+        .ids()
+        .into_iter()
+        .find(|id| logic.world.get(*id).unwrap().map_index == Some(0))
+        .unwrap();
+    let Class::Prop(prop) = &logic.world.get(id).unwrap().class else {
+        panic!("not a prop")
+    };
+    (hits, p, node, prop.health, prop.last_attacker)
+}
+
+/// A prop_physics crate landing on a player hurts it as two contacts
+/// (crush, attacker = the crate), and the player's contact hurts the
+/// crate (attacker = the player): CS:S, measured 2026-10-17 with a 30 kg
+/// crate at 544, 827 and 1219 in/s: 5 + 5, 5 + 10 and 10 + 20, and the
+/// crate lost 5 at 1219 (specs/source/prop_damage.md 6, Q6 and Q13).
+#[test]
+fn a_crate_landing_on_a_player_hurts_both() {
+    for (speed, want, crate_lost) in [(544.0, [5, 5], 0), (827.0, [5, 10], 0), (1219.0, [10, 20], 5)] {
+        let (hits, p, node, health, last) = drop_on_player("prop_physics", PushAway::Collide, speed);
+        eprintln!("{speed}: player hits {hits:?}, crate health {health}, last attacker {last:?}");
+        let amounts: Vec<i32> = hits.iter().map(|h| h.0).collect();
+        assert_eq!(amounts, want.to_vec(), "{speed} in/s");
+        assert!(hits.iter().all(|h| h.1 == Some(node)), "the crate is the attacker");
+        assert_eq!(100 - health, crate_lost, "the crate at {speed} in/s");
+        if crate_lost > 0 {
+            assert_eq!(last, Some(Who::Player(p)), "the player hurt the crate");
+        }
+    }
+}
+
+/// The same crate as a prop_physics_multiplayer passes through the player
+/// and hurts nobody (CS:S, measured: multiplayer props never hit players).
+#[test]
+fn a_multiplayer_crate_never_hurts_a_player() {
+    for speed in [544.0, 1219.0] {
+        let (hits, ..) = drop_on_player("prop_physics_multiplayer", PushAway::Solid, speed);
+        assert_eq!(hits, Vec::new(), "{speed} in/s");
+    }
 }
 
 /// A model door open back (its leaf along -X) closing on a crate that

@@ -12,7 +12,8 @@
 //! entities, pairs prop nodes (`map::PropEntity`) with logic props (weapon
 //! damage with its push and attacker, physics impacts on props, breakables and
 //! players after the physics step (crush damage by the spec's tables, from each
-//! body's velocity before and after it), a broken prop's sound,
+//! body's velocity before and after it; a prop meeting a player as two
+//! contacts that hurt both, as measured in CS:S), a broken prop's sound,
 //! `core::Explosion` and `map::BreakProp` pieces from where its body is, motion
 //! requests through `map::prop_physics`, `PropAwakened` into OnAwakened,
 //! players' ground prop for pressure, hidden with `map::LogicHidden` and
@@ -2322,6 +2323,13 @@ fn record_velocities(mut pre: ResMut<PreStep>, bodies: Query<(Entity, &RigidBody
 
 /// A player's mass for impacts (kg; Source's player shadow).
 const PLAYER_MASS: f32 = 85.0;
+/// A prop and a player meet as two contacts in CS:S (measured 2026-10-17,
+/// prop_damage.md 6 and Q13: a 30 kg crate landing on a player at 544,
+/// 827 and 1219 in/s hurt it 5 + 5, 5 + 10 and 10 + 20, and lost 5 itself
+/// at 1219); each takes this share of the speed the collision took away.
+/// Ours, fitted to those numbers with avian stopping the crate (it takes
+/// 96% of the speed): any share in 0.33-0.38 then 0.45-0.55 gives them.
+const PLAYER_CONTACT_SHARES: [f32; 2] = [0.35, 0.5];
 /// Damage (health points) that breaks any breakable: an impact on one
 /// that breaks on the first physics impact (flag 512).
 const BREAK_NOW: f32 = 1.0e6;
@@ -2359,7 +2367,9 @@ struct Impacts(Vec<Impact>);
 /// Physics impacts (prop_damage.md 5, 6): a new contact of a logic prop's
 /// body damages it by the speed the collision took away (its table and
 /// energy scale), and a moving prop hitting a player damages the player
-/// (the player table), as crush damage applied next tick.
+/// (the player table, attacker = the prop), as crush damage applied next
+/// tick. A prop and a player meet as two contacts (`PLAYER_CONTACT_SHARES`),
+/// each hurting both: the prop by the player (attacker = the player) too.
 #[allow(clippy::too_many_arguments)]
 fn impacts(
     mut started: MessageReader<CollisionStart>,
@@ -2401,9 +2411,10 @@ fn impacts(
         for (me, other) in [(b1, b2), (b2, b1)] {
             let receiver = if let Some((id, _)) = logic.props.iter().find(|(_, n)| *n == me)
                 && let Some((table, energy, mass)) = logic.world.prop_impact(*id)
-                // Players' contacts are left out (prop_damage.md Q13).
-                && !characters.contains(other)
             {
+                // A player's contact counts too (prop_damage.md Q13; only
+                // prop_physics reach players: multiplayer props never touch
+                // them, `map::prop_physics::ShadowContacts`).
                 Receiver::Prop(table, energy, mass.max(0.1))
             } else if let Some((id, _)) = logic.nodes.iter().find(|(_, n)| *n == me)
                 && let Some((table, energy, mass, instant)) = logic.world.breakable_impact(*id)
@@ -2465,48 +2476,72 @@ fn impacts(
             after: engine_to_entity(i.slowest[k], scale),
             fixed: fixed(e),
         };
-        let theirs = side(1, i.other, mass(i.other));
-        let point = positions.get(i.me).map_or(Vec3::ZERO, |p| p.0);
-        let (amount, force) = match i.receiver {
-            Receiver::Prop(table, energy, m) => {
-                let mine = super::prop_damage::Impactor {
-                    // A frozen prop still counts its own mass.
-                    fixed: false,
-                    ..side(0, i.me, m)
-                };
-                let amount = super::prop_damage::impact_damage(&table, energy, mine, theirs, false);
-                (amount, velocity(i.me) * m)
+        // A player (through its shadow): an 85 kg body whose own speed
+        // change isn't measured.
+        let by_player = characters.contains(i.other);
+        let theirs = if by_player {
+            super::prop_damage::Impactor {
+                mass: PLAYER_MASS,
+                ..default()
             }
-            Receiver::Breakable(table, energy, m, instant) => {
-                // A static brush: its speed never changes.
-                let mine = super::prop_damage::Impactor { mass: m, ..default() };
-                let amount = super::prop_damage::impact_damage(&table, energy, mine, theirs, false);
-                // "Break immediately on physics": any impact is lethal.
-                let amount = if instant { amount.max(BREAK_NOW) } else { amount };
-                (amount, i.slowest[1] * theirs.mass)
-            }
-            Receiver::Player => {
-                let player = super::prop_damage::Impactor {
-                    mass: PLAYER_MASS,
-                    ..default()
-                };
-                let amount =
-                    super::prop_damage::impact_damage(&super::prop_damage::PLAYER_TABLE, 1.0, player, theirs, true);
-                (amount, Vec3::ZERO)
-            }
+        } else {
+            side(1, i.other, mass(i.other))
         };
-        if amount > 0.0 && bodies.contains(i.me) | characters.contains(i.me) {
-            damage.write(Damage {
-                target: i.me,
-                attacker: (!theirs.fixed).then_some(i.other),
-                amount: amount / 100.0,
-                point,
-                dir: i.before[1].normalize_or(Vec3::NEG_Y),
-                hitgroup: Hitgroup::Generic,
-                kind: DamageKind::Crush,
-                weapon: None,
-                force,
-            });
+        // A prop meeting a player counts as two contacts (CS:S, measured).
+        let shares: &[f32] = if by_player || i.receiver == Receiver::Player {
+            &PLAYER_CONTACT_SHARES
+        } else {
+            &[1.0]
+        };
+        let point = positions.get(i.me).map_or(Vec3::ZERO, |p| p.0);
+        for &share in shares {
+            let (amount, force) = match i.receiver {
+                Receiver::Prop(table, energy, m) => {
+                    let mine = super::prop_damage::Impactor {
+                        // A frozen prop still counts its own mass.
+                        fixed: false,
+                        ..side(0, i.me, m)
+                    };
+                    let mine = mine.share(share);
+                    let amount = super::prop_damage::impact_damage(&table, energy, mine, theirs, false);
+                    (amount, velocity(i.me) * m)
+                }
+                Receiver::Breakable(table, energy, m, instant) => {
+                    // A static brush: its speed never changes.
+                    let mine = super::prop_damage::Impactor { mass: m, ..default() };
+                    let amount = super::prop_damage::impact_damage(&table, energy, mine, theirs, false);
+                    // "Break immediately on physics": any impact is lethal.
+                    let amount = if instant { amount.max(BREAK_NOW) } else { amount };
+                    (amount, i.slowest[1] * theirs.mass)
+                }
+                Receiver::Player => {
+                    let player = super::prop_damage::Impactor {
+                        mass: PLAYER_MASS,
+                        ..default()
+                    };
+                    let amount = super::prop_damage::impact_damage(
+                        &super::prop_damage::PLAYER_TABLE,
+                        1.0,
+                        player,
+                        theirs.share(share),
+                        true,
+                    );
+                    (amount, Vec3::ZERO)
+                }
+            };
+            if amount > 0.0 && bodies.contains(i.me) | characters.contains(i.me) {
+                damage.write(Damage {
+                    target: i.me,
+                    attacker: (by_player || !theirs.fixed).then_some(i.other),
+                    amount: amount / 100.0,
+                    point,
+                    dir: i.before[1].normalize_or(Vec3::NEG_Y),
+                    hitgroup: Hitgroup::Generic,
+                    kind: DamageKind::Crush,
+                    weapon: None,
+                    force,
+                });
+            }
         }
     }
 }

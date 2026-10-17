@@ -9,7 +9,7 @@
 //! break sound, the pieces and an explosion (`Effect::PropBreak`).
 //! Client-only props (multiplayer physics mode 3) follow their own simple
 //! rule (section 3). Physics impacts reach props as crush damage the host
-//! computes with `impact_damage`.
+//! computes with `impact_damage`, players' contacts included (spec 6, Q13).
 //!
 //! Covers: specs/source/prop_damage.md: prop_dynamic/prop_physics* health and
 //! multipliers from the model's prop data (`map::entities::PROP_*_KEY`; the
@@ -38,12 +38,15 @@
 //! alive); the `break_prop` game event; the other body's velocity restore after
 //! an impact breaks a prop (5 step 9); stress crush (200 to a squeezed player,
 //! 6; not seen in CS:S under a 500 kg cupboard dropped at up to 1500 in/s);
-//! players' contacts damaging props (Q13: CS:S counts them, with the player
-//! as attacker: a crate landing on a player at 1219 in/s took 5; left out
-//! here); a player struck by a falling prop takes one impact here where CS:S
-//! counts two contacts (measured: a 30 kg crate at 544, 827 and 1219 in/s did
-//! 5+5, 5+10 and 10+20; a 500 kg cupboard at 0-1500 in/s 10+100 up to
-//! 500+500); a client prop's push from bullets
+//! a prop meeting a player counts as two contacts in CS:S (measured: a 30 kg
+//! crate landing on a player at 544, 827 and 1219 in/s did 5+5, 5+10 and
+//! 10+20 to it and lost 5 itself at 1219, with the player as attacker, Q6 and
+//! Q13): the host splits one avian contact into two that take fixed shares
+//! (35% and 50%) of the speed it took away, fitted to those numbers, and the
+//! player's side is an 85 kg body whose speed change isn't measured; a
+//! player's crush damage has no force (spec: its post velocity × 85 kg) and
+//! names the prop, not the player who last touched it, as attacker; a client
+//! prop's push from bullets
 //! and blasts (avian pushes it as any body); pieces are avian bodies on the
 //! ragdoll layer (a box when the piece model has no `.phy`; mass and damping
 //! from the `.phy`, friction 0.8 and elasticity 0.25 ours; chunks keep the
@@ -466,6 +469,18 @@ pub struct Impactor {
     pub after: Vec3,
     /// A static body (the world).
     pub fixed: bool,
+}
+
+impl Impactor {
+    /// One contact of several: it takes `share` of the speed the whole
+    /// collision took away, along the way it was moving.
+    pub fn share(self, share: f32) -> Impactor {
+        let (u, u2) = (self.before.length(), self.after.length());
+        Impactor {
+            after: self.before.normalize_or_zero() * (u - share * (u - u2)),
+            ..self
+        }
+    }
 }
 
 /// The crush damage the receiver `me` (energy scale `scale`) takes from
@@ -1068,5 +1083,9 @@ mod tests {
         // A 4 kg can at 800: capped at 5; 1.5 kg: nothing.
         assert_eq!(hit(4.0, Vec3::X * 800.0), 5.0);
         assert_eq!(hit(1.5, Vec3::X * 800.0), 0.0);
+        // One contact of two: a third of a 600 in/s fall, still falling.
+        let half = body(30.0, Vec3::Z * -600.0, Vec3::ZERO).share(1.0 / 3.0);
+        assert!((half.after - Vec3::Z * -400.0).length() < 1e-3);
+        assert_eq!(impact_damage(&PLAYER_TABLE, 1.0, player, half, true), 5.0);
     }
 }

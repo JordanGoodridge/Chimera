@@ -991,3 +991,9 @@ on change otherwise (here: every hit, value 0 for events-only); firing
 OnTakeDamage before OnBreak; no impact damage, pieces, sounds, explosions,
 mode-3 client props, pressure/touch flags, parented-child removal,
 forcetoenablemotion, OnAwakened or OnMotionEnabled.
+
+Since then (2026-10-17): Q6 and Q13's measurements are implemented in
+`source/logic/src/logic/bridge.rs` (`impacts`): a prop_physics meeting a
+player counts as two contacts hurting both, with speed shares fitted to the
+measured crate (scenario tests in
+`games/cs_source/tests/it/logic_physics.rs`).
