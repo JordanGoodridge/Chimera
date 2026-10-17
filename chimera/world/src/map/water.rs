@@ -274,6 +274,15 @@ pub struct WaterView {
     pub under: Option<usize>,
     /// Its fog colour (gamma), what an under-water view clears to.
     pub clear: Option<[f32; 3]>,
+    /// Under water that refracts (a Water material with refraction on,
+    /// water drawn): the original renders the refraction view (the
+    /// above-water world and the 2D and 3D sky) into the back buffer first
+    /// and the main view, which draws no sky, clears only depth over it
+    /// (spec water.md section 9). So the sky shows through the surface
+    /// from below and wherever the view draws nothing. Without refraction
+    /// (fog-only water, `r_WaterDrawRefraction 0`) the view clears to the
+    /// fog colour and no sky is drawn.
+    pub sky_through_surface: bool,
     /// Its surface height (meters).
     pub plane: Option<f32>,
     /// With the eye above water, the surface the near plane crosses (spec

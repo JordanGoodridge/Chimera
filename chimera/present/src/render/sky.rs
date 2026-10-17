@@ -150,10 +150,14 @@ pub fn follow_sky_camera(
     // the view clears to black (specs/cs_source/shadows_sky.md). Leaves
     // that see no sky show the previous frame in the game; black here.
     let leaf = vis.as_ref().map_or(LeafSky::Sky3d, |v| v.0.at(eye));
-    // Under water the view clears to the water's fog colour and draws no
-    // sky (specs/cs_source/water.md section 9).
+    // Under water the main view draws no sky and clears to the water's fog
+    // colour, unless the water refracts: then the original's refraction
+    // view (above-water world and sky) is already in the back buffer and
+    // the main view clears only depth (specs/cs_source/water.md section
+    // 9), so the sky camera still draws behind it.
     let under = water_view.as_ref().and_then(|w| w.clear);
-    let sky_on = matches!(leaf, LeafSky::Sky2d | LeafSky::Sky3d) && under.is_none();
+    let through = water_view.as_ref().is_some_and(|w| w.sky_through_surface);
+    let sky_on = matches!(leaf, LeafSky::Sky2d | LeafSky::Sky3d) && (under.is_none() || through);
     let layer = if leaf == LeafSky::Sky3d && has_3d_sky.is_some() {
         SKYBOX_LAYER
     } else {
