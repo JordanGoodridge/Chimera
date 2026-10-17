@@ -37,7 +37,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - weapon, games/cs_source: Grenades: release, fuse, HE armour and flash by distance and facing measured (grenades.md); flash through walls and smoke, redraw, pin rules still the template (`chimera/sim/src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`games/cs_source/src/bot/mod.rs`)
 - map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`chimera/present/src/render/view_model.rs`)
-- map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions) (`chimera/world/src/map/ragdoll.rs`)
+- map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions); our joint solver (soft, no gyroscopic torque) and resting thresholds (`chimera/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
 - client: Spectating numbers partly measured (bots in a SourceTV demo: specs/cs_source/spectating.md); the death cam before the freeze cam, chase distance, our "fixed" mode from general knowledge (`chimera/client/src/client/spectate.rs`)

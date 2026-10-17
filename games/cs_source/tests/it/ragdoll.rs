@@ -497,6 +497,10 @@ fn a_joint_held_apart_gets_repaired() {
     }
     let tick = repaired_at.expect("repaired");
     assert!(tick >= 14, "repaired after {tick} ticks, before the error lasted 15");
+    // The repair puts back the light children; the joints pull the rest
+    // (here the spine, pulled up with the head) back together within a few
+    // ticks (they are soft constraints, like the contacts).
+    sim.ticks(5);
     assert!(worst_separation(&mut sim) < 0.03, "{}", worst_separation(&mut sim));
 }
 
