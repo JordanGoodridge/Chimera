@@ -168,9 +168,14 @@ reason, ...) go to `mashup_host.log` with the hostage's origin (Q11);
 hostage's TraceAttack and OnTakeDamage (each hit's damage before the
 multiplier, hitbox, hitgroup, and the damage taken) into
 `addons/sourcemod/logs/mashup_host.log` (objectives.md Q8); hostages are
-re-created at each round restart, so hook again after one.
+re-created at every round start (`mp_restartgame` or a round end: new
+references in the same edict slots), so hook again after one.
 `mashup_htrack <entity> <file>` logs that entity's origin every server
 frame (`game_time x y z`); `mashup_htrack -1` stops (objectives.md Q10).
+It takes an edict index, so after a round start it follows the new
+hostage in that slot (from its origin), not the old one; on cs_office
+each slot also gets the same model again (four hostages, four models,
+objectives.md Q9), which can look like a hostage kept.
 
 ## Prop damage, breakables, doors
 

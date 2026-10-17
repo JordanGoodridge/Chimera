@@ -38,3 +38,46 @@ fn greybox_ladder_and_tank_with_source_movement() {
     let vy = sim.velocity(p).y;
     assert!(vy < 0.0 && vy > -1.3, "sinking at {vy} m/s (48 units/s at most)");
 }
+
+/// A bot added while the local player flies with noclip moves with the
+/// match's movement, not the player's current one (it took the player's
+/// slot, so `bot_add` in noclip made a bot that flew through walls): it
+/// falls onto the floor like any walking character.
+#[test]
+fn a_bot_added_while_the_player_flies_falls_onto_the_floor() {
+    use crate::stack::{
+        bot::{BotConfig, add_bot},
+        core::{LocalPlayer, Team},
+        games::cs_source::{
+            movement::{self as source, SourceMovementPlugin},
+            weapons::CsWeaponsPlugin,
+        },
+        movement::noclip,
+        slots::{Loadout, MovementSlot},
+    };
+    for loadout in [false, true] {
+        let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin, SourceMovementPlugin));
+        if loadout {
+            sim.app.insert_resource(Loadout { movement: source::ID });
+        }
+        sim.app.world_mut().resource_mut::<BotConfig>().stop = 1;
+        let me = sim.spawn_character(greybox::SPAWNS[0] + Vec3::Y * 3.0, noclip::ID);
+        sim.app.world_mut().entity_mut(me).insert((Team(2), LocalPlayer));
+        sim.ticks(1);
+        let bot = add_bot(sim.app.world_mut(), Team(1)).expect("a bot");
+        sim.ticks(1);
+        let slot = |sim: &Sim| sim.app.world().get::<MovementSlot>(bot).map(|m| m.0);
+        assert_eq!(slot(&sim), Some(source::ID), "loadout {loadout}");
+        // Lifted 2 m, it falls back onto the floor.
+        let floor = sim.position(bot).y;
+        sim.app.world_mut().get_mut::<Transform>(bot).unwrap().translation.y += 2.0;
+        if let Some(mut p) = sim.app.world_mut().get_mut::<avian3d::prelude::Position>(bot) {
+            p.0.y += 2.0;
+        }
+        sim.seconds(1.5);
+        assert!(sim.state(bot).on_ground, "loadout {loadout}: landed");
+        assert!((sim.position(bot).y - floor).abs() < 0.2, "loadout {loadout}: on the floor");
+        // The player is still flying: only the bot changed.
+        assert_eq!(sim.app.world().get::<MovementSlot>(me).map(|m| m.0), Some(noclip::ID));
+    }
+}

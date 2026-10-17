@@ -703,6 +703,62 @@ fn hostage_maps_go_to_the_terrorists_on_time() {
     assert_eq!(hostages(&mut sim).len(), 1);
 }
 
+/// Spec 9 "Spawn" and Q9 (measured on the probe, cs_office and
+/// cs_compound): every round start re-creates the hostages, after a round
+/// ends (on time, by elimination, a draw) and after `mp_restartgame` alike:
+/// new entities (CS:S's references change, same edict slots), back at the
+/// map's origins, the model turn going on (a 3-hostage map one model later
+/// each round; cs_office's four look unchanged only because there are four
+/// models).
+#[test]
+fn hostages_are_new_at_every_round_start() {
+    use crate::stack::{map::BodyName, objectives::hostages::HostageRules};
+    let mut map = hostage_map();
+    map.hostages = (0..3)
+        .map(|i| HostageSpawn {
+            feet: Vec3::new(-2.0 + 2.0 * i as f32, 0.0, 5.0),
+            ..Default::default()
+        })
+        .collect();
+    let mut sim = sim(map);
+    sim.app.world_mut().resource_mut::<HostageRules>().models = ["a", "b", "c", "d"].map(String::from).to_vec();
+    let _t = character(&mut sim, Vec3::new(0.0, 1.0, 12.0), 1);
+    let _ct = character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 2);
+    rounds(&mut sim);
+    let snapshot = |sim: &mut Sim| -> Vec<(Entity, usize, String)> {
+        let w = sim.app.world_mut();
+        let mut v: Vec<(Entity, usize, String)> = w
+            .query::<(Entity, &Hostage, &BodyName)>()
+            .iter(w)
+            .map(|(e, h, b)| (e, h.index, b.0.clone()))
+            .collect();
+        v.sort_by_key(|x| x.1);
+        v
+    };
+    let models = |s: &[(Entity, usize, String)]| s.iter().map(|x| x.2.clone()).collect::<Vec<_>>();
+    let first = snapshot(&mut sim);
+    assert_eq!(models(&first), ["a", "b", "c"]);
+    // One wanders off; the next round puts a new one at the origin.
+    teleport(&mut sim, first[0].0, Vec3::new(10.0, 1.0, 12.0));
+    sim.seconds(62.0);
+    assert!(ended(&sim).is_some(), "round over on time");
+    sim.seconds(5.5);
+    let second = snapshot(&mut sim);
+    assert_eq!(models(&second), ["d", "a", "b"], "the turn goes on");
+    for (e, ..) in &first {
+        assert!(sim.app.world().get_entity(*e).is_err(), "last round's hostage went");
+    }
+    assert!(sim.position(second[0].0).x.abs() < 2.5, "back at its origin");
+    // mp_restartgame: the same again.
+    sim.app.world_mut().resource_mut::<Console>().submit("mp_restartgame 1");
+    sim.seconds(1.5);
+    let third = snapshot(&mut sim);
+    assert_eq!(models(&third), ["c", "d", "a"]);
+    for (e, ..) in &second {
+        assert!(sim.app.world().get_entity(*e).is_err(), "restart re-created them");
+    }
+}
+
 #[test]
 fn killing_a_hostage_costs_money_and_too_many_get_you_removed() {
     // O41 with mp_hostagepenalty 3.

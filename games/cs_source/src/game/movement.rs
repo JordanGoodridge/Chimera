@@ -19,6 +19,8 @@
 //! (func_footstep_control, `super::sound::step_remaps`). A character with
 //! `SettleOnGround` (hostages) goes down onto the floor its ground test
 //! finds (players keep the gap of up to 2 units, as Source's do).
+//! `match_movement` is what the characters the game spawns move with
+//! (bots, hostages): the match's, never the local player's noclip.
 //!
 //! Known shortcuts (docs/tech-debt.md): Two departures from Source's box trace,
 //! made so surfing works (`Tracer::sweep_brushes`): the plane a box stops
@@ -99,6 +101,30 @@ use crate::{
 };
 
 pub const ID: &str = "cs_source:movement";
+
+/// The movement a character the game spawns gets (bots, hostages): the
+/// match's (`Loadout`) unless that is noclip, else CS:S's when registered,
+/// else one some character uses that isn't noclip (headless tests with
+/// another movement). Never the local player's current slot: a player
+/// flying with noclip (or a `--movement mashup:noclip` run) gave every bot
+/// and hostage noclip, so they hung in the air and flew through walls.
+pub fn match_movement(world: &mut World) -> Option<&'static str> {
+    use crate::slots::{Loadout, MovementRegistry, MovementSlot};
+    let noclip = chimera_sim::movement::noclip::ID;
+    if let Some(l) = world.get_resource::<Loadout>()
+        && l.movement != noclip
+    {
+        return Some(l.movement);
+    }
+    if world.get_resource::<MovementRegistry>().is_some_and(|r| r.get(ID).is_some()) {
+        return Some(ID);
+    }
+    world
+        .query::<&MovementSlot>()
+        .iter(world)
+        .map(|m| m.0)
+        .find(|m| *m != noclip)
+}
 
 const METERS_PER_UNIT: f32 = 0.0254;
 
