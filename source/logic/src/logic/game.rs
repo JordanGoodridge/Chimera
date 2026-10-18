@@ -20,13 +20,14 @@
 //! (specs/source/game_entities.md) beyond or short of the spec: "Suppress
 //! weapons" and game_ui's "Hide Weapon" block firing and hide the view model
 //! (`MapControls::weapon_hidden`) without holstering (others still see the
-//! gun); "Suppress HUD" is kept but no HUD hides yet; a negative ModifySpeed
+//! gun); "Suppress HUD" is kept (a respawn ends it, measured) but no HUD hides yet; a negative ModifySpeed
 //! holds the player like 0; a respawn resets the camera view and freeze too
 //! (spec open question 2 of viewcontrol); env_fade's modulate draws as a normal
 //! blend (Q6); env_hudhint uses the hint line (Q5); game_score's team points go
-//! to the rounds won and can't go below 0 (Q8); env_explosion is the game's HE
-//! blast at its magnitude and radius (its own probe, flags other than "No
-//! Damage" and DamageForce ignored; Q7); func_conveyor doesn't scroll its
+//! to the rounds won (measured, Q8) and can't go below 0 (ours); env_explosion is
+//! the game's HE blast at its magnitude and radius, armour at ratio 1 (measured,
+//! Q7; its own probe, flags other than "No Damage" and DamageForce ignored);
+//! func_conveyor carries players only (props stay: measured, Q9) and doesn't scroll its
 //! texture and a network client doesn't predict its push. Why it's OK for now:
 //! Each is its spec's open question or a small look; maps play.
 

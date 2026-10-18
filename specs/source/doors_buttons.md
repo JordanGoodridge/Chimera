@@ -102,7 +102,9 @@ player's own up vector u):
    a line E → P is clear (or hits that entity) and take it.
 6. Return the best (or nothing).
 
-**Use distance** of a hit point H: horizontal components of H − E as is,
+**Use distance** of a hit point H (the trace's end: for a box trace the
+box's centre where it stopped, not the entity's nearest point; measured,
+open question 1): horizontal components of H − E as is,
 vertical component replaced by how far H.z is outside the player's own box
 height range [feet, head] (0 if within). So anything level with the
 player's body counts only its horizontal distance; a button at foot level
@@ -603,7 +605,14 @@ dt = 0.015. Brush sizes are the model bounding box.
 
 ## Open questions
 
-1. **CS:S use search**: does CS:S override the use search (it has use
+1. **Answered (measured 2026-10-17, probe server):** CS:S uses this
+   search, with the use distance taken where each trace ended (the line's
+   hit point, the swept box's centre). A spawned func_button (flags 1025,
+   its face square to the view, level with the eye) was used by a bot
+   standing with its eye 60-87.0 units from the face and not at 87.5-90:
+   past 80 the 10° box probes reach it (72 × cos 10° + 16 = 86.9). Ours
+   measured the box probes' reach to the button's nearest point (80): now
+   to the box's centre. Was: **CS:S use search**: does CS:S override the use search (it has use
    interactions for hostages, C4 defuse and weapons)? Measure: on the probe
    server, place a func_button with flag 1024 and test distances 79/81
    straight ahead and at foot level 30 ahead; note which register.
@@ -636,7 +645,10 @@ dt = 0.015. Brush sizes are the model bounding box.
    ones; hardware 1 `DoorHandles.Locked1` / `Unlocked1`, 2 the `...2`
    ones, 0 and 3 `common/null.wav`. An unlocked use moves the door 0.2 s
    after the handle sound.*
-9. **Touch Opens and a player standing on the door.** (Added by an
+9. **Answered (measured 2026-10-17, probe server):** a spawned func_door
+   (flags 1024, movedir down, speed 25, lip 4, wait 0.1) opened under a
+   bot placed 1 and 2.5 units above its top and under one dropped from 43
+   above, every time, and carried it down. As ours. Was: **Touch Opens and a player standing on the door.** (Added by an
    implementation session, not from the source.) Classic bhop blocks are
    func_doors with flag 1024 moving down under the player. A landing can
    rest up to 2 units above what the player stands on (movement.md,

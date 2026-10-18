@@ -523,7 +523,15 @@ joints created from the bodies' poses at that moment) → first tick.
 
 ## Open questions
 
-1. **Break limit physics**: what exactly is compared to forcelimit/2.2
+1. **Partly answered (measured 2026-10-17, probe server, de_dust2):** a
+   wood_crate001a (30 kg; massScale 0.5 and 2 for 15 and 60 kg) spawned
+   hanging 30 units under a phys_ballsocket attached to it and the world
+   broke away (fell within 3 s) at forcelimit 420 and held at 430 (15 kg:
+   200 / 210; 60 kg: 800 / 830). So a body hanging at rest breaks its
+   socket below about 13.8 lb of forcelimit a kg, forcelimit / 2.2 ≈ 6.3 ×
+   its mass, not 1 ×. Ours compared the weight with forcelimit / 2.2: now
+   with 1/6.3 of it (`bridge::HANGING_LOAD`). Moving loads and
+   torquelimit are unmeasured. Was: **Break limit physics**: what exactly is compared to forcelimit/2.2
    (kg)? Probe: hang a prop of known mass from a phys_ballsocket to the
    world with forcelimit F; find the smallest mass that breaks it at rest
    with sv_gravity 800 (CS:S default). If it breaks near F/2.2 kg the limit
@@ -540,7 +548,10 @@ joints created from the bodies' poses at that moment) → first tick.
 4. **Spring law and units**: measure the oscillation period of a 10 kg
    box on a vertical phys_spring with constant 150, damping 0, natural
    length 64, to get the effective stiffness (period = 2π√(m/k)).
-5. **Body deleted while constrained**: does OnBreak fire? Weld a
+5. **Answered (measured 2026-10-17):** yes: a crate hanging from a ball
+   socket, broken by its Break input, made the socket fire OnBreak the
+   tick after. Ours dropped the joint silently: now OnBreak and the
+   constraint goes. Was: **Body deleted while constrained**: does OnBreak fire? Weld a
    breakable prop to the world with an OnBreak output to a logic_relay
    that prints, then break the prop.
 6. **CS:S differences**: CS:S's server is its own build; confirm the

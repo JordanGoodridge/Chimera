@@ -26,6 +26,11 @@ each, a row naming two classes counts in both): class 1: 137, class 2:
 one parity row, fixed with this list). Part B below works through the
 class-1 items by player impact.
 
+Recount after Part B's second pass (2026-10-17, same rules; the
+physics_constraints row is split in two, so class 1 counts 138): class 1:
+138, of which 31 answered in Part B and 107 left (a row with a part left
+counts as left); classes 2-5 unchanged.
+
 ## Specs: specs/cs_source
 
 | Spec | Question | Class | What would answer it |
@@ -40,7 +45,7 @@ class-1 items by player impact.
 | animation | IK rules and locks | 3 | spec session (out of scope so far) |
 | animation | lag compensation's use of the layers | 3 | spec session (hitbox/lag-compensation spec) |
 | fall_damage | `damagemodel 1` doubling | 1 | a spawned trigger_hurt with damagemodel 1 (no stock map uses it) |
-| fall_damage | armour against trigger_hurt (drown type, others) | 1 | drown type done (Part B); other types: a spawned trigger_hurt, armoured bot |
+| fall_damage | armour against trigger_hurt (drown type, others) | 1 | drown type done (Part B); other types done (Part B, triggers Q4) |
 | fall_damage | half-second timer per trigger or per toucher | 1 | two bots entering de_port's at different ticks (done, Part B) |
 | fall_damage | `Player.FallDamage` on hurting landings only | 1 | sound hook on drops with and without damage (done, Part B) |
 | fall_damage | landing view roll and its decay, HUD indicators, `HealthTookDamage` | 2 | client screenshots after a drop |
@@ -85,7 +90,7 @@ class-1 items by player impact.
 | objectives | Q1 left: leaving the zone by teleport while planting | 1 | `mashup_tp` mid-plant |
 | objectives | Q3 left: walls between bomb and target; other radii | 1 | targets behind walls on de_nuke/de_chateau |
 | objectives | Q4 beep schedule and loudness; LED place; debris sounds | 2 | the server emits no beep (measured): client audio, sitting 2 |
-| objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B); left: a draw's pay, Ts winning after a rescue |
+| objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B; the draw, Ts after a rescue and "led" too) |
 | objectives | Q6 left: who gets the bomb with humans; defuse announcers | 4, 2 | a human on T for 50 restarts; client audio |
 | objectives | Q7 left: the planted bomb on a moving platform | 1 | no stock map; skip |
 | objectives | Q10 left: hostages at corners and jumps; give-up rule | 1 | `mashup_htrack` with longer leads |
@@ -183,11 +188,11 @@ class-1 items by player impact.
 | weapons | Q1 random generator | 3 | the generator body (spec session) |
 | weapons | Q2 left: the airborne inaccuracy target | 1 | `m_fAccuracyPenalty` through a long fall |
 | weapons | Q3 left: snipers' recoil, silenced and burst modes | 1 | `recoilall.py` with those modes |
-| weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull |
+| weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
 | weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | M13 with more walls |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
 | weapons | Q12 left: pellet pattern, line or box traces | 1 | `bullet_impact` per pellet on a far wall, by seed |
-| weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime: watch a dropped gun for a round |
+| weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
 
 ## Specs: specs/source
 
@@ -197,25 +202,25 @@ class-1 items by player impact.
 | breakables | Q7 de_nuke vent identification | 1 | our screenshot at those origins (no CS:S needed) |
 | breakables | Q8 glass pane render details | 3 | client glass code |
 | breakables | Q9 gib bounce sounds | 2 | client trace (gibs are client-side) |
-| doors_buttons | Q1 CS:S use search distances | 1 | a spawned func_button, bot +use at 79/81 |
+| doors_buttons | Q1 CS:S use search distances | 1 | a spawned func_button, bot +use at 79/81 (done, Part B) |
 | doors_buttons | Q2 use deny sound | 2 | client audio |
 | doors_buttons | Q3 use trace mask through grates | 1 | a spawned button behind a grate |
 | doors_buttons | Q4 ride timing on elevators | 1 | a bot's z per tick on a mover |
 | doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | spawned train and math_counter |
 | doors_buttons | Q6 door move sound timing | 1 | sound hook on a stock func_door |
 | doors_buttons | Q7 rotating door on its plane | 1 | probe placement |
-| doors_buttons | Q9 touch-open door under a player | 1 | spawned func_door flag 1024 |
+| doors_buttons | Q9 touch-open door under a player | 1 | spawned func_door flag 1024 (done, Part B) |
 | entity_io | Q1 left: classes absent from stock maps | 1 | spawned entities across a restart |
-| entity_io | Q3 delay at an exact tick multiple | 1 | relays with 0.015/0.03/0.3 delays |
-| entity_io | Q4 Kill then input the same tick | 1 | a relay pair |
+| entity_io | Q3 delay at an exact tick multiple | 1 | relays with 0.015/0.03/0.3 delays (done, Part B) |
+| entity_io | Q4 Kill then input the same tick | 1 | a relay pair (done, Part B) |
 | entity_io | Q5 `sv_allow_point_servercommand` | 1 | `cvarlist sv_allow` (done, Part B: "always"); left: what maps send (the sweep) |
 | entity_io | Q6 `cl_restrict_server_commands` | 2 | client console |
 | entity_io | Q7, Q8 game_text scan-out and channels | 2 | client screenshots |
 | entity_io | Q9 game_text newline | 1 | sweep the cached maps' entity lumps |
 | entity_io | Q10 tracktrain and I/O `Use` | 1 | spawned train |
 | fire | Q1 client fire visuals | 2 | client |
-| fire | Q2 burn damage to players (armour, score) | 1 | a bot in dust2's A fire after a bomb |
-| fire | Q3 player ignition | 1 | `Ignite` input on a bot |
+| fire | Q2 burn damage to players (armour, score) | 1 | armour and score done (Part B) |
+| fire | Q3 player ignition | 1 | `Ignite` input on a bot (done, Part B; the gas can left) |
 | fire | Q4 fires at a round restart | 1 | `mashup_ents` before and after (env_fire is re-created: entity_io Q1) |
 | fire | Q5 floors on de_dust and de_train | 1 | fire positions after their bombs |
 | fire | Q6 burning gas can's radius damage | 1 | a bot against a burning can |
@@ -223,15 +228,15 @@ class-1 items by player impact.
 | fire | Q9 buried fires never damage | 1 | a bot in each after the bomb |
 | fire | Q10 particle operators, colour fade | 2 | client |
 | fire | Q11 fire sound level | 2 | client |
-| game_entities | Q1 lagged movement (player_speedmod) | 1 | spawned player_speedmod, movement probe |
-| game_entities | Q2 speedmod without an activator | 1 | spawned |
-| game_entities | Q3 disabled buttons after respawn (HUD: client) | 1, 2 | spawned speedmod; HUD on the client |
-| game_entities | Q4 game_ui "on train" flag | 1 | spawned game_ui |
+| game_entities | Q1 lagged movement (player_speedmod) | 1 | spawned player_speedmod, movement probe (done, Part B) |
+| game_entities | Q2 speedmod without an activator | 1 | spawned (done, Part B) |
+| game_entities | Q3 disabled buttons after respawn (HUD: client) | 1, 2 | spawned speedmod (done, Part B); how the client draws the HUD: client |
+| game_entities | Q4 game_ui "on train" flag | 1 | spawned game_ui (done, Part B) |
 | game_entities | Q5 key-hint panel | 2 | client |
 | game_entities | Q6 env_fade modulate | 2 | client |
-| game_entities | Q7 left: env_explosion against armour and friendly fire (the falloff is measured) | 1 | spawned env_explosion near an armoured bot |
-| game_entities | Q8 game_score and team score | 1 | spawned game_score, team score netprop |
-| game_entities | Q9 conveyor and physics props | 1 | spawned func_conveyor |
+| game_entities | Q7 left: env_explosion against armour and friendly fire (the falloff is measured) | 1 | armour done (Part B); friendly fire: an env_explosion has no team (moot) |
+| game_entities | Q8 game_score and team score | 1 | spawned game_score, team score netprop (done, Part B) |
+| game_entities | Q9 conveyor and physics props | 1 | spawned func_conveyor (done, Part B) |
 | game_entities | Q10 fades at round restart | 2 | client |
 | particles_and_smoke | Q1, Q2, Q3, Q5, Q7, Q9, Q10, Q11 (filters, manifests, redefinition, kill, light, skybox, emittime 0, quantisation) | 2 | client test maps (8 items) |
 | particles_and_smoke | Q4 operator semantics | 3 | its own spec |
@@ -245,18 +250,19 @@ class-1 items by player impact.
 | physics_brushes | Q6 players and a map prop_ragdoll | 1 | spawned prop_ragdoll |
 | physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
 | physics_brushes | Q8 thin-rod check on rotated brushes | 1 | spawned |
-| physics_constraints | Q1-Q10 (break limit, motor units, hinge friction, spring law, deleted body, world fallback, equal limits, pulley, never-created joint, tie order) | 1 | spawned constraints, positions per frame (10 items) |
+| physics_constraints | Q1, Q5 (break limit at rest, deleted body; 2 items) | 1 | done (Part B; Q1's moving loads and torque left) |
+| physics_constraints | Q2-Q4, Q6-Q10 (motor units, hinge friction, spring law, world fallback, equal limits, pulley, never-created joint, tie order) | 1 | spawned constraints, positions per frame (8 items) |
 | prop_damage | Q4, Q7, Q8 and the client halves of Q2, Q9 | 2 | capture C29 |
 | prop_damage | Q6 left: why the landing crush only at 1450-1500 in/s | 1 | more landing speeds |
-| triggers | Q1 face contact | 1 | spawned trigger, bot placed at −16.0/−15.9 |
+| triggers | Q1 face contact | 1 | spawned trigger, bot placed at −16.0/−15.9 (done, Part B) |
 | triggers | Q2 swept boxes for carried players | 1 | spawned fast func_door through a thin trigger |
 | triggers | Q3 touch order of overlapping triggers | 1 | spawned push + teleport |
-| triggers | Q4 trigger_hurt armour, fractions, knockback | 1 | spawned trigger_hurt, armoured bot |
-| triggers | Q5 gravity reset on respawn | 1 | spawned trigger_gravity |
-| triggers | Q6 teleport flags 32 and 4096 | 1 | spawned trigger_teleport with a bot |
-| triggers | Q7 trigger_push base velocity | 1 | spawned trigger_push, movement probe |
+| triggers | Q4 trigger_hurt armour, fractions, knockback | 1 | spawned trigger_hurt, armoured bot (done, Part B) |
+| triggers | Q5 gravity reset on respawn | 1 | spawned trigger_gravity (done, Part B) |
+| triggers | Q6 teleport flags 32 and 4096 | 1 | spawned trigger_teleport with a bot (done, Part B) |
+| triggers | Q7 trigger_push base velocity | 1 | spawned trigger_push, movement probe (done, Part B) |
 | triggers | Q8 first hurt pass timing | 1 | measured on de_port's (tick 4 after entering): the touch tick is still open |
-| triggers | Q9 AddOutput basevelocity | 1 | spawned trigger_multiple with that output |
+| triggers | Q9 AddOutput basevelocity | 1 | spawned trigger_multiple with that output (done, Part B) |
 | viewcontrol_and_templates | Q1 HUD and view model under a camera | 2 | client |
 | viewcontrol_and_templates | Q2 view reset with two players | 4 | two clients |
 | viewcontrol_and_templates | Q3 camera path | 1 | spawned point_viewcontrol, origin per tick |
@@ -382,3 +388,36 @@ measured.
 | physics_props Q13, Q6: `sv_turbophysics`, `air_density` | 0; 2.00 | not read | none |
 | grenades Q7: bounce sounds | one a contact (the smoke's twice on the tick), the stopping contact too, none at rest | one a contact | none |
 | grenades Q2: redraw after a throw | inconclusive: the bot ends up with its knife, but its AI picks the knife on its own | redraw of the same grenade | none (needs a human) |
+| objectives Q5: a draw's pay | nothing to anyone (a lone CT's draws) | the loss bonus to both sides | nothing; the streaks left as they were |
+| objectives Q5: an elimination on a map without objectives | 3000 (de_dust2 with its bomb targets removed), as a hostage map's | 3250 | 3000 (`win_elimination`, any map without bomb targets) |
+| objectives Q5: time running out on a map without objectives | nothing: the round goes on until a side is dead | the defenders win (a draw without them) | nothing (`mashup_untimed_win 1` keeps ours) |
+| objectives Q5: Ts winning on time after a rescue | 3250 + 150 a hostage left; nothing for the rescued one | the same | none (test) |
+| objectives Q5: "led" for the 100 | led at some time this round (a hostage led and let go still pays) | the same | none (test) |
+| objectives 7: both teams' last players dying together | not a draw: deaths count one at a time, the side whose last player dies first loses (`sm_slay @all`: Ts won) | a draw on the same tick | none (noted in the spec; one tick's order decides in CS:S) |
+| weapons Q6 / M12: hitboxes outside the hull | hit (arms and feet up to 17 units out, 4 past the hull); the hull alone stops nothing | the same | none (test) |
+| weapons Q13: dropped weapons' lifetime | kept until the round restarts, no count limit (203 at once) | the oldest went past 32 | kept (a 1024 safety net) |
+| triggers Q1: a box flush with a trigger's face | touches (0.01 off doesn't) | no touch | touches (`world::box_touches`) |
+| triggers Q4: trigger_hurt against armour | armour takes its part of every type but fall and drown (ratio 1: health half, armour half the rest, truncated) | none taken | as CS:S (`core::MapDamage`, `weapon::map_damage_armor`) |
+| triggers Q4: trigger_hurt fractions | whole points a pass, nothing carried (2.5 takes 2 each time) | the fraction kept in health | whole points |
+| triggers Q4: trigger_hurt knockback | none (nodmgforce 0 or 1) | none | none |
+| triggers Q5: trigger_gravity after a respawn | kept (also after `mp_restartgame`) | kept | none (test) |
+| triggers Q6: flags 32 and 4096 | 32: no player; 4096: no bots | 32 as CS:S; 4096 ignored | 4096 leaves bots out |
+| triggers Q7: trigger_push | +4.5 a tick at 300, one more tick out, then 302.25 less friction | the same | none (test tightened to the tick) |
+| triggers Q9: `AddOutput basevelocity` | the next move turns it into velocity × 1.0075, as our reading | the same | none |
+| fall_damage: trigger_hurt drown damage given back | no | no | none |
+| game_entities Q1: player_speedmod's lagged movement | scales the movement clock (7.5 units a tick at 250 with 2; velocity unscaled) | the same | none (test) |
+| game_entities Q2: speedmod with no activator | nobody | nobody | none (test) |
+| game_entities Q3: a respawn after a speedmod | clock back to 1, HUD back, taken buttons stay | clock back, HUD stayed hidden, buttons stay | the HUD comes back |
+| game_entities Q4: game_ui without "Freeze Player" | the player walks | the same | none (test) |
+| game_entities Q7: env_explosion against armour | armour ratio 1 (health half, armour half the rest) | the HE's ratio (1.475) | ratio 1 for map explosions |
+| game_entities Q8: game_score team points | added to the team's score, kept over rounds | added to rounds won, kept | none (test) |
+| game_entities Q9: a conveyor under a physics prop | the prop stays | the same | none |
+| entity_io Q3: a delay of exactly n ticks | n ticks (0.015, 0.03, 0.3: 1, 2, 20; 0.01: 1) | the same | none (test) |
+| entity_io Q4: Kill then an input in one tick | the input is lost; Trigger then Kill fires | the input still delivered | a killed entity refuses inputs |
+| fire Q2: burns against armour | armour takes its part (ratio 1) | none taken | as CS:S (`core::MapDamage`) |
+| fire Q2: a death by fire (also a fall, `kill`) | "suicide with world": frags −1 | no change to kills | −1 kill |
+| fire Q3: `Ignite` on a player | accepted: the bot burned about 5 a second (1 every 13 ticks) until dead; `Extinguish` refused | an entity flame on the player | none (rate unchecked) |
+| physics_constraints Q1: a ball socket's force limit under a hanging body | breaks below about 13.8 lb a kg (forcelimit / 2.2 ≈ 6.3 × the mass) | below 2.2 lb a kg (1 × the mass) | 1/6.3 of the weight limit |
+| physics_constraints Q5: the body of a constraint broken | the constraint's OnBreak, the tick after | the joint dropped silently | OnBreak, the constraint goes |
+| doors_buttons Q9: a touch-open door under a landing player | opens every time | the same | none (test) |
+| doors_buttons Q1: +use reach | the shared search; a button face square ahead is used out to 87.0 units (the 10° box probes, reach counted at the box's centre) | the box probes' reach counted at the button's nearest point: 80 | counted at the box's centre (logic and the bomb/hostage search) |

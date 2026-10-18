@@ -565,11 +565,10 @@ height comes from movement code, see movement.md).
 - The ray first has to reach the entity's surrounding bounds; players'
   hitboxes (e.g. arms, head) can stick out of the 26 × 26 × 72 collision
   hull, so the surrounding bounds must cover the hitboxes, not just the hull
-  (Q6).
-- Whether the solid player hull itself blocks bullets that miss every hitbox:
-  in Source shots pass through the hull and only hitboxes count (*inferred*
-  from the shot mask including the hitbox bit and players using custom ray
-  tests; measurement M12).
+  (Q6). **Measured (M12, 2026-10-17):** hits outside the hull register.
+- The solid player hull itself does not block bullets that miss every
+  hitbox: shots pass through it and only hitboxes count. **Measured (M12,
+  2026-10-17).**
 
 ### 6. Melee
 
@@ -1558,7 +1557,7 @@ reserve logged every tick):
 
 ### Not measured yet
 
-M12 hitbox reach, M14 drop/pickup, silenced damage, the
+M14 drop/pickup (beyond M20 and the lifetime below), silenced damage, the
 knife's hitbox/hull interplay, the RNG (Q1); for M13 the damage factors of
 metal, sand and other materials, penetration distances of other ammo types,
 whether the range halving applies after walls, and shotgun pellets; recoil
@@ -1591,7 +1590,10 @@ inaccuracy target.
   *Resolved (measured section, M5–M7): truncate, no carried fraction,
   falloff `RangeModifier^(d/500)`; the exact distance is within ~1 % of
   eye → impact.*
-- **Q6 Hitbox surrounding bounds**: are hits on arms/head outside the
+- **Q6 Answered (measured 2026-10-17, M12 below):** hits on hitboxes
+  outside the collision hull register (arms and feet up to 17 units from
+  the origin, 4 past the hull), and the hull stops nothing where no hitbox
+  is. Was: **Q6 Hitbox surrounding bounds**: are hits on arms/head outside the
   collision hull registered? M12.
 - **Q7 Penetration** model, per-ammo power/distance, material table: M13.
   *Mostly resolved (measured section, M13 and "M13 Through players"):
@@ -1636,7 +1638,9 @@ inaccuracy target.
   *Partly resolved (M20): drop velocity and path, the 0.75 s re-pick delay,
   reach, nothing taken from a gun of a type carried. Death drops measured
   (grenades.md Q17: the best gun whatever is held, and one grenade, HE over
-  flashbang over smoke). Lifetime open.*
+  flashbang over smoke). Lifetime measured 2026-10-17 (M14
+  below): every dropped weapon stays until the round restarts, with no
+  count limit seen (203 at once).*
 - **Q14 Zoom** levels (FOV), zoomed speed, unzoom after a sniper shot and
   re-zoom timing: M15.
   *Resolved for FOV, toggle delay, unzoom/re-zoom and zoomed speed
@@ -1712,6 +1716,16 @@ Measurements:
   log damage, hit/miss and next-attack times; repeat consecutive slashes.
 - **M12 Hitbox reach.** Shoot along lines that pass through a hitbox but
   outside the 26 × 26 × 72 hull, and through the hull missing all hitboxes.
+  *Done 2026-10-17 (probe server, de_dust2's CT spawn): a second bot held
+  standing with `mashup_target` (body yaw 89°), and
+  `mashup_trace` (`MASK_SHOT`, the run bot left out) along horizontal rays
+  across it every 1 unit sideways and 2 units up, from both sides: the rays
+  hit hitgroups from 14 units on one side to 17 on the other (arms 4 and
+  5, and the legs' 6 and 7 at the feet, past the hull's 13), and rays
+  inside the hull that miss every box (between the legs, and everything
+  from 64 units up: no box reached that high in this pose) pass through to the
+  world. Ours: the same (`deliver::Shot::trace`, test
+  `hitboxes_outside_the_hull_count_and_the_hull_alone_stops_nothing`).*
 - **M13 Penetration.** Use walls of known thickness and material (measure
   thickness with two opposite `TR_TraceRay`s) on stock maps or a small test
   map; per weapon, shoot a target behind walls of 1–32 in; log damage and
@@ -1719,6 +1733,14 @@ Measurements:
 - **M14 Drop / pickup.** `drop` command: log the weapon entity's origin and
   velocity for 2 s; walk the bot over weapons with the slot full and empty;
   check lifetime of dropped weapons; death drops.
+  *Lifetime done 2026-10-17 (probe server, de_dust2, `mashup_give
+  weapon_p228` then `mashup_botcmd <bot> drop` 203 times, the bot moved to
+  a fresh spot 100 units from the last before each, `mashup_find
+  weapon_p228` counted after each): the count rose by one each drop to
+  203 (no limit; edicts 413 of 2048), all still there 6 minutes after the
+  first, and none after `mp_restartgame` (the round's start removes them).
+  Ours kept 32 and dropped the oldest: now 1024, a safety net (test
+  `dropped_weapons_are_all_kept`).*
 - **M15 Zoom and speed.** Toggle zoom on each scoped weapon, log `m_iFOV`
   and the time until the next shot; measure top speed zoomed/unzoomed with
   the movement probe.

@@ -637,10 +637,16 @@ fn apply_score_changes(
 fn count_deaths(mut died: MessageReader<Died>, mut scores: Query<&mut Score>, mut commands: Commands, time: Res<Time>) {
     let now = time.elapsed_secs_f64();
     for d in died.read() {
+        // A death by the world or by one's own hand (a fall, a fire, `kill`)
+        // costs a kill (CS:S, measured 2026-10-17: "committed suicide with
+        // world", frags −1, for a fall, a fire and `kill`).
+        let suicide = d.attacker.is_none_or(|a| a == d.entity);
+        let lost = if suicide { -1 } else { 0 };
         if let Ok(mut s) = scores.get_mut(d.entity) {
             s.deaths += 1;
+            s.kills += lost;
         } else if let Ok(mut e) = commands.get_entity(d.entity) {
-            e.insert(Score { kills: 0, deaths: 1 });
+            e.insert(Score { kills: lost, deaths: 1 });
         }
         if let Some(a) = d.attacker.filter(|a| *a != d.entity) {
             if let Ok(mut s) = scores.get_mut(a) {

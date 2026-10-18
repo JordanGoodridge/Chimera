@@ -415,29 +415,52 @@ dt = 0.015.
 
 ## Open questions
 
-1. **CS:S and lagged movement**: does CS:S's movement subclass keep the
+1. **Answered (measured 2026-10-17, probe bot on a flat floor):** yes:
+   with ModifySpeed 2 the bot ran 7.5 units a tick at 250 (3.75 without),
+   its velocity still 250, its acceleration 37.5 a tick from rest (18.75
+   without), and a jump's airtime in ticks halved; `m_flLaggedMovementValue`
+   2. As ours. Was: **CS:S and lagged movement**: does CS:S's movement subclass keep the
    frame-time scaling (it is in the shared base routine, which the
    subclass is expected to call)? Probe: player_speedmod 2 on a test map;
    measure displacement per tick and jump airtime with the movement probe.
-2. **CS:S "deathmatch" flag**: CS:S rules are multiplayer; confirm that a
+2. **Answered (measured 2026-10-17):** ModifySpeed 2 fired with no
+   activator left `m_flLaggedMovementValue` 1. As ours. Was: **CS:S "deathmatch" flag**: CS:S rules are multiplayer; confirm that a
    player_speedmod fired without a player activator affects nobody.
-3. **Disabled buttons and HUD on respawn in CS:S**: fire a speedmod with
+3. **Answered for the server (measured 2026-10-17, a bot, a speedmod with
+   flags 2 + 4 at 0.5):** after a death and respawn the lagged movement is
+   1 and `m_iHideHUD` lost its hide-all bit (2054 → 2050: the HUD is back),
+   but jumping stays taken (the jump button never reached the movement)
+   until the speedmod's own ModifySpeed 1 gave it back. Ours kept the HUD
+   hidden: now a respawn brings it back. How the client draws it is not
+   measured. Was: **Disabled buttons and HUD on respawn in CS:S**: fire a speedmod with
    flags 4 and 2 at value 0.5, die, respawn: can the player jump, is the
    HUD back?
-4. **game_ui "on train" flag**: does it block player movement in CS:S at
+4. **Answered (measured 2026-10-17):** no: under an active game_ui with
+   spawnflags 0 a bot walked 76.5 units in 30 ticks, as with none; with
+   32 ("Freeze Player") it didn't move. As ours. Was: **game_ui "on train" flag**: does it block player movement in CS:S at
    all (the base player clears it before each command)? Activate a
    game_ui without flag 32 and try to walk.
 5. **Key-hint panel in CS:S**: position, font, and does it hide on its
    own after some seconds? Screenshot after ShowHudHint and wait 30 s.
 6. **Modulate fade formula**: screenshot env_fade with flag 2 (modulate),
    colour (128, 128, 128) alpha 255 over a known scene.
-7. **CS:S radius damage for env_explosion**: does CS:S's override treat
+7. **Answered for armour (measured 2026-10-17):** an env_explosion of
+   magnitude 100, 100 units from a bot, took 38-42 health without armour;
+   with 100 armour 19-21 health and 10-11 armour (30 armour: 18 and 10;
+   5 armour: 26 and the 5): armour at ratio 1 (health half, armour half
+   the rest), not the HE's 1.475. Ours used the HE's: now ratio 1 for map
+   explosions. Friendly fire: an env_explosion has no team, untried. Was: **CS:S radius damage for env_explosion**: does CS:S's override treat
    env_explosion damage like HE (armour, player height sampling,
    friendly fire)? Probe: env_explosion magnitude 100 at 100 units from a
    bot with and without kevlar.
-8. **Team score**: does CS:S's team score (rounds won on the scoreboard)
+8. **Answered (measured 2026-10-17):** yes: two game_scores of 5 points
+   with flag 2 applied to a CT bot made the log's round-end line "CT
+   scored 10", kept through the next round ends (gone at
+   `mp_restartgame`). As ours. Was: **Team score**: does CS:S's team score (rounds won on the scoreboard)
    change with game_score flag 2, and does it persist across rounds?
-9. **Conveyor on physics props**: do physics props on a func_conveyor
+9. **Answered (measured 2026-10-17, a spawned func_conveyor of speed
+   100):** a crate dropped on it settled and stayed put for 3 s; a bot
+   standing on it moved 1.5 units a tick. As ours. Was: **Conveyor on physics props**: do physics props on a func_conveyor
    move (they have no ground entity in this code)? Drop a prop on a
    conveyor on a test map.
 10. **Fade on round restart**: does CS:S clear stay-out fades at round

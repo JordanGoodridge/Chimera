@@ -72,7 +72,10 @@ A toucher passes the trigger's filters when **all** of these hold:
    vehicles" requires a vehicle (always fails in CS:S); 512 "Only clients
    *not* in vehicles" requires none (always passes in CS:S). At spawn, flags
    32 or 512 also switch on flag 1. Flag 4096 "Disallow bots" exists only
-   in newer builds (Open questions).
+   in newer builds (Open questions). **Measured on CS:S (2026-10-17, Q6):**
+   a bot in a trigger_teleport with flags 1 + 32 is never teleported, and
+   with 1 + 4096 neither (4096 exists and leaves bots out; a human could
+   not be tried); with 1 alone it is.
 3. NPC extras (16 "Only player ally NPCs", 2048 "Only NPCs in vehicles"):
    irrelevant for us, NPCs are out of scope.
 4. If the keyvalue "filtername" names a filter entity, that filter must
@@ -84,6 +87,13 @@ Dead players never pass, so a trigger_hurt does not keep damaging corpses
 and OnStartTouch does not fire for dead bodies.
 
 ### How overlap is detected
+
+**Measured on CS:S (2026-10-17, Q1):** a player box flush with a
+trigger's face (zero overlap) touches it; 0.01 unit off doesn't. (A bot
+placed by the probe on a flat floor at x = −904.0 and −904.01 against a
+spawned trigger_push whose brush face is at x = −888: pushed, not pushed;
+the same on the far face at −712. The entity's reported bounds are a unit
+wider than its brush: the brush planes decide.)
 
 - A trigger is a brush model, made non-solid with a "trigger" flag; it
   blocks nothing. Entities with no solidity do not touch triggers. A
@@ -214,7 +224,22 @@ Damage passes:
 - **Player health** (generic path; CS:S may differ, Open questions): the
   fractional part of each hit accumulates; health drops by the integer part
   plus 1 whenever the accumulator reaches 1. So 2.5 per pass takes 2, 3, 2,
-  3...
+  3... **Measured on CS:S (2026-10-17, Q4): no accumulation.** 2.5 a pass
+  took 2 every pass (100, 98, 96, 94, 92, 90). **Armour** takes its part of
+  every damage type but fall (32) and drown (16384), as a weapon of armour
+  ratio 1: health takes half (truncated), armour half the rest, and the
+  armour left is truncated (a fraction costs a whole point; `player_hurt`'s
+  dmg_armor shows the truncated part): on 100 armour, 20 a pass took 10 and
+  5, 50 took 25 and 13, 10 took 5 and 3, 5 took 2 and 2, 2.5 took 1 and 1;
+  20 on 5 armour took 10 and the 5; on 1 armour, 18 and the 1 (what armour
+  can't hold, health takes twice). Types tried with 20 a pass on 100
+  armour: 0, 1, 2, 4, 8, 16, 64, 128, 256, 512, 1024, 65536, 131072,
+  524288, 1048576, 2097152, 4194304 all 10 and 5; 32 and 16384 20 and
+  none (262144, radiation, didn't hurt within its random first delay). No
+  knockback: damage 100 (50 a pass, 1000 health) left the player's
+  velocity at 0 with `nodmgforce` 0 and 1. Drown-type damage from a
+  trigger_hurt is not given back after (40 health after three bites of 20
+  and 6 s out of it).
 
 Damage types (bit values as typed in Hammer): 0 generic, 1 crush, 2 bullet,
 4 slash, 8 burn, 16 vehicle, 32 fall, 64 blast, 128 club, 256 shock, 512
@@ -416,7 +441,7 @@ dt = 0.015, sv_gravity 800 unless noted. Player box 32×32×62 standing.
 | trigger_hurt damage −10, player 50/100 hp | stand 2 s | — | +5 per pass: 55, 60, ... capped at 100 |
 | trigger_hurt damage 10, damagemodel 1, damagecap 50 | stand inside | — | per-pass hits 5, 10, 20, 25, 25, ... |
 | same | leave for 3.1 s, re-enter | — | back to 5 |
-| trigger_hurt damage 5 (2.5 per pass), player 100 hp | 4 passes | — | health 98, 95, 93, 90 (fraction accumulates; generic path) |
+| trigger_hurt damage 5 (2.5 per pass), player 100 hp | 4 passes | — | health 98, 96, 94, 92 (CS:S, measured: whole points, nothing carried) |
 | trigger_push pushdir "0 0 0" speed 300, player standing still on flat ground, no input | 1 tick inside | — | player moves +4.5 units in X; stored velocity stays ≈ 0 |
 | same | 10 ticks inside, then outside | — | +45 units while inside; on the 2nd tick outside velocity.x += 302.25 (300 × 1.0075), then friction acts |
 | trigger_push pushdir "−90 0 0" speed 1000, sv_gravity 0, player airborne at rest | 10 ticks inside | — | v.z = 150 (15 per tick) |
@@ -436,7 +461,8 @@ dt = 0.015, sv_gravity 800 unless noted. Player box 32×32×62 standing.
 
 ## Open questions
 
-1. **Face contact**: does a player box exactly touching a trigger face
+1. **Answered (measured 2026-10-17, "How overlap is detected"):** yes,
+   flush contact touches; 0.01 off doesn't. Was: **Face contact**: does a player box exactly touching a trigger face
    (shared plane, zero overlap) start a touch? Probe: place a player with
    setpos at x = −16.0 and −15.9 against a trigger's −X face on the test
    map and read OnStartTouch (via `say` from point_servercommand) on the
@@ -447,24 +473,37 @@ dt = 0.015, sv_gravity 800 unless noted. Player box 32×32×62 standing.
 3. **Touch order** of several overlapping triggers (engine enumeration):
    matters for overlapping pushes plus teleports. Test map room with
    overlapping push + teleport, compare outcomes.
-4. **CS:S player damage path**: does CS:S armour absorb trigger_hurt
+4. **Answered (measured 2026-10-17, trigger_hurt "Player health"):**
+   armour takes its part of every type but fall and drown; whole points,
+   no fraction carried; no knockback. Was: **CS:S player damage path**: does CS:S armour absorb trigger_hurt
    damage (which types)? Does the fractional accumulator apply? Does damage
    force move CS:S players (knockback)? Probe: trigger_hurt damage 5, 10
    with and without kevlar, read health/armour per pass; and damage 100
    with nodmgforce 0 vs 1, read velocity.
-5. **Gravity reset**: does a CS:S player's trigger_gravity multiplier reset
+5. **Answered (measured 2026-10-17):** no: a bot's `m_flGravity` stayed
+   0.5 after leaving the trigger, after a death and respawn and after
+   `mp_restartgame` (as ours). Was: **Gravity reset**: does a CS:S player's trigger_gravity multiplier reset
    on respawn / round start?
-6. **Spawnflag 32 and 4096 on CS:S**: does CS:S's trigger_teleport treat
+6. **Answered (measured 2026-10-17, "Which entities can touch"):** 32 lets
+   no player in (only clients in vehicles), 4096 leaves bots out. Was: **Spawnflag 32 and 4096 on CS:S**: does CS:S's trigger_teleport treat
    32 as "only clients in vehicles" (never fires) or as "preserve angles"?
    Does 4096 (disallow bots) exist? Test both flags on the probe server
    with a bot.
-7. **trigger_push in CS:S**: CS:S's movement is its own subclass of the
+7. **Answered (measured 2026-10-17, probe bot on a flat floor in a
+   spawned push of 300 along +x):** as described: +4.5 units a tick with
+   its own velocity 0, the first tick outside still +4.5, the next
+   velocity 302.25 less that tick's friction (284.115), then friction
+   (267.068, 251.044, ...). Ours tick for tick. Was: **trigger_push in CS:S**: CS:S's movement is its own subclass of the
    shared movement; confirm it handles base velocity as above (measure the
    horizontal push test: +4.5 units per tick, and 302.25 momentum after
    exit) with the movement probe.
 8. **First hurt pass timing**: same tick as the first touch or next tick?
    Read health per tick with the probe.
-9. **AddOutput basevelocity on a player.** (Added by an implementation
+9. **Answered (measured 2026-10-17, a spawned trigger_multiple with that
+   output on its OnStartTouch, the bot standing):** as our reading: `0 0
+   400` gave 403 up less that tick's gravity (the bot's multiplier was 0.5
+   then: 397, then 6 less a tick), `300 0 0` gave 302.25 less friction
+   (284.115) on the next move, as a push's exit. Was: **AddOutput basevelocity on a player.** (Added by an implementation
    session, not from the source.) Bhop, kz and surf boosters send
    `!activator AddOutput basevelocity x y z` (most on OnEndTouch of a pad,
    some on OnStartTouch). We read it as setting the base velocity field

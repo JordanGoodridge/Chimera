@@ -130,6 +130,29 @@ fn speedmod_takes_the_jump_away_until_restored() {
     assert!(feet(&sim, p).z > ground + 10.0, "jumps again");
 }
 
+/// Game_entities.md question 3 (measured 2026-10-17 on the probe): after a
+/// death and respawn the movement clock is back to 1 and the HUD shows,
+/// but the jump a speedmod took stays taken until it gives it back.
+#[test]
+fn a_respawn_resets_the_clock_and_hud_but_not_taken_buttons() {
+    use crate::stack::core::{Health, MapControls};
+    let (mut sim, p) = sim(vec![entity(&[("classname", "player_speedmod"), ("targetname", "speed"), ("spawnflags", "6")])], Vec3::ZERO);
+    input(&mut sim, "speed", "ModifySpeed", "0.5", Some(p));
+    sim.ticks(2);
+    let c = sim.app.world().get::<MapControls>(p).unwrap().clone();
+    assert!(c.hud_hidden && c.time_scale == 0.5 && c.disabled_buttons() != 0, "{c:?}");
+    sim.app.world_mut().get_mut::<Health>(p).unwrap().current = 0.0;
+    sim.ticks(2);
+    crate::stack::rules::put_at_spawn(sim.app.world_mut(), p, false);
+    sim.ticks(2);
+    let c = sim.app.world().get::<MapControls>(p).unwrap().clone();
+    assert!(!c.hud_hidden && c.time_scale == 1.0, "clock and HUD back: {c:?}");
+    let ground = feet(&sim, p).z;
+    sim.intent(p).jump = true;
+    sim.ticks(10);
+    assert!((feet(&sim, p).z - ground).abs() < 0.5, "still no jump");
+}
+
 #[test]
 fn game_ui_holds_the_player_and_reports_keys() {
     let (mut sim, p) = sim(
@@ -155,6 +178,23 @@ fn game_ui_holds_the_player_and_reports_keys() {
     let logic = sim.app.world().resource::<Logic>();
     let fwd = logic.world.find("fwd").unwrap();
     assert!(logic.world.deliveries.iter().any(|d| d.target == Who::Ent(fwd)), "PressedForward");
+}
+
+/// Game_entities.md question 4 (measured 2026-10-17 on the probe: a bot
+/// under an active game_ui without flag 32 walked 76.5 units in 30 ticks,
+/// as without one): only "Freeze Player" holds the player.
+#[test]
+fn game_ui_without_freeze_lets_the_player_walk() {
+    let (mut sim, p) = sim(
+        vec![entity(&[("classname", "game_ui"), ("targetname", "ui"), ("spawnflags", "0"), ("FieldOfView", "-1")])],
+        Vec3::ZERO,
+    );
+    input(&mut sim, "ui", "Activate", "", Some(p));
+    sim.ticks(3);
+    let at = feet(&sim, p);
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.ticks(30);
+    assert!(feet(&sim, p).distance(at) > 50.0, "walks: {}", feet(&sim, p).distance(at));
 }
 
 #[test]

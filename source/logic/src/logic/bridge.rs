@@ -896,6 +896,7 @@ type CharacterQuery<'a> = (
     Option<&'a LocalPlayer>,
     Option<&'a ColliderAabb>,
     Option<&'a crate::core::MapControls>,
+    Option<&'a crate::core::Bot>,
 );
 
 /// The characters as logic players: the local player first (`!player`
@@ -922,7 +923,7 @@ fn snapshot(world: &mut World, logic: &Logic) -> Vec<Player> {
 /// A character as a logic player; `ground_of` names the logic entity of
 /// what it stands on.
 fn as_player(
-    (e, t, v, state, intent, health, team, base, gravity, _, aabb, controls): bevy::ecs::query::QueryItem<
+    (e, t, v, state, intent, health, team, base, gravity, _, aabb, controls, bot): bevy::ecs::query::QueryItem<
         '_,
         '_,
         CharacterQuery<'static>,
@@ -957,6 +958,7 @@ fn as_player(
     p.gravity = gravity.map_or(1.0, |g| g.0);
     p.use_key = intent.use_key;
     p.buttons = controls.map_or_else(|| crate::core::buttons::of(intent), |c| c.buttons);
+    p.bot = bot.is_some();
     p
 }
 
@@ -1210,18 +1212,41 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                     weapon: None,
                 });
             }
-            Effect::Burn { target, amount } => {
+            Effect::Hurt { target, amount, armour } => {
                 let point = world.get::<Transform>(target).map_or(Vec3::ZERO, |t| t.translation);
-                world.write_message(Damage {
-                    force: Vec3::ZERO,
-                    target,
-                    attacker: None,
-                    amount: amount / 100.0,
-                    point,
-                    dir: Vec3::NEG_Y,
-                    hitgroup: Hitgroup::Generic,
-                    kind: DamageKind::Burn,
-                    weapon: None,
+                world.write_message(crate::core::MapDamage {
+                    damage: Damage {
+                        force: Vec3::ZERO,
+                        target,
+                        attacker: None,
+                        amount: amount / 100.0,
+                        point,
+                        dir: Vec3::NEG_Y,
+                        hitgroup: Hitgroup::Generic,
+                        kind: DamageKind::Generic,
+                        weapon: None,
+                    },
+                    armour,
+                });
+            }
+            Effect::Burn { target, amount } => {
+                // Armour takes its part, as of a trigger_hurt's burn type
+                // (measured on env_fire 2026-10-17: 7 a second took 3
+                // health and about 2 armour; fire.md question 2).
+                let point = world.get::<Transform>(target).map_or(Vec3::ZERO, |t| t.translation);
+                world.write_message(crate::core::MapDamage {
+                    damage: Damage {
+                        force: Vec3::ZERO,
+                        target,
+                        attacker: None,
+                        amount: amount / 100.0,
+                        point,
+                        dir: Vec3::NEG_Y,
+                        hitgroup: Hitgroup::Generic,
+                        kind: DamageKind::Burn,
+                        weapon: None,
+                    },
+                    armour: true,
                 });
             }
             Effect::FlameStart { id, target } => {
@@ -1335,7 +1360,10 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                     weapon: None,
                     round_scorch: false,
                     bell_sigma: None,
-                    armor_ratio: None,
+                    // No weapon's ratio: armour as from a trigger_hurt,
+                    // health half (measured on env_explosion 2026-10-17,
+                    // game_entities.md question 7; the HE's is 1.475).
+                    armor_ratio: Some(1.0),
                 });
             }
             Effect::GlassImpact { at, normal } => {
@@ -1720,10 +1748,13 @@ fn sync_controls(world: &mut World, logic: &Logic) {
                 anchor: entity_to_engine(j.anchor, s),
                 on: j.on,
                 no_collide: j.no_collide,
-                // Pounds as the weight of that mass in the map's gravity
-                // (kg = lb / 2.2; public docs: the weight that breaks it
-                // resting on it); torque lb·in the same, times units.
-                force_limit: j.force_limit / 2.2 * gravity,
+                // Pounds as a weight in the map's gravity (kg = lb / 2.2),
+                // a hanging body's weight breaking it past 1/6.3 of that
+                // (CS:S, measured 2026-10-17: a ball socket holding 15, 30
+                // and 60 kg crates at rest broke below a forcelimit of about
+                // 13.8 lb a kg; physics_constraints.md question 1); torque
+                // lb·in as the weight, times units (unmeasured).
+                force_limit: j.force_limit / 2.2 * gravity / HANGING_LOAD,
                 torque_limit: j.torque_limit / 2.2 * gravity * s,
             })
         })
@@ -1732,6 +1763,11 @@ fn sync_controls(world: &mut World, logic: &Logic) {
         world.insert_resource(BodyJoints(joints));
     }
 }
+
+/// How many times its weight a body hanging at rest asks of a constraint's
+/// force limit (forcelimit / 2.2 kg): CS:S's sockets broke below about 6.3
+/// (measured on 15, 30 and 60 kg crates, physics_constraints.md question 1).
+const HANGING_LOAD: f32 = 6.3;
 
 /// Players viewing through a point_viewcontrol see from it
 /// (`core::MapView`: a camera's pose, looking down -Z).
@@ -2137,6 +2173,7 @@ fn apply_record(rec: Res<LogicRecord>, logic: Option<ResMut<Logic>>, mut last: L
 
 fn pre(world: &mut World) {
     run_phase(world, |w, col| {
+        w.break_orphan_joints();
         w.run_thinks();
         w.move_cameras();
         w.step_movers(col);

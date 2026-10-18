@@ -84,9 +84,11 @@ fn rounds_freeze_then_play_and_eliminations_pay() {
     assert_eq!(money(&sim, ct), 800);
     assert_eq!(sim.app.world().resource::<RoundState>().wins, [1, 0]);
 
-    // The next round brings everyone back, frozen, and pays.
+    // The next round brings everyone back, frozen, and pays: 3000 for an
+    // elimination on a map without bomb targets (3250 is a bomb map's;
+    // measured, objectives.md Q5).
     sim.seconds(5.2);
-    assert_eq!(money(&sim, t), 1400 + 3250);
+    assert_eq!(money(&sim, t), 1400 + 3000);
     assert_eq!(money(&sim, ct), 800 + 1400, "first loss bonus");
     assert!(matches!(phase(&sim), Phase::Freeze { .. }), "{:?}", phase(&sim));
     assert_eq!(sim.app.world().resource::<RoundState>().number, 2);
@@ -98,8 +100,12 @@ fn rounds_freeze_then_play_and_eliminations_pay() {
     assert!(sim.app.world().get::<crate::stack::rules::Dead>(ct).is_none());
 }
 
+/// Objectives.md Q5 (measured 2026-10-17: de_dust2 with its bomb targets
+/// removed before a restart, `mp_roundtime 1`): on a map without objectives
+/// the clock ends nothing, the round goes on until a side is dead.
+/// `mashup_untimed_win 1` (ours): the defenders win on time.
 #[test]
-fn defenders_win_when_time_runs_out_and_buying_closes() {
+fn time_ends_nothing_without_objectives_and_buying_closes() {
     let (mut sim, t, ct, _) = setup();
     let s = sim.app.world().resource::<RoundSettings>().clone();
     sim.seconds(1.2);
@@ -107,7 +113,10 @@ fn defenders_win_when_time_runs_out_and_buying_closes() {
     sim.app.world_mut().resource_mut::<Console>().submit("mp_buytime 0.1");
     sim.seconds(6.5);
     assert!(sim.app.world().resource::<BuyWindow>().0.is_err(), "buy period over");
-    sim.seconds(25.0);
+    sim.seconds(40.0);
+    assert!(matches!(phase(&sim), Phase::Live { .. }), "the clock ran out: {:?}", phase(&sim));
+    sim.app.world_mut().resource_mut::<Console>().submit("mashup_untimed_win 1");
+    sim.ticks(2);
     match phase(&sim) {
         Phase::Over { winner, .. } => assert_eq!(winner, Some(Team(2))),
         p => panic!("{p:?}"),
@@ -159,6 +168,10 @@ fn one_side_all_dead_is_a_draw() {
     }
     sim.seconds(5.2);
     assert_eq!(sim.app.world().resource::<RoundState>().number, 2, "the next round");
+    // A draw pays nobody (measured, objectives.md Q5: a lone CT's draws).
+    for e in [a, b] {
+        assert_eq!(money(&sim, e), 800);
+    }
 }
 
 /// Freeze time holds bots as it holds the player (CS:S freezes
@@ -712,4 +725,53 @@ fn the_dead_respawn_out_of_noclip() {
         assert!(sim.app.world().get::<crate::stack::rules::Dead>(ct).is_none(), "rounds {rounds}: back");
         assert_eq!(movement(&sim, ct), placeholder::ID, "rounds {rounds}: walking");
     }
+}
+
+/// Game_entities.md question 8 (measured 2026-10-17 on the probe: two
+/// game_scores of 5 with flag 2 on a CT bot made the log's "CT scored 10",
+/// kept through the next round ends): a map's team points add to the
+/// team's score, the rounds won, and stay.
+#[test]
+fn team_points_from_the_map_add_to_rounds_won_and_stay() {
+    let (mut sim, t, ct, ct2) = setup();
+    sim.seconds(1.2);
+    sim.app.world_mut().write_message(crate::stack::core::ScoreChange {
+        target: ct,
+        points: 5,
+        team: true,
+        allow_negative: false,
+    });
+    sim.ticks(2);
+    assert_eq!(sim.app.world().resource::<RoundState>().wins, [0, 5]);
+    kill(&mut sim, ct, t);
+    sim.seconds(5.5);
+    assert_eq!(sim.app.world().resource::<RoundState>().wins, [0, 6], "kept, and the round's win on top");
+    let _ = ct2;
+}
+
+/// A death by the world (a fall, a fire) or by one's own hand costs a kill
+/// (CS:S, measured 2026-10-17: "committed suicide with world", frags −1).
+#[test]
+fn a_death_by_the_world_costs_a_kill() {
+    use crate::stack::core::Score;
+    let (mut sim, t, ct, _) = setup();
+    sim.seconds(1.2);
+    sim.app.world_mut().write_message(Damage {
+        force: Vec3::ZERO,
+        target: ct,
+        attacker: None,
+        amount: 10.0,
+        point: Vec3::ZERO,
+        dir: Vec3::X,
+        hitgroup: Hitgroup::Generic,
+        kind: Default::default(),
+        weapon: None,
+    });
+    sim.ticks(2);
+    let s = sim.app.world().get::<Score>(ct).cloned().unwrap();
+    assert_eq!((s.kills, s.deaths), (-1, 1));
+    // Killed by an enemy: no loss, the enemy's +1.
+    kill(&mut sim, ct, t);
+    let s = sim.app.world().get::<Score>(t).cloned().unwrap();
+    assert_eq!((s.kills, s.deaths), (0, 1));
 }

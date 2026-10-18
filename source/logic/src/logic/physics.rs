@@ -429,6 +429,34 @@ pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str, value: &Value, _
 }
 
 impl LogicWorld {
+    /// Constraints whose body went (broken, killed) break: OnBreak, the
+    /// tick after (CS:S, measured 2026-10-17: a crate hanging from a ball
+    /// socket broken by its Break input; physics_constraints.md question 5).
+    pub fn break_orphan_joints(&mut self) {
+        let orphans: Vec<EntId> = self
+            .ids()
+            .into_iter()
+            .filter(|id| match self.get(*id).map(|e| (&e.class, e.killed)) {
+                Some((Class::Joint(j), false)) if j.connected => [j.body1, j.body2]
+                    .into_iter()
+                    .flatten()
+                    .any(|b| match self.get(b) {
+                        None => true,
+                        Some(e) if e.killed => true,
+                        Some(e) => match &e.class {
+                            Class::Prop(p) => p.broken,
+                            Class::Breakable(x) => x.broken,
+                            _ => false,
+                        },
+                    }),
+                _ => false,
+            })
+            .collect();
+        for id in orphans {
+            break_joint(self, id);
+        }
+    }
+
     /// The constraints holding bodies (connected, not broken), with
     /// phys_motors' "Hinge Object" hinges.
     pub fn joints(&self) -> Vec<JointExport> {

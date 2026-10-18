@@ -788,13 +788,15 @@ fn a_constraint_through_an_anchor_holds_its_parent() {
     assert!((z - 200.0).abs() < 8.0, "hangs through the anchor: {z}");
 }
 
-/// A force limit below the crate's weight (20 kg is 44 lb; the limit 30
-/// lb): the socket breaks by itself under the hanging crate (OnBreak,
-/// physics_constraints.md 1.5) and the crate falls; one above its weight
-/// (60 lb) holds.
+/// A force limit too weak for the hanging crate: the socket breaks by
+/// itself (OnBreak, physics_constraints.md 1.5) and the crate falls; a
+/// stronger one holds. CS:S's sockets need about 13.8 lb a kg hanging
+/// (measured 2026-10-17, question 1): 276 for the 20 kg crate, which
+/// breaks 200 and holds 400 (ours sees the spawn's jolt as a peak, so not
+/// closer).
 #[test]
 fn a_ball_socket_breaks_under_a_weight_past_its_force_limit() {
-    for (limit, breaks) in [("30", true), ("60", false)] {
+    for (limit, breaks) in [("200", true), ("400", false)] {
         let box_ = entity(
             &[
                 ("classname", "prop_physics"),
@@ -882,4 +884,123 @@ fn a_motor_spins_its_body_on_a_hinge() {
         (w.y.abs() - 90f32.to_radians()).abs() < 0.2,
         "spins at the motor's speed: {w}"
     );
+}
+
+/// Game_entities.md question 7 (measured 2026-10-17 on the probe: an
+/// env_explosion of magnitude 100 at 100 units took 38-42 from a bot
+/// without armour; with 100 armour, 19-21 health and 10-11 armour): armour
+/// takes a map explosion's damage as a trigger_hurt's, health half and
+/// armour half the rest (not the HE's ratio).
+#[test]
+fn an_env_explosion_takes_armour_at_ratio_one() {
+    use crate::stack::{core::Health, weapon::Armor};
+    let blast = |armour: f32| {
+        let boom = entity(
+            &[("classname", "env_explosion"), ("targetname", "boom"), ("origin", "60 0 36"), ("iMagnitude", "100")],
+            Vec::new(),
+            false,
+        );
+        let mut sim = sim(map(vec![boom]));
+        let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
+        sim.app.world_mut().entity_mut(p).insert(Armor {
+            amount: armour,
+            helmet: false,
+        });
+        sim.ticks(10);
+        sim.app
+            .world_mut()
+            .resource_mut::<Logic>()
+            .world
+            .queue_input("boom", "Explode", Value::Void, 0.0, None);
+        sim.ticks(10);
+        let w = sim.app.world();
+        let health = (1.0 - w.get::<Health>(p).unwrap().current) * 100.0;
+        let armour_lost = (armour - w.get::<Armor>(p).unwrap().amount) * 100.0;
+        (health.round(), armour_lost.round())
+    };
+    let (bare, none) = blast(0.0);
+    let (covered, taken) = blast(1.0);
+    assert!(bare > 20.0 && none == 0.0, "no armour: {bare} {none}");
+    assert!((covered - (bare / 2.0).floor()).abs() <= 1.0, "health half: {covered} of {bare}");
+    assert!((taken - (bare - covered) / 2.0).abs() <= 1.0, "armour half the rest: {taken}");
+}
+
+/// Fire.md question 2 (measured 2026-10-17 on the probe: an env_fire of
+/// size 256 took 7 a second from a bot without armour; with 100 armour 3
+/// health and about 2 armour a second): armour takes its part of burns.
+#[test]
+fn fire_burns_through_armour_at_ratio_one() {
+    use crate::stack::{core::Health, weapon::Armor};
+    let burn = |armour: f32| {
+        let fire = entity(
+            &[
+                ("classname", "env_fire"),
+                ("targetname", "fire"),
+                ("origin", "0 0 16"),
+                ("firesize", "256"),
+                ("fireattack", "1"),
+                ("damagescale", "1.0"),
+                ("spawnflags", "1"),
+            ],
+            Vec::new(),
+            false,
+        );
+        let mut sim = sim(map(vec![fire]));
+        let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
+        sim.app.world_mut().entity_mut(p).insert(Armor {
+            amount: armour,
+            helmet: false,
+        });
+        sim.ticks(10);
+        sim.app
+            .world_mut()
+            .resource_mut::<Logic>()
+            .world
+            .queue_input("fire", "StartFire", Value::Void, 0.0, None);
+        sim.seconds(6.0);
+        let w = sim.app.world();
+        let health = (1.0 - w.get::<Health>(p).unwrap().current) * 100.0;
+        let armour_lost = (armour - w.get::<Armor>(p).unwrap().amount) * 100.0;
+        (health.round(), armour_lost.round())
+    };
+    let (bare, none) = burn(0.0);
+    let (covered, taken) = burn(1.0);
+    assert!(bare >= 14.0 && none == 0.0, "no armour: {bare} {none}");
+    assert!(covered <= bare / 2.0 + 1.0 && covered >= bare / 2.0 - 4.0, "health about half: {covered} of {bare}");
+    assert!(taken > 0.0, "armour taken: {taken}");
+}
+
+/// A body broken while constrained breaks the constraint too: OnBreak
+/// (CS:S, measured 2026-10-17: a crate hanging from a ball socket broken by
+/// its Break input, the socket's OnBreak the tick after;
+/// physics_constraints.md question 5).
+#[test]
+fn breaking_a_held_body_breaks_its_constraint() {
+    let box_ = entity(
+        &[("classname", "prop_physics"), ("targetname", "lamp"), ("origin", "0 0 200")],
+        Vec::new(),
+        false,
+    );
+    let socket = entity(
+        &[("classname", "phys_ballsocket"), ("targetname", "socket"), ("origin", "0 0 232"), ("attach1", "lamp")],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![box_, socket]);
+    add_crate(&mut data, 0, Vec3::new(0.0, 0.0, 200.0));
+    let mut sim = sim(data);
+    sim.app.world_mut().resource_mut::<Logic>().world.record = true;
+    sim.seconds(1.0);
+    let socket = sim.app.world().resource::<Logic>().world.find("socket").expect("socket");
+    let broke = |sim: &Sim| {
+        sim.app.world().resource::<Logic>().world.fired.iter().any(|(_, e, o)| o == "OnBreak" && *e == socket)
+    };
+    assert!(!broke(&sim), "holds");
+    sim.app
+        .world_mut()
+        .resource_mut::<Logic>()
+        .world
+        .queue_input("lamp", "Break", Value::Void, 0.0, None);
+    sim.ticks(5);
+    assert!(broke(&sim), "the socket's OnBreak: {:?}", sim.app.world().resource::<Logic>().world.fired);
 }

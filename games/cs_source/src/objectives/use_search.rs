@@ -102,7 +102,9 @@ pub fn find_use(user: &User, targets: &[UseTarget], clear: &dyn Fn(Vec3, Vec3) -
         }
     }
     // 2. The tilted box probes: the box's centre path against each target
-    // grown by the box; reach is measured to the target's own nearest point.
+    // grown by the box; reach is measured to the box's centre where it
+    // stopped (CS:S, measured 2026-10-17: a face 87 units ahead is found,
+    // 87.5 isn't; doors_buttons.md question 1).
     let mut candidate: Option<Entity> = None;
     for k in USE_TANGENTS {
         let dir = (f - user.up * k).normalize_or_zero();
@@ -114,8 +116,7 @@ pub fn find_use(user: &User, targets: &[UseTarget], clear: &dyn Fn(Vec3, Vec3) -
             .min_by(|a, b| a.1.total_cmp(&b.1));
         if let Some((t, d)) = hit {
             let centre = eye + dir * d;
-            let near = centre.clamp(t.lo, t.hi);
-            if clear(eye, centre) && user.distance(near) < USE_RADIUS {
+            if clear(eye, centre) && user.distance(centre) < USE_RADIUS {
                 candidate = Some(t.entity);
             }
         }

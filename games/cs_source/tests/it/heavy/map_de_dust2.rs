@@ -1851,8 +1851,9 @@ fn every_gun_has_its_body_animations() {
     // The first shell goes in 0.5 s after the start.
     sim.seconds(0.5);
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_loop"));
-    // Two shells: the end 1.425 s after the start (spec T25).
-    sim.seconds(1.0);
+    // Two shells, 0.5 s each (measured, weapons.md M9): the end about
+    // 1.55 s after the start.
+    sim.seconds(1.15);
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_end"));
     // The Elites: the first shot from the left hand, the next the right.
     give(sim.app.world_mut(), c, ELITE).unwrap();

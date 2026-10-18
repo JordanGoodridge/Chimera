@@ -11,9 +11,10 @@
 //! Known shortcuts (docs/tech-debt.md): `trigger_hurt`
 //! (specs/cs_source/fall_damage.md): constant rate only (damagemodel 1 doubling
 //! isn't used by stock maps), no map logic (StartDisabled ones are skipped),
-//! touch test is the character's collider bounds against the trigger's brushes,
-//! one half-second timer per trigger (measured 2026-10-17, as armour taking
-//! none of it). Why it's OK for now: de_port's
+//! touch test is the character's collider bounds against the trigger's brushes
+//! (flush contact touches: measured 2026-10-17), one half-second timer per
+//! trigger (measured 2026-10-17); armour by damage type and whole points are
+//! measured (`core::MapDamage`). Why it's OK for now: de_port's
 //! sea bites as measured.
 
 use bevy::prelude::*;
@@ -44,6 +45,9 @@ pub enum Kind {
 #[derive(Clone, Debug, Default)]
 pub struct Hurt {
     pub damage: f32,
+    /// Armour takes its part: every `damagetype` but fall (32) and drown
+    /// (16384) (measured, triggers.md question 4).
+    pub armour: bool,
     pub original: f32,
     pub cap: f32,
     pub doubling: bool,
@@ -97,6 +101,7 @@ pub(super) fn spawn(w: &mut LogicWorld, id: EntId) -> Option<Trigger> {
             let damage = e.kv("damage").map_or(10.0, super::value::atof);
             Kind::Hurt(Hurt {
                 damage,
+                armour: e.kv_i("damagetype") & (32 | 16384) == 0,
                 original: damage,
                 cap: e.kv_f("damagecap"),
                 doubling: e.kv_i("damagemodel") == 1,
@@ -164,7 +169,7 @@ pub(super) fn keyvalue(w: &mut LogicWorld, id: EntId, key: &str) -> bool {
         && let Some(t) = trig_mut(w, id)
     {
         match key {
-            "wait" | "damage" | "speed" | "pushdir" | "target" | "landmark" | "gravity" => {
+            "wait" | "damage" | "damagetype" | "speed" | "pushdir" | "target" | "landmark" | "gravity" => {
                 t.kind = new.kind;
                 return true;
             }
@@ -206,9 +211,12 @@ pub fn passes(w: &LogicWorld, id: EntId, who: Who) -> bool {
         flags |= 1;
     }
     let class_ok = match who {
+        // 32: CS:S's "only clients in vehicles": no player (measured on a
+        // trigger_teleport, triggers.md question 6); 4096: no bots (the
+        // same measurement).
         Who::Player(p) => {
-            let alive = w.player(p).is_some_and(|p| p.alive);
-            alive && flags & (1 | 64) != 0 && flags & 32 == 0
+            let (alive, bot) = w.player(p).map_or((false, false), |p| (p.alive, p.bot));
+            alive && flags & (1 | 64) != 0 && flags & 32 == 0 && !(bot && flags & 4096 != 0)
         }
         // "Physics Objects" (8): physics props and physics brushes.
         Who::Ent(e) => flags & 64 != 0 || (flags & 8 != 0 && physics_body(w, e).is_some()),
@@ -364,7 +372,7 @@ fn end_touch(w: &mut LogicWorld, id: EntId, who: Who) {
         && let Who::Player(p) = who
     {
         let per = h.damage * 0.5;
-        hurt_player(w, p, per);
+        hurt_player(w, p, per, h.armour);
     }
     if !was_in {
         return;
@@ -396,14 +404,14 @@ fn passes_ignoring_life(w: &LogicWorld, id: EntId, who: Who) -> bool {
     }
 }
 
-fn hurt_player(w: &mut LogicWorld, p: Entity, per: f32) {
+fn hurt_player(w: &mut LogicWorld, p: Entity, per: f32, armour: bool) {
     if per < 0.0 {
         w.effects.push(Effect::Heal { target: p, amount: -per });
     } else if per > 0.0 {
-        w.effects.push(Effect::Damage {
+        w.effects.push(Effect::Hurt {
             target: p,
             amount: per,
-            crush: false,
+            armour,
         });
     }
 }
@@ -591,7 +599,7 @@ pub(super) fn think(w: &mut LogicWorld, id: EntId) {
                 .collect();
             for v in &victims {
                 if let Who::Player(p) = v {
-                    hurt_player(w, *p, per);
+                    hurt_player(w, *p, per, h.armour);
                     w.fire_output(id, "OnHurtPlayer", Some(*v), Value::Void);
                 } else {
                     w.fire_output(id, "OnHurt", Some(*v), Value::Void);

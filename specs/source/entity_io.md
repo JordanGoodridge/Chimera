@@ -183,12 +183,17 @@ handles: if that entity is deleted before delivery, they become "none".
   - An infinite zero-delay loop (two relays triggering each other) hangs
     the server in the original. We should cap work per tick (see Quirks).
   - Delays that are an exact multiple of dt compare floats at the boundary;
-    see Open questions.
+    see Open questions. **Measured on CS:S (2026-10-17, Q3):** a delay of n
+    ticks exactly waits n ticks (0.015, 0.03, 0.3 after 1, 2, 20), a
+    fraction rounds up (0.01 after 1), delay 0 the same tick.
 - **Cancel**: some inputs remove every queued message whose caller is a
   given entity (logic_relay CancelPending). Removal checks the caller handle
   and that caller's current name and classname.
 - The queue is not cleared by Kill: messages that target a killed entity by
   name later simply find nothing; messages the killed entity sent remain.
+  **Measured on CS:S (2026-10-17, Q4):** "later" includes the rest of the
+  same tick: a relay sent Kill then Trigger by one output (delay 0) never
+  fired; sent Trigger then Kill, it did.
 
 ### Delivering an input; parameter typing
 
@@ -726,12 +731,22 @@ dt = 0.015 s. "Tick N" means server time N × dt.
    toggled by a button; play two rounds on the probe server.
 2. **Answered (with Q1, 2026-10-15: logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap at a dedicated server's map load and at every restart).** Was: **OnNewGame on a dedicated server map load**: does it fire on
    `changelevel`/`map`? Same test map, print both.
-3. **Float boundary**: is a delay that is an exact tick multiple (0.015,
+3. **Answered (measured 2026-10-17, probe server):** n ticks exactly.
+   A relay triggered from inside the event queue (another relay's 0.1 s
+   output) sent prop_physics crates Break with delays 0, 0.01, 0.015,
+   0.03 and 0.3; `mashup_props.sp` logged their OnBreak ticks: +0, +1, +1,
+   +2, +20. As ours (ceil(d/dt − 1e−4)). (Triggered by RCON between
+   frames, everything came one tick earlier, delay 0 and 0.015 together.)
+   Was: **Float boundary**: is a delay that is an exact tick multiple (0.015,
    0.03, 0.3) delivered after n or n+1 ticks? Fire `say` from relays with
    delays 0.015, 0.03, 0.3 and log the server tick (probe plugin) on the
    probe server. Until measured, we compute due ticks in integer ticks:
    ceil(delay/dt − 1e−4).
-4. **Kill then input in the same tick**: confirm a killed entity still
+4. **Answered (measured 2026-10-17, probe server, both orders, twice):**
+   no: a relay that receives Kill and then Trigger in the same tick never
+   fires; Trigger then Kill, it fires. (Connections fire newest first, so
+   the one listed last went first.) Ours delivered inputs to a killed
+   entity until the frame ended: now it refuses them. Was: **Kill then input in the same tick**: confirm a killed entity still
    accepts inputs queued in that tick (relay: Kill delay 0 then Trigger
    delay 0 → does OnTrigger fire?).
 5. **Partly answered (measured 2026-10-17, probe server):** CS:S has the gate, default "always" (`disallow` / `always`); a spawned point_servercommand's `Command "say ..."` ran (with the cvar at "always" and at "0", which isn't "disallow"). Our allowlist stays our security choice. Still open: the commands real minigame maps send. Was: **sv_allow_point_servercommand in CS:S**: `cvarlist sv_allow` on the
