@@ -39,8 +39,8 @@
 //! recoil are the normal ones; silenced damage and range are unchanged (M16 not
 //! measured); the Glock's burst refire is 0.5 s; reloading unzooms; the SG552's
 //! zoomed speed is unchanged and the G3SG1's is the SG550's 150. Shotguns: the
-//! shell-by-shell reload uses the SDK template's 0.5 s start and 0.45 s a shell
-//! for both (M9; the models' durations differ), pellets share one inaccuracy
+//! shell-by-shell reload is measured (M9: 0.5 s start, 0.5 s a shell for
+//! both; the models' durations differ), pellets share one inaccuracy
 //! offset per shot and each draws its own Spread part (Q12), every pellet is a
 //! line trace. The Elites alternate hands by the clip's parity (left on odd
 //! rounds left, ours). Bots' buying weights (`buy.bot_weight`) are ours. Zoomed

@@ -654,7 +654,7 @@ Fire think k = 0 is the StartFire tick t0; think k is at t0 + 0.105k s
    light (base: no)? Check: ignite the de_inferno gas can (Ignite input via
    `ent_fire`, or an HE that leaves it alive) in a dark corner and look for
    a dynamic light on nearby walls.
-8. **Tick rate.** The stock server runs 66.67 tick (think 0.105 s); a
+8. **Answered for CS:S: its server always runs 0.015 s ticks (tools/css_probe/README.md), so 0.105 s thinks.** Was: **Tick rate.** The stock server runs 66.67 tick (think 0.105 s); a
    64-tick server gives 0.09375 s thinks (full heat at 3.75 s, damage every
    11 thinks = 1.03 s). Which does our server emulate? (Follows the
    engine-wide choice in entity_io.md.)

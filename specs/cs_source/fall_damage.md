@@ -86,6 +86,24 @@ it for 300 ticks: 25 damage (half of `damage`) on tick 4, then every 33
 ticks (0.495 s), 10 bites in 300 ticks. Armour 0, so armour's effect isn't
 known.
 
+Measured 2026-10-17 (probe server, de_port, the same spot, health 1000,
+bites read from `player_hurt` with their ticks):
+- **Armour** (100, no helmet): every bite took 25 from health and none from
+  the armour (armour 100 throughout, `dmg_armor` 0): armour doesn't absorb
+  this (drown-type) damage.
+- **One timer per trigger:** a second bot put in 10 ticks after the first
+  was not bitten on entry; its first bite came on the first bot's next
+  bite tick, and from then on both were bitten on the same ticks (every
+  33 ticks).
+
+**Landing sounds** (measured 2026-10-17, the probe bot dropped onto
+de_dust2's CT spawn floor by `fallmeas.py`, its sounds logged by the
+probe's sound hook): a landing that takes health plays one of
+`player/damage1..3.wav` (`Player.FallDamage`, channel 4, volume 1.0) and
+a footstep at volume 1.0 on the same tick (6, 12, 16, 37 and 82 damage
+alike); a landing at a fall speed under 580 (no damage) plays only the
+footstep, at 0.85.
+
 Implemented: each volume's brushes (its brush model's convex brushes, moved
 by the entity origin); a living character whose bounding box overlaps one
 takes damage / 2 every 0.5 s, due within half a tick of the half second
@@ -98,10 +116,17 @@ players (spawnflags without bit 1, when not 0).
 
 1. `damagemodel` 1 (doubling damage up to `damagecap`) isn't used by any
    stock map; it hurts at the constant rate here.
-2. Whether armour reduces trigger_hurt damage (drown type), and whether
-   other damage types differ.
-3. Whether the half-second timer is per trigger (shared) or per toucher.
-4. Feedback on a damaging landing (implementation guesses, for the
+2. **Partly answered (2026-10-17, above): armour takes nothing of
+   de_port's drown-type damage.** Other damage types (no stock map has
+   one) are open. Was: Whether armour reduces trigger_hurt damage (drown
+   type), and whether other damage types differ.
+3. **Answered (2026-10-17, above): one shared timer per trigger; a
+   newcomer is first bitten on the trigger's next bite.** Was: Whether the
+   half-second timer is per trigger (shared) or per toucher.
+4. **Sound part answered (2026-10-17, "Landing sounds" above:
+   `Player.FallDamage` on every landing that takes health, none
+   otherwise; as ours).** The view roll and the HUD need the client. Was:
+   Feedback on a damaging landing (implementation guesses, for the
    coordinator to measure on the probe server or a client demo): does
    `Player.FallDamage` play on every landing that takes health (and not on
    one that takes none, e.g. god mode)? Is the landing view roll

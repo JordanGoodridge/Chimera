@@ -553,8 +553,8 @@ fn shotgun_reload_plays_start_a_shell_each_and_the_finish() {
     assert_eq!(activity(&sim, p), "ACT_SHOTGUN_RELOAD_START");
     sim.seconds(0.1);
     assert_eq!(activity(&sim, p), "ACT_VM_RELOAD");
-    // Two shells; then the finish.
-    sim.seconds(0.9);
+    // Two shells (0.5 s each, measured M9); then the finish.
+    sim.seconds(1.05);
     assert_eq!(activity(&sim, p), "ACT_SHOTGUN_RELOAD_FINISH");
     assert_eq!(sim.app.world().get::<Magazine>(w).unwrap().clip, 8);
     sim.seconds(1.0);

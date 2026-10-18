@@ -274,8 +274,8 @@ Reload one at a time (shotguns; generic flag "reloads singly"):
   or the reserve empty, play the finish sequence. Firing is allowed between
   inserts once `next_primary` has passed and interrupts the reload. CS:S's
   own M3/XM1014 timings: model durations are start 0.375 / 0.6667 s, insert
-  0.4909 / 0.3889 s, finish 0.875 / 0.4 s; which numbers the game uses is
-  measurement M9.
+  0.4909 / 0.3889 s, finish 0.875 / 0.4 s. Measured (M9): CS:S uses 0.5 s
+  for the start and 0.5 s a shell on both, not the template's 0.45.
 
 #### 3.5 Empty clip, dry fire, auto reload and auto switch
 
@@ -1541,9 +1541,24 @@ positions):
   (looking 60° down, it came to rest 58.9 away and stayed): the 36-unit grown
   box of 3.9 plus the box halves.
 
+### M9 Shotgun reload (2026-10-17)
+
+Probe server, de_dust2's open line, the run bot given an M3 or an XM1014
+(clip 2, reserve 32), drawn, then reload pressed for one tick (clip and
+reserve logged every tick):
+- M3 and XM1014 alike: the first shell goes in 68 ticks after the press,
+  then one every 35 ticks (+68, +103, +138, ... to a full clip). That is a
+  0.5 s start and 0.5 s a shell (34 ticks each at 0.015 s), the next shell
+  starting a tick after the last went in (the template's 0.45 s a shell
+  would give 31).
+- Attack held from 10 ticks after the press: the first shot comes 34 ticks
+  after the press (when the start ends), and the reload stops (no shell
+  went in). Attack held from 120 ticks: the shot comes at once (one shell
+  in, the second under way is lost) and the reload stops.
+
 ### Not measured yet
 
-M9 shotgun reload, M12 hitbox reach, M14 drop/pickup, silenced damage, the
+M12 hitbox reach, M14 drop/pickup, silenced damage, the
 knife's hitbox/hull interplay, the RNG (Q1); for M13 the damage factors of
 metal, sand and other materials, penetration distances of other ammo types,
 whether the range halving applies after walls, and shotgun pellets; recoil
@@ -1610,12 +1625,18 @@ inaccuracy target.
   fire allowed before the reload animation ends): M8.
   *Partly resolved (measured section, M8): deploy and reload equal the
   view-model durations, firing allowed on the completion tick; shotgun
-  reload (M9) open.*
+  reload measured too (M9: 0.5 s start, 0.5 s a shell, a shot stops it).*
 - **Q12 Shotgun pellets**: line vs. box traces, pattern, per-pellet damage
   event or summed: M4.
+  *Partly resolved (M16): one `bullet_impact` per pellet (9 M3, 6 XM1014),
+  one `weapon_fire` a shot. Pattern and trace shape open.*
 - **Q13 Drop / pickup** CS rules: drop velocity, which weapon is dropped on
   death, pickup by walking only into an empty slot, dropped-weapon lifetime:
   M14.
+  *Partly resolved (M20): drop velocity and path, the 0.75 s re-pick delay,
+  reach, nothing taken from a gun of a type carried. Death drops measured
+  (grenades.md Q17: the best gun whatever is held, and one grenade, HE over
+  flashbang over smoke). Lifetime open.*
 - **Q14 Zoom** levels (FOV), zoomed speed, unzoom after a sniper shot and
   re-zoom timing: M15.
   *Resolved for FOV, toggle delay, unzoom/re-zoom and zoomed speed

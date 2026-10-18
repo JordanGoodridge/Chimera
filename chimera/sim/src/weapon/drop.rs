@@ -6,7 +6,8 @@
 //! has only the walk-over pickup).
 //!
 //! Covers: `drop` (G) throws the held weapon out as a `Loose` item from 12
-//! units under the eye (spec 3.9; the dead drop their best one where they lie), touching one (its box grown 36 units sideways and 18
+//! units under the eye (spec 3.9; the dead drop their best gun, whatever they held, and their
+//! highest `DeathDrop`, a grenade, where they lie: measured), touching one (its box grown 36 units sideways and 18
 //! up, 0.75 s after the drop (measured: M20), in sight of the eye; specs/cs_source/weapons.md 3.9)
 //! takes it when its slot is empty (and draws it when the player's
 //! `cl_autowepswitch` userinfo is on, its `SwitchWeight` is above the one in
@@ -243,7 +244,17 @@ pub fn drop_this(world: &mut World, owner: Entity, weapon: Entity, thrown: bool)
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DeathDrops(pub bool);
 
-/// The dead drop their best weapon where they fell (when `DeathDrops`).
+/// A weapon the dead drop beside their best gun (the data's
+/// `death_drop`): of those carried, the highest rank goes (CS:S's
+/// grenades: HE, else a flashbang, else a smoke; measured,
+/// specs/cs_source/grenades.md Q17).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeathDrop(pub i32);
+
+/// The dead drop their best gun where they fell, whatever they held (the
+/// lowest slot of the droppable weapons without a `DeathDrop`), and the
+/// highest `DeathDrop` they carry (when `DeathDrops`; measured on CS:S,
+/// specs/cs_source/grenades.md Q17).
 pub(super) fn drop_on_death(mut died: MessageReader<Died>, drops: Option<Res<DeathDrops>>, mut commands: Commands) {
     if !drops.is_some_and(|d| d.0) {
         died.clear();
@@ -252,9 +263,33 @@ pub(super) fn drop_on_death(mut died: MessageReader<Died>, drops: Option<Res<Dea
     for d in died.read() {
         let owner = d.entity;
         commands.queue(move |w: &mut World| {
-            drop_weapon(w, owner, false);
+            for weapon in death_drops(w, owner) {
+                drop_this(w, owner, weapon, false);
+            }
         });
     }
+}
+
+/// What `owner` drops at death (`drop_on_death`).
+fn death_drops(world: &World, owner: Entity) -> Vec<Entity> {
+    let Some(inv) = world.get::<Inventory>(owner) else {
+        return Vec::new();
+    };
+    let ok = |e: &&Entity| world.get::<Weapon>(**e).is_some() && world.get::<Undroppable>(**e).is_none();
+    let gun = inv
+        .weapons
+        .iter()
+        .filter(ok)
+        .filter(|e| world.get::<DeathDrop>(**e).is_none())
+        .min_by_key(|e| world.get::<Weapon>(**e).map_or(u8::MAX, |w| w.slot));
+    let extra = inv
+        .weapons
+        .iter()
+        .filter(ok)
+        .filter_map(|e| world.get::<DeathDrop>(*e).map(|r| (*e, r.0)))
+        .max_by_key(|(_, r)| *r)
+        .map(|(e, _)| e);
+    gun.copied().into_iter().chain(extra).collect()
 }
 
 /// The world box of a loose weapon's touch volume (spec 3.9): its box,

@@ -834,6 +834,84 @@ fn the_dead_drop_weapons_only_in_rounds_and_draw_nothing() {
     }
 }
 
+/// What the dead drop (measured, specs/cs_source/grenades.md Q17): their
+/// best gun whatever they held (the AK with the flashbang or the pistol in
+/// hand), and one grenade: an HE over a flashbang over a smoke.
+#[test]
+fn the_dead_drop_their_best_gun_and_best_grenade() {
+    use crate::stack::weapon::{drop::Loose, equip::give_item};
+    const HE: &str = "cs_source:weapon_hegrenade";
+    const FLASH: &str = "cs_source:weapon_flashbang";
+    const SMOKE: &str = "cs_source:weapon_smokegrenade";
+    let all = ["weapon_flashbang", "weapon_hegrenade", "weapon_smokegrenade"];
+    let cases: [(&[&str], &str, &[&str]); 4] = [
+        (&all, "weapon_flashbang", &[AK47, HE]),
+        (&["weapon_flashbang", "weapon_smokegrenade"], "pistol", &[AK47, FLASH]),
+        (&["weapon_smokegrenade"], "weapon_knife", &[AK47, SMOKE]),
+        (&[], AK47, &[AK47]),
+    ];
+    for (grenades, hold, want) in cases {
+        let mut sim = sim();
+        let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        sim.app
+            .world_mut()
+            .resource_mut::<crate::stack::console::Console>()
+            .submit("mp_freezetime 0; mashup_rounds 1");
+        sim.ticks(4);
+        // Rounds start with the pistol and the knife: and a rifle.
+        assert!(give_item(sim.app.world_mut(), p, "weapon_ak47", 1));
+        for g in grenades {
+            assert!(give_item(sim.app.world_mut(), p, g, 1), "{g}");
+        }
+        let held = sim
+            .app
+            .world()
+            .get::<Inventory>(p)
+            .unwrap()
+            .weapons
+            .iter()
+            .copied()
+            .find(|w| {
+                let w = sim.app.world().get::<Weapon>(*w).unwrap();
+                match hold {
+                    "pistol" => w.slot == 1,
+                    _ => w.id.ends_with(hold.trim_start_matches("cs_source:")),
+                }
+            })
+            .expect("held weapon");
+        sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(held);
+        sim.ticks(80);
+        assert_eq!(active(&sim, p), held, "holding {hold}");
+        sim.app.world_mut().get_mut::<Health>(p).unwrap().current = 0.0;
+        sim.app.world_mut().write_message(crate::stack::core::Died {
+            entity: p,
+            attacker: None,
+            damage: crate::stack::core::Damage {
+                target: p,
+                attacker: None,
+                amount: 1.0,
+                point: Vec3::ZERO,
+                dir: Vec3::X,
+                hitgroup: Default::default(),
+                kind: Default::default(),
+                weapon: None,
+                force: Vec3::ZERO,
+            },
+        });
+        sim.ticks(3);
+        let w = sim.app.world_mut();
+        let mut dropped: Vec<&str> = w
+            .query::<&Loose>()
+            .iter(w)
+            .map(|l| w.get::<Weapon>(l.weapon).unwrap().id)
+            .collect();
+        dropped.sort();
+        let mut want = want.to_vec();
+        want.sort();
+        assert_eq!(dropped, want, "holding {hold} with {grenades:?}");
+    }
+}
+
 /// Picking up (specs/cs_source/weapons.md 3.9): a dropped gun is touched
 /// within its box grown 36 units sideways, by anyone, only from
 /// `TOUCH_DELAY` after the drop; with the slot free it is taken; carrying

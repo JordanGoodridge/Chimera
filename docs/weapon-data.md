@@ -101,7 +101,9 @@ standing = { up = 1.0, up_step = 0.175, side = 0.375, side_step = 0.0375, up_cap
 Melee weapons give `[melee.primary]` and `[melee.secondary]` swings (range,
 hull, hull_reach, facing_cos, damage, follow_up = [window, damage], backstab,
 hitgroups, hit/miss refires, force per damage point, armor_ratio, quantum,
-sounds); `undroppable = true` and `pickup_team = 1` are flags. A table left
+sounds); `undroppable = true` and `pickup_team = 1` are flags; `death_drop
+= 3` marks a weapon the dead drop beside their best gun (`DeathDrop`: of
+those carried, the highest goes; CS:S's grenades). A table left
 out means the part isn't there (no `[sounds]`: no `WeaponSounds`).
 
 Ammo types:

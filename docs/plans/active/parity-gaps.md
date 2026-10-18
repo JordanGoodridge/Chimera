@@ -24,22 +24,23 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 
 | Area | have | differs | missing | fixed now |
 |---|---|---|---|---|
-| Movement | 5 | 8 | 0 | 4 |
-| Weapons, recoil, spread | 5 | 8 | 2 | 3 |
-| Sounds | 8 | 8 | 3 | 5 |
-| HUD | 14 | 4 | 1 | 5 |
-| Menus and commands | 12 | 4 | 7 | 9 |
-| Rendering, lighting, materials | 11 | 17 | 2 | 7 |
-| Maps and entities | 8 | 8 | 1 | 3 |
-| Rules and economy | 7 | 4 | 0 | 3 |
-| Networking feel | 4 | 2 | 4 | 0 |
-| **Total** | **73** | **63** | **21** | **38** |
+| Movement | 9 | 4 | 0 | 4 |
+| Weapons, recoil, spread | 11 | 7 | 1 | 9 |
+| Sounds | 11 | 7 | 1 | 7 |
+| HUD | 17 | 3 | 0 | 8 |
+| Menus and commands | 17 | 4 | 5 | 10 |
+| Rendering, lighting, materials | 17 | 17 | 2 | 13 |
+| Maps and entities | 13 | 8 | 1 | 6 |
+| Rules and economy | 11 | 1 | 0 | 5 |
+| Networking feel | 6 | 3 | 1 | 1 |
+| **Total** | **112** | **54** | **11** | **63** |
 
-"Fixed now" counts rows that moved from missing or differs to have in
-the first pass, round 2 and the join flow (counted under have; `invnext` and `autobuy`
-appear under both Weapons and Menus: 9 fixes in the first pass; round 2
-in its own section below). Round 2 split three Menus rows (what was
-fixed from what wasn't) and recounted HUD from its table.
+Counted from the tables below (recounted 2026-10-17): "have" is every row
+whose status starts with have (have, have (fixed), have (new), have
+(differs)); "fixed now" the rows marked have (fixed), which are counted
+under have too. Rows marked n/a or with no status are left out. What
+would settle each differs or missing row, and every spec's open question,
+is sorted in [open-questions.md](open-questions.md).
 
 ## refcmp: the maps with reference captures
 
@@ -124,7 +125,9 @@ report folders):
 | Other automatics' recoil, scoped/silenced/burst | differs | M | S | measured and in the data 2026-10-15 for M4A1, FAMAS, Galil, SG 552, AUG, MP5, P90, UMP, MAC-10, TMP, M249 (standing, crouched, moving, airborne; five airborne yaw caps not reached); the snipers' and silenced/burst modes left (scoped AUG and SG 552 measured: as unscoped) (Q3) |
 | Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7 |
 | Unmeasured gun values (penetration...) | differs | L | S | tech-debt "The CS:S guns"; 2026-10-15 measured the powers of 5.56, 9 mm (as the data), .357 (24, was 15) and 5.7 (30, was 15), and the reach of 9 mm and .357 (800; .357 was 500); buckshot and long reaches left |
-| Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), the throw pitch bend (80/90 looking up: fixed), fuses, HE vs armour (×0.7375) measured and matching; HE falloff fixed (a bell σ 350/3, linear with sv_legacy_grenade_damage 1); flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); redraw, pin open (grenades.md Q2, Q3, Q12) |
+| Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), the throw pitch bend (80/90 looking up: fixed), fuses, HE vs armour (×0.7375) measured and matching; HE falloff fixed (a bell σ 350/3, linear with sv_legacy_grenade_damage 1); flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); a switch with the pin out keeps the grenade (2026-10-17, grenades.md Q3: as ours); redraw open (Q2: the probe's bot can't tell, its AI picks the knife) and the flash through walls (Q12) |
+| What the dead drop | have (fixed) | M | S | measured 2026-10-17 (grenades.md Q17): the best gun whatever was held, and one grenade, an HE over a flashbang over a smoke; ours dropped only the weapon in hand (a grenade held: no gun) (`weapon::drop::DeathDrop`) |
+| Shotgun reload | have (fixed) | M | S | measured 2026-10-17 (weapons.md M9): 0.5 s start and 0.5 s a shell for the M3 and XM1014 (68 ticks to the first, 35 each after), a shot stops it; ours had the template's 0.45 s a shell |
 | Same-type pickup takes nothing | have (fixed) | L | S | measured (weapons.md M20): CS:S takes no ammo from a gun of a type carried (ours took clip and reserve); a dropped gun carries its reserve, as ours; the re-pick delay (0.75 s, was 1 s) and reach measured too |
 | `cl_autowepswitch` while firing | differs | L | S | tech-debt row |
 | Knife idle timing | differs | L | | tech-debt "View-model idle" |
@@ -289,6 +292,7 @@ common console commands, against mashup's.
 | Item | Status | Impact | Cost | Notes |
 |---|---|---|---|---|
 | Rounds, freeze, buy time, money table | have | | | rounds.md; defaults unmeasured (rounds.md Next 1) |
+| Round-end and objective money | have (fixed) | H | S | measured 2026-10-17 (objectives.md Q5): the round's bonuses come as the next round starts (ours paid at the end), a defuse pays 3250 (was 3500), no planter reward (was 300), living losers of a time-out get nothing, hostage maps pay 3000 / 2500 / 3250 plus 150 a living, 100 a led and 850 a rescued hostage (was 3250 / 3500 / 3250 flat), a hostage hit costs 20 a point and the killing hit twice that and 500 (was a flat 1500 a kill) |
 | Kill rewards, team-kill penalty | have | | | |
 | Survivors keep weapons | have | | | |
 | Spectators | have | | | |
@@ -297,7 +301,7 @@ common console commands, against mashup's.
 | `mp_tkpunish`, `mp_fadetoblack` | have (fixed) | L | S | both 0 as CS:S; a team killer dies as the next round starts; the dead fade to black over 1 s (ours) |
 | Ammo prices and sizes | have (fixed) | M | S | measured (weapons.md M19): ammo free, bought guns and spawn pistols full, the .45 box 25; we charged per box and sold guns with the clip only |
 | Bomb and hostage details | differs | M | | tech-debt; objectives.md open questions; the bomb blast measured and fixed 2026-10-15 (a bell, σ = reach / 3, was linear; armour ratio 1, armour running out spills onto health); hostage damage measured and fixed 2026-10-16 (objectives.md Q8: the hostage's own hitgroup multipliers, a second hit through its body at half damage, health a float; `weapon::BulletTarget`); hostage models and rescue rules measured and fixed 2026-10-17 (objectives.md Q9: the four models in turn over rounds, was by index; Q11: only a following, walking hostage whose 26-wide hull touches a zone is rescued, no CT-spawn fallback, was any hostage, player-wide hull, 256 units round CT spawns); hostage spawn heights measured and fixed 2026-10-17 (objectives.md 9 "Spawn": they fall from the map's origin and rest 1/32 above the floor, within 0.1 unit of CS:S on six cs_ maps; they took the local player's movement, so noclip left them hanging at the origin, cs_office's first two 36 units up, and a short drop left them up to 2 units above it); bots added in noclip flew too (fixed 2026-10-17: bots and hostages take the match's movement, `movement::match_movement`); hostages re-created at every round start confirmed on the probe 2026-10-17 (new references after a round end and `mp_restartgame`, models moving on) |
-| Draw rules on one-sided maps | differs | L | | tech-debt "Minigame flows" |
+| Draw rules on one-sided maps | have | L | | measured (objectives.md Q15): all of the one side dead is a draw at once, as ours |
 | Freeze-time reload | have | L | | measured 2026-10-15 on the probe server: CS:S reloads in the freeze time at the usual pace, no firing or moving; as ours |
 
 ## Networking feel

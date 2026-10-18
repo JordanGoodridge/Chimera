@@ -18,9 +18,11 @@ cycle = 0.88
 clip = 8
 ammo = "cs_source:buckshot"
 reload = 0.4909
-# UNMEASURED (M9): the SDK template's start 0.5 s and 0.45 s a shell (spec
-# T25); the model's start/insert/finish are 0.375/0.4909/0.875 s.
-shells = { start = 0.5, insert = 0.45 }
+# Measured (M9, 2026-10-17): the first shell 68 ticks after the press,
+# then one every 35 (the start 0.5 s, 0.5 s a shell, the next a tick
+# after; the template's 0.45 was a tick short); the model's
+# start/insert/finish are 0.375/0.4909/0.875 s.
+shells = { start = 0.5, insert = 0.5 }
 
 [hitscan]
 range = 3000.0
