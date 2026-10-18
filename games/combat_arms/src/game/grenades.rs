@@ -6,9 +6,9 @@
 //! `combat_arms:grenade` hook: `GrenadeParams`), built as Chimera's
 //! `Throwable` (count, pin, release, post-fire and redraw, predicted with
 //! the weapon frame) with `ThrowOptions`: the release when the pre-fire
-//! ends, held or not (no cooking, 3); the spent weapon kept at total 0
-//! (inventory.md 10: `inventory` skips it and switches away); no default
-//! live drop on death (this module's `death_release`); and the projectile
+//! ends, held or not (no cooking, 3; the spent weapon is kept at total 0
+//! by `inventory` with Chimera's `KeepSpent`); no default live drop on
+//! death (this module's `death_release`); and the projectile
 //! made here (`launch`): from the eye along the view, perturbed by the
 //! weapon's square spread, at `speed` with none of the thrower's velocity
 //! (4). It is a Chimera `Projectile` marked `GameFlown` with this game's
@@ -35,7 +35,8 @@
 //!    a frag's blast (9: everything whose box touches the sphere, players
 //!    twice (Quirk 3), d to the centre, two cover traces and the head-top
 //!    retry, the linear falloff from a quarter of the radius, friendly fire
-//!    by `core::DamageRules`, no armour against explosions, death at 1 HP),
+//!    by `core::DamageRules`, the armour step for explosions (no stock gear
+//!    lists them), death at 1 HP),
 //!    other grenades hit and chained in the same frame (13), a flash test
 //!    (10: players once, protection `CaFlashProtection`, a hard facing
 //!    split, a timer); a smoke's cloud is the clients' look only (11:
@@ -46,8 +47,8 @@
 //! 4. Flash timers that ran out send the flash (T ≥ 0.1 s) as Chimera's
 //!    `core::Blinded` (white, fading by the end, T/2: its network message
 //!    carries it to the victim's client) and `CaFlashed`; over-time
-//!    entries deal their rate × dt (burn halved by body armour with armour
-//!    points left, poison unprotected).
+//!    entries deal their rate × dt through the armour step (burn halved by
+//!    body armour with armour points left, poison by a gas mask only).
 //!
 //! `flash_white` is the client's screen curve (cos(π t / T) until T/2).
 //! The server's "grenade in hand, pin pulled" flag (`CaPin`: on once the
@@ -55,8 +56,9 @@
 //! weapon changes) releases a full-fuse grenade at 500 u/s along the body's
 //! facing when its holder dies (14), ammo unchecked (Quirk 5).
 //!
-//! Units: the data's world units (1 u = 1 cm, `inventory::UNIT`) and hit
-//! points inside; the world in metres and health (1.0 = 100 HP).
+//! Units: the data's world units (1.8 cm each, by body size:
+//! `inventory::UNIT`) and hit points inside; the world in metres and
+//! health (1.0 = 100 HP).
 //!
 //! Known shortcuts (the spec's most literal reading where it is unclear,
 //! listed for its open questions):
@@ -88,10 +90,9 @@
 //! - Cover traces are blocked by static and kinematic bodies that aren't
 //!   characters, prop entities or "invisible" surfaces. Breakables
 //!   (`Damageable` bodies) take the blast without a cover test.
-//! - Armour against blasts is skipped (no stock gear lists explode or
-//!   flash); burn uses 0.5 per body gear (the stock body gear's burn entry,
-//!   `burn_gear`), head gear none; flash protection is `CaFlashProtection`
-//!   on the victim (goggles aren't in `weapons::Gear`, which knows bullets).
+//! - Armour: blasts and over-time damage hit the torso (types without
+//!   zones); flash protection is `CaFlashProtection` on the victim (no
+//!   goggles in `weapons::GEARS` yet).
 //! - The flash's facing is the body's yaw (Q11); W and C are the stock 2.0
 //!   and 1.0 (Quirk 6: the victim's weapon's, all the defaults). The screen
 //!   draws Chimera's white overlay over `Blinded` (a linear fade to T/2,
@@ -112,7 +113,10 @@ use serde::Deserialize;
 
 use super::{
     inventory::{CaSelection, UNIT},
-    weapons::{CaArmor, CaSpread, Gear, HitSpheres, Location, MALE, armour_and_zone, body_geometry, square_dir},
+    weapons::{
+        ArmourHit, BURN, CaArmor, CaSpread, EXPLOSION, HitSpheres, Location, MALE, POISON, armour_and_zone,
+        body_geometry, square_dir,
+    },
 };
 use crate::{
     core::{
@@ -466,7 +470,6 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
         },
         ThrowOptions {
             release_at_pin_end: true,
-            keep_spent: true,
             drop_primed: false,
             launch: Some(launch),
         },
@@ -647,20 +650,6 @@ pub fn flash_white(t: f32, time: f32) -> f32 {
 pub fn blinded_white(b: &Blinded, now: f64) -> f32 {
     let time = (2.0 * (b.end - b.fade_start)) as f32;
     flash_white((now - b.fade_start) as f32, time)
-}
-
-/// The burn protection of one piece of gear: body gear 0.5 everywhere,
-/// head gear none (the stock data: grenades.md 12, weapon_firing.md).
-pub fn burn_gear(g: &Gear) -> Gear {
-    let body = g.head == 0.0 && g.torso > 0.0;
-    let p = if body { 0.5 } else { 0.0 };
-    Gear {
-        head: p,
-        torso: p,
-        arm: p,
-        leg: p,
-        consumable: g.consumable,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,6 +1079,21 @@ impl Out<'_, '_> {
         self.damage.write(damage);
     }
 
+    /// `amount` (health) of `damage_type` on `victim`'s torso after its
+    /// armour (weapon_firing.md, Armour), which takes its share if the
+    /// hit lands.
+    fn armoured(&mut self, victim: Entity, attacker: Option<Entity>, amount: f32, damage_type: i32, hp: f32) -> f32 {
+        let lands = !self.spared(victim, attacker);
+        let hit = ArmourHit {
+            damage_type,
+            location: Location::Torso,
+            zone: 1.0,
+            infected: false,
+        };
+        let armour = self.armour.get_mut(victim).ok().map(|a| a.into_inner());
+        armour_and_zone(amount / hp, hit, armour, lands) * hp
+    }
+
     /// Whether the team rules spare `victim` from `attacker`'s grenade.
     fn spared(&self, victim: Entity, attacker: Option<Entity>) -> bool {
         self.rules.refuse(&Damage {
@@ -1256,19 +1260,11 @@ fn run_frame(
         };
         let mut amount = o.rate * f.dt;
         let hp = 0.01;
-        let lands = !out.spared(o.victim, o.attacker);
-        if o.kind == OverTimeKind::Burn
-            && let Ok(mut armour) = out.armour.get_mut(o.victim)
-        {
-            let mut burn = CaArmor {
-                points: armour.points,
-                gear: armour.gear.iter().map(burn_gear).collect(),
-            };
-            amount = armour_and_zone(amount / hp, Location::Torso, 1.0, Some(&mut burn), lands) * hp;
-            if armour.points != burn.points {
-                armour.points = burn.points;
-            }
-        }
+        let damage_type = match o.kind {
+            OverTimeKind::Burn => BURN,
+            OverTimeKind::Poison => POISON,
+        };
+        amount = out.armoured(o.victim, o.attacker, amount, damage_type, hp);
         let kind = match o.kind {
             OverTimeKind::Burn => DamageKind::Burn,
             OverTimeKind::Poison => DamageKind::Generic,
@@ -1497,11 +1493,11 @@ fn blast(
         if !world.clear(at, b.centre) && !world.clear(at, b.centre.with_y(b.head_top)) {
             continue;
         }
-        // Explode: no stock gear protects (armour points untouched).
-        let damage = amount(d) * hp;
+        // Explosion damage through the armour step (no stock gear lists
+        // it: whole, armour points untouched).
         for _ in 0..2 {
-            let health = b.health;
-            out.deal(f, b.entity, health, damage, DamageKind::Blast, g.thrower, g.weapon, b.centre, hp);
+            let damage = out.armoured(b.entity, g.thrower, amount(d) * hp, EXPLOSION, hp);
+            out.deal(f, b.entity, b.health, damage, DamageKind::Blast, g.thrower, g.weapon, b.centre, hp);
         }
     }
     // Other live grenades (13).

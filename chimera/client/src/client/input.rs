@@ -369,6 +369,10 @@ pub fn write_local_intent(
         return;
     }
     intent.move_axis = Vec2::new(axis("+moveright", "+moveleft"), axis("+forward", "+back"));
+    intent.opposed = BVec2::new(
+        bound("+moveright") && bound("+moveleft"),
+        bound("+forward") && bound("+back"),
+    );
 
     let zoom = mouse_settings.zoom_scale(zoomed.iter().next().map(|z| z.fov));
     let turn = mouse_settings.look_delta(motion_counts) * zoom;
@@ -384,8 +388,11 @@ pub fn write_local_intent(
     let notches = super::binds::wheel_notches(binds, &scroll, "+jump");
     wheel.pending = (wheel.pending + notches).min(MAX_WHEEL_JUMPS);
     intent.crouch = bound("+duck");
-    intent.sprint = bound("+speed");
-    intent.walk = bound("+speed");
+    // `+speed` is Source's walk key (CS:S runs, Shift walks): it sets
+    // both, and each movement reads the one it has; `+walk` and `+sprint`
+    // set one each (Combat Arms' C and Shift).
+    intent.sprint = bound("+speed") || bound("+sprint");
+    intent.walk = bound("+speed") || bound("+walk");
     // Attack that just picked from the weapon selection doesn't fire.
     intent.fire = bound("+attack") && !weapon_menu.as_ref().is_some_and(|m| m.swallow_fire);
     intent.secondary = bound("+attack2");
@@ -412,11 +419,12 @@ fn apply_held(intent: &mut Intent, wheel: &mut WheelJump, h: &super::console::He
     let add = |a: bool, b: bool| a as i8 as f32 - b as i8 as f32;
     intent.move_axis += Vec2::new(add(h.moveright, h.moveleft), add(h.forward, h.back));
     intent.move_axis = intent.move_axis.clamp(Vec2::NEG_ONE, Vec2::ONE);
+    intent.opposed |= BVec2::new(h.moveright && h.moveleft, h.forward && h.back);
     intent.jump |= h.jump;
     wheel.key_held |= h.jump;
     intent.crouch |= h.duck;
-    intent.walk |= h.speed;
-    intent.sprint |= h.speed;
+    intent.walk |= h.speed || h.walk;
+    intent.sprint |= h.speed || h.sprint;
     intent.fire |= h.attack;
     intent.secondary |= h.attack2;
     intent.reload |= h.reload;

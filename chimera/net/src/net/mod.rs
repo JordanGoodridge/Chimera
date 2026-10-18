@@ -489,6 +489,9 @@ pub mod buttons {
     pub const RELOAD: u16 = 1 << 6;
     pub const LAST_WEAPON: u16 = 1 << 7;
     pub const USE: u16 = 1 << 8;
+    /// `Intent::opposed`.
+    pub const OPPOSED_X: u16 = 1 << 9;
+    pub const OPPOSED_Y: u16 = 1 << 10;
 }
 
 impl NetCmd {
@@ -505,6 +508,8 @@ impl NetCmd {
             (i.reload, RELOAD),
             (i.last_weapon, LAST_WEAPON),
             (i.use_key, USE),
+            (i.opposed.x, OPPOSED_X),
+            (i.opposed.y, OPPOSED_Y),
         ] {
             if on {
                 b |= bit;
@@ -552,6 +557,7 @@ impl NetCmd {
         i.reload = on(RELOAD);
         i.last_weapon = on(LAST_WEAPON);
         i.use_key = on(USE);
+        i.opposed = BVec2::new(on(OPPOSED_X), on(OPPOSED_Y));
         i.select = self.select.filter(|s| *s < crate::core::PICK_SLOTS * (crate::core::PICK_DEPTH + 1));
     }
 

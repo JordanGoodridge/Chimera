@@ -103,7 +103,7 @@ fn install_attribute_data() {
     eprintln!("weapon keys in no field table ({}): {unknown:?}", unknown.len());
 
     // The merge loads with our documents.
-    let docs = merge_weapon_docs(WEAPON_DATA, w, 0.01).unwrap();
+    let docs = merge_weapon_docs(WEAPON_DATA, w, crate::attribute_data::meters_per_unit()).unwrap();
     let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let set = WeaponSet::parse(&refs, &[]).unwrap();
     eprintln!("merged: {} weapons", set.weapons.len());

@@ -32,8 +32,8 @@
 //! `sv_ignoregrenaderadio`); dying primed drops it live; cleared at a round
 //! restart; buying stacks grenades up to their limit and keeps the hand.
 //! Another game's throw (`ThrowOptions` on the weapon; Combat Arms'):
-//! the release when the pin animation ends whatever the button does, a
-//! spent weapon kept at 0, no live drop on death, and its own projectile
+//! the release when the pin animation ends whatever the button does, no
+//! live drop on death, and its own projectile
 //! (`LaunchHook`, a `Projectile` marked `GameFlown` that the game flies
 //! and detonates; `Detonated` and the network's drawing still apply).
 //!
@@ -513,6 +513,12 @@ impl Throwable {
     }
 }
 
+/// On a throwable weapon: the last grenade thrown, it stays in the
+/// inventory at count 0 (Combat Arms) instead of going; the game's own
+/// selection puts it away.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct KeepSpent;
+
 /// Weapon part beside `Throwable`: how a game's throw differs from the
 /// default (CS:S's, which a weapon without this part keeps).
 #[derive(Component, Clone, Copy, Debug)]
@@ -521,10 +527,6 @@ pub struct ThrowOptions {
     /// is still held or not (a release before then waits for it); off:
     /// releasing the button releases the grenade.
     pub release_at_pin_end: bool,
-    /// The weapon stays with a count of 0 when its last grenade is
-    /// thrown (the game's selection skips it and switches away); off:
-    /// the spent weapon leaves the inventory.
-    pub keep_spent: bool,
     /// Dying with the pin out drops the grenade live (`drop_primed`).
     pub drop_primed: bool,
     /// The game makes the projectile itself when the grenade leaves the
@@ -537,7 +539,6 @@ impl Default for ThrowOptions {
     fn default() -> Self {
         Self {
             release_at_pin_end: false,
-            keep_spent: false,
             drop_primed: true,
             launch: None,
         }
@@ -863,10 +864,7 @@ fn throw_frame(
         {
             t.redraw_at = None;
             if t.count == 0 {
-                // Spent: kept at 0 for the game's selection, or gone.
-                if !options.keep_spent {
-                    commands.queue(move |w: &mut World| exhaust(w, owner, entity));
-                }
+                commands.queue(move |w: &mut World| exhaust(w, owner, entity));
                 continue;
             }
             if active {
@@ -906,8 +904,12 @@ fn throw_frame(
 }
 
 /// The last grenade is gone: the weapon leaves the inventory, and its
-/// owner draws the best of the rest (the lowest slot).
+/// owner draws the best of the rest (the lowest slot); with `KeepSpent`
+/// it stays where it is.
 fn exhaust(world: &mut World, owner: Entity, weapon: Entity) {
+    if world.get::<KeepSpent>(weapon).is_some() {
+        return;
+    }
     let next = world.get::<Inventory>(owner).and_then(|inv| {
         inv.weapons
             .iter()
@@ -961,7 +963,7 @@ fn drop_primed(
         let start = eye + intent.look_rotation() * Vec3::NEG_Z * t.throw.forward;
         let velocity = vel.map_or(Vec3::ZERO, |v| v.0);
         launch(&mut commands, &mut rng.0, weapon, &t, Some(d.entity), start, velocity);
-        if t.count == 0 && !options.keep_spent {
+        if t.count == 0 {
             let owner = d.entity;
             commands.queue(move |w: &mut World| exhaust(w, owner, active));
         }

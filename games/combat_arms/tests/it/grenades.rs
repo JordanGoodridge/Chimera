@@ -8,7 +8,7 @@
 //! units) after its nth physics step.
 //!
 //! The spec's +Z forward is ours too (the flight doesn't care which way it
-//! goes); world units are 1 cm. Tolerances: the spec's ±0.05 u and u/s for
+//! goes); world units are the data's (`inventory::UNIT`). Tolerances: the spec's ±0.05 u and u/s for
 //! flight, 0.01 HP for damage, 1e-3 s for flash times and 1e-4 for the
 //! screen's whiteness; "about" (over-time damage) ±1 HP. Times: a tick
 //! (15 ms) beyond the server frame the spec names.
@@ -47,8 +47,8 @@ use combat_arms::{
     harness::CaSim,
 };
 
-/// Metres per world unit.
-const U: f32 = 0.01;
+/// Metres per world unit (the data's).
+const U: f32 = combat_arms::game::inventory::UNIT;
 /// Health per hit point.
 const HP: f32 = 0.01;
 
@@ -289,7 +289,7 @@ fn t03_dropped_straight_down() {
 #[test]
 fn t04_point_blank_wall() {
     let mut sim = sim();
-    solid(&mut sim, Vec3::new(-10.0, -1.0, 0.5), Vec3::new(10.0, 10.0, 2.0), None);
+    solid(&mut sim, Vec3::new(-10.0, -1.0, 50.0 * U), Vec3::new(10.0, 10.0, 2.0), None);
     let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 60.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
     let s = to_step(&mut sim, g, 1);
     let c = s.contacts[0];
@@ -784,7 +784,7 @@ fn t30_death_during_the_pin_pull() {
 #[test]
 fn t31_sky() {
     let mut sim = sim();
-    solid(&mut sim, Vec3::new(-10.0, 3.0, -10.0), Vec3::new(10.0, 4.0, 10.0), Some("sky"));
+    solid(&mut sim, Vec3::new(-10.0, 300.0 * U, -10.0), Vec3::new(10.0, 400.0 * U, 10.0), Some("sky"));
     let thrower = far_thrower(&mut sim, 0);
     let victim = player(&mut sim, 50.0, 0.0, 0.0, 0);
     let g = grenade(&mut sim, M67, Some(thrower), Vec3::new(0.0, 100.0, 0.0), Vec3::new(0.0, 1000.0, 0.0));
@@ -834,7 +834,7 @@ fn over_time(id: &str, leave: Option<f64>) -> (f32, f64) {
         sim.ticks(1);
         let t = (sim.tick() - t0) as f64 * TICK_INTERVAL;
         if leave.is_some_and(|l| (t - l).abs() < TICK_INTERVAL / 2.0) {
-            sim.app.world_mut().get_mut::<Transform>(victim).unwrap().translation.x += 6.0;
+            sim.app.world_mut().get_mut::<Transform>(victim).unwrap().translation.x += 1000.0 * U;
         }
         let now = health(&sim, victim);
         if now < hp {

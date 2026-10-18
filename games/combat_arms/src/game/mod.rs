@@ -68,18 +68,43 @@ pub static INFO: GameInfo = GameInfo {
     // No such file in an install: the built-in table is used.
     default_binds_cfg: "chimera_placeholder_binds.cfg",
     default_binds: DEFAULT_BINDS,
-    // The defaults never changed.
-    old_default_binds: &[],
+    // Shift was `+speed` (walk and sprint at once) before movement.md's
+    // two keys.
+    old_default_binds: OLD_DEFAULT_BINDS,
     movement_cvars: &[],
 };
 
 /// Combat Arms' default binds. Weapons, use and sprint are the default
 /// profile's (specs/combat_arms/inventory.md 2: class keys 1-5, Q the
-/// previous weapon, fire, zoom/knife secondary, R, E, left Shift; nothing
-/// on the wheel, 5; key 6, the objective class, waits for a sixth slot
-/// command in the shell); walking, jumping and crouching are PLACEHOLDER
-/// until movement.md's.
+/// previous weapon, fire, zoom/knife secondary, R, E; nothing on the
+/// wheel, 5; key 6, the objective class, waits for a sixth slot command in
+/// the shell); sprint ("Dash", left Shift) and walk ("Speed", C) are two
+/// keys (movement.md, "Input to control state"); moving, jumping and
+/// crouching are PLACEHOLDER until a spec lists the profile's keys.
 pub const DEFAULT_BINDS: &[(&str, &str)] = &[
+    ("w", "+forward"),
+    ("s", "+back"),
+    ("a", "+moveleft"),
+    ("d", "+moveright"),
+    ("space", "+jump"),
+    ("ctrl", "+duck"),
+    ("shift", "+sprint"),
+    ("c", "+walk"),
+    ("mouse1", "+attack"),
+    ("mouse2", "+attack2"),
+    ("r", "+reload"),
+    ("e", "+use"),
+    ("q", "lastinv"),
+    ("1", "slot1"),
+    ("2", "slot2"),
+    ("3", "slot3"),
+    ("4", "slot4"),
+    ("5", "slot5"),
+];
+
+/// The defaults before walk and sprint were two keys (`GameInfo::
+/// old_default_binds`).
+pub const OLD_DEFAULT_BINDS: &[(&str, &str)] = &[
     ("w", "+forward"),
     ("s", "+back"),
     ("a", "+moveleft"),

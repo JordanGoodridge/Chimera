@@ -544,6 +544,13 @@ impl HitIndicator {
 // ---------------------------------------------------------------------------
 // Name tags (A11)
 
+/// Whether a tag whose anchor is `depth` ahead of the camera (view-space
+/// depth) is drawn: no distance limit, only one behind the camera hides
+/// (Open question 10).
+pub fn tag_in_front(depth: f32) -> bool {
+    depth > 0.0
+}
+
 /// Who a tag is for, as the local player sees them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TagInputs {
@@ -762,18 +769,23 @@ pub enum FireIcon {
     Single,
 }
 
-/// The icon for a class with an icon: in burst (with its count), a weapon
-/// with selectable fire in auto or single, else full auto.
-pub fn fire_icon(icon_class: bool, burst: Option<u32>, selectable: Option<bool>) -> Option<FireIcon> {
-    if !icon_class {
+/// The fire-mode icon (D4, Open question 16) of a weapon of inventory
+/// class `class` (1 primary, 2 secondary: the others have none): in
+/// burst, by its round count (`TripleShotRoundNum`); else by
+/// `RapidFireCount`: 1 (semi-automatic) single shot, or full auto while
+/// its continuous fire is on; 0 full auto; any other count none.
+pub fn fire_icon(class: u8, burst: Option<u32>, rapid_fire_count: u32, continuous: bool) -> Option<FireIcon> {
+    if !matches!(class, 1 | 2) {
         return None;
     }
-    Some(match (burst, selectable) {
-        (Some(2), _) => FireIcon::Burst2,
-        (Some(_), _) => FireIcon::Burst3,
-        (None, Some(false)) => FireIcon::Single,
-        _ => FireIcon::Auto,
-    })
+    match (burst, rapid_fire_count) {
+        (Some(2), _) => Some(FireIcon::Burst2),
+        (Some(_), _) => Some(FireIcon::Burst3),
+        (None, 1) if continuous => Some(FireIcon::Auto),
+        (None, 1) => Some(FireIcon::Single),
+        (None, 0) => Some(FireIcon::Auto),
+        _ => None,
+    }
 }
 
 /// What the panel shows of a weapon.
@@ -789,20 +801,26 @@ pub struct WeaponPanel {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PanelInputs {
     pub name: String,
-    /// A gun class, not the bomb.
-    pub gun: bool,
+    /// The weapon's inventory class (attribute_data.md: the order list it
+    /// is in, 1 primary ... 6 mission; 0 in none).
+    pub class: u8,
+    /// The mission bomb (`Guntype` 8).
+    pub bomb: bool,
     pub infinite: bool,
     /// Clip and the total held for the weapon (the reserve is the rest).
     pub clip: u32,
     pub total: u32,
-    pub icon_class: bool,
+    /// In burst mode: its round count.
     pub burst: Option<u32>,
-    pub selectable: Option<bool>,
+    /// `RapidFireCount`, and whether its continuous fire is on.
+    pub rapid_fire_count: u32,
+    pub continuous: bool,
 }
 
-/// The panel (None: hidden; `shown` is D2's visibility and not infected).
+/// The panel (None: hidden; `shown` is D2's visibility and not infected):
+/// for inventory classes 1 to 6 but the mission bomb.
 pub fn weapon_panel(p: &PanelInputs, shown: bool) -> Option<WeaponPanel> {
-    if !shown || !p.gun {
+    if !shown || !(1..=6).contains(&p.class) || p.bomb {
         return None;
     }
     if p.infinite {
@@ -815,7 +833,7 @@ pub fn weapon_panel(p: &PanelInputs, shown: bool) -> Option<WeaponPanel> {
     Some(WeaponPanel {
         name: p.name.clone(),
         ammo: Some((three_digits(p.clip), three_digits(p.total.saturating_sub(p.clip)))),
-        icon: fire_icon(p.icon_class, p.burst, p.selectable),
+        icon: fire_icon(p.class, p.burst, p.rapid_fire_count, p.continuous),
     })
 }
 
@@ -962,9 +980,10 @@ impl KillFeed {
         }
         self.lines.push_back((now, kill));
     }
-    /// A HUD frame at `now` ms: expired lines go, the rest close up.
+    /// A HUD frame at `now` ms: lines older than their life (more than
+    /// 30000 ms) go, the rest close up.
     pub fn frame(&mut self, now: f64) {
-        self.lines.retain(|(t, _)| now - *t < FEED_LIFE_MS);
+        self.lines.retain(|(t, _)| now - *t <= FEED_LIFE_MS);
     }
     /// Line `i`'s top (0 the oldest shown), ref.
     pub fn line_y(i: usize) -> f32 {

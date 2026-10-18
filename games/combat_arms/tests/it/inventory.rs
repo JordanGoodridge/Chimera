@@ -37,6 +37,10 @@ const KNIFE: &str = inventory::KNIFE;
 const STOCK: &[&str] = &[RIFLE, PISTOL, KNIFE, GRENADE];
 /// One of the spec's frames (60 fps).
 const F: f64 = 1.0 / 60.0;
+/// Frames the knife's timing cases (16-25) leave out: their times count
+/// the main swing from the pre-fire's end, but it starts at the update
+/// after that (8.2 as answered, case 37), a 15 ms tick here.
+const SWING_START: f64 = 1.0;
 
 /// What weapons did, by tick.
 #[derive(Resource, Default)]
@@ -591,7 +595,9 @@ fn t16_leaving_sprint() {
     key(&mut sim, p, 3);
     sim.seconds(1.0);
     let t = leave_sprint(&mut sim, p, |s| !swings(s, p).is_empty());
-    assert!(close(t, 0.167 + 0.001 + 0.155, 3.0), "knife: first hit at {t}");
+    // The case counts the swing from the pre-fire's end; as answered
+    // (8.2, case 37) it starts at the update after: up to a tick later.
+    assert!(close(t, 0.167 + 0.001 + 0.155, 3.0 + SWING_START), "knife: first hit at {t}");
 }
 
 // ---------------------------------------------------------------------------
@@ -632,7 +638,7 @@ fn t18_knife_secondary_timing() {
     wait_until(&mut sim, t0, 1.0);
     tap(&mut sim, p, |i, on| i.secondary = on);
     let idle = until(&mut sim, t0, 3.0, |s| knife_phase(s, p) == KnifePhase::Idle);
-    assert!(close(idle, 1.101, 3.0), "fire possible again at {idle}");
+    assert!(close(idle, 1.101, 3.0 + SWING_START), "fire possible again at {idle}");
     sim.seconds(1.0);
     assert_eq!(swings(&sim, p).len(), 1, "the second click was ignored");
 }
@@ -806,7 +812,7 @@ fn t25_sprint_knife() {
     assert!(close(hits[0], 0.156, 3.0) && close(hits[1], 0.403, 3.0), "{hits:?}");
     assert_eq!(sprinting_hits, 2, "both while sprinting");
     let pose = pose.expect("no sprint pose");
-    assert!(close(pose, 0.651, 3.0), "sprint pose at {pose}");
+    assert!(close(pose, 0.651, 3.0 + SWING_START), "sprint pose at {pose}");
 }
 
 // ---------------------------------------------------------------------------
@@ -837,7 +843,8 @@ fn items(sim: &mut Sim) -> Vec<(Entity, Dropped, String, Vec3)> {
         .collect()
 }
 
-/// The hull's bottom centre (the drop spot's height) and its width.
+/// The hull's bottom centre (the drop spot without a skeleton) and its
+/// width.
 fn feet(sim: &Sim, p: Entity) -> (Vec3, f32) {
     let s: MovementState = sim.state(p);
     let (lo, hi) = if s.hull_max != s.hull_min {
@@ -984,11 +991,13 @@ fn t33_same_id_ammo_pickup() {
     let pistol = carried(&sim, p, PISTOL);
     set_ammo(&mut sim, pistol, 5, 20);
     let item = item_ahead(&mut sim, p, PISTOL, 80.0 * UNIT, 30, 15);
-    let rifle = active(&sim, p).unwrap();
     press_use(&mut sim, p);
     assert_eq!(ammo(&sim, pistol), (15, 45), "total min(20 + 30, 45), clip refilled");
     assert!(sim.app.world().get_entity(item).is_err(), "the item is removed");
-    assert_eq!(active(&sim, p), Some(rifle), "the pistol isn't drawn");
+    // The case's "not drawn" is superseded by the "better weapon" rule's
+    // answer (Open question 6, case 41): the pistol is drawn.
+    sim.seconds(1.0);
+    assert_eq!(active(&sim, p), Some(pistol), "the pistol is drawn");
 }
 
 #[test]
@@ -1052,5 +1061,208 @@ fn t36_rate_cap() {
         let w = chimera_sim::weapon::give(sim.app.world_mut(), p, weapon).unwrap();
         let got = sim.app.world().get::<Weapon>(w).unwrap().draw_time;
         assert!((got - draw).abs() < 1e-4, "{weapon}: draw {got}, want {draw}");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The follow-up answers (37-44)
+
+/// The first knife hit's time after a press at `hz` updates a second
+/// (the weapon logic runs once an update: the spec's frames).
+fn first_knife_hit(hz: f64) -> f64 {
+    let mut sim = sim_with(STOCK);
+    sim.set_tick_interval(1.0 / hz);
+    let p = player(&mut sim, greybox::SPAWNS[0]);
+    key(&mut sim, p, 3);
+    sim.seconds(1.0);
+    let t0 = mark(&sim);
+    sim.intent(p).fire = true;
+    let t = until(&mut sim, t0, 1.0, |s| !swings(s, p).is_empty());
+    sim.intent(p).fire = false;
+    t
+}
+
+/// 37. The weapon logic on the frame clock: the press seen at u0, the
+/// pre-fire at u1, the swing from u2; the hit on the first update with
+/// 155 ms of the swing played: 200 ms at 60 fps, 180 ms at 100 fps.
+#[test]
+fn t37_weapon_logic_on_the_frame_clock() {
+    for (hz, want) in [(60.0, 0.200), (100.0, 0.180)] {
+        let t = first_knife_hit(hz);
+        assert!((t - want).abs() < 1e-3, "{hz} fps: first hit at {t}, want {want}");
+    }
+}
+
+/// An item's box half-extents (its body's, else the placeholder's 10
+/// units each way).
+fn item_half(sim: &Sim, item: Entity) -> Vec3 {
+    sim.app
+        .world()
+        .get::<chimera_world::map::PhysicsProp>(item)
+        .map_or(Vec3::splat(10.0 * UNIT), |b| (b.bounds.1 - b.bounds.0) / 2.0)
+}
+
+/// 38. The fallback is not for weapons: a box the ray misses by 1 unit,
+/// its centre 60 units away: no prompt; the ray entering the box at
+/// 100.0 units: a prompt; at 100.5: none.
+#[test]
+fn t38_fallback_is_not_for_weapons() {
+    let (mut sim, p) = setup(STOCK);
+    let eye = sim.position(p) + sim.state(p).eye_offset;
+    let item = inventory::spawn_item(sim.app.world_mut(), RIFLE, eye - Vec3::Z * 60.0 * UNIT, 60, 30).unwrap();
+    sim.ticks(1);
+    let half = item_half(&sim, item);
+    let place = |sim: &mut Sim, at: Vec3| {
+        sim.app.world_mut().get_mut::<Transform>(item).unwrap().translation = at;
+        sim.ticks(1);
+        sel(sim, p).pickup_target
+    };
+    let beside = eye - Vec3::Z * 60.0 * UNIT + Vec3::X * (half.x + 1.0 * UNIT);
+    assert_eq!(place(&mut sim, beside), None, "missed by 1 unit, centre 60 away");
+    let rifle = carried(&sim, p, RIFLE);
+    press_use(&mut sim, p);
+    assert!(sim.app.world().get::<Dropped>(item).is_some(), "E did nothing");
+    assert_eq!(active(&sim, p), Some(rifle));
+    let at = |units: f32| eye - Vec3::Z * (units * UNIT + half.z);
+    assert_eq!(place(&mut sim, at(100.0)), Some(item), "entered at 100.0");
+    assert_eq!(place(&mut sim, at(100.5)), None, "entered at 100.5");
+}
+
+/// 39. The fallback for bodies: a hit box centre 130 units away counts
+/// (130 - 35 <= 100), 140 doesn't.
+#[test]
+fn t39_fallback_for_bodies() {
+    assert!(inventory::body_fallback(130.0 * UNIT));
+    assert!(!inventory::body_fallback(140.0 * UNIT));
+}
+
+/// 40. A spent grenade stays: same equip index at total 0, its key does
+/// nothing, a respawn brings it back with 1.
+#[test]
+fn t40_spent_grenade() {
+    let (mut sim, p) = setup(STOCK);
+    let g = carried(&sim, p, GRENADE);
+    let index = inv(&sim, p).weapons.iter().position(|w| *w == g).unwrap();
+    key(&mut sim, p, 4);
+    sim.seconds(0.5);
+    throw(&mut sim, p);
+    sim.seconds(2.0);
+    assert_eq!(inv(&sim, p).weapons.get(index), Some(&g), "still in its equip index");
+    assert_eq!(sim.app.world().get::<Throwable>(g).unwrap().count, 0);
+    assert_eq!(active_id(&sim, p), RIFLE, "the auto-switch took the rifle");
+    key(&mut sim, p, 4);
+    sim.ticks(2);
+    assert_eq!(active_id(&sim, p), RIFLE, "4: nothing");
+    kill(&mut sim, p);
+    sim.app.world_mut().get_mut::<Health>(p).unwrap().current = 1.0;
+    inventory::respawn_inventory(sim.app.world_mut(), p);
+    sim.seconds(1.5);
+    let g = carried(&sim, p, GRENADE);
+    assert_eq!(sim.app.world().get::<Throwable>(g).unwrap().count, 1, "back with 1");
+    key(&mut sim, p, 4);
+    sim.seconds(0.5);
+    assert_eq!(active_id(&sim, p), GRENADE, "selectable again");
+}
+
+/// 41. A pickup always switches: a picked rifle is drawn over the
+/// pistol; a same-id pistol ammo item picked with the rifle in hand
+/// draws the pistol.
+#[test]
+fn t41_pickup_always_switches() {
+    let (mut sim, p) = setup(STOCK);
+    key(&mut sim, p, 2);
+    sim.seconds(1.0);
+    let item = item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 60, 30);
+    let b = sim.app.world().get::<Dropped>(item).unwrap().weapon;
+    press_use(&mut sim, p);
+    assert_eq!(active(&sim, p), Some(b), "the rifle drawn");
+
+    let (mut sim, p) = setup(STOCK);
+    let pistol = carried(&sim, p, PISTOL);
+    set_ammo(&mut sim, pistol, 5, 20);
+    assert_eq!(active_id(&sim, p), RIFLE);
+    item_ahead(&mut sim, p, PISTOL, 80.0 * UNIT, 10, 15);
+    press_use(&mut sim, p);
+    assert_eq!(ammo(&sim, pistol).1, 30, "the total rose to 30");
+    assert_eq!(active(&sim, p), Some(pistol), "the pistol drawn");
+}
+
+/// 42. The "better weapon" rule on its own (command ids: the M4A1 1, the
+/// MP5A4 0, the M16A3 9, any pistol after all primaries).
+#[test]
+fn t42_better_weapon_rule() {
+    use inventory::better_weapon;
+    assert!(!better_weapon(Some(1), 0, false), "MP5A4 under the M4A1: no switch");
+    assert!(better_weapon(Some(1), 9, false), "M16A3: switch");
+    assert!(better_weapon(Some(1), 40, false), "a pistol: switch");
+    assert!(!better_weapon(Some(1), 9, true), "already carried: no switch");
+    assert!(better_weapon(None, 0, true), "no weapon in hand: switch");
+}
+
+/// 43. The knife's ray through the zones: unarmoured head 270, torso 45,
+/// shin 33.75, foot 22.5 (roll 1.0); the ray's cone n = 1; with the
+/// default body gear a torso hit is 45 and uses no armour.
+#[test]
+fn t43_knife_ray_and_zones() {
+    use combat_arms::game::weapons::{self as ca, CaArmor};
+    let (mut sim, p) = knife_out(STOCK);
+    let k = carried(&sim, p, KNIFE);
+    assert!((sim.app.world().get::<Knife>(k).unwrap().perturb - 0.001).abs() < 1e-7, "n = 1");
+    sim.app.world_mut().get_mut::<Knife>(k).unwrap().spread = 0.0;
+    // Facing the attacker, 70 units ahead (centre to centre).
+    let target = sim.spawn_character(sim.position(p) - Vec3::Z * 70.0 * UNIT, movement::ID);
+    sim.intent(target).yaw = std::f32::consts::PI;
+    sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 10.0;
+    sim.seconds(0.5);
+    let sphere = |sim: &Sim, name: &str| {
+        let w = sim.app.world();
+        let i = ca::MALE.iter().position(|s| s.name == name).unwrap();
+        let (_, _, spheres) = ca::body_geometry(
+            w.get::<Transform>(target).unwrap(),
+            w.get::<chimera_core::core::Intent>(target).unwrap(),
+            w.get::<MovementState>(target).unwrap(),
+            w.get::<avian3d::prelude::ColliderAabb>(target),
+            ca::MALE,
+        )
+        .unwrap();
+        spheres[i].0
+    };
+    let hit_at = |sim: &mut Sim, name: &str| {
+        let d = sphere(sim, name) - (sim.position(p) + sim.state(p).eye_offset);
+        let mut i = sim.intent(p);
+        i.yaw = (-d.x).atan2(-d.z);
+        i.pitch = d.y.atan2(d.xz().length());
+        sim.ticks(1);
+        one_hit(sim, p, target, false)
+    };
+    for (name, want) in [("upper face", 270.0), ("chest", 45.0), ("shin right 2", 33.75), ("foot right", 22.5)] {
+        let got = hit_at(&mut sim, name);
+        assert!((got - want).abs() < 1e-3, "{name}: {got}, want {want}");
+    }
+    let ap = sim.app.world().get::<CaArmor>(target).unwrap().points;
+    assert_eq!(ap, 100.0, "the default body gear: melee uses no armour");
+}
+
+/// 44. Drop positions without a skeleton: the death drop exactly at the
+/// hull's bottom centre; the swap drop within 0.5 x the half-extents
+/// (7.5 units) on X and Z, at the same height.
+#[test]
+fn t44_drop_positions() {
+    let (mut sim, p) = setup(STOCK);
+    let (foot, _) = feet(&sim, p);
+    kill(&mut sim, p);
+    let dropped = items(&mut sim);
+    let at = dropped[0].3;
+    assert!((at - foot).length() < 1e-4, "death drop at the bottom centre: {at} vs {foot}");
+
+    for _ in 0..3 {
+        let (mut sim, p) = setup(STOCK);
+        let (foot, _) = feet(&sim, p);
+        item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 60, 30);
+        press_use(&mut sim, p);
+        let at = items(&mut sim)[0].3;
+        let off = at - foot;
+        assert!(off.x.abs() <= 7.5 * UNIT + 1e-5 && off.z.abs() <= 7.5 * UNIT + 1e-5, "swap drop: {off}");
+        assert!(off.y.abs() < 1e-4, "same height: {off}");
     }
 }
