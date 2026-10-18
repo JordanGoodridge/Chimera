@@ -346,8 +346,10 @@ agent worktrees under `.claude/worktrees/` (D: agent-a052e118eeb8d4c8d).
   water, decals on terrain, the Water shader (section 8), unplaced
   infodecals (131 -> 13 over the stock maps: a face was skipped when all
   its corners were far from the decal; brush entities the decal's probe
-  hits take it). Left: reference views for aztec, office and nuke (needs
-  the shared game), the 13 decals left (section 10).
+  hits take it), the 3D skybox's props unlit by the sun (nuke's cooling
+  towers; 2026-10-18 survey of every other stock map in the plan). Left:
+  reference views of the 13 stock maps never compared (windows-captures
+  sitting 4), the 13 decals left (section 10).
 
 ## 2. Custom maps and minigames
 
