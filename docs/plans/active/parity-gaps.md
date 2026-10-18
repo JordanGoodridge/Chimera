@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 11 | 7 | 1 | 7 |
 | HUD | 17 | 3 | 0 | 8 |
 | Menus and commands | 17 | 4 | 5 | 10 |
-| Rendering, lighting, materials | 17 | 17 | 2 | 13 |
-| Maps and entities | 16 | 8 | 2 | 9 |
+| Rendering, lighting, materials | 17 | 17 | 3 | 13 |
+| Maps and entities | 17 | 8 | 2 | 10 |
 | Rules and economy | 11 | 1 | 0 | 5 |
 | Networking feel | 6 | 3 | 1 | 1 |
-| **Total** | **115** | **54** | **12** | **66** |
+| **Total** | **116** | **54** | **13** | **67** |
 
 Counted from the tables below (recounted 2026-10-18; the fourth and fifth probe passes changed no row's status): "have" is every row
 whose status starts with have (have, have (fixed), have (new), have
@@ -257,6 +257,7 @@ common console commands, against mashup's.
 | Props whose material names its cubemap | have (fixed) | L | S | 2026-10-17: drew no reflection; now that cubemap (no stock map's props do this) |
 | 3D skybox haze, sky down face | differs | L | S | refcmp `sky_*` worst views; haze waits on C10, the down face on C20 |
 | 3D skybox fog distances (nuke's far mountains fogged out) | differs | M | S | refcmp above: nuke prefers the fog undivided by the sky_camera's scale, office divided; capture C10 |
+| Fog colour by view direction (`env_fog_controller` `fogblend`) | missing | L | S | cs_compound and de_port blend a second fog colour (`fogcolor2`) by how far the view looks along a direction; ours fogs in `fogcolor` alone. No spec gives the blend's curve, colour space or direction keys (shaders.md Q21, open-questions.md); windows-captures sitting 4 item 3 shows compound's two directions. Fog starts at 3000 and 2048 units there, so only the far skyline would change |
 | Static props lit in the 3D skybox (nuke's cooling towers teal, CS:S light grey) | have (fixed) | M | M | the sun ray ended at the map's underside far above the skybox, not at the skybox's sky: now it ends at the first sky brush (other-maps.md 16) |
 | Blood decals on characters | missing | M | M | backlog 3 "Decals, remaining"; no spec covers model decals (engine-side): a spec session, then a capture of a shot bot's body |
 | Colour correction option | have (fixed) | L | S | round 2: Video > Advanced's ColorCorrection box sets `mat_colorcorrection` (the post-process was in, the control greyed) |
@@ -274,6 +275,7 @@ common console commands, against mashup's.
 | Props collide by their `.phy` | have | M | M | round 2: the row was stale: props with a `.phy` collide and are swept by its convex pieces (static props without one block nothing, physics props without one don't collide); only prop entities that aren't physics props and have no `.phy` use their visible mesh (tech-debt) |
 | Pushers (no bevels, no players or props pushed) | differs | L | M | tech-debt "Pushers"; a rider is carried on the lift's own tick, as ours (measured 2026-10-18, doors_buttons.md Q4) |
 | Round restart keep-list | have (fixed) | M | S | measured on all stock maps (entity_io.md Q1): 22 map classes kept (was the public multiplayer list's 10: env_fog_controller, env_sun, func_illusionary, point_viewcontrol, the spawn points... added); logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap again each round, never OnMultiNewRound (was ours: OnMultiNewRound) |
+| Brushes parented to physics props | have (fixed) | L | S | 2026-10-18: cs_havana's monitor screen (a func_breakable parented to a prop_physics_multiplayer) trailed the prop by a tick (followed before the physics step: 4 units off a tumbling monitor), its collider was solid to the prop carrying it, and a func_wall or func_illusionary on a physics prop got no node to move; now every brush parented to a physics prop or brush follows its body again after the physics step, place and turn, touches no physics body and is still hit by shots (on a func_physbox it was unshootable); tests `logic_physics`, `heavy::map_breakables::havana_monitor_screen_rides_the_monitor` |
 | Physics shadow controller | differs | L | M | tech-debt; the 350 kg push limit measured hard (340 kg pushed, 360 not: physics_props.md Q7), as ours |
 | Players shoving multiplayer props | have (fixed) | M | S | measured 2026-10-18 (physics_props.md Q12): CS:S shoves them every 7 ticks (1000 kg·units/s at most), ours shoved every tick, 7 times as hard: barrels and crates flew off players walking through them |
 | Physics props' motion | have (fixed) | M | S | measured 2026-10-18 (physics_props.md section 7): friction multiplies the two surfaces' (ours averaged with the world's 0.5: a crate slid 0.65 g where CS:S's 0.61, ice 0.3 g where 0.09); air drag ½ρAv²/m (ours had none: a crate thrown at 1000 units/s by a blast kept it, CS:S's loses about 950 units/s²); rebound 0.14 of the landing speed for ordinary surfaces (ours 0.05); the `.phy`'s stored inertia (70-80% of the solid's: props spin faster); sleep 0.5 s after stopping (ours 1 s); a prop_dynamic with no `.phy` stops nothing, with solid 2 its turned box; a static prop's bbox solid is the world box around its turned bounds (was turned with it). Left: contacts rest 0.4 units apart in CS:S (ours touch: a collision margin of 0.42 units was tried 2026-10-18 and made de_dust2's and de_port's placed props shift and fall in the heavy tests), the rebound is a fit, no angular drag |

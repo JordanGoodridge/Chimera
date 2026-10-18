@@ -63,6 +63,9 @@ but the thrower's side, grenades Q17's `drop`, movement Q15's conveyor,
 objectives Q14's defuse and blast timing); about 47 class-1 items left. The two plugin commands above are still not
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
+Added since (2026-10-18): shaders Q21, the fog colour by view direction
+(classes 3 and 2; one row in the specs table and one in the parity list).
+
 ## Specs: specs/cs_source
 
 | Spec | Question | Class | What would answer it |
@@ -185,6 +188,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | shaders | Q18 `$selfillum` details | 3 | shader source |
 | shaders | Q19 detail modes 10, 11 | 3 | shader source |
 | shaders | Q20 displacement texture coordinates (measured) | 3 | confirm from the compiler/engine source |
+| shaders | Q21 fog colour by view direction (`fogblend`, `fogcolor2`, `fogdir`/`use_angles`): weight curve, colour space, direction source, per view or pixel, 3D skybox | 3, 2 | the client's fog set-up in a spec session; windows-captures sitting 4 item 3 shows which colour lies which way on cs_compound |
 | shaders_two_texture_blend | Q1, Q2 the ×2 factor, sampler sRGB | 2 | RenderDoc of a de_aztec wall |
 | shaders_two_texture_blend | Q3 bump pages on de_aztec | 1 | the BSP faces' lightmap page counts, with our reader |
 | shaders_two_texture_blend | Q4 mode 0 with detail and bump | 3 | unused by stock content |
@@ -359,6 +363,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | Prop light probes | 2, 3 | C28; the weighting is engine code |
 | 3D skybox haze, sky down face | 2 | C10, C20 |
 | 3D skybox fog distances | 2 | C10 |
+| Fog colour by view direction (`fogblend`) | 3, 2 | shaders Q21 |
 | Blood decals on characters | 3 | a spec, then a client capture |
 | Motion blur option | 3 | a spec |
 | Breakables' damage types, broken-window drawing | 3 | breakables Q8 |

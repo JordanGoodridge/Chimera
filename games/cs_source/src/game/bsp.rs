@@ -990,9 +990,13 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
         .iter()
         .filter(|e| {
             // Placed weapons move too (picked up, dropped: their children
-            // follow, `map::entities::anchor_class`).
-            e.prop("classname")
-                .is_some_and(|c| MOVERS.contains(&c) || crate::map::entities::anchor_class(c))
+            // follow, `map::entities::anchor_class`), and physics props (a
+            // brush parented to one rides its body: cs_havana's monitor).
+            e.prop("classname").is_some_and(|c| {
+                MOVERS.contains(&c)
+                    || crate::map::entities::anchor_class(c)
+                    || c.to_ascii_lowercase().starts_with("prop_physics")
+            })
         })
         .filter_map(|e| e.prop("targetname").map(|n| n.to_ascii_lowercase()))
         .collect();
