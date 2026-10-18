@@ -152,8 +152,9 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   uses `chimera_present` only with its default feature `present` (with
   the client shell and CS:S's front end, `cs_source/ui`).
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
-  of placeholder parts on Chimera (no Combat Arms behaviour until its
-  specs, specs/combat_arms/; docs/plans/active/combat-arms.md), one
+  of placeholder parts on Chimera, each replaced by Combat Arms'
+  behaviour as its spec lands (specs/combat_arms/; firing so far;
+  docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`), with its feature `ui` its
   front end (`ui::hud`, `ui::visuals`), and `harness::CaSim` as its
@@ -477,8 +478,10 @@ that the paths exist).
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
+- `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
-- `games/combat_arms/data/weapons/`: Combat Arms' weapons as data (spec numbers; PLACEHOLDER ones marked) (games)
+- `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1 and M9 knife (games)
+- `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
 - `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, armour, player, body types) with the spec's defaults (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
@@ -587,6 +590,7 @@ that the paths exist).
 - `games/cs_source/src/ui/spectator_menu.rs`: the spectator menu (games_ui)
 - `games/cs_source/src/ui/overview.rs`: the spectators' map overview (games_ui)
 - `chimera/client/src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
+- `chimera/client/src/client/aim.rs`: a view ray and the character under it, line of sight (target IDs, name tags) (client)
 - `games/cs_source/src/ui/game_hud.rs`: the game's own HUD panels (games_ui)
 - `chimera/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `games/cs_source/src/ui/hud_sprites.rs`: HUD sprite icons and damage indicators (games_ui)

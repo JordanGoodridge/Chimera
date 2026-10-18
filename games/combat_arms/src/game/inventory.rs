@@ -117,7 +117,7 @@ use crate::{
 };
 
 /// Combat Arms' knife, the M9 (data/weapons/m9.toml).
-pub const KNIFE: &str = "combat_arms:m9";
+pub const KNIFE: &str = "combat_arms:m9_knife";
 
 /// What every Combat Arms player starts with, in loadout order (primary,
 /// secondary, melee, throw, backpack; 1). PLACEHOLDER: the skeleton's

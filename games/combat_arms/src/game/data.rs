@@ -4,9 +4,9 @@
 //! its attribute files over them (specs/combat_arms/attribute_data.md,
 //! "Defaults and overrides"; the records: `attributes`).
 //!
-//! Built in: a placeholder rifle (data/weapons/placeholder_*.toml, every
-//! number marked PLACEHOLDER: ours, not the game's), the M9 knife
-//! (m9.toml, inventory.md's numbers) and the movement numbers
+//! Built in: the M4A1 (data/weapons/m4a1.toml, the numbers of
+//! weapon_firing.md's worked example), the M9 knife (m9.toml,
+//! inventory.md's numbers) and the movement numbers
 //! (data/movement.toml, `movement::MovementData`).
 //!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
@@ -37,12 +37,12 @@
 //! - A mapped value is written only where our document already has the
 //!   table it goes in (the weapon's parts and hooks are ours; the install
 //!   changes their numbers), and `trigger.per_press` only where the key
-//!   is already there. Not mapped (no field in our data yet): `MovePenalty`
-//!   and `ZoomedMovePenalty` (movement's `HeldMovePenalty`), `ZoomTime`,
-//!   `ReloadPerBullet`, `InfiniteAmmo`, `TripleShot*` timing, sounds and
-//!   sound radii, models, HUD fields, armour, `[Perturb]`, `[Player]`
-//!   (the client's speeds are movement.md's: the spec's open question 2),
-//!   `Model#`/`Hair#` and worn gear (attachments' spec).
+//!   is already there. Not mapped (no field in our data yet):
+//!   `ZoomedMovePenalty`, `ZoomTime`, `ReloadPerBullet`, `TripleShot*`
+//!   timing, sounds and sound radii, models, `DotSightName`, the HUD's
+//!   weapon class (ours), armour, `[Perturb]`, `[Player]` (the client's
+//!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
+//!   and worn gear (attachments' spec).
 //! - Ammo is patched through the weapon that uses it as its default
 //!   (`ammo.<id>.max` = `MaxAmount` - `ShotsPerClip`, the clip being part
 //!   of the total: weapon_firing.md, "Ammo"); our ammo IDs aren't matched
@@ -83,7 +83,7 @@ macro_rules! data_file {
 /// index).
 pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("m9.toml"),
-    data_file!("placeholder_rifle.toml"),
+    data_file!("m4a1.toml"),
 ];
 
 /// The namespace of our weapon and ammo IDs.
@@ -284,12 +284,16 @@ fn state(p: &attributes::AmmoPerturb) -> Value {
 /// `hitscan`, `ammo`) in the document's units (`length_scale`: metres per
 /// world unit over the document's metres per length unit), and the
 /// parameters of Combat Arms' hooks (`combat_arms:damage`, `:spread`,
-/// `:recoil`, games/combat_arms/src/game/weapons.rs) in the game's own
+/// `:recoil`, `:handling` in game/weapons.rs; `:inventory` in
+/// game/inventory.rs; `:hud` in game/hud.rs) in the game's own
 /// units (world units, ms, degrees, hit points).
 fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_scale: f64) -> Vec<Set> {
     const DAMAGE: &str = "combat_arms:damage";
     const SPREAD: &str = "combat_arms:spread";
     const RECOIL: &str = "combat_arms:recoil";
+    const HANDLING: &str = "combat_arms:handling";
+    const INVENTORY: &str = "combat_arms:inventory";
+    const HUD: &str = "combat_arms:hud";
     let mut out = vec![
         set(&["trigger", "automatic"], w.rapid_fire_count != 1),
         Set {
@@ -315,6 +319,14 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
         set(&["hooks", RECOIL, "random_wag"], w.max_random_wag),
         set(&["hooks", RECOIL, "back_jitter"], w.base_cam_back_jitter),
         set(&["hooks", RECOIL, "back_jitter_recover"], w.back_jitter_recover),
+        set(&["hooks", HANDLING, "move_penalty"], w.move_penalty),
+        set(&["hooks", INVENTORY, "infinite"], w.infinite_ammo != 0),
+        set(&["hooks", INVENTORY, "drop_on_death"], w.drop_by_player_dead),
+        set(&["hooks", HUD, "crosshair"], i64::from(w.cross_hair_type.clamp(0, 255))),
+        set(&["hooks", HUD, "disable_crosshair"], w.disable_crosshair != 0),
+        set(&["hooks", HUD, "duck_perturb"], i64::from(w.duck_perturb)),
+        set(&["hooks", HUD, "move_duck_perturb"], i64::from(w.move_duck_perturb)),
+        set(&["hooks", HUD, "wide_count"], i64::from(w.wide_fire_max_num)),
     ];
     if w.triple_shot_mode != 0 {
         out.extend([

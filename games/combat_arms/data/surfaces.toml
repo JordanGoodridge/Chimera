@@ -1,0 +1,75 @@
+# Combat Arms' shoot-through surfaces: specs/combat_arms/weapon_firing.md,
+# "Penetration" (the surface table's MaxShootThroughThickness,
+# MaxShootThroughPerturb, BulletRangeDampen, BulletDamageDampen). Our
+# numbers as the spec gives them, not a file from the game. Surfaces not
+# listed (concrete, metal, ...) stop bullets.
+#
+# `names`: the surface names a row covers (matched without case against a
+# collider's `PropSurface`); `thickness`: the most material a bullet
+# passes, world units (0: always passes); `perturb`: the exit direction's
+# random offset, thousandths per axis; `range` and `damage`: what is left
+# of each after passing, as factors.
+units = { length = 0.01 }
+
+[[surface]]
+names = ["wood"]
+thickness = 10.0
+perturb = 10.0
+range = 1.0
+damage = 0.5
+
+[[surface]]
+names = ["wood door", "plywood", "chain-link fence", "ice"]
+thickness = 10.0
+perturb = 10.0
+range = 1.0
+damage = 0.6
+
+[[surface]]
+names = ["glass"]
+thickness = 10.0
+perturb = 5.0
+range = 1.0
+damage = 0.9
+
+[[surface]]
+names = ["cloth"]
+thickness = 10.0
+perturb = 10.0
+range = 1.0
+damage = 0.5
+
+[[surface]]
+names = ["paper"]
+thickness = 10.0
+perturb = 10.0
+range = 1.0
+damage = 0.8
+
+[[surface]]
+names = ["wood ladder"]
+thickness = 10.0
+perturb = 10.0
+range = 1.0
+damage = 0.7
+
+[[surface]]
+names = ["water"]
+thickness = 0.0
+perturb = 30.0
+range = 1.0
+damage = 0.8
+
+[[surface]]
+names = ["flesh", "armour"]
+thickness = 55.0
+perturb = 15.0
+range = 1.0
+damage = 0.3
+
+[[surface]]
+names = ["can shoot through", "range target hole"]
+thickness = 50.0
+perturb = 1.0
+range = 1.0
+damage = 1.0

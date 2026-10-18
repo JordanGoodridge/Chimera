@@ -12,9 +12,11 @@
 //!
 //! Units: meters, seconds, damage normalized like `Health`.
 //!
-//! Weapons as parts (README, "Weapons and items"): `Trigger`, `Magazine` (cost;
-//! `ShellReload`: one round at a time, a shot stops it), `Hitscan` (pellets
-//! share a shot's inaccuracy offset)/`Melee` (delivery), `Penetration` with
+//! Weapons as parts (README, "Weapons and items"): `Trigger` (a per-pull
+//! limit), `Magazine` (cost; `ShellReload`: one round at a time, a shot stops
+//! it; `auto_reload`: an empty clip reloads, held or not), `Hitscan` (pellets
+//! share a shot's inaccuracy offset; without a `DamageEffect` only its `Fired`
+//! event, for a game that delivers rounds itself)/`Melee` (delivery), `Penetration` with
 //! `PassMaterials` (bullets through walls and characters), `DamageEffect`,
 //! `WeaponSounds`, attack2 modes (`AltModes`, with `Zoom` (owner gets `Zoomed`,
 //! max speed) and `Burst`); `Inventory`, `WeaponState` timers,
@@ -649,6 +651,10 @@ pub struct Trigger {
     /// Seconds between shots.
     pub cycle: f32,
     pub timing: FireTiming,
+    /// Most shots per trigger pull, 0 for no limit (Combat Arms'
+    /// `RapidFireCount` above 1): holding stops after this many until the
+    /// trigger is let go. A semi-automatic (`automatic` false) is 1.
+    pub per_press: u32,
 }
 
 /// How refire times are kept (spec 3.2).
@@ -678,6 +684,10 @@ pub struct Magazine {
     /// SDK); otherwise it dry-fires once and the reload waits for the
     /// buttons to be released (CS:S, measured M10).
     pub reload_while_held: bool,
+    /// An empty clip with rounds in reserve reloads as soon as the weapon
+    /// may fire again, buttons held or not, with no dry fire (Combat
+    /// Arms: specs/combat_arms/weapon_firing.md, "Ammo").
+    pub auto_reload: bool,
 }
 
 /// Magazine add-on: rounds go in one at a time (shotguns; spec 3.4,
@@ -704,7 +714,9 @@ pub enum ShellStage {
     Inserting,
 }
 
-/// Delivery: instant traces from the eye.
+/// Delivery: instant traces from the eye. Without a `DamageEffect` the
+/// frame traces nothing itself: each round is only its `Fired` event, and
+/// the game delivers it (Combat Arms' own hit test and damage).
 #[derive(Component, Clone, Debug)]
 pub struct Hitscan {
     pub range: f32,
@@ -888,6 +900,10 @@ pub struct Burst {
     pub count: u32,
     pub interval: f32,
     pub refire: f32,
+    /// One burst per trigger pull: holding after a burst fires nothing
+    /// until the trigger is let go (Combat Arms); otherwise holding fires
+    /// a burst every `refire`.
+    pub once_per_press: bool,
 }
 
 /// On a character looking through a zoomed weapon: its field of view
@@ -1433,7 +1449,7 @@ impl WeaponPartsItem<'_, '_> {
         }
         let alt = self.mode() > 0;
         for i in 0..shots {
-            if let (Some(scan), Some(effect)) = (self.hitscan, self.effect) {
+            if let Some(scan) = self.hitscan {
                 ctx.seed = ctx.seed.wrapping_add(i);
                 let fired = WeaponEventKind::Fired {
                     origin: ctx.eye,
@@ -1444,7 +1460,10 @@ impl WeaponPartsItem<'_, '_> {
                     mode: self.mode(),
                 };
                 ctx.w.event(ctx.owner, self.entity, fired);
-                ctx.fire(scan, effect, self.penetration);
+                // Without an effect the game delivers it (`Hitscan`).
+                if let Some(effect) = self.effect {
+                    ctx.fire(scan, effect, self.penetration);
+                }
             }
             let sound = self.sounds.and_then(|s| {
                 if alt && s.fire_alt.is_some() {
@@ -1669,12 +1688,28 @@ fn weapon_frame(
             blocked = true;
         }
 
+        // An empty clip reloading by itself (`Magazine::auto_reload`).
+        if w.magazine.as_ref().is_some_and(|m| m.auto_reload && m.clip == 0 && m.reserve > 0)
+            && w.state.next_primary <= due
+            && w.state.next_secondary <= due
+            && !w.state.reloading()
+        {
+            try_reload(&mut w, &mut inv, now, owner, ctx.w);
+        }
+
         // 4. Primary attack.
         if intent.fire && !blocked && w.state.next_primary <= due {
             let automatic = w.trigger.is_none_or(|t| t.automatic);
+            let per_press = w.trigger.map_or(0, |t| t.per_press);
             let empty = w.magazine.as_ref().is_some_and(|m| m.clip == 0);
-            if !automatic && w.state.burst > 0 {
-                // Semi-automatic: wait for a fresh press.
+            let once = w
+                .burst
+                .is_some_and(|b| b.once_per_press && b.mode == w.mode() && b.count > 0);
+            if (!automatic || once) && w.state.burst > 0 {
+                // Semi-automatic (or a burst per pull): wait for a fresh
+                // press.
+            } else if per_press > 0 && w.state.burst >= per_press {
+                // As many shots as one pull allows.
             } else if w.state.shells != ShellStage::Idle && empty {
                 // Loading the first round: the reload goes on.
             } else if w.magazine.as_ref().is_some_and(|m| m.clip == 0) {

@@ -350,3 +350,84 @@ fn unreadable_files_are_reported() {
     assert_eq!(attrs, InstallAttributes::default());
     assert_eq!(problems.len(), 3);
 }
+
+/// The merge onto our built-in documents as they are: an install with the
+/// spec's reference M4A1 ("Reference values (one rifle)") gives back our
+/// M4A1's numbers, every hook still reads its parameters, and the
+/// install's "M9" (not our knife, `combat_arms:m9_knife`) changes nothing
+/// of ours.
+#[test]
+fn reference_m4a1_onto_our_documents() {
+    use combat_arms::game::{
+        data::WEAPON_DATA,
+        hud::CaHudData,
+        inventory::CaItem,
+        weapons::{CaHandling, DamageParams, RecoilParams, SpreadParams},
+    };
+    let install = r#"
+        [Ammo0] Name="5.56mm M4A1" InstDamage=35 InstDamageType=2 MaxAmount=120 SpawnedAmount=120
+          SelectionAmount=120 Rangedamage0="1.0" Rangedamage1="0.7" Rangedamage2="0.35"
+          FirePerturb=0.30 FireMovePerturb=0.38 FireDuckPerturb=0.30 FireMoveDuckPerturb=0.38
+          WalkPerturb=0.04 RunPerturb=0.25 JumpPerturb=0.70 PerturbRecoil=1.0
+          DecDelay=95 JitterDecDelay=95 JitterWaitRecover=0.1 JitterRecover=0.2
+        [Ammo1] Name="9mm"
+        [Weapon0] Name="M9" Guntype=1 AmmoName0="9mm"
+        [Weapon1] Name="M4A1" Guntype=4 ShotsPerClip=30 RapidFireCount=0 FireDelay=0 Range=3500
+          VectorsPerRound=1 MinPerturb=3 MaxPerturb=100 DuckPerturb=2 MoveDuckPerturb=3
+          PerturbIncSpeed=1.3 PerturbDecSpeed=0.3 ZoomedMinPerturb=2 ZoomedMaxPerturb=30
+          ZoomedPerturbIncSpeed=1.3 ZoomedPerturbDecSpeed=0.3 MovePenalty=0.1 ZoomedMovePenalty=0.1
+          ZoomTime=0.15 BaseCamRecoilPitch=1.3 MaxCamRecoilPitch=5 BaseCamRecoilAccelPitch=0.2
+          MaxCamRecoilWag=15 BaseCamRecoilWagL=1.2 BaseCamRecoilWagR=-1.2 MaxRandomPitch=0.02
+          MaxRandomWag=0.01 BaseCamBackJitter=0.0 BackJitterRecover=1.0 DamageRFacter=0.05
+          Effectrange0="2500" Effectrange1="3000" Effectrange2="3500" AmmoName0="5.56mm M4A1"
+          ReloadPerBullet=0
+    "#;
+    let f = weapons(install).unwrap();
+    let docs = merge_weapon_docs(WEAPON_DATA, &f, 0.01).unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let merged = WeaponSet::parse(&refs, &[]).unwrap();
+    let builtin = WeaponSet::parse(WEAPON_DATA, &[]).unwrap();
+    // The install's pistol has no class in our data: no new weapon.
+    assert_eq!(merged.weapons.len(), builtin.weapons.len());
+    for (m, b) in merged.weapons.iter().zip(&builtin.weapons) {
+        assert_eq!(m.id, b.id);
+        assert_eq!(m.magazine.as_ref().map(|x| x.clip), b.magazine.as_ref().map(|x| x.clip), "{}", m.id);
+        assert_eq!(m.hitscan.as_ref().map(|x| x.range), b.hitscan.as_ref().map(|x| x.range), "{}", m.id);
+        assert_eq!(m.trigger.as_ref().map(|x| x.automatic), b.trigger.as_ref().map(|x| x.automatic));
+        for name in ["combat_arms:damage", "combat_arms:spread", "combat_arms:recoil", "combat_arms:handling"] {
+            if let (Some(mv), Some(bv)) = (m.hooks.get(name), b.hooks.get(name)) {
+                // Same numbers, up to the f32 the hooks read them as.
+                assert!(floats_close(mv, bv), "{}: {name}\n{mv}\n{bv}", m.id);
+            }
+        }
+        if m.id == "combat_arms:m9_knife" {
+            assert_eq!(m.hooks, b.hooks, "the install's M9 must not patch the knife");
+        }
+    }
+    let m4 = merged.weapons.iter().find(|w| w.id == "combat_arms:m4a1").unwrap();
+    assert_eq!(merged.ammo["combat_arms:5.56mm_m4a1"].max, 90);
+    let d: DamageParams = m4.hook("combat_arms:damage").unwrap();
+    assert_eq!((d.damage, d.damage_type, d.roll, d.fire_delay), (35.0, 2, 0.05, 0.0));
+    assert_eq!(d.effect_range, [2500.0, 3000.0, 3500.0]);
+    let s: SpreadParams = m4.hook("combat_arms:spread").unwrap();
+    assert_eq!((s.cone.min, s.cone.max, s.dec_delay), (3, 100, 95.0));
+    assert!(m4.hook::<RecoilParams>("combat_arms:recoil").is_some());
+    assert_eq!(m4.hook::<CaHandling>("combat_arms:handling").unwrap().move_penalty, 0.1);
+    let hud: CaHudData = m4.hook("combat_arms:hud").unwrap();
+    assert_eq!((hud.duck_perturb, hud.move_duck_perturb), (2, 3));
+    let item: CaItem = m4.hook("combat_arms:inventory").unwrap();
+    assert!(item.drop_on_death && !item.infinite);
+}
+
+/// Two TOML values equal, floats within f32 precision; keys only one
+/// side has must be the merge's additions (the install's zoomed state).
+fn floats_close(a: &toml::Value, b: &toml::Value) -> bool {
+    use toml::Value::*;
+    match (a, b) {
+        (Float(x), Float(y)) => ((*x as f32) - (*y as f32)).abs() <= 1e-6,
+        (Integer(x), Float(y)) | (Float(y), Integer(x)) => (*x as f64 - y).abs() <= 1e-6,
+        (Array(x), Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(x, y)| floats_close(x, y)),
+        (Table(x), Table(y)) => y.iter().all(|(k, w)| x.get(k).is_some_and(|v| floats_close(v, w))),
+        _ => a == b,
+    }
+}

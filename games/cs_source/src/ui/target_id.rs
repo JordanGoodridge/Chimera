@@ -32,7 +32,7 @@
 //! enemy at 2-3 m under the crosshair with `hud_centerid 1` and `0`, and an
 //! enemy through a smoke cloud. Why it's OK for now: Reads like CS:S's.
 
-use avian3d::prelude::*;
+use avian3d::prelude::SpatialQuery;
 use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
@@ -156,18 +156,6 @@ impl Plugin for TargetIdPlugin {
 
 type Who<'a> = (Option<&'a Name>, Option<&'a Health>, Option<&'a Team>, Has<Dead>, Has<Hostage>);
 
-/// The character a collider belongs to (it or a parent).
-fn owner(e: Entity, who: &Query<Who, With<Intent>>, parents: &Query<&ChildOf>) -> Option<Entity> {
-    let mut at = e;
-    for _ in 0..4 {
-        if who.contains(at) {
-            return Some(at);
-        }
-        at = parents.get(at).ok()?.parent();
-    }
-    None
-}
-
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn find(
     local: Option<
@@ -190,18 +178,16 @@ fn find(
         let (me, at, intent, state, view, team, dead) = *local;
         let alive = !dead && who.get(me).ok().and_then(|w| w.1).is_none_or(|h| h.current > 0.0);
         if alive {
-            let eye_view = crate::map::interp::eye_view(view, intent, state);
-            let eye = at.translation + eye_view.eye_offset;
-            let look = Quat::from_euler(
-                EulerRot::YXZ,
-                eye_view.yaw + eye_view.punch.y,
-                eye_view.pitch + eye_view.punch.x,
-                0.0,
+            let ray = crate::client::aim::view_ray(at, intent, state, view);
+            let eye = ray.eye;
+            let target = crate::client::aim::character_under(
+                &spatial,
+                ray,
+                RANGE * UNIT,
+                me,
+                |e| who.contains(e),
+                &parents,
             );
-            let dir = Dir3::new(look * Vec3::NEG_Z).unwrap_or(Dir3::NEG_Z);
-            let filter = SpatialQueryFilter::from_excluded_entities([me]).with_mask(crate::core::SOLID_LAYERS);
-            let hit = spatial.cast_ray(eye, dir, RANGE * UNIT, true, &filter);
-            let target = hit.and_then(|h| Some((owner(h.entity, &who, &parents)?, eye + dir * h.distance)));
             if let Some((target, point)) = target
                 && let Ok((name, health, theirs, their_dead, hostage)) = who.get(target)
                 && !their_dead

@@ -1,0 +1,108 @@
+# Combat Arms' M4A1 with its 5.56mm ammo: the worked example of
+# specs/combat_arms/weapon_firing.md ("Worked example: M4A1"), the
+# reference build's attribute data as the spec gives it (the install's
+# own records override these once the attribute reader exists:
+# specs/combat_arms/attribute_data.md, "Defaults and overrides"). Each
+# value names the spec section and attribute field it comes from. Our
+# numbers, not a file from the game.
+#
+# The format: docs/weapon-data.md; Combat Arms' hooks: game/weapons.rs.
+# Units: world units (ASSUMED 1 u = 1 cm: movement.md leaves the scale
+# open) and hit points. No sounds or models yet (the front end draws a
+# box).
+id = "combat_arms:m4a1"
+units = { length = 0.01, damage = 0.01 }
+slot = 0
+# "From the view-model animation file": select 1200 ms (the draw).
+draw = 1.2
+
+# "From the ammo record": MaxAmount 120 is the total carried, clip
+# included, so the reserve holds 120 - 30 (ShotsPerClip). SelectionAmount
+# 120: a full reserve at spawn.
+[ammo."combat_arms:5.56mm_m4a1"]
+max = 90
+
+# "Trigger and fire cycle": RapidFireCount 0 (fully automatic); the cycle
+# is the fire_0 animation, 105 ms at rate 1 + FireAniRate (absent: 0).
+# `accumulate` is the spec's exact-time mode (Q2's recommendation); `set`
+# is the frame-quantised one.
+[trigger]
+automatic = true
+cycle = 0.105
+timing = "accumulate"
+
+# "Ammo" and "Reload": ShotsPerClip 30; the reload animation's 2300 ms;
+# an empty clip reloads by itself once the fire animation ends.
+[magazine]
+clip = 30
+ammo = "combat_arms:5.56mm_m4a1"
+reload = 2.3
+auto_reload = true
+
+# "Hitscan": Range 3500, VectorsPerRound 1; shots follow the view kick
+# (recoil moves the real view: punch_scale 1). The square spread is the
+# `combat_arms:spread` hook's (the frame's disc only tells the HUD).
+[hitscan]
+range = 3500.0
+pellets = 1
+punch_scale = 1.0
+
+# "Damage per ray": ammo InstDamage 35 (InstDamageType 2, bullet), weapon
+# DamageRFacter 0.05, Effectrange0..2 with the ammo's Rangedamage0..2;
+# fireDelay 0 (no server spacing).
+[hooks."combat_arms:damage"]
+damage = 35.0
+damage_type = 2
+roll = 0.05
+effect_range = [2500.0, 3000.0, 3500.0]
+range_damage = [1.0, 0.7, 0.35]
+fire_delay = 0.0
+
+# "Spread": the weapon's MinPerturb/MaxPerturb 3/100 and
+# PerturbIncSpeed/PerturbDecSpeed 1.3/0.3, zoomed 2/30 and 1.3/0.3,
+# DynamicPerturbFactor 1; the ammo's Fire*Perturb caps, Walk/Run/Jump
+# targets and DecDelay 95 ms. (DuckPerturb/MoveDuckPerturb are the
+# crosshair's only, Q3: not here.)
+[hooks."combat_arms:spread"]
+cone = { min = 3, max = 100, inc = 1.3, dec = 0.3 }
+zoomed_cone = { min = 2, max = 30, inc = 1.3, dec = 0.3 }
+dynamic_factor = 1.0
+state = { fire = 0.30, fire_move = 0.38, fire_duck = 0.30, fire_move_duck = 0.38, walk = 0.04, run = 0.25, jump = 0.70 }
+dec_delay = 95.0
+
+# "Recoil (view kick)": the weapon's BaseCamRecoilPitch 1.3,
+# BaseCamRecoilAccelPitch 0.2, MaxCamRecoilPitch 5, MaxRandomPitch 0.02,
+# BaseCamRecoilWagR/L -1.2/1.2, MaxCamRecoilWag 15, MaxRandomwag 0.01,
+# BaseCamBackJitter/BackJitterRecover 0/1; the ammo's JitterDecDelay 95 ms,
+# JitterWaitRecover/JitterRecover 0.1/0.2.
+[hooks."combat_arms:recoil"]
+pitch = 1.3
+accel_pitch = 0.2
+max_pitch = 5.0
+random_pitch = 0.02
+wag_r = -1.2
+wag_l = 1.2
+max_wag = 15.0
+random_wag = 0.01
+back_jitter = 0.0
+back_jitter_recover = 1.0
+jitter_dec_delay = 95.0
+jitter_wait_recover = 0.1
+jitter_recover = 0.2
+
+# "Worked example": MovePenalty 0.1, the speed lost while held (movement.md).
+[hooks."combat_arms:handling"]
+move_penalty = 0.1
+
+# "From the view-model animation file": PostRush 367 ms, the time after a
+# sprint before it fires again (inventory.md).
+[hooks."combat_arms:inventory"]
+sprint_out = 0.367
+
+# "Worked example": DuckPerturb/MoveDuckPerturb 2/3 are the crosshair's
+# crouched minimums only (Q3); the M4A1 is an assault rifle (the HUD's
+# weapon panel, hud_crosshair.md).
+[hooks."combat_arms:hud"]
+duck_perturb = 2
+move_duck_perturb = 3
+class = "assault"

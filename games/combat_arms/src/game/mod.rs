@@ -11,6 +11,8 @@
 //!   drop (inventory.md, implemented);
 //! - `grenades`: thrown weapons (none yet);
 //! - `attachments`: weapon attachments (none yet);
+//! - `hud`: the weapon data the HUD reads (`combat_arms:hud`: crosshair
+//!   fields and the weapon panel's class; hud_crosshair.md);
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
 //!   the install's attribute files;
 //! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
@@ -22,6 +24,7 @@
 pub mod attachments;
 pub mod data;
 pub mod grenades;
+pub mod hud;
 pub mod inventory;
 pub mod mount;
 pub mod movement;
@@ -98,6 +101,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(RegisterGame(&INFO))
             .add(data::CaDataPlugin)
             .add(movement::CaMovementPlugin)
+            .add(hud::CaHudDataPlugin)
             // Before `weapons`: its hooks must be there when the data
             // loads.
             .add(inventory::CaInventoryPlugin)
