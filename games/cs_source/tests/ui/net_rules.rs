@@ -158,6 +158,14 @@ fn server_money(sim: &mut NetSim, i: usize) -> u32 {
     sim.server.app.world().get::<Money>(e).unwrap().0
 }
 
+/// What the round's end pays client `i`'s player as the next round starts
+/// (spec objectives.md 8: CS:S's accounts change then, measured).
+fn server_payout(sim: &mut NetSim, i: usize) -> Option<u32> {
+    let e = sim.character_of(i).unwrap();
+    let state = sim.server.app.world().resource::<RoundState>();
+    state.payouts.iter().find(|(p, _)| *p == e).map(|(_, m)| *m)
+}
+
 fn team_of(sim: &mut NetSim, i: usize) -> u8 {
     let e = sim.character_of(i).unwrap();
     sim.server.app.world().get::<Team>(e).unwrap().0
@@ -325,9 +333,12 @@ fn a_full_round_with_two_clients() {
         }
         assert_eq!(sim.clients[i].app.world().resource::<RoundState>().wins, [0, 1]);
     }
-    // Money: the kill and the win for one, the loss bonus for the other.
-    assert_eq!(money_of(&mut sim, 0), Some(150 + s.kill_reward + s.win_bonus));
-    assert_eq!(money_of(&mut sim, 1), Some(800 + s.loss_bonus));
+    // Money: the kill at once; the win for one, the loss bonus for the
+    // other as the next round starts.
+    assert_eq!(money_of(&mut sim, 0), Some(150 + s.kill_reward));
+    assert_eq!(money_of(&mut sim, 1), Some(800));
+    assert_eq!(server_payout(&mut sim, 0), Some(s.win_bonus));
+    assert_eq!(server_payout(&mut sim, 1), Some(s.loss_bonus));
     // The other client sees nobody's money but its own.
     let id = sim.client_id(0);
     let other = NetSim::owned_by(&mut sim.clients[1], Some(id)).unwrap();
@@ -573,9 +584,12 @@ fn the_bomb_is_planted_and_defused_over_the_network() {
         assert!(beeps > 5, "client {i}");
     }
     let s = sim.server.app.world().resource::<RoundSettings>().clone();
-    // The planter's 300, then the loss bonus and the plant bonus.
-    assert_eq!(money_of(&mut sim, 1), Some(800 + s.planter_reward + s.loss_bonus + s.plant_loss_bonus));
-    assert_eq!(money_of(&mut sim, 0), Some(800 + s.win_bomb));
+    // No planter's reward; the loss bonus and the plant bonus, and the
+    // defusers' win, as the next round starts.
+    assert_eq!(money_of(&mut sim, 1), Some(800 + s.planter_reward));
+    assert_eq!(money_of(&mut sim, 0), Some(800 + s.defuser_reward));
+    assert_eq!(server_payout(&mut sim, 1), Some(s.loss_bonus + s.plant_loss_bonus));
+    assert_eq!(server_payout(&mut sim, 0), Some(s.win_defused));
 }
 
 /// Chat lines each client got (sender name, text).

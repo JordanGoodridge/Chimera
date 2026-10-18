@@ -97,6 +97,13 @@ fn money(sim: &Sim, e: Entity) -> u32 {
     sim.app.world().get::<Money>(e).unwrap().0
 }
 
+/// What the round's end pays `e` as the next round starts (spec 8:
+/// CS:S's accounts change then, measured).
+fn paid(sim: &Sim, e: Entity) -> Option<u32> {
+    let state = sim.app.world().resource::<RoundState>();
+    state.payouts.iter().find(|(p, _)| *p == e).map(|(_, m)| *m)
+}
+
 /// A terrorist in the target with the bomb drawn.
 fn carrier(sim: &mut Sim) -> Entity {
     let t = character(sim, Vec3::new(0.0, 1.0, 12.0), 1);
@@ -364,7 +371,7 @@ fn a_round_gives_one_terrorist_the_bomb_and_the_explosion_wins() {
     sim.seconds(1.2);
     sim.intent(t).select = None;
     plant(&mut sim, t);
-    assert_eq!(money(&sim, t), start + 300, "planter's reward (hyp.)");
+    assert_eq!(money(&sim, t), start, "no planter's reward (measured)");
     // O19: every terrorist dead: the round goes on.
     for &o in &ts {
         sim.app.world_mut().write_message(Damage {
@@ -395,9 +402,11 @@ fn a_round_gives_one_terrorist_the_bomb_and_the_explosion_wins() {
         end.summary.fun_fact.as_ref().map(|f| (f.token.as_str(), f.player, f.values.clone())),
         Some(("funfact_t_win_no_kills", None, vec![]))
     );
-    // O13: terrorists +3500; the CT the loss bonus (and +300 per kill).
-    assert_eq!(money(&sim, t), t_before + 3500);
-    assert_eq!(money(&sim, ct), ct_before + 1400);
+    // O13: terrorists +3500; the CT the loss bonus (and +300 per kill),
+    // paid as the next round starts.
+    assert_eq!((money(&sim, t), money(&sim, ct)), (t_before, ct_before));
+    assert_eq!(paid(&sim, t), Some(3500));
+    assert_eq!(paid(&sim, ct), Some(1400));
 }
 
 #[test]
@@ -424,9 +433,11 @@ fn a_defused_bomb_wins_for_the_defenders_and_pays_the_planters_too() {
     let end = ended(&sim).expect("round over");
     assert_eq!((end.winner, end.reason), (Some(Team(2)), RoundEndReason::BombDefused));
     assert_eq!(end.summary.mvp, Some((ct, Mvp::BombDefuse)), "the defuser is the MVP");
-    // O14's money: CTs +3500, terrorists the loss bonus + 800.
-    assert_eq!(money(&sim, ct), c0 + 3500);
-    assert_eq!(money(&sim, t), t0 + 1400 + 800);
+    // O14's money: CTs +3250 (measured; was 3500), terrorists the loss
+    // bonus + 800; nothing to the defuser himself.
+    assert_eq!((money(&sim, ct), money(&sim, t)), (c0, t0));
+    assert_eq!(paid(&sim, ct), Some(3250));
+    assert_eq!(paid(&sim, t), Some(1400 + 800));
 }
 
 #[test]
@@ -436,12 +447,13 @@ fn bomb_maps_end_on_time_for_the_defenders_and_on_elimination() {
     let t = character(&mut sim, Vec3::new(0.0, 1.0, 12.0), 1);
     let ct = character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 2);
     rounds(&mut sim);
-    let c0 = money(&sim, ct);
     sim.seconds(62.0);
     let end = ended(&sim).expect("round over");
     assert_eq!((end.winner, end.reason), (Some(Team(2)), RoundEndReason::TargetSaved));
     assert_eq!(end.summary.mvp, None, "no kills, no MVP");
-    assert_eq!(money(&sim, ct), c0 + 3250);
+    assert_eq!(paid(&sim, ct), Some(3250));
+    // The terrorist, alive when time ran out, gets no loss bonus.
+    assert_eq!(paid(&sim, t), None);
     // O20: all CTs dead after a plant: terrorists at once.
     sim.seconds(5.5);
     sim.seconds(1.3);
@@ -680,7 +692,10 @@ fn a_hostage_follows_its_leader_to_the_rescue_zone() {
         (end.winner, end.reason),
         (Some(Team(2)), RoundEndReason::HostagesRescued)
     );
-    assert_eq!(money(&sim, ct), c1 + 1000 + 3500);
+    // The rescue's 1000 at once; the win's 2500 and 850 for the rescued
+    // hostage as the next round starts.
+    assert_eq!(money(&sim, ct), c1 + 1000);
+    assert_eq!(paid(&sim, ct), Some(2500 + 850));
 }
 
 #[test]
@@ -785,7 +800,8 @@ fn killing_a_hostage_costs_money_and_too_many_get_you_removed() {
     let all: Vec<Entity> = hostages(&mut sim).iter().map(|h| h.0).collect();
     for (n, h) in all[..3].iter().enumerate() {
         if n == 2 {
-            assert_eq!(money(&sim, t), m0.saturating_sub(2 * 1500));
+            // Each killing hit (1000 points): 20 a point twice, and 500.
+            assert_eq!(money(&sim, t), m0.saturating_sub(2 * (2 * 20_000 + 500)));
         }
         sim.app.world_mut().write_message(Damage {
             force: Vec3::ZERO,
@@ -941,4 +957,56 @@ fn the_planted_bomb_icon_blinks_with_the_beeps() {
     let end = beep_interval(0.5, 45.0);
     assert!(bomb_icon_lit(0.04, end) && !bomb_icon_lit(0.07, end), "fast at the end ({end} s)");
     assert!(bomb_icon_lit(f32::INFINITY, f32::NAN), "lit before the first beep");
+}
+
+/// Hostage money (spec 8, measured on the probe server 2026-10-17): a hit
+/// costs 20 a whole point, the killing hit that again and 500; a hostage
+/// map's elimination pays the winners 3000 and 150 a living hostage, as
+/// the next round starts.
+#[test]
+fn hostage_hits_cost_by_the_point_and_wins_pay_per_hostage() {
+    let mut sim = sim(MapObjectives {
+        hostages: (0..3)
+            .map(|i| HostageSpawn {
+                feet: Vec3::new(i as f32 * 2.0, 0.0, 5.0),
+                yaw: 0.0,
+                kind: None,
+                ..Default::default()
+            })
+            .collect(),
+        ..hostage_map()
+    });
+    let t = character(&mut sim, Vec3::new(0.0, 1.0, 12.0), 1);
+    let ct = character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 2);
+    rounds(&mut sim);
+    sim.seconds(1.3);
+    sim.app.world_mut().entity_mut(ct).insert(Money(10_000));
+    let hs: Vec<Entity> = hostages(&mut sim).iter().map(|h| h.0).collect();
+    let hit = |sim: &mut Sim, target: Entity, points: f32| {
+        sim.app.world_mut().write_message(Damage {
+            force: Vec3::ZERO,
+            target,
+            attacker: Some(ct),
+            amount: points / 100.0,
+            point: Vec3::ZERO,
+            dir: Vec3::X,
+            hitgroup: Hitgroup::Generic,
+            kind: default(),
+            weapon: None,
+        });
+        sim.ticks(3);
+    };
+    hit(&mut sim, hs[0], 5.7);
+    assert_eq!(money(&sim, ct), 10_000 - 100, "5 whole points");
+    hit(&mut sim, hs[0], 0.5);
+    assert_eq!(money(&sim, ct), 10_000 - 100, "no whole point");
+    hit(&mut sim, hs[1], 100.0);
+    assert_eq!(money(&sim, ct), 10_000 - 100 - (2000 + 2000 + 500), "the kill");
+    // The CT kills the terrorist (+300): two hostages alive.
+    hit(&mut sim, t, 200.0);
+    let end = ended(&sim).expect("round over");
+    assert_eq!((end.winner, end.reason), (Some(Team(2)), RoundEndReason::Eliminated));
+    assert_eq!(money(&sim, ct), 10_000 - 4600 + 300);
+    assert_eq!(paid(&sim, ct), Some(3000 + 2 * 150));
+    assert_eq!(paid(&sim, t), Some(1400));
 }

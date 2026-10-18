@@ -12,7 +12,8 @@
 //! (specs/cs_source/fall_damage.md): constant rate only (damagemodel 1 doubling
 //! isn't used by stock maps), no map logic (StartDisabled ones are skipped),
 //! touch test is the character's collider bounds against the trigger's brushes,
-//! one half-second timer per trigger (inferred). Why it's OK for now: de_port's
+//! one half-second timer per trigger (measured 2026-10-17, as armour taking
+//! none of it). Why it's OK for now: de_port's
 //! sea bites as measured.
 
 use bevy::prelude::*;

@@ -724,7 +724,7 @@ dt = 0.015 s. "Tick N" means server time N × dt.
    stay disabled in round 2? Test: map with logic_auto OnMapSpawn and
    OnMultiNewRound → `say` via point_servercommand, plus a func_brush
    toggled by a button; play two rounds on the probe server.
-2. **OnNewGame on a dedicated server map load**: does it fire on
+2. **Answered (with Q1, 2026-10-15: logic_auto fires OnNewGame, OnMapSpawn and OnMultiNewMap at a dedicated server's map load and at every restart).** Was: **OnNewGame on a dedicated server map load**: does it fire on
    `changelevel`/`map`? Same test map, print both.
 3. **Float boundary**: is a delay that is an exact tick multiple (0.015,
    0.03, 0.3) delivered after n or n+1 ticks? Fire `say` from relays with
@@ -734,7 +734,7 @@ dt = 0.015 s. "Tick N" means server time N × dt.
 4. **Kill then input in the same tick**: confirm a killed entity still
    accepts inputs queued in that tick (relay: Kill delay 0 then Trigger
    delay 0 → does OnTrigger fire?).
-5. **sv_allow_point_servercommand in CS:S**: `cvarlist sv_allow` on the
+5. **Partly answered (measured 2026-10-17, probe server):** CS:S has the gate, default "always" (`disallow` / `always`); a spawned point_servercommand's `Command "say ..."` ran (with the cvar at "always" and at "0", which isn't "disallow"). Our allowlist stays our security choice. Still open: the commands real minigame maps send. Was: **sv_allow_point_servercommand in CS:S**: `cvarlist sv_allow` on the
    probe server; and which commands real minigame maps send (dump all
    point_servercommand / point_clientcommand Command parameters from the
    user's downloaded maps once there are some; none are in the install's

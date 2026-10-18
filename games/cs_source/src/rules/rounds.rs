@@ -19,12 +19,15 @@
 //! kill reward (300), the elimination win (3250) and the loss bonus with its
 //! streak step (1400, +500) checked against a SourceTV demo of a CS:S bot
 //! round (2026-10-15, `demodump --entity CCSPlayer --props m_iAccount`); the
-//! bomb, hostage and time rewards are unmeasured (docs/plans/active/rounds.md).
+//! bomb, hostage and time rewards measured on the probe server (2026-10-17,
+//! specs/cs_source/objectives.md Q5): the round's bonuses are paid as the
+//! next round starts (`RoundState::payouts`), losers alive at a time-out
+//! get nothing, hostage maps pay per hostage.
 //!
 //! Known shortcuts (docs/tech-debt.md): Minigame flows
-//! (docs/plans/active/community-maps.md, "Minigame flows"), our readings: with
-//! players on one side only, all of them dead ends the round as a draw
-//! (objectives.md Q15, unmeasured); a placed weapon the logic kills leaves the
+//! (docs/plans/active/community-maps.md, "Minigame flows"): with players on
+//! one side only, all of them dead ends the round as a draw (objectives.md
+//! Q15, measured: as CS:S); our readings: a placed weapon the logic kills leaves the
 //! world, from its carrier's hands too (`map::entities::RemovedWeapons`; Source
 //! deletes the entity); the map logic's dice get a new seed from the clock at
 //! every map load (the headless harness fixes it: `logic::LogicSeed`); only
@@ -32,7 +35,7 @@
 //! map's own case back (`cs_source::bsp::restore_text_case`; vbsp lower-cases
 //! the whole entity lump; names, classes and paths stay lower case, matched
 //! without case anyway). Why it's OK for now: 17 mg_ maps' flows pass headless
-//! (`games/cs_source/tests/it/heavy/map_flows.rs`); a probe-server round settles Q15.
+//! (`games/cs_source/tests/it/heavy/map_flows.rs`).
 
 use bevy::prelude::*;
 
@@ -83,22 +86,33 @@ pub struct RoundSettings {
     /// `mp_tkpunish`: 1 kills this round's team killers as the next round
     /// starts (CS:S's default 0).
     pub tk_punish: u8,
-    /// Objective wins (spec 8, *public*/*hyp.*): the bomb exploded or was
-    /// defused; time ran out on a bomb map with no plant; all hostages
-    /// rescued; time ran out on a hostage map.
+    /// Objective wins (spec 8, measured): the bomb exploded; defused; time
+    /// ran out on a bomb map with no plant; all hostages rescued; time ran
+    /// out on a hostage map; an elimination on a hostage map.
     pub win_bomb: u32,
+    pub win_defused: u32,
     pub win_target_saved: u32,
     pub win_rescued: u32,
     pub win_not_rescued: u32,
+    pub win_elimination_hostage: u32,
+    /// On a hostage map the winners' bonus grows by these for each
+    /// hostage: alive and not rescued; led this round (defenders only);
+    /// rescued (defenders).
+    pub hostage_alive_bonus: u32,
+    pub hostage_led_bonus: u32,
+    pub hostage_rescued_bonus: u32,
     /// Every terrorist, on top of the loss bonus, when the bomb was planted
     /// and they lost anyway.
     pub plant_loss_bonus: u32,
     pub planter_reward: u32,
     pub defuser_reward: u32,
-    /// The defender who first leads a hostage this round; the one whose
-    /// hostage is rescued; whoever kills one loses this.
+    /// The defender who first leads a hostage this round (once per
+    /// hostage); the one whose hostage is rescued.
     pub hostage_touch: u32,
     pub hostage_rescue: u32,
+    /// What hurting a hostage costs a whole point of damage; the killing
+    /// hit costs that twice plus `hostage_kill_penalty`.
+    pub hostage_hurt_penalty: u32,
     pub hostage_kill_penalty: u32,
 }
 
@@ -149,6 +163,9 @@ pub struct RoundState {
     /// The game on this map is over (`game_end`): the intermission runs
     /// until then, everyone held still and the scoreboard up.
     pub game_over: Option<f64>,
+    /// What the last round's end pays, as the next round starts (CS:S's
+    /// accounts change then, not at the end: spec 8, measured).
+    pub payouts: Vec<(Entity, u32)>,
 }
 
 impl Default for RoundState {
@@ -162,6 +179,7 @@ impl Default for RoundState {
             draws: 0,
             map_started: None,
             game_over: None,
+            payouts: Vec::new(),
         }
     }
 }
@@ -696,13 +714,23 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
     let planted = world
         .get_resource::<BombState>()
         .is_some_and(|b| b.planted.is_some() || b.outcome.is_some());
+    let hostage_map = world
+        .get_resource::<MapObjectives>()
+        .is_some_and(|o| o.kind() == MapKind::Hostage);
+    let rescued = world.get_resource::<HostageTally>().map_or(0, |t| t.rescued);
+    let (alive_hostages, led_hostages) = world
+        .query::<(&Hostage, &Health)>()
+        .iter(world)
+        .filter(|(_, h)| h.current > 0.0)
+        .fold((0u32, 0u32), |(a, l), (h, _)| (a + 1, l + h.taken as u32));
     let mut state = world.resource_mut::<RoundState>();
     state.phase = Phase::Over {
         until: now + s.end_delay as f64,
         winner,
     };
-    // Bonuses: the winners' fixed one, the losers' growing with the streak
-    // (a draw pays both the loss bonus).
+    // Bonuses (spec 8, measured): the winners' by the reason, the losers'
+    // growing with the streak (a draw pays both the loss bonus). Paid as
+    // the next round starts.
     let mut bonus = [0u32; 2];
     if winner.is_none() {
         state.draws += 1;
@@ -712,12 +740,22 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
             state.wins[i] += 1;
             state.losses[i] = 0;
             bonus[i] = match reason {
-                RoundEndReason::TargetBombed | RoundEndReason::BombDefused => s.win_bomb,
+                RoundEndReason::TargetBombed => s.win_bomb,
+                RoundEndReason::BombDefused => s.win_defused,
                 RoundEndReason::TargetSaved => s.win_target_saved,
                 RoundEndReason::HostagesRescued => s.win_rescued,
                 RoundEndReason::HostagesNotRescued => s.win_not_rescued,
+                RoundEndReason::Eliminated if hostage_map => s.win_elimination_hostage,
                 _ => s.win_bonus,
             };
+            // A hostage map's winners: so much a hostage alive, and for
+            // defenders a hostage led or rescued.
+            if hostage_map {
+                bonus[i] += s.hostage_alive_bonus * alive_hostages;
+                if team == DEFENDERS {
+                    bonus[i] += s.hostage_led_bonus * led_hostages + s.hostage_rescued_bonus * rescued;
+                }
+            }
         } else {
             bonus[i] = (s.loss_bonus + s.loss_step * state.losses[i]).min(s.loss_max);
             state.losses[i] += 1;
@@ -727,17 +765,27 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
             }
         }
     }
-    let payees: Vec<(Entity, usize)> = world
-        .query_filtered::<(Entity, &Team), Without<Hostage>>()
+    // Losers still alive when time runs out on an objective get nothing
+    // (measured on both map kinds).
+    let time_out = matches!(reason, RoundEndReason::TargetSaved | RoundEndReason::HostagesNotRescued);
+    let payouts: Vec<(Entity, u32)> = world
+        .query_filtered::<(Entity, &Team, &Health, Has<Dead>), Without<Hostage>>()
         .iter(world)
-        .filter_map(|(e, t)| side(*t).map(|i| (e, i)))
+        .filter_map(|(e, t, h, dead)| {
+            let i = side(*t)?;
+            let unpaid = time_out && winner != Some(*t) && !dead && h.current > 0.0;
+            (!unpaid).then_some((e, bonus[i]))
+        })
         .collect();
-    for (e, i) in payees {
-        add_money(world, e, bonus[i] as i64, s.max_money);
-    }
+    world.resource_mut::<RoundState>().payouts = payouts;
 }
 
 fn start_round(world: &mut World, s: &RoundSettings, now: f64, fresh: bool) {
+    // The last round's bonuses, as the new one starts (before anyone buys).
+    let payouts = std::mem::take(&mut world.resource_mut::<RoundState>().payouts);
+    for (e, amount) in payouts {
+        add_money(world, e, amount as i64, s.max_money);
+    }
     {
         let mut state = world.resource_mut::<RoundState>();
         state.number += 1;
@@ -875,13 +923,21 @@ pub fn frozen_intent(intent: &Intent) -> Intent {
     }
 }
 
-/// Money for objectives as they happen (spec 8): planting, defusing,
-/// leading and rescuing hostages, killing them.
+/// Money for objectives as they happen (spec 8, measured): planting,
+/// defusing, leading and rescuing hostages, hurting and killing them.
 pub(super) fn objective_money(
     settings: Res<RoundSettings>,
     mut events: MessageReader<ObjectiveEvent>,
     mut money: Query<&mut Money>,
+    mut last_hit: Local<std::collections::HashMap<Entity, f32>>,
 ) {
+    // What a hit on a hostage costs: so much a whole point (health 1.0 is
+    // 100 points).
+    let hurt = |amount: f32| ((amount.max(0.0) * 100.0 + 1e-3).floor() as i64) * settings.hostage_hurt_penalty as i64;
+    // Hostages hurt but never killed (re-created each round) don't pile up.
+    if last_hit.len() > 64 {
+        last_hit.clear();
+    }
     for ev in events.read() {
         if settings.enabled == 0 {
             continue;
@@ -891,7 +947,19 @@ pub(super) fn objective_money(
             ObjectiveEvent::Defused { who } => (Some(*who), settings.defuser_reward as i64),
             ObjectiveEvent::HostageFollows { leader, first: true, .. } => (Some(*leader), settings.hostage_touch as i64),
             ObjectiveEvent::HostageRescued { leader, .. } => (*leader, settings.hostage_rescue as i64),
-            ObjectiveEvent::HostageKilled { attacker, .. } => (*attacker, -(settings.hostage_kill_penalty as i64)),
+            ObjectiveEvent::HostageHurt {
+                hostage,
+                attacker,
+                amount,
+            } => {
+                last_hit.insert(*hostage, *amount);
+                (*attacker, -hurt(*amount))
+            }
+            // The killing hit costs its hurt penalty again, and the kill.
+            ObjectiveEvent::HostageKilled { hostage, attacker } => {
+                let hit = last_hit.remove(hostage).unwrap_or(0.0);
+                (*attacker, -(hurt(hit) + settings.hostage_kill_penalty as i64))
+            }
             _ => (None, 0),
         };
         if delta != 0

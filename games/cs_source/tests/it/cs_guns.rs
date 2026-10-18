@@ -853,9 +853,10 @@ fn shotguns_fire_their_pellets_in_the_spread_cone() {
 
 #[test]
 fn m3_reloads_shell_by_shell() {
-    // T25 (the template's timings, UNMEASURED for CS:S, M9): the start
-    // 0.5 s (34 ticks), a shell every 0.45 s (30 ticks), the next insert a
-    // tick after the last shell went in; clip 5 -> 8 in three shells.
+    // M9 (measured on the probe server): the first shell 68 ticks after
+    // the press, then one every 35 (the start 0.5 s and 0.5 s a shell, 34
+    // ticks each, the next insert a tick after the last shell went in);
+    // clip 5 -> 8 in three shells.
     let mut sim = sim();
     let p = shooter_with(&mut sim, M3);
     let w = active(&sim, p);
@@ -872,7 +873,7 @@ fn m3_reloads_shell_by_shell() {
             at.push(t);
         }
     }
-    assert_eq!(at, [64, 95, 126]);
+    assert_eq!(at, [68, 103, 138]);
     let m = sim.app.world().get::<Magazine>(w).unwrap();
     assert_eq!((m.clip, m.reserve), (8, reserve - 3));
     assert!(!sim.app.world().get::<WeaponState>(w).unwrap().reloading());
@@ -890,10 +891,10 @@ fn firing_stops_a_shotgun_reload_once_a_shell_is_in() {
     sim.ticks(2);
     assert!(sim.app.world().get::<WeaponState>(w).unwrap().reloading());
     // Holding attack with an empty clip neither fires nor stops it; the
-    // first shell (in 64 ticks) is fired on the tick it goes in, which
+    // first shell (in 68 ticks) is fired on the tick it goes in, which
     // ends the reload.
     sim.intent(p).fire = true;
-    sim.ticks(61);
+    sim.ticks(65);
     assert_eq!((clip(&sim, p), reserve(&sim)), (0, full), "no shell yet");
     sim.ticks(2);
     assert_eq!((clip(&sim, p), reserve(&sim)), (0, full - 1), "one shell in and fired");

@@ -72,8 +72,13 @@ restarts.
    reset), the explosion through the HE `ExplosionRule` with the map's
    `bombradius` (H1 falloff over 3.5 × radius) and the target's
    `BombExplode` outputs through the logic layer; the round-end table and
-   its money (exploded/defused 3500, target saved 3250, +800 to planting
-   losers, planter 300, hostage touch 150, rescue 1000, kill −1500);
+   its money (measured 2026-10-17, objectives.md Q5: exploded 3500,
+   defused and target saved 3250, +800 to planting losers, no planter or
+   defuser reward, hostage touch 150, rescue 1000, 20 a point for hurting
+   one, the killing hit twice that and 500; hostage maps 3000/2500/3250
+   plus 150 a living, 100 a led and 850 a rescued hostage; the round's
+   bonuses paid as the next round starts, nothing to losers alive at a
+   time-out);
    hostages as team-less characters led by +use over the nav mesh and
    rescued in `func_hostage_rescue`; Ts win on time on hostage maps.
    HUD icons, progress bar, messages, radar bomb marker. Tests:

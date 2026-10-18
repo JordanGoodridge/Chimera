@@ -2,11 +2,10 @@
 # cvars set them after): the rule module's numbers, read with
 # `rule_module::parse_settings`. Timers and start money are CS:S's
 # defaults read from a fresh dedicated server over RCON (2026-10-14,
-# docs/plans/active/parity-gaps.md C9); the rewards are its well-known
-# amounts: the kill reward, the elimination win and the loss bonus with its
-# step checked against a SourceTV demo of a CS:S bot round (2026-10-15);
-# the bomb, hostage and time rewards unmeasured (docs/plans/active/rounds.md;
-# objectives' spec 8).
+# docs/plans/active/parity-gaps.md C9); every reward and penalty measured
+# on the probe server (2026-10-17, specs/cs_source/objectives.md Q5, the
+# players' accounts read around each event): the round's bonuses are paid
+# as the next round starts, the rest at once.
 
 # Seconds frozen at a round's start (mp_freezetime).
 freeze_time = 6.0
@@ -19,8 +18,9 @@ start_money = 800
 max_money = 16000
 # Seconds between a round's end and the next one.
 end_delay = 5.0
-# The winners' bonus by elimination; the losers' grows by `loss_step` a
-# consecutive loss up to `loss_max`.
+# The winners' bonus by elimination (bomb maps and maps without
+# objectives); the losers' grows by `loss_step` a consecutive loss up to
+# `loss_max`.
 win_bonus = 3250
 loss_bonus = 1400
 loss_step = 500
@@ -29,19 +29,32 @@ kill_reward = 300
 teamkill_penalty = 3300
 # mp_tkpunish.
 tk_punish = 0
-# Objective wins: the bomb exploded or was defused; time ran out on a bomb
-# map with no plant; all hostages rescued; time ran out on a hostage map.
+# Objective wins: the bomb exploded; defused; time ran out on a bomb map
+# with no plant (the terrorists still alive get nothing); all hostages
+# rescued; time ran out on a hostage map (the counter-terrorists still
+# alive get nothing); an elimination on a hostage map.
 win_bomb = 3500
+win_defused = 3250
 win_target_saved = 3250
-win_rescued = 3500
+win_rescued = 2500
 win_not_rescued = 3250
+win_elimination_hostage = 3000
+# On a hostage map the winners also get this much for each hostage: alive
+# and not rescued; led this round (counter-terrorists only, on top); and
+# rescued (counter-terrorists).
+hostage_alive_bonus = 150
+hostage_led_bonus = 100
+hostage_rescued_bonus = 850
 # Every terrorist, on top of the loss bonus, when the bomb was planted and
-# they lost anyway; the planter's and the defuser's own reward.
+# they lost anyway; the planter's and the defuser's own reward (none).
 plant_loss_bonus = 800
-planter_reward = 300
+planter_reward = 0
 defuser_reward = 0
-# The defender who first leads a hostage this round; the one whose hostage
-# is rescued; whoever kills one loses this.
+# The defender who first leads a hostage this round (once per hostage);
+# the one whose hostage is rescued.
 hostage_touch = 150
 hostage_rescue = 1000
-hostage_kill_penalty = 1500
+# Hurting a hostage costs this much a whole point of damage; the hit that
+# kills it costs that twice over plus `hostage_kill_penalty` (either team).
+hostage_hurt_penalty = 20
+hostage_kill_penalty = 500

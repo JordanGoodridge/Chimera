@@ -850,7 +850,7 @@ Behaviour:
 5. **Sleep thresholds** (velocity and time before a body sleeps) are inside
    vphysics. Measure with `cl_showpos`-style observation or ent_text on a
    rolling barrel.
-6. **Air drag formula and default air density.** `air_density` with no
+6. **Partly answered (2026-10-17, probe server): `air_density` reads 2.00.** The drag formula is open. Was: **Air drag formula and default air density.** `air_density` with no
    argument prints the current value in game (cheat).
 7. **Player push limits.** Exact semantics of the shadow controller's push
    mass limit (350 kg) and push speed limit (50 in/s) are inside vphysics.
@@ -871,7 +871,7 @@ Behaviour:
    into rotated solid-2 props.
 10. **SOLID_VPHYSICS entity without a `.phy`** (e.g. `prop_dynamic`): engine
     trace behaviour (no hit vs. bounding box fallback) is not in the SDK.
-11. **CS:S ammo impulses.** Only `.50 AE = 2400` is visible in public code.
+11. **Answered (2026-10-17, weapons.md Q8 and prop_damage.md Q11: the damage force each hit hands a prop is fixed by ammo, 2000 for 9 mm to 2800 for .338, buckshot 600 a pellet, the knife 300; HE radius damage: grenades.md Q10).** Was: **CS:S ammo impulses.** Only `.50 AE = 2400` is visible in public code.
     Whether CS:S's own bullet code uses this helper at all, and the other
     calibres' values, need checking: shoot a known-mass prop and measure
     Δv with `ent_text` or a demo. CS:S's HE grenade radius-damage code may
@@ -881,7 +881,7 @@ Behaviour:
     presumed to call them every tick or command. The cvars become
     player-visible only in the CS build, and the +use push filter excludes
     the C4. Confirm by walking into a barrel at speed < 75 vs > 75 in game.
-13. **CS:S default of `sv_turbophysics`.** It is 0 in the SDK. Type
+13. **Answered (2026-10-17, probe server): `sv_turbophysics` is 0 (replicated), as the SDK.** Was: **CS:S default of `sv_turbophysics`.** It is 0 in the SDK. Type
     `sv_turbophysics` in the CS:S console to confirm, since it changes 4.1
     and 4.2 a lot.
 14. **Drag axis areas** in the VPHY header (crate: 0.981, 1.0, 0.981) do not

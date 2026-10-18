@@ -18,9 +18,9 @@ cycle = 0.25
 clip = 7
 ammo = "cs_source:buckshot"
 reload = 0.3889
-# UNMEASURED (M9): as the M3 (the template's); the model's are
-# 0.6667/0.3889/0.4 s.
-shells = { start = 0.5, insert = 0.45 }
+# Measured (M9, 2026-10-17): as the M3, 68 ticks to the first shell and
+# 35 to each next; the model's are 0.6667/0.3889/0.4 s.
+shells = { start = 0.5, insert = 0.5 }
 
 [hitscan]
 range = 3000.0

@@ -78,12 +78,16 @@ fn rounds_freeze_then_play_and_eliminations_pay() {
         p => panic!("round not over: {p:?}"),
     };
     assert_eq!(winner, Some(Team(1)));
-    assert_eq!(money(&sim, t), 1400 + 3250);
-    assert_eq!(money(&sim, ct), 800 + 1400, "first loss bonus");
+    // The bonuses wait for the next round's start, as CS:S's (measured:
+    // the accounts change 5 s after the end, with the respawn).
+    assert_eq!(money(&sim, t), 1400);
+    assert_eq!(money(&sim, ct), 800);
     assert_eq!(sim.app.world().resource::<RoundState>().wins, [1, 0]);
 
-    // The next round brings everyone back, frozen.
+    // The next round brings everyone back, frozen, and pays.
     sim.seconds(5.2);
+    assert_eq!(money(&sim, t), 1400 + 3250);
+    assert_eq!(money(&sim, ct), 800 + 1400, "first loss bonus");
     assert!(matches!(phase(&sim), Phase::Freeze { .. }), "{:?}", phase(&sim));
     assert_eq!(sim.app.world().resource::<RoundState>().number, 2);
     assert_eq!(
@@ -108,6 +112,8 @@ fn defenders_win_when_time_runs_out_and_buying_closes() {
         Phase::Over { winner, .. } => assert_eq!(winner, Some(Team(2))),
         p => panic!("{p:?}"),
     }
+    // Paid as the next round starts.
+    sim.seconds(5.2);
     assert_eq!(money(&sim, ct), s.start_money + s.win_bonus);
     assert_eq!(money(&sim, t), s.start_money + s.loss_bonus);
     let _ = sim.app.world().get::<Intent>(t);

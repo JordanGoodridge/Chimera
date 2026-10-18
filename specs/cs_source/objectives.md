@@ -140,29 +140,48 @@ Stock map bomb radii (from the entity lumps):
 `info_map_parameters` also has `buying` (inferno, nuke, piranesi set 0).
 Public FGD meaning: 0 everyone may buy, 1 only CTs, 2 only Ts, 3 nobody.
 
-### Money (all *public*, unverified for CS:S; Q5)
+### Money (measured 2026-10-17, Q5)
 
-These are the long-standing Counter-Strike values (1.6 and CS:S shared one
-economy until CS:GO). The first three rows are already in our
-`RoundSettings`.
+Measured on the probe server (de_dust2 and cs_office, bots on both teams,
+`mp_ignore_round_win_conditions 0`; each account read with the probe's
+`mashup_state` every 50 ms around each event; plants and defuses by the
+run bot holding attack or use, hostages led with `mashup_input <hostage>
+Use`, hurt with `mashup_hurt <hostage> <attacker> <damage> 2`, rounds left
+to time out with `mp_roundtime 1`). The round's bonuses are **paid as
+the next round starts** (`mp_round_restart_delay` 5 s after the end, a
+tick before the respawn), not at the end; the rest at once.
 
 | Name (ours) | Value | Who gets it |
 |---|---|---|
-| win_elimination | 3250 | winning team, elimination win (in `RoundSettings::win_bonus`) |
-| loss_bonus | 1400 + 500 per earlier consecutive loss, max 3400 | losing team (in `RoundSettings`) |
-| kill_reward / teamkill_penalty | 300 / −3300 | killer (in `RoundSettings`) |
-| win_bomb_exploded | 3500 | every T |
-| win_bomb_defused | 3500 | every CT |
-| win_target_saved | 3250 | every CT (time ran out, no plant) |
+| win_bonus | 3250 | the winners of an elimination on a bomb map (either side) |
+| win_elimination_hostage | 3000 | the winners of an elimination on a hostage map (either side) |
+| loss_bonus | 1400 + 500 per earlier consecutive loss (1900 the second), max 3400 *public* | the losers |
+| kill_reward / teamkill_penalty | 300 / −3300 *public* | the killer |
+| win_bomb | 3500 | every T, bomb exploded |
+| win_defused | 3250 | every CT, bomb defused (not 3500) |
+| win_target_saved | 3250 | every CT (time ran out, no plant); **Ts still alive get nothing**, dead Ts the loss bonus |
 | plant_loss_bonus | 800 | every T on top of the loss bonus when the bomb was planted but the Ts lost |
-| planter_reward | 300 *hyp.* | the planter (Q5) |
-| defuser_reward | 0 *hyp.* (CS:GO pays 300) | the defuser (Q5) |
-| win_all_rescued | 3500 *hyp.* | every CT |
-| win_hostages_not_rescued | 3250 *hyp.* | every T (time ran out) |
-| hostage_touch | 150 *hyp.* | CT who makes a hostage follow him for the first time this round |
-| hostage_rescue | 1000 *hyp.* | the CT whose hostage is rescued |
-| hostage_kill | −1500 *hyp.* | the killer, either team |
-| hostage_hurt | small, scaled by damage *hyp.* | the attacker ("You injured a hostage!") |
+| planter_reward | 0 | the planter: nothing at the plant (was *hyp.* 300) |
+| defuser_reward | 0 | the defuser: nothing beyond the CT win |
+| win_rescued | 2500 | every CT, all hostages still alive rescued |
+| win_not_rescued | 3250 | every T, time ran out on a hostage map; **CTs still alive get nothing**, dead CTs the loss bonus |
+| hostage_alive_bonus | 150 a hostage alive and not rescued | the winners of a hostage map, either side, on top |
+| hostage_led_bonus | 100 a hostage alive and led this round | the winning CTs, on top (not to winning Ts) |
+| hostage_rescued_bonus | 850 a hostage rescued this round | the winning CTs, on top (rescued 1, 2, 3, 4: 3350, 4200, 5050, 5900) |
+| hostage_touch | 150 | the CT who leads a hostage first this round, once per hostage (another CT leading it later gets nothing) |
+| hostage_rescue | 1000 | the CT whose hostage is rescued, at once |
+| hostage_hurt | −20 a whole point of damage (1 → 20, 1.5 → 20, 2.9 → 40, 5 → 100, 10.5 → 200, 0.5 → 0) | the attacker, either team, at once |
+| hostage_kill | the killing hit costs −40 a whole point of its damage − 500 (100 on 100 health: 4500; 101: 4540; 150: 6500; 200: 8500; 1 on 1: 540; 40 on 40: 2100; overkill counts) | the killer, either team, at once |
+
+Worked: CT elimination on cs_office with all four hostages untouched:
+3000 + 4 × 150 = 3600; with one led: 3700; with two led: 3800; with two
+killed: 3300; with one rescued and three untouched: 3000 + 850 + 450 =
+4300. The Ts' time-out win with four untouched: 3250 + 600 = 3850; with
+one killed: 3700. The Ts' elimination win: 3000 + 600 = 3600.
+Unmeasured: a draw's pay, Ts winning after a rescue (whether they get
+anything for rescued hostages; ours: no), whether "led" means led at the
+end or led at some time this round (ours: at some time), and the kill
+reward per weapon (300 for every weapon in the 2026-10-15 demo).
 
 ### Hostages
 
@@ -467,8 +486,8 @@ At `explode_at` (if not defused):
    key (*hyp.*: fired like an output; chateau `glass`, piranesi `cratesa`,
    tides `bomb_b_mm`/`bomb_a_mm` crossed over A/B).
 4. Centre text "Target successfully bombed!"; event `bomb_exploded`; round
-   ends: T win, "Bomb detonated". Deaths from the blast count as kills for
-   the planter (*hyp.*, Q5) with weapon "c4".
+   ends: T win, "Bomb detonated". Deaths from the blast are the world's
+   (attacker 0, measured with Q3): no kill for the planter.
 5. The bomb entity is removed.
 
 `BombExplode` outputs in stock maps (target, input, parameter, delay):
@@ -519,11 +538,16 @@ the round):
 
 ### 8. Money at round end and for objectives
 
-- Winners get the reason's bonus (table above); losers the loss bonus as
-  now. If the bomb was planted and the Ts still lost (after a plant that
-  can only be a defuse), every T also gets +800.
-- Planter and defuser rewards, hostage rewards and penalties: table
-  above, all Q5.
+- Winners get the reason's bonus (table above, measured); losers the loss
+  bonus, except losers still alive when time runs out (Target_Saved,
+  Hostages_Not_Rescued), who get nothing. If the bomb was planted and the
+  Ts still lost (after a plant that can only be a defuse), every T also
+  gets +800. On a hostage map the winners also get 150 a living hostage,
+  and winning CTs 100 a led one and 850 a rescued one.
+- These are paid as the next round starts (5 s after the end), not at
+  the end.
+- No planter or defuser reward; hostage rewards and penalties at once:
+  table above.
 - A defused/exploded round counts toward the loss streak like any other.
 
 ### 9. Hostages
@@ -580,8 +604,8 @@ the round):
   out of sight for 10 s or farther than 1500 in.
 - **Damage:** hostages take bullet, grenade and bomb damage. Hurt: the
   attacker sees "You injured a hostage!" (and the hint "Be careful around
-  hostages. You will lose money if you kill a hostage.") and loses money
-  (Q5); `Hostage.Pain`; event `hostage_hurt`. Killed: ragdoll; "You killed
+  hostages. You will lose money if you kill a hostage.") and loses 20 a
+  whole point of damage (measured, Constants: Money); `Hostage.Pain`; event `hostage_hurt`. Killed: ragdoll; "You killed
   a hostage!"; announcer `Event.HostageKilled`; event `hostage_killed`;
   log `triggered "Killed_A_Hostage"`; money penalty; the killer's hostage
   kill count rises, and at `mp_hostagepenalty` − 1 he is warned ("If you
@@ -748,7 +772,7 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    restart). Was: **Q2 Defaults and bounds.** RCON `cvarlist mp_c4`, `help mp_c4timer`,
    `help mp_hostagepenalty`, `help mp_roundtime`: defaults, min/max.
    Expect `mp_c4timer` 45 (10–90).
-3. **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
+3. **Q3 Partly answered (2026-10-15, see "The blast (Q3, H2)" under Constants: the bell `500 × exp(−d²/2σ²)`, σ = 1750/3; armour as measured there; attacker 0, nobody spared, the planter not credited). Still open: walls between, other radii (de_nuke, de_chateau), screen shake (client).** Was: **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
    of a site, place `mashup_target`/`mashup_targetn` bots at 250, 500, 750,
    1000, 1500, 1800 in on a clear line, unarmoured, then armoured; log
    `player_hurt` (dmg_health, dmg_armor). Fit H1 (linear) vs H2 (bell).
@@ -757,14 +781,20 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    `mp_friendlyfire` 0/1 for Ts. Also check screen shake (`shake` events
    are client-side: watch the client) and whether the planter is credited
    with kills in `player_death` (weapon "c4"?).
-4. **Q4 Beep schedule.** Log the server time of every `bomb_beep` event
+4. **Q4 Server half answered (2026-10-15, see Constants: the server emits no beep, the client times its own); the schedule, loudness and LED need the client (windows-captures.md sitting 2).** Was: **Q4 Beep schedule.** Log the server time of every `bomb_beep` event
    for one 45 s bomb, then with `mp_c4timer 20` and 90. Does the interval
    depend on the fraction remaining or on seconds remaining? Record the
    first and last intervals and the count. Loudness: client `snd_show 1`
    or record audio at a fixed distance early vs late. Where on the model
    the LED glow sits (offset from the bomb origin): client screenshot or
    `ent_text`. Are `c4_exp_deb1/2.wav` played at the explosion?
-5. **Q5 Money.** Read the account of every player before and after: a
+5. **Q5 Answered (measured 2026-10-17, probe server, see "Money" under
+   Constants):** the round's bonuses come as the next round starts; no
+   planter or defuser reward; a defuse pays 3250; living losers of a
+   time-out get nothing; hostage maps pay 3000 for an elimination, 2500 for
+   all rescued, 3250 when time runs out, plus 150 a living hostage (100
+   more led, CTs) and 850 a rescued one (CTs) to the winners; a hostage hit
+   costs 20 a point, the killing hit twice that and 500. Was: **Q5 Money.** Read the account of every player before and after: a
    plant (planter), a defuse (defuser), each round-end reason, the +800
    T bonus after a defused bomb, a hostage first-use, a rescue, hostage
    damage (one shot of known damage) and a hostage kill. `mp_startmoney

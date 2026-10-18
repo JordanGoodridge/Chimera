@@ -8,6 +8,9 @@ slot = 3
 draw = 0.6667
 max_speed = 245.0
 weight = 2
+# Dropped at death beside the best gun: HE, else a flashbang, else a smoke
+# (measured, specs/cs_source/grenades.md Q17).
+death_drop = 1
 
 [buy]
 price = 300

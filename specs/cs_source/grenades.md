@@ -588,7 +588,9 @@ The template has a "drop" path that spawns the projectile at eye + 16·view
 forward with only the player's velocity, as a normal live grenade with a
 full fuse, and marks the weapon spent. Hypothesis for CS:S: a player who dies
 with the pin pulled (or between release and spawn) drops a live grenade this
-way; otherwise the unthrown grenade is lost. Grenades already in flight keep
+way (measured: it does). Unthrown grenades: the dead drop one as a pickup
+beside their best gun, an HE over a flashbang over a smoke (measured, Q17).
+Grenades already in flight keep
 their thrower and still damage/score after his death (the
 `dead_grenade_kill` achievement exists).
 
@@ -742,6 +744,35 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   changelevel hurt the thrower less every time (58.6, 58.9 at 65 units,
   the bell's value for a point 100 units over the blast: the bot not yet
   settled where the probe put it); such throws are left out above.
+- **Q17 what drops at death (2026-10-17):** the run bot on de_dust2's
+  open line given an AK-47, a USP and grenades (the probe's `mashup_give`,
+  then `give` as the bot's own console command), one weapon selected for 90
+  ticks, then `kill`; afterwards every weapon entity that had been carried
+  (bone-merged) and now lay loose was listed. Whatever it held (the AK,
+  the USP, the knife or a flashbang), it dropped the AK-47 and exactly one
+  grenade: with all three types the HE; with flashbangs and a smoke a
+  flashbang; with a smoke the smoke; with only a knife and an HE, the HE.
+  With a USP and no rifle, the USP. Never the knife or a second grenade.
+- **Q7 bounce sounds (2026-10-17):** an HE and a smoke thrown down onto
+  the CT spawn building's tile floor (de_dust2, `mashup_sndlog 1`, the
+  projectile's origin logged every frame with `mashup_htrack`): one bounce
+  sound for every contact, volume 1.0, channel 2, the last contact (the one
+  that stops it, speed 48 to 0) too, none once it rests; HE 4 contacts, 4
+  sounds; smoke 3 contacts, each sound emitted twice on the same tick. The
+  grenades came to rest at once from those contacts: a long slide wasn't
+  seen.
+- **Q3 a switch with the pin pulled (2026-10-17):** holding attack 40
+  ticks with a flashbang (pin out), then selecting the AK-47 or the knife
+  while attack stays held: the switch happens at once, nothing is thrown,
+  no projectile, and the grenade count stays (2 of 2): the grenade is kept,
+  as the template.
+- **Q2 redraw (2026-10-17, inconclusive):** with two flashbangs and a
+  rifle, a tap throws one; at the end of the throw animation (the release
+  + 0.7667 s, 52 ticks after `weapon_fire`) the bot held the knife, not the
+  second flashbang. The bot AI equips its knife on its own (it swapped a
+  selected USP for the knife within 2 ticks, though it kept a selected AK
+  and an idle flashbang), so whether the game retires the grenade and to
+  which weapon needs a human (client capture).
 - **Q11 who gets the ear-ringing (2026-10-17, unmeasurable on the
   probe):** the server's DSP change goes only to the hurt player's own
   client: a SourceTV demo of the throws above had no trace of it (no user
@@ -767,36 +798,36 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
 Checks below use the dedicated probe server (`tools/css_probe`, SourceMod;
 per-tick logging of netprops and events) unless they need the client.
 
-1. **Q1 Release timing.** Projectile spawn at release + 0.1 s (template) or
+1. **Q1 Answered (see CS:S values: release 6 ticks after the throw's `weapon_fire`, a tap throws at once).** Was: **Q1 Release timing.** Projectile spawn at release + 0.1 s (template) or
    at the throw animation's event (0.3333 s)? Does a tap (press then release
    on the next tick) throw immediately or after the pin animation? Check:
    bot presses attack for 1 tick / 30 ticks / 70 ticks then releases; log the
    tick each `*_projectile` entity is created (OnEntityCreated) and its first
    origin and velocity, plus the weapon's `m_flNextPrimaryAttack` per tick.
-2. **Q2 Redraw.** With a second flashbang: does the same grenade redraw
+2. **Q2 Inconclusive on the probe (2026-10-17, see CS:S values): the bot held its knife at the end of the throw animation, but the bot AI picks the knife on its own; needs a human.** Was: **Q2 Redraw.** With a second flashbang: does the same grenade redraw
    (draw 0.6667 s) or does the player switch to the best weapon? Log active
    weapon and next-attack times per tick after the first throw.
-3. **Q3 Switching with the pin pulled.** Is a manual switch allowed, and is
+3. **Q3 Answered (2026-10-17, see CS:S values): the switch is allowed at once, nothing is thrown, the grenade is kept (as ours).** Was: **Q3 Switching with the pin pulled.** Is a manual switch allowed, and is
    the grenade kept or thrown/dropped? Probe: `use weapon_knife` while the
    pin is pulled.
-4. **Q4 HE vs armour.** Victim with 100 armour (with and without helmet) at
+4. **Q4 Answered (see CS:S values: health × 0.7375, armour half the difference, the helmet changes nothing).** Was: **Q4 HE vs armour.** Victim with 100 armour (with and without helmet) at
    several distances; log `player_hurt` dmg_health / dmg_armor and hitgroup.
    Fit against H1 (ratio 1.475 × 0.5) and alternatives (ratio 0.5 × 0.5, or
    no armour effect).
-5. **Q5 Pitch form.** Throw at pitch −89, −60, −30, 0, 30, 60, 89 (set eye
+5. **Q5 Answered (see CS:S values: the bend with 100/90 down, 80/90 up, speed capped at 750).** Was: **Q5 Pitch form.** Throw at pitch −89, −60, −30, 0, 30, 60, 89 (set eye
    angles on the bot); log spawn origin and velocity. Confirms the bend, the
    cap and the backwards throw.
 6. **Q6 Spawn in a wall.** Bot flush against a wall facing it, pitch 0;
    does the grenade appear on the far side, stick in the wall, or bounce
    back? Log origin per tick.
-7. **Q7 Bounce sounds.** `sv_soundemitter_trace 1` and the `grenade_bounce`
+7. **Q7 Answered (2026-10-17, see CS:S values: a sound for every contact, none at rest; the smoke's emitted twice a contact).** Was: **Q7 Bounce sounds.** `sv_soundemitter_trace 1` and the `grenade_bounce`
    event while a grenade bounces and slides; count emits per contact.
-8. **Q8 Fuse.** Ticks from spawn to `hegrenade_detonate` /
+8. **Q8 Answered (see CS:S values: 115 ticks after `weapon_fire`).** Was: **Q8 Fuse.** Ticks from spawn to `hegrenade_detonate` /
    `flashbang_detonate` (expected 104).
 9. **Q9 HE visuals.** Screenshot sequence of an HE blast on the client
    (Windows PC, `host_timescale` 0.1 in a listen server): fireball sprite or
    only the particle core above? Screen shake? Dynamic light?
-10. **Q10 HE damage model.** Unarmoured standing victim, clear line, at
+10. **Q10 Partly answered (see CS:S values: the bell at `sv_legacy_grenade_damage 0`, linear at 1, self damage as anyone at that distance with `mp_friendlyfire` 0 or 1). Still open: crouched victims, and walls or props between.** Was: **Q10 HE damage model.** Unarmoured standing victim, clear line, at
     d = 0, 50, 100, 150, 200, 250, 300, 340 in from the blast (log the
     `hegrenade_detonate` point and the victim's origin; repeat 10× each for
     the random target height); both `sv_legacy_grenade_damage` 0 and 1;
@@ -808,7 +839,7 @@ per-tick logging of netprops and events) unless they need the client.
     whether undamaged nearby players get the ring (a teammate with
     `mp_friendlyfire 0`, a noclipping player): needs a client (C31), the
     server shows nothing of it.
-12. **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
+12. **Q12 Partly answered (see CS:S values: duration by distance and facing, max alpha, `player_blind` for victim and thrower). Still open: walls, players, props and smoke between.** Was: **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
     1500, 2000, 3000 in, view angle to the grenade 0°, 30°, 60°, 90°, 120°,
     180°; log `m_flFlashDuration` and `m_flFlashMaxAlpha` on the tick after
     `flashbang_detonate`, and whether `player_blind` fires. Repeat with a
@@ -819,7 +850,7 @@ per-tick logging of netprops and events) unless they need the client.
     curve and the after-image's alpha; check draw order with smoke fog.
 14. **Q14 Flash hearing.** Which of DSP 134/135/136 a blinded player gets
     and how it maps to the blindness.
-15. **Q15 Smoke timing.** Ticks from spawn to `smokegrenade_detonate` for a
+15. **Q15 Partly answered (see CS:S values: pops 105 ticks after spawning when it stopped early, later once a rolling one stops; the cloud fades 15-20 s after). Still open: a grenade resting on a moving lift, a trail in flight (client).** Was: **Q15 Smoke timing.** Ticks from spawn to `smokegrenade_detonate` for a
     grenade that stops early, one that is still rolling at 1.5 s, and one
     resting on a moving lift; the cloud entity's fade start/end netprops;
     the stage netprop; when the projectile is removed; whether a trail
@@ -827,7 +858,7 @@ per-tick logging of netprops and events) unless they need the client.
 16. **Q16 Smoke vs bots.** Bot behind a cloud centre at offsets 0, 100,
     200, 250 in from the line of sight; does it see/fire at a visible
     target? Also the client target-ID through smoke.
-17. **Q17 Death with a primed grenade.** Kill a bot (`sm_slay`) while its
+17. **Q17 Answered but for a moving death (see CS:S values: a bot killed with the pin out leaves a live projectile with a full fuse; the dead drop their best gun and one grenade, HE over flashbang over smoke; whether `drop` drops a grenade not tried).** Was: **Q17 Death with a primed grenade.** Kill a bot (`sm_slay`) while its
     pin is pulled, and between release and spawn; log new projectiles. Also:
     which grenades drop as pickups on death, and can grenades be dropped with
     the `drop` command?

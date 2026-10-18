@@ -115,6 +115,10 @@ pub struct WeaponData {
     pub weight: Option<i32>,
     #[serde(default)]
     pub undroppable: bool,
+    /// Dropped at death beside the best gun, the highest carried
+    /// (`drop::DeathDrop`).
+    #[serde(default)]
+    pub death_drop: Option<i32>,
     /// Only this team picks it up (`PickupTeam`).
     #[serde(default)]
     pub pickup_team: Option<u8>,
@@ -813,6 +817,9 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
     }
     if d.undroppable {
         e.insert(Undroppable);
+    }
+    if let Some(r) = d.death_drop {
+        e.insert(super::drop::DeathDrop(r));
     }
     if let Some(t) = d.pickup_team {
         e.insert(PickupTeam(crate::core::Team(t)));

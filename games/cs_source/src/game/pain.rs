@@ -38,10 +38,11 @@
 //! kill), so they are not sent again.
 //!
 //! Known shortcuts (docs/tech-debt.md): Fall damage feedback beyond the specs:
-//! the `Player.FallDamage` sound (now the server's, on any landing whose damage
+//! the `Player.FallDamage` sound (the server's, on any landing whose damage
 //! is taken: not under god mode or a map's fall-damage filter,
-//! `games/cs_source/pain.rs`) and the landing roll (0.013° per unit/s, the
-//! shared movement code's) are specced but not measured in CS:S; the HUD's part
+//! `games/cs_source/pain.rs`; measured 2026-10-17, fall_damage.md "Landing
+//! sounds") is as CS:S's; the landing roll (0.013° per unit/s, the shared
+//! movement code's) is specced but not measured in CS:S; the HUD's part
 //! is a guess: the health panel plays the install's `HealthTookDamage`
 //! animation (red, 4 pulses over 1 s; VGUI's pulse curve assumed to be 0.5 −
 //! 0.5·cos, blur left out) on any health drop, and a fall lights both damage

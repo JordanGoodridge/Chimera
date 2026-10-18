@@ -32,12 +32,16 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): Grenades (specs/cs_source/grenades.md)
 //! follow the SDK template where CS:S is unmeasured: release + 0.1 s to the
-//! throw (Q1), redraw of the same type (Q2), a switch with the pin out keeps
-//! the grenade (Q3), HE armour by H1 (Q4), the signed pitch bend (Q5), no
-//! spawn-in-wall check (Q6), a bounce sound on every contact (Q7), the 1.5 s
+//! throw (Q1), redraw of the same type (Q2; the probe's bot held its knife
+//! after the throw, but its AI picks that knife itself: a human capture),
+//! HE armour by H1 (Q4), the signed pitch bend (Q5), no
+//! spawn-in-wall check (Q6), a bounce sound on every contact (Q7, measured
+//! 2026-10-17: as CS:S), the 1.5 s
 //! fuse (Q8, measured: matches), smoke pops once still after the fuse (Q15),
 //! dying primed drops it live (Q17). Measured since (grenades.md "CS:S
-//! values"): HE armour (H1), HE falloff (a bell, `blast_damage_bell`, or
+//! values"): a switch with the pin out keeps the grenade (Q3); dying
+//! primed drops it live, and the dead drop one unthrown grenade
+//! (`drop::DeathDrop`, Q17); HE armour (H1), HE falloff (a bell, `blast_damage_bell`, or
 //! linear with `sv_legacy_grenade_damage 1`), the flash's strength by
 //! distance and facing (`grenades::flash_model`); its hold and fade split
 //! is a FIT pending Q13; the after-image is a screenshot

@@ -134,8 +134,7 @@ Started 2026-10-05, from specs/cs_source/weapons.md. MVP plan items 4–5.
      of the scout, SG550, G3SG1, P228, Five-SeveN and Elites, the shotgun
      punch (M3/XM1014 kick per shot standing, moving, crouched and in the
      air, held and tapped; whether the decay is the M3 rule; whether
-     pellets follow view + 2 x punch), the shotgun reload timing and
-     interruption (M9), the pellet
+     pellets follow view + 2 x punch), the pellet
      pattern and per-pellet inaccuracy (Q12), 357SIG/57MM/BUCKSHOT/
      556MM_BOX penetration (M13), the SG552's and G3SG1's zoomed speed
      (M15), the Elites' hand order; how far CS:S bots pull down against
