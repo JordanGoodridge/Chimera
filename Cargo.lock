@@ -2724,6 +2724,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "combat_arms"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "serde",
+ "toml",
+ "workspace-hack",
+]
+
+[[package]]
+name = "combat_arms_app"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "combat_arms",
+ "workspace-hack",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -422,6 +422,11 @@ pub trait Collision {
     fn sweep(&self, mins: Vec3, maxs: Vec3, from: Vec3, to: Vec3) -> f32;
     /// Whether the box at `at` is inside something solid.
     fn solid(&self, mins: Vec3, maxs: Vec3, at: Vec3) -> bool;
+    /// Whether the point `at` is inside a static prop (a line trace from
+    /// there stops at once; from inside a brush it passes out).
+    fn inside_prop(&self, _at: Vec3) -> bool {
+        false
+    }
 }
 
 /// No static collision (open space).

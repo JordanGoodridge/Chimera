@@ -84,10 +84,12 @@ box_price = 0
 box_rounds = 50
 hud_icon = "ammo_57"
 
-# UNMEASURED power and distance (per pellet): 45ACP's. The HUD has no
-# glyph for it (it draws the sprite).
+# Pellets pass nothing (measured 2026-10-18, weapons.md M13: the M3
+# through 6.9-30 units of a wooden gate, a crate's 2.6-4.6-unit corner
+# or a player: no pellet came out). The HUD has no glyph for it (it
+# draws the sprite).
 [ammo."cs_source:buckshot"]
-power = 15.0
+power = 0.0
 max_distance = 500.0
 max = 32
 box_price = 0

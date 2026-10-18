@@ -3,12 +3,13 @@
 //! written by the server (and single player) for plugins and admins.
 //!
 //! - Objectives (objectives.md 2-8): `bomb_dropped`, `bomb_pickup`,
-//!   `bomb_beginplant`, `bomb_abortplant`, `bomb_planted` (site, x, y),
+//!   `bomb_beginplant`, `bomb_abortplant`, `bomb_planted` (site, posx, posy),
 //!   `bomb_beep`, `bomb_begindefuse` (haskit), `bomb_abortdefuse`,
 //!   `bomb_defused`, `bomb_exploded`, `hostage_follows`,
 //!   `hostage_stops_following`, `hostage_hurt`, `hostage_killed`,
 //!   `hostage_rescued` (site), `hostage_rescued_all`; log lines `triggered`
 //!   "Dropped_The_Bomb", "Got_The_Bomb", "Planted_The_Bomb",
+//!   "Begin_Bomb_Defuse_With_Kit" / "Begin_Bomb_Defuse_Without_Kit",
 //!   "Defused_The_Bomb", "Touched_A_Hostage", "Killed_A_Hostage",
 //!   "Rescued_A_Hostage".
 //! - Rounds (objectives.md 7, questions 6 and 15; parity-gaps.md C9):
@@ -23,19 +24,26 @@
 //!   bullet enters), `weapon_reload`, `item_pickup` (item: a loose weapon
 //!   taken), `player_hurt` (attacker, health, dmg_health, hitgroup, weapon),
 //!   `player_death` (attacker, weapon, headshot), `hegrenade_detonate` and
-//!   `flashbang_detonate` (x, y, z).
+//!   `flashbang_detonate` (x, y, z); log `"<A>" killed "<B>" with
+//!   "<weapon>"` and `"<B>" committed suicide with "<weapon>"` ("world"
+//!   with none; measured, objectives.md Q17).
 //!
 //! Every event has the player it is about as `userid`; positions are in
 //! Source units and axes. Team numbers in events are Source's (2 T, 3 CT).
 //!
 //! Known shortcuts (docs/tech-debt.md): `site` is the target's index among
-//! the map's bomb targets / rescue zones (Source's: the entity index);
-//! `player_hurt` has no `dmg_armor` or `armor`; `round_end` no `reason`
-//! number; a hostage is named by its entity index. Not written (no spec
-//! defines them, specs/cs_source/objectives.md question 17): kill, attack,
-//! say, connect, team and purchase log lines, `Team ... (CT "n") (T "m")`
-//! score suffixes, `weapon_zoom`, `player_blind`, `grenade_bounce`,
-//! `smokegrenade_detonate`, `item_pickup` for bought or given weapons.
+//! the map's bomb targets / rescue zones (Source's: the entity index), and
+//! only `bomb_planted` and `hostage_rescued` carry it (CS:S's
+//! beginplant, abortplant, defused and exploded have it too, exploded a
+//! `userid`); `player_hurt` has no `dmg_armor` or `armor`, `player_death`
+//! no `dominated`/`revenge`; `round_end` no `reason` number; a hostage is
+//! named by its entity index; no `(headshot)` suffix on kill lines
+//! (unmeasured). Not written (measured 2026-10-18, objectives.md Q17):
+//! `attacked` lines (`mp_logdetail`), say, connect, enter, disconnect and
+//! team-join lines, the `Restart_Round_(1_second)` and `Team "CT" scored
+//! "n" with "m" players` lines; `weapon_zoom`, `player_blind`,
+//! `grenade_bounce`, `smokegrenade_detonate`, `item_pickup` for bought or
+//! given weapons. CS:S logs no purchases.
 //! Why it's OK for now: the spec-defined events and lines are in; the rest
 //! need a spec session on the log standard and the event list.
 
@@ -44,7 +52,7 @@ use bevy::prelude::*;
 use super::rounds::{ATTACKERS, DEFENDERS, RoundEndReason, RoundEnded};
 use crate::{
     core::{DamageTaken, Died, Health, RoundRestarts, Team, authoritative},
-    game_log::{EventValue, GameEvent, LogLine, ServerLog},
+    game_log::{EventValue, GameEvent, LogLine, LogPart, ServerLog},
     objectives::{
         ObjectiveEvent, UNIT,
         hostages::{Hostage, HostageTally},
@@ -125,9 +133,14 @@ fn objective_events(
                 out.write(GameEvent::of("bomb_abortplant", who));
             }
             E::Planted { who, at, site } => {
-                let event =
-                    GameEvent::of("bomb_planted", who).with("site", EventValue::Int(site.map_or(-1, |s| s as i64)));
-                out.write(xyz(event, at, false));
+                // `posx`, `posy` (CS:S's modevents.res).
+                let p = units(at);
+                out.write(
+                    GameEvent::of("bomb_planted", who)
+                        .with("site", EventValue::Int(site.map_or(-1, |s| s as i64)))
+                        .with("posx", EventValue::Int(p.x.round() as i64))
+                        .with("posy", EventValue::Int(p.y.round() as i64)),
+                );
                 log.write(LogLine::triggered(who, "Planted_The_Bomb"));
             }
             E::Beep { .. } => {
@@ -135,6 +148,9 @@ fn objective_events(
             }
             E::BeginDefuse { who, kit } => {
                 out.write(GameEvent::of("bomb_begindefuse", who).with("haskit", EventValue::Bool(kit)));
+                // Measured 2026-10-18 (objectives.md Q17).
+                let what = if kit { "Begin_Bomb_Defuse_With_Kit" } else { "Begin_Bomb_Defuse_Without_Kit" };
+                log.write(LogLine::triggered(who, what));
             }
             E::AbortDefuse { who } => {
                 out.write(GameEvent::of("bomb_abortdefuse", who));
@@ -290,6 +306,7 @@ fn player_events(
     held: Query<&Inventory>,
     weapons: Query<&Weapon>,
     mut out: MessageWriter<GameEvent>,
+    mut log: MessageWriter<LogLine>,
 ) {
     for t in hurt.read() {
         let d = &t.damage;
@@ -314,11 +331,27 @@ fn player_events(
         if let Some(a) = d.attacker {
             event = event.with("attacker", player(a));
         }
+        let weapon = credited(d.damage.weapon, d.attacker, &held, &weapons);
         out.write(
             event
-                .with("weapon", EventValue::Str(credited(d.damage.weapon, d.attacker, &held, &weapons)))
+                .with("weapon", EventValue::Str(weapon.clone()))
                 .with("headshot", EventValue::Bool(d.damage.hitgroup == crate::core::Hitgroup::Head)),
         );
+        // `"A" killed "B" with "usp"`, `"B" committed suicide with "world"`
+        // (measured 2026-10-18, objectives.md Q17).
+        let line = match d.attacker.filter(|a| *a != d.entity && players.contains(*a)) {
+            Some(a) => LogLine(vec![
+                LogPart::Player(a),
+                LogPart::Text(" killed ".into()),
+                LogPart::Player(d.entity),
+                LogPart::Text(format!(" with \"{weapon}\"")),
+            ]),
+            None => LogLine(vec![
+                LogPart::Player(d.entity),
+                LogPart::Text(format!(" committed suicide with \"{weapon}\"")),
+            ]),
+        };
+        log.write(line);
     }
 }
 

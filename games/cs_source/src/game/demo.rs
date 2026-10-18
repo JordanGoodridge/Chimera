@@ -1744,6 +1744,8 @@ fn apply_things(world: &mut World, p: &mut DemoPlayer) {
                     explode_at: local(bomb.blow),
                     timer: bomb.timer,
                     next_beep: p.next_beep,
+                    // The server's: it thinks.
+                    next_think: f64::INFINITY,
                     defuse: None,
                     defused: !bomb.ticking,
                 };

@@ -68,8 +68,36 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
 - Lift at the point of second use, not ahead: the CA spec shows what
   actually differs.
 - Lifts touch shared code, so only one lift per area at a time. The board's
-  "Lift" column names the likely one; the owner of an item writes
-  "lifting (branch)" there while doing it, and others in the same area wait.
+  "Lift" column names the likely one (by its `L` number in "Lift survey
+  (Wave 0.5)" below); the owner of an item writes "lifting (branch)" there
+  while doing it, and others in the same area wait.
+
+## LithTech loader layer
+
+Combat Arms' file formats (`.rez` archives, the world `.dat`, models
+`.ltb`, textures `.dtx`, and whatever else LithTech Jupiter reads) go in a
+new **`lithtech/`** loader layer beside `source/`, not in Chimera and not in
+`games/combat_arms`: like `source/formats` (`source_formats`), a plain-data
+crate that turns bytes into Rust values with no Bevy (say
+`lithtech/formats`, `lithtech_formats`), and, if LithTech map logic or
+conversion into engine types ever needs Bevy, a second crate beside it
+(as `source/logic` is). `games/combat_arms` converts what it reads into
+Chimera's neutral types (`MapData`, `AnimSet`, textures), as `cs_source`
+does for BSP.
+
+- The existing local-only `.rez` reader (2026-10-05, git-ignored at the
+  main checkout's `src/games/combat_arms/`) moves into `lithtech/` when
+  Wave 0's `.rez` row is picked up, rewritten against `rez_archive.md` if
+  it doesn't already follow it; its tests use fixtures generated in code.
+- LithTech behaviour that every game could use (as with CS:S pieces) is
+  lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
+  is about LithTech's files and conventions.
+- Not done here (the skeleton's owner is changing the layering rules now):
+  the crate diagram and layer list in docs/ARCHITECTURE.md and the rules
+  in `checks/tests/it/architecture.rs` (`workspace_crates`, the no-Bevy
+  rule `source_formats` has, keys and assets never in the crate) must
+  learn about `lithtech/` in the commit that creates the first crate
+  there. Whoever picks up the `.rez` row does that.
 
 ## Task board
 
@@ -78,43 +106,142 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
 | Item | Spec | Status | Notes |
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
-| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (in the repo since 2026-10-18; needs the user's review) | Reader exists on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). After review, the reader moves into `games/combat_arms` |
+| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (in the repo since 2026-10-18; needs the user's review) | Reader exists on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). After review, the reader moves into the new `lithtech/` loader layer ("LithTech loader layer"), which this row creates |
 | V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `chimera.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
 ### Wave 0.5: shared pieces
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Survey `games/cs_source` for generic pieces: list what each CA item would lift, where it lives, what is CS:S-specific in it | coordinator | not started | Fills the "Lift" column below; no code moves until an item needs it |
+| Survey `games/cs_source` for generic pieces: list what each CA item would lift, where it lives, what is CS:S-specific in it | survey agent | done (2026-10-18) | "Lift survey (Wave 0.5)" below; filled the "Lift" column; no code moved |
 
 ### Wave 1: play the slice with placeholders
 
 | # | Item | Spec | Status | Lift | Notes |
 |---|---|---|---|---|---|
-| 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | not started | fall damage, if CS:S's is in the game crate | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
-| 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | not started | burst/fire modes, hit-zone damage, recoil hooks still in cs_source | Cloud agent; Chimera weapon parts + `combat_arms:*` hooks; one rifle's numbers in `data/weapons/` |
-| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
-| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | inventory, switching, pickup/drop | Cloud agent; after 2's parts exist |
-| 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | HUD widgets (health, ammo, kill feed, crosshair) | Cloud agent; plain Chimera HUD widgets driven by data |
+| 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | not started | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
+| 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | not started | L2 (spread and recoil state), L3 (hurt sounds); fire modes, burst, hit zones, falloff, penetration, reload and ammo are already Chimera's (`chimera_sim::weapon`) | Cloud agent; Chimera weapon parts + `combat_arms:*` hooks; one rifle's numbers in `data/weapons/` |
+| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none (its reader goes in `lithtech/`) | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
+| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | L4 (weapon selection logic), L5 (default binds per game); inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | Cloud agent; after 2's parts exist |
+| 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | L6 (HUD panels, death notices), L7 (crosshair style as data), L8 (damage indicator), L9 (target ID); the plain HUD (`client::hud`) works with no lift | Cloud agent; plain Chimera HUD widgets driven by data |
 
 ### Wave 2: the rest of combat, and the game's own files
 
 | # | Item | Spec | Status | Lift | Notes |
 |---|---|---|---|---|---|
-| 6 | Grenades | `grenades.md` | not started | thrown projectiles, explosions, flash/smoke | Cloud agent |
-| 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | scope overlay and zoom | Mostly data over 2; scope as an `alt` kind |
+| 6 | Grenades | `grenades.md` | not started | L10 (grenade effects' looks); throwables, projectiles, blasts, flash and smoke rules are already Chimera's (`weapon::grenade`) | Cloud agent |
+| 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | L7 (the scope overlay's look as data); zoom (`AltModes`, `Zoom`) and the overlay are already Chimera's | Mostly data over 2; scope as an `alt` kind |
 | 8 | Attachments | `attachments.md` | not started | none (new in Chimera) | Data-driven parts (docs/weapon-data.md) |
-| 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | not started | impact effects, decals | This box (real maps); fixture worlds for the reader's unit tests |
-| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md` | not started | view-model animation | This box; may split into `textures_dtx.md` and `animation.md` if the spec session finds it too big |
-| 11 | CA UI system: how HUD and menus are built | `ui_system.md` | not started | menus | After 5; decides whether we read the game's layouts or rebuild them as data |
+| 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | not started | L11 (impact effects and runtime decals by surface class); the reader goes in `lithtech/` | This box (real maps); fixture worlds for the reader's unit tests |
+| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md` | not started | L12 (view-model activity driver, bob and sway); `map::anim` and `map::view_model` are already Chimera's; the readers go in `lithtech/` | This box; may split into `textures_dtx.md` and `animation.md` if the spec session finds it too big |
+| 11 | CA UI system: how HUD and menus are built | `ui_system.md` | not started | L13 (buy and team menus, scoreboard, on Chimera's VGUI drawer) | After 5; decides whether we read the game's layouts or rebuild them as data |
 
 ### Wave 3
 
 | # | Item | Spec | Status | Lift | Notes |
 |---|---|---|---|---|---|
-| 12 | Character models, rigging, third-person animation | `characters.md` | not started | player animation | Needs 10 |
-| 13 | Game modes: TDM, elimination | `game_modes.md` | not started | rounds, teams, spectating | Rule modules on Chimera's rounds |
-| 14 | Bots | `bots.md` | not started | bot brains, navigation | Brains write `Intent`, like CS:S's bots; navigation on CA maps needs 9 |
+| 12 | Character models, rigging, third-person animation | `characters.md` | not started | L14 (player animation driver) | Needs 10 |
+| 13 | Game modes: TDM, elimination | `game_modes.md` | not started | L15 (teams, respawn, round loop, game end, their network part); spectating is already Chimera's (`client::spectate`) | Rule modules on Chimera's rounds |
+| 14 | Bots | `bots.md` | not started | L16 (bot brain, path cost, corner checks, bot grenades) | Brains write `Intent`, like CS:S's bots; navigation on CA maps needs 9 |
+
+## Lift survey (Wave 0.5)
+
+Done 2026-10-18 from main at 43fd113b, by reading every module of
+`games/cs_source` and `apps/cs_source` (their `//!` docs and public types).
+Sizes are lines including unit tests. Nothing moved; a lift happens when its
+board item is picked up ("Sharing with CS:S"), and the CA spec may show it
+isn't needed.
+
+**Already in Chimera** (no lift; CA uses them as they are, and the spec
+says which numbers differ): the weapon frame and its parts
+(`chimera_sim::weapon`: `Inventory`, slots, `lastinv`, deploy and holster,
+`Trigger`/`FireTiming`, `Magazine`/`ShellReload`, `Hitscan`, `Burst`,
+`Zoom`, `Melee`, `DamageEffect` with falloff and `HitgroupScale`,
+`Penetration`, `ViewPunch`, lag compensation, weapon hooks), weapon and
+shop data (`weapon::data`, `economy_data`), drop and pickup
+(`weapon::drop`), map equipment, grenades' rules (`weapon::grenade`),
+sprays; teams, health, score, `Dead` (`chimera_core::core`); rule modules
+(`chimera_sim::rule_module`); movement slot, noclip; spectating
+(`client::spectate`), chat, votes (`net::vote`), the plain HUD with
+crosshair, scope, hit marker and kill feed (`client::hud`), Source-style HUD
+text, VGUI widgets and drawing of `map::hud` layouts; skeletal animation
+(`map::anim`), view models (`map::view_model`), navigation meshes
+(`map::nav`), particles, decals, loose items.
+
+### Lift candidates, by when Combat Arms needs them
+
+| L | Piece | Where now (lines) | Main types | CS:S inside that becomes data or a hook | Risk (tests that guard it) | First need |
+|---|---|---|---|---|---|---|
+| L0 | App glue | apps/cs_source: `main.rs` (259), `build.rs` (60), `games/mod.rs` (79), `lib.rs` (101) | `dump_systems`, a second `single_threaded_schedules`, the version stamp, `load_map` dispatcher, `client_hooks` | `movement_config` from CS:S args; map ids `cs_source:` | Low (app tests, `checks` build stamp rules) | Wave 0 skeleton: share the schedule helpers and the stamp, don't copy them |
+| L1 | Box sweeps against the world | `game/movement.rs` `Tracer` (~450 of 2511) | `Tracer`, `Trace`, `BrushHit`, `sweep_brushes`, `sweep_box` over `MapBrushes`, `BrushGrid`, `MapBrushTree`, `MapTerrain` | Source units and Z-up, trace backoff and skin, the last-crossed-plane rule (rampbug), ladders, surface lookup for footsteps | High: tick-for-tick movement (`source_movement*.rs` ~2.5k lines, `movement.rs`), heavy `map_surf`, `map_ladders`, `map_courses` | 1, only if CA needs brush-exact traces; else avian shape casts (decision 2026-10-04). Depends on CA worlds yielding `MapBrushes` |
+| L2 | Spread and recoil state around the weapon frame | `game/weapons.rs` (~400 of 827: `Inaccuracy`, `AccuracyKeys`, `Kick`, `Recoil`, `decay_punch`, `before_shots`, `after_shots`) | systems before and after `WeaponFrame` in `Predict::Weapons`, `predicted_part` | All formulas (accuracy penalty, air decay, landing term, kick sets, punch decay); the hook names `cs_source:accuracy`/`recoil` | Medium: `cs_guns.rs` (1132), `weapons.rs` (1511), `net_weapons.rs`, `prediction.rs` | 2. Likely none: CA registers its own `combat_arms:*` hooks and systems on the same pattern; lift only a shared shape (e.g. a kick pattern table) if the spec shows one |
+| L3 | Hurt and death sounds; hit reaction | `game/pain.rs` (290), `game/hit_reaction.rs` (222) | `PainSoundsPlugin`, `HitSlowdown` | Sound entry names by hitgroup and helmet, `Player.FallDamage`; the slowdown values and `SourceMovement::velocity_modifier` | Low/medium: `pain_sounds.rs` (367), `hit_reaction.rs` (350) | 2 (sounds as data: event to entry); slowdown stays CS:S unless CA's spec has one |
+| L4 | Weapon selection logic | `ui/weapon_select.rs` (733: `next_in_slot`, `step_weapon`, `pick_of`, the input half of `menu_input` ~200) | beside `client::weapon_menu::WeaponMenu` (Chimera) | `HudWeaponSelection` panel name, `hud_fastswitch`, timings, the row's look (stays) | Low: ui `weapon_select.rs` (146), `auto_switch.rs` (201) | 4 |
+| L5 | Default binds per game | `chimera_client` `binds.rs` (790; already Chimera, CS:S defaults inside) | the default bind table | CS:S's keys become the game's data | Low: binds unit tests | 4 (CA's keys from `inventory.md`) |
+| L6 | HUD panels from a game's layout, death notices | `ui/game_hud.rs` (971) | `GameHudPlugin`, `Part`, `PanelKind`, `layout`, `HudValues`, `DeathNotices`, `round_banner` | Panel names (`HudHealth`...), `LOW_HEALTH`, notice time and count, ammo glyphs, money and round clock panels | Medium: ui tests, `hudcmp` captures (refcmp), `objectives.rs` ui | 5, if CA's HUD is a layout of panels (decided by 11); else CA starts on `client::hud` |
+| L7 | Crosshair and scope look as data | `chimera_client` `hud.rs` (998; already Chimera) | `CrosshairColor`, crosshair and scope drawing | `cl_crosshair*` presets and scales, the scope's CS:S textures and layout | Low/medium: unit tests, `hudcmp` | 5 (crosshair), 7 (scope) |
+| L8 | Damage direction indicator | `ui/hud_sprites.rs` (~150 of 403: `pain`, `sides`, `DamageBars`) | `HudSpritesPlugin` | `HudDamageIndicator` trapezoid look, left/right only, 1 s | Low: unit tests | 5 |
+| L9 | Target ID (name under the crosshair) | `ui/target_id.rs` (318: `find`, `TargetId`, `CenterId`) | `TargetIdStatePlugin`, `TargetIdPlugin` | `#Cstrike_playerid_*` strings, positions, hostage line | Low: ui `target_id.rs` (96) | 5 |
+| L10 | Grenade effects' looks | `game/grenades.rs` (913) | HE particles, smoke cloud sprites, flash model, hearing effects (`core::HearingEffect`) | Numbers, particle tables, DSP presets; `cs_source:grenade` hook | Medium: `cs_grenades.rs` (707), `bot_grenades.rs` | 6 (smoke cloud volume and flash model, if CA's match) |
+| L11 | Impact effects and runtime decals | `game/impact_effects.rs` (2202), `game/impacts.rs` (456), runtime half of `game/decals.rs` (~200 of 484) | `ImpactEffectsPlugin`, `ImpactSoundsPlugin`, `impact_decals` | Source's material letters to effects, `.pcf` tables, `decals_subrect.txt`, blood rules | Medium: `impact_effects.rs` (434), `map_sound_fx.rs`, heavy `map_surfaces` | 9: surface class to effect, sound and decal tables as data |
+| L12 | View-model activity driver, bob and sway | `game/view_anim.rs` (554), `game/view_motion.rs` (266) | drive `map::ViewAnimator`, write `ViewModelOffset` | Activity names, knife idle, Source's `cl_bob*` and sway cvars | Medium: `view_models.rs` (572), `view_model_spec.rs` (349) | 10 |
+| L13 | Buy and team menus, scoreboard | `ui/buy_menu.rs` (1131), `ui/team_menu.rs` (446), `ui/scoreboard.rs` (691) | over `economy::Prices`/`BuyCategory`, `GameMenus` | CS:S's `.res` layouts and names (stay as CS:S data); plain fallbacks are generic | Medium: ui `menus.rs`, `join_flow.rs` | 11 |
+| L14 | Player animation driver | `game/player_anim.rs` (937) | the SDK animation state driving `Animator`, hand IK | Sequence names by weapon suffix, ground speeds, IK rules; hostages (`hostage_anim.rs`) stay | Medium: `animation.rs` (646), `drawn_parts.rs` | 12 |
+| L15 | Teams, respawn, round loop, game end | `rules.rs` (828), `rules/rounds.rs` (989), `rules/game_end.rs` (184), round part of `game/net.rs` (1079) | `DeathmatchPlugin`, `join_team`, `auto_assign`, `balance_teams`, `put_at_spawn`, `RoundState`, `NetRound` | Money, objectives, `mp_*` names and defaults, win reasons and strings, `RoundSummary` fun facts | High: `rounds.rs` (777), `teams.rs`, ui `net_rules.rs`, heavy `bot_rounds.rs`; the network, bots and movement name these types (game/rules.rs `//!`) | 13 |
+| L16 | Bots | `bot/mod.rs` (2921), `bot/path.rs` (311), `bot/look.rs` (267), `bot/aside.rs` (273), `bot/grenades.rs` (681) | the brain (aim, reaction, strafe, fire), path cost on `NavMesh`, corner checks, throws | `bot/tactics.rs`, `objectives.rs`, `radio.rs`, `buy.rs` stay CS:S; the brain reads CS:S's rounds and objectives | High: heavy `bot_nav.rs`, `bot_rounds.rs`, `bot_grenades.rs`, `bot_manners.rs`, `net_bots.rs` | 14 |
+
+Not needed by any board item yet (lift when a mode or minigame asks):
+automatic hints (`rules/hints.rs` 583 + `ui/hints.rs` 82: already data and
+named triggers, low risk), CS-style objectives (`objectives/` 2393: says
+"any game with Counter-Strike-style scenarios"; CA's Search and Destroy
+would be its second use), vote issues (`game/votes.rs` 180: kick,
+changelevel, restartgame are Source's), the freeze cam picture
+(`ui/freeze_cam.rs`), radar and overview (`ui/radar.rs`, `ui/overview.rs`,
+on `map::nav` place names).
+
+### Loader-specific: Source behaviour, not CS:S
+
+These read Source's files or follow Source engine rules; CA never needs
+them. They belong in `source/`, in a Bevy-level crate beside
+`source/logic` (`source_formats` has no Bevy), when a second Source game
+(HL2DM, CS:GO maps) wants them: `game/bsp.rs` (2393), `material.rs`
+(2065), `lightmap.rs`, `ambient.rs`, `overlays.rs`, `detail.rs`,
+`decals.rs` (infodecal half), `props.rs` (2282, MDL), `anim.rs` (1072,
+MDL animation), `propdata.rs`, `surfaceprops.rs`, `pcf.rs`, `sound.rs`
+(sound scripts), `soundscape.rs`, `sky.rs`, `water.rs`, `nav.rs` (.nav
+linking), `beams.rs`, `trails.rs`, `sprites.rs`, `steam.rs`, `dust.rs`,
+`ropes.rs`, `fire.rs`, `breakables.rs`, `scrapes.rs`, `mount.rs` (search
+path; `cstrike` becomes data), `gameui.rs`, `hud.rs`, `vgui.rs` (.res and
+scheme readers; CS:S file names become data), `demo.rs` (2009; its
+`CsMapper` stays CS:S), Source movement itself (`movement.rs` with
+`drown.rs`, `shadow.rs`, `pushaway.rs`: CS:S values already sit in
+`SourceMovementConfig`), `view_motion.rs` and `player_anim.rs` if L12
+and L14 don't take them first.
+
+### CS:S-specific: stays
+
+`game/weapons.rs` (data and hooks), `game/objectives.rs`,
+`game/hostage_anim.rs`, `game/radio.rs`, `game/resim.rs` (tool),
+`game/rules.rs` (CS:S's rule modules), `rules/events.rs` (CS:S's events
+and log lines), `bot/tactics.rs`, `bot/objectives.rs`, `bot/radio.rs`,
+`bot/buy.rs`, `harness.rs` (`CsSim`), `lib.rs`, and the front end's
+looks: `ui/game_menu/`, `options.rs`, `first_run.rs`, `server_browser.rs`,
+`join_menus.rs`, `spectator_hud.rs`, `spectator_menu.rs`,
+`objectives_hud.rs`, `bomb_fx.rs`, `win_panel.rs`, `voice_hud.rs`,
+`vote_hud.rs`, `radio.rs`, `window_icon.rs`, `demo.rs`, `debug.rs`.
+
+Notes:
+
+- CS:S habits inside Chimera found on the way (L5, L7, and the weapon
+  frame following Source's shared weapon base, `client::spectate`'s death
+  and freeze cams): when CA's spec differs, the CS:S value becomes CS:S's
+  data rather than CA working around it.
+- Most generic tests sit in `games/cs_source/tests/it` because they use
+  CS:S's guns and maps (`chimera_sim` has only movement tests). A lift that
+  moves code should move or copy the tests that cover the generic part onto
+  `SimBasePlugins` with a test weapon, keeping CS:S's own.
+- L1, L15 and L16 are the risky ones; do each alone, after a full
+  `cargo nextest run --features dev` baseline.
 
 ## Decision log
 
@@ -135,6 +262,9 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
 - 2026-10-18: Generalize, don't duplicate: what CA needs from
   `games/cs_source` is lifted into Chimera at its second use ("Sharing
   with CS:S").
+- 2026-10-18: LithTech's file formats go in a new `lithtech/` loader layer
+  beside `source/` (not Chimera, not the game crate); LithTech behaviour
+  useful to every game is lifted into Chimera ("LithTech loader layer").
 
 ## Progress
 
@@ -143,6 +273,8 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
   `.rez` spec from a Windows session; reader implemented from it, spec
   test cases pass against the Steam build (kept local).
 - 2026-10-18: Plan and Wave 1 briefs written; skeleton in progress.
+- 2026-10-18: Wave 0.5 lift survey done ("Lift survey (Wave 0.5)"); Lift
+  column filled.
 
 ## How to run a spec wave (for the user)
 

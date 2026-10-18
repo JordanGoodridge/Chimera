@@ -45,6 +45,9 @@ impl Plugin for SensesPlugin {
         app.add_plugins(UiMaterialPlugin::<FlashMaterial>::default())
             .init_resource::<AfterImage>()
             .init_resource::<ViewShake>()
+            // The map logic's shakes (Source's logic writes them; a game
+            // without that logic has none, and `shake` still reads).
+            .add_message::<crate::map::logic_view::MapShake>()
             .add_systems(Startup, spawn_overlay)
             .add_systems(Update, (flash_overlay, local_hearing, shake.before(super::follow_eye)))
             .add_systems(Update, fade_to_black);
