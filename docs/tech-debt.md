@@ -151,3 +151,5 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source: Voice hearing rule's dead-talk-to-the-dead part unconfirmed with two clients (`games/cs_source/src/game/net.rs`)
 - games/cs_source ui: Voice HUD rows' order and box guessed; no avatars, fades or icons over heads (`games/cs_source/src/ui/voice_hud.rs`)
 - games/cs_source: func_footstep_control from the public FGD only: feet point inside, the replaced surface's step volume and timing (`games/cs_source/src/game/sound.rs`)
+- games/combat_arms: Wave 0 skeleton: placeholder movement, weapons, binds and tick (ours, marked PLACEHOLDER); no network part, rounds, respawn or bots (`games/combat_arms/src/lib.rs`)
+- apps/combat_arms: Greybox only; shares the CS:S app's config folder (binds, cvars); no build version stamp (`apps/combat_arms/src/lib.rs`)

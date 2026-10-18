@@ -1,0 +1,38 @@
+# PLACEHOLDER: every number in this file is ours, made up for the Combat
+# Arms skeleton (wave 0) so something walks and shoots. None of it is
+# Combat Arms' behaviour or data. specs/combat_arms/weapons.md (firing)
+# and data.md (the install's attribute files) replace this weapon; don't
+# tune it toward the game.
+#
+# The format: docs/weapon-data.md. Units: metres and health (100 hp = 1.0),
+# the defaults. A hitscan rifle, automatic, dead on, no recoil, no
+# penetration, no sounds or models (the front end draws a box).
+id = "combat_arms:placeholder_rifle"
+slot = 0
+draw = 0.5
+
+[ammo."combat_arms:placeholder_rounds"]
+max = 90
+
+[trigger]
+automatic = true
+cycle = 0.1
+timing = "set"
+
+[magazine]
+clip = 30
+ammo = "combat_arms:placeholder_rounds"
+reload = 2.0
+
+[hitscan]
+range = 100.0
+pellets = 1
+punch_scale = 0.0
+spread = { disc = { inaccuracy = 0.0, spread = 0.0 } }
+
+[damage]
+amount = 0.25
+falloff = 1.0
+falloff_step = 1.0
+hitgroups = { head = 1.0, chest = 1.0, stomach = 1.0, arm = 1.0, leg = 1.0 }
+impulse = 0.0

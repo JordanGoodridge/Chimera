@@ -64,6 +64,10 @@ in the lowest crate whose public API it needs:
   and the scenario tests that read the client shell's or the front end's
   state go in tests/ui/, built with `ui` (`stack::client`), so an edit to
   `src/ui/` runs only those (and the crates above);
+- `combat_arms` (games/combat_arms/tests/it/): Combat Arms' scenario
+  tests on `Sim::new(CaSim, ..)` (`combat_arms::harness::CaSim`: its
+  whole simulation, placeholders included) and the greybox; its spec
+  test cases as each subsystem is implemented;
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's

@@ -136,8 +136,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "client",
         ],
     ),
-    // Game plugins: may use the shared layers, never another game. `rules`:
-    // a game registers its rule modules (`rules::module`); `net` and `bot`:
+    // Game plugins: may use the shared layers, never another game. `rules`
+    // and `rule_module`: a game registers its rule modules (CS:S through
+    // `rules::module`, Combat Arms through `rule_module`); `net` and `bot`:
     // its part of the network (`game::net`: its round, bomb and hostages
     // replicated, its join flow and bots behind the network's hooks).
     (
@@ -154,6 +155,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "weapon",
             "objectives",
             "rules",
+            "rule_module",
             "bot",
             "net",
         ],
@@ -176,6 +178,7 @@ const CRATE_SRC: &[&str] = &[
     "chimera/net/src",
     "source/logic/src",
     "games/cs_source/src",
+    "games/combat_arms/src",
 ];
 
 /// The CS:S app's glue (crate `cs_source_app`): `lib.rs` (`SimPlugins`,
@@ -799,6 +802,9 @@ fn workspace_crates() {
     const APP: &str = "is the CS:S app's glue (docs/ARCHITECTURE.md, \"Crates\"): the dedicated server, the \
         tools and the integration tests (`mashup`) sit above it. Give it what it needs as a hook or move \
         the piece into the crate that needs it.";
+    const CA_APP: &str = "is the Combat Arms app's glue (docs/ARCHITECTURE.md, \"Crates\"): Chimera and Combat \
+        Arms composed into its game. It never uses CS:S or Source's logic: what both games need moves into \
+        Chimera (a lift), not across.";
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
@@ -816,8 +822,14 @@ fn workspace_crates() {
         ("chimera/sim", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
         ("chimera/net", &["chimera_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
         ("games/cs_source", &["chimera_present", "chimera_client", "cs_source_app", "mashup", "combat_arms"], GAME),
+        (
+            "games/combat_arms",
+            &["chimera_present", "chimera_client", "source_logic", "cs_source", "combat_arms_app", "mashup"],
+            GAME,
+        ),
         ("source/logic", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
+        ("apps/combat_arms", &["mashup", "cs_source", "source_logic"], CA_APP),
         ("chimera/tools", &["source_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
         ("source/tools", &["bevy", "avian", "chimera_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
         (
@@ -901,7 +913,10 @@ fn workspace_crates() {
 /// turn on (optional ones): the presentation and the client shell, which
 /// the game's simulation never uses (`workspace_crates`;
 /// `game_ui_only_with_its_feature` checks the dependency tree).
-const UI_FEATURES: &[(&str, &str, &[&str])] = &[("games/cs_source", "ui", &["chimera_present", "chimera_client"])];
+const UI_FEATURES: &[(&str, &str, &[&str])] = &[
+    ("games/cs_source", "ui", &["chimera_present", "chimera_client"]),
+    ("games/combat_arms", "ui", &["chimera_present", "chimera_client"]),
+];
 
 /// Crates a member's `FORBIDDEN` list names that its tests alone may use
 /// (dev-dependencies, never a normal or build one): crates below it, not
