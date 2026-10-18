@@ -1,0 +1,38 @@
+# Views of cs_havana for spotting visual bugs (docs/plans/active/other-maps.md),
+# generated from its entities: intermission cameras, the first T and CT
+# spawns, and on cs_ maps the first hostages (one view each, turning 90
+# degrees from one to the next).
+# Source eye positions; angles are [pitch, yaw] in Source degrees.
+
+map = "cs_havana"
+camera = "point_viewcontrol"
+
+[[view]]
+name = "ct_spawn"
+position = [228, -994, 100]
+angles = [0.0, 90.0]
+
+[[view]]
+name = "t_spawn"
+position = [200, 1107, 352]
+angles = [0.0, 89.0]
+
+[[view]]
+name = "h0"
+position = [80, 814, 352]
+angles = [10.0, 0.0]
+
+[[view]]
+name = "h1"
+position = [348, 817, 352]
+angles = [10.0, 90.0]
+
+[[view]]
+name = "h2"
+position = [128, 1280, 352]
+angles = [10.0, 180.0]
+
+[[view]]
+name = "h3"
+position = [240, 1280, 352]
+angles = [10.0, 270.0]

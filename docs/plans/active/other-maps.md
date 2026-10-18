@@ -56,6 +56,46 @@ cs_italy, de_dust (views in tools/refcmp/). de_train's bomb-zone views sit
 under train cars and inferno's cam10 inside a wall (generated positions,
 not bugs).
 
+Survey 2026-10-18 (cs_office, de_aztec, de_nuke and all the others but
+de_dust2 and cs_militia): `mapsweep --stock --audit` (no load failures; no
+door, button or mover the scripted player found stuck; warnings only the
+decal/overlay counts above), our views of every map
+(`tools/refcmp/<map>.toml`, six added: cbble, chateau, piranesi,
+prodigy, tides, havana), views of each map's brush entities (doors,
+breakables, func_brush/illusionary/wall, generated from their bounds),
+an audit of the shaders and VMT parameters the maps' world and prop
+materials use against what the material loader reads (nothing used that
+matters left unread: proxies are AnimatedTexture, TextureScroll, WaterLOD
+and two ToggleTexture on de_cbble), `dark_props` and refcmp on the three
+maps with references. Found and fixed: 16. Looked at and left:
+
+- de_train's 8 and cs_assault's 5 overlays without geometry list no
+  faces at all in the BSP (the compiler dropped them): CS:S draws nothing
+  for them either.
+- de_cbble's four `ambient_generic`s name `ambience/sheep.wav` (and cow,
+  crow, sparrow), files the game doesn't have (it ships
+  `ambient/sheep.wav`): silent in CS:S too unless the engine maps the
+  folder; worth a listen (sound, not this plan).
+- cs_havana: `breen_monitor_1_breakable_1` (a func_breakable) is parented
+  to a physics prop, and three of the map's outputs name entities it
+  doesn't have (`breen_mic_1`, `..._screen_1`, `..._glass_rl_1`): the
+  map's own leftovers. The brush following its physics parent belongs to
+  the physics props work.
+- de_prodigy's five vent fans name `info_lighting_relative`s as their
+  lighting origin (`lightingoriginhack`), which nothing reads; ours light
+  them from their own origin and they look lit (windows-captures sitting
+  4 item 4 to compare).
+- `fogblend` (two fog colours by view direction) is set on cs_compound
+  and de_port, not only mg_kommando as backlog section 0 says; unread.
+  At their fog distances (from 3000 and 2048 units) it would show only
+  on the far skyline (windows-captures sitting 4 item 3).
+- Dark props (`dark_props`): de_port's tunnel pipes, de_nuke's warehouse
+  floodlights, de_tides' shelves are near black from every side, in
+  places that are dark in our lightmaps too; no reference to tell.
+- The generated brush-entity views that look broken (de_prodigy rails,
+  cs_havana and de_chateau white or black planes) are cameras inside a
+  floor or outside the map, not bugs.
+
 ## Next
 
 - Reference captures done 2026-10-06 (refcmp `all`): after implementing

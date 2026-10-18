@@ -226,7 +226,8 @@ Looks:
   skybox's fog (sky_camera fog start/end divided by its scale, max
   density): confirmed, the distant hills' haze at `setpos -295 1078 500;
   setang 3 0 0` (noclip) matches within a few levels of 255; the
-  start/end scale stays. Not `fogblend` (only mg_kommando sets it). (5)
+  start/end scale stays. Not `fogblend` (mg_kommando, cs_compound and
+  de_port set it; other-maps.md). (5)
   Keyboard > Advanced (fast weapon switch, developer console =
   `con_enable`, ours defaults to 1, CS:S 0): not captured.
 
