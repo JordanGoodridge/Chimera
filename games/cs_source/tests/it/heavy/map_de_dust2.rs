@@ -55,8 +55,8 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
     assert!((size.x - 2.7).abs() < 0.01 && (size.y - 1.25).abs() < 0.01, "{size}");
     // The press-button sequence types the code on the screen (model event
     // 7001, the text in its options) when its fingers press the keys:
-    // the times and text `BombRules::screen_text` shows (spec Constants,
-    // plant_vm_clicks and plant_vm_code).
+    // what `BombRules::screen` reads from it at run time, the spec's
+    // Constants (plant_vm_clicks and plant_vm_code, our defaults).
     let set = c4.animations.as_ref().expect("v_c4's sequences");
     let arm = set
         .sequences
@@ -65,21 +65,14 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
         .expect("the press-button sequence");
     let length = set.duration(arm);
     assert!((length - 2.7667).abs() < 0.01, "{length}");
-    let typed: Vec<(f32, &str)> = set.sequences[arm]
-        .events
-        .iter()
-        .filter(|e| e.event == 7001)
-        .map(|e| (e.cycle * length, e.options.trim()))
-        .collect();
+    let typed = crate::stack::objectives::bomb::screen_from_view_model(set).expect("its 7001 events");
     // A blank screen as it starts, then a character per key press.
     assert_eq!(typed.len(), 9, "{typed:?}");
-    assert_eq!(typed[0], (0.0, ""));
+    assert_eq!(typed[0], (0.0, String::new()));
     let rules = crate::stack::objectives::bomb::BombRules::default();
-    for (at, text) in &typed {
-        assert_eq!(rules.screen_text(at + 0.01), *text, "at {at} s: {typed:?}");
-        if *at > 0.0 {
-            assert_ne!(rules.screen_text(at - 0.02), *text, "not before {at} s: {typed:?}");
-        }
+    for ((at, text), (want_at, want)) in typed.iter().zip(&rules.screen) {
+        assert_eq!(text, want, "{typed:?}");
+        assert!((at - want_at).abs() < 0.01, "{text:?} at {at} s, the spec's {want_at} s");
     }
     // GameUI: the loading dialog and the interface sounds.
     let config = LocalConfig::load().unwrap();
@@ -1848,12 +1841,15 @@ fn every_gun_has_its_body_animations() {
     sim.ticks(2);
     sim.intent(c).reload = false;
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_start"));
-    // The first shell goes in 0.5 s after the start.
+    // The start lasts 0.5 s, then a shell's insert (measured, weapons.md
+    // M9): the first shell in 68 ticks after the press, the second 103.
     sim.seconds(0.5);
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_loop"));
-    // Two shells, 0.5 s each (measured, weapons.md M9): the end about
-    // 1.55 s after the start.
-    sim.seconds(1.15);
+    // Tick 95: the second shell's insert, not the end yet.
+    sim.seconds(0.9);
+    assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_loop"));
+    // The clip full at tick 103: the end plays.
+    sim.seconds(0.25);
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_end"));
     // The Elites: the first shot from the left hand, the next the right.
     give(sim.app.world_mut(), c, ELITE).unwrap();

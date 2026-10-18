@@ -105,15 +105,14 @@ pub struct BombRules {
     /// server's own timer in CS:S, measured 2026-10-15 (objectives.md
     /// "Measured"), quicker than the view model's fingers.
     pub clicks: Vec<f32>,
-    /// Seconds into arming when the screen shows each next character: the
-    /// view model's press-button sequence's events (7001 at 30 fps,
-    /// spec Constants `plant_vm_clicks`).
-    pub typed: Vec<f32>,
-    /// What the key presses type on the bomb's little screen, a character
-    /// each (spec Constants, `plant_vm_code`), and when the screen masks
-    /// it with `*`s, seconds into arming.
-    pub code: String,
-    pub code_masked: f32,
+    /// What the bomb's little screen shows while arming: from each time
+    /// (seconds into arming, in order) the text until the next. The view
+    /// model's press-button sequence writes it (model event 7001, the text
+    /// in its options), a character per key press of its fingers, then the
+    /// code masked with `*`s; read from the loaded model at run time
+    /// (`screen_from_view_model`), the spec's numbers until then (Constants
+    /// `plant_vm_clicks`, `plant_vm_code`).
+    pub screen: Vec<(f32, String)>,
     pub sounds: BombSounds,
     /// Held-model keys: the planted bomb, a dropped defusal kit.
     pub planted_model: Option<String>,
@@ -140,9 +139,19 @@ impl Default for BombRules {
             bell_divisor: Some(3.0),
             armor_ratio: 1.0,
             clicks: vec![0.765, 1.035, 1.26, 1.41, 1.575, 1.74, 1.845],
-            typed: vec![0.9, 1.2333, 1.5, 1.7, 1.9, 2.1, 2.2333],
-            code: "7355608".into(),
-            code_masked: 2.6,
+            screen: [
+                (0.0, ""),
+                (0.9, "7"),
+                (1.2333, "73"),
+                (1.5, "735"),
+                (1.7, "7355"),
+                (1.9, "73556"),
+                (2.1, "735560"),
+                (2.2333, "7355608"),
+                (2.6, "*******"),
+            ]
+            .map(|(at, text)| (at, text.to_string()))
+            .into(),
             sounds: BombSounds::default(),
             planted_model: None,
             kit_model: None,
@@ -153,15 +162,55 @@ impl Default for BombRules {
 }
 
 impl BombRules {
-    /// The bomb's screen `elapsed` seconds into arming: the code typed so
-    /// far (a character per key press), then all `*`s (spec Constants:
-    /// "7", "73", ... "7355608", "*******" at 2.6 s).
+    /// The bomb's screen `elapsed` seconds into arming (`screen`): the
+    /// code typed so far, a character per key press, then all `*`s ("7",
+    /// "73", ... "7355608", "*******" at 2.6 s with CS:S's model).
     pub fn screen_text(&self, elapsed: f32) -> String {
-        if elapsed >= self.code_masked {
-            return "*".repeat(self.code.chars().count());
-        }
-        let typed = self.typed.iter().filter(|t| **t <= elapsed).count();
-        self.code.chars().take(typed).collect()
+        self.screen
+            .iter()
+            .take_while(|(at, _)| *at <= elapsed)
+            .last()
+            .map(|(_, text)| text.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// The model event that writes the C4's screen: its options are the text.
+pub const SCREEN_EVENT: i32 = 7001;
+
+/// What a C4 view model's press-button sequence (its primary attack,
+/// which arming plays from its start) writes on its screen: each
+/// `SCREEN_EVENT`'s time into the sequence and text, in order. None
+/// without such a sequence or events.
+pub fn screen_from_view_model(set: &crate::map::anim::AnimSet) -> Option<Vec<(f32, String)>> {
+    let arm = set
+        .sequences
+        .iter()
+        .position(|s| s.activity.eq_ignore_ascii_case("ACT_VM_PRIMARYATTACK"))?;
+    let length = set.duration(arm);
+    let mut screen: Vec<(f32, String)> = set.sequences[arm]
+        .events
+        .iter()
+        .filter(|e| e.event == SCREEN_EVENT)
+        .map(|e| (e.cycle * length, e.options.trim().to_string()))
+        .collect();
+    screen.sort_by(|a, b| a.0.total_cmp(&b.0));
+    (!screen.is_empty()).then_some(screen)
+}
+
+/// `BombRules::screen` from the bomb's view model once it is loaded.
+fn screen_from_models(models: Res<crate::map::ViewModels>, mut rules: ResMut<BombRules>) {
+    let Some(key) = rules.weapon else { return };
+    let Some(screen) = models
+        .0
+        .iter()
+        .find(|v| v.key == key)
+        .and_then(|v| screen_from_view_model(v.animations.as_deref()?))
+    else {
+        return;
+    };
+    if rules.screen != screen {
+        rules.screen = screen;
     }
 }
 
@@ -280,6 +329,12 @@ pub(super) fn plugin(app: &mut App) {
         )
         .predicted_net::<Arming>()
         .predicted_net::<Defusing>()
+        // The C4 screen's text from its view model (the screen is drawn
+        // where the models are loaded).
+        .add_systems(
+            Update,
+            screen_from_models.run_if(resource_exists_and_changed::<crate::map::ViewModels>),
+        )
         // Everywhere: a client holds its own player while it predicts it
         // arming or defusing.
         .add_systems(
