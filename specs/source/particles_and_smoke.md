@@ -481,7 +481,11 @@ library not fully read); 5. drawing, sorted.
    frame by frame with `host_timescale` 0.1 and compare).
 5. **Kill while running**: do live particles finish or vanish at once?
    Kill an info_particle_system running a long-lived effect and watch.
-6. **DestroyImmediately** and other later-branch inputs: confirm CS:S logs
+6. **Answered (measured 2026-10-18, probe server, a spawned
+   info_particle_system, `developer 2`):** `DestroyImmediately` (and a
+   made-up input) printed `unhandled input: (DestroyImmediately) ->
+   (info_particle_system,mk_ps)` and the entity stayed; as ours (the
+   logic's "unhandled input" log). Was: **DestroyImmediately** and other later-branch inputs: confirm CS:S logs
    them as unknown (developer 2 console) and nothing happens.
 7. **env_smokestack directional light with a pixel-shader material**: how
    does the material's shader use the directional light (SmokeStack.vmt

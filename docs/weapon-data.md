@@ -103,7 +103,8 @@ hull, hull_reach, facing_cos, damage, follow_up = [window, damage], backstab,
 hitgroups, hit/miss refires, force per damage point, armor_ratio, quantum,
 sounds); `undroppable = true` and `pickup_team = 1` are flags; `death_drop
 = 3` marks a weapon the dead drop beside their best gun (`DeathDrop`: of
-those carried, the highest goes; CS:S's grenades). A table left
+those carried, the highest goes; CS:S's grenades); `kept_on_drop = true`
+one the drop key leaves in hand (`KeptOnDrop`; CS:S's grenades). A table left
 out means the part isn't there (no `[sounds]`: no `WeaponSounds`).
 
 Ammo types:

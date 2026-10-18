@@ -232,6 +232,20 @@ fn view_model_events_pin_then_throw() {
     assert!(matches!(WeaponEventKind::PinPulled, WeaponEventKind::PinPulled));
 }
 
+/// Measured 2026-10-18 (grenades.md Q17): `drop` with an HE grenade in
+/// hand leaves it there (a pistol the same way is dropped).
+#[test]
+fn the_drop_key_keeps_a_grenade_in_hand() {
+    use crate::stack::weapon::drop::drop_weapon;
+    let mut sim = sim();
+    for (k, id) in [HEGRENADE, FLASHBANG, SMOKEGRENADE].into_iter().enumerate() {
+        let p = holder(&mut sim, Vec3::new(k as f32 * 3.0, 0.9, 8.0), id);
+        assert!(drop_weapon(sim.app.world_mut(), p, true).is_none(), "{id} dropped");
+        sim.ticks(2);
+        assert_eq!(active_id(&sim, p), Some(id));
+    }
+}
+
 #[test]
 fn dropped_grenade_bounces_and_rests_on_the_floor() {
     let mut sim = sim();

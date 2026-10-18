@@ -115,6 +115,10 @@ pub struct WeaponData {
     pub weight: Option<i32>,
     #[serde(default)]
     pub undroppable: bool,
+    /// The drop key leaves it in hand; it still drops at death
+    /// (`drop::KeptOnDrop`, CS:S's grenades).
+    #[serde(default)]
+    pub kept_on_drop: bool,
     /// Dropped at death beside the best gun, the highest carried
     /// (`drop::DeathDrop`).
     #[serde(default)]
@@ -817,6 +821,9 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
     }
     if d.undroppable {
         e.insert(Undroppable);
+    }
+    if d.kept_on_drop {
+        e.insert(super::drop::KeptOnDrop);
     }
     if let Some(r) = d.death_drop {
         e.insert(super::drop::DeathDrop(r));

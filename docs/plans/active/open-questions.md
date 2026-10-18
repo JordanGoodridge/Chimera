@@ -54,13 +54,13 @@ thrower's side of grenades Q12 are written but not built
 
 Fifth pass (2026-10-18, flashes, triggers, movers, restarts, fires,
 lasers, conveyors, ragdolls, the bomb's timing;
-`tools/css_probe/flashmeas.py`): 15 class-1 items settled
+`tools/css_probe/flashmeas.py`): 16 class-1 items settled
 (fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q3, Q4
 and Q5, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18,
-physics_brushes Q6 and Q7, and fire Q4 moved to class 5: entity_io Q1
-had it), 3 more answered in part (grenades Q12 all but the thrower's
-side, movement Q15's conveyor, objectives Q14's defuse and blast
-timing); about 48 class-1 items left. The two plugin commands above are still not
+physics_brushes Q6 and Q7, particles_and_smoke Q6, and fire Q4 moved to
+class 5: entity_io Q1 had it), 4 more answered in part (grenades Q12 all
+but the thrower's side, grenades Q17's `drop`, movement Q15's conveyor,
+objectives Q14's defuse and blast timing); about 47 class-1 items left. The two plugin commands above are still not
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
 ## Specs: specs/cs_source
@@ -93,7 +93,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
 | grenades | Q16 smoke against bots; target ID through smoke | 1, 2 | bots (parked); target ID: client |
-| grenades | Q17 left: dying primed while moving; which grenades drop at death; `drop` with a grenade | 1, 4 | death drops done (Part B); `drop` tried 2026-10-18: the bot AI switched to its knife 8 ticks into the run, so the drop met the knife (a human); moving: the same probe runs |
+| grenades | Q17 left: dying primed while moving | 1 | death drops done (Part B); `drop` with a grenade done (Part B, 2026-10-18: kept in hand); moving: the same probe runs |
 | impact_effects | Q1 CS:S's own impact callback (counts, colours, timings) | 2 | client screenshots at `host_timescale 0.1` |
 | impact_effects | Q2 ricochet rate; no effect on refused teammates | 2 | client audio count; C30 |
 | impact_effects | Q3 exit impact after penetration | 2 | client screenshot of a door's far side |
@@ -272,7 +272,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | game_entities | Q10 fades at round restart | 2 | client |
 | particles_and_smoke | Q1, Q2, Q3, Q5, Q7, Q9, Q10, Q11 (filters, manifests, redefinition, kill, light, skybox, emittime 0, quantisation) | 2 | client test maps (8 items) |
 | particles_and_smoke | Q4 operator semantics | 3 | its own spec |
-| particles_and_smoke | Q6 unknown inputs logged | 1 | `developer 2` on the server, `ent_fire` |
+| particles_and_smoke | Q6 unknown inputs logged | 1 | done (Part B, 2026-10-18) |
 | particles_and_smoke | Q8 env_smokestack Hammer defaults | 3 | the FGD |
 | physics_brushes | Q1 physbox mass shrunk or not | 1, 3 | test_hardware's physbox read 2026-10-18 (72.5 kg, glass, two pieces); the comparison with its brush volume: a spec session with our BSP reader |
 | physics_brushes | Q2 inertia and damping laws | 1 | as physics_props Q1, Q3 |
@@ -522,3 +522,5 @@ measured.
 | physics_brushes Q7: prop_ragdoll on a model without a ragdoll | crashes the dedicated server | lies still | none |
 | movement Q15: a func_conveyor | carried 1.5 a tick at 100 from the first tick; stepping off: 100 × 1.0075 less friction | the same | none |
 | objectives Q14: defuse and blast timing | done 10.11 s after the defuse starts, the blast 45.105 s after the plant | 10.0, 45.0 | none (noted; the think behind it unknown) |
+| grenades Q17: `drop` with a grenade in hand | nothing: it stays in hand | dropped it | kept (`kept_on_drop`, `drop::KeptOnDrop`) |
+| particles_and_smoke Q6: an unknown input | "unhandled input" in the console, nothing done | the same | none |
