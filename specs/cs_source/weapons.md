@@ -1309,7 +1309,13 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   wall seem to be crossed as one object. Not analysed.
 - Unexplained: an 8-unit concrete wall whose far side is `TOOLSNODRAW`
   (props `default`) stopped even the AWP (dust2 `TEMPLEWALL04A` at
-  (−1312, 1104, 290–340)). Damage factors for metal and sand not measured.
+  (−1312, 1104, 290–340)). Damage factor for metal not measured.
+- Sand (2026-10-18, `DE_DUST/STONEWALL02B`, 11.4 and 14.4 units along
+  the path, from (−2000, −600) at yaw 225, the target 20-60 behind): the
+  damage factor is **0.30** (AWP 34 and 42, AK-47 10, M4A1 9: every
+  bound meets in 0.2974-0.3009). The Deagle was stopped by the 11.4-unit
+  sand wall (twice), below its 15 (P 30 × 0.5): unexplained, as its stop
+  at 16.1.
 
 ### M13 Through players (collaterals)
 

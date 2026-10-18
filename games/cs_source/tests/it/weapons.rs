@@ -660,7 +660,7 @@ fn wall(sim: &mut Sim, at: f32, thick: f32, surface: &str) {
     use avian3d::prelude::*;
     use crate::stack::map::{MapSounds, MapSurface, PropSurface, sound::SoundBank};
     let mut sounds = MapSounds::default();
-    for (name, class) in [("wood", 'W'), ("concrete", 'C')] {
+    for (name, class) in [("wood", 'W'), ("concrete", 'C'), ("sand", 'D')] {
         sounds.surfaces.insert(
             name.into(),
             MapSurface {
@@ -698,6 +698,13 @@ fn ak47_passes_walls_thinner_than_its_limit() {
     // wood x 0.6 -> 21, concrete x 0.25 -> 8 (35 with no wall).
     assert_eq!(through_wall(70.0, "wood"), 21);
     assert_eq!(through_wall(15.0, "concrete"), 8);
+}
+
+#[test]
+fn sand_keeps_three_tenths_of_the_damage() {
+    // Measured 2026-10-18 (weapons.md M13): 36 x 0.98^(118/500) x 0.3 x
+    // 0.98^(220/500) = 10.6 through 15 units of sand (limit 19.5).
+    assert_eq!(through_wall(15.0, "sand"), 10);
 }
 
 #[test]

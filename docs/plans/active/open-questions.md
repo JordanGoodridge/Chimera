@@ -171,7 +171,7 @@ listen server); about 73 class-1 items left.
 | shadows_sky | Q4 the no-shadow_control ambient colour | 3 | engine code |
 | sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the server's distance-gain query needs a plugin build (blocked here); else client recordings |
 | sounds | Q2 left: other entries' wave picks | 5 | measured (Part B, 2026-10-18) |
-| sounds | Q3 left: wading in knee-deep water | 1 | sound hook while running in shallow water |
+| sounds | Q3 left: wading in knee-deep water | 1 | feet-deep measured (Part B, 2026-10-18); knee-deep: a map with water 15-36 deep where the probe bot moves |
 | sounds | Q5 `Player.Swim` doubled for the owner | 2 | client trace |
 | sounds | Q6 gravel surface override | 5 | measured (Part B, 2026-10-18) |
 | sounds | Q7 left: shot sound path, ricochets, whizz | 2 | client trace |
@@ -198,7 +198,7 @@ listen server); about 73 class-1 items left.
 | weapons | Q2 left: the airborne inaccuracy target | 4 | the bot's jumps duck it (Part B, 2026-10-18): a human's plain jump |
 | weapons | Q3 left: silenced modes | 4 | scoped and burst measured (Part B, 2026-10-18); the bot's AI takes the silencer off: a human |
 | weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
-| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | M13 with more walls |
+| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's damage factor measured (Part B, 2026-10-18); metal: a metal wall (none found on dust2) |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
 | weapons | Q12 left: pellet pattern, line or box traces | 1 | `bullet_impact` per pellet on a far wall, by seed |
 | weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
@@ -444,6 +444,8 @@ measured.
 | physics_props Q9: static props' solid 2 | the box along the world's axes around the turned bounds (de_dust's windows at yaw 120) | the bounds turned with the prop | the world box (`PropSolid::WorldBox`) |
 | physics_props Q12: the players' push | a 1000 kg·units/s kick every 7 ticks (0.105 s) | every tick | every 0.1 s (`pushaway::PUSH_INTERVAL`) |
 | physics_constraints Q1: torque limit | breaks nothing at rest (a weld 40 units off a 30 kg crate held at torquelimit 1); a weld's force limit as a ball socket's | the torque as a weight × units | no torque breaking |
+| weapons Q7: sand's damage factor | 0.30 (AWP, AK-47, M4A1 through 11.4 and 14.4 units) | 0.5 (a guess) | 0.3 |
+| sounds Q3: feet in water | slosh steps at 0.5 every 0.3 s running; entering or leaving: slosh at 1.0, then a wade wave at 0.2 | slosh steps; Player.Swim at entry and exit | none (the wade wave noted) |
 | sounds Q2: other entries' waves | uniform, repeats allowed (a crate's 3 hard-impact waves 29/22/29 of 80) | uniform | none |
 | physics_constraints Q2: motors | hinge: the value in deg/s, clockwise about the axis, at once; slider: 5 × the value in units/s; 0: off, it coasts | ignored | as CS:S (logic controls: `ControlKind::Slide`) |
 | physics_constraints Q3: hinge friction | no effect measured (0, 1, 10) | ignored | none |
