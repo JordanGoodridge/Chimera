@@ -1,6 +1,6 @@
 //! Combat Arms' HUD: the crosshair, health, ammo, and later the rest of
 //! its own panels (kill feed, weapon selection, score, mode panels).
-//! Defined by specs/combat_arms/hud.md (not written yet).
+//! Defined by specs/combat_arms/hud_crosshair.md (not written yet).
 //!
 //! Wave 0: Chimera's fallback HUD as it is (`client::hud`: crosshair with
 //! the dynamic gap, health, ammo, hit marker, kill feed), which the shell

@@ -1,8 +1,9 @@
 //! Combat Arms' firing: how its guns shoot (fire rates, accuracy and
 //! spread, recoil, damage by distance and body part, reloads) on
 //! Chimera's weapon frame (`weapon`: trigger, magazine, hitscan, melee,
-//! damage parts). Defined by specs/combat_arms/weapons.md (not written
-//! yet).
+//! damage parts). Defined by specs/combat_arms/weapon_firing.md and, for
+//! the classes' differences (scopes, shotguns), weapon_classes.md (not
+//! written yet).
 //!
 //! Wave 0: no behaviour of Combat Arms' own. `CaWeaponsPlugin` registers
 //! the data's weapons (`data::weapon_set`: a placeholder rifle and knife)

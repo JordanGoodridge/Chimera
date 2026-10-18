@@ -4,8 +4,8 @@
 //! shell's capsules (`client::hud`). Nothing here is Combat Arms' look.
 //!
 //! The seam: Combat Arms' models (players, view models, held weapons)
-//! come from its install through its loader (specs/combat_arms/data.md
-//! and the loader's plan) as `map` data the presentation already draws
+//! come from its install through its loader (specs/combat_arms/models_ltb.md,
+//! characters.md; docs/plans/active/combat-arms.md) as `map` data the presentation already draws
 //! (`map::bodies`, `map::view_model`); this module then goes. Choosing a
 //! character's body and view-model animation by game data
 //! (games/cs_source/src/game/player_anim.rs, view-model events in

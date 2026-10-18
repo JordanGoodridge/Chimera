@@ -1,6 +1,6 @@
 //! Combat Arms' game modes as rule modules (`rule_module`: registered by
 //! name, picked by the map and cvars): their teams, rounds, scoring,
-//! respawning and win conditions. Defined by specs/combat_arms/rules.md
+//! respawning and win conditions. Defined by specs/combat_arms/game_modes.md
 //! (not written yet).
 //!
 //! Wave 0: one placeholder module, `combat_arms:placeholder` (it always
@@ -23,7 +23,7 @@ pub const PLACEHOLDER: &str = "combat_arms:placeholder";
 
 pub const MODULES: [RuleModule; 1] = [RuleModule {
     name: PLACEHOLDER,
-    description: "placeholder until specs/combat_arms/rules.md: no teams, rounds, score or respawning",
+    description: "placeholder until specs/combat_arms/game_modes.md: no teams, rounds, score or respawning",
     settings: &[],
     applies: |_| true,
 }];

@@ -1,6 +1,6 @@
 # PLACEHOLDER: every number in this file is ours, made up for the Combat
 # Arms skeleton (wave 0). None of it is Combat Arms' behaviour or data.
-# specs/combat_arms/inventory.md (the knife's slot) and weapons.md (melee)
+# specs/combat_arms/inventory.md (the knife's slot) and weapon_firing.md (melee)
 # replace this weapon; don't tune it toward the game.
 #
 # The format: docs/weapon-data.md. Units: metres and health (100 hp = 1.0).

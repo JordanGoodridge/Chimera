@@ -2,7 +2,7 @@
 //! (games/combat_arms/data/, parsed at run time by Chimera's
 //! `weapon::data`, docs/weapon-data.md) and, later, what it reads from the
 //! user's install (its attribute files: weapons, items, modes). Defined by
-//! specs/combat_arms/data.md (not written yet): which install files hold
+//! specs/combat_arms/attribute_data.md (not written yet): which install files hold
 //! what, and how they map onto the weapon data's parts and hooks.
 //!
 //! Wave 0: two placeholder weapons, a rifle and a knife

@@ -2,7 +2,8 @@
 //! parallel implementation work never edits the same file), and what the
 //! game tells the shell about itself (`INFO`). Wave 0: placeholders on
 //! Chimera's pieces, each module saying which spec will define it
-//! (specs/combat_arms/<name>.md):
+//! (specs/combat_arms/<name>.md, the names docs/plans/active/combat-arms.md
+//! gives them):
 //!
 //! - `movement`: the movement slot (Chimera's placeholder walking now);
 //! - `weapons`: firing (the weapon frame on placeholder data);
