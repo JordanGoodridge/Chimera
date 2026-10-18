@@ -12,3 +12,8 @@
 
 mod movement;
 mod skeleton;
+
+// Slow ones (the user's install): the fast tier skips `heavy::`.
+mod heavy {
+    mod mount;
+}

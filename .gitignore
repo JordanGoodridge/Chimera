@@ -19,14 +19,6 @@
 # Agent worktrees (Claude Code).
 /.claude/worktrees/
 
-# Combat Arms: the old local loader (specs are in the repo since 2026-10-18).
-/src/games/combat_arms/
-/tests/it/rez_format.rs
-/tests/it/mount_combat_arms.rs
-# Their old places (before the one test crate), so copies there stay out too.
-/tests/rez_format.rs
-/tests/mount_combat_arms.rs
-
 # Local-only list of private words the pre-push hook refuses (one regex per line).
 /.githooks/private-patterns
 __pycache__/

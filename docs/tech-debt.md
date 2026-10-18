@@ -57,6 +57,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - logic: Fire: cvars as constants, simplified traces and our readings of the spec's open questions (`source/logic/src/logic/fire.rs`)
 - games/cs_source: Player physics shadow reaches its target in one step; heavy-prop and push limits are ours (`games/cs_source/src/game/shadow.rs`)
 - logic: Workaround for avian 0.7's stale "body disabled" flag when re-enabling a prop body (`source/logic/src/logic/bridge.rs`)
+- map: Workarounds for avian 0.7.0's contact bookkeeping (a leftover flag cleared, constraint handles matched to manifolds before the solver) (`chimera/world/src/map/contact_flags.rs`)
 - map: Physics props rocking on uneven ground or placed wedged are put to sleep by our own tests, not a solver fix; their rebound is a fit and contacts touch where vphysics keeps 0.4 units (`chimera/world/src/map/prop_physics.rs`)
 - map: Convex hulls cut into pieces with faces of four corners at most, working around parry clipping only four corners of a face (`chimera/world/src/map/collision.rs`)
 - logic: Pushers: no bevels for rotated brushes, push tests skip players and props, simplified riding (`source/logic/src/logic/movers.rs`)
@@ -106,6 +107,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source ui: Automatic hints on screen: as long as other hints, no key-binding hint panel (`games/cs_source/src/ui/hints.rs`)
 - map, sound: Under water (`audio::hearing::UNDERWATER`): a steady low-pass (600 Hz, 0.8) on everything while the eye is in water; Source switches to its `dsp_water` room preset, engine-side and unmeasured. OK for now: Better than no change at all; capture wanted.
 - client: Third-person camera follows at once (no easing) and sweeps a sphere (`chimera/client/src/client/view.rs`)
+- client: Binds' `POLLED` list names CS:S's polled commands (`buymenu`, `radio1`...); a game can't add its own (`chimera/client/src/client/binds.rs`)
 - sound: Scrape friction energy is our stand-in for Source's (`games/cs_source/src/game/scrapes.rs`)
 - map: Steam jets: heat-wave jets not drawn, some inputs ignored, visibility approximated (`chimera/present/src/render/steam.rs`)
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
@@ -153,4 +155,4 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source: func_footstep_control from the public FGD only: feet point inside, the replaced surface's step volume and timing (`games/cs_source/src/game/sound.rs`)
 - games/combat_arms: Wave 0 skeleton: placeholder weapons and binds (ours, marked PLACEHOLDER); no network part, rounds, respawn or bots (`games/combat_arms/src/lib.rs`)
 - games/combat_arms movement: Per engine tick, not the spec's frame clock; no ladders, volumes or pushers; axis input merges opposing keys (`games/combat_arms/src/game/movement.rs`)
-- apps/combat_arms: Greybox only; shares the CS:S app's config folder (binds, cvars); no build version stamp (`apps/combat_arms/src/lib.rs`)
+- apps/combat_arms: Greybox only; shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)

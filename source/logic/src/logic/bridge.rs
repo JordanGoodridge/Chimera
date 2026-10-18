@@ -45,10 +45,10 @@
 //! collider's query-tree proxy after `RigidBodyDisabled` is removed (its
 //! `Discard` observer still sees the component); a new contact of that collider
 //! that touches in its first step is later linked into an island a second time,
-//! which trips avian's `contact.island.is_none()` assertion.
-//! `logic::bridge::set_prop_shown` (the only code that removes
-//! `RigidBodyDisabled`) re-enables the body before its colliders and rebuilds
-//! the proxies of colliders that stayed solid. Why it's OK for now: Contained
+//! which trips avian's `contact.island.is_none()` assertion (that part is now
+//! guarded for every contact by `map::contact_flags`).
+//! `logic::bridge::set_prop_shown` re-enables the body before its colliders and
+//! rebuilds the proxies of colliders that stayed solid. Why it's OK for now: Contained
 //! to one function, guarded by
 //! `map_logic::restored_prop_contacts_join_islands_once`; drop the workaround
 //! once avian clears the flag itself.

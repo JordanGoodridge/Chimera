@@ -238,6 +238,7 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
     import_map: mount::import_map,
     default_binds_cfg: "cfg/config_default.cfg",
     default_binds: DEFAULT_BINDS,
+    old_default_binds: OLD_DEFAULT_BINDS,
     movement_cvars: movement::CVARS,
 };
 
@@ -300,6 +301,45 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("mouse1", "+attack"),
     ("mouse2", "+attack2"),
     ("pause", "pause"),
+];
+
+/// The defaults before they followed CS:S's `config_default.cfg`
+/// (2026-10-13): a config written before then (without the shell's
+/// `binds::DEFAULTS_MARK`) gets every default not among these added once,
+/// on free keys (`binds::added_defaults`). Alt, V and F9 are Chimera's
+/// own (`binds::CHIMERA_BINDS`), defaults then as now.
+pub const OLD_DEFAULT_BINDS: &[(&str, &str)] = &[
+    ("w", "+forward"),
+    ("s", "+back"),
+    ("a", "+moveleft"),
+    ("d", "+moveright"),
+    ("space", "+jump"),
+    ("ctrl", "+duck"),
+    ("shift", "+speed"),
+    ("e", "+use"),
+    ("r", "+reload"),
+    ("mouse1", "+attack"),
+    ("mouse2", "+attack2"),
+    ("1", "slot1"),
+    ("2", "slot2"),
+    ("3", "slot3"),
+    ("4", "slot4"),
+    ("5", "slot5"),
+    ("q", "lastinv"),
+    ("g", "drop"),
+    ("b", "buymenu"),
+    (",", "buyammo1"),
+    (".", "buyammo2"),
+    ("m", "chooseteam"),
+    ("tab", "+showscores"),
+    ("z", "radio1"),
+    ("x", "radio2"),
+    ("c", "radio3"),
+    ("y", "messagemode"),
+    ("u", "messagemode2"),
+    ("alt", "+freelook"),
+    ("v", "noclip"),
+    ("f9", "bug"),
 ];
 
 /// The map cycle a server plays in turn (`cfg/mapcycle.txt`, else the

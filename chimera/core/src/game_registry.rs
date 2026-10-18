@@ -50,6 +50,11 @@ pub struct GameInfo {
     /// The default binds when that file can't be read: (key, command), in
     /// the file's order.
     pub default_binds: &'static [(&'static str, &'static str)],
+    /// The default binds a saved config written before the game's current
+    /// ones had (one without the shell's `binds::DEFAULTS_MARK`): the
+    /// defaults not among these are added to it once, on free keys. Empty
+    /// for a game whose defaults never changed.
+    pub old_default_binds: &'static [(&'static str, &'static str)],
     /// The movement cvars the debug UI's movement tab lists: (name, what
     /// it sets).
     pub movement_cvars: &'static [(&'static str, &'static str)],
@@ -173,6 +178,7 @@ mod tests {
         import_map: |_| Err("no".into()),
         default_binds_cfg: "cfg/default.cfg",
         default_binds: &[("w", "+forward")],
+        old_default_binds: &[],
         movement_cvars: &[],
     };
     static A: GameInfo = A_INFO;

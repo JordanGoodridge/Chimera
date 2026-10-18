@@ -36,7 +36,7 @@ pub mod ui;
 // `crate::core`, `crate::weapon` and the rest inside, as in CS:S's crate
 // (the architecture check reads `crate::<module>` against its layering
 // table).
-use chimera_core::{character, core, game_registry, slots};
+use chimera_core::{character, core, game_registry, mount, slots};
 use chimera_sim::{rule_module, weapon};
 
 // The front end's: the shell.
