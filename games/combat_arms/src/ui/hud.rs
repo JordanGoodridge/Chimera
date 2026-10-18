@@ -14,7 +14,8 @@
 //! out its crosshair, health and ammo, hit marker and kill feed.
 //!
 //! Inputs: the viewed player (the local one, or whom it watches in first
-//! person), its `core::Health`, `weapon::Armor`, `Inventory`, `Zoomed`,
+//! person), its `core::Health`, its armour (`game::weapons::CaArmor`'s
+//! points, else `weapon::Armor`), `Inventory`, `Zoomed`,
 //! `Intent` (crouch held) and `game::movement::CaMovement` (moving, the
 //! crouch blend, stamina); the held weapon's `Hitscan::spread` (the cone
 //! Combat Arms' firing sets, perturb units / 1000), its data's
@@ -23,7 +24,11 @@
 //! `AltModes`/`Burst`, `game::inventory::CaItem`; `WeaponEvent::Fired`
 //! (the kick), `core::Damage` (the hit indicator, damage taken, the
 //! name-tag flash), `core::Died` (the kill feed), `RoundRestarts` (a new
-//! round clears the hit indicator); the aim ray (`client::aim`).
+//! round clears the hit indicator); the aim ray (`client::aim`). On a
+//! network client (`NetRole::Client`, which deals no damage) the hits are
+//! the server's confirmations (`WeaponEventKind::Hit` of the local
+//! player), the damage taken its `core::DamageTaken`, and the pickup
+//! prompt the server's (`game::net::CaPickup`).
 //!
 //! Known shortcuts (docs/tech-debt.md; the spec's most literal reading
 //! where it is unclear):
@@ -74,11 +79,16 @@ use serde::Deserialize;
 
 use crate::{
     client::{FirstPersonCamera, aim, fonts::UiFonts, hud::GameDraws, spectate::SpecView},
-    core::{Damage, DamageKind, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, RoundRestarts, Team},
+    core::{
+        Damage, DamageKind, DamageTaken, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole,
+        RoundRestarts, Team,
+    },
     game::{
         hud::{CaHudData, WeaponClass},
         inventory::{self, CaItem, CaSelection, Dropped},
         movement::{CaCharacter, CaMovement, movement_data},
+        net::CaPickup,
+        weapons::CaArmor,
     },
     map::interp::RenderedView,
     weapon::{AltModes, Armor, Burst, Hitscan, Inventory, Magazine, SpreadShape, Weapon, WeaponEvent, WeaponEventKind, Zoomed},
@@ -227,6 +237,7 @@ impl Plugin for CaHudStatePlugin {
             .init_resource::<CaHud>()
             .add_message::<WeaponEvent>()
             .add_message::<Damage>()
+            .add_message::<DamageTaken>()
             .add_message::<Died>()
             .add_systems(Update, (track, update).chain().in_set(HudUpdate));
     }
@@ -261,26 +272,50 @@ fn track(
     time: Res<Time>,
     mut memory: ResMut<HudMemory>,
     mut weapons: MessageReader<WeaponEvent>,
-    mut damage: MessageReader<Damage>,
+    (mut damage, mut taken): (MessageReader<Damage>, MessageReader<DamageTaken>),
     mut died: MessageReader<Died>,
     local: Option<Single<(Entity, &Intent, Option<&Team>), With<LocalPlayer>>>,
     teams: Query<(Option<&Team>, Has<Health>)>,
     names: Query<Option<&Name>>,
     held: Query<&Inventory>,
     ids: Query<&Weapon>,
-    rounds: Option<Res<RoundRestarts>>,
+    (rounds, role): (Option<Res<RoundRestarts>>, Option<Res<NetRole>>),
 ) {
     let now = time.elapsed_secs_f64();
     let ms = now * 1000.0;
     let memory = &mut *memory;
+    // A network client deals no damage: what the server says instead.
+    let client = role.is_some_and(|r| *r == NetRole::Client);
+    let mut dealt: Vec<Damage> = Vec::new();
     for e in weapons.read().filter(|e| e.shown()) {
-        if let WeaponEventKind::Fired { mode, .. } = e.kind {
-            let entry = memory.fired.entry(e.weapon).or_default();
-            entry.0 = Some(now);
-            if mode != 0 {
-                entry.1 = Some(now);
+        match e.kind {
+            WeaponEventKind::Fired { mode, .. } => {
+                let entry = memory.fired.entry(e.weapon).or_default();
+                entry.0 = Some(now);
+                if mode != 0 {
+                    entry.1 = Some(now);
+                }
             }
+            WeaponEventKind::Hit { target, amount, hitgroup } if client => dealt.push(Damage {
+                target,
+                attacker: Some(e.owner),
+                amount,
+                point: Vec3::ZERO,
+                dir: Vec3::ZERO,
+                hitgroup,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            }),
+            _ => {}
         }
+    }
+    if client {
+        damage.clear();
+        dealt.extend(taken.read().map(|t| t.damage.clone()));
+    } else {
+        taken.clear();
+        dealt.extend(damage.read().cloned());
     }
     // The damage overlay fades on every frame after its hit.
     if let Some(d) = memory.damage.as_mut()
@@ -292,7 +327,7 @@ fn track(
         Some(&(e, i, t)) => (Some(e), Some(i.yaw), t.copied()),
         None => (None, None, None),
     };
-    for d in damage.read() {
+    for d in &dealt {
         if d.amount <= 0.0 {
             continue;
         }
@@ -436,6 +471,7 @@ type Viewed<'a> = (
     Option<&'a CaCharacter>,
     Option<&'a Armor>,
     Has<Dead>,
+    Option<&'a CaArmor>,
 );
 
 type HeldWeapon<'a> = (
@@ -464,7 +500,16 @@ struct HudInputs<'w, 's> {
         Single<
             'w,
             's,
-            (Entity, &'static Transform, &'static Intent, &'static MovementState, Option<&'static RenderedView>, Option<&'static Team>, Option<&'static CaSelection>),
+            (
+                Entity,
+                &'static Transform,
+                &'static Intent,
+                &'static MovementState,
+                Option<&'static RenderedView>,
+                Option<&'static Team>,
+                Option<&'static CaSelection>,
+                Option<&'static CaPickup>,
+            ),
             With<LocalPlayer>,
         >,
     >,
@@ -601,7 +646,7 @@ fn update(
         let character = p.5.unwrap_or(&movement_data().character);
         next.status = Some(StatusView {
             hp: hp_shown(h, max, INTERFACE_MAX_HEALTH).to_string(),
-            ap: ap_shown(p.6.map_or(0.0, |a| a.amount * 100.0)).to_string(),
+            ap: ap_shown(p.8.map_or_else(|| p.6.map_or(0.0, |a| a.amount * 100.0), |a| a.points)).to_string(),
             low,
             colours: health_colours(low),
             crouched: crouch_image(p.4.map_or(0.0, |m| m.crouch_rate)),
@@ -646,7 +691,7 @@ fn update(
         .collect();
 
     // Name tags and the aim target (A11).
-    if let Some((me, at, intent, state, view, my_team, selection)) = local {
+    if let Some((me, at, intent, state, view, my_team, selection, served)) = local {
         let ray = aim::view_ray(at, intent, state, view);
         let local_alive = world.viewed.get(me).is_ok_and(|p| !p.7 && p.0.current > 0.0);
         let target = if local_alive {
@@ -694,16 +739,18 @@ fn update(
         }
         // The pickup prompt (inventory.md 11): the item the view is on.
         if status_shown {
-            next.pickup = selection
+            // Here, or (a network client) the server's.
+            let here = selection
                 .and_then(|s| s.pickup_target)
                 .and_then(|i| world.dropped.get(i).ok())
                 .and_then(|d| world.ids.get(d.weapon).ok())
-                .map(|w| {
-                    let name = crate::weapon::data::lookup(w.id)
-                        .and_then(|d| d.hud.name.clone())
-                        .unwrap_or_else(|| w.id.rsplit(':').next().unwrap_or(w.id).to_uppercase());
-                    format!("Press [E] to pick up {name}")
-                });
+                .map(|w| w.id.to_string());
+            next.pickup = here.or_else(|| served.and_then(|p| p.0.clone())).map(|id| {
+                let name = crate::weapon::data::lookup(&id)
+                    .and_then(|d| d.hud.name.clone())
+                    .unwrap_or_else(|| id.rsplit(':').next().unwrap_or(&id).to_uppercase());
+                format!("Press [E] to pick up {name}")
+            });
         }
     }
     hud.set_if_neq(next);

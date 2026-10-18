@@ -98,18 +98,18 @@
 
 use avian3d::prelude::{ColliderOf, SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::weapons::RIFLE;
 use crate::{
     core::{
         self, Damage, DamageKind, Died, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole, Predict,
-        SimClock, SimSet,
+        PredictedAppExt, SimClock, SimSet,
     },
     map::{PhysicsProp, interp::NetDrawn, loose::LooseItem},
     weapon::{
-        Inventory, Magazine, OwnSelection, SelectWeapons, ShellReload, StartingWeapons, Weapon, WeaponEvent,
-        WeaponEventKind, WeaponFrame, WeaponState,
+        CarriedAppExt, Inventory, Magazine, NetPart, OwnSelection, SelectWeapons, ShellReload, StartingWeapons, Weapon,
+        WeaponEvent, WeaponEventKind, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
         grenade::Throwable,
         random::{Rng, shared_random},
@@ -273,7 +273,7 @@ pub struct Attack {
 }
 
 /// Where a knife attack is (8.2).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KnifePhase {
     #[default]
     Idle,
@@ -284,7 +284,7 @@ pub enum KnifePhase {
     PostFire,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct KnifeState {
     pub phase: KnifePhase,
     /// 0 primary, 1 secondary.
@@ -408,6 +408,13 @@ impl Plugin for CaInventoryPlugin {
         )
         // The knife first: the hands see it idle on the update it ends.
         .add_systems(Predict::Weapons, (swing_knives, hands).chain().before(WeaponFrame))
+        // Predicted with the player (a network client's own): the knife's
+        // swing with the weapon (`weapon::sync`), the selection as its
+        // own part with weapons as indices in the inventory
+        // (`selection_codec`).
+        .predicted_part::<Knife>()
+        .predicted::<CaSelection>()
+        .predicted_codec(std::any::type_name::<CaSelection>(), encode_selection, decode_selection)
         .add_systems(
             FixedUpdate,
             (
@@ -418,6 +425,85 @@ impl Plugin for CaInventoryPlugin {
                 .run_if(core::authoritative),
         );
     }
+}
+
+impl NetPart for Knife {
+    /// Where its attack is (the attacks are the data's).
+    type Net = KnifeState;
+    fn net(&self) -> Self::Net {
+        self.state
+    }
+    fn set_net(&mut self, net: Self::Net) {
+        self.state = net;
+    }
+}
+
+/// `CaSelection` over the wire: weapons as their index in the owner's
+/// `Inventory::weapons` (entity ids differ between server and client).
+/// The pickup target and the use key's edge are the server's (`pickups`
+/// runs there only) and stay out.
+#[derive(Serialize, Deserialize)]
+struct NetSelection {
+    cursor: [u8; CLASSES],
+    last_chosen: [Option<u8>; CLASSES],
+    previous: Option<u8>,
+    in_hand: Option<u8>,
+    in_hand_hides: bool,
+    sprint_pose: bool,
+    sprint_out_until: f64,
+    prev_select: Option<u8>,
+    prev_last: bool,
+}
+
+/// The selection's network form (`PredictedAppExt::predicted_codec`).
+/// Decoded after the inventory (its name sorts after
+/// `chimera_sim::weapon::Inventory`), so the indices meet the weapons the
+/// client has rebuilt. A weapon no longer carried (the auto-switch's
+/// `in_hand` after a spent grenade) goes as `GONE` and comes back as
+/// `Entity::PLACEHOLDER`: still some weapon, not one carried.
+/// `NetSelection`'s index for a weapon no longer carried.
+const GONE: u8 = u8::MAX;
+
+fn encode_selection(world: &World, owner: Entity) -> Option<Vec<u8>> {
+    let sel = world.get::<CaSelection>(owner)?;
+    let weapons = world.get::<Inventory>(owner).map(|i| i.weapons.as_slice()).unwrap_or_default();
+    let index = |w: Option<Entity>| w.map(|w| weapons.iter().position(|x| *x == w).map_or(GONE, |i| i as u8));
+    postcard::to_allocvec(&NetSelection {
+        cursor: sel.cursor.map(|c| c.min(u8::MAX as usize) as u8),
+        last_chosen: sel.last_chosen.map(index),
+        previous: index(sel.previous),
+        in_hand: index(sel.in_hand),
+        in_hand_hides: sel.in_hand_hides,
+        sprint_pose: sel.sprint_pose,
+        sprint_out_until: sel.sprint_out_until,
+        prev_select: sel.prev_select,
+        prev_last: sel.prev_last,
+    })
+    .ok()
+}
+
+fn decode_selection(world: &mut World, owner: Entity, bytes: Option<&[u8]>) {
+    let Some(net) = bytes.and_then(|b| postcard::from_bytes::<NetSelection>(b).ok()) else {
+        world.entity_mut(owner).remove::<CaSelection>();
+        return;
+    };
+    let weapons = world.get::<Inventory>(owner).map(|i| i.weapons.clone()).unwrap_or_default();
+    let at = |i: Option<u8>| i.map(|i| weapons.get(i as usize).copied().unwrap_or(Entity::PLACEHOLDER));
+    let kept = world.get::<CaSelection>(owner);
+    let sel = CaSelection {
+        cursor: net.cursor.map(|c| c as usize),
+        last_chosen: net.last_chosen.map(at),
+        previous: at(net.previous),
+        in_hand: at(net.in_hand),
+        in_hand_hides: net.in_hand_hides,
+        sprint_pose: net.sprint_pose,
+        sprint_out_until: net.sprint_out_until,
+        pickup_target: kept.and_then(|k| k.pickup_target),
+        prev_select: net.prev_select,
+        prev_last: net.prev_last,
+        prev_use: kept.is_some_and(|k| k.prev_use),
+    };
+    world.entity_mut(owner).insert(sel);
 }
 
 fn knife(d: &WeaponData, p: &KnifeData) -> Knife {
