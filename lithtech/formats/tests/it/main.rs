@@ -5,9 +5,13 @@
 //! lithtech_formats`. A new file here gets a `mod` line below.
 
 mod attributes;
+mod dtx;
 mod fixture;
 mod rez;
+mod world;
 
 mod heavy {
+    mod dtx_install;
     mod rez_install;
+    mod world_install;
 }

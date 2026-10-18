@@ -2,7 +2,8 @@
 //! (`combat_arms::SimPlugins` + `CombatArmsPlugins`) on the greybox, the
 //! presentation, the network and the client shell with its HUD. Wave 0:
 //! walk and shoot the placeholder weapons. The options are the shell's,
-//! as the CS:S app's (`--help`); `--map` takes only the greybox.
+//! as the CS:S app's (`--help`); `--map combat_arms:<name>` loads a map
+//! from the install (`combat_arms::game::world`), else the greybox.
 //!
 //! Network play is the CS:S app's (the shell's `connect`, `-port`,
 //! `maxplayers`, `map`): host a listen server with `combat_arms -port
@@ -22,7 +23,8 @@ use combat_arms_app::ClientPlugin;
 fn main() {
     if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
         println!(
-            "combat_arms: Combat Arms on Chimera (its movement, the M4A1 and the M9 on the greybox).\n\
+            "combat_arms: Combat Arms on Chimera (its movement, the M4A1 and the M9 on the greybox,\n\
+             or a map of the install: --map combat_arms:<name>, e.g. combat_arms:warehouse).\n\
              The options are the shell's (below, named after the CS:S app; all apply here).\n\
              Network play (a listen server; no dedicated one yet):\n\
              \x20 host:    combat_arms -port 27016 +maxplayers 4 +map greybox\n\
@@ -30,15 +32,35 @@ fn main() {
         );
     }
     let mut args = Args::parse();
-    if let Some(id) = args.game_map() {
-        eprintln!("error: --map {id}: {}", combat_arms_app::load_map(id, 0).unwrap_err());
-        std::process::exit(1);
-    }
-    // No menus yet: always straight into the greybox.
-    args.map.get_or_insert_with(|| "chimera:greybox".into());
     let mut app = App::new();
-    app.add_plugins((greybox::GreyboxMapPlugin, MapPlugin::empty()))
-        .add_plugins((
+    match args.game_map() {
+        Some(id) => match combat_arms_app::load_map(id, 0) {
+            Ok(data) => {
+                eprintln!(
+                    "loaded {}: {} triangles, {} textures, {} spawns, {} warnings",
+                    data.name,
+                    data.triangle_count(),
+                    data.textures.len(),
+                    data.spawns.len(),
+                    data.warnings.len()
+                );
+                for w in &data.warnings {
+                    eprintln!("  warning: {w}");
+                }
+                app.add_plugins(MapPlugin::new(data));
+            }
+            Err(e) => {
+                eprintln!("error: --map {id}: {e}");
+                std::process::exit(1);
+            }
+        },
+        None => {
+            // No menus yet: straight into the greybox.
+            args.map.get_or_insert_with(|| "chimera:greybox".into());
+            app.add_plugins((greybox::GreyboxMapPlugin, MapPlugin::empty()));
+        }
+    }
+    app.add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {

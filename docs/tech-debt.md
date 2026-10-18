@@ -162,4 +162,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - lithtech: Attribute files: no event text-change overwrite layer; literal readings where the spec is silent on spacing (`lithtech/formats/src/attributes.rs`)
 - games/combat_arms ui: HUD: no items, attachments, modes, score panel or heartbeat sound driving it yet; placeholder art (`games/combat_arms/src/ui/hud.rs`)
 - games/combat_arms: Firing: 1 u assumed 1 cm, placeholder hit-sphere places, no client-reported victim, default gear for all; spec ambiguities read literally (`games/combat_arms/src/game/weapons.rs`)
-- apps/combat_arms: Greybox only; shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
+- apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
+- games/combat_arms maps: No sky, fog or switchable light groups; vertex light one colour per section; world models static; blockers stop shots; object properties read by name (`games/combat_arms/src/game/world.rs`)
+- lithtech: World files: strict where the spec says "observed" (property lengths, record ends) (`lithtech/formats/src/world.rs`)
+- lithtech: Textures: no group mip skipping, sections or detail/envmap links (`lithtech/formats/src/dtx.rs`)

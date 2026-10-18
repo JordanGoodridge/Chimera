@@ -34,7 +34,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; gr
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
-                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files)
+                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures)
 ```
 
 - The loader layers: `source/` (Source's formats and map logic) and
@@ -157,15 +157,17 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
-  network on `chimera_net`), with its feature `ui` its
+  network on `chimera_net`, `world`: the install's maps as `MapData`),
+  with its feature `ui` its
   front end (`ui::hud`, `ui::visuals`), and `harness::CaSim` as its
   scenario tests' base (with chimera_net's `NetSim` for its network
   tests). Layered as `cs_source`: the engine crates only,
   never `cs_source`, Source's logic, `mashup` or an app (checked); only
   `ui` uses the presentation and the shell. `apps/combat_arms`
-  (`combat_arms_app`) is its game binary (`combat_arms`): the greybox,
-  the shell with its HUD, the network (a listen server or a client, the
-  shell's options), its build's stamp. What Combat Arms needs that lives
+  (`combat_arms_app`) is its game binary (`combat_arms`): the greybox
+  or `--map combat_arms:<name>`, the shell with its HUD, the network (a
+  listen server or a client, the shell's options), its build's stamp.
+  What Combat Arms needs that lives
   in `cs_source` today moves into Chimera first (a lift), never across.
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
   (`cs_source_server`): `cs_source_app` without `present`, so built alone it
@@ -481,6 +483,7 @@ that the paths exist).
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
+- `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
@@ -511,6 +514,8 @@ that the paths exist).
 - `lithtech/formats/src/attributes.rs`: attribute files ("butes"): sections of typed values, strict typed reads, records and lists
 - `lithtech/formats/src/rez.rs`: `.rez` archives (header, check block, directory) as a `FileSource`; `open_dir`
 - `lithtech/formats/src/rez_cipher.rs`: the `.rez` payload cipher (Twofish-CBC, key supplied at run time)
+- `lithtech/formats/src/world.rs`: world files (`.dat`, version 85): BSPs, objects, light grid, blockers, render data, lightmaps
+- `lithtech/formats/src/dtx.rs`: textures (`.dtx`, version -5): header, mip layout, BGRA and DXT1/3/5 decoding
 
 ### Apps, binaries and the test harness
 
@@ -528,7 +533,7 @@ that the paths exist).
 - `checks/src/bin/affected.rs`: dev tool: print the affected tests' `cargo nextest` arguments (the git hooks)
 - `apps/cs_source_server/src/main.rs`: the dedicated server, built without the presentation (top)
 - `games/combat_arms/src/harness.rs`: `CaSim`: Combat Arms' simulation as a `Sim`'s base (harness)
-- `apps/combat_arms/src/main.rs`: the Combat Arms game binary, `combat_arms`, on the greybox (top)
+- `apps/combat_arms/src/main.rs`: the Combat Arms game binary, `combat_arms`, on the greybox or a map of the install (top)
 - `apps/combat_arms/build.rs`: stamps the build's commit and version (`VERSION`, `BUILD`)
 - `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files (CS:S, Combat Arms)
 

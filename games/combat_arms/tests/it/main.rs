@@ -16,9 +16,11 @@ mod movement;
 mod net;
 mod skeleton;
 mod weapon_firing;
+mod world;
 
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
     mod attributes;
     mod mount;
+    mod world;
 }

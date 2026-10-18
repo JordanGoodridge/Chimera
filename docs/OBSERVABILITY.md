@@ -66,8 +66,11 @@ in the lowest crate whose public API it needs:
   `src/ui/` runs only those (and the crates above);
 - `combat_arms` (games/combat_arms/tests/it/): Combat Arms' scenario
   tests on `Sim::new(CaSim, ..)` (`combat_arms::harness::CaSim`: its
-  whole simulation, placeholders included) and the greybox; its spec
-  test cases as each subsystem is implemented; its front end's (the
+  whole simulation, placeholders included) and the greybox, or a map
+  converted from a world built in code (`world.rs`); its spec test cases
+  as each subsystem is implemented; in `heavy` the install's maps
+  (`heavy::world`: every plain map converts, a player walks and collides
+  on WAREHOUSE); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless) in tests/ui/, built with `ui`;
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
@@ -1193,6 +1196,15 @@ cargo run --bin dump -- combat_arms --archives         # per-archive title, entr
 cargo run --bin dump -- combat_arms --list --filter worlds2
 cargo run --bin dump -- combat_arms --filter worlds2/warehouse.dat --extract
 ```
+
+Combat Arms' maps: `cargo run --features dev -p combat_arms_app --bin
+combat_arms -- --map combat_arms:warehouse` loads `worlds*/warehouse.dat`
+from the install (any of the 33 maps in WORLDS2/WORLDS3 without keys; the
+others need the V2 key); add `--screenshot shot.png --frames 120 --window
+1280x720` for a picture, `--spawn`/`--look` as for CS:S. The load prints
+triangles, textures, spawns and warnings. The world files' numbers:
+`cargo test -p lithtech_formats -- heavy::world_install --nocapture`
+(`every_plain_map_summary` prints each map's version and counts).
 
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
 list but skip extraction until their scheme's key is in
