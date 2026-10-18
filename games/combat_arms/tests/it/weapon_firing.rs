@@ -71,6 +71,8 @@ range = 3850.0
 
 fn sim() -> Sim {
     let mut sim = Sim::new(CaSim, GreyboxMapPlugin);
+    // One update, one tick of the game's.
+    sim.set_tick_interval(combat_arms::game::TICK_INTERVAL);
     sim.app
         .add_weapon_data(&[("exact", EXACT), ("rolling", ROLLING), ("range", RANGE_MOD)])
         .unwrap();
@@ -427,8 +429,14 @@ fn m4a1(sim: &mut Sim) -> (Entity, Entity) {
     (p, w)
 }
 
+/// The weapon's spread part, its meters at rest (the cases' start; the
+/// player's landing at spawn moved them).
 fn spread(sim: &Sim, w: Entity) -> CaSpread {
-    sim.app.world().get::<CaSpread>(w).unwrap().clone()
+    let mut s = sim.app.world().get::<CaSpread>(w).unwrap().clone();
+    s.fire = 0.0;
+    s.movement = 0.0;
+    s.last_shot = None;
+    s
 }
 
 fn scales(sim: &Sim) -> SpreadScales {
@@ -469,7 +477,7 @@ fn t14_spread_from_rest() {
         let now = mag(&sim, w).clip;
         if now < clip {
             cones.push((inaccuracy * 1000.0).round() as i32);
-            meters.push(spread(&sim, w).fire);
+            meters.push(sim.app.world().get::<CaSpread>(w).unwrap().fire);
             clip = now;
         }
     }

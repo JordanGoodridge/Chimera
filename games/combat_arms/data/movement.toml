@@ -1,0 +1,113 @@
+# Combat Arms player movement: our defaults, from
+# specs/combat_arms/movement.md ("Constants"); the section each value comes
+# from is in its comment. Distances are LithTech world units ("u"), +Y up;
+# speeds u/s, accelerations u/s^2, times s. Read by
+# games/combat_arms/src/game/movement.rs (`MovementData`). When the
+# install's attribute data can be read (attribute_data.md), its values
+# override the character and gear ones here.
+#
+# The tick (15 ms, Constants "tick") is the game's tick:
+# `game::TICK_INTERVAL`.
+
+# Ours, not the spec's: engine meters per world unit. The spec keeps world
+# units (its open question 3); we take 1 u = 1 cm.
+meters_per_unit = 0.01
+# Ours: the gap the collision mover keeps from surfaces (u).
+skin = 0.1
+# Ours: the eye above the feet as a fraction of the hull's height (the
+# camera spec owns it; movement.md open question 2).
+eye_height_fraction = 0.9
+
+# Constants: console variables FRunVel, BRunVel, SRunVel, WalkVel, DuckVel,
+# JumpVel; the ladder limit.
+run_forward = 285.0
+run_back = 285.0
+run_strafe = 285.0
+walk = 70.0
+crouch = 50.0
+jump = 330.0
+ladder = 200.0
+# Constants: PlayerGravity (along Y).
+gravity = -1100.0
+# Constants: ground friction coefficient k (1/s).
+friction = 5.0
+# Constants: BaseMoveAccel, StartAccel, MaxAccel, AccelInc (u/s^3).
+base_accel = 3000.0
+start_accel = 500.0
+max_accel = 3000.0
+accel_ramp = 6000.0
+# Constants: crouch accel factor, InAirAccelMultiplier.
+crouch_accel_factor = 0.5
+in_air_accel_factor = 0.1
+# Constants: SlideToStopTime (s), stop snap speed (u/s).
+slide_to_stop_time = 0.1
+stop_snap_speed = 5.0
+# Constants: engine rest threshold (u^2/s^2 on |v|^2 and |a|^2).
+rest_threshold = 0.1
+# Constants: jump factor after a jump, its recovery (1/s), jump stance
+# tolerance (u).
+jump_factor_after_jump = 0.3
+jump_factor_recovery = 1.2
+jump_stance_tolerance = 0.5
+# Constants: walkable normal (normal.y), StairStepHeight (+0.5 in the
+# mover), standing probe (fraction of the half-height).
+walkable_normal = 0.7071
+stair_step = 30.5
+standing_probe = 0.02
+# Constants: fallback half-extents (x, y, z) of the stand and crouch boxes
+# (the models' real boxes: open question 1).
+stand_half_extents = [15.0, 50.0, 15.0]
+crouch_half_extents = [15.0, 40.0, 15.0]
+# Constants: crouch release delay (s, wall clock).
+crouch_release_delay = 0.1
+# Constants: fall damage start and full heights (u), damage at full height
+# (HP), fall minimum (u).
+fall_damage_start = 300.0
+fall_damage_full = 700.0
+fall_damage_at_full = 200.0
+fall_minimum = 50.0
+# Ours: hit points of a full-health player (Chimera's health is 1.0 at full).
+health_points = 100.0
+
+# Crouch-spam penalty: the dedicated server's shipped configuration (the
+# "Server config key" table).
+[crouch_spam]
+duration = 0.1733333
+tangents = [3.0, 1.0]
+enable_slowdown = true
+slowdown_increase_duration = 1.7
+slowdown_increase_tangents = [0.5, 3.0]
+slowdown_decrease_amount = 0.5
+max_slowdown_rate = 5.0
+min_slowdown_sp = 0.875
+enable_lockout = true
+lockout_increase_duration = 1.5
+lockout_increase_tangents = [1.0, 1.0]
+lockout_decrease_amount = 0.4
+# DisableSP_DecreaseAmount_InPenalty (the other *_InPenalty values are
+# never used: Quirks).
+lockout_decrease_amount_in_penalty = 0.9
+decrease_during_jumping_crouch = true
+decrease_by_keystroke = true
+decrease_exception_no_movement = true
+no_movement_time_limit = 0.2
+no_movement_deviation_limit = 0.1
+
+# The character: figure type and worn gear (the attribute table). The
+# reference character: figure DashSpeed 1.0, the default vest (MovePenalty
+# 0.1, DashSpeed 0.4), nothing else worn.
+[character.figure]
+dash_speed = 1.0
+dash_gauge = 30.0
+gauge_recovery = 25.0
+max_stamina = 100.0
+variable_speed = 0.0
+variable_weight = 0.0
+variable_jump = 0.0
+
+[[character.gear]]
+name = "default vest"
+dash_speed = 0.4
+max_stamina = 0.0
+move_penalty = 0.1
+jump = 0.0

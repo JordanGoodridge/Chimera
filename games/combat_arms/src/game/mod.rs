@@ -5,7 +5,7 @@
 //! (specs/combat_arms/<name>.md, the names docs/plans/active/combat-arms.md
 //! gives them):
 //!
-//! - `movement`: the movement slot (Chimera's placeholder walking now);
+//! - `movement`: the movement slot, `combat_arms:movement` (movement.md);
 //! - `weapons`: firing (the weapon frame on placeholder data);
 //! - `inventory`: slots, switching, what a player starts with, the knife;
 //! - `grenades`: thrown weapons (none yet);
@@ -35,9 +35,9 @@ use crate::game_registry::{GameInfo, RegisterGame};
 /// `combat_arms:<weapon>`, its install's key in chimera.local.toml.
 pub const GAME: &str = "combat_arms";
 
-/// The server tick until a spec gives Combat Arms' (PLACEHOLDER: the
-/// engine's default, `core::DEFAULT_TICK_HZ`).
-pub const TICK_INTERVAL: f64 = 1.0 / crate::core::DEFAULT_TICK_HZ;
+/// The game's tick: the movement clock's 15 ms (specs/combat_arms/
+/// movement.md, "Tick clock"; the engine's default movement rate).
+pub const TICK_INTERVAL: f64 = 0.015;
 
 /// What the shell needs of Combat Arms (`game_registry`). `open` mounts
 /// the install's archives (`mount`); nothing reads from it yet (the

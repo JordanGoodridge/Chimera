@@ -10,6 +10,7 @@
 //! cases (specs/combat_arms/) get their own files here as each subsystem
 //! is implemented.
 
+mod movement;
 mod skeleton;
 mod weapon_firing;
 
