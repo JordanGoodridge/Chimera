@@ -15,6 +15,8 @@ mashup (repository root: src/, tests/it/)   `dump`; `cs_source_app` at the old p
   |    cs_source_server (apps/cs_source_server/)   the dedicated server: the app without `present`
   |   /
 cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ its version), games::load_map
+  |    combat_arms_app (apps/combat_arms/)   the Combat Arms app: its game binary (beside, not above, CS:S)
+  |    combat_arms (games/combat_arms/)   Combat Arms' skeleton on Chimera, like cs_source; `ui` its HUD
   |
   |    cs_source[ui] (games/cs_source/src/ui/)   CS:S's front end: menus, panels, HUD (feature `ui`)
   |   /         \
@@ -138,6 +140,18 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   and CS:S's HUD), re-exports at the old paths, and build.rs's stamp. It
   uses `chimera_present` only with its default feature `present` (with
   the client shell and CS:S's front end, `cs_source/ui`).
+- `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
+  of placeholder parts on Chimera (no Combat Arms behaviour until its
+  specs, specs/combat_arms/; docs/plans/active/combat-arms.md), one
+  module per subsystem in `game` (`movement`, `weapons`, `inventory`,
+  `grenades`, `attachments`, `data`, `rules`), with its feature `ui` its
+  front end (`ui::hud`, `ui::visuals`), and `harness::CaSim` as its
+  scenario tests' base. Layered as `cs_source`: the engine crates only,
+  never `cs_source`, Source's logic, `mashup` or an app (checked); only
+  `ui` uses the presentation and the shell. `apps/combat_arms`
+  (`combat_arms_app`) is its game binary (`combat_arms`): the greybox,
+  the shell with its HUD, the network. What Combat Arms needs that lives
+  in `cs_source` today moves into Chimera first (a lift), never across.
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
   (`cs_source_server`): `cs_source_app` without `present`, so built alone it
   links no render or audio code (checked:
@@ -453,6 +467,9 @@ that the paths exist).
 - `games/cs_source/src/game/votes.rs`: CS:S's vote issues: kick, change level, restart game; how bots vote (games)
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
+- `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
+- `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
+- `games/combat_arms/data/weapons/`: Combat Arms' placeholder weapons as data (PLACEHOLDER numbers, ours) (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)
@@ -485,6 +502,8 @@ that the paths exist).
 - `checks/src/affected.rs`: which packages' tests a change can affect, through cargo's crate graph (repo_checks)
 - `checks/src/bin/affected.rs`: dev tool: print the affected tests' `cargo nextest` arguments (the git hooks)
 - `apps/cs_source_server/src/main.rs`: the dedicated server, built without the presentation (top)
+- `games/combat_arms/src/harness.rs`: `CaSim`: Combat Arms' simulation as a `Sim`'s base (harness)
+- `apps/combat_arms/src/main.rs`: the Combat Arms game binary, `combat_arms`, on the greybox (top)
 - `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files (CS:S, local Combat Arms)
 
 ### Tools (each layer's, `--features tools`)
