@@ -1,8 +1,9 @@
 //! Combat Arms as a game crate (docs/ARCHITECTURE.md, "Crates"): wave 0,
-//! the skeleton (docs/plans/active/combat-arms.md). Nothing here is Combat
-//! Arms' behaviour yet: every part is a placeholder on Chimera's own
-//! pieces, waiting for its spec (specs/combat_arms/<name>.md, written in
-//! a separate spec session; implementation sessions read specs only).
+//! the skeleton (docs/plans/active/combat-arms.md). Each part is a
+//! placeholder on Chimera's own pieces until its spec
+//! (specs/combat_arms/<name>.md, written in a separate spec session;
+//! implementation sessions read specs only) is implemented: `inventory`
+//! is (inventory.md).
 //!
 //! `game` is the game's parts, one module per subsystem so parallel
 //! implementation work never edits the same file: `movement`, `weapons`
@@ -38,6 +39,7 @@ pub mod ui;
 // table).
 use chimera_core::{character, core, game_registry, mount, slots};
 use chimera_sim::{rule_module, weapon};
+use chimera_world::map;
 
 // The front end's: the shell.
 #[cfg(feature = "ui")]

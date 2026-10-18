@@ -4,9 +4,10 @@
 //! its attribute files over them (specs/combat_arms/attribute_data.md,
 //! "Defaults and overrides"; the records: `attributes`).
 //!
-//! Built in: the placeholder knife and rifle (data/weapons/, every
-//! number marked PLACEHOLDER: ours, not the game's) and the movement
-//! numbers (data/movement.toml, `movement::MovementData`).
+//! Built in: a placeholder rifle (data/weapons/placeholder_*.toml, every
+//! number marked PLACEHOLDER: ours, not the game's), the M9 knife
+//! (m9.toml, inventory.md's numbers) and the movement numbers
+//! (data/movement.toml, `movement::MovementData`).
 //!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
 //! chimera.local.toml, `install_attributes` opens the install's
@@ -81,7 +82,7 @@ macro_rules! data_file {
 /// in, in registration order (the network names weapons by registry
 /// index).
 pub const WEAPON_DATA: &[(&str, &str)] = &[
-    data_file!("placeholder_knife.toml"),
+    data_file!("m9.toml"),
     data_file!("placeholder_rifle.toml"),
 ];
 
@@ -511,12 +512,12 @@ mod tests {
         assert_eq!(files.len(), WEAPON_DATA.len());
     }
 
-    /// Every built-in document says its numbers are placeholders until
+    /// Every placeholder document says its numbers are placeholders until
     /// the specs replace them.
     #[test]
     fn placeholder_data_says_so() {
         use_builtin_data_only();
-        for (name, text) in WEAPON_DATA {
+        for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
             assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
         assert_eq!(weapon_set().weapons.len(), 2);

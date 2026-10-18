@@ -73,7 +73,7 @@ fn spawns_on_the_greybox_with_knife_and_rifle_drawn() {
         .map(|w| sim.app.world().get::<Weapon>(*w).unwrap().id)
         .collect();
     assert_eq!(ids, inventory::STARTING_WEAPONS);
-    assert_eq!(active_id(&sim, p), weapons::RIFLE, "the last weapon given is drawn");
+    assert_eq!(active_id(&sim, p), weapons::RIFLE, "the primary is drawn");
 }
 
 #[test]
@@ -118,14 +118,14 @@ fn switches_to_the_knife_and_back() {
         .weapons
         .iter()
         .map(|w| sim.app.world().get::<Weapon>(*w).unwrap())
-        .find(|w| w.id == weapons::KNIFE)
+        .find(|w| w.id == inventory::KNIFE)
         .unwrap()
         .slot;
     sim.intent(p).select = Some(knife_slot);
     sim.ticks(2);
     sim.intent(p).select = None;
     sim.ticks(1);
-    assert_eq!(active_id(&sim, p), weapons::KNIFE);
+    assert_eq!(active_id(&sim, p), inventory::KNIFE);
     // Back with the last-weapon key.
     sim.intent(p).last_weapon = true;
     sim.ticks(2);

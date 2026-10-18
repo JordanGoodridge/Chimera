@@ -11,6 +11,7 @@
 //! is implemented.
 
 mod attribute_data;
+mod inventory;
 mod movement;
 mod skeleton;
 
