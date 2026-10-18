@@ -178,8 +178,8 @@ placed in logical pixels, e.g. the crosshair after a dialog; with
 floats under Hyprland instead of being tiled), for UI checked at a known
 resolution. `--help` lists all options.
 
-System order: `CHIMERA_SYSTEM_DUMP=<file>` builds the game as it would
-run (with the same options and plugins; needs the display) and writes
+System order: `CHIMERA_SYSTEM_DUMP=<file>` builds the game (either app:
+`client::app::run`) as it would run (with the same options and plugins; needs the display) and writes
 every schedule's systems in the order they run, the main world's then the
 render world's (taken before pipelined rendering moves it to its own
 thread), to the file instead of running. Dump before and after a
@@ -489,8 +489,8 @@ Only `Reflect`-registered types are visible; register new core components in
   describe`, short commit hash and the commit's UTC date, e.g.
   `v0.1.0-playtest3 (feac156, 2026-10-11)` (no tag: `feac156,
   2026-10-11`; `-dirty` on the hash with uncommitted changes), then the
-  network protocol (`NET_VERSION`). apps/cs_source/build.rs stamps it
-  (`core::VERSION`); the main menu shows it bottom right and
+  network protocol (`NET_VERSION`). Each app's build.rs stamps it
+  (chimera/core/build_stamp.rs; `core::VERSION`); the main menu shows it bottom right and
   `cs_source_server` prints it at startup.
 - `thirdperson` (back with `firstperson`; distance `cam_idealdist`, CS:S
   units) puts the camera behind the local player and draws its own

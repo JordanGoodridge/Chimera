@@ -1,33 +1,35 @@
 //! Key binds, as Source keeps them: key name -> console line
 //! (`console::Console::binds`), saved in config.cfg as `bind` lines.
-//! Every game key is a bind: the defaults (`default_binds`: the default
-//! game's (`game_registry::GameInfo`), from its install's
-//! `cfg/config_default.cfg`, else its built-in table, plus ours on the
-//! keys it leaves free, `CHIMERA_BINDS`) go in before
+//! Every game key is a bind: the defaults (`default_binds`) go in before
 //! config.cfg runs, `binddefaults` puts them back (the options' "Use
 //! Defaults"), and the options' keyboard tab rebinds them.
 //!
-//! Binds whose whole line is one of `POLLED` (`+forward`, `slot1`,
-//! `buymenu` ...) are read by the system that owns the action, from the
-//! keys held this frame (`pressed`, `just_pressed`), with that system's
-//! own rules (only while playing, not while typing ...); `console::run_binds`
-//! leaves them alone. Every other bind runs its line through the console.
+//! The defaults are the game's data (`game_registry::GameInfo`; nothing
+//! here names a game's keys): the default game's, from its install's file
+//! (`GameInfo::default_binds_cfg`, CS:S's `cfg/config_default.cfg`, read at
+//! start by `read_install_defaults`), else its built-in table
+//! (`GameInfo::default_binds`); plus Chimera's own, the only engine
+//! defaults, on the keys the game leaves free (`CHIMERA_BINDS`: Alt free
+//! look, V noclip, F9 `bug`, the debug keys F3 `toggle
+//! chimera_drawcollision`, F8 `debugui`, F11 `chimera_inspector`).
 //!
-//! Every game key is a bind (`Console::binds`, saved in config.cfg):
-//! `default_binds` (the default game's: CS:S's install's
-//! `cfg/config_default.cfg`, read at start by `read_install_defaults`, else
-//! the same table in `GameInfo::default_binds`; plus `CHIMERA_BINDS` on keys
-//! the game leaves free: Alt free
-//! look, V noclip, F9 `bug`, the debug keys F3 `toggle chimera_drawcollision`,
-//! F8 `debugui`, F11 `chimera_inspector`) go in before config.cfg runs
-//! (`binddefaults`; `binddefaults missing` for configs written before, which
-//! lack `CONFIG_MARK`; `binddefaults new` once after a config lacking
-//! `DEFAULTS_MARK` puts `added_defaults` on free keys, so older configs get
-//! defaults added since; saved binds win); binds whose line is one of `POLLED`
-//! (`+forward`, `slot1`, `buymenu`, `radio1`, ...) are read from the held keys
-//! by the system that owns the action (`pressed`, `just_pressed`,
-//! `wheel_notches`), all others run through the console (`console::run_binds`);
-//! Source key names, rebind and clear lines for the options.
+//! Saved configs: `binddefaults missing` for configs written before every
+//! key was a bind (they lack `CONFIG_MARK`); `binddefaults new` once after
+//! a config lacking `DEFAULTS_MARK`, which puts `added_defaults` (the
+//! defaults not among the game's `GameInfo::old_default_binds`) on free
+//! keys, so older configs get defaults added since; saved binds win.
+//!
+//! Binds whose whole line is one of `POLLED` (`+forward`, `slot1`,
+//! `buymenu`, `radio1`, ...) are read by the system that owns the action,
+//! from the keys held this frame (`pressed`, `just_pressed`,
+//! `wheel_notches`), with that system's own rules (only while playing, not
+//! while typing ...); `console::run_binds` leaves them alone. Every other
+//! bind runs its line through the console. Source key names, rebind and
+//! clear lines for the options.
+//!
+//! Known shortcuts: `POLLED` lists CS:S's polled commands (`buymenu`,
+//! `chooseteam`, `radio1`..`radio3`) beside the generic ones: a game can't
+//! add its own yet.
 
 use std::{collections::BTreeMap, sync::RwLock};
 
@@ -154,8 +156,8 @@ pub const MOUSE_NAMES: &[(MouseButton, &str)] = &[
 pub const WHEEL_UP: &str = "mwheelup";
 pub const WHEEL_DOWN: &str = "mwheeldown";
 
-/// Chimera's own binds, each on a key CS:S's defaults leave free (and only
-/// while it is free): Alt looks around, V flies, F9 files a bug report
+/// Chimera's own binds, each on a key the game's defaults leave free (and
+/// only while it is free): Alt looks around, V flies, F9 files a bug report
 /// (as F4 does), and the debug keys: F3 collision shapes, F8 the debug UI,
 /// F11 the entity inspector.
 pub const CHIMERA_BINDS: &[(&str, &str)] = &[
@@ -167,46 +169,13 @@ pub const CHIMERA_BINDS: &[(&str, &str)] = &[
     ("f11", "chimera_inspector"),
 ];
 
-/// The defaults before they followed CS:S's `config_default.cfg`
-/// (2026-10-13): every default not among these is new to a config written
-/// before then (`added_defaults`).
-const OLD_DEFAULTS: &[(&str, &str)] = &[
-    ("w", "+forward"),
-    ("s", "+back"),
-    ("a", "+moveleft"),
-    ("d", "+moveright"),
-    ("space", "+jump"),
-    ("ctrl", "+duck"),
-    ("shift", "+speed"),
-    ("e", "+use"),
-    ("r", "+reload"),
-    ("mouse1", "+attack"),
-    ("mouse2", "+attack2"),
-    ("1", "slot1"),
-    ("2", "slot2"),
-    ("3", "slot3"),
-    ("4", "slot4"),
-    ("5", "slot5"),
-    ("q", "lastinv"),
-    ("g", "drop"),
-    ("b", "buymenu"),
-    (",", "buyammo1"),
-    (".", "buyammo2"),
-    ("m", "chooseteam"),
-    ("tab", "+showscores"),
-    ("z", "radio1"),
-    ("x", "radio2"),
-    ("c", "radio3"),
-    ("y", "messagemode"),
-    ("u", "messagemode2"),
-    ("alt", "+freelook"),
-    ("v", "noclip"),
-    ("f9", "bug"),
-];
-
 /// The default game's binds (`read_install_defaults`, `use_game_defaults`);
 /// empty before (and without a game).
 static GAME_DEFAULTS: RwLock<Vec<(String, String)>> = RwLock::new(Vec::new());
+
+/// The default game's old defaults (`GameInfo::old_default_binds`, set by
+/// `read_install_defaults`); empty without a game.
+static OLD_DEFAULTS: RwLock<&'static [(&'static str, &'static str)]> = RwLock::new(&[]);
 
 /// Whether a key name is one we know (keyboard, mouse or wheel).
 pub fn known_key(name: &str) -> bool {
@@ -284,6 +253,7 @@ fn set_game_defaults(binds: Vec<(String, String)>) {
 /// game's built-in table (`GameInfo::default_binds`); without a game, none
 /// (Chimera's own only). Returns whether the file was read.
 pub fn read_install_defaults(game: Option<&GameInfo>) -> bool {
+    set_old_defaults(game.map_or(&[], |g| g.old_default_binds));
     let Some(game) = game else {
         set_game_defaults(Vec::new());
         return false;
@@ -300,13 +270,21 @@ pub fn read_install_defaults(game: Option<&GameInfo>) -> bool {
     found
 }
 
-/// Defaults a config written before they followed CS:S's lacks (see
-/// `OLD_DEFAULTS`): `binddefaults new` (run after such a config) puts
-/// each on its key when the key is free and no key runs the command.
+fn set_old_defaults(old: &'static [(&'static str, &'static str)]) {
+    if let Ok(mut d) = OLD_DEFAULTS.write() {
+        *d = old;
+    }
+}
+
+/// Defaults a config written before the game's current ones lacks (those
+/// not among its `GameInfo::old_default_binds`): `binddefaults new` (run
+/// after such a config) puts each on its key when the key is free and no
+/// key runs the command.
 pub fn added_defaults() -> Vec<(String, String)> {
+    let old = OLD_DEFAULTS.read().map(|d| *d).unwrap_or(&[]);
     default_binds()
         .into_iter()
-        .filter(|(k, c)| !OLD_DEFAULTS.contains(&(k.as_str(), c.as_str())))
+        .filter(|(k, c)| !old.contains(&(k.as_str(), c.as_str())))
         .collect()
 }
 
@@ -505,9 +483,11 @@ pub fn clear_line(binds: &BTreeMap<String, String>, command: &str) -> Option<Str
 /// the mark gets the default binds its `unbindall` dropped back.
 pub const CONFIG_MARK: &str = "// binds: all";
 
-/// A config.cfg written since the defaults followed CS:S's says so; one
-/// with `CONFIG_MARK` but not this gets the defaults added since
-/// (`binddefaults new`) once, on free keys.
+/// A config.cfg written over the game's current defaults says so; one with
+/// `CONFIG_MARK` but not this gets the defaults added since
+/// (`binddefaults new`) once, on free keys. Its text names the defaults'
+/// change it marks (CS:S's `config_default.cfg`, 2026-10-13), and stays so
+/// saved configs keep reading.
 pub const DEFAULTS_MARK: &str = "// bind defaults: cs";
 
 pub fn commands(app: &mut App) {
@@ -540,15 +520,6 @@ pub fn commands(app: &mut App) {
             .submit(format!("bugreport {}", note.join(" ")).trim_end().to_string());
         Ok(None)
     });
-    // CS:S's number keys 6-9 and 0: no weapon slot there; the menus read
-    // the number keys themselves.
-    for n in 6..=10 {
-        app.console_command(
-            &format!("slot{n}"),
-            "Weapon slot (CS:S has no weapons there: does nothing; menus take the number keys).",
-            |_, _| Ok(None),
-        );
-    }
 }
 
 /// For tests of systems that read binds: the mouse's buttons and `game`'s
@@ -559,68 +530,6 @@ pub fn test_binds(app: &mut App, game: &GameInfo) {
     use_game_defaults(game.default_binds);
     bind_defaults(&mut app.world_mut().resource_mut::<Console>().binds, true);
 }
-
-/// CS:S's `cfg/config_default.cfg` as it reads (its bind lines; the
-/// file itself is the install's and never in the repo), for tests here
-/// and the game's own (its built-in table must match it).
-pub const SAMPLE_CONFIG_DEFAULT: &str = r#"// first run
-unbindall
-
-bind "ESCAPE" "cancelselect"
-bind "`" "toggleconsole"
-
-bind "TAB" "+showscores"
-bind "SPACE" "+jump"
-bind "," "buyammo1"
-bind "." "buyammo2"
-bind "0" "slot10"
-bind "1" "slot1"
-bind "2" "slot2"
-bind "3" "slot3"
-bind "4" "slot4"
-bind "5" "slot5"
-bind "6" "slot6"
-bind "7" "slot7"
-bind "8" "slot8"
-bind "9" "slot9"
-bind "a" "+moveleft"
-bind "b" "buymenu"
-bind "c" "radio3"
-bind "d" "+moveright"
-bind "e" "+use"
-bind "f" "impulse 100"
-bind "g" "drop"
-bind "h" "commandmenu"
-bind "i" "showbriefing"
-bind "j" "cheer"
-bind "k" "+voicerecord"
-bind "m" "chooseteam"
-bind "n" "nightvision"
-bind "o" "buyequip"
-bind "q" "lastinv"
-bind "r" "+reload"
-bind "s" "+back"
-bind "t" "impulse 201"
-bind "u" "messagemode2"
-bind "w" "+forward"
-bind "x" "radio2"
-bind "y" "messagemode"
-bind "z" "radio1"
-bind "CTRL" "+duck"
-bind "SHIFT" "+speed"
-bind "F1" "autobuy"
-bind "F2" "rebuy"
-bind "F4" "bug"
-bind "F5" "jpeg"
-bind "F6" "save quick"
-bind "F7" "load quick"
-bind "F10" "quit prompt"
-bind "MWHEELDOWN" "invnext"
-bind "MWHEELUP" "invprev"
-bind "MOUSE1" "+attack"
-bind "MOUSE2" "+attack2"
-bind "PAUSE" "pause"
-"#;
 
 #[cfg(test)]
 mod tests {
@@ -634,14 +543,49 @@ mod tests {
         pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
+    /// A game's default binds file as it might read (CS:S's
+    /// `config_default.cfg` has this shape; its own test checks the real
+    /// table, games/cs_source/src/ui/mod.rs).
+    const SAMPLE_DEFAULTS_CFG: &str = r#"// first run
+unbindall
+
+bind "ESCAPE" "cancelselect"
+bind "`" "toggleconsole"
+
+bind "TAB" "+showscores"
+bind "SPACE" "+jump"
+bind "a" "+moveleft"
+bind "d" "+moveright"
+bind "s" "+back"
+bind "w" "+forward"
+bind "F1" "autobuy"
+bind "F2" "rebuy"
+bind "MWHEELDOWN" "invnext"
+bind "MWHEELUP" "invprev"
+bind "MOUSE1" "+attack"
+"#;
+
+    /// The sample game's defaults before its current ones.
+    const SAMPLE_OLD: &[(&str, &str)] = &[
+        ("w", "+forward"),
+        ("s", "+back"),
+        ("a", "+moveleft"),
+        ("d", "+moveright"),
+        ("space", "+jump"),
+        ("tab", "+showscores"),
+        ("alt", "+freelook"),
+        ("v", "noclip"),
+        ("f9", "bug"),
+    ];
+
     /// The sample file's binds as the game's defaults (every test that
     /// reads `default_binds` sets the same, so tests in parallel agree).
     fn sample_defaults() -> Vec<(String, String)> {
-        let read = cfg_binds(SAMPLE_CONFIG_DEFAULT);
+        let read = cfg_binds(SAMPLE_DEFAULTS_CFG);
         set_game_defaults(read.clone());
+        set_old_defaults(SAMPLE_OLD);
         read
     }
-
 
     #[test]
     fn defaults_are_config_default_cfgs_binds() {
@@ -653,7 +597,7 @@ mod tests {
         let defaults = defaults_from(&read);
         assert_eq!(&defaults[..read.len()], &read[..]);
         for (k, c) in CHIMERA_BINDS {
-            assert!(!read.iter().any(|(rk, _)| rk == k), "{k} is CS:S's");
+            assert!(!read.iter().any(|(rk, _)| rk == k), "{k} is the game's");
             assert!(defaults.contains(&(k.to_string(), c.to_string())));
         }
         // A file binding one of Chimera's keys keeps it.
@@ -680,7 +624,7 @@ mod tests {
         keys.sort();
         keys.dedup();
         assert_eq!(keys.len(), d.len());
-        // The debug keys moved off CS:S's: F1, F2 and the wheel are its.
+        // The debug keys stay off the game's: F1, F2 and the wheel are its.
         assert!(d.contains(&("f1".into(), "autobuy".into())));
         assert!(d.contains(&("f2".into(), "rebuy".into())));
         assert!(d.contains(&("mwheelup".into(), "invprev".into())));
@@ -693,7 +637,8 @@ mod tests {
 
     #[test]
     fn added_defaults_reach_old_configs_on_free_keys() {
-        // A config listing every bind, from before the defaults were CS:S's.
+        // A config listing every bind, from before the game's defaults
+        // changed.
         sample_defaults();
         let mut b = binds(&[("w", "+forward"), ("f2", "debugui"), ("mwheelup", "+jump")]);
         bind_added_defaults(&mut b);

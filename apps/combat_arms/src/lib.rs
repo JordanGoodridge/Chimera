@@ -6,20 +6,32 @@
 //! hooks (`client_hooks`) and Combat Arms' HUD in its place
 //! (`combat_arms::ui::with_hud`).
 //!
+//! `VERSION` and `BUILD`: this build's version and commit, stamped by
+//! build.rs (the script every app shares, chimera/core/build_stamp.rs);
+//! main.rs inserts `core::BuildVersion`, the hooks carry the commit.
+//!
 //! Known shortcuts: no map but the greybox loads (Combat Arms' maps wait
 //! for its loader); the shell keeps its config (binds, cvars) in the same
-//! folder as the CS:S app's (`console::cfg_dir`); the build carries no
-//! version stamp (`core::BuildVersion`, CS:S's app's build.rs).
+//! folder as the CS:S app's (`console::cfg_dir`).
 
 use bevy::prelude::*;
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
 use chimera_world::{greybox, map::MapData};
 
-/// What this app tells the client shell: no map loads but the greybox
-/// (Combat Arms' maps wait for its loader), and the greybox's own hooks.
+/// This build's version (`version` command, bug reports): see
+/// `version::format_version`; stamped by build.rs.
+pub const VERSION: &str = env!("CHIMERA_VERSION");
+
+/// This build's commit (`git describe`: client hooks, bug reports);
+/// stamped by build.rs.
+pub const BUILD: &str = env!("CHIMERA_GIT");
+
+/// What this app tells the client shell: its commit, no map but the
+/// greybox (Combat Arms' maps wait for its loader), and the greybox's own
+/// hooks.
 pub fn client_hooks() -> AppHooks {
     AppHooks {
-        build: "",
+        build: BUILD,
         load_map: load_map,
         load_map_file: |id, _, _| Err(no_maps(id)),
         map_file_bytes: |_| None,
@@ -52,5 +64,65 @@ impl Plugin for ClientPlugin {
             }
             .build(),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_build_is_stamped() {
+        // build.rs ran: a commit and a version (or "unknown" without git),
+        // which the shell's hooks carry.
+        assert!(!super::BUILD.is_empty() && !super::VERSION.is_empty());
+        assert_eq!(super::client_hooks().build, super::BUILD);
+    }
+
+    /// The wheel's `invnext` / `invprev` switch weapons through the
+    /// shell's selection, which Combat Arms' front end uses (no HUD row:
+    /// each step switches at once).
+    #[test]
+    fn the_wheel_steps_through_the_weapons() {
+        use bevy::prelude::*;
+        use chimera_client::client::weapon_menu::{WeaponMenu, WeaponMenuPlugin};
+        use chimera_core::{console::Console, core::LocalPlayer};
+        use chimera_sim::weapon::{Inventory, Weapon};
+        use chimera_world::{
+            greybox::{self, GreyboxMapPlugin},
+            harness::Sim,
+        };
+        use combat_arms::{
+            game::{movement, weapons},
+            harness::CaSim,
+        };
+
+        let mut sim = Sim::with(CaSim, |app| {
+            app.init_resource::<ButtonInput<KeyCode>>()
+                .init_resource::<ButtonInput<MouseButton>>()
+                .add_plugins((GreyboxMapPlugin, WeaponMenuPlugin));
+        });
+        let p = sim.spawn_character(greybox::SPAWNS[0], movement::ID);
+        sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+        sim.seconds(0.5);
+        let active = |sim: &Sim| {
+            let w = sim.app.world();
+            w.get::<Weapon>(w.get::<Inventory>(p).unwrap().active.unwrap()).unwrap().id
+        };
+        assert_eq!(active(&sim), weapons::RIFLE);
+        // A command, then the selection's pick passed to the intent (as
+        // the local input does) until the switch is done.
+        let command = |sim: &mut Sim, line: &str| {
+            sim.app.world_mut().resource_mut::<Console>().submit(line);
+            for _ in 0..90 {
+                sim.ticks(1);
+                let pick = sim.app.world().resource::<WeaponMenu>().selected_slot();
+                sim.intent(p).select = pick;
+            }
+        };
+        command(&mut sim, "invnext");
+        assert_eq!(active(&sim), weapons::KNIFE);
+        command(&mut sim, "invprev");
+        assert_eq!(active(&sim), weapons::RIFLE);
+        command(&mut sim, "invprev");
+        assert_eq!(active(&sim), weapons::KNIFE, "wraps");
     }
 }

@@ -2466,6 +2466,7 @@ mod tests {
             import_map: |_| Err("no".into()),
             default_binds_cfg: "cfg/config_default.cfg",
             default_binds: &[],
+            old_default_binds: &[],
             movement_cvars: &[],
         };
         let target = |name: &str| map_target(Some(&GAME), name);

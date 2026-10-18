@@ -76,13 +76,14 @@ fn main() {
             render::detail::DetailMaterialPlugin,
         ))
         .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL))
+        // This build's version (`version`, bug reports; build.rs).
+        .insert_resource(chimera_core::core::BuildVersion(combat_arms_app::VERSION))
         // Network play: a listen server, or a client (`connect`).
         .add_plugins(chimera_net::net::NetPlugin)
         // The client shell with Combat Arms' HUD, then its other looks.
         .add_plugins(ClientPlugin { args })
         .add_plugins(combat_arms::ui::CaUiPlugin);
-    if chimera_core::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi") {
-        chimera_world::harness::single_threaded_schedules(&mut app);
-    }
-    app.run();
+    // The executors, `CHIMERA_SYSTEM_DUMP`, then the game, as every app
+    // (`client::app::run`).
+    chimera_client::client::app::run(app);
 }
