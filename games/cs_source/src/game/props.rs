@@ -889,6 +889,7 @@ fn load_collision(materials: &mut MaterialLoader, path: &str) -> Option<MapColli
         damping: phy.damping,
         rotdamping: phy.rotdamping,
         inertia: phy.inertia,
+        unit_inertia: Some(phy.unit_inertia),
         surfaceprop: phy.surfaceprop,
     })
 }
@@ -946,6 +947,9 @@ fn body(
         elasticity: surface.elasticity,
         damping: c.damping,
         rotdamping: c.rotdamping,
+        // vphysics: the stored inertia per kg times the mass and the
+        // solid's `inertia` key (physics_props.md Q1, measured).
+        inertia: c.unit_inertia.map(|i| i * mass * c.inertia.max(0.01)),
         push,
         frozen,
         asleep: prop.spawnflags & START_ASLEEP != 0,
@@ -1164,12 +1168,17 @@ fn entity_props(bsp: &Bsp) -> Vec<PropPlacement> {
             }
             let [x, y, z] = parse(e.prop("origin")?)?;
             let [pitch, yaw, roll] = e.prop("angles").and_then(parse).unwrap_or([0.0; 3]);
-            // prop_dynamic: solid 0 = not solid, otherwise the physics model.
+            // prop_dynamic: solid 0 = not solid, 2 = its bounds as a box
+            // turned with it (traces measured 2026-10-18, physics_props.md
+            // Q9), otherwise the physics model.
+            let solid_key = e.prop("solid").map(str::trim);
             let solid = if ragdoll {
                 // Its parts are bodies of their own when its model has a
                 // ragdoll (`map::ragdoll::PlacedRagdoll`).
                 PropSolid::None
-            } else if physics || door || e.prop("solid").is_none_or(|s| s.trim() != "0") {
+            } else if !physics && !door && solid_key == Some("2") {
+                PropSolid::Box
+            } else if physics || door || solid_key != Some("0") {
                 PropSolid::Mesh
             } else {
                 PropSolid::None
@@ -1497,12 +1506,16 @@ fn place_props(
         // visuals only rely on it: surf_nebula's Propper ramp models ship
         // no collision model and sit on player-clip ramps that are the
         // real surface (their meshes as colliders stopped surfers dead).
+        // A prop_dynamic with solid 6 (the default) does the same: traces
+        // pass through one whose model has none (physics_props.md Q10,
+        // measured 2026-10-18; with solid 2 its rotated box stops them).
         let mut solid = prop.solid;
         if data.models[model].collision.is_none() {
             match prop.class.as_deref() {
                 Some("prop_physics_multiplayer") => continue,
                 Some(c) if c.starts_with("prop_physics") => solid = PropSolid::None,
                 None if solid == PropSolid::Mesh => solid = PropSolid::None,
+                Some(c) if c.starts_with("prop_dynamic") && solid == PropSolid::Mesh => solid = PropSolid::None,
                 _ => {}
             }
         }

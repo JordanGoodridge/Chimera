@@ -1681,6 +1681,10 @@ fn sync_controls(world: &mut World, logic: &Logic) {
                     speed: speed.to_radians(),
                     spinup,
                 },
+                L::Slide { axis, speed } => ControlKind::Slide {
+                    axis: entity_to_engine(axis, 1.0).normalize_or_zero(),
+                    speed: speed * s,
+                },
             };
             Some(BodyController {
                 key: (c.id.generation as u64) << 32 | c.id.index as u64,
@@ -2367,9 +2371,12 @@ const PLAYER_MASS: f32 = 85.0;
 /// prop's mass (kg): (mass, first, second). Fitted to the landings: a
 /// 30 kg crate at 576, 848 and 1233 in/s hurt the player 5 + 5, 5 + 10 and
 /// 10 + 20 (shares 0.31-0.35, then 0.43-0.52); a 500 kg cupboard at 259
-/// to 1522 in/s 5 + 50 up to 500 + 500 (0.262-0.274, then 0.62-0.73).
+/// to 1522 in/s 5 + 50 up to 500 + 500 (0.262-0.274, then 0.62-0.73;
+/// 0.276 since props feel air drag, which slows the cupboard about
+/// 0.6 in/s before it lands at 100 in/s and took its first share under
+/// the 10-point band).
 /// Between and beyond, by the logarithm of the mass, clamped.
-const PLAYER_CONTACT_SHARES: [(f32, [f32; 2]); 2] = [(30.0, [0.335, 0.48]), (500.0, [0.272, 0.67])];
+const PLAYER_CONTACT_SHARES: [(f32, [f32; 2]); 2] = [(30.0, [0.335, 0.48]), (500.0, [0.276, 0.67])];
 
 /// `PLAYER_CONTACT_SHARES` for a prop of `mass` kg.
 fn player_contact_shares(mass: f32) -> [f32; 2] {

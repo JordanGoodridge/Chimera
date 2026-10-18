@@ -296,6 +296,7 @@ fn thruster_pushes_a_physbox() {
             elasticity: 0.0,
             damping: 0.0,
             rotdamping: 0.0,
+            inertia: None,
             push: PushAway::Collide,
             frozen: false,
             asleep: false,

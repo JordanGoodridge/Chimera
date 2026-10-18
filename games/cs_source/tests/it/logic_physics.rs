@@ -122,6 +122,7 @@ fn add_box_prop(data: &mut MapData, index: usize, at: Vec3, push: PushAway, asle
             elasticity: 0.0,
             damping: 0.0,
             rotdamping: 0.0,
+            inertia: None,
             push,
             frozen: false,
             asleep,
@@ -746,6 +747,130 @@ fn a_ball_socket_holds_a_crate_until_it_breaks() {
     sim.seconds(2.0);
     let z = crate_at(&mut sim).z;
     assert!(z < 20.0, "fell once broken: {z}");
+}
+
+/// phys_ragdollconstraint with every axis's min equal to its max holds its
+/// crate rigidly; with ±90 the crate swings about it (CS:S, measured
+/// 2026-10-18, physics_constraints.md Q7: shoved at 200 units/s, ±5 and
+/// ±35 units).
+#[test]
+fn a_ragdoll_constraint_with_equal_limits_is_locked() {
+    for (lo, hi, locked) in [("0", "0", true), ("-90", "90", false)] {
+        let box_ = entity(
+            &[("classname", "prop_physics"), ("targetname", "lamp"), ("origin", "0 0 200")],
+            Vec::new(),
+            false,
+        );
+        let joint = entity(
+            &[
+                ("classname", "phys_ragdollconstraint"),
+                ("origin", "0 0 240"),
+                ("attach1", "lamp"),
+                ("xmin", lo),
+                ("xmax", hi),
+                ("ymin", lo),
+                ("ymax", hi),
+                ("zmin", lo),
+                ("zmax", hi),
+            ],
+            Vec::new(),
+            false,
+        );
+        let mut data = map(vec![box_, joint]);
+        add_crate(&mut data, 0, Vec3::new(0.0, 0.0, 200.0));
+        let mut sim = sim(data);
+        sim.seconds(0.5);
+        let node = {
+            let world = sim.app.world_mut();
+            world.query::<(Entity, &PropEntity)>().iter(world).next().unwrap().0
+        };
+        sim.app.world_mut().get_mut::<LinearVelocity>(node).unwrap().0 = to_engine(Vec3::new(200.0, 0.0, 0.0));
+        let mut reach: f32 = 0.0;
+        for _ in 0..60 {
+            sim.ticks(1);
+            reach = reach.max(crate_at(&mut sim).x.abs());
+        }
+        if locked {
+            assert!(reach < 8.0, "held rigidly: swung {reach}");
+        } else {
+            assert!(reach > 15.0, "swings: {reach}");
+        }
+    }
+}
+
+/// Hinge and slider motors (CS:S, measured 2026-10-18,
+/// physics_constraints.md Q2): SetAngularVelocity 90 turns a crate
+/// hinged 20 units off its centre about a vertical axis at 90 deg/s,
+/// clockwise seen from above; SetVelocity 20 slides one at 100 units/s;
+/// 0 lets it coast.
+#[test]
+fn hinge_and_slider_motors_drive_their_crates() {
+    let box_ = entity(
+        &[("classname", "prop_physics"), ("targetname", "door"), ("origin", "0 0 200")],
+        Vec::new(),
+        false,
+    );
+    let hinge = entity(
+        &[
+            ("classname", "phys_hinge"),
+            ("targetname", "hinge"),
+            ("origin", "20 0 200"),
+            ("attach1", "door"),
+            ("hingeaxis", "20 0 300"),
+        ],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![box_, hinge]);
+    add_crate(&mut data, 0, Vec3::new(0.0, 0.0, 200.0));
+    let mut s1 = sim(data);
+    s1.seconds(1.0);
+    let angle = |p: Vec3| (p.y).atan2(p.x - 20.0).to_degrees();
+    let a0 = angle(crate_at(&mut s1));
+    s1.app
+        .world_mut()
+        .resource_mut::<Logic>()
+        .world
+        .queue_input("hinge", "SetAngularVelocity", Value::Float(90.0), 0.0, None);
+    s1.ticks(2);
+    let a1 = angle(crate_at(&mut s1));
+    s1.seconds(0.5);
+    let a2 = angle(crate_at(&mut s1));
+    assert!((a0.abs() - 180.0).abs() < 2.0, "starts on the -x side: {a0}");
+    let turned = (a2 - a1 + 540.0) % 360.0 - 180.0;
+    assert!((-50.0..-40.0).contains(&turned), "turned {turned} degrees in 0.5 s");
+
+    let box_ = entity(
+        &[("classname", "prop_physics"), ("targetname", "cart"), ("origin", "0 0 200")],
+        Vec::new(),
+        false,
+    );
+    let slider = entity(
+        &[
+            ("classname", "phys_slideconstraint"),
+            ("targetname", "rail"),
+            ("origin", "0 0 200"),
+            ("attach1", "cart"),
+            ("slideaxis", "100 0 200"),
+        ],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![box_, slider]);
+    add_crate(&mut data, 0, Vec3::new(0.0, 0.0, 200.0));
+    let mut sim = sim(data);
+    sim.seconds(1.0);
+    sim.app
+        .world_mut()
+        .resource_mut::<Logic>()
+        .world
+        .queue_input("rail", "SetVelocity", Value::Float(20.0), 0.0, None);
+    sim.ticks(4);
+    let x0 = crate_at(&mut sim).x;
+    sim.seconds(0.3);
+    let x1 = crate_at(&mut sim).x;
+    let speed = (x1 - x0) / 0.3;
+    assert!((90.0..110.0).contains(&speed), "slides at {speed} units/s");
 }
 
 /// A constraint naming an info_constraint_anchor holds the anchor's

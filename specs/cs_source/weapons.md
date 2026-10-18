@@ -1436,6 +1436,13 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   up like the USP; the G3SG1 kicks up 0.75 + random 0..1.0 and the SG 550
   0.75 + random 0..0.5, both sideways random ±0.75 (no steps, no caps
   reached); the M3 a whole 4-6 degrees up, the XM1014 a whole 3-5.
+- Scoped and burst (2026-10-18, attack2 then presses at the refire): the
+  AWP and scout zoomed (fov 40) kick 2.0 straight up as unzoomed; the
+  SG550 and G3SG1 zoomed kick as unzoomed (0.90-1.24 and 1.09-1.68 up,
+  random sideways). A FAMAS burst (mode 1, rounds 5 ticks apart) kicks
+  on its **first round only** (0.625 up, 0.375 aside standing; 0.575 and
+  0.325 crouched); the second and third add nothing, the punch decaying
+  to 0 meanwhile. The Glock's burst: no punch, as its single shots.
 - Bullets follow view + 2 × punch for the M4A1 as for the AK-47 (residuals
   inside the cone with 2×, up to 2.3° outside with 1×).
 
@@ -1459,7 +1466,12 @@ shots at a wall while side-stepping at 95, 140, 180 and 250 (120 each).
 - Airborne after a jump the AK-47's `I` falls by 0.96752 per tick toward
   0.0069 (fits 44 ticks to 1e-5; = Crouch value, time to 10 % 1.046 s =
   3 × RecoveryTimeCrouch), but a bot falling without a jump stays at the
-  Stand value; not resolved.
+  Stand value; not resolved. Found 2026-10-18: the probe bot's jumps duck
+  it (FL_DUCKING and the 45-unit hull from the jump tick to about 46
+  ticks later, with no duck button in its commands: the bot's own
+  jump-crouch), so the crouched target is its duck state; a human's
+  unducked jump is unmeasured (needs a human, or a bot that doesn't
+  crouch-jump).
 - Movement term, USP (max speed 250): extra cone 0.0019 at 95.4, 0.0068
   at 140, 0.0112 at 180, 0.0182 at 250 (`InaccuracyMove` 0.01724): the
   AK-47's `Move × clamp((v − vmax/3)/(2 vmax/3), 0, 1)` within the error
@@ -1580,8 +1592,9 @@ inaccuracy target.
   *Resolved for the AK-47 standing/crouched (measured section, M3): linear
   decay rule, kick formula, aim = view + 2 × punch. M4A1, pistols, AWP and
   the AK-47's moving/airborne sets in "M3 Recoil (more weapons, moving,
-  airborne)" (Glock: no punch). Other automatics, scoped/silenced/burst
-  modes not measured.*
+  airborne)" (Glock: no punch). Other automatics measured 2026-10-15;
+  scoped and burst modes 2026-10-18 (same section); silenced modes not
+  measured (the bot's AI takes the silencer off).*
 - **Q4 Fire timing rule** ("set" vs. "accumulate"): M4. *Resolved (measured
   section, M4): accumulate while held (one shot per tick max), set on a
   fresh press; the tick table above applies to tapping only.*

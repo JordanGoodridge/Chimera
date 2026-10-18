@@ -51,6 +51,9 @@ pub enum ControlKind {
     /// phys_motor: spin about `axis` (world, unit) at `speed` rad/s,
     /// reached over `spinup` seconds.
     Motor { axis: Vec3, speed: f32, spinup: f32 },
+    /// A slider's motor: move along `axis` (world, unit) at `speed` m/s,
+    /// at once.
+    Slide { axis: Vec3, speed: f32 },
 }
 
 /// What a joint holds (`BodyJoint`).
@@ -292,6 +295,7 @@ fn apply(
             }
             ControlKind::Upright { goal, limit } => (Vec3::ZERO, upright_change(rotation, w.0, *goal, *limit, h)),
             ControlKind::Motor { axis, speed, spinup } => (Vec3::ZERO, motor_change(w.0, *axis, *speed, *spinup, h)),
+            ControlKind::Slide { axis, speed } => (*axis * (*speed - v.0.dot(*axis)), Vec3::ZERO),
         };
         if dv == Vec3::ZERO && dw == Vec3::ZERO {
             continue;

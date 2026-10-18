@@ -108,10 +108,13 @@ fn map() -> MapData {
         casts_shadow: true,
         physics: Some(MapPhysics {
             mass: 20.0,
-            friction: 0.0,
+            // A surface's (0 would let it skate and turn on the floor
+            // forever: friction multiplies the world's).
+            friction: 0.8,
             elasticity: 0.0,
             damping: 0.0,
             rotdamping: 0.0,
+            inertia: None,
             push: PushAway::Collide,
             frozen: false,
             asleep: false,

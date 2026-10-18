@@ -537,15 +537,15 @@ joints created from the bodies' poses at that moment) → first tick.
    with sv_gravity 800 (CS:S default). If it breaks near F/2.2 kg the limit
    is "weight in kg"; record the factor otherwise. Repeat for torquelimit
    with a phys_constraint weld and a known offset mass.
-2. **Motor units**: SetAngularVelocity in deg/s? Measure the steady
+2. **Answered (measured 2026-10-18, probe server, constraints spawned with `mashup_spawn`, the body's motion from `physics_debug_entity` and `mashup_htrack`):** a wood crate on a phys_hinge with a vertical axis (origin to `hingeaxis` pointing up) turned at exactly 90 deg/s after `SetAngularVelocity 90` (360 after 360), from the first tick, **clockwise seen from where the axis points** (the debug print: −90 about z); `SetAngularVelocity 0` switches the motor off and the crate coasts (90 → 82.5 deg/s over 1.5 s, angular drag only). A phys_slideconstraint's `SetVelocity v` moved the crate at **5 v units/s** (20 → 100, 100 → 500), whatever the `slideaxis` point's distance (10, 100, 200); 0 lets it coast. Was: **Motor units**: SetAngularVelocity in deg/s? Measure the steady
    rotation speed of a light door on a phys_hinge after
    SetAngularVelocity 90 (record yaw over 2 s with the server probe).
    Same for SetVelocity in units/s on a slider.
-3. **Hinge friction**: how much does hingefriction 1 slow a door swung at
+3. **Answered (measured 2026-10-18):** `hingefriction` 0, 1 and 10 gave the same coast down of a crate spinning at 90 deg/s once its motor was switched off (82.4-82.5 deg/s after 1.5 s): no effect measurable on a free hinge. Was: **Hinge friction**: how much does hingefriction 1 slow a door swung at
    a known speed? Probe: push with a phys_thruster for one tick, record
    the angular velocity decay. Also whether SetHingeFriction affects a
    running joint.
-4. **Spring law and units**: measure the oscillation period of a 10 kg
+4. **Answered (measured 2026-10-18):** a phys_spring from a body to a world point (`springaxis`), `length` 64, `damping` 0: force = `constant` × stretch in kg·units/s² per unit. The 10 kg plastic crate on constant 150 swung about 54 units of stretch (mg/k = 8000/150 = 53.3) with a period of 1.62 s (2π√(10/150) = 1.62); the 30 kg wood crate settled near 160 units of stretch (778 mean, predicted 776). Ours has no phys_spring. Was: **Spring law and units**: measure the oscillation period of a 10 kg
    box on a vertical phys_spring with constant 150, damping 0, natural
    length 64, to get the effective stiffness (period = 2π√(m/k)).
 5. **Answered (measured 2026-10-17):** yes: a crate hanging from a ball
@@ -554,14 +554,14 @@ joints created from the bodies' poses at that moment) → first tick.
    constraint goes. Was: **Body deleted while constrained**: does OnBreak fire? Weld a
    breakable prop to the world with an OnBreak output to a logic_relay
    that prints, then break the prop.
-6. **CS:S differences**: CS:S's server is its own build; confirm the
+6. **Answered (measured 2026-10-18):** yes: a ball socket whose `attach1` names nothing and `attach2` a crate (or the other way round) holds the crate to the world (it hung). Was: **CS:S differences**: CS:S's server is its own build; confirm the
    non-episodic world fallback (typo in attach1 still pins to the world)
    on a test map.
-7. **Ragdoll constraint limits with equal min and max**: locked or free?
+7. **Answered (measured 2026-10-18):** locked: a crate under a phys_ragdollconstraint with every limit 0, shoved at 200 units/s, moved ±5 units and stopped; with ±90 it swung ±35. Was: **Ragdoll constraint limits with equal min and max**: locked or free?
    Place one with all limits 0 between two boxes and push.
-8. **Pulley gear semantics**: verify that with gearratio 2 the second
+8. **Answered (measured 2026-10-18):** the 7.6 formula holds, but the second body moves **1/g** as far as the first, not g times: with gearratio 2, a 60 kg crate fell 198 units while the 30 kg one rose 100 and stopped at its pulley point (|A₀−W₀| + 2|A₁−W₁| = 100 + 2 × 100 at the start, 300 + 0 at the end). Ours has no phys_pulleyconstraint. Was: **Pulley gear semantics**: verify that with gearratio 2 the second
    body rises 2 units per unit the first falls (watch both bodies).
-9. **Break on a never-created joint** (flag 16 + Break): crash, nothing,
+9. **Answered (measured 2026-10-18):** OnBreak fires and the constraint goes: a ball socket with flag 16, never turned on (its crate falling), sent Break, fired its OnBreak (it killed a marker prop), as one created does. Was: **Break on a never-created joint** (flag 16 + Break): crash, nothing,
    or OnBreak? Try on a listen server with developer 1.
 10. **Spawn tie order** for equal priority and depth: map order or not?
     Only matters for which of two same-name bodies is found first; check

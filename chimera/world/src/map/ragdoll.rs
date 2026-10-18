@@ -897,7 +897,7 @@ pub fn spawn_body(
             (
                 MaxLinearSpeed(MAX_LINEAR_SPEED),
                 MaxAngularSpeed(MAX_ANGULAR_SPEED),
-                Friction::new(body.friction),
+                Friction::new(body.friction).with_combine_rule(CoefficientCombine::Multiply),
                 Restitution::new(body.elasticity),
                 // Its own ragdoll's bodies too: `MapCollisionHooks`
                 // keeps the listed pairs.

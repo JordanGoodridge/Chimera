@@ -20,6 +20,11 @@ pub struct Phy {
     pub rotdamping: f32,
     /// Multiplier on the inertia tensor.
     pub inertia: f32,
+    /// The compact surface's rotational inertia per kilogram (m²) about its
+    /// principal axes, in IVP axis order (x, y down, z), which is also
+    /// Source's (x, z, y) and the engine's (x, y, z): vphysics gives a body
+    /// this times its mass (measured 2026-10-18, physics_props.md Q1).
+    pub unit_inertia: Vec3,
 }
 
 const PHY_HEADER: usize = 16;
@@ -71,6 +76,7 @@ pub fn parse(bytes: &[u8]) -> Result<Phy, String> {
     let index = params.get("index").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
     let section = *sections.get(index).ok_or("solid index out of range")?;
     let pieces = solid_pieces(bytes, section).ok_or("malformed solid")?;
+    let unit_inertia = solid_unit_inertia(bytes, section).ok_or("malformed solid")?;
     let num = |key: &str, default: f32| params.get(key).and_then(|v| v.parse().ok()).unwrap_or(default);
     Ok(Phy {
         pieces,
@@ -79,7 +85,18 @@ pub fn parse(bytes: &[u8]) -> Result<Phy, String> {
         damping: num("damping", 0.1),
         rotdamping: num("rotdamping", 0.1),
         inertia: num("inertia", 1.0),
+        unit_inertia,
     })
+}
+
+/// The compact surface's stored inertia per kilogram (header offset 12).
+fn solid_unit_inertia(b: &[u8], section: usize) -> Option<Vec3> {
+    let surface = if b.get(section + 4..section + 8)? == b"VPHY" {
+        section + 4 + VPHY_HEADER
+    } else {
+        section + 4
+    };
+    Some(Vec3::new(f32_at(b, surface + 12)?, f32_at(b, surface + 16)?, f32_at(b, surface + 20)?).abs())
 }
 
 /// A solid section's convex pieces: the leaves of its piece tree.
