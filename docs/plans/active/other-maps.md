@@ -8,7 +8,8 @@ the rest.
 How to check:
 
 - Load warnings for every stock map: `cargo test --features dev --test
-  it all_stock_maps_warnings -- --ignored --nocapture`.
+  it all_stock_maps_warnings -- --ignored --nocapture`, or `mapsweep
+  --stock` (with `--audit`: entities, I/O, doors and triggers too).
 - Views: `tools/refcmp/{de_aztec,cs_office,de_nuke}.toml` (the maps'
   intermission cameras, first T/CT spawns, bomb/rescue zones four ways;
   cs_office adds hostage rooms and a window). Ours: `cargo run --features
@@ -16,7 +17,8 @@ How to check:
   reference game is shared: ask the coordinating session before capturing
   it (`capture-ref`).
 - `games/cs_source/tests/it/heavy/map_stock.rs` holds a test per fix, and ignored debug aids:
-  `props_near` (props and their light near a point), `dark_textures`
+  `props_near` (props and their light near a point), `dark_props`
+  (props whose baked light is near black from every side), `dark_textures`
   (near-black textures, mips, mod2x details), `pick` (which surface a
   `--views` pixel shows).
 
@@ -38,6 +40,7 @@ How to check:
 | 12 | Black blocks over building walls | cs_office (street, garage), de_nuke | office cam0, left | Additive security-light decals (`decals/offseclight`) drawn opaque | Fixed with 5 |
 | 13 | View model drawn in `--views` captures | all | | No `r_drawviewmodel` equivalent; capture hides nothing | Open (client) |
 | 15 | Switchable lights that start on missing (office projector, assault red lights) | cs_office, cs_assault | office h1 room | Only lightmap style 0 was read | Fixed: styles lit at map start are summed |
+| 16 | 3D skybox props unlit by the sun (cooling towers teal where CS:S's are light grey) | de_nuke (and any static prop in a 3D skybox with the map above it) | nuke cam16, cam6 | A sun ray ran 500 m: past the skybox's own sky, into the map's underside | Fixed: it ends at the first sky brush (`ambient::Occluders::with_sky`); nuke cam16 0.041 -> 0.032, cam6 0.042 -> 0.036, cam2 0.025 -> 0.017; office and aztec unchanged |
 | 14 | `--views` crashed (wgpu: attachments of different sizes) | all | | The view-model camera stayed on the window when `--views` retargeted the main camera | Fixed: follows the anchor camera's target |
 
 Z-fighting: none found on cs_office, de_nuke or de_aztec. Method: each

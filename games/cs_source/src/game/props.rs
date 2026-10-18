@@ -2131,8 +2131,14 @@ pub fn probe_with(
                     (*position - point).normalize_or_zero()
                 }
             };
-            let (value, to, dist) = ambient::direct(l, point, to)?;
+            let (value, to, mut dist) = ambient::direct(l, point, to)?;
             let start = point + to * (2.0 * METERS_PER_UNIT);
+            // The sun: up to the sky it shines from.
+            if matches!(l, ambient::WorldLight::Sky { .. })
+                && let Some(d) = occluders.sky_distance(start, to)
+            {
+                dist = d;
+            }
             (value.max_element() > 0.002 && !occluders.blocked(start, to, dist)).then_some((to, value))
         })
         .collect();
@@ -2207,6 +2213,38 @@ mod probe_tests {
             ]);
         }
         (lighting, Occluders::new(&[corners], (&[], &[])))
+    }
+
+    /// A slab of brush from y0 to y1 m, 40 m across.
+    fn slab(y0: f32, y1: f32) -> Vec<[f32; 3]> {
+        (0..8)
+            .map(|k| {
+                [
+                    if k & 1 == 0 { -20.0 } else { 20.0 },
+                    if k & 2 == 0 { y0 } else { y1 },
+                    if k & 4 == 0 { -20.0 } else { 20.0 },
+                ]
+            })
+            .collect()
+    }
+
+    /// The sun reaches what sees the sky toward it: a ray ends at the
+    /// first sky brush. The 3D skybox's props see their own sky, with the
+    /// map (its underside) far above it: de_nuke's cooling towers.
+    #[test]
+    fn the_sun_ray_ends_at_the_sky() {
+        let (lighting, _) = scene();
+        let ambient = |_: Vec3| ambient::AmbientCube([Vec3::splat(0.1); 6]);
+        // The skybox's sky 10 m up, the map's floor 50 m up.
+        let map_above = Occluders::new(&[slab(50.0, 51.0)], (&[], &[]));
+        let blind = probe_with(&ambient, &lighting, &map_above, Vec3::ZERO);
+        assert!(blind.lights.is_empty(), "without the sky the map above shades it: {blind:?}");
+        let with_sky = Occluders::new(&[slab(50.0, 51.0)], (&[], &[])).with_sky(&[slab(10.0, 11.0)]);
+        let lit = probe_with(&ambient, &lighting, &with_sky, Vec3::ZERO);
+        assert_eq!(lit.lights.len(), 1, "{lit:?}");
+        // Something under the sky still shades it.
+        let roofed = Occluders::new(&[slab(5.0, 6.0), slab(50.0, 51.0)], (&[], &[])).with_sky(&[slab(10.0, 11.0)]);
+        assert!(probe_with(&ambient, &lighting, &roofed, Vec3::ZERO).lights.is_empty());
     }
 
     /// The documented reading for maps without baked per-vertex light

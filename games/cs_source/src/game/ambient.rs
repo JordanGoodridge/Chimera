@@ -404,6 +404,9 @@ pub struct Occluders {
     /// map with 261k terrain triangles and 935 lights took 30 s and more
     /// to light its props when every ray tried them all).
     grid: TerrainGrid,
+    /// The sky's brushes (one compound): a ray toward the sun ends at the
+    /// first one it meets (`sky_distance`).
+    sky: Option<avian3d::prelude::Collider>,
 }
 
 /// Triangles binned on a horizontal grid (engine x and z).
@@ -533,7 +536,32 @@ impl Occluders {
             colliders,
             terrain,
             grid,
+            sky: None,
         }
+    }
+
+    /// With the sky's brushes (`bsp::sky_hulls`), where sun rays end.
+    pub fn with_sky(mut self, hulls: &[Vec<[f32; 3]>]) -> Self {
+        use avian3d::prelude::Collider;
+        let parts: Vec<_> = hulls
+            .iter()
+            .filter_map(|h| Collider::convex_hull(h.iter().map(|p| Vec3::from(*p)).collect()))
+            .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
+            .collect();
+        self.sky = (!parts.is_empty()).then(|| Collider::compound(parts));
+        self
+    }
+
+    /// How far a ray from `p` along `dir` goes before it meets the sky
+    /// (meters), if it does within the map's extent. The sun lights what
+    /// sees the sky toward it: a ray from the 3D skybox ends at the
+    /// skybox's own sky, not at the map far above it (de_nuke's cooling
+    /// towers were unlit, their sun ray blocked by the map's underside).
+    pub fn sky_distance(&self, p: Vec3, dir: Vec3) -> Option<f32> {
+        self.sky
+            .as_ref()?
+            .cast_ray(Vec3::ZERO, Quat::IDENTITY, p, dir, 500.0, false)
+            .map(|(t, _)| t)
     }
 
     /// Whether anything blocks the segment from `p` along `dir` for `max`

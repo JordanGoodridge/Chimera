@@ -578,6 +578,54 @@ fn props_near() {
     }
 }
 
+/// de_nuke's cooling towers (static props in the 3D skybox, no baked
+/// per-vertex light) take the sun: its ray ends at the skybox's own sky,
+/// not at the map far above (they were teal, lit by the sky's blue ambient
+/// alone, where CS:S shows them light grey: refcmp `cam16`).
+#[test]
+fn skybox_props_see_the_sun() {
+    let Some(map) = load("de_nuke") else { return };
+    let towers: Vec<_> = map
+        .props
+        .iter()
+        .filter(|p| p.skybox && map.models[p.model].meshes.iter().any(|m| m.material.contains("coolingtower")))
+        .collect();
+    assert_eq!(towers.len(), 2);
+    for t in towers {
+        let lights = t.lighting.as_ref().map_or(0, |l| l.lights.len());
+        assert!(lights >= 1, "a cooling tower without the sun: {:?}", t.lighting);
+    }
+}
+
+/// Debug aid: `cargo test ... --ignored dark_props -- --nocapture` lists,
+/// per stock map (or `MAP`), the props whose baked light is nearly black
+/// from every side (a lighting origin in solid, or a missing sample):
+/// Source position, first material, brightest side.
+#[test]
+#[ignore = "debug aid"]
+fn dark_props() {
+    let names: Vec<String> = match std::env::var("MAP") {
+        Ok(m) => vec![m],
+        Err(_) => STOCK.iter().map(|s| s.to_string()).collect(),
+    };
+    for name in names {
+        let Some(map) = load(&name) else { return };
+        let mut dark = 0;
+        for prop in map.props.iter().filter(|p| !p.skybox && p.vertex_light.is_none()) {
+            let Some(l) = &prop.lighting else { continue };
+            let axes = [bevy::math::Vec3::X, bevy::math::Vec3::NEG_X, bevy::math::Vec3::Y, bevy::math::Vec3::NEG_Y, bevy::math::Vec3::Z, bevy::math::Vec3::NEG_Z];
+            let max = axes.iter().map(|n| l.eval(*n).max_element()).fold(0.0, f32::max);
+            if max < 0.02 {
+                dark += 1;
+                let t = prop.translation / 0.0254;
+                let mat = map.models[prop.model].meshes.first().map_or("?", |m| m.material.as_str());
+                println!("{name} setpos {:.0} {:.0} {:.0}  {mat}  max {max:.4}", t.x, -t.z, t.y);
+            }
+        }
+        println!("== {name}: {dark} dark props of {}", map.props.len());
+    }
+}
+
 #[test]
 #[ignore = "slow: loads every stock map; run by hand for the catalog"]
 fn all_stock_maps_warnings() {
