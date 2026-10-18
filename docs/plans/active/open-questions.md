@@ -450,7 +450,7 @@ measured.
 | physics_props Q3: damping | speed falls about d a second (`v·(1 − d·dt)` fits) | avian's `v/(1 + d·dt)` | none (props ship 0) |
 | physics_props Q5: sleep | 0.4-0.55 s after the speed falls under about 1 unit/s | 1 s still | 0.5 s (`SETTLE_TIME`) |
 | physics_props Q7: push limit | 340 kg pushed (11 units/s), 360 not | 350 | none |
-| physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | 0.42 units (`prop_physics::CONTACT_GAP`; prop on prop 0.8) |
+| physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | none: a 0.42-unit collision margin (avian `CollisionMargin`) was tried and reverted: placed props on de_dust2 and stacked ones on de_port moved and fell |
 | physics_props Q10, Q9: prop_dynamic solids | no `.phy`: traces pass; solid 2: its box, turned with it | the visible mesh; solid 2 as 6 | as CS:S |
 | physics_props Q9: static props' solid 2 | the box along the world's axes around the turned bounds (de_dust's windows at yaw 120) | the bounds turned with the prop | the world box (`PropSolid::WorldBox`) |
 | physics_props Q12: the players' push | a 1000 kg·units/s kick every 7 ticks (0.105 s) | every tick | every 0.1 s (`pushaway::PUSH_INTERVAL`) |
