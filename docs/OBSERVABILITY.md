@@ -1194,6 +1194,7 @@ last `mashup_perf_log` line (needs a display).
 ```
 cargo run --features dev,tools --bin mapsweep                      # every cached map
 cargo run --features dev,tools --bin mapsweep -- --filter surf_,kz_ # some of them
+cargo run --features dev,tools --bin mapsweep -- --stock            # the install's own maps
 cargo run --features dev,tools --bin mapsweep -- --shots target/playtest/mashup --filter mg_
 cargo run --features dev,tools --bin mapsweep -- --audit           # plus the map logic audit
 ```

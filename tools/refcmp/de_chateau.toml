@@ -1,0 +1,38 @@
+# Views of de_chateau for spotting visual bugs (docs/plans/active/other-maps.md),
+# generated from its entities: intermission cameras, the first T and CT
+# spawns, and on cs_ maps the first hostages (one view each, turning 90
+# degrees from one to the next).
+# Source eye positions; angles are [pitch, yaw] in Source degrees.
+
+map = "de_chateau"
+camera = "cam1"
+
+[[view]]
+name = "cam0"
+position = [119, -258, 5]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam1"
+position = [1101, 463, 168]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam2"
+position = [2048, 1385, 305]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam3"
+position = [658, 969, 347]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "t_spawn"
+position = [1262, -853, -5]
+angles = [0.0, 45.0]
+
+[[view]]
+name = "ct_spawn"
+position = [1231, 2599, 108]
+angles = [0.0, 280.0]

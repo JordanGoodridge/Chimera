@@ -1,0 +1,18 @@
+# Views of de_piranesi for spotting visual bugs (docs/plans/active/other-maps.md),
+# generated from its entities: intermission cameras, the first T and CT
+# spawns, and on cs_ maps the first hostages (one view each, turning 90
+# degrees from one to the next).
+# Source eye positions; angles are [pitch, yaw] in Source degrees.
+
+map = "de_piranesi"
+camera = "point_viewcontrol"
+
+[[view]]
+name = "ct_spawn"
+position = [-2785, -209, 280]
+angles = [0.0, 45.0]
+
+[[view]]
+name = "t_spawn"
+position = [1968, 1568, 260]
+angles = [0.0, 270.0]

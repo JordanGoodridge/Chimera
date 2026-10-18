@@ -31,12 +31,13 @@ use cs_source_app::{
         classes::Class,
     },
     map::MapData,
-    mount::config::content_dir,
+    mount::config::{LocalConfig, content_dir},
 };
 
 const USAGE: &str = "\
 usage: mapsweep [options]
   --filter <text>    only maps whose name contains <text> (several: comma-separated)
+  --stock            the install's own maps (cstrike/maps) instead of the content cache
   --out <dir>        report folder (default: target/mapsweep)
   --secs <n>         seconds of map logic to run per map (default 10)
   --shots <exe>      also run <exe> (a mashup build, e.g. target/playtest/mashup) per map:
@@ -117,6 +118,8 @@ struct Args {
     shots: Option<PathBuf>,
     frames: u32,
     audit: bool,
+    /// --stock: the install's maps instead of the content cache.
+    stock: bool,
     /// --fire: inputs to send, then trace the logic (no sweep).
     fire: Vec<(String, String, Option<String>)>,
 }
@@ -129,6 +132,7 @@ fn parse() -> Result<Args, String> {
         shots: None,
         frames: 600,
         audit: false,
+        stock: false,
         fire: Vec::new(),
     };
     let mut it = std::env::args().skip(1);
@@ -141,6 +145,7 @@ fn parse() -> Result<Args, String> {
             "--shots" => a.shots = Some(PathBuf::from(value()?)),
             "--frames" => a.frames = value()?.parse().map_err(|_| "--frames: not a number")?,
             "--audit" => a.audit = true,
+            "--stock" => a.stock = true,
             "--fire" => {
                 let v = value()?;
                 let mut parts = v.splitn(3, ',');
@@ -440,8 +445,16 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let Some(dir) = content_dir(cs_source::GAME).map(|d| d.join("maps")) else {
-        eprintln!("no content folder");
+    let dir = if args.stock {
+        LocalConfig::load()
+            .ok()
+            .and_then(|c| c.game_path(cs_source::GAME))
+            .map(|p| p.join("cstrike").join("maps"))
+    } else {
+        content_dir(cs_source::GAME).map(|d| d.join("maps"))
+    };
+    let Some(dir) = dir else {
+        eprintln!("no content folder (or, with --stock, no CS:S install)");
         return ExitCode::FAILURE;
     };
     let mut maps: Vec<(String, PathBuf)> = fs::read_dir(&dir)

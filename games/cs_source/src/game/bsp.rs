@@ -236,10 +236,12 @@ pub fn load_level_bytes(mount: &Mount, name: &str, bytes: Vec<u8>, hdr_level: u8
         super::ambient::MapLighting::read_level(&bytes, hdr_lighting)
     };
     timer.lap("ambient lighting");
+    let raw_leaves = super::ambient::raw_leaves(&bytes);
     let occluders = super::ambient::Occluders::new(
-        &shadow_hulls(&bsp, &super::ambient::raw_leaves(&bytes)),
+        &shadow_hulls(&bsp, &raw_leaves),
         (&data.collision_positions, &data.collision_indices),
-    );
+    )
+    .with_sky(&sky_hulls(&bsp, &raw_leaves));
     timer.lap("occluders");
     // Detail props (grass, weeds): models as static props, sprites as
     // `MapDetailProps`.
@@ -1694,20 +1696,32 @@ pub fn entity_hulls(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<(usize, Vec<[f32; 3]>,
 pub fn shadow_hulls(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<Vec<[f32; 3]>> {
     brush_hulls_indexed(bsp, leaves)
         .into_iter()
-        .filter(|(i, _, _)| {
-            let b = &bsp.brushes[*i];
-            !bsp.brush_sides[b.brush_side as usize..(b.brush_side + b.num_brush_sides) as usize]
-                .iter()
-                .any(|side| {
-                    side.texture_info >= 0
-                        && bsp
-                            .texture_info(side.texture_info as usize)
-                            .is_some_and(|t| t.flags.intersects(TextureFlags::SKY | TextureFlags::SKY2D))
-                })
-                && b.flags.intersects(BrushFlags::SOLID)
-        })
+        .filter(|(i, _, _)| !has_sky_side(bsp, *i) && bsp.brushes[*i].flags.intersects(BrushFlags::SOLID))
         .map(|(_, h, _)| h)
         .collect()
+}
+
+/// The solid brushes with a sky side (the sky's walls, the 3D skybox's
+/// too): where a ray toward the sun ends (`ambient::Occluders::with_sky`).
+pub fn sky_hulls(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<Vec<[f32; 3]>> {
+    brush_hulls_indexed(bsp, leaves)
+        .into_iter()
+        .filter(|(i, _, _)| has_sky_side(bsp, *i) && bsp.brushes[*i].flags.intersects(BrushFlags::SOLID))
+        .map(|(_, h, _)| h)
+        .collect()
+}
+
+/// Whether brush `i` has a side textured with the sky (2D or 3D).
+fn has_sky_side(bsp: &Bsp, i: usize) -> bool {
+    let b = &bsp.brushes[i];
+    bsp.brush_sides[b.brush_side as usize..(b.brush_side + b.num_brush_sides) as usize]
+        .iter()
+        .any(|side| {
+            side.texture_info >= 0
+                && bsp
+                    .texture_info(side.texture_info as usize)
+                    .is_some_and(|t| t.flags.intersects(TextureFlags::SKY | TextureFlags::SKY2D))
+        })
 }
 
 /// `brush_hulls` with each hull's brush index (for diagnostics) and its

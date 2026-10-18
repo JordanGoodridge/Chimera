@@ -1,0 +1,38 @@
+# Views of de_prodigy for spotting visual bugs (docs/plans/active/other-maps.md),
+# generated from its entities: intermission cameras, the first T and CT
+# spawns, and on cs_ maps the first hostages (one view each, turning 90
+# degrees from one to the next).
+# Source eye positions; angles are [pitch, yaw] in Source degrees.
+
+map = "de_prodigy"
+camera = "cam1"
+
+[[view]]
+name = "t_spawn"
+position = [2558, 680, -316]
+angles = [0.0, 351.0]
+
+[[view]]
+name = "ct_spawn"
+position = [1592, -1412, -410]
+angles = [0.0, 297.0]
+
+[[view]]
+name = "cam0"
+position = [1703, -339, -236]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam1"
+position = [1816, -584, -368]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam2"
+position = [-144, -280, -128]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam3"
+position = [3120, -792, -392]
+angles = [0.0, 0.0]

@@ -20,9 +20,9 @@ Classes:
 5. **Answered, not marked**: the answer was already measured elsewhere;
    the spec or row is updated in the same commit as this list.
 
-Counts (2026-10-17, 297 rows; a row grouping several questions counts
+Counts (2026-10-18, 296 rows; a row grouping several questions counts
 each, a row naming two classes counts in both): class 1: 137, class 2:
-174, class 3: 56, class 4: 7, class 5: 25 (24 spec questions or parts and
+173, class 3: 56, class 4: 7, class 5: 25 (24 spec questions or parts and
 one parity row, fixed with this list). Part B below works through the
 class-1 items by player impact.
 
@@ -336,7 +336,6 @@ listen server); about 73 class-1 items left.
 | Prop light probes | 2, 3 | C28; the weighting is engine code |
 | 3D skybox haze, sky down face | 2 | C10, C20 |
 | 3D skybox fog distances | 2 | C10 |
-| Static props lit in the 3D skybox | 2 | C10 |
 | Blood decals on characters | 3 | a spec, then a client capture |
 | Motion blur option | 3 | a spec |
 | Breakables' damage types, broken-window drawing | 3 | breakables Q8 |
