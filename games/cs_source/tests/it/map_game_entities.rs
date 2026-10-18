@@ -217,6 +217,19 @@ fn conveyor_carries_whoever_stands_on_it() {
     let d = feet(&sim, p) - a;
     assert!((d.y - 1.5).abs() < 0.05 && d.x.abs() < 0.01, "{d}");
     assert!(sim.velocity(p).length() < 1e-3, "its own velocity stays 0");
+    // Carried off the end, stepping down 8 units to the floor: the tick
+    // after, the belt's push is the player's own velocity x 1.0075 less a
+    // tick's friction, 94.705 (measured 2026-10-18 on the probe, a
+    // spawned func_conveyor at 100 with its top 9 units up:
+    // game_entities.md 8).
+    let mut track = Vec::new();
+    for _ in 0..120 {
+        sim.ticks(1);
+        track.push((feet(&sim, p), to_source(sim.velocity(p)).y));
+    }
+    let k = track.iter().position(|t| t.1 > 1.0).expect("momentum off the belt");
+    assert!(track[k - 1].0.z < 0.5, "stepped down to the floor: {:?}", &track[k - 2..=k]);
+    assert!((track[k].1 - 94.705).abs() < 0.05, "momentum {}", track[k].1);
 }
 
 #[test]

@@ -306,6 +306,14 @@ turns the leftover base velocity into real velocity × (1 + dt/2) on the
 first command where it is not refreshed. Other walking/stepping entities
 whose ground entity is the conveyor get the same base velocity.
 
+Measured 2026-10-18 (probe server, de_nuke, a spawned func_conveyor of
+brush *89 at speed 100, its top 9 units over the floor, the bot standing
+on it): carried 1.5 units every tick from the first, its own velocity 0;
+stepping down off the end (still carried that tick) its velocity was
+94.705 on the next (100 × 1.0075 less a tick's friction), as trigger_push.
+With the belt's top level with the floor the bot stood on the world and
+wasn't carried. As ours.
+
 **Texture scroll.** Materials with the "ConveyorScroll" proxy on a
 func_conveyor scroll their texture transform along the texture's s axis
 (t offset 0), at |speed|/128 texture widths per second:

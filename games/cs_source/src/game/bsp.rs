@@ -1611,7 +1611,7 @@ pub fn brush_hulls(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<Vec<[f32; 3]>> {
 /// Whether a brush with these contents lets light through: glass or a
 /// grate (window or grate contents) that isn't solid too. A flash's line
 /// passes them (measured 2026-10-18, grenades.md Q12: de_nuke's glass
-/// and its window-contents vents; grates assumed alike).
+/// and its window-contents vents, and its grate catwalk).
 fn see_through(flags: BrushFlags) -> bool {
     flags.intersects(BrushFlags::WINDOW.union(BrushFlags::GRATE)) && !flags.contains(BrushFlags::SOLID)
 }

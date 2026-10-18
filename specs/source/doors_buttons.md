@@ -618,12 +618,15 @@ dt = 0.015. Brush sizes are the model bounding box.
    straight ahead and at foot level 30 ahead; note which register.
 2. **Use deny sound in CS:S**: which, if any, sound plays when pressing use
    on nothing? Listen on the reference client.
-3. **Windows answered (measured 2026-10-18, probe server, de_nuke):** a
+3. **Answered (measured 2026-10-18, probe server, de_nuke):** a
    spawned func_button (brush *89 turned upright, 4 units thick) just
    behind the reactor door's glass (func_breakable, window contents), the
    bot's eye 39 units from it: +use didn't press it; the same button and
    distance in the open did. As ours (glass is a solid the use trace
-   meets first). Grates not tried. Was: **Use trace mask**: does +use go through grates/windows in CS:S (the
+   meets first). Grates too (the same day: the bot on de_nuke's grate
+   catwalk looking straight down at a button 19 units under its feet
+   didn't press it; the same button beside the catwalk, the line passing
+   its edge, was pressed). Was: **Use trace mask**: does +use go through grates/windows in CS:S (the
    CS:S mask is "brush-only NPC solid plus opaque-and-NPC")?
 4. **Answered (measured 2026-10-18, probe server, de_nuke, a spawned
    func_door (brush *89, 62x66x4) rising at 100 units/s with the bot

@@ -933,7 +933,18 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     planted bomb, hostages)?
 13. **Q13 `info_bomb_target` / `info_hostage_rescue` radius.** Unused by
     stock maps; check with a custom map only if a community map needs it.
-14. **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
+14. **Q14 Partly answered (measured 2026-10-18, probe server, de_dust2
+    B, the second bot planting and the run bot holding +use on the bomb
+    without a kit; the bomb's sounds logged with the game time by
+    `mashup_sndlog`):** the plant takes 200 ticks (Q1). The defuse's
+    finishing `c4_disarm.wav` (channel 3) came 10.110 s after its start
+    one (channel 2), twice; the explosion 45.105 s after `c4_plant.wav`
+    (`mp_c4timer` 45, once). So both finish about 0.11 s after their
+    nominal time, as if checked on a think about every 0.1 s. Ours: on
+    the tick due (10.0, 45.0); not changed (one geometry; the think
+    phase unknown). The same-tick defuse and blast and the kit's 5 s not
+    measured (the kit given by `mashup_give item_defuser` didn't shorten
+    it). Was: **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
     defuse on 333 or 334, and does a defuse finishing on the same tick as
     the explosion win? Log tick numbers of begin/complete events in Q1/Q3.
 15. **Q15 Answered (2026-10-16, probe server, one bot alone on CT, killed

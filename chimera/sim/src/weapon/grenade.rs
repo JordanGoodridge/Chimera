@@ -51,7 +51,7 @@
 //! prop entities and other living characters (measured, Q12: a crate or a
 //! player's hull; loose bodies too, unmeasured), not by glass or grates
 //! (`map::SeeThrough`; measured on de_nuke's windows and window-contents
-//! vents, grates assumed alike), and a cloud anywhere on the line scales the blindness by one
+//! vents and a grate catwalk), and a cloud anywhere on the line scales the blindness by one
 //! measured factor (`Flash::through_smoke`; CS:S's at one geometry); the
 //! after-image is a screenshot
 //! read-back of the window at the flash (it holds the HUD, arrives a frame or

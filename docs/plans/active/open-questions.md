@@ -53,12 +53,14 @@ thrower's side of grenades Q12 are written but not built
 (`tools/css_probe/README.md`).
 
 Fifth pass (2026-10-18, flashes, triggers, movers, restarts, fires,
-lasers; `tools/css_probe/flashmeas.py`): 12 class-1 items settled
-(fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q4 and
-Q5, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18, and
-fire Q4 moved to class 5: entity_io Q1 had it), 2 more answered in part
-(grenades Q12's players, props, walls and glass; doors_buttons Q3's
-windows); about 51 class-1 items left. The two plugin commands above are still not
+lasers, conveyors, ragdolls, the bomb's timing;
+`tools/css_probe/flashmeas.py`): 15 class-1 items settled
+(fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q3, Q4
+and Q5, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18,
+physics_brushes Q6 and Q7, and fire Q4 moved to class 5: entity_io Q1
+had it), 3 more answered in part (grenades Q12 all but the thrower's
+side, movement Q15's conveyor, objectives Q14's defuse and blast
+timing); about 48 class-1 items left. The two plugin commands above are still not
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
 ## Specs: specs/cs_source
@@ -86,7 +88,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | grenades | Q9 HE visuals (fireball, shake, light) | 2 | client screenshots at `host_timescale 0.1` |
 | grenades | Q10 crouched victims, walls and props blocking | 1 | done (Part B, 2026-10-18, `blastmeas.py`) |
 | grenades | Q11 ear-ringing presets and who gets them | 2 | capture C31 (the server sends nothing, measured) |
-| grenades | Q12 left: flash through grates; the thrower's own blindness (smoke, players, props, walls and glass done, Part B 2026-10-18) | 1 | grates: a grate-contents brush on a map; the thrower: `mashup_netprop` (added to mashup_probe.sp 2026-10-18, reads `m_flFlashDuration` once the plugin is rebuilt) |
+| grenades | Q12 left: the thrower's own blindness (smoke, players, props, walls, glass and grates done, Part B 2026-10-18) | 1 | `mashup_netprop` (added to mashup_probe.sp 2026-10-18, reads `m_flFlashDuration` once the plugin is rebuilt) |
 | grenades | Q13 flash overlay curve | 2 | client screenshots every 0.1 s |
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
@@ -107,7 +109,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | impact_effects | Q13 effect detail setting | 2 | client video settings |
 | mdl_v48 | zero-frame entries, v44 leftovers, `.ani` header | 3 | nothing reads them; spec session if ever needed |
 | mdl_v48 | AWP poses against the game | 2 | view-model screenshot pair |
-| movement | Q15 water currents and base velocity | 1 | no stock map has a current; a spawned `func_conveyor`-style test |
+| movement | Q15 left: water currents (a conveyor's base velocity done, Part B 2026-10-18) | 1 | no stock map has a current; a spawned water brush with a current texture can't be made on the probe: a test map |
 | movement | Q16 left: water jump 256/50 | 1 | a movecmp scenario at a water edge (the ladder jump-off's 270 done, Part B 2026-10-18) |
 | movement | Q18 a box exactly touching a floor | 1 | done (Part B, 2026-10-18: start solid in CS:S, ours stands; not changed) |
 | movement | Q19 displacement contact normals elsewhere | 1 | movecmp on more dust2 strip edges |
@@ -126,7 +128,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | objectives | Q10 left: hostages at corners and jumps; give-up rule | 1 | `mashup_htrack` with longer leads |
 | objectives | Q12 HUD and radar | 2 | client screenshots |
 | objectives | Q13 `info_bomb_target` radius | 1 | spawned entity (no stock map uses it) |
-| objectives | Q14 plant/defuse tick rounding, same-tick defuse and blast | 1 | event ticks from Q1/Q3 runs |
+| objectives | Q14 left: same-tick defuse and blast; the kit's 5 s (the plant's 200 ticks, the defuse's and the blast's 0.11 s late done, Part B 2026-10-18) | 1 | a kit given some other way; a defuse started 35 s after a plant |
 | objectives | Q16 the bar while planting | 2 | client screenshots |
 | overlays_decals | Q1-Q9 (decal orientation, reach, size, displacements/props, overlay order, overlays vs decals, corner mapping, deathmatch flag, fade) | 2 | client screenshots, one each (9 items) |
 | physics_props | Q1 inertia tensor | 5 | measured (Part B, 2026-10-18) |
@@ -234,7 +236,7 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | breakables | Q9 gib bounce sounds | 2 | client trace (gibs are client-side) |
 | doors_buttons | Q1 CS:S use search distances | 1 | a spawned func_button, bot +use at 79/81 (done, Part B) |
 | doors_buttons | Q2 use deny sound | 2 | client audio |
-| doors_buttons | Q3 left: use trace through grates (windows done, Part B 2026-10-18: they stop it) | 1 | a spawned button behind a grate |
+| doors_buttons | Q3 use trace through grates and windows | 1 | done (Part B, 2026-10-18: both stop it) |
 | doors_buttons | Q4 ride timing on elevators | 1 | done (Part B, 2026-10-18) |
 | doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | done (Part B, 2026-10-18: every tick) |
 | doors_buttons | Q6 door move sound timing | 1 | done (Part B, 2026-10-18) |
@@ -277,8 +279,8 @@ built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 | physics_brushes | Q3 controller units | 1 | spawned phys_thruster |
 | physics_brushes | Q4 +use pickup of a physbox | 1 | done for props (Part B, 2026-10-18: no pickup) |
 | physics_brushes | Q5 physbox_multiplayer on the client | 2 | client |
-| physics_brushes | Q6 players and a map prop_ragdoll | 1 | spawned prop_ragdoll |
-| physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
+| physics_brushes | Q6 players and a map prop_ragdoll | 1 | done (Part B, 2026-10-18) |
+| physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | done (Part B, 2026-10-18: it crashes the server) |
 | physics_brushes | Q8 thin-rod check on rotated brushes | 1 | spawned |
 | physics_constraints | Q1, Q5 (break limit at rest, deleted body; 2 items) | 1 | done (Part B; Q1's moving loads and torque left) |
 | physics_constraints | Q1 left: torque at rest | 5 | measured (Part B, 2026-10-18); moving loads still class 1 |
@@ -504,7 +506,7 @@ measured.
 | weapons Q7: where a prop counts twice | from a chord of 24.0 units (23.7 once, 24.4 twice; 24.0 both ways) | (the 24 guessed) | none (confirmed) |
 | objectives Q3: the bomb on a map with `bombradius` 400 | 400 at the bomb, σ = 400 × 3.5 / 3 (de_nuke: 322.41 at 306.5 units, the fit 322.4) | the same | none |
 | grenades Q12: a player or a prop between a flash and the eye | stops it whole (the line against the player's box: 15 units off its centre stopped, 17 didn't; a crate too) | only the world and static props stopped it | stopped by players and props (`grenade::flash_blocked`) |
-| grenades Q12: glass between | lets it through whole (de_nuke's windows, a door's pane, window-contents vents); solid brushes and doors stop it | glass stopped it | glass and grates pass (`map::SeeThrough` from window/grate contents) |
+| grenades Q12: glass or a grate between | lets it through whole (de_nuke's windows, a door's pane, window-contents vents, a grate catwalk); solid brushes and doors stop it | glass and grates stopped it | glass and grates pass (`map::SeeThrough` from window/grate contents) |
 | triggers Q3: overlapping triggers | of two teleports the lower entity index wins; a push, a gravity or a trigger_multiple sharing a teleport's volume still acts | the higher index won | touched highest index first |
 | triggers Q8: a trigger_hurt's first pass | 4 ticks after the touch, then every 33 | the next tick | 4 ticks (`HURT_FIRST_TICKS`) |
 | fall_damage: `damagemodel` 1 | 5, 10, 20, 25, 25 ... (damage 10, cap 50) | the same | none |
@@ -512,7 +514,11 @@ measured.
 | entity_io Q10: I/O Use on a func_tracktrain | ignored (stopped or moving, any activator) | toggled it | ignored |
 | doors_buttons Q4: riding a lift | carried on the same tick, 1.5 units a tick at 100, never a tick behind | the same | none (test tightened) |
 | doors_buttons Q5: OnNextPoint | every tick the train moves | the same | none |
-| doors_buttons Q3: +use through glass | blocked | blocked | none |
+| doors_buttons Q3: +use through glass or a grate | blocked | blocked | none |
 | entity_io Q1: absent classes at a restart | none kept (every one tried, e.g. trigger_teleport, func_tracktrain, logic_auto, game_text, filters) | none kept | none |
 | fire Q9: buried fires | inside a brush: no damage; inside a static prop: damages | the same | none |
 | movement Q18: feet exactly on a floor | start solid: held 17-33 ticks, then 1/32 up on the ground; 0.01 above stands at once | stands at once | none (noted; a known difference) |
+| physics_brushes Q6: running into a map prop_ragdoll | solid (group none): stopped, then shoves it as a prop; debris (flag 4): runs through | the same, but no shove | none (noted) |
+| physics_brushes Q7: prop_ragdoll on a model without a ragdoll | crashes the dedicated server | lies still | none |
+| movement Q15: a func_conveyor | carried 1.5 a tick at 100 from the first tick; stepping off: 100 × 1.0075 less friction | the same | none |
+| objectives Q14: defuse and blast timing | done 10.11 s after the defuse starts, the blast 45.105 s after the plant | 10.0, 45.0 | none (noted; the think behind it unknown) |
