@@ -1372,6 +1372,7 @@ mod tests {
                         reserve_max: 90,
                         reload_time: 1.0,
                         reload_while_held: false,
+                        auto_reload: false,
                     },
                 ));
             }),

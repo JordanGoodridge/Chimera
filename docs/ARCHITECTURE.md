@@ -141,8 +141,9 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   uses `chimera_present` only with its default feature `present` (with
   the client shell and CS:S's front end, `cs_source/ui`).
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
-  of placeholder parts on Chimera (no Combat Arms behaviour until its
-  specs, specs/combat_arms/; docs/plans/active/combat-arms.md), one
+  of placeholder parts on Chimera, each replaced by Combat Arms'
+  behaviour as its spec lands (specs/combat_arms/; firing so far;
+  docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`), with its feature `ui` its
   front end (`ui::hud`, `ui::visuals`), and `harness::CaSim` as its
@@ -468,8 +469,10 @@ that the paths exist).
 - `games/cs_source/src/game/`: Counter-Strike: Source from the install: BSP, materials, models, sounds, movement, weapons, HUD, menus (games)
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
+- `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
-- `games/combat_arms/data/weapons/`: Combat Arms' placeholder weapons as data (PLACEHOLDER numbers, ours) (games)
+- `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the spec's M4A1, a placeholder knife (games)
+- `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)

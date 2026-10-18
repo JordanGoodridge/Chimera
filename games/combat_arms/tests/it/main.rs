@@ -11,3 +11,4 @@
 //! is implemented.
 
 mod skeleton;
+mod weapon_firing;
