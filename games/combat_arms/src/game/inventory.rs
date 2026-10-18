@@ -54,9 +54,12 @@
 //! Known shortcuts:
 //! - Units: 1 LithTech unit is taken as 1 cm (`UNIT`); the movement spec
 //!   leaves the scale open (its Open question 3). Health 100 = 1.0 (`HP`).
-//! - Updates are the fixed tick (1/64 s), not rendered frames, so every
-//!   "next update" is a tick: the knife's first hit lands two ticks plus
-//!   155 ms after the press (spec: "plus 2 or 3 frames").
+//! - Updates are the game's fixed tick (movement.md's 15 ms,
+//!   `game::TICK_INTERVAL`), not rendered frames as inventory.md has the
+//!   weapon logic run (a question for both specs: one clock or two?), so
+//!   every "next update" is a tick: the knife's first hit lands a tick
+//!   plus the pre-fire plus 155 ms after the press (spec: "plus 2 or 3
+//!   frames").
 //! - The knife ray has no spread (the M9's 1/7 perturb is
 //!   weapon_firing.md's), k_zone is 1 (hitgroup generic: the zone table
 //!   is weapon_firing.md's), and m, g, v and k_range are 1 (no mods,
