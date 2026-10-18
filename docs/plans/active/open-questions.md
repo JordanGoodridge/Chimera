@@ -70,7 +70,7 @@ listen server); about 73 class-1 items left.
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
 | grenades | Q16 smoke against bots; target ID through smoke | 1, 2 | bots (parked); target ID: client |
-| grenades | Q17 left: dying primed while moving; which grenades drop at death; `drop` with a grenade | 1 | death drops done (Part B); moving and `drop`: the same probe runs |
+| grenades | Q17 left: dying primed while moving; which grenades drop at death; `drop` with a grenade | 1, 4 | death drops done (Part B); `drop` tried 2026-10-18: the bot AI switched to its knife 8 ticks into the run, so the drop met the knife (a human); moving: the same probe runs |
 | impact_effects | Q1 CS:S's own impact callback (counts, colours, timings) | 2 | client screenshots at `host_timescale 0.1` |
 | impact_effects | Q2 ricochet rate; no effect on refused teammates | 2 | client audio count; C30 |
 | impact_effects | Q3 exit impact after penetration | 2 | client screenshot of a door's far side |
@@ -96,7 +96,7 @@ listen server); about 73 class-1 items left.
 | nav | Q6 stairs flags at load | 1 | `nav_edit` on dust2's stairs areas |
 | nav | Q7 approach record fields (v9) | 3 | spec session |
 | nav | Q8 `earliest_occupy` effect | 1 | bot round starts (bots parked) |
-| objectives | Q1 left: leaving the zone by teleport while planting | 1 | `mashup_tp` mid-plant |
+| objectives | Q1 left: leaving the zone by teleport while planting | 1 | done (Part B, 2026-10-18) |
 | objectives | Q3 left: other radii (walls done, Part B 2026-10-18) | 1 | targets on de_nuke/de_chateau |
 | objectives | Q4 beep schedule and loudness; LED place; debris sounds | 2 | the server emits no beep (measured): client audio, sitting 2 |
 | objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B; the draw, Ts after a rescue and "led" too) |
@@ -216,7 +216,7 @@ listen server); about 73 class-1 items left.
 | doors_buttons | Q3 use trace mask through grates | 1 | a spawned button behind a grate |
 | doors_buttons | Q4 ride timing on elevators | 1 | a bot's z per tick on a mover |
 | doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | spawned train and math_counter |
-| doors_buttons | Q6 door move sound timing | 1 | sound hook on a stock func_door |
+| doors_buttons | Q6 door move sound timing | 1 | done (Part B, 2026-10-18) |
 | doors_buttons | Q7 rotating door on its plane | 1 | probe placement |
 | doors_buttons | Q9 touch-open door under a player | 1 | spawned func_door flag 1024 (done, Part B) |
 | entity_io | Q1 left: classes absent from stock maps | 1 | spawned entities across a restart |
@@ -475,3 +475,5 @@ measured.
 | grenades Q6: thrown flush against a wall | starts where its box meets the wall on the way from the eye (4 units off a 45° panel) and bounces back | 16 units ahead whatever: inside or past a thin wall | a box trace from the eye (`throw_frame`) |
 | spectating: mode 3 | nobody left to watch (`mp_forcecamera 1`) gives the fixed view 3 s after the last teammate's death, round end or not; the camera at that player's eye | flying free | the camera held (`SpecMode::Fixed`, "Fixed View") |
 | spectating: first target | the next entity index after the watcher's own (4 watched 5, not 1); after the watched one dies, the next after it | by name | none (noted: bots join in name order) |
+| doors_buttons Q6: door move sound | starts on the activation tick; stopped on arrival (open and closed) as the arrival sound plays | a one-shot that played out | stopped on arrival (`movers::move_sound`) |
+| objectives Q1: teleported while arming | out of the zone: no bomb, C4 kept; within it: planted where the planter stands | the same | none |

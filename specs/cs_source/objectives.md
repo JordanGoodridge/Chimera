@@ -770,8 +770,12 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    (also Q14); with forward held the planter's speed stays 0 throughout;
    ducking still works while arming (duck pressed with attack: ducked 30
    ticks later, planted ducked); releasing attack before then aborts
-   (no more clicks, the C4 stays in hand). Teleported out of the zone:
-   not tried. Was: **Q1 Plant time and movement.** Give the probe bot a C4
+   (no more clicks, the C4 stays in hand). Teleported mid-arming
+   (2026-10-18, `mashup_tp` 1.7 s in, the planter's attack still held, a
+   `mp_restartgame` before each try): out of the zone (368 units away) no
+   bomb, the C4 kept; within it (28 units, onto the floor) planted on time
+   where the planter then stood; a teleport into the floor (stuck, pushed
+   out) aborted it too. As ours (leaving the zone aborts). Was: **Q1 Plant time and movement.** Give the probe bot a C4
    (`mashup_give weapon_c4`), place it inside dust2 A, `mashup_wrun` with
    primary held for 250 ticks: log the tick of `bomb_beginplant` and
    `bomb_planted` (expect 200 ticks). Repeat with forward held: does the bot

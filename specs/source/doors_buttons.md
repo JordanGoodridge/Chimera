@@ -627,7 +627,16 @@ dt = 0.015. Brush sizes are the model bounding box.
 5. **func_tracktrain OnNextPoint**: does it fire every tick in CS:S's build
    (as in the current SDK) or only per node? Connect it to a math_counter
    Add 1 and read the count after 1 s.
-6. **Door move sound timing and channel**: confirm "DoorSound.DefaultMove"
+6. **Answered (measured 2026-10-18, probe server, `mashup_sndlog`):** the
+   move sound (`noise1`) starts on the activation tick (channel 6, level
+   75, from the door), and on the arrival tick, open and closed alike, the
+   server stops it (an emit at volume 0) and plays `noise2` (cs_office's
+   `slidingdoor`, flags 0, 86 ticks each way; de_prodigy's `doorupper`
+   and `doorlower1`, flags 1280, 49 and 67 ticks; the 4 s `wait` closed it
+   267 ticks after the open arrival). The first Open after a map load also
+   played `common/null.wav` on channel 4. Ours stopped nothing (the move
+   sound played out); now a keyed sound on the door, stopped on arrival.
+   Was: **Door move sound timing and channel**: confirm "DoorSound.DefaultMove"
    starts on the activation tick and stops on arrival (listen).
 7. **Rotating door "away" rule edge**: user exactly on the door plane or
    at the hinge (cross product 0 → opens to A2). Confirm with a probe

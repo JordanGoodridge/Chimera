@@ -253,7 +253,12 @@ does nothing over RCON, so a spawned logic_relay fires its Explode with a
 delay. `he` is hemeas.py's throw with a crouching run bot, `bomb` has the
 second bot (a terrorist) plant at de_dust2's B with `mp_c4timer 10` and
 prints the blast's rows. The target point a blast aimed at is the damage
-force's direction (`force=` in the row).
+force's direction (`force=` in the row). `chordmeas.py <model> <weapon>
+<yaw>...` floats a motion-disabled prop at the crouched shooter's eye,
+turned so a level shot crosses it along a chosen chord, and prints the
+chord and whether the target behind was hurt (weapons.md Q7: hollow
+models such as de_tides' planter give chords the bullet doesn't cross
+whole).
 
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
