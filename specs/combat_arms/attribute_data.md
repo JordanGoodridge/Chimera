@@ -285,6 +285,15 @@ Sections in the weapons file, in the order the game reads them:
    `Primary`, `Secondary`, `Melee`, `Throw`, `Special`, `Mission`). For each
    class name C, the string list `C0..` names the weapons in that class, in
    inventory order. A name that matches no weapon makes loading fail.
+   - **A weapon's inventory class** is the 1-based position of the list it
+     appears in: `Class0` → 1 (primary), `Class1` → 2 (secondary), ... `Class5`
+     → 6 (mission); a weapon in no list has class 0. This is the "class"
+     that the slot keys (inventory.md) and the HUD weapon panel and
+     fire-mode icon (hud_crosshair.md D4) use; it is independent of
+     `Guntype`.
+   - **Command id:** the lists concatenated in class order give every
+     listed weapon a running position (first primary 0, ...); the server's
+     "better weapon" comparison (inventory.md) uses it.
    `AutoSwitchWeapon0..` names weapons in auto-switch priority order; an
    unknown name there is ignored.
 6. `[Perturb]` global spread speeds (see "Field table: armour and global
@@ -313,7 +322,7 @@ integer, float, double), "bool" = bool read (strict), "str" = string read,
 | Key | Type | Unit | Default | Meaning | Read by |
 |---|---|---|---|---|---|
 | `Name` | str (≤127 bytes) | | empty | Unique weapon name; target of all links (order lists, inventory, items). Never changed after load. | everything that looks a weapon up |
-| `Guntype` | int | enum | 0 | Weapon class: 0 knife, 1 pistol, 2 shotgun, 3 SMG, 4 assault rifle, 5 machine gun, 6 sniper rifle, 7 thrown, 8 mission bomb, 9 rocket, 10 mine, 11 heartbeat sensor, 12 air strike, 13 double barrel, 14 snowball gun, 15 special grenade launcher, 16 medic kit, 17 install controller, 18 install bomb, 19 first-aid kit, 20 turret, 21 crossbow (later values exist; treat unknown as "other") | class-specific firing, inventory slot rules, bots |
+| `Guntype` | int | enum | 0 | Weapon class: 0 knife, 1 pistol, 2 shotgun, 3 SMG, 4 assault rifle, 5 machine gun, 6 sniper rifle, 7 thrown, 8 mission bomb, 9 rocket, 10 mine, 11 heartbeat sensor, 12 air strike, 13 double barrel, 14 snowball gun, 15 special grenade launcher, 16 medic kit, 17 install controller, 18 install bomb, 19 first-aid kit, 20 turret, 21 crossbow (later values exist; treat unknown as "other"). This is the weapon *type*; the inventory *class* (slot key, HUD panel) is not stored in the record but comes from `[WeaponOrder]` (see "Weapons file: record kinds and load order") | class-specific firing, inventory slot rules, bots, HUD (8 hides the weapon panel), zone factor (7 never uses it) |
 | `ClientWeaponType` | int | enum | 1 | Client weapon behaviour kind | client weapon |
 | `AniType` | int | enum | 5 | Animation set for view and third-person models | animation |
 | `LowerAniType` | int | enum | 0 | Lower-body animation set | animation |
@@ -328,11 +337,11 @@ integer, float, double), "bool" = bool read (strict), "str" = string read,
 | `DamageRFacter` | num | fraction | 0.1 | Random damage spread: each hit is scaled by a uniform random factor in [1 − f, 1 + f]. Values outside [0, 1] are replaced by 0.2 when used. | damage (server) |
 | `FireDelay` | int | ms | 30 | Minimum time between shots. Negative values become 0. | firing |
 | `FireAniRate` | num | multiplier | 0.0 | Fire animation rate override (0 = none) | firing, animation |
-| `RapidFireCount` | int | shots | 1 | Shots per trigger pull: 0 = fully automatic (fires while held), 1 = semi-automatic, n > 1 = stops after n shots | firing, HUD fire-mode icon |
-| `ContinuousFire` | int | | 0 | Only the value 1 enables continuous-fire mode | firing |
-| `HudFireMode` | int | enum | 0 | Fire-mode icon on the HUD | HUD |
-| `TripleShotMode` | int (0/1) | | 0 | Weapon has a burst mode | firing |
-| `TripleShotRoundNum` | int | rounds | 3 | Rounds per burst | firing |
+| `RapidFireCount` | int | shots | 1 | Shots per trigger pull: 0 = fully automatic (fires while held), 1 = semi-automatic, n > 1 = stops after n shots. HUD fire-mode icon: 0 → full-auto icon, 1 → single-shot icon (full-auto while continuous fire is on), other → no icon | firing, HUD fire-mode icon |
+| `ContinuousFire` | int | | 0 | Only the value 1 enables continuous-fire mode, a selectable fire mode (HUD shows the full-auto icon while it is on) | firing, HUD |
+| `HudFireMode` | int | enum | 0 | Read into the weapon record, but nothing uses it (the HUD icon comes from the fields around it) | nothing |
+| `TripleShotMode` | int (0/1) | | 0 | Weapon has a burst mode: the selectable burst toggle | firing, HUD |
+| `TripleShotRoundNum` | int | rounds | 3 | Rounds per burst; 2 selects the HUD's 2-round burst icon, anything else the 3-round icon | firing, HUD |
 | `TripleShotDelay` | int | ms | 300 | Delay between bursts | firing |
 | `TripleShotSelectDelay` | int | ms | 400 | Delay when switching into burst mode | firing |
 | `TripleShotMinPerturb`, `TripleShotMaxPerturb` | int | spread units | 7, 100 | Spread limits in burst mode | spread |
@@ -406,8 +415,8 @@ Section `Ammo<N>`. Damage is per ray (per pellet).
 | `DecDelay` | int | ms | 150 | Wait after a shot before spread starts to recover | spread |
 | `JitterDecDelay` | int | ms | 600 | Same for camera jitter | recoil |
 | `JitterWaitRecover`, `JitterRecover` | num | see firing spec | 0.1, 0.3 | Jitter recovery | recoil |
-| `DamageMovePenalty` | num | unconfirmed (see Open questions) | 0.0 | Slow-down applied to whoever is hit | movement (victim) |
-| `DamageMovePenaltyDuration` | num | s | −1.0 | How long that slow-down lasts | movement (victim) |
+| `DamageMovePenalty` | num | knock-back strength K (acceleration K² u/s²) | 0.0 | Knock-back on whoever is hit, **only if the victim is an infected character** (infection mode) and the attacker is not on their team; not a speed percentage (Open question 3) | movement (victim, client) |
+| `DamageMovePenaltyDuration` | num | s | −1.0 | How long that knock-back lasts (× 1 + the victim figure's `StiffDuration`). Both this and `DamageMovePenalty` must be > 0, or nothing happens | movement (victim, client) |
 | `Health` | num | hit points | 0.0 | Hit points of a placed object fired with this ammo | gadgets |
 | `ImpactFXName`, `FireFXName`, `TracerFXName`, `ProjectileFXName`, ... | str | | see Quirks | Effect names (effects spec) | presentation |
 
@@ -501,7 +510,7 @@ numbers):
 | `VariableJump` | num | fraction | 0 | 0.0 | Jump speed × (1 + this + the model's own value) | movement (jump) |
 | `VariableSpeed`, `VariableDamage`, `VariableWeight` | num | fraction | 0 | 0.0 | Per-body adjustments | movement, damage |
 | `WalkPerturb`, `RunPerturb`, `JumpPerturb`, `FirePerturb`, `FireDuckPerturb`, `FireMoveDuckPerturb`, `FireMovePerturb`, `Recoil` | num | | 0 | 0.0 | Per-body spread and recoil adjustments | spread |
-| `AttackedPush`, `StiffDuration` | num | , s | 0 | 0.0 | Knock-back and hit stun | movement |
+| `AttackedPush`, `StiffDuration` | num | , fraction | 0 | 0.0 | `StiffDuration` lengthens the infection-mode hit knock-back: duration × (1 + this). `AttackedPush` was not traced | movement |
 | `HP`, `Speed`, `Jump`, `Shooting`, `Damagedown`, `WeaponFenalty` | num, truncated to int | | 0 | 100, 90, 57, 70, 0, 10 | Body stats. Their consumers were not traced; `Speed` is not the movement speed (see part 1). | not traced |
 | `HPIncPercent` | num | | 0 | 1 | | not traced |
 
@@ -739,6 +748,27 @@ is invalid. Read results use the field tables' fallbacks.
     `[Weapon0] Name="W" ShotsPerClip=30` → merged `W`: clip 30, range 3000
     (the built-in default, because the install's record lacks `Range`).
     If the install document is rejected, `w` keeps 25 and 4000.
+30. **Knock-back fields.** `[Ammo0] Name="a" DamageMovePenalty=40
+    DamageMovePenaltyDuration=0.3` → K = 40, T = 0.3 s. Applied to an
+    infected victim standing still with a figure `StiffDuration` of 0: the
+    knock-back lasts 0.3 s, starts at 40² = 1600 u/s² along the hit
+    direction and falls linearly to 0 at t = 1 s (so to 1120 u/s² at the
+    end of the 0.3 s); first-tick end speed 23.1221 u/s (movement.md case
+    55). Same ammo on a non-infected victim: no effect at all.
+    `DamageMovePenalty=20 DamageMovePenaltyDuration=0` (the M9 knife) → no
+    knock-back (duration not > 0). `StiffDuration=0.5` on the victim's
+    figure → 0.45 s.
+31. **Inventory class from the weapon order.** `[WeaponOrder]
+    Class0="Primary" Class1="Secondary" Primary0="A" Primary1="B"
+    Secondary0="P"`, weapons A, B, P and Q (Q in no list) → classes A 1,
+    B 1, P 2, Q 0; positions for the command id A 0, B 1, P 2. With
+    `Guntype` 6 on A and 1 on P, their classes are still 1 and 2.
+32. **Fire-mode fields for the HUD.** Primary weapon with `RapidFireCount=0`
+    → full-auto icon; `RapidFireCount=1` → single-shot icon, full-auto icon
+    while continuous fire (`ContinuousFire=1`) is on; `RapidFireCount=3` →
+    no icon; `TripleShotMode=1 TripleShotRoundNum=2` in burst mode →
+    2-round icon, `TripleShotRoundNum` missing (3) → 3-round icon.
+    `HudFireMode=5` changes nothing.
 
 ## Open questions
 
@@ -755,6 +785,17 @@ is invalid. Read results use the field tables' fallbacks.
 3. **`DamageMovePenalty` unit.** Values like 20, 40, 45 with durations of
    0.3 s. Whether it is a percentage of speed or an absolute speed loss is
    not settled here; `movement.md` or `weapon_firing.md` should decide.
+   **Answered:** neither. It is a knock-back strength `K`, applied by the
+   victim's client movement (movement.md, "Hit knock-back") and only when
+   the victim is an infected character in the infection mode and the
+   attacker is not a teammate. For `DamageMovePenaltyDuration` ×
+   (1 + `StiffDuration`) seconds the victim's acceleration is replaced by
+   `K²·(1 − t)` u/s² (t in seconds since the hit) along the horizontal hit
+   direction, and running and sprinting are off. Both values must be > 0.
+   For every other victim the fields do nothing. See the ammo field table;
+   test case 30. Also: the weapon panel's class and fire-mode fields
+   (hud_crosshair.md Open question 16) are recorded under "Weapons file"
+   and the weapon field table; test cases 31 and 32.
 4. **`ProgDamage` unit.** Probably hit points per second for
    `ProgDamageDuration` seconds; unconfirmed.
 5. **Skills file.** One shipped file in the folder contains a string with
