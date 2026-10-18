@@ -11,6 +11,9 @@
 //!   as a `Mount`.
 //! - `rez_cipher`: the payload cipher (Twofish-CBC with a key supplied at
 //!   run time; keys never live in the repo).
+//! - `world`: world files (the compiled map, `.dat`, version 85): BSPs,
+//!   objects, the light grid, blockers and the render data with its
+//!   lightmaps, bounds-checked.
 //!
 //! Each format follows its spec under specs/ (specs/README.md); comments
 //! name the spec's sections.
@@ -18,3 +21,4 @@
 pub mod attributes;
 pub mod rez;
 pub mod rez_cipher;
+pub mod world;

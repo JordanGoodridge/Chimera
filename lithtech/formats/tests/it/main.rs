@@ -7,7 +7,9 @@
 mod attributes;
 mod fixture;
 mod rez;
+mod world;
 
 mod heavy {
     mod rez_install;
+    mod world_install;
 }
