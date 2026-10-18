@@ -220,7 +220,8 @@ side's draws without the game restarting).
 Stock maps: cs_assault 4, cs_compound 3, cs_havana 4, cs_italy 4,
 cs_militia 4, cs_office 4 hostages. Every cs_ map has 1–4
 `func_hostage_rescue` brushes; no stock map uses the point entity
-`info_hostage_rescue`, `info_bomb_target`, or any VIP entity.
+`info_hostage_rescue`, `info_bomb_target` (neither exists in CS:S:
+measured, Q13), or any VIP entity.
 
 Measured 2026-10-16, **hostage damage (Q8), the rule** (probe server,
 cs_office, hostage 121 as below, AK-47 and Desert Eagle from 150 units, a
@@ -346,7 +347,7 @@ played by name, Q4).
 ### 1. Who gets the bomb
 
 - A map "has bomb targets" when its entity lump has at least one
-  `func_bomb_target` (or `info_bomb_target`). Only then does anyone get a
+  `func_bomb_target` (`info_bomb_target` isn't a CS:S class: Q13). Only then does anyone get a
   C4, and only then do the bomb round-end rules below apply.
 - At each round start (after everyone is respawned and re-equipped, before
   the freeze ends), pick one Terrorist uniformly at random among those
@@ -384,9 +385,8 @@ Inputs: carrier's active weapon is the C4, primary fire held, the
 carrier's "in bomb target" flag, on-ground flag.
 
 - **In a bomb target** means the player's hull overlaps a `func_bomb_target`
-  brush (a trigger, so the brush's own shape counts, not just its box) or is
-  within a radius of an `info_bomb_target` point (radius *hyp.*, unused by
-  stock maps).
+  brush (a trigger, so the brush's own shape counts, not just its box).
+  CS:S has no `info_bomb_target` entity (measured, Q13).
 - **Start:** pressing primary fire with the C4 active starts arming if the
   player is in a bomb target and on the ground. If not in a target: centre
   message "C4 must be planted at a bomb site." (nothing starts). If in a
@@ -931,7 +931,11 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     and does the hostage scenario icon show one glyph per remaining
     hostage? What does each team's radar show (carrier, loose bomb,
     planted bomb, hostages)?
-13. **Q13 `info_bomb_target` / `info_hostage_rescue` radius.** Unused by
+13. **Q13 Answered (measured 2026-10-18, probe server): neither class
+    exists in CS:S** (`mashup_spawn` of either: "Attempted to create
+    unknown entity type"; func_bomb_target spawned fine), so a map's are
+    nothing: no bomb target, no rescue zone. Ours used them as 128- and
+    256-unit spheres; now ignored (also by the bots). Was: **Q13 `info_bomb_target` / `info_hostage_rescue` radius.** Unused by
     stock maps; check with a custom map only if a community map needs it.
 14. **Q14 Partly answered (measured 2026-10-18, probe server, de_dust2
     B, the second bot planting and the run bot holding +use on the bomb

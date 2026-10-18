@@ -54,13 +54,13 @@ thrower's side of grenades Q12 are written but not built
 
 Fifth pass (2026-10-18, flashes, triggers, movers, restarts, fires,
 lasers, conveyors, ragdolls, the bomb's timing;
-`tools/css_probe/flashmeas.py`): 16 class-1 items settled
-(fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q3, Q4
-and Q5, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18,
+`tools/css_probe/flashmeas.py`): 18 class-1 items settled
+(fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q3, Q4,
+Q5 and Q7, objectives Q13, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18,
 physics_brushes Q6 and Q7, particles_and_smoke Q6, and fire Q4 moved to
 class 5: entity_io Q1 had it), 4 more answered in part (grenades Q12 all
 but the thrower's side, grenades Q17's `drop`, movement Q15's conveyor,
-objectives Q14's defuse and blast timing); about 47 class-1 items left. The two plugin commands above are still not
+objectives Q14's defuse and blast timing); about 45 class-1 items left. The two plugin commands above are still not
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
 Added since (2026-10-18): shaders Q21, the fog colour by view direction
@@ -130,7 +130,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | objectives | Q7 left: the planted bomb on a moving platform | 1 | no stock map; skip |
 | objectives | Q10 left: hostages at corners and jumps; give-up rule | 1 | `mashup_htrack` with longer leads |
 | objectives | Q12 HUD and radar | 2 | client screenshots |
-| objectives | Q13 `info_bomb_target` radius | 1 | spawned entity (no stock map uses it) |
+| objectives | Q13 `info_bomb_target` radius | 1 | done (Part B, 2026-10-18: no such class in CS:S) |
 | objectives | Q14 left: same-tick defuse and blast; the kit's 5 s (the plant's 200 ticks, the defuse's and the blast's 0.11 s late done, Part B 2026-10-18) | 1 | a kit given some other way; a defuse started 35 s after a plant |
 | objectives | Q16 the bar while planting | 2 | client screenshots |
 | overlays_decals | Q1-Q9 (decal orientation, reach, size, displacements/props, overlay order, overlays vs decals, corner mapping, deathmatch flag, fade) | 2 | client screenshots, one each (9 items) |
@@ -244,7 +244,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | doors_buttons | Q4 ride timing on elevators | 1 | done (Part B, 2026-10-18) |
 | doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | done (Part B, 2026-10-18: every tick) |
 | doors_buttons | Q6 door move sound timing | 1 | done (Part B, 2026-10-18) |
-| doors_buttons | Q7 rotating door on its plane | 1 | probe placement |
+| doors_buttons | Q7 rotating door on its plane | 1 | done (Part B, 2026-10-18: opens to +distance, as ours) |
 | doors_buttons | Q9 touch-open door under a player | 1 | spawned func_door flag 1024 (done, Part B) |
 | entity_io | Q1 left: classes absent from stock maps | 1 | done (Part B, 2026-10-18: none kept) |
 | entity_io | Q3 delay at an exact tick multiple | 1 | relays with 0.015/0.03/0.3 delays (done, Part B) |
@@ -529,3 +529,5 @@ measured.
 | objectives Q14: defuse and blast timing | done 10.11 s after the defuse starts, the blast 45.105 s after the plant | 10.0, 45.0 | none (noted; the think behind it unknown) |
 | grenades Q17: `drop` with a grenade in hand | nothing: it stays in hand | dropped it | kept (`kept_on_drop`, `drop::KeptOnDrop`) |
 | particles_and_smoke Q6: an unknown input | "unhandled input" in the console, nothing done | the same | none |
+| doors_buttons Q7: a user on a rotating door's plane | opens to +distance | the same | none (test) |
+| objectives Q13: `info_bomb_target`, `info_hostage_rescue` | no such entity classes: a map's do nothing | 128- and 256-unit spheres | ignored |

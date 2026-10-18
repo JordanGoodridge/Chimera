@@ -656,7 +656,12 @@ dt = 0.015. Brush sizes are the model bounding box.
    sound played out); now a keyed sound on the door, stopped on arrival.
    Was: **Door move sound timing and channel**: confirm "DoorSound.DefaultMove"
    starts on the activation tick and stops on arrival (listen).
-7. **Rotating door "away" rule edge**: user exactly on the door plane or
+7. **Answered (measured 2026-10-18, probe server, de_nuke, a spawned
+   func_door_rotating of brush *49 (hinge at its origin, the leaf along
+   +y), Use with the bot as activator):** a user on the door's plane,
+   behind the hinge or past the free end, opened it to +distance (A2),
+   twice each; 10-20 units to either side it opened away as the rule
+   says. As ours (unit test). Was: **Rotating door "away" rule edge**: user exactly on the door plane or
    at the hinge (cross product 0 → opens to A2). Confirm with a probe
    placement.
 8. **prop_door_rotating sounds**: which entries the hardware type and

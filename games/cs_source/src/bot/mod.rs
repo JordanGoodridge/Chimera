@@ -915,7 +915,6 @@ pub fn objectives(map: &crate::map::MapEntities) -> Vec<Vec3> {
             "func_bomb_target",
             "func_hostage_rescue",
             "hostage_entity",
-            "info_bomb_target",
         ],
     )
 }
@@ -944,7 +943,7 @@ pub fn objectives_of(map: &crate::map::MapEntities, classes: &[&str]) -> Vec<Vec
                         map.scale,
                     ))
                 }
-                "hostage_entity" | "info_bomb_target" => Some(entity_to_engine(e.origin(), map.scale)),
+                "hostage_entity" => Some(entity_to_engine(e.origin(), map.scale)),
                 _ => None,
             }
         })

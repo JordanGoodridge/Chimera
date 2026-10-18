@@ -1281,6 +1281,13 @@ fn rotating_doors_open_away() {
     assert_eq!(angles_of(&w, d).y, -90.0);
     let (w, d) = rotating_door("272", Vec3::new(200.0, 40.0, 0.0)); // one-way; out of the swing
     assert_eq!(angles_of(&w, d).y, 90.0);
+    // A user on the door's plane, behind the hinge or past the free end:
+    // the cross product is 0 and it opens to +distance (measured
+    // 2026-10-18 on the probe, doors_buttons.md Q7).
+    for x in [-60.0, 120.0] {
+        let (w, d) = rotating_door("256", Vec3::new(x, 0.0, 0.0));
+        assert_eq!(angles_of(&w, d).y, 90.0, "user at x {x}");
+    }
 
     // Opened by input after that user: swings using the old user.
     let (mut w, d) = rotating_door("256", Vec3::new(32.0, 40.0, 0.0));
