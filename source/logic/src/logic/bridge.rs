@@ -830,6 +830,8 @@ impl Collision for WorldCollision<'_> {
 struct StaticCollision {
     brushes: MapBrushes,
     terrain: Option<MapTerrain>,
+    /// The static props' brushes (`map::MapPropBrushStart`).
+    props: Vec<MapBrush>,
     scale: f32,
 }
 
@@ -850,11 +852,21 @@ impl Collision for StaticCollision {
     fn solid(&self, mins: Vec3, maxs: Vec3, at: Vec3) -> bool {
         self.view().solid(mins, maxs, at)
     }
+    fn inside_prop(&self, at: Vec3) -> bool {
+        let p = entity_to_engine(at, self.scale);
+        let skin = SOLID_SKIN * self.scale;
+        self.props.iter().any(|b| b.overlaps_box(p, Vec3::ZERO, skin))
+    }
 }
 
 /// The map's static world for the logic, once the map has one.
 fn static_collision(world: &World, scale: f32) -> Option<std::sync::Arc<dyn Collision + Send + Sync>> {
     let mut brushes = world.get_resource::<MapBrushes>()?.clone();
+    let props = world
+        .get_resource::<crate::map::MapPropBrushStart>()
+        .and_then(|s| brushes.0.get(s.0..))
+        .map(<[MapBrush]>::to_vec)
+        .unwrap_or_default();
     // Fire's traces pass player clips and grates.
     if let Some(skip) = world.get_resource::<crate::map::MapTraceSkip>() {
         let skip: std::collections::HashSet<usize> = skip.0.iter().copied().collect();
@@ -867,6 +879,7 @@ fn static_collision(world: &World, scale: f32) -> Option<std::sync::Arc<dyn Coll
     Some(std::sync::Arc::new(StaticCollision {
         brushes,
         terrain: world.get_resource::<MapTerrain>().cloned(),
+        props,
         scale,
     }))
 }

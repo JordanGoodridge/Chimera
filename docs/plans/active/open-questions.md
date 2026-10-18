@@ -72,8 +72,11 @@ answered in part (weapons Q7's tile and glass scales and buckshot,
 objectives Q10's give-up distance, physics_brushes Q3's arm, sounds Q3
 tried: the probe bot freezes in aztec's knee-deep water); the players'
 shove of a solid map ragdoll was tried and reverted (it launched the
-player). About 39 class-1 items left. The plugin commands are still not
-built, so sounds Q1 and grenades Q12's thrower wait.
+player). Then fire Q5 (61 fires on seven maps, `firedrop.py`), shaders
+Q3 (4 bump pages), entity_io Q5 (what maps send) settled, sounds Q15's
+OnPlay moved to class 2 (bots get no soundscape). About 35 class-1
+items left. The plugin commands are still not built, so sounds Q1 and
+grenades Q12's thrower wait.
 
 Added since (2026-10-18): shaders Q21, the fog colour by view direction
 (classes 3 and 2; one row in the specs table and one in the parity list);
@@ -223,7 +226,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | sounds | Q12 channel stealing and voice limits | 2 | engine |
 | sounds | Q13 remote footstep cadence | 2 | client |
 | sounds | Q14 `dsp_player`, `soundmixer` | 2 | client |
-| sounds | Q15 soundscape proxy radius; triggerable OnPlay | 1, 2 | OnPlay: spawned entities; what plays: client |
+| sounds | Q15 soundscape proxy radius; triggerable OnPlay | 2 | OnPlay: a bot standing in a spawned env_soundscape (radius 128) fired no OnPlay (sixth pass; its output works: soundscapes are for human clients); what plays: client |
 | spectating | freeze cam timing for humans | 4 | a human killed by a bot (client demo) |
 | spectating | a human without the freeze cam waiting 6.5 s | 4 | a human, `cl_disablefreezecam 1` |
 | spectating | mode 3 after the last teammate died | 1 | done (Part B, 2026-10-18) |
@@ -272,7 +275,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | fire | Q2 burn damage to players (armour, score) | 1 | armour and score done (Part B) |
 | fire | Q3 player ignition | 1 | `Ignite` input on a bot (done, Part B; the gas can left) |
 | fire | Q4 fires at a round restart | 5 | env_fire is re-created (entity_io Q1, 2026-10-15); marked 2026-10-18 |
-| fire | Q5 floors on de_dust and de_train | 1 | fire positions after their bombs |
+| fire | Q5 floors on de_dust and de_train | 1 | done (sixth pass: 61 fires on seven maps; displacements and static props stop the drop, inside a static prop it stays) |
 | fire | Q6 burning gas can's radius damage | 1 | done (Part B, 2026-10-18) |
 | fire | Q7 burning-prop light | 2 | client |
 | fire | Q9 buried fires never damage | 1 | done (Part B, 2026-10-18; de_chateau not tried) |
@@ -555,4 +558,5 @@ measured.
 | grenades Q17: dying primed while running | the live grenade keeps the runner's 250 | the same | none (test) |
 | physics_brushes Q1: physbox mass | the compiler's stored mass (72.46, lump 29) | the same | none |
 | physics_brushes Q3: an offset thruster's arm | from the centre of mass (level with an oil drum's centre: a spin; at its base: a tip) | from the origin | from the centre of mass |
+| fire Q5: where started fires land | on displacements and static props as on brushes (de_train's on the flat cars); inside a static prop: no drop | the same, but a fire inside a static prop dropped out of it | stays (`Collision::inside_prop`, `map::MapPropBrushStart`) |
 | physics_brushes Q6: shoving a solid map ragdoll | shoved | not shoved | tried (the shadow on its parts) and reverted: it launched the player over a lying corpse |

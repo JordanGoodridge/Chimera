@@ -476,7 +476,9 @@ What goes with them (all on the same `BombExplode`, same delay):
 - de_train: `func_dustcloud` `dustclouda`/`dustcloudb` TurnOn.
 
 Where the fires land (drop trace against **world brushes only**; static
-props and displacements not included, so marked rows may land higher):
+props and displacements not included, so marked rows may land higher;
+measured in CS:S 2026-10-18, Q5: displacements and static props stop it
+too, and a fire starting inside a static prop doesn't drop):
 
 | Map, fire (origin) | S | Floor z | Centre z (= floor + S/2) | Note |
 |---|---|---|---|---|
@@ -661,7 +663,21 @@ Fire think k = 0 is the StartFire tick t0; think k is at t0 + 0.105k s
    re-created too). Was: **Round restart.** Are env_fire, their effects and entity flames
    removed and recreated unlit each round (not in CS:S's preserve list)?
    Check: bomb de_dust2 A, watch the next round start.
-5. **Floors on de_dust and de_train.** Where do those fires land (the drop
+5. **Answered (measured 2026-10-18, probe server,
+   `tools/css_probe/firedrop.py`: StartFire on every env_fire of de_dust,
+   de_train, de_dust2, de_chateau, de_inferno, de_nuke and de_tides, the
+   entity's origin read after the drop):** the drop stops on displacements
+   and static props as on brushes, 1/32 above them (de_train's two land
+   on the flat cars at −152.34 and −288.34, not the brush floors at −216
+   and −360; de_dust's on its displacement ground at 0.14-83.3); a fire
+   whose origin is inside a static prop stays where it is (de_nuke's
+   (744, −816, −384) in a crate, five of de_dust2's B fires by the
+   crates, de_inferno's (2072, 688, 188)); one inside a brush drops out
+   of it (de_inferno's two in the detail brush land at 160.03; de_dust2's
+   (−1680, 1600, 32) in the solid block falls the whole 1024 to −992).
+   Ours: the same for 60 of the 61 (the static props' rule added); de_dust2's
+   block fire stops at 21.1 on something CS:S's trace doesn't hit (test
+   `heavy::map_fire::fires_land_where_css_puts_them`). Was: **Floors on de_dust and de_train.** Where do those fires land (the drop
    trace hits displacements and static props, which this spec did not
    test)? Check in game, or trace against displacements and the static
    prop collision models.

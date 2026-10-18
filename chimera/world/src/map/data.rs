@@ -710,6 +710,13 @@ pub struct RoundSounds {
 #[derive(Resource, Clone, Debug, Default)]
 pub struct MapTraceSkip(pub Vec<usize>);
 
+/// Where `core::MapBrushes`' static props' brushes start: the map's own
+/// brushes come first. A line trace starting inside a static prop stops
+/// at once (Source's props are physics models), one starting inside a
+/// brush passes out of it (a fire's drop, specs/source/fire.md Q5).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct MapPropBrushStart(pub usize);
+
 #[derive(Clone, Debug, Default)]
 pub struct MapData {
     pub name: String,

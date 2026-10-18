@@ -307,6 +307,10 @@ run's output is written at its end, so it can't be watched) and prints
 the projectile's origin and velocity just after. The run bot's index is
 `mashup_info`'s first line (not always client 1).
 
+`firedrop.py <map>...` (fire.md Q5) changes to each map, starts every
+env_fire and prints where each one dropped to (its origin before and
+after), then puts them out.
+
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
 (feet at its height) leaves it stuck: start 0.02 or more above. On
