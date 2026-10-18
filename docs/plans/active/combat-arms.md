@@ -92,10 +92,10 @@ does for BSP.
   payload cipher, keys at run time). Unit tests on archives written in
   code; `heavy::` tests on this box's install. It uses `source_formats`
   only for the VFS (`fs::FileSource`, `Mount`).
-- Still to do in `games/combat_arms` (once the skeleton is merged): its
-  `game::mount` opening the install's `Game/` with `rez::open_dir` and the
-  keys from `chimera.local.toml` (as `dump` does now), the CA data seam
-  (`game/data.rs`) reading through it.
+- `games/combat_arms`' `game::mount` (its `INFO.open`) mounts the
+  install's `Game/` with `rez::open_dir` and the keys from
+  `chimera.local.toml`; the data seam (`game/data.rs`) will read through
+  it.
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
@@ -112,7 +112,7 @@ does for BSP.
 | Item | Spec | Status | Notes |
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
-| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | done (2026-10-18), in `lithtech/formats` (`lithtech_formats::rez`); spec still needs the user's review | Heavy tests on this box: 108 archives open with matching check sums, 32,024 files, 40 locked without keys, 33 maps in WORLDS2/WORLDS3 read; `dump combat_arms` lists them. The game crate's mount over it is still to do ("LithTech loader layer") |
+| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | done (2026-10-18), in `lithtech/formats` (`lithtech_formats::rez`); spec still needs the user's review | Heavy tests on this box: 108 archives open with matching check sums, 32,024 files, 40 locked without keys, 33 maps in WORLDS2/WORLDS3 read; `dump combat_arms` lists them. `combat_arms::game::mount` (`INFO.open`) mounts the install with it |
 | V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `chimera.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
 ### Wave 0.5: shared pieces

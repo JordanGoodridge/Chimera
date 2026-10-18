@@ -2734,6 +2734,7 @@ dependencies = [
  "chimera_present",
  "chimera_sim",
  "chimera_world",
+ "lithtech_formats",
  "serde",
  "toml",
  "workspace-hack",
