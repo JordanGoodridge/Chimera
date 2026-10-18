@@ -154,7 +154,8 @@ tick before the respawn), not at the end; the rest at once.
 | Name (ours) | Value | Who gets it |
 |---|---|---|
 | win_bonus | 3250 | the winners of an elimination on a bomb map (either side) |
-| win_elimination_hostage | 3000 | the winners of an elimination on a hostage map (either side) |
+| win_elimination | 3000 | the winners of an elimination on a map without bomb targets: a hostage map, or no objectives (de_dust2 with its two `func_bomb_target`s removed before `mp_restartgame`: game rules `m_bMapHasBombTarget` 0, CTs +3000, Ts +1400) |
+| (draw) | nothing | nobody: a lone CT bot's draws (Q15's setup, three in a row) left its 800 unchanged |
 | loss_bonus | 1400 + 500 per earlier consecutive loss (1900 the second), max 3400 *public* | the losers |
 | kill_reward / teamkill_penalty | 300 / −3300 *public* | the killer |
 | win_bomb | 3500 | every T, bomb exploded |
@@ -178,10 +179,22 @@ Worked: CT elimination on cs_office with all four hostages untouched:
 killed: 3300; with one rescued and three untouched: 3000 + 850 + 450 =
 4300. The Ts' time-out win with four untouched: 3250 + 600 = 3850; with
 one killed: 3700. The Ts' elimination win: 3000 + 600 = 3600.
-Unmeasured: a draw's pay, Ts winning after a rescue (whether they get
-anything for rescued hostages; ours: no), whether "led" means led at the
-end or led at some time this round (ours: at some time), and the kill
-reward per weapon (300 for every weapon in the 2026-10-15 demo).
+Measured later the same day (cs_office, one T and one CT bot, `bot_eco_limit
+16001` so bots buy nothing, the CT teleported next to a hostage before its
+`Use`; a hostage rescued by teleporting the CT into the rescue zone and the
+following hostage after him): **Ts winning on time after a rescue** get
+3250 + 150 for each of the three hostages left, nothing for the rescued one
+(800 → 4500; the CT, alive, got only the 150 touch and the 1000 rescue).
+**Led means led at some time this round**: a hostage led and then let go
+(`Use` again: `hostage_stops_following`) still paid the winning CT the 100
+(3000 + 600 + 100 + the 150 touch = +3850, the same as one still
+following). **A draw pays nobody** (above). **Time on a map without
+objectives ends nothing**: on de_dust2 with its bomb targets removed the
+clock ran out (`mp_roundtime 1`) and the round went on for three minutes,
+until the Ts were killed (CT win, 3000). Unmeasured: the kill reward per
+weapon (300 for every weapon in the 2026-10-15 demo), and whether a draw
+changes the loss streaks (no side can be measured losing after a lone
+side's draws without the game restarting).
 
 ### Hostages
 
@@ -520,8 +533,8 @@ the round):
 | hostage | every hostage still alive has been rescued (at least one rescued) | CT | "All hostages have been rescued!" | "All hostages rescued" |
 | bomb | round time out, no bomb planted | CT | "Target has been saved!" | "Bombing failed" |
 | hostage | round time out | T | "Hostages have not been rescued!" | "Rescue failed" |
-| neither | round time out | draw (ours: defenders) | "Round Draw!" | "Round Draw" |
-| any | both teams dead together | draw | "Round Draw!" | – |
+| neither | round time out | nothing: the round goes on (measured, Q5; ours on request with `mashup_untimed_win 1`: defenders) | – | – |
+| any | both teams dead together | draw only with one side empty (Q15); with both sides present the deaths count one at a time and the side whose last player dies first loses (measured 2026-10-17: `sm_slay @all` on two Ts and two CTs in one frame gave the Ts the win, the last T dying after it; ours: a draw when both sides' last players die on the same tick) | "Round Draw!" | – |
 
 - After a plant, the round clock is ignored: the round lasts until the bomb
   explodes or is defused, or all CTs die. Ts dying doesn't end it.
@@ -698,7 +711,7 @@ Ticks of 0.015 s. "(hyp.)" rows depend on an open question.
 |---|---|---|---|
 | O1 de_dust2, 5 Ts, 5 CTs | round starts | – | exactly one living T has weapon_c4 in slot 4; no CT has one |
 | O2 cs_office, any teams | round starts | – | nobody has a C4; 4 hostages at (1784, 734, −124), (1744, 802, −124), (2048, −344, −156), (1984, −344, −156) |
-| O3 map without bomb targets or hostages (e.g. a test map) | round time runs out | – | draw/defenders win as now; no objective state |
+| O3 map without bomb targets or hostages (e.g. a test map) | round time runs out | – | nothing: the round goes on (measured, Q5); no objective state |
 | O4 dust2 A site trigger box (1072, 2336, 96)–(1248, 2624, 192) | T stands at (1160, 2480, 96.03) | – | in bomb target |
 | O5 same box | T stands at (1000, 2480, 96.03) (hull x 984–1016) | – | not in bomb target; primary fire → "C4 must be planted at a bomb site.", no arming |
 | O6 carrier in zone, on ground, C4 active, tick 0 | hold primary | 200 ticks (3.000 s) | planted bomb at his feet; C4 gone from inventory; `bomb_planted`; announcer `Event.BombPlanted`; explode_at = 3.0 + 45 = 48.0 s (tick 3200) |
@@ -794,7 +807,11 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    time-out get nothing; hostage maps pay 3000 for an elimination, 2500 for
    all rescued, 3250 when time runs out, plus 150 a living hostage (100
    more led, CTs) and 850 a rescued one (CTs) to the winners; a hostage hit
-   costs 20 a point, the killing hit twice that and 500. Was: **Q5 Money.** Read the account of every player before and after: a
+   costs 20 a point, the killing hit twice that and 500. Later the same
+   day: a draw pays nobody; an elimination pays 3000 on any map without
+   bomb targets; Ts winning on time after a rescue get nothing for the
+   rescued hostage; a hostage led and let go still counts as led; on a map
+   without objectives time ends nothing. Was: **Q5 Money.** Read the account of every player before and after: a
    plant (planter), a defuse (defuser), each round-end reason, the +800
    T bonus after a defused bomb, a hostage first-use, a rescue, hostage
    damage (one shot of known damage) and a hostage kill. `mp_startmoney

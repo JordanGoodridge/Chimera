@@ -1,7 +1,7 @@
 //! Team rounds with money, the Counter-Strike way (`mashup_rounds 1`):
-//! a freeze period, a timed round won by eliminating the other team (or
-//! by the defenders when time runs out), a pause, then everyone back at
-//! their spawns; survivors keep their weapons. Money: a start amount, kill
+//! a freeze period, a timed round won by eliminating the other team (on a
+//! map without objectives the clock ends nothing, as in CS:S; `mashup_untimed_win 1`:
+//! the defenders win on time), a pause, then everyone back at their spawns; survivors keep their weapons. Money: a start amount, kill
 //! rewards, a win bonus and a loss bonus that grows with a losing streak;
 //! buying is open during the freeze and the buy period.
 //!
@@ -22,7 +22,8 @@
 //! bomb, hostage and time rewards measured on the probe server (2026-10-17,
 //! specs/cs_source/objectives.md Q5): the round's bonuses are paid as the
 //! next round starts (`RoundState::payouts`), losers alive at a time-out
-//! get nothing, hostage maps pay per hostage.
+//! get nothing, hostage maps pay per hostage, an elimination pays 3250 only
+//! on a bomb map (3000 elsewhere) and a draw pays nobody.
 //!
 //! Known shortcuts (docs/tech-debt.md): Minigame flows
 //! (docs/plans/active/community-maps.md, "Minigame flows"): with players on
@@ -52,7 +53,7 @@ use crate::{
 };
 
 /// The two sides: `Team(1)` attacks (terrorists), `Team(2)` defends
-/// (counter-terrorists) and wins when time runs out.
+/// (counter-terrorists) and wins when time runs out on a bomb map.
 pub const ATTACKERS: Team = Team(1);
 pub const DEFENDERS: Team = Team(2);
 
@@ -76,6 +77,7 @@ pub struct RoundSettings {
     pub max_money: u32,
     /// Seconds between a round's end and the next one.
     pub end_delay: f32,
+    /// The winners' bonus for an elimination on a bomb map.
     pub win_bonus: u32,
     /// Loss bonus: base, step per consecutive loss, cap.
     pub loss_bonus: u32,
@@ -88,13 +90,18 @@ pub struct RoundSettings {
     pub tk_punish: u8,
     /// Objective wins (spec 8, measured): the bomb exploded; defused; time
     /// ran out on a bomb map with no plant; all hostages rescued; time ran
-    /// out on a hostage map; an elimination on a hostage map.
+    /// out on a hostage map; an elimination on a map without bomb targets
+    /// (hostage maps and maps without objectives).
     pub win_bomb: u32,
     pub win_defused: u32,
     pub win_target_saved: u32,
     pub win_rescued: u32,
     pub win_not_rescued: u32,
-    pub win_elimination_hostage: u32,
+    pub win_elimination: u32,
+    /// `mashup_untimed_win`: 1, on a map without objectives the defenders
+    /// win when time runs out (a draw with no defenders); 0, the clock ends
+    /// nothing there (CS:S, measured: objectives.md Q5).
+    pub untimed_win: u8,
     /// On a hostage map the winners' bonus grows by these for each
     /// hostage: alive and not rescued; led this round (defenders only);
     /// rescued (defenders).
@@ -460,6 +467,13 @@ pub(super) fn plugin(app: &mut App) {
         "1: Counter-Strike rounds with money (0: deathmatch respawns).",
         |r| &mut r.enabled,
     );
+    resource_cvar::<RoundSettings, u8>(
+        app,
+        "mashup_untimed_win",
+        "1: on a map without objectives the defenders win when the round's time runs out \
+         (0: the round goes on, as in CS:S).",
+        |r| &mut r.untimed_win,
+    );
     resource_cvar::<RoundSettings, u32>(app, "mp_startmoney", "Money each player starts with.", |r| {
         &mut r.start_money
     });
@@ -684,6 +698,9 @@ fn live_outcome(world: &mut World, time_up: bool) -> Option<(Option<Team>, Round
     Some(match kind {
         MapKind::Bomb => (Some(DEFENDERS), RoundEndReason::TargetSaved),
         MapKind::Hostage => (Some(ATTACKERS), RoundEndReason::HostagesNotRescued),
+        // CS:S's clock ends nothing on a map without objectives (measured:
+        // objectives.md Q5); ours on request.
+        MapKind::Neither if world.resource::<RoundSettings>().untimed_win == 0 => return None,
         MapKind::Neither if present[1] > 0 => (Some(DEFENDERS), RoundEndReason::TimeRanOut),
         MapKind::Neither => (None, RoundEndReason::Draw),
     })
@@ -714,9 +731,8 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
     let planted = world
         .get_resource::<BombState>()
         .is_some_and(|b| b.planted.is_some() || b.outcome.is_some());
-    let hostage_map = world
-        .get_resource::<MapObjectives>()
-        .is_some_and(|o| o.kind() == MapKind::Hostage);
+    let kind = world.get_resource::<MapObjectives>().map_or(MapKind::Neither, |o| o.kind());
+    let hostage_map = kind == MapKind::Hostage;
     let rescued = world.get_resource::<HostageTally>().map_or(0, |t| t.rescued);
     let (alive_hostages, led_hostages) = world
         .query::<(&Hostage, &Health)>()
@@ -729,11 +745,13 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
         winner,
     };
     // Bonuses (spec 8, measured): the winners' by the reason, the losers'
-    // growing with the streak (a draw pays both the loss bonus). Paid as
-    // the next round starts.
+    // growing with the streak; a draw pays nobody (measured) and leaves the
+    // streaks. Paid as the next round starts.
     let mut bonus = [0u32; 2];
     if winner.is_none() {
         state.draws += 1;
+        state.payouts.clear();
+        return;
     }
     for (i, team) in [ATTACKERS, DEFENDERS].into_iter().enumerate() {
         if winner == Some(team) {
@@ -745,7 +763,7 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
                 RoundEndReason::TargetSaved => s.win_target_saved,
                 RoundEndReason::HostagesRescued => s.win_rescued,
                 RoundEndReason::HostagesNotRescued => s.win_not_rescued,
-                RoundEndReason::Eliminated if hostage_map => s.win_elimination_hostage,
+                RoundEndReason::Eliminated if kind != MapKind::Bomb => s.win_elimination,
                 _ => s.win_bonus,
             };
             // A hostage map's winners: so much a hostage alive, and for

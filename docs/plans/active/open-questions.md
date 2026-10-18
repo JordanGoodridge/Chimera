@@ -85,7 +85,7 @@ class-1 items by player impact.
 | objectives | Q1 left: leaving the zone by teleport while planting | 1 | `mashup_tp` mid-plant |
 | objectives | Q3 left: walls between bomb and target; other radii | 1 | targets behind walls on de_nuke/de_chateau |
 | objectives | Q4 beep schedule and loudness; LED place; debris sounds | 2 | the server emits no beep (measured): client audio, sitting 2 |
-| objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B); left: a draw's pay, Ts winning after a rescue |
+| objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B; the draw, Ts after a rescue and "led" too) |
 | objectives | Q6 left: who gets the bomb with humans; defuse announcers | 4, 2 | a human on T for 50 restarts; client audio |
 | objectives | Q7 left: the planted bomb on a moving platform | 1 | no stock map; skip |
 | objectives | Q10 left: hostages at corners and jumps; give-up rule | 1 | `mashup_htrack` with longer leads |
@@ -183,11 +183,11 @@ class-1 items by player impact.
 | weapons | Q1 random generator | 3 | the generator body (spec session) |
 | weapons | Q2 left: the airborne inaccuracy target | 1 | `m_fAccuracyPenalty` through a long fall |
 | weapons | Q3 left: snipers' recoil, silenced and burst modes | 1 | `recoilall.py` with those modes |
-| weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull |
+| weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
 | weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | M13 with more walls |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
 | weapons | Q12 left: pellet pattern, line or box traces | 1 | `bullet_impact` per pellet on a far wall, by seed |
-| weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime: watch a dropped gun for a round |
+| weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
 
 ## Specs: specs/source
 
@@ -382,3 +382,11 @@ measured.
 | physics_props Q13, Q6: `sv_turbophysics`, `air_density` | 0; 2.00 | not read | none |
 | grenades Q7: bounce sounds | one a contact (the smoke's twice on the tick), the stopping contact too, none at rest | one a contact | none |
 | grenades Q2: redraw after a throw | inconclusive: the bot ends up with its knife, but its AI picks the knife on its own | redraw of the same grenade | none (needs a human) |
+| objectives Q5: a draw's pay | nothing to anyone (a lone CT's draws) | the loss bonus to both sides | nothing; the streaks left as they were |
+| objectives Q5: an elimination on a map without objectives | 3000 (de_dust2 with its bomb targets removed), as a hostage map's | 3250 | 3000 (`win_elimination`, any map without bomb targets) |
+| objectives Q5: time running out on a map without objectives | nothing: the round goes on until a side is dead | the defenders win (a draw without them) | nothing (`mashup_untimed_win 1` keeps ours) |
+| objectives Q5: Ts winning on time after a rescue | 3250 + 150 a hostage left; nothing for the rescued one | the same | none (test) |
+| objectives Q5: "led" for the 100 | led at some time this round (a hostage led and let go still pays) | the same | none (test) |
+| objectives 7: both teams' last players dying together | not a draw: deaths count one at a time, the side whose last player dies first loses (`sm_slay @all`: Ts won) | a draw on the same tick | none (noted in the spec; one tick's order decides in CS:S) |
+| weapons Q6 / M12: hitboxes outside the hull | hit (arms and feet up to 17 units out, 4 past the hull); the hull alone stops nothing | the same | none (test) |
+| weapons Q13: dropped weapons' lifetime | kept until the round restarts, no count limit (203 at once) | the oldest went past 32 | kept (a 1024 safety net) |

@@ -97,8 +97,11 @@ const DEFAULT_HALF: Vec3 = Vec3::splat(0.1);
 /// A character's box when its movement publishes none (the placeholder
 /// capsule's: 0.8 m wide, 1.8 m tall, origin at its centre).
 const DEFAULT_HULL: (Vec3, Vec3) = (Vec3::new(-0.4, -0.9, -0.4), Vec3::new(0.4, 0.9, 0.4));
-/// Loose weapons kept at most; the oldest go first.
-const MAX_LOOSE: usize = 32;
+/// Loose weapons kept at most; the oldest go first. A safety net only:
+/// CS:S keeps every dropped weapon until the round restarts (measured
+/// 2026-10-17: 203 pistols dropped in a round all still there, the first
+/// after 6 minutes; weapons.md Q13); ours went at 32.
+const MAX_LOOSE: usize = 1024;
 /// +use pickup reach from the eye to the weapon's centre (100 units: past
 /// the touch box's 36, as CS:GO's use reach; a guess, not measured).
 pub const USE_REACH: f32 = 100.0 * 0.0254;

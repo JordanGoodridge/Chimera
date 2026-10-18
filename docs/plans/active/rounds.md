@@ -8,14 +8,16 @@ restarts.
 
 - `rules::rounds` (`mashup_rounds 1`): freeze (`mp_freezetime`, nobody
   moves or shoots), a timed round (`mp_roundtime`), elimination wins,
-  defenders win on time, a pause (5 s), then everyone back at their
+  defenders win on time on bomb maps (on maps without objectives the clock
+  ends nothing, as CS:S's, measured; `mashup_untimed_win 1`: the defenders
+  win), a pause (5 s), then everyone back at their
   spawns: the dead with starting weapons, survivors with theirs; loose
   weapons cleared. `RoundEnded` messages, `RoundState` (phase, number,
   wins).
 - Money (`weapon::economy`): `Money` per character (`mp_startmoney`,
-  capped at 16000), kill reward 300, team-kill penalty 3300, win bonus
-  3250, loss bonus 1400 + 500 per consecutive loss up to 3400 (a draw pays
-  both the loss bonus).
+  capped at 16000), kill reward 300, team-kill penalty 3300, elimination
+  bonus 3250 on bomb maps and 3000 elsewhere, loss bonus 1400 + 500 per
+  consecutive loss up to 3400 (a draw pays nobody: measured 2026-10-17).
 - Buying: `buy` charges the price (spec weapons.md's `WeaponPrice`;
   kevlar 650, kevlar+helmet 1000, helmet alone 350), refuses without the
   money or outside the freeze and the buy period (`mp_buytime`), and drops
@@ -28,7 +30,7 @@ restarts.
 
 1. Measure on the probe server: the defaults (CS:S's own mp_roundtime and
    mp_freezetime defaults, the end delay), whether the buy period counts
-   from the freeze's end, the clock during the freeze, a draw's bonus,
+   from the freeze's end, the clock during the freeze,
    rewards per weapon (CS:S pays 300 for every gun and the knife?).
 2. Buy zones: `func_buyzone` by team is in (`economy::in_buy_zone`; maps
    without zones let you buy anywhere, CS:S would make zones around the

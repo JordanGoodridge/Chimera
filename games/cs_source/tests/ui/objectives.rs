@@ -1010,3 +1010,91 @@ fn hostage_hits_cost_by_the_point_and_wins_pay_per_hostage() {
     assert_eq!(paid(&sim, ct), Some(3000 + 2 * 150));
     assert_eq!(paid(&sim, t), Some(1400));
 }
+
+/// Objectives.md Q5's last cases (measured 2026-10-17, cs_office): a
+/// hostage led and let go still pays the winning CTs its 100 (led at some
+/// time this round); terrorists winning on time after a rescue get 150 for
+/// each hostage left and nothing for the rescued one, and the CT, alive,
+/// gets no loss bonus.
+#[test]
+fn a_hostage_let_go_counts_as_led_and_a_rescued_one_pays_terrorists_nothing() {
+    let two = || MapObjectives {
+        hostages: (0..2)
+            .map(|i| HostageSpawn {
+                feet: Vec3::new(i as f32 * 2.0, 0.0, 5.0),
+                ..Default::default()
+            })
+            .collect(),
+        ..hostage_map()
+    };
+    // `ct` uses hostage `i` from beside it: once to lead, again to let go.
+    let use_hostage = |sim: &mut Sim, ct: Entity, at: Vec3| {
+        teleport(sim, ct, at + Vec3::new(0.0, 1.0, 1.5));
+        sim.ticks(2);
+        look_at(sim, ct, at + Vec3::Y * 0.5);
+        sim.intent(ct).use_key = true;
+        sim.ticks(2);
+        sim.intent(ct).use_key = false;
+        sim.ticks(1);
+    };
+    let by_spawn = |sim: &mut Sim, x: f32| {
+        hostages(sim)
+            .into_iter()
+            .find(|h| (h.2.x - x).abs() < 0.5)
+            .map(|h| (h.0, h.2))
+            .expect("hostage")
+    };
+
+    // Led and let go, then the CT wins by elimination.
+    let mut sim = self::sim(two());
+    let t = character(&mut sim, Vec3::new(0.0, 1.0, 12.0), 1);
+    let ct = character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 2);
+    rounds(&mut sim);
+    sim.seconds(1.3);
+    let (h0, at0) = by_spawn(&mut sim, 0.0);
+    use_hostage(&mut sim, ct, at0);
+    assert_eq!(sim.app.world().get::<Hostage>(h0).unwrap().leader, Some(ct));
+    use_hostage(&mut sim, ct, at0);
+    assert_eq!(sim.app.world().get::<Hostage>(h0).unwrap().leader, None, "let go");
+    sim.app.world_mut().write_message(Damage {
+        force: Vec3::ZERO,
+        target: t,
+        attacker: Some(ct),
+        amount: 2.0,
+        point: Vec3::ZERO,
+        dir: Vec3::X,
+        hitgroup: Hitgroup::Generic,
+        kind: default(),
+        weapon: None,
+    });
+    sim.ticks(3);
+    let end = ended(&sim).expect("round over");
+    assert_eq!((end.winner, end.reason), (Some(Team(2)), RoundEndReason::Eliminated));
+    assert_eq!(paid(&sim, ct), Some(3000 + 2 * 150 + 100));
+
+    // One rescued, then the clock runs out: the terrorists win.
+    let mut sim = self::sim(two());
+    let t = character(&mut sim, Vec3::new(0.0, 1.0, 12.0), 1);
+    let ct = character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 2);
+    rounds(&mut sim);
+    sim.seconds(1.3);
+    let (_, at1) = by_spawn(&mut sim, 2.0);
+    use_hostage(&mut sim, ct, at1);
+    teleport(&mut sim, ct, Vec3::new(13.0, 1.0, 3.0));
+    for _ in 0..400 {
+        sim.ticks(1);
+        if sim.app.world().resource::<HostageTally>().rescued == 1 {
+            break;
+        }
+    }
+    assert_eq!(sim.app.world().resource::<HostageTally>().rescued, 1, "rescued");
+    teleport(&mut sim, ct, Vec3::new(-20.0, 1.0, 20.0));
+    sim.seconds(62.0);
+    let end = ended(&sim).expect("round over");
+    assert_eq!(
+        (end.winner, end.reason),
+        (Some(Team(1)), RoundEndReason::HostagesNotRescued)
+    );
+    assert_eq!(paid(&sim, t), Some(3250 + 150), "the hostage left, not the rescued one");
+    assert_eq!(paid(&sim, ct), None, "alive at the time-out");
+}

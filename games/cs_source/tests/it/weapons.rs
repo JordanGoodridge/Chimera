@@ -593,6 +593,42 @@ fn a_bullet_goes_on_inside_a_target_that_allows_it() {
     );
 }
 
+/// Weapons.md Q6/M12 (measured 2026-10-17 on the probe: rays across a
+/// standing bot hit its arm and leg hitboxes up to 17 units from its
+/// origin, 4 past the 13-unit hull, and pass through the hull wherever no
+/// hitbox is): a box sticking out of the hull is hit, and a shot through
+/// the hull that misses every box goes on to whoever stands behind.
+#[test]
+fn hitboxes_outside_the_hull_count_and_the_hull_alone_stops_nothing() {
+    use crate::stack::core::{Hitbox, Hitboxes, Hitgroup};
+    let shoot = |offset: f32| {
+        let mut sim = sim();
+        let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
+        let behind = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 10.0, placeholder::ID);
+        // An arm 0.4-0.6 m to the side (16-24 units): out of the hull.
+        let arm = Hitbox {
+            center: Vec3::new(0.5, 1.3, 0.0),
+            half: Vec3::new(0.1, 0.1, 0.1),
+            rotation: Quat::IDENTITY,
+            group: Hitgroup::RightArm,
+        };
+        sim.app.world_mut().entity_mut(target).insert(Hitboxes(vec![arm]));
+        sim.intent(target).yaw = 0.0;
+        sim.seconds(1.1);
+        let at = sim.position(target) + Vec3::new(offset, 1.3 - 0.9, 0.0);
+        aim_at(&mut sim, shooter, at);
+        sim.intent(shooter).fire = true;
+        sim.ticks(1);
+        sim.intent(shooter).fire = false;
+        sim.ticks(1);
+        (lost_hp(&sim, target), lost_hp(&sim, behind))
+    };
+    let (arm, behind) = shoot(0.5);
+    assert!(arm > 0 && behind == 0, "the arm out of the hull: {arm}, behind {behind}");
+    let (hull, behind) = shoot(0.0);
+    assert!(hull == 0 && behind > 0, "through the hull: {hull}, behind {behind}");
+}
 
 #[test]
 fn knife_never_passes_a_player() {
@@ -785,6 +821,27 @@ fn dropped_weapons_lie_loose_and_are_picked_up_again() {
     let inv = sim.app.world().get::<Inventory>(p).unwrap();
     assert!(inv.weapons.contains(&ak));
     assert_eq!(sim.app.world().get::<Weapon>(ak).unwrap().owner, Some(p));
+}
+
+/// Weapons.md Q13 (measured 2026-10-17): CS:S keeps every dropped weapon
+/// until the round restarts (203 pistols dropped in one round were all
+/// still there, the first after 6 minutes); ours dropped the oldest past 32.
+#[test]
+fn dropped_weapons_are_all_kept() {
+    use crate::stack::weapon::{
+        drop::{Loose, drop_weapon},
+        give,
+    };
+    let mut sim = sim();
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    sim.ticks(2);
+    for _ in 0..60 {
+        drop_weapon(sim.app.world_mut(), p, true).expect("dropped");
+        give(sim.app.world_mut(), p, AK47).expect("given");
+        sim.ticks(1);
+    }
+    let w = sim.app.world_mut();
+    assert_eq!(w.query::<&Loose>().iter(w).count(), 60);
 }
 
 /// The dead drop their weapon only when the rules ask for it (CS:S rounds),

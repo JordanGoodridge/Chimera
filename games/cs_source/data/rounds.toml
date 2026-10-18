@@ -18,8 +18,7 @@ start_money = 800
 max_money = 16000
 # Seconds between a round's end and the next one.
 end_delay = 5.0
-# The winners' bonus by elimination (bomb maps and maps without
-# objectives); the losers' grows by `loss_step` a consecutive loss up to
+# The winners' bonus by elimination on a bomb map; the losers' grows by `loss_step` a consecutive loss up to
 # `loss_max`.
 win_bonus = 3250
 loss_bonus = 1400
@@ -32,13 +31,19 @@ tk_punish = 0
 # Objective wins: the bomb exploded; defused; time ran out on a bomb map
 # with no plant (the terrorists still alive get nothing); all hostages
 # rescued; time ran out on a hostage map (the counter-terrorists still
-# alive get nothing); an elimination on a hostage map.
+# alive get nothing); an elimination on a map without bomb targets (hostage
+# maps and maps without objectives, measured on de_dust2 with its bomb
+# targets removed). A draw pays nobody.
 win_bomb = 3500
 win_defused = 3250
 win_target_saved = 3250
 win_rescued = 2500
 win_not_rescued = 3250
-win_elimination_hostage = 3000
+win_elimination = 3000
+# 1: on a map without objectives the defenders win when time runs out (a
+# draw with none); 0: the clock ends nothing there, the round goes on
+# until one side is dead (CS:S, measured).
+untimed_win = 0
 # On a hostage map the winners also get this much for each hostage: alive
 # and not rescued; led this round (counter-terrorists only, on top); and
 # rescued (counter-terrorists).
