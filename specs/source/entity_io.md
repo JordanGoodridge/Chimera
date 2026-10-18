@@ -690,7 +690,7 @@ dt = 0.015 s. "Tick N" means server time N × dt.
 
 ## Open questions
 
-1. **Partly answered (measured 2026-10-15, probe server, all 18 stock
+1. **Answered (measured 2026-10-15, probe server, all 18 stock
    maps; each entity's reference before and after `mp_restartgame 1`, an
    unchanged reference = the same entity kept).** Kept: worldspawn, ai_hint,
    env_fog_controller, env_soundscape, env_soundscape_proxy,
@@ -715,8 +715,30 @@ dt = 0.015 s. "Tick N" means server time N × dt.
    prop_door_rotating, prop_dynamic, prop_physics, prop_physics_multiplayer,
    spotlight_end, trigger_hurt, trigger_multiple, trigger_once,
    water_lod_control, dropped weapons. No class was kept on one map and
-   re-created on another. Classes absent from the stock maps (logic_auto
-   removes itself once fired) are unmeasured. logic_auto (all seven stock
+   re-created on another. Classes absent from the stock maps (measured
+   2026-10-18 on de_nuke: one of each spawned with a unique targetname,
+   then `mp_restartgame 1`; info_target, kept, and logic_relay, re-created,
+   as controls): none of these is kept: trigger_teleport, trigger_push,
+   trigger_gravity, trigger_look, trigger_wind, trigger_proximity,
+   trigger_vphysics_motion, info_teleport_destination, func_movelinear,
+   func_tracktrain, func_train, func_platrot, path_track, func_physbox,
+   func_physbox_multiplayer, func_conveyor, func_wall_toggle,
+   func_rot_button, momentary_rot_button, func_water_analog, func_monitor,
+   func_reflective_glass, logic_auto, logic_branch, logic_compare,
+   logic_multicompare, logic_measure_movement, logic_collision_pair,
+   logic_navigation, game_text, game_ui, game_score, game_end,
+   game_player_equip, point_servercommand, point_clientcommand,
+   point_teleport, point_hurt, point_tesla, point_template,
+   filter_activator_team, filter_activator_class, filter_activator_name,
+   filter_multi, player_speedmod, player_weaponstrip, env_hudhint,
+   env_message, env_shake, env_fade, env_laser, env_beam, env_spritetrail,
+   env_sprite_oriented, env_shooter, env_screenoverlay, env_microphone,
+   env_texturetoggle, material_modify_control, color_correction,
+   info_particle_system, phys_thruster, weapon_ak47, logic_timer: all
+   gone after the restart, so (as map entities) re-created, as ours
+   (`ROUND_KEEP` lists only the kept ones). env_entity_maker, env_global,
+   game_weapon_manager, phys_keepupright and info_null were gone before
+   the restart (spawned bare they remove themselves): unmeasured. logic_auto (all seven stock
    maps with one, its outputs hooked by the plugin): at map load and again
    at every restart it fires OnNewGame, OnMapSpawn and OnMultiNewMap, in
    that order on the same tick; OnMultiNewRound never fired. Was: **CS:S round restart**: CS:S re-creates most map entities at each round
@@ -769,5 +791,9 @@ dt = 0.015 s. "Tick N" means server time N × dt.
    the stock maps and 89 cached community maps): three game_texts in all
    (kz_bhop_izanami's "Good job" and its name, bhop_myztek's without a
    message), none with a line break or a literal `\n`: no map to decide it.*
-10. **Use type through I/O**: harmless for doors/buttons; confirm a
+10. **Answered (measured 2026-10-18, probe server, de_dust2, a spawned
+   func_tracktrain on two path_tracks, `mashup_input <train> Use` with
+   no activator and with the bot as activator):** a stopped train stayed
+   stopped and a moving one kept moving; Toggle and StartForward started
+   it. Ours ignored nothing (Use toggled it): now ignored. Was: **Use type through I/O**: harmless for doors/buttons; confirm a
    func_tracktrain ignores an I/O `Use`.

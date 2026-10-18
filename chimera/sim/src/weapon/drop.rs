@@ -50,6 +50,12 @@ use crate::{
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Undroppable;
 
+/// A weapon the drop key leaves in hand, though the dead drop it (CS:S's
+/// grenades: `drop` with an HE in hand did nothing, measured 2026-10-18,
+/// specs/cs_source/grenades.md Q17).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct KeptOnDrop;
+
 /// Only characters of this team may pick the weapon up (CS:S's C4: the
 /// terrorists).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,11 +146,11 @@ pub struct PickedUp {
 fn droppable(world: &World, owner: Entity, active_only: bool) -> Option<Entity> {
     let inv = world.get::<Inventory>(owner)?;
     let ok = |e: &Entity| world.get::<Weapon>(*e).is_some() && world.get::<Undroppable>(*e).is_none();
+    if active_only {
+        return inv.active.filter(ok).filter(|a| world.get::<KeptOnDrop>(*a).is_none());
+    }
     if let Some(a) = inv.active.filter(ok) {
         return Some(a);
-    }
-    if active_only {
-        return None;
     }
     inv.weapons
         .iter()

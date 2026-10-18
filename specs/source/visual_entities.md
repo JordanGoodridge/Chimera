@@ -601,7 +601,14 @@ dt = 0.015. Colours in 0–1 after /255.
    for a given radius and colour (affects named spotlights). Measure the
    lit wall brightness around a named spotlight's hit point at several
    distances against the same wall unlit.
-3. **CS:S damage path for energy-beam damage**: does CS:S armour absorb
+3. **Answered (measured 2026-10-18, probe server, de_nuke, a spawned
+   env_laser with damage 100 aimed through the standing bot, turned on by
+   a relay):** the first hit 7 ticks after TurnOn, then every 7 ticks,
+   10.5 a hit taken as whole points: 10 health each (nothing carried);
+   with 100 armour 5 health and 3 armour a hit (`dmg_armor` said 2): the
+   armour's ratio-1 rule of a map's damage, as trigger_hurt. Ours since:
+   `Effect::Hurt` with armour (beams.rs; strike damage too, the same
+   damage type, not measured). Dissolve not tried. Was: **CS:S damage path for energy-beam damage**: does CS:S armour absorb
    it, does the generic fractional accumulator apply, and does dissolve
    damage (dissolvetype ≥ 0) do anything in CS:S? Probe: env_laser damage
    100 through a player with and without kevlar, read health and armour per

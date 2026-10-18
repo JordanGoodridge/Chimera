@@ -209,7 +209,7 @@ impl Tactics {
 /// hostages (grouped within 8 m), and every objective for roaming.
 pub fn scenario(map: &MapEntities) -> (Scenario, Vec<Vec3>, Vec<Vec3>) {
     let all = super::objectives(map);
-    let bombs: Vec<Vec3> = super::objectives_of(map, &["func_bomb_target", "info_bomb_target"]);
+    let bombs: Vec<Vec3> = super::objectives_of(map, &["func_bomb_target"]);
     if !bombs.is_empty() {
         return (Scenario::Bomb, bombs, all);
     }

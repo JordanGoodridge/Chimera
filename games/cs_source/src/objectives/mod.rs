@@ -24,7 +24,7 @@
 //! and armour are measured; holding still while planting and defusing too),
 //! beeps on the provisional schedule at
 //! a fixed level, the planted bomb isn't solid and doesn't ride movers,
-//! `info_bomb_target`/`info_hostage_rescue` radii are guesses, the carrier is
+//! the carrier is
 //! chosen by a round-seeded hash, money values Q5, hostage follow distances/speeds Q10, hostage models spread by index (Q9), a hostage
 //! hurt costs nothing (Q5), a removed local player is only told; the planted
 //! model is turned by a fixed rotation (`BombRules::planted_turn`) because the
@@ -232,14 +232,11 @@ impl MapObjectives {
         for (i, e) in map.entities.iter().enumerate() {
             let class = e.classname().to_ascii_lowercase();
             match class.as_str() {
-                "func_bomb_target" | "info_bomb_target" => {
-                    out.bomb_targets
-                        .push(Zone::from_entity(i, e, map.scale, Some(POINT_TARGET_RADIUS)))
-                }
-                "func_hostage_rescue" | "info_hostage_rescue" => {
-                    out.rescue_zones
-                        .push(Zone::from_entity(i, e, map.scale, Some(POINT_RESCUE_RADIUS)))
-                }
+                // CS:S has no info_bomb_target or info_hostage_rescue
+                // entity ("unknown entity type", measured 2026-10-18,
+                // objectives.md Q13): a map's are nothing.
+                "func_bomb_target" => out.bomb_targets.push(Zone::from_entity(i, e, map.scale, None)),
+                "func_hostage_rescue" => out.rescue_zones.push(Zone::from_entity(i, e, map.scale, None)),
                 "hostage_entity" => out.hostages.push(HostageSpawn {
                     feet: entity_to_engine(e.origin(), map.scale),
                     // Source yaw 0 looks down +X (engine +X); ours 0 is -Z.
@@ -256,11 +253,6 @@ impl MapObjectives {
         out
     }
 }
-
-/// `info_bomb_target` / `info_hostage_rescue` reach, units (*hyp.*, spec
-/// Q13: no stock map uses them).
-pub const POINT_TARGET_RADIUS: f32 = 128.0;
-pub const POINT_RESCUE_RADIUS: f32 = 256.0;
 
 fn load_objectives(map: Option<Res<MapEntities>>, mut objectives: ResMut<MapObjectives>) {
     let Some(map) = map else { return };
@@ -364,4 +356,26 @@ pub fn round_start(world: &mut World) {
     world.insert_resource(RoundOpen(false));
     bomb::round_start(world);
     hostages::round_start(world);
+}
+
+#[cfg(test)]
+mod point_target_tests {
+    use super::*;
+
+    /// CS:S has no info_bomb_target or info_hostage_rescue class (the
+    /// probe server: "unknown entity type", objectives.md Q13): a map's
+    /// make no bomb target or rescue zone.
+    #[test]
+    fn point_targets_are_nothing() {
+        let entity = |class: &str| MapEntity {
+            keyvalues: vec![("classname".into(), class.into()), ("origin".into(), "0 0 0".into())],
+            ..default()
+        };
+        let map = MapEntities {
+            entities: std::sync::Arc::new(vec![entity("info_bomb_target"), entity("info_hostage_rescue")]),
+            scale: UNIT,
+        };
+        let o = MapObjectives::from_entities(&map);
+        assert!(o.bomb_targets.is_empty() && o.rescue_zones.is_empty());
+    }
 }

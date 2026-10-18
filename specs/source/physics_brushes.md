@@ -386,7 +386,13 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
    rather than the 0 of most props. Probe: push a physbox along a
    near-frictionless surface (a "glass"-like surface property) and record
    its speed decay per tick with the server probe.
-3. **Controller application** (thruster/keepupright): confirm a = F/m per
+3. **Linear part answered (measured 2026-10-18, probe server, de_nuke,
+   a phys_thruster (spawnflags 2, pointing up) on a 400 kg
+   `du_crate_64x64`, its height sampled every 0.12 s):** force 400000
+   lifted it at 199 units/s² (the second differences of its height),
+   F/m − 800 = 200: force in kg·units/s², a = F/m, as ours; 20000 (under
+   its weight) didn't lift it. The angular part (an offset thruster) is
+   open. Was: **Controller application** (thruster/keepupright): confirm a = F/m per
    second and that the angular part from an offset thruster equals
    I⁻¹(r × F) in deg/s². Probe: a thruster at the centre of a 50 kg box in
    the air with sv_gravity unchanged: measure velocity change over 1 s via
@@ -400,10 +406,20 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
 5. **func_physbox_multiplayer on the CS:S client**: does the client treat
    mode 0 as non-solid in its predicted movement (no jitter)? Walk into one
    on a test map.
-6. **Server ragdolls and CS:S players**: do players collide with a
+6. **Answered (measured 2026-10-18, probe server, de_nuke, a spawned
+   prop_ragdoll of `ct_gign.mdl` fallen on the floor, the bot running
+   into it at 250):** spawnflags 0 (collision group none): the bot was
+   stopped at its bounds (velocity 0) and then shoved it about 6 units
+   over 20 ticks, as a physics prop; spawnflags 4 (debris): the bot ran
+   through at full speed and the ragdoll stayed. Ours: the same, but
+   players don't shove a solid one (their physics shadows leave
+   ragdolls alone). Was: **Server ragdolls and CS:S players**: do players collide with a
    map-placed prop_ragdoll (normal group) or pass through? Test on a map
    with one.
-7. **prop_ragdoll on a model without a ragdoll**: what does the entity do
+7. **Answered (measured 2026-10-18, probe server):** spawning one with
+   `models/props/de_dust/du_crate_64x64.mdl` (no ragdoll) crashed the
+   dedicated server (srcds_run restarted it). Nothing to match; ours
+   keeps its fallback (the model lies still). Was: **prop_ragdoll on a model without a ragdoll**: what does the entity do
    (removed? static?) — try with a static-only model.
 8. **Thin-rod check uses the collision AABB at spawn orientation in
    model space**: confirm for a rotated brush (brush models are in world

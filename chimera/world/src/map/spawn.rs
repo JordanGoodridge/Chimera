@@ -229,21 +229,36 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
             ));
         }
     }
-    if !data.collision_hulls.is_empty() {
+    // Glass and grates get a collider of their own, marked `SeeThrough`.
+    let see_through: std::collections::HashSet<usize> = data.see_through_hulls.iter().copied().collect();
+    for glass in [false, true] {
         let hulls: Vec<_> = data
             .collision_hulls
             .iter()
-            .flat_map(|h| contact_hulls(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
+            .enumerate()
+            .filter(|(i, _)| see_through.contains(i) == glass)
+            .flat_map(|(_, h)| contact_hulls(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
             .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
             .collect();
-        commands.entity(root).with_child((
-            Name::new("Map collision (solids)"),
+        if hulls.is_empty() {
+            continue;
+        }
+        let mut e = commands.spawn((
+            Name::new(if glass {
+                "Map collision (glass and grates)"
+            } else {
+                "Map collision (solids)"
+            }),
             MapPart,
             MapBrushCollider,
             RigidBody::Static,
             Collider::compound(hulls),
             Transform::default(),
+            ChildOf(root),
         ));
+        if glass {
+            e.insert(SeeThrough);
+        }
     }
 }
 
@@ -326,6 +341,9 @@ fn spawn_entity_nodes(commands: &mut Commands, data: &MapData, root: Entity) -> 
                         collider,
                         contact_filter::hooks(),
                     ));
+                    if data.see_through_entities.contains(&i) {
+                        node.insert(SeeThrough);
+                    }
                 }
                 _ => {}
             }

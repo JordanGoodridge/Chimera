@@ -734,6 +734,12 @@ pub struct MapData {
     /// and physics bodies (player-only clips are in `collision_brushes`
     /// only).
     pub collision_hulls: Vec<Vec<[f32; 3]>>,
+    /// Indices into `collision_hulls` of volumes light passes (glass,
+    /// grates): their own collider, marked `SeeThrough`.
+    pub see_through_hulls: Vec<usize>,
+    /// Brush entities with nodes of their own whose volumes are all
+    /// see-through (breakable glass): their nodes get `SeeThrough`.
+    pub see_through_entities: Vec<usize>,
     /// The same volumes as planes, for exact swept-box movement collision.
     pub collision_brushes: Vec<MapBrush>,
     /// Indices into `collision_brushes` of the ones line traces pass

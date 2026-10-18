@@ -220,7 +220,8 @@ side's draws without the game restarting).
 Stock maps: cs_assault 4, cs_compound 3, cs_havana 4, cs_italy 4,
 cs_militia 4, cs_office 4 hostages. Every cs_ map has 1–4
 `func_hostage_rescue` brushes; no stock map uses the point entity
-`info_hostage_rescue`, `info_bomb_target`, or any VIP entity.
+`info_hostage_rescue`, `info_bomb_target` (neither exists in CS:S:
+measured, Q13), or any VIP entity.
 
 Measured 2026-10-16, **hostage damage (Q8), the rule** (probe server,
 cs_office, hostage 121 as below, AK-47 and Desert Eagle from 150 units, a
@@ -346,7 +347,7 @@ played by name, Q4).
 ### 1. Who gets the bomb
 
 - A map "has bomb targets" when its entity lump has at least one
-  `func_bomb_target` (or `info_bomb_target`). Only then does anyone get a
+  `func_bomb_target` (`info_bomb_target` isn't a CS:S class: Q13). Only then does anyone get a
   C4, and only then do the bomb round-end rules below apply.
 - At each round start (after everyone is respawned and re-equipped, before
   the freeze ends), pick one Terrorist uniformly at random among those
@@ -384,9 +385,8 @@ Inputs: carrier's active weapon is the C4, primary fire held, the
 carrier's "in bomb target" flag, on-ground flag.
 
 - **In a bomb target** means the player's hull overlaps a `func_bomb_target`
-  brush (a trigger, so the brush's own shape counts, not just its box) or is
-  within a radius of an `info_bomb_target` point (radius *hyp.*, unused by
-  stock maps).
+  brush (a trigger, so the brush's own shape counts, not just its box).
+  CS:S has no `info_bomb_target` entity (measured, Q13).
 - **Start:** pressing primary fire with the C4 active starts arming if the
   player is in a bomb target and on the ground. If not in a target: centre
   message "C4 must be planted at a bomb site." (nothing starts). If in a
@@ -931,9 +931,24 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     and does the hostage scenario icon show one glyph per remaining
     hostage? What does each team's radar show (carrier, loose bomb,
     planted bomb, hostages)?
-13. **Q13 `info_bomb_target` / `info_hostage_rescue` radius.** Unused by
+13. **Q13 Answered (measured 2026-10-18, probe server): neither class
+    exists in CS:S** (`mashup_spawn` of either: "Attempted to create
+    unknown entity type"; func_bomb_target spawned fine), so a map's are
+    nothing: no bomb target, no rescue zone. Ours used them as 128- and
+    256-unit spheres; now ignored (also by the bots). Was: **Q13 `info_bomb_target` / `info_hostage_rescue` radius.** Unused by
     stock maps; check with a custom map only if a community map needs it.
-14. **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
+14. **Q14 Partly answered (measured 2026-10-18, probe server, de_dust2
+    B, the second bot planting and the run bot holding +use on the bomb
+    without a kit; the bomb's sounds logged with the game time by
+    `mashup_sndlog`):** the plant takes 200 ticks (Q1). The defuse's
+    finishing `c4_disarm.wav` (channel 3) came 10.110 s after its start
+    one (channel 2), twice; the explosion 45.105 s after `c4_plant.wav`
+    (`mp_c4timer` 45, once). So both finish about 0.11 s after their
+    nominal time, as if checked on a think about every 0.1 s. Ours: on
+    the tick due (10.0, 45.0); not changed (one geometry; the think
+    phase unknown). The same-tick defuse and blast and the kit's 5 s not
+    measured (the kit given by `mashup_give item_defuser` didn't shorten
+    it). Was: **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
     defuse on 333 or 334, and does a defuse finishing on the same tick as
     the explosion win? Log tick numbers of begin/complete events in Q1/Q3.
 15. **Q15 Answered (2026-10-16, probe server, one bot alone on CT, killed

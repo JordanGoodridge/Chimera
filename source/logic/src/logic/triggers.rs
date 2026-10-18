@@ -9,12 +9,12 @@
 //! `Effect::BodyVelocity` and teleported with `Effect::BodyTeleport`.
 //!
 //! Known shortcuts (docs/tech-debt.md): `trigger_hurt`
-//! (specs/cs_source/fall_damage.md): constant rate only (damagemodel 1 doubling
-//! isn't used by stock maps), no map logic (StartDisabled ones are skipped),
+//! (specs/cs_source/fall_damage.md): no map logic (StartDisabled ones are skipped),
 //! touch test is the character's collider bounds against the trigger's brushes
 //! (flush contact touches: measured 2026-10-17), one half-second timer per
-//! trigger (measured 2026-10-17); armour by damage type and whole points are
-//! measured (`core::MapDamage`). Why it's OK for now: de_port's
+//! trigger (measured 2026-10-17); armour by damage type, whole points, the
+//! first pass 4 ticks after the touch and damagemodel 1's doubling are
+//! measured (`core::MapDamage`; 2026-10-18). Why it's OK for now: de_port's
 //! sea bites as measured.
 
 use bevy::prelude::*;
@@ -26,6 +26,10 @@ use crate::map::MapBrush;
 
 /// trigger_hurt pass period, seconds (33 ticks at 0.015).
 pub const HURT_INTERVAL: f32 = 0.5;
+/// Ticks from the touch that starts a pass cycle to its first pass
+/// (measured 2026-10-18, triggers.md Q8: 4, 3-5 by the probe's
+/// stamping, entering on foot or placed inside; de_port's sea too).
+pub const HURT_FIRST_TICKS: i64 = 4;
 /// Doubling damage resets after this long with no victims.
 pub const HURT_FORGIVE: f32 = 3.0;
 
@@ -228,9 +232,14 @@ impl LogicWorld {
     /// Re-link every player at its position against the triggers: start
     /// touch then touch for new overlaps, touch for existing ones.
     pub fn touch_triggers(&mut self, _collision: &dyn Collision) {
+        // Touched last entity first: of two teleports sharing a volume the
+        // lower entity index wins, and a push or trigger_multiple sharing
+        // a teleport's volume still acts, whichever index (measured
+        // 2026-10-18, triggers.md question 3).
         let triggers: Vec<EntId> = self
             .ids()
             .into_iter()
+            .rev()
             .filter(|id| matches!(self.get(*id).map(|e| &e.class), Some(Class::Trigger(_))))
             .collect();
         for i in 0..self.players.len() {
@@ -441,10 +450,10 @@ fn touch(w: &mut LogicWorld, id: EntId, who: Who) {
                 if let Some(Kind::Hurt(h)) = trig_mut(w, id).map(|t| &mut t.kind) {
                     h.cycling = true;
                 }
-                // This tick's thinks already ran: the first pass is the
-                // next think opportunity.
+                // The first pass comes `HURT_FIRST_TICKS` after the touch
+                // (this tick's thinks already ran).
                 let tick = w.tick;
-                w.get_mut(id).unwrap().next_think = Some(tick);
+                w.get_mut(id).unwrap().next_think = Some(tick + HURT_FIRST_TICKS);
             }
         }
         Kind::Push { dir, speed } => {

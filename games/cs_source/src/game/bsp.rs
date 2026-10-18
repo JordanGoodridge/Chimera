@@ -815,6 +815,8 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
     }
 
     data.collision_hulls = brush_hulls(bsp, &leaves);
+    data.see_through_hulls = see_through_hulls(bsp, &leaves);
+    data.see_through_entities = see_through_entities(bsp, &leaves);
     let (brushes, tree) = collision_brushes(bsp, &leaves);
     data.collision_brushes = brushes;
     data.brush_tree = Some(tree);
@@ -1614,6 +1616,52 @@ pub fn brush_hulls(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<Vec<[f32; 3]>> {
         .chain(entity_hulls(bsp, leaves))
         .filter(|(i, _, _)| bsp.brushes[*i].flags.intersects(blocks))
         .map(|(_, h, _)| h)
+        .collect()
+}
+
+/// Whether a brush with these contents lets light through: glass or a
+/// grate (window or grate contents) that isn't solid too. A flash's line
+/// passes them (measured 2026-10-18, grenades.md Q12: de_nuke's glass
+/// and its window-contents vents, and its grate catwalk).
+fn see_through(flags: BrushFlags) -> bool {
+    flags.intersects(BrushFlags::WINDOW.union(BrushFlags::GRATE)) && !flags.contains(BrushFlags::SOLID)
+}
+
+/// Indices into `brush_hulls` of the see-through volumes (`see_through`).
+pub fn see_through_hulls(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<usize> {
+    let blocks = BrushFlags::SOLID
+        .union(BrushFlags::WINDOW)
+        .union(BrushFlags::GRATE)
+        .union(BrushFlags::LADDER);
+    brush_hulls_indexed(bsp, leaves)
+        .into_iter()
+        .chain(entity_hulls(bsp, leaves))
+        .filter(|(i, _, _)| bsp.brushes[*i].flags.intersects(blocks))
+        .enumerate()
+        .filter(|(_, (i, _, _))| see_through(bsp.brushes[*i].flags))
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// Brush entities (indices into the map's entities) whose solid volumes
+/// are all see-through (`see_through`): breakable glass, vents.
+pub fn see_through_entities(bsp: &Bsp, leaves: &[RawLeaf]) -> Vec<usize> {
+    bsp.entities
+        .iter()
+        .enumerate()
+        .filter_map(|(index, ent)| {
+            let model = ent
+                .prop("model")
+                .and_then(|m| m.strip_prefix('*'))
+                .and_then(|m| m.parse::<usize>().ok())
+                .filter(|m| *m > 0)?;
+            let flags: Vec<BrushFlags> = model_brushes(bsp, leaves, model)
+                .into_iter()
+                .map(|b| bsp.brushes[b].flags)
+                .filter(|f| f.intersects(PLAYER_SOLID))
+                .collect();
+            (!flags.is_empty() && flags.iter().all(|f| see_through(*f))).then_some(index)
+        })
         .collect()
 }
 

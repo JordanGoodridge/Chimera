@@ -134,7 +134,16 @@ fn player_rides_a_rising_platform() {
     );
     let auto = entity(&[("classname", "logic_auto"), ("OnMapSpawn", "lift,Open,,0,-1")], Vec::new(), false);
     let (mut sim, p) = sim(vec![lift, auto], Vec3::new(0.0, 0.0, 8.0), 0.0);
-    sim.ticks(30);
+    // Measured 2026-10-18 (doors_buttons.md Q4, a bot on a spawned
+    // func_door rising at 100): the rider rises with it on the same tick,
+    // 1.5 units every tick from the first, never a tick behind.
+    sim.ticks(10);
+    let mut gaps = Vec::new();
+    for _ in 0..20 {
+        sim.ticks(1);
+        gaps.push(feet(&sim, p).z - mover_origin(&mut sim, 0).z);
+    }
+    assert!(gaps.iter().all(|g| (g - gaps[0]).abs() < 1e-3), "gap to the lift by tick: {gaps:?}");
     let rising = mover_origin(&mut sim, 0).z;
     assert!(rising > 8.0 && rising < 108.0, "rising: {rising}");
     assert!((feet(&sim, p).z - rising).abs() < 2.0, "rides it: feet {} lift {rising}", feet(&sim, p).z);
@@ -700,8 +709,8 @@ fn trigger_hurt_takes_whole_points_and_armour_by_type() {
             amount: armour,
             helmet: false,
         });
-        // The first pass, then three more.
-        sim.ticks(3);
+        // The first pass (4 ticks after the touch), then three more.
+        sim.ticks(6);
         let first = (health(&sim, p), sim.app.world().get::<Armor>(p).unwrap().amount);
         sim.ticks(100);
         let fourth = (health(&sim, p), sim.app.world().get::<Armor>(p).unwrap().amount);
