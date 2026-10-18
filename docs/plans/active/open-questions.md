@@ -26,6 +26,11 @@ each, a row naming two classes counts in both): class 1: 137, class 2:
 one parity row, fixed with this list). Part B below works through the
 class-1 items by player impact.
 
+Recount after Part B's second pass (2026-10-17, same rules; the
+physics_constraints row is split in two, so class 1 counts 138): class 1:
+138, of which 31 answered in Part B and 107 left (a row with a part left
+counts as left); classes 2-5 unchanged.
+
 ## Specs: specs/cs_source
 
 | Spec | Question | Class | What would answer it |
@@ -245,7 +250,7 @@ class-1 items by player impact.
 | physics_brushes | Q6 players and a map prop_ragdoll | 1 | spawned prop_ragdoll |
 | physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
 | physics_brushes | Q8 thin-rod check on rotated brushes | 1 | spawned |
-| physics_constraints | Q1, Q5 (break limit at rest, deleted body) | 1 | done (Part B; Q1's moving loads and torque left) |
+| physics_constraints | Q1, Q5 (break limit at rest, deleted body; 2 items) | 1 | done (Part B; Q1's moving loads and torque left) |
 | physics_constraints | Q2-Q4, Q6-Q10 (motor units, hinge friction, spring law, world fallback, equal limits, pulley, never-created joint, tie order) | 1 | spawned constraints, positions per frame (8 items) |
 | prop_damage | Q4, Q7, Q8 and the client halves of Q2, Q9 | 2 | capture C29 |
 | prop_damage | Q6 left: why the landing crush only at 1450-1500 in/s | 1 | more landing speeds |
