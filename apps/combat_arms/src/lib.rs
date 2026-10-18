@@ -10,8 +10,11 @@
 //! build.rs (the script every app shares, chimera/core/build_stamp.rs);
 //! main.rs inserts `core::BuildVersion`, the hooks carry the commit.
 //!
-//! Known shortcuts: no map but the greybox loads (Combat Arms' maps wait
-//! for its loader); the shell keeps its config (binds, cvars) in the same
+//! Maps: `combat_arms:<name>` from the install (`load_map`, through
+//! `combat_arms::game::world`), the greybox otherwise.
+//!
+//! Known shortcuts: maps load only by id (no downloaded map files, no
+//! map offer to network clients); the shell keeps its config (binds, cvars) in the same
 //! folder as the CS:S app's (`console::cfg_dir`).
 
 use bevy::prelude::*;
@@ -26,9 +29,8 @@ pub const VERSION: &str = env!("CHIMERA_VERSION");
 /// stamped by build.rs.
 pub const BUILD: &str = env!("CHIMERA_GIT");
 
-/// What this app tells the client shell: its commit, no map but the
-/// greybox (Combat Arms' maps wait for its loader), and the greybox's own
-/// hooks.
+/// What this app tells the client shell: its commit, Combat Arms' maps
+/// by id (`load_map`), and the greybox's own hooks.
 pub fn client_hooks() -> AppHooks {
     AppHooks {
         build: BUILD,
@@ -41,12 +43,18 @@ pub fn client_hooks() -> AppHooks {
 }
 
 fn no_maps(id: &str) -> String {
-    format!("{id}: Combat Arms' maps aren't loaded yet (the skeleton plays the greybox only)")
+    format!("{id}: Combat Arms maps load by id only (combat_arms:<name>), not from a file")
 }
 
-/// Map `id` at a `mat_hdr_level`: none yet.
+/// Map `id` (`combat_arms:<name>`, or a bare name) from the install; the
+/// HDR level doesn't apply.
 pub fn load_map(id: &str, _hdr_level: u8) -> Result<MapData, String> {
-    Err(no_maps(id))
+    match id.split_once(':') {
+        Some((game, _)) if format!("{game}:") != combat_arms::game::world::MAP_PREFIX => {
+            Err(format!("{id}: not a Combat Arms map (combat_arms:<name>)"))
+        }
+        _ => combat_arms::game::world::load(id),
+    }
 }
 
 /// The client as this app runs it: the shell's plugins with the app's

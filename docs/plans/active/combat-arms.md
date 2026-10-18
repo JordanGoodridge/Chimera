@@ -96,6 +96,9 @@ does for BSP.
   install's `Game/` with `rez::open_dir` and the keys from
   `chimera.local.toml`; the data seam (`game/data.rs`) reads the
   install's `ATTRIBUTES.rez` with the same keys.
+- 2026-10-18: `lithtech_formats::world` reads world files (`.dat`) and
+  `lithtech_formats::dtx` textures; `games/combat_arms`' `game::world`
+  turns a map into `MapData` (`--map combat_arms:<name>`).
 - 2026-10-18: `lithtech_formats::attributes` reads attribute files
   (`attribute_data.md`'s format); Combat Arms' records and the merge
   over our TOML are the game's (`game/data.rs`, `game/data/attributes.rs`).
@@ -141,8 +144,8 @@ does for BSP.
 | 6 | Grenades | `grenades.md` | not started | L10 (grenade effects' looks); throwables, projectiles, blasts, flash and smoke rules are already Chimera's (`weapon::grenade`) | Cloud agent |
 | 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | L7 (the scope overlay's look as data); zoom (`AltModes`, `Zoom`) and the overlay are already Chimera's | Mostly data over 2; scope as an `alt` kind |
 | 8 | Attachments | `attachments.md` | not started | none (new in Chimera) | Data-driven parts (docs/weapon-data.md) |
-| 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | not started | L11 (impact effects and runtime decals by surface class); the reader goes in `lithtech/` | This box (real maps); fixture worlds for the reader's unit tests |
-| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md`, `textures_dtx.md`, `animation.md` (briefs 10a-c) | not started | L12 (view-model activity driver, bob and sway); `map::anim` and `map::view_model` are already Chimera's; the readers go in `lithtech/` | This box (real models); fixture files for the readers' unit tests |
+| 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | implementing (`worktree-agent-a4ca3acf25749c867`): reader and loading done | L11 (impact effects and runtime decals by surface class) not needed yet; nothing lifted (the map layer took `MapData` as is) | Reader `lithtech_formats::world` (fixtures A, B, C1-C7; heavy: test cases 1-6 on the 33 plain maps, all version 85; 7 waits for the V2 key); `game::world` converts to `MapData` (render data with a lightmap atlas, the install's `.dtx` textures through a first `lithtech_formats::dtx`, physics-BSP collision, `GameStartPoint` spawns); `--map combat_arms:<name>` in the app; scenario tests `tests/it/world.rs`, `heavy::world`; ambiguities in `game/world.rs`'s Known shortcuts |
+| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md`, `textures_dtx.md`, `animation.md` (briefs 10a-c) | not started (10b: `lithtech_formats::dtx` reads and decodes textures for item 9's maps, fixtures F1-F8 and the install sweep pass; load-time mip skipping, links and sections left) | L12 (view-model activity driver, bob and sway); `map::anim` and `map::view_model` are already Chimera's; the readers go in `lithtech/` | This box (real models); fixture files for the readers' unit tests |
 | 11 | CA UI system: how HUD and menus are built | `ui_system.md` | not started | L13 (buy and team menus, scoreboard, on Chimera's VGUI drawer) | After 5; decides whether we read the game's layouts or rebuild them as data |
 
 ### Wave 3

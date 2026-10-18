@@ -16,7 +16,9 @@
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
 //!   the install's attribute files;
 //! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
-//! - `rules`: game modes as rule modules.
+//! - `rules`: game modes as rule modules;
+//! - `world`: the install's maps (world `.dat` files) as Chimera's
+//!   `MapData` (world_dat.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -30,6 +32,7 @@ pub mod mount;
 pub mod movement;
 pub mod rules;
 pub mod weapons;
+pub mod world;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 
@@ -56,7 +59,7 @@ pub static INFO: GameInfo = GameInfo {
     tick_interval: TICK_INTERVAL,
     open: mount::open,
     map_cycle: |_| Vec::new(),
-    import_map: |_| Err("Combat Arms maps aren't loaded yet".into()),
+    import_map: |_| Err("Combat Arms maps load from the install by id (combat_arms:<name>), not from a file".into()),
     // No such file in an install: the built-in table is used.
     default_binds_cfg: "chimera_placeholder_binds.cfg",
     default_binds: DEFAULT_BINDS,

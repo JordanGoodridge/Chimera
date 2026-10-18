@@ -2,7 +2,8 @@
 //! (`combat_arms::SimPlugins` + `CombatArmsPlugins`) on the greybox, the
 //! presentation, the network and the client shell with its HUD. Wave 0:
 //! walk and shoot the placeholder weapons. The options are the shell's,
-//! as the CS:S app's (`--help`); `--map` takes only the greybox.
+//! as the CS:S app's (`--help`); `--map combat_arms:<name>` loads a map
+//! from the install (`combat_arms::game::world`), else the greybox.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -16,19 +17,40 @@ fn main() {
     if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
         println!(
             "combat_arms: the Combat Arms skeleton on Chimera (placeholder movement, rifle and knife\n\
-             on the greybox; nothing of Combat Arms' behaviour yet). The options are the shell's:\n"
+             on the greybox, or a map of the install with --map combat_arms:<name>, e.g.\n\
+             combat_arms:warehouse). The options are the shell's:\n"
         );
     }
     let mut args = Args::parse();
-    if let Some(id) = args.game_map() {
-        eprintln!("error: --map {id}: {}", combat_arms_app::load_map(id, 0).unwrap_err());
-        std::process::exit(1);
-    }
-    // No menus yet: always straight into the greybox.
-    args.map.get_or_insert_with(|| "chimera:greybox".into());
     let mut app = App::new();
-    app.add_plugins((greybox::GreyboxMapPlugin, MapPlugin::empty()))
-        .add_plugins((
+    match args.game_map() {
+        Some(id) => match combat_arms_app::load_map(id, 0) {
+            Ok(data) => {
+                eprintln!(
+                    "loaded {}: {} triangles, {} textures, {} spawns, {} warnings",
+                    data.name,
+                    data.triangle_count(),
+                    data.textures.len(),
+                    data.spawns.len(),
+                    data.warnings.len()
+                );
+                for w in &data.warnings {
+                    eprintln!("  warning: {w}");
+                }
+                app.add_plugins(MapPlugin::new(data));
+            }
+            Err(e) => {
+                eprintln!("error: --map {id}: {e}");
+                std::process::exit(1);
+            }
+        },
+        None => {
+            // No menus yet: straight into the greybox.
+            args.map.get_or_insert_with(|| "chimera:greybox".into());
+            app.add_plugins((greybox::GreyboxMapPlugin, MapPlugin::empty()));
+        }
+    }
+    app.add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {

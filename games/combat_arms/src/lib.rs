@@ -9,7 +9,8 @@
 //! implementation work never edits the same file: `movement`, `weapons`
 //! (firing), `inventory` (slots, switching, the knife), `grenades`,
 //! `attachments`, `data` (its data files and, later, the install's
-//! attribute files) and `rules` (game modes); `CombatArmsPlugins` adds
+//! attribute files), `rules` (game modes) and `world` (the install's
+//! maps); `CombatArmsPlugins` adds
 //! them all. With the `ui` feature, `ui` is its front end on the client
 //! shell: `ui::hud` (crosshair and basic HUD) and `ui::visuals`
 //! (placeholder box guns). `harness::CaSim` is the simulation as the
