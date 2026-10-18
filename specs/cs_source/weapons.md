@@ -1309,7 +1309,15 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   wall seem to be crossed as one object. Not analysed.
 - Unexplained: an 8-unit concrete wall whose far side is `TOOLSNODRAW`
   (props `default`) stopped even the AWP (dust2 `TEMPLEWALL04A` at
-  (−1312, 1104, 290–340)). Damage factor for metal not measured.
+  (−1312, 1104, 290–340)).
+- Metal (2026-10-18, a motion-disabled `oildrum001` prop_physics on
+  de_dust2's tile floor, shot crouched from 90 units, the target 30-50
+  behind): the damage factor is **0.30** through chords of 13.6-22.4
+  units (AWP 34 to the chest, bounds 0.297-0.306), but **0.09** (0.3²)
+  through chords of 25.1 and 28.1 (AWP 10, AK-47 3, M4A1 2) although the
+  drum's `.phy` is one convex piece: an entity crossed for 24 units or
+  more seems to count twice. Not seen in the world: wooden static props
+  38-42 units thick kept 0.6 (AWP 68, de_dust2 near (−1400, 400)).
 - Sand (2026-10-18, `DE_DUST/STONEWALL02B`, 11.4 and 14.4 units along
   the path, from (−2000, −600) at yaw 225, the target 20-60 behind): the
   damage factor is **0.30** (AWP 34 and 42, AK-47 10, M4A1 9: every
