@@ -36,9 +36,9 @@ platforms = [
 workspace-members = ["chimera_dev"]
 
 # Simulated (their dependencies' features count) but not given the hack:
-# the format readers and Source's tools stay plain data without Bevy
+# the format readers (Source's and LithTech's) and Source's tools stay plain data without Bevy
 # (`cargo test -p source_formats` builds in seconds), as do the
 # repository's checks (`repo_checks`: the hooks build it first), and
 # `chimera_dev` isn't managed.
 [final-excludes]
-workspace-members = ["source_formats", "source_tools", "chimera_dev", "repo_checks"]
+workspace-members = ["source_formats", "lithtech_formats", "source_tools", "chimera_dev", "repo_checks"]

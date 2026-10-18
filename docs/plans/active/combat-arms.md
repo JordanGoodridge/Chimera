@@ -85,19 +85,25 @@ conversion into engine types ever needs Bevy, a second crate beside it
 Chimera's neutral types (`MapData`, `AnimSet`, textures), as `cs_source`
 does for BSP.
 
-- The existing local-only `.rez` reader (2026-10-05, git-ignored at the
-  main checkout's `src/games/combat_arms/`) moves into `lithtech/` when
-  Wave 0's `.rez` row is picked up, rewritten against `rez_archive.md` if
-  it doesn't already follow it; its tests use fixtures generated in code.
+- Done 2026-10-18: the first crate is `lithtech/formats`
+  (`lithtech_formats`): the `.rez` reader, moved from the old local-only
+  code and checked against `rez_archive.md` (`rez`: header, directory,
+  archive as a mount layer, `open_dir` for a folder; `rez_cipher`: the
+  payload cipher, keys at run time). Unit tests on archives written in
+  code; `heavy::` tests on this box's install. It uses `source_formats`
+  only for the VFS (`fs::FileSource`, `Mount`).
+- `games/combat_arms`' `game::mount` (its `INFO.open`) mounts the
+  install's `Game/` with `rez::open_dir` and the keys from
+  `chimera.local.toml`; the data seam (`game/data.rs`) will read through
+  it.
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
-- Not done here (the skeleton's owner is changing the layering rules now):
-  the crate diagram and layer list in docs/ARCHITECTURE.md and the rules
-  in `checks/tests/it/architecture.rs` (`workspace_crates`, the no-Bevy
-  rule `source_formats` has, keys and assets never in the crate) must
-  learn about `lithtech/` in the commit that creates the first crate
-  there. Whoever picks up the `.rez` row does that.
+- docs/ARCHITECTURE.md ("Crates") and `checks/tests/it/architecture.rs`
+  know `lithtech/`: `workspace_crates` holds `lithtech/formats` to the
+  rules `source_formats` has (no Bevy, avian, Chimera or game; no
+  workspace-hack), and `no_keys_tracked` refuses key-like hex runs in
+  `lithtech/` and Combat Arms' code and specs.
 
 ## Task board
 
@@ -106,7 +112,7 @@ does for BSP.
 | Item | Spec | Status | Notes |
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
-| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (in the repo since 2026-10-18; needs the user's review) | Reader exists on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). After review, the reader moves into the new `lithtech/` loader layer ("LithTech loader layer"), which this row creates |
+| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | done (2026-10-18), in `lithtech/formats` (`lithtech_formats::rez`); spec still needs the user's review | Heavy tests on this box: 108 archives open with matching check sums, 32,024 files, 40 locked without keys, 33 maps in WORLDS2/WORLDS3 read; `dump combat_arms` lists them. `combat_arms::game::mount` (`INFO.open`) mounts the install with it |
 | V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `chimera.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
 ### Wave 0.5: shared pieces
@@ -275,6 +281,9 @@ Notes:
 - 2026-10-18: Plan and Wave 1 briefs written; skeleton in progress.
 - 2026-10-18: Wave 0.5 lift survey done ("Lift survey (Wave 0.5)"); Lift
   column filled.
+- 2026-10-18: `lithtech/` loader layer created; the `.rez` reader moved
+  into `lithtech_formats` with fixture tests and heavy tests on the
+  install; the old local-only loader is retired.
 
 ## How to run a spec wave (for the user)
 

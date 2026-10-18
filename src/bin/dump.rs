@@ -12,6 +12,7 @@ use std::{
 };
 
 use bevy::math::{Quat, Vec3};
+use lithtech_formats::rez;
 use mashup::{
     games::cs_source,
     mount::{
@@ -118,8 +119,7 @@ fn run(args: &Args) -> Result<(), String> {
     let install = install_path(args)?;
     match args.game.as_str() {
         cs_source::GAME => dump_cs_source(args, &install),
-        #[cfg(feature = "combat_arms")]
-        mashup::games::combat_arms::GAME => dump_combat_arms(args, &install),
+        COMBAT_ARMS => dump_combat_arms(args, &install),
         other => Err(format!("unknown game `{other}`; expected cs_source or combat_arms")),
     }
 }
@@ -144,21 +144,36 @@ fn dump_cs_source(args: &Args, install: &Path) -> Result<(), String> {
     report(args, &mount, &[])
 }
 
-#[cfg(feature = "combat_arms")]
+/// Combat Arms' name in the local config (`[games.combat_arms]`).
+const COMBAT_ARMS: &str = "combat_arms";
+
+/// Combat Arms' keys (`[games.combat_arms.keys.<scheme>]` in the local
+/// config; never in the repo), by scheme.
+fn combat_arms_keys() -> Result<rez::RezKeys, String> {
+    let config = LocalConfig::load()?;
+    let mut keys = rez::RezKeys::new();
+    for (scheme, k) in config.game_keys(COMBAT_ARMS).into_iter().flatten() {
+        let cipher = rez::RezCipher::from_hex(&k.key, &k.iv, &format!("{COMBAT_ARMS} {scheme}"))?;
+        keys.insert(scheme.clone(), cipher);
+    }
+    Ok(keys)
+}
+
+/// Every archive in the install's `Game/` folder (lithtech_formats' `.rez`
+/// reader).
 fn dump_combat_arms(args: &Args, install: &Path) -> Result<(), String> {
-    use mashup::games::combat_arms;
-    let keys = combat_arms::rez::keys_from_config(&LocalConfig::load()?)?;
-    let (mount, locked) = combat_arms::mount::open(install, &keys).map_err(|e| e.to_string())?;
+    let keys = combat_arms_keys()?;
+    let game = install.join("Game");
+    let (mount, locked) =
+        rez::open_dir(&game, &keys).map_err(|e| format!("{e}; is {} a Combat Arms install?", install.display()))?;
     if args.archives {
         println!("{:>10}  {:7}  {:16}  {:>6}  name", "size", "entropy", "title", "files");
         for layer in mount.layers() {
             let path = PathBuf::from(layer.name());
             let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            let header = combat_arms::rez::RezArchive::open(&path, &keys)
-                .map_err(|e| e.to_string())?
-                .header;
-            let entropy = combat_arms::rez::sample_entropy(&path, 1 << 20).map_err(|e| e.to_string())?;
-            let title: String = header.title.chars().take(16).collect();
+            let archive = rez::RezArchive::open(&path, &keys).map_err(|e| e.to_string())?;
+            let entropy = sample_entropy(&path, 1 << 20).map_err(|e| e.to_string())?;
+            let title: String = archive.header().title.chars().take(16).collect();
             let name = path.file_name().unwrap().to_string_lossy();
             println!(
                 "{:>10}  {entropy:7.3}  {title:16}  {:>6}  {name}",
@@ -168,6 +183,30 @@ fn dump_combat_arms(args: &Args, install: &Path) -> Result<(), String> {
         }
     }
     report(args, &mount, &locked)
+}
+
+/// Shannon entropy in bits per byte of up to `len` bytes from the middle
+/// of a file: close to 8.0 means encrypted or compressed.
+fn sample_entropy(path: &Path, len: usize) -> std::io::Result<f64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = fs::File::open(path)?;
+    let size = f.metadata()?.len();
+    f.seek(SeekFrom::Start(size.saturating_sub(len as u64) / 2))?;
+    let mut buf = Vec::with_capacity(len);
+    f.take(len as u64).read_to_end(&mut buf)?;
+    let mut counts = [0u64; 256];
+    for &b in &buf {
+        counts[b as usize] += 1;
+    }
+    let n = buf.len() as f64;
+    Ok(counts
+        .iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| {
+            let p = c as f64 / n;
+            -p * p.log2()
+        })
+        .sum())
 }
 
 /// A model's skeleton and what it can play (our own `.mdl` decoder).
