@@ -66,11 +66,13 @@
 //!   buffs, figure types or range table). `behind` is public for the guns'
 //!   x1.3 (Quirk 6), which this module doesn't apply.
 //! - Fire-gating by sprint and use applies to magazine weapons and the
-//!   knife; thrown weapons follow Chimera's `grenade::Throwable`, which
-//!   also removes a spent grenade (CA keeps it at total 0, unselectable):
-//!   Q to it then finds no class and stops, as section 4 does for a
-//!   swapped weapon. The cooked-grenade release on death (12.1) is
-//!   grenades.md's. A shell-by-shell weapon's reload during sprint or its
+//!   knife; thrown weapons are `grenades`' (sprint holds their fire there,
+//!   use doesn't), on Chimera's `grenade::Throwable`, which keeps a spent
+//!   grenade at total 0 for them (`ThrowOptions::keep_spent`; a test's
+//!   throwable without it leaves the inventory: Q to it then finds no
+//!   class and stops, as section 4 does for a swapped weapon). The
+//!   cooked-grenade release on death (12.1) is grenades.md's
+//!   (`grenades`). A shell-by-shell weapon's reload during sprint or its
 //!   draw goes to Chimera's frame (refused while held).
 //! - Reloads started here (6.6, Quirk 2, under sprint) play no reload
 //!   sounds (the frame's sound queue is private).
@@ -121,8 +123,8 @@ pub const KNIFE: &str = "combat_arms:m9_knife";
 
 /// What every Combat Arms player starts with, in loadout order (primary,
 /// secondary, melee, throw, backpack; 1). PLACEHOLDER: the skeleton's
-/// rifle until weapon_firing.md's and the M9.
-pub const STARTING_WEAPONS: &[&str] = &[RIFLE, KNIFE];
+/// rifle until weapon_firing.md's, the M9 and the M67 (grenades.md).
+pub const STARTING_WEAPONS: &[&str] = &[RIFLE, KNIFE, super::grenades::M67];
 
 /// Metres per LithTech unit (ours: 1 cm; see Known shortcuts).
 pub const UNIT: f32 = 0.01;

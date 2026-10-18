@@ -153,7 +153,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   the client shell and CS:S's front end, `cs_source/ui`).
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
   of placeholder parts on Chimera, each replaced by Combat Arms'
-  behaviour as its spec lands (specs/combat_arms/; firing so far;
+  behaviour as its spec lands (specs/combat_arms/; firing, inventory and
+  grenades so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
@@ -482,9 +483,11 @@ that the paths exist).
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
+- `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
-- `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1 and M9 knife (games)
+- `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1, M9 knife and grenades (games)
+- `games/combat_arms/data/grenade_surfaces.toml`: Combat Arms' surface hardness for grenade bounces (the grenades spec's table) (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
 - `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, armour, player, body types) with the spec's defaults (games)

@@ -6,7 +6,8 @@
 //!
 //! Built in: the M4A1 (data/weapons/m4a1.toml, the numbers of
 //! weapon_firing.md's worked example), the M9 knife (m9.toml,
-//! inventory.md's numbers) and the movement numbers
+//! inventory.md's numbers), the grenades (m67.toml, xm84.toml, m18.toml,
+//! m23f.toml, g7a.toml: grenades.md's) and the movement numbers
 //! (data/movement.toml, `movement::MovementData`).
 //!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
@@ -84,6 +85,11 @@ macro_rules! data_file {
 pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("m9.toml"),
     data_file!("m4a1.toml"),
+    data_file!("m67.toml"),
+    data_file!("xm84.toml"),
+    data_file!("m18.toml"),
+    data_file!("m23f.toml"),
+    data_file!("g7a.toml"),
 ];
 
 /// The namespace of our weapon and ammo IDs.
@@ -532,7 +538,7 @@ mod tests {
         for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
             assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
-        assert_eq!(weapon_set().weapons.len(), 2);
+        assert_eq!(weapon_set().weapons.len(), WEAPON_DATA.len());
     }
 
     #[test]

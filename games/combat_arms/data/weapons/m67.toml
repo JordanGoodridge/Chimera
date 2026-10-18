@@ -1,0 +1,57 @@
+# The M67, Combat Arms' frag grenade and the stock loadout's grenade:
+# numbers from specs/combat_arms/grenades.md ("Data: one grenade of each
+# kind", its sections in brackets) and inventory.md (animation lengths),
+# in our own data format (docs/weapon-data.md; the `combat_arms:grenade`
+# hook: games/combat_arms/src/game/grenades.rs). Our numbers as the spec
+# gives them, not a file from the game.
+#
+# Units: LithTech world units (1 unit = 1 cm, ours) and hit points. No
+# sounds or models (the front end draws a placeholder ball in flight).
+id = "combat_arms:m67"
+units = { length = 0.01, damage = 0.01 }
+# Throw class (4): key 4 [2].
+slot = 3
+# The select animation, 400 ms (inventory.md, Constants); also the
+# re-draw after a throw while some are left (Open question 5: unknown).
+draw = 0.4
+undroppable = true
+
+# HideWhenEmpty 1 [Data]; grenades never drop on death (inventory.md 12);
+# post-sprint 267 ms (inventory.md, Constants).
+[hooks."combat_arms:inventory"]
+hide_when_empty = true
+drop_on_death = false
+sprint_out = 0.267
+
+# MovePenalty 0.03 [Data].
+[hooks."combat_arms:handling"]
+move_penalty = 0.03
+
+[hooks."combat_arms:grenade"]
+# Ammo SpawnedAmount / MaxAmount 1 / 1 [Data; 2].
+spawned = 1
+max = 1
+# The pre-fire (pin pull) 700 ms, the throw 67 ms with the release at its
+# fire event k (Open question 3: unknown, read as the throw's end) and
+# the post-fire 366 ms (inventory.md, Constants) [3].
+prefire = 0.7
+release_key = 0.067
+postfire = 0.366
+# Weapon MinPerturb / MaxPerturb 1 / 10, DynamicPerturbFactor 1 [Data; 4].
+perturb = [1, 10]
+dynamic_perturb = 1.0
+# Projectile Lifetime 2.5 s (the fuse), Velocity 1550 [Data; 4, 8];
+# DropVelocity 500 (the drop perk's, 14).
+fuse = 2.5
+speed = 1550.0
+drop_speed = 500.0
+# Ammo Health 300 [13]; CanHitSameKind 1 [6].
+health = 300.0
+hits_same_kind = true
+# Ammo AreaDamage 60, AreaDamageRadius 450, AreaDamageType 7 (explode) [9].
+area_damage = 60.0
+area_radius = 450.0
+area_type = "explode"
+# The world model's half-height, for the at-rest nudge [6]: PLACEHOLDER
+# (Open question 9: the model's dims x its scale 2, not read yet).
+half_height = 2.0

@@ -31,6 +31,11 @@
 //! linear by `LegacyBlastDamage`; only characters' damage is whole points); a throw says `core::Radio` "fireinhole" (unless
 //! `sv_ignoregrenaderadio`); dying primed drops it live; cleared at a round
 //! restart; buying stacks grenades up to their limit and keeps the hand.
+//! Another game's throw (`ThrowOptions` on the weapon; Combat Arms'):
+//! the release when the pin animation ends whatever the button does, a
+//! spent weapon kept at 0, no live drop on death, and its own projectile
+//! (`LaunchHook`, a `Projectile` marked `GameFlown` that the game flies
+//! and detonates; `Detonated` and the network's drawing still apply).
 //!
 //! Known shortcuts (docs/tech-debt.md): Grenades (specs/cs_source/grenades.md)
 //! follow the SDK template where CS:S is unmeasured: release + 0.1 s to the
@@ -508,6 +513,62 @@ impl Throwable {
     }
 }
 
+/// Weapon part beside `Throwable`: how a game's throw differs from the
+/// default (CS:S's, which a weapon without this part keeps).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ThrowOptions {
+    /// The release comes when the pin animation ends, whether the button
+    /// is still held or not (a release before then waits for it); off:
+    /// releasing the button releases the grenade.
+    pub release_at_pin_end: bool,
+    /// The weapon stays with a count of 0 when its last grenade is
+    /// thrown (the game's selection skips it and switches away); off:
+    /// the spent weapon leaves the inventory.
+    pub keep_spent: bool,
+    /// Dying with the pin out drops the grenade live (`drop_primed`).
+    pub drop_primed: bool,
+    /// The game makes the projectile itself when the grenade leaves the
+    /// hand (where the default would `launch` one by `ThrowRule`).
+    pub launch: Option<LaunchHook>,
+}
+
+impl Default for ThrowOptions {
+    /// The default throw's options.
+    fn default() -> Self {
+        Self {
+            release_at_pin_end: false,
+            keep_spent: false,
+            drop_primed: true,
+            launch: None,
+        }
+    }
+}
+
+/// A grenade leaving the hand, for a game's `LaunchHook`: the weapon, its
+/// thrower, the thrower's eye (m), view (radians, ours: `Intent`'s yaw
+/// and pitch), velocity and command number (a seed).
+#[derive(Clone, Copy, Debug)]
+pub struct Launch {
+    pub weapon: Entity,
+    pub thrower: Entity,
+    pub eye: Vec3,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub velocity: Vec3,
+    pub command: u32,
+}
+
+/// A game's launch: makes the projectile (`spawn_projectile`, then the
+/// game's own parts on it). Runs only where projectiles are made (the
+/// server, single player).
+pub type LaunchHook = fn(&mut World, Launch);
+
+/// On a `Projectile` a game flies, bounces and detonates itself (its own
+/// rules): the default flight leaves it alone. The rest (drawing, the
+/// network's `NetItem`, a round restart clearing it) still applies.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct GameFlown;
+
 /// A grenade in flight (or lying, waiting to go off).
 #[derive(Component, Clone, Debug)]
 pub struct Projectile {
@@ -686,7 +747,7 @@ fn throw_frame(
         Option<&Velocity>,
         Option<&Health>,
     ), Without<NetDrawn>>,
-    mut weapons: Query<(Entity, &Weapon, &mut WeaponState, &mut Throwable)>,
+    mut weapons: Query<(Entity, &Weapon, &mut WeaponState, &mut Throwable, Option<&ThrowOptions>)>,
     mut events: MessageWriter<WeaponEvent>,
     mut rng: ResMut<GrenadeRng>,
     (mut radio, radio_off): (MessageWriter<Radio>, Res<GrenadeRadio>),
@@ -700,11 +761,12 @@ fn throw_frame(
     let due = now + TIME_SLACK;
     let replay = !first.0;
     let server = role.as_deref().is_none_or(|r| *r != NetRole::Client);
-    for (entity, weapon, mut st, mut t) in &mut weapons {
+    for (entity, weapon, mut st, mut t, options) in &mut weapons {
         let Some(owner) = weapon.owner else { continue };
         let Ok((_, intent, mut inv, transform, state, vel, health)) = owners.get_mut(owner) else {
             continue;
         };
+        let options = options.copied().unwrap_or_default();
         let active = inv.active == Some(entity);
         let alive = health.is_none_or(|h| h.current > 0.0);
         if !active && t.pin {
@@ -714,8 +776,14 @@ fn throw_frame(
             st.pending.clear();
         }
         // 2. Released: throw (a release is checked first, so a tap throws
-        // at once).
-        if active && alive && t.pin && !intent.fire {
+        // at once; or, with `release_at_pin_end`, when the pin's
+        // animation ends, held or not).
+        let released = if options.release_at_pin_end {
+            due >= st.next_primary
+        } else {
+            !intent.fire
+        };
+        if active && alive && t.pin && released {
             t.pin = false;
             t.throw_at = Some(now + t.throw_delay as f64);
             t.count = t.count.saturating_sub(1);
@@ -745,31 +813,46 @@ fn throw_frame(
             t.throw_at = None;
             let eye = transform.translation + state.eye_offset;
             let carried = vel.map_or(Vec3::ZERO, |v| v.0);
-            let (mut start, velocity) = t.throw.throw(eye, intent.yaw, intent.pitch, carried);
-            // Thrown against a wall, it starts where its box meets the
-            // wall on the way out from the eye, never inside or beyond
-            // (CS:S, measured 2026-10-18, grenades.md Q6: 4 units off a
-            // panel at 45°, a 2-unit box's corner touching).
-            if let Ok(dir) = Dir3::new(start - eye) {
-                let half = t.flight.half;
-                let config = ShapeCastConfig {
-                    max_distance: (start - eye).length(),
-                    ..ShapeCastConfig::DEFAULT
-                };
-                let filter = SpatialQueryFilter::from_excluded_entities([owner]).with_mask(SOLID_LAYERS);
-                if let Some(hit) = spatial.cast_shape(
-                    &Collider::cuboid(half * 2.0, half * 2.0, half * 2.0),
-                    eye,
-                    Quat::IDENTITY,
-                    dir,
-                    &config,
-                    &filter,
-                ) {
-                    start = eye + *dir * hit.distance;
+            if let Some(hook) = options.launch {
+                if server {
+                    let launch = Launch {
+                        weapon: entity,
+                        thrower: owner,
+                        eye,
+                        yaw: intent.yaw,
+                        pitch: intent.pitch,
+                        velocity: carried,
+                        command: intent.command,
+                    };
+                    commands.queue(move |w: &mut World| hook(w, launch));
                 }
-            }
-            if server {
-                launch(&mut commands, &mut rng.0, weapon, &t, Some(owner), start, velocity);
+            } else {
+                let (mut start, velocity) = t.throw.throw(eye, intent.yaw, intent.pitch, carried);
+                // Thrown against a wall, it starts where its box meets the
+                // wall on the way out from the eye, never inside or beyond
+                // (CS:S, measured 2026-10-18, grenades.md Q6: 4 units off a
+                // panel at 45°, a 2-unit box's corner touching).
+                if let Ok(dir) = Dir3::new(start - eye) {
+                    let half = t.flight.half;
+                    let config = ShapeCastConfig {
+                        max_distance: (start - eye).length(),
+                        ..ShapeCastConfig::DEFAULT
+                    };
+                    let filter = SpatialQueryFilter::from_excluded_entities([owner]).with_mask(SOLID_LAYERS);
+                    if let Some(hit) = spatial.cast_shape(
+                        &Collider::cuboid(half * 2.0, half * 2.0, half * 2.0),
+                        eye,
+                        Quat::IDENTITY,
+                        dir,
+                        &config,
+                        &filter,
+                    ) {
+                        start = eye + *dir * hit.distance;
+                    }
+                }
+                if server {
+                    launch(&mut commands, &mut rng.0, weapon, &t, Some(owner), start, velocity);
+                }
             }
         }
         // 4. The throw animation is over: draw the next one, or the weapon
@@ -780,7 +863,10 @@ fn throw_frame(
         {
             t.redraw_at = None;
             if t.count == 0 {
-                commands.queue(move |w: &mut World| exhaust(w, owner, entity));
+                // Spent: kept at 0 for the game's selection, or gone.
+                if !options.keep_spent {
+                    commands.queue(move |w: &mut World| exhaust(w, owner, entity));
+                }
                 continue;
             }
             if active {
@@ -853,7 +939,7 @@ fn exhaust(world: &mut World, owner: Entity, weapon: Entity) {
 fn drop_primed(
     mut died: MessageReader<Died>,
     owners: Query<(&Inventory, &Transform, &MovementState, &Intent, Option<&Velocity>)>,
-    mut weapons: Query<(&Weapon, &mut Throwable)>,
+    mut weapons: Query<(&Weapon, &mut Throwable, Option<&ThrowOptions>)>,
     mut rng: ResMut<GrenadeRng>,
     mut commands: Commands,
 ) {
@@ -862,10 +948,11 @@ fn drop_primed(
             continue;
         };
         let Some(active) = inv.active else { continue };
-        let Ok((weapon, mut t)) = weapons.get_mut(active) else {
+        let Ok((weapon, mut t, options)) = weapons.get_mut(active) else {
             continue;
         };
-        if !t.pin {
+        let options = options.copied().unwrap_or_default();
+        if !t.pin || !options.drop_primed {
             continue;
         }
         t.pin = false;
@@ -874,7 +961,7 @@ fn drop_primed(
         let start = eye + intent.look_rotation() * Vec3::NEG_Z * t.throw.forward;
         let velocity = vel.map_or(Vec3::ZERO, |v| v.0);
         launch(&mut commands, &mut rng.0, weapon, &t, Some(d.entity), start, velocity);
-        if t.count == 0 {
+        if t.count == 0 && !options.keep_spent {
             let owner = d.entity;
             commands.queue(move |w: &mut World| exhaust(w, owner, active));
         }
@@ -1036,7 +1123,7 @@ impl GrenadeWorld<'_, '_> {
 
 #[allow(clippy::too_many_arguments)]
 fn fly(
-    mut projectiles: Query<(Entity, &mut Projectile, &mut Transform)>,
+    mut projectiles: Query<(Entity, &mut Projectile, &mut Transform), Without<GameFlown>>,
     mut world: GrenadeWorld,
     mut rng: ResMut<GrenadeRng>,
     mut commands: Commands,
