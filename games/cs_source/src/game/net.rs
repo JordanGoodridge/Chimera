@@ -870,6 +870,8 @@ fn apply_bombs(world: &mut World) {
             explode_at: t(b.explode),
             timer: b.timer,
             next_beep: 0.0,
+            // The server's: it thinks.
+            next_think: f64::INFINITY,
             defuse,
             defused: b.defused,
         };

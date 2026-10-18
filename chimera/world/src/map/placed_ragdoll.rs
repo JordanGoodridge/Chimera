@@ -40,7 +40,9 @@
 //! are on the ragdoll layer, so players pass through them and bullets go on
 //! through, pushing the part they hit by the ragdoll bullet push (4000 kg·in/s,
 //! not the weapon's own force; spec 6.6); others are solid to players and shots
-//! like props, but players' physics shadows don't push them (spec Q6); a model
+//! like props, but players' physics shadows don't push them (spec Q6: CS:S's
+//! players shove them; letting the shadow touch the parts, tried 2026-10-18,
+//! launched a player running into a lying corpse over it); a model
 //! without a ragdoll `.phy` still lies on its back below its origin, not
 //! simulated; FadeAndRemove removes it at once (no fade); constraints naming a
 //! ragdoll aren't attached to its parts; a network client draws the parts from
@@ -48,8 +50,7 @@
 //! the compiler's (lump 29) or its hulls' boxes x the default density; the
 //! thin-rod damping rule isn't applied; a broken physbox throws no gibs;
 //! physboxes aren't replicated to network clients (they stay where the map put
-//! them there); thrusters push about the body's origin, not its centre of mass
-//! (Q3). Why it's OK for now: mg_ maps' karts and boats move; measurements are
+//! them there). Why it's OK for now: mg_ maps' karts and boats move; measurements are
 //! the spec's open questions.
 
 use std::sync::Arc;

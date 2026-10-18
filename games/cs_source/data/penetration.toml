@@ -36,12 +36,16 @@ damage = 0.25
 # that material, 6-20 units): tile 0.3 (inferno's potted plant), computer
 # 0.45 (its TV), grate 0.99 (cs_office's fire extinguisher), plastic and
 # glass (pottery) 0.5. Scales: computer 0.4 (the M4A1's 35 passes its
-# 13.2-unit TV, the Deagle's 30 doesn't: 0.377-0.44); the rest are only
-# bounded below (the USP's 15 passes 14.0 of tile, 14.8 of pottery, 6.1
-# of grate) and take metal's 1.0 (UNMEASURED).
+# 13.2-unit TV, the Deagle's 30 doesn't: 0.377-0.44); tile 0.65 and
+# glass 1.0 (2026-10-18, inferno's big pot and clay oven along chords of
+# 11-43 units: the Glock's 21 passes 13.4 of tile and not 14.6, the
+# Deagle's 30 17.6 and not 22.4, the AK-47's 39 25.0 and not 26.4: 0.642-
+# 0.676; the AK-47 passes 36.5 of pottery and not 39.0, the USP 14.8:
+# 0.987-1.0); grate and plastic are only bounded below (the USP's 15
+# passes 6.1 of grate) and take metal's 1.0 (UNMEASURED).
 [[material]]
 class = "T"
-scale = 1.0
+scale = 0.65
 damage = 0.3
 
 [[material]]

@@ -712,7 +712,11 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   pin out leaves a live projectile on its death tick, 16 units ahead of the
   eye with zero velocity (standing still), which goes off a full fuse later
   (HE and flashbang 106 ticks, smoke 114 while settling); killed without
-  the pin out, no projectile. Moving at death: not measured.
+  the pin out, no projectile. Moving at death (2026-10-18,
+  `tools/css_probe/primedeath.py`, de_aztec, the bot running at 250 along
+  +x with the pin out, killed by `mashup_hurt`): the projectile moves at
+  the runner's 250 along +x, then falls (vz −14, −43, −72 in three reads
+  0.05 s apart): the player's whole velocity, as ours.
 - **Q8 fuse:** HE and flashbang detonate 115 ticks after `weapon_fire`,
   about 109 after the projectile appears (1.6 s: the template's 1.5 s
   checked every 0.2 s); smoke 111 after the fire event while still rolling.
@@ -924,7 +928,7 @@ per-tick logging of netprops and events) unless they need the client.
 16. **Q16 Smoke vs bots.** Bot behind a cloud centre at offsets 0, 100,
     200, 250 in from the line of sight; does it see/fire at a visible
     target? Also the client target-ID through smoke.
-17. **Q17 Answered but for a moving death (see CS:S values: a bot killed with the pin out leaves a live projectile with a full fuse; the dead drop their best gun and one grenade, HE over flashbang over smoke; 2026-10-18: `drop` with an HE in hand (the run selecting the grenade slot every tick, `mashup_botcmd <userid> drop` sent mid-run, three times) left it in hand, carried; a USP held the same way was dropped. Ours did drop it: now `kept_on_drop` on the three grenades).** Was: **Q17 Death with a primed grenade.** Kill a bot (`sm_slay`) while its
+17. **Q17 Answered (moving death 2026-10-18: the live grenade keeps the runner's velocity, as ours; see CS:S values: a bot killed with the pin out leaves a live projectile with a full fuse; the dead drop their best gun and one grenade, HE over flashbang over smoke; 2026-10-18: `drop` with an HE in hand (the run selecting the grenade slot every tick, `mashup_botcmd <userid> drop` sent mid-run, three times) left it in hand, carried; a USP held the same way was dropped. Ours did drop it: now `kept_on_drop` on the three grenades).** Was: **Q17 Death with a primed grenade.** Kill a bot (`sm_slay`) while its
     pin is pulled, and between release and spawn; log new projectiles. Also:
     which grenades drop as pickups on death, and can grenades be dropped with
     the `drop` command?

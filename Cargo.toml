@@ -24,8 +24,10 @@ members = [
     "lithtech/formats",
     "games/cs_source",
     "games/cs_source/tools",
+    "games/combat_arms",
     "apps/cs_source",
     "apps/cs_source_server",
+    "apps/combat_arms",
     "checks",
 ]
 default-members = [
@@ -45,8 +47,10 @@ default-members = [
     "lithtech/formats",
     "games/cs_source",
     "games/cs_source/tools",
+    "games/combat_arms",
     "apps/cs_source",
     "apps/cs_source_server",
+    "apps/combat_arms",
     "checks",
 ]
 resolver = "3"
@@ -74,6 +78,9 @@ source_logic = { path = "source/logic" }
 # LithTech's formats as plain data (Combat Arms' `.rez` archives).
 lithtech_formats = { path = "lithtech/formats" }
 cs_source = { path = "games/cs_source" }
+# Combat Arms as a game crate (games/combat_arms): its skeleton, filled
+# from specs/combat_arms/ (docs/plans/active/combat-arms.md).
+combat_arms = { path = "games/combat_arms" }
 # The layers' tools (docs/ARCHITECTURE.md, "Crates"): Chimera's (the
 # perf gate, image comparison) and Source's (RCON) libraries, for the
 # tools above them.
