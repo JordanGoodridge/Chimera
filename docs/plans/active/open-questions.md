@@ -53,7 +53,8 @@ thrower's side of grenades Q12 are written but not built
 (`tools/css_probe/README.md`).
 
 Added since (2026-10-18): shaders Q21, the fog colour by view direction
-(classes 3 and 2; one row in the specs table and one in the parity list).
+(classes 3 and 2; one row in the specs table and one in the parity list);
+objectives Q17, game events' fields and the log's other lines (class 1).
 
 ## Specs: specs/cs_source
 
@@ -122,6 +123,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | objectives | Q13 `info_bomb_target` radius | 1 | spawned entity (no stock map uses it) |
 | objectives | Q14 plant/defuse tick rounding, same-tick defuse and blast | 1 | event ticks from Q1/Q3 runs |
 | objectives | Q16 the bar while planting | 2 | client screenshots |
+| objectives | Q17 events' fields and the log's other lines (kills, chat, buys, connects) | 1 | probe server with `log on` and an event listener over one round |
 | overlays_decals | Q1-Q9 (decal orientation, reach, size, displacements/props, overlay order, overlays vs decals, corner mapping, deathmatch flag, fade) | 2 | client screenshots, one each (9 items) |
 | physics_props | Q1 inertia tensor | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q2 rotational inertia limit | 3 | inside vphysics |

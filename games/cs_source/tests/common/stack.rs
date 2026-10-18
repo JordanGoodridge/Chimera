@@ -12,7 +12,7 @@
 
 #![allow(unused_imports)]
 
-pub use chimera_core::{character, console, game_registry, metrics, mount, slots};
+pub use chimera_core::{character, console, game_log, game_registry, metrics, mount, slots};
 
 /// The shared vocabulary (`chimera_core::core`).
 pub mod core {

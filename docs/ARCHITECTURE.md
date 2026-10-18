@@ -203,17 +203,18 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
              slots               (registries, loadout, swapping)
                |
             console              (cvars, commands, queue; games and client register)
-               |
+               |                 (game_log beside it: game events, the server log)
              core                (shared vocabulary)
 ```
 
-Exact edges: net uses the engine's simulation (core, console, slots,
-character, movement, map, weapon) and names no game or Source logic:
+Exact edges: game_log uses core and console; net uses the engine's
+simulation (core, console, game_log, slots, character, movement, map,
+weapon) and names no game or Source logic:
 logic and games/<name> use it to register what they replicate (their
 parts, `net::parts`), and harness and client use it; bot uses core, console,
 slots, character, map, weapon (grenades
 it carries and throws), objectives (planting, defusing); rules uses core,
-console, weapon, objectives; objectives uses core, console, slots,
+console, game_log, weapon, objectives; objectives uses core, console, slots,
 character, map, weapon (games use it too, to fill in their bomb and
 hostages); weapon uses core, console, map; logic uses core, console,
 map (games feed it through `MapData::entities`; harness and client may use
@@ -285,6 +286,7 @@ that the paths exist).
 - `chimera/core/src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
 - `apps/cs_source/src/core.rs`: `chimera_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
 - `chimera/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
+- `chimera/core/src/game_log.rs`: game events (`GameEvent`) and the server log (`LogLine`, `log on`, `sv_logecho`, `sv_logfile`) (game_log)
 - `chimera/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `chimera/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
@@ -404,6 +406,7 @@ that the paths exist).
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `games/cs_source/src/rules/hints.rs`: automatic hints (`cl_autohelp`): data-named triggers, once per player per map (rules)
+- `games/cs_source/src/rules/events.rs`: CS:S's game events and server log lines (bomb, hostages, rounds, weapons, deaths) (rules)
 - `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
 - `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 

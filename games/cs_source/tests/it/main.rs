@@ -37,6 +37,7 @@ mod demo_resim;
 mod drawn_parts;
 mod economy_data;
 mod footstep_control;
+mod game_log;
 mod hints;
 mod hit_reaction;
 mod impact_effects;
