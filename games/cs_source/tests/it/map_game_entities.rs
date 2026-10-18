@@ -349,3 +349,57 @@ fn thruster_pushes_a_physbox() {
     let gained = (vx(&mut sim) - before) / SCALE;
     assert!((gained - 10.0).abs() < 1.5, "{gained} units/s");
 }
+
+/// An offset thruster turns its body about the body's centre of mass, not
+/// its origin (CS:S, measured 2026-10-18, physics_brushes.md Q3: a
+/// torque-only thruster level with an oil drum's centre spun it in place,
+/// one level with its origin, at its base, tipped it). Here the box's
+/// origin is at its base, the thruster level with its centre and to the
+/// side, pushing along +X: a spin about the vertical only.
+#[test]
+fn an_offset_thruster_turns_about_the_centre_of_mass() {
+    let physbox = MapEntity {
+        hulls: vec![hull(Vec3::new(-16.0, -16.0, 0.0), Vec3::new(16.0, 16.0, 48.0))],
+        mover: true,
+        physics: Some(MapPhysics {
+            mass: 50.0,
+            friction: 0.0,
+            elasticity: 0.0,
+            damping: 0.0,
+            rotdamping: 0.0,
+            inertia: None,
+            push: PushAway::Collide,
+            frozen: false,
+            asleep: false,
+        }),
+        ..entity(&[
+            ("classname", "func_physbox"),
+            ("targetname", "box"),
+            ("origin", "0 0 600"),
+            ("mashup_prop_mass", "50"),
+        ])
+    };
+    let thruster = entity(&[
+        ("classname", "phys_thruster"),
+        ("targetname", "th"),
+        ("attach1", "box"),
+        ("origin", "0 20 624"),
+        ("force", "20000"),
+        ("spawnflags", "4"),
+    ]);
+    let (mut sim, _) = sim(vec![physbox, thruster], Vec3::new(500.0, 500.0, 0.0));
+    input(&mut sim, "th", "Activate", "", None);
+    sim.seconds(0.3);
+    let w = {
+        let world = sim.app.world_mut();
+        world
+            .query::<(&crate::stack::map::MapBrushEntity, &avian3d::prelude::AngularVelocity)>()
+            .iter(world)
+            .next()
+            .map(|(_, w)| w.0)
+            .expect("the physbox's body")
+    };
+    // Source's up is the engine's +Y.
+    assert!(w.y.abs() > 0.1, "it spins about the vertical: {w}");
+    assert!(w.xz().length() < 0.02 * w.y.abs(), "and doesn't tip: {w}");
+}

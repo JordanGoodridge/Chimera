@@ -660,7 +660,7 @@ fn wall(sim: &mut Sim, at: f32, thick: f32, surface: &str) {
     use avian3d::prelude::*;
     use crate::stack::map::{MapSounds, MapSurface, PropSurface, sound::SoundBank};
     let mut sounds = MapSounds::default();
-    for (name, class) in [("wood", 'W'), ("concrete", 'C'), ("sand", 'D'), ("metal", 'M'), ("metalgrate", 'G'), ("computer", 'P')] {
+    for (name, class) in [("wood", 'W'), ("concrete", 'C'), ("sand", 'D'), ("metal", 'M'), ("metalgrate", 'G'), ("computer", 'P'), ("tile", 'T')] {
         sounds.surfaces.insert(
             name.into(),
             MapSurface {
@@ -745,6 +745,38 @@ fn computers_stop_bullets_as_concrete_does() {
     // Deagle (30): scale 0.4, the AK-47's limit 15.6; damage x 0.45.
     assert_eq!(through_wall(13.0, "computer"), 15);
     assert_eq!(through_wall(17.0, "computer"), 0);
+}
+
+#[test]
+fn tile_passes_at_065_of_the_power() {
+    // Measured 2026-10-18 (weapons.md M13, inferno's big pot): the AK-47's
+    // 39 passes 25.0 units of tile and not 26.4 (Glock and Deagle agree:
+    // scale 0.642-0.676); damage x 0.3.
+    assert_eq!(through_wall(24.0, "tile"), 10);
+    assert_eq!(through_wall(27.0, "tile"), 0);
+}
+
+#[test]
+fn buckshot_passes_nothing() {
+    // Measured 2026-10-18 (weapons.md M13): no M3 pellet came through 6.9
+    // units of a wooden gate, a crate's thin corner or a player.
+    let pellets_through = |wall_thick: Option<f32>| {
+        let mut sim = sim();
+        let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 6.0, placeholder::ID);
+        if let Some(t) = wall_thick {
+            wall(&mut sim, 3.0, t, "wood");
+        }
+        sim.ticks(1);
+        crate::stack::weapon::give(sim.app.world_mut(), shooter, crate::stack::games::cs_source::weapons::M3)
+            .unwrap();
+        sim.seconds(0.5);
+        assert_eq!(active_id(&sim, shooter), crate::stack::games::cs_source::weapons::M3);
+        shoot_chest(&mut sim, shooter, target);
+        lost_hp(&sim, target)
+    };
+    assert!(pellets_through(None) > 20, "the pellets hit with no wall");
+    assert_eq!(pellets_through(Some(4.0)), 0);
 }
 
 #[test]

@@ -63,6 +63,18 @@ but the thrower's side, grenades Q17's `drop`, movement Q15's conveyor, physics_
 objectives Q14's defuse and blast timing); about 45 class-1 items left. The two plugin commands above are still not
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
+Sixth pass (2026-10-18, the bomb's think, penetration, hostages, the
+log, thrusters; `tools/css_probe/bombtime.py`, `thrustmeas.py`,
+`primedeath.py`): 6 class-1 items settled (objectives Q14, Q17,
+grenades Q17, physics_brushes Q1, and Q3 moved on to the turn rate; the
+bomb's two measured-but-unchanged timings now implemented), 4 more
+answered in part (weapons Q7's tile and glass scales and buckshot,
+objectives Q10's give-up distance, physics_brushes Q3's arm, sounds Q3
+tried: the probe bot freezes in aztec's knee-deep water); the players'
+shove of a solid map ragdoll was tried and reverted (it launched the
+player). About 39 class-1 items left. The plugin commands are still not
+built, so sounds Q1 and grenades Q12's thrower wait.
+
 Added since (2026-10-18): shaders Q21, the fog colour by view direction
 (classes 3 and 2; one row in the specs table and one in the parity list);
 objectives Q17, game events' fields and the log's other lines (class 1).
@@ -97,7 +109,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
 | grenades | Q16 smoke against bots; target ID through smoke | 1, 2 | bots (parked); target ID: client |
-| grenades | Q17 left: dying primed while moving | 1 | death drops done (Part B); `drop` with a grenade done (Part B, 2026-10-18: kept in hand); moving: the same probe runs |
+| grenades | Q17 left: dying primed while moving | 1 | done (sixth pass, 2026-10-18: the runner's velocity, as ours) |
 | impact_effects | Q1 CS:S's own impact callback (counts, colours, timings) | 2 | client screenshots at `host_timescale 0.1` |
 | impact_effects | Q2 ricochet rate; no effect on refused teammates | 2 | client audio count; C30 |
 | impact_effects | Q3 exit impact after penetration | 2 | client screenshot of a door's far side |
@@ -129,12 +141,12 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B; the draw, Ts after a rescue and "led" too) |
 | objectives | Q6 left: who gets the bomb with humans; defuse announcers | 4, 2 | a human on T for 50 restarts; client audio |
 | objectives | Q7 left: the planted bomb on a moving platform | 1 | no stock map; skip |
-| objectives | Q10 left: hostages at corners and jumps; give-up rule | 1 | `mashup_htrack` with longer leads |
+| objectives | Q10 left: hostages at corners and jumps; give-up rule | 1 | give-up distance done (sixth pass: 2000 units); corners, jumps and an out-of-sight time: `mashup_htrack` with longer leads |
 | objectives | Q12 HUD and radar | 2 | client screenshots |
 | objectives | Q13 `info_bomb_target` radius | 1 | done (Part B, 2026-10-18: no such class in CS:S) |
-| objectives | Q14 left: same-tick defuse and blast; the kit's 5 s (the plant's 200 ticks, the defuse's and the blast's 0.11 s late done, Part B 2026-10-18) | 1 | a kit given some other way; a defuse started 35 s after a plant |
+| objectives | Q14 left: same-tick defuse and blast; the kit's 5 s (the plant's 200 ticks, the defuse's and the blast's 0.11 s late done, Part B 2026-10-18) | 1 | done (sixth pass: the bomb's think every 8 ticks; the kit's 5 s; a shared think blows) |
 | objectives | Q16 the bar while planting | 2 | client screenshots |
-| objectives | Q17 events' fields and the log's other lines (kills, chat, buys, connects) | 1 | probe server with `log on` and an event listener over one round |
+| objectives | Q17 events' fields and the log's other lines (kills, chat, buys, connects) | 1 | done (sixth pass: the lines from a round's log, the fields from the install's event files); left: `site`'s value, `(headshot)` |
 | overlays_decals | Q1-Q9 (decal orientation, reach, size, displacements/props, overlay order, overlays vs decals, corner mapping, deathmatch flag, fade) | 2 | client screenshots, one each (9 items) |
 | physics_props | Q1 inertia tensor | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q2 rotational inertia limit | 3 | inside vphysics |
@@ -192,7 +204,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | shaders | Q20 displacement texture coordinates (measured) | 3 | confirm from the compiler/engine source |
 | shaders | Q21 fog colour by view direction (`fogblend`, `fogcolor2`, `fogdir`/`use_angles`): weight curve, colour space, direction source, per view or pixel, 3D skybox | 3, 2 | the client's fog set-up in a spec session; windows-captures sitting 4 item 3 shows which colour lies which way on cs_compound |
 | shaders_two_texture_blend | Q1, Q2 the ×2 factor, sampler sRGB | 2 | RenderDoc of a de_aztec wall |
-| shaders_two_texture_blend | Q3 bump pages on de_aztec | 1 | the BSP faces' lightmap page counts, with our reader |
+| shaders_two_texture_blend | Q3 bump pages on de_aztec | 1 | done (sixth pass: 4 pages, SURF_BUMPLIGHT, as our loader) |
 | shaders_two_texture_blend | Q4 mode 0 with detail and bump | 3 | unused by stock content |
 | shaders_two_texture_blend | Q5 refcmp after implementing | 2 | refcmp views |
 | shaders_two_texture_blend | Q6 2-vector `$detailscale` | 3 | material parser source |
@@ -200,7 +212,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | shadows_sky | Q4 the no-shadow_control ambient colour | 3 | engine code |
 | sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the falloff: `mashup_gain` (added to mashup_probe.sp 2026-10-18, through SourceMod's `GetDistGainFromSoundLevel`), once the plugin is rebuilt; pan law and occlusion: client recordings |
 | sounds | Q2 left: other entries' wave picks | 5 | measured (Part B, 2026-10-18) |
-| sounds | Q3 left: wading in knee-deep water | 1 | feet-deep measured (Part B, 2026-10-18); knee-deep: a map with water 15-36 deep where the probe bot moves |
+| sounds | Q3 left: wading in knee-deep water | 1 | feet-deep measured (Part B, 2026-10-18); knee-deep: aztec has a 15-16-deep strip, but the probe bot freezes in it (sixth pass); another map or spot |
 | sounds | Q5 `Player.Swim` doubled for the owner | 2 | client trace |
 | sounds | Q6 gravel surface override | 5 | measured (Part B, 2026-10-18) |
 | sounds | Q7 left: shot sound path, ricochets, whizz | 2 | client trace |
@@ -227,7 +239,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | weapons | Q2 left: the airborne inaccuracy target | 4 | the bot's jumps duck it (Part B, 2026-10-18): a human's plain jump |
 | weapons | Q3 left: silenced modes | 4 | scoped and burst measured (Part B, 2026-10-18); the bot's AI takes the silencer off: a human |
 | weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
-| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's, metal's, tile's, computer's, grate's, plastic's and glass's damage factors measured (Part B, 2026-10-18); their thickness limits; a thick entity counting twice |
+| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's, metal's, tile's, computer's, grate's, plastic's and glass's damage factors measured (Part B, 2026-10-18); tile's (0.65) and glass's (1.0) scales and buckshot (nothing) done (sixth pass); grate's and plastic's scales; the budget |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
 | weapons | Q12 left: pellet pattern, line or box traces | 3 | the shared offset measured (Part B, 2026-10-18); the pattern inside the spread is the generator's (Q1) |
 | weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
@@ -251,7 +263,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | entity_io | Q1 left: classes absent from stock maps | 1 | done (Part B, 2026-10-18: none kept) |
 | entity_io | Q3 delay at an exact tick multiple | 1 | relays with 0.015/0.03/0.3 delays (done, Part B) |
 | entity_io | Q4 Kill then input the same tick | 1 | a relay pair (done, Part B) |
-| entity_io | Q5 `sv_allow_point_servercommand` | 1 | `cvarlist sv_allow` (done, Part B: "always"); left: what maps send (the sweep) |
+| entity_io | Q5 `sv_allow_point_servercommand` | 1 | `cvarlist sv_allow` (done, Part B: "always"); what maps send done (sixth pass: `say`, `sm_`/`ma_`, sv_/mp_/phys_ settings; ours runs them all but `rcon`) |
 | entity_io | Q6 `cl_restrict_server_commands` | 2 | client console |
 | entity_io | Q7, Q8 game_text scan-out and channels | 2 | client screenshots |
 | entity_io | Q9 game_text newline | 1 → 3 | swept 2026-10-18: no map has a multi-line one (3 game_texts in 89 community maps); a test map |
@@ -280,9 +292,9 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | particles_and_smoke | Q4 operator semantics | 3 | its own spec |
 | particles_and_smoke | Q6 unknown inputs logged | 1 | done (Part B, 2026-10-18) |
 | particles_and_smoke | Q8 env_smokestack Hammer defaults | 3 | the FGD |
-| physics_brushes | Q1 physbox mass shrunk or not | 1, 3 | test_hardware's physbox read 2026-10-18 (72.5 kg, glass, two pieces); the comparison with its brush volume: a spec session with our BSP reader |
+| physics_brushes | Q1 physbox mass shrunk or not | 1, 3 | done (sixth pass: the game uses the compiler's stored mass, 72.46 in lump 29, as our loader) |
 | physics_brushes | Q2 inertia and damping laws | 1 | as physics_props Q1, Q3 |
-| physics_brushes | Q3 left: an offset thruster's turn (a = F/m done, Part B 2026-10-18) | 1 | a spawned thruster off the centre, the turn rate sampled |
+| physics_brushes | Q3 left: an offset thruster's turn (a = F/m done, Part B 2026-10-18) | 1 | the arm from the centre of mass done (sixth pass); the rate: needs angles (`mashup_netprop` or a plugin angle read) |
 | physics_brushes | Q4 +use pickup of a physbox | 1 | done for props (Part B, 2026-10-18: no pickup) |
 | physics_brushes | Q5 physbox_multiplayer on the client | 2 | client |
 | physics_brushes | Q6 players and a map prop_ragdoll | 1 | done (Part B, 2026-10-18) |
@@ -324,7 +336,7 @@ objectives Q17, game events' fields and the log's other lines (class 1).
 | Spread generator | 3 | weapons Q1 |
 | Other automatics' recoil, scoped/silenced/burst | 1 | weapons Q3 |
 | Penetration materials | 1 | weapons Q7 |
-| Unmeasured gun values | 1 | M13 for buckshot and long reaches |
+| Unmeasured gun values | 1 | M13 for long reaches (buckshot done, sixth pass) |
 | Grenade redraw, pin rules | 1, 2 | Q3 done (Part B, as ours); Q2 needs a human |
 | `cl_autowepswitch` while firing | 2 | a human client's userinfo |
 | Knife idle timing | 2 | client view model |
@@ -528,9 +540,19 @@ measured.
 | physics_brushes Q6: running into a map prop_ragdoll | solid (group none): stopped, then shoves it as a prop; debris (flag 4): runs through | the same, but no shove | none (noted) |
 | physics_brushes Q7: prop_ragdoll on a model without a ragdoll | crashes the dedicated server | lies still | none |
 | movement Q15: a func_conveyor | carried 1.5 a tick at 100 from the first tick; stepping off: 100 × 1.0075 less friction | the same | none |
-| objectives Q14: defuse and blast timing | done 10.11 s after the defuse starts, the blast 45.105 s after the plant | 10.0, 45.0 | none (noted; the think behind it unknown) |
+| objectives Q14: defuse and blast timing | done 10.11 s after the defuse starts, the blast 45.105 s after the plant: the bomb thinks every 8 ticks from 7 after the plant and both wait for a think (sixth pass) | 10.0, 45.0 on the tick due | on the bomb's think (`BombRules::think`) |
 | grenades Q17: `drop` with a grenade in hand | nothing: it stays in hand | dropped it | kept (`kept_on_drop`, `drop::KeptOnDrop`) |
 | particles_and_smoke Q6: an unknown input | "unhandled input" in the console, nothing done | the same | none |
 | doors_buttons Q7: a user on a rotating door's plane | opens to +distance | the same | none (test) |
 | objectives Q13: `info_bomb_target`, `info_hostage_rescue` | no such entity classes: a map's do nothing | 128- and 256-unit spheres | ignored |
 | physics_brushes Q3: phys_thruster force | kg·units/s², a = F/m (400000 on 400 kg: 199 units/s² up against gravity) | the same | none (test comment) |
+| objectives Q14: a kit's defuse | 5 s to the next think (339 server ticks twice) | 5 s | on the think |
+| objectives Q14: defuse and blast due on one think | it blows | the defuse won | the explosion first |
+| objectives Q10: hostage give-up distance | 2000 units (1980 kept, 2060 given up at once) | 1500 | 2000 |
+| objectives Q17: log lines | `"A" killed "B" with "usp"`, `"B" committed suicide with "world"`, `Begin_Bomb_Defuse_With_Kit`/`Without_Kit`, attacks (logdetail 3), say, team, connect lines; no purchases | the bomb's and rounds' triggers only | kill, suicide and defuse-begin lines; `bomb_planted` posx/posy |
+| weapons Q7: tile and glass thickness | tile 0.642-0.676 (Glock, Deagle, AK-47 through inferno's big pot), glass (pottery) 0.987-1.0 | 1.0 both | tile 0.65 |
+| weapons M13: buckshot | passes nothing (wood from 2.6 units, a player) | power 15 (30 of wood, a player) | power 0 |
+| grenades Q17: dying primed while running | the live grenade keeps the runner's 250 | the same | none (test) |
+| physics_brushes Q1: physbox mass | the compiler's stored mass (72.46, lump 29) | the same | none |
+| physics_brushes Q3: an offset thruster's arm | from the centre of mass (level with an oil drum's centre: a spin; at its base: a tip) | from the origin | from the centre of mass |
+| physics_brushes Q6: shoving a solid map ragdoll | shoved | not shoved | tried (the shadow on its parts) and reverted: it launched the player over a lying corpse |

@@ -279,6 +279,38 @@ outputs given as one quoted argument (`OnTrigger "!activator,AddOutput,gravity
 0.3,0,-1"`) work; a func_breakable with `RemoveHealth` on an output is a
 counter `mashup_find` reads (doors_buttons.md Q5).
 
+`bombtime.py` (objectives.md Q14, 2026-10-18): `plant <timer>` and
+`defuse <timer> <use tick> [kit]` have the second bot plant at de_dust2's
+B while the run bot (crouched beside the bomb, after the planter is
+moved off it) holds +use from a run tick, and print the plant, the
+defuse's start and end and the explosion in server ticks after the
+plant (`mashup_sndlog` rows); `think` reads the planted bomb's
+`m_nNextThinkTick`. Each run starts with `mp_restartgame 1` (an exploded
+bomb stays until then and the use search can find it); a kit is bought
+with `mashup_botcmd <userid> buy defuser` at the CT spawn
+(`mashup_give item_defuser` gives none that counts). A player's sounds
+carry its command time (`t=`, its tick base, 4 ticks ahead of the
+server's `k=` for these bots).
+
+`thrustmeas.py` (physics_brushes.md Q3) puts a torque-only phys_thruster
+beside an oil drum (`Z=1` on the floor) and prints the drum's origin
+over time. `sv_gravity 0` doesn't reach physics objects already
+simulated (the drum still fell), and `physics_debug_entity` prints to
+the server's own console only (not over RCON; `con_logfile` wrote
+nothing). `overridescript surfaceprop,<name>` changes a prop's physics
+material but not the surface bullets see (the model's).
+
+`primedeath.py` (grenades.md Q17) kills the run bot while it runs with
+a grenade's pin out (`mashup_hurt <index> -1 1000 0` from its own RCON
+connection at a set time: `kill` has a cooldown after a respawn, and the
+run's output is written at its end, so it can't be watched) and prints
+the projectile's origin and velocity just after. The run bot's index is
+`mashup_info`'s first line (not always client 1).
+
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
-(feet at its height) leaves it stuck: start 0.02 or more above.
+(feet at its height) leaves it stuck: start 0.02 or more above. On
+de_aztec it walks on dry ground but stays frozen in or right beside the
+knee-deep water (2026-10-18). The server's event field lists are in the
+install's `cstrike/resource/modevents.res` and `hl2/resource/gameevents.res`
+(objectives.md Q17); with `log on` the log goes to `cstrike/logs/`.

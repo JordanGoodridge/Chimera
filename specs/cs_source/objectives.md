@@ -56,7 +56,8 @@ Status: draft
   hull standing (−16, −16, 0)–(16, 16, 72), eye at 64 (movement.md).
 - Time: seconds; server tick 0.015 s (CS:S ignores `-tickrate`,
   tools/css_probe/README.md). "After T seconds" means the first tick whose
-  time is at or after start + T unless a rule says otherwise (Q14).
+  time is at or after start + T unless a rule says otherwise (the
+  planted bomb's explosion and defuse wait for its think, measured Q14).
 - Money in dollars, clamped to 0–16000 (rounds plan; `mp_startmoney`).
 - HUD coordinates are in the 640 × 480 virtual screen of `hudlayout.res`
   (proportional); `c-150` means "screen centre − 150".
@@ -105,7 +106,8 @@ plugin logging every sound the C4 entities emit):
   the view model's press-button events (0.9 to 2.233 s at 30 fps), which
   still pace the digits on the bomb's screen. Ours had the click sounds on
   the events too (fixed: sounds on the measured times).
-- The explosion (`c4_explode1.wav`, level 140) 45.18 s after the plant.
+- The explosion (`c4_explode1.wav`, level 140) 45.18 s after the plant
+  (2026-10-18: 45.105 s, on the bomb's think; below).
 - **No beep is emitted by the server**: the planted bomb's beeps are the
   client's own, from the bomb's timer, so Q4's schedule needs the client's
   audio (docs/plans/active/windows-captures.md, sitting 2).
@@ -135,6 +137,22 @@ plugin logging every sound the C4 entities emit):
   stone wall at B (−1233, 3013), 349 units from the bomb, took 418.07
   (the bell: 418.1), and one crouched behind a 46-unit static prop south
   of it 467.67 (the bell at its target point: 467.7).
+
+- **The bomb's think (2026-10-18, `tools/css_probe/bombtime.py`, Q14):**
+  the planted bomb thinks every 8 ticks (0.12 s; its `m_nNextThinkTick`
+  read over RCON steps by 8), the first think 7 ticks after the plant
+  in the planter's command time (the planter's tick base; 3 ticks
+  after the server tick a bot's plant is logged on, its tick base being
+  4 ahead). The explosion and a finished defuse wait for the first think
+  at or after they are due: `mp_c4timer` 10 blew 671 ticks (10.065 s)
+  after the plant, 15 after 1007 (15.105 s), 45 after 3007 (45.105 s),
+  every plant on that phase; a 10 s defuse took 674 ticks
+  from its start sound (twice), a kit's 5 s 339 server ticks (twice,
+  the kit bought at the CT spawn: `mashup_give item_defuser` gives none
+  that counts), each the first think at or after start + 10 or 5 s.
+  **Both due on one think: it blows** (a kit's defuse started 330, 333
+  ticks after a 10 s plant, both due on the think at 671: exploded; one
+  started at 329 was done on the think at 663).
 
 Stock map bomb radii (from the entity lumps):
 
@@ -480,7 +498,9 @@ on-ground flag, whether he has a kit.
   `triggered "Defused_The_Bomb"`; the bomb target fires `BombDefused` if
   present (*hyp.*); the round ends (CT win, "Bomb defused").
 - **Race with the explosion:** if the defuse would end after `explode_at`,
-  the bomb explodes. Exactly equal: Q14.
+  the bomb explodes. Both are checked on the bomb's think (every 0.12 s
+  from 0.105 s after the plant); due on the same think, it explodes
+  (measured, Q14).
 - **Kit:** `buy defuser` (and the buy menu's equipment page), CT only,
   $200, refused if he already has one; only in the buy zone and buy time,
   as other purchases. Shown as the HUD kit icon and on the scoreboard.
@@ -623,7 +643,7 @@ the round):
   stops following and waits where it is. A provisional rule for a first
   slice: target speed 0 within 100 in, walk speed (~100 in/s) within
   250 in, run speed (~250 in/s) beyond; give up after the leader has been
-  out of sight for 10 s or farther than 1500 in.
+  out of sight for 10 s (*hyp.*) or farther than 2000 in (measured, Q10).
 - **Damage:** hostages take bullet, grenade and bomb damage. Hurt: the
   attacker sees "You injured a hostage!" (and the hint "Be careful around
   hostages. You will lose money if you kill a hostage.") and loses 20 a
@@ -671,9 +691,10 @@ Within the rules step (our `SimSet::Rules`, after movement and weapons):
 2. Use handling: each player's use search; a CT holding Use on the planted
    bomb starts or continues a defuse; release or loss of target aborts.
    Use presses on hostages toggle following.
-3. Defuse completion check (`elapsed ≥ defuse_time`) **before** the
-   explosion check (Q14).
-4. Planted bomb: beep if due; explode if `now ≥ explode_at`.
+3. Planted bomb, on its think (every 8 ticks from 7 after the plant):
+   explode if `now ≥ explode_at`, else defused if `elapsed ≥
+   defuse_time` (measured, Q14: the explosion wins a shared think).
+4. Planted bomb: beep if due.
 5. Hostages: follow movement, rescue-zone touch.
 6. Round-end checks (§7 table, in order).
 7. Money for this tick's events (kills, plant, defuse, rescue, hostage
@@ -731,9 +752,10 @@ Ticks of 0.015 s. "(hyp.)" rows depend on an open question.
 | O11 loose C4 | a CT walks over it | – | nothing |
 | O12 loose C4 | a T walks over it | – | he has it in slot 4, active weapon unchanged; "You picked up the bomb." |
 | O13 planted at t = 0, `mp_c4timer` 45, nobody defuses | – | t = 45.0 s (tick 3000) | explosion; T win "Target successfully bombed!"; every T +3500 (hyp.), every CT loss bonus |
-| O14 planted at 0; CT with kit starts holding Use on it at 30.0 s | hold | 35.01 s (tick 2334, first tick ≥ 5 s) | defused, CT win, "The bomb has been defused.", every CT +3500, every T loss bonus + 800 (hyp.) |
-| O15 as O14 without kit | start at 30.0 s | 40.005 s (tick 2667) | defused |
-| O16 without kit, start at 36.0 s | hold | 45.0 s | explodes (defuse would end at 46.0) |
+| O14 planted at 0; CT with kit starts holding Use on it at 30.0 s | hold | 35.025 s (tick 2335, the bomb's first think ≥ 5 s, Q14) | defused, CT win, "The bomb has been defused.", every CT +3500, every T loss bonus + 800 (hyp.) |
+| O15 as O14 without kit | start at 30.0 s | 40.065 s (tick 2671, the next think) | defused |
+| O16 without kit, start at 36.0 s | hold | 45.105 s (tick 3007, the think at or after 45 s) | explodes (defuse would end at 46.0) |
+| O16b with kit, start at 44.43 s (tick 2665) / 44.46 s (2667) | hold | 44.985 s (2999) / 45.105 s (3007) | defused / explodes: due on the blast's think, it blows (measured, Q14) |
 | O17 with kit, start at 30.0 | release Use at 34.0, press again at 34.5 | – | defuse at 39.51 s (full 5 s again) |
 | O18 two CTs, CT1 defusing | CT2 uses the bomb | – | "The bomb is already being defused."; CT1 unaffected |
 | O19 bomb planted, all Ts killed at 20 s | – | – | round continues; ends by defuse or explosion |
@@ -891,9 +913,13 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     units from a runner and 77 from a walker. It started 0.1 s after the
     leader did. With the leader moved 1230 units away (straight line,
     another room, out of sight) the hostage still followed, found its way
-    round and reached him in 7 s; the give-up distance and time are
-    beyond that (ours: 1500 units or 10 s out of sight). Corners and
-    jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
+    round and reached him in 7 s. **Give-up distance (2026-10-18,
+    cs_office, hostage 121, the leader teleported along the line to the
+    CT spawn):** 1400, 1825, 1900 and 1980 units off it kept following
+    (1980 for 20 s); 2060, 2140, 2200, 2600, 2890 and 3800 off it gave up
+    at once (`hostage_stops_following` within 0.7 s): **2000 units**.
+    Ours: 2000 (was 1500); an out-of-sight time limit (ours 10 s) wasn't
+    seen. Corners and jumps not measured. Was: **Q10 Follow behaviour.** With a probe CT leading a hostage, log the
     hostage's position and speed every tick while the CT walks away at
     250 in/s, stops, turns corners, jumps a crate, and teleports 2000 in
     away. Measure: stop distance, walk/run speeds and the threshold, the
@@ -937,18 +963,14 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     nothing: no bomb target, no rescue zone. Ours used them as 128- and
     256-unit spheres; now ignored (also by the bots). Was: **Q13 `info_bomb_target` / `info_hostage_rescue` radius.** Unused by
     stock maps; check with a custom map only if a community map needs it.
-14. **Q14 Partly answered (measured 2026-10-18, probe server, de_dust2
-    B, the second bot planting and the run bot holding +use on the bomb
-    without a kit; the bomb's sounds logged with the game time by
-    `mashup_sndlog`):** the plant takes 200 ticks (Q1). The defuse's
-    finishing `c4_disarm.wav` (channel 3) came 10.110 s after its start
-    one (channel 2), twice; the explosion 45.105 s after `c4_plant.wav`
-    (`mp_c4timer` 45, once). So both finish about 0.11 s after their
-    nominal time, as if checked on a think about every 0.1 s. Ours: on
-    the tick due (10.0, 45.0); not changed (one geometry; the think
-    phase unknown). The same-tick defuse and blast and the kit's 5 s not
-    measured (the kit given by `mashup_give item_defuser` didn't shorten
-    it). Was: **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
+14. **Q14 Answered (measured 2026-10-18, probe server, de_dust2 B,
+    `tools/css_probe/bombtime.py`; "The bomb's think" under Measured):**
+    the plant takes 200 ticks (Q1); the planted bomb thinks every 8 ticks
+    from 7 after the plant, and the explosion and a finished defuse wait
+    for the first think at or after they're due (`mp_c4timer` 45: 45.105
+    s; 10: 10.065; a defuse 10.0-10.105 s, a kit's 5.0-5.105); due on the
+    same think, the bomb explodes. Ours: the same (`BombRules::think`,
+    `PlantedBomb::next_think`; was on the tick due, the defuse first). Was: **Q14 Tick rounding.** Is a 3 s plant done on tick 200 or 201, a 5 s
     defuse on 333 or 334, and does a defuse finishing on the same tick as
     the explosion win? Log tick numbers of begin/complete events in Q1/Q3.
 15. **Q15 Answered (2026-10-16, probe server, one bot alone on CT, killed
@@ -972,23 +994,44 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     either value. Test: client screenshots 1.5 s into a plant and a
     defuse with `cl_c4progressbar` 1 and 0; is the planting bar there,
     and does the cvar hide it?
-17. **Q17 Game events' fields and the rest of the log.** (Added by an
+17. **Q17 Measured (2026-10-18, probe server, `log on`, `mp_logdetail
+    3`, a round with a plant, a kit defuse, buys, a `say`, a hurt and a
+    kill, a team change and a suicide; the events' fields from the
+    install's `resource/modevents.res` and hl2's `gameevents.res`):**
+    - Log lines (stamp `L mm/dd/yyyy - hh:mm:ss: ` then):
+      `"Grant<18><BOT><CT>" triggered "Begin_Bomb_Defuse_With_Kit"`
+      (`..._Without_Kit` without), `"A" attacked "B" with "usp" (damage
+      "30") (damage_armor "0") (health "70") (armor "0") (hitgroup
+      "generic")` (with `mp_logdetail` 3), `"A" killed "B" with "usp"`,
+      `"B" committed suicide with "world"` (the console's `kill`), `"A"
+      joined team "TERRORIST"`, `"A" say "hello probe"` (`say_team` from a
+      bot logged nothing), `"A<21><BOT><>" connected, address "none"`,
+      `"A<21><BOT><Unassigned>" joined team "TERRORIST"`, `"A<21><BOT><>"
+      entered the game`, `"A<20><BOT><CT>" disconnected (reason "Kicked
+      from server")`; at `mp_restartgame`: `World triggered
+      "Restart_Round_(1_second)"`, `Team "CT" scored "0" with "1"
+      players`, `Team "TERRORIST" scored "0" with "1" players`, the bomb's
+      `Got_The_Bomb`, `World triggered "Round_Start"`. Purchases are not
+      logged.
+    - Event fields: `player_death` userid, attacker, weapon, headshot,
+      dominated, revenge; `player_hurt` userid, attacker, health, armor,
+      weapon, dmg_health, dmg_armor, hitgroup; `bomb_beginplant`,
+      `bomb_abortplant`, `bomb_defused`, `bomb_exploded` userid, site;
+      `bomb_planted` userid, site, posx, posy; `bomb_begindefuse` userid,
+      haskit; `bomb_beep` entindex; `hostage_rescued` userid, hostage,
+      site; `hostage_call_for_help` hostage; `item_pickup` userid, item;
+      `grenade_bounce` userid; `player_falldamage` userid, damage;
+      `round_start` timelimit, fraglimit, objective; `round_end` winner,
+      reason, message; `player_team` userid, team, oldteam, disconnect,
+      autoteam, silent, name; `player_say` userid, text.
+    Not measured: `site`'s value (the entity index or the target's), the
+    `(headshot)` suffix, `round_end`'s reason numbers. Ours: the kill,
+    suicide and defuse-begin lines and `bomb_planted`'s posx/posy (2026-10-18);
+    the rest is listed in rules/events.rs's known shortcuts. Was: **Q17 Game events' fields and the rest of the log.** (Added by an
     implementation session, not from the source.) This spec and
     weapons.md and grenades.md name events and `triggered` log actions
-    but not every event's fields (`bomb_beginplant`'s site, whether `site`
-    is the target's entity index, `round_end`'s reason numbers,
-    `player_hurt`'s armor fields, `hostage_*`'s hostage key) nor the log's
-    other lines: kills (`killed ... with`), attacks, suicides, chat, team
-    joins, connects and disconnects, purchases, `Round_Start`, the team
-    score suffix after a team's trigger, `Intermission_Win_Limit` and
-    the round-limit one, and which events fire for bought or given weapons
-    (`item_pickup`), zoom, blinding (`player_blind`), grenade bounces and
-    smoke grenades. We write the named events with `userid` and the fields
-    the specs list, and `Team "<team>" triggered "<reason>"` without a
-    suffix. Test: probe server with `log on`, `mp_logdetail 3` and an event
-    listener: a round with a plant, a defuse, a kill, a buy, a chat line
-    and a team change; record every line and event with its fields.
-
+    but not every event's fields; we write the named events with `userid`
+    and the fields the specs list.
 ## Mapping to our engine
 
 - **Rules layer (`rules::rounds`):** add the map type (bomb / hostage /

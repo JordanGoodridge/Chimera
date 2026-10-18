@@ -12,8 +12,8 @@
 //! through a static anchor body; off as `JointDisabled`).
 
 use avian3d::prelude::{
-    AngularVelocity, ComputedAngularInertia, ComputedMass, LinearVelocity, PhysicsSystems, Rotation,
-    Sleeping,
+    AngularVelocity, ComputedAngularInertia, ComputedCenterOfMass, ComputedMass, LinearVelocity, PhysicsSystems,
+    Rotation, Sleeping,
 };
 use bevy::prelude::*;
 
@@ -174,7 +174,8 @@ impl Plugin for ControllersPlugin {
 
 /// Velocity changes one thruster turn-on works out (spec 4): a = F/m
 /// (or the force itself as an acceleration with "Ignore Mass"), α =
-/// I⁻¹(r × F) about the body's centre (none with "Ignore Pos"); in the
+/// I⁻¹(r × F) about the body's centre of mass, `r` from it (none with
+/// "Ignore Pos"); in the
 /// body's frame when local.
 pub fn thrust_rates(
     force: Vec3,
@@ -230,6 +231,7 @@ fn apply(
         &Rotation,
         Option<&ComputedMass>,
         Option<&ComputedAngularInertia>,
+        Option<&ComputedCenterOfMass>,
         Has<Sleeping>,
     )>,
     time: Res<Time<Fixed>>,
@@ -238,7 +240,7 @@ fn apply(
     let h = time.timestep().as_secs_f32();
     started.retain(|k, _| controllers.0.iter().any(|c| c.key == *k));
     for c in &controllers.0 {
-        let Ok((mut v, mut w, rot, mass, inertia, sleeping)) = bodies.get_mut(c.body) else {
+        let Ok((mut v, mut w, rot, mass, inertia, centre, sleeping)) = bodies.get_mut(c.body) else {
             continue;
         };
         let rotation = rot.0;
@@ -264,9 +266,15 @@ fn apply(
                             None => Vec3::ZERO,
                         };
                         let f = if *local { rotation * *force_local } else { *force };
+                        // The arm is from the body's centre of mass, not its
+                        // origin (CS:S, measured 2026-10-18, spec Q3: a
+                        // thruster level with an oil drum's centre spins it
+                        // in place, one level with its origin at the base
+                        // tips it).
+                        let com = centre.map_or(Vec3::ZERO, |c| c.0);
                         let (linear, angular) = thrust_rates(
                             f,
-                            rotation * *offset,
+                            rotation * (*offset - com),
                             rotation,
                             m,
                             inv,

@@ -246,7 +246,9 @@ fn wait_until(sim: &mut Sim, tick_no: u64) {
 
 #[test]
 fn defusing_with_a_kit_takes_five_seconds() {
-    // O14: start at 30.0 s, defused on the first tick at or after 5 s.
+    // O14: start at 30.0 s, defused on the bomb's first think at or after
+    // 5 s (it thinks 7 ticks after the plant and every 8 after: CS:S,
+    // measured 2026-10-18, objectives.md Q14).
     let (mut sim, _, ct, planted) = planted_with_defender(true);
     wait_until(&mut sim, planted + 2000 - 1);
     sim.intent(ct).use_key = true;
@@ -255,7 +257,8 @@ fn defusing_with_a_kit_takes_five_seconds() {
     assert_eq!(begun - planted, 2000);
     sim.ticks(340);
     let done = first(&sim, |e| matches!(e, ObjectiveEvent::Defused { .. })).expect("defused");
-    assert_eq!(done - begun, 334);
+    assert_eq!(done - planted, 2335, "the think at 7 + 8 x 291 ticks");
+    assert_eq!(done - begun, 335);
     assert_eq!(
         sim.app.world().resource::<BombState>().outcome,
         Some(BombOutcome::Defused)
@@ -280,7 +283,11 @@ fn defusing_without_a_kit_takes_ten_and_letting_go_starts_over() {
     sim.intent(ct).use_key = true;
     sim.seconds(10.2);
     let done = first(&sim, |e| matches!(e, ObjectiveEvent::Defused { .. })).expect("defused");
-    assert_eq!(done - (again + 1), 667, "the full 10 s again");
+    let started = again + 1 - planted;
+    let think = (started * 3 + 2000).div_ceil(3).max(7);
+    let think = 7 + (think - 7).div_ceil(8) * 8;
+    assert_eq!(done - planted, think, "the full 10 s again, to the bomb's next think");
+    assert!((667..675).contains(&(done - (again + 1))));
 }
 
 #[test]
@@ -300,7 +307,7 @@ fn a_defuse_ending_after_the_timer_loses_to_the_explosion() {
     sim.intent(ct).use_key = true;
     sim.seconds(9.5);
     let exploded = first(&sim, |e| matches!(e, ObjectiveEvent::Exploded { .. })).expect("exploded");
-    assert_eq!(exploded - planted, 3000, "45 s after the plant");
+    assert_eq!(exploded - planted, 3007, "on the bomb's first think 45 s after the plant (45.105 s, as CS:S)");
     assert!(first(&sim, |e| matches!(e, ObjectiveEvent::Defused { .. })).is_none());
     sim.ticks(3);
     // The blast: the defender beside it dies; one 2000 units off (past
@@ -311,6 +318,31 @@ fn a_defuse_ending_after_the_timer_loses_to_the_explosion() {
     assert!(bombs(&mut sim).is_empty(), "the bomb is gone");
     // Its scorch goes at the round restart (playtest 2026-10-14, as CS:S).
     assert_eq!(sim.app.world().resource::<Scorches>().0, [true], "one scorch, the round's");
+}
+
+/// A defuse and the blast due on the same think of the bomb: it blows
+/// (CS:S, measured 2026-10-18, objectives.md Q14: a kit's defuse started
+/// 330-337 ticks after a 10 s plant, both due on the think 671 ticks
+/// after it, exploded; one started at 329 was done on the think before).
+#[test]
+fn a_defuse_due_on_the_blasts_think_loses_to_it() {
+    for (start, defused) in [(2665, true), (2667, false), (2674, false)] {
+        let (mut sim, _, ct, planted) = planted_with_defender(true);
+        wait_until(&mut sim, planted + start - 1);
+        sim.intent(ct).use_key = true;
+        sim.seconds(6.0);
+        let begun = first(&sim, |e| matches!(e, ObjectiveEvent::BeginDefuse { .. })).unwrap();
+        assert_eq!(begun - planted, start);
+        let done = first(&sim, |e| matches!(e, ObjectiveEvent::Defused { .. }));
+        let exploded = first(&sim, |e| matches!(e, ObjectiveEvent::Exploded { .. }));
+        if defused {
+            assert_eq!(done.map(|d| d - planted), Some(2999), "start {start}");
+            assert!(exploded.is_none(), "start {start}");
+        } else {
+            assert!(done.is_none(), "start {start}");
+            assert_eq!(exploded.map(|d| d - planted), Some(3007), "start {start}");
+        }
+    }
 }
 
 #[test]
@@ -652,6 +684,33 @@ fn hostages_fall_onto_the_floor_while_the_player_flies() {
     assert!(sim.state(h).on_ground);
     let feet = (sim.position(h).y - sim.state(h).hull_min.y.abs()) / 0.0254;
     assert!((feet - 0.031_25).abs() < 0.01, "feet {feet} units: on the floor");
+}
+
+/// A hostage gives up a leader more than 2000 units away (CS:S, measured
+/// 2026-10-18, objectives.md Q10: the leader teleported 1980 units off is
+/// still followed, 2060 off is given up at once).
+#[test]
+fn a_hostage_gives_up_a_leader_2000_units_away() {
+    for (off, kept) in [(1950.0, true), (2050.0, false)] {
+        let mut sim = sim(hostage_map());
+        let _t = character(&mut sim, Vec3::new(0.0, 1.0, 12.0), 1);
+        let ct = character(&mut sim, Vec3::new(5.0, 1.0, 12.0), 2);
+        rounds(&mut sim);
+        sim.seconds(1.3);
+        let (_, _, at) = hostages(&mut sim).pop().expect("hostage spawned");
+        teleport(&mut sim, ct, Vec3::new(0.0, 1.0, 6.5));
+        sim.ticks(2);
+        look_at(&mut sim, ct, at);
+        sim.intent(ct).use_key = true;
+        sim.ticks(2);
+        sim.intent(ct).use_key = false;
+        sim.ticks(1);
+        assert_eq!(hostages(&mut sim)[0].1.leader, Some(ct));
+        teleport(&mut sim, ct, at + Vec3::new(off * 0.0254, 1.0, 0.0));
+        sim.ticks(3);
+        let leader = hostages(&mut sim)[0].1.leader;
+        assert_eq!(leader.is_some(), kept, "{off} units off: {leader:?}");
+    }
 }
 
 #[test]

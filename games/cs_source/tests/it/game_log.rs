@@ -100,6 +100,33 @@ fn the_bomb_dropped_and_picked_up_is_logged() {
     assert_eq!(death[0].player("userid"), Some(t));
     assert_eq!(death[0].player("attacker"), Some(ct));
     assert_eq!(death[0].get("headshot"), Some(&EventValue::Bool(true)));
+    // Its log line (CS:S, measured 2026-10-18, objectives.md Q17: `"A"
+    // killed "B" with "usp"`).
+    let cid = ct.index().index();
+    let weapon = match death[0].get("weapon") {
+        Some(EventValue::Str(w)) => w.clone(),
+        other => panic!("weapon {other:?}"),
+    };
+    assert!(
+        logged(
+            &sim,
+            &format!(
+                ": \"Cat<{cid}><STEAM_ID_LAN><CT>\" killed \"Tom<{tid}><STEAM_ID_LAN><TERRORIST>\" with \"{weapon}\""
+            )
+        ),
+        "{:#?}",
+        lines(&sim)
+    );
+    // A death with no attacker is a suicide "with world".
+    let lone = character(&mut sim, Vec3::new(20.0, 1.0, 0.0), 2, "Lou");
+    sim.ticks(2);
+    kill(&mut sim, lone, None);
+    let lid = lone.index().index();
+    assert!(
+        logged(&sim, &format!(": \"Lou<{lid}><STEAM_ID_LAN><CT>\" committed suicide with \"world\"")),
+        "{:#?}",
+        lines(&sim)
+    );
     // Another terrorist walks over it.
     let at = {
         let w = sim.app.world_mut();
