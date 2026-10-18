@@ -41,7 +41,8 @@ by side against the real game.
    that need the real install.
 3. No duplicate work: one owner per item on the board below (the owner's
    branch goes in the status), and the skeleton keeps each subsystem in its
-   own module so parallel agents touch different files.
+   own module so parallel agents touch different files. Shared code is the
+   exception: see "Sharing with CS:S".
 4. Open questions in a spec go back to a short follow-up spec session; the
    implementer records the answer it assumed in the code's `//!` doc and in
    the spec's "Open questions" via the coordinator, never by guessing
@@ -49,6 +50,23 @@ by side against the real game.
 
 Status values: not started / spec in progress / spec landed /
 implementing (owner branch) / done.
+
+## Sharing with CS:S
+
+When a Combat Arms item needs something `games/cs_source` already has
+(inventory and switching, HUD widgets, view-model and player animation,
+rounds and teams, spectating, bots, impact effects, ...), the implementing
+agent first **lifts** it into Chimera: generic, with the game supplying data
+and hooks, CS:S's behaviour unchanged and its tests passing. Then
+`games/combat_arms` uses it from Chimera.
+
+- Never copy CS:S code into `games/combat_arms`, and never depend game on
+  game (`checks/tests/it/architecture.rs` refuses it).
+- Lift at the point of second use, not ahead: the CA spec shows what
+  actually differs.
+- Lifts touch shared code, so only one lift per area at a time. The board's
+  "Lift" column names the likely one; the owner of an item writes
+  "lifting (branch)" there while doing it, and others in the same area wait.
 
 ## Task board
 
@@ -60,34 +78,40 @@ implementing (owner branch) / done.
 | `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (local only) | Spec and reader exist on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). Needs the user's review, then the spec committed and the reader moved into `games/combat_arms` |
 | V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `mashup.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
+### Wave 0.5: shared pieces
+
+| Item | Owner | Status | Notes |
+|---|---|---|---|
+| Survey `games/cs_source` for generic pieces: list what each CA item would lift, where it lives, what is CS:S-specific in it | coordinator | not started | Fills the "Lift" column below; no code moves until an item needs it |
+
 ### Wave 1: play the slice with placeholders
 
-| # | Item | Spec | Status | Notes |
-|---|---|---|---|---|
-| 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | not started | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
-| 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | not started | Cloud agent; Chimera weapon parts + `combat_arms:*` hooks; one rifle's numbers in `data/weapons/` |
-| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
-| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | Cloud agent; after 2's parts exist |
-| 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | Cloud agent; plain Chimera HUD widgets driven by data |
+| # | Item | Spec | Status | Lift | Notes |
+|---|---|---|---|---|---|
+| 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | not started | fall damage, if CS:S's is in the game crate | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
+| 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | not started | burst/fire modes, hit-zone damage, recoil hooks still in cs_source | Cloud agent; Chimera weapon parts + `combat_arms:*` hooks; one rifle's numbers in `data/weapons/` |
+| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
+| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | inventory, switching, pickup/drop | Cloud agent; after 2's parts exist |
+| 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | HUD widgets (health, ammo, kill feed, crosshair) | Cloud agent; plain Chimera HUD widgets driven by data |
 
 ### Wave 2: the rest of combat, and the game's own files
 
-| # | Item | Spec | Status | Notes |
-|---|---|---|---|---|
-| 6 | Grenades | `grenades.md` | not started | Cloud agent |
-| 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | Mostly data over 2; scope as an `alt` kind |
-| 8 | Attachments | `attachments.md` | not started | Data-driven parts (docs/weapon-data.md) |
-| 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | not started | This box (real maps); fixture worlds for the reader's unit tests |
-| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md` | not started | This box; may split into `textures_dtx.md` and `animation.md` if the spec session finds it too big |
-| 11 | CA UI system: how HUD and menus are built | `ui_system.md` | not started | After 5; decides whether we read the game's layouts or rebuild them as data |
+| # | Item | Spec | Status | Lift | Notes |
+|---|---|---|---|---|---|
+| 6 | Grenades | `grenades.md` | not started | thrown projectiles, explosions, flash/smoke | Cloud agent |
+| 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | scope overlay and zoom | Mostly data over 2; scope as an `alt` kind |
+| 8 | Attachments | `attachments.md` | not started | none (new in Chimera) | Data-driven parts (docs/weapon-data.md) |
+| 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | not started | impact effects, decals | This box (real maps); fixture worlds for the reader's unit tests |
+| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md` | not started | view-model animation | This box; may split into `textures_dtx.md` and `animation.md` if the spec session finds it too big |
+| 11 | CA UI system: how HUD and menus are built | `ui_system.md` | not started | menus | After 5; decides whether we read the game's layouts or rebuild them as data |
 
 ### Wave 3
 
-| # | Item | Spec | Status | Notes |
-|---|---|---|---|---|
-| 12 | Character models, rigging, third-person animation | `characters.md` | not started | Needs 10 |
-| 13 | Game modes: TDM, elimination | `game_modes.md` | not started | Rule modules on Chimera's rounds |
-| 14 | Bots | `bots.md` | not started | Brains write `Intent`, like CS:S's bots; navigation on CA maps needs 9 |
+| # | Item | Spec | Status | Lift | Notes |
+|---|---|---|---|---|---|
+| 12 | Character models, rigging, third-person animation | `characters.md` | not started | player animation | Needs 10 |
+| 13 | Game modes: TDM, elimination | `game_modes.md` | not started | rounds, teams, spectating | Rule modules on Chimera's rounds |
+| 14 | Bots | `bots.md` | not started | bot brains, navigation | Brains write `Intent`, like CS:S's bots; navigation on CA maps needs 9 |
 
 ## Decision log
 
@@ -105,6 +129,9 @@ implementing (owner branch) / done.
 - 2026-10-18: Combat Arms specs and the `games/combat_arms` crate go into
   the public repo (clean room as above); this plan replaces the local MVP
   plan.
+- 2026-10-18: Generalize, don't duplicate: what CA needs from
+  `games/cs_source` is lifted into Chimera at its second use ("Sharing
+  with CS:S").
 
 ## Progress
 
