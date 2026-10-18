@@ -16,7 +16,9 @@
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
 //!   the install's attribute files;
 //! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
-//! - `rules`: game modes as rule modules.
+//! - `rules`: game modes as rule modules;
+//! - `net`: the game's part of the network (armour, the pickup prompt;
+//!   the parts above register what a client predicts themselves).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -28,6 +30,7 @@ pub mod hud;
 pub mod inventory;
 pub mod mount;
 pub mod movement;
+pub mod net;
 pub mod rules;
 pub mod weapons;
 
@@ -109,5 +112,6 @@ impl PluginGroup for CombatArmsPlugins {
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(rules::CaRulesPlugin)
+            .add(net::CaNetPlugin)
     }
 }
