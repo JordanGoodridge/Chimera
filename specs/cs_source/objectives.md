@@ -124,7 +124,12 @@ plugin logging every sound the C4 entities emit):
   Every hurt from the blast has **attacker 0** (the world, not the
   planter): with `mp_friendlyfire 0` it still killed two terrorists near
   it and the planter (2026-10-16), so no one is spared and the planter
-  isn't credited. Other radii not measured.
+  isn't credited. **Other radii (2026-10-18):** on de_nuke
+  (`bombradius` 400) the bomb planted at A (700, −770) gave 398.4 to the
+  planter beside it and 322.41 to a bot 300 units off (306.5 to its
+  target point): `400 × exp(−d²/2σ²)` with σ = 400 × 3.5 / 3 = 466.7
+  gives 322.4, so damage and reach scale with the map's radius as
+  hypothesised (ours).
 - **Walls (2026-10-18, `tools/css_probe/blastmeas.py bomb`):** nothing
   between stops or weakens the blast: a bot behind de_dust2's 200-unit
   stone wall at B (−1233, 3013), 349 units from the bomb, took 418.07
@@ -793,7 +798,7 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    restart). Was: **Q2 Defaults and bounds.** RCON `cvarlist mp_c4`, `help mp_c4timer`,
    `help mp_hostagepenalty`, `help mp_roundtime`: defaults, min/max.
    Expect `mp_c4timer` 45 (10–90).
-3. **Q3 Partly answered (2026-10-15, see "The blast (Q3, H2)" under Constants: the bell `500 × exp(−d²/2σ²)`, σ = 1750/3; armour as measured there; attacker 0, nobody spared, the planter not credited). Still open: other radii (de_nuke, de_chateau), screen shake (client). Walls answered 2026-10-18: nothing between stops or weakens it (see Constants).** Was: **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
+3. **Q3 Partly answered (2026-10-15, see "The blast (Q3, H2)" under Constants: the bell `500 × exp(−d²/2σ²)`, σ = 1750/3; armour as measured there; attacker 0, nobody spared, the planter not credited). Still open: screen shake (client). Other radii (de_nuke) and walls answered 2026-10-18: nothing between stops or weakens it (see Constants).** Was: **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
    of a site, place `mashup_target`/`mashup_targetn` bots at 250, 500, 750,
    1000, 1500, 1800 in on a clear line, unarmoured, then armoured; log
    `player_hurt` (dmg_health, dmg_armor). Fit H1 (linear) vs H2 (bell).

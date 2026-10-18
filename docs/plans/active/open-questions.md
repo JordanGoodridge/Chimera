@@ -40,6 +40,18 @@ silencer's recoil, the template suffix and templated logic_auto, the
 constraint tie order, a human's airborne inaccuracy, nav_analyze on a
 listen server); about 73 class-1 items left.
 
+Fourth pass (2026-10-18, blasts, the bomb, spectating, doors, flashes,
+ladders; `tools/css_probe/blastmeas.py`, `chordmeas.py`): 10 class-1
+items settled (grenades Q6 and Q10, objectives Q1 and Q3, spectating's
+mode 3 and first target, doors_buttons Q6, physics_brushes Q4, fire Q6,
+and entity_io Q9 moved to class 3: no map has a multi-line game_text),
+5 more answered in part (grenades Q12's smoke, movement Q16's ladder
+jump-off, weapons Q7's double-count edge, physics_brushes Q1's mass
+reading, grenades Q17's `drop`, which met the bot AI's knife); about 63
+class-1 items left. Two plugin commands that unblock sounds Q1 and the
+thrower's side of grenades Q12 are written but not built
+(`tools/css_probe/README.md`).
+
 ## Specs: specs/cs_source
 
 | Spec | Question | Class | What would answer it |
@@ -65,7 +77,7 @@ listen server); about 73 class-1 items left.
 | grenades | Q9 HE visuals (fireball, shake, light) | 2 | client screenshots at `host_timescale 0.1` |
 | grenades | Q10 crouched victims, walls and props blocking | 1 | done (Part B, 2026-10-18, `blastmeas.py`) |
 | grenades | Q11 ear-ringing presets and who gets them | 2 | capture C31 (the server sends nothing, measured) |
-| grenades | Q12 left: flash through walls, players, props (smoke done, Part B 2026-10-18) | 1 | flash netprops with something between; tried 2026-10-18: the probe's thrower aims at the run bot and the flash lands within 40 units of it, too close for anything between; the thrower's own `m_flFlashDuration` isn't a datamap field `mashup_getprop` reads (a plugin command reading the sendprop of any player would do) |
+| grenades | Q12 left: flash through walls, players, props (smoke done, Part B 2026-10-18) | 1 | flash netprops with something between; tried 2026-10-18: the probe's thrower aims at the run bot and the flash lands within 40 units of it, too close for anything between; the thrower's own `m_flFlashDuration` isn't a datamap field `mashup_getprop` reads (`mashup_netprop`, added to mashup_probe.sp 2026-10-18, reads it once the plugin is rebuilt) |
 | grenades | Q13 flash overlay curve | 2 | client screenshots every 0.1 s |
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
@@ -97,7 +109,7 @@ listen server); about 73 class-1 items left.
 | nav | Q7 approach record fields (v9) | 3 | spec session |
 | nav | Q8 `earliest_occupy` effect | 1 | bot round starts (bots parked) |
 | objectives | Q1 left: leaving the zone by teleport while planting | 1 | done (Part B, 2026-10-18) |
-| objectives | Q3 left: other radii (walls done, Part B 2026-10-18) | 1 | targets on de_nuke/de_chateau |
+| objectives | Q3 radii and walls | 1 | done (Part B, 2026-10-18) |
 | objectives | Q4 beep schedule and loudness; LED place; debris sounds | 2 | the server emits no beep (measured): client audio, sitting 2 |
 | objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B; the draw, Ts after a rescue and "led" too) |
 | objectives | Q6 left: who gets the bomb with humans; defuse announcers | 4, 2 | a human on T for 50 restarts; client audio |
@@ -169,7 +181,7 @@ listen server); about 73 class-1 items left.
 | shaders_two_texture_blend | Q6 2-vector `$detailscale` | 3 | material parser source |
 | shadows_sky | Q1 shadow clipper; Q2 static props as casters; Q3 player shadows; Q5 2D sky order; Q6 shadow detail; Q7 blend space | 2 | RenderDoc/screenshots (6 items) |
 | shadows_sky | Q4 the no-shadow_control ambient colour | 3 | engine code |
-| sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the server's distance-gain query needs a plugin build (blocked here); else client recordings |
+| sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the falloff: `mashup_gain` (added to mashup_probe.sp 2026-10-18, through SourceMod's `GetDistGainFromSoundLevel`), once the plugin is rebuilt; pan law and occlusion: client recordings |
 | sounds | Q2 left: other entries' wave picks | 5 | measured (Part B, 2026-10-18) |
 | sounds | Q3 left: wading in knee-deep water | 1 | feet-deep measured (Part B, 2026-10-18); knee-deep: a map with water 15-36 deep where the probe bot moves |
 | sounds | Q5 `Player.Swim` doubled for the owner | 2 | client trace |
@@ -232,7 +244,7 @@ listen server); about 73 class-1 items left.
 | fire | Q3 player ignition | 1 | `Ignite` input on a bot (done, Part B; the gas can left) |
 | fire | Q4 fires at a round restart | 1 | `mashup_ents` before and after (env_fire is re-created: entity_io Q1) |
 | fire | Q5 floors on de_dust and de_train | 1 | fire positions after their bombs |
-| fire | Q6 burning gas can's radius damage | 1 | a bot against a burning can |
+| fire | Q6 burning gas can's radius damage | 1 | done (Part B, 2026-10-18) |
 | fire | Q7 burning-prop light | 2 | client |
 | fire | Q9 buried fires never damage | 1 | a bot in each after the bomb |
 | fire | Q10 particle operators, colour fade | 2 | client |
@@ -480,3 +492,6 @@ measured.
 | physics_brushes Q4: +use on a light prop | nothing: no pickup | no pickup | none |
 | movement Q16: jumping off a ladder | 270 units/s away from it on the jump tick, whatever key is held | the same, tick-exact (six `ladderjump_*` movecmp runs on de_nuke) | none |
 | grenades Q12: a flash in smoke | blinds 0.56 as long (3.81 s for 6.80), as white | smoke ignored | × 0.56 when the line crosses a cloud (`Flash::through_smoke`, a fit) |
+| fire Q6: a burning gas can next to a crouched player | hurts nobody but itself (1 + 3.728 every 13 ticks) | the same | none |
+| weapons Q7: where a prop counts twice | from a chord of 24.0 units (23.7 once, 24.4 twice; 24.0 both ways) | (the 24 guessed) | none (confirmed) |
+| objectives Q3: the bomb on a map with `bombradius` 400 | 400 at the bomb, σ = 400 × 3.5 / 3 (de_nuke: 322.41 at 306.5 units, the fit 322.4) | the same | none |

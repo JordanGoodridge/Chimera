@@ -35,7 +35,7 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Networking feel | 6 | 3 | 1 | 1 |
 | **Total** | **115** | **54** | **12** | **66** |
 
-Counted from the tables below (recounted 2026-10-18): "have" is every row
+Counted from the tables below (recounted 2026-10-18; the fourth probe pass changed no row's status): "have" is every row
 whose status starts with have (have, have (fixed), have (new), have
 (differs)); "fixed now" the rows marked have (fixed), which are counted
 under have too. Rows marked n/a or with no status are left out. What
@@ -123,7 +123,7 @@ report folders):
 | `autobuy` / `rebuy` (F1 / F2) | have (fixed) | H | S | were missing (the buy menu's buttons greyed); details unmeasured (tech-debt), capture C4 |
 | Spread generator | differs | L | M | tech-debt "CS:S's spread and recoil": seeded as CS:S, our generator (spec Q1) |
 | Other automatics' recoil, scoped/silenced/burst | differs | M | S | measured and in the data 2026-10-15 for M4A1, FAMAS, Galil, SG 552, AUG, MP5, P90, UMP, MAC-10, TMP, M249 (standing, crouched, moving, airborne; five airborne yaw caps not reached); scoped AUG and SG 552 as unscoped; 2026-10-18: scoped AWP and scout kick 2.0 up, scoped SG550/G3SG1 their random kicks (as ours), a FAMAS burst kicks on its first round only (fixed: ours kicked all three); silenced modes left (the bot's AI takes the silencer off) (Q3) |
-| Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7; sand's and metal's damage factors measured 2026-10-18 (0.3 each, were our 0.5), tile 0.3, computer 0.45, grate 0.99, plastic and glass 0.5 (were 0.5 for all); a prop entity crossed for 24 units or more counts twice in CS:S, not in ours |
+| Penetration materials other than wood/metal/sand/concrete | differs | M | S | tech-debt "Penetration"; spec Q7; sand's and metal's damage factors measured 2026-10-18 (0.3 each, were our 0.5), tile 0.3, computer 0.45, grate 0.99, plastic and glass 0.5 (were 0.5 for all); a prop entity crossed for 24 units or more counts twice in CS:S (the edge measured at 24.0; ours too since 2026-10-18) |
 | Unmeasured gun values (penetration...) | differs | L | S | tech-debt "The CS:S guns"; 2026-10-15 measured the powers of 5.56, 9 mm (as the data), .357 (24, was 15) and 5.7 (30, was 15), and the reach of 9 mm and .357 (800; .357 was 500); buckshot and long reaches left |
 | Grenade throw timings, redraw, pin rules | differs | M | S | release (6 ticks after the throw), the throw pitch bend (80/90 looking up: fixed), fuses, HE vs armour (×0.7375) measured and matching; HE falloff fixed (a bell σ 350/3, linear with sv_legacy_grenade_damage 1); flash fixed (7.14 × (1 − d/1500) × (0.7 + 0.3 cos), alpha by facing); a switch with the pin out keeps the grenade (2026-10-17, grenades.md Q3: as ours); cover from the HE fixed 2026-10-18 (Q10: static props stop it as walls, ours let it through; prop entities and players between shield a quarter, ours nothing; `BlastShield`); a flash in smoke blinds 0.56 as long (fixed 2026-10-18, Q12; ours ignored smoke); redraw open (Q2: the probe's bot can't tell, its AI picks the knife) and the flash through walls (Q12) |
 | What the dead drop | have (fixed) | M | S | measured 2026-10-17 (grenades.md Q17): the best gun whatever was held, and one grenade, an HE over a flashbang over a smoke; ours dropped only the weapon in hand (a grenade held: no gun) (`weapon::drop::DeathDrop`) |

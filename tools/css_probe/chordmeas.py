@@ -4,7 +4,10 @@ height on de_dust2's CT spawn floor, turned by `yaw`, so a level shot
 crosses it along a chord set by the turn; the target hovers behind. Prints
 the chord (`mashup_wall` along the shot) and whether the target was hurt.
 
-    python3 tools/css_probe/chordmeas.py <model> <weapon> <yaw> [<yaw>...]
+    python3 tools/css_probe/chordmeas.py <model> <weapon> <yaw[:dz[:dx]]>...
+
+(`dz`, `dx`: the prop moved up from the eye's height and sideways off the
+shot line.)
 
 Needs two bots (the target), mashup_props loaded.
 """
@@ -28,9 +31,9 @@ def eye():
     return tuple(r0.w[30]["eye"])
 
 
-def shot(model, weapon, yaw, e, dz=0.0):
+def shot(model, weapon, yaw, e, dz=0.0, dx=0.0):
     z = e[2] + dz
-    out = W.rcon(f"mashup_spawn prop_physics_multiplayer {model} {X} {Y} {z} 0 {yaw} spawnflags 8")
+    out = W.rcon(f"mashup_spawn prop_physics_multiplayer {model} {X + dx} {Y} {z} 0 {yaw} spawnflags 8")
     m = re.search(r"mashup_spawn: (-?\d+)", out)
     if not m:
         raise RuntimeError(out)
@@ -50,6 +53,6 @@ if __name__ == "__main__":
     model, weapon = sys.argv[1], sys.argv[2]
     e = eye()
     for a in sys.argv[3:]:
-        yaw, _, dz = a.partition(":")
-        chord, on_prop, fired, hurt = shot(model, weapon, float(yaw), e, float(dz or 0))
-        print(f"{weapon} yaw {yaw} dz {dz or 0}: chord {chord} (prop {on_prop}) fired {fired} hurt {hurt}", flush=True)
+        yaw, dz, dx = (a.split(":") + ["0", "0"])[:3]
+        chord, on_prop, fired, hurt = shot(model, weapon, float(yaw), e, float(dz or 0), float(dx or 0))
+        print(f"{weapon} yaw {yaw} dz {dz or 0} dx {dx or 0}: chord {chord} (prop {on_prop}) fired {fired} hurt {hurt}", flush=True)

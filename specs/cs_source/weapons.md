@@ -1320,8 +1320,12 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   38-42 units thick kept 0.6 (AWP 68, de_dust2 near (−1400, 400)).
   Ours (2026-10-18): a prop entity or moving body passed for 24 units or
   more scales the damage by its factor twice (`[entity] twice_from` in
-  games/cs_source/data/penetration.toml; the edge, somewhere in 22.4-25.1,
-  and brush entities unmeasured); the penetration budget counts it once.
+  games/cs_source/data/penetration.toml; brush entities unmeasured); the
+  penetration budget counts it once. The edge (2026-10-18,
+  `tools/css_probe/chordmeas.py`, the drum floating upright at the eye,
+  shot level at lateral offsets, the AWP): chords 21.5, 22.4, 23.5, 23.7
+  kept 0.3 (34 to the chest), 24.4, 24.7, 26.0 lost 0.09 (10), and 24.0
+  went once each way: **24 units**.
 - Other materials (2026-10-18, the same set-up with other games' props,
   each its model's surface property, the AWP 30 behind): tile (T,
   inferno's `potted_plant1`, 14.0) **0.30**; computer (P, inferno's

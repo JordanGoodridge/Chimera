@@ -135,6 +135,14 @@ Notes:
   `bot_quota 1`, `mp_friendlyfire 0` (and `changelevel de_dust2` if the map
   was changed).
 
+Added 2026-10-18, not yet built into the server's plugin (rebuild
+`mashup_probe.smx` to use them): `mashup_gain <soundlevel> <distance>...`
+prints the engine's distance gain for a sound level (sounds.md Q1, through
+SourceMod's `GetDistGainFromSoundLevel`), and `mashup_netprop <index>
+<sendprop> [f|v]` reads a networked prop of any entity (e.g. a thrower's
+`m_flFlashDuration` for grenades.md Q12; `mashup_getprop` reads datamap
+fields only).
+
 ## Recording a SourceTV demo
 
 For questions answered by what the server sends (entity props per tick,
