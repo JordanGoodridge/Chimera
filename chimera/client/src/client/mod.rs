@@ -10,6 +10,7 @@
 //! and the `screenshot <file>` and `jpeg` (CS:S's F5: the screenshots folder,
 //! `<map>NNNN.png`) console commands (`capture.rs`), remote protocol.
 
+pub mod aim;
 pub mod app;
 pub mod audio;
 pub mod binds;

@@ -6,7 +6,8 @@
 //! `cl_crosshairscale`, `cl_crosshairalpha` with `cl_crosshairusealpha`,
 //! `cl_dynamiccrosshair`), sniper scope overlay, smoke grey and flash white
 //! screen tints, health, ammo, hit marker, killfeed, capsule bodies for other
-//! characters.
+//! characters. A game that draws its own crosshair, health and ammo, hit
+//! marker or kill feed turns this HUD's off with `GameDraws`.
 
 use bevy::prelude::*;
 
@@ -22,6 +23,7 @@ impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<HitMarker>()
             .init_resource::<Killfeed>()
+            .init_resource::<GameDraws>()
             .init_resource::<CrosshairColor>()
             .add_systems(Startup, spawn_hud)
             .add_systems(
@@ -36,6 +38,19 @@ impl Plugin for HudPlugin {
             );
         crosshair_cvars(app);
     }
+}
+
+/// Which parts of this HUD a game's own HUD draws instead (none by
+/// default: this HUD draws them all). A game's front end that has its own
+/// crosshair, health and ammo panels, hit indicator or kill feed sets it
+/// (Combat Arms' `ui::hud`); the scope overlay, tints and bodies stay.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GameDraws {
+    pub crosshair: bool,
+    /// Health, armour, ammo (the bottom texts).
+    pub status: bool,
+    pub hit_marker: bool,
+    pub killfeed: bool,
 }
 
 /// The crosshair's look, CS:S's cvars (all archived, CS:S's defaults):
@@ -510,12 +525,13 @@ fn draw_hud(
     mut center: Single<&mut Text, (With<CenterText>, Without<HealthText>, Without<AmmoText>)>,
     game_hud: Option<Res<crate::map::hud::ActiveHud>>,
     spectator: Option<Res<super::spectate::Spectator>>,
+    own: Res<GameDraws>,
 ) {
     let Some(p) = player else { return };
     // The game's own HUD draws health, armour and ammo when there is one;
     // spectating, the spectator panel says who you watch instead.
     let spectating = spectator.is_some_and(|s| s.active());
-    let plain = game_hud.is_none() && !spectating;
+    let plain = game_hud.is_none() && !spectating && !own.status;
     let (health, armor, inv, score, dead) = *p;
     let score = score.copied().unwrap_or_default();
     let armor = match armor.filter(|a| a.amount > 0.0) {
@@ -593,6 +609,7 @@ fn draw_crosshair(
         ResMut<Assets<Image>>,
         bevy::ecs::system::Local<Option<(Handle<Image>, Handle<Image>, Rect)>>,
     ),
+    own: Res<GameDraws>,
 ) {
     let Some((cam, proj)) = camera.iter().next() else {
         return;
@@ -609,7 +626,11 @@ fn draw_crosshair(
         (None, None) => (None, None, None),
     };
     // A scope draws its own cross hairs.
-    let kind = crosshair_kind(inv, dead.is_some(), zoomed.is_some_and(|z| z.scope));
+    let kind = if own.crosshair {
+        CrosshairKind::Hidden
+    } else {
+        crosshair_kind(inv, dead.is_some(), zoomed.is_some_and(|z| z.scope))
+    };
     // No weapon: the HUD's default crosshair sprite, drawn additively
     // (converted once to alpha), at its own pixel size.
     let hud_sprite = hud.as_ref().and_then(|h| {
@@ -766,8 +787,13 @@ fn hit_marker(
     mut marker: ResMut<HitMarker>,
     mut text: Single<(&mut Visibility, &mut TextColor), With<HitMarkerText>>,
     time: Res<Time>,
+    own: Res<GameDraws>,
 ) {
     let me = local.map(|l| *l);
+    if own.hit_marker {
+        events.clear();
+        marker.left = 0.0;
+    }
     for e in events.read().filter(|e| e.shown()) {
         if Some(e.owner) == me && matches!(e.kind, WeaponEventKind::Hit { .. }) {
             marker.left = MARKER_SECONDS;
@@ -790,9 +816,10 @@ fn killfeed(
     mut text: Single<&mut Text, With<KillfeedText>>,
     time: Res<Time>,
     game_hud: Option<Res<crate::map::hud::ActiveHud>>,
+    own: Res<GameDraws>,
 ) {
     // The game's own HUD shows its death notices instead.
-    if game_hud.is_some() {
+    if game_hud.is_some() || own.killfeed {
         died.clear();
         text.0.clear();
         return;
