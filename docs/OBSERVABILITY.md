@@ -72,8 +72,11 @@ in the lowest crate whose public API it needs:
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's
   rules (layering, assets, specs, docs);
-- `mashup` (the root, tests/it/): `dump`'s test and Combat Arms' local
-  ones.
+- `lithtech_formats` (lithtech/formats/tests/it/): LithTech's readers on
+  fixtures written in code from the specs, and in `heavy` on the Combat
+  Arms install (skipped without one; decryption only with keys in
+  `chimera.local.toml`);
+- `mashup` (the root, tests/it/): `dump`'s test.
 
 A file directly in a `tests/` folder would be another test binary:
 `architecture::tests_are_one_binary_per_crate` fails and says how to move
@@ -178,8 +181,8 @@ placed in logical pixels, e.g. the crosshair after a dialog; with
 floats under Hyprland instead of being tiled), for UI checked at a known
 resolution. `--help` lists all options.
 
-System order: `CHIMERA_SYSTEM_DUMP=<file>` builds the game as it would
-run (with the same options and plugins; needs the display) and writes
+System order: `CHIMERA_SYSTEM_DUMP=<file>` builds the game (either app:
+`client::app::run`) as it would run (with the same options and plugins; needs the display) and writes
 every schedule's systems in the order they run, the main world's then the
 render world's (taken before pipelined rendering moves it to its own
 thread), to the file instead of running. Dump before and after a
@@ -489,8 +492,8 @@ Only `Reflect`-registered types are visible; register new core components in
   describe`, short commit hash and the commit's UTC date, e.g.
   `v0.1.0-playtest3 (feac156, 2026-10-11)` (no tag: `feac156,
   2026-10-11`; `-dirty` on the hash with uncommitted changes), then the
-  network protocol (`NET_VERSION`). apps/cs_source/build.rs stamps it
-  (`core::VERSION`); the main menu shows it bottom right and
+  network protocol (`NET_VERSION`). Each app's build.rs stamps it
+  (chimera/core/build_stamp.rs; `core::VERSION`); the main menu shows it bottom right and
   `cs_source_server` prints it at startup.
 - `thirdperson` (back with `firstperson`; distance `cam_idealdist`, CS:S
   units) puts the camera behind the local player and draws its own
@@ -1190,8 +1193,10 @@ cargo run --bin dump -- combat_arms --list --filter worlds2
 cargo run --bin dump -- combat_arms --filter worlds2/warehouse.dat --extract
 ```
 
-Encrypted Combat Arms archives list but skip extraction until their scheme's
-key is in `chimera.local.toml`. Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
+Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
+list but skip extraction until their scheme's key is in
+`chimera.local.toml` (`[games.combat_arms.keys.V1]`, `key` and `iv` as
+hex). Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
 refuses any folder inside the repository.
 
 ### Sweeping every cached map (mapsweep)

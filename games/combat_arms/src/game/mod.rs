@@ -12,6 +12,7 @@
 //! - `attachments`: weapon attachments (none yet);
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
 //!   the install's attribute files;
+//! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
 //! - `rules`: game modes as rule modules.
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
@@ -21,6 +22,7 @@ pub mod attachments;
 pub mod data;
 pub mod grenades;
 pub mod inventory;
+pub mod mount;
 pub mod movement;
 pub mod rules;
 pub mod weapons;
@@ -37,22 +39,25 @@ pub const GAME: &str = "combat_arms";
 /// engine's default, `core::DEFAULT_TICK_HZ`).
 pub const TICK_INTERVAL: f64 = 1.0 / crate::core::DEFAULT_TICK_HZ;
 
-/// What the shell needs of Combat Arms (`game_registry`). Nothing reads
-/// the install yet: `open` finds no mount (the `data` module will read the
-/// install's attribute files through one), there is no map cycle or map
-/// import, and the binds are the placeholder table below.
+/// What the shell needs of Combat Arms (`game_registry`). `open` mounts
+/// the install's archives (`mount`); nothing reads from it yet (the
+/// `data` module will read the install's attribute files through it),
+/// there is no map cycle or map import, and the binds are the
+/// placeholder table below.
 pub static INFO: GameInfo = GameInfo {
     id: GAME,
     short_name: "CA",
     // PLACEHOLDER: no file of the install is read yet.
     content_dir: "",
     tick_interval: TICK_INTERVAL,
-    open: |_| Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Combat Arms' install isn't mounted yet")),
+    open: mount::open,
     map_cycle: |_| Vec::new(),
     import_map: |_| Err("Combat Arms maps aren't loaded yet".into()),
     // No such file in an install: the built-in table is used.
     default_binds_cfg: "chimera_placeholder_binds.cfg",
     default_binds: DEFAULT_BINDS,
+    // The defaults never changed.
+    old_default_binds: &[],
     movement_cvars: &[],
 };
 

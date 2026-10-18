@@ -1,5 +1,6 @@
-// The build's version text. Shared with build.rs (`include!`), so plain
-// Rust with no crate paths and no inner doc comments.
+// The build's version text. Shared with the apps' build scripts
+// (`include!`d by chimera/core/build_stamp.rs), so plain Rust with no
+// crate paths and no inner doc comments.
 
 /// "<tag or describe> (<short hash>, <commit date>)", e.g.
 /// "v0.1.0-playtest3 (feac156, 2026-10-11)"; with no tag reachable just

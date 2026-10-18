@@ -85,19 +85,25 @@ conversion into engine types ever needs Bevy, a second crate beside it
 Chimera's neutral types (`MapData`, `AnimSet`, textures), as `cs_source`
 does for BSP.
 
-- The existing local-only `.rez` reader (2026-10-05, git-ignored at the
-  main checkout's `src/games/combat_arms/`) moves into `lithtech/` when
-  Wave 0's `.rez` row is picked up, rewritten against `rez_archive.md` if
-  it doesn't already follow it; its tests use fixtures generated in code.
+- Done 2026-10-18: the first crate is `lithtech/formats`
+  (`lithtech_formats`): the `.rez` reader, moved from the old local-only
+  code and checked against `rez_archive.md` (`rez`: header, directory,
+  archive as a mount layer, `open_dir` for a folder; `rez_cipher`: the
+  payload cipher, keys at run time). Unit tests on archives written in
+  code; `heavy::` tests on this box's install. It uses `source_formats`
+  only for the VFS (`fs::FileSource`, `Mount`).
+- `games/combat_arms`' `game::mount` (its `INFO.open`) mounts the
+  install's `Game/` with `rez::open_dir` and the keys from
+  `chimera.local.toml`; the data seam (`game/data.rs`) will read through
+  it.
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
-- Not done here (the skeleton's owner is changing the layering rules now):
-  the crate diagram and layer list in docs/ARCHITECTURE.md and the rules
-  in `checks/tests/it/architecture.rs` (`workspace_crates`, the no-Bevy
-  rule `source_formats` has, keys and assets never in the crate) must
-  learn about `lithtech/` in the commit that creates the first crate
-  there. Whoever picks up the `.rez` row does that.
+- docs/ARCHITECTURE.md ("Crates") and `checks/tests/it/architecture.rs`
+  know `lithtech/`: `workspace_crates` holds `lithtech/formats` to the
+  rules `source_formats` has (no Bevy, avian, Chimera or game; no
+  workspace-hack), and `no_keys_tracked` refuses key-like hex runs in
+  `lithtech/` and Combat Arms' code and specs.
 
 ## Task board
 
@@ -106,7 +112,7 @@ does for BSP.
 | Item | Spec | Status | Notes |
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
-| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (in the repo since 2026-10-18; needs the user's review) | Reader exists on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). After review, the reader moves into the new `lithtech/` loader layer ("LithTech loader layer"), which this row creates |
+| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | done (2026-10-18), in `lithtech/formats` (`lithtech_formats::rez`); spec still needs the user's review | Heavy tests on this box: 108 archives open with matching check sums, 32,024 files, 40 locked without keys, 33 maps in WORLDS2/WORLDS3 read; `dump combat_arms` lists them. `combat_arms::game::mount` (`INFO.open`) mounts the install with it |
 | V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `chimera.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
 ### Wave 0.5: shared pieces
@@ -122,7 +128,7 @@ does for BSP.
 | 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | not started | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
 | 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | implementing (ca/weapon-firing): all 37 spec cases pass as scenario tests; ambiguities in `game/weapons.rs`'s Known shortcuts | none: L2/L3 not lifted (CA's own `combat_arms:damage`/`spread`/`recoil` hooks); Chimera gained `Trigger::per_press`, `Magazine::auto_reload`, `Burst::once_per_press`, `step_blocks_primary`, and hitscan rounds a game delivers itself | M4A1 in `data/weapons/m4a1.toml`, surfaces in `data/surfaces.toml`; CA delivers its rounds (hit spheres, bands, armour) |
 | 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none (its reader goes in `lithtech/`) | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
-| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | L4 (weapon selection logic), L5 (default binds per game); inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | Cloud agent; after 2's parts exist |
+| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | L4 (weapon selection logic) and L5 (default binds per game): both done; inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | Cloud agent; after 2's parts exist |
 | 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | L6 (HUD panels, death notices), L7 (crosshair style as data), L8 (damage indicator), L9 (target ID); the plain HUD (`client::hud`) works with no lift | Cloud agent; plain Chimera HUD widgets driven by data |
 
 ### Wave 2: the rest of combat, and the game's own files
@@ -172,12 +178,12 @@ text, VGUI widgets and drawing of `map::hud` layouts; skeletal animation
 
 | L | Piece | Where now (lines) | Main types | CS:S inside that becomes data or a hook | Risk (tests that guard it) | First need |
 |---|---|---|---|---|---|---|
-| L0 | App glue | apps/cs_source: `main.rs` (259), `build.rs` (60), `games/mod.rs` (79), `lib.rs` (101) | `dump_systems`, a second `single_threaded_schedules`, the version stamp, `load_map` dispatcher, `client_hooks` | `movement_config` from CS:S args; map ids `cs_source:` | Low (app tests, `checks` build stamp rules) | Wave 0 skeleton: share the schedule helpers and the stamp, don't copy them |
+| L0 | App glue (**done** 2026-10-18) | apps/cs_source: `main.rs` (259), `build.rs` (60), `games/mod.rs` (79), `lib.rs` (101) | `dump_systems`, a second `single_threaded_schedules`, the version stamp, `load_map` dispatcher, `client_hooks` | `movement_config` from CS:S args; map ids `cs_source:` | Low (app tests, `checks` build stamp rules) | Wave 0 skeleton: share the schedule helpers and the stamp, don't copy them |
 | L1 | Box sweeps against the world | `game/movement.rs` `Tracer` (~450 of 2511) | `Tracer`, `Trace`, `BrushHit`, `sweep_brushes`, `sweep_box` over `MapBrushes`, `BrushGrid`, `MapBrushTree`, `MapTerrain` | Source units and Z-up, trace backoff and skin, the last-crossed-plane rule (rampbug), ladders, surface lookup for footsteps | High: tick-for-tick movement (`source_movement*.rs` ~2.5k lines, `movement.rs`), heavy `map_surf`, `map_ladders`, `map_courses` | 1, only if CA needs brush-exact traces; else avian shape casts (decision 2026-10-04). Depends on CA worlds yielding `MapBrushes` |
 | L2 | Spread and recoil state around the weapon frame | `game/weapons.rs` (~400 of 827: `Inaccuracy`, `AccuracyKeys`, `Kick`, `Recoil`, `decay_punch`, `before_shots`, `after_shots`) | systems before and after `WeaponFrame` in `Predict::Weapons`, `predicted_part` | All formulas (accuracy penalty, air decay, landing term, kick sets, punch decay); the hook names `cs_source:accuracy`/`recoil` | Medium: `cs_guns.rs` (1132), `weapons.rs` (1511), `net_weapons.rs`, `prediction.rs` | 2. Likely none: CA registers its own `combat_arms:*` hooks and systems on the same pattern; lift only a shared shape (e.g. a kick pattern table) if the spec shows one |
 | L3 | Hurt and death sounds; hit reaction | `game/pain.rs` (290), `game/hit_reaction.rs` (222) | `PainSoundsPlugin`, `HitSlowdown` | Sound entry names by hitgroup and helmet, `Player.FallDamage`; the slowdown values and `SourceMovement::velocity_modifier` | Low/medium: `pain_sounds.rs` (367), `hit_reaction.rs` (350) | 2 (sounds as data: event to entry); slowdown stays CS:S unless CA's spec has one |
-| L4 | Weapon selection logic | `ui/weapon_select.rs` (733: `next_in_slot`, `step_weapon`, `pick_of`, the input half of `menu_input` ~200) | beside `client::weapon_menu::WeaponMenu` (Chimera) | `HudWeaponSelection` panel name, `hud_fastswitch`, timings, the row's look (stays) | Low: ui `weapon_select.rs` (146), `auto_switch.rs` (201) | 4 |
-| L5 | Default binds per game | `chimera_client` `binds.rs` (790; already Chimera, CS:S defaults inside) | the default bind table | CS:S's keys become the game's data | Low: binds unit tests | 4 (CA's keys from `inventory.md`) |
+| L4 | Weapon selection logic (**done** 2026-10-18) | `ui/weapon_select.rs` (733: `next_in_slot`, `step_weapon`, `pick_of`, the input half of `menu_input` ~200) | beside `client::weapon_menu::WeaponMenu` (Chimera) | `HudWeaponSelection` panel name, `hud_fastswitch`, timings, the row's look (stays) | Low: ui `weapon_select.rs` (146), `auto_switch.rs` (201) | 4 |
+| L5 | Default binds per game (**done** 2026-10-18) | `chimera_client` `binds.rs` (790; already Chimera, CS:S defaults inside) | the default bind table | CS:S's keys become the game's data | Low: binds unit tests | 4 (CA's keys from `inventory.md`) |
 | L6 | HUD panels from a game's layout, death notices | `ui/game_hud.rs` (971) | `GameHudPlugin`, `Part`, `PanelKind`, `layout`, `HudValues`, `DeathNotices`, `round_banner` | Panel names (`HudHealth`...), `LOW_HEALTH`, notice time and count, ammo glyphs, money and round clock panels | Medium: ui tests, `hudcmp` captures (refcmp), `objectives.rs` ui | 5, if CA's HUD is a layout of panels (decided by 11); else CA starts on `client::hud` |
 | L7 | Crosshair and scope look as data | `chimera_client` `hud.rs` (998; already Chimera) | `CrosshairColor`, crosshair and scope drawing | `cl_crosshair*` presets and scales, the scope's CS:S textures and layout | Low/medium: unit tests, `hudcmp` | 5 (crosshair), 7 (scope) |
 | L8 | Damage direction indicator | `ui/hud_sprites.rs` (~150 of 403: `pain`, `sides`, `DamageBars`) | `HudSpritesPlugin` | `HudDamageIndicator` trapezoid look, left/right only, 1 s | Low: unit tests | 5 |
@@ -189,6 +195,29 @@ text, VGUI widgets and drawing of `map::hud` layouts; skeletal animation
 | L14 | Player animation driver | `game/player_anim.rs` (937) | the SDK animation state driving `Animator`, hand IK | Sequence names by weapon suffix, ground speeds, IK rules; hostages (`hostage_anim.rs`) stay | Medium: `animation.rs` (646), `drawn_parts.rs` | 12 |
 | L15 | Teams, respawn, round loop, game end | `rules.rs` (828), `rules/rounds.rs` (989), `rules/game_end.rs` (184), round part of `game/net.rs` (1079) | `DeathmatchPlugin`, `join_team`, `auto_assign`, `balance_teams`, `put_at_spawn`, `RoundState`, `NetRound` | Money, objectives, `mp_*` names and defaults, win reasons and strings, `RoundSummary` fun facts | High: `rounds.rs` (777), `teams.rs`, ui `net_rules.rs`, heavy `bot_rounds.rs`; the network, bots and movement name these types (game/rules.rs `//!`) | 13 |
 | L16 | Bots | `bot/mod.rs` (2921), `bot/path.rs` (311), `bot/look.rs` (267), `bot/aside.rs` (273), `bot/grenades.rs` (681) | the brain (aim, reaction, strafe, fire), path cost on `NavMesh`, corner checks, throws | `bot/tactics.rs`, `objectives.rs`, `radio.rs`, `buy.rs` stay CS:S; the brain reads CS:S's rounds and objectives | High: heavy `bot_nav.rs`, `bot_rounds.rs`, `bot_grenades.rs`, `bot_manners.rs`, `net_bots.rs` | 14 |
+
+Done (2026-10-18, branch worktree-agent-a32c8d838fb07efa1; CS:S unchanged,
+its tests passing):
+
+- L0: `chimera_client::client::app` (`run`: the executors, main and
+  render world, and `CHIMERA_SYSTEM_DUMP`; `single_threaded_schedules`,
+  `dump_systems`) used by both apps' main.rs; the version stamp is
+  chimera/core/build_stamp.rs, which each app's build.rs includes (CA's
+  build now has `VERSION`/`BUILD`, `core::BuildVersion`). The `load_map`
+  dispatcher and `client_hooks` stay per app (one line each in CA).
+- L4: `client::weapon_menu` holds the logic (`WeaponMenuPlugin`:
+  `slot1`..`slot5`, `invnext`/`invprev`, `cancelselect`, `menu_input`,
+  `next_in_slot`, `step_weapon`, `pick_of`, `WeaponMenuTimes`); the game
+  sets `WeaponMenu::takes_slots` (CS:S: `hud_fastswitch` and its panel).
+  CS:S's `weapon_select` keeps the look, `hud_fastswitch`, `TIMES`,
+  `show_deploys` and its no-op `slot6`..`slot10`; CA's front end adds the
+  plugin (no row: steps switch at once).
+- L5: the defaults were already `GameInfo::default_binds`; now the saved
+  config migration list is too (`GameInfo::old_default_binds`, CS:S's
+  `OLD_DEFAULT_BINDS`), and CS:S's `config_default.cfg` sample moved into
+  its own test. Chimera keeps only `CHIMERA_BINDS`; `DEFAULTS_MARK`'s
+  text is unchanged, so saved configs read as before. Left: `POLLED`
+  still names CS:S's polled commands (docs/tech-debt.md).
 
 Not needed by any board item yet (lift when a mode or minigame asks):
 automatic hints (`rules/hints.rs` 583 + `ui/hints.rs` 82: already data and
@@ -275,6 +304,9 @@ Notes:
 - 2026-10-18: Plan and Wave 1 briefs written; skeleton in progress.
 - 2026-10-18: Wave 0.5 lift survey done ("Lift survey (Wave 0.5)"); Lift
   column filled.
+- 2026-10-18: `lithtech/` loader layer created; the `.rez` reader moved
+  into `lithtech_formats` with fixture tests and heavy tests on the
+  install; the old local-only loader is retired.
 
 ## How to run a spec wave (for the user)
 

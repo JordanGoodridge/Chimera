@@ -4,18 +4,23 @@
 //! specs/combat_arms/inventory.md (not written yet).
 //!
 //! Wave 0: Chimera's inventory as it is (`weapon::Inventory`: a slot key
-//! picks the first weapon in that slot, `lastinv` the previous one, the
-//! wheel steps through them; `Weapon::draw_time` before the first
-//! attack), and every player starts with the placeholder knife and rifle,
-//! the rifle drawn (`weapon::StartingWeapons`: the last given is drawn).
+//! picks the first weapon in that slot, `lastinv` the previous one;
+//! `Weapon::draw_time` before the first attack) and Chimera's weapon
+//! selection (the shell's `client::weapon_menu`, which the front end adds:
+//! `invnext` / `invprev`, the wheel, step through every weapon held, slot
+//! by slot; with no HUD row, slot keys switch at once), and every player
+//! starts with the placeholder knife and rifle, the rifle drawn
+//! (`weapon::StartingWeapons`: the last given is drawn).
 //! The slot numbers are the data's (PLACEHOLDER: rifle 0, knife 2).
 //!
 //! The seam: Combat Arms' loadouts (what a player picked before a match)
 //! replace `StartingWeapons` here; switching rules Chimera's selection
 //! can't express (its own switch times, a quick-knife key) become a part
 //! or a hook on the weapons, registered here, with a system before
-//! `weapon::SelectWeapons`. A HUD weapon selection is the front end's
-//! (`ui::hud`).
+//! `weapon::SelectWeapons`. A HUD weapon selection row is the front end's
+//! (`ui::hud`), drawn from `client::weapon_menu::WeaponMenu` (setting its
+//! `takes_slots`, as CS:S's does) with its timings
+//! (`client::weapon_menu::WeaponMenuTimes`).
 
 use bevy::prelude::*;
 

@@ -12,3 +12,8 @@
 
 mod skeleton;
 mod weapon_firing;
+
+// Slow ones (the user's install): the fast tier skips `heavy::`.
+mod heavy {
+    mod mount;
+}

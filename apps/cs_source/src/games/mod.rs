@@ -3,8 +3,6 @@
 //!
 //! `cs_source` is the `cs_source` crate's parts (games/cs_source,
 //! `cs_source::game`) with the game's front end (`cs_source::ui`).
-//! (Combat Arms, local and git-ignored, is `mashup::games::combat_arms`:
-//! the repository root's package, src/games/combat_arms/.)
 
 /// Counter-Strike: Source: its parts (crate `cs_source`, games/cs_source)
 /// at their old paths, and its front end (`ui`, the crate's `ui`
