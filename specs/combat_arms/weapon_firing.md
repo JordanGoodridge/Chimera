@@ -153,7 +153,7 @@ T_{cycle} = \frac{L_{fire}}{r_{fire}}, \qquad r_{fire} = 1 + \texttt{FireAniRate
   - The restart happens on the first frame after the animation reports done, and leftover time is not carried over. The real interval is therefore $T_{cycle}$ rounded **up** to whole frames: 7 frames = 116.7 ms at 60 fps, 11 frames = 110 ms at 100 fps (Q2).
 - **Burst counting**: every fired shot in burst mode raises the burst counter. When it reaches the burst rounds (3), the counter resets to 0 and the burst lockout timer starts. If the counter is ever greater than the clip, it resets to 0. Starting a reload or a sprint also resets it.
 - **Toggling burst** (fire-mode key) is only possible on weapons with `TripleShotMode=1`. Each toggle starts the select lockout. Weapons that also have continuous fire cycle through auto → burst → continuous.
-- **Server rate limit**: the server drops a shot that arrives sooner than `fireDelay` ms after the previous one, but **still spends the round**.
+- **Server rate limit**: the server drops a shot that arrives sooner than `fireDelay` ms after the previous one, but **still spends the round**. The times compared are the **client's** fire timestamps carried in the shot message (whole ms), not arrival times. "The previous one" is the last shot that passed this check; a dropped shot does not restart the clock. A shot that passes the check but is then refused for another reason (no ammo) does restart it. The check is strict: exactly `fireDelay` ms after is allowed. Only the first ray of a shot carries the check; extra pellets of the same shot are not rate-limited (Open question 14).
 
 Writes: the clip, total ammo, the per-press counter, the burst counter and the lockout timers.
 
@@ -288,13 +288,14 @@ Each node in a skeleton has a hit-sphere radius, a location code and a damage fa
 
 - The female skeleton has the same body and limb spheres, but its head is different. The upper face sphere has radius 0 (unhittable) and there are two head spheres of radius 4.7 with factor 6.0. One head-located sphere of radius 3.0 has factor **1.0** (Q9).
 - Sphere centres follow the animated bones, so crouching, leaning and running animations move them. The zone factor is applied at the armour step below, once.
-- Melee, explosions, fire, poison, flash and thrown weapons never use the zone factor (factor 1, armour checks torso). Infected players and the final bounty target ignore head and groin factors.
+- Explosions, fire (burn), poison, bleeding, flash, freeze, bump and similar area types, and any weapon whose `Guntype` is 7 (thrown), never use the zone factor (factor 1, armour checks torso). AI attackers and non-human victim models never use it either. **Melee does use it**: a knife hit on the head is ×6 like a bullet (corrected; see inventory.md 8.4). Infected players and the final bounty target ignore head and groin factors.
 
 ### Armour
 
 - A player carries armour points AP (spawn: model `MaxArmor` = 100) and a list of gear pieces: body gear from the character model, then head, face and goggle gear and gear-granting attachments.
 - Each gear piece has, per damage type, a protection fraction for head, torso, arm and leg, and a "consumable" flag.
-- For a hit with damage type $t$ on location $\ell$ (unknown location counts as torso; for types that can't headshot, always torso), $P$ is the sum of each piece's first entry for $t$ at $\ell$. The blocked amount is
+- Which damage types gear protects against is data (Open question 15). In the stock data the body gears (default, light, heavy, tactical) list bullet (type 2) and burn (type 3, 0.5 on every location including the head); the head gears list bullet only; a gas mask lists poison (type 9, not consumable). Nothing in the stock gear lists melee (13) or explosion (7), so those are never reduced. Crush damage (falls) skips the gear step entirely.
+- For a hit with damage type $t$ on location $\ell$ (unknown location counts as torso; for types that can't headshot, always torso), $P$ is the sum of each piece's first entry for $t$ at $\ell$. The **groin** (location 5) is not one of the four protected locations: a groin hit gets $P = 0$ from every piece, so it takes full damage and consumes no armour, even with AP > 0. (Infected victims have their groin counted as torso.) The blocked amount is
 
 ```math
 B = D\cdot\operatorname{clamp}(P, 0, 1), \qquad c = \frac{\sum_{\text{consumable}} P_i}{\sum P_i}\ (c=0 \text{ if } P=0)
@@ -320,11 +321,13 @@ There are two meters, firing spread $F$ and movement spread $M$, both ≥ 0. Eac
   - Run flag off: `JumpPerturb` if airborne from a jump (not a jump pad), else `WalkPerturb`.
   - Run flag on: `RunPerturb` unless airborne from a jump, then `JumpPerturb`.
   - On a ladder, $S$ = `RunPerturb`.
-- Movement fraction $\mu = \min(1, |v|/v_{max})$, with the full velocity (vertical included, except on jump pads) and the current stance's max speed (movement spec).
+  - "Airborne from a jump" is movement.md's "in a jump" state: from the jump tick until the landing is detected (the tick after ground contact). Walking off a ledge, falling after being pushed, or any other time off the ground without a jump does **not** count; those use the walk or run target (Open question 12).
+  - The run flag is movement.md's control flag: set whenever crouch is not set and the walk key is not held (with always-run on), **including while standing still**. It has nothing to do with speed. Crouching clears it, so crouched (moving or not) the target is `WalkPerturb` (Open question 6).
+- Movement fraction $\mu = \min(1, |v|/v_{max})$, with the full velocity (vertical included, except on jump pads) and $v_{max}$ = movement.md's speed limit $V$ for the current tick, which already includes the weapon's and gear's movement penalty, the crouch blend, the zoom (walk) limit, a confirmed sprint and the damage slow (Open question 6). The velocity is the one left by the frame's last movement tick, which ends above the limit (movement.md, Integration), so steady running or walking gives $\mu = 1$.
 
 **Firing meter**, with $f$ = "a shot was fired this sub-step" (only the first sub-step of a frame can be a firing one):
 - If $f$: $F \leftarrow \min(C,\ F + \Delta\cdot\text{fire\_inc\_scale}\cdot\texttt{PerturbIncSpeed})$ and stamp the time of the shot. M4A1: +0.04875 per shot.
-- Else, if less than `DecDelay` ms have passed since the stamp, nothing changes.
+- Else, if less than `DecDelay` ms have passed since the stamp, nothing changes. "Less than" is strict: the elapsed time is whole milliseconds of the OS clock, and at exactly `DecDelay` ms (95 for the M4A1) the meter already recovers (Open question 11). Once a recovery step has run, the stamp is cleared and later steps recover without waiting.
 - Else, if $F > 0$: $F \leftarrow \max(0,\ F - \Delta\cdot\text{fire\_dec\_scale}\cdot\texttt{PerturbDecSpeed})$. M4A1: −0.01125 per sub-step, which is 0.9 per second.
 - The cap $C$ is only applied when growing. Changing stance to a lower cap does not cut an existing $F$.
 
@@ -336,10 +339,14 @@ There are two meters, firing spread $F$ and movement spread $M$, both ≥ 0. Eac
 ```
 
   Poison or stun forces $\mu S$ to 1. On a ladder $\mu S$ = $S$.
+- What the turn term measures (Open question 13):
+  - It reads the player's **body** orientation (the one sent to the server), not the camera. In this build the body pitch is only set when the server orients the player (spawn) and otherwise stays put, so pitch changes never count: neither mouse pitch nor the recoil's vertical kick and its return.
+  - The body yaw is the view yaw minus the upper-body twist. With no movement key held, mouse yaw first goes into the twist, up to ±45° (half of `PlayerTwistYawMax` 90°); only turning beyond that moves the body yaw. With any of forward, back or strafe held the twist is 0 and the body yaw equals the view yaw. The recoil's side wag and its return change the view yaw directly (not the twist), so they always count.
+  - The "previous" angles are updated on every sub-step. The angles change only between frames, so the first sub-step of a frame sees the whole frame's change and the other sub-steps of that frame see 0. The denominator uses the fixed $\Delta$: $2 + 2.3/80 = 2.02875$.
 - If $A > M$: $M \leftarrow M + \min(\Delta\cdot\text{move\_inc\_scale},\ A-M)\cdot\texttt{PerturbIncSpeed}$, then $M \leftarrow \min(M, S, \mu S)$. M4A1: at most +0.04875 per sub-step.
 - If $A < M$:
   - On the ground: $M \leftarrow M - \min(\Delta\cdot\text{move\_dec\_scale},\ M-A)\cdot\texttt{PerturbDecSpeed}$. M4A1: at most −0.03375, and below a gap of 0.1125 it falls by 30 % of the gap per step.
-  - While airborne from a jump it instead **rises** by the increase formula.
+  - While airborne from a jump it instead **rises**, using the decrease step size with the increase speed: $M \leftarrow M + \min(\Delta\cdot\text{move\_dec\_scale},\ M-A)\cdot\texttt{PerturbIncSpeed}$. M4A1: at most $+0.1125 \times 1.3 = 0.14625$ per sub-step, and $1.3\times$ the gap below that (Open question 12).
   - Then $M \leftarrow \min(M, \texttt{JumpPerturb})$ and $M \ge 0$.
 
 **Cone and ray**, at the moment of the shot:
@@ -444,7 +451,7 @@ Server, per received shot:
 - **Fire held through weapon select**: the weapon starts firing on the update after the select animation ends.
 - **Sprinting while the fire animation plays**: the current fire animation completes, then the sprint pose plays and the burst counter resets. No firing during sprint.
 - **AP exactly equal to blocked**: the third armour case, $(D - AP)\cdot z$, applies, which gives the same result as $(D-B)\cdot z$.
-- **Server-side second victim**: after a client-reported hit, the server ray skips only the **first** character box it meets. If a second character is behind the first on the line, the server can damage it too. It reuses the already range-scaled damage (scaled again by distance) and the first victim's behind bonus. See Open questions.
+- **Server-side second victim**: after a client-reported hit, the server ray skips only the **first** character box it meets. If a second character is behind the first on the line, the server can damage it too (Open question 5). Its damage starts from the running value left by the first hit, i.e. base × roll × the first victim's figure modifier and behind bonus × the range multiplier, and the range band is then applied **again**, using the same distance as before (fire position to the client-reported impact point on the first victim), not the second victim's own distance. So inside the first band nothing changes, but at 2500–3000 units the second victim gets ×0.7 twice. The first victim's armour and zone factor are not carried over (they are applied at the victim side); the second victim's own armour and zone apply. Surfaces passed between the two victims dampen it as usual; the first victim's body does not.
 - **Server rejects a far-off object hit**: a reported object hit point outside ±2× the object's half-dims is ignored, and the server traces itself.
 - **Zero-length prefire**: weapons whose `prefire` exists but is 0 ms spend one extra update before `fire_0` starts, so the first shot is a frame later (Q2).
 
@@ -486,11 +493,11 @@ M4A1 data as above unless stated. "Roll 1.0" means the damage random roll return
 13. **Hits to kill**. Unarmoured torso, roll 1.0, d ≤ 2500 → 3 hits (HP 65, 30, −5). Armoured (AP 100, default body gear) → 4 hits (HP 70.25, 40.5, 10.75, then dead).
 14. **Spread from rest**. Standing still, both meters 0, hold fire, ignore recovery between shots (all shots within `DecDelay`). Cone n for shots 1..9: 3, 7, 12, 17, 21, 26, 31, 32, 32. Meter after shot 7 = 0.30 (capped).
 15. **Firing cap by stance**. Moving (not crouched), F = 0.36, fire one shot → F = 0.38 (cap); the next shot's cone is 3 + ⌊97 × 0.38⌋ = 39. Standing still with F = 0.36 left over from moving: no change until the next shot, which sets F = min(0.30, 0.40875) = 0.30.
-16. **Firing recovery delay**. F = 0.30, last shot at t = 0. Sub-steps at t = 50 and 95 ms → F unchanged. Sub-step at t = 100 ms → F = 0.28875.
+16. **Firing recovery delay**. F = 0.30, last shot at t = 0. Sub-steps at t = 50 and 95 ms → F unchanged. Sub-step at t = 100 ms → F = 0.28875. *Correction:* the 95 ms sub-step already recovers (the wait is strictly less than `DecDelay`); see case 38.
 17. **Firing recovery length**. F = 0.30, recovery allowed, one sub-step per 12.5 ms → cone back to n = 3 after 26 sub-steps (F = 0.0075); F reaches 0 after 27 sub-steps.
 18. **Movement rise**. Run flag on, on the ground, μ = 1, M = 0 → M after sub-steps 1..6: 0.04875, 0.0975, 0.14625, 0.195, 0.24375, 0.25 (clamped). Cone for a shot then (F = 0): 3 + ⌊97 × 0.25⌋ = 27.
 19. **Movement fall**. From M = 0.25 to standing still (μ = 0): M after sub-steps 1..11: 0.21625, 0.1825, 0.14875, 0.115, 0.08125, 0.05688, 0.03981, 0.02787, 0.01951, 0.01366, 0.00956. The cone returns to n = 3 at sub-step 11.
-20. **Turn snap (Q11)**. Standing still, M = 0.20, F = 0. One sub-step with a yaw change of 0.2 rad → ρ ≈ 0.296 > M → M = 0 at once. The same sub-step with no turn → M = 0.20 − min(0.1125, 0.20) × 0.3 = 0.16625.
+20. **Turn snap (Q11)**. Standing still, M = 0.20, F = 0. One sub-step with a yaw change of 0.2 rad → ρ ≈ 0.296 > M → M = 0 at once. The same sub-step with no turn → M = 0.20 − min(0.1125, 0.20) × 0.3 = 0.16625. *Correction:* "yaw change" here must be a change of the body yaw; with no movement key held a 0.2 rad mouse turn from an untwisted body goes into the upper-body twist and the measured change is 0, giving 0.16625. See case 42.
 21. **Jump**. Run flag on, airborne from a jump, μ = 1, M = 0, F = 0 → after 15 sub-steps M = 0.70 (0.04875 per step, the 15th clamps). Cone 3 + ⌊97 × 0.7⌋ = 70.
 22. **Ray deflection**. Forward (0,0,1), right (1,0,0), up (0,1,0), n = 32, draws u₁ = 1, u₂ = 0 → direction ∝ (0.032, −0.032, 1), normalised (0.03198, −0.03198, 0.99898).
 23. **View kick sequence**. M4A1, J = 0, no recovery between shots. Upward view change per shot (°): 1.300, 1.261, 1.223, 1.187, 1.151, 1.116, 1.083, 1.050, 0.629, 0, 0. Cumulative after shot 9: 10.000°. J after shot 1 = 0.011345 rad, after shot 2 = 0.022349 rad.
@@ -508,6 +515,23 @@ M4A1 data as above unless stated. "Roll 1.0" means the damage random roll return
 35. **Server rate limit**. A weapon with `fireDelay = 100`: shots arrive at 0 and 60 ms → the second deals no damage but total ammo drops by 2.
 36. **Penetration**. The server ray passes a 6-unit "Wood" panel and then hits a torso 1000 units away, roll 1.0, unarmoured, band measured on the real distance (Q13 recommendation) → 35 × 0.5 = 17.5. The same with a 12-unit wood panel → the ray stops, no damage.
 37. **Two panels**. Glass (×0.9) then plywood (×0.6), then a torso 1000 units away, roll 1.0 → 35 × 0.9 × 0.6 = 18.9.
+38. **Recovery at exactly `DecDelay` (corrects 16)**. F = 0.30, last shot stamped at OS time 0 ms. Sub-step at 94 ms → 0.30 (unchanged). Sub-step at 95 ms → 0.28875. Next sub-step (any time) → 0.2775.
+39. **Airborne rise after a jump**. In a jump, M4A1, M = 0.50, $\mu S$ = 0.20 (so A = 0.20 < M), S = `JumpPerturb` 0.70. Sub-step 1 → M = 0.50 + min(0.1125, 0.30) × 1.3 = 0.64625. Sub-step 2 → 0.64625 + 0.1125 × 1.3 = 0.79250, capped to 0.70.
+40. **A fall is not a jump**. Walked off a ledge (not in a jump), run flag on, falling at 400 u/s with limit 285 → μ = 1, S = `RunPerturb` 0.25, A = 0.25. M = 0.50 → sub-step 1: 0.50 − min(0.1125, 0.25) × 0.3 = 0.46625 (it falls; it does not rise and does not use `JumpPerturb`).
+41. **Run flag at rest and crouched**. Standing still, no keys, M = 0: S = `RunPerturb` 0.25 (run flag on at rest), μ = 0, so A = 0 and M stays 0. Crouched and moving at μ = 1: run flag off, S = `WalkPerturb` 0.04, so M rises to at most 0.04 (cone 3 + ⌊97 × 0.04⌋ = 6).
+42. **Turn term and the twist (corrects 20)**. Standing still, no movement key, M = 0.20, twist 0: a 0.2 rad mouse turn in one frame → measured change 0 → M = 0.16625. Twist already at its +45° limit and the same turn further right → measured 0.2 rad → ρ = 3 × 0.2 / 2.02875 = 0.29575 → M = 0 (as case 20). Holding a strafe key (twist 0), μ = 1 with S = 0.25: the same turn gives ρ = 0.29575, A = 0.29575 > M → M = min(0.20 + 0.04875, 0.25, 0.25) = 0.24875.
+43. **Turn split over sub-steps**. Moving (twist 0), a frame with 3 sub-steps and a 0.3 rad yaw change: ρ = min(1, 0.9 / 2.02875) = 0.44362 on sub-step 1, ρ = 0 on sub-steps 2 and 3.
+44. **Recoil kick is not a turn**. Standing still, M = 0, F = 0.30 held, one M4A1 shot raising the view 1.3°: ρ = 0 on the following sub-steps (pitch is not measured). A side wag of 1.2° (0.020944 rad) on the same frame: ρ = 3 × 0.020944 / 2.02875 = 0.03097 on the next sub-step.
+45. **μ uses the penalised limit**. Reference loadout (P = 0.2, run limit 228), run flag on, horizontal speed 114, no vertical speed → μ = 0.5, μS = 0.125 (without the penalty, 114/285 = 0.4 would give 0.10).
+46. **Second victim**. Two unarmoured victims in line, first hit (client-reported) on the torso at d = 2800, roll 1.0, from the front → first: 35 × 0.7 = 24.5. Second, torso → 24.5 × 0.7 = 17.15 (banded twice). The same at d = 2000 → 35 and 35. The first hit from behind (×1.3) at d = 2000 → first 45.5, second 45.5, whatever the second victim's facing. Second victim armoured (AP 100, default gear) at d = 2000, first not from behind → 35 − 5.25 = 29.75, its AP → 94.75.
+47. **Fire delay clock**. A weapon with `fireDelay` 100, client timestamps 0, 60, 110 ms → shot 1 fires, shot 2 dropped (ammo −1), shot 3 fires (110 − 0 ≥ 100). Timestamps 0, 60, 100 → shot 3 fires (not less than 100). Timestamps 0, 150, 200 → shots 1 and 2 fire, shot 3 is dropped (50 ms after shot 2).
+48. **Armour by damage type**. AP 100, default body gear only, roll 1.0, unarmoured zone factors as in case 4:
+    - burn 10 (no zone factor) → B = 5, D' = 5, AP → 95;
+    - melee 45 on the torso → 45, AP stays 100;
+    - explosion 50 → 50, AP stays 100;
+    - bullet 35 on the groin → 35, AP stays 100;
+    - bullet 35 on the torso → 29.75, AP → 94.75 (case 6).
+49. **Groin on an infected victim**. Infected victim, AP 100, default body gear, bullet 35 on the groin → counted as torso: 29.75, AP → 94.75 (no groin factor).
 
 ## Open questions
 
@@ -516,8 +540,20 @@ M4A1 data as above unless stated. "Roll 1.0" means the damage random roll return
 3. **Spread sub-step rate in the live game**: is the remainder really discarded? Measure the crosshair settle time after a 7-round burst at 60 vs 144 fps. The millisecond clock's coarse resolution on Windows (~15.6 ms) may also blur the 95 ms delays.
 4. **Wall-bang falloff (Q13)**: confirm in game that a through-wood hit at about 2800 units does the same damage as at about 1000 units on a map where the world origin is far away.
 5. **Second victim**: can one bullet damage two players standing in line? The reference suggests yes, through the server ray. Test with two bots in line.
+   **Answered (damage rule):** the second victim's damage is banded again from the already banded running value, not from the base damage, and with the same distance as the first hit (fire position to the first victim's reported impact point); it also inherits the first victim's figure modifier and behind bonus. Inside the first band this changes nothing; at 2500–3000 units it gives ×0.49 of the base. See Edge cases ("Server-side second victim"); test case 46. Whether it happens at all in the live game still needs the two-bots test above (the server ray must not stop on the first victim's own body).
 6. **Run flag at rest**: whether the "run" control flag is set while standing still or walking is a movement-spec question. It only selects between `WalkPerturb` and `RunPerturb`.
+   **Answered:** the run flag is "not crouched and not walking" (walk key XOR always-run), set at rest too; walking with the walk key or crouching clears it (crouched → `WalkPerturb`). The maximum speed in μ is movement.md's full speed limit for the tick, with the weapon and gear penalty included, plus the crouch blend, zoom, confirmed sprint and damage slow. See Spread, "State values"; test cases 41 and 45.
 7. **Character gear**: which `GearID` each character uses, and the full gear table, belong to the characters/inventory specs. The values here are examples.
 8. **Hidden multipliers**: perks (they can shrink the cone), set items, mutation buffs, game-room damage scaling and attachments all hook into damage, rate, cone and recoil. They are identity in a plain match; a later spec should list them.
 9. **Hit sphere centres**: the sphere positions depend on the skeleton's animated bones (models spec). Until then, place spheres on our placeholder skeleton by body part.
 10. **Shot direction timing**: does the ray use the camera orientation from before or after this frame's recoil return? The reference reads the camera object, which may lag the view angles by a frame. This is a minor effect on the second shot onward.
+11. **Spread recovery delay, `<` or `≤`?** Does recovery wait while the time since the last shot is at most `DecDelay`, or strictly less (case 16's 95 ms)?
+    **Answered:** strictly less. The elapsed time is whole OS milliseconds; a sub-step at exactly `DecDelay` ms (95) recovers. After the first recovery step the stamp is cleared. Applies in Spread, firing meter; case 16 corrected by case 38.
+12. **"Airborne" for spread.** Only from a jump until landing, or any time off the ground? How does the airborne rise grow?
+    **Answered:** only movement.md's "in a jump" state: from the jump tick until the landing is detected; walking off ledges and other falls do not count (they use the walk or run target and decay normally), jump pads do not count either. The inverted rise is `M + min(Δ·9.0, M − A)·PerturbIncSpeed` per sub-step (decrease step size, increase speed), then capped at `JumpPerturb`. Applies in Spread, movement meter; test cases 39 and 40.
+13. **The turn term.** Does it include the recoil kick, and how is one frame's turn split across sub-steps?
+    **Answered:** it measures the body orientation, whose pitch does not follow the view in this build, so the vertical kick (and any pitch) never counts; the side wag does count through the yaw. Mouse yaw counts only beyond the ±45° upper-body twist while no movement key is held, fully while one is. The whole frame's change lands on the frame's first sub-step; the others see 0. Applies in Spread, movement meter; case 20 corrected by case 42; cases 43 and 44. The twist detail is easy to confirm live: stand still with the M4A1, flick the mouse 30° back and forth repeatedly and check that the crosshair never shrinks faster than when standing still without turning; then repeat while strafing.
+14. **Fire delay origin.** Does the delay count from the previous shot fired, or from the previous round received even if dropped or refused?
+    **Answered:** from the last shot that passed the rate check, by the client's own fire timestamps; a dropped shot does not restart the clock, a shot refused later (no ammo) does. Exactly `fireDelay` ms is allowed. Applies in Trigger and fire cycle ("Server rate limit"); test case 47.
+15. **Armour coverage.** Does armour protect against bullets only, and is the groin torso for armour?
+    **Answered:** coverage is per gear piece and per damage type in the data; stock body gear covers bullets and burn (0.5 everywhere for burn), head gear bullets only, the gas mask poison; melee and explosions are not covered by any stock gear, and crush skips gear. The groin is not torso: it gets no protection (full damage, no AP used), except on infected victims, whose groin counts as torso. Applies in Armour; test cases 48 and 49.
