@@ -585,6 +585,31 @@ fn no_game_assets_tracked() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
+/// Encryption keys never enter the repo (CLAUDE.md, "Hard rules"): the
+/// LithTech loaders, Combat Arms' code and specs hold no hexadecimal run
+/// as long as a key or IV (32 digits or more). Keys live in the git-ignored
+/// chimera.local.toml and are read at run time.
+#[test]
+fn no_keys_tracked() {
+    const PLACES: &[&str] = &["lithtech/", "games/combat_arms/", "apps/combat_arms/", "specs/combat_arms/"];
+    let mut errors = Vec::new();
+    for f in tracked_files().iter().filter(|f| PLACES.iter().any(|p| f.starts_with(p))) {
+        let Ok(text) = fs::read_to_string(root().join(f)) else { continue };
+        let mut run = 0;
+        if text.chars().any(|c| {
+            run = if c.is_ascii_hexdigit() { run + 1 } else { 0 };
+            run >= 32
+        }) {
+            errors.push(format!(
+                "{f}: a run of 32 or more hexadecimal digits, which looks like an encryption key or IV. Keys \
+                 never enter the repo: remove it and read keys from chimera.local.toml at run time (tests \
+                 skip without them)."
+            ));
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
 /// Specs describe behavior; they must not carry source code
 /// (specs/README.md, "Rules for spec writers").
 #[test]
@@ -655,7 +680,9 @@ fn docs_stay_one_line_per_entry() {
             ));
         }
         let path = line[2..].split('`').nth(1).unwrap_or("");
-        if ["src/", "source/", "chimera/", "games/", "apps/"].iter().any(|p| path.starts_with(p)) && !root().join(path).exists() {
+        if ["src/", "source/", "lithtech/", "chimera/", "games/", "apps/"].iter().any(|p| path.starts_with(p))
+            && !root().join(path).exists()
+        {
             errors.push(format!(
                 "docs/ARCHITECTURE.md lists {path}, which does not exist. Update the entry."
             ));
@@ -753,7 +780,8 @@ fn workspace_crates() {
     // (the workspace-hack), so `cargo test -p <crate>` reuses the
     // workspace's builds; but the hack itself, Bevy's development features
     // and the crates that stay free of Bevy (.config/hakari.toml).
-    const NO_HACK: &[&str] = &["chimera/workspace-hack", "chimera/dev", "source/formats", "source/tools", "checks"];
+    const NO_HACK: &[&str] =
+        &["chimera/workspace-hack", "chimera/dev", "source/formats", "lithtech/formats", "source/tools", "checks"];
     for m in members.iter().filter(|m| !NO_HACK.contains(&m.as_str())) {
         let path = if m == "." { "Cargo.toml".to_string() } else { format!("{m}/Cargo.toml") };
         let text = fs::read_to_string(root().join(&path)).unwrap();
@@ -812,7 +840,25 @@ fn workspace_crates() {
         the architecture tests and the hooks' test selection build in seconds in a fresh clone and never \
         depend on the code they check. Read what is needed from files or `cargo metadata` instead.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
-        ("source/formats", &["bevy", "avian", "mashup"], PURE_DATA),
+        ("source/formats", &["bevy", "avian", "mashup", "lithtech_"], PURE_DATA),
+        // LithTech's loader layer, like Source's: plain data (the VFS from
+        // `source_formats` only).
+        (
+            "lithtech/formats",
+            &[
+                "bevy",
+                "avian",
+                "mashup",
+                "chimera_",
+                "source_logic",
+                "source_tools",
+                "cs_source",
+                "combat_arms",
+                "games",
+                "workspace-hack",
+            ],
+            PURE_DATA,
+        ),
         ("chimera/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
         ("chimera/world", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
         ("chimera/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),

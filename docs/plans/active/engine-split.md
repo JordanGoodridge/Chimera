@@ -719,8 +719,7 @@ measurements):
   `games::load_map`, `client_hooks`, build.rs), the dedicated server to
   `apps/cs_source_server` (`mashup_server`, the app without `present`:
   `cargo build --release -p cs_source_server`); `mashup` is a thin shim
-  (`cs_source_app` at the old paths, for tests/it, `dump` and Combat
-  Arms' local loader). Tools by layer: `chimera_tools` (the perf gate as
+  (`cs_source_app` at the old paths, for tests/it and `dump`). Tools by layer: `chimera_tools` (the perf gate as
   a library, `imgcmp`, `tracesum`), `source_tools` (RCON, `demodump`,
   `testmap`), `cs_source_tools` (refcmp's CS:S driver, movecmp,
   mapsweep, perfgate's scenarios; on the app's harness, tech-debt.md).
@@ -858,9 +857,9 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 - One monorepo holding everything, developed in the open: engine,
   Source, games, minigames, both apps, specs and docs.
 - Combat Arms (loader and specs) is developed locally and git-ignored for
-  now, and was removed from the history (2026-10-07). It builds with
-  `--features combat_arms` where the folder exists. Since 2026-10-18 its
-  specs and crate are public again, clean room ([combat-arms.md](combat-arms.md)).
+  now, and was removed from the history (2026-10-07). Since 2026-10-18 its
+  specs and crate are public again, clean room ([combat-arms.md](combat-arms.md));
+  its `.rez` reader is `lithtech_formats` (lithtech/formats).
 
 ## Developing in the open
 
@@ -897,5 +896,5 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 | `src/logic` | source | done: `source/logic` (`source_logic`) |
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |
-| `src/games/combat_arms` | games/combat_arms | local, git-ignored |
+| `src/games/combat_arms` | games/combat_arms, lithtech/ | the `.rez` reader done: `lithtech/formats` (`lithtech_formats`); the game crate from specs |
 | `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` in the repo since 2026-10-18 ([combat-arms.md](combat-arms.md)) |
