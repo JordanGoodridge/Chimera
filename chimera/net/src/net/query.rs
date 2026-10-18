@@ -14,7 +14,7 @@
 //! visibility (1: password), VAC (0), version, and the extra data flag
 //! with the port (`0x80`), an instance id in the SteamID field (`0x10`,
 //! random per server process: one server reached at two addresses is
-//! listed once) and keywords (`0x20`). Our servers say folder `mashup`;
+//! listed once) and keywords (`0x20`). Our servers say folder `chimera` (older builds `mashup`, also ours);
 //! replies from anything else (a Source server on the LAN) are left out.
 //! Answers are rate-limited per address and in total (`Responder`).
 //!
@@ -25,7 +25,7 @@
 //! `net_lan_broadcast` addresses and to this machine (127.0.0.1).
 //!
 //! Server queries and LAN discovery (slice 8): A2S_INFO's packets (request,
-//! challenge, info: name, map, folder `mashup`, game, players, max, bots,
+//! challenge, info: name, map, folder `chimera`, game, players, max, bots,
 //! dedicated or listen, OS, password, version, port, instance id, keywords),
 //! `Responder` (stateless challenges from a secret, per-address and total rate
 //! limits), the server's `LocalServerInfo` kept current, `Hosting` (`hostname`,
@@ -68,7 +68,9 @@ pub const INFO_PAYLOAD: &[u8] = b"Source Engine Query\0";
 /// The protocol byte of the info reply (Source's).
 pub const PROTOCOL: u8 = 17;
 /// Our servers' game folder: replies naming another are not ours.
-pub const GAME_FOLDER: &str = "mashup";
+pub const GAME_FOLDER: &str = "chimera";
+/// Its name before the rename to Chimera (servers of older builds).
+pub const OLD_GAME_FOLDER: &str = "mashup";
 /// The game's description in the reply (the browser's Game column).
 pub const GAME_NAME: &str = "Lucker Party";
 /// Ports the LAN tab scans unless `net_lan_ports` says otherwise
@@ -113,7 +115,7 @@ pub struct ServerInfo {
 impl ServerInfo {
     /// Whether it's one of ours (not a Source server that answered).
     pub fn is_ours(&self) -> bool {
-        self.folder.eq_ignore_ascii_case(GAME_FOLDER)
+        self.folder.eq_ignore_ascii_case(GAME_FOLDER) || self.folder.eq_ignore_ascii_case(OLD_GAME_FOLDER)
     }
 
     /// The info reply.
@@ -509,7 +511,7 @@ fn update_info(
             map.split(':')
                 .next()
                 .filter(|g| *g != map)
-                .unwrap_or("mashup")
+                .unwrap_or("chimera")
                 .to_string(),
         ),
     };
@@ -1064,7 +1066,7 @@ mod tests {
         let b = i.encode();
         assert_eq!(&b[..6], &[0xFF, 0xFF, 0xFF, 0xFF, b'I', 17]);
         let mut at = 6;
-        for s in ["Test server", "de_dust2", "mashup", "Lucker Party"] {
+        for s in ["Test server", "de_dust2", "chimera", "Lucker Party"] {
             assert_eq!(&b[at..at + s.len()], s.as_bytes());
             assert_eq!(b[at + s.len()], 0);
             at += s.len() + 1;

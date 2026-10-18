@@ -95,13 +95,13 @@ pub enum Row {
     Button { label: String, action: Action, enabled: bool },
     Control { label: String, field: Field, control: Control },
     /// A keyboard action: its description, console line and keys (as
-    /// shown); `known`: mashup has the command.
+    /// shown); `known`: Chimera has the command.
     Bind { label: String, command: String, keys: String, known: bool },
     /// A section heading in a list.
     Heading(String),
     /// Text that can't be focused.
     Info(String),
-    /// A control mashup lacks the cvar for: drawn greyed, not focused.
+    /// A control Chimera lacks the cvar for: drawn greyed, not focused.
     Greyed { label: String, control: Control },
     /// A player in the player list: name and properties ("Muted").
     Player { name: String, properties: String },
@@ -271,7 +271,7 @@ pub struct GameMenu {
     /// The binds now (key -> line).
     pub binds: BTreeMap<String, String>,
     /// Console commands and cvars that exist (lower case), to tell the
-    /// keyboard actions mashup has from those it lacks.
+    /// keyboard actions Chimera has from those it lacks.
     pub known: BTreeSet<String>,
     /// The keyboard action waiting for a key.
     pub capture: Option<String>,
@@ -293,7 +293,7 @@ pub struct GameMenu {
     /// The open combo box's list (its owner: the row).
     pub combo: Option<ComboList>,
     /// Multiplayer > Advanced's cvars (the install's `cfg/user.scr`, else
-    /// ours): each one's value shown and its value now (None: mashup
+    /// ours): each one's value shown and its value now (None: Chimera
     /// lacks it, greyed). OK sets those changed; Cancel puts the shown
     /// values back.
     pub user_cvars: Vec<ServerCvar>,
@@ -444,7 +444,7 @@ impl GameMenu {
         }
         self.values = SETTINGS.iter().map(|s| s.read(&get)).collect();
         self.typed.clear();
-        self.aspect = get("mashup_resolution").and_then(|r| aspect_of(&r));
+        self.aspect = get("chimera_resolution").and_then(|r| aspect_of(&r));
         let num = |name: &str| get(name).and_then(|v| v.trim().parse::<f32>().ok());
         self.new_game.map = current_map
             .and_then(|m| maps.iter().position(|n| n == m))

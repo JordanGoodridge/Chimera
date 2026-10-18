@@ -8,8 +8,8 @@
 //! and props; it prints a letter map of what each ray hit, then each
 //! surface with its share of the view and what we resolved its material
 //! to (base and blend textures, detail, alpha, unlit, tint, transform,
-//! surface property). `MASHUP_VIEW_MAP=cs_militia MASHUP_VIEW_POS="261.04
-//! -333.87 -94.43" MASHUP_VIEW_ANG="9.94 178.31 0" cargo test -p cs_source
+//! surface property). `CHIMERA_VIEW_MAP=cs_militia CHIMERA_VIEW_POS="261.04
+//! -333.87 -94.43" CHIMERA_VIEW_ANG="9.94 178.31 0" cargo test -p cs_source
 //! --features dev --test it heavy::map_surfaces::surfaces_in_view --
 //! --ignored --nocapture` (the position is `setpos`'s: the feet, the eye
 //! 64 units above).
@@ -23,7 +23,7 @@ use bevy::math::Vec3;
 use crate::stack::{games::cs_source, map::MapMesh};
 
 fn env_numbers(name: &str) -> Option<Vec<f32>> {
-    let v = std::env::var(name).ok()?;
+    let v = chimera_core::env::var(name).ok()?;
     Some(v.split_whitespace().filter_map(|x| x.parse().ok()).collect())
 }
 
@@ -55,11 +55,11 @@ fn ray_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f3
 }
 
 #[test]
-#[ignore = "debug aid: MASHUP_VIEW_MAP, MASHUP_VIEW_POS, MASHUP_VIEW_ANG"]
+#[ignore = "debug aid: CHIMERA_VIEW_MAP, CHIMERA_VIEW_POS, CHIMERA_VIEW_ANG"]
 fn surfaces_in_view() {
-    let map_name = std::env::var("MASHUP_VIEW_MAP").unwrap_or_else(|_| "cs_militia".into());
-    let pos = env_numbers("MASHUP_VIEW_POS").unwrap_or(vec![261.04, -333.87, -94.43]);
-    let ang = env_numbers("MASHUP_VIEW_ANG").unwrap_or(vec![9.94, 178.31, 0.0]);
+    let map_name = chimera_core::env::var("CHIMERA_VIEW_MAP").unwrap_or_else(|_| "cs_militia".into());
+    let pos = env_numbers("CHIMERA_VIEW_POS").unwrap_or(vec![261.04, -333.87, -94.43]);
+    let ang = env_numbers("CHIMERA_VIEW_ANG").unwrap_or(vec![9.94, 178.31, 0.0]);
     let Ok(map) = crate::load_map(&format!("cs_source:{map_name}")) else {
         eprintln!("skipping: no {map_name}");
         return;

@@ -20,7 +20,11 @@ pub struct MovementImpl {
 pub struct MovementRegistry(pub Vec<MovementImpl>);
 
 impl MovementRegistry {
+    /// The implementation registered as `id` (Chimera's own also by their
+    /// old namespace: `mashup:noclip` is `chimera:noclip`).
     pub fn get(&self, id: &str) -> Option<&MovementImpl> {
+        let renamed = id.strip_prefix("mashup:").map(|rest| format!("chimera:{rest}"));
+        let id = renamed.as_deref().unwrap_or(id);
         self.0.iter().find(|m| m.id == id)
     }
 

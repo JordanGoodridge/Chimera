@@ -341,7 +341,7 @@ fn rounds(sim: &mut Sim) {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 1; mp_roundtime 1; mashup_rounds 1");
+        .submit("mp_freezetime 1; mp_roundtime 1; chimera_rounds 1");
     sim.ticks(3);
 }
 

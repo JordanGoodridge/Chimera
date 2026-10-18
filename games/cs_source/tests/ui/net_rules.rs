@@ -108,7 +108,7 @@ fn rounds(conditions: LinkConditions, seed: u64, clients: usize, settings: &str)
     }
     server_console(
         &mut sim,
-        &format!("mp_freezetime 2; mp_roundtime 1; mp_c4timer 20; mashup_rounds 1; {settings}"),
+        &format!("mp_freezetime 2; mp_roundtime 1; mp_c4timer 20; chimera_rounds 1; {settings}"),
     );
     sim.until_joined(600);
     sim.ticks(60);

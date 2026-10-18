@@ -403,8 +403,8 @@ fn spawn_props<D: MapDrawer>(
     // Exact brushes for movement that sweeps them (Source): the world's,
     // plus props that are (close to) convex, in world space.
     let mut brushes = data.collision_brushes.clone();
-    // Comparison hook: MASHUP_NO_PROP_BRUSHES=1 sweeps props as meshes.
-    let no_prop_brushes = std::env::var("MASHUP_NO_PROP_BRUSHES").is_ok_and(|v| v == "1");
+    // Comparison hook: CHIMERA_NO_PROP_BRUSHES=1 sweeps props as meshes.
+    let no_prop_brushes = chimera_core::env::var("CHIMERA_NO_PROP_BRUSHES").is_ok_and(|v| v == "1");
     // Models without a collision model: their hull, when (nearly) convex.
     let model_hulls: Vec<Option<Vec<(Vec3, f32)>>> = data
         .models
@@ -838,9 +838,9 @@ fn spawn_sun_and_spawn_points(commands: &mut Commands, data: &MapData) {
     }
 }
 
-/// Comparison hook: MASHUP_MERGED_WORLD=1 spawns the world as one mesh per
+/// Comparison hook: CHIMERA_MERGED_WORLD=1 spawns the world as one mesh per
 /// material with no visibility culling (as before chunking), for A/B
 /// measurements against `vis`.
 pub fn merged_world() -> bool {
-    std::env::var("MASHUP_MERGED_WORLD").is_ok_and(|v| v == "1")
+    chimera_core::env::var("CHIMERA_MERGED_WORLD").is_ok_and(|v| v == "1")
 }

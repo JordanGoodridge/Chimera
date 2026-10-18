@@ -53,7 +53,7 @@ pub(super) const USER_FALLBACK: [(&str, &str, &str, Choices, &str); 4] = [
     ("cl_disablefreezecam", "#Cstrike_Disable_Freeze_Cam", "Disable freeze cam", &[], "0"),
 ];
 
-/// The keyboard list without the game's `kb_act.lst`: what mashup does.
+/// The keyboard list without the game's `kb_act.lst`: what Chimera does.
 pub(super) const OUR_ACTIONS: &[(&str, &str)] = &[
     ("", "Movement"),
     ("+forward", "Move forward"),
@@ -95,8 +95,8 @@ pub(super) const OUR_ACTIONS: &[(&str, &str)] = &[
     ("+freelook", "Free look"),
     ("noclip", "Noclip (fly through walls)"),
     ("debugui", "Debug UI"),
-    ("mashup_inspector", "Entity inspector"),
-    ("toggle mashup_drawcollision", "Collision shapes"),
+    ("chimera_inspector", "Entity inspector"),
+    ("toggle chimera_drawcollision", "Collision shapes"),
 ];
 
 /// The keyboard tab: the action list (sections, action and key columns,
@@ -310,13 +310,13 @@ impl GameMenu {
             .map(|(c, l)| ours(c, l))
             .collect();
         if !missing.is_empty() {
-            list.push(KeyAction::Section("mashup".into()));
+            list.push(KeyAction::Section("CHIMERA".into()));
             list.extend(missing);
         }
         list
     }
 
-    /// Whether mashup has a keyboard action's command.
+    /// Whether Chimera has a keyboard action's command.
     pub(super) fn known_command(&self, line: &str) -> bool {
         let first = line.split_whitespace().next().unwrap_or_default().to_lowercase();
         binds::is_polled(line) || self.known.contains(&first)
@@ -348,7 +348,7 @@ impl GameMenu {
         self.ui.0.as_ref()?.options.get(name)
     }
 
-    /// The settings of a place that mashup has, in its layout's order
+    /// The settings of a place that Chimera has, in its layout's order
     /// (else ours), with the text entries showing slider values.
     pub(super) fn place_rows(&self, place: Place) -> Vec<Row> {
         let mut fields: Vec<(usize, Field)> = Vec::new();
@@ -493,7 +493,7 @@ impl GameMenu {
             let order = self.row_order(&row);
             let at = if order == usize::MAX {
                 rows.iter()
-                    .position(|r| matches!(r, Row::Control { field: Field::Setting(i), .. } if SETTINGS[*i].cvar == "mashup_resolution"))
+                    .position(|r| matches!(r, Row::Control { field: Field::Setting(i), .. } if SETTINGS[*i].cvar == "chimera_resolution"))
                     .map_or(rows.len(), |p| p + 1)
             } else {
                 rows.iter().position(|r| self.row_order(r) > order).unwrap_or(rows.len())
@@ -605,7 +605,7 @@ impl GameMenu {
     }
 
     /// Multiplayer > Advanced's rows: its options in the script's order
-    /// (greyed where mashup lacks the cvar), OK, Cancel.
+    /// (greyed where Chimera lacks the cvar), OK, Cancel.
     pub(super) fn multiplayer_advanced_rows(&self) -> Vec<Row> {
         let mut rows: Vec<Row> = self
             .user_cvars
@@ -652,7 +652,7 @@ impl GameMenu {
             return;
         }
         self.aspect = Some(k);
-        let Some(i) = crate::ui::options::setting_index("mashup_resolution") else { return };
+        let Some(i) = crate::ui::options::setting_index("chimera_resolution") else { return };
         let shown = self.shown_resolutions();
         let current = self.values.get(i).cloned().flatten().unwrap_or_default();
         if !shown.contains(&current)

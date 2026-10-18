@@ -6,7 +6,7 @@
 //! Data first: a module is a description (its name, what it plays, the
 //! cvars that set it up) plus when it applies; its behaviour is the
 //! systems its game adds. The first registered module that applies is the
-//! one playing (`pick`; `mashup_rules` lists them). So far the modules describe the code in
+//! one playing (`pick`; `chimera_rules` lists them). So far the modules describe the code in
 //! `rules` and `objectives`, which runs as before; moving that code under
 //! its game is the next step (engine-split.md).
 
@@ -64,7 +64,7 @@ pub fn pick(world: &World) -> Option<&'static str> {
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<RuleModules>().console_command(
-        "mashup_rules",
+        "chimera_rules",
         "List the rule modules the games registered (name, what it plays, its cvars), the one playing marked *.",
         |w, _| {
             let active = pick(w);

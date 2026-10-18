@@ -6,11 +6,11 @@ Performance").
 
 ## Measuring
 
-- `mashup_perf 1` in the console: frame times, main-world CPU, GPU time
+- `chimera_perf 1` in the console: frame times, main-world CPU, GPU time
   per render pass (Vulkan/DX12 timestamps; every camera's run of a pass
   summed per frame: Bevy reports each as its own measurement under the
   pass's name), entities, meshes and triangles drawn, cameras drawing,
-  the camera's visibility cluster. `mashup_perf_log 1`
+  the camera's visibility cluster. `chimera_perf_log 1`
   logs it as text once a second; `bugreport` saves it in report.txt.
 - `refcmp bench --views tools/refcmp/<map>.toml`: 200 frames per view
   after settling, vsync off, offscreen at 1280x720 (`-- --view-size
@@ -19,9 +19,9 @@ Performance").
   triangles drawn, map parts potentially visible. Build the profile you
   want first (`cargo build --features dev`, or `cargo build --profile
   playtest` and run `target/playtest/refcmp`).
-- A/B: `-- +r_novis 1` (no PVS culling) or `MASHUP_MERGED_WORLD=1` (the
+- A/B: `-- +r_novis 1` (no PVS culling) or `CHIMERA_MERGED_WORLD=1` (the
   world as one mesh per material, nothing culled: the code before
-  chunking); `MASHUP_MERGE_BRUSHES=0` (brush entities not merged).
+  chunking); `CHIMERA_MERGE_BRUSHES=0` (brush entities not merged).
 - Per-system CPU time: a `--features profile` build writes a Chrome
   trace (`TRACE_CHROME=<file>`, else `trace-*.json` in the working
   directory); `tracesum <file> --skip 200` prints the main and render
@@ -30,11 +30,11 @@ Performance").
 - `REFCMP_OUT=<dir>` keeps refcmp's captures and reports in your own
   folder (the CS:S references stay shared).
 
-- Load-independent numbers: `mashup_perf`, `mashup_perf_log`, the debug
+- Load-independent numbers: `chimera_perf`, `chimera_perf_log`, the debug
   UI's Perf tab and `refcmp bench` also give percentiles (p50 to p99.9, 1%
   low fps) of each world's thread CPU time and user-space instructions
   per frame and per tick (Linux hardware counters), and `bench.json` /
-  `bench.csv`; `mashup_hitch_ratio` logs what a slow frame spent its
+  `bench.csv`; `chimera_hitch_ratio` logs what a slow frame spent its
   time on; `perfgate` fails when the simulation's instructions per tick
   rise ("Load-independent metrics" below).
 
@@ -123,7 +123,7 @@ potentially visible from anywhere inside it (PVS, run-length encoded).
   the bounds lie wholly behind a polygon's plane and their screen
   rectangle lies inside its projected outline (conservative: no merging
   of neighbouring occluders). Not while the water reflection draws.
-  `r_occlusion 0` turns them off; `mashup_perf 1` shows how many parts
+  `r_occlusion 0` turns them off; `chimera_perf 1` shows how many parts
   they hide. de_aztec's occluders were compiled without polygons, so they
   do nothing there (nor in the game, presumably).
 - Not done: LOD models, per-leaf frustum culling. See tech-debt.
@@ -146,7 +146,7 @@ Fades apply with `r_novis 1` too.
   world surface a ray reaches (translucent ones on the way, then the
   first opaque one) must be in a potentially visible chunk, unless the ray
   passed through solid first (sky brushes, which the game draws as sky and
-  we don't draw). `MASHUP_VIS_FULL=1`: every nav area, 2048 rays.
+  we don't draw). `CHIMERA_VIS_FULL=1`: every nav area, 2048 rays.
 - `refcmp vischeck`: renders with culling off and on must match. Results
   (de_dust2: 316 views, de_nuke: 311): a handful of views differ by a few
   to a few hundred pixels, all inspected: geometry visible through sky
@@ -233,7 +233,7 @@ frames are CPU bound, by per-entity work, so culling pays by drawing fewer
 entities as well as fewer triangles; chunks that are too small add
 entities. 512 and 4096 units measure about the same; 512 stays the
 default (finer culling, and what vischeck and the ray tests checked).
-`MASHUP_CHUNK_SIZE=<units>` overrides it for measurements.
+`CHIMERA_CHUNK_SIZE=<units>` overrides it for measurements.
 
 Areaportals (playtest build, `refcmp bench`, load 14-20 on 12 cores, so
 frame times swing 2x between runs; back-to-back runs with and without
@@ -292,7 +292,7 @@ of 320 views differ, at most a few hundred pixels) and de_port (2 of
 A community minigame map (BSP v20, 578 func_breakable, 170 func_door, 937
 brush models, 32k triangles, reflecting water). Looking into its room of
 breakable blocks (`tools/refcmp/mg_lego_multigames_v2.toml`, view
-`blocks_room`) it ran at 11-17 fps. Text readouts (`mashup_perf_log 1`,
+`blocks_room`) it ran at 11-17 fps. Text readouts (`chimera_perf_log 1`,
 window 1920x1080, playtest build):
 
 | | fps | frame ms | main world ms | GPU ms | meshes drawn | vis |
@@ -380,7 +380,7 @@ entities go into 136 combined meshes; de_nuke 22 in 41; de_dust2 has
 none.
 
 `refcmp bench` (playtest build, 1280x720, vsync off, two interleaved
-runs, `MASHUP_MERGE_BRUSHES=0` for the unmerged runs, load 7-9 on 12
+runs, `CHIMERA_MERGE_BRUSHES=0` for the unmerged runs, load 7-9 on 12
 cores):
 
 | map (views) | merged | blocks_room ms | mean frame ms | main ms | meshes drawn (blocks_room / mean) |
@@ -449,7 +449,7 @@ bt` / `continue` pairs and send the child SIGINT once a second.
 
 Old (before these fixes) and new playtest builds, interleaved, each
 map's first spawn, 600 frames at 1280x720, `mat_vsync 0` (60 Hz is the
-compositor's cap here), the last `mashup_perf_log` line; two rounds at
+compositor's cap here), the last `chimera_perf_log` line; two rounds at
 different machine loads:
 
 | map | round 1 old | round 1 new | round 2 old | round 2 new |
@@ -491,7 +491,7 @@ pixels (particles, glows).
 
 Measuring here: the dev box runs other agents' builds (load 4-16 on 12
 cores), which moves frame times by 2-4x between runs, more than these
-changes. `mashup_perf 3` counts (above) are exact. Before/after frame
+changes. `chimera_perf 3` counts (above) are exact. Before/after frame
 times on a quiet machine are still to be taken.
 
 Tried and dropped: one physics substep while no dynamic body is awake
@@ -542,7 +542,7 @@ two spawns), plus traces of a `--features profile` build.
   (`main.rs`, with `mashup::single_threaded_schedules` for the main
   world's, which the dedicated server uses too); systems that iterate many entities still spread over the
   task pool themselves (transform propagation, visibility), and the main
-  and render worlds still run side by side. `MASHUP_EXECUTOR=multi`
+  and render worlds still run side by side. `CHIMERA_EXECUTOR=multi`
   brings back Bevy's default. On macOS the render schedules keep Bevy's
   executor: the window surface must be created on the main thread, and
   only the multi-threaded executor hands such systems to it.
@@ -591,7 +591,7 @@ emptying (the first guess at the allocator cost) changed nothing.
 ### Before and after
 
 `refcmp bench`, playtest build, 1280x720, vsync off; old = the build
-before this pass, multi = this pass with `MASHUP_EXECUTOR=multi`, new =
+before this pass, multi = this pass with `CHIMERA_EXECUTOR=multi`, new =
 this pass. The builds ran interleaved, several rounds each, at load 6-25
 on 12 cores (other agents building), so single runs swing 2-3x: medians
 and (in brackets) minimums over the rounds. Frame = wall time per frame,
@@ -648,7 +648,7 @@ quiet machine and on the Windows PC are still to be taken.
 
 ## Props that never sleep (2026-10-16)
 
-Counted with `physics: N dynamic bodies, M awake` (`mashup_perf`) and
+Counted with `physics: N dynamic bodies, M awake` (`chimera_perf`) and
 `bodies_awake` per frame in `refcmp bench` (both new), and headless 4-20 s
 after loading. The "seven props on cs_office" above slept since
 `settle_props` (2026-10-14): 0 awake in the app at every view. Still
@@ -823,7 +823,7 @@ median of the rounds (range):
 So 13% fewer render-world instructions and 14-19% less GPU time a frame
 whenever no view model is drawn (wall times move with the load). GPU
 times before this were misread: Bevy reports each camera's run of a pass
-as its own measurement under the pass's name, and `mashup_perf` and
+as its own measurement under the pass's name, and `chimera_perf` and
 `bench` took the latest (the view-model camera's empty passes: dust2's
 "0.2 ms") or a moving average over the cameras; they now sum each
 frame's (`perf::frame_mean`, `frame_latest`), and both show cameras
@@ -845,7 +845,7 @@ there is covered by `chimera/present/tests/it/view_model_camera.rs`.
 ## Back faces in the depth prepass (2026-10-17)
 
 Main views get a depth prepass on maps with water (`render::water`;
-also with `mashup_skyocclude 1`). Bevy's main pass culls back faces by
+also with `chimera_skyocclude 1`). Bevy's main pass culls back faces by
 default, but its prepass pipeline culls nothing unless the material sets
 a cull mode, and the world and prop materials only ever set one for
 `$nocull` (none) and mirrored view models (front). So on those maps every
@@ -871,7 +871,7 @@ pieces. Winding: the heavy test
 counter-clockwise toward their normals) confirms the faces kept are the
 fronts.
 
-GPU time of the prepass (`mashup_perf 2`, `early prepass`, dev build,
+GPU time of the prepass (`chimera_perf 2`, `early prepass`, dev build,
 three interleaved rounds of 900 frames each, mean of the last five
 readouts; the shared GPU's clock moved totals 2x between rounds, so
 compare within a round):
@@ -909,7 +909,7 @@ runs swing 2-10x. What now measures besides wall time (`chimera/core/src/metrics
 - **Distributions** over the last 4096 frames and ticks: p50, p90, p99,
   p99.9, max, and "1% low" fps (1000 / the mean of the slowest 1% of
   frames).
-- **Hitch log** (`mashup_hitch_ratio`, default 2): a frame over twice the
+- **Hitch log** (`chimera_hitch_ratio`, default 2): a frame over twice the
   median logs its main-world schedules and render sets by wall and CPU
   ms, ticks run, and with `--features profile` its spans by self time.
 - **`perfgate`**: instructions per tick of fixed headless scenarios
@@ -994,16 +994,16 @@ the marks, 0 of 7 cs_office benches (dev build) and 0 of 8 (playtest
 build) failed at load 17-44, and 0 of 6 with prop shadows redrawn with
 a new mesh handle every frame as in that build (fixed hours later:
 "Frame time pass"). The `Render` schedule's order with and without the
-marks (`MASHUP_SYSTEM_DUMP`, OBSERVABILITY.md) differs only in systems
+marks (`CHIMERA_SYSTEM_DUMP`, OBSERVABILITY.md) differs only in systems
 that don't touch the indirect buffers: asset preparation of materials,
 view preparation (TAA jitter, decals, depth usages), the phase sorts
 among themselves, pipeline preparation, and the cleanup's
 `reset_render_asset_bytes_per_frame`; batching, the phase buffers'
 collection and `write_indirect_parameters_buffers` keep their order.
-Bevy's ambiguity detection (`MASHUP_AMBIGUITY=1`) reports one
+Bevy's ambiguity detection (`CHIMERA_AMBIGUITY=1`) reports one
 unordered pair in `Render`, ours (`render_start` and
 `apply_extract_commands`, harmless). So the marks are on by default
-now; `MASHUP_RENDER_PHASES=0` leaves them out if the error comes back
+now; `CHIMERA_RENDER_PHASES=0` leaves them out if the error comes back
 (then: the frame's views and phases, and whether a view's binned phase
 was drawn without being batched that frame).
 
@@ -1055,7 +1055,7 @@ log lines. The map has 379 lights; faces lit by the animated styles 1,
 3, 6 and 10 hold ~83k lightmap texels (150k with block padding) and
 switchable styles 32-35 ~59k more, in a 1024x3171 atlas.
 
-What the hitch frames were (playtest build, 1920x1080, `+mashup_perf_log
+What the hitch frames were (playtest build, 1920x1080, `+chimera_perf_log
 1`, load 13-38): the main world's `Update` took 22-26 ms of thread CPU
 and 200-220M instructions in them against ~12M in an ordinary frame
 (`hitch: ... main world 34.11 ms (cpu 30.73, 217.03M instr ...): Update
@@ -1106,7 +1106,7 @@ plus the pool's share) and the render thread 3-8M (400-680 copies,
 ~10k instructions each in wgpu; drawing them would remove that: tech-debt.md).
 
 Before (926f4d3's build) and after, same binaries one after the other,
-2400 frames at 1920x1080 each, `mashup_perf_log`'s last line (wall
+2400 frames at 1920x1080 each, `chimera_perf_log`'s last line (wall
 times move with the load given: compare instructions):
 
 | map, place | build (load) | frame ms p50 / p90 / p99 / max | main instr less ticks p50 / p99 | render instr p50 / p99 | hitch lines a minute |
@@ -1172,7 +1172,7 @@ What changed:
   module); the real-map and long bot tests under `heavy`.
 - `build.rs` watches this checkout's HEAD and branch ref through
   `git rev-parse --git-path`.
-- `test = false` for the binaries without unit tests (`mashup`, `dump`,
+- `test = false` for the binaries without unit tests (`cs_source`, formerly `mashup`; `dump`,
   `movecmp`, `refcmp`, `tracesum`; checks/tests/it/architecture.rs checks they
   stay without).
 - Two tiers: the fast tier before each commit, the full suite before a
@@ -1237,8 +1237,8 @@ surf_sedona's 1 GB of textures 4.7 GB).
 What changed:
 
 - The tests that looped over maps run one test per map: `map_ladders`
-  (18 stock maps; `listed_maps` for `MASHUP_LADDER_MAPS`) and
-  `map_surf`'s rides (19 maps; `listed_maps` for `MASHUP_SURF_MAPS`).
+  (18 stock maps; `listed_maps` for `CHIMERA_LADDER_MAPS`) and
+  `map_surf`'s rides (19 maps; `listed_maps` for `CHIMERA_SURF_MAPS`).
   `map_de_nuke`'s ladder tests climb in their worlds on threads (each
   try already built its own world from the one loaded map). The
   courses (`map_courses`) were already one test per map; a course's

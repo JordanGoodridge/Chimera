@@ -216,7 +216,7 @@ pub struct Filter {
 /// the cvars minigame maps set) and isn't one of `SETTING_DENY`. The
 /// bridge then applies it only when our console has a cvar of that name
 /// (`mp_restartgame` too, which is a cvar in Source and a command here);
-/// unknown names (plugin cvars, settings mashup lacks) are logged and
+/// unknown names (plugin cvars, settings Chimera lacks) are logged and
 /// ignored. Everything else (other commands: quit, exec, bind, connect,
 /// rcon, changelevel, map, kick, writing configs, plugin commands such
 /// as `sm_say`; several commands on one line) is refused.

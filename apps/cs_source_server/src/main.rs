@@ -2,7 +2,7 @@
 //! srcds in spirit. Console on stdin (`status`, `bot_add`, `bot_quota`,
 //! `changelevel`, `quit`, any cvar), output on stdout.
 //!
-//!   mashup_server [-port <n>] [+map <name>] [+maxplayers <n>] [+<command> ...]
+//!   cs_source_server [-port <n>] [+map <name>] [+maxplayers <n>] [+<command> ...]
 //!
 //! `+map greybox` (the default) or a CS:S map from the install
 //! (`+map de_dust2`). Players join with `connect <ip>:<port>`;
@@ -40,7 +40,7 @@ use cs_source_app::{
 };
 
 const USAGE: &str = "\
-usage: mashup_server [-port <n>] [+map <name>] [+maxplayers <n>] [+<command> [args...]]
+usage: cs_source_server [-port <n>] [+map <name>] [+maxplayers <n>] [+<command> [args...]]
   -port <n>        UDP port (hostport; default 27015)
   +map <name>      greybox (default) or a CS:S map from the install, e.g. de_dust2
   +<command>       any console command or cvar, e.g. +maxplayers 8 +bot_quota 4
@@ -203,8 +203,8 @@ fn main() {
     app.insert_resource(Stdin(Mutex::new(rx)));
     // As the game does: one thread per schedule (half the CPU time of
     // Bevy's multi-threaded executor on a full server; multiplayer.md,
-    // "Capacity"). `MASHUP_EXECUTOR=multi` keeps Bevy's default.
-    if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
+    // "Capacity"). `CHIMERA_EXECUTOR=multi` keeps Bevy's default.
+    if cs_source_app::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi") {
         cs_source_app::single_threaded_schedules(&mut app);
     }
     app.run();
@@ -321,7 +321,7 @@ fn start_serving(world: &mut World, mut started: Local<bool>) {
             let max = world.resource::<NetSettings>().maxplayers;
             let map = net::current_map(world);
             world.resource_mut::<Console>().info(format!(
-                "mashup dedicated server {} ({}): {map} on UDP {addr}, {max} players",
+                "Chimera CS:S dedicated server {} ({}): {map} on UDP {addr}, {max} players",
                 cs_source_app::core::VERSION,
                 net::NET_VERSION
             ));

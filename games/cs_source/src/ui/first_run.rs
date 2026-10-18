@@ -7,8 +7,8 @@
 //! Continue Without (built-in looks). A folder that checks out is saved
 //! in the user's settings file and the menu's look is read from it.
 //!
-//! `mashup_install [folder|auto]` shows or sets the same from the
-//! console; `mashup_firstrun` drives the dialog (tests, screenshots).
+//! `chimera_install [folder|auto]` shows or sets the same from the
+//! console; `chimera_firstrun` drives the dialog (tests, screenshots).
 //! As the other menus, the model (`FirstRun::handle`) is unit-tested
 //! without a window.
 //!
@@ -19,8 +19,8 @@
 //! folder into, why a folder doesn't do, Retry (that folder, or search Steam
 //! again when empty), Continue Without); a folder that checks out is saved in
 //! the user's settings and the menu's look read again
-//! (`game_menu::reload_install`). `mashup_install [folder\|auto]` shows or sets
-//! it; `mashup_firstrun <input>` drives the dialog.
+//! (`game_menu::reload_install`). `chimera_install [folder\|auto]` shows or sets
+//! it; `chimera_firstrun <input>` drives the dialog.
 
 use std::path::{Path, PathBuf};
 
@@ -54,8 +54,8 @@ impl Plugin for FirstRunPlugin {
             .add_systems(Startup, startup)
             .add_systems(Update, (keys, pointer, draw).chain().after(super::game_menu::MenuSystems));
         app.console_command(
-            "mashup_install",
-            "mashup_install [folder|auto]: show which CS:S install is used and how it was found; with a folder \
+            "chimera_install",
+            "chimera_install [folder|auto]: show which CS:S install is used and how it was found; with a folder \
              (the one holding cstrike/ and hl2/), use and remember it; auto: forget it and search Steam again.",
             |w, a| {
                 let arg = a.join(" ");
@@ -73,8 +73,8 @@ impl Plugin for FirstRunPlugin {
             },
         )
         .console_command(
-            "mashup_firstrun",
-            "mashup_firstrun [open | type <text> | clear | retry | continue]: drive the first-run dialog \
+            "chimera_firstrun",
+            "chimera_firstrun [open | type <text> | clear | retry | continue]: drive the first-run dialog \
              (CS:S not found) as typing and clicks would; prints its state.",
             |w, a| {
                 let input = match a.first().map(String::as_str) {
@@ -305,7 +305,7 @@ fn startup(args: Option<Res<crate::client::ClientArgs>>, mut first_run: ResMut<F
             warn!("{NAME} install: {n}");
         }
     } else {
-        warn!("{line}; built-in looks (set one with mashup_install <folder>)");
+        warn!("{line}; built-in looks (set one with chimera_install <folder>)");
         let in_game = args.is_some_and(|a| a.0.starts_in_game());
         first_run.open = !in_game;
     }
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn a_pasted_subfolder_finds_its_install() {
-        let dir = std::env::temp_dir().join(format!("mashup-first-run-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chimera-first-run-{}", std::process::id()));
         let css = dir.join("steamapps/common/Counter-Strike Source");
         for f in install::steam_game(GAME).unwrap().required {
             let p = css.join(f);

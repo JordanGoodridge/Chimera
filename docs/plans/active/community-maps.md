@@ -23,7 +23,7 @@ their first spawn in the playtest build (4 crashed rendering before:
 `map::shadows` wrote past a prop's shadow cell). "Warnings" counts load
 warnings plus ambient sounds that didn't load; "unhandled entities" are
 entities of classes nothing in mashup handles (list below); frame times
-are the playtest build at 1280x720, `mashup_perf_log`, vsync off, on the
+are the playtest build at 1280x720, `chimera_perf_log`, vsync off, on the
 headless dev box (one view each, so only a hint).
 
 | Map | Before | After | Load s | Warnings before -> after | Unhandled entities | Spawns T/CT | Frame ms at spawn |
@@ -133,7 +133,7 @@ headless dev box (one view each, so only a hint).
 | Placed `weapon_*` entities missing | 11 | Loose weapons where the map puts them, put back each round (`MapWeapon`) |
 | `!activator` AddOutput gravity / basevelocity (boosters) / health / origin, SetDamageFilter (no-fall filters) | 24 / 13 / 11 / 5 / 3 maps use them | Player keyvalues in `LogicWorld::player_keyvalue`; `core::DamageFilter` |
 | Rendering crashed on 4 maps (mg_creative_multigames_v8_ns, mg_escape_prison_beta, mg_kommando, surf_happyhands): a prop triangle beyond its shadow cell indexed past it | 4 | `shadows::silhouette` skips triangles outside the cell |
-| Decals kept across rounds (backlog 0) | | `r_cleardecals`; `mashup_round_cleardecals 1` clears at each round start |
+| Decals kept across rounds (backlog 0) | | `r_cleardecals`; `chimera_round_cleardecals 1` clears at each round start |
 | Materials the VMT parser refused: `$detailscale "[9 9 9]"`, WorldVertexTransition without `$basetexture2`, `$basetexturetransform "11"`, a missing `}`, `">=DX90"` blocks, a key twice, `{r g b a}` colours | 32 materials, 10 maps | Read again leniently, the game's way (`material::lenient_vmt`); 1 left (an empty file) |
 | Unknown shaders WindowImposter, ShatteredGlass, LightmappedReflective, `Refract_DX90` | 4 | Stand-ins (`material::StandIn`; WindowImposter: its cubemap in the view direction, unlit); specs/cs_source/shaders.md open question 15. Left, on purpose: Screenspace_General (1 map, mg_creative_multigames_v8_ns): a full-screen post-process/VGUI pass, not a surface shader, with no spec; its material stays unresolved |
 | surf_demise's "magenta floor": its ramps are translucent marble over an envmap-only material (no `$basetexture`) drawn grey instead of black (shaders.md 2), and its HDR sky cubemap failed twice (a pak entry the zip crate's LZMA decoder refuses; half-float texels) | 1 | Black albedo for envmap-only generic materials; such pak entries read through lzma-rs; RGBA16161616F decoded |
@@ -238,9 +238,9 @@ The 17 mg_ maps played through headless as players meet them
 (`games/cs_source/tests/it/heavy/map_flows.rs`: the whole game, rounds on, scripted
 characters on both teams pressing selectors with +use, standing in
 teleports and arenas, getting loadouts, dying, and the next round
-bringing the selection back; `MASHUP_FLOW_TABLE=1 cargo test --features
+bringing the selection back; `CHIMERA_FLOW_TABLE=1 cargo test --features
 dev --test it map_flows:: -- --nocapture` prints a row per step,
-`MASHUP_FLOW_TRACE=<names>` the inputs and outputs of those entities).
+`CHIMERA_FLOW_TRACE=<names>` the inputs and outputs of those entities).
 Each map's flow, from its entities:
 
 | Map | Flow |
@@ -637,7 +637,7 @@ Working down the course flows' list and the round-2 leftovers.
 
 | Problem | Maps | Fix (tests) |
 |---|---|---|
-| 13 of surf_nebula's 84 ramp rides stopped dead. `MASHUP_SLIDE_DEBUG` (new: every slide move's sweeps) showed each stop: a full move whose end tested solid against a prop's collider, or a sweep starting inside one. The props are its Propper ramp models (91 of its 230 static props), which ship no collision model; they sit a hair off player-clip ramps that are the real surfaces, and we collided with their triangle meshes | surf_nebula (91 props); kz_hikari_od_nh_v2 (206 props), gg_fy_tactic_fight (55), surf_halloween_tf2 (44) have such props too | A static prop set to collide by its physics model blocks nothing without one (our reading of the public prop_static docs; tech-debt, probe below). `heavy::map_surf` rides all 19 cached surf maps now (5 to 88 open ramps each, 0 ghost stops), surf_nebula included |
+| 13 of surf_nebula's 84 ramp rides stopped dead. `CHIMERA_SLIDE_DEBUG` (new: every slide move's sweeps) showed each stop: a full move whose end tested solid against a prop's collider, or a sweep starting inside one. The props are its Propper ramp models (91 of its 230 static props), which ship no collision model; they sit a hair off player-clip ramps that are the real surfaces, and we collided with their triangle meshes | surf_nebula (91 props); kz_hikari_od_nh_v2 (206 props), gg_fy_tactic_fight (55), surf_halloween_tf2 (44) have such props too | A static prop set to collide by its physics model blocks nothing without one (our reading of the public prop_static docs; tech-debt, probe below). `heavy::map_surf` rides all 19 cached surf maps now (5 to 88 open ramps each, 0 ghost stops), surf_nebula included |
 | Detail props not drawn (the BSP's detail lump: grass, weeds, bushes) | 7 cached maps and 3 stock with sprites (cs_militia, cs_compound, de_port), de_inferno, de_nuke, de_train and gg_churches with detail models; kz_ancient_ruins' lump is LZMA-compressed | `games::cs_source::detail` reads the `dprp` lump (compressed or not); sprites and their cross and tri shapes become `MapDetailProps`, drawn by `render::detail` in one mesh per 1024-unit cell (a few draw calls; the vertex shader turns facing sprites, sways tops in env_wind, fades by distance, dithered); detail models become non-solid static props; env_detail_controller's fade, else cl_detaildist/cl_detailfade's defaults (`map_visuals::detail_props_load`, `map_community::detail_sprites_on_community_maps`, unit tests). Screenshots (this session's `target/agent/keep/`): `militia_grass.png`, `ruins_grass.png` |
 | Monitors drew the map's fog | point_camera on mg_kommando, mg_lt_galaxy_v5 (fog off on both) | The camera's own fogEnable/fogColor/fogStart/fogEnd/fogMaxDensity (`LogicWorld::monitor_fog` -> `MonitorFog` -> the screen camera's `DistanceFog`, read by `fog.wgsl` as the view's fog; `community_tests::monitor_camera_fog_is_the_cameras_own`; test_hardware's monitors checked live, `monitors.png`) |
 | Bots stood on spawns and teleport destinations on maps without a navigation mesh | the 83 cached maps without one (6 pack a mesh) | `bot::aside`: they step off spawns and teleport destinations and out of teleport triggers to a clear spot within 320 units and wait; the console says once that the map has no mesh (`bot_nav::bots_stand_aside_without_a_nav_mesh` on bhop_flatzone). Full minigame AI stays out of scope |

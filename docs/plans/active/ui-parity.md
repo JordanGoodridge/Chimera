@@ -9,7 +9,7 @@ dialog, Lucker Party Options, opened from the console: `menu extras`).
 The main menu and the Esc menu list only `GameMenu.res`'s entries
 (2026-10-16: ours, Quick Start, Greybox Test Map, Bots, Team, Call Vote,
 Lucker Party Options and Console, moved to the console:
-`mashup_quickstart`, `map greybox`, `menu bots`, `menu team`,
+`chimera_quickstart`, `map greybox`, `menu bots`, `menu team`,
 `callvote`, `menu extras`, the console key).
 
 Status: the widget layer, movable frames, the options dialog (all six
@@ -57,7 +57,7 @@ without ticks, a check box); one OK, "changes apply at once". Now: 512 x
 406 frame with OK / Cancel / Apply (changes still apply at once so they
 can be seen, Cancel puts back what changed since the dialog opened or
 since Apply, Apply is greyed with nothing to apply); each page drawn
-from its `.res`, controls mashup lacks greyed.
+from its `.res`, controls Chimera lacks greyed.
 
 | Page | Control (`fieldName`) | `.res` class | Now |
 |---|---|---|---|
@@ -75,10 +75,10 @@ from its `.res`, controls mashup lacks greyed.
 | | `SpeakerSetup` | ComboBox | `snd_surround_speakers` (ours 2): Headphones (0), 2, 4, 5.1, 7.1 Speakers; kept and saved, the mixer stays stereo (docs/plans/active/video-settings.md, "Audio tab") |
 | | `SoundQuality` | ComboBox | `snd_pitchquality` and `dsp_slow_cpu` together: Low (0 1), Medium (0 0), High (1 0, the default); kept and saved, one mixer quality |
 | | `CloseCaptionCheck` | ComboBox | `closecaption` and `cc_subtitles` together: No captions (0 0, the default), Subtitles (1 1), Closed Captions (1 0); kept and saved, captions not drawn yet (needs a spec) |
-| | `AudioSpokenLanguage` | ComboBox | `mashup_spoken_language` (CS:S's is Steam's language, not a cvar): English, the voice files mashup mounts |
-| Video | `Resolution` | ComboBox | `mashup_resolution`: the monitor's modes in a drop-down, those of the aspect ratio picked, plus the window's size when it isn't one (as CS:S lists the display's modes and the current); it shows the window's size now, always an entry (never "As started") |
+| | `AudioSpokenLanguage` | ComboBox | `chimera_spoken_language` (CS:S's is Steam's language, not a cvar): English, the voice files Chimera mounts |
+| Video | `Resolution` | ComboBox | `chimera_resolution`: the monitor's modes in a drop-down, those of the aspect ratio picked, plus the window's size when it isn't one (as CS:S lists the display's modes and the current); it shows the window's size now, always an entry (never "As started") |
 | | `AspectRatio` | ComboBox | Normal (4:3), Widescreen 16:9, Widescreen 16:10: filters the resolutions (from the size now; picking one of another ratio moves the size to that ratio's largest, as CS:S's list refills); no cvar |
-| | `DisplayModeCombo` | ComboBox | `mashup_fullscreen`: Full screen, Windowed (and Borderless); shows the window's real mode (winit's, read each frame), and each entry gives exactly that mode (full screen: the monitor's mode of the resolution, else its own size, at its fastest refresh; else borderless) |
+| | `DisplayModeCombo` | ComboBox | `chimera_fullscreen`: Full screen, Windowed (and Borderless); shows the window's real mode (winit's, read each frame), and each entry gives exactly that mode (full screen: the monitor's mode of the resolution, else its own size, at its fastest refresh; else borderless) |
 | | `AdvancedButton` | Button | opens Video > Advanced |
 | | `GammaButton` | Button | opens the brightness dialog (below); the file has it disabled, CS:S enables it in code (in full screen; to confirm) |
 | | `VRMode`, `VRModeLabel` | ComboBox / Label | left out (a deliberate difference, below) |
@@ -107,14 +107,14 @@ from its `.res`, controls mashup lacks greyed.
 | | `NameEntry` + `NameLabel` (ours: the install's file has none, older CS:S had "Player name") | TextEntry | `name` (archived): `#GameUI_PlayerName`, added by `gameui::add_player_name` where the spray image's words (`Label2`, `Label3`) were; set on OK / Apply (one rename online, not one per key); a deliberate difference |
 | | `Advanced` | Button | opens Multiplayer > Advanced |
 | | `ImportSprayImage`, `ResetStats`, `LogoImage` | Button / ImagePanel | greyed (see below) |
-| Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those mashup has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar), `cl_disablehtmlmotd` (1: the message of the day's plain-text version, `games::cs_source::ui::join_menus`), `cl_autohelp` (1: the automatic hints, `games::cs_source::rules::hints`; triggers ours); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `hud_takesshots`, `cl_disablefreezecam`, `cl_cloud_settings`); without the install: ours, the weapon hand |
+| Multiplayer > Advanced (`MultiplayerAdvancedDialog.res`, 540 x 376; the list from the install's `cfg/user.scr`, else `cfg/user_default.scr`, read at run time) | `PanelListPanel` | CPanelListPanel | the script's options in its order, as Create Server's Game page reads `settings.scr` (`gameui::scr_settings`, one parser): BOOL a check box, LIST a drop-down, NUMBER / STRING a text entry; those Chimera has: `mp_decals` (200: runtime decals drawn, the oldest first; a client cvar here as in Source), `cl_righthand`, `cl_c4progressbar` (1: the defuse bar), `cl_disablehtmlmotd` (1: the message of the day's plain-text version, `games::cs_source::ui::join_menus`), `cl_autohelp` (1: the automatic hints, `games::cs_source::rules::hints`; triggers ours); the rest greyed showing the script's default (`cl_clanid`, `cl_autowepswitch`, `hud_centerid`, `hud_takesshots`, `cl_disablefreezecam`, `cl_cloud_settings`); without the install: ours, the weapon hand |
 | | `OK`, `Cancel` | Button | as CS:S's dialog: changes wait for OK, which sets those changed; Cancel (Esc, the X) drops them; modal over the options |
 
 ### Spectator menu (`resource/ui/bottomspectator.res`; `games::cs_source::ui::spectator_menu`)
 
 | Control | `.res` class | Now |
 |---|---|---|
-| `settingscombo` | ComboBox | "Options": the install's `resource/spectatormenu.res` command menu (Close; Settings: No Rotation, Show Names, Show Health, Show Tracks, toggling `overview_locked`/`_names`/`_health`/`_tracks`; Overview: No / Small / Large Map, Zoom In / Out; Auto Director, greyed: none in mashup; Show Scores, `togglescores`), submenus opening beside their entry |
+| `settingscombo` | ComboBox | "Options": the install's `resource/spectatormenu.res` command menu (Close; Settings: No Rotation, Show Names, Show Health, Show Tracks, toggling `overview_locked`/`_names`/`_health`/`_tracks`; Overview: No / Small / Large Map, Zoom In / Out; Auto Director, greyed: none in Chimera; Show Scores, `togglescores`), submenus opening beside their entry |
 | `playercombo`, `specprev`, `specnext` | ComboBox, Button | the players who may be watched; the watched one as "name (health)"; `<` `>` = `spec_prev` / `spec_next` |
 | `viewcombo` | ComboBox | the install's `resource/spectatormodes.res`: First Person, Chase Camera, Free Look (`spec_mode 4/5/6`) |
 
@@ -137,7 +137,7 @@ defaults are CS:S's (`games::cs_source::ui::options` tests
 
 | Control | Why it stays greyed |
 |---|---|
-| Mouse `MouseRaw` (`m_rawinput`) | mashup always reads raw device motion (Bevy's mouse motion, no OS acceleration); a check box that changed nothing would mislead |
+| Mouse `MouseRaw` (`m_rawinput`) | Chimera always reads raw device motion (Bevy's mouse motion, no OS acceleration); a check box that changed nothing would mislead |
 | Mouse `Joystick*` | no joystick or gamepad input |
 | Audio `ThirdPartySoundCredits`, Video `ThirdPartyVideoCredits` | links out (URLButton) |
 | Video > Advanced `ShaderDetail` | one shader path (docs/plans/active/video-settings.md) |
@@ -158,12 +158,12 @@ defaults are CS:S's (`games::cs_source::ui::options` tests
   back); CS:S's waits for OK or Apply. Its Advanced dialogs behave the
   same way, except Multiplayer > Advanced, which waits for OK as CS:S's.
 - Virtual Reality Mode (`VRMode` and its label on the video tab): left
-  out (user decision 2026-10-10: mashup won't support VR; CS:S greys it
+  out (user decision 2026-10-10: Chimera won't support VR; CS:S greys it
   without a headset). `game_menu::draw::LEFT_OUT` lists them.
 - Brightness works windowed too (CS:S's needs full screen for its
   hardware gamma ramp; ours is a pass over the frame).
 - Multiplayer: a "Player name" entry (`name`) in place of the spray
-  image's two labels (current CS:S takes the name from Steam; mashup's
+  image's two labels (current CS:S takes the name from Steam; Chimera's
   spray logo is `cl_logofile`, set in the console). It waits for OK or Apply, unlike the tab's other options.
 - Texture detail and filtering apply from the next map load (the
   textures live only on the GPU once drawn); CS:S's apply at once.
@@ -209,7 +209,7 @@ frame, a property sheet (Server, Game, Bot), Start (default) / Cancel.
 | | `BotQuotaCombo` | TextEntry (numeric, 2 chars) | how many (any team: split, the odd one a terrorist) |
 | | `SkillLevel0..3` | RadioButton | the difficulty presets |
 | | `VisibilityType` | ComboBox | greyed |
-| Game (`CreateMultiplayerGameGameplayPage.res`) | `GameOptions` | CPanelListPanel from `cfg/settings.scr` | the script's options mashup has a cvar for (`hostname`, `maxplayers`, `sv_password`, `mp_*` ...): STRING/NUMBER as text entries, BOOL as check boxes, LIST as drop-downs, scrolled; then ours, "Rounds (off: deathmatch)"; Start sets those changed |
+| Game (`CreateMultiplayerGameGameplayPage.res`) | `GameOptions` | CPanelListPanel from `cfg/settings.scr` | the script's options Chimera has a cvar for (`hostname`, `maxplayers`, `sv_password`, `mp_*` ...): STRING/NUMBER as text entries, BOOL as check boxes, LIST as drop-downs, scrolled; then ours, "Rounds (off: deathmatch)"; Start sets those changed |
 | Bot (`cstrike/resource/CreateMultiplayerGameBotPage.res`) | `BotJoinTeamCombo` | ComboBox | which team bots join (Any, Terrorists, Counter-Terrorists) |
 | | `BotPrefixEntry` | TextEntry | `bot_prefix` |
 | | `BotJoinAfterPlayerCheck` | CCvarToggleCheckButton | `bot_join_after_player` |
@@ -269,7 +269,7 @@ at `mat_monitorgamma` 1.6, 2.2 and 2.6, and de_dust2 at the three.
 
 - The console as CS:S's: a sizeable, movable VGUI frame (`CConsoleDialog`,
   no `.res`: its layout is code) instead of our drop-down.
-- The greyed controls whose features mashup may get (Video > Advanced:
+- The greyed controls whose features Chimera may get (Video > Advanced:
   docs/plans/active/video-settings.md; Multiplayer > Advanced's
   auto-help). Its `cl_autowepswitch`,
   `hud_centerid` and `cl_disablefreezecam` work (`weapon::drop`,

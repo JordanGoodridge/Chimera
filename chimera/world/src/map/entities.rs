@@ -81,7 +81,7 @@ impl MapEntity {
 /// template it names), and a model door's sound entries (Source
 /// `door_options` for its skin: starting to move, fully open, fully
 /// closed).
-pub const PROP_HEALTH_KEY: &str = "mashup_prop_health";
+pub const PROP_HEALTH_KEY: &str = "chimera_prop_health";
 /// The rest of a prop's damage rules from its model (Source prop data,
 /// specs/source/prop_damage.md 2): damage multipliers "bullets club
 /// blast"; how many pieces it breaks into; interactions (space separated:
@@ -89,26 +89,26 @@ pub const PROP_HEALTH_KEY: &str = "mashup_prop_health";
 /// firstimpact_break); explosion "damage radius" and its sound; impact
 /// damage table name; "1" for a client-only prop (multiplayer physics
 /// mode 3); the break sound entry; its mass (kg).
-pub const PROP_DAMAGE_KEY: &str = "mashup_prop_damage";
-pub const PROP_PIECES_KEY: &str = "mashup_prop_pieces";
-pub const PROP_INTERACTIONS_KEY: &str = "mashup_prop_interactions";
-pub const PROP_EXPLODE_KEY: &str = "mashup_prop_explode";
-pub const PROP_EXPLODE_SOUND_KEY: &str = "mashup_prop_explode_sound";
-pub const PROP_TABLE_KEY: &str = "mashup_prop_damage_table";
-pub const PROP_CLIENT_KEY: &str = "mashup_prop_client";
-pub const PROP_BREAK_SOUND_KEY: &str = "mashup_prop_break_sound";
-pub const PROP_MASS_KEY: &str = "mashup_prop_mass";
+pub const PROP_DAMAGE_KEY: &str = "chimera_prop_damage";
+pub const PROP_PIECES_KEY: &str = "chimera_prop_pieces";
+pub const PROP_INTERACTIONS_KEY: &str = "chimera_prop_interactions";
+pub const PROP_EXPLODE_KEY: &str = "chimera_prop_explode";
+pub const PROP_EXPLODE_SOUND_KEY: &str = "chimera_prop_explode_sound";
+pub const PROP_TABLE_KEY: &str = "chimera_prop_damage_table";
+pub const PROP_CLIENT_KEY: &str = "chimera_prop_client";
+pub const PROP_BREAK_SOUND_KEY: &str = "chimera_prop_break_sound";
+pub const PROP_MASS_KEY: &str = "chimera_prop_mass";
 /// A breakable brush's gib list from its prop data template (Source
 /// "propdata" on func_breakable: the template's `breakable_model`); its
 /// health and multipliers go in `PROP_HEALTH_KEY` and `PROP_DAMAGE_KEY`.
-pub const PROP_GIBS_KEY: &str = "mashup_prop_gibs";
-pub const DOOR_MOVE_KEY: &str = "mashup_door_move";
-pub const DOOR_OPEN_KEY: &str = "mashup_door_open";
-pub const DOOR_CLOSE_KEY: &str = "mashup_door_close";
+pub const PROP_GIBS_KEY: &str = "chimera_prop_gibs";
+pub const DOOR_MOVE_KEY: &str = "chimera_door_move";
+pub const DOOR_OPEN_KEY: &str = "chimera_door_open";
+pub const DOOR_CLOSE_KEY: &str = "chimera_door_close";
 /// A model door's handle sounds for its `hardware` type (Source
 /// `door_options` "hardwareN"): used while locked, and unlocked.
-pub const DOOR_LOCKED_KEY: &str = "mashup_door_locked";
-pub const DOOR_UNLOCKED_KEY: &str = "mashup_door_unlocked";
+pub const DOOR_LOCKED_KEY: &str = "chimera_door_locked";
+pub const DOOR_UNLOCKED_KEY: &str = "chimera_door_unlocked";
 
 /// "x y z" (or "[x y z]") as a vector; missing or bad parts are 0.
 pub fn parse_vector(s: &str) -> Vec3 {

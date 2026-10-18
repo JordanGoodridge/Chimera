@@ -102,13 +102,13 @@ pub struct Args {
 }
 
 const USAGE: &str = "\
-usage: mashup [options]
+usage: cs_source [options]
   --screenshot <file.png>   save a screenshot after --frames frames, then exit
   --frames <n>              frames to run before the screenshot or exit (default 60)
   --movement <id>           movement implementation for the local player
   --spawn <x,y,z>           spawn position in meters
   --look <yaw,pitch>        initial look angles in degrees (yaw 0 = -Z)
-  --map <game:name>         load a game's map, e.g. cs_source:de_dust2, or greybox (mashup's
+  --map <game:name>         load a game's map, e.g. cs_source:de_dust2, or greybox (Chimera's
                             test map). Without it the game starts at the main menu, unless
                             --spawn, --look, --movement or --views is given (then: greybox)
   --cvar <name=value>       set a movement console variable, e.g. sv_airaccelerate=150
@@ -120,7 +120,7 @@ usage: mashup [options]
   --lightmap-only           debug view: white surfaces, only baked lighting
   --debug-view <kind>       lighting (x0.25) | albedo, untonemapped, magenta background
   --views <file.json>       capture each view (name, position, yaw, pitch; engine space)
-                            off-screen at 1280x720, then exit (use with --movement mashup:noclip)
+                            off-screen at 1280x720, then exit (use with --movement chimera:noclip)
   --view-size <WxH>         size of --views captures and --bench frames (default 1280x720),
                             e.g. 3840x2160 to time 4K
   --capture-dir <dir>       where --views writes <name>.png (default: current directory)
@@ -144,9 +144,9 @@ usage: mashup [options]
                             ++attack holds an action, e.g. to fire in a --screenshot run)
 
 network play (docs/OBSERVABILITY.md, \"Network play\"):
-  host:    mashup -port 27016 +maxplayers 4 +map greybox
-  join:    mashup +connect 127.0.0.1:27016
-  server:  cargo run --bin mashup_server -- -port 27016 +map greybox";
+  host:    cs_source -port 27016 +maxplayers 4 +map greybox
+  join:    cs_source +connect 127.0.0.1:27016
+  server:  cargo run --bin cs_source_server -- -port 27016 +map greybox";
 
 impl Args {
     /// Whether the run starts playing (a map given, or the player placed
@@ -181,11 +181,11 @@ impl Args {
     }
 
     /// The game map to load at startup: `--map` unless it names the
-    /// greybox (`greybox` or `mashup:greybox`), which is there anyway.
+    /// greybox (`greybox`, `chimera:greybox` or the old `mashup:greybox`), which is there anyway.
     pub fn game_map(&self) -> Option<&str> {
         self.map
             .as_deref()
-            .filter(|m| !matches!(m.to_lowercase().as_str(), "greybox" | "mashup:greybox"))
+            .filter(|m| !matches!(m.to_lowercase().as_str(), "greybox" | "chimera:greybox" | "mashup:greybox"))
     }
 
     pub fn parse() -> Self {
@@ -311,7 +311,7 @@ impl Args {
     /// (`--screenshot`, `--views`, `--frames`, `--bench`): the tools'
     /// (refcmp, mapsweep, agents' screenshots). It hosts on loopback on a
     /// port the system picks (see `parse_from`), and with `dev` serves
-    /// the remote protocol on one too unless `MASHUP_REMOTE_PORT` says.
+    /// the remote protocol on one too unless `CHIMERA_REMOTE_PORT` says.
     pub fn tool_run(&self) -> bool {
         self.screenshot.is_some() || self.views.is_some() || self.frames.is_some() || self.bench
     }
@@ -342,7 +342,7 @@ pub fn shown_name(
 /// What the app tells the shell about itself: its build's commit, how it
 /// loads a game's map (by id, or from a downloaded file) and reads a
 /// map's file, and its built-in test map (the greybox). The app fills it
-/// (mashup: `games::load_map_level`, `greybox`), so the shell names
+/// (the CS:S app: `games::load_map_level`, `greybox`), so the shell names
 /// neither a game's loaders nor the greybox. Without it (tests), maps
 /// don't load and the greybox isn't put back.
 #[derive(Resource, Clone, Copy)]
@@ -441,13 +441,13 @@ impl Plugin for ShellCameraPlugin {
             .add_systems(Update, (follow_eye, zoom_camera).after(spectate::SpectateSet));
 
         // Bevy Remote Protocol: query and edit the live ECS over HTTP
-        // (JSON-RPC on localhost:15702, or MASHUP_REMOTE_PORT: two games at
+        // (JSON-RPC on localhost:15702, or CHIMERA_REMOTE_PORT: two games at
         // once, e.g. a host and a client). See docs/OBSERVABILITY.md.
         #[cfg(feature = "dev")]
         {
             use bevy::remote::http::{DEFAULT_PORT, DEFAULT_RENDER_PORT, HostPort};
             let tool_run = app.world().get_resource::<ClientArgs>().is_some_and(|a| a.0.tool_run());
-            let port = std::env::var("MASHUP_REMOTE_PORT")
+            let port = chimera_core::env::var("CHIMERA_REMOTE_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
                 // A tool run: a free port (printed), so runs at once don't
@@ -458,7 +458,10 @@ impl Plugin for ShellCameraPlugin {
                 info!("remote protocol on 127.0.0.1:{port}");
             }
             app.add_plugins((
-                bevy::remote::RemotePlugin::default().with_method_main("mashup/console", console::remote_exec),
+                // `mashup/console`: its old name, for scripts written before.
+                bevy::remote::RemotePlugin::default()
+                    .with_method_main("chimera/console", console::remote_exec)
+                    .with_method_main("mashup/console", console::remote_exec),
                 bevy::remote::http::RemoteHttpPlugin::default().with_port(port),
             ));
             // The render world's server (15703, no setter): beside the
@@ -747,7 +750,7 @@ mod tests {
         assert!(!args("--screenshot a.png --window 1280x720 +menu options").starts_in_game());
         assert!(args("--map cs_source:de_dust2").starts_in_game());
         assert!(args("--spawn 0,1,12").starts_in_game());
-        assert!(args("--movement mashup:noclip").starts_in_game());
+        assert!(args("--movement chimera:noclip").starts_in_game());
         // The greybox is a map name; no game map to load for it.
         let a = args("--map greybox");
         assert!(a.starts_in_game() && a.game_map().is_none());

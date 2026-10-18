@@ -8,10 +8,16 @@
 #include <unistd.h>
 #include "renderdoc_app.h"
 
+// CHIMERA_*, else the variable's old name (MASHUP_*).
+static const char *env(const char *name, const char *old) {
+    const char *v = getenv(name);
+    return v ? v : getenv(old);
+}
+
 static void *watch(void *arg) {
     (void)arg;
-    const char *trigger = getenv("MASHUP_RDC_TRIGGER");
-    const char *tmpl = getenv("MASHUP_RDC_TEMPLATE");
+    const char *trigger = env("CHIMERA_RDC_TRIGGER", "MASHUP_RDC_TRIGGER");
+    const char *tmpl = env("CHIMERA_RDC_TEMPLATE", "MASHUP_RDC_TEMPLATE");
     RENDERDOC_API_1_6_0 *api = NULL;
     for (;;) {
         usleep(100000);
@@ -36,7 +42,7 @@ static void *watch(void *arg) {
 }
 
 __attribute__((constructor)) static void init(void) {
-    if (!getenv("MASHUP_RDC_TRIGGER")) return;
+    if (!env("CHIMERA_RDC_TRIGGER", "MASHUP_RDC_TRIGGER")) return;
     pthread_t t;
     pthread_create(&t, NULL, watch, NULL);
     pthread_detach(t);

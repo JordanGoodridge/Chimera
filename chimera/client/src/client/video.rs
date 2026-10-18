@@ -1,12 +1,12 @@
 //! The video settings the options dialogs set (the game's dialog, its
-//! rows: `games::cs_source::ui::options`): `mat_vsync`, `mashup_fullscreen`
-//! and `mashup_resolution` (the window), `mat_antialias` (MSAA), texture
+//! rows: `games::cs_source::ui::options`): `mat_vsync`, `chimera_fullscreen`
+//! and `chimera_resolution` (the window), `mat_antialias` (MSAA), texture
 //! detail and filtering (`mat_picmip`, `mat_trilinear`, `mat_forceaniso`)
 //! and the player's field of view (`fov_desired`).
 //!
 //! `fov_desired` (`PlayerFov`: the world camera's unzoomed field of view, 75
-//! to 90, CS:S's 90); the video cvars (`mat_vsync`, `mashup_fullscreen`,
-//! `mashup_resolution`, `mat_antialias`; archived) set the window's present
+//! to 90, CS:S's 90); the video cvars (`mat_vsync`, `chimera_fullscreen`,
+//! `chimera_resolution`, `mat_antialias`; archived) set the window's present
 //! mode, mode and size when they change (not in `--window` or automated runs;
 //! `window_mode`: full screen in the primary monitor's mode of that size,
 //! else of its own size, else borderless; the size only for a window) and
@@ -39,13 +39,13 @@ impl Plugin for VideoPlugin {
         );
         resource_cvar::<VideoSettings, u8>(
             app,
-            "mashup_fullscreen",
+            "chimera_fullscreen",
             "Display mode: 0 windowed, 1 full screen, 2 borderless full screen.",
             |v| &mut v.fullscreen,
         );
         resource_cvar::<VideoSettings, String>(
             app,
-            "mashup_resolution",
+            "chimera_resolution",
             "Window size in pixels, e.g. 1920x1080 (empty: as started).",
             |v| &mut v.resolution,
         );
@@ -136,8 +136,8 @@ impl Plugin for VideoPlugin {
         let mut console = app.world_mut().resource_mut::<Console>();
         for name in [
             "mat_vsync",
-            "mashup_fullscreen",
-            "mashup_resolution",
+            "chimera_fullscreen",
+            "chimera_resolution",
             "mat_antialias",
             "fov_desired",
             "mat_picmip",
@@ -341,7 +341,7 @@ pub fn monitor_modes(monitors: &Query<&bevy::window::Monitor, With<PrimaryMonito
         .collect()
 }
 
-/// `mashup_fullscreen`'s value for a window mode: 0 windowed, 1 full
+/// `chimera_fullscreen`'s value for a window mode: 0 windowed, 1 full
 /// screen, 2 borderless full screen.
 pub fn mode_value(mode: &WindowMode) -> u8 {
     match mode {
@@ -351,7 +351,7 @@ pub fn mode_value(mode: &WindowMode) -> u8 {
     }
 }
 
-/// The window mode `mashup_fullscreen` asks for: 0 windowed, 2 borderless
+/// The window mode `chimera_fullscreen` asks for: 0 windowed, 2 borderless
 /// on the window's monitor, 1 full screen in the primary monitor's mode
 /// of `size` (else of the monitor's own size; the highest refresh rate);
 /// borderless when the monitor has neither (Bevy would warn and leave

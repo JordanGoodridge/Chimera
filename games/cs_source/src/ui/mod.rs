@@ -103,7 +103,7 @@ mod tests {
         // The built-in table is the file's binds, in its order (Esc and `
         // aren't binds).
         assert_eq!(cfg_binds(SAMPLE_CONFIG_DEFAULT), owned(DEFAULT_BINDS));
-        // Only with CS:S installed (MASHUP_CONFIG or a Steam library): the
+        // Only with CS:S installed (CHIMERA_CONFIG or a Steam library): the
         // install's file says the same.
         if binds::read_install_defaults(Some(&INFO)) {
             assert_eq!(default_binds(), defaults_from(&owned(DEFAULT_BINDS)));

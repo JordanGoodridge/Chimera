@@ -84,7 +84,7 @@ pub(super) fn start_loading_ui(mut ui: ResMut<MenuUi>) {
     });
 }
 
-/// The install changed (the first-run dialog, `mashup_install`): read
+/// The install changed (the first-run dialog, `chimera_install`): read
 /// its GameUI look again, and the open page's maps.
 pub(in crate::ui) fn reload_install(w: &mut World) {
     if let Err(e) = w.run_system_cached(start_loading_ui) {
@@ -201,14 +201,14 @@ pub(super) fn refresh_script_cvars(w: &mut World) {
 }
 
 /// The video tab shows the window as it is, as CS:S's shows the mode it
-/// runs in: its size (`mashup_resolution` may be empty, "as started", or
+/// runs in: its size (`chimera_resolution` may be empty, "as started", or
 /// a size the window manager didn't give) and its display mode
-/// (`mashup_fullscreen`), each where the console has the cvar.
+/// (`chimera_fullscreen`), each where the console has the cvar.
 pub(super) fn window_values(get: &mut HashMap<String, String>, size: Option<UVec2>, mode: Option<u8>) {
-    if let (Some(v), Some(size)) = (get.get_mut("mashup_resolution"), size.filter(|s| s.x > 0 && s.y > 0)) {
+    if let (Some(v), Some(size)) = (get.get_mut("chimera_resolution"), size.filter(|s| s.x > 0 && s.y > 0)) {
         *v = format!("{}x{}", size.x, size.y);
     }
-    if let (Some(v), Some(mode)) = (get.get_mut("mashup_fullscreen"), mode) {
+    if let (Some(v), Some(mode)) = (get.get_mut("chimera_fullscreen"), mode) {
         *v = mode.to_string();
     }
 }

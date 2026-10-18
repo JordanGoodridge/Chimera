@@ -2,7 +2,7 @@
 //! See docs/OBSERVABILITY.md ("Comparing with the real game").
 //!
 //! Captures the same camera views in CS:S (driven over RCON, so it works
-//! with the desktop locked) and in mashup, then reports per-view brightness,
+//! with the desktop locked) and in cs_source, then reports per-view brightness,
 //! saturation and sharpness and writes side-by-side images. Output goes to a
 //! per-user folder, never the repository (it contains game imagery).
 //!
@@ -31,16 +31,16 @@ use serde::Deserialize;
 use source_tools::rcon::Rcon;
 
 const USAGE: &str = "\
-usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|ordercheck|capture-hud|hudcmp] [--views <file>] [--only <name>] [--out <dir>] [--hud-ref <dir>] [--keep-running] [-- <mashup args>]
+usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|ordercheck|capture-hud|hudcmp] [--views <file>] [--only <name>] [--out <dir>] [--hud-ref <dir>] [--keep-running] [-- <cs_source args>]
   all            capture both, then report (default)
   capture-ref    capture views in CS:S (Steam must be logged in on this machine)
-  capture-ours   capture views in mashup
+  capture-ours   capture views in cs_source
   report         compare existing captures
-  fit            capture mashup's albedo and lighting debug views and fit how
+  fit            capture cs_source's albedo and lighting debug views and fit how
                  CS:S combines texture and light, per pixel, against the reference
   skyconv        measure the engine's cubemap convention with an encoded debug
                  sky, then fit each face's texture and orientation to the reference
-  bench          time mashup's frames at each view (no CS:S): avg/p95/max frame
+  bench          time cs_source's frames at each view (no CS:S): avg/p95/max frame
                  ms, drawn meshes and triangles per view (docs/performance.md)
   vischeck       render each view, plus views from the map's spawns and nav
                  areas, with visibility culling on and off (no CS:S); every
@@ -54,7 +54,7 @@ usage: refcmp [all|capture-ref|capture-ours|report|fit|skyconv|bench|vischeck|or
   hudcmp         compare the HUD panel by panel with CS:S captures
                  (hudref_<state>_<W>x<H>.jpg in --hud-ref): offsets and sizes
   --hud-ref <dir> HUD reference captures (default: <dump>/refcmp/hud/ref)
-  -- <args>      bench, vischeck, ordercheck, capture-hud: pass the rest to mashup (e.g. +r_novis 1)
+  -- <args>      bench, vischeck, ordercheck, capture-hud: pass the rest to cs_source (e.g. +r_novis 1)
   --views <file> views file (default: tools/refcmp/de_dust2.toml)
   --only <name>  only views whose name contains <name>
   --out <dir>    write our captures, reports, bench and vischeck output under
@@ -90,7 +90,7 @@ struct Args {
     out: Option<PathBuf>,
     /// HUD reference captures (hudcmp).
     hud_ref: Option<PathBuf>,
-    /// Extra mashup arguments (after `--`).
+    /// Extra cs_source arguments (after `--`).
     extra: Vec<String>,
 }
 
@@ -208,7 +208,7 @@ fn steam_env(cmd: &mut Command) -> &mut Command {
 fn capture_ref(file: &ViewsFile, out: &Path, keep_running: bool) -> Result<(), String> {
     let install = LocalConfig::load()?
         .game_path("cs_source")
-        .ok_or("no [games.cs_source] path in mashup.local.toml")?;
+        .ok_or("no [games.cs_source] path in chimera.local.toml")?;
     let screenshots = install.join("cstrike/screenshots");
 
     let mut rcon = match Rcon::connect(RCON_ADDR, RCON_PASSWORD) {
@@ -323,14 +323,14 @@ fn wait_for<T>(limit: Duration, what: &str, mut f: impl FnMut() -> Option<T>) ->
     }
 }
 
-// ------------------------------------------------------------- mashup side
+// ------------------------------------------------------------- cs_source side
 
 fn capture_ours(file: &ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
     capture_ours_env(file, out, extra, &[])
 }
 
-/// Time mashup at each view (`--bench`): settles, times 200 frames per view
-/// with vsync off, prints the table mashup writes.
+/// Time cs_source at each view (`--bench`): settles, times 200 frames per view
+/// with vsync off, prints the table cs_source writes.
 fn bench(file: &ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
     let mut args = vec!["--bench"];
@@ -339,7 +339,7 @@ fn bench(file: &ViewsFile, out: &Path, extra: &[&str]) -> Result<(), String> {
     capture_ours_io(file, out, &args, &[], true)
 }
 
-/// Which build this binary (and so the mashup next to it) is.
+/// Which build this binary (and so the cs_source next to it) is.
 fn build_profile() -> String {
     std::env::current_exe()
         .ok()
@@ -504,15 +504,15 @@ fn capture_ours_io(
 
     let exe = std::env::current_exe()
         .map_err(|e| e.to_string())?
-        .with_file_name(if cfg!(windows) { "mashup.exe" } else { "mashup" });
+        .with_file_name(if cfg!(windows) { "cs_source.exe" } else { "cs_source" });
     warn_if_stale(&exe);
-    println!("capturing {} views in mashup...", views.len());
+    println!("capturing {} views in cs_source...", views.len());
     let status = steam_env(&mut Command::new(&exe))
         .args([
             "--map",
             &format!("cs_source:{}", file.map),
             "--movement",
-            "mashup:noclip",
+            "chimera:noclip",
         ])
         .arg("--views")
         .arg(&views_path)
@@ -535,7 +535,7 @@ fn capture_ours_io(
         .status()
         .map_err(|e| format!("{}: {e} (build it first: cargo build --features dev)", exe.display()))?;
     if !status.success() {
-        return Err(format!("mashup exited with {status}"));
+        return Err(format!("cs_source exited with {status}"));
     }
     Ok(())
 }
@@ -545,13 +545,13 @@ fn capture_ours_io(
 /// The window sizes the HUD reference captures are taken at.
 const HUD_SIZES: [(u32, u32); 3] = [(1280, 720), (1920, 1080), (1024, 768)];
 
-/// What mashup runs to reach each HUD reference state on de_dust2: a
+/// What cs_source runs to reach each HUD reference state on de_dust2: a
 /// counter-terrorist with 100 health, no armour, $800, the USP drawn and
 /// an AK-47 in slot 1, the round clock near 7:59; `ak`: the weapon
 /// selection open on slot 1, `select`: on slot 2 (hud_fastswitch 0).
 fn hud_state_commands(state: &str) -> Vec<String> {
     let mut c: Vec<String> = [
-        "+mashup_rounds 1",
+        "+chimera_rounds 1",
         "+mp_freezetime 0",
         "+mp_roundtime 8",
         "+mp_startmoney 800",
@@ -585,7 +585,7 @@ fn hud(args: &Args) -> Result<(), String> {
     if args.command == "capture-hud" {
         let exe = std::env::current_exe()
             .map_err(|e| e.to_string())?
-            .with_file_name(if cfg!(windows) { "mashup.exe" } else { "mashup" });
+            .with_file_name(if cfg!(windows) { "cs_source.exe" } else { "cs_source" });
         warn_if_stale(&exe);
         for (w, h) in HUD_SIZES {
             for state in ["ak", "select"] {
@@ -609,7 +609,7 @@ fn hud(args: &Args) -> Result<(), String> {
                     .status()
                     .map_err(|e| format!("{}: {e} (build it first: cargo build --features dev)", exe.display()))?;
                 if !status.success() {
-                    return Err(format!("mashup exited with {status}"));
+                    return Err(format!("cs_source exited with {status}"));
                 }
             }
         }
@@ -784,7 +784,7 @@ fn skyconv(file: &ViewsFile, ref_dir: &Path, out: &Path) -> Result<(), String> {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
     capture_ours(file, &mask_dir, &["--debug-view", "albedo"])?;
-    capture_ours_env(file, &debug_dir, &[], &[("MASHUP_SKY_DEBUG", "1".into())])?;
+    capture_ours_env(file, &debug_dir, &[], &[("CHIMERA_SKY_DEBUG", "1".into())])?;
     let load = |p: PathBuf| {
         image::open(&p)
             .map(|i| i.to_rgb8())

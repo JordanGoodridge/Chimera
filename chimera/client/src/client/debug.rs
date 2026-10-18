@@ -1,7 +1,7 @@
 //! Developer tools, each a console command on a default bind off CS:S's
-//! keys (`binds::MASHUP_BINDS`): F11 the entity inspector
-//! (`mashup_inspector`), F8 the debug UI (`debugui`, `debug_ui`), F3
-//! collision shapes (`toggle mashup_drawcollision`).
+//! keys (`binds::CHIMERA_BINDS`): F11 the entity inspector
+//! (`chimera_inspector`), F8 the debug UI (`debugui`, `debug_ui`), F3
+//! collision shapes (`toggle chimera_drawcollision`).
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::CursorOptions};
@@ -35,19 +35,19 @@ impl Plugin for DebugPlugin {
         commands(app);
         crate::console::resource_cvar::<DrawHitboxes, u8>(
             app,
-            "mashup_drawhitboxes",
+            "chimera_drawhitboxes",
             "1: outline characters' hitboxes (head red, chest yellow, stomach green, arms blue, legs cyan).",
             |d| &mut d.0,
         );
         crate::console::resource_cvar::<DebugHudOn, u8>(
             app,
-            "mashup_debughud",
+            "chimera_debughud",
             "1: show the debug readout at the top left (movement, speed, ground, and the debug keys).",
             |d| &mut d.0,
         );
         crate::console::resource_cvar::<DrawPhys, u8>(
             app,
-            "mashup_drawphys",
+            "chimera_drawphys",
             "1: outline physics props by state (green moving, blue asleep, grey still or frozen; \
              multiplayer props darker), players' physics shadows (white, yellow lines to the props \
              they touch) and list the props nearest you (mass, mode, state) on the debug HUD.",
@@ -56,13 +56,13 @@ impl Plugin for DebugPlugin {
     }
 }
 
-/// The debug keys' commands: `mashup_inspector` and the
-/// `mashup_drawcollision` cvar (`debugui` is `debug_ui`'s).
+/// The debug keys' commands: `chimera_inspector` and the
+/// `chimera_drawcollision` cvar (`debugui` is `debug_ui`'s).
 pub(super) fn commands(app: &mut App) {
     app.init_resource::<InspectorOn>()
         .console_command(
-            "mashup_inspector",
-            "mashup_inspector [0|1]: toggle the entity inspector (F11), or turn it on or off; turning it on frees \
+            "chimera_inspector",
+            "chimera_inspector [0|1]: toggle the entity inspector (F11), or turn it on or off; turning it on frees \
              the mouse (a click takes it back).",
             |w, a| {
                 let on = match a.first() {
@@ -80,8 +80,8 @@ pub(super) fn commands(app: &mut App) {
             },
         )
         .console_cvar(
-            "mashup_drawcollision",
-            "1: draw every collision shape (avian's debug gizmos; F3, `toggle mashup_drawcollision`, flips it).",
+            "chimera_drawcollision",
+            "1: draw every collision shape (avian's debug gizmos; F3, `toggle chimera_drawcollision`, flips it).",
             "0",
             |w| {
                 w.get_resource::<GizmoConfigStore>()
@@ -97,7 +97,7 @@ pub(super) fn commands(app: &mut App) {
         );
 }
 
-/// `mashup_inspector`: the entity inspector shows.
+/// `chimera_inspector`: the entity inspector shows.
 #[derive(Resource, Default)]
 pub struct InspectorOn(pub bool);
 
@@ -151,11 +151,11 @@ const UI_CAMERA_ORDER: isize = 100;
 #[derive(Resource, Default)]
 struct DrawPhys(u8);
 
-/// `mashup_debughud`: the top-left debug readout (off by default).
+/// `chimera_debughud`: the top-left debug readout (off by default).
 #[derive(Resource, Default)]
 struct DebugHudOn(u8);
 
-/// A physics prop's state for `mashup_drawphys`.
+/// A physics prop's state for `chimera_drawphys`.
 fn prop_state(rb: &RigidBody, sleeping: bool, asleep_since_spawn: bool) -> &'static str {
     if asleep_since_spawn {
         "asleep (since spawn)"
@@ -168,7 +168,7 @@ fn prop_state(rb: &RigidBody, sleeping: bool, asleep_since_spawn: bool) -> &'sta
     }
 }
 
-/// `mashup_drawphys 1`: props' boxes by state, shadows and what they
+/// `chimera_drawphys 1`: props' boxes by state, shadows and what they
 /// touch.
 #[allow(clippy::type_complexity)]
 fn draw_phys(
@@ -348,12 +348,12 @@ mod tests {
             (w.resource::<InspectorOn>().0, gizmos, cursor)
         };
         // F11's line opens the inspector and frees the mouse; again closes it.
-        assert_eq!(run("mashup_inspector"), (true, false, true));
-        assert_eq!(run("mashup_inspector"), (false, false, true));
-        assert_eq!(run("mashup_inspector 1"), (true, false, true));
-        assert_eq!(run("mashup_inspector 0"), (false, false, true));
+        assert_eq!(run("chimera_inspector"), (true, false, true));
+        assert_eq!(run("chimera_inspector"), (false, false, true));
+        assert_eq!(run("chimera_inspector 1"), (true, false, true));
+        assert_eq!(run("chimera_inspector 0"), (false, false, true));
         // F3's line flips the collision shapes.
-        assert_eq!(run("toggle mashup_drawcollision"), (false, true, true));
-        assert_eq!(run("toggle mashup_drawcollision"), (false, false, true));
+        assert_eq!(run("toggle chimera_drawcollision"), (false, true, true));
+        assert_eq!(run("toggle chimera_drawcollision"), (false, false, true));
     }
 }

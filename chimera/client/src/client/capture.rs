@@ -167,9 +167,7 @@ impl Plugin for CapturePlugin {
             "bugreport",
             "bugreport [note]: save a screenshot, your setpos/setang, map, weapon, build and recent console lines to a folder to send with a bug.",
             |w, a| {
-                let dir = dirs::data_local_dir()
-                    .ok_or("no per-user data folder")?
-                    .join("mashup")
+                let dir = chimera_core::env::user_folder(&dirs::data_local_dir().ok_or("no per-user data folder")?)
                     .join("bugreports")
                     .join(chrono_stamp());
                 std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -193,9 +191,7 @@ impl Plugin for CapturePlugin {
             "jpeg",
             "Save the window as it is now to the screenshots folder, named after the map (CS:S's F5; a PNG here).",
             |w, _| {
-                let dir = dirs::data_local_dir()
-                    .ok_or("no per-user data folder")?
-                    .join("mashup")
+                let dir = chimera_core::env::user_folder(&dirs::data_local_dir().ok_or("no per-user data folder")?)
                     .join("screenshots");
                 std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
                 let map = w
@@ -633,7 +629,7 @@ fn chrono_stamp() -> String {
 fn report_text(w: &mut World, note: &str) -> String {
     use crate::{console::Console, core::LocalPlayer};
     let version = w.get_resource::<crate::core::BuildVersion>().map_or("unknown", |v| v.0);
-    let mut out = format!("mashup build {version} ({})\n", crate::net::NET_VERSION);
+    let mut out = format!("Chimera build {version} ({})\n", crate::net::NET_VERSION);
     if !note.is_empty() {
         out += &format!("note: {note}\n");
     }
@@ -669,7 +665,7 @@ fn report_text(w: &mut World, note: &str) -> String {
     if let Some(p) = w.get_resource::<super::perf::PerfReport>()
         && !p.lines.is_empty()
     {
-        out += "\nperformance (mashup_perf, last second):\n";
+        out += "\nperformance (chimera_perf, last second):\n";
         for l in &p.lines {
             out += &format!("{l}\n");
         }
@@ -688,7 +684,7 @@ fn report_text(w: &mut World, note: &str) -> String {
 mod tests {
     #[test]
     fn jpeg_names_take_the_next_free_number() {
-        let dir = std::env::temp_dir().join(format!("mashup-jpeg-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chimera-jpeg-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(super::numbered_shot(&dir, "de_dust2"), dir.join("de_dust20000.png"));
         std::fs::write(dir.join("de_dust20000.png"), b"").unwrap();

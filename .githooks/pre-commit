@@ -6,11 +6,12 @@
 # graph up to every package whose tests depend on them (checks/src/affected.rs
 # has the rules: the lockfile, workspace manifest, .config/, the hooks or a
 # build.rs select everything; Markdown and docs only the repository checks).
-# MASHUP_COMMIT_TESTS=all runs the whole fast tier; =0 skips it.
+# CHIMERA_COMMIT_TESTS=all runs the whole fast tier; =0 skips it (the old
+# name, MASHUP_COMMIT_TESTS, still works).
 # The affected heavy tests run before a push (.githooks/pre-push).
 # Enable once per clone: git config core.hooksPath .githooks
 # Skip in an emergency with: git commit --no-verify
-mode=${MASHUP_COMMIT_TESTS:-affected}
+mode=${CHIMERA_COMMIT_TESTS:-${MASHUP_COMMIT_TESTS:-affected}}
 [ "$mode" = 0 ] && exit 0
 if [ -z "$(git diff --cached --name-only)" ]; then
     exit 0
@@ -19,7 +20,7 @@ mkdir -p target
 log=target/pre-commit.log
 if [ "$mode" = all ]; then
     args=--workspace
-    echo "pre-commit: MASHUP_COMMIT_TESTS=all: the whole fast tier" >&2
+    echo "pre-commit: CHIMERA_COMMIT_TESTS=all: the whole fast tier" >&2
 elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- --staged --format cargo 2>target/pre-commit-affected.txt); then
     cat target/pre-commit-affected.txt >&2
     echo "pre-commit: couldn't select the affected tests; running the whole fast tier." >&2

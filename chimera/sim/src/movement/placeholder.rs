@@ -12,7 +12,7 @@ use crate::{
     slots::RegisterSlots,
 };
 
-pub const ID: &str = "mashup:placeholder_movement";
+pub const ID: &str = "chimera:placeholder_movement";
 
 const WALK_SPEED: f32 = 5.0;
 const SPRINT_SPEED: f32 = 7.5;

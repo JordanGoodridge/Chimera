@@ -1,7 +1,7 @@
 //! Bots answering teammates' radio commands (`bot::radio::obey`): a
 //! person's "Follow me" makes the nearest bot answer and follow them,
 //! "Hold this position" keeps bots near the caller's spot, all the same
-//! whatever the entity ids (`MASHUP_TEST_PAD`); on de_dust2, skipped
+//! whatever the entity ids (`CHIMERA_TEST_PAD`); on de_dust2, skipped
 //! without a CS:S install. Bots' own calls (`bot::radio::speak`): one
 //! leader call as a round opens, "Cover me" from a planting bot, the same
 //! calls whatever the entity ids, and no more than one call per team per
@@ -351,7 +351,7 @@ fn bot_game(t: usize, ct: usize, pad: usize, rounds: bool) -> (Sim, Vec<Entity>)
         sim.app
             .world_mut()
             .resource_mut::<Console>()
-            .submit("mp_freezetime 1; mp_roundtime 1.5; mashup_rounds 1");
+            .submit("mp_freezetime 1; mp_roundtime 1.5; chimera_rounds 1");
     }
     sim.ticks(2);
     (sim, bots)

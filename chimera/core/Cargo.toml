@@ -21,7 +21,7 @@ avian3d.workspace = true
 bevy.workspace = true
 postcard.workspace = true
 serde.workspace = true
-# `mount`: the VFS and KeyValues it re-exports, `mashup.local.toml`, the
+# `mount`: the VFS and KeyValues it re-exports, `chimera.local.toml`, the
 # user's settings and Steam libraries.
 source_formats.workspace = true
 dirs.workspace = true

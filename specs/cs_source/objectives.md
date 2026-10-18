@@ -542,7 +542,7 @@ the round):
 | hostage | every hostage still alive has been rescued (at least one rescued) | CT | "All hostages have been rescued!" | "All hostages rescued" |
 | bomb | round time out, no bomb planted | CT | "Target has been saved!" | "Bombing failed" |
 | hostage | round time out | T | "Hostages have not been rescued!" | "Rescue failed" |
-| neither | round time out | nothing: the round goes on (measured, Q5; ours on request with `mashup_untimed_win 1`: defenders) | – | – |
+| neither | round time out | nothing: the round goes on (measured, Q5; ours on request with `chimera_untimed_win 1`: defenders) | – | – |
 | any | both teams dead together | draw only with one side empty (Q15); with both sides present the deaths count one at a time and the side whose last player dies first loses (measured 2026-10-17: `sm_slay @all` on two Ts and two CTs in one frame gave the Ts the win, the last T dying after it; ours: a draw when both sides' last players die on the same tick) | "Round Draw!" | – |
 
 - After a plant, the round clock is ignored: the round lasts until the bomb

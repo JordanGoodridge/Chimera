@@ -78,7 +78,7 @@ fn server() -> NetSim {
         .app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 30; mp_roundtime 1; mashup_rounds 1; hostname Test Server");
+        .submit("mp_freezetime 30; mp_roundtime 1; chimera_rounds 1; hostname Test Server");
     sim.until_joined(600);
     sim.ticks(10);
     sim

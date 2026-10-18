@@ -1,7 +1,7 @@
 //! Dropping weapons (Source's `drop`, G in CS:S) and picking them up by
 //! walking over them. A dropped weapon keeps its entity (and so its ammo);
 //! a separate loose entity (`map::loose::LooseItem`) lies in the world
-//! and points back at it. With `mashup_usepickup 1`, +use on a loose
+//! and points back at it. With `chimera_usepickup 1`, +use on a loose
 //! weapon in view swaps it for the one in its slot (CS:GO's rule; CS:S
 //! has only the walk-over pickup).
 //!
@@ -13,8 +13,8 @@
 //! `cl_autowepswitch` userinfo is on, its `SwitchWeight` is above the one in
 //! hand's and attack isn't held), or only its ammo when the same type is
 //! carried (none with `SameTypeAmmo(false)`, CS:S's; `Undroppable`: the knife; `Verdict`: why one is or isn't taken,
-//! which `mashup_debug_pickup` prints; a drop is stamped on the tick's clock,
-//! `Time<Fixed>`, wherever it's asked from); with `mashup_usepickup 1`, a +use
+//! which `chimera_debug_pickup` prints; a drop is stamped on the tick's clock,
+//! `Time<Fixed>`, wherever it's asked from); with `chimera_usepickup 1`, a +use
 //! press on one looked at within `USE_REACH` swaps it for the weapon in its
 //! slot (`UsedPickup`); every weapon taken is told as `PickedUp`.
 //!
@@ -28,7 +28,7 @@
 //! `cl_autowepswitch 0` (no switch), and while holding attack with the knife.
 //! Why it's OK for now: Matches the option's words.
 //!
-//! Known shortcuts (docs/tech-debt.md): `mashup_usepickup` (CS:GO's +use
+//! Known shortcuts (docs/tech-debt.md): `chimera_usepickup` (CS:GO's +use
 //! pickup; no spec, CS:S has none): reach 100 units from the eye to the
 //! weapon's centre, the view line within its half size plus 12 units of the
 //! centre, the nearest by angle; same touch delay and line of sight as
@@ -115,7 +115,7 @@ pub const USE_REACH: f32 = 100.0 * 0.0254;
 /// half size and still take it (12 units; a guess).
 const USE_SLACK: f32 = 12.0 * 0.0254;
 
-/// `mashup_usepickup`: 1 lets +use take the loose weapon looked at
+/// `chimera_usepickup`: 1 lets +use take the loose weapon looked at
 /// (default 0: CS:S's walk-over pickup only).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct UsePickup(pub u8);
@@ -331,7 +331,7 @@ enum Touch {
 }
 
 /// Why a character does or doesn't take a loose weapon this tick (the
-/// walk-over rules in order; `mashup_debug_pickup` prints it).
+/// walk-over rules in order; `chimera_debug_pickup` prints it).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Verdict {
     /// Taken.
@@ -493,7 +493,7 @@ pub(super) fn pick_up(
     }
 }
 
-/// `mashup_debug_pickup`: 1 prints, for the local player, why the nearest
+/// `chimera_debug_pickup`: 1 prints, for the local player, why the nearest
 /// loose weapon (within `DEBUG_RANGE` of the touch box) is or isn't
 /// taken, each time that changes; 2 for every character (a server's
 /// remote players and bots too). Pickups are the server's: on a network
@@ -511,7 +511,7 @@ const DEBUG_RANGE: f32 = 3.0;
 #[derive(Resource, Default)]
 pub(super) struct DebugPickupSeen(std::collections::HashMap<Entity, (Option<Entity>, Option<Entity>, &'static str)>);
 
-/// The `mashup_debug_pickup` readout: one line per character each time
+/// The `chimera_debug_pickup` readout: one line per character each time
 /// its nearest loose weapon or the reason changes, and when it takes one.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn debug_pickups(
@@ -623,7 +623,7 @@ pub fn use_target(eye: Vec3, aim: Vec3, items: impl Iterator<Item = (Entity, Vec
     best.map(|(_, e)| e)
 }
 
-/// +use on a loose weapon (`mashup_usepickup 1`; CS:GO's rule, CS:S has
+/// +use on a loose weapon (`chimera_usepickup 1`; CS:GO's rule, CS:S has
 /// none): on the press, the weapon looked at (`use_target`), touchable
 /// (1 s after its drop), seen from the eye and allowed to the team, is
 /// taken; whatever the character carries in its slot (the held one if it

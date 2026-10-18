@@ -1,8 +1,9 @@
-# Optional. Copy to mashup.local.toml (gitignored) and edit. Machine-specific
+# Optional. Copy to chimera.local.toml (gitignored) and edit. Machine-specific
 # settings that must never be committed: install paths, Combat Arms keys.
+# (An old mashup.local.toml is still read when there is no chimera.local.toml.)
 #
 # The game finds the CS:S install by itself: the path saved by its first-run
-# dialog or `mashup_install <folder>` (in the user's settings.toml, beside
+# dialog or `chimera_install <folder>` (in the user's settings.toml, beside
 # the cfg folder), else Steam's library folders. A path here always wins
 # over both. The startup log says which install is used and how it was
 # found.

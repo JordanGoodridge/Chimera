@@ -1,6 +1,6 @@
 //! The faithful Counter-Strike: Source app's glue (apps/cs_source, crate
 //! `cs_source_app`): what composes Chimera, Source's logic and CS:S into
-//! the game (the `mashup` binary, `main.rs`), the dedicated server
+//! the game (the `cs_source` binary, `main.rs`), the dedicated server
 //! (apps/cs_source_server), the tools that drive the simulation, and its
 //! own integration tests (tests/it/: what only the app has, its build's
 //! version). `mashup`, the repository root, re-exports this crate at the
@@ -38,7 +38,7 @@ pub use cs_source::swap_map;
 
 // The engine's stable base (chimera/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
-pub use chimera_core::{character, console, game_log, game_registry, metrics, mount, slots};
+pub use chimera_core::{character, console, env, game_log, game_registry, metrics, mount, slots};
 
 /// The engine's map (chimera/world, crate `chimera_world`) at its old path,
 /// with `MapPlugin` (chimera/present's `map_plugin`: map's registration

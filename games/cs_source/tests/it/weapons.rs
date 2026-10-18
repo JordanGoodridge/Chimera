@@ -904,7 +904,7 @@ fn the_dead_drop_weapons_only_in_rounds_and_draw_nothing() {
             sim.app
                 .world_mut()
                 .resource_mut::<crate::stack::console::Console>()
-                .submit("mp_freezetime 0; mashup_rounds 1");
+                .submit("mp_freezetime 0; chimera_rounds 1");
         }
         sim.ticks(4);
         assert_eq!(sim.app.world().resource::<DeathDrops>().0, rounds);
@@ -960,7 +960,7 @@ fn the_dead_drop_their_best_gun_and_best_grenade() {
         sim.app
             .world_mut()
             .resource_mut::<crate::stack::console::Console>()
-            .submit("mp_freezetime 0; mashup_rounds 1");
+            .submit("mp_freezetime 0; chimera_rounds 1");
         sim.ticks(4);
         // Rounds start with the pistol and the knife: and a rifle.
         assert!(give_item(sim.app.world_mut(), p, "weapon_ak47", 1));
@@ -1101,7 +1101,7 @@ fn dropped_weapons_are_touched_in_the_grown_box_after_the_delay() {
     let _ = sim.app.world().get::<Loose>(loose).unwrap();
 }
 
-/// `mashup_usepickup 1` (CS:GO's +use pickup; off by default as CS:S has
+/// `chimera_usepickup 1` (CS:GO's +use pickup; off by default as CS:S has
 /// none): a press of +use on a dropped gun looked at from beyond the touch
 /// box swaps it for the one in its slot, which is dropped; holding the key
 /// takes nothing more, and with the cvar at 0 the key does nothing.
@@ -1139,7 +1139,7 @@ fn use_pickup_swaps_the_gun_looked_at_when_enabled() {
     sim.app
         .world_mut()
         .resource_mut::<crate::stack::console::Console>()
-        .submit("mashup_usepickup 1");
+        .submit("chimera_usepickup 1");
     sim.ticks(1);
     assert_eq!(sim.app.world().resource::<UsePickup>().0, 1);
     // Looking away: nothing.
@@ -1272,7 +1272,7 @@ fn a_dropped_gun_is_walked_over_and_taken_again() {
 }
 
 /// CS:S takes a gun touched only into an empty slot: with another
-/// primary carried the dropped one stays (and `mashup_debug_pickup 1`
+/// primary carried the dropped one stays (and `chimera_debug_pickup 1`
 /// says why); dropping that one lets it be taken. The readout also says
 /// when it is too soon, and when it is taken.
 #[test]
@@ -1286,7 +1286,7 @@ fn a_full_slot_refuses_a_gun_and_the_debug_readout_says_why() {
     sim.app
         .world_mut()
         .resource_mut::<crate::stack::console::Console>()
-        .submit("mashup_debug_pickup 1");
+        .submit("chimera_debug_pickup 1");
     let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
     sim.app
         .world_mut()

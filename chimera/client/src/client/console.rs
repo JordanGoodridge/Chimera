@@ -20,10 +20,10 @@
 //! grab the mouse while open), binds with `+`/`-` actions (F1 and F2
 //! vote while a vote waits for ours: `VOTE_KEYS`), log mirroring,
 //! overlays (cl_showpos, cl_showfps, snd_show, watch), client commands (noclip,
-//! god, getpos/setpos/setang, kill, `mashup_hurtme` (a bullet hit on yourself
+//! god, getpos/setpos/setang, kill, `chimera_hurtme` (a bullet hit on yourself
 //! at a hitbox), map (in place, `map::change_map`; `map greybox` puts the
 //! greybox back, `load_greybox`), disconnect (the greybox, then the main menu),
-//! toggleconsole, quit), `developer 1` notify lines, the `mashup/console`
+//! toggleconsole, quit), `developer 1` notify lines, the `chimera/console`
 //! remote method.
 
 use std::{
@@ -421,7 +421,7 @@ fn candidates(world: &mut World, input: &str) -> (String, Vec<(String, String)>)
                 out.push(("1".into(), "terrorists".into()));
                 out.push(("2".into(), "counter-terrorists".into()));
             }
-            "mashup_hurtme" if arg == 0 => out.extend(plain(&[
+            "chimera_hurtme" if arg == 0 => out.extend(plain(&[
                 "head", "chest", "stomach", "leftarm", "rightarm", "leftleg", "rightleg", "generic",
             ])),
             "menu" if arg == 0 => out.extend(plain(&[
@@ -448,7 +448,7 @@ fn candidates(world: &mut World, input: &str) -> (String, Vec<(String, String)>)
                     out.extend(r.0.iter().map(|d| (d.id.to_string(), String::new())));
                 }
             }
-            "mashup_watch" if arg == 0 => {
+            "chimera_watch" if arg == 0 => {
                 out.push(("0".into(), "back to your own view".into()));
                 out.extend(bot_names(world).into_iter().filter_map(|n| {
                     let number = n.strip_prefix("Bot ")?.to_string();
@@ -1758,7 +1758,7 @@ pub fn forget_map_names() {
 }
 
 /// Every map `game` (the default game: `game_registry`) can load: the
-/// install's, its downloads and mashup's cache (cached; `import` refreshes
+/// install's, its downloads and Chimera's cache (cached; `import` refreshes
 /// it). None without a game.
 pub fn map_names(game: Option<&'static GameInfo>) -> Vec<String> {
     let Some(game) = game else { return Vec::new() };
@@ -1824,7 +1824,7 @@ fn follow_map_cycle(
 }
 
 /// Where a map of `game`'s comes from: the game's own content, its
-/// download folder, or mashup's cache.
+/// download folder, or Chimera's cache.
 fn map_source(game: &GameInfo, name: &str) -> &'static str {
     let file = format!("maps/{name}.bsp");
     let in_dir = |dir: Option<std::path::PathBuf>| dir.is_some_and(|d| d.join(&file).is_file());
@@ -2011,7 +2011,7 @@ pub fn load_greybox(w: &mut World) {
 pub const GREYBOX: &str = "greybox";
 
 /// What `map <name>` and `changelevel <name>` load: None for the greybox
-/// (`greybox`, `mashup:greybox`), else the map's id and whether to check
+/// (`greybox`, `chimera:greybox`), else the map's id and whether to check
 /// it against the install's list. A map of the default game (`game`) by
 /// its name (`de_dust2`) or its id (`cs_source:de_dust2`, as the command
 /// line and `--map` take it); another game's id as given (a bare name
@@ -2132,8 +2132,8 @@ pub fn client_commands(app: &mut App) {
         Ok(None)
     })
     .console_command(
-        "mashup_hurtme",
-        "mashup_hurtme <head|chest|stomach|leftarm|rightarm|leftleg|rightleg|generic> [amount=100] [from yaw, degrees: 0 = shot from the front] [attacker name]: a bullet hit on yourself at that hitbox (e.g. to see your ragdoll in thirdperson; killed by a named player, its death cam and freeze cam).",
+        "chimera_hurtme",
+        "chimera_hurtme <head|chest|stomach|leftarm|rightarm|leftleg|rightleg|generic> [amount=100] [from yaw, degrees: 0 = shot from the front] [attacker name]: a bullet hit on yourself at that hitbox (e.g. to see your ragdoll in thirdperson; killed by a named player, its death cam and freeze cam).",
         |w, a| {
             use crate::core::{Damage, DamageKind, Health, Hitboxes, Hitgroup, Intent};
             let group = match a.first().map(|s| s.to_ascii_lowercase()).as_deref() {
@@ -2145,7 +2145,7 @@ pub fn client_commands(app: &mut App) {
                 Some("leftleg") => Hitgroup::LeftLeg,
                 Some("rightleg") => Hitgroup::RightLeg,
                 Some("generic") => Hitgroup::Generic,
-                _ => return Err("mashup_hurtme <hitgroup> [amount] [from yaw] [attacker]".into()),
+                _ => return Err("chimera_hurtme <hitgroup> [amount] [from yaw] [attacker]".into()),
             };
             let attacker = match a.get(3) {
                 Some(name) => {
@@ -2219,7 +2219,7 @@ pub fn client_commands(app: &mut App) {
     )
     .console_command(
         "import",
-        "import <file.bsp|file.bsp.bz2>: copy a map into mashup's content cache (never the game folder).",
+        "import <file.bsp|file.bsp.bz2>: copy a map into Chimera's content cache (never the game folder).",
         |w, a| {
             let path = a.join(" ");
             if path.is_empty() {
@@ -2233,7 +2233,7 @@ pub fn client_commands(app: &mut App) {
     )
     .console_command(
         "map",
-        "map <name>: load a map of the game (Tab lists the install's maps); map greybox: mashup's test map. \
+        "map <name>: load a map of the game (Tab lists the install's maps); map greybox: Chimera's test map. \
          Hosting, it takes the players along (as changelevel); on a client, it leaves the server first.",
         |w, a| {
             let name = a.first().ok_or("map <name>")?.clone();
@@ -2380,7 +2380,7 @@ pub fn client_commands(app: &mut App) {
     );
 }
 
-/// Remote protocol method `mashup/console`: params `{"line": "..."}` runs
+/// Remote protocol method `chimera/console` (and its old name, `mashup/console`): params `{"line": "..."}` runs
 /// the line now and returns the output lines it printed.
 #[cfg(feature = "dev")]
 pub fn remote_exec(
@@ -2650,10 +2650,10 @@ mod tests {
         let w = app.world_mut();
         let (_, teams) = candidates(w, "jointeam ");
         assert_eq!(teams.iter().map(|t| t.0.as_str()).collect::<Vec<_>>(), ["1", "2", "3"]);
-        let (_, hits) = candidates(w, "mashup_hurtme he");
+        let (_, hits) = candidates(w, "chimera_hurtme he");
         assert_eq!(hits[0].0, "head");
         // After the hitgroup, no more hitgroups.
-        let (_, after) = candidates(w, "mashup_hurtme head ");
+        let (_, after) = candidates(w, "chimera_hurtme head ");
         assert!(after.iter().all(|a| a.0 != "chest"));
         let (head, tabs) = candidates(w, "echo x; debugui pe");
         assert_eq!((head.as_str(), tabs[0].0.as_str()), ("echo x; debugui ", "perf"));

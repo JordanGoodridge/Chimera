@@ -11,7 +11,7 @@
 //!   Rotation, Show Names, Show Health, Show Tracks; Overview: No / Small /
 //!   Large Map, Zoom In / Out; Auto Director; Show Scores), a submenu
 //!   opening beside its entry, a toggle ticked while its cvar is 1;
-//!   entries mashup can't do (no such command or cvar: the auto director)
+//!   entries Chimera can't do (no such command or cvar: the auto director)
 //!   greyed, and the overview's without a map overview.
 //! - The players who may be watched (`playercombo`), the watched one shown;
 //!   `specprev` / `specnext` step through them.
@@ -27,7 +27,7 @@
 //! bottom bar from the install's `bottomspectator.res`, drawn with the shared
 //! widgets (`widgets.rs`): three drop-downs opening upward (Options: the
 //! install's `spectatormenu.res` entries (`GameMenus::spectator_options`) with
-//! cascading submenus, toggles ticked from their cvars, what mashup lacks
+//! cascading submenus, toggles ticked from their cvars, what Chimera lacks
 //! greyed (the auto director; the overview's without a map overview); the
 //! watchable players, the watched one shown as "name (health)"; the camera:
 //! `spectatormodes.res`), `<` `>` stepping the target; `togglescores`;

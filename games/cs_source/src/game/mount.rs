@@ -40,7 +40,7 @@ pub fn open(install: &Path) -> io::Result<Mount> {
         }
     }
     // Maps and content fetched from servers (the game's own download
-    // folder, read-only) and mashup's cache, last: they never replace the
+    // folder, read-only) and Chimera's cache, last: they never replace the
     // game's own files.
     mount.push(LooseDir::new(cstrike.join("download")).hiding(&["vpk"]));
     if let Some(cache) = crate::mount::config::content_dir(super::GAME) {
@@ -49,7 +49,7 @@ pub fn open(install: &Path) -> io::Result<Mount> {
     Ok(mount)
 }
 
-/// Copy a map (`.bsp`, or `.bsp.bz2` as servers send them) into mashup's
+/// Copy a map (`.bsp`, or `.bsp.bz2` as servers send them) into Chimera's
 /// content cache as `maps/<name>.bsp`, and note it in `index.toml` (size,
 /// FNV-1a 64 hash, where it came from). Returns the map's name.
 pub fn import_map(file: &Path) -> Result<String, String> {
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn imports_plain_and_bzip2_maps() {
-        let dir = std::env::temp_dir().join(format!("mashup-import-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chimera-import-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let bsp = [b"VBSP".as_slice(), &[20, 0, 0, 0], &[7u8; 64]].concat();

@@ -12,8 +12,8 @@ const CVARS: [(&str, &str); 17] = [
     ("cl_showfps", "0"),
     ("mat_vsync", "1"),
     ("mat_antialias", "4"),
-    ("mashup_resolution", ""),
-    ("mashup_rounds", "1"),
+    ("chimera_resolution", ""),
+    ("chimera_rounds", "1"),
     ("bot_reaction", "0.35"),
     ("hud_fastswitch", "0"),
     ("con_enable", "1"),
@@ -335,7 +335,7 @@ fn create_server_starts_a_map_from_the_main_menu() {
     assert_eq!(m.entries()[m.focus].item, MainItem::Resume);
 }
 
-/// `mashup_quickstart` (no menu entry: CS:S's menus have none).
+/// `chimera_quickstart` (no menu entry: CS:S's menus have none).
 #[test]
 fn quick_start() {
     let mut m = main_menu();
@@ -343,7 +343,7 @@ fn quick_start() {
     m.quick_start(&mut o);
     assert_eq!(
         o.lines,
-        ["bot_kick", "mashup_rounds 1", "bot_reaction 0.35", "bot_aim_error 2.5", "bot_turn_rate 360", "map de_dust2"]
+        ["bot_kick", "chimera_rounds 1", "bot_reaction 0.35", "bot_aim_error 2.5", "bot_turn_rate 360", "map de_dust2"]
     );
     assert_eq!(o.after_load.len(), QUICK_BOTS as usize);
     assert_eq!(o.after_load.iter().filter(|l| *l == "bot_add 1").count(), 5, "five terrorists, four CTs");
@@ -711,7 +711,7 @@ fn create_server_by_its_controls() {
         o.lines,
         [
             "bot_kick",
-            "mashup_rounds 1",
+            "chimera_rounds 1",
             "mp_friendlyfire 1",
             "maxplayers 32",
             "bot_reaction 0.2",
@@ -816,11 +816,11 @@ fn video_options_and_its_advanced_dialog() {
     press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
     assert_eq!(m.tab, Tab::Video);
     // The resolution's drop-down lists the window sizes.
-    let res = row_of(&m, "mashup_resolution");
+    let res = row_of(&m, "chimera_resolution");
     press(&mut m, &[Input::Click(Target::Row(res), 0)]);
     assert_eq!(m.combo.map(|c| c.len), Some(2));
     let o = press(&mut m, &[Input::Click(Target::ComboItem(1), 0)]);
-    assert_eq!(o.lines, ["mashup_resolution 1280x720"]);
+    assert_eq!(o.lines, ["chimera_resolution 1280x720"]);
     // Advanced...: vsync as a drop-down, antialiasing; Cancel puts them
     // back, the options stay open.
     let adv = button(&m, Action::VideoAdvanced);
@@ -1030,7 +1030,7 @@ fn a_click_on_an_open_drop_downs_box_closes_it() {
     m.resolutions = vec!["1920x1080".into(), "1280x720".into()];
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
-    let mode = row_of(&m, "mashup_resolution");
+    let mode = row_of(&m, "chimera_resolution");
     press(&mut m, &[Input::Click(Target::Row(mode), 0)]);
     assert_eq!(m.combo.map(|c| c.owner), Some(mode));
     let o = press(&mut m, &[Input::Click(Target::Row(mode), 0)]);
@@ -1048,7 +1048,7 @@ fn a_click_on_an_open_drop_downs_box_closes_it() {
 #[test]
 fn the_video_tab_shows_the_window_as_it_is() {
     let mut values: HashMap<String, String> =
-        CVARS.iter().map(|(k, v)| (k.to_string(), v.to_string())).chain([("mashup_fullscreen".into(), "0".into())]).collect();
+        CVARS.iter().map(|(k, v)| (k.to_string(), v.to_string())).chain([("chimera_fullscreen".into(), "0".into())]).collect();
     let monitor = [(UVec2::new(1920, 1080), vec![UVec2::new(1920, 1080), UVec2::new(1280, 720)])];
     let window = UVec2::new(1600, 900);
     window_values(&mut values, Some(window), Some(2));
@@ -1060,26 +1060,26 @@ fn the_video_tab_shows_the_window_as_it_is() {
     m.open(Page::Main, vec!["de_dust2".into()], None, |n| values.get(n).cloned());
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
-    let res = row_of(&m, "mashup_resolution");
+    let res = row_of(&m, "chimera_resolution");
     let Control::Combo { entries, selected, text } = control(&m, res) else { panic!() };
     assert_eq!(entries, ["1920x1080", "1600x900", "1280x720"]);
     assert_eq!((selected, text.as_str()), (Some(1), "1600x900"));
-    let mode = row_of(&m, "mashup_fullscreen");
+    let mode = row_of(&m, "chimera_fullscreen");
     let Control::Combo { entries, selected, text } = control(&m, mode) else { panic!() };
     assert_eq!(entries, ["Fullscreen", "Windowed", "Borderless fullscreen"]);
     assert_eq!((selected, text.as_str()), (Some(2), "Borderless fullscreen"));
     // Each entry: exactly its mode.
     for (k, value) in [(1, "0"), (0, "1"), (2, "2")] {
         let o = press(&mut m, &[Input::Click(Target::Row(mode), 0), Input::Click(Target::ComboItem(k), 0)]);
-        assert_eq!(o.lines, [format!("mashup_fullscreen {value}")]);
+        assert_eq!(o.lines, [format!("chimera_fullscreen {value}")]);
     }
     press(&mut m, &[Input::Click(Target::Row(mode), 0), Input::Click(Target::ComboItem(1), 0)]);
     let o = click_on(&mut m, |m| button(m, Action::Cancel));
-    assert_eq!(o.lines, ["mashup_fullscreen 2"], "back to the mode it was");
+    assert_eq!(o.lines, ["chimera_fullscreen 2"], "back to the mode it was");
     // No window (headless): the cvar as it is.
-    let mut values = HashMap::from([("mashup_resolution".to_string(), String::new())]);
+    let mut values = HashMap::from([("chimera_resolution".to_string(), String::new())]);
     window_values(&mut values, None, None);
-    assert_eq!(values["mashup_resolution"], "");
+    assert_eq!(values["chimera_resolution"], "");
 }
 
 #[test]
@@ -1165,7 +1165,7 @@ fn the_install_menu_file_hides_its_gap_out_of_a_game() {
     assert_eq!(e[2].item, MainItem::PlayerList);
     assert_eq!(e[3].item, MainItem::FindServers);
     assert!(e[3].gap);
-    assert!(!e.iter().any(|e| e.label == "ACHIEVEMENTS"), "what mashup lacks is left out");
+    assert!(!e.iter().any(|e| e.label == "ACHIEVEMENTS"), "what Chimera lacks is left out");
 }
 
 #[test]
@@ -1417,25 +1417,25 @@ fn the_aspect_ratio_filters_the_resolutions() {
         in_game: true,
         ..default()
     };
-    let res = |n: &str| if n == "mashup_resolution" { Some("1920x1080".to_string()) } else { get(n) };
+    let res = |n: &str| if n == "chimera_resolution" { Some("1920x1080".to_string()) } else { get(n) };
     m.resolutions = vec!["1920x1080".into(), "1680x1050".into(), "1280x1024".into(), "1280x720".into(), "1024x768".into()];
     m.open(Page::Main, vec!["de_dust2".into()], None, res);
     assert_eq!(m.aspect, Some(1), "16:9 from the size now");
     click(&mut m, MainItem::Options);
     press(&mut m, &[Input::Click(Target::Tab(3), 0)]);
-    let r = row_of(&m, "mashup_resolution");
+    let r = row_of(&m, "chimera_resolution");
     assert!(matches!(control(&m, r), Control::Combo { entries, .. } if entries == ["1920x1080", "1280x720"]));
     // Normal (4:3, 5:4): its sizes, and the size goes to its largest.
     let a = row_with(&m, Field::Aspect);
     let o = press(&mut m, &[Input::Click(Target::Row(a), 0), Input::Click(Target::ComboItem(0), 0)]);
-    assert_eq!(o.lines, ["mashup_resolution 1280x1024"]);
-    let r = row_of(&m, "mashup_resolution");
+    assert_eq!(o.lines, ["chimera_resolution 1280x1024"]);
+    let r = row_of(&m, "chimera_resolution");
     assert!(matches!(control(&m, r), Control::Combo { entries, .. } if entries == ["1280x1024", "1024x768"]));
     assert_eq!(aspect_of("1680x1050"), Some(2));
 }
 
 /// Multiplayer > Advanced from a script like the install's
-/// `cfg/user.scr`: the cvars mashup has as controls, the rest greyed.
+/// `cfg/user.scr`: the cvars Chimera has as controls, the rest greyed.
 fn advanced_menu() -> GameMenu {
     let list = |pairs: &[(&str, &str)]| ServerSettingKind::List(pairs.iter().map(|(l, v)| (l.to_string(), v.to_string())).collect());
     let ui = GameUi {
@@ -1499,7 +1499,7 @@ fn multiplayer_advanced_lists_the_scripts_options() {
     let rows = m.rows();
     let labels: Vec<String> = rows.iter().map(crate::ui::game_menu::label_of).collect();
     assert_eq!(labels, ["Decal limit", "Weapon alignment", "Clan Tag", "Defuse progress bar", "Auto-help", "OK", "Cancel"]);
-    // Ours as controls with their values now; mashup lacks the clan tag
+    // Ours as controls with their values now; Chimera lacks the clan tag
     // and auto-help: greyed, showing the script's defaults, not focused.
     assert_eq!(control(&m, 0), Control::Text { text: "200".into(), numeric: true, max: 8 });
     assert!(matches!(control(&m, 1), Control::Combo { text, .. } if text == "Right handed"));
@@ -1646,7 +1646,7 @@ fn av_menu() -> GameMenu {
         "snd_pitchquality" => Some("1".to_string()),
         "dsp_slow_cpu" => Some("0".to_string()),
         "closecaption" | "cc_subtitles" => Some("0".to_string()),
-        "mashup_spoken_language" => Some("english".to_string()),
+        "chimera_spoken_language" => Some("english".to_string()),
         "mat_picmip" => Some("0".to_string()),
         "mat_trilinear" => Some("0".to_string()),
         "mat_forceaniso" => Some("1".to_string()),
@@ -1685,7 +1685,7 @@ fn the_audio_tabs_drop_downs_have_their_entries() {
             Some(0)
         )
     );
-    assert_eq!(entries(&m, "mashup_spoken_language"), (vec!["English".to_string()], Some(0)));
+    assert_eq!(entries(&m, "chimera_spoken_language"), (vec!["English".to_string()], Some(0)));
     let speakers = row_of(&m, "snd_surround_speakers");
     let o = press(&mut m, &[Input::Click(Target::Row(speakers), 0), Input::Click(Target::ComboItem(0), 0)]);
     assert_eq!(o.lines, ["snd_surround_speakers 0"], "headphones");

@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn files_in_lists_one_folder_of_every_layer() {
-        let root = std::env::temp_dir().join(format!("mashup_files_in_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("chimera_files_in_{}", std::process::id()));
         let logos = root.join("Materials").join("VGUI").join("logos");
         fs::create_dir_all(logos.join("ui")).unwrap();
         fs::write(logos.join("Spray_A.vtf"), b"a").unwrap();

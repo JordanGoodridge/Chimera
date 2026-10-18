@@ -1,13 +1,13 @@
 //! Player-facing view settings and debug views: the third-person camera
 //! (`thirdperson` / `firstperson`, `cam_idealdist`) and health bars over
-//! characters (`mashup_healthbars`). (The master `volume` is
+//! characters (`chimera_healthbars`). (The master `volume` is
 //! `client::audio`'s.)
 //!
 //! Third-person camera (`thirdperson`/`firstperson`, `cam_idealdist`,
-//! `cam_idealyaw` orbit, `mashup_freecam` detached camera, `mashup_watch` chase
+//! `cam_idealyaw` orbit, `chimera_freecam` detached camera, `chimera_watch` chase
 //! camera on a bot, turning about the eye as CS:S's camera does and swept back
 //! from it against the world; spectating while dead (`spectate`) comes before
-//! these), `mashup_healthbars`.
+//! these), `chimera_healthbars`.
 //!
 //! Known shortcuts (docs/tech-debt.md): The third-person camera turns about the
 //! eye, `cam_idealdist` straight back along the view (CS:S's `getpos` at
@@ -70,7 +70,7 @@ impl Default for CameraMode {
     }
 }
 
-/// A camera detached from the local player (`mashup_freecam`), to watch
+/// A camera detached from the local player (`chimera_freecam`), to watch
 /// your own body (or bots) from outside: 1 flies it (WASD, mouse, space
 /// and ctrl for up and down, shift for speed) while the player stands
 /// still; 2 leaves it where it is and gives the controls back to the
@@ -99,7 +99,7 @@ impl FreeCam {
     }
 }
 
-/// Watch another character from behind (`mashup_watch <n>`: bot n, 0
+/// Watch another character from behind (`chimera_watch <n>`: bot n, 0
 /// off), at `cam_idealdist` and `cam_idealyaw`, like a spectator's chase
 /// camera; your own player keeps its controls.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
@@ -143,13 +143,13 @@ fn view_console(app: &mut App) {
     );
     resource_cvar::<Watch, u32>(
         app,
-        "mashup_watch",
+        "chimera_watch",
         "Chase camera on bot n (\"Bot n\"), behind it at cam_idealdist/cam_idealyaw; 0 back to you.",
         |w| &mut w.0,
     );
     resource_cvar::<FreeCam, u8>(
         app,
-        "mashup_freecam",
+        "chimera_freecam",
         "Detached camera: 1 fly it (player stands still), 2 keep it there and control the player, 0 back to the eye.",
         |f| &mut f.mode,
     );
@@ -161,7 +161,7 @@ fn view_console(app: &mut App) {
     );
     resource_cvar::<HealthBars, u8>(
         app,
-        "mashup_healthbars",
+        "chimera_healthbars",
         "1: health bars above other living characters.",
         |h| &mut h.0,
     );
@@ -302,7 +302,7 @@ const BAR_HEIGHT: f32 = 7.0;
 /// Meters above the character's origin (its centre).
 const BAR_ABOVE: f32 = crate::character::CAPSULE_HEIGHT / 2.0 + 0.25;
 
-/// `mashup_healthbars 1`: a bar over each living character other than the
+/// `chimera_healthbars 1`: a bar over each living character other than the
 /// local player, green when full, red when nearly dead.
 #[allow(clippy::type_complexity)]
 fn draw_health_bars(

@@ -1,9 +1,9 @@
-//! Dev tool: compare mashup's Source movement with real CS:S, tick for tick.
+//! Dev tool: compare Chimera's Source movement with real CS:S, tick for tick.
 //!
 //! Each scenario is a start state plus per-tick inputs (buttons, move
 //! amounts, view angles). The real game plays them on a bot through the
 //! tools/css_probe SourceMod plugin on a local CS:S dedicated server and
-//! logs the bot after every tick; mashup plays the same inputs from the
+//! logs the bot after every tick; Chimera plays the same inputs from the
 //! same state (the game's tick 0) on the same map. The report lists, per
 //! scenario, the largest position and velocity differences and the first
 //! tick where they diverge. See docs/OBSERVABILITY.md.
@@ -16,7 +16,7 @@
 //! `movecmp brushes <map> <x> <y> <z> [radius]` lists the collision brushes
 //! near a point, for finding what a diverging run's trace hit.
 //!
-//! The server comes from `[games.cs_source_server]` in mashup.local.toml.
+//! The server comes from `[games.cs_source_server]` in chimera.local.toml.
 
 
 use std::{
@@ -499,7 +499,7 @@ fn run(args: &Args) -> Result<bool, String> {
     let config = LocalConfig::load()?;
     let server = config
         .game_path("cs_source_server")
-        .ok_or("no [games.cs_source_server] path in mashup.local.toml (see mashup.local.example.toml)")?;
+        .ok_or("no [games.cs_source_server] path in chimera.local.toml (see chimera.local.example.toml)")?;
     let out_dir = default_dump_dir("movecmp").ok_or("no data dir")?;
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
 
@@ -931,7 +931,7 @@ fn parse_row(line: &str) -> Option<State> {
     })
 }
 
-// ------------------------------------------------------------- mashup side
+// ------------------------------------------------------------- Chimera side
 
 /// How far a CS:S bot's own duck on its jump tick lifts its feet (measured:
 /// 8.5 units in every jump scenario; see run_ours). The report compares

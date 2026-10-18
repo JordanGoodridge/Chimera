@@ -1,6 +1,6 @@
 //! The main menu: the left-hand entries (the game's `GameMenu.res`, none
 //! of ours) and what each does. What our entries used to open is in the
-//! console: `mashup_quickstart`, `map greybox`, `menu bots`, `menu team`,
+//! console: `chimera_quickstart`, `map greybox`, `menu bots`, `menu team`,
 //! `callvote`, `menu extras`, `toggleconsole` (`~`).
 
 use super::*;
@@ -35,7 +35,7 @@ pub const MAIN: [(MainItem, &str, bool); 8] = [
     (MainItem::Quit, "Quit", false),
 ];
 
-/// The map a quick start (`mashup_quickstart`) plays (rounds, `QUICK_BOTS` normal bots: five
+/// The map a quick start (`chimera_quickstart`) plays (rounds, `QUICK_BOTS` normal bots: five
 /// terrorists and four counter-terrorists besides you); the first map
 /// when the install lacks it.
 pub const QUICK_MAP: &str = "de_dust2";
@@ -79,8 +79,8 @@ impl MainEntry {
 }
 
 /// Every left-hand entry, shown or not: the game's (`GameMenu.res`) that
-/// mashup has, in its order and words (built-in ones in CS:S's order
-/// without the file); none of ours. Entries mashup can't do
+/// Chimera has, in its order and words (built-in ones in CS:S's order
+/// without the file); none of ours. Entries Chimera can't do
 /// (achievements, benchmark ...) are left out. `GameMenu::entries`
 /// picks those shown in or out of a game.
 pub fn main_entries(ui: Option<&GameUi>) -> Vec<MainEntry> {
@@ -176,7 +176,7 @@ pub(super) fn main_list(
     // The title over the entries: the game's lines, bottom one last.
     let lines: Vec<String> = match menu.ui.0.as_ref().filter(|u| !u.title.is_empty()) {
         Some(ui) => ui.title.clone(),
-        None => vec!["MASHUP".into()],
+        None => vec!["CHIMERA".into()],
     };
     let (title_text, line_h) = match title_font {
         Some((handle, tall, line_per_em)) => (

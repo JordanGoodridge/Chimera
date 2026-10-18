@@ -17,8 +17,8 @@ gcc -shared -fPIC -O2 -o librdtrigger.so tools/renderdoc/rdtrigger.c -ldl -lpthr
 cd ~/games/counter-strike-source      # a path without spaces
 SDL_VIDEODRIVER=x11 DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1000 \
 SteamAppId=240 SteamGameId=240 LD_LIBRARY_PATH="$PWD/bin/linux64" \
-ENABLE_VULKAN_RENDERDOC_CAPTURE=1 MASHUP_RDC_TEMPLATE=/tmp/rdc/css \
-MASHUP_RDC_TRIGGER=/tmp/rdc/TRIGGER LD_PRELOAD=/path/to/librdtrigger.so \
+ENABLE_VULKAN_RENDERDOC_CAPTURE=1 CHIMERA_RDC_TEMPLATE=/tmp/rdc/css \
+CHIMERA_RDC_TRIGGER=/tmp/rdc/TRIGGER LD_PRELOAD=/path/to/librdtrigger.so \
 ./cstrike_linux64 -game cstrike -steam -novid -windowed -w 1280 -h 720 \
   -usercon +ip 127.0.0.1 +rcon_password mashup-refcmp +map de_dust2
 # position a view (refcmp capture-ref --only <view> --keep-running reuses it)

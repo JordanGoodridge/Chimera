@@ -6,7 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
-default-run = "mashup"
+default-run = "cs_source"
 
 # No doc tests (none written): skips a rustdoc pass on every test run.
 [lib]
@@ -20,7 +20,8 @@ doctest = false
 # the presentation the client (`client`: the shell with this app's hooks
 # and CS:S's HUD) and the game binary. Above it: the dedicated server
 # (apps/cs_source_server), the tools that drive this simulation
-# (games/cs_source/tools) and `mashup` (the repository root: `dump`).
+# (games/cs_source/tools) and `mashup` (the repository root's package:
+# `dump`).
 [dependencies]
 source_formats.workspace = true
 chimera_core.workspace = true
@@ -45,11 +46,14 @@ path = "tests/it/main.rs"
 required-features = ["present"]
 
 # The game: its window, the presentation, the client shell and CS:S's
-# front end (`--no-default-features` leaves them out).
+# front end (`--no-default-features` leaves them out). Named after the
+# game; `doc = false`: its docs would land where the `cs_source` library's
+# do.
 [[bin]]
-name = "mashup"
+name = "cs_source"
 path = "src/main.rs"
 test = false
+doc = false
 required-features = ["present"]
 
 [features]

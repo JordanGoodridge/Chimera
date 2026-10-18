@@ -318,7 +318,7 @@ fn thruster_pushes_a_physbox() {
             ("classname", "func_physbox"),
             ("targetname", "box"),
             ("origin", "0 0 600"),
-            ("mashup_prop_mass", "50"),
+            ("chimera_prop_mass", "50"),
         ])
     };
     let thruster = entity(&[

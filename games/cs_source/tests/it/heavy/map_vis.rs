@@ -3,7 +3,7 @@
 //! that is potentially visible, so culling never hides something the
 //! camera could see. Skipped without an install.
 //!
-//! `MASHUP_VIS_FULL=1` checks every nav area and more rays (slow).
+//! `CHIMERA_VIS_FULL=1` checks every nav area and more rays (slow).
 
 use bevy::prelude::*;
 use ::cs_source::game as cs_source;
@@ -186,7 +186,7 @@ fn eyes(map: &MapData, full: bool) -> Vec<Vec3> {
 
 fn check(name: &str) {
     let Some(map) = load(name) else { return };
-    let full = std::env::var("MASHUP_VIS_FULL").is_ok_and(|v| v == "1");
+    let full = chimera_core::env::var("CHIMERA_VIS_FULL").is_ok_and(|v| v == "1");
     let vis: &MapVisibility = map.visibility.as_deref().expect("map has visibility data");
     assert!(vis.cluster_count > 10, "{} clusters", vis.cluster_count);
 

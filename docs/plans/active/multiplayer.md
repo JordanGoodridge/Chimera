@@ -845,10 +845,10 @@ with tests passing and something to see.
      a client when it joins and on change (`CvarValues`); the client sets
      them, refuses local changes while connected (Source's message), puts
      back anything that changes one (a slider, a map load) and restores
-     its own on leaving. `mashup_rounds` counts as the server's.
+     its own on leaving. `chimera_rounds` counts as the server's.
      `sv_cheats` (replicated) gates `console::CHEATS` (noclip, god,
-     setpos, setang, give, impulse, ent_fire, `mashup_set*`,
-     `mashup_hurtme`) in network games; single player always has them;
+     setpos, setang, give, impulse, ent_fire, `chimera_set*`,
+     `chimera_hurtme`) in network games; single player always has them;
      maps may not set it (point_servercommand).
    - [x] Spectating while dead works on a client as it was: it targets the
      interpolated others.
@@ -871,7 +871,7 @@ with tests passing and something to see.
      leaving; a late joiner dead and watching someone (drawn where the
      server has them) until the next round.
    - [x] Two real games on the dev box on de_dust2 (host `-port 27031
-     +maxplayers 4 +sv_cheats 1 +mashup_rounds 1 +map de_dust2`, the
+     +maxplayers 4 +sv_cheats 1 +chimera_rounds 1 +map de_dust2`, the
      client with `+net_fakelag 100 +net_fakejitter 20 +net_fakeloss 5`):
      ping ~165-176 ms; `jointeam 2` on the client moved it to the
      terrorists; `mp_restartgame 1`; both frozen with $800 and the same
@@ -885,7 +885,7 @@ with tests passing and something to see.
      client in the next round ("You have the bomb..."); 12 prediction
      errors in ~3800 states over the session (restarts, the buy, the
      death); `disconnect` put the client's `sv_cheats` and
-     `mashup_rounds` back to its own.
+     `chimera_rounds` back to its own.
    - Found on the way: `mp_restartgame` timed the restart on the frame
      clock while the rules compare it with the fixed clock, so a host
      whose ticks fell behind (a long map load) never restarted; it uses
@@ -1001,7 +1001,7 @@ with tests passing and something to see.
      game's words; Cancel disconnects. Failures in it ("Disconnected",
      the game's strings where it has one: server full, older/newer
      server, timeout, the download errors; else the server's or our
-     words; Close). `mashup_loading_details 1` (off by default) adds a
+     words; Close). `chimera_loading_details 1` (off by default) adds a
      panel: each stage's time, bytes and percentage, the server's name,
      address, map, players and ping.
    - [x] Tests (`games/cs_source/tests/it/net_maps.rs`, maps built in code from a folder
@@ -1026,7 +1026,7 @@ with tests passing and something to see.
    - [x] Two real games on the dev box (debug builds, a busy box): host
      `-port 27031 +maxplayers 4 +hostname "Lucker Party test" +map
      greybox`, the client with `+net_fakelag 100 +net_fakejitter 20
-     +net_fakeloss 5 +mashup_loading_details 1`, `connect` through its
+     +net_fakeloss 5 +chimera_loading_details 1`, `connect` through its
      console: the dialog showed "Retrieving server info..." with the
      detailed view, then the game (ping ~150 ms). `changelevel de_dust2`
      on the host: the client showed "Server is changing level..." for
@@ -1162,7 +1162,7 @@ with tests passing and something to see.
        and the previous window are good), so the server keeps nothing per
        request;
      - info reply `FF FF FF FF 'I'`, protocol 17, name (`hostname`), map
-       (without the game prefix), folder `mashup`, game `Lucker Party`,
+       (without the game prefix), folder `chimera`, game `Lucker Party`,
        app id 0, players (bots included), max players (`maxplayers`),
        bots, type `d` (dedicated: no player of its own) or `l` (listen),
        OS `l`/`w`/`m`, visibility 1 with `sv_password`, VAC 0, version
@@ -1175,7 +1175,8 @@ with tests passing and something to see.
      The client (`ServerQueries`, one socket) measures the ping as the
      round trip of the challenged request; it asks twice, 1.2 s apart,
      then marks the server not responding. Replies whose folder isn't
-     `mashup` (a Source server on a scanned port) are left out. Only
+     `chimera` or `mashup` (older builds), such as a Source server on a
+     scanned port, are left out. Only
      A2S_INFO: no player list (`A2S_PLAYER`) or rules (`A2S_RULES`) yet.
      `serverinfo <ip[:port]>` and `lanscan` print what they hear; the
      server's `status` counts answers.
@@ -1257,10 +1258,10 @@ with tests passing and something to see.
    drop and pick up, plant and defuse, chat, radio, names), one client
    leaving and another joining, `changelevel` to the greybox, a
    community map from the content cache (gg_fy_tactic_fight) and back to
-   de_dust2; 3 game minutes by default, 30 with `MASHUP_SOAK_MINUTES=30`.
+   de_dust2; 3 game minutes by default, 30 with `CHIMERA_SOAK_MINUTES=30`.
    Live: `mashup_server` on 27111 (de_dust2, rounds, `bot_quota 10`
    fill) and three windowed clients (0, 100 ms, 200 ms with 3 % loss)
-   driven through `mashup/console` for 17 minutes with three map
+   driven through `chimera/console` for 17 minutes with three map
    changes, screenshots every ~2 minutes.
    - **Budget** (set here; the 26 KB/s of §2 was an estimate before
      compression): at most 112 KB/s received per client with twelve
@@ -1438,7 +1439,7 @@ with tests passing and something to see.
      never_wrong` at 20, 33 and 66, `net_interp::others_are_drawn_
      smoothly_on_the_servers_path` at 20, 33 and 66. (5) renet doesn't
      compress; deflate on each client's frame of messages saves ~9 % at
-     20 updates a second (`MASHUP_SOAK_DUMP`): not worth a dependency on
+     20 updates a second (`CHIMERA_SOAK_DUMP`): not worth a dependency on
      both transports. Budget now (the soak's): 10 KB/s plus 0.4 per
      update a second (18 at 20, 36 at an update every tick), half again
      on the worst link.
@@ -1469,7 +1470,7 @@ with tests passing and something to see.
   client mirrors the server's movement, so noclip is predicted (0 errors
   in the test). `ent_fire` from a client acts with no activator, and
   `setang` is overridden by the client's own look.
-- **`mashup_noblock`** (ours, replicated, 0 by default): 1 teammates, 2
+- **`chimera_noblock`** (ours, replicated, 0 by default): 1 teammates, 2
   all players pass through each other in the Source movement (hostages
   always block). Tests: `net_players::noblock_*`.
 - **Chat**: "Player %s1 has joined the game" and "Player %s1 left the game
@@ -1551,7 +1552,7 @@ Found and fixed:
    its CPU time went to handing each of a few hundred tiny systems to a
    worker (the game had dropped it for that reason: docs/performance.md
    "Frame time pass"). `mashup::single_threaded_schedules` now serves
-   the game, `mashup_server` and `perfgate` (`MASHUP_EXECUTOR=multi`
+   the game, `mashup_server` and `perfgate` (`CHIMERA_EXECUTOR=multi`
    brings Bevy's back).
 2. **The movement swept every brush of the map** for each of a player's
    ~10 sweeps a tick (bounds tests over all of de_dust2's brushes:
