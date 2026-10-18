@@ -1,0 +1,141 @@
+//! The texture reader (`lithtech_formats::dtx`) on the synthetic fixtures
+//! of specs/combat_arms/textures_dtx.md (F1-F8), written here from the
+//! spec's tables (no game data).
+
+use lithtech_formats::dtx::{Dtx, Format};
+
+/// The fixtures' 164-byte header with a size, N and format code.
+fn header(w: u16, h: u16, n: u16, format: u8) -> Vec<u8> {
+    let mut b = vec![0u8; 164];
+    b[4..6].copy_from_slice(&w.to_le_bytes());
+    b[6..8].copy_from_slice(&h.to_le_bytes());
+    b[8..12].copy_from_slice(&(-5i32).to_le_bytes());
+    b[0x0C..0x0E].copy_from_slice(&n.to_le_bytes());
+    b[0x10] = 0x08;
+    b[0x19] = 1;
+    b[0x1A] = format;
+    b
+}
+
+fn fixture(format: u8, pixels: &[u8]) -> Dtx {
+    let mut b = header(4, 4, 1, format);
+    b.extend_from_slice(pixels);
+    Dtx::parse(b).unwrap()
+}
+
+fn rows(rgba: &[u8]) -> Vec<Vec<[u8; 4]>> {
+    rgba.as_chunks::<4>().0.chunks(4).map(|r| r.to_vec()).collect()
+}
+
+#[test]
+fn f1_bgra32() {
+    let r0 = [0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255];
+    let r1 = [0, 0, 0, 255, 0, 0, 0, 0, 0x80, 0x80, 0x80, 0x80, 0x56, 0x34, 0x12, 0x78];
+    let px: Vec<u8> = [r0, r1, r0, r1].concat();
+    let t = fixture(3, &px);
+    assert_eq!((t.format, t.offsets.clone()), (Format::Bgra32, vec![164, 228]));
+    let r = rows(&t.rgba(0));
+    assert_eq!(r[0], [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 255, 255]]);
+    assert_eq!(r[1], [[0, 0, 0, 255], [0, 0, 0, 0], [128, 128, 128, 128], [0x12, 0x34, 0x56, 0x78]]);
+    assert_eq!((r[2].clone(), r[3].clone()), (r[0].clone(), r[1].clone()));
+}
+
+#[test]
+fn f2_dxt1_four_colours() {
+    let t = fixture(4, &[0x00, 0xF8, 0x1F, 0x00, 0xE4, 0x00, 0x55, 0x1B]);
+    let (red, blue, p2, p3) = ([255, 0, 0, 255], [0, 0, 255, 255], [170, 0, 85, 255], [85, 0, 170, 255]);
+    let r = rows(&t.rgba(0));
+    assert_eq!(r[0], [red, blue, p2, p3]);
+    assert_eq!(r[1], [red; 4]);
+    assert_eq!(r[2], [blue; 4]);
+    assert_eq!(r[3], [p3, p2, blue, red]);
+}
+
+#[test]
+fn f3_dxt1_three_colours() {
+    let t = fixture(4, &[0x1F, 0x00, 0x00, 0xF8, 0xF4, 0xFF, 0x50, 0x05]);
+    let (blue, red, clear) = ([0, 0, 255, 255], [255, 0, 0, 255], [0, 0, 0, 0]);
+    let r = rows(&t.rgba(0));
+    assert_eq!(r[0], [blue, red, clear, clear]);
+    assert_eq!(r[1], [clear; 4]);
+    assert_eq!(r[2], [blue, blue, red, red]);
+    assert_eq!(r[3], [red, red, blue, blue]);
+}
+
+#[test]
+fn f4_dxt3() {
+    let t = fixture(
+        5,
+        &[0x50, 0xFA, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x39],
+    );
+    let r = rows(&t.rgba(0));
+    let white = |a: u8| [255, 255, 255, a];
+    assert_eq!(r[0], [white(0), white(85), white(170), white(255)]);
+    assert_eq!((r[1].clone(), r[2].clone()), (vec![white(255); 4], vec![white(255); 4]));
+    assert_eq!(r[3], [[0, 0, 0, 255], [170, 170, 170, 255], [85, 85, 85, 255], white(255)]);
+}
+
+#[test]
+fn f5_dxt5() {
+    let t = fixture(
+        6,
+        &[0x00, 0xFF, 0x88, 0xC6, 0xFA, 0x49, 0x92, 0x24, 0xE0, 0x07, 0, 0, 0, 0, 0, 0],
+    );
+    let r = rows(&t.rgba(0));
+    let alphas: Vec<Vec<u8>> = r.iter().map(|row| row.iter().map(|p| p[3]).collect()).collect();
+    assert_eq!(alphas, [vec![0, 255, 51, 102], vec![153, 204, 0, 255], vec![255; 4], vec![255; 4]]);
+    assert!(r.iter().flatten().all(|p| p[..3] == [0, 255, 0]));
+}
+
+#[test]
+fn f6_mip_chain() {
+    assert!(Dtx::parse(header(16, 8, 4, 4)).is_err(), "levels under 4 x 4");
+    let mut b = header(16, 8, 2, 4);
+    b.resize(244, 0);
+    assert_eq!(Dtx::parse(b).unwrap().offsets, [164, 228, 244]);
+    let mut b = header(16, 8, 4, 3);
+    b.resize(844, 0);
+    assert_eq!(Dtx::parse(b).unwrap().offsets, [164, 676, 804, 836, 844]);
+}
+
+#[test]
+fn f7_rejections() {
+    let valid = || {
+        let mut b = header(4, 4, 1, 4);
+        b.resize(172, 0);
+        b
+    };
+    assert!(Dtx::parse(valid()).is_ok());
+    let mut b = valid();
+    b[8..12].copy_from_slice(&(-4i32).to_le_bytes());
+    assert!(Dtx::parse(b).is_err(), "version -4");
+    let mut b = valid();
+    b[0] = 1;
+    assert!(Dtx::parse(b).is_err(), "resource type 1");
+    for n in [0u16, 9] {
+        let mut b = valid();
+        b[0x0C..0x0E].copy_from_slice(&n.to_le_bytes());
+        assert!(Dtx::parse(b).is_err(), "N = {n}");
+    }
+    let mut b = valid();
+    b.pop();
+    assert!(Dtx::parse(b).is_err(), "truncated");
+    assert!(Dtx::parse(Vec::new()).is_err(), "empty");
+}
+
+#[test]
+fn f8_command_strings() {
+    let with = |cmd: &[u8]| {
+        let mut b = header(4, 4, 1, 4);
+        b[0x24..0x24 + cmd.len()].copy_from_slice(cmd);
+        b.resize(172, 0);
+        Dtx::parse(b).unwrap()
+    };
+    assert_eq!(with(b"alpharef 128").alpha_ref(), Some(128));
+    assert_eq!(with(b"ALPHAREF 1").alpha_ref(), Some(1));
+    assert_eq!(with(b"aipharef 128").alpha_ref(), None);
+    assert_eq!(with(b"alpharef 0").alpha_ref(), None);
+    assert_eq!(with(b"alpharef 128; detailtex a.dtx").alpha_ref(), Some(128));
+    let t = with(b"detailtex a.dtx\0b.dtx");
+    assert_eq!((t.command.as_str(), t.alpha_ref()), ("detailtex a.dtx", None));
+}

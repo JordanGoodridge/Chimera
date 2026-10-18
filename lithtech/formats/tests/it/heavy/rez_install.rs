@@ -11,7 +11,7 @@ use source_formats::fs::FileSource;
 /// The local config's `[games.combat_arms]` table: `$CHIMERA_CONFIG` (or
 /// `$MASHUP_CONFIG`), else chimera.local.toml (or mashup.local.toml) at the
 /// repository root, as Chimera's `mount::config` looks.
-fn config() -> Option<toml::Table> {
+pub(crate) fn config() -> Option<toml::Table> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let file = [std::env::var_os("CHIMERA_CONFIG"), std::env::var_os("MASHUP_CONFIG")]
         .into_iter()
@@ -24,7 +24,7 @@ fn config() -> Option<toml::Table> {
 }
 
 /// The install's `Game/` folder, where the archives are.
-fn game_dir() -> Option<PathBuf> {
+pub(crate) fn game_dir() -> Option<PathBuf> {
     let Some(path) = config().and_then(|c| c.get("path")?.as_str().map(String::from)) else {
         eprintln!("skipping: no [games.combat_arms] path in chimera.local.toml");
         return None;
@@ -43,7 +43,7 @@ fn game_dir() -> Option<PathBuf> {
 }
 
 /// `[games.combat_arms.keys.<scheme>]` from the config (none in the repo).
-fn keys() -> RezKeys {
+pub(crate) fn keys() -> RezKeys {
     let mut out = RezKeys::new();
     let Some(keys) = config().and_then(|c| c.get("keys")?.as_table().cloned()) else {
         return out;
