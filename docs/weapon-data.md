@@ -148,7 +148,8 @@ hud_icon = "ammo_762"
   `bounce_sound`), `cs_source:c4`. Combat Arms' (games/combat_arms/src/game/weapons.rs):
   `combat_arms:damage` (damage per ray, roll, range bands, server
   spacing), `combat_arms:spread` (cones and the meters' values),
-  `combat_arms:recoil` (the view kick and its return).
+  `combat_arms:recoil` (the view kick and its return), `combat_arms:handling`
+  (`move_penalty`, the carrier's `HeldMovePenalty`).
 - **Errors.** Unknown keys, an unknown base, ammo type or hook, a loop of
   bases, a duplicate ID and hook parameters the hook can't read are load
   errors naming the document and key. A game's own data failing to load

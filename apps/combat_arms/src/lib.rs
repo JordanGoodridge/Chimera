@@ -91,7 +91,7 @@ mod tests {
             harness::Sim,
         };
         use combat_arms::{
-            game::{movement, weapons},
+            game::{inventory, movement, weapons},
             harness::CaSim,
         };
 
@@ -119,10 +119,10 @@ mod tests {
             }
         };
         command(&mut sim, "invnext");
-        assert_eq!(active(&sim), weapons::KNIFE);
+        assert_eq!(active(&sim), inventory::KNIFE);
         command(&mut sim, "invprev");
         assert_eq!(active(&sim), weapons::RIFLE);
         command(&mut sim, "invprev");
-        assert_eq!(active(&sim), weapons::KNIFE, "wraps");
+        assert_eq!(active(&sim), inventory::KNIFE, "wraps");
     }
 }

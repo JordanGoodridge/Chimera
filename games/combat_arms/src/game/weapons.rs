@@ -46,6 +46,12 @@
 //!   `ViewPunch` (its pitch twice the accumulator, Q4), the side wag with
 //!   its 50 % flips, and the return each tick before the frame, at the
 //!   waiting rate for `JitterDecDelay` after a kick.
+//! - `combat_arms:handling` (`CaHandling`): the held weapon's
+//!   `MovePenalty`, set on its carrier as the movement's `HeldMovePenalty`
+//!   when it is drawn.
+//!
+//! The data's `combat_arms:inventory` table (sprint-out time) is
+//! `inventory`'s hook.
 //!
 //! Per tick (the spec's "Per-tick order"): before the frame, the recoil
 //! returns and the cone is set from the meters; the frame fires; after
@@ -117,13 +123,54 @@ use crate::{
 
 /// The M4A1 (data/weapons/m4a1.toml): the rifle players start with.
 pub const RIFLE: &str = "combat_arms:m4a1";
-/// The placeholder knife (PLACEHOLDER: data/weapons/placeholder_knife.toml).
-pub const KNIFE: &str = "combat_arms:placeholder_knife";
 
 /// Hook names (docs/weapon-data.md, "Hooks").
 pub const DAMAGE: &str = "combat_arms:damage";
 pub const SPREAD: &str = "combat_arms:spread";
 pub const RECOIL: &str = "combat_arms:recoil";
+pub const HANDLING: &str = "combat_arms:handling";
+
+/// `combat_arms:handling`: what holding the weapon does to its carrier.
+#[derive(Component, Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct CaHandling {
+    /// `MovePenalty`: the fraction of speed lost while held (the
+    /// movement's `HeldMovePenalty`).
+    pub move_penalty: f32,
+}
+
+/// The weapon whose handling a character's `HeldMovePenalty` was last set
+/// from.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+struct HandlingOf(Option<Entity>);
+
+/// On drawing a weapon, its `MovePenalty` becomes the carrier's
+/// `HeldMovePenalty` (none without `CaHandling`); set once per draw, so a
+/// test or a mod may change it while the weapon is held.
+fn apply_handling(
+    owners: Query<(Entity, &Inventory, Option<&HandlingOf>)>,
+    handling: Query<&CaHandling>,
+    mut commands: Commands,
+) {
+    for (owner, inv, last) in &owners {
+        if last.map(|l| l.0) == Some(inv.active) {
+            continue;
+        }
+        let mut e = commands.entity(owner);
+        e.insert(HandlingOf(inv.active));
+        match inv.active.and_then(|w| handling.get(w).ok()) {
+            Some(h) => {
+                e.insert(super::movement::HeldMovePenalty {
+                    penalty: h.move_penalty,
+                    mod_factor: 0.0,
+                });
+            }
+            None => {
+                e.remove::<super::movement::HeldMovePenalty>();
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Constants (the spec's "Constants": fixed in code)
@@ -999,6 +1046,9 @@ impl Plugin for CaWeaponsPlugin {
         })
         .register_weapon_hook::<RecoilParams>(RECOIL, |e, _, p| {
             e.insert(CaRecoil::new(*p));
+        })
+        .register_weapon_hook::<CaHandling>(HANDLING, |e, _, p| {
+            e.insert(*p);
         });
         if let Err(e) = app.add_weapon_set(super::data::weapon_set()) {
             panic!("Combat Arms weapon data: {e}");
@@ -1012,7 +1062,11 @@ impl Plugin for CaWeaponsPlugin {
                 Predict::Weapons,
                 (before_shots.before(WeaponFrame), after_shots.after(WeaponFrame)),
             )
-            .add_systems(FixedUpdate, give_armour.run_if(crate::core::authoritative));
+            .add_systems(FixedUpdate, give_armour.run_if(crate::core::authoritative))
+            .add_systems(
+                FixedUpdate,
+                apply_handling.after(crate::weapon::SelectWeapons).before(crate::core::SimSet::Movement),
+            );
     }
 }
 

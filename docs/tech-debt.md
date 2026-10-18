@@ -156,4 +156,5 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms: Wave 0 skeleton: placeholder binds (ours, marked PLACEHOLDER); no network part, rounds, respawn or bots (`games/combat_arms/src/lib.rs`)
 - games/combat_arms movement: Per engine tick, not the spec's frame clock; no ladders, volumes or pushers; axis input merges opposing keys (`games/combat_arms/src/game/movement.rs`)
 - games/combat_arms: Firing: 1 u assumed 1 cm, placeholder hit-sphere places, one process for client and server tests, default gear for all; spec ambiguities read literally (`games/combat_arms/src/game/weapons.rs`)
+- games/combat_arms: Inventory: 1 unit = 1 cm assumed; updates per tick, not per frame; knife ray without spread or hit zones; pickup fallback tied to the view ray; no objective key or "in use" weapons; Chimera's grenade removes a spent one (`games/combat_arms/src/game/inventory.rs`)
 - apps/combat_arms: Greybox only; shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)

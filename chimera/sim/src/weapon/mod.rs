@@ -20,8 +20,8 @@
 //! `PassMaterials` (bullets through walls and characters), `DamageEffect`,
 //! `WeaponSounds`, attack2 modes (`AltModes`, with `Zoom` (owner gets `Zoomed`,
 //! max speed) and `Burst`); `Inventory`, `WeaponState` timers,
-//! `WeaponRegistry`/`StartingWeapons` (per team), `give`; selection and deploy
-//! before movement, the Source-style weapon frame in `SimSet::Weapons` (spec
+//! `WeaponRegistry`/`StartingWeapons` (per team), `give`; selection (or a
+//! game's own slot-key rules: `OwnSelection`) and deploy before movement, the Source-style weapon frame in `SimSet::Weapons` (spec
 //! weapons.md 3–4; both in `core::Predict` schedules, timed by
 //! `core::SimClock`; characters a network client draws from snapshots
 //! (`map::interp::NetDrawn`) never run it), `WeaponEvent`s (`replay`: written
@@ -95,6 +95,13 @@ pub struct WeaponFrame;
 /// pick weapons run before it.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectWeapons;
+
+/// A game that turns slot keys and `lastinv` (`Intent::select`,
+/// `Intent::last_weapon`) into switches by its own rules, with a system
+/// before `SelectWeapons` setting `Inventory::wanted` (Combat Arms' class
+/// keys): selection then only applies `wanted`.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct OwnSelection;
 
 impl Plugin for WeaponPlugin {
     fn build(&self, app: &mut App) {
@@ -1291,14 +1298,17 @@ fn select_weapons(
     mut play: MessageWriter<PlaySound>,
     clock: Res<SimClock>,
     first: Res<FirstTimePredicted>,
+    own: Option<Res<OwnSelection>>,
 ) {
     let now = clock.now;
+    let keys = own.is_none();
     for (owner, intent, mut inv, at) in &mut owners {
         inv.weapons.retain(|w| weapons.contains(*w));
         // Slot keys on press: the first weapon in that slot, or the next one
         // after the active weapon when several share it; a pick (the HUD's
         // selection) names its weapon's place in the slot.
-        if intent.select != inv.prev_select
+        if keys
+            && intent.select != inv.prev_select
             && let Some(select) = intent.select
         {
             let (slot, nth) = Intent::picked(select);
@@ -1324,7 +1334,7 @@ fn select_weapons(
             inv.wanted = Some(next);
         }
         inv.prev_select = intent.select;
-        if intent.last_weapon && !inv.prev_last {
+        if keys && intent.last_weapon && !inv.prev_last {
             inv.wanted = inv.last.filter(|l| inv.weapons.contains(l));
         }
         inv.prev_last = intent.last_weapon;

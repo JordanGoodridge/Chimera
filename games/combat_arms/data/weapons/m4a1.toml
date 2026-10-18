@@ -89,3 +89,12 @@ back_jitter_recover = 1.0
 jitter_dec_delay = 95.0
 jitter_wait_recover = 0.1
 jitter_recover = 0.2
+
+# "Worked example": MovePenalty 0.1, the speed lost while held (movement.md).
+[hooks."combat_arms:handling"]
+move_penalty = 0.1
+
+# "From the view-model animation file": PostRush 367 ms, the time after a
+# sprint before it fires again (inventory.md).
+[hooks."combat_arms:inventory"]
+sprint_out = 0.367

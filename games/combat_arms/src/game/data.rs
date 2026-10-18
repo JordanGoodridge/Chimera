@@ -6,9 +6,8 @@
 //! what, and how they map onto the weapon data's parts and hooks.
 //!
 //! Two weapons: the M4A1 (data/weapons/m4a1.toml, the numbers of
-//! weapon_firing.md's worked example) and the placeholder knife
-//! (placeholder_knife.toml, every number marked PLACEHOLDER: ours, not the
-//! game's). Nothing is read from the install.
+//! weapon_firing.md's worked example) and the M9 knife (m9.toml,
+//! inventory.md's numbers). Nothing is read from the install.
 //!
 //! The seam: `weapon_set` is every Combat Arms weapon as a parsed
 //! `WeaponSet`, built in once per process; the install's attribute files
@@ -33,7 +32,7 @@ macro_rules! data_file {
 /// in, in registration order (the network names weapons by registry
 /// index).
 pub const WEAPON_DATA: &[(&str, &str)] = &[
-    data_file!("placeholder_knife.toml"),
+    data_file!("m9.toml"),
     data_file!("m4a1.toml"),
 ];
 
@@ -76,15 +75,12 @@ mod tests {
         assert_eq!(files.len(), WEAPON_DATA.len());
     }
 
-    /// Every built-in document says its numbers are placeholders until
-    /// the specs replace them, or names the spec its numbers come from.
+    /// Every placeholder document says its numbers are placeholders until
+    /// the specs replace them.
     #[test]
     fn placeholder_data_says_so() {
-        for (name, text) in WEAPON_DATA {
-            assert!(
-                text.contains("PLACEHOLDER") || text.contains("specs/combat_arms/"),
-                "{name}: no PLACEHOLDER note or spec"
-            );
+        for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
+            assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
         assert_eq!(weapon_set().weapons.len(), 2);
     }
