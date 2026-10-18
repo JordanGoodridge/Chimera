@@ -1,6 +1,6 @@
 # Plan: engine, Source and games as crates in one monorepo
 
-Status: decided 2026-10-07: one private monorepo (`r0pi0x/LuckerParty`, renamed `r0pi0x/Chimera` on 2026-10-16,
+Status: decided 2026-10-07: one monorepo (`r0pi0x/LuckerParty`, renamed `r0pi0x/Chimera` on 2026-10-16, now public;
 history rewritten to the new identity), restructured into the crates
 below. Separate repos only if a good reason comes up later; crates keep
 that a folder move.
@@ -872,7 +872,7 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 ## Order
 
 1. [x] New account and identity: history rewritten to `r0pi0x` (noreply
-   email, UTC timestamps), private `r0pi0x/LuckerParty` created,
+   email, UTC timestamps), `r0pi0x/LuckerParty` created (private then, public now),
    `origin` re-pointed (2026-10-07). Left: Windows re-clones; the old
    repo is deleted by the owner when satisfied.
 2. [ ] Cargo workspace, one crate at a time, tests passing at each step:

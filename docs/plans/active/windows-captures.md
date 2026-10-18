@@ -96,6 +96,33 @@ Record the game's audio (OBS, 48 kHz) for:
 C18, C19, C20, C21, C22 and C27 (each names its views and settings). The output
 folder is printed at the end: send it.
 
+## Sitting 4: the other stock maps (mostly automatic, about 40 min)
+
+Reference views exist only for de_dust2, de_aztec, cs_office and de_nuke;
+the other stock maps (docs/plans/active/other-maps.md) were checked by
+eye only. refcmp drives CS:S by itself, as in sitting 3:
+
+1. `refcmp capture-ref --views tools/refcmp/<map>.toml` for de_train,
+   de_inferno, de_dust, cs_assault, cs_compound, de_cbble, de_chateau,
+   de_prodigy and de_tides (views from their cameras, spawns and
+   bomb/rescue zones). Send the `refcmp/<map>/ref/` folders.
+2. cs_italy, de_port, cs_havana and de_piranesi have no
+   `point_viewcontrol` for refcmp to move, so take their views by hand:
+   `sv_cheats 1; noclip; cl_drawhud 0; r_drawviewmodel 0`, then for each
+   `[[view]]` in `tools/refcmp/<map>.toml` `setpos x y z-64` (the file
+   holds eye positions, setpos the feet) and `setang pitch yaw 0`, wait a
+   second, `jpeg refcmp_<name> 95`.
+3. **cs_compound's fog colour by view direction** (its
+   `env_fog_controller` blends two colours, `fogblend 1`: warm yellow
+   toward yaw 108, grey away; ours draws the first only): from the CT
+   spawn, `setang 0 108 0` and `setang 0 288 0`, a screenshot each of the
+   far skyline. Says whether the blend shows at all at its distances
+   (fog from 3000 units) and which colour lies which way.
+4. **de_prodigy's vent fans** (`fan.mdl` lit from an
+   `info_lighting_relative`, which ours ignores): `setpos 2384 -1511 -24;
+   setang 89 0 0` (looking down at the fan from 116 units above), a
+   screenshot: are the blades lit like the vent around them, or darker?
+
 ## What each sitting unlocks
 
 - Sitting 1: movement and weapon checks against real human play (demosim),
@@ -105,3 +132,5 @@ folder is printed at the end: send it.
   the underwater muffle.
 - Sitting 3: HDR, 3D skybox fog, ropes, beams, sky, LOD, detail props and
   what cs_assault's PVS hides past sky brushes.
+- Sitting 4: side-by-side checks of the 13 stock maps never compared
+  (refcmp `report`), cs_compound's fog blend, prodigy's fan lighting.

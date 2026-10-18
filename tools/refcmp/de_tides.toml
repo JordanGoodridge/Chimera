@@ -1,0 +1,28 @@
+# Views of de_tides for spotting visual bugs (docs/plans/active/other-maps.md),
+# generated from its entities: intermission cameras, the first T and CT
+# spawns, and on cs_ maps the first hostages (one view each, turning 90
+# degrees from one to the next).
+# Source eye positions; angles are [pitch, yaw] in Source degrees.
+
+map = "de_tides"
+camera = "cam1"
+
+[[view]]
+name = "ct_spawn"
+position = [-912, -1597, -24]
+angles = [0.0, 30.0]
+
+[[view]]
+name = "t_spawn"
+position = [-624, 1120, -2]
+angles = [0.0, 270.0]
+
+[[view]]
+name = "cam0"
+position = [-1520, -880, 123]
+angles = [0.0, 0.0]
+
+[[view]]
+name = "cam1"
+position = [683, 119, -50]
+angles = [0.0, 0.0]
