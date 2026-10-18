@@ -4,6 +4,7 @@
 //! fast tier skips them with `-- --skip heavy::`). `cargo test -p
 //! lithtech_formats`. A new file here gets a `mod` line below.
 
+mod attributes;
 mod fixture;
 mod rez;
 

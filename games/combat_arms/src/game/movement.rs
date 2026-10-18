@@ -222,11 +222,16 @@ pub struct HeldMovePenalty {
     pub mod_factor: f32,
 }
 
-/// The movement data, parsed once per process. Bad data panics (the tests
-/// load it).
+/// The movement data, parsed once per process, with the install's
+/// attribute data over it when it can be read (`data::with_install_movement`).
+/// Bad data panics (the tests load it).
 pub fn movement_data() -> &'static MovementData {
     static DATA: OnceLock<MovementData> = OnceLock::new();
-    DATA.get_or_init(|| toml::from_str(MOVEMENT_DATA).unwrap_or_else(|e| panic!("data/movement.toml: {e}")))
+    DATA.get_or_init(|| {
+        super::data::with_install_movement(
+            toml::from_str(MOVEMENT_DATA).unwrap_or_else(|e| panic!("data/movement.toml: {e}")),
+        )
+    })
 }
 
 /// Combat Arms' movement: registered as `ID` and made the loadout's

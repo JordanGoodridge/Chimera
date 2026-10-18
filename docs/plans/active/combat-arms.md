@@ -94,8 +94,11 @@ does for BSP.
   only for the VFS (`fs::FileSource`, `Mount`).
 - `games/combat_arms`' `game::mount` (its `INFO.open`) mounts the
   install's `Game/` with `rez::open_dir` and the keys from
-  `chimera.local.toml`; the data seam (`game/data.rs`) will read through
-  it.
+  `chimera.local.toml`; the data seam (`game/data.rs`) reads the
+  install's `ATTRIBUTES.rez` with the same keys.
+- 2026-10-18: `lithtech_formats::attributes` reads attribute files
+  (`attribute_data.md`'s format); Combat Arms' records and the merge
+  over our TOML are the game's (`game/data.rs`, `game/data/attributes.rs`).
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
@@ -127,7 +130,7 @@ does for BSP.
 |---|---|---|---|---|---|
 | 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | implementing (`ca/movement`) | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
 | 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | not started | L2 (spread and recoil state), L3 (hurt sounds); fire modes, burst, hit zones, falloff, penetration, reload and ammo are already Chimera's (`chimera_sim::weapon`) | Cloud agent; Chimera weapon parts + `combat_arms:*` hooks; one rifle's numbers in `data/weapons/` |
-| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none (its reader goes in `lithtech/`) | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
+| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | implementing (worktree-agent-a4e94370b2d41460f) | none (its reader goes in `lithtech/`) | Reader `lithtech_formats::attributes`; records and merge in `game/data.rs` (+ `data/attributes.rs`); test cases 1 to 29 pass on generated fixtures; heavy test checks ATTRIBUTES.rez's directory, the rest waits for the V1 key |
 | 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | L4 (weapon selection logic) and L5 (default binds per game): both done; inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | Cloud agent; after 2's parts exist |
 | 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | L6 (HUD panels, death notices), L7 (crosshair style as data), L8 (damage indicator), L9 (target ID); the plain HUD (`client::hud`) works with no lift | Cloud agent; plain Chimera HUD widgets driven by data |
 
