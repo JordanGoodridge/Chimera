@@ -386,7 +386,13 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
    rather than the 0 of most props. Probe: push a physbox along a
    near-frictionless surface (a "glass"-like surface property) and record
    its speed decay per tick with the server probe.
-3. **Controller application** (thruster/keepupright): confirm a = F/m per
+3. **Linear part answered (measured 2026-10-18, probe server, de_nuke,
+   a phys_thruster (spawnflags 2, pointing up) on a 400 kg
+   `du_crate_64x64`, its height sampled every 0.12 s):** force 400000
+   lifted it at 199 units/s² (the second differences of its height),
+   F/m − 800 = 200: force in kg·units/s², a = F/m, as ours; 20000 (under
+   its weight) didn't lift it. The angular part (an offset thruster) is
+   open. Was: **Controller application** (thruster/keepupright): confirm a = F/m per
    second and that the angular part from an offset thruster equals
    I⁻¹(r × F) in deg/s². Probe: a thruster at the centre of a 50 kg box in
    the air with sv_gravity unchanged: measure velocity change over 1 s via

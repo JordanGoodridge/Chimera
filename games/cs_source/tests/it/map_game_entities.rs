@@ -342,7 +342,10 @@ fn thruster_pushes_a_physbox() {
     let before = vx(&mut sim);
     input(&mut sim, "th", "Activate", "", None);
     sim.seconds(0.5);
-    // a = F/m = 20 units/s² along +X: 10 units/s after half a second.
+    // a = F/m = 20 units/s² along +X: 10 units/s after half a second
+    // (CS:S's rule, measured 2026-10-18 on the probe: 400000 up on a
+    // 400 kg crate rose at 199 units/s², F/m less gravity's 800;
+    // physics_brushes.md Q3).
     let gained = (vx(&mut sim) - before) / SCALE;
     assert!((gained - 10.0).abs() < 1.5, "{gained} units/s");
 }

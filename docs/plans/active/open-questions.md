@@ -58,8 +58,8 @@ lasers, conveyors, ragdolls, the bomb's timing;
 (fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q3, Q4,
 Q5 and Q7, objectives Q13, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18,
 physics_brushes Q6 and Q7, particles_and_smoke Q6, and fire Q4 moved to
-class 5: entity_io Q1 had it), 4 more answered in part (grenades Q12 all
-but the thrower's side, grenades Q17's `drop`, movement Q15's conveyor,
+class 5: entity_io Q1 had it), 5 more answered in part (grenades Q12 all
+but the thrower's side, grenades Q17's `drop`, movement Q15's conveyor, physics_brushes Q3's force,
 objectives Q14's defuse and blast timing); about 45 class-1 items left. The two plugin commands above are still not
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
@@ -280,7 +280,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | particles_and_smoke | Q8 env_smokestack Hammer defaults | 3 | the FGD |
 | physics_brushes | Q1 physbox mass shrunk or not | 1, 3 | test_hardware's physbox read 2026-10-18 (72.5 kg, glass, two pieces); the comparison with its brush volume: a spec session with our BSP reader |
 | physics_brushes | Q2 inertia and damping laws | 1 | as physics_props Q1, Q3 |
-| physics_brushes | Q3 controller units | 1 | spawned phys_thruster |
+| physics_brushes | Q3 left: an offset thruster's turn (a = F/m done, Part B 2026-10-18) | 1 | a spawned thruster off the centre, the turn rate sampled |
 | physics_brushes | Q4 +use pickup of a physbox | 1 | done for props (Part B, 2026-10-18: no pickup) |
 | physics_brushes | Q5 physbox_multiplayer on the client | 2 | client |
 | physics_brushes | Q6 players and a map prop_ragdoll | 1 | done (Part B, 2026-10-18) |
@@ -531,3 +531,4 @@ measured.
 | particles_and_smoke Q6: an unknown input | "unhandled input" in the console, nothing done | the same | none |
 | doors_buttons Q7: a user on a rotating door's plane | opens to +distance | the same | none (test) |
 | objectives Q13: `info_bomb_target`, `info_hostage_rescue` | no such entity classes: a map's do nothing | 128- and 256-unit spheres | ignored |
+| physics_brushes Q3: phys_thruster force | kg·units/s², a = F/m (400000 on 400 kg: 199 units/s² up against gravity) | the same | none (test comment) |
