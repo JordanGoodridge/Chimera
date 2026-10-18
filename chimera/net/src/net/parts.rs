@@ -21,7 +21,9 @@
 //!   a frozen player's intent keeps, for the client's prediction) and
 //!   `NetHooks` (what a part takes off when this process stops serving;
 //!   what it places before movement in each replayed tick). Each has a
-//!   default for an app without a game's: players join on a team at once,
+//!   default for a game without join rules of its own (Combat Arms so
+//!   far): players join on the smaller team (the network's pick) and come
+//!   in at a free spawn point of their team, else any (`enter_at_spawn`),
 //!   bots are despawned, nothing is held.
 //! - **Ordering**: a part orders its client-side holds before
 //!   `predict::RecordCommand` (CS:S's `BombHold`), as the rules' freeze is
@@ -31,7 +33,9 @@ use std::collections::BTreeMap;
 
 use bevy::prelude::*;
 
-use crate::core::{Connecting, Dead, Intent};
+use avian3d::prelude::Position;
+
+use crate::core::{Connecting, Dead, Health, Intent, SpawnPoint, Team, Velocity};
 
 /// The parts registered so far, by name, waiting for `NetPlugin::finish`
 /// (`NetAppExt::net_part`).
@@ -101,13 +105,73 @@ impl Default for JoinRules {
                     e.insert(Connecting);
                 }
             },
-            enter: |w, e| {
-                if let Ok(mut e) = w.get_entity_mut(e) {
-                    e.remove::<(Connecting, Dead)>();
-                }
-            },
+            enter: enter_at_spawn,
             choice: |_| "auto".into(),
         }
+    }
+}
+
+/// How close (m, across) another living character may stand to a spawn
+/// point for it to be free: about a player's width.
+const SPAWN_CLEARANCE: f32 = 0.8;
+
+/// The default way into the game (`JoinRules::enter`): out of
+/// `Connecting` and alive with full health, still, at the first spawn
+/// point of its team (`core::SpawnPoint`; none: any) that no living
+/// character stands on (else the first of them), looking the way it
+/// faces. Without spawn points it stays where it was spawned.
+pub fn enter_at_spawn(world: &mut World, e: Entity) {
+    if world.get_entity(e).is_err() {
+        return;
+    }
+    let team = world.get::<Team>(e).copied();
+    let spawns: Vec<(Transform, Option<Team>)> = world
+        .query::<(&Transform, &SpawnPoint)>()
+        .iter(world)
+        .map(|(t, s)| (*t, s.team))
+        .collect();
+    let own: Vec<Transform> = spawns
+        .iter()
+        .filter(|(_, t)| t.is_some() && *t == team)
+        .map(|(t, _)| *t)
+        .collect();
+    let pool: Vec<Transform> = if own.is_empty() {
+        spawns.iter().map(|(t, _)| *t).collect()
+    } else {
+        own
+    };
+    let taken: Vec<Vec3> = world
+        .query_filtered::<(Entity, &Transform, &Health), (With<Intent>, Without<Dead>, Without<Connecting>)>()
+        .iter(world)
+        .filter(|(o, _, h)| *o != e && h.current > 0.0)
+        .map(|(_, t, _)| t.translation)
+        .collect();
+    let free = |t: &&Transform| {
+        !taken.iter().any(|p| {
+            let d = *p - t.translation;
+            d.x.abs() < SPAWN_CLEARANCE && d.z.abs() < SPAWN_CLEARANCE && d.y.abs() < 2.0
+        })
+    };
+    let at = pool.iter().find(free).or(pool.first()).copied();
+    let mut ent = world.entity_mut(e);
+    ent.remove::<(Connecting, Dead)>();
+    if let Some(mut h) = ent.get_mut::<Health>() {
+        h.current = h.max;
+    }
+    if let Some(mut v) = ent.get_mut::<Velocity>() {
+        v.0 = Vec3::ZERO;
+    }
+    let Some(at) = at else { return };
+    if let Some(mut t) = ent.get_mut::<Transform>() {
+        t.translation = at.translation;
+    }
+    if let Some(mut p) = ent.get_mut::<Position>() {
+        p.0 = at.translation;
+    }
+    if let Some(mut i) = ent.get_mut::<Intent>() {
+        let (yaw, _, _) = at.rotation.to_euler(EulerRot::YXZ);
+        i.yaw = yaw;
+        i.pitch = 0.0;
     }
 }
 

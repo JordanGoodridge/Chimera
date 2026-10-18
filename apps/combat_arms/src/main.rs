@@ -4,6 +4,13 @@
 //! walk and shoot the placeholder weapons. The options are the shell's,
 //! as the CS:S app's (`--help`); `--map combat_arms:<name>` loads a map
 //! from the install (`combat_arms::game::world`), else the greybox.
+//!
+//! Network play is the CS:S app's (the shell's `connect`, `-port`,
+//! `maxplayers`, `map`): host a listen server with `combat_arms -port
+//! 27016 +maxplayers 4 +map greybox`, join it with `combat_arms +connect
+//! <ip>:27016` (Combat Arms' part of it: `combat_arms::game::net`).
+//! Known shortcuts: no dedicated server for Combat Arms yet (listen
+//! servers only).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -16,9 +23,12 @@ use combat_arms_app::ClientPlugin;
 fn main() {
     if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
         println!(
-            "combat_arms: the Combat Arms skeleton on Chimera (placeholder movement, rifle and knife\n\
-             on the greybox, or a map of the install with --map combat_arms:<name>, e.g.\n\
-             combat_arms:warehouse). The options are the shell's:\n"
+            "combat_arms: Combat Arms on Chimera (its movement, the M4A1 and the M9 on the greybox,\n\
+             or a map of the install: --map combat_arms:<name>, e.g. combat_arms:warehouse).\n\
+             The options are the shell's (below, named after the CS:S app; all apply here).\n\
+             Network play (a listen server; no dedicated one yet):\n\
+             \x20 host:    combat_arms -port 27016 +maxplayers 4 +map greybox\n\
+             \x20 join:    combat_arms +connect 127.0.0.1:27016\n"
         );
     }
     let mut args = Args::parse();

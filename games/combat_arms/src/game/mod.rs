@@ -17,6 +17,8 @@
 //!   the install's attribute files;
 //! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
 //! - `rules`: game modes as rule modules;
+//! - `net`: the game's part of the network (armour, the pickup prompt;
+//!   the parts above register what a client predicts themselves);
 //! - `world`: the install's maps (world `.dat` files) as Chimera's
 //!   `MapData` (world_dat.md).
 //!
@@ -30,6 +32,7 @@ pub mod hud;
 pub mod inventory;
 pub mod mount;
 pub mod movement;
+pub mod net;
 pub mod rules;
 pub mod weapons;
 pub mod world;
@@ -112,5 +115,6 @@ impl PluginGroup for CombatArmsPlugins {
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(rules::CaRulesPlugin)
+            .add(net::CaNetPlugin)
     }
 }

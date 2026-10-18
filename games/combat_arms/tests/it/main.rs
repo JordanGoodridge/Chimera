@@ -13,6 +13,7 @@
 mod attribute_data;
 mod inventory;
 mod movement;
+mod net;
 mod skeleton;
 mod weapon_firing;
 mod world;

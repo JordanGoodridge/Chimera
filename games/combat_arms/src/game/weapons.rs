@@ -48,7 +48,11 @@
 //!   waiting rate for `JitterDecDelay` after a kick.
 //! - `combat_arms:handling` (`CaHandling`): the held weapon's
 //!   `MovePenalty`, set on its carrier as the movement's `HeldMovePenalty`
-//!   when it is drawn.
+//!   when it is drawn (in the predicted tick, `core::Predict::Select`).
+//!
+//! A network client predicts `CaSpread` and `CaRecoil` with the weapon
+//! (`weapon::NetPart`: the server's state goes with its player's;
+//! `game::net`).
 //!
 //! The data's `combat_arms:inventory` table (sprint-out time) is
 //! `inventory`'s hook.
@@ -71,9 +75,13 @@
 //! - The placeholder skeleton (`MALE`): sphere radii, locations and
 //!   factors are the spec's, their places ours (Q9: no models yet), in a
 //!   standing pose scaled to the character's box, crouched or not.
-//! - One process plays both sides: the "client" test is the ray's first
-//!   segment, the "server" walk the rest; nothing is sent, no lag
-//!   compensation, nothing predicted for a network client.
+//! - The spec's client and server halves aren't split by process: the
+//!   "client" test is the ray's first segment, the "server" walk the rest,
+//!   both run where the round is delivered. In a network game the shooter's
+//!   client predicts the round (its meters, kick and events; no damage) and
+//!   the server walks it again against where the shooter saw the others
+//!   (lag compensation, `weapon::lagcomp`, their boxes and looks then);
+//!   nothing the client found is sent (no client-reported victim).
 //! - Firing recovery waits while the time since the last shot is at most
 //!   `DecDelay` (test case 16: 95 ms still waits), not "less than".
 //! - Airborne from a jump: left the ground with the jump key held, until
@@ -106,7 +114,7 @@ use std::sync::OnceLock;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     core::{
@@ -114,9 +122,10 @@ use crate::{
         PropSurface, SOLID_LAYERS, SimClock, Velocity,
     },
     weapon::{
-        AltModes, Burst, Hitscan, Inventory, SpreadShape, ViewPunch, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame,
-        Zoom, aim_of,
+        AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, Weapon, WeaponEvent,
+        WeaponEventKind, WeaponFrame, Zoom, aim_of,
         data::{WeaponData, WeaponDataAppExt},
+        lagcomp::{self, HitHistory, LagCompSettings, LagCompStats, ViewTick},
         random::{Rng, shared_random},
     },
 };
@@ -840,7 +849,7 @@ pub fn is_behind(forward: Vec3, right: Vec3, dir: Vec3) -> bool {
 
 /// One piece of gear's bullet protection by location (fractions) and
 /// whether it is used up.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Gear {
     pub head: f32,
     pub torso: f32,
@@ -891,8 +900,9 @@ pub const DEFAULT_HEAD_GEAR: Gear = Gear {
     consumable: true,
 };
 
-/// A character's armour: points (AP, hit points) and gear worn.
-#[derive(Component, Clone, Debug, PartialEq)]
+/// A character's armour: points (AP, hit points) and gear worn. The
+/// server's; replicated to clients (`game::net`).
+#[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CaArmor {
     pub points: f32,
     pub gear: Vec<Gear>,
@@ -1069,10 +1079,45 @@ impl Plugin for CaWeaponsPlugin {
                 (before_shots.before(WeaponFrame), after_shots.after(WeaponFrame)),
             )
             .add_systems(FixedUpdate, give_armour.run_if(crate::core::authoritative))
-            .add_systems(
-                FixedUpdate,
-                apply_handling.after(crate::weapon::SelectWeapons).before(crate::core::SimSet::Movement),
-            );
+            // In the predicted tick: a client replaying a switch moves
+            // with the penalty of the weapon it held then.
+            .add_systems(Predict::Select, apply_handling.after(crate::weapon::SelectWeapons))
+            // The meters and the kick are predicted with the weapon and
+            // go to the client predicting it (`weapon::sync`).
+            .predicted_part::<CaSpread>()
+            .predicted_part::<CaRecoil>();
+    }
+}
+
+impl NetPart for CaSpread {
+    /// The meters, the last shot, the sub-step clock, the last view and
+    /// the jump flags (the parameters are the data's).
+    type Net = (f32, f32, Option<f64>, f64, Option<Vec2>, bool, bool);
+    fn net(&self) -> Self::Net {
+        (self.fire, self.movement, self.last_shot, self.clock, self.prev_view, self.jumped, self.was_on_ground)
+    }
+    fn set_net(&mut self, (fire, movement, last_shot, clock, prev_view, jumped, was_on_ground): Self::Net) {
+        self.fire = fire;
+        self.movement = movement;
+        self.last_shot = last_shot;
+        self.clock = clock;
+        self.prev_view = prev_view;
+        self.jumped = jumped;
+        self.was_on_ground = was_on_ground;
+    }
+}
+
+impl NetPart for CaRecoil {
+    /// The accumulators, the side direction and the last kick's time.
+    type Net = (f32, f32, Option<bool>, Option<f64>);
+    fn net(&self) -> Self::Net {
+        (self.pitch, self.yaw, self.right, self.last_kick)
+    }
+    fn set_net(&mut self, (pitch, yaw, right, last_kick): Self::Net) {
+        self.pitch = pitch;
+        self.yaw = yaw;
+        self.right = right;
+        self.last_kick = last_kick;
     }
 }
 
@@ -1193,6 +1238,15 @@ struct Delivery<'w, 's> {
     first: Res<'w, FirstTimePredicted>,
     role: Option<Res<'w, NetRole>>,
     playback: Option<Res<'w, crate::core::Playback>>,
+    /// Lag compensation (a network server): each shooter's view tick,
+    /// the characters' kept hit volumes, `sv_unlag`.
+    lag: (
+        Query<'w, 's, &'static ViewTick>,
+        Query<'w, 's, (Entity, &'static HitHistory, &'static Health)>,
+        Res<'w, LagCompSettings>,
+        ResMut<'w, LagCompStats>,
+        Res<'w, SimClock>,
+    ),
 }
 
 impl Delivery<'_, '_> {
@@ -1200,15 +1254,48 @@ impl Delivery<'_, '_> {
         self.role.as_deref().is_none_or(|r| *r != NetRole::Client) && self.playback.is_none()
     }
 
-    /// Every living character but `owner`, as the ray sees it.
-    fn bodies(&self, owner: Entity) -> Vec<Body> {
+    /// Where the other characters were when `owner` fired, as its client
+    /// drew them (lag compensation, `weapon::lagcomp`): a network server's
+    /// remote player's shot with `sv_unlag` on; else none (the present).
+    fn rewind(&mut self, owner: Entity, server: bool) -> Vec<lagcomp::Rewound> {
+        let (views, histories, settings, stats, clock) = &mut self.lag;
+        let Some(view) = views.get(owner).ok().and_then(|v| v.0) else {
+            return Vec::new();
+        };
+        if !server || settings.unlag == 0 {
+            return Vec::new();
+        }
+        lagcomp::rewind(
+            owner,
+            view,
+            clock.tick,
+            clock.delta.as_secs_f64(),
+            settings,
+            histories.iter().filter(|(.., h)| h.current > 0.0).map(|(e, history, _)| (e, history)),
+            stats,
+        )
+    }
+
+    /// Every living character but `owner`, as the ray sees it: where it
+    /// is, or where `rewound` puts it (its box and look then).
+    fn bodies(&self, owner: Entity, rewound: &[lagcomp::Rewound]) -> Vec<Body> {
         self.characters
             .iter()
             .filter(|(e, .., h, _, _)| *e != owner && h.current > 0.0)
             .filter_map(|(entity, t, intent, state, _, aabb, spheres)| {
                 let data = spheres.map_or(MALE, |s| s.0);
-                let (min, max, spheres) = body_geometry(t, intent, state, aabb, data)?;
-                let turn = intent.yaw_rotation();
+                let (min, max, spheres, turn) = match rewound.iter().find(|r| r.entity == entity) {
+                    Some(r) => {
+                        let b = r.aabb();
+                        let turn = Quat::from_rotation_y(r.yaw);
+                        let (min, max, spheres) = geometry_at(r.origin, turn, b.min, b.max, data);
+                        (min, max, spheres, turn)
+                    }
+                    None => {
+                        let (min, max, spheres) = body_geometry(t, intent, state, aabb, data)?;
+                        (min, max, spheres, intent.yaw_rotation())
+                    }
+                };
                 Some(Body {
                     entity,
                     min,
@@ -1243,11 +1330,16 @@ pub fn body_geometry(
         let b = aabb?;
         (b.min, b.max)
     };
+    Some(geometry_at(t.translation, intent.yaw_rotation(), min, max, data))
+}
+
+/// A character's spheres `data` in the world for its box `min..max`
+/// (world) around `origin`, turned by `turn`: (min, max, spheres).
+fn geometry_at(origin: Vec3, turn: Quat, min: Vec3, max: Vec3, data: &[HitSphere]) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
     let scale = (max.y - min.y) / SKELETON_HEIGHT;
-    let feet = t.translation.with_y(min.y);
-    let turn = intent.yaw_rotation();
+    let feet = origin.with_y(min.y);
     let spheres = data.iter().map(|s| (feet + turn * (s.at * scale), s.radius * scale)).collect();
-    Some((min, max, spheres))
+    (min, max, spheres)
 }
 
 /// Where a ray enters an axis-aligned box (distance along the unit `dir`,
@@ -1338,11 +1430,12 @@ fn after_shots(
             }
         }
         let aim = aim_of(r.yaw, r.pitch);
+        let rewound = delivery.rewind(r.owner, server);
         for pellet in 0..pellets {
             let mut rng = Rng::new(r.seed.wrapping_add(1 + pellet));
             let (u1, u2) = (rng.next(), rng.next());
             let dir = square_dir(aim, half, u1, u2);
-            walk(&mut delivery, &dmg, r, dir, range, &mut rng, server, &mut out);
+            walk(&mut delivery, &dmg, r, dir, range, &rewound, &mut rng, server, &mut out);
         }
     }
 
@@ -1454,11 +1547,12 @@ fn walk(
     r: &Round,
     dir: Vec3,
     range: f32,
+    rewound: &[lagcomp::Rewound],
     rng: &mut Rng,
     server: bool,
     out: &mut Vec<WeaponEvent>,
 ) {
-    let bodies = w.bodies(r.owner);
+    let bodies = w.bodies(r.owner, rewound);
     let excluded: Vec<Entity> = std::iter::once(r.owner)
         .chain(w.characters.iter().map(|(e, ..)| e))
         .collect();

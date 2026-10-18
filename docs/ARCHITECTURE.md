@@ -156,14 +156,18 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   behaviour as its spec lands (specs/combat_arms/; firing so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
-  `grenades`, `attachments`, `data`, `rules`, `world`: the install's
-  maps as `MapData`), with its feature `ui` its
+  `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
+  network on `chimera_net`, `world`: the install's maps as `MapData`),
+  with its feature `ui` its
   front end (`ui::hud`, `ui::visuals`), and `harness::CaSim` as its
-  scenario tests' base. Layered as `cs_source`: the engine crates only,
+  scenario tests' base (with chimera_net's `NetSim` for its network
+  tests). Layered as `cs_source`: the engine crates only,
   never `cs_source`, Source's logic, `mashup` or an app (checked); only
   `ui` uses the presentation and the shell. `apps/combat_arms`
   (`combat_arms_app`) is its game binary (`combat_arms`): the greybox
-  or `--map combat_arms:<name>`, the shell with its HUD, the network, its build's stamp. What Combat Arms needs that lives
+  or `--map combat_arms:<name>`, the shell with its HUD, the network (a
+  listen server or a client, the shell's options), its build's stamp.
+  What Combat Arms needs that lives
   in `cs_source` today moves into Chimera first (a lift), never across.
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
   (`cs_source_server`): `cs_source_app` without `present`, so built alone it
@@ -441,7 +445,7 @@ that the paths exist).
 ### Network (net)
 
 - `chimera/net/src/net/mod.rs`: `NetPlugin`, the protocol, replicated components (net)
-- `chimera/net/src/net/parts.rs`: what games and Source's logic add: parts, join, bot and hold hooks (net)
+- `chimera/net/src/net/parts.rs`: what games and Source's logic add: parts, join, bot and hold hooks; the default join (net)
 - `chimera/net/src/net/server.rs`: the server: listening, the join handshake, update pacing, own states (net)
 - `chimera/net/src/net/client.rs`: the client: connecting, joining, the welcome (net)
 - `chimera/net/src/net/predict.rs`: the client's command clock and prediction (net)
@@ -481,6 +485,7 @@ that the paths exist).
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
+- `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1 and M9 knife (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
