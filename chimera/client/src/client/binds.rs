@@ -307,6 +307,8 @@ pub const POLLED: &[&str] = &[
     "+jump",
     "+duck",
     "+speed",
+    "+walk",
+    "+sprint",
     "+use",
     "+reload",
     "+attack",

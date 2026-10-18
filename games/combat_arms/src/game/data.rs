@@ -17,13 +17,15 @@
 //!   `combat_arms:`) matches an install weapon's `Name` (case-insensitive,
 //!   spaces as `_`: `slug`) takes the install's numbers for every field
 //!   it maps (`weapon_values`): the record's value, or the spec's
-//!   built-in default when the install lacks it, never ours. Install
+//!   built-in default when the install lacks it, never ours, and the
+//!   inventory class from `[WeaponOrder]` as its `slot` (the class - 1;
+//!   in no list: ours). Install
 //!   weapons that match none of ours are new documents, copied from our
 //!   matched document of the same `Guntype` (its parts and hooks) with
 //!   their own numbers, after ours in install order (ours keep their
 //!   registry indices);
 //! - movement (`merge_movement`): the body type `FigureType0` replaces
-//!   `character.figure`.
+//!   `character.figure` (`StiffDuration` with it).
 //! Without an install or key, or when a document fails to parse (logged
 //! with its name and line), the built-in data is used unchanged.
 //! `weapon_set` and `movement::movement_data` are the merged data;
@@ -39,8 +41,8 @@
 //!   changes their numbers), and `trigger.per_press` only where the key
 //!   is already there. Not mapped (no field in our data yet):
 //!   `ZoomedMovePenalty`, `ZoomTime`, `ReloadPerBullet`, `TripleShot*`
-//!   timing, sounds and sound radii, models, `DotSightName`, the HUD's
-//!   weapon class (ours), armour, `[Perturb]`, `[Player]` (the client's
+//!   timing, `ContinuousFire`, sounds and sound radii, models,
+//!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
 //!   and worn gear (attachments' spec).
 //! - Ammo is patched through the weapon that uses it as its default
@@ -327,6 +329,7 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
         set(&["hooks", HUD, "duck_perturb"], i64::from(w.duck_perturb)),
         set(&["hooks", HUD, "move_duck_perturb"], i64::from(w.move_duck_perturb)),
         set(&["hooks", HUD, "wide_count"], i64::from(w.wide_fire_max_num)),
+        set(&["hooks", HUD, "bomb"], w.gun_type == 8),
     ];
     if w.triple_shot_mode != 0 {
         out.extend([
@@ -341,6 +344,8 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
             set(&["hooks", DAMAGE, "damage"], a.inst_damage as f64),
             set(&["hooks", DAMAGE, "damage_type"], i64::from(a.inst_damage_type)),
             set(&["hooks", DAMAGE, "range_damage"], floats(a.range_damage.iter().copied())),
+            set(&["hooks", DAMAGE, "move_penalty"], a.damage_move_penalty),
+            set(&["hooks", DAMAGE, "move_penalty_duration"], a.damage_move_penalty_duration),
             set(&["hooks", SPREAD, "state"], state(&a.perturb)),
             set(&["hooks", SPREAD, "zoomed_state"], state(&a.zoomed_perturb)),
             set(&["hooks", SPREAD, "dec_delay"], a.dec_delay as f64),
@@ -390,6 +395,12 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, meters_per_unit:
     };
     for s in weapon_values(w, ammo, meters_per_unit / doc_length) {
         apply(doc, &s);
+    }
+    // The inventory class: the order list it is in (our `slot` is the
+    // class - 1; in none, ours stays).
+    let id = file.weapons.iter().position(|x| std::ptr::eq(x, w));
+    if let Some(class) = id.map(|i| file.inventory_class(i)).filter(|c| *c > 0) {
+        apply(doc, &set(&["slot"], i64::from(class - 1)));
     }
 }
 
@@ -495,6 +506,7 @@ pub fn merge_movement(data: &mut MovementData, models: &ModelsFile) {
     fig.variable_speed = f.variable_speed as f32;
     fig.variable_weight = f.variable_weight as f32;
     fig.variable_jump = f.variable_jump as f32;
+    fig.stiff_duration = f.stiff_duration as f32;
 }
 
 /// Combat Arms' data, loaded as the game starts (so a bad file fails at

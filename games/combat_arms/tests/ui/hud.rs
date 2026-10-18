@@ -21,11 +21,11 @@ use chimera_world::{
 };
 use combat_arms::{
     game::{
-        hud::{CaHudData, WeaponClass},
+        hud::CaHudData,
         inventory, movement,
     },
     harness::CaSim,
-    ui::hud::{CaHud, CaHudStatePlugin, HudOptions, HudScreen, class_of_weapon, model, model::*, spread_of},
+    ui::hud::{CaHud, CaHudStatePlugin, HudOptions, HudScreen, model, model::*, rapid_fire_count, spread_of},
 };
 
 const RIFLE: &str = "combat_arms:test_hud_rifle";
@@ -928,16 +928,22 @@ fn t52_knife() {
     assert_eq!((p.ammo, p.icon), (None, None));
 }
 
+/// As corrected (case 77): only the mission bomb and a weapon in no order
+/// list hide the panel.
 #[test]
 fn t53_not_a_gun() {
     let p = PanelInputs {
         name: "C4".into(),
-        gun: false,
+        class: 0,
         ..default()
     };
     assert_eq!(weapon_panel(&p, true), None);
-    assert!(!WeaponClass::Etc.is_gun());
-    assert_eq!(class_of_weapon(None, 4, false), Some(WeaponClass::Etc));
+    let bomb = PanelInputs {
+        class: 6,
+        bomb: true,
+        ..p.clone()
+    };
+    assert_eq!(weapon_panel(&bomb, true), None);
     // The bomb flag hides a gun's panel too.
     let (mut sim, me) = setup(&[RIFLE]);
     let w = active(&sim, me);
@@ -949,15 +955,16 @@ fn t53_not_a_gun() {
     assert_eq!(hud(&sim).weapon, None);
 }
 
+/// As corrected (case 76): a sniper rifle is a primary and gets an icon
+/// (single shot).
 #[test]
 fn t54_fire_mode_icon() {
-    assert_eq!(fire_icon(true, None, Some(true)), Some(FireIcon::Auto));
-    assert_eq!(fire_icon(true, None, Some(false)), Some(FireIcon::Single));
-    assert_eq!(fire_icon(true, Some(2), Some(true)), Some(FireIcon::Burst2));
-    assert_eq!(fire_icon(true, Some(3), None), Some(FireIcon::Burst3));
-    assert_eq!(fire_icon(true, None, None), Some(FireIcon::Auto), "auto only");
-    assert!(!WeaponClass::Sniper.has_fire_mode_icon());
-    assert_eq!(fire_icon(false, None, Some(true)), None, "sniper rifle");
+    assert_eq!(fire_icon(1, None, 0, false), Some(FireIcon::Auto));
+    assert_eq!(fire_icon(1, None, 1, false), Some(FireIcon::Single));
+    assert_eq!(fire_icon(1, Some(2), 0, false), Some(FireIcon::Burst2));
+    assert_eq!(fire_icon(1, Some(3), 0, false), Some(FireIcon::Burst3));
+    assert_eq!(fire_icon(1, None, 1, false), Some(FireIcon::Single), "sniper rifle");
+    assert_eq!(rapid_fire_count(None), 1);
     assert_eq!(panel::ICON, (Vec2::new(926.0, 731.0), Vec2::new(128.0, 16.0)));
     let (sim, _) = setup(&[RIFLE]);
     assert_eq!(hud(&sim).weapon.unwrap().icon, Some(FireIcon::Auto));
@@ -1288,4 +1295,127 @@ fn spread_read_back_from_the_cone() {
     assert_eq!((p.min, p.max, r), (7, 7, 0.0));
     assert_eq!(screen().centre(), Vec2::new(512.0, 384.0));
     let _ = HudScreen::default();
+}
+
+// ---------------------------------------------------------------------------
+// The follow-up answers (71-77)
+
+#[test]
+fn t71_hit_indicator_and_feed_on_the_ms_clock() {
+    let mut h = HitIndicator::default();
+    h.hit(10000.0, true);
+    assert!(h.frame(10500.0), "500 is not more than 500: still red");
+    assert!(!h.frame(10516.0), "the next frame: green");
+    let mut f = KillFeed::default();
+    f.push(0.0, kill("K", "A"));
+    f.frame(30000.0);
+    assert_eq!(f.lines.len(), 1, "shown at 30000");
+    f.frame(30016.0);
+    assert!(f.lines.is_empty(), "gone on the first frame after");
+    // In the game the indicator runs on real time in whole ms: still red
+    // 0.49 s on, green after 0.52 s.
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = other(&mut sim, me, 5.0, 2, "Foe");
+    hurt(&mut sim, foe, Some(me), 0.01, Vec3::NEG_Z);
+    sim.ticks(1);
+    let start = sim.app.world().resource::<Time<Real>>().elapsed_secs_f64();
+    while sim.app.world().resource::<Time<Real>>().elapsed_secs_f64() - start < 0.49 {
+        assert_eq!(hud(&sim).crosshair.colour, HIT_CROSSHAIR);
+        sim.ticks(1);
+    }
+    sim.seconds(0.03);
+    assert_eq!(hud(&sim).crosshair.colour, DEFAULT_CROSSHAIR);
+}
+
+#[test]
+fn t72_kick_on_the_game_clock() {
+    // Fired at game time 12.000, a frame at 12.050: D 5, l 10 (case 7).
+    let m = Measures::new(3, 100, 0.0, Some((12.050f64 - 12.000) as f32), 0, screen());
+    assert!(near(m.d, 5.0, EPS) && near(m.l, 10.0, EPS), "{m:?}");
+}
+
+#[test]
+fn t73_gap_unrounded() {
+    assert!(near(gap(3, 100, 0.04875, 1.0), 7.72875, 1e-4));
+    assert!(near(gap(3, 100, 0.30, 1.0), 32.1, 1e-4));
+    // In the game: the M4A1's meter at one shot; the gap unrounded, the
+    // next shot's cone rounded down.
+    use combat_arms::game::weapons::{CaSpread, FireMode};
+    let (mut sim, me) = setup(&["combat_arms:m4a1"]);
+    let w = active(&sim, me);
+    for (r, cone) in [(0.04875, 7.0), (0.30, 32.0)] {
+        let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+        {
+            let mut s = sim.app.world_mut().get_mut::<CaSpread>(w).unwrap();
+            s.fire = r;
+            s.movement = 0.0;
+            s.last_shot = Some(now);
+        }
+        sim.ticks(1);
+        let c = hud(&sim).crosshair;
+        assert!(near(c.r, r, 1e-6), "r {}", c.r);
+        assert!(near(c.measures.unwrap().g, 3.0 + r * 97.0, 1e-3), "gap {:?}", c.measures);
+        assert_eq!(sim.app.world().get::<CaSpread>(w).unwrap().cone(FireMode::Normal), cone);
+    }
+}
+
+#[test]
+fn t74_name_tag_anchor() {
+    // No models yet, so no name socket: the hull centre, no offset.
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = other(&mut sim, me, 5.0, 2, "Foe");
+    look_at(&mut sim, me, foe);
+    let tag = hud(&sim).tags.into_iter().find(|t| t.entity == foe).expect("tag shown");
+    assert!((tag.anchor - sim.position(foe)).length() < 1e-5, "{} vs {}", tag.anchor, sim.position(foe));
+}
+
+#[test]
+fn t75_no_distance_limit() {
+    assert!(tag_in_front(20000.0));
+    assert!(!tag_in_front(-1.0) && !tag_in_front(0.0), "behind the camera: hidden");
+    // A teammate far away still has its tag (opacity by visibility).
+    let (mut sim, me) = setup(&[RIFLE]);
+    let far = 20000.0 * inventory::UNIT;
+    let mate = other(&mut sim, me, far, 1, "Mate");
+    assert!(hud(&sim).tags.iter().any(|t| t.entity == mate), "shown far away");
+}
+
+#[test]
+fn t76_fire_mode_icons_from_the_data() {
+    // M16A3: primary, RapidFireCount 0, burst toggled (3 rounds).
+    assert_eq!(fire_icon(1, None, 0, false), Some(FireIcon::Auto));
+    assert_eq!(fire_icon(1, Some(3), 0, false), Some(FireIcon::Burst3));
+    // M24 sniper (primary) and M92FS (secondary): RapidFireCount 1.
+    assert_eq!(fire_icon(1, None, 1, false), Some(FireIcon::Single));
+    assert_eq!(fire_icon(2, None, 1, false), Some(FireIcon::Single));
+    assert_eq!(fire_icon(1, None, 1, true), Some(FireIcon::Auto), "continuous fire on");
+    // RapidFireCount 3, no burst: none; the M67 (throw class): none.
+    assert_eq!(fire_icon(1, None, 3, false), None);
+    assert_eq!(fire_icon(4, None, 1, false), None);
+}
+
+#[test]
+fn t77_panel_by_inventory_class() {
+    let panel = |class, bomb, infinite, clip, total| {
+        weapon_panel(
+            &PanelInputs {
+                name: "W".into(),
+                class,
+                bomb,
+                infinite,
+                clip,
+                total,
+                rapid_fire_count: 1,
+                ..default()
+            },
+            true,
+        )
+    };
+    let m67 = panel(4, false, false, 1, 1).expect("the M67's panel");
+    assert_eq!(m67.ammo, Some(("001".into(), "000".into())));
+    assert_eq!(m67.icon, None);
+    let knife = panel(3, false, true, 0, 0).expect("the knife's panel");
+    assert_eq!((knife.ammo, knife.icon), (None, None));
+    assert_eq!(panel(1, true, false, 30, 120), None, "the mission bomb");
+    assert_eq!(panel(0, false, false, 30, 120), None, "in no order list");
 }

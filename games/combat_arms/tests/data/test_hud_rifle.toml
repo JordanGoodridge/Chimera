@@ -38,5 +38,3 @@ impulse = 0.0
 [hud]
 name = "M4A1"
 
-[hooks."combat_arms:hud"]
-class = "assault"

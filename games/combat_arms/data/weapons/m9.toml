@@ -30,6 +30,9 @@ range = 105.0
 damage_spread = 0.1
 # Fire-rate bonus f_weapon: none for the M9 [8.2].
 fire_rate = 0.0
+# The attack ray's cone: MinPerturb 1 (the M9's ammo has no spread values,
+# so the meters stay 0 and the cone is its minimum: +-0.001) [8.3].
+perturb = 1.0
 # Primary (slash, fire): 1 ms pre-fire, a 650 ms swing hitting at 155 and
 # 402 ms for 45 each, 1 ms post-fire [Constants: M9 attack data; 8.2].
 primary = { prefire = 0.001, length = 0.65, hits = [0.155, 0.402], damage = 45.0, postfire = 0.001 }

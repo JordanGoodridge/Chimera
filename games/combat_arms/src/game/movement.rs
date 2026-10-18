@@ -28,39 +28,40 @@
 //! penalties; the reference character by default) and `HeldMovePenalty`
 //! (the held weapon's `MovePenalty`, set by the weapon part; none: 0). The
 //! HUD reads the stamina gauge and the crouch lock-out from `CaMovement`.
+//! The eye sits `eye_above_centre` over the hull's centre (83 u above the
+//! feet standing, 60 crouched); `CameraRise` is the camera's upward
+//! smoothing. An infected character (`CaInfected`) hit by the other team
+//! gets a `HitKnockback` from the weapon part (its ammo's
+//! `DamageMovePenalty`): the push replaces the acceleration while it runs.
+//! A spawn or respawn puts the player on the floor below and measures
+//! falls from there; a teleport resets nothing.
 //!
 //! Known shortcuts (docs/tech-debt.md): Combat Arms movement
 //! (specs/combat_arms/movement.md) runs once per engine tick, the game's
 //! tick set to the spec's 15 ms (`game::TICK_INTERVAL`); the spec's own
 //! frame accumulator (at most 6 ticks per frame, the rest dropped) is
-//! `TickClock`, not wired to the engine's fixed clock. Stamina and the
-//! crouch release delay run on the simulation clock per tick, not per
-//! rendered frame. `Intent` carries a move axis, not keys: opposing keys
-//! read as neither held (braking, not the spec's zero-accel "moving"), and
-//! the shell's `+speed` sets walk and sprint together, so walk counts only
-//! held alone (`walk && !sprint`). Sprint applies at once (the server's
-//! echo is immediate in a local game). Not modelled: ladders, volumes
-//! (water, viscosity, currents, gravity, jump pads, safety nets),
-//! explosion pushers, movement disallowed (freeze), the infection
-//! stagger, VIP accounts, kill-streak and stamina perks, stun and damage
-//! slows, the "falling" sound status, stamina kits, jump stamina. The
-//! hull is resized once per tick (the spec's second resize uses the same
-//! rate). Our choices where the spec is silent or ambiguous: standing up
-//! on the ground keeps the feet (the spec only says so for shrinking); in
-//! the air the hull grows around its centre but moves up to keep the feet
-//! out of the floor (open question 5); the moving-start rescale to 500
-//! applies when the ramp is bypassed too; the jump factor scales the
-//! crouched in-jump air accel too (test case 20's "+2.25 u/s per tick"
-//! is for j = 1); a stair step is tried when the low slide hit a surface
-//! steeper than walkable, and refused when the drop meets only an edge
-//! beside the hull; the opposite crouch
-//! direction's elapsed time restarts when the crouch rate turns; a player
-//! spawned in the air measures its first fall from where it spawned;
-//! 1 u = 1 cm (open question 3); the eye at 0.9 of the hull's height
-//! (open question 2). Why it's OK for now: every spec test case is a
-//! scenario test on the real collision (games/combat_arms/tests/it/
-//! movement.rs) and passes within the stated tolerances; the missing
-//! pieces have nothing in Chimera's Combat Arms to act on yet.
+//! `TickClock`, not wired to the engine's fixed clock. So what the spec
+//! runs per rendered frame runs per tick here: the stamina gauge, and the
+//! crouch release delay is checked against the tick's time, not the
+//! frame's (the same totals; edges a frame apart). `CameraRise` isn't
+//! applied to the client's camera yet. Sprint applies at once (the
+//! spec's listen-server case). Not modelled: ladders, volumes (water,
+//! viscosity, currents, gravity, jump pads, safety nets), explosion
+//! pushers, movement disallowed (freeze), the infection stagger (nothing
+//! sets `CaInfected` yet: no game modes), VIP accounts, kill-streak and
+//! stamina perks, stun slows, the "falling" sound status, stamina kits,
+//! jump stamina, maps' not-a-step surface flag (characters and moving
+//! bodies are not steps). The shape cast reports where it touched, not
+//! which cap: a stair-step drop or a standing probe that touches an edge
+//! above the hull's flat bottom is taken as the curved side (a level
+//! normal). Scale: the spec stays in world units and the game calls 40 u
+//! a metre for its HUD readouts (`hud_metres`), but its bodies aren't
+//! built to that (a 100 u hull would be 2.5 m), so `meters_per_unit`
+//! scales by body size instead (open question 3; to be checked live).
+//! Why it's OK for now: every spec test case is a scenario test on the
+//! real collision (games/combat_arms/tests/it/movement.rs) and passes
+//! within the stated tolerances; the missing pieces have nothing in
+//! Chimera's Combat Arms to act on yet.
 
 use std::sync::OnceLock;
 
@@ -81,6 +82,9 @@ use crate::{
 /// The movement Combat Arms' players get.
 pub const ID: &str = "combat_arms:movement";
 
+/// Ours: how far below a spawn point the floor is looked for (u).
+const SPAWN_DROP: f32 = 100_000.0;
+
 /// data/movement.toml, built in.
 pub const MOVEMENT_DATA: &str = include_str!("../../data/movement.toml");
 
@@ -90,7 +94,12 @@ pub const MOVEMENT_DATA: &str = include_str!("../../data/movement.toml");
 pub struct MovementData {
     pub meters_per_unit: f32,
     pub skin: f32,
-    pub eye_height_fraction: f32,
+    pub eye_offset: f32,
+    pub eye_crouch_offset: f32,
+    pub camera_rise_time: f32,
+    pub camera_rise_min_speed: f32,
+    pub camera_rise_max_lag: f32,
+    pub hud_units_per_metre: f32,
     pub run_forward: f32,
     pub run_back: f32,
     pub run_strafe: f32,
@@ -177,6 +186,9 @@ pub struct Figure {
     pub variable_speed: f32,
     pub variable_weight: f32,
     pub variable_jump: f32,
+    /// `StiffDuration`: the hit knock-back lasts `1 + this` times longer.
+    #[serde(default)]
+    pub stiff_duration: f32,
 }
 
 /// One worn item (vest, head piece, goggles, backpack, gear mod).
@@ -220,6 +232,100 @@ impl CaCharacter {
 pub struct HeldMovePenalty {
     pub penalty: f32,
     pub mod_factor: f32,
+}
+
+/// An infected character of the infection mode: hits from the other
+/// team knock it back (spec "Other modifiers", `HitKnockback`). Nothing
+/// sets it yet (no game modes).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct CaInfected;
+
+/// A running hit knock-back (spec "Other modifiers", "Hit knock-back"):
+/// set on an infected character by the weapon that hit it (its ammo's
+/// `DamageMovePenalty` K and `DamageMovePenaltyDuration`).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HitKnockback {
+    /// The strength K: the push starts at K^2 u/s^2.
+    pub strength: f32,
+    /// The last hit's direction (the way the damage travelled), engine
+    /// space; its horizontal part is pushed along.
+    pub dir: Vec3,
+    /// How long it lasts, s (the duration x (1 + `StiffDuration`)).
+    pub duration: f32,
+    /// When the movement first saw it (its t = 0); None until then.
+    pub started: Option<f64>,
+}
+
+impl HitKnockback {
+    /// A hit with knock-back `strength` for `duration` s on a figure with
+    /// `stiff` (`StiffDuration`) at `now`, over the one running (`current`):
+    /// the new timer replaces it only when longer than the time it has
+    /// left; the direction is always the latest hit's. None: no knock-back
+    /// (both values must be above 0).
+    pub fn hit(current: Option<&Self>, strength: f32, duration: f32, stiff: f32, dir: Vec3, now: f64) -> Option<Self> {
+        if strength <= 0.0 || duration <= 0.0 {
+            return current.copied();
+        }
+        let new = Self {
+            strength,
+            dir,
+            duration: duration * (1.0 + stiff),
+            started: None,
+        };
+        Some(match current {
+            Some(c) => {
+                let left = c.started.map_or(c.duration as f64, |s| c.duration as f64 - (now - s)) as f32;
+                if new.duration > left { new } else { Self { dir, ..*c } }
+            }
+            None => new,
+        })
+    }
+
+    /// Seconds since it started at `now` while it runs; None when over.
+    fn running(&self, now: f64) -> Option<f32> {
+        let t = (now - self.started.unwrap_or(now)) as f32;
+        (t < self.duration - 1e-6).then_some(t)
+    }
+}
+
+/// The first-person camera's upward smoothing (spec "Eye (camera)
+/// height"): rising more than 1 u (not in a jump) it moves at
+/// `max(gap / 0.1 s, 140 u/s)`, at most 30 u behind, and snaps once
+/// within 1 u; downward moves are immediate. Heights in u. The client's
+/// camera doesn't use it yet (module doc, known shortcuts).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CameraRise {
+    pub height: Option<f32>,
+}
+
+impl CameraRise {
+    /// One rendered frame of `dt` s toward the wanted height: the camera's.
+    pub fn step(&mut self, wanted: f32, dt: f32, in_jump: bool, data: &MovementData) -> f32 {
+        let h = match self.height {
+            Some(h) if wanted - h > 1.0 && !in_jump => {
+                let h = h.max(wanted - data.camera_rise_max_lag);
+                let speed = ((wanted - h) / data.camera_rise_time).max(data.camera_rise_min_speed);
+                let h = (h + speed * dt).min(wanted);
+                if wanted - h <= 1.0 { wanted } else { h }
+            }
+            _ => wanted,
+        };
+        self.height = Some(h);
+        h
+    }
+}
+
+/// The eye's height above the hull's centre (u) at crouch rate `r` (spec
+/// "Eye (camera) height"): fixed from the standing box, plus the crouch
+/// offset.
+pub fn eye_above_centre(r: f32, data: &MovementData) -> f32 {
+    data.eye_offset * data.stand_half_extents[1] + data.eye_crouch_offset * r
+}
+
+/// A distance as the game's HUD readouts print it: whole "metres" of 40 u
+/// (spec "Units and conventions").
+pub fn hud_metres(units: f32, data: &MovementData) -> u32 {
+    (units / data.hud_units_per_metre).floor().max(0.0) as u32
 }
 
 /// The movement data, parsed once per process, with the install's
@@ -327,6 +433,8 @@ pub struct CaMovement {
     history: Vec<(f64, Vec2)>,
     /// Highest Y while not standing (fall damage), u.
     fall_top: Option<f32>,
+    /// Dead last tick (a respawn puts the player on the floor again).
+    was_dead: bool,
     initialized: bool,
 }
 
@@ -401,6 +509,9 @@ struct Space<'a, 'w, 's> {
     skin: f32,
     radius: f32,
     is_character: &'a dyn Fn(Entity) -> bool,
+    /// Not a step (spec "Slopes and steps"): characters and moving
+    /// objects (anything but a static body).
+    not_a_step: &'a dyn Fn(Entity) -> bool,
 }
 
 struct Hit {
@@ -500,9 +611,9 @@ impl Space<'_, '_, '_> {
         centre + offset / self.scale
     }
 
-    /// Slide `delta` from `centre` along up to 5 planes: the end and the
-    /// normals hit.
-    fn slide(&self, mut centre: Vec3, half_height: f32, delta: Vec3) -> (Vec3, Vec<Vec3>) {
+    /// Slide `delta` from `centre` along up to 5 planes: the end and what
+    /// was hit (normal, entity).
+    fn slide(&self, mut centre: Vec3, half_height: f32, delta: Vec3) -> (Vec3, Vec<(Vec3, Entity)>) {
         let mut planes: Vec<Dir3> = Vec::new();
         let mut normals = Vec::new();
         let mut remaining = delta;
@@ -519,7 +630,7 @@ impl Space<'_, '_, '_> {
                     let dir = remaining.normalize();
                     let moved = dir * hit.distance.min(remaining.length());
                     centre += moved;
-                    normals.push(hit.normal);
+                    normals.push((hit.normal, hit.entity));
                     if let Ok(n) = Dir3::new(hit.normal) {
                         planes.push(n);
                     }
@@ -530,13 +641,60 @@ impl Space<'_, '_, '_> {
         (centre, normals)
     }
 
-    /// What the hull at `centre` stands on, within `probe` u below.
-    fn ground(&self, centre: Vec3, half_height: f32, probe: f32) -> Option<Standing> {
-        let hit = self.cast(centre, half_height, Vec3::NEG_Y * (probe + self.skin))?;
-        (hit.normal.y >= 0.001).then(|| Standing {
+    /// What the hull at `centre` stands on, within `probe` u below
+    /// (spec "Slopes and steps", "What the player stands on"); `before`:
+    /// what it stood on last.
+    fn ground(
+        &self,
+        data: &MovementData,
+        centre: Vec3,
+        half_height: f32,
+        probe: f32,
+        before: Option<Standing>,
+    ) -> Option<Standing> {
+        let len = probe + self.skin;
+        let hit = self.cast(centre, half_height, Vec3::NEG_Y * len)?;
+        if hit.normal.y < 0.001 {
+            return None;
+        }
+        let character = (self.is_character)(hit.entity);
+        let steep = hit.normal.y < data.walkable_normal;
+        if steep
+            && let Some(old) = before.filter(|b| !b.character && b.normal.y >= data.walkable_normal)
+        {
+            // A slope beside the ground it stood on: it keeps standing on
+            // that ground unless a probe from a step up, moved up-hill,
+            // meets something.
+            let ny = hit.normal.y;
+            let t = (hit.distance / len).clamp(0.0, 1.0);
+            let step = data.stair_step;
+            let ahead = (0.5 * self.radius)
+                .max(2.0 * (step + data.standing_probe * half_height * t) * (1.0 - ny * ny) + 0.11 * self.radius);
+            let uphill = -Vec3::new(hit.normal.x, 0.0, hit.normal.z).normalize_or_zero();
+            let from = centre + Vec3::Y * step;
+            if uphill != Vec3::ZERO && self.cast(from, half_height, uphill * ahead).is_none() {
+                return Some(old);
+            }
+        }
+        Some(Standing {
             normal: hit.normal,
-            character: (self.is_character)(hit.entity),
+            character,
         })
+    }
+
+    /// Grow the hull from `old` to `new` half-height (spec "Crouching",
+    /// "Growing"): down by up to the growth, then up by up to twice it,
+    /// centred in the span found. Returns the centre and whether it fits
+    /// (when not, it is forced around the old centre).
+    fn grow(&self, centre: Vec3, old: f32, new: f32) -> (Vec3, bool) {
+        let d = new - old;
+        let down = self.cast(centre, old, Vec3::NEG_Y * d).map_or(d, |h| h.distance.min(d));
+        let low = centre - Vec3::Y * down;
+        let up = self.cast(low, old, Vec3::Y * (2.0 * d)).map_or(2.0 * d, |h| h.distance.min(2.0 * d));
+        if old + up / 2.0 < new - 1e-4 {
+            return (centre, false);
+        }
+        (low + Vec3::Y * (up / 2.0), true)
     }
 }
 
@@ -551,7 +709,8 @@ fn move_hull(
     steep: Option<Vec3>,
 ) -> Vec3 {
     let mut delta = delta;
-    // Moving up a steep slope while standing on it: the up-slope part goes.
+    // 1. Moving up a steep slope while standing on it: the up-slope part
+    // goes.
     if let Some(n) = steep {
         let nh = Vec2::new(n.x, n.z).normalize_or_zero();
         let dh = Vec2::new(delta.x, delta.z);
@@ -562,45 +721,50 @@ fn move_hull(
             delta.z = dh.y;
         }
     }
-    // Along the floor plane when standing on walkable ground.
+    // 2. The low path: along the floor plane when standing on walkable
+    // ground. It is kept when it touched nothing, or anything that is not
+    // a step.
     let low_delta = match floor {
         Some(n) if n.y > 0.0 => Vec3::new(delta.x, delta.y - n.dot(delta) / n.y, delta.z),
         _ => delta,
     };
-    let (low, normals) = space.slide(centre, half_height, low_delta);
+    let (low, hits) = space.slide(centre, half_height, low_delta);
     let horizontal = Vec2::new(delta.x, delta.z);
-    if horizontal.length_squared() < 1e-10 || !normals.iter().any(|n| n.y < data.walkable_normal) {
+    if horizontal.length_squared() < 1e-10 || hits.is_empty() || hits.iter().any(|(_, e)| (space.not_a_step)(*e)) {
         return low;
     }
-    // Lift, slide at that height, drop back.
+    // 3. Lift (a low ceiling: keep the low result).
     let step = data.stair_step;
     if space.cast(centre, half_height, Vec3::Y * step).is_some() {
         return low;
     }
+    // 4. The high path: slide from the lifted start, drop back at most the
+    // lift.
     let lifted = centre + Vec3::Y * step;
-    let (across, _) = space.slide(lifted, half_height, Vec3::new(delta.x, 0.0, delta.z));
-    let drop = step + (-delta.y).max(0.0);
-    let high = match space.cast(across, half_height, Vec3::NEG_Y * drop) {
-        None => across - Vec3::Y * drop,
-        // Something beside the hull, not under it (a wall it is pressed
-        // against): no step.
-        Some(hit) if hit.normal.y < 0.001 => return low,
+    let (across, high_hits) = space.slide(lifted, half_height, delta);
+    let high = match space.cast(across, half_height, Vec3::NEG_Y * step) {
+        None => across - Vec3::Y * step,
         Some(hit) => {
             let landed = across - Vec3::Y * hit.distance;
-            // Only something under the hull's base carries it: a contact
-            // higher up is an edge beside it (the shape cast reports those
-            // at a wall the hull is pressed against).
-            if hit.point.y > landed.y - half_height + 2.0 * space.skin {
-                return low;
-            }
-            if hit.normal.y < data.walkable_normal {
-                // A steep landing: refused unless further forward is walkable.
-                let ny = hit.normal.y;
-                let ahead = (data.stand_half_extents[0] / 2.0).max(2.0 * step * (1.0 - ny * ny) + 0.1);
-                let probe = across + horizontal.normalize().extend(0.0).xzy() * ahead;
+            // What the flat bottom lands on carries its normal; a contact
+            // higher up is an edge touching the curved side, whose normal
+            // is level: steep, with no up-hill direction.
+            let side = hit.point.y > landed.y - half_height + 2.0 * space.skin;
+            let n = if side { Vec3::new(hit.normal.x, 0.0, hit.normal.z) } else { hit.normal };
+            // 5. A steep top: refused when the high slide hit anything,
+            // else unless a probe further up-hill is not steep.
+            if n.y < data.walkable_normal {
+                let uphill = -Vec3::new(n.x, 0.0, n.z).normalize_or_zero();
+                if !high_hits.is_empty() || n.y < 0.001 || uphill == Vec3::ZERO {
+                    return low;
+                }
+                let ny = n.y;
+                let ahead = (0.5 * space.radius).max(2.0 * step * (1.0 - ny * ny) + 0.1);
+                let target = across + uphill * ahead - lifted;
+                let probe = lifted + space.cast(lifted, half_height, target).map_or(target, |h| target.normalize() * h.distance);
                 let ok = space
-                    .cast(probe, half_height, Vec3::NEG_Y * drop)
-                    .is_some_and(|h| h.normal.y >= data.walkable_normal);
+                    .cast(probe, half_height, Vec3::NEG_Y * step)
+                    .is_none_or(|h| h.normal.y >= data.walkable_normal);
                 if !ok {
                     return low;
                 }
@@ -608,11 +772,14 @@ fn move_hull(
             landed
         }
     };
-    let dir = horizontal.normalize();
-    let progress = |p: Vec3| Vec2::new(p.x - centre.x, p.z - centre.z).dot(dir);
-    let (p_low, p_high) = (progress(low), progress(high));
+    // 6. Take the high result when it got further along the move.
+    let o = Vec2::new(delta.x, delta.z);
+    let along = |p: Vec3| Vec2::new(p.x - centre.x, p.z - centre.z).dot(o);
+    let (l, h) = (along(low).max(0.0), along(high));
     let same_xz = Vec2::new(low.x - high.x, low.z - high.z).length() < 1e-4;
-    if p_high > 1.01 * p_low.max(0.0) && p_high > p_low || (same_xz && high.y >= low.y) {
+    if same_xz {
+        if high.y >= low.y { high } else { low }
+    } else if 1.01 * l < h {
         high
     } else {
         low
@@ -630,10 +797,13 @@ fn step(
         &mut MovementState,
         Option<&CaCharacter>,
         Option<&HeldMovePenalty>,
+        Option<&mut HitKnockback>,
         Has<Zoomed>,
         Has<Dead>,
     )>,
     characters: Query<(), With<Intent>>,
+    bodies: Query<&RigidBody>,
+    collider_of: Query<&ColliderOf>,
     move_and_slide: MoveAndSlide,
     data: Res<MovementData>,
     clock: Res<SimClock>,
@@ -645,7 +815,12 @@ fn step(
     let s = d.meters_per_unit;
     let first = first.is_none_or(|f| f.0);
     let is_character = |e: Entity| characters.contains(e);
-    for (entity, intent, mut me, mut transform, mut vel, mut state, character, held, zoomed, dead) in &mut q {
+    // Characters and moving objects are never steps.
+    let not_a_step = |e: Entity| {
+        let body = collider_of.get(e).map_or(e, |c| c.body);
+        characters.contains(e) || characters.contains(body) || bodies.get(body).is_ok_and(|b| !b.is_static())
+    };
+    for (entity, intent, mut me, mut transform, mut vel, mut state, character, held, mut knock, zoomed, dead) in &mut q {
         let me = &mut *me;
         let character = character.unwrap_or(&d.character);
         let space = Space {
@@ -655,6 +830,7 @@ fn step(
             skin: d.skin,
             radius: d.stand_half_extents[0].max(d.stand_half_extents[2]),
             is_character: &is_character,
+            not_a_step: &not_a_step,
         };
         let stand_h = d.stand_half_extents[1];
         let crouch_h = d.crouch_half_extents[1];
@@ -671,8 +847,20 @@ fn step(
         }
         let mut pos = transform.translation / s;
         pos = space.depenetrate(pos, me.half_height);
-        // A fall is measured from where the player first appeared.
-        me.fall_top.get_or_insert(pos.y);
+        // Spawn and respawn (spec "Falling and fall damage"): the server
+        // puts the player on the floor below the spawn point, and the fall
+        // is measured from there.
+        if me.fall_top.is_none() || (me.was_dead && !dead) {
+            if let Some(hit) = space.cast(pos, me.half_height, Vec3::NEG_Y * SPAWN_DROP) {
+                pos.y -= hit.distance;
+            }
+            me.fall_top = Some(pos.y);
+        }
+        me.was_dead = dead;
+        // Where it was put since (a teleport) counts for the fall too.
+        if me.standing.is_none() {
+            me.fall_top = me.fall_top.map(|t| t.max(pos.y));
+        }
         let mut v = vel.0 / s;
         let now = clock.now;
         let spam = &d.crouch_spam;
@@ -700,9 +888,8 @@ fn step(
         if spam.enable_lockout && me.crouch_locked && r_prev == 0.0 {
             me.crouch = false;
         }
-        // 2. Run: walk key XOR always-run (on).
-        let walk_key = intent.walk && !intent.sprint;
-        me.run = !me.crouch && keys_on && !walk_key;
+        // 2. Run: walk key XOR always-run (on); set at rest too.
+        me.run = !me.crouch && keys_on && !intent.walk;
         // 3. Jump.
         me.jump = false;
         if !me.crouch && me.on_ground && !me.in_jump {
@@ -721,13 +908,24 @@ fn step(
             me.jump = false;
             sprint_ok = false;
         }
-        // 5. Forward and sprint.
-        me.forward = keys_on && intent.move_axis.y > 0.0;
-        me.back = keys_on && intent.move_axis.y < 0.0;
-        me.left = keys_on && intent.move_axis.x < 0.0;
-        me.right = keys_on && intent.move_axis.x > 0.0;
+        // 5. Forward and sprint. Opposing keys both set their flags.
+        let axis = intent.move_axis;
+        me.forward = keys_on && (axis.y > 0.0 || intent.opposed.y);
+        me.back = keys_on && (axis.y < 0.0 || intent.opposed.y);
+        me.left = keys_on && (axis.x < 0.0 || intent.opposed.x);
+        me.right = keys_on && (axis.x > 0.0 || intent.opposed.x);
+        // The hit knock-back: no run or sprint while it runs.
+        let knocked = knock.as_mut().and_then(|k| {
+            if k.started.is_none() {
+                k.started = Some(now);
+            }
+            k.running(now)
+        });
+        if knocked.is_some() {
+            me.run = false;
+        }
         let can_sprint = me.run && r_prev == 0.0 && sprint_ok;
-        if me.forward && !me.back {
+        if me.forward {
             if intent.sprint && me.stamina.floor() >= 1.0 && can_sprint {
                 me.sprint = true;
                 me.stamina_state = StaminaState::Draining;
@@ -739,9 +937,13 @@ fn step(
                 me.stamina_state = StaminaState::Recovering;
             }
         } else {
-            // 5./6. No forward, or back held: sprint ends.
             me.sprint = false;
             me.stamina_state = StaminaState::Recovering;
+        }
+        // 6. Back ends the sprint, leaving the gauge's state (forward,
+        // back and sprint drain it: Quirks).
+        if me.back || knocked.is_some() {
+            me.sprint = false;
         }
         // 7. Moving.
         me.moving = me.forward || me.back || me.left || me.right || me.jump;
@@ -790,18 +992,18 @@ fn step(
         let r = me.crouch_rate;
         crouch_spam(me, spam, r - r_prev, key_press, dt);
 
-        // 5. Resize the hull (feet stay when standing; see the known shortcuts).
+        // 5. Resize the hull (once: the spec's second resize changes
+        // nothing). Shrinking keeps the feet when standing, else the
+        // centre; growing finds its room below and above.
         let new_h = stand_h - r * (stand_h - crouch_h);
-        if new_h != me.half_height {
-            let feet = pos.y - me.half_height;
-            let keep_feet = Vec3::new(pos.x, feet + new_h, pos.z);
-            pos = if me.standing.is_some() {
-                keep_feet
-            } else if new_h < me.half_height || space.fits(pos, new_h) {
-                pos
-            } else {
-                keep_feet
-            };
+        if new_h < me.half_height {
+            if me.standing.is_some() {
+                pos.y -= me.half_height - new_h;
+            }
+            me.half_height = new_h;
+        } else if new_h > me.half_height {
+            // Not fitting: forced around the old centre.
+            pos = space.grow(pos, me.half_height, new_h).0;
             me.half_height = new_h;
         }
 
@@ -861,7 +1063,10 @@ fn step(
             base *= d.in_air_accel_factor;
         }
         let start = me.moving && !was.4;
-        let (a_f, a_r) = if jump_request || me.crouch {
+        // The jump-request tick and crouching skip the ramp: no start
+        // rescale, the remembered ramp values kept.
+        let bypass = jump_request || me.crouch;
+        let (a_f, a_r) = if bypass {
             (base, base)
         } else {
             let inc = d.accel_ramp * dt;
@@ -874,7 +1079,9 @@ fn step(
                 *l = if n < d.max_accel { n } else { d.max_accel };
                 *l
             };
-            let a_f = if (me.forward && was.1) || (me.back && was.0) {
+            // A reversal: one key newly held while the other was (both held
+            // on, the ramp goes on).
+            let a_f = if (me.forward && was.1 && !was.0) || (me.back && was.0 && !was.1) {
                 me.ramp_forward = d.start_accel;
                 d.start_accel
             } else if me.forward || me.back {
@@ -883,7 +1090,7 @@ fn step(
                 me.ramp_forward = d.start_accel;
                 0.0
             };
-            let a_r = if (me.right && was.2) || (me.left && was.3) {
+            let a_r = if (me.right && was.2 && !was.3) || (me.left && was.3 && !was.2) {
                 me.ramp_strafe = d.start_accel;
                 d.start_accel
             } else if me.left || me.right {
@@ -907,11 +1114,26 @@ fn step(
         if me.right {
             a = (a + right * a_r).clamp_length_max(d.max_accel);
         }
-        if start && a != Vec3::ZERO {
+        if start && !bypass && a != Vec3::ZERO {
             a = a.normalize() * d.start_accel;
         }
         if me.jump_factor < 1.0 {
             a *= me.jump_factor;
+        }
+        // The knock-back replaces it: K^2 (1 - t) along the hit's
+        // horizontal direction; crouched, a quarter with a movement key,
+        // none (and no velocity) without one.
+        if let (Some(t), Some(k)) = (knocked, knock.as_deref()) {
+            let dir = k.dir.with_y(0.0).normalize_or_zero();
+            a = dir * k.strength * k.strength * (1.0 - t);
+            if raw_crouch {
+                if me.forward || me.back || me.left || me.right {
+                    a *= 0.25;
+                } else {
+                    a = Vec3::ZERO;
+                    v = Vec3::new(0.0, v.y, 0.0);
+                }
+            }
         }
 
         // 7f. Jump, or the jump factor's recovery.
@@ -937,8 +1159,8 @@ fn step(
         }
         me.accel = a;
 
-        // 8. Braking with no movement keys.
-        if !me.moving && me.on_ground && !me.in_jump {
+        // 8. Braking with no movement keys (none under a knock-back).
+        if !me.moving && me.on_ground && !me.in_jump && knocked.is_none() {
             let h = Vec2::new(v.x, v.z);
             let speed = h.length();
             if speed > d.stop_snap_speed {
@@ -1014,7 +1236,7 @@ fn step(
             pos = move_hull(&space, d, pos, me.half_height, dx, floor, steep);
         }
         let probe = d.standing_probe * me.half_height;
-        me.standing = space.ground(pos, me.half_height, probe);
+        me.standing = space.ground(d, pos, me.half_height, probe, me.standing);
         let moved = pos - before;
         if dx.x.abs() > 0.01 && dx.z.abs() > 0.01 && me.standing.is_none() && moved == Vec3::ZERO {
             v.x = 0.0;
@@ -1073,7 +1295,7 @@ fn step(
                 && me.standing.is_some_and(|g| !g.character && g.normal.y >= d.walkable_normal),
             crouching: r > 0.0,
             sprinting: me.sprint,
-            eye_offset: Vec3::Y * (-half + 2.0 * half * d.eye_height_fraction),
+            eye_offset: Vec3::Y * eye_above_centre(r, d) * s,
             hull_min: Vec3::new(-r_xz, -half, -r_xz),
             hull_max: Vec3::new(r_xz, half, r_xz),
             ..default()

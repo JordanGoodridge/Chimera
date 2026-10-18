@@ -28,26 +28,30 @@
 //!
 //! Known shortcuts (docs/tech-debt.md; the spec's most literal reading
 //! where it is unclear):
-//! - The HUD runs once per rendered frame on the frame clock (`Time`):
-//!   timers in ms from it, the kick in seconds; Fired events are timed
-//!   at the frame that reads them.
-//! - "Enemy" for the hit indicator and name tags: anyone not on the
-//!   local player's team; with no teams (the skeleton) everyone else.
+//! - The HUD runs once per rendered frame on two clocks (Open question
+//!   13): real time in whole ms (`Time<Real>`) for the hit indicator, the
+//!   damage overlay and the kill feed, the game's time in seconds
+//!   (`SimClock`) for the kick; Fired events are timed at the frame that
+//!   reads them.
+//! - "Enemy" for the hit indicator and name tags: a team id that differs
+//!   from the local player's (the spec's, Open question 15); with no
+//!   teams (the skeleton) everyone else, as if each player had an id of
+//!   their own (which ids free-for-all modes give: a live check).
 //!   Damage counts when a `core::Damage` from the local player carries
 //!   health (`amount` > 0), as the spec's "server reports damage".
 //! - A round's end: the next round's start (`RoundRestarts`).
 //! - Spec yaw grows turning right: ours is `-Intent::yaw` (Q4).
 //! - Name tag opacity (255 seen, 125 blocked) multiplies the name
-//!   colour's own alpha (200); the tag sits 10 cm above the character's
-//!   box (no name socket yet); no distance limit (Q10).
+//!   colour's own alpha (200); no models, so no name socket: the tag is
+//!   anchored at the character's position (the hull centre, the spec's
+//!   fallback); no distance limit, hidden only behind the camera (Q10).
 //! - Fonts: the shell's stand-in faces at the spec's point sizes times
 //!   y_r (Q2); text boxes align inside their box (Q3); the kill feed's
 //!   names advance by their rendered width (`model::feed_line` estimates
 //!   it at 7 ref px a character, for the state only).
-//! - The weapon panel's class without `combat_arms:hud` data: a primary
-//!   gun is an assault rifle, a secondary a pistol, a melee weapon shows
-//!   its name only (case 52), anything else "etc"; no data marks
-//!   selectable fire, so guns show full auto unless bursting.
+//! - The weapon panel's class is the inventory class (the data's `slot`,
+//!   Q16); the fire-mode icon's `RapidFireCount` comes from the trigger
+//!   (`rapid_fire_count`); continuous fire isn't done, so never on.
 //! - Not driven by anything yet (the model has them): crosshair items,
 //!   the toggle, video and AI freeze, infection, dot-sight and scope
 //!   attachments (A8, A9), revealing items, the score panel and round
@@ -71,15 +75,20 @@ use serde::Deserialize;
 
 use crate::{
     client::{FirstPersonCamera, aim, fonts::UiFonts, hud::GameDraws, spectate::SpecView},
-    core::{Damage, DamageKind, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, RoundRestarts, Team},
+    core::{
+        Damage, DamageKind, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, RoundRestarts, SimClock, Team,
+    },
     game::{
-        hud::{CaHudData, WeaponClass},
+        hud::CaHudData,
         inventory::{self, CaItem, CaSelection, Dropped},
         movement::{CaCharacter, CaMovement, movement_data},
         weapons::CaSpread,
     },
     map::interp::RenderedView,
-    weapon::{AltModes, Armor, Burst, Hitscan, Inventory, Magazine, SpreadShape, Weapon, WeaponEvent, WeaponEventKind, Zoomed},
+    weapon::{
+        AltModes, Armor, Burst, Hitscan, Inventory, Magazine, SpreadShape, Trigger, Weapon, WeaponEvent, WeaponEventKind,
+        Zoomed, grenade::Throwable,
+    },
 };
 use model::*;
 
@@ -252,11 +261,20 @@ fn name_of(names: &Query<Option<&Name>>, e: Entity) -> String {
     names.get(e).ok().flatten().map_or_else(|| "Player".to_string(), |n| n.to_string())
 }
 
+/// The HUD's two clocks (Units and conventions, "Time"): the OS
+/// millisecond clock (real time, whole ms) for the hit indicator, the
+/// damage overlay and the kill feed, and the game's time in seconds (the
+/// simulation's, else the frame's) for the crosshair kick.
+fn clocks(real: &Time<Real>, time: &Time, sim: Option<&SimClock>) -> (f64, f64) {
+    let ms = real.elapsed().as_millis() as f64;
+    (ms, sim.map_or_else(|| time.elapsed_secs_f64(), |c| c.now))
+}
+
 /// The events of this frame: shots (the kick), damage dealt and taken,
 /// kills, a new round.
 #[allow(clippy::too_many_arguments)]
 fn track(
-    time: Res<Time>,
+    (time, real, sim): (Res<Time>, Res<Time<Real>>, Option<Res<SimClock>>),
     mut memory: ResMut<HudMemory>,
     mut weapons: MessageReader<WeaponEvent>,
     mut damage: MessageReader<Damage>,
@@ -268,8 +286,7 @@ fn track(
     ids: Query<&Weapon>,
     rounds: Option<Res<RoundRestarts>>,
 ) {
-    let now = time.elapsed_secs_f64();
-    let ms = now * 1000.0;
+    let (ms, now) = clocks(&real, &time, sim.as_deref());
     let memory = &mut *memory;
     for e in weapons.read().filter(|e| e.shown()) {
         if let WeaponEventKind::Fired { mode, .. } = e.kind {
@@ -412,16 +429,13 @@ pub fn spread_of(limits: Option<&toml::Value>, hud: &CaHudData, n: f32, stance: 
     (p, r)
 }
 
-/// The weapon panel's class for a weapon without HUD data.
-pub fn class_of_weapon(hud: Option<WeaponClass>, slot: u8, has_magazine: bool) -> Option<WeaponClass> {
-    if let Some(c) = hud {
-        return Some(c);
-    }
-    match (inventory::class_of(slot), has_magazine) {
-        (inventory::PRIMARY, true) => Some(WeaponClass::Assault),
-        (inventory::SECONDARY, true) => Some(WeaponClass::Pistol),
-        (inventory::MELEE, _) => None,
-        _ => Some(WeaponClass::Etc),
+/// A weapon's `RapidFireCount` from its trigger: 0 fully automatic, 1
+/// semi-automatic, n stopping after n (none: 1).
+pub fn rapid_fire_count(trigger: Option<&Trigger>) -> u32 {
+    match trigger {
+        Some(t) if t.per_press >= 2 => t.per_press,
+        Some(t) if t.automatic => 0,
+        _ => 1,
     }
 }
 
@@ -445,6 +459,7 @@ type HeldWeapon<'a> = (
     Option<&'a Magazine>,
     Option<&'a CaItem>,
     Option<&'a CaSpread>,
+    (Option<&'a Trigger>, Option<&'a Throwable>),
 );
 
 type Character<'a> = (
@@ -479,15 +494,14 @@ struct HudInputs<'w, 's> {
 
 /// This frame's `CaHud` from the world and the memory.
 fn update(
-    time: Res<Time>,
+    (time, real, sim): (Res<Time>, Res<Time<Real>>, Option<Res<SimClock>>),
     screen: Res<HudScreen>,
     options: Res<HudOptions>,
     mut memory: ResMut<HudMemory>,
     world: HudInputs,
     mut hud: ResMut<CaHud>,
 ) {
-    let now = time.elapsed_secs_f64();
-    let ms = now * 1000.0;
+    let (ms, now) = clocks(&real, &time, sim.as_deref());
     let screen = screen.0;
     let memory = &mut *memory;
     let local = world.local.as_deref().copied();
@@ -534,7 +548,7 @@ fn update(
         dot_sight: (draws.dot_sight > 0).then(|| dot_sight_rect(screen)),
         ..default()
     };
-    if let (Some((w, (id, scan, _, modes, burst, _, _, spread))), Some(p)) = (weapon, player) {
+    if let (Some((w, (id, scan, _, modes, burst, _, _, spread, _))), Some(p)) = (weapon, player) {
         let n = scan.map_or(0.0, |s| match s.spread {
             SpreadShape::Template(s) => s,
             SpreadShape::Disc { inaccuracy, spread } => inaccuracy + spread,
@@ -611,24 +625,31 @@ fn update(
     }
 
     // The weapon panel (D4).
-    if let Some((_, (id, _, hud_data, modes, burst, mag, item, _))) = weapon {
+    if let Some((_, (id, _, hud_data, modes, burst, mag, item, _, (trigger, throw)))) = weapon {
         let data = crate::weapon::data::lookup(id.id);
-        let class = class_of_weapon(hud_data.and_then(|h| h.class), id.slot, mag.is_some());
         let bursting = match (modes, burst) {
             (Some(m), Some(b)) if b.mode == m.current && b.count > 0 => Some(b.count),
             _ => None,
+        };
+        // A thrown weapon's count is its clip, nothing in reserve.
+        let (clip, total) = match (mag, throw) {
+            (Some(m), _) => (m.clip, m.clip + m.reserve),
+            (None, Some(t)) => (t.count, t.count),
+            _ => (0, 0),
         };
         let inputs = PanelInputs {
             name: data
                 .and_then(|d| d.hud.name.clone())
                 .unwrap_or_else(|| id.id.rsplit(':').next().unwrap_or(id.id).to_uppercase()),
-            gun: class.is_none_or(|c| c.is_gun()) && !hud_data.is_some_and(|h| h.bomb),
-            infinite: item.is_some_and(|i| i.infinite) || mag.is_none(),
-            clip: mag.map_or(0, |m| m.clip),
-            total: mag.map_or(0, |m| m.clip + m.reserve),
-            icon_class: class.is_some_and(|c| c.has_fire_mode_icon()),
+            class: inventory::class_of(id.slot),
+            bomb: hud_data.is_some_and(|h| h.bomb),
+            infinite: item.is_some_and(|i| i.infinite) || (mag.is_none() && throw.is_none()),
+            clip,
+            total,
             burst: bursting,
-            selectable: None,
+            rapid_fire_count: rapid_fire_count(trigger),
+            // Continuous fire isn't done (weapon_firing.md): never on.
+            continuous: false,
         };
         next.weapon = model::weapon_panel(&inputs, status_shown && !options.infected);
     }
@@ -664,14 +685,13 @@ fn update(
             None
         };
         next.aim_target = target;
-        for (e, t, health, team, name, their_dead, aabb) in &world.characters {
+        for (e, t, health, team, name, their_dead, _) in &world.characters {
             if e == me {
                 continue;
             }
-            let anchor = match aabb {
-                Some(b) => Vec3::new(t.translation.x, b.max.y + 0.1, t.translation.z),
-                None => t.translation + Vec3::Y,
-            };
+            // The model's name socket; without one (no models yet) the
+            // character's position, the hull centre (Open question 10).
+            let anchor = t.translation;
             let inputs = TagInputs {
                 local_alive,
                 teammate: !enemies(my_team, team),
@@ -1151,6 +1171,11 @@ fn draw_tags(
     let pts = 12.0 * hud.screen.yr();
     commands.entity(*root).with_children(|p| {
         for t in &hud.tags {
+            // No distance limit: only a tag behind the camera hides.
+            let depth = (t.anchor - at.translation()).dot(at.forward().as_vec3());
+            if !tag_in_front(depth) {
+                continue;
+            }
             let Ok(s) = cam.world_to_viewport(at, t.anchor) else {
                 continue;
             };

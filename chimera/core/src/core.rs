@@ -89,6 +89,10 @@ pub mod version;
 pub struct Intent {
     /// x = right, y = forward, each in [-1, 1]. Relative to `yaw`.
     pub move_axis: Vec2,
+    /// Both keys of an axis held at once (x: left and right, y: forward
+    /// and back): `move_axis` is 0 there, but a movement that tells this
+    /// from no key (Combat Arms: still "moving", no braking) reads it.
+    pub opposed: BVec2,
     /// Absolute look angles in radians. Yaw 0 looks down -Z; pitch up is +.
     pub yaw: f32,
     pub pitch: f32,
@@ -96,7 +100,8 @@ pub struct Intent {
     pub crouch: bool,
     pub sprint: bool,
     /// The walk key (Source's +speed). Shift sets it along with `sprint`;
-    /// each movement reads the one it has.
+    /// each movement reads the one it has. `+walk` and `+sprint` set one
+    /// each (a game whose walk and sprint are two keys binds those).
     pub walk: bool,
     pub fire: bool,
     /// Secondary attack (Source attack2: stab, zoom, burst toggle).

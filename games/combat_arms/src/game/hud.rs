@@ -2,7 +2,7 @@
 //! a weapon's crosshair fields (A3 to A8: `CrossHairType`,
 //! `CrossHairColor`, `CrossHairOffset`, `DisableCrosshair`,
 //! `DuckPerturb`/`MoveDuckPerturb`, `DotSightName`, the wide-fire pellet
-//! count) and its class for the weapon panel (D4), as the hook
+//! count) and the mission bomb flag for the weapon panel (D4), as the hook
 //! `combat_arms:hud` of the weapon data (docs/weapon-data.md, "Hooks"),
 //! which puts them on the weapon as `CaHudData`. Nothing in the
 //! simulation reads it: it is here so every weapon document, the server's
@@ -16,34 +16,6 @@ use crate::weapon::data::WeaponDataAppExt;
 
 /// The hook's name.
 pub const HUD_HOOK: &str = "combat_arms:hud";
-
-/// A weapon's class as the weapon panel tells them apart (D4: the panel
-/// shows for the gun classes, the fire-mode icon for assault rifles and
-/// SMGs only).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum WeaponClass {
-    Assault,
-    Smg,
-    Sniper,
-    Support,
-    Pistol,
-    Shotgun,
-    /// Everything else (knives, grenades, items): "etc".
-    Etc,
-}
-
-impl WeaponClass {
-    /// A gun class: the weapon panel shows.
-    pub fn is_gun(self) -> bool {
-        self != Self::Etc
-    }
-
-    /// The fire-mode icon shows.
-    pub fn has_fire_mode_icon(self) -> bool {
-        matches!(self, Self::Assault | Self::Smg)
-    }
-}
 
 /// A weapon's HUD data (`combat_arms:hud`). Every field is optional; the
 /// defaults are the spec's.
@@ -69,11 +41,8 @@ pub struct CaHudData {
     pub dot_sight: Option<String>,
     /// The wide-fire pellet count (the double circle's minimum, A5).
     pub wide_count: i32,
-    /// The weapon panel's class (D4); none: from the inventory class (a
-    /// primary gun an assault rifle, a secondary one a pistol, anything
-    /// without a magazine "etc").
-    pub class: Option<WeaponClass>,
-    /// The mission bomb: no weapon panel.
+    /// The mission bomb (`Guntype` 8): no weapon panel. (The panel's
+    /// class is the weapon's inventory class, its data `slot`: D4.)
     pub bomb: bool,
 }
 

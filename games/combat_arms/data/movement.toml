@@ -14,9 +14,20 @@
 meters_per_unit = 0.01
 # Ours: the gap the collision mover keeps from surfaces (u).
 skin = 0.1
-# Ours: the eye above the feet as a fraction of the hull's height (the
-# camera spec owns it; movement.md open question 2).
-eye_height_fraction = 0.9
+# Eye (camera) height: the eye sits eye_offset x the standing half-height
+# above the hull's centre (ChaseCamOffset), plus eye_crouch_offset x the
+# crouch rate (DuckDownCamOffSet): 83 u above the feet standing, 60 u
+# crouched with the fallback boxes.
+eye_offset = 0.66
+eye_crouch_offset = -13.0
+# Eye height: the camera's upward smoothing (CameraMoveUpTime s,
+# CameraMoveUpMinVel u/s, CameraMoveMaxYDiff u).
+camera_rise_time = 0.1
+camera_rise_min_speed = 140.0
+camera_rise_max_lag = 30.0
+# Units and conventions: every in-game distance readout shows world units
+# divided by 40 as metres.
+hud_units_per_metre = 40.0
 
 # Constants: console variables FRunVel, BRunVel, SRunVel, WalkVel, DuckVel,
 # JumpVel; the ladder limit.
@@ -104,6 +115,9 @@ max_stamina = 100.0
 variable_speed = 0.0
 variable_weight = 0.0
 variable_jump = 0.0
+# StiffDuration: lengthens the infection-mode hit knock-back (Other
+# modifiers), 0 in the stock data.
+stiff_duration = 0.0
 
 [[character.gear]]
 name = "default vest"
