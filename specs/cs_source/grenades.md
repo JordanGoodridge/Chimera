@@ -453,8 +453,8 @@ its blinding effects". An achievement exists for flashing teammates
 Hypothesis model to fit (Q12):
 
 - For each living player: line of sight from the grenade to the player's
-  eye, blocked by world brushes (whether players, props or smoke block is
-  Q12).
+  eye, blocked by solid brushes, props and other players' boxes, not by
+  glass or other window contents (measured, Q12; smoke shortens it).
 - `r` = distance grenade → eye; `k = dot(view forward, normalize(grenade −
   eye))` (1 = looking straight at it, −1 = facing away).
 - Two numbers result per player, both networked on the CS player and
@@ -817,6 +817,24 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   255. One flash into a cloud about 10 s old gave 5.44. Walls, players and
   props between not measured (the probe's throw lands too close to the
   victim for anything to stand between).
+- **Q12 things between (2026-10-18, `tools/css_probe/flashmeas.py`:
+  the thrown flashbang teleported in flight to a chosen point, so it goes
+  off there):** de_dust2's CT spawn, the flash 100 units in front of the
+  run bot's feet, the bot facing it (6.58 s in the open). Another player
+  (a held bot) standing between: no blindness at all (no `player_blind`
+  for the victim; the one between was blinded). Moved sideways off the
+  line it stops it while the line is 15 units or less from its centre and
+  not from 17 (the hull's 16: the line against player boxes, not
+  hitboxes). A motion-disabled crate (`du_crate_64x64`) between: none
+  either. On de_nuke: through an intact window (func_breakable_surf,
+  window contents) the bot was blinded whole (6.03 s, the open fit's
+  5.96), also through a breakable glass pane in a door (func_breakable)
+  and a metal vent (func_breakable, `nuke_metalvent`: window contents
+  too); the door itself (func_door_rotating) and a spawned func_breakable
+  made of that door's solid brushes stopped it. So the flash's line is
+  stopped by solid brushes, props and players, not by glass or window
+  contents (grates not tried). Ours: `grenade::flash_blocked`, glass and
+  grates marked `map::SeeThrough`.
 - **Q6 thrown into a wall (2026-10-18):** the second bot flush against a
   7.9-unit panel on de_dust2 (a static prop near (32, 2240), its face at
   45° to the throw), facing it, threw a flashbang at the run bot behind:
@@ -885,7 +903,7 @@ per-tick logging of netprops and events) unless they need the client.
     whether undamaged nearby players get the ring (a teammate with
     `mp_friendlyfire 0`, a noclipping player): needs a client (C31), the
     server shows nothing of it.
-12. **Q12 Partly answered (see CS:S values: duration by distance and facing, max alpha, `player_blind` for victim and thrower; 2026-10-18: a flash in smoke blinds 0.56 as long, ours `Flash::through_smoke` on any cloud the line crosses, a fit to one geometry). Still open: walls, players and props between, how the smoke factor varies with the cloud's age and the line's length in it.** Was: **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
+12. **Q12 Partly answered (see CS:S values: duration by distance and facing, max alpha, `player_blind` for victim and thrower; 2026-10-18: a flash in smoke blinds 0.56 as long, ours `Flash::through_smoke` on any cloud the line crosses, a fit to one geometry; 2026-10-18, fifth pass: a player's box or a crate on the line stops it whole, glass and window-contents vents don't, solid brushes do). Still open: grates, how the smoke factor varies with the cloud's age and the line's length in it, the thrower's own blindness (`mashup_netprop`, not built yet).** Was: **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
     1500, 2000, 3000 in, view angle to the grenade 0°, 30°, 60°, 90°, 120°,
     180°; log `m_flFlashDuration` and `m_flFlashMaxAlpha` on the tick after
     `flashbang_detonate`, and whether `player_blind` fires. Repeat with a

@@ -478,7 +478,8 @@ fn laser_hurts_every_seven_ticks() {
     while w.tick <= 66 {
         w.frame(&NoCollision);
         for e in std::mem::take(&mut w.effects) {
-            if let Effect::Damage { amount, .. } = e {
+            if let Effect::Hurt { amount, armour, .. } = e {
+                assert!(armour, "armour takes its part");
                 hits.push((w.tick - 1, amount));
             }
         }
@@ -586,7 +587,7 @@ fn strikes(w: &mut LogicWorld, until: i64) -> (Strikes, f32) {
                     end,
                     life,
                 } => out.push((w.tick - 1, start, end, life)),
-                Effect::Damage { amount, .. } => damage += amount,
+                Effect::Hurt { amount, .. } => damage += amount,
                 _ => {}
             }
         }

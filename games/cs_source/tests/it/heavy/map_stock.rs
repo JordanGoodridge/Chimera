@@ -267,6 +267,27 @@ fn brush_entities_draw_and_collide() {
     assert!(map.meshes.iter().any(|m| m.entity == Some(index)), "door drawn on its node");
 }
 
+/// de_nuke's glass and vents (window contents) are see-through, so a
+/// flash's line passes them (grenades.md Q12, measured 2026-10-18): its
+/// breakable windows and metal vents (func_breakable_surf *65, func_breakable
+/// *45 and *57), not its doors (func_door_rotating *49).
+#[test]
+fn glass_and_vents_are_see_through() {
+    let Some(map) = load("de_nuke") else { return };
+    let index = |model: &str| {
+        map.entities
+            .iter()
+            .position(|e| e.get("model") == Some(model))
+            .unwrap_or_else(|| panic!("de_nuke's {model}"))
+    };
+    for model in ["*65", "*45", "*57"] {
+        assert!(map.see_through_entities.contains(&index(model)), "{model}");
+    }
+    assert!(!map.see_through_entities.contains(&index("*49")), "the door");
+    assert!(!map.see_through_hulls.is_empty(), "the world's own glass");
+    assert!(map.see_through_hulls.len() < map.collision_hulls.len() / 10);
+}
+
 /// `$additive` materials (de_nuke's light glows) add to what's behind them
 /// instead of drawing their black background.
 #[test]

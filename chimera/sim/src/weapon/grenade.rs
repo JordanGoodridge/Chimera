@@ -47,8 +47,11 @@
 //! distance and facing (`grenades::flash_model`); its hold and fade split
 //! is a FIT pending Q13; the blast's shield (`BlastShield`: three lines,
 //! their weights) is a FIT to crates and players covering the victim
-//! (Q10); flashes are stopped by static props as blasts are (unmeasured,
-//! Q12), and a cloud anywhere on the line scales the blindness by one
+//! (Q10); a flash's line is stopped whole by the world, static props,
+//! prop entities and other living characters (measured, Q12: a crate or a
+//! player's hull; loose bodies too, unmeasured), not by glass or grates
+//! (`map::SeeThrough`; measured on de_nuke's windows and window-contents
+//! vents, grates assumed alike), and a cloud anywhere on the line scales the blindness by one
 //! measured factor (`Flash::through_smoke`; CS:S's at one geometry); the
 //! after-image is a screenshot
 //! read-back of the window at the flash (it holds the HUD, arrives a frame or
@@ -901,6 +904,7 @@ struct GrenadeWorld<'w, 's> {
     colliders: Query<'w, 's, &'static ColliderOf>,
     rigid: Query<'w, 's, (&'static RigidBody, Option<&'static MapPropCollider>)>,
     prop_entities: Query<'w, 's, (), With<crate::map::PropEntity>>,
+    see_through: Query<'w, 's, (), With<crate::map::SeeThrough>>,
     dynamic: Query<
         'w,
         's,
@@ -994,6 +998,26 @@ impl GrenadeWorld<'_, '_> {
             Some(b) if self.is_character(b) => s.character,
             Some(_) => s.prop,
         }
+    }
+
+    /// Whether anything stops a flash's line to `victim`'s eye: the
+    /// world, a prop entity, a loose body or another living character,
+    /// not glass or grates (`SeeThrough`) (measured 2026-10-18,
+    /// grenades.md Q12: a crate or a player's hull on the line stops it
+    /// whole; de_nuke's windows and vents let it through).
+    fn flash_blocked(&self, from: Vec3, to: Vec3, victim: Entity) -> bool {
+        let d = to - from;
+        let Ok(dir) = Dir3::new(d) else { return false };
+        let filter = SpatialQueryFilter::default().with_mask(SOLID_LAYERS);
+        self.spatial
+            .cast_ray_predicate(from, dir, d.length(), true, &filter, &|e| {
+                let body = self.body(e);
+                body != victim
+                    && !self.see_through.contains(e)
+                    && !self.see_through.contains(body)
+                    && (self.is_world(e, body) || self.living_character(body) || !self.is_character(body))
+            })
+            .is_some()
     }
 
     fn living_character(&self, e: Entity) -> bool {
@@ -1511,7 +1535,7 @@ fn blast(
 }
 
 /// Blind everyone who sees the flash (spec 6.2): teammates and the
-/// thrower too.
+/// thrower too; a prop or another player on the line hides it.
 fn flash(at: Vec3, fl: &Flash, world: &mut GrenadeWorld, commands: &mut Commands, now: f64) {
     let mut blinded = Vec::new();
     for b in world.bodies.iter() {
@@ -1522,7 +1546,7 @@ fn flash(at: Vec3, fl: &Flash, world: &mut GrenadeWorld, commands: &mut Commands
             continue;
         }
         let eye = b.transform.translation + state.eye_offset;
-        if world.world_trace(at, eye, None).is_some() {
+        if world.flash_blocked(at, eye, b.entity) {
             continue;
         }
         let to = at - eye;

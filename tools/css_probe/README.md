@@ -268,6 +268,17 @@ chord and whether the target behind was hurt (weapons.md Q7: hollow
 models such as de_tides' planter give chords the bullet doesn't cross
 whole).
 
+`flashmeas.py` (grenades.md Q12, 2026-10-18): the second bot throws a
+flashbang at the run bot and, while it flies, the projectile is
+teleported (`mashup_tp`, its own RCON connection) to a chosen point, so
+it goes off there; a third bot (`blocker`, `mashup_targetn 1`) or a prop
+can stand between. Prints the run bot's flash row, who `player_blind`
+named, and the open-air fit. Spawned brush entities can borrow a map's
+brush model (`mashup_spawn func_door *89 ...`, `trigger_hurt *49`), and
+outputs given as one quoted argument (`OnTrigger "!activator,AddOutput,gravity
+0.3,0,-1"`) work; a func_breakable with `RemoveHealth` on an output is a
+counter `mashup_find` reads (doors_buttons.md Q5).
+
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
 (feet at its height) leaves it stuck: start 0.02 or more above.

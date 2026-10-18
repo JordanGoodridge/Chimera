@@ -52,6 +52,15 @@ class-1 items left. Two plugin commands that unblock sounds Q1 and the
 thrower's side of grenades Q12 are written but not built
 (`tools/css_probe/README.md`).
 
+Fifth pass (2026-10-18, flashes, triggers, movers, restarts, fires,
+lasers; `tools/css_probe/flashmeas.py`): 12 class-1 items settled
+(fall_damage's damagemodel 1, triggers Q3 and Q8, doors_buttons Q4 and
+Q5, entity_io Q1 and Q10, fire Q9, visual_entities Q3, movement Q18, and
+fire Q4 moved to class 5: entity_io Q1 had it), 2 more answered in part
+(grenades Q12's players, props, walls and glass; doors_buttons Q3's
+windows); about 51 class-1 items left. The two plugin commands above are still not
+built, so sounds Q1 and the thrower's side of grenades Q12 wait.
+
 ## Specs: specs/cs_source
 
 | Spec | Question | Class | What would answer it |
@@ -65,7 +74,7 @@ thrower's side of grenades Q12 are written but not built
 | animation | do the sequences' footstep events play anything | 2 | client audio while a bot walks (the server's steps follow movement, measured) |
 | animation | IK rules and locks | 3 | spec session (out of scope so far) |
 | animation | lag compensation's use of the layers | 3 | spec session (hitbox/lag-compensation spec) |
-| fall_damage | `damagemodel 1` doubling | 1 | a spawned trigger_hurt with damagemodel 1 (no stock map uses it) |
+| fall_damage | `damagemodel 1` doubling | 1 | done (Part B, 2026-10-18: 5, 10, 20, 25, ... as ours) |
 | fall_damage | armour against trigger_hurt (drown type, others) | 1 | drown type done (Part B); other types done (Part B, triggers Q4) |
 | fall_damage | half-second timer per trigger or per toucher | 1 | two bots entering de_port's at different ticks (done, Part B) |
 | fall_damage | `Player.FallDamage` on hurting landings only | 1 | sound hook on drops with and without damage (done, Part B) |
@@ -77,7 +86,7 @@ thrower's side of grenades Q12 are written but not built
 | grenades | Q9 HE visuals (fireball, shake, light) | 2 | client screenshots at `host_timescale 0.1` |
 | grenades | Q10 crouched victims, walls and props blocking | 1 | done (Part B, 2026-10-18, `blastmeas.py`) |
 | grenades | Q11 ear-ringing presets and who gets them | 2 | capture C31 (the server sends nothing, measured) |
-| grenades | Q12 left: flash through walls, players, props (smoke done, Part B 2026-10-18) | 1 | flash netprops with something between; tried 2026-10-18: the probe's thrower aims at the run bot and the flash lands within 40 units of it, too close for anything between; the thrower's own `m_flFlashDuration` isn't a datamap field `mashup_getprop` reads (`mashup_netprop`, added to mashup_probe.sp 2026-10-18, reads it once the plugin is rebuilt) |
+| grenades | Q12 left: flash through grates; the thrower's own blindness (smoke, players, props, walls and glass done, Part B 2026-10-18) | 1 | grates: a grate-contents brush on a map; the thrower: `mashup_netprop` (added to mashup_probe.sp 2026-10-18, reads `m_flFlashDuration` once the plugin is rebuilt) |
 | grenades | Q13 flash overlay curve | 2 | client screenshots every 0.1 s |
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
@@ -100,7 +109,7 @@ thrower's side of grenades Q12 are written but not built
 | mdl_v48 | AWP poses against the game | 2 | view-model screenshot pair |
 | movement | Q15 water currents and base velocity | 1 | no stock map has a current; a spawned `func_conveyor`-style test |
 | movement | Q16 left: water jump 256/50 | 1 | a movecmp scenario at a water edge (the ladder jump-off's 270 done, Part B 2026-10-18) |
-| movement | Q18 a box exactly touching a floor | 1 | `setpos` onto a floor's height, `getpos`, jump |
+| movement | Q18 a box exactly touching a floor | 1 | done (Part B, 2026-10-18: start solid in CS:S, ours stands; not changed) |
 | movement | Q19 displacement contact normals elsewhere | 1 | movecmp on more dust2 strip edges |
 | nav | Q1 the per-area CS byte | 2 | tried 2026-10-18: `nav_analyze` does nothing on the dedicated server (no listen host) and `nav_save` wrote de_dust2's mesh back byte for byte; needs a listen server |
 | nav | Q2-Q4 bot path cost, attribute handling, follower | 3 | bots are parked; a behaviour spec |
@@ -225,28 +234,28 @@ thrower's side of grenades Q12 are written but not built
 | breakables | Q9 gib bounce sounds | 2 | client trace (gibs are client-side) |
 | doors_buttons | Q1 CS:S use search distances | 1 | a spawned func_button, bot +use at 79/81 (done, Part B) |
 | doors_buttons | Q2 use deny sound | 2 | client audio |
-| doors_buttons | Q3 use trace mask through grates | 1 | a spawned button behind a grate |
-| doors_buttons | Q4 ride timing on elevators | 1 | a bot's z per tick on a mover |
-| doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | spawned train and math_counter |
+| doors_buttons | Q3 left: use trace through grates (windows done, Part B 2026-10-18: they stop it) | 1 | a spawned button behind a grate |
+| doors_buttons | Q4 ride timing on elevators | 1 | done (Part B, 2026-10-18) |
+| doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | done (Part B, 2026-10-18: every tick) |
 | doors_buttons | Q6 door move sound timing | 1 | done (Part B, 2026-10-18) |
 | doors_buttons | Q7 rotating door on its plane | 1 | probe placement |
 | doors_buttons | Q9 touch-open door under a player | 1 | spawned func_door flag 1024 (done, Part B) |
-| entity_io | Q1 left: classes absent from stock maps | 1 | spawned entities across a restart |
+| entity_io | Q1 left: classes absent from stock maps | 1 | done (Part B, 2026-10-18: none kept) |
 | entity_io | Q3 delay at an exact tick multiple | 1 | relays with 0.015/0.03/0.3 delays (done, Part B) |
 | entity_io | Q4 Kill then input the same tick | 1 | a relay pair (done, Part B) |
 | entity_io | Q5 `sv_allow_point_servercommand` | 1 | `cvarlist sv_allow` (done, Part B: "always"); left: what maps send (the sweep) |
 | entity_io | Q6 `cl_restrict_server_commands` | 2 | client console |
 | entity_io | Q7, Q8 game_text scan-out and channels | 2 | client screenshots |
 | entity_io | Q9 game_text newline | 1 → 3 | swept 2026-10-18: no map has a multi-line one (3 game_texts in 89 community maps); a test map |
-| entity_io | Q10 tracktrain and I/O `Use` | 1 | spawned train |
+| entity_io | Q10 tracktrain and I/O `Use` | 1 | done (Part B, 2026-10-18: ignored) |
 | fire | Q1 client fire visuals | 2 | client |
 | fire | Q2 burn damage to players (armour, score) | 1 | armour and score done (Part B) |
 | fire | Q3 player ignition | 1 | `Ignite` input on a bot (done, Part B; the gas can left) |
-| fire | Q4 fires at a round restart | 1 | `mashup_ents` before and after (env_fire is re-created: entity_io Q1) |
+| fire | Q4 fires at a round restart | 5 | env_fire is re-created (entity_io Q1, 2026-10-15); marked 2026-10-18 |
 | fire | Q5 floors on de_dust and de_train | 1 | fire positions after their bombs |
 | fire | Q6 burning gas can's radius damage | 1 | done (Part B, 2026-10-18) |
 | fire | Q7 burning-prop light | 2 | client |
-| fire | Q9 buried fires never damage | 1 | a bot in each after the bomb |
+| fire | Q9 buried fires never damage | 1 | done (Part B, 2026-10-18; de_chateau not tried) |
 | fire | Q10 particle operators, colour fade | 2 | client |
 | fire | Q11 fire sound level | 2 | client |
 | game_entities | Q1 lagged movement (player_speedmod) | 1 | spawned player_speedmod, movement probe (done, Part B) |
@@ -279,12 +288,12 @@ thrower's side of grenades Q12 are written but not built
 | prop_damage | Q6 left: why the landing crush only at 1450-1500 in/s | 1 | more landing speeds |
 | triggers | Q1 face contact | 1 | spawned trigger, bot placed at −16.0/−15.9 (done, Part B) |
 | triggers | Q2 swept boxes for carried players | 1 | spawned fast func_door through a thin trigger |
-| triggers | Q3 touch order of overlapping triggers | 1 | spawned push + teleport |
+| triggers | Q3 touch order of overlapping triggers | 1 | done (Part B, 2026-10-18) |
 | triggers | Q4 trigger_hurt armour, fractions, knockback | 1 | spawned trigger_hurt, armoured bot (done, Part B) |
 | triggers | Q5 gravity reset on respawn | 1 | spawned trigger_gravity (done, Part B) |
 | triggers | Q6 teleport flags 32 and 4096 | 1 | spawned trigger_teleport with a bot (done, Part B) |
 | triggers | Q7 trigger_push base velocity | 1 | spawned trigger_push, movement probe (done, Part B) |
-| triggers | Q8 first hurt pass timing | 1 | measured on de_port's (tick 4 after entering): the touch tick is still open |
+| triggers | Q8 first hurt pass timing | 1 | done (Part B, 2026-10-18: 4 ticks after the touch) |
 | triggers | Q9 AddOutput basevelocity | 1 | spawned trigger_multiple with that output (done, Part B) |
 | viewcontrol_and_templates | Q1 HUD and view model under a camera | 2 | client |
 | viewcontrol_and_templates | Q2 view reset with two players | 4 | two clients |
@@ -294,7 +303,7 @@ thrower's side of grenades Q12 are written but not built
 | viewcontrol_and_templates | Q6 instance counter start | 3 | every stock template keeps names (flag 2): a test map |
 | viewcontrol_and_templates | Q7 templated logic_auto | 3 | templates can't be spawned at run time and no stock one holds a logic_auto: a test map |
 | visual_entities | Q1, Q2, Q4-Q10 (beam width, dlight falloff, overrides, pixel visibility, trail repeat, steam roll, spark wrap, spotlight parent, scroll quirk) | 2 | client screenshots (9 items) |
-| visual_entities | Q3 env_laser damage against armour | 1 | spawned env_laser through an armoured bot |
+| visual_entities | Q3 env_laser damage against armour | 1 | done (Part B, 2026-10-18) |
 
 ## parity-gaps.md rows marked differs or missing
 
@@ -351,7 +360,7 @@ thrower's side of grenades Q12 are written but not built
 | Blood decals on characters | 3 | a spec, then a client capture |
 | Motion blur option | 3 | a spec |
 | Breakables' damage types, broken-window drawing | 3 | breakables Q8 |
-| Pushers | 1 | doors_buttons Q4, triggers Q2 |
+| Pushers | 1 | triggers Q2 (doors_buttons Q4 done, Part B 2026-10-18) |
 | Physics shadow controller | 1 | physics_props Q7, Q12 |
 | Prop damage left-outs | 1, 2 | prop_damage Q6; C29 |
 | Steam heat-wave jets | 3 | no stock map; a spec |
@@ -494,3 +503,16 @@ measured.
 | fire Q6: a burning gas can next to a crouched player | hurts nobody but itself (1 + 3.728 every 13 ticks) | the same | none |
 | weapons Q7: where a prop counts twice | from a chord of 24.0 units (23.7 once, 24.4 twice; 24.0 both ways) | (the 24 guessed) | none (confirmed) |
 | objectives Q3: the bomb on a map with `bombradius` 400 | 400 at the bomb, σ = 400 × 3.5 / 3 (de_nuke: 322.41 at 306.5 units, the fit 322.4) | the same | none |
+| grenades Q12: a player or a prop between a flash and the eye | stops it whole (the line against the player's box: 15 units off its centre stopped, 17 didn't; a crate too) | only the world and static props stopped it | stopped by players and props (`grenade::flash_blocked`) |
+| grenades Q12: glass between | lets it through whole (de_nuke's windows, a door's pane, window-contents vents); solid brushes and doors stop it | glass stopped it | glass and grates pass (`map::SeeThrough` from window/grate contents) |
+| triggers Q3: overlapping triggers | of two teleports the lower entity index wins; a push, a gravity or a trigger_multiple sharing a teleport's volume still acts | the higher index won | touched highest index first |
+| triggers Q8: a trigger_hurt's first pass | 4 ticks after the touch, then every 33 | the next tick | 4 ticks (`HURT_FIRST_TICKS`) |
+| fall_damage: `damagemodel` 1 | 5, 10, 20, 25, 25 ... (damage 10, cap 50) | the same | none |
+| visual_entities Q3: env_laser against armour | armour's ratio-1 part, whole points (10.5 a hit: 10, or 5 and 3 armour) | no armour, the fraction kept | as CS:S (`Effect::Hurt`) |
+| entity_io Q10: I/O Use on a func_tracktrain | ignored (stopped or moving, any activator) | toggled it | ignored |
+| doors_buttons Q4: riding a lift | carried on the same tick, 1.5 units a tick at 100, never a tick behind | the same | none (test tightened) |
+| doors_buttons Q5: OnNextPoint | every tick the train moves | the same | none |
+| doors_buttons Q3: +use through glass | blocked | blocked | none |
+| entity_io Q1: absent classes at a restart | none kept (every one tried, e.g. trigger_teleport, func_tracktrain, logic_auto, game_text, filters) | none kept | none |
+| fire Q9: buried fires | inside a brush: no damage; inside a static prop: damages | the same | none |
+| movement Q18: feet exactly on a floor | start solid: held 17-33 ticks, then 1/32 up on the ground; 0.01 above stands at once | stands at once | none (noted; a known difference) |

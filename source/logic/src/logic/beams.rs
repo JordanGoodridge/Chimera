@@ -10,7 +10,8 @@
 //! Covers: point_spotlight LightOn/LightOff, env_laser/env_beam on/off, damage
 //! every 0.1 s to the first player on the line and OnTouchedByEntity,
 //! env_spark's timing, sound and OnSpark (its sparks as
-//! `map::SparkBurst`, which the game draws), strike-generator env_beams
+//! `map::SparkBurst`, which the game draws; the damage as a map's,
+//! armour taking its part: `Effect::Hurt`), strike-generator env_beams
 //! (4.2: first strike 1 s after spawn or on TurnOn, then every life +
 //! StrikeTime or a random part of it, StrikeOnce, random ends among a name's
 //! matches, walls within the radius without an end, the damage once per strike
@@ -421,10 +422,11 @@ fn strike_now(w: &mut LogicWorld, id: EntId, s: &Strike) {
             if s.damage > 0.0
                 && let Some(p) = first_player(w, a, b)
             {
-                w.effects.push(Effect::Damage {
+                // As a laser's (energy beam damage: armour takes its part).
+                w.effects.push(Effect::Hurt {
                     target: p,
                     amount: s.damage,
-                    crush: false,
+                    armour: true,
                 });
             }
             Some((a, b))
@@ -508,10 +510,13 @@ fn zap_tick(w: &mut LogicWorld, id: EntId) {
     let elapsed = (tick - z.last) as f32 * w.dt;
     if z.damage > 0.0 && elapsed >= DAMAGE_PERIOD - 1e-4 {
         if let Some(p) = first_player(w, a, b) {
-            w.effects.push(Effect::Damage {
+            // Armour takes its part, health whole points (measured
+            // 2026-10-18, visual_entities.md Q3: 10.5 a hit took 10, or 5
+            // and 3 armour from 100).
+            w.effects.push(Effect::Hurt {
                 target: p,
                 amount: z.damage * elapsed,
-                crush: false,
+                armour: true,
             });
         }
         if let Some(z) = part(w, id).and_then(|p| p.zap.as_mut()) {

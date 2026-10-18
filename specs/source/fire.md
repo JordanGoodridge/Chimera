@@ -655,7 +655,10 @@ Fire think k = 0 is the StartFire tick t0; think k is at t0 + 0.105k s
    Does a burning player see/hear anything? Check on a test map with an
    `Ignite` output to `!activator`, and break de_inferno's gas can next to
    a bot.
-4. **Round restart.** Are env_fire, their effects and entity flames
+4. **Answered for env_fire (measured 2026-10-15, entity_io.md question
+   1: env_fire is re-created at every round restart, so unlit again; ours
+   the same).** Entity flames go with the props they burn on (props are
+   re-created too). Was: **Round restart.** Are env_fire, their effects and entity flames
    removed and recreated unlit each round (not in CS:S's preserve list)?
    Check: bomb de_dust2 A, watch the next round start.
 5. **Floors on de_dust and de_train.** Where do those fires land (the drop
@@ -678,7 +681,14 @@ Fire think k = 0 is the StartFire tick t0; think k is at t0 + 0.105k s
    64-tick server gives 0.09375 s thinks (full heat at 3.75 s, damage every
    11 thinks = 1.03 s). Which does our server emulate? (Follows the
    engine-wide choice in entity_io.md.)
-9. **Fires buried in geometry.** Confirm that de_dust2's B fire at
+9. **Answered (measured 2026-10-18, probe server, `StartFire` on one
+   fire, the bot standing next to it for 300 ticks):** de_dust2's B fire
+   at (−1680, 1600, 32), 0.03 units inside a wall's face, hurt nobody (the
+   bot's box 4 units from it); fire 285 at (−1412, 2660, 24), inside a
+   static prop (its top at 46), did hurt the bot 18 units off (1, 1, 1, 2
+   every 70 ticks): rays from inside a brush hit nothing, from inside a
+   static prop they go out. As ours (the logic's static world has no
+   props). de_chateau not tried. Was: **Fires buried in geometry.** Confirm that de_dust2's B fire at
    (−1680, 1600, 32) and de_chateau's four B fires never damage (LOS starts
    in solid). Check by standing in each after the bomb.
 10. **Particle operator meanings** (7.3) as impact_effects.md Q7; the

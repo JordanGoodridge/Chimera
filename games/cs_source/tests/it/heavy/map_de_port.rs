@@ -70,7 +70,9 @@ fn trigger_hurt_bites_every_half_second() {
     }
     // 25 a bite, 33 ticks apart: dead on the fourth.
     assert_eq!(bites.len(), 4, "bites at {bites:?}");
-    assert!(bites[0] <= 4, "first bite at tick {}", bites[0]);
+    // The first 4 ticks after the touch (the probe bot: tick 4 after
+    // entering; triggers.md question 8).
+    assert!((3..=5).contains(&bites[0]), "first bite at tick {}", bites[0]);
     assert!(bites.windows(2).all(|w| w[1] - w[0] == 33), "bites at {bites:?}");
     assert_eq!(last, 0.0);
 }

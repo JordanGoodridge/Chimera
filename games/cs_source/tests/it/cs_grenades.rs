@@ -431,6 +431,61 @@ fn a_flash_in_smoke_blinds_for_less() {
     assert!((0.5..0.62).contains(&ratio), "{smoked} of {open} s: {ratio}");
 }
 
+/// Measured 2026-10-18 (grenades.md Q12, `flashmeas.py`): another player
+/// or a crate on the line from the flash to the eye stops it whole; a
+/// player beside the line doesn't, nor does glass (de_nuke's windows).
+#[test]
+fn players_and_props_on_the_line_hide_a_flash() {
+    use crate::stack::map::{MapBrushCollider, MapPropCollider, PropEntity, SeeThrough};
+    use avian3d::prelude::{Collider, RigidBody};
+    // 0: nothing, 1: a player between, 2: a player beside, 3: a crate.
+    let blinded = |what: u8| {
+        let mut sim = sim();
+        let victim = sim.spawn_character(Vec3::new(0.0, 0.9, 8.0), placeholder::ID);
+        match what {
+            1 => {
+                sim.spawn_character(Vec3::new(0.0, 0.9, 6.5), placeholder::ID);
+            }
+            2 => {
+                sim.spawn_character(Vec3::new(1.2, 0.9, 6.5), placeholder::ID);
+            }
+            3 => {
+                sim.app.world_mut().spawn((
+                    RigidBody::Static,
+                    Collider::cuboid(1.6, 1.6, 1.6),
+                    Transform::from_xyz(0.0, 0.8, 6.5),
+                    MapPropCollider,
+                    PropEntity(0),
+                ));
+            }
+            // A pane of glass across the line (a map volume with window
+            // contents), then the same pane as a solid wall.
+            4 | 5 => {
+                let mut e = sim.app.world_mut().spawn((
+                    RigidBody::Static,
+                    Collider::cuboid(4.0, 4.0, 0.1),
+                    Transform::from_xyz(0.0, 1.0, 6.5),
+                    MapBrushCollider,
+                ));
+                if what == 4 {
+                    e.insert(SeeThrough);
+                }
+            }
+            _ => {}
+        }
+        sim.ticks(1);
+        place(&mut sim, FLASHBANG, Vec3::new(0.0, 0.06, 5.0), Vec3::ZERO);
+        sim.seconds(1.6);
+        sim.app.world().get::<Blinded>(victim).is_some()
+    };
+    assert!(blinded(0), "in the open");
+    assert!(!blinded(1), "behind a player");
+    assert!(blinded(2), "a player beside the line");
+    assert!(!blinded(3), "behind a crate");
+    assert!(blinded(4), "through glass");
+    assert!(!blinded(5), "behind a wall");
+}
+
 #[test]
 fn smoke_cloud_grows_blocks_bots_and_goes() {
     let mut sim = sim();

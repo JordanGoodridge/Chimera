@@ -1264,10 +1264,10 @@ fn use_entity_inner(w: &mut LogicWorld, id: EntId, activator: Option<Who>, _call
             let goal = if m.goal == m.p2 { m.p1 } else { m.p2 };
             linear_to(w, id, goal);
         }
-        Class::Train(t) => {
-            let s = if t.speed != 0.0 { 0.0 } else { t.maxspeed };
-            t_set_speed(w, id, s);
-        }
+        // A func_tracktrain ignores an I/O Use, with or without a player
+        // as activator, moving or stopped (measured 2026-10-18,
+        // entity_io.md question 10); Toggle starts and stops it.
+        Class::Train(_) => {}
         Class::Brush(_) => toggle_brush(w, id, None),
         Class::PropDoor(_) => super::props::door_use(w, id, activator),
         _ => {}

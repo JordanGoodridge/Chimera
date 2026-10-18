@@ -618,13 +618,28 @@ dt = 0.015. Brush sizes are the model bounding box.
    straight ahead and at foot level 30 ahead; note which register.
 2. **Use deny sound in CS:S**: which, if any, sound plays when pressing use
    on nothing? Listen on the reference client.
-3. **Use trace mask**: does +use go through grates/windows in CS:S (the
+3. **Windows answered (measured 2026-10-18, probe server, de_nuke):** a
+   spawned func_button (brush *89 turned upright, 4 units thick) just
+   behind the reactor door's glass (func_breakable, window contents), the
+   bot's eye 39 units from it: +use didn't press it; the same button and
+   distance in the open did. As ours (glass is a solid the use trace
+   meets first). Grates not tried. Was: **Use trace mask**: does +use go through grates/windows in CS:S (the
    CS:S mask is "brush-only NPC solid plus opaque-and-NPC")?
-4. **Ride timing**: is a rider moved before or after their own command in
+4. **Answered (measured 2026-10-18, probe server, de_nuke, a spawned
+   func_door (brush *89, 62x66x4) rising at 100 units/s with the bot
+   standing on it):** the rider's z rose 1.5 units every tick from the
+   first tick of the move, on the ground throughout, no tick behind and no
+   jitter; it stopped on the tick the lift did (it met the ceiling 90
+   units up). Ours: the same (`player_rides_a_rising_platform` checks the
+   gap tick by tick). Was: **Ride timing**: is a rider moved before or after their own command in
    the same frame (depends on the think-list order of the platform vs the
    player)? Visible as one tick of jitter. Measure the player's z per tick
    on an elevator.
-5. **func_tracktrain OnNextPoint**: does it fire every tick in CS:S's build
+5. **Answered (measured 2026-10-18, probe server, a spawned
+   func_tracktrain on two path_tracks 150 units apart, speed 100, its
+   OnNextPoint taking 1 health from a func_breakable each time):** 94
+   fires over the run, about 19 every 0.29 s while moving (one a tick),
+   none once stopped at the end: every tick, as the SDK and ours. Was: **func_tracktrain OnNextPoint**: does it fire every tick in CS:S's build
    (as in the current SDK) or only per node? Connect it to a math_counter
    Add 1 and read the count after 1 s.
 6. **Answered (measured 2026-10-18, probe server, `mashup_sndlog`):** the

@@ -190,7 +190,9 @@ victim, fired once per victim per pass.
 Damage passes:
 - A touch while the trigger has no pass scheduled starts the pass cycle
   with the first pass scheduled for "now" (this tick if the trigger has not
-  thought yet this frame, else next tick).
+  thought yet this frame, else next tick). **CS:S, measured 2026-10-18
+  (question 8):** the first pass comes 4 ticks after the touch (3-5 by
+  the probe's stamping; walking in, placed inside, and de_port's sea).
 - Each pass: per = damage × dt_pass where dt_pass = 0.5 (fixed, even though
   the real spacing is 33 ticks = 0.495 s). For every entity currently in
   the touch links: if it can take damage, passes the filters and (for
@@ -470,7 +472,16 @@ dt = 0.015, sv_gravity 800 unless noted. Player box 32×32×62 standing.
 2. **Sweep for pushed entities**: is a player carried by a mover tested
    with a swept box (previous position given)? Test with a fast func_door
    carrying a player through a thin trigger.
-3. **Touch order** of several overlapping triggers (engine enumeration):
+3. **Answered (measured 2026-10-18, probe server, de_nuke, spawned
+   triggers sharing one volume, the bot walking in):** of two
+   trigger_teleports the one with the lower entity index wins, whichever
+   was spawned first (A 207 / B 208: A's destination; B 211 / A 212: B's);
+   a trigger_gravity, a trigger_push and a trigger_multiple's OnTrigger
+   sharing a teleport's volume all still act, whatever the indices. That
+   fits every overlapped trigger touched, the highest index first (the
+   last teleport, the lowest index, wins); not told apart from "a teleport
+   stops later teleports only". Ours: overlapped triggers touched in
+   descending entity order (`touch_triggers`). Was: **Touch order** of several overlapping triggers (engine enumeration):
    matters for overlapping pushes plus teleports. Test map room with
    overlapping push + teleport, compare outcomes.
 4. **Answered (measured 2026-10-17, trigger_hurt "Player health"):**
@@ -497,7 +508,12 @@ dt = 0.015, sv_gravity 800 unless noted. Player box 32×32×62 standing.
    shared movement; confirm it handles base velocity as above (measure the
    horizontal push test: +4.5 units per tick, and 302.25 momentum after
    exit) with the movement probe.
-8. **First hurt pass timing**: same tick as the first touch or next tick?
+8. **Answered (measured 2026-10-18, probe server, de_nuke, a spawned
+   trigger_hurt, the bot walking in at about 180 units/s or placed
+   inside):** the first pass comes 4 ticks after the touch (walking in:
+   4, 5, 4, 5 by the event stamping, placed inside: 4, 4, 4, 3; de_port's
+   sea: 4), then every 33 ticks (32-34 by the stamping, 33.0 on average
+   over 12 passes). Ours: `HURT_FIRST_TICKS` 4. Was: **First hurt pass timing**: same tick as the first touch or next tick?
    Read health per tick with the probe.
 9. **Answered (measured 2026-10-17, a spawned trigger_multiple with that
    output on its OnStartTouch, the bot standing):** as our reading: `0 0

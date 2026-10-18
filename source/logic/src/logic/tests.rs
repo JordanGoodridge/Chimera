@@ -846,8 +846,9 @@ fn hurt(damage: &str, extra: &[(&str, &str)]) -> LogicWorld {
 fn trigger_hurt_armour_by_damage_type() {
     for (kind, armour) in [("0", true), ("1", true), ("8", true), ("32", false), ("16384", false), ("16416", false)] {
         let mut w = hurt("40", &[("damagetype", kind)]);
-        w.frame(&NoCollision);
-        w.frame(&NoCollision);
+        for _ in 0..6 {
+            w.frame(&NoCollision);
+        }
         let got: Vec<bool> = w
             .effects
             .iter()
@@ -862,17 +863,17 @@ fn trigger_hurt_armour_by_damage_type() {
 
 #[test]
 fn trigger_hurt_passes() {
-    // Entered at tick 0: passes every 33 ticks (the first at the next
-    // think opportunity, tick 1 here; open question 8).
+    // Entered at tick 0: passes every 33 ticks, the first 4 ticks after
+    // the touch (measured 2026-10-18, triggers.md question 8).
     let mut w = hurt("50", &[]);
     let hits = damage_ticks(&mut w, 120, None);
-    assert_eq!(hits, vec![(1, 25.0), (34, 25.0), (67, 25.0), (100, 25.0)]);
+    assert_eq!(hits, vec![(4, 25.0), (37, 25.0), (70, 25.0), (103, 25.0)]);
 
     // Leaves after being hurt in the last pass: no exit hit.
     let mut w = hurt("20", &[]);
-    assert_eq!(damage_ticks(&mut w, 100, Some(40)), vec![(1, 10.0), (34, 10.0)]);
+    assert_eq!(damage_ticks(&mut w, 100, Some(40)), vec![(4, 10.0), (37, 10.0)]);
     let mut w = hurt("20", &[]);
-    assert_eq!(damage_ticks(&mut w, 100, Some(10)), vec![(1, 10.0)]);
+    assert_eq!(damage_ticks(&mut w, 100, Some(10)), vec![(4, 10.0)]);
 
     // A dash through before the first pass: the exit half-hit.
     let mut w = hurt("20", &[]);
@@ -880,7 +881,7 @@ fn trigger_hurt_passes() {
 
     // Healing.
     let mut w = hurt("-10", &[]);
-    assert_eq!(damage_ticks(&mut w, 40, None), vec![(1, -5.0), (34, -5.0)]);
+    assert_eq!(damage_ticks(&mut w, 40, None), vec![(4, -5.0), (37, -5.0)]);
 
     // Doubling up to the cap; forgiven after 3 s away.
     let mut w = hurt("10", &[("damagemodel", "1"), ("damagecap", "50")]);
@@ -982,6 +983,44 @@ fn teleport_keeps_the_other_touches() {
     assert_eq!(w.players[0].origin, Vec3::new(1000.0, 0.0, 64.0));
     assert_eq!(fired(&w, score, "OnTrigger"), vec![0], "the volume shared with the teleport");
     assert_eq!(fired(&w, there, "OnStartTouch"), vec![0], "the destination's, the same tick");
+}
+
+/// Triggers.md question 3 (measured 2026-10-18 on the probe, spawned
+/// triggers sharing a volume): of two teleports the one with the lower
+/// entity index wins, whichever spawned first; a teleport doesn't stop a
+/// trigger_multiple sharing its volume from firing, in either order.
+#[test]
+fn overlapping_teleports_lower_index_wins() {
+    for multiple_first in [false, true] {
+        let mut w = world();
+        let tele = |w: &mut LogicWorld, target: &str| {
+            spawn_brush(
+                w,
+                &[("classname", "trigger_teleport"), ("spawnflags", "1"), ("target", target)],
+                Vec3::ZERO,
+                Vec3::splat(100.0),
+            )
+        };
+        let multiple = |w: &mut LogicWorld| {
+            spawn_brush(
+                w,
+                &[("classname", "trigger_multiple"), ("spawnflags", "1"), ("OnTrigger", "x,Use,,0,-1")],
+                Vec3::ZERO,
+                Vec3::splat(100.0),
+            )
+        };
+        let score = multiple_first.then(|| multiple(&mut w));
+        tele(&mut w, "a");
+        tele(&mut w, "b");
+        let score = score.unwrap_or_else(|| multiple(&mut w));
+        spawn(&mut w, &[("classname", "info_teleport_destination"), ("targetname", "a"), ("origin", "1000 0 64")]);
+        spawn(&mut w, &[("classname", "info_teleport_destination"), ("targetname", "b"), ("origin", "2000 0 64")]);
+        w.activate();
+        player_at(&mut w, 0, Vec3::new(5.0, 3.0, 0.0));
+        run_to(&mut w, 0);
+        assert_eq!(w.players[0].origin, Vec3::new(1000.0, 0.0, 64.0), "the first teleport's");
+        assert_eq!(fired(&w, score, "OnTrigger"), vec![0], "multiple first: {multiple_first}");
+    }
 }
 
 #[test]
@@ -1539,6 +1578,35 @@ fn tracktrain_on_a_straight_path() {
     // that tick's step of 3 units.
     assert!((980.0..=986.0).contains(&x), "OnPass at x {x}");
     assert_eq!(origin_of(&w, t), Vec3::new(1000.0, 0.0, 10.0));
+}
+
+/// Entity_io.md question 10 (measured 2026-10-18 on the probe): an I/O
+/// Use leaves a func_tracktrain as it was, stopped or moving; Toggle
+/// starts it.
+#[test]
+fn tracktrain_ignores_use() {
+    let mut w = world();
+    spawn(&mut w, &[("classname", "path_track"), ("targetname", "a"), ("target", "b"), ("origin", "0 0 0")]);
+    spawn(&mut w, &[("classname", "path_track"), ("targetname", "b"), ("origin", "1000 0 0")]);
+    let t = spawn_brush(
+        &mut w,
+        &[("classname", "func_tracktrain"), ("targetname", "t"), ("target", "a"), ("startspeed", "200")],
+        Vec3::splat(-8.0),
+        Vec3::splat(8.0),
+    );
+    w.activate();
+    run_to(&mut w, 2);
+    let start = origin_of(&w, t);
+    w.queue_input("t", "Use", Value::Void, 0.0, None);
+    run_to(&mut w, 30);
+    assert_eq!(origin_of(&w, t), start, "Use doesn't start it");
+    w.queue_input("t", "Toggle", Value::Void, 0.0, None);
+    run_to(&mut w, 60);
+    let moving = origin_of(&w, t);
+    assert!(moving.x > start.x, "Toggle does");
+    w.queue_input("t", "Use", Value::Void, 0.0, None);
+    run_to(&mut w, 90);
+    assert!(origin_of(&w, t).x > moving.x, "nor stops it");
 }
 
 #[test]

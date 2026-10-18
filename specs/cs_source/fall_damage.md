@@ -108,14 +108,19 @@ Implemented: each volume's brushes (its brush model's convex brushes, moved
 by the entity origin); a living character whose bounding box overlaps one
 takes damage / 2 every 0.5 s, due within half a tick of the half second
 (which gives 33 ticks at 0.015 s); the first touch after nobody was inside
-bites at once. One timer per volume, shared by everyone in it (inferred).
+bites 4 ticks later (measured 2026-10-18, triggers.md question 8). One timer per volume, shared by everyone in it (inferred).
 Left out: `StartDisabled 1` (needs map logic), triggers that don't hurt
 players (spawnflags without bit 1, when not 0).
 
 ## Open questions
 
-1. `damagemodel` 1 (doubling damage up to `damagecap`) isn't used by any
-   stock map; it hurts at the constant rate here.
+1. **Answered (measured 2026-10-18, probe server, a spawned trigger_hurt
+   on de_nuke, damage 10, `damagemodel` 1, `damagecap` 50, the bot
+   standing in it):** passes took 5, 10, 20, 25, 25, ... (health 995,
+   985, 965, 940, 915, ...): doubling up to half the cap a pass, as
+   specs/source/triggers.md describes and ours does. Was: `damagemodel`
+   1 (doubling damage up to `damagecap`) isn't used by any stock map; it
+   hurts at the constant rate here.
 2. **Partly answered (2026-10-17, above): armour takes nothing of
    de_port's drown-type damage.** Other damage types (no stock map has
    one) are open. Was: Whether armour reduces trigger_hurt damage (drown

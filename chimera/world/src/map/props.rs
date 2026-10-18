@@ -119,6 +119,12 @@ pub fn animate_props(
 #[derive(Component)]
 pub struct MapPropCollider;
 
+/// A map collider light passes (glass, grates: `MapData::see_through_hulls`
+/// and `see_through_entities`): solid to players and shots, not to a
+/// flash's line (grenades.md Q12).
+#[derive(Component)]
+pub struct SeeThrough;
+
 #[cfg(test)]
 mod switch_tests {
     use super::*;
