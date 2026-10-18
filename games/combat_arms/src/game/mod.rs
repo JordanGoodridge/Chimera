@@ -7,7 +7,8 @@
 //!
 //! - `movement`: the movement slot, `combat_arms:movement` (movement.md);
 //! - `weapons`: firing (the weapon frame on placeholder data);
-//! - `inventory`: slots, switching, what a player starts with, the knife;
+//! - `inventory`: classes, switching, the loadout, the knife, pickup and
+//!   drop (inventory.md, implemented);
 //! - `grenades`: thrown weapons (none yet);
 //! - `attachments`: weapon attachments (none yet);
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
@@ -43,7 +44,7 @@ pub const TICK_INTERVAL: f64 = 0.015;
 /// the install's archives (`mount`); nothing reads from it yet (the
 /// `data` module will read the install's attribute files through it),
 /// there is no map cycle or map import, and the binds are the
-/// placeholder table below.
+/// table below.
 pub static INFO: GameInfo = GameInfo {
     id: GAME,
     short_name: "CA",
@@ -61,8 +62,12 @@ pub static INFO: GameInfo = GameInfo {
     movement_cvars: &[],
 };
 
-/// PLACEHOLDER binds (not Combat Arms' own: its defaults come with its
-/// spec): enough to walk, look, fire, reload and switch weapons.
+/// Combat Arms' default binds. Weapons, use and sprint are the default
+/// profile's (specs/combat_arms/inventory.md 2: class keys 1-5, Q the
+/// previous weapon, fire, zoom/knife secondary, R, E, left Shift; nothing
+/// on the wheel, 5; key 6, the objective class, waits for a sixth slot
+/// command in the shell); walking, jumping and crouching are PLACEHOLDER
+/// until movement.md's.
 pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("w", "+forward"),
     ("s", "+back"),
@@ -81,8 +86,6 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("3", "slot3"),
     ("4", "slot4"),
     ("5", "slot5"),
-    ("mwheelup", "invprev"),
-    ("mwheeldown", "invnext"),
 ];
 
 /// Combat Arms' parts, after `crate::SimPlugins`: the game registered
@@ -95,8 +98,10 @@ impl PluginGroup for CombatArmsPlugins {
             .add(RegisterGame(&INFO))
             .add(data::CaDataPlugin)
             .add(movement::CaMovementPlugin)
-            .add(weapons::CaWeaponsPlugin)
+            // Before `weapons`: its hooks must be there when the data
+            // loads.
             .add(inventory::CaInventoryPlugin)
+            .add(weapons::CaWeaponsPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(rules::CaRulesPlugin)
