@@ -67,7 +67,8 @@ in the lowest crate whose public API it needs:
 - `combat_arms` (games/combat_arms/tests/it/): Combat Arms' scenario
   tests on `Sim::new(CaSim, ..)` (`combat_arms::harness::CaSim`: its
   whole simulation, placeholders included) and the greybox; its spec
-  test cases as each subsystem is implemented;
+  test cases as each subsystem is implemented; its front end's (the
+  HUD's state, `ui::hud::CaHud`, headless) in tests/ui/, built with `ui`;
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's

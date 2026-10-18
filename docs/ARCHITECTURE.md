@@ -585,6 +585,7 @@ that the paths exist).
 - `games/cs_source/src/ui/spectator_menu.rs`: the spectator menu (games_ui)
 - `games/cs_source/src/ui/overview.rs`: the spectators' map overview (games_ui)
 - `chimera/client/src/client/hud.rs`: the fallback HUD: crosshair, scope, tints, health, ammo, killfeed (client)
+- `chimera/client/src/client/aim.rs`: a view ray and the character under it, line of sight (target IDs, name tags) (client)
 - `games/cs_source/src/ui/game_hud.rs`: the game's own HUD panels (games_ui)
 - `chimera/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `games/cs_source/src/ui/hud_sprites.rs`: HUD sprite icons and damage indicators (games_ui)

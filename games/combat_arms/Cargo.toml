@@ -12,8 +12,9 @@ license.workspace = true
 doctest = false
 
 # What only a feature compiles, for the hooks' test selection
-# (checks/src/affected.rs): an edit under src/ui/ runs the crates above,
-# not the simulation's tests (tests/it/).
+# (checks/src/affected.rs): an edit under src/ui/ runs the front end's
+# tests (tests/ui/) and the crates above, not the simulation's
+# (tests/it/).
 [package.metadata.affected]
 feature-paths = { ui = ["src/ui/"] }
 
@@ -45,6 +46,13 @@ workspace-hack.workspace = true
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+
+# The front end's (tests/ui/): built with `ui` only; the HUD's behaviour
+# and the scenario tests that read its state.
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"
+required-features = ["ui"]
 
 [features]
 # Combat Arms' front end (`ui`): its HUD and placeholder visuals on the
