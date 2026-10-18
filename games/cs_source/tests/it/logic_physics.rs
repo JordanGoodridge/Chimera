@@ -873,6 +873,34 @@ fn hinge_and_slider_motors_drive_their_crates() {
     assert!((90.0..110.0).contains(&speed), "slides at {speed} units/s");
 }
 
+/// A weld 40 units off a crate's centre holds it however small its
+/// torque limit (CS:S, measured 2026-10-18: a 30 kg crate held at
+/// torquelimit 1).
+#[test]
+fn a_weld_holds_an_off_centre_crate_whatever_its_torque_limit() {
+    let box_ = entity(
+        &[("classname", "prop_physics"), ("targetname", "sign"), ("origin", "0 0 200")],
+        Vec::new(),
+        false,
+    );
+    let weld = entity(
+        &[
+            ("classname", "phys_constraint"),
+            ("origin", "40 0 200"),
+            ("attach1", "sign"),
+            ("torquelimit", "1"),
+        ],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![box_, weld]);
+    add_crate(&mut data, 0, Vec3::new(0.0, 0.0, 200.0));
+    let mut sim = sim(data);
+    sim.seconds(2.0);
+    let z = crate_at(&mut sim).z;
+    assert!((z - 200.0).abs() < 8.0, "held: {z}");
+}
+
 /// A constraint naming an info_constraint_anchor holds the anchor's
 /// parent (physics_constraints.md 1.2 step 1).
 #[test]
@@ -1128,4 +1156,44 @@ fn breaking_a_held_body_breaks_its_constraint() {
         .queue_input("lamp", "Break", Value::Void, 0.0, None);
     sim.ticks(5);
     assert!(broke(&sim), "the socket's OnBreak: {:?}", sim.app.world().resource::<Logic>().world.fired);
+}
+
+/// A standing player shoves a non-solid multiplayer crate overlapping it
+/// by 1000 kg·units/s (33 units/s for 30 kg) once every 7 ticks, not every
+/// tick (CS:S, measured 2026-10-18, physics_props.md Q12: a 30 kg crate on
+/// ice beside a standing bot sped up by 33 units/s at ticks 0, 7, 14, 21).
+#[test]
+fn a_player_shoves_multiplayer_props_every_tenth_of_a_second() {
+    let box_ = entity(
+        &[("classname", "prop_physics_multiplayer"), ("origin", "10 0 16.5")],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![box_]);
+    add_prop(&mut data, 0, Vec3::new(10.0, 0.0, 16.5), PushAway::NonSolid, false, 30.0);
+    let mut sim = sim(data);
+    sim.seconds(0.5);
+    let p = sim.spawn_character(to_engine(Vec3::new(0.0, 0.0, 37.0)), movement::ID);
+    let node = {
+        let world = sim.app.world_mut();
+        world.query::<(Entity, &PropEntity)>().iter(world).next().unwrap().0
+    };
+    let speed = |sim: &Sim| to_source(sim.app.world().get::<LinearVelocity>(node).unwrap().0).x;
+    let _ = p;
+    let mut kicks = Vec::new();
+    let mut last = speed(&sim);
+    for tick in 0..30 {
+        sim.ticks(1);
+        let v = speed(&sim);
+        if v - last > 20.0 {
+            kicks.push((tick, v - last));
+        }
+        last = v;
+    }
+    assert!(kicks.len() >= 2, "kicked: {kicks:?}");
+    // 33.3 units/s each, less what the floor's friction takes that tick.
+    assert!(kicks.iter().all(|k| (20.0..36.0).contains(&k.1)), "kicks of 33 units/s: {kicks:?}");
+    for w in kicks.windows(2) {
+        assert_eq!(w[1].0 - w[0].0, 7, "every 7 ticks: {kicks:?}");
+    }
 }

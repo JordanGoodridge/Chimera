@@ -1756,10 +1756,14 @@ fn sync_controls(world: &mut World, logic: &Logic) {
                 // a hanging body's weight breaking it past 1/6.3 of that
                 // (CS:S, measured 2026-10-17: a ball socket holding 15, 30
                 // and 60 kg crates at rest broke below a forcelimit of about
-                // 13.8 lb a kg; physics_constraints.md question 1); torque
-                // lb·in as the weight, times units (unmeasured).
+                // 13.8 lb a kg; physics_constraints.md question 1; a weld
+                // the same: 400 broke a 30 kg crate's, 420 held, whether at
+                // its centre or 40 units off, 2026-10-18). The torque limit
+                // breaks nothing: a weld 40 units off a 30 kg crate's centre
+                // held it at torquelimit 1 (measured 2026-10-18; moving
+                // loads unmeasured).
                 force_limit: j.force_limit / 2.2 * gravity / HANGING_LOAD,
-                torque_limit: j.torque_limit / 2.2 * gravity * s,
+                torque_limit: 0.0,
             })
         })
         .collect();

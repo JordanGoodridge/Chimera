@@ -530,8 +530,11 @@ joints created from the bodies' poses at that moment) → first tick.
    200 / 210; 60 kg: 800 / 830). So a body hanging at rest breaks its
    socket below about 13.8 lb of forcelimit a kg, forcelimit / 2.2 ≈ 6.3 ×
    its mass, not 1 ×. Ours compared the weight with forcelimit / 2.2: now
-   with 1/6.3 of it (`bridge::HANGING_LOAD`). Moving loads and
-   torquelimit are unmeasured. Was: **Break limit physics**: what exactly is compared to forcelimit/2.2
+   with 1/6.3 of it (`bridge::HANGING_LOAD`). 2026-10-18: a phys_constraint
+   weld the same (a 30 kg crate's broke at forcelimit 400, held at 420,
+   welded at its centre or 40 units off), and **torquelimit breaks
+   nothing at rest**: the weld 40 units off held the crate at torquelimit
+   1 (also 3, 10, 30 and up to 30000). Moving loads are unmeasured. Was: **Break limit physics**: what exactly is compared to forcelimit/2.2
    (kg)? Probe: hang a prop of known mass from a phys_ballsocket to the
    world with forcelimit F; find the smallest mass that breaks it at rest
    with sv_gravity 800 (CS:S default). If it breaks near F/2.2 kg the limit

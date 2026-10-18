@@ -901,7 +901,7 @@ Behaviour:
     calibres' values, need checking: shoot a known-mass prop and measure
     Δv with `ent_text` or a demo. CS:S's HE grenade radius-damage code may
     also differ from the generic one in 5.3.
-12. **Call sites in CS:S.** The server push (4.2.2) and the client push-back
+12. **Answered for the server push (2026-10-18, probe server, a standing bot overlapping a 30 kg crate on ice, `physicsmode 2`):** the crate is kicked by 33.3 units/s (1000 kg·units/s, the cap) **every 7 ticks** (0.105 s), not every tick, while it is within reach (frames 0, 7, 14, 21; 25 at 40 units: 30000/dist), so on concrete's friction a shove barely moves a crate (1-2 units as the bot walks through, ~8 units in 2 s standing inside it). Mode 1 props push the bot back (it stopped against a crate's face head-on, slid past one 20-25 units aside) and weren't shoved by it at 250 units/s. A forward move of 60 can't start the bot at all (4.5 units/s: sv_accelerate 5 equals the stop-speed friction below 75), so the 75 rule couldn't be tested slower. Was: **Call sites in CS:S.** The server push (4.2.2) and the client push-back
     (4.2.3) are defined in shared code. CS:S's player code (not public) is
     presumed to call them every tick or command. The cvars become
     player-visible only in the CS build, and the +use push filter excludes

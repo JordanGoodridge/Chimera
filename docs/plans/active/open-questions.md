@@ -33,12 +33,12 @@ counts as left); classes 2-5 unchanged.
 
 Third pass (2026-10-18, physics props, constraints, sounds, recoil,
 templates, ropes; the physics_constraints row split again, its Q10 apart):
-32 class-1 items settled, 25 answered on the probe or by sweeping the
+34 class-1 items settled, 27 answered on the probe or by sweeping the
 maps' entity lumps (`tools/css_probe/entsweep.py`) and 7 found to need
 something else (moved to classes 2-4: a dangling rope's look, the
 silencer's recoil, the template suffix and templated logic_auto, the
 constraint tie order, a human's airborne inaccuracy, nav_analyze on a
-listen server); about 75 class-1 items left.
+listen server); about 73 class-1 items left.
 
 ## Specs: specs/cs_source
 
@@ -118,7 +118,7 @@ listen server); about 75 class-1 items left.
 | physics_props | Q8 hull shrink | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q9 static prop solid types 2 and 6 | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q10 SOLID_VPHYSICS without `.phy` | 5 | measured (Part B, 2026-10-18) |
-| physics_props | Q12 player push call sites (< 75 vs > 75 in/s) | 1 | bot walking into a barrel at two speeds |
+| physics_props | Q12 player push call sites (< 75 vs > 75 in/s) | 5, 4 | the server push's rate measured (Part B, 2026-10-18); slower than 75: a human (a bot can't start moving under 75) |
 | physics_props | Q13 `sv_turbophysics` default | 1 | `cvarlist` (done, Part B: 0) |
 | physics_props | Q14 drag axis areas | 3 | units unknown; spec session |
 | physics_props | Q15 model type 1 solids | 3 | none shipped |
@@ -260,6 +260,7 @@ listen server); about 75 class-1 items left.
 | physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
 | physics_brushes | Q8 thin-rod check on rotated brushes | 1 | spawned |
 | physics_constraints | Q1, Q5 (break limit at rest, deleted body; 2 items) | 1 | done (Part B; Q1's moving loads and torque left) |
+| physics_constraints | Q1 left: torque at rest | 5 | measured (Part B, 2026-10-18); moving loads still class 1 |
 | physics_constraints | Q2-Q4, Q6-Q9 (motor units, hinge friction, spring law, world fallback, equal limits, pulley, never-created joint; 7 items) | 5 | measured (Part B, 2026-10-18) |
 | physics_constraints | Q10 tie order | 3 | map load order: a test map |
 | prop_damage | Q4, Q7, Q8 and the client halves of Q2, Q9 | 2 | capture C29 |
@@ -441,6 +442,8 @@ measured.
 | physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | none (tech-debt) |
 | physics_props Q10, Q9: prop_dynamic solids | no `.phy`: traces pass; solid 2: its box, turned with it | the visible mesh; solid 2 as 6 | as CS:S |
 | physics_props Q9: static props' solid 2 | the box along the world's axes around the turned bounds (de_dust's windows at yaw 120) | the bounds turned with the prop | the world box (`PropSolid::WorldBox`) |
+| physics_props Q12: the players' push | a 1000 kg·units/s kick every 7 ticks (0.105 s) | every tick | every 0.1 s (`pushaway::PUSH_INTERVAL`) |
+| physics_constraints Q1: torque limit | breaks nothing at rest (a weld 40 units off a 30 kg crate held at torquelimit 1); a weld's force limit as a ball socket's | the torque as a weight × units | no torque breaking |
 | sounds Q2: other entries' waves | uniform, repeats allowed (a crate's 3 hard-impact waves 29/22/29 of 80) | uniform | none |
 | physics_constraints Q2: motors | hinge: the value in deg/s, clockwise about the axis, at once; slider: 5 × the value in units/s; 0: off, it coasts | ignored | as CS:S (logic controls: `ControlKind::Slide`) |
 | physics_constraints Q3: hinge friction | no effect measured (0, 1, 10) | ignored | none |
