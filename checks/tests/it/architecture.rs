@@ -16,6 +16,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Performance counters and distributions: Bevy only.
     ("metrics", &[]),
     ("console", &["core"]),
+    // Game events and the server log: what the rules and the network tell
+    // plugins and admins happened.
+    ("game_log", &["core", "console"]),
     ("mount", &[]),
     // What a game tells the shell about itself (its install, map cycle,
     // tick, binds, movement cvars): data the game registers.
@@ -45,7 +48,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
     ("objectives", &["core", "console", "slots", "character", "map", "weapon"]),
-    ("rules", &["core", "console", "weapon", "objectives"]),
+    ("rules", &["core", "console", "game_log", "weapon", "objectives"]),
     // Map logic (entity I/O, triggers, movers): game-independent; games
     // feed it through `map::MapData::entities`. `net`: it registers its
     // movers and HUD messages as its part of the network (`logic::net`).
@@ -55,7 +58,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // engine's simulation it serves, below Source's logic, the games, the
     // client and harness (docs/plans/active/multiplayer.md, section 3): a
     // game registers what it replicates and fills its hooks (`net::parts`).
-    ("net", &["core", "console", "slots", "character", "movement", "map", "weapon"]),
+    ("net", &["core", "console", "game_log", "slots", "character", "movement", "map", "weapon"]),
     // The headless harness (chimera_world's `Sim`, chimera_net's `NetSim`,
     // cs_source's base and test maps). `lib` = crate-root items such as
     // `SimPlugins`.

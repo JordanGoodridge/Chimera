@@ -109,7 +109,11 @@ impl CvarScope {
             CvarScope::Local
         } else if !SERVER_PREFIXES.iter().any(|p| name.starts_with(p)) {
             CvarScope::Local
-        } else if name.starts_with("bot_") || name.contains("password") || name.contains("rcon") {
+        } else if name.starts_with("bot_")
+            || name.starts_with("sv_log")
+            || name.contains("password")
+            || name.contains("rcon")
+        {
             CvarScope::Server
         } else {
             CvarScope::Replicated

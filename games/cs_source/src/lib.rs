@@ -43,7 +43,7 @@ pub mod rules;
 pub mod ui;
 
 // `crate::core`, `crate::map` and the rest inside, as in the game crate.
-use chimera_core::{character, console, core, game_registry, mount, slots};
+use chimera_core::{character, console, core, game_log, game_registry, mount, slots};
 use chimera_sim::weapon;
 use chimera_net::net;
 use chimera_world::map;

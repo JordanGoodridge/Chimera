@@ -104,6 +104,7 @@ impl Plugin for WeaponPlugin {
             .init_resource::<drop::DebugPickup>()
             .init_resource::<drop::DebugPickupSeen>()
             .add_message::<drop::UsedPickup>()
+            .add_message::<drop::PickedUp>()
             .register_type::<economy::Money>()
             .register_type::<economy::DefuseKit>()
             .init_resource::<PassMaterials>()

@@ -8,7 +8,8 @@
 //! next map of the map cycle (`MapCycle`; the same map again without one).
 //! CS:S's Create Server sets a 20-minute time limit
 //! (`cfg/settings_default.scr`); the console's default is 0 (none), as
-//! CS:S's. What CS:S shows during it is unmeasured.
+//! CS:S's. What CS:S shows during it is unmeasured. A time limit's
+//! intermission logs `World triggered "Intermission_Time_Limit"`.
 //!
 //! Known shortcuts (docs/tech-debt.md): End of a map's game (`rules::game_end`;
 //! timing measured, the look not): with rounds the limits are checked as a
@@ -111,6 +112,10 @@ pub fn reached(limits: &GameLimits, state: &RoundState, now: f64, rounds: bool) 
 
 /// Start the intermission now.
 pub(super) fn begin(world: &mut World, now: f64) {
+    let started = world.resource::<RoundState>().map_started;
+    if time_left(world.resource::<GameLimits>().time_limit, started, now).is_some_and(|l| l <= 0.0) {
+        world.write_message(crate::game_log::LogLine::world("Intermission_Time_Limit"));
+    }
     let chat = world.resource::<GameLimits>().chat_time.max(0.0) as f64;
     world.resource_mut::<RoundState>().game_over = Some(now + chat);
 }

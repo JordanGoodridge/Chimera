@@ -29,11 +29,11 @@ ours or unmeasured), **missing**. Impact: how often a player notices
 | Sounds | 11 | 7 | 1 | 7 |
 | HUD | 17 | 3 | 0 | 8 |
 | Menus and commands | 17 | 4 | 5 | 10 |
-| Rendering, lighting, materials | 17 | 17 | 3 | 13 |
+| Rendering, lighting, materials | 18 | 16 | 3 | 14 |
 | Maps and entities | 17 | 8 | 2 | 10 |
 | Rules and economy | 11 | 1 | 0 | 5 |
-| Networking feel | 6 | 3 | 1 | 1 |
-| **Total** | **116** | **54** | **13** | **67** |
+| Networking feel | 7 | 3 | 2 | 1 |
+| **Total** | **118** | **53** | **14** | **68** |
 
 Counted from the tables below (recounted 2026-10-18; the fourth probe pass changed no row's status): "have" is every row
 whose status starts with have (have, have (fixed), have (new), have
@@ -229,7 +229,7 @@ common console commands, against mashup's.
 | Displacement texture mapping | have (fixed) | M | S | displacements projected their texture through the sculpted surface, smearing it in streaks wherever vertices move sideways (reported on cs_militia's rock walls at its front yard); now mapped from the undisplaced grid as their lightmaps are (shaders.md open question 20: measured, refcmp detail correlation up on every map, de_aztec 0.54 -> 0.72) |
 | Bump maps in DirectX 9 fallback blocks | have (fixed) | L | S | 181 stock materials have a `LightmappedGeneric_DX9` (or `>=DX90`) block, which the VMT parser skipped; about 110 name their `$bumpmap` only there (HL2's `_c17`/`_cheap` walls and floors: cs_militia's sewer-concrete wall by the reported spot, cs_assault, cs_compound, de_port, de_inferno), drawn flat; now read with the block's keys (`lenient_vmt`) |
 | Decals, overlays, impact effects, tracers | have | | | specs; the "placeholder" tech-debt row was stale and is gone; glass shards tumble and settle, slime splashes from the `.pcf` (2026-10-15) |
-| Impact effects of others' shots beyond the shooter's PAS | differs | L | M | every client makes them (impact_effects.md 1; no network relevance yet, `net::server`) |
+| Impact effects of others' shots beyond the shooter's PAS | have (fixed) | L | M | every client made them (2026-10-18): a shot (its impacts, tracer and sound) now goes only to clients whose eye is in the potentially audible set of the shooter's eye (impact_effects.md 1; the BSP's PAS, `MapVisibility::hears`); the dead and spectators get every shot (the server doesn't know where they watch from) |
 | Blood bursts up close (sprite-card size limits, goop spin and flip, mist tint) | have (fixed) | H | S | were left out (2026-10-17): every sprite-card material's `$maxsize` and `$startfadesize`/`$endfadesize` from the install (the blood mist capped at a quarter of the screen, the blood smoke gone once a tenth of it, fire smoke and flames too), the goop's spin stopping at 1 s and half of it mirrored, the mist and goop a tenth toward the light (impact_effects.md 10, 14); the screen-size measure and `tint_perc` are our readings (Q7) |
 | `.pcf` colour toward the light (`tint_perc`) | have (fixed) | L | S | the `.pcf` systems ignored it (2026-10-17): colour random's `tint_perc` now blends each new particle that far toward the light at its control point (the map's light field there, gamma space, as the blood's mist and goop), for placed info_particle_systems and started ones (slime splashes, 0.45); a sweep of the install's 14 `.pcf` files found it only in colour random (always control point 0, clamps 0-255), and none of the cached maps' placed systems use it; our reading (impact_effects.md Q7) |
 | Knife slash mark | differs | L | S | `ManhackCut` is a guess; no spec names it (backlog 3 "Decals, remaining") |
@@ -326,6 +326,8 @@ common console commands, against mashup's.
 | Sprays | have (fixed) | M | M | `impulse 201`: one per player, `decalfrequency`, kept through rounds, gone with the map; replicated by name, so others' imported logos aren't shown (tech-debt "Sprays"); capture C23 |
 | Demos | missing | L | L | |
 | Votes (kick, map) | differs | L | M | `callvote kick <userid>`, `changelevel <map>`, `restartgame`; F1/F2 vote; setup dialog (`callvote` alone; no Esc entry, as CS:S's `GameMenu.res`); joiners vote; bots vote (ours); cvars measured, rules and panel ours (tech-debt "Votes"); capture C25 |
+| Game events and server log | have (new) | L | M | 2026-10-18: the specs' events (bomb, hostages, rounds, `weapon_fire`, `bullet_impact`, `player_hurt`, `player_death`, `item_pickup`, grenades) for plugins (`game_log::GameEvent`) and their `triggered` lines in a half-life-standard log (`log on`, `sv_logecho`, `sv_logfile`: `logs/`); UTC stamps, `STEAM_ID_LAN` (tech-debt) |
+| Kill, attack, chat, connect, team and purchase log lines | missing | L | S | no spec defines them (objectives.md question 17) |
 
 ## Fixed in this pass
 

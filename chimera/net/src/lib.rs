@@ -22,6 +22,6 @@ pub mod net;
 
 // `crate::core`, `crate::map` and the rest inside `net`, as in the game
 // crate.
-use chimera_core::{character, console, core, slots};
+use chimera_core::{character, console, core, game_log, slots};
 use chimera_sim::{movement, weapon};
 use chimera_world::map;
