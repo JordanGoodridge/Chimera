@@ -17,8 +17,9 @@
 //! person), its `core::Health`, its armour (`game::weapons::CaArmor`'s
 //! points, else `weapon::Armor`), `Inventory`, `Zoomed`,
 //! `Intent` (crouch held) and `game::movement::CaMovement` (moving, the
-//! crouch blend, stamina); the held weapon's `Hitscan::spread` (the cone
-//! Combat Arms' firing sets, perturb units / 1000), its data's
+//! crouch blend, stamina); the held weapon's spread fraction r
+//! (`game::weapons::CaSpread::fraction`; without it, r read back from
+//! `Hitscan::spread`, the cone in perturb units / 1000), its data's
 //! `combat_arms:spread` limits (`cone`, `zoomed_cone`, `burst_cone`) and
 //! `combat_arms:hud` fields (`game::hud::CaHudData`), `Magazine`,
 //! `AltModes`/`Burst`, `game::inventory::CaItem`; `WeaponEvent::Fired`
@@ -32,10 +33,6 @@
 //!
 //! Known shortcuts (docs/tech-debt.md; the spec's most literal reading
 //! where it is unclear):
-//! - Spread r: read back from the cone the firing part puts on
-//!   `Hitscan::spread` (r = (n - min) / (max - min) with that mode's
-//!   limits), so it carries the shot's whole-unit rounding; a weapon
-//!   without `combat_arms:spread` data shows its cone as the gap (r 0).
 //! - The HUD runs once per rendered frame on the frame clock (`Time`):
 //!   timers in ms from it, the kick in seconds; Fired events are timed
 //!   at the frame that reads them.
@@ -88,7 +85,7 @@ use crate::{
         inventory::{self, CaItem, CaSelection, Dropped},
         movement::{CaCharacter, CaMovement, movement_data},
         net::CaPickup,
-        weapons::CaArmor,
+        weapons::{CaArmor, CaSpread},
     },
     map::interp::RenderedView,
     weapon::{AltModes, Armor, Burst, Hitscan, Inventory, Magazine, SpreadShape, Weapon, WeaponEvent, WeaponEventKind, Zoomed},
@@ -482,6 +479,7 @@ type HeldWeapon<'a> = (
     Option<&'a Burst>,
     Option<&'a Magazine>,
     Option<&'a CaItem>,
+    Option<&'a CaSpread>,
 );
 
 type Character<'a> = (
@@ -580,7 +578,7 @@ fn update(
         dot_sight: (draws.dot_sight > 0).then(|| dot_sight_rect(screen)),
         ..default()
     };
-    if let (Some((w, (id, scan, _, modes, burst, _, _))), Some(p)) = (weapon, player) {
+    if let (Some((w, (id, scan, _, modes, burst, _, _, spread))), Some(p)) = (weapon, player) {
         let n = scan.map_or(0.0, |s| match s.spread {
             SpreadShape::Template(s) => s,
             SpreadShape::Disc { inaccuracy, spread } => inaccuracy + spread,
@@ -594,6 +592,8 @@ fn update(
         };
         let limits = crate::weapon::data::lookup(id.id).and_then(|d| d.hooks.get(SPREAD_HOOK));
         let (perturb, r) = spread_of(limits, data, n, stance);
+        // The firing part's own fraction when it runs on this weapon.
+        let r = spread.map_or(r, CaSpread::fraction);
         let (min, max) = perturb_limits(&perturb, &PerturbMods::default(), stance);
         let (fired, alt) = memory.fired.get(&w).copied().unwrap_or_default();
         let since = |t: Option<f64>| t.map(|t| (now - t) as f32);
@@ -655,7 +655,7 @@ fn update(
     }
 
     // The weapon panel (D4).
-    if let Some((_, (id, _, hud_data, modes, burst, mag, item))) = weapon {
+    if let Some((_, (id, _, hud_data, modes, burst, mag, item, _))) = weapon {
         let data = crate::weapon::data::lookup(id.id);
         let class = class_of_weapon(hud_data.and_then(|h| h.class), id.slot, mag.is_some());
         let bursting = match (modes, burst) {
