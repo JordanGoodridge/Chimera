@@ -42,7 +42,8 @@
 //! the client and `mashup_server` from the install's map cycle,
 //! `games::cs_source::map_cycle`), or a fresh game without one;
 //! `hints.rs`: the automatic hints (`cl_autohelp`: data-named triggers,
-//! each hint once per player per map).
+//! each hint once per player per map); `events.rs`: CS:S's game events and
+//! server log lines (bomb, hostages, rounds, weapons, deaths; `game_log`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Team balance (`rules::balance_teams`,
 //! `mp_autoteambalance`; bots never move, measured; the rest unmeasured):
@@ -54,6 +55,7 @@
 //! no spawns for. Why it's OK for now: Capture C11 in
 //! docs/plans/active/parity-gaps.md.
 
+pub mod events;
 pub mod game_end;
 pub mod hints;
 pub mod rounds;
@@ -89,6 +91,7 @@ impl Plugin for DeathmatchPlugin {
         );
         rounds::plugin(app);
         game_end::plugin(app);
+        events::plugin(app);
         hints::plugin(app);
         module::plugin(app);
         resource_cvar::<Deathmatch, f32>(app, "mp_respawn_delay", "Seconds before the dead respawn.", |d| {

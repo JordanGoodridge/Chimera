@@ -972,6 +972,22 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
     either value. Test: client screenshots 1.5 s into a plant and a
     defuse with `cl_c4progressbar` 1 and 0; is the planting bar there,
     and does the cvar hide it?
+17. **Q17 Game events' fields and the rest of the log.** (Added by an
+    implementation session, not from the source.) This spec and
+    weapons.md and grenades.md name events and `triggered` log actions
+    but not every event's fields (`bomb_beginplant`'s site, whether `site`
+    is the target's entity index, `round_end`'s reason numbers,
+    `player_hurt`'s armor fields, `hostage_*`'s hostage key) nor the log's
+    other lines: kills (`killed ... with`), attacks, suicides, chat, team
+    joins, connects and disconnects, purchases, `Round_Start`, the team
+    score suffix after a team's trigger, `Intermission_Win_Limit` and
+    the round-limit one, and which events fire for bought or given weapons
+    (`item_pickup`), zoom, blinding (`player_blind`), grenade bounces and
+    smoke grenades. We write the named events with `userid` and the fields
+    the specs list, and `Team "<team>" triggered "<reason>"` without a
+    suffix. Test: probe server with `log on`, `mp_logdetail 3` and an event
+    listener: a round with a plant, a defuse, a kill, a buy, a chat line
+    and a team change; record every line and event with its fields.
 
 ## Mapping to our engine
 

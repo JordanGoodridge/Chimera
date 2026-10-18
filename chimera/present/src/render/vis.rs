@@ -418,6 +418,7 @@ mod tests {
             leaf_clusters: vec![0, 1, -1],
             cluster_count: 2,
             visible: vec![vec![0b11], vec![0b10]],
+            audible: Vec::new(),
             areas: MapAreas::default(),
             occluders: Vec::new(),
         }

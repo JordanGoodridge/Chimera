@@ -11,7 +11,9 @@
 //! - **Others' weapons** (`NetHeld`): what each character holds, so a
 //!   client draws it in their hands (`weapon::remote::show_held`); each
 //!   round they fire comes as `FireBullets` (origin, angles, spread seed
-//!   and spread) and is traced again on the client for its tracers,
+//!   and spread) to clients whose eye is in the potentially audible set
+//!   of the shooter's (Source's PAS, `MapVisibility::hears`; the dead and
+//!   spectators get every one) and is traced again on the client for its tracers,
 //!   impacts and sound (`weapon::remote::RemoteShot`), the same spread
 //!   pattern the server traced; reloads, swings, throws and bomb arming
 //!   as `WeaponFx` for their bodies. The shooter's own client gets neither (it
@@ -27,8 +29,8 @@
 //! Weapons over the network (slice 4): the server writes what each character
 //! holds (`NetHeld`), loose weapons and grenades in flight (`NetItem`) and
 //! smoke clouds (`NetSmoke`, named by the grenade's weapon id the cloud keeps:
-//! `SmokeCloud::weapon`), sends each round fired to the other clients
-//! (`FireBullets`), reloads/swings/throws (`WeaponFx`), detonations, flashes
+//! `SmokeCloud::weapon`), sends each round fired to the other clients in the
+//! shooter's PAS (`FireBullets`), reloads/swings/throws (`WeaponFx`), detonations, flashes
 //! and ringing to the player hit (`Senses`), damage that reached a player's
 //! health to its client (`Hurt`: the damage indicators), deaths (`Killed`) and
 //! hit confirmations (`HitConfirm`), and drops what a client asks to
@@ -49,11 +51,14 @@ use super::{
     weapon_fx,
 };
 use crate::{
-    core::{Blinded, Damage, DamageKind, DamageTaken, Deafened, Died, Hitgroup, LocalPlayer, NetRole},
+    core::{
+        Blinded, Damage, DamageKind, DamageTaken, Deafened, Died, Health, Hitgroup, LocalPlayer, MovementState, NetRole,
+    },
     map::{
         PlaySound,
         interp::{InterpSystems, NetDrawn, SNAP_SPEED},
         loose::{LooseItem, ShownItem},
+        vis::ActiveVisibility,
     },
     weapon::{
         AltModes, Inventory, SpreadShape, Weapon, WeaponEvent, WeaponEventKind, WeaponRegistry,
@@ -254,11 +259,16 @@ fn receive_drops(mut requests: MessageReader<FromClient<DropRequest>>, players: 
     }
 }
 
-/// What a character's weapon did, to every client but its own.
-#[allow(clippy::type_complexity)]
+/// What a character's weapon did, to every client but its own; a round
+/// fired only to those in the potentially audible set of the shooter's eye
+/// (impact_effects.md section 1: Source's PAS; everyone on maps without
+/// one).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn send_weapon_events(
     mut events: MessageReader<WeaponEvent>,
     players: Query<(Entity, &Player)>,
+    eyes: Query<(&Transform, Option<&MovementState>, Option<&Health>)>,
+    vis: Option<Res<ActiveVisibility>>,
     weapons: Query<&Weapon>,
     replicated: Query<(), (With<Replicated>, With<NetCharacter>)>,
     registry: Res<WeaponRegistry>,
@@ -321,9 +331,18 @@ fn send_weapon_events(
                     spread,
                     mode: *mode,
                 };
-                for targets in others {
+                // A living listener's eye: where Source tests it against the
+                // PAS. The dead and spectators watch from where their client
+                // chose (which the server doesn't know): they get every shot.
+                let audible = |listener: Entity| {
+                    let (Some(vis), Ok((t, m, Some(h)))) = (vis.as_ref(), eyes.get(listener)) else {
+                        return true;
+                    };
+                    h.current <= 0.0 || vis.0.hears(*origin, t.translation + m.map_or(Vec3::ZERO, |m| m.eye_offset))
+                };
+                for (client, _) in players.iter().filter(|(_, p)| p.character != e.owner && audible(p.character)) {
                     fire.write(ToClients {
-                        targets,
+                        targets: SendTargets::Single(ClientId::Client(client)),
                         message: message.clone(),
                     });
                 }

@@ -7,7 +7,8 @@
 //!   weapon switches are the server's bit for bit with no loss.
 //! - Another client draws its shots with the same pellets the server
 //!   traced; `sv_maxunlag` bounds the rewind; a dead player can't shoot;
-//!   a client deals no damage of its own.
+//!   a client deals no damage of its own; a round fired goes only to
+//!   clients in the shooter's potentially audible set (PAS).
 //! - Grenades are thrown by the server (the throw is predicted), drawn
 //!   from snapshots and go off on every client; dropping asks the
 //!   server, and picking up is the server's.
@@ -31,9 +32,12 @@ use crate::stack::{
     },
     greybox::GreyboxMapPlugin,
     harness::{CsSim, NetSim},
-    map::loose::ShownItem,
+    map::{
+        loose::ShownItem,
+        vis::{ActiveVisibility, MapVisibility},
+    },
     net::{
-        NetItem,
+        FireBullets, NetItem,
         memory::LinkConditions,
         predict::{NetGraph, PredictionHistory},
     },
@@ -491,6 +495,58 @@ fn others_draw_the_same_pellets_the_server_traced() {
         .fold(0.0f32, f32::max);
     println!("worst direction difference: {worst:e} rad");
     assert!(worst < 1e-4, "the same pellet directions ({worst} rad)");
+}
+
+/// Two rooms split at x = -4 m: cluster 0 east of it, 1 west; each sees
+/// the other, and hears it when `audible`.
+fn two_rooms(audible: bool) -> MapVisibility {
+    let pas = if audible { vec![vec![0b11], vec![0b11]] } else { vec![vec![0b01], vec![0b10]] };
+    MapVisibility {
+        planes: vec![(Vec3::X, -4.0)],
+        nodes: vec![(0, [-1, -2])],
+        leaf_clusters: vec![0, 1],
+        cluster_count: 2,
+        visible: vec![vec![0b11], vec![0b11]],
+        audible: pas,
+        ..default()
+    }
+}
+
+#[test]
+fn shots_go_only_to_clients_in_the_shooters_pas() {
+    let mut sim = joined(link(40, 0, 0.0), 46, 2);
+    let shooter = sim.character_of(0).unwrap();
+    give(sim.server.app.world_mut(), shooter, AK47).unwrap();
+    place(&mut sim, 0, Vec3::new(0.0, 1.0, 12.0), 0.3);
+    place(&mut sim, 1, Vec3::new(-8.0, 1.0, 12.0), 0.0);
+    sim.ticks(80);
+    // Bursts of fire with the other room out of, then in, the PAS.
+    let burst = |sim: &mut NetSim, audible: bool| -> (usize, usize) {
+        sim.server
+            .app
+            .world_mut()
+            .insert_resource(ActiveVisibility(std::sync::Arc::new(two_rooms(audible))));
+        let mut fired = Log::<WeaponEvent>::new(sim, 0);
+        let mut received = Log::<FireBullets>::new(sim, 2);
+        for k in 0..60u32 {
+            client_intent(sim, 0).fire = k < 20;
+            step(sim, &mut [&mut fired, &mut received]);
+        }
+        let rounds = fired
+            .all
+            .iter()
+            .filter(|e| e.owner == shooter && matches!(e.kind, WeaponEventKind::Fired { .. }))
+            .count();
+        (rounds, received.all.len())
+    };
+    let (rounds, unheard) = burst(&mut sim, false);
+    println!("out of the PAS: {rounds} rounds fired, {unheard} sent");
+    assert!(rounds >= 3, "the AK-47 fired: {rounds}");
+    assert_eq!(unheard, 0, "a client outside the shooter's PAS is sent no shots");
+    let (rounds, heard) = burst(&mut sim, true);
+    println!("in the PAS: {rounds} rounds fired, {heard} sent");
+    assert!(rounds >= 3, "the AK-47 fired: {rounds}");
+    assert_eq!(heard, rounds, "a client in the shooter's PAS gets every round");
 }
 
 #[test]

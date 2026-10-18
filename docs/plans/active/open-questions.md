@@ -64,7 +64,8 @@ objectives Q14's defuse and blast timing); about 45 class-1 items left. The two 
 built, so sounds Q1 and the thrower's side of grenades Q12 wait.
 
 Added since (2026-10-18): shaders Q21, the fog colour by view direction
-(classes 3 and 2; one row in the specs table and one in the parity list).
+(classes 3 and 2; one row in the specs table and one in the parity list);
+objectives Q17, game events' fields and the log's other lines (class 1).
 
 ## Specs: specs/cs_source
 
@@ -133,6 +134,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | objectives | Q13 `info_bomb_target` radius | 1 | done (Part B, 2026-10-18: no such class in CS:S) |
 | objectives | Q14 left: same-tick defuse and blast; the kit's 5 s (the plant's 200 ticks, the defuse's and the blast's 0.11 s late done, Part B 2026-10-18) | 1 | a kit given some other way; a defuse started 35 s after a plant |
 | objectives | Q16 the bar while planting | 2 | client screenshots |
+| objectives | Q17 events' fields and the log's other lines (kills, chat, buys, connects) | 1 | probe server with `log on` and an event listener over one round |
 | overlays_decals | Q1-Q9 (decal orientation, reach, size, displacements/props, overlay order, overlays vs decals, corner mapping, deathmatch flag, fade) | 2 | client screenshots, one each (9 items) |
 | physics_props | Q1 inertia tensor | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q2 rotational inertia limit | 3 | inside vphysics |

@@ -20,7 +20,8 @@
 //! tick `NetBody` and each player's `OwnState` (predicted components, lead,
 //! buffer) from the simulation's values, the host's and bots' characters marked
 //! for replication, leaving players' characters and weapons removed; `players`
-//! for `status`.
+//! for `status`; players in the server log (`game_log::LogSubjects`: name,
+//! client id, `STEAM_ID_LAN` or `BOT`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Every character's body goes to
 //! every client every update (no relevance culling): on de_dust2 only 37-45
@@ -100,6 +101,7 @@ pub(super) fn plugin(app: &mut App) {
                 .map(Some)
         },
     );
+    app.insert_resource(crate::game_log::LogSubjects(log_subject));
     app.add_observer(join)
         .add_observer(left)
         .add_systems(Update, drop_refused.run_if(in_state(ServerState::Running)))
@@ -1139,4 +1141,19 @@ pub fn players(world: &mut World) -> Vec<PlayerInfo> {
         out.push(info);
     }
     out
+}
+
+/// A player in the server log (`game_log`): its name and client id as the
+/// userid (as `users` lists them; the host's is 0), `BOT` for bots (their
+/// entity index as the userid). Characters the network doesn't know: the
+/// default.
+fn log_subject(world: &World, e: Entity) -> Option<crate::game_log::LogSubject> {
+    let Some(c) = world.get::<NetCharacter>(e) else {
+        return crate::game_log::default_subject(world, e);
+    };
+    Some(crate::game_log::LogSubject {
+        name: c.name.clone(),
+        userid: c.owner.unwrap_or(e.index().index() as u64),
+        unique: if c.owner.is_some() { "STEAM_ID_LAN" } else { "BOT" }.into(),
+    })
 }

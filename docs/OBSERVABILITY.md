@@ -1154,6 +1154,13 @@ lines its tabs run in a `Sim` (`DebugUiStatePlugin`).
 `RUST_LOG=mashup=debug cargo run --features dev`. Log state changes that matter
 (movement swaps, mounts, match events) at `info`; per-tick detail at `trace`.
 
+The server log (CS:S's, `game_log`): `log on` writes the half-life
+standard's lines (`"Name<userid><uniqueid><TEAM>" triggered
+"Planted_The_Bomb"`, `World triggered "Round_End"`) to the console
+(`sv_logecho`) and the data folder's `logs/` (`sv_logfile`); a test reads
+`game_log::ServerLog::lines` and the `game_log::GameEvent` messages
+(`bomb_planted`, `player_death`, `weapon_fire`...; tests/it/game_log.rs).
+
 ## 5. Exploring game files
 
 `dump` lists, summarizes and extracts files from a game install, using the

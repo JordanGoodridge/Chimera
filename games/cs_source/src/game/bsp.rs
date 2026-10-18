@@ -1189,8 +1189,9 @@ fn sky_vis(bsp: &Bsp, bytes: &[u8]) -> crate::map::MapSkyVis {
 /// The world's visibility (public BSP v20 description): leaf clusters
 /// (lump 10) and each cluster's potentially visible set, run-length
 /// encoded in the visibility lump (4) after a cluster count and per
-/// cluster a PVS and a PAS offset from the lump's start. None when the map
-/// was compiled without vis.
+/// cluster a PVS and a PAS offset from the lump's start, and the same for
+/// each cluster's potentially audible set. None when the map was compiled
+/// without vis.
 pub fn visibility(bsp: &Bsp, bytes: &[u8]) -> Option<crate::map::vis::MapVisibility> {
     let lump = super::ambient::lump(bytes, 4);
     let int = |at: usize| lump.get(at..at + 4).map(|b| i32::from_le_bytes(b.try_into().unwrap()));
@@ -1198,15 +1199,20 @@ pub fn visibility(bsp: &Bsp, bytes: &[u8]) -> Option<crate::map::vis::MapVisibil
     if count == 0 || lump.len() < 4 + count * 8 {
         return None;
     }
-    let visible = (0..count)
-        .map(|c| {
-            let offset = int(4 + c * 8).unwrap_or(0).max(0) as usize;
-            let mut row = crate::map::vis::decompress_row(lump.get(offset..).unwrap_or(&[]), count);
-            // A cluster always sees itself.
-            row[c / 64] |= 1 << (c % 64);
-            row
-        })
-        .collect();
+    // Field 0 of a cluster's pair is its PVS, 1 its PAS.
+    let rows = |field: usize| -> Vec<Vec<u64>> {
+        (0..count)
+            .map(|c| {
+                let offset = int(4 + c * 8 + field * 4).unwrap_or(0).max(0) as usize;
+                let mut row = crate::map::vis::decompress_row(lump.get(offset..).unwrap_or(&[]), count);
+                // A cluster always sees (and hears) itself.
+                row[c / 64] |= 1 << (c % 64);
+                row
+            })
+            .collect()
+    };
+    let visible = rows(0);
+    let audible = rows(1);
     let tree = sky_vis(bsp, bytes);
     let leaf_clusters: Vec<i32> = super::ambient::raw_leaves(bytes)
         .iter()
@@ -1226,6 +1232,7 @@ pub fn visibility(bsp: &Bsp, bytes: &[u8]) -> Option<crate::map::vis::MapVisibil
         leaf_clusters,
         cluster_count: count,
         visible,
+        audible,
         areas,
         occluders: occluders(bsp, bytes),
     })

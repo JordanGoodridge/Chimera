@@ -15,8 +15,9 @@
 //!
 //! The spec by section (have / ours / missing):
 //! 1 who and when: per bullet, pellet and penetrated surface; sky and
-//!   nodraw skipped; water splashes instead. Missing: other players' shots
-//!   reach every client, not only the shooter's PAS (`net::server`).
+//!   nodraw skipped; water splashes instead; other players' shots reach
+//!   only clients in the shooter's PAS (`net::weapons`,
+//!   `MapVisibility::hears`).
 //! 2 per impact: material effect, 30 % ricochet, impact sound
 //!   (`impacts.rs`), decal (`decals.rs`); the ragdoll check
 //!   (`RagdollsOnLine`). 3 letters: all. 4 machinery: plain, dust, fleck,

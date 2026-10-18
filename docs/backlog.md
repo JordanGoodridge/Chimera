@@ -605,8 +605,10 @@ a first bot are in.
   animation beyond idle/walk/run and a nod (`hostage_anim.rs`: compare
   with CS:S's hostages, which aren't measured; head/aim pose parameters
   toward the leader, flinch and cower), hostages avoiding
-  "no hostages" nav areas, crouching and jumping; drop/pickup game events
-  and server log lines; bots leading hostages, buying kits, guarding;
+  "no hostages" nav areas, crouching and jumping; the game events' fields
+  and the log's other lines (kills, chat, buys, connects: objectives.md
+  Q17; the spec-named events and `triggered` lines are in,
+  `rules/events.rs`); bots leading hostages, buying kits, guarding;
   which `Player.UseDeny` CS:S plays (doors_buttons.md Q2).
 - Grenades, remaining (HE, flashbang and smoke are in: `weapon/grenade.rs`,
   `games/cs_source/grenades.rs`): measure the spec's open questions on the
@@ -621,7 +623,7 @@ a first bot are in.
 
   | Section | State |
   |---|---|
-  | 1 who and when | in; missing: other players' shots go to every client, not the shooter's PAS (network relevance, `net::server`) |
+  | 1 who and when | in, others' shots to the clients in the shooter's PAS (`net::weapons`) |
   | 2 per impact, 3 letters | in, with the ragdoll check (no particles while one awake ragdoll is on the line) |
   | 4-8 old-style machinery, debris, dust, sparks | in; electric flares depth tested, no visibility test |
   | 9 glass | in: shards tumble on three angles and settle flat |

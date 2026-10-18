@@ -16,7 +16,7 @@
 //! which `mashup_debug_pickup` prints; a drop is stamped on the tick's clock,
 //! `Time<Fixed>`, wherever it's asked from); with `mashup_usepickup 1`, a +use
 //! press on one looked at within `USE_REACH` swaps it for the weapon in its
-//! slot (`UsedPickup`).
+//! slot (`UsedPickup`); every weapon taken is told as `PickedUp`.
 //!
 //! Known shortcuts (docs/tech-debt.md): `cl_autowepswitch`
 //! (`weapon::drop::auto_switch`): weights are the spec's table (the install's
@@ -129,6 +129,14 @@ pub struct DropRequested;
 /// something: no deny sound).
 #[derive(Message, Clone, Copy, Debug)]
 pub struct UsedPickup {
+    pub who: Entity,
+    pub weapon: Entity,
+}
+
+/// A character took a loose weapon (walked over it, +use): for game
+/// events (`item_pickup`) and logs.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct PickedUp {
     pub who: Entity,
     pub weapon: Entity,
 }
@@ -795,6 +803,7 @@ fn take(world: &mut World, owner: Entity, weapon: Entity) {
         w.owner = Some(owner);
     }
     super::equip::picked_up(world, owner, weapon);
+    world.write_message(PickedUp { who: owner, weapon });
     let sound = world
         .get_resource::<super::economy::Prices>()
         .and_then(|p| p.pickup_sound.clone());

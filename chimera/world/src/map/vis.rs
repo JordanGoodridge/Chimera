@@ -8,7 +8,8 @@
 //! and hearing use them too).
 //!
 //! Visibility for any game with precomputed visibility: `MapVisibility` (a
-//! point-to-cluster tree, per-cluster potentially visible sets), `split_mesh`
+//! point-to-cluster tree, per-cluster potentially visible and audible
+//! sets, `MapVisibility::hears` for who is sent a shot), `split_mesh`
 //! (world meshes cut into grid chunks with their clusters), `MapAreas` (areas,
 //! areaportals with their openings, `flood`), `WindowFade`, `Occluder`,
 //! `Occludee`, `screen_occluders`, `occluded`, `FadeDistance`, `fade_band`,
@@ -33,6 +34,10 @@ pub struct MapVisibility {
     /// Per cluster: the potentially visible clusters, as a bit set of
     /// `cluster_count` bits in 64-bit words. A cluster always sees itself.
     pub visible: Vec<Vec<u64>>,
+    /// Per cluster: the potentially audible clusters (Source's PAS: the
+    /// clusters any cluster of its PVS sees), the same bit sets. Empty for
+    /// maps without one: everything is audible (`hears`).
+    pub audible: Vec<Vec<u64>>,
     /// Areas and the portals between them; empty for maps without them.
     pub areas: MapAreas,
     /// Occluders (`Occluder`); empty for maps without them.
@@ -108,6 +113,24 @@ impl MapVisibility {
             .get(from as usize)
             .and_then(|row| row.get(to as usize / 64))
             .is_some_and(|w| w >> (to % 64) & 1 != 0)
+    }
+
+    /// Whether a sound or a shot at `source` is potentially audible at
+    /// `listener` (the listener's cluster is in the source cluster's PAS):
+    /// who Source sends "PAS" messages to. True when the map has no PAS or
+    /// either point is outside every cluster (in solid, out of the map):
+    /// unknown is sent.
+    pub fn hears(&self, source: Vec3, listener: Vec3) -> bool {
+        if self.audible.is_empty() {
+            return true;
+        }
+        let (Some(from), Some(to)) = (self.cluster_at(source), self.cluster_at(listener)) else {
+            return true;
+        };
+        self.audible
+            .get(from as usize)
+            .and_then(|row| row.get(to as usize / 64))
+            .is_none_or(|w| w >> (to % 64) & 1 != 0)
     }
 
     /// Whether the segment from `a` to `b` stays out of solid leaves
