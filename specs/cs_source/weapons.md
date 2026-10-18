@@ -1324,8 +1324,13 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   `tv_monitor01`, 13.2) **0.45**; grate (G, cs_office's
   `fire_extinguisher`, 6.1) **0.99**; plastic (L, `monitor02` 18.7 and
   `trash_can` 20.4) **0.50**; glass (Y, tides' `planter`, pottery, 14.8)
-  **0.50**. Each bound is under 0.009 wide. Their thickness limits are
-  unmeasured.
+  **0.50**. Each bound is under 0.009 wide. Limits, the same props with
+  weaker guns: the USP (15) passes 14.0 of tile, 14.8 of pottery and 6.1
+  of grate (m ≥ 0.93, 0.99, 0.41) but not 13.2 of computer; the Glock
+  (21) and Deagle (30) are stopped by the computer too, the M4A1 (35)
+  and AK-47 (39) pass it: computer m in [0.377, 0.44), likely 0.4.
+  Plastic is inconsistent: the USP passes cs_office's 20.4-unit trash can
+  and not the 18.7-unit `monitor02` (the Glock passes both).
 - Sand (2026-10-18, `DE_DUST/STONEWALL02B`, 11.4 and 14.4 units along
   the path, from (−2000, −600) at yaw 225, the target 20-60 behind): the
   damage factor is **0.30** (AWP 34 and 42, AK-47 10, M4A1 9: every
