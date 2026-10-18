@@ -56,6 +56,15 @@ Quirks; Test cases; Open questions.
   their time, and the weapon logic consumes them on its next update. Every
   timing below is therefore exact in animation time, but is observed with
   the resolution of one frame.
+- One clock or two (Open question 12): the weapon logic (draw, holster,
+  reload, knife swing, firing, pickup requests) runs on the **rendered-frame
+  clock**, not on movement.md's 15 ms tick. In each frame the movement ticks
+  run first, then the weapon update reads the control flags (fire, alt-fire,
+  sprint) left by the frame's last tick. A frame that ran no movement tick
+  reuses the previous flags. "The next update" always means the next
+  rendered frame's weapon update. The server does not run the weapon state
+  machine for players: it applies each shot, hit, reload or pickup message
+  when the message arrives in its own update.
 - The server owns the inventory: which weapons, which order, and the ammo
   totals. The client owns the choice of what is in hand, the animation
   state, and the clip count. It reports changes to the server.
@@ -340,14 +349,25 @@ build. Holding backward ends sprint.
 
 So, from idle, the first primary hit lands about 155 ms plus 2 or 3 frames
 after the press, and a held primary hits every 650 ms in a 155/402 ms
-pattern.
+pattern. Precisely: with `u0` the first weapon update after the press, the
+main animation starts at the time of `u2` (two frames later), and the hit is
+consumed by the first weapon update at which at least 155 ms of the main
+animation have played (if the engine reports the key after that frame's
+weapon update, one frame later). At 60 fps with the press just before
+`u0` = 0 ms: main animation from 33.3 ms, first hit at 200.0 ms (216.7 ms if
+one frame late).
 
 #### 8.3 The attack ray
 
-- Each hit event casts one ray from the camera position along the aim
-  direction. The aim direction includes the weapon's spread
-  (`weapon_firing.md`; the M9 has min/max perturb 1/7). The ray reaches
-  range = 105 × (1 + Σ mod range bonus) units. Knives have no mods.
+- Each hit event casts one ray from the camera position (movement.md, Eye
+  height) along the aim direction. The aim direction includes the weapon's
+  spread (`weapon_firing.md`, same cone and square pattern as guns; the M9
+  has min/max perturb 1/7). The M9's ammo record has no spread values
+  (all firing caps and movement targets are 0), so both meters stay at 0
+  and the cone is always the minimum, n = 1: each axis is offset by at most
+  ±0.001, i.e. within ±0.105 units of the aim point at 105 units (Open
+  question 16). The ray reaches range = 105 × (1 + Σ mod range bonus)
+  units. Knives have no mods.
 - The ray stops at the first object or world surface. Melee never
   penetrates.
 - Any victim takes the hit, including teammates if friendly fire is on
@@ -373,7 +393,11 @@ D = B \cdot (1 + m) \cdot u \cdot g \cdot (1 + v) \cdot b \cdot k_{range} \cdot 
 - b is 1.3 if the hit is from behind (below), else 1.
 - k_range comes from the weapon's range-damage table (1.0 for the M9).
 - k_zone is the hit-zone factor of the body part hit, exactly as for
-  bullets (`weapon_firing.md`). There is no separate knife table.
+  bullets (`weapon_firing.md`). There is no separate knife table. Melee is
+  one of the damage types that use zones (head ×6, shin ×0.75, foot ×0.5).
+- Armour: the armour step runs, but no stock gear lists the melee damage
+  type, so a knife is never reduced and uses no armour points
+  (weapon_firing.md, Armour).
 - v and b apply only when the hit recorded a valid body part.
 
 **Rear sector ("backstab").** This rule applies to every hitscan hit on a
@@ -419,6 +443,20 @@ fire": 400 ms draw plus the grenade's own timings (`grenades.md`).
   draw time applies.
 - Primaries and secondaries never auto-switch. At 0 total they stay in
   hand and dry-fire.
+- **The spent weapon stays** (Open question 14). Throwing the last grenade
+  does not remove it: it keeps its equip index and order slot at total 0.
+  Afterwards:
+  - its class key skips it (hide-when-empty, section 3); with no other
+    usable weapon in the class the key does nothing;
+  - Q refuses it and goes dead (Quirks 7);
+  - it is never dropped (section 12);
+  - the HUD weapon list keeps an entry for it (how an empty entry is drawn
+    was not traced, see Open question 14); the bottom-right weapon panel
+    follows the weapon in hand, so it shows the weapon switched to;
+  - if a map item of the same grenade is picked up, the non-primary rule of
+    section 11 adds to its total and it is selectable again;
+  - respawn rebuilds the loadout, so it comes back with its spawned amount
+    (1 for the M67).
 
 ### 11. Pickup
 
@@ -431,6 +469,16 @@ fire": 400 ms draw plus the grenade's own timings (`grenades.md`).
   when (distance from the camera to the item's centre) − 35 ≤ 100. The
   HUD then shows the pickup prompt. Pressing use (E) sends the request,
   and the server acts on it. There is no walk-over pickup.
+  - *Correction* (Open question 13): the fallback does **not** apply to
+    weapon items. It only collects the hit boxes of dead bodies that the
+    ray passes through (for body interactions), and only when the ray found
+    no other object. A weapon item is targeted only when the ray actually
+    enters its box and the entry point is at most 100 units from the camera
+    (exactly 100 counts). The ray is not blocked by other non-solid objects
+    that cannot be used, but stops at walls and solid objects.
+  - The item's box is an axis-aligned box: the half-extents of its world
+    model's "World" animation, times the item's scale. Our items without a
+    model need a box of their own (see Open question 13).
 - **Who may pick up.** The player must be alive, human-model, not
   infected, not the VIP, and not under a buff that replaces weapons. The
   item's owner and team restrictions must also pass: some items are
@@ -442,7 +490,13 @@ fire": 400 ms draw plus the grenade's own timings (`grenades.md`).
   3. The replaced weapon is dropped as a new item, with its total, clip,
      mods and sight style. It appears at the player's left-foot position,
      offset by a uniform random amount in [−0.5, 0.5] × the hitbox
-     width on X and Z, with a random yaw of 0 to 1 radian.
+     width on X and Z, with a random yaw of 0 to 1 radian. Precisely (Open
+     question 17): the position is the world position of the character
+     model's "Left_foot" node in its current animation pose, plus
+     `u·halfX` on X and `u'·halfZ` on Z with `u, u'` uniform in
+     [−0.5, 0.5] and `halfX`, `halfZ` the character hit box's half-extents
+     (the hit box has the model's own size, 15 × 15 with the fallback box,
+     so at most ±7.5 units).
   4. The picked weapon goes into the same equip index and order slot.
      Its total is the item's ammo amount, clamped to the weapon's
      maximum. Its clip is the item's clip, or 0 if the total is 0.
@@ -451,14 +505,30 @@ fire": 400 ms draw plus the grenade's own timings (`grenades.md`).
      switch" option on (the default), the client draws it at once, from
      the class key or not. Its clip is the item's clip, and its draw
      time is that of the new weapon.
+     - Why the switch always happens (Open question 6): every pickup
+       request first puts away the weapon in hand on the server (step 2),
+       so when the server's "better weapon" rule runs at the end, the
+       server has no weapon in hand. The rule orders a switch when **no
+       weapon is in hand**, or when the picked weapon was not already
+       carried (the class's last-selected slot did not hold a carried
+       weapon with the same attachments and sight style) **and** its
+       command id is higher than the in-hand weapon's. The command id is
+       the weapon's position in the concatenated order lists (all
+       primaries in list order, then secondaries, melee, throw, special,
+       mission). Because of step 2 the first condition always holds, so a
+       pickup always ends with a switch to the picked weapon; the command-id
+       comparison is never reached in this build.
   7. If the player had no weapon of that class at all, the weapon is
      simply added and drawn. Nothing is dropped.
 - **Non-primary items.** If the player already carries a weapon with the
   same id, its total is raised by the item's amount, clamped to its
   maximum. The server also refills that weapon's clip to full. The item
-  is removed, and nothing is drawn unless the server's "better weapon"
-  rule fires (see Open questions). If the player does not carry that id,
-  the request becomes the swap above, within the item's class.
+  is removed. *Correction:* the server puts away the weapon in hand for
+  this request too, so the "better weapon" rule then finds no weapon in
+  hand and orders a switch to the picked weapon (Open question 6); with the
+  auto weapon switch option on, the client draws it. If the player does not
+  carry that id, the request becomes the swap above, within the item's
+  class.
 - **Ammo always travels with the gun.** A dropped primary keeps exactly
   the dropper's total and clip. Picking it up gives exactly those.
   Nothing is merged with what you had.
@@ -477,7 +547,14 @@ fire": 400 ms draw plus the grenade's own timings (`grenades.md`).
      drops. It drops even if a pistol or knife was in hand. Its item
      carries its total, clip, mods, sight style and conversion. It
      appears at the left-foot position with a random yaw of 0 to 1
-     radian. Unlike the swap drop, it gets no position jitter.
+     radian. Unlike the swap drop, it gets no position jitter: exactly the
+     "Left_foot" node's world position in the pose at the moment of death.
+  - **Without a skeleton** (our placeholder characters, Open question 17):
+    the reference has no fallback for a missing foot node. Use the bottom
+    centre of the hull (hull centre minus the half-height on Y); a foot
+    node sits near the floor, so this is close, but the real sideways offset
+    of the left foot needs the model or a live measurement. This is our
+    choice, not the reference's.
   4. A primary whose data has "drop on death" off is not dropped. Neither
      is a weapon of class 0. Throw-type weapons (grenades, mines, kits,
      deployables) never drop at total 0. Primaries drop even at total 0.
@@ -527,6 +604,9 @@ Client, in one rendered frame:
    7. If total > 0, the clip is 0 and the weapon is neither reloading nor
       firing, request a reload.
 5. **Weapon manager**: if 4.6 asked for it, select the fallback weapon.
+
+The movement ticks of the frame (movement.md) run before all of this, in
+step 2; the weapon update sees only the result of the frame's last tick.
 
 Animation keys (hit and throw events, sounds) are raised by the engine as
 the view-model's playback crosses them, between weapon updates.
@@ -698,7 +778,9 @@ means within the given number of frames.
     rifle B (item total 60, clip 30), 80 units away and aimed at. Press E.
     → Item A appears near the left foot (within ±0.5 hitbox on X/Z) with
     total 35, clip 5. B is in A's equip index with total 60, clip 30, and
-    is drawn. Ready after B's draw time. Item B is removed.
+    is drawn. Ready after B's draw time. Item B is removed. ("±0.5 hitbox"
+    means ±0.5 × the hit box's half-extent: ±7.5 units with the fallback
+    box; see case 44.)
 29. **Pickup while holding a pistol.** Same as 28, with the pistol in
     hand. → Same result: A dropped, B drawn. The pistol's ammo is
     unchanged.
@@ -720,6 +802,43 @@ means within the given number of frames.
     (rifle A again, full ammo). Previous weapon empty: Q does nothing.
 36. **Rate cap.** A weapon whose summed select rate is 2.1. → It draws at
     rate 1.0: M16A3 1200 ms, not 571 ms. With 1.9: 1200 / 1.9 ≈ 632 ms.
+37. **Weapon logic on the frame clock.** 60 fps, knife idle, left mouse
+    pressed just before the frame update at t = 0. Weapon updates at 0,
+    16.7, 33.3 ms: firing, pre-fire, main swing from 33.3 ms. First hit on
+    the update at 200.0 ms (or 216.7 ms if the key is reported one frame
+    late). At 100 fps: main swing from 20 ms, first hit at 180 ms (or
+    190 ms). The movement ticks of a frame never split a weapon step.
+38. **Fallback is not for weapons.** A dropped rifle whose box the view ray
+    misses by 1 unit, centre 60 units from the camera → no prompt, E does
+    nothing. The ray entering the rifle's box 100.0 units from the camera
+    → prompt; 100.5 units → no prompt (whatever the centre distance).
+39. **Fallback for bodies.** The ray passes through a dead body's hit box
+    whose centre is 130 units from the camera and hits only a wall behind
+    it → the body is the target (130 − 35 = 95 ≤ 100). Centre at 140 → no
+    target.
+40. **Spent grenade.** Stock loadout, throw the only M67. → The M67 stays
+    in the list at total 0 (same equip index). Press 4 → nothing. Respawn
+    → M67 total 1, selectable.
+41. **Pickup always switches.** Pistol in hand, a dropped rifle aimed at,
+    E → the pistol is put away and the picked rifle is drawn. Rifle in hand,
+    a same-id pistol ammo item (non-primary) aimed at, E → the pistol's
+    total rises and the pistol is drawn.
+42. **Better-weapon rule on its own** (state not reachable through a
+    pickup in this build, see 11 step 6). Server in-hand weapon M4A1
+    (position 1 in the primary list), new weapon not already carried:
+    MP5A4 (position 0) → no switch; M16A3 (position 9) → switch; any
+    pistol (the secondary list comes after all primaries) → switch. Already
+    carried (same attachments and sight style) → no switch, whatever the
+    positions. No weapon in hand → switch.
+43. **Knife ray and zones.** M9 primary hit, roll 1.0, unarmoured: head →
+    270 (45 × 6), torso → 45, shin → 33.75, foot → 22.5. The ray is
+    deflected by at most ±0.001 on each axis (n = 1). AP 100 with default
+    body gear, torso → 45 and AP stays 100.
+44. **Drop positions.** Fallback hit box (half-extents 15 × 50 × 15). Death
+    drop: exactly at the left-foot node's world position. Swap drop: X and
+    Z each within ±7.5 units of the left-foot node, Y unchanged. Without a
+    skeleton: at the hull's bottom centre (our fallback), death drop with no
+    offset, swap drop within ±7.5 on X and Z.
 
 ## Open questions
 
@@ -747,6 +866,17 @@ means within the given number of frames.
    compares command ids (higher id = better) and may order a switch.
    With a weapon in hand it does nothing, since the condition needs "did
    not already have it". Confirm no auto-draw happens in practice.
+   **Answered:** the rule is "switch if the server has no weapon in hand,
+   or if the picked weapon was not already carried and its command id
+   (position in the concatenated order lists) is higher than the in-hand
+   weapon's". Every pickup request puts away the weapon in hand on the
+   server before the rule runs, so the first condition always holds and
+   every pickup, primary or not, ends with a switch order to the picked
+   weapon. The reading above ("does nothing with a weapon in hand") was
+   wrong for this reason. See 11, step 6 and "Non-primary items"; test
+   cases 41 (switch) and 42 (the rule's no-switch outcomes). Live check:
+   carry a pistol, pick up a same-pistol ammo item while holding the rifle,
+   and see whether the pistol comes out.
 7. **Auto weapon switch off.** With the profile option off, a primary
    pickup still puts the held weapon away on the server, but the client
    does not draw the new one. What does the player hold? Untested.
@@ -761,3 +891,49 @@ means within the given number of frames.
 11. **Wheel bindings.** The binding UI accepts wheel up and down. Confirm
     that the options screen exposes them for weapon commands on the Steam
     build.
+12. **One clock or two.** Does the weapon logic run per rendered frame or
+    per movement tick, and what does "the next update" mean?
+    **Answered:** per rendered frame, after that frame's movement ticks,
+    using the last tick's control flags; "the next update" is the next
+    frame's weapon update. The server applies each message as it arrives
+    and runs no weapon timing of its own for players. For the knife: main
+    swing from the second weapon update after the first one that saw the
+    press, hit on the first update with 155 ms played (or one frame
+    later). See Units and conventions and 8.2; test case 37.
+13. **Pickup fallback.** Does the "centre distance − 35 ≤ 100" fallback
+    apply to items the ray misses? What box does an item without a model
+    use?
+    **Answered (first part):** the fallback is only for dead bodies' hit
+    boxes; weapon items need a real ray hit with the entry point within
+    100 units. Case 30 still holds; cases 38 and 39. **Open (second part):**
+    a reference item's box is its world model's "World" animation extents ×
+    scale; an item without a model has no defined box there. For our
+    placeholder items use a box matching the weapon's size; to measure the
+    real ones, aim at a dropped M16A3 from the side and from the end and
+    note at which offsets from its centre the prompt appears and vanishes.
+14. **Spent grenades.** Does the last grenade stay in the inventory at
+    total 0, and what do the keys, the HUD and respawn do with it?
+    **Answered:** it stays (same index, total 0): the class key skips it, Q
+    refuses it, it is never dropped, respawn restores it. See 10, "The spent
+    weapon stays"; test case 40. **Open:** how the HUD weapon list draws an
+    empty entry (greyed, hidden or plain "0"); check by throwing the last
+    grenade and pressing 4 or another class key to bring up the list.
+15. **"Better weapon" rule:** see Q6 (answered).
+16. **The knife's hit.** Does the knife ray use the M9's spread and the
+    hit-zone multipliers?
+    **Answered:** both. The ray goes through the same cone code as guns,
+    but the M9's ammo has no spread values, so the cone is always its
+    minimum (n = 1, ±0.001); and melee is a zone-using damage type (head
+    ×6). weapon_firing.md's old line that melee never uses zones was wrong
+    and is corrected there. See 8.3 and 8.4; test case 43.
+17. **Where dropped items appear.** Drop origin and offset without a
+    skeleton.
+    **Answered for the reference:** both drops start at the world position
+    of the model's "Left_foot" node in its current pose; the swap drop adds
+    ±0.5 × the hit box's half-extent on X and Z (±7.5 with the fallback
+    box), the death drop nothing; yaw uniform in [0, 1) rad. There is no
+    deliberate-drop command. **Open:** the reference has no no-skeleton
+    fallback; we use the hull's bottom centre. Measure the real offset live:
+    stand still facing +Z on flat ground, die (or swap), and read the item's
+    position relative to the player's last position (several tries for the
+    swap jitter). See 11 step 3 and 12; test case 44.
