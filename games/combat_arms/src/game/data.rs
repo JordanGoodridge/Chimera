@@ -5,9 +5,9 @@
 //! specs/combat_arms/attribute_data.md (not written yet): which install files hold
 //! what, and how they map onto the weapon data's parts and hooks.
 //!
-//! Wave 0: a placeholder rifle (data/weapons/placeholder_*.toml, every
-//! number marked PLACEHOLDER: ours, not the game's) and the M9 knife
-//! (m9.toml, inventory.md's numbers). Nothing is read from the install.
+//! Two weapons: the M4A1 (data/weapons/m4a1.toml, the numbers of
+//! weapon_firing.md's worked example) and the M9 knife (m9.toml,
+//! inventory.md's numbers). Nothing is read from the install.
 //!
 //! The seam: `weapon_set` is every Combat Arms weapon as a parsed
 //! `WeaponSet`, built in once per process; the install's attribute files
@@ -33,7 +33,7 @@ macro_rules! data_file {
 /// index).
 pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("m9.toml"),
-    data_file!("placeholder_rifle.toml"),
+    data_file!("m4a1.toml"),
 ];
 
 /// Combat Arms' weapons as data, parsed once per process (and findable by

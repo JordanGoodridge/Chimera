@@ -43,6 +43,7 @@ bot_weight = 8.0                # bots' liking when buying
 automatic = true
 cycle = 0.1                     # s between shots
 # timing = "carry_over"         # or "set", "accumulate" (from the base here)
+# per_press = 3                 # most shots per pull (0: no limit)
 
 [magazine]
 clip = 30
@@ -50,11 +51,14 @@ ammo = "cs_source:762mm"        # an ammo type: reserve max, box, penetration
 reload = 2.4324                 # s (a shell's, with `shells`)
 # shells = { start = 0.5, insert = 0.45 }   # one round at a time
 # reload_while_held = false
+# auto_reload = false           # an empty clip reloads, held or not (CA)
 
 [hitscan]
 range = 8192.0
 # pellets = 1, punch_scale = 2.0 (from the base)
 # spread = { disc = { inaccuracy = 0.0, spread = 0.0 } } or { template = 0.05 }
+# without [damage] the frame traces nothing: a game's hook delivers each
+# round's `Fired` event (Combat Arms)
 
 [damage]
 amount = 36.0
@@ -70,7 +74,9 @@ objects = 2                     # power and reach: the ammo's
 kind = "scope"                  # fov = [..], max_speed, unzoom_after_shot,
                                 # overlay, step, sound
 # kind = "silencer", time = 2.0
-# kind = "burst", interval, refire, count, step, texts = [per mode]
+# kind = "burst", interval, refire, count, step, texts = [per mode],
+#   once_per_press, step_blocks_primary (CA: one burst a pull, the
+#   toggle's lockout)
 
 [sounds]                        # entries of the game's sound scripts
 fire = "Weapon_AK47.Single"
@@ -139,7 +145,11 @@ hud_icon = "ammo_762"
   `RecoveryTime*`, `alt` keys), `cs_source:recoil` (kick sets),
   `cs_source:hit_slowdown` (`body`, `legs`), `cs_source:alternate_hands`
   (the Elites), `cs_source:grenade` (`effect` he/flash/smoke, `max`,
-  `bounce_sound`), `cs_source:c4`.
+  `bounce_sound`), `cs_source:c4`. Combat Arms' (games/combat_arms/src/game/weapons.rs):
+  `combat_arms:damage` (damage per ray, roll, range bands, server
+  spacing), `combat_arms:spread` (cones and the meters' values),
+  `combat_arms:recoil` (the view kick and its return), `combat_arms:handling`
+  (`move_penalty`, the carrier's `HeldMovePenalty`).
 - **Errors.** Unknown keys, an unknown base, ammo type or hook, a loop of
   bases, a duplicate ID and hook parameters the hook can't read are load
   errors naming the document and key. A game's own data failing to load

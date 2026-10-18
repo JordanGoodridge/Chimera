@@ -192,6 +192,9 @@ pub struct TriggerData {
     /// Seconds between shots.
     pub cycle: f32,
     pub timing: TimingData,
+    /// Most shots per pull, 0 for no limit (`Trigger::per_press`).
+    #[serde(default)]
+    pub per_press: u32,
 }
 
 /// `Magazine` (and `ShellReload`): the reserve starts full and holds the
@@ -207,6 +210,9 @@ pub struct MagazineData {
     pub reload: f32,
     #[serde(default)]
     pub reload_while_held: bool,
+    /// An empty clip reloads by itself, held or not (`Magazine::auto_reload`).
+    #[serde(default)]
+    pub auto_reload: bool,
     /// Rounds go in one at a time: the start, each round (`ShellReload`).
     #[serde(default)]
     pub shells: Option<ShellsData>,
@@ -377,6 +383,13 @@ pub enum AltData {
         step: f32,
         #[serde(default)]
         texts: Vec<String>,
+        /// One burst per pull (`Burst::once_per_press`).
+        #[serde(default)]
+        once_per_press: bool,
+        /// A step blocks the primary attack for `step` too (Combat Arms'
+        /// fire-mode lockout).
+        #[serde(default)]
+        step_blocks_primary: bool,
     },
 }
 
@@ -545,8 +558,10 @@ impl WeaponSet {
                     .ok_or_else(|| format!("{id}: unknown ammo {}", m.ammo))?;
                 w.ammo = Some(a.clone());
             }
-            if w.hitscan.is_some() && w.damage.is_none() {
-                return Err(format!("{id}: [hitscan] without [damage]"));
+            // Without damage the frame only tells each round (`Fired`): a
+            // game's hook must deliver it.
+            if w.hitscan.is_some() && w.damage.is_none() && w.hooks.is_empty() {
+                return Err(format!("{id}: [hitscan] without [damage] or a hook to deliver it"));
             }
             if w.hitscan.is_some() && w.trigger.is_none() {
                 return Err(format!("{id}: [hitscan] without [trigger]"));
@@ -840,6 +855,7 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
                 TimingData::Accumulate => FireTiming::Accumulate,
                 TimingData::CarryOver => FireTiming::CarryOver,
             },
+            per_press: t.per_press,
         });
     }
     if let (Some(m), Some(a)) = (&d.magazine, &d.ammo) {
@@ -850,6 +866,7 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
             reserve_max: a.max,
             reload_time: m.reload,
             reload_while_held: m.reload_while_held,
+            auto_reload: m.auto_reload,
         });
         if let Some(s) = m.shells {
             e.insert(ShellReload {
@@ -970,17 +987,20 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
             count,
             step,
             texts,
+            once_per_press,
+            step_blocks_primary,
         }) => {
             if !texts.is_empty() {
                 e.insert(ModeTexts(texts.iter().map(String::as_str).collect()));
             }
             e.insert((
-                AltModes::new(2, *step, false),
+                AltModes::new(2, *step, *step_blocks_primary),
                 Burst {
                     mode: 1,
                     count: *count,
                     interval: *interval,
                     refire: *refire,
+                    once_per_press: *once_per_press,
                 },
             ));
         }

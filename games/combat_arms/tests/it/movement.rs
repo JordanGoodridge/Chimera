@@ -100,6 +100,9 @@ impl T {
         sim.app.world_mut().entity_mut(p).insert(bare);
         let mut t = Self { sim, p };
         t.tick();
+        // No held weapon's penalty (the spec's cases): the rifle drawn at
+        // spawn set its own (`weapons::CaHandling`).
+        t.sim.app.world_mut().entity_mut(p).insert(movement::HeldMovePenalty::default());
         t
     }
 
