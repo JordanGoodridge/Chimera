@@ -10,7 +10,8 @@
 //! advance their own clock by the nominal 0.1 s per think whatever the
 //! tick rounds it to.
 //!
-//! Covers: specs/source/fire.md: env_fire's heat model, growth, floor drop,
+//! Covers: specs/source/fire.md: env_fire's heat model, growth, floor drop
+//! (none from inside a static prop, `Collision::inside_prop`; measured Q5),
 //! burn damage in its box with a line-of-sight check, fuel,
 //! Extinguish/ExtinguishTemporary/Enable/Disable, OnIgnited/OnExtinguished;
 //! env_firesource and env_firesensor; entity flames from the Ignite inputs and
@@ -301,7 +302,11 @@ pub(super) fn start_fire(w: &mut LogicWorld, id: EntId, check_enabled: bool) {
     }
     let e = w.get(id).unwrap();
     let (flags, origin, health) = (e.spawnflags, e.origin, e.kv_f("health"));
-    if flags & SF_FIRE_DONT_DROP == 0 {
+    // Started inside a static prop it stays where it is (CS:S, measured
+    // 2026-10-18, spec Q5: de_nuke's fire in a crate, de_dust2's B fires
+    // by the crates); inside a brush it drops out of it.
+    let in_prop = w.collision.as_ref().is_some_and(|c| c.inside_prop(origin));
+    if flags & SF_FIRE_DONT_DROP == 0 && !in_prop {
         let to = origin - Vec3::Z * DROP_DISTANCE;
         let (frac, _) = trace_line(w, origin, to, None);
         w.get_mut(id).unwrap().origin = origin.lerp(to, frac);

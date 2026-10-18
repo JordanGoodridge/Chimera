@@ -1339,6 +1339,29 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   and AK-47 (39) pass it: computer m in [0.377, 0.44), likely 0.4.
   Plastic is inconsistent: the USP passes cs_office's 20.4-unit trash can
   and not the 18.7-unit `monitor02` (the Glock passes both).
+- Tile and glass limits (2026-10-18, `chordmeas.py` with thicker props:
+  inferno's `pot_big`, tile, one convex piece 43 across, and
+  `clayoven`, pottery (glass, Y), its dome's chords 15-50; level shots
+  at chosen offsets): tile: the Glock (21) passes 11.5 and 13.4, not
+  14.6; the Deagle (30) 11.5 and 17.6, not 22.4; the AK-47 (39) 17.6,
+  22.4 and 25.0, not 26.4, 27.7, 28.3 or 28.7: **tile's scale is
+  0.642-0.676 (0.65)**, so the USP's pass through 14.0 of the potted
+  plant above crossed less tile than the chord (a hollow model). Glass
+  (pottery): the AK-47 passes 31.5 and 36.5, not 39.0, 39.9 or 40.5
+  (0.936-1.0), with the USP's 14.8 (≥ 0.987): **1.0**. Near the dome's
+  edge the Glock's results flip with a unit of chord (15.0 passed, 17.7
+  failed, 19.4 passed): the gun's spread moves the path where the chord
+  changes fast, so only the AK-47's flatter region counts. Ours: tile
+  0.65 (was metal's 1.0), glass 1.0 (now measured). `overridescript
+  surfaceprop,<name>` doesn't change what a bullet sees (the trace keeps
+  the model's surfaceprop, wood for a crate given tile).
+- Buckshot (2026-10-18): no M3 pellet passes anything: 6.9-30.3 units of
+  de_tides' `gate_large` (wood) turned to the shot, a crate's 2.6-4.6
+  unit corner (the pellets that reached the target kept the full 23,
+  so they went round it) or a player (`weapmeas.collateral`: the second
+  bot untouched behind the first, hit 9 times when the first stood
+  aside). Ours: buckshot's power 0 (was 15, a guess: it passed 30 of
+  wood and a player).
 - Sand (2026-10-18, `DE_DUST/STONEWALL02B`, 11.4 and 14.4 units along
   the path, from (−2000, −600) at yaw 225, the target 20-60 behind): the
   damage factor is **0.30** (AWP 34 and 42, AK-47 10, M4A1 9: every
@@ -1651,8 +1674,10 @@ inaccuracy target.
   hit, 50AE stops penetrating beyond ≈ 1000, range halved after a player.
   Open: the shared budget (thickness / m spent from P across objects) is a
   fit to the cases that stop early, not tested directly (e.g. door then a
-  thick crate); a player's cost (≈ 21–22) vs. its thickness; damage factors
-  of other materials; other ammo distances; the 8-unit concrete wall with a
+  thick crate); a player's cost (≈ 21–22) vs. its thickness; the
+  scales of grate and plastic (tile 0.65, glass 1.0, computer 0.4 and the
+  other materials' damage factors measured 2026-10-18; buckshot passes
+  nothing); other ammo distances; the 8-unit concrete wall with a
   nodraw back face that stopped the AWP; the player-against-wall merge.*
 - **Q8 Ammo impulses** for physics props (shared with physics_props.md Q11):
   shoot a known-mass prop and measure Δv.

@@ -376,7 +376,12 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
    two convex pieces, material glass: density 2700, thickness 0.5) has
    mass 72.5 kg, inertia 3.72, 2.26, 3.58, damping 0.1 and 0.1; its
    brushes' volume, to compare, needs our BSP reader (a spec session).
-   **Shrunk or unshrunk volume**: is the stored mass of a 64³ physbox
+   **Answered (2026-10-18):** the map's physics lump (29) stores, for
+   that model's one solid, `"mass" "72.461624"` and `"volume"
+   "10672.392578"` (cubic units) with surfaceprop glass: the game uses the
+   compiler's stored mass (72.46), which our loader reads too
+   (`bsp::brush_model_physics`), so how the compiler shrinks the volume
+   doesn't matter to us. Was: **Shrunk or unshrunk volume**: is the stored mass of a 64³ physbox
    based on 63³ or 64³ (or something else after vphysics' convex
    rebuild)? Read the "mass" value from a compiled BSP of a test map with
    one cube physbox of a known surface property (or from a community map
@@ -391,8 +396,16 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
    `du_crate_64x64`, its height sampled every 0.12 s):** force 400000
    lifted it at 199 units/s² (the second differences of its height),
    F/m − 800 = 200: force in kg·units/s², a = F/m, as ours; 20000 (under
-   its weight) didn't lift it. The angular part (an offset thruster) is
-   open. Was: **Controller application** (thruster/keepupright): confirm a = F/m per
+   its weight) didn't lift it. **The arm (2026-10-18,
+   `tools/css_probe/thrustmeas.py`):** a torque-only thruster (flags 5,
+   20000 along +x, 20 units to the side) on an upright `oildrum001` (30
+   kg, its origin at the base, its centre 22.5 up) on de_dust2's floor:
+   level with the drum's centre it spun the drum in place (its origin
+   unmoved for 0.4-0.5 s, then wobbling); level with the origin it tipped
+   the drum over at once (the origin swinging up 12 units in 0.4 s). So
+   r is measured from the centre of mass, not the origin. Ours: from the
+   centre of mass (`map::controllers`; was the body's origin). The turn
+   rate against I⁻¹(r × F) is unchecked: the probe reads no angles. Was: **Controller application** (thruster/keepupright): confirm a = F/m per
    second and that the angular part from an offset thruster equals
    I⁻¹(r × F) in deg/s². Probe: a thruster at the centre of a 50 kg box in
    the air with sv_gravity unchanged: measure velocity change over 1 s via
@@ -413,7 +426,11 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
    over 20 ticks, as a physics prop; spawnflags 4 (debris): the bot ran
    through at full speed and the ragdoll stayed. Ours: the same, but
    players don't shove a solid one (their physics shadows leave
-   ragdolls alone). Was: **Server ragdolls and CS:S players**: do players collide with a
+   ragdolls alone). Tried 2026-10-18: letting the shadow touch a solid
+   map ragdoll's parts (gg_deagle7k's corpse with flag 4 cleared) did
+   shove it, but launched the player running into the lying corpse 2.4 m
+   up and over it (the shadow pushed up off the parts, the player
+   reconciled to it); reverted, still not shoved. Was: **Server ragdolls and CS:S players**: do players collide with a
    map-placed prop_ragdoll (normal group) or pass through? Test on a map
    with one.
 7. **Answered (measured 2026-10-18, probe server):** spawning one with

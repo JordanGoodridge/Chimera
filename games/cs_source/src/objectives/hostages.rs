@@ -3,7 +3,7 @@
 //! the game's own movement. A defender's +use makes one follow him (again:
 //! stay); a following hostage walks the navigation mesh to its leader
 //! (*hyp.*, Q10: stop within 100 units, walk within 250, run beyond; give
-//! up beyond 1500 or after 10 s out of sight). A following hostage on its
+//! up beyond 2000, measured, or after 10 s out of sight, *hyp.*). A following hostage on its
 //! way whose 26-unit-wide hull touches a rescue zone is rescued (measured,
 //! Q11). Hurting and killing them is reported for the rules' money.
 //!
@@ -110,7 +110,10 @@ impl Default for HostageRules {
             run_speed: 250.0,
             stop_within: 100.0,
             walk_within: 250.0,
-            give_up_distance: 1500.0,
+            // CS:S (measured 2026-10-18, objectives.md Q10): a leader put
+            // 1980 units off is still followed, 2060 off is given up at
+            // once.
+            give_up_distance: 2000.0,
             give_up_unseen: 10.0,
             rescue_half_width: 13.0,
             penalty: 13,

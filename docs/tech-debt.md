@@ -130,7 +130,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - bot: Bots on maps without a nav mesh step aside and wait (`games/cs_source/src/bot/aside.rs`)
 - net capacity: Every body goes to every client (no PVS relevance culling) (`chimera/net/src/net/server.rs`)
 - game_log: Log stamps in UTC, bots' userid their entity index, humans `STEAM_ID_LAN`, one file per `log on` (`chimera/core/src/game_log.rs`)
-- games/cs_source: Game events' fields beyond the specs' and the log's kill/chat/buy lines not written (`games/cs_source/src/rules/events.rs`)
+- games/cs_source: Some game events' fields (`site` on most bomb events, armour on `player_hurt`) and the log's attack, chat, connect and team lines not written (`games/cs_source/src/rules/events.rs`)
 - net capacity: Bots' sight in a crowded lobby is the cost limit (64 bots on jacks don't fit) (`games/cs_source/src/bot/mod.rs`)
 - net capacity: Client cost of drawing 31 others not profiled further (`chimera/net/src/net/interp.rs`)
 - net: `net_graph`'s packet sizes exclude UDP/IP headers; a host counts no traffic (`chimera/net/src/net/stats.rs`)

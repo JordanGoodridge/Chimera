@@ -11,7 +11,9 @@
 //! are in the predicted state; their own sounds as `map::PredictedSound`),
 //! `PlantedBomb` (timer from `mp_c4timer`, beeps on the provisional schedule,
 //! defuse by +use with the use search: 10 s or 5 s with
-//! `weapon::economy::DefuseKit`, interrupt resets, the explosion as a
+//! `weapon::economy::DefuseKit`, interrupt resets, the explosion and a
+//! finished defuse on the bomb's think (`BombRules::think`; the explosion
+//! first, measured), the explosion as a
 //! `core::Explosion` with the map's radius and the game's `ExplosionRule`),
 //! `BombState` (planted, outcome), the target's
 //! `BombPlanted`/`BombDefused`/`BombExplode` outputs as
@@ -87,6 +89,13 @@ pub struct BombRules {
     pub timer: f32,
     pub defuse_time: f32,
     pub defuse_time_kit: f32,
+    /// The planted bomb's think: seconds after the plant of the first one
+    /// and between the rest. The explosion and a finished defuse wait for
+    /// the first think at or after they're due (CS:S, measured 2026-10-18,
+    /// objectives.md Q14: thinks 7 ticks after the plant and every 8 after
+    /// that, so `mp_c4timer` 45 blows 45.105 s after the plant, 10 s after
+    /// 10.065, and a defuse takes 10.0-10.105 s, a kit's 5.0-5.105).
+    pub think: (f32, f32),
     /// Bomb radius when the map gives none, units (blast damage at the
     /// centre).
     pub radius: f32,
@@ -138,6 +147,7 @@ impl Default for BombRules {
             timer: 45.0,
             defuse_time: 10.0,
             defuse_time_kit: 5.0,
+            think: (0.105, 0.12),
             radius: 500.0,
             range_factor: 3.5,
             bell_divisor: Some(3.0),
@@ -271,8 +281,26 @@ pub struct PlantedBomb {
     /// `mp_c4timer` when it was planted.
     pub timer: f32,
     pub next_beep: f64,
+    /// When it next checks the explosion and the defuse
+    /// (`BombRules::think`).
+    pub next_think: f64,
     pub defuse: Option<Defuse>,
     pub defused: bool,
+}
+
+impl PlantedBomb {
+    /// Its first think at or after `t` (`BombRules::think`). Times are on
+    /// ticks, so one within a third of a tick past a think is on it (a
+    /// network client's copies of the times aren't exact).
+    pub fn think_after(&self, t: f64, think: (f32, f32)) -> f64 {
+        const ON_IT: f64 = 0.005;
+        let first = self.planted_at + think.0 as f64;
+        let step = think.1.max(0.001) as f64;
+        if t <= first + ON_IT {
+            return first;
+        }
+        first + ((t - first - ON_IT) / step).ceil().max(0.0) * step
+    }
 }
 
 /// The beep interval with `remaining` of `timer` seconds left (*hyp.*,
@@ -617,6 +645,7 @@ fn plant(world: &mut World, who: Entity, site: Option<usize>, now: f64, rules: &
             explode_at: now + timer as f64,
             timer,
             next_beep: now,
+            next_think: now + rules.think.0 as f64,
             defuse: None,
             defused: false,
         },
@@ -847,8 +876,17 @@ fn predict_defuse(
         let ground = state.is_none_or(|s| s.on_ground);
         if let Some(d) = defusing {
             let going = alive && intent.use_key && ground && finds;
-            let done = now + TIME_SLACK >= d.ends;
-            if done && going && let Some((bomb_e, ..)) = bomb {
+            // Done on the bomb's think at or after the end, unless it blows
+            // on that one (the server's `tick_bomb`), worked out from the
+            // server's copy of the defuse: the bomb's times are on the
+            // drawn timeline, the prediction's on its own.
+            let server = bomb.and_then(|(_, b, _)| Some((b, b.defuse?)));
+            let late = server.map_or(0.0, |(b, sd)| b.think_after(sd.ends, rules.think) - sd.ends);
+            let blows = server.is_some_and(|(b, sd)| {
+                b.think_after(sd.ends, rules.think) >= b.think_after(b.explode_at, rules.think) - TIME_SLACK
+            });
+            let done = now + TIME_SLACK >= d.ends + late;
+            if done && going && !blows && let Some((bomb_e, ..)) = bomb {
                 // Defused (the server's word comes later): not again.
                 commands.entity(bomb_e).insert(DefusedHere);
             }
@@ -875,8 +913,9 @@ fn predict_defuse(
     }
 }
 
-/// The planted bomb: a finished defuse (checked first, spec Q14), beeps,
-/// the explosion.
+/// The planted bomb: beeps; on its thinks (`BombRules::think`) the
+/// explosion, then a finished defuse (both due on one think: it blows,
+/// measured, spec Q14).
 #[allow(clippy::too_many_arguments)]
 fn tick_bomb(
     mut bombs: Query<(Entity, &mut PlantedBomb, &Transform)>,
@@ -896,6 +935,10 @@ fn tick_bomb(
         if bomb.defused {
             continue;
         }
+        let think = due >= bomb.next_think;
+        if think {
+            bomb.next_think += rules.think.1.max(0.001) as f64;
+        }
         let at = t.translation;
         let site_output = |output: &str| {
             bomb.site
@@ -906,25 +949,7 @@ fn tick_bomb(
                     activator: bomb.planter,
                 })
         };
-        if let Some(d) = bomb.defuse
-            && due >= d.ends
-        {
-            let out = site_output("BombDefused");
-            bomb.defused = true;
-            bomb.defuse = None;
-            commands.entity(d.who).try_remove::<Defusing>();
-            state.outcome = Some(BombOutcome::Defused);
-            if let Some(s) = &rules.sounds.defuse_finish {
-                play.write(GameSound(PlaySound::at(s.clone(), at)));
-            }
-            if let Some(s) = &rules.sounds.announce_defused {
-                play.write(GameSound(PlaySound::ui(s.clone())));
-            }
-            events.write(ObjectiveEvent::Defused { who: d.who });
-            outputs.write_batch(out);
-            continue;
-        }
-        if due >= bomb.explode_at {
+        if think && due >= bomb.explode_at {
             let out = site_output("BombExplode");
             if let Some(d) = bomb.defuse {
                 commands.entity(d.who).try_remove::<Defusing>();
@@ -951,6 +976,25 @@ fn tick_bomb(
             state.planted = None;
             events.write(ObjectiveEvent::Exploded { at });
             commands.entity(e).despawn();
+            continue;
+        }
+        if think
+            && let Some(d) = bomb.defuse
+            && due >= d.ends
+        {
+            let out = site_output("BombDefused");
+            bomb.defused = true;
+            bomb.defuse = None;
+            commands.entity(d.who).try_remove::<Defusing>();
+            state.outcome = Some(BombOutcome::Defused);
+            if let Some(s) = &rules.sounds.defuse_finish {
+                play.write(GameSound(PlaySound::at(s.clone(), at)));
+            }
+            if let Some(s) = &rules.sounds.announce_defused {
+                play.write(GameSound(PlaySound::ui(s.clone())));
+            }
+            events.write(ObjectiveEvent::Defused { who: d.who });
+            outputs.write_batch(out);
             continue;
         }
         if due >= bomb.next_beep {

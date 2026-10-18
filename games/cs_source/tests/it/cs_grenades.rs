@@ -630,6 +630,47 @@ fn dying_with_the_pin_out_drops_a_live_grenade() {
     assert!(thrown[0].1.velocity.xz().length() < 0.01, "only the body's velocity");
 }
 
+/// Running when it dies: the dropped grenade keeps the runner's velocity
+/// (CS:S, measured 2026-10-18, grenades.md Q17: a bot killed at 250 units/s
+/// with the pin out left a projectile moving at 250 along its run).
+#[test]
+fn dying_on_the_run_with_the_pin_out_drops_it_at_the_runners_speed() {
+    use crate::stack::core::Velocity;
+    // CS:S's own movement (it keeps `Velocity`).
+    let mut sim = Sim::new(
+        CsSim,
+        (GreyboxMapPlugin, CsWeaponsPlugin, crate::stack::games::cs_source::movement::SourceMovementPlugin),
+    );
+    sim.set_tick_interval(TICK_INTERVAL);
+    let p = sim.spawn_character(greybox::SPAWNS[0], crate::stack::games::cs_source::movement::ID);
+    sim.ticks(1);
+    give(sim.app.world_mut(), p, HEGRENADE).unwrap();
+    sim.seconds(DRAW_TIME as f64 + 0.05);
+    assert_eq!(active_id(&sim, p), Some(HEGRENADE));
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.seconds(0.6);
+    sim.intent(p).fire = true;
+    sim.ticks(5);
+    let running = sim.app.world().get::<Velocity>(p).unwrap().0;
+    assert!(running.xz().length() > 200.0 * UNIT, "running: {running}");
+    sim.app.world_mut().write_message(Damage {
+        force: bevy::math::Vec3::ZERO,
+        target: p,
+        attacker: None,
+        amount: 2.0,
+        point: Vec3::ZERO,
+        dir: Vec3::Y,
+        hitgroup: Hitgroup::Generic,
+        kind: DamageKind::Generic,
+        weapon: None,
+    });
+    sim.ticks(1);
+    let thrown = projectiles(&mut sim);
+    assert_eq!(thrown.len(), 1, "dropped live");
+    let v = thrown[0].1.velocity.xz();
+    assert!((v - running.xz()).length() < 0.02 * running.xz().length(), "{v} vs the runner's {running}");
+}
+
 /// Messages of type `M` written while the sim runs `seconds`, tick by tick.
 fn collect<M: Message + Clone>(sim: &mut Sim, seconds: f64) -> Vec<M> {
     let mut out = Vec::new();
