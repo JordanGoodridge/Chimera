@@ -72,8 +72,11 @@ in the lowest crate whose public API it needs:
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's
   rules (layering, assets, specs, docs);
-- `mashup` (the root, tests/it/): `dump`'s test and Combat Arms' local
-  ones.
+- `lithtech_formats` (lithtech/formats/tests/it/): LithTech's readers on
+  fixtures written in code from the specs, and in `heavy` on the Combat
+  Arms install (skipped without one; decryption only with keys in
+  `chimera.local.toml`);
+- `mashup` (the root, tests/it/): `dump`'s test.
 
 A file directly in a `tests/` folder would be another test binary:
 `architecture::tests_are_one_binary_per_crate` fails and says how to move
@@ -1190,8 +1193,10 @@ cargo run --bin dump -- combat_arms --list --filter worlds2
 cargo run --bin dump -- combat_arms --filter worlds2/warehouse.dat --extract
 ```
 
-Encrypted Combat Arms archives list but skip extraction until their scheme's
-key is in `chimera.local.toml`. Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
+Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
+list but skip extraction until their scheme's key is in
+`chimera.local.toml` (`[games.combat_arms.keys.V1]`, `key` and `iv` as
+hex). Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
 refuses any folder inside the repository.
 
 ### Sweeping every cached map (mapsweep)
