@@ -200,7 +200,7 @@ listen server); about 73 class-1 items left.
 | weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
 | weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's, metal's, tile's, computer's, grate's, plastic's and glass's damage factors measured (Part B, 2026-10-18); their thickness limits; a thick entity counting twice |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
-| weapons | Q12 left: pellet pattern, line or box traces | 1 | `bullet_impact` per pellet on a far wall, by seed |
+| weapons | Q12 left: pellet pattern, line or box traces | 3 | the shared offset measured (Part B, 2026-10-18); the pattern inside the spread is the generator's (Q1) |
 | weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
 
 ## Specs: specs/source
@@ -446,6 +446,7 @@ measured.
 | physics_constraints Q1: torque limit | breaks nothing at rest (a weld 40 units off a 30 kg crate held at torquelimit 1); a weld's force limit as a ball socket's | the torque as a weight × units | no torque breaking |
 | weapons Q7: sand's damage factor | 0.30 (AWP, AK-47, M4A1 through 11.4 and 14.4 units) | 0.5 (a guess) | 0.3 |
 | weapons Q7: other materials' damage | tile 0.30, computer 0.45, grate 0.99, plastic 0.50, glass 0.50 | 0.5 for all | as CS:S |
+| weapons Q12: pellets' offset | one inaccuracy offset a shot, each pellet within the 0.04 spread of it (M3 in the air: centre up to 0.28 off, pellets ≤ 0.037 from it) | the same | none |
 | weapons Q7: computer's thickness scale | 0.377-0.44 (M4A1 passes a 13.2-unit TV, Deagle doesn't) | 1.0 | 0.4 |
 | weapons Q7: metal's damage factor | 0.30 through an oil drum's 13.6-22.4-unit chords; 0.09 through 25-28 (the entity counted twice) | 0.5 (a guess) | 0.3 (the double count not made) |
 | sounds Q3: feet in water | slosh steps at 0.5 every 0.3 s running; entering or leaving: slosh at 1.0, then a wade wave at 0.2 | slosh steps; Player.Swim at entry and exit | none (the wade wave noted) |

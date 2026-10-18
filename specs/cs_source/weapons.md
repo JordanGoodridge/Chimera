@@ -1671,7 +1671,11 @@ inaccuracy target.
 - **Q12 Shotgun pellets**: line vs. box traces, pattern, per-pellet damage
   event or summed: M4.
   *Partly resolved (M16): one `bullet_impact` per pellet (9 M3, 6 XM1014),
-  one `weapon_fire` a shot. Pattern and trace shape open.*
+  one `weapon_fire` a shot. 2026-10-18: the pellets share one inaccuracy
+  offset: five M3 shots fired in the air (penalty 0.283-0.286) put the
+  nine pellets' centre 0.04-0.28 off the aim but every pellet within
+  0.022-0.037 of that centre (Spread 0.04). The pattern inside the
+  spread and the trace shape are open.*
 - **Q13 Drop / pickup** CS rules: drop velocity, which weapon is dropped on
   death, pickup by walking only into an empty slot, dropped-weapon lifetime:
   M14.
