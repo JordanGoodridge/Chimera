@@ -663,3 +663,59 @@ fn nuke_vents_block_players_again_after_a_restart() {
         }
     }
 }
+
+/// cs_havana's monitor: its screen (`breen_monitor_1_breakable_1`, a
+/// func_breakable parented to the prop_physics_multiplayer
+/// `breen_monitor_1_body_1`) stays on the monitor when it is knocked
+/// flying and tumbles, and shots still hit it.
+#[test]
+fn havana_monitor_screen_rides_the_monitor() {
+    let Some(map) = load("cs_havana") else { return };
+    let find = |name: &str| {
+        map.entities
+            .iter()
+            .position(|e| e.get("targetname") == Some(name))
+            .unwrap_or_else(|| panic!("{name}"))
+    };
+    let (body, screen) = (find("breen_monitor_1_body_1"), find("breen_monitor_1_breakable_1"));
+    let mut sim = sim(map);
+    sim.seconds(1.0);
+    let prop = {
+        let world = sim.app.world_mut();
+        world
+            .query::<(Entity, &crate::stack::map::PropEntity)>()
+            .iter(world)
+            .find(|(_, p)| p.0 == body)
+            .map(|(e, _)| e)
+            .expect("monitor node")
+    };
+    let screen_node = node(&mut sim, screen).expect("screen node");
+    // The screen's pose in the monitor's frame.
+    let local = |sim: &Sim| {
+        let w = sim.app.world();
+        let p = w.get::<GlobalTransform>(prop).unwrap().compute_transform();
+        let s = w.get::<Transform>(screen_node).unwrap();
+        (
+            p.rotation.inverse() * (s.translation - p.translation) / 0.0254,
+            p.rotation.inverse() * s.rotation,
+            to_source(p.translation),
+        )
+    };
+    let (offset, turn, start) = local(&sim);
+    {
+        let world = sim.app.world_mut();
+        world.entity_mut(prop).remove::<Sleeping>();
+        world.get_mut::<LinearVelocity>(prop).unwrap().0 = to_engine(Vec3::new(0.0, 0.0, 300.0));
+        world.get_mut::<AngularVelocity>(prop).unwrap().0 = Vec3::new(4.0, 6.0, 0.0);
+    }
+    for _ in 0..30 {
+        sim.ticks(2);
+        let (o, t, _) = local(&sim);
+        assert!(o.distance(offset) < 0.5, "screen off the monitor: {o} (was {offset})");
+        assert!(t.angle_between(turn) < 0.01, "screen turned apart from the monitor");
+    }
+    let (_, _, end) = local(&sim);
+    assert!(end.distance(start) > 4.0, "the monitor moved: {start} -> {end}");
+    assert!(!sim.app.world().entity(screen_node).contains::<ColliderDisabled>(), "shootable");
+    assert!(!broken(&sim, screen));
+}
