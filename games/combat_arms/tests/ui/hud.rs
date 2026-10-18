@@ -860,10 +860,8 @@ fn t47_armour() {
     assert_eq!(ap_shown(75.0), 75);
     assert_eq!(ap_shown(-3.0), 0);
     let (mut sim, me) = setup(&[RIFLE]);
-    sim.app.world_mut().entity_mut(me).insert(chimera_sim::weapon::Armor {
-        amount: 0.75,
-        helmet: false,
-    });
+    // Combat Arms' armour points (every character has some).
+    sim.app.world_mut().get_mut::<combat_arms::game::weapons::CaArmor>(me).unwrap().points = 75.0;
     sim.ticks(1);
     assert_eq!(hud(&sim).status.unwrap().ap, "75");
 }

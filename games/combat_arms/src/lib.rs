@@ -16,7 +16,7 @@
 //! headless harness's base (its scenario tests, tests/it/).
 //!
 //! It uses the engine crates (`chimera_core`, `chimera_world`,
-//! `chimera_sim`), never `mashup`, Source's map logic or another game
+//! `chimera_sim`, `chimera_net`), never `mashup`, Source's map logic or another game
 //! (checked: checks/tests/it/architecture.rs); only `ui` uses the
 //! presentation and the shell (optional dependencies of the feature).
 //!
@@ -24,8 +24,8 @@
 //! (the engine's base, `chimera_sim::SimBasePlugins`, and the tick
 //! metrics); the app runs it with `game::CombatArmsPlugins` after it.
 //!
-//! Known shortcuts: the skeleton has no network part, bots, rounds,
-//! teams or respawning (each waits for its spec, and some for a lift of
+//! Known shortcuts: the skeleton has no bots, rounds, game teams or
+//! respawning (each waits for its spec, and some for a lift of
 //! CS:S's code into Chimera: the plan's "lift into Chimera" list).
 
 pub mod game;
@@ -38,6 +38,7 @@ pub mod ui;
 // (the architecture check reads `crate::<module>` against its layering
 // table).
 use chimera_core::{character, core, game_registry, mount, slots};
+use chimera_net::net;
 use chimera_sim::{rule_module, weapon};
 use chimera_world::map;
 

@@ -6,3 +6,4 @@
 //! go: docs/OBSERVABILITY.md, section 1.
 
 mod hud;
+mod net_hud;
