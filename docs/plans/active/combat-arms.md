@@ -13,11 +13,14 @@ by side against the real game.
 
 ## Rules (the user's decisions, 2026-10-18)
 
-- **Public repo, clean room.** The leaked/decompiled Combat Arms source lives
-  only on the user's Windows PC. Spec sessions there read it and write
-  `specs/combat_arms/*.md`; implementation sessions (the Linux box, cloud
-  agents) read specs only, never the source (specs/README.md). Specs go to
-  main like any other spec, after the user's review.
+- **Public repo, faithful recreation.** The goal is a
+  faithful recreation of the game, built without distributing anything we
+  don't own: no game assets, extracted files, keys or third-party code in
+  the repo; players load assets from their own install. Spec sessions on
+  the user's Windows PC work from reference material the user points them
+  to and write `specs/combat_arms/*.md` in our own words; implementation
+  sessions (the Linux box, cloud agents) read specs only (specs/README.md).
+  Specs go to main like any other spec, after the user's review.
 - **Keys** (V1/V2 resource keys) only in the git-ignored `mashup.local.toml`.
   **No assets** in git, extracted or converted.
 - **Default data is ours.** Spec numbers go into our own data files
@@ -75,7 +78,7 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
 | Item | Spec | Status | Notes |
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
-| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (local only) | Spec and reader exist on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). Needs the user's review, then the spec committed and the reader moved into `games/combat_arms` |
+| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (in the repo since 2026-10-18; needs the user's review) | Reader exists on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). After review, the reader moves into `games/combat_arms` |
 | V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `mashup.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
 ### Wave 0.5: shared pieces
@@ -120,7 +123,7 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
   in a per-user cache.
 - 2026-10-03: Keys come from git-ignored local config, per install
   fingerprint.
-- 2026-10-04: Leaked/decompiled source reaches the repo only as specs,
+- 2026-10-04: Behaviour reaches the repo only as specs in our own words,
   written in separate sessions from implementation (specs/README.md).
 - 2026-10-04: Movement is kinematic and hand-written per game; avian3d for
   collision queries only.
@@ -147,7 +150,7 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
 2. Open one Claude Code session per board item in that checkout (several at
    once is fine: each writes only its own file).
 3. Paste the item's brief below into each session.
-4. When it asks, tell it in chat where the Combat Arms source is. Never
+4. When it asks, tell it in chat where the reference material is. Never
    write the path into a file or a commit.
 5. Review each spec as it lands (main); then tell the coordinator, who sets
    the board item to "spec landed" and assigns an implementer.
@@ -161,8 +164,8 @@ Each brief is complete on its own; paste it as is.
 ```text
 You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
 (the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
-and follow their rules exactly. Ask me in chat where the Combat Arms source is;
-never write that path, or any machine path, into the repo or a commit.
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
 
 Write specs/combat_arms/movement.md: the local player's movement. Cover walk,
 run, sprint and stamina (drain, regen, thresholds, what blocks sprinting),
@@ -174,8 +177,8 @@ stance and by weapon held, and the tick/frame rate dependence.
 Describe behaviour in your own words: exact constants with units (say the
 distance unit and up axis), formulas as math, per-tick order, clamps, edge
 cases, quirks players rely on. Never paste code or translate it line by line;
-no fenced code blocks except ```math. Name source files you consulted only by
-their in-game role (e.g. "the client player movement code"), never by path.
+no fenced code blocks except ```math. Name files you consulted only by
+their in-game role (e.g. "the client's player movement"), never by path.
 End with a numbered list of concrete test cases (setup, input, ticks ->
 expected numbers) that an implementer without the game can check, and an
 "Open questions" list.
@@ -193,8 +196,8 @@ hooks. Then `git pull --rebase` and `git push` to main.
 ```text
 You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
 (the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
-and follow their rules exactly. Ask me in chat where the Combat Arms source is;
-never write that path, or any machine path, into the repo or a commit.
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
 
 Write specs/combat_arms/weapon_firing.md: how a gun fires. Cover the trigger
 (fire modes: auto, semi, burst; cycle time; what happens when held), hitscan
@@ -209,7 +212,7 @@ weapon's attribute data and which are fixed in code.
 Describe behaviour in your own words: exact constants with units, formulas as
 math, per-tick order, clamps, edge cases, quirks players rely on. Never paste
 code or translate it line by line; no fenced code blocks except ```math. Name
-source files only by their in-game role, never by path. End with a numbered
+files only by their in-game role, never by path. End with a numbered
 list of concrete test cases (setup, input -> expected numbers, e.g. damage at
 given distances and zones, shots until spread caps) that an implementer
 without the game can check, and an "Open questions" list.
@@ -227,8 +230,8 @@ Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
 ```text
 You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
 (the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
-and follow their rules exactly. Ask me in chat where the Combat Arms source is;
-never write that path, or any machine path, into the repo or a commit.
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
 
 Write specs/combat_arms/attribute_data.md: the format of the game's attribute
 data that holds weapon, ammo, movement and player values, so we can load the
@@ -242,7 +245,7 @@ unit, meaning, and which behaviour reads it. Do not include encryption keys.
 
 Describe it in your own words: exact sizes and encodings, edge cases
 (missing fields, overrides). Never paste code or translate it line by line;
-no fenced code blocks except ```math. Name source files only by their in-game
+no fenced code blocks except ```math. Name files only by their in-game
 role, never by path. End with a numbered list of concrete test cases (a small
 document or byte layout described in a table -> the values a reader must
 produce) that an implementer can turn into generated fixture files, and an
@@ -261,8 +264,8 @@ Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
 ```text
 You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
 (the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
-and follow their rules exactly. Ask me in chat where the Combat Arms source is;
-never write that path, or any machine path, into the repo or a commit.
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
 
 Write specs/combat_arms/inventory.md: what a player carries and how they
 switch. Cover the slots (primary, secondary, melee, grenade, special; what
@@ -276,7 +279,7 @@ death), and the order of these within a tick.
 Describe behaviour in your own words: exact constants with units, formulas as
 math, edge cases (switching mid-reload, empty slots, dropping the last gun),
 quirks players rely on. Never paste code or translate it line by line; no
-fenced code blocks except ```math. Name source files only by their in-game
+fenced code blocks except ```math. Name files only by their in-game
 role, never by path. End with a numbered list of concrete test cases (setup,
 input, time -> expected weapon in hand, ammo, damage) that an implementer
 without the game can check, and an "Open questions" list.
@@ -294,8 +297,8 @@ Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
 ```text
 You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
 (the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
-and follow their rules exactly. Ask me in chat where the Combat Arms source is;
-never write that path, or any machine path, into the repo or a commit.
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
 
 Write specs/combat_arms/hud_crosshair.md: the crosshair and the basic in-game
 HUD. Crosshair: shape, size and gap in screen units at a reference
@@ -308,7 +311,7 @@ when it updates, colours and thresholds (e.g. low health, low ammo).
 
 Describe behaviour in your own words: exact numbers with units, formulas as
 math, edge cases, quirks players rely on. Never paste code or translate it
-line by line; no fenced code blocks except ```math. Name source files only by
+line by line; no fenced code blocks except ```math. Name files only by
 their in-game role, never by path. Do not include art; name a
 widget's texture only by its role. End with a numbered
 list of concrete test cases (state -> expected size, position, text or

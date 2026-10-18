@@ -265,11 +265,13 @@ uses mounted; the server checks this before a match. Plan:
 - Facts and ideas (file layouts, values, formulas, how a mechanic behaves) are
   free to reuse. The specific code expressing them is not, and a line-by-line
   translation into Rust is still a copy.
-- Workflow: read decompiled or reference code, write down what it does as a
-  plain spec (formats, values, rules, edge cases), then implement from the spec
-  in this project's ECS architecture rather than mirroring the original's
-  structure.
-- Never commit decompiled or leaked code itself.
+- Workflow: a spec session works from reference material and writes down
+  what the game does as a plain spec in our own words (formats, values,
+  rules, edge cases); a separate session implements from the spec in this
+  project's ECS architecture rather than mirroring the original's structure.
+- Never commit third-party code, assets, extracted files or keys. The goal
+  is a faithful recreation built without distributing anything we don't
+  own; players load assets from their own install.
 
 ### Per-game notes
 
@@ -288,12 +290,13 @@ uses mounted; the server checks this before a match. Plan:
 
 ## Specs
 
-Behavior taken from decompiled or leaked code reaches this repository only as
-specs in `specs/`: constants with units, formulas as math, per-tick order of
-operations, edge cases, deliberate quirks, and test cases with expected
-numbers. Specs are written in sessions that read the source; implementation
-happens in separate sessions that see only the specs. The test cases become
-automated tests. See [specs/README.md](../specs/README.md).
+Behavior worked out from reference material reaches this repository only as
+specs in `specs/`, written in our own words: constants with units, formulas
+as math, per-tick order of operations, edge cases, deliberate quirks, and
+test cases with expected numbers. Specs are written in sessions that read the
+reference material; implementation happens in separate sessions that see only
+the specs. The test cases become automated tests. See
+[specs/README.md](../specs/README.md).
 
 ## First steps (the original plan, 2026-10; kept for the record)
 
