@@ -56,6 +56,8 @@ pub static INFO: GameInfo = GameInfo {
     // No such file in an install: the built-in table is used.
     default_binds_cfg: "chimera_placeholder_binds.cfg",
     default_binds: DEFAULT_BINDS,
+    // The defaults never changed.
+    old_default_binds: &[],
     movement_cvars: &[],
 };
 

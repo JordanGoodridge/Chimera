@@ -1069,7 +1069,8 @@ fn run_cfg(w: &mut World, text: &str) {
 pub fn config_text(w: &mut World) -> String {
     // The second line tells the client every key's bind is in here
     // (`client::binds::CONFIG_MARK`), the third that the defaults it was
-    // written over were CS:S's (`client::binds::DEFAULTS_MARK`).
+    // written over were the game's current ones (`client::binds::DEFAULTS_MARK`;
+    // its text, "cs", from when CS:S's changed, kept for saved configs).
     let mut out = String::from("// Written by Chimera (host_writeconfig).\n// binds: all\n// bind defaults: cs\n");
     let (binds, aliases, cvars) = {
         let c = w.resource::<Console>();

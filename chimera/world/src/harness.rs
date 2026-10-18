@@ -250,7 +250,7 @@ fn extract_meshes(
 /// Every schedule's systems in the order they run (built now if they
 /// haven't run yet), one schedule after another by name: the spawn dump
 /// (`games/cs_source/tests/it/heavy/map_spawn_dump.rs`) and the game's
-/// `CHIMERA_SYSTEM_DUMP` (apps/cs_source/src/main.rs), for refactors that
+/// `CHIMERA_SYSTEM_DUMP` (chimera_client's `client::app`), for refactors that
 /// move systems between plugins or crates.
 pub fn system_order(world: &mut World) -> String {
     use std::fmt::Write as _;
@@ -274,7 +274,7 @@ pub fn system_order(world: &mut World) -> String {
 }
 
 /// Run the main world's per-frame and fixed schedules on one thread each
-/// instead of Bevy's multi-threaded executor: the game (whose main.rs
+/// instead of Bevy's multi-threaded executor: the games (whose shell
 /// does the render world's too), the dedicated server and `perfgate`.
 ///
 /// A tick runs a few hundred systems, nearly all tiny: handing each to a

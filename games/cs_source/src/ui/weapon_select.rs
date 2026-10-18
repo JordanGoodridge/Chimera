@@ -11,33 +11,20 @@
 //! letter in capitals; the outline face, `CSType`'s, when it isn't the
 //! weapon you hold) and its localised name (`#Cstrike_WPNHUD_*`).
 //!
-//! With `hud_fastswitch 0` (CS:S's default) a slot key opens the row on
-//! that slot (again: the next weapon in it), attack takes the highlighted
-//! weapon and attack2 closes it; with `hud_fastswitch 1` slot keys switch
-//! at once and the row shows the drawn weapon for a moment. The row closes
-//! itself after a while (`MENU_SECONDS`, ours). `invnext` / `invprev`
-//! (CS:S's mouse-wheel commands) step through every weapon held, slot by
-//! slot, the same way: opening the row (fast switch off) or switching.
-//! The row plays the game's selection sounds (`map::RoundSounds`): a move
-//! of the highlight, a pick, a slot key on an empty slot.
+//! The selection's logic is the shell's (`client::weapon_menu`, shared
+//! with Combat Arms): slot keys and `slot1`..`slot5`, `invnext` /
+//! `invprev` (CS:S's mouse-wheel commands), attack to pick, attack2 or
+//! `cancelselect` to close, the selection's sounds (`map::RoundSounds`).
+//! CS:S's own here: `hud_fastswitch` (0, its default: slot keys go through
+//! the row when its HUD has `HudWeaponSelection`, `takes_slots`; 1: they
+//! switch at once and the row shows the drawn weapon for a moment,
+//! `show_deploys`), the row's timings (`TIMES`, ours), the no-op
+//! `slot6`..`slot10` of its number keys, and the look:
+//! `selection_layout`/`history_layout` are pure (tests).
 //!
 //! History: each weapon you get shows on the right, newest at the bottom
 //! of the panel and older ones `history_gap` above, for
 //! `HISTORY_SECONDS` (CS:S's `hud_drawhistory_time` default) and fading.
-//!
-//! The game HUD's weapon selection (`HudWeaponSelection`) and pickup history
-//! (`HudHistoryResource`): `hud_fastswitch 0` (CS:S's default) makes slot keys
-//! and the `slot1`..`slot5` commands open the selection (attack picks, attack2
-//! or `cancelselect` closes; `WeaponMenu`, read by `input` for the intent's
-//! pick, `core::Intent::pick`: slot and place in it, so the second grenade can
-//! be taken, and to keep that attack from firing), `1` switches at once and
-//! shows the row briefly; `invnext`/`invprev` step through every weapon held,
-//! slot by slot (`step_weapon`), the same two ways; the selection's sounds from
-//! `map::RoundSounds` (a move, a pick, an empty slot); the row centred at the
-//! top, the highlighted slot's box large with the weapon font's icon
-//! (`CSweapons`) and the localised name (`#Cstrike_WPNHUD_*`), slot numbers for
-//! held slots; weapons got show on the right, newest at the bottom, for 5 s;
-//! `selection_layout`/`history_layout` are pure (tests).
 //!
 //! Known shortcuts (docs/tech-debt.md): Weapon selection, pickup and buy sounds
 //! (no spec; the install's game_sounds.txt entries, when each plays inferred
@@ -51,7 +38,7 @@
 
 use std::collections::HashSet;
 
-use bevy::{prelude::*, window::CursorOptions};
+use bevy::prelude::*;
 
 use super::game_hud::{Drawn, scaled};
 use crate::client::{
@@ -65,17 +52,28 @@ use crate::{
     weapon::{Inventory, Weapon, WeaponEvent, WeaponEventKind},
 };
 
+// The selection's state and logic: the shell's, at their old paths.
+use crate::client::weapon_menu::menu_input;
+pub use crate::client::weapon_menu::{
+    WeaponMenu, WeaponMenuPlugin, WeaponMenuTimes, next_in_slot, pick_of, step_weapon,
+};
+
+/// CS:S's weapon selection: the shell's (`WeaponMenuPlugin`) with CS:S's
+/// timings, `hud_fastswitch` and the row and history drawn.
 pub struct WeaponSelectPlugin;
 
 impl Plugin for WeaponSelectPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<WeaponMenu>()
+        // The selection's logic and commands are the shell's; CS:S's
+        // timings, when slot keys go through the row, and its look here.
+        app.add_plugins(WeaponMenuPlugin)
+            .insert_resource(TIMES)
             .init_resource::<FastSwitch>()
             .init_resource::<History>()
             .add_systems(
                 Update,
                 (
-                    menu_input.before(crate::client::input::write_local_intent),
+                    takes_slots.before(menu_input),
                     (track_pickups, show_deploys, draw)
                         .chain()
                         .after(menu_input)
@@ -90,29 +88,15 @@ impl Plugin for WeaponSelectPlugin {
             |f| &mut f.0,
         );
         app.world_mut().resource_mut::<Console>().archive("hud_fastswitch");
-        for slot in 0..5u8 {
+        // CS:S's number keys 6-9 and 0 (its default binds): no weapon slot
+        // there; the menus read the number keys themselves.
+        for n in 6..=10 {
             app.console_command(
-                &format!("slot{}", slot + 1),
-                "Weapon slot (with hud_fastswitch 0: open the weapon selection on it).",
-                move |w, _| {
-                    w.resource_mut::<WeaponMenu>().pressed.push(slot);
-                    Ok(None)
-                },
+                &format!("slot{n}"),
+                "Weapon slot (CS:S has no weapons there: does nothing; menus take the number keys).",
+                |_, _| Ok(None),
             );
         }
-        for (name, step, help) in [
-            ("invnext", 1, "The next weapon held (with hud_fastswitch 0: in the weapon selection)."),
-            ("invprev", -1, "The previous weapon held (with hud_fastswitch 0: in the weapon selection)."),
-        ] {
-            app.console_command(name, help, move |w, _| {
-                w.resource_mut::<WeaponMenu>().steps.push(step);
-                Ok(None)
-            });
-        }
-        app.console_command("cancelselect", "Close the weapon selection without picking.", |w, _| {
-            w.resource_mut::<WeaponMenu>().cancel();
-            Ok(None)
-        });
     }
 }
 
@@ -120,15 +104,17 @@ impl Plugin for WeaponSelectPlugin {
 #[derive(Resource, Default)]
 pub struct FastSwitch(pub u8);
 
-/// Seconds the selection stays open waiting for a pick, and the last part
-/// of that (or of a fast switch's showing) it fades over (ours; the game's
-/// timing isn't in its data files).
-const MENU_SECONDS: f32 = 3.0;
-const SHOW_SECONDS: f32 = 1.5;
-const FADE_SECONDS: f32 = 0.5;
-/// Seconds a picked weapon's slot is held in the intent, so a fixed tick
-/// sees it.
-const SELECT_HOLD: f32 = 0.15;
+/// How long the selection shows: open waiting for a pick, showing a fast
+/// switch, the last part of either it fades over (ours; the game's timing
+/// isn't in its data files), and a pick held in the intent so a fixed
+/// tick sees it.
+pub const TIMES: WeaponMenuTimes = WeaponMenuTimes {
+    menu: 3.0,
+    show: 1.5,
+    fade: 0.5,
+    select_hold: 0.15,
+};
+
 /// Seconds a pickup shows (CS:S's `hud_drawhistory_time` default), the
 /// last of which it fades over (ours).
 const HISTORY_SECONDS: f32 = 5.0;
@@ -138,169 +124,13 @@ const LARGE_BOX_ALPHA: f32 = 0.5;
 /// Unhighlighted slots' numbers draw at the panel's half alpha.
 const DIM: f32 = 0.5;
 
-// The selection's state: the shell's (its input reads it), at its old path.
-pub use crate::client::weapon_menu::WeaponMenu;
-
-/// The row's opacity now (1 while showing, fading at the end), None
-/// when hidden.
-fn menu_alpha(menu: &WeaponMenu) -> Option<f32> {
-    let t = menu.shown_for?;
-    let total = if menu.choosing { MENU_SECONDS } else { SHOW_SECONDS };
-    let left = total - t;
-    (left > 0.0).then(|| (left / FADE_SECONDS).min(1.0))
-}
-
-/// What a slot key does with the selection open on `current` (or closed):
-/// the first weapon in `slot`, or the next one in it after `current`;
-/// `held` lists (weapon, slot) in inventory order.
-pub fn next_in_slot(held: &[(Entity, u8)], slot: u8, current: Option<Entity>) -> Option<Entity> {
-    let in_slot: Vec<Entity> = held.iter().filter(|(_, s)| *s == slot).map(|(e, _)| *e).collect();
-    match current.and_then(|c| in_slot.iter().position(|e| *e == c)) {
-        Some(i) => Some(in_slot[(i + 1) % in_slot.len()]),
-        None => in_slot.first().copied(),
-    }
-}
-
-/// What `invnext` (`step` 1) or `invprev` (-1) moves to from `current`:
-/// the weapons held ordered by slot, then inventory order, wrapping; from
-/// nothing, the first (or last).
-pub fn step_weapon(held: &[(Entity, u8)], current: Option<Entity>, step: i8) -> Option<Entity> {
-    let mut order: Vec<(Entity, u8)> = held.to_vec();
-    order.sort_by_key(|(_, s)| *s);
-    let n = order.len() as i32;
-    if n == 0 {
-        return None;
-    }
-    let i = match current.and_then(|c| order.iter().position(|(e, _)| *e == c)) {
-        Some(i) => (i as i32 + step as i32).rem_euclid(n),
-        None if step < 0 => n - 1,
-        None => 0,
-    };
-    Some(order[i as usize].0)
-}
-
-/// The intent's pick of `weapon` (its slot and place in it), if held.
-pub fn pick_of(held: &[(Entity, u8)], weapon: Entity) -> Option<u8> {
-    let slot = held.iter().find(|(e, _)| *e == weapon)?.1;
-    let nth = held.iter().filter(|(_, s)| *s == slot).position(|(e, _)| *e == weapon)?;
-    Some(crate::core::Intent::pick(slot, nth as u8))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn menu_input(
-    mut menu: ResMut<WeaponMenu>,
-    fast: Res<FastSwitch>,
-    hud: Option<Res<ActiveHud>>,
-    console: Option<Res<Console>>,
-    (keys, mouse): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>),
-    cursor: Query<&CursorOptions>,
-    player: Option<Single<&Inventory, With<LocalPlayer>>>,
-    weapons: Query<&Weapon>,
-    panels: Option<Res<crate::client::front_end::Panels>>,
-    time: Res<Time>,
-    (sounds, mut play): (Option<Res<crate::map::RoundSounds>>, MessageWriter<crate::map::PlaySound>),
-) {
-    let dt = time.delta_secs();
-    let mut sound = |pick: fn(&crate::map::RoundSounds) -> &Option<String>| {
-        if let Some(entry) = sounds.as_ref().and_then(|s| pick(s).clone()) {
-            play.write(crate::map::PlaySound::ui(entry));
-        }
-    };
+/// Slot keys go through the row with `hud_fastswitch 0` when CS:S's HUD
+/// has it (`HudWeaponSelection`); else they switch at once.
+fn takes_slots(mut menu: ResMut<WeaponMenu>, fast: Res<FastSwitch>, hud: Option<Res<ActiveHud>>) {
     menu.takes_slots = fast.0 == 0
         && hud
             .as_ref()
             .is_some_and(|h| h.0.panels.contains_key("HudWeaponSelection"));
-    if let Some((slot, left)) = menu.select {
-        menu.select = (left > dt).then_some((slot, left - dt));
-    }
-    if let Some(t) = menu.shown_for.as_mut() {
-        *t += dt;
-    }
-    if menu.shown_for.is_some() && menu_alpha(&menu).is_none() {
-        menu.shown_for = None;
-        menu.choosing = false;
-    }
-    let empty = std::collections::BTreeMap::new();
-    let binds = console.as_ref().map_or(&empty, |c| &c.binds);
-    let playing = cursor.iter().next().is_some_and(crate::client::input::cursor_grabbed)
-        && !panels.is_some_and(|p| p.number_keys_taken());
-    let just = |c: &str| playing && crate::client::binds::just_pressed(binds, &keys, &mouse, c);
-    let attack_held = playing && crate::client::binds::pressed(binds, &keys, &mouse, "+attack");
-    if !attack_held {
-        menu.swallow_fire = false;
-    }
-    let mut pressed = std::mem::take(&mut menu.pressed);
-    let steps = std::mem::take(&mut menu.steps);
-    let held: Vec<(Entity, u8)> = player
-        .as_ref()
-        .map(|inv| {
-            inv.weapons
-                .iter()
-                .filter_map(|e| weapons.get(*e).ok().map(|w| (*e, w.slot)))
-                .collect()
-        })
-        .unwrap_or_default();
-    if menu.takes_slots {
-        pressed.extend((0..5u8).filter(|s| just(&format!("slot{}", s + 1))));
-    } else {
-        if let Some(&slot) = pressed.last() {
-            // Fast switch: the command switches directly, like the key.
-            menu.select = Some((slot, SELECT_HOLD));
-            return;
-        }
-        // invnext / invprev switch directly from the weapon in hand.
-        let mut current = player.as_ref().and_then(|i| i.active);
-        for step in &steps {
-            current = step_weapon(&held, current, *step);
-        }
-        if !steps.is_empty()
-            && let Some(pick) = current.and_then(|w| pick_of(&held, w))
-        {
-            menu.select = Some((pick, SELECT_HOLD));
-        }
-        return;
-    }
-    if player.is_none() {
-        return;
-    }
-    for slot in pressed {
-        let current = menu.highlighted.filter(|_| menu.choosing);
-        if let Some(next) = next_in_slot(&held, slot, current) {
-            menu.highlighted = Some(next);
-            menu.choosing = true;
-            menu.shown_for = Some(0.0);
-            sound(|s| &s.weapon_move);
-        } else {
-            sound(|s| &s.weapon_deny);
-        }
-    }
-    for step in steps {
-        // From the highlight while the row is open, else the weapon in hand.
-        let current = menu
-            .highlighted
-            .filter(|_| menu.choosing && menu.shown_for.is_some())
-            .or(player.as_ref().and_then(|i| i.active));
-        if let Some(next) = step_weapon(&held, current, step) {
-            menu.highlighted = Some(next);
-            menu.choosing = true;
-            menu.shown_for = Some(0.0);
-            sound(|s| &s.weapon_move);
-        }
-    }
-    if menu.choosing && menu.shown_for.is_some() {
-        if just("+attack") {
-            if let Some(pick) = menu.highlighted.and_then(|e| pick_of(&held, e)) {
-                menu.select = Some((pick, SELECT_HOLD));
-                sound(|s| &s.weapon_pick);
-            }
-            menu.swallow_fire = true;
-            menu.shown_for = None;
-            menu.choosing = false;
-        } else if just("+attack2") {
-            menu.shown_for = None;
-            menu.choosing = false;
-        }
-    }
 }
 
 /// With fast switch on, a weapon drawn shows the row on it for a moment.
@@ -544,6 +374,7 @@ fn draw(
     hud: Res<ActiveHud>,
     fonts: Res<UiFonts>,
     menu: Res<WeaponMenu>,
+    times: Res<WeaponMenuTimes>,
     history: Res<History>,
     windows: Query<&Window>,
     player: Option<Single<&Inventory, With<LocalPlayer>>>,
@@ -561,7 +392,7 @@ fn draw(
     let (w, h) = (window.width(), window.height());
     let font = |name: &str| fonts.hud_font(name, h);
     let mut drawn = Vec::new();
-    if let (Some(alpha), Some(inv), Some(hl)) = (menu_alpha(&menu), player.as_ref(), menu.highlighted)
+    if let (Some(alpha), Some(inv), Some(hl)) = (menu.alpha(&times), player.as_ref(), menu.highlighted)
         && let Ok(hw) = weapons.get(hl)
     {
         let filled: Vec<u8> = inv
@@ -657,77 +488,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cancelselect_closes_the_selection_without_a_pick() {
-        let mut m = WeaponMenu {
-            highlighted: Some(Entity::from_raw_u32(4).unwrap()),
-            shown_for: Some(0.5),
-            choosing: true,
-            ..Default::default()
-        };
-        m.cancel();
-        assert_eq!((m.highlighted, m.shown_for, m.choosing), (None, None, false));
-        assert_eq!(m.select, None, "nothing picked");
-    }
-
-    #[test]
-    fn slot_keys_pick_the_first_then_cycle() {
-        let (a, b, c) = (
-            Entity::from_raw_u32(1).unwrap(),
-            Entity::from_raw_u32(2).unwrap(),
-            Entity::from_raw_u32(3).unwrap(),
-        );
-        let held = [(a, 0), (b, 3), (c, 3)];
-        assert_eq!(next_in_slot(&held, 0, None), Some(a));
-        assert_eq!(next_in_slot(&held, 3, None), Some(b));
-        assert_eq!(next_in_slot(&held, 3, Some(b)), Some(c));
-        assert_eq!(next_in_slot(&held, 3, Some(c)), Some(b));
-        // Open on another slot: that slot's first.
-        assert_eq!(next_in_slot(&held, 3, Some(a)), Some(b));
-        assert_eq!(next_in_slot(&held, 1, None), None);
-    }
-
-    #[test]
-    fn inventory_steps_go_slot_by_slot_and_wrap() {
-        let [knife, ak, usp, he, flash] = [1, 2, 3, 4, 5].map(Entity::from_raw_u32).map(Option::unwrap);
-        // Inventory order isn't slot order; grenades share slot 3.
-        let held = [(knife, 2), (ak, 0), (usp, 1), (he, 3), (flash, 3)];
-        assert_eq!(step_weapon(&held, Some(ak), 1), Some(usp));
-        assert_eq!(step_weapon(&held, Some(usp), 1), Some(knife));
-        assert_eq!(step_weapon(&held, Some(he), 1), Some(flash));
-        assert_eq!(step_weapon(&held, Some(flash), 1), Some(ak), "wraps");
-        assert_eq!(step_weapon(&held, Some(ak), -1), Some(flash), "wraps back");
-        assert_eq!(step_weapon(&held, None, 1), Some(ak));
-        assert_eq!(step_weapon(&held, None, -1), Some(flash));
-        assert_eq!(step_weapon(&[], None, 1), None);
-        // The flashbang is the second weapon in its slot.
-        assert_eq!(pick_of(&held, flash), Some(crate::core::Intent::pick(3, 1)));
-        assert_eq!(crate::core::Intent::picked(crate::core::Intent::pick(3, 1)), (3, Some(1)));
-        assert_eq!(crate::core::Intent::picked(3), (3, None));
-    }
-
-    #[test]
     fn weapon_names_and_tokens() {
         crate::game::weapons::cs_weapons();
         assert_eq!(short("cs_source:weapon_mp5navy"), "mp5navy");
         assert_eq!(name_token("usp"), Some("Cstrike_WPNHUD_USP45"));
         assert_eq!(name_token("hegrenade"), Some("Cstrike_WPNHUD_HE_Grenade"));
         assert_eq!(name_token("nope"), None);
-    }
-
-    #[test]
-    fn the_row_fades_at_the_end() {
-        let mut m = WeaponMenu {
-            shown_for: Some(0.0),
-            choosing: true,
-            ..default()
-        };
-        assert_eq!(menu_alpha(&m), Some(1.0));
-        m.shown_for = Some(MENU_SECONDS - FADE_SECONDS / 2.0);
-        assert!((menu_alpha(&m).unwrap() - 0.5).abs() < 1e-4);
-        m.shown_for = Some(MENU_SECONDS);
-        assert_eq!(menu_alpha(&m), None);
-        m.choosing = false;
-        m.shown_for = Some(SHOW_SECONDS - 0.01);
-        assert!(menu_alpha(&m).is_some());
     }
 }

@@ -90,9 +90,71 @@ impl Plugin for CsSourceUiPlugin {
 #[cfg(test)]
 mod tests {
     use crate::{
-        client::binds::{self, SAMPLE_CONFIG_DEFAULT, cfg_binds, default_binds, defaults_from},
+        client::binds::{self, cfg_binds, default_binds, defaults_from},
         game::{DEFAULT_BINDS, INFO},
     };
+
+    /// CS:S's `cfg/config_default.cfg` as it reads (its bind lines; the
+    /// file itself is the install's and never in the repo): the built-in
+    /// table must match it.
+    const SAMPLE_CONFIG_DEFAULT: &str = r#"// first run
+unbindall
+
+bind "ESCAPE" "cancelselect"
+bind "`" "toggleconsole"
+
+bind "TAB" "+showscores"
+bind "SPACE" "+jump"
+bind "," "buyammo1"
+bind "." "buyammo2"
+bind "0" "slot10"
+bind "1" "slot1"
+bind "2" "slot2"
+bind "3" "slot3"
+bind "4" "slot4"
+bind "5" "slot5"
+bind "6" "slot6"
+bind "7" "slot7"
+bind "8" "slot8"
+bind "9" "slot9"
+bind "a" "+moveleft"
+bind "b" "buymenu"
+bind "c" "radio3"
+bind "d" "+moveright"
+bind "e" "+use"
+bind "f" "impulse 100"
+bind "g" "drop"
+bind "h" "commandmenu"
+bind "i" "showbriefing"
+bind "j" "cheer"
+bind "k" "+voicerecord"
+bind "m" "chooseteam"
+bind "n" "nightvision"
+bind "o" "buyequip"
+bind "q" "lastinv"
+bind "r" "+reload"
+bind "s" "+back"
+bind "t" "impulse 201"
+bind "u" "messagemode2"
+bind "w" "+forward"
+bind "x" "radio2"
+bind "y" "messagemode"
+bind "z" "radio1"
+bind "CTRL" "+duck"
+bind "SHIFT" "+speed"
+bind "F1" "autobuy"
+bind "F2" "rebuy"
+bind "F4" "bug"
+bind "F5" "jpeg"
+bind "F6" "save quick"
+bind "F7" "load quick"
+bind "F10" "quit prompt"
+bind "MWHEELDOWN" "invnext"
+bind "MWHEELUP" "invprev"
+bind "MOUSE1" "+attack"
+bind "MOUSE2" "+attack2"
+bind "PAUSE" "pause"
+"#;
 
     fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
@@ -108,5 +170,11 @@ mod tests {
         if binds::read_install_defaults(Some(&INFO)) {
             assert_eq!(default_binds(), defaults_from(&owned(DEFAULT_BINDS)));
         }
+        // A config from before the defaults followed the file gets those
+        // added since (CS:S's `OLD_DEFAULT_BINDS`), on free keys.
+        let added = binds::added_defaults();
+        assert!(added.contains(&("f1".into(), "autobuy".into())), "{added:?}");
+        assert!(added.contains(&("f11".into(), "chimera_inspector".into())), "{added:?}");
+        assert!(!added.iter().any(|(k, _)| k == "w" || k == "alt"), "{added:?}");
     }
 }

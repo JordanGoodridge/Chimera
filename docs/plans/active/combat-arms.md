@@ -128,7 +128,7 @@ does for BSP.
 | 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | not started | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
 | 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | not started | L2 (spread and recoil state), L3 (hurt sounds); fire modes, burst, hit zones, falloff, penetration, reload and ammo are already Chimera's (`chimera_sim::weapon`) | Cloud agent; Chimera weapon parts + `combat_arms:*` hooks; one rifle's numbers in `data/weapons/` |
 | 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none (its reader goes in `lithtech/`) | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
-| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | L4 (weapon selection logic), L5 (default binds per game); inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | Cloud agent; after 2's parts exist |
+| 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | not started | L4 (weapon selection logic) and L5 (default binds per game): both done; inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | Cloud agent; after 2's parts exist |
 | 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | not started | L6 (HUD panels, death notices), L7 (crosshair style as data), L8 (damage indicator), L9 (target ID); the plain HUD (`client::hud`) works with no lift | Cloud agent; plain Chimera HUD widgets driven by data |
 
 ### Wave 2: the rest of combat, and the game's own files
@@ -178,12 +178,12 @@ text, VGUI widgets and drawing of `map::hud` layouts; skeletal animation
 
 | L | Piece | Where now (lines) | Main types | CS:S inside that becomes data or a hook | Risk (tests that guard it) | First need |
 |---|---|---|---|---|---|---|
-| L0 | App glue | apps/cs_source: `main.rs` (259), `build.rs` (60), `games/mod.rs` (79), `lib.rs` (101) | `dump_systems`, a second `single_threaded_schedules`, the version stamp, `load_map` dispatcher, `client_hooks` | `movement_config` from CS:S args; map ids `cs_source:` | Low (app tests, `checks` build stamp rules) | Wave 0 skeleton: share the schedule helpers and the stamp, don't copy them |
+| L0 | App glue (**done** 2026-10-18) | apps/cs_source: `main.rs` (259), `build.rs` (60), `games/mod.rs` (79), `lib.rs` (101) | `dump_systems`, a second `single_threaded_schedules`, the version stamp, `load_map` dispatcher, `client_hooks` | `movement_config` from CS:S args; map ids `cs_source:` | Low (app tests, `checks` build stamp rules) | Wave 0 skeleton: share the schedule helpers and the stamp, don't copy them |
 | L1 | Box sweeps against the world | `game/movement.rs` `Tracer` (~450 of 2511) | `Tracer`, `Trace`, `BrushHit`, `sweep_brushes`, `sweep_box` over `MapBrushes`, `BrushGrid`, `MapBrushTree`, `MapTerrain` | Source units and Z-up, trace backoff and skin, the last-crossed-plane rule (rampbug), ladders, surface lookup for footsteps | High: tick-for-tick movement (`source_movement*.rs` ~2.5k lines, `movement.rs`), heavy `map_surf`, `map_ladders`, `map_courses` | 1, only if CA needs brush-exact traces; else avian shape casts (decision 2026-10-04). Depends on CA worlds yielding `MapBrushes` |
 | L2 | Spread and recoil state around the weapon frame | `game/weapons.rs` (~400 of 827: `Inaccuracy`, `AccuracyKeys`, `Kick`, `Recoil`, `decay_punch`, `before_shots`, `after_shots`) | systems before and after `WeaponFrame` in `Predict::Weapons`, `predicted_part` | All formulas (accuracy penalty, air decay, landing term, kick sets, punch decay); the hook names `cs_source:accuracy`/`recoil` | Medium: `cs_guns.rs` (1132), `weapons.rs` (1511), `net_weapons.rs`, `prediction.rs` | 2. Likely none: CA registers its own `combat_arms:*` hooks and systems on the same pattern; lift only a shared shape (e.g. a kick pattern table) if the spec shows one |
 | L3 | Hurt and death sounds; hit reaction | `game/pain.rs` (290), `game/hit_reaction.rs` (222) | `PainSoundsPlugin`, `HitSlowdown` | Sound entry names by hitgroup and helmet, `Player.FallDamage`; the slowdown values and `SourceMovement::velocity_modifier` | Low/medium: `pain_sounds.rs` (367), `hit_reaction.rs` (350) | 2 (sounds as data: event to entry); slowdown stays CS:S unless CA's spec has one |
-| L4 | Weapon selection logic | `ui/weapon_select.rs` (733: `next_in_slot`, `step_weapon`, `pick_of`, the input half of `menu_input` ~200) | beside `client::weapon_menu::WeaponMenu` (Chimera) | `HudWeaponSelection` panel name, `hud_fastswitch`, timings, the row's look (stays) | Low: ui `weapon_select.rs` (146), `auto_switch.rs` (201) | 4 |
-| L5 | Default binds per game | `chimera_client` `binds.rs` (790; already Chimera, CS:S defaults inside) | the default bind table | CS:S's keys become the game's data | Low: binds unit tests | 4 (CA's keys from `inventory.md`) |
+| L4 | Weapon selection logic (**done** 2026-10-18) | `ui/weapon_select.rs` (733: `next_in_slot`, `step_weapon`, `pick_of`, the input half of `menu_input` ~200) | beside `client::weapon_menu::WeaponMenu` (Chimera) | `HudWeaponSelection` panel name, `hud_fastswitch`, timings, the row's look (stays) | Low: ui `weapon_select.rs` (146), `auto_switch.rs` (201) | 4 |
+| L5 | Default binds per game (**done** 2026-10-18) | `chimera_client` `binds.rs` (790; already Chimera, CS:S defaults inside) | the default bind table | CS:S's keys become the game's data | Low: binds unit tests | 4 (CA's keys from `inventory.md`) |
 | L6 | HUD panels from a game's layout, death notices | `ui/game_hud.rs` (971) | `GameHudPlugin`, `Part`, `PanelKind`, `layout`, `HudValues`, `DeathNotices`, `round_banner` | Panel names (`HudHealth`...), `LOW_HEALTH`, notice time and count, ammo glyphs, money and round clock panels | Medium: ui tests, `hudcmp` captures (refcmp), `objectives.rs` ui | 5, if CA's HUD is a layout of panels (decided by 11); else CA starts on `client::hud` |
 | L7 | Crosshair and scope look as data | `chimera_client` `hud.rs` (998; already Chimera) | `CrosshairColor`, crosshair and scope drawing | `cl_crosshair*` presets and scales, the scope's CS:S textures and layout | Low/medium: unit tests, `hudcmp` | 5 (crosshair), 7 (scope) |
 | L8 | Damage direction indicator | `ui/hud_sprites.rs` (~150 of 403: `pain`, `sides`, `DamageBars`) | `HudSpritesPlugin` | `HudDamageIndicator` trapezoid look, left/right only, 1 s | Low: unit tests | 5 |
@@ -195,6 +195,29 @@ text, VGUI widgets and drawing of `map::hud` layouts; skeletal animation
 | L14 | Player animation driver | `game/player_anim.rs` (937) | the SDK animation state driving `Animator`, hand IK | Sequence names by weapon suffix, ground speeds, IK rules; hostages (`hostage_anim.rs`) stay | Medium: `animation.rs` (646), `drawn_parts.rs` | 12 |
 | L15 | Teams, respawn, round loop, game end | `rules.rs` (828), `rules/rounds.rs` (989), `rules/game_end.rs` (184), round part of `game/net.rs` (1079) | `DeathmatchPlugin`, `join_team`, `auto_assign`, `balance_teams`, `put_at_spawn`, `RoundState`, `NetRound` | Money, objectives, `mp_*` names and defaults, win reasons and strings, `RoundSummary` fun facts | High: `rounds.rs` (777), `teams.rs`, ui `net_rules.rs`, heavy `bot_rounds.rs`; the network, bots and movement name these types (game/rules.rs `//!`) | 13 |
 | L16 | Bots | `bot/mod.rs` (2921), `bot/path.rs` (311), `bot/look.rs` (267), `bot/aside.rs` (273), `bot/grenades.rs` (681) | the brain (aim, reaction, strafe, fire), path cost on `NavMesh`, corner checks, throws | `bot/tactics.rs`, `objectives.rs`, `radio.rs`, `buy.rs` stay CS:S; the brain reads CS:S's rounds and objectives | High: heavy `bot_nav.rs`, `bot_rounds.rs`, `bot_grenades.rs`, `bot_manners.rs`, `net_bots.rs` | 14 |
+
+Done (2026-10-18, branch worktree-agent-a32c8d838fb07efa1; CS:S unchanged,
+its tests passing):
+
+- L0: `chimera_client::client::app` (`run`: the executors, main and
+  render world, and `CHIMERA_SYSTEM_DUMP`; `single_threaded_schedules`,
+  `dump_systems`) used by both apps' main.rs; the version stamp is
+  chimera/core/build_stamp.rs, which each app's build.rs includes (CA's
+  build now has `VERSION`/`BUILD`, `core::BuildVersion`). The `load_map`
+  dispatcher and `client_hooks` stay per app (one line each in CA).
+- L4: `client::weapon_menu` holds the logic (`WeaponMenuPlugin`:
+  `slot1`..`slot5`, `invnext`/`invprev`, `cancelselect`, `menu_input`,
+  `next_in_slot`, `step_weapon`, `pick_of`, `WeaponMenuTimes`); the game
+  sets `WeaponMenu::takes_slots` (CS:S: `hud_fastswitch` and its panel).
+  CS:S's `weapon_select` keeps the look, `hud_fastswitch`, `TIMES`,
+  `show_deploys` and its no-op `slot6`..`slot10`; CA's front end adds the
+  plugin (no row: steps switch at once).
+- L5: the defaults were already `GameInfo::default_binds`; now the saved
+  config migration list is too (`GameInfo::old_default_binds`, CS:S's
+  `OLD_DEFAULT_BINDS`), and CS:S's `config_default.cfg` sample moved into
+  its own test. Chimera keeps only `CHIMERA_BINDS`; `DEFAULTS_MARK`'s
+  text is unchanged, so saved configs read as before. Left: `POLLED`
+  still names CS:S's polled commands (docs/tech-debt.md).
 
 Not needed by any board item yet (lift when a mode or minigame asks):
 automatic hints (`rules/hints.rs` 583 + `ui/hints.rs` 82: already data and

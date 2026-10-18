@@ -161,7 +161,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   never `cs_source`, Source's logic, `mashup` or an app (checked); only
   `ui` uses the presentation and the shell. `apps/combat_arms`
   (`combat_arms_app`) is its game binary (`combat_arms`): the greybox,
-  the shell with its HUD, the network. What Combat Arms needs that lives
+  the shell with its HUD, the network, its build's stamp. What Combat Arms needs that lives
   in `cs_source` today moves into Chimera first (a lift), never across.
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
   (`cs_source_server`): `cs_source_app` without `present`, so built alone it
@@ -506,6 +506,7 @@ that the paths exist).
 
 - `apps/cs_source/src/lib.rs`: `SimPlugins` (with the version), `client_hooks`, the harness's old paths (crate `cs_source_app`'s root)
 - `apps/cs_source/build.rs`: stamps the build's commit and version (`core::VERSION`, `core::BUILD`)
+- `chimera/core/build_stamp.rs`: the stamp every app's build.rs includes (git commit, version)
 - `src/lib.rs`: `mashup`: `cs_source_app` at the old paths, for `dump` and its test (crate root)
 - `apps/cs_source/src/main.rs`: the game binary (top)
 - `chimera/world/src/harness.rs`: `Sim`: a headless app on a given base stepped by exact ticks, for tests and tools (harness)
@@ -518,6 +519,7 @@ that the paths exist).
 - `apps/cs_source_server/src/main.rs`: the dedicated server, built without the presentation (top)
 - `games/combat_arms/src/harness.rs`: `CaSim`: Combat Arms' simulation as a `Sim`'s base (harness)
 - `apps/combat_arms/src/main.rs`: the Combat Arms game binary, `combat_arms`, on the greybox (top)
+- `apps/combat_arms/build.rs`: stamps the build's commit and version (`VERSION`, `BUILD`)
 - `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files (CS:S, Combat Arms)
 
 ### Tools (each layer's, `--features tools`)
@@ -551,6 +553,7 @@ that the paths exist).
 - `chimera/client/src/client/gamma.rs`, `gamma.wgsl`: `mat_monitorgamma` (client)
 - `chimera/client/src/client/night_vision.rs`, `night_vision.wgsl`: night vision goggles turned on and their green view (client)
 - `chimera/client/src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
+- `chimera/client/src/client/app.rs`: what every game binary does with its app: executors, `CHIMERA_SYSTEM_DUMP`, run (client)
 - `chimera/client/src/client/audio.rs`: the options' sound settings (client)
 - `chimera/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
 - `chimera/client/src/client/video.rs`: field of view, video and texture settings (client)
@@ -584,8 +587,8 @@ that the paths exist).
 - `games/cs_source/src/ui/game_hud.rs`: the game's own HUD panels (games_ui)
 - `chimera/client/src/client/hud_text.rs`, `hud_text.wgsl`: HUD text drawn as Source draws it (client)
 - `games/cs_source/src/ui/hud_sprites.rs`: HUD sprite icons and damage indicators (games_ui)
-- `games/cs_source/src/ui/weapon_select.rs`: weapon selection and pickup history (games_ui)
-- `chimera/client/src/client/weapon_menu.rs`: a HUD weapon selection's state, which input reads (client)
+- `games/cs_source/src/ui/weapon_select.rs`: CS:S's weapon selection row (look, `hud_fastswitch`) and pickup history (games_ui)
+- `chimera/client/src/client/weapon_menu.rs`: weapon selection for any game: state, commands, slot/wheel logic (client)
 - `games/cs_source/src/ui/objectives_hud.rs`: bomb, kit, hostage and zone icons, centre prints on the HUD (games_ui)
 - `games/cs_source/src/ui/hints.rs`: the automatic hints' text (the install's strings) and sound (games_ui)
 - `games/cs_source/src/ui/bomb_fx.rs`: what the bomb shows: the code on the C4 screen, the LED glow (games_ui)
