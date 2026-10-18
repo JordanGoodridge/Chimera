@@ -1,0 +1,544 @@
+# Combat Arms: model files (`.ltb`)
+
+Source basis: the engine's model loader and its renderer's mesh loaders, the model packer that writes the format, and the game code that reads model dimensions and sockets. Checked against the Steam install (build 25595979) on the Windows PC: every unencrypted model in it was parsed end to end, and the encrypted ones were checked as described under Test cases.
+Status: draft
+
+Sections: Summary; Units and conventions; Constants; File layout (header, counts block, model properties, pieces and levels of detail, mesh bodies, vertex formats, skeleton, weight sets, child models, animation section, sockets, animation bindings); Behaviour (level-of-detail choice, skinning, textures and render styles, bounds and dimensions, hit boxes, child models); Converting to a right-handed Y-up frame; Other files with model-like names; Edge cases; Quirks; Test cases; Synthetic fixture; Open questions.
+
+---
+
+## Summary
+
+- A Combat Arms model is a LithTech Jupiter "D3D model" `.ltb`: a 20-byte file header, a model version (23 or 25, same layout), a block of counts, then one pass through pieces, the node tree, weight sets, child-model names, animations, sockets and per-animation boxes. There is no table of contents, no offsets and no compression: a reader walks the sections in order, and the only section it cannot skip blindly is the animation data (its size follows from counts inside it).
+- Geometry is stored ready for Direct3D 9: each level of detail of a piece is one of four mesh kinds (rigid, skinned, vertex-animated, empty), with float vertices, a 16-bit triangle list and, for skinned meshes, either bone sets (groups of triangles sharing at most four bones) or a matrix palette.
+- The skeleton is a depth-first tree of named nodes, each with its model-space bind matrix. Sockets hang off nodes. The stand and crouch boxes the movement code uses are the per-animation dimensions of the animations named `LST` and `LC`.
+- Every model in the install uses the same layout. In the Steam build all unencrypted models are version 23 or 25; character, attachment and most weapon archives are encrypted (rez V2) and decrypt, where checked, to version 25 files.
+
+## Units and conventions
+
+- Byte order: little-endian everywhere. Floats are IEEE-754 binary32. There is **no alignment padding** after the 20-byte file header: a 1-byte field is followed directly by the next field.
+- Integer names: u8, u16, u32 unsigned; i32 signed; f32 float.
+- "string": a u16 length n, then n bytes of 8-bit text, **no** terminator. n = 0 is the empty string.
+- "vec3": 3 × f32 (x, y, z). "quat": 4 × f32 in the order (x, y, z, w), w being the scalar part. "mat4": 16 × f32, described under Skeleton.
+- Distance: LithTech world units ("u"), the unit of the movement and weapon specs. A character's standing box is 30 × 100 × 30 u. Nothing in the file scales it.
+- Axes: +Y up, +X right, +Z forward; the frame is **left-handed**. Transforms act on column vectors (p' = M p); the translation sits in the fourth column. Conversion to a right-handed Y-up frame is its own section below.
+- Angles appear only inside quaternions and matrices. Times inside the animation section are milliseconds (see the animation spec).
+- File names inside the game's archives are given as archive paths, e.g. `PROPS\HEADQUATERS\HQ_FLAG01.LTB`. Name lookups are case-insensitive.
+
+## Constants
+
+| Name (ours) | Value | Unit | Meaning |
+|---|---|---|---|
+| model file type | 1 | | Byte 0 of every model file (Direct3D model) |
+| container version | 9 | | u16 at byte 2; mesh loaders refuse anything else |
+| minimum model version | 23 | | Lower versions are refused |
+| observed model versions | 23, 25 | | Identical layout |
+| max pieces | 64 | | More is a load error |
+| max child models | 32 | | Count includes the model itself; 0 is a load error |
+| texture slots per piece | 4 | | Fixed-size list in each LOD record |
+| bone-set slots | 4 | | Unused slots hold 0xFF |
+| unused bone marker | 0xFF | | In bone sets |
+| max string the engine keeps | 4095 | bytes | Longer strings are truncated on load (binding names: 255) |
+| mesh kind: rigid | 4 | | |
+| mesh kind: skinned | 5 | | |
+| mesh kind: vertex-animated | 6 | | |
+| mesh kind: empty | 7 | | No geometry |
+| LOD bias console variable | `ModelLODOffset`, default 0 | LODs | Added to the chosen LOD index |
+| stand animation name | `LST` | | Source of the stand box |
+| crouch animation name | `LC` | | Source of the crouch box |
+| fallback stand / crouch half-extents | (15, 50, 15) / (15, 40, 15) | u | Used by the game only if either animation is missing |
+
+## File layout
+
+Sections follow each other with nothing between them, in the order of the subsections below. Offsets are absolute only in the header and counts block; after that every size is variable and offsets are relative to the start of the record being described.
+
+### File header (20 bytes)
+
+| Offset | Size | Type | Meaning |
+|---|---|---|---|
+| 0 | 1 | u8 | File type. 1 = Direct3D model. The loader refuses any other value. (Render-style files use 5; see "Other files".) |
+| 1 | 1 | u8 | Padding, 0. |
+| 2 | 2 | u16 | Container version, 9. Checked by the mesh loaders for every non-empty LOD. |
+| 4 | 1 | u8 | Reserved, 0. |
+| 5 | 3 | | Padding, 0. |
+| 8 | 12 | 3 × u32 | Reserved, 0. |
+
+So bytes 0..3 of every model are `01 00 09 00` and bytes 4..19 are zero in every file observed. A reader should check bytes 0 and 2..3 and ignore the rest.
+
+### Model version and counts block (offset 20, 64 bytes)
+
+| Offset | Size | Type | Meaning |
+|---|---|---|---|
+| 20 | 4 | u32 | Model version. Must be ≥ 23. Observed 23 and 25. |
+| 24 | 4 | u32 | Total keyframes over the model's own animations |
+| 28 | 4 | u32 | Number of the model's own animations |
+| 32 | 4 | u32 | Number of nodes |
+| 36 | 4 | u32 | Number of pieces |
+| 40 | 4 | u32 | Number of child models, counting the model itself |
+| 44 | 4 | u32 | Total triangles over all LODs |
+| 48 | 4 | u32 | Vertex count before the packer split vertices on UV seams (hint; differs from the stored count) |
+| 52 | 4 | u32 | Number of vertex weights (hint) |
+| 56 | 4 | u32 | Total LODs over all pieces |
+| 60 | 4 | u32 | Number of sockets |
+| 64 | 4 | u32 | Number of weight sets |
+| 68 | 4 | u32 | Number of strings (hint) |
+| 72 | 4 | u32 | Sum of string lengths (hint) |
+| 76 | 4 | u32 | Bytes of vertex-animation positions in the animation section |
+| 80 | 4 | u32 | Bytes of node transform tracks in the animation section |
+
+The engine uses this block only to size one memory allocation; nothing is located by it. In every observed file the keyframe, animation, node, piece, child, triangle, LOD and socket counts equal what the rest of the file contains, and the two byte counts equal the sums defined under "Animation section". The three fields marked hint do not need to match anything. A reader may use the exact ones as a consistency check.
+
+### Model properties (offset 84)
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | string | Command string. Usually empty. If it parses as the single token `ShadowEnable` (case-insensitive) the model casts shadows; nothing else in it is used. |
+| 2 | f32 | Visibility radius in u (culling sphere around the object position). Usually 96. |
+| 3 | u32 | Oriented-box count B. 0 in every observed file. |
+| 4 | B × 68 bytes | Oriented boxes, each: vec3 position, vec3 size, 3 × vec3 basis, u32 node, f32 radius. The engine reads and discards them. |
+| 5 | u32 | Piece count P (≤ 64). |
+
+Then P pieces.
+
+### Piece
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | string | Piece name (used by game code to hide or show parts). |
+| 2 | u32 | LOD count L (≥ 1 in practice). |
+| 3 | L × f32 | LOD distances in u. The first is always 0. |
+| 4 | u32 | Old minimum LOD offset. Ignored. |
+| 5 | u32 | Old maximum LOD offset. Ignored. |
+| 6 | L × LOD record | One per LOD, in increasing distance order. |
+
+### LOD record
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Number of texture slots used, T (1 or 2 observed, at most 4). |
+| 2 | 4 × i32 | Texture indices (slots beyond T are filler, typically 1, 2, 3). |
+| 3 | i32 | Render-style index. |
+| 4 | u8 | Render priority (0, 1 or 2 observed; see Open questions). |
+| 5 | u32 | Mesh kind: 4, 5, 6 or 7. Any other value is a load error. |
+| 6 | u32 | Body size S in bytes, counted from the byte after this field to the end of the body. |
+| 7 | S bytes | Mesh body (next subsection). For kind 7, S = 0. |
+| 8 | u8 | Used-node count U. |
+| 9 | U × u8 | Node indices this LOD needs transforms for (the leaves of the used part of the tree). A rigid mesh lists its one node; vertex-animated meshes list none. |
+
+Items 1 to 4 are stored once per LOD, but the engine keeps a single copy per piece, so the last LOD's values win; the packer writes the first LOD's values into every LOD, so they always agree. A reader can skip a body it does not understand with S, which makes the format forward-skippable at the LOD level.
+
+### Mesh bodies
+
+All counts are u32 unless stated. "Streams" means the four u32 vertex-stream flag words described under "Vertex formats". After the header fields come, for each of the four streams whose flag word is non-zero (in stream order), `vertex count × stride` bytes; then the triangle list: 3 × u16 per triangle, absolute vertex indices, a plain list (no strips, no fans).
+
+**Rigid (kind 4).** All vertices follow one node.
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Vertex count V |
+| 2 | u32 | Triangle count N |
+| 3 | u32 | Max bones per triangle (always 1) |
+| 4 | u32 | Max bones per vertex (always 1) |
+| 5 | 4 × u32 | Stream flags |
+| 6 | u32 | Node index the mesh follows |
+| 7 | | Vertex streams (stride without blend data), then N triangles |
+
+Size check: S = 36 + V·stride + 6N.
+
+**Skinned (kind 5).**
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Vertex count V |
+| 2 | u32 | Triangle count N |
+| 3 | u32 | Max bones per triangle, Bt |
+| 4 | u32 | Max bones per vertex, Bv |
+| 5 | u8 | Re-indexed flag (palette meshes only) |
+| 6 | 4 × u32 | Stream flags |
+| 7 | u8 | Palette flag: 0 = bone sets, non-zero = matrix palette |
+
+If the palette flag is 0 (bone sets; every skinned mesh in the Steam build's unencrypted archives, and all but three in the encrypted ones):
+
+| Order | Type | Meaning |
+|---|---|---|
+| 8 | | Vertex streams with k = Bt − 1 blend weights (Bt from 1 to 4), then N triangles |
+| 9 | u32 | Bone-set count G |
+| 10 | G × 12 bytes | Bone sets, each: u16 first vertex, u16 vertex count, 4 × u8 node indices (unused slots 0xFF, used ones in increasing order), u32 end of the set's triangles in the index list, counted in **indices** (3 per triangle) |
+
+Bone set g owns vertices [first, first + count) and the indices from the previous set's end (0 for the first) up to its own end. Sets are contiguous in both vertices and indices; together they cover all V vertices and all 3N indices; every index of a set falls inside that set's vertex range. Size check: S = 34 + V·stride + 6N + 4 + 12G.
+
+If the palette flag is non-zero:
+
+| Order | Type | Meaning |
+|---|---|---|
+| 8 | u32 | Lowest palette index used |
+| 9 | u32 | Highest palette index used |
+| 10 | | Only if the re-indexed flag is non-zero: u32 count R, then R × u32 node indices (palette entry i drives node list[i]) |
+| 11 | | Vertex streams with k = Bv − 1 blend weights (Bv from 2 to 4) plus 4 index bytes, then N triangles |
+
+No bone sets follow. Size check: S = 34 + 8 + (4 + 4R if re-indexed) + V·stride + 6N.
+
+**Vertex-animated (kind 6).** The vertex positions come from the animation section, per keyframe, for one node.
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Vertex count V (after seam splitting) |
+| 2 | u32 | Animated vertex count V₀ (before splitting; the animation stores this many positions per keyframe) |
+| 3 | u32 | Triangle count N |
+| 4 | u32 | Max bones per triangle (0) |
+| 5 | u32 | Max bones per vertex (0) |
+| 6 | 4 × u32 | Stream flags |
+| 7 | u32 | Node whose animation track holds the vertex positions |
+| 8 | u32 | Node the mesh is drawn with (always 0, the root) |
+| 9 | | Vertex streams (stride without blend data), then N triangles |
+| 10 | u32 | Duplicate count D |
+| 11 | D × (u16, u16) | Pairs (source, destination): after positions 0..V₀−1 are filled from the animation, copy vertex `source` to vertex `destination` |
+
+Size check: S = 44 + V·stride + 6N + 4 + 4D.
+
+**Empty (kind 7).** S = 0 and no body; the used-node count still follows. Used when a piece disappears at a far LOD. Not observed in the Steam build.
+
+### Vertex formats
+
+Each stream flag word is a bit set:
+
+| Bit | Meaning |
+|---|---|
+| 0x001 | Position |
+| 0x002 | Normal |
+| 0x004 | Colour |
+| 0x008 | Point size |
+| 0x010 | 1 UV set |
+| 0x020 | 2 UV sets |
+| 0x040 | 3 UV sets |
+| 0x080 | 4 UV sets |
+| 0x100 | Basis vectors (tangent and binormal) |
+
+**Every LOD in the install has flags (0x13, 0, 0, 0)**: one stream with position, normal and one UV set. Within a vertex the fields come in this order, each present only when its condition holds:
+
+| Field | Size | Condition | Encoding |
+|---|---|---|---|
+| position | 12 | bits 0x1 and 0x2 both set | vec3, model space at bind pose |
+| blend weights | 4k | skinned meshes | k × f32 (k as given per kind above) |
+| blend indices | 4 | palette meshes | 4 × u8 palette indices, matching the weights in order |
+| normal | 12 | bits 0x1 and 0x2 both set | vec3, model space, normally unit length |
+| UVs | 8u | u = 1, 2, 3 or 4 from the lowest UV bit set | u × (f32 u, f32 v) |
+| basis | 24 | bit 0x100 | vec3 tangent, vec3 binormal |
+
+```math
+\text{stride} = 24\,[\text{pos} \wedge \text{normal}] + 4k + 4\,[\text{palette}] + 8u + 24\,[\text{basis}]
+```
+
+For the format the install uses, stride = 32 + 4k (+4 for palette meshes): 32 for rigid and vertex-animated meshes, 32 / 36 / 40 / 44 for bone-set meshes with Bt = 1 / 2 / 3 / 4, and 40 / 44 / 48 for palette meshes with Bv = 2 / 3 / 4.
+
+UVs are handed to Direct3D unchanged: origin at the top-left of the texture, v growing downwards. Values outside [0, 1] occur (textures wrap).
+
+Bits the install never uses, for completeness: the game sizes a vertex from position, normal, blend data, UVs and basis only; it does **not** count colour or point size, while the packer writes a 4-byte colour (after the normal) when bit 0x4 is set. A file with bit 0x4 would therefore not load in the game. A reader should reject flag words other than 0 and 0x13 (or implement the table above and treat 0x4 and 0x8 as unsupported).
+
+### Skeleton (node tree)
+
+The node tree follows the last piece. It is written depth-first, pre-order, starting with the root; each node record is followed immediately by its children's records.
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | string | Node name |
+| 2 | u16 | Node index (equals the node's position in depth-first order; the engine renumbers by that order anyway) |
+| 3 | u8 | Flags. 0x2 = use only the rotation part of animation data for this node. Observed 0 and 2. |
+| 4 | mat4 | Bind transform: the node's **model-space** (global) transform at bind pose |
+| 5 | u32 | Child count C, then C child node records |
+
+- The number of node records read must equal the counts block's node count (it always does). The root is usually named `Scene Root` with an identity matrix.
+- Parent links are implicit: node i's parent is the node whose child list contains it; the root has none. Node indices used everywhere else (rigid nodes, bone sets, used-node lists, sockets, animation tracks, weight sets) are depth-first positions.
+- Matrix layout: the 16 floats are row-major, `m[r][c]` at position 4r + c. Rows 0..2 hold the rotation/scale in columns 0..2 and the translation in column 3; row 3 is (0, 0, 0, 1) in every file. A point p in the node's space goes to model space as M p:
+
+```math
+\begin{pmatrix} x' \\ y' \\ z' \end{pmatrix} = \begin{pmatrix} m_{00} & m_{01} & m_{02} \\ m_{10} & m_{11} & m_{12} \\ m_{20} & m_{21} & m_{22} \end{pmatrix} \begin{pmatrix} x \\ y \\ z \end{pmatrix} + \begin{pmatrix} m_{03} \\ m_{13} \\ m_{23} \end{pmatrix}
+```
+
+- The node's local (parent-relative) bind transform is
+```math
+L_i = G_{\text{parent}(i)}^{-1}\, G_i, \qquad L_{\text{root}} = G_{\text{root}}
+```
+and its bind offset from its parent is the translation column of L_i (0 for the root).
+
+### Weight sets
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Weight-set count W |
+| 2 | W × record | Each: string name, u32 count n, n × f32 |
+
+Each set's n must equal the node count, or the model fails to load. They are per-node blend weights used when layering animations (animation spec). Observed names: `upper`, `Lower` and others; many models have none.
+
+### Child models
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Child count K, counting the model itself (1 ≤ K ≤ 32) |
+| 2 | (K − 1) × string | File names of children 1 .. K−1 (child 0 is the model itself and has no name) |
+
+Names are bare file names such as `st_m_child.ltb` or `Ani_AR_M4A1_SH.ltb`, resolved in the folder of the model that names them, case-insensitively. Behaviour is under "Child models" below.
+
+### Animation section
+
+Its content belongs to specs/combat_arms/animation.md; here only where it is and how to get past it. It starts right after the child names with a u32 animation count A. Its length is not stored, so a reader walks it as follows (all sizes in bytes):
+
+1. For each of the A animations: vec3 dimensions (12), string name, u32 compression mode c, u32 blend time, u32 keyframe count K, then K × (u32 time, string).
+2. Then one track per node, in depth-first node order:
+   - c = 0: a u8 flag. Flag 0: 28K bytes. Flag non-zero (vertex-animated node): K times (u32 count n, then 12n bytes).
+   - c = 1, 2 or 3: u32 count a, then a·p bytes; u32 count b, then b·q bytes; with p = 6 if c = 2, else 12; and q = 8 if c is 2 or 3, else 16.
+   - Any other c is a load error.
+
+The counts block's last field equals the sum over all tracks of the 28K, a·p and b·q byte runs, and the field before it the sum of the 12n vertex runs. The animation dimensions (step 1) are the bounding boxes described under "Bounds and dimensions". In the observed files the section ranges from about 100 bytes (props) to almost all of the file (animation libraries of tens of megabytes).
+
+### Sockets
+
+| Order | Type | Meaning |
+|---|---|---|
+| 1 | u32 | Socket count |
+| 2 | per socket: u32 | Node index (must be < node count, else load error) |
+| 3 | string | Socket name |
+| 4 | quat | Rotation relative to the node |
+| 5 | vec3 | Position relative to the node, in the node's space |
+| 6 | vec3 | Scale (1, 1, 1 in every observed file) |
+
+### Animation bindings
+
+The last section: for each of the K child models in order (child 0 = the model itself), a u32 count, then that many records of: string animation name, vec3 dimensions, vec3 translation. The file ends here; observed files have no trailing bytes.
+
+For child 0 the list repeats the model's own animations one for one, in the same order, with the same dimensions, plus a translation. For children 1 .. K−1 the lists are empty in every observed file.
+
+## Behaviour
+
+### Load order
+
+1. Check the header (file type 1) and the version (≥ 23); read the counts block.
+2. Command string, visibility radius, oriented boxes (discarded).
+3. Pieces, each with its LODs; every non-empty LOD checks the container version 9.
+4. Node tree; build the depth-first node list and parent links.
+5. Weight sets (each must have one weight per node).
+6. Child-model names.
+7. Animations.
+8. Sockets.
+9. Bindings for each child.
+10. If any read ran past the end of the data, the load fails.
+11. Parse the command string; compute each node's bind offset from its parent.
+
+Then, when the model is instanced: load the children (below), build the combined animation list and apply the bindings.
+
+### Level-of-detail choice
+
+Each piece chooses its LOD per frame from the distance d between the camera and the model's position (not its bounds). With LOD distances t₀ = 0 < t₁ < … < t_{L−1}:
+
+```math
+\ell(d) = \begin{cases} \min\{\, i \in [0, L-2] : d < t_{i+1} \,\} & \text{if such } i \text{ exists and } d > 0 \\ L-1 & \text{if } d \ge t_{L-1} \text{ and } d > 0 \\ 0 & \text{if } d \le 0 \end{cases}
+```
+```math
+\ell_{\text{final}} = \operatorname{clamp}(\ell(d) + \text{ModelLODOffset},\ 0,\ L-1)
+```
+
+The distance is forced to 0 (so LOD 0) for "really close" objects (the first-person view model) and for models drawn as part of menu screens. Most pieces have one LOD; character bodies with three LODs use distances (0, 400, 800).
+
+### Skinning
+
+Let G_j be node j's bind transform from the file and A_j its animated model-space transform for the current frame (the animation spec says how A is built; at bind pose A_j = G_j). The engine draws with
+
+```math
+K_j = A_j\, G_j^{-1}
+```
+
+applied to bind-pose model-space vertices.
+
+- **Rigid:** every vertex uses K of the mesh's node: p' = K_node p, n' = rot(K_node) n.
+- **Bone sets:** for a vertex in set g with used bones b_0 < b_1 < … < b_{m−1} (m = number of non-0xFF slots, m ≤ Bt) and stored weights w_0 … w_{k−1}:
+
+```math
+p' = \sum_{j=0}^{m-2} w_j\, K_{b_j} p \;+\; \Big(1 - \sum_{j=0}^{m-2} w_j\Big) K_{b_{m-1}} p
+```
+
+  Only the first m − 1 stored weights are used; stored weights beyond them are 0 in practice. With m = 1 the vertex follows b_0 fully. Normals use the same weights with the rotation parts.
+- **Palette:** with indices i_0..i_3 and stored weights w_0 … w_{k−1} (k = Bv − 1), the vertex blends K over nodes ν(i_0) … ν(i_k), the last weight being 1 − Σw; ν(i) = list[i] when the re-indexed flag is set, otherwise ν(i) = i. Indices beyond i_k are ignored.
+- **Vertex-animated:** positions 0 .. V₀−1 for the current frame come from the named node's track (animation spec), then the duplicate pairs are copied; the mesh is drawn with K of its draw node (the root).
+
+In every file checked the stored weights of a vertex sum to at most 1.
+
+### Textures and render styles
+
+A piece does not name its textures or render style. Its texture indices (slots 0 .. T−1) and its render-style index point into lists the game gives the model object when it creates it: the object's skin list (texture file names, `.dtx`) and render-style list (render-style `.ltb` files, see "Other files"). For weapons these lists are the `PVSkin*` / `HHSkin*` and `PVRenderStyle*` / `HHRenderStyle*` attributes (specs/combat_arms/attribute_data.md); characters get theirs from the model attributes. A missing entry draws the slot with no texture; a missing render style falls back to the engine's default style. Several pieces commonly share index 0.
+
+### Bounds and dimensions
+
+The file stores no mesh bounding box. What it does store:
+
+- **Visibility radius** (model properties): a culling sphere radius around the object position; an instanced model uses the largest radius of itself and its children.
+- **Per-animation dimensions:** half-extents (half-width X, half-height Y, half-depth Z) of an axis-aligned box centred on the object position. This is the box the game gives the object (the movement spec's hull). The value used for an animation is the one in the bindings when the binding applies, otherwise the animation's own; in every file the two agree.
+- **Per-animation translation** (bindings only): a vec3 added to the root node's animated position while that animation plays, blended between the previous and current animation like the rest of the pose. Character animation libraries use (0, −half-height, 0), e.g. (0, −50, 0) for `LST` and (0, −40, 0) for `LC`, which puts the feet of the animated skeleton at the bottom of the box.
+
+**Stand and crouch boxes:** the server and the client's mover both look up the animations named `LST` (stand) and `LC` (crouch) in the character's combined animation list (its own animations followed by its children's) and take their dimensions. If either is missing the server uses (15, 50, 15) and (15, 40, 15). In the male and female character animation libraries the values are exactly (15, 50, 15) and (15, 40, 15); the small and big creature libraries use (80, 100, 50) / (80, 70, 50) and (128, 150, 70) / (128, 120, 80).
+
+Props carry their size the same way: for example the headquarters flag's single animation has dimensions (66.2, 32, 41.4), which the headquarters game mode reads at run time.
+
+### Hit boxes and collision
+
+There are no hit or collision boxes in a Combat Arms model. The oriented-box list is always empty and the engine throws it away. Hit detection uses the character's hit-box dimensions and offset from game data and a per-node hit radius from the model attribute file (specs/combat_arms/attribute_data.md); the models contribute only node positions. World collision uses the object's dimensions (above).
+
+### Child models
+
+- Child models provide extra animations (and must provide a matching skeleton): a body model typically has one animation of its own and names an animation library as child 1; a first-person weapon model names its animation file the same way.
+- Children are loaded by name relative to the parent's folder, one level only: a child that itself has children is an error, and a missing child makes the whole model fail to load.
+- The combined animation list is the model's own animations, then child 1's, then child 2's, and so on. Animation tracks map to nodes by **index**: a child must have the same node count and the same tree shape; node names may differ (they do in 14 of 283 observed parent/child pairs).
+- After combining, each child's binding list (if non-empty) overrides the dimensions and translation of the animation with the same name from that child.
+
+## Converting to a right-handed Y-up frame
+
+Mirror the Z axis, S = diag(1, 1, −1). LithTech's forward +Z becomes −Z, which is forward in Bevy and glTF.
+
+| Data | Conversion |
+|---|---|
+| positions, normals, tangents, binormals, socket positions, binding translations, node translations | (x, y, z) → (x, y, −z) |
+| mat4 (bind transforms) | M' = S M S: negate m₀₂, m₁₂, m₂₀, m₂₁ and m₂₃ |
+| quat (sockets, animation) | (x, y, z, w) → (−x, −y, z, w) |
+| triangles | swap the second and third index of every triangle |
+| dimensions (half-extents) | unchanged |
+| UVs | unchanged |
+
+Winding: in the file, for every triangle (a, b, c) the vector (p_b − p_a) × (p_c − p_a), computed with the usual component formula, points along the vertex normals, i.e. front faces are clockwise as seen from outside in the left-handed frame (Direct3D's default). After mirroring, the same order would point against the mirrored normals; swapping two indices restores it, giving counter-clockwise front faces in the right-handed frame.
+
+Units can stay as they are (the other Combat Arms specs use u); if metres are wanted, see Open questions.
+
+## Other files with model-like names
+
+- **Render-style files** (`RS\*.LTB`, file type 5 at byte 0, container version 3): not models. The model loader refuses them. Their format is not covered here.
+- **Text-header `.ltb` files:** six files in `FX` (`264`, `SKYFRAME`, `TEST\PATH_FUEL`, `TEST\RING`, `TORNADORING1`, `TORNADORING2`) begin with a u16-prefixed `LTBHeader` string instead of the header above. The model loader refuses them (byte 0 is not 1); they are unused leftovers.
+- **Old version:** `FX\WATERFALL2.LTB` is a model of version 18, which the loader refuses.
+- **`.LTA` / `.LTC`** (in `FX`): the packer's text source and a compressed form of it. The engine never loads them.
+- Models are only loaded from files ending in `.ltb`.
+
+## Edge cases
+
+- **Encrypted archives.** Models in V2-keyed archives (ATTACH_M, CHARS_M_BODY, CHARS_M_FACE, CHARS_M_HAND, CHARS_M_HEAD, CHARS_T_BODY, GUNS_M_HH, GUNS_M_PV_AR, GUNS_M_PV_MELEE, GUNS_M_PV_SMG, GUNS_M_PV_SR, GUNS_M_PV_Throwing) must be decrypted by the rez layer first (specs/combat_arms/rez_archive.md). Decryption leaves the size unchanged; the last `size mod 16` bytes of such a file are already plaintext.
+- **No whole-file compression** exists. A file whose bytes 0..3 are not `01 00 09 00` is either another kind of file or still encrypted.
+- **Counts block mismatches**: never seen except in the three hint fields; a reader should trust the sections themselves.
+- **Strings longer than the engine keeps** (4095, or 255 for binding names) are cut on load; none observed.
+- **Zero-length normals:** some vertices have normal (0, 0, 0) (e.g. in the M4A1 first-person model). Do not normalise blindly.
+- **Non-unit quaternions:** the engine turns quaternions into matrices with a formula that divides by |q|², so a non-unit quaternion means the rotation of its normalised form. Example: the headquarters flag's socket stores (0, 0, 0, 0.7071), which is the identity.
+- **Socket placement** (used for muzzle flash, attachments, name tags): world socket rotation = node rotation × socket rotation; world socket position = node position + node rotation applied to the socket position. The socket's scale replaces the node's (it is not multiplied).
+- **Socket count 0** is allowed. **Animation count 0** is allowed (one first-person model has none).
+- **Trailing bytes** after the bindings are not checked by the engine; a strict reader may reject them, as none exist.
+- **Rigid meshes with a node beyond the node count, triangle indices ≥ V, or bone-set ranges that do not tile the mesh** never occur; the engine does not check them. A reader should reject them.
+
+## Quirks
+
+- **Duplicate texture data per LOD**: every LOD repeats the texture and render-style fields, but only one copy is kept (see LOD record). Keep: harmless.
+- **Misspelt shadow commands**: some models' command strings read `ShadoeEnable`, `Shadow_Enable` or `shdowEnable`; those models do **not** cast shadows. Keep (it is the shipped look).
+- **Old LOD offsets**: two per piece, written and ignored (some files have (0, 2)). Ignore.
+- **Node index field**: written, then overwritten by depth-first numbering. Ignore it, or check it.
+- **Version 23 vs 25**: no difference in the reader. Treat both the same.
+- **The packer splits vertices on UV seams**, so the stored vertex count is larger than the counts block's vertex field; vertex-animated meshes keep the unsplit count V₀ for their animation data and copy the duplicates.
+- **Odd skeleton names**: some characters' trees look misnamed (e.g. `Right_pelvis` is a child of `Left_pelvis`). They are data; keep them.
+
+## Test cases
+
+Measured on the Steam build 25595979 (manifest build id). Files in unencrypted archives were read straight from the install. Files in V2-keyed archives (marked "V2") could not be decrypted in this session; their values were measured on an unencrypted copy of the same file that has the same size and whose unencrypted tail (`size mod 16` bytes) is identical to the Steam copy's, so the coordinator should re-measure them after decryption. Coordinates are as stored (left-handed). Floats to 3 decimals unless exact; compare with a tolerance of 0.001.
+
+1. **Census of the unencrypted archives.** Over all `.LTB` files in PROPS, MODELS, FX, GUNSMITH_NPC, GUNS_M_PV_ETC, GUNS_M_PV_LAUNCHER, GUNS_M_PV_MG, GUNS_M_PV_OPTION, GUNS_M_PV_Pistol, GUNS_M_PV_SG, GUNS_PT, GUNS_SC, PS and RS: 815 files are models that parse exactly to their last byte; 161 have version 23 and 654 version 25; all have bytes 0..19 = `01 00 09 00` followed by 16 zero bytes; all have 0 oriented boxes; there are 2713 pieces, each with 1 LOD: 1733 rigid, 858 skinned (all with bone sets) and 122 vertex-animated, 0 empty; every LOD's stream flags are (0x13, 0, 0, 0); every LOD's body size equals the bytes its body actually takes. The other 72 `.LTB` files are refused: 65 render-style files in RS (byte 0 = 5), the 6 text-header files in FX listed above, and `FX\WATERFALL2.LTB` (version 18).
+2. **World prop, rigid: `PROPS\HEADQUATERS\HQ_FLAGPOLE01.LTB`** (headquarters flagpole). 4,873 bytes; version 25; visibility radius 270.872; 1 piece `HQ_flagpole01`, 1 LOD, rigid, 116 vertices, 86 triangles, follows node 1, body size 4,264, texture slots 1 (index 0), render style 0; 2 nodes: `Scene Root` (no parent), `flagpole01` (parent `Scene Root`, flags 2); bind transform of `flagpole01` has rows (1, 0, 0, 0), (0, 0, 1, 0), (0, −1, 0, 0), (0, 0, 0, 1); sockets `HQ_pole_top` at (0, 0, 252) and `HQ_pole_bottom` at (0, 0, 4), both on `flagpole01` with rotation (0.707, 0, 0, 0.707); 1 animation `HQ_Flagpole01`, 1 keyframe, dimensions (10, 270, 10); binding translation (0, 0, 0); vertex bounds (−2.146, 0, −1.858) to (2.146, 268.190, 1.858).
+3. **Socket in model space.** In test 2, `HQ_pole_top` at bind pose is at model-space (0, 252, 0) (node matrix applied to (0, 0, 252)), which is (0, 252, 0) after conversion too; `HQ_pole_bottom` is at (0, 4, 0).
+4. **World prop, skinned: `PROPS\HEADQUATERS\HQ_FLAG01.LTB`** (headquarters flag). 19,572 bytes; version 25; radius 96; 1 piece `flag`, 1 LOD, skinned with bone sets, Bt = 3, Bv = 3, stride 40, 56 vertices, 60 triangles, 2 bone sets: (first 0, count 32, nodes 2, 3, 4, index end 108) and (32, 24, nodes 1, 2, 3, 180); 5 nodes: `Scene Root` (none), `D_flag` (parent `Scene Root`), `Bone01` (`D_flag`), `Bone02` (`Bone01`), `Bone03` (`Bone02`); 1 socket `HQ_flag_C` on `D_flag`, rotation (0, 0, 0, 0.707); 1 animation `HQ_flag01`, 111 keyframes, compression 0, dimensions (66.2, 32, 41.4); counts block: keyframes 111, transform-track bytes 15,540 (= 111 × 5 × 28); vertex bounds (1.2, 252, 0) to (71.2, 300, 0).
+5. **Vertex-animated prop: `PROPS\SAND_HOG\SH_LAPTOP.LTB`** (laptop). 213,233 bytes; version 25; radius 27.252; 6 pieces: `d_Normal_Screen`, `d_HackScreen`, `d_CopyScreen`, `d_Gauge`, `d_ConfirmScreen` (each vertex-animated, 4 vertices, V₀ = 4, 2 triangles, 0 duplicates, body size 188, animated by nodes 1 to 5 in that order) and `Laptop_Body` (rigid, 125 vertices, 60 triangles, node 6); 7 nodes, root `Scene Root` with flags 2 and six children (`d_Normal_Screen` … `Laptop_Bone`); 1 animation `Base_Anim`, 642 keyframes, dimensions (14.5, 21.8, 13.9); counts block vertex-animation bytes 154,080 (= 5 × 4 × 642 × 12) and track bytes 35,952.
+6. **First-person weapon, unencrypted: `GUNS_M_PV_PISTOL\PV_PST_M92FS_SH.LTB`** (the M92FS first-person model). 60,570 bytes; version 25; 5 pieces, all rigid, 1 LOD: `Object04` 7 v / 5 t (node 24), `Object05` 42 / 34 (node 26), `Object02` 1001 / 708 (node 24), `Object06` 322 / 254 (node 28), `Object07` 108 / 79 (node 31); 51 nodes, including `Bip01` (parent `Scene Root`), `Bip01 R Hand` (parent `Bip01 R Forearm`), `Box06` (parent `Box05`); sockets `flash` at (0, 0.078125, 0.640625) and `breach` at (0.171875, 0.0625, −0.140625), both on `Box06` (node 27); 1 own animation (`CM_HND_SP_DF_Beretta_M92F_FS_CH`, 1 keyframe, dimensions (2, 2, 2)); 2 child models, child 1 `Ani_PST_M92FS_SH.ltb`; vertex bounds (4.131, 3.206, 0.049) to (5.397, 3.968, 0.372).
+7. **Its animation child: `GUNS_M_PV_PISTOL\ANI_PST_M92FS_SH.LTB`.** 191,067 bytes; 3 skinned pieces (`arm_SH` 1650 v / 1332 t, `Object01` 510 / 608, `PV_COLT` 1095 / 754); 51 nodes with the same tree shape as test 6; 13 animations, all compression 3: `select`, `idle_0`, `idle_1`, `prefire`, `fire_0`, `postfire`, `reload`, `dryfire`, `PreReload`, `PostReload`, `PreRush`, `rush`, `PostRush`; all dimensions (2, 2, 2) and all binding translations (−0.4, −3.6, −1.2); no sockets. Combined list of test 6 + this file: 14 animations, the M92FS model's own first.
+8. **First-person weapon, V2: `GUNS_M_PV_AR\PV_AR_M4A1_SH.LTB`** (the M4A1's first-person model). 112,806 bytes; version 25; 1 piece `Object011`, skinned with bone sets, Bt = 2, Bv = 1, stride 36, 2690 vertices, 1617 triangles, 8 bone sets, texture index 1; 50 nodes, including `Box01` (parent `Scene Root`), `Box12` (parent `Box01`), `Bip01 L Clavicle` (parent `Bip01 Neck`); sockets `Flash` at (2.984, 0.140625, 0) and `Breach` at (0.328125, 0.0625, −0.109375), both on `Box12` (node 2); 1 own animation `CW_HND_SP_DF_M4A1_CH` (compression 3, 1 keyframe, dimensions (2, 2, 2)); child 1 `Ani_AR_M4A1_SH.ltb`; vertex bounds (0.542, 2.474, 0.260) to (0.933, 3.975, 4.638); some normals are (0, 0, 0).
+9. **Its animation child, V2: `GUNS_M_PV_AR\ANI_AR_M4A1_SH.LTB`.** 305,925 bytes; 3 skinned pieces: `PV_M4a1` 1372 v / 807 t (Bt 2), `arm_SH` 1650 / 1332 (Bt 3), `Object01` 510 / 608 (Bt 3); 50 nodes; 13 animations (same names as test 7), 236 keyframes in total, compression 3; `fire_0` has a keyframe at time 0 with the string `FIRE_KEY`; all binding translations (−0.4, −3.6, −1.2); vertex bounds (−4.955, 2.866, −0.364) to (7.472, 4.369, 0.359).
+10. **Character body, V2: `CHARS_M_BODY\CM_BODY_ALPHATEAM_KI.LTB`** (an Alpha Team male body). 276,818 bytes; version 25; radius 96; 8 pieces, 1 LOD each: `Clan_Emblem_Up` rigid 10 v / 9 t (node 12), `Friendly_Sign_LV3` rigid 24 / 18 (node 25), `Clan_Emblem_Down` rigid 10 / 9 (node 12), `alpha_vst` skinned 2999 / 2802 (Bt 4, stride 44, 44 bone sets), `alpha_leg` skinned 1268 / 1279 (Bt 3, 16 sets), `alpha_gear` rigid 87 / 42 (node 13, 2 texture slots), `alpha_protector` skinned 36 / 58 (Bt 2, 1 set), `alpha_magazine` rigid 1575 / 597 (node 5); 6009 vertices and 4814 triangles in total (counts block: 4814); 53 nodes, including `Scene Root` (none), `Head` (parent `Neck`), `Right_hand` (parent `Right_arml`); 2 weight sets `upper` and `Lower` of 53 weights; 18 sockets: `Eyes`, `LeftHand`, `RightHand`, `1W_N`, `P_BAG_N`, `NAME_socket`, `Left_armu1`, `Left_arml1`, `Right_armu1`, `Right_arml1`, `Left_legu1`, `Left_legl1`, `Right_Legu1`, `Right_legl1`, `Face_Eyelid1`, `Nuts`, `eye_l`, `eye_r` (`RightHand` on node 27 at (7.085, 1.661, 1.277)); 1 own animation (dimensions (2, 2, 2)); child 1 `st_m_child.ltb`, with an empty binding list; vertex bounds (−36.613, −54.615, −11.978) to (36.612, 32.998, 13.859).
+11. **Stand and crouch boxes, V2: `CHARS_M_BODY\ST_M_CHILD.LTB`** (the male character animation library). 53 nodes, same tree shape as test 10; `LST` dimensions (15, 50, 15), binding translation (0, −50, 0); `LC` dimensions (15, 40, 15), translation (0, −40, 0); all animations compression 0. Caveat: the Steam copy is 66,900,324 bytes, larger than the measured copy (64,326,833 bytes, 1504 animations), so the coordinator must check the animation count and these values on the decrypted Steam file. For test 10's combined list, looking up `LST` must return (15, 50, 15).
+12. **Unencrypted character: `GUNSMITH_NPC\NPC_MODEL.LTB`** (the gunsmith NPC). 543,330 bytes; version 25; 9 pieces of one LOD: `cap` skinned 812 / 822, `base` skinned 3501 / 3320, `eye_1` rigid 140 / 168, `Cylinder02` skinned 1370 / 1710, `eye_el` rigid 109 / 133, `Plane05` rigid 9 / 5, `table` rigid 1689 / 1202, `Plane02` rigid 4 / 2, `Plane06` skinned 4 / 2; 69 nodes, including `Point01` (parent `Scene Root`), `bone_03` (parent `Point01`), `Bip01 Pelvis` (parent `Bip01`); no sockets; 1 own animation `npc_model` (92 keyframes, dimensions (15, 50, 15)); child 1 `npc_ani.ltb` (`GUNSMITH_NPC\NPC_ANI.LTB`, 2,954,119 bytes, 69 nodes, 11 animations starting `start`, `idle_1`, `idle_2`).
+13. **Three LODs, V2: `CHARS_M_BODY\CM_HV_UR_BRANDON_JS.LTB`.** 392,166 bytes; pieces `Urban_Leg` and `Urban_Torso` have 3 LODs at distances (0, 400, 800) and old LOD offsets (0, 2); `Urban_Leg` LODs have 1564 / 1425, 936 / 711 and 631 / 427 vertices / triangles, `Urban_Torso` 2370 / 2010, 1355 / 1004, 885 / 602; the other three pieces have 1 LOD; child 1 `ST_M_child.ltb`.
+14. **LOD choice** with distances (0, 400, 800) and bias 0: d = 0 → 0; d = 399.9 → 0; d = 400 → 1; d = 799.9 → 1; d = 800 → 2; d = 5000 → 2. With bias +1: d = 0 → 1, d = 800 → 2. With bias −1: d = 400 → 0. A piece with one LOD always gives 0.
+15. **Winding.** For every triangle of `PROPS\HEADQUATERS\HQ_FLAGPOLE01.LTB` (86), `GUNS_M_PV_PISTOL\PV_PST_M92FS_SH.LTB` (1080) and `MODELS\SPHERE.LTB` (840), (p_b − p_a) × (p_c − p_a) has a positive dot product with the sum of the three vertex normals. After conversion with index swap, the same holds for the converted data.
+16. **Bone sets.** For every bone-set mesh in tests 4 and 8 to 10: sets tile the vertices and indices exactly, every index of a set lies in its vertex range, used bones are increasing, and every vertex's stored weights sum to at most 1.
+17. **Parent and child skeletons.** For tests 6/7, 8/9 and 10/11 (and 12 with its child), parent and child have equal node counts and equal depth-first parent lists.
+18. **Body sizes.** In tests 2, 4 and 5, rigid bodies are 36 + 32V + 6N, bone-set bodies 34 + V·stride + 6N + 4 + 12G, and vertex-animated bodies 44 + 32V + 6N + 4 + 4D (4,264, 2,662 and 188).
+19. **Synthetic fixture** (next section): a reader produces exactly the values listed there and consumes all 540 bytes.
+20. **Refusals** (each a modified copy of the fixture): byte 0 = 5 → refused as not a model; version 22 → refused; piece count 65 → refused; LOD mesh kind 8 → refused; child count 0 → refused; a weight set with fewer weights than nodes → refused; a socket on node 1 when there is one node → refused; container version 8 with a rigid LOD → refused; the file cut short anywhere → refused.
+21. **Conversion.** A vertex (1, 2, 3) with normal (0, 0, 1) becomes (1, 2, −3) with normal (0, 0, −1); triangle (0, 1, 2) becomes (0, 2, 1); quaternion (0.1, 0.2, 0.3, 0.927) becomes (−0.1, −0.2, 0.3, 0.927); a bind matrix with translation column (1, 2, 3) becomes one with (1, 2, −3); test 2's `flagpole01` rows become (1, 0, 0, 0), (0, 0, −1, 0), (0, 1, 0, 0).
+
+## Synthetic fixture
+
+A minimal valid model a reader's unit tests can build in code: one rigid triangle on a single root node, one animation `LST` with one keyframe, one socket and one binding. Total 540 bytes. All values little-endian.
+
+| Offset | Size | Field | Value |
+|---|---|---|---|
+| 0 | 1 | file type | 1 |
+| 1 | 1 | padding | 0 |
+| 2 | 2 | container version (u16) | 9 |
+| 4 | 16 | reserved and padding | all 0 |
+| 20 | 4 | model version | 25 |
+| 24 | 60 | counts block, 15 × u32 | 1, 1, 1, 1, 1, 1, 3, 3, 1, 1, 0, 4, 22, 0, 28 |
+| 84 | 2 | command string length | 0 |
+| 86 | 4 | visibility radius (f32) | 10.0 |
+| 90 | 4 | oriented boxes | 0 |
+| 94 | 4 | piece count | 1 |
+| 98 | 6 | piece name | length 4, `Body` |
+| 104 | 4 | LOD count | 1 |
+| 108 | 4 | LOD distance 0 (f32) | 0.0 |
+| 112 | 8 | old LOD offsets | 0, 0 |
+| 120 | 4 | texture slots used | 1 |
+| 124 | 16 | texture indices (4 × i32) | 0, 0, 0, 0 |
+| 140 | 4 | render-style index | 0 |
+| 144 | 1 | render priority | 0 |
+| 145 | 4 | mesh kind | 4 (rigid) |
+| 149 | 4 | body size | 138 |
+| 153 | 4 | vertex count | 3 |
+| 157 | 4 | triangle count | 1 |
+| 161 | 4 | max bones per triangle | 1 |
+| 165 | 4 | max bones per vertex | 1 |
+| 169 | 16 | stream flags | 0x13, 0, 0, 0 |
+| 185 | 4 | node | 0 |
+| 189 | 32 | vertex 0 | position (0, 0, 0), normal (0, 0, 1), UV (0, 0) |
+| 221 | 32 | vertex 1 | position (10, 0, 0), normal (0, 0, 1), UV (1, 0) |
+| 253 | 32 | vertex 2 | position (0, 10, 0), normal (0, 0, 1), UV (0, 1) |
+| 285 | 6 | triangle (3 × u16) | 0, 1, 2 |
+| 291 | 1 | used-node count | 1 |
+| 292 | 1 | used node | 0 |
+| 293 | 12 | root node name | length 10, `Scene Root` |
+| 305 | 2 | node index (u16) | 0 |
+| 307 | 1 | node flags | 0 |
+| 308 | 64 | bind transform | identity (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) |
+| 372 | 4 | child node count | 0 |
+| 376 | 4 | weight sets | 0 |
+| 380 | 4 | child models (incl. self) | 1 |
+| 384 | 4 | animation count | 1 |
+| 388 | 12 | dimensions | (15, 50, 15) |
+| 400 | 5 | animation name | length 3, `LST` |
+| 405 | 4 | compression mode | 0 |
+| 409 | 4 | blend time | 200 |
+| 413 | 4 | keyframe count | 1 |
+| 417 | 4 | keyframe time | 0 |
+| 421 | 2 | keyframe string | length 0 |
+| 423 | 1 | track flag (node 0) | 0 |
+| 424 | 12 | position key | (0, 0, 0) |
+| 436 | 16 | rotation key | (0, 0, 0, 1) |
+| 452 | 4 | socket count | 1 |
+| 456 | 4 | socket node | 0 |
+| 460 | 7 | socket name | length 5, `Flash` |
+| 467 | 16 | socket rotation | (0, 0, 0, 1) |
+| 483 | 12 | socket position | (0, 0, 10) |
+| 495 | 12 | socket scale | (1, 1, 1) |
+| 507 | 4 | bindings for child 0 | 1 |
+| 511 | 5 | binding name | length 3, `LST` |
+| 516 | 12 | binding dimensions | (15, 50, 15) |
+| 528 | 12 | binding translation | (0, −50, 0) |
+| 540 | | end of file | |
+
+Expected from a reader: 1 piece `Body` with 1 rigid LOD of 3 vertices and 1 triangle following node 0, body size 138 (equal to the bytes consumed); 1 node `Scene Root` with no parent; 0 weight sets; no child names; 1 animation `LST` whose effective dimensions are (15, 50, 15) and translation (0, −50, 0); socket `Flash` on node 0 at (0, 0, 10), which is (0, 0, 10) in model space and (0, 0, −10) after conversion; vertex bounds (0, 0, 0) to (10, 10, 0); the triangle's (p₁ − p₀) × (p₂ − p₀) = (0, 0, 100), along the normals; after conversion the triangle is (0, 2, 1) and the normals (0, 0, −1). The anim-track byte count in the counts block (28) equals 1 keyframe × 28.
+
+## Open questions
+
+1. **V2 decryption of the Steam copies.** No V2 key was available to this session, so tests 8 to 11 and 13 were measured on unencrypted copies of the same files (equal size, identical plaintext tails). Re-measure them on the decrypted Steam files. `ST_M_CHILD.LTB` differs in size on Steam (66,900,324 bytes), so its animation count, and possibly the `LST` / `LC` boxes, may differ.
+2. **Version 23 vs 25.** The reader treats them alike and every version-23 file parses with the same layout; what the packer changed between them (perhaps only data it computes) is not known.
+3. **Vertex colour.** The packer can write a colour per vertex but the game does not count it, so such files would not load. None exist; whether any tool-side variant ever produced them is unknown.
+4. **Palette meshes.** Only three skinned LODs in the encrypted archives use a matrix palette (with re-indexed bones); none were seen in unencrypted ones. Their weight order is taken from the packer; worth an on-screen check once characters render.
+5. **Render priority.** Its exact effect on draw order (how it interacts with render-style sorting) belongs to the renderer and is not specified here.
+6. **Metric scale.** The file gives no physical unit. If the project wants metres, a scale has to be chosen (for example from the 100 u standing height); other specs keep u.
+7. **The text-header `.ltb` files** in FX look like a later LithTech model container. The game cannot load them; if they ever matter, they need their own spec.
