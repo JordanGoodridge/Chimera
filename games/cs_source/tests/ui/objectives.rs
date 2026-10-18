@@ -912,7 +912,7 @@ fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
     // A digit a key press, on the tick its press's time is reached.
     let texts: Vec<&str> = seen.iter().map(|s| s.1.as_str()).collect();
     assert_eq!(texts, ["", "7", "73", "735", "7355", "73556", "735560", "7355608", "*******"]);
-    for ((at, text), press) in seen[1..].iter().zip(rules.typed.iter().chain([&rules.code_masked])) {
+    for ((at, text), (press, _)) in seen[1..].iter().zip(&rules.screen[1..]) {
         let (at, press) = (*at as f64 * TICK_INTERVAL, *press as f64);
         assert!(
             at >= press - 1e-4 && at - TICK_INTERVAL < press - 1e-4,
@@ -940,6 +940,100 @@ fn arming_types_the_code_and_the_defuse_bar_follows_cl_c4progressbar() {
     sim.ticks(1);
     let bar = shown(&sim).1.expect("cl_c4progressbar 1: the defuse bar");
     assert!((bar - 1.0 / 10.0).abs() < 0.01, "a tenth of a 10 s defuse: {bar}");
+}
+
+/// The C4's screen follows the loaded view model, not numbers of ours:
+/// its press-button sequence's screen events (model event 7001, the text
+/// in their options) at their times into the sequence, which arming plays
+/// from its start. A made-up model here (a 2 s sequence typing "4", "42"
+/// and masking it) shows its own digits at its own times, and no bar.
+#[test]
+fn the_c4_screen_types_what_its_view_model_says_when_it_says_it() {
+    use std::sync::Arc;
+
+    use crate::stack::{
+        core::LocalPlayer,
+        games::cs_source::ui::{
+            bomb_fx::C4ScreenText,
+            objectives_hud::{BombHudStatePlugin, BombProgress},
+        },
+        map::{
+            MapViewModel, ViewModels,
+            anim::{AnimEvent, AnimSet, Animation, Sequence},
+        },
+        objectives::bomb::{Arming, BombRules, SCREEN_EVENT},
+    };
+    // 40 frames at 20 fps: cycle 0.25 is 0.5 s in.
+    let typed = [(0.0, ""), (0.25, "4"), (0.5, "42"), (0.8, "**")];
+    let defaults = vec![(Quat::IDENTITY, Vec3::ZERO)];
+    let set = AnimSet {
+        bases: vec![defaults.clone()],
+        defaults,
+        animations: vec![Animation {
+            name: "a_pressbutton".into(),
+            fps: 20.0,
+            frames: 41,
+            ..default()
+        }],
+        sequences: vec![Sequence {
+            name: "pressbutton".into(),
+            activity: "ACT_VM_PRIMARYATTACK".into(),
+            activity_weight: 1,
+            grid: (1, 1),
+            anims: vec![0],
+            bone_weights: vec![1.0],
+            events: typed
+                .iter()
+                .map(|(cycle, text)| AnimEvent {
+                    cycle: *cycle,
+                    event: SCREEN_EVENT,
+                    name: String::new(),
+                    options: format!("{text} "),
+                })
+                .collect(),
+            ..default()
+        }],
+        ..default()
+    };
+    let length = set.duration(0);
+    assert!((length - 2.0).abs() < 1e-4, "{length}");
+    let mut sim = sim_with(bomb_map(), BombHudStatePlugin);
+    sim.app.insert_resource(ViewModels(Arc::new(vec![MapViewModel {
+        key: C4.to_string(),
+        model: default(),
+        bones: Vec::new(),
+        root: Transform::default(),
+        animations: Some(Arc::new(set)),
+        right_handed: true,
+        allow_flipping: true,
+        attachments: Vec::new(),
+        light_origin: Vec3::ZERO,
+    }])));
+    let t = carrier(&mut sim);
+    sim.app.world_mut().entity_mut(t).insert(LocalPlayer);
+    let want: Vec<(f32, String)> = typed.iter().map(|(c, s)| (c * length, s.to_string())).collect();
+    assert_eq!(sim.app.world().resource::<BombRules>().screen, want, "read from the model");
+    sim.intent(t).fire = true;
+    let mut seen: Vec<(f32, String)> = Vec::new();
+    for _ in 0..(2.5 / TICK_INTERVAL) as usize {
+        sim.ticks(1);
+        let w = sim.app.world();
+        let Some(a) = w.get::<Arming>(t) else { break };
+        let elapsed = (w.resource::<crate::stack::core::SimClock>().now - a.since) as f32;
+        assert_eq!(w.resource::<BombProgress>().0, None, "no bar while arming");
+        let text = w.resource::<C4ScreenText>().text.clone();
+        if seen.last().is_none_or(|s| s.1 != text) {
+            seen.push((elapsed, text));
+        }
+    }
+    let texts: Vec<&str> = seen.iter().map(|s| s.1.as_str()).collect();
+    assert_eq!(texts, ["", "4", "42", "**"]);
+    for ((at, text), (press, _)) in seen[1..].iter().zip(&want[1..]) {
+        assert!(
+            *at >= press - 1e-4 && *at < press + TICK_INTERVAL as f32,
+            "{text:?} at {at} s, the model's event at {press} s"
+        );
+    }
 }
 
 /// The planted bomb's HUD icon blinks with the beeps (playtest

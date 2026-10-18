@@ -13,7 +13,8 @@
 //!
 //! What the bomb shows: the code typed on the C4 view model's screen while
 //! arming, a digit per key press of the press-button sequence (`C4ScreenText`
-//! from `objectives::bomb::BombRules::screen_text` on the simulation clock, so
+//! from `objectives::bomb::BombRules::screen_text`, read from the loaded
+//! view model's screen events, on the simulation clock, so
 //! a network client's predicted arming types the same digits; drawn by a camera
 //! into an image in the C4 panel's font and colour, `GameHud::screens`, shown
 //! through `map::ViewModelScreen`; cleared at once when arming stops), and the

@@ -711,3 +711,14 @@ says what decides the open point.
   goes to the hurt player's client only (a SourceTV demo shows nothing).
   Decides grenades.md Q11 (ours: only players the blast hurts).
 
+- **C32 Planting the bomb.** A listen server on de_dust2, `sv_cheats 1`,
+  `mp_freezetime 0`, on T with the bomb at A: a screen recording (or
+  screenshots every 0.25 s) from pressing attack until the bomb is down,
+  first person, with `cl_c4progressbar 1` and then 0: when each digit
+  shows on the C4's screen against the fingers' key presses, the masked
+  `*******`, its font and colour, and whether any progress bar shows
+  (objectives.md Q16). Then a defuse with each value (the bar). Then
+  `bot_add_t` and watch a bot plant from beside it (`spectate`, third
+  person): its body's planting animation and the bomb in its hand.
+  Ours: no bar while arming with either value; the screen's text and
+  times read from v_c4's press-button sequence (model event 7001).

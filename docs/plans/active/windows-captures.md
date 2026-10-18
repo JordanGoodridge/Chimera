@@ -67,6 +67,11 @@ Create Server, de_dust2, 10 bots, `sv_cheats 1`, `mp_roundtime 2`.
     HE at your feet (audio recorded, `dsp_player` in the console right
     after); again in `noclip`; once with `mp_friendlyfire 1`. As in
     parity-gaps.md C31.
+15. **C32 planting the bomb**: a screen recording (or screenshots every
+    0.25 s) of a plant on de_dust2 A, first person, from the press to the
+    bomb on the ground, with `cl_c4progressbar 1` and again with 0; then a
+    defuse with each; then a bot planting seen from beside it. As in
+    parity-gaps.md C32.
 
 ## Sitting 2: sound (about 20 min)
 

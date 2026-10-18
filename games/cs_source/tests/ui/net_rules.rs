@@ -1020,8 +1020,7 @@ fn arming_and_defusing_are_predicted() {
         ["", "7", "73", "735", "7355", "73556", "735560", "7355608", "*******", ""],
         "{typed:?}"
     );
-    let times = rules.typed.iter().chain([&rules.code_masked]);
-    for ((at, _), want) in typed[1..9].iter().zip(times) {
+    for ((at, _), (want, _)) in typed[1..9].iter().zip(&rules.screen[1..]) {
         let at = at.expect("shown while arming");
         assert!(at >= *want && at < want + 0.02, "shown at {at} s, its key press at {want} s: {typed:?}");
     }
