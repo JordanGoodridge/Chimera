@@ -106,7 +106,7 @@ report folders):
 | Backpedal speed (`sv_backspeed`) | have | L | S | measured (movement.md Q10): not applied in CS:S (full speed backwards), as ours |
 | Noclip across spawns | have (fixed) | M | S | measured 2026-10-17 (movement.md "Noclip and spawning"): every spawn walks (`mp_restartgame`, the next round, a respawn after death); ours kept the noclip, now `put_at_spawn` ends it and a server never spawns a client noclipping |
 | Noclip takes no damage | have (fixed) | L | S | measured 2026-10-17 (movement.md "Noclip and spawning"): CS:S's noclipping player takes nothing from bullets, blasts, trigger_hurt or the world, nor loses armour, but is still hit (bullets meet its body and go on through) and falls hurt once it walks; ours took it all, now `core::Noclip` is refused by `DamageRules` and spared armour (a suicide still kills), and flies below the map unharmed |
-| Base velocity (conveyors, water currents) | differs | L | M | tech-debt "Source movement"; spec Q15 |
+| Base velocity (conveyors, water currents) | differs | L | M | tech-debt "Source movement"; spec Q15; trigger_push and `AddOutput basevelocity` measured and matching tick for tick 2026-10-17 (triggers.md Q7, Q9); conveyors and currents open |
 | Camera under a low ceiling | differs | M | | other work in flight (mg_jacks) |
 | Tick rate 66.67 vs community 100 | differs | L | | spec Q17 |
 

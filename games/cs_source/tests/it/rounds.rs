@@ -726,3 +726,52 @@ fn the_dead_respawn_out_of_noclip() {
         assert_eq!(movement(&sim, ct), placeholder::ID, "rounds {rounds}: walking");
     }
 }
+
+/// Game_entities.md question 8 (measured 2026-10-17 on the probe: two
+/// game_scores of 5 with flag 2 on a CT bot made the log's "CT scored 10",
+/// kept through the next round ends): a map's team points add to the
+/// team's score, the rounds won, and stay.
+#[test]
+fn team_points_from_the_map_add_to_rounds_won_and_stay() {
+    let (mut sim, t, ct, ct2) = setup();
+    sim.seconds(1.2);
+    sim.app.world_mut().write_message(crate::stack::core::ScoreChange {
+        target: ct,
+        points: 5,
+        team: true,
+        allow_negative: false,
+    });
+    sim.ticks(2);
+    assert_eq!(sim.app.world().resource::<RoundState>().wins, [0, 5]);
+    kill(&mut sim, ct, t);
+    sim.seconds(5.5);
+    assert_eq!(sim.app.world().resource::<RoundState>().wins, [0, 6], "kept, and the round's win on top");
+    let _ = ct2;
+}
+
+/// A death by the world (a fall, a fire) or by one's own hand costs a kill
+/// (CS:S, measured 2026-10-17: "committed suicide with world", frags −1).
+#[test]
+fn a_death_by_the_world_costs_a_kill() {
+    use crate::stack::core::Score;
+    let (mut sim, t, ct, _) = setup();
+    sim.seconds(1.2);
+    sim.app.world_mut().write_message(Damage {
+        force: Vec3::ZERO,
+        target: ct,
+        attacker: None,
+        amount: 10.0,
+        point: Vec3::ZERO,
+        dir: Vec3::X,
+        hitgroup: Hitgroup::Generic,
+        kind: Default::default(),
+        weapon: None,
+    });
+    sim.ticks(2);
+    let s = sim.app.world().get::<Score>(ct).cloned().unwrap();
+    assert_eq!((s.kills, s.deaths), (-1, 1));
+    // Killed by an enemy: no loss, the enemy's +1.
+    kill(&mut sim, ct, t);
+    let s = sim.app.world().get::<Score>(t).cloned().unwrap();
+    assert_eq!((s.kills, s.deaths), (0, 1));
+}

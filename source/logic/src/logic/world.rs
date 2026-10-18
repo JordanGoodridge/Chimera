@@ -12,13 +12,17 @@
 //! `!activator`/`!caller`/`!self`/`!player`, `*` and the classname fallback,
 //! Kill/AddOutput/FireUser, value typing in `value.rs`).
 //!
+//! Queue delays are whole ticks, ceil(d/dt − 1e-4), and a killed entity
+//! takes no more inputs, even in the tick it was killed in (both measured
+//! 2026-10-17, entity_io.md questions 3 and 4); use traces measure reach
+//! where they end (measured, doors_buttons.md question 1); trigger_hurt's
+//! player damage is whole points with armour by type (measured,
+//! triggers.md question 4).
+//!
 //! Known shortcuts (docs/tech-debt.md): Spec choices where the original is
-//! unread or unmeasured (specs' open questions): queue delays in integer ticks
-//! (ceil(d/dt − 1e-4)); a trigger_hurt pass starts the tick after the first
-//! touch; doubling damage is forgiven at the next pass once its deadline
-//! passed; box use traces measure reach to the hit entity's nearest point;
-//! player damage from triggers is fractional (no integer accumulator); movers
-//! think after their push step; env_global follows the public entity docs (no
+//! unread or unmeasured (specs' open questions): a trigger_hurt pass starts the
+//! tick after the first touch; doubling damage is forgiven at the next pass
+//! once its deadline passed; movers think after their push step; env_global follows the public entity docs (no
 //! spec): "Set initial state" sets a global only if unset, globals outlive
 //! round restarts, Remove makes it dead; `!pvsplayer`/`!picker` are slot 1;
 //! round restarts keep CS:S's measured classes (`world::ROUND_KEEP`), fire
@@ -145,6 +149,9 @@ pub struct Player {
     /// The buttons of its command this tick (`core::buttons` bits, after
     /// what map entities took away).
     pub buttons: u32,
+    /// A computer player (`core::Bot`): triggers with spawnflag 4096 leave
+    /// it out.
+    pub bot: bool,
 }
 
 impl Player {
@@ -169,6 +176,7 @@ impl Player {
             teleported: false,
             moved: false,
             buttons: 0,
+            bot: false,
         }
     }
 
@@ -192,6 +200,10 @@ pub enum Effect {
         amount: f32,
         crush: bool,
     },
+    /// trigger_hurt's damage to a player, health points before armour
+    /// (`core::MapDamage`): armour takes its part when `armour` (every
+    /// damage type but fall and drown, measured).
+    Hurt { target: Entity, amount: f32, armour: bool },
     /// Burn damage to a player (fire.rs: env_fire, entity flames), health
     /// points.
     Burn { target: Entity, amount: f32 },
@@ -460,14 +472,22 @@ pub(super) fn solid_brushes<'a>(brushes: impl Iterator<Item = &'a MapBrush>, min
     brushes.into_iter().any(|b| b.overlaps_box(at + off, half, SOLID_SKIN))
 }
 
-/// A box overlaps a brush with positive volume (triggers; tolerance 0).
+/// A box touches a brush (triggers): overlapping it, or exactly against a
+/// face (measured on CS:S, triggers.md question 1: a player box flush with
+/// a trigger's face touches it, 0.01 unit off doesn't), within
+/// `TOUCH_SKIN` for the float error of positions kept in meters.
 pub fn box_touches(brush: &MapBrush, mins: Vec3, maxs: Vec3) -> bool {
-    if brush.max.cmple(mins).any() || brush.min.cmpge(maxs).any() {
+    let (mins, maxs) = (mins - Vec3::splat(TOUCH_SKIN), maxs + Vec3::splat(TOUCH_SKIN));
+    if brush.max.cmplt(mins).any() || brush.min.cmpgt(maxs).any() {
         return false;
     }
     let (centre, half) = ((mins + maxs) / 2.0, (maxs - mins) / 2.0);
-    brush.planes.iter().all(|(n, d)| n.dot(centre) - n.abs().dot(half) < *d)
+    brush.planes.iter().all(|(n, d)| n.dot(centre) - n.abs().dot(half) <= *d)
 }
+
+/// How far (units) a box may stand off a trigger's face and still touch
+/// it: float error only (CS:S: none, 0.01 off is out).
+pub const TOUCH_SKIN: f32 = 0.002;
 
 /// A hull as a brush (planes and bounds), moved by `rotation` then
 /// `offset`.
@@ -1299,7 +1319,11 @@ impl LogicWorld {
         match target {
             Who::Player(p) => self.player_input(p, &input, value, activator, caller),
             Who::Ent(id) => {
-                if self.get(id).is_none() {
+                // A killed entity takes no more inputs, though it stays to
+                // the end of the frame (CS:S, measured 2026-10-17: Kill then
+                // Trigger in one tick fires nothing, Trigger then Kill fires;
+                // entity_io.md question 4).
+                if self.get(id).is_none_or(|e| e.killed) {
                     return;
                 }
                 if super::classes::class_input(self, id, &input, &value, activator, caller) {
@@ -1656,6 +1680,7 @@ impl LogicWorld {
     /// One whole frame without players moving (tests): thinks, movers,
     /// use, touches, untouch, the queue, removals.
     pub fn frame(&mut self, collision: &dyn Collision) {
+        self.break_orphan_joints();
         self.run_thinks();
         self.move_cameras();
         self.step_movers(collision);

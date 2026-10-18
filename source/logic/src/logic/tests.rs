@@ -134,9 +134,13 @@ fn connections_fire_in_reverse_order() {
     assert!(w.deliveries.iter().all(|d| d.tick == 100));
 }
 
+/// Exact tick multiples wait that many ticks (CS:S, measured 2026-10-17
+/// from a relay triggered inside the event queue: 0.015, 0.03 and 0.3 came
+/// 1, 2 and 20 ticks after its delay-0 output, 0.01 one; entity_io.md
+/// question 3).
 #[test]
 fn delays_round_up_to_ticks() {
-    for (delay, expect) in [("0.5", 134), ("0.02", 102)] {
+    for (delay, expect) in [("0.5", 134), ("0.02", 102), ("0.015", 101), ("0.03", 102), ("0.3", 120), ("0.01", 101)] {
         let mut w = world();
         relay(&mut w, "r", &[&format!("b,Trigger,,{delay},-1")]);
         let b = relay(&mut w, "b", &[]);
@@ -145,6 +149,26 @@ fn delays_round_up_to_ticks() {
         w.queue_input("r", "Trigger", Value::Void, 0.0, None);
         run_to(&mut w, 200);
         assert_eq!(got(&w, b, "Trigger"), vec![expect], "delay {delay}");
+    }
+}
+
+/// A relay killed by an output takes no more inputs, even those of the
+/// same tick; triggered before its Kill, it fires (CS:S, measured
+/// 2026-10-17, both delay 0; entity_io.md question 4). Connections fire
+/// newest first: the one listed last goes first.
+#[test]
+fn a_killed_entity_takes_no_more_inputs() {
+    for (outputs, fires) in [(["b,Trigger,,0,-1", "b,Kill,,0,-1"], false), (["b,Kill,,0,-1", "b,Trigger,,0,-1"], true)] {
+        let mut w = world();
+        relay(&mut w, "a", &outputs);
+        let b = relay(&mut w, "b", &["c,Trigger,,0,-1"]);
+        let c = relay(&mut w, "c", &[]);
+        w.activate();
+        run_to(&mut w, 49);
+        w.queue_input("a", "Trigger", Value::Void, 0.0, None);
+        run_to(&mut w, 51);
+        assert_eq!(fired(&w, c, "OnTrigger").len(), fires as usize, "{outputs:?}");
+        assert!(w.get(b).is_none(), "gone after the frame");
     }
 }
 
@@ -290,19 +314,6 @@ fn fireuser_keeps_activator_with_self_as_caller() {
     let d = w.deliveries.iter().find(|d| d.target == Who::Ent(t)).unwrap();
     assert_eq!(d.activator, Some(Who::Player(p)));
     assert_eq!(d.caller, Some(Who::Ent(e)));
-}
-
-#[test]
-fn killed_entity_still_takes_inputs_this_tick() {
-    let mut w = world();
-    let r = relay(&mut w, "r", &[]);
-    w.activate();
-    run_to(&mut w, 9);
-    w.queue_input("r", "Kill", Value::Void, 0.0, None);
-    w.queue_input("r", "Trigger", Value::Void, 0.0, None);
-    run_to(&mut w, 10);
-    assert_eq!(fired(&w, r, "OnTrigger"), vec![10]);
-    assert!(w.get(r).is_none(), "removed at the end of the frame");
 }
 
 #[test]
@@ -810,7 +821,7 @@ fn damage_ticks(w: &mut LogicWorld, until: i64, leave: Option<i64>) -> Vec<(i64,
         w.frame(&NoCollision);
         for e in w.effects.drain(..) {
             match e {
-                Effect::Damage { amount, .. } => out.push((t, amount)),
+                Effect::Damage { amount, .. } | Effect::Hurt { amount, .. } => out.push((t, amount)),
                 Effect::Heal { amount, .. } => out.push((t, -amount)),
                 _ => {}
             }
@@ -827,6 +838,26 @@ fn hurt(damage: &str, extra: &[(&str, &str)]) -> LogicWorld {
     w.activate();
     player_at(&mut w, 0, Vec3::splat(50.0));
     w
+}
+
+/// Triggers.md question 4 (measured 2026-10-17): armour takes its part of
+/// a trigger_hurt's damage for every type but fall (32) and drown (16384).
+#[test]
+fn trigger_hurt_armour_by_damage_type() {
+    for (kind, armour) in [("0", true), ("1", true), ("8", true), ("32", false), ("16384", false), ("16416", false)] {
+        let mut w = hurt("40", &[("damagetype", kind)]);
+        w.frame(&NoCollision);
+        w.frame(&NoCollision);
+        let got: Vec<bool> = w
+            .effects
+            .iter()
+            .filter_map(|e| match e {
+                Effect::Hurt { armour, .. } => Some(*armour),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(got, vec![armour], "damagetype {kind}");
+    }
 }
 
 #[test]
@@ -1296,8 +1327,11 @@ fn touch_activated_buttons() {
 
 #[test]
 fn use_reach() {
-    // Eye at (0,0,64) looking +X; a button face at x = 79 / 81.
-    for (face, used) in [(79.0, true), (81.0, false)] {
+    // Eye at (0,0,64) looking +X; a button face at x = 79 (the straight
+    // trace), 81 and 86 (past 80: the 10° box probes, whose reach counts at
+    // the box's centre, as CS:S's: 87.0 used, 87.5 not, measured
+    // 2026-10-17, doors_buttons.md question 1), 88 (nothing reaches).
+    for (face, used) in [(79.0, true), (81.0, true), (86.0, true), (88.0, false)] {
         let mut w = world();
         let origin = format!("{} 0 64", face + 4.0);
         let b = spawn_brush(

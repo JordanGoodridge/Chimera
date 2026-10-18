@@ -629,13 +629,28 @@ Fire think k = 0 is the StartFire tick t0; think k is at t0 + 0.105k s
    install's manifest and `fire_01.pcf` contain exactly those systems,
    which supports it. Check: bomb de_dust2 site A; the 512 and 128 fires
    should look identical and appear at full size at once (no 4 s growth).
-2. **Burn damage to CS:S players.** Armour (does burn bypass it?), pain
+2. **Armour answered (measured 2026-10-17, probe server, a spawned env_fire
+   of size 256, fireattack 1, under a bot on a flat floor):** burns don't
+   bypass armour: without armour 7 a second (once grown); with 100 armour
+   3 health and the armour 97, 95, 93, ... (ratio 1: health half, armour
+   half the rest, the armour left truncated), as a trigger_hurt of the burn
+   type (triggers.md question 4). A size-128 fire, fireattack 4, took 1,
+   1, 1, 1, 2, 2, 2 a second while growing. Ours took no armour: now as
+   CS:S. Score (measured the same day): a bot killed by the fire was
+   logged "committed suicide with world", frags −1, deaths +1, as for a
+   fatal fall and `kill` (ours took no kill for any of them: now −1).
+   Still open: the pain sound, HUD icon and the death notice's look.
+   Was: **Burn damage to CS:S players.** Armour (does burn bypass it?), pain
    sound, HUD damage icon (base multiplayer rules flag burn as "show on
    HUD"), the death notice (attacker world / `env_fire`, kill icon) and
    score (suicide −1?). Check: stand in a de_dust2 fire after the A bomb
    with and without kevlar; watch health per second (expect 26 at full
    size, 1 then 2 then 7 then 15 while growing).
-3. **Player ignition.** Does CS:S's player accept the Ignite input / entity
+3. **Partly answered (measured 2026-10-17, `Ignite` sent to a bot):** yes:
+   it took 1 every 13 ticks (0.195 s) from the next think until it died
+   (100 to 0 in about 20 s); `Extinguish` on the player was refused (the
+   input returned false). As ours (an entity flame, 1 a 0.2 s think). What
+   a burning player sees and hears, and the gas can, are open. Was: **Player ignition.** Does CS:S's player accept the Ignite input / entity
    flames (SDK: yes for the input, no for the gas can's explode-fire rule)?
    Does a burning player see/hear anything? Check on a test map with an
    `Ignite` output to `!activator`, and break de_inferno's gas can next to

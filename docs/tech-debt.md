@@ -50,7 +50,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - tests: `no_game_assets_tracked` blocks all .wav/.ogg/.mp3, including our own future sounds. OK for now: Revisit when we have original audio.
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
 - map: Non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
-- logic: Logic spec choices where the original is unmeasured (tick rounding, trigger timing, use traces) (`source/logic/src/logic/world.rs`)
+- logic: Logic spec choices where the original is unmeasured (trigger timing, doubling damage, movers' think order) (`source/logic/src/logic/world.rs`)
 - logic: Breakables: window pane facing and shards, sound draws, what a propdata template fills in and the bullet-trace sparks/ricochet's look are ours (`source/logic/src/logic/breakables.rs`)
 - logic: Model doors beyond the spec: our reading of hinge side, spawn positions and blocking; a missing hardware block plays nothing (CS:S: a null sound) (`source/logic/src/logic/props.rs`)
 - logic: Prop damage parts left out or approximated (explosive_resist, break-on-touch, a prop meeting a player split into two contacts by mass-fitted shares, stress from avian's contact impulses...) (`source/logic/src/logic/prop_damage.rs`)

@@ -169,6 +169,37 @@ fn trigger_teleport_moves_and_turns_the_player() {
     assert!(yaw.abs() < 1e-3 || (yaw - std::f32::consts::TAU).abs() < 1e-3, "yaw {yaw}");
 }
 
+/// Triggers.md question 6 (measured 2026-10-17 on the probe with a bot in
+/// a spawned trigger_teleport): spawnflags 1 teleports it; 1 + 32 (CS:S's
+/// "only clients in vehicles") and 1 + 4096 ("disallow bots") don't.
+#[test]
+fn teleport_flags_32_and_4096_leave_players_and_bots_out() {
+    let run = |flags: &str, bot: bool| {
+        let teleport = entity(
+            &[("classname", "trigger_teleport"), ("spawnflags", flags), ("target", "dest"), ("origin", "0 0 0")],
+            vec![hull(Vec3::new(-64.0, -64.0, 0.0), Vec3::new(64.0, 64.0, 64.0))],
+            false,
+        );
+        let dest = entity(
+            &[("classname", "info_teleport_destination"), ("targetname", "dest"), ("origin", "1000 200 0")],
+            Vec::new(),
+            false,
+        );
+        let mut sim = Sim::new(CsSim, (MapPlugin::new(map(vec![teleport, dest])), SourceMovementPlugin));
+        sim.set_tick_interval(cs_source::TICK_INTERVAL);
+        let p = sim.spawn_character(to_engine(Vec3::Z * 37.0), movement::ID);
+        if bot {
+            sim.app.world_mut().entity_mut(p).insert(crate::stack::core::Bot);
+        }
+        sim.ticks(10);
+        feet(&sim, p).truncate().length() > 500.0
+    };
+    assert!(run("1", false) && run("1", true), "flag 1 takes everyone");
+    assert!(!run("33", false) && !run("33", true), "32: nobody on foot");
+    assert!(run("4097", false), "4096 takes players");
+    assert!(!run("4097", true), "but not bots");
+}
+
 #[test]
 fn trigger_push_is_a_conveyor_then_momentum() {
     // Push +X at 300 units/s over x -64..200.
@@ -184,21 +215,30 @@ fn trigger_push_is_a_conveyor_then_momentum() {
     let b = feet(&sim, p).x;
     assert!((b - a - 4.5).abs() < 0.05, "moves 4.5 units a tick: {}", b - a);
     assert!(to_source(sim.velocity(p)).x.abs() < 1.0, "own velocity stays ~0: {}", sim.velocity(p));
-    // Leaving the push: its speed becomes momentum (x 1.0075), then
-    // friction.
-    let mut peak = 0.0f32;
+    // Leaving the push: the first tick out still moves 4.5 with no velocity
+    // of its own, the next turns the push into momentum (x 1.0075) less
+    // that tick's friction: 302.25 - 18.135 = 284.115, as CS:S's bot did
+    // on the probe (triggers.md question 7, measured 2026-10-17: -697.0,
+    // -692.5 out, then 284.115 and -688.238). Here the box reaches x 216,
+    // flush with the push's face at 200: a touch (question 1, measured).
+    let mut track = vec![(feet(&sim, p).x, 0.0f32)];
     for _ in 0..80 {
         sim.ticks(1);
-        peak = peak.max(to_source(sim.velocity(p)).x);
+        track.push((feet(&sim, p).x, to_source(sim.velocity(p)).x));
     }
     assert!(feet(&sim, p).x > 216.0, "left the push: {}", feet(&sim, p));
-    assert!(peak > 250.0 && peak < 303.0, "momentum peak {peak}");
+    let k = track.iter().position(|t| t.1 > 1.0).expect("momentum");
+    assert!((track[k].1 - 284.115).abs() < 0.05, "momentum {}", track[k].1);
+    assert!((track[k].0 - track[k - 1].0 - 284.115 * 0.015).abs() < 0.01, "{:?}", &track[k - 2..=k]);
+    assert!((track[k - 1].0 - track[k - 2].0 - 4.5).abs() < 0.01, "{:?}", &track[k - 2..=k]);
+    assert!(track[k - 1].0 - 16.0 > 200.0, "the last push tick was outside: {:?}", &track[k - 2..=k]);
+    assert!(track[k - 2].0 - 16.0 <= 200.0, "and the one before inside: {:?}", &track[k - 2..=k]);
 }
 
 /// A kz booster pad: `!activator AddOutput basevelocity 0 0 400` when the
 /// player walks in. The keyvalue is the base velocity (replaced); the
 /// player's next move turns it into velocity x (1 + dt/2) (triggers.md,
-/// trigger_push step 1 and open question 9), which at over 250 takes it
+/// trigger_push step 1 and open question 9, measured on CS:S 2026-10-17), which at over 250 takes it
 /// off the ground: 403 up, less that tick's gravity (12).
 #[test]
 fn basevelocity_booster_launches_by_the_base_velocity_rule() {
@@ -630,6 +670,72 @@ fn trigger_hurt_hurts_walking_but_not_noclipping_players() {
     let before = health(&flying, p);
     flying.seconds(1.2);
     assert_eq!(health(&flying, p), before, "noclip");
+}
+
+/// Triggers.md question 4 (measured 2026-10-17 on the probe, spawned
+/// trigger_hurts): health takes whole points a pass (damage 5: 2.5 a pass
+/// takes 2, nothing carried); armour takes its part of every type but fall
+/// and drown (damage 40, 20 a pass, on 100 armour: 10 health and 5
+/// armour; drown: 20 and none).
+#[test]
+fn trigger_hurt_takes_whole_points_and_armour_by_type() {
+    use crate::stack::weapon::Armor;
+    let pass = |damage: &str, kind: &str, armour: f32| {
+        let hurt = entity(
+            &[
+                ("classname", "trigger_hurt"),
+                ("spawnflags", "1"),
+                ("damage", damage),
+                ("damagetype", kind),
+                ("origin", "0 0 0"),
+            ],
+            vec![hull(Vec3::new(-64.0, -64.0, 0.0), Vec3::new(64.0, 64.0, 128.0))],
+            false,
+        );
+        let mut sim = Sim::new(CsSim, (MapPlugin::new(map(vec![hurt])), SourceMovementPlugin));
+        sim.set_tick_interval(cs_source::TICK_INTERVAL);
+        let p = sim.spawn_character(to_engine(Vec3::Z * 37.0), movement::ID);
+        sim.app.world_mut().entity_mut(p).insert(Armor {
+            amount: armour,
+            helmet: false,
+        });
+        // The first pass, then three more.
+        sim.ticks(3);
+        let first = (health(&sim, p), sim.app.world().get::<Armor>(p).unwrap().amount);
+        sim.ticks(100);
+        let fourth = (health(&sim, p), sim.app.world().get::<Armor>(p).unwrap().amount);
+        (first, fourth)
+    };
+    let close = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 1e-4 && (a.1 - b.1).abs() < 1e-4;
+    let (one, four) = pass("5", "0", 0.0);
+    assert!(close(one, (0.98, 0.0)) && close(four, (0.92, 0.0)), "2.5 a pass: {one:?} {four:?}");
+    let (one, _) = pass("40", "0", 1.0);
+    assert!(close(one, (0.90, 0.95)), "generic on armour: {one:?}");
+    let (one, _) = pass("40", "16384", 1.0);
+    assert!(close(one, (0.80, 1.0)), "drown: {one:?}");
+    let (one, _) = pass("5", "0", 1.0);
+    assert!(close(one, (0.99, 0.99)), "2.5 on armour takes 1 and 1: {one:?}");
+}
+
+/// Triggers.md question 5 (measured 2026-10-17 on the probe): a
+/// trigger_gravity's multiplier stays with the player after it leaves,
+/// dies and respawns, and after `mp_restartgame` (`m_flGravity` 0.5
+/// throughout).
+#[test]
+fn trigger_gravity_outlasts_a_respawn() {
+    use crate::stack::core::EntityGravity;
+    let gravity = entity(
+        &[("classname", "trigger_gravity"), ("spawnflags", "1"), ("gravity", "0.5"), ("origin", "0 0 0")],
+        vec![hull(Vec3::new(-64.0, -64.0, 0.0), Vec3::new(64.0, 64.0, 128.0))],
+        false,
+    );
+    let (mut sim, p) = sim(vec![gravity], Vec3::ZERO, 0.0);
+    sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = to_engine(Vec3::new(500.0, 0.0, 37.0));
+    sim.ticks(5);
+    assert_eq!(sim.app.world().get::<EntityGravity>(p).map(|g| g.0), Some(0.5), "kept outside");
+    crate::stack::rules::put_at_spawn(sim.app.world_mut(), p, true);
+    sim.ticks(2);
+    assert_eq!(sim.app.world().get::<EntityGravity>(p).map(|g| g.0), Some(0.5), "kept through a respawn");
 }
 
 /// Noclip turned off in the air: the fall that follows hurts as one from

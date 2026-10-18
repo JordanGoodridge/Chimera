@@ -119,6 +119,14 @@ impl Plugin for WeaponPlugin {
             .add_message::<crate::map::GameSound>()
             .add_message::<crate::map::PredictedSound>()
             .add_systems(FixedLast, crate::map::sound::relay_game_sounds)
+            .insert_resource(crate::core::MapDamageArmor)
+            .add_systems(
+                FixedUpdate,
+                map_damage_armor
+                    .after(SimSet::Weapons)
+                    .before(crate::core::apply_damage)
+                    .run_if(crate::core::authoritative),
+            )
             .add_message::<crate::map::ViewKick>()
             .add_systems(FixedUpdate, view_kicks.before(SimSet::Weapons))
             .add_systems(
@@ -1015,6 +1023,29 @@ impl HitArmor<'_, '_> {
             }
         }
         hit
+    }
+}
+
+/// A map's damage to a player (`core::MapDamage`): armour takes its part as
+/// from a weapon of armour ratio 1 (health half, armour half the rest,
+/// measured on trigger_hurt: 20 a pass on 100 armour takes 10 health and
+/// 5 armour, 2.5 takes 1 and 1, 20 on 1 armour takes 18 and 1), when the
+/// kind allows it; health takes whole points.
+pub fn map_damage_armor(
+    mut map: MessageReader<crate::core::MapDamage>,
+    mut armor: HitArmor,
+    mut out: MessageWriter<crate::core::Damage>,
+) {
+    for m in map.read() {
+        let mut d = m.damage.clone();
+        let raw = d.amount;
+        if m.armour {
+            armor.apply(&mut d, raw, Some(1.0), 0.01);
+        }
+        d.amount = crate::core::whole_points(d.amount);
+        if d.amount > 0.0 {
+            out.write(d);
+        }
     }
 }
 

@@ -2039,13 +2039,11 @@ impl LogicWorld {
                 }
                 None
             })?;
-            // Reach is measured to the hit entity itself (its nearest
-            // point), not to the centre of the swept box.
-            let brushes = self.solids.get(hit_index?)?.as_ref()?;
-            let lo = brushes.iter().fold(Vec3::MAX, |a, b| a.min(b.min));
-            let hi = brushes.iter().fold(Vec3::MIN, |a, b| a.max(b.max));
-            let _ = f;
-            Some((id, eye.clamp(lo, hi)))
+            // Reach is measured where the trace ended: the line's hit
+            // point, the swept box's centre (CS:S, measured 2026-10-17:
+            // a button face 87.0 units ahead is used, 87.5 isn't: the 10°
+            // probes' box touches it within 72, doors_buttons.md question 1).
+            Some((id, eye + (to - eye) * f))
         };
         if let Some((id, h)) = hit(0.0, eye + f * USE_TRACE_LONG)
             && use_distance(h) < USE_RADIUS

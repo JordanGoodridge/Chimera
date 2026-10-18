@@ -9,6 +9,7 @@
 //! messages (damage applied after weapons, `Died` carries the killing `Damage`;
 //! `DamageKind`: bullet, melee, blast...; `Damage::weapon` names a thrown
 //! weapon for kill notices; `Damage::force` the push that came with it),
+//! `MapDamage` (a map's damage to a player before armour and whole points),
 //! `Explosion` (radius damage asked for by map logic or rules: exploding props,
 //! the bomb; the weapon it counts as), `Blinded` (a flash's white: hold and
 //! fade), `SightBlocker` (a sphere sight doesn't pass: smoke), `Damageable`
@@ -291,6 +292,39 @@ pub struct Damage {
     pub force: Vec3,
 }
 
+/// Damage a map deals a player (trigger_hurt) before armour and the
+/// player's whole points: the weapon layer splits it with the armour worn
+/// when `armour` (CS:S takes armour for every damage type but falls and
+/// drowning: measured on trigger_hurt, specs/source/triggers.md question
+/// 4), then health takes whole points (2.5 is 2, nothing carried). Without
+/// a weapon layer (`MapDamageArmor` absent) only the truncation applies
+/// (`map_damage_lands`).
+#[derive(Message, Clone, Debug)]
+pub struct MapDamage {
+    pub damage: Damage,
+    pub armour: bool,
+}
+
+/// The weapon layer turns `MapDamage` into `Damage` itself (with armour).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct MapDamageArmor;
+
+/// `amount` (normalized: 1.0 is 100 points) down to whole points.
+pub fn whole_points(amount: f32) -> f32 {
+    (amount * 100.0 + 1e-3).floor() / 100.0
+}
+
+/// `MapDamage` without a weapon layer: whole points, no armour.
+pub fn map_damage_lands(mut map: MessageReader<MapDamage>, mut damage: MessageWriter<Damage>) {
+    for m in map.read() {
+        let mut d = m.damage.clone();
+        d.amount = whole_points(d.amount);
+        if d.amount > 0.0 {
+            damage.write(d);
+        }
+    }
+}
+
 impl Damage {
     /// A suicide (the `kill` command: generic damage from the target
     /// itself), which CS:S carries out even in noclip (`Noclip`).
@@ -469,10 +503,12 @@ impl MapControls {
 /// Apply each character's `MapControls` to its intent: taken buttons
 /// released, movement zeroed at controls, everything but the held view
 /// zeroed when frozen, no firing with weapons put away; the buttons left
-/// recorded for the logic. A respawn resets the movement clock (the
-/// taken buttons and the hidden HUD stay, as in the base code; spec open
-/// question 3); a camera's view and freeze go too (our choice,
-/// viewcontrol_and_templates.md open question 2).
+/// recorded for the logic. A respawn resets the movement clock and brings
+/// the HUD back; the taken buttons stay (CS:S, measured 2026-10-17 with a
+/// bot: lagged movement 1 and the hide-all HUD bit cleared after a death
+/// and respawn, jumping still taken until the speedmod gave it back;
+/// game_entities.md question 3); a camera's view and freeze go too (our
+/// choice, viewcontrol_and_templates.md open question 2).
 pub fn apply_map_controls(
     mut q: Query<(Entity, &mut Intent, &mut MapControls, Option<&Health>, Has<MapView>)>,
     mut commands: Commands,
@@ -481,6 +517,7 @@ pub fn apply_map_controls(
         let alive = health.is_none_or(|h| h.current > 0.0);
         if alive && !c.alive {
             c.time_scale = 1.0;
+            c.hud_hidden = false;
             c.frozen = None;
             c.invulnerable = false;
             c.weapon_hidden &= !4;
@@ -1687,6 +1724,7 @@ impl Plugin for CorePlugin {
             .register_type::<Hitboxes>()
             .register_type::<Damageable>()
             .add_message::<Damage>()
+            .add_message::<MapDamage>()
             .add_message::<Equip>()
             .add_message::<Explosion>()
             .add_message::<Deafened>()
@@ -1695,6 +1733,13 @@ impl Plugin for CorePlugin {
             .add_message::<Radio>()
             .init_resource::<FriendlyFire>()
             .add_systems(FixedUpdate, apply_damage.after(SimSet::Weapons).run_if(authoritative))
+            .add_systems(
+                FixedUpdate,
+                map_damage_lands
+                    .after(SimSet::Weapons)
+                    .before(apply_damage)
+                    .run_if(authoritative.and_then(not(resource_exists::<MapDamageArmor>))),
+            )
             .register_type::<SpawnPoint>()
             .register_type::<LocalPlayer>()
             .register_type::<Connecting>()

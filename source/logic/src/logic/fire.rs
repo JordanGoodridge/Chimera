@@ -26,9 +26,9 @@
 //! block them as their convex brushes, physics props don't (the spec: solid,
 //! moveable and window contents); every character in the logic's player list
 //! counts as a player for the damage box (hostages too, which the spec gives
-//! the half-size object box); burn damage to players skips armour, pain sounds
-//! and the HUD damage icon, and a burn kill shows the skull with no attacker
-//! (Q2); entity flames' radius damage is our linear falloff aimed at 85 % of a
+//! the half-size object box); burn damage to players skips pain sounds and the
+//! HUD damage icon (armour takes its part and a burn kill costs a kill, as
+//! CS:S's: measured), and a burn kill shows the skull with no attacker (Q2); entity flames' radius damage is our linear falloff aimed at 85 % of a
 //! player's eye height (CS:S's radius damage, Q6), a dead player's flame is
 //! removed at once (no client ragdoll copy), and props' world boxes come from
 //! their colliders' AABBs (flame size, damage boxes); the look rebuilds
