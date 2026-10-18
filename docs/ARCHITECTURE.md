@@ -34,7 +34,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; gr
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
-                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`)
+                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files)
 ```
 
 - The loader layers: `source/` (Source's formats and map logic) and
@@ -483,6 +483,7 @@ that the paths exist).
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1 and M9 knife (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
+- `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, armour, player, body types) with the spec's defaults (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)
@@ -503,6 +504,7 @@ that the paths exist).
 
 ### LithTech formats (crate `lithtech_formats`, `lithtech/formats/`)
 
+- `lithtech/formats/src/attributes.rs`: attribute files ("butes"): sections of typed values, strict typed reads, records and lists
 - `lithtech/formats/src/rez.rs`: `.rez` archives (header, check block, directory) as a `FileSource`; `open_dir`
 - `lithtech/formats/src/rez_cipher.rs`: the `.rez` payload cipher (Twofish-CBC, key supplied at run time)
 

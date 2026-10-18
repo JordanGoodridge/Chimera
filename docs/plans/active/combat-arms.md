@@ -94,8 +94,11 @@ does for BSP.
   only for the VFS (`fs::FileSource`, `Mount`).
 - `games/combat_arms`' `game::mount` (its `INFO.open`) mounts the
   install's `Game/` with `rez::open_dir` and the keys from
-  `chimera.local.toml`; the data seam (`game/data.rs`) will read through
-  it.
+  `chimera.local.toml`; the data seam (`game/data.rs`) reads the
+  install's `ATTRIBUTES.rez` with the same keys.
+- 2026-10-18: `lithtech_formats::attributes` reads attribute files
+  (`attribute_data.md`'s format); Combat Arms' records and the merge
+  over our TOML are the game's (`game/data.rs`, `game/data/attributes.rs`).
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
@@ -127,9 +130,9 @@ does for BSP.
 |---|---|---|---|---|---|
 | 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | implementing (`ca/movement`) | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox |
 | 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | implementing (ca/weapon-firing): all 37 spec cases pass as scenario tests; ambiguities in `game/weapons.rs`'s Known shortcuts | none: L2/L3 not lifted (CA's own `combat_arms:damage`/`spread`/`recoil` hooks); Chimera gained `Trigger::per_press`, `Magazine::auto_reload`, `Burst::once_per_press`, `step_blocks_primary`, and hitscan rounds a game delivers itself | M4A1 in `data/weapons/m4a1.toml`, surfaces in `data/surfaces.toml`; CA delivers its rounds (hit spheres, bands, armour) |
-| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | not started | none (its reader goes in `lithtech/`) | Schema to load real values at run time over our TOML defaults; fixtures generated from the spec; heavy test on this box once the V1 key works |
+| 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | implementing (worktree-agent-a4e94370b2d41460f) | none (its reader goes in `lithtech/`) | Reader `lithtech_formats::attributes`; records and merge in `game/data.rs` (+ `data/attributes.rs`); test cases 1 to 29 pass on generated fixtures; heavy test checks ATTRIBUTES.rez's directory, the rest waits for the V1 key |
 | 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | implementing (ca/inventory) | L4 (weapon selection logic) and L5 (default binds per game): both done; inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | `game/inventory.rs` on Chimera's inventory and deploy (its own class keys and Q through `weapon::OwnSelection`), the M9 as data (`data/weapons/m9.toml`, hooks `combat_arms:inventory`/`knife`), E pickup and death drop of its own; all 36 test cases in `tests/it/inventory.rs` (rifle and pistol as fixtures until 2's data); ambiguities in the module's Known shortcuts |
-| 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | implementing (`worktree-agent-af7950251511a2bd8`) | L9 done (2026-10-18: the view ray and the character under it, `client::aim`; CS:S's target ID uses it); L6-L8 not needed (CA lays its own panels out on the 1024x768 canvas; its crosshair and damage indicator share nothing with CS:S's); the shell's fallback HUD leaves out what a game draws (`client::hud::GameDraws`) | `ui/hud.rs` (behaviour in `ui/hud/model.rs`, state `CaHud` headless, drawn with UI nodes; placeholders for the game's textures), weapon fields as the `combat_arms:hud` hook (`game/hud.rs`); all 70 test cases in `tests/ui/hud.rs`; the crosshair reads r back from the cone the firing part puts on `Hitscan::spread` (with its `combat_arms:spread` limits); ambiguities in the module's Known shortcuts |
+| 5 | Crosshair and basic HUD behaviour | `hud_crosshair.md` | implementing (`worktree-agent-af7950251511a2bd8`) | L9 done (2026-10-18: the view ray and the character under it, `client::aim`; CS:S's target ID uses it); L6-L8 not needed (CA lays its own panels out on the 1024x768 canvas; its crosshair and damage indicator share nothing with CS:S's); the shell's fallback HUD leaves out what a game draws (`client::hud::GameDraws`) | `ui/hud.rs` (behaviour in `ui/hud/model.rs`, state `CaHud` headless, drawn with UI nodes; placeholders for the game's textures), weapon fields as the `combat_arms:hud` hook (`game/hud.rs`); all 70 test cases in `tests/ui/hud.rs`; the crosshair reads r from the firing part (`CaSpread::fraction`); ambiguities in the module's Known shortcuts |
 
 ### Wave 2: the rest of combat, and the game's own files
 
