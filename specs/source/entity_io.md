@@ -765,6 +765,9 @@ dt = 0.015 s. "Tick N" means server time N × dt.
    second text? Screenshot on the reference client (user's PC).
 9. **game_text newline**: can a map message contain a line break at all
    (the BSP keyvalue has no escape for "\n")? Look for multi-line game_text
-   in downloaded maps.
+   in downloaded maps. *Swept 2026-10-18 (`tools/css_probe/entsweep.py`,
+   the stock maps and 89 cached community maps): three game_texts in all
+   (kz_bhop_izanami's "Good job" and its name, bhop_myztek's without a
+   message), none with a line break or a literal `\n`: no map to decide it.*
 10. **Use type through I/O**: harmless for doors/buttons; confirm a
    func_tracktrain ignores an I/O `Use`.

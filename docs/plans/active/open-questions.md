@@ -65,7 +65,7 @@ listen server); about 73 class-1 items left.
 | grenades | Q9 HE visuals (fireball, shake, light) | 2 | client screenshots at `host_timescale 0.1` |
 | grenades | Q10 crouched victims, walls and props blocking | 1 | done (Part B, 2026-10-18, `blastmeas.py`) |
 | grenades | Q11 ear-ringing presets and who gets them | 2 | capture C31 (the server sends nothing, measured) |
-| grenades | Q12 left: flash through walls, players, props, smoke | 1 | flash netprops with something between; tried 2026-10-18: the probe's thrower aims at the run bot and the flash lands within 40 units of it, too close for anything between; the thrower's own `m_flFlashDuration` isn't a datamap field `mashup_getprop` reads (a plugin command reading the sendprop of any player would do) |
+| grenades | Q12 left: flash through walls, players, props (smoke done, Part B 2026-10-18) | 1 | flash netprops with something between; tried 2026-10-18: the probe's thrower aims at the run bot and the flash lands within 40 units of it, too close for anything between; the thrower's own `m_flFlashDuration` isn't a datamap field `mashup_getprop` reads (a plugin command reading the sendprop of any player would do) |
 | grenades | Q13 flash overlay curve | 2 | client screenshots every 0.1 s |
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
@@ -87,7 +87,7 @@ listen server); about 73 class-1 items left.
 | mdl_v48 | zero-frame entries, v44 leftovers, `.ani` header | 3 | nothing reads them; spec session if ever needed |
 | mdl_v48 | AWP poses against the game | 2 | view-model screenshot pair |
 | movement | Q15 water currents and base velocity | 1 | no stock map has a current; a spawned `func_conveyor`-style test |
-| movement | Q16 left: ladder jump-off 270, water jump 256/50 | 1 | movecmp scenarios (climb speeds and swimming already match tick-exact) |
+| movement | Q16 left: water jump 256/50 | 1 | a movecmp scenario at a water edge (the ladder jump-off's 270 done, Part B 2026-10-18) |
 | movement | Q18 a box exactly touching a floor | 1 | `setpos` onto a floor's height, `getpos`, jump |
 | movement | Q19 displacement contact normals elsewhere | 1 | movecmp on more dust2 strip edges |
 | nav | Q1 the per-area CS byte | 2 | tried 2026-10-18: `nav_analyze` does nothing on the dedicated server (no listen host) and `nav_save` wrote de_dust2's mesh back byte for byte; needs a listen server |
@@ -225,7 +225,7 @@ listen server); about 73 class-1 items left.
 | entity_io | Q5 `sv_allow_point_servercommand` | 1 | `cvarlist sv_allow` (done, Part B: "always"); left: what maps send (the sweep) |
 | entity_io | Q6 `cl_restrict_server_commands` | 2 | client console |
 | entity_io | Q7, Q8 game_text scan-out and channels | 2 | client screenshots |
-| entity_io | Q9 game_text newline | 1 | sweep the cached maps' entity lumps |
+| entity_io | Q9 game_text newline | 1 → 3 | swept 2026-10-18: no map has a multi-line one (3 game_texts in 89 community maps); a test map |
 | entity_io | Q10 tracktrain and I/O `Use` | 1 | spawned train |
 | fire | Q1 client fire visuals | 2 | client |
 | fire | Q2 burn damage to players (armour, score) | 1 | armour and score done (Part B) |
@@ -251,10 +251,10 @@ listen server); about 73 class-1 items left.
 | particles_and_smoke | Q4 operator semantics | 3 | its own spec |
 | particles_and_smoke | Q6 unknown inputs logged | 1 | `developer 2` on the server, `ent_fire` |
 | particles_and_smoke | Q8 env_smokestack Hammer defaults | 3 | the FGD |
-| physics_brushes | Q1 physbox mass shrunk or not | 1 | a community map's physbox mass from its lump |
+| physics_brushes | Q1 physbox mass shrunk or not | 1, 3 | test_hardware's physbox read 2026-10-18 (72.5 kg, glass, two pieces); the comparison with its brush volume: a spec session with our BSP reader |
 | physics_brushes | Q2 inertia and damping laws | 1 | as physics_props Q1, Q3 |
 | physics_brushes | Q3 controller units | 1 | spawned phys_thruster |
-| physics_brushes | Q4 +use pickup of a physbox | 1 | bot +use on a spawned physbox |
+| physics_brushes | Q4 +use pickup of a physbox | 1 | done for props (Part B, 2026-10-18: no pickup) |
 | physics_brushes | Q5 physbox_multiplayer on the client | 2 | client |
 | physics_brushes | Q6 players and a map prop_ragdoll | 1 | spawned prop_ragdoll |
 | physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
@@ -477,3 +477,6 @@ measured.
 | spectating: first target | the next entity index after the watcher's own (4 watched 5, not 1); after the watched one dies, the next after it | by name | none (noted: bots join in name order) |
 | doors_buttons Q6: door move sound | starts on the activation tick; stopped on arrival (open and closed) as the arrival sound plays | a one-shot that played out | stopped on arrival (`movers::move_sound`) |
 | objectives Q1: teleported while arming | out of the zone: no bomb, C4 kept; within it: planted where the planter stands | the same | none |
+| physics_brushes Q4: +use on a light prop | nothing: no pickup | no pickup | none |
+| movement Q16: jumping off a ladder | 270 units/s away from it on the jump tick, whatever key is held | the same, tick-exact (six `ladderjump_*` movecmp runs on de_nuke) | none |
+| grenades Q12: a flash in smoke | blinds 0.56 as long (3.81 s for 6.80), as white | smoke ignored | × 0.56 when the line crosses a cloud (`Flash::through_smoke`, a fit) |

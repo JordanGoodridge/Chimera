@@ -404,6 +404,33 @@ fn flashes_blind_by_view_and_walls() {
     assert_eq!(blind(&sim, facing).unwrap().alpha_at(now), 0.0);
 }
 
+/// Measured 2026-10-18 (grenades.md Q12): a flash going off in a smoke
+/// cloud blinds for 0.56 of the time it would in the open.
+#[test]
+fn a_flash_in_smoke_blinds_for_less() {
+    let blinded_for = |smoke: bool| {
+        let mut sim = sim();
+        let victim = sim.spawn_character(Vec3::new(0.0, 0.9, 8.0), placeholder::ID);
+        if smoke {
+            sim.app.world_mut().spawn(SightBlocker {
+                centre: Vec3::new(0.0, 1.0, 5.0),
+                radius: 2.0,
+            });
+        }
+        sim.ticks(1);
+        place(&mut sim, FLASHBANG, Vec3::new(0.0, 1.6, 5.0), Vec3::ZERO);
+        sim.seconds(1.6);
+        let b = sim.app.world().get::<Blinded>(victim).copied().expect("blinded");
+        let now = sim.app.world().resource::<Time>().elapsed_secs_f64();
+        (b.end - now, b.alpha)
+    };
+    let (open, a) = blinded_for(false);
+    let (smoked, b) = blinded_for(true);
+    assert_eq!(a, b, "as white");
+    let ratio = smoked / open;
+    assert!((0.5..0.62).contains(&ratio), "{smoked} of {open} s: {ratio}");
+}
+
 #[test]
 fn smoke_cloud_grows_blocks_bots_and_goes() {
     let mut sim = sim();

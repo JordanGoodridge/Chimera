@@ -48,7 +48,9 @@
 //! is a FIT pending Q13; the blast's shield (`BlastShield`: three lines,
 //! their weights) is a FIT to crates and players covering the victim
 //! (Q10); flashes are stopped by static props as blasts are (unmeasured,
-//! Q12); the after-image is a screenshot
+//! Q12), and a cloud anywhere on the line scales the blindness by one
+//! measured factor (`Flash::through_smoke`; CS:S's at one geometry); the
+//! after-image is a screenshot
 //! read-back of the window at the flash (it holds the HUD, arrives a frame or
 //! two late; Q13 for its curve). Hearing (5.5, 6.4): the DSP presets are
 //! approximated (`grenades::EXPLOSION_RING`, `SHOCK_MUFFLE`, `FLASH_MUFFLE`:
@@ -417,6 +419,9 @@ pub struct Flash {
     pub sound: Option<String>,
     /// What it does to the hearing of those it blinds.
     pub hearing: Option<FlashHearing>,
+    /// The blindness's length is scaled by this when the line from the
+    /// flash to the eye passes through a smoke cloud's `SightBlocker`.
+    pub through_smoke: f32,
 }
 
 /// The hearing effect of a blindness (a game's model): from the peak
@@ -918,6 +923,7 @@ struct GrenadeWorld<'w, 's> {
     ragdoll_shots: MessageWriter<'w, crate::map::RagdollShot>,
     armor: HitArmor<'w, 's>,
     blinded: Query<'w, 's, &'static Blinded>,
+    blockers: Query<'w, 's, &'static SightBlocker>,
     water: Option<Res<'w, MapWater>>,
     damage: MessageWriter<'w, Damage>,
     play: MessageWriter<'w, PlaySound>,
@@ -1521,7 +1527,11 @@ fn flash(at: Vec3, fl: &Flash, world: &mut GrenadeWorld, commands: &mut Commands
         }
         let to = at - eye;
         let facing = (intent.look_rotation() * Vec3::NEG_Z).dot(to.normalize_or_zero());
-        if let Some((alpha, hold, fade)) = (fl.model)(to.length(), facing) {
+        if let Some((alpha, mut hold, mut fade)) = (fl.model)(to.length(), facing) {
+            if world.blockers.iter().any(|s| s.chord(at, eye) > 0.0) {
+                hold *= fl.through_smoke;
+                fade *= fl.through_smoke;
+            }
             blinded.push((b.entity, alpha, hold, fade));
         }
     }

@@ -808,6 +808,15 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   (two throws): grenades and map explosions alike. Breakable crates
   (`wood_crate001a`, 30 health) are broken by the blast and then shield
   only sometimes (entity order); not used for the fit.
+- **Q12 a flash in smoke (2026-10-18, `blastmeas.py smoke_flash`):** the
+  second bot threw a smoke grenade at the run bot's feet (it popped 38
+  units in front of the bot, de_dust2's CT spawn) and then a flashbang the
+  same way, so the flash went off inside the fresh cloud with the bot
+  facing it: blinded 3.81 s (three throws, the same to 0.001) where the
+  same throw without smoke gave 6.80, so 0.56 of it; the whiteness stayed
+  255. One flash into a cloud about 10 s old gave 5.44. Walls, players and
+  props between not measured (the probe's throw lands too close to the
+  victim for anything to stand between).
 - **Q6 thrown into a wall (2026-10-18):** the second bot flush against a
   7.9-unit panel on de_dust2 (a static prop near (32, 2240), its face at
   45° to the throw), facing it, threw a flashbang at the run bot behind:
@@ -876,7 +885,7 @@ per-tick logging of netprops and events) unless they need the client.
     whether undamaged nearby players get the ring (a teammate with
     `mp_friendlyfire 0`, a noclipping player): needs a client (C31), the
     server shows nothing of it.
-12. **Q12 Partly answered (see CS:S values: duration by distance and facing, max alpha, `player_blind` for victim and thrower). Still open: walls, players, props and smoke between.** Was: **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
+12. **Q12 Partly answered (see CS:S values: duration by distance and facing, max alpha, `player_blind` for victim and thrower; 2026-10-18: a flash in smoke blinds 0.56 as long, ours `Flash::through_smoke` on any cloud the line crosses, a fit to one geometry). Still open: walls, players and props between, how the smoke factor varies with the cloud's age and the line's length in it.** Was: **Q12 Flash amount.** Grid: victim at r = 0, 100, 250, 500, 750, 1000,
     1500, 2000, 3000 in, view angle to the grenade 0°, 30°, 60°, 90°, 120°,
     180°; log `m_flFlashDuration` and `m_flFlashMaxAlpha` on the tick after
     `flashbang_detonate`, and whether `player_blind` fires. Repeat with a

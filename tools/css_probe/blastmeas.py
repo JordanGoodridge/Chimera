@@ -170,9 +170,26 @@ def bomb(vpos, spos=(-1478.0, 2768.0, 4.0), duck=1, timer=10, n=1150, tick=20):
     return f"vpos={vpos} events={ev}\n  " + "\n  ".join(dmg_rows(pos) or ["no damage"])
 
 
+def smoke_flash(vpos, spos, yaw=0.0, smoke=1, wait=3.0):
+    """A smoke grenade (`smoke` 1) and then a flashbang thrown by the second
+    bot at the run bot's feet, both landing about 40 units in front of it:
+    the flash goes off inside the cloud. Prints the run bot's flash rows
+    after the flash (compare `smoke` 0)."""
+    if smoke:
+        W.rcon("mashup_health 1000 0")
+        W.give("weapon_knife")
+        W.rcon(f"mashup_shooter {spos[0]} {spos[1]} {spos[2]} weapon_smokegrenade 20 0 1")
+        time.sleep(1.5)
+        r = W.run("sm", [(0, 0.0, 0.0, 0.0, yaw)] * 200, start=(*vpos, 0.0, yaw))
+        g = [x for x in r.extra if x[0] == "G"]
+        print("smoke", g[0][2:6] if g else None)
+        time.sleep(wait)
+    return "flash: " + flash(vpos, spos, yaw=yaw)
+
+
 if __name__ == "__main__":
     what = sys.argv[1]
     a = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
     reps = a.pop("reps", 1)
     for _ in range(reps):
-        print({"boom": boom, "he": he, "flash": flash, "flash_thrower": flash_thrower, "bomb": bomb}[what](**a))
+        print({"boom": boom, "he": he, "flash": flash, "flash_thrower": flash_thrower, "bomb": bomb, "smoke_flash": smoke_flash}[what](**a))

@@ -356,6 +356,10 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
             model: flash_model,
             sound: Some("Flashbang.Explode".into()),
             hearing: Some(flash_hearing),
+            // Measured 2026-10-18 (grenades.md Q12): a flash going off in
+            // a smoke cloud 40 units from the victim blinded it 3.81 s
+            // instead of 6.80 (three throws), at full whiteness.
+            through_smoke: 0.56,
         }),
         GrenadeData::Smoke => GrenadeEffect::Smoke(smoke()),
     };
