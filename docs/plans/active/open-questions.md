@@ -14,7 +14,7 @@ Classes:
    and the maps with our own readers.
 2. **CS:S client**: needs the game's client (screenshots, audio, RenderDoc,
    client demos): the Windows sittings in [windows-captures.md](windows-captures.md).
-3. **Spec session**: needs someone reading the original source (or a
+3. **Spec session**: needs a spec session on the reference material (or a
    design decision with no game behaviour to measure).
 4. **Second human**: needs a second human player (bots behave differently).
 5. **Answered, not marked**: the answer was already measured elsewhere;

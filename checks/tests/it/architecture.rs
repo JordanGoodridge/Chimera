@@ -600,7 +600,7 @@ fn specs_contain_no_code_blocks() {
             if t.starts_with("```") && !t.trim_start_matches('`').trim().is_empty() && !t.contains("math") {
                 errors.push(format!(
                     "{f}:{}: fenced code block `{t}`. Specs describe behavior as prose, tables and math; \
-                     do not include source or pseudocode that mirrors it. Use ```math for formulas.",
+                     do not include code or pseudocode that mirrors any. Use ```math for formulas.",
                     i + 1
                 ));
             }

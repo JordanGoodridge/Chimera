@@ -157,7 +157,7 @@ Tests that need a game install skip when it is missing.
 - No game's files are committed or shipped; they load from your install.
 - Behaviour from the original games reaches this repository only as
   written specs (values, formulas, rules) in [specs/](specs/README.md).
-  Decompiled or leaked code is never committed or translated.
+  No third-party code is committed or translated.
 - Game names are trademarks of their owners. This project is not
   affiliated with or endorsed by Valve, Nexon, Valofe or any other
   publisher.

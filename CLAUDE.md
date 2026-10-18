@@ -21,15 +21,15 @@ This file is a map. Follow the links for detail; keep it short.
 | Current plan and progress | [docs/plans/active/](docs/plans/active/engine-split.md) |
 | What to build next (to-do list) | [docs/backlog.md](docs/backlog.md) |
 | Known shortcuts in existing code | [docs/tech-debt.md](docs/tech-debt.md) |
-| Writing behavior specs from original source | [specs/README.md](specs/README.md) |
+| Writing behavior specs | [specs/README.md](specs/README.md) |
 
 ## Hard rules
 
 - Never commit other games' assets, extracted files or encryption keys. Load
   assets at runtime from the user's own install.
-- Decompiled or leaked code never enters this repo and is never translated
-  line by line. It reaches us only as specs written in a separate session.
-  Implementation sessions read specs, not source.
+- Third-party code never enters this repo and is never translated line by
+  line. Behavior reaches us only as specs in our own words, written in a
+  separate session. Implementation sessions read specs only.
 - Bevy is pinned in `Cargo.toml` (0.19.1) and its API changes often: check the
   pinned crate source in `~/.cargo/registry/src/*/bevy_*-0.19.1/` or its
   examples instead of memory. Same for avian3d (0.7).
@@ -103,7 +103,7 @@ personal emails or machine paths in commits or files.
 
 Remote: https://github.com/r0pi0x/Chimera (public; renamed from
 LuckerParty on 2026-10-16, the old URL redirects). The games and the
-original source live on the Windows PC, which has its own checkout
+spec reference material live on the Windows PC, which has its own checkout
 (`git clone https://github.com/r0pi0x/Chimera`); `scripts\playtest.ps1`
 pulls and runs an optimized build. Spec sessions there write into `specs/`
 in that checkout and push; implementation sessions pull them.
