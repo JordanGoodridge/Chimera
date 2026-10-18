@@ -376,7 +376,7 @@ fn an_offset_thruster_turns_about_the_centre_of_mass() {
             ("classname", "func_physbox"),
             ("targetname", "box"),
             ("origin", "0 0 600"),
-            ("mashup_prop_mass", "50"),
+            ("chimera_prop_mass", "50"),
         ])
     };
     let thruster = entity(&[
