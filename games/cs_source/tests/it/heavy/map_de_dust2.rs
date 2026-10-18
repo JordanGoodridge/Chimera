@@ -1848,12 +1848,15 @@ fn every_gun_has_its_body_animations() {
     sim.ticks(2);
     sim.intent(c).reload = false;
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_start"));
-    // The first shell goes in 0.5 s after the start.
+    // The start lasts 0.5 s, then a shell's insert (measured, weapons.md
+    // M9): the first shell in 68 ticks after the press, the second 103.
     sim.seconds(0.5);
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_loop"));
-    // Two shells, 0.5 s each (measured, weapons.md M9): the end about
-    // 1.55 s after the start.
-    sim.seconds(1.15);
+    // Tick 95: the second shell's insert, not the end yet.
+    sim.seconds(0.9);
+    assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_loop"));
+    // The clip full at tick 103: the end plays.
+    sim.seconds(0.25);
     assert_eq!(reload_layer(&sim).as_deref(), Some("idle_reload_m3s90_end"));
     // The Elites: the first shot from the left hand, the next the right.
     give(sim.app.world_mut(), c, ELITE).unwrap();

@@ -852,31 +852,36 @@ fn shotguns_fire_their_pellets_in_the_spread_cone() {
 }
 
 #[test]
-fn m3_reloads_shell_by_shell() {
-    // M9 (measured on the probe server): the first shell 68 ticks after
-    // the press, then one every 35 (the start 0.5 s and 0.5 s a shell, 34
-    // ticks each, the next insert a tick after the last shell went in);
-    // clip 5 -> 8 in three shells.
-    let mut sim = sim();
-    let p = shooter_with(&mut sim, M3);
-    let w = active(&sim, p);
-    sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 5;
-    let reserve = sim.app.world().get::<Magazine>(w).unwrap().reserve;
-    sim.intent(p).reload = true;
-    sim.ticks(1);
-    sim.intent(p).reload = false;
-    let mut at = Vec::new();
-    for t in 1..200u32 {
-        let c = clip(&sim, p);
+fn shotguns_reload_shell_by_shell() {
+    // M9 (measured on the probe server, the M3 and the XM1014 alike): the
+    // first shell 68 ticks after the press, then one every 35 (the start
+    // 0.5 s and 0.5 s a shell, 34 ticks each, the next insert a tick after
+    // the last shell went in); three shells short of full in three shells.
+    for id in [M3, XM1014] {
+        let mut sim = sim();
+        let p = shooter_with(&mut sim, id);
+        let w = active(&sim, p);
+        let (size, reserve) = {
+            let mut m = sim.app.world_mut().get_mut::<Magazine>(w).unwrap();
+            m.clip = m.size - 3;
+            (m.size, m.reserve)
+        };
+        sim.intent(p).reload = true;
         sim.ticks(1);
-        if clip(&sim, p) != c {
-            at.push(t);
+        sim.intent(p).reload = false;
+        let mut at = Vec::new();
+        for t in 1..200u32 {
+            let c = clip(&sim, p);
+            sim.ticks(1);
+            if clip(&sim, p) != c {
+                at.push(t);
+            }
         }
+        assert_eq!(at, [68, 103, 138], "{id}");
+        let m = sim.app.world().get::<Magazine>(w).unwrap();
+        assert_eq!((m.clip, m.reserve), (size, reserve - 3), "{id}");
+        assert!(!sim.app.world().get::<WeaponState>(w).unwrap().reloading(), "{id}");
     }
-    assert_eq!(at, [68, 103, 138]);
-    let m = sim.app.world().get::<Magazine>(w).unwrap();
-    assert_eq!((m.clip, m.reserve), (8, reserve - 3));
-    assert!(!sim.app.world().get::<WeaponState>(w).unwrap().reloading());
 }
 
 #[test]
