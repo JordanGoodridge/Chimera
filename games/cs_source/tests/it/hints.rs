@@ -156,7 +156,7 @@ fn the_bomb_carrier_hears_of_the_bomb_then_of_the_target() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 1; mp_roundtime 1; mashup_rounds 1");
+        .submit("mp_freezetime 1; mp_roundtime 1; chimera_rounds 1");
     let given = hints(&mut sim, 2.0);
     assert_eq!(count(&given, me, HAVE_BOMB), 1, "{given:?}");
     assert_eq!(count(&given, me, IN_TARGET), 0, "{given:?}");

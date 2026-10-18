@@ -151,8 +151,8 @@
 //! client tells refusals apart by the server's words (`client::classify`;
 //! `Refused` has no kind field, so older builds can still read it), late
 //! joiners get the world's impact decals (not those on props or brush entities,
-//! nor which variant each took; a client with `mashup_round_cleardecals 1` also
-//! gets earlier rounds'); quitting through the remote protocol (`mashup/console
+//! nor which variant each took; a client with `chimera_round_cleardecals 1` also
+//! gets earlier rounds'); quitting through the remote protocol (`chimera/console
 //! quit`) skips netcode's disconnect packet, so the server notices only when
 //! the client times out; soak (multiplayer.md, "Soak";
 //! games/cs_source/tests/it/heavy/net_soak.rs): replicon (0.44.3) holds a client's mutations
@@ -1313,10 +1313,10 @@ pub fn current_map(world: &World) -> String {
     normalize_map(&name)
 }
 
-/// `greybox` for the greybox's names (none, `greybox`, `mashup:greybox`);
+/// `greybox` for the greybox's names (none, `greybox`, `chimera:greybox`, the old `mashup:greybox`);
 /// other ids as they are.
 pub fn normalize_map(name: &str) -> String {
-    if name.is_empty() || name.eq_ignore_ascii_case(GREYBOX) || name.eq_ignore_ascii_case("mashup:greybox") {
+    if ["", GREYBOX, "chimera:greybox", "mashup:greybox"].iter().any(|g| name.eq_ignore_ascii_case(g)) {
         GREYBOX.into()
     } else {
         name.into()
@@ -1676,6 +1676,7 @@ mod tests {
     fn greybox_names() {
         assert_eq!(normalize_map(""), GREYBOX);
         assert_eq!(normalize_map("mashup:greybox"), GREYBOX);
+        assert_eq!(normalize_map("chimera:greybox"), GREYBOX);
         assert_eq!(normalize_map("cs_source:de_dust2"), "cs_source:de_dust2");
     }
 }

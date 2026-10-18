@@ -22,7 +22,7 @@
 //! power-of-two sizes with degenerate triangles; a physics prop's shadow is
 //! redrawn only after it moves by a quarter of a shadow texel (a creeping
 //! prop's shadow lags it by up to that); the per-frame schedules run on
-//! single-threaded executors (`MASHUP_EXECUTOR=multi`: Bevy's). Why it's OK for
+//! single-threaded executors (`CHIMERA_EXECUTOR=multi`: Bevy's). Why it's OK for
 //! now: Measured faster on the dev box; hitboxes pose every tick on their own;
 //! the Windows PC is still to be measured.
 

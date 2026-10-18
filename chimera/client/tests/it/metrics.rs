@@ -80,7 +80,7 @@ fn frames_are_measured_in_schedule_order() {
 
 /// The hitch rule on made-up frame times (`FrameMetrics::record_frame`,
 /// which the marks call with each frame's wall time): over
-/// `mashup_hitch_ratio` times the median is a hitch, nothing is one before
+/// `chimera_hitch_ratio` times the median is a hitch, nothing is one before
 /// the median is known (frame 61), and a ratio of 0 turns it off.
 #[test]
 fn a_frame_far_slower_than_the_median_is_a_hitch() {
@@ -108,7 +108,7 @@ fn a_frame_far_slower_than_the_median_is_a_hitch() {
         "frame 30 is before the median"
     );
     let mut m = FrameMetrics::default();
-    assert!(times(100).all(|t| !m.record_frame(t, 0.0)), "mashup_hitch_ratio 0");
+    assert!(times(100).all(|t| !m.record_frame(t, 0.0)), "chimera_hitch_ratio 0");
     assert!(m.hitch_frames.is_empty());
     // The latest 16 are kept.
     let mut m = FrameMetrics::default();

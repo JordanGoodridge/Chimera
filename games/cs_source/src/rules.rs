@@ -25,7 +25,7 @@
 //! (`join_spectators`, `spectate`, `jointeam 1`, `mp_allowspectators`:
 //! `core::Spectating`, no team, dead with no body or weapons, never spawned or
 //! counted for a round end, kept over map changes; `join_team` from it plays as
-//! `enter_game` would); `rounds.rs`: Counter-Strike rounds (`mashup_rounds 1`:
+//! `enter_game` would); `rounds.rs`: Counter-Strike rounds (`chimera_rounds 1`:
 //! freeze (`core::FreezeTime`: intents held, bots' too), timed rounds, the
 //! objectives' round-end table (bomb exploded/defused, eliminations with and
 //! without a planted bomb, all hostages rescued, time out by map kind:

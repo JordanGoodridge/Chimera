@@ -1,5 +1,5 @@
 //! CS:S mount against a real install. Skipped (passes with a note) when
-//! mashup.local.toml has no usable `[games.cs_source]` path.
+//! chimera.local.toml has no usable `[games.cs_source]` path.
 
 use std::path::PathBuf;
 

@@ -19,7 +19,7 @@ pub mod cs_source {
 use crate::{map::MapData, mount::config::LocalConfig};
 
 /// Load a map by namespaced ID, e.g. `cs_source:de_dust2`, from the
-/// install (`mount::install`: mashup.local.toml, saved, or Steam).
+/// install (`mount::install`: chimera.local.toml, saved, or Steam).
 pub fn load_map(id: &str) -> Result<MapData, String> {
     load_map_level(id, 0)
 }
@@ -33,7 +33,7 @@ pub fn load_map_level(id: &str, hdr_level: u8) -> Result<MapData, String> {
     let config = LocalConfig::load()?;
     let install = config
         .game_path(game)
-        .ok_or_else(|| format!("no `{game}` install found (mashup_install <folder>, or mashup.local.toml)"))?;
+        .ok_or_else(|| format!("no `{game}` install found (chimera_install <folder>, or chimera.local.toml)"))?;
     match game {
         cs_source::GAME => {
             let mount = cs_source::mount::open(&install).map_err(|e| e.to_string())?;
@@ -52,7 +52,7 @@ pub fn load_map_file(id: &str, file: &std::path::Path, hdr_level: u8) -> Result<
     let config = LocalConfig::load()?;
     let install = config
         .game_path(game)
-        .ok_or_else(|| format!("no `{game}` install found (mashup_install <folder>, or mashup.local.toml)"))?;
+        .ok_or_else(|| format!("no `{game}` install found (chimera_install <folder>, or chimera.local.toml)"))?;
     let bytes = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
     match game {
         cs_source::GAME => {
@@ -64,7 +64,7 @@ pub fn load_map_file(id: &str, file: &std::path::Path, hdr_level: u8) -> Result<
 }
 
 /// The bytes of map `id`'s file as `load_map` reads it (the install, its
-/// downloads, mashup's content cache), for the network's map offer and
+/// downloads, Chimera's content cache), for the network's map offer and
 /// hash checks (`net::maps::MapFiles`). None if there's none.
 pub fn map_file_bytes(id: &str) -> Option<Vec<u8>> {
     let (game, name) = id.split_once(':')?;

@@ -1,6 +1,6 @@
-//! Team rounds with money, the Counter-Strike way (`mashup_rounds 1`):
+//! Team rounds with money, the Counter-Strike way (`chimera_rounds 1`):
 //! a freeze period, a timed round won by eliminating the other team (on a
-//! map without objectives the clock ends nothing, as in CS:S; `mashup_untimed_win 1`:
+//! map without objectives the clock ends nothing, as in CS:S; `chimera_untimed_win 1`:
 //! the defenders win on time), a pause, then everyone back at their spawns; survivors keep their weapons. Money: a start amount, kill
 //! rewards, a win bonus and a loss bonus that grows with a losing streak;
 //! buying is open during the freeze and the buy period.
@@ -62,7 +62,7 @@ pub const DEFENDERS: Team = Team(2);
 #[derive(Resource, Clone, Debug, PartialEq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoundSettings {
-    /// 1: play rounds (instead of deathmatch respawns): `mashup_rounds`,
+    /// 1: play rounds (instead of deathmatch respawns): `chimera_rounds`,
     /// not data.
     #[serde(skip)]
     pub enabled: u8,
@@ -98,7 +98,7 @@ pub struct RoundSettings {
     pub win_rescued: u32,
     pub win_not_rescued: u32,
     pub win_elimination: u32,
-    /// `mashup_untimed_win`: 1, on a map without objectives the defenders
+    /// `chimera_untimed_win`: 1, on a map without objectives the defenders
     /// win when time runs out (a draw with no defenders); 0, the clock ends
     /// nothing there (CS:S, measured: objectives.md Q5).
     pub untimed_win: u8,
@@ -463,13 +463,13 @@ pub(super) fn plugin(app: &mut App) {
     }
     resource_cvar::<RoundSettings, u8>(
         app,
-        "mashup_rounds",
+        "chimera_rounds",
         "1: Counter-Strike rounds with money (0: deathmatch respawns).",
         |r| &mut r.enabled,
     );
     resource_cvar::<RoundSettings, u8>(
         app,
-        "mashup_untimed_win",
+        "chimera_untimed_win",
         "1: on a map without objectives the defenders win when the round's time runs out \
          (0: the round goes on, as in CS:S).",
         |r| &mut r.untimed_win,

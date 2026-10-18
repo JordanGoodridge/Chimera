@@ -338,7 +338,7 @@ fn is_docs(path: &str) -> bool {
         ]
         .iter()
         .any(|p| path.starts_with(p))
-        || [".gitignore", "rustfmt.toml", "mashup.local.example.toml"].contains(&path)
+        || [".gitignore", "rustfmt.toml", "chimera.local.example.toml"].contains(&path)
 }
 
 /// The root's tools/ data files and the package whose tools read them.

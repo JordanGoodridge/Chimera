@@ -13,16 +13,16 @@
 //! spawns and bookmarks, weapons), World (map, time scale, gravity, tick),
 //! Movement (the movement and mouse cvars), Bots (add, kick, skill, each
 //! bot's state), Rendering (overlays and culling), Perf (frame-time graph,
-//! the `mashup_perf` readout), Audio, Logic (map entities, fire inputs,
+//! the `chimera_perf` readout), Audio, Logic (map entities, fire inputs,
 //! outputs fired), Rounds, Cvars (every cvar, searchable and editable).
 //!
 //! The debug UI (F8, `debugui [tab]`): a tabbed egui window (Player, World,
 //! Movement, Bots, Rendering, Perf, Audio, Logic, Rounds, Cvars) whose every
 //! control runs a console line (cvars as checkboxes, sliders or fields by
 //! `Cvar::range`/`integer`; `CVAR_RANGES` gives the ranges), with readouts
-//! (player state, map, bots, frame-time graph and the `mashup_perf` lines,
+//! (player state, map, bots, frame-time graph and the `chimera_perf` lines,
 //! soundscape, map entities with keyvalues and outputs, outputs fired);
-//! `mashup_sethealth`/`mashup_setarmor`/`mashup_setmoney`; bookmarks in the cfg
+//! `chimera_sethealth`/`chimera_setarmor`/`chimera_setmoney`; bookmarks in the cfg
 //! folder; `DebugUiStatePlugin` is the state and commands without drawing
 //! (tests). The mouse is free while it is open; egui takes the keys typed into
 //! its fields (`debug.rs` turns on bevy_egui's input absorbing, and spawns the
@@ -186,10 +186,10 @@ pub const CVAR_RANGES: &[(&str, f32, f32)] = &[
     ("bot_recoil_control", 0.0, 1.0),
     ("bot_turn_rate", 30.0, 1500.0),
     ("bot_grenades", 0.0, 2.0),
-    ("mashup_drawnav", 0.0, 2.0),
-    ("mashup_perf", 0.0, 3.0),
-    ("mashup_freecam", 0.0, 2.0),
-    ("mashup_watch", 0.0, 32.0),
+    ("chimera_drawnav", 0.0, 2.0),
+    ("chimera_perf", 0.0, 3.0),
+    ("chimera_freecam", 0.0, 2.0),
+    ("chimera_watch", 0.0, 32.0),
     ("cl_showfps", 0.0, 2.0),
     ("developer", 0.0, 2.0),
     ("mat_hdr_level", 0.0, 2.0),
@@ -242,10 +242,10 @@ fn local_player(w: &mut World) -> Result<Entity, String> {
 /// The Player tab's setters: health, armour and money, in CS:S points.
 fn player_commands(app: &mut App) {
     app.console_command(
-        "mashup_sethealth",
-        "mashup_sethealth <1-100>: set your health (CS:S points).",
+        "chimera_sethealth",
+        "chimera_sethealth <1-100>: set your health (CS:S points).",
         |w, a| {
-            let hp = a.first().and_then(|v| v.parse::<f32>().ok()).ok_or("mashup_sethealth <1-100>")?;
+            let hp = a.first().and_then(|v| v.parse::<f32>().ok()).ok_or("chimera_sethealth <1-100>")?;
             let p = local_player(w)?;
             let mut h = w.get_mut::<Health>(p).ok_or("no health")?;
             h.current = (hp / 100.0).clamp(0.01, h.max.max(0.01));
@@ -253,13 +253,13 @@ fn player_commands(app: &mut App) {
         },
     )
     .console_command(
-        "mashup_setarmor",
-        "mashup_setarmor <0-100> [helmet 0|1]: set your armour (CS:S points) and helmet.",
+        "chimera_setarmor",
+        "chimera_setarmor <0-100> [helmet 0|1]: set your armour (CS:S points) and helmet.",
         |w, a| {
             let amount = a
                 .first()
                 .and_then(|v| v.parse::<f32>().ok())
-                .ok_or("mashup_setarmor <0-100> [helmet]")?;
+                .ok_or("chimera_setarmor <0-100> [helmet]")?;
             let p = local_player(w)?;
             let helmet = match a.get(1) {
                 Some(h) => h != "0",
@@ -273,10 +273,10 @@ fn player_commands(app: &mut App) {
         },
     )
     .console_command(
-        "mashup_setmoney",
-        "mashup_setmoney <amount>: set your money.",
+        "chimera_setmoney",
+        "chimera_setmoney <amount>: set your money.",
         |w, a| {
-            let amount = a.first().and_then(|v| v.parse::<f64>().ok()).ok_or("mashup_setmoney <amount>")?;
+            let amount = a.first().and_then(|v| v.parse::<f64>().ok()).ok_or("chimera_setmoney <amount>")?;
             let p = local_player(w)?;
             w.entity_mut(p)
                 .insert(crate::weapon::economy::Money(amount.max(0.0).round() as u32));
@@ -613,7 +613,7 @@ fn player_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         }
         command_button(ui, world, "Kill (suicide)", "kill");
         command_button(ui, world, "All weapons", "impulse 101");
-        command_button(ui, world, "Hurt (chest)", "mashup_hurtme chest 25");
+        command_button(ui, world, "Hurt (chest)", "chimera_hurtme chest 25");
     });
     ui.horizontal(|ui| {
         command_button(ui, world, "Join T", "jointeam 2");
@@ -627,7 +627,7 @@ fn player_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         if let Some(mut h) = health {
             ui.label("health");
             if ui.add(egui::Slider::new(&mut h, 1.0..=100.0).integer()).changed() {
-                run(world, format!("mashup_sethealth {}", h.round()));
+                run(world, format!("chimera_sethealth {}", h.round()));
             }
             ui.end_row();
         }
@@ -638,7 +638,7 @@ fn player_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
             let changed = ui.add(egui::Slider::new(&mut a, 0.0..=100.0).integer()).changed();
             let helmet_changed = ui.checkbox(&mut hm, "helmet").changed();
             if changed || helmet_changed {
-                run(world, format!("mashup_setarmor {} {}", a.round(), hm as u8));
+                run(world, format!("chimera_setarmor {} {}", a.round(), hm as u8));
             }
         });
         ui.end_row();
@@ -646,7 +646,7 @@ fn player_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         ui.label("money");
         ui.horizontal(|ui| {
             if ui.add(egui::Slider::new(&mut m, 0.0..=16000.0).integer().step_by(50.0)).changed() {
-                run(world, format!("mashup_setmoney {}", m.round()));
+                run(world, format!("chimera_setmoney {}", m.round()));
             }
             if money.is_none() {
                 ui.weak("(no money: rounds off)");
@@ -928,8 +928,8 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
             "bot_recoil_control",
             "bot_turn_rate",
             "bot_debug",
-            "mashup_drawbots",
-            "mashup_watch",
+            "chimera_drawbots",
+            "chimera_watch",
         ],
     );
     ui.separator();
@@ -974,7 +974,7 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
             ui.label(activity);
             ui.horizontal(|ui| {
                 if let Some(n) = name.strip_prefix("Bot ") {
-                    command_button(ui, world, "watch", &format!("mashup_watch {n}"));
+                    command_button(ui, world, "watch", &format!("chimera_watch {n}"));
                 }
                 let u = units(at);
                 command_button(ui, world, "go to", &format!("setpos {:.1} {:.1} {:.1}", u.x, u.y, u.z));
@@ -995,14 +995,14 @@ fn rendering_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
             "cl_showpos",
             "cl_showfps",
             "net_graph",
-            "mashup_drawhitboxes",
-            "mashup_drawcollision",
-            "mashup_drawphys",
-            "mashup_drawnav",
-            "mashup_drawbots",
-            "mashup_healthbars",
-            "mashup_ragdoll_debug",
-            "mashup_objectives",
+            "chimera_drawhitboxes",
+            "chimera_drawcollision",
+            "chimera_drawphys",
+            "chimera_drawnav",
+            "chimera_drawbots",
+            "chimera_healthbars",
+            "chimera_ragdoll_debug",
+            "chimera_objectives",
             "snd_show",
             "developer",
         ],
@@ -1043,7 +1043,7 @@ fn rendering_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         command_button(ui, world, "Third person", "thirdperson");
         command_button(ui, world, "First person", "firstperson");
     });
-    cvar_grid(ui, world, state, "camera_cvars", &["cam_idealdist", "cam_idealyaw", "mashup_freecam"]);
+    cvar_grid(ui, world, state, "camera_cvars", &["cam_idealdist", "cam_idealyaw", "chimera_freecam"]);
 }
 
 fn perf_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
@@ -1086,9 +1086,9 @@ fn perf_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         state,
         "perf_cvars",
         &[
-            "mashup_perf",
-            "mashup_perf_log",
-            "mashup_hitch_ratio",
+            "chimera_perf",
+            "chimera_perf_log",
+            "chimera_hitch_ratio",
             "host_timescale",
             "mat_vsync",
             "r_novis",
@@ -1103,7 +1103,7 @@ fn perf_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         &["cl_showerror", "cl_smoothtime", "net_fakelag", "net_fakejitter", "net_fakeloss"],
     );
     ui.horizontal(|ui| {
-        command_button(ui, world, "Log particles", "mashup_particles");
+        command_button(ui, world, "Log particles", "chimera_particles");
         command_button(ui, world, "Bug report (F9)", "bugreport");
     });
     ui.collapsing("Traces", |ui| {
@@ -1328,10 +1328,10 @@ fn logic_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         ui.weak("Pick an entity to see its keyvalues and outputs and fire inputs at it.");
     }
     ui.separator();
-    cvar_grid(ui, world, state, "logic_cvars", &["mashup_logic_record"]);
+    cvar_grid(ui, world, state, "logic_cvars", &["chimera_logic_record"]);
     ui.collapsing(format!("outputs fired ({} latest)", fired.len()), |ui| {
         if fired.is_empty() {
-            ui.weak("none (turn on mashup_logic_record)");
+            ui.weak("none (turn on chimera_logic_record)");
         }
         for f in &fired {
             ui.monospace(f);
@@ -1352,8 +1352,8 @@ fn rounds_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
     }
     ui.horizontal(|ui| {
         command_button(ui, world, "Restart game", "mp_restartgame 1");
-        command_button(ui, world, "Rounds on", "mashup_rounds 1");
-        command_button(ui, world, "Deathmatch", "mashup_rounds 0");
+        command_button(ui, world, "Rounds on", "chimera_rounds 1");
+        command_button(ui, world, "Deathmatch", "chimera_rounds 0");
         command_button(ui, world, "No freeze time", "mp_freezetime 0");
     });
     cvar_grid(
@@ -1362,7 +1362,7 @@ fn rounds_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         state,
         "round_cvars",
         &[
-            "mashup_rounds",
+            "chimera_rounds",
             "mp_freezetime",
             "mp_roundtime",
             "mp_buytime",

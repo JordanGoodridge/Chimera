@@ -30,7 +30,7 @@ pub struct ServerCvar {
     pub label: String,
     pub kind: ServerSettingKind,
     pub value: String,
-    /// Its value when the dialog opened (None: mashup lacks it, greyed).
+    /// Its value when the dialog opened (None: Chimera lacks it, greyed).
     pub before: Option<String>,
     /// The page it's on (index into `CREATE_TABS`).
     pub page: usize,
@@ -46,7 +46,7 @@ pub(super) const BOT_CVARS: [(&str, &str, &str); 2] = [
 ];
 
 /// Ours on the Game page, after the game's own: rounds or deathmatch.
-pub(super) const ROUNDS_CVAR: &str = "mashup_rounds";
+pub(super) const ROUNDS_CVAR: &str = "chimera_rounds";
 
 /// What a new game starts with.
 #[derive(Clone, Debug, PartialEq)]
@@ -212,7 +212,7 @@ impl GameMenu {
         }
     }
 
-    /// A quick start (`mashup_quickstart`): rounds on `QUICK_MAP` with
+    /// A quick start (`chimera_quickstart`): rounds on `QUICK_MAP` with
     /// `QUICK_BOTS` normal bots, started at once as Create Server's Start
     /// would (single player).
     pub fn quick_start(&mut self, out: &mut Outcome) {

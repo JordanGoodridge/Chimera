@@ -11,8 +11,8 @@ other games and our own mixes.
   maps fetched from servers in `cstrike/download`. Players of community
   servers already have many minigame maps there. Mount all of them
   read-only.
-- **Write only to mashup's own cache**, next to the config folder
-  (`~/.local/share/mashup/`, `%APPDATA%\mashup\` on Windows), laid out like
+- **Write only to Chimera's own cache**, next to the config folder
+  (`~/.local/share/chimera/`, `%APPDATA%\chimera\` on Windows), laid out like
   Source's download folder:
 
   ```
@@ -72,14 +72,14 @@ first (specs/README.md), then a game-independent implementation:
 ## Test map: mashup_logic_test
 
 Every entity class we support gets an example in one map we generate
-ourselves, so each can be checked in mashup and measured in real CS:S.
+ourselves, so each can be checked in Chimera and measured in real CS:S.
 
 - **Two layers.** (1) Fixtures in Rust tests: entity key values and box
   brush models handed straight to the logic layer, no compiler needed;
   fast and deterministic, one per behaviour. (2) A real map: a script
   (`tools/testmap/`) writes a Hammer `.vmf` (text; our own geometry,
   stock CS:S texture names only), Valve's compilers (vbsp, vvis, vrad)
-  build the `.bsp` into the mashup cache. The `.vmf` and script are
+  build the `.bsp` into the Chimera cache. The `.vmf` and script are
   committed; the `.bsp` never is (.gitignore).
 - **Compilers.** The Linux CS:S install has none; the Windows install
   ships them in `bin/` (check), so `scripts/compile_testmap.ps1` builds it
@@ -88,7 +88,7 @@ ourselves, so each can be checked in mashup and measured in real CS:S.
 - **Reference.** The compiled map runs on the local CS:S probe server, so
   door speeds, push strength, teleport and hurt timing, counter and relay
   ordering are measured from the real game (like the movement and weapon
-  probes), then compared with mashup on the same map.
+  probes), then compared with Chimera on the same map.
 - **Rooms** (each with a visible result: a light, a toggled `func_brush`
   or a `game_text`, so a screenshot or a probe can read it):
   1. I/O: `logic_auto` → `logic_relay` chain with delays, `logic_timer`,
@@ -105,7 +105,7 @@ ourselves, so each can be checked in mashup and measured in real CS:S.
 
 ## Slices
 
-1. [x] Mount the install's `download/` and `custom/` maps plus the mashup
+1. [x] Mount the install's `download/` and `custom/` maps plus the Chimera
    cache; `map <name>` finds custom maps; `maps` lists them; `import
    <file.bsp|.bsp.bz2>` copies into the cache with a hash. Test: a map in
    the cache loads by name (a tiny generated BSP, or skip without one).
@@ -118,8 +118,8 @@ ourselves, so each can be checked in mashup and measured in real CS:S.
    `tools/testmap/mashup_logic_test.vmf` (rooms A I/O, B triggers, C
    movers, D breakables and equipment, E spawns; a test keeps the
    committed file current); `scripts/compile_testmap.ps1` builds it on
-   Windows into the mashup cache (and `-CopyToGame` for CS:S). Left:
-   compile it (the Linux install has no compilers), check it in mashup
+   Windows into the Chimera cache (and `-CopyToGame` for CS:S). Left:
+   compile it (the Linux install has no compilers), check it in Chimera
    and CS:S, then the measurements.
 3. [ ] Spec entity I/O and triggers (specs/source/entity_io.md); the
    `logic` layer; `trigger_teleport`, `trigger_push`, `trigger_hurt`,
@@ -183,7 +183,7 @@ ourselves, so each can be checked in mashup and measured in real CS:S.
 
 ## Decision log
 
-- 2026-10-06: maps the player downloads are cached in mashup's own data
+- 2026-10-06: maps the player downloads are cached in Chimera's own data
   folder; the game install is mounted read-only (including its
   `download/` folder). Entity logic comes before networking, so the first
   custom map loaded actually plays.

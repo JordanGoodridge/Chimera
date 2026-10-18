@@ -36,7 +36,7 @@ fn setup() -> (Sim, Entity, Entity) {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 1; mp_roundtime 0.5; mashup_rounds 1; mashup_untimed_win 1");
+        .submit("mp_freezetime 1; mp_roundtime 0.5; chimera_rounds 1; chimera_untimed_win 1");
     sim.ticks(3);
     sim.app.world_mut().entity_mut(ct).insert(Money(16000));
     (sim, ct, t)
@@ -63,7 +63,7 @@ fn night_vision_is_bought_once_kept_through_rounds_and_lost_at_death() {
         "You already have one!"
     );
     assert_eq!(money(&sim, ct), 16000 - NIGHTVISION_PRICE);
-    // The round runs out (no one dies; `mashup_untimed_win 1`, as this
+    // The round runs out (no one dies; `chimera_untimed_win 1`, as this
     // greybox has no objectives): the next one keeps them.
     let round = sim.app.world().resource::<RoundState>().number;
     sim.seconds(40.0);

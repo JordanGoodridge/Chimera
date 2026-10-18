@@ -5,8 +5,8 @@
 //! and prints winners, kills, time to first contact and where bots got
 //! stuck (no progress for 4 s while walking a route, summed up by spot;
 //! `games/cs_source/tests/it/heavy/bot_nav.rs` has the tools to look at one):
-//! `MASHUP_BOT_MAP=de_nuke MASHUP_BOT_ROUNDS=8 cargo test --features dev
-//! --test it bot_rounds:: -- --ignored --nocapture` (`MASHUP_BOT_CONSOLE`:
+//! `CHIMERA_BOT_MAP=de_nuke CHIMERA_BOT_ROUNDS=8 cargo test --features dev
+//! --test it bot_rounds:: -- --ignored --nocapture` (`CHIMERA_BOT_CONSOLE`:
 //! console commands to run first, e.g. "bot_grenades 0"). Runs aren't
 //! repeatable (the same build gives other winners), so compare 30 rounds
 //! or more.
@@ -68,7 +68,7 @@ fn feet(sim: &Sim, e: Entity) -> Vec3 {
     sim.position(e) - Vec3::Y * 0.9
 }
 
-/// One line per bot: team, activity, place, position (`MASHUP_BOT_TRACE`).
+/// One line per bot: team, activity, place, position (`CHIMERA_BOT_TRACE`).
 fn trace_bots(sim: &Sim, bots: &[Entity], time: f64) {
     let nav = sim.app.world().get_resource::<crate::stack::map::nav::NavMesh>();
     for &b in bots {
@@ -131,7 +131,7 @@ fn dust2_attackers_take_a_site_and_defenders_hold_both() {
         let bot = sim.app.world().get::<Bot>(b).unwrap();
         assert_eq!((bot.role(), bot.site()), (Role::Attack, Some(site)));
     }
-    let trace = std::env::var("MASHUP_BOT_TRACE").is_ok();
+    let trace = chimera_core::env::var("CHIMERA_BOT_TRACE").is_ok();
     let mut arrived = vec![None; ts.len()];
     let mut spread_max = 0.0f32;
     let step = 0.25;
@@ -203,7 +203,7 @@ fn dust2_bots_hold_still_in_the_freeze_time() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 3; mp_roundtime 2; mashup_rounds 1");
+        .submit("mp_freezetime 3; mp_roundtime 2; chimera_rounds 1");
     sim.ticks(3);
     assert!(matches!(
         sim.app.world().resource::<RoundState>().phase,
@@ -234,12 +234,12 @@ fn dust2_bot_round_stats() {
     if !installed() {
         return;
     }
-    let map = std::env::var("MASHUP_BOT_MAP").unwrap_or_else(|_| "de_dust2".into());
-    let rounds: u32 = std::env::var("MASHUP_BOT_ROUNDS")
+    let map = chimera_core::env::var("CHIMERA_BOT_MAP").unwrap_or_else(|_| "de_dust2".into());
+    let rounds: u32 = chimera_core::env::var("CHIMERA_BOT_ROUNDS")
         .ok()
         .and_then(|r| r.parse().ok())
         .unwrap_or(6);
-    let per_team: usize = std::env::var("MASHUP_BOT_TEAM")
+    let per_team: usize = chimera_core::env::var("CHIMERA_BOT_TEAM")
         .ok()
         .and_then(|r| r.parse().ok())
         .unwrap_or(5);
@@ -247,9 +247,9 @@ fn dust2_bot_round_stats() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 2; mp_roundtime 2; mashup_rounds 1");
-    // More settings to try (`MASHUP_BOT_CONSOLE="bot_grenades 0"`).
-    if let Ok(more) = std::env::var("MASHUP_BOT_CONSOLE") {
+        .submit("mp_freezetime 2; mp_roundtime 2; chimera_rounds 1");
+    // More settings to try (`CHIMERA_BOT_CONSOLE="bot_grenades 0"`).
+    if let Ok(more) = chimera_core::env::var("CHIMERA_BOT_CONSOLE") {
         sim.app.world_mut().resource_mut::<Console>().submit(&more);
     }
     sim.ticks(3);
@@ -268,7 +268,7 @@ fn dust2_bot_round_stats() {
     let mut bought = [[0u32; 4]; 2];
     let mut buys: Vec<String> = Vec::new();
     let step = 0.1;
-    let trace = std::env::var("MASHUP_BOT_TRACE").is_ok();
+    let trace = chimera_core::env::var("CHIMERA_BOT_TRACE").is_ok();
     let mut t = 0.0f64;
     let limit = rounds as f64 * 150.0;
     let mut stuck = StuckWatch::default();
@@ -662,7 +662,7 @@ fn dust2_defenders_retake_together() {
         })
         .collect();
     assert!(cts.len() >= 2, "{} defenders left", cts.len());
-    let trace = std::env::var("MASHUP_BOT_TRACE").is_ok();
+    let trace = chimera_core::env::var("CHIMERA_BOT_TRACE").is_ok();
     let start: Vec<f32> = cts.iter().map(|&b| feet(&sim, b).distance(bomb)).collect();
     let mut arrived: Vec<Option<f64>> = vec![None; cts.len()];
     let mut crowding = 0.0f64;

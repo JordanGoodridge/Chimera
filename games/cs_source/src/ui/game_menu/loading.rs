@@ -200,7 +200,7 @@ pub fn dialog_state(
     )
 }
 
-/// `mashup_loading_details`: the loading dialog's detailed view (each
+/// `chimera_loading_details`: the loading dialog's detailed view (each
 /// stage's time, bytes and percentage; the server's name, map, players
 /// and ping). Off by default (the game's dialog alone).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
@@ -276,7 +276,7 @@ pub(super) fn detail_stage(
 #[derive(Component)]
 pub(super) struct LoadingDetail;
 
-/// The detailed view under the dialog (`mashup_loading_details 1`).
+/// The detailed view under the dialog (`chimera_loading_details 1`).
 pub(super) fn details_panel(commands: &mut Commands, root: Entity, look: &Look, size: Vec2) {
     let (w, h) = (560.0, 190.0);
     let x = ((size.x / look.s - w) / 2.0).max(0.0);

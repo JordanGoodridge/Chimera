@@ -46,7 +46,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - client: Target ID range, placement and smoke rule are guesses (`games/cs_source/src/ui/target_id.rs`)
 - weapon, games/cs_source: cl_autowepswitch weights from the spec's table; switching rules partly ours (`chimera/sim/src/weapon/drop.rs`)
 - games/cs_source: View-model idle timing for the knife and TMP is our reading, captures wanted (`games/cs_source/src/game/view_anim.rs`)
-- client: Mouse capture fights the inspector (`mashup_inspector`, F11, releases it; click recaptures). OK for now: Debug-only.
+- client: Mouse capture fights the inspector (`chimera_inspector`, F11, releases it; click recaptures). OK for now: Debug-only.
 - tests: `no_game_assets_tracked` blocks all .wav/.ogg/.mp3, including our own future sounds. OK for now: Revisit when we have original audio.
 - client: Local input overwrites the local player's `Intent` every frame, so remote tools can't drive it. OK for now: Scripted intent playback is planned (docs/OBSERVABILITY.md).
 - map: Non-mover brush entities static; overlays and props on movers simplified (`games/cs_source/src/game/bsp.rs`)
@@ -82,7 +82,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - weapon: Weapon data sets are leaked and process-wide; only a game's own set gets models (`chimera/sim/src/weapon/data.rs`)
 - client, games/cs_source: Fall damage sound, landing roll and HUD feedback specced or guessed but not measured (`games/cs_source/src/game/pain.rs`)
 - weapon: A dropped gun carries its reserve (as CS:S's measured, M20; we have no per-player ammo pools); a refused touch is retried every tick. OK for now: Matches CS:S in every measured case.
-- weapon: mashup_usepickup (+use pickup) reach and rules are ours (`chimera/sim/src/weapon/drop.rs`)
+- weapon: chimera_usepickup (+use pickup) reach and rules are ours (`chimera/sim/src/weapon/drop.rs`)
 - movement: Source movement lacks base velocity; the landing roll keeps the shared code's spring; some fall-damage cases ignored (`games/cs_source/src/game/movement.rs`)
 - games/cs_source: Hit slowdown a tick late (after movement); flinch set, not added (`games/cs_source/src/game/hit_reaction.rs`)
 - movement: Drowning's unmeasured parts are ours: reset on surfacing, when restores start, what clears the amount owed, no armour; client drown sounds not played (`games/cs_source/src/game/drown.rs`)

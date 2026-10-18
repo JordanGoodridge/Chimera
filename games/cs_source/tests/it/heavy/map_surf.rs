@@ -200,7 +200,7 @@ fn ride(sim: &mut Sim, brushes: &[MapBrush], r: &Ramp, strafe: bool) -> Vec<Stri
                     .flat_map(|m| m.brushes.clone())
                     .collect()
             };
-            if std::env::var("MASHUP_SURF_DEBUG").is_ok() {
+            if chimera_core::env::var("CHIMERA_SURF_DEBUG").is_ok() {
                 // The real hull (62 high, its centre 5 below the transform).
                 let c = to_engine(pos - Vec3::Z * 5.0);
                 let h = Vec3::new(16.0, 31.0, 16.0) * 0.0254;
@@ -260,7 +260,7 @@ fn ride(sim: &mut Sim, brushes: &[MapBrush], r: &Ramp, strafe: bool) -> Vec<Stri
 }
 
 /// One test per map (so they run side by side), each riding that map's
-/// ramps with `rides`; skipped when `MASHUP_SURF_MAPS` names maps
+/// ramps with `rides`; skipped when `CHIMERA_SURF_MAPS` names maps
 /// (`listed_maps` rides those instead).
 macro_rules! surf_maps {
     ($module:ident, $min_ramps:expr, $($map:ident,)*) => {
@@ -268,7 +268,7 @@ macro_rules! surf_maps {
             $(
                 #[test]
                 fn $map() {
-                    if std::env::var_os("MASHUP_SURF_MAPS").is_none() {
+                    if chimera_core::env::var_os("CHIMERA_SURF_MAPS").is_none() {
                         super::rides(&[stringify!($map)], $min_ramps);
                     }
                 }
@@ -293,8 +293,8 @@ surf_maps! {
 // model: we collided with their meshes, a hair off the player-clip ramps
 // under them, and the box ended inside a mesh (static props without a
 // collision model block nothing now). To see why a ride stops:
-// `MASHUP_SURF_MAPS=<map> MASHUP_SURF_DEBUG=1` (test `listed_maps`) lists
-// what the hull is near at each stop, and `MASHUP_SLIDE_DEBUG=1` prints
+// `CHIMERA_SURF_MAPS=<map> CHIMERA_SURF_DEBUG=1` (test `listed_maps`) lists
+// what the hull is near at each stop, and `CHIMERA_SLIDE_DEBUG=1` prints
 // every slide move's sweeps (docs/OBSERVABILITY.md).
 surf_maps! {
     surfing_keeps_speed_on_the_other, 0,
@@ -303,10 +303,10 @@ surf_maps! {
     surf_stickybutt_alpha, surf_surreal, surf_threnody,
 }
 
-/// `MASHUP_SURF_MAPS=surf_a,surf_b`: those maps' rides (nothing without it).
+/// `CHIMERA_SURF_MAPS=surf_a,surf_b`: those maps' rides (nothing without it).
 #[test]
 fn listed_maps() {
-    if let Ok(only) = std::env::var("MASHUP_SURF_MAPS") {
+    if let Ok(only) = chimera_core::env::var("CHIMERA_SURF_MAPS") {
         let maps: Vec<&str> = only.split(',').collect();
         rides(&maps, 0);
     }

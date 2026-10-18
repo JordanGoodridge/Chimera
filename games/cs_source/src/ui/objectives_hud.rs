@@ -6,7 +6,7 @@
 //! everyone, hints for the local player, chat lines for the team), the
 //! game's deny sound when the local player's +use finds nothing (neither a
 //! map door or button nor the bomb or a hostage; spec 5, step 4), and
-//! `mashup_objectives 1`, a debug readout of the bomb and hostages.
+//! `chimera_objectives 1`, a debug readout of the bomb and hostages.
 //!
 //! The objectives on the HUD: the carried-bomb / kit / rescue-zone icon
 //! (`HudC4` etc., flashing red in a target), the scenario icon (planted bomb; a
@@ -19,7 +19,7 @@
 //! from `objectives::ObjectiveEvent`; the deny sound
 //! (`map::RoundSounds::use_deny`) when the local player's +use press finds
 //! neither a map entity (`LogicWorld::use_presses`) nor an objective;
-//! `mashup_objectives 1` shows the bomb's timer and defuse and the hostages'
+//! `chimera_objectives 1` shows the bomb's timer and defuse and the hostages'
 //! state; the centre print also says what the local player's weapon switched
 //! to (`weapon::ModeTexts`: "Switched to burst-fire mode").
 
@@ -69,7 +69,7 @@ impl Plugin for ObjectivesHudPlugin {
             );
         resource_cvar::<Overlay, u8>(
             app,
-            "mashup_objectives",
+            "chimera_objectives",
             "1: show the bomb's timer and defuse and the hostages' state (debug).",
             |o| &mut o.0,
         );
@@ -599,7 +599,7 @@ pub fn centre_text(world: &World) -> Option<String> {
     world.get_resource::<Centre>().and_then(|c| c.0.as_ref().map(|(s, _)| s.clone()))
 }
 
-/// `mashup_objectives 1`: the bomb (where, time left, defuse progress)
+/// `chimera_objectives 1`: the bomb (where, time left, defuse progress)
 /// and the hostages (leader, health), as text.
 #[allow(clippy::type_complexity)]
 fn overlay(
@@ -694,7 +694,7 @@ fn used(e: &ObjectiveEvent, me: Entity) -> bool {
 
 /// The deny sound for a +use press of the living local player that found
 /// nothing: no map entity (`logic`'s use presses), no objective and no
-/// weapon taken (`mashup_usepickup`).
+/// weapon taken (`chimera_usepickup`).
 #[allow(clippy::too_many_arguments)]
 fn use_deny(
     local: Query<(Entity, &crate::core::Intent, Option<&Health>), With<LocalPlayer>>,

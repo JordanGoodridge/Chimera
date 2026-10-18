@@ -1,7 +1,7 @@
 //! Players in a network game, from the 2026-10-10 playtest with friends
 //! (docs/backlog.md): cheat commands from a client run on the server
 //! with its `sv_cheats` (`net::cheats`), and noclip is predicted;
-//! `mashup_noblock` lets teammates (or everyone) pass through each other;
+//! `chimera_noblock` lets teammates (or everyone) pass through each other;
 //! the chat says who joined and left and why, and a line shows once in
 //! the console; the player name is saved and renames you online.
 
@@ -178,7 +178,7 @@ fn noblock_lets_teammates_or_everyone_through() {
 #[test]
 fn noblock_is_the_servers_and_predicted() {
     let mut sim = joined(92, 2);
-    run(sim.server.app.world_mut(), "mashup_noblock 1");
+    run(sim.server.app.world_mut(), "chimera_noblock 1");
     sim.ticks(10);
     for i in 0..2 {
         assert_eq!(
@@ -188,7 +188,7 @@ fn noblock_is_the_servers_and_predicted() {
         );
     }
     // A client can't set it.
-    run(sim.clients[0].app.world_mut(), "mashup_noblock 0");
+    run(sim.clients[0].app.world_mut(), "chimera_noblock 0");
     assert_eq!(*sim.clients[0].app.world().resource::<NoBlock>(), NoBlock(1));
     // Both on one team, put on one spot: they walk apart, as predicted.
     let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());

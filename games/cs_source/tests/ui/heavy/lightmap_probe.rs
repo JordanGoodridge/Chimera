@@ -94,13 +94,13 @@ fn lightmap_at_point() {
 }
 
 /// Our raw (linear) lightmap values for the flat page and 3 bump pages at
-/// each point of a JSON list (MASHUP_POINTS: [{"pos": [x, y, z]}, ...]),
-/// written to MASHUP_OUT as JSON.
+/// each point of a JSON list (CHIMERA_POINTS: [{"pos": [x, y, z]}, ...]),
+/// written to CHIMERA_OUT as JSON.
 #[test]
 #[ignore]
 fn lightmap_at_points() {
     let points: Vec<serde_json::Value> =
-        serde_json::from_str(&std::fs::read_to_string(std::env::var("MASHUP_POINTS").unwrap()).unwrap()).unwrap();
+        serde_json::from_str(&std::fs::read_to_string(chimera_core::env::var("CHIMERA_POINTS").unwrap()).unwrap()).unwrap();
     let config = LocalConfig::load().unwrap();
     let m = mount::open(&config.game_path("cs_source").unwrap()).unwrap();
     let bytes = m.read("maps/de_dust2.bsp").unwrap();
@@ -154,14 +154,14 @@ fn lightmap_at_points() {
         out.push(found);
     }
     std::fs::write(
-        std::env::var("MASHUP_OUT").unwrap(),
+        chimera_core::env::var("CHIMERA_OUT").unwrap(),
         serde_json::to_string(&out).unwrap(),
     )
     .unwrap();
 }
 
 /// The whole lightmap block (flat + bump pages, raw linear) of the face at
-/// a point, as JSON to MASHUP_OUT.
+/// a point, as JSON to CHIMERA_OUT.
 #[test]
 #[ignore]
 fn lightmap_block_at_point() {
@@ -204,7 +204,7 @@ fn lightmap_block_at_point() {
             "w": flat.width, "h": flat.height, "luxel": [luxel.x, luxel.y],
             "pages": [flat.rgb, bumps[0].rgb, bumps[1].rgb, bumps[2].rgb],
         });
-        std::fs::write(std::env::var("MASHUP_OUT").unwrap(), out.to_string()).unwrap();
+        std::fs::write(chimera_core::env::var("CHIMERA_OUT").unwrap(), out.to_string()).unwrap();
         return;
     }
     panic!("no face");

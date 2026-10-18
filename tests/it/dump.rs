@@ -1,5 +1,5 @@
 //! `dump` (the root package's install inspector) against a real CS:S
-//! install. Skipped (passes with a note) when mashup.local.toml has no
+//! install. Skipped (passes with a note) when chimera.local.toml has no
 //! usable `[games.cs_source]` path.
 
 use std::{path::PathBuf, process::Command};
@@ -30,7 +30,7 @@ fn dump_extracts_outside_the_repo_and_refuses_inside() {
             .unwrap()
     };
 
-    let outside = std::env::temp_dir().join(format!("mashup-dump-test-{}", std::process::id()));
+    let outside = std::env::temp_dir().join(format!("chimera-dump-test-{}", std::process::id()));
     let ok = run(&outside);
     assert!(ok.status.success(), "{}", String::from_utf8_lossy(&ok.stderr));
     let extracted = std::fs::metadata(outside.join("maps/de_dust2.bsp")).unwrap().len();

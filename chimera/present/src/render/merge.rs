@@ -20,7 +20,7 @@
 //! `sync_merged_brushes` splits a node out (its index ranges dropped from the
 //! combined meshes, its own meshes shown) when it moves, is removed or broken
 //! (`vis::LogicHidden`) or shows panes, and merges it back when it is home
-//! again; `MASHUP_MERGE_BRUSHES=0` turns it off.
+//! again; `CHIMERA_MERGE_BRUSHES=0` turns it off.
 //!
 //! A node copied at run time (`map::copies`) draws its own meshes, never
 //! merged (`show_copied_pieces`, a `map::MapHooks::copied` hook).
@@ -79,10 +79,10 @@ pub fn mergeable(m: &MapMesh) -> bool {
         && m.uvs.len() == m.positions.len()
 }
 
-/// Off with `MASHUP_MERGE_BRUSHES=0` (every brush entity draws its own
+/// Off with `CHIMERA_MERGE_BRUSHES=0` (every brush entity draws its own
 /// meshes), for measurements.
 pub fn enabled() -> bool {
-    std::env::var("MASHUP_MERGE_BRUSHES").map_or(true, |v| v != "0")
+    chimera_core::env::var("CHIMERA_MERGE_BRUSHES").map_or(true, |v| v != "0")
 }
 
 /// Collects brush entity meshes into combined ones while the map spawns.

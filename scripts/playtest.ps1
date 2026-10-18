@@ -1,5 +1,5 @@
 # Windows: pull the latest commit and run an optimized build.
-# Usage (from the repo root): .\scripts\playtest.ps1 [game options, e.g. --movement mashup:noclip]
+# Usage (from the repo root): .\scripts\playtest.ps1 [game options, e.g. --movement chimera:noclip]
 # Combat Arms' skeleton instead of CS:S: .\scripts\playtest.ps1 combat_arms [options]
 $ErrorActionPreference = "Stop"
 git pull --ff-only

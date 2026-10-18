@@ -1,6 +1,7 @@
-//! Machine-local settings from `mashup.local.toml` (gitignored): install
-//! paths (optional: `install` finds them otherwise) and Combat Arms keys.
-//! See `mashup.local.example.toml`.
+//! Machine-local settings from `chimera.local.toml` (gitignored; its old
+//! name `mashup.local.toml`, `OLD_FILE_NAME`, is read when there is no new
+//! one): install paths (optional: `install` finds them otherwise) and
+//! Combat Arms keys. See `chimera.local.example.toml`.
 
 use std::{
     collections::BTreeMap,
@@ -10,7 +11,11 @@ use std::{
 
 use serde::Deserialize;
 
-pub const FILE_NAME: &str = "mashup.local.toml";
+pub const FILE_NAME: &str = "chimera.local.toml";
+
+/// Its name before the rename to Chimera, still read (after `FILE_NAME`
+/// in each place).
+pub const OLD_FILE_NAME: &str = "mashup.local.toml";
 
 #[derive(Debug, Default, Deserialize)]
 pub struct LocalConfig {
@@ -56,14 +61,18 @@ pub fn hex_bytes<const N: usize>(text: &str, what: &str) -> Result<[u8; N], Stri
 }
 
 impl LocalConfig {
-    /// Load from `$MASHUP_CONFIG`, else `./mashup.local.toml`, else the one
-    /// in the source checkout (for `cargo run`/`cargo test`). Missing file
+    /// Load from `$CHIMERA_CONFIG` (or the old `$MASHUP_CONFIG`), else
+    /// `./chimera.local.toml`, else the one in the source checkout (for
+    /// `cargo run`/`cargo test`); in each folder the old name
+    /// (`mashup.local.toml`) when the new one isn't there. Missing file
     /// means an empty config.
     pub fn load() -> Result<Self, String> {
         let candidates = [
-            std::env::var_os("MASHUP_CONFIG").map(PathBuf::from),
+            crate::env::var_os("CHIMERA_CONFIG").map(PathBuf::from),
             Some(PathBuf::from(FILE_NAME)),
+            Some(PathBuf::from(OLD_FILE_NAME)),
             Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(FILE_NAME)),
+            Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(OLD_FILE_NAME)),
         ];
         let Some(path) = candidates.into_iter().flatten().find(|p| p.is_file()) else {
             return Ok(Self::default());
@@ -89,14 +98,14 @@ impl LocalConfig {
     }
 }
 
-/// Mashup's own content cache for a game (maps fetched or imported, laid
+/// Chimera's own content cache for a game (maps fetched or imported, laid
 /// out like the game's download folder): a per-user data folder, never
 /// the game install and never the repo (docs/plans/active/custom-maps.md).
 pub fn content_dir(game: &str) -> Option<PathBuf> {
-    Some(dirs::data_local_dir()?.join("mashup").join("content").join(game))
+    Some(crate::env::user_folder(&dirs::data_local_dir()?).join("content").join(game))
 }
 
 /// Where `dump` writes by default: a per-user data folder, never the repo.
 pub fn default_dump_dir(game: &str) -> Option<PathBuf> {
-    Some(dirs::data_local_dir()?.join("mashup").join("dump").join(game))
+    Some(crate::env::user_folder(&dirs::data_local_dir()?).join("dump").join(game))
 }

@@ -25,14 +25,14 @@ fn main() {
         std::process::exit(1);
     }
     // No menus yet: always straight into the greybox.
-    args.map.get_or_insert_with(|| "greybox".into());
+    args.map.get_or_insert_with(|| "chimera:greybox".into());
     let mut app = App::new();
     app.add_plugins((greybox::GreyboxMapPlugin, MapPlugin::empty()))
         .add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "combat_arms".into(),
+                        title: "Combat Arms".into(),
                         resolution: match (args.window, args.scale) {
                             (Some(s), scale) => bevy::window::WindowResolution::new(s.x, s.y)
                                 .with_scale_factor_override(scale.unwrap_or(1.0)),
@@ -81,7 +81,7 @@ fn main() {
         // The client shell with Combat Arms' HUD, then its other looks.
         .add_plugins(ClientPlugin { args })
         .add_plugins(combat_arms::ui::CaUiPlugin);
-    if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
+    if chimera_core::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi") {
         chimera_world::harness::single_threaded_schedules(&mut app);
     }
     app.run();

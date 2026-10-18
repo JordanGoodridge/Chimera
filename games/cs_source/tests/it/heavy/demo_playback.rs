@@ -1,5 +1,5 @@
 //! The sample demos (recorded on a CS:S dedicated server with SourceTV;
-//! never committed: `$MASHUP_DEMOS` or the workspace's `target/demos/`)
+//! never committed: `$CHIMERA_DEMOS` or the workspace's `target/demos/`)
 //! played on de_dust2 from the install (`games::cs_source::demo`):
 //! every puppet where the demo has its player at the frames' ticks, as
 //! recorded (place, look, team, health, weapon), the bots' recorded
@@ -29,7 +29,7 @@ use crate::stack::{
 };
 
 fn demo_file(name: &str) -> Option<CsDemo> {
-    let dir = std::env::var_os("MASHUP_DEMOS")
+    let dir = chimera_core::env::var_os("CHIMERA_DEMOS")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/demos"));
     let path = dir.join(name);

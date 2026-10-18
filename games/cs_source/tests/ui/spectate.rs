@@ -54,7 +54,7 @@ fn dead_players_watch_their_team_then_play_again() {
     let near = add(&mut sim, 3.0, 2, "Bot 2");
     let far = add(&mut sim, 9.0, 2, "Bot 1");
     let enemy = add(&mut sim, -2.0, 1, "Bot 3");
-    console(&mut sim, "mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+    console(&mut sim, "mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.seconds(0.5);
     assert!(matches!(sim.app.world().resource::<RoundState>().phase, Phase::Live { .. }));
     assert_eq!(spec(&sim).phase, SpecPhase::Alive);
@@ -148,7 +148,7 @@ fn the_spectator_team() {
     sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
     let mate = add(&mut sim, 3.0, 2, "Bot 1");
     let enemy = add(&mut sim, -2.0, 1, "Bot 2");
-    console(&mut sim, "mp_freezetime 1; mp_roundtime 0.1; mashup_rounds 1");
+    console(&mut sim, "mp_freezetime 1; mp_roundtime 0.1; chimera_rounds 1");
     sim.seconds(1.5);
     assert!(matches!(sim.app.world().resource::<RoundState>().phase, Phase::Live { .. }));
 
@@ -218,7 +218,7 @@ fn freeze_sim() -> (Sim, Entity, Entity, Entity) {
     sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
     let mate = add(&mut sim, 3.0, 2, "Bot 1");
     let enemy = add(&mut sim, -8.0, 1, "Bot 2");
-    console(&mut sim, "mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+    console(&mut sim, "mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.seconds(0.5);
     // The round put everyone at the spawns: back in a row.
     for (e, x) in [(me, 0.0), (mate, 3.0), (enemy, -8.0)] {

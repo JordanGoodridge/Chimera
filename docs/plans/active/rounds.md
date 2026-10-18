@@ -6,10 +6,10 @@ restarts.
 
 ## Done (slice 1)
 
-- `rules::rounds` (`mashup_rounds 1`): freeze (`mp_freezetime`, nobody
+- `rules::rounds` (`chimera_rounds 1`): freeze (`mp_freezetime`, nobody
   moves or shoots), a timed round (`mp_roundtime`), elimination wins,
   defenders win on time on bomb maps (on maps without objectives the clock
-  ends nothing, as CS:S's, measured; `mashup_untimed_win 1`: the defenders
+  ends nothing, as CS:S's, measured; `chimera_untimed_win 1`: the defenders
   win), a pause (5 s), then everyone back at their
   spawns: the dead with starting weapons, survivors with theirs; loose
   weapons cleared. `RoundEnded` messages, `RoundState` (phase, number,

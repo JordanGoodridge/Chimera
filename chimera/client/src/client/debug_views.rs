@@ -1,6 +1,6 @@
 //! Debug overlays drawn with gizmos: the nav mesh around you
-//! (`mashup_drawnav 1`: areas coloured by place, links between them,
-//! ladders and their get-on points) and ragdolls (`mashup_ragdoll_debug
+//! (`chimera_drawnav 1`: areas coloured by place, links between them,
+//! ladders and their get-on points) and ragdolls (`chimera_ragdoll_debug
 //! 1`: each body's bounds and axes, each joint from its parent body's
 //! anchor to the child body). A game's own overlays (CS:S's bots:
 //! `games::cs_source::ui::debug`) come from its front end.
@@ -24,7 +24,7 @@ impl Plugin for DebugViewsPlugin {
             .add_systems(Update, (draw_nav, draw_ragdolls));
         resource_cvar::<DebugViews, u8>(
             app,
-            "mashup_ragdoll_debug",
+            "chimera_ragdoll_debug",
             "1: draw ragdoll bodies (bounds, axes) and joints (parent anchor to child).",
             |d| &mut d.ragdolls,
         );
@@ -42,7 +42,7 @@ impl Plugin for DebugViewsPlugin {
         );
         resource_cvar::<DebugViews, u8>(
             app,
-            "mashup_drawnav",
+            "chimera_drawnav",
             "1: outline nav areas near you (coloured by place) and their links; 2: all of them.",
             |d| &mut d.nav,
         );
@@ -55,7 +55,7 @@ struct DebugViews {
     ragdolls: u8,
 }
 
-/// Areas within this of you are drawn at `mashup_drawnav 1`, m.
+/// Areas within this of you are drawn at `chimera_drawnav 1`, m.
 const NAV_RADIUS: f32 = 25.0;
 /// Lift off the floor, m.
 const LIFT: f32 = 0.05;

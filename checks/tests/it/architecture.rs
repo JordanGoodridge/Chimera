@@ -13,13 +13,16 @@ use std::{
 /// Keep in sync with the layer diagram in docs/ARCHITECTURE.md.
 const ALLOWED: &[(&str, &[&str])] = &[
     ("core", &[]),
+    // Environment variables and per-user folders under their new and old
+    // names (`CHIMERA_*`/`MASHUP_*`): std only.
+    ("env", &[]),
     // Performance counters and distributions: Bevy only.
     ("metrics", &[]),
-    ("console", &["core"]),
+    ("console", &["core", "env"]),
     // Game events and the server log: what the rules and the network tell
     // plugins and admins happened.
     ("game_log", &["core", "console"]),
-    ("mount", &[]),
+    ("mount", &["env"]),
     // What a game tells the shell about itself (its install, map cycle,
     // tick, binds, movement cvars): data the game registers.
     ("game_registry", &["mount"]),

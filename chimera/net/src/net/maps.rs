@@ -943,7 +943,7 @@ mod tests {
 
     #[test]
     fn downloads_are_checked_before_they_are_kept() {
-        let dir = std::env::temp_dir().join(format!("mashup-net-save-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chimera-net-save-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let bytes = b"VBSP not really a map".to_vec();
         let hash = sha256(&bytes);

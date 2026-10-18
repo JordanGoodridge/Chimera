@@ -16,7 +16,7 @@ Setup (once per machine; nothing here touches the CS:S game install):
 3. Compile and install the plugin:
    `cd ~/games/css-ds/cstrike/addons/sourcemod/scripting && ./spcomp <repo>/tools/css_probe/mashup_probe.sp -o ../plugins/mashup_probe.smx`
 4. Copy `mashup_probe.cfg` (below) to `~/games/css-ds/cstrike/cfg/`.
-5. In mashup.local.toml: `[games.cs_source_server]` `path = "~/games/css-ds"`.
+5. In chimera.local.toml (or its old name, mashup.local.toml): `[games.cs_source_server]` `path = "~/games/css-ds"`.
 
 movecmp starts the server itself (LAN only, 127.0.0.1:27030, `-insecure`)
 when it isn't running, and stops it afterwards unless `--keep-running`.

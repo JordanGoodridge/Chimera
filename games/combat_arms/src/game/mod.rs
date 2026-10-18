@@ -30,7 +30,7 @@ use bevy::{app::PluginGroupBuilder, prelude::*};
 use crate::game_registry::{GameInfo, RegisterGame};
 
 /// The game's id: maps are `combat_arms:<name>`, weapons
-/// `combat_arms:<weapon>`, its install's key in mashup.local.toml.
+/// `combat_arms:<weapon>`, its install's key in chimera.local.toml.
 pub const GAME: &str = "combat_arms";
 
 /// The server tick until a spec gives Combat Arms' (PLACEHOLDER: the
@@ -51,7 +51,7 @@ pub static INFO: GameInfo = GameInfo {
     map_cycle: |_| Vec::new(),
     import_map: |_| Err("Combat Arms maps aren't loaded yet".into()),
     // No such file in an install: the built-in table is used.
-    default_binds_cfg: "mashup_placeholder_binds.cfg",
+    default_binds_cfg: "chimera_placeholder_binds.cfg",
     default_binds: DEFAULT_BINDS,
     movement_cvars: &[],
 };

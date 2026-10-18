@@ -597,7 +597,7 @@ fn restored_prop_contacts_join_islands_once() {
 /// map is loaded (specs/source/entity_io.md, "point_servercommand"; the
 /// rule in `logic::classes::check_server_command`): a known setting is
 /// applied and put back when another map loads or the map unloads
-/// (disconnect); commands and settings mashup lacks are ignored.
+/// (disconnect); commands and settings Chimera lacks are ignored.
 #[test]
 fn map_server_settings_last_until_the_map_unloads() {
     use crate::stack::console::Console;

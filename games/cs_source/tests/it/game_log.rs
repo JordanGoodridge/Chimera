@@ -146,7 +146,7 @@ fn shots_and_a_rounds_end_are_events_and_lines() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 0; mp_roundtime 1; mashup_rounds 1");
+        .submit("mp_freezetime 0; mp_roundtime 1; chimera_rounds 1");
     sim.ticks(3);
     give(sim.app.world_mut(), t, AK47).unwrap();
     sim.seconds(1.2);

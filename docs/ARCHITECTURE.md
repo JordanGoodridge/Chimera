@@ -134,7 +134,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `mashup::net` re-exports it with the parts' replicated types.
   `cargo test -p chimera_net --features dev` tests it alone.
 - `cs_source_app` (apps/cs_source/) is the faithful CS:S app: the game
-  binary (`mashup`, the workspace's `default-run`) and the app's glue:
+  binary (`cs_source`, the workspace's `default-run`) and the app's glue:
   `SimPlugins` (`cs_source::SimPlugins` with the build's version),
   `games::load_map`, `client_hooks` and `client` (the shell with this app's hooks
   and CS:S's HUD), re-exports at the old paths, and build.rs's stamp. It
@@ -153,11 +153,12 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   the shell with its HUD, the network. What Combat Arms needs that lives
   in `cs_source` today moves into Chimera first (a lift), never across.
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
-  (`mashup_server`): `cs_source_app` without `present`, so built alone it
+  (`cs_source_server`): `cs_source_app` without `present`, so built alone it
   links no render or audio code (checked:
   `server_builds_without_presentation`, `workspace_crates`); in a
   workspace build features unify, so releases build it with `-p`.
-- `mashup` (the repository root) is a thin shim: `cs_source_app`
+- `mashup` (the repository root; the old name, kept for the git-ignored
+  local code that uses its paths) is a thin shim: `cs_source_app`
   re-exported at the old `mashup::` paths (src/lib.rs) for `dump` (an
   install inspector for several games; its test in tests/it/) and Combat
   Arms' local loader (`games::combat_arms`, git-ignored). Nothing new
@@ -219,6 +220,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
             console              (cvars, commands, queue; games and client register)
                |                 (game_log beside it: game events, the server log)
              core                (shared vocabulary)
+                                 (env under console and mount: variables, user folders)
 ```
 
 Exact edges: game_log uses core and console; net uses the engine's
@@ -299,13 +301,14 @@ that the paths exist).
 
 - `chimera/core/src/core.rs`: the shared vocabulary: `Intent`, velocity and movement state, health and damage, teams, rounds, the tick sets (core)
 - `apps/cs_source/src/core.rs`: `chimera_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
-- `chimera/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, exec and config files, built-ins, cvar scopes (console)
+- `chimera/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, config files, built-ins, cvar scopes (console)
+- `chimera/core/src/env.rs`: `CHIMERA_*` variables (old `MASHUP_*` read too), the per-user folder (env)
 - `chimera/core/src/game_log.rs`: game events (`GameEvent`) and the server log (`LogLine`, `log on`, `sv_logecho`, `sv_logfile`) (game_log)
 - `chimera/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `chimera/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `chimera/world/src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
-- `chimera/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `mashup.local.toml`, finding game installs (mount)
+- `chimera/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `chimera.local.toml`, finding game installs (mount)
 - `chimera/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `chimera/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
 
@@ -421,7 +424,7 @@ that the paths exist).
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `games/cs_source/src/rules/hints.rs`: automatic hints (`cl_autohelp`): data-named triggers, once per player per map (rules)
 - `games/cs_source/src/rules/events.rs`: CS:S's game events and server log lines (bomb, hostages, rounds, weapons, deaths) (rules)
-- `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `mashup_rules`; `rules::module` (rule_module)
+- `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `chimera_rules`; `rules::module` (rule_module)
 - `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
@@ -543,7 +546,7 @@ that the paths exist).
 - `chimera/client/src/client/debug_ui.rs`: the debug UI (F8) (client)
 - `chimera/client/src/client/debug_views.rs`: gizmo debug overlays: nav, ragdolls (client)
 - `games/cs_source/src/ui/debug.rs`: CS:S in the debug tools: bot overlays, the debug UI's bots and rounds (games_ui)
-- `chimera/client/src/client/perf.rs`: the `mashup_perf` overlay (client)
+- `chimera/client/src/client/perf.rs`: the `chimera_perf` overlay (client)
 - `chimera/client/src/client/net_graph.rs`: `net_graph`: Source's network readout and graph (client)
 - `chimera/client/src/client/frame_metrics.rs`: per-frame metrics of both worlds (client)
 - `games/cs_source/src/ui/window_icon.rs`: the window and taskbar icon (games_ui)
@@ -649,7 +652,7 @@ values, cameras, bodies and their animation the drawn ones.
 
 ## Slots
 
-An implementation registers under a namespaced ID (`mashup:noclip`,
+An implementation registers under a namespaced ID (`chimera:noclip`,
 `combat_arms:movement`) with a marker component. Its systems act only on
 entities with that marker, so swapping is removing one marker and inserting
 another (`slots::set_movement`). Only Movement exists so far; the other slots

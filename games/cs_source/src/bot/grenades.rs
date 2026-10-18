@@ -222,7 +222,7 @@ pub(super) const TOSS_CHANCE_STAGING: f32 = 0.5;
 /// Throwing distances (horizontal), m.
 pub(super) const TOSS_RANGE: (f32, f32) = (4.0, 30.0);
 /// Seconds after an enemy was last seen or heard that a grenade still
-/// goes where they were (mashup's; CS:S bots throw at a fresh sighting).
+/// goes where they were (Chimera's; CS:S bots throw at a fresh sighting).
 pub(super) const TOSS_LEAD_MEMORY: f64 = 5.0;
 /// Where to aim above a target on the floor, m: a blast at the body's
 /// centre, a flash at head height (both may go off in the air), a smoke
@@ -242,7 +242,7 @@ pub(super) fn tolerance(kind: GrenadeKind) -> f32 {
         GrenadeKind::Smoke => 3.0,
     }
 }
-/// Seconds a finished plan stays drawn by `mashup_drawbots`.
+/// Seconds a finished plan stays drawn by `chimera_drawbots`.
 pub(super) const PLAN_SHOWN: f64 = 3.0;
 /// Chance of looking away from a flash seen in flight.
 pub(super) const FLASH_REACT: f32 = 0.6;

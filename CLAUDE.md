@@ -42,7 +42,7 @@ links (`checks/tests/it/architecture.rs`). Its failure messages say how to fix t
 ## Commands
 
 ```
-cargo run --features dev       # the game, `mashup` (apps/cs_source); day-to-day
+cargo run --features dev       # the game, `cs_source` (apps/cs_source); day-to-day
                                    # (dynamic linking + remote protocol)
 cargo test --features dev -- --skip heavy::   # whole fast tier
 cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
@@ -61,7 +61,7 @@ cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo test -p repo_checks      # architecture and docs checks (seconds)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`
-cargo run --features dev --bin mashup_server -- +map de_dust2   # dedicated server
+cargo run --features dev --bin cs_source_server -- +map de_dust2   # dedicated server
 cargo build --release -p cs_source_server   # the server as released: no render/audio
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
@@ -73,7 +73,10 @@ ones in `tests/it/heavy/`), in the lowest crate whose API they need;
 scenario tests run on Chimera's `harness::Sim` with their layer's base
 (`SimBasePlugins` in Chimera, `CsSim` in cs_source); docs/OBSERVABILITY.md
 section 1 says where new ones go. Pushes run the
-affected crates' tests (`MASHUP_PUSH_TESTS=all`: everything, `=0`: none).
+affected crates' tests (`CHIMERA_PUSH_TESTS=all`: everything, `=0`: none).
+Environment variables are `CHIMERA_*` and the local config
+`chimera.local.toml`; the old names (`MASHUP_*`, `mashup.local.toml`)
+still work.
 
 ## Working conventions
 

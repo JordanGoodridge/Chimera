@@ -2,7 +2,7 @@
 //! the main world's and the render world's wall time, thread CPU time and
 //! hardware counters (`crate::metrics`), GPU time, each schedule's share,
 //! distributions over the last frames, and the hitch log
-//! (`mashup_hitch_ratio`).
+//! (`chimera_hitch_ratio`).
 //!
 //! The main world is measured between marks run between its schedules
 //! (`MainScheduleOrder`), the render world between its `Render` sets, each
@@ -11,10 +11,10 @@
 //! Per-frame metrics: marks between the main world's schedules
 //! (`MainScheduleOrder`) and between the render world's `Render` sets, each
 //! world's wall time, thread CPU and counters per frame, GPU time,
-//! distributions (`FrameMetrics::lines`/`stats`, shown by `mashup_perf`, the
-//! debug UI's Perf tab and `--bench`), the hitch log (`mashup_hitch_ratio`: a
+//! distributions (`FrameMetrics::lines`/`stats`, shown by `chimera_perf`, the
+//! debug UI's Perf tab and `--bench`), the hitch log (`chimera_hitch_ratio`: a
 //! frame over that many times the median logs its slowest schedules (and render
-//! sets; `MASHUP_RENDER_PHASES=0` leaves those marks out); `span_times`, profile builds: spans'
+//! sets; `CHIMERA_RENDER_PHASES=0` leaves those marks out); `span_times`, profile builds: spans'
 //! self time).
 
 use std::{
@@ -47,7 +47,7 @@ impl Plugin for FrameMetricsPlugin {
         app.init_resource::<FrameMetrics>().insert_resource(HitchRatio(2.0));
         resource_cvar::<HitchRatio, f32>(
             app,
-            "mashup_hitch_ratio",
+            "chimera_hitch_ratio",
             "Log a frame taking this many times the median frame time, with its slowest schedules \
              (and spans, in a --features profile build); 0: off.",
             |h| &mut h.0,
@@ -70,14 +70,14 @@ impl Plugin for FrameMetricsPlugin {
             ];
             // Start and end inside the first and last sets, as the
             // render-world time was always taken. Marks between the sets:
-            // each set's share, for the hitch log; `MASHUP_RENDER_PHASES=0`
+            // each set's share, for the hitch log; `CHIMERA_RENDER_PHASES=0`
             // leaves them out. (They were opt-in after 2 of 5 cs_office
             // benches quit on a wgpu indirect-draw validation error; that no
             // longer reproduces, and they move no system that touches the
             // indirect buffers: docs/performance.md, "Baseline".)
             render.add_systems(Render, render_start.in_set(RenderSystems::ExtractCommands));
             render.add_systems(Render, render_end.in_set(RenderSystems::Cleanup));
-            let phases = std::env::var("MASHUP_RENDER_PHASES").as_deref() != Ok("0");
+            let phases = chimera_core::env::var("CHIMERA_RENDER_PHASES").as_deref() != Ok("0");
             for (i, (name, set)) in sets.iter().enumerate().filter(|_| phases) {
                 let name: &'static str = name;
                 let mark = move |mut m: ResMut<RenderMarks>| m.mark(name);
@@ -114,7 +114,7 @@ impl Plugin for FrameMetricsPlugin {
     }
 }
 
-/// `mashup_hitch_ratio`.
+/// `chimera_hitch_ratio`.
 #[derive(Resource)]
 pub struct HitchRatio(pub f32);
 

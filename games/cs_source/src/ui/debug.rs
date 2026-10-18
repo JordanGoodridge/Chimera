@@ -1,7 +1,7 @@
 //! CS:S in the debug tools: the debug UI's Bots and Rounds tabs
 //! (`client::debug_ui::GameDebug`: the bots' skill presets, each bot's
 //! role and activity, the round's state) and the bots' overlays drawn
-//! with gizmos (`mashup_drawbots 1`: sites and their approaches; per bot
+//! with gizmos (`chimera_drawbots 1`: sites and their approaches; per bot
 //! its role ring, target, lead, route, goal, hold spot and watched
 //! approaches, look target and the corner it checks, the teammate it
 //! answers, planned grenade arc, target and burst point, a flash it looks
@@ -39,7 +39,7 @@ impl Plugin for BotDebugPlugin {
             .add_systems(Update, (draw_bots, order_labels, bot_list));
         resource_cvar::<BotViews, u8>(
             app,
-            "mashup_drawbots",
+            "chimera_drawbots",
             "1: each bot's role, target, last known enemy position, route, goal, hold spot, look target, grenade arc and flash it avoids.",
             |d| &mut d.bots,
         );
@@ -101,7 +101,7 @@ fn round_status(world: &World) -> Option<String> {
     Some(format!("round {}: {phase}; wins T {} CT {}", r.number, r.wins[0], r.wins[1]))
 }
 
-/// Radio-driven orders in `mashup_drawbots`.
+/// Radio-driven orders in `chimera_drawbots`.
 const ORDER_COLOR: Color = Color::srgb(1.0, 0.3, 1.0);
 
 fn role_color(role: Role) -> Color {
@@ -237,7 +237,7 @@ fn draw_bots(
     }
 }
 
-/// A label over a bot carrying out a radio command (`mashup_drawbots`).
+/// A label over a bot carrying out a radio command (`chimera_drawbots`).
 #[derive(Component)]
 struct OrderLabel(Entity);
 
@@ -251,7 +251,7 @@ fn order_text(bot: &Bot, now: f64, name_of: impl Fn(Entity) -> String) -> Option
     }
 }
 
-/// Seconds a bot's radio call stays over its head (`mashup_drawbots`).
+/// Seconds a bot's radio call stays over its head (`chimera_drawbots`).
 const SAID_SHOWN: f64 = 4.0;
 
 /// A radio command's text ("Go go go!"), else its name.
@@ -262,7 +262,7 @@ fn call_text(radio: Option<&RadioCommands>, call: &str) -> String {
         .map_or_else(|| call.to_string(), |v| v.1.clone())
 }
 
-/// `mashup_drawbots`: each bot's radio-driven order and its latest radio
+/// `chimera_drawbots`: each bot's radio-driven order and its latest radio
 /// call as text over its head.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn order_labels(

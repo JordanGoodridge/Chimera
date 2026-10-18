@@ -359,12 +359,13 @@ mod tests {
         }
     }
 
-    /// The sample demos (never committed; `$MASHUP_DEMOS` or the
+    /// The sample demos (never committed; `$CHIMERA_DEMOS` (old: `$MASHUP_DEMOS`) or the
     /// workspace's `target/demos/`): frames in tick order, each player
     /// eased between frames, the server's clock running with the demo's.
     #[test]
     fn sample_demos_read_into_frames() {
-        let dir = std::env::var_os("MASHUP_DEMOS")
+        let dir = std::env::var_os("CHIMERA_DEMOS")
+            .or_else(|| std::env::var_os("MASHUP_DEMOS"))
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/demos"));
         let Some(data) = std::fs::read(dir.join("mashup_round_bots.dem")).ok() else {

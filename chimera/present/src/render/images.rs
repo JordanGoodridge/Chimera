@@ -187,8 +187,8 @@ pub fn cube_image(c: &MapCubemap) -> Image {
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     );
-    // Comparison hook: MASHUP_CUBEMAP_TOP_MIP=1 keeps the largest mip only.
-    if std::env::var("MASHUP_CUBEMAP_TOP_MIP").is_ok_and(|v| v == "1") {
+    // Comparison hook: CHIMERA_CUBEMAP_TOP_MIP=1 keeps the largest mip only.
+    if chimera_core::env::var("CHIMERA_CUBEMAP_TOP_MIP").is_ok_and(|v| v == "1") {
         let top = (c.size * c.size * 4) as usize;
         image.data = Some(
             c.faces

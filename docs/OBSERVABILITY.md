@@ -99,7 +99,7 @@ build.rs select everything; Markdown and docs only `repo_checks`.
 - Fast tier, before every commit (`.githooks/pre-commit`): unit tests and
   everything outside `heavy` of the crates the staged changes can affect
   (`affected --staged`; `cargo test -p <crates> --features dev -- --skip
-  heavy::`). `MASHUP_COMMIT_TESTS=all` runs the whole fast tier (`cargo
+  heavy::`). `CHIMERA_COMMIT_TESTS=all` runs the whole fast tier (`cargo
   test --features dev -- --skip heavy::`, about 90 s warm), `=0` none.
 - Before every push, `.githooks/pre-push` refuses personal traces in what's
   pushed (commit messages and added lines): machine paths (`/home/<name>/`,
@@ -109,7 +109,7 @@ build.rs select everything; Markdown and docs only `repo_checks`.
 - Before every push, `.githooks/pre-push` also checks the build without
   `--features dev` (`cargo check --workspace --lib --bins --features tools`;
   the playtest and release builds use that configuration and the tests
-  don't), even with `MASHUP_PUSH_TESTS=0`. The debugging binaries are
+  don't), even with `CHIMERA_PUSH_TESTS=0`. The debugging binaries are
   built only with `--features tools` (so `cargo test` doesn't link them).
   It also checks the dedicated server as released, alone and so without
   the presentation (`cargo check -p cs_source_server`;
@@ -119,7 +119,7 @@ build.rs select everything; Markdown and docs only `repo_checks`.
   heavy ones included, of the crates what's pushed can affect (each
   pushed ref against the remote's copy, a new branch against its
   merge-base with origin/main; the hook prints the selection and why).
-  `MASHUP_PUSH_TESTS=all` runs the full suite, `=0` no tests. Afterwards
+  `CHIMERA_PUSH_TESTS=all` runs the full suite, `=0` no tests. Afterwards
   it trims the clone's `target/` to 150 GB with `cargo sweep` (install it
   with `cargo install cargo-sweep`; skipped without it). The full
   suite is `cargo nextest run --features dev` (at most 8 tests at once
@@ -144,7 +144,7 @@ build.rs select everything; Markdown and docs only `repo_checks`.
 
 ```
 cargo run --features dev -- --screenshot shot.png --frames 90 \
-    --spawn 0,1,12 --look 30,-10 --movement mashup:noclip
+    --spawn 0,1,12 --look 30,-10 --movement chimera:noclip
 ```
 
 With no `--map` the game starts at CS:S's main menu (the greybox loaded
@@ -178,7 +178,7 @@ placed in logical pixels, e.g. the crosshair after a dialog; with
 floats under Hyprland instead of being tiled), for UI checked at a known
 resolution. `--help` lists all options.
 
-System order: `MASHUP_SYSTEM_DUMP=<file>` builds the game as it would
+System order: `CHIMERA_SYSTEM_DUMP=<file>` builds the game as it would
 run (with the same options and plugins; needs the display) and writes
 every schedule's systems in the order they run, the main world's then the
 render world's (taken before pipelined rendering moves it to its own
@@ -187,11 +187,11 @@ refactor that moves the client's plugins or systems and `diff` the files
 (names differ by their module paths); also with and without an added
 system, to see which others it reorders (the single-threaded executors
 run unordered systems in whatever order the graph sorts to).
-`MASHUP_AMBIGUITY=1` with it logs the `Render` schedule's ambiguous
+`CHIMERA_AMBIGUITY=1` with it logs the `Render` schedule's ambiguous
 pairs (systems with conflicting access and no order; Bevy exempts its
 own shared render resources): one today, ours (`frame_metrics`'
 `render_start` and `apply_extract_commands`). The simulation's own order on real
-maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`MASHUP_SPAWN_DUMP`).
+maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`CHIMERA_SPAWN_DUMP`).
 
 To photograph a live run step by step (e.g. before and after a round
 restart, where frame counts are too uncertain), run the game without
@@ -207,7 +207,7 @@ loopback on a port the system picks (`status` shows it; `-port <n>`
 still names one), and one that doesn't host opens no game socket at all
 (single player). With `dev` their remote protocol (section 3) takes a
 free loopback port too, logged as `remote protocol on 127.0.0.1:<port>`,
-unless `MASHUP_REMOTE_PORT` names one. Headless tests use the in-memory
+unless `CHIMERA_REMOTE_PORT` names one. Headless tests use the in-memory
 link or loopback ports the system picks. Check with `ss -lunp` / `ss
 -ltnp` while runs are going.
 
@@ -258,7 +258,7 @@ Only `Reflect`-registered types are visible; register new core components in
   video tab's, `menu gamma` its brightness dialog (with
   `+mat_monitorgamma 1.6` or `2.6` before it: the whole frame lighter or
   darker), `menu mpadvanced` the multiplayer tab's (its list from the
-  install's `cfg/user.scr`), `menu extras` Lucker Party Options, `menu bots` and `menu team` our Bots and Team dialogs, `menu players` the player list (mute); the menus list only CS:S's entries, so these (and `mashup_quickstart`: rounds on de_dust2 with bots; `map greybox`; `callvote` alone for the vote setup dialog) are how ours open. `menuinput <input>` drives
+  install's `cfg/user.scr`), `menu extras` Lucker Party Options, `menu bots` and `menu team` our Bots and Team dialogs, `menu players` the player list (mute); the menus list only CS:S's entries, so these (and `chimera_quickstart`: rounds on de_dust2 with bots; `map greybox`; `callvote` alone for the vote setup dialog) are how ours open. `menuinput <input>` drives
   the open dialog as keys would (`focus <cvar|map|bots|botcount|botteam|
   difficulty|aspect>`, `row <n>` (the page's nth row), `open` a focused combo box's list, `down`, `up`, `enter`,
   `space`, `escape`, `tab`, `backtab`, `type <text>`, `pick <n>`, `sheet
@@ -288,14 +288,14 @@ Only `Reflect`-registered types are visible; register new core components in
 - Which CS:S install a run uses: the startup log line
   `Counter-Strike: Source install: <folder> (from config <file> | saved
   in <file> | Steam library N (<folder>), build <id>)`, or `... none
-  found (<why>)`; `mashup_install` prints the same, `mashup_install
-  <folder>` sets and saves it, `mashup_install auto` forgets it. The
+  found (<why>)`; `chimera_install` prints the same, `chimera_install
+  <folder>` sets and saves it, `chimera_install auto` forgets it. The
   first-run dialog (CS:S not found) without touching real files:
-  `MASHUP_CONFIG` at an empty file, `MASHUP_STEAM_ROOT` at an empty
+  `CHIMERA_CONFIG` at an empty file, `CHIMERA_STEAM_ROOT` at an empty
   folder (it replaces the usual Steam folders; a fake Steam tree there
-  is searched instead) and `MASHUP_SETTINGS` at a scratch
+  is searched instead) and `CHIMERA_SETTINGS` at a scratch
   `settings.toml`, then `--window 1280x720 --screenshot fr.png`;
-  `+mashup_firstrun type <folder>` types into it, `+mashup_firstrun
+  `+chimera_firstrun type <folder>` types into it, `+chimera_firstrun
   retry` presses Retry. Discovery is unit-tested with fake Steam trees
   (`mount::install`), and `games/cs_source/tests/it/mount_install.rs` mounts an install
   found through one.
@@ -324,10 +324,10 @@ Only `Reflect`-registered types are visible; register new core components in
   what it follows, a physics body's box, and the class state: door and
   button states, relays, timers, counters, cases), entity space; e.g.
   `ent_dump el_elevator*` over the remote console while a lift runs.
-- `mashup_drawnav 1` outlines the nav areas near you (2: all), coloured by
+- `chimera_drawnav 1` outlines the nav areas near you (2: all), coloured by
   place, with half-links toward their neighbours, and the mesh's ladders
   (yellow line, green cross where bots get on at the foot, orange where
-  they start down from behind the top); `mashup_drawbots 1`
+  they start down from behind the top); `chimera_drawbots 1`
   shows the map's sites (yellow rings) with where routes from the
   attackers' (orange balls) and defenders' (blue balls) spawns come onto
   them, and per bot: its role (ring at its feet: orange attacker, blue
@@ -345,50 +345,50 @@ Only `Reflect`-registered types are visible; register new core components in
   every bot's team, role, site, activity (ToSite, Following, Waiting,
   Holding, Chasing, Assisting, Obeying, ...; `*` marks the group
   leader), health and radio order on screen. To watch a round on dust2 from above: `--map
-  cs_source:de_dust2 +mashup_rounds 1 +bot_add 1 +bot_add 1 +bot_add 1
-  +bot_add 2 +bot_add 2 +bot_add 2 +mashup_drawbots 1 +bot_debug 1
+  cs_source:de_dust2 +chimera_rounds 1 +bot_add 1 +bot_add 1 +bot_add 1
+  +bot_add 2 +bot_add 2 +bot_add 2 +chimera_drawbots 1 +bot_debug 1
   +noclip +setpos -400 3000 1200 +setang 89 90 0`. Headless round
   statistics (winners, kills, time to first contact, and every spot where
   a bot walked a route without getting anywhere for 4 s, summed up; and
   per round whether the bomb was planted, defused or exploded and what
   each team carried at the start (primaries, helmets, kits), with deaths
   per team by place and by what the bot was doing before the fight at
-  the end; `MASHUP_BOT_CONSOLE="bot_grenades 0"` runs console commands
+  the end; `CHIMERA_BOT_CONSOLE="bot_grenades 0"` runs console commands
   first):
-  `MASHUP_BOT_MAP=de_dust2 MASHUP_BOT_ROUNDS=8 cargo test --features dev
+  `CHIMERA_BOT_MAP=de_dust2 CHIMERA_BOT_ROUNDS=8 cargo test --features dev
   --test it bot_rounds:: -- --ignored --nocapture`. Runs aren't
   repeatable (the same build gives other winners), so compare win rates
   over 30 rounds or more. To look at such a spot:
-  `MASHUP_NAV_MAP=de_nuke MASHUP_NAV_AT=11.4,-15.2,34.4 cargo test
+  `CHIMERA_NAV_MAP=de_nuke CHIMERA_NAV_AT=11.4,-15.2,34.4 cargo test
   --features dev --test it bot_nav::nav_near -- --ignored --nocapture` prints
   the nav areas, links, ladders, ladder brushes and entities (breakables
   with their keyvalues) around it (engine meters, as the report prints
-  them; `MASHUP_NAV_BRUSHES=1` also lists every collision brush within
+  them; `CHIMERA_NAV_BRUSHES=1` also lists every collision brush within
   1 m, e.g. player clip flush with a ladder's face); add a case to `games/cs_source/tests/it/heavy/bot_nav.rs` (a lone bot sent from a start
-  to a goal, `MASHUP_BOT_CASE=<name>` to run one, `MASHUP_BOT_TRACE=0`
+  to a goal, `CHIMERA_BOT_CASE=<name>` to run one, `CHIMERA_BOT_TRACE=0`
   for every tick of its intent, ladder and ground state), and try raw
   inputs with `probe_walk` (`P_AT=x,y,z P_OPT=yaw,crouch,jump,seconds,
   pitch,forward,side`; `P_OPT2`, `P_OPT3`: further phases, e.g. climb a
   ladder, then step off its top). `nuke_ladders_climb_both_ways` sends a
   bot up and down every ladder on de_nuke's mesh; the ignored
-  `ladders_climb_both_ways` does it on `MASHUP_NAV_MAP` (comma-separated
-  maps) and lists the ladders bots fail, one `MASHUP_BOT_CASE="ladder 3
-  up"` at a time (`MASHUP_BOT_TRACE_CASE="ladder 3 up"` with
-  `MASHUP_BOT_TRACE` traces just that one while running the whole map:
+  `ladders_climb_both_ways` does it on `CHIMERA_NAV_MAP` (comma-separated
+  maps) and lists the ladders bots fail, one `CHIMERA_BOT_CASE="ladder 3
+  up"` at a time (`CHIMERA_BOT_TRACE_CASE="ladder 3 up"` with
+  `CHIMERA_BOT_TRACE` traces just that one while running the whole map:
   earlier cases leave stuck reports and broken grilles behind). Bot dice come from bot numbers, never entity ids:
-  `MASHUP_TEST_PAD=<n>` spawns n entities and a resource in every `Sim`
+  `CHIMERA_TEST_PAD=<n>` spawns n entities and a resource in every `Sim`
   first, and a test's outcome must not change with it (run the bot tests
   with a few values after touching bot randomness). In game, `bot_goto <x> <y> <z>` (CS:S units) sends
   every bot somewhere; `bot_goto` alone lets them go back. `bot_grenades 2` makes bots throw whenever
-  an arc works (`mashup_watch 1` to follow one). On the greybox map:
+  an arc works (`chimera_watch 1` to follow one). On the greybox map:
   `--spawn 0,1,-5 +bot_dont_shoot 1 +bot_stop 1 +bot_grenades 2 +bot_add 1
-  +bot_give weapon_hegrenade +mashup_drawbots 1 +mashup_watch 1
+  +bot_give weapon_hegrenade +chimera_drawbots 1 +chimera_watch 1
   +cam_idealdist 600 +cam_idealyaw 70 ++attack --frames 130` shows the bot
   hearing you behind the long crate and lobbing an HE over it.
-- Spectating: `mashup_hurtme chest 500` (in a rounds game, `+mashup_rounds 1`) starts the
+- Spectating: `chimera_hurtme chest 500` (in a rounds game, `+chimera_rounds 1`) starts the
   death cam; 6.5 s after the death (no freeze cam) the camera watches a
   living teammate (CS:S's timings: specs/cs_source/spectating.md).
-  `mashup_hurtme chest 500 0 <name>` is a hit from that player: its
+  `chimera_hurtme chest 500 0 <name>` is a hit from that player: its
   death cam turns to it, then 2 s after the death the freeze cam (0.7 s
   toward it, the picture held 5 s with the freeze sound and panel;
   `cl_disablefreezecam 1` skips it, the server's
@@ -400,8 +400,8 @@ Only `Reflect`-registered types are visible; register new core components in
   and `spec_prev`, `mp_forcecamera 0` to watch enemies too; the state is
   the `Spectator` resource (`games/cs_source/tests/ui/spectate.rs` drives it headless).
   The spectator bars on a real map: `--map cs_source:de_dust2 --window
-  1280x720 --screenshot spec.png --frames 400 +mashup_rounds 1
-  +mp_freezetime 0 +bot_add 2 +bot_add 2 +wait 60 +mashup_hurtme chest
+  1280x720 --screenshot spec.png --frames 400 +chimera_rounds 1
+  +mp_freezetime 0 +bot_add 2 +bot_add 2 +wait 60 +chimera_hurtme chest
   500` (the death cam ends 6.5 s after the death, then a teammate is
   watched in first person, with their crosshair). The spectator team:
   `+spectate` (or `+jointeam 1`) flies free at once; `spec_player <name>`
@@ -422,38 +422,38 @@ Only `Reflect`-registered types are visible; register new core components in
 - Loading dialog: from the main menu, `+menu newgame` and Start Game, or
   over the remote console while at the main menu, `map de_dust2` then
   screenshots while it loads (the bar follows `map::loading`).
-- `mashup_objectives 1` prints the objectives' state on screen: who
+- `chimera_objectives 1` prints the objectives' state on screen: who
   carries the bomb, a planted bomb's place, site and time left, a defuse's
   progress (who, kit, seconds), the outcome, and each hostage's health,
   leader and position. To plant in a screenshot: `--map
   cs_source:de_dust2 --spawn 29.46,3.5,-62.99 +give cs_source:weapon_c4`
   (de_dust2's A site), then `+attack` over the remote console; hostages
-  appear with `mp_freezetime 0; mashup_rounds 1` on a cs_ map.
-- `mashup_drawhitboxes 1` outlines other characters' hitboxes, coloured
+  appear with `mp_freezetime 0; chimera_rounds 1` on a cs_ map.
+- `chimera_drawhitboxes 1` outlines other characters' hitboxes, coloured
   by hitgroup, where shots test them (e.g. `+bot_stop 1 +bot_add 2
-  +mashup_drawhitboxes 1` with `--screenshot` to check they follow the
+  +chimera_drawhitboxes 1` with `--screenshot` to check they follow the
   animated body).
-- `mashup_debughud 1` shows the top-left debug readout (movement mode,
+- `chimera_debughud 1` shows the top-left debug readout (movement mode,
   speed, ground/crouch state and the debug keys); off by default.
 - Debug keys: default binds on keys CS:S's `config_default.cfg` leaves
   free (the rest are CS:S's: F1 autobuy, F2 rebuy, the wheel
   `invprev`/`invnext`, ...; `client::binds`): F3 collision shapes
-  (`toggle mashup_drawcollision`), F8 the debug UI (`debugui`, section
-  3d), F11 the entity inspector (`mashup_inspector`; frees the mouse),
+  (`toggle chimera_drawcollision`), F8 the debug UI (`debugui`, section
+  3d), F11 the entity inspector (`chimera_inspector`; frees the mouse),
   V `noclip`, F9 (and CS:S's F4) a bug report, Left Alt free look. All
   are console lines, so `bind` moves them and Options > Keyboard lists
   them.
-- `mashup_drawphys 1` outlines physics props by state (green moving,
+- `chimera_drawphys 1` outlines physics props by state (green moving,
   blue asleep, grey still or frozen; multiplayer props darker) and
   players' physics shadows (white, a yellow line to each prop the shadow
   touches), and lists the props nearest the local player (distance, mass,
   push mode, state) on the debug HUD.
-- `mashup_ragdoll_debug 1` draws ragdoll bodies (bounds, axes) and
+- `chimera_ragdoll_debug 1` draws ragdoll bodies (bounds, axes) and
   joints (yellow to the anchor on the parent; a red dot when the child
   drifted from it). `cl_ragdoll_physics_enable 0` turns ragdolls off,
   `ragdoll_sleepaftertime` sets when still ones are frozen. To see one:
   `--map cs_source:de_dust2 --frames 400 +mp_respawn_delay 1000
-  +thirdperson +cam_idealyaw 90 +wait 150 +mashup_hurtme head` (or
+  +thirdperson +cam_idealyaw 90 +wait 150 +chimera_hurtme head` (or
   `chest 100 90`: a body shot from the side) with `--screenshot`. The
   log line `ragdoll ... (death pose Some((Front, 1)))` names the death
   pose. To shoot a body after death, run live with `+bot_stop 1
@@ -470,10 +470,10 @@ Only `Reflect`-registered types are visible; register new core components in
   photographed: `audio::hearing::Hearing` and its tests
   (`cargo test --lib hearing`) show the curves; `games/cs_source/tests/it/cs_grenades.rs`
   checks which effect each blast or flash gives.
-- `mashup_healthbars 1` draws a health bar over every other living
+- `chimera_healthbars 1` draws a health bar over every other living
   character (green full, red nearly dead), e.g. to watch damage land in a
   `--screenshot` run with `+bot_add 2`.
-- `mashup_particles` prints the live particle groups and counts (and how
+- `chimera_particles` prints the live particle groups and counts (and how
   many count against the 2048 cap), e.g. over the remote console after
   shooting. Impact effects obey `r_drawflecks`, `cl_show_splashes` and
   `violence_hblood` (0/1). To see a shot's effects in a `--screenshot`
@@ -482,7 +482,7 @@ Only `Reflect`-registered types are visible; register new core components in
 - **Bug reports while playtesting:** press F4 or F9 (or `bugreport [note]` in the
   console). It saves `screenshot.png` and `report.txt` (build version,
   map, a `setpos`/`setang` line to paste back, weapon, health, the last
-  40 console lines) to `<data dir>/mashup/bugreports/report-<time>/`
+  40 console lines) to `<data dir>/chimera/bugreports/report-<time>/`
   (`~/.local/share` on Linux, `%LOCALAPPDATA%` on Windows) and prints the
   path.
 - `version` (console, client and server) prints the build: tag or `git
@@ -491,27 +491,27 @@ Only `Reflect`-registered types are visible; register new core components in
   2026-10-11`; `-dirty` on the hash with uncommitted changes), then the
   network protocol (`NET_VERSION`). apps/cs_source/build.rs stamps it
   (`core::VERSION`); the main menu shows it bottom right and
-  `mashup_server` prints it at startup.
+  `cs_source_server` prints it at startup.
 - `thirdperson` (back with `firstperson`; distance `cam_idealdist`, CS:S
   units) puts the camera behind the local player and draws its own
   animated body: `+thirdperson` in a `--screenshot` run shows the local
   player's model and animation. `cam_idealyaw` orbits the camera
   (degrees; `+cam_idealyaw 140` looks at the player's front, e.g. to see
   how the hands hold the weapon). Holding Left Alt (`+freelook`) turns
-  only the camera; the aim stays put. `mashup_hand_ik 0` draws bodies
+  only the camera; the aim stays put. `chimera_hand_ik 0` draws bodies
   without the hands locked onto the weapon (the animation's own arms),
   to compare: `+setpos 185 300 40 +setang -30 0 0 +thirdperson
   +cam_idealyaw 130 +cam_idealdist 60` on de_dust2 with a pistol.
-- `mashup_freecam 1` detaches the camera and flies it (WASD, mouse,
+- `chimera_freecam 1` detaches the camera and flies it (WASD, mouse,
   space/ctrl up and down, shift faster) while your body stands still and
-  is drawn; `mashup_freecam 2` leaves the camera where it is and gives
+  is drawn; `chimera_freecam 2` leaves the camera where it is and gives
   the controls back, so you can walk, crouch and shoot in front of it
   (watching your own animation and held weapon); 0 returns to the eye. In
   a `--screenshot` run: `+thirdperson +cam_idealyaw 180 +wait 20
-  +mashup_freecam 2 +wait 3 +firstperson +wait 20 ++forward` films you
+  +chimera_freecam 2 +wait 3 +firstperson +wait 20 ++forward` films you
   walking toward the camera.
-- `mashup_watch <n>` chases bot n from behind (`cam_idealdist`,
-  `cam_idealyaw` apply; 0 returns): `+bot_add 2 +mashup_watch 1
+- `chimera_watch <n>` chases bot n from behind (`cam_idealdist`,
+  `cam_idealyaw` apply; 0 returns): `+bot_add 2 +chimera_watch 1
   +cam_idealyaw 150` shows a bot running with its weapon.
 - View model (CS:S cvars): `viewmodel_fov` (80 here; CS:S 54), `cl_righthand` (1;
   0 puts weapons in the left hand), `r_drawviewmodel 0` hides it,
@@ -547,7 +547,7 @@ Only `Reflect`-registered types are visible; register new core components in
   shots finds the props that switched). The map's log line `props: ...;
   N have levels of detail` counts the models with levels; `dump --lods`
   lists each model's.
-- Pickups: `mashup_debug_pickup 1` prints (console and log) why the
+- Pickups: `chimera_debug_pickup 1` prints (console and log) why the
   loose weapon nearest the local player is or isn't taken, once per
   change: `pickup Player: cs_source:weapon_ak47: dropped 0.4 s ago,
   touchable from 1 s`, `out of reach, 0.31 m from its touch box`, `slot
@@ -558,9 +558,17 @@ Only `Reflect`-registered types are visible; register new core components in
   A negative "dropped ... ago" means the drop and the tick disagree on
   the time (the bug this was added for).
 - Remote: `curl -s localhost:15702 -d '{"jsonrpc":"2.0","id":1,
-  "method":"mashup/console","params":{"line":"getpos; cvarlist sv_"}}'`
-  runs a line now and returns the lines it printed.
-- Configs live in `~/.local/share/mashup/cfg` (Windows `%APPDATA%\mashup\cfg`):
+  "method":"chimera/console","params":{"line":"getpos; cvarlist sv_"}}'`
+  runs a line now and returns the lines it printed (`mashup/console`, its
+  old name, still works).
+- Old names (before the rename to Chimera) still work, hidden: `mashup_*`
+  cvars and commands run their `chimera_*` ones (configs and binds saved
+  with them are written back with the new names), `MASHUP_*` environment
+  variables are read when their `CHIMERA_*` one isn't set,
+  `mashup.local.toml` when there is no `chimera.local.toml`, the per-user
+  `mashup` folder while there is no `chimera` one, `--movement
+  mashup:noclip` and `map mashup:greybox`.
+- Configs live in `~/.local/share/chimera/cfg` (Windows `%APPDATA%\chimera\cfg`):
   config.cfg (written on quit when binds/cvars changed; every bind, as
   `bind` lines after `unbindall`), autoexec.cfg,
   history.txt, bookmarks.txt (the debug UI's places); `exec name` runs
@@ -636,7 +644,7 @@ counts. `PredictionHistory` holds the client's predicted ticks not yet
 confirmed: compare them with the server's state at the same tick
 (`PredictedComponents::encode`), never the two worlds' present (the
 client runs ahead); `PredictedComponents::parts` splits a state blob by
-component to see what differs (the soak's `MASHUP_SOAK_DIAGNOSE`
+component to see what differs (the soak's `CHIMERA_SOAK_DIAGNOSE`
 decodes positions and velocities). `cargo test --features dev --test it net_prediction
 -- --nocapture` prints the numbers per latency, jitter and loss.
 
@@ -653,16 +661,16 @@ runs of errors in a row are bugs, and so is any of a player's position
 alone below the physics' 0.01 mm tolerance, alive or dead: the physics'
 copy of the position had a say), entity counts per round and map
 visit, memory, bandwidth and the server's frame time; Bevy errors
-(failed commands) are counted too. `MASHUP_SOAK_MINUTES` (3 by default,
-30 for the long run), `MASHUP_SOAK_COMMUNITY=<map>`,
-`MASHUP_SOAK_UPDATERATE`/`MASHUP_SOAK_RATE` (the clients' `cl_updaterate`
+(failed commands) are counted too. `CHIMERA_SOAK_MINUTES` (3 by default,
+30 for the long run), `CHIMERA_SOAK_COMMUNITY=<map>`,
+`CHIMERA_SOAK_UPDATERATE`/`CHIMERA_SOAK_RATE` (the clients' `cl_updaterate`
 and `rate`; the bandwidth budget follows the update rate; it prints each
 client's updates sent and choked, and the own state's delta and whole
-sizes), `MASHUP_SOAK_DUMP=<file>` (what the server sends each client per
+sizes), `CHIMERA_SOAK_DUMP=<file>` (what the server sends each client per
 frame, to try compression on);
-`MASHUP_SOAK_DIAGNOSE=1` prints what differed in the first prediction
+`CHIMERA_SOAK_DIAGNOSE=1` prints what differed in the first prediction
 errors of each kind and in each long run of them,
-`MASHUP_SOAK_TRACE_HEALTH=1` every health change on the server and each
+`CHIMERA_SOAK_TRACE_HEALTH=1` every health change on the server and each
 client by step. It prints the summary tables (`cargo test --features dev
 --test it heavy::net_soak -- --nocapture`; ~1 real minute per game minute
 in the dev build).
@@ -686,32 +694,32 @@ grows with load: 6.5 ms at 1.2 per CPU, 10.5 ms at 3.8, same
 instructions) or where there are no hardware counters (Windows: the
 mean), and under 40 KB/s a client. Instructions count the whole
 process: run it alone in its process (nextest does). Bigger runs print the same table:
-`MASHUP_CAPACITY_PLAYERS=64 MASHUP_CAPACITY_CLIENTS=8
-MASHUP_CAPACITY_MAP=mg_jacks_multigames_v1 MASHUP_CAPACITY_SECONDS=30
+`CHIMERA_CAPACITY_PLAYERS=64 CHIMERA_CAPACITY_CLIENTS=8
+CHIMERA_CAPACITY_MAP=mg_jacks_multigames_v1 CHIMERA_CAPACITY_SECONDS=30
 cargo test --profile playtest --features dev --test it heavy::net_capacity
 -- --nocapture` (each client world takes ~0.8 GB: keep clients to a
 handful; the per-client cost is the difference between runs).
 Schedules run single-threaded as the game and the dedicated server do;
-`MASHUP_EXECUTOR=multi` measures Bevy's default executor. A
-`--features profile` build with `MASHUP_CAPACITY_CLIENTS=0
+`CHIMERA_EXECUTOR=multi` measures Bevy's default executor. A
+`--features profile` build with `CHIMERA_CAPACITY_CLIENTS=0
 TRACE_CHROME=<file>` traces the server alone for `tracesum` (it shows
 some systems only: the bots' and many of ours don't appear; with
 `ptrace_scope` 1, gdb started on the test binary and interrupted every
 fraction of a second, collecting the test thread's stacks, found what
 the trace hid). A live
-check of the real binary: start `mashup_server -port 27141 +map de_dust2
-+maxplayers 32 +mashup_rounds 0 +bot_join_after_player 0 +bot_quota_mode
+check of the real binary: start `cs_source_server -port 27141 +map de_dust2
++maxplayers 32 +chimera_rounds 0 +bot_join_after_player 0 +bot_quota_mode
 fill +bot_quota 32` and read its CPU time (`/proc/<pid>/stat` fields 14
 and 15) and RSS over a minute.
 
-A live soak (real processes, this box): `mashup_server -port 27111 +map
-de_dust2 +maxplayers 12 +mashup_rounds 1 +bot_quota_mode fill +bot_quota
+A live soak (real processes, this box): `cs_source_server -port 27111 +map
+de_dust2 +maxplayers 12 +chimera_rounds 1 +bot_quota_mode fill +bot_quota
 10 +bot_join_after_player 0 +sv_cheats 1` with its stdin on a fifo
-(`changelevel` mid-run), three `mashup --window 800x450 +name LiveN
-+mashup_perf_log 1 +connect 127.0.0.1:27111` with their own
-`MASHUP_REMOTE_PORT` (two with `+net_fakelag 100 +net_fakejitter 10`,
+(`changelevel` mid-run), three `cs_source --window 800x450 +name LiveN
++chimera_perf_log 1 +connect 127.0.0.1:27111` with their own
+`CHIMERA_REMOTE_PORT` (two with `+net_fakelag 100 +net_fakejitter 10`,
 `+net_fakelag 200 +net_fakejitter 20 +net_fakeloss 3`), each driven
-through `mashup/console` (`+forward`/`-forward`, `setang`, `+attack`,
+through `chimera/console` (`+forward`/`-forward`, `setang`, `+attack`,
 `buy`, `drop`, `say`, radio names, `screenshot`, `name`); RSS from
 `/proc/<pid>/status`; then grep the logs for `WARN`, `ERROR` and `hitch:`
 and read the server's `status` (missed commands per player).
@@ -757,7 +765,7 @@ character has the scoreboard's kills, deaths, ping and flags;
 `net::Notice` (a client's) the server's refusals; `net::ChatMessage`
 and `net::RadioCall` who read and heard what. Give `NetSim` clients names
 with `add_client(|w| w.resource_mut::<NetSettings>().name = ...)`; with
-`mashup_rounds 1` set before they join, they join the running round
+`chimera_rounds 1` set before they join, they join the running round
 dead: `mp_restartgame 1` puts everyone in play. `cargo test --features
 dev --test it net_rules -- --nocapture` prints the clocks and
 scoreboards.
@@ -768,7 +776,7 @@ server's frame rate, tick, update and command rates; `net_graph 2` and
 `3` add the latency and bytes graph; `net::stats` has the numbers, the
 server's once a second; a listen server's host shows its own: ping 0,
 no traffic; `games/cs_source/tests/it/net_graph.rs`). The perf overlay
-(`mashup_perf 1`) and the debug UI's Perf tab show,
+(`chimera_perf 1`) and the debug UI's Perf tab show,
 while connected, `net:` (ping, loss, KB/s), `cmds:` (lead in ticks and
 its target, the clock's speed nudge and jumps, the server's buffer of
 our commands, missed and late), `prediction:` (errors per second and
@@ -790,11 +798,11 @@ asks the server to trace your shots against the present; on the server
 `sv_unlag 0` turns lag compensation off, `sv_maxunlag` bounds it (1 s).
 
 Two real games on this box (`--features dev`; each needs its own remote
-port, `MASHUP_REMOTE_PORT`, so both answer `curl`):
+port, `CHIMERA_REMOTE_PORT`, so both answer `curl`):
 
 ```
-MASHUP_REMOTE_PORT=15791 cargo run --features dev -- --window 1280x720 -port 27031 +name Host +maxplayers 4 +map greybox
-MASHUP_REMOTE_PORT=15792 cargo run --features dev -- --window 1280x720 +name Client +connect 127.0.0.1:27031
+CHIMERA_REMOTE_PORT=15791 cargo run --features dev -- --window 1280x720 -port 27031 +name Host +maxplayers 4 +map greybox
+CHIMERA_REMOTE_PORT=15792 cargo run --features dev -- --window 1280x720 +name Client +connect 127.0.0.1:27031
 ```
 
 Then drive each through its console (section 3b): `status` (players,
@@ -803,29 +811,29 @@ ping), `getpos`, `+moveleft`/`-moveleft`, `setang`, `screenshot
 position is predicted and the server's state corrects it (a client's `setpos` snaps back). Add
 `+net_fakelag 100 +net_fakeloss 5 +cl_showerror 1` to the client's line to feel
 a bad link. To shoot each other: `setang <pitch> <yaw>` and `+attack`/`-attack`
-through each game's `mashup/console` (aim from the other's `Transform` as
+through each game's `chimera/console` (aim from the other's `Transform` as
 the client draws it, `world.query` on its `Name`), the host's health from
 its `LocalPlayer`'s `Health`, `+sv_showlagcompensation 1` on the host to
 log each rewind. Cheat commands (`setpos`, `setang`, `noclip`, `god`,
 `give`, ...) need `+sv_cheats 1` on the host in a network game; a
 client's go to the server and act on its player there (`net::cheats`:
 the answer prints in the client's console), so a client's `noclip` is
-the server's and predicted. `mashup_noblock 1` (or 2) on the server lets
+the server's and predicted. `chimera_noblock 1` (or 2) on the server lets
 teammates (everyone) pass through each other. Chat says who joined and
 left ("Player X left the game (Disconnect by user.)"); a client whose
 server stopped shows "Server shutting down" at once. A round
 on de_dust2: host `... -port 27031 +name Host +maxplayers 4 +sv_cheats 1
-+mashup_rounds 1 +map de_dust2` (or `+map cs_source:de_dust2`), then `mp_restartgame 1` once the client is in;
++chimera_rounds 1 +map de_dust2` (or `+map cs_source:de_dust2`), then `mp_restartgame 1` once the client is in;
 `buymenu`, `buy <weapon>`, `jointeam 2`, `say`/`say_team`,
 `+showscores`/`-showscores` and `screenshot` through each game's
-`mashup/console`. The client's `differences` shows the server's
+`chimera/console`. The client's `differences` shows the server's
 replicated values while connected; setting one says it can't. On the server, `kick <name>` and `kickid <id> [message]` (ids from
 `status`) drop a player ("Kicked by Console"); `name <new>` on a client
 renames it for everyone ("* X changed name to Y"); bots take names from
 the install's botprofile.db at `bot_difficulty` (0-3; `bot_prefix`),
 `bot_kick t|ct|easy|...|expert|<name>`, and with `bot_join_after_player 1`
 (the default) the quota waits for a player. The dedicated server:
-`cargo run --features dev --bin mashup_server -- -port 27032 +map greybox
+`cargo run --features dev --bin cs_source_server -- -port 27032 +map greybox
 +bot_add` (console on stdin: `status`, `bot_add`, `bot_quota 6`, `changelevel de_dust2`, `quit`). Logs show
 `listening on UDP ...`, `<name> joined`, `<name> left`, `disconnected:
 <reason>`.
@@ -851,7 +859,7 @@ info) and why it ended (`failure`: a `JoinFailure` and the words); the
 server's `net::maps::ServedMap` what it offers (id, SHA-256, size) and a
 client entity's `net::maps::Upload` how far a download over the
 connection has come. Downloads land in the content cache
-(`<data>/mashup/content/cs_source/maps/<name>.bsp`, noted in its
+(`<data>/chimera/content/cs_source/maps/<name>.bsp`, noted in its
 `index.toml`). On a server, `sv_allowdownload` (1), `sv_downloadurl` (an
 HTTP folder with `maps/<name>.bsp.bz2` or `.bsp`; quote it, `//` starts a
 comment) and `net_maxfilesize` (512 MB, the most a server sends and a
@@ -861,9 +869,9 @@ client takes; CS:S's 16, a deliberate difference: `net::maps::MAX_FILE_MB`) say 
 client `saved maps/x.bsp to ...`.
 
 The loading dialog: `connect`, a server's map change and a download show
-in it with the game's words; `mashup_loading_details 1` adds a panel
+in it with the game's words; `chimera_loading_details 1` adds a panel
 with each stage's time, bytes and percentage and the server's name,
-map, players and ping (screenshot it while joining: `+mashup_loading_details
+map, players and ping (screenshot it while joining: `+chimera_loading_details
 1` on the client's command line).
 
 In game: `maxplayers 4; map <name>` hosts (Source's way), `listen` hosts
@@ -872,10 +880,10 @@ takes the players along, `connect <ip[:port]>` joins, `disconnect` leaves (or st
 hosting), `status`, `name <you>`.
 
 **LAN test with Windows.** The host's firewall must let the game take UDP
-on its port: the first time `mashup.exe` (or `mashup_server.exe`) listens,
+on its port: the first time `cs_source.exe` (or `cs_source_server.exe`) listens,
 Windows asks; allow it on private networks. Without the prompt (or on a
 public network), add a rule in an administrator PowerShell:
-`New-NetFirewallRule -DisplayName "mashup" -Direction Inbound -Protocol UDP -LocalPort 27015 -Action Allow`
+`New-NetFirewallRule -DisplayName "Chimera" -Direction Inbound -Protocol UDP -LocalPort 27015 -Action Allow`
 (use the port you host on). Clients need no rule. Find the host's address
 with `ipconfig` (IPv4 Address) and join with `connect 192.168.x.y:27015`.
 Both ends give up after 30 s without a packet (Source's `cl_timeout`;
@@ -921,7 +929,7 @@ drives it as a click or key would (`row <n>`, `doubleclick <n>`,
 <text>`, `enter`, `escape`, `addserver`, `find`, `delete`, `latency` (its
 drop-down's list), `hover <n>`, `pick <n>`, `check <name>`, `map`,
 `maxplayers` (their text entries), `next` (Tab), `space`) and prints its
-rows (through `mashup/console` for screenshots); in a test, the model is
+rows (through `chimera/console` for screenshots); in a test, the model is
 `games::cs_source::ui::server_browser::ServerBrowser` (`handle` an `Input`, its `rows`,
 `set_results` from `net::query::ServerQueries::results`); favourites and
 history live in the cfg folder's `serverbrowser.vdf`. `sv_password` on a
@@ -929,8 +937,8 @@ server, `password` on a client (the browser asks for it). Two dedicated
 servers and a client on this box:
 
 ```
-cargo run --features dev --bin mashup_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
-cargo run --features dev --bin mashup_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
+cargo run --features dev --bin cs_source_server -- -port 27031 +hostname "LAN one" +maxplayers 8 +map greybox
+cargo run --features dev --bin cs_source_server -- -port 27032 +hostname "LAN two" +sv_password pw +map de_dust2
 cargo run --features dev -- --window 1280x720 +net_lan_ports 27031-27032 +openserverbrowser lan
 ```
 
@@ -945,7 +953,7 @@ the LAN's own broadcast address, e.g. `net_lan_broadcast "255.255.255.255
 
 Details and baseline numbers: [performance.md](performance.md).
 
-- `mashup_perf 1` (2: every render pass) shows frame times (avg, p95,
+- `chimera_perf 1` (2: every render pass) shows frame times (avg, p95,
   max), the main world's CPU time and the render world's time (its
   `Render` schedule), GPU time per render pass (every camera's run of
   it together), entity, mesh and triangle counts, cameras drawing (the
@@ -954,7 +962,7 @@ Details and baseline numbers: [performance.md](performance.md).
   frame (transforms written, under the map's root, mesh and material
   assets modified), and `physics: N dynamic bodies, M awake` (an awake
   body costs the solver, transform propagation and its shadow's checks
-  every tick; a settled map has none awake). `mashup_perf 3` also logs
+  every tick; a settled map has none awake). `chimera_perf 3` also logs
   each second which entities (by name) write transforms and which bodies
   are awake: anything writing every frame for nothing costs transform
   propagation and GPU re-preparation.
@@ -982,21 +990,21 @@ Details and baseline numbers: [performance.md](performance.md).
   the kernel refused them (`/proc/sys/kernel/perf_event_paranoid` above
   2, a VM without a PMU) or not Linux (Windows has CPU time only, in
   15.6 ms scheduler steps: read it over many frames).
-- Hitch log: `mashup_hitch_ratio 2` (default; 0 off) logs any frame
+- Hitch log: `chimera_hitch_ratio 2` (default; 0 off) logs any frame
   slower than that many times the median frame (`hitch: frame 41.20 ms =
   5.1x median 8.07; main world ... (cpu ..., N instr, ... ticks):
   RunFixedMainLoop 30.10 (cpu 3.00), ...; between frames ...; render
   world ...: queue ...`): the main world's slowest schedules and the
   render world's time and its slowest `Render` sets
-  (`MASHUP_RENDER_PHASES=0` leaves their marks out), each with wall
+  (`CHIMERA_RENDER_PHASES=0` leaves their marks out), each with wall
   and thread CPU ms, at most two lines a second (`(N more since the last)`). A profile
   build adds the frame's spans with the most self time (`spans by self
   ms: <system> 12.3 x2, ...`). The debug UI Perf tab has the same percentiles as
   a table, with a frame-time histogram.
-- `mashup_perf_log 1` logs the same readout as one text line a second
-  (`mashup_perf: 60 fps  frame 16.67 ms ... | vis: cluster ...`), so runs
+- `chimera_perf_log 1` logs the same readout as one text line a second
+  (`chimera_perf: 60 fps  frame 16.67 ms ... | vis: cluster ...`), so runs
   can be compared without reading screenshots (`--frames N ... 2>&1 |
-  grep mashup_perf:`); `bugreport` saves the latest readout in
+  grep chimera_perf:`); `bugreport` saves the latest readout in
   report.txt whether or not the overlay is on.
 - Drawing between ticks (`map::interp`): the readout's `interpolation:`
   line gives the tick rate, the frame's blend between the last two ticks
@@ -1010,10 +1018,10 @@ Details and baseline numbers: [performance.md](performance.md).
   view (vsync off) and prints a table (frame, main-world CPU, render-world
   (its `Render` schedule), process CPU and GPU ms; with pipelined
   rendering a frame takes about the longer of the main world and the
-  render world); `-- <args>` passes options to mashup (e.g. `-- +r_novis
+  render world); `-- <args>` passes options to Chimera (e.g. `-- +r_novis
   1`, `-- --view-size 3840x2160` to time 4K, `-- +mat_antialias 0`).
-  Build first; it runs the mashup next to it (`--profile playtest` for
-  optimized numbers). `MASHUP_EXECUTOR=multi` runs Bevy's multi-threaded
+  Build first; it runs the `cs_source` binary next to it (`--profile playtest` for
+  optimized numbers). `CHIMERA_EXECUTOR=multi` runs Bevy's multi-threaded
   executor instead of ours (performance.md, "Frame time pass"). A second
   table gives per view and over all views (`ALL`) frame ms p50/p99/p99.9/max,
   1% low fps, each world's CPU ms and instructions per frame (p50, p99)
@@ -1038,17 +1046,17 @@ Details and baseline numbers: [performance.md](performance.md).
   spread it was measured with.
 - `r_portalsopenall 1` ignores areaportals (closed doors no longer hide
   what's behind them, no clipping through openings): PVS culling only.
-  `mashup_perf 1` shows the camera's area, the areas it reaches and how
+  `chimera_perf 1` shows the camera's area, the areas it reaches and how
   many areaportals logic closed.
 - `r_occlusion 0` ignores the map's occluders (func_occluder);
-  `mashup_perf 1` shows how many are active and how many map parts they
+  `chimera_perf 1` shows how many are active and how many map parts they
   hide.
 - `r_novis 1` draws every map part (no visibility culling);
-  `MASHUP_MERGED_WORLD=1` spawns the world as one mesh per material with no
-  culling, as before chunking (A/B comparisons); `MASHUP_MERGE_BRUSHES=0`
+  `CHIMERA_MERGED_WORLD=1` spawns the world as one mesh per material with no
+  culling, as before chunking (A/B comparisons); `CHIMERA_MERGE_BRUSHES=0`
   draws every brush entity from its own meshes (no merged combined
   meshes, `map::merge`).
-- `mashup_skyocclude 1` makes sky faces hide what lies behind them even
+- `chimera_skyocclude 1` makes sky faces hide what lies behind them even
   in the view's PVS (`render::sky_occluder`; off by default, unchecked
   against CS:S). Where something shows through the sky, the remote
   protocol (section 3) finds it: query meshes with a non-zero
@@ -1061,16 +1069,16 @@ Details and baseline numbers: [performance.md](performance.md).
   if any differs by more than 0.5% of its pixels (small differences:
   geometry seen through sky brushes, which culling hides as the game
   does; see performance.md). `cargo test --features dev --test it map_vis::` checks the same with rays from
-  ~300 player positions per map (`MASHUP_VIS_FULL=1`: every nav area).
+  ~300 player positions per map (`CHIMERA_VIS_FULL=1`: every nav area).
 - `refcmp ordercheck --views tools/refcmp/<map>.toml` captures the same
   views (vischeck's) in order and in reverse order and fails if any view
   differs by more than 100 pixels: a capture that depends on the views before it (sort
   order, fades, exposure an earlier view left) shows there, and would
   make vischeck and refcmp comparisons differ by chance. To find what a
-  view depends on, capture short `--views` lists with mashup itself (the
+  view depends on, capture short `--views` lists with Chimera itself (the
   view, then the views before it in the run, dropping one at a time) and
   compare the view's PNGs (`magick compare -metric AE a.png b.png null:`).
-- `REFCMP_OUT=<dir> refcmp ...` writes mashup's captures, reports, bench
+- `REFCMP_OUT=<dir> refcmp ...` writes Chimera's captures, reports, bench
   and vischeck output under `<dir>/<map>` (references are still read from
   the shared dump folder): use a folder in your own `target/` when other
   sessions may be using the shared captures.
@@ -1088,16 +1096,16 @@ Details and baseline numbers: [performance.md](performance.md).
   logic bridge: `logic: phase`, `logic: sync to the ECS`, `logic:
   sync_movers`). Example (performance.md has real output):
   `cargo build --profile playtest --features profile`, then
-  `TRACE_CHROME=target/t.json target/playtest/mashup --map cs_source:de_dust2 --frames 400`,
+  `TRACE_CHROME=target/t.json target/playtest/cs_source --map cs_source:de_dust2 --frames 400`,
   then `cargo build --profile playtest --features tools --bin tracesum` and
   `target/playtest/tracesum target/t.json --skip 200`.
   Read systems' own spans, not schedules' self time: writing the trace
   stalls every thread now and then (2-3 ms gaps without any span), which
   lands in whichever schedule was running, and tracing makes a frame of
   ~1500 small systems about twice as slow. For `--bench` runs, start
-  mashup itself (`--views <refcmp's views.json> --bench`); through
+  Chimera itself (`--views <refcmp's views.json> --bench`); through
   refcmp the trace came out empty.
-  The profile build replaces `target/playtest/mashup`: copy it aside
+  The profile build replaces `target/playtest/cs_source`: copy it aside
   or rebuild without the feature before benchmarking. Tracy instead:
   `--features bevy/trace_tracy` and the Tracy profiler (not set up on the
   dev box). CPU sampling (`perf record -g`, `cargo flamegraph`) works on
@@ -1119,8 +1127,8 @@ and keys typed into its fields don't reach binds.
 
 - Player: position, angles, velocity, movement state, team; god, noclip,
   respawn, `impulse 101`; health, armour and money sliders
-  (`mashup_sethealth`, `mashup_setarmor <n> [helmet]`,
-  `mashup_setmoney`); weapons held (clip/reserve), give any registered
+  (`chimera_sethealth`, `chimera_setarmor <n> [helmet]`,
+  `chimera_setmoney`); weapons held (clip/reserve), give any registered
   weapon, drop; teleport to each spawn point; bookmarks (saved places,
   kept in bookmarks.txt).
 - World: the map and a map list to load, tick and game time, entity
@@ -1129,21 +1137,21 @@ and keys typed into its fields don't reach binds.
   back to defaults, surf preset, the mouse cvars.
 - Bots: add T / CT, kick, back to orders, skill presets (the new game
   page's), the bot cvars (`bot_stop` freezes them), a table of each
-  bot's team, health, role and activity with watch (`mashup_watch`) and
+  bot's team, health, role and activity with watch (`chimera_watch`) and
   go-to buttons.
 - Rendering: the overlays (`cl_showpos`, `net_graph`,
-  `mashup_drawhitboxes`, `mashup_drawcollision` (F3: `toggle mashup_drawcollision`),
-  `mashup_drawphys`, `mashup_drawnav`, `mashup_drawbots`, ...), culling
+  `chimera_drawhitboxes`, `chimera_drawcollision` (F3: `toggle chimera_drawcollision`),
+  `chimera_drawphys`, `chimera_drawnav`, `chimera_drawbots`, ...), culling
   (`r_novis`, `r_portalsopenall`, `r_occlusion`, with the vis readout),
   HDR, water, view model and effect cvars, third person and free camera.
 - Perf: a frame-time graph of the last 300 frames (white frame, green
   main-world CPU, 60 and 30 fps lines), the live interpolation line, the
-  `mashup_perf` readout, `mashup_perf`, `mashup_perf_log`,
+  `chimera_perf` readout, `chimera_perf`, `chimera_perf_log`,
   `cl_interpolate`, how to take a trace.
 - Audio: volume, DSP, `snd_show`, the soundscape and room readout.
 - Logic: the map's entities (filter by name or class), an entity's
   keyvalues and output connections, fire an input at it (`ent_fire`);
-  `mashup_logic_record 1` lists the outputs fired (latest 40 shown) and
+  `chimera_logic_record 1` lists the outputs fired (latest 40 shown) and
   the logic's messages.
 - Rounds: the round, its phase and score; restart (`mp_restartgame 1`),
   rounds on or off, the round cvars.
@@ -1169,7 +1177,7 @@ standard's lines (`"Name<userid><uniqueid><TEAM>" triggered
 
 `dump` lists, summarizes and extracts files from a game install, using the
 same readers as the runtime mount. Install paths come from
-`mashup.local.toml`, else the saved or Steam-found one (`mount::install`).
+`chimera.local.toml`, else the saved or Steam-found one (`mount::install`).
 
 ```
 cargo run --bin dump -- cs_source                      # counts and sizes by type
@@ -1183,13 +1191,13 @@ cargo run --bin dump -- combat_arms --filter worlds2/warehouse.dat --extract
 ```
 
 Encrypted Combat Arms archives list but skip extraction until their scheme's
-key is in `mashup.local.toml`. Extraction goes to `~/.local/share/mashup/dump/<game>/` (or `--out`) and
+key is in `chimera.local.toml`. Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
 refuses any folder inside the repository.
 
 ### Sweeping every cached map (mapsweep)
 
-`mapsweep` loads every map in mashup's content cache
-(`~/.local/share/mashup/content/cs_source/maps/`) headless, each under
+`mapsweep` loads every map in Chimera's content cache
+(`~/.local/share/chimera/content/cs_source/maps/`) headless, each under
 `catch_unwind`, runs its map logic for a few seconds, and writes
 `report.md` (problems ranked by how many maps they affect, then one row
 per map), `report.csv` and `warnings.txt` (every warning and logic line)
@@ -1198,15 +1206,15 @@ time and its stages over half a second (`MapData::load_times`). Load warnings ar
 (missing or unreadable materials, textures, models, sounds; decals and
 overlays without a surface), plus entity classes nothing handles, classes
 handled only as static brushes, and logic complaints (refused server
-commands, unhandled inputs). With `--shots <mashup build>` it also runs
+commands, unhandled inputs). With `--shots <Chimera build>` it also runs
 that build per map for a 1280x720 screenshot from the first spawn and the
-last `mashup_perf_log` line (needs a display).
+last `chimera_perf_log` line (needs a display).
 
 ```
 cargo run --features dev,tools --bin mapsweep                      # every cached map
 cargo run --features dev,tools --bin mapsweep -- --filter surf_,kz_ # some of them
 cargo run --features dev,tools --bin mapsweep -- --stock            # the install's own maps
-cargo run --features dev,tools --bin mapsweep -- --shots target/playtest/mashup --filter mg_
+cargo run --features dev,tools --bin mapsweep -- --shots target/playtest/cs_source --filter mg_
 cargo run --features dev,tools --bin mapsweep -- --audit           # plus the map logic audit
 ```
 
@@ -1249,11 +1257,11 @@ side until it fires, `touch` stands players in a trigger, `kill`,
 `said`/`said_ever` read the console, `got` the inputs delivered) and
 checks each step: chooser teleports, selector buttons, retargeted
 teleports, loadouts, announcements, round ends and what the next round
-resets. `MASHUP_FLOW_TABLE=1 cargo test --features dev --test it
+resets. `CHIMERA_FLOW_TABLE=1 cargo test --features dev --test it
 map_flows:: -- --nocapture` prints a row per step (pass, FAIL, known),
-`MASHUP_FLOW_TRACE=<name,...>` the outputs and inputs of entities whose
+`CHIMERA_FLOW_TRACE=<name,...>` the outputs and inputs of entities whose
 names contain those. A live check of the same steps: run the game with
-`MASHUP_REMOTE_PORT`, `-port` (not 27015), `+mashup_rounds 1 +jointeam 2
+`CHIMERA_REMOTE_PORT`, `-port` (not 27015), `+chimera_rounds 1 +jointeam 2
 +bot_add 1 ...`, then `setpos`, `setang`, `+use`/`-use`, `ent_dump` and
 `screenshot` over the remote console.
 
@@ -1272,15 +1280,15 @@ player_speedmod zones; what triggers set off; buttons; the next round.
 Each step's detail counts its items, with the ones it can't check
 ("known") grouped by reason: no room for a player in the trigger,
 overlapping teleports or gravity zones (touch order, triggers.md open
-question 3), chained destinations. `MASHUP_FLOW_TABLE=1 cargo test
+question 3), chained destinations. `CHIMERA_FLOW_TABLE=1 cargo test
 --features dev --test it map_courses:: -- --nocapture` prints the rows;
-`MASHUP_COURSE_DEBUG=<entity index>` prints the ticks around that
+`CHIMERA_COURSE_DEBUG=<entity index>` prints the ticks around that
 trigger's check (brushes, links, velocity before and after the
 movement and the logic). `heavy::map_surf` rides every open ramp of the
-cached surf maps, one test per map (`MASHUP_SURF_MAPS=surf_a,surf_b`
+cached surf maps, one test per map (`CHIMERA_SURF_MAPS=surf_a,surf_b`
 with the test `map_surf::listed_maps` for others,
-`MASHUP_SURF_DEBUG=1` to list what the hull is near at each stop;
-`MASHUP_SLIDE_DEBUG=1`, read by the CS:S movement itself, prints every
+`CHIMERA_SURF_DEBUG=1` to list what the hull is near at each stop;
+`CHIMERA_SLIDE_DEBUG=1`, read by the CS:S movement itself, prints every
 slide move's sweeps: position, velocity, fraction, start solid, the plane
 hit and whether it was a brush with its own surface or a physics
 collider, and when a full move's end tests solid, whether a brush did it.
@@ -1288,7 +1296,7 @@ The lines just before a stop are its tick's).
 
 ## 6. Comparing with the real game (refcmp)
 
-`refcmp` captures the same camera views in real CS:S and in mashup and
+`refcmp` captures the same camera views in real CS:S and in Chimera and
 reports, per view, brightness (luma), saturation, sharpness (mean absolute
 Laplacian) and mean absolute difference, plus side-by-side images
 (reference | ours | difference x4).
@@ -1307,7 +1315,7 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   have spawn views only, with no reference captures yet.
   `camera` names the map's `point_viewcontrol`; maps whose cameras have
   no name (de_aztec) use the class name, which moves all of them.
-  Output: `~/.local/share/mashup/dump/refcmp/<map>/` (game imagery; never
+  Output: `~/.local/share/chimera/dump/refcmp/<map>/` (game imagery; never
   in the repo). `--out <dir>` writes our captures, reports, bench and
   vischeck output under `<dir>/<map>/` instead (reference captures are
   still read from the shared folder), so parallel worktrees don't
@@ -1323,7 +1331,7 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   `point_viewcontrol` for each view and takes `jpeg` screenshots. Keys and
   `setpos` don't work for this (the lock screen owns the keyboard; RCON has
   no player).
-- `refcmp fit` also captures mashup's `--debug-view albedo` and
+- `refcmp fit` also captures Chimera's `--debug-view albedo` and
   `--debug-view lighting` renders and fits, per pixel, how the real game
   combines texture and light. That is where `cs_source::bsp::source_look`
   (no tonemapping, bilinear mip snapping) comes from. Its 1.22 exposure
@@ -1334,8 +1342,8 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   on bump-mapped walls: it preferred a green-flipped normal map that crops
   show is wrong. Check close-up crops (`magick ... -crop`) side by side
   before trusting it.
-- A texture mismatch reported at a `setpos`/`setang` spot: `MASHUP_VIEW_MAP=cs_militia
-  MASHUP_VIEW_POS="261 -334 -94" MASHUP_VIEW_ANG="10 178 0" cargo test -p
+- A texture mismatch reported at a `setpos`/`setang` spot: `CHIMERA_VIEW_MAP=cs_militia
+  CHIMERA_VIEW_POS="261 -334 -94" CHIMERA_VIEW_ANG="10 178 0" cargo test -p
   cs_source --features dev --test it heavy::map_surfaces::surfaces_in_view
   -- --ignored --nocapture` casts rays over that view (a 1280x720
   window's framing) and prints a letter map of the surfaces it hits (world
@@ -1354,10 +1362,10 @@ cargo run --features dev,tools --bin refcmp -- capture-ours --only a_sign
   default) is an option (`+mat_hdr_level 2`, client/hdr.rs) but not
   matched yet: captures stay LDR unless a run sets it.
 - `refcmp skyconv` measures how the engine samples sky cubemaps (an encoded
-  debug sky, `MASHUP_SKY_DEBUG=1`) and fits each layer's texture and
+  debug sky, `CHIMERA_SKY_DEBUG=1`) and fits each layer's texture and
   orientation to the reference: Bevy's skybox flips z, so looking toward -Z
   shows the +Z layer.
-- mashup renders views off-screen at 1280x720 (`--views`), matching CS:S's
+- Chimera renders views off-screen at 1280x720 (`--views`), matching CS:S's
   framing (90 degrees horizontal at 4:3 = 74 vertical).
 
 ### Comparing the HUD (`refcmp hudcmp`)
@@ -1374,7 +1382,7 @@ cargo run --features dev,tools --bin refcmp -- hudcmp --out <scratch> --hud-ref 
   100 health, no armour, $800, the USP drawn and an AK-47 in slot 1;
   state `ak` with `hud_fastswitch 0` and the selection open on slot 1,
   `select` open on slot 2; at 1280x720, 1920x1080 and 1024x768.
-- `capture-hud` runs mashup into the same states at the same sizes
+- `capture-hud` runs Chimera into the same states at the same sizes
   (`ours_<state>_<W>x<H>.png`; console commands, then `screenshot`).
 - `hudcmp` crops each panel part (health, armour, clock, money and ammo
   digits and icons, the panel boxes, the selection's numbers, icon, name
@@ -1418,13 +1426,13 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
 
 - Each scenario (in `games/cs_source/tools/src/bin/movecmp.rs`) is a start position and per-tick
   inputs. A CS:S dedicated server with the `tools/css_probe` SourceMod
-  plugin plays them on a bot and logs every tick; mashup plays the same
+  plugin plays them on a bot and logs every tick; Chimera plays the same
   inputs from the game's tick-0 state on the same map at the same 0.015 s
   tick. Setup: tools/css_probe/README.md.
 - Report: per scenario, the largest position/velocity difference and the
   first tick that differs by more than 0.1 unit (or in ground/duck
   state), with both states. Per-tick CSVs go to
-  `~/.local/share/mashup/dump/movecmp/`.
+  `~/.local/share/chimera/dump/movecmp/`.
 - The probe can also be driven directly over RCON (127.0.0.1:27030,
   `mashup_run <in> <out>`, `mashup_weapon <weapon>`); its log has the
   player's box top, eye height and the buttons the movement ran with.
@@ -1474,8 +1482,8 @@ cargo run --features dev,tools --bin movecmp -- --offline   # against the last C
   brushes near a point (index, ladder flag, bounds, planes in Source
   units) and the terrain triangles: what a diverging run's trace there
   can hit. `movecmp fuzz ... --offline --run <name>` replays one fuzz run
-  (same seed and options); with `MASHUP_SLIDE_DEBUG=1` the ladder probe
-  prints its sweep each tick too, and `MASHUP_GROUND_DEBUG=1` prints each
+  (same seed and options); with `CHIMERA_SLIDE_DEBUG=1` the ladder probe
+  prints its sweep each tick too, and `CHIMERA_GROUND_DEBUG=1` prints each
   ground test (feet, the full box's sweep, the ground found and the brush
   it is).
 
@@ -1529,10 +1537,10 @@ loads the demo's map and plays it: its players are puppets
 attack/attack2: next/previous player). `demo_timescale <x>`,
 `demo_pause`/`demo_resume`/`demo_togglepause`, `demo_gototick <tick> [1]`
 (relative with 1), `demo_info`, `stopdemo`. Screenshots of a tick: run it
-with the remote console (`mashup/console` `{"line": "demo_gototick 3000"}`,
+with the remote console (`chimera/console` `{"line": "demo_gototick 3000"}`,
 then `demo_pause` and a capture). Tests: `demo_playback` (a demo built in
 code on the greybox) and `heavy::demo_playback` (the sample demos on
-de_dust2; skipped without them: `$MASHUP_DEMOS` or `target/demos/`).
+de_dust2; skipped without them: `$CHIMERA_DEMOS` or `target/demos/`).
 Spectating a demo: first person hides the watched player (body and
 weapon), chase and free look show both, as CS:S; the demo's players
 coming in say no "is joining" lines (`core::Playback`); a jump
@@ -1560,7 +1568,7 @@ cargo run --features dev,tools --bin demosim -- --probe <name> [--map de_dust2]
   shots fired, accuracy penalty, alt mode; both states), maxima, means
   and counts per kind, and the shots (paired in order: same command, seed, the
   recorded `CTEFireBullets` inaccuracy against ours, mean degrees off
-  the aim). Per-tick CSV: `~/.local/share/mashup/dump/demosim/`.
+  the aim). Per-tick CSV: `~/.local/share/chimera/dump/demosim/`.
 - The server's settings in the demo (`net_SetConVar`: `sv_maxspeed`,
   `sv_accelerate`, `sv_airaccelerate`, `sv_friction`, `sv_gravity`, ...)
   are applied first and listed; the tick is the demo's (`svc_ServerInfo`);
@@ -1589,7 +1597,7 @@ cargo run --features dev,tools --bin demosim -- --probe <name> [--map de_dust2]
   accuracy penalty included, and so does `walk_stop` (down dust2's
   terrain, within 0.001 u); the bot's seeds don't come from its command
   numbers, so they aren't compared there. To see why a tick differs:
-  the per-tick CSV gives the tick, `MASHUP_SLIDE_DEBUG=1` prints every
+  the per-tick CSV gives the tick, `CHIMERA_SLIDE_DEBUG=1` prints every
   sweep of the slide move. Tests: `demo_resim` (a client
   demo built in code: commands through the demo writer and reader;
   synthetic recordings of a silenced USP, a FAMAS in burst mode and an

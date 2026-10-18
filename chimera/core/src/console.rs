@@ -14,13 +14,17 @@
 //! in a network game; a network client can't set them, `net::cvars` sends the
 //! replicated ones); `sv_cheats` (`Cheats`) gates `CHEATS` (noclip, god,
 //! setpos, setang, give, impulse but `PLAYER_IMPULSES` (100, 201), ent_fire,
-//! `mashup_set*`; `is_cheat`) in network games; a
+//! `chimera_set*`; `is_cheat`) in network games; a
 //! network client sends its cheats to the server (`Console::to_server`,
 //! `net::cheats`; `command_player` is the player a command acts on);
-//! `mashup_noblock` (`core::NoBlock`) is ours and replicated; a network client
+//! `chimera_noblock` (`core::NoBlock`) is ours and replicated; a network client
 //! can't run `SERVER_COMMANDS` (bots, `changelevel`, `mp_restartgame`);
 //! userinfo cvars (`Console::userinfo`, `userinfo()`: e.g. `cl_autowepswitch`)
-//! are the local player's `core::UserInfo`.
+//! are the local player's `core::UserInfo`. Our own cvars and commands
+//! are `chimera_*`; their old names (`mashup_*`, `OLD_PREFIX`) still work,
+//! hidden (`current_name`: lookups; `Console::current_line`: lines stored
+//! by `bind` and `alias`), so configs and binds saved before the rename
+//! keep working and are written back with the new names.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -67,7 +71,7 @@ pub struct Cvar {
 /// server (`net::cvars`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CvarScope {
-    /// The player's own (`cl_*`, `m_*`, video, audio, `mashup_*` tools).
+    /// The player's own (`cl_*`, `m_*`, video, audio, `chimera_*` tools).
     Local,
     /// The server's, never sent to clients (bots, secrets).
     Server,
@@ -86,8 +90,8 @@ pub const SERVER_PREFIXES: &[&str] = &["sv_", "mp_", "phys_", "bot_", "ammo_"];
 /// seconds between a player's sprays) and the freeze cam's timings
 /// (`spec_freeze_time`, `spec_freeze_traveltime`; replicated in CS:S).
 pub const SERVER_NAMES: &[&str] = &[
-    "mashup_rounds",
-    "mashup_noblock",
+    "chimera_rounds",
+    "chimera_noblock",
     "decalfrequency",
     "spec_freeze_time",
     "spec_freeze_traveltime",
@@ -102,7 +106,7 @@ impl CvarScope {
     /// prefix; of those, bots' settings and secrets stay on the server and
     /// the rest replicate.
     pub fn of(name: &str) -> Self {
-        let name = name.to_lowercase();
+        let name = current_name(name);
         if SERVER_NAMES.contains(&name.as_str()) {
             CvarScope::Replicated
         } else if LOCAL_NAMES.contains(&name.as_str()) {
@@ -174,6 +178,24 @@ pub struct Console {
     pub to_server: Vec<String>,
 }
 
+/// The prefix of our own cvars and commands (`chimera_noblock`, ...).
+pub const PREFIX: &str = "chimera_";
+
+/// Their prefix before the rename to Chimera: `mashup_rounds` is
+/// `chimera_rounds` (`current_name`), a hidden alias for saved configs and
+/// binds.
+pub const OLD_PREFIX: &str = "mashup_";
+
+/// The name `name` answers to now, lower case: an old `mashup_*` name is
+/// its `chimera_*` one (`OLD_PREFIX`); any other name is itself.
+pub fn current_name(name: &str) -> String {
+    let lower = name.to_lowercase();
+    match lower.strip_prefix(OLD_PREFIX) {
+        Some(rest) => format!("{PREFIX}{rest}"),
+        None => lower,
+    }
+}
+
 const MAX_OUTPUT: usize = 4000;
 const MAX_ALIAS_DEPTH: usize = 32;
 
@@ -186,7 +208,7 @@ impl Console {
 
     /// Mark a cvar to be saved in config.cfg.
     pub fn archive(&mut self, name: &str) {
-        if let Some(c) = self.cvars.get_mut(&name.to_lowercase()) {
+        if let Some(c) = self.cvars.get_mut(&current_name(name)) {
             c.archive = true;
         }
     }
@@ -194,21 +216,21 @@ impl Console {
     /// Mark a cvar as the player's own setting the simulation reads
     /// (`core::UserInfo`).
     pub fn userinfo(&mut self, name: &str) {
-        if let Some(c) = self.cvars.get_mut(&name.to_lowercase()) {
+        if let Some(c) = self.cvars.get_mut(&current_name(name)) {
             c.userinfo = true;
         }
     }
 
     /// Give a cvar a range for hints and sliders.
     pub fn set_range(&mut self, name: &str, min: f32, max: f32) {
-        if let Some(c) = self.cvars.get_mut(&name.to_lowercase()) {
+        if let Some(c) = self.cvars.get_mut(&current_name(name)) {
             c.range = Some((min, max));
         }
     }
 
     /// Give a command argument completion.
     pub fn set_completion(&mut self, name: &str, complete: CompleteFn) {
-        if let Some(c) = self.commands.get_mut(&name.to_lowercase()) {
+        if let Some(c) = self.commands.get_mut(&current_name(name)) {
             c.complete = Some(complete);
         }
     }
@@ -217,12 +239,44 @@ impl Console {
         self.commands.insert(command.name.to_lowercase(), command);
     }
 
+    /// A cvar by name (any case; an old `mashup_*` name finds its
+    /// `chimera_*` cvar, `current_name`).
     pub fn cvar(&self, name: &str) -> Option<&Cvar> {
-        self.cvars.get(&name.to_lowercase())
+        self.cvars.get(&current_name(name))
     }
 
+    /// A command by name (as `cvar`).
     pub fn command(&self, name: &str) -> Option<&Command> {
-        self.commands.get(&name.to_lowercase())
+        self.commands.get(&current_name(name))
+    }
+
+    /// `line` with each old name of ours (`mashup_*`, a `+`/`-` action's
+    /// too) whose new name (`chimera_*`) the console knows written as the
+    /// new one: what `bind` and `alias` store, so a config saved before the
+    /// rename is written back with the new names.
+    pub fn current_line(&self, line: &str) -> String {
+        let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let lower = line.to_ascii_lowercase();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0;
+        while i < line.len() {
+            let starts_word = !line[..i].chars().next_back().is_some_and(is_word);
+            if starts_word && lower[i..].starts_with(OLD_PREFIX) {
+                let end = line[i..].find(|c: char| !is_word(c)).map_or(line.len(), |n| i + n);
+                let new = current_name(&line[i..end]);
+                let known = self.cvars.contains_key(&new)
+                    || ["", "+", "-"].iter().any(|p| self.commands.contains_key(&format!("{p}{new}")));
+                if known {
+                    out += &new;
+                    i = end;
+                    continue;
+                }
+            }
+            let c = line[i..].chars().next().expect("in bounds");
+            out.push(c);
+            i += c.len_utf8();
+        }
+        out
     }
 
     pub fn cvars(&self) -> impl Iterator<Item = &Cvar> {
@@ -428,14 +482,16 @@ pub fn run_queue(world: &mut World) {
 
 /// Run one command (its words), with aliases expanded.
 pub fn execute(world: &mut World, words: &[String], depth: usize) {
-    let Some(name) = words.first().map(|w| w.to_lowercase()) else {
+    let Some(typed) = words.first().map(|w| w.to_lowercase()) else {
         return;
     };
+    // An old `mashup_*` name runs its `chimera_*` command or cvar.
+    let name = current_name(&typed);
     let args = &words[1..];
     let (alias, command, cvar) = {
         let c = world.resource::<Console>();
         (
-            c.aliases.get(&name).cloned(),
+            c.aliases.get(&typed).cloned(),
             c.command(&name).cloned(),
             c.cvar(&name).cloned(),
         )
@@ -444,7 +500,7 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
         if depth >= MAX_ALIAS_DEPTH {
             world
                 .resource_mut::<Console>()
-                .print(Level::Error, format!("{name}: alias loop"));
+                .print(Level::Error, format!("{typed}: alias loop"));
             return;
         }
         for w in parse(&body) {
@@ -500,7 +556,7 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
             })
         }
     } else {
-        Err(format!("Unknown command \"{name}\""))
+        Err(format!("Unknown command \"{typed}\""))
     };
     let mut c = world.resource_mut::<Console>();
     match result {
@@ -606,7 +662,7 @@ where
     // one isn't on/off even when its default is 0 or 1.
     let integer = "1".parse::<T>().is_ok() && "0.5".parse::<T>().is_err();
     let mut console = app.world_mut().resource_mut::<Console>();
-    if let Some(c) = console.cvars.get_mut(&name.to_lowercase()) {
+    if let Some(c) = console.cvars.get_mut(&current_name(name)) {
         c.integer = integer;
         if "0.5".parse::<T>().is_ok() {
             c.values.clear();
@@ -626,10 +682,10 @@ pub const CHEATS: &[&str] = &[
     "give",
     "impulse",
     "ent_fire",
-    "mashup_hurtme",
-    "mashup_sethealth",
-    "mashup_setarmor",
-    "mashup_setmoney",
+    "chimera_hurtme",
+    "chimera_sethealth",
+    "chimera_setarmor",
+    "chimera_setmoney",
 ];
 
 /// Impulses that aren't cheats (Source's player impulses): `impulse 100`
@@ -706,11 +762,11 @@ impl Plugin for ConsolePlugin {
         app.init_resource::<crate::core::NoBlock>();
         resource_cvar::<crate::core::NoBlock, u8>(
             app,
-            "mashup_noblock",
+            "chimera_noblock",
             "Players passing through each other (ours; the server's, sent to clients): 0 nobody (CS:S), 1 teammates, 2 everyone.",
             |n| &mut n.0,
         );
-        app.world_mut().resource_mut::<Console>().set_range("mashup_noblock", 0.0, 2.0);
+        app.world_mut().resource_mut::<Console>().set_range("chimera_noblock", 0.0, 2.0);
     }
 }
 
@@ -855,7 +911,8 @@ fn builtins(app: &mut App) {
                 )),
                 [name] => Ok(c.aliases.get(&name.to_lowercase()).map(|v| format!("{name}: {v}"))),
                 [name, rest @ ..] => {
-                    c.aliases.insert(name.to_lowercase(), rest.join(" "));
+                    let body = c.current_line(&rest.join(" "));
+                    c.aliases.insert(name.to_lowercase(), body);
                     c.dirty = true;
                     Ok(None)
                 }
@@ -894,7 +951,7 @@ fn builtins(app: &mut App) {
             Ok(None)
         })
         .console_command("watch", "watch <cvar>: show its value on screen (unwatch to remove).", |w, a| {
-            let name = a.first().ok_or("watch <cvar>")?.to_lowercase();
+            let name = current_name(a.first().ok_or("watch <cvar>")?);
             let mut c = console(w);
             if !c.watches.contains(&name) {
                 c.watches.push(name);
@@ -904,7 +961,7 @@ fn builtins(app: &mut App) {
         .console_command("unwatch", "unwatch [cvar]: stop showing it (all with no name).", |w, a| {
             let mut c = console(w);
             match a.first() {
-                Some(n) => c.watches.retain(|x| x != &n.to_lowercase()),
+                Some(n) => c.watches.retain(|x| x != &current_name(n)),
                 None => c.watches.clear(),
             }
             Ok(None)
@@ -930,7 +987,8 @@ fn builtins(app: &mut App) {
                     None => format!("\"{key}\" is not bound"),
                 })),
                 [key, rest @ ..] => {
-                    c.binds.insert(key.to_lowercase(), rest.join(" "));
+                    let line = c.current_line(&rest.join(" "));
+                    c.binds.insert(key.to_lowercase(), line);
                     c.dirty = true;
                     Ok(None)
                 }
@@ -966,14 +1024,15 @@ fn builtins(app: &mut App) {
         });
 }
 
-/// Where configs live: the user's data folder (Linux ~/.local/share/mashup/cfg,
-/// Windows %APPDATA%\\mashup\\cfg).
+/// Where configs live: the user's data folder (Linux ~/.local/share/chimera/cfg,
+/// Windows %APPDATA%\\chimera\\cfg; the old `mashup` folder while only it
+/// exists, `env::user_folder`).
 pub fn cfg_dir() -> Option<std::path::PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("APPDATA").map(std::path::PathBuf::from))
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share")))?;
-    Some(base.join("mashup").join("cfg"))
+    Some(crate::env::user_folder(&base).join("cfg"))
 }
 
 fn with_cfg(name: &str) -> String {
@@ -1011,7 +1070,7 @@ pub fn config_text(w: &mut World) -> String {
     // The second line tells the client every key's bind is in here
     // (`client::binds::CONFIG_MARK`), the third that the defaults it was
     // written over were CS:S's (`client::binds::DEFAULTS_MARK`).
-    let mut out = String::from("// Written by mashup (host_writeconfig).\n// binds: all\n// bind defaults: cs\n");
+    let mut out = String::from("// Written by Chimera (host_writeconfig).\n// binds: all\n// bind defaults: cs\n");
     let (binds, aliases, cvars) = {
         let c = w.resource::<Console>();
         (
@@ -1062,8 +1121,8 @@ mod tests {
         assert_eq!(text, "move there (CS:S units).");
         // Brackets keep their spaces and colons.
         let (args, text) = usage(
-            "mashup_hurtme",
-            "mashup_hurtme <head|chest> [amount=100] [from yaw, degrees: 0 = front]: a hit on yourself.",
+            "chimera_hurtme",
+            "chimera_hurtme <head|chest> [amount=100] [from yaw, degrees: 0 = front]: a hit on yourself.",
         );
         assert_eq!(args, ["<head|chest>", "[amount=100]", "[from yaw, degrees: 0 = front]"]);
         assert_eq!(text, "a hit on yourself.");

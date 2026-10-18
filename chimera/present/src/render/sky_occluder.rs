@@ -1,4 +1,4 @@
-//! Optional (`mashup_skyocclude 1`; off by default): sky faces hide what
+//! Optional (`chimera_skyocclude 1`; off by default): sky faces hide what
 //! lies behind them. Sky faces are never drawn
 //! (specs/cs_source/shadows_sky.md); whether the game still keeps what
 //! lies behind one (in the view's PVS) from showing through it is engine
@@ -53,7 +53,7 @@ impl Material for SkyOccluderMaterial {
 #[derive(Component)]
 pub struct SkyOccluder;
 
-/// `mashup_skyocclude`: 1 sky faces hide what lies behind them; 0 (the
+/// `chimera_skyocclude`: 1 sky faces hide what lies behind them; 0 (the
 /// default) they don't.
 #[derive(Resource, Default)]
 pub struct SkyOcclusion(pub u8);

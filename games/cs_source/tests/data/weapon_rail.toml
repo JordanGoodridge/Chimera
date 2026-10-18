@@ -1,7 +1,7 @@
 # A gun that exists only as data (games/cs_source/tests/it/weapon_data.rs):
 # no Rust names it. It builds on CS:S's gun template and hooks and brings
 # its own ammo type, as a mashup or a player's file would.
-id = "mashup_test:weapon_rail"
+id = "chimera_test:weapon_rail"
 base = "cs_source:gun"
 slot = 0
 draw = 0.5
@@ -9,7 +9,7 @@ max_speed = 240.0
 weight = 30
 units = { length = 0.0254, damage = 0.01 }
 
-[ammo."mashup_test:slug"]
+[ammo."chimera_test:slug"]
 power = 60.0
 max_distance = 2000.0
 max = 20
@@ -26,7 +26,7 @@ cycle = 0.6
 
 [magazine]
 clip = 5
-ammo = "mashup_test:slug"
+ammo = "chimera_test:slug"
 reload = 1.5
 
 [hitscan]

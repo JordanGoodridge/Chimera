@@ -149,7 +149,7 @@ fn get_once(url: &str, max: u64, progress: &Progress) -> Result<Reply, HttpError
         format!("{}:{}", u.host, u.port)
     };
     let request = format!(
-        "GET {} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: mashup\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n",
+        "GET {} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Chimera\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n",
         u.path
     );
     writer

@@ -86,7 +86,7 @@ impl MapDrawer for MapAssets<'static> {
 /// Signs for normal maps' red and green channels in the world material.
 /// Source's normal maps are DirectX-style (x along texture u, y along v,
 /// image-down) and used unflipped (specs/cs_source/shaders.md). Overridable
-/// with MASHUP_NORMAL_X_SIGN / MASHUP_NORMAL_G_SIGN for experiments.
+/// with CHIMERA_NORMAL_X_SIGN / CHIMERA_NORMAL_G_SIGN for experiments.
 const NORMAL_G_SIGN: f32 = 1.0;
 const NORMAL_X_SIGN: f32 = 1.0;
 
@@ -487,7 +487,7 @@ fn spawn_sky(
         }
     }
     // Sky faces, to hide what lies behind them (depth only, when
-    // `mashup_skyocclude` is on: `sky_occluder`).
+    // `chimera_skyocclude` is on: `sky_occluder`).
     if let Some(mesh) = super::sky_occluder::mesh(&data.sky_surfaces) {
         commands.spawn((
             Name::new("Sky surfaces"),
@@ -728,9 +728,9 @@ fn lit_world_material(
     let (data, view) = (s.data, s.view);
     let bumped_lightmaps = &lightmaps.bumped;
     let [r, g, b] = m.color;
-    // Calibration hook: MASHUP_NORMAL_G_SIGN overrides the sign;
+    // Calibration hook: CHIMERA_NORMAL_G_SIGN overrides the sign;
     // 0 turns radiosity normal mapping off.
-    let g_sign = std::env::var("MASHUP_NORMAL_G_SIGN")
+    let g_sign = chimera_core::env::var("CHIMERA_NORMAL_G_SIGN")
         .ok()
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(NORMAL_G_SIGN);
@@ -773,7 +773,7 @@ fn lit_world_material(
             fog_range: fog_range(material_fog(data, view, m.skybox).as_ref()),
             bumped: if bumped { 1.0 } else { 0.0 },
             normal_g_sign: g_sign,
-            normal_x_sign: std::env::var("MASHUP_NORMAL_X_SIGN")
+            normal_x_sign: chimera_core::env::var("CHIMERA_NORMAL_X_SIGN")
                 .ok()
                 .and_then(|v| v.parse::<f32>().ok())
                 .unwrap_or(NORMAL_X_SIGN),

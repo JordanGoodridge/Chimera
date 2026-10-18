@@ -1,13 +1,13 @@
-//! Performance tools: the `mashup_perf` overlay (frame times, main-world
+//! Performance tools: the `chimera_perf` overlay (frame times, main-world
 //! CPU time, GPU time per render pass, entity and mesh counts, visibility
 //! culling), `r_novis`, and `--bench` (time each `--views` view instead of
 //! capturing it; see docs/performance.md).
 //!
-//! `mashup_perf` overlay (frame times, main-world CPU, render-world time
+//! `chimera_perf` overlay (frame times, main-world CPU, render-world time
 //! (`RenderTime`, written by the render world), GPU per render pass, entities,
-//! meshes and triangles drawn, cameras drawing, visibility, dynamic bodies awake), the same as text (`mashup_perf_log
+//! meshes and triangles drawn, cameras drawing, visibility, dynamic bodies awake), the same as text (`chimera_perf_log
 //! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
-//! `mashup_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
+//! `chimera_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
 //! sleeps at the end of a frame; off without a window and under `--bench`), the
 //! water cvars (`render::water::WaterSettings`); `capture.rs` has `--bench` (its
 //! table, the percentiles table, `bench.json`/`bench.csv`); the distributions
@@ -74,13 +74,13 @@ impl Plugin for PerfPlugin {
         app.add_plugins(super::frame_metrics::FrameMetricsPlugin);
         resource_cvar::<PerfLog, u8>(
             app,
-            "mashup_perf_log",
-            "1: log the mashup_perf readout as text once a second (bugreport's report.txt always has the latest).",
+            "chimera_perf_log",
+            "1: log the chimera_perf readout as text once a second (bugreport's report.txt always has the latest).",
             |p| &mut p.0,
         );
         resource_cvar::<Perf, u8>(
             app,
-            "mashup_perf",
+            "chimera_perf",
             "1: performance overlay (frame times, CPU, GPU passes, meshes, visibility, per-frame changes); \
              2: also every render pass; 3: also log what writes transforms, each second.",
             |p| &mut p.show,
@@ -118,7 +118,7 @@ impl Plugin for PerfPlugin {
         if app.world().contains_resource::<crate::render::sky_occluder::SkyOcclusion>() {
             resource_cvar::<crate::render::sky_occluder::SkyOcclusion, u8>(
                 app,
-                "mashup_skyocclude",
+                "chimera_skyocclude",
                 "1: sky faces hide what lies behind them (props, water, brush entities in the view's PVS); 0 (default): \
                  they don't (unchecked against CS:S).",
                 |v| &mut v.0,
@@ -129,7 +129,7 @@ impl Plugin for PerfPlugin {
     }
 }
 
-/// `r_cleardecals`, `mashup_round_cleardecals` and `mp_decals`
+/// `r_cleardecals`, `chimera_round_cleardecals` and `mp_decals`
 /// (`render::decal`).
 pub fn decal_cvars(app: &mut App) {
     use crate::{
@@ -143,7 +143,7 @@ pub fn decal_cvars(app: &mut App) {
     });
     resource_cvar::<DecalSettings, u8>(
         app,
-        "mashup_round_cleardecals",
+        "chimera_round_cleardecals",
         "1: remove every impact decal at each round start (the game keeps them until the map changes).",
         |s| &mut s.round_clear,
     );
@@ -154,7 +154,7 @@ pub fn decal_cvars(app: &mut App) {
         |s| &mut s.limit,
     );
     let mut console = app.world_mut().resource_mut::<crate::console::Console>();
-    console.archive("mashup_round_cleardecals");
+    console.archive("chimera_round_cleardecals");
     console.archive("mp_decals");
 }
 
@@ -565,11 +565,11 @@ fn count_churn(
     churn.started = Some(now);
 }
 
-/// `mashup_perf_log 1`: log the readout once a second.
+/// `chimera_perf_log 1`: log the readout once a second.
 #[derive(Resource, Default)]
 struct PerfLog(u8);
 
-/// The latest `mashup_perf` readout as text lines: refreshed every frame
+/// The latest `chimera_perf` readout as text lines: refreshed every frame
 /// while the overlay or the log is on, else once a second (for
 /// `bugreport`).
 #[derive(Resource, Default)]
@@ -634,7 +634,7 @@ fn perf_report(
     }
     if log.0 != 0 && report.logged.is_none_or(|t| (now - t).as_secs_f32() >= 1.0) {
         report.logged = Some(now);
-        info!("mashup_perf: {}", report.lines.join(" | "));
+        info!("chimera_perf: {}", report.lines.join(" | "));
     }
 }
 
@@ -754,7 +754,7 @@ fn draw_overlay(
     visibility.set_if_neq(Visibility::Inherited);
 }
 
-/// Hide the overlay when `mashup_perf` goes back to 0.
+/// Hide the overlay when `chimera_perf` goes back to 0.
 fn hide_overlay(perf: Res<Perf>, mut text: Query<&mut Visibility, With<PerfText>>) {
     if perf.show == 0 {
         for mut v in &mut text {

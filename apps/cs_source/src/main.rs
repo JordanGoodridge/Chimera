@@ -1,6 +1,6 @@
 //! The game binary: `SimPlugins` + map + `NetPlugin` + `ClientPlugin`; the
 //! per-frame schedules (main and render world) on single-threaded executors
-//! (`MASHUP_EXECUTOR=multi`: Bevy's default; docs/performance.md).
+//! (`CHIMERA_EXECUTOR=multi`: Bevy's default; docs/performance.md).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -59,7 +59,7 @@ fn main() {
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "mashup".into(),
+                    title: "Counter-Strike Source".into(),
                     // Physical pixels whatever the display's scaling.
                     // (`--scale`: as a display scaled that much.)
                     resolution: match (args.window, args.scale) {
@@ -134,10 +134,10 @@ fn main() {
     // CS:S's menus, panels and HUD (the shell reaches them through
     // `client::front_end`).
     .add_plugins(cs_source_app::games::cs_source::ui::CsSourceUiPlugin);
-    if std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi") {
+    if chimera_core::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi") {
         single_threaded_schedules(&mut app);
     }
-    if let Some(path) = std::env::var_os("MASHUP_SYSTEM_DUMP") {
+    if let Some(path) = chimera_core::env::var_os("CHIMERA_SYSTEM_DUMP") {
         dump_systems(&mut app, std::path::Path::new(&path));
         // Without the event loop having run, dropping the app crashes.
         std::process::exit(0);
@@ -145,12 +145,12 @@ fn main() {
     app.run();
 }
 
-/// `MASHUP_SYSTEM_DUMP=<file>`: the app built as it would run (plugins
+/// `CHIMERA_SYSTEM_DUMP=<file>`: the app built as it would run (plugins
 /// finished), every schedule's systems in the order they run, the main
 /// world's then the render world's (`harness::system_order`), written to
 /// the file instead of running; for refactors that move the client's
 /// systems between plugins or crates, and for what an added system does
-/// to the order of others (docs/OBSERVABILITY.md). `MASHUP_AMBIGUITY=1`
+/// to the order of others (docs/OBSERVABILITY.md). `CHIMERA_AMBIGUITY=1`
 /// also logs the render world's `Render` schedule's ambiguous pairs.
 fn dump_systems(app: &mut App, path: &std::path::Path) {
     use bevy::app::PluginsState;
@@ -163,11 +163,11 @@ fn dump_systems(app: &mut App, path: &std::path::Path) {
     // need a main world to initialize against: an empty one.
     let render = app.get_sub_app_mut(bevy::render::RenderApp).map(|sub| {
         sub.world_mut().init_resource::<bevy::render::MainWorld>();
-        // `MASHUP_AMBIGUITY=1`: log the `Render` schedule's ambiguous
+        // `CHIMERA_AMBIGUITY=1`: log the `Render` schedule's ambiguous
         // system pairs (systems with conflicting access and no order;
         // the single-threaded executor runs them in whatever order the
         // graph sorts to, which other systems' constraints can change).
-        if std::env::var("MASHUP_AMBIGUITY").as_deref() == Ok("1") {
+        if chimera_core::env::var("CHIMERA_AMBIGUITY").as_deref() == Ok("1") {
             sub.edit_schedule(bevy::render::Render, |s| {
                 let mut settings = s.get_build_settings();
                 settings.ambiguity_detection = bevy::ecs::schedule::LogLevel::Warn;
@@ -186,7 +186,7 @@ fn dump_systems(app: &mut App, path: &std::path::Path) {
     }
     match std::fs::write(path, text) {
         Ok(()) => eprintln!("systems in order written to {}", path.display()),
-        Err(e) => eprintln!("error: MASHUP_SYSTEM_DUMP {}: {e}", path.display()),
+        Err(e) => eprintln!("error: CHIMERA_SYSTEM_DUMP {}: {e}", path.display()),
     }
 }
 
@@ -202,7 +202,7 @@ fn dump_systems(app: &mut App, path: &std::path::Path) {
 /// entities still spread over the task pool themselves (transform
 /// propagation, visibility), and the main and render worlds still run side
 /// by side (pipelined rendering). docs/performance.md, "Frame time pass".
-/// `MASHUP_EXECUTOR=multi` keeps Bevy's default for comparisons.
+/// `CHIMERA_EXECUTOR=multi` keeps Bevy's default for comparisons.
 fn single_threaded_schedules(app: &mut App) {
     use bevy::ecs::{
         intern::Interned,

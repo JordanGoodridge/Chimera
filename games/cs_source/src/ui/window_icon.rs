@@ -98,7 +98,7 @@ fn decode_dib(d: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     Some((out, w as u32, h as u32))
 }
 
-/// The game's icon, from the install `mashup.local.toml` names.
+/// The game's icon, from the install `chimera.local.toml` names.
 fn load() -> Option<winit::window::Icon> {
     let install = crate::mount::config::LocalConfig::load()
         .ok()?

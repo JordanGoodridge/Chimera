@@ -12,6 +12,8 @@
 *.rez
 
 # Local overrides (e.g. game install paths).
+/chimera.local.toml
+# Its old name, still read.
 /mashup.local.toml
 
 # Agent worktrees (Claude Code).

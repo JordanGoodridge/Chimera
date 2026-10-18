@@ -1,7 +1,7 @@
 //! The server's message of the day (CS:S's MOTD), shown to players as they
 //! join (`games::cs_source::ui::join_menus`). Where it comes from, as a CS:S server
 //! picks it: `motd.txt` in the host's config folder (`console::cfg_dir`,
-//! where mashup keeps its configs), else the install's (`cstrike/motd.txt`,
+//! where Chimera keeps its configs), else the install's (`cstrike/motd.txt`,
 //! else `cfg/motd_default.txt`: the map loader's `GameMenus::motd_file`);
 //! the plain-text one (`motd_text.txt`, else `cfg/motd_text_default.txt`)
 //! the same way, else the first with its HTML taken out (`plain_text`).

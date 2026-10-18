@@ -3,7 +3,7 @@
 //! Every game key is a bind: the defaults (`default_binds`: the default
 //! game's (`game_registry::GameInfo`), from its install's
 //! `cfg/config_default.cfg`, else its built-in table, plus ours on the
-//! keys it leaves free, `MASHUP_BINDS`) go in before
+//! keys it leaves free, `CHIMERA_BINDS`) go in before
 //! config.cfg runs, `binddefaults` puts them back (the options' "Use
 //! Defaults"), and the options' keyboard tab rebinds them.
 //!
@@ -16,10 +16,10 @@
 //! Every game key is a bind (`Console::binds`, saved in config.cfg):
 //! `default_binds` (the default game's: CS:S's install's
 //! `cfg/config_default.cfg`, read at start by `read_install_defaults`, else
-//! the same table in `GameInfo::default_binds`; plus `MASHUP_BINDS` on keys
+//! the same table in `GameInfo::default_binds`; plus `CHIMERA_BINDS` on keys
 //! the game leaves free: Alt free
-//! look, V noclip, F9 `bug`, the debug keys F3 `toggle mashup_drawcollision`,
-//! F8 `debugui`, F11 `mashup_inspector`) go in before config.cfg runs
+//! look, V noclip, F9 `bug`, the debug keys F3 `toggle chimera_drawcollision`,
+//! F8 `debugui`, F11 `chimera_inspector`) go in before config.cfg runs
 //! (`binddefaults`; `binddefaults missing` for configs written before, which
 //! lack `CONFIG_MARK`; `binddefaults new` once after a config lacking
 //! `DEFAULTS_MARK` puts `added_defaults` on free keys, so older configs get
@@ -154,17 +154,17 @@ pub const MOUSE_NAMES: &[(MouseButton, &str)] = &[
 pub const WHEEL_UP: &str = "mwheelup";
 pub const WHEEL_DOWN: &str = "mwheeldown";
 
-/// Mashup's own binds, each on a key CS:S's defaults leave free (and only
+/// Chimera's own binds, each on a key CS:S's defaults leave free (and only
 /// while it is free): Alt looks around, V flies, F9 files a bug report
 /// (as F4 does), and the debug keys: F3 collision shapes, F8 the debug UI,
 /// F11 the entity inspector.
-pub const MASHUP_BINDS: &[(&str, &str)] = &[
+pub const CHIMERA_BINDS: &[(&str, &str)] = &[
     ("alt", "+freelook"),
     ("v", "noclip"),
-    ("f3", "toggle mashup_drawcollision"),
+    ("f3", "toggle chimera_drawcollision"),
     ("f8", "debugui"),
     ("f9", "bug"),
-    ("f11", "mashup_inspector"),
+    ("f11", "chimera_inspector"),
 ];
 
 /// The defaults before they followed CS:S's `config_default.cfg`
@@ -246,11 +246,11 @@ pub fn cfg_binds(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// The defaults from the game's: those, then mashup's own on the keys
-/// they leave free (`MASHUP_BINDS`).
+/// The defaults from the game's: those, then Chimera's own on the keys
+/// they leave free (`CHIMERA_BINDS`).
 pub fn defaults_from(game: &[(String, String)]) -> Vec<(String, String)> {
     let mut out = game.to_vec();
-    for (key, command) in MASHUP_BINDS {
+    for (key, command) in CHIMERA_BINDS {
         if !out.iter().any(|(k, _)| k == key) {
             out.push((key.to_string(), command.to_string()));
         }
@@ -260,7 +260,7 @@ pub fn defaults_from(game: &[(String, String)]) -> Vec<(String, String)> {
 
 /// The binds a fresh config starts with (and "Use Defaults" restores):
 /// the default game's (from its install's file when it was read, else its
-/// built-in table), plus mashup's own (`MASHUP_BINDS`).
+/// built-in table), plus Chimera's own (`CHIMERA_BINDS`).
 pub fn default_binds() -> Vec<(String, String)> {
     let game = GAME_DEFAULTS.read().map(|d| d.clone()).unwrap_or_default();
     defaults_from(&game)
@@ -282,7 +282,7 @@ fn set_game_defaults(binds: Vec<(String, String)>) {
 /// (`GameInfo::default_binds_cfg`: CS:S's `cfg/config_default.cfg`, in the
 /// configured, saved or found install). Without the file they are the
 /// game's built-in table (`GameInfo::default_binds`); without a game, none
-/// (mashup's own only). Returns whether the file was read.
+/// (Chimera's own only). Returns whether the file was read.
 pub fn read_install_defaults(game: Option<&GameInfo>) -> bool {
     let Some(game) = game else {
         set_game_defaults(Vec::new());
@@ -649,14 +649,14 @@ mod tests {
         let read = sample_defaults();
         assert_eq!(read.first(), Some(&("tab".into(), "+showscores".into())));
         assert!(!read.iter().any(|(k, _)| k == "escape" || k == "`"));
-        // Mashup's own go only on keys the game leaves free.
+        // Chimera's own go only on keys the game leaves free.
         let defaults = defaults_from(&read);
         assert_eq!(&defaults[..read.len()], &read[..]);
-        for (k, c) in MASHUP_BINDS {
+        for (k, c) in CHIMERA_BINDS {
             assert!(!read.iter().any(|(rk, _)| rk == k), "{k} is CS:S's");
             assert!(defaults.contains(&(k.to_string(), c.to_string())));
         }
-        // A file binding one of mashup's keys keeps it.
+        // A file binding one of Chimera's keys keeps it.
         let mut changed = read.clone();
         changed.push(("f8".into(), "say eight".into()));
         let d = defaults_from(&changed);
@@ -685,7 +685,7 @@ mod tests {
         assert!(d.contains(&("f2".into(), "rebuy".into())));
         assert!(d.contains(&("mwheelup".into(), "invprev".into())));
         assert!(d.contains(&("mwheeldown".into(), "invnext".into())));
-        for c in ["debugui", "mashup_inspector", "toggle mashup_drawcollision"] {
+        for c in ["debugui", "chimera_inspector", "toggle chimera_drawcollision"] {
             let k = &d.iter().find(|(_, v)| v == c).unwrap().0;
             assert!(!game.iter().any(|(ck, _)| ck == k), "{c} on the game's {k}");
         }
@@ -698,7 +698,7 @@ mod tests {
         let mut b = binds(&[("w", "+forward"), ("f2", "debugui"), ("mwheelup", "+jump")]);
         bind_added_defaults(&mut b);
         assert_eq!(b.get("f1").map(String::as_str), Some("autobuy"));
-        assert_eq!(b.get("f11").map(String::as_str), Some("mashup_inspector"));
+        assert_eq!(b.get("f11").map(String::as_str), Some("chimera_inspector"));
         // The key taken, or the command on another key: left alone.
         assert_eq!(b["f2"], "debugui");
         assert!(keys_for(&b, "rebuy").is_empty());

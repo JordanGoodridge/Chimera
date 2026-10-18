@@ -8,7 +8,7 @@
 //! `Sim`: a headless app stepped by exact fixed ticks (the network's
 //! server-and-clients `NetSim` is `chimera_net::harness`); `add_headless`
 //! / `add_headless_with`: the engine without a window, as `Sim` and the
-//! dedicated server run it; `Sim::pad` (and `MASHUP_TEST_PAD=<n>` for every
+//! dedicated server run it; `Sim::pad` (and `CHIMERA_TEST_PAD=<n>` for every
 //! `Sim`) spawns entities and a resource first, so a test can check its
 //! result doesn't depend on entity ids; `emulate_mesh_extraction` stands in
 //! for the render world's mesh extraction (takes a `RENDER_WORLD`-only
@@ -60,9 +60,9 @@ pub fn add_headless_with(app: &mut App, minimal: bevy::app::PluginGroupBuilder) 
 #[derive(Resource)]
 struct Padding(#[allow(dead_code)] usize);
 
-/// `MASHUP_TEST_PAD`, or 0.
+/// `CHIMERA_TEST_PAD`, or 0.
 fn pad_from_env() -> usize {
-    std::env::var("MASHUP_TEST_PAD").ok().and_then(|v| v.parse().ok()).unwrap_or(0)
+    chimera_core::env::var("CHIMERA_TEST_PAD").ok().and_then(|v| v.parse().ok()).unwrap_or(0)
 }
 
 impl Sim {
@@ -101,7 +101,7 @@ impl Sim {
 
     /// Spawn `n` empty entities and a resource: every entity spawned
     /// after gets another id (Bevy 0.19 resources are entities too).
-    /// Nothing may depend on entity ids; `MASHUP_TEST_PAD=<n>` pads
+    /// Nothing may depend on entity ids; `CHIMERA_TEST_PAD=<n>` pads
     /// every `Sim` this way, to check a test's result doesn't change.
     pub fn pad(&mut self, n: usize) {
         if n == 0 {
@@ -250,7 +250,7 @@ fn extract_meshes(
 /// Every schedule's systems in the order they run (built now if they
 /// haven't run yet), one schedule after another by name: the spawn dump
 /// (`games/cs_source/tests/it/heavy/map_spawn_dump.rs`) and the game's
-/// `MASHUP_SYSTEM_DUMP` (apps/cs_source/src/main.rs), for refactors that
+/// `CHIMERA_SYSTEM_DUMP` (apps/cs_source/src/main.rs), for refactors that
 /// move systems between plugins or crates.
 pub fn system_order(world: &mut World) -> String {
     use std::fmt::Write as _;
