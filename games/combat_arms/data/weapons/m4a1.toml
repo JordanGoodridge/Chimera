@@ -98,3 +98,11 @@ move_penalty = 0.1
 # sprint before it fires again (inventory.md).
 [hooks."combat_arms:inventory"]
 sprint_out = 0.367
+
+# "Worked example": DuckPerturb/MoveDuckPerturb 2/3 are the crosshair's
+# crouched minimums only (Q3); the M4A1 is an assault rifle (the HUD's
+# weapon panel, hud_crosshair.md).
+[hooks."combat_arms:hud"]
+duck_perturb = 2
+move_duck_perturb = 3
+class = "assault"

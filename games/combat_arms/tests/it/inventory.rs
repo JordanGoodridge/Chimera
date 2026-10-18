@@ -6,10 +6,10 @@
 //! `grenade::Throwable` (400 ms draw, hide-when-empty).
 //!
 //! Times count from the tick that first sees an input (t = 0); the sim
-//! ticks at 64 Hz, the spec's frames are 60 fps, and "+-f" tolerances are
+//! ticks at the game's tick (15 ms), the spec's frames are 60 fps, and "+-f" tolerances are
 //! the spec's frames (1/60 s).
 
-use bevy::prelude::*;
+use bevy::{ecs::system::RunSystemOnce, prelude::*};
 use chimera_core::core::{Damage, DamageKind, Health, Hitgroup, MovementState, SimTick};
 use chimera_sim::weapon::{
     Inventory, Magazine, RegisterWeapons, StartingWeapons, Weapon, WeaponEvent, WeaponEventKind,
@@ -655,18 +655,29 @@ fn t19_both_buttons() {
 /// surface, at the attacker's eye height, is `surface` metres ahead of
 /// the eye (health to spare: hits are read from the damage dealt).
 fn knife_target(surface: f32, yaw: f32) -> (Sim, Entity, Entity) {
-    use chimera_core::character::{CAPSULE_HEIGHT, CAPSULE_RADIUS};
     let (mut sim, p) = knife_out(STOCK);
-    // The capsule's horizontal radius at the eye's height above its centre.
-    // Combat Arms' movement gives it an upright cylinder: its hull's
-    // half-width (merging ca/movement).
-    let above = (sim.state(p).eye_offset.y - (CAPSULE_HEIGHT / 2.0 - CAPSULE_RADIUS)).max(0.0);
-    let hull = sim.state(p).hull_max.x;
-    let radius = if hull > 0.0 { hull } else { (CAPSULE_RADIUS * CAPSULE_RADIUS - above * above).sqrt() };
-    let at = sim.position(p) - Vec3::Z * (surface + radius);
-    let target = sim.spawn_character(at, movement::ID);
+    // Where the knife's ray (from the eye, straight ahead) meets the
+    // target's body, measured with the target 2 m ahead: then the target
+    // is moved so that surface lies `surface` ahead.
+    let probe = 2.0;
+    let target = sim.spawn_character(sim.position(p) - Vec3::Z * probe, movement::ID);
     sim.intent(target).yaw = yaw;
     sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 10.0;
+    sim.seconds(0.5);
+    let eye = sim.position(p) + sim.state(p).eye_offset;
+    let hit = sim
+        .app
+        .world_mut()
+        .run_system_once(move |q: avian3d::prelude::SpatialQuery| {
+            let filter = avian3d::prelude::SpatialQueryFilter::from_excluded_entities([p]);
+            q.cast_ray(eye, Dir3::NEG_Z, 10.0, true, &filter).map(|h| (h.entity, h.distance))
+        })
+        .unwrap()
+        .expect("the ray meets the target");
+    assert_eq!(hit.0, target);
+    let depth = (eye.z - sim.position(target).z) - hit.1;
+    let at = sim.position(target).with_z(eye.z - surface - depth);
+    sim.app.world_mut().get_mut::<Transform>(target).unwrap().translation = at;
     sim.seconds(0.5);
     (sim, p, target)
 }

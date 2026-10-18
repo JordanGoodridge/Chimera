@@ -510,6 +510,12 @@ impl CaSpread {
         }
     }
 
+    /// The spread fraction p = max(F, M) (0..1) a shot fired now uses: the
+    /// HUD's r.
+    pub fn fraction(&self) -> f32 {
+        self.fire.max(self.movement)
+    }
+
     /// The cone `n` (thousandths) a shot fired now gets in `mode`, from
     /// the meters as they stand: n_min + floor((n_max - n_min) p) g.
     pub fn cone(&self, mode: FireMode) -> f32 {
@@ -520,7 +526,7 @@ impl CaSpread {
         if max <= 0.0 {
             return 0.0;
         }
-        let p = self.fire.max(self.movement) as f64;
+        let p = self.fraction() as f64;
         min + (((max - min) as f64 * p).floor() as f32) * g
     }
 
