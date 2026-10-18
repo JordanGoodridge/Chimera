@@ -557,6 +557,11 @@ pub enum PropSolid {
     None,
     /// The model's bounds as a box, rotated with the prop.
     Box,
+    /// The box along the world's axes around the model's bounds as the
+    /// prop turns them (Source's static props with the bbox solid:
+    /// measured 2026-10-18, de_dust's windows turned 120°,
+    /// specs/cs_source/physics_props.md Q9).
+    WorldBox,
     /// The model's triangles.
     Mesh,
 }

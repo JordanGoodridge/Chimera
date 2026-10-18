@@ -1020,12 +1020,16 @@ pub fn add_static_props(
             skin: prop.skin,
             origin: prop.origin,
             angles: prop.angles,
-            // Box solids collide as the model's bounds, like the game;
+            // Box solids collide as the model's bounds, like the game:
+            // the bbox one as the box along the world's axes around them
+            // (measured: de_dust's windows turned 120° stop traces on
+            // that box), the oriented ones turned with the prop;
             // physics solids should use the .phy model, which isn't parsed
             // yet, so they fall back to the visible mesh.
             solid: match prop.solid {
                 vbsp::SolidType::None => PropSolid::None,
-                vbsp::SolidType::Bbox | vbsp::SolidType::Obb | vbsp::SolidType::ObbYaw => PropSolid::Box,
+                vbsp::SolidType::Bbox => PropSolid::WorldBox,
+                vbsp::SolidType::Obb | vbsp::SolidType::ObbYaw => PropSolid::Box,
                 _ => PropSolid::Mesh,
             },
             lighting_origin: prop

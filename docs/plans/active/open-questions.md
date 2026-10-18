@@ -33,12 +33,12 @@ counts as left); classes 2-5 unchanged.
 
 Third pass (2026-10-18, physics props, constraints, sounds, recoil,
 templates, ropes; the physics_constraints row split again, its Q10 apart):
-30 class-1 items settled, 23 answered on the probe or by sweeping the
+32 class-1 items settled, 25 answered on the probe or by sweeping the
 maps' entity lumps (`tools/css_probe/entsweep.py`) and 7 found to need
 something else (moved to classes 2-4: a dangling rope's look, the
 silencer's recoil, the template suffix and templated logic_auto, the
 constraint tie order, a human's airborne inaccuracy, nav_analyze on a
-listen server); about 77 class-1 items left.
+listen server); about 75 class-1 items left.
 
 ## Specs: specs/cs_source
 
@@ -116,7 +116,7 @@ listen server); about 77 class-1 items left.
 | physics_props | Q6 air drag and density | 5 | measured (Part B, 2026-10-17 and 2026-10-18) |
 | physics_props | Q7 player push limits | 5, 3 | mass limit measured (Part B, 2026-10-18); the 50 in/s speed limit's meaning: inside vphysics |
 | physics_props | Q8 hull shrink | 5 | measured (Part B, 2026-10-18) |
-| physics_props | Q9 static prop solid types 2 and 6 | 1 | entities' solid 2 measured (Part B); static props: traces at a rotated solid-2 static prop on a stock map |
+| physics_props | Q9 static prop solid types 2 and 6 | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q10 SOLID_VPHYSICS without `.phy` | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q12 player push call sites (< 75 vs > 75 in/s) | 1 | bot walking into a barrel at two speeds |
 | physics_props | Q13 `sv_turbophysics` default | 1 | `cvarlist` (done, Part B: 0) |
@@ -170,7 +170,7 @@ listen server); about 77 class-1 items left.
 | shadows_sky | Q1 shadow clipper; Q2 static props as casters; Q3 player shadows; Q5 2D sky order; Q6 shadow detail; Q7 blend space | 2 | RenderDoc/screenshots (6 items) |
 | shadows_sky | Q4 the no-shadow_control ambient colour | 3 | engine code |
 | sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the server's distance-gain query needs a plugin build (blocked here); else client recordings |
-| sounds | Q2 left: other entries' wave picks | 1 | sound hook, 200 shots of a 3-wave entry |
+| sounds | Q2 left: other entries' wave picks | 5 | measured (Part B, 2026-10-18) |
 | sounds | Q3 left: wading in knee-deep water | 1 | sound hook while running in shallow water |
 | sounds | Q5 `Player.Swim` doubled for the owner | 2 | client trace |
 | sounds | Q6 gravel surface override | 5 | measured (Part B, 2026-10-18) |
@@ -440,6 +440,8 @@ measured.
 | physics_props Q7: push limit | 340 kg pushed (11 units/s), 360 not | 350 | none |
 | physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | none (tech-debt) |
 | physics_props Q10, Q9: prop_dynamic solids | no `.phy`: traces pass; solid 2: its box, turned with it | the visible mesh; solid 2 as 6 | as CS:S |
+| physics_props Q9: static props' solid 2 | the box along the world's axes around the turned bounds (de_dust's windows at yaw 120) | the bounds turned with the prop | the world box (`PropSolid::WorldBox`) |
+| sounds Q2: other entries' waves | uniform, repeats allowed (a crate's 3 hard-impact waves 29/22/29 of 80) | uniform | none |
 | physics_constraints Q2: motors | hinge: the value in deg/s, clockwise about the axis, at once; slider: 5 × the value in units/s; 0: off, it coasts | ignored | as CS:S (logic controls: `ControlKind::Slide`) |
 | physics_constraints Q3: hinge friction | no effect measured (0, 1, 10) | ignored | none |
 | physics_constraints Q4: phys_spring | `constant` × stretch, kg·units/s² a unit (period 2π√(m/k)) | not made | none (missing; no stock map) |

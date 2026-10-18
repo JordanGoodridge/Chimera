@@ -319,7 +319,7 @@ stores a one-byte solid type copied from the entity's `solid` keyvalue:
 | Value | Name (Hammer) | Collision |
 |---|---|---|
 | 0 | Not solid | none |
-| 2 | Bounding box | a box from the `.mdl` hull min/max (see Open questions on orientation) |
+| 2 | Bounding box | the box along the world's axes around the `.mdl` hull min/max as the prop's angles turn it (measured, section 7) |
 | 6 | VPhysics (Hammer default) | the model's `.phy` solid 0, placed at the prop's origin and angles, as an immovable physics object and for traces |
 
 - The compile tool refuses models not compiled as static props. It also
@@ -341,9 +341,11 @@ stores a one-byte solid type copied from the entity's `solid` keyvalue:
   Out of scope here.
 - Otherwise: an immovable (static, or "shadow" if parented) physics object
   from `.phy` solid 0 at the entity's origin and angles. With `solid` 2 it is
-  a world-axis-aligned box of the model bounds instead.
-- No `.phy`: no physics object is created. The entity keeps its declared
-  solid type for traces (see Open questions).
+  a world-axis-aligned box of the model bounds instead (for the physics
+  object; traces measured 2026-10-18 hit the box turned with the entity,
+  section 7).
+- No `.phy`: no physics object is created. With solid 6 traces pass
+  through it; with solid 2 its box stops them (measured, section 7).
 - A `prop_dynamic` whose model has `prop_data` (without `allowstatic`) is
   deleted at spawn.
 
@@ -722,7 +724,7 @@ same crate other materials. `phybox.py` prints a model's `.phy` bounds.
 | Air drag (Q6) | quadratic: a falling 30 kg wood crate is held back about 90 units/s² at 300 units/s, 360 at 600, 950 at 1000 (`k·v²`, k ≈ 0.001 per unit); the plastic crate about 0.0007-0.0008. The debug print's per-axis "Linear Drag" is ½ · air density · face area (m²) / mass (plastic crate 0.02, 0.03, 0.02 in IVP axes); k in metres is that, which gives 874 units/s² for the wood crate at 1000. Thrown sideways, crates tumble (several hundred °/s), so the horizontal slowing scatters. |
 | Push limit (Q7) | a running bot pushes the crate made 300 kg (28 units/s) and 340 kg (about 11), not 360 or 400 kg (a bump of 1-3 units, then nothing). 30 kg is kicked to about 140 units/s, the bot stopping at each contact. |
 | Rest height (Q8) | at rest the origin is 0.41-0.45 units further from the floor than the `.phy` hull's lowest point (plastic crate 0.412, wood crate 0.442, oil drum 0.451, whose hull reaches its origin); a wood crate on another rested 0.38 above it. Contacts keep about 0.4 units apart; hulls are not inflated to the render mesh. |
-| Entity bboxes (Q9 part) | a `prop_dynamic` with `solid 2` turned 45° stops traces on its turned box (the hit point moves 1:1 along the face), so an entity's bbox solid is oriented. Static props' own solid 2 is still open (no runtime static props). |
+| Bbox solids (Q9) | a `prop_dynamic` with `solid 2` turned 45° stops traces on its turned box (the hit point moves 1:1 along the face): an entity's bbox solid is oriented. A **static** prop's solid 2 is the box along the world's axes around its turned bounds: de_dust's `du_window_4x8_arch_flat` windows (yaw 120, the only turned solid-2 static props on the stock maps) stopped traces from −x on a face at x = −14.6 for y −8..8 around each origin, the turned hull's world box (−14.59, −8.06..9.15). Solid 6 without a `.phy`: see Q10. |
 | `SOLID_VPHYSICS` without a `.phy` (Q10) | a `prop_dynamic` of `food_pile01` (no `.phy`) with `solid 6` stops no trace (bullet mask: the wall behind is hit); with `solid 2` its box does. |
 
 ## Per-tick order
@@ -884,7 +886,7 @@ Behaviour:
    surface), or whether the render hull is simply larger than the
    collision mesh. Check by placing a prop on flat ground and measuring the
    gap between the visible model and the floor.
-9. **Partly answered (2026-10-18, section 7): an entity's solid 2 box is oriented; static props' own is open.** **Static props**:
+9. **Answered (2026-10-18, section 7): an entity's solid 2 box is oriented, a static prop's is the world box around its turned bounds; solid 6 without a `.phy`: no hit (Q10).** Was: **Static props**:
    - whether the bounding-box solid type (2) is oriented with the prop's
      angles or world-aligned;
    - what solid type 6 does without a `.phy` (no collision, bbox fallback,

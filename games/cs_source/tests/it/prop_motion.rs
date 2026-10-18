@@ -4,7 +4,8 @@
 //! with the product of the two frictions, rebounds at about 0.14 of its
 //! landing speed, is held back by air drag growing with the square of its
 //! speed, sleeps about half a second after it stops, and spins with its
-//! collision model's stored inertia.
+//! collision model's stored inertia; a static prop's bbox solid blocks as
+//! the box along the world's axes around its turned bounds.
 
 use avian3d::prelude::{
     ComputedAngularInertia, LinearVelocity, Position, RigidBody, Sleeping,
@@ -224,4 +225,58 @@ fn a_prop_spins_with_its_stored_inertia() {
     };
     // The solid 40-unit box's would be 5.16 about every axis.
     assert!((sorted(i) - sorted(stored)).abs().max_element() < 1e-2, "{i}");
+}
+
+/// A static prop with the bbox solid turned 45° blocks as the box along
+/// the world's axes around its turned bounds (CS:S, measured 2026-10-18:
+/// de_dust's windows turned 120° stopped traces on that box,
+/// physics_props.md Q9); an oriented one (`Box`) as its turned bounds.
+#[test]
+fn a_static_bbox_prop_blocks_as_a_world_box() {
+    use crate::stack::map::MapBrushes;
+    for (solid, axis_aligned) in [(PropSolid::WorldBox, true), (PropSolid::Box, false)] {
+        let mut data = MapData {
+            name: "test:prop_motion_box".into(),
+            entity_scale: SCALE,
+            ..default()
+        };
+        let (a, b) = (to_engine(Vec3::new(-512.0, -512.0, -64.0)), to_engine(Vec3::new(512.0, 512.0, 0.0)));
+        data.collision_brushes.push(MapBrush::from_box(a.min(b), a.max(b)));
+        let (lo, hi) = (to_engine(Vec3::new(-2.0, -16.0, 0.0)), to_engine(Vec3::new(2.0, 16.0, 64.0)));
+        data.models.push(MapModel {
+            bounds: (lo.min(hi), lo.max(hi)),
+            ..default()
+        });
+        data.props.push(MapProp {
+            pose: None,
+            ragdoll: None,
+            model: 0,
+            translation: to_engine(Vec3::new(100.0, 0.0, 0.0)),
+            rotation: Quat::from_rotation_y(45f32.to_radians()),
+            solid,
+            skybox: false,
+            lighting: None,
+            vertex_light: None,
+            casts_shadow: false,
+            physics: None,
+            fade: None,
+            parent: None,
+            entity: None,
+            skin: 0,
+            body: 0,
+            detail: false,
+        });
+        let mut sim = Sim::new(CsSim, (MapPlugin::new(data), SourceMovementPlugin, CsWeaponsPlugin));
+        sim.ticks(1);
+        let brushes = &sim.app.world().resource::<MapBrushes>().0;
+        let prop = brushes.iter().find(|b| to_source(b.min).x.min(to_source(b.max).x) > 50.0).expect("the prop's brush");
+        let aligned = prop.planes.iter().all(|(n, _)| n.abs().max_element() > 0.999);
+        assert_eq!(aligned, axis_aligned, "{solid:?}: {:?}", prop.planes);
+        if axis_aligned {
+            // The 4 x 32 footprint turned 45°: 12.7 each way (√2 × 18 / 2).
+            let (lo, hi) = (to_source(prop.min), to_source(prop.max));
+            let (lo, hi) = (lo.min(hi), lo.max(hi));
+            assert!((hi.x - 100.0 - 12.73).abs() < 0.1 && (lo.y + 12.73).abs() < 0.1, "{lo} {hi}");
+        }
+    }
 }

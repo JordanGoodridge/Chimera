@@ -791,7 +791,7 @@ probe bot, `sv_soundemitter_trace 1`; the server's emitted entries per hit
    - Measure on a dedicated server: the engine's sound interface for server plugins exposes the distance-gain query used by ambient_generic. A small server plugin can print gain for L ∈ {60, 70, 75, 80, 88, 100, 140} and also L + 256 (the compatibility range) at d = 0, 36, 100, 250, 500, 1000, 2000, 4000.
    - Cross-check by ear: record loopback audio of `playgamesound Weapon_AK47.Single` emitted by a bot at known distances.
    - Also: the stereo pan law, and whether sound passes through walls without occlusion.
-2. **Partly answered (2026-10-16, probe server, a bot running back and
+2. **Answered (2026-10-18 for other entries: eight 30 kg crates dropped 14 times each on de_dust2, `mashup_sndlog`):** the hard-impact entry's three waves (`wood_panel_impact_hard1`, `wood_crate_impact_hard4`, `hard5`) came 29, 22 and 29 times in a run of 80 with repeats (the panel wave four times in a row): a uniform pick, repeats allowed, as ours. The impacts are sent from the world (entity 0), not the prop. **Partly answered (2026-10-16, probe server, a bot running back and
    forth on dust2's sand, 109 footsteps logged):** footsteps alternate
    left and right entries (sand1/sand3 then sand2/sand4, every step), and
    within a foot's two waves the pick is random with repeats (the right
