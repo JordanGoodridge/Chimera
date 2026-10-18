@@ -12,7 +12,8 @@ Sections: Summary; Units and conventions; Constants; Behavior (tick clock,
 input to control state, speed limit, acceleration, integration and friction,
 stopping, jumping, gravity and air movement, crouching, crouch-spam penalty,
 sprint and stamina, slopes and steps, falling and fall damage, other
-modifiers); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+modifiers including hit knock-back, eye height); Per-tick order; Edge cases;
+Quirks; Test cases; Open questions.
 
 ---
 
@@ -34,7 +35,11 @@ no friction), and a short-lived jump factor weakens back-to-back jumps.
 ## Units and conventions
 
 - Distance: LithTech world units ("u"). No conversion is applied anywhere in
-  this spec.
+  this spec. The game's own HUD readouts (scope range, objective and flag
+  distances) show world units divided by 40 as "metres", so the game's
+  stated scale is 40 u = 1 m (1 u = 2.5 cm). Bodies are not built to that
+  scale: the fallback standing hull is 100 u tall (2.5 m) and the eye sits
+  83 u above the feet (Open question 3).
 - Axes: +Y is up. Horizontal plane is X/Z. Gravity points along -Y.
 - Player hull: an axis-aligned box given by its **half**-extents
   (half-width X, half-height Y, half-depth Z) around the object's position,
@@ -87,6 +92,16 @@ no friction), and a short-lived jump factor weakens back-to-back jumps.
 | fall minimum | 50 | u | Second, redundant lower bound |
 | pusher air factor | 0.1 | × | Explosion push in the air is a tenth |
 | pusher max upward speed | 100 | u/s | Console variable `PusherMaxYVelocity` |
+| eye offset standing | 0.66 × stand half-height | u | Camera height above the hull centre (33 u with the fallback box; console variable `ChaseCamOffset` holds it) |
+| eye crouch offset | -13 | u | Added to the camera height × crouch rate (console variable `DuckDownCamOffSet`) |
+| camera rise time | 0.1 | s | Console variable `CameraMoveUpTime`; smoothing of upward camera steps |
+| camera rise minimum speed | 140 | u/s | Console variable `CameraMoveUpMinVel` |
+| camera rise maximum lag | 30 | u | Console variable `CameraMoveMaxYDiff` |
+| mover clearance | 0.1 | u | The collision mover stops 0.1 u short of a surface it hits, measured along that surface's normal |
+| step lift / drop | 30.5 | u | Stair-step height + 0.5; the high path lifts and drops exactly this much |
+| step fit distance | 0.5 × hull radius | u | Forward probe for stepping onto a steep-topped step (7.5 u with the fallback box) |
+| knock-back time scale | 1 + `StiffDuration` | × | Figure-type value (0 in the stock data) that lengthens the hit knock-back |
+| HUD distance scale | 40 | u per displayed metre | Every in-game distance readout divides world units by 40 |
 
 Character and weapon data (attribute files; field names as stored):
 
@@ -141,8 +156,25 @@ before reading it are the client defaults with both penalties switched on.
   accumulator fraction.
 - If the movement rate is set to 1 Hz or less, the clock is off and one tick
   per frame runs with `dt` = frame time clamped to 0–100 ms.
-- Stamina, the crouch release delay and some sound timers run on the
-  wall clock per rendered frame, not per tick (see the sections below).
+- What runs per tick and what per frame (Open question 18):
+  - **Per tick:** input to control flags (including the sprint decision and
+    the sprint key state sent to the server), the crouch rate, the
+    crouch-spam values, the jump factor, acceleration, braking and the move.
+    The ticks of one frame run back to back inside that frame.
+  - **Per tick, but against the wall clock:** the 100 ms crouch release
+    delay. Each tick compares the OS millisecond clock with the time crouch
+    was pressed. All ticks of one frame read (almost) the same clock value,
+    so the delay ends on a frame boundary, not a tick boundary.
+  - **Per rendered frame:** the stamina gauge (HUD update, after the ticks)
+    and the weapon logic (inventory.md, weapon_firing.md), which reads the
+    control flags of the frame's last tick.
+  - **Hull resize:** the resize for the crouch rate is called twice per tick
+    (Per-tick order steps 5 and 10), but the crouch rate does not change in
+    between and the first call always leaves the hull at the wanted size
+    (forced if needed), so the second call never changes anything. Treat it
+    as one resize per tick, before the motion step.
+  - **Sprint speed** needs the server's confirmation (Sprint and stamina);
+    it does not take effect on the tick the key is pressed.
 
 ### Input to control state
 
@@ -159,7 +191,11 @@ except crouch, and sprint ends.
    cleared.
 2. **Run.** Only when crouch is not set: run is set when `walk key held XOR
    always-run`. Always-run is on by default, so run is the default state and
-   the walk key turns it off.
+   the walk key turns it off. The run flag does not depend on movement keys:
+   it is set while standing still too. The walk key is its own command
+   (profile action "Speed", default key C), separate from sprint (action
+   "Dash", default left Shift). A "run lock" command flips always-run; it is
+   unbound by default.
 3. **Jump.** Only when crouch is not set, the player is on ground, not on a
    ladder and not already in a jump: if the jump key is held and no jump has
    been "used" since the key was last up on the ground, the jump is used,
@@ -174,6 +210,9 @@ except crouch, and sprint ends.
 6. **Back, left, right** flags from their keys. Holding back also ends
    sprint.
 7. **Moving** flag: set if any of forward, back, left, right or jump is set.
+   Opposing keys (forward with back, left with right) both set their flags,
+   so the moving flag is on even though that axis's acceleration cancels to
+   exactly 0 (see Acceleration and Open question 17).
 8. **Jump request:** if the jump flag is set now but was not last tick, and
    the player is not in a jump and jumping is allowed, a jump is requested.
 9. While a hit-stagger timer runs (only infected characters in the infection
@@ -242,7 +281,14 @@ removed.
 - Base magnitude `A = 3000`; halved to 1500 if the crouch flag is set (not
   on ladders); then × 0.1 if in a jump.
 - If the tick is the jump-request tick or the crouch flag is set, the
-  directional accelerations are simply `A·F` and `A·R`.
+  directional accelerations are simply `A·F` and `A·R` (Open question 12).
+  The whole ramp block is skipped on such a tick: there is no start rescale
+  to 500, even on the tick the moving flag turns on, and `L_f` and `L_r` are
+  neither ramped nor reset; they keep the values they had before. So a
+  crouched start from rest accelerates at the full 1500 from its first tick,
+  and a player who stands up while still holding forward resumes the ramp
+  from the old `L_f` (3000 if they were running at full ramp before
+  crouching).
 - Otherwise a per-axis ramp replaces their magnitude. Two remembered values,
   `L_f` (forward/back) and `L_r` (strafe), start at 500:
   - On the tick the moving flag turns on, `L_f = L_r = 500` and the whole
@@ -259,10 +305,17 @@ removed.
 - Sum: `a = (+F·a_f if forward) (−F·a_f if back)`; then each held strafe
   key adds `±R·a_r` and, after each addition, clamps `|a|` to 3000.
 - If the moving flag just turned on and `a ≠ 0`, rescale `a` to magnitude
-  500.
-- If the jump factor `j < 1` (see Jumping), `a ← a·j`.
+  500 (only on ticks that went through the ramp, see above).
+- If the jump factor `j < 1` (see Jumping), `a ← a·j`. This applies to every
+  acceleration, including the bypassed crouched one: crouched in a jump the
+  acceleration is `150·j`, not 150 (Open question 11).
 - Holding opposing keys gives `a = 0` on that axis but still counts as
-  moving.
+  moving. The two keys use the same ramped vector, so the cancellation is
+  exact; the axis's `L` keeps ramping (it reaches 3000 after 28 ticks), and
+  the start rescale does nothing because `a = 0`. Because the moving flag is
+  on, braking does not run: on the ground only the engine friction slows the
+  player (`v ← v·e^{-k·dt}` per tick), and they never snap to a stop until
+  `|v|² < 0.1`.
 
 ### Integration and ground friction
 
@@ -391,9 +444,13 @@ v_y = 330 \cdot (1 + J_{fig} + J_{model}) \cdot j
   limit (releasing sprint in the air drops the cap at once).
 - Air acceleration is the same ramped value as on the ground (up to 3000),
   times `j`. The 0.1 in-air factor only survives when the ramp is bypassed:
-  crouching in the air after a jump (1500 × 0.1 = 150 u/s²). A player who
-  crouches during a jump has almost no air control. (Walking off a ledge is
-  not "in a jump": crouched air accel is then 1500.)
+  crouching in the air after a jump (1500 × 0.1 = 150 u/s², then × `j`). A
+  player who crouches during a jump has almost no air control: with
+  `j = 0.3 + 0.018(n - 1)` on tick `n` after the jump, it is 45 u/s² on
+  tick 1, 96.3 on tick 20 (apex) and 147.6 on tick 39; the full 150 only from
+  tick 40, which a flat-ground jump barely reaches before landing. (Walking
+  off a ledge is not "in a jump": crouched air accel is then 1500, with
+  `j = 1`.)
 - A flat-ground jump from rest rises to 50.7375 u above the start on
   tick 20 and touches down on tick 41 (see Test cases).
 
@@ -416,6 +473,13 @@ s(t) = (3t^2 - 4t + 1)\,T_0 + (-6t^2 + 6t) + (3t^2 - 2t)\,T_1 = 6t^2 - 8t + 3
     stops crouching down but you still stand up at normal speed); if
     `r ≤ 10⁻⁶`, `r = 0`.
   - Else: idle, both elapsed times reset.
+  - **Reversal** (Open question 13): switching direction mid-transition
+    (crouch released before `r` reaches 1, or pressed again while standing
+    up) restarts the new direction's elapsed time at 0. The rate is not
+    mirrored or reset: it continues from its current value, and because
+    `s(0) = 3` the first tick of the new direction moves fastest (about
+    0.26 of the full range at normal speed). The other direction's elapsed
+    time is forgotten and restarts at 0 the next time that direction runs.
   - On a ladder, while dead, or in free-movement volumes (water), `r` is
     reset to 0 directly.
   - `t` is not clamped. Full crouch and full stand each take 10 ticks
@@ -426,17 +490,39 @@ s(t) = (3t^2 - 4t + 1)\,T_0 + (-6t^2 + 6t) + (3t^2 - 2t)\,T_1 = 6t^2 - 8t + 3
 h_y = H_{stand} - r\,(H_{stand} - H_{crouch})
 ```
 
-  on the half-height, other half-extents stay at standing size. Applied twice
-  per tick (before the motion step and again before integration). If the
-  resize fails (no room), the old size and position are restored and then
-  the new size is forced without collision. When the hull shrinks and the
-  player was standing on something before the resize, the player is moved
-  down by the shrink amount so the feet stay put. When it shrinks in the
-  air, the centre stays and the feet rise.
+  on the half-height, other half-extents stay at standing size. Applied once
+  per tick before the motion step (the second call before integration is a
+  no-op, see Tick clock). If the resize fails (no room), the old size and
+  position are restored and then the new size is forced without collision.
+  - **Shrinking:** the size is set around the centre. If the player was
+    standing on something before the resize, the player is then moved down
+    by the shrink amount (no sliding, keeping what it stands on) so the feet
+    stay put. When it shrinks in the air, the centre stays and the feet rise.
+  - **Growing** (standing up, Open question 14 and Open question 5): the
+    half-height grows by `d` in three moves of the old-size hull, each
+    stopping at the first obstacle (with the 0.1 u mover clearance): first
+    down by up to `d`, then from there up by up to `2d`; the hull is then
+    centred in the free span found and given half-height
+    `old + (high - low)/2`. Results:
+    - on the ground the downward move is blocked at once, so the hull grows
+      upward and the **feet stay put** (same as shrinking);
+    - in open air the hull grows around its centre: the feet drop by `d`
+      and the head rises by `d`;
+    - in the air with the floor less than `d` below the feet, the hull is
+      pushed up so its bottom ends on the floor (the centre rises by about
+      `d` minus the gap);
+    - if the free span is shorter than the new height (ceiling), the
+      result is smaller than wanted, counts as a failure, and the new size
+      is then forced around the old centre without collision, overlapping
+      the obstacle for that tick. Releasing crouch does not normally reach
+      this case, because the release is refused while the full standing hull
+      does not fit (Input to control state, step 1).
 - **Crouch-jump:** jump first (standing), then crouch in the air. The feet
   rise by `H_stand - H_crouch` (10 u with the fallback boxes) over the
   10-tick crouch, which lets the player clear higher edges. Standing back up
-  in the air grows the hull around the centre again.
+  in the air grows the hull around the centre again (feet drop back),
+  unless the floor is closer than the growth, in which case the hull is
+  pushed up off the floor.
 - **Speed and accel while crouched:** limit as in Speed limit; base accel
   halved and no ramp. Run and jump flags are not set while crouched; sprint
   ends.
@@ -511,6 +597,15 @@ movement is allowed:
 - Else: the sprint flag is off and the stamina state is **recovering** (or
   draining at a perk rate if a perk drains stamina passively).
 - Not holding forward, or holding back, ends sprint (state recovering).
+- **Walk and sprint together:** the walk key clears the run flag, so "can
+  sprint" fails; with sprint held the state is then **recovering** (not
+  stopped, which needs "can sprint"), the speed limit is walk speed and the
+  gauge refills.
+- **Forward and back together** (with sprint held and the gauge ≥ 1):
+  forward sets the sprint flag and the **draining** state first, then the
+  back key clears the sprint flag in the same tick but leaves the gauge
+  state alone. The player does not sprint, yet the gauge drains at 30/s
+  (see Quirks). Releasing sprint or back ends it.
 - Sprint speed takes effect only while the server confirms the local
   player is sprinting; the server ends sprint itself when its own copy of
   the gauge runs out.
@@ -543,18 +638,68 @@ below 1) and refills from 0 in 4 s once the sprint key is released.
 - The player stands on whatever the hull touches within `0.02·halfY` below
   it (1 u for a 50 u half-height). Surfaces with `n.y < 0.001` are never
   stood on.
-- **Stair stepping** is tried on any move with a horizontal part, on the
-  ground or in the air:
-  1. Slide toward the target at the current height (along the floor
-     plane when standing). If nothing was hit, or what was hit is not a
-     step, keep that result.
-  2. Otherwise lift by 30.5 u (if blocked, keep the low result), slide
-     toward the target at that height, then drop back down by 30.5 u.
-  3. If the surface found on the way down is steep, the step is refused
-     unless a probe further forward (half the hull radius, or
-     `2·30.5·(1 - n_y²) + 0.1` if larger) finds a non-steep surface.
-  4. Take the high result if it got further along the move than 1.01 × the
-     low result (or, if both ended at the same X/Z, if it is not lower).
+- **Collision shape.** The mover sweeps an upright cylinder with flat top
+  and bottom caps (radius `max(halfX, halfZ)`, half-height `halfY`). Every
+  hit backs the hull off by 0.1 u along the hit surface's normal (mover
+  clearance). A flat cap that lands on a horizontal edge reports an upward
+  normal (0, 1, 0); the curved side meeting an edge reports a normal
+  perpendicular to the edge, pointing at the hull, which is near-horizontal
+  for an edge at the side of the hull.
+- **Stair stepping** (Open question 15). It is tried on every move with a
+  horizontal part (start and target X/Z differ), on the ground or in the
+  air:
+  1. **Floor plane.** If the player was standing on something, a probe
+     straight down from the start (to 0.1 × half-height below the lower of
+     start and target) finds the floor. If its normal faces against the
+     move, it is the floor plane; if that floor is steep
+     (0 < n.y < 0.7071) and the move would go up it, the move is reduced to
+     its part along the slope's level direction (sideways only).
+  2. **Low path.** Slide toward the target at the current height (up to 5
+     slides, see Integration). If the low slide touched nothing, keep it. If
+     anything it touched during the slide is "not a step", keep it too. Not
+     a step: a surface flagged not-a-step in the map, any object that uses
+     player collision (moving world objects), and any character. Any other
+     hit (a wall, a box, a step's riser, even a slope) is a candidate step;
+     there is no height or normal test at this stage.
+  3. **Lift.** Move the hull straight up by 30.5 u from the start. If this
+     hits anything (low ceiling), keep the low result.
+  4. **High path.** Slide toward the target from the lifted start. Then drop
+     straight down from the high slide's end by 30.5 u (no further) and stop
+     at the first surface. If nothing is found, the high result is simply
+     30.5 u lower than the high slide's end, i.e. back at the start height.
+  5. **Steep top.** If the surface found on the drop is steep
+     (n.y < 0.7071): refuse the step if the high slide hit anything;
+     otherwise probe from the lifted start to the high slide's end pushed
+     further along the slope's up-hill level direction by
+     `max(0.5 × radius, 2·30.5·(1 - n_y²) + 0.1)` u; refuse if that probe
+     also ends on a steep surface. (A wall with n.y = 0 has no up-hill
+     direction, and the step is refused.)
+  6. **Choose.** With `o` the (possibly reduced) move, compare
+     `h = (high - start)·o` with `l = max(0, (low - start)·o)`; take the high
+     result when `1.01·l < h`. If both results end at the same X and Z, take
+     the high one when it is not lower than the low one.
+- **No ground snap or downhill projection in the mover.** Nothing pulls the
+  hull down onto the ground after a move. Walking downhill works through the
+  integrator (acceleration pushed into the surface, see Integration) and
+  the 1 u standing probe. A drop larger than the probe makes the player
+  airborne (no "in a jump", so the full ramped acceleration and `j` stay),
+  and gravity takes over.
+- **What the player stands on** is found after every move by sweeping the
+  hull down by `0.02 × half-height`:
+  - nothing hit: not standing;
+  - a surface with `n.y < 0.001` (vertical): not standing;
+  - a steep surface (n.y < 0.7071) while the player was standing on a
+    walkable world surface: the player keeps standing on the old surface if
+    a probe from 30.5 u up, moved up-hill by
+    `max(0.5 × radius, 2·(30.5 + 0.02·halfY·t)·(1 - n_y²) + 0.11 × radius)`
+    (t = hit time of the down sweep, 0..1), meets nothing; otherwise the
+    steep surface is stood on (and then counts as "not ground", so the
+    player slides);
+  - anything else is stood on.
+  So a hull whose flat bottom still overlaps a ledge by any amount stands
+  on it with normal (0, 1, 0), which is walkable ground, while an edge that
+  only touches the curved side does not hold the player up (Open
+  question 15).
 - Moving up a steep slope while standing on it: the up-slope part of the
   move is removed, leaving only the sideways part.
 - A step that is reachable from below (≤ 30.5 u) is climbed without
@@ -572,6 +717,23 @@ Fall damage is decided on the server from positions:
   set to the current Y, and damage is checked for that tick's drop.
 - On a ladder, the highest Y is reset to a very low value (no fall
   accumulates); in spectator mode likewise.
+- **Spawn and respawn** (Open question 16): the server first moves the
+  player straight down onto the floor below the spawn point, then sets the
+  highest Y to the resulting position and clears the accumulated drop. A
+  spawn point placed in the air therefore never causes a fall: the player
+  starts on the floor. Before the first spawn the highest Y is the very low
+  value, so nothing accumulates.
+- **Teleports and server position corrections** do not reset the tracking
+  (no reset was found outside spawning). The drop is measured from the
+  highest Y reached since the last grounded update: a player teleported
+  while airborne keeps the old highest Y if the teleport went down, or the
+  teleport point if it went up; a player teleported while grounded to a
+  lower floor takes the whole height difference as a drop on the next
+  grounded update.
+- Drops recorded between two damage checks are added together before the
+  check (the server checks after each standing-on update, so this only
+  matters when a crouch resize records a landing in between; treat each
+  landing as one drop).
 - If `d > 50` and `d ≥ 300`, the player is not on a ladder, not an infected
   character, and not inside a safety-net volume:
 
@@ -602,6 +764,66 @@ Fall damage is decided on the server from positions:
 - **Movement disallowed** (frozen, round start): horizontal velocity halved
   each tick, upward velocity removed, acceleration cleared except gravity
   (at most -1100 downward).
+- **Hit knock-back (infection mode only)** (Open question 19). When the
+  local player is an infected character and takes damage from someone not
+  on their team, with ammo whose `DamageMovePenalty` `K > 0` and
+  `DamageMovePenaltyDuration` `T > 0` (attribute_data.md), a knock-back
+  timer of `T·(1 + StiffDuration)` seconds starts (only if longer than the
+  time left on the current one; the latest `K` is kept with it). While it
+  runs:
+  - the run and sprint flags are cleared each tick (speed limit = walk
+    speed × penalty factors), and braking does not run;
+  - after the normal acceleration is computed (and scaled by `j`), it is
+    replaced by a push along the horizontal part of the last damage
+    direction (the direction the damage travelled, away from the attacker):
+
+```math
+a = \hat d_{xz}\cdot K^2\,(1 - t)
+```
+
+    where `t` is the game time in seconds since the timer started (the same
+    for every tick of a frame). With crouch held the push is × 0.25 when a
+    movement key is held; with crouch held and no movement key the velocity
+    is zeroed and there is no push;
+  - a hit with no horizontal direction gives `a = 0`.
+  Other characters are not affected: for a normal (non-infected) player the
+  value does nothing.
+
+### Eye (camera) height
+
+(Open question 2.) The first-person camera, which is also the start of the
+shot ray (weapon_firing.md) and of the pickup ray (inventory.md), is placed
+each rendered frame at:
+
+```math
+y_{eye} = y_{centre} + 0.66\,H_{stand} - 13\,r
+```
+
+with `y_centre` the hull centre interpolated for the frame, `H_stand` the
+standing half-height (from the model's stand animation; 50 with the
+fallback box) and `r` the crouch rate. The eye offset is fixed when the
+character is set up; it does not follow the current hull size. On the
+ground the centre is `feet + h_y` with `h_y = H_stand - r(H_stand - H_crouch)`,
+so the eye above the feet is
+
+```math
+e(r) = H_{stand} + 0.66\,H_{stand} - r\,(H_{stand} - H_{crouch}) - 13\,r
+```
+
+which is 83 u standing and 60 u fully crouched with the fallback boxes
+(`83 - 23r`, linear in the crouch rate, so it follows the crouch curve).
+That is 0.83 of the standing hull height (100) and 0.75 of the crouched
+one (80), not 0.9.
+
+- **Upward smoothing:** when the camera's wanted height is more than 1 u
+  above its last height and the player is not in a jump (and not in a
+  free-movement volume), the camera rises at
+  `max((wanted - current)/0.1, 140)` u/s, but never lags more than 30 u
+  (a larger step jumps to 30 u below first) and snaps once within 1 u.
+  Downward moves are immediate. Standing up on the ground (centre rising
+  about 2.6 u in the first tick) is therefore smoothed too.
+- Head bob, camera shake from damage, and the recoil back-push
+  (weapon_firing.md) are added on top; they are not part of this spec.
 
 ## Per-tick order
 
@@ -620,7 +842,8 @@ Fall damage is decided on the server from positions:
    c. ground check from last tick's standing state; handle landing;
    d. compute the speed limit and clamp horizontal velocity;
    e. compute the acceleration (base, crouch, air factor, ramp, sum, clamp,
-      start rescale), then scale by the jump factor if below 1;
+      start rescale), then scale by the jump factor if below 1; while the
+      infection-mode knock-back timer runs, replace it by the push;
    f. if a jump is requested and allowed, set vertical velocity, start the
       jump, set the jump factor to 0.3; otherwise recover the jump factor;
    g. add volume currents to velocity; if dying or movement is blocked,
@@ -678,7 +901,13 @@ Stamina and the HUD update once per rendered frame after the ticks.
   slightly slower. Keep.
 - **Strong air control.** The in-air factor is overwritten by the ramp, so
   air acceleration is the full 3000 (times the jump factor). Only a player
-  crouching during a jump gets the reduced 150. Keep.
+  crouching during a jump gets the reduced 150, times the jump factor. Keep.
+- **Forward + back + sprint drains stamina.** Holding all three drains the
+  gauge at the sprint rate without sprinting (Sprint and stamina). Keep; it
+  is harmless and matches the original.
+- **Ramp memory across crouch.** Crouching freezes `L_f`/`L_r`, so standing
+  up while holding forward resumes at the old ramp value instead of 500.
+  Keep.
 - **Jump factor recovery while airborne.** The 0.3 jump factor recovers
   during the jump itself, so on flat ground the next jump is full height;
   it only bites on short hops (landing on something higher). Keep.
@@ -771,7 +1000,9 @@ Numbers rounded to 4 decimals where not exact.
 20. **Crouched air control.** In the air, holding crouch and forward
     (crouch flag set): accel `3000 × 0.5 × 0.1` = 150 only if in a jump
     (speed +2.25 u/s per tick); if walked off (not in a jump), 1500
-    (+22.5 u/s per tick).
+    (+22.5 u/s per tick). *Correction:* the in-jump figure assumes a jump
+    factor of 1, which after a jump only holds from tick 40 on; before that
+    the 150 is scaled by `j` (case 37). The walked-off figure is right.
 21. **Crouch rate.** Hold crouch from standing, full speed: rate after
     ticks 1–10: 0.259615, 0.463208, 0.618555, 0.733433, 0.815619, 0.872890,
     0.913022, 0.943794, 0.972982, 1.0. Release when full: rate after ticks
@@ -827,6 +1058,85 @@ Numbers rounded to 4 decimals where not exact.
 36. **Tick clock.** A 100 ms frame runs 6 ticks; a 200 ms frame also runs 6
     (the other 100 ms is dropped); a 20 ms frame after a 10 ms remainder
     runs 2 ticks and leaves 0 ms (interpolation factor 0).
+37. **Crouched air control after a jump (corrects 20).** At rest
+    horizontally, jump on tick 0, crouch flag set from tick 1, forward held.
+    Horizontal acceleration `150·j` with `j` from case 14: tick 1: 45 u/s²
+    (+0.675 u/s); tick 20: 96.3 (+1.4445 u/s); tick 39: 147.6 (+2.214 u/s);
+    tick 40 on (`j = 1.002`, not scaled): 150 (+2.25 u/s). No start rescale
+    and no ramp on any of these ticks.
+38. **Crouched start from rest.** Fully crouched (`r = 1`), at rest on flat
+    ground, hold forward from tick 1. Acceleration 1500 on every tick (no
+    500 start, no ramp). End speeds: tick 1: 21.6770, tick 2: 41.7876,
+    tick 3: 60.4451 u/s; total distance after tick 3: 1.41097 u. Tick 4
+    starts above the 50 u/s limit, is clamped to 50 and ends at 68.0641
+    (the steady state of case 6).
+39. **Jump-request tick bypasses the ramp.** At rest, no keys on tick 0;
+    press forward and jump on tick 1. Tick 1 (jump tick): horizontal
+    acceleration 3000 (`j = 1` at the start of the tick, no 500 rescale),
+    no friction, horizontal end speed 45 u/s. Tick 2: the moving flag was
+    already on, so no rescale; `L_f` was left at 500 by tick 0, so the ramp
+    gives 590, times `j = 0.3`: 177 u/s², +2.655 u/s.
+40. **Crouch reversal halfway.** Standing, room to stand. Crouch flag set
+    on ticks 1–5, cleared from tick 6 (after the release delay). Rate after
+    ticks 1–5: 0.259615, 0.463208, 0.618555, 0.733433, 0.815619; after ticks
+    6–10: 0.556003, 0.352411, 0.197064, 0.082186, 0.0. Half-heights
+    (fallback boxes): 47.40385, 45.36792, 43.81445, 42.66567, 41.84381, then
+    44.43997, 46.47589, 48.02936, 49.17814, 50.0. On the ground the feet stay
+    at the same height on every tick (centre = feet + half-height).
+41. **Crouch re-pressed while standing up.** As case 40, but the flag is
+    set again from tick 8. Rate after ticks 6–13: 0.556003, 0.352411,
+    0.612026, 0.815619, 0.970965, 1.0, 1.0, 1.0 (the down time restarts at
+    0 on tick 8).
+42. **Standing up on the ground keeps the feet.** Fully crouched on a floor
+    at y = 0 (centre 40, half-height 40), release with room. After stand
+    tick 1 (`r = 0.740385`): half-height 42.59615, centre 42.59615, feet at
+    0. After tick 10: half-height 50, centre 50, feet at 0.
+43. **Standing up in open air.** Crouched (half-height 40), centre at
+    y = 200, far from any surface, `r` going 1 → 0 over ticks 1–10. The
+    centre stays at 200 (gravity aside); the feet go from 160 down to 150
+    and the head from 240 up to 250.
+44. **Standing up just above the floor.** Hull in the air with its feet
+    1.0 u above the floor; a tick grows the half-height by 2.0. The bottom
+    ends on the floor (within the 0.1 u clearance) and the centre rises by
+    about 1.0 instead of staying put.
+45. **Not a step.** Walk into a 20 u high box that is another player
+    (character) or a moving object: no step-up, the player is blocked.
+    The same 20 u box as plain world geometry: stepped onto (case 34).
+46. **Ledge on the flat bottom.** Hull radius 15 resting with its centre
+    14 u beyond a ledge's edge (the bottom overlaps the ledge by 1 u): the
+    player stands (normal (0, 1, 0)), is on ground and can jump. With the
+    centre 15.2 u beyond the edge (no overlap), the player falls.
+47. **Air spawn.** Spawn point 200 u above the floor below it: the player
+    starts on the floor, highest Y = that floor's Y; no fall damage.
+48. **Teleport down (no reset).** Grounded at y = 0, then placed on a floor
+    at y = -400 by a teleport: on the next grounded update the drop is 400,
+    damage 50.
+49. **Walk and sprint together.** Full gauge, hold forward + walk + sprint:
+    no sprint flag, gauge state recovering (stays at 100), speed limit 70,
+    steady 89.387 u/s (case 5).
+50. **Forward + back + sprint.** Gauge 100, hold all three for 1.000 s: no
+    sprint (limit = run speed), acceleration 0 on the forward axis, gauge
+    70 (drains at 30/s).
+51. **Opposing keys from a run.** Steady run (end speed 307.7608), then hold
+    forward + back. Tick 1: clamped to 285, end speed 264.4069, distance
+    4.11862 u; tick 2: 245.3018; tick 3: 227.5771 (friction only, no
+    braking). `L_f` keeps ramping: 3000 throughout.
+52. **Eye height.** Fallback boxes, on the ground, feet at y = 0: standing
+    eye at 83.0; fully crouched 60.0; at `r = 0.5`, 71.5. Case 40's ticks
+    1–5 give eye heights 77.0288, 72.3462, 68.7732, 66.1310, 64.2408.
+53. **Camera smoothing up a step.** Standing, 60 fps, the hull steps up
+    30 u in one tick (not in a jump). Camera height above its start after
+    frames 1–10: 5.0, 9.1667, 12.6389, 15.5324, 17.9437, 20.2770, 22.6103,
+    24.9437, 27.2770, 30.0 (snapped).
+54. **Unit scale.** A HUD distance readout for a target 400 u away shows
+    10 m (whole metres: 419 u still shows 10).
+55. **Knock-back (infection mode).** Infected local player standing still,
+    hit by an enemy's M4A1 round (`DamageMovePenalty` 40, duration 0.3 s,
+    `StiffDuration` 0) travelling along +Z. Timer 0.3 s. First tick (t = 0):
+    acceleration 1600 u/s² along +Z, run flag off, end speed 23.1221 u/s.
+    With crouch held and no movement key: velocity 0. A non-infected player
+    hit by the same round: no change. The M9 knife (`DamageMovePenalty` 20
+    but duration 0): no knock-back.
 
 ## Open questions
 
@@ -837,9 +1147,28 @@ Numbers rounded to 4 decimals where not exact.
    measure in game with a wall-height test.
 2. **Eye height** and the camera's crouch offset are not part of this
    movement code; they belong with the camera spec.
+   **Answered:** the camera sits `0.66 × H_stand` above the hull centre,
+   plus `-13 × r` for the crouch rate (console variables `ChaseCamOffset`
+   and `DuckDownCamOffSet`): 83 u above the feet standing, 60 u fully
+   crouched with the fallback boxes, `83 - 23r` in between, so it follows
+   the crouch curve. Upward camera steps are smoothed (0.1 s, at least
+   140 u/s, at most 30 u behind). It applies in the new "Eye (camera)
+   height" section; inventory's pickup ray and weapon_firing's shot origin
+   start at this camera point, not at 0.9 of the hull height. Test cases
+   52 and 53. The real stand half-height still comes from the model (Q1).
 3. **Unit scale.** The spec stays in world units; whether 1 u is meant as
    1 cm (as in later LithTech games) is not stated anywhere here. Only
    matters when mixing with other games' maps.
+   **Answered (as far as the reference goes):** the only stated mapping is
+   the HUD's: every in-game distance readout (scope range, objective and
+   flag markers) prints world units divided by 40 as metres, so the game
+   calls 40 u one metre (1 u = 2.5 cm). Nothing in the movement or physics
+   code uses metres. The bodies are not to that scale (a 100 u standing
+   hull would be 2.5 m), so for mixing with other games' maps scale by body
+   size, not by the HUD factor. See Units and conventions; test case 54.
+   To settle a physical scale, measure in game: stand next to a standard
+   door or crate of known real size and compare its height in world units
+   with the player's eye height (83 u).
 4. **Movement basis yaw.** The movement facing is the body rotation plus the
    upper-body twist, which should equal the view yaw; confirm there is no
    case where they differ (e.g. while the twist is clamped).
@@ -847,6 +1176,12 @@ Numbers rounded to 4 decimals where not exact.
    collision resize pushes the player up when the feet would enter the
    floor, or fails and is then forced (leaving the hull in the floor for a
    tick), needs a live check: jump, crouch, stand up just before landing.
+   **Answered:** the growth tries down first, then up, and centres the hull
+   in the free span. In open air it grows around the centre; with the floor
+   closer than the growth it is pushed up so it rests on the floor; it only
+   fails (and is forced, overlapping) when the span between floor and
+   ceiling is shorter than the new height. See Crouching, "Growing"; test
+   cases 43 and 44.
 6. **Live movement rate.** The engine default is 15 ms; the server sends the
    value to the client at connect. No shipped server configuration
    overriding it was found, but the live servers may have used another
@@ -860,3 +1195,81 @@ Numbers rounded to 4 decimals where not exact.
    time. Effects should be invisible.
 10. **Jump pads** add their launch velocity; the pad's data and activation
     rules belong to a world-objects spec.
+11. **Jump factor and crouched air acceleration.** The Acceleration section
+    scales by `j` when `j < 1`, but test case 20's +2.25 u/s per tick fits
+    `j = 1`. Does `j` scale the crouched in-jump 150 u/s²?
+    **Answered:** yes. The jump-factor scaling comes after the whole
+    acceleration is built, bypassed or not, so crouched in a jump the
+    acceleration is `150·j`. Case 20 assumed `j = 1`, which after a jump
+    holds only from tick 40 on (`j` is 1.002 at the start of tick 40); on
+    tick `n < 40` it is `150·(0.3 + 0.018(n - 1))`. Applies in Acceleration
+    and Gravity and air movement; case 20 corrected by case 37.
+12. **Moving-start rescale with crouch or a bypassed ramp.** Does the
+    rescale to 500 apply when crouch is held (base 1500) or when the start
+    ramp is bypassed?
+    **Answered:** no. The rescale belongs to the ramp, and the ramp is
+    skipped entirely while the crouch flag is set and on the jump-request
+    tick: the acceleration is the plain 1500 (or 3000) from the first tick,
+    and `L_f`/`L_r` are left untouched. From rest, crouched, holding
+    forward: 21.6770, 41.7876, 60.4451 u/s after ticks 1–3. Applies in
+    Acceleration; test cases 38 and 39.
+13. **Crouch direction reversal.** On a reversal mid-transition, does the
+    other direction's elapsed time restart at zero, continue, or start from
+    the mirrored remainder?
+    **Answered:** it restarts at zero; the rate itself continues from where
+    it is. Released after 5 crouching ticks: rates 0.815619 → 0.556003,
+    0.352411, 0.197064, 0.082186, 0; half-heights 41.84381 → 44.43997,
+    46.47589, 48.02936, 49.17814, 50. Applies in Crouching ("Reversal");
+    test cases 40 and 41.
+14. **Standing up on the ground.** Does the growing hull keep its feet, as
+    the spec says for shrinking?
+    **Answered:** yes. The growth first tries to extend downward, the floor
+    stops it at once, so all of the growth goes upward and the feet stay
+    put. Applies in Crouching ("Growing"); test case 42. (Standing up in the
+    air: Q5.)
+15. **Steps and slopes.** What counts as a step, and how is the downhill
+    projection or ground snap done?
+    **Answered:** a step-up is tried after any low slide that touched
+    something other than a "not a step" surface, a player-collision object
+    or a character; there is no height or normal test before trying. The
+    hull lifts 30.5 u (refused if that hits anything), slides, drops at most
+    30.5 u, refuses a steep landing unless a short forward probe clears it,
+    and is taken only if it got more than 1.01× as far along the move.
+    There is no ground snap: the mover never pulls the hull down; the
+    standing probe is 0.02 × half-height (1 u) and anything further is a
+    fall. A flat-bottomed hull overlapping a ledge by any amount stands on
+    it; an edge only touching the curved side does not hold it. Applies in
+    Slopes and steps; test cases 45 and 46.
+16. **Falling after an air spawn or teleport.** Where is the fall height
+    measured from?
+    **Answered for spawns:** the server drops the player onto the floor
+    below the spawn point before resetting the tracking, so an air spawn
+    never falls. **Teleports:** no reset was found; the drop is measured
+    from the highest Y since the last grounded update (case 48). Whether
+    Combat Arms maps use teleporters at all is not known; check live by
+    using one with a large height difference and watching for damage.
+    Applies in Falling and fall damage; test cases 47 and 48.
+17. **Walk key versus sprint, both held, opposing keys.**
+    **Answered:** the walk key ("Speed", default C) is separate from sprint
+    ("Dash", left Shift). Walk + sprint: no sprint, gauge recovering, walk
+    speed. Forward + back + sprint: no sprint but the gauge drains (quirk).
+    Opposing keys: moving flag on, that axis's acceleration exactly 0, no
+    braking, the player coasts down by friction alone while the axis ramp
+    keeps climbing. Applies in Input to control state, Acceleration and
+    Sprint and stamina; test cases 49, 50 and 51.
+18. **What runs per tick and what per frame.** Do stamina and the crouch
+    release delay run per tick or per frame; is the hull resized once or
+    twice; does sprint take effect at once?
+    **Answered:** stamina per rendered frame; the crouch release delay is
+    tested every tick against the OS millisecond clock, so in effect per
+    frame; the hull resize runs twice per tick but the second call never
+    changes anything; sprint speed waits for the server's confirmation
+    (one round trip; immediate on a listen server). Applies in Tick clock.
+19. **Hit knock-back (from attribute_data.md Q3).** What does an ammo's
+    `DamageMovePenalty` do to movement?
+    **Answered:** it is a knock-back strength `K`, only for infected
+    characters in the infection mode: for `DamageMovePenaltyDuration` ×
+    (1 + `StiffDuration`) seconds the acceleration is replaced by
+    `K²·(1 - t)` along the hit direction, and run and sprint are off. See
+    Other modifiers; test case 55. The figure types of the infected
+    characters (their `StiffDuration`) belong to a game-modes spec.

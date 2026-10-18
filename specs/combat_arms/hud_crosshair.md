@@ -35,6 +35,7 @@ x_r = \frac{W}{1024}, \qquad y_r = \frac{H}{768}
   - Crosshair firing kick: game client time in seconds.
   - Hit indicator, damage overlay, kill feed, stamina and spread step timing: a millisecond wall clock.
   - The HUD itself runs once per rendered frame. There is no fixed HUD tick.
+  - Precisely (Open question 13): every HUD timer is *checked* once per rendered frame, in the HUD update, but none of them counts frames except the damage overlay's alpha step. The hit indicator and the kill-feed lines compare the OS millisecond clock (whole ms, real time) with their start stamp and switch off on the first frame where the difference is **greater than** their life (500 ms, 30000 ms). The crosshair kick compares the game client's time in seconds (the time the frame is simulated at) with the weapon's last fire time. None of them is tied to movement.md's 15 ms tick.
 - **Angles:** radians. Player yaw increases when turning right (see Open questions).
 - **Game distance:** world units. The scope range readout divides by 40 (see A9).
 - **Spread fraction r:** dimensionless, normally in [0, 1] (section B).
@@ -97,6 +98,8 @@ g = \big(m + r\,(M - m)\big)\,x_r
 
 - g is the gap in px.
 - r is not clamped here. The data keeps it in [0, 1], but a larger r widens past M.
+- r is used **unrounded** (Open question 14). The shot code instead rounds the spread part of the cone down to whole perturb units, `n = m + ⌊(M − m)·p⌋·DynamicPerturbFactor` (weapon_firing.md), and the crosshair ignores `DynamicPerturbFactor`. So the gap can sit up to one unit (×x_r px) wider than the cone the next shot will use, and differs more on a weapon with a factor other than 1.
+- r is read in the HUD update, **after** this frame's spread sub-steps, while the shot of this frame used the meters from before them. On the frame of a shot the crosshair already shows the shot's own growth.
 - The bars of the plus never change length with spread. Only the gap changes.
 
 ### A3. Which min and max perturb apply
@@ -230,6 +233,7 @@ x = \lfloor (512-64)\,x_r \rfloor,\; y = \lfloor (384-64)\,y_r \rfloor,\; w = \l
 ### A10. Hit indicator (you hit someone)
 
 - **Trigger:** the client is told that the local player damaged a player whose team differs from the local player's team. Damaging a teammate does nothing.
+  - "Enemy" is purely a comparison of team ids: the victim's team id differs from the local player's (Open question 15). There is no mode check in the hit indicator or in the name tags' enemy/teammate rules. In modes without teams the result depends on which team id the server gives each player, which was not traced (see Open question 15).
 - **On:** the crosshair colour is (208, 0, 0, 255) while now - t_hit <= 500 ms, where t_hit is the time of the **latest** such hit.
 - **Off:** on the first HUD frame where the elapsed time exceeds 500 ms.
 - **Reset:** the end of a round clears it immediately.
@@ -242,6 +246,8 @@ x = \lfloor (512-64)\,x_r \rfloor,\; y = \lfloor (384-64)\,y_r \rfloor,\; w = \l
 - **The aim target:** the first thing hit by a ray from the camera along its forward direction, up to 100000 units. Walls block it. Hitting a character's hit box counts as that character.
 - **Name tags:**
   - A tag floats over each player, positioned at the model's name socket and projected to the screen. It is centred horizontally and shifted up by half its height.
+  - Precisely (Open question 10): the anchor is the world position of the model socket named "NAME_socket" in the character's current pose, every frame. A model without that socket uses the character object's position (the hull centre). There is no world-space offset added; the only offset is the half-height shift on screen.
+  - There is **no distance limit**. The projection's only hide rule is a tag behind the camera: when the anchor's view-space depth is ≤ 0 the tag is hidden. Enemies are further limited by the aim-target rule (a ray of up to 100000 units).
   - The tag holds the name, an HP bar and badges.
 - **While alive, outside special modes:**
   - **Teammates:** always shown. Name colour (161, 197, 233) at alpha 200.
@@ -392,6 +398,7 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
 - The panel's origin is (780, 696).
 - Hidden while infected, and in all cases where D2 is hidden.
 - Shown only when the current weapon's class is one of the gun classes (assault, SMG, sniper, support, pistol and the like, not "etc") and it is not the mission bomb.
+  - *Correction* (Open question 16): "class" here is the weapon's **inventory class**, the order list it appears in under the weapons file's weapon order (attribute_data.md): 1 primary, 2 secondary, 3 melee, 4 throw, 5 special, 6 mission. It is not `Guntype`. The panel is shown for classes 1 to 6 unless the weapon's `Guntype` is 8 (mission bomb), and hidden for a weapon in no list (class 0). So the knife, grenades and specials do show the panel (name, plus counts if their ammo is finite); only the fire-mode icon is limited (below).
 
 **Weapon name**
 
@@ -419,10 +426,17 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
 **Fire-mode icon**
 
 - At (926, 731), 128 x 16. Only for the assault and SMG classes; hidden for other classes.
+  - *Correction* (Open question 16): those two "classes" are inventory classes 1 and 2, i.e. every weapon in the primary list (rifles, SMGs, snipers, machine guns, shotguns...) and every weapon in the secondary list (pistols). Snipers and pistols get an icon.
 - Which icon:
   - **Burst active:** the 2-round burst icon if the weapon's burst count is 2, else the 3-round icon.
   - **Otherwise, weapon has selectable auto:** the full-auto icon in auto mode, the single-shot icon in single mode.
   - **Otherwise, auto-only weapon:** the full-auto icon.
+- Exactly, from the attribute data (attribute_data.md):
+  1. `TripleShotMode` = 1 and burst mode is on: the 2-round icon if `TripleShotRoundNum` = 2, else the 3-round icon.
+  2. Else `RapidFireCount` = 1 (a semi-automatic weapon): the full-auto icon if its continuous-fire mode (`ContinuousFire` = 1) is switched on, else the single-shot icon.
+  3. Else `RapidFireCount` = 0 (fully automatic): the full-auto icon.
+  4. Else (`RapidFireCount` ≥ 2): no icon.
+  - "Selectable fire modes" are therefore `TripleShotMode` (burst toggle) and `ContinuousFire` (continuous-fire toggle on a semi-automatic weapon). The `HudFireMode` field is read from the data but nothing uses it.
 
 **Weapon icon and list**
 
@@ -675,10 +689,10 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
 50. Clip 30, reserve 1200 -> "030" and "1200".
 51. Clip 0, reserve 0 -> "000" and "000", same colours as case 49 (no low-ammo state).
 52. Knife equipped -> name shown; clip, slash, reserve and fire icon hidden.
-53. Mission bomb or a non-gun class equipped -> whole panel hidden.
+53. Mission bomb or a non-gun class equipped -> whole panel hidden. (*Correction:* only the mission bomb and weapons in no order list hide the panel; see case 77.)
 54. Rifle with selectable fire, in auto mode -> full-auto icon at (926, 731). Switch to single -> single-shot icon.
     - Burst mode with burst count 2 -> 2-round icon.
-    - Sniper rifle -> no icon.
+    - Sniper rifle -> no icon. (*Correction:* a sniper rifle is in the primary list, so it gets an icon; see case 76.)
 55. Weapon name on a 1024 screen -> right edge of the text at x = 1019, vertically centred on y = 721.
 56. Kill feed after three kills A, B, C at t = 0, 1 s and 2 s.
     - Lines at y 45 (A), 65 (B), 85 (C).
@@ -710,6 +724,13 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
     - It then falls 0.01125 per step, reaching 0 about 5 steps later (about 83 ms at 60 steps/s).
 69. Spread, M4A1 held fully automatic standing still -> r_fire climbs 0.04875 per shot and caps at FirePerturb 0.30, so g caps at 3 + 0.3 * 97 = 32.1.
 70. Turning the mouse quickly while standing still with r = 0 -> r stays 0 and the crosshair is unchanged.
+71. Hit-indicator edge, OS millisecond clock: hit stamped at 10000 ms. A frame at 10500 ms -> still red (500 is not greater than 500); the next frame at 10516 ms -> green. A kill-feed line stamped at 0 is still shown on a frame at 30000 ms and gone on the first frame after.
+72. Crosshair kick on the game clock: the weapon fired at game time 12.000 s; a frame at game time 12.050 s -> D = 5, ℓ = 10 (as case 7), whatever the OS clock says.
+73. Gap unrounded, M4A1 standing still, r = 0.04875 (one shot) -> g = 3 + 0.04875 × 97 = 7.72875 px at 1024; the shot cone for the next shot is n = 3 + ⌊4.72875⌋ = 7 units. At r = 0.30: g = 32.1 px, cone 32.
+74. Name-tag anchor: a model whose "NAME_socket" is at world (100, 172, 50) -> the tag is centred on that point's projection, shifted up by half the tag's height. A model with no such socket and its hull centre at (100, 100, 50) -> anchored at (100, 100, 50).
+75. Name tags have no distance limit: a teammate 20000 units away in front of the camera -> tag shown (alpha by visibility as in case 66). The same teammate directly behind the camera -> hidden.
+76. Fire-mode icons from the data: M16A3 (primary, `RapidFireCount` 0, `TripleShotMode` 1) -> full-auto icon, burst icon when toggled; M24 sniper (primary, `RapidFireCount` 1) -> single-shot icon; Beretta M92FS (secondary, `RapidFireCount` 1) -> single-shot icon; a primary with `RapidFireCount` 3 and no burst mode -> no icon; M67 grenade (throw class) -> no icon.
+77. Panel visibility by inventory class: M67 in hand -> panel shown, name "M67", counts "001" / "000" (finite ammo), no fire-mode icon. M9 knife -> panel shown, name only (case 52). Mission bomb (`Guntype` 8) -> panel hidden. A weapon in no order list (class 0) -> panel hidden.
 
 ## Open questions
 
@@ -725,5 +746,14 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
 8. **Spread data units:** whether the shot code converts perturb units to an angle in a way that makes "1 perturb = 1 px at 1024" visually exact for the game's field of view. This belongs to weapon_firing.md.
 9. **Unused features:** confirm the over-crosshair friendly icon and the teammate HP number are really absent in the Steam build (they are disabled in the reference).
 10. **Name-tag distance:** name tags may hide beyond some distance (the projection call has a distance-hide option). The threshold was not traced.
+    **Answered:** the "distance-hide" option only hides a tag whose anchor is behind the camera (view-space depth ≤ 0); there is no distance threshold. The anchor is the model socket "NAME_socket" in the current pose, or the character's position (hull centre) when the model has no such socket, with no extra world offset. See A11; test cases 74 and 75. The socket's height above the feet is model data (models spec); to measure it live, stand a teammate on flat ground and compare the tag's screen position with a wall mark of known height at the same distance.
 11. **Wide-fire pellet field:** the meaning of N_wide (double-circle min) beyond "the weapon's wide-fire count field". Check one shotgun with CrossHairType 5.
 12. **Crosshair toggle:** which console command or key toggles the crosshair off, and whether the damage overlay then also hides (in the reference it does).
+13. **The HUD clock.** Do the hit indicator, kill-feed life and crosshair kick run on the rendered-frame clock in milliseconds?
+    **Answered:** they are evaluated once per rendered frame, but against clocks, not frame counts: the hit indicator and the kill feed against the OS millisecond clock (off on the first frame with elapsed > 500 ms or > 30000 ms), the kick against the game client time in seconds. Only the damage overlay's alpha step counts frames. See Units and conventions ("Time"); test cases 71 and 72.
+14. **The crosshair gap and rounding.** Is the gap drawn from the shot cone after whole-unit rounding, or from the unrounded spread?
+    **Answered:** unrounded, `g = (m + r(M − m))·x_r`, without `DynamicPerturbFactor`, from the meters after this frame's sub-steps. The shot cone rounds down. See A2; test case 73.
+15. **"Enemy" in modes without teams.** For the hit indicator and name tags, is everyone else an enemy?
+    **Answered in part:** the client never checks the mode: "enemy" means "team id differs from mine", for the hit indicator, the tag colour and the enemy tag rules alike. **Open:** which team id each player gets in free-for-all style modes is assigned outside the game client and was not traced (one detail hints at per-player ids: an admin view colours free-for-all ids 1 to 8 one way and others another). Check live in a free-for-all room: hit another player and see whether the crosshair turns red, and check whether players you are not aiming at show name tags (they would if all shared your team id).
+16. **Weapon panel class and fire-mode icon.** Which data field gives a weapon's class and whether it has selectable fire modes?
+    **Answered:** the class is the inventory class, from which list of the weapons file's weapon order the weapon is in (1 primary ... 6 mission, 0 none), not `Guntype`; the panel shows for classes 1–6 except the mission bomb, and the fire-mode icon only for classes 1 and 2. The icon comes from `TripleShotMode` and `TripleShotRoundNum` (burst), `RapidFireCount` (0 auto, 1 single, other none) and `ContinuousFire` (selectable continuous fire on a semi-automatic weapon). `HudFireMode` is unused. See D4 (cases 53 and 54 corrected); test cases 76 and 77. Also recorded in attribute_data.md.
