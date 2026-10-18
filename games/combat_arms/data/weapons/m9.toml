@@ -1,0 +1,36 @@
+# The M9, Combat Arms' default knife: numbers from
+# specs/combat_arms/inventory.md (its sections in brackets), in our own
+# data format (docs/weapon-data.md). The install's attribute data
+# overrides them when it can be read (attribute_data.md).
+#
+# Units: LithTech world units (1 unit = 1 cm, ours: inventory.rs `UNIT`)
+# and damage points (100 = full health). No sounds or models (the front
+# end draws a box).
+id = "combat_arms:m9"
+units = { length = 0.01, damage = 0.01 }
+# Melee class (3): key 3 [1].
+slot = 2
+# Draw = the select animation, 450 ms [Constants: stock per-weapon data].
+draw = 0.45
+undroppable = true
+
+[hooks."combat_arms:inventory"]
+# 1000 / 1000, infinite [Constants]; never dropped [12].
+infinite = true
+drop_on_death = false
+# Post-sprint (sprint-out) animation, 167 ms [Constants].
+sprint_out = 0.167
+
+[hooks."combat_arms:knife"]
+# 105 units, both attacks [Constants: M9 attack data; 8.3].
+range = 105.0
+# Damage roll +-10 % [8.4].
+damage_spread = 0.1
+# Fire-rate bonus f_weapon: none for the M9 [8.2].
+fire_rate = 0.0
+# Primary (slash, fire): 1 ms pre-fire, a 650 ms swing hitting at 155 and
+# 402 ms for 45 each, 1 ms post-fire [Constants: M9 attack data; 8.2].
+primary = { prefire = 0.001, length = 0.65, hits = [0.155, 0.402], damage = 45.0, postfire = 0.001 }
+# Secondary (stab, zoom): 1 ms pre-fire, an 1100 ms stab hitting at 367 ms
+# for 75 [Constants: M9 attack data; 8.2].
+secondary = { prefire = 0.001, length = 1.1, hits = [0.367], damage = 75.0, postfire = 0.001 }
