@@ -859,7 +859,8 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
   Source, games, minigames, both apps, specs and docs.
 - Combat Arms (loader and specs) is developed locally and git-ignored for
   now, and was removed from the history (2026-10-07). It builds with
-  `--features combat_arms` where the folder exists.
+  `--features combat_arms` where the folder exists. Since 2026-10-18 its
+  specs and crate are public again, clean room ([combat-arms.md](combat-arms.md)).
 
 ## Developing in the open
 
@@ -897,4 +898,4 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 | `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |
 | `src/games/combat_arms` | games/combat_arms | local, git-ignored |
-| `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` private |
+| `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` in the repo since 2026-10-18 ([combat-arms.md](combat-arms.md)) |

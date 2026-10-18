@@ -47,8 +47,10 @@ instead of guessing.
 specs/<game>/<topic>.md      e.g. specs/cs_source/movement.md
 ```
 
-Combat Arms specs (`specs/combat_arms/`) are kept locally and git-ignored
-for now, with the Combat Arms loader.
+Combat Arms specs (`specs/combat_arms/`) are written on the PC that has the
+source and pushed to main, one file per session; the plan and the spec
+briefs are in
+[docs/plans/active/combat-arms.md](../docs/plans/active/combat-arms.md).
 
 ## Template
 

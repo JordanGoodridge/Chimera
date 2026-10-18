@@ -282,9 +282,9 @@ uses mounted; the server checks this before a match. Plan:
   shared movement code. Weapon stats live in `weapon_*.txt` scripts. Faithful
   rendering needs BSP lightmaps and Source material rules.
 - **Combat Arms.** LithTech Jupiter (`.rez` archives, LithTech model and
-  world formats). Its loader is developed locally and not part of this
-  repository for now (`src/games/combat_arms/` is git-ignored; build it with
-  `--features combat_arms` where the folder exists).
+  world formats). Specs and the `games/combat_arms` library are in the
+  repository since 2026-10-18 (clean room, no keys or assets); the plan
+  is [plans/active/combat-arms.md](plans/active/combat-arms.md).
 
 ## Specs
 
