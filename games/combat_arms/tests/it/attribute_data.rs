@@ -18,6 +18,11 @@ fn weapons(text: &str) -> Result<WeaponsFile, String> {
     WeaponsFile::read(&doc(text))
 }
 
+/// The built-in movement data's metres per world unit.
+pub fn meters_per_unit() -> f64 {
+    toml::from_str::<MovementData>(MOVEMENT_DATA).unwrap().meters_per_unit as f64
+}
+
 fn close(a: f64, b: f64) {
     assert!((a - b).abs() < 1e-9, "{a} != {b}");
 }
@@ -384,7 +389,7 @@ fn reference_m4a1_onto_our_documents() {
           ReloadPerBullet=0
     "#;
     let f = weapons(install).unwrap();
-    let docs = merge_weapon_docs(WEAPON_DATA, &f, 0.01).unwrap();
+    let docs = merge_weapon_docs(WEAPON_DATA, &f, meters_per_unit()).unwrap();
     let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let merged = WeaponSet::parse(&refs, &[]).unwrap();
     let builtin = WeaponSet::parse(WEAPON_DATA, &[]).unwrap();
@@ -463,7 +468,7 @@ fn case_30_knock_back_fields() {
     )
     .unwrap();
     let ours = include_str!("../../data/weapons/m4a1.toml");
-    let docs = merge_weapon_docs(&[("m4a1.toml", ours)], &install, 0.01).unwrap();
+    let docs = merge_weapon_docs(&[("m4a1.toml", ours)], &install, meters_per_unit()).unwrap();
     let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let set = WeaponSet::parse(&refs, &[]).unwrap();
     let d: DamageParams = set.weapons[0].hook("combat_arms:damage").unwrap();

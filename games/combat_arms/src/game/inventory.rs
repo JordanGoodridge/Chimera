@@ -136,8 +136,9 @@ pub const KNIFE: &str = "combat_arms:m9_knife";
 /// rifle until weapon_firing.md's and the M9.
 pub const STARTING_WEAPONS: &[&str] = &[RIFLE, KNIFE];
 
-/// Metres per LithTech unit (ours: 1 cm; see Known shortcuts).
-pub const UNIT: f32 = 0.01;
+/// Metres per LithTech unit: movement's `meters_per_unit` (by body size;
+/// see Known shortcuts).
+pub const UNIT: f32 = 0.018;
 /// Health per damage point (100 points = 1.0).
 pub const HP: f32 = 0.01;
 

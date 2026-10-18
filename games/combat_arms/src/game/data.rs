@@ -393,7 +393,9 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, meters_per_unit:
         (Some(id), Some(a)) => Some((id.as_str(), a)),
         _ => None,
     };
-    for s in weapon_values(w, ammo, meters_per_unit / doc_length) {
+    // In f32, as both scales are read: equal scales give exactly 1.
+    let length_scale = (meters_per_unit as f32 / doc_length as f32) as f64;
+    for s in weapon_values(w, ammo, length_scale) {
         apply(doc, &s);
     }
     // The inventory class: the order list it is in (our `slot` is the
