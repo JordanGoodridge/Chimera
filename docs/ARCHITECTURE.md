@@ -479,6 +479,7 @@ that the paths exist).
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data (spec numbers; PLACEHOLDER ones marked) (games)
+- `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)

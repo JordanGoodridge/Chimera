@@ -11,6 +11,7 @@
 //! is implemented.
 
 mod inventory;
+mod movement;
 mod skeleton;
 
 // Slow ones (the user's install): the fast tier skips `heavy::`.

@@ -1,0 +1,1022 @@
+//! Combat Arms movement (specs/combat_arms/movement.md): its numbered test
+//! cases as scenario tests on `CaSim`, each named `case_<n>_...`, plus the
+//! edge cases the spec calls out. A test map of our own (a flat floor with
+//! its top at y = 0, and per test boxes, ledges, stairs or slopes), the
+//! game's 15 ms tick, a standing hull at rest, facing yaw 0 (engine -Z;
+//! the spec's +Z), `P = 0` and no gear unless the case says otherwise.
+//!
+//! Values are world units (u, u/s); the engine's meters are divided by
+//! `meters_per_unit`. Tolerances: `TOL` (0.001) for one tick's values,
+//! `TOL_SUM` (0.005) for sums over many ticks (f32 rounding of meter
+//! positions); the collision mover keeps a 0.1 u skin from surfaces (`SKIN`).
+
+use bevy::prelude::*;
+use chimera_core::core::{Damage, DamageKind};
+use chimera_world::harness::Sim;
+use combat_arms::{
+    game::{
+        TICK_INTERVAL,
+        movement::{self, CaCharacter, CaMovement, HeldMovePenalty, StaminaState, TickClock, movement_data},
+    },
+    harness::CaSim,
+};
+
+const TOL: f32 = 1e-3;
+const TOL_SUM: f32 = 5e-3;
+/// The collision mover's gap from surfaces (data/movement.toml `skin`).
+const SKIN: f32 = 0.1 + 1e-3;
+
+fn close(got: f32, want: f32, tol: f32, what: &str) {
+    assert!((got - want).abs() <= tol, "{what}: got {got}, want {want} (tolerance {tol})");
+}
+
+/// A static box: centre and half-extents in u, optional rotation about X.
+#[derive(Clone, Copy)]
+struct Block {
+    centre: Vec3,
+    half: Vec3,
+    tilt: f32,
+}
+
+fn block(centre: Vec3, half: Vec3) -> Block {
+    Block { centre, half, tilt: 0.0 }
+}
+
+/// The floor: top at y = 0, wide enough for every test.
+fn floor() -> Block {
+    block(Vec3::new(0.0, -50.0, 0.0), Vec3::new(20000.0, 50.0, 20000.0))
+}
+
+#[derive(Resource, Clone)]
+struct TestMap(Vec<Block>);
+
+#[derive(Resource, Default)]
+struct DamageLog(Vec<Damage>);
+
+fn spawn_map(mut commands: Commands, map: Res<TestMap>) {
+    let s = movement_data().meters_per_unit;
+    for b in &map.0 {
+        commands.spawn((
+            RigidBody::Static,
+            avian3d::prelude::Collider::cuboid(b.half.x * 2.0 * s, b.half.y * 2.0 * s, b.half.z * 2.0 * s),
+            Transform::from_translation(b.centre * s).with_rotation(Quat::from_rotation_x(b.tilt)),
+        ));
+    }
+}
+
+fn log_damage(mut damage: MessageReader<Damage>, mut log: ResMut<DamageLog>) {
+    log.0.extend(damage.read().cloned());
+}
+
+use avian3d::prelude::RigidBody;
+
+struct T {
+    sim: Sim,
+    p: Entity,
+}
+
+const STAND_H: f32 = 50.0;
+
+/// A player's hull centre resting with its feet on a surface at `y`.
+fn on(x: f32, y: f32, z: f32) -> Vec3 {
+    Vec3::new(x, y + STAND_H + movement_data().skin, z)
+}
+
+impl T {
+    /// A player with its hull centre at `at` (u) on a map of `blocks`, no
+    /// gear, after one tick at rest (it finds what it stands on).
+    fn new(blocks: Vec<Block>, at: Vec3) -> Self {
+        let map = TestMap(blocks);
+        let mut sim = Sim::with(CaSim, move |app| {
+            app.insert_resource(map)
+                .init_resource::<DamageLog>()
+                .add_systems(Startup, spawn_map)
+                .add_systems(Last, log_damage);
+        });
+        sim.set_tick_interval(TICK_INTERVAL);
+        let s = movement_data().meters_per_unit;
+        let p = sim.spawn_character(at * s, movement::ID);
+        let bare = movement_data().character.without_gear();
+        sim.app.world_mut().entity_mut(p).insert(bare);
+        let mut t = Self { sim, p };
+        t.tick();
+        t
+    }
+
+    /// Standing at rest on the floor (two ticks: the first finds the floor,
+    /// the second counts it as ground).
+    fn standing() -> Self {
+        let mut t = Self::new(vec![floor()], on(0.0, 0.0, 0.0));
+        t.tick();
+        let m = t.mv();
+        assert!(m.on_ground, "standing on the floor: {:?} at {}", m.standing, t.pos());
+        t
+    }
+
+    fn tick(&mut self) {
+        self.sim.ticks(1);
+    }
+
+    fn ticks(&mut self, n: u64) {
+        self.sim.ticks(n);
+    }
+
+    fn pos(&self) -> Vec3 {
+        self.sim.position(self.p) / movement_data().meters_per_unit
+    }
+
+    fn vel(&self) -> Vec3 {
+        self.sim.velocity(self.p) / movement_data().meters_per_unit
+    }
+
+    fn hspeed(&self) -> f32 {
+        self.vel().xz().length()
+    }
+
+    fn mv(&self) -> CaMovement {
+        self.sim.app.world().get::<CaMovement>(self.p).unwrap().clone()
+    }
+
+    fn mv_mut(&mut self) -> Mut<'_, CaMovement> {
+        self.sim.app.world_mut().get_mut::<CaMovement>(self.p).unwrap()
+    }
+
+    fn keys(&mut self) -> Mut<'_, chimera_core::core::Intent> {
+        self.sim.intent(self.p)
+    }
+
+    fn forward(&mut self, on: bool) {
+        self.keys().move_axis.y = if on { 1.0 } else { 0.0 };
+    }
+
+    fn release_all(&mut self) {
+        let mut i = self.keys();
+        i.move_axis = Vec2::ZERO;
+        i.jump = false;
+        i.crouch = false;
+        i.sprint = false;
+        i.walk = false;
+    }
+
+    fn insert(&mut self, c: impl Bundle) {
+        self.sim.app.world_mut().entity_mut(self.p).insert(c);
+    }
+
+    fn damage(&self) -> Vec<Damage> {
+        self.sim.app.world().resource::<DamageLog>().0.clone()
+    }
+
+    /// Hold forward until the run is steady (speed limit reached).
+    fn steady_forward(&mut self) {
+        self.forward(true);
+        self.ticks(80);
+    }
+}
+
+// --- Cases 1-4: running ---
+
+#[test]
+fn case_1_run_start_tick_1() {
+    let mut t = T::standing();
+    let start = t.pos();
+    t.forward(true);
+    t.tick();
+    close(t.mv().accel.length(), 500.0, TOL, "accel");
+    close(t.hspeed(), 7.2257, TOL, "speed");
+    close(start.z - t.pos().z, 0.0549, TOL, "distance");
+}
+
+#[test]
+fn case_2_run_ramp() {
+    let mut t = T::standing();
+    let start = t.pos();
+    t.forward(true);
+    let want = [
+        (1, 500.0, 7.2257, 0.0549),
+        (2, 590.0, 15.2298, 0.2240),
+        (3, 680.0, 23.9563, 0.5187),
+        (10, 1310.0, 101.3233, 6.8853),
+    ];
+    let mut n = 0;
+    for (tick, accel, speed, dist) in want {
+        t.ticks(tick - n);
+        n = tick;
+        close(t.mv().accel.length(), accel, TOL, &format!("accel after tick {tick}"));
+        close(t.hspeed(), speed, TOL, &format!("speed after tick {tick}"));
+        close(start.z - t.pos().z, dist, TOL, &format!("distance after tick {tick}"));
+    }
+}
+
+#[test]
+fn case_3_ramp_reaches_max() {
+    let mut t = T::standing();
+    t.forward(true);
+    t.ticks(28);
+    close(t.mv().accel.length(), 2930.0, TOL, "accel on tick 28");
+    for tick in 29..40 {
+        t.tick();
+        close(t.mv().accel.length(), 3000.0, TOL, &format!("accel on tick {tick}"));
+    }
+}
+
+#[test]
+fn case_4_steady_run() {
+    let mut t = T::standing();
+    let start = t.pos();
+    t.forward(true);
+    t.ticks(60);
+    close(start.z - t.pos().z, 208.9518, TOL_SUM, "distance after 60 ticks");
+    t.ticks(20);
+    let before = t.pos();
+    t.tick();
+    close(t.mv().speed_limit, 285.0, TOL, "limit");
+    close(t.hspeed(), 307.7608, TOL, "end speed");
+    close(before.z - t.pos().z, 4.44784, TOL, "distance per tick");
+}
+
+// --- Cases 5-8: stances and caps ---
+
+#[test]
+fn case_5_steady_walk() {
+    let mut t = T::standing();
+    t.keys().walk = true;
+    t.steady_forward();
+    let before = t.pos();
+    t.tick();
+    close(t.mv().speed_limit, 70.0, TOL, "limit");
+    close(t.hspeed(), 108.296, TOL, "end speed");
+    close(before.z - t.pos().z, 1.34081, TOL, "distance per tick");
+}
+
+#[test]
+fn case_6_steady_crouch_walk() {
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    t.steady_forward();
+    assert_eq!(t.mv().crouch_rate, 1.0);
+    let before = t.pos();
+    t.tick();
+    close(t.mv().accel.length(), 1500.0, TOL, "accel");
+    close(t.hspeed(), 68.0641, TOL, "end speed");
+    close(before.z - t.pos().z, 0.88717, TOL, "distance per tick");
+}
+
+/// Steady per-tick distance and limit with the keys `setup` holds.
+fn steady(t: &mut T, setup: impl Fn(&mut T)) -> (f32, f32) {
+    t.release_all();
+    t.ticks(30);
+    setup(t);
+    t.steady_forward();
+    let before = t.pos();
+    t.tick();
+    (t.mv().speed_limit, before.z - t.pos().z)
+}
+
+#[test]
+fn case_7_reference_loadout_caps() {
+    let mut t = T::standing();
+    // The reference character (the data's: default vest) with a rifle.
+    t.insert((movement_data().character.clone(), HeldMovePenalty { penalty: 0.1, mod_factor: 0.0 }));
+    type Case = (&'static str, fn(&mut T), f32, f32);
+    let cases: [Case; 4] = [
+        ("run", |_| {}, 228.0, 3.62412),
+        ("sprint", |t| t.keys().sprint = true, 319.2, 4.94207),
+        ("walk", |t| t.keys().walk = true, 56.0, 1.13849),
+        ("crouch", |t| t.keys().crouch = true, 40.0, 0.74266),
+    ];
+    for (what, setup, limit, dist) in cases {
+        // A full gauge for the sprint.
+        t.mv_mut().stamina = 100.0;
+        let (got_limit, got_dist) = steady(&mut t, setup);
+        close(got_limit, limit, TOL, &format!("{what} limit"));
+        close(got_dist, dist, TOL, &format!("{what} distance per tick"));
+    }
+}
+
+#[test]
+fn case_8_weapon_caps() {
+    for (penalty, limit) in [(0.0, 285.0), (0.03, 276.45), (0.10, 256.5), (0.13, 247.95), (0.30, 199.5), (1.2, 0.0)] {
+        let mut t = T::standing();
+        t.insert(HeldMovePenalty { penalty, mod_factor: 0.0 });
+        t.forward(true);
+        t.tick();
+        close(t.mv().speed_limit, limit, 0.01, &format!("run limit with penalty {penalty}"));
+    }
+}
+
+// --- Cases 9-12: stopping and keys ---
+
+#[test]
+fn case_9_stop() {
+    let mut t = T::standing();
+    t.steady_forward();
+    close(t.hspeed(), 307.7608, TOL, "speed at the end of the last held tick");
+    t.forward(false);
+    let start = t.pos();
+    for (tick, want) in [224.7459, 168.8455, 116.9843, 68.8703, 24.2330].into_iter().enumerate() {
+        t.tick();
+        close(t.hspeed(), want, TOL, &format!("speed after tick {}", tick + 1));
+    }
+    close(start.z - t.pos().z, 9.4034, TOL, "distance over ticks 1-5");
+    let at5 = t.pos();
+    t.tick();
+    assert_eq!(t.hspeed(), 0.0, "stopped on tick 6");
+    assert_eq!(t.pos(), at5, "no move on tick 6");
+}
+
+/// Case 10 with our input: `Intent` has a move axis, so forward and back
+/// held together are an axis of 0, no keys (module doc, known shortcuts).
+/// What the spec's case checks still holds: no acceleration, no movement.
+#[test]
+fn case_10_opposing_keys() {
+    let mut t = T::standing();
+    let start = t.pos();
+    t.keys().move_axis = Vec2::new(0.0, 0.0);
+    t.ticks(10);
+    assert_eq!(t.mv().accel, Vec3::ZERO);
+    assert_eq!(t.hspeed(), 0.0);
+    assert_eq!(t.pos(), start);
+}
+
+#[test]
+fn case_11_diagonal() {
+    let mut t = T::standing();
+    t.keys().move_axis = Vec2::new(1.0, 1.0);
+    t.ticks(80);
+    let before = t.pos();
+    t.tick();
+    close(t.mv().accel.length(), 3000.0, TOL, "total accel");
+    close(t.mv().speed_limit, 285.0, TOL, "limit");
+    close((t.pos() - before).xz().length(), 4.44784, TOL, "distance per tick");
+}
+
+#[test]
+fn case_12_reversal() {
+    let mut t = T::standing();
+    t.steady_forward();
+    t.keys().move_axis.y = -1.0;
+    t.tick();
+    close(t.mv().accel.length(), 500.0, TOL, "back accel on tick 1");
+    t.tick();
+    close(t.mv().accel.length(), 590.0, TOL, "on tick 2");
+}
+
+// --- Cases 13-20: jumping and the air ---
+
+#[test]
+fn case_13_jump_arc() {
+    let mut t = T::standing();
+    let y0 = t.pos().y;
+    t.keys().jump = true;
+    let h = |t: &T| t.pos().y - y0;
+    t.tick();
+    close(h(&t), 4.888125, TOL, "height after tick 1");
+    close(t.vel().y, 313.5, TOL, "vertical speed after tick 1");
+    t.tick();
+    close(h(&t), 9.52875, TOL, "height after tick 2");
+    close(t.vel().y, 297.0, TOL, "after tick 2");
+    t.ticks(18);
+    close(h(&t), 50.7375, TOL_SUM, "apex after tick 20");
+    close(t.vel().y, 0.0, TOL, "speed at the apex");
+    t.tick();
+    close(h(&t), 50.675625, TOL_SUM, "after tick 21");
+    close(t.vel().y, -16.5, TOL, "after tick 21");
+    t.ticks(19);
+    close(h(&t), 2.475, TOL_SUM, "after tick 40");
+    assert!(t.mv().standing.is_none());
+    t.tick();
+    close(h(&t), 0.0, TOL_SUM, "tick 41 reaches the floor");
+    assert!(t.mv().in_jump, "the jump hasn't ended on the contact tick");
+    t.tick();
+    assert!(!t.mv().in_jump, "landing detected on tick 42");
+    assert_eq!(t.vel().y, 0.0, "vertical speed zeroed when the move down is blocked");
+}
+
+#[test]
+fn case_14_jump_factor() {
+    let mut t = T::standing();
+    t.keys().jump = true;
+    t.tick(); // the jump (tick 0)
+    // The value after tick n - 1 is the value at the start of tick n.
+    close(t.mv().jump_factor, 0.3, 1e-5, "start of tick 1");
+    t.tick();
+    close(t.mv().jump_factor, 0.3 + 0.018, 1e-5, "start of tick 2");
+    t.ticks(37);
+    close(t.mv().jump_factor, 0.984, 1e-4, "start of tick 39");
+    t.tick();
+    close(t.mv().jump_factor, 1.002, 1e-4, "start of tick 40");
+    t.tick();
+    assert_eq!(t.mv().jump_factor, 1.0, "start of tick 41");
+}
+
+#[test]
+fn case_15_air_accel_after_a_jump() {
+    let mut t = T::standing();
+    t.steady_forward();
+    let before = t.pos();
+    t.keys().jump = true;
+    t.tick();
+    close(t.hspeed(), 330.0, TOL, "jump tick's horizontal end speed");
+    close(before.z - t.pos().z, 4.44375, TOL, "jump tick's distance");
+    let before = t.pos();
+    t.tick();
+    close(t.mv().accel.length(), 900.0, TOL, "tick 1 accel");
+    close(t.hspeed(), 298.5, TOL, "tick 1 end speed");
+    close(before.z - t.pos().z, 4.325625, TOL, "tick 1 horizontal distance");
+}
+
+#[test]
+fn case_16_hold_jump() {
+    let mut t = T::standing();
+    t.keys().jump = true;
+    let mut jumps = 0;
+    for _ in 0..120 {
+        let was = t.mv().in_jump;
+        t.tick();
+        jumps += (!was && t.mv().in_jump) as u32;
+    }
+    assert_eq!(jumps, 1, "holding jump jumps once");
+
+    // Case 13's timing: contact on tick 41, landing on 42; up on 43, the
+    // press on 44 jumps.
+    let mut t = T::standing();
+    t.keys().jump = true;
+    t.tick();
+    t.keys().jump = false;
+    t.ticks(41); // through tick 42
+    assert!(!t.mv().in_jump);
+    t.keys().jump = false;
+    t.tick(); // 43: up on the ground
+    t.keys().jump = true;
+    t.tick(); // 44
+    assert!(t.mv().in_jump, "the second jump on tick 44");
+
+    // Released only during the jump, pressed again on 43: too early.
+    let mut t = T::standing();
+    t.keys().jump = true;
+    t.tick();
+    t.keys().jump = false;
+    t.ticks(41);
+    t.keys().jump = true;
+    t.ticks(3);
+    assert!(!t.mv().in_jump, "the key must be up for a grounded tick first");
+}
+
+#[test]
+fn case_17_jump_while_standing_up() {
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    t.ticks(20);
+    assert_eq!(t.mv().crouch_rate, 1.0);
+    t.keys().crouch = false;
+    t.keys().jump = true;
+    for _ in 0..30 {
+        t.tick();
+        assert!(!t.mv().in_jump, "no jump while standing up nor after");
+    }
+    assert_eq!(t.mv().crouch_rate, 0.0);
+    t.keys().jump = false;
+    t.tick();
+    t.keys().jump = true;
+    t.tick();
+    assert!(t.mv().in_jump, "a new press after standing jumps");
+}
+
+fn in_the_air() -> T {
+    T::new(vec![floor()], Vec3::new(0.0, 5000.0, 0.0))
+}
+
+#[test]
+fn case_18_air_fall() {
+    // `in_the_air` ran one tick already: compare from a fresh start.
+    let mut t = in_the_air();
+    let y0 = t.pos().y + 0.061875; // undo the first tick (from rest: -0.061875)
+    close(t.vel().y, -16.5, TOL, "after tick 1");
+    t.ticks(19);
+    close(y0 - t.pos().y, 48.2625, TOL_SUM, "fallen after 20 ticks");
+    close(t.vel().y, -330.0, TOL, "after 20 ticks");
+    t.ticks(29);
+    close(y0 - t.pos().y, 294.0919, TOL_SUM, "after 49 ticks");
+    t.tick();
+    close(y0 - t.pos().y, 306.2813, TOL_SUM, "after 50 ticks");
+    close(t.vel().y, -825.0, TOL, "after 50 ticks");
+}
+
+#[test]
+fn case_19_air_control_from_rest() {
+    let map = vec![floor()];
+    let mut t = T::new(map, Vec3::new(0.0, 5000.0, 0.0));
+    // A fresh start in the air: zero what the first tick did.
+    t.sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(t.p).unwrap().0 = Vec3::ZERO;
+    let start = t.pos();
+    t.forward(true);
+    t.tick();
+    assert!(!t.mv().in_jump);
+    close(t.mv().accel.xz().length(), 500.0, TOL, "tick 1 accel");
+    close(t.hspeed(), 7.5, TOL, "tick 1 speed");
+    close(start.z - t.pos().z, 0.028125, TOL, "tick 1 distance");
+    t.tick();
+    close(t.mv().accel.xz().length(), 590.0, TOL, "tick 2 accel");
+    close(t.hspeed(), 16.35, TOL, "tick 2 speed");
+    close(start.z - t.pos().z, 0.173813, TOL, "distance after tick 2");
+    t.tick();
+    close(t.mv().accel.xz().length(), 680.0, TOL, "tick 3 accel");
+    close(t.hspeed(), 26.55, TOL, "tick 3 speed");
+}
+
+/// Case 20. In a jump the crouched air accel is 1500 x 0.1 = 150, and like
+/// every acceleration it is scaled by the jump factor while that is below
+/// 1 (spec "Acceleration"; the case's "+2.25 u/s per tick" is for j = 1:
+/// an open question).
+#[test]
+fn case_20_crouched_air_control() {
+    let mut t = T::standing();
+    t.keys().jump = true;
+    t.tick();
+    t.keys().jump = false;
+    t.keys().crouch = true;
+    t.tick();
+    t.forward(true);
+    t.tick(); // not the moving start: the jump flag started it
+    for _ in 0..10 {
+        let j = t.mv().jump_factor;
+        let before = t.hspeed();
+        t.tick();
+        assert!(t.mv().in_jump);
+        close(t.hspeed() - before, 150.0 * j * 0.015, TOL, "in a jump: +150 j dt per tick");
+    }
+
+    let mut t = in_the_air();
+    t.keys().crouch = true;
+    t.forward(true);
+    t.tick(); // the moving start: 500
+    // +22.5 a tick while under the crouch-blended limit (ticks 2-4).
+    for _ in 0..3 {
+        let before = t.hspeed();
+        t.tick();
+        assert!(!t.mv().in_jump);
+        close(t.mv().accel.xz().length(), 1500.0, TOL, "walked off: 1500");
+        close(t.hspeed() - before, 22.5, TOL, "walked off: +22.5 per tick");
+    }
+}
+
+// --- Cases 21-26: crouching ---
+
+#[test]
+fn case_21_crouch_rate() {
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    for (n, want) in [0.259615, 0.463208, 0.618555, 0.733433, 0.815619, 0.872890, 0.913022, 0.943794, 0.972982, 1.0]
+        .into_iter()
+        .enumerate()
+    {
+        t.tick();
+        close(t.mv().crouch_rate, want, 2e-6, &format!("rate after tick {} down", n + 1));
+    }
+    t.ticks(30);
+    t.keys().crouch = false;
+    for (n, want) in [0.740385, 0.536792, 0.381445, 0.266567, 0.184381, 0.127110, 0.086978, 0.056206, 0.027018, 0.0]
+        .into_iter()
+        .enumerate()
+    {
+        t.tick();
+        close(t.mv().crouch_rate, want, 2e-6, &format!("rate after tick {} up", n + 1));
+    }
+}
+
+#[test]
+fn case_22_crouch_hull_and_speed() {
+    let mut t = T::standing();
+    let y0 = t.pos().y;
+    t.keys().crouch = true;
+    t.tick();
+    close(t.mv().half_height, 47.40385, TOL, "half-height on tick 1");
+    close(y0 - t.pos().y, 2.59615, TOL, "the centre moves down, feet stay");
+    close(t.mv().speed_limit, 64.8077, TOL, "limit on tick 1");
+    t.ticks(15);
+    close(t.mv().half_height, 40.0, TOL, "fully crouched");
+    close(y0 - t.pos().y, 10.0, TOL, "fully crouched centre");
+    close(t.mv().speed_limit, 50.0, TOL, "limit when full");
+}
+
+#[test]
+fn case_23_crouch_jump() {
+    let jump = |crouch: bool| {
+        let mut t = T::standing();
+        t.keys().jump = true;
+        t.ticks(19);
+        t.keys().crouch = crouch;
+        t.tick(); // tick 20, the apex
+        t.ticks(9);
+        (t.pos().y, t.mv().half_height)
+    };
+    let (plain, plain_h) = jump(false);
+    let (crouched, crouched_h) = jump(true);
+    close(crouched_h, 40.0, TOL, "half-height after 10 crouch ticks");
+    close(crouched, plain, TOL_SUM, "the centre's path doesn't change");
+    close((crouched - crouched_h) - (plain - plain_h), 10.0, TOL_SUM, "feet 10 u higher");
+}
+
+#[test]
+fn case_24_crouch_tap_delay() {
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    t.tick(); // pressed at this tick's time
+    t.keys().crouch = false;
+    // Ticks 15, 30, ..., 90 ms after the press keep it; 105 ms clears it.
+    for n in 1..=6 {
+        t.tick();
+        assert!(t.mv().crouch, "{} ms after the press: still set", n * 15);
+    }
+    t.tick();
+    assert!(!t.mv().crouch, "105 ms after the press: cleared");
+}
+
+/// Keys of case 25: held 1-7, up 8-14, held 15-21, up 22-28, held 29-35,
+/// up 36-42, held 43 on.
+fn spam_key(tick: u32) -> bool {
+    matches!(tick, 1..=7 | 15..=21 | 29..=35) || tick >= 43
+}
+
+#[test]
+fn case_25_crouch_spam() {
+    let mut t = T::standing();
+    // Running (not still) before and during.
+    t.steady_forward();
+    let mut rate = Vec::new();
+    let mut lockout = Vec::new();
+    let mut slowdown = Vec::new();
+    let mut locked = Vec::new();
+    let mut flag = Vec::new();
+    for tick in 1..=200 {
+        t.keys().crouch = spam_key(tick);
+        t.tick();
+        let m = t.mv();
+        rate.push(m.crouch_rate);
+        lockout.push(m.lockout);
+        slowdown.push(m.slowdown);
+        locked.push(m.crouch_locked);
+        flag.push(m.crouch);
+    }
+    let after = |v: &[f32], tick: usize| v[tick - 1];
+    for (tick, want) in [(1, 0.6), (14, 0.73), (15, 0.33), (28, 0.46), (29, 0.06), (42, 0.19), (43, 0.0)] {
+        close(after(&lockout, tick), want, 1e-4, &format!("lock-out after tick {tick}"));
+    }
+    assert!(!locked[41] && locked[42], "lock-out begins on tick 43");
+    close(after(&slowdown, 1), 0.5, 1e-5, "slowdown after tick 1");
+    close(after(&slowdown, 15), 0.0, 1e-5, "slowdown after tick 15");
+    for (tick, want) in [(1, 0.259615), (7, 0.680425), (14, 0.163968), (15, 0.259615), (28, 0.207692), (43, 0.259615), (44, 0.0)] {
+        close(after(&rate, tick), want, 1e-5, &format!("crouch rate after tick {tick}"));
+    }
+    assert!(flag[43], "tick 44: still set (rate not 0 at its start)");
+    assert!(flag[44..].iter().take(50).all(|f| !f), "crouch flag cleared from tick 45 while held");
+    // Lock-out ends after about 1.5 s on the ground (100 ticks of +0.01).
+    let ends = locked.iter().enumerate().skip(43).find(|(_, l)| !**l).map(|(i, _)| i + 1);
+    let ends = ends.expect("lock-out ended");
+    assert!((142..=144).contains(&ends), "lock-out ends on tick {ends} (43 + 100, +-1)");
+}
+
+#[test]
+fn case_26_crouch_spam_while_still() {
+    let mut t = T::standing();
+    t.ticks(20);
+    for tick in 1..=60 {
+        t.keys().crouch = spam_key(tick);
+        t.tick();
+        let m = t.mv();
+        assert_eq!((m.slowdown, m.lockout, m.crouch_locked), (1.0, 1.0, false), "tick {tick}");
+    }
+}
+
+// --- Cases 27-30: sprint ---
+
+/// Holding sprint and forward drains 30 a second (0.45 a tick).
+#[test]
+fn case_27_sprint_drain() {
+    let mut t = T::standing();
+    t.insert(movement_data().character.clone());
+    t.forward(true);
+    t.keys().sprint = true;
+    // 1.000 s is 66.7 ticks: 67 ticks drain 30.15 (tolerance: one tick).
+    t.ticks(67);
+    close(t.mv().stamina, 70.0, 0.45, "gauge after 1 s");
+    assert!(t.mv().sprint);
+    // The flag drops when the gauge is below 1: tick 221 (3.315 s).
+    t.ticks(220 - 67);
+    assert!(t.mv().sprint, "sprinting on tick 220 (gauge {})", t.mv().stamina);
+    t.tick();
+    t.tick();
+    assert!(!t.mv().sprint, "sprint over after 3.3 s");
+    assert_eq!(t.mv().stamina_state, StaminaState::Stopped);
+    t.ticks(30);
+    assert_eq!(t.mv().stamina, 0.0, "pinned at 0 while the key stays held");
+}
+
+#[test]
+fn case_28_sprint_recover() {
+    let mut t = T::standing();
+    t.insert(movement_data().character.clone());
+    t.mv_mut().stamina = 0.0;
+    t.ticks(133); // 1.995 s
+    close(t.mv().stamina, 50.0, 0.375, "gauge after 2 s");
+    t.ticks(134); // 4.005 s
+    assert_eq!(t.mv().stamina, 100.0, "full after 4 s");
+    t.ticks(20);
+    assert_eq!(t.mv().stamina, 100.0, "stays full");
+}
+
+#[test]
+fn case_29_sprint_blocked() {
+    type Blocked = (&'static str, fn(&mut T));
+    let blocked: [Blocked; 4] = [
+        ("walk key held", |t| t.keys().walk = true),
+        ("crouch held", |t| t.keys().crouch = true),
+        ("back held", |t| t.keys().move_axis = Vec2::new(0.0, -1.0)),
+        ("strafe only", |t| t.keys().move_axis = Vec2::new(1.0, 0.0)),
+    ];
+    for (what, setup) in blocked {
+        let mut t = T::standing();
+        t.insert(movement_data().character.clone());
+        t.forward(true);
+        t.keys().sprint = true;
+        // `+speed` sets walk with sprint: walk alone is the walk key.
+        if what == "walk key held" {
+            t.keys().sprint = false;
+        }
+        setup(&mut t);
+        t.ticks(5);
+        assert!(!t.mv().sprint, "{what}: no sprint");
+    }
+    // Crouch rate above 0 (standing up): no sprint until it is 0.
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    t.ticks(15);
+    t.keys().crouch = false;
+    t.forward(true);
+    t.keys().sprint = true;
+    t.tick();
+    assert!(t.mv().crouch_rate > 0.0 && !t.mv().sprint, "standing up: no sprint");
+    t.ticks(15);
+    assert!(t.mv().sprint, "sprint once fully up");
+    // Zoomed: the flag may be on but the limit is the walk speed.
+    t.insert(chimera_sim::weapon::Zoomed { fov: 40.0, scope: true });
+    t.tick();
+    assert!(t.mv().sprint);
+    close(t.mv().speed_limit, 70.0, TOL, "zoomed limit");
+}
+
+#[test]
+fn case_30_sprint_speed() {
+    let mut t = T::standing();
+    let mut c = movement_data().character.clone();
+    for g in &mut c.gear {
+        g.move_penalty = 0.0;
+    }
+    t.insert(c);
+    t.keys().sprint = true;
+    t.forward(true);
+    t.ticks(60);
+    let before = t.pos();
+    t.tick();
+    close(t.mv().speed_limit, 399.0, TOL, "sprint limit");
+    close(t.hspeed(), 413.5236, TOL, "steady end speed");
+    close(before.z - t.pos().z, 6.09529, TOL, "distance per tick");
+}
+
+// --- Cases 31-35: falls, steps, slopes ---
+
+#[test]
+fn case_31_fall_damage() {
+    let data = movement_data();
+    for (drop, want) in [(299.0, None), (300.0, Some(0.0)), (400.0, Some(50.0)), (500.0, Some(100.0)), (700.0, Some(200.0)), (1000.0, Some(350.0))] {
+        assert_eq!(movement::fall_damage(drop, data), want, "drop {drop}");
+    }
+    // Landing from 400 u: crush damage, upward, from the player itself.
+    let mut t = T::new(vec![floor()], on(0.0, 400.0, 0.0));
+    t.ticks(100);
+    let d = t.damage();
+    assert_eq!(d.len(), 1, "one landing: {d:?}");
+    close(d[0].amount * data.health_points, 50.0, 0.01, "damage from 400 u");
+    assert_eq!((d[0].kind, d[0].dir, d[0].attacker), (DamageKind::Crush, Vec3::Y, Some(t.p)));
+    // 299 u: none.
+    let mut t = T::new(vec![floor()], on(0.0, 299.0, 0.0));
+    t.ticks(100);
+    assert!(t.damage().is_empty());
+}
+
+#[test]
+fn case_32_jump_off_fall() {
+    // A 300 u pillar, 40 u wide: jump and run off it.
+    // The hull (radius 15) rests 1 u over the pillar's -Z edge (z = -20).
+    let pillar = block(Vec3::new(0.0, 150.0, 0.0), Vec3::new(20.0, 150.0, 20.0));
+    let mut t = T::new(vec![floor(), pillar], on(0.0, 300.0, -34.0));
+    t.tick();
+    assert!(t.mv().on_ground);
+    t.keys().jump = true;
+    t.forward(true);
+    t.ticks(150);
+    let d = t.damage();
+    assert_eq!(d.len(), 1, "{d:?}");
+    close(d[0].amount * movement_data().health_points, 25.36875, 0.01, "damage from the apex");
+}
+
+#[test]
+fn case_33_stairs_down() {
+    // 20 steps of 16 u going down toward -Z, 32 u deep each.
+    let mut map = vec![floor()];
+    for i in 0..20 {
+        let top = (20 - i) as f32 * 16.0;
+        map.push(block(Vec3::new(0.0, top / 2.0, -(i as f32) * 32.0), Vec3::new(100.0, top / 2.0, 16.0)));
+    }
+    let mut t = T::new(map, on(0.0, 320.0, 0.0));
+    t.forward(true);
+    t.ticks(400);
+    assert!(t.pos().y < 100.0, "walked down: {}", t.pos());
+    assert!(t.damage().is_empty(), "{:?}", t.damage());
+}
+
+#[test]
+fn case_34_step_up() {
+    for (height, climbs) in [(30.0, true), (31.0, false)] {
+        let wall = block(Vec3::new(0.0, height / 2.0, -200.0), Vec3::new(200.0, height / 2.0, 100.0));
+        let mut t = T::new(vec![floor(), wall], on(0.0, 0.0, 0.0));
+        t.forward(true);
+        // 0.6 s: up against the box, or on it (not yet off its far side).
+        t.ticks(40);
+        let feet = t.pos().y - t.mv().half_height;
+        assert!(!t.mv().in_jump);
+        if climbs {
+            close(feet, height, 2.0 * SKIN, "on top of the 30 u box");
+        } else {
+            close(feet, 0.0, 2.0 * SKIN, "blocked by the 31 u box");
+            assert!(t.pos().z > -86.0, "stopped at the box: {}", t.pos());
+        }
+    }
+}
+
+/// A slope rising toward -Z whose normal has `ny` as its Y.
+fn slope(ny: f32) -> Block {
+    let tilt = ny.acos();
+    Block {
+        centre: Vec3::new(0.0, 0.0, 0.0),
+        half: Vec3::new(300.0, 10.0, 1000.0),
+        tilt,
+    }
+}
+
+#[test]
+fn case_35_slope() {
+    for (ny, walkable) in [(0.70f32, false), (0.71, true)] {
+        // Above the slope's top face (n.y y + n.z z = 10) at z = -100.
+        let surface = (10.0 + (1.0 - ny * ny).sqrt() * 100.0) / ny;
+        let mut t = T::new(vec![floor(), slope(ny)], Vec3::new(0.0, surface + 100.0, -100.0));
+        // Fall onto it, then a tick to count it.
+        for _ in 0..60 {
+            if t.mv().standing.is_some() {
+                break;
+            }
+            t.tick();
+        }
+        if walkable {
+            t.ticks(40);
+        } else {
+            t.tick();
+        }
+        let m = t.mv();
+        let n = m.standing.map(|s| s.normal.y);
+        assert!(n.is_some_and(|n| (n - ny).abs() < 1e-3), "on the slope ({ny}): {n:?}");
+        if walkable {
+            assert!(m.on_ground, "{ny}: ground");
+            let at = t.pos();
+            t.ticks(20);
+            assert!((t.pos() - at).length() < 0.01, "{ny}: stays put");
+            t.keys().jump = true;
+            t.tick();
+            assert!(t.mv().in_jump, "{ny}: jumps");
+        } else {
+            assert!(!m.on_ground, "{ny}: not ground");
+            let at = t.pos();
+            t.keys().jump = true;
+            t.ticks(5);
+            assert!(!t.mv().in_jump, "{ny}: jump ignored");
+            assert!(t.pos().y < at.y - 1.0, "{ny}: slides down ({} -> {})", at.y, t.pos().y);
+        }
+    }
+}
+
+// --- Case 36: the tick clock ---
+
+#[test]
+fn case_36_tick_clock() {
+    let mut c = TickClock::new(15);
+    assert_eq!(c.frame(100.0), 6);
+    let mut c = TickClock::new(15);
+    assert_eq!(c.frame(200.0), 6, "the other 100 ms is dropped");
+    let mut c = TickClock::new(15).with_remainder(10.0);
+    assert_eq!(c.frame(20.0), 2);
+    assert_eq!(c.fraction(), 0.0);
+    assert_eq!(TICK_INTERVAL, 0.015, "the game's tick is the movement's");
+}
+
+// --- Edge cases the spec calls out ---
+
+#[test]
+fn edge_moving_start_in_the_air_uses_the_start_accel() {
+    let mut t = T::standing();
+    t.keys().jump = true;
+    t.tick();
+    t.keys().jump = false;
+    t.tick();
+    t.tick();
+    // The moving flag is off now (no keys); forward starts it in the air.
+    t.forward(true);
+    t.tick();
+    close(t.mv().accel.length(), 500.0 * 0.336, 0.01, "500 x the jump factor (0.336)");
+}
+
+#[test]
+fn edge_crouch_release_without_headroom() {
+    // A ceiling 90 u above the floor: crouched fits (80), standing (100) not.
+    let ceiling = block(Vec3::new(0.0, 140.0, -400.0), Vec3::new(200.0, 50.0, 300.0));
+    let mut t = T::new(vec![floor(), ceiling], on(0.0, 0.0, 0.0));
+    t.keys().crouch = true;
+    t.forward(true);
+    t.ticks(300);
+    assert!(t.pos().z < -150.0, "crouch-walked under: {}", t.pos());
+    t.forward(false);
+    t.keys().crouch = false;
+    t.ticks(20);
+    assert!(t.mv().crouch && t.mv().crouch_rate == 1.0, "stays crouched under the ceiling");
+}
+
+#[test]
+fn edge_speed_limit_change_mid_air() {
+    let mut t = T::standing();
+    t.insert(movement_data().character.without_gear());
+    t.keys().sprint = true;
+    t.steady_forward();
+    t.keys().jump = true;
+    t.tick();
+    t.keys().sprint = false;
+    t.tick();
+    close(t.mv().speed_limit, 285.0, TOL, "the run limit at once");
+    assert!(t.hspeed() < 285.0 + 0.015 * 3000.0 * 0.3 + TOL, "clamped to it: {}", t.hspeed());
+}
+
+#[test]
+fn edge_landing_keeps_horizontal_speed() {
+    let mut t = T::standing();
+    t.steady_forward();
+    t.keys().jump = true;
+    t.tick();
+    t.keys().jump = false;
+    t.ticks(40); // contact on tick 41
+    let speed = t.hspeed();
+    assert!(speed > 285.0, "air speed {speed}");
+    t.tick();
+    assert!(t.mv().on_ground);
+    assert!(t.hspeed() > 285.0, "no landing speed loss: {}", t.hspeed());
+}
+
+#[test]
+fn edge_penalty_is_clamped() {
+    let mut t = T::standing();
+    t.insert(HeldMovePenalty { penalty: -3.0, mod_factor: 0.0 });
+    t.forward(true);
+    t.tick();
+    close(t.mv().speed_limit, 570.0, TOL, "at most double");
+}
+
+#[test]
+fn the_entitys_collider_follows_the_hull() {
+    let mut t = T::standing();
+    let s = movement_data().meters_per_unit;
+    let half = |t: &T| {
+        t.sim
+            .app
+            .world()
+            .get::<avian3d::prelude::Collider>(t.p)
+            .unwrap()
+            .shape_scaled()
+            .as_cylinder()
+            .map(|c| c.half_height / s)
+    };
+    close(half(&t).unwrap(), 50.0, TOL, "standing");
+    t.keys().crouch = true;
+    t.ticks(15);
+    close(half(&t).unwrap(), 40.0, TOL, "crouched");
+    let state = t.sim.state(t.p);
+    assert!(state.crouching);
+    close(state.hull_max.y / s, 40.0, TOL, "hull reported");
+}
+
+#[test]
+fn the_data_parses() {
+    let d = movement_data();
+    assert_eq!(d.run_forward, 285.0);
+    assert_eq!(d.character.stamina_max(), 100.0);
+    let _: &CaCharacter = &d.character;
+}
+
+
+
