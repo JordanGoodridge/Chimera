@@ -375,12 +375,14 @@ fn draw_bars(
 }
 
 /// The mode's name as the game words it (`#Spec_Mode3`... in the
-/// spectator menu's list: first person, chase camera, free look).
+/// spectator menu's list: first person, chase camera, free look; fixed
+/// view, `#Spec_Mode2`).
 fn spec_mode_text(menus: &crate::map::hud::GameMenus, mode: SpecMode) -> String {
     let token = match mode {
         SpecMode::InEye => "Spec_Mode3",
         SpecMode::Chase => "Spec_Mode4",
         SpecMode::Roaming => "Spec_Mode5",
+        SpecMode::Fixed => "Spec_Mode2",
     };
     menus.string(token, mode.name()).to_string()
 }

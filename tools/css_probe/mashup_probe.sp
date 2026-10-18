@@ -119,6 +119,10 @@ public void OnPluginStart()
         "mashup_botcmd <userid> <command...>: run a client command as that bot (buy, drop, use; pickup and buy sound captures)");
     RegServerCmd("mashup_mt", Command_Mt,
         "mashup_mt <userid> [respawn 0|1]: that player's move type, life state, health, team and origin; 1 first respawns it (CS_RespawnPlayer)");
+    RegServerCmd("mashup_gain", Command_Gain,
+        "mashup_gain <soundlevel> <distance>...: the engine's distance gain for that level at each distance (sounds.md Q1)");
+    RegServerCmd("mashup_netprop", Command_NetProp,
+        "mashup_netprop <index> <sendprop> [f|v]: a networked prop of any entity (int, float or vector), e.g. m_flFlashDuration f");
     HookEvent("weapon_fire", Event_Any);
     HookEvent("bullet_impact", Event_Any);
     HookEvent("player_hurt", Event_Any);
@@ -1106,4 +1110,42 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
         g_out.WriteLine("F %d %.4f %.2f %d %d", g_cursor, flash, GetEntPropFloat(client, Prop_Send, "m_flFlashMaxAlpha"),
             GetClientHealth(client), GetEntProp(client, Prop_Send, "m_ArmorValue"));
     }
+}
+
+// The engine's distance gain for a sound level (sounds.md Q1, added
+// 2026-10-18): "mashup_gain <level> <d>..." prints "gain <level> <d> <g>"
+// per distance.
+public Action Command_Gain(int args)
+{
+    int level = GetCmdArgInt(1);
+    for (int i = 2; i <= args; i++) {
+        float d = GetCmdArgFloat(i);
+        PrintToServer("gain %d %.1f %.6f", level, d, GetDistGainFromSoundLevel(level, d));
+    }
+    return Plugin_Handled;
+}
+
+// A networked prop of any entity (added 2026-10-18; mashup_getprop reads
+// datamap fields only): "mashup_netprop <index> <prop> [f|v]".
+public Action Command_NetProp(int args)
+{
+    int e = GetCmdArgInt(1);
+    char prop[64];
+    char kind[4];
+    GetCmdArg(2, prop, sizeof(prop));
+    GetCmdArg(3, kind, sizeof(kind));
+    if (!IsValidEntity(e) || !HasEntProp(e, Prop_Send, prop)) {
+        PrintToServer("mashup_netprop: no %s on %d", prop, e);
+        return Plugin_Handled;
+    }
+    if (kind[0] == 'f') {
+        PrintToServer("%s %.4f", prop, GetEntPropFloat(e, Prop_Send, prop));
+    } else if (kind[0] == 'v') {
+        float v[3];
+        GetEntPropVector(e, Prop_Send, prop, v);
+        PrintToServer("%s %.3f %.3f %.3f", prop, v[0], v[1], v[2]);
+    } else {
+        PrintToServer("%s %d", prop, GetEntProp(e, Prop_Send, prop));
+    }
+    return Plugin_Handled;
 }

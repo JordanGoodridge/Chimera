@@ -25,7 +25,7 @@ use crate::{
     weapon::{
         data::WeaponData,
         grenade::{
-            Blast, BlastHearing, Detonated, ExplosionRule, Flash, Flight, GrenadeEffect, GrenadeKind, RagdollBlast, Shake, Smoke,
+            Blast, BlastHearing, BlastShield, Detonated, ExplosionRule, Flash, Flight, GrenadeEffect, GrenadeKind, RagdollBlast, Shake, Smoke,
             SmokeCloud, ThrowRule, Throwable,
         },
     },
@@ -174,6 +174,16 @@ pub fn he_blast() -> Blast {
             ring: EXPLOSION_RING,
         }),
         shake: Some(he_shake()),
+        // Measured 2026-10-18 (grenades.md Q10): a character hidden
+        // behind a crate kept 0.767 of the blast (an HE's and an
+        // env_explosion's alike), behind a player 0.733; a crate over
+        // its head only 0.813, over one side 0.977-0.79.
+        shield: Some(BlastShield {
+            prop: 0.767,
+            character: 0.733,
+            head: 0.8,
+        }),
+        through_walls: false,
     }
 }
 
@@ -346,6 +356,10 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
             model: flash_model,
             sound: Some("Flashbang.Explode".into()),
             hearing: Some(flash_hearing),
+            // Measured 2026-10-18 (grenades.md Q12): a flash going off in
+            // a smoke cloud 40 units from the victim blinded it 3.81 s
+            // instead of 6.80 (three throws), at full whiteness.
+            through_smoke: 0.56,
         }),
         GrenadeData::Smoke => GrenadeEffect::Smoke(smoke()),
     };

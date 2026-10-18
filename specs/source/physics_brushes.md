@@ -371,7 +371,12 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
 
 ## Open questions
 
-1. **Shrunk or unshrunk volume**: is the stored mass of a 64³ physbox
+1. **A reading (2026-10-18, probe server, `physics_debug_entity`):**
+   test_hardware's func_physbox `e3tech_prop_tvcave_pushovertv` (`*15`,
+   two convex pieces, material glass: density 2700, thickness 0.5) has
+   mass 72.5 kg, inertia 3.72, 2.26, 3.58, damping 0.1 and 0.1; its
+   brushes' volume, to compare, needs our BSP reader (a spec session).
+   **Shrunk or unshrunk volume**: is the stored mass of a 64³ physbox
    based on 63³ or 64³ (or something else after vphysics' convex
    rebuild)? Read the "mass" value from a compiled BSP of a test map with
    one cube physbox of a known surface property (or from a community map
@@ -386,7 +391,11 @@ asleep". Inputs **EnableMotion**, **DisableMotion**, **Enable** (show),
    I⁻¹(r × F) in deg/s². Probe: a thruster at the centre of a 50 kg box in
    the air with sv_gravity unchanged: measure velocity change over 1 s via
    the server probe.
-4. **Player +use pickup in CS:S**: can a CS:S player pick up a light
+4. **Answered for props (2026-10-18, probe server):** a bot looking at a
+   20 kg `plasticbucket001a` prop_physics_multiplayer on de_dust2 with
+   +use held, then backing off 170 units with it still held, left the
+   bucket where it was: no pickup (no stock map has a func_physbox but
+   test_hardware; the base player's rule, as ours). Was: **Player +use pickup in CS:S**: can a CS:S player pick up a light
    func_physbox with +use (base player: no)? Test on a listen server.
 5. **func_physbox_multiplayer on the CS:S client**: does the client treat
    mode 0 as non-solid in its predicted movement (no jitter)? Walk into one

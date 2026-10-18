@@ -10,7 +10,7 @@
 //!
 //! `movecmp fuzz` plays seeded random inputs (keys, jump, duck, turning and
 //! pitch in bursts) from ladder spots on de_nuke and water spots on
-//! de_aztec, and fails when a run's position drifts past a tolerance or the
+//! de_aztec (first, per ladder, a climb and three jumps off it), and fails when a run's position drifts past a tolerance or the
 //! water level or ladder state disagree.
 //!
 //! `movecmp brushes <map> <x> <y> <z> [radius]` lists the collision brushes
@@ -726,6 +726,28 @@ fn fuzz_scenarios(map_name: &str, map: &Arc<MapData>, f: &Fuzz, only: Option<&st
             }
         })
         .collect();
+    // Per ladder: climb a little, then jump off it (the 270 units/s push
+    // away, movement.md Q16), holding nothing, back or forward.
+    for (i, (_, start, yaw)) in starts.iter().filter(|(kind, ..)| *kind == "ladder").enumerate() {
+        for (how, key) in [("idle", 0i8), ("back", -1), ("forward", 1)] {
+            let mut inputs = vec![Input::idle(*yaw); 10];
+            inputs.extend(vec![Input::idle(*yaw).look(-30.0).forward(); 50]);
+            let held = |i: Input| match key {
+                1 => i.forward(),
+                -1 => i.back(),
+                _ => i,
+            };
+            inputs.push(held(Input::idle(*yaw).look(-30.0)).jump());
+            inputs.extend(vec![held(Input::idle(*yaw).look(-30.0)); 40]);
+            out.push(Scenario {
+                name: format!("ladderjump_{how}_{map_name}_{i}"),
+                map: map_name.to_string(),
+                start: *start,
+                yaw: *yaw,
+                inputs,
+            });
+        }
+    }
     let mut rng = Rng(f.seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
     out.extend((0..f.runs).map(|run| {
         let (kind, start, yaw0) = starts[run % starts.len()];

@@ -713,6 +713,33 @@ fn sand_and_metal_keep_three_tenths_of_the_damage() {
 }
 
 #[test]
+fn a_prop_crossed_for_24_units_or_more_counts_its_metal_twice() {
+    // Measured 2026-10-18 (weapons.md M13): an oil drum keeps 0.3 through
+    // chords to 22.4 units and 0.09 through 25-28; the world doesn't.
+    let through = |thick: f32, entity: bool| {
+        let mut sim = sim();
+        let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 6.0, placeholder::ID);
+        wall(&mut sim, 3.0, thick, "metal");
+        if entity {
+            let wall = sim
+                .app
+                .world_mut()
+                .query_filtered::<Entity, With<crate::stack::map::PropSurface>>()
+                .single(sim.app.world())
+                .unwrap();
+            sim.app.world_mut().entity_mut(wall).insert(crate::stack::map::PropEntity(0));
+        }
+        shoot_chest(&mut sim, shooter, target);
+        lost_hp(&sim, target)
+    };
+    assert_eq!(through(20.0, true), 10);
+    // 36 x 0.98^(118/500) x 0.09 x 0.98^(220/500) = 3.2.
+    assert_eq!(through(26.0, true), 3);
+    assert_eq!(through(26.0, false), 10);
+}
+
+#[test]
 fn computers_stop_bullets_as_concrete_does() {
     // Measured 2026-10-18: a 13.2-unit TV passes the M4A1 (35) and not the
     // Deagle (30): scale 0.4, the AK-47's limit 15.6; damage x 0.45.

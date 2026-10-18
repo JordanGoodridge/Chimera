@@ -7,7 +7,8 @@
 //! func_door(_rotating), func_button, func_movelinear, func_rotating,
 //! func_tracktrain + path_track, func_brush, brushes parented to a mover; the
 //! +use search; `push_players`, a pusher step's push on players, shared with a
-//! network client's prediction.
+//! network client's prediction; doors' move sounds follow the door and stop on
+//! arrival (`move_sound`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Pushers: rotated brushes keep only
 //! their face planes (no bevels for box sweeps), pushes are tested against the
@@ -823,13 +824,37 @@ fn sound(w: &mut LogicWorld, id: EntId, entry: &str) {
 
 // ------------------------------------------------------------ doors
 
+/// A door's move sound: it follows the door and is stopped on arrival
+/// (`stop_move_sound`), as CS:S's (measured 2026-10-18, doors_buttons.md
+/// Q6: the move sound starts on the activation tick, and on the arrival
+/// tick, open or closed, it is stopped and the arrival sound plays).
+fn move_sound(w: &mut LogicWorld, id: EntId, entry: &str) {
+    if entry.is_empty() {
+        return;
+    }
+    let at = w.get(id).and_then(|e| pusher(&e.class)).map_or(Vec3::ZERO, |p| p.origin);
+    w.effects.push(Effect::AmbientStart {
+        id,
+        entry: entry.to_string(),
+        at,
+        source: Some(id),
+        volume: None,
+        pitch: None,
+        level: None,
+    });
+}
+
+fn stop_move_sound(w: &mut LogicWorld, id: EntId) {
+    w.effects.push(Effect::AmbientStop { id });
+}
+
 fn door_open(w: &mut LogicWorld, id: EntId) {
     let flags = w.get(id).map_or(0, |e| e.spawnflags);
     let hulls = w.get(id).map(|e| e.hulls.clone()).unwrap_or_default();
     let Some(d) = door(w, id).cloned() else { return };
     let silent = flags & 4096 != 0;
     if !silent && !d.push.moving() {
-        sound(w, id, &d.move_sound);
+        move_sound(w, id, &d.move_sound);
     }
     let target = if d.rotating { d.open_angles(w, flags, &hulls) } else { d.p2 };
     let dd = door(w, id).unwrap();
@@ -855,7 +880,7 @@ fn door_close(w: &mut LogicWorld, id: EntId) {
         d.push.move_to(p1, speed, Done::DoorClosed);
     }
     if flags & 4096 == 0 && !moving {
-        sound(w, id, &snd);
+        move_sound(w, id, &snd);
     }
     w.fire_output(id, "OnClose", Some(Who::Ent(id)), Value::Void);
 }
@@ -1477,6 +1502,7 @@ fn move_done(w: &mut LogicWorld, id: EntId, done: Done) {
             if !toggle && wait >= 0.0 {
                 d.push.wait(wait, Done::DoorWaited);
             }
+            stop_move_sound(w, id);
             sound(w, id, &arrive);
             w.fire_output(id, "OnFullyOpen", Some(Who::Ent(id)), Value::Void);
         }
@@ -1485,6 +1511,7 @@ fn move_done(w: &mut LogicWorld, id: EntId, done: Done) {
             let Some(d) = door(w, id) else { return };
             d.state = DoorState::Closed;
             let (user, arrive) = (d.last_user, d.arrive_sound.clone());
+            stop_move_sound(w, id);
             sound(w, id, &arrive);
             w.fire_output(id, "OnFullyClosed", user, Value::Void);
         }

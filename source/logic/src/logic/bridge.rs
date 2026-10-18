@@ -1359,6 +1359,7 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                     sound: None,
                     weapon: None,
                     round_scorch: false,
+                    through_walls: false,
                     bell_sigma: None,
                     // No weapon's ratio: armour as from a trigger_hurt,
                     // health half (measured on env_explosion 2026-10-17,
@@ -2334,6 +2335,7 @@ fn prop_broke(world: &mut World, id: EntId, sound: Option<String>, explode: Opti
             sound: x.sound,
             weapon: None,
             round_scorch: false,
+            through_walls: false,
             bell_sigma: None,
             armor_ratio: None,
         });

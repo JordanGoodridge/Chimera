@@ -52,6 +52,8 @@ pub(super) struct World<'w, 's> {
     damage: MessageWriter<'w, Damage>,
     armor: super::HitArmor<'w, 's>,
     props: Query<'w, 's, &'static PropSurface>,
+    prop_entities: Query<'w, 's, (), With<crate::map::PropEntity>>,
+    kinds: Query<'w, 's, &'static RigidBody>,
     bank: Option<Res<'w, SoundBank>>,
     grid: Option<Res<'w, SurfaceGrid>>,
     materials: Res<'w, PassMaterials>,
@@ -358,6 +360,17 @@ impl Shot<'_, '_, '_> {
         None
     }
 
+    /// A map entity or a moving body (not the world or a static prop), for
+    /// `PassMaterials::entity_twice_from`.
+    fn is_entity(&self, body: Entity) -> bool {
+        self.w.prop_entities.contains(body)
+            || self
+                .w
+                .kinds
+                .get(body)
+                .is_ok_and(|b| !matches!(b, RigidBody::Static))
+    }
+
     /// The material class of the surface hit (`MapSurface::game_material`):
     /// a prop's own surface property, else the nearest world triangle's.
     fn material_class(&self, hit: &Hit) -> Option<char> {
@@ -461,7 +474,9 @@ impl Shot<'_, '_, '_> {
                     let Some(exit) = self.solid_exit(dir, hit.distance, budget * m.scale) else {
                         break;
                     };
-                    (exit, (exit - hit.distance) / m.scale, m.damage)
+                    let thick = exit - hit.distance;
+                    let twice = thick >= self.w.materials.entity_twice_from && self.is_entity(hit.entity);
+                    (exit, thick / m.scale, if twice { m.damage * m.damage } else { m.damage })
                 };
                 if cost > budget {
                     break;

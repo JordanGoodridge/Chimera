@@ -1059,6 +1059,37 @@ fn door_opens_on_use_and_closes_after_wait() {
     assert_eq!(origin_of(&w, d).x, 100.0);
 }
 
+/// CS:S (measured 2026-10-18, doors_buttons.md Q6, cs_office's and
+/// de_prodigy's doors): the move sound starts on the activation tick and
+/// follows the door; on arrival, open and closed alike, it is stopped and
+/// the arrival sound plays, the same tick.
+#[test]
+fn a_doors_move_sound_stops_when_it_arrives() {
+    let (mut w, d) = door_world(&[("noise1", "door_move.wav"), ("noise2", "door_stop.wav")]);
+    let mut log = Vec::new();
+    w.players[0].use_key = true;
+    while w.tick <= 400 {
+        w.frame(&NoCollision);
+        w.players[0].use_key = false;
+        for e in std::mem::take(&mut w.effects) {
+            match e {
+                Effect::AmbientStart { id, entry, source, .. } if id == d => {
+                    assert_eq!(source, Some(d));
+                    log.push((w.tick - 1, format!("start {entry}")));
+                }
+                Effect::AmbientStop { id } if id == d => log.push((w.tick - 1, "stop".into())),
+                Effect::Sound { entry, .. } => log.push((w.tick - 1, entry)),
+                _ => {}
+            }
+        }
+    }
+    let at = |tick: i64| log.iter().filter(|(t, _)| *t == tick).map(|(_, s)| s.as_str()).collect::<Vec<_>>();
+    assert_eq!(at(0), ["start door_move.wav"], "{log:?}");
+    assert_eq!(at(39), ["stop", "door_stop.wav"], "{log:?}");
+    assert_eq!(at(39 + 267), ["start door_move.wav"], "{log:?}");
+    assert_eq!(at(39 + 267 + 39), ["stop", "door_stop.wav"], "{log:?}");
+}
+
 #[test]
 fn holding_use_activates_once() {
     let (mut w, d) = door_world(&[("wait", "-1"), ("spawnflags", "288")]);

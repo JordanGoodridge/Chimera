@@ -35,13 +35,13 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`games/cs_source/src/game/player_anim.rs`)
 - weapon: Spread and recoil seeded as spec 4.2 but with our own generator; command numbers are tick plus seed (`chimera/sim/src/weapon/random.rs`)
 - weapon: Penetration: fixed player budget cost and unmeasured material factors (`chimera/sim/src/weapon/mod.rs`)
-- weapon, games/cs_source: Grenades: release, fuse, HE armour, flash by distance and facing, the pin rule and death drops measured (grenades.md); flash through walls and smoke and the redraw still the template (`chimera/sim/src/weapon/grenade.rs`)
+- weapon, games/cs_source: Grenades: release, fuse, HE armour, flash by distance and facing, the pin rule and death drops measured (grenades.md); flash through walls and the redraw still the template; the blast's shield a fit (`chimera/sim/src/weapon/grenade.rs`)
 - bot: Bot awareness, navigation, tactics and grenades are our design, not CS:S's (`games/cs_source/src/bot/mod.rs`)
 - map: View models: 1 cm near plane and own depth buffer; lighting and effect looks are our choices (`chimera/present/src/render/view_model.rs`)
 - map: Ragdolls: fixed killing push, our death-pose choices and blast pushes (spec open questions); our joint solver (soft, no gyroscopic torque) and resting thresholds (`chimera/world/src/map/ragdoll.rs`)
 - movement: Placeholder movement has no step-up (stairs block it) and doesn't shrink the collider when crouching. OK for now: It gets replaced by spec-based movement.
 - movement: Ground check is one downward shape cast. OK for now: Good enough until a spec defines grounding.
-- client: Spectating numbers partly measured (bots in a SourceTV demo: specs/cs_source/spectating.md); the death cam before the freeze cam, chase distance, our "fixed" mode from general knowledge (`chimera/client/src/client/spectate.rs`)
+- client: Spectating numbers partly measured (bots in a SourceTV demo: specs/cs_source/spectating.md); the death cam before the freeze cam, chase distance from general knowledge; the fixed view holds the last pose (CS:S's the last watched player's eye) (`chimera/client/src/client/spectate.rs`)
 - client: Freeze cam distances, flash and when it starts are guesses (timings measured, server cvars) (`games/cs_source/src/ui/freeze_cam.rs`)
 - client: Target ID range, placement and smoke rule are guesses (`games/cs_source/src/ui/target_id.rs`)
 - weapon, games/cs_source: cl_autowepswitch weights from the spec's table; switching rules partly ours (`chimera/sim/src/weapon/drop.rs`)
