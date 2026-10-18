@@ -32,8 +32,37 @@ class = "C"
 scale = 0.4
 damage = 0.25
 
-# UNMEASURED (tile, grate, glass, plastic, ...): metal's scale and a
-# halved damage.
+# Damage measured 2026-10-18 (the AWP through a motion-disabled prop of
+# that material, 6-20 units): tile 0.3 (inferno's potted plant), computer
+# 0.45 (its TV), grate 0.99 (cs_office's fire extinguisher), plastic and
+# glass (pottery) 0.5. Their scales are UNMEASURED: metal's.
+[[material]]
+class = "T"
+scale = 1.0
+damage = 0.3
+
+[[material]]
+class = "P"
+scale = 1.0
+damage = 0.45
+
+[[material]]
+class = "G"
+scale = 1.0
+damage = 0.99
+
+[[material]]
+class = "L"
+scale = 1.0
+damage = 0.5
+
+[[material]]
+class = "Y"
+scale = 1.0
+damage = 0.5
+
+# UNMEASURED (vent, flesh, foliage, ...): metal's scale and a halved
+# damage.
 [default]
 scale = 1.0
 damage = 0.5

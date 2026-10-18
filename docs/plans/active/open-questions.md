@@ -198,7 +198,7 @@ listen server); about 73 class-1 items left.
 | weapons | Q2 left: the airborne inaccuracy target | 4 | the bot's jumps duck it (Part B, 2026-10-18): a human's plain jump |
 | weapons | Q3 left: silenced modes | 4 | scoped and burst measured (Part B, 2026-10-18); the bot's AI takes the silencer off: a human |
 | weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
-| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's and metal's damage factors measured (Part B, 2026-10-18); a thick entity counting twice: more props |
+| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's, metal's, tile's, computer's, grate's, plastic's and glass's damage factors measured (Part B, 2026-10-18); their thickness limits; a thick entity counting twice |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
 | weapons | Q12 left: pellet pattern, line or box traces | 1 | `bullet_impact` per pellet on a far wall, by seed |
 | weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
@@ -445,6 +445,7 @@ measured.
 | physics_props Q12: the players' push | a 1000 kg·units/s kick every 7 ticks (0.105 s) | every tick | every 0.1 s (`pushaway::PUSH_INTERVAL`) |
 | physics_constraints Q1: torque limit | breaks nothing at rest (a weld 40 units off a 30 kg crate held at torquelimit 1); a weld's force limit as a ball socket's | the torque as a weight × units | no torque breaking |
 | weapons Q7: sand's damage factor | 0.30 (AWP, AK-47, M4A1 through 11.4 and 14.4 units) | 0.5 (a guess) | 0.3 |
+| weapons Q7: other materials' damage | tile 0.30, computer 0.45, grate 0.99, plastic 0.50, glass 0.50 | 0.5 for all | as CS:S |
 | weapons Q7: metal's damage factor | 0.30 through an oil drum's 13.6-22.4-unit chords; 0.09 through 25-28 (the entity counted twice) | 0.5 (a guess) | 0.3 (the double count not made) |
 | sounds Q3: feet in water | slosh steps at 0.5 every 0.3 s running; entering or leaving: slosh at 1.0, then a wade wave at 0.2 | slosh steps; Player.Swim at entry and exit | none (the wade wave noted) |
 | sounds Q2: other entries' waves | uniform, repeats allowed (a crate's 3 hard-impact waves 29/22/29 of 80) | uniform | none |

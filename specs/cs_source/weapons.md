@@ -1318,6 +1318,14 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   drum's `.phy` is one convex piece: an entity crossed for 24 units or
   more seems to count twice. Not seen in the world: wooden static props
   38-42 units thick kept 0.6 (AWP 68, de_dust2 near (−1400, 400)).
+- Other materials (2026-10-18, the same set-up with other games' props,
+  each its model's surface property, the AWP 30 behind): tile (T,
+  inferno's `potted_plant1`, 14.0) **0.30**; computer (P, inferno's
+  `tv_monitor01`, 13.2) **0.45**; grate (G, cs_office's
+  `fire_extinguisher`, 6.1) **0.99**; plastic (L, `monitor02` 18.7 and
+  `trash_can` 20.4) **0.50**; glass (Y, tides' `planter`, pottery, 14.8)
+  **0.50**. Each bound is under 0.009 wide. Their thickness limits are
+  unmeasured.
 - Sand (2026-10-18, `DE_DUST/STONEWALL02B`, 11.4 and 14.4 units along
   the path, from (−2000, −600) at yaw 225, the target 20-60 behind): the
   damage factor is **0.30** (AWP 34 and 42, AK-47 10, M4A1 9: every

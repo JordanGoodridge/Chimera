@@ -660,7 +660,7 @@ fn wall(sim: &mut Sim, at: f32, thick: f32, surface: &str) {
     use avian3d::prelude::*;
     use crate::stack::map::{MapSounds, MapSurface, PropSurface, sound::SoundBank};
     let mut sounds = MapSounds::default();
-    for (name, class) in [("wood", 'W'), ("concrete", 'C'), ("sand", 'D'), ("metal", 'M')] {
+    for (name, class) in [("wood", 'W'), ("concrete", 'C'), ("sand", 'D'), ("metal", 'M'), ("metalgrate", 'G')] {
         sounds.surfaces.insert(
             name.into(),
             MapSurface {
@@ -707,6 +707,9 @@ fn sand_and_metal_keep_three_tenths_of_the_damage() {
     // metal (limit 39).
     assert_eq!(through_wall(15.0, "sand"), 10);
     assert_eq!(through_wall(15.0, "metal"), 10);
+    // A grate keeps 0.99 (measured the same day): 36 x 0.99524 x 0.99 x
+    // 0.99115 = 35.2 (35.5 with no wall).
+    assert_eq!(through_wall(6.0, "metalgrate"), 35);
 }
 
 #[test]
