@@ -50,8 +50,10 @@
 //! the first target in order not the nearest, no enemies under
 //! `mp_forcecamera 1`); the rest is general CS:S knowledge: the death cam's 2 s
 //! before the freeze cam, its rise (1.4 m back, 0.9 m up over 0.8 s) and look;
-//! our order is by name (CS:S's by entity index); with no teammate left we fly
-//! free where CS:S shows a fixed camera (mode 3); chase distance 96 units,
+//! our order is by name (CS:S's by entity index, the first the next after
+//! the watcher's own: measured 2026-10-18); with no teammate left the camera
+//! holds where it was (`SpecMode::Fixed`; CS:S's sits at the last watched
+//! player's eye where it died); chase distance 96 units,
 //! starting 15 degrees above the target's view; free look stays allowed under
 //! `mp_forcecamera 1`; the mode is kept across deaths, starting in first
 //! person; no auto-director (its menu entry greyed) or HLTV modes; the map overview (`client::overview`, `overview_mode`): its
@@ -132,6 +134,10 @@ pub enum SpecMode {
     Chase,
     /// Flying free (WASD where you look, shift faster).
     Roaming,
+    /// Held where the camera was, no target: the dead on a team with
+    /// nobody left to watch under `mp_forcecamera 1` (CS:S's mode 3,
+    /// measured 2026-10-18: also without a round end). Never chosen.
+    Fixed,
 }
 
 impl SpecMode {
@@ -140,7 +146,7 @@ impl SpecMode {
         match self {
             SpecMode::InEye => SpecMode::Chase,
             SpecMode::Chase => SpecMode::Roaming,
-            SpecMode::Roaming => SpecMode::InEye,
+            SpecMode::Roaming | SpecMode::Fixed => SpecMode::InEye,
         }
     }
 
@@ -149,6 +155,7 @@ impl SpecMode {
             SpecMode::InEye => "First Person",
             SpecMode::Chase => "Chase Camera",
             SpecMode::Roaming => "Free Look",
+            SpecMode::Fixed => "Fixed View",
         }
     }
 
@@ -168,6 +175,7 @@ impl SpecMode {
             SpecMode::InEye => 4,
             SpecMode::Chase => 5,
             SpecMode::Roaming => 6,
+            SpecMode::Fixed => 3,
         }
     }
 }
@@ -243,6 +251,9 @@ pub struct Spectator {
     pub watchable: Vec<Entity>,
     /// Requests waiting for the next step.
     pub pending: SpecInput,
+    /// Dead on a team whose players are all dead under `mp_forcecamera`:
+    /// nobody to watch, the camera held (`SpecMode::Fixed`).
+    pub stranded: bool,
 }
 
 /// The player's own freeze cam setting: `cl_disablefreezecam`
@@ -297,6 +308,7 @@ impl Spectator {
     /// camera on a target that just died.
     pub fn effective_mode(&self) -> SpecMode {
         match self.target {
+            None if self.stranded && self.mode != SpecMode::Roaming => SpecMode::Fixed,
             None => SpecMode::Roaming,
             Some(_) if self.target_lost.is_some() && self.mode == SpecMode::InEye => SpecMode::Chase,
             Some(_) => self.mode,
@@ -367,6 +379,7 @@ impl Spectator {
         }
         let allowed = allowed(living, me.team, force);
         self.watchable.clone_from(&allowed);
+        self.stranded = allowed.is_empty() && force != 0 && me.team.is_some() && !me.spectator;
         match self.target {
             Some(t) if allowed.contains(&t) => self.target_lost = None,
             Some(_) => {
@@ -729,6 +742,15 @@ pub fn place_camera(
                     };
                     let offset = camera_offset(&third, t, e.eye_offset, look, &spatial, &characters);
                     Some((t + offset, look))
+                }
+                (SpecMode::Fixed, _) => {
+                    // Held where it was (CS:S's sat at the last watched
+                    // player's eye where it died).
+                    chase.roam.at = None;
+                    Some(view.pose.unwrap_or((
+                        at.translation + own.eye_offset,
+                        Quat::from_euler(EulerRot::YXZ, intent.yaw, intent.pitch, 0.0),
+                    )))
                 }
                 _ => {
                     // Roaming: from wherever the camera was.
@@ -1106,10 +1128,16 @@ mod tests {
         s.step(1.0 + TARGET_DEATH_HOLD, &dead_ct(false), &living, 1, SpecInput::default());
         assert_eq!(s.target, Some(e(3)));
         assert_eq!(s.effective_mode(), SpecMode::InEye);
-        // Everyone dead: free look.
+        // Every teammate dead: a fixed view (CS:S's mode 3, measured
+        // 2026-10-18 with no round end), free look on asking for it.
         s.step(5.0, &dead_ct(false), &[], 1, SpecInput::default());
         s.step(5.0 + TARGET_DEATH_HOLD, &dead_ct(false), &[], 1, SpecInput::default());
         assert_eq!(s.target, None);
+        assert_eq!(s.effective_mode(), SpecMode::Fixed);
+        s.step(9.0, &dead_ct(false), &[], 1, SpecInput {
+            set_mode: Some(SpecMode::Roaming),
+            ..default()
+        });
         assert_eq!(s.effective_mode(), SpecMode::Roaming);
     }
 

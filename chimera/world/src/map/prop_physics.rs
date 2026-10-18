@@ -59,7 +59,8 @@ use crate::core::MovingSolid;
 /// The simulated body of a physics prop with these settings: its friction
 /// multiplies the other surface's (the world's is `WORLD_FRICTION`), it
 /// rebounds as `rebound` says, air drags it (`AirDrag`), and its
-/// rotational inertia is the collision model's own when it has one.
+/// rotational inertia is the collision model's own when it has one. Its
+/// contacts rest `CONTACT_GAP` apart.
 pub fn dynamic_body(p: &MapPhysics, bounds: (Vec3, Vec3)) -> impl Bundle {
     (
         RigidBody::Dynamic,
@@ -81,8 +82,15 @@ pub fn dynamic_body(p: &MapPhysics, bounds: (Vec3, Vec3)) -> impl Bundle {
         StoredInertia(p.inertia),
         // Impact sounds and damage listen for its contacts.
         CollisionEventsEnabled,
+        CollisionMargin(CONTACT_GAP),
     )
 }
+
+/// How far apart a physics prop's contacts rest, m: vphysics keeps
+/// 0.41-0.45 units between a prop's `.phy` hull and the floor
+/// (physics_props.md Q8, measured 2026-10-18; 0.38 between two props,
+/// where ours, the two margins summed, keep 0.8 units).
+pub const CONTACT_GAP: f32 = 0.42 * 0.0254;
 
 /// The friction of the world's surfaces for physics bodies: Source's
 /// default surface property (and concrete, tile, dirt and most of what

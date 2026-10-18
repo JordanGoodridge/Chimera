@@ -734,6 +734,11 @@ pub struct PassMaterials {
     pub default: PassMaterial,
     /// Characters (anything with `Intent` or `Hitboxes`).
     pub character: CharacterPass,
+    /// An entity (a map prop entity or a moving body, not the world or a
+    /// static prop) passed for this far or farther along the path scales
+    /// the damage by its material's factor twice, meters (CS:S, measured
+    /// M13: an oil drum's 25-28-unit chords). Infinite: never.
+    pub entity_twice_from: f32,
 }
 
 impl Default for PassMaterials {
@@ -749,6 +754,7 @@ impl Default for PassMaterials {
                 damage: 0.5,
                 range_scale: 1.0,
             },
+            entity_twice_from: f32::INFINITY,
         }
     }
 }

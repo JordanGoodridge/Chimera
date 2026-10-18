@@ -101,6 +101,10 @@ pub struct BombRules {
     /// to health, half the rest off the armour, ratio 1.0; the HE
     /// grenade's 1.475 doesn't apply).
     pub armor_ratio: f32,
+    /// Walls and props between stop none of the blast (CS:S, measured
+    /// 2026-10-18, objectives.md Q3: 418 of 418 behind a 200-unit stone
+    /// wall, the bell's whole value behind a static prop).
+    pub through_walls: bool,
     /// Seconds into arming of each key press sound (`sounds.click`): the
     /// server's own timer in CS:S, measured 2026-10-15 (objectives.md
     /// "Measured"), quicker than the view model's fingers.
@@ -138,6 +142,7 @@ impl Default for BombRules {
             range_factor: 3.5,
             bell_divisor: Some(3.0),
             armor_ratio: 1.0,
+            through_walls: true,
             clicks: vec![0.765, 1.035, 1.26, 1.41, 1.575, 1.74, 1.845],
             screen: [
                 (0.0, ""),
@@ -939,6 +944,7 @@ fn tick_bomb(
                 weapon: rules.weapon,
                 // Gone at the round restart (playtest 2026-10-14, as CS:S).
                 round_scorch: true,
+                through_walls: rules.through_walls,
             });
             outputs.write_batch(out);
             state.outcome = Some(BombOutcome::Exploded);

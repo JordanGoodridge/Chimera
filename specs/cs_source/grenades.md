@@ -333,7 +333,12 @@ the projectile, attacker the thrower.
      `src` and the end.
 - No damage falloff by facing; damage passes through players and props
   (they don't block). Walls block completely; thin brush walls and grates
-  too (grates are in the mask).
+  too (grates are in the mask). CS:S (measured 2026-10-18, Q10): static
+  props block as walls; prop entities and players between shield part of
+  it (0.767 and 0.733 of the damage and push with the victim covered,
+  less when partly covered); ours: `BlastShield` (lines to the eye,
+  weight 0.8, and to the hull's two sides at half the eye height, 0.1
+  each).
 - Applies to teammates as for any damage (friendly fire rules:
   `mp_friendlyfire`). The thrower always takes his own blast, by the same
   falloff and armour rule as anyone, whatever `mp_friendlyfire` says
@@ -779,6 +784,38 @@ floor; the plugin logs projectile creation (`P`), detonations (`G`),
   message, string command or convar), nor did the server console at
   `developer 2`. Ours rings only players the blast hurts (capture C31 in
   docs/plans/active/parity-gaps.md decides).
+- **Q10 crouching, props and players between (2026-10-18,
+  `tools/css_probe/blastmeas.py`):** env_explosions of magnitude 100,
+  radius 350 (the HE's numbers and bell) set off 6 units over de_dust2's
+  CT spawn floor 100 and 150 units from the run bot, the target point read
+  back from the damage force's direction. A crouching victim is aimed at
+  0.7-1.0 of its crouched eye height (33-40 units over the feet seen),
+  so it takes the bell for that lower point (68 where standing took 64).
+  A static prop stops the blast whole (a tall one on de_dust2 near
+  (−1415, 460): no damage behind it, 57 beside it), as the world. A prop
+  entity (a motion-disabled `du_crate_64x64` prop_physics) or a player
+  between does not stop it but shields part, the same with the crate
+  anywhere between and with two crates: **0.767** of the bell with every
+  line to the victim through the crate, **0.733** through a player, 0.747
+  through a player and then a crate; the force falls with it. Partly
+  covered: a crate over the victim's head only (from about 45 units over
+  the feet up) 0.813; covering the line's centre and one side 0.790; one
+  side only (a quarter of the hull's width) 0.977; 3 units of the side
+  1.0. The factor doesn't follow the random target point (identical in
+  runs whose points differed by 5-15 units): fixed lines to points of the
+  body, most of the weight on a high central one. An HE thrown by the
+  second bot with a crate between the blast and the thrower kept 0.766
+  (two throws): grenades and map explosions alike. Breakable crates
+  (`wood_crate001a`, 30 health) are broken by the blast and then shield
+  only sometimes (entity order); not used for the fit.
+- **Q6 thrown into a wall (2026-10-18):** the second bot flush against a
+  7.9-unit panel on de_dust2 (a static prop near (32, 2240), its face at
+  45° to the throw), facing it, threw a flashbang at the run bot behind:
+  the projectile appeared 4.0 units in front of the panel's face (12
+  ahead of the eye, not 16) and bounced back, going off 213 units away
+  on the thrower's side. 4.0 is where a 2-unit box's corner meets a 45°
+  face along the throw: the start is a box trace from the eye. A free
+  throw from 28 units back started 15.8 ahead as usual.
 - **Q12 flash (partial, 10-100 units):** facing the grenade: duration
   6.7-7.1 s, max alpha 255; side-on (90°): 4.7-4.9 s, 255; facing away
   (180°): 2.7-2.8 s, 200. `player_blind` fires for the victim and the
@@ -817,7 +854,7 @@ per-tick logging of netprops and events) unless they need the client.
 5. **Q5 Answered (see CS:S values: the bend with 100/90 down, 80/90 up, speed capped at 750).** Was: **Q5 Pitch form.** Throw at pitch −89, −60, −30, 0, 30, 60, 89 (set eye
    angles on the bot); log spawn origin and velocity. Confirms the bend, the
    cap and the backwards throw.
-6. **Q6 Spawn in a wall.** Bot flush against a wall facing it, pitch 0;
+6. **Q6 Answered (2026-10-18, see CS:S values).** Was: **Q6 Spawn in a wall.** Bot flush against a wall facing it, pitch 0;
    does the grenade appear on the far side, stick in the wall, or bounce
    back? Log origin per tick.
 7. **Q7 Answered (2026-10-17, see CS:S values: a sound for every contact, none at rest; the smoke's emitted twice a contact).** Was: **Q7 Bounce sounds.** `sv_soundemitter_trace 1` and the `grenade_bounce`
@@ -827,7 +864,7 @@ per-tick logging of netprops and events) unless they need the client.
 9. **Q9 HE visuals.** Screenshot sequence of an HE blast on the client
    (Windows PC, `host_timescale` 0.1 in a listen server): fireball sprite or
    only the particle core above? Screen shake? Dynamic light?
-10. **Q10 Partly answered (see CS:S values: the bell at `sv_legacy_grenade_damage 0`, linear at 1, self damage as anyone at that distance with `mp_friendlyfire` 0 or 1). Still open: crouched victims, and walls or props between.** Was: **Q10 HE damage model.** Unarmoured standing victim, clear line, at
+10. **Q10 Answered (see CS:S values: the bell at `sv_legacy_grenade_damage 0`, linear at 1, self damage as anyone at that distance with `mp_friendlyfire` 0 or 1; 2026-10-18: crouched victims aimed at their crouched eye's 0.7-1.0, the world and static props stop it, prop entities and players shield part, 0.767 and 0.733 when they cover the victim). Left: the sample lines' exact layout (ours: `BlastShield`, a fit).** Was: **Q10 HE damage model.** Unarmoured standing victim, clear line, at
     d = 0, 50, 100, 150, 200, 250, 300, 340 in from the blast (log the
     `hegrenade_detonate` point and the victim's origin; repeat 10× each for
     the random target height); both `sv_legacy_grenade_damage` 0 and 1;

@@ -124,8 +124,12 @@ plugin logging every sound the C4 entities emit):
   Every hurt from the blast has **attacker 0** (the world, not the
   planter): with `mp_friendlyfire 0` it still killed two terrorists near
   it and the planter (2026-10-16), so no one is spared and the planter
-  isn't credited. Walls between bomb and target and other radii not
-  measured.
+  isn't credited. Other radii not measured.
+- **Walls (2026-10-18, `tools/css_probe/blastmeas.py bomb`):** nothing
+  between stops or weakens the blast: a bot behind de_dust2's 200-unit
+  stone wall at B (−1233, 3013), 349 units from the bomb, took 418.07
+  (the bell: 418.1), and one crouched behind a 46-unit static prop south
+  of it 467.67 (the bell at its target point: 467.7).
 
 Stock map bomb radii (from the entity lumps):
 
@@ -785,7 +789,7 @@ hostages (dump with `sm_dump_netprops` and read with `GetEntProp`).
    restart). Was: **Q2 Defaults and bounds.** RCON `cvarlist mp_c4`, `help mp_c4timer`,
    `help mp_hostagepenalty`, `help mp_roundtime`: defaults, min/max.
    Expect `mp_c4timer` 45 (10–90).
-3. **Q3 Partly answered (2026-10-15, see "The blast (Q3, H2)" under Constants: the bell `500 × exp(−d²/2σ²)`, σ = 1750/3; armour as measured there; attacker 0, nobody spared, the planter not credited). Still open: walls between, other radii (de_nuke, de_chateau), screen shake (client).** Was: **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
+3. **Q3 Partly answered (2026-10-15, see "The blast (Q3, H2)" under Constants: the bell `500 × exp(−d²/2σ²)`, σ = 1750/3; armour as measured there; attacker 0, nobody spared, the planter not credited). Still open: other radii (de_nuke, de_chateau), screen shake (client). Walls answered 2026-10-18: nothing between stops or weakens it (see Constants).** Was: **Q3 Blast.** `mp_c4timer 10`, plant with the probe bot in an open part
    of a site, place `mashup_target`/`mashup_targetn` bots at 250, 500, 750,
    1000, 1500, 1800 in on a clear line, unarmoured, then armoured; log
    `player_hurt` (dmg_health, dmg_armor). Fit H1 (linear) vs H2 (bell).

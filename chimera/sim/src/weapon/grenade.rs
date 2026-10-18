@@ -4,8 +4,10 @@
 //! `Projectile` (a small box under its own gravity that mirrors its
 //! velocity on every contact and keeps part of its speed, stopping dead
 //! when slow; a fuse checked every few ticks), and what it does when it
-//! goes off (`GrenadeEffect`): a blast (radius damage through anything but
-//! the world, a push on loose bodies, a scorch mark), a flash (blinds
+//! goes off (`GrenadeEffect`): a blast (radius damage stopped by the world
+//! and static props, partly shielded by props and characters between
+//! (`BlastShield`), or through everything (`Blast::through_walls`, CS:S's
+//! bomb); a push on loose bodies, a scorch mark), a flash (blinds
 //! everyone who sees it: `core::Blinded`) or a smoke cloud (`SmokeCloud`,
 //! with a `core::SightBlocker`). Games fill in the numbers and draw the
 //! effects from `Detonated`.
@@ -34,8 +36,7 @@
 //! follow the SDK template where CS:S is unmeasured: release + 0.1 s to the
 //! throw (Q1), redraw of the same type (Q2; the probe's bot held its knife
 //! after the throw, but its AI picks that knife itself: a human capture),
-//! HE armour by H1 (Q4), the signed pitch bend (Q5), no
-//! spawn-in-wall check (Q6), a bounce sound on every contact (Q7, measured
+//! HE armour by H1 (Q4), the signed pitch bend (Q5), a bounce sound on every contact (Q7, measured
 //! 2026-10-17: as CS:S), the 1.5 s
 //! fuse (Q8, measured: matches), smoke pops once still after the fuse (Q15),
 //! dying primed drops it live (Q17). Measured since (grenades.md "CS:S
@@ -44,7 +45,10 @@
 //! (`drop::DeathDrop`, Q17); HE armour (H1), HE falloff (a bell, `blast_damage_bell`, or
 //! linear with `sv_legacy_grenade_damage 1`), the flash's strength by
 //! distance and facing (`grenades::flash_model`); its hold and fade split
-//! is a FIT pending Q13; the after-image is a screenshot
+//! is a FIT pending Q13; the blast's shield (`BlastShield`: three lines,
+//! their weights) is a FIT to crates and players covering the victim
+//! (Q10); flashes are stopped by static props as blasts are (unmeasured,
+//! Q12); the after-image is a screenshot
 //! read-back of the window at the flash (it holds the HUD, arrives a frame or
 //! two late; Q13 for its curve). Hearing (5.5, 6.4): the DSP presets are
 //! approximated (`grenades::EXPLOSION_RING`, `SHOCK_MUFFLE`, `FLASH_MUFFLE`:
@@ -310,6 +314,26 @@ pub struct Blast {
     pub hearing: Option<BlastHearing>,
     /// How it shakes the view of those near it (clients draw it).
     pub shake: Option<Shake>,
+    /// How much of it props and characters between shield a character.
+    pub shield: Option<BlastShield>,
+    /// Reaches everyone in range whatever is between (no traces: CS:S's
+    /// bomb, measured 2026-10-18).
+    pub through_walls: bool,
+}
+
+/// Props and characters between a blast and a character shield part of the
+/// blast (CS:S, measured 2026-10-18, grenades.md Q10; the world and static
+/// props block it whole). Lines from the blast go to three points of the
+/// character: its eye (`head` of the weight) and its hull's two sides,
+/// across the line, at half its eye height (the rest, split). Each line
+/// crossing a prop entity or a moving body takes `1 − prop` of its weight
+/// off the damage and the push, one crossing a character `1 − character`:
+/// a character hidden behind a crate keeps `prop` of it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlastShield {
+    pub prop: f32,
+    pub character: f32,
+    pub head: f32,
 }
 
 /// A blast's push on ragdolls (specs/cs_source/grenades.md 5.3, the
@@ -660,6 +684,7 @@ fn throw_frame(
     (mut radio, radio_off): (MessageWriter<Radio>, Res<GrenadeRadio>),
     mut commands: Commands,
     (clock, first, role): (Res<SimClock>, Res<FirstTimePredicted>, Option<Res<NetRole>>),
+    spatial: SpatialQuery,
 ) {
     // The command's time (as the weapon frame); the projectile and the
     // radio call are the server's (a client predicts only the hand).
@@ -712,7 +737,29 @@ fn throw_frame(
             t.throw_at = None;
             let eye = transform.translation + state.eye_offset;
             let carried = vel.map_or(Vec3::ZERO, |v| v.0);
-            let (start, velocity) = t.throw.throw(eye, intent.yaw, intent.pitch, carried);
+            let (mut start, velocity) = t.throw.throw(eye, intent.yaw, intent.pitch, carried);
+            // Thrown against a wall, it starts where its box meets the
+            // wall on the way out from the eye, never inside or beyond
+            // (CS:S, measured 2026-10-18, grenades.md Q6: 4 units off a
+            // panel at 45°, a 2-unit box's corner touching).
+            if let Ok(dir) = Dir3::new(start - eye) {
+                let half = t.flight.half;
+                let config = ShapeCastConfig {
+                    max_distance: (start - eye).length(),
+                    ..ShapeCastConfig::DEFAULT
+                };
+                let filter = SpatialQueryFilter::from_excluded_entities([owner]).with_mask(SOLID_LAYERS);
+                if let Some(hit) = spatial.cast_shape(
+                    &Collider::cuboid(half * 2.0, half * 2.0, half * 2.0),
+                    eye,
+                    Quat::IDENTITY,
+                    dir,
+                    &config,
+                    &filter,
+                ) {
+                    start = eye + *dir * hit.distance;
+                }
+            }
             if server {
                 launch(&mut commands, &mut rng.0, weapon, &t, Some(owner), start, velocity);
             }
@@ -848,6 +895,7 @@ struct GrenadeWorld<'w, 's> {
     bodies: Query<'w, 's, Body, Without<Projectile>>,
     colliders: Query<'w, 's, &'static ColliderOf>,
     rigid: Query<'w, 's, (&'static RigidBody, Option<&'static MapPropCollider>)>,
+    prop_entities: Query<'w, 's, (), With<crate::map::PropEntity>>,
     dynamic: Query<
         'w,
         's,
@@ -908,14 +956,44 @@ impl GrenadeWorld<'_, '_> {
         self.spatial
             .cast_ray_predicate(from, dir, len, true, &filter, &|e| {
                 let body = self.body(e);
-                Some(body) == target
-                    || self
-                        .rigid
-                        .get(e)
-                        .or_else(|_| self.rigid.get(body))
-                        .is_ok_and(|(rb, prop)| rb.is_static() && prop.is_none())
+                Some(body) == target || self.is_world(e, body)
             })
             .map(|h| (h.distance / len, h.normal, self.body(h.entity)))
+    }
+
+    /// The world: static bodies that aren't prop entities (the map's
+    /// brushes, brush entities, static props: Source's static props are
+    /// part of the world; measured 2026-10-18, a tall one on de_dust2
+    /// stopped an explosion whole).
+    fn is_world(&self, collider: Entity, body: Entity) -> bool {
+        self.rigid
+            .get(collider)
+            .or_else(|_| self.rigid.get(body))
+            .is_ok_and(|(rb, prop)| rb.is_static() && (prop.is_none() || !self.prop_entities.contains(body)))
+    }
+
+    /// What shields a blast (`BlastShield`): the first prop entity, moving
+    /// body or living character other than `target` on the line, and its
+    /// damage factor.
+    fn shield(&self, from: Vec3, to: Vec3, target: Entity, s: &BlastShield) -> f32 {
+        let d = to - from;
+        let Ok(dir) = Dir3::new(d) else { return 1.0 };
+        let filter = SpatialQueryFilter::default().with_mask(SOLID_LAYERS);
+        let hit = self.spatial.cast_ray_predicate(from, dir, d.length(), true, &filter, &|e| {
+            let body = self.body(e);
+            body != target && (self.living_character(body) || !self.is_world(e, body) && !self.is_character(body))
+        });
+        match hit.map(|h| self.body(h.entity)) {
+            None => 1.0,
+            Some(b) if self.is_character(b) => s.character,
+            Some(_) => s.prop,
+        }
+    }
+
+    fn living_character(&self, e: Entity) -> bool {
+        self.bodies
+            .get(e)
+            .is_ok_and(|b| b.intent.is_some() && b.health.is_some_and(|h| h.current > 0.0))
     }
 
     fn in_water(&self, p: Vec3) -> bool {
@@ -1218,6 +1296,7 @@ fn explosions(
         if e.armor_ratio.is_some() {
             b.armor_ratio = e.armor_ratio;
         }
+        b.through_walls |= e.through_walls;
         let (origin, probe) = explode_at(
             e.origin,
             &b,
@@ -1267,6 +1346,9 @@ fn blast(
 ) {
     let src = origin + Vec3::Y * b.src_lift;
     let mut hits: Vec<(Entity, Vec3, f32)> = Vec::new();
+    // Characters' shield sample points (`BlastShield`): eye, and the two
+    // sides at half the eye height.
+    let mut samples: Vec<(Entity, [Vec3; 3])> = Vec::new();
     // Characters' origins (the feet, as Source's), for their hearing.
     let mut origins: Vec<(Entity, Vec3)> = Vec::new();
     for t in world.bodies.iter() {
@@ -1294,6 +1376,12 @@ fn blast(
                 };
                 let h = rng.float(b.body_target.0, b.body_target.1);
                 origins.push((t.entity, t.transform.translation.with_y(feet)));
+                if b.shield.is_some() {
+                    let across = Vec3::Y.cross(eye - src).normalize_or(Vec3::X);
+                    let half = ((hi - lo).x.min((hi - lo).z)) / 2.0;
+                    let mid = eye.with_y(feet + (eye.y - feet) / 2.0);
+                    samples.push((t.entity, [eye, mid + across * half, mid - across * half]));
+                }
                 eye.with_y(feet + (eye.y - feet) * h)
             }
             _ => (lo + hi) / 2.0,
@@ -1304,7 +1392,12 @@ fn blast(
         // Characters aren't in the trace (it sees world brushes only);
         // breakable brushes are, and a hit on the target itself counts.
         let own = (!world.is_character(*target)).then_some(*target);
-        let end = match world.world_trace(src, *point, own) {
+        let trace = if b.through_walls {
+            None
+        } else {
+            world.world_trace(src, *point, own)
+        };
+        let end = match trace {
             None => *point,
             Some((fraction, _, body)) if body == *target => src.lerp(*point, fraction),
             Some(_) => continue,
@@ -1317,16 +1410,29 @@ fn blast(
             _ => blast_damage(b.damage, b.radius, d),
         };
     }
-    for (target, end, raw) in hits {
+    for (target, end, mut raw) in hits {
         if raw <= 0.0 {
             continue;
+        }
+        let mut kept = 1.0;
+        if let (Some(s), Some((_, points)), false) =
+            (&b.shield, samples.iter().find(|(e, _)| *e == target), b.through_walls)
+        {
+            let side = (1.0 - s.head) / 2.0;
+            kept = 1.0
+                - [s.head, side, side]
+                    .iter()
+                    .zip(points)
+                    .map(|(w, p)| w * (1.0 - world.shield(src, *p, target, s)))
+                    .sum::<f32>();
+            raw *= kept;
         }
         // Whole points for characters only; objects truncate after their
         // multipliers (as `deliver`'s hits).
         let character = world.bodies.get(target).is_ok_and(|t| t.health.is_some());
         let dir = (end - src).normalize_or_zero();
         let mut damage = Damage {
-            force: dir * b.force,
+            force: dir * b.force * kept,
             target,
             attacker: thrower,
             amount: if character { super::quantize(raw, b.quantum) } else { raw },
@@ -1360,7 +1466,8 @@ fn blast(
         .map(|(e, _, pos, mass, _)| (e, pos.0, mass.map_or(1.0, |m| m.value())))
         .collect();
     for (e, centre, mass) in pushes {
-        if world
+        if !b.through_walls
+            && world
             .world_trace(src, centre, Some(e))
             .is_some_and(|(_, _, body)| body != e)
         {

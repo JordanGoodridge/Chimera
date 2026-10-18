@@ -18,6 +18,9 @@
 //! cost = 21.5                     # power one character uses, length units
 //! damage = 0.5
 //! range_scale = 0.5               # range left beyond its exit, as a factor
+//! [entity]                        # (default: never)
+//! twice_from = 24.0               # an entity passed this far or farther
+//!                                 # scales the damage twice, length units
 //! ```
 //!
 //! Unknown keys, a class that isn't one letter and a class given twice
@@ -38,6 +41,14 @@ struct PassDoc {
     default: Option<FactorData>,
     #[serde(default)]
     character: Option<CharacterData>,
+    #[serde(default)]
+    entity: Option<EntityData>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EntityData {
+    twice_from: f32,
 }
 
 #[derive(Deserialize)]
@@ -103,6 +114,9 @@ impl PassMaterials {
                 damage: c.damage,
                 range_scale: c.range_scale,
             };
+        }
+        if let Some(e) = doc.entity {
+            out.entity_twice_from = e.twice_from * len;
         }
         Ok(out)
     }

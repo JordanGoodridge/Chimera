@@ -2,7 +2,8 @@
 //! greybox map at CS:S's tick (0.015 s): buying and carry limits (G31),
 //! the pin and release timing (G17, G30), the throw (G1), flight and
 //! bounces against floors, walls and players (G10-G14), the fuse (G16), HE
-//! damage by distance, walls and players in between (G18-G20), kill
+//! damage by distance, walls, static props, props and players in between
+//! (G18-G20, Q10), kill
 //! credit, flash blindness, what blasts and flashes do to hearing (5.5,
 //! 6.4) and the HE's view shake, the smoke cloud's life and bots' sight through
 //! it, round restarts, and a primed grenade dropped by the dying.
@@ -165,6 +166,32 @@ fn pin_release_throw_fuse_and_the_spent_weapon_goes() {
     assert_eq!(active_id(&sim, p), Some(AK47));
 }
 
+/// Thrown flush against a wall, the grenade starts where its box meets
+/// the wall and bounces back, never inside or beyond it (measured
+/// 2026-10-18, grenades.md Q6: 4 units off a panel at 45°).
+#[test]
+fn a_grenade_thrown_into_a_wall_starts_in_front_of_it() {
+    let mut sim = sim();
+    // Facing the long crate's face at z -19.5, the hull (16 units) a
+    // hair off it.
+    let p = holder(&mut sim, Vec3::new(0.0, 1.0, -19.5 + 16.2 * UNIT), FLASHBANG);
+    sim.intent(p).yaw = 0.0;
+    sim.intent(p).pitch = 0.0;
+    sim.ticks(2);
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    let mut seen = 0;
+    for _ in 0..100 {
+        sim.ticks(1);
+        for (_, _, at) in projectiles(&mut sim) {
+            seen += 1;
+            assert!(at.z > -19.5 + 1.9 * UNIT, "the grenade at {at} is in or past the wall");
+        }
+    }
+    assert!(seen > 50, "thrown");
+}
+
 #[test]
 fn a_second_flashbang_is_drawn_after_the_first_throw() {
     let mut sim = sim();
@@ -276,16 +303,58 @@ fn he_is_blocked_by_walls_not_players_g19_g20() {
     // Behind the long crate (z -20.5..-19.5, 3 m tall).
     let (lost, ..) = he_damage_at(&mut sim, Vec3::new(0.0, 0.9, -23.0), Vec3::new(0.0, 0.06, -18.0));
     assert_eq!(lost, 0.0, "the wall blocks it");
-    // Another player between doesn't.
+    // Another player between doesn't stop it (it shields a quarter).
     let mut sim = self::sim();
     let shield = sim.spawn_character(Vec3::new(5.0, 0.9, 8.0), placeholder::ID);
     let (lost, ..) = he_damage_at(&mut sim, Vec3::new(5.0, 0.9, 6.0), Vec3::new(5.0, 0.06, 10.0));
-    assert!(lost > 0.3, "{lost}");
+    assert!(lost > 0.2, "{lost}");
     assert!(health(&sim, shield) < 1.0);
     // Out of reach (G21).
     let mut sim = self::sim();
     let (lost, ..) = he_damage_at(&mut sim, Vec3::new(0.0, 0.9, 0.0), Vec3::new(0.0, 0.06, 10.5));
     assert_eq!(lost, 0.0);
+}
+
+/// Measured 2026-10-18 (grenades.md Q10): a static prop stops a blast
+/// whole, as the world; a prop entity (a crate) in the way leaves 0.767
+/// of it, a player 0.733.
+#[test]
+fn props_and_players_between_shield_part_of_a_blast() {
+    use avian3d::prelude::{Collider, RigidBody};
+    use crate::stack::map::{MapPropCollider, PropEntity};
+    let victim_at = Vec3::new(5.0, 0.9, 6.0);
+    let grenade_at = Vec3::new(5.0, 0.06, 9.0);
+    // A 2 m box between, at z 7.5: a static prop or a prop entity.
+    let lost = |what: u8| {
+        let mut sim = self::sim();
+        let mut e = sim.app.world_mut().spawn((
+            RigidBody::Static,
+            Collider::cuboid(2.0, 2.0, 0.5),
+            Transform::from_xyz(5.0, 1.0, 7.5),
+        ));
+        match what {
+            0 => {
+                e.despawn();
+            }
+            1 => {
+                e.insert(MapPropCollider);
+            }
+            _ => {
+                e.insert((MapPropCollider, PropEntity(0)));
+            }
+        }
+        he_damage_at(&mut sim, victim_at, grenade_at).0
+    };
+    let open = lost(0);
+    assert!(open > 0.3, "{open}");
+    assert_eq!(lost(1), 0.0, "a static prop blocks it");
+    let crate_ = lost(2) / open;
+    assert!((0.7..0.83).contains(&crate_), "behind a crate: {crate_} of it");
+    // Behind another player.
+    let mut sim = self::sim();
+    sim.spawn_character(Vec3::new(5.0, 0.9, 7.5), placeholder::ID);
+    let player = he_damage_at(&mut sim, victim_at, grenade_at).0 / open;
+    assert!((0.66..0.8).contains(&player), "behind a player: {player} of it");
 }
 
 #[test]

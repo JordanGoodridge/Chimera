@@ -3,7 +3,8 @@
 //! questions 1, 3-5): a 40-unit 30 kg crate on a concrete floor slides
 //! with the product of the two frictions, rebounds at about 0.14 of its
 //! landing speed, is held back by air drag growing with the square of its
-//! speed, sleeps about half a second after it stops, and spins with its
+//! speed, sleeps about half a second after it stops, rests 0.4 units
+//! above the floor, and spins with its
 //! collision model's stored inertia; a static prop's bbox solid blocks as
 //! the box along the world's axes around its turned bounds.
 
@@ -209,6 +210,18 @@ fn a_dropped_crate_rebounds_a_little_then_sleeps() {
 /// A prop whose collision model stores its inertia spins with that (the
 /// plastic crate: 0.56, 0.33, 0.62 kg m² about Source x, y, z in CS:S),
 /// not the solid box's.
+/// At rest the crate's hull stays about 0.4 units off the floor: CS:S's
+/// rested 0.41-0.45 above it (physics_props.md Q8; the hull is not
+/// inflated, vphysics keeps contacts apart).
+#[test]
+fn a_resting_crate_keeps_its_contacts_apart() {
+    let mut sim = sim(Vec3::new(0.0, 0.0, HALF + 2.0), 0.8, 0.1, None);
+    sim.seconds(2.0);
+    let (p, v) = state(&mut sim);
+    let gap = p.z - HALF;
+    assert!((0.35..0.5).contains(&gap), "rests {gap} units above the floor ({v})");
+}
+
 #[test]
 fn a_prop_spins_with_its_stored_inertia() {
     let stored = Vec3::new(3.59, 3.61, 3.62);

@@ -245,6 +245,16 @@ prop_physics. `knifearmor.py <1 slash|2 stab> <armor>` knifes the first bot
 from 40 units with a second (`bot_add_t`; `WPN=weapon_ak47` for a gun,
 `HOLD=40` for a held attack) and prints the `hurt` row and the sounds.
 
+`blastmeas.py` (grenades.md Q10, objectives.md Q3, 2026-10-18): `boom`
+sets off an env_explosion (magnitude 100, radius 350: the HE's) at a
+point while the run bot stands or crouches at another, optionally with a
+motion-disabled prop between (`prop`), and prints the damage rows; `ent_fire`
+does nothing over RCON, so a spawned logic_relay fires its Explode with a
+delay. `he` is hemeas.py's throw with a crouching run bot, `bomb` has the
+second bot (a terrorist) plant at de_dust2's B with `mp_c4timer 10` and
+prints the blast's rows. The target point a blast aimed at is the damage
+force's direction (`force=` in the row).
+
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
 (feet at its height) leaves it stuck: start 0.02 or more above.
