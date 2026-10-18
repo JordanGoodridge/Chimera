@@ -533,6 +533,7 @@ fn restored_prop_contacts_join_islands_once() {
             elasticity: 0.0,
             damping: 0.0,
             rotdamping: 0.0,
+            inertia: None,
             push: PushAway::Collide,
             frozen: false,
             asleep: false,

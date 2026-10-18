@@ -1,8 +1,9 @@
 //! Players and multiplayer physics props (specs/cs_source/physics_props.md
-//! 4.2): players walk through them; each tick a player shoves the props
-//! around them (an impulse at the player's centre, so they spin too; one
-//! asleep since it spawned wakes, with OnAwakened), and "solid"-mode props
-//! push the player back through the move input.
+//! 4.2): players walk through them; a player shoves the props around them
+//! (an impulse at the player's centre, so they spin too; one asleep since
+//! it spawned wakes, with OnAwakened) at most every 0.1 s (`PUSH_INTERVAL`,
+//! measured), and "solid"-mode props push the player back through the move
+//! input.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -22,6 +23,11 @@ const QUERY_EXPAND: f32 = 3.0;
 const MIN_PLAYER_SPEED: f32 = 75.0;
 const PUSH_FORCE: f32 = 30_000.0;
 const PUSH_MAX: f32 = 1_000.0;
+/// A player shoves props at most this often, seconds: CS:S kicked a
+/// 30 kg crate on ice overlapping a standing bot by 1000 kg·units/s every
+/// 7 ticks (0.105 s), not every tick (measured 2026-10-18,
+/// physics_props.md Q12).
+pub const PUSH_INTERVAL: f64 = 0.1;
 const PUSHBACK_FORCE: f32 = 200_000.0;
 const PUSHBACK_MAX: f32 = 10_000.0;
 /// Applied to every client push-back (a quirk the game keeps).
@@ -74,7 +80,15 @@ fn overlap(a: (Vec3, Vec3), b: (Vec3, Vec3)) -> bool {
 /// specs/source/prop_damage.md Q14).
 #[allow(clippy::type_complexity)]
 fn push_props(
-    players: Query<(&Transform, &Velocity, &SourceMovement, Option<&crate::core::MapControls>)>,
+    players: Query<(
+        Entity,
+        &Transform,
+        &Velocity,
+        &SourceMovement,
+        Option<&crate::core::MapControls>,
+        Option<&NextPush>,
+    )>,
+    clock: Res<crate::core::SimClock>,
     mut props: Query<
         (Entity, &Transform, &PhysicsProp, Forces, Has<StartAsleep>),
         (Without<SourceMovement>, Without<RigidBodyDisabled>, Without<ColliderDisabled>),
@@ -83,10 +97,15 @@ fn push_props(
     mut commands: Commands,
     mut awakened: MessageWriter<PropAwakened>,
 ) {
-    for (pt, pv, me, controls) in &players {
+    for (who, pt, pv, me, controls, next) in &players {
         if controls.is_some_and(|c| c.parented) {
             continue;
         }
+        // Ticks land a hair off 0.1 s steps: compared with a little slack.
+        if next.is_some_and(|n| clock.now + 1e-6 < n.0) {
+            continue;
+        }
+        let mut pushed = false;
         let mut player = player_box(pt, me, &cfg);
         let centre = (player.0 + player.1) / 2.0;
         player.0 -= Vec3::splat(QUERY_EXPAND);
@@ -113,9 +132,17 @@ fn push_props(
             let impulse = super::movement::to_engine(push_impulse(centre, (b.0 + b.1) / 2.0));
             let at = super::movement::to_engine(centre);
             forces.apply_linear_impulse_at_point(impulse, at);
+            pushed = true;
+        }
+        if pushed {
+            commands.entity(who).insert(NextPush(clock.now + PUSH_INTERVAL));
         }
     }
 }
+
+/// When a player may next shove props (`push_props`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct NextPush(pub f64);
 
 /// The impulse a player at `player` (centre, units) gives a prop centred at
 /// `prop`: horizontal, away from the player, min(30000 / dist, 1000)

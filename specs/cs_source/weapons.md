@@ -1309,7 +1309,34 @@ Weapons AK-47, AWP (scoped), Deagle, USP; shooter crouched, still.
   wall seem to be crossed as one object. Not analysed.
 - Unexplained: an 8-unit concrete wall whose far side is `TOOLSNODRAW`
   (props `default`) stopped even the AWP (dust2 `TEMPLEWALL04A` at
-  (−1312, 1104, 290–340)). Damage factors for metal and sand not measured.
+  (−1312, 1104, 290–340)).
+- Metal (2026-10-18, a motion-disabled `oildrum001` prop_physics on
+  de_dust2's tile floor, shot crouched from 90 units, the target 30-50
+  behind): the damage factor is **0.30** through chords of 13.6-22.4
+  units (AWP 34 to the chest, bounds 0.297-0.306), but **0.09** (0.3²)
+  through chords of 25.1 and 28.1 (AWP 10, AK-47 3, M4A1 2) although the
+  drum's `.phy` is one convex piece: an entity crossed for 24 units or
+  more seems to count twice. Not seen in the world: wooden static props
+  38-42 units thick kept 0.6 (AWP 68, de_dust2 near (−1400, 400)).
+- Other materials (2026-10-18, the same set-up with other games' props,
+  each its model's surface property, the AWP 30 behind): tile (T,
+  inferno's `potted_plant1`, 14.0) **0.30**; computer (P, inferno's
+  `tv_monitor01`, 13.2) **0.45**; grate (G, cs_office's
+  `fire_extinguisher`, 6.1) **0.99**; plastic (L, `monitor02` 18.7 and
+  `trash_can` 20.4) **0.50**; glass (Y, tides' `planter`, pottery, 14.8)
+  **0.50**. Each bound is under 0.009 wide. Limits, the same props with
+  weaker guns: the USP (15) passes 14.0 of tile, 14.8 of pottery and 6.1
+  of grate (m ≥ 0.93, 0.99, 0.41) but not 13.2 of computer; the Glock
+  (21) and Deagle (30) are stopped by the computer too, the M4A1 (35)
+  and AK-47 (39) pass it: computer m in [0.377, 0.44), likely 0.4.
+  Plastic is inconsistent: the USP passes cs_office's 20.4-unit trash can
+  and not the 18.7-unit `monitor02` (the Glock passes both).
+- Sand (2026-10-18, `DE_DUST/STONEWALL02B`, 11.4 and 14.4 units along
+  the path, from (−2000, −600) at yaw 225, the target 20-60 behind): the
+  damage factor is **0.30** (AWP 34 and 42, AK-47 10, M4A1 9: every
+  bound meets in 0.2974-0.3009). The Deagle was stopped by the 11.4-unit
+  sand wall (twice), below its 15 (P 30 × 0.5): unexplained, as its stop
+  at 16.1.
 
 ### M13 Through players (collaterals)
 
@@ -1436,6 +1463,13 @@ caps), semi-automatics pressed once per refire (USP, Glock 11 ticks, Deagle
   up like the USP; the G3SG1 kicks up 0.75 + random 0..1.0 and the SG 550
   0.75 + random 0..0.5, both sideways random ±0.75 (no steps, no caps
   reached); the M3 a whole 4-6 degrees up, the XM1014 a whole 3-5.
+- Scoped and burst (2026-10-18, attack2 then presses at the refire): the
+  AWP and scout zoomed (fov 40) kick 2.0 straight up as unzoomed; the
+  SG550 and G3SG1 zoomed kick as unzoomed (0.90-1.24 and 1.09-1.68 up,
+  random sideways). A FAMAS burst (mode 1, rounds 5 ticks apart) kicks
+  on its **first round only** (0.625 up, 0.375 aside standing; 0.575 and
+  0.325 crouched); the second and third add nothing, the punch decaying
+  to 0 meanwhile. The Glock's burst: no punch, as its single shots.
 - Bullets follow view + 2 × punch for the M4A1 as for the AK-47 (residuals
   inside the cone with 2×, up to 2.3° outside with 1×).
 
@@ -1459,7 +1493,12 @@ shots at a wall while side-stepping at 95, 140, 180 and 250 (120 each).
 - Airborne after a jump the AK-47's `I` falls by 0.96752 per tick toward
   0.0069 (fits 44 ticks to 1e-5; = Crouch value, time to 10 % 1.046 s =
   3 × RecoveryTimeCrouch), but a bot falling without a jump stays at the
-  Stand value; not resolved.
+  Stand value; not resolved. Found 2026-10-18: the probe bot's jumps duck
+  it (FL_DUCKING and the 45-unit hull from the jump tick to about 46
+  ticks later, with no duck button in its commands: the bot's own
+  jump-crouch), so the crouched target is its duck state; a human's
+  unducked jump is unmeasured (needs a human, or a bot that doesn't
+  crouch-jump).
 - Movement term, USP (max speed 250): extra cone 0.0019 at 95.4, 0.0068
   at 140, 0.0112 at 180, 0.0182 at 250 (`InaccuracyMove` 0.01724): the
   AK-47's `Move × clamp((v − vmax/3)/(2 vmax/3), 0, 1)` within the error
@@ -1580,8 +1619,9 @@ inaccuracy target.
   *Resolved for the AK-47 standing/crouched (measured section, M3): linear
   decay rule, kick formula, aim = view + 2 × punch. M4A1, pistols, AWP and
   the AK-47's moving/airborne sets in "M3 Recoil (more weapons, moving,
-  airborne)" (Glock: no punch). Other automatics, scoped/silenced/burst
-  modes not measured.*
+  airborne)" (Glock: no punch). Other automatics measured 2026-10-15;
+  scoped and burst modes 2026-10-18 (same section); silenced modes not
+  measured (the bot's AI takes the silencer off).*
 - **Q4 Fire timing rule** ("set" vs. "accumulate"): M4. *Resolved (measured
   section, M4): accumulate while held (one shot per tick max), set on a
   fresh press; the tick table above applies to tapping only.*
@@ -1631,7 +1671,11 @@ inaccuracy target.
 - **Q12 Shotgun pellets**: line vs. box traces, pattern, per-pellet damage
   event or summed: M4.
   *Partly resolved (M16): one `bullet_impact` per pellet (9 M3, 6 XM1014),
-  one `weapon_fire` a shot. Pattern and trace shape open.*
+  one `weapon_fire` a shot. 2026-10-18: the pellets share one inaccuracy
+  offset: five M3 shots fired in the air (penalty 0.283-0.286) put the
+  nine pellets' centre 0.04-0.28 off the aim but every pellet within
+  0.022-0.037 of that centre (Spread 0.04). The pattern inside the
+  spread and the trace shape are open.*
 - **Q13 Drop / pickup** CS rules: drop velocity, which weapon is dropped on
   death, pickup by walking only into an empty slot, dropped-weapon lifetime:
   M14.

@@ -62,6 +62,7 @@ mod noclip_damage;
 mod pain_sounds;
 mod phy_spec;
 mod prediction;
+mod prop_motion;
 mod radio;
 mod refused_hits;
 mod ragdoll;

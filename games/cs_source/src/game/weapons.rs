@@ -36,7 +36,9 @@
 //! measured rule, bullets along view + 2 × punch (the template's and the
 //! measured rifles'; shotgun kick, decay and aim factor unmeasured); the M4A1's
 //! moving/airborne kicks are its standing set; scoped, silenced and burst
-//! recoil are the normal ones; silenced damage and range are unchanged (M16 not
+//! recoil are the normal ones (scoped measured so: AWP and scout 2° up, SG550
+//! and G3SG1 their random kicks; a burst kicks on its first round only,
+//! measured); silenced damage and range are unchanged (M16 not
 //! measured); the Glock's burst refire is 0.5 s; reloading unzooms; the SG552's
 //! zoomed speed is unchanged and the G3SG1's is the SG550's 150. Shotguns: the
 //! shell-by-shell reload is measured (M9: 0.5 s start, 0.5 s a shell for
@@ -687,6 +689,7 @@ fn after_shots(
         Option<&mut Recoil>,
         Option<&AltModes>,
         Option<&Hitscan>,
+        Option<(&crate::weapon::Burst, &crate::weapon::WeaponState)>,
     )>,
     mut owners: Query<(&MovementState, &Velocity, &Intent, Option<&mut ViewPunch>)>,
     mut commands: Commands,
@@ -699,9 +702,15 @@ fn after_shots(
         if !matches!(e.kind, WeaponEventKind::Shot { .. }) {
             continue;
         }
-        let Ok((acc, recoil, modes, scan)) = weapons.get_mut(e.weapon) else {
+        let Ok((acc, recoil, modes, scan, burst)) = weapons.get_mut(e.weapon) else {
             continue;
         };
+        // A burst's second and third rounds don't kick (CS:S, measured
+        // 2026-10-18, weapons.md Q3: the FAMAS's first round kicked 0.625
+        // up and 0.375 aside standing, the two after nothing).
+        let follow_up = burst.is_some_and(|(b, st)| {
+            modes.map_or(0, |m| m.current) == b.mode && st.burst_left + 1 < b.count
+        });
         // The n-th trace of this weapon this tick: a new shot every
         // `pellets` traces.
         let n = match traces.iter_mut().find(|(w, _)| *w == e.weapon) {
@@ -723,6 +732,9 @@ fn after_shots(
             acc.value += acc.keys(modes.map_or(0, |m| m.current)).fire;
         }
         let Some(mut r) = recoil else { continue };
+        if follow_up {
+            continue;
+        }
         let Ok((state, vel, intent, punch)) = owners.get_mut(e.owner) else {
             continue;
         };

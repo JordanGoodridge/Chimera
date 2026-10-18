@@ -223,6 +223,12 @@ pub fn build<L: MapLayers>(app: &mut App, data: Option<&Arc<MapData>>, view: Map
         FixedPostUpdate,
         prop_physics::settle_props.after(PhysicsSystems::Writeback),
     )
+    .add_systems(
+        FixedPostUpdate,
+        (prop_physics::apply_stored_inertia, prop_physics::air_drag).before(PhysicsSystems::StepSimulation),
+    )
+    // The world's surfaces' friction, which physics bodies' own multiplies.
+    .insert_resource(DefaultFriction(Friction::new(prop_physics::WORLD_FRICTION)))
     // Moving water follows its brush entity (before movement and
     // buoyancy read it).
     .add_systems(FixedUpdate, water::move_water.before(crate::core::SimSet::Movement));

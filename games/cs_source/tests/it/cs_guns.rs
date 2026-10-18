@@ -986,6 +986,30 @@ fn famas_burst_fires_three_rounds_and_holds_repeat_every_37_ticks() {
     assert_eq!(clip(&sim, p), start - 4);
 }
 
+#[test]
+fn a_famas_burst_kicks_on_its_first_round_only() {
+    // Measured 2026-10-18 (weapons.md Q3): the first round kicks 0.625 up
+    // and 0.375 aside standing; the two after it add nothing, the punch
+    // only decaying.
+    let mut sim = sim();
+    let p = shooter_with(&mut sim, FAMAS);
+    press2(&mut sim, p);
+    assert_eq!(mode(&sim, p), 1);
+    sim.seconds(0.4);
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    let first = sim.app.world().get::<ViewPunch>(p).unwrap().0;
+    assert!((first.x.to_degrees() - 0.625).abs() < 1e-3, "{first}");
+    let mut last = first.x;
+    for _ in 0..12 {
+        sim.ticks(1);
+        let now = sim.app.world().get::<ViewPunch>(p).unwrap().0.x;
+        assert!(now <= last + 1e-6, "kicked again: {} after {}", now.to_degrees(), last.to_degrees());
+        last = now;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Dual Elites
 

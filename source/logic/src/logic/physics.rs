@@ -7,7 +7,8 @@
 //! `map::controllers::BodyControllers` (the body's own motion is the
 //! physics engine's). func_physbox is a prop here (`prop_damage`).
 //!
-//! Covers: phys_thruster, phys_keepupright and phys_motor as `controls()`,
+//! Covers: phys_thruster, phys_keepupright, phys_motor and hinge and
+//! slider motors (SetAngularVelocity, SetVelocity, measured) as `controls()`,
 //! which the bridge hands to the physics as
 //! `map::controllers::BodyControllers`; the two-object constraints
 //! (specs/source/physics_constraints.md: bodies by name, the world for a
@@ -15,6 +16,12 @@
 //! OnBreak) and motors' "Hinge Object" as `joints()`, handed over as
 //! `map::controllers::BodyJoints`; func_physbox is a prop here,
 //! `prop_damage::is_physbox`.
+//!
+//! Known shortcuts (docs/tech-debt.md): a hinge or slider motor drives its
+//! second body only (a two-body joint's first isn't pushed back); a
+//! phys_ragdollconstraint is a ball joint unless every axis is locked
+//! (then welded); no phys_spring or phys_pulleyconstraint (no stock map
+//! has one; measured, physics_constraints.md Q4, Q8).
 
 use bevy::prelude::*;
 
@@ -80,6 +87,12 @@ pub struct Motor {
 pub const SF_JOINT_NO_COLLIDE: u32 = 1;
 pub const SF_JOINT_START_INACTIVE: u32 = 4;
 pub const SF_JOINT_CONNECT_ON_TURN_ON: u32 = 16;
+/// A slider's SetVelocity value to its speed in units/s (CS:S, measured
+/// 2026-10-18: 20 and 100 drove a crate at 100 and 500 units/s, whatever
+/// the axis keyvalue's length).
+pub const SLIDE_MOTOR_SCALE: f32 = 5.0;
+/// phys_ragdollconstraint "Only limit rotation" (physics_constraints.md 8).
+pub const SF_RAGDOLL_ONLY_ROTATION: u32 = 2;
 
 /// What a constraint holds.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -113,6 +126,10 @@ pub struct Joint {
     /// (1.5; 0: never).
     pub force_limit: f32,
     pub torque_limit: f32,
+    /// A hinge's or slider's motor (SetAngularVelocity, SetVelocity): the
+    /// speed it drives the second body at, deg/s right-handed about the
+    /// axis or units/s along it; None: off.
+    pub motor: Option<f32>,
 }
 
 /// A controller as the logic exports it (entity space): what pushes which
@@ -141,6 +158,9 @@ pub enum ControlKind {
     /// phys_motor: spin about `axis` (entity space) at `speed` deg/s,
     /// reached over `spinup` s.
     Motor { axis: Vec3, speed: f32, spinup: f32 },
+    /// A slider's motor: move along `axis` (entity space) at `speed`
+    /// units/s.
+    Slide { axis: Vec3, speed: f32 },
 }
 
 /// A constraint as the logic exports it: bodies (body1 None: the world).
@@ -202,6 +222,17 @@ pub(super) fn spawn(e: &super::world::LogicEntity, class: &str) -> Option<Class>
                             .map_or(0.0, |p| crate::map::entities::parse_vector(p).distance(e.origin)),
                     other: e.kv("attachpoint").map_or(e.origin, crate::map::entities::parse_vector),
                 },
+                // Every axis's min equal to its max locks it: welded
+                // (measured 2026-10-18, physics_constraints.md Q7: a crate
+                // on one with all limits 0 swung ±5 units, ±35 with ±90).
+                "phys_ragdollconstraint"
+                    if !e.has_flag(SF_RAGDOLL_ONLY_ROTATION)
+                        && ["x", "y", "z"]
+                            .iter()
+                            .all(|a| e.kv_f(&format!("{a}min")) == e.kv_f(&format!("{a}max"))) =>
+                {
+                    JointKind::Fixed
+                }
                 _ => JointKind::Ball,
             };
             Class::Joint(Box::new(Joint {
@@ -220,6 +251,7 @@ pub(super) fn spawn(e: &super::world::LogicEntity, class: &str) -> Option<Class>
                 } else {
                     e.kv_f("torquelimit").max(0.0)
                 },
+                motor: None,
             }))
         }
         _ => return None,
@@ -414,9 +446,24 @@ pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str, value: &Value, _
             }
         }
         (Class::Joint(_), "break" | "constraintbroken") => break_joint(w, id),
-        // Motors and friction of hinges and sliders: kept as placed
-        // (tech-debt).
-        (Class::Joint(_), "setangularvelocity" | "sethingefriction" | "setvelocity") => {}
+        // Hinge and slider motors (CS:S, measured 2026-10-18,
+        // physics_constraints.md Q2): a hinge turns at once at the value
+        // in deg/s, clockwise seen from where its axis points; a slider
+        // moves at 5 times the value in units/s; 0 switches the motor off
+        // (the body coasts on). Hinge friction changed nothing measurable
+        // (Q3).
+        (Class::Joint(_), "setangularvelocity" | "setvelocity") => {
+            let Some(v) = w.need_float(value, input) else { return true };
+            if let Some(Class::Joint(j)) = w.get_mut(id).map(|e| &mut e.class) {
+                j.motor = match (j.kind, input) {
+                    (_, _) if v == 0.0 => None,
+                    (JointKind::Hinge { .. }, "setangularvelocity") => Some(-v),
+                    (JointKind::Slide { .. }, "setvelocity") => Some(v * SLIDE_MOTOR_SCALE),
+                    _ => j.motor,
+                };
+            }
+        }
+        (Class::Joint(_), "sethingefriction") => {}
         (Class::Upright(_), "setangularlimit") => {
             let Some(l) = w.need_float(value, input) else { return true };
             if let Some(Class::Upright(u)) = w.get_mut(id).map(|e| &mut e.class) {
@@ -534,6 +581,20 @@ impl LogicWorld {
                             spinup: e.kv_f("spinup"),
                         },
                     }),
+                    // A hinge's or slider's motor drives its second body.
+                    Class::Joint(j) if j.connected && j.on => {
+                        let speed = j.motor?;
+                        let kind = match j.kind {
+                            JointKind::Hinge { axis } => ControlKind::Motor { axis, speed, spinup: 0.0 },
+                            JointKind::Slide { axis } => ControlKind::Slide { axis, speed },
+                            _ => return None,
+                        };
+                        Some(Control {
+                            id,
+                            body: j.body2.filter(|b| self.get(*b).is_some())?,
+                            kind,
+                        })
+                    }
                     _ => None,
                 }
             })

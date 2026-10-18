@@ -319,7 +319,7 @@ stores a one-byte solid type copied from the entity's `solid` keyvalue:
 | Value | Name (Hammer) | Collision |
 |---|---|---|
 | 0 | Not solid | none |
-| 2 | Bounding box | a box from the `.mdl` hull min/max (see Open questions on orientation) |
+| 2 | Bounding box | the box along the world's axes around the `.mdl` hull min/max as the prop's angles turn it (measured, section 7) |
 | 6 | VPhysics (Hammer default) | the model's `.phy` solid 0, placed at the prop's origin and angles, as an immovable physics object and for traces |
 
 - The compile tool refuses models not compiled as static props. It also
@@ -341,9 +341,11 @@ stores a one-byte solid type copied from the entity's `solid` keyvalue:
   Out of scope here.
 - Otherwise: an immovable (static, or "shadow" if parented) physics object
   from `.phy` solid 0 at the entity's origin and angles. With `solid` 2 it is
-  a world-axis-aligned box of the model bounds instead.
-- No `.phy`: no physics object is created. The entity keeps its declared
-  solid type for traces (see Open questions).
+  a world-axis-aligned box of the model bounds instead (for the physics
+  object; traces measured 2026-10-18 hit the box turned with the entity,
+  section 7).
+- No `.phy`: no physics object is created. With solid 6 traces pass
+  through it; with solid 2 its box stops them (measured, section 7).
 - A `prop_dynamic` whose model has `prop_data` (without `allowstatic`) is
   deleted at spawn.
 
@@ -407,8 +409,8 @@ The mass centre is the stored one (1.4). For inertia, see Open questions.
   For shipped CS:S props both are usually 0, i.e. no damping. The damping law
   is inside vphysics (see Open questions).
 - Air drag uses the drag coefficient (1.0), the solid's drag axis areas and a
-  global air density (cheat command `air_density`). Formula: Open questions.
-  For props at CS:S speeds it is small.
+  global air density (cheat command `air_density`, 2.00). It is not small:
+  measured, section 7.
 
 #### 3.4 Friction and elasticity (surface properties)
 
@@ -702,6 +704,29 @@ its own motion.
   physics runs at the same step as the server, but is advanced by real frame
   time (scaled by the client cvar `cl_phys_timescale`) instead of by ticks.
 
+### 7. Measured on the probe server (2026-10-18)
+
+`tools/css_probe/physmeas.py` (a spawned prop's origin every server frame
+with `mashup_htrack`), `pushmeas.py` (the probe bot running into a crate)
+and the server's `physics_debug_entity <targetname>` (mass, inertia,
+velocity, damping, drag, material and **asleep or awake**), on de_dust2's
+flat concrete floor at (320, 1540, 0) (surface property `concrete`:
+friction 0.8, elasticity 0.2). `overridescript surfaceprop,<name>` gave the
+same crate other materials. `phybox.py` prints a model's `.phy` bounds.
+
+| What | Result |
+|---|---|
+| Inertia (Q1) | `physics_debug_entity` prints the stored per-kg inertia × mass: plastic crate 0.56, 0.33, 0.62 about Source x, y, z (stored IVP 0.0564, 0.0618, 0.0330 × 10 kg); wood crate 3.59, 3.61, 3.62 (30 kg; a solid 40-unit cube would be 5.16). The stored values are used, not the hull's. |
+| Damping law (Q3) | a watermelon in the air with `damping`/`rotdamping` d: speed decays at about d per second over drag (d 1: 0.97/s, d 4: 4.12/s; drag alone 0.18/s): `v ← v·(1 − d·dt)` fits d 4 best, `v/(1 + d·dt)` is 6% off. |
+| Friction (Q4) | a 40-unit crate shoved at 150 units/s slows at (g units) 0.086 with ice (0.1), 0.164 with 0.2, 0.241 with 0.3, 0.315 with 0.4, 0.61 with 0.8, 0.73 with 1.0: the product of the two frictions (0.8 × f), a little under it above 0.6. Two runs each agreed to 0.005. |
+| Elasticity (Q4) | the crate dropped flat 25, 100 and 400 units rises back at e = 0.13-0.15 of its landing speed (√(rise/drop)) for elasticities 0.01 to 0.3 (products with concrete's 0.2 up to 0.06), 0.28 with popcan (0.99), 0.20 with wasabiball (1.0, friction 1.0), 0.34 with quicksand (2.0), 0.85-0.94 with metal_bouncy (1000). Repeats agree to 0.001. Not the product: a floor near 0.14 and a slow rise. |
+| Sleep (Q5) | the body sleeps 0.4-0.55 s after its speed falls below about 1 unit/s (crate: 0.26 at 0.57 s, asleep at 1.11 s; still moving 0.13 units/s and 0.1°/s when it slept). |
+| Air drag (Q6) | quadratic: a falling 30 kg wood crate is held back about 90 units/s² at 300 units/s, 360 at 600, 950 at 1000 (`k·v²`, k ≈ 0.001 per unit); the plastic crate about 0.0007-0.0008. The debug print's per-axis "Linear Drag" is ½ · air density · face area (m²) / mass (plastic crate 0.02, 0.03, 0.02 in IVP axes); k in metres is that, which gives 874 units/s² for the wood crate at 1000. Thrown sideways, crates tumble (several hundred °/s), so the horizontal slowing scatters. |
+| Push limit (Q7) | a running bot pushes the crate made 300 kg (28 units/s) and 340 kg (about 11), not 360 or 400 kg (a bump of 1-3 units, then nothing). 30 kg is kicked to about 140 units/s, the bot stopping at each contact. |
+| Rest height (Q8) | at rest the origin is 0.41-0.45 units further from the floor than the `.phy` hull's lowest point (plastic crate 0.412, wood crate 0.442, oil drum 0.451, whose hull reaches its origin); a wood crate on another rested 0.38 above it. Contacts keep about 0.4 units apart; hulls are not inflated to the render mesh. |
+| Bbox solids (Q9) | a `prop_dynamic` with `solid 2` turned 45° stops traces on its turned box (the hit point moves 1:1 along the face): an entity's bbox solid is oriented. A **static** prop's solid 2 is the box along the world's axes around its turned bounds: de_dust's `du_window_4x8_arch_flat` windows (yaw 120, the only turned solid-2 static props on the stock maps) stopped traces from −x on a face at x = −14.6 for y −8..8 around each origin, the turned hull's world box (−14.59, −8.06..9.15). Solid 6 without a `.phy`: see Q10. |
+| `SOLID_VPHYSICS` without a `.phy` (Q10) | a `prop_dynamic` of `food_pile01` (no `.phy`) with `solid 6` stops no trace (bullet mask: the wall behind is hit); with `solid 2` its box does. |
+
 ## Per-tick order
 
 Server, one tick (dt = TICK_INTERVAL):
@@ -833,7 +858,7 @@ Behaviour:
 
 ## Open questions
 
-1. **Inertia tensor.** The stored per-unit-mass rotational inertia (crate:
+1. **Answered (2026-10-18, section 7): vphysics uses the stored inertia × mass.** Was: **Inertia tensor.** The stored per-unit-mass rotational inertia (crate:
    0.0564, 0.0618, 0.0330 m² on IVP axes) is 74–81% of the uniform-density
    solid inertia I computed from the same hulls (0.0694, 0.0838, 0.0445). So
    either vphysics uses a different approximation, or the field means
@@ -841,27 +866,27 @@ Behaviour:
    key. Check by measuring spin-up from an off-centre bullet in game.
 2. **Rotational inertia limit 0.05** default: its exact meaning (a minimum
    ratio between principal moments?) is inside vphysics.
-3. **Damping law.** How `damping` / `rotdamping` reduce velocity per step
+3. **Answered (2026-10-18, section 7): about d per second, `v·(1 − d·dt)` fits best.** Was: **Damping law.** How `damping` / `rotdamping` reduce velocity per step
    (e.g. `v ← v·(1 − c·dt)` versus `v ← v / (1 + c·dt)`) is not in the SDK.
    It mostly matters for ragdolls, since props ship with 0.
-4. **Friction and elasticity combination** between two surfaces (product?
+4. **Answered (2026-10-18, section 7): friction multiplies; the rebound has a floor near 0.14 and follows no simple rule.** Was: **Friction and elasticity combination** between two surfaces (product?
    min? average?) and the restitution model are inside vphysics. Measure a
    prop's bounce height and its slide on a ramp to fit.
-5. **Sleep thresholds** (velocity and time before a body sleeps) are inside
+5. **Answered (2026-10-18, section 7): about 0.5 s under about 1 unit/s.** Was: **Sleep thresholds** (velocity and time before a body sleeps) are inside
    vphysics. Measure with `cl_showpos`-style observation or ent_text on a
    rolling barrel.
-6. **Partly answered (2026-10-17, probe server): `air_density` reads 2.00.** The drag formula is open. Was: **Air drag formula and default air density.** `air_density` with no
+6. **Answered (2026-10-17 and 2026-10-18, section 7): `air_density` reads 2.00; drag is ½ρ·A·v²/m per axis.** Was: **Air drag formula and default air density.** `air_density` with no
    argument prints the current value in game (cheat).
-7. **Player push limits.** Exact semantics of the shadow controller's push
+7. **Answered in part (2026-10-18, section 7): the mass limit is a hard 350 kg (340 pushed, 360 not); the speed limit's meaning is open.** Was: **Player push limits.** Exact semantics of the shadow controller's push
    mass limit (350 kg) and push speed limit (50 in/s) are inside vphysics.
-8. **Hull shrink.** Crate hulls are ~0.3 in smaller per side than the `.mdl`
+8. **Answered (2026-10-18, section 7): contacts rest about 0.4 units apart; the stored hull is not inflated.** Was: **Hull shrink.** Crate hulls are ~0.3 in smaller per side than the `.mdl`
    hull. A comment in the SDK says vphysics keeps a minimum separation of
    about 0.25 in between objects. It is unclear whether hulls are stored
    shrunk and inflated at collision time (so contacts happen at the original
    surface), or whether the render hull is simply larger than the
    collision mesh. Check by placing a prop on flat ground and measuring the
    gap between the visible model and the floor.
-9. **Static props**:
+9. **Answered (2026-10-18, section 7): an entity's solid 2 box is oriented, a static prop's is the world box around its turned bounds; solid 6 without a `.phy`: no hit (Q10).** Was: **Static props**:
    - whether the bounding-box solid type (2) is oriented with the prop's
      angles or world-aligned;
    - what solid type 6 does without a `.phy` (no collision, bbox fallback,
@@ -869,14 +894,14 @@ Behaviour:
 
    The engine's static prop manager is not public. Test in game by walking
    into rotated solid-2 props.
-10. **SOLID_VPHYSICS entity without a `.phy`** (e.g. `prop_dynamic`): engine
+10. **Answered (2026-10-18, section 7): no hit, no box fallback.** Was: **SOLID_VPHYSICS entity without a `.phy`** (e.g. `prop_dynamic`): engine
     trace behaviour (no hit vs. bounding box fallback) is not in the SDK.
 11. **Answered (2026-10-17, weapons.md Q8 and prop_damage.md Q11: the damage force each hit hands a prop is fixed by ammo, 2000 for 9 mm to 2800 for .338, buckshot 600 a pellet, the knife 300; HE radius damage: grenades.md Q10).** Was: **CS:S ammo impulses.** Only `.50 AE = 2400` is visible in public code.
     Whether CS:S's own bullet code uses this helper at all, and the other
     calibres' values, need checking: shoot a known-mass prop and measure
     Δv with `ent_text` or a demo. CS:S's HE grenade radius-damage code may
     also differ from the generic one in 5.3.
-12. **Call sites in CS:S.** The server push (4.2.2) and the client push-back
+12. **Answered for the server push (2026-10-18, probe server, a standing bot overlapping a 30 kg crate on ice, `physicsmode 2`):** the crate is kicked by 33.3 units/s (1000 kg·units/s, the cap) **every 7 ticks** (0.105 s), not every tick, while it is within reach (frames 0, 7, 14, 21; 25 at 40 units: 30000/dist), so on concrete's friction a shove barely moves a crate (1-2 units as the bot walks through, ~8 units in 2 s standing inside it). Mode 1 props push the bot back (it stopped against a crate's face head-on, slid past one 20-25 units aside) and weren't shoved by it at 250 units/s. A forward move of 60 can't start the bot at all (4.5 units/s: sv_accelerate 5 equals the stop-speed friction below 75), so the 75 rule couldn't be tested slower. Was: **Call sites in CS:S.** The server push (4.2.2) and the client push-back
     (4.2.3) are defined in shared code. CS:S's player code (not public) is
     presumed to call them every tick or command. The cvars become
     player-visible only in the CS build, and the +use push filter excludes

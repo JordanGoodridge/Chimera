@@ -660,7 +660,7 @@ fn wall(sim: &mut Sim, at: f32, thick: f32, surface: &str) {
     use avian3d::prelude::*;
     use crate::stack::map::{MapSounds, MapSurface, PropSurface, sound::SoundBank};
     let mut sounds = MapSounds::default();
-    for (name, class) in [("wood", 'W'), ("concrete", 'C')] {
+    for (name, class) in [("wood", 'W'), ("concrete", 'C'), ("sand", 'D'), ("metal", 'M'), ("metalgrate", 'G'), ("computer", 'P')] {
         sounds.surfaces.insert(
             name.into(),
             MapSurface {
@@ -698,6 +698,26 @@ fn ak47_passes_walls_thinner_than_its_limit() {
     // wood x 0.6 -> 21, concrete x 0.25 -> 8 (35 with no wall).
     assert_eq!(through_wall(70.0, "wood"), 21);
     assert_eq!(through_wall(15.0, "concrete"), 8);
+}
+
+#[test]
+fn sand_and_metal_keep_three_tenths_of_the_damage() {
+    // Measured 2026-10-18 (weapons.md M13): 36 x 0.98^(118/500) x 0.3 x
+    // 0.98^(220/500) = 10.6 through 15 units of sand (limit 19.5) or of
+    // metal (limit 39).
+    assert_eq!(through_wall(15.0, "sand"), 10);
+    assert_eq!(through_wall(15.0, "metal"), 10);
+    // A grate keeps 0.99 (measured the same day): 36 x 0.99524 x 0.99 x
+    // 0.99115 = 35.2 (35.5 with no wall).
+    assert_eq!(through_wall(6.0, "metalgrate"), 35);
+}
+
+#[test]
+fn computers_stop_bullets_as_concrete_does() {
+    // Measured 2026-10-18: a 13.2-unit TV passes the M4A1 (35) and not the
+    // Deagle (30): scale 0.4, the AK-47's limit 15.6; damage x 0.45.
+    assert_eq!(through_wall(13.0, "computer"), 15);
+    assert_eq!(through_wall(17.0, "computer"), 0);
 }
 
 #[test]

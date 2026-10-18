@@ -29,11 +29,12 @@ pub struct LooseItem(pub String);
 
 /// Kilograms (a rifle is about 4; the game's own weight isn't known).
 const MASS: f32 = 3.0;
-/// Friction (averaged with the world's 0.5). Measured target (2026-10-15):
-/// an AK-47 thrown standing on de_dust2 stops 95 units from the hand in
-/// CS:S; ours lands a little sooner and stops at about 72 with this (0.5
-/// gave 66; lower barely helps).
-const FRICTION: f32 = 0.3;
+/// Friction (multiplied with the world's 0.8: 0.4, as when it was 0.3
+/// averaged with the old 0.5). Measured target (2026-10-15): an AK-47
+/// thrown standing on de_dust2 stops 95 units from the hand in CS:S; ours
+/// lands a little sooner and stops at about 72 with this (0.5 gave 66;
+/// lower barely helps).
+const FRICTION: f32 = 0.5;
 /// Swept collision only above these speeds (m/s, rad/s): slower, an item
 /// moves under a centimetre a tick, which the contact margin catches.
 const CCD_SPEED: f32 = 0.5;
@@ -108,7 +109,7 @@ pub fn attach_loose(
             Collider::cuboid(half.x * 2.0, half.y * 2.0, half.z * 2.0),
             CollisionLayers::new(crate::core::ITEM_LAYER, LayerMask::ALL),
             Mass(MASS),
-            Friction::new(FRICTION),
+            Friction::new(FRICTION).with_combine_rule(CoefficientCombine::Multiply),
             Restitution::new(0.1),
             LinearDamping(0.1),
             AngularDamping(0.5),

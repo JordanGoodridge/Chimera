@@ -16,15 +16,25 @@
 //! character's own pairs only to `prop_physics` bodies too heavy to push; the
 //! shadow is on `core::SHADOW_LAYER`, which no spatial query sees);
 //! `settle_props`: a moving prop that keeps within 1 in and 5 degrees of
-//! one pose for 1 s is stopped and put to sleep (`Settling`), as Source's
+//! one pose for 0.5 s is stopped and put to sleep (`Settling`), as Source's
 //! physics sleeps nearly still bodies; one sunk more than 1 in into the
 //! world or a static prop (`WEDGED_DEPTH`) sleeps at once when the map
-//! placed it so (`WedgeCheck`) and after 1 s wedged otherwise (bodies with
+//! placed it so (`WedgeCheck`) and after 0.5 s wedged otherwise (bodies with
 //! `SettlesLikeProp`, broken props' pieces, too); `BodyCounts`:
 //! dynamic bodies and how many are awake (the perf readout, `--bench`).
 //!
+//! Props' surfaces (`dynamic_body`): friction multiplied with the other
+//! surface's (`WORLD_FRICTION` for the world), the measured rebound
+//! (`rebound`), air drag (`AirDrag`, `air_drag`) and the collision model's
+//! stored inertia (`StoredInertia`).
+//!
 //! Known shortcuts (docs/tech-debt.md): The settle thresholds (1 in, 5
-//! degrees, 1 s) are ours: spec 3.5 leaves vphysics' sleep thresholds open.
+//! degrees) are ours; the 0.5 s matches vphysics, which sleeps a body
+//! about 0.4 to 0.55 s after its speed falls under about 1 in/s
+//! (physics_props.md Q5, measured). `rebound` is a fit to crate drops on
+//! concrete, the world's friction and elasticity one value for every
+//! surface, and drag uses the model's bounds for its cross-sections (no
+//! angular drag).
 //! So is putting wedged props to sleep (cs_italy's jugs inside a cabinet's
 //! base were pushed out every tick and crawled or fell through the floor;
 //! what Source does with props placed in solid is unknown).
@@ -46,13 +56,16 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 use super::{MapBrushCollider, MapPhysics, MapPropCollider, PhysicsProp};
 use crate::core::MovingSolid;
 
-/// The simulated body of a physics prop with these settings.
+/// The simulated body of a physics prop with these settings: its friction
+/// multiplies the other surface's (the world's is `WORLD_FRICTION`), it
+/// rebounds as `rebound` says, air drags it (`AirDrag`), and its
+/// rotational inertia is the collision model's own when it has one.
 pub fn dynamic_body(p: &MapPhysics, bounds: (Vec3, Vec3)) -> impl Bundle {
     (
         RigidBody::Dynamic,
         Mass(p.mass),
-        Friction::new(p.friction),
-        Restitution::new(p.elasticity),
+        Friction::new(p.friction).with_combine_rule(CoefficientCombine::Multiply),
+        Restitution::new(rebound(p.elasticity)).with_combine_rule(CoefficientCombine::Max),
         LinearDamping(p.damping),
         AngularDamping(p.rotdamping),
         // Source clamps every body to 2000 units/s and 3600 deg/s.
@@ -64,9 +77,93 @@ pub fn dynamic_body(p: &MapPhysics, bounds: (Vec3, Vec3)) -> impl Bundle {
             bounds,
         },
         MapPropCollider,
+        AirDrag::of_box(bounds, p.mass),
+        StoredInertia(p.inertia),
         // Impact sounds and damage listen for its contacts.
         CollisionEventsEnabled,
     )
+}
+
+/// The friction of the world's surfaces for physics bodies: Source's
+/// default surface property (and concrete, tile, dirt and most of what
+/// maps are built of), which a body's own multiplies (physics_props.md
+/// 3.4, measured 2026-10-18: a crate sliding on de_dust2's concrete
+/// slowed at 0.086 g with ice's 0.1, 0.24 g with 0.3, 0.61 g with 0.8).
+pub const WORLD_FRICTION: f32 = 0.8;
+
+/// The elasticity of the world's surfaces in `rebound` (concrete's).
+pub const WORLD_ELASTICITY: f32 = 0.2;
+
+/// The share of its landing speed a physics prop keeps bouncing off the
+/// world with surface elasticity `elasticity` (physics_props.md 3.4,
+/// measured 2026-10-18: a 40-unit crate dropped flat on de_dust2's
+/// concrete rose back at 0.13 to 0.15 of its landing speed for every
+/// elasticity up to 0.3, 0.28 with 0.99, 0.34 with 2.0, 0.85 with 1000;
+/// the same from 25, 100 and 400 units). A fit, not vphysics' law.
+pub fn rebound(elasticity: f32) -> f32 {
+    (0.6 * (elasticity.max(0.0) * WORLD_ELASTICITY).sqrt()).clamp(0.14, 0.9)
+}
+
+/// Source's `air_density` (the probe server's reads 2.00), kg/m³.
+pub const AIR_DENSITY: f32 = 2.0;
+
+/// Air drag on a physics body: along each of its own axes it slows by
+/// `k · |v| · v` (m/s²), with `k` = half the air density times the
+/// body's cross-section across that axis over its mass (physics_props.md
+/// 3.3, measured 2026-10-18: a 30 kg 40-unit crate falling at 1000 in/s
+/// is held back about 950 in/s², 360 at 600; vphysics' debug print gives
+/// the same per-axis `k`).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct AirDrag(pub Vec3);
+
+impl AirDrag {
+    /// For a box `bounds` (meters, body axes) of `mass` kg.
+    pub fn of_box(bounds: (Vec3, Vec3), mass: f32) -> Self {
+        let s = (bounds.1 - bounds.0).abs();
+        let area = Vec3::new(s.y * s.z, s.x * s.z, s.x * s.y);
+        Self(0.5 * AIR_DENSITY * area / mass.max(0.1))
+    }
+}
+
+/// Before each physics step: awake bodies with `AirDrag` slow down.
+pub fn air_drag(
+    time: Res<Time>,
+    mut bodies: Query<(&RigidBody, &Rotation, &AirDrag, &mut LinearVelocity), Without<Sleeping>>,
+) {
+    let dt = time.delta_secs();
+    for (rb, rot, drag, mut v) in &mut bodies {
+        let speed = v.0.length();
+        if !rb.is_dynamic() || speed < 1e-4 {
+            continue;
+        }
+        let local = rot.0.inverse() * v.0;
+        // Never past a stop along an axis.
+        let slow = (drag.0 * speed * dt).min(Vec3::ONE);
+        v.0 -= rot.0 * (local * slow);
+    }
+}
+
+/// A physics body's rotational inertia from its collision model (kg m²,
+/// body axes), set once its collider is in place: vphysics uses the
+/// model's stored inertia times the mass, 70 to 80% of a solid of the
+/// same shape (physics_props.md Q1, measured 2026-10-18), so props spin
+/// faster from the same off-centre hit than a solid would.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct StoredInertia(pub Option<Vec3>);
+
+/// Bodies whose `StoredInertia` is known take it in place of the one
+/// avian computes from their colliders.
+pub fn apply_stored_inertia(
+    bodies: Query<(Entity, &StoredInertia), Added<StoredInertia>>,
+    mut commands: Commands,
+) {
+    for (e, inertia) in &bodies {
+        if let Some(i) = inertia.0 {
+            commands
+                .entity(e)
+                .insert((AngularInertia::new(i.max(Vec3::splat(1e-5))), NoAutoAngularInertia));
+        }
+    }
 }
 
 /// A physics prop placed frozen: the body it becomes when its motion is
@@ -338,7 +435,7 @@ pub const SETTLE_DISTANCE: f32 = 0.0254;
 /// See `SETTLE_DISTANCE`, radians.
 pub const SETTLE_ANGLE: f32 = 0.087;
 /// See `SETTLE_DISTANCE`, seconds.
-pub const SETTLE_TIME: f64 = 1.0;
+pub const SETTLE_TIME: f64 = 0.5;
 
 /// A prop sunk deeper than this (meters) into something that doesn't move
 /// (the world, a static prop) is wedged: placed so, it is put to sleep
