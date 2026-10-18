@@ -1197,3 +1197,97 @@ fn a_player_shoves_multiplayer_props_every_tenth_of_a_second() {
         assert_eq!(w[1].0 - w[0].0, 7, "every 7 ticks: {kicks:?}");
     }
 }
+
+/// A breakable brush parented to a physics prop (cs_havana's monitor
+/// screen, `breen_monitor_1_breakable_1` on a prop_physics_multiplayer)
+/// rides the prop's body: as it falls and as it turns, the brush's place
+/// (the logic's and its node's, which carries its collision) stays where
+/// it was on the prop, and its own collider doesn't shove the prop
+/// carrying it.
+#[test]
+fn a_breakable_parented_to_a_physics_prop_rides_its_body() {
+    use avian3d::prelude::{AngularVelocity, Rotation};
+    let monitor = entity(
+        &[
+            ("classname", "prop_physics_multiplayer"),
+            ("targetname", "monitor"),
+            ("origin", "0 0 100"),
+        ],
+        Vec::new(),
+        false,
+    );
+    // A pane against the crate's +x face, 4 units off it.
+    let screen = entity(
+        &[
+            ("classname", "func_breakable"),
+            ("targetname", "screen"),
+            ("parentname", "monitor"),
+            ("origin", "20 0 100"),
+            ("health", "1"),
+        ],
+        vec![hull(Vec3::new(-1.0, -12.0, -12.0), Vec3::new(1.0, 12.0, 12.0))],
+        true,
+    );
+    let mut data = map(vec![monitor, screen]);
+    add_prop(&mut data, 0, Vec3::new(0.0, 0.0, 100.0), PushAway::Collide, false, 20.0);
+    let mut sim = sim(data);
+    let node = {
+        let world = sim.app.world_mut();
+        world.query::<(Entity, &PropEntity)>().iter(world).next().unwrap().0
+    };
+    // Where the screen should be (Source units): 20 units along the
+    // prop's +x from its origin.
+    let expected = |sim: &Sim| {
+        let w = sim.app.world();
+        let at = to_source(w.get::<Position>(node).unwrap().0);
+        let r = w.get::<Rotation>(node).unwrap().0;
+        let r = Quat::from_xyzw(r.x, -r.z, r.y, r.w);
+        (at + r * Vec3::new(20.0, 0.0, 0.0), r)
+    };
+    let screen_at = |sim: &Sim| {
+        let logic = sim.app.world().resource::<Logic>();
+        let id = logic.world.find("screen").expect("screen");
+        let e = logic.world.get(id).unwrap();
+        let node = logic.nodes.iter().find(|(i, _)| *i == id).map(|(_, n)| *n).expect("screen node");
+        let t = sim.app.world().get::<Transform>(node).unwrap();
+        let r = t.rotation;
+        (e.origin, to_source(t.translation), Quat::from_xyzw(r.x, -r.z, r.y, r.w))
+    };
+    sim.seconds(2.0);
+    let (want, rot) = expected(&sim);
+    let (logic_at, node_at, node_rot) = screen_at(&sim);
+    assert!(want.z < 40.0, "the prop fell: {want}");
+    assert!(logic_at.distance(want) < 1.0, "logic place {logic_at}, on the prop {want}");
+    assert!(node_at.distance(want) < 1.0, "node place {node_at}, on the prop {want}");
+    assert!(node_rot.angle_between(rot) < 0.02, "node turn {node_rot}, the prop's {rot}");
+    let crate_xy = to_source(sim.app.world().get::<Position>(node).unwrap().0).truncate();
+    assert!(crate_xy.length() < 2.0, "its own brush didn't shove it: {crate_xy}");
+    // Shots still hit it (its collider is on), physics bodies don't.
+    {
+        use avian3d::prelude::{ColliderDisabled, CollisionLayers, LayerMask, SpatialQuery, SpatialQueryFilter};
+        let logic = sim.app.world().resource::<Logic>();
+        let id = logic.world.find("screen").unwrap();
+        let screen = logic.nodes.iter().find(|(i, _)| *i == id).unwrap().1;
+        let w = sim.app.world();
+        assert!(!w.entity(screen).contains::<ColliderDisabled>(), "shootable");
+        assert_eq!(w.get::<CollisionLayers>(screen).map(|l| l.filters), Some(LayerMask::NONE), "no physics contacts");
+        let (want, _) = expected(&sim);
+        let mut state: bevy::ecs::system::SystemState<SpatialQuery> = bevy::ecs::system::SystemState::new(sim.app.world_mut());
+        let spatial = state.get(sim.app.world()).unwrap();
+        let from = to_engine(want + Vec3::new(0.0, -100.0, 0.0));
+        let hit = spatial
+            .cast_ray(from, Dir3::new(to_engine(Vec3::Y).normalize()).unwrap(), 10.0, true, &SpatialQueryFilter::default())
+            .map(|h| h.entity);
+        assert_eq!(hit, Some(screen), "a ray across it hits the screen");
+    }
+    // Spin it about the vertical: the screen swings round with it.
+    sim.app.world_mut().get_mut::<AngularVelocity>(node).unwrap().0 = Vec3::new(0.0, 10.0, 0.0);
+    sim.ticks(10);
+    let (want, rot) = expected(&sim);
+    let (logic_at, node_at, node_rot) = screen_at(&sim);
+    let turned = rot.angle_between(Quat::IDENTITY);
+    assert!(turned > 0.2, "the prop turned: {turned}");
+    assert!(logic_at.distance(want) < 1.0, "logic place {logic_at}, on the turned prop {want}");
+    assert!(node_at.distance(want) < 1.0, "node place {node_at}, on the turned prop {want}");
+    assert!(node_rot.angle_between(rot) < 0.02, "node turn {node_rot}, the prop's {rot}");
+}

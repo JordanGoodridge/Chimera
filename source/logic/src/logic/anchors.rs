@@ -10,7 +10,9 @@
 //! (its pose from `map::entities::EntityAnchors`), a physics brush or prop or a
 //! mover, from map load or a SetParent at run time (ClearParent lets go,
 //! SetParentAttachment snaps to the parent); triggers and brushes move their
-//! volumes, mover children (a door on a lift) are carried along with their own
+//! volumes (a brush riding a physics body touches no physics body, so it
+//! doesn't shove its carrier, but shots still hit it: `rides_body`, the
+//! bridge's `sync_movers`), mover children (a door on a lift) are carried along with their own
 //! motion kept, drawn parts go where their entity is (`part_poses`); players
 //! SetParent to an entity ride it (`player_follows`; the bridge sets
 //! `core::MapControls::parented`, which stops their movement, physics shadow
@@ -230,10 +232,40 @@ impl LogicWorld {
     /// turn a mover child).
     pub fn follow_anchors(&mut self) {
         self.follow_players();
+        self.move_followers(false);
+    }
+
+    /// `follow_anchors` for what rides physics bodies only (directly, or
+    /// through other riders), after the physics step has moved the
+    /// bodies (`set_anchor`): without it they would trail their body by
+    /// a tick.
+    pub fn follow_bodies(&mut self) {
+        self.move_followers(true);
+    }
+
+    /// Whether anything rides a physics body (`follow_bodies` has work).
+    pub fn has_body_riders(&self) -> bool {
+        self.follows.iter().any(|(_, f)| match f.parent {
+            Who::Ent(p) => self.get(p).is_some_and(|p| is_physics_body(&p.classname)),
+            Who::Player(_) => false,
+        })
+    }
+
+    /// Move linked children to their parents' poses; with `bodies_only`,
+    /// only those whose parent is a physics body or was moved here.
+    fn move_followers(&mut self, bodies_only: bool) {
         let follows = self.follows.clone();
+        let mut moved: Vec<EntId> = Vec::new();
         for (id, f) in follows {
             if !self.exists(f.parent) {
                 continue;
+            }
+            if bodies_only {
+                let Who::Ent(p) = f.parent else { continue };
+                if !moved.contains(&p) && !self.get(p).is_some_and(|p| is_physics_body(&p.classname)) {
+                    continue;
+                }
+                moved.push(id);
             }
             let (po, pa) = self.parent_pose(f.parent);
             let parent_velocity = match f.parent {
@@ -388,7 +420,7 @@ impl LogicWorld {
         self.follows.iter().any(|(c, _)| *c == id)
     }
 
-    /// Whether `id` is carried by a physics brush (through its parents):
+    /// Whether `id` is carried by a physics brush or prop (through its parents):
     /// its own collider must not collide with that body.
     pub fn rides_body(&self, id: EntId) -> bool {
         let mut at = id;
@@ -397,10 +429,7 @@ impl LogicWorld {
                 return false;
             };
             let Who::Ent(parent) = f.parent else { return false };
-            if self
-                .get(parent)
-                .is_some_and(|p| super::prop_damage::is_physbox(&p.classname))
-            {
+            if self.get(parent).is_some_and(|p| is_physics_body(&p.classname)) {
                 return true;
             }
             at = parent;

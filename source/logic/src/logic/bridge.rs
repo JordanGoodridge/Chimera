@@ -7,7 +7,8 @@
 //! steps as `LogicSet::Pre` does; `LogicPlugin`: built from `map::MapEntities`,
 //! runs `LogicSet::Pre` before movement, `LogicSet::Post` after, and
 //! `LogicSet::Damage` after weapons (weapon `Damage` on breakable nodes); moves
-//! mover nodes and their `core::MovingSolid`, disables the collider of what
+//! mover nodes and their `core::MovingSolid` (those riding a physics body
+//! again after the physics step, `follow_bodies`), disables the collider of what
 //! isn't there, gives broken windows `map::BrushPanes`, hides nodes of removed
 //! entities, pairs prop nodes (`map::PropEntity`) with logic props (weapon
 //! damage with its push and attacker, physics impacts on props, breakables and
@@ -53,8 +54,8 @@
 //! once avian clears the flag itself.
 
 use avian3d::prelude::{
-    AngularVelocity, Collider, ColliderAabb, ColliderDisabled, CollisionStart, ComputedMass, LinearVelocity,
-    PhysicsSystems, Position, RigidBody, RigidBodyDisabled, Rotation,
+    AngularVelocity, Collider, ColliderAabb, ColliderDisabled, CollisionLayers, CollisionStart, ComputedMass,
+    LayerMask, LinearVelocity, PhysicsSystems, Position, RigidBody, RigidBodyDisabled, Rotation,
 };
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
@@ -187,7 +188,11 @@ impl Plugin for LogicPlugin {
                 FixedPostUpdate,
                 record_velocities.before(PhysicsSystems::StepSimulation),
             )
-            .add_systems(FixedPostUpdate, (impacts, stress).chain().after(PhysicsSystems::Writeback));
+            .add_systems(FixedPostUpdate, (impacts, stress).chain().after(PhysicsSystems::Writeback))
+            .add_systems(
+                FixedPostUpdate,
+                follow_bodies.after(PhysicsSystems::Writeback).run_if(crate::core::authoritative),
+            );
         app.console_command(
             "ent_fire",
             "ent_fire <target> <input> [value]: send a map entity an input (names, wildcards, classnames), \
@@ -1108,10 +1113,12 @@ fn sync_movers(world: &mut World, logic: &mut Logic) {
         let Some(node) = nodes.get(&id) else {
             continue;
         };
-        // A brush riding a physics brush keeps its collider off (it would
-        // collide with the body carrying it); players still meet its
-        // brushes (`MovingSolid`).
-        let shootable = logic.world.shootable(id) && !logic.world.rides_body(id);
+        // A brush riding a physics brush or prop touches no physics body
+        // (it would shove the body carrying it) but shots still hit it
+        // (cs_havana's monitor screen); players meet its brushes
+        // (`MovingSolid`).
+        let shootable = logic.world.shootable(id);
+        let rides = logic.world.rides_body(id);
         let panes = logic.world.window(id).filter(|w| w.window_broken).map(|w| {
             let e = logic.world.get(id).unwrap();
             let s = logic.scale;
@@ -1142,6 +1149,14 @@ fn sync_movers(world: &mut World, logic: &mut Logic) {
         };
         let transform = Transform::from_translation(entity_to_engine(origin, logic.scale))
             .with_rotation(rotation_to_engine(entity_rotation(angles)));
+        let layers = if rides {
+            CollisionLayers::new(LayerMask::DEFAULT, LayerMask::NONE)
+        } else {
+            CollisionLayers::default()
+        };
+        if e.get::<CollisionLayers>().is_some_and(|l| *l != layers) || (rides && !e.contains::<CollisionLayers>()) {
+            e.insert(layers);
+        }
         let mut moved = true;
         if let Some(mut t) = e.get_mut::<Transform>() {
             moved = *t != transform;
@@ -2044,6 +2059,26 @@ fn follow_anchors(world: &World, logic: &mut Logic) {
     if logic.world.follows.is_empty() && logic.world.player_follows.is_empty() {
         return;
     }
+    set_anchor_poses(world, logic);
+    logic.world.follow_anchors();
+}
+
+/// Brushes and entities riding physics bodies, again after the physics
+/// step (they'd trail their body by a tick): their logic place, then
+/// their nodes (drawn meshes, collider, `MovingSolid`).
+fn follow_bodies(world: &mut World) {
+    if !world.get_resource::<Logic>().is_some_and(|l| l.world.has_body_riders()) {
+        return;
+    }
+    let mut logic = world.remove_resource::<Logic>().unwrap();
+    set_anchor_poses(world, &mut logic);
+    logic.world.follow_bodies();
+    sync_movers(world, &mut logic);
+    world.insert_resource(logic);
+}
+
+/// The anchors' and physics bodies' poses into the logic (`set_anchor`).
+fn set_anchor_poses(world: &World, logic: &mut Logic) {
     let scale = logic.scale;
     let entity_pose = |t: &Transform| {
         let rotation = Quat::from_xyzw(t.rotation.x, -t.rotation.z, t.rotation.y, t.rotation.w);
@@ -2076,7 +2111,6 @@ fn follow_anchors(world: &World, logic: &mut Logic) {
     for (id, o, a) in poses {
         logic.world.set_anchor(id, o, a);
     }
-    logic.world.follow_anchors();
 }
 
 /// Where each logic prop's body is now (its collider's world box), for

@@ -79,8 +79,9 @@ maps with references. Found and fixed: 16. Looked at and left:
 - cs_havana: `breen_monitor_1_breakable_1` (a func_breakable) is parented
   to a physics prop, and three of the map's outputs name entities it
   doesn't have (`breen_mic_1`, `..._screen_1`, `..._glass_rl_1`): the
-  map's own leftovers. The brush following its physics parent belongs to
-  the physics props work.
+  map's own leftovers. The brush follows its physics parent (2026-10-18:
+  place and turn, its collider off for physics bodies, still shot;
+  parity-gaps "Brushes parented to physics props").
 - de_prodigy's five vent fans name `info_lighting_relative`s as their
   lighting origin (`lightingoriginhack`), which nothing reads; ours light
   them from their own origin and they look lit (windows-captures sitting
@@ -88,7 +89,10 @@ maps with references. Found and fixed: 16. Looked at and left:
 - `fogblend` (two fog colours by view direction) is set on cs_compound
   and de_port, not only mg_kommando as backlog section 0 says; unread.
   At their fog distances (from 3000 and 2048 units) it would show only
-  on the far skyline (windows-captures sitting 4 item 3).
+  on the far skyline (windows-captures sitting 4 item 3). No spec gives
+  the blend rule (2026-10-18): written up as specs/cs_source/shaders.md
+  open question 21 (curve, colour space, `fogdir` vs `use_angles`,
+  per view or per pixel), not guessed.
 - Dark props (`dark_props`): de_port's tunnel pipes, de_nuke's warehouse
   floodlights, de_tides' shelves are near black from every side, in
   places that are dark in our lightmaps too; no reference to tell.
