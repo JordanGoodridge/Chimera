@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Lucker Party (private monorepo; its engine is **Chimera**, `chimera/`;
+Lucker Party (public monorepo; its engine is **Chimera**, `chimera/`;
 "mashup" is the old name of the whole and of the dev sandbox): minigames
 built from other games' assets and behavior, with parts mixed across games
 (e.g. a Combat Arms character on a Counter-Strike: Source map), and later
@@ -100,7 +100,7 @@ personal emails or machine paths in commits or files.
 
 ## Testing on Windows
 
-Remote: https://github.com/r0pi0x/Chimera (private; renamed from
+Remote: https://github.com/r0pi0x/Chimera (public; renamed from
 LuckerParty on 2026-10-16, the old URL redirects). The games and the
 original source live on the Windows PC, which has its own checkout
 (`git clone https://github.com/r0pi0x/Chimera`); `scripts\playtest.ps1`

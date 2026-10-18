@@ -31,6 +31,15 @@ physics_constraints row is split in two, so class 1 counts 138): class 1:
 138, of which 31 answered in Part B and 107 left (a row with a part left
 counts as left); classes 2-5 unchanged.
 
+Third pass (2026-10-18, physics props, constraints, sounds, recoil,
+templates, ropes; the physics_constraints row split again, its Q10 apart):
+34 class-1 items settled, 27 answered on the probe or by sweeping the
+maps' entity lumps (`tools/css_probe/entsweep.py`) and 7 found to need
+something else (moved to classes 2-4: a dangling rope's look, the
+silencer's recoil, the template suffix and templated logic_auto, the
+constraint tie order, a human's airborne inaccuracy, nav_analyze on a
+listen server); about 73 class-1 items left.
+
 ## Specs: specs/cs_source
 
 | Spec | Question | Class | What would answer it |
@@ -81,7 +90,7 @@ counts as left); classes 2-5 unchanged.
 | movement | Q16 left: ladder jump-off 270, water jump 256/50 | 1 | movecmp scenarios (climb speeds and swimming already match tick-exact) |
 | movement | Q18 a box exactly touching a floor | 1 | `setpos` onto a floor's height, `getpos`, jump |
 | movement | Q19 displacement contact normals elsewhere | 1 | movecmp on more dust2 strip edges |
-| nav | Q1 the per-area CS byte | 1 | `nav_analyze` and `nav_save` on the probe, read the bytes |
+| nav | Q1 the per-area CS byte | 2 | tried 2026-10-18: `nav_analyze` does nothing on the dedicated server (no listen host) and `nav_save` wrote de_dust2's mesh back byte for byte; needs a listen server |
 | nav | Q2-Q4 bot path cost, attribute handling, follower | 3 | bots are parked; a behaviour spec |
 | nav | Q5 nearest-area distance | 1 | a bot placed off-mesh above a ledge (bots parked) |
 | nav | Q6 stairs flags at load | 1 | `nav_edit` on dust2's stairs areas |
@@ -99,17 +108,17 @@ counts as left); classes 2-5 unchanged.
 | objectives | Q14 plant/defuse tick rounding, same-tick defuse and blast | 1 | event ticks from Q1/Q3 runs |
 | objectives | Q16 the bar while planting | 2 | client screenshots |
 | overlays_decals | Q1-Q9 (decal orientation, reach, size, displacements/props, overlay order, overlays vs decals, corner mapping, deathmatch flag, fade) | 2 | client screenshots, one each (9 items) |
-| physics_props | Q1 inertia tensor | 1 | spin-up of a prop from an off-centre shot, logged per frame |
+| physics_props | Q1 inertia tensor | 5 | measured (Part B, 2026-10-18) |
 | physics_props | Q2 rotational inertia limit | 3 | inside vphysics |
-| physics_props | Q3 damping law | 1 | a prop with damping set, speed per tick |
-| physics_props | Q4 friction and elasticity combination | 1 | bounce height and ramp slide of a spawned prop |
-| physics_props | Q5 sleep thresholds | 1 | `mashup_watch` a rolling barrel |
-| physics_props | Q6 air drag and density | 1 | density 2.00 read (done, Part B); the drag: a falling prop's speed |
-| physics_props | Q7 player push limits | 1 | bot walking into props of 300 and 400 kg |
-| physics_props | Q8 hull shrink | 1 | a prop's rest height on a flat floor |
-| physics_props | Q9 static prop solid types 2 and 6 | 1 | traces and walks against rotated static props |
-| physics_props | Q10 SOLID_VPHYSICS without `.phy` | 1 | `mashup_trace` through a prop_dynamic without one |
-| physics_props | Q12 player push call sites (< 75 vs > 75 in/s) | 1 | bot walking into a barrel at two speeds |
+| physics_props | Q3 damping law | 5 | measured (Part B, 2026-10-18) |
+| physics_props | Q4 friction and elasticity combination | 5 | measured (Part B, 2026-10-18) |
+| physics_props | Q5 sleep thresholds | 5 | measured (Part B, 2026-10-18) |
+| physics_props | Q6 air drag and density | 5 | measured (Part B, 2026-10-17 and 2026-10-18) |
+| physics_props | Q7 player push limits | 5, 3 | mass limit measured (Part B, 2026-10-18); the 50 in/s speed limit's meaning: inside vphysics |
+| physics_props | Q8 hull shrink | 5 | measured (Part B, 2026-10-18) |
+| physics_props | Q9 static prop solid types 2 and 6 | 5 | measured (Part B, 2026-10-18) |
+| physics_props | Q10 SOLID_VPHYSICS without `.phy` | 5 | measured (Part B, 2026-10-18) |
+| physics_props | Q12 player push call sites (< 75 vs > 75 in/s) | 5, 4 | the server push's rate measured (Part B, 2026-10-18); slower than 75: a human (a bot can't start moving under 75) |
 | physics_props | Q13 `sv_turbophysics` default | 1 | `cvarlist` (done, Part B: 0) |
 | physics_props | Q14 drag axis areas | 3 | units unknown; spec session |
 | physics_props | Q15 model type 1 solids | 3 | none shipped |
@@ -129,9 +138,9 @@ counts as left); classes 2-5 unchanged.
 | ropes | width = full width | 2 | client screenshot |
 | ropes | engine point lighting | 2 | client screenshot |
 | ropes | Hammer defaults in the FGD | 3 | the FGD |
-| ropes | `_back` rope materials; `cable.vmt` blend | 1 | list `materials/cable/` in the server install's VPK (`vpkls.py`) |
+| ropes | `_back` rope materials; `cable.vmt` blend | 5 | listed (Part B, 2026-10-18) |
 | ropes | TextureScale network rounding | 3 | spec session |
-| ropes | dangling rope's free end | 1 | sweep the maps' entity lumps for a rope without NextKey |
+| ropes | dangling rope's free end | 2 | three found on cs_compound (Part B); where the free end starts: client screenshot |
 | ropes | CS:S-specific rope code; the 10-node cable's 11 px | 2 | client screenshots |
 | shaders | Q1 lightmap scale constant (test map) | 2 | client test map |
 | shaders | Q2 left: bump redistribution with coloured light; page borders | 2 | RenderDoc |
@@ -161,14 +170,14 @@ counts as left); classes 2-5 unchanged.
 | shadows_sky | Q1 shadow clipper; Q2 static props as casters; Q3 player shadows; Q5 2D sky order; Q6 shadow detail; Q7 blend space | 2 | RenderDoc/screenshots (6 items) |
 | shadows_sky | Q4 the no-shadow_control ambient colour | 3 | engine code |
 | sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the server's distance-gain query needs a plugin build (blocked here); else client recordings |
-| sounds | Q2 left: other entries' wave picks | 1 | sound hook, 200 shots of a 3-wave entry |
-| sounds | Q3 left: wading in knee-deep water | 1 | sound hook while running in shallow water |
+| sounds | Q2 left: other entries' wave picks | 5 | measured (Part B, 2026-10-18) |
+| sounds | Q3 left: wading in knee-deep water | 1 | feet-deep measured (Part B, 2026-10-18); knee-deep: a map with water 15-36 deep where the probe bot moves |
 | sounds | Q5 `Player.Swim` doubled for the owner | 2 | client trace |
-| sounds | Q6 gravel surface override | 1 | sound hook walking on gravel |
+| sounds | Q6 gravel surface override | 5 | measured (Part B, 2026-10-18) |
 | sounds | Q7 left: shot sound path, ricochets, whizz | 2 | client trace |
-| sounds | Q8 scrape energy | 1 | sound hook while shoving a crate |
-| sounds | Q9 weapon sound timing (reload parts, empty click, zoom, deploy) | 1 | sound hook during each action |
-| sounds | Q10 ambient_generic presets and Hammer defaults | 1 | sweep the maps' entity lumps |
+| sounds | Q8 scrape energy | 5, 3 | thresholds and volumes measured (Part B, 2026-10-18); the energy formula: inside vphysics |
+| sounds | Q9 weapon sound timing (reload parts, empty click, zoom, deploy) | 5, 2 | server half measured (Part B, 2026-10-18); the client-side sounds' timing: client trace |
+| sounds | Q10 ambient_generic presets and Hammer defaults | 5 | swept (Part B, 2026-10-18) |
 | sounds | Q11 ambient_generic level for a radius | 2 | client audibility test |
 | sounds | Q12 channel stealing and voice limits | 2 | engine |
 | sounds | Q13 remote footstep cadence | 2 | client |
@@ -186,12 +195,12 @@ counts as left); classes 2-5 unchanged.
 | view_models | Q8 sequence cross-fades | 3 | animation spec |
 | water | Q1-Q12 (expensive water, reflect texture, target size, fog range, cheap pass, time base, fog material, patched proxies, `srgb?` fog colour, stale refraction, tangents, which volume) | 2 | client screenshots and RenderDoc (12 items) |
 | weapons | Q1 random generator | 3 | the generator body (spec session) |
-| weapons | Q2 left: the airborne inaccuracy target | 1 | `m_fAccuracyPenalty` through a long fall |
-| weapons | Q3 left: snipers' recoil, silenced and burst modes | 1 | `recoilall.py` with those modes |
+| weapons | Q2 left: the airborne inaccuracy target | 4 | the bot's jumps duck it (Part B, 2026-10-18): a human's plain jump |
+| weapons | Q3 left: silenced modes | 4 | scoped and burst measured (Part B, 2026-10-18); the bot's AI takes the silencer off: a human |
 | weapons | Q6 hitbox reach outside the hull | 1 | M12 shots past the hull (done, Part B) |
-| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | M13 with more walls |
+| weapons | Q7 left: penetration budget, player cost, other materials and ammo distances | 1 | sand's, metal's, tile's, computer's, grate's, plastic's and glass's damage factors measured (Part B, 2026-10-18); their thickness limits; a thick entity counting twice |
 | weapons | Q11 left: shotgun reload (M9) | 1 | clip per tick during M3/XM1014 reloads (done, Part B) |
-| weapons | Q12 left: pellet pattern, line or box traces | 1 | `bullet_impact` per pellet on a far wall, by seed |
+| weapons | Q12 left: pellet pattern, line or box traces | 3 | the shared offset measured (Part B, 2026-10-18); the pattern inside the spread is the generator's (Q1) |
 | weapons | Q13 left: which weapon drops at death, dropped weapons' lifetime | 1 | death drops done (Part B); lifetime done (Part B) |
 
 ## Specs: specs/source
@@ -251,7 +260,9 @@ counts as left); classes 2-5 unchanged.
 | physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
 | physics_brushes | Q8 thin-rod check on rotated brushes | 1 | spawned |
 | physics_constraints | Q1, Q5 (break limit at rest, deleted body; 2 items) | 1 | done (Part B; Q1's moving loads and torque left) |
-| physics_constraints | Q2-Q4, Q6-Q10 (motor units, hinge friction, spring law, world fallback, equal limits, pulley, never-created joint, tie order) | 1 | spawned constraints, positions per frame (8 items) |
+| physics_constraints | Q1 left: torque at rest | 5 | measured (Part B, 2026-10-18); moving loads still class 1 |
+| physics_constraints | Q2-Q4, Q6-Q9 (motor units, hinge friction, spring law, world fallback, equal limits, pulley, never-created joint; 7 items) | 5 | measured (Part B, 2026-10-18) |
+| physics_constraints | Q10 tie order | 3 | map load order: a test map |
 | prop_damage | Q4, Q7, Q8 and the client halves of Q2, Q9 | 2 | capture C29 |
 | prop_damage | Q6 left: why the landing crush only at 1450-1500 in/s | 1 | more landing speeds |
 | triggers | Q1 face contact | 1 | spawned trigger, bot placed at −16.0/−15.9 (done, Part B) |
@@ -265,11 +276,11 @@ counts as left); classes 2-5 unchanged.
 | triggers | Q9 AddOutput basevelocity | 1 | spawned trigger_multiple with that output (done, Part B) |
 | viewcontrol_and_templates | Q1 HUD and view model under a camera | 2 | client |
 | viewcontrol_and_templates | Q2 view reset with two players | 4 | two clients |
-| viewcontrol_and_templates | Q3 camera path | 1 | spawned point_viewcontrol, origin per tick |
-| viewcontrol_and_templates | Q4 ForceSpawnAtEntityOrigin | 1 | `ent_fire` on a spawned point_template |
-| viewcontrol_and_templates | Q5 output separator in community maps | 1 | the sweep's entity lumps |
-| viewcontrol_and_templates | Q6 instance counter start | 1 | one ForceSpawn, `mashup_ents` |
-| viewcontrol_and_templates | Q7 templated logic_auto | 1 | spawned template |
+| viewcontrol_and_templates | Q3 camera path | 5 | measured (Part B, 2026-10-18) |
+| viewcontrol_and_templates | Q4 ForceSpawnAtEntityOrigin | 5 | measured (Part B, 2026-10-18) |
+| viewcontrol_and_templates | Q5 output separator in community maps | 5 | swept (Part B, 2026-10-18) |
+| viewcontrol_and_templates | Q6 instance counter start | 3 | every stock template keeps names (flag 2): a test map |
+| viewcontrol_and_templates | Q7 templated logic_auto | 3 | templates can't be spawned at run time and no stock one holds a logic_auto: a test map |
 | visual_entities | Q1, Q2, Q4-Q10 (beam width, dlight falloff, overrides, pixel visibility, trail repeat, steam roll, spark wrap, spotlight parent, scroll quirk) | 2 | client screenshots (9 items) |
 | visual_entities | Q3 env_laser damage against armour | 1 | spawned env_laser through an armoured bot |
 
@@ -420,3 +431,39 @@ measured.
 | physics_constraints Q5: the body of a constraint broken | the constraint's OnBreak, the tick after | the joint dropped silently | OnBreak, the constraint goes |
 | doors_buttons Q9: a touch-open door under a landing player | opens every time | the same | none (test) |
 | doors_buttons Q1: +use reach | the shared search; a button face square ahead is used out to 87.0 units (the 10° box probes, reach counted at the box's centre) | the box probes' reach counted at the button's nearest point: 80 | counted at the box's centre (logic and the bomb/hostage search) |
+| physics_props Q1: inertia | the `.phy`'s stored inertia per kg × mass (`physics_debug_entity`: crate 0.56, 0.33, 0.62; 70-80% of the solid's) | avian's, from the hull as a solid | the stored inertia (`prop_physics::StoredInertia`) |
+| physics_props Q4: friction | the two surfaces' product (crate on concrete: 0.086 g with ice's 0.1 up to 0.61 g with 0.8) | averaged with the world's 0.5 | multiplied; the world 0.8 (`WORLD_FRICTION`) |
+| physics_props Q4: rebound | 0.13-0.15 of the landing speed for elasticities to 0.3 on concrete, 0.28 at 0.99, 0.34 at 2.0 | averaged elasticity (0.05) | `rebound`, a fit |
+| physics_props Q6: air drag | ½ · 2.0 · face area / mass × v² per axis (a 30 kg crate at 1000 units/s: about 950 units/s²) | none | as CS:S (`AirDrag`) |
+| physics_props Q3: damping | speed falls about d a second (`v·(1 − d·dt)` fits) | avian's `v/(1 + d·dt)` | none (props ship 0) |
+| physics_props Q5: sleep | 0.4-0.55 s after the speed falls under about 1 unit/s | 1 s still | 0.5 s (`SETTLE_TIME`) |
+| physics_props Q7: push limit | 340 kg pushed (11 units/s), 360 not | 350 | none |
+| physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | none (tech-debt) |
+| physics_props Q10, Q9: prop_dynamic solids | no `.phy`: traces pass; solid 2: its box, turned with it | the visible mesh; solid 2 as 6 | as CS:S |
+| physics_props Q9: static props' solid 2 | the box along the world's axes around the turned bounds (de_dust's windows at yaw 120) | the bounds turned with the prop | the world box (`PropSolid::WorldBox`) |
+| physics_props Q12: the players' push | a 1000 kg·units/s kick every 7 ticks (0.105 s) | every tick | every 0.1 s (`pushaway::PUSH_INTERVAL`) |
+| physics_constraints Q1: torque limit | breaks nothing at rest (a weld 40 units off a 30 kg crate held at torquelimit 1); a weld's force limit as a ball socket's | the torque as a weight × units | no torque breaking |
+| weapons Q7: sand's damage factor | 0.30 (AWP, AK-47, M4A1 through 11.4 and 14.4 units) | 0.5 (a guess) | 0.3 |
+| weapons Q7: other materials' damage | tile 0.30, computer 0.45, grate 0.99, plastic 0.50, glass 0.50 | 0.5 for all | as CS:S |
+| weapons Q12: pellets' offset | one inaccuracy offset a shot, each pellet within the 0.04 spread of it (M3 in the air: centre up to 0.28 off, pellets ≤ 0.037 from it) | the same | none |
+| weapons Q7: computer's thickness scale | 0.377-0.44 (M4A1 passes a 13.2-unit TV, Deagle doesn't) | 1.0 | 0.4 |
+| weapons Q7: metal's damage factor | 0.30 through an oil drum's 13.6-22.4-unit chords; 0.09 through 25-28 (the entity counted twice) | 0.5 (a guess) | 0.3 (the double count not made) |
+| sounds Q3: feet in water | slosh steps at 0.5 every 0.3 s running; entering or leaving: slosh at 1.0, then a wade wave at 0.2 | slosh steps; Player.Swim at entry and exit | none (the wade wave noted) |
+| sounds Q2: other entries' waves | uniform, repeats allowed (a crate's 3 hard-impact waves 29/22/29 of 80) | uniform | none |
+| physics_constraints Q2: motors | hinge: the value in deg/s, clockwise about the axis, at once; slider: 5 × the value in units/s; 0: off, it coasts | ignored | as CS:S (logic controls: `ControlKind::Slide`) |
+| physics_constraints Q3: hinge friction | no effect measured (0, 1, 10) | ignored | none |
+| physics_constraints Q4: phys_spring | `constant` × stretch, kg·units/s² a unit (period 2π√(m/k)) | not made | none (missing; no stock map) |
+| physics_constraints Q6: attach typo | held to the world | the same | none |
+| physics_constraints Q7: equal ragdoll limits | locked | a free ball joint | welded when every axis is |
+| physics_constraints Q8: pulley | second body moves 1/gearratio as far | not made | none (missing; no stock map) |
+| physics_constraints Q9: Break on a never-made joint | OnBreak, removed | the same | none |
+| weapons Q3: scoped and burst recoil | scoped AWP/scout 2.0 up, SG550/G3SG1 random as unscoped; a FAMAS burst kicks on its first round only | burst rounds 2-3 kicked | first round only |
+| sounds Q9: server weapon sounds | the server emits none of a gun's own sounds; the knife's draw, the pickup, and one dry-fire click per press | one click per press | none |
+| sounds Q10: ambient_generic presets | none on stock maps, 2 on community maps; radius, health, pitch always written | presets read | none |
+| viewcontrol Q4: ForceSpawnAtEntityOrigin | accepted by env_entity_maker (de_train's `pt_can`) | accepted | none |
+| viewcontrol Q5: output separator | commas in every map | commas | none |
+| viewcontrol Q3: camera path | the moveto corner skipped; speed approaches by 3% a tick (frozen); unfrozen crawl 3 units/s | as the spec | none |
+| ropes: `_back` materials, `cable.vmt` | six `_back` materials; cable.vmt opaque, cable_back translucent | as the spec | none |
+| sounds Q6: gravel steps | gravel keeps its step sounds (the cs file overrides friction only) | the same (keys merged) | none |
+| sounds Q8: scrapes | none under 60 units/s (30 kg crate on concrete), volume 0.05-0.25 (scattered), a volume-0 stop | our energy rule | none (noted) |
+| weapons Q2: airborne target | the probe bot's jump ducks it (45-unit hull, no duck button) | the crouched target | none (a human's jump needed) |

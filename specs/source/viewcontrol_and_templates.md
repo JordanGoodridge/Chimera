@@ -375,13 +375,13 @@ questions). Outputs **OnEntitySpawned**, **OnEntityFailedSpawn**
    freeze) reset on respawn or round restart if a camera was never
    disabled (two-player overwrite case, death while viewing)? Probe on a
    listen server with two clients.
-3. **Camera path behaviour**: confirm the first corner is skipped and the
+3. **Answered (measured 2026-10-18, probe server: a point_viewcontrol spawned with moveto c1 → c2 → c3, speed 100, enabled with the bot as activator, its origin every frame):** the first corner is skipped (c1 placed 200 units aside, the camera flew straight for c2), the frozen camera's speed approaches 100 by 3% of the gap a tick (step 5's 2·dt blend: 11.5, 16.7, 21.6 ... units/s every other tick), and unfrozen (flag 4 clear) it crawls at 3.0 units/s. Was: **Camera path behaviour**: confirm the first corner is skipped and the
    unfrozen-camera crawl (speed 100: ~3 units/s) on a test map with a
    two-corner path; record origin per tick with a server-side probe.
-4. **ForceSpawnAtEntityOrigin** exists only in newer builds: does the
+4. **Answered (measured 2026-10-18, de_train's `pt_can` template on the probe server):** the CS:S build accepts it: an env_entity_maker spawned with `EntityTemplate pt_can` made the template's water bottle at the maker on ForceSpawn and at an info_target's origin on `ForceSpawnAtEntityOrigin <its name>` (the input accepted). (A point_template spawned at run time captures nothing: templates take their entities from the map's entity text. The stock templates, cs_office's two and de_train's one, all have flag 2, which keeps names, so Q6's suffix and Q7's templated logic_auto still need a map with such a template.) Was: **ForceSpawnAtEntityOrigin** exists only in newer builds: does the
    CS:S build accept it? Probe with a test map and the console
    (ent_fire maker ForceSpawnAtEntityOrigin target).
-5. **Separator in compiled CS:S maps**: are output fields in the community
+5. **Answered (2026-10-18, `tools/css_probe/entsweep.py outputs`):** commas: 18,831 output values with four or more commas and none with 0x1B in the 20 stock and 89 cached community maps. Was: **Separator in compiled CS:S maps**: are output fields in the community
    maps separated by commas or by 0x1B? Read the entity lumps of the maps
    in the sweep (mashup's BSP reader already sees the raw text).
 6. **Instance counter start**: what suffix does the first ForceSpawn on a

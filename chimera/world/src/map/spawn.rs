@@ -450,7 +450,20 @@ fn spawn_prop<D: MapDrawer>(
                 .into_iter()
                 .collect()
         }
+        (PropSolid::WorldBox, _) => {
+            let (lo, hi) = world_box(model.bounds, prop.rotation);
+            ((hi - lo).min_element() > 0.0)
+                .then(|| MapBrush::from_box(lo, hi).planes)
+                .into_iter()
+                .collect()
+        }
         (PropSolid::None, _) => Vec::new(),
+    };
+    // A world box's planes are already along the world's axes.
+    let rotation = if prop.solid == PropSolid::WorldBox {
+        Quat::IDENTITY
+    } else {
+        prop.rotation
     };
     // Bodies that move are swept through physics queries, not as brushes.
     // Frozen ones stay put like static props until enabled
@@ -464,7 +477,7 @@ fn spawn_prop<D: MapDrawer>(
     let placed_brushes: Vec<MapBrush> = if prop_brush.is_some() {
         pieces
             .iter()
-            .map(|planes| place_brush(planes, prop.translation, prop.rotation, model.surfaceprop.clone()))
+            .map(|planes| place_brush(planes, prop.translation, rotation, model.surfaceprop.clone()))
             .collect()
     } else {
         Vec::new()
@@ -612,6 +625,21 @@ fn tag_prop(
     fade_range
 }
 
+/// The box along the world's axes (relative to the prop's origin) around
+/// `bounds` turned by `rotation`.
+pub fn world_box(bounds: (Vec3, Vec3), rotation: Quat) -> (Vec3, Vec3) {
+    let (lo, hi) = bounds;
+    (0..8).fold((Vec3::MAX, Vec3::MIN), |(a, b), k| {
+        let c = Vec3::new(
+            if k & 1 == 0 { lo.x } else { hi.x },
+            if k & 2 == 0 { lo.y } else { hi.y },
+            if k & 4 == 0 { lo.z } else { hi.z },
+        );
+        let p = rotation * c;
+        (a.min(p), b.max(p))
+    })
+}
+
 /// A prop's collision: its model's collider (a dynamic or frozen body
 /// for physics props), or its bounds box.
 #[allow(clippy::too_many_arguments)]
@@ -661,13 +689,20 @@ fn insert_prop_collider(
                 e.insert(MapBrushCollider);
             }
         }
-        (PropSolid::Box, _) => {
-            let (lo, hi) = data.models[prop.model].bounds;
+        (PropSolid::Box | PropSolid::WorldBox, _) => {
+            let world = solid == PropSolid::WorldBox;
+            let (lo, hi) = if world {
+                world_box(data.models[prop.model].bounds, prop.rotation)
+            } else {
+                data.models[prop.model].bounds
+            };
             let size = hi - lo;
             if size.min_element() > 0.0 {
+                // A world box: turned back against the prop's rotation.
+                let back = if world { prop.rotation.inverse() } else { Quat::IDENTITY };
                 let child = (
                     Collider::cuboid(size.x, size.y, size.z),
-                    Transform::from_translation((lo + hi) / 2.0),
+                    Transform::from_translation(back * ((lo + hi) / 2.0)).with_rotation(back),
                 );
                 e.insert(RigidBody::Static).with_children(|c| {
                     let mut ec = c.spawn((child, MapPropCollider));

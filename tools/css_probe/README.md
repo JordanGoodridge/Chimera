@@ -222,6 +222,21 @@ detonation point and each player's horizontal distance from it, the damage
 before armour (`mashup_dmghook player` first) and the `hurt` row
 (`t_armor`, `v_armor`: armour of the thrower and the run bot).
 
+`physmeas.py` (physics_props.md section 7, 2026-10-18) spawns a prop on
+de_dust2's flat concrete at (320, 1540, 0) and follows its origin every
+server frame (`mashup_htrack`): `rest`, `drop` (bounce peaks), `slide`
+(friction), `drag`, `sleep`. `overridescript surfaceprop,<name>` gives a
+prop another material. The server's own `physics_debug_entity
+<targetname>` prints a body's mass, inertia, velocity, damping, drag,
+material and whether it is asleep; `physics_report_active` lists the awake
+ones. `pushmeas.py <kg>` runs the probe bot into a crate made that heavy.
+`phybox.py <model>` prints a model's `.phy` bounds, mass and surfaceprop.
+Constraints (physics_constraints.md Q2-Q9) were spawned with `mashup_spawn
+phys_hinge - x y z 0 0 attach1 <name> hingeaxis "x y z"` (the result is a
+reference index `mashup_input` takes). `entsweep.py` reads the maps'
+entity lumps (`class <classname> [keys]`, `count`, `outputs`; `MAPS=dir`
+adds a folder, e.g. the content cache).
+
 `impacts.py` (prop_damage.md 6): `drop <speed>` throws the 500 kg cupboard
 (or a given model) down onto the bot while a `mashup_run` logs its velocity
 (`HP=5000` for a bot that survives every contact, `HOOK=1` to hook its

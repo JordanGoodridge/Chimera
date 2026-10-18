@@ -819,7 +819,7 @@ pub fn spawn_gibs(
                     AngularVelocity(piece.spin),
                     LinearDamping(b.damping.0),
                     AngularDamping(b.damping.1.max(0.1)),
-                    Friction::new(0.8),
+                    Friction::new(0.8).with_combine_rule(CoefficientCombine::Multiply),
                     Restitution::new(0.25),
                     GravityScale(gravity_scale),
                     MaxLinearSpeed(2000.0 * 0.0254),

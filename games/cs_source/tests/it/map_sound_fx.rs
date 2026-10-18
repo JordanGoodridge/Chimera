@@ -49,6 +49,8 @@ fn map(entities: Vec<MapEntity>, sounds: MapSounds) -> MapData {
         entities,
         entity_scale: SCALE,
         sounds: Arc::new(sounds),
+        // CS:S's gravity for physics (800 units/s²), as its maps get it.
+        gravity: Some(800.0 * SCALE),
         ..default()
     };
     let (a, b) = (
@@ -158,6 +160,7 @@ fn add_crate(data: &mut MapData, index: usize) {
             elasticity: 0.0,
             damping: 0.0,
             rotdamping: 0.0,
+            inertia: None,
             push: PushAway::Collide,
             frozen: false,
             asleep: false,

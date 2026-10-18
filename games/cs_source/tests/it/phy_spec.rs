@@ -42,6 +42,19 @@ fn crate_pieces_and_points() {
     );
 }
 
+/// physics_props.md Q1 (measured 2026-10-18): vphysics gives the crate
+/// the stored per-kilogram inertia times its 10 kg (`physics_debug_entity`
+/// printed 0.56, 0.33, 0.62 about Source x, y, z), not the solid's own.
+#[test]
+fn crate_stored_inertia() {
+    let Some(p) = crate_phy() else { return };
+    let i = p.unit_inertia;
+    assert!((i - Vec3::new(0.0564, 0.0618, 0.0330)).abs().max_element() < 5e-4, "{i}");
+    // Source (x, y, z) = IVP (x, z, y): the debug print's order.
+    let src = Vec3::new(i.x, i.z, i.y) * p.mass;
+    assert!((src - Vec3::new(0.56, 0.33, 0.62)).abs().max_element() < 0.006, "{src}");
+}
+
 #[test]
 fn crate_volume_and_winding() {
     let Some(p) = crate_phy() else { return };

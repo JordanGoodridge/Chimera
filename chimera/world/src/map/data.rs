@@ -537,6 +537,9 @@ pub struct MapCollision {
     pub rotdamping: f32,
     /// Multiplier on the inertia tensor.
     pub inertia: f32,
+    /// Rotational inertia per kilogram about the model's axes (engine
+    /// axes, m²), when the collision model stores one.
+    pub unit_inertia: Option<Vec3>,
     /// Surface property name (friction, elasticity, sounds).
     pub surfaceprop: String,
 }
@@ -554,6 +557,11 @@ pub enum PropSolid {
     None,
     /// The model's bounds as a box, rotated with the prop.
     Box,
+    /// The box along the world's axes around the model's bounds as the
+    /// prop turns them (Source's static props with the bbox solid:
+    /// measured 2026-10-18, de_dust's windows turned 120°,
+    /// specs/cs_source/physics_props.md Q9).
+    WorldBox,
     /// The model's triangles.
     Mesh,
 }
@@ -639,6 +647,9 @@ pub struct MapPhysics {
     pub elasticity: f32,
     pub damping: f32,
     pub rotdamping: f32,
+    /// Rotational inertia about the model's axes (engine axes, kg m²);
+    /// None: computed from the collider's shape and the mass.
+    pub inertia: Option<Vec3>,
     pub push: PushAway,
     /// Held in place (Source "motion disabled") until something enables
     /// its motion: it stays put like a static prop until then.

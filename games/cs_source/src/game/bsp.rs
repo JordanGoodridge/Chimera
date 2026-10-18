@@ -2061,6 +2061,7 @@ fn brush_bodies(bytes: &[u8], surfaces: &super::surfaceprops::SurfaceProps, data
             // boxes of hulls).
             damping: 0.1,
             rotdamping: 0.1,
+            inertia: None,
             push: if class == "func_physbox_multiplayer" {
                 crate::map::PushAway::NonSolid
             } else {
