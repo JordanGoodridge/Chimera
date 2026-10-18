@@ -4,7 +4,7 @@
 //! so it turns with the door and goes when the door is removed; a decal on
 //! a breakable goes when it breaks and doesn't come back with it at a
 //! round restart. `r_cleardecals` (`ClearDecals`) removes every decal,
-//! and so does a round start with `mashup_round_cleardecals 1`. Skipped
+//! and so does a round start with `chimera_round_cleardecals 1`. Skipped
 //! without an install.
 
 use avian3d::prelude::*;
@@ -314,7 +314,7 @@ fn a_breakables_decal_goes_when_it_breaks() {
 }
 
 /// World decals stay through round restarts (as in the game) unless
-/// `mashup_round_cleardecals` is on, except the round's own (the bomb's
+/// `chimera_round_cleardecals` is on, except the round's own (the bomb's
 /// scorch, `PlaceDecal::round`); `ClearDecals` (`r_cleardecals`)
 /// removes them at any time.
 #[test]
@@ -368,7 +368,7 @@ fn decals_clear_on_demand_and_optionally_each_round() {
     sim.app.world_mut().resource_mut::<DecalSettings>().round_clear = 1;
     sim.app.world_mut().resource_mut::<RoundRestarts>().0 += 1;
     sim.ticks(3);
-    assert_eq!(count(&mut sim), 0, "mashup_round_cleardecals 1 clears at the round start");
+    assert_eq!(count(&mut sim), 0, "chimera_round_cleardecals 1 clears at the round start");
     mark(&mut sim);
     assert_eq!(count(&mut sim), 1, "new decals still land");
 }

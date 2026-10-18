@@ -23,7 +23,7 @@ pub struct ClientNetPlugin;
 impl Plugin for ClientNetPlugin {
     fn build(&self, app: &mut App) {
         // Map files as the game loads them (the install, its downloads,
-        // mashup's content cache: the default game's, `game_registry`), for
+        // Chimera's content cache: the default game's, `game_registry`), for
         // the server's offer and the client's checks and downloads.
         // The app reads them (`AppHooks::map_file_bytes`).
         let game = crate::game_registry::default_game(app.world());

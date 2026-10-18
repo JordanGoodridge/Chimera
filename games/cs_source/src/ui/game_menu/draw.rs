@@ -1,5 +1,5 @@
 //! Drawing the open dialog: its frame, tabs, controls where the install's
-//! layout puts them (greyed where mashup lacks them), columns without it;
+//! layout puts them (greyed where Chimera lacks them), columns without it;
 //! the player list's list; the Voice tab's microphone meter (`MicMeter`,
 //! `MicMeter2`: the dark bars' picture, the lit one cut to the bars the
 //! microphone's level lights, `mic_meter`, `meter_bars`).
@@ -388,7 +388,7 @@ const METER_FALL: f32 = 6.0;
 
 /// Controls of the game's layouts left out on purpose (a deliberate
 /// difference, docs/plans/active/ui-parity.md): Virtual Reality Mode and
-/// its label (mashup won't support VR).
+/// its label (Chimera won't support VR).
 pub const LEFT_OUT: [&str; 2] = ["VRMode", "VRModeLabel"];
 
 /// A property sheet's page: a raised box under its tabs.
@@ -593,7 +593,7 @@ pub(super) fn frame_part(c: &UiControl, (w, h): (f32, f32)) -> bool {
 }
 
 /// The open page's controls where the game's layout puts them: those
-/// mashup has as working controls, the rest greyed (labels as they are);
+/// Chimera has as working controls, the rest greyed (labels as they are);
 /// without the layout, a column.
 pub(super) fn page_controls(commands: &mut Commands, ctx: &Ctx, parent: Entity, (w, h): (f32, f32)) {
     let (look, menu) = (ctx.look, ctx.menu);

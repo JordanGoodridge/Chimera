@@ -792,7 +792,7 @@ fn convex_props_collide_as_brushes() {
 /// Walking into a tall solid prop (crate, box) must not climb it: before
 /// convex props were exact brushes, contacts near a face's triangle
 /// diagonal gave tilted normals and players could run up vertical faces.
-/// (MASHUP_NO_PROP_BRUSHES=1 brings the old collision back to compare.)
+/// (CHIMERA_NO_PROP_BRUSHES=1 brings the old collision back to compare.)
 #[test]
 fn props_cannot_be_climbed_by_walking() {
     use crate::stack::games::cs_source::movement::{self, SourceMovementPlugin};

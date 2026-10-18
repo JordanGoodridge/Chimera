@@ -106,7 +106,7 @@ impl Default for Occlusion {
 #[derive(Resource, Default, Clone, Copy)]
 pub struct NoVis(pub u8);
 
-/// What visibility culling did this frame, for `mashup_perf`.
+/// What visibility culling did this frame, for `chimera_perf`.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct VisStats {
     /// The camera's cluster (None: outside the map or culling off).

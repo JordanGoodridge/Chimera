@@ -649,7 +649,7 @@ impl Hitbox {
 #[reflect(Component)]
 pub struct Hitboxes(pub Vec<Hitbox>);
 
-/// `mashup_noblock` (ours, a server setting sent to clients, off by
+/// `chimera_noblock` (ours, a server setting sent to clients, off by
 /// default as CS:S has nothing like it): 0 players block each other (CS:S),
 /// 1 teammates pass through each other, 2 nobody blocks anybody.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]

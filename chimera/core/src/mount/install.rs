@@ -1,11 +1,11 @@
 //! Finding a game's install, in this order:
 //!
-//! 1. its `path` in `mashup.local.toml` (`config::LocalConfig`: an
+//! 1. its `path` in `chimera.local.toml` (`config::LocalConfig`: an
 //!    explicit path always wins, even one that doesn't check out);
 //! 2. the path saved in the user's settings file (`settings_path`: the
-//!    first-run dialog and `mashup_install` write it), while it still
+//!    first-run dialog and `chimera_install` write it), while it still
 //!    checks out;
-//! 3. Steam: each Steam root (`steam_roots`; `$MASHUP_STEAM_ROOT`
+//! 3. Steam: each Steam root (`steam_roots`; `$CHIMERA_STEAM_ROOT`
 //!    replaces the usual places), its libraries
 //!    (`steamapps/libraryfolders.vdf`, old and new formats), the library
 //!    with the app's `appmanifest_<id>.acf` (fully installed), its
@@ -53,14 +53,14 @@ pub fn steam_game(game: &str) -> Option<&'static SteamGame> {
 
 /// Replaces the usual Steam roots (paths joined as `PATH` is; empty: no
 /// Steam at all), for tests and for trying the first-run dialog.
-pub const STEAM_ROOT_ENV: &str = "MASHUP_STEAM_ROOT";
+pub const STEAM_ROOT_ENV: &str = "CHIMERA_STEAM_ROOT";
 /// Replaces the user's settings file.
-pub const SETTINGS_ENV: &str = "MASHUP_SETTINGS";
+pub const SETTINGS_ENV: &str = "CHIMERA_SETTINGS";
 
 /// How an install was found.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Found {
-    /// `mashup.local.toml` (the file, when known).
+    /// `chimera.local.toml` (the file, when known).
     Config(Option<PathBuf>),
     /// The user's settings file.
     Saved(PathBuf),
@@ -265,10 +265,10 @@ pub fn find_in_steam(roots: &[PathBuf], game: &SteamGame) -> Resolved {
     Resolved { install: None, notes }
 }
 
-/// Steam folders to search: `$MASHUP_STEAM_ROOT` if set, else where
+/// Steam folders to search: `$CHIMERA_STEAM_ROOT` if set, else where
 /// Steam lives on this system; existing ones, each once.
 pub fn steam_roots() -> Vec<PathBuf> {
-    let candidates = match std::env::var_os(STEAM_ROOT_ENV) {
+    let candidates = match crate::env::var_os(STEAM_ROOT_ENV) {
         Some(v) => std::env::split_paths(&v).filter(|p| !p.as_os_str().is_empty()).collect(),
         None => platform_steam_roots(),
     };
@@ -368,25 +368,26 @@ pub fn build_id_near(path: &Path, game: &SteamGame) -> Option<String> {
 // ---------------------------------------------------------------------------
 // The user's settings.
 
-/// The user's own mashup files (outside any checkout): Linux
-/// `~/.local/share/mashup`, Windows `%APPDATA%\mashup` (the cfg folder,
+/// The user's own Chimera files (outside any checkout): Linux
+/// `~/.local/share/chimera`, Windows `%APPDATA%\chimera` (the old `mashup`
+/// folder while only it exists, `env::user_folder`; the cfg folder,
 /// `console::cfg_dir`, is its `cfg/`).
 pub fn user_dir() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
-    Some(base.join("mashup"))
+    Some(crate::env::user_folder(&base))
 }
 
-/// The settings file: `$MASHUP_SETTINGS`, else `settings.toml` in
+/// The settings file: `$CHIMERA_SETTINGS`, else `settings.toml` in
 /// `user_dir`.
 pub fn settings_path() -> Option<PathBuf> {
-    std::env::var_os(SETTINGS_ENV).map(PathBuf::from).or_else(|| Some(user_dir()?.join("settings.toml")))
+    crate::env::var_os(SETTINGS_ENV).map(PathBuf::from).or_else(|| Some(user_dir()?.join("settings.toml")))
 }
 
 /// What the settings file holds: install paths by game, as
-/// `mashup.local.toml` names them (never keys).
+/// `chimera.local.toml` names them (never keys).
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default)]
@@ -409,7 +410,7 @@ impl Settings {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
-        let text = format!("# mashup's own settings (written by the game; see mashup.local.example.toml).\n{text}");
+        let text = format!("# Chimera's own settings (written by the game; see chimera.local.example.toml).\n{text}");
         fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
@@ -459,7 +460,7 @@ pub fn resolve_with(config: &LocalConfig, settings: Option<&Path>, steam: Option
         }
     }
     let (Some(sg), Some(roots)) = (sg, steam) else {
-        notes.push(format!("{NO_PATH} for `{game}` in mashup.local.toml"));
+        notes.push(format!("{NO_PATH} for `{game}` in chimera.local.toml"));
         return Resolved { install: None, notes };
     };
     let mut found = find_in_steam(roots, sg);
@@ -510,7 +511,7 @@ mod tests {
 
     impl Scratch {
         fn new(name: &str) -> Self {
-            let p = std::env::temp_dir().join(format!("mashup-install-{name}-{}", std::process::id()));
+            let p = std::env::temp_dir().join(format!("chimera-install-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&p);
             fs::create_dir_all(&p).unwrap();
             Self(p)

@@ -139,7 +139,7 @@ impl Plugin for ServerBrowserPlugin {
 // ---------------------------------------------------------------------------
 // The model.
 
-/// The browser's tabs, in CS:S's order (the ones mashup has).
+/// The browser's tabs, in CS:S's order (the ones Chimera has).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Tab {
     Internet,
@@ -3002,7 +3002,7 @@ mod tests {
                 info: ServerInfo {
                     name: name.into(),
                     map: map.into(),
-                    folder: "mashup".into(),
+                    folder: "chimera".into(),
                     game: "Lucker Party".into(),
                     players,
                     max_players: 8,

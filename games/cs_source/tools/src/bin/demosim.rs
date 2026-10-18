@@ -90,7 +90,7 @@ fn recording(a: &Args) -> Result<Recording, String> {
     let name = a.probe.as_deref().expect("checked");
     let server = LocalConfig::load()?
         .game_path("cs_source_server")
-        .ok_or("no [games.cs_source_server] path in mashup.local.toml (see mashup.local.example.toml)")?;
+        .ok_or("no [games.cs_source_server] path in chimera.local.toml (see chimera.local.example.toml)")?;
     let dir = server.join("cstrike").join("mashup");
     let read = |ext: &str| {
         let p = dir.join(format!("{name}.{ext}"));

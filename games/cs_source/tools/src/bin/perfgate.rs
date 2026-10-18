@@ -65,7 +65,7 @@ fn scenario(name: &str) -> Option<Sim> {
             sim.app
                 .world_mut()
                 .resource_mut::<Console>()
-                .submit("mp_freezetime 2; mp_roundtime 2; mashup_rounds 1");
+                .submit("mp_freezetime 2; mp_roundtime 2; chimera_rounds 1");
             sim
         }
         "mg_lego_multigames_v2" => {

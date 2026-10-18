@@ -16,7 +16,7 @@ use crate::{
     slots::RegisterSlots,
 };
 
-pub const ID: &str = "mashup:noclip";
+pub const ID: &str = "chimera:noclip";
 
 const SPEED: f32 = 10.0;
 const FAST_MULTIPLIER: f32 = 3.0;
@@ -33,7 +33,7 @@ pub struct NoclipBack(pub &'static str);
 /// End a noclip the `noclip` command turned on: the character moves as it
 /// did before (`NoclipBack`). A spawn calls it (CS:S: a player respawned
 /// or put back at a round's start walks again). A character given noclip
-/// as its movement outright (`--movement mashup:noclip`, a test's
+/// as its movement outright (`--movement chimera:noclip`, a test's
 /// `spawn_character`) keeps it. True when it ended one.
 pub fn end_toggled(world: &mut World, e: Entity) -> bool {
     let current = world.get::<crate::slots::MovementSlot>(e).map(|s| s.0);

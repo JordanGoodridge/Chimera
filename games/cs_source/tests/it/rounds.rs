@@ -1,4 +1,4 @@
-//! Counter-Strike rounds (`mashup_rounds 1`): freeze, elimination and
+//! Counter-Strike rounds (`chimera_rounds 1`): freeze, elimination and
 //! time wins, money rewards, survivors keeping their weapons.
 
 use bevy::prelude::*;
@@ -46,7 +46,7 @@ fn setup() -> (Sim, Entity, Entity, Entity) {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 1; mp_roundtime 0.5; mashup_rounds 1");
+        .submit("mp_freezetime 1; mp_roundtime 0.5; chimera_rounds 1");
     sim.ticks(3);
     (sim, t, ct, ct2)
 }
@@ -103,7 +103,7 @@ fn rounds_freeze_then_play_and_eliminations_pay() {
 /// Objectives.md Q5 (measured 2026-10-17: de_dust2 with its bomb targets
 /// removed before a restart, `mp_roundtime 1`): on a map without objectives
 /// the clock ends nothing, the round goes on until a side is dead.
-/// `mashup_untimed_win 1` (ours): the defenders win on time.
+/// `chimera_untimed_win 1` (ours): the defenders win on time.
 #[test]
 fn time_ends_nothing_without_objectives_and_buying_closes() {
     let (mut sim, t, ct, _) = setup();
@@ -115,7 +115,7 @@ fn time_ends_nothing_without_objectives_and_buying_closes() {
     assert!(sim.app.world().resource::<BuyWindow>().0.is_err(), "buy period over");
     sim.seconds(40.0);
     assert!(matches!(phase(&sim), Phase::Live { .. }), "the clock ran out: {:?}", phase(&sim));
-    sim.app.world_mut().resource_mut::<Console>().submit("mashup_untimed_win 1");
+    sim.app.world_mut().resource_mut::<Console>().submit("chimera_untimed_win 1");
     sim.ticks(2);
     match phase(&sim) {
         Phase::Over { winner, .. } => assert_eq!(winner, Some(Team(2))),
@@ -142,7 +142,7 @@ fn one_side_all_dead_is_a_draw() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+        .submit("mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.ticks(3);
     // The world kills them (falls, map hurts): no friendly fire.
     let fall = |sim: &mut Sim, target: Entity| {
@@ -193,7 +193,7 @@ fn bots_are_held_in_the_freeze_time_too() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 2; mp_roundtime 0.5; mashup_rounds 1");
+        .submit("mp_freezetime 2; mp_roundtime 0.5; chimera_rounds 1");
     sim.ticks(3);
     assert!(matches!(phase(&sim), Phase::Freeze { .. }), "{:?}", phase(&sim));
     assert!(sim.app.world().resource::<FreezeTime>().0);
@@ -278,7 +278,7 @@ fn rounds_ammo_is_bought_by_the_box() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 5; mashup_rounds 1");
+        .submit("mp_freezetime 5; chimera_rounds 1");
     sim.ticks(3);
     let gun = |sim: &Sim, e: Entity, id: &str| -> (u32, u32) {
         let w = sim.app.world();
@@ -372,7 +372,7 @@ fn survivors_keep_their_clip_and_reload_in_the_freeze() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 4; mp_roundtime 0.5; mashup_rounds 1");
+        .submit("mp_freezetime 4; mp_roundtime 0.5; chimera_rounds 1");
     sim.seconds(4.2);
     assert!(matches!(phase(&sim), Phase::Live { .. }), "{:?}", phase(&sim));
     let pistol = sim.app.world().get::<Inventory>(t).unwrap().active.expect("a pistol drawn");
@@ -429,7 +429,7 @@ fn autobuy_takes_the_list_and_rebuy_restores_the_last_buy() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 5; mashup_rounds 1");
+        .submit("mp_freezetime 5; chimera_rounds 1");
     sim.ticks(3);
     sim.app.world_mut().entity_mut(ct).insert(Money(16000));
     let carried = |sim: &Sim, id: &str| -> Option<Entity> {
@@ -585,7 +585,7 @@ fn uneven_teams_are_balanced_as_the_next_round_starts() {
         sim.app
             .world_mut()
             .resource_mut::<Console>()
-            .submit(&format!("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1; mp_autoteambalance {balance}"));
+            .submit(&format!("mp_freezetime 0; mp_roundtime 5; chimera_rounds 1; mp_autoteambalance {balance}"));
         sim.ticks(3);
         // The first terrorist has kills: it stays.
         sim.app.world_mut().entity_mut(ts[0]).insert(Score { kills: 3, deaths: 0 });
@@ -655,7 +655,7 @@ fn noclipped(sim: &mut Sim, ct: Entity) {
 /// CS:S puts a noclipping player back to walking at `mp_restartgame`
 /// (measured on the probe, specs/cs_source/movement.md "Noclip and
 /// spawning"); ours did keep the noclip. A character given noclip as its
-/// movement outright (a test's, `--movement mashup:noclip`) keeps it.
+/// movement outright (a test's, `--movement chimera:noclip`) keeps it.
 #[test]
 fn restartgame_ends_noclip() {
     use crate::stack::movement::noclip;
@@ -704,7 +704,7 @@ fn the_dead_respawn_out_of_noclip() {
     for rounds in [true, false] {
         let (mut sim, t, ct, ct2) = setup();
         if !rounds {
-            sim.app.world_mut().resource_mut::<Console>().submit("mashup_rounds 0; mp_respawn_delay 1");
+            sim.app.world_mut().resource_mut::<Console>().submit("chimera_rounds 0; mp_respawn_delay 1");
             sim.ticks(3);
         }
         sim.seconds(1.2);

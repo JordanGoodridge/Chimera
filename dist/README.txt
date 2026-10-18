@@ -17,7 +17,7 @@ What you need
 
 Start
 -----
-Run mashup.exe (Linux: ./mashup). Windows may warn that the program is
+Run cs_source.exe (Linux: ./cs_source). Windows may warn that the program is
 unrecognised (it isn't signed): "More info" -> "Run anyway".
 
 Play together
@@ -25,7 +25,7 @@ Play together
 One player hosts:
   - Main menu -> Create Server, pick a map, Start. Or, without playing
     yourself, run the dedicated server:
-      mashup_server.exe -port 27015 +map de_dust2 +maxplayers 8 +mashup_rounds 1 +bot_quota_mode fill +bot_quota 8
+      cs_source_server.exe -port 27015 +map de_dust2 +maxplayers 8 +chimera_rounds 1 +bot_quota_mode fill +bot_quota 8
     (+sv_password <pw> for a password, +hostname "<name>" to name it).
   - Allow the Windows Firewall prompt the first time (private networks).
   - Over the internet: forward UDP port 27015 on your router to your PC and
@@ -58,11 +58,11 @@ CS:S leaves free:
 
 Useful console commands (~)
 ---------------------------
-  mashup_rounds 1        Counter-Strike rounds with money (0: deathmatch)
+  chimera_rounds 1       Counter-Strike rounds with money (0: deathmatch)
   bot_add / bot_kick     add or remove bots; bot_quota <n>
   changelevel <map>      change map (host); maps lists them
   kill                   suicide (ends the round if you're the last one)
-  mashup_debughud 1      movement/speed readout at the top left
+  chimera_debughud 1     movement/speed readout at the top left
   name <new name>        your player name
 
 Known rough edges

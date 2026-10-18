@@ -1,5 +1,5 @@
-//! Stamps the build with its git commit (`MASHUP_GIT`: `git describe`) and
-//! its version (`MASHUP_VERSION`: tag or describe, short hash and commit
+//! Stamps the build with its git commit (`CHIMERA_GIT`: `git describe`) and
+//! its version (`CHIMERA_VERSION`: tag or describe, short hash and commit
 //! date, `chimera/core/src/core/version.rs`), for bug reports and the
 //! `version` command.
 //!
@@ -26,7 +26,7 @@ fn git(args: &[&str]) -> Option<String> {
 
 fn main() {
     let hash = git(&["describe", "--always", "--dirty"]).unwrap_or_else(|| "unknown".into());
-    println!("cargo:rustc-env=MASHUP_GIT={hash}");
+    println!("cargo:rustc-env=CHIMERA_GIT={hash}");
     let version = match (
         git(&["rev-parse", "--short", "HEAD"]),
         git(&["log", "-1", "--format=%cd", "--date=format-local:%Y-%m-%d"]),
@@ -39,7 +39,7 @@ fn main() {
         ),
         _ => "unknown".into(),
     };
-    println!("cargo:rustc-env=MASHUP_VERSION={version}");
+    println!("cargo:rustc-env=CHIMERA_VERSION={version}");
     // Without git: rerun only when this script changes.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../../chimera/core/src/core/version.rs");

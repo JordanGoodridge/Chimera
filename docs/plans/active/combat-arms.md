@@ -21,7 +21,7 @@ by side against the real game.
   to and write `specs/combat_arms/*.md` in our own words; implementation
   sessions (the Linux box, cloud agents) read specs only (specs/README.md).
   Specs go to main like any other spec, after the user's review.
-- **Keys** (V1/V2 resource keys) only in the git-ignored `mashup.local.toml`.
+- **Keys** (V1/V2 resource keys) only in the git-ignored `chimera.local.toml`.
   **No assets** in git, extracted or converted.
 - **Default data is ours.** Spec numbers go into our own data files
   (`games/combat_arms/data/weapons/*.toml`, like
@@ -79,7 +79,7 @@ and hooks, CS:S's behaviour unchanged and its tests passing. Then
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
 | `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | spec landed (in the repo since 2026-10-18; needs the user's review) | Reader exists on the Linux box from 2026-10-05 (all 108 archives list, 32,024 files; 33 maps readable without keys, WORLDS2/WORLDS3). After review, the reader moves into `games/combat_arms` |
-| V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `mashup.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
+| V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `chimera.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
 
 ### Wave 0.5: shared pieces
 

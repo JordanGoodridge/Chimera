@@ -430,7 +430,7 @@ measured.
 | grenades Q2: redraw after a throw | inconclusive: the bot ends up with its knife, but its AI picks the knife on its own | redraw of the same grenade | none (needs a human) |
 | objectives Q5: a draw's pay | nothing to anyone (a lone CT's draws) | the loss bonus to both sides | nothing; the streaks left as they were |
 | objectives Q5: an elimination on a map without objectives | 3000 (de_dust2 with its bomb targets removed), as a hostage map's | 3250 | 3000 (`win_elimination`, any map without bomb targets) |
-| objectives Q5: time running out on a map without objectives | nothing: the round goes on until a side is dead | the defenders win (a draw without them) | nothing (`mashup_untimed_win 1` keeps ours) |
+| objectives Q5: time running out on a map without objectives | nothing: the round goes on until a side is dead | the defenders win (a draw without them) | nothing (`chimera_untimed_win 1` keeps ours) |
 | objectives Q5: Ts winning on time after a rescue | 3250 + 150 a hostage left; nothing for the rescued one | the same | none (test) |
 | objectives Q5: "led" for the 100 | led at some time this round (a hostage led and let go still pays) | the same | none (test) |
 | objectives 7: both teams' last players dying together | not a draw: deaths count one at a time, the side whose last player dies first loses (`sm_slay @all`: Ts won) | a draw on the same tick | none (noted in the spec; one tick's order decides in CS:S) |

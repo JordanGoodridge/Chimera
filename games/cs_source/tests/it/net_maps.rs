@@ -140,7 +140,7 @@ pub(crate) fn file_bytes(name: &str, version: u8, len: usize) -> Vec<u8> {
 
 /// A scratch folder for a test, emptied.
 fn scratch(test: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("mashup-net-maps-{test}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("chimera-net-maps-{test}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -228,7 +228,7 @@ fn changelevel_takes_two_clients_along() {
     let dir = scratch("changelevel");
     let install = server_install(&dir);
     let mut sim = server(install.clone(), "test:alpha", 71);
-    run(sim.server.app.world_mut(), "mashup_rounds 1");
+    run(sim.server.app.world_mut(), "chimera_rounds 1");
     for _ in 0..2 {
         add_client(&mut sim, &install, None);
     }
@@ -338,7 +338,7 @@ fn a_late_joiner_gets_the_whole_state() {
     let dir = scratch("late");
     let install = server_install(&dir);
     let mut sim = server(install.clone(), "test:beta", 72);
-    run(sim.server.app.world_mut(), "mashup_rounds 1; bot_add 1; bot_add 2");
+    run(sim.server.app.world_mut(), "chimera_rounds 1; bot_add 1; bot_add 2");
     sim.ticks(200);
     // A game under way: the round score, a bot's score.
     {
@@ -645,7 +645,7 @@ fn a_client_loading_the_map_is_out_of_the_game_until_it_has_it() {
     // Rounds, then a map change: one client loads quickly (in the new
     // game's freeze: it plays the first round), the other slowly (after
     // the freeze: out until the next round).
-    run(sim.server.app.world_mut(), "mashup_rounds 1; mp_freezetime 3; mp_roundtime 1");
+    run(sim.server.app.world_mut(), "chimera_rounds 1; mp_freezetime 3; mp_roundtime 1");
     let quick = add_client(&mut sim, &install, None);
     sim.until_joined(600);
     run(sim.server.app.world_mut(), "mp_restartgame 1");
@@ -715,7 +715,7 @@ fn changelevel_to_the_same_map_makes_clients_reload_it() {
     let dir = scratch("samemap");
     let install = server_install(&dir);
     let mut sim = server(install.clone(), "test:beta", 74);
-    run(sim.server.app.world_mut(), "mashup_rounds 1");
+    run(sim.server.app.world_mut(), "chimera_rounds 1");
     add_client(&mut sim, &install, None);
     sim.until_joined(600);
     run(sim.server.app.world_mut(), "mp_restartgame 1");

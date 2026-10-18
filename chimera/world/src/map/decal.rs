@@ -68,7 +68,7 @@ pub struct Spray {
 /// The logo name a player's import slot uses (CS:S's Import Spray writes
 /// `materials/vgui/logos/spray.vtf`, `cl_logofile`'s default): each
 /// install's is its own player's picture, so others' sprays naming it
-/// aren't drawn (the game uploads the picture; mashup sends only names).
+/// aren't drawn (the game uploads the picture; Chimera sends only names).
 pub const CUSTOM_LOGO: &str = "spray";
 
 /// Lift off the surface (meters): above the map's own decals (0.15 units)

@@ -39,7 +39,7 @@ fn an_item_and_a_menu_category_from_data_are_bought() {
     assert_eq!(
         lines,
         [
-            ("mashup_test:light_vest", "Light Vest"),
+            ("chimera_test:light_vest", "Light Vest"),
             ("cs_source:weapon_deagle", "Hand Cannon")
         ]
     );

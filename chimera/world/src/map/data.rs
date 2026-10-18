@@ -799,7 +799,7 @@ pub struct MapData {
     pub sky_vis: Option<MapSkyVis>,
     /// The playable world's sky faces as a triangle list (engine space,
     /// three positions per triangle). They are not drawn; with
-    /// `mashup_skyocclude 1` they hide what lies behind them
+    /// `chimera_skyocclude 1` they hide what lies behind them
     /// (`sky_occluder`).
     pub sky_surfaces: Vec<[f32; 3]>,
     /// Precomputed visibility (clusters and potentially visible sets),

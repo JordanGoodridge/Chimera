@@ -27,7 +27,7 @@ use crate::stack::{
     },
 };
 
-const RAIL: &str = "mashup_test:weapon_rail";
+const RAIL: &str = "chimera_test:weapon_rail";
 
 /// Load the test's data directory into `app`, as an app loads a mod's.
 fn add_rail(app: &mut App) {

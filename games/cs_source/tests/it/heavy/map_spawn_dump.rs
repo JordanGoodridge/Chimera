@@ -1,5 +1,5 @@
 //! A tool for refactors of map spawning (`map::spawn_map`), not a check:
-//! with `MASHUP_SPAWN_DUMP=<dir>` it loads de_dust2, de_nuke and a few
+//! with `CHIMERA_SPAWN_DUMP=<dir>` it loads de_dust2, de_nuke and a few
 //! community maps headless with every render asset store the map spawns
 //! into, runs one update and writes each map's world to `<dir>/<map>.txt`:
 //! every entity in id order with its name, parent, components and their
@@ -102,8 +102,8 @@ fn dump(world: &mut World) -> String {
 
 #[test]
 fn dump_spawned_maps() {
-    let Some(dir) = std::env::var_os("MASHUP_SPAWN_DUMP").map(PathBuf::from) else {
-        eprintln!("MASHUP_SPAWN_DUMP not set: nothing to dump");
+    let Some(dir) = chimera_core::env::var_os("CHIMERA_SPAWN_DUMP").map(PathBuf::from) else {
+        eprintln!("CHIMERA_SPAWN_DUMP not set: nothing to dump");
         return;
     };
     std::fs::create_dir_all(&dir).unwrap();

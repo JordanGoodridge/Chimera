@@ -50,21 +50,21 @@ jobs:
         # without its `present` feature).
         shell: bash
         run: |
-          cargo build --release --locked -p cs_source_app --bin mashup
-          cargo build --release --locked -p cs_source_server --bin mashup_server
+          cargo build --release --locked -p cs_source_app --bin cs_source
+          cargo build --release --locked -p cs_source_server --bin cs_source_server
       - name: Package
         shell: bash
         run: |
           name="LuckerParty-${TAG}-${{ matrix.platform }}"
           mkdir -p "pkg/$name"
-          cp "target/release/mashup${{ matrix.exe }}" "target/release/mashup_server${{ matrix.exe }}" "pkg/$name/"
+          cp "target/release/cs_source${{ matrix.exe }}" "target/release/cs_source_server${{ matrix.exe }}" "pkg/$name/"
           cp dist/README.txt "pkg/$name/README.txt"
           cp LICENSE-MIT LICENSE-APACHE "pkg/$name/" 2>/dev/null || true
           cd pkg
           if [ "${{ matrix.platform }}" = windows ]; then
             7z a -tzip "$name.zip" "$name" > /dev/null
           else
-            strip "$name/mashup" "$name/mashup_server"
+            strip "$name/cs_source" "$name/cs_source_server"
             zip -qr "$name.zip" "$name"
           fi
           ls -l "$name.zip"

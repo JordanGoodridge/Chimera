@@ -10,8 +10,9 @@
 # packages it picked and why (checks/src/affected.rs has the rules). What's
 # compared: each pushed ref against the remote's copy, or a new branch
 # against its merge-base with origin/main.
-# MASHUP_PUSH_TESTS=all runs the full suite; =0 skips the tests, keeping
-# the identity, privacy and build checks.
+# CHIMERA_PUSH_TESTS=all runs the full suite; =0 skips the tests, keeping
+# the identity, privacy and build checks (the old name, MASHUP_PUSH_TESTS,
+# still works).
 want_name=r0pi0x
 want_email=339403489+r0pi0x@users.noreply.github.com
 zero=0000000000000000000000000000000000000000
@@ -87,7 +88,7 @@ if [ "$pushing" = 1 ]; then
         exit 1
     fi
 fi
-mode=${MASHUP_PUSH_TESTS:-affected}
+mode=${CHIMERA_PUSH_TESTS:-${MASHUP_PUSH_TESTS:-affected}}
 if [ "$pushing" = 1 ] && [ "$mode" != 0 ]; then
     mkdir -p target
     log=target/pre-push.log
@@ -103,7 +104,7 @@ if [ "$pushing" = 1 ] && [ "$mode" != 0 ]; then
     fi
     if [ "$mode" = all ]; then
         args=--workspace
-        echo "pre-push: MASHUP_PUSH_TESTS=all: the full suite" >&2
+        echo "pre-push: CHIMERA_PUSH_TESTS=all: the full suite" >&2
     # shellcheck disable=SC2086
     elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- $changes --format $format 2>target/pre-push-affected.txt); then
         cat target/pre-push-affected.txt >&2

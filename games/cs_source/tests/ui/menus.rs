@@ -37,7 +37,7 @@ fn create_server_by_keyboard_and_mouse() {
         .map(String::from)
         .to_vec();
     m.open(Page::Main, maps, None, |cvar| {
-        (cvar == "mashup_rounds").then(|| "0".into())
+        (cvar == "chimera_rounds").then(|| "0".into())
     });
     let create = m.entries().iter().position(|e| e.item == MainItem::NewGame).unwrap();
     run(&mut m, &[Input::Click(Target::Main(create), 0)]);

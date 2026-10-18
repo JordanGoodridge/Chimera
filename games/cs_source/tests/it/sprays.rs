@@ -113,7 +113,7 @@ fn nothing_in_reach_or_dead_sprays_nothing() {
 #[test]
 fn sprays_stay_through_a_round_restart() {
     let (mut sim, me) = setup();
-    say(&mut sim, "mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+    say(&mut sim, "mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.ticks(5);
     // Rounds put us at a spawn: back to the wall.
     let at = Vec3::new(0.0, 1.0, NORTH_WALL_Z + 2.0);

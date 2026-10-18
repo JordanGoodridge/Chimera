@@ -8,7 +8,7 @@
 //! stood on; "multihop" triggers naming the player a moment after landing
 //! under a filtered teleport), boosters (trigger_push, AddOutput
 //! basevelocity), gravity and speed zones, what triggers set off, buttons,
-//! and the next round. Each step is a row: `MASHUP_FLOW_TABLE=1 cargo test
+//! and the next round. Each step is a row: `CHIMERA_FLOW_TABLE=1 cargo test
 //! --features dev --test it map_courses:: -- --nocapture`; each test skips
 //! when its map isn't in the content cache.
 
@@ -613,7 +613,7 @@ fn teleports(f: &mut Flow, p: Entity, home: Vec3, names: &[String], classes: &[S
         let v0 = Vec3::new(120.0, -80.0, 0.0);
         f.put(p, at);
         set_velocity(f, p, v0);
-        if std::env::var("MASHUP_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string()) {
+        if chimera_core::env::var("CHIMERA_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string()) {
             fn probe(tag: &'static str) -> impl FnMut(Query<(&Velocity, &Transform), With<God>>) {
                 move |q| {
                     for (v, t) in &q {
@@ -740,7 +740,7 @@ fn teleports(f: &mut Flow, p: Entity, home: Vec3, names: &[String], classes: &[S
         set_velocity(f, p, Vec3::ZERO);
         let mut jumped = None;
         let mut last = f.feet(p);
-        let debug = std::env::var("MASHUP_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string());
+        let debug = chimera_core::env::var("CHIMERA_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string());
         for k in 0..90 {
             ticks(f, 1);
             let now = f.feet(p);
@@ -1053,7 +1053,7 @@ fn bhop_blocks(f: &mut Flow, p: Entity, home: Vec3) {
             ticks(f, 2);
             f.sim.intent(p).move_axis = Vec2::ZERO;
         };
-        let debug = std::env::var("MASHUP_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string());
+        let debug = chimera_core::env::var("CHIMERA_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string());
         if debug {
             for t in [*id, tp] {
                 let tr = trigger(world(f), t).unwrap();
@@ -1221,7 +1221,7 @@ fn pushes(f: &mut Flow, p: Entity, home: Vec3, names: &[String], classes: &[Stri
         f.put(p, at);
         set_velocity(f, p, Vec3::ZERO);
         ticks(f, 1);
-        if std::env::var("MASHUP_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string()) {
+        if chimera_core::env::var("CHIMERA_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string()) {
             let tr = trigger(world(f), id).unwrap();
             eprintln!(
                 "debug boost #{}: at {at:.1} name '{}' links {:?} touching {:?} base {:?}",
@@ -1269,7 +1269,7 @@ fn pushes(f: &mut Flow, p: Entity, home: Vec3, names: &[String], classes: &[Stri
             ticks(f, 1);
             let v = velocity(f, p);
             let dv = v - last;
-            if std::env::var("MASHUP_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string()) {
+            if chimera_core::env::var("CHIMERA_COURSE_DEBUG").is_ok_and(|v| v == id.index.to_string()) {
                 eprintln!(
                     "debug boost #{}: v {v:.1} feet {:.1} base {:?} ground {}",
                     id.index,

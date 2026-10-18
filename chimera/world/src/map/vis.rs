@@ -628,10 +628,10 @@ pub struct ActiveVisibility(pub std::sync::Arc<MapVisibility>);
 /// culling skip most of a map, large enough to keep draws few.
 pub const CHUNK_SIZE: f32 = 512.0 * 0.0254;
 
-/// The chunk size to spawn with: `CHUNK_SIZE`, or MASHUP_CHUNK_SIZE (in
+/// The chunk size to spawn with: `CHUNK_SIZE`, or CHIMERA_CHUNK_SIZE (in
 /// Source units, for tuning measurements).
 pub fn chunk_size() -> f32 {
-    std::env::var("MASHUP_CHUNK_SIZE")
+    chimera_core::env::var("CHIMERA_CHUNK_SIZE")
         .ok()
         .and_then(|v| v.parse::<f32>().ok())
         .filter(|v| *v > 0.0)

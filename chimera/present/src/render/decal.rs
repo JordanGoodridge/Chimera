@@ -13,7 +13,7 @@
 //! panes left). Characters take no decals yet. They stay until the
 //! map changes, as in the game; `ClearDecals` (the `r_cleardecals`
 //! command) removes them all, and `DecalSettings::round_clear`
-//! (`mashup_round_cleardecals 1`) at every round start; a decal placed
+//! (`chimera_round_cleardecals 1`) at every round start; a decal placed
 //! for the round (`PlaceDecal::round`: the bomb's scorch, as CS:S) goes at
 //! the next round start anyway.
 //!
@@ -122,7 +122,7 @@ pub struct DecalSurfaces {
 #[derive(Message, Clone, Copy, Debug, Default)]
 pub struct ClearDecals;
 
-/// Decal options: `round_clear` (`mashup_round_cleardecals`, default 0)
+/// Decal options: `round_clear` (`chimera_round_cleardecals`, default 0)
 /// removes every runtime decal at each round start (the game keeps them
 /// until the map changes); `limit` (`mp_decals`, Source's client setting,
 /// default 200; Multiplayer > Advanced) is the most runtime decals drawn,

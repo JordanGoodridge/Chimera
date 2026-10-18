@@ -106,7 +106,7 @@ pub const ID: &str = "cs_source:movement";
 /// match's (`Loadout`) unless that is noclip, else CS:S's when registered,
 /// else one some character uses that isn't noclip (headless tests with
 /// another movement). Never the local player's current slot: a player
-/// flying with noclip (or a `--movement mashup:noclip` run) gave every bot
+/// flying with noclip (or a `--movement chimera:noclip` run) gave every bot
 /// and hostage noclip, so they hung in the air and flew through walls.
 pub fn match_movement(world: &mut World) -> Option<&'static str> {
     use crate::slots::{Loadout, MovementRegistry, MovementSlot};
@@ -1227,11 +1227,11 @@ impl Mover<'_, '_, '_, '_> {
     }
 
     fn slide_move(&mut self) {
-        // `MASHUP_SLIDE_DEBUG=1`: every sweep printed (docs/OBSERVABILITY.md,
+        // `CHIMERA_SLIDE_DEBUG=1`: every sweep printed (docs/OBSERVABILITY.md,
         // the surf rides).
         fn dbg_slide() -> bool {
             static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-            *ON.get_or_init(|| std::env::var("MASHUP_SLIDE_DEBUG").is_ok())
+            *ON.get_or_init(|| chimera_core::env::var("CHIMERA_SLIDE_DEBUG").is_ok())
         }
         let primal = self.v;
         let mut original = self.v;
@@ -1457,10 +1457,10 @@ impl Mover<'_, '_, '_, '_> {
                     (tr.hit() && tr.normal.z >= WALKABLE_NORMAL_Z).then_some(tr)
                 });
             }
-            // `MASHUP_GROUND_DEBUG=1`: every ground test printed
+            // `CHIMERA_GROUND_DEBUG=1`: every ground test printed
             // (docs/OBSERVABILITY.md, movecmp).
             static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-            if *DEBUG.get_or_init(|| std::env::var("MASHUP_GROUND_DEBUG").is_ok()) {
+            if *DEBUG.get_or_init(|| chimera_core::env::var("CHIMERA_GROUND_DEBUG").is_ok()) {
                 eprintln!(
                     "    ground: feet {:.4} full frac {:.5} n {:.4} surf {:?} -> {:?}",
                     self.feet,
@@ -1683,9 +1683,9 @@ impl Mover<'_, '_, '_, '_> {
         let tr = self
             .trace
             .sweep(self.me.ducked, self.feet, self.feet + dir * LADDER_REACH);
-        // `MASHUP_SLIDE_DEBUG=1`: the ladder probe too.
+        // `CHIMERA_SLIDE_DEBUG=1`: the ladder probe too.
         static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *DEBUG.get_or_init(|| std::env::var("MASHUP_SLIDE_DEBUG").is_ok()) {
+        if *DEBUG.get_or_init(|| chimera_core::env::var("CHIMERA_SLIDE_DEBUG").is_ok()) {
             eprintln!(
                 "    ladder probe: feet {:.3?} dir {:.3?} frac {:.5} normal {:.4?} ladder {} start_solid {}",
                 self.feet.to_array(),
@@ -2280,7 +2280,7 @@ fn step(
         Query<&crate::core::Team, Without<crate::objectives::hostages::Hostage>>,
     ),
 ) {
-    // `mashup_noblock` (ours): which players pass through which (hostages
+    // `chimera_noblock` (ours): which players pass through which (hostages
     // and other characters without a team always block).
     let noblock = noblock.map_or_else(Default::default, |n| *n);
     let team = |e: Entity| teams.get(e).ok().map(|t| t.0);

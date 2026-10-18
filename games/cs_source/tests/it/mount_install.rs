@@ -1,4 +1,4 @@
-//! Finding the CS:S install without `mashup.local.toml`: a fake Steam
+//! Finding the CS:S install without `chimera.local.toml`: a fake Steam
 //! folder (its library list, the app's manifest, a stand-in install)
 //! is found and mounted (`mount::install`, `games::cs_source::mount`).
 
@@ -35,7 +35,7 @@ fn empty_vpk() -> Vec<u8> {
 
 #[test]
 fn an_install_in_a_steam_library_is_found_and_mounted() {
-    let s = Scratch(std::env::temp_dir().join(format!("mashup-it-install-{}", std::process::id())));
+    let s = Scratch(std::env::temp_dir().join(format!("chimera-it-install-{}", std::process::id())));
     let _ = fs::remove_dir_all(&s.0);
     let root = s.0.join("Steam");
     let library = s.0.join("SteamLibrary");

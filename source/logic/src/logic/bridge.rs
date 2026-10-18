@@ -26,7 +26,7 @@
 //! trigger_soundscape volumes the local player touches
 //! (`map::SoundscapeTouches`); lit fires and flames as `map::fire::MapFires`,
 //! props' collider boxes into the logic (fire), the `ent_fire` console command
-//! and `mashup_logic_record` (the logic world records fired outputs and
+//! and `chimera_logic_record` (the logic world records fired outputs and
 //! deliveries, the latest 256), applies effects (burn damage as `core::Damage`
 //! of kind `Burn`, a flame's `General.BurningObject` loop following what burns,
 //! ambient sounds as `map::SoundControl`, keyed by entity, following the
@@ -241,7 +241,7 @@ impl Plugin for LogicPlugin {
         );
         crate::console::resource_cvar::<LogicRecord, u8>(
             app,
-            "mashup_logic_record",
+            "chimera_logic_record",
             "1: record the outputs map entities fire and the inputs they get (the latest few hundred; \
              the debug UI's Logic tab lists them).",
             |r| &mut r.0,
@@ -2181,7 +2181,7 @@ fn sync_fires(world: &mut World, logic: &Logic) {
     }
 }
 
-/// `mashup_logic_record 1`: the logic world records the outputs it fires
+/// `chimera_logic_record 1`: the logic world records the outputs it fires
 /// and the inputs it delivers (the debug UI's Logic tab lists them),
 /// keeping the latest `RECORD_KEEP`.
 #[derive(Resource, Default)]

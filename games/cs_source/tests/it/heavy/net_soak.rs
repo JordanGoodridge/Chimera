@@ -23,13 +23,13 @@
 //! - memory (the process's resident size), bandwidth per client and the
 //!   server's frame time stay level.
 //!
-//! `MASHUP_SOAK_MINUTES` sets the game time (default 3; 30 for the long
-//! run), `MASHUP_SOAK_COMMUNITY` the community map,
-//! `MASHUP_SOAK_UPDATERATE` and `MASHUP_SOAK_RATE` the clients'
+//! `CHIMERA_SOAK_MINUTES` sets the game time (default 3; 30 for the long
+//! run), `CHIMERA_SOAK_COMMUNITY` the community map,
+//! `CHIMERA_SOAK_UPDATERATE` and `CHIMERA_SOAK_RATE` the clients'
 //! `cl_updaterate` and `rate` (the bandwidth budget follows the update
-//! rate), `MASHUP_SOAK_DUMP=<file>` keeps what the server sends each
+//! rate), `CHIMERA_SOAK_DUMP=<file>` keeps what the server sends each
 //! client (to try compression on). A summary table is
-//! printed: `MASHUP_SOAK_MINUTES=30 cargo test --release --features dev
+//! printed: `CHIMERA_SOAK_MINUTES=30 cargo test --release --features dev
 //! --test it heavy::net_soak -- --nocapture`. Skipped without a CS:S
 //! install.
 
@@ -140,12 +140,12 @@ fn count_error(error: bevy::ecs::error::BevyError, ctx: bevy::ecs::error::ErrorC
     }
 }
 
-/// The community map: `MASHUP_SOAK_COMMUNITY`, else one of a few known
+/// The community map: `CHIMERA_SOAK_COMMUNITY`, else one of a few known
 /// to load, else none.
 fn community_map() -> Option<String> {
     let dir = content_dir(cs_source::GAME)?.join("maps");
     let has = |n: &str| dir.join(format!("{n}.bsp")).is_file();
-    if let Ok(n) = std::env::var("MASHUP_SOAK_COMMUNITY") {
+    if let Ok(n) = chimera_core::env::var("CHIMERA_SOAK_COMMUNITY") {
         return has(&n).then(|| format!("cs_source:{n}"));
     }
     ["gg_fy_tactic_fight", "gg_hex", "gg_mr_pillar_v1", "gg_future"]
@@ -154,17 +154,17 @@ fn community_map() -> Option<String> {
         .map(|n| format!("cs_source:{n}"))
 }
 
-/// `MASHUP_SOAK_UPDATERATE`, `MASHUP_SOAK_RATE`: every client's
+/// `CHIMERA_SOAK_UPDATERATE`, `CHIMERA_SOAK_RATE`: every client's
 /// `cl_updaterate` and `rate` (default: the game's).
 fn soak_env(key: &str) -> Option<f32> {
-    std::env::var(key).ok()?.parse().ok()
+    chimera_core::env::var(key).ok()?.parse().ok()
 }
 
 fn updaterate() -> Option<f32> {
-    soak_env("MASHUP_SOAK_UPDATERATE")
+    soak_env("CHIMERA_SOAK_UPDATERATE")
 }
 
-/// `MASHUP_SOAK_DUMP=<file>`: what the server sends each client in a
+/// `CHIMERA_SOAK_DUMP=<file>`: what the server sends each client in a
 /// frame (its messages one after another), as records of the client's
 /// entity bits (u64), a length (u32) and the bytes, little-endian, up to
 /// 64 MB: to try compression on (docs/plans/active/multiplayer.md,
@@ -689,7 +689,7 @@ impl Soak {
             if let Some(r) = rate {
                 settings.updaterate = r;
             }
-            if let Some(r) = soak_env("MASHUP_SOAK_RATE") {
+            if let Some(r) = soak_env("CHIMERA_SOAK_RATE") {
                 settings.rate = r;
             }
         });
@@ -795,7 +795,7 @@ impl Soak {
     fn record(&mut self) {
         let step = self.step;
         let tick = self.sim.server.app.world().resource::<SimClock>().tick;
-        if std::env::var("MASHUP_SOAK_TRACE_HEALTH").is_ok() {
+        if chimera_core::env::var("CHIMERA_SOAK_TRACE_HEALTH").is_ok() {
             // Every change of every character's health, server and
             // clients, per step (server entity names them).
             let w = self.sim.server.app.world_mut();
@@ -960,7 +960,7 @@ impl Soak {
                         let bucket = format!("{} [{context}]", g.last_differing.join("+"));
                         *s.parts.entry(bucket.clone()).or_default() += d;
                         let n = self.diagnosed.entry(bucket.clone()).or_default();
-                        if *n < 3 && std::env::var("MASHUP_SOAK_DIAGNOSE").is_ok() {
+                        if *n < 3 && chimera_core::env::var("CHIMERA_SOAK_DIAGNOSE").is_ok() {
                             *n += 1;
                             let ours = self.client_preds.get(&id).and_then(|m| m.get(&g.last_error_tick));
                             let theirs = self.server_states.get(&id).and_then(|m| m.get(&g.last_error_tick));
@@ -1013,7 +1013,7 @@ impl Soak {
                                 format!("{} [{context}] step {step}", g.last_differing.join("+")),
                             );
                         }
-                        if s.streak == 30 && std::env::var("MASHUP_SOAK_DIAGNOSE").is_ok() {
+                        if s.streak == 30 && chimera_core::env::var("CHIMERA_SOAK_DIAGNOSE").is_ok() {
                             let ours = self.client_preds.get(&id).and_then(|m| m.get(&g.last_error_tick));
                             let theirs = self.server_states.get(&id).and_then(|m| m.get(&g.last_error_tick));
                             if let (Some(a), Some(b)) = (ours, theirs) {
@@ -1376,7 +1376,7 @@ fn soak_four_clients_and_bots_over_map_changes() {
     if !installed() {
         return;
     }
-    let minutes: f64 = std::env::var("MASHUP_SOAK_MINUTES")
+    let minutes: f64 = chimera_core::env::var("CHIMERA_SOAK_MINUTES")
         .ok()
         .and_then(|m| m.parse().ok())
         .unwrap_or(3.0);
@@ -1403,7 +1403,7 @@ fn soak_four_clients_and_bots_over_map_changes() {
         }
     };
     let mut sim = NetSim::new(CsSim, LinkConditions::default(), 97, 0, setup);
-    if let Ok(path) = std::env::var("MASHUP_SOAK_DUMP") {
+    if let Ok(path) = chimera_core::env::var("CHIMERA_SOAK_DUMP") {
         sim.server.app.add_systems(
             PostUpdate,
             dump_messages(path)
@@ -1416,7 +1416,7 @@ fn soak_four_clients_and_bots_over_map_changes() {
         let data = maps.get(DUST2);
         crate::stack::swap_map(w, DUST2, Some(data), tick_of(DUST2));
         w.resource_mut::<Console>().submit(
-            "mashup_rounds 1; mp_freezetime 2; mp_roundtime 0.75; mp_c4timer 25; bot_join_after_player 0; \
+            "chimera_rounds 1; mp_freezetime 2; mp_roundtime 0.75; mp_c4timer 25; bot_join_after_player 0; \
              bot_quota_mode fill; bot_quota 12",
         );
     }

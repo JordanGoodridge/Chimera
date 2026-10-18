@@ -19,12 +19,12 @@ fn mount_of(id: &str) -> Result<(chimera_core::mount::Mount, &str), String> {
         .ok_or_else(|| format!("map ID `{id}` should look like cs_source:name"))?;
     let install = LocalConfig::load()?
         .game_path(cs_source::game::GAME)
-        .ok_or("no `cs_source` install found (mashup_install <folder>, or mashup.local.toml)")?;
+        .ok_or("no `cs_source` install found (chimera_install <folder>, or chimera.local.toml)")?;
     let mount = cs_source::game::mount::open(&install).map_err(|e| e.to_string())?;
     Ok((mount, name))
 }
 
-/// Map `id` (`cs_source:<name>`) from the install (mashup.local.toml,
+/// Map `id` (`cs_source:<name>`) from the install (chimera.local.toml,
 /// saved settings or Steam).
 #[allow(dead_code)]
 pub fn load_map(id: &str) -> Result<MapData, String> {

@@ -1910,12 +1910,12 @@ mod tests {
         assert_eq!(words("#Cstrike_TitlesTXT_Fire_in_the_hole"), "Fire in the hole");
     }
 
-    /// The sample bot round (never committed; `$MASHUP_DEMOS` or the
+    /// The sample bot round (never committed; `$CHIMERA_DEMOS` or the
     /// workspace's `target/demos/`): its players, shots, deaths, grenade
     /// and bomb as `Thing`s and `Happening`s.
     #[test]
     fn the_sample_round_reads_as_css_things() {
-        let dir = std::env::var_os("MASHUP_DEMOS")
+        let dir = chimera_core::env::var_os("CHIMERA_DEMOS")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/demos"));
         let Ok(data) = std::fs::read(dir.join("mashup_round_bots.dem")) else {

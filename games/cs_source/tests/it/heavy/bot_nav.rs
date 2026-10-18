@@ -6,7 +6,7 @@
 //!
 //! `nav_near` (ignored) prints the nav areas, links and ladders around a
 //! point, for working out why a bot stops somewhere:
-//! `MASHUP_NAV_MAP=de_nuke MASHUP_NAV_AT=11.4,-15.2,34.4 cargo test
+//! `CHIMERA_NAV_MAP=de_nuke CHIMERA_NAV_AT=11.4,-15.2,34.4 cargo test
 //! --features dev --test it bot_nav::nav_near -- --ignored --nocapture`
 //! (engine meters, as `bot_rounds`' stuck report prints them).
 
@@ -59,7 +59,7 @@ fn feet(sim: &Sim, e: Entity) -> Vec3 {
 }
 
 fn trace_every() -> u64 {
-    std::env::var("MASHUP_BOT_TRACE").ok().and_then(|v| v.parse().ok()).unwrap_or(5)
+    chimera_core::env::var("CHIMERA_BOT_TRACE").ok().and_then(|v| v.parse().ok()).unwrap_or(5)
 }
 
 /// The floor at `p` (feet), if above it: a mesh area's height can be
@@ -125,7 +125,7 @@ fn walk(sim: &mut Sim, from: Vec3, to: Vec3, limit: f64, dy: f32, trace: bool) -
         w.get_mut::<Velocity>(bot).unwrap().0 = Vec3::ZERO;
         w.get_mut::<Bot>(bot).unwrap().send_to(Some(to));
     }
-    // Every tick when tracing every tick (MASHUP_BOT_TRACE=0).
+    // Every tick when tracing every tick (CHIMERA_BOT_TRACE=0).
     let every = trace_every();
     let step = if trace && every == 0 { TICK_INTERVAL } else { 0.1 };
     let mut t = 0.0;
@@ -187,8 +187,8 @@ fn cases(map: &str, cases: &[Case]) {
         return;
     }
     let mut sim = sim(map);
-    let trace = std::env::var("MASHUP_BOT_TRACE").is_ok();
-    let only = std::env::var("MASHUP_BOT_CASE").ok();
+    let trace = chimera_core::env::var("CHIMERA_BOT_TRACE").is_ok();
+    let only = chimera_core::env::var("CHIMERA_BOT_CASE").ok();
     let mut failed = Vec::new();
     for (what, from, to, limit) in cases {
         if only.as_ref().is_some_and(|o| !what.contains(o.as_str())) {
@@ -232,8 +232,8 @@ fn nuke_vent_ladders_are_climbable() {
 /// floor there, clear of walls). The ones that fail.
 fn every_ladder(map: &str) -> Vec<String> {
     let mut sim = sim(map);
-    let trace = std::env::var("MASHUP_BOT_TRACE").is_ok();
-    let only = std::env::var("MASHUP_BOT_CASE").ok();
+    let trace = chimera_core::env::var("CHIMERA_BOT_TRACE").is_ok();
+    let only = chimera_core::env::var("CHIMERA_BOT_CASE").ok();
     let nav = sim.app.world().resource::<NavMesh>().clone();
     // A point inside `area` near `p` (off the edges, where walls are).
     let inside = |area: usize, p: Vec3| {
@@ -261,11 +261,11 @@ fn every_ladder(map: &str) -> Vec<String> {
                 continue;
             }
             // (Mesh heights at a ladder's ends can be half a metre off.)
-            // MASHUP_BOT_TRACE_CASE: trace only that one, running the rest
+            // CHIMERA_BOT_TRACE_CASE: trace only that one, running the rest
             // (earlier cases change what a later one meets: stuck reports,
             // broken grilles).
             let trace = trace
-                && std::env::var("MASHUP_BOT_TRACE_CASE").map_or(true, |c| c == name);
+                && chimera_core::env::var("CHIMERA_BOT_TRACE_CASE").map_or(true, |c| c == name);
             let took = walk(&mut sim, from, to, 12.0, 0.6, trace);
             eprintln!("{map}, ladder {k} {what} ({from:.2} to {to:.2}): {took:?}");
             if took.is_none() {
@@ -288,14 +288,14 @@ fn nuke_ladders_climb_both_ways() {
     assert!(failed.is_empty(), "de_nuke: {failed:?}");
 }
 
-/// `every_ladder` on `MASHUP_NAV_MAP` (or a few stock maps).
+/// `every_ladder` on `CHIMERA_NAV_MAP` (or a few stock maps).
 #[test]
 #[ignore]
 fn ladders_climb_both_ways() {
     if !installed() {
         return;
     }
-    let maps = std::env::var("MASHUP_NAV_MAP").unwrap_or_else(|_| "cs_office,de_train,de_aztec,de_port,cs_italy".into());
+    let maps = chimera_core::env::var("CHIMERA_NAV_MAP").unwrap_or_else(|_| "cs_office,de_train,de_aztec,de_port,cs_italy".into());
     let mut failed = Vec::new();
     for map in maps.split(',') {
         failed.extend(every_ladder(map).into_iter().map(|f| format!("{map} {f}")));
@@ -308,7 +308,7 @@ fn dust2_stuck_spots_are_passable() {
     cases("de_dust2", DUST2);
 }
 
-/// Prints the nav areas within 4 m of `MASHUP_NAV_AT` and the ladders
+/// Prints the nav areas within 4 m of `CHIMERA_NAV_AT` and the ladders
 /// within 8 m.
 #[test]
 #[ignore]
@@ -316,9 +316,9 @@ fn nav_near() {
     if !installed() {
         return;
     }
-    let map = std::env::var("MASHUP_NAV_MAP").unwrap_or_else(|_| "de_nuke".into());
-    let at: Vec<f32> = std::env::var("MASHUP_NAV_AT")
-        .expect("MASHUP_NAV_AT=x,y,z")
+    let map = chimera_core::env::var("CHIMERA_NAV_MAP").unwrap_or_else(|_| "de_nuke".into());
+    let at: Vec<f32> = chimera_core::env::var("CHIMERA_NAV_AT")
+        .expect("CHIMERA_NAV_AT=x,y,z")
         .split(',')
         .map(|v| v.trim().parse().expect("number"))
         .collect();
@@ -384,9 +384,9 @@ fn nav_near() {
             eprintln!("ladder brush {:.2}..{:.2}", b.min, b.max);
         }
     }
-    // MASHUP_NAV_BRUSHES=r: every collision brush within r m of the point
+    // CHIMERA_NAV_BRUSHES=r: every collision brush within r m of the point
     // (its box), with its index (the tie order between flush faces).
-    if let Some(r) = std::env::var("MASHUP_NAV_BRUSHES").ok().and_then(|r| r.parse::<f32>().ok()) {
+    if let Some(r) = chimera_core::env::var("CHIMERA_NAV_BRUSHES").ok().and_then(|r| r.parse::<f32>().ok()) {
         for (i, b) in data.collision_brushes.iter().enumerate() {
             if (at.clamp(b.min, b.max) - at).length() < r {
                 eprintln!("brush {i} {:.2}..{:.2}{}", b.min, b.max, if b.ladder { " ladder" } else { "" });
@@ -428,7 +428,7 @@ fn probe_walk() {
     };
     let at = v("P_AT").expect("P_AT=x,y,z");
     let phases: Vec<Vec<f32>> = ["P_OPT", "P_OPT2", "P_OPT3"].iter().filter_map(|k| v(k)).collect();
-    let mut sim = sim(&std::env::var("MASHUP_NAV_MAP").unwrap_or_else(|_| "de_nuke".into()));
+    let mut sim = sim(&chimera_core::env::var("CHIMERA_NAV_MAP").unwrap_or_else(|_| "de_nuke".into()));
     let p = sim.spawn_character(Vec3::new(at[0], at[1] + HALF + 0.05, at[2]), movement::ID);
     sim.ticks(1);
     let mut t = 0.0;
@@ -505,7 +505,7 @@ fn bots_stand_aside_without_a_nav_mesh() {
 
 /// de_nuke's double doors (chained `func_door_rotating` pairs, opened by
 /// use): a bot walks through each, both ways (backlog: bots stalled at the
-/// door into A from Inside). `MASHUP_BOT_CASE="door 2"` runs one.
+/// door into A from Inside). `CHIMERA_BOT_CASE="door 2"` runs one.
 #[test]
 fn nuke_doors_are_passable() {
     if !installed() {
@@ -537,8 +537,8 @@ fn nuke_doors_are_passable() {
             None => ways.push((lo, hi)),
         }
     }
-    let only = std::env::var("MASHUP_BOT_CASE").ok();
-    let trace = std::env::var("MASHUP_BOT_TRACE").is_ok();
+    let only = chimera_core::env::var("CHIMERA_BOT_CASE").ok();
+    let trace = chimera_core::env::var("CHIMERA_BOT_TRACE").is_ok();
     let mut failed = Vec::new();
     for (k, (lo, hi)) in ways.iter().enumerate() {
         let size = *hi - *lo;

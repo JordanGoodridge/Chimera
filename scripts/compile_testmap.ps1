@@ -1,5 +1,5 @@
 # Windows: build tools/testmap/mashup_logic_test.vmf with Valve's map
-# compilers and put the .bsp in mashup's map cache, so `map
+# compilers and put the .bsp in Chimera's map cache, so `map
 # cs_source:mashup_logic_test` loads it (and CS:S can too, see below).
 #
 # Usage (from the repo root):
@@ -47,10 +47,15 @@ if ($Fast) {
 }
 if ($LASTEXITCODE -ne 0) { throw "vrad failed" }
 
-$cache = Join-Path $env:LOCALAPPDATA "mashup\content\cs_source\maps"
+# Chimera's folder; a `mashup` one from before the rename while it is the
+# only one (as the game picks it, chimera_core's env::user_folder).
+$user = Join-Path $env:LOCALAPPDATA "chimera"
+$old = Join-Path $env:LOCALAPPDATA "mashup"
+if (-not (Test-Path $user) -and (Test-Path $old -PathType Container)) { $user = $old }
+$cache = Join-Path $user "content\cs_source\maps"
 New-Item -ItemType Directory -Force -Path $cache | Out-Null
 Copy-Item "$map.bsp" $cache -Force
-Write-Host "mashup: map cs_source:mashup_logic_test ($cache)"
+Write-Host "Chimera: map cs_source:mashup_logic_test ($cache)"
 if ($CopyToGame) {
     Copy-Item "$map.bsp" (Join-Path $gamedir "maps") -Force
     Write-Host "CS:S: map mashup_logic_test"

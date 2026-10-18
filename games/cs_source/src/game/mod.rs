@@ -8,7 +8,7 @@
 //!
 //! VPK archives, LZMA-compressed BSP lumps decompressed before anything reads the
 //! file (`lumps`; community maps repacked with bspzip), the CS:S search path
-//! (plus the install's `download/` folder and mashup's content cache, last;
+//! (plus the install's `download/` folder and Chimera's content cache, last;
 //! `mount::import_map` copies `.bsp`/`.bsp.bz2` maps into the cache), BSP to
 //! `MapData` (via `vbsp`), VMT/VTF materials (map pak first, then the mount;
 //! VTF formats the `vtf` crate lacks, IA88 and the 16-bit ones, decoded in

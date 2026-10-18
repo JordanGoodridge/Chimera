@@ -10,7 +10,7 @@
 //! listing `cfg/user.scr`), Create Server (its
 //! Server, Game and Bot pages: `CreateMultiplayerGame*Page.res`, the Game
 //! page's options from `cfg/settings.scr`); controls the game has and
-//! mashup lacks are drawn greyed. Ours (settings CS:S's options don't
+//! Chimera lacks are drawn greyed. Ours (settings CS:S's options don't
 //! have) are in our own dialog, Lucker Party Options (`menu extras`; the
 //! menus list only `GameMenu.res`'s entries, none of ours).
 //! In the install's GameUI scheme (`map::hud::GameUi`); without the
@@ -50,27 +50,27 @@
 //! when `maxplayers` > 1; failures and refusals in it ("Disconnected",
 //! `net_failure_text`: the game's strings for a full server, older or newer
 //! server, timeouts and download errors, else the server's words; Close);
-//! `mashup_loading_details 1` adds a detailed view under it (`LoadTimeline`:
+//! `chimera_loading_details 1` adds a detailed view under it (`LoadTimeline`:
 //! each stage's time, bytes and percentage; the server's name, address, map,
 //! players and ping). The entries at the left: the game's `GameMenu.res`
-//! entries mashup can do, in its words and order (Resume, Disconnect and the
+//! entries Chimera can do, in its words and order (Resume, Disconnect and the
 //! Player List only in a game, Find Servers opens the server browser (`server_browser.rs`), Create
 //! Server, report a bug), none of ours (they are console commands:
-//! `mashup_quickstart` rounds on de_dust2 with bots, `map greybox`, `menu
+//! `chimera_quickstart` rounds on de_dust2 with bots, `map greybox`, `menu
 //! bots`, `menu team` (or `chooseteam`), `callvote`, `menu extras` Lucker
 //! Party Options, the console key), under the
 //! game's title (`gameinfo.txt` title lines in the scheme's title font, else
-//! `MASHUP`); each dialog a VGUI frame (`widgets.rs`: moved by its title bar,
+//! `CHIMERA`); each dialog a VGUI frame (`widgets.rs`: moved by its title bar,
 //! brought to the front by a click, closed from its X, centred the first time
 //! it opens in a session) in the GameUI scheme (`map::hud::GameUi`, read on a
 //! thread at startup; built-in colours and words without it), its controls
-//! where the install's layout puts them and greyed where mashup lacks what they
+//! where the install's layout puts them and greyed where Chimera lacks what they
 //! set (`page_controls`; without the layouts, a column). Dialogs: Create Server
 //! (`CreateMultiplayerGame*Page.res` on a property sheet: Server (the map
 //! drop-down with `< Random Map >` first, include bots, how many, the
 //! difficulty radio buttons: a preset of
 //! `bot_reaction`/`bot_aim_error`/`bot_turn_rate`), Game (the install's
-//! `cfg/settings.scr` options mashup has, in a scrolled list, plus ours, rounds
+//! `cfg/settings.scr` options Chimera has, in a scrolled list, plus ours, rounds
 //! or deathmatch), Bot (which team bots join, `bot_prefix`,
 //! `bot_join_after_player`); Start sets what changed and loads the map,
 //! Cancel), bots (`bot_add`, `bot_kick`), team (`jointeam`; Spectate greyed
@@ -79,7 +79,7 @@
 //! changed since it opened or Apply) with tabs: Keyboard (the game's
 //! `kb_act.lst` actions plus ours, with their keys; select, then click again,
 //! Enter or "Edit key" and press a key, mouse button or wheel; "Clear Key";
-//! "Use Defaults"; actions mashup lacks are greyed; "Advanced...": the dialog
+//! "Use Defaults"; actions Chimera lacks are greyed; "Advanced...": the dialog
 //! of `OptionsSubKeyboardAdvancedDlg.res`, fast weapon switch and developer
 //! console (`con_enable`), OK keeps, Cancel or Esc puts back), Mouse, Audio,
 //! Video (the window as it is: its size, added to the monitor's modes when not
@@ -95,7 +95,7 @@
 //! sliders with tick marks, drop-downs, check boxes, the sensitivity's text
 //! entry, the crosshair preview; its "Advanced...":
 //! `MultiplayerAdvancedDialog.res` listing the install's `cfg/user.scr` options
-//! (`GameUi::user_settings`), those mashup has as controls, the rest greyed,
+//! (`GameUi::user_settings`), those Chimera has as controls, the rest greyed,
 //! set on OK); docs/plans/active/ui-parity.md lists every control, its cvar and
 //! why the rest are greyed; `bugreport`; `quit`. Tab and Shift+Tab walk a
 //! dialog's controls, Ctrl+Tab its tabs, Enter presses the default button (OK,
@@ -236,7 +236,7 @@ impl Plugin for GameMenuPlugin {
         });
         crate::console::resource_cvar::<LoadingDetails, u8>(
             app,
-            "mashup_loading_details",
+            "chimera_loading_details",
             "1: the loading dialog adds a detailed view (each stage's time, bytes and percentage; the server's name, \
              map, players and ping).",
             |d| &mut d.0,
@@ -314,7 +314,7 @@ impl Plugin for GameMenuPlugin {
             },
         )
         .console_command(
-            "mashup_quickstart",
+            "chimera_quickstart",
             "Ours: start a game at once: rounds on de_dust2 (else the first map) with 9 normal bots (five \
              terrorists, four counter-terrorists besides you), single player; Create Server's other settings as \
              they are.",

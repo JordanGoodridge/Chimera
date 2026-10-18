@@ -83,7 +83,7 @@ The first build takes a while (several minutes); later ones are quick.
 the latest version and runs it.
 
 If the game picks the wrong install, open the console (`~`) and use
-`mashup_install <folder>` (the folder containing `cstrike/` and `hl2/`).
+`chimera_install <folder>` (the folder containing `cstrike/` and `hl2/`).
 
 ## Playing
 
@@ -96,7 +96,7 @@ Some console commands:
 
 | Command | Does |
 |---|---|
-| `mashup_quickstart` | de_dust2 with nine bots, straight away |
+| `chimera_quickstart` | de_dust2 with nine bots, straight away |
 | `map <name>` | load a map (`map de_nuke`) |
 | `bot_add`, `bot_kick`, `bot_quota <n>` | add, remove or set the number of bots |
 | `connect <ip[:port]>` | join a server |
@@ -105,8 +105,9 @@ Some console commands:
 | `menu extras` | Chimera's own options (things CS:S doesn't have) |
 
 Settings and binds are saved as CS:S's `config.cfg` in your user folder
-(`~/.local/share/mashup/cfg/` on Linux, `%APPDATA%\mashup\cfg\` on
-Windows), never in the game install.
+(`~/.local/share/chimera/cfg/` on Linux, `%APPDATA%\chimera\cfg\` on
+Windows; a `mashup` folder there from before the rename is used until a
+`chimera` one exists), never in the game install.
 
 ### Hosting a server
 

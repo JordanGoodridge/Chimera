@@ -1,11 +1,11 @@
-//! Development tool: load every map in mashup's content cache headless and
+//! Development tool: load every map in Chimera's content cache headless and
 //! report what goes wrong (docs/plans/active/community-maps.md).
 //!
 //! Per map: load time, an error or panic, load warnings by kind, entity
 //! classes nothing handles, what the map logic logs in its first seconds
 //! (refused server commands, unhandled inputs), counts (triangles, brush
 //! entities, props, spawns), and with `--shots` a screenshot from the
-//! first spawn plus the `mashup_perf_log` frame time there. Writes
+//! first spawn plus the `chimera_perf_log` frame time there. Writes
 //! `report.md`, `report.csv` and `warnings.txt` to `--out`.
 //!
 //! Dev tool: load every map in the content cache headless (each under
@@ -40,8 +40,8 @@ usage: mapsweep [options]
   --stock            the install's own maps (cstrike/maps) instead of the content cache
   --out <dir>        report folder (default: target/mapsweep)
   --secs <n>         seconds of map logic to run per map (default 10)
-  --shots <exe>      also run <exe> (a mashup build, e.g. target/playtest/mashup) per map:
-                     a 1280x720 screenshot from the first spawn and mashup_perf_log's
+  --shots <exe>      also run <exe> (a Chimera build, e.g. target/playtest/cs_source) per map:
+                     a 1280x720 screenshot from the first spawn and chimera_perf_log's
                      frame times there (needs a display)
   --frames <n>       frames per --shots run (default 600)
   --audit            also audit the map logic (cs_source_app::logic::audit): connections whose
@@ -398,7 +398,7 @@ fn panic_text(p: &Box<dyn std::any::Any + Send>) -> String {
         .unwrap_or_else(|| "(no message)".into())
 }
 
-/// Run a mashup build on the map: a screenshot from the first spawn and
+/// Run a Chimera build on the map: a screenshot from the first spawn and
 /// the perf log's frame-time lines.
 fn shoot(exe: &Path, name: &str, out: &Path, frames: u32) -> (Option<PathBuf>, Option<String>) {
     let shot = out.join("shots").join(format!("{name}.png"));
@@ -414,7 +414,7 @@ fn shoot(exe: &Path, name: &str, out: &Path, frames: u32) -> (Option<PathBuf>, O
             "--screenshot",
         ])
         .arg(&shot)
-        .args(["+mashup_perf_log", "1", "+mat_vsync", "0"])
+        .args(["+chimera_perf_log", "1", "+mat_vsync", "0"])
         .output();
     let Ok(output) = result else {
         return (None, None);
@@ -424,7 +424,7 @@ fn shoot(exe: &Path, name: &str, out: &Path, frames: u32) -> (Option<PathBuf>, O
     // The last perf line (frame times once things have settled).
     let perf = text
         .lines()
-        .filter(|l| l.contains("mashup_perf:") && l.contains("frame"))
+        .filter(|l| l.contains("chimera_perf:") && l.contains("frame"))
         .last()
         .map(|l| {
             // "frame 16.7 ms (p95 ..) | main world CPU .. | GPU .." as one cell.
@@ -655,7 +655,7 @@ fn write_reports(out: &Path, rows: &[Row]) -> std::io::Result<()> {
     fs::write(out.join("report.md"), md)
 }
 
-/// Every string literal in mashup's own source (lower case): an output
+/// Every string literal in Chimera's own source (lower case): an output
 /// or keyvalue name no literal spells is one nothing fires or reads.
 fn source_literals() -> BTreeSet<String> {
     fn walk(dir: &Path, out: &mut BTreeSet<String>) {

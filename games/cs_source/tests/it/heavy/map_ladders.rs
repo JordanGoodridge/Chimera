@@ -1,4 +1,4 @@
-//! Every ladder on the stock maps (and, with `MASHUP_LADDER_MAPS`, any
+//! Every ladder on the stock maps (and, with `CHIMERA_LADDER_MAPS`, any
 //! others: a comma-separated list of map names, or `@file` holding one),
 //! headless: climbing plays CS:S's ladder steps (specs/cs_source/sounds.md,
 //! "Ladder", or a footstep volume's replacement for them, as on
@@ -6,7 +6,7 @@
 //! ladder brush on a map without them), and standing on a ladder brush's
 //! top is standing on a floor (no ladder mode: walking forward works and
 //! a jump is a normal jump). Skipped without an install.
-//! `MASHUP_LADDER_DEBUG=1` prints each try; `MASHUP_LADDER_TRACE=<nav
+//! `CHIMERA_LADDER_DEBUG=1` prints each try; `CHIMERA_LADDER_TRACE=<nav
 //! ladder index>` that climb tick by tick.
 
 use avian3d::prelude::Position;
@@ -62,10 +62,10 @@ fn load(name: &str) -> Option<MapData> {
     Some(games::load_map(&format!("cs_source:{name}")).unwrap_or_else(|e| panic!("{name}: {e}")))
 }
 
-/// The maps `MASHUP_LADDER_MAPS` lists, if set: they replace the stock
+/// The maps `CHIMERA_LADDER_MAPS` lists, if set: they replace the stock
 /// maps.
 fn listed() -> Option<Vec<String>> {
-    let list = std::env::var("MASHUP_LADDER_MAPS").ok()?;
+    let list = chimera_core::env::var("CHIMERA_LADDER_MAPS").ok()?;
     // `@file`: the list is in that file.
     Some(
         match list.strip_prefix('@') {
@@ -79,7 +79,7 @@ fn listed() -> Option<Vec<String>> {
     )
 }
 
-/// One stock map's ladders, unless `MASHUP_LADDER_MAPS` names others.
+/// One stock map's ladders, unless `CHIMERA_LADDER_MAPS` names others.
 fn stock(name: &str) {
     if listed().is_none() {
         every_ladder_steps_and_its_top_is_a_floor(vec![name.to_string()]);
@@ -184,7 +184,7 @@ fn climb(t: &mut Tester, b: &MapBrush) -> Option<(usize, u32)> {
                 on +=t.state().ladder.is_some() as u32;
                 rise = rise.max((t.sim.position(t.p).y - y0) / M);
             }
-            if std::env::var_os("MASHUP_LADDER_DEBUG").is_some() {
+            if chimera_core::env::var_os("CHIMERA_LADDER_DEBUG").is_some() {
                 eprintln!("  try {d} up {up} out {out}: on {on} ticks, rose {rise:.0}, at {:?}", t.sim.position(t.p) / M);
             }
             // On it a while, climbing 20 units at least.
@@ -226,7 +226,7 @@ fn climb_nav(t: &mut Tester, l: &crate::stack::map::nav::NavLadder, trace: bool)
             );
         }
     }
-    if std::env::var_os("MASHUP_LADDER_DEBUG").is_some() {
+    if chimera_core::env::var_os("CHIMERA_LADDER_DEBUG").is_some() {
         eprintln!("  nav try from {:?} out {out}: on {on} ticks, rose {rise:.0}, at {:?}", at / M, t.sim.position(t.p) / M);
     }
     (on >= 8 && rise > 20.0).then(|| (t.ladder_steps(), on))
@@ -269,7 +269,7 @@ fn top(t: &mut Tester, b: &MapBrush) -> Option<Vec<String>> {
 
 /// Every ladder of `maps` steps and its top is a floor (one test per stock
 /// map below, so they run side by side; `listed_maps` for
-/// `MASHUP_LADDER_MAPS`).
+/// `CHIMERA_LADDER_MAPS`).
 fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
     let mut report = Vec::new();
     let (mut silent_total, mut stuck_total) = (0, 0);
@@ -292,7 +292,7 @@ fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
         let mut short = 0;
         // Climbing each brush is slow (most tries are blocked): only on maps
         // whose nav mesh has no ladders.
-        let brush_climbs = std::env::var_os("MASHUP_LADDER_NAV_ONLY").is_none()
+        let brush_climbs = chimera_core::env::var_os("CHIMERA_LADDER_NAV_ONLY").is_none()
             && map.nav.as_ref().is_none_or(|n| n.ladders.is_empty());
         for (i, b) in ladders.iter().enumerate().filter(|_| brush_climbs) {
             match climb(&mut t, b) {
@@ -300,7 +300,7 @@ fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
                 Some((0, _)) => short += 1,
                 Some(_) => {}
                 None => {
-                    if std::env::var_os("MASHUP_LADDER_DEBUG").is_some() {
+                    if chimera_core::env::var_os("CHIMERA_LADDER_DEBUG").is_some() {
                         eprintln!("{name} #{i}: not climbed, {:?}..{:?} units", b.min / M, b.max / M);
                     }
                     continue;
@@ -314,13 +314,13 @@ fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
         if let Some(nav) = map.nav.clone() {
             nav_total = nav.ladders.len();
             for (i, l) in nav.ladders.iter().enumerate() {
-                let trace = std::env::var("MASHUP_LADDER_TRACE").is_ok_and(|v| v == i.to_string());
+                let trace = chimera_core::env::var("CHIMERA_LADDER_TRACE").is_ok_and(|v| v == i.to_string());
                 match climb_nav(&mut t, l, trace) {
                     Some((0, on)) if on >= LONG_CLIMB => nav_silent.push(i),
                     Some((0, _)) => short += 1,
                     Some(_) => {}
                     None => {
-                        if std::env::var_os("MASHUP_LADDER_DEBUG").is_some() {
+                        if chimera_core::env::var_os("CHIMERA_LADDER_DEBUG").is_some() {
                             eprintln!("{name} nav ladder {i}: not climbed, {:?} to {:?}", l.bottom / M, l.top / M);
                         }
                         continue;
@@ -394,7 +394,7 @@ fn militia_footstep_volumes_remap_ladder_steps() {
     assert!(climbed.iter().any(|to| to == "wood_plank"), "the ladder into wood_plank climbed: {climbed:?}");
 }
 
-/// The maps `MASHUP_LADDER_MAPS` names (nothing without it).
+/// The maps `CHIMERA_LADDER_MAPS` names (nothing without it).
 #[test]
 fn listed_maps() {
     if let Some(maps) = listed() {

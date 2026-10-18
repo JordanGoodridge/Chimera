@@ -9,7 +9,7 @@
 //! `GlobalVolume`, and `snd_musicvolume` (`audio::live_sound::SoundMix`: sounds
 //! under `music/` and MP3s); the Audio tab's drop-downs' cvars, kept and saved
 //! (`snd_surround_speakers`, `snd_pitchquality`, `dsp_slow_cpu`,
-//! `closecaption`, `cc_subtitles`, `mashup_spoken_language`: what each will
+//! `closecaption`, `cc_subtitles`, `chimera_spoken_language`: what each will
 //! change, docs/plans/active/video-settings.md).
 
 use bevy::{
@@ -66,9 +66,9 @@ impl Default for SoundOptions {
     }
 }
 
-/// The Audio tab's spoken language (`mashup_spoken_language`, CS:S's
+/// The Audio tab's spoken language (`chimera_spoken_language`, CS:S's
 /// "Audio (spoken) language", a Steam setting there, not a cvar): the
-/// voice files mashup reads are the install's English ones
+/// voice files Chimera reads are the install's English ones
 /// (`hl2_sound_vo_english`), so English is the one choice.
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct SpokenLanguage(pub String);
@@ -159,7 +159,7 @@ fn sound_cvars(app: &mut App) {
     );
     resource_cvar::<SpokenLanguage, String>(
         app,
-        "mashup_spoken_language",
+        "chimera_spoken_language",
         "The voice language (CS:S's Audio tab): english, the install's voice files.",
         |l| &mut l.0,
     );
@@ -179,7 +179,7 @@ pub const SOUND_CVARS: [&str; 9] = [
     "dsp_slow_cpu",
     "closecaption",
     "cc_subtitles",
-    "mashup_spoken_language",
+    "chimera_spoken_language",
 ];
 
 /// The mixer's master volume: the player's, or silence while the window
@@ -234,7 +234,7 @@ mod tests {
             ("closecaption", "0"),
             ("cc_subtitles", "0"),
             ("snd_surround_speakers", "2"),
-            ("mashup_spoken_language", "english"),
+            ("chimera_spoken_language", "english"),
         ] {
             assert_eq!(console.cvar(name).unwrap().default, default, "{name}");
         }

@@ -216,7 +216,7 @@ fn lan_discovery_finds_two_servers_on_their_ports() {
 
 #[test]
 fn favorites_and_history_persist() {
-    let dir = std::env::temp_dir().join(format!("mashup-server-browser-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("chimera-server-browser-{}", std::process::id()));
     let path = dir.join("serverbrowser.vdf");
     let mut b = ServerBrowser::default();
     let a: SocketAddr = "192.168.1.20:27031".parse().unwrap();

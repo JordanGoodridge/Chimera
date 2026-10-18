@@ -16,11 +16,11 @@
 //! - the share of character pairs in each other's PVS (what Source-style
 //!   culling of bodies would keep).
 //!
-//! `MASHUP_CAPACITY_PLAYERS` (32), `MASHUP_CAPACITY_CLIENTS` (4: clients
-//! cost the test time, the bots the server time), `MASHUP_CAPACITY_MAP`
+//! `CHIMERA_CAPACITY_PLAYERS` (32), `CHIMERA_CAPACITY_CLIENTS` (4: clients
+//! cost the test time, the bots the server time), `CHIMERA_CAPACITY_MAP`
 //! (de_dust2; any map of the install or the content cache),
-//! `MASHUP_CAPACITY_SECONDS` (20 game seconds measured) for bigger runs,
-//! `MASHUP_CAPACITY_CONSOLE` server console lines (e.g. `bot_stop 1`, to
+//! `CHIMERA_CAPACITY_SECONDS` (20 game seconds measured) for bigger runs,
+//! `CHIMERA_CAPACITY_CONSOLE` server console lines (e.g. `bot_stop 1`, to
 //! tell what costs);
 //! the budget is asserted only at the default size: instructions a tick
 //! (p50, mean, p99; the server's own cost whatever the machine's load),
@@ -88,7 +88,7 @@ fn installed() -> bool {
 }
 
 fn env<T: std::str::FromStr>(key: &str) -> Option<T> {
-    std::env::var(key).ok()?.parse().ok()
+    chimera_core::env::var(key).ok()?.parse().ok()
 }
 
 /// The map, loaded once and handed to every world as a copy.
@@ -242,7 +242,7 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
         move |app: &mut App| {
             // A `--features profile` build: spans in a Chrome trace
             // (`TRACE_CHROME=<file>`; docs/performance.md, "Measuring");
-            // profile with `MASHUP_CAPACITY_CLIENTS=0` (one world).
+            // profile with `CHIMERA_CAPACITY_CLIENTS=0` (one world).
             #[cfg(feature = "profile")]
             app.add_plugins(bevy::log::LogPlugin::default());
             app.add_plugins((
@@ -261,9 +261,9 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
         }
     };
     let mut sim = NetSim::new(CsSim, LinkConditions::default(), 7, 0, setup);
-    // As the game and the dedicated server run (`MASHUP_EXECUTOR=multi`:
+    // As the game and the dedicated server run (`CHIMERA_EXECUTOR=multi`:
     // Bevy's default, for comparison).
-    let single = std::env::var("MASHUP_EXECUTOR").as_deref() != Ok("multi");
+    let single = chimera_core::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi");
     if single {
         crate::stack::single_threaded_schedules(&mut sim.server.app);
     }
@@ -272,8 +272,8 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
         w.resource_mut::<NetSettings>().maxplayers = players as u32;
         crate::stack::swap_map(w, &id, Some(data), Duration::from_secs_f64(cs_source::TICK_INTERVAL));
         w.resource_mut::<Console>().submit(format!(
-            "mashup_rounds 0; bot_join_after_player 0; bot_quota_mode fill; bot_quota {players}; {}",
-            std::env::var("MASHUP_CAPACITY_CONSOLE").unwrap_or_default()
+            "chimera_rounds 0; bot_join_after_player 0; bot_quota_mode fill; bot_quota {players}; {}",
+            chimera_core::env::var("CHIMERA_CAPACITY_CONSOLE").unwrap_or_default()
         ));
     }
     let link = LinkConditions {
@@ -460,10 +460,10 @@ fn a_full_server_keeps_its_tick() {
     if !installed() {
         return;
     }
-    let players: usize = env("MASHUP_CAPACITY_PLAYERS").unwrap_or(32);
-    let clients: usize = env("MASHUP_CAPACITY_CLIENTS").unwrap_or(4).min(players);
-    let seconds: f64 = env("MASHUP_CAPACITY_SECONDS").unwrap_or(20.0);
-    let map: String = env("MASHUP_CAPACITY_MAP").unwrap_or_else(|| "de_dust2".into());
+    let players: usize = env("CHIMERA_CAPACITY_PLAYERS").unwrap_or(32);
+    let clients: usize = env("CHIMERA_CAPACITY_CLIENTS").unwrap_or(4).min(players);
+    let seconds: f64 = env("CHIMERA_CAPACITY_SECONDS").unwrap_or(20.0);
+    let map: String = env("CHIMERA_CAPACITY_MAP").unwrap_or_else(|| "de_dust2".into());
     let r = run(&map, players, clients, seconds);
     let kb_mean = r.kb_per_client.iter().sum::<f64>() / r.kb_per_client.len().max(1) as f64;
     let kb_max = r.kb_per_client.iter().copied().fold(0.0, f64::max);
@@ -481,7 +481,7 @@ fn a_full_server_keeps_its_tick() {
         r.client_p99,
         r.rss.map_or("?".into(), |m| format!("{m:.0}")),
     );
-    let default_size = std::env::var("MASHUP_CAPACITY_PLAYERS").is_err() && map == "de_dust2";
+    let default_size = chimera_core::env::var("CHIMERA_CAPACITY_PLAYERS").is_err() && map == "de_dust2";
     if let Some((p50, p99, mean)) = r.ins {
         eprintln!("[capacity] server instructions a tick (M, all threads) p50 {p50:.2} p99 {p99:.2} mean {mean:.2}");
     }

@@ -33,7 +33,7 @@ usage: dump <game> [options]
   --filter <text>      only paths containing <text> (case-insensitive)
   --extract            write the (filtered) files to --out
   --out <dir>          extraction folder (default: per-user data dir; never inside the repo)
-  --install <dir>      install folder (default: from mashup.local.toml)";
+  --install <dir>      install folder (default: from chimera.local.toml)";
 
 struct Args {
     game: String,
@@ -107,8 +107,8 @@ fn install_path(args: &Args) -> Result<PathBuf, String> {
     }
     LocalConfig::load()?.game_path(&args.game).ok_or_else(|| {
         format!(
-            "no install path for `{}`. Set [games.{}] path in mashup.local.toml \
-             (copy mashup.local.example.toml) or pass --install.",
+            "no install path for `{}`. Set [games.{}] path in chimera.local.toml \
+             (copy chimera.local.example.toml) or pass --install.",
             args.game, args.game
         )
     })

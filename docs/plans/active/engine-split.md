@@ -37,8 +37,8 @@ games/cs_source/     CS:S: library (plugins); its tools in games/cs_source/tools
 games/combat_arms/   Combat Arms: library (local, git-ignored for now)
 games/originals/     Lucker Party's own games and assets
 minigames/           minigame definitions + rule modules that mix games
-apps/cs_source/      the faithful CS:S app (done: `cs_source_app`, binary `mashup`)
-apps/cs_source_server/  its dedicated server (done: binary `mashup_server`)
+apps/cs_source/      the faithful CS:S app (done: `cs_source_app`, binary `cs_source`)
+apps/cs_source_server/  its dedicated server (done: binary `cs_source_server`)
 apps/mashup/         dev sandbox: any game, any map, all debug tools
 apps/lucker_party/   the party product
 ```
@@ -366,9 +366,9 @@ measurements):
     Next: the HUD as a game part (a HUD slot), then these.
   - [~] Rule modules: `rules::module` (`RuleModule`: name, description,
     its cvars as data, when it applies; `RuleModules` registry; `pick`;
-    `mashup_rules`), CS:S's registered by `games/cs_source/rules.rs`
+    `chimera_rules`), CS:S's registered by `games/cs_source/rules.rs`
     (`cs_source:deathmatch`, `:bomb`, `:hostage`, `:elimination`,
-    picked by `mashup_rounds` and the map's objectives as the code
+    picked by `chimera_rounds` and the map's objectives as the code
     already does). The code did not move: `rules::rounds` and
     `objectives` are named by `net` (`RoundState`, `RoundEnded`,
     `frozen_intent`, `Hostage`, `BombHold`), `bot` (bomb and hostage
@@ -455,13 +455,13 @@ measurements):
   games. Spawn dump identical on the five maps modulo moved paths.
 - [x] (3) `chimera/sim` (package `chimera_sim`, 2026-10-14): `weapon`,
   `movement` (placeholder, noclip) and `rules::module` (as
-  `rule_module`: the `RuleModule` registry, `pick`, `mashup_rules`)
+  `rule_module`: the `RuleModule` registry, `pick`, `chimera_rules`)
   moved whole; they use only the engine crates. `mashup` re-exports
   `weapon` and `movement` at their old paths and `rules::module` as
   before; `rule_module::plugin` became `pub` (rules adds it). Spawn dump
   identical on the five maps modulo moved paths.
 - [x] (3) `mount` down into `chimera_core` (2026-10-14): the VFS and
-  KeyValues re-exports, `mashup.local.toml` and finding installs, so a
+  KeyValues re-exports, `chimera.local.toml` and finding installs, so a
   game crate can use it; `mashup::mount` re-exports it. `chimera_core`
   now depends on `source_formats` (the VFS, KeyValues) and on `dirs`,
   `toml` and `windows-sys` (moved from `mashup`); the config's
@@ -586,7 +586,7 @@ measurements):
       rules' `new_game` behind `core::NewGame` (the rules insert it,
       `core::new_game` calls it); bots by `core::Bot`, hostages by
       `core::Npc`; the debug UI's Bots and Rounds tabs through
-      `debug_ui::GameDebug` and the bots' overlays (`mashup_drawbots`,
+      `debug_ui::GameDebug` and the bots' overlays (`chimera_drawbots`,
       `bot_debug`) in the front end (`ui::debug`); the app's map loading,
       greybox and commit through `client::AppHooks` (mashup's
       `client_hooks`), its version through `core::BuildVersion`;
@@ -605,7 +605,7 @@ measurements):
       group (`client::ClientPlugins`: `ShellSetupPlugin` first,
       `ShellCameraPlugin` last); the front end puts its HUD plugins where
       they were (`ui::with_hud`, `PluginGroupBuilder::add_after`), so the
-      game's system order (`MASHUP_SYSTEM_DUMP`) is the same modulo paths
+      game's system order (`CHIMERA_SYSTEM_DUMP`) is the same modulo paths
       but for the bots' overlays, which now run after the ragdolls'
       (gizmos only). Screenshots (main menu, options, buy, team menu,
       scoreboard, HUD with weapon selection, spectator bars and overview,
@@ -745,7 +745,7 @@ measurements):
   everything, docs only `repo_checks`. The hooks run that selection
   (pre-commit: staged files, fast tier through `cargo test -p`;
   pre-push: each pushed ref against the remote's, nextest with heavy
-  tests; `MASHUP_PUSH_TESTS=all`/`0`). 1616 tests before, 1624 after (8
+  tests; `CHIMERA_PUSH_TESTS=all`/`0`). 1616 tests before, 1624 after (8
   unit tests of the selection; three renamed). Measured (warm, load from
   other work): full suite 846 s; docs-only push 8 s, a CS:S tool's edit
   8 s, one heavy test file's edit 101 s (41 tests), a `cs_source` front

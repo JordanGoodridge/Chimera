@@ -96,7 +96,7 @@ Notes.
   both ends register with the rendezvous service, which tells each the
   other's public address; both send first so their NATs open; then
   netcode's handshake runs as now. A connect-by-code flow in the menu.
-- (d), the rented dedicated server, needs no code: `mashup_server` runs
+- (d), the rented dedicated server, needs no code: `cs_source_server` runs
   headless on Linux (the capacity test: a 32-player de_dust2 server uses
   a few ms of CPU a tick, multiplayer.md "Capacity"); the box needs the
   maps (CS:S's dedicated server content, Steam app 232330 through
@@ -109,9 +109,9 @@ Notes.
    default: parity with Source, and it changes a router's settings); add
    it to Create Server as a checkbox if testers like it. Try it: host
    with `net_upnp 1` in the console before `map`/Create Server (or
-   `mashup_server ... +net_upnp 1`), then `status`: the `upnp` line gives
+   `cs_source_server ... +net_upnp 1`), then `status`: the `upnp` line gives
    the address to give friends, or why the router said no (the log too).
-2. **For a regular group:** a rented Linux VPS running `mashup_server`
+2. **For a regular group:** a rented Linux VPS running `cs_source_server`
    (d): no NAT for anyone, nothing to install for players. Document once
    the server's map layout is checked.
 3. **Later, with a Lucker Party lobby:** (c) with (d)'s relay as the

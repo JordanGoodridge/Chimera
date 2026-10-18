@@ -1,5 +1,5 @@
 //! CS:S's game modes as rule modules (`rules::module`): deathmatch
-//! respawns (`mashup_rounds 0`), and with rounds (`mashup_rounds 1`) the
+//! respawns (`chimera_rounds 0`), and with rounds (`chimera_rounds 1`) the
 //! bomb scenario on maps with bomb targets, the hostage scenario on maps
 //! with hostages, else plain elimination rounds. Tried in that order.
 //!
@@ -31,7 +31,7 @@ fn map_kind(world: &World) -> MapKind {
 
 /// The rounds' cvars, every round mode's.
 const ROUND_CVARS: &[&str] = &[
-    "mashup_rounds",
+    "chimera_rounds",
     "mp_freezetime",
     "mp_roundtime",
     "mp_buytime",
@@ -48,7 +48,7 @@ pub const MODULES: [RuleModule; 4] = [
         name: "cs_source:deathmatch",
         description: "respawn after a delay, kills and deaths counted",
         settings: &[
-            "mashup_rounds",
+            "chimera_rounds",
             "mp_respawn_delay",
             "mp_friendlyfire",
             "mp_fadetoblack",

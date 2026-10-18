@@ -174,7 +174,7 @@ const fn range(min: f32, max: f32, step: f32, decimals: usize) -> SettingKind {
 use Place::{Extras, Gamma, KeyboardAdvanced, Options, VideoAdvanced};
 
 /// Every setting, in each place's order (the game's layouts place those
-/// with a `field`; a setting whose cvar mashup lacks shows greyed).
+/// with a `field`; a setting whose cvar Chimera lacks shows greyed).
 /// Defaults are CS:S's (each cvar's own registration); slider ranges are
 /// the layout's (`minvalue`, `maxvalue`) where it gives them, else ours
 /// (CS:S sets them in code: docs/plans/active/ui-parity.md lists those
@@ -252,17 +252,17 @@ pub const SETTINGS: &[Setting] = &[
     ),
     setting(
         Options(Tab::Audio),
-        "mashup_spoken_language",
+        "chimera_spoken_language",
         Some("AudioSpokenLanguage"),
         Some("#GAMEUI_AudioSpokenLanguage"),
         "Audio (spoken) language",
         SettingKind::Choice(&[("english", "#GameUI_Language_English|English")]),
     ),
     // Video (`OptionsSubVideo.res`).
-    setting(Options(Tab::Video), "mashup_resolution", Some("Resolution"), Some("#GameUI_Resolution"), "Resolution", SettingKind::Resolution),
+    setting(Options(Tab::Video), "chimera_resolution", Some("Resolution"), Some("#GameUI_Resolution"), "Resolution", SettingKind::Resolution),
     setting(
         Options(Tab::Video),
-        "mashup_fullscreen",
+        "chimera_fullscreen",
         Some("DisplayModeCombo"),
         Some("#GameUI_DisplayMode"),
         "Display mode",
@@ -502,7 +502,7 @@ impl Setting {
         self.cvar.split_whitespace()
     }
 
-    /// Its value from its cvars' (`get`); None if mashup lacks any of them.
+    /// Its value from its cvars' (`get`); None if Chimera lacks any of them.
     pub fn read(&self, get: impl Fn(&str) -> Option<String>) -> Option<String> {
         let values: Option<Vec<String>> = self.cvars().map(|c| get(c).map(|v| v.trim().to_string())).collect();
         values.map(|v| v.join(" "))
@@ -709,7 +709,7 @@ mod tests {
 
     #[test]
     fn choices_use_the_games_words_when_it_has_them() {
-        let mode = setting("mashup_fullscreen");
+        let mode = setting("chimera_fullscreen");
         assert_eq!(mode.show("0", &none), "Windowed");
         let game = |t: &str| (t == "#GameUI_Windowed").then(|| "WINDOWED".to_string());
         assert_eq!(mode.show("0", &game), "WINDOWED");
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn resolutions_from_the_monitor_or_common_sizes() {
-        let r = setting("mashup_resolution");
+        let r = setting("chimera_resolution");
         let monitor = [(UVec2::new(1920, 1080), vec![UVec2::new(1280, 720), UVec2::new(1920, 1080)])];
         let sizes = resolutions(&monitor, None);
         assert_eq!(sizes, ["1920x1080", "1280x720"]);
@@ -756,7 +756,7 @@ mod tests {
         let e = vsync.entries(&[], &none);
         assert_eq!(e, [("0".to_string(), "Disabled".to_string()), ("1".into(), "Enabled".into())]);
         assert_eq!(vsync.entry_index("1", &[]), Some(1));
-        let r = setting("mashup_resolution");
+        let r = setting("chimera_resolution");
         let sizes = ["1920x1080".to_string(), "1280x720".into()];
         assert_eq!(r.entries(&sizes, &none).len(), 2);
         assert_eq!(r.entry_index("1280x720", &sizes), Some(1));

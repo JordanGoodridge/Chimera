@@ -1,5 +1,5 @@
 //! Dev tool: writes `mashup_logic_test.vmf`, a Hammer map with an example of
-//! every entity class mashup supports, laid out in rooms along one sealed
+//! every entity class Chimera supports, laid out in rooms along one sealed
 //! hall (docs/plans/active/custom-maps.md, "Test map"). Our own box
 //! geometry and stock CS:S/HL2 texture names only; Valve's compilers build
 //! the `.bsp` (scripts/compile_testmap.ps1), which is never committed.

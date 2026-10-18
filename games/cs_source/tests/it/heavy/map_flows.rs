@@ -4,7 +4,7 @@
 //! walking into the teleports and arenas, getting their loadouts, dying,
 //! and the next round bringing the selection back
 //! (docs/plans/active/community-maps.md, "Minigame flows"). Each step is
-//! a row: `MASHUP_FLOW_TABLE=1 cargo test --features dev --test it
+//! a row: `CHIMERA_FLOW_TABLE=1 cargo test --features dev --test it
 //! map_flows:: -- --nocapture` prints them. Each test skips when its map
 //! isn't in the content cache.
 
@@ -84,7 +84,7 @@ impl Flow {
         sim.app
             .world_mut()
             .resource_mut::<Console>()
-            .submit("mp_freezetime 0; mp_roundtime 9; mashup_rounds 1");
+            .submit("mp_freezetime 0; mp_roundtime 9; chimera_rounds 1");
         let mut f = Self {
             sim,
             map,
@@ -302,9 +302,9 @@ impl Flow {
         self.rows.push((step.to_string(), true, if ok { detail } else { format!("KNOWN: {detail}") }));
     }
 
-    /// The table (with `MASHUP_FLOW_TABLE`), and the failed steps.
+    /// The table (with `CHIMERA_FLOW_TABLE`), and the failed steps.
     pub(super) fn finish(self) -> Vec<String> {
-        if std::env::var("MASHUP_FLOW_TABLE").is_ok() {
+        if chimera_core::env::var("CHIMERA_FLOW_TABLE").is_ok() {
             for (step, ok, detail) in &self.rows {
                 let result = match (ok, detail.starts_with("KNOWN")) {
                     (false, _) => "FAIL",
@@ -314,7 +314,7 @@ impl Flow {
                 println!("| {} | {step} | {result} | {detail} |", self.map);
             }
         }
-        if let Ok(names) = std::env::var("MASHUP_FLOW_TRACE") {
+        if let Ok(names) = chimera_core::env::var("CHIMERA_FLOW_TRACE") {
             for d in &self.fired {
                 if names.split(',').any(|n| d.1.to_ascii_lowercase().contains(&n.to_ascii_lowercase())) {
                     println!("{}: fired {d:?}", self.map);
@@ -327,7 +327,7 @@ impl Flow {
             }
         }
         let logic = self.sim.app.world().resource::<Logic>();
-        if std::env::var("MASHUP_FLOW_LOG").is_ok() {
+        if chimera_core::env::var("CHIMERA_FLOW_LOG").is_ok() {
             let mut kinds: std::collections::BTreeMap<&str, usize> = Default::default();
             for l in &logic.world.log {
                 *kinds.entry(l.as_str()).or_default() += 1;
@@ -381,7 +381,7 @@ fn lego_multigames_knife() {
     f.secs(2.5);
     let said = f.said("@ Knife");
     let got = f.got("button_command", "Command");
-    if std::env::var("MASHUP_FLOW_LOG").is_ok() {
+    if chimera_core::env::var("CHIMERA_FLOW_LOG").is_ok() {
         let c = f.sim.app.world().resource::<Console>();
         for d in f.delivered.iter().filter(|d| d.1 == "button_command") {
             println!("console: delivered {d:?}");

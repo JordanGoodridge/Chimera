@@ -16,7 +16,7 @@ plan when work starts; delete them when done.
 - Default binds follow CS:S's config_default.cfg (F1 autobuy, F2 rebuy,
   mouse wheel invprev/invnext, ...): move our debug keys (inspector, debug
   UI, wheel jump) off them. Done 2026-10-13: debug UI F8, inspector F11
-  (`mashup_inspector`), collision F3 (`toggle mashup_drawcollision`; F3
+  (`chimera_inspector`), collision F3 (`toggle chimera_drawcollision`; F3
   is free in CS:S); saved configs keep their binds.
 - `con_enable` stays 1 (deliberate difference, ui-parity.md).
 - SourceMod/Mani chat commands from maps stay ignored, as plain CS:S does.
@@ -129,7 +129,7 @@ lost packet, a killed process or something else (not reproduced here:
 every stop path disconnected at once over loopback).
 
 Gameplay and rules (done 2026-10-10, to playtest: a client's cheats run
-on the server with its `sv_cheats`, noclip predicted; `mashup_noblock`
+on the server with its `sv_cheats`, noclip predicted; `chimera_noblock`
 1/2, off by default; chat lines once in the console; `name` saved, a
 "Player name" entry on Options > Multiplayer):
 - "Gun does not reload after round end" (reporter THE GLITCH; fixed
@@ -155,7 +155,7 @@ Looks:
   authored pose has them, within 2 units and 9 degrees; not the
   grenades', whose world model hangs on the hand) with a two-bone IK
   (`map::anim::AnimSet::solve_ik`, `player_anim::lock_hands`;
-  `mashup_hand_ik 0` turns it off to compare;
+  `chimera_hand_ik 0` turns it off to compare;
   `animation::hands_stay_on_the_weapon_while_aiming`). World models
   bone-merge: the dual pistols' left gun follows the left hand. Capture
   to confirm: CS:S third person (`thirdperson; cam_idealyaw 130`) with a
@@ -173,7 +173,7 @@ Looks:
   gesture we lack, it needs a spec.
 - Standing inside another player (user: seen on mg_jacks_multigames_v1): the screen shows only the skybox, no
   world. Not reproduced on jacks either (2026-10-13): inside a bot
-  standing, with `mashup_noblock` 0 and 1, moving and jumping in it; and
+  standing, with `chimera_noblock` 0 and 1, moving and jumping in it; and
   every game's team teleports onto their shared destinations, players
   piled on one point, all eyes stay in the map
   (`heavy::map_flows::jacks_every_game_keeps_players_in_the_map`). The
@@ -211,7 +211,7 @@ Looks:
   PVS-culled; now they are (`vis`). Confirmed: CS:S at `setpos -6332.74
   -3047.50 -9638.97; setang -38.85 18.60 0` shows the same sky view as
   ours (nothing in the sky). Open: whether CS:S also hides things *in* the
-  PVS behind a sky face; our `mashup_skyocclude 1` does
+  PVS behind a sky face; our `chimera_skyocclude 1` does
   (`render::sky_occluder`), off by default. Capture: a prop in view behind a
   sky face from a leaf whose PVS holds it. (2) The 2D sky's `dn` face
   turned half a turn (`cs_source::sky::FACES`). Not captured yet: CS:S
@@ -325,7 +325,7 @@ Looks:
   defaults against a capture (docs/tech-debt.md), the auto director.
 
 - Decals persist across rounds (bullet holes, blood), as we believe CS:S
-  does (players bind `r_cleardecals`, now there; `mashup_round_cleardecals
+  does (players bind `r_cleardecals`, now there; `chimera_round_cleardecals
   1` clears them each round). Left: confirm the game keeps them.
 
 ## 1. Playtest essentials
@@ -463,7 +463,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   background picture, the title in its logo font, `GameMenu.res`'s
   entries; Resume and Disconnect only in a game, Find Servers greyed),
   the same menu over the game on Esc, `disconnect` back to it; none of
-  our entries (done 2026-10-16: `mashup_quickstart`, `map greybox`,
+  our entries (done 2026-10-16: `chimera_quickstart`, `map greybox`,
   `menu bots`, `menu team`, `callvote`, `menu extras`, the console key
   instead). Left: the
   title's exact place and the entries' spacing checked against CS:S at a
@@ -472,10 +472,10 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   holds none), whether keyboard moves in the menu make the rollover
   sound, a loading dialog for maps changed from inside a game (the old
   map plays on until the new one is in),
-  the server browser (needs networking), a mashup debug-options page
+  the server browser (needs networking), a Chimera debug-options page
   (the overlay cvars as check boxes).
-- Debug overlays: `mashup_drawhitboxes`, `mashup_healthbars`,
-  `mashup_drawnav`, `mashup_drawbots` exist; add more as features need
+- Debug overlays: `chimera_drawhitboxes`, `chimera_healthbars`,
+  `chimera_drawnav`, `chimera_drawbots` exist; add more as features need
   them (sound radii, triggers).
 - Debug UI (F8, `client/debug_ui.rs`) is in. Left: kicking or freezing
   one bot (the bot commands act on all), clearing decals and turning fog
@@ -488,7 +488,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
 Plan: [plans/active/multiplayer.md](plans/active/multiplayer.md)
 (bevy_replicon + renet; Source-style prediction, interpolation and lag
 compensation of our own; slices 0-9). Slices 0-4: a listen
-server (maxplayers 4; map <name>) and the dedicated mashup_server,
+server (maxplayers 4; map <name>) and the dedicated cs_source_server,
 connect <ip[:port]>, characters replicated, usercmds bound to server
 ticks with clock sync, the client's own movement predicted and
 reconciled (net_graph-style readout, cl_showerror, net_fakelag;
@@ -500,7 +500,7 @@ buying, objectives, scoreboard, chat and radio; bots with `bot_quota`;
 `changelevel` taking clients along, late joiners' full state, map
 downloads (connection or `sv_downloadurl`, hash-checked, cached) and the
 GameUI loading dialog for joining and map changes (detailed view:
-`mashup_loading_details 1`). Their leftovers too: loading players out
+`chimera_loading_details 1`). Their leftovers too: loading players out
 of the game, predicted bomb arming and defusing, names (`name` over the
 network), chat and radio flood limits, spawns never inside another
 player, `changelevel` to the same map, bot profile names and `kick`,
@@ -589,7 +589,7 @@ a first bot are in.
   are read: `anim.rs`.)
 - Zoom: measure `zoom_sensitivity_ratio` and compare the scope overlay
   (the game's textures, laid out by eye) with CS:S.
-- Rounds, money and buying: slice 1 done (`mashup_rounds 1`,
+- Rounds, money and buying: slice 1 done (`chimera_rounds 1`,
   [plans/active/rounds.md](plans/active/rounds.md)); ammo buying is in.
 - Objectives, remaining (bomb and hostages are in: `games/cs_source/src/objectives/`,
   specs/cs_source/objectives.md): measure the spec's open questions on the
@@ -640,7 +640,7 @@ a first bot are in.
   capture) and lit decals (wood, glass) against the game; tracers are in (every 4th bullet, spec tracers.md; check N and
   the look in play).
 - Dropping weapons, remaining (`drop`/G, pickup, death drops, bullets
-  and blasts pushing loose weapons and the optional `mashup_usepickup`
+  and blasts pushing loose weapons and the optional `chimera_usepickup`
   swap are in, `weapon/drop.rs`): the throw and slide are measured (M20, 2026-10-15; ours stops at 72 of 95 units); the re-pick delay, pickup
   reach and mass, friction (0.5) and the box collider are guesses
   (measure on the probe server: how far a shot weapon skids).
@@ -780,7 +780,7 @@ docs/plans/active/sound.md.
 
 ## 9. Performance
 
-Measured and culled (docs/performance.md): `mashup_perf`, `refcmp bench`,
+Measured and culled (docs/performance.md): `chimera_perf`, `refcmp bench`,
 PVS culling by world chunk, areaportals (closed doors hide what's behind
 them; views clipped through openings; window brushes fade in and close
 their portal), occluders (func_occluder), prop fade distances with
@@ -800,7 +800,7 @@ dithered fade bands. Left:
 - Measure on the Windows PC (`refcmp bench` there) and set a budget.
 - Frame-time follow-ups (performance.md, "Frame time pass"): before/after
   numbers on a quiet machine and on the Windows PC (`refcmp bench`, also
-  `MASHUP_EXECUTOR=multi`, `-- --view-size 3840x2160`); props as
+  `CHIMERA_EXECUTOR=multi`, `-- --view-size 3840x2160`); props as
   hierarchies of their own (cheaper collider propagation) only if a map
   shows it (stock maps walk 240-710 colliders a tick: performance.md,
   "Props that never sleep"); a render

@@ -694,11 +694,12 @@ mod tests {
     }
 
     /// The sample demos (recorded on a CS:S dedicated server with SourceTV;
-    /// never committed): `$MASHUP_DEMOS` or the workspace's `target/demos/`.
+    /// never committed): `$CHIMERA_DEMOS` (old: `$MASHUP_DEMOS`) or the workspace's `target/demos/`.
     /// Skipped when there are none.
     #[test]
     fn parses_sample_demos() {
-        let dir = std::env::var_os("MASHUP_DEMOS")
+        let dir = std::env::var_os("CHIMERA_DEMOS")
+            .or_else(|| std::env::var_os("MASHUP_DEMOS"))
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/demos"));
         let Ok(list) = std::fs::read_dir(&dir) else {

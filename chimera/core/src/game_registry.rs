@@ -28,7 +28,7 @@ use crate::mount::{Mount, config};
 #[derive(Debug)]
 pub struct GameInfo {
     /// The id maps are named under (`cs_source` in `cs_source:de_dust2`);
-    /// also the install's key in mashup.local.toml and the content cache's
+    /// also the install's key in chimera.local.toml and the content cache's
     /// folder (`mount::config::content_dir`).
     pub id: &'static str,
     /// A short name for menus and headings (`CS:S`).
@@ -42,7 +42,7 @@ pub struct GameInfo {
     pub open: fn(&Path) -> io::Result<Mount>,
     /// The map cycle a server plays in turn, from the mounted install.
     pub map_cycle: fn(&Mount) -> Vec<String>,
-    /// Copy a map file into mashup's content cache; returns its name.
+    /// Copy a map file into Chimera's content cache; returns its name.
     pub import_map: fn(&Path) -> Result<String, String>,
     /// The default binds' config file, relative to `content_dir`
     /// (`cfg/config_default.cfg`); its `bind` lines are the defaults.
@@ -56,7 +56,7 @@ pub struct GameInfo {
 }
 
 impl GameInfo {
-    /// Where the game is installed (mashup.local.toml, saved, or found:
+    /// Where the game is installed (chimera.local.toml, saved, or found:
     /// `mount::install`).
     pub fn install(&self) -> Option<PathBuf> {
         config::LocalConfig::load().ok()?.game_path(self.id)
@@ -67,7 +67,7 @@ impl GameInfo {
         (self.open)(&self.install()?).ok()
     }
 
-    /// Mashup's content cache for the game (imported maps).
+    /// Chimera's content cache for the game (imported maps).
     pub fn content_cache(&self) -> Option<PathBuf> {
         config::content_dir(self.id)
     }

@@ -41,7 +41,7 @@ fn debug_ui_lines_leave_the_sim_running() {
     assert!(tick(&sim) >= start + 2 * (Tab::ALL.len() as u64 + 2));
 
     // The Player tab's setters.
-    run(&mut sim, "mashup_sethealth 42; mashup_setarmor 60 1; mashup_setmoney 5000");
+    run(&mut sim, "chimera_sethealth 42; chimera_setarmor 60 1; chimera_setmoney 5000");
     let w = sim.app.world();
     assert!((w.get::<Health>(p).unwrap().current - 0.42).abs() < 1e-4);
     let a = w.get::<Armor>(p).unwrap();
@@ -49,8 +49,8 @@ fn debug_ui_lines_leave_the_sim_running() {
     assert_eq!(w.get::<Money>(p).unwrap().0, 5000);
 
     // Rounds tab: rounds on, then a restart a second later.
-    run(&mut sim, "mp_freezetime 0; mashup_rounds 1; mashup_logic_record 1");
-    run(&mut sim, "mashup_setmoney 9000; mp_restartgame 1");
+    run(&mut sim, "mp_freezetime 0; chimera_rounds 1; chimera_logic_record 1");
+    run(&mut sim, "chimera_setmoney 9000; mp_restartgame 1");
     assert_eq!(sim.app.world().get::<Money>(p).unwrap().0, 9000);
     sim.seconds(1.2);
     assert_eq!(sim.app.world().get::<Money>(p).unwrap().0, 800, "the restart gave the start money");

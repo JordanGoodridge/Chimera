@@ -111,7 +111,7 @@ Where imported data lives:
 - Converted files are still the publisher's assets. They follow the same rule
   as the originals: never in git, never in a distributed build.
 - The cache is per user, outside the repository:
-  `~/.local/share/mashup/cache/` on Linux, `%LOCALAPPDATA%\mashup\cache\` on
+  `~/.local/share/chimera/cache/` on Linux, `%LOCALAPPDATA%\chimera\cache\` on
   Windows.
 - Development also has a `dump` tool that extracts an install's raw files into
   a local folder outside the repo, for exploring formats and writing specs.
@@ -123,8 +123,8 @@ Where imported data lives:
   (`libraryfolders.vdf`, the app's manifest, which also gives the build ID
   for the mount doctor). If it can't, a first-run dialog asks for the
   folder and remembers it in the user's settings file (outside the
-  repository); `mashup_install` in the console shows or changes it. A path
-  in the gitignored `mashup.local.toml` (see `mashup.local.example.toml`)
+  repository); `chimera_install` in the console shows or changes it. A path
+  in the gitignored `chimera.local.toml` (see `chimera.local.example.toml`)
   always wins; that file also holds the Combat Arms keys.
 - Tests that need a real install skip when it isn't present.
 - Our own original assets (greybox textures, our sounds, UI) may be committed,

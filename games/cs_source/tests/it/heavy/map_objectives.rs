@@ -158,7 +158,7 @@ fn office_hostages_follow_and_are_rescued() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+        .submit("mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.seconds(1.5);
     let hostages: Vec<(Entity, Vec3)> = {
         let w = sim.app.world_mut();
@@ -236,7 +236,7 @@ fn office_hostage_walks_after_its_leader() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+        .submit("mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.seconds(1.5);
     let h = {
         let w = sim.app.world_mut();
@@ -318,7 +318,7 @@ fn office_hostage_models_turn_and_rescue_rules() {
     sim.app
         .world_mut()
         .resource_mut::<Console>()
-        .submit("mp_freezetime 0; mp_roundtime 5; mashup_rounds 1");
+        .submit("mp_freezetime 0; mp_roundtime 5; chimera_rounds 1");
     sim.seconds(1.0);
     let models = sim.app.world().resource::<HostageRules>().models.clone();
     assert_eq!(models.len(), 4, "the four hostage models");

@@ -19,7 +19,7 @@ pub const EMPTY_LAYER: usize = 31;
 /// than wide (Source sides are often half height) are stretched to square.
 pub fn sky_image(sky: &MapSky, textures: &[MapTexture]) -> Image {
     if let Some(faces) = sky.hdr.as_deref()
-        && std::env::var_os("MASHUP_SKY_DEBUG").is_none()
+        && chimera_core::env::var_os("CHIMERA_SKY_DEBUG").is_none()
     {
         return hdr_sky_image(sky, faces);
     }
@@ -32,7 +32,7 @@ pub fn sky_image(sky: &MapSky, textures: &[MapTexture]) -> Image {
     let mut data = Vec::with_capacity((size * size * 4 * 6) as usize);
     // Calibration hook for `refcmp skyconv`: each pixel encodes its own
     // face (blue) and position (red = u, green = v).
-    let debug = std::env::var_os("MASHUP_SKY_DEBUG").is_some();
+    let debug = chimera_core::env::var_os("CHIMERA_SKY_DEBUG").is_some();
     for (face, (tex, turns)) in sky.faces.into_iter().enumerate() {
         if debug {
             for y in 0..size {

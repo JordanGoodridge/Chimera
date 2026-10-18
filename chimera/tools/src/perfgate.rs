@@ -270,7 +270,7 @@ pub fn main<'s>(gate: Gate, mut scenario: impl FnMut(&str) -> Option<Box<dyn FnM
     if !failed.is_empty() {
         eprintln!(
             "{}: {} rose by more than the tolerance in instructions: find the cause (tracesum, \
-             mashup_hitch_ratio), or if the cost is wanted, `{} --update` (docs/performance.md)",
+             chimera_hitch_ratio), or if the cost is wanted, `{} --update` (docs/performance.md)",
             gate.name,
             failed.join(", "),
             gate.name
