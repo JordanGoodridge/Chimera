@@ -32,16 +32,25 @@
 //!   +-`DamageRFacter` x 1.3 from behind (`is_behind`, the first,
 //!   "client-reported" victim only) x the stepped range band
 //!   (`band_scale`; beyond the last band: 1) x penetration dampening, then
-//!   armour (`CaArmor`: gear protection by location, armour points) and
-//!   the sphere's zone factor; the victim dies at 1 HP or less. The server
-//!   spacing `fireDelay` drops a round that comes too soon after the last
-//!   (spent all the same).
+//!   armour (`CaArmor`: gear protection by damage type and location, the
+//!   groin unprotected but on an infected victim, armour points) and the
+//!   sphere's zone factor; the victim dies at 1 HP or less. A second
+//!   victim behind the first takes the first's damage banded again at the
+//!   first hit's distance. The server spacing `fireDelay` drops a round
+//!   less than its whole milliseconds after the last one that passed
+//!   (spent all the same). An infected victim (`movement::CaInfected`) of
+//!   the other team gets the ammo's knock-back (`movement::HitKnockback`).
 //! - `combat_arms:spread` (`CaSpread`): the firing and movement meters on
 //!   fixed 1/80 s sub-steps (an exact accumulator keeping the remainder,
 //!   Q2's recommendation; `SpreadOptions::quantised` discards it as the
-//!   game does), the firing cap by stance, the movement target by run,
-//!   jump and ladder, the turn term (Q11's snap), the airborne rise (Q12),
-//!   the cone `n` in thousandths (`cone`), zoomed and burst values.
+//!   game does), the firing cap by stance, recovery after less than
+//!   `DecDelay` whole ms, the movement target by movement.md's run flag,
+//!   "in a jump" and ladder, mu against its speed limit (penalties
+//!   included), the turn term on the body yaw (`body_turn`: mouse yaw into
+//!   the upper body's 45 degree twist first with no movement key held, the
+//!   side kick always, pitch never; all on a tick's first sub-step), the
+//!   airborne rise (Q12), the cone `n` in thousandths (`cone`), zoomed and
+//!   burst values.
 //! - `combat_arms:recoil` (`CaRecoil`): the view kick on the owner's
 //!   `ViewPunch` (its pitch twice the accumulator, Q4), the side wag with
 //!   its 50 % flips, and the return each tick before the frame, at the
@@ -71,7 +80,8 @@
 //!
 //! Known shortcuts (the spec's most literal reading where it is unclear,
 //! listed for its open questions):
-//! - 1 world unit is ASSUMED 1 cm (the data's `units`; movement.md Q3).
+//! - The scale is movement's `meters_per_unit` (the data's `units`; by
+//!   body size: movement.md Q3).
 //! - The placeholder skeleton (`MALE`): sphere radii, locations and
 //!   factors are the spec's, their places ours (Q9: no models yet), in a
 //!   standing pose scaled to the character's box, crouched or not.
@@ -81,26 +91,21 @@
 //!   client predicts the round (its meters, kick and events; no damage) and
 //!   the server walks it again against where the shooter saw the others
 //!   (lag compensation, `weapon::lagcomp`, their boxes and looks then);
-//!   nothing the client found is sent (no client-reported victim).
-//! - Firing recovery waits while the time since the last shot is at most
-//!   `DecDelay` (test case 16: 95 ms still waits), not "less than".
-//! - Airborne from a jump: left the ground with the jump key held, until
-//!   landing; a fall without a jump decays as on the ground. The airborne
-//!   rise (Q12) grows by the increase step of the gap M - A.
-//! - The run flag is "not walking" (`Intent::walk`), the moving flag any
-//!   movement key; the stance's max speed for mu is movement.md's run,
-//!   walk, crouch or ladder speed (no weapon `MovePenalty`).
-//! - The turn term counts the view's change including its kick (recoil
-//!   moves the real view), all of a tick's turn in its first sub-step.
-//! - After a character, the ray goes on past it (no dampening) and may hurt
-//!   a second one with the first one's banded damage banded again (the
-//!   spec's edge case); hits behind a wall use the real distance (Q13's
-//!   recommendation). World surfaces have no names yet (no Combat Arms
-//!   maps): only colliders with a `PropSurface` named in the table pass.
-//! - `fireDelay` counts from the previous round received, dropped or not.
-//! - Armour: bullet protection only, groin counted as torso; the gear
-//!   (which pieces a character wears, Q7) is the default body gear for
-//!   everyone. Figure modifiers are 0 (both figure types).
+//!   nothing the client found is sent (no client-reported victim). The
+//!   fire delay compares the rounds' tick times (the client's timestamps).
+//! - The spread runs per tick (the spec's per frame), its sub-steps on an
+//!   exact 80 Hz clock (`SpreadOptions::quantised` drops the remainder
+//!   as the game does); the body's twist is ours to keep (`body_yaw`).
+//! - After a character, the ray goes on past it (no dampening); hits
+//!   behind a wall use the real distance (Q13's recommendation). World
+//!   surfaces have no names yet (no Combat Arms maps): only colliders with
+//!   a `PropSurface` named in the table pass.
+//! - Armour: the gear (which pieces a character wears, Q7) is the default
+//!   body gear for everyone, with the spec's stock coverage (bullets and
+//!   burn on body gear, bullets on head gear, poison on the gas mask);
+//!   pieces go over the network by name (`GEARS`). Figure modifiers are 0
+//!   (both figure types). Nothing marks a character infected yet (no game
+//!   modes).
 //! - Not done: the back push (`BaseCamBackJitter`) and the view-model
 //!   jiggle (presentation), continuous fire, prefire, per-round reloads,
 //!   mod and perk bonuses (Q8: identity in a plain match), the fire-mode
@@ -202,7 +207,17 @@ pub const DAMAGE_ROLL_INVALID: f32 = 0.2;
 /// standing half-height 50): spheres scale by the character's box height
 /// over this.
 pub const SKELETON_HEIGHT: f32 = 100.0;
-/// Stance speeds for the movement fraction mu (movement.md, u/s).
+/// Damage types (`InstDamageType`) the armour step knows.
+pub const BULLET: i32 = 2;
+pub const BURN: i32 = 3;
+pub const EXPLOSION: i32 = 7;
+pub const POISON: i32 = 9;
+pub const MELEE: i32 = 13;
+/// How far mouse yaw turns the upper body before the body yaw follows,
+/// with no movement key held (half of `PlayerTwistYawMax` 90 degrees).
+pub const TWIST_MAX: f32 = std::f32::consts::FRAC_PI_4;
+/// Stance speeds for the movement fraction mu without Combat Arms'
+/// movement (movement.md, u/s).
 pub const RUN_SPEED: f32 = 285.0;
 pub const WALK_SPEED: f32 = 70.0;
 pub const CROUCH_SPEED: f32 = 50.0;
@@ -271,10 +286,20 @@ pub struct DamageParams {
     /// `fireDelay` (weapon), ms.
     #[serde(default = "default_fire_delay")]
     pub fire_delay: f32,
+    /// `DamageMovePenalty` (ammo): the knock-back strength K on an
+    /// infected victim (movement.md, "Hit knock-back").
+    #[serde(default)]
+    pub move_penalty: f32,
+    /// `DamageMovePenaltyDuration` (ammo), s; not above 0: none.
+    #[serde(default = "no_duration")]
+    pub move_penalty_duration: f32,
 }
 
 fn bullet_type() -> i32 {
-    2
+    BULLET
+}
+fn no_duration() -> f32 {
+    -1.0
 }
 fn default_roll() -> f32 {
     0.1
@@ -409,8 +434,12 @@ pub struct CaDamage {
     pub fire_delay: f64,
     /// Metres per the data's length unit.
     pub unit: f32,
-    /// When the last round arrived (for `fire_delay`).
+    /// When the last round that passed the server's spacing arrived (for
+    /// `fire_delay`).
     pub last_round: Option<f64>,
+    /// The knock-back on an infected victim: K and its duration (s).
+    pub move_penalty: f32,
+    pub move_penalty_duration: f32,
 }
 
 impl CaDamage {
@@ -426,6 +455,8 @@ impl CaDamage {
             fire_delay: p.fire_delay.max(0.0) as f64 / 1000.0,
             unit,
             last_round: None,
+            move_penalty: p.move_penalty,
+            move_penalty_duration: p.move_penalty_duration,
         }
     }
 }
@@ -461,8 +492,11 @@ pub struct CaSpread {
     pub last_shot: Option<f64>,
     /// Time not yet stepped, s.
     pub clock: f64,
-    /// The view (pitch, yaw) at the last sub-step.
+    /// The body's (pitch, yaw) at the last tick (pitch: 0, never measured).
     pub prev_view: Option<Vec2>,
+    /// The body yaw from the mouse (without the side kick): it lags the
+    /// view by the upper body's twist.
+    pub body_yaw: Option<f32>,
     /// Airborne after a jump (until landing).
     pub jumped: bool,
     pub was_on_ground: bool,
@@ -478,6 +512,7 @@ impl CaSpread {
             last_shot: None,
             clock: 0.0,
             prev_view: None,
+            body_yaw: None,
             jumped: false,
             was_on_ground: true,
         }
@@ -540,8 +575,9 @@ impl CaSpread {
     }
 
     /// One firing-meter sub-step at `now`: a shot grows it toward `cap`
-    /// and stamps the time; otherwise it waits `DecDelay` after the stamp,
-    /// then recovers.
+    /// and stamps the time; otherwise it waits while less than `DecDelay`
+    /// whole milliseconds have passed since the stamp, then recovers (the
+    /// first recovery step clears the stamp).
     pub fn fire_substep(&mut self, scales: &SpreadScales, cone: ConeParams, fired: bool, cap: f32, now: f64) {
         let dt = SPREAD_SUBSTEP as f32;
         if fired {
@@ -549,10 +585,13 @@ impl CaSpread {
             self.last_shot = Some(now);
         } else if self
             .last_shot
-            .is_some_and(|t| now - t <= self.params.dec_delay as f64 / 1000.0 + 1e-9)
+            .is_some_and(|t| (((now - t) * 1000.0) + 1e-6).floor() < self.params.dec_delay as f64)
         {
-        } else if self.fire > 0.0 {
-            self.fire = (self.fire - dt * scales.fire_dec * cone.dec).max(0.0);
+        } else {
+            self.last_shot = None;
+            if self.fire > 0.0 {
+                self.fire = (self.fire - dt * scales.fire_dec * cone.dec).max(0.0);
+            }
         }
     }
 
@@ -577,13 +616,37 @@ impl CaSpread {
             self.movement = grown.min(target).min(mu_s);
         } else if a < m {
             let next = if jumping {
-                // Q12: airborne after a jump it rises instead.
-                m + (dt * scales.move_inc).min(m - a) * cone.inc
+                // Q12: in a jump it rises instead, by the decrease step at
+                // the increase speed.
+                m + (dt * scales.move_dec).min(m - a) * cone.inc
             } else {
                 m - (dt * scales.move_dec).min(m - a) * cone.dec
             };
             self.movement = next.min(jump_cap).max(0.0);
         }
+    }
+
+    /// The body yaw's change this tick (Q13): mouse yaw `mouse` turns the
+    /// upper body first, up to `TWIST_MAX` either way, while no movement
+    /// key is held (`moving` off); the body follows only beyond that (with
+    /// a key held, at once). The recoil's side kick `wag` (view yaw) always
+    /// turns it. Pitch never counts.
+    pub fn body_turn(&mut self, mouse: f32, wag: f32, moving: bool) -> f32 {
+        let body = self.body_yaw.get_or_insert(mouse);
+        if moving {
+            *body = mouse;
+        } else {
+            let twist = wrap_angle(mouse - *body);
+            if twist > TWIST_MAX {
+                *body = mouse - TWIST_MAX;
+            } else if twist < -TWIST_MAX {
+                *body = mouse + TWIST_MAX;
+            }
+        }
+        let yaw = *body + wag;
+        let turned = self.prev_view.map_or(0.0, |p| wrap_angle(yaw - p.y));
+        self.prev_view = Some(Vec2::new(0.0, yaw));
+        turned
     }
 
     /// The turn term rho for a view change of (pitch, yaw) radians.
@@ -847,10 +910,42 @@ pub fn is_behind(forward: Vec3, right: Vec3, dir: Vec3) -> bool {
     (7..=11).contains(&sector(forward, right, dir))
 }
 
-/// One piece of gear's bullet protection by location (fractions) and
+/// One piece of gear's protection (Q15): per damage type
+/// (`InstDamageType`), a fraction for the head, torso, arm and leg, and
 /// whether it is used up.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Gear {
+    pub protects: &'static [Protection],
+}
+
+/// Every piece of gear there is, by name (`Gear` goes over the network as
+/// its place here).
+pub const GEARS: &[(&str, Gear)] = &[
+    ("default body", DEFAULT_BODY_GEAR),
+    ("light body", LIGHT_BODY_GEAR),
+    ("heavy body", HEAVY_BODY_GEAR),
+    ("default head", DEFAULT_HEAD_GEAR),
+    ("gas mask", GAS_MASK),
+];
+
+impl Serialize for Gear {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let i = GEARS.iter().position(|(_, g)| g == self).ok_or_else(|| serde::ser::Error::custom("unknown gear"))?;
+        s.serialize_u8(i as u8)
+    }
+}
+
+impl<'de> Deserialize<'de> for Gear {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let i = u8::deserialize(d)? as usize;
+        GEARS.get(i).map(|(_, g)| *g).ok_or_else(|| serde::de::Error::custom("unknown gear"))
+    }
+}
+
+/// What a piece of gear does against one damage type.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Protection {
+    pub damage_type: i32,
     pub head: f32,
     pub torso: f32,
     pub arm: f32,
@@ -858,46 +953,73 @@ pub struct Gear {
     pub consumable: bool,
 }
 
-impl Gear {
+impl Protection {
+    /// The fraction on `location`; the groin isn't one of the protected
+    /// four.
     fn at(&self, location: Location) -> f32 {
         match location {
             Head => self.head,
-            Torso | Groin => self.torso,
+            Torso => self.torso,
             Arm => self.arm,
             Leg => self.leg,
+            Groin => 0.0,
         }
     }
 }
 
-/// The spec's common gear ("Armour"): example values until the
-/// characters spec gives the table (Q7).
-pub const DEFAULT_BODY_GEAR: Gear = Gear {
-    head: 0.0,
-    torso: 0.15,
-    arm: 0.15,
-    leg: 0.15,
+impl Gear {
+    /// The piece's first entry for `damage_type`.
+    fn against(&self, damage_type: i32) -> Option<&Protection> {
+        self.protects.iter().find(|p| p.damage_type == damage_type)
+    }
+}
+
+const fn bullet(head: f32, body: f32) -> Protection {
+    Protection {
+        damage_type: BULLET,
+        head,
+        torso: body,
+        arm: body,
+        leg: body,
+        consumable: true,
+    }
+}
+
+/// Body gear's burn protection: 0.5 everywhere, the head too.
+const BODY_BURN: Protection = Protection {
+    damage_type: BURN,
+    head: 0.5,
+    torso: 0.5,
+    arm: 0.5,
+    leg: 0.5,
     consumable: true,
+};
+
+/// The spec's common gear ("Armour"): example values until the
+/// characters spec gives the table (Q7). Body gear covers bullets and
+/// burn, head gear bullets, the gas mask poison (not used up); nothing
+/// covers melee or explosions.
+pub const DEFAULT_BODY_GEAR: Gear = Gear {
+    protects: &[bullet(0.0, 0.15), BODY_BURN],
 };
 pub const LIGHT_BODY_GEAR: Gear = Gear {
-    head: 0.0,
-    torso: 0.05,
-    arm: 0.05,
-    leg: 0.05,
-    consumable: true,
+    protects: &[bullet(0.0, 0.05), BODY_BURN],
 };
 pub const HEAVY_BODY_GEAR: Gear = Gear {
-    head: 0.0,
-    torso: 0.30,
-    arm: 0.30,
-    leg: 0.30,
-    consumable: true,
+    protects: &[bullet(0.0, 0.30), BODY_BURN],
 };
 pub const DEFAULT_HEAD_GEAR: Gear = Gear {
-    head: 0.25,
-    torso: 0.0,
-    arm: 0.0,
-    leg: 0.0,
-    consumable: true,
+    protects: &[bullet(0.25, 0.0)],
+};
+pub const GAS_MASK: Gear = Gear {
+    protects: &[Protection {
+        damage_type: POISON,
+        head: 1.0,
+        torso: 1.0,
+        arm: 1.0,
+        leg: 1.0,
+        consumable: false,
+    }],
 };
 
 /// A character's armour: points (AP, hit points) and gear worn. The
@@ -918,13 +1040,29 @@ impl Default for CaArmor {
     }
 }
 
-/// Damage `d` (hit points) on `location` with zone factor `zone` after
-/// armour: returns what health loses, and takes the armour's share. With
-/// `lands` false (a refused hit) the armour is left whole.
-pub fn armour_and_zone(d: f32, location: Location, zone: f32, armor: Option<&mut CaArmor>, lands: bool) -> f32 {
+/// What the armour step needs of a hit.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ArmourHit {
+    /// `InstDamageType`.
+    pub damage_type: i32,
+    /// The hit's location (torso for types without zones).
+    pub location: Location,
+    /// The zone factor (1 for types without zones).
+    pub zone: f32,
+    /// An infected victim: its groin counts as torso.
+    pub infected: bool,
+}
+
+/// Damage `d` (hit points) of `hit` after armour: returns what health
+/// loses, and takes the armour's share. With `lands` false (a refused hit)
+/// the armour is left whole.
+pub fn armour_and_zone(d: f32, hit: ArmourHit, armor: Option<&mut CaArmor>, lands: bool) -> f32 {
+    let zone = hit.zone;
     let Some(armor) = armor else { return (d * zone).max(0.0) };
-    let p: f32 = armor.gear.iter().map(|g| g.at(location)).sum();
-    let consumable: f32 = armor.gear.iter().filter(|g| g.consumable).map(|g| g.at(location)).sum();
+    let location = if hit.infected && hit.location == Groin { Torso } else { hit.location };
+    let entries = || armor.gear.iter().filter_map(|g| g.against(hit.damage_type));
+    let p: f32 = entries().map(|e| e.at(location)).sum();
+    let consumable: f32 = entries().filter(|e| e.consumable).map(|e| e.at(location)).sum();
     let blocked = d * p.clamp(0.0, 1.0);
     let c = if p != 0.0 { consumable / p } else { 0.0 };
     let ap = armor.points;
@@ -1090,18 +1228,28 @@ impl Plugin for CaWeaponsPlugin {
 }
 
 impl NetPart for CaSpread {
-    /// The meters, the last shot, the sub-step clock, the last view and
-    /// the jump flags (the parameters are the data's).
-    type Net = (f32, f32, Option<f64>, f64, Option<Vec2>, bool, bool);
+    /// The meters, the last shot, the sub-step clock, the last body yaw
+    /// and its twist, the jump flags (the parameters are the data's).
+    type Net = (f32, f32, Option<f64>, f64, Option<Vec2>, Option<f32>, bool, bool);
     fn net(&self) -> Self::Net {
-        (self.fire, self.movement, self.last_shot, self.clock, self.prev_view, self.jumped, self.was_on_ground)
+        (
+            self.fire,
+            self.movement,
+            self.last_shot,
+            self.clock,
+            self.prev_view,
+            self.body_yaw,
+            self.jumped,
+            self.was_on_ground,
+        )
     }
-    fn set_net(&mut self, (fire, movement, last_shot, clock, prev_view, jumped, was_on_ground): Self::Net) {
+    fn set_net(&mut self, (fire, movement, last_shot, clock, prev_view, body_yaw, jumped, was_on_ground): Self::Net) {
         self.fire = fire;
         self.movement = movement;
         self.last_shot = last_shot;
         self.clock = clock;
         self.prev_view = prev_view;
+        self.body_yaw = body_yaw;
         self.jumped = jumped;
         self.was_on_ground = was_on_ground;
     }
@@ -1128,10 +1276,11 @@ fn give_armour(new: Query<Entity, (With<Health>, With<Intent>, Without<CaArmor>)
     }
 }
 
-/// The view a spread sub-step sees: the look angles with the kick.
-fn view_of(intent: &Intent, punch: Option<&ViewPunch>) -> Vec2 {
-    let p = punch.map_or(Vec3::ZERO, |p| p.0);
-    Vec2::new(intent.pitch + p.x, intent.yaw + p.y)
+/// An angle in (-pi, pi].
+fn wrap_angle(a: f32) -> f32 {
+    let tau = std::f32::consts::TAU;
+    let a = a.rem_euclid(tau);
+    if a > std::f32::consts::PI { a - tau } else { a }
 }
 
 /// Before the frame: the recoil returns, and each active weapon's cone is
@@ -1229,6 +1378,12 @@ struct Delivery<'w, 's> {
         ),
     >,
     armor: Query<'w, 's, &'static mut CaArmor>,
+    infected: Query<'w, 's, (), With<super::movement::CaInfected>>,
+    teams: Query<'w, 's, &'static crate::core::Team>,
+    figures: Query<'w, 's, Option<&'static super::movement::CaCharacter>>,
+    knockback: Query<'w, 's, &'static super::movement::HitKnockback>,
+    now: Res<'w, SimClock>,
+    commands: Commands<'w, 's>,
     surfaces: Query<'w, 's, &'static PropSurface>,
     colliders: Query<'w, 's, &'static ColliderOf>,
     bodies: Query<'w, 's, (&'static RigidBody, Option<&'static ColliderAabb>)>,
@@ -1309,6 +1464,11 @@ impl Delivery<'_, '_> {
             .collect()
     }
 
+    /// Both on one team (neither without one).
+    fn same_team(&self, a: Entity, b: Entity) -> bool {
+        matches!((self.teams.get(a), self.teams.get(b)), (Ok(x), Ok(y)) if x == y)
+    }
+
     fn body(&self, collider: Entity) -> Entity {
         self.colliders.get(collider).map_or(collider, |c| c.body)
     }
@@ -1365,7 +1525,15 @@ pub fn box_entry(min: Vec3, max: Vec3, from: Vec3, dir: Vec3, limit: f32) -> Opt
 fn after_shots(
     mut events: ParamSet<(MessageReader<WeaponEvent>, MessageWriter<WeaponEvent>)>,
     mut owners: Query<
-        (Entity, &Inventory, &Intent, &MovementState, &Velocity, Option<&mut ViewPunch>),
+        (
+            Entity,
+            &Inventory,
+            &Intent,
+            &MovementState,
+            &Velocity,
+            Option<&mut ViewPunch>,
+            Option<&super::movement::CaMovement>,
+        ),
 
     >,
     mut weapons: Query<(
@@ -1421,13 +1589,16 @@ fn after_shots(
         let range = scan.map_or(0.0, |s| s.range);
         let server = delivery.authoritative() && delivery.first.0 && !r.replay;
         if server {
-            // The server's spacing: a round too soon after the last one is
-            // dropped (spent all the same).
-            let early = dmg.last_round.is_some_and(|t| now - t < dmg.fire_delay - 1e-9);
-            dmg.last_round = Some(now);
+            // The server's spacing (Q14): a round less than `fireDelay` ms
+            // after the last one that passed is dropped (spent all the
+            // same) and doesn't restart the clock.
+            let early = dmg
+                .last_round
+                .is_some_and(|t| ((now - t) * 1000.0 + 1e-6).floor() < dmg.fire_delay * 1000.0 - 1e-6);
             if early {
                 continue;
             }
+            dmg.last_round = Some(now);
         }
         let aim = aim_of(r.yaw, r.pitch);
         let rewound = delivery.rewind(r.owner, server);
@@ -1440,7 +1611,7 @@ fn after_shots(
     }
 
     // Spread sub-steps for each owner's active weapon, then the kicks.
-    for (owner, inv, intent, state, vel, mut punch) in &mut owners {
+    for (owner, inv, intent, state, vel, mut punch, ca_move) in &mut owners {
         let Some(active) = inv.active else { continue };
         let Ok((_, spread, recoil, _, modes, burst, zoom)) = weapons.get_mut(active) else {
             continue;
@@ -1448,7 +1619,18 @@ fn after_shots(
         let mine: Vec<&Round> = rounds.iter().filter(|r| r.owner == owner && r.weapon == active).collect();
         let mode = fire_mode(modes.map_or(0, |m| m.current), burst, zoom);
         if let Some(mut s) = spread {
-            step_spread(&mut s, &scales, &options, intent, state, vel.0, punch.as_deref(), mode, !mine.is_empty(), now, clock.dt());
+            let tick = SpreadTick {
+                intent,
+                state,
+                movement: ca_move,
+                velocity: vel.0,
+                punch: punch.as_deref(),
+                mode,
+                fired: !mine.is_empty(),
+                now,
+                dt: clock.dt(),
+            };
+            step_spread(&mut s, &scales, &options, &tick);
         }
         let Some(mut recoil) = recoil else { continue };
         for (i, r) in mine.iter().enumerate() {
@@ -1470,71 +1652,93 @@ fn after_shots(
     }
 }
 
-/// One tick of a weapon's spread meters (the spec's step 8).
-#[allow(clippy::too_many_arguments)]
-fn step_spread(
-    s: &mut CaSpread,
-    scales: &SpreadScales,
-    options: &SpreadOptions,
-    intent: &Intent,
-    state: &MovementState,
+/// The movement fraction mu: the speed over the tick's speed limit, at
+/// most 1 (no limit: 1).
+pub fn movement_fraction(speed: f32, limit: f32) -> f32 {
+    if limit > 0.0 { (speed / limit).min(1.0) } else { 1.0 }
+}
+
+/// The turn term of each of a tick's `n` sub-steps for a body turn of
+/// `turned` radians (Q13): all of it on the first, 0 on the rest.
+pub fn substep_turns(scales: &SpreadScales, turned: f32, n: u32) -> Vec<f32> {
+    (0..n).map(|i| if i == 0 { CaSpread::turn(scales, 0.0, turned) } else { 0.0 }).collect()
+}
+
+/// What one tick of the spread meters reads of the owner.
+struct SpreadTick<'a> {
+    intent: &'a Intent,
+    state: &'a MovementState,
+    /// Combat Arms' movement, when the owner has it: its run flag, "in a
+    /// jump" and speed limit.
+    movement: Option<&'a super::movement::CaMovement>,
     velocity: Vec3,
-    punch: Option<&ViewPunch>,
+    punch: Option<&'a ViewPunch>,
     mode: FireMode,
     fired: bool,
     now: f64,
     dt: f32,
-) {
-    // Airborne after a jump: left the ground with the jump key held.
+}
+
+/// One tick of a weapon's spread meters (the spec's step 8).
+fn step_spread(s: &mut CaSpread, scales: &SpreadScales, options: &SpreadOptions, k: &SpreadTick) {
+    let (intent, state) = (k.intent, k.state);
+    // Airborne from a jump (Q12): movement.md's "in a jump"; without that
+    // movement, left the ground with the jump key held, until landing.
     if state.on_ground {
         s.jumped = false;
     } else if s.was_on_ground {
         s.jumped = intent.jump;
     }
     s.was_on_ground = state.on_ground;
-    let cone = s.cone_params(mode);
-    let st = s.states(mode);
+    let jumping = k.movement.map_or(s.jumped && !state.on_ground, |m| m.in_jump);
+    let cone = s.cone_params(k.mode);
+    let st = s.states(k.mode);
     if cone.max == 0 {
         s.fire = 0.0;
         s.movement = 0.0;
         return;
     }
-    let moving = intent.move_axis != Vec2::ZERO;
-    let cap = match (moving, state.crouching) {
+    let keys = intent.move_axis != Vec2::ZERO || intent.opposed.any();
+    let cap = match (keys, state.crouching) {
         (true, true) => st.fire_move_duck,
         (true, false) => st.fire_move,
         (false, true) => st.fire_duck,
         (false, false) => st.fire,
     };
-    let jumping = s.jumped && !state.on_ground;
-    let run = !intent.walk;
-    let (target, vmax) = if state.on_ladder {
-        (st.run, LADDER_SPEED)
+    // The run flag (Q6): not crouched and not walking, at rest too.
+    let run = k.movement.map_or(!intent.walk && !state.crouching, |m| m.run);
+    let target = if state.on_ladder {
+        st.run
     } else if jumping {
-        (st.jump, if run { RUN_SPEED } else { WALK_SPEED })
-    } else if state.crouching {
-        (if run { st.run } else { st.walk }, CROUCH_SPEED)
+        st.jump
     } else if run {
-        (st.run, RUN_SPEED)
+        st.run
     } else {
-        (st.walk, WALK_SPEED)
+        st.walk
     };
-    let mu = (velocity.length() / (vmax * s.unit)).min(1.0);
+    // mu: against the tick's speed limit, penalties included (Q6).
+    let vmax = match k.movement {
+        _ if state.on_ladder => LADDER_SPEED,
+        Some(m) => m.speed_limit,
+        None if state.crouching => CROUCH_SPEED,
+        None if run => RUN_SPEED,
+        None => WALK_SPEED,
+    };
+    let mu = movement_fraction(k.velocity.length() / s.unit, vmax);
     let mu_s = if state.on_ladder { target } else { mu * target };
-    s.clock += dt as f64;
+    s.clock += k.dt as f64;
     let mut n = ((s.clock / SPREAD_SUBSTEP + 1e-9).floor() as u32).min(SPREAD_SUBSTEP_MAX);
     if n > 0 {
         s.clock = if options.quantised { 0.0 } else { (s.clock - n as f64 * SPREAD_SUBSTEP).max(0.0) };
-    } else if fired {
+    } else if k.fired {
         n = 1;
     }
-    let view = view_of(intent, punch);
-    for i in 0..n {
-        let prev = s.prev_view.unwrap_or(view);
-        let rho = CaSpread::turn(scales, view.x - prev.x, view.y - prev.y);
-        s.prev_view = Some(view);
+    // The turn (Q13): the body yaw's change, all on the first sub-step.
+    let wag = k.punch.map_or(0.0, |p| p.0.y);
+    let turned = s.body_turn(intent.yaw, wag, keys);
+    for (i, rho) in substep_turns(scales, turned, n).into_iter().enumerate() {
         s.move_substep(scales, cone, target, mu_s, rho, jumping, st.jump);
-        s.fire_substep(scales, cone, fired && i == 0, cap, now);
+        s.fire_substep(scales, cone, k.fired && i == 0, cap, k.now);
     }
 }
 
@@ -1564,7 +1768,7 @@ fn walk(
     // Penetration dampening so far; the first victim's damage (after its
     // band) for one behind it; characters passed.
     let mut dampen = 1.0;
-    let mut first: Option<f32> = None;
+    let mut first: Option<(f32, f32)> = None;
     let mut skip: Vec<Entity> = Vec::new();
     for segment in 0..SERVER_TRACE_STEPS {
         if left < unit {
@@ -1612,18 +1816,20 @@ fn walk(
             let t_point = box_entry(b.min, b.max, from, dir, left).unwrap_or(t);
             let point = from + dir * t_point;
             out.push(event(kind(from, point, Some(b.entity), Some(-dir))));
-            let distance = point.distance(r.origin);
             let d = match first {
-                // One behind the first victim: its damage banded again.
-                Some(prev) => prev * band_scale(dmg, distance),
+                // One behind the first victim (Q5): its damage banded
+                // again at the first hit's distance.
+                Some((prev, distance)) => prev * band_scale(dmg, distance),
                 None => {
                     // The first segment is the shooter's own test: the
                     // roll, from behind, the band.
+                    let distance = point.distance(r.origin);
                     let behind = segment == 0 && is_behind(b.forward, b.right, dir);
-                    base_damage(dmg, rng.next(), behind, distance)
+                    let d = base_damage(dmg, rng.next(), behind, distance);
+                    first = Some((d, distance));
+                    d
                 }
             };
-            first.get_or_insert(d);
             if server {
                 hurt(w, dmg, r, b, si, d * dampen, point, dir, out);
             }
@@ -1716,9 +1922,26 @@ fn hurt(
         force: Vec3::ZERO,
     };
     let lands = w.rules.lands(&damage);
-    // Armour knows bullets only (gear's other damage types: not yet).
-    let armor = if dmg.damage_type == bullet_type() { w.armor.get_mut(b.entity).ok() } else { None };
-    let points = armour_and_zone(d / hp, sphere.location, sphere.factor, armor.map(|a| a.into_inner()), lands) * hp;
+    let infected = w.infected.contains(b.entity);
+    let armor = w.armor.get_mut(b.entity).ok();
+    let hit = ArmourHit {
+        damage_type: dmg.damage_type,
+        location: sphere.location,
+        zone: sphere.factor,
+        infected,
+    };
+    let points = armour_and_zone(d / hp, hit, armor.map(|a| a.into_inner()), lands) * hp;
+    // An infected victim hit by the other team is knocked back (movement.md,
+    // "Hit knock-back").
+    if infected && lands && !w.same_team(r.owner, b.entity) {
+        let stiff = w.figures.get(b.entity).ok().flatten().map_or(super::movement::movement_data().character.figure.stiff_duration, |c| c.figure.stiff_duration);
+        let current = w.knockback.get(b.entity).ok();
+        if let Some(k) =
+            super::movement::HitKnockback::hit(current, dmg.move_penalty, dmg.move_penalty_duration, stiff, dir, w.now.now)
+        {
+            w.commands.entity(b.entity).insert(k);
+        }
+    }
     let health = w.characters.get(b.entity).map_or(0.0, |(.., h, _, _)| h.current);
     // Dead at 1 HP or less.
     damage.amount = if points > 0.0 && health - points <= DEATH_THRESHOLD * hp + 1e-6 {

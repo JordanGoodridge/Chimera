@@ -140,13 +140,14 @@ fn converts_axes_spawns_and_meshes() {
 }
 
 /// Spawned at the start point (yaw 0: +Z in file axes, −Z here), a
-/// player stands on the floor, walks forward and stops at the wall 5 m
+/// player stands on the floor, walks forward and stops at the wall 500 u
 /// ahead.
 #[test]
 fn a_player_walks_to_the_wall_and_stops() {
     let mut w = small_world();
     w.objects[0].properties[2] = prop("Rotation", Value::Rotation([0.0; 4]));
-    let map = world::convert(&w, "small", movement::movement_data().meters_per_unit, &|_| None);
+    let s = movement::movement_data().meters_per_unit;
+    let map = world::convert(&w, "small", s, &|_| None);
     let (feet, yaw) = (map.spawns[0].0, map.spawn_yaws[0]);
     let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
     sim.ticks(2);
@@ -158,15 +159,17 @@ fn a_player_walks_to_the_wall_and_stops() {
     sim.intent(p).move_axis = Vec2::new(0.0, 1.0);
     sim.seconds(5.0);
     let stopped = sim.position(p);
-    assert!(stopped.z < -4.0 && stopped.z > -5.0, "stopped at the wall (z = -5 m): {stopped}");
+    assert!(stopped.z < -400.0 * s && stopped.z > -500.0 * s, "stopped at the wall (z = -500 u): {stopped}");
     assert!(stopped.x.abs() < 0.01 && (stopped.y - rest.y).abs() < 0.05, "{stopped}");
 }
 
 /// Half a second of rifle fire from the start point (yaw 0: down −Z, at
-/// the wall 5 m away) at a target `ahead` metres away; with `wall` false
-/// the wall's two collision triangles are left out. Whether it was hurt.
+/// the wall 500 u away) at a target `ahead` world units away; with `wall`
+/// false the wall's two collision triangles are left out. Whether it was
+/// hurt.
 fn shoot(ahead: f32, wall: bool) -> bool {
-    let mut map = world::convert(&small_world(), "small", movement::movement_data().meters_per_unit, &|_| None);
+    let s = movement::movement_data().meters_per_unit;
+    let mut map = world::convert(&small_world(), "small", s, &|_| None);
     if !wall {
         map.collision_indices.truncate(2);
     }
@@ -174,7 +177,7 @@ fn shoot(ahead: f32, wall: bool) -> bool {
     let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
     sim.ticks(2);
     let shooter = sim.spawn_character(feet + Vec3::Y, movement::ID);
-    let target = sim.spawn_character(feet + Vec3::new(0.0, 1.0, -ahead), movement::ID);
+    let target = sim.spawn_character(feet + Vec3::new(0.0, 1.0, -ahead * s), movement::ID);
     // Settled, the rifle drawn.
     sim.seconds(1.5);
     let health = |sim: &Sim| sim.app.world().get::<chimera_core::core::Health>(target).unwrap().current;
@@ -190,8 +193,8 @@ fn shoot(ahead: f32, wall: bool) -> bool {
 /// one behind it (which it does hurt without the wall).
 #[test]
 fn the_wall_stops_shots() {
-    assert!(shoot(3.0, true), "the target in front of the wall took no damage");
-    assert!(!shoot(7.0, true), "a shot went through the wall");
-    assert!(shoot(7.0, false), "without the wall the target behind it is hit");
+    assert!(shoot(300.0, true), "the target in front of the wall took no damage");
+    assert!(!shoot(700.0, true), "a shot went through the wall");
+    assert!(shoot(700.0, false), "without the wall the target behind it is hit");
 }
 

@@ -7,7 +7,7 @@
 //! directly (14-25), the weapon's own parts (`CaSpread`, `CaRecoil`, as
 //! the data built them in the sim) are stepped as the systems step them.
 //!
-//! Units: the data's world units are 1 cm (`units` in m4a1.toml); damage
+//! Units: the data's world units are 1.8 cm (`units` in m4a1.toml); damage
 //! is read as hit points (health x 100). Tolerances: 1e-3 HP for damage,
 //! 1e-5 for the meters, 1e-3 degrees for view angles, one tick for times.
 
@@ -30,7 +30,7 @@ use combat_arms::{
 };
 
 /// Metres per world unit (the data's).
-const U: f32 = 0.01;
+const U: f32 = 0.018;
 /// Health per hit point.
 const HP: f32 = 0.01;
 
@@ -505,7 +505,8 @@ fn t15_firing_cap_by_stance() {
     close(s.fire, 0.30, 1e-5, "still, the next round");
 }
 
-/// 16. Recovery waits DecDelay: unchanged at 50 and 95 ms, 0.28875 at 100.
+/// 16. Recovery waits DecDelay: unchanged at 50 ms; as corrected (the
+/// wait is strictly less than DecDelay, case 38), 0.28875 already at 95.
 #[test]
 fn t16_firing_recovery_delay() {
     let mut sim = sim();
@@ -514,12 +515,10 @@ fn t16_firing_recovery_delay() {
     let cone = s.cone_params(FireMode::Normal);
     s.fire = 0.30;
     s.last_shot = Some(0.0);
-    for t in [0.050, 0.095] {
-        s.fire_substep(&sc, cone, false, 0.30, t);
-        close(s.fire, 0.30, 1e-6, &format!("at {t}"));
-    }
-    s.fire_substep(&sc, cone, false, 0.30, 0.100);
-    close(s.fire, 0.28875, 1e-5, "at 100 ms");
+    s.fire_substep(&sc, cone, false, 0.30, 0.050);
+    close(s.fire, 0.30, 1e-6, "at 50 ms");
+    s.fire_substep(&sc, cone, false, 0.30, 0.095);
+    close(s.fire, 0.28875, 1e-5, "at 95 ms");
 }
 
 /// 17. Recovery length: cone back to 3 after 26 sub-steps (0.0075), the
@@ -582,8 +581,9 @@ fn t19_movement_fall() {
     close(s.cone(FireMode::Normal), 3.0, 0.0, "cone");
 }
 
-/// 20. Turning snaps the meter (Q11): 0.2 rad of yaw in one step gives
-/// rho 0.296 and M 0; without the turn 0.16625.
+/// 20. Turning snaps the meter (Q11): 0.2 rad of body yaw in one step
+/// gives rho 0.296 and M 0; without the turn 0.16625 (as corrected, the
+/// change is the body's: a mouse turn into the twist is none, case 42).
 #[test]
 fn t20_turn_snap() {
     let mut sim = sim();
@@ -1092,4 +1092,324 @@ fn t37_two_panels() {
     panel(&mut sim, 33.0, 6.0, "Glass");
     panel(&mut sim, 31.0, 6.0, "Plywood");
     close(shoot_at(&mut sim, shooter, target, "chest"), 18.9, 1e-3, "glass and plywood");
+}
+
+// ---------------------------------------------------------------------------
+// The follow-up answers (38-49)
+
+/// 38. Recovery at exactly DecDelay (corrects 16): 94 ms waits, 95 ms
+/// recovers, and the next sub-step at any time recovers again.
+#[test]
+fn t38_recovery_at_exactly_dec_delay() {
+    let mut sim = sim();
+    let (_, w) = m4a1(&mut sim);
+    let (sc, mut s) = (scales(&sim), spread(&sim, w));
+    let cone = s.cone_params(FireMode::Normal);
+    s.fire = 0.30;
+    s.last_shot = Some(0.0);
+    s.fire_substep(&sc, cone, false, 0.30, 0.094);
+    close(s.fire, 0.30, 1e-6, "94 ms");
+    s.fire_substep(&sc, cone, false, 0.30, 0.095);
+    close(s.fire, 0.28875, 1e-5, "95 ms");
+    assert_eq!(s.last_shot, None, "the stamp cleared");
+    s.fire_substep(&sc, cone, false, 0.30, 0.0951);
+    close(s.fire, 0.2775, 1e-5, "the next sub-step");
+}
+
+/// 39. Airborne rise after a jump: the decrease step at the increase
+/// speed, capped at JumpPerturb.
+#[test]
+fn t39_airborne_rise() {
+    let mut sim = sim();
+    let (_, w) = m4a1(&mut sim);
+    let (sc, mut s) = (scales(&sim), spread(&sim, w));
+    let (cone, st) = (s.cone_params(FireMode::Normal), s.states(FireMode::Normal));
+    s.movement = 0.50;
+    s.move_substep(&sc, cone, st.jump, 0.20, 0.0, true, st.jump);
+    close(s.movement, 0.64625, 1e-5, "sub-step 1");
+    s.move_substep(&sc, cone, st.jump, 0.20, 0.0, true, st.jump);
+    close(s.movement, 0.70, 1e-6, "sub-step 2, capped");
+}
+
+/// 40. A fall is not a jump: walked off (here placed in the air), falling
+/// fast, run flag on: mu = 1, the run target 0.25, and the meter falls
+/// from 0.50 as on the ground.
+#[test]
+fn t40_a_fall_is_not_a_jump() {
+    let mut sim = sim();
+    let (p, w) = m4a1(&mut sim);
+    sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation.y += 20.0;
+    sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(p).unwrap().0 = Vec3::NEG_Y * 400.0 * U;
+    sim.app.world_mut().get_mut::<movement::CaMovement>(p).unwrap().standing = None;
+    {
+        let mut s = sim.app.world_mut().get_mut::<CaSpread>(w).unwrap();
+        s.movement = 0.50;
+        s.clock = 0.0;
+    }
+    sim.ticks(1);
+    let m = sim.app.world().get::<movement::CaMovement>(p).unwrap().clone();
+    assert!(!m.in_jump && m.run, "falling, not in a jump, run flag on");
+    // 15 ms: one sub-step of 12.5 ms.
+    close(sim.app.world().get::<CaSpread>(w).unwrap().movement, 0.46625, 1e-5, "it falls");
+}
+
+/// 41. The run flag at rest and crouched: standing still the run target
+/// with mu 0 keeps M at 0; crouched and moving the walk target caps it
+/// at 0.04 (cone 6).
+#[test]
+fn t41_run_flag_at_rest_and_crouched() {
+    let mut sim = sim();
+    let (p, w) = m4a1(&mut sim);
+    sim.seconds(1.0);
+    assert!(sim.app.world().get::<movement::CaMovement>(p).unwrap().run, "run flag on at rest");
+    close(sim.app.world().get::<CaSpread>(w).unwrap().movement, 0.0, 1e-6, "still");
+    sim.intent(p).crouch = true;
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.seconds(1.0);
+    let s = sim.app.world().get::<CaSpread>(w).unwrap().clone();
+    assert!(!sim.app.world().get::<movement::CaMovement>(p).unwrap().run, "crouched: run off");
+    close(s.movement, 0.04, 1e-5, "WalkPerturb");
+    close(s.cone(FireMode::Normal), 6.0, 0.0, "cone");
+}
+
+/// 42. The turn term and the twist (corrects 20): with no movement key a
+/// 0.2 rad turn from an untwisted body measures 0; beyond the 45 degree
+/// twist it measures 0.2 (M to 0); with a strafe key held, 0.2 (M rises).
+#[test]
+fn t42_turn_and_twist() {
+    let mut sim = sim();
+    let (_, w) = m4a1(&mut sim);
+    let (sc, base) = (scales(&sim), spread(&sim, w));
+    let (cone, st) = (base.cone_params(FireMode::Normal), base.states(FireMode::Normal));
+    let quarter = std::f32::consts::FRAC_PI_4;
+    // Untwisted, standing still.
+    let mut s = base.clone();
+    s.body_turn(0.0, 0.0, false);
+    let turned = s.body_turn(0.2, 0.0, false);
+    close(turned, 0.0, 1e-6, "into the twist");
+    s.movement = 0.20;
+    s.move_substep(&sc, cone, st.run, 0.0, CaSpread::turn(&sc, 0.0, turned), false, st.jump);
+    close(s.movement, 0.16625, 1e-5, "no turn measured");
+    // The twist at its limit: the same turn further measures 0.2.
+    let mut s = base.clone();
+    s.body_turn(0.0, 0.0, false);
+    close(s.body_turn(quarter, 0.0, false), 0.0, 1e-6, "up to the limit");
+    let turned = s.body_turn(quarter + 0.2, 0.0, false);
+    close(turned, 0.2, 1e-5, "beyond the twist");
+    let rho = CaSpread::turn(&sc, 0.0, turned);
+    close(rho, 0.29575, 1e-4, "rho");
+    s.movement = 0.20;
+    s.move_substep(&sc, cone, st.run, 0.0, rho, false, st.jump);
+    close(s.movement, 0.0, 1e-6, "snapped");
+    // A strafe key held: no twist.
+    let mut s = base;
+    s.body_turn(0.0, 0.0, true);
+    let rho = CaSpread::turn(&sc, 0.0, s.body_turn(0.2, 0.0, true));
+    close(rho, 0.29575, 1e-4, "moving");
+    s.movement = 0.20;
+    s.move_substep(&sc, cone, st.run, 0.25, rho, false, st.jump);
+    close(s.movement, 0.24875, 1e-5, "rises");
+}
+
+/// 43. A frame's turn on its sub-steps: all on the first.
+#[test]
+fn t43_turn_split_over_sub_steps() {
+    let sim = sim();
+    let sc = scales(&sim);
+    let r = ca::substep_turns(&sc, 0.3, 3);
+    close(r[0], 0.44362, 1e-4, "sub-step 1");
+    assert_eq!(&r[1..], &[0.0, 0.0]);
+}
+
+/// 44. The recoil's kick is not a turn (pitch is never measured); its side
+/// wag is.
+#[test]
+fn t44_recoil_kick_is_not_a_turn() {
+    let mut sim = sim();
+    let (_, w) = m4a1(&mut sim);
+    let sc = scales(&sim);
+    let mut s = spread(&sim, w);
+    s.body_turn(0.0, 0.0, false);
+    close(s.body_turn(0.0, 0.0, false), 0.0, 0.0, "a kick of 1.3 degrees up: no change");
+    let wag = 1.2f32.to_radians();
+    let rho = CaSpread::turn(&sc, 0.0, s.body_turn(0.0, wag, false));
+    close(rho, 0.03097, 1e-4, "the side wag");
+}
+
+/// 45. mu against the penalised limit: the reference loadout's run limit
+/// is 228 (P 0.2), so 114 u/s is mu 0.5, mu S 0.125.
+#[test]
+fn t45_mu_uses_the_penalised_limit() {
+    let mut sim = sim();
+    let (p, w) = m4a1(&mut sim);
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.seconds(1.0);
+    let limit = sim.app.world().get::<movement::CaMovement>(p).unwrap().speed_limit;
+    close(limit, 228.0, 1e-3, "the reference loadout's run limit");
+    let mu = ca::movement_fraction(114.0, limit);
+    close(mu, 0.5, 1e-6, "mu");
+    let st = spread(&sim, w).states(FireMode::Normal);
+    close(mu * st.run, 0.125, 1e-6, "mu S");
+}
+
+/// Two unarmoured victims in line behind each other; the shooter's round
+/// hits the first's chest at `units`.
+fn in_line(sim: &mut Sim, units: f32, first_yaw: f32) -> (Entity, Entity, Entity) {
+    let (shooter, first) = range_lane(sim, "test:m4a1_exact", units);
+    sim.intent(first).yaw = first_yaw;
+    place_at(sim, shooter, first, "chest", units);
+    let behind = sim.position(first) - Vec3::Z * 0.6;
+    let second = player(sim, behind, std::f32::consts::PI, 100.0);
+    let at = sphere(sim, first, "chest");
+    aim(sim, shooter, at);
+    (shooter, first, second)
+}
+
+/// One round at what the shooter aims at: what each target lost.
+fn one_round(sim: &mut Sim, shooter: Entity, targets: [Entity; 2]) -> [f32; 2] {
+    let before = targets.map(|t| health(sim, t));
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(1);
+    let lost = [0, 1].map(|i| (before[i] - health(sim, targets[i])) / HP);
+    sim.seconds(0.2);
+    lost
+}
+
+/// 46. The second victim: banded again at the first hit's distance, with
+/// the first's behind bonus; its own armour.
+#[test]
+fn t46_second_victim() {
+    let pi = std::f32::consts::PI;
+    for (units, yaw, want) in [(2800.0, pi, [24.5, 17.15]), (2000.0, pi, [35.0, 35.0]), (2000.0, 0.0, [45.5, 45.5])] {
+        let mut sim = sim();
+        let (shooter, first, second) = in_line(&mut sim, units, yaw);
+        let lost = one_round(&mut sim, shooter, [first, second]);
+        close(lost[0], want[0], 1e-3, &format!("first at {units}, yaw {yaw}"));
+        close(lost[1], want[1], 1e-3, &format!("second at {units}, yaw {yaw}"));
+    }
+    let mut sim = sim();
+    let (shooter, first, second) = in_line(&mut sim, 2000.0, pi);
+    set_armour(&mut sim, second, 100.0, vec![DEFAULT_BODY_GEAR]);
+    let lost = one_round(&mut sim, shooter, [first, second]);
+    close(lost[1], 29.75, 1e-3, "the second's own armour");
+    close(armour(&sim, second), 94.75, 1e-3, "its armour points");
+}
+
+/// 47. The fire delay's clock: from the last round that passed; a dropped
+/// one doesn't restart it; exactly fireDelay passes.
+#[test]
+fn t47_fire_delay_clock() {
+    for (times, dealt) in [([0, 60, 110], [true, false, true]), ([0, 60, 100], [true, false, true]), ([0, 150, 200], [true, true, false])] {
+        let mut sim = sim();
+        sim.set_tick_interval(0.005);
+        sim.app
+            .add_weapon_data(&[(
+                "spaced",
+                r#"
+                id = "test:m4a1_spaced"
+                base = "test:m4a1_exact"
+                [trigger]
+                automatic = false
+                cycle = 0.01
+                [hooks."combat_arms:damage"]
+                fire_delay = 100.0
+                [hooks."combat_arms:recoil"]
+                pitch = 0.0
+                wag_r = 0.0
+                wag_l = 0.0
+                random_wag = 0.0
+                "#,
+            )])
+            .unwrap();
+        let (shooter, target) = range_lane(&mut sim, "test:m4a1_spaced", 1000.0);
+        sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 10.0;
+        let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
+        let at = sphere(&sim, target, "chest");
+        aim(&mut sim, shooter, at);
+        let t0 = sim.tick();
+        for (i, t) in times.into_iter().enumerate() {
+            while (sim.tick() - t0) * 5 < t {
+                sim.ticks(1);
+            }
+            let before = health(&sim, target);
+            sim.intent(shooter).fire = true;
+            sim.ticks(1);
+            sim.intent(shooter).fire = false;
+            assert_eq!(fired(&sim, w), i as u32 + 1, "{times:?}: round {} spent", i + 1);
+            let lost = (before - health(&sim, target)) / HP;
+            close(lost, if dealt[i] { 35.0 } else { 0.0 }, 1e-3, &format!("{times:?}: round {}", i + 1));
+        }
+    }
+}
+
+/// 48. Armour by damage type: burn halved (and used up), melee and
+/// explosions not covered, the groin unprotected, bullets on the torso as
+/// case 6.
+#[test]
+fn t48_armour_by_damage_type() {
+    use ca::{ArmourHit, Location};
+    let hit = |damage_type, location| ArmourHit {
+        damage_type,
+        location,
+        zone: 1.0,
+        infected: false,
+    };
+    for (what, h, d, want, ap) in [
+        ("burn", hit(ca::BURN, Location::Torso), 10.0, 5.0, 95.0),
+        ("melee", hit(ca::MELEE, Location::Torso), 45.0, 45.0, 100.0),
+        ("explosion", hit(ca::EXPLOSION, Location::Torso), 50.0, 50.0, 100.0),
+        ("bullet, groin", hit(ca::BULLET, Location::Groin), 35.0, 35.0, 100.0),
+        ("bullet, torso", hit(ca::BULLET, Location::Torso), 35.0, 29.75, 94.75),
+    ] {
+        let mut a = CaArmor::default();
+        close(ca::armour_and_zone(d, h, Some(&mut a), true), want, 1e-4, what);
+        close(a.points, ap, 1e-4, &format!("{what}: AP"));
+    }
+    // A round on the groin in play.
+    let mut sim = sim();
+    let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 1000.0);
+    set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR]);
+    close(shoot_at(&mut sim, shooter, target, "groin"), 35.0, 1e-3, "groin");
+    close(armour(&sim, target), 100.0, 1e-3, "no armour used");
+}
+
+/// 49. An infected victim's groin counts as torso.
+#[test]
+fn t49_groin_on_an_infected_victim() {
+    let h = ca::ArmourHit {
+        damage_type: ca::BULLET,
+        location: ca::Location::Groin,
+        zone: 1.0,
+        infected: true,
+    };
+    let mut a = CaArmor::default();
+    close(ca::armour_and_zone(35.0, h, Some(&mut a), true), 29.75, 1e-4, "damage");
+    close(a.points, 94.75, 1e-4, "AP");
+}
+
+/// Case 55 of movement.md through a real round: an infected victim of
+/// the other team is knocked back by the M4A1's ammo (K 40, 0.3 s); a
+/// victim that isn't infected is not.
+#[test]
+fn knock_back_on_an_infected_victim() {
+    use chimera_core::core::Team;
+    for infected in [true, false] {
+        let mut sim = sim();
+        let (shooter, target) = range_lane(&mut sim, "combat_arms:m4a1", 1000.0);
+        sim.app.world_mut().entity_mut(shooter).insert(Team(1));
+        sim.app.world_mut().entity_mut(target).insert(Team(2));
+        if infected {
+            sim.app.world_mut().entity_mut(target).insert(movement::CaInfected);
+        }
+        shoot_at(&mut sim, shooter, target, "chest");
+        let k = sim.app.world().get::<movement::HitKnockback>(target).copied();
+        if infected {
+            let k = k.expect("knocked back");
+            assert_eq!((k.strength, k.duration), (40.0, 0.3));
+        } else {
+            assert!(k.is_none(), "not infected: nothing");
+        }
+    }
 }

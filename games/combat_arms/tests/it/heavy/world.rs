@@ -87,7 +87,7 @@ fn warehouse_spawns() {
         .find(|(p, _)| p.xz().distance(at.xz()) < 0.01)
         .expect("GameStartPoint11");
     assert_eq!(team.map(|t| t.0), Some(1));
-    assert!(feet.y < at.y && feet.y > at.y - 2.0, "{feet} below {at}");
+    assert!(feet.y < at.y && feet.y > at.y - 200.0 * s, "{feet} below {at}");
 }
 
 /// A player spawned at a WAREHOUSE spawn stands on the floor, walks on

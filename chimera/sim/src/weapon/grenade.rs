@@ -508,6 +508,12 @@ impl Throwable {
     }
 }
 
+/// On a throwable weapon: the last grenade thrown, it stays in the
+/// inventory at count 0 (Combat Arms) instead of going; the game's own
+/// selection puts it away.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct KeepSpent;
+
 /// A grenade in flight (or lying, waiting to go off).
 #[derive(Component, Clone, Debug)]
 pub struct Projectile {
@@ -820,8 +826,12 @@ fn throw_frame(
 }
 
 /// The last grenade is gone: the weapon leaves the inventory, and its
-/// owner draws the best of the rest (the lowest slot).
+/// owner draws the best of the rest (the lowest slot); with `KeepSpent`
+/// it stays where it is.
 fn exhaust(world: &mut World, owner: Entity, weapon: Entity) {
+    if world.get::<KeepSpent>(weapon).is_some() {
+        return;
+    }
     let next = world.get::<Inventory>(owner).and_then(|inv| {
         inv.weapons
             .iter()

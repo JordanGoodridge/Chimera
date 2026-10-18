@@ -29,60 +29,66 @@
 //!   time (`CaItem::sprint_out`) passes; a reload started or running under
 //!   sprint completes; holding use holds fire.
 //! - The knife (8): the `combat_arms:knife` hook (`Knife`), its own state
-//!   machine per tick: the first update after a press arms it, the next
-//!   starts the pre-fire, the next the swing; each hit key casts one ray
-//!   from the eye (range, first thing hit, no penetration) dealing
-//!   `B x u x b` (u uniform in 1 +- the damage spread, b = 1 + `BEHIND_BONUS`
-//!   from the victim's rear sector, `behind`); a held button chains the
-//!   next swing at once, fire beating alt-fire. No quick-knife (9).
+//!   machine per update: the first update after a press arms it, the next
+//!   starts the pre-fire, the swing starts at the update that sees it done;
+//!   each hit key casts one ray from the eye with the gun's square spread
+//!   at the knife's cone (`perturb`, n = 1 for the M9), range, first thing
+//!   hit, no penetration, dealing `B x u x b x k_zone` after armour (u
+//!   uniform in 1 +- the damage spread, b = 1 + `BEHIND_BONUS` from the
+//!   victim's rear sector, `behind`; the zone of the hit sphere the ray
+//!   passes, `weapons::pick_sphere`; melee gear coverage: none in stock); a
+//!   held button chains the next swing at once, fire beating alt-fire. No
+//!   quick-knife (9).
 //! - Auto-switch (10): a hide-when-empty weapon in hand that is spent (or
 //!   gone with its last round) gives the last chosen primary, else
 //!   secondary, else melee, and clears Q.
 //! - Pickup (11): `pickups` aims the view ray at dropped items (`Dropped`,
 //!   with a `map::loose::LooseItem` to draw) each tick
 //!   (`CaSelection::pickup_target`, for the HUD's prompt); E on one calls
-//!   `pick_up`: a same-id non-primary adds its ammo (clamped) and fills
-//!   the clip; otherwise it swaps for the class's last chosen weapon in the
-//!   same equip index (the old one dropped at the left foot with jitter
-//!   and a random yaw) and draws it with the item's clip. Ammo travels
-//!   with the gun (`Dropped::total`, `clip`). No walk-over pickup and no
-//!   drop key.
+//!   `pick_up`: a same-id non-primary adds its ammo (clamped), fills the
+//!   clip and is drawn; otherwise it swaps for the class's last chosen
+//!   weapon in the same equip index (the old one dropped at the left foot
+//!   with jitter and a random yaw) and draws it with the item's clip (the
+//!   server's "better weapon" rule, `better_weapon`, always switches: the
+//!   weapon in hand was put away for the request). Only a real ray hit
+//!   within 100 units targets an item (the fallback, `body_fallback`, is
+//!   dead bodies'). Ammo travels with the gun (`Dropped::total`, `clip`).
+//!   No walk-over pickup and no drop key.
+//! - A thrown weapon stays at total 0 when its last grenade goes (10):
+//!   `grenade::KeepSpent` on every throwable; its key skips it, Q refuses
+//!   it, a respawn restores it.
 //! - Death drop (12): the last chosen primary drops at the left foot (no
 //!   jitter) when `CaDeathDrops` allows and its data does; items go after
 //!   `DROPPED_LIFETIME`. Respawn (13): `respawn_inventory`.
 //!
 //! Known shortcuts:
-//! - Units: 1 LithTech unit is taken as 1 cm (`UNIT`); the movement spec
-//!   leaves the scale open (its Open question 3). Health 100 = 1.0 (`HP`).
+//! - Units: movement's `meters_per_unit` (`UNIT`, by body size: movement.md
+//!   Open question 3). Health 100 = 1.0 (`HP`).
 //! - Updates are the game's fixed tick (movement.md's 15 ms,
 //!   `game::TICK_INTERVAL`), not rendered frames as inventory.md has the
-//!   weapon logic run (a question for both specs: one clock or two?), so
-//!   every "next update" is a tick: the knife's first hit lands a tick
-//!   plus the pre-fire plus 155 ms after the press (spec: "plus 2 or 3
-//!   frames").
-//! - The knife ray has no spread (the M9's 1/7 perturb is
-//!   weapon_firing.md's), k_zone is 1 (hitgroup generic: the zone table
-//!   is weapon_firing.md's), and m, g, v and k_range are 1 (no mods,
-//!   buffs, figure types or range table). `behind` is public for the guns'
-//!   x1.3 (Quirk 6), which this module doesn't apply.
+//!   weapon logic run (Open question 12: once per frame, after the frame's
+//!   movement ticks), so every "next update" is a tick, as if the game
+//!   ran at 66.7 fps; the server here runs the same logic (the spec's
+//!   server only applies messages). Test case 37 runs with the tick set to
+//!   the frame's length.
 //! - Fire-gating by sprint and use applies to magazine weapons and the
-//!   knife; thrown weapons follow Chimera's `grenade::Throwable`, which
-//!   also removes a spent grenade (CA keeps it at total 0, unselectable):
-//!   Q to it then finds no class and stops, as section 4 does for a
-//!   swapped weapon. The cooked-grenade release on death (12.1) is
-//!   grenades.md's. A shell-by-shell weapon's reload during sprint or its
-//!   draw goes to Chimera's frame (refused while held).
+//!   knife; thrown weapons follow Chimera's `grenade::Throwable`. The
+//!   cooked-grenade release on death (12.1) is grenades.md's. A
+//!   shell-by-shell weapon's reload during sprint or its draw goes to
+//!   Chimera's frame (refused while held).
 //! - Reloads started here (6.6, Quirk 2, under sprint) play no reload
 //!   sounds (the frame's sound queue is private).
-//! - The left foot is the hull's bottom, a quarter of its width to the
-//!   left; the hitbox width is the hull's. No skeleton yet.
-//! - Pickup: the fallback test (centre distance - 35 <= 100) applies to
-//!   an item the view ray hits beyond 100 units (the most literal reading
-//!   tying it to the pickup ray; the spec could also mean any item in
-//!   reach). An item's box is its body's, else 10 units each way. The
+//! - No skeleton yet: the left foot is the hull's bottom centre (the
+//!   spec's fallback for us; its real offset is a live measurement, Open
+//!   question 17), the swap's jitter +-0.5 x the hull's half-extents; the
+//!   knife's zones are the placeholder spheres of `weapons`.
+//! - Pickup: an item's box is its body's, else 10 units each way (the
+//!   reference's is its world model's extents: Open question 13, to be
+//!   measured); no dead-body interactions (the fallback's only use). The
 //!   owner/team, human-model, infection, VIP and buff checks, map-placed
-//!   items' respawn and the "better weapon" rule (Open question 6) aren't
-//!   there; the non-primary pickup fills the clip as the server does
+//!   items' respawn and the auto weapon switch option (always on) aren't
+//!   there; command ids aren't kept per weapon (the rule always switches
+//!   in play); the non-primary pickup fills the clip as the server does
 //!   (Open question 5).
 //! - Class keys: the objective class (key 6) isn't reachable from the
 //!   client's input (it reads slot1..slot5) and the bomb rule, "in use"
@@ -96,11 +102,17 @@
 //! - Respawn: `respawn_inventory` rebuilds the loadout; the game modes
 //!   (game_modes.md) decide when.
 
-use avian3d::prelude::{ColliderOf, SpatialQuery, SpatialQueryFilter};
+use avian3d::prelude::{ColliderAabb, ColliderOf, SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::weapons::RIFLE;
+use super::{
+    movement::CaInfected,
+    weapons::{
+        ArmourHit, CaArmor, HitSpheres, Location, MALE, MELEE as MELEE_DAMAGE, RIFLE, armour_and_zone, body_geometry,
+        pick_sphere, square_dir,
+    },
+};
 use crate::{
     core::{
         self, Damage, DamageKind, Died, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole, Predict,
@@ -111,7 +123,7 @@ use crate::{
         CarriedAppExt, Inventory, Magazine, NetPart, OwnSelection, SelectWeapons, ShellReload, StartingWeapons, Weapon,
         WeaponEvent, WeaponEventKind, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
-        grenade::Throwable,
+        grenade::{KeepSpent, Throwable},
         random::{Rng, shared_random},
     },
 };
@@ -124,8 +136,9 @@ pub const KNIFE: &str = "combat_arms:m9_knife";
 /// rifle until weapon_firing.md's and the M9.
 pub const STARTING_WEAPONS: &[&str] = &[RIFLE, KNIFE];
 
-/// Metres per LithTech unit (ours: 1 cm; see Known shortcuts).
-pub const UNIT: f32 = 0.01;
+/// Metres per LithTech unit: movement's `meters_per_unit` (by body size;
+/// see Known shortcuts).
+pub const UNIT: f32 = 0.018;
 /// Health per damage point (100 points = 1.0).
 pub const HP: f32 = 0.01;
 
@@ -136,10 +149,11 @@ pub const HOLSTER_TIME: f32 = 0.0;
 /// An animation rate above this plays at 1.0 (draw_rate_cap).
 pub const DRAW_RATE_CAP: f32 = 2.0;
 /// Farthest a pickup's surface hit may be from the camera, m
-/// (activation_distance, 100 units).
+/// (activation_distance, 100 units; exactly 100 counts).
 pub const ACTIVATION_DISTANCE: f32 = 100.0 * UNIT;
-/// Taken off the camera-to-centre distance for the fallback pickup test,
-/// m (activation_fallback_slack, 35 units).
+/// Taken off the camera-to-centre distance for the fallback test of
+/// dead bodies' hit boxes (activation_fallback_slack, 35 units); weapon
+/// items never use it (Open question 13). No body interactions yet.
 pub const ACTIVATION_FALLBACK_SLACK: f32 = 35.0 * UNIT;
 /// Seconds a dropped item lasts (dropped_lifetime).
 pub const DROPPED_LIFETIME: f64 = 20.0;
@@ -205,6 +219,35 @@ pub fn behind(forward: Vec3, right: Vec3, dir: Vec3) -> bool {
 // ---------------------------------------------------------------------------
 // Parts
 
+/// The server's "better weapon" rule after a pickup (11, step 6): a
+/// switch to the picked weapon when no weapon is in hand, or when it
+/// wasn't already carried and its command id (its place in the weapon
+/// order lists, all classes in a row) is higher than the one in hand's.
+/// Every pickup puts the weapon in hand away first, so in play it always
+/// switches.
+pub fn better_weapon(in_hand: Option<usize>, picked: usize, already_carried: bool) -> bool {
+    match in_hand {
+        None => true,
+        Some(held) => !already_carried && picked > held,
+    }
+}
+
+/// A thrown weapon that stays in the inventory at total 0 (10, "The
+/// spent weapon stays"): Chimera's `grenade::KeepSpent` on every
+/// throwable.
+fn keep_spent(new: Query<Entity, (Added<Throwable>, Without<KeepSpent>)>, mut commands: Commands) {
+    for e in &new {
+        commands.entity(e).insert(KeepSpent);
+    }
+}
+
+/// The pickup fallback for a dead body's hit box the view ray passes
+/// (11): its centre `distance` from the camera, less 35 units, within
+/// reach. Weapon items never use it. (No body interactions yet.)
+pub fn body_fallback(distance: f32) -> bool {
+    distance - ACTIVATION_FALLBACK_SLACK <= ACTIVATION_DISTANCE + 1e-6
+}
+
 /// What this module reads of a weapon (`combat_arms:inventory` hook).
 #[derive(Component, Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, default)]
@@ -256,6 +299,10 @@ struct KnifeData {
     /// The weapon's fire-rate bonus (f_weapon, 8.2).
     #[serde(default)]
     fire_rate: f32,
+    /// The attack ray's cone n (perturb units, thousandths): the knife's
+    /// spread meters stay 0, so its `MinPerturb` (8.3).
+    #[serde(default)]
+    perturb: f32,
     primary: AttackData,
     #[serde(default)]
     secondary: Option<AttackData>,
@@ -304,6 +351,8 @@ pub struct Knife {
     pub spread: f32,
     /// The played fire rate (rho_fire after the cap).
     pub rate: f32,
+    /// The attack ray's square spread, half-width (n / 1000).
+    pub perturb: f32,
     /// Primary, then the secondary if any.
     pub attacks: Vec<Attack>,
     pub state: KnifeState,
@@ -408,6 +457,7 @@ impl Plugin for CaInventoryPlugin {
         )
         // The knife first: the hands see it idle on the update it ends.
         .add_systems(Predict::Weapons, (swing_knives, hands).chain().before(WeaponFrame))
+        .add_systems(FixedUpdate, keep_spent.before(SimSet::Weapons))
         // Predicted with the player (a network client's own): the knife's
         // swing with the weapon (`weapon::sync`), the selection as its
         // own part with weapons as indices in the inventory
@@ -519,6 +569,7 @@ fn knife(d: &WeaponData, p: &KnifeData) -> Knife {
         range: p.range * d.units.length,
         spread: damage_spread(p.damage_spread),
         rate: played_rate(1.0 + p.fire_rate),
+        perturb: p.perturb / 1000.0,
         attacks: std::iter::once(attack(&p.primary)).chain(p.secondary.iter().map(attack)).collect(),
         state: KnifeState::default(),
     }
@@ -844,6 +895,9 @@ fn swing_knives(
     >,
     mut knives: Query<(Entity, &Weapon, &mut Knife)>,
     targets: Query<(Option<&Intent>, Has<Health>)>,
+    bodies: Query<(&Transform, &Intent, &MovementState, Option<&ColliderAabb>, Option<&HitSpheres>)>,
+    mut armour: Query<&mut CaArmor>,
+    infected: Query<(), With<CaInfected>>,
     colliders: Query<&ColliderOf>,
     spatial: SpatialQuery,
     mut damage: MessageWriter<Damage>,
@@ -895,10 +949,12 @@ fn swing_knives(
                 knife.state.since = now;
             }
             KnifePhase::PreFire => {
+                // The main swing starts at the update that sees the
+                // pre-fire done (8.2: the time of u2, nothing carried).
                 let prefire = knife.attacks[st.attack].prefire;
                 if elapsed(st.since) >= prefire as f64 {
                     knife.state.phase = KnifePhase::Swing;
-                    knife.state.since = end_of(st.since, prefire);
+                    knife.state.since = now;
                     knife.state.hits = 0;
                 }
             }
@@ -909,7 +965,10 @@ fn swing_knives(
                     let n = knife.state.hits;
                     knife.state.hits += 1;
                     let eye = at.translation + state.eye_offset;
-                    let dir = crate::weapon::aim_of(intent.yaw, intent.pitch) * Vec3::NEG_Z;
+                    // The gun's square spread at the knife's cone (8.3).
+                    let mut spread = shared_random(intent.command, "combat_arms:knife_spread", n as i32);
+                    let (u1, u2) = (spread.next(), spread.next());
+                    let dir = square_dir(crate::weapon::aim_of(intent.yaw, intent.pitch), knife.perturb, u1, u2);
                     let Ok(ray) = Dir3::new(dir) else { continue };
                     let filter = SpatialQueryFilter::from_excluded_entities([owner])
                         .with_mask(core::SOLID_LAYERS.0 & !core::ITEM_LAYER.0);
@@ -939,13 +998,40 @@ fn swing_knives(
                         behind(yaw * Vec3::NEG_Z, yaw * Vec3::X, dir)
                     });
                     let b = if rear { 1.0 + BEHIND_BONUS } else { 1.0 };
+                    // The body part the ray passes on through the target
+                    // (8.4: melee uses the zones), then the armour step
+                    // (no stock gear covers melee).
+                    let sphere = bodies.get(target).ok().and_then(|(t, i, s, aabb, spheres)| {
+                        let data = spheres.map_or(MALE, |h| h.0);
+                        let (_, _, world) = body_geometry(t, i, s, aabb, data)?;
+                        let through = end + dir * knife.range;
+                        pick_sphere(&world, eye, through).map(|k| data[k])
+                    });
+                    let (location, zone) = sphere.map_or((Location::Torso, 1.0), |s| (s.location, s.factor));
+                    let hit = ArmourHit {
+                        damage_type: MELEE_DAMAGE,
+                        location,
+                        zone,
+                        infected: infected.contains(target),
+                    };
+                    let points = attack.damage * u * b / HP;
+                    let amount = armour_and_zone(points, hit, armour.get_mut(target).ok().map(|a| a.into_inner()), true) * HP;
+                    let side = |l, r| if sphere.is_some_and(|s| s.at.x < 0.0) { l } else { r };
+                    let hitgroup = match sphere.map(|s| s.location) {
+                        None => Hitgroup::Generic,
+                        Some(Location::Head) => Hitgroup::Head,
+                        Some(Location::Torso) => Hitgroup::Chest,
+                        Some(Location::Groin) => Hitgroup::Stomach,
+                        Some(Location::Arm) => side(Hitgroup::LeftArm, Hitgroup::RightArm),
+                        Some(Location::Leg) => side(Hitgroup::LeftLeg, Hitgroup::RightLeg),
+                    };
                     damage.write(Damage {
                         target,
                         attacker: Some(owner),
-                        amount: attack.damage * u * b,
+                        amount,
                         point: end,
                         dir,
-                        hitgroup: Hitgroup::Generic,
+                        hitgroup,
                         kind: DamageKind::Melee,
                         weapon: None,
                         force: Vec3::ZERO,
@@ -1015,8 +1101,9 @@ fn pickups(
             .filter_map(|(e, t, body)| {
                 let half = body.map_or(ITEM_HALF, |b| (b.bounds.1 - b.bounds.0) / 2.0);
                 let hit = ray_box(eye, dir, t.translation - half, t.translation + half)?;
-                let fallback = (t.translation - eye).length() - ACTIVATION_FALLBACK_SLACK <= ACTIVATION_DISTANCE;
-                (hit <= ACTIVATION_DISTANCE || fallback).then_some((hit, e))
+                // Only a real hit within reach (the fallback is for dead
+                // bodies, not items: Open question 13).
+                (hit <= ACTIVATION_DISTANCE + 1e-6).then_some((hit, e))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0));
         // Something solid in front hides it.
@@ -1070,6 +1157,14 @@ pub fn pick_up(world: &mut World, owner: Entity, item: Entity) -> bool {
         }
         despawn(world, item);
         despawn(world, d.weapon);
+        // The server put the weapon in hand away for the request, so the
+        // "better weapon" rule switches to this one (Open question 6).
+        if better_weapon(None, 0, true)
+            && let Some(mut inv) = world.get_mut::<Inventory>(owner)
+            && inv.active != Some(mine)
+        {
+            inv.wanted = Some(mine);
+        }
         return true;
     }
     // A swap within the class: the last chosen one goes.
@@ -1106,8 +1201,11 @@ pub fn pick_up(world: &mut World, owner: Entity, item: Entity) -> bool {
         }
         None => inv.weapons.push(d.weapon),
     }
-    // Drawn at once (the auto weapon switch option's default).
-    inv.wanted = Some(d.weapon);
+    // The "better weapon" rule (no weapon in hand on the server), drawn at
+    // once (the auto weapon switch option's default).
+    if better_weapon(None, 0, false) {
+        inv.wanted = Some(d.weapon);
+    }
     world.write_message(crate::weapon::drop::PickedUp {
         who: owner,
         weapon: d.weapon,
@@ -1122,8 +1220,10 @@ fn despawn(world: &mut World, e: Entity) {
 }
 
 /// Take `weapon` out of `owner`'s list and lay it at the left foot with a
-/// random yaw (0 to 1 rad), jittered by +-half the hull's width on X and
-/// Z for a swap (11, 12). Returns its equip index.
+/// random yaw (0 to 1 rad), jittered by u x the hull's half-extents on X
+/// and Z (u in [-0.5, 0.5]) for a swap (11, 12). Without a skeleton the
+/// left foot is the hull's bottom centre (Open question 17). Returns its
+/// equip index.
 pub fn drop_item(world: &mut World, owner: Entity, weapon: Entity, jitter: bool) -> Option<usize> {
     let now = world.get_resource::<SimClock>().map_or(0.0, |c| c.now);
     let at = *world.get::<Transform>(owner)?;
@@ -1159,13 +1259,11 @@ pub fn drop_item(world: &mut World, owner: Entity, weapon: Entity, jitter: bool)
         _ => (INFINITE_AMMO, 0),
     };
     let mut rng: Rng = shared_random(intent.command, "combat_arms:drop", index as i32);
-    let width = hi.x - lo.x;
-    let yaw_rot = intent.yaw_rotation();
-    let left = yaw_rot * Vec3::NEG_X;
-    let mut spot = at.translation + Vec3::Y * lo.y + left * (width / 4.0);
+    let half = (hi - lo) / 2.0;
+    let mut spot = at.translation + Vec3::Y * lo.y;
     if jitter {
-        spot.x += rng.range(-0.5, 0.5) * width;
-        spot.z += rng.range(-0.5, 0.5) * width;
+        spot.x += rng.range(-0.5, 0.5) * half.x;
+        spot.z += rng.range(-0.5, 0.5) * half.z;
     }
     let yaw = rng.range(0.0, 1.0);
     world.spawn((
