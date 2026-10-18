@@ -40,6 +40,18 @@ silencer's recoil, the template suffix and templated logic_auto, the
 constraint tie order, a human's airborne inaccuracy, nav_analyze on a
 listen server); about 73 class-1 items left.
 
+Fourth pass (2026-10-18, blasts, the bomb, spectating, doors, flashes,
+ladders; `tools/css_probe/blastmeas.py`, `chordmeas.py`): 10 class-1
+items settled (grenades Q6 and Q10, objectives Q1 and Q3, spectating's
+mode 3 and first target, doors_buttons Q6, physics_brushes Q4, fire Q6,
+and entity_io Q9 moved to class 3: no map has a multi-line game_text),
+5 more answered in part (grenades Q12's smoke, movement Q16's ladder
+jump-off, weapons Q7's double-count edge, physics_brushes Q1's mass
+reading, grenades Q17's `drop`, which met the bot AI's knife); about 63
+class-1 items left. Two plugin commands that unblock sounds Q1 and the
+thrower's side of grenades Q12 are written but not built
+(`tools/css_probe/README.md`).
+
 Added since (2026-10-18): shaders Q21, the fog colour by view direction
 (classes 3 and 2; one row in the specs table and one in the parity list).
 
@@ -63,17 +75,17 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | fall_damage | landing view roll and its decay, HUD indicators, `HealthTookDamage` | 2 | client screenshots after a drop |
 | grenades | Q2 redraw: the same grenade again or the best weapon | 1 → 2 | tried in Part B: the bot AI picks its own knife after a throw, so a human capture decides |
 | grenades | Q3 switch with the pin pulled | 1 | a slot pick while attack is held (done, Part B) |
-| grenades | Q6 spawn inside a wall | 1 | throw flush against a wall, log the projectile |
+| grenades | Q6 spawn inside a wall | 1 | done (Part B, 2026-10-18) |
 | grenades | Q7 bounce sounds per contact | 1 | sound hook while a grenade bounces (done, Part B) |
 | grenades | Q9 HE visuals (fireball, shake, light) | 2 | client screenshots at `host_timescale 0.1` |
-| grenades | Q10 left: crouched victims, walls and props blocking | 1 | `hemeas.py` with a crouched or covered victim |
+| grenades | Q10 crouched victims, walls and props blocking | 1 | done (Part B, 2026-10-18, `blastmeas.py`) |
 | grenades | Q11 ear-ringing presets and who gets them | 2 | capture C31 (the server sends nothing, measured) |
-| grenades | Q12 left: flash through walls, players, props, smoke | 1 | flash netprops with something between |
+| grenades | Q12 left: flash through walls, players, props (smoke done, Part B 2026-10-18) | 1 | flash netprops with something between; tried 2026-10-18: the probe's thrower aims at the run bot and the flash lands within 40 units of it, too close for anything between; the thrower's own `m_flFlashDuration` isn't a datamap field `mashup_getprop` reads (`mashup_netprop`, added to mashup_probe.sp 2026-10-18, reads it once the plugin is rebuilt) |
 | grenades | Q13 flash overlay curve | 2 | client screenshots every 0.1 s |
 | grenades | Q14 flash DSP presets | 2 | client console/audio |
 | grenades | Q15 left: smoke on a moving lift, in-flight trail | 1, 2 | lift: probe (de_nuke has none moving; skip); trail: client |
 | grenades | Q16 smoke against bots; target ID through smoke | 1, 2 | bots (parked); target ID: client |
-| grenades | Q17 left: dying primed while moving; which grenades drop at death; `drop` with a grenade | 1 | death drops done (Part B); moving and `drop`: the same probe runs |
+| grenades | Q17 left: dying primed while moving; which grenades drop at death; `drop` with a grenade | 1, 4 | death drops done (Part B); `drop` tried 2026-10-18: the bot AI switched to its knife 8 ticks into the run, so the drop met the knife (a human); moving: the same probe runs |
 | impact_effects | Q1 CS:S's own impact callback (counts, colours, timings) | 2 | client screenshots at `host_timescale 0.1` |
 | impact_effects | Q2 ricochet rate; no effect on refused teammates | 2 | client audio count; C30 |
 | impact_effects | Q3 exit impact after penetration | 2 | client screenshot of a door's far side |
@@ -90,7 +102,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | mdl_v48 | zero-frame entries, v44 leftovers, `.ani` header | 3 | nothing reads them; spec session if ever needed |
 | mdl_v48 | AWP poses against the game | 2 | view-model screenshot pair |
 | movement | Q15 water currents and base velocity | 1 | no stock map has a current; a spawned `func_conveyor`-style test |
-| movement | Q16 left: ladder jump-off 270, water jump 256/50 | 1 | movecmp scenarios (climb speeds and swimming already match tick-exact) |
+| movement | Q16 left: water jump 256/50 | 1 | a movecmp scenario at a water edge (the ladder jump-off's 270 done, Part B 2026-10-18) |
 | movement | Q18 a box exactly touching a floor | 1 | `setpos` onto a floor's height, `getpos`, jump |
 | movement | Q19 displacement contact normals elsewhere | 1 | movecmp on more dust2 strip edges |
 | nav | Q1 the per-area CS byte | 2 | tried 2026-10-18: `nav_analyze` does nothing on the dedicated server (no listen host) and `nav_save` wrote de_dust2's mesh back byte for byte; needs a listen server |
@@ -99,8 +111,8 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | nav | Q6 stairs flags at load | 1 | `nav_edit` on dust2's stairs areas |
 | nav | Q7 approach record fields (v9) | 3 | spec session |
 | nav | Q8 `earliest_occupy` effect | 1 | bot round starts (bots parked) |
-| objectives | Q1 left: leaving the zone by teleport while planting | 1 | `mashup_tp` mid-plant |
-| objectives | Q3 left: walls between bomb and target; other radii | 1 | targets behind walls on de_nuke/de_chateau |
+| objectives | Q1 left: leaving the zone by teleport while planting | 1 | done (Part B, 2026-10-18) |
+| objectives | Q3 radii and walls | 1 | done (Part B, 2026-10-18) |
 | objectives | Q4 beep schedule and loudness; LED place; debris sounds | 2 | the server emits no beep (measured): client audio, sitting 2 |
 | objectives | Q5 money for plant, defuse, round-end reasons, hostages | 1 | `mashup_state` money around each event (done, Part B; the draw, Ts after a rescue and "led" too) |
 | objectives | Q6 left: who gets the bomb with humans; defuse announcers | 4, 2 | a human on T for 50 restarts; client audio |
@@ -173,7 +185,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | shaders_two_texture_blend | Q6 2-vector `$detailscale` | 3 | material parser source |
 | shadows_sky | Q1 shadow clipper; Q2 static props as casters; Q3 player shadows; Q5 2D sky order; Q6 shadow detail; Q7 blend space | 2 | RenderDoc/screenshots (6 items) |
 | shadows_sky | Q4 the no-shadow_control ambient colour | 3 | engine code |
-| sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the server's distance-gain query needs a plugin build (blocked here); else client recordings |
+| sounds | Q1 distance falloff, pan law, occlusion | 1, 2 | the falloff: `mashup_gain` (added to mashup_probe.sp 2026-10-18, through SourceMod's `GetDistGainFromSoundLevel`), once the plugin is rebuilt; pan law and occlusion: client recordings |
 | sounds | Q2 left: other entries' wave picks | 5 | measured (Part B, 2026-10-18) |
 | sounds | Q3 left: wading in knee-deep water | 1 | feet-deep measured (Part B, 2026-10-18); knee-deep: a map with water 15-36 deep where the probe bot moves |
 | sounds | Q5 `Player.Swim` doubled for the owner | 2 | client trace |
@@ -189,8 +201,8 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | sounds | Q15 soundscape proxy radius; triggerable OnPlay | 1, 2 | OnPlay: spawned entities; what plays: client |
 | spectating | freeze cam timing for humans | 4 | a human killed by a bot (client demo) |
 | spectating | a human without the freeze cam waiting 6.5 s | 4 | a human, `cl_disablefreezecam 1` |
-| spectating | mode 3 after the last teammate died | 1 | the dead bots' `m_iObserverMode` and target, read on the server |
-| spectating | first target: lowest index or next after own | 1 | the dead bots' `m_hObserverTarget` |
+| spectating | mode 3 after the last teammate died | 1 | done (Part B, 2026-10-18) |
+| spectating | first target: lowest index or next after own | 1 | done (Part B, 2026-10-18) |
 | spectating | 6.5 s with the freeze cam off server-wide; bots' mode 4 vs a human's last mode | 4 | a human client |
 | sprites_dust | Q1 scale rounding; Q2 undefined origin; Q3 vertex colours and `$color`; Q5 pixel diameter; Q7 Linux random range; Q8 proxy state; Q10 additive fog; Q11 global blend; Q12 HDR | 2 | client screenshots (9 items) |
 | sprites_dust | Q6 network bit masking; Q9 dust brush contents | 3 | engine code |
@@ -220,7 +232,7 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | doors_buttons | Q3 use trace mask through grates | 1 | a spawned button behind a grate |
 | doors_buttons | Q4 ride timing on elevators | 1 | a bot's z per tick on a mover |
 | doors_buttons | Q5 func_tracktrain OnNextPoint per tick | 1 | spawned train and math_counter |
-| doors_buttons | Q6 door move sound timing | 1 | sound hook on a stock func_door |
+| doors_buttons | Q6 door move sound timing | 1 | done (Part B, 2026-10-18) |
 | doors_buttons | Q7 rotating door on its plane | 1 | probe placement |
 | doors_buttons | Q9 touch-open door under a player | 1 | spawned func_door flag 1024 (done, Part B) |
 | entity_io | Q1 left: classes absent from stock maps | 1 | spawned entities across a restart |
@@ -229,14 +241,14 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | entity_io | Q5 `sv_allow_point_servercommand` | 1 | `cvarlist sv_allow` (done, Part B: "always"); left: what maps send (the sweep) |
 | entity_io | Q6 `cl_restrict_server_commands` | 2 | client console |
 | entity_io | Q7, Q8 game_text scan-out and channels | 2 | client screenshots |
-| entity_io | Q9 game_text newline | 1 | sweep the cached maps' entity lumps |
+| entity_io | Q9 game_text newline | 1 → 3 | swept 2026-10-18: no map has a multi-line one (3 game_texts in 89 community maps); a test map |
 | entity_io | Q10 tracktrain and I/O `Use` | 1 | spawned train |
 | fire | Q1 client fire visuals | 2 | client |
 | fire | Q2 burn damage to players (armour, score) | 1 | armour and score done (Part B) |
 | fire | Q3 player ignition | 1 | `Ignite` input on a bot (done, Part B; the gas can left) |
 | fire | Q4 fires at a round restart | 1 | `mashup_ents` before and after (env_fire is re-created: entity_io Q1) |
 | fire | Q5 floors on de_dust and de_train | 1 | fire positions after their bombs |
-| fire | Q6 burning gas can's radius damage | 1 | a bot against a burning can |
+| fire | Q6 burning gas can's radius damage | 1 | done (Part B, 2026-10-18) |
 | fire | Q7 burning-prop light | 2 | client |
 | fire | Q9 buried fires never damage | 1 | a bot in each after the bomb |
 | fire | Q10 particle operators, colour fade | 2 | client |
@@ -255,10 +267,10 @@ Added since (2026-10-18): shaders Q21, the fog colour by view direction
 | particles_and_smoke | Q4 operator semantics | 3 | its own spec |
 | particles_and_smoke | Q6 unknown inputs logged | 1 | `developer 2` on the server, `ent_fire` |
 | particles_and_smoke | Q8 env_smokestack Hammer defaults | 3 | the FGD |
-| physics_brushes | Q1 physbox mass shrunk or not | 1 | a community map's physbox mass from its lump |
+| physics_brushes | Q1 physbox mass shrunk or not | 1, 3 | test_hardware's physbox read 2026-10-18 (72.5 kg, glass, two pieces); the comparison with its brush volume: a spec session with our BSP reader |
 | physics_brushes | Q2 inertia and damping laws | 1 | as physics_props Q1, Q3 |
 | physics_brushes | Q3 controller units | 1 | spawned phys_thruster |
-| physics_brushes | Q4 +use pickup of a physbox | 1 | bot +use on a spawned physbox |
+| physics_brushes | Q4 +use pickup of a physbox | 1 | done for props (Part B, 2026-10-18: no pickup) |
 | physics_brushes | Q5 physbox_multiplayer on the client | 2 | client |
 | physics_brushes | Q6 players and a map prop_ragdoll | 1 | spawned prop_ragdoll |
 | physics_brushes | Q7 prop_ragdoll without a ragdoll | 1 | spawned |
@@ -443,7 +455,7 @@ measured.
 | physics_props Q3: damping | speed falls about d a second (`v·(1 − d·dt)` fits) | avian's `v/(1 + d·dt)` | none (props ship 0) |
 | physics_props Q5: sleep | 0.4-0.55 s after the speed falls under about 1 unit/s | 1 s still | 0.5 s (`SETTLE_TIME`) |
 | physics_props Q7: push limit | 340 kg pushed (11 units/s), 360 not | 350 | none |
-| physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | none (tech-debt) |
+| physics_props Q8: rest height | 0.41-0.45 units above the floor (0.38 on another prop) | touching | none: a 0.42-unit collision margin (avian `CollisionMargin`) was tried and reverted: placed props on de_dust2 and stacked ones on de_port moved and fell |
 | physics_props Q10, Q9: prop_dynamic solids | no `.phy`: traces pass; solid 2: its box, turned with it | the visible mesh; solid 2 as 6 | as CS:S |
 | physics_props Q9: static props' solid 2 | the box along the world's axes around the turned bounds (de_dust's windows at yaw 120) | the bounds turned with the prop | the world box (`PropSolid::WorldBox`) |
 | physics_props Q12: the players' push | a 1000 kg·units/s kick every 7 ticks (0.105 s) | every tick | every 0.1 s (`pushaway::PUSH_INTERVAL`) |
@@ -452,7 +464,7 @@ measured.
 | weapons Q7: other materials' damage | tile 0.30, computer 0.45, grate 0.99, plastic 0.50, glass 0.50 | 0.5 for all | as CS:S |
 | weapons Q12: pellets' offset | one inaccuracy offset a shot, each pellet within the 0.04 spread of it (M3 in the air: centre up to 0.28 off, pellets ≤ 0.037 from it) | the same | none |
 | weapons Q7: computer's thickness scale | 0.377-0.44 (M4A1 passes a 13.2-unit TV, Deagle doesn't) | 1.0 | 0.4 |
-| weapons Q7: metal's damage factor | 0.30 through an oil drum's 13.6-22.4-unit chords; 0.09 through 25-28 (the entity counted twice) | 0.5 (a guess) | 0.3 (the double count not made) |
+| weapons Q7: metal's damage factor | 0.30 through an oil drum's 13.6-22.4-unit chords; 0.09 through 25-28 (the entity counted twice) | 0.5 (a guess) | 0.3, and an entity passed for 24 units or more counts twice (`PassMaterials::entity_twice_from`) |
 | sounds Q3: feet in water | slosh steps at 0.5 every 0.3 s running; entering or leaving: slosh at 1.0, then a wade wave at 0.2 | slosh steps; Player.Swim at entry and exit | none (the wade wave noted) |
 | sounds Q2: other entries' waves | uniform, repeats allowed (a crate's 3 hard-impact waves 29/22/29 of 80) | uniform | none |
 | physics_constraints Q2: motors | hinge: the value in deg/s, clockwise about the axis, at once; slider: 5 × the value in units/s; 0: off, it coasts | ignored | as CS:S (logic controls: `ControlKind::Slide`) |
@@ -472,3 +484,18 @@ measured.
 | sounds Q6: gravel steps | gravel keeps its step sounds (the cs file overrides friction only) | the same (keys merged) | none |
 | sounds Q8: scrapes | none under 60 units/s (30 kg crate on concrete), volume 0.05-0.25 (scattered), a volume-0 stop | our energy rule | none (noted) |
 | weapons Q2: airborne target | the probe bot's jump ducks it (45-unit hull, no duck button) | the crouched target | none (a human's jump needed) |
+| grenades Q10: crouched victims | aimed at 0.7-1.0 of the crouched eye height | the same (the eye offset) | none |
+| grenades Q10: a static prop between | stops the blast whole, as the world | let it through (props weren't traced) | stops it; flashes too (`grenade::is_world`) |
+| grenades Q10: a prop entity or a player between | shields part: 0.767 (crate) and 0.733 (player) left with the victim covered, 0.81-0.98 partly covered; HE and env_explosion alike | nothing | `BlastShield` (three lines, a fit) |
+| objectives Q3: walls between bomb and victim | nothing stops or weakens the bomb's blast (the bell's whole value behind a 200-unit stone wall and a static prop) | walls stopped it | through walls (`BombRules::through_walls`) |
+| grenades Q6: thrown flush against a wall | starts where its box meets the wall on the way from the eye (4 units off a 45° panel) and bounces back | 16 units ahead whatever: inside or past a thin wall | a box trace from the eye (`throw_frame`) |
+| spectating: mode 3 | nobody left to watch (`mp_forcecamera 1`) gives the fixed view 3 s after the last teammate's death, round end or not; the camera at that player's eye | flying free | the camera held (`SpecMode::Fixed`, "Fixed View") |
+| spectating: first target | the next entity index after the watcher's own (4 watched 5, not 1); after the watched one dies, the next after it | by name | none (noted: bots join in name order) |
+| doors_buttons Q6: door move sound | starts on the activation tick; stopped on arrival (open and closed) as the arrival sound plays | a one-shot that played out | stopped on arrival (`movers::move_sound`) |
+| objectives Q1: teleported while arming | out of the zone: no bomb, C4 kept; within it: planted where the planter stands | the same | none |
+| physics_brushes Q4: +use on a light prop | nothing: no pickup | no pickup | none |
+| movement Q16: jumping off a ladder | 270 units/s away from it on the jump tick, whatever key is held | the same, tick-exact (six `ladderjump_*` movecmp runs on de_nuke) | none |
+| grenades Q12: a flash in smoke | blinds 0.56 as long (3.81 s for 6.80), as white | smoke ignored | × 0.56 when the line crosses a cloud (`Flash::through_smoke`, a fit) |
+| fire Q6: a burning gas can next to a crouched player | hurts nobody but itself (1 + 3.728 every 13 ticks) | the same | none |
+| weapons Q7: where a prop counts twice | from a chord of 24.0 units (23.7 once, 24.4 twice; 24.0 both ways) | (the 24 guessed) | none (confirmed) |
+| objectives Q3: the bomb on a map with `bombradius` 400 | 400 at the bomb, σ = 400 × 3.5 / 3 (de_nuke: 322.41 at 306.5 units, the fit 322.4) | the same | none |

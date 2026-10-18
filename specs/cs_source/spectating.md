@@ -51,13 +51,24 @@ Not the nearest teammate: one bot, dead at (-461, -760), was put on the
 teammate 3350 units away rather than the one 2090 units away. In all three
 cases with a choice the target was the living teammate with the lowest
 entity index, which is also the next index after the dead player's own
-(cyclically); the demo can't tell those apart.
+(cyclically); the demo can't tell those apart. **Measured 2026-10-18**
+(the probe server, four CT bots of entity indices 1, 3, 4, 5 and a T,
+`mp_ignore_round_win_conditions 1`, a bot's `kill`; the dead observer's
+`m_iObserverMode` read on the server, its target from its origin, which
+the server keeps at the watched player's): the dead 4 watched 5, not 1:
+the next index after its own. When 5 died, 4 moved on to 1 (the next
+after 5, wrapping).
 
 ### When the watched player dies
 3.0 s (200 ticks) after the watched player's death, its watchers changed to
 mode 3 (fixed) with no target. Both cases were the last living player of the
 watchers' team dying, which also ended the round; the other team's living
-players were not taken as targets (`mp_forcecamera 1`).
+players were not taken as targets (`mp_forcecamera 1`). **Measured
+2026-10-18** with no round end (`mp_ignore_round_win_conditions 1`): the
+same mode 3 three seconds after the last teammate died, for every dead
+teammate (also one still in its death cam once that ended), the camera
+held at the last watched player's eye height over where it died: mode 3
+comes from having nobody to watch, not from the round end.
 
 ### A new round
 At `round_start` every player goes back to mode 0 and life state 0 on the
@@ -81,10 +92,11 @@ reached watching.
   (`record`) of a human killed by a bot, or a capture.
 - Whether a human without the freeze cam (`cl_disablefreezecam 1`, or the
   killer dead) waits the bots' 6.5 s. Ours assumes so.
-- Mode 3 (fixed) after the last teammate died: is it because of the round
-  end or because `mp_forcecamera 1` leaves no one to watch? Where its camera
-  sits. Ours falls back to anyone living (we have no fixed mode).
-- Which first target: lowest entity index or next after the observer's own
-  (ours: the first in our cycling order, by name).
+- Answered 2026-10-18 (see "When the watched player dies"): mode 3 comes
+  from nobody left to watch, the camera at the last watched player's eye
+  where it died. Ours holds the camera where it was (`SpecMode::Fixed`).
+- Answered 2026-10-18 (see "The first target"): the next index after the
+  observer's own. Ours: the first in our cycling order, by name (bots join
+  in name order; a listen server's host is index 1, where the two agree).
 - The 6.5 s with a freeze cam disabled server-wide, and bots' mode 4 versus a
   human's remembered last mode.

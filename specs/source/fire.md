@@ -662,7 +662,12 @@ Fire think k = 0 is the StartFire tick t0; think k is at t0 + 0.105k s
    trace hits displacements and static props, which this spec did not
    test)? Check in game, or trace against displacements and the static
    prop collision models.
-6. **CS:S radius damage for entity flames** (grenades.md Q10): can a
+6. **Answered (2026-10-18, probe server):** a motion-disabled
+   `gascan001a` (the prop_physics_multiplayer) ignited 22 units in front
+   of a crouched bot on de_dust2 burned for its whole life (its own 1
+   direct burn plus 3.728 of its flame's radius burn every 13 ticks, 0.195
+   s) and the bot took nothing: as this spec predicts (the player's target
+   point is out of the flame's reach) and as ours. Was: **CS:S radius damage for entity flames** (grenades.md Q10): can a
    burning gas can hurt anyone (radius 8)? Check with a bot crouched against
    a burning can.
 7. **Burning-prop light.** Do CS:S's game rules ask burning props to emit a

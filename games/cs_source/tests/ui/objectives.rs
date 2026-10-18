@@ -193,6 +193,30 @@ fn the_bomb_hurts_terrorists_with_friendly_fire_off() {
     assert!(hurt(t), "and the planter");
 }
 
+/// CS:S's bomb blast traces nothing (measured 2026-10-18, objectives.md
+/// Q3: a bot behind a 200-unit stone wall took the bell's whole 418): a
+/// wall between saves nobody.
+#[test]
+fn the_bomb_blast_goes_through_walls() {
+    use avian3d::prelude::{Collider, RigidBody};
+    let mut sim = sim(bomb_map());
+    sim.app.world_mut().resource_mut::<Console>().submit("mp_c4timer 10");
+    sim.ticks(2);
+    let t = carrier(&mut sim);
+    let ct = character(&mut sim, Vec3::new(0.0, 1.0, 7.0), 2);
+    // A 3 m high, 6 m wide wall between, 2.5 m from the bomb.
+    sim.app.world_mut().spawn((
+        RigidBody::Static,
+        Collider::cuboid(6.0, 3.0, 0.5),
+        Transform::from_xyz(0.0, 1.5, 9.5),
+    ));
+    plant(&mut sim, t);
+    sim.seconds(10.5);
+    assert!(first(&sim, |e| matches!(e, ObjectiveEvent::Exploded { .. })).is_some(), "exploded");
+    let hurt = sim.app.world().get::<Health>(ct).is_none_or(|h| h.current < h.max);
+    assert!(hurt, "the wall stopped none of it");
+}
+
 /// A planted bomb and a defender beside it, looking at it.
 fn planted_with_defender(kit: bool) -> (Sim, Entity, Entity, u64) {
     let mut sim = sim(bomb_map());

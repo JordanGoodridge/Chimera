@@ -181,6 +181,9 @@ damage = 0.5
 cost = 21.5                     # power one character uses, length units
 damage = 0.5
 range_scale = 0.5               # range left beyond its exit
+[entity]                        # (default: never)
+twice_from = 24.0               # an entity (prop, not world) passed this
+                                # far or farther scales the damage twice
 ```
 
 Unknown keys, a class that isn't one letter or is given twice are load

@@ -527,6 +527,7 @@ fn explosions_break_windows_and_vents() {
         sound: None,
         weapon: None,
         round_scorch: false,
+        through_walls: false,
         bell_sigma: None,
         armor_ratio: None,
     });
@@ -552,6 +553,7 @@ fn explosions_break_windows_and_vents() {
             sound: None,
             weapon: None,
             round_scorch: false,
+            through_walls: false,
             bell_sigma: None,
             armor_ratio: None,
         });

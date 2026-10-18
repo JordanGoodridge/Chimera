@@ -359,6 +359,8 @@ pub struct Explosion {
     pub bell_sigma: Option<f32>,
     /// Armour override (`Blast::armor_ratio`); None: the rule's.
     pub armor_ratio: Option<f32>,
+    /// Nothing between stops or shields it (`Blast::through_walls`).
+    pub through_walls: bool,
 }
 
 /// How damage was dealt (Source damage types, as far as anything here

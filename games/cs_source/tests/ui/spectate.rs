@@ -114,11 +114,11 @@ fn dead_players_watch_their_team_then_play_again() {
     assert_eq!(spec(&sim).target, Some(far), "back on the team");
 
     // The last teammate dies: the round is lost, and the enemy is not
-    // watched (CS:S's dead went to no one): flying free.
+    // watched (CS:S's dead went to no one): a fixed view.
     kill(&mut sim, enemy, far);
     sim.seconds(TARGET_DEATH_HOLD + 0.1);
     assert_eq!(spec(&sim).target, None);
-    assert_eq!(spec(&sim).effective_mode(), SpecMode::Roaming);
+    assert_eq!(spec(&sim).effective_mode(), SpecMode::Fixed);
 
     // The next round: playing again, in first person.
     sim.seconds(10.0);

@@ -135,6 +135,14 @@ Notes:
   `bot_quota 1`, `mp_friendlyfire 0` (and `changelevel de_dust2` if the map
   was changed).
 
+Added 2026-10-18, not yet built into the server's plugin (rebuild
+`mashup_probe.smx` to use them): `mashup_gain <soundlevel> <distance>...`
+prints the engine's distance gain for a sound level (sounds.md Q1, through
+SourceMod's `GetDistGainFromSoundLevel`), and `mashup_netprop <index>
+<sendprop> [f|v]` reads a networked prop of any entity (e.g. a thrower's
+`m_flFlashDuration` for grenades.md Q12; `mashup_getprop` reads datamap
+fields only).
+
 ## Recording a SourceTV demo
 
 For questions answered by what the server sends (entity props per tick,
@@ -244,6 +252,21 @@ damage once), `walk <250|130>` runs or walks the bot into a resting
 prop_physics. `knifearmor.py <1 slash|2 stab> <armor>` knifes the first bot
 from 40 units with a second (`bot_add_t`; `WPN=weapon_ak47` for a gun,
 `HOLD=40` for a held attack) and prints the `hurt` row and the sounds.
+
+`blastmeas.py` (grenades.md Q10, objectives.md Q3, 2026-10-18): `boom`
+sets off an env_explosion (magnitude 100, radius 350: the HE's) at a
+point while the run bot stands or crouches at another, optionally with a
+motion-disabled prop between (`prop`), and prints the damage rows; `ent_fire`
+does nothing over RCON, so a spawned logic_relay fires its Explode with a
+delay. `he` is hemeas.py's throw with a crouching run bot, `bomb` has the
+second bot (a terrorist) plant at de_dust2's B with `mp_c4timer 10` and
+prints the blast's rows. The target point a blast aimed at is the damage
+force's direction (`force=` in the row). `chordmeas.py <model> <weapon>
+<yaw>...` floats a motion-disabled prop at the crouched shooter's eye,
+turned so a level shot crosses it along a chosen chord, and prints the
+chord and whether the target behind was hurt (weapons.md Q7: hollow
+models such as de_tides' planter give chords the bullet doesn't cross
+whole).
 
 Notes: on cs_office the probe bot did not move at all (not even fall) in
 `mashup_run` runs; de_dust2 works. Spawning a player exactly on a floor
