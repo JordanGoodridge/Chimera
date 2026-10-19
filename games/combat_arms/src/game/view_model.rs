@@ -1,64 +1,126 @@
-//! Combat Arms' first-person view models (specs/combat_arms/view_models.md,
-//! in part; section numbers below are its): each weapon whose data names a
-//! player-view model (`[models] view`, an archive path of the install,
-//! with `view_skins`: the weapon's skins by texture index, 2, and
-//! `view_offset`: its `Pos`, 4) gets it loaded with the map
-//! (`add_view_models`, from `world::load_from`) as Chimera's
-//! `MapViewModel`, converted by `model` (the gun's pieces on the arm
-//! skeleton, the `ANI_*` child's animations appended, 1). The model's frame
-//! after `model`'s conversion is the camera's (-Z ahead, 4: rotation
-//! identity in camera space), its origin at `Pos`, scaled by `VIEW_SCALE`.
-//! It is drawn at the local player's first-person camera with its own
-//! projection (`settings`: 50 degrees vertical, 5.1). Chimera's view-model
-//! driver (`weapon::view_anim`) plays the data's `[anim.sequences]` on the
-//! weapon frame's events, by 7's names: `select` on the draw, `idle_0`,
-//! `fire_0` per round, `reload`, and `PreReload`/`reload` per
-//! shell/`PostReload` (the files spell them in either case).
+//! Combat Arms' first-person view models (specs/combat_arms/
+//! view_models.md; section numbers below are its).
 //!
-//! Sequences are non-looping but for the subtle idle (`LOOPING`: 7
-//! restarts it each time it ends), so a fire or reload plays once and the
-//! driver goes back to idle when it ends.
+//! Loading (`add_view_models`, from `world::load_from`): each weapon whose
+//! data names a player-view model (`[models] view`, an archive path of the
+//! install, with `view_skins`: its skins by texture index, 2, and
+//! `view_offset`: its `Pos`, 4) gets it as Chimera's `MapViewModel`,
+//! converted by `model` (the gun's pieces on the arm skeleton, the
+//! `ANI_*` child's animations appended with their bindings' root
+//! translation, 1), scaled by `VIEW_SCALE`, its origin at `Pos` (the
+//! frame after `model`'s conversion is the camera's, -Z ahead: rotation
+//! identity in camera space, 4). Each animation's key strings become its
+//! sequence's events (cycle = key time / length), the sockets (`Flash`,
+//! `Breach`; names without case) its attachments. The hand model
+//! (`hands`: the character's from data/hands.toml, `CHARS_M_HAND`, V2-keyed)
+//! is attached to every view model when it reads: its bones matched to
+//! the weapon's nodes by name, its sleeve the character's (2). Drawn with
+//! its own projection (`settings`: 50 degrees vertical, 5.1).
+//!
+//! Playing (`drive`, each rendered frame in `map::DriveAnimation`; the
+//! character carries `OwnViewAnim`, so Chimera's generic driver leaves it
+//! alone): per character, a fresh `machine::ViewMachine` at each draw (7:
+//! `select`, `idle_0` and the full idle `idle_1` after 5-15 s still,
+//! `prefire` but for pistols, knives and shotguns, `fire_0` /
+//! `alt_fire_0`, `postfire` and the semi-automatic cancel, `reload` or
+//! `PreReload`/`reload`/`PostReload`, the sprint pose
+//! `PreRush`/`rush`/`PostRush`), its rates the weapon's fire, reload and
+//! draw rates with the fitted attachments' and the item's bonuses
+//! (`attachments::animation_rate`), fed the owner's fire, alt-fire,
+//! reload start (the weapon's `ReloadStarted`), clip and total, sprint and
+//! movement. The pose drawn is the machine's after the weapon update and
+//! before the frame's advance (Per-frame order; Quirk 1's one-frame pop on
+//! non-reset switches included), written onto the `ViewAnimator`; the
+//! advance's key strings go out as `CaViewKey` messages (8: `sound_key n`,
+//! `THROW_KEY`, the fire keys, `SHELL_CASING`, entering pre- and
+//! post-fire). Hidden (11) from the frame zoom leaves level 0 to the
+//! frame the zoom-out ends, and while dead.
+//!
+//! Placement (4, 6): `sway::Sway` steps first (the run flag, the moving
+//! flag, speed per frame, footing; `CaSwayOption` is the profile's
+//! `WeaponSway`), then the model's origin is `Pos` + (w, h, 0) + the shot
+//! jiggle j (1, 1, 1) from the weapon's `Recoil` (`CaViewParams`, zero in
+//! stock data), as the character's `ViewModelOffset`. The flash offset o
+//! (`Pos` + `MuzzlePos` + sway + the draws per axis), the world flash
+//! point F and breach point B (`BreachOffset`) are kept on `CaViewModel`;
+//! a shot (the weapon's `Fired`) starts the muzzle flash timer (9: shown
+//! while the clock is before the shot + the effect's length, the model
+//! visible and the player alive) and throws a shell from B (10, the first
+//! person's only: `LocalPlayer`; `CaShell`, stepped by `step_shells`).
+//! Both are placeholder looks in `ui::visuals` (a flash at the `Flash`
+//! socket + (0, 0, 0.5), a brass box).
 //!
 //! Readable without keys: the player-view archives of pistols, shotguns
 //! and machine guns (`GUNS_M_PV_Pistol`, `_SG`, `_MG`); the rifles',
-//! SMGs', snipers', knives', grenades' and the hand models' need the V2 key,
-//! and a weapon whose view model doesn't load keeps the front end's
+//! SMGs', snipers', knives', grenades' and the hand models' need the V2
+//! key, and a weapon whose view model doesn't load keeps the front end's
 //! placeholder box (the map's warnings say which).
 //!
-//! Known shortcuts (docs/tech-debt.md); written before view_models.md
-//! landed, what it says that isn't done yet:
-//! - No hand model (1): the arms and sleeves are a separate model from
-//!   `CHARS_M_HAND` (V2-keyed), bound by node name, skinned by the
-//!   character, face and uniform (2); only the gun's pieces are drawn. A
-//!   piece whose skin is in a keyed archive is flat grey (`UNSKINNED`).
-//! - Animation (7): no pre-fire (no stock unkeyed gun plays one), no
-//!   `postfire` when the trigger is let go, no full idle (`idle_1` after
-//!   5-15 s still), no sprint pose (`PreRush`/`rush`/`PostRush`); the
-//!   animations play at rate 1, not the fire, reload and draw rates (equal
-//!   for the stock data: the frame's times are the animations' lengths);
-//!   transitions snap (`model`'s shortcuts); a sequence starts on the
-//!   weapon frame's event, not by 7's state machine (Quirk 1's one-frame
-//!   switch, the semi-automatic `postfire` cancel).
-//! - No sway (6), shot jiggle (4, zero in the stock data), key events (8:
-//!   sounds, knife hits), muzzle flash (9), shells (10) or attachments (3).
+//! Known shortcuts (docs/tech-debt.md):
+//! - The machine drives the picture only: in play the shots, hits, ammo
+//!   and reload times stay the weapon frame's (`weapons`, `inventory`,
+//!   `grenades`), so the knife's hits keep inventory.md's timings (its
+//!   1 ms pre-fire; view_models.md C1 says none), a key's shot is not the
+//!   game's, a full-automatic's fire animation restarts on the frame after
+//!   it ends while the frame fires on its own clock, and a reload asked for
+//!   during the fire sequence plays after `postfire` while the clip fills
+//!   on the frame's time. The machine's shots and reloads are checked
+//!   against the spec's timelines in the scenario tests.
+//! - The tracker counts exact frame time (the spec's test arithmetic), not
+//!   whole milliseconds of a millisecond clock; the pose between samples
+//!   is `model`'s resampling (`VIEW_SAMPLE_FPS`, nlerp between samples).
+//! - Dry fire never plays (C6), no `deselect` (holster time 0), no
+//!   `reload_1`, hidden pieces, projectile pieces, attached effects
+//!   (`PVAttachFX`), player-view attachments, the file-name reset when the
+//!   character or uniform changes, spectating's sway and the 150-unit
+//!   footing ray (the footing is on the ground or a ladder).
+//! - Effects are placeholders (effects_sounds.md is its own item): the
+//!   flash is one sprite at the `Flash` socket, no light at F, no flash
+//!   hider or muzzle part's effect, nothing under water but its rule; the
+//!   shells are boxes under a fixed gravity, bouncing off the ground three
+//!   times with half their speed, the ammo's fire-effect velocity and
+//!   shell model not read; key sounds are messages nothing plays yet.
 //! - Projection (5.1): Chimera's view-model camera keeps its 1 cm near
 //!   plane (`VIEW_SCALE` makes that the spec's 0.1 u) and no far plane
-//!   (the spec's 7 u); `ViewModelSettings` zooms the view model with the
-//!   world's zoom (the spec: only the world's FOV changes; scopes hide the
-//!   model either way). The world camera's FOV is the shell's (5.2: 75
-//!   degrees vertical).
-//! - No left-handed mirroring (none in the game).
+//!   (the spec's 7 u); `ViewModelSettings` would zoom the view model with
+//!   the world's zoom, but the model is hidden whenever zoomed. The world
+//!   camera's FOV is the shell's (5.2: 75 degrees vertical).
+//! - No left-handed mirroring (none in the game); the character's model
+//!   id, face, uniform and colour are `hands::HandProfile`'s defaults
+//!   (no character data yet).
 
-use std::sync::Arc;
+pub mod hands;
+pub mod machine;
+pub mod place;
+pub mod sway;
 
+use std::{collections::HashMap, sync::Arc};
+
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
+use serde::Deserialize;
 
-use crate::{
-    map::{MapData, MapViewModel, ViewModelSettings},
-    weapon::view_anim::ViewAnimPlugin,
+use self::{
+    machine::{AnimInfo, Class, Inputs, Rates, Setup, ViewKey, ViewMachine},
+    place::{CameraAxes, FlashTimer},
+    sway::{Sway, SwayInputs},
 };
-
-use super::model;
+use super::{
+    attachments::{CaMods, animation_rate},
+    inventory::{CaItem, UNIT},
+    model,
+    weapons::CaZoom,
+};
+use crate::{
+    core::{Health, Intent, LocalPlayer, MovementState, SOLID_LAYERS, Velocity},
+    map::{MapAttachment, MapData, MapViewModel, ViewAnimator, ViewModelOffset, ViewModelSettings, ViewModels, anim::AnimEvent},
+    weapon::{
+        Hitscan, Inventory, Magazine, ShellReload, Trigger, Weapon, WeaponEvent, WeaponEventKind, aim_of,
+        data::WeaponDataAppExt,
+        grenade::Throwable,
+        view_anim::{OwnViewAnim, ViewAnimPlugin},
+    },
+};
 
 /// The view model's horizontal field of view at 4:3 (degrees), from 5.1's
 /// 50 degrees vertical (`PVModelFOV`): 2 atan(4/3 tan 25 degrees).
@@ -73,12 +135,133 @@ pub const DEFAULT_FOV: f32 = 91.31;
 /// else on screen.
 pub const VIEW_SCALE: f32 = 0.1;
 
+/// The weapon data's hook: `combat_arms:view_model` (`CaViewParams`).
+pub const VIEW: &str = "combat_arms:view_model";
+
 /// The colour of a piece whose skin doesn't read (keyed texture
 /// archives without the V2 key): a gunmetal grey, so the shape reads.
 const UNSKINNED: [u8; 3] = [90, 92, 96];
 
-/// Sequences that loop (by name, lower case): the subtle idle.
-const LOOPING: &[&str] = &["idle_0"];
+/// Shells: lifetime (s), bounces before resting, the scale's growth time
+/// (s) and final factor (`shell_life`, `shell_bounces`, `shell_scale`).
+pub const SHELL_LIFE: f32 = 3.0;
+pub const SHELL_BOUNCES: u32 = 3;
+pub const SHELL_SCALE_TIME: f32 = 0.5;
+pub const SHELL_MAX_SCALE: f32 = 2.0;
+/// Start speeds in camera axes (units/s): up, right, forward ranges.
+pub const SHELL_UP: (f32, f32) = (30.0, 75.0);
+pub const SHELL_RIGHT: (f32, f32) = (50.0, 75.0);
+pub const SHELL_FORWARD: (f32, f32) = (20.0, 50.0);
+/// Ours (placeholder): the shells' fall (m/s^2) and the speed a bounce keeps.
+pub const SHELL_GRAVITY: f32 = 9.8;
+pub const SHELL_BOUNCE_KEEP: f32 = 0.5;
+
+/// `combat_arms:view_model`: the weapon's placement data (camera axes,
+/// units) and first-person muzzle effect.
+#[derive(Component, Clone, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct CaViewParams {
+    /// `MuzzlePos`: the flash offset from `Pos`.
+    pub muzzle_pos: [f32; 3],
+    /// `BreachOffset`: the shells' start from the flash point.
+    pub breach_offset: [f32; 3],
+    /// `Recoil`: the shot jiggle's ranges (zero in every stock record).
+    pub recoil: [f32; 3],
+    /// `PVMuzzleFXName` (empty: no first-person flash).
+    pub muzzle_fx: String,
+    /// The effect's length (s).
+    pub flash_time: f32,
+    /// `UseUWMuzzleFX`: the flash shows under water too.
+    pub under_water_flash: bool,
+    /// The ammo's fire effect ejects shells.
+    pub shells: bool,
+}
+
+impl Default for CaViewParams {
+    fn default() -> Self {
+        Self {
+            muzzle_pos: [0.0; 3],
+            breach_offset: [0.0; 3],
+            recoil: [0.0; 3],
+            muzzle_fx: String::new(),
+            flash_time: place::FLASH_TIME as f32,
+            under_water_flash: false,
+            shells: false,
+        }
+    }
+}
+
+/// The profile's `WeaponSway` option (0 to 10; the sway's scale is it /
+/// 10). The measured Steam profile had 10.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct CaSwayOption(pub u8);
+
+impl Default for CaSwayOption {
+    fn default() -> Self {
+        Self(10)
+    }
+}
+
+/// A key event of a character's view model (8), or entering pre-/post-fire.
+#[derive(Message, Clone, Debug, PartialEq)]
+pub struct CaViewKey {
+    pub owner: Entity,
+    pub key: ViewKey,
+}
+
+/// A character's view model as Combat Arms runs it: the state machine of
+/// the weapon drawn, the sway, the shot jiggle, the muzzle flash and the
+/// points effects start from.
+#[derive(Component, Clone, Debug, Default)]
+pub struct CaViewModel {
+    /// The weapon drawn and its machine (None: no view model for it).
+    pub weapon: Option<Entity>,
+    pub machine: Option<ViewMachine>,
+    pub sway: Sway,
+    /// This frame's jiggle (sum on all axes, Quirk 2) and its draws.
+    pub jiggle: f32,
+    pub draws: Vec3,
+    /// The model's camera-space origin (units, the game's axes).
+    pub origin: Vec3,
+    /// The flash offset o (units, camera axes), the world flash point F and
+    /// breach point B (metres).
+    pub flash_offset: Vec3,
+    pub flash_point: Vec3,
+    pub breach_point: Vec3,
+    pub flash: FlashTimer,
+    /// While shown: the flash's place in the view-model camera's space
+    /// (metres, Bevy axes): the `Flash` socket + (0, 0, 0.5) socket units.
+    pub flash_at: Option<Vec3>,
+    /// Hidden behind a scope (11).
+    pub hidden: bool,
+    rng: u32,
+}
+
+impl CaViewModel {
+    fn roll(&mut self) -> f32 {
+        let mut x = self.rng.max(1);
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.rng = x;
+        (x >> 8) as f32 / (1u32 << 24) as f32
+    }
+
+    fn range(&mut self, (lo, hi): (f32, f32)) -> f32 {
+        lo + (hi - lo) * self.roll()
+    }
+}
+
+/// A first-person shell casing (10), world space (metres).
+#[derive(Component, Clone, Debug)]
+pub struct CaShell {
+    pub owner: Entity,
+    pub velocity: Vec3,
+    pub age: f32,
+    pub bounces: u32,
+    pub scale: f32,
+    pub resting: bool,
+}
 
 /// The view-model settings Combat Arms starts with.
 pub fn settings() -> ViewModelSettings {
@@ -90,7 +273,8 @@ pub fn settings() -> ViewModelSettings {
     }
 }
 
-/// Chimera's view-model driver with Combat Arms' settings.
+/// Combat Arms' view models: the data hook (before the weapons load), the
+/// machine, sway and effects, on Chimera's view-model types.
 pub struct CaViewModelPlugin;
 
 impl Plugin for CaViewModelPlugin {
@@ -98,8 +282,48 @@ impl Plugin for CaViewModelPlugin {
         if !app.is_plugin_added::<ViewAnimPlugin>() {
             app.add_plugins(ViewAnimPlugin);
         }
-        app.insert_resource(settings());
+        app.register_weapon_hook::<CaViewParams>(VIEW, |e, _, p| {
+            e.insert(p.clone());
+        })
+        .insert_resource(settings())
+        .init_resource::<CaSwayOption>()
+        .init_resource::<hands::HandProfile>()
+        .add_message::<CaViewKey>()
+        .add_systems(
+            Update,
+            (drive, step_shells)
+                .chain()
+                .in_set(crate::map::DriveAnimation)
+                .before(crate::weapon::view_anim::drive),
+        );
     }
+}
+
+/// The animations of a view model as the machine sees them: length (ms)
+/// and keys from each sequence's events.
+pub fn anim_infos(set: &crate::map::anim::AnimSet) -> Vec<AnimInfo> {
+    set.sequences
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let length = (set.duration(i) * 1000.0).round() as u32;
+            let mut keys: Vec<(u32, String)> = s
+                .events
+                .iter()
+                .map(|e| ((e.cycle * length as f32).round() as u32, e.name.clone()))
+                .collect();
+            // Stand-ins without keys: one at each end.
+            if keys.len() <= 1 && length > 0 {
+                let strings: Vec<(u32, &str)> = keys.iter().map(|(t, s)| (*t, s.as_str())).collect();
+                keys = AnimInfo::new(&s.name, length, &strings).keys;
+            }
+            AnimInfo {
+                name: s.name.clone(),
+                length,
+                keys,
+            }
+        })
+        .collect()
 }
 
 /// View model `path` for weapon `key`, skinned with `skins` (textures by
@@ -114,14 +338,7 @@ pub fn load(
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<MapViewModel, String> {
     let loaded = model::load(path, file)?;
-    let mut m = model::convert(&loaded, VIEW_SCALE, &|lod| {
-        let i = lod.used_textures().first().copied().unwrap_or(-1);
-        usize::try_from(i)
-            .ok()
-            .and_then(|i| skins.get(i))
-            .map(|s| model::normalize(s))
-            .unwrap_or_default()
-    });
+    let mut m = model::convert_at(&loaded, VIEW_SCALE, &skin_of(skins), model::VIEW_SAMPLE_FPS);
     super::world::textures(&mut m.meshes, map, file);
     for mesh in m.meshes.iter_mut().filter(|m| m.texture.is_none()) {
         mesh.color = UNSKINNED;
@@ -139,9 +356,35 @@ pub fn load(
     for p in m.meshes.iter_mut().flat_map(|m| m.positions.iter_mut()) {
         *p = (Vec3::from(*p) + offset).to_array();
     }
-    for s in &mut animations.sequences {
-        s.looping = LOOPING.iter().any(|l| s.name.to_lowercase().starts_with(l));
+    // Played by the machine: none loops on its own (`rush` loops there).
+    for (s, entry) in animations.sequences.iter_mut().zip(&loaded.list.entries) {
+        s.looping = false;
+        let length = entry.length().max(1) as f32;
+        s.events = entry
+            .animation
+            .keys
+            .iter()
+            .map(|k| AnimEvent {
+                cycle: k.time as f32 / length,
+                name: k.string.clone(),
+                ..default()
+            })
+            .collect();
     }
+    let attachments = loaded
+        .model
+        .sockets
+        .iter()
+        .map(|s| {
+            let q = Quat::from_array(lithtech_formats::ltb::to_rh_quat(s.rotation));
+            MapAttachment {
+                name: s.name.clone(),
+                bone: s.node as usize,
+                local: Transform::from_translation(Vec3::from(lithtech_formats::ltb::to_rh_vec(s.position)))
+                    .with_rotation(if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY }),
+            }
+        })
+        .collect();
     Ok(MapViewModel {
         key: key.to_string(),
         model: m,
@@ -150,20 +393,398 @@ pub fn load(
         animations: Some(Arc::new(animations)),
         right_handed: true,
         allow_flipping: false,
-        attachments: Vec::new(),
+        attachments,
         light_origin: Vec3::ZERO,
     })
 }
 
+/// A piece's skin from a skin list by its first texture index.
+fn skin_of(skins: &[String]) -> impl Fn(&lithtech_formats::ltb::Lod) -> String + '_ {
+    move |lod| {
+        let i = lod.used_textures().first().copied().unwrap_or(-1);
+        usize::try_from(i)
+            .ok()
+            .and_then(|i| skins.get(i))
+            .map(|s| model::normalize(s))
+            .unwrap_or_default()
+    }
+}
+
+/// The hand model of `choice`, converted (meshes in metres at its bind
+/// pose, its bones), its textures added to `map`.
+pub fn load_hands(
+    choice: &hands::HandChoice,
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<(Vec<crate::map::MapMesh>, Vec<crate::map::MapBone>), String> {
+    let loaded = model::load(&choice.model, file)?;
+    let mut m = model::convert(&loaded, VIEW_SCALE, &skin_of(&choice.skins));
+    super::world::textures(&mut m.meshes, map, file);
+    for mesh in m.meshes.iter_mut().filter(|m| m.texture.is_none()) {
+        mesh.color = UNSKINNED;
+    }
+    let bones = model::bones(&loaded.model);
+    Ok((m.meshes, bones))
+}
+
 /// Every Combat Arms weapon's view model that loads, into `map` (a
-/// warning for each that doesn't).
+/// warning for each that doesn't), with the default character's hands
+/// when they read.
 pub fn add_view_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+    let choice = hands::choose(&hands::builtin(), &hands::HandProfile {
+        character: true,
+        ..default()
+    });
+    let hand = match choice.as_ref().map(|c| load_hands(c, map, file)) {
+        Some(Ok(h)) => Some(h),
+        Some(Err(e)) => {
+            map.warnings.push(format!("view-model hands: {e}"));
+            None
+        }
+        None => None,
+    };
     for w in &super::data::weapon_set().weapons {
         let Some(path) = w.models.view.as_deref() else { continue };
         let offset = w.models.view_offset.unwrap_or_default();
         match load(path, &w.id, &w.models.view_skins, offset, map, file) {
-            Ok(v) => map.view_models.push(v),
+            Ok(mut v) => {
+                if let Some((meshes, bones)) = &hand {
+                    let at = Vec3::from(lithtech_formats::ltb::to_rh_vec(offset)) * VIEW_SCALE;
+                    if let Err(e) = hands::attach(&mut v, meshes.clone(), bones, VIEW_SCALE, at) {
+                        map.warnings.push(format!("{} view-model hands: {e}", w.id));
+                    }
+                }
+                map.view_models.push(v)
+            }
             Err(e) => map.warnings.push(format!("{} view model: {e}", w.id)),
+        }
+    }
+}
+
+/// The weapon's class for the machine (inventory.md's by data slot;
+/// primaries with pellets are shotguns).
+fn class_of(w: &Weapon, pellets: u32) -> Class {
+    match w.slot {
+        1 => Class::Secondary,
+        2 => Class::Melee,
+        3 => Class::Throw,
+        4 => Class::Special,
+        _ if pellets > 1 => Class::Shotgun,
+        _ => Class::Primary,
+    }
+}
+
+/// The game's camera-space vector (left-handed, units) in the view-model
+/// camera's (Bevy axes, metres).
+pub fn to_view_space(v: Vec3) -> Vec3 {
+    Vec3::new(v.x, v.y, -v.z) * VIEW_SCALE
+}
+
+type WeaponParts<'a> = (
+    &'a Weapon,
+    Option<&'a Magazine>,
+    Option<&'a Trigger>,
+    Option<&'a ShellReload>,
+    Option<&'a Throwable>,
+    (
+        Option<&'a CaZoom>,
+        Option<&'a CaViewParams>,
+        Option<&'a CaMods>,
+        Option<&'a CaItem>,
+        Option<&'a Hitscan>,
+    ),
+);
+
+/// The machine's setup for a weapon.
+fn setup_of(parts: &WeaponParts) -> Setup {
+    let (w, magazine, trigger, shells, throwable, (_, _, mods, item, hitscan)) = parts;
+    let (fire, reload, select) = mods.map_or((0.0, 0.0, 0.0), |m| m.rates());
+    Setup {
+        class: class_of(w, hitscan.map_or(1, |h| h.pellets)),
+        per_press: trigger.map_or(0, |t| if t.automatic { t.per_press } else { t.per_press.max(1) }),
+        shells: shells.is_some(),
+        clip_size: magazine.map_or(if throwable.is_some() { 1 } else { 0 }, |m| m.size),
+        rates: Rates {
+            fire: animation_rate(1.0 + fire),
+            reload: animation_rate(1.0 + reload),
+            draw: animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + select),
+        },
+    }
+}
+
+/// Clip and total ammo as the machine sees them (no magazine: always one).
+fn ammo_of(parts: &WeaponParts) -> (u32, u32) {
+    let (_, magazine, _, _, throwable, _) = parts;
+    match (magazine, throwable) {
+        (Some(m), _) => (m.clip, m.clip + m.reserve),
+        (None, Some(t)) => (t.count.min(1), t.count),
+        _ => (1, 1),
+    }
+}
+
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn drive(
+    time: Res<Time>,
+    models: Option<Res<ViewModels>>,
+    sway_option: Res<CaSwayOption>,
+    mut characters: Query<(
+        Entity,
+        &Inventory,
+        &Intent,
+        (Option<&MovementState>, Option<&Health>, Option<&Velocity>, Option<&Transform>),
+        (
+            Option<&mut ViewAnimator>,
+            Option<&mut CaViewModel>,
+            Option<&mut ViewModelOffset>,
+            Has<OwnViewAnim>,
+            Has<LocalPlayer>,
+        ),
+    )>,
+    weapons: Query<WeaponParts>,
+    mut events: MessageReader<WeaponEvent>,
+    mut keys: MessageWriter<CaViewKey>,
+    mut tables: Local<HashMap<String, Arc<Vec<AnimInfo>>>>,
+    mut commands: Commands,
+) {
+    let (dt, now) = (time.delta_secs_f64(), time.elapsed_secs_f64());
+    let events: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
+    if models.as_ref().is_some_and(|m| m.is_changed()) {
+        tables.clear();
+    }
+    for (e, inventory, intent, (state, health, velocity, transform), (view, vm, offset, owned, local)) in &mut characters {
+        let (Some(mut view), Some(mut vm), Some(mut offset), true) = (view, vm, offset, owned) else {
+            commands.entity(e).insert((
+                ViewAnimator::default(),
+                CaViewModel {
+                    rng: e.to_bits() as u32 ^ 0x2545_f491,
+                    ..default()
+                },
+                ViewModelOffset::default(),
+                OwnViewAnim,
+            ));
+            continue;
+        };
+        let alive = health.is_none_or(|h| h.current > 0.0);
+        let active = inventory.active.filter(|_| alive);
+        let parts = active.and_then(|w| weapons.get(w).ok());
+        let key = parts.as_ref().map(|p| p.0.id);
+        // A new weapon in hand: a fresh model drawing.
+        let shown_changed = view.show(key, models.as_deref());
+        if shown_changed || vm.weapon != active {
+            vm.weapon = active;
+            vm.machine = None;
+            vm.flash = FlashTimer::default();
+            if let (Some(p), Some(set)) = (parts.as_ref(), view.animator.as_ref().map(|a| a.set.clone())) {
+                let table = tables
+                    .entry(p.0.id.to_string())
+                    .or_insert_with(|| Arc::new(anim_infos(&set)))
+                    .clone();
+                let seed = vm.roll().to_bits();
+                vm.machine = Some(ViewMachine::draw(table, setup_of(p), seed));
+            }
+        }
+        let Some(parts) = parts else {
+            vm.flash_at = None;
+            continue;
+        };
+        let (_, _, _, _, _, (zoom, params, ..)) = parts;
+        let params = params.cloned().unwrap_or_default();
+        let state = state.cloned().unwrap_or_default();
+        // 11: hidden from the zoom-in to the end of the zoom-out.
+        vm.hidden = zoom.is_some_and(|z| z.level > 0 || z.transition.is_some());
+        view.hidden = vm.hidden;
+        // 6: the sway, before the weapon update.
+        let speed = velocity.map_or(0.0, |v| v.0.length() / UNIT) as f64;
+        let moving = intent.move_axis != Vec2::ZERO || intent.jump;
+        let zoomed = vm.hidden;
+        vm.sway.step(&SwayInputs {
+            dt,
+            clock: now,
+            active: alive && (state.on_ground || state.on_ladder),
+            run: (!intent.walk || state.sprinting) && !state.crouching,
+            moving,
+            speed,
+            spectating: false,
+            weapon: true,
+            zoomed,
+            scale: sway_option.0.min(10) as f64 / 10.0,
+        });
+        // 7: the weapon update.
+        let mine: Vec<&WeaponEventKind> = events.iter().filter(|ev| ev.owner == e).map(|ev| &ev.kind).collect();
+        let reload = mine.iter().any(|k| matches!(k, WeaponEventKind::ReloadStarted));
+        let shot = mine.iter().any(|k| matches!(k, WeaponEventKind::Fired { .. }));
+        // The weapon frame fires before this update: its round counts as
+        // still in the clip, and as fire held, for the machine's gate.
+        let (clip, total) = ammo_of(&parts);
+        let (clip, total) = if shot { (clip + 1, total + 1) } else { (clip, total) };
+        let inputs = Inputs {
+            fire: intent.fire || shot && parts.0.slot != 2,
+            alt_fire: intent.secondary,
+            reload,
+            clip,
+            total,
+            sprinting: state.sprinting,
+            moving,
+        };
+        if let Some(m) = vm.machine.as_mut() {
+            m.set_rates(setup_of(&parts).rates);
+            let out = m.update(&inputs);
+            for k in out.events {
+                keys.write(CaViewKey { owner: e, key: k });
+            }
+        }
+        // A shot: the jiggle's draws and the flash timer.
+        let recoil = Vec3::from(params.recoil);
+        vm.draws = if shot {
+            let rolls = [vm.roll(), vm.roll(), vm.roll()];
+            place::jiggle_draws(recoil, rolls)
+        } else {
+            Vec3::ZERO
+        };
+        vm.jiggle = vm.draws.x + vm.draws.y + vm.draws.z;
+        if shot {
+            vm.flash.shot(now);
+        }
+        // 4: the model's camera-space position (`Pos` is in the root).
+        let sway = (vm.sway.w as f32, vm.sway.h as f32);
+        let jiggle = vm.jiggle;
+        vm.origin = place::model_origin(Vec3::ZERO, sway, jiggle);
+        offset.translation = to_view_space(vm.origin);
+        offset.rotation = Quat::IDENTITY;
+        // The drawn pose: after the update, before the advance.
+        if let (Some(m), Some(animator)) = (vm.machine.as_ref(), view.animator.as_mut()) {
+            if let Some((a, t)) = m.shown() {
+                let length = m.anims().get(a).map_or(0, |i| i.length).max(1) as f32;
+                animator.main = Some(a);
+                animator.cycle = (t as f32 / length).clamp(0.0, 1.0);
+                animator.fading.clear();
+            }
+        }
+        // 4, 9, 10: the flash offset, flash and breach points.
+        let pos = models
+            .as_deref()
+            .and_then(|m| m.get(parts.0.id))
+            .map_or(Vec3::ZERO, |v| {
+                let t = v.root.translation / VIEW_SCALE;
+                Vec3::new(t.x, t.y, -t.z)
+            });
+        vm.flash_offset = place::flash_offset(pos, Vec3::from(params.muzzle_pos), sway, vm.draws);
+        let (eye, axes) = camera_of(transform, &state, intent);
+        vm.flash_point = place::flash_point(eye, &axes, vm.flash_offset * UNIT);
+        vm.breach_point = place::breach_point(vm.flash_point, &axes, Vec3::from(params.breach_offset) * UNIT);
+        let visible = !vm.hidden && vm.machine.is_some();
+        // No liquid volumes yet: never under water.
+        let under_water = false;
+        let shown = !params.muzzle_fx.is_empty()
+            && vm.flash.update(
+                now,
+                params.flash_time as f64,
+                visible,
+                alive,
+                under_water && !params.under_water_flash,
+            );
+        vm.flash_at = if shown {
+            flash_socket(models.as_deref(), parts.0.id, &view, &offset, now)
+        } else {
+            None
+        };
+        // 10: a shell from B (first person only).
+        if shot && local && params.shells {
+            let v = Vec3::new(
+                vm.range(SHELL_RIGHT),
+                vm.range(SHELL_UP),
+                vm.range(SHELL_FORWARD),
+            );
+            commands.spawn((
+                Name::new("Shell"),
+                CaShell {
+                    owner: e,
+                    velocity: axes.apply(v) * UNIT,
+                    age: 0.0,
+                    bounces: 0,
+                    scale: 1.0,
+                    resting: false,
+                },
+                Transform::from_translation(vm.breach_point),
+            ));
+        }
+        // 5.7 / 8: the engine's advance, its keys.
+        if let Some(m) = vm.machine.as_mut() {
+            for k in m.advance(dt) {
+                keys.write(CaViewKey { owner: e, key: k });
+            }
+        }
+    }
+}
+
+/// The camera: the eye (metres, world) and its axes in the game's sense
+/// (right, up, forward).
+fn camera_of(transform: Option<&Transform>, state: &MovementState, intent: &Intent) -> (Vec3, CameraAxes) {
+    let eye = transform.map_or(Vec3::ZERO, |t| t.translation) + state.eye_offset;
+    let q = aim_of(intent.yaw, intent.pitch);
+    (
+        eye,
+        CameraAxes {
+            right: q * Vec3::X,
+            up: q * Vec3::Y,
+            forward: q * Vec3::NEG_Z,
+        },
+    )
+}
+
+/// The `Flash` socket's place (+ the stock effect's offset) in the
+/// view-model camera's space, posed as drawn.
+fn flash_socket(
+    models: Option<&ViewModels>,
+    key: &str,
+    view: &ViewAnimator,
+    offset: &ViewModelOffset,
+    now: f64,
+) -> Option<Vec3> {
+    let model = models?.get(key)?;
+    let i = model.attachments.iter().position(|a| a.name.eq_ignore_ascii_case("flash"))?;
+    let pose = view.animator.as_ref()?.pose(now);
+    let placed = crate::map::view_model::placement(offset, false);
+    let m = crate::map::view_model::attachment_transform(model, &pose, i, &placed)?;
+    let fx = place::FLASH_SOCKET_OFFSET;
+    Some(m.transform_point3(Vec3::new(fx.x, fx.y, -fx.z)))
+}
+
+/// Shells fly, follow their owner's motion (10), bounce, rest and go.
+fn step_shells(
+    time: Res<Time>,
+    mut shells: Query<(Entity, &mut CaShell, &mut Transform)>,
+    owners: Query<&Velocity>,
+    spatial: SpatialQuery,
+    mut commands: Commands,
+) {
+    let dt = time.delta_secs();
+    let filter = SpatialQueryFilter::from_mask(SOLID_LAYERS);
+    for (e, mut s, mut t) in &mut shells {
+        s.age += dt;
+        if s.age >= SHELL_LIFE {
+            commands.entity(e).despawn();
+            continue;
+        }
+        s.scale = 1.0 + (SHELL_MAX_SCALE - 1.0) * (s.age / SHELL_SCALE_TIME).min(1.0);
+        if s.resting {
+            continue;
+        }
+        s.velocity.y -= SHELL_GRAVITY * dt;
+        let carried = owners.get(s.owner).map_or(Vec3::ZERO, |v| v.0);
+        let step = (s.velocity + carried) * dt;
+        let Ok(dir) = Dir3::new(step) else { continue };
+        match spatial.cast_ray(t.translation, dir, step.length(), true, &filter) {
+            Some(hit) => {
+                t.translation += dir * hit.distance;
+                let n = hit.normal;
+                s.velocity = (s.velocity - 2.0 * s.velocity.dot(n) * n) * SHELL_BOUNCE_KEEP;
+                s.bounces += 1;
+                if s.bounces >= SHELL_BOUNCES {
+                    s.resting = true;
+                }
+            }
+            None => t.translation += step,
         }
     }
 }

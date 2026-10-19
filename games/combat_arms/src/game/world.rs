@@ -61,11 +61,14 @@
 //!   flags, whose model needs the V2 key).
 //! - View models: the weapons' first-person models their data names
 //!   (`view_model`), loaded with every map from the install (`load_from`).
-//! - Spawns: `GameStartPoint` objects of one game type (`SPAWN_GAME_TYPE`
-//!   when the map has it, else all), dropped to the floor below them,
-//!   facing their yaw; `Teams` JSF is `Team(1)`, Creed `Team(2)`.
 //! - No map file hash (Q15): the game checks none, a client loads its own
 //!   copy by name, so the network handshake compares only the name.
+//! - Spawns: the `GameStartPoint` objects that serve the team modes'
+//!   family (`SPAWN_GAME_TYPE`, `Team Death Match`: game_modes.md S4,
+//!   `qualifies`: unlocked, `Spawn` exactly 1), in the map's order (the
+//!   rules' spawn cursors walk it), else the map's first start point;
+//!   dropped to the floor below them, facing their yaw; `Teams` JSF is
+//!   `Team(1)`, Creed `Team(2)`, `<none>` neither.
 //!
 //! Known shortcuts (docs/tech-debt.md): second textures (dual-texture
 //! sections draw texture 0; detail textures, environment maps and
@@ -101,8 +104,8 @@ use crate::{
 /// The prefix of Combat Arms' map ids.
 pub const MAP_PREFIX: &str = "combat_arms:";
 
-/// The game type whose start points a map spawns at, when it has any
-/// (the map's other modes' points otherwise; game modes are item 13's).
+/// The game type whose start points a map spawns at: the family of the
+/// modes there are (TDM and Elimination Pro, game_modes.md S4).
 pub const SPAWN_GAME_TYPE: &str = "Team Death Match";
 
 /// Object classes whose world models collide where they stand without a
@@ -800,19 +803,24 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
     }
 }
 
-/// Start points of one game type, feet on the floor below them.
+/// Whether a start point serves the versus modes' `family`
+/// (game_modes.md S4): its `GameType`, not `Locked`, `Spawn` exactly 1.
+pub fn qualifies(o: &lt::Object, family: &str) -> bool {
+    o.string("GameType") == Some(family) && o.bool("Locked") != Some(true) && o.int("Spawn") == Some(1)
+}
+
+/// The start points of `SPAWN_GAME_TYPE` that qualify (`qualifies`), in
+/// the map's order, feet on the floor below them; none: the map's first
+/// start point (S4).
 fn spawns(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec3) {
-    let starts: Vec<&lt::Object> = world.objects_of("GameStartPoint").map(|(_, o)| o).collect();
-    let mode = starts
-        .iter()
-        .any(|o| o.string("GameType") == Some(SPAWN_GAME_TYPE))
-        .then_some(SPAWN_GAME_TYPE);
+    let all: Vec<&lt::Object> = world.objects_of("GameStartPoint").map(|(_, o)| o).collect();
+    let mut starts: Vec<&lt::Object> = all.iter().copied().filter(|o| qualifies(o, SPAWN_GAME_TYPE)).collect();
+    if starts.is_empty() {
+        starts = all.into_iter().take(1).collect();
+    }
     let floor = Floor::new(map);
     let (mut spawns, mut yaws) = (Vec::new(), Vec::new());
     for o in starts {
-        if mode.is_some() && o.string("GameType") != mode {
-            continue;
-        }
         let Some(pos) = o.pos() else { continue };
         let at = to_engine(pos);
         let feet = floor.below(at).unwrap_or(at);

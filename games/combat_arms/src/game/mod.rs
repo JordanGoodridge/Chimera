@@ -19,17 +19,19 @@
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
 //!   the install's attribute files;
 //! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
-//! - `rules`: game modes as rule modules;
-//! - `net`: the game's part of the network (armour, the pickup prompt;
+//! - `rules`: game modes as rule modules (game_modes.md: Team Death
+//!   Match and Elimination Pro, `ca_mode`);
+//! - `net`: the game's part of the network (armour, the pickup prompt,
+//!   the match, respawn requests;
 //!   the parts above register what a client predicts themselves);
 //! - `world`: the install's maps (world `.dat` files) as Chimera's
 //!   `MapData` (world_dat.md);
 //! - `model`: the install's models (`.ltb`) and their animations as
 //!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
 //! - `props`: models the maps' objects place, as animated props;
-//! - `view_model`: the weapons' first-person models from the install,
-//!   played by Chimera's view-model driver (provisional until
-//!   view_models.md);
+//! - `view_model`: the weapons' first-person models from the install
+//!   with the character's hands, their animation state machine, sway,
+//!   muzzle flash and shells (view_models.md);
 //! - `volumes`: the maps' volumes (water, kill and damage volumes).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
@@ -112,6 +114,8 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("3", "slot3"),
     ("4", "slot4"),
     ("5", "slot5"),
+    // The scoreboard while held (ui_system.md I2; the key is ours).
+    ("tab", "+showscores"),
 ];
 
 /// The defaults before walk and sprint were two keys (`GameInfo::
@@ -153,10 +157,10 @@ impl PluginGroup for CombatArmsPlugins {
             .add(volumes::CaVolumesPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
+            .add(view_model::CaViewModelPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
-            .add(view_model::CaViewModelPlugin)
     }
 }

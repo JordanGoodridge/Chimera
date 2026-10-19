@@ -108,3 +108,13 @@ move_penalty = 0.24
 # [TW: DisableCrosshair] 1.
 [hooks."combat_arms:hud"]
 disable_crosshair = true
+
+# view_models.md 4, 9, 10 (per-weapon placement): `MuzzlePos`,
+# `BreachOffset`, `PVMuzzleFXName`; `Recoil` (the shot jiggle) is
+# (0, 0, 0) in every stock record. Its animations are the view model's
+# own, by view_models.md 7's names (game/view_model.rs).
+[hooks."combat_arms:view_model"]
+muzzle_pos = [2.84, -2.6, 4.859921]
+breach_offset = [0.0, 0.0, 0.0]
+muzzle_fx = "AK47_pv_muzz"
+shells = true

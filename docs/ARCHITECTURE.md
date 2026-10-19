@@ -28,7 +28,7 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
   |    chimera_net (chimera/net/)   net: transport, replication, prediction; harness::NetSim
   |    |
 chimera_present (chimera/present/)   render, audio, MapPlugin
-  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module; SimBasePlugins
+  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, spawning; SimBasePlugins
   |    |
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; greybox, harness::Sim
   |                \
@@ -99,8 +99,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `cargo test -p chimera_client --features dev` tests it alone.
 - `chimera_sim` is the simulation's frameworks: `weapon` (the weapon
   system), `movement` (the movement slot's placeholder and noclip) and
-  `rule_module` (the rule-module interface, `mashup::rules::module`).
-  They name no game; games fill them. It uses `chimera_world` and
+  `rule_module` (the rule-module interface, `mashup::rules::module`)
+  and `spawning` (what every game's respawn does). They name no game; games fill them. It uses `chimera_world` and
   `chimera_core`, never the presentation, `mashup` or a game (checked);
   `mashup` re-exports them at their old paths. `cargo test -p chimera_sim
   --features dev` tests it alone.
@@ -154,14 +154,16 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
-  grenades, the weapon classes and attachments so far;
+  grenades, the weapon classes, attachments and the game modes TDM and
+  Elimination Pro so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
-  `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
+  `grenades`, `attachments`, `data`, `rules`: its game modes as rule
+  modules, `net`: its part of the
   network on `chimera_net`, `world`: the install's maps as `MapData`),
   with its feature `ui` its
   front end (`ui::layout`: its layouts on Chimera's `client::canvas`,
-  `ui::hud`, `ui::menu`: the Esc menu, `ui::visuals`), and `harness::CaSim` as its
+  `ui::hud`, `ui::scoreboard`, `ui::menu`: the Esc menu, `ui::visuals`), and `harness::CaSim` as its
   scenario tests' base (with chimera_net's `NetSim` for its network
   tests). Layered as `cs_source`: the engine crates only,
   never `cs_source`, Source's logic, `mashup` or an app (checked); only
@@ -437,12 +439,13 @@ that the paths exist).
 - `chimera/sim/src/weapon/data.rs`: weapons as TOML data built into the parts; hooks by name (docs/weapon-data.md) (weapon)
 - `chimera/sim/src/weapon/economy_data.rs`: the shop as TOML data: items, buy menu, spawn kit, shop sounds (docs/economy-data.md) (weapon)
 - `chimera/sim/src/weapon/pass_data.rs`: penetration by surface material as TOML data (`PassMaterials::parse`) (weapon)
-- `chimera/sim/src/weapon/view_anim.rs`: the view-model activity driver: sequences by weapon data or a game's rules (weapon)
+- `chimera/sim/src/weapon/view_anim.rs`: the view-model activity driver: sequences by data or a game's rules; `OwnViewAnim` opts out (weapon)
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `games/cs_source/src/rules/hints.rs`: automatic hints (`cl_autohelp`): data-named triggers, once per player per map (rules)
 - `games/cs_source/src/rules/events.rs`: CS:S's game events and server log lines (bomb, hostages, rounds, weapons, deaths) (rules)
 - `chimera/sim/src/rule_module.rs`: rule modules a game registers by name; `chimera_rules`; `rules::module` (rule_module)
+- `chimera/sim/src/spawning.rs`: every game's respawn: the dead held still, a character revived at a place (spawning)
 - `games/cs_source/src/bot/`: bots: aim, navigation, team plans, radio, buying, grenades, objectives (bot)
 
 ### Network (net)
@@ -489,13 +492,19 @@ that the paths exist).
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
 - `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
-- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models from the install (view_models.md, in part) (games)
+- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash, shells (games)
+- `games/combat_arms/src/game/view_model/`: the view model's animation state machine, sway, placement maths and hand model (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/weapons/zoom.rs`: Combat Arms' zoom and scope: levels, FOV transitions, bolt zoom-out, sway (games)
 - `games/combat_arms/src/game/weapons/classes.rs`: Combat Arms' class rules: shell reloads, minigun spin, alt-fire volleys, pellet carry-over (games)
 - `games/combat_arms/src/game/attachments.rs`: Combat Arms' weapon attachments: records, accepted lists, fitting and their effects (games)
 - `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
-- `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
+- `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
+- `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules: TDM, Elimination Pro (games)
+- `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, scoreboard rows and each mode (games)
+- `games/combat_arms/data/modes.toml`: Combat Arms' mode settings: room and server-file values, shared constants, each mode's goal and mission data (games)
+- `games/combat_arms/src/ui/hud/score.rs`: Combat Arms' score panel and round timer from the match (games_ui)
+- `games/combat_arms/src/ui/scoreboard.rs`: Combat Arms' scoreboard (Tab, and a round's result) (games_ui)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1, M9 knife, grenades and one weapon per class (games)

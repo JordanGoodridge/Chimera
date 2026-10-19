@@ -1232,10 +1232,13 @@ combat_arms:warehouse --window 1280x720 --frames 240 --screenshot
 pistol.png +wait 30 +give combat_arms:beretta_m92fs` (also
 `combat_arms:remington_870`, `combat_arms:m60`); a firing frame: drop
 `--screenshot` and end with `+wait 120 ++attack +wait 3 +screenshot
-fire.png` (`--frames 300`). What each loads and plays:
-`cargo test -p combat_arms --features dev --test it heavy::view_model
--- --nocapture` (meshes, textured pieces, bones, sequences with their
-lengths); the action mapping without the install: `--test it
+fire.png` (`--frames 300`); the sprint pose: `+wait 120 ++sprint
+++forward +wait 40 +screenshot sprint.png` (`+speed` also sets walk).
+What each loads and plays: `cargo test -p combat_arms --features dev
+--test it heavy::view_model -- --nocapture` (meshes, textured pieces,
+bones, sockets, animations with their lengths and key strings, the
+`flash` socket through the shot against view_models.md's numbers); the
+state machine, sway and placement cases without the install: `--test it
 view_model::`.
 
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones

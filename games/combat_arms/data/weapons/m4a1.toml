@@ -144,3 +144,13 @@ sprint_out = 0.367
 [hooks."combat_arms:hud"]
 duck_perturb = 2
 move_duck_perturb = 3
+
+# view_models.md 4, 9, 10 (per-weapon placement): `MuzzlePos`,
+# `BreachOffset`, `PVMuzzleFXName`; `Recoil` (the shot jiggle) is
+# (0, 0, 0) in every stock record. Its animations are the view model's
+# own, by view_models.md 7's names (game/view_model.rs).
+[hooks."combat_arms:view_model"]
+muzzle_pos = [4.4, -3.55, 7.75]
+breach_offset = [0.0, 0.0, 0.0]
+muzzle_fx = "AK47_pv_muzz"
+shells = true
