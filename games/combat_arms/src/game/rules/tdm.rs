@@ -26,9 +26,9 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, Leaver, TDM,
-    scoring::stats,
-    state::{CaMatch, Death, DeathKind, Phase, enemy, side},
+    CaMode, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, TDM, TEAM_POINTS, Teams,
+    scoring::personal,
+    state::{CaMatch, Death, Phase, enemy, side},
 };
 
 /// The mode.
@@ -44,43 +44,35 @@ pub const MODE: CaMode = CaMode {
     assists: true,
     timer_shown: false,
     forced_setup: Some(0.0),
+    teams: Teams::Two,
+    spawns: TEAM_POINTS,
+    round_time: RoundTime::Mission,
+    fire_ends_protection: false,
+    death_drops: true,
+    panel: Panel::TeamScore,
+    order: ScoreOrder::Kills,
     on_death,
     time_out: |_| {},
     match_end: |w| Some(w.resource::<CaMatch>().winner),
     leaving,
+    hooks: NO_HOOKS,
 };
 
 fn on_death(world: &mut World, d: &Death) {
-    match d.kind {
-        DeathKind::Enemy => {
-            if let Some(k) = d.killer {
-                stats(world, k).kills += 1;
-            }
-            stats(world, d.victim).deaths += 1;
-        }
-        DeathKind::TeamKill => {
-            if let Some(k) = d.killer {
-                stats(world, k).friendly_kills += 1;
-            }
-            stats(world, d.victim).deaths += 1;
-        }
-        DeathKind::Suicide => {
-            let mut s = stats(world, d.victim);
-            s.deaths += 1;
-            s.suicides += 1;
-            s.friendly_kills += 1;
-        }
-        DeathKind::NoKiller => {
-            let mut s = stats(world, d.victim);
-            s.deaths += 1;
-            s.suicides += 1;
-        }
-    }
+    personal(world, d);
+    add_and_test(world, d.victim_team, 1);
+}
+
+/// S7's TDM score: `points` to the victim's enemy team; the first death
+/// that brings a counter to G or more asks for the round's end with the
+/// higher counter's team, a later one changing the winner only when the
+/// other counter is now strictly higher (VIP Elimination's too).
+pub fn add_and_test(world: &mut World, victim_team: u8, points: i32) {
     let goal = world.resource::<super::CaRuleSettings>().goal() as i32;
-    let scorer = enemy(d.victim_team);
+    let scorer = enemy(victim_team);
     let mut m = world.resource_mut::<CaMatch>();
     let Some(i) = side(scorer) else { return };
-    m.score[i] += 1;
+    m.score[i] += points;
     if m.score.iter().all(|s| *s < goal) {
         return;
     }
@@ -95,7 +87,7 @@ fn on_death(world: &mut World, d: &Death) {
 }
 
 /// The last player of a team leaving gives the round to the other team.
-fn leaving(m: &mut CaMatch, l: &Leaver) {
+pub fn leaving(m: &mut CaMatch, l: &Leaver) {
     if m.phase == Phase::Live && l.team_players <= 1 {
         m.win(enemy(l.team));
     }

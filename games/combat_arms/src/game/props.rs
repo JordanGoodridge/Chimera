@@ -15,7 +15,8 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): the object's `Scale`,
 //! `MoveToFloor`, `Rotate` (spinning pickups), render styles and game
-//! type are ignored (flags of every mode are placed, as in the editor);
+//! type are ignored (flags of every mode are placed; `rules::ctf` hides
+//! them outside capture the flag and moves them with the flag's state);
 //! props don't collide (`PropSolid::None`; pickups are the game modes'
 //! item); the light probe is the light-grid sample nearest the object,
 //! the same from every direction.
@@ -180,6 +181,15 @@ pub fn add_objects(world: &World, map: &mut MapData, scale: f32, file: &dyn Fn(&
         let pos = o.pos().unwrap_or([0.0; 3]);
         let at = Vec3::from(lt::to_right_handed(pos)) * scale;
         place(map, &loaded, &skins(o), &o.class, at, rotation(o), light_at(world, pos), scale, file);
+        // The object's name and team, so a game mode finds its prop (a
+        // flag it moves and hides: `rules::ctf`).
+        if let Some(e) = map.entities.last_mut() {
+            for key in ["Name", "Teams", "GameType"] {
+                if let Some(v) = o.string(key) {
+                    e.keyvalues.push((key.to_string(), v.to_string()));
+                }
+            }
+        }
     }
 }
 

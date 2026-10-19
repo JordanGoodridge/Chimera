@@ -46,7 +46,15 @@
 //!   team; a client writes it into `rules::CaMatchView`, its times on its
 //!   own clock (`net::game::ServerTime`), which the HUD reads as single
 //!   player's. Each player's statistics (`rules::CaStats`: kills, deaths,
-//!   assists, ...) replicated, for the scoreboard.
+//!   assists, captures, mission points, ...) replicated, for the
+//!   scoreboard.
+//! - **The objectives** (`NetCaObjectives`, on the match's entity): the
+//!   planted bomb and its fuse, the bomb on the ground, the flags, the
+//!   pole, the intel (`rules::objectives::CaObjectives`, times in server
+//!   ticks), which a client writes into its own `CaObjectives` on its
+//!   clock (the HUD's lines, the flags' props); what each player carries
+//!   (`CaCarry`) and the action gauge it fills (`CaAction`: plant, defuse,
+//!   seize).
 //! - **Respawning** (game_modes.md S5): a client's player, dead for more
 //!   than `respawn_wait_client` s by its own clock in a mode that
 //!   respawns, asks once (`CaRespawnRequest`); the server checks it
@@ -72,6 +80,7 @@ use super::{
     rules::{
         CaMatch, CaMatchView, CaRuleSettings, CaStats, CaTeamCounts, Phase, current_mode,
         flow::{self, enter_game},
+        objectives::{CaAction, CaCarry, CaObjectives},
         spawns,
     },
     weapons::CaArmor,
@@ -113,6 +122,12 @@ fn register(app: &mut App) {
         .ordered::<CaStats>()
         .replicate::<NetCaMatch>()
         .ordered::<NetCaMatch>()
+        .replicate::<NetCaObjectives>()
+        .ordered::<NetCaObjectives>()
+        .replicate::<CaCarry>()
+        .ordered::<CaCarry>()
+        .replicate::<CaAction>()
+        .ordered::<CaAction>()
         .add_client_message::<CaRespawnRequest>(Channel::Ordered)
         .insert_resource(JoinRules {
             enter: enter_game,
@@ -165,6 +180,11 @@ pub struct NetCaMatch {
     pub team_counts: [u32; 2],
 }
 
+/// The objectives (`rules::objectives::CaObjectives`), times in server
+/// ticks (whole), on the match's entity.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct NetCaObjectives(pub CaObjectives);
+
 /// `NetCaMatch::phase`.
 pub mod match_phase {
     pub const WAITING: u8 = 0;
@@ -209,15 +229,21 @@ fn write_match(world: &mut World) {
         result: m.result,
         team_counts: world.resource::<CaTeamCounts>().0,
     };
+    let mut objectives = world.resource::<CaObjectives>().clone();
+    objectives.map_times(|s| t(s).round());
+    let objectives = NetCaObjectives(objectives);
     let have = world.query::<(Entity, &NetCaMatch)>().iter(world).next().map(|(e, r)| (e, r.clone()));
     match have {
         Some((e, r)) => {
             if r != now {
                 world.entity_mut(e).insert(now);
             }
+            if world.get::<NetCaObjectives>(e) != Some(&objectives) {
+                world.entity_mut(e).insert(objectives);
+            }
         }
         None => {
-            world.spawn((Name::new("Match"), Replicated, now));
+            world.spawn((Name::new("Match"), Replicated, now, objectives));
         }
     }
 }
@@ -240,10 +266,21 @@ fn receive_respawns(mut requests: MessageReader<FromClient<CaRespawnRequest>>, p
 
 /// The server's match into `CaMatchView`, on this client's clock.
 fn apply_match(world: &mut World) {
-    let Some(r) = world.query::<&NetCaMatch>().iter(world).next().cloned() else {
+    let Some((r, objectives)) = world
+        .query::<(&NetCaMatch, Option<&NetCaObjectives>)>()
+        .iter(world)
+        .next()
+        .map(|(m, o)| (m.clone(), o.cloned()))
+    else {
         return;
     };
     let Some(time) = ServerTime::of(world) else { return };
+    if let Some(NetCaObjectives(mut o)) = objectives {
+        o.map_times(|tick| time.local(tick));
+        if *world.resource::<CaObjectives>() != o {
+            world.insert_resource(o);
+        }
+    }
     let t = |tick: f64| time.local(tick);
     let phase = match r.phase {
         match_phase::STARTING => Phase::Starting,

@@ -24,23 +24,32 @@
 //! selection (`client::weapon_menu`, as CS:S's: `slot1`..`slot5`,
 //! `invnext` / `invprev`, here with no HUD row, so they switch at once;
 //! see `game::inventory`), as CS:S's `with_hud` does; `CaUiPlugin` adds
-//! the rest after the shell: the in-game menu, the scoreboard and the
-//! visuals.
+//! the rest after the shell: the in-game menu, the scoreboard, the
+//! visuals and `slot6` (key 6, the objective class: the mission bomb).
 //!
 //! `CaUi` is the UI's data: our font list (`data/ui/fonts.toml`), string
 //! table (`data/ui/strings.txt`) and stand-in textures.
 //!
+//! With the V1 key the install's own layouts, string table and art
+//! (`install`) replace ours in the app (`CaUi::installed`): the HUD's
+//! health and weapon panels are the game's HUD layout's named controls,
+//! bound to the HUD's values (`hud::install`), and the in-game menu is
+//! the game's (`menu`); ours stay the fallback, and the headless tests'.
+//!
 //! Known shortcuts: no other screens (lobby, shop, result screen: the
 //! game has them as menus at 1024 x 768; no loading screen, kill cam or
-//! vote panel yet); the HUD's panels keep their places as
-//! code (`hud::model`, from hud_crosshair.md) rather than binding named
-//! controls of the game's HUD layout, which sits in a keyed archive.
+//! vote panel yet); without the install the HUD's panels keep their
+//! places as code (`hud::model`, from hud_crosshair.md); with it the
+//! crosshair, damage overlay, name tags, kill feed and score panel stay
+//! code-placed (the kill feed and score panel's geometry are the spec's;
+//! the feed's icons are the install's art when it has them).
 
 pub mod chat;
 pub mod desk;
 pub mod draw;
 pub mod effects;
 pub mod hud;
+pub mod install;
 pub mod layout;
 pub mod menu;
 pub mod scoreboard;
@@ -67,29 +76,40 @@ pub struct CaUiPlugin;
 
 impl Plugin for CaUiPlugin {
     fn build(&self, app: &mut App) {
+        use crate::console::ConsoleAppExt;
         app.add_plugins((
             visuals::CaVisualsPlugin,
             effects::CaEffectsDrawPlugin,
             menu::CaMenuPlugin,
             scoreboard::CaScoreboardPlugin,
-        ));
+        ))
+        // Key 6, the objective class (inventory.md 2, 3: the mission
+        // bomb), through the shell's selection as slot 6.
+        .console_command("slot6", "The objective class (the mission bomb).", |w, _| {
+            if let Some(mut m) = w.get_resource_mut::<crate::client::weapon_menu::WeaponMenu>() {
+                m.pressed.push(5);
+            }
+            Ok(None)
+        });
     }
 }
 
 /// Combat Arms' UI data: the font list, the string table and the
-/// stand-in textures.
+/// stand-in textures; with the install's (`installed`), its layouts,
+/// strings and art (`install`).
 #[derive(Resource, Clone, Debug)]
 pub struct CaUi {
     pub fonts: FontList,
     pub strings: Strings,
     pub stand_ins: StandIns,
+    pub install: Option<std::sync::Arc<install::InstallUi>>,
 }
 
 impl Default for CaUi {
     fn default() -> Self {
         let mut stand_ins = StandIns::default();
         let mut add = |name: &str, size: (i32, i32), c: [u8; 4]| {
-            stand_ins.0.insert(name.to_string(), (IVec2::new(size.0, size.1), c));
+            stand_ins.0.insert(install::texture_key(name), (IVec2::new(size.0, size.1), c));
         };
         // PLACEHOLDERS for the in-game menu's art: flat boxes.
         add("igm_back", (220, 145), [22, 26, 30, 235]);
@@ -101,11 +121,40 @@ impl Default for CaUi {
             fonts: FontList::ours(),
             strings: Strings::ours(),
             stand_ins,
+            install: None,
         }
     }
 }
 
 impl CaUi {
+    /// Ours with the install's UI data over it (`install::installed`):
+    /// its string table (ours for the ids it lacks), the fonts its
+    /// layouts name, its art's sizes (drawn white: the images are
+    /// `draw::CaArt`'s). Ours alone without it.
+    pub fn installed() -> Self {
+        install::installed().map_or_else(Self::default, Self::with_install)
+    }
+
+    /// Ours with `inst` over it (`installed`).
+    pub fn with_install(inst: std::sync::Arc<install::InstallUi>) -> Self {
+        let mut ui = Self::default();
+        if let Some(t) = &inst.strings {
+            let mut strings = t.clone();
+            for (k, v) in &ui.strings.values {
+                strings.values.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            ui.strings = strings;
+        }
+        for l in inst.hud.iter().chain(inst.menu.iter()) {
+            install::add_fonts(l, &mut ui.fonts);
+        }
+        for (k, a) in &inst.art {
+            ui.stand_ins.0.insert(k.clone(), (a.size, [255; 4]));
+        }
+        ui.install = Some(inst);
+        ui
+    }
+
     pub fn ctx(&self) -> Ctx<'_, StandIns> {
         Ctx {
             fonts: &self.fonts,

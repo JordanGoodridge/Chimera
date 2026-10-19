@@ -57,7 +57,11 @@
 //! and machine guns (`GUNS_M_PV_Pistol`, `_SG`, `_MG`); the rifles',
 //! SMGs', snipers', knives', grenades' and the hand models' need the V2
 //! key, and a weapon whose view model doesn't load keeps the front end's
-//! placeholder box (the map's warnings say which).
+//! placeholder box (the map's warnings say which). Our data names the
+//! M92FS's, 870's and M60's; with the V1 key every weapon of ours takes
+//! the install's `PVModelNormal`, skins and `Pos` (`data`), so with both
+//! keys all 13 draw their own models with the hands, textured
+//! (`heavy::view_model::keyed_view_models_with_hands`).
 //!
 //! Known shortcuts (docs/tech-debt.md):
 //! - The machine drives the picture only: in play the shots, hits, ammo
@@ -416,7 +420,8 @@ pub fn add_view_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>
         }
         None => None,
     };
-    for w in &super::data::weapon_set().weapons {
+    let ours = super::data::builtin_weapon_ids();
+    for w in super::data::weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
         let Some(path) = w.models.view.as_deref() else { continue };
         let offset = w.models.view_offset.unwrap_or_default();
         match load(path, &w.id, &w.models.view_skins, offset, map, file) {

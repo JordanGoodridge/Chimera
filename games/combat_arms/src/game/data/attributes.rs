@@ -10,8 +10,8 @@
 //!   its load failures ("Weapons file: record kinds and load order").
 //! - `ServerPlayer`: `[Player]` in the server attributes file
 //!   (`SERVERBUTES.TXT`).
-//! - `ModelsFile`: body types, characters and head pieces
-//!   (`MODELBUTES.TXT`).
+//! - `ModelsFile`: body types, characters, head pieces and faces
+//!   (`MODELBUTES.TXT`; the pieces' files and skins as `PieceRecord`s).
 //! - `ModFile`: the modification file (`MOD.TXT`,
 //!   specs/combat_arms/attachments.md): attachment records (`Mod#`, as
 //!   `attachments::ModRecord`) and each weapon's accepted list
@@ -311,6 +311,20 @@ pub struct WeaponRecord {
     pub damage_weapon: bool,
     pub check_reload_ani_time: bool,
     pub hidden: bool,
+    /// `PVModelNormal`: the first-person model, an archive path as stored
+    /// (empty when missing; view_models.md 1: every stock character's
+    /// player-view entry is `Normal`).
+    pub pv_model: String,
+    /// `PVSkin0..`: its skins by texture index.
+    pub pv_skins: Vec<String>,
+    /// `HHModel` and `HHSkin0..`: the third-person model and its skins.
+    pub hh_model: String,
+    pub hh_skins: Vec<String>,
+    /// `Pos`, `MuzzlePos`, `BreachOffset` (camera space, world units;
+    /// missing: zero).
+    pub pos: [f64; 3],
+    pub muzzle_pos: [f64; 3],
+    pub breach_offset: [f64; 3],
 }
 
 impl WeaponRecord {
@@ -425,6 +439,13 @@ impl WeaponRecord {
             damage_weapon: s.bool("DamageWeapon", true),
             check_reload_ani_time: s.bool("CheckReloadAniTime", true),
             hidden: s.bool("Hidden", false),
+            pv_model: s.string("PVModelNormal").map(text).unwrap_or_default(),
+            pv_skins: s.string_list("PVSkin").iter().map(|v| text(v)).collect(),
+            hh_model: s.string("HHModel").map(text).unwrap_or_default(),
+            hh_skins: s.string_list("HHSkin").iter().map(|v| text(v)).collect(),
+            pos: s.vector("Pos").unwrap_or_default(),
+            muzzle_pos: s.vector("MuzzlePos").unwrap_or_default(),
+            breach_offset: s.vector("BreachOffset").unwrap_or_default(),
         }
     }
 
@@ -683,12 +704,50 @@ impl WearRecord {
     }
 }
 
-/// The models file's body types, characters and head pieces.
+/// A model piece's files (characters.md section 2): a head piece
+/// (`Hair<N>`: `ModelFile0`, `ModelFile1` by skeleton) or a face
+/// (`Face<N>`: `ModelFile`), its skins (`Skin0..`, by camouflage index for
+/// a head piece) and, for a face, the head piece it comes with
+/// (`HairIndex`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PieceRecord {
+    pub name: String,
+    pub files: Vec<String>,
+    pub skins: Vec<String>,
+    pub hair: Option<i32>,
+}
+
+impl PieceRecord {
+    pub fn read(s: &Section) -> Self {
+        let list = |prefix: &str| -> Vec<String> {
+            (0..)
+                .map_while(|i| s.string(&format!("{prefix}{i}")).map(text))
+                .collect()
+        };
+        let mut files = list("ModelFile");
+        if files.is_empty()
+            && let Some(f) = s.string("ModelFile")
+        {
+            files.push(text(f));
+        }
+        Self {
+            name: name_of(s),
+            files,
+            skins: list("Skin"),
+            hair: s.get("HairIndex").map(|_| s.int("HairIndex", -1)).filter(|&h| h >= 0),
+        }
+    }
+}
+
+/// The models file's body types, characters, head pieces and faces.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModelsFile {
     pub figure_types: Vec<FigureTypeRecord>,
     pub models: Vec<WearRecord>,
     pub hair: Vec<WearRecord>,
+    /// `Hair<N>`'s and `Face<N>`'s files, by record index.
+    pub hair_pieces: Vec<PieceRecord>,
+    pub faces: Vec<PieceRecord>,
 }
 
 impl ModelsFile {
@@ -697,6 +756,8 @@ impl ModelsFile {
             figure_types: doc.records("FigureType").into_iter().map(FigureTypeRecord::read).collect(),
             models: doc.records("Model").into_iter().map(WearRecord::read).collect(),
             hair: doc.records("Hair").into_iter().map(WearRecord::read).collect(),
+            hair_pieces: doc.records("Hair").into_iter().map(PieceRecord::read).collect(),
+            faces: doc.records("Face").into_iter().map(PieceRecord::read).collect(),
         }
     }
 }

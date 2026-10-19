@@ -2,9 +2,10 @@
 //! test case 18; game_modes.md S13 for its rows): while the score key is
 //! held (`+showscores`, Tab) and, as the round-result banner, for
 //! `RESULT_MS` after a round's result. Alpha's rows in the upper list,
-//! every other team's in the lower, each sorted by kills then fewer
-//! deaths (`game::rules::scoreboard`); the team scores (the score
-//! panel's numbers) in the lists' headers.
+//! every other team's in the lower (a free-for-all mode's in one list,
+//! "Players"), each in the mode's order (`game::rules::scoreboard`); the
+//! team scores (the score panel's numbers) in the lists' headers; the
+//! mode's column (captures, mission points) where it has one.
 //!
 //! `CaScoreboardStatePlugin` reads the world into `CaScoreboard` with no
 //! window (the tests'); `CaScoreboardPlugin` adds it and draws it with
@@ -29,8 +30,8 @@ use crate::{
         console::HeldActions,
     },
     game::rules::{
-        CaMatchView, Phase,
-        scoreboard::{ScoreRow, board, rows},
+        CaMatchView, Panel, Phase, ScoreOrder, Teams,
+        scoreboard::{ScoreRow, board_for, rows},
     },
 };
 
@@ -45,8 +46,16 @@ pub mod places {
     /// The lists' first rows' top-left: Alpha, the rest.
     pub const LISTS: [Vec2; 2] = [Vec2::new(164.0, 192.0), Vec2::new(164.0, 392.0)];
     pub const ROW: Vec2 = Vec2::new(766.0, 25.0);
-    /// Ours: each column's x offset in a row and width.
-    pub const COLUMNS: [(f32, f32); 5] = [(8.0, 400.0), (420.0, 80.0), (510.0, 80.0), (600.0, 80.0), (690.0, 70.0)];
+    /// Ours: each column's x offset in a row and width: name, the mode's
+    /// column, kills, deaths, assists, ping.
+    pub const COLUMNS: [(f32, f32); 6] = [
+        (8.0, 320.0),
+        (335.0, 80.0),
+        (420.0, 80.0),
+        (510.0, 80.0),
+        (600.0, 80.0),
+        (690.0, 70.0),
+    ];
     /// Ours: the lists' headers (team and score) above their rows.
     pub const HEADERS: [Vec2; 2] = [Vec2::new(164.0, 168.0), Vec2::new(164.0, 368.0)];
 }
@@ -59,6 +68,11 @@ pub struct CaScoreboard {
     pub lists: [Vec<ScoreRow>; 2],
     /// The team scores (Alpha, Bravo).
     pub scores: [i32; 2],
+    /// The lists' names ("Alpha", "Bravo"; "Players" in a free-for-all
+    /// mode).
+    pub headers: [String; 2],
+    /// The mode's order (its column).
+    pub order: Option<ScoreOrder>,
 }
 
 /// When the last round's result came in (real ms), and how many results
@@ -93,15 +107,24 @@ fn update(world: &mut World) {
     result.phase_over = over;
     world.insert_resource(result);
     let banner = result.since.is_some_and(|s| now - s < RESULT_MS);
-    let shown = view.mode().is_some() && (world.resource::<HeldActions>().showscores || banner);
+    let mode = view.mode();
+    let shown = mode.is_some() && (world.resource::<HeldActions>().showscores || banner);
+    let order = mode.map_or(ScoreOrder::Kills, |m| m.order);
+    let ffa = mode.is_some_and(|m| m.teams == Teams::FreeForAll);
     let next = CaScoreboard {
         shown,
-        lists: if shown { board(rows(world)) } else { Default::default() },
-        scores: if view.mode().is_some_and(|m| m.timer_shown) {
+        lists: if shown { board_for(rows(world), order, ffa) } else { Default::default() },
+        scores: if mode.is_some_and(|m| m.panel == Panel::RoundWins) {
             view.round_wins.map(|w| w as i32)
         } else {
             view.score
         },
+        headers: if ffa {
+            ["Players".into(), String::new()]
+        } else {
+            ["Alpha".into(), "Bravo".into()]
+        },
+        order: mode.map(|m| m.order),
     };
     if *world.resource::<CaScoreboard>() != next {
         world.insert_resource(next);
@@ -144,14 +167,26 @@ fn draw(
     commands.entity(*root).with_children(|p| {
         p.spawn(rect(screen.rect(places::PANEL.0, places::PANEL.1), Color::srgba(0.04, 0.05, 0.06, 0.82)));
         for (i, list) in board.lists.iter().enumerate() {
-            let header = format!("{}  {}", if i == 0 { "Alpha" } else { "Bravo" }, board.scores[i]);
+            if board.headers[i].is_empty() {
+                continue;
+            }
+            let header = if board.headers[i] == "Players" {
+                board.headers[i].clone()
+            } else {
+                format!("{}  {}", board.headers[i], board.scores[i])
+            };
             hud_text(p, pen, (places::HEADERS[i], places::ROW, Vec2::ZERO), &header, "bold 16", left, Effect::Shadow, white);
             for (k, row) in list.iter().enumerate() {
                 let at = places::LISTS[i] + Vec2::Y * places::ROW.y * k as f32;
                 p.spawn(rect(screen.rect(at, places::ROW - Vec2::Y), Color::srgba(1.0, 1.0, 1.0, 0.05)));
                 let ping = row.ping.map_or(String::new(), |p| p.to_string());
+                let mode_column = board
+                    .order
+                    .and_then(|o| row.mode_column(o))
+                    .map_or(String::new(), |v| v.to_string());
                 let cells = [
                     row.name.clone(),
+                    mode_column,
                     row.kills.to_string(),
                     row.deaths.to_string(),
                     row.assists.to_string(),

@@ -29,7 +29,7 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaRuleSettings, ELIMINATION_PRO, Leaver,
+    CaMode, CaRuleSettings, ELIMINATION_PRO, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, TEAM_POINTS, Teams,
     flow::alive,
     scoring::stats,
     state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, Phase, enemy, side},
@@ -48,10 +48,18 @@ pub const MODE: CaMode = CaMode {
     assists: true,
     timer_shown: true,
     forced_setup: None,
+    teams: Teams::Two,
+    spawns: TEAM_POINTS,
+    round_time: RoundTime::Mission,
+    fire_ends_protection: false,
+    death_drops: true,
+    panel: Panel::RoundWins,
+    order: ScoreOrder::Kills,
     on_death,
     time_out,
     match_end,
     leaving,
+    hooks: NO_HOOKS,
 };
 
 fn on_death(world: &mut World, d: &Death) {
@@ -96,7 +104,7 @@ fn on_death(world: &mut World, d: &Death) {
 }
 
 /// More living players; more round kills; fewer round deaths; else none.
-fn time_out(world: &mut World) {
+pub fn time_out(world: &mut World) {
     let living = [alive(world, ALPHA), alive(world, BRAVO)];
     let mut m = world.resource_mut::<CaMatch>();
     let pick = |x: u32, y: u32| match x.cmp(&y) {
@@ -131,7 +139,7 @@ fn match_end(world: &World) -> Option<Option<u8>> {
 }
 
 /// A living leaver, the last of its team alive: the other team wins.
-fn leaving(m: &mut CaMatch, l: &Leaver) {
+pub fn leaving(m: &mut CaMatch, l: &Leaver) {
     if m.phase == Phase::Live && !m.warmup && m.winner.is_none() && l.alive && l.team_alive <= 1 {
         m.win(enemy(l.team));
     }

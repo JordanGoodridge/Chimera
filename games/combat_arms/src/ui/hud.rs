@@ -9,7 +9,9 @@
 //! functions; `CaHudStatePlugin` reads the world each frame into `CaHud`
 //! (what is shown, where, in which colour, with which text) with no
 //! window, so the scenario tests check it headless (tests/ui/hud.rs);
-//! `CaHudPlugin` adds it and draws `CaHud` with the shell's UI nodes,
+//! `CaHudPlugin` adds it and draws `CaHud` with the shell's UI nodes
+//! (with the install's UI data, `CaUi::installed`, the health and weapon
+//! panels are the game's HUD layout's, bound by name: `install`),
 //! telling the shell's fallback HUD (`client::hud::GameDraws`) to leave
 //! out its crosshair, health and ammo, hit marker and kill feed.
 //!
@@ -82,6 +84,7 @@
 //!   dot-sight image (a red outline), the panels' backgrounds (dark
 //!   boxes).
 
+pub mod install;
 pub mod model;
 pub mod score;
 
@@ -873,14 +876,20 @@ pub struct CaHudPlugin;
 
 impl Plugin for CaHudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(CaHudStatePlugin)
+        // The install's UI data over ours (`ui::install`), and the
+        // game's HUD panels bound by name when its HUD layout reads.
+        let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(CaUi::installed);
+        let panels = ui.install.as_ref().and_then(|i| i.hud.as_ref()).and_then(install::HudPanels::new);
+        app.insert_resource(ui)
+            .insert_resource(InstallHud(panels))
+            .add_plugins(CaHudStatePlugin)
             .insert_resource(GameDraws {
                 crosshair: true,
                 status: true,
                 hit_marker: true,
                 killfeed: true,
             })
-            .add_systems(Startup, (spawn, score::spawn_root, draw::load_faces))
+            .add_systems(Startup, (spawn, score::spawn_root, draw::load_faces, draw::load_art))
             .add_systems(Update, screen_size.before(HudUpdate))
             .add_systems(
                 Update,
@@ -889,6 +898,7 @@ impl Plugin for CaHudPlugin {
                     draw_damage,
                     draw_status,
                     draw_weapon,
+                    draw_install_panels,
                     draw_feed,
                     draw_tags,
                     score::draw_score,
@@ -924,6 +934,14 @@ struct WeaponRoot;
 struct FeedRoot;
 #[derive(Component)]
 struct TagRoot;
+#[derive(Component)]
+struct InstallRoot;
+
+/// The game's HUD panels bound by name (`install`), when the install's
+/// HUD layout reads: they draw the health and weapon panels in place of
+/// ours.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct InstallHud(pub Option<install::HudPanels>);
 
 pub(crate) fn layer(z: i32) -> impl Bundle {
     (
@@ -950,6 +968,31 @@ fn spawn(mut commands: Commands) {
     commands.spawn((WeaponRoot, layer(HUD_Z)));
     commands.spawn((FeedRoot, layer(HUD_Z)));
     commands.spawn((TagRoot, layer(HUD_Z - 2)));
+    commands.spawn((InstallRoot, layer(HUD_Z)));
+}
+
+/// The game's panels (`InstallHud`) with this frame's values.
+fn draw_install_panels(
+    hud: Res<CaHud>,
+    params: PenParams,
+    art: Option<Res<draw::CaArt>>,
+    mut panels: ResMut<InstallHud>,
+    root: Single<Entity, With<InstallRoot>>,
+    mut last: Local<Option<(Option<StatusView>, Option<WeaponPanel>, Screen, bool)>>,
+    mut commands: Commands,
+) {
+    let Some(p) = panels.0.as_mut() else { return };
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (hud.status.clone(), hud.weapon.clone(), hud.screen, loaded), *root, &mut commands) {
+        return;
+    }
+    p.bind(hud.status.as_ref(), hud.weapon.as_ref(), scale(hud.screen));
+    let ui = &params.0;
+    let draws = p.layout.draw(&ui.ctx());
+    let (fonts, faces) = (params.1.as_deref(), params.2.as_deref());
+    commands.entity(*root).with_children(|c| {
+        draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), fonts, faces);
+    });
 }
 
 /// A rect node, px.
@@ -1186,6 +1229,7 @@ pub(crate) fn pen<'a>(params: &'a PenParams, screen: Screen) -> Pen<'a> {
 fn draw_status(
     hud: Res<CaHud>,
     params: PenParams,
+    panels: Res<InstallHud>,
     root: Single<Entity, With<StatusRoot>>,
     mut last: Local<Option<(Option<StatusView>, Option<String>, Screen)>>,
     mut commands: Commands,
@@ -1211,6 +1255,9 @@ fn draw_status(
             );
         }
         let Some(s) = &hud.status else { return };
+        if panels.0.is_some() {
+            return;
+        }
         let box_of = |(at, size): (Vec2, Vec2)| screen.rect(at, size);
         // PLACEHOLDER backgrounds for the panel's textures.
         p.spawn(rect(box_of(status::PANEL), Color::srgba(0.05, 0.06, 0.07, 0.65)));
@@ -1260,6 +1307,7 @@ fn draw_status(
 fn draw_weapon(
     hud: Res<CaHud>,
     params: PenParams,
+    panels: Res<InstallHud>,
     root: Single<Entity, With<WeaponRoot>>,
     mut last: Local<Option<(Option<WeaponPanel>, Screen)>>,
     mut commands: Commands,
@@ -1268,6 +1316,9 @@ fn draw_weapon(
         return;
     }
     let Some(w) = &hud.weapon else { return };
+    if panels.0.is_some() {
+        return;
+    }
     let pen = pen(&params, hud.screen);
     commands.entity(*root).with_children(|p| {
         // Right-aligned in its box, centred on its y (Q3).
@@ -1303,11 +1354,13 @@ fn draw_weapon(
 fn draw_feed(
     hud: Res<CaHud>,
     params: PenParams,
+    art: Option<Res<draw::CaArt>>,
     root: Single<Entity, With<FeedRoot>>,
-    mut last: Local<Option<(Vec<FeedLineView>, Screen)>>,
+    mut last: Local<Option<(Vec<FeedLineView>, Screen, bool)>>,
     mut commands: Commands,
 ) {
-    if !rebuild(&mut last, (hud.feed.clone(), hud.screen), *root, &mut commands) {
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (hud.feed.clone(), hud.screen, loaded), *root, &mut commands) {
         return;
     }
     let pen = pen(&params, hud.screen);
@@ -1320,6 +1373,20 @@ fn draw_feed(
                 match item {
                     FeedItem::Text { x, text, colour } => {
                         hud_text_at(p, pen, Vec2::new(*x, l.y + 3.0), text, FEED_FONT, Effect::Stroke, *colour);
+                    }
+                    // The install's icons and badges when it has them
+                    // (64 x 20 and 32 x 20 ref, D5).
+                    FeedItem::Icon { x, icon } if feed_art(icon_art(icon), art.as_deref()).is_some() => {
+                        let (image, size) = feed_art(icon_art(icon), art.as_deref()).unwrap();
+                        let r = hud.screen.rect(Vec2::new(*x, l.y), Vec2::new(FEED_ICON_WIDTH, 20.0));
+                        let rect = Rect::new(0.0, 0.0, (size.x as f32).min(64.0), (size.y as f32).min(20.0));
+                        draw::image_part(p, &image, [r.min.x, r.min.y, r.max.x, r.max.y], rect, [255; 4]);
+                    }
+                    FeedItem::Badge { x, badge } if feed_art(badge_art(*badge), art.as_deref()).is_some() => {
+                        let (image, size) = feed_art(badge_art(*badge), art.as_deref()).unwrap();
+                        let r = hud.screen.rect(Vec2::new(*x, l.y), Vec2::new(FEED_BADGE_WIDTH, 20.0));
+                        let rect = Rect::new(0.0, 0.0, (size.x as f32).min(32.0), (size.y as f32).min(20.0));
+                        draw::image_part(p, &image, [r.min.x, r.min.y, r.max.x, r.max.y], rect, [255; 4]);
                     }
                     // PLACEHOLDER icons and badges: words in their slots.
                     FeedItem::Icon { x, icon } => {
@@ -1343,6 +1410,31 @@ fn draw_feed(
             }
         }
     });
+}
+
+/// A kill line's weapon slot's texture in the install (`ui::install`).
+fn icon_art(icon: &KillIcon) -> Option<String> {
+    match icon {
+        KillIcon::Weapon(Some(id)) => Some(crate::ui::install::kill_icon(id)),
+        _ => None,
+    }
+}
+
+/// A badge's texture in the install, where it has one.
+fn badge_art(b: Badge) -> Option<String> {
+    let f = match b {
+        Badge::Revenge => "revenge",
+        Badge::Headshot => "headshot",
+        Badge::Groin => "nutshot",
+        Badge::Flag => "flag_log_team",
+        Badge::Vip => "vip_vip",
+        _ => return None,
+    };
+    Some(format!("ui_hud_message/killdeath/icon/{f}.dtx"))
+}
+
+fn feed_art(name: Option<String>, art: Option<&draw::CaArt>) -> Option<(Handle<Image>, IVec2)> {
+    art?.get(&name?).cloned()
 }
 
 fn draw_tags(

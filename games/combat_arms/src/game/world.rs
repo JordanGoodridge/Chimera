@@ -37,8 +37,13 @@
 //! - Textures come from the install's `.dtx` files (`lithtech_formats::
 //!   dtx`, the level the shipped "DetailLevel" loads: `skipped_levels`;
 //!   `alpharef` cuts out); the plain maps' world textures are in unkeyed
-//!   archives. A texture that doesn't resolve (keyed archives without the
-//!   V2 key) leaves a flat colour of its own per name.
+//!   archives. A sprite (`.spr`) draws its first frame's texture
+//!   (`effects::library::sprite_texture`). A texture that doesn't resolve
+//!   (keyed archives without the V2 key; with it, a few files the install
+//!   lacks or ships empty) leaves a flat colour of its own per name, named
+//!   in the map's warnings.
+//! - With the V2 key every map of WORLDS, WORLDS4 and WORLDS5 (72) converts
+//!   too (`heavy::world`); TWINTOWER's file is a stub of 220 polygons.
 //! - Second textures ("Second textures", Q13; `second_layers`), over the
 //!   base texture before the lighting, in gamma space: dual-texture
 //!   sections (8, 9) blend texture 1 at UV1 (`MapMesh::uvs2`) by a =
@@ -72,21 +77,41 @@
 //!   model's faces as one hull) for `volumes::CaVolume`.
 //! - AI objects (`objects`): the AI volumes, nodes and regions as map
 //!   entities, every property as text, for the bots (`bots::map_ai`).
+//! - Mode objects (`objects` too): every `GameStartPoint` (with its feet
+//!   on the floor and its yaw added, `start_point_feet`), the item drop
+//!   points (`ObjectSpawnPoint`), bomb sites (`BombZoneTrigger`), flags
+//!   (`FlagItem`), flag zones (`FlagZoneTrigger`), use triggers
+//!   (`ActivateTrigger`) and mode controllers (`TDMGameControl`), for the
+//!   game modes' objectives and each mode's spawn family
+//!   (`rules::objects`).
 //! - Props: objects that name a model (`props`: the capture-the-flag
 //!   flags, whose model needs the V2 key).
 //! - View models: the weapons' first-person models their data names
 //!   (`view_model`), loaded with every map from the install (`load_from`).
 //! - Spawns: the `GameStartPoint` objects that serve the team modes'
 //!   family (`SPAWN_GAME_TYPE`, `Team Death Match`: game_modes.md S4,
-//!   `qualifies`: unlocked, `Spawn` exactly 1), in the map's order (the
-//!   rules' spawn cursors walk it), else the map's first start point;
-//!   dropped to the floor below them, facing their yaw; `Teams` JSF is
-//!   `Team(1)`, Creed `Team(2)`, `<none>` neither.
+//!   `qualifies`: unlocked, `Spawn` exactly 1) when it has one on a team,
+//!   else the map's own family (`map_family`: the one with the most
+//!   qualifying points, as HGOILRIG's `HungerGame`), in the map's order
+//!   (the rules' spawn cursors walk it), else the map's first start point;
+//!   dropped to the floor below them (never onto a sky portal, as the
+//!   world's outer box: over the void, onto the surface a ray meets, as
+//!   the sea's; else not at all), facing their yaw; `Teams` JSF is `Team(1)`, Creed `Team(2)`,
+//!   `<none>` neither.
 //! - No map file hash (Q15): the game checks none, a client loads its own
 //!   copy by name, so the network handshake compares only the name.
 //!
 //! Known shortcuts (docs/tech-debt.md): fullbright masks aren't drawn
-//! (Q13 still open: whether the lightmap multiplies over them). The flat
+//! (Q13 still open: whether the lightmap multiplies over them). A map
+//! whose lightmaps don't fit one 8192 x 8192 atlas (`ATLAS_MAX`, the GPU's
+//! limit; TERRORDOME's are 4096 x 19428) has them all at half resolution
+//! (one atlas, not the game's pages). A sprite texture doesn't animate.
+//! The spawns drop straight down by a ray (not the hull). HGOILRIG's
+//! start points (its one team point and the `HungerGame` ones) have no
+//! solid floor below them in the physics BSP, only the sliding water's
+//! surface over the `Water` volume and the outer box: they land on the
+//! water (the floor the world's geometry under them may lack, a
+//! keyframed or unconverted piece, is not looked for). The flat
 //! environment map's world environment-map matrix is taken as the
 //! identity and `EnvScale` as 1 (neither is in the specs), so it reads
 //! (r.x, r.y) x -0.5 + 0.5 of the view-space reflection; the console
@@ -122,8 +147,10 @@ use crate::{
 /// The prefix of Combat Arms' map ids.
 pub const MAP_PREFIX: &str = "combat_arms:";
 
-/// The game type whose start points a map spawns at: the family of the
-/// modes there are (TDM and Elimination Pro, game_modes.md S4).
+/// The game type whose start points become the map's spawn points: the
+/// team modes' family (TDM, Elimination Pro, game_modes.md S4); the other
+/// modes pick their own family's from the passed-through start points
+/// (`rules::spawns`).
 pub const SPAWN_GAME_TYPE: &str = "Team Death Match";
 
 /// Object classes whose world models collide where they stand without a
@@ -151,6 +178,11 @@ pub const SATURATE: f32 = 2.0;
 
 /// Atlas texels between packed lightmaps' borders and its width.
 const ATLAS_WIDTH: u32 = 4096;
+
+/// The largest atlas side: the GPU's 2D texture limit (wgpu's default
+/// 8192). A map whose lightmaps don't fit is laid out 8192 wide, then
+/// with its lightmaps at half resolution until they do (TERRORDOME).
+pub const ATLAS_MAX: u32 = 8192;
 
 /// Map `id` (`combat_arms:<name>`, or the bare name) from the install.
 pub fn load(id: &str) -> Result<MapData, String> {
@@ -196,8 +228,19 @@ pub fn map_names(mount: &Mount) -> Vec<String> {
     names
 }
 
-/// Map `name` from a mounted install.
+/// Map `name` from a mounted install, with the view models and
+/// character models every map carries.
 pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
+    let mut map = load_world(mount, name)?;
+    let file = |path: &str| mount.read(path).ok();
+    super::view_model::add_view_models(&mut map, &file);
+    super::characters::models::add_character_models(&mut map, &file);
+    Ok(map)
+}
+
+/// Map `name` from a mounted install: the world and its effects only
+/// (`load_from` without the models every map shares).
+pub fn load_world(mount: &Mount, name: &str) -> Result<MapData, String> {
     let path = find(mount, name).ok_or_else(|| format!("{name}: no such map (worlds*/{name}.dat)"))?;
     let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
     let world = World::parse(&bytes).map_err(|e| format!("{path}: {e}"))?;
@@ -205,8 +248,6 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
     let file = |path: &str| mount.read(path).ok();
     let mut map = convert(&world, name, scale, &file);
     map.warnings.extend(world.warnings.iter().map(|w| format!("{path}: {w}")));
-    super::view_model::add_view_models(&mut map, &file);
-    super::characters::models::add_character_models(&mut map, &file);
     super::effects::library::add_to_map(&mut map, &world, &file);
     if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
         super::props::dev_prop(&world, &mut map, &spec, scale, &file);
@@ -268,10 +309,13 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
 
     map.fog = properties.and_then(|o| world_fog(o, scale, false));
     map.sky_camera = sky.and_then(|o| sky_camera(world, o, properties, scale));
-    collision(world, &mut map, &to_engine);
+    let sky = collision(world, &mut map, &to_engine);
     volumes(world, &mut map, scale);
-    objects(world, &mut map, scale, super::bots::map_ai::is_ai_object);
-    spawns(world, &mut map, &to_engine);
+    objects(world, &mut map, scale, |c| {
+        super::bots::map_ai::is_ai_object(c) || super::rules::objects::is_mode_object(c)
+    });
+    spawns(world, &mut map, &sky, &to_engine);
+    start_point_feet(world, &mut map, &sky, scale, &to_engine);
     super::props::add_objects(world, &mut map, scale, file);
     if map.spawns.is_empty() {
         map.warnings.push("no GameStartPoint: spawning at the origin".into());
@@ -623,15 +667,29 @@ fn add_block(
 /// `alpharef`); a name that doesn't resolve keeps the mesh's flat colour,
 /// with a warning.
 pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
-    let mut missing = 0;
+    let mut missing = std::collections::BTreeMap::<String, String>::new();
     for m in meshes {
         if m.material.is_empty() || m.material.eq_ignore_ascii_case("default") {
             continue;
         }
-        let path = m.material.replace('\\', "/").to_lowercase();
-        let Some(dtx) = file(&path).and_then(|b| Dtx::parse(b).ok()) else {
-            missing += 1;
-            continue;
+        let mut path = m.material.replace('\\', "/").to_lowercase();
+        // A sprite (world_dat.md: a name ending in `.spr`) draws its
+        // first frame's texture.
+        if path.ends_with(".spr")
+            && let Some(first) = file(&path).and_then(|b| super::effects::library::sprite_texture(&b))
+        {
+            path = first;
+        }
+        let dtx = match file(&path).map(Dtx::parse) {
+            Some(Ok(d)) => d,
+            Some(Err(e)) => {
+                missing.insert(path, format!("unreadable: {e}"));
+                continue;
+            }
+            None => {
+                missing.insert(path, "missing or locked".into());
+                continue;
+            }
         };
         if let (Some(r), MapAlpha::Opaque) = (dtx.alpha_ref(), m.alpha) {
             m.alpha = MapAlpha::Mask(r as f32 / 255.0);
@@ -649,9 +707,13 @@ pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(
         m.texture = Some(map.textures.len() - 1);
         m.color = [255; 3];
     }
-    if missing > 0 {
-        map.warnings
-            .push(format!("{missing} textures missing or unreadable (keyed archives need the V2 key): flat colours"));
+    if !missing.is_empty() {
+        let names: Vec<String> = missing.iter().take(8).map(|(p, why)| format!("{p} ({why})")).collect();
+        map.warnings.push(format!(
+            "{} textures missing or unreadable (keyed archives need the V2 key), flat colours: {}",
+            missing.len(),
+            names.join(", ")
+        ));
     }
 }
 
@@ -858,8 +920,9 @@ fn model_flags(world: &World, name: &str) -> (bool, bool) {
 /// The collision (Q5, Q14): solid polygons of the physics BSP and of
 /// solid objects' world models for everything; their other polygons and
 /// ray-hit-only world models for traces only; the collision blockers for
-/// players only.
-fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec3) {
+/// players only. Returns the solid sky-portal triangles (the world's outer
+/// box among them), which are no floor to drop a spawn on.
+fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec3) -> Vec<[u32; 3]> {
     let positions = &mut map.collision_positions;
     let mut fan = |points: &mut dyn Iterator<Item = lt::Vec3>, out: &mut Vec<[u32; 3]>| {
         let base = positions.len() as u32;
@@ -875,6 +938,7 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
     };
     let (mut solid, mut traces, mut blockers) = (Vec::new(), Vec::new(), Vec::new());
     let (mut glass, mut glass_traces) = (Vec::new(), Vec::new());
+    let mut sky = Vec::new();
     for m in &world.models {
         let (is_solid, rayhit) = if m.is_physics() { (true, true) } else { model_flags(world, &m.name) };
         if !(is_solid || rayhit) {
@@ -889,7 +953,11 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
                 (false, false) => &mut traces,
                 (false, true) => &mut glass_traces,
             };
+            let before = out.len();
             fan(&mut m.polygon_vertices(i), out);
+            if is_solid && surface.flags & (surface_flags::SOLID | surface_flags::SKY_PORTAL) == (surface_flags::SOLID | surface_flags::SKY_PORTAL) {
+                sky.extend_from_slice(&out[before..]);
+            }
         }
     }
     for p in &world.blockers.polygons {
@@ -927,6 +995,7 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
             see_through: true,
         },
     ];
+    sky
 }
 
 /// The volume objects (`volumes::is_volume`) as map entities: their class
@@ -1029,26 +1098,68 @@ pub fn qualifies(o: &lt::Object, family: &str) -> bool {
     o.string("GameType") == Some(family) && o.bool("Locked") != Some(true) && o.int("Spawn") == Some(1)
 }
 
-/// The start points of `SPAWN_GAME_TYPE` that qualify (`qualifies`), in
-/// the map's order, feet on the floor below them; none: the map's first
-/// start point (S4).
-fn spawns(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec3) {
+/// The family a map's spawns come from (game_modes.md S4): the team
+/// modes' (`SPAWN_GAME_TYPE`) when it has a qualifying point on a team
+/// (JSF or Creed: team modes leave `<none>` points out), else the map's
+/// own: the family with the most qualifying unlocked points (the first in
+/// map order on a tie; Hunted maps' `HungerGame`, say); None without any.
+/// Each point is (`GameType`, unlocked, `Spawn` is 1, on a team).
+pub fn map_family<'a>(points: impl Iterator<Item = (&'a str, bool, bool, bool)> + Clone) -> Option<&'a str> {
+    if points
+        .clone()
+        .any(|(f, unlocked, q, team)| f == SPAWN_GAME_TYPE && q && unlocked && team)
+    {
+        return Some(SPAWN_GAME_TYPE);
+    }
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    for (f, unlocked, q, _) in points {
+        if !(q && unlocked) {
+            continue;
+        }
+        match counts.iter_mut().find(|(g, _)| *g == f) {
+            Some((_, n)) => *n += 1,
+            None => counts.push((f, 1)),
+        }
+    }
+    let best = counts.iter().map(|(_, n)| *n).max()?;
+    counts.into_iter().find(|(_, n)| *n == best).map(|(f, _)| f)
+}
+
+fn start_team(o: &lt::Object) -> Option<Team> {
+    match o.string("Teams") {
+        Some(t) if t.eq_ignore_ascii_case("JSF") => Some(Team(1)),
+        Some(t) if t.eq_ignore_ascii_case("Creed") => Some(Team(2)),
+        _ => None,
+    }
+}
+
+/// The start points of the map's family (`map_family`) that qualify
+/// (`qualifies`), in the map's order, feet on the floor below them; none:
+/// the map's first start point (S4).
+fn spawns(world: &World, map: &mut MapData, sky: &[[u32; 3]], to_engine: &impl Fn(lt::Vec3) -> Vec3) {
     let all: Vec<&lt::Object> = world.objects_of("GameStartPoint").map(|(_, o)| o).collect();
-    let mut starts: Vec<&lt::Object> = all.iter().copied().filter(|o| qualifies(o, SPAWN_GAME_TYPE)).collect();
+    let family = map_family(all.iter().map(|o| {
+        (
+            o.string("GameType").unwrap_or(""),
+            o.bool("Locked") != Some(true),
+            o.int("Spawn") == Some(1),
+            start_team(o).is_some(),
+        )
+    }));
+    let mut starts: Vec<&lt::Object> = match family {
+        Some(f) => all.iter().copied().filter(|o| qualifies(o, f)).collect(),
+        None => Vec::new(),
+    };
     if starts.is_empty() {
         starts = all.into_iter().take(1).collect();
     }
-    let floor = Floor::new(map);
+    let floor = Floor::new(map, sky);
     let (mut spawns, mut yaws) = (Vec::new(), Vec::new());
     for o in starts {
         let Some(pos) = o.pos() else { continue };
         let at = to_engine(pos);
         let feet = floor.below(at).unwrap_or(at);
-        let team = match o.string("Teams") {
-            Some(t) if t.eq_ignore_ascii_case("JSF") => Some(Team(1)),
-            Some(t) if t.eq_ignore_ascii_case("Creed") => Some(Team(2)),
-            _ => None,
-        };
+        let team = start_team(o);
         // The facing is (sin yaw, 0, cos yaw) in file axes, so (sin yaw,
         // 0, -cos yaw) here; an `Intent` yaw turns the other way.
         let yaw = o.rotation("Rotation").map_or(0.0, |r| r[1]);
@@ -1059,37 +1170,91 @@ fn spawns(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec
     map.spawn_yaws = yaws;
 }
 
+/// Each passed-through `GameStartPoint` entity (in map order, as
+/// `objects` passed them) gets its feet on the floor below it
+/// (`FEET_KEY`, entity space, as `spawns` drops a point) and its facing
+/// as an engine yaw (`YAW_KEY`), so a mode can spawn at any family's
+/// points (game_modes.md S4).
+fn start_point_feet(world: &World, map: &mut MapData, sky: &[[u32; 3]], scale: f32, to_engine: &impl Fn(lt::Vec3) -> Vec3) {
+    let floor = Floor::new(map, sky);
+    let feet: Vec<(Vec3, f32)> = world
+        .objects_of("GameStartPoint")
+        .map(|(_, o)| {
+            let at = o.pos().map(to_engine).unwrap_or(Vec3::ZERO);
+            let yaw = o.rotation("Rotation").map_or(0.0, |r| r[1]);
+            (floor.below(at).unwrap_or(at), -yaw)
+        })
+        .collect();
+    let starts = map
+        .entities
+        .iter_mut()
+        .filter(|e| e.classname() == "GameStartPoint");
+    for (e, (at, yaw)) in starts.zip(feet) {
+        let v = engine_to_entity(at, scale);
+        e.keyvalues.push((FEET_KEY.into(), format!("{} {} {}", v.x, v.y, v.z)));
+        e.keyvalues.push((YAW_KEY.into(), yaw.to_string()));
+    }
+}
+
+/// The feet of a passed-through start point (entity space), and its yaw
+/// (engine radians), added by `start_point_feet`.
+pub const FEET_KEY: &str = "chimera_feet";
+pub const YAW_KEY: &str = "chimera_yaw";
+
 /// Downward rays against what players stand on (the collision triangles
-/// and the players-only sets).
+/// and the players-only sets) but sky portals (the world's outer box is
+/// one: below it is the void, not a floor); failing that, against what
+/// rays meet (the trace-only sets: a liquid's surface, non-solid detail).
 struct Floor<'a> {
     positions: &'a [[f32; 3]],
     triangles: Vec<([u32; 3], Vec2, Vec2)>,
+    surfaces: Vec<([u32; 3], Vec2, Vec2)>,
 }
 
 impl<'a> Floor<'a> {
-    fn new(map: &'a MapData) -> Self {
+    fn new(map: &'a MapData, sky: &[[u32; 3]]) -> Self {
+        let sky: std::collections::HashSet<[u32; 3]> = sky.iter().copied().collect();
         let p = |i: u32| Vec3::from(map.collision_positions[i as usize]);
+        let boxed = |t: &[u32; 3]| {
+            let [a, b, c] = t.map(p);
+            (*t, a.xz().min(b.xz()).min(c.xz()), a.xz().max(b.xz()).max(c.xz()))
+        };
         let players = map.collision_sets.iter().filter(|s| s.characters).flat_map(|s| &s.indices);
         let triangles = map
             .collision_indices
             .iter()
+            .filter(|t| !sky.contains(*t))
             .chain(players)
-            .map(|t| {
-                let [a, b, c] = t.map(p);
-                (*t, a.xz().min(b.xz()).min(c.xz()), a.xz().max(b.xz()).max(c.xz()))
-            })
+            .map(boxed)
+            .collect();
+        let surfaces = map
+            .collision_sets
+            .iter()
+            .filter(|s| !s.characters && s.traces)
+            .flat_map(|s| &s.indices)
+            .map(boxed)
             .collect();
         Self {
             positions: &map.collision_positions,
             triangles,
+            surfaces,
         }
     }
 
-    /// The highest surface point at or below `at` (within 4 m).
+    /// The highest floor point at or below `at`, however far down
+    /// (movement.md "Spawn and respawn", case 47: an air spawn starts on
+    /// the floor), but never a sky portal: over the void, the highest
+    /// surface a ray meets (a liquid's), else None (no drop).
     fn below(&self, at: Vec3) -> Option<Vec3> {
+        self.highest(&self.triangles, at)
+            .or_else(|| self.highest(&self.surfaces, at))
+            .map(|y| Vec3::new(at.x, y, at.z))
+    }
+
+    fn highest(&self, triangles: &[([u32; 3], Vec2, Vec2)], at: Vec3) -> Option<f32> {
         let p = |i: u32| Vec3::from(self.positions[i as usize]);
         let mut best: Option<f32> = None;
-        for (t, lo, hi) in &self.triangles {
+        for (t, lo, hi) in triangles {
             if at.x < lo.x || at.x > hi.x || at.z < lo.y || at.z > hi.y {
                 continue;
             }
@@ -1100,7 +1265,7 @@ impl<'a> Floor<'a> {
             }
             // The plane's height at (x, z), then inside the triangle.
             let y = a.y - (n.x * (at.x - a.x) + n.z * (at.z - a.z)) / n.y;
-            if y > at.y + 0.01 || y < at.y - 4.0 {
+            if y > at.y + 0.01 {
                 continue;
             }
             let q = Vec3::new(at.x, y, at.z);
@@ -1112,7 +1277,7 @@ impl<'a> Floor<'a> {
                 best = Some(y);
             }
         }
-        best.map(|y| Vec3::new(at.x, y, at.z))
+        best
     }
 }
 
@@ -1125,6 +1290,51 @@ struct Atlas {
 }
 
 impl Atlas {
+    /// Shelf places (tallest first) at `width`, and the height used.
+    fn shelves(&self, width: u32) -> (Vec<(u32, u32)>, u32) {
+        let mut order: Vec<usize> = (0..self.rects.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse((self.rects[i].1, self.rects[i].0)));
+        let mut places = vec![(0u32, 0u32); self.rects.len()];
+        let (mut x, mut y, mut shelf) = (0u32, 0u32, 0u32);
+        for &i in &order {
+            let (w, h) = (self.rects[i].0 + 2, self.rects[i].1 + 2);
+            if x + w > width {
+                (x, y, shelf) = (0, y + shelf, 0);
+            }
+            places[i] = (x, y);
+            x += w;
+            shelf = shelf.max(h);
+        }
+        (places, (y + shelf).max(1).next_multiple_of(4))
+    }
+
+    /// Every rectangle bigger than 2 x 2 at half its resolution (each
+    /// texel the mean of the up to 2 x 2 it covers); the 2 x 2 ones are
+    /// vertex lighting's exact blends and stay.
+    fn halve(&mut self) {
+        for (w, h, texels) in &mut self.rects {
+            if *w * *h <= 4 {
+                continue;
+            }
+            let (nw, nh) = (w.div_ceil(2), h.div_ceil(2));
+            let mut out = Vec::with_capacity((nw * nh) as usize);
+            for y in 0..nh {
+                for x in 0..nw {
+                    let mut sum = Vec3::ZERO;
+                    let mut n = 0.0;
+                    for (sx, sy) in [(2 * x, 2 * y), (2 * x + 1, 2 * y), (2 * x, 2 * y + 1), (2 * x + 1, 2 * y + 1)] {
+                        if sx < *w && sy < *h {
+                            sum += Vec3::from(texels[(sy * *w + sx) as usize]);
+                            n += 1.0;
+                        }
+                    }
+                    out.push((sum / n).to_array());
+                }
+            }
+            (*w, *h, *texels) = (nw, nh, out);
+        }
+    }
+
     fn add(&mut self, width: u32, height: u32, texels: Vec<[f32; 3]>) -> u32 {
         self.rects.push((width, height, texels));
         (self.rects.len() - 1) as u32
@@ -1142,22 +1352,19 @@ impl Atlas {
 
     /// Lay the rectangles out in shelves (tallest first), each with a
     /// one-texel border copied from its edge.
-    fn finish(self) -> LaidOut {
-        let mut order: Vec<usize> = (0..self.rects.len()).collect();
-        order.sort_by_key(|&i| std::cmp::Reverse((self.rects[i].1, self.rects[i].0)));
-        let mut places = vec![(0u32, 0u32); self.rects.len()];
-        let (mut x, mut y, mut shelf) = (0u32, 0u32, 0u32);
-        for &i in &order {
-            let (w, h) = (self.rects[i].0 + 2, self.rects[i].1 + 2);
-            if x + w > ATLAS_WIDTH {
-                (x, y, shelf) = (0, y + shelf, 0);
+    fn finish(mut self) -> LaidOut {
+        let mut width = ATLAS_WIDTH;
+        let (places, height) = loop {
+            let (places, height) = self.shelves(width);
+            if height <= ATLAS_MAX {
+                break (places, height);
             }
-            places[i] = (x, y);
-            x += w;
-            shelf = shelf.max(h);
-        }
-        let width = ATLAS_WIDTH;
-        let height = (y + shelf).max(1).next_multiple_of(4);
+            if width < ATLAS_MAX {
+                width = ATLAS_MAX;
+            } else {
+                self.halve();
+            }
+        };
         let mut rgb = vec![[1.0f32; 3]; (width * height) as usize];
         for (i, (w, h, texels)) in self.rects.iter().enumerate() {
             let (px, py) = places[i];

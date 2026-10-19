@@ -46,6 +46,101 @@ fn on(rig: &Rig, name: &str) -> Tracker {
     Tracker::on(rig.list.find(name).unwrap_or_else(|| panic!("no {name}")), true)
 }
 
+/// The drawn pose's frame: the rig's bind pose as `locals_rh` (what the
+/// body's `Animator::fixed` gets) is the drawn skeleton's bind
+/// (`model::bones`), node by node; and the standing pose stays near it
+/// (no node more than a body height from its bind place).
+#[test]
+fn drawn_pose_matches_the_drawn_skeleton() {
+    let Some(rig) = load(false) else { return };
+    let bones = model::bones(&rig.model);
+    let locals = rig.bind().locals_rh();
+    assert_eq!(bones.len(), locals.len());
+    for (j, (b, (q, p))) in bones.iter().zip(&locals).enumerate() {
+        let dp = (b.position - *p).length();
+        let dq = b.rotation.dot(*q).abs();
+        assert!(dp < 0.01 && dq > 0.9999, "{} ({j}): bind {:?} {:?}, posed {p:?} {q:?}", b.name, b.position, b.rotation);
+    }
+    let globals = |l: &[(Quat, Vec3)]| -> Vec<Vec3> {
+        let mut g: Vec<(Quat, Vec3)> = Vec::new();
+        for (j, (q, p)) in l.iter().enumerate() {
+            let x = match bones[j].parent {
+                Some(par) => (g[par].0 * *q, g[par].1 + g[par].0 * *p),
+                None => (*q, *p),
+            };
+            g.push(x);
+        }
+        g.into_iter().map(|x| x.1).collect()
+    };
+    let (bind, posed) = (globals(&locals), globals(&stand(&rig, 0.0).locals_rh()));
+    for (j, (a, b)) in bind.iter().zip(&posed).enumerate() {
+        assert!((*a - *b).length() < 80.0, "{}: bind {a}, standing {b}", bones[j].name);
+    }
+}
+
+/// The default male body as the map carries it, skinned as the renderer
+/// does (joints under the model's root, inverse binds from the same
+/// chain): it stands on the body's origin, about a man tall, and in the
+/// standing pose every vertex keeps its distance to the node that weighs
+/// most on it (a mesh outside the root's frame swings about far-off
+/// nodes: the body drawn torn apart, sunk to the waist).
+#[test]
+fn drawn_body_skins_in_its_frame() {
+    use chimera_world::map::MapData;
+    use combat_arms::game::characters::models;
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let file = |p: &str| mount.read(p).ok();
+    let mut map = MapData::default();
+    models::add_character_models(&mut map, &file);
+    let Some(body) = map.characters.iter().find(|c| c.name.as_deref() == Some(models::body_name(0).as_str())) else {
+        eprintln!("skipping: no character bodies (V2 key)");
+        return;
+    };
+    let Some(rig) = load(false) else { return };
+    let chain = |l: &[(Quat, Vec3)]| -> Vec<Mat4> {
+        let mut g: Vec<Mat4> = Vec::new();
+        for (j, (q, p)) in l.iter().enumerate() {
+            let local = Mat4::from_rotation_translation(*q, *p);
+            g.push(body.bones[j].parent.map_or(body.root.to_matrix() * local, |par| g[par] * local));
+        }
+        g
+    };
+    let bind = chain(&body.bones.iter().map(|b| (b.rotation, b.position)).collect::<Vec<_>>());
+    let posed = chain(&stand(&rig, 0.0).locals_rh());
+    let (mut low, mut high, mut worst) = (f32::MAX, f32::MIN, (0.0f32, String::new()));
+    for (k, mesh) in body.model.meshes.iter().enumerate() {
+        for (v, p) in mesh.positions.iter().enumerate() {
+            let p = Vec3::from(*p);
+            (low, high) = (low.min(p.y), high.max(p.y));
+            let j = mesh.joints[v]
+                .iter()
+                .zip(mesh.joint_weights[v])
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .unwrap()
+                .0;
+            let j = *j as usize;
+            let skinned: Vec3 = mesh.joints[v]
+                .iter()
+                .zip(mesh.joint_weights[v])
+                .map(|(&n, w)| (posed[n as usize] * bind[n as usize].inverse()).transform_point3(p) * w)
+                .sum();
+            let at_bind = (bind[j].w_axis.truncate() - p).length();
+            let at_pose = (posed[j].w_axis.truncate() - skinned).length();
+            if (at_pose - at_bind).abs() > worst.0 {
+                worst = ((at_pose - at_bind).abs(), format!("piece {k} vertex {v} on {}", body.bones[j].name));
+            }
+        }
+    }
+    eprintln!("body from {low} to {high} m; worst drift {worst:?}");
+    assert!(low.abs() < 0.15, "feet at {low} m");
+    assert!((1.2..2.0).contains(&high), "top at {high} m");
+    assert!(worst.0 < 0.05, "{} drifts {} m from its node", worst.1, worst.0);
+}
+
 /// The layered pose of section 4 at t = 0 (stand: crouch weight 0).
 fn stand(rig: &Rig, r: f32) -> Posed {
     let mut crouch = on(rig, "LC");
@@ -277,4 +372,82 @@ fn warehouse_players_wear_their_bodies() {
     assert_eq!(found, 33, "the default male's 33 spheres");
     let animator = world.get::<Animator>(p).expect("the body's animator");
     assert!(animator.fixed.is_some(), "drawn from the driver's pose");
+}
+
+/// characters.md section 2 with the keys: each loaded body (the default
+/// male, record 0, and its female twin, record 7) wears its default face
+/// (face 0, and 4 for the female: the face redirect) and the head piece
+/// that goes with it (the default selection's `HBasic` has no model, so
+/// the face's `HairIndex`, when it has one), merged on its skeleton:
+/// every piece of the body, the face and the head piece is in the drawn
+/// model, textured, and the merged pieces reach the head (above 1.3 m).
+/// Skips without the V1 and V2 keys.
+#[test]
+fn default_bodies_wear_face_and_head() {
+    use chimera_world::map::MapData;
+    use combat_arms::game::characters::models;
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let keys = combat_arms::game::mount::keys().unwrap_or_default();
+    if !(keys.contains_key("V1") && keys.contains_key("V2")) {
+        eprintln!("skipping: needs the V1 and V2 keys");
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let file = |p: &str| mount.read(p).ok();
+    let data = records::data();
+    assert!(data.face(0).and_then(|f| f.file.as_ref()).is_some(), "the install's Face0 has a file");
+    let mut map = MapData::default();
+    models::add_character_models(&mut map, &file);
+    for (id, face_id) in [(0, 0), (7, 4)] {
+        let record = data.model(id).unwrap();
+        assert_eq!(data.default_face(id), face_id);
+        let face = data.face(face_id).unwrap();
+        let head = data.worn_head(0, face_id, record.skeleton);
+        let pieces = |path: &str| model::load(path, &file).unwrap().model.pieces.len();
+        let body_pieces = pieces(&record.file);
+        let face_file = face.file.clone().expect("face file");
+        let face_pieces = pieces(&face_file);
+        let head_file = data.head_file(head, record.skeleton).map(str::to_string);
+        let head_pieces = head_file.as_deref().map_or(0, pieces);
+        eprintln!(
+            "body {id} ({}): {body_pieces} pieces; face {face_id} {face_file}: {face_pieces}; head piece {head} {head_file:?}: {head_pieces}",
+            record.file
+        );
+        let body = map
+            .characters
+            .iter()
+            .find(|c| c.name.as_deref() == Some(models::body_name(id).as_str()))
+            .unwrap_or_else(|| panic!("body {id} not loaded: {:?}", map.warnings));
+        let meshes = &body.model.meshes;
+        assert!(face_pieces > 0);
+        assert!(meshes.len() >= body_pieces + face_pieces + head_pieces, "{} meshes", meshes.len());
+        // The merged pieces: textured, and at the head (the body's feet
+        // at 0, the head about 1.5 m up).
+        for (k, mesh) in meshes.iter().enumerate().skip(meshes.len() - face_pieces - head_pieces) {
+            assert!(mesh.texture.is_some(), "body {id}: merged mesh {k} ({}) untextured", mesh.material);
+            let top = mesh.positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+            assert!(top > 1.3, "body {id}: merged mesh {k} tops out at {top} m");
+        }
+        assert!(body.model.skins.iter().all(|s| s.len() == meshes.len()));
+    }
+    // The female face comes with a head piece (its hair).
+    assert!(data.face(4).and_then(|f| f.hair).is_some());
+    // Other players hold their weapon's own third-person model (`HHModel`
+    // with its `HHSkin#`), textured, for every weapon players are given.
+    let ours = combat_arms::game::data::builtin_weapon_ids();
+    let with_model: Vec<_> = combat_arms::game::data::weapon_set()
+        .weapons
+        .iter()
+        .filter(|w| ours.contains(&w.id) && w.models.world.is_some())
+        .map(|w| w.id.clone())
+        .collect();
+    assert!(with_model.len() >= 10, "{with_model:?}");
+    for id in &with_model {
+        let held = map.held.iter().find(|h| &h.key == id).unwrap_or_else(|| panic!("{id}: no held model: {:?}", map.warnings));
+        assert!(!held.model.meshes.is_empty(), "{id}");
+        assert!(held.model.meshes.iter().any(|m| m.texture.is_some()), "{id}: untextured (the grey box)");
+    }
 }

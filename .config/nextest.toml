@@ -17,8 +17,6 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 [test-groups]
 # Five heavy tests at once (~6 GB typical); the big ones take more slots.
 heavy = { max-threads = 5 }
-# Combat Arms' heavy tests: a map load takes ~10 GB (below).
-ca-maps = { max-threads = 1 }
 
 # Overrides apply first match first, per setting. Tests are named by test
 # binary (`binary_id(<package>::<binary>)`: each crate's tests/it/ is its
@@ -33,22 +31,16 @@ threads-required = 3
 priority = 100
 slow-timeout = { period = "180s", terminate-after = 10 }
 
-# Combat Arms' tests that load a map from the install: ~10 GB each (the
-# map with every character, view model and effect: 9.6 GB peak for
-# WAREHOUSE, 10 GB for a shard of five maps, 2026-10-19) and ~17 s a map
-# alone, nearly all of it every weapon's view model. Their own group,
-# one at a time, beside the other heavy tests' slots. The map
-# conversion's shards (heavy::world::every_plain_map_converts::shard_*,
-# ~1.5 minutes each) start early.
+# Combat Arms' map sweeps convert an archive's maps two at a time
+# (threads; 2.3 GB, 15-30 s alone, 2026-10-19). Before `load_world` left
+# out the view models every map shares, a Combat Arms map load took
+# ~10 GB and 17 s, and the one test over the 33 plain maps ran 17-20
+# minutes beside four others like it: the box ran out of memory.
 [[profile.default.overrides]]
-filter = 'binary_id(combat_arms::it) & test(/^heavy::world::every_plain_map_converts::/)'
-test-group = 'ca-maps'
+filter = 'binary_id(combat_arms::it) & test(/^heavy::world::(every_plain_map_converts|keyed_maps_)/)'
+test-group = 'heavy'
+threads-required = 2
 priority = 80
-
-[[profile.default.overrides]]
-filter = 'binary_id(combat_arms::it) & test(/^heavy::/)'
-test-group = 'ca-maps'
-priority = 70
 
 # The capacity test: a server and four clients like the soak, 32
 # characters; weighted like it until measured on its own.

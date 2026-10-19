@@ -69,12 +69,16 @@ in the lowest crate whose public API it needs:
   whole simulation, placeholders included) and the greybox, or a map
   converted from a world built in code (`world.rs`); its spec test cases
   as each subsystem is implemented; in `heavy` the install's maps
-  (`heavy::world`: every plain map converts, a player walks and collides
-  on WAREHOUSE; `heavy::model`: a prop model converts and animates as
+  (`heavy::world`: every map converts and a player lands at its first
+  spawn, the plain ones in one test and the V2-keyed ones one test per
+  archive, two maps at a time; a player walks and collides on
+  WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`) in
-  tests/ui/, built with `ui`;
+  tests/ui/, built with `ui` (`heavy::install_ui`: the install's own
+  layouts and string tables through the UI system's readers, the
+  game's HUD panels bound by name and its in-game menu, V1 key);
 - `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
   Arms' dedicated server as its binary composes it (`ServerPlugin`, its
   command line) with headless clients over UDP on loopback (`dedicated`:
@@ -143,14 +147,13 @@ fetch) is fetched first.
   it trims the clone's `target/` to 150 GB with `cargo sweep` (install it
   with `cargo install cargo-sweep`; skipped without it). The full
   suite is `cargo nextest run --features dev` (at most 8 tests at once
-  and 5 heavy slots, the biggest heavy tests taking 2-3 (Combat Arms'
-  map loads ~10 GB each: 2), `.config/nextest.toml`: memory, not CPU,
-  is the limit with other builds running; a heavy test that loops over
-  maps belongs split into one test per map, as `map_courses`, `map_surf`
-  and `map_ladders` are, or in shards when the install decides the list,
-  as Combat Arms' `heavy::world::every_plain_map_converts::shard_*`; a
-  hung test is killed after 5 minutes, a heavy one after 12, the soak
-  after 30), or
+  and 5 heavy slots, the biggest heavy tests taking 2-3,
+  `.config/nextest.toml`: memory, not CPU, is the limit with other
+  builds running; a heavy test that loops over maps belongs split into
+  one test per map, as `map_courses`, `map_surf` and `map_ladders` are,
+  or per archive, as Combat Arms' `heavy::world::keyed_maps_*`; a hung
+  test is killed after 5 minutes, a heavy one after 12, the soak after
+  30), or
   `cargo test --features dev` without nextest (twice as slow: in one
   process the heavy tests contend). nextest runs each test in its own
   process; install it once with `cargo install cargo-nextest --locked` (or
@@ -1228,7 +1231,15 @@ triangles, textures, spawns and warnings. The world files' numbers:
 (`every_plain_map_summary` prints each map's version and counts).
 `+ingamemenu` opens Combat Arms' in-game menu (Esc) for a screenshot of
 it, e.g. `--window 1280x720 --screenshot menu.png --frames 120
-+ingamemenu`.
++ingamemenu`. With the V1 key the HUD's health and weapon panels and the
+menu are the install's own layouts, strings and art (`ui::install`; the
+log says `combat_arms ui: the install's layouts ...`); the string table
+is the system language's, `CHIMERA_CA_LANGUAGE=DEU` (ENG, POR, RUS, TUR,
+DEU, ITA, POL, ARB, SCN) picks one. To see a bot from another player's
+view, run the game live and use the remote console: `ca_bot_add alpha`,
+then `world.query` the `Transform` of entities with `Intent` and `Name`
+for the bot, `setpos`/`setang` beside it (Source-style inches, z up)
+and `screenshot <file.png>`.
 
 Combat Arms' dedicated server: `cargo run --features dev --bin
 combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM
