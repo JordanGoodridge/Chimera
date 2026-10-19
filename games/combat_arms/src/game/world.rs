@@ -72,6 +72,13 @@
 //!   model's faces as one hull) for `volumes::CaVolume`.
 //! - AI objects (`objects`): the AI volumes, nodes and regions as map
 //!   entities, every property as text, for the bots (`bots::map_ai`).
+//! - Mode objects (`objects` too): every `GameStartPoint` (with its feet
+//!   on the floor and its yaw added, `start_point_feet`), the item drop
+//!   points (`ObjectSpawnPoint`), bomb sites (`BombZoneTrigger`), flags
+//!   (`FlagItem`), flag zones (`FlagZoneTrigger`), use triggers
+//!   (`ActivateTrigger`) and mode controllers (`TDMGameControl`), for the
+//!   game modes' objectives and each mode's spawn family
+//!   (`rules::objects`).
 //! - Props: objects that name a model (`props`: the capture-the-flag
 //!   flags, whose model needs the V2 key).
 //! - View models: the weapons' first-person models their data names
@@ -122,8 +129,10 @@ use crate::{
 /// The prefix of Combat Arms' map ids.
 pub const MAP_PREFIX: &str = "combat_arms:";
 
-/// The game type whose start points a map spawns at: the family of the
-/// modes there are (TDM and Elimination Pro, game_modes.md S4).
+/// The game type whose start points become the map's spawn points: the
+/// team modes' family (TDM, Elimination Pro, game_modes.md S4); the other
+/// modes pick their own family's from the passed-through start points
+/// (`rules::spawns`).
 pub const SPAWN_GAME_TYPE: &str = "Team Death Match";
 
 /// Object classes whose world models collide where they stand without a
@@ -270,8 +279,11 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
     map.sky_camera = sky.and_then(|o| sky_camera(world, o, properties, scale));
     collision(world, &mut map, &to_engine);
     volumes(world, &mut map, scale);
-    objects(world, &mut map, scale, super::bots::map_ai::is_ai_object);
+    objects(world, &mut map, scale, |c| {
+        super::bots::map_ai::is_ai_object(c) || super::rules::objects::is_mode_object(c)
+    });
     spawns(world, &mut map, &to_engine);
+    start_point_feet(world, &mut map, scale, &to_engine);
     super::props::add_objects(world, &mut map, scale, file);
     if map.spawns.is_empty() {
         map.warnings.push("no GameStartPoint: spawning at the origin".into());
@@ -1058,6 +1070,37 @@ fn spawns(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec
     map.spawns = spawns;
     map.spawn_yaws = yaws;
 }
+
+/// Each passed-through `GameStartPoint` entity (in map order, as
+/// `objects` passed them) gets its feet on the floor below it
+/// (`FEET_KEY`, entity space, as `spawns` drops a point) and its facing
+/// as an engine yaw (`YAW_KEY`), so a mode can spawn at any family's
+/// points (game_modes.md S4).
+fn start_point_feet(world: &World, map: &mut MapData, scale: f32, to_engine: &impl Fn(lt::Vec3) -> Vec3) {
+    let floor = Floor::new(map);
+    let feet: Vec<(Vec3, f32)> = world
+        .objects_of("GameStartPoint")
+        .map(|(_, o)| {
+            let at = o.pos().map(to_engine).unwrap_or(Vec3::ZERO);
+            let yaw = o.rotation("Rotation").map_or(0.0, |r| r[1]);
+            (floor.below(at).unwrap_or(at), -yaw)
+        })
+        .collect();
+    let starts = map
+        .entities
+        .iter_mut()
+        .filter(|e| e.classname() == "GameStartPoint");
+    for (e, (at, yaw)) in starts.zip(feet) {
+        let v = engine_to_entity(at, scale);
+        e.keyvalues.push((FEET_KEY.into(), format!("{} {} {}", v.x, v.y, v.z)));
+        e.keyvalues.push((YAW_KEY.into(), yaw.to_string()));
+    }
+}
+
+/// The feet of a passed-through start point (entity space), and its yaw
+/// (engine radians), added by `start_point_feet`.
+pub const FEET_KEY: &str = "chimera_feet";
+pub const YAW_KEY: &str = "chimera_yaw";
 
 /// Downward rays against what players stand on (the collision triangles
 /// and the players-only sets).

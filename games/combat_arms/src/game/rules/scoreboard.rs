@@ -1,20 +1,28 @@
 //! The scoreboard's data (specs/combat_arms/game_modes.md S13): one row
-//! per player (name, kills, deaths, assists, ping), Alpha's in the upper
-//! list and every other team's in the lower, each list sorted by kills,
-//! then fewer deaths (the team modes' order); per team the score panel's
-//! number. Read from what every machine has (`CaStats`, replicated, and
-//! the characters' names), so a network client builds the same board; the
-//! front end draws it (`ui::scoreboard`).
+//! per player (name, kills, deaths, assists, the mode's column, ping),
+//! Alpha's in the upper list and every other team's in the lower (a
+//! free-for-all mode: everyone in one list), each list in the mode's
+//! order (`ScoreOrder`): kills then fewer deaths (the default); captures,
+//! returns, kills, fewer deaths (capture the flag); mission points, kills,
+//! fewer deaths (Spy Hunt, Last Man Standing, Seize and Secure, VIP
+//! Elimination, Hunted); mission points only (Quarantine). Per team the
+//! score panel's number. Read from what every machine has (`CaStats`,
+//! replicated, and the characters' names), so a network client builds the
+//! same board; the front end draws it (`ui::scoreboard`).
 //!
-//! Known shortcuts: no level icon, clan emblem or mode column (TDM and
-//! Elimination Pro have none to fill: their mission points are 0); ties in
-//! kills and deaths keep the server's player order (entities), as a
-//! stable sort of its list would; ping is the network's (`net::NetScore`)
-//! when there is one.
+//! Known shortcuts: no level icon or clan emblem; the mode column is the
+//! captures (capture the flag) or the mission points (the modes ordered
+//! by them), none otherwise; ties keep the server's player order
+//! (entities), as a stable sort of its list would; VIP Elimination's VIP
+//! rank and Hunted's time hunted aren't columns (no VIP data, no time
+//! kept); ping is the network's (`net::NetScore`) when there is one.
 
 use bevy::prelude::*;
 
-use super::state::{ALPHA, CaStats};
+use super::{
+    ScoreOrder,
+    state::{ALPHA, CaStats},
+};
 use crate::core::{Npc, Team};
 
 /// One player's row.
@@ -26,21 +34,57 @@ pub struct ScoreRow {
     pub kills: u32,
     pub deaths: u32,
     pub assists: u32,
+    pub captures: u32,
+    pub returns: u32,
+    pub mission_points: i32,
     /// Milliseconds, when the network knows it.
     pub ping: Option<u32>,
 }
 
-/// S13's default order: kills, then fewer deaths (stable).
-pub fn sort(rows: &mut [ScoreRow]) {
-    rows.sort_by(|a, b| b.kills.cmp(&a.kills).then(a.deaths.cmp(&b.deaths)));
+impl ScoreRow {
+    /// The mode's column in `order`, if it has one.
+    pub fn mode_column(&self, order: ScoreOrder) -> Option<i64> {
+        match order {
+            ScoreOrder::Kills => None,
+            ScoreOrder::Captures => Some(self.captures as i64),
+            ScoreOrder::MissionPoints | ScoreOrder::MissionOnly => Some(self.mission_points as i64),
+        }
+    }
 }
 
-/// The board: Alpha's list and the others', each sorted.
-pub fn board(mut rows: Vec<ScoreRow>) -> [Vec<ScoreRow>; 2] {
+/// S13's order for `order` (stable).
+pub fn sort_by(rows: &mut [ScoreRow], order: ScoreOrder) {
+    let kills = |a: &ScoreRow, b: &ScoreRow| b.kills.cmp(&a.kills).then(a.deaths.cmp(&b.deaths));
+    match order {
+        ScoreOrder::Kills => rows.sort_by(kills),
+        ScoreOrder::Captures => rows.sort_by(|a, b| {
+            b.captures
+                .cmp(&a.captures)
+                .then(b.returns.cmp(&a.returns))
+                .then(kills(a, b))
+        }),
+        ScoreOrder::MissionPoints => rows.sort_by(|a, b| b.mission_points.cmp(&a.mission_points).then(kills(a, b))),
+        ScoreOrder::MissionOnly => rows.sort_by(|a, b| b.mission_points.cmp(&a.mission_points)),
+    }
+}
+
+/// S13's default order: kills, then fewer deaths (stable).
+pub fn sort(rows: &mut [ScoreRow]) {
+    sort_by(rows, ScoreOrder::Kills);
+}
+
+/// The board: Alpha's list and the others', each sorted by kills.
+pub fn board(rows: Vec<ScoreRow>) -> [Vec<ScoreRow>; 2] {
+    board_for(rows, ScoreOrder::Kills, false)
+}
+
+/// The board in `order`: Alpha's list and the others' (`one_list`: every
+/// row in the first).
+pub fn board_for(mut rows: Vec<ScoreRow>, order: ScoreOrder, one_list: bool) -> [Vec<ScoreRow>; 2] {
     rows.sort_by_key(|r| r.player);
-    let (mut alpha, mut rest): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.team == ALPHA);
-    sort(&mut alpha);
-    sort(&mut rest);
+    let (mut alpha, mut rest): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| one_list || r.team == ALPHA);
+    sort_by(&mut alpha, order);
+    sort_by(&mut rest, order);
     [alpha, rest]
 }
 
@@ -52,7 +96,7 @@ pub fn rows(world: &mut World) -> Vec<ScoreRow> {
             Without<Npc>,
         )>()
         .iter(world)
-        .filter(|(_, t, ..)| super::state::side(t.0).is_some())
+        .filter(|(_, t, ..)| super::state::plays(t.0))
         .map(|(e, t, s, n, net)| {
             let s = s.copied().unwrap_or_default();
             ScoreRow {
@@ -62,6 +106,9 @@ pub fn rows(world: &mut World) -> Vec<ScoreRow> {
                 kills: s.kills,
                 deaths: s.deaths,
                 assists: s.assists,
+                captures: s.captures,
+                returns: s.returns,
+                mission_points: s.mission_points,
                 ping: net.map(|n| n.ping as u32),
             }
         })
@@ -80,8 +127,15 @@ mod tests {
             kills,
             deaths,
             assists: 0,
+            captures: 0,
+            returns: 0,
+            mission_points: 0,
             ping: None,
         }
+    }
+
+    fn names(l: &[ScoreRow]) -> Vec<String> {
+        l.iter().map(|r| r.name.clone()).collect()
     }
 
     /// S13: Alpha's list on top; kills, then fewer deaths.
@@ -93,8 +147,24 @@ mod tests {
             row(2, 1, 3, 2),
             row(3, 1, 9, 9),
         ]);
-        let names = |l: &[ScoreRow]| l.iter().map(|r| r.name.clone()).collect::<Vec<_>>();
         assert_eq!(names(&alpha), ["p3", "p2", "p0"]);
         assert_eq!(names(&rest), ["p1"]);
+    }
+
+    /// S13: capture the flag by captures, returns, kills; the mission
+    /// point modes by points, then kills.
+    #[test]
+    fn mode_orders() {
+        let mut a = row(0, 1, 9, 0);
+        let mut b = row(1, 1, 1, 0);
+        b.captures = 2;
+        let mut c = row(2, 1, 5, 0);
+        c.captures = 2;
+        c.returns = 1;
+        let [l, _] = board_for(vec![a.clone(), b.clone(), c.clone()], ScoreOrder::Captures, false);
+        assert_eq!(names(&l), ["p2", "p1", "p0"]);
+        a.mission_points = 1;
+        let [l, _] = board_for(vec![a, b, c], ScoreOrder::MissionPoints, true);
+        assert_eq!(names(&l), ["p0", "p2", "p1"]);
     }
 }

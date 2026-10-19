@@ -1,15 +1,23 @@
 //! The score panel (hud_crosshair.md D6) and the round timer (D7), driven
 //! by the match (`game::rules::CaMatchView`: the server's, or a network
 //! client's copy): the mode's name and goal, each team's counter with its
-//! progress bar, the local player's team highlighted; the timer in the
-//! round modes while a round is live. `update_score` reads the world into
-//! `CaScoreHud` (headless, for the tests); `draw_score` draws it.
+//! progress bar (the mode's `Panel`: team counters, round wins; in a
+//! free-for-all mode the local player's and the leader's), the local
+//! player's row highlighted; the timer in the round modes while a round
+//! is live; the objectives' lines (`game::rules::objectives`: the planted
+//! bomb's fuse, the flags, the pole, the intel, what you carry) and the
+//! action gauge (plant 4 s, defuse 7 s, seize 5 s: game_modes.md M3,
+//! M10). `update_score` reads the world into `CaScoreHud` (headless, for
+//! the tests); `draw_score` draws it.
 //!
 //! Known shortcuts: the goal text is ours ("G kills" / "G wins": the
-//! mode's goal string isn't in our string table); Elimination Pro shows
-//! its round wins on the same panel (D6 describes TDM's only); the panel
-//! stays up while the scoreboard shows the round's result (no separate
-//! result screen); the panel's textures are flat placeholder boxes.
+//! mode's goal string isn't in our string table); the round modes show
+//! their round wins on the same panel (D6 describes TDM's only); the
+//! objectives' lines and the gauge are ours (text under the timer, a bar
+//! at the screen's middle: the spec gives their lengths, not their
+//! looks); the panel stays up while the scoreboard shows the round's
+//! result (no separate result screen); the panel's textures are flat
+//! placeholder boxes.
 
 use bevy::prelude::*;
 
@@ -17,7 +25,10 @@ use super::{PenParams, colour, hud_text, layer, model::*, pen, rect, rebuild};
 use crate::{
     client::canvas::{HAlign, VAlign},
     core::{LocalPlayer, SimClock, Team},
-    game::rules::{CaMatchView, Phase},
+    game::rules::{
+        CaMatchView, CaStats, Panel, Phase,
+        objectives::{ActionKind, CaAction, CaCarry, CaObjectives, FlagAt},
+    },
     ui::layout::Effect,
 };
 
@@ -26,8 +37,11 @@ use crate::{
 pub struct ScorePanelView {
     pub mode_name: String,
     pub goal: String,
-    /// Alpha's and Bravo's rows.
+    /// Alpha's and Bravo's rows (a free-for-all mode's: yours, the
+    /// leader's).
     pub rows: [ScoreRow; 2],
+    /// The rows' labels.
+    pub labels: [String; 2],
     /// The highlight's top-left (ref px) for the local player's team.
     pub highlight: Option<Vec2>,
 }
@@ -38,6 +52,10 @@ pub struct CaScoreHud {
     pub panel: Option<ScorePanelView>,
     /// The timer's text (D7); None: no timer.
     pub timer: Option<String>,
+    /// The objectives' lines.
+    pub objectives: Vec<String>,
+    /// The action gauge: what, and how full (0 to 1).
+    pub gauge: Option<(String, f32)>,
 }
 
 /// The panel's places (D6, D7), ref px.
@@ -65,6 +83,11 @@ pub mod places {
     pub const TIMER_STRIP: (Vec2, Vec2) = (Vec2::new(344.0, 63.0), Vec2::new(336.0, 17.0));
     /// The timer's text, centred at about (444, 60).
     pub const TIMER: (Vec2, Vec2) = (Vec2::new(344.0, 52.0), Vec2::new(200.0, 17.0));
+    /// Ours: the objectives' first line, one line's height.
+    pub const OBJECTIVES: (Vec2, Vec2) = (Vec2::new(344.0, 84.0), Vec2::new(336.0, 16.0));
+    /// Ours: the action gauge's frame (the bar inset by 1).
+    pub const GAUGE: (Vec2, Vec2) = (Vec2::new(412.0, 470.0), Vec2::new(200.0, 12.0));
+    pub const GAUGE_LABEL: (Vec2, Vec2) = (Vec2::new(412.0, 452.0), Vec2::new(200.0, 16.0));
 }
 
 /// The panel's looks (D6, D7).
@@ -76,43 +99,123 @@ pub mod looks {
     pub const HEADER: [u8; 4] = [218, 218, 218, 255];
 }
 
+/// The goal's unit as the panel prints it ("G kills").
+pub fn goal_unit(key: &str) -> &'static str {
+    match key {
+        "TDM" | "FFA" | "VWRM" => "kills",
+        "VTDM" => "points",
+        "CTF" => "captures",
+        "HQM" | "SQM2" | "BNT" => "min",
+        "LMS" | "HG" | "QRT" | "ESL" => "rounds",
+        _ => "wins",
+    }
+}
+
+/// The objectives' lines (ours: the spec places only the gauges and the
+/// dropped flag's seconds): the planted bomb's fuse, the bomb on the
+/// ground, each flag, the pole, the intel; `mine` what the local player
+/// carries.
+pub fn objective_lines(o: &CaObjectives, mine: CaCarry, now: f64) -> Vec<String> {
+    let team = |t: u8| if t == 1 { "Alpha" } else { "Bravo" };
+    let secs = |until: f64| ((until - now).max(0.0)).trunc() as u64;
+    let mut lines = Vec::new();
+    if let Some(p) = o.planted {
+        let site = if p.number == 0 { "A" } else { "B" };
+        lines.push(format!("Bomb planted at {site}: {}", round_timer((p.detonates - now) * 1000.0)));
+    }
+    if o.loose_bomb.is_some() {
+        lines.push("The bomb is on the ground".into());
+    }
+    for f in &o.flags {
+        let at = match f.at {
+            FlagAt::Home => "home".to_string(),
+            FlagAt::Carried => "taken".to_string(),
+            FlagAt::Dropped { returns, .. } => format!("dropped, home in {} s", secs(returns)),
+        };
+        lines.push(format!("{} flag: {at}", team(f.team)));
+    }
+    if let Some(p) = o.pole {
+        lines.push(match p.team {
+            Some(t) => format!("{}'s flag rising: {} s", team(t), (now - p.since).max(0.0).trunc() as u64),
+            None => "The flag pole is free".into(),
+        });
+    }
+    if o.stage == 1 && !o.intel.is_empty() {
+        lines.push(format!("Intel on the ground: {}", o.intel.len()));
+    }
+    if o.stage == 2 {
+        lines.push("The final spy is out".into());
+    }
+    if let Some(f) = mine.flag {
+        lines.push(format!("You carry the {} flag", team(f)));
+    }
+    if mine.bomb {
+        lines.push("You carry the bomb".into());
+    }
+    if mine.intel > 0 {
+        lines.push(format!("You carry {} intel", mine.intel));
+    }
+    lines
+}
+
 /// The match into `CaScoreHud`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn update_score(
     view: Res<CaMatchView>,
-    local: Query<&Team, With<LocalPlayer>>,
+    objectives: Option<Res<CaObjectives>>,
+    local: Query<(&Team, Option<&CaStats>, Option<&CaAction>, Option<&CaCarry>), With<LocalPlayer>>,
+    everyone: Query<&CaStats>,
     clock: Option<Res<SimClock>>,
     time: Res<Time>,
     mut hud: ResMut<CaScoreHud>,
 ) {
     let now = clock.map_or_else(|| time.elapsed_secs_f64(), |c| c.now);
+    let me = local.single().ok();
     let next = match view.mode() {
         None => CaScoreHud::default(),
         Some(mode) => {
             let round_based = mode.timer_shown;
-            let counters: [u32; 2] = if round_based {
-                view.round_wins
-            } else {
-                view.score.map(|s| s.max(0) as u32)
-            };
-            let mine = local.single().ok().and_then(|t| match t.0 {
+            let mine_stats = me.and_then(|(_, s, ..)| s.copied()).unwrap_or_default();
+            let best = |f: fn(&CaStats) -> u32| everyone.iter().map(f).max().unwrap_or(0);
+            let team_side = me.and_then(|(t, ..)| match t.0 {
                 1 => Some(0),
                 2 => Some(1),
                 _ => None,
             });
+            let (counters, labels, mine): ([u32; 2], [&str; 2], Option<usize>) = match mode.panel {
+                Panel::TeamScore => (view.score.map(|s| s.max(0) as u32), ["Alpha", "Bravo"], team_side),
+                Panel::RoundWins => (view.round_wins, ["Alpha", "Bravo"], team_side),
+                Panel::Kills => ([mine_stats.kills, best(|s| s.kills)], ["You", "Leader"], Some(0)),
+                Panel::PlayerRoundWins => {
+                    ([mine_stats.round_wins, best(|s| s.round_wins)], ["You", "Leader"], Some(0))
+                }
+            };
             let (rows, highlight) = score_panel(counters, view.goal, mine);
-            let goal = format!("{} {}", view.goal, if round_based { "wins" } else { "kills" });
+            let goal = format!("{} {}", view.goal, goal_unit(mode.key));
             let timer = view
                 .round_ends
                 .filter(|_| view.phase == Phase::Live)
                 .and_then(|ends| timer(round_based, (ends - now) * 1000.0));
+            let carry = me.and_then(|(.., c)| c.copied()).unwrap_or_default();
+            let gauge = me.and_then(|(_, _, a, _)| a.copied()).map(|a| {
+                let what = match a.kind {
+                    ActionKind::Plant => "Planting",
+                    ActionKind::Defuse => "Defusing",
+                    ActionKind::Seize => "Seizing",
+                };
+                (what.to_string(), a.fraction())
+            });
             CaScoreHud {
                 panel: Some(ScorePanelView {
                     mode_name: mode.shown_as.to_string(),
                     goal,
                     rows,
+                    labels: labels.map(String::from),
                     highlight,
                 }),
                 timer,
+                objectives: objectives.map_or_else(Vec::new, |o| objective_lines(&o, carry, now)),
+                gauge,
             }
         }
     };
@@ -154,7 +257,7 @@ pub(super) fn draw_score(
             hud_text(p, pen, (at, size, Vec2::ZERO), text, looks::MODE, centred, Effect::Shadow, looks::HEADER);
         }
         for (i, row) in panel.rows.iter().enumerate() {
-            let label = if i == 0 { "Alpha" } else { "Bravo" };
+            let label = panel.labels[i].as_str();
             let (at, size) = places::LABELS[i];
             hud_text(p, pen, (at, size, Vec2::ZERO), label, looks::LABEL, centred, Effect::Shadow, row.colour);
             let (at, size) = places::SCORES[i];
@@ -171,6 +274,19 @@ pub(super) fn draw_score(
             p.spawn(rect(screen.rect(at, size), Color::srgba(0.0, 0.0, 0.0, 0.45)));
             let (at, size) = places::TIMER;
             hud_text(p, pen, (at, size, Vec2::ZERO), t, looks::TIMER, centred, Effect::Shadow, [255, 255, 255, 255]);
+        }
+        for (k, line) in hud.objectives.iter().enumerate() {
+            let (at, size) = places::OBJECTIVES;
+            let at = at + Vec2::Y * size.y * k as f32;
+            hud_text(p, pen, (at, size, Vec2::ZERO), line, looks::MODE, centred, Effect::Shadow, looks::HEADER);
+        }
+        if let Some((what, fill)) = &hud.gauge {
+            let (at, size) = places::GAUGE_LABEL;
+            hud_text(p, pen, (at, size, Vec2::ZERO), what, looks::MODE, centred, Effect::Shadow, looks::HEADER);
+            let (at, size) = places::GAUGE;
+            p.spawn(rect(screen.rect(at, size), Color::srgba(0.0, 0.0, 0.0, 0.55)));
+            let bar = Vec2::new((size.x - 2.0) * fill, size.y - 2.0);
+            p.spawn(rect(screen.rect(at + Vec2::ONE, bar), Color::srgba(0.9, 0.8, 0.2, 0.9)));
         }
     });
 }

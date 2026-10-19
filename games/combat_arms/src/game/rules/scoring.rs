@@ -99,7 +99,7 @@ pub(super) fn scale_friendly_fire(
     if ff.0 != on {
         ff.0 = on;
     }
-    let scaled = on != 0 && super::MODES.iter().any(|m| m.key == settings.mode && m.ff_scaled);
+    let scaled = on != 0 && super::mode_by_key(&settings.mode).is_some_and(|m| m.ff_scaled);
     for d in damage.read() {
         if !scaled || matches!(d.kind, DamageKind::Blast | DamageKind::Burn) {
             continue;
@@ -131,7 +131,8 @@ fn on_died(world: &mut World, d: &Died) {
     let now = world.resource::<SimClock>().now;
     world.entity_mut(victim).insert((Dead { since: now }, ColliderDisabled));
     let killer_team = |w: &World, e: Entity| w.get::<Team>(e).map(|t| t.0);
-    let Some(victim_team) = killer_team(world, victim).filter(|t| side(*t).is_some()) else {
+    let Some(victim_team) = killer_team(world, victim).filter(|t| super::state::plays(*t)) else {
+        (mode.hooks.died)(world, d);
         clear_log(world, victim);
         return;
     };
@@ -153,6 +154,9 @@ fn on_died(world: &mut World, d: &Died) {
             sync_score(world, k);
         }
     }
+    // The mode's objects (a carried flag, bomb or intel dropped), in every
+    // phase.
+    (mode.hooks.died)(world, d);
     clear_log(world, victim);
 }
 
@@ -176,6 +180,67 @@ fn give_assists(world: &mut World, death: &Death) {
 
 fn clear_log(world: &mut World, victim: Entity) {
     world.resource_mut::<CaDamageLog>().0.retain(|(v, _), _| *v != victim);
+}
+
+/// S7's personal counts of the team respawn modes (TDM's and capture the
+/// flag's columns): enemy kill, killer kills +1 and victim deaths +1; team
+/// kill, killer friendly kills +1 and victim deaths +1; own damage, victim
+/// deaths, suicides and friendly kills +1; no killer, victim deaths and
+/// suicides +1.
+pub fn personal(world: &mut World, d: &Death) {
+    use super::state::DeathKind;
+    match d.kind {
+        DeathKind::Enemy => {
+            if let Some(k) = d.killer {
+                stats(world, k).kills += 1;
+            }
+            stats(world, d.victim).deaths += 1;
+        }
+        DeathKind::TeamKill => {
+            if let Some(k) = d.killer {
+                stats(world, k).friendly_kills += 1;
+            }
+            stats(world, d.victim).deaths += 1;
+        }
+        DeathKind::Suicide => {
+            let mut s = stats(world, d.victim);
+            s.deaths += 1;
+            s.suicides += 1;
+            s.friendly_kills += 1;
+        }
+        DeathKind::NoKiller => {
+            let mut s = stats(world, d.victim);
+            s.deaths += 1;
+            s.suicides += 1;
+        }
+    }
+}
+
+/// S7's One Man Army column (every free-for-all mode's): an enemy kill,
+/// killer kills +1 and victim deaths +1; own damage or no killer, victim
+/// deaths and suicides +1 (no teammates, no friendly kills).
+pub fn free_for_all(world: &mut World, d: &Death) {
+    use super::state::DeathKind;
+    match d.kind {
+        DeathKind::Enemy => {
+            if let Some(k) = d.killer {
+                stats(world, k).kills += 1;
+            }
+            stats(world, d.victim).deaths += 1;
+        }
+        // Spy Hunt's hunters share a team.
+        DeathKind::TeamKill => {
+            if let Some(k) = d.killer {
+                stats(world, k).friendly_kills += 1;
+            }
+            stats(world, d.victim).deaths += 1;
+        }
+        DeathKind::Suicide | DeathKind::NoKiller => {
+            let mut s = stats(world, d.victim);
+            s.deaths += 1;
+            s.suicides += 1;
+        }
+    }
 }
 
 /// A player's statistics, made when missing.
