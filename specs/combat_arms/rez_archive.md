@@ -1,6 +1,6 @@
 # Combat Arms: rez archive
 
-Source basis: reference material the user pointed the spec session to on the game's resource archives (reading, writing and the payload cipher), checked against the Steam install on the Windows PC (see Test cases for the build caveat). The cipher scheme it describes is an older one than the Steam build's; see Encryption.
+Source basis: reference material the user pointed the spec session to on the game's resource archives (reading, writing and the payload cipher), checked against the Steam install on the Windows PC (see Test cases for the build caveat). The cipher scheme it describes is an older one than the Steam build's; see Encryption. The per-title cipher families (V1 Twofish, V2 AES-256, plain) are format facts the user supplied on 2026-10-19 (no key bytes), confirmed on the Linux dev box's Steam install with the user's keys (Test case 10).
 Status: draft
 
 Sections: Summary; Units and conventions; Header; Directory; File data; Encryption (V1 and V2 separately); Compression; Per-archive and per-file variations; Edge cases; Test cases; Open questions.
@@ -18,10 +18,12 @@ Sections: Summary; Units and conventions; Header; Directory; File data; Encrypti
   - The cipher is Twofish with a 256-bit key in CBC mode, with a fixed 128-bit IV that restarts at the beginning of every file.
   - Only whole 16-byte blocks are encrypted; the last `size mod 16` bytes stay plaintext. There is no padding, and stored size equals plaintext size.
   - One key/IV pair serves every encrypted archive.
-- **V1 / V2:** the reference scheme has no notion of `V1_RESOURCES_KEY` or `V2_RESOURCES_KEY`.
-  - The 60-byte header title is never used to select a key or algorithm.
-  - The reference scheme's single key does **not** decrypt the Steam XML.rez (V1) or WORLDS.rez (V2).
-  - The title-to-key mapping, and what differs between V1 and V2, belong to a later client than the reference material covers. See Open questions.
+- **V1 / V2 in the Steam build:** the user title selects the cipher family.
+  - `LithTech Resource File`: payloads stored raw.
+  - `V1_RESOURCES_KEY`: Twofish-256-CBC, as in the reference scheme but with its own key.
+  - `V2_RESOURCES_KEY`: **AES-256-CBC** (not Twofish), with its own 32-byte key and 16-byte IV.
+  - In both keyed families only the first `size & ~15` bytes are encrypted; the last `size & 15` bytes are plaintext.
+  - The reference scheme ignores the title and has a single key, which decrypts neither family in the Steam build.
 - **Compression:** none in the reference scheme.
 
 ## Units and conventions
@@ -188,24 +190,36 @@ To decode, take the highest non-zero byte as the first character and read down t
   - The client decrypted only files read through its text-resource loaders, associated with the ATTRIBUTES, GMS and XML archives.
   - Other archives, such as TEXTURES, are plaintext and were read raw.
 
+### Cipher by title (Steam build)
+
+The archive's user title (header 0x40, trailing spaces stripped) selects the family. Nothing else in the archive records it.
+
+| Title | Payloads | Key |
+|---|---|---|
+| `LithTech Resource File` | Stored raw (unencrypted) | none |
+| `V1_RESOURCES_KEY` | Twofish-256-CBC | V1: 32-byte key, 16-byte IV |
+| `V2_RESOURCES_KEY` | AES-256-CBC | V2: 32-byte key, 16-byte IV |
+
+- For V1 and V2 alike, per file: the IV restarts at the fixed IV, bytes `[0, size & ~15)` are CBC-decrypted, and the remaining `size & 15` tail bytes are plaintext, copied unchanged. A file under 16 bytes is entirely plaintext. No padding; stored size equals plaintext size. These are the "Decryption steps for one file" above, with AES as the block cipher for V2.
+- Keys are supplied by the user at run time and never appear in this spec or the repository.
+- A reader should treat an unknown title as raw (every title observed is one of the three).
+
 ### V1 (title `V1_RESOURCES_KEY`, e.g. XML.rez)
 
-- **The reference scheme has no V1 handling.** Nothing reads the title to choose a key.
+- **The reference scheme has no V1 handling.** Nothing reads the title to choose a key. The Steam build uses Twofish-CBC with its own key (Cipher by title).
 - Observed on the Steam archive (statistics only, without decrypting):
   - The payloads have about 7.9 to 8.0 bits/byte of entropy.
   - In the files sampled, the trailing `size mod 16` bytes are printable text. This matches "whole blocks encrypted, tail plain".
   - 300 of 306 files share an identical first 64 bytes of ciphertext. This matches a deterministic fixed-IV chained mode and a key that does not depend on the file.
   - No 16-byte block repeats inside the largest file, which suggests chaining rather than ECB.
 - Decrypting with the reference scheme's key and IV produces high-entropy output. In CBC, a wrong IV alone corrupts only the first block, so **the key differs**, if the cipher and mode are the same.
-- **Best-supported reading:** the same scheme with a different 32-byte key. Whether the IV also differs is unknown. The title is a strong candidate for the key selector, but this is unconfirmed.
+- **Confirmed:** the same scheme with a different 32-byte key and IV, selected by the title. Decrypted XML files start with a UTF-8 byte-order mark (`EF BB BF`) and then `<?xml version`.
 
 ### V2 (title `V2_RESOURCES_KEY`, e.g. WORLDS.rez)
 
 - **The reference scheme has no V2 handling.**
-- Observed: the payloads are high entropy (about 7.95 bits/byte), and the reference scheme's key does not decrypt them.
-- No two of the 36 files share a first ciphertext block. That does not tell us much, because world files naturally differ within their first 16 bytes.
-- The tails are not printable, but the content is binary, so that is not conclusive either.
-- Whether V2 differs from V1 only by key, or also by algorithm, mode, per-file IV, or an extra layer, **is not known yet.**
+- Observed before the cipher was known: the payloads are high entropy (about 7.95 bits/byte), and the reference scheme's key does not decrypt them. No two of the 36 files share a first ciphertext block, and the tails are not printable; both are expected of binary content.
+- **Resolved:** V2 differs from V1 by algorithm as well as key: AES-256-CBC, same mode, same fixed per-file IV restart, same plaintext tail rule. There is no extra layer: decrypted payloads are the plain file formats (Test case 10).
 
 ### Plain archives (title `LithTech Resource File`, e.g. TEXTURES.rez)
 
@@ -213,18 +227,17 @@ Payloads are plaintext. Entropy is low, and about 34k of the 87k aligned 16-byte
 
 ## Compression
 
-None. The format has no compression flag, codec, or separate "packed size" field. For V1, the plaintext text tails show the payloads are not compressed. For V2, compression applied before encryption cannot be ruled out (see Open questions).
+None. The format has no compression flag, codec, or separate "packed size" field. For V1, the plaintext text tails show the payloads are not compressed. V2 payloads decrypt directly to the plain file formats, so they are not compressed either.
 
 ## Per-archive and per-file variations
 
 - **Per archive:**
-  - The user title. In the reference scheme it does not select anything.
+  - The user title. In the Steam build it selects the cipher family (Cipher by title); in the reference scheme it selects nothing.
   - Marker bytes, Combat Arms or stock, checked byte by byte.
   - Version 1 or 150784.
   - The check-number strings, which are derived from header fields.
   - Timestamps and the sorted flag.
-  - Whether payloads are encrypted. The archive records this nowhere; consumers know it out of band.
-  - In the Steam build, possibly the key (V1 vs V2).
+  - Whether payloads are encrypted, and with which cipher and key: only the title says so.
 - **Per file:**
   - Offset, size, timestamp, type and name.
   - In the reference scheme, nothing about the encryption varies per file except where the plaintext tail starts (it depends on the file size). The IV is reset at the start of each file.
@@ -293,12 +306,28 @@ All values below come from the observed header bytes. Values marked "(verified l
    - (c) In V1 archives, the last `size mod 16` bytes of each payload are plaintext.
    - (d) In V1, files sharing a plaintext prefix share ciphertext block by block. 300 of the 306 XML files share their first four ciphertext blocks. A decryptor that is correct must produce identical first 64 plaintext bytes for all of them.
    - (e) The first payload starts at 0xEC in all three archives.
+10. **Header checks after decryption (with the user's keys).** A correct key and cipher make each type's payload start with its own header. Our tests use these as the check that a family's cipher and key are right:
+
+    | Type | First bytes after decryption |
+    |---|---|
+    | `.dtx` texture | u32 resType 0 at 0x00, i32 version −5 (`FB FF FF FF`) at 0x08 |
+    | `.ltb` model | `01 00 09 00` |
+    | `.dat` world | `55 00 00 00` (version 85) |
+    | `.pcx` | `0A 05 01 08` |
+    | `.bmp` | `42 4D` |
+    | `.png` | the PNG signature `89 50 4E 47 0D 0A 1A 0A` |
+
+    - (a) V2 (AES-256): every V2 archive that holds textures (24 of the 36 V2 archives on the dev box) has its first texture by path start with the DTX header and parse whole. The first file of each type above in each V2 archive starts with that type's header (dev box: 24 textures, 12 models, 3 worlds, 1 each of PCX, BMP, PNG).
+    - (b) V2: the first map of WORLDS.rez and of WORLDS4.rez parse as version-85 worlds; all 72 maps of WORLDS, WORLDS4 and WORLDS5 do.
+    - (c) V2: `chars_m_body/cm_body_alphateam_ki.ltb` (8 pieces, 53 nodes) and the M4A1's first-person `guns_m_pv_ar/pv_ar_m4a1_sh.ltb` (1 piece, 50 nodes) parse as models.
+    - (d) V1 (Twofish): ATTRIBUTES.rez's `attributes/weapons.txt` (9,007,972 bytes) parses as an attribute file (4,737 sections, 2,321 `Weapon` records). XML.rez's files start with a byte-order mark and `<?xml version`, which also shows the V1 IV is right (a wrong IV corrupts the first block).
+    - (e) Decrypting with the other family's cipher, or with a wrong key, gives none of these headers; the `size & 15` tail is identical either way.
 
 ## Open questions
 
-1. **Key selection.** Which keys belong to `V1_RESOURCES_KEY` and `V2_RESOURCES_KEY`, and is the title really the selector? The reference scheme has a single key and ignores the title, so the Steam client must use newer logic.
-2. **V2 scheme.** Does V2 differ from V1 only by key, or also by algorithm, mode, IV derivation (per file?), or an extra layer such as compression before encryption? The observations cannot tell these apart.
-3. **V1 IV.** Is V1's IV the same as the reference scheme's IV? CBC with the wrong IV corrupts only the first block, so once the V1 key is known this can be checked directly.
+1. **Key selection.** Resolved: the title is the selector (Cipher by title). The keys are the user's and are not recorded here.
+2. **V2 scheme.** Resolved: AES-256-CBC with its own key and IV, the same per-file IV restart and plaintext tail as V1, no compression or extra layer (Test case 10).
+3. **V1 IV.** The user's V1 IV decrypts the first block correctly (Test case 10(d)); whether it equals the reference scheme's IV was not compared and does not matter to a reader.
 4. **Steam build mismatch.** The Steam install on this PC reports build id 25456765 in its manifest, not 25595979. Its XML.rez header bytes 0x00–0x9F still match the bytes in the brief exactly.
 5. **Version 150784 (0x00024D00).** The meaning of this alternative version value is unknown.
 6. **Stock layout.** The stock layout is inferred from the stock marker values the reader still accepts. It has not been checked against an unmodified stock archive.

@@ -1243,8 +1243,15 @@ view_model::`.
 
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
 list but skip extraction until their scheme's key is in
-`chimera.local.toml` (`[games.combat_arms.keys.V1]`, `key` and `iv` as
-hex). Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
+`chimera.local.toml`: a `[games.combat_arms.keys.V1]` table and a
+`[games.combat_arms.keys.V2]` table, each with `key` (64 hex characters)
+and `iv` (32 hex characters). The table's name picks the cipher (V1
+Twofish, V2 AES-256); there is no cipher field. Keys stay in that local
+file only: never in the repo, tests, logs or commit messages (`cargo test
+-p repo_checks` refuses tracked keys). With both keys,
+`cargo test -p lithtech_formats --test it heavy::keyed_install --
+--nocapture` checks each family decrypts to the formats' own headers;
+without them those tests pass with a note. Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
 refuses any folder inside the repository.
 
 ### Sweeping every cached map (mapsweep)

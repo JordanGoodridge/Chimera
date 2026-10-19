@@ -182,6 +182,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
 - games/combat_arms models: Animations resampled at 30 fps for Chimera's AnimSet (no LithTech tracker: no key strings, transitions or L + 1 done); LOD 0 only; vertex animation, render styles and extra textures ignored (`games/combat_arms/src/game/model.rs`)
 - games/combat_arms props: Object Scale, MoveToFloor, Rotate and game type ignored; props don't collide; light from the nearest light-grid sample (`games/combat_arms/src/game/props.rs`)
+- lithtech_formats rez: Every archive read as a main one (no overlay rules; the first layer wins); check sum not enforced; unknown titles read raw (`lithtech/formats/src/rez.rs`)
 - lithtech_formats ltb: Only stream flags 0x13; strict on trailing bytes and channel counts; counts block not checked (`lithtech/formats/src/ltb.rs`)
 - lithtech_formats anim: AniRateInterpolation always 1; the tracker count and weight-set rules of layering left to the caller; vertex animation sampled, not applied (`lithtech/formats/src/anim.rs`)
 - games/combat_arms maps: No fullbright masks; flat envmaps with an identity matrix and EnvScale 1; second layers on world surfaces only; sky drawn with depth from one scale over the whole screen; light groups not switchable; world models static (`games/combat_arms/src/game/world.rs`)

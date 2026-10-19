@@ -161,7 +161,7 @@ fn rejects_broken_headers_and_directories() {
 /// keys go.
 #[test]
 fn keyed_archives_need_their_scheme_key() {
-    let cipher = RezCipher::new(&[1; 32], &[2; 16]);
+    let cipher = RezCipher::aes256(&[1; 32], &[2; 16]);
     let plain = b"<?xml version=\"1.0\"?><root>payload for the test</root>".to_vec();
     let mut payload = plain.clone();
     cipher.encrypt(&mut payload);
@@ -189,6 +189,52 @@ fn keyed_archives_need_their_scheme_key() {
         plain[48..],
         "tail stored plain"
     );
+}
+
+/// "Cipher by title": each family reads back through the archive with a
+/// made-up key: V1 Twofish-CBC, V2 AES-256-CBC (the first `size & !15`
+/// bytes encrypted, the `size & 15` tail stored plain), `LithTech Resource
+/// File` raw. A key of the other family's cipher does not decrypt.
+#[test]
+fn each_title_family_reads_back() {
+    let key = [0x5A; 32];
+    let iv = [0xC3; 16];
+    // 16 * 4 + 7: whole blocks and a 7-byte plain tail; plus a short file.
+    let plain: Vec<u8> = (0..71u8).map(|i| b'a' + i % 26).collect();
+    for (title, scheme, cipher, other) in [
+        ("V1_RESOURCES_KEY", "V1", RezCipher::twofish(&key, &iv), RezCipher::aes256(&key, &iv)),
+        ("V2_RESOURCES_KEY", "V2", RezCipher::aes256(&key, &iv), RezCipher::twofish(&key, &iv)),
+    ] {
+        let mut stored = plain.clone();
+        cipher.encrypt(&mut stored);
+        assert_eq!(stored[64..], plain[64..], "{title}: tail stored plain");
+        assert_ne!(stored[..64], plain[..64]);
+        let bytes = build(
+            title,
+            Dir::new("TEST")
+                .file("doc", "dat", stored)
+                .file("tiny", "txt", b"short".to_vec()),
+        );
+        let keys = RezKeys::from([(scheme.to_string(), cipher)]);
+        let rez = RezArchive::from_bytes("family.rez", bytes.clone(), &keys).unwrap();
+        assert!(!rez.locked());
+        assert_eq!(rez.read("test/doc.dat").unwrap().unwrap(), plain, "{title}");
+        assert_eq!(rez.read("test/tiny.txt").unwrap().unwrap(), b"short", "{title}");
+
+        let wrong = RezKeys::from([(scheme.to_string(), other)]);
+        let rez = RezArchive::from_bytes("family.rez", bytes, &wrong).unwrap();
+        let read = rez.read("test/doc.dat").unwrap().unwrap();
+        assert_ne!(read[..64], plain[..64], "{title}: the other cipher must not decrypt");
+        assert_eq!(read[64..], plain[64..]);
+    }
+    let raw = build("LithTech Resource File", Dir::new("TEST").file("doc", "dat", plain.clone()));
+    let keys = RezKeys::from([
+        ("V1".to_string(), RezCipher::twofish(&key, &iv)),
+        ("V2".to_string(), RezCipher::aes256(&key, &iv)),
+    ]);
+    let rez = RezArchive::from_bytes("raw.rez", raw, &keys).unwrap();
+    assert_eq!(rez.header().key_scheme(), None);
+    assert_eq!(rez.read("test/doc.dat").unwrap().unwrap(), plain, "raw family reads as stored");
 }
 
 /// "Names": within one archive, the first of two equal names wins; paths
