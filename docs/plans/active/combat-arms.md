@@ -102,6 +102,9 @@ does for BSP.
 - 2026-10-18: `lithtech_formats::attributes` reads attribute files
   (`attribute_data.md`'s format); Combat Arms' records and the merge
   over our TOML are the game's (`game/data.rs`, `game/data/attributes.rs`).
+- 2026-10-18: `lithtech_formats::ltb` reads models and `anim` their
+  animation data and playback rules; `games/combat_arms`' `game::model`
+  turns a model into a skinned `MapModel` with Chimera's `AnimSet`.
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
@@ -145,7 +148,7 @@ does for BSP.
 | 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | L7 (the scope overlay's look as data); zoom (`AltModes`, `Zoom`) and the overlay are already Chimera's | Mostly data over 2; scope as an `alt` kind |
 | 8 | Attachments | `attachments.md` | not started | none (new in Chimera) | Data-driven parts (docs/weapon-data.md) |
 | 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | implementing (`worktree-agent-a4ca3acf25749c867`): reader and loading done | L11 (impact effects and runtime decals by surface class) not needed yet; nothing lifted (the map layer took `MapData` as is) | Reader `lithtech_formats::world` (fixtures A, B, C1-C7; heavy: test cases 1-6 on the 33 plain maps, all version 85; 7 waits for the V2 key); `game::world` converts to `MapData` (render data with a lightmap atlas, the install's `.dtx` textures through a first `lithtech_formats::dtx`, physics-BSP collision, `GameStartPoint` spawns); `--map combat_arms:<name>` in the app; scenario tests `tests/it/world.rs`, `heavy::world`; ambiguities in `game/world.rs`'s Known shortcuts |
-| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md`, `textures_dtx.md`, `animation.md` (briefs 10a-c) | not started (10b: `lithtech_formats::dtx` reads and decodes textures for item 9's maps, fixtures F1-F8 and the install sweep pass; load-time mip skipping, links and sections left) | L12 (view-model activity driver, bob and sway); `map::anim` and `map::view_model` are already Chimera's; the readers go in `lithtech/` | This box (real models); fixture files for the readers' unit tests |
+| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md`, `textures_dtx.md`, `animation.md` (briefs 10a-c) | implementing (`worktree-agent-a7e5358fb2c4b10b3`): 10a and 10c readers and props done; 10b: `lithtech_formats::dtx` reads and decodes textures for item 9's maps, fixtures F1-F8 and the install sweep pass; load-time mip skipping, links and sections left | L12 not lifted (no readable view model for the loadout's M4A1 and M9: both V2-keyed; the box placeholders stay); `map::anim` and `map::view_model` are already Chimera's | `lithtech_formats::ltb` (models: every kind, bounds-checked) and `anim` (combined list, sampling, ms tracker, key strings, layering, skinning maths): fixture cases, heavy cases on the unkeyed archives (census 815 models, flag, flagpole, laptop, M92FS pair, gunsmith, mine; V2 cases skip). `game::model` converts a model and its children to a skinned `MapModel` + `MapRig`/`AnimSet` (resampled at 30 fps); `game::props` places models world objects name (only the CTF `FlagItem`s, V2-keyed) and `CHIMERA_CA_PROP` for a dev prop; shortcuts in their `//!` docs |
 | 11 | CA UI system: how HUD and menus are built | `ui_system.md` | not started | L13 (buy and team menus, scoreboard, on Chimera's VGUI drawer) | After 5; decides whether we read the game's layouts or rebuild them as data |
 | 15 | Network part: listen server and clients, prediction | none (our engine's behaviour) | implementing (`worktree-agent-ab543578c13acdc9d`) | Join flow lifted: Chimera's default `JoinRules::enter` is `net::parts::enter_at_spawn` (a free spawn point of the team, full health); game state needs no lift yet (a game's rule state is its `net_part`, as CS:S's round) | `game/net.rs` (CA's part: `CaArmor` and the pickup prompt replicated); predicted: `CaMovement`, `CaSpread`/`CaRecoil`/`Knife` as weapon parts, `CaSelection` (weapons as inventory indices), the move penalty in the predicted tick; the server's rounds lag compensated; the HUD reads the server's hits and damage on a client; tests in `tests/it/net.rs`; listen server only (no CA dedicated server binary yet) |
 
@@ -153,7 +156,7 @@ does for BSP.
 
 | # | Item | Spec | Status | Lift | Notes |
 |---|---|---|---|---|---|
-| 12 | Character models, rigging, third-person animation | `characters.md` | not started | L14 (player animation driver) | Needs 10 |
+| 12 | Character models, rigging, third-person animation | `characters.md` | not started | L14 (player animation driver) | Needs 10 (done for the readers and `game::model`); every character archive (CHARS_*) and the third-person guns (GUNS_M_HH) are V2-keyed, so characters stay the shell's capsules until the V2 key is on the box |
 | 13 | Game modes: TDM, elimination | `game_modes.md` | not started | L15 (teams, respawn, round loop, game end, their network part); spectating is already Chimera's (`client::spectate`) | Rule modules on Chimera's rounds |
 | 14 | Bots | `bots.md` | not started | L16 (bot brain, path cost, corner checks, bot grenades) | Brains write `Intent`, like CS:S's bots; navigation on CA maps needs 9 |
 

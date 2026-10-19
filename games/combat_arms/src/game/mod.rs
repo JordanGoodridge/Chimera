@@ -22,7 +22,10 @@
 //! - `net`: the game's part of the network (armour, the pickup prompt;
 //!   the parts above register what a client predicts themselves);
 //! - `world`: the install's maps (world `.dat` files) as Chimera's
-//!   `MapData` (world_dat.md).
+//!   `MapData` (world_dat.md);
+//! - `model`: the install's models (`.ltb`) and their animations as
+//!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
+//! - `props`: models the maps' objects place, as animated props.
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -32,9 +35,11 @@ pub mod data;
 pub mod grenades;
 pub mod hud;
 pub mod inventory;
+pub mod model;
 pub mod mount;
 pub mod movement;
 pub mod net;
+pub mod props;
 pub mod rules;
 pub mod weapons;
 pub mod world;
@@ -143,5 +148,6 @@ impl PluginGroup for CombatArmsPlugins {
             .add(attachments::CaAttachmentsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)
+            .add(props::CaPropsPlugin)
     }
 }
