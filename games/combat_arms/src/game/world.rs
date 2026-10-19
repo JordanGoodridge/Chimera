@@ -53,10 +53,14 @@
 //!   where they stand at load. Collision sets (`MapCollisionSet`): the
 //!   collision blockers, players only; the polygons without the solid bit
 //!   (non-solid detail) and the world models that are ray-hit but not
-//!   solid, traces only (shots, sight, cover, grenades).
+//!   solid, traces only (shots, sight, cover, grenades). Polygons of the
+//!   glass surface types (`GLASS_SURFACE_TYPES`) go to sets of their own,
+//!   Chimera's `SeeThrough` (bots see through them, bots.md 5.2).
 //! - Volumes (`volumes`): `Water`, `EndlessFall` and the other volume
 //!   classes go to the map's entities (class, properties, the world
 //!   model's faces as one hull) for `volumes::CaVolume`.
+//! - AI objects (`objects`): the AI volumes, nodes and regions as map
+//!   entities, every property as text, for the bots (`bots::map_ai`).
 //! - Props: objects that name a model (`props`: the capture-the-flag
 //!   flags, whose model needs the V2 key).
 //! - View models: the weapons' first-person models their data names
@@ -121,6 +125,11 @@ pub const SOLID_CLASSES: &[&str] = &[
     "SlidingWorldModel",
     "SpinningWorldModel",
 ];
+
+/// The surface types light passes (effects_sounds.md, "The surface
+/// table": 40 Glass, 41 Bullet-Proof Glass): their polygons' collider is
+/// Chimera's `SeeThrough` (sight passes it, bots.md 5.2).
+pub const GLASS_SURFACE_TYPES: &[u16] = &[40, 41];
 
 /// The console's `Saturate` 1 (the default): the lighting multiply is
 /// doubled ("Lightmaps", Q7).
@@ -243,6 +252,7 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
     map.sky_camera = sky.and_then(|o| sky_camera(world, o, properties, scale));
     collision(world, &mut map, &to_engine);
     volumes(world, &mut map, scale);
+    objects(world, &mut map, scale, super::bots::map_ai::is_ai_object);
     spawns(world, &mut map, &to_engine);
     super::props::add_objects(world, &mut map, scale, file);
     if map.spawns.is_empty() {
@@ -710,16 +720,20 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
         positions.extend(corners.iter().map(|p| p.to_array()));
     };
     let (mut solid, mut traces, mut blockers) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut glass, mut glass_traces) = (Vec::new(), Vec::new());
     for m in &world.models {
         let (is_solid, rayhit) = if m.is_physics() { (true, true) } else { model_flags(world, &m.name) };
         if !(is_solid || rayhit) {
             continue;
         }
         for i in 0..m.polygons.len() {
-            let out = if is_solid && m.polygon_surface(i).flags & surface_flags::SOLID != 0 {
-                &mut solid
-            } else {
-                &mut traces
+            let surface = m.polygon_surface(i);
+            let see_through = GLASS_SURFACE_TYPES.contains(&surface.surface_type);
+            let out = match (is_solid && surface.flags & surface_flags::SOLID != 0, see_through) {
+                (true, false) => &mut solid,
+                (true, true) => &mut glass,
+                (false, false) => &mut traces,
+                (false, true) => &mut glass_traces,
             };
             fan(&mut m.polygon_vertices(i), out);
         }
@@ -734,12 +748,29 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
             indices: blockers,
             characters: true,
             traces: false,
+            ..default()
         },
         MapCollisionSet {
             name: "non-solid detail".into(),
             indices: traces,
             characters: false,
             traces: true,
+            ..default()
+        },
+        // Glass: solid as the rest, but sight passes it (bots.md 5.2).
+        MapCollisionSet {
+            name: "glass".into(),
+            indices: glass,
+            characters: true,
+            traces: true,
+            see_through: true,
+        },
+        MapCollisionSet {
+            name: "non-solid glass".into(),
+            indices: glass_traces,
+            characters: false,
+            traces: true,
+            see_through: true,
         },
     ];
 }
@@ -796,6 +827,41 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
             }],
             ..default()
         });
+        any = true;
+    }
+    if any {
+        map.entity_scale = scale;
+    }
+}
+
+/// The objects whose class `wanted` names, passed through as map entities
+/// for the parts that read them (the bots' AI volumes and nodes,
+/// `bots::map_ai`): `classname` the class, `targetname` its `Name`,
+/// `origin` its `Pos`, and every other property by its name as text:
+/// vectors in entity axes (x, z, y of the file's: positions and sizes
+/// alike), colours "r g b", numbers as numbers, booleans 1 or 0;
+/// rotations and unknown values left out.
+fn objects(world: &World, map: &mut MapData, scale: f32, wanted: fn(&str) -> bool) {
+    let mut any = false;
+    for o in world.objects.iter().filter(|o| wanted(&o.class)) {
+        let mut keyvalues = vec![("classname".to_string(), o.class.clone())];
+        for p in &o.properties {
+            let key = match p.name.as_str() {
+                n if n.eq_ignore_ascii_case("Name") => "targetname",
+                n if n.eq_ignore_ascii_case("Pos") => "origin",
+                n => n,
+            };
+            let value = match &p.value {
+                lt::Value::String(s) => s.clone(),
+                lt::Value::Vector(v) => format!("{} {} {}", v[0], v[2], v[1]),
+                lt::Value::Color(c) => format!("{} {} {}", c[0], c[1], c[2]),
+                lt::Value::Real(x) | lt::Value::Flags(x) | lt::Value::Long(x) => x.to_string(),
+                lt::Value::Bool(b) => (*b as u8).to_string(),
+                lt::Value::Rotation(_) | lt::Value::Unknown { .. } => continue,
+            };
+            keyvalues.push((key.to_string(), value));
+        }
+        map.entities.push(MapEntity { keyvalues, ..default() });
         any = true;
     }
     if any {

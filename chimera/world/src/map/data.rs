@@ -897,6 +897,9 @@ pub struct MapCollisionSet {
     /// Line traces and other gameplay queries (`SOLID_LAYERS`: shots,
     /// sight, explosion cover, thrown objects) meet them.
     pub traces: bool,
+    /// Light passes them (glass): their collider is marked `SeeThrough`,
+    /// as `see_through_hulls`' are.
+    pub see_through: bool,
 }
 
 /// A muzzle flash: view-facing additive sprites strung out along the

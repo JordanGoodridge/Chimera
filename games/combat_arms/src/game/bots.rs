@@ -16,9 +16,12 @@
 //! - `math`: the formulas (rolls, the hit/miss cycle, aim points, the
 //!   movement inaccuracy, the reaction delay, camping, weapon choice, the
 //!   throw, attack moves, patrol links).
-//! - `nav`: the volume path search on the map's navigation areas, which
-//!   are generated from the map's collision (`chimera_world::map::
-//!   nav_gen`) when the map ships none (`ensure_nav`).
+//! - `map_ai`: the map's own AI volumes and patrol nodes (`game::world`
+//!   passes the AI objects through as map entities), the navigation areas
+//!   and patrol graph where a map has them.
+//! - `nav`: the volume path search on the map's navigation areas: its AI
+//!   volumes (`map_ai`), else generated from the map's collision
+//!   (`chimera_world::map::nav_gen`; `ensure_nav`).
 //! - `brain`: the senses (5), goals and states (2: patrol, investigate,
 //!   chase, attack, dodge), firing (7, 8), movement in a fight (9).
 //!
@@ -39,24 +42,26 @@
 //!   fire rate is the weapon's own (no fire animation keys, Open question
 //!   3), the server's fire delay applies; damage is the player's (zone
 //!   factors included, though the spec says AI shooters never get them).
-//! - Navigation: no AI volumes are read from the maps (their objects
-//!   aren't in `MapData`; the readable WORLDS3 map costarecon_cp has 86
-//!   `AIVolume` and 8 `AINodePatrol` objects, so reading them is left for
-//!   when `game::world` can hand objects over); the areas are generated
-//!   from the collision (0.5 m cells merged into rectangles, rises up to
-//!   0.8 m with a jump, `brain::nav_params`), so the 1024-volume limit,
-//!   the 48 u link minimum (generated rectangles meet along ragged edges),
-//!   doors, ladders and teleport volumes don't apply. Patrol nodes: none
-//!   either; the patrol graph is ours (`nav::PatrolGraph`: area centres
-//!   7 m apart, linked within 16 m of path), with the spec's link choice
-//!   (unvisited, least recently visited, straight-on bonus) and no waits or
-//!   guard nodes. A bot that makes no progress for 1.5 s plans again and
-//!   jumps (the spec has no unstick logic, Open question 11).
+//! - Navigation: the map's AI volumes where it has them (five of the 33
+//!   readable maps: costarecon_cp's 86, bossbattle_cp, infectedship_cp,
+//!   noxiousdamnation, snowstorm; `map_ai`, whose Known shortcuts say what
+//!   of them isn't used: volume types, doors, weights); elsewhere the
+//!   areas are generated from the collision (0.5 m cells merged into
+//!   rectangles, rises up to 0.8 m with a jump, `brain::nav_params`),
+//!   where the 48 u link minimum (generated rectangles meet along ragged
+//!   edges), doors, ladders and teleport volumes don't apply. Patrol
+//!   nodes: the map's `AINodePatrol`s where it has them, else ours
+//!   (`nav::PatrolGraph`: area centres 7 m apart, linked within 16 m of
+//!   path); either way with the spec's link choice (unvisited, least
+//!   recently visited, straight-on bonus) and no waits or guard nodes. A
+//!   bot that makes no progress for 1.5 s plans again and jumps (the spec
+//!   has no unstick logic, Open question 11).
 //! - Senses: a character's torso is 0.2 m above its centre, its head 0.6
 //!   m (no skeletons); the eye is the movement's; the sight shortcut through
 //!   areas is the floor-level straight walk; sight rays meet the gameplay
 //!   layers (`core::SOLID_LAYERS`: players-only blockers pass, traces-only
-//!   detail and see-through surfaces such as glass block); footsteps are posted every
+//!   detail blocks) but for see-through surfaces (Chimera's `SeeThrough`:
+//!   the maps' glass, `world::GLASS_SURFACE_TYPES`); footsteps are posted every
 //!   0.4 s while a character moves on the ground faster than 100 u/s
 //!   (no footstep events yet), surface noise 1; "false stimulations" aren't
 //!   counted; gunfire is heard by enemies only (ally gunfire off). Grenade
@@ -68,8 +73,10 @@
 //!   mine drops while patrolling and nothing but characters as targets;
 //!   bot chat; the "catch breath" stop lasts 1 s; the crouch a teammate
 //!   asks for lasts the crouch hold (10 s); a roll is a fast sidestep;
-//!   the knife is the player's knife, swung from within 90 u (its reach is
-//!   105 u, the bot's 130 u); a reload's attack move starts with the reload
+//!   the knife is the player's knife with the bot's 130 u reach
+//!   (`inventory::KnifeReach`; its swing trace and zones stay, where the
+//!   spec deals the damage straight to the target), swung within 130 u
+//!   after closing to 90 u; a reload's attack move starts with the reload
 //!   key, not the animation; spawn protection and the respawn wait are the
 //!   mode's (4 s, game_modes.md), not the bot base's 3 s; no bodies.
 //! - Profiles: the install's profile file isn't read: a bot is
@@ -86,6 +93,7 @@
 
 pub mod brain;
 pub mod data;
+pub mod map_ai;
 pub mod math;
 pub mod nav;
 pub mod roster;

@@ -241,14 +241,18 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
             _ => CollisionLayers::new(LayerMask::DEFAULT, LayerMask::ALL & !crate::core::ITEM_LAYER),
         };
         let positions: Vec<Vec3> = data.collision_positions.iter().map(|p| Vec3::from(*p)).collect();
-        commands.entity(root).with_child((
+        let mut e = commands.spawn((
             Name::new(format!("Map collision ({})", set.name)),
             MapPart,
             RigidBody::Static,
             Collider::trimesh(positions, set.indices.clone()),
             layers,
             Transform::default(),
+            ChildOf(root),
         ));
+        if set.see_through {
+            e.insert(SeeThrough);
+        }
     }
     // Glass and grates get a collider of their own, marked `SeeThrough`.
     let see_through: std::collections::HashSet<usize> = data.see_through_hulls.iter().copied().collect();

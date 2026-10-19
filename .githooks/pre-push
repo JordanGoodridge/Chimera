@@ -72,13 +72,14 @@ if [ "$pushing" = 1 ]; then
         echo "pre-push: the build without --features dev fails (log: target/pre-push-check.log); not pushing." >&2
         exit 1
     fi
-    # The dedicated server as released: without the presentation
-    # (chimera_present, the client shell): its package alone, which uses the
-    # app without `present` (apps/cs_source_server/Cargo.toml).
-    echo "pre-push: checking the dedicated server's build without the presentation..." >&2
-    if ! cargo check -p cs_source_server --quiet >target/pre-push-check-server.log 2>&1; then
+    # The dedicated servers as released: without the presentation
+    # (chimera_present, the client shell): their packages alone (CS:S's
+    # uses the app without `present`, apps/cs_source_server/Cargo.toml;
+    # Combat Arms' the game without `ui`, apps/combat_arms_server/Cargo.toml).
+    echo "pre-push: checking the dedicated servers' builds without the presentation..." >&2
+    if ! cargo check -p cs_source_server -p combat_arms_server --quiet >target/pre-push-check-server.log 2>&1; then
         grep -E "^error" -A6 target/pre-push-check-server.log | head -30
-        echo "pre-push: the dedicated server doesn't build without the presentation (log: target/pre-push-check-server.log); not pushing." >&2
+        echo "pre-push: a dedicated server doesn't build without the presentation (log: target/pre-push-check-server.log); not pushing." >&2
         exit 1
     fi
     # The workspace-hack matches the dependencies (where cargo-hakari is

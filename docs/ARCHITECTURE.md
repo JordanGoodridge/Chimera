@@ -16,6 +16,7 @@ mashup (repository root: src/, tests/it/)   `dump`; `cs_source_app` at the old p
   |   /
 cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ its version), games::load_map
   |    combat_arms_app (apps/combat_arms/)   the Combat Arms app: its game binary (beside, not above, CS:S)
+  |    combat_arms_server (apps/combat_arms_server/)   Combat Arms' dedicated server: the game without `ui`
   |    combat_arms (games/combat_arms/)   Combat Arms' skeleton on Chimera, like cs_source; `ui` its HUD
   |
   |    cs_source[ui] (games/cs_source/src/ui/)   CS:S's front end: menus, panels, HUD (feature `ui`)
@@ -179,6 +180,12 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   links no render or audio code (checked:
   `server_builds_without_presentation`, `workspace_crates`); in a
   workspace build features unify, so releases build it with `-p`.
+- `combat_arms_server` (apps/combat_arms_server/) is Combat Arms'
+  dedicated server (`combat_arms_server`): Chimera's simulation crates,
+  the network and `combat_arms` without `ui` (its `ServerPlugin`, which
+  its tests build too), so it links no render or audio code and never
+  the app (`combat_arms_app`), CS:S or Source's logic (checked the same
+  way); built alone with `-p` for release.
 - `mashup` (the repository root; the old name) is a thin shim: `cs_source_app`
   re-exported at the old `mashup::` paths (src/lib.rs) for `dump` (an
   install inspector for several games; its test in tests/it/). Nothing
@@ -505,7 +512,7 @@ that the paths exist).
 - `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules: TDM, Elimination Pro (games)
 - `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, scoreboard rows and each mode (games)
 - `games/combat_arms/src/game/bots.rs`: Combat Arms' bots: settings, console, the bot's state; Bot Deathmatch on any mode (games)
-- `games/combat_arms/src/game/bots/`: the bots' roster and kits, data, formulas, volume path search and brain (senses, goals, aim, fire) (games)
+- `games/combat_arms/src/game/bots/`: the bots' roster, data, formulas, the map's AI volumes and nodes, path search and brain (games)
 - `games/combat_arms/data/bots.toml`: Combat Arms' bot templates, per-weapon AI rows, profile counts and item sets (games)
 - `games/combat_arms/data/modes.toml`: Combat Arms' mode settings: room and server-file values, shared constants, each mode's goal and mission data (games)
 - `games/combat_arms/src/ui/hud/score.rs`: Combat Arms' score panel and round timer from the match (games_ui)
@@ -566,6 +573,9 @@ that the paths exist).
 - `games/combat_arms/src/harness.rs`: `CaSim`: Combat Arms' simulation as a `Sim`'s base (harness)
 - `apps/combat_arms/src/main.rs`: the Combat Arms game binary, `combat_arms`, on the greybox or a map of the install (top)
 - `apps/combat_arms/build.rs`: stamps the build's commit and version (`VERSION`, `BUILD`)
+- `apps/combat_arms_server/src/lib.rs`: Combat Arms' dedicated server: options, `ServerPlugin`, `listen`, `changelevel` (crate root)
+- `apps/combat_arms_server/src/main.rs`: the Combat Arms dedicated server binary, built without the presentation (top)
+- `apps/combat_arms_server/build.rs`: stamps the server's version (`VERSION`)
 - `src/bin/dump.rs`: dev tool: summarize, list and extract a game install's files (CS:S, Combat Arms)
 
 ### Tools (each layer's, `--features tools`)

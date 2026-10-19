@@ -63,6 +63,7 @@ cargo run --features dev -- --help    # screenshot, spawn, look, movement option
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`
 cargo run --features dev --bin cs_source_server -- +map de_dust2   # dedicated server
 cargo build --release -p cs_source_server   # the server as released: no render/audio
+cargo run --features dev --bin combat_arms_server -- +map combat_arms:warehouse +MaxPlayer 4   # CA's
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)

@@ -524,3 +524,79 @@ fn volumes_from_the_map() {
     assert!(health <= 0.0, "killed: {health}");
 }
 
+
+/// Glass (surface types 40 and 41, `world::GLASS_SURFACE_TYPES`) is
+/// collision of its own marked Chimera's `SeeThrough`, solid to players as
+/// the rest of the wall is (bots see through it, bots.md 5.2).
+#[test]
+fn glass_is_see_through() {
+    let s = movement::movement_data().meters_per_unit;
+    let mut w = small_world();
+    let m = &mut w.models[0];
+    m.surfaces.push(Surface {
+        flags: surface_flags::SOLID,
+        surface_type: 40,
+        ..default()
+    });
+    m.polygons[1].surface = 1;
+    let map = world::convert(&w, "small", s, &|_| None);
+    assert_eq!(map.collision_indices.len(), 2, "the floor");
+    let glass: Vec<_> = map.collision_sets.iter().filter(|c| c.see_through && !c.indices.is_empty()).collect();
+    assert_eq!(glass.len(), 1);
+    assert!(glass[0].characters && glass[0].traces && glass[0].indices.len() == 2, "{:?}", glass[0]);
+    let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
+    sim.ticks(2);
+    let world = sim.app.world_mut();
+    let marked = world
+        .query_filtered::<&Name, With<chimera_world::map::SeeThrough>>()
+        .iter(world)
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(marked, ["Map collision (glass)"]);
+    assert!(walk_world(w) > -500.0 * s, "players stop at the glass");
+}
+
+/// The AI objects (volumes, patrol nodes) pass through as map entities,
+/// every property as text, vectors in entity axes; other objects don't.
+#[test]
+fn ai_objects_pass_through() {
+    use combat_arms::game::bots::map_ai::MapAi;
+    let s = movement::movement_data().meters_per_unit;
+    let mut w = small_world();
+    w.objects.push(Object {
+        class: "AIVolume".into(),
+        properties: vec![
+            prop("Name", Value::String("AIVolume01".into())),
+            prop("Pos", Value::Vector([0.0, 32.0, 300.0])),
+            prop("Dims", Value::Vector([200.0, 32.0, 100.0])),
+            prop("PreferredPath", Value::Bool(false)),
+        ],
+    });
+    for (name, z, next) in [("AINodePatrol_01", 250.0, "AINodePatrol_02"), ("AINodePatrol_02", 350.0, "")] {
+        w.objects.push(Object {
+            class: "AINodePatrol".into(),
+            properties: vec![
+                prop("Name", Value::String(name.into())),
+                prop("Pos", Value::Vector([0.0, 16.0, z])),
+                prop("Next", Value::String(next.into())),
+                prop("StartDisabled", Value::Bool(false)),
+            ],
+        });
+    }
+    let map = world::convert(&w, "small", s, &|_| None);
+    let classes: Vec<&str> = map.entities.iter().map(|e| e.classname()).collect();
+    assert_eq!(classes, ["AIVolume", "AINodePatrol", "AINodePatrol"]);
+    let v = &map.entities[0];
+    assert_eq!(v.get("targetname"), Some("AIVolume01"));
+    assert_eq!(v.get("origin"), Some("0 300 32"));
+    assert_eq!(v.get("PreferredPath"), Some("0"));
+    assert_eq!(map.entity_scale, s);
+    let ai = MapAi::read(&map.entities, map.entity_scale);
+    assert_eq!(ai.volumes.len(), 1);
+    // Z mirrored: the file's z 200..400 is engine z -400..-200 (u).
+    assert!(ai.volumes[0].min.abs_diff_eq(Vec3::new(-200.0, 0.0, -400.0) * s, 1e-5), "{:?}", ai.volumes[0]);
+    assert!(ai.volumes[0].max.abs_diff_eq(Vec3::new(200.0, 64.0, -200.0) * s, 1e-5), "{:?}", ai.volumes[0]);
+    assert_eq!(ai.patrol.len(), 2);
+    assert_eq!(ai.patrol[0].next, ["AINodePatrol_02"]);
+    assert!(ai.patrol[1].pos.abs_diff_eq(Vec3::new(0.0, 16.0, -350.0) * s, 1e-5));
+}

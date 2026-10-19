@@ -1,15 +1,15 @@
 //! What the bots move on (specs/combat_arms/bots.md 3): the map's
-//! navigation areas (Chimera's `NavMesh`; Combat Arms' maps ship hand
-//! placed AI volumes, which we don't read, so the mesh is generated from
-//! the map's collision, `chimera_world::map::nav_gen`), the volume path
+//! navigation areas (Chimera's `NavMesh`: the map's hand-placed AI
+//! volumes, `map_ai`, or where it has none generated from its collision,
+//! `chimera_world::map::nav_gen`), the volume path
 //! search with its squared-distance costs, and the straight walk test the
 //! attack moves and the sight shortcut use.
 //!
-//! - Links: an area link whose shared edge is shorter than `min_link` is
-//!   not used: the spec's `MIN_LINK` (48 u) for hand-placed volumes; 0 on
-//!   generated areas (their rectangles meet along ragged edges, often one
-//!   0.5 m cell wide in the middle of a wide floor, so the rule would cut
-//!   open floors apart).
+//! - Links: an area link whose shared edge is shorter than `MIN_LINK`
+//!   (48 u) is not made between the map's volumes (`map_ai`); generated
+//!   areas have no minimum (their rectangles meet along ragged edges,
+//!   often one 0.5 m cell wide in the middle of a wide floor, so the rule
+//!   would cut open floors apart).
 //! - The search: Dijkstra over areas, the cost of entering the next area
 //!   w(V) ‖e(V) − c(V, V')‖² (u²), e(V) where the path entered V (the
 //!   start position in the first), c the link's connection point (the
@@ -176,13 +176,16 @@ pub fn straight(mesh: &NavMesh, a: Vec3, b: Vec3, step: f32) -> bool {
     true
 }
 
-/// The patrol graph (4) where a map has no patrol nodes (ours): nodes are
-/// area centres at least `NODE_SPACING` m apart (the biggest areas
-/// first), linked to the nodes reachable within `NODE_REACH` m of path.
+/// The patrol graph (4): the map's patrol nodes (`map_ai`), or where a
+/// map has none ours (`build`): nodes are area centres at least
+/// `NODE_SPACING` m apart (the biggest areas first), linked to the nodes
+/// reachable within `NODE_REACH` m of path.
 #[derive(Clone, Debug, Default)]
 pub struct PatrolGraph {
     /// Each node's area.
     pub nodes: Vec<usize>,
+    /// Each node's place (m, on its area's floor).
+    pub points: Vec<Vec3>,
     /// Each node's links (node indices).
     pub links: Vec<Vec<usize>>,
 }
@@ -219,16 +222,13 @@ impl PatrolGraph {
                     .collect()
             })
             .collect();
-        Self { nodes, links }
+        let points = nodes.iter().map(|&n| mesh.areas[n].center).collect();
+        Self { nodes, points, links }
     }
 
     /// The node nearest `p` (m).
-    pub fn nearest(&self, mesh: &NavMesh, p: Vec3) -> Option<usize> {
-        (0..self.nodes.len()).min_by(|&a, &b| {
-            mesh.areas[self.nodes[a]]
-                .center
-                .distance_squared(p)
-                .total_cmp(&mesh.areas[self.nodes[b]].center.distance_squared(p))
-        })
+    pub fn nearest(&self, p: Vec3) -> Option<usize> {
+        (0..self.points.len())
+            .min_by(|&a, &b| self.points[a].distance_squared(p).total_cmp(&self.points[b].distance_squared(p)))
     }
 }

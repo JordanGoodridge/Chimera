@@ -28,6 +28,7 @@ members = [
     "apps/cs_source",
     "apps/cs_source_server",
     "apps/combat_arms",
+    "apps/combat_arms_server",
     "checks",
 ]
 default-members = [
@@ -51,6 +52,7 @@ default-members = [
     "apps/cs_source",
     "apps/cs_source_server",
     "apps/combat_arms",
+    "apps/combat_arms_server",
     "checks",
 ]
 resolver = "3"
