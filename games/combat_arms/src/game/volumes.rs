@@ -11,7 +11,9 @@
 //!
 //! What they do: viscosity and current slow and carry non-player objects
 //! (grenades, `grenades::step`) and the liquids (`Water`,
-//! `CorrosiveFluid`, `FreezingWater`) set their gravity to −200 u/s²;
+//! `CorrosiveFluid`, `FreezingWater`) set their gravity to −200 u/s²
+//! (`in_liquid`: also the effects' under-water tests and the first-person
+//! muzzle flash's);
 //! players inside take `Damage` per second (`volume_damage`, on the
 //! server), `EndlessFall`'s 10⁸ killing them, after `PendingSec` inside
 //! when it is set.
@@ -139,6 +141,13 @@ impl CaVolume {
             hidden: e.get("Hidden").is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true")),
         })
     }
+}
+
+/// Whether the point `p` (m) is inside a liquid volume (`Water`,
+/// `CorrosiveFluid`, `FreezingWater`): effects_sounds.md's under-water
+/// tests, view_models.md's muzzle flash.
+pub fn in_liquid<'a>(volumes: impl IntoIterator<Item = &'a CaVolume>, p: Vec3) -> bool {
+    volumes.into_iter().any(|v| v.liquid && v.contains(p))
 }
 
 /// The map's volumes, made when it loads; players' damage inside them.

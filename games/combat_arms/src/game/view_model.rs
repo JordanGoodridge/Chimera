@@ -27,8 +27,9 @@
 //! `PreRush`/`rush`/`PostRush`), its rates the weapon's fire, reload and
 //! draw rates with the fitted attachments' and the item's bonuses
 //! (`attachments::animation_rate`), fed the owner's fire, alt-fire,
-//! reload start (the weapon's `ReloadStarted`), clip and total, sprint and
-//! movement. The pose drawn is the machine's after the weapon update and
+//! reload start (the weapon's `ReloadStarted`), clip and total (a
+//! throwable's clip empty from its `Thrown` to the end of its 400 ms
+//! re-ready `reload`), sprint and movement. The pose drawn is the machine's after the weapon update and
 //! before the frame's advance (Per-frame order; Quirk 1's one-frame pop on
 //! non-reset switches included), written onto the `ViewAnimator`; the
 //! advance's key strings go out as `CaViewKey` messages (8: `sound_key n`,
@@ -45,7 +46,8 @@
 //! point F and breach point B (`BreachOffset`) are kept on `CaViewModel`;
 //! a shot (the weapon's `Fired`) starts the muzzle flash timer (9: shown
 //! while the clock is before the shot + the effect's length, the model
-//! visible and the player alive); the shot's casing leaves from B
+//! visible, the player alive and the camera out of liquid volumes unless
+//! `UseUWMuzzleFX`); the shot's casing leaves from B
 //! (`effects`: the ammo's FireFX says whether it ejects; 10's start
 //! velocities and effects_sounds.md 8's motion). The front end draws the
 //! flash (`ui::effects`: the muzzle part's or the weapon's
@@ -75,8 +77,8 @@
 //!   (`PVAttachFX`), player-view attachments, the file-name reset when the
 //!   character or uniform changes, spectating's sway and the 150-unit
 //!   footing ray (the footing is on the ground or a ladder).
-//! - No flash hider's effect; nothing is under water (the flash's rule is
-//!   there). Key sounds and casings are `effects`' (CaViewKey).
+//! - No flash hider's effect. Key sounds and casings are `effects`'
+//!   (CaViewKey).
 //! - Projection (5.1): Chimera's view-model camera keeps its 1 cm near
 //!   plane (`VIEW_SCALE` makes that the spec's 0.1 u) and no far plane
 //!   (the spec's 7 u); `ViewModelSettings` would zoom the view model with
@@ -105,6 +107,7 @@ use super::{
     attachments::{CaMods, animation_rate},
     inventory::{CaItem, UNIT},
     model,
+    volumes::{CaVolume, in_liquid},
     weapons::CaZoom,
 };
 use crate::{
@@ -217,6 +220,9 @@ pub struct CaViewModel {
     pub flash_at: Option<Vec3>,
     /// Hidden behind a scope (11).
     pub hidden: bool,
+    /// A throwable's grenade left the hand (`Thrown`): its clip is 0 to
+    /// the machine until its re-ready (`reload`) ends (Grenade timings Q5).
+    pub thrown: bool,
     rng: u32,
 }
 
@@ -479,12 +485,14 @@ fn setup_of(parts: &WeaponParts) -> Setup {
     }
 }
 
-/// Clip and total ammo as the machine sees them (no magazine: always one).
-fn ammo_of(parts: &WeaponParts) -> (u32, u32) {
+/// Clip and total ammo as the machine sees them (no magazine: always
+/// one; a throwable: one in hand of its count, none from its throw to its
+/// re-ready, `thrown`).
+fn ammo_of(parts: &WeaponParts, thrown: bool) -> (u32, u32) {
     let (_, magazine, _, _, throwable, _) = parts;
     match (magazine, throwable) {
         (Some(m), _) => (m.clip, m.clip + m.reserve),
-        (None, Some(t)) => (t.count.min(1), t.count),
+        (None, Some(t)) => (if thrown { 0 } else { t.count.min(1) }, t.count),
         _ => (1, 1),
     }
 }
@@ -512,6 +520,7 @@ fn drive(
     mut keys: MessageWriter<CaViewKey>,
     mut tables: Local<HashMap<String, Arc<Vec<AnimInfo>>>>,
     mut commands: Commands,
+    volumes: Query<&CaVolume>,
 ) {
     let (dt, now) = (time.delta_secs_f64(), time.elapsed_secs_f64());
     let events: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
@@ -540,6 +549,7 @@ fn drive(
         if shown_changed || vm.weapon != active {
             vm.weapon = active;
             vm.machine = None;
+            vm.thrown = false;
             vm.flash = FlashTimer::default();
             if let (Some(p), Some(set)) = (parts.as_ref(), view.animator.as_ref().map(|a| a.set.clone())) {
                 let table = tables
@@ -580,9 +590,12 @@ fn drive(
         let mine: Vec<&WeaponEventKind> = events.iter().filter(|ev| ev.owner == e).map(|ev| &ev.kind).collect();
         let reload = mine.iter().any(|k| matches!(k, WeaponEventKind::ReloadStarted));
         let shot = mine.iter().any(|k| matches!(k, WeaponEventKind::Fired { .. }));
+        if mine.iter().any(|k| matches!(k, WeaponEventKind::Thrown)) {
+            vm.thrown = true;
+        }
         // The weapon frame fires before this update: its round counts as
         // still in the clip, and as fire held, for the machine's gate.
-        let (clip, total) = ammo_of(&parts);
+        let (clip, total) = ammo_of(&parts, vm.thrown);
         let (clip, total) = if shot { (clip + 1, total + 1) } else { (clip, total) };
         let inputs = Inputs {
             fire: intent.fire || shot && parts.0.slot != 2,
@@ -596,6 +609,9 @@ fn drive(
         if let Some(m) = vm.machine.as_mut() {
             m.set_rates(setup_of(&parts).rates);
             let out = m.update(&inputs);
+            if out.reloaded {
+                vm.thrown = false;
+            }
             for k in out.events {
                 keys.write(CaViewKey { owner: e, key: k });
             }
@@ -640,8 +656,8 @@ fn drive(
         vm.flash_point = place::flash_point(eye, &axes, vm.flash_offset * UNIT);
         vm.breach_point = place::breach_point(vm.flash_point, &axes, Vec3::from(params.breach_offset) * UNIT);
         let visible = !vm.hidden && vm.machine.is_some();
-        // No liquid volumes yet: never under water.
-        let under_water = false;
+        // The camera in a liquid volume (9).
+        let under_water = in_liquid(volumes.iter(), eye);
         let shown = !params.muzzle_fx.is_empty()
             && vm.flash.update(
                 now,

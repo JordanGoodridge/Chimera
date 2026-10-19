@@ -91,10 +91,10 @@
 //!   delivered (the server), not on the victim's client, and sent to it;
 //!   nothing is an AI yet (`CaNpc` marks one for the target groups); "Poison
 //!   or stun forces mu S to 1" (weapon_firing.md) isn't done.
-//! - Not done (no presentation for them yet: effects_sounds.md, view
-//!   models): the muzzle effects, tracers, flash hiders, zoom sounds, the
-//!   overlay picture (Chimera's placeholder overlay), the part models
-//!   themselves (`part_models` says where), dot-sight mode (`Type` 2, Q7:
+//! - The parts' muzzle effects, tracers and fire sounds are `effects`'
+//!   (effects_sounds.md). Not done: flash hiders (no stock record names
+//!   one), zoom sounds (their files aren't in a spec), the overlay
+//!   picture (Chimera's placeholder overlay), the part models themselves (`part_models` says where), dot-sight mode (`Type` 2, Q7:
 //!   no record has it), `VectorsPerRoundPer`, `InstDamagePer` (no
 //!   secondary attacks), the client ammo ceiling `MaxAmountPlus` (Q3:
 //!   invisible), gear mods (`Kinds` 5..7), set items and the gunsmith

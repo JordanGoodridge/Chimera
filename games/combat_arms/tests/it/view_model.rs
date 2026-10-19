@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use chimera_core::core::{Health, LocalPlayer};
-use chimera_sim::weapon::{self, Inventory, Magazine, data::WeaponDataAppExt};
+use chimera_sim::weapon::{self, Inventory, Magazine, data::WeaponDataAppExt, grenade::Throwable};
 use chimera_world::{
     greybox::GreyboxMapPlugin,
     harness::Sim,
@@ -970,6 +970,7 @@ fn t01_hand_to_weapon_bone_match() {
 const M92FS: &str = "combat_arms:beretta_m92fs";
 const R870: &str = "combat_arms:remington_870";
 const ZOOMING: &str = "test:m92fs_zoom";
+const M67: &str = "combat_arms:m67";
 
 /// The M92FS with a sight (no such stock weapon is unkeyed).
 const ZOOM_DOC: &str = r#"
@@ -1043,10 +1044,12 @@ fn sim() -> Sim {
     sim.app.add_weapon_data(&[("zoom", ZOOM_DOC)]).unwrap();
     let pistol: Vec<AnimInfo> = m92fs().iter().cloned().collect();
     let shotgun: Vec<AnimInfo> = r870().iter().cloned().collect();
+    let grenade: Vec<AnimInfo> = m67().iter().cloned().collect();
     sim.app.insert_resource(ViewModels(Arc::new(vec![
         view_model(M92FS, &pistol),
         view_model(ZOOMING, &pistol),
         view_model(R870, &shotgun),
+        view_model(M67, &grenade),
     ])));
     sim
 }
@@ -1242,4 +1245,51 @@ fn one_frame_pop_in_game() {
     assert_eq!(shown(&sim, p).as_deref(), Some("idle_0"));
     sim.ticks(1);
     assert_eq!(shown(&sim, p).as_deref(), Some("reload"));
+}
+
+/// Grenade timings Q5: with grenades left, the throw's `postfire` is
+/// followed by the 400 ms re-ready (`reload`), whose end fills the clip.
+#[test]
+fn grenade_re_ready_after_a_throw() {
+    let mut sim = sim();
+    let p = player(&mut sim);
+    let w = drawn(&mut sim, p, M67);
+    {
+        let mut t = sim.app.world_mut().get_mut::<Throwable>(w).unwrap();
+        t.count = 2;
+        t.max = 2;
+    }
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    assert!(until(&mut sim, 100, |s| playing(s, p).as_deref() == Some("postfire")));
+    assert!(until(&mut sim, 60, |s| vm(s, p).thrown), "the grenade left the hand");
+    assert!(until(&mut sim, 60, |s| playing(s, p).as_deref() == Some("reload")), "the re-ready");
+    assert!(until(&mut sim, 60, |s| playing(s, p).is_some_and(|n| n.starts_with("idle_"))));
+    assert!(!vm(&sim, p).thrown, "the clip filled");
+    assert_eq!(sim.app.world().get::<Throwable>(w).unwrap().count, 1);
+}
+
+/// 9: no first-person flash with the camera in a liquid volume (the
+/// M92FS has no `UseUWMuzzleFX`).
+#[test]
+fn no_muzzle_flash_under_water() {
+    let mut sim = sim();
+    let p = player(&mut sim);
+    sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+    drawn(&mut sim, p, M92FS);
+    sim.app.world_mut().spawn(combat_arms::game::volumes::CaVolume::liquid_box(
+        Vec3::splat(-1000.0),
+        Vec3::splat(1000.0),
+        0.0,
+        Vec3::ZERO,
+    ));
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    assert!(until(&mut sim, 5, |s| vm(s, p).flash.shot_at.is_some()), "it fired");
+    for _ in 0..6 {
+        assert!(!vm(&sim, p).flash.shown && vm(&sim, p).flash_at.is_none());
+        sim.ticks(1);
+    }
 }

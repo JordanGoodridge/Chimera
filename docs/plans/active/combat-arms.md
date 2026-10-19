@@ -326,6 +326,12 @@ Notes:
   to the board, existing numbers kept) and the follow-up brief for Wave
   2's open questions (25 questions from grenades, the world and texture
   readers' Known shortcuts) written.
+- 2026-10-19: Known-shortcuts sweep of the finished modules: liquids in
+  effects (half-volume impacts and grenade bounces, under-water groups, no
+  tracers into liquid, casings and footsteps in water), the muzzle flash
+  hidden under water, the grenade's 400 ms re-ready animation, bounce
+  sound loudness, the camera's rise and effect jitter on the client
+  camera.
 
 ## How to run a spec wave (for the user)
 

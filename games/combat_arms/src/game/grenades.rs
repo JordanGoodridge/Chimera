@@ -101,13 +101,14 @@
 //!   aren't in a spec). A character touch snaps the grenade to where the
 //!   step enters a hit sphere (the "short trace"), else leaves it at the
 //!   step's end. Grenade-on-grenade touches don't move either. M-23F and
-//!   G7A boxes are the M67's (PLACEHOLDER: not in the spec). No bounce
-//!   sound or bots' hearing of it (no assets, no bots); spin is drawn only.
+//!   G7A boxes are the M67's (PLACEHOLDER: not in the spec). Bounce
+//!   sounds are `effects`' (each contact's `loudness`, half in water);
+//!   a character touch's is at full loudness (6 gives the formula for
+//!   world bounces only); bots don't hear them; spin is drawn only.
 //! - Grenades don't tell the map's invisible polygons or sky portals apart
 //!   (Combat Arms maps' surfaces have no names here): they bounce off clip
 //!   walls and sky surfaces of the map; colliders named "invisible" and
-//!   "sky" behave as the spec says. Half-volume sounds in water don't
-//!   exist. Doors don't move (`world`), so "wherever they are in their
+//!   "sky" behave as the spec says. Doors don't move (`world`), so "wherever they are in their
 //!   motion" is where they stand.
 //! - The screen draws Chimera's white overlay over `Blinded` (a linear
 //!   fade to T/2, no screen capture or first-frame HUD hiding);
@@ -501,13 +502,23 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
 // The live grenade
 
 /// One contact of a grenade's flight (for tests and tools): the step, the
-/// point (u) and the velocity after it (u/s).
+/// point (u) and the velocity after it (u/s), and its bounce sound's
+/// loudness (6, step 4: min(1, |v''| h / 200), v'' the damped velocity
+/// before the rest test; 1 for a character touch).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Contact {
     pub step: u32,
     pub at: Vec3,
     pub velocity: Vec3,
     pub rest: bool,
+    pub loudness: f32,
+}
+
+/// A bounce sound's loudness: min(1, |v''| h / 200) (6, step 4).
+pub fn bounce_loudness(v: Vec3, n: Vec3, h: f32) -> f32 {
+    let h = h.clamp(0.0, 1.0);
+    let damped = h * (v - 2.0 * v.dot(n) * n - 2.0 * SURFACE_PUSH * n);
+    (damped.length() * h / 200.0).min(1.0)
 }
 
 /// A Combat Arms grenade in the world (the server's), on its `Projectile`.
@@ -1489,6 +1500,7 @@ fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: 
             at: from + delta * entry.min(1.0),
             velocity: g.velocity,
             rest: false,
+            loudness: 1.0,
         });
     }
     if let Some(t) = snap {
@@ -1508,6 +1520,7 @@ fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: 
     let n = n.normalize_or(Vec3::Y);
     let at = from + dir * (distance / unit);
     let h = world.table.hardness(surface.as_deref());
+    let loudness = bounce_loudness(g.velocity, n, h);
     let (v2, rest) = bounce(g.velocity, n, h);
     g.pos = at + n * SKIN;
     g.velocity = v2;
@@ -1518,6 +1531,7 @@ fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: 
         at,
         velocity: v2,
         rest,
+        loudness,
     });
     // A new spin at every bounce.
     let mut rng = shared_random(g.seq as u32, "combat_arms:spin", g.steps as i32);

@@ -977,3 +977,100 @@ fn reload_keys_play_the_weapons_sounds() {
     let s = heard(&mut sim);
     assert!(s.iter().any(|s| s.file == "guns_snd_ar/m4a1/reload2.wav" && s.at.is_none()), "{s:?}");
 }
+
+// ---------------------------------------------------------------------------
+// Liquids (sections 5, 8, 11; Per-frame order 6)
+
+/// A liquid volume over the whole greybox.
+fn flood(sim: &mut Sim) {
+    sim.app.world_mut().spawn(combat_arms::game::volumes::CaVolume::liquid_box(
+        Vec3::splat(-1000.0),
+        Vec3::splat(1000.0),
+        0.0,
+        Vec3::ZERO,
+    ));
+}
+
+#[test]
+fn under_water_impacts_are_half_volume_without_bursts_or_tracers() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    arm(&mut sim, me, "combat_arms:m4a1");
+    type_everything(&mut sim, 20);
+    flood(&mut sim);
+    // Level: eight rounds, shots 4 and 8 would carry tracers.
+    sim.intent(me).pitch = 0.0;
+    for _ in 0..8 {
+        fire_once(&mut sim, me);
+        assert!(sim.app.world().resource::<CaTracers>().0.is_empty(), "no tracer into liquid");
+        sim.seconds(0.4);
+    }
+    // Down at the metal floor: its sound at half volume, no burst (Metal
+    // has no under-water group), the decal still made.
+    sim.intent(me).pitch = -0.6;
+    sim.ticks(2);
+    heard(&mut sim);
+    sim.app.world_mut().resource_mut::<Requested>().0.clear();
+    sim.app.world_mut().resource_mut::<CaMarks>().marks.clear();
+    fire_once(&mut sim, me);
+    let sounds = heard(&mut sim);
+    let hit = sounds
+        .iter()
+        .find(|s| s.file.starts_with("guns_snd_impacts/metal_bg/impact"))
+        .expect("the impact sound");
+    assert_eq!(hit.volume, 50.0);
+    let fire = sounds.iter().find(|s| s.file == "guns_snd_ar/m4a1/fire.wav").unwrap();
+    assert_eq!(fire.volume, 100.0, "only impacts are muffled");
+    let req = std::mem::take(&mut sim.app.world_mut().resource_mut::<Requested>().0);
+    assert!(!req.iter().any(|r| r.kind == FxKind::Surface), "{req:?}");
+    assert_eq!(sim.app.world().resource::<CaMarks>().marks.len(), 1);
+    // The casings fall as in water.
+    let wet: Vec<bool> = sim
+        .app
+        .world_mut()
+        .query::<&CaShell>()
+        .iter(sim.app.world())
+        .map(|s| s.casing.in_water)
+        .collect();
+    assert!(!wet.is_empty() && wet.iter().all(|w| *w));
+}
+
+#[test]
+fn submerge_swaps_the_burst_for_the_under_water_group() {
+    let record = t().impact("BulletFmj").unwrap();
+    let metal = t().surface(20);
+    let mut out = effects::impact(record, metal, AmmoKind::Bullet, true, true, false, &settings(), [0.0, 0.0]);
+    assert!(out.burst.is_some());
+    effects::submerge(&mut out, record, metal, AmmoKind::Bullet, true);
+    assert_eq!((out.burst.clone(), out.under_water, out.sound_volume()), (None, true, 50.0));
+    let mut custom = metal.clone();
+    custom.uw_impact_fx = "UW_Test".into();
+    let mut out = effects::impact(record, &custom, AmmoKind::Bullet, true, true, false, &settings(), [0.0, 0.0]);
+    effects::submerge(&mut out, record, &custom, AmmoKind::Bullet, true);
+    assert_eq!(out.burst.as_deref(), Some("UW_Test"));
+}
+
+#[test]
+fn footsteps_on_an_unknown_surface_in_water_are_waters() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    type_everything(&mut sim, 0);
+    flood(&mut sim);
+    heard(&mut sim);
+    sim.intent(me).move_axis = Vec2::Y;
+    sim.seconds(1.5);
+    let s = heard(&mut sim);
+    let steps: Vec<&CaSound> = s.iter().filter(|s| s.file.contains("footsteps")).collect();
+    assert!(steps.len() >= 3, "{s:?}");
+    assert!(steps.iter().all(|s| s.file.starts_with("chars_snd/footsteps/water")), "{steps:?}");
+}
+
+#[test]
+fn grenade_bounce_volume() {
+    assert_eq!(effects::bounce_volume(false, 1.0), 100.0);
+    assert_eq!(effects::bounce_volume(true, 1.0), 50.0, "half in water");
+    assert_eq!(effects::bounce_volume(true, 0.5), 25.0);
+    assert_eq!(effects::bounce_volume(false, 3.0), 100.0);
+}

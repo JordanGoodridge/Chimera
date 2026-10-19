@@ -342,6 +342,21 @@ fn t06_rest_threshold() {
     assert_near(v, Vec3::new(50.7, 311.94, 0.0), 0.05, "bounces");
 }
 
+/// 6, step 4: the bounce sound's loudness min(1, |v''| h / 200), v'' the
+/// damped velocity before the rest test (a resting bounce still sounds).
+#[test]
+fn bounce_sound_loudness() {
+    use grenades::bounce_loudness;
+    assert_eq!(bounce_loudness(Vec3::new(76.0, -480.0, 0.0), Vec3::Y, 0.65), 1.0, "loud, though it rests");
+    let sand = grenades::CaGrenadeSurfaces::built_in().hardness(Some("desert sand"));
+    // |v''| = |(60, 47.99, 0)| = 76.83: × 0.1 / 200.
+    let l = bounce_loudness(Vec3::new(600.0, -480.0, 0.0), Vec3::Y, sand);
+    assert!((l - 0.038416).abs() < 1e-4, "{l}");
+    // A slow drop on stone: |v''| = 0.65 × 99.9, × 0.65 / 200.
+    let l = bounce_loudness(Vec3::new(0.0, -100.0, 0.0), Vec3::Y, 0.65);
+    assert!((l - 0.65 * 99.9 * 0.65 / 200.0).abs() < 1e-4, "{l}");
+}
+
 #[test]
 fn t07_no_rest_on_walls() {
     let (v, rest) = bounce(Vec3::new(-20.0, -30.0, 0.0), Vec3::X, 0.65);
