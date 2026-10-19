@@ -1,9 +1,9 @@
 # Combat Arms: world file (.dat)
 
-Source basis: reference material the user pointed the spec session to on the engine's world loading (shared, client, server and renderer sides) and on the tool that compiles maps into world files. Checked by parsing every plaintext world file in the Steam install on the Windows PC (Steam build id 25595979) and in an older regional client, as numbers and structure only.
+Source basis: reference material the user pointed the spec session to on the engine's world loading (shared, client, server and renderer sides) and on the tool that compiles maps into world files. Checked by parsing every plaintext world file in the Steam install on the Windows PC (Steam build id 25595979) and in an older regional client, as numbers and structure only. A follow-up session added the engine's collision and ray-intersection code, the world renderer's fixed-function shaders, sky and light-group code, the game's volume, world-model, light-group, sky and world-properties objects, the network file list, and a census of the older regional client's 65 maps.
 Status: draft
 
-Sections: Summary; Units and conventions; Versions in the install; File layout; Header; World info string, extents and offset; World tree; World models (BSPs); Objects; Blind object data; Light grid; Collision blockers and particle blockers; Render data; Lightmaps; What is drawn and what is collision only; Sky; Other contents; Coordinate conversion; Edge cases; Quirks; Synthetic fixtures; Test cases; Open questions.
+Sections: Summary; Units and conventions; Versions in the install; File layout; Header; World info string, extents and offset; World tree; World models (BSPs); Objects; Blind object data; Light grid; Collision blockers and particle blockers; Render data; Lightmaps; What is drawn and what is collision only; Sky; Second textures; Moving world models and volumes; Map identity; Other contents; Coordinate conversion; Edge cases; Quirks; Synthetic fixtures; Test cases; Open questions.
 
 ---
 
@@ -18,7 +18,7 @@ Sections: Summary; Units and conventions; Versions in the install; File layout; 
 
 - Integers: u8, u16, u32 (unsigned) and i32 (signed), little-endian. Reals: IEEE-754 single precision ("f32"), little-endian.
 - vec3: three f32 in the order x, y, z (12 bytes). plane: a vec3 normal followed by an f32 distance d (16 bytes); a point p lies on the plane when n·p = d, and d is stored this way in every block of the file (BSP planes, blockers, particle blockers, sky portals, occluders).
-- lstring: a u16 byte count followed by that many bytes, with **no** terminator. Text is 8-bit (ASCII in practice). This is the string form everywhere except in the BSP texture-name list, which uses NUL-terminated strings (see World models).
+- lstring: a u16 byte count followed by that many bytes, with **no** terminator. Text is 8-bit. No byte above 0x7F occurs in any name or string of the 65 maps of the older regional client (class and property names, string properties, world-model and texture names, render section names); the engine keeps them as plain 8-bit strings with no code-page conversion and compares file names without regard to ASCII case (Open question 16). A reader should keep the bytes, compare them ASCII-case-insensitively where the engine does, and may decode them as Latin-1 for display. This is the string form everywhere except in the BSP texture-name list, which uses NUL-terminated strings (see World models).
 - Offsets are absolute byte offsets from the start of the world file (the bytes the archive reader returns for the `.DAT` entry).
 - Distances are LithTech world units ("u"); the file has no unit of its own (see Open questions for the real-world scale).
 - Axes: +Y is up, +X is right and +Z is forward, a left-handed frame. Angles are radians. See Coordinate conversion.
@@ -158,7 +158,7 @@ After the BSP header, in this order:
 | Array | Count | Element size | Element layout |
 |---|---|---|---|
 | Texture names | T | variable | NUL-terminated string. The sum of the lengths including terminators equals T_len. |
-| Polygon vertex counts | G | 1 | u8 vertex count of polygon i, in polygon order. 3..18 observed; the engine's limit is 40. |
+| Polygon vertex counts | G | 1 | u8 vertex count of polygon i, in polygon order. 3..18 observed; the engine's limit is 40. The engine does not check it: a polygon of more than 40 vertices overruns its fixed 40-entry read buffer (undefined). A reader should refuse it. |
 | Leaves | leaf count | variable | Skipped (Edge cases). None in observed files. |
 | Planes | Q | 16 | plane |
 | Surfaces | S | 8 | u32 surface flags, u16 texture index into the texture names, u16 surface type |
@@ -266,6 +266,7 @@ Property types:
 
 - R covers the class name, property count and all properties exactly, so a reader can skip an object it does not want by jumping R bytes. Observed files are exact.
 - Unknown type codes: the engine ignores the property but still consumes its data. A reader should skip D bytes.
+- **Malformed records** (Open question 16). The engine reads the object list strictly in sequence: it reads R but never uses it to seek, so an R that disagrees with the content goes unnoticed and the next object is read from right after the last property. For every property it reads exactly D bytes, then interprets the leading bytes by type; the size checks exist only in debug builds. So a property longer than its type (a real with D = 8) uses its first bytes and skips the rest, and one shorter than its type (a real with D = 2) is read past its data (undefined). A string property is read as an lstring inside its D bytes. Running out of file anywhere fails the load as an invalid world. A reader should: refuse D smaller than the type's size; accept D larger and use the leading bytes; parse by content and treat an R mismatch as a warning (or refuse it; no observed file has one).
 - **Rotation to matrix.** The engine builds the matrix as yaw, then pitch, then roll (R = R_y(yaw) · R_x(pitch) · R_z(roll)), with these columns (c = cos, s = sin; y = yaw, p = pitch, r = roll):
 
 ```math
@@ -287,7 +288,8 @@ Property types:
 | Sun | `StaticSunLight`: `InnerColor`, `BrightScale`, `ConvertToAmbient`, `ObjectBrightScale`; direction from `Rotation` |
 | Switchable light group | `LightGroup`: `Name` (the group name), `StartOn` (boolean), `StartColor` (colour) |
 | Sound | `SoundFX`: `Sound` (string, sound file path), `InnerRadius`, `OuterRadius` (reals), `Volume` (long), `Loop`, `Ambient`, `StartOn` (booleans) |
-| Door, moving geometry | `RotatingDoor`, `SlidingDoor`, `RotatingWorldModel`, `SlidingWorldModel`, `SpinningWorldModel`, `WorldModel`, `Breakable` and others, each tied to the world model of the same `Name`; motion in properties such as `RotationAngles`, `MoveDir`, `MoveDist`, `OpeningTime` |
+| Door, moving geometry | `RotatingDoor`, `SlidingDoor`, `RotatingWorldModel`, `SlidingWorldModel`, `SpinningWorldModel`, `WorldModel`, `Breakable` and others, each tied to the world model of the same `Name`; motion in properties such as `RotationAngles`, `MoveDir`, `MoveDist`, `OpeningTime` (see Moving world models and volumes) |
+| Volumes | `Water`, `CorrosiveFluid`, `FreezingWater` (liquids), `VolumeBrush`, `PoisonGas`, `Electricity`, `Burn`, `ColdAir`, `EndlessFall`, `Ice`, `Wind`, `Filter`, `SafteyNet` (spelled so), `Ladder`, `Weather`, `Gravity`, `DamageVolume`, `WorldVolume`, `JumpVolume`, each tied to the world model of the same `Name` (see Moving world models and volumes) |
 | Pickups | `WeaponItem` (`WeaponType` string), `FlagItem` (`Teams`, `GameType`, `Filename` model path), and `ObjectSpawnPoint` (`GameType`, `Spawn`), whose role is an open question |
 | Sky | `DemoSkyWorldModel` (see Sky) |
 | World settings | `WorldProperties`: far clip (`FarZ`), fog (`FogEnable`, `FogColor`, `FogNearZ`, `FogFarZ`), sky fog, volumetric fog, panning sky, wind, `LightmapTFactor` (colour) and more |
@@ -351,7 +353,8 @@ Header offsets 3 and 4. Both blocks have the same layout:
 
 Polygon: plane (16 bytes), u32 vertex count v, then v vec3 vertices. Vertex order follows the same rule as BSP polygons ((v1 − v0) × (v2 − v0) along n).
 
-- **Collision blockers** are invisible polygons that block player movement only: the "player blocker" brushes, which the compiler removes from the BSPs. On load, the engine snaps any normal component with magnitude below 0.0001 to 0 and renormalises.
+- **Trailer** (Open question 17): a field reserved for future expansion. The engine reads it after the polygons and checks it is 0 only in debug builds; a release build ignores its value. It holds nothing. A reader should read it and ignore its value (0 in every observed file).
+- **Collision blockers** are invisible polygons that block player movement only: the "player blocker" brushes, which the compiler removes from the BSPs. On load, the engine snaps any normal component with magnitude below 0.0001 to 0 and renormalises. The engine consults them only when moving an object in the player collision mode (the players' cylinder mover). Ray queries (bullets, line of sight, explosion cover), grenades and other point or box movers never see them (Open question 5).
 - **Particle blockers** are invisible polygons that stop particles, for example keeping snow and rain out of covered areas.
 - Observed counts: blockers 0–698 per map; particle blockers present in 5 of 33 maps.
 
@@ -433,7 +436,7 @@ Shader codes:
 | 10 | Render-block splitter (compiler only) | – | no |
 | 11 | Unknown (drawn as an error marker) | – | no |
 
-- The engine treats any code other than 1, 2, 4, 8 or 9 as invalid.
+- The engine treats any code other than 1, 2, 4, 8 or 9 as invalid (Open question 17). An invalid section is still read completely (its textures, lightmap and triangle count; its triangles keep their place in the block's list), raises no error, and is **never drawn**. No other codes exist: the compiler's codes stop at 11, and the renderer's own list labels 10 as "unknown" (where the compiler has the render-block splitter) without giving it a shader. A reader should keep such sections and skip them when drawing. Only 1, 2, 4, 8 and 9 occur in the 65 maps of the older regional client.
 
 **Vertex (68 bytes):**
 
@@ -444,7 +447,7 @@ Shader codes:
 | 16 | 4 | f32 | V0 |
 | 20 | 4 | f32 | U1 |
 | 24 | 4 | f32 | V1 |
-| 28 | 4 | u32 | Colour as A·2^24 + R·2^16 + G·2^8 + B (vertex lighting for shader 1 and 8; A is alpha) |
+| 28 | 4 | u32 | Colour as A·2^24 + R·2^16 + G·2^8 + B, so the bytes are B, G, R, A. **Per vertex** (Open question 10): each vertex has its own; in the older regional client's maps about three quarters of the vertex-lit sections have more than one distinct colour. R, G, B are the baked vertex lighting used by shaders 1 and 8; A is a per-vertex blend weight used by the dual-texture shaders 8 and 9 (see Second textures) and is 255 elsewhere. Shaders 2, 4 and 9 do not use R, G, B. |
 | 32 | 12 | vec3 | Normal (unit length) |
 | 44 | 12 | vec3 | Tangent (unit, along the texture U direction projected into the surface) |
 | 56 | 12 | vec3 | Binormal (unit, along the texture V direction projected into the surface) |
@@ -463,7 +466,7 @@ u = \frac{P \cdot (x - O)}{w_{\text{tex}}},\qquad v = \frac{Q \cdot (x - O)}{h_{
 | Size | Type | Meaning |
 |---|---|---|
 | 2+n | lstring | Light-group name (its id is the name hash) |
-| 12 | vec3 | Colour, 0–1 per channel |
+| 12 | vec3 | Colour, 0–1 per channel: the compile-time colour, used only until the game sets the group's colour (see Lightmaps, Light groups) |
 | 4 | u32 | I, intensity stream byte count |
 | I | bytes | Vertex intensity stream |
 | 4 | u32 | Section count (equals the block's section count) |
@@ -500,9 +503,19 @@ u = \frac{P \cdot (x - O)}{w_{\text{tex}}},\qquad v = \frac{Q \cdot (x - O)}{h_{
 - **Where:** only in shader-2 sections of render blocks, one lightmap per section. A "lightmap count" is the number of shader-2 sections. Every shader-2 section in the measured maps has data, and no other section does.
 - **Size:** width and height are each a power of two from 16 to 256 (all 25 combinations occur). The engine creates a texture of the next power of two of each dimension, which is the same size.
 - **Pixel format and compression:** 24-bit R, G, B bytes in that order, row by row from the top-left texel, compressed with the same RLE as the light grid (tag byte; high bit = run of one triple, otherwise a span of triples; n = low 7 bits + 1). It decodes to exactly width·height·3 bytes using exactly Z input bytes. There is no other compression.
-- **Mapping:** the vertices of a shader-2 section carry the lightmap coordinates in UV0, normalised to the section's lightmap: u = 0 is the left edge of texel column 0 and u = 1 the right edge of column width − 1 (V likewise with rows). In WAREHOUSE all values lie within 0.002..0.998. Across all plaintext maps the minimum is 0.00195 and a few values exceed 1 (up to 3.02); the engine samples with clamping, so those read the edge texels. The compiler packs each polygon's lightmap into a rectangle of the page with a one-texel border copied from the polygon's edge texels (corner texels averaged), so bilinear filtering does not bleed. The page's own outer border is removed before storage, and the engine relies on texture clamping there. Polygon lightmap texels were laid out on the grid `lmgridsize` (world units per texel) at compile time.
-- **How it is drawn:** a lightmapped polygon appears twice, once in a shader-2 section (lightmap) and once in a shader-4 or shader-9 section (texture). The texture pass is multiplied onto the lightmap pass; an engine option doubles the product (2× modulate). Light groups modify the decoded lightmap before upload (Render data).
-- **Light groups:** the switchable lights are the `LightGroup` objects. Their baked contribution is stored three ways: block vertex intensities, section sub-lightmaps and light-grid fix-ups, all keyed by the light-group name. 7 of the 33 Steam maps use them.
+- **Mapping:** the vertices of a shader-2 section carry the lightmap coordinates in UV0, normalised to the section's lightmap: u = 0 is the left edge of texel column 0 and u = 1 the right edge of column width − 1 (V likewise with rows). In WAREHOUSE all values lie within 0.002..0.998. Across all plaintext maps the minimum is 0.00195 and a few values exceed 1 (up to 3.02); in the older regional client 21 sections in three maps have them. **Clamping** (Open question 9): the coordinates are interpolated across the triangle unchanged and the lightmap stage samples with clamp addressing on both axes, per pixel: any pixel whose interpolated coordinate is above 1 (or below 0) reads the edge texel row or column (with the usual bilinear filtering inside the texture). It is not wrapped, and the vertices are not clamped. The compiler packs each polygon's lightmap into a rectangle of the page with a one-texel border copied from the polygon's edge texels (corner texels averaged), so bilinear filtering does not bleed. The page's own outer border is removed before storage, and the engine relies on texture clamping there. Polygon lightmap texels were laid out on the grid `lmgridsize` (world units per texel) at compile time.
+- **How it is drawn** (Open question 7): a lightmapped polygon appears twice, once in a shader-2 section (lightmap) and once in a shader-4 or shader-9 section (texture), and the two are multiplied:
+
+```math
+\text{out} = s\cdot\big(\text{tex}\cdot T\big)\cdot\big(\text{lm}\cdot T\big),\qquad s = 2\ (\text{console variable } \texttt{Saturate} = 1,\ \text{the default}),\ \ s = 1\ (\texttt{Saturate} = 0)
+```
+
+  with all colours in 0..1 per channel. T is the extra lightmap scale: the world properties' `LightmapTFactor` colour divided by 255 per channel (the game hands it to the renderer as a console colour; with none set it is white). It multiplies both passes in the reference's renderer. Every one of the 65 maps of the older regional client stores (255, 255, 255), so T = 1 in stock maps and the stock result is 2·tex·lm. In the reference renderer (non-deferred path) the texture pass is drawn first with ordinary depth, then the lightmap pass is drawn over it with an equal-depth test and blended as dest × src × 2 (dest × src when `Saturate` is off), with the fog colour set to mid-grey (0x808080; white without `Saturate`) for that pass so fog survives the multiply. The older path of the same renderer drew the lightmap first and multiplied the texture onto it; the product is the same. A console variable that switches the multiply to 2× regardless (`FullBright`) is off by default. Light groups modify the decoded lightmap before upload (Light groups below).
+- **Vertex-lit sections** (shaders 1 and 8) are drawn as tex × vertex colour × s (the same `Saturate` doubling) × T (Open question 10).
+- **Light groups** (Open question 12): the switchable lights are the `LightGroup` objects. Their baked contribution is stored three ways: block vertex intensities, section sub-lightmaps and light-grid fix-ups, all keyed by the light-group name. 7 of the 33 Steam maps use them; 19 of the older regional client's 65.
+  - **State at load.** Every group starts at the colour stored with it in the render data. The game's `LightGroup` object of the same name then sets the group, as soon as the client learns of the object (during the map load), to `StartColor`/255 if `StartOn` is true and to black (0, 0, 0) if it is false. Its defaults are `StartOn` true and `StartColor` (255, 255, 255); every observed group has `StartColor` (255, 255, 255), and `StartOn` varies (for example both groups of SNOWSTORM start off).
+  - **Switching.** Map script messages to the `LightGroup` object by its name: `ON`, `OFF`, `TOGGLE`, and `COLOR v` (all channels v/255) or `COLOR r g b` (per channel /255; a negative value keeps that channel). `COLOR` changes the colour without switching the group on. After each message the object sends all clients the group's effective colour: its colour if on, black if off. Observed senders are command triggers, triggers and door commands (for example a fridge door's opening command switches its light group on).
+  - **Applying a colour.** For every render block that has the group, its stored colour is replaced and the block's lighting is rebuilt: each affected lightmap is decoded afresh from the file and every group's sub-lightmaps are added with the groups' **current** colours, so switching a group off restores the baked texels exactly; vertex colours are rebuilt from the stored ones the same way. The addition per channel is min(255, base + ⌊colour × x⌋) (Render data). A group whose colour × 255 truncates to 0 in all three channels counts as off and adds nothing. The light-grid fix-ups (world light groups) follow the same colour.
 - An engine variant can replace a section's lightmap with an external high-resolution texture found by world name, block index and section index. No such files exist in the Steam install's game folder, and a reader can ignore this.
 
 ## What is drawn and what is collision only
@@ -519,12 +532,119 @@ u = \frac{P \cdot (x - O)}{w_{\text{tex}}},\qquad v = \frac{Q \cdot (x - O)}{h_{
   6. two textures → dual texture;
   7. Gouraud, lightmapped or flat shaded → vertex lit;
   8. otherwise → unknown.
-- Whether a surface without the solid bit still blocks movement is decided by the collision code, not by this file (Open questions).
+- **Which polygons collide** (Open question 5). The BSP holds solid and non-solid polygons alike (in the older regional client's maps about 28 % of physics-BSP polygons lack the solid bit: trees, foliage, decoration and the like; WAREHOUSE has 4,960 of 37,648). The engine's queries treat them differently:
+  - **Player and character movement** (the cylinder mover, and the box mover) collides only with polygons whose surface has the **solid bit**. The invisible bit plays no part: an invisible solid polygon (a clip wall) blocks players.
+  - **Rays** (bullet traces, line-of-sight and explosion cover traces, every segment query) test **every** polygon of the BSP; the solid bit is not looked at. A ray query may pass a polygon filter; the bullet and cover filters skip only surface **types** that the game's surface table marks invisible, and no stock surface type is so marked, so in practice rays stop at non-solid and invisible polygons too. What a bullet then does at the surface (penetration, shoot-through) is the weapon spec's business.
+  - **Point movers** (grenades and other projectiles) test every polygon too, except that they may ask to skip polygons with the **invisible bit**, which grenades do (`grenades.md`, section 5).
+  - **Collision blockers** stop only the player mover (Collision blockers above); bullets, grenades and cover traces pass through them.
+  - Solid world models (doors, platforms) are collided the same ways using their own BSPs; non-solid ones are ignored by movement but still hit by rays if they have the ray-hit flag (Moving world models and volumes).
 
 ## Sky
 
 - **Sky portals:** each render block lists sky-portal polygons. Through these the engine draws the sky scene instead of world geometry. In every measured map there are exactly six, the six faces of the world-extents box with normals pointing inward (for example normal (1, 0, 0) with d = −extent).
 - **Sky scene:** objects of class `DemoSkyWorldModel` (one per measured map) name a world model by their `Name`, for example `SkyPointerBox00`. That world model's geometry, placed somewhere out of view in the map, is rendered as the sky. `SkyDims` (vector) is the size of the sky box, and `InnerPercentX/Y/Z` and `Index` order and scale it. `WorldProperties` adds `AllSkyPortals` (boolean), sky fog and the panning-sky settings (`PanSky`, `PanSkyTexture`, offsets and scales).
+- **How the sky is drawn** (Open question 11). Each frame, before the world's sections are drawn:
+  1. The screen rectangle covered by the visible blocks' sky portals is found (the bounding rectangle of the portals' projected vertices, clipped to the view). If it is under 1 pixel in width or height, or the map has no sky objects, there is no sky this frame.
+  2. A sky camera is set up with the main camera's rotation and field of view, limited to that rectangle, near plane 0.01 u and far plane the `SkyFarZ` console value (default 10000 u), scaled by the `SkyScale` console value (default 1). Its position follows the player through a small inner box: with the sky definition's view box V = sky position ± `SkyDims`·`InnerPercent` (per axis) and the world extents E,
+
+```math
+\vec c_{sky} = \vec V_{min} + (\vec V_{max} - \vec V_{min}) \odot \frac{\vec p_{cam} - \vec E_{min}}{\vec E_{max} - \vec E_{min}}
+```
+
+   With the usual `SkyDims` 256 and `InnerPercent` 0.001 the sky camera moves at most ±0.256 u (no visible parallax); with 0.1, ±25.6 u.
+  3. Every sky object is drawn in slot order (see `Index` below) with depth testing and depth writing **off**: the sky world model's render data (and any sky sprites or polygon grids). Fog stays in whatever state the world uses, but with the start and end distances `SkyFogNearZ` / `SkyFogFarZ`; a sky world model with its fog-disable flag draws without fog. `SkyFogEnable` is read by no drawing code.
+  4. The depth buffer is cleared, and the world is then drawn normally over the sky. Sky-portal polygons themselves are never drawn; world geometry in front of the sky simply covers it.
+  
+  Each `DemoSkyWorldModel` sets the sky definition (its position, `SkyDims` and inner box) when it is created and puts itself in sky slot `Index`; an object put in an occupied slot replaces the one there. Every observed object uses slot 0, so in a map with two (for example HEAVYMETAL's `SkyPointerBox` and `SkypointerBox_Q`) the last one created is the sky and sets the definition; an `ON` message to an object puts it back in its slot with its own definition. The sky world model is drawn at its own position in its own space; it is not moved next to the player.
+- **World properties and fog** (Open question 11). `WorldProperties` is one object per map; its values become console values for the renderer. Fog is linear in view depth z (table fog):
+
+```math
+f = \operatorname{clamp}\!\left(\frac{\texttt{FogFarZ} - z}{\texttt{FogFarZ} - \texttt{FogNearZ}},\,0,\,1\right),\qquad \text{colour} = f\cdot\text{colour} + (1-f)\cdot\frac{\texttt{FogColor}}{255}
+```
+
+  | Property | Type | Default | Meaning |
+  |---|---|---|---|
+  | `FogEnable` | boolean | true | Fog on |
+  | `FogColor` | colour | (127, 127, 127) | Fog colour, 0–255 |
+  | `FogNearZ`, `FogFarZ` | real | 1, 5000 | Fog start and end depth, u |
+  | `SkyFogNearZ`, `SkyFogFarZ` | real | 100, 1000 | The same for the sky pass |
+  | `SkyFogEnable` | boolean | false | Stored, not used for drawing |
+  | `FarZ` | real | (map value) | Far clip distance, u |
+  | `ClampFarZ` | boolean | true | If true: FarZ becomes 2·`FogFarZ` when fog is on and that is smaller, and FarZ is capped at the world box's diagonal |
+  | `AllSkyPortals` | boolean | | Renderer option (all sky portals) |
+  | `PanSky`, `PanSkyTexture`, `PanSkyOffsetX/Z`, `PanSkyScaleX/Z` | | off, 10 | Panning sky layer (off in every observed map) |
+  | `VFog`, `VFogMinY`, `VFogMaxY`, `VFogMinYVal`, `VFogMaxYVal`, `VFogDensity`, `VFogMax` | | off, 0, 1300, 0.5, 0, 1800, 120 | Volumetric (height) fog, on in one observed map |
+  | `LightmapTFactor` | colour | (255, 255, 255) | Extra lightmap scale (Lightmaps) |
+  | `EnvironmentMap` | string | | Default environment map texture |
+  | `GlobalSoundFilter` | string | `UnFiltered` | Sound filter for the map |
+  | `Wind` | vector | (0, 0, 0) | Wind for effects |
+  | `DrawAllModelShadows`, `ShadowMinColorComponent`, `ShadowMaxProjDist`, `ShadowAlpha` | real | 0, 40, 200, 1 | Model shadow settings |
+  | `LMAnimStatic` | boolean | false | Light-animation option |
+  | `AIMaxNumber` | long | 30 | Bot cap |
+  | `MusicControlFile`, `MinMusicMood` | string | | Music |
+  
+  One observed map also stores a group of later renderer settings (bloom, shadow maps, SSAO, HDR exposure, volumetric fog, sun). They belong to the reference renderer's deferred path, which switches itself off when its shader archive is missing; the Steam install has no such archive, so the forward path described here is the one in use.
+
+## Second textures
+
+How sections with more than one texture source are combined (Open question 13). All colours 0..1; s is the `Saturate` doubling (2 by default) and T the lightmap factor (Lightmaps). Texture coordinates wrap.
+
+- **Dual texture** (shaders 8 and 9; texture 0 with UV0, texture 1 with UV1). The blend weight is a = vertex alpha × texture-0 alpha:
+
+```math
+\text{base} = a\cdot\text{tex}_0 + (1-a)\cdot\text{tex}_1,\qquad \alpha_{out} = a
+```
+
+  If texture 1 has the fullbright flag (`textures_dtx.md`) the second texture is added instead: base = tex₀ + a·tex₁. Shader 8 then multiplies by the vertex colour and s; shader 9 is the texture pass of a lightmapped surface and is multiplied by the lightmap pass like shader 4. Map makers use the per-vertex alpha to paint between two ground textures (in DESERTHOLE 167 of the 186 dual sections have varying vertex alpha, 15 are all 255 and 4 all 0).
+- **Detail texture** (the base texture names one, `textures_dtx.md`). The detail texture is sampled at coordinates derived from the section's UV0 by the base texture's detail scale and rotation, and combined with the base colour as base + detail − 0.5 (clamped; console `DetailTextureAdd` 1, the default) or base × detail (`DetailTextureAdd` 0); alpha from the base. The result then goes through the normal lighting (lightmap pass, or vertex colour). Off when the `DetailTextures` console value is 0.
+- **Environment map** (`envmap` / `envmapalpha` link). The second stage samples the environment map with coordinates generated from the camera-space reflection vector (for a flat map: transformed by the world environment-map matrix, then scaled by −0.5/`EnvScale` and offset by 0.5; a cube map uses the vector directly) and combines it as base + env − 0.5 (`EnvMapAdd` 1, the default) or base × env; the alpha variant weights it by the base texture's alpha. Off when `EnvMapEnable` is 0.
+- **Fullbright mask** (texture flag, `textures_dtx.md`). In the reference renderer the section is drawn a second time right after its texture pass, blended by the texture's own alpha. In the renderer's older path the texture pass came after the lightmap, so this second draw puts the unlit texture back where alpha is high (out = tex·a + lit·(1 − a)). In the path the reference build uses (texture first, lightmap multiplied last, Lightmaps) the second draw lands on the unlit texture and the lightmap still multiplies over it afterwards, so it has no visible effect. Which applies to the Steam build is open (Open question 13).
+- Only one linked texture per base texture is used (detail **or** environment map), as `textures_dtx.md` describes.
+
+## Moving world models and volumes
+
+(Open question 14.) These are game objects, listed here because each is tied to a BSP world model of the same `Name`; their motion and effects belong to gameplay specs.
+
+**World models.** Every world-model object has the boolean properties `Solid` and `Rayhit` (read by the engine's base object), which set its solid and ray-hit flags:
+
+- **Solid** world models block player movement (the mover collides with their BSP; a moving one pushes or is stopped by what it hits), are collided like the level by grenades and other point movers, and block explosion cover traces. This holds at every point of their motion.
+- **Rays** (bullets) test world models that are solid **or** ray-hit, against their BSP in its current position. A non-solid, ray-hit world model (184 `WorldModel`s and 28 `RotatingDoor`s in the older regional client's maps) stops bullets but not players.
+- A world model with neither flag is visual only.
+
+| Class | Moves by | Key properties (defaults) |
+|---|---|---|
+| `SlidingDoor`, `SlidingWorldModel` | Translation | `MoveDir` (vector), `MoveDist` (real, u) |
+| `RotatingDoor`, `RotatingWorldModel` | Rotation about a point | `RotationAngles` (vector), `RotationPoint` (name of the object whose position is the pivot), `RotateAway` |
+| `SpinningWorldModel` | Continuous rotation | `RotationAngles` |
+| `WorldModel` | Nothing by itself; can be keyframed (`IsKeyframed`, moved by a `KeyFramer` object) or hidden | |
+| `Breakable` | Shakes, then falls or vanishes when broken | `MoveDir`, `MoveDist`, hit points |
+
+The moving classes share: `PowerOnTime` (1 s; doors also `OpeningTime` / `ClosingTime`), `PowerOffTime` (0), `MoveDelay` (0), `OnWaitTime` / `OffWaitTime` (0; doors `OpenWaitTime` / `CloseWaitTime`), `StartOn` / `StartOpen`, `TriggerOff` / `TriggerClose`, `RemainOn` / `RemainOpen`, `PlayerActivate`, `Locked`, `DoorLink`, and `Waveform`: with r the move's linear speed and p the fraction of the move done, the speed is r (`Linear`), (π/2)·r·sin(πp) (`Sine`), (π/2)·r·cos(πp/2) − r/1000 (`SlowOff`) or (π/2)·r·sin(πp/2) + r/1000 (`SlowOn`). Observed in the older regional client's 65 maps: 1,324 `WorldModel`s with neither flag, 677 solid and ray-hit, 184 ray-hit only and 90 solid only; 712 solid breakables; 257 solid rotating and 273 solid sliding doors; mostly `Linear` (some `Sine`, `SlowOn`, `SlowOff`).
+
+**Volumes.** Volume classes are containers: the engine calls them every physics step for each object inside their BSP. Each has `Damage` (per second), `DamageType`, `Viscosity`, `Current`, `Friction`, `PlayerSpeedFactor`, fog and tint, `SoundFilter`, `SurfaceOverride`, `Hidden` (switched by `ON` / `OFF`) and `RayHit` (default false). Damage is dealt to players inside as over-time damage of `Damage` × frame time per frame. Viscosity and current act on non-player objects as in `grenades.md` section 7; players' volume movement is the movement spec's.
+
+| Class | What it does (class defaults) |
+|---|---|
+| `Water`, `CorrosiveFluid`, `FreezingWater` | Liquids: liquid gravity −200 u/s² for non-players, viscosity 0.035, underwater sound filter; corrosive deals 5 burn/s, freezing 10 freeze/s |
+| `VolumeBrush` | Generic volume with all the properties above (default damage type choke) |
+| `PoisonGas` | 5 poison/s |
+| `Electricity` | 20 electrocute/s |
+| `Burn` | 20 burn/s |
+| `ColdAir` | 5 freeze/s |
+| `EndlessFall` | Kill volume: 10⁸ "endless fall" damage per second. `PendingSec` (real, default 0): if above 0, a player must have been inside for that long (checked every 0.5 s) before the damage applies |
+| `Ice` | Friction 0 |
+| `Wind` | Friction 1, no damage |
+| `Filter` | Sound filter only |
+| `SafteyNet` | No damage, no physics; a marker for game code |
+| `Ladder` | Ladder for characters (viscosity 0.4) |
+| `Weather` | Rain or snow effect inside, with its own fog and view distance |
+| `Gravity` | `PlayerGravity` (default −2000) for players inside |
+| `DamageVolume` | Damage restricted to `TargetTeam`, can be `Locked` |
+| `WorldVolume`, `JumpVolume` | Mode volumes (`JumpVolume` launches players: `Velocity`) |
+
+## Map identity
+
+(Open question 15.) Neither the engine nor the game checks a map file's hash or size between server and client. The server sends each client its list of used files (an id, the file size and the file name per entry); the client looks each name up in its own mounted archives, ignores the size, and treats every entry as present even when it cannot find it (it only prints a console line). The world to load is then named by its file id, and the client loads its **own** copy of that name; a copy that fails to parse fails the load with an invalid-world error. The game's own start-up file check covers program files and the attribute archive, not the world archives. So two different maps with the same archive path are not told apart.
 
 ## Other contents
 
@@ -742,13 +862,40 @@ Measured on Combat Arms: the Classic, Steam build id 25595979 (the Steam manifes
 
 7. **Encrypted maps (needs the archive keys):** after decryption, every `.DAT` in WORLDS, WORLDS4 and WORLDS5 has version 85 and passes test 1. WORLDS\PIAZZA.DAT is 35,895,268 bytes, the same size as a version-85 copy known from an older client.
 
+Cases 8 onward come from the follow-up session. Map numbers in them were measured on the older regional client's 65 maps (its WAREHOUSE.DAT has the Steam copy's size, 18,076,579 bytes); behaviour cases use synthetic values.
+
+8. **Lightmap clamping.** A shader-2 section with a 256 × 256 lightmap; a pixel whose interpolated UV0 is (3.02, 0.5) → it samples column 255 (the last), as if u were 1.0; not column 5 (which wrapping would give: 0.02 × 256 = 5.12). A vertex at u = 3.02 is not moved: a pixel halfway between it and a vertex at u = 0.98 has u = 2.0 and also reads column 255.
+9. **Solid bit and rays.** WAREHOUSE's physics BSP has 4,960 polygons without the solid bit out of 37,648. Over the 65 maps: 3,387,765 physics-BSP polygons, 961,646 without the solid bit (2,831 of them invisible), 2,426,119 with it (3,360 invisible, 390 sky portals). A segment query crossing a non-solid polygon from its front side reports a hit on it; a player moving through the same polygon is not stopped. A player is stopped by a solid polygon with the invisible bit; a grenade passes it.
+10. **Blockers are for players only.** A segment query crossing one of WAREHOUSE's 50 collision-blocker polygons, with no BSP polygon behind it → no hit. A player walking into it → stopped.
+11. **Light-group texel.** Base lightmap texel (100, 100, 100), sub-lightmap intensity 100, group colour (1.0, 0.9686275, 0.9019608) on → (200, 196, 190). Group off → (100, 100, 100) (the base is decoded afresh). After `COLOR 128` and `ON` → colour 128/255 = 0.50196 per channel → (150, 150, 150). The same numbers for a vertex colour (100, 100, 100) with vertex intensity 100.
+12. **Light-group start state.** SNOWSTORM: both `LightGroup` objects have `StartOn` false, so after the load both groups add nothing, although the render data stores them with colour (1.0, 0.9686275, 0.9019608). GRAVITYB: `Light_Grv_01` starts on, `Light_Grv_02` off.
+13. **Sky camera.** WAREHOUSE: sky object `SkyPointerBox00` at (6623, 7009, −1471), `SkyDims` (256, 256, 256), `InnerPercent` 0.001 on each axis; extents ±(9952, 10080, 10112). Main camera at (0, 0, 0) → sky camera at (6623, 7009, −1471). At (9952, 10080, 10112) → (6623.256, 7009.256, −1470.744). The sky is drawn with depth off, then the depth buffer is cleared.
+14. **Fog and FarZ.** WAREHOUSE's world properties: `FogEnable` true, `FogColor` (23, 23, 19), `FogNearZ` 0, `FogFarZ` 10000, `FarZ` 30000, `ClampFarZ` false. A surface colour 0.6 at view depth 5000 → f = 0.5 → 0.5 × 0.6 + 0.5 × 23/255 = 0.3451 (red, green). FarZ stays 30000; with `ClampFarZ` true it would become 20000.
+15. **Lighting multiply.** Texture texel 0.8, lightmap texel 0.5, `LightmapTFactor` white → drawn 0.8 with `Saturate` 1 (default), 0.4 with `Saturate` 0. A vertex-lit texel 0.8 with vertex colour 0.25 → 0.4. With `LightmapTFactor` (128, 128, 128) on the lightmapped case: 2 × (0.8 × 0.502) × (0.5 × 0.502) = 0.2016.
+16. **Dual-texture blend.** Vertex alpha 0.25, texture 0 (1, 0, 0) with alpha 1, texture 1 (0, 0, 1) → base (0.25, 0, 0.75), output alpha 0.25. Shader 8 with vertex colour (0.5, 0.5, 0.5) → (0.25, 0, 0.75). If texture 1 has the fullbright flag → base (1, 0, 0.25).
+17. **Unknown shader code.** Fixture B with the section's shader code (the byte at offset 640) changed from 1 to 3 → the file parses exactly as before; the section is kept and not drawn.
+18. **Blocker trailer value.** Fixture A with the collision-blocker trailer (the u32 at offset 408) set to 7 → the file parses; the value is ignored.
+19. **Property length.** A real property stored with D = 8 whose first four bytes hold 0.5 → value 0.5, and the next property starts after all 8 bytes. A real with D = 2 → refused. A polygon whose vertex count byte is 41 → refused.
+20. **Map identity.** A client whose WAREHOUSE.DAT differs in size from the server's joins a WAREHOUSE game → no error or warning from the file list; the client loads its own file.
+21. **8-bit text.** Every byte of every class name, property name, string property, world-model name, BSP texture name and render section name in the 65 maps is below 0x80.
+22. **World-model flags.** In the 65 maps: `WorldModel` with `Solid`/`Rayhit` false/false 1,324, true/true 677, false/true 184, true/false 90; `Breakable` true/true 712; solid `RotatingDoor` 257 and solid `SlidingDoor` 273. A ray stops on a false/true `WorldModel`; a player walks through it.
+
 ## Open questions
 
 1. **Encrypted maps.** The 72 maps in V2-keyed archives could not be read here. Test case 7 checks that they are version 85 and follow this layout.
 2. **Scale.** The file has no unit. Content suggests roughly centimetre-sized units (spawn points sit about 66 u above the floor; stair steps are 30 u in movement.md), but the real-world scale should be fixed by the movement or model spec, not here.
 3. **`ObjectSpawnPoint`.** 60 per PvP map; its gameplay role (item or supply spawns per game type?) belongs to a gameplay spec.
 4. **Occluder id.** Each occluder carries a u32 id (408 for all six in SNOWSTORM). Whether it is a name hash or an index, and what toggles occluders, is unknown.
-5. **Non-solid surfaces and collision.** Whether polygons whose surface lacks the solid bit, or has the invisible bit, block players and bullets is decided in the collision code, which is outside this spec.
+5. **Non-solid surfaces and collision.** Whether polygons whose surface lacks the solid bit, or has the invisible bit, block players and bullets is decided in the collision code, which is outside this spec. Implementers let a polygon block players and bullets when its surface has the solid bit, ignoring the invisible bit, and asked whether collision blockers stop bullets. **Answered:** right for players (and the invisible bit indeed plays no part for them), wrong for bullets: ray queries test every BSP polygon, solid or not, so non-solid detail (about 28 % of physics-BSP polygons) stops rays; only surface types the surface table marks invisible would be skipped, and none is. Grenades skip polygons with the invisible bit. Collision blockers stop only the player mover, never bullets, grenades or cover traces. Applies in What is drawn and what is collision only, Collision blockers and cases 9–10.
 6. **Surface flag bit 19.** The compiler and the engine name it differently (render-block splitter versus additive blend). It is unused in the measured maps.
-7. **Lightmap and vertex-colour gamma.** The bytes are stored as above. Whether the game applies any extra scale beyond the optional 2× modulate (`LightmapTFactor` in `WorldProperties` is a candidate) was not checked.
+7. **Lightmap and vertex-colour gamma.** The bytes are stored as above. Whether the game applies any extra scale beyond the optional 2× modulate (`LightmapTFactor` in `WorldProperties` is a candidate) was not checked. **Answered:** the 2× is on by default (console `Saturate` 1), for lightmapped and vertex-lit surfaces alike. The extra scale is `LightmapTFactor`/255 per channel, applied to both the texture and the lightmap pass (and to vertex-lit sections); every observed map stores (255, 255, 255), so it is 1. No other scale or gamma is applied to the stored bytes. Applies in Lightmaps (How it is drawn) and case 15.
 8. **Other games' version-85 worlds.** Byte compatibility with other titles on the same engine version is untested.
+9. **Lightmap coordinates beyond 0..1** (up to 3.02). **Answered:** clamped per pixel by the sampler (clamp addressing on the lightmap stage), neither wrapped nor clamped per vertex. Applies in Lightmaps (Mapping) and case 8.
+10. **Vertex lighting.** **Answered:** one colour per vertex, the u32 at offset 28 of each 68-byte render vertex (bytes B, G, R, A). R, G, B light shaders 1 and 8 (tex × colour × 2); A is the dual-texture blend weight. Applies in Render data (Vertex), Lightmaps and case 16.
+11. **Sky and fog.** How the sky portals, the sky world model and the sky object are drawn, and which world properties set fog. **Answered** in Sky: the sky is drawn first each frame, inside the screen rectangle of the visible sky portals, from a sky camera that follows the player through the sky object's inner box, with depth off and the sky fog distances, then the depth buffer is cleared and the world drawn over it; the portals themselves are never drawn. Fog is linear in depth from `FogEnable`, `FogColor`, `FogNearZ`, `FogFarZ`, with `ClampFarZ` limiting `FarZ`; the full property list is in Sky. Cases 13–14. Still open: what the sky looks like when the sky portals' rectangle covers only part of the screen and world geometry has holes (the engine's own comment says the bounds can be inaccurate); compare a screenshot looking at a sky edge.
+12. **Light groups.** **Answered** in Lightmaps (Light groups): the stored colour is used until the game's `LightGroup` object sets `StartColor`/255 or black from `StartOn` during the load; map scripts switch them with `ON`, `OFF`, `TOGGLE` and `COLOR`; a change rebuilds the affected lightmaps from the stored ones plus every group's sub-lightmaps at its current colour. Cases 11–12.
+13. **Second textures.** **Answered** in Second textures for dual-texture sections (vertex-alpha × texture-0-alpha blend, additive if texture 1 is fullbright), detail textures (signed add of a scaled and rotated copy of UV0) and environment maps (reflection coordinates, signed add). Open: the fullbright mask. In the reference build's draw order the fullbright second draw is overwritten by the lightmap multiply, so fullbright texels end up lit like the rest; the older order keeps them bright. Measurement: in a dark area of a map, look at a texture with the fullbright flag (`textures_dtx.md` case 5's texture) and see whether its bright parts stay at full brightness.
+14. **Moving world models and volumes.** **Answered** in Moving world models and volumes: the classes, their properties, the `Solid` / `Rayhit` rules (solid world models block players, grenades and cover at every point of their motion; rays hit solid or ray-hit ones), and what each volume class does, including the endless-fall kill volume. The exact door motion (how `RotationAngles` and the times drive the angle per frame) belongs to a door spec.
+15. **Map identity.** **Answered** in Map identity: no hash or size check; the server's file list carries sizes but the client ignores them and loads its own copy by name. Case 20.
+16. **Malformed data and encoding.** **Answered:** the engine has only debug-build checks: a short property is read past its data, a long one uses its leading bytes, a polygon over 40 vertices overruns a fixed buffer, and the record length R is not used (the list is read in sequence); running out of file fails the load. Names and strings are plain 8-bit text, all below 0x80 in the observed maps, with no code-page conversion. Applies in Objects (Malformed records), BSP arrays, Units and conventions and cases 19 and 21.
+17. **Blocker trailer and shader codes.** **Answered:** the trailer is a reserved field, read and ignored (checked for 0 only in debug builds); shader codes stop at 11 and any code other than 1, 2, 4, 8 and 9 makes a section that is kept but never drawn. Applies in Collision blockers, Render data and cases 17–18.
