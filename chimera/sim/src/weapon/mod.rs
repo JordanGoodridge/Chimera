@@ -64,6 +64,7 @@ pub mod random;
 pub mod remote;
 pub mod spray;
 pub mod sync;
+pub mod view_anim;
 
 use std::sync::Arc;
 

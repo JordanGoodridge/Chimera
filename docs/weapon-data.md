@@ -90,7 +90,8 @@ draw = [[0.3667, "Weapon_AK47.BoltPull"]]
 [models]                        # the game's model paths
 world = "models/weapons/w_rif_ak47.mdl"
 view = "models/weapons/v_rif_ak47.mdl"
-# world_alt (silenced), view_right_handed
+# world_alt (silenced), view_right_handed, view_skins (textures by the
+# model's texture index, for models that don't name theirs: LithTech's)
 
 [hud]
 name = "Cstrike_WPNHUD_AK47"    # string token
@@ -100,6 +101,12 @@ icon = "d_ak47"                 # kill icon
 idle_after = 1.9                # s after an attack
 idle_interval = 20.0            # s between idles
 # idle_after_draw = true        # the draw counts as an attack (the knife)
+# [anim.sequences]             # the view model's sequences by action
+# draw = ["select"]             # (weapon::view_anim::ACTIONS: draw, idle,
+# fire = ["fire"]               # fire, fire_last, reload, reload_start,
+#                               # reload_loop, reload_end, zoom_in,
+#                               # zoom_out); without it the game's
+#                               # view_anim::ViewAnimRules choose
 
 [hooks."cs_source:recoil"]      # a game's behaviour, with its parameters
 standing = { up = 1.0, up_step = 0.175, side = 0.375, side_step = 0.0375, up_cap = 5.75, side_cap = 1.75 }

@@ -1218,6 +1218,19 @@ snipers, knives, grenades, third-person weapons and the maps' flags need the V2 
 readers' numbers: `cargo test -p lithtech_formats -- heavy::ltb_install
 --nocapture` (`census` prints the install's model and animation counts).
 
+Combat Arms' view models (`game::view_model`, from the weapon data's
+`[models] view`): a map load lists the ones that don't load among its
+warnings. To see one, give its weapon in a map run: `--map
+combat_arms:warehouse --window 1280x720 --frames 240 --screenshot
+pistol.png +wait 30 +give combat_arms:beretta_m92fs` (also
+`combat_arms:remington_870`, `combat_arms:m60`); a firing frame: drop
+`--screenshot` and end with `+wait 120 ++attack +wait 3 +screenshot
+fire.png` (`--frames 300`). What each loads and plays:
+`cargo test -p combat_arms --features dev --test it heavy::view_model
+-- --nocapture` (meshes, textured pieces, bones, sequences with their
+lengths); the action mapping without the install: `--test it
+view_model::`.
+
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
 list but skip extraction until their scheme's key is in
 `chimera.local.toml` (`[games.combat_arms.keys.V1]`, `key` and `iv` as

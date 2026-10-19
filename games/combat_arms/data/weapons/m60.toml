@@ -67,3 +67,17 @@ max_wag = 18.0
 # [TW: MovePenalty] 0.33.
 [hooks."combat_arms:handling"]
 move_penalty = 0.33
+
+# The first-person model (unkeyed GUNS_M_PV_MG) and its skin (index 1;
+# GUNS_T_PV_MG is keyed: flat grey without the V2 key). Provisional
+# mapping (no view_models.md yet): the model's names, their lengths the
+# times above (select 1500 ms, fire_0 115 ms, reload 3500 ms).
+[models]
+view = "guns_m_pv_mg/pv_mg_m60_sh.ltb"
+view_skins = ["", "guns_t_pv_mg/pv_m60.dtx"]
+
+[anim.sequences]
+draw = ["select"]
+idle = ["idle_0", "idle_1"]
+fire = ["fire_0"]
+reload = ["reload"]
