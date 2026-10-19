@@ -32,6 +32,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - map: Runtime decals: none on characters, lit decals as modulate stains (probe-lit on breakable glass), 2x modulate capped (`chimera/present/src/render/decal.rs`)
 - map: Glow sprite occlusion casts rays at the world, props and brush entities (colliders), not the depth buffer the game's occlusion query uses: props without a collision model don't hide glows. OK for now: Covers nearly every case; a GPU occlusion query would be exact.
 - render: WorldTwoTextureBlend follows the public SDK shader, confirmed only by brightness matches (`chimera/present/src/render/world_material.rs`)
+- render: Second UV set in the vertex colour (no jagged window mask with it); dual textures' depth prepass cuts by the base alpha (`chimera/present/src/render/world_material.rs`)
 - games/cs_source: Player animation follows the SDK template: foot slide, no death layer, our hand IK reading (`games/cs_source/src/game/player_anim.rs`)
 - weapon: Spread and recoil seeded as spec 4.2 but with our own generator; command numbers are tick plus seed (`chimera/sim/src/weapon/random.rs`)
 - weapon: Penetration: fixed player budget cost and unmeasured material factors (`chimera/sim/src/weapon/mod.rs`)
@@ -182,6 +183,6 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms props: Object Scale, MoveToFloor, Rotate and game type ignored; props don't collide; light from the nearest light-grid sample (`games/combat_arms/src/game/props.rs`)
 - lithtech_formats ltb: Only stream flags 0x13; strict on trailing bytes and channel counts; counts block not checked (`lithtech/formats/src/ltb.rs`)
 - lithtech_formats anim: AniRateInterpolation always 1; the tracker count and weight-set rules of layering left to the caller; vertex animation sampled, not applied (`lithtech/formats/src/anim.rs`)
-- games/combat_arms maps: No second textures (dual, detail, envmap, fullbright); sky drawn with depth from one scale over the whole screen; light groups not switchable; world models static (`games/combat_arms/src/game/world.rs`)
+- games/combat_arms maps: No fullbright masks; flat envmaps with an identity matrix and EnvScale 1; second layers on world surfaces only; sky drawn with depth from one scale over the whole screen; light groups not switchable; world models static (`games/combat_arms/src/game/world.rs`)
 - lithtech: World files: strict on render blocks over 65,535 vertices and light-group section counts (`lithtech/formats/src/world.rs`)
 - lithtech: Textures: groups 4-48 skip no levels (value unknown); no sections or 16-bit preferences (`lithtech/formats/src/dtx.rs`)

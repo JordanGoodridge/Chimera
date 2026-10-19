@@ -85,6 +85,31 @@ struct WorldParams {
     // A window's broken look: an edge piece's alpha x its jagged mask's
     // (tile: the vertex colour's blue; within it: red and green).
     pane_mask: f32,
+    // How the second texture combines: 0 Source's linear mix, 1 LithTech's
+    // dual texture (a = (1 - w) x first alpha), 2 its fullbright add.
+    blend_mode: f32,
+    // 1: the second texture's coordinates are the vertex colour's red and
+    // green (map::MapMesh::uvs2).
+    blend_uv2: f32,
+    // The detail coordinates' rotation, radians.
+    detail_rotation: f32,
+    // A flat environment map: 0 none, 1 signed add, 2 multiply; weighted
+    // by the base alpha; EnvScale.
+    flat_envmap: f32,
+    flat_envmap_alpha: f32,
+    flat_envmap_scale: f32,
+}
+
+// Gamma space for the fixed-function blends of LithTech's second layers
+// (the sRGB curve: the textures are sampled decoded).
+fn to_gamma(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+
+fn to_linear(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
 }
 
 // A texture transform (map::MapUvTransform): rows . (u, v, 1), plus the
@@ -155,6 +180,7 @@ fn apply_fog(color: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
 @group(#{MATERIAL_BIND_GROUP}) @binding(14) var envmap_texture: texture_cube<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(15) var envmap_sampler: sampler;
 @group(#{MATERIAL_BIND_GROUP}) @binding(16) var envmap_mask_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(17) var flat_envmap_texture: texture_2d<f32>;
 
 const LUMA = vec3<f32>(0.299, 0.587, 0.114);
 
@@ -254,19 +280,50 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
             let t = select(step(lo, b), saturate((b - lo) / (hi - lo)), hi > lo);
             b = t * t * (3.0 - 2.0 * t);
         }
-        let uv2 = transform_uv(in.uv, params.base2_uv_u, params.base2_uv_v);
+        var uv2 = transform_uv(in.uv, params.base2_uv_u, params.base2_uv_v);
+#ifdef VERTEX_COLORS
+        if params.blend_uv2 > 0.5 {
+            uv2 = in.color.xy;
+        }
+#endif
         let second = textureSample(base2_texture, base_sampler, uv2) * params.base_color;
-        albedo = vec4<f32>(mix(albedo.rgb, second.rgb, b), albedo.a);
+        if params.blend_mode < 0.5 {
+            albedo = vec4<f32>(mix(albedo.rgb, second.rgb, b), albedo.a);
+        } else {
+            // LithTech's dual texture (map::material_fx::dual_texture): a
+            // = vertex alpha (1 - w) x the first's alpha, in gamma space;
+            // a fullbright second texture is added.
+            let a = (1.0 - b) * albedo.a;
+            let t0 = to_gamma(albedo.rgb);
+            let t1 = to_gamma(second.rgb);
+            var c = a * t0 + (1.0 - a) * t1;
+            if params.blend_mode > 1.5 {
+                c = min(t0 + a * t1, vec3<f32>(1.0));
+            }
+            albedo = vec4<f32>(to_linear(c), a);
+        }
     }
     // $detail (shaders.md 2): sampled at $detailscale x the base
     // coordinates, times $detailtint, combined by $detailblendmode
     // (detail = 1 + mode; map::material_fx::detail_combine mirrors it).
     // Modes 5 and 6 add after lighting, which this shader never does.
-    let two_texture = params.detail > 19.5;
+    let two_texture = params.detail > 19.5 && params.detail < 29.5;
     if params.detail > 0.5 {
-        var d = textureSample(detail_texture, base_sampler, uv * params.detail_scale);
+        var duv = uv * params.detail_scale;
+        if params.detail_rotation != 0.0 {
+            // LithTech's detail rotation (map::material_fx::detail_uv).
+            let c = cos(params.detail_rotation);
+            let s = sin(params.detail_rotation);
+            duv = vec2<f32>(c * duv.x - s * duv.y, s * duv.x + c * duv.y);
+        }
+        var d = textureSample(detail_texture, base_sampler, duv);
         let f = params.detail_factor;
-        if two_texture {
+        if params.detail > 29.5 {
+            // LithTech's detail texture: a signed add in gamma space, alpha
+            // the base's (map::material_fx::signed_add).
+            let g = saturate(to_gamma(albedo.rgb) + to_gamma(d.rgb) - 0.5);
+            albedo = vec4<f32>(to_linear(g), albedo.a);
+        } else if two_texture {
             if params.detail < 20.5 {
                 // WorldTwoTextureBlend, detail over base: the raw detail texel.
                 albedo = vec4<f32>(mix(albedo.rgb, d.rgb, d.a), albedo.a);
@@ -302,6 +359,26 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
                 albedo.a = mix(albedo.a, albedo.a * d.a, f);
             }
         }
+    }
+    // A flat environment map (LithTech's envmap link): sampled by the
+    // view-space reflection vector, (r.x, r.y) x -0.5 / EnvScale + 0.5
+    // (map::material_fx::flat_envmap_uv), combined in gamma space before
+    // lighting; envmapalpha weights it by the base alpha.
+    if params.flat_envmap > 0.5 {
+        let p_view = (view.view_from_world * vec4<f32>(in.world_position.xyz, 1.0)).xyz;
+        let n_view = (view.view_from_world * vec4<f32>(normalize(in.world_normal), 0.0)).xyz;
+        let r = reflect(normalize(p_view), normalize(n_view));
+        let euv = r.xy * (-0.5 / params.flat_envmap_scale) + 0.5;
+        let e = to_gamma(textureSample(flat_envmap_texture, base_sampler, euv).rgb);
+        let g = to_gamma(albedo.rgb);
+        var c = saturate(g + e - 0.5);
+        if params.flat_envmap > 1.5 {
+            c = g * e;
+        }
+        if params.flat_envmap_alpha > 0.5 {
+            c = mix(g, c, albedo.a);
+        }
+        albedo = vec4<f32>(to_linear(c), albedo.a);
     }
     // WorldTwoTextureBlend lights with one bilinear lightmap tap times a
     // fixed 2.0, not 2^2.2; its bump uses the detail coordinates and
