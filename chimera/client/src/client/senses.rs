@@ -194,9 +194,13 @@ fn spawn_overlay(mut commands: Commands, mut materials: ResMut<Assets<FlashMater
             frozen: Handle::default(),
         })),
         Pickable::IGNORE,
-        GlobalZIndex(31),
+        GlobalZIndex(FLASH_OVERLAY_Z),
     ));
 }
+
+/// The flash overlay's layer: over a HUD drawn below it (Combat Arms'
+/// white covers its HUD), under chat (41 and up) and menus.
+pub const FLASH_OVERLAY_Z: i32 = 31;
 
 /// The captured frame as a texture: its bytes are what the view wrote
 /// through an sRGB view, so read them as sRGB.

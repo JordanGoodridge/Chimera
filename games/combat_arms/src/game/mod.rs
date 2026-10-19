@@ -34,7 +34,8 @@
 //!   muzzle flash and shells (view_models.md);
 //! - `effects`: muzzle flashes, tracers, impacts and decals by surface,
 //!   blood, casings, grenade looks, and how every sound is chosen and
-//!   played (effects_sounds.md).
+//!   played (effects_sounds.md);
+//! - `volumes`: the maps' volumes (water, kill and damage volumes).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -52,6 +53,7 @@ pub mod net;
 pub mod props;
 pub mod rules;
 pub mod view_model;
+pub mod volumes;
 pub mod weapons;
 pub mod world;
 
@@ -156,6 +158,7 @@ impl PluginGroup for CombatArmsPlugins {
             // Before `weapons`: their hooks must be there when the data
             // loads.
             .add(inventory::CaInventoryPlugin)
+            .add(volumes::CaVolumesPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(view_model::CaViewModelPlugin)

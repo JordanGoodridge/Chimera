@@ -6,14 +6,26 @@
 //!
 //! `Dtx::parse` checks the header and that every level fits the file;
 //! `Dtx::rgba` decodes a level to RGBA8 (rows from the top). `command`
-//! holds the command string and `alpha_ref` reads its alpha test.
+//! holds the command string: `commands` splits it ("Command string
+//! parsing"), `alpha_ref` reads its alpha test and `link` its linked
+//! texture ("Linked textures": the keyword that wins and its names, as
+//! written; `link_path` is the archive path a name resolves to, nothing
+//! added, so a name without its extension resolves to nothing; the detail
+//! scale and rotation are the base texture's, `detail_scale` and
+//! `detail_rotation`). `skipped_levels` is the load-time mip skipping by
+//! texture group ("Load-time behaviour" 2) for a "DetailLevel"
+//! (`DETAIL_LEVEL`, the shipped 2: groups 1, 2, 3 lose 1, 1, 2 levels).
+//! Interpolated DXT colours (and DXT5 alphas) round to nearest and 5- and
+//! 6-bit channels widen by repeating bits, as the graphics card decodes
+//! them ("Rounding"; the engine's software decoder, used only on cards
+//! without DXT, truncates instead).
 //!
 //! Known shortcuts: only what drawing a world needs. Not modelled here:
-//! the load-time mip skipping by texture group ("Load-time behaviour"),
-//! the 16-bit preferences, sections after the pixels (none in the
-//! install; skipped), and resolving `detailtex`/`envmap` links (the
-//! command string is kept for that). Interpolated DXT colours round to
-//! nearest ("Colour block").
+//! the 16-bit preferences and sections after the pixels (none in the
+//! install; skipped). Groups 4 to 48 skip no levels: the engine reads
+//! their offset from past its four-entry table, a value the reference
+//! doesn't give (textures_dtx.md Q4; group 5 occurs, 28 files in
+//! `FX.rez`).
 
 use std::fmt;
 
@@ -74,6 +86,11 @@ pub struct Dtx {
     pub format: Format,
     /// The command string (up to its first 0x00).
     pub command: String,
+    /// The detail texture's scale (the stored value + 1) and rotation in
+    /// whole degrees, for this texture's detail link ("Header" 0x1E,
+    /// 0x22).
+    pub detail_scale: f32,
+    pub detail_rotation: i16,
     /// Where each level starts, and the end of the pixels.
     pub offsets: Vec<usize>,
     data: Vec<u8>,
@@ -81,6 +98,121 @@ pub struct Dtx {
 
 /// Texture flag bit 0: alpha is a fullbright mask.
 pub const FLAG_FULLBRIGHT: u32 = 0x1;
+
+/// The game's "DetailLevel" option as shipped: every preset and the
+/// install's profile hold 2, and no in-game option changes it
+/// ("Load-time behaviour" 2, Q4).
+pub const DETAIL_LEVEL: u8 = 2;
+
+/// GroupOffset[g] after the game sets groups 1..3 from `detail_level`
+/// (0, 1, 2; higher counts as 2); 0 for group 0 and, for want of the
+/// engine's value, groups 4..48 (Q4).
+pub fn group_offset(group: u8, detail_level: u8) -> i32 {
+    let d = detail_level.min(2) as usize;
+    match group {
+        1 => [0, 0, 1][d],
+        2 => [0, 1, 1][d],
+        3 => [0, 1, 2][d],
+        _ => 0,
+    }
+}
+
+/// A texture's linked texture: the keyword that took effect ("Linked
+/// textures", in the engine's order) and the words after it, as written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Link {
+    pub kind: LinkKind,
+    pub names: Vec<String>,
+}
+
+/// The linked-texture keywords, in the order the engine tests them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkKind {
+    DetailTex,
+    EnvMap,
+    EnvMapAlpha,
+    EnvBumpMap,
+    EnvBumpMapNoFallback,
+    Dot3BumpMap,
+    Dot3EnvBumpMap,
+    Effect,
+}
+
+impl LinkKind {
+    /// Each keyword with the words it needs after it.
+    pub const ALL: [(LinkKind, &'static str, usize); 8] = [
+        (LinkKind::DetailTex, "DetailTex", 1),
+        (LinkKind::EnvMap, "EnvMap", 1),
+        (LinkKind::EnvMapAlpha, "EnvMapAlpha", 1),
+        (LinkKind::EnvBumpMap, "EnvBumpMap", 2),
+        (LinkKind::EnvBumpMapNoFallback, "EnvBumpMapNoFallback", 2),
+        (LinkKind::Dot3BumpMap, "DOT3BumpMap", 1),
+        (LinkKind::Dot3EnvBumpMap, "DOT3EnvBumpMap", 2),
+        (LinkKind::Effect, "Effect", 1),
+    ];
+}
+
+/// A linked texture's name as an archive path, the way the mounted
+/// archives are looked up: `\` as `/`, ASCII lower case, nothing added
+/// or removed (a name without `.dtx` stays without it).
+pub fn link_path(name: &str) -> String {
+    name.replace('\\', "/").to_ascii_lowercase()
+}
+
+/// A command string split into commands, each into words ("Command
+/// string parsing"): commands end at `;` and control characters; words at
+/// spaces, a `"` pair or `(` ... `)` grouping spaces into one word (the
+/// marks not kept) and `%` making the next character literal.
+pub fn split_commands(command: &str) -> Vec<Vec<String>> {
+    let mut out = Vec::new();
+    let mut words: Vec<String> = Vec::new();
+    let mut word = String::new();
+    let mut started = false;
+    let mut close: Option<char> = None;
+    let mut chars = command.chars();
+    let end_word = |words: &mut Vec<String>, word: &mut String, started: &mut bool| {
+        if *started {
+            words.push(std::mem::take(word));
+            *started = false;
+        }
+    };
+    while let Some(c) = chars.next() {
+        match c {
+            '%' => {
+                if let Some(n) = chars.next() {
+                    word.push(n);
+                }
+                started = true;
+            }
+            c if c == ';' || (c as u32) < 32 || c as u32 == 127 => {
+                end_word(&mut words, &mut word, &mut started);
+                close = None;
+                if !words.is_empty() {
+                    out.push(std::mem::take(&mut words));
+                }
+            }
+            c if Some(c) == close => close = None,
+            '"' if close.is_none() => {
+                close = Some('"');
+                started = true;
+            }
+            '(' if close.is_none() => {
+                close = Some(')');
+                started = true;
+            }
+            ' ' if close.is_none() => end_word(&mut words, &mut word, &mut started),
+            c => {
+                word.push(c);
+                started = true;
+            }
+        }
+    }
+    end_word(&mut words, &mut word, &mut started);
+    if !words.is_empty() {
+        out.push(words);
+    }
+    out
+}
 
 impl Dtx {
     pub fn parse(data: Vec<u8>) -> Result<Dtx, DtxError> {
@@ -135,6 +267,8 @@ impl Dtx {
             use_levels: data[0x19],
             format,
             command,
+            detail_scale: f32::from_le_bytes(data[0x1E..0x22].try_into().unwrap()) + 1.0,
+            detail_rotation: i16::from_le_bytes([data[0x22], data[0x23]]),
             offsets,
             data,
         })
@@ -148,6 +282,37 @@ impl Dtx {
     /// Level `i`'s stored bytes.
     pub fn level_bytes(&self, i: u32) -> &[u8] {
         &self.data[self.offsets[i as usize]..self.offsets[i as usize + 1]]
+    }
+
+    /// The command string's commands, as words ("Command string parsing").
+    pub fn commands(&self) -> Vec<Vec<String>> {
+        split_commands(&self.command)
+    }
+
+    /// The linked texture that takes effect: the first keyword (in the
+    /// engine's order) that starts any command, with its names; None
+    /// without one, or when it has too few words (the engine reports an
+    /// invalid file and keeps the base texture).
+    pub fn link(&self) -> Option<Link> {
+        let commands = self.commands();
+        for (kind, keyword, words) in LinkKind::ALL {
+            if let Some(c) = commands.iter().find(|c| c[0].eq_ignore_ascii_case(keyword)) {
+                return (c.len() > words).then(|| Link {
+                    kind,
+                    names: c[1..].to_vec(),
+                });
+            }
+        }
+        None
+    }
+
+    /// k, the top levels the loader drops ("Load-time behaviour" 2) with
+    /// "DetailLevel" `detail_level` and "MipMapOffset" `mip_offset`:
+    /// max(0, MipMapOffset + GroupOffset[g]) (GroupOffset only below
+    /// group 49), at most N − 1.
+    pub fn skipped_levels(&self, detail_level: u8, mip_offset: i32) -> u32 {
+        let offset = if self.group < 49 { group_offset(self.group, detail_level) } else { 0 };
+        ((mip_offset + offset).max(0) as u32).min(self.mip_count - 1)
     }
 
     /// The alpha test's reference from the command string (`alpharef N`,
