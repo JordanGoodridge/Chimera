@@ -353,7 +353,8 @@ fn unreadable_files_are_reported() {
     let (attrs, problems) =
         read_attributes(|name| Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, name.to_string())));
     assert_eq!(attrs, InstallAttributes::default());
-    assert_eq!(problems.len(), 3);
+    // Weapons, server, models and modification files.
+    assert_eq!(problems.len(), 4);
 }
 
 /// The merge onto our built-in documents as they are: an install with the
