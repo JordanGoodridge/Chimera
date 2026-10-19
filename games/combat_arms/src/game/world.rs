@@ -59,6 +59,8 @@
 //!   model's faces as one hull) for `volumes::CaVolume`.
 //! - Props: objects that name a model (`props`: the capture-the-flag
 //!   flags, whose model needs the V2 key).
+//! - View models: the weapons' first-person models their data names
+//!   (`view_model`), loaded with every map from the install (`load_from`).
 //! - Spawns: `GameStartPoint` objects of one game type (`SPAWN_GAME_TYPE`
 //!   when the map has it, else all), dropped to the floor below them,
 //!   facing their yaw; `Teams` JSF is `Team(1)`, Creed `Team(2)`.
@@ -177,6 +179,7 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
     let file = |path: &str| mount.read(path).ok();
     let mut map = convert(&world, name, scale, &file);
     map.warnings.extend(world.warnings.iter().map(|w| format!("{path}: {w}")));
+    super::view_model::add_view_models(&mut map, &file);
     if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
         super::props::dev_prop(&world, &mut map, &spec, scale, &file);
     }

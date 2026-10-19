@@ -12,7 +12,8 @@
 //! - `grenades`: thrown weapons: the M67, XM84, M18, M-23F and G7A, their
 //!   throw, flight, fuse and effects on the server's 20 Hz frames
 //!   (grenades.md, implemented);
-//! - `attachments`: weapon attachments (none yet);
+//! - `attachments`: weapon attachments: the parts a weapon accepts, their
+//!   fitting and effects (attachments.md, implemented);
 //! - `hud`: the weapon data the HUD reads (`combat_arms:hud`: crosshair
 //!   fields and the weapon panel's class; hud_crosshair.md);
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
@@ -26,6 +27,9 @@
 //! - `model`: the install's models (`.ltb`) and their animations as
 //!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
 //! - `props`: models the maps' objects place, as animated props;
+//! - `view_model`: the weapons' first-person models from the install,
+//!   played by Chimera's view-model driver (provisional until
+//!   view_models.md);
 //! - `volumes`: the maps' volumes (water, kill and damage volumes).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
@@ -42,6 +46,7 @@ pub mod movement;
 pub mod net;
 pub mod props;
 pub mod rules;
+pub mod view_model;
 pub mod volumes;
 pub mod weapons;
 pub mod world;
@@ -147,10 +152,11 @@ impl PluginGroup for CombatArmsPlugins {
             .add(inventory::CaInventoryPlugin)
             .add(volumes::CaVolumesPlugin)
             .add(grenades::CaGrenadesPlugin)
-            .add(weapons::CaWeaponsPlugin)
             .add(attachments::CaAttachmentsPlugin)
+            .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
+            .add(view_model::CaViewModelPlugin)
     }
 }

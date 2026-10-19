@@ -14,10 +14,14 @@
 //! the movement numbers
 //! (data/movement.toml, `movement::MovementData`).
 //!
+//! Built in too: the attachment records (data/attachments/mods.toml,
+//! attachments.md's tables; `attachments::CaModTable`), each weapon's
+//! accepted list and defaults in its `combat_arms:attachments` table.
+//!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
 //! chimera.local.toml, `install_attributes` opens the install's
-//! `ATTRIBUTES.rez` and reads the weapons, server and models files
-//! (`attributes`). Then:
+//! `ATTRIBUTES.rez` and reads the weapons, server, models and
+//! modification files (`attributes`). Then:
 //! - weapons (`merge_weapon_docs`): each of our documents whose ID (after
 //!   `combat_arms:`) matches an install weapon's `Name` (case-insensitive,
 //!   spaces as `_`: `slug`) takes the install's numbers for every field
@@ -30,7 +34,15 @@
 //!   their own numbers, after ours in install order (ours keep their
 //!   registry indices);
 //! - movement (`merge_movement`): the body type `FigureType0` replaces
-//!   `character.figure` (`StiffDuration` with it).
+//!   `character.figure` (`StiffDuration` with it);
+//! - attachments (`attachment_table`): the modification file's `Mod#`
+//!   records over ours by name (ours not in it stay); a weapon document
+//!   with a `combat_arms:attachments` table takes the install weapon's
+//!   accepted list from the modification file's `Weapon#` record **of the
+//!   same index** (attachments.md Q13: by position; a differing `Name` is
+//!   logged; no record: an empty list, logged, Q2), its `Default*Attach`
+//!   parts, `DefaultScopeVisible`, `FireSndRadius` and
+//!   `SilencedFireRadius1..10` (`merge_weapon_docs_with_mods`).
 //! Without an install or key, or when a document fails to parse (logged
 //! with its name and line), the built-in data is used unchanged.
 //! `weapon_set` and `movement::movement_data` are the merged data;
@@ -49,12 +61,15 @@
 //!   `combat_arms:zoom` table, `AccumPreFire` in `combat_arms:spin`'s;
 //!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps our shell
 //!   timings: they are the view model's animations). Not mapped (no field
-//!   in our data yet): `DefaultScopeAttach` (read; its scope's levels are
-//!   the modifications file's, attachments.md), `TripleShot*` timing,
+//!   in our data yet): `TripleShot*` timing,
 //!   `ContinuousFire`, sounds and sound radii, models,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
-//!   and worn gear (attachments' spec).
+//!   and worn gear, the modification file's gear lists and per-slot
+//!   option fields.
+//! - Special functions in the modification file are read by name
+//!   (`InstDamage`, `Stun`, ...; targets `All`, `Player`, ...); a number
+//!   there is skipped (the spec doesn't say how numbers map).
 //! - Ammo is patched through the weapon that uses it as its default
 //!   (`ammo.<id>.max` = `MaxAmount` - `ShotsPerClip`, the clip being part
 //!   of the total: weapon_firing.md, "Ammo"); our ammo IDs aren't matched
@@ -80,8 +95,11 @@ use bevy::prelude::*;
 use lithtech_formats::attributes::Document;
 use toml::{Table, Value};
 
-use self::attributes::{AmmoRecord, MODELS_FILE, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord, WeaponsFile};
-use super::movement::MovementData;
+use self::attributes::{
+    AmmoRecord, MOD_FILE, MODELS_FILE, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord,
+    WeaponsFile,
+};
+use super::{attachments::CaModTable, movement::MovementData};
 use crate::weapon::data::WeaponSet;
 
 macro_rules! data_file {
@@ -130,8 +148,10 @@ pub fn weapon_set() -> &'static WeaponSet {
     static SET: OnceLock<&'static WeaponSet> = OnceLock::new();
     SET.get_or_init(|| {
         let builtin = || WeaponSet::parse(WEAPON_DATA, &[]).unwrap_or_else(|e| panic!("Combat Arms weapon data: {e}"));
+        let mods = install_attributes().and_then(|a| a.mods.as_ref());
         let merged = install_attributes().and_then(|a| a.weapons.as_ref()).and_then(|w| {
-            let docs = merge_weapon_docs(WEAPON_DATA, w, super::movement::movement_data().meters_per_unit as f64)
+            let mpu = super::movement::movement_data().meters_per_unit as f64;
+            let docs = merge_weapon_docs_with_mods(WEAPON_DATA, w, mods, mpu)
                 .map_err(|e| warn!("Combat Arms: the install's weapons weren't merged: {e}"))
                 .ok()?;
             let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
@@ -143,6 +163,29 @@ pub fn weapon_set() -> &'static WeaponSet {
         crate::weapon::data::publish(set);
         set
     })
+}
+
+/// The attachment records: the built-in ones (data/attachments/mods.toml)
+/// with the install's modification file over them by name.
+pub fn attachment_table() -> &'static CaModTable {
+    static TABLE: OnceLock<CaModTable> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut table = CaModTable::built_in().clone();
+        if let Some(mods) = install_attributes().and_then(|a| a.mods.as_ref()) {
+            merge_mods(&mut table, mods);
+        }
+        table
+    })
+}
+
+/// The modification file's records over `table` by name (ours not in it
+/// stay).
+pub fn merge_mods(table: &mut CaModTable, mods: &ModFile) {
+    for r in &mods.mods {
+        if !r.name.is_empty() {
+            table.insert(r.clone());
+        }
+    }
 }
 
 /// The movement data with the install's body type over it (called by
@@ -161,6 +204,8 @@ pub struct InstallAttributes {
     pub weapons: Option<WeaponsFile>,
     pub server: Option<ServerPlayer>,
     pub models: Option<ModelsFile>,
+    /// The modification file (attachments).
+    pub mods: Option<ModFile>,
 }
 
 /// Parse one attribute document, errors naming it and the line.
@@ -183,6 +228,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     let weapons = doc(WEAPONS_FILE);
     let server = doc(SERVER_FILE);
     let models = doc(MODELS_FILE);
+    let mods = doc(MOD_FILE);
     let weapons = weapons.and_then(|d| {
         WeaponsFile::read(&d)
             .map_err(|e| problems.push(format!("{WEAPONS_FILE}: {e}")))
@@ -192,6 +238,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
         weapons,
         server: server.and_then(|d| ServerPlayer::read(&d)),
         models: models.map(|d| ModelsFile::read(&d)),
+        mods: mods.map(|d| ModFile::read(&d)),
     };
     (attrs, problems)
 }
@@ -420,9 +467,65 @@ fn doc_id(doc: &Table) -> Option<&str> {
     doc.get("id")?.as_str()
 }
 
+/// What an install weapon (the weapons file's record `w`, index `index`)
+/// sets in a document's `combat_arms:attachments` table: its defaults,
+/// sound radii and, with the modification file, the accepted list of its
+/// record of the same index (attachments.md Q13; none: empty, Q2).
+fn attachment_values(w: &WeaponRecord, index: usize, mods: Option<&ModFile>) -> Vec<Set> {
+    const ATTACH: &str = super::attachments::ATTACHMENTS;
+    let mut defaults = Table::new();
+    for (k, v) in [
+        ("muzzle", &w.default_muzzle_attach),
+        ("sight", &w.default_scope_attach),
+        ("magazine", &w.default_magazine_attach),
+        ("bullet", &w.default_bullet_attach),
+        ("mech_sight", &w.default_mech_sight_attach),
+    ] {
+        if !v.is_empty() {
+            defaults.insert(k.into(), Value::String(v.clone()));
+        }
+    }
+    let mut out = vec![
+        set(&["hooks", ATTACH, "defaults"], Value::Table(defaults)),
+        set(&["hooks", ATTACH, "default_sight_visible"], w.default_scope_visible),
+        set(&["hooks", ATTACH, "fire_sound_radius"], i64::from(w.fire_snd_radius)),
+        set(
+            &["hooks", ATTACH, "silenced_radius"],
+            Value::Array(w.silenced_fire_radius.iter().map(|r| Value::Integer((*r).into())).collect()),
+        ),
+    ];
+    if let Some(mods) = mods {
+        let accepts = match mods.weapons.get(index) {
+            Some(r) => {
+                if !r.name.eq_ignore_ascii_case(&w.name) {
+                    info!(
+                        "Combat Arms: modification record Weapon{index} is named \"{}\", weapon {index} \"{}\" (linked by position)",
+                        r.name, w.name
+                    );
+                }
+                r.accepts
+                    .iter()
+                    .map(|(name, variant)| {
+                        let mut t = Table::new();
+                        t.insert("name".into(), Value::String(name.clone()));
+                        t.insert("variant".into(), Value::Integer((*variant).into()));
+                        Value::Table(t)
+                    })
+                    .collect()
+            }
+            None => {
+                warn!("Combat Arms: no modification record for weapon {index} \"{}\": it accepts no attachments", w.name);
+                Vec::new()
+            }
+        };
+        out.push(set(&["hooks", ATTACH, "accepts"], Value::Array(accepts)));
+    }
+    out
+}
+
 /// Patch one document with an install weapon (and its default ammo when
 /// the document's magazine names an ammo).
-fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, meters_per_unit: f64) {
+fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&ModFile>, meters_per_unit: f64) {
     let doc_length = doc
         .get("units")
         .and_then(|u| u.get("length"))
@@ -448,6 +551,11 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, meters_per_unit:
     // The inventory class: the order list it is in (our `slot` is the
     // class - 1; in none, ours stays).
     let id = file.weapons.iter().position(|x| std::ptr::eq(x, w));
+    if let Some(i) = id {
+        for s in attachment_values(w, i, mods) {
+            apply(doc, &s);
+        }
+    }
     if let Some(class) = id.map(|i| file.inventory_class(i)).filter(|c| *c > 0) {
         apply(doc, &set(&["slot"], i64::from(class - 1)));
     }
@@ -459,6 +567,17 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, meters_per_unit:
 pub fn merge_weapon_docs(
     ours: &[(&str, &str)],
     install: &WeaponsFile,
+    meters_per_unit: f64,
+) -> Result<Vec<(String, String)>, String> {
+    merge_weapon_docs_with_mods(ours, install, None, meters_per_unit)
+}
+
+/// `merge_weapon_docs` with the install's modification file: each
+/// document's accepted list from the record of its install weapon's index.
+pub fn merge_weapon_docs_with_mods(
+    ours: &[(&str, &str)],
+    install: &WeaponsFile,
+    mods: Option<&ModFile>,
     meters_per_unit: f64,
 ) -> Result<Vec<(String, String)>, String> {
     let mut docs = Vec::new();
@@ -482,7 +601,7 @@ pub fn merge_weapon_docs(
         .collect();
     for ((_, t), m) in docs.iter_mut().zip(&matched) {
         if let Some(i) = m {
-            patch(t, &install.weapons[*i], install, meters_per_unit);
+            patch(t, &install.weapons[*i], install, mods, meters_per_unit);
         }
     }
     // New records: copies of our matched document of the same class.
@@ -519,7 +638,7 @@ pub fn merge_weapon_docs(
         if let Some(Value::Table(m)) = t.get_mut("magazine") {
             m.insert("ammo".into(), Value::String(ammo_id));
         }
-        patch(&mut t, w, install, meters_per_unit);
+        patch(&mut t, w, install, mods, meters_per_unit);
         new.push((format!("install:{}", w.name), t));
     }
     if skipped > 0 {

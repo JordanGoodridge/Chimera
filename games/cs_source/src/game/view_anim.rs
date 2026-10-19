@@ -3,8 +3,9 @@
 //! swing, the reload activity, and idle once the last one has played out;
 //! the effects their animation events ask for (specs/cs_source/
 //! view_models.md 6–8: muzzle flash, brass); how they are drawn (FOV,
-//! handedness) and their console variables. Drives each character's
-//! `map::ViewAnimator`; `map::view_model` draws it.
+//! handedness) and their console variables. These are CS:S's `rules` on
+//! Chimera's view-model driver (`weapon::view_anim`, which drives each
+//! character's `map::ViewAnimator`); `map::view_model` draws it.
 //!
 //! Known shortcuts (docs/tech-debt.md): View-model idle (`view_anim`): the
 //! knife idles `KNIFE_IDLE` (20 s) after its draw or last attack (CS:S's holds
@@ -19,13 +20,13 @@ use bevy::prelude::*;
 
 use crate::{
     console::{Console, resource_cvar},
-    core::Health,
     map::{
-        DriveAnimation, EffectSettings, MapFlashLight, MapMuzzleFlash, ViewAnimator, ViewModelEvent,
-        ViewModelEventKind, ViewModelSettings, ViewModels, anim::AnimEvent,
+        DriveAnimation, EffectSettings, MapFlashLight, MapMuzzleFlash, ViewModelEventKind, ViewModelSettings,
+        anim::AnimEvent,
     },
     weapon::{
-        AltModes, Burst, Inventory, Magazine, ShellReload, Weapon, WeaponEvent, WeaponEventKind, WeaponState, Zoomed,
+        WeaponEventKind,
+        view_anim::{self, Pick, ViewAnimRules, ViewFrame, ViewState},
     },
 };
 
@@ -147,19 +148,6 @@ pub fn muzzle_flash(materials: &mut super::material::MaterialLoader) -> MapMuzzl
 /// longer than the captures (docs/tech-debt.md). Its data's `[anim]`.
 pub const KNIFE_IDLE: f32 = 20.0;
 
-/// When the weapon in hand may idle, from its data's `[anim]`: (delay
-/// after its last attack: the script's `TimeToIdle`, spec weapons.md 3.7,
-/// legacy keys table; least time from one idle's start to the next: its
-/// `IdleInterval`, the spec's "probably" reading: only non-looping idles
-/// that move show it, the TMP's 5 s sway, `dump --sequences` lists each
-/// idle's motion; whether the draw counts as an attack: the knife).
-/// Weapons without data idle when their sequence ends.
-fn idle_timing(weapon: &str) -> (f32, f32, bool) {
-    crate::weapon::data::lookup(weapon).map_or((0.0, 0.0, false), |d| {
-        (d.anim.idle_after, d.anim.idle_interval, d.anim.idle_after_draw)
-    })
-}
-
 pub const DRAW: &str = "ACT_VM_DRAW";
 pub const IDLE: &str = "ACT_VM_IDLE";
 pub const PRIMARY: &str = "ACT_VM_PRIMARYATTACK";
@@ -197,12 +185,13 @@ pub struct ViewAnimPlugin;
 
 impl Plugin for ViewAnimPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<WeaponEvent>()
-            .add_message::<ViewModelEvent>()
-            .insert_resource(settings())
-            .init_resource::<EffectSettings>()
+        if !app.is_plugin_added::<view_anim::ViewAnimPlugin>() {
+            app.add_plugins(view_anim::ViewAnimPlugin);
+        }
+        app.insert_resource(settings())
+            .insert_resource(rules())
             .init_resource::<ViewMotion>()
-            .add_systems(Update, (drive, view_motion::update).in_set(DriveAnimation));
+            .add_systems(Update, view_motion::update.in_set(DriveAnimation));
         cvars(app);
     }
 }
@@ -248,280 +237,133 @@ fn cvars(app: &mut App) {
     }
 }
 
-/// Per character: when it last attacked and its sequence-choice dice.
-#[derive(Component, Debug, Clone)]
-pub struct ViewModelPlay {
-    last_attack: f64,
-    /// When the weapon in hand was drawn, and when its idle last started.
-    drawn_at: f64,
-    idle_started: f64,
-    /// When the burst playing started (its later rounds don't restart it).
-    burst_started: f64,
-    rng: u32,
-}
-
-impl ViewModelPlay {
-    fn roll(&mut self) -> f32 {
-        // xorshift32
-        let mut x = self.rng.max(1);
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.rng = x;
-        (x >> 8) as f32 / (1u32 << 24) as f32
-    }
-}
-
-/// Play the first available of `activities` from the start.
-fn play(view: &mut ViewAnimator, dice: &mut ViewModelPlay, activities: &[&str], now: f64) -> bool {
-    let Some(animator) = view.animator.as_mut() else {
-        return false;
-    };
-    let roll = dice.roll();
-    let Some(s) = activities.iter().find_map(|a| animator.set.pick_activity(a, roll)) else {
-        return false;
-    };
-    animator.restart(s, now);
-    true
-}
-
 /// `activities`, each preceded by its silenced variant when `silenced`.
-fn variants(activities: &[&str], silenced: bool) -> Vec<String> {
-    activities
-        .iter()
-        .flat_map(|a| {
-            silenced
-                .then(|| format!("{a}{SILENCED}"))
-                .into_iter()
-                .chain([a.to_string()])
-        })
-        .collect()
+fn variants(activities: &[&str], silenced: bool) -> Pick {
+    Pick::Activities(
+        activities
+            .iter()
+            .flat_map(|a| {
+                silenced
+                    .then(|| format!("{a}{SILENCED}"))
+                    .into_iter()
+                    .chain([a.to_string()])
+            })
+            .collect(),
+    )
 }
 
-/// `play` with the silenced variants first when `silenced`.
-fn play_mode(view: &mut ViewAnimator, dice: &mut ViewModelPlay, activities: &[&str], silenced: bool, now: f64) -> bool {
-    let all = variants(activities, silenced);
-    let refs: Vec<&str> = all.iter().map(String::as_str).collect();
-    play(view, dice, &refs, now)
+/// Silenced sequences in a silencer's mode (other modes' models have none,
+/// so this falls back to the plain ones).
+fn silenced(state: &ViewState) -> bool {
+    state.mode > 0
 }
 
-/// Play one of the sequences `names` (at random), else the first
-/// available of `activities`.
-fn play_named(
-    view: &mut ViewAnimator,
-    dice: &mut ViewModelPlay,
-    names: &[&str],
-    activities: &[&str],
-    now: f64,
-) -> bool {
-    let Some(animator) = view.animator.as_mut() else {
-        return false;
-    };
-    let found: Vec<usize> = names.iter().filter_map(|n| animator.set.sequence(n)).collect();
-    if found.is_empty() {
-        return play(view, dice, activities, now);
-    }
-    let pick = found[((dice.roll() * found.len() as f32) as usize).min(found.len() - 1)];
-    animator.restart(pick, now);
-    true
-}
-
-#[allow(clippy::type_complexity)]
-fn drive(
-    time: Res<Time>,
-    models: Option<Res<ViewModels>>,
-    mut characters: Query<(
-        Entity,
-        &Inventory,
-        Option<&Health>,
-        Option<&mut ViewAnimator>,
-        Option<&mut ViewModelPlay>,
-        Option<&Zoomed>,
-    )>,
-    weapons: Query<(
-        &Weapon,
-        Option<&AltModes>,
-        Option<&Burst>,
-        Option<&Magazine>,
-        Option<&crate::weapon::grenade::Throwable>,
-        (Option<&WeaponState>, Option<&ShellReload>),
-    )>,
-    mut events: MessageReader<WeaponEvent>,
-    mut effects: MessageWriter<ViewModelEvent>,
-    mut commands: Commands,
-) {
-    let (dt, now) = (time.delta_secs(), time.elapsed_secs_f64());
-    let events: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
-    for (e, inventory, health, view, dice, zoomed) in &mut characters {
-        let (Some(mut view), Some(mut dice)) = (view, dice) else {
-            commands.entity(e).insert((
-                ViewAnimator::default(),
-                ViewModelPlay {
-                    last_attack: f64::MIN,
-                    drawn_at: f64::MIN,
-                    idle_started: f64::MIN,
-                    burst_started: f64::MIN,
-                    rng: e.to_bits() as u32 ^ 0x9e37_79b9,
-                },
-            ));
-            continue;
-        };
-        let alive = health.is_none_or(|h| h.current > 0.0);
-        let parts = inventory.active.filter(|_| alive).and_then(|w| weapons.get(w).ok());
-        let weapon = parts.map(|(w, ..)| w.id);
-        // Silenced sequences in a silencer's mode (other modes' models have
-        // none, so this falls back to the plain ones).
-        let mode = parts.and_then(|(_, m, ..)| m).map_or(0, |m| m.current);
-        let silenced = mode > 0;
-        let burst = parts.and_then(|(_, _, b, ..)| b).filter(|b| b.mode == mode);
-        let clip = parts.and_then(|(_, _, _, m, ..)| m).map(|m| m.clip);
-        let empty = clip == Some(0);
-        // A grenade with its pin out holds the end of the pull.
-        let primed = parts.and_then(|(.., t, _)| t).is_some_and(|t| t.pin);
-        let (state, shells) = parts.map_or((None, None), |(.., x)| x);
-        // No idle while a reload goes on (a shotgun's between shells).
-        let reloading = state.is_some_and(|s| s.reloading());
-        let dual = weapon.is_some_and(super::weapons::alternate_hands);
-        // Snipers hide the view model behind the scope (spec view_models.md,
-        // "Zoomed weapons").
-        view.hidden = zoomed.is_some_and(|z| z.scope);
+/// CS:S's view-model rules on Chimera's driver (`weapon::view_anim`).
+/// When the weapon in hand idles is its data's `[anim]` (the script's
+/// `TimeToIdle`, spec weapons.md 3.7, legacy keys table; `IdleInterval`,
+/// the spec's "probably" reading: only non-looping idles that move show
+/// it, the TMP's 5 s sway, `dump --sequences` lists each idle's motion;
+/// whether the draw counts as an attack: the knife).
+pub fn rules() -> ViewAnimRules {
+    ViewAnimRules {
         // A new weapon in hand draws it (spec 3.3).
-        let mut drawn = false;
-        if view.show(weapon, models.as_deref()) {
-            drawn = play_mode(&mut view, &mut dice, &[DRAW, IDLE], silenced, now);
-            dice.drawn_at = now;
+        draw: |s| variants(&[DRAW, IDLE], silenced(s)),
+        idle: |s| variants(&[IDLE], silenced(s)),
+        event,
+        // Spec view_models.md 6.
+        effect: event_effect,
+    }
+}
+
+fn acts(list: &[&str]) -> Pick {
+    Pick::activities(list)
+}
+
+/// What CS:S's view model plays on a weapon event (spec weapons.md
+/// 3.3–3.8).
+fn event(f: &mut ViewFrame, kind: &WeaponEventKind) {
+    let silenced = silenced(&f.state);
+    let clip = f.state.clip;
+    let empty = clip == Some(0);
+    let dual = super::weapons::alternate_hands(f.state.weapon);
+    match kind {
+        WeaponEventKind::Shot { .. } if !f.fired => {
+            if let Some(b) = f.state.burst {
+                // One sequence per burst (the Glock's burst fire).
+                let length = b.interval as f64 * b.count.saturating_sub(1) as f64;
+                if f.now - f.dice.burst_started > length + 0.01 {
+                    f.dice.burst_started = f.now;
+                    f.fired = f.play(&acts(&[SECONDARY, PRIMARY]));
+                }
+            } else if dual {
+                // Dual pistols fire hand by hand (spec weapons.md,
+                // view-model table: left the primary activity, right the
+                // secondary), the last round its own.
+                let right = super::weapons::elite_right_hand(clip.unwrap_or(0));
+                let order: &[&str] = match (empty, right) {
+                    (true, true) => &[DRYFIRE, SECONDARY],
+                    (true, false) => &[DRYFIRE_LEFT, PRIMARY],
+                    (false, true) => &[SECONDARY],
+                    (false, false) => &[PRIMARY],
+                };
+                f.fired = f.play(&acts(order));
+            } else {
+                // The last round has its own sequence on pistols.
+                let order: &[&str] = if empty { &[DRYFIRE, PRIMARY] } else { &[PRIMARY] };
+                f.fired = f.play(&variants(order, silenced));
+            }
+            f.dice.last_attack = f.now;
         }
-        let Some(weapon) = weapon else { continue };
-        // Where the sequence was, to fire the events passed this frame.
-        let before = view.animator.as_ref().and_then(|a| Some((a.main?, a.cycle)));
-        let mut restarted = drawn;
-        let mut fired = false;
-        for ev in events.iter().filter(|ev| ev.owner == e) {
-            match &ev.kind {
-                WeaponEventKind::Deployed if !drawn => {
-                    drawn = play_mode(&mut view, &mut dice, &[DRAW, IDLE], silenced, now);
-                    restarted |= drawn;
-                    dice.drawn_at = now;
-                }
-                WeaponEventKind::Shot { .. } if !fired => {
-                    if let Some(b) = burst {
-                        // One sequence per burst (the Glock's burst fire).
-                        let length = b.interval as f64 * b.count.saturating_sub(1) as f64;
-                        if now - dice.burst_started > length + 0.01 {
-                            dice.burst_started = now;
-                            fired = play(&mut view, &mut dice, &[SECONDARY, PRIMARY], now);
-                        }
-                    } else if dual {
-                        // Dual pistols fire hand by hand (spec weapons.md,
-                        // view-model table: left the primary activity,
-                        // right the secondary), the last round its own.
-                        let right = super::weapons::elite_right_hand(clip.unwrap_or(0));
-                        let order: &[&str] = match (empty, right) {
-                            (true, true) => &[DRYFIRE, SECONDARY],
-                            (true, false) => &[DRYFIRE_LEFT, PRIMARY],
-                            (false, true) => &[SECONDARY],
-                            (false, false) => &[PRIMARY],
-                        };
-                        fired = play(&mut view, &mut dice, order, now);
-                    } else {
-                        // The last round has its own sequence on pistols.
-                        let order: &[&str] = if empty { &[DRYFIRE, PRIMARY] } else { &[PRIMARY] };
-                        fired = play_mode(&mut view, &mut dice, order, silenced, now);
-                    }
-                    restarted |= fired;
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::ModeChanged { mode } => {
-                    // Silencers have sequences for it; scopes and bursts don't.
-                    let act = if *mode > 0 { ATTACH_SILENCER } else { DETACH_SILENCER };
-                    if play(&mut view, &mut dice, &[act], now) {
-                        restarted = true;
-                        dice.last_attack = now;
-                    }
-                }
-                WeaponEventKind::Swing { hit, secondary, .. } => {
-                    // Slashes have no miss sequence (spec 6.2): the hit
-                    // ones play either way.
-                    let (names, order): (&[&str], &[&str]) = match (secondary, hit) {
-                        (false, _) => (KNIFE_SLASH, &[HIT_CENTER, PRIMARY]),
-                        (true, true) => (KNIFE_STAB, &[HIT_CENTER, SECONDARY]),
-                        (true, false) => (KNIFE_STAB_MISS, &[MISS_CENTER, SECONDARY]),
-                    };
-                    restarted |= play_named(&mut view, &mut dice, names, order, now);
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::ReloadStarted => {
-                    let order: &[&str] = if shells.is_some() {
-                        &[SHOTGUN_RELOAD_START]
-                    } else {
-                        &[RELOAD]
-                    };
-                    restarted |= play_mode(&mut view, &mut dice, order, silenced, now);
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::ShellInserting => {
-                    restarted |= play(&mut view, &mut dice, &[RELOAD], now);
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::Reloaded if shells.is_some() => {
-                    restarted |= play(&mut view, &mut dice, &[SHOTGUN_RELOAD_FINISH], now);
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::PinPulled => {
-                    restarted |= play(&mut view, &mut dice, &[PULL_PIN, PULL_BACK], now);
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::Thrown => {
-                    restarted |= play(&mut view, &mut dice, &[THROW], now);
-                    dice.last_attack = now;
-                }
-                // The C4's key presses (spec objectives.md: `pressbutton`,
-                // the primary activity); stopping short goes back to idle.
-                WeaponEventKind::ArmingStarted => {
-                    restarted |= play(&mut view, &mut dice, &[PRIMARY], now);
-                    dice.last_attack = now;
-                }
-                WeaponEventKind::ArmingStopped => {
-                    restarted |= play(&mut view, &mut dice, &[IDLE], now);
-                }
-                _ => {}
+        WeaponEventKind::ModeChanged { mode } => {
+            // Silencers have sequences for it; scopes and bursts don't.
+            let act = if *mode > 0 { ATTACH_SILENCER } else { DETACH_SILENCER };
+            if f.play(&acts(&[act])) {
+                f.dice.last_attack = f.now;
             }
         }
-        let Some(animator) = view.animator.as_mut() else {
-            continue;
-        };
-        animator.advance(dt, now);
-        // Events the cycle passed (spec view_models.md 6): a restart re-arms
-        // them, so those at cycle 0 fire on its first frame.
-        if let Some(s) = animator.main {
-            let from = before.filter(|(m, _)| *m == s && !restarted).map(|(_, c)| c);
-            for ev in animator.set.sequences[s].events_between(from, animator.cycle) {
-                if let Some(kind) = event_effect(ev) {
-                    effects.write(ViewModelEvent { owner: e, kind });
-                }
+        WeaponEventKind::Swing { hit, secondary, .. } => {
+            // Slashes have no miss sequence (spec 6.2): the hit ones play
+            // either way.
+            let (names, order): (&[&str], &[&str]) = match (secondary, hit) {
+                (false, _) => (KNIFE_SLASH, &[HIT_CENTER, PRIMARY]),
+                (true, true) => (KNIFE_STAB, &[HIT_CENTER, SECONDARY]),
+                (true, false) => (KNIFE_STAB_MISS, &[MISS_CENTER, SECONDARY]),
+            };
+            let named = Pick::Names(names.iter().map(|n| n.to_string()).collect());
+            if !f.play(&named) {
+                f.play(&acts(order));
             }
+            f.dice.last_attack = f.now;
         }
-        // Idle once the sequence has played out and the weapon's idle delay
-        // has passed (spec 3.7); a non-looping idle starts over after its
-        // interval, holding its last frame meanwhile.
-        let (delay, interval, after_draw) = idle_timing(weapon);
-        let since = if after_draw {
-            dice.last_attack.max(dice.drawn_at)
-        } else {
-            dice.last_attack
-        };
-        let idling = animator
-            .main
-            .is_some_and(|m| animator.set.sequences[m].activity.starts_with(IDLE));
-        if animator.finished()
-            && !primed
-            && !reloading
-            && now - since >= delay as f64
-            && (!idling || now - dice.idle_started >= interval as f64)
-            && play_mode(&mut view, &mut dice, &[IDLE], silenced, now)
-        {
-            dice.idle_started = now;
+        WeaponEventKind::ReloadStarted => {
+            let order: &[&str] = if f.state.shells {
+                &[SHOTGUN_RELOAD_START]
+            } else {
+                &[RELOAD]
+            };
+            f.attack(&variants(order, silenced));
         }
+        WeaponEventKind::ShellInserting => {
+            f.attack(&acts(&[RELOAD]));
+        }
+        WeaponEventKind::Reloaded if f.state.shells => {
+            f.attack(&acts(&[SHOTGUN_RELOAD_FINISH]));
+        }
+        WeaponEventKind::PinPulled => {
+            f.attack(&acts(&[PULL_PIN, PULL_BACK]));
+        }
+        WeaponEventKind::Thrown => {
+            f.attack(&acts(&[THROW]));
+        }
+        // The C4's key presses (spec objectives.md: `pressbutton`, the
+        // primary activity); stopping short goes back to idle.
+        WeaponEventKind::ArmingStarted => {
+            f.attack(&acts(&[PRIMARY]));
+        }
+        WeaponEventKind::ArmingStopped => {
+            f.play(&acts(&[IDLE]));
+        }
+        _ => {}
     }
 }
 

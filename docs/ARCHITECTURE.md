@@ -154,7 +154,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
-  grenades and the weapon classes so far;
+  grenades, the weapon classes and attachments so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
@@ -437,6 +437,7 @@ that the paths exist).
 - `chimera/sim/src/weapon/data.rs`: weapons as TOML data built into the parts; hooks by name (docs/weapon-data.md) (weapon)
 - `chimera/sim/src/weapon/economy_data.rs`: the shop as TOML data: items, buy menu, spawn kit, shop sounds (docs/economy-data.md) (weapon)
 - `chimera/sim/src/weapon/pass_data.rs`: penetration by surface material as TOML data (`PassMaterials::parse`) (weapon)
+- `chimera/sim/src/weapon/view_anim.rs`: the view-model activity driver: sequences by weapon data or a game's rules (weapon)
 - `games/cs_source/src/objectives/`: round objectives: bomb, hostages, zones, the use search (objectives)
 - `games/cs_source/src/rules.rs`: deathmatch and round rules: death, respawn, rounds, teams, score (rules)
 - `games/cs_source/src/rules/hints.rs`: automatic hints (`cl_autohelp`): data-named triggers, once per player per map (rules)
@@ -488,9 +489,12 @@ that the paths exist).
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
 - `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
+- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models from the install (view_models.md, in part) (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/weapons/zoom.rs`: Combat Arms' zoom and scope: levels, FOV transitions, bolt zoom-out, sway (games)
 - `games/combat_arms/src/game/weapons/classes.rs`: Combat Arms' class rules: shell reloads, minigun spin, alt-fire volleys, pellet carry-over (games)
+- `games/combat_arms/src/game/attachments.rs`: Combat Arms' weapon attachments: records, accepted lists, fitting and their effects (games)
+- `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
@@ -501,7 +505,7 @@ that the paths exist).
 - `games/combat_arms/data/grenade_surfaces.toml`: Combat Arms' surface hardness for grenade bounces (the grenades spec's table) (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
-- `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, armour, player, body types) with the spec's defaults (games)
+- `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, gear, bodies, mods) with the spec's defaults (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)

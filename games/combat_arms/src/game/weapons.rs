@@ -68,6 +68,11 @@
 //!   shell reloads stopped by fire, minigun spin, alt-fire volleys, the
 //!   pellet hit carry-over in the delivery here).
 //!
+//! Fitted attachments (`attachments`) change these through each part's
+//! `mods` (`CaDamage::mods`: the base damage, the special functions on the
+//! victim, the shooter's and the server's ray lengths; `CaSpread::mods`;
+//! `CaRecoil::mods`), zero for a stock weapon.
+//!
 //! The cone's arithmetic is weapon_classes.md's "Cone integers": the
 //! limits truncated after multiplying by the dynamic factor (a 32-bit
 //! value, the products in double precision), the cone truncated again.
@@ -121,7 +126,7 @@
 //!   modes).
 //! - Not done: the back push (`BaseCamBackJitter`) and the view-model
 //!   jiggle (presentation), continuous fire, prefire (but the minigun's,
-//!   `classes`), mod and perk bonuses (Q8: identity in a plain match), the fire-mode
+//!   `classes`), perk and set bonuses (Q8: identity in a plain match), the fire-mode
 //!   key (the toggle is attack2 until the binds come), the out-of-ammo
 //!   voice line.
 //!
@@ -150,6 +155,8 @@ use crate::{
         random::{Rng, shared_random},
     },
 };
+
+use super::attachments::{CaNpc, CaSpecialRoll, DamageMods, RecoilMods, SpecialKind, SpreadMods, Victim};
 
 pub use self::{
     classes::{ALT_FIRE, CaAltFire, CaSpin, CarryOver, PelletCarryOver, SPIN, SpinParams, SpinState, reported_hits},
@@ -341,6 +348,10 @@ pub struct ConeParams {
     /// `PerturbIncSpeed`, `PerturbDecSpeed`.
     pub inc: f32,
     pub dec: f32,
+    /// The weapon's zoomed rates are in use (`CaSpread::cone_params` in
+    /// zoomed mode): the attachments' zoomed terms apply.
+    #[serde(skip)]
+    pub zoomed: bool,
 }
 
 /// The ammo's state values (`Fire*Perturb` caps, movement targets).
@@ -463,6 +474,8 @@ pub struct CaDamage {
     /// The knock-back on an infected victim: K and its duration (s).
     pub move_penalty: f32,
     pub move_penalty_duration: f32,
+    /// The fitted attachments' terms (`attachments`).
+    pub mods: DamageMods,
 }
 
 impl CaDamage {
@@ -480,6 +493,7 @@ impl CaDamage {
             last_round: None,
             move_penalty: p.move_penalty,
             move_penalty_duration: p.move_penalty_duration,
+            mods: DamageMods::default(),
         }
     }
 }
@@ -533,6 +547,8 @@ pub struct CaSpread {
     /// Airborne after a jump (until landing).
     pub jumped: bool,
     pub was_on_ground: bool,
+    /// The fitted attachments' terms (`attachments`; zero: stock).
+    pub mods: SpreadMods,
 }
 
 impl CaSpread {
@@ -548,6 +564,7 @@ impl CaSpread {
             body_yaw: None,
             jumped: false,
             was_on_ground: true,
+            mods: SpreadMods::default(),
         }
     }
 
@@ -563,27 +580,29 @@ impl CaSpread {
                     max: if z.max != 0 { z.max } else { base.max },
                     inc: if z.inc != 0.0 { z.inc } else { base.inc },
                     dec: if z.dec != 0.0 { z.dec } else { base.dec },
+                    zoomed: true,
                 },
                 None => base,
             },
         }
     }
 
-    /// The state values in `mode` (zoomed ones where non-zero).
+    /// The state values in `mode` (zoomed ones where non-zero, alone),
+    /// with the attachments' terms (attachments.md, "Spread"): the walk
+    /// and run targets and the still firing caps (standing, crouched) add
+    /// theirs; jumping and the moving caps have none.
     pub fn states(&self, mode: FireMode) -> StateParams {
-        let (b, z) = (self.params.state, self.params.zoomed_state);
-        if mode != FireMode::Zoomed {
-            return b;
-        }
-        let pick = |z: f32, b: f32| if z != 0.0 { z } else { b };
+        let (b, z, m) = (self.params.state, self.params.zoomed_state, self.mods);
+        let zoomed = mode == FireMode::Zoomed;
+        let pick = |z: f32, b: f32, add: f32| if zoomed && z != 0.0 { z } else { b + add };
         StateParams {
-            fire: pick(z.fire, b.fire),
-            fire_move: pick(z.fire_move, b.fire_move),
-            fire_duck: pick(z.fire_duck, b.fire_duck),
-            fire_move_duck: pick(z.fire_move_duck, b.fire_move_duck),
-            walk: pick(z.walk, b.walk),
-            run: pick(z.run, b.run),
-            jump: pick(z.jump, b.jump),
+            fire: pick(z.fire, b.fire, m.fire),
+            fire_move: pick(z.fire_move, b.fire_move, 0.0),
+            fire_duck: pick(z.fire_duck, b.fire_duck, m.fire_duck),
+            fire_move_duck: pick(z.fire_move_duck, b.fire_move_duck, 0.0),
+            walk: pick(z.walk, b.walk, m.walk),
+            run: pick(z.run, b.run, m.run),
+            jump: pick(z.jump, b.jump, 0.0),
         }
     }
 
@@ -598,11 +617,26 @@ impl CaSpread {
     /// each limit truncated after multiplying by g (weapon_classes.md,
     /// "Cone integers"; Q7: g the 32-bit value, the products in double
     /// precision, so 50 x 1.3 is 64).
+    /// With attachments (attachments.md, "Cone"): g adds their
+    /// `DynamicPerturbFactor`; zoomed, a non-zero zoomed limit adds their
+    /// `ZoomedMinPerturb` / `ZoomedMaxPerturb`, truncated.
     pub fn cone(&self, mode: FireMode) -> f32 {
         let c = self.cone_params(mode);
-        let g = self.params.dynamic_factor as f64;
-        let max = (c.max as f64 * g).trunc();
-        let min = (c.min as f64 * g).trunc().min(max);
+        let m = self.mods;
+        let (mut c_min, mut c_max) = (c.min as f64, c.max as f64);
+        if mode == FireMode::Zoomed
+            && let Some(z) = self.params.zoomed_cone
+        {
+            if z.min != 0 {
+                c_min = (z.min as f64 + m.zoomed_min as f64).trunc();
+            }
+            if z.max != 0 {
+                c_max = (z.max as f64 + m.zoomed_max as f64).trunc();
+            }
+        }
+        let g = (self.params.dynamic_factor + m.dynamic) as f64;
+        let max = (c_max * g).trunc();
+        let min = (c_min * g).trunc().min(max);
         if max <= 0.0 {
             return 0.0;
         }
@@ -613,11 +647,16 @@ impl CaSpread {
     /// One firing-meter sub-step at `now`: a shot grows it toward `cap`
     /// and stamps the time; otherwise it waits while less than `DecDelay`
     /// whole milliseconds have passed since the stamp, then recovers (the
-    /// first recovery step clears the stamp).
+    /// first recovery step clears the stamp). The attachments' rates
+    /// (attachments.md, "Firing meter"): growth at I + [zoomed] Z_dec +
+    /// sum inc (Q4: the zoomed decrease sum), recovery at R + [zoomed]
+    /// Z_dec + sum dec.
     pub fn fire_substep(&mut self, scales: &SpreadScales, cone: ConeParams, fired: bool, cap: f32, now: f64) {
         let dt = SPREAD_SUBSTEP as f32;
+        let m = self.mods;
+        let z_dec = if cone.zoomed { m.zoomed_dec } else { 0.0 };
         if fired {
-            self.fire = cap.min(self.fire + dt * scales.fire_inc * cone.inc);
+            self.fire = cap.min(self.fire + dt * scales.fire_inc * (cone.inc + z_dec + m.inc));
             self.last_shot = Some(now);
         } else if self
             .last_shot
@@ -626,7 +665,7 @@ impl CaSpread {
         } else {
             self.last_shot = None;
             if self.fire > 0.0 {
-                self.fire = (self.fire - dt * scales.fire_dec * cone.dec).max(0.0);
+                self.fire = (self.fire - dt * scales.fire_dec * (cone.dec + z_dec + m.dec)).max(0.0);
             }
         }
     }
@@ -647,16 +686,22 @@ impl CaSpread {
         let dt = SPREAD_SUBSTEP as f32;
         let a = rho.max(mu_s);
         let m = self.movement;
+        // The attachments' terms (attachments.md, "Movement meter"): rising,
+        // the rate x (1 + sum inc) and, zoomed, + Z_inc a sub-step; falling,
+        // R + [zoomed] Z_dec + sum dec; in a jump, I + [zoomed] Z_inc +
+        // sum inc.
+        let k = self.mods;
+        let (z_inc, z_dec) = if cone.zoomed { (k.zoomed_inc, k.zoomed_dec) } else { (0.0, 0.0) };
         if a > m {
-            let grown = m + (dt * scales.move_inc).min(a - m) * cone.inc;
+            let grown = m + (dt * scales.move_inc).min(a - m) * cone.inc * (1.0 + k.inc) + z_inc;
             self.movement = grown.min(target).min(mu_s);
         } else if a < m {
             let next = if jumping {
                 // Q12: in a jump it rises instead, by the decrease step at
                 // the increase speed.
-                m + (dt * scales.move_dec).min(m - a) * cone.inc
+                m + (dt * scales.move_dec).min(m - a) * (cone.inc + z_inc + k.inc)
             } else {
-                m - (dt * scales.move_dec).min(m - a) * cone.dec
+                m - (dt * scales.move_dec).min(m - a) * (cone.dec + z_dec + k.dec)
             };
             self.movement = next.min(jump_cap).max(0.0);
         }
@@ -704,6 +749,8 @@ pub struct CaRecoil {
     /// at random.
     pub right: Option<bool>,
     pub last_kick: Option<f64>,
+    /// The fitted attachments' terms (`attachments`; zero: stock).
+    pub mods: RecoilMods,
 }
 
 impl CaRecoil {
@@ -714,29 +761,33 @@ impl CaRecoil {
             yaw: 0.0,
             right: None,
             last_kick: None,
+            mods: RecoilMods::default(),
         }
     }
 
-    /// (base kick, cap) radians in this mode.
-    fn pitch_params(&self, burst: bool) -> (f32, f32) {
+    /// (base kick, cap) radians in this mode, the kick x (1 + p_b) and
+    /// the cap x (1 + `cap`) (attachments.md, "Recoil").
+    fn pitch_params(&self, burst: bool, cap: f32) -> (f32, f32) {
         let p = &self.params;
-        if burst && p.burst_pitch != 0.0 && p.burst_max_pitch != 0.0 {
-            (p.burst_pitch.to_radians(), p.burst_max_pitch.to_radians())
+        let (b, max) = if burst && p.burst_pitch != 0.0 && p.burst_max_pitch != 0.0 {
+            (p.burst_pitch, p.burst_max_pitch)
         } else {
-            (p.pitch.to_radians(), p.max_pitch.to_radians())
-        }
+            (p.pitch, p.max_pitch)
+        };
+        ((b * (1.0 + self.mods.pitch)).to_radians(), (max * (1.0 + cap)).to_radians())
     }
 
     /// One shot's kick at `now`: returns how far the view goes up,
     /// radians (2h).
     pub fn kick(&mut self, burst: bool, now: f64) -> f32 {
-        let (b, max) = self.pitch_params(burst);
+        let (b, max) = self.pitch_params(burst, self.mods.max_pitch);
         if max <= 0.0 {
             return 0.0;
         }
         let j = self.pitch.clamp(0.0, max);
         let k = b * (1.0 - j / max);
-        let k = if k > 0.0 { k + self.params.accel_pitch * j } else { k };
+        let accel = self.params.accel_pitch + self.mods.accel;
+        let k = if k > 0.0 { k + accel * j } else { k };
         let h = (k / 2.0).min(max - j);
         self.pitch = j + h;
         self.last_kick = Some(now);
@@ -748,7 +799,9 @@ impl CaRecoil {
     /// first direction and the flips.
     pub fn wag(&mut self, roll: f32) -> f32 {
         let p = self.params;
-        if self.pitch.abs() <= p.random_pitch {
+        // The threshold adds the attachments' `MaxRandomPitch` (a
+        // silencer's -2 kicks from the first shot: Q11).
+        if self.pitch.abs() <= p.random_pitch + self.mods.random_pitch {
             return 0.0;
         }
         let right = *self.right.get_or_insert(roll < 0.5);
@@ -777,7 +830,8 @@ impl CaRecoil {
         };
         let mut down = 0.0;
         if self.pitch > 0.0 {
-            let (_, max) = self.pitch_params(false);
+            // The cap scaled by the muzzle part's alone.
+            let (_, max) = self.pitch_params(false, self.mods.return_max);
             down = step(self.pitch, max);
             self.pitch -= down / 2.0;
         }
@@ -1532,6 +1586,9 @@ struct Delivery<'w, 's> {
     first: Res<'w, FirstTimePredicted>,
     role: Option<Res<'w, NetRole>>,
     playback: Option<Res<'w, crate::core::Playback>>,
+    /// The attachments' target groups (an AI victim) and a forced draw for
+    /// their probabilities.
+    attach: (Query<'w, 's, &'static CaNpc>, Res<'w, CaSpecialRoll>),
     /// Lag compensation (a network server): each shooter's view tick,
     /// the characters' kept hit volumes, `sv_unlag`.
     lag: (
@@ -1740,6 +1797,24 @@ fn after_shots(
             }
             dmg.last_round = Some(now);
         }
+        // The attachments (attachments.md, "Damage" and "Ray length"): the
+        // base damage x (1 + sum Instdamage); the shooter's ray (the first
+        // segment) Range + trunc(Range x sum RangePer), the server's own
+        // (through walls, behind a victim) Range x (1 + the sight's).
+        let mut eff = dmg.clone();
+        eff.damage *= 1.0 + eff.mods.damage;
+        let units = (range / eff.unit).round() as f64;
+        let client_range = if eff.mods.range_per != 0.0 {
+            eff.mods.client_range(units) as f32 * eff.unit
+        } else {
+            range
+        };
+        let server_range = if eff.mods.sight_range_per != 0.0 {
+            eff.mods.server_range(units) as f32 * eff.unit
+        } else {
+            range
+        };
+        let dmg = &eff;
         let aim = aim_of(r.yaw, r.pitch);
         let rewound = delivery.rewind(r.owner, server);
         let bodies = delivery.bodies(r.owner, &rewound);
@@ -1750,13 +1825,14 @@ fn after_shots(
             let mut rng = Rng::new(r.seed.wrapping_add(1 + pellet));
             let (u1, u2) = (rng.next(), rng.next());
             let dir = square_dir(aim, half, u1, u2);
-            let real = walk(&mut delivery, &dmg, r, dir, range, &bodies, &mut rng, server, &mut out);
+            let rays = (client_range, server_range);
+            let real = walk(&mut delivery, dmg, r, dir, rays, &bodies, &mut rng, server, &mut out);
             if let Some(c) = carry.pellet(real) {
                 let b = &bodies[c.body];
                 let behind = is_behind(b.forward, b.right, c.dir);
-                let d = base_damage(&dmg, rng.next(), behind, c.distance);
+                let d = base_damage(dmg, rng.next(), behind, c.distance);
                 if server {
-                    hurt(&mut delivery, &dmg, r, b, c.sphere, d, c.point, c.dir, &mut out);
+                    hurt(&mut delivery, dmg, r, b, c.sphere, d, c.point, c.dir, &mut out);
                 }
             }
         }
@@ -1909,13 +1985,16 @@ struct PelletHit {
 
 /// Walk one pellet's ray from the round's origin (the spec's "Hitscan",
 /// "Penetration" and "Damage per ray"); its first segment's character hit.
+/// `(range, server_range)`: the first segment (the shooter's test) reaches
+/// `range`, the rest (the server's own ray) no farther than
+/// `server_range` from the origin (attachments.md, Q12).
 #[allow(clippy::too_many_arguments)]
 fn walk(
     w: &mut Delivery,
     dmg: &CaDamage,
     r: &Round,
     dir: Vec3,
-    range: f32,
+    (range, server_range): (f32, f32),
     bodies: &[Body],
     rng: &mut Rng,
     server: bool,
@@ -2041,6 +2120,9 @@ fn walk(
             }
             skip.push(b.entity);
             left -= t_point;
+            if segment == 0 {
+                left -= range - server_range;
+            }
             from = point;
             continue;
         }
@@ -2082,7 +2164,8 @@ fn walk(
             }
             exit
         };
-        left = (left - exit.distance(from)) * pass.range;
+        let shorter = if segment == 0 { range - server_range } else { 0.0 };
+        left = (left - exit.distance(from) - shorter) * pass.range;
         dampen *= pass.damage;
         let q = Quat::from_rotation_arc(Vec3::NEG_Z, dir);
         let p = pass.perturb / 1000.0;
@@ -2130,6 +2213,31 @@ fn hurt(
     };
     let lands = w.rules.lands(&damage);
     let infected = w.infected.contains(b.entity);
+    // The attachments' special functions (attachments.md, "Bullet slot"):
+    // the victim-side factor before armour, by target group and
+    // probability (each function's own draw).
+    let npc = w.attach.0.get(b.entity).ok().copied();
+    let victim = Victim {
+        npc: npc.is_some(),
+        zombie: infected || npc.is_some_and(|n| n.zombie),
+    };
+    let forced = w.attach.1.0;
+    let mut draws = Rng::new(r.seed.wrapping_mul(0x9e37_79b9).wrapping_add(si as u32));
+    let mut draw = |_: usize| forced.unwrap_or_else(|| draws.next());
+    let d = d * dmg.mods.victim_factor(victim, &mut draw);
+    let enemy = !w.same_team(r.owner, b.entity);
+    // Stun: the shooter's passing Stun functions slow the victim (movement's
+    // P_stun) for their duration.
+    if lands
+        && enemy
+        && let Some((penalty, duration)) = dmg.mods.stun(SpecialKind::Stun, victim, &mut draw)
+    {
+        w.commands.entity(b.entity).insert(super::movement::StunPenalty {
+            penalty,
+            until: w.now.now + duration as f64,
+        });
+    }
+    let knock = dmg.mods.stun(SpecialKind::Knockback, victim, &mut draw).unwrap_or_default();
     let armor = w.armor.get_mut(b.entity).ok();
     let hit = ArmourHit {
         damage_type: dmg.damage_type,
@@ -2140,11 +2248,11 @@ fn hurt(
     let points = armour_and_zone(d / hp, hit, armor.map(|a| a.into_inner()), lands) * hp;
     // An infected victim hit by the other team is knocked back (movement.md,
     // "Hit knock-back").
-    if infected && lands && !w.same_team(r.owner, b.entity) {
+    if infected && lands && enemy {
         let stiff = w.figures.get(b.entity).ok().flatten().map_or(super::movement::movement_data().character.figure.stiff_duration, |c| c.figure.stiff_duration);
         let current = w.knockback.get(b.entity).ok();
         if let Some(k) =
-            super::movement::HitKnockback::hit(current, dmg.move_penalty, dmg.move_penalty_duration, stiff, dir, w.now.now)
+            super::movement::HitKnockback::hit(current, dmg.move_penalty + knock.0, dmg.move_penalty_duration + knock.1, stiff, dir, w.now.now)
         {
             w.commands.entity(b.entity).insert(k);
         }

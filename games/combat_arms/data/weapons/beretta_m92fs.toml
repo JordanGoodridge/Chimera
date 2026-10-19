@@ -74,3 +74,25 @@ zoom_time = 0.13
 # [TW: MovePenalty] 0.03.
 [hooks."combat_arms:handling"]
 move_penalty = 0.03
+
+# attachments.md: its accepted list isn't in the spec: none (the
+# install's modification file gives it).
+[hooks."combat_arms:attachments"]
+
+# The first-person model (unkeyed GUNS_M_PV_Pistol) and its skin (index 1,
+# view_models.md 2; GUNS_T_PV_Pistol is keyed: flat grey without the V2
+# key). Sequences by view_models.md 7 (select 650 ms, idle_0, fire_0
+# 180 ms, reload 1500 ms; no last-round sequence); not played yet:
+# postfire, the full idle idle_1, the sprint pose PreRush/rush/PostRush
+# (game/view_model.rs).
+[models]
+view = "guns_m_pv_pistol/pv_pst_m92fs_sh.ltb"
+view_skins = ["", "guns_t_pv_pistol/pv_beretta_m92fs.dtx"]
+# view_models.md, per-weapon placement: `Pos` (-0.1, -0.2, 0.7).
+view_offset = [-0.1, -0.2, 0.7]
+
+[anim.sequences]
+draw = ["select"]
+idle = ["idle_0"]
+fire = ["fire_0"]
+reload = ["reload"]

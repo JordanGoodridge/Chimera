@@ -90,7 +90,10 @@ draw = [[0.3667, "Weapon_AK47.BoltPull"]]
 [models]                        # the game's model paths
 world = "models/weapons/w_rif_ak47.mdl"
 view = "models/weapons/v_rif_ak47.mdl"
-# world_alt (silenced), view_right_handed
+# world_alt (silenced), view_right_handed, view_skins (textures by the
+# model's texture index, for models that don't name theirs: LithTech's),
+# view_offset ([x, y, z]: the view model's origin in the eye's space, in
+# the game's own units and axes)
 
 [hud]
 name = "Cstrike_WPNHUD_AK47"    # string token
@@ -100,6 +103,12 @@ icon = "d_ak47"                 # kill icon
 idle_after = 1.9                # s after an attack
 idle_interval = 20.0            # s between idles
 # idle_after_draw = true        # the draw counts as an attack (the knife)
+# [anim.sequences]             # the view model's sequences by action
+# draw = ["select"]             # (weapon::view_anim::ACTIONS: draw, idle,
+# fire = ["fire"]               # fire, fire_last, reload, reload_start,
+#                               # reload_loop, reload_end, zoom_in,
+#                               # zoom_out); without it the game's
+#                               # view_anim::ViewAnimRules choose
 
 [hooks."cs_source:recoil"]      # a game's behaviour, with its parameters
 standing = { up = 1.0, up_step = 0.175, side = 0.375, side_step = 0.0375, up_cap = 5.75, side_cap = 1.75 }
@@ -155,11 +164,18 @@ hud_icon = "ammo_762"
   (games/combat_arms/src/game/grenades.rs: counts, pre-fire, release and
   post-fire times, perturb, fuse, speed, hit points, the area damage and
   its type, the over-time sphere; data/weapons/m67.toml), `combat_arms:zoom`
-  (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`, the
-  stock `scope = { name, fov = [per level] }`: game/weapons/zoom.rs),
+  (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`:
+  game/weapons/zoom.rs; the scope is the fitted sight's),
   `combat_arms:spin` (a minigun's `prefire`, `postfire`, `loop_len`,
-  `reversible`) and `combat_arms:alt_fire` (attack2's volley: `rounds`,
-  `interval`, `cycle`; both game/weapons/classes.rs).
+  `reversible`), `combat_arms:alt_fire` (attack2's volley: `rounds`,
+  `interval`, `cycle`; both game/weapons/classes.rs) and
+  `combat_arms:attachments` (game/attachments.rs: `accepts`, the parts it
+  takes as names or `{ name, variant }`; `defaults = { muzzle, sight,
+  magazine, bullet, mech_sight }`; `default_sight_visible`,
+  `fire_sound_radius`, `silenced_radius = [per silencer level]`). The
+  parts themselves are records in games/combat_arms/data/attachments/
+  (`[[mod]]` tables, `{class}` in a name expanded per `classes`), not
+  weapon documents.
 - **Errors.** Unknown keys, an unknown base, ammo type or hook, a loop of
   bases, a duplicate ID and hook parameters the hook can't read are load
   errors naming the document and key. A game's own data failing to load
