@@ -73,8 +73,17 @@ fn check_map(mount: &chimera_core::mount::Mount, name: &str) {
     sim.seconds(1.0);
     let at = sim.position(p);
     eprintln!("{name}: converted in {converted:.1?}, spawned at {feet}, standing at {at} ({:.1?} in all)", started.elapsed());
+    if NO_FLOOR.contains(&name) {
+        // Over water with nothing solid below (`hgoilrig_spawns_on_its_own_family`).
+        assert!(at.y > feet.y - 20.0, "{name}: at {at}, spawn {feet}");
+        return;
+    }
     assert!(at.y > feet.y - 0.5 && at.y < feet.y + 2.0, "{name}: standing at {at}, spawn {feet}");
 }
+
+/// Maps whose spawns have no solid floor under them in the file: the
+/// player lands on a liquid's top and sinks (no swimming yet).
+const NO_FLOOR: &[&str] = &["hgoilrig"];
 
 /// Every map whose archive folder is `folder`, two at a time; how many.
 fn check_maps_in(folder: &str) -> Option<usize> {
@@ -389,5 +398,56 @@ fn second_layer_census() {
         for (t, (k, l, n)) in links {
             eprintln!("    {t}: {k:?} {l} ({n} sections, resolves: {})", dtx(&l).is_some());
         }
+    }
+}
+
+/// HGOILRIG (a Hunted map, WORLDS4, V2): its one Team Death Match point
+/// has no team, so the map's spawns are its own family's, the 16
+/// unlocked `HungerGame` points (game_modes.md S4), not a fallback that
+/// drops into the void: none of them sits on the world's outer box
+/// (10240 u down). Nothing solid lies under them in the file, only the
+/// sea (its sliding water's surface over a `Water` volume): a player
+/// spawned at one starts at the water's top, not 190 m down (it then
+/// sinks: no swimming yet). The rules' spawn list under TDM is the same
+/// family's.
+#[test]
+fn hgoilrig_spawns_on_its_own_family() {
+    if !combat_arms::game::mount::keys().is_ok_and(|k| k.contains_key("V2")) {
+        eprintln!("skipping: no V2 key in chimera.local.toml");
+        return;
+    }
+    let Some(mount) = mount() else { return };
+    let map = world::load_world(&mount, "hgoilrig").unwrap();
+    let s = movement::movement_data().meters_per_unit;
+    let starts: Vec<&chimera_world::map::MapEntity> =
+        map.entities.iter().filter(|e| e.classname() == "GameStartPoint").collect();
+    let family = |name: &str| starts.iter().filter(|e| e.get("GameType") == Some(name)).count();
+    assert_eq!((family("HungerGame"), family("Team Death Match")), (32, 1));
+    assert_eq!(map.spawns.len(), 16, "{:?}", map.spawns);
+    for (feet, team) in &map.spawns {
+        assert_eq!(*team, None);
+        assert!(feet.y > -10000.0 * s, "{feet}: on the outer box");
+        assert!(feet.y > -1.0 && feet.y < 10.0, "{feet}");
+    }
+    let (feet, _) = map.spawns[0];
+    let entities = map.entities.clone();
+    let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
+    sim.ticks(2);
+    let p = sim.spawn_character(feet + Vec3::Y * 0.5, movement::ID);
+    sim.ticks(2);
+    let at = sim.position(p);
+    eprintln!("hgoilrig: spawn {feet}, two ticks later at {at}");
+    assert!(at.y > feet.y - 2.5, "fell from {feet} to {at}");
+    // The rules' list for a TDM player: the HungerGame points too.
+    let objects = combat_arms::game::rules::objects::read(&entities, s);
+    let own: Vec<Transform> =
+        objects.starts.iter().filter(|p| p.qualifies("HungerGame", false)).map(|p| p.at).collect();
+    assert_eq!(own.len(), 16);
+    let world = sim.app.world_mut();
+    world.insert_resource(objects);
+    let (list, _) = combat_arms::game::rules::spawns::spawn_list(world, 1);
+    assert_eq!(list.len(), 16);
+    for t in &list {
+        assert!(own.iter().any(|p| p.translation.distance(t.translation) < 1e-3));
     }
 }

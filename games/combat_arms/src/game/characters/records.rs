@@ -2,7 +2,10 @@
 //! characters.md sections 1, 2, 3 and 11 as our data) and the model
 //! choice: which body record a player's selection draws (1: cosmetics,
 //! the face redirect, the default), its skins by camouflage index, the
-//! team mark, head pieces and goggles by skeleton and figure type (2).
+//! team mark, head pieces and goggles by skeleton and figure type, faces
+//! and the head piece a face comes with (2). With the V1 key the
+//! install's models file gives every head piece's and face's files and
+//! skins (`merge_install_pieces`).
 
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -31,13 +34,31 @@ pub struct ModelRecord {
     pub lower_skins: Vec<String>,
 }
 
-/// A head piece (`Hair#`): its file per skeleton index.
+/// A head piece (`Hair#`): its file per skeleton index and its skins by
+/// camouflage index.
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct HeadRecord {
     pub id: i32,
     pub name: String,
     pub files: Vec<String>,
+    #[serde(default)]
+    pub skins: Vec<String>,
+}
+
+/// A face (`Face#`): its file, its skins and the head piece it comes
+/// with (`HairIndex`, the install's).
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FaceRecord {
+    pub id: i32,
+    pub name: String,
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub skins: Vec<String>,
+    #[serde(default)]
+    pub hair: Option<i32>,
 }
 
 /// Goggles or a mask (`Goggle#`): its socket and file per figure type.
@@ -159,6 +180,8 @@ impl SkeletonRecord {
 pub struct CharacterData {
     pub model: Vec<ModelRecord>,
     pub head: Vec<HeadRecord>,
+    #[serde(default)]
+    pub face: Vec<FaceRecord>,
     pub goggle: Vec<GoggleRecord>,
     pub marks: Marks,
     pub weapons: HashMap<String, WeaponLook>,
@@ -174,8 +197,46 @@ pub fn data() -> &'static CharacterData {
         let mut data: CharacterData =
             toml::from_str(include_str!("../../../data/characters.toml")).expect("data/characters.toml");
         merge_install_weapons(&mut data);
+        merge_install_pieces(&mut data);
         data
     })
+}
+
+/// The install's models file over our head pieces and faces: each
+/// `Hair#` and `Face#` record by its index, its files, skins and (a face)
+/// `HairIndex` (characters.md section 2); ours not in it stay.
+fn merge_install_pieces(data: &mut CharacterData) {
+    use super::super::data as ca;
+    let Some(models) = ca::install_attributes().and_then(|a| a.models.as_ref()) else {
+        return;
+    };
+    for (i, r) in models.hair_pieces.iter().enumerate() {
+        let id = i as i32;
+        let head = HeadRecord {
+            id,
+            name: r.name.clone(),
+            files: r.files.clone(),
+            skins: ca::skin_paths(&r.skins),
+        };
+        match data.head.iter_mut().find(|h| h.id == id) {
+            Some(h) => *h = head,
+            None => data.head.push(head),
+        }
+    }
+    for (i, r) in models.faces.iter().enumerate() {
+        let id = i as i32;
+        let face = FaceRecord {
+            id,
+            name: r.name.clone(),
+            file: r.files.first().cloned().filter(|f| !f.is_empty()),
+            skins: ca::skin_paths(&r.skins),
+            hair: r.hair,
+        };
+        match data.face.iter_mut().find(|f| f.id == id) {
+            Some(f) => *f = face,
+            None => data.face.push(face),
+        }
+    }
 }
 
 /// The install's weapons file over our weapon looks: each weapon of the
@@ -297,6 +358,44 @@ impl CharacterData {
     pub fn head_file(&self, head: i32, skeleton: usize) -> Option<&str> {
         let r = self.head.iter().find(|h| h.id == head)?;
         r.files.get(skeleton).map(String::as_str).filter(|f| !f.is_empty())
+    }
+
+    /// A head piece's skin for camouflage index `c` (index 0 past the
+    /// list; None: no skins).
+    pub fn head_skin(&self, head: i32, c: i32) -> Option<&str> {
+        let r = self.head.iter().find(|h| h.id == head)?;
+        let i = usize::try_from(c).ok().filter(|&i| i < r.skins.len()).unwrap_or(0);
+        r.skins.get(i).map(String::as_str).filter(|s| !s.is_empty())
+    }
+
+    pub fn face(&self, id: i32) -> Option<&FaceRecord> {
+        self.face.iter().find(|f| f.id == id)
+    }
+
+    /// The face a body record is drawn with by default: the first face
+    /// that, on the default selection (model 0), draws this body (the
+    /// face redirect: 0 for the male bodies, 4, the first female face,
+    /// for the female twin); 0 when none does.
+    pub fn default_face(&self, body: i32) -> i32 {
+        (0..8)
+            .find(|&f| {
+                let s = Selection {
+                    face: f,
+                    ..Selection::default()
+                };
+                self.effective(&s).0.id == body
+            })
+            .unwrap_or(0)
+    }
+
+    /// The head piece drawn with `head` and `face` on a body: the
+    /// selection's head piece when it has a model for `skeleton`, else
+    /// the one the face comes with (its `HairIndex`), else `head`.
+    pub fn worn_head(&self, head: i32, face: i32, skeleton: usize) -> i32 {
+        if self.head_file(head, skeleton).is_some() {
+            return head;
+        }
+        self.face(face).and_then(|f| f.hair).unwrap_or(head)
     }
 
     /// A goggle's socket and file for `figure` (None: none).

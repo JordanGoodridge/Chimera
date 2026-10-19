@@ -35,8 +35,9 @@
 //! the first-person camera each rendered frame). An infected character (`CaInfected`) hit by the other team
 //! gets a `HitKnockback` from the weapon part (its ammo's
 //! `DamageMovePenalty`): the push replaces the acceleration while it runs.
-//! A spawn or respawn puts the player on the floor below and measures
-//! falls from there; a teleport resets nothing.
+//! A spawn or respawn puts the player on the floor below (or on a liquid
+//! volume's top, when one is on the way down: ours) and measures falls
+//! from there; a teleport resets nothing.
 //!
 //! Known shortcuts (docs/tech-debt.md): Combat Arms movement
 //! (specs/combat_arms/movement.md) runs once per engine tick, the game's
@@ -819,6 +820,7 @@ fn step(
     clock: Res<SimClock>,
     first: Option<Res<FirstTimePredicted>>,
     mut damage: MessageWriter<Damage>,
+    volumes: Query<&super::volumes::CaVolume>,
 ) {
     let dt = clock.dt();
     let d = &*data;
@@ -860,9 +862,24 @@ fn step(
         // Spawn and respawn (spec "Falling and fall damage"): the server
         // puts the player on the floor below the spawn point, and the fall
         // is measured from there.
+        // A liquid's surface on the way down is that floor (ours: over a
+        // sea the drop would end on the world's outer box).
         if me.fall_top.is_none() || (me.was_dead && !dead) {
-            if let Some(hit) = space.cast(pos, me.half_height, Vec3::NEG_Y * SPAWN_DROP) {
-                pos.y -= hit.distance;
+            let drop = space.cast(pos, me.half_height, Vec3::NEG_Y * SPAWN_DROP).map(|h| h.distance);
+            let feet = pos.y - me.half_height;
+            let lowest = feet - drop.unwrap_or(SPAWN_DROP);
+            let at = pos * s;
+            let liquid = volumes
+                .iter()
+                .filter(|v| v.liquid && !v.hidden)
+                .filter(|v| at.x >= v.min.x && at.x <= v.max.x && at.z >= v.min.z && at.z <= v.max.z)
+                .map(|v| v.max.y / s)
+                .filter(|&top| top <= feet + 1e-3 && top > lowest)
+                .fold(None, |a: Option<f32>, t| Some(a.map_or(t, |a| a.max(t))));
+            match (liquid, drop) {
+                (Some(top), _) => pos.y = top + me.half_height,
+                (None, Some(d)) => pos.y -= d,
+                (None, None) => {}
             }
             me.fall_top = Some(pos.y);
         }

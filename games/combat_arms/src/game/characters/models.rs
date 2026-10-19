@@ -2,8 +2,10 @@
 //! characters.md section 2): the default male and female body records'
 //! (`LOADED`) body files with their animation library (`game::model`), as Chimera's character model named
 //! `body_name(id)`, its texture slots filled per camouflage index and
-//! team mark (skin family `family(c, teammate)`), the default head piece
-//! merged onto its skeleton when it has a file; each weapon's third-person
+//! team mark (skin family `family(c, teammate)`), its default face and
+//! the head piece worn with it (`records::CharacterData::default_face`,
+//! `worn_head`) merged onto its skeleton as additional models, each with
+//! its own skins by camouflage index; each weapon's third-person
 //! model (`[models] world`, the weapons file's `HHModel`) as a held model
 //! on the `RightHand` socket. The body's nodes, sockets, weight sets and
 //! animation list are kept as a `Rig` (`rig`) for posing.
@@ -23,7 +25,7 @@ use lithtech_formats::ltb;
 
 use super::{
     super::{model, view_model::hands},
-    records::{self, ModelRecord},
+    records::{self, ModelRecord, Selection},
     skeleton::Rig,
 };
 use crate::map::{MapCharacterModel, MapData, MapHeldModel, MapMesh, MapMeshLook, MapModel};
@@ -176,8 +178,25 @@ fn body(
         slot(record, s, 0, false)
     });
     let rig_data = m.rig.take().ok_or("no skeleton")?;
-    if let Some(head) = records::data().head_file(0, record.skeleton) {
-        merge(&mut m, &rig_data.bones, head, scale, file)?;
+    // The additional models (2): the body's default face and the head
+    // piece (the default selection's, none, else the one its face comes
+    // with), each mesh with its own skins by camouflage index.
+    let data = records::data();
+    let mut own: Vec<Option<Vec<String>>> = vec![None; m.meshes.len()];
+    let face = data.default_face(record.id);
+    if let Some(f) = data.face(face)
+        && let Some(path) = &f.file
+    {
+        let n = merge(&mut m, &rig_data.bones, path, scale, file).map_err(|e| format!("face {path}: {e}"))?;
+        own.extend(std::iter::repeat_n(Some(f.skins.clone()), n));
+    }
+    let head = data.worn_head(Selection::default().head, face, record.skeleton);
+    if let Some(path) = data.head_file(head, record.skeleton) {
+        let n = merge(&mut m, &rig_data.bones, path, scale, file).map_err(|e| format!("head piece {path}: {e}"))?;
+        let skins = (0..CAMOUFLAGES as i32)
+            .map(|c| data.head_skin(head, c).unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        own.extend(std::iter::repeat_n(Some(skins), n));
     }
     let mut textures = Textures {
         file,
@@ -190,8 +209,14 @@ fn body(
                 .iter()
                 .enumerate()
                 .map(|(k, mesh)| {
-                    let s = slots.get(k).copied().unwrap_or(-1);
-                    textures.look(mesh, slot(record, s, c, teammate), map)
+                    let name = match own.get(k).cloned().flatten() {
+                        Some(list) => {
+                            let i = usize::try_from(c).ok().filter(|&i| i < list.len()).unwrap_or(0);
+                            list.get(i).cloned().unwrap_or_default()
+                        }
+                        None => slot(record, slots.get(k).copied().unwrap_or(-1), c, teammate),
+                    };
+                    textures.look(mesh, name, map)
                 })
                 .collect()
         })
@@ -227,16 +252,17 @@ fn body(
     })
 }
 
-/// An additional model (a head piece) skinned onto the body's skeleton:
-/// its bones matched to the body's nodes by name, its vertices moved into
-/// the body's bind pose.
-fn merge(body: &mut MapModel, bones: &[crate::map::MapBone], path: &str, scale: f32, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<(), String> {
+/// An additional model (a face or head piece) skinned onto the body's
+/// skeleton: its bones matched to the body's nodes by name, its vertices
+/// moved into the body's bind pose. How many meshes it added.
+fn merge(body: &mut MapModel, bones: &[crate::map::MapBone], path: &str, scale: f32, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<usize, String> {
     let loaded = model::load(path, file)?;
     let mut m = model::convert(&loaded, scale, &|_| String::new());
     let rig = m.rig.take().ok_or("head piece without a skeleton")?;
     let map = hands::match_bones(&rig.bones, bones)?;
     let (own, theirs) = (hands::globals(&rig.bones), hands::globals(bones));
     let to: Vec<Mat4> = map.iter().enumerate().map(|(h, &b)| theirs[b] * own[h].inverse()).collect();
+    let added = m.meshes.len();
     for mut mesh in m.meshes {
         for (v, p) in mesh.positions.iter_mut().enumerate() {
             let units = Vec3::from(*p) / scale;
@@ -251,7 +277,7 @@ fn merge(body: &mut MapModel, bones: &[crate::map::MapBone], path: &str, scale: 
         }
         body.meshes.push(mesh);
     }
-    Ok(())
+    Ok(added)
 }
 
 /// A weapon's third-person model held at the `RightHand` socket: the

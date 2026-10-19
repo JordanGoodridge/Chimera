@@ -777,3 +777,28 @@ fn t16_second_layer_maths() {
     assert_eq!(flat_envmap_uv(Vec3::Z, 1.0), Vec2::splat(0.5));
     assert_eq!(flat_envmap_uv(Vec3::X, 1.0), Vec2::new(0.0, 0.5));
 }
+
+/// game_modes.md S4: a map's spawn family is the team modes' when it has
+/// a qualifying point on a team; else the family with the most
+/// qualifying unlocked points (a Hunted map's `HungerGame`, whose one
+/// `Team Death Match` point has no team), the first on a tie; none
+/// without a qualifying point.
+#[test]
+fn map_spawn_family() {
+    use combat_arms::game::world::map_family;
+    let tdm = "Team Death Match";
+    // (GameType, unlocked, Spawn is 1, on a team)
+    let team_map = [(tdm, true, true, true), ("FreeForAll", true, true, false), ("FreeForAll", true, true, false)];
+    assert_eq!(map_family(team_map.iter().copied()), Some(tdm));
+    let hunted = [
+        ("HungerGame", false, true, false),
+        ("HungerGame", true, true, false),
+        ("HungerGame", true, true, false),
+        (tdm, true, true, false),
+    ];
+    assert_eq!(map_family(hunted.iter().copied()), Some("HungerGame"));
+    let tie = [("Doobic", true, true, true), ("Capturetheflag", true, true, true)];
+    assert_eq!(map_family(tie.iter().copied()), Some("Doobic"));
+    let none = [(tdm, true, false, true), ("HungerGame", false, true, false)];
+    assert_eq!(map_family(none.iter().copied()), None);
+}

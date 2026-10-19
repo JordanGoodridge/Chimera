@@ -373,3 +373,81 @@ fn warehouse_players_wear_their_bodies() {
     let animator = world.get::<Animator>(p).expect("the body's animator");
     assert!(animator.fixed.is_some(), "drawn from the driver's pose");
 }
+
+/// characters.md section 2 with the keys: each loaded body (the default
+/// male, record 0, and its female twin, record 7) wears its default face
+/// (face 0, and 4 for the female: the face redirect) and the head piece
+/// that goes with it (the default selection's `HBasic` has no model, so
+/// the face's `HairIndex`, when it has one), merged on its skeleton:
+/// every piece of the body, the face and the head piece is in the drawn
+/// model, textured, and the merged pieces reach the head (above 1.3 m).
+/// Skips without the V1 and V2 keys.
+#[test]
+fn default_bodies_wear_face_and_head() {
+    use chimera_world::map::MapData;
+    use combat_arms::game::characters::models;
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let keys = combat_arms::game::mount::keys().unwrap_or_default();
+    if !(keys.contains_key("V1") && keys.contains_key("V2")) {
+        eprintln!("skipping: needs the V1 and V2 keys");
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let file = |p: &str| mount.read(p).ok();
+    let data = records::data();
+    assert!(data.face(0).and_then(|f| f.file.as_ref()).is_some(), "the install's Face0 has a file");
+    let mut map = MapData::default();
+    models::add_character_models(&mut map, &file);
+    for (id, face_id) in [(0, 0), (7, 4)] {
+        let record = data.model(id).unwrap();
+        assert_eq!(data.default_face(id), face_id);
+        let face = data.face(face_id).unwrap();
+        let head = data.worn_head(0, face_id, record.skeleton);
+        let pieces = |path: &str| model::load(path, &file).unwrap().model.pieces.len();
+        let body_pieces = pieces(&record.file);
+        let face_file = face.file.clone().expect("face file");
+        let face_pieces = pieces(&face_file);
+        let head_file = data.head_file(head, record.skeleton).map(str::to_string);
+        let head_pieces = head_file.as_deref().map_or(0, pieces);
+        eprintln!(
+            "body {id} ({}): {body_pieces} pieces; face {face_id} {face_file}: {face_pieces}; head piece {head} {head_file:?}: {head_pieces}",
+            record.file
+        );
+        let body = map
+            .characters
+            .iter()
+            .find(|c| c.name.as_deref() == Some(models::body_name(id).as_str()))
+            .unwrap_or_else(|| panic!("body {id} not loaded: {:?}", map.warnings));
+        let meshes = &body.model.meshes;
+        assert!(face_pieces > 0);
+        assert!(meshes.len() >= body_pieces + face_pieces + head_pieces, "{} meshes", meshes.len());
+        // The merged pieces: textured, and at the head (the body's feet
+        // at 0, the head about 1.5 m up).
+        for (k, mesh) in meshes.iter().enumerate().skip(meshes.len() - face_pieces - head_pieces) {
+            assert!(mesh.texture.is_some(), "body {id}: merged mesh {k} ({}) untextured", mesh.material);
+            let top = mesh.positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+            assert!(top > 1.3, "body {id}: merged mesh {k} tops out at {top} m");
+        }
+        assert!(body.model.skins.iter().all(|s| s.len() == meshes.len()));
+    }
+    // The female face comes with a head piece (its hair).
+    assert!(data.face(4).and_then(|f| f.hair).is_some());
+    // Other players hold their weapon's own third-person model (`HHModel`
+    // with its `HHSkin#`), textured, for every weapon players are given.
+    let ours = combat_arms::game::data::builtin_weapon_ids();
+    let with_model: Vec<_> = combat_arms::game::data::weapon_set()
+        .weapons
+        .iter()
+        .filter(|w| ours.contains(&w.id) && w.models.world.is_some())
+        .map(|w| w.id.clone())
+        .collect();
+    assert!(with_model.len() >= 10, "{with_model:?}");
+    for id in &with_model {
+        let held = map.held.iter().find(|h| &h.key == id).unwrap_or_else(|| panic!("{id}: no held model: {:?}", map.warnings));
+        assert!(!held.model.meshes.is_empty(), "{id}");
+        assert!(held.model.meshes.iter().any(|m| m.texture.is_some()), "{id}: untextured (the grey box)");
+    }
+}

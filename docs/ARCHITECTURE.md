@@ -530,6 +530,8 @@ that the paths exist).
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1, M9 knife, grenades, one weapon per class, the mission bomb (games)
 - `games/combat_arms/src/ui/layout/`: Combat Arms' layouts: widget trees, scaling, fonts, strings, `CBALAYOUT` files (games_ui)
 - `games/combat_arms/src/ui/menu.rs`: Combat Arms' in-game menu (Esc): a modal popup centred 1:1 (games_ui)
+- `games/combat_arms/src/ui/install.rs`: the install's own layouts, string table and art for Combat Arms' UI (V1 key) (games_ui)
+- `games/combat_arms/src/ui/hud/install.rs`: the game's HUD layout's health and weapon panels bound to the HUD's values by name (games_ui)
 - `games/combat_arms/data/ui/`: Combat Arms' font list, strings and in-game menu layout, ours (games)
 - `games/combat_arms/data/grenade_surfaces.toml`: Combat Arms' surface hardness for grenade bounces (the grenades spec's table) (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)

@@ -39,6 +39,14 @@ pub const ROOT_SIZE: IVec2 = IVec2::new(1024, 1024);
 /// The placeholder texture that means "no background" on a window.
 pub const BLANK: &str = "blank";
 
+/// Whether `texture` is the placeholder blank (ours, `blank`, or the
+/// game's `UI_SCR_Common\blank.dtx`): a window without a background.
+pub fn is_blank(texture: &str) -> bool {
+    let t = texture.replace('\\', "/").to_lowercase();
+    let file = t.rsplit('/').next().unwrap_or("");
+    file == BLANK || file == "blank.dtx"
+}
+
 /// The interface sounds layouts name (I3), by their values.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Sound {
@@ -680,7 +688,7 @@ impl Layout {
             match &w.kind {
                 Kind::Window(look) | Kind::Image(look) => {
                     let window = matches!(w.kind, Kind::Window(_));
-                    if look.texture.is_empty() || (window && look.texture == BLANK) {
+                    if look.texture.is_empty() || (window && is_blank(&look.texture)) {
                         continue;
                     }
                     // A missing texture draws nothing (still hit).

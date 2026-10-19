@@ -96,6 +96,14 @@ id = 2
 name = "Combat_Helmet"
 files = ["CHARS_M_HEAD\\Combat_Helmet.ltb", "CHARS_M_HEAD\\W_Combat_Helmet.ltb"]
 
+# Faces (`Face#`): the default (2: a fresh selection's face 0). The
+# spec names no face files or skins: with the V1 key the install's models
+# file gives every face's (and head piece's) files, skins and the head
+# piece a face comes with (`HairIndex`).
+[[face]]
+id = 0
+name = "Face_a"
+
 # Goggles and masks (`Goggle#`): the socket and the file per figure type
 # (the male one is not in the spec).
 [[goggle]]
