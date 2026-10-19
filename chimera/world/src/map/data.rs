@@ -100,6 +100,11 @@ pub struct MapMesh {
     /// Per-vertex blend weight: 0 = first texture, 1 = second. Empty when
     /// there's no blend.
     pub blend_weights: Vec<f32>,
+    /// A second set of texture coordinates (texture repeats), where the
+    /// second texture of `blend` is sampled when the source game gives it
+    /// coordinates of its own (LithTech's dual-texture sections). Empty:
+    /// the second texture uses the base coordinates (`MapBlend::transform`).
+    pub uvs2: Vec<[f32; 2]>,
     /// A detail texture tiled over the base texture.
     pub detail: Option<MapDetail>,
     /// `$basetexturetransform` (or a TextureScroll proxy driving it): the
@@ -127,6 +132,9 @@ pub struct MapMesh {
     pub surface2: Option<String>,
     /// Reflection of a baked cubemap (Source `$envmap`).
     pub envmap: Option<MapEnvmap>,
+    /// A flat environment map over the base texture (LithTech's `envmap`
+    /// link); None for every Source surface.
+    pub flat_envmap: Option<MapFlatEnvmap>,
     /// Part of a mover brush entity (index into `MapData::entities`):
     /// positions are relative to that entity's origin and unrotated
     /// (engine axes), drawn under its `MapBrushEntity` node.
@@ -302,6 +310,9 @@ pub struct MapDetail {
     /// `$detailtint`, linear as the shader uses it (raw on world
     /// surfaces, gamma-converted on models).
     pub tint: [f32; 3],
+    /// Counter-clockwise rotation of the detail coordinates, radians
+    /// (`scale` then this: LithTech's detail rotation; 0 for Source).
+    pub rotation: f32,
 }
 
 /// The second layer of a two-texture surface. Indices into
@@ -315,6 +326,55 @@ pub struct MapBlend {
     pub mask: Option<usize>,
     /// `$basetexturetransform2`: the second texture's coordinates.
     pub transform: MapUvTransform,
+    /// How the two textures combine.
+    pub mode: BlendMode,
+}
+
+/// How a two-texture surface combines its textures, by the per-vertex
+/// weight w (`MapMesh::blend_weights`, 1 = second texture).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BlendMode {
+    /// Source's WorldVertexTransition: the colours mixed by w in linear
+    /// space; alpha stays the first's.
+    #[default]
+    VertexTransition,
+    /// LithTech's dual texture (specs/combat_arms/world_dat.md, "Second
+    /// textures"): a = (1 - w) x the first texture's alpha, colour
+    /// a x first + (1 - a) x second, alpha a; in gamma space, as the
+    /// fixed-function blend runs (`material_fx::dual_texture`).
+    BaseAlpha,
+    /// The same with a fullbright second texture: first + a x second
+    /// (clamped), alpha a.
+    BaseAlphaAdd,
+}
+
+impl BlendMode {
+    /// The world shader's `blend_mode` parameter (see world.wgsl).
+    pub fn shader_value(self) -> f32 {
+        match self {
+            Self::VertexTransition => 0.0,
+            Self::BaseAlpha => 1.0,
+            Self::BaseAlphaAdd => 2.0,
+        }
+    }
+}
+
+/// A flat (2D) environment map laid over a surface's base texture,
+/// sampled by the view-space reflection vector r as
+/// (r.x, r.y) x (-0.5 / `scale`) + 0.5 (LithTech's `envmap` and
+/// `envmapalpha` links, specs/combat_arms/world_dat.md "Second textures";
+/// `material_fx::flat_envmap_uv`), combined before lighting.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MapFlatEnvmap {
+    /// Index into `MapData::textures` (sRGB).
+    pub texture: usize,
+    /// `EnvScale`.
+    pub scale: f32,
+    /// Combined as the signed add base + env - 0.5 (clamped, gamma space);
+    /// false: multiplied.
+    pub signed_add: bool,
+    /// Weighted by the base texture's alpha (`envmapalpha`).
+    pub by_base_alpha: bool,
 }
 
 /// Baked lighting atlas: linear RGB, where 1.0 shows a texture at its own

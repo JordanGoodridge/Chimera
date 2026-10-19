@@ -152,16 +152,21 @@ pub enum DetailMode {
     TwoTextureOver,
     /// WorldTwoTextureBlend's 2x grime mask.
     TwoTextureMask,
+    /// LithTech's detail texture (specs/combat_arms/textures_dtx.md,
+    /// "Detail textures", `DetailTextureAdd` 1): clamp(base + detail -
+    /// 0.5) in gamma space, alpha from the base (`signed_add`).
+    SignedAdd,
 }
 
 impl DetailMode {
     /// The shader's `detail` parameter: 0 none, 1 + the Source mode, 20
-    /// and 21 the two-texture modes (see world.wgsl).
+    /// and 21 the two-texture modes, 30 the signed add (see world.wgsl).
     pub fn shader_value(self) -> f32 {
         match self {
             Self::Source(m) => m as f32 + 1.0,
             Self::TwoTextureOver => 20.0,
             Self::TwoTextureMask => 21.0,
+            Self::SignedAdd => 30.0,
         }
     }
 }
@@ -215,6 +220,46 @@ pub fn detail_post_lighting(mode: u8, d: Vec3, f: f32) -> Vec3 {
         }
         _ => Vec3::ZERO,
     }
+}
+
+/// LithTech's signed add of a second stage (detail texture or environment
+/// map, specs/combat_arms/world_dat.md "Second textures"): clamp(base +
+/// layer - 0.5, 0, 1) per channel, colours in gamma space. Mirrors
+/// world.wgsl.
+pub fn signed_add(base: Vec3, layer: Vec3) -> Vec3 {
+    (base + layer - Vec3::splat(0.5)).clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+/// LithTech's dual-texture combine (world_dat.md "Second textures"): the
+/// first texture `t0` (rgba) and the second `t1` by the vertex alpha
+/// `vertex_alpha`; a = vertex alpha x t0's alpha, colour a x t0 + (1 - a)
+/// x t1, or t0 + a x t1 (clamped) when t1 is fullbright (`add`); alpha a.
+/// Gamma-space colours. Mirrors world.wgsl (`BlendMode::BaseAlpha`,
+/// `BaseAlphaAdd`; the shader's weight is 1 - vertex alpha).
+pub fn dual_texture(t0: Vec4, t1: Vec3, vertex_alpha: f32, add: bool) -> Vec4 {
+    let a = vertex_alpha * t0.w;
+    let rgb = if add {
+        (t0.truncate() + a * t1).min(Vec3::ONE)
+    } else {
+        a * t0.truncate() + (1.0 - a) * t1
+    };
+    rgb.extend(a)
+}
+
+/// LithTech's detail coordinates (textures_dtx.md "Detail textures"):
+/// σ R(θ) (u, v), with σ the scale and θ the rotation (radians,
+/// counter-clockwise). Mirrors world.wgsl (`MapDetail::rotation`).
+pub fn detail_uv(uv: Vec2, scale: f32, rotation: f32) -> Vec2 {
+    let (s, c) = rotation.sin_cos();
+    scale * Vec2::new(c * uv.x - s * uv.y, s * uv.x + c * uv.y)
+}
+
+/// A flat environment map's coordinates from the view-space reflection
+/// vector `r` (unit; x right, y up): (r.x, r.y) x (-0.5 / scale) + 0.5
+/// (world_dat.md "Second textures", the world environment-map matrix
+/// taken as the identity). Mirrors world.wgsl (`MapFlatEnvmap`).
+pub fn flat_envmap_uv(r: Vec3, scale: f32) -> Vec2 {
+    Vec2::new(r.x, r.y) * (-0.5 / scale) + Vec2::splat(0.5)
 }
 
 /// Self-illumination (shaders.md 2 and 4): the lit colour toward

@@ -3,8 +3,9 @@
 //! a 236-byte header with an integrity-check block, file data, then a
 //! plaintext directory tree at the end of the file. The header and the
 //! directory are never encrypted; payloads of archives titled
-//! `V1_RESOURCES_KEY`/`V2_RESOURCES_KEY` are (`rez_cipher`) and read only
-//! with a key for that scheme, supplied at run time.
+//! `V1_RESOURCES_KEY` (Twofish) and `V2_RESOURCES_KEY` (AES-256) are
+//! (`rez_cipher`) and read only with a key for that scheme, supplied at run
+//! time; other titles (`LithTech Resource File`) are stored raw.
 //!
 //! `RezArchive` is a mount layer (`source_formats::fs::FileSource`, which
 //! Chimera's `mount` re-exports): paths are normalized (lowercase, `/`),
@@ -18,7 +19,8 @@
 //! replacing names) are not modelled, and across archives the first
 //! layer with a path wins (`Mount`). The check sum S is not enforced on
 //! open (`RezHeader::check_matches_fields` tells; the spec makes it
-//! optional).
+//! optional). A title other than the three observed is read raw ("Cipher
+//! by title").
 
 use std::{
     collections::HashMap,
@@ -30,7 +32,7 @@ use std::{
 
 use source_formats::fs::{Entry, FileSource, Mount, normalize};
 
-pub use crate::rez_cipher::{RezCipher, RezKeys};
+pub use crate::rez_cipher::{RezCipher, RezCipherKind, RezKeys};
 
 /// "Header": the fixed header length; file data starts right after it.
 pub const HEADER_LEN: usize = 0xEC;

@@ -153,7 +153,7 @@ fn combat_arms_keys() -> Result<rez::RezKeys, String> {
     let config = LocalConfig::load()?;
     let mut keys = rez::RezKeys::new();
     for (scheme, k) in config.game_keys(COMBAT_ARMS).into_iter().flatten() {
-        let cipher = rez::RezCipher::from_hex(&k.key, &k.iv, &format!("{COMBAT_ARMS} {scheme}"))?;
+        let cipher = rez::RezCipher::from_hex(scheme, &k.key, &k.iv, &format!("{COMBAT_ARMS} {scheme}"))?;
         keys.insert(scheme.clone(), cipher);
     }
     Ok(keys)

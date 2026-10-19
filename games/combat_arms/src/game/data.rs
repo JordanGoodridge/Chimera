@@ -140,6 +140,12 @@ pub fn use_builtin_data_only() {
     BUILTIN_ONLY.store(true, Ordering::Relaxed);
 }
 
+/// Whether this process reads nothing of the install at run time
+/// (`use_builtin_data_only`; the effects' sounds go silent too).
+pub fn builtin_only() -> bool {
+    BUILTIN_ONLY.load(Ordering::Relaxed)
+}
+
 /// Combat Arms' weapons as data, parsed once per process (and findable by
 /// `weapon::data::lookup`): the built-in documents, with the install's
 /// attribute data over them when it can be read. Bad built-in data panics

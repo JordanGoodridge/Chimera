@@ -1,6 +1,7 @@
 //! Sound playback for any game (docs/plans/active/sound.md): playback
 //! resolves a `map::PlaySound`'s entry (random wave, drawn volume, pitch
-//! and level), applies the distance model and left/right panning toward
+//! and level), applies the distance model (and a `Radius` level's
+//! distance low-pass, `Gains::with_cutoff`) and left/right panning toward
 //! the listener, and plays it, pitch as playback speed. A new sound on the
 //! same (source entity, channel) replaces the one playing there.
 //!
@@ -20,7 +21,7 @@ use super::{
 };
 use crate::map::{
     MapHooks, MapSoundClip, PlaySound, SoundLevel,
-    sound::{METERS_PER_UNIT, SoundBank, distance_gain},
+    sound::{METERS_PER_UNIT, SoundBank, distance_cutoff, distance_gain},
 };
 
 /// Who's listening (the camera the player sees through). The entity it
@@ -172,6 +173,13 @@ fn play_sounds(
             }
             _ => (volume, volume, 0.0),
         };
+        // A level's distance low-pass (none for the listener's own sounds).
+        let cutoff = match (m.at, listener) {
+            (Some(at), Some(ear)) if m.source.is_none() || m.source != ear.owner => {
+                distance_cutoff(level, at.distance(ear.at.translation()) / METERS_PER_UNIT)
+            }
+            _ => 1.0,
+        };
         let send = if entry.dry { 0.0 } else { send };
         if left.max(right) < 1e-3 {
             continue;
@@ -199,7 +207,7 @@ fn play_sounds(
             loop_start: None,
             ..clip.clone()
         };
-        let gains = Arc::new(Gains::new(left, right).with_send(send));
+        let gains = Arc::new(Gains::new(left, right).with_send(send).with_cutoff(cutoff));
         let handle = sources.add(LiveClip::new(once, gains.clone(), hearing.mix.clone()).with_room(&room));
         let e = commands
             .spawn((

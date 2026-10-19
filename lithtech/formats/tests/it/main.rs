@@ -14,6 +14,7 @@ mod world;
 
 mod heavy {
     mod dtx_install;
+    mod keyed_install;
     mod ltb_install;
     mod rez_install;
     mod world_install;

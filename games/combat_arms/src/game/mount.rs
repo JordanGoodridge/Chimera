@@ -2,8 +2,9 @@
 //! folder, in name order (`lithtech_formats::rez::open_dir`, per
 //! specs/combat_arms/rez_archive.md), with the keys from the local config
 //! (`[games.combat_arms.keys.<scheme>]` in chimera.local.toml, hex `key`
-//! and `iv`; never in the repo). Without a key, a keyed archive's files
-//! list but fail to read with `PermissionDenied`.
+//! and `iv`; never in the repo; the scheme picks the cipher: V1 Twofish,
+//! V2 AES). Without a key, a keyed archive's files list but fail to read
+//! with `PermissionDenied`.
 
 use std::{io, path::Path};
 
@@ -19,7 +20,7 @@ pub fn keys() -> Result<RezKeys, String> {
     for (scheme, k) in config.game_keys(super::GAME).into_iter().flatten() {
         keys.insert(
             scheme.clone(),
-            RezCipher::from_hex(&k.key, &k.iv, &format!("{} {scheme}", super::GAME))?,
+            RezCipher::from_hex(scheme, &k.key, &k.iv, &format!("{} {scheme}", super::GAME))?,
         );
     }
     Ok(keys)

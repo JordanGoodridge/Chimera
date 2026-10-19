@@ -118,3 +118,20 @@ muzzle_pos = [2.84, -2.6, 4.859921]
 breach_offset = [0.0, 0.0, 0.0]
 muzzle_fx = "AK47_pv_muzz"
 shells = true
+
+# effects_sounds.md, "How effects are described as data" and 11: the
+# ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
+# third-person muzzle group and the weapon's sounds (files inside the
+# install's archives; snipers: SR01 (the M24's, PLACEHOLDER for the L96A1) and WEAPON_HH).
+[hooks."combat_arms:effects"]
+ammo_kind = "bullet"
+impact = "BulletFmj"
+fire = "7.62mm"
+tracer = "SR01"
+hh_muzzle = "WEAPON_HH"
+fire_sound = "guns_snd_sr/l96a1/fire.wav"
+fire_radius = 3000
+silenced_sounds = ["guns_snd_option/sr/silenced1.wav", "guns_snd_option/sr/silenced2.wav"]
+reload_sounds = ["guns_snd_sr/l96a1/reload1.wav", "guns_snd_sr/l96a1/reload2.wav", "guns_snd_sr/l96a1/reload3.wav"]
+select_sound = "guns_snd_sr/l96a1/select.wav"
+deselect_sound = "guns_snd_sr/l96a1/deselect.wav"

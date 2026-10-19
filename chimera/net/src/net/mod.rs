@@ -865,8 +865,7 @@ pub enum LogicSoundKind {
         follow_part: Option<(bool, u32)>,
         volume: Option<f32>,
         pitch: Option<f32>,
-        /// (true: Source sound level, false: attenuation; value).
-        level: Option<(bool, f32)>,
+        level: Option<crate::map::SoundLevel>,
         clip: Option<u32>,
         looping: bool,
         dry: bool,

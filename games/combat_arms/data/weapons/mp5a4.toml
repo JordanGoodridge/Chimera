@@ -82,3 +82,21 @@ silenced_radius = [1200, 1200]
 # [TW: MovePenalty] 0.07.
 [hooks."combat_arms:handling"]
 move_penalty = 0.07
+
+# effects_sounds.md, "How effects are described as data" and 11: the
+# ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
+# third-person muzzle group and the weapon's sounds (files inside the
+# install's archives; the MP5 family's tracer SMG01; files: our pick by folder).
+[hooks."combat_arms:effects"]
+ammo_kind = "bullet"
+impact = "BulletFmj"
+fire = "9mm"
+tracer = "SMG01"
+hh_muzzle = "WEAPON_HH"
+fire_sound = "guns_snd_smg/mp5a4/fire.wav"
+fire_radius = 1800
+silenced_sounds = ["guns_snd_option/smg/silenced1.wav", "guns_snd_option/smg/silenced2.wav"]
+dry_fire_sound = "guns_snd_smg/mp5a4/dryfire.wav"
+reload_sounds = ["guns_snd_smg/mp5a4/reload1.wav", "guns_snd_smg/mp5a4/reload2.wav", "guns_snd_smg/mp5a4/reload3.wav"]
+select_sound = "guns_snd_smg/mp5a4/select.wav"
+deselect_sound = "guns_snd_smg/mp5a4/deselect.wav"

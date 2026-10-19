@@ -107,6 +107,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35f0f96ce78e38c3dc6d8948aa8163d06385be74000f3c7a95bf1eef35d3ea32"
+dependencies = [
+ "cipher 0.5.2",
+ "cpubits",
+ "cpufeatures 0.3.1",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2739,6 +2750,7 @@ dependencies = [
  "lithtech_formats",
  "postcard",
  "serde",
+ "source_formats",
  "toml",
  "workspace-hack",
 ]
@@ -2945,6 +2957,12 @@ dependencies = [
  "web-sys",
  "windows",
 ]
+
+[[package]]
+name = "cpubits"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b85f9c39137c3a891689859392b1bd49812121d0d61c9caf00d46ed5ce06ae"
 
 [[package]]
 name = "cpufeatures"
@@ -4727,6 +4745,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 name = "lithtech_formats"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "source_formats",
  "toml",
  "twofish",

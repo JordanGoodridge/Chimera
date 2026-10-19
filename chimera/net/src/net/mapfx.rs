@@ -27,8 +27,8 @@ use super::{LogicSound, LogicSoundKind, MapFx, ServerSound};
 use crate::{
     core::NetRole,
     map::{
-        BeamStrike, LogicOneShot, MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SoundLevel, SparkBurst,
-        StartSound, TeslaSpark,
+        BeamStrike, LogicOneShot, MapBrushEntity, PlaySound, PropEntity, SoundControl, SoundKey, SparkBurst, StartSound,
+        TeslaSpark,
     },
 };
 
@@ -159,10 +159,7 @@ fn forward_sounds(
                     follow_part,
                     volume: s.volume,
                     pitch: s.pitch,
-                    level: s.level.map(|l| match l {
-                        SoundLevel::Db(v) => (true, v),
-                        SoundLevel::Attenuation(v) => (false, v),
-                    }),
+                    level: s.level,
                     clip: s.clip.map(|c| c as u32),
                     looping: s.looping,
                     dry: s.dry,
@@ -225,7 +222,7 @@ fn receive_sounds(
                     follow: s.follow.filter(|e| *e != Entity::PLACEHOLDER).or(part),
                     volume: *volume,
                     pitch: *pitch,
-                    level: level.map(|(db, v)| if db { SoundLevel::Db(v) } else { SoundLevel::Attenuation(v) }),
+                    level: *level,
                     clip: clip.map(|c| c as usize),
                     looping: *looping,
                     dry: *dry,

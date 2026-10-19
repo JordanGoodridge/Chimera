@@ -630,9 +630,7 @@ fn spawn_world_meshes(
                     Mesh3d(meshes.add({
                         let mut mesh = build_mesh(&chunk, true);
                         if blended {
-                            let colors: Vec<[f32; 4]> =
-                                chunk.blend_weights.iter().map(|w| [1.0, 1.0, 1.0, *w]).collect();
-                            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+                            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, blend_colors(&chunk));
                         }
                         mesh
                     })),
@@ -803,6 +801,24 @@ fn lit_world_material(
             envmap_saturation: m.envmap.map_or(1.0, |e| e.saturation),
             envmap_fresnel: m.envmap.map_or(1.0, |e| e.fresnel),
             envmap_tint: m.envmap.map_or(Vec4::ONE, |e| Vec3::from_array(e.tint).extend(1.0)),
+            blend_mode: blend.mode.shader_value(),
+            blend_uv2: if blended && m.uvs2.len() == m.positions.len() {
+                1.0
+            } else {
+                0.0
+            },
+            detail_rotation: m.detail.map_or(0.0, |d| d.rotation),
+            flat_envmap: match m.flat_envmap {
+                Some(e) if e.signed_add => 1.0,
+                Some(_) => 2.0,
+                None => 0.0,
+            },
+            flat_envmap_alpha: if m.flat_envmap.is_some_and(|e| e.by_base_alpha) {
+                1.0
+            } else {
+                0.0
+            },
+            flat_envmap_scale: m.flat_envmap.map_or(1.0, |e| e.scale),
             ..WorldParams::identity_uv()
         },
         base: m.texture.map(|i| textures[i].clone()),
@@ -831,6 +847,7 @@ fn lit_world_material(
             None => blend.mask.filter(|_| blended).map(|i| textures[i].clone()),
         },
         detail: m.detail.map(|d| textures[d.texture].clone()),
+        flat_envmap: m.flat_envmap.map(|e| textures[e.texture].clone()),
         alpha_mode: m.alpha.shader_alpha_mode(),
         double_sided: m.double_sided,
         // Map overlays and infodecals (see WorldMaterial::decal).
@@ -838,6 +855,17 @@ fn lit_world_material(
         modulate: m.modulate,
     };
     (material, blended)
+}
+
+/// A blended mesh's vertex colours: the blend weight in alpha, and the
+/// second coordinate set (`MapMesh::uvs2`) in red and green when it has
+/// one (white otherwise).
+fn blend_colors(m: &MapMesh) -> Vec<[f32; 4]> {
+    if m.uvs2.len() == m.blend_weights.len() {
+        m.uvs2.iter().zip(&m.blend_weights).map(|([u, v], w)| [*u, *v, 1.0, *w]).collect()
+    } else {
+        m.blend_weights.iter().map(|w| [1.0, 1.0, 1.0, *w]).collect()
+    }
 }
 
 /// A map overlay or infodecal drawn as one (`WorldMaterial::decal`).
@@ -894,8 +922,7 @@ fn spawn_merged(
     for ((material, blended), chunk, centre, parts, clusters) in world_merger.finish(visibility) {
         let mut mesh = build_mesh(&chunk, true);
         if blended {
-            let colors: Vec<[f32; 4]> = chunk.blend_weights.iter().map(|w| [1.0, 1.0, 1.0, *w]).collect();
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, blend_colors(&chunk));
         }
         let mesh = meshes.add(mesh);
         let e = spawn_chunk(

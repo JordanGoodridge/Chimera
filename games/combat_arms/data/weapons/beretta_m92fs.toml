@@ -100,3 +100,20 @@ view_skins = ["", "guns_t_pv_pistol/pv_beretta_m92fs.dtx"]
 # view_models.md, per-weapon placement: `Pos` (-0.1, -0.2, 0.7).
 view_offset = [-0.1, -0.2, 0.7]
 
+# effects_sounds.md, "How effects are described as data" and 11: the
+# ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
+# third-person muzzle group and the weapon's sounds (files inside the
+# install's archives; pistols have no tracer; WEAPON_HH and FireSndRadius 1600 PLACEHOLDER).
+[hooks."combat_arms:effects"]
+ammo_kind = "bullet"
+impact = "BulletFmj"
+fire = "9mm"
+tracer = ""
+hh_muzzle = "WEAPON_HH"
+fire_sound = "guns_snd_pistol/beretta_m92fs/fire.wav"
+fire_radius = 1600
+silenced_sounds = ["guns_snd_option/pistol/silenced1.wav", "guns_snd_option/pistol/silenced2.wav"]
+dry_fire_sound = "guns_snd_pistol/beretta_m92fs/dryfire.wav"
+reload_sounds = ["guns_snd_pistol/beretta_m92fs/reload1.wav", "guns_snd_pistol/beretta_m92fs/reload2.wav", "guns_snd_pistol/beretta_m92fs/reload3.wav"]
+select_sound = "guns_snd_pistol/beretta_m92fs/select.wav"
+deselect_sound = "guns_snd_pistol/beretta_m92fs/deselect.wav"

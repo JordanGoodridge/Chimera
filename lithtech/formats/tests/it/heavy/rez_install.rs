@@ -50,7 +50,7 @@ pub(crate) fn keys() -> RezKeys {
     };
     for (scheme, k) in keys {
         let text = |f: &str| k.get(f).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let cipher = RezCipher::from_hex(&text("key"), &text("iv"), &format!("combat_arms {scheme}")).unwrap();
+        let cipher = RezCipher::from_hex(&scheme, &text("key"), &text("iv"), &format!("combat_arms {scheme}")).unwrap();
         out.insert(scheme, cipher);
     }
     out
@@ -182,6 +182,8 @@ fn v1_key_decrypts_xml() {
     let mut readable = 0;
     for e in entries.iter().filter(|e| e.size >= 64).take(50) {
         let data = rez.read(&e.path).unwrap().unwrap();
+        // The files are UTF-8 with a byte-order mark.
+        let data = data.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&data);
         if data[..16]
             .iter()
             .all(|b| b.is_ascii() && (*b >= 0x20 || b.is_ascii_whitespace()))

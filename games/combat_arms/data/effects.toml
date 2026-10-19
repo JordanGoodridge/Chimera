@@ -1,0 +1,613 @@
+# Combat Arms' effect and sound tables: specs/combat_arms/effects_sounds.md
+# ("How effects are described as data": the ImpactFX, FireFX and TracerFX
+# records, the surface table; section 11's sounds). Our numbers and names
+# as the spec gives them, not a file from the game: the install's own
+# attribute data (FX.TXT, SURFACE.TXT) sits in a keyed archive. File names
+# are paths inside the install's archives (lower case, `/`), loaded at run
+# time through the mount; effect group names are the effect file's
+# (CLIENTFX.FXF, read from the install). Where the spec names no file, the
+# path is our pick from the archive's folder of that surface or weapon
+# (marked PLACEHOLDER).
+#
+# Units: world units (1.8 cm each, data/movement.toml) and seconds; volume
+# 0..100. Per-weapon data (fire, reload and draw sounds, the third-person
+# muzzle, the ammo's records) is each weapon's `combat_arms:effects` hook
+# (data/weapons/*.toml); grenades' records are below (`[grenade]`).
+
+# ---------------------------------------------------------------------------
+# ImpactFX records (the ammo's ImpactFXName). `sound`: a file, or "surface"
+# (by surface and ammo kind); `mark`: "surface" (the surface's bullet hole)
+# or "" (none); `surface_fx`: also play the surface's impact group; `fx`: a
+# group always played at the impact.
+
+[impact.BulletFmj]
+sound = "surface"
+sound_radius = 900
+create_mark = true
+mark = "surface"
+mark_scale = 0.075
+mark_color_ratio = 0.5
+surface_fx = true
+fx = ""
+
+[impact.Melee]
+sound = "surface"
+sound_radius = 153
+create_mark = false
+mark = ""
+mark_scale = 0.0
+surface_fx = false
+fx = ""
+
+[impact.handgrenade]
+sound = "guns_snd_impacts/explosions/gren.wav"
+sound_radius = 1500
+# CreateMark 1 but Mark empty: no scorch.
+create_mark = true
+mark = ""
+mark_scale = 0.0
+surface_fx = true
+fx = ""
+
+[impact.flashbang_exp]
+sound = "guns_snd_impacts/explosions/flash.wav"
+sound_radius = 1500
+create_mark = false
+mark = ""
+mark_scale = 0.0
+surface_fx = false
+fx = "Flashbang_Ini"
+area = true
+
+[impact.Smoke_Grenade]
+sound = "guns_snd_impacts/explosions/smoke_exp_gas.wav"
+sound_radius = 1500
+create_mark = false
+mark = ""
+mark_scale = 0.0
+surface_fx = false
+fx = "Smoke_Grenade_01"
+area = true
+
+# ---------------------------------------------------------------------------
+# FireFX records (the ammo's FireFXName): the group only the shooter sees at
+# their muzzle, casings (model and skin, ShellScale: PLACEHOLDER 0.5, the spec
+# gives none), `velocity` (non-zero replaces the random casing velocity).
+
+[fire."5.56mm"]
+fx = "test"
+shells = true
+shell_model = "guns_sc/models/5.56mm.ltb"
+shell_skin = "guns_sc/skins/5.56mm.dtx"
+shell_scale = 0.5
+
+[fire."7.62mm"]
+fx = "test"
+shells = true
+shell_model = "guns_sc/models/7.62mm.ltb"
+shell_skin = "guns_sc/skins/7.62mm.dtx"
+shell_scale = 0.5
+
+[fire."9mm"]
+fx = "test"
+shells = true
+shell_model = "guns_sc/models/9mm.ltb"
+shell_skin = "guns_sc/skins/9mm.dtx"
+shell_scale = 0.5
+
+[fire."45ACP"]
+fx = "test"
+shells = true
+shell_model = "guns_sc/models/45acp.ltb"
+shell_skin = "guns_sc/skins/45acp.dtx"
+shell_scale = 0.5
+
+[fire."12Gauge_G"]
+fx = "test"
+shells = true
+shell_model = "guns_sc/models/12gauge.ltb"
+shell_skin = "guns_sc/skins/12gauge_g.dtx"
+shell_scale = 0.5
+
+[fire.FireSoundOnly]
+fx = ""
+shells = false
+
+# ---------------------------------------------------------------------------
+# TracerFX records: `frequency` F (every F-th ray; 0 and 1: every one),
+# `velocity` (u/s), `width` and `length` (u), `color` (0..255), alpha from
+# `initial_alpha` to `final_alpha` over its life. Textures: the spec's
+# colour and size, our pick of the archive's tail sprite (PLACEHOLDER).
+
+[tracer.AR01]
+texture = "fx/weapons/bullet_tail/64xredtail01.dtx"
+frequency = 3
+velocity = 6000
+width = 25
+length = 300
+
+[tracer.AR02]
+texture = "fx/weapons/bullet_tail/64xyellowtail01.dtx"
+frequency = 4
+velocity = 6000
+width = 15
+length = 600
+
+[tracer.AR03]
+texture = "fx/weapons/bullet_tail/64xyellowtail01.dtx"
+frequency = 4
+velocity = 6000
+width = 20
+length = 300
+
+[tracer.AR04]
+texture = "fx/weapons/bullet_tail/64xyellowtail01.dtx"
+frequency = 6
+velocity = 6000
+width = 15
+length = 600
+
+[tracer.SMG01]
+texture = "fx/weapons/bullet_tail/128xyellowtail02.dtx"
+frequency = 6
+velocity = 10000
+width = 20
+length = 600
+
+[tracer.SMG02]
+texture = "fx/weapons/bullet_tail/128xredtail02.dtx"
+frequency = 6
+velocity = 8000
+width = 30
+length = 300
+
+[tracer.SMG03]
+texture = "fx/weapons/bullet_tail/128xyellowtail02.dtx"
+frequency = 8
+velocity = 10000
+width = 20
+length = 600
+
+[tracer.MG01]
+texture = "fx/weapons/bullet_tail/64xyellowtail01.dtx"
+frequency = 3
+velocity = 6000
+width = 20
+length = 300
+
+[tracer.SR01]
+texture = "fx/weapons/bullet_tail/64xyellowtail01.dtx"
+frequency = 1
+velocity = 8000
+width = 20
+length = 600
+
+[tracer.SR02]
+texture = "fx/weapons/bullet_tail/64xredtail01.dtx"
+frequency = 2
+velocity = 8000
+width = 20
+length = 600
+
+[tracer.SR03]
+texture = "fx/weapons/bullet_tail/64xyellowtail01.dtx"
+frequency = 0
+velocity = 8000
+width = 20
+length = 600
+
+[tracer.Pisol01]
+texture = "fx/weapons/bullet_tail/64xredtail01.dtx"
+frequency = 0
+velocity = 8000
+width = 20
+length = 600
+
+[tracer.Pisol02]
+texture = "fx/weapons/bullet_tail/64xredtail01.dtx"
+frequency = 0
+velocity = 8000
+width = 20
+length = 600
+
+# ---------------------------------------------------------------------------
+# Muzzle attachments' and sights' effects (attachments.md names the parts;
+# section 3 and 4 say what they name): `pv_muzzle`/`hh_muzzle` (a missing
+# group shows nothing) and `tracer`. Patterns: `*` matches any text; the
+# first matching row wins.
+
+[[attachment]]
+names = ["Silencer_C_*", "Silencer_*_Red"]
+pv_muzzle = "Silenced01_PV_Muzz"
+hh_muzzle = "Silenced01_HH_Muzz"
+
+[[attachment]]
+names = ["Silencer_A_Pistol*", "Silencer_B_Pistol*"]
+pv_muzzle = "AK47_pv_muzz"
+hh_muzzle = "WEAPON_HH"
+tracer = "Pisol01"
+
+[[attachment]]
+names = ["Silencer_A_*"]
+pv_muzzle = "AK47_pv_muzz"
+hh_muzzle = "WEAPON_HH"
+tracer = "AR01"
+
+[[attachment]]
+names = ["Silencer_B_SMG*"]
+pv_muzzle = "AK47_pv_muzz"
+hh_muzzle = "WEAPON_HH"
+tracer = "SMG03"
+
+[[attachment]]
+names = ["Silencer_B_SR*"]
+pv_muzzle = "AK47_pv_muzz"
+hh_muzzle = "WEAPON_HH"
+tracer = "SR03"
+
+[[attachment]]
+names = ["Silencer_B_*"]
+pv_muzzle = "AK47_pv_muzz"
+hh_muzzle = "WEAPON_HH"
+tracer = "AR04"
+
+[[attachment]]
+names = ["DotSight_*"]
+tracer = "AR01"
+
+# ---------------------------------------------------------------------------
+# Grenades' records by weapon (their ammo's ImpactFXName).
+
+[grenade."combat_arms:m67"]
+impact = "handgrenade"
+
+[grenade."combat_arms:xm84"]
+impact = "flashbang_exp"
+
+[grenade."combat_arms:m18"]
+impact = "Smoke_Grenade"
+
+# ---------------------------------------------------------------------------
+# Sounds by event (section 11).
+
+[sounds]
+# Hit confirm: one of these, 50/50.
+ding = ["guns_snd_impacts/multiding1.wav", "guns_snd_impacts/multiding2.wav"]
+# The `bulletflyby` sound set: r 100, R 300.
+flyby = ["guns_snd_etc/flyby.wav"]
+flyby_radii = [100, 300]
+# Your jump voice (the auto-cast `Jump` list), local.
+jump = ["chars_snd/jump1.wav", "chars_snd/jump2.wav"]
+# Hurt sounds at the victim, radius 500 (male template).
+hurt_radius = 500
+guns = ["chars_snd/male/hurtpain_a_male_1.wav", "chars_snd/male/hurtpain_a_male_2.wav", "chars_snd/male/hurtpain_a_male_3.wav"]
+explosions = ["chars_snd/male/hurtpain_b_male_1.wav", "chars_snd/male/hurtpain_b_male_2.wav", "chars_snd/male/hurtpain_b_male_3.wav"]
+burning = ["chars_snd/male/hurtfire_a_male.wav"]
+falling = ["chars_snd/male/hurtfalling_male.wav"]
+gas = ["chars_snd/male/cough_male_1.wav", "chars_snd/male/cough_male_2.wav", "chars_snd/male/cough_male_3.wav"]
+head = ["chars_snd/male/headshot.wav"]
+groin = ["chars_snd/male/nutpain.wav"]
+# The killer's team's call-out at the killer (radius 1000).
+enemy_down = ["chars_snd/male/vma_enemydown_ma.wav"]
+enemy_down_radius = 1000
+
+# ---------------------------------------------------------------------------
+# The surface table (SURFACE.TXT's records the spec lists; `id` the world's
+# surface type). `mark`: the bullet hole's sprite (.spr) and scale range;
+# `impact_fx`/`grenade_fx`: effect groups; sound lists hold slots 1..4 (an
+# empty string is an undefined slot: silence when drawn); `shell` with
+# `shell_radius`, `grenade` with `grenade_radius`; footsteps `right` and
+# `left`, slots 1 and 2. Types without a record use id 0's.
+
+[[surface]]
+id = 0
+name = "Unknown"
+grenade_fx = "Grenade_Dirt"
+bullet = ["guns_snd_impacts/stone/impact1.wav", "guns_snd_impacts/stone/impact2.wav", "guns_snd_impacts/stone/impact3.wav", ""]
+melee = ["guns_snd_impacts/melee/stone/impact1.wav", "guns_snd_impacts/melee/stone/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/stone/impact1.wav", "guns_snd_impacts/projectile/stone/impact2.wav", "guns_snd_impacts/projectile/stone/impact3.wav", ""]
+shell = "guns_snd_shells/linoleum.wav"
+grenade = ""
+right = ["chars_snd/footsteps/foottile1a.wav", "chars_snd/footsteps/foottile2a.wav"]
+left = ["chars_snd/footsteps/foottile1b.wav", "chars_snd/footsteps/foottile2b.wav"]
+
+[[surface]]
+id = 1
+name = "Air"
+invisible = true
+
+[[surface]]
+id = 4
+name = "ImpactAdultHead"
+character = true
+impact_fx = "Impact_Head"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/cloth/impact1.wav", "guns_snd_impacts/cloth/impact2.wav", "guns_snd_impacts/cloth/impact3.wav", "guns_snd_impacts/cloth/impact4.wav"]
+melee = ["guns_snd_impacts/melee/flesh/impact1.wav", "guns_snd_impacts/melee/flesh/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/flesh/impact1.wav", "guns_snd_impacts/projectile/flesh/impact2.wav", "guns_snd_impacts/projectile/flesh/impact3.wav", "guns_snd_impacts/projectile/flesh/impact4.wav"]
+
+[[surface]]
+id = 6
+name = "ImpactAdultBody"
+character = true
+impact_fx = "Impact_Body"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/cloth/impact1.wav", "guns_snd_impacts/cloth/impact2.wav", "guns_snd_impacts/cloth/impact3.wav", "guns_snd_impacts/cloth/impact4.wav"]
+melee = ["guns_snd_impacts/melee/flesh/impact1.wav", "guns_snd_impacts/melee/flesh/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/flesh/impact1.wav", "guns_snd_impacts/projectile/flesh/impact2.wav", "guns_snd_impacts/projectile/flesh/impact3.wav", "guns_snd_impacts/projectile/flesh/impact4.wav"]
+
+[[surface]]
+id = 5
+name = "ImpactTeenHead"
+character = true
+impact_fx = "T_Impact_Head"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/cloth/impact1.wav", "guns_snd_impacts/cloth/impact2.wav", "guns_snd_impacts/cloth/impact3.wav", "guns_snd_impacts/cloth/impact4.wav"]
+melee = ["guns_snd_impacts/melee/flesh/impact1.wav", "guns_snd_impacts/melee/flesh/impact2.wav", "", ""]
+
+[[surface]]
+id = 7
+name = "ImpactTeenBody"
+character = true
+impact_fx = "T_Impact_Body"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/cloth/impact1.wav", "guns_snd_impacts/cloth/impact2.wav", "guns_snd_impacts/cloth/impact3.wav", "guns_snd_impacts/cloth/impact4.wav"]
+melee = ["guns_snd_impacts/melee/flesh/impact1.wav", "guns_snd_impacts/melee/flesh/impact2.wav", "", ""]
+
+[[surface]]
+id = 10
+name = "Ceramic tile"
+mark = "fx/i_mark/im_concrete.spr"
+mark_scale = [0.6, 0.8]
+impact_fx = "Impact_Stone"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/stone/impact1.wav", "guns_snd_impacts/stone/impact2.wav", "guns_snd_impacts/stone/impact3.wav", "guns_snd_impacts/stone/impact4.wav"]
+melee = ["guns_snd_impacts/melee/stone/impact1.wav", "guns_snd_impacts/melee/stone/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/stone/impact1.wav", "guns_snd_impacts/projectile/stone/impact2.wav", "guns_snd_impacts/projectile/stone/impact3.wav", "guns_snd_impacts/projectile/stone/impact4.wav"]
+shell = "guns_snd_shells/stone.wav"
+grenade = "guns_snd_impacts/stone/impactgrenade.wav"
+right = ["chars_snd/footsteps/foottile1a.wav", "chars_snd/footsteps/foottile2a.wav"]
+left = ["chars_snd/footsteps/foottile1b.wav", "chars_snd/footsteps/foottile2b.wav"]
+
+[[surface]]
+id = 11
+name = "Cement"
+mark = "fx/test/imark_ceramic.spr"
+mark_scale = [0.6, 0.8]
+impact_fx = "Impact_Stone"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/stone/impact1.wav", "guns_snd_impacts/stone/impact2.wav", "guns_snd_impacts/stone/impact3.wav", "guns_snd_impacts/stone/impact4.wav"]
+melee = ["guns_snd_impacts/melee/stone/impact1.wav", "guns_snd_impacts/melee/stone/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/stone/impact1.wav", "guns_snd_impacts/projectile/stone/impact2.wav", "guns_snd_impacts/projectile/stone/impact3.wav", "guns_snd_impacts/projectile/stone/impact4.wav"]
+shell = "guns_snd_shells/stone.wav"
+grenade = "guns_snd_impacts/stone/impactgrenade.wav"
+right = ["chars_snd/footsteps/stone1a.wav", "chars_snd/footsteps/stone2a.wav"]
+left = ["chars_snd/footsteps/stone1b.wav", "chars_snd/footsteps/stone2b.wav"]
+
+[[surface]]
+id = 20
+name = "Metal"
+mark = "fx/i_mark/im_metal.spr"
+mark_scale = [0.6, 0.7]
+impact_fx = "Impact_Metal"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/metal_bg/impact1.wav", "guns_snd_impacts/metal_bg/impact2.wav", "guns_snd_impacts/metal_bg/impact3.wav", "guns_snd_impacts/metal_bg/impact4.wav"]
+melee = ["guns_snd_impacts/melee/metal/impact1.wav", "guns_snd_impacts/melee/metal/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/metal/impact1.wav", "guns_snd_impacts/projectile/metal/impact2.wav", "guns_snd_impacts/projectile/metal/impact3.wav", "guns_snd_impacts/projectile/metal/impact4.wav"]
+shell = "guns_snd_shells/metal.wav"
+grenade = "guns_snd_impacts/metal_bg/impactgrenade.wav"
+right = ["chars_snd/footsteps/metal1a.wav", "chars_snd/footsteps/metal2a.wav"]
+left = ["chars_snd/footsteps/metal1b.wav", "chars_snd/footsteps/metal2b.wav"]
+
+[[surface]]
+id = 30
+name = "Wood"
+mark = "fx/i_mark/im_wood.spr"
+mark_scale = [0.8, 0.9]
+impact_fx = "Impact_Wood"
+grenade_fx = "Grenade_Dirt"
+bullet = ["guns_snd_impacts/wood/impact1.wav", "guns_snd_impacts/wood/impact2.wav", "guns_snd_impacts/wood/impact3.wav", "guns_snd_impacts/wood/impact4.wav"]
+melee = ["guns_snd_impacts/melee/wood/impact1.wav", "guns_snd_impacts/melee/wood/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/wood/impact1.wav", "guns_snd_impacts/projectile/wood/impact2.wav", "guns_snd_impacts/projectile/wood/impact3.wav", "guns_snd_impacts/projectile/wood/impact4.wav"]
+shell = "guns_snd_shells/wood.wav"
+grenade = "guns_snd_impacts/wood/impactgrenade.wav"
+right = ["chars_snd/footsteps/wood1a.wav", "chars_snd/footsteps/wood2a.wav"]
+left = ["chars_snd/footsteps/wood1b.wav", "chars_snd/footsteps/wood2b.wav"]
+
+[[surface]]
+id = 40
+name = "Glass"
+mark = "fx/i_mark/im_glass.spr"
+mark_scale = [0.6, 0.7]
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/glass/impact1.wav", "guns_snd_impacts/glass/impact2.wav", "guns_snd_impacts/glass/impact3.wav", "guns_snd_impacts/glass/impact4.wav"]
+melee = ["guns_snd_impacts/melee/glass/impact1.wav", "guns_snd_impacts/melee/glass/impact2.wav", "", ""]
+projectile = ["guns_snd_impacts/projectile/glass/impact1.wav", "guns_snd_impacts/projectile/glass/impact2.wav", "guns_snd_impacts/projectile/glass/impact3.wav", "guns_snd_impacts/projectile/glass/impact4.wav"]
+shell = "guns_snd_shells/glass.wav"
+grenade = "guns_snd_impacts/glass/impactgrenade.wav"
+right = ["chars_snd/footsteps/glass1a.wav", "chars_snd/footsteps/glass2a.wav"]
+left = ["chars_snd/footsteps/glass1b.wav", "chars_snd/footsteps/glass2b.wav"]
+
+[[surface]]
+id = 41
+name = "Bullet-Proof Glass"
+mark = "fx/i_mark/im_glass_bp.spr"
+mark_scale = [1.0, 1.1]
+impact_fx = "Impact_Glass_BulletProof"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/glass/impact1.wav", "guns_snd_impacts/glass/impact2.wav", "guns_snd_impacts/glass/impact3.wav", "guns_snd_impacts/glass/impact4.wav"]
+melee = ["guns_snd_impacts/melee/glass/impact1.wav", "guns_snd_impacts/melee/glass/impact2.wav", "", ""]
+shell = "guns_snd_shells/glass.wav"
+grenade = "guns_snd_impacts/glass/impactgrenade.wav"
+right = ["chars_snd/footsteps/glass1a.wav", "chars_snd/footsteps/glass2a.wav"]
+left = ["chars_snd/footsteps/glass1b.wav", "chars_snd/footsteps/glass2b.wav"]
+
+[[surface]]
+id = 60
+name = "Desert_Sand"
+mark = "fx/i_mark/im_sand.spr"
+mark_scale = [1.2, 1.3]
+impact_fx = "Impact_Sand"
+grenade_fx = "Grenade_Sand"
+bullet = ["guns_snd_impacts/sand/impact1.wav", "guns_snd_impacts/sand/impact2.wav", "guns_snd_impacts/sand/impact3.wav", "guns_snd_impacts/sand/impact4.wav"]
+melee = ["guns_snd_impacts/melee/sand/impact1.wav", "guns_snd_impacts/melee/sand/impact2.wav", "", ""]
+shell = "guns_snd_shells/sand.wav"
+grenade = "guns_snd_impacts/sand/impactgrenade.wav"
+right = ["chars_snd/footsteps/sand1a.wav", "chars_snd/footsteps/sand2a.wav"]
+left = ["chars_snd/footsteps/sand1b.wav", "chars_snd/footsteps/sand2b.wav"]
+
+[[surface]]
+id = 70
+name = "Dirt"
+mark = "fx/i_mark/imarkbasic.spr"
+mark_scale = [0.6, 1.0]
+impact_fx = "Impact_Dirt"
+grenade_fx = "Grenade_Dirt"
+bullet = ["guns_snd_impacts/terrain/impact1.wav", "guns_snd_impacts/terrain/impact2.wav", "guns_snd_impacts/terrain/impact3.wav", "guns_snd_impacts/terrain/impact4.wav"]
+melee = ["guns_snd_impacts/melee/dirt/impact1.wav", "guns_snd_impacts/melee/dirt/impact2.wav", "", ""]
+shell = "guns_snd_shells/dirt.wav"
+grenade = "guns_snd_impacts/terrain/impactgrenade.wav"
+right = ["chars_snd/footsteps/dirt1a.wav", "chars_snd/footsteps/dirt2a.wav"]
+left = ["chars_snd/footsteps/dirt1b.wav", "chars_snd/footsteps/dirt2b.wav"]
+
+[[surface]]
+id = 74
+name = "Dirt Road"
+mark = "fx/i_mark/imarkbasic.spr"
+mark_scale = [0.6, 0.8]
+impact_fx = "Impact_Dirt"
+grenade_fx = "Grenade_Dirt"
+bullet = ["guns_snd_impacts/terrain/impact1.wav", "guns_snd_impacts/terrain/impact2.wav", "guns_snd_impacts/terrain/impact3.wav", "guns_snd_impacts/terrain/impact4.wav"]
+melee = ["guns_snd_impacts/melee/dirt/impact1.wav", "guns_snd_impacts/melee/dirt/impact2.wav", "", ""]
+shell = "guns_snd_shells/dirt.wav"
+grenade = "guns_snd_impacts/terrain/impactgrenade.wav"
+right = ["chars_snd/footsteps/dirt1a.wav", "chars_snd/footsteps/dirt2a.wav"]
+left = ["chars_snd/footsteps/dirt1b.wav", "chars_snd/footsteps/dirt2b.wav"]
+
+[[surface]]
+id = 71
+name = "Snow"
+impact_fx = "Impact_Snow"
+grenade_fx = "Grenade_Snow"
+bullet = ["guns_snd_impacts/snow/impact1.wav", "guns_snd_impacts/snow/impact2.wav", "", ""]
+melee = ["guns_snd_impacts/melee/snow/impact1.wav", "guns_snd_impacts/melee/snow/impact2.wav", "", ""]
+grenade = "guns_snd_impacts/snow/impactgrenade.wav"
+right = ["chars_snd/footsteps/snow1a.wav", "chars_snd/footsteps/snow2a.wav"]
+left = ["chars_snd/footsteps/snow1b.wav", "chars_snd/footsteps/snow2b.wav"]
+
+[[surface]]
+id = 73
+name = "Grass"
+impact_fx = "Impact_Dirt"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/terrain/impact1.wav", "guns_snd_impacts/terrain/impact2.wav", "guns_snd_impacts/terrain/impact3.wav", "guns_snd_impacts/terrain/impact4.wav"]
+melee = ["guns_snd_impacts/melee/dirt/impact1.wav", "guns_snd_impacts/melee/dirt/impact2.wav", "", ""]
+shell = "guns_snd_shells/dirt.wav"
+grenade = "guns_snd_impacts/terrain/impactgrenade.wav"
+right = ["chars_snd/footsteps/grass1a.wav", "chars_snd/footsteps/grass2a.wav"]
+left = ["chars_snd/footsteps/grass1b.wav", "chars_snd/footsteps/grass2b.wav"]
+
+[[surface]]
+id = 80
+name = "carpet"
+mark = "fx/i_mark/cloth.spr"
+mark_scale = [0.6, 0.8]
+impact_fx = "Impact_Cloth"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/cloth/impact1.wav", "guns_snd_impacts/cloth/impact2.wav", "guns_snd_impacts/cloth/impact3.wav", "guns_snd_impacts/cloth/impact4.wav"]
+melee = ["guns_snd_impacts/melee/gen/impact1.wav", "guns_snd_impacts/melee/gen/impact2.wav", "", ""]
+grenade = "guns_snd_impacts/cloth/impactgrenade.wav"
+right = ["chars_snd/footsteps/cloth1a.wav", "chars_snd/footsteps/cloth2a.wav"]
+left = ["chars_snd/footsteps/cloth1b.wav", "chars_snd/footsteps/cloth2b.wav"]
+
+[[surface]]
+id = 81
+name = "Cloth"
+impact_fx = "Impact_Cloth"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/cloth/impact1.wav", "guns_snd_impacts/cloth/impact2.wav", "guns_snd_impacts/cloth/impact3.wav", "guns_snd_impacts/cloth/impact4.wav"]
+melee = ["guns_snd_impacts/melee/gen/impact1.wav", "guns_snd_impacts/melee/gen/impact2.wav", "", ""]
+grenade = "guns_snd_impacts/cloth/impactgrenade.wav"
+right = ["chars_snd/footsteps/cloth1a.wav", "chars_snd/footsteps/cloth2a.wav"]
+left = ["chars_snd/footsteps/cloth1b.wav", "chars_snd/footsteps/cloth2b.wav"]
+
+[[surface]]
+id = 90
+name = "Linoleum"
+mark = "fx/i_mark/imarkbasic.spr"
+mark_scale = [0.6, 0.8]
+impact_fx = "Impact_Stone"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/stone/impact1.wav", "guns_snd_impacts/stone/impact2.wav", "", ""]
+melee = ["guns_snd_impacts/melee/gen/impact1.wav", "guns_snd_impacts/melee/gen/impact2.wav", "", ""]
+shell = "guns_snd_shells/linoleum.wav"
+grenade = "guns_snd_impacts/stone/impactgrenade.wav"
+right = ["chars_snd/footsteps/linoleum1a.wav", "chars_snd/footsteps/linoleum2a.wav"]
+left = ["chars_snd/footsteps/linoleum1b.wav", "chars_snd/footsteps/linoleum2b.wav"]
+
+[[surface]]
+id = 100
+name = "Wood Door"
+shows_mark = false
+impact_fx = "Impact_Wood"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/wood/impact1.wav", "guns_snd_impacts/wood/impact2.wav", "guns_snd_impacts/wood/impact3.wav", "guns_snd_impacts/wood/impact4.wav"]
+melee = ["guns_snd_impacts/melee/wood/impact1.wav", "guns_snd_impacts/melee/wood/impact2.wav", "", ""]
+shell = "guns_snd_shells/wood.wav"
+grenade = "guns_snd_impacts/wood/impactgrenade.wav"
+right = ["chars_snd/footsteps/wood1a.wav", "chars_snd/footsteps/wood2a.wav"]
+left = ["chars_snd/footsteps/wood1b.wav", "chars_snd/footsteps/wood2b.wav"]
+
+[[surface]]
+id = 101
+name = "Metal Door"
+shows_mark = false
+impact_fx = "Impact_Metal"
+grenade_fx = "Grenade_Stone"
+bullet = ["guns_snd_impacts/metal_bg/impact1.wav", "guns_snd_impacts/metal_bg/impact2.wav", "guns_snd_impacts/metal_bg/impact3.wav", "guns_snd_impacts/metal_bg/impact4.wav"]
+melee = ["guns_snd_impacts/melee/metal/impact1.wav", "guns_snd_impacts/melee/metal/impact2.wav", "", ""]
+shell = "guns_snd_shells/metal.wav"
+grenade = "guns_snd_impacts/metal_bg/impactgrenade.wav"
+right = ["chars_snd/footsteps/metal1a.wav", "chars_snd/footsteps/metal2a.wav"]
+left = ["chars_snd/footsteps/metal1b.wav", "chars_snd/footsteps/metal2b.wav"]
+
+[[surface]]
+id = 110
+name = "Sky"
+sky = true
+
+[[surface]]
+id = 200
+name = "Ladder"
+grenade_fx = "Grenade_Dirt"
+right = ["chars_snd/footsteps/ladder1a.wav", "chars_snd/footsteps/ladder2a.wav"]
+left = ["chars_snd/footsteps/ladder1b.wav", "chars_snd/footsteps/ladder2b.wav"]
+
+[[surface]]
+id = 201
+name = "Liquid"
+liquid = true
+impact_fx = "Impact_Water"
+grenade_fx = "Grenade_Water"
+bullet = ["guns_snd_impacts/water/impact1.wav", "guns_snd_impacts/water/impact2.wav", "guns_snd_impacts/water/impact3.wav", "guns_snd_impacts/water/impact4.wav"]
+melee = ["guns_snd_impacts/melee/liquid/impact1.wav", "guns_snd_impacts/melee/liquid/impact2.wav", "", ""]
+grenade = "guns_snd_impacts/water/impactgrenade.wav"
+right = ["chars_snd/footsteps/water1a.wav", "chars_snd/footsteps/water2a.wav"]
+left = ["chars_snd/footsteps/water1b.wav", "chars_snd/footsteps/water2b.wav"]
+
+[[surface]]
+id = 204
+name = "Water"
+liquid = true
+impact_fx = "Impact_Water"
+grenade_fx = "Grenade_Water"
+bullet = ["guns_snd_impacts/water/impact1.wav", "guns_snd_impacts/water/impact2.wav", "guns_snd_impacts/water/impact3.wav", "guns_snd_impacts/water/impact4.wav"]
+melee = ["guns_snd_impacts/melee/liquid/impact1.wav", "guns_snd_impacts/melee/liquid/impact2.wav", "", ""]
+grenade = "guns_snd_impacts/water/impactgrenade.wav"
+right = ["chars_snd/footsteps/water1a.wav", "chars_snd/footsteps/water2a.wav"]
+left = ["chars_snd/footsteps/water1b.wav", "chars_snd/footsteps/water2b.wav"]
+
+[[surface]]
+id = 202
+name = "Invisible"
+invisible = true
