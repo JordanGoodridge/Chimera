@@ -63,9 +63,13 @@
 //! - The weapon panel's class is the inventory class (the data's `slot`,
 //!   Q16); the fire-mode icon's `RapidFireCount` comes from the trigger
 //!   (`rapid_fire_count`); continuous fire isn't done, so never on.
+//! - The held weapon's attachments (`game::attachments::CaMods`): the
+//!   sight's range readout (A9; the local player's view ray, not a
+//!   spectated player's) and the gauge sight's images (attachments.md;
+//!   placeholders: their numbers), the crosshair's attachment terms (A3).
 //! - Not driven by anything yet (the model has them): crosshair items,
-//!   the toggle, video and AI freeze, infection, dot-sight and scope
-//!   attachments (A8, A9), revealing items, the score panel and round
+//!   the toggle, video and AI freeze, infection, dot-sight mode (A6, A8:
+//!   no sight has `Type` 2), revealing items, the score panel and round
 //!   timer (no modes yet: `model::score_panel`, `round_timer`), badges
 //!   but the headshot, the heartbeat's sound (counted in
 //!   `CaHud::heartbeats`, no sound file).
@@ -91,6 +95,7 @@ use crate::{
         RoundRestarts, SimClock, Team,
     },
     game::{
+        attachments::{CaMods, gauge_image},
         hud::CaHudData,
         inventory::{self, CaItem, CaSelection, Dropped},
         movement::{CaCharacter, CaMovement, movement_data},
@@ -167,7 +172,12 @@ pub struct CrosshairView {
     pub elements: Vec<Element>,
     pub colour: Rgba,
     pub dot_sight: Option<PxRect>,
+    /// The sight's range readout (A9): text and colour.
     pub range: Option<(String, Rgba)>,
+    /// The gauge sight's images (attachments.md, "Crosshair, HUD and
+    /// overlay"): health on the left, clip on the right, each 0..100 in
+    /// tens.
+    pub gauge: Option<(i32, i32)>,
 }
 
 /// The damage-taken pieces this frame.
@@ -522,7 +532,7 @@ type HeldWeapon<'a> = (
     Option<&'a Magazine>,
     Option<&'a CaItem>,
     Option<&'a CaSpread>,
-    (Option<&'a Trigger>, Option<&'a Throwable>),
+    (Option<&'a Trigger>, Option<&'a Throwable>, Option<&'a CaMods>),
 );
 
 type Character<'a> = (
@@ -595,6 +605,8 @@ fn update(
     let scope = player.and_then(|p| p.2).is_some_and(|z| z.scope);
     let default_hud = CaHudData::default();
     let data = weapon.and_then(|(_, w)| w.2).unwrap_or(&default_hud);
+    // The held weapon's attachments (its sight's readout and gauge).
+    let mods = weapon.and_then(|(_, w)| w.8.2);
     let visibility = model::Visibility {
         ok: options.crosshair_on,
         scope_overlay: scope,
@@ -602,7 +614,7 @@ fn update(
         weapon: weapon.is_some(),
         disabled: data.disable_crosshair,
         dot_sight: data.dot_sight.is_some(),
-        range_readout: false,
+        range_readout: mods.is_some_and(|m| m.range_readout().is_some()),
     };
     let draws = model::draws(visibility);
     let colour = choose_colour(
@@ -637,7 +649,11 @@ fn update(
         let (perturb, r) = spread_of(limits, data, n, stance);
         // The firing part's own fraction when it runs on this weapon.
         let r = spread.map_or(r, CaSpread::fraction);
-        let (min, max) = perturb_limits(&perturb, &PerturbMods::default(), stance);
+        let perturb_mods = PerturbMods {
+            attachments: mods.map(CaMods::crosshair_terms).unwrap_or_default(),
+            ..default()
+        };
+        let (min, max) = perturb_limits(&perturb, &perturb_mods, stance);
         let (fired, alt) = memory.fired.get(&w).copied().unwrap_or_default();
         let since = |t: Option<f64>| t.map(|t| (now - t) as f32);
         let shape = choose_shape(data.crosshair, options.item_shape, options.item_allowed);
@@ -662,6 +678,36 @@ fn update(
         c.measures = Some(m);
         if draws.lines {
             c.elements = elements;
+        }
+    }
+
+    // The sight (attachments.md, "Crosshair, HUD and overlay"): the range
+    // readout to what the local player's view ray hits within the sight's
+    // reach (A9), the gauge of health and clip.
+    if let (Some(m), Some((_, w))) = (mods, weapon) {
+        if draws.range_readout
+            && let Some(reach) = m.range_readout()
+            && let Some((me, at, intent, state, view, ..)) = local
+            && who == Some(me)
+        {
+            let ray = aim::view_ray(at, intent, state, view);
+            let filter = SpatialQueryFilter::from_excluded_entities([me]).with_mask(crate::core::SOLID_LAYERS);
+            let hit = world
+                .spatial
+                .cast_ray(ray.eye, ray.dir, reach as f32 * UNIT, true, &filter)
+                .map(|h| h.distance / UNIT);
+            let range = w.1.map_or(0.0, |s| (s.range / UNIT).round());
+            next.crosshair.range = Some(range_readout(hit, range, m.damage().range_per));
+        }
+        if m.gauge()
+            && let Some(p) = player
+        {
+            // The integer percentage (health is a fraction here: a hair of
+            // slack so 0.95 is 95, not 94.99).
+            let percent = |v: f32, max: f32| if max > 0.0 { (100.0 * v / max + 1e-4).floor() as i32 } else { 0 };
+            let hp = percent(p.0.current, p.0.max);
+            let clip = w.5.map_or(0, |mag| percent(mag.clip as f32, mag.size as f32));
+            next.crosshair.gauge = Some((gauge_image(hp), gauge_image(clip)));
         }
     }
 
@@ -698,7 +744,7 @@ fn update(
     }
 
     // The weapon panel (D4).
-    if let Some((_, (id, _, hud_data, modes, burst, mag, item, _, (trigger, throw)))) = weapon {
+    if let Some((_, (id, _, hud_data, modes, burst, mag, item, _, (trigger, throw, _)))) = weapon {
         let data = crate::weapon::data::lookup(id.id);
         let bursting = match (modes, burst) {
             (Some(m), Some(b)) if b.mode == m.current && b.count > 0 => Some(b.count),
@@ -995,6 +1041,7 @@ fn rebuild<T: PartialEq + Clone + Send + Sync + 'static>(
 
 fn draw_crosshair(
     hud: Res<CaHud>,
+    params: PenParams,
     root: Single<Entity, With<CrosshairRoot>>,
     mut last: Local<Option<(CrosshairView, Screen)>>,
     mut commands: Commands,
@@ -1004,7 +1051,26 @@ fn draw_crosshair(
         return;
     }
     let col = colour(c.colour);
+    let pen = pen(&params, hud.screen);
     commands.entity(*root).with_children(|p| {
+        // The range readout, right-aligned at `RANGE_AT` (A9).
+        if let Some((t, rgba)) = &c.range {
+            let size = Vec2::new(120.0, 16.0);
+            let boxed = (RANGE_AT - Vec2::new(size.x, 0.0), size, Vec2::ZERO);
+            let align = (HAlign::Right, VAlign::Centre);
+            hud_text(p, pen, boxed, t, looks::PROMPT, align, Effect::Shadow, *rgba);
+        }
+        // PLACEHOLDER for the gauge sight's images: their numbers beside
+        // the centre, health left, clip right.
+        if let Some((hp, clip)) = c.gauge {
+            let size = Vec2::new(60.0, 16.0);
+            let white = [255, 255, 255, 220];
+            let left = (Vec2::new(512.0 - 90.0 - size.x, 376.0), size, Vec2::ZERO);
+            let right = (Vec2::new(512.0 + 90.0, 376.0), size, Vec2::ZERO);
+            let (l, r) = ((HAlign::Right, VAlign::Centre), (HAlign::Left, VAlign::Centre));
+            hud_text(p, pen, left, &format!("HP {hp}"), looks::ICON_WORD, l, Effect::Shadow, white);
+            hud_text(p, pen, right, &format!("{clip} AMMO"), looks::ICON_WORD, r, Effect::Shadow, white);
+        }
         for _ in 0..c.draws.dot_sight {
             // PLACEHOLDER for the weapon's reticle image: a red outline.
             if let Some(r) = c.dot_sight {

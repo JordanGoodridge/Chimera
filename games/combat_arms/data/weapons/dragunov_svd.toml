@@ -70,12 +70,17 @@ max_wag = 10.0
 random_wag = 0.0
 
 # [TW: ZoomTime] 0.10 s, [TW: Sway] X 6.5/6, Y 1.1/10,
-# [TW: ReloadAfterFire] 0; [TW: Scope] / [SR] "Dragunov Scope", one level
-# at 20 degrees.
+# [TW: ReloadAfterFire] 0. Its scope is the attachment below.
 [hooks."combat_arms:zoom"]
 zoom_time = 0.1
 sway = { x_speed = 6.5, x_freq = 6.0, y_speed = 1.1, y_freq = 10.0 }
-scope = { name = "Dragunov Scope", fov = [20.0] }
+
+# [TW: Scope] / [SR] DefaultScopeAttach "Dragunov Scope" (one level at 20
+# degrees: data/attachments/mods.toml), fitted when the weapon is given
+# (attachments.md, "Fitting"). The spec lists no other parts for it.
+[hooks."combat_arms:attachments"]
+accepts = ["Dragunov Scope"]
+defaults = { sight = "Dragunov Scope" }
 
 # [TW: MovePenalty] 0.24.
 [hooks."combat_arms:handling"]

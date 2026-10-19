@@ -55,7 +55,9 @@ automatic = true
 [hooks."combat_arms:zoom"]
 zoom_time = 0.16
 reload_after_fire = false
-scope = { name = "Barrett Scope", fov = [30.0, 10.0] }
+[hooks."combat_arms:attachments"]
+accepts = ["Barrett Scope"]
+defaults = { sight = "Barrett Scope" }
 "#;
 
 /// ASW338LM: a bolt sniper with the Barrett Scope, ZoomTime 0.15.
@@ -64,21 +66,26 @@ id = "test:asw338lm"
 base = "combat_arms:l96a1"
 [hooks."combat_arms:zoom"]
 zoom_time = 0.15
-scope = { name = "Barrett Scope", fov = [30.0, 10.0] }
+[hooks."combat_arms:attachments"]
+accepts = ["Barrett Scope"]
+defaults = { sight = "Barrett Scope" }
 "#;
 
-/// Dot sights: 50 and 75 degrees on a weapon with ZoomTime 0.15.
+/// Dot sights: 50 and 75 degrees on a weapon with ZoomTime 0.15 (the
+/// sight a default attachment: attachments.md).
 const DOT50: &str = r#"
 id = "test:dot50"
 base = "combat_arms:m4a1"
-[hooks."combat_arms:zoom"]
-scope = { name = "dot sight", fov = [50.0] }
+[hooks."combat_arms:attachments"]
+accepts = ["DotSight_A_AR"]
+defaults = { sight = "DotSight_A_AR" }
 "#;
 const DOT75: &str = r#"
 id = "test:dot75"
 base = "combat_arms:m4a1"
-[hooks."combat_arms:zoom"]
-scope = { name = "P90 sight", fov = [75.0] }
+[hooks."combat_arms:attachments"]
+accepts = ["P90 sight"]
+defaults = { sight = "P90 sight" }
 "#;
 
 /// The L96A1 with ten rounds a clip (case 11 fires six).

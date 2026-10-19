@@ -12,7 +12,8 @@
 //! - `grenades`: thrown weapons: the M67, XM84, M18, M-23F and G7A, their
 //!   throw, flight, fuse and effects on the server's 20 Hz frames
 //!   (grenades.md, implemented);
-//! - `attachments`: weapon attachments (none yet);
+//! - `attachments`: weapon attachments: the parts a weapon accepts, their
+//!   fitting and effects (attachments.md, implemented);
 //! - `hud`: the weapon data the HUD reads (`combat_arms:hud`: crosshair
 //!   fields and the weapon panel's class; hud_crosshair.md);
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
@@ -148,8 +149,8 @@ impl PluginGroup for CombatArmsPlugins {
             // loads.
             .add(inventory::CaInventoryPlugin)
             .add(grenades::CaGrenadesPlugin)
-            .add(weapons::CaWeaponsPlugin)
             .add(attachments::CaAttachmentsPlugin)
+            .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)

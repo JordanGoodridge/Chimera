@@ -26,8 +26,9 @@
 //! Numbers: data/movement.toml (`MovementData`, spec values marked by
 //! section). Per player: `CaCharacter` (figure and gear: sprint, stamina,
 //! penalties; the reference character by default) and `HeldMovePenalty`
-//! (the held weapon's `MovePenalty`, set by the weapon part; none: 0). The
-//! HUD reads the stamina gauge and the crouch lock-out from `CaMovement`.
+//! (the held weapon's `MovePenalty`, set by the weapon part; none: 0);
+//! `StunPenalty` (P_stun, from a stun bullet: `attachments`). The HUD
+//! reads the stamina gauge and the crouch lock-out from `CaMovement`.
 //! The eye sits `eye_above_centre` over the hull's centre (83 u above the
 //! feet standing, 60 crouched); `CameraRise` is the camera's upward
 //! smoothing. An infected character (`CaInfected`) hit by the other team
@@ -49,7 +50,7 @@
 //! viscosity, currents, gravity, jump pads, safety nets), explosion
 //! pushers, movement disallowed (freeze), the infection stagger (nothing
 //! sets `CaInfected` yet: no game modes), VIP accounts, kill-streak and
-//! stamina perks, stun slows, the "falling" sound status, stamina kits,
+//! stamina perks, the ammo's own stun, the "falling" sound status, stamina kits,
 //! jump stamina, maps' not-a-step surface flag (characters and moving
 //! bodies are not steps). The shape cast reports where it touched, not
 //! which cap: a stair-step drop or a standing probe that touches an edge
@@ -232,6 +233,15 @@ impl CaCharacter {
 pub struct HeldMovePenalty {
     pub penalty: f32,
     pub mod_factor: f32,
+}
+
+/// A stun's slowdown (spec "Penalty", P_stun): added to the penalty until
+/// `until` (game time, s). Set by the shooter's stun bullet
+/// (`attachments`); predicted with the victim's movement.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct StunPenalty {
+    pub penalty: f32,
+    pub until: f64,
 }
 
 /// An infected character of the infection mode: hits from the other
@@ -796,7 +806,7 @@ fn step(
         &mut Velocity,
         &mut MovementState,
         Option<&CaCharacter>,
-        Option<&HeldMovePenalty>,
+        (Option<&HeldMovePenalty>, Option<&StunPenalty>),
         Option<&mut HitKnockback>,
         Has<Zoomed>,
         Has<Dead>,
@@ -820,7 +830,7 @@ fn step(
         let body = collider_of.get(e).map_or(e, |c| c.body);
         characters.contains(e) || characters.contains(body) || bodies.get(body).is_ok_and(|b| !b.is_static())
     };
-    for (entity, intent, mut me, mut transform, mut vel, mut state, character, held, mut knock, zoomed, dead) in &mut q {
+    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun), mut knock, zoomed, dead) in &mut q {
         let me = &mut *me;
         let character = character.unwrap_or(&d.character);
         let space = Space {
@@ -1037,10 +1047,12 @@ fn step(
         let v0 = v0.max(d.crouch);
         let v1 = v0 + (d.crouch - v0) * r;
         let held = held.copied().unwrap_or_default();
+        let stun = stun.filter(|s| now < s.until).map_or(0.0, |s| s.penalty);
         let penalty = (held.penalty * (1.0 + held.mod_factor)
             + character.gear_sum(|g| g.move_penalty)
             + fig.variable_weight
-            - fig.variable_speed)
+            - fig.variable_speed
+            + stun)
             .clamp(-1.0, 1.0);
         let limit = v1 * (1.0 - penalty);
         me.speed_limit = limit;

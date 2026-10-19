@@ -1,7 +1,8 @@
 //! Combat Arms' zoom and scope (specs/combat_arms/weapon_classes.md,
 //! section 7; numbers below are its sections): the `combat_arms:zoom` hook
-//! (`CaZoom`) on any weapon with zoom fields, zooming when its scope
-//! (`scope`, the `DefaultScopeAttach`'s levels) has levels.
+//! (`CaZoom`) on any weapon with zoom fields, zooming when its scope (the
+//! sight attachment fitted, by default its `DefaultScopeAttach`:
+//! `attachments` sets `CaZoom::scope` from it) has levels.
 //!
 //! - The key (7.2): attack2's press only, a toggle through 0, 1, ...,
 //!   L_max, 0. A press is dropped while a transition runs, while
@@ -43,11 +44,10 @@
 //! the owner's `Zoomed` and `ViewPunch` (Chimera's predicted parts).
 //!
 //! Known shortcuts:
-//! - The scope is the weapon's data (`scope`, the stock attachment's
-//!   levels); attachments (their scopes, sway and zoomed additions) are
-//!   attachments.md's. The scope records' overlay picture, sounds and range
-//!   readout aren't loaded: Chimera's placeholder scope overlay is drawn,
-//!   no sound plays. `ZoomedMovePenalty` is read and unused (Q4).
+//! - The scope's overlay picture and sounds aren't loaded: Chimera's
+//!   placeholder scope overlay is drawn, no sound plays (the range readout
+//!   and gauge are the HUD's, `ui::hud`). `ZoomedMovePenalty` is read and
+//!   unused (Q4).
 //! - The camera's vertical FOV keeps Chimera's rule (the client's); 7.3's
 //!   proportional rule is `vertical_fov` (FovX/FovY 90/75, not settable).
 //! - No breath perk (perks spec), no cinematic or external cameras, no
@@ -120,18 +120,20 @@ impl Default for Sway {
     }
 }
 
-/// A scope attachment's zoom (the modifications file's `Mod#` record).
+/// A scope attachment's zoom (the modifications file's `Mod#` record, as
+/// `attachments::ModRecord::scope` gives it).
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Scope {
-    /// The record's `Name` (for the reader; nothing reads it yet).
+    /// The record's `Name`.
     pub name: String,
     /// `ZoomFov0..`: each level's horizontal FOV, degrees (`ZoomLevel`
     /// entries; at most `MAX_ZOOM_LEVELS` are used).
     pub fov: Vec<f32>,
 }
 
-/// `combat_arms:zoom`: a weapon's zoom fields and its stock scope.
+/// `combat_arms:zoom`: a weapon's zoom fields (its scope is the fitted
+/// sight's, `CaZoom::scope`).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ZoomParams {
@@ -143,8 +145,6 @@ pub struct ZoomParams {
     pub reload_after_fire: bool,
     /// `ZoomedMovePenalty`: read, never used (Q4).
     pub zoomed_move_penalty: f32,
-    /// `DefaultScopeAttach`'s scope; none: the zoom key does nothing.
-    pub scope: Option<Scope>,
 }
 
 impl Default for ZoomParams {
@@ -154,7 +154,6 @@ impl Default for ZoomParams {
             sway: Sway::default(),
             reload_after_fire: false,
             zoomed_move_penalty: 0.7,
-            scope: None,
         }
     }
 }
@@ -171,6 +170,11 @@ pub struct Transition {
 #[derive(Component, Clone, Debug)]
 pub struct CaZoom {
     pub params: ZoomParams,
+    /// The fitted sight's scope (`attachments`); none: the zoom key does
+    /// nothing.
+    pub scope: Option<Scope>,
+    /// The fitted parts' sway additions (x speed, y speed, x freq, y freq).
+    pub sway_add: [f32; 4],
     /// The zoom level L (0: not zoomed).
     pub level: u8,
     /// The horizontal FOV now, degrees.
@@ -190,6 +194,8 @@ impl CaZoom {
     pub fn new(params: ZoomParams) -> Self {
         Self {
             params,
+            scope: None,
+            sway_add: [0.0; 4],
             level: 0,
             fov: FOV_X,
             transition: None,
@@ -202,7 +208,7 @@ impl CaZoom {
 
     /// L_max: the scope's levels (0: can't zoom).
     pub fn levels(&self) -> u8 {
-        self.params.scope.as_ref().map_or(0, |s| s.fov.len().min(MAX_ZOOM_LEVELS) as u8)
+        self.scope.as_ref().map_or(0, |s| s.fov.len().min(MAX_ZOOM_LEVELS) as u8)
     }
 
     /// "Zoomed" (Z): a level above 0 or a transition running.
@@ -212,7 +218,7 @@ impl CaZoom {
 
     /// The FOV of `level` (0: `FOV_X`), degrees.
     pub fn level_fov(&self, level: u8) -> f32 {
-        match (level, &self.params.scope) {
+        match (level, &self.scope) {
             (0, _) | (_, None) => FOV_X,
             (l, Some(s)) => s.fov.get(l as usize - 1).copied().unwrap_or(FOV_X),
         }
@@ -436,7 +442,12 @@ pub(super) fn zoom_step(
         if z.zoomed() {
             // 7.8: the aim drifts (Combat Arms' pitch + is down and yaw +
             // right; the engine's view punch is pitch up, yaw left).
-            let s = z.params.sway;
+            // Plus the parts' additions (attachments.md: 0 in shipped data).
+            let mut s = z.params.sway;
+            s.x_speed += z.sway_add[0];
+            s.y_speed += z.sway_add[1];
+            s.x_freq += z.sway_add[2];
+            s.y_freq += z.sway_add[3];
             let t = now as f32;
             let pitch = s.y_speed * SWAY_AMOUNT_SCALE * (t * s.y_freq * SWAY_TIME_SCALE).sin() * dt;
             let yaw = s.x_speed * SWAY_AMOUNT_SCALE * (t * s.x_freq * SWAY_TIME_SCALE).sin() * dt;
@@ -518,14 +529,12 @@ mod tests {
     use super::*;
 
     fn scoped(fov: &[f32], zoom_time: f32) -> CaZoom {
-        CaZoom::new(ZoomParams {
-            zoom_time,
-            scope: Some(Scope {
-                name: String::new(),
-                fov: fov.to_vec(),
-            }),
-            ..default()
-        })
+        let mut z = CaZoom::new(ZoomParams { zoom_time, ..default() });
+        z.scope = Some(Scope {
+            name: String::new(),
+            fov: fov.to_vec(),
+        });
+        z
     }
 
     /// Steps of the longest frame until the transition ends: whether a

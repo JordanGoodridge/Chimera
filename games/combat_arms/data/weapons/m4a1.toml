@@ -101,6 +101,34 @@ jitter_recover = 0.2
 zoom_time = 0.15
 sway = { x_speed = 5.0, x_freq = 15.0, y_speed = 3.0, y_freq = 12.0 }
 
+# attachments.md, "How attachments are described in the data": the M4A1
+# lists 51 attachments, all at variant 0 (the AR family): silencers A, B,
+# C, red dots A, B, ITECH, HDS-4, Holosight, magazines A to D, each also
+# Gold and Red; the bullets and three mechanical sights. No defaults: a
+# stock M4A1 has an empty sight slot, so it can't zoom (Quirk Q10).
+# "Sound": FireSndRadius 2000, silenced 1400.
+[hooks."combat_arms:attachments"]
+fire_sound_radius = 2000
+silenced_radius = [1400, 1400]
+accepts = [
+    "Silencer_A_AR", "Silencer_B_AR", "Silencer_C_AR",
+    "Silencer_A_AR_Gold", "Silencer_B_AR_Gold", "Silencer_C_AR_Gold",
+    "Silencer_A_AR_Red", "Silencer_B_AR_Red", "Silencer_C_AR_Red",
+    "DotSight_A_AR", "DotSight_B_AR", "DotSight_ITECH_AR", "DotSight_HDS-4_AR", "DotSight_Holosight_AR",
+    "DotSight_A_AR_Gold", "DotSight_B_AR_Gold", "DotSight_ITECH_AR_Gold", "DotSight_HDS-4_AR_Gold",
+    "DotSight_Holosight_AR_Gold",
+    "DotSight_A_AR_Red", "DotSight_B_AR_Red", "DotSight_ITECH_AR_Red", "DotSight_HDS-4_AR_Red",
+    "DotSight_Holosight_AR_Red",
+    "Magazine_A_AR", "Magazine_B_AR", "Magazine_C_AR", "Magazine_D_AR",
+    "Magazine_A_AR_Gold", "Magazine_B_AR_Gold", "Magazine_C_AR_Gold", "Magazine_D_AR_Gold",
+    "Magazine_A_AR_Red", "Magazine_B_AR_Red", "Magazine_C_AR_Red", "Magazine_D_AR_Red",
+    "Bullet_FT_I_AR", "Bullet_FT_II_AR", "Bullet_FT_III_AR",
+    "Bullet_PVP_Damage_I_AR", "Bullet_PVP_Damage_II_AR", "Bullet_PVP_Damage_III_AR",
+    "Bullet_PVP_Stun_I_AR", "Bullet_PVP_Stun_II_AR", "Bullet_PVP_Stun_III_AR",
+    "Bullet_QR_I_AR", "Bullet_QR_II_AR", "Bullet_QR_III_AR",
+    "MechSight_Aim_I_AR", "MechSight_Aim_II_AR", "MechSight_Aim_III_AR",
+]
+
 # "Worked example": MovePenalty 0.1, the speed lost while held (movement.md).
 [hooks."combat_arms:handling"]
 move_penalty = 0.1

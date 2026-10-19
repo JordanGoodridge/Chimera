@@ -37,7 +37,9 @@ id = "test:m92fs_zoom"
 base = "combat_arms:beretta_m92fs"
 [hooks."combat_arms:zoom"]
 zoom_time = 0.13
-scope = { name = "Test Scope", fov = [40.0] }
+[hooks."combat_arms:attachments"]
+accepts = ["DotSight_A_Pistol"]
+defaults = { sight = "DotSight_A_Pistol" }
 [anim.sequences]
 zoom_in = ["zoomin"]
 zoom_out = ["zoomout"]

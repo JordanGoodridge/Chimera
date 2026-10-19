@@ -68,6 +68,10 @@ max_wag = 18.0
 [hooks."combat_arms:handling"]
 move_penalty = 0.33
 
+# attachments.md: its accepted list isn't in the spec: none (the
+# install's modification file gives it).
+[hooks."combat_arms:attachments"]
+
 # The first-person model (unkeyed GUNS_M_PV_MG) and its skin (index 1;
 # GUNS_T_PV_MG is keyed: flat grey without the V2 key). Sequences by
 # view_models.md 7 (select 1500 ms, fire_0 115 ms, reload 3500 ms; its
