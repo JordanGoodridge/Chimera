@@ -922,6 +922,7 @@ fn capture_own_states(world: &mut World) {
             let movement = world.get::<MovementSlot>(e).map_or("", |m| m.0).to_string();
             let seed = world.get::<Seed>(e).map_or(0, |s| s.0);
             let held = world.get::<Dead>(e).is_some();
+            let alive = !held && world.get::<Health>(e).is_none_or(|h| h.current > 0.0);
             let money = world.get::<Money>(e).map(|m| m.0);
             let armor = world.get::<Armor>(e).map(|a| (a.amount, a.helmet));
             let kit = world.get::<DefuseKit>(e).is_some();
@@ -943,6 +944,7 @@ fn capture_own_states(world: &mut World) {
                 movement,
                 seed,
                 held,
+                alive,
                 ground,
                 frozen_until,
                 money,
