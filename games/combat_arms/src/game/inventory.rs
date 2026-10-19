@@ -781,7 +781,7 @@ fn after_select(
 
 /// Start a magazine reload now (the frame's rule: refused when no round
 /// would move); its end holds every attack.
-fn start_reload(inv: &mut Inventory, st: &mut WeaponState, mag: &Magazine, now: f64) -> bool {
+pub(super) fn start_reload(inv: &mut Inventory, st: &mut WeaponState, mag: &Magazine, now: f64) -> bool {
     if (mag.size - mag.clip).min(mag.reserve) == 0 {
         return false;
     }
@@ -802,7 +802,7 @@ fn start_reload(inv: &mut Inventory, st: &mut WeaponState, mag: &Magazine, now: 
 /// once (Quirk 2); the sprint pose and the post-sprint animation hold
 /// fire, as holding use does; reloads start and complete under them.
 #[allow(clippy::type_complexity)]
-fn hands(
+pub(super) fn hands(
     mut owners: Query<
         (Entity, &Intent, &mut Inventory, &mut CaSelection, &MovementState, Option<&Health>),
         Without<NetDrawn>,

@@ -223,6 +223,12 @@ pub struct MagazineData {
 pub struct ShellsData {
     pub start: f32,
     pub insert: f32,
+    /// The closing part after the last round, s (`ShellReload::finish`).
+    #[serde(default)]
+    pub finish: f32,
+    /// No tick between rounds (`ShellReload::back_to_back`).
+    #[serde(default)]
+    pub back_to_back: bool,
 }
 
 /// An ammo type: what `Penetration` passes (`power`, length units of a
@@ -872,6 +878,8 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
             e.insert(ShellReload {
                 start: s.start,
                 insert: s.insert,
+                finish: s.finish,
+                back_to_back: s.back_to_back,
             });
         }
     }

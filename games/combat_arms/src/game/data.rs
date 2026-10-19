@@ -6,7 +6,10 @@
 //!
 //! Built in: the M4A1 (data/weapons/m4a1.toml, the numbers of
 //! weapon_firing.md's worked example), the M9 knife (m9.toml,
-//! inventory.md's numbers) and the movement numbers
+//! inventory.md's numbers), one weapon per class from weapon_classes.md's
+//! "Typical weapons" (mp5a4, m60, beretta_m92fs, remington_870, l96a1,
+//! dragunov_svd: an install weapon of a class we have no document for is
+//! skipped, one of a class we have copies it) and the movement numbers
 //! (data/movement.toml, `movement::MovementData`).
 //!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
@@ -39,9 +42,14 @@
 //! - A mapped value is written only where our document already has the
 //!   table it goes in (the weapon's parts and hooks are ours; the install
 //!   changes their numbers), and `trigger.per_press` only where the key
-//!   is already there. Not mapped (no field in our data yet):
-//!   `ZoomedMovePenalty`, `ZoomTime`, `ReloadPerBullet`, `TripleShot*`
-//!   timing, `ContinuousFire`, sounds and sound radii, models,
+//!   is already there. The zoom fields (`ZoomTime`, `CameraSway*`,
+//!   `ReloadAfterFire`, `ZoomedMovePenalty`: weapon_classes.md) go in the
+//!   `combat_arms:zoom` table, `AccumPreFire` in `combat_arms:spin`'s;
+//!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps our shell
+//!   timings: they are the view model's animations). Not mapped (no field
+//!   in our data yet): `DefaultScopeAttach` (read; its scope's levels are
+//!   the modifications file's, attachments.md), `TripleShot*` timing,
+//!   `ContinuousFire`, sounds and sound radii, models,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
 //!   and worn gear (attachments' spec).
@@ -86,6 +94,13 @@ macro_rules! data_file {
 pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("m9.toml"),
     data_file!("m4a1.toml"),
+    // One weapon per class (weapon_classes.md, "Typical weapons").
+    data_file!("mp5a4.toml"),
+    data_file!("m60.toml"),
+    data_file!("beretta_m92fs.toml"),
+    data_file!("remington_870.toml"),
+    data_file!("l96a1.toml"),
+    data_file!("dragunov_svd.toml"),
 ];
 
 /// The namespace of our weapon and ammo IDs.
@@ -265,6 +280,15 @@ fn cone(c: &attributes::Cone) -> Value {
     Value::Table(t)
 }
 
+/// `CameraSway*` as the zoom hook's `sway`.
+fn sway(s: &[f64; 4]) -> Value {
+    let mut t = Table::new();
+    for (k, v) in ["x_speed", "y_speed", "x_freq", "y_freq"].iter().zip(s) {
+        t.insert((*k).into(), Value::Float(*v));
+    }
+    Value::Table(t)
+}
+
 fn state(p: &attributes::AmmoPerturb) -> Value {
     let mut t = Table::new();
     for (k, v) in [
@@ -296,6 +320,8 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
     const HANDLING: &str = "combat_arms:handling";
     const INVENTORY: &str = "combat_arms:inventory";
     const HUD: &str = "combat_arms:hud";
+    const ZOOM: &str = "combat_arms:zoom";
+    const SPIN: &str = "combat_arms:spin";
     let mut out = vec![
         set(&["trigger", "automatic"], w.rapid_fire_count != 1),
         Set {
@@ -330,6 +356,13 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
         set(&["hooks", HUD, "move_duck_perturb"], i64::from(w.move_duck_perturb)),
         set(&["hooks", HUD, "wide_count"], i64::from(w.wide_fire_max_num)),
         set(&["hooks", HUD, "bomb"], w.gun_type == 8),
+        // weapon_classes.md: the zoom fields, the bolt's zoom-out, the
+        // minigun's reversible spin.
+        set(&["hooks", ZOOM, "zoom_time"], w.zoom_time),
+        set(&["hooks", ZOOM, "sway"], sway(&w.camera_sway)),
+        set(&["hooks", ZOOM, "reload_after_fire"], w.reload_after_fire != 0),
+        set(&["hooks", ZOOM, "zoomed_move_penalty"], w.zoomed_move_penalty),
+        set(&["hooks", SPIN, "reversible"], w.accum_pre_fire != 0),
     ];
     if w.triple_shot_mode != 0 {
         out.extend([
@@ -397,6 +430,13 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, meters_per_unit:
     let length_scale = (meters_per_unit as f32 / doc_length as f32) as f64;
     for s in weapon_values(w, ammo, length_scale) {
         apply(doc, &s);
+    }
+    // `ReloadPerBullet` 0: a magazine reload (our shell timings stay when
+    // it is 1: they are the animations').
+    if w.reload_per_bullet == 0
+        && let Some(Value::Table(m)) = doc.get_mut("magazine")
+    {
+        m.remove("shells");
     }
     // The inventory class: the order list it is in (our `slot` is the
     // class - 1; in none, ours stays).
@@ -546,7 +586,7 @@ mod tests {
         for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
             assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
-        assert_eq!(weapon_set().weapons.len(), 2);
+        assert_eq!(weapon_set().weapons.len(), WEAPON_DATA.len());
     }
 
     #[test]

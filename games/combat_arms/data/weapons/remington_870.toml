@@ -1,0 +1,74 @@
+# Combat Arms' Remington 870, the pump shotgun of
+# specs/combat_arms/weapon_classes.md: the reference build's numbers as its
+# "Typical weapons" table gives them ([TW: row]) and section 5 ([5.x]).
+# Fields the class spec doesn't give are left to the attribute defaults
+# (specs/combat_arms/attribute_data.md). The install's own record
+# overrides these when it can be read. Our numbers, not a file from the
+# game.
+#
+# The format: docs/weapon-data.md; the hooks: game/weapons.rs. Units:
+# world units (1.8 cm each, by body size) and hit points.
+id = "combat_arms:remington_870"
+units = { length = 0.018, damage = 0.01 }
+# A primary (inventory class 1).
+slot = 0
+# [TW: Draw] 1000 ms.
+draw = 1.0
+
+# [TW: Clip / total] 7 / 35.
+[ammo."combat_arms:12ga_r870"]
+max = 28
+
+# [TW: RapidFireCount] 1, [TW: Fire] 600 ms: [5.4] the pump is the fire
+# animation (100 rounds/min).
+[trigger]
+automatic = false
+cycle = 0.6
+timing = "accumulate"
+
+# [TW: Clip / total] 7; [TW: ReloadPerBullet] 1 and [TW: Reload] 333 +
+# 700/shell + 900 ms: [5.5] PreReload once, a loop per shell back to
+# back, PostReload ("reload" is a shell's).
+[magazine]
+clip = 7
+ammo = "combat_arms:12ga_r870"
+reload = 0.7
+auto_reload = true
+shells = { start = 0.333, insert = 0.7, finish = 0.9, back_to_back = true }
+
+# [TW: Range] 1000, [TW: Rays x damage] 8 rays ([5.1] VectorsPerRound).
+[hitscan]
+range = 1000.0
+pellets = 8
+punch_scale = 1.0
+
+# [TW: Rays x damage] 9 a pellet, [TW: Bands] 600/800/1000 at
+# 1.0/0.7/0.35 ([5.3]).
+[hooks."combat_arms:damage"]
+damage = 9.0
+damage_type = 2
+effect_range = [600.0, 800.0, 1000.0]
+range_damage = [1.0, 0.7, 0.35]
+
+# [TW: MinPerturb/MaxPerturb] 35/100, [TW: DynamicPerturbFactor] 1.2,
+# [TW: PerturbIncSpeed/DecSpeed] 5.0/1.0, [TW: Fire cap] .45 all,
+# [TW: Walk / run / jump target] 0/0/0 ([5.2]: the cone never moves),
+# [TW: DecDelay] 100 ms.
+[hooks."combat_arms:spread"]
+cone = { min = 35, max = 100, inc = 5.0, dec = 1.0 }
+dynamic_factor = 1.2
+state = { fire = 0.45, fire_move = 0.45, fire_duck = 0.45, fire_move_duck = 0.45, walk = 0.0, run = 0.0, jump = 0.0 }
+dec_delay = 100.0
+
+# [TW: Kick] 5 / 25, [TW: MaxRandomPitch] 0, [TW: Wag] -2/2, 50.
+[hooks."combat_arms:recoil"]
+pitch = 5.0
+max_pitch = 25.0
+random_pitch = 0.0
+wag_r = -2.0
+wag_l = 2.0
+max_wag = 50.0
+
+# [TW: MovePenalty] 0.08.
+[hooks."combat_arms:handling"]
+move_penalty = 0.08

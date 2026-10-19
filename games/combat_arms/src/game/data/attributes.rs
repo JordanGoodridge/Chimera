@@ -227,6 +227,15 @@ pub struct WeaponRecord {
     pub names_ammo: bool,
     pub infinite_ammo: i32,
     pub reload_per_bullet: i32,
+    /// `ReloadAfterFire` (weapon_classes.md: leave zoom after a zoomed
+    /// shot; not in attribute_data.md's table: 0 when missing).
+    pub reload_after_fire: i32,
+    /// `AccumPreFire` (weapon_classes.md 3.3: a reversible spin; 0 when
+    /// missing).
+    pub accum_pre_fire: i32,
+    /// `DefaultScopeAttach`: the scope fitted at spawn, by name (the
+    /// modifications file's; empty when missing).
+    pub default_scope_attach: String,
     pub vectors_per_round: i32,
     /// World units.
     pub range: i32,
@@ -317,6 +326,9 @@ impl WeaponRecord {
             infinite_ammo: i("InfiniteAmmo", 0),
             // Undefined in the game when missing ("Edge cases"): 0.
             reload_per_bullet: i("ReloadPerBullet", 0),
+            reload_after_fire: i("ReloadAfterFire", 0),
+            accum_pre_fire: i("AccumPreFire", 0),
+            default_scope_attach: s.fixed_string("DefaultScopeAttach", ""),
             vectors_per_round: i("VectorsPerRound", 1),
             range: i("Range", 3000),
             effect_range: bands("Effectrange"),

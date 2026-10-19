@@ -94,6 +94,13 @@ jitter_dec_delay = 95.0
 jitter_wait_recover = 0.1
 jitter_recover = 0.2
 
+# weapon_classes.md, "Typical weapons" and 1: ZoomTime 0.15 s, sway X
+# 5/15, Y 3/12; no scope attachment, so the zoom key does nothing until
+# one is fitted (attachments).
+[hooks."combat_arms:zoom"]
+zoom_time = 0.15
+sway = { x_speed = 5.0, x_freq = 15.0, y_speed = 3.0, y_freq = 12.0 }
+
 # "Worked example": MovePenalty 0.1, the speed lost while held (movement.md).
 [hooks."combat_arms:handling"]
 move_penalty = 0.1

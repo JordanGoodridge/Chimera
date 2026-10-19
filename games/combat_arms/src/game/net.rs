@@ -15,8 +15,10 @@
 //!
 //! - `movement`: `CaMovement`, the whole movement state, as a networked
 //!   predicted component;
-//! - `weapons`: the spread meters (`CaSpread`) and the kick (`CaRecoil`)
-//!   as predicted weapon parts (`weapon::NetPart`), beside Chimera's
+//! - `weapons`: the spread meters (`CaSpread`), the kick (`CaRecoil`), the
+//!   zoom (`CaZoom`; the owner's `Zoomed` and sway on its `ViewPunch` are
+//!   Chimera's predicted parts) and a minigun's spin (`CaSpin`) as
+//!   predicted weapon parts (`weapon::NetPart`), beside Chimera's
 //!   (timers, burst, clip, fire mode: `WeaponState`, `Magazine`,
 //!   `AltModes`); the held weapon's movement penalty in the predicted
 //!   tick; the server's rounds lag compensated (`weapon::lagcomp`, the

@@ -162,6 +162,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - lithtech: Attribute files: no event text-change overwrite layer; literal readings where the spec is silent on spacing (`lithtech/formats/src/attributes.rs`)
 - games/combat_arms ui: HUD: no items, attachments, modes, score panel or heartbeat sound driving it yet; name tags on the hull centre (no name socket); placeholder art (`games/combat_arms/src/ui/hud.rs`)
 - games/combat_arms: Firing: placeholder hit-sphere places, no client-reported victim, spread per tick, default gear for all, nothing infected yet (`games/combat_arms/src/game/weapons.rs`)
+- games/combat_arms zoom: Scopes from the weapon's data (no attachments or modifications file); placeholder overlay, no zoom sounds; the camera keeps Chimera's vertical FOV rule (`games/combat_arms/src/game/weapons/zoom.rs`)
+- games/combat_arms classes: Minigun rounds by the trigger's cycle, not its fire keys; no continuous fire, pre- or post-fire, launchers or projectiles; one reload time for the double barrel (`games/combat_arms/src/game/weapons/classes.rs`)
 - apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
 - games/combat_arms maps: No sky, fog or switchable light groups; vertex light one colour per section; world models static; blockers stop shots; object properties read by name (`games/combat_arms/src/game/world.rs`)
 - lithtech: World files: strict where the spec says "observed" (property lengths, record ends) (`lithtech/formats/src/world.rs`)

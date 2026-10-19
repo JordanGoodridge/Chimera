@@ -10,6 +10,8 @@
 //!   without error; the server's hit reaches both clients (health and
 //!   armour replicated, the shooter's hit confirmed, the target hurt) and
 //!   the target's client draws the shots.
+//! - A scoped sniper (zoom, sway, the bolt's zoom-out) is predicted
+//!   without error.
 //! - Switching (class keys, Q) and the knife (its swing predicted, its hit
 //!   the server's) are predicted without error.
 //!
@@ -36,7 +38,7 @@ use combat_arms::{
         TICK_INTERVAL,
         inventory::{CaSelection, KNIFE, Knife, KnifePhase},
         movement::CaMovement,
-        weapons::{CaArmor, CaRecoil, CaSpread, RIFLE},
+        weapons::{CaArmor, CaRecoil, CaSpread, CaZoom, RIFLE},
     },
     harness::CaSim,
 };
@@ -356,6 +358,38 @@ fn switching_weapons_is_predicted() {
     let copy = copy_of(&mut sim, 1, 0);
     let held = sim.clients[1].app.world().get::<chimera_net::net::NetHeld>(copy).cloned();
     assert!(held.is_some_and(|h| h.weapon.is_some()), "client 1 knows what client 0 holds");
+}
+
+#[test]
+fn a_scoped_bolt_shot_is_predicted() {
+    // weapon_classes.md 7: the zoom (`CaZoom`), its view (`Zoomed`), the
+    // sway on the view punch and the bolt's zoom-out, predicted.
+    let mut sim = joined(100, 51);
+    face_off(&mut sim, 6.0);
+    let e = sim.character_of(0).unwrap();
+    chimera_sim::weapon::give(sim.server.app.world_mut(), e, "combat_arms:l96a1").unwrap();
+    sim.ticks(150);
+    assert_eq!(active_id(&mut sim, 0), "combat_arms:l96a1");
+    reset_graphs(&mut sim);
+    client_intent(&mut sim, 0).secondary = true;
+    sim.step();
+    client_intent(&mut sim, 0).secondary = false;
+    sim.ticks(30);
+    let me = sim.local_player(0).unwrap();
+    assert!(
+        sim.clients[0].app.world().get::<chimera_sim::weapon::Zoomed>(me).is_some(),
+        "the client zooms"
+    );
+    client_intent(&mut sim, 0).pitch = 0.4; // over client 1: no death to correct
+    client_intent(&mut sim, 0).fire = true;
+    sim.step();
+    client_intent(&mut sim, 0).fire = false;
+    sim.ticks(120);
+    let w = sim.clients[0].app.world().get::<Inventory>(me).unwrap().active.unwrap();
+    let z = sim.clients[0].app.world().get::<CaZoom>(w).unwrap().clone();
+    assert_eq!(z.level, 0, "the bolt's zoom-out");
+    assert_no_errors(&sim, "scoped");
+    assert_agrees(&mut sim, 0, "scoped");
 }
 
 #[test]
