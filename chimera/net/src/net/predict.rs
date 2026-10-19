@@ -22,6 +22,10 @@
 //!   after S run again (`core::predict`, `FirstTimePredicted` false: no
 //!   sounds). The drawn eye eases the jump out over `cl_smoothtime`
 //!   (`smooth_view`) unless it's a teleport.
+//!   When the server let in, spawned or killed the player since its last
+//!   state (`OwnState::alive` changed: a spawn point, the loadout, a
+//!   death drop) its state is taken the same way but counted as a restart
+//!   (`NetGraph::resyncs`), not an error: no command led to it.
 //! - **Readout.** `NetGraph` (the perf overlay and the debug UI's Perf tab):
 //!   ping, loss, lead, server buffer, missed commands, prediction errors.
 //!   `cl_showerror 1` logs each error.
@@ -192,11 +196,16 @@ struct Outgoing {
     fresh: usize,
 }
 
-/// The newest server state not yet compared, and the last one that was.
+/// The newest server state not yet compared, and the last one that was;
+/// whether the last state heard had the player alive (`OwnState::alive`),
+/// and whether that changed since the last one compared (the server
+/// spawned, killed or let in the player: a restart, not an error).
 #[derive(Resource, Default)]
 struct Pending {
     state: Option<OwnState>,
     done: u64,
+    alive: Option<bool>,
+    life_changed: bool,
 }
 
 /// The server's own states this client holds (tick, encoded), oldest
@@ -286,7 +295,8 @@ pub struct NetGraph {
     pub late: u32,
     /// Server states compared with the prediction, ones that differed
     /// (prediction errors), and restarts without a prediction to compare
-    /// (joining, after a clock jump).
+    /// (joining, after a clock jump) or from a state the server changed
+    /// outside the commands (spawned, killed or let in: `OwnState::alive`).
     pub checked: u64,
     pub errors: u64,
     pub resyncs: u64,
@@ -601,6 +611,10 @@ fn receive_own_states(
     if s.tick <= current {
         return;
     }
+    if pending.alive.is_some_and(|a| a != s.alive) {
+        pending.life_changed = true;
+    }
+    pending.alive = Some(s.alive);
     graph.buffered = s.buffered;
     graph.missed = s.missed;
     graph.late = s.late;
@@ -697,7 +711,11 @@ fn start_command(world: &mut World) {
     let Some(player) = predicted_player(world) else {
         return;
     };
-    let pending = world.resource_mut::<Pending>().state.take();
+    let (pending, restart) = {
+        let mut p = world.resource_mut::<Pending>();
+        let restart = p.state.is_some() && std::mem::take(&mut p.life_changed);
+        (p.state.take(), restart)
+    };
     if let Some(s) = &pending {
         world.resource_mut::<Pending>().done = s.tick;
         let step = Duration::from_nanos(s.tick_nanos);
@@ -720,7 +738,7 @@ fn start_command(world: &mut World) {
     };
     world.resource_mut::<CommandClock>().tick = Some(tick);
     if let Some(s) = pending {
-        reconcile(world, player, s);
+        reconcile(world, player, s, restart);
     }
     if let Some(clock) = world.resource::<CommandClock>().clock_for(tick) {
         world.insert_resource(clock);
@@ -728,8 +746,11 @@ fn start_command(world: &mut World) {
 }
 
 /// Compare the server's state after tick S with ours for S; on a
-/// mismatch take the server's and run the commands since again.
-fn reconcile(world: &mut World, player: Entity, server: OwnState) {
+/// mismatch take the server's and run the commands since again. A
+/// `restart` (the server spawned, killed or let in the player since the
+/// last state: `OwnState::alive` changed) is no prediction error: the
+/// client couldn't have predicted it; it counts as a resync.
+fn reconcile(world: &mut World, player: Entity, server: OwnState, restart: bool) {
     let index = world
         .resource::<PredictionHistory>()
         .0
@@ -745,10 +766,12 @@ fn reconcile(world: &mut World, player: Entity, server: OwnState) {
             world.resource_mut::<PredictionHistory>().0.drain(..=i);
             return;
         }
-        let names = world
-            .resource::<PredictedComponents>()
-            .differing(&ours.state, &server.state);
-        error = Some((ours.position, names));
+        if !restart {
+            let names = world
+                .resource::<PredictedComponents>()
+                .differing(&ours.state, &server.state);
+            error = Some((ours.position, names));
+        }
     } else if world
         .resource::<PredictionHistory>()
         .0
@@ -756,7 +779,9 @@ fn reconcile(world: &mut World, player: Entity, server: OwnState) {
         .is_some_and(|p| p.tick > server.tick)
     {
         // Older than anything we predicted (from before prediction started
-        // or the clock jumped): newer states will tell.
+        // or the clock jumped): newer states will tell (a restart with
+        // them).
+        world.resource_mut::<Pending>().life_changed |= restart;
         return;
     }
     let before = world
@@ -879,10 +904,12 @@ fn reconcile(world: &mut World, player: Entity, server: OwnState) {
         None => {
             graph.resyncs += 1;
             if world.resource::<PredictSettings>().showerror > 0 {
-                info!(
-                    "prediction restarts from the server's tick {} (nothing predicted for it)",
-                    server.tick
-                );
+                let why = if restart {
+                    "the server spawned or killed the player"
+                } else {
+                    "nothing predicted for it"
+                };
+                info!("prediction restarts from the server's tick {} ({why})", server.tick);
             }
         }
     }
