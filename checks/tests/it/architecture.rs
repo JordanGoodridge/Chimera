@@ -48,6 +48,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // The rule-module interface (chimera/sim): a game registers its modes
     // by name; `rules::module` at its old path.
     ("rule_module", &["console"]),
+    // Every game's respawn (chimera/sim): the dead held, a character
+    // revived at a place (out of a toggled noclip).
+    ("spawning", &["core", "movement"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
     ("objectives", &["core", "console", "slots", "character", "map", "weapon"]),
@@ -159,6 +162,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "objectives",
             "rules",
             "rule_module",
+            "spawning",
             "bot",
             "net",
         ],
@@ -441,6 +445,7 @@ fn simulation_builds_no_drawn_parts() {
         "bot",
         "movement",
         "rule_module",
+        "spawning",
         "games",
     ];
     let mut files = Vec::new();

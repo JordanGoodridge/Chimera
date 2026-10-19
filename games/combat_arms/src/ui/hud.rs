@@ -69,10 +69,10 @@
 //!   placeholders: their numbers), the crosshair's attachment terms (A3).
 //! - Not driven by anything yet (the model has them): crosshair items,
 //!   the toggle, video and AI freeze, infection, dot-sight mode (A6, A8:
-//!   no sight has `Type` 2), revealing items, the score panel and round
-//!   timer (no modes yet: `model::score_panel`, `round_timer`), badges
-//!   but the headshot, the heartbeat's sound (counted in
-//!   `CaHud::heartbeats`, no sound file).
+//!   no sight has `Type` 2), revealing items, badges but the headshot, the
+//!   heartbeat's sound (counted in `CaHud::heartbeats`, no sound file).
+//! - The score panel and round timer (D6, D7) are `score`'s, from the
+//!   match (`game::rules::CaMatchView`); see its own shortcuts.
 //! - Placeholders for the game's textures: the silhouette (a grey box
 //!   standing or crouched), the fire-mode icon (a word), kill-feed weapon
 //!   icons and badges (words), the hit overlay (a red frame), the
@@ -81,6 +81,7 @@
 //!   boxes).
 
 pub mod model;
+pub mod score;
 
 use std::collections::HashMap;
 
@@ -266,11 +267,13 @@ impl Plugin for CaHudStatePlugin {
             .init_resource::<HudOptions>()
             .init_resource::<HudMemory>()
             .init_resource::<CaHud>()
+            .init_resource::<score::CaScoreHud>()
+            .init_resource::<crate::game::rules::CaMatchView>()
             .add_message::<WeaponEvent>()
             .add_message::<Damage>()
             .add_message::<DamageTaken>()
             .add_message::<Died>()
-            .add_systems(Update, (track, update).chain().in_set(HudUpdate));
+            .add_systems(Update, (track, update, score::update_score).chain().in_set(HudUpdate));
     }
 }
 
@@ -868,16 +871,25 @@ impl Plugin for CaHudPlugin {
                 hit_marker: true,
                 killfeed: true,
             })
-            .add_systems(Startup, (spawn, draw::load_faces))
+            .add_systems(Startup, (spawn, score::spawn_root, draw::load_faces))
             .add_systems(Update, screen_size.before(HudUpdate))
             .add_systems(
                 Update,
-                (draw_crosshair, draw_damage, draw_status, draw_weapon, draw_feed, draw_tags).after(HudUpdate),
+                (
+                    draw_crosshair,
+                    draw_damage,
+                    draw_status,
+                    draw_weapon,
+                    draw_feed,
+                    draw_tags,
+                    score::draw_score,
+                )
+                    .after(HudUpdate),
             );
     }
 }
 
-fn colour(c: Rgba) -> Color {
+pub(crate) fn colour(c: Rgba) -> Color {
     Color::srgba_u8(c[0], c[1], c[2], c[3])
 }
 
@@ -904,7 +916,7 @@ struct FeedRoot;
 #[derive(Component)]
 struct TagRoot;
 
-fn layer(z: i32) -> impl Bundle {
+pub(crate) fn layer(z: i32) -> impl Bundle {
     (
         Node {
             position_type: PositionType::Absolute,
@@ -928,7 +940,7 @@ fn spawn(mut commands: Commands) {
 }
 
 /// A rect node, px.
-fn rect(r: PxRect, c: Color) -> impl Bundle {
+pub(crate) fn rect(r: PxRect, c: Color) -> impl Bundle {
     let s = r.size();
     (
         Node {
@@ -965,7 +977,7 @@ fn line(a: Vec2, b: Vec2, thickness: f32, c: Color) -> impl Bundle {
 /// What HUD texts are drawn with: the UI's fonts, the shell's stand-in
 /// faces and the install's, on the HUD's screen.
 #[derive(Clone, Copy)]
-struct Pen<'a> {
+pub(crate) struct Pen<'a> {
     ui: &'a CaUi,
     fonts: Option<&'a UiFonts>,
     faces: Option<&'a CaFaces>,
@@ -977,7 +989,7 @@ struct Pen<'a> {
 /// ref px) at `own` inside it, aligned in the box on each aligned axis
 /// (its own position ignored there), drawn with its effect's copies.
 #[allow(clippy::too_many_arguments)]
-fn hud_text(
+pub(crate) fn hud_text(
     p: &mut ChildSpawnerCommands,
     pen: Pen,
     (at, size, own): (Vec2, Vec2, Vec2),
@@ -1025,7 +1037,7 @@ fn hud_text_at(p: &mut ChildSpawnerCommands, pen: Pen, at: Vec2, string: &str, f
 }
 
 /// Redraw a layer's children when what it shows changed.
-fn rebuild<T: PartialEq + Clone + Send + Sync + 'static>(
+pub(crate) fn rebuild<T: PartialEq + Clone + Send + Sync + 'static>(
     last: &mut Option<T>,
     now: T,
     root: Entity,
@@ -1147,9 +1159,9 @@ mod looks {
     pub const PROMPT: &str = "bold 14";
 }
 
-type PenParams<'a> = (Res<'a, CaUi>, Option<Res<'a, UiFonts>>, Option<Res<'a, CaFaces>>);
+pub(crate) type PenParams<'a> = (Res<'a, CaUi>, Option<Res<'a, UiFonts>>, Option<Res<'a, CaFaces>>);
 
-fn pen<'a>(params: &'a PenParams, screen: Screen) -> Pen<'a> {
+pub(crate) fn pen<'a>(params: &'a PenParams, screen: Screen) -> Pen<'a> {
     Pen {
         ui: &params.0,
         fonts: params.1.as_deref(),
