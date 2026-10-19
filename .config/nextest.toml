@@ -8,25 +8,47 @@
 
 [profile.default]
 test-threads = 8
-# Say which tests run long; a hung test is killed after 20 minutes (the
-# slowest, the network soak, takes 3-6 minutes depending on load).
-slow-timeout = { period = "120s", terminate-after = 10 }
+# Say which tests run long, and kill a hung one. Outside `heavy::` the
+# slowest took 53 s on a busy box (load ~20 on 12 threads, 2026-10-19):
+# killed after 5 minutes. Heavy tests get 12 and the soak 30 (overrides
+# below).
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [test-groups]
 # Five heavy tests at once (~6 GB typical); the big ones take more slots.
 heavy = { max-threads = 5 }
+# Combat Arms' heavy tests: a map load takes ~10 GB (below).
+ca-maps = { max-threads = 1 }
 
 # Overrides apply first match first, per setting. Tests are named by test
 # binary (`binary_id(<package>::<binary>)`: each crate's tests/it/ is its
 # `it`) and module path (`heavy::<file>::<test>`).
 
-# The soak: 6.6 GB, and the longest test; start it first so it doesn't end
-# the run alone.
+# The soak: 6.6 GB, and the longest test (3-8 minutes with the box's
+# load); start it first so it doesn't end the run alone.
 [[profile.default.overrides]]
 filter = 'binary_id(cs_source::it) & test(/^heavy::net_soak::/)'
 test-group = 'heavy'
 threads-required = 3
 priority = 100
+slow-timeout = { period = "180s", terminate-after = 10 }
+
+# Combat Arms' tests that load a map from the install: ~10 GB each (the
+# map with every character, view model and effect: 9.6 GB peak for
+# WAREHOUSE, 10 GB for a shard of five maps, 2026-10-19) and ~17 s a map
+# alone, nearly all of it every weapon's view model. Their own group,
+# one at a time, beside the other heavy tests' slots. The map
+# conversion's shards (heavy::world::every_plain_map_converts::shard_*,
+# ~1.5 minutes each) start early.
+[[profile.default.overrides]]
+filter = 'binary_id(combat_arms::it) & test(/^heavy::world::every_plain_map_converts::/)'
+test-group = 'ca-maps'
+priority = 80
+
+[[profile.default.overrides]]
+filter = 'binary_id(combat_arms::it) & test(/^heavy::/)'
+test-group = 'ca-maps'
+priority = 70
 
 # The capacity test: a server and four clients like the soak, 32
 # characters; weighted like it until measured on its own.
@@ -65,8 +87,10 @@ filter = 'binary_id(cs_source::it) & test(/^heavy::map_courses::(kz_bhop_izanami
 test-group = 'heavy'
 priority = 90
 
-# Every crate's heavy tests (`heavy::` in its test binaries: cs_source's
-# `it` and `ui` today) share the slots.
+# Every crate's heavy tests (`heavy::` in its test binaries) share the
+# slots. The longest besides the soak took ~2 minutes on a busy box:
+# killed after 12.
 [[profile.default.overrides]]
 filter = 'test(/^heavy::/)'
 test-group = 'heavy'
+slow-timeout = { period = "120s", terminate-after = 6 }

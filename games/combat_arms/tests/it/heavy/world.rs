@@ -27,41 +27,104 @@ fn mount() -> Option<chimera_core::mount::Mount> {
     Some((INFO.open)(&install).unwrap())
 }
 
-/// The 33 plain maps convert: drawn meshes with lightmap coordinates
-/// inside the atlas, a collision mesh, and spawns on a floor.
-#[test]
-fn every_plain_map_converts() {
-    let Some(mount) = mount() else { return };
-    let names = world::map_names(&mount);
-    let mut loaded = 0;
-    for name in &names {
-        let path = world::find(&mount, name).unwrap();
-        if !(path.starts_with("worlds2/") || path.starts_with("worlds3/")) {
-            continue;
-        }
-        let map = world::load_from(&mount, name).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let lightmap = map.lightmap.as_ref().unwrap();
-        eprintln!(
-            "{name}: {} meshes, {} triangles, {} collision triangles, {} spawns, lightmap {} x {}",
-            map.meshes.len(),
-            map.triangle_count(),
-            map.collision_indices.len(),
-            map.spawns.len(),
-            lightmap.width,
-            lightmap.height
-        );
-        assert!(map.triangle_count() > 1000, "{name}");
-        assert!(map.collision_indices.len() > 1000, "{name}");
-        assert!(lightmap.width <= 8192 && lightmap.height <= 8192, "{name}");
-        for m in &map.meshes {
-            assert_eq!(m.lightmap_uvs.len(), m.positions.len(), "{name}");
-            assert!(m.lightmap_uvs.iter().flatten().all(|c| (0.0..=1.0).contains(c)), "{name}");
-            assert!(m.indices.iter().all(|&i| (i as usize) < m.positions.len()), "{name}");
-        }
-        assert!(!map.spawns.is_empty() && map.spawn_yaws.len() == map.spawns.len(), "{name}");
-        loaded += 1;
+/// The plain maps (worlds2/, worlds3/; the keyed archives' are left out),
+/// by name.
+fn plain_maps(mount: &chimera_core::mount::Mount) -> Vec<String> {
+    world::map_names(mount)
+        .into_iter()
+        .filter(|name| {
+            let path = world::find(mount, name).unwrap();
+            path.starts_with("worlds2/") || path.starts_with("worlds3/")
+        })
+        .collect()
+}
+
+/// A plain map converts: drawn meshes with lightmap coordinates inside
+/// the atlas, a collision mesh, and spawns on a floor.
+fn plain_map_converts(mount: &chimera_core::mount::Mount, name: &str) {
+    let map = world::load_from(mount, name).unwrap_or_else(|e| panic!("{name}: {e}"));
+    let lightmap = map.lightmap.as_ref().unwrap();
+    eprintln!(
+        "{name}: {} meshes, {} triangles, {} collision triangles, {} spawns, lightmap {} x {}",
+        map.meshes.len(),
+        map.triangle_count(),
+        map.collision_indices.len(),
+        map.spawns.len(),
+        lightmap.width,
+        lightmap.height
+    );
+    assert!(map.triangle_count() > 1000, "{name}");
+    assert!(map.collision_indices.len() > 1000, "{name}");
+    assert!(lightmap.width <= 8192 && lightmap.height <= 8192, "{name}");
+    for m in &map.meshes {
+        assert_eq!(m.lightmap_uvs.len(), m.positions.len(), "{name}");
+        assert!(m.lightmap_uvs.iter().flatten().all(|c| (0.0..=1.0).contains(c)), "{name}");
+        assert!(m.indices.iter().all(|&i| (i as usize) < m.positions.len()), "{name}");
     }
-    assert_eq!(loaded, 33);
+    assert!(!map.spawns.is_empty() && map.spawn_yaws.len() == map.spawns.len(), "{name}");
+}
+
+/// The 33 plain maps convert (`plain_map_converts`), in shards of one
+/// test each so the test runner spreads them over its slots (one test
+/// over every map took ~10 minutes): shard `k` takes every `SHARDS`th
+/// map from the `k`th; `count` checks there are 33.
+mod every_plain_map_converts {
+    use super::{mount, plain_map_converts, plain_maps};
+
+    const SHARDS: usize = 8;
+
+    fn shard(k: usize) {
+        let Some(mount) = mount() else { return };
+        for name in plain_maps(&mount).iter().skip(k).step_by(SHARDS) {
+            plain_map_converts(&mount, name);
+        }
+    }
+
+    #[test]
+    fn count() {
+        let Some(mount) = mount() else { return };
+        assert_eq!(plain_maps(&mount).len(), 33);
+    }
+
+    #[test]
+    fn shard_0() {
+        shard(0);
+    }
+
+    #[test]
+    fn shard_1() {
+        shard(1);
+    }
+
+    #[test]
+    fn shard_2() {
+        shard(2);
+    }
+
+    #[test]
+    fn shard_3() {
+        shard(3);
+    }
+
+    #[test]
+    fn shard_4() {
+        shard(4);
+    }
+
+    #[test]
+    fn shard_5() {
+        shard(5);
+    }
+
+    #[test]
+    fn shard_6() {
+        shard(6);
+    }
+
+    #[test]
+    fn shard_7() {
+        shard(7);
+    }
 }
 
 fn warehouse() -> Option<MapData> {
@@ -209,49 +272,66 @@ fn warehouse_walk_and_collide() {
 }
 
 /// The second layers built from the install (world_dat.md "Second
-/// textures"): WAREHOUSE's 12 dual-texture sections become meshes with a
-/// second texture, coordinate set and weights; SNOWVALLEY's dual sections
-/// carry a UV1 of their own; TOWERBRIDGE's car windows take a flat
-/// environment map (`envmapalpha`) and its river the self-linked detail
-/// texture.
-#[test]
-fn second_layers_from_the_install() {
-    use chimera_world::map::{BlendMode, DetailMode};
-    let Some(mount) = mount() else { return };
-    let dual = |map: &MapData| -> Vec<usize> {
+/// textures"), a test per map (each load takes a while): WAREHOUSE's 12
+/// dual-texture sections become meshes with a second texture, coordinate
+/// set and weights; SNOWVALLEY's dual sections carry a UV1 of their own;
+/// TOWERBRIDGE's car windows take a flat environment map (`envmapalpha`)
+/// and its river the self-linked detail texture.
+mod second_layers_from_the_install {
+    use chimera_world::map::{BlendMode, DetailMode, MapData};
+    use combat_arms::game::world;
+
+    use super::mount;
+
+    fn dual(map: &MapData) -> Vec<usize> {
         (0..map.meshes.len())
             .filter(|&i| map.meshes[i].blend.is_some_and(|b| b.texture.is_some()))
             .collect()
-    };
-    let map = world::load_from(&mount, "warehouse").unwrap();
-    let meshes = dual(&map);
-    assert!(!meshes.is_empty(), "WAREHOUSE has dual-texture meshes");
-    for &i in &meshes {
-        let m = &map.meshes[i];
-        assert_eq!(m.blend.unwrap().mode, BlendMode::BaseAlpha);
-        assert_eq!((m.uvs2.len(), m.blend_weights.len()), (m.positions.len(), m.positions.len()));
-        assert!(m.blend_weights.iter().all(|w| (0.0..=1.0).contains(w)));
     }
-    let map = world::load_from(&mount, "snowvalley").unwrap();
-    assert!(
-        dual(&map).iter().any(|&i| {
+
+    #[test]
+    fn warehouse() {
+        let Some(mount) = mount() else { return };
+        let map = world::load_from(&mount, "warehouse").unwrap();
+        let meshes = dual(&map);
+        assert!(!meshes.is_empty(), "WAREHOUSE has dual-texture meshes");
+        for &i in &meshes {
             let m = &map.meshes[i];
-            m.uvs.iter().zip(&m.uvs2).any(|(a, b)| a != b)
-        }),
-        "SNOWVALLEY's UV1 differs from UV0"
-    );
-    let map = world::load_from(&mount, "towerbridge").unwrap();
-    let windows: Vec<_> = map.meshes.iter().filter_map(|m| m.flat_envmap).collect();
-    assert!(windows.len() >= 10, "{} meshes with an environment map", windows.len());
-    assert!(windows.iter().all(|e| e.by_base_alpha && e.signed_add));
-    assert!(windows.iter().any(|e| map.textures[e.texture].name.eq_ignore_ascii_case("TEXFX\\SKY\\SKY20_RT.dtx")));
-    let river = map
-        .meshes
-        .iter()
-        .find(|m| m.material.eq_ignore_ascii_case("textures\\etc\\sprinkle_river.dtx"))
-        .expect("the river");
-    let d = river.detail.expect("its detail texture");
-    assert_eq!((d.mode, d.scale, d.rotation), (DetailMode::SignedAdd, [1.0; 2], 0.0));
+            assert_eq!(m.blend.unwrap().mode, BlendMode::BaseAlpha);
+            assert_eq!((m.uvs2.len(), m.blend_weights.len()), (m.positions.len(), m.positions.len()));
+            assert!(m.blend_weights.iter().all(|w| (0.0..=1.0).contains(w)));
+        }
+    }
+
+    #[test]
+    fn snowvalley() {
+        let Some(mount) = mount() else { return };
+        let map = world::load_from(&mount, "snowvalley").unwrap();
+        assert!(
+            dual(&map).iter().any(|&i| {
+                let m = &map.meshes[i];
+                m.uvs.iter().zip(&m.uvs2).any(|(a, b)| a != b)
+            }),
+            "SNOWVALLEY's UV1 differs from UV0"
+        );
+    }
+
+    #[test]
+    fn towerbridge() {
+        let Some(mount) = mount() else { return };
+        let map = world::load_from(&mount, "towerbridge").unwrap();
+        let windows: Vec<_> = map.meshes.iter().filter_map(|m| m.flat_envmap).collect();
+        assert!(windows.len() >= 10, "{} meshes with an environment map", windows.len());
+        assert!(windows.iter().all(|e| e.by_base_alpha && e.signed_add));
+        assert!(windows.iter().any(|e| map.textures[e.texture].name.eq_ignore_ascii_case("TEXFX\\SKY\\SKY20_RT.dtx")));
+        let river = map
+            .meshes
+            .iter()
+            .find(|m| m.material.eq_ignore_ascii_case("textures\\etc\\sprinkle_river.dtx"))
+            .expect("the river");
+        let d = river.detail.expect("its detail texture");
+        assert_eq!((d.mode, d.scale, d.rotation), (DetailMode::SignedAdd, [1.0; 2], 0.0));
+    }
 }
 
 /// Census of the second texture layers on the plain maps (world_dat.md

@@ -13,6 +13,9 @@
 # CHIMERA_PUSH_TESTS=all runs the full suite; =0 skips the tests, keeping
 # the identity, privacy and build checks (the old name, MASHUP_PUSH_TESTS,
 # still works).
+# The remote pushed to (git passes its name, or the URL): `affected`
+# fetches from it a compared commit this clone doesn't have yet.
+remote_name=${1:-origin}
 want_name=r0pi0x
 want_email=339403489+r0pi0x@users.noreply.github.com
 zero=0000000000000000000000000000000000000000
@@ -107,7 +110,7 @@ if [ "$pushing" = 1 ] && [ "$mode" != 0 ]; then
         args=--workspace
         echo "pre-push: CHIMERA_PUSH_TESTS=all: the full suite" >&2
     # shellcheck disable=SC2086
-    elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- $changes --format $format 2>target/pre-push-affected.txt); then
+    elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- $changes --remote "$remote_name" --format $format 2>target/pre-push-affected.txt); then
         cat target/pre-push-affected.txt >&2
         echo "pre-push: couldn't select the affected tests; running the full suite." >&2
         args=--workspace

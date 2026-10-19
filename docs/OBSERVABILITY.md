@@ -108,8 +108,13 @@ a file in a folder only a feature compiles (a manifest's
 `[package.metadata.affected] feature-paths`: cs_source's `src/ui/`) its
 crate's test binaries built with the feature and the crates above, not
 the crate's other tests (an edit to CS:S's HUD doesn't run its map
-tests); the lockfile, the workspace manifest, .config/, the hooks or a
-build.rs select everything; Markdown and docs only `repo_checks`.
+tests); a Cargo.lock change the crates whose resolved dependencies
+changed between its two versions (the lockfile's graph, around the
+workspace-hack); the workspace manifest, .config/, the hooks, the
+workspace-hack or a build.rs select everything (the summary says
+"EVERY TEST" and which files); Markdown and docs only `repo_checks`. A
+compared commit missing from the clone (the remote moved since the last
+fetch) is fetched first.
 
 - Fast tier, before every commit (`.githooks/pre-commit`): unit tests and
   everything outside `heavy` of the crates the staged changes can affect
@@ -138,10 +143,14 @@ build.rs select everything; Markdown and docs only `repo_checks`.
   it trims the clone's `target/` to 150 GB with `cargo sweep` (install it
   with `cargo install cargo-sweep`; skipped without it). The full
   suite is `cargo nextest run --features dev` (at most 8 tests at once
-  and 5 heavy slots, the biggest heavy tests taking 2-3,
-  `.config/nextest.toml`: memory, not CPU, is the limit with other builds
-  running; a heavy test that loops over maps belongs split into one test
-  per map, as `map_courses`, `map_surf` and `map_ladders` are), or
+  and 5 heavy slots, the biggest heavy tests taking 2-3 (Combat Arms'
+  map loads ~10 GB each: 2), `.config/nextest.toml`: memory, not CPU,
+  is the limit with other builds running; a heavy test that loops over
+  maps belongs split into one test per map, as `map_courses`, `map_surf`
+  and `map_ladders` are, or in shards when the install decides the list,
+  as Combat Arms' `heavy::world::every_plain_map_converts::shard_*`; a
+  hung test is killed after 5 minutes, a heavy one after 12, the soak
+  after 30), or
   `cargo test --features dev` without nextest (twice as slow: in one
   process the heavy tests contend). nextest runs each test in its own
   process; install it once with `cargo install cargo-nextest --locked` (or
@@ -710,7 +719,9 @@ the 1-minute load average stays under half the CPUs (CPU time a tick
 grows with load: 6.5 ms at 1.2 per CPU, 10.5 ms at 3.8, same
 instructions) or where there are no hardware counters (Windows: the
 mean), and under 40 KB/s a client. Instructions count the whole
-process: run it alone in its process (nextest does). Bigger runs print the same table:
+process, so the test runs alone in one: nextest gives each test its
+own; under `cargo test` it runs itself again in a child process
+(`CHIMERA_CAPACITY_CHILD`). Bigger runs print the same table:
 `CHIMERA_CAPACITY_PLAYERS=64 CHIMERA_CAPACITY_CLIENTS=8
 CHIMERA_CAPACITY_MAP=mg_jacks_multigames_v1 CHIMERA_CAPACITY_SECONDS=30
 cargo test --profile playtest --features dev --test it heavy::net_capacity
