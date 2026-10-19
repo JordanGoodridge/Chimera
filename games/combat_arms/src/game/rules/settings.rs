@@ -38,6 +38,52 @@ pub struct ModeData {
     pub training_time_limit: Option<f32>,
 }
 
+/// The objectives' numbers (data/modes.toml `[objectives]`): the shared
+/// constants of the bomb and the flags, and the mode sections' mission
+/// data.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ObjectiveData {
+    /// M4: a dropped flag goes home after this (s).
+    pub flag_return: f32,
+    /// M3: the plant gauge (s), the defuse and the fuse a site without its
+    /// own `DefuseTime` and `DetonateTime` has (s), the plant margin (u).
+    pub bomb_plant: f32,
+    pub bomb_defuse: f32,
+    pub bomb_fuse: f32,
+    pub plant_margin: f32,
+    /// M10: the triggers' use time (s), `FlagMoveTime` (s),
+    /// `LastOccupyBonus` (points).
+    pub seize_time: f32,
+    pub flag_move_time: f32,
+    pub last_occupy_bonus: i32,
+    /// M8: host selection's delay (s), `SelectionRate`, `MinHostNum`; the
+    /// infected's heal (hit points), the stillness before it and its
+    /// period (s); the points.
+    pub host_delay: f32,
+    pub selection_rate: f32,
+    pub min_hosts: u32,
+    pub infected_heal: f32,
+    pub infected_still: f32,
+    pub infected_heal_period: f32,
+    pub human_kills_infected: i32,
+    pub infected_killed_by_human: i32,
+    pub infected_infects: i32,
+    pub humans_win: i32,
+    pub infected_win: i32,
+    /// M7: intel items a round.
+    pub intel_count: u32,
+    /// M5: the share of G (rounded) the kills must pass for a round ended
+    /// by leavers to have a winner.
+    pub leave_kill_share: f32,
+    /// M12: the points a death is worth by the victim's VIP rank (the last
+    /// for higher ranks).
+    pub vip_points: Vec<i32>,
+    /// M14: the weapon ladder and the kills a step takes.
+    pub ladder: Vec<String>,
+    pub ladder_kills: u32,
+}
+
 /// The settings the rules read (data/modes.toml, then the cvars).
 #[derive(Resource, Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -66,6 +112,8 @@ pub struct CaRuleSettings {
     pub late_join_wait: u32,
     /// Each mode's numbers, by room key.
     pub modes: BTreeMap<String, ModeData>,
+    /// The objectives' numbers.
+    pub objectives: ObjectiveData,
 }
 
 impl Default for CaRuleSettings {
@@ -92,11 +140,13 @@ pub(super) fn plugin(app: &mut App) {
     resource_cvar::<CaRuleSettings, String>(
         app,
         "ca_mode",
-        "The game mode by its room key: TDM (Elimination), TSV (Elimination Pro), none. Takes effect at the next \
-         map load or ca_restart.",
+        "The game mode by its room key: TDM (Elimination), TSV (Elimination Pro), TMM (Search & Destroy), CTF \
+         (Capture the Flag), FFA (One Man Army), LMS (Last Man Standing), BNT (Spy Hunt), QRT (Quarantine Regen), \
+         SBT (Bombing Run), HQM (Seize and Secure), SQM2 (Squad Match 2), VTDM (VIP Elimination), VWRM (Arms \
+         Race), HG (Hunted), ESL (S&D for the Go4CA Cup), none. Takes effect at the next map load or ca_restart.",
         |s| &mut s.mode,
     );
-    resource_cvar::<CaRuleSettings, u32>(app, "ca_goal", "The goal G (kills, round wins); 0: the mode's default.", |s| {
+    resource_cvar::<CaRuleSettings, u32>(app, "ca_goal", "The goal G (kills, round wins, captures, rounds or minutes, by mode); 0: the mode's default.", |s| {
         &mut s.goal
     });
     resource_cvar::<CaRuleSettings, u8>(

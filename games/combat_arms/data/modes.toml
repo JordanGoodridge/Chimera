@@ -5,8 +5,12 @@
 # file's, as a lobby or a server's config would).
 
 # The room's mode, by its room key (Modes found): TDM (shown as
-# Elimination), TSV (Elimination Pro), or none (no mode: nobody is spawned,
-# counted or respawned by the rules).
+# Elimination), TSV (Elimination Pro), TMM (Search & Destroy), CTF, FFA (One
+# Man Army), LMS (Last Man Standing), BNT (Spy Hunt), QRT (Quarantine
+# Regen), SBT (Bombing Run), HQM (Seize and Secure), SQM2 (Squad Match 2),
+# VTDM (VIP Elimination), VWRM (Arms Race), HG (Hunted), ESL (S&D for the
+# Go4CA Cup), or none (no mode: nobody is spawned, counted or respawned by
+# the rules).
 mode = "TDM"
 # The room's goal G (S2); 0: the mode's default (its `goal_default`).
 goal = 0
@@ -50,3 +54,166 @@ goal_step = 2
 goal_default = 7
 time_limit = 180.0
 training_time_limit = 10.0
+
+# Search & Destroy (M3): round wins; rounds of TimeLimit 180 s after a 10 s
+# warm-up.
+[modes.TMM]
+goal_min = 3
+goal_max = 9
+goal_step = 2
+goal_default = 5
+time_limit = 180.0
+training_time_limit = 10.0
+
+# Capture the Flag (M4): captures; one round of TimeLimit x G (180 x G s).
+[modes.CTF]
+goal_min = 3
+goal_max = 7
+goal_step = 2
+goal_default = 5
+time_limit = 180.0
+
+# One Man Army (M5): player kills; one round, no time limit.
+[modes.FFA]
+goal_min = 15
+goal_max = 45
+goal_step = 15
+goal_default = 30
+
+# Last Man Standing (M6): rounds played; rounds of 180 s after a warm-up.
+[modes.LMS]
+goal_min = 3
+goal_max = 9
+goal_step = 2
+goal_default = 5
+time_limit = 180.0
+training_time_limit = 10.0
+
+# Spy Hunt (M7): minutes (the whole round: G minutes), after a warm-up.
+[modes.BNT]
+goal_min = 8
+goal_max = 16
+goal_step = 4
+goal_default = 12
+training_time_limit = 10.0
+
+# Quarantine Regen (M8): rounds played; TimeLimit 3 minutes (180 s).
+[modes.QRT]
+goal_min = 5
+goal_max = 9
+goal_step = 2
+goal_default = 7
+time_limit = 180.0
+training_time_limit = 10.0
+
+# Bombing Run (M9): round wins; rounds of 300 s after a warm-up.
+[modes.SBT]
+goal_min = 3
+goal_max = 9
+goal_step = 2
+goal_default = 5
+time_limit = 300.0
+training_time_limit = 10.0
+
+# Seize and Secure (M10): minutes (one round of G minutes after a warm-up).
+[modes.HQM]
+goal_min = 8
+goal_max = 16
+goal_step = 4
+goal_default = 12
+training_time_limit = 10.0
+
+# Squad Match 2 (M11): Seize and Secure's rules; no room entry, so its
+# numbers are Seize and Secure's.
+[modes.SQM2]
+goal_min = 8
+goal_max = 16
+goal_step = 4
+goal_default = 12
+training_time_limit = 10.0
+
+# VIP Elimination (M12): team points; as TDM, no time limit.
+[modes.VTDM]
+goal_min = 100
+goal_max = 180
+goal_step = 10
+goal_default = 140
+
+# Arms Race (M14): player kills; one round, no time limit.
+[modes.VWRM]
+goal_min = 15
+goal_max = 45
+goal_step = 15
+goal_default = 15
+
+# Hunted (M15): rounds played; Last Man Standing's rounds.
+[modes.HG]
+goal_min = 3
+goal_max = 9
+goal_step = 2
+goal_default = 5
+time_limit = 180.0
+training_time_limit = 10.0
+
+# S&D for the Go4CA Cup (M17): the rounds played (both teams' wins) end
+# the match at G, fixed at 5; S&D's rounds.
+[modes.ESL]
+goal_min = 5
+goal_max = 5
+goal_step = 1
+goal_default = 5
+time_limit = 180.0
+training_time_limit = 10.0
+
+# The objectives' numbers (Constants (shared) and the mode sections).
+[objectives]
+# M4: a dropped flag goes home after this, s.
+flag_return = 30.0
+# M3: the plant gauge (s; Open question 4: the hold time wasn't traced, the
+# HUD's gauge is), the defuse when a site gives no DefuseTime, the fuse
+# when it gives no DetonateTime, and how far outside a site's box (u, each
+# axis) a planter may stand.
+bomb_plant = 4.0
+bomb_defuse = 7.0
+bomb_fuse = 40.0
+plant_margin = 50.0
+# M10: the mission file's use time of the triggers (s), FlagMoveTime (s)
+# and LastOccupyBonus (points).
+seize_time = 5.0
+flag_move_time = 120.0
+last_occupy_bonus = 50
+# M8: hosts are picked this long after the round goes live (s), H =
+# max(round(N x SelectionRate), MinHostNum) from 4 players; the infected
+# heal Heal every period (s) after standing still this long (s; Open
+# question 12: hit points); the mission file's points.
+host_delay = 20.0
+selection_rate = 0.2
+min_hosts = 2
+infected_heal = 0.1
+infected_still = 3.0
+infected_heal_period = 1.0
+human_kills_infected = 3
+infected_killed_by_human = -1
+infected_infects = 2
+humans_win = 10
+infected_win = 5
+# M7: intel items per round.
+intel_count = 5
+# M5: the last player wins a round ended by leavers only with more than
+# this share of G (rounded) made in kills.
+leave_kill_share = 0.1
+# M12: the points a death is worth, by the victim's VIP rank (index).
+# PLACEHOLDER: the VIP data isn't in the spec; every rank is worth 1.
+vip_points = [1]
+# M14: the weapon ladder, a step every `ladder_kills` kills. PLACEHOLDER:
+# the map's weapon table isn't in the spec: our weapons, one per class.
+ladder = [
+    "combat_arms:m4a1",
+    "combat_arms:mp5a4",
+    "combat_arms:remington_870",
+    "combat_arms:m60",
+    "combat_arms:l96a1",
+    "combat_arms:beretta_m92fs",
+    "combat_arms:m9_knife",
+]
+ladder_kills = 2

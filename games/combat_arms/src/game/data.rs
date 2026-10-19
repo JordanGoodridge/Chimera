@@ -126,6 +126,8 @@ pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("remington_870.toml"),
     data_file!("l96a1.toml"),
     data_file!("dragunov_svd.toml"),
+    // The mission bomb (game_modes.md M3).
+    data_file!("xk2.toml"),
 ];
 
 /// The namespace of our weapon and ammo IDs.

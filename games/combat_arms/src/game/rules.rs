@@ -1,59 +1,103 @@
 //! Combat Arms' game modes (specs/combat_arms/game_modes.md) as rule
 //! modules (`rule_module`: registered by name, the one playing picked by
-//! the `ca_mode` cvar): `combat_arms:tdm` (Team Death Match, shown as
-//! Elimination, M1), `combat_arms:elimination_pro` (Elimination Pro, M2,
-//! the brief's "Elimination") and `combat_arms:none` (no mode: the rules
-//! leave players alone, as the skeleton had it).
+//! the `ca_mode` cvar, a room key): `combat_arms:tdm` (`TDM`, Team Death
+//! Match shown as Elimination, M1), `elimination_pro` (`TSV`, M2),
+//! `search_destroy` (`TMM`, M3), `capture_the_flag` (`CTF`, M4),
+//! `one_man_army` (`FFA`, M5), `last_man_standing` (`LMS`, M6),
+//! `spy_hunt` (`BNT`, M7), `quarantine` (`QRT`, M8), `bombing_run`
+//! (`SBT`, M9), `seize_and_secure` (`HQM`, M10) and `squad_match_2`
+//! (`SQM2`, M11's variant), `vip_elimination` (`VTDM`, M12), `arms_race`
+//! (`VWRM`, M14), `hunted` (`HG`, M15), `go4ca_cup` (`ESL`, M17), and
+//! `combat_arms:none` (no mode: the rules leave players alone).
 //!
 //! A mode is data and hooks (`CaMode`: its room key, whether it respawns,
-//! has a warm-up, scales friendly fire, gives assists, shows a timer; what
-//! a death adds, its time-out rule, when the match ends, what a leaver
-//! does) on the shared rules, one submodule each:
+//! has a warm-up, scales friendly fire, gives assists, shows a timer, how
+//! it makes teams (`Teams`: two, free-for-all, everyone Alpha), its spawn
+//! family (`Spawns`), its round length (`RoundTime`), whether firing ends
+//! protection, its death drops, its score panel and scoreboard order;
+//! what a death adds, its time-out rule, when the match ends, what a
+//! leaver does; `Hooks` for its objects: the round's setup, a per-tick
+//! update, the round over and its end, a death in any phase, respawning
+//! and holding joiners) on the shared rules, one submodule each:
 //!
-//! - `settings`: the room's and the server file's settings and the shared
-//!   constants (S2), data/modes.toml under the `ca_*` cvars;
+//! - `settings`: the room's and the server file's settings, the shared
+//!   constants (S2) and the objectives' numbers, data/modes.toml under the
+//!   `ca_*` cvars;
 //! - `state`: the match (`CaMatch`: phase, clocks, team counters, round
-//!   wins and results) and each player's statistics (`CaStats`, S7);
+//!   wins and results, the tie-break counters) and each player's
+//!   statistics (`CaStats`, S7, with the modes' own);
 //! - `flow`: the phases the server's mission update runs once per server
 //!   frame (S3), the warm-up (S9), round ends and their cleanup (S10,
-//!   S11), joining and leaving (S1, S10), a fresh match (`ca_restart`, a
-//!   map load: `core::NewGame`);
-//! - `spawns`: start points and their cursors (S4), the respawn and its
-//!   request (S5), telefrags, spawn protection (S6);
+//!   S11), joining, team assignment and leaving (S1, S10), a fresh match
+//!   (`ca_restart`, a map load: `core::NewGame`);
+//! - `spawns`: start points by the mode's family and their cursors (S4),
+//!   the respawn and its request (S5), telefrags, spawn protection (S6);
 //! - `scoring`: deaths, kills and assists (S7), friendly fire (S8);
-//! - `tdm`, `elimination`: the modes;
-//! - `scoreboard`: the scoreboard's rows and order (S13).
+//! - `objects`: the map's mode objects (`game::world` passes them
+//!   through); `objectives`: the objectives' state every machine sees,
+//!   what players carry and the action gauges; `bomb`: plant, defuse and
+//!   detonation;
+//! - one module a mode: `tdm`, `elimination`, `search_destroy`, `ctf`,
+//!   `free_for_all`, `last_man`, `spy_hunt`, `quarantine`, `bombing_run`,
+//!   `seize`, `vip`, `arms_race`, `hunted`, `go4ca`;
+//! - `scoreboard`: the scoreboard's rows and each mode's order (S13).
 //!
 //! What the HUD and a network client read is `CaMatchView` (the server
 //! writes it from `CaMatch` each tick; a client from the network,
-//! `game::net`), with the team counts (`CaTeamCounts`).
+//! `game::net`), with the team counts (`CaTeamCounts`), and
+//! `objectives::CaObjectives`.
 //!
 //! Teams are the lobby's (S1): a player keeps the team it came in with
 //! (the network's join puts it on the smaller team; single player's local
 //! player is Bravo, the shell's pick); no auto-balance or switching
-//! (Quirk 10). Players on neither team (0, observers) are left alone.
+//! (Quirk 10). A free-for-all mode gives each player a team of its own
+//! (`state::FFA_FIRST`..), Spy Hunt and Quarantine put everyone on Alpha
+//! at a round's setup (`flow::assign_team`). Players on no team (0,
+//! observers) are left alone.
 //!
 //! Lifted into Chimera for this (L15, docs/plans/active/combat-arms.md):
 //! the dead held still and a character revived at a place
 //! (`chimera_sim::spawning`), which CS:S's deathmatch uses too. CS:S's
-//! round loop, team joining and game end stay its own: their phases,
-//! money, objectives, `mp_*` settings and win table share nothing with
-//! Combat Arms' beyond those.
+//! round loop, team joining, bomb and game end stay its own: their
+//! phases, money, objectives, `mp_*` settings and win table share nothing
+//! with Combat Arms' beyond those (CS:S's bomb is a weapon with its own
+//! arming, beeps and blast; CA's is a gauge on a site).
 //!
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear, each module's own list): see `flow`, `spawns`,
-//! `scoring`, `settings`, `tdm`, `elimination`. Only the two team modes
-//! are there; the server runs the mission update on its 20 Hz frames
-//! (`grenades::SERVER_FRAME`) over the game's 15 ms tick.
+//! `scoring`, `settings`, `objects`, `objectives`, `bomb` and each mode's.
+//! Not there: Hired Guns (M11: AI mercenaries and bullion banks the spec
+//! doesn't describe), VIP Escort (M13: the VIP's spawn and the exit are
+//! mission data the spec doesn't name), Snowball Fight (M16: not playable
+//! in the US data), the clan variants (M18), the co-operative and offline
+//! modes (M19, M20) and the modes without rules (M21, M22). Bots fight in
+//! every mode (any other team is an enemy) but don't play objectives
+//! (bots.md has none). The server runs the mission update on its 20 Hz
+//! frames (`grenades::SERVER_FRAME`) over the game's 15 ms tick.
 
+pub mod arms_race;
+pub mod bomb;
+pub mod bombing_run;
+pub mod ctf;
 pub mod elimination;
 pub mod flow;
+pub mod free_for_all;
+pub mod go4ca;
+pub mod hunted;
+pub mod last_man;
+pub mod objectives;
+pub mod objects;
+pub mod quarantine;
 pub mod scoreboard;
 pub mod scoring;
+pub mod search_destroy;
+pub mod seize;
 pub mod settings;
 pub mod spawns;
+pub mod spy_hunt;
 pub mod state;
 pub mod tdm;
+pub mod vip;
 
 use bevy::prelude::*;
 
@@ -62,7 +106,7 @@ pub use state::{CaMatch, CaStats, Phase};
 
 use crate::{
     console::ConsoleAppExt,
-    core::{Connecting, Dead, Health, Intent, Npc, SimClock, SimSet, Spectating, Team},
+    core::{Connecting, Dead, Died, Health, Intent, Npc, SimClock, SimSet, Spectating, Team},
     rule_module::{self, RuleModule, RuleModules},
 };
 
@@ -72,17 +116,155 @@ pub const NO_MODE: &str = "combat_arms:none";
 pub const TDM: &str = "combat_arms:tdm";
 /// Elimination Pro (M2).
 pub const ELIMINATION_PRO: &str = "combat_arms:elimination_pro";
+/// Search & Destroy (M3).
+pub const SEARCH_DESTROY: &str = "combat_arms:search_destroy";
+/// Capture the Flag (M4).
+pub const CAPTURE_THE_FLAG: &str = "combat_arms:capture_the_flag";
+/// One Man Army (M5).
+pub const ONE_MAN_ARMY: &str = "combat_arms:one_man_army";
+/// Last Man Standing (M6).
+pub const LAST_MAN_STANDING: &str = "combat_arms:last_man_standing";
+/// Spy Hunt (M7).
+pub const SPY_HUNT: &str = "combat_arms:spy_hunt";
+/// Quarantine Regen (M8).
+pub const QUARANTINE: &str = "combat_arms:quarantine";
+/// Bombing Run (M9).
+pub const BOMBING_RUN: &str = "combat_arms:bombing_run";
+/// Seize and Secure (M10) and its variant Squad Match 2 (M11).
+pub const SEIZE_AND_SECURE: &str = "combat_arms:seize_and_secure";
+pub const SQUAD_MATCH_2: &str = "combat_arms:squad_match_2";
+/// VIP Elimination (M12).
+pub const VIP_ELIMINATION: &str = "combat_arms:vip_elimination";
+/// Arms Race (M14).
+pub const ARMS_RACE: &str = "combat_arms:arms_race";
+/// Hunted (M15).
+pub const HUNTED: &str = "combat_arms:hunted";
+/// S&D for the Go4CA Cup (M17).
+pub const GO4CA_CUP: &str = "combat_arms:go4ca_cup";
 
 /// A leaving player, as the leaving rule sees it (S10): its team, its
 /// team's players and living players (the leaver counted), whether it was
-/// alive.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// alive; the players in the match (the leaver counted), the kills made
+/// in total, and the other players' teams; G and One Man Army's share of
+/// it.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Leaver {
     pub team: u8,
     pub team_players: usize,
     pub team_alive: usize,
     pub alive: bool,
+    pub players: usize,
+    pub total_kills: u32,
+    pub others: Vec<u8>,
+    pub goal: u32,
+    pub leave_kill_share: f32,
 }
+
+/// How a mode makes teams (S1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Teams {
+    /// Alpha against Bravo, as the lobby put them.
+    Two,
+    /// Every player a team of their own (`state::FFA_FIRST`..).
+    FreeForAll,
+    /// Everyone starts on Alpha; the mode moves players (Spy Hunt's spies,
+    /// Quarantine's infected).
+    AllAlpha,
+}
+
+/// Which start points a mode spawns at (S4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Spawns {
+    /// The `GameType` its points name; None: the spec doesn't name it (the
+    /// team modes' `Team Death Match` points stand in).
+    pub family: Option<&'static str>,
+    /// One list whatever the points' team.
+    pub one_list: bool,
+    /// The list shuffled once at map load.
+    pub shuffled: bool,
+    /// Rounds use the locked points, warm-ups the unlocked (Hunted).
+    pub locked_rounds: bool,
+}
+
+/// The team modes' points.
+pub const TEAM_POINTS: Spawns = Spawns {
+    family: Some(super::world::SPAWN_GAME_TYPE),
+    one_list: false,
+    shuffled: false,
+    locked_rounds: false,
+};
+
+/// A round's length (the warm-up's is always `TrainingTimeLimit`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoundTime {
+    /// The mission's `TimeLimit` (none: no timer).
+    Mission,
+    /// `TimeLimit` x G (capture the flag).
+    MissionTimesGoal,
+    /// G minutes (Seize and Secure, Spy Hunt).
+    GoalMinutes,
+}
+
+/// What the score panel's two rows count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Panel {
+    /// The team counters (`CaMatch::score`).
+    TeamScore,
+    /// Round wins.
+    RoundWins,
+    /// Free-for-all: the local player's kills and the leader's.
+    Kills,
+    /// Free-for-all rounds: the local player's round wins and the
+    /// leader's.
+    PlayerRoundWins,
+}
+
+/// The scoreboard's order (S13).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScoreOrder {
+    /// Kills, then fewer deaths.
+    Kills,
+    /// Captures, returns, kills, fewer deaths.
+    Captures,
+    /// Mission points, kills, fewer deaths.
+    MissionPoints,
+    /// Mission points only.
+    MissionOnly,
+}
+
+/// A mode's hooks on the shared rules (`NO_HOOKS` do nothing).
+#[derive(Clone, Copy)]
+pub struct Hooks {
+    /// The round's setup, after everyone was respawned (objective weapons,
+    /// items; `CaMatch::warmup` says whether it is the warm-up).
+    pub setup: fn(&mut World),
+    /// Every server tick before the mission update: the mode's objects
+    /// (touches, timers, plants).
+    pub update: fn(&mut World),
+    /// The round is over (its winner decided, the win counted).
+    pub round_over: fn(&mut World),
+    /// The round's end, before the cleanup (objective items removed).
+    pub round_end: fn(&mut World),
+    /// A player died, in any phase, before the counting (carried items
+    /// dropped).
+    pub died: fn(&mut World, &Died),
+    /// Whether `e` may respawn now beyond `CaMode::respawns` (Spy Hunt's
+    /// second stage stops it).
+    pub may_respawn: fn(&World, Entity) -> bool,
+    /// A round mode holds joiners now beyond S1's rule (a bomb ticking).
+    pub holds_joiner: fn(&World) -> bool,
+}
+
+/// No hooks.
+pub const NO_HOOKS: Hooks = Hooks {
+    setup: |_| {},
+    update: |_| {},
+    round_over: |_| {},
+    round_end: |_| {},
+    died: |_, _| {},
+    may_respawn: |_, _| true,
+    holds_joiner: |_| false,
+};
 
 /// A game mode: its data and hooks.
 #[derive(Clone, Copy)]
@@ -108,6 +290,20 @@ pub struct CaMode {
     pub timer_shown: bool,
     /// The round setup's length, when the mode forces one (TDM: 0).
     pub forced_setup: Option<f32>,
+    /// How it makes teams (S1).
+    pub teams: Teams,
+    /// Its start points (S4).
+    pub spawns: Spawns,
+    /// Its rounds' length.
+    pub round_time: RoundTime,
+    /// Firing ends spawn protection (S6: the free-for-all modes).
+    pub fire_ends_protection: bool,
+    /// The dead drop their primary (inventory.md 12; not in Arms Race).
+    pub death_drops: bool,
+    /// What the score panel counts.
+    pub panel: Panel,
+    /// The scoreboard's order.
+    pub order: ScoreOrder,
     /// What a counted death adds (S7) and the win test.
     pub on_death: fn(&mut World, &state::Death),
     /// The winner of a round that ran out of time without one (may stay
@@ -118,19 +314,41 @@ pub struct CaMode {
     pub match_end: fn(&World) -> Option<Option<u8>>,
     /// A player leaves (S10).
     pub leaving: fn(&mut CaMatch, &Leaver),
+    pub hooks: Hooks,
 }
 
 /// Every mode, by room key.
-pub const MODES: [CaMode; 2] = [tdm::MODE, elimination::MODE];
+pub const MODES: &[CaMode] = &[
+    tdm::MODE,
+    elimination::MODE,
+    search_destroy::MODE,
+    ctf::MODE,
+    free_for_all::MODE,
+    last_man::MODE,
+    spy_hunt::MODE,
+    quarantine::MODE,
+    bombing_run::MODE,
+    seize::MODE,
+    seize::SQUAD_MATCH,
+    vip::MODE,
+    arms_race::MODE,
+    hunted::MODE,
+    go4ca::MODE,
+];
 
 /// The mode playing (`ca_mode`), if any.
 pub fn current_mode(world: &World) -> Option<&'static CaMode> {
     let key = &world.get_resource::<CaRuleSettings>()?.mode;
+    mode_by_key(key)
+}
+
+/// A mode by its room key.
+pub fn mode_by_key(key: &str) -> Option<&'static CaMode> {
     MODES.iter().find(|m| m.key == key)
 }
 
 fn mode_on(settings: Res<CaRuleSettings>) -> bool {
-    MODES.iter().any(|m| m.key == settings.mode)
+    mode_by_key(&settings.mode).is_some()
 }
 
 /// The cvars that set the modes up.
@@ -148,22 +366,37 @@ const SETTINGS: &[&str] = &[
     "ca_respawn_bullet_protection",
 ];
 
+/// A mode's rule module.
+macro_rules! module_of {
+    ($($m:ident)::+) => {
+        RuleModule {
+            name: $($m)::+.module,
+            description: $($m)::+.description,
+            settings: SETTINGS,
+            applies: |w| current_mode(w).is_some_and(|m| m.module == $($m)::+.module),
+        }
+    };
+}
+
 /// The rule modules (`chimera_rules`): each mode's, picked by `ca_mode`,
 /// then no mode.
-pub fn modules() -> [RuleModule; 3] {
-    [
-        RuleModule {
-            name: TDM,
-            description: tdm::MODE.description,
-            settings: SETTINGS,
-            applies: |w| current_mode(w).is_some_and(|m| m.module == TDM),
-        },
-        RuleModule {
-            name: ELIMINATION_PRO,
-            description: elimination::MODE.description,
-            settings: SETTINGS,
-            applies: |w| current_mode(w).is_some_and(|m| m.module == ELIMINATION_PRO),
-        },
+pub fn modules() -> Vec<RuleModule> {
+    vec![
+        module_of!(tdm::MODE),
+        module_of!(elimination::MODE),
+        module_of!(search_destroy::MODE),
+        module_of!(ctf::MODE),
+        module_of!(free_for_all::MODE),
+        module_of!(last_man::MODE),
+        module_of!(spy_hunt::MODE),
+        module_of!(quarantine::MODE),
+        module_of!(bombing_run::MODE),
+        module_of!(seize::MODE),
+        module_of!(seize::SQUAD_MATCH),
+        module_of!(vip::MODE),
+        module_of!(arms_race::MODE),
+        module_of!(hunted::MODE),
+        module_of!(go4ca::MODE),
         RuleModule {
             name: NO_MODE,
             description: "no game mode (ca_mode none): no teams' rules, rounds, score or respawning; the dead stay dead",
@@ -200,7 +433,7 @@ pub struct CaMatchView {
 impl CaMatchView {
     /// The mode it shows.
     pub fn mode(&self) -> Option<&'static CaMode> {
-        MODES.iter().find(|m| m.key == self.mode)
+        mode_by_key(&self.mode)
     }
 }
 
@@ -247,7 +480,10 @@ pub fn update_team_counts(world: &mut World) {
 #[allow(clippy::type_complexity)]
 fn on_leave(
     leave: On<Remove, Team>,
-    players: Query<(&Team, &Health, Has<Dead>), (With<Intent>, Without<Connecting>, Without<Spectating>, Without<Npc>)>,
+    players: Query<
+        (Entity, &Team, &Health, Has<Dead>, Option<&CaStats>),
+        (With<Intent>, Without<Connecting>, Without<Spectating>, Without<Npc>),
+    >,
     settings: Option<Res<CaRuleSettings>>,
     role: Option<Res<crate::core::NetRole>>,
     mut state: Option<ResMut<CaMatch>>,
@@ -256,20 +492,37 @@ fn on_leave(
         return;
     }
     let (Some(settings), Some(state)) = (settings, state.as_mut()) else { return };
-    let Some(mode) = MODES.iter().find(|m| m.key == settings.mode) else { return };
-    let Ok((team, health, dead)) = players.get(leave.entity) else { return };
-    if state::side(team.0).is_none() {
+    let Some(mode) = mode_by_key(&settings.mode) else { return };
+    let Ok((_, team, health, dead, _)) = players.get(leave.entity) else { return };
+    if !state::plays(team.0) {
         return;
     }
     let living = |h: &Health, d: bool| !d && h.current > 0.0;
-    let mates = players.iter().filter(|(t, ..)| t.0 == team.0);
+    let in_play: Vec<_> = players.iter().filter(|(_, t, ..)| state::plays(t.0)).collect();
+    let mates = in_play.iter().filter(|(_, t, ..)| t.0 == team.0);
     let leaver = Leaver {
         team: team.0,
         team_players: mates.clone().count(),
-        team_alive: mates.filter(|(_, h, d)| living(h, *d)).count(),
+        team_alive: mates.filter(|(_, _, h, d, _)| living(h, *d)).count(),
         alive: living(health, dead),
+        players: in_play.len(),
+        total_kills: in_play.iter().map(|(.., s)| s.map_or(0, |s| s.kills)).sum(),
+        others: in_play
+            .iter()
+            .filter(|(e, ..)| *e != leave.entity)
+            .map(|(_, t, ..)| t.0)
+            .collect(),
+        goal: settings.goal(),
+        leave_kill_share: settings.objectives.leave_kill_share,
     };
     (mode.leaving)(state, &leaver);
+}
+/// The mode's own update (its objects), every server tick before the
+/// mission update.
+fn mode_update(world: &mut World) {
+    if let Some(mode) = current_mode(world) {
+        (mode.hooks.update)(world);
+    }
 }
 
 /// Combat Arms' rule modules and the shared rules' systems.
@@ -291,14 +544,24 @@ impl Plugin for CaRulesPlugin {
             .init_resource::<flow::CaMissionFrames>()
             .init_resource::<spawns::CaSpawnCursors>()
             .init_resource::<scoring::CaDamageLog>()
+            .init_resource::<objects::CaMapObjects>()
+            .init_resource::<objectives::CaObjectives>()
+            .init_resource::<objectives::CaDraws>()
+            .init_resource::<bomb::CaPlanter>()
+            .init_resource::<ctf::CaFlagCarriers>()
+            .init_resource::<bombing_run::CaCarrier>()
+            .init_resource::<quarantine::CaQuarantine>()
             .insert_resource(crate::core::NewGame(flow::new_game))
             .add_observer(on_leave)
             .add_observer(flow::number_players)
+            .add_systems(FixedUpdate, objects::read_map_objects.before(SimSet::Rules))
+            .add_systems(Update, ctf::show_flags)
             .add_systems(
                 FixedUpdate,
                 (
                     (
                         update_team_counts,
+                        mode_update,
                         flow::mission_update,
                         spawns::ask_for_respawns,
                         crate::spawning::hold_the_dead,
@@ -312,6 +575,7 @@ impl Plugin for CaRulesPlugin {
                     scoring::scale_friendly_fire
                         .after(SimSet::Weapons)
                         .before(crate::core::apply_damage),
+                    spawns::firing_ends_protection.after(SimSet::Weapons),
                     (scoring::log_damage, scoring::handle_deaths, publish)
                         .chain()
                         .after(crate::core::apply_damage),

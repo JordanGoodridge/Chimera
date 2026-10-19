@@ -93,10 +93,11 @@
 //!   there; command ids aren't kept per weapon (the rule always switches
 //!   in play); the non-primary pickup fills the clip as the server does
 //!   (Open question 5).
-//! - Class keys: the objective class (key 6) isn't reachable from the
-//!   client's input (it reads slot1..slot5) and the bomb rule, "in use"
-//!   weapons, forced-select and the menu/vote/weapons-disabled
-//!   conditions aren't modelled (no such weapons or states yet). Q and a
+//! - Class keys: the objective class (key 6, the mission bomb) is the
+//!   front end's `slot6`; the bomb rule (key 6 does nothing once the bomb
+//!   is planted: the planter's bomb is gone then), "in use" weapons,
+//!   forced-select and the menu/vote/weapons-disabled conditions aren't
+//!   modelled (no such weapons or states yet). Q and a
 //!   class's last chosen weapon are kept as entities (an equip index plus
 //!   id in the game: the same outcome when a pickup replaces one).
 //! - Death drop: every character counts as a human model; the backpack
