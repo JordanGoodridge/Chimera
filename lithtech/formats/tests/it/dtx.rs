@@ -139,3 +139,95 @@ fn f8_command_strings() {
     let t = with(b"detailtex a.dtx\0b.dtx");
     assert_eq!((t.command.as_str(), t.alpha_ref()), ("detailtex a.dtx", None));
 }
+
+/// A 4 x 4 texture of `group` with `n` levels (BGRA, zeros).
+fn grouped(group: u8, n: u16) -> Dtx {
+    let mut b = header(16, 16, n, 3);
+    b[0x18] = group;
+    let len: usize = (0..n).map(|i| 4 * (16usize >> i) * (16usize >> i)).sum();
+    b.resize(164 + len, 0);
+    Dtx::parse(b).unwrap()
+}
+
+/// Test cases 15 and 16: the shipped DetailLevel 2 (no option changes
+/// it), groups 0..3 and 49 up; the N − 1 clamp; DetailLevel 0.
+#[test]
+fn t15_t16_mip_skip_by_group() {
+    use lithtech_formats::dtx::{DETAIL_LEVEL, group_offset};
+    assert_eq!(DETAIL_LEVEL, 2);
+    let k = |g, n, d| grouped(g, n).skipped_levels(d, 0);
+    assert_eq!([0, 1, 2, 3, 49, 60].map(|g| k(g, 4, DETAIL_LEVEL)), [0, 1, 1, 2, 0, 0]);
+    assert_eq!(k(3, 2, DETAIL_LEVEL), 1, "clamped to N - 1");
+    assert_eq!(k(3, 4, 0), 0);
+    // The game's table: GroupOffset1..3 = 1, 1, 2 at d = 2 (every preset).
+    assert_eq!([1, 2, 3].map(|g| group_offset(g, DETAIL_LEVEL)), [1, 1, 2]);
+    assert_eq!([1, 2, 3].map(|g| group_offset(g, 1)), [0, 1, 1]);
+    // MipMapOffset counts alone from group 49, still at least 0.
+    assert_eq!(grouped(49, 4).skipped_levels(2, 1), 1);
+    assert_eq!(grouped(1, 4).skipped_levels(2, -3), 0);
+}
+
+/// One DXT block's texels.
+fn block(format: u8, bytes: &[u8]) -> Vec<[u8; 4]> {
+    fixture(format, bytes).rgba(0).as_chunks::<4>().0.to_vec()
+}
+
+/// Test cases 17-20: the reading to keep (the card's: round to nearest,
+/// bit-repeating widening, DXT3 always four colours).
+#[test]
+fn t17_t20_dxt_rounding() {
+    // 17: c0 = 0xF800 (red 255), c1 = 0x0800 (red 8): index 2 at texel 0,
+    // index 3 at texel 1.
+    let t = block(4, &[0x00, 0xF8, 0x00, 0x08, 0b1110, 0, 0, 0]);
+    assert_eq!((t[0][0], t[1][0]), (173, 90));
+    // 18: red 16 widens to 132.
+    let t = block(4, &[0x00, 0x80, 0x00, 0x00, 0, 0, 0, 0]);
+    assert_eq!(t[0][0], 132);
+    // 19: DXT5 a0 = 255, a1 = 0: A2..A7 at texels 0..5.
+    let idx: u64 = (2..8u64).enumerate().map(|(t, k)| k << (3 * t)).sum();
+    let mut b = vec![255, 0];
+    b.extend_from_slice(&idx.to_le_bytes()[..6]);
+    b.extend_from_slice(&[0; 8]);
+    let t = block(6, &b);
+    assert_eq!(t[..6].iter().map(|p| p[3]).collect::<Vec<_>>(), [219, 182, 146, 109, 73, 36]);
+    // 20: DXT3, c0 = 0x0000 <= c1 = 0xFFFF, index 3, alpha 15: the 2/3
+    // entry, opaque.
+    let t = block(5, &[0xFF; 8].iter().copied().chain([0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]).collect::<Vec<_>>());
+    assert_eq!(t[0], [170, 170, 170, 255]);
+}
+
+/// Test cases 21 and 22 on synthetic strings: the detail link is the
+/// command's second word as written, its path nothing added (no `.dtx`,
+/// no link); the base texture's detail scale and rotation.
+#[test]
+fn t21_t22_links() {
+    use lithtech_formats::dtx::{LinkKind, link_path, split_commands};
+    let with = |cmd: &[u8], scale: f32| {
+        let mut b = header(4, 4, 1, 4);
+        b[0x24..0x24 + cmd.len()].copy_from_slice(cmd);
+        b[0x1E..0x22].copy_from_slice(&scale.to_le_bytes());
+        b.resize(172, 0);
+        Dtx::parse(b).unwrap()
+    };
+    let t = with(b"detailtex textures\\Etc\\256xSprinkle01.dtx", 0.0);
+    let link = t.link().unwrap();
+    assert_eq!((link.kind, link.names.as_slice()), (LinkKind::DetailTex, &["textures\\Etc\\256xSprinkle01.dtx".to_string()][..]));
+    assert_eq!(link_path(&link.names[0]), "textures/etc/256xsprinkle01.dtx");
+    assert_eq!((t.detail_scale, t.detail_rotation), (1.0, 0));
+    let t = with(b"detailtex textures\\Etc\\256xSprinkle01", 7.0);
+    assert_eq!(link_path(&t.link().unwrap().names[0]), "textures/etc/256xsprinkle01", "nothing added");
+    assert_eq!(t.detail_scale, 8.0);
+    // The first keyword in the engine's order wins, wherever it is; a
+    // whole-word match; too few words: no link.
+    let t = with(b"envmap e.dtx; DETAILTEX d.dtx", 0.0);
+    assert_eq!(t.link().unwrap().kind, LinkKind::DetailTex);
+    assert_eq!(with(b"envmapalpha e.dtx", 0.0).link().unwrap().kind, LinkKind::EnvMapAlpha);
+    assert_eq!(with(b"detailtex", 0.0).link(), None);
+    assert_eq!(with(b"alpharef 128", 0.0).link(), None);
+    // Words: quotes and parentheses group, % escapes, control characters
+    // end a command.
+    assert_eq!(
+        split_commands("detailtex \"a b.dtx\";x (c d) e%;f\x01g"),
+        [vec!["detailtex", "a b.dtx"], vec!["x", "c d", "e;f"], vec!["g"]]
+    );
+}

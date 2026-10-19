@@ -229,6 +229,27 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
             ));
         }
     }
+    // Triangles only some things meet (`MapCollisionSet`): no contacts
+    // but with characters for the players-only ones.
+    for set in &data.collision_sets {
+        if set.indices.is_empty() || !(set.characters || set.traces) {
+            continue;
+        }
+        let layers = match (set.characters, set.traces) {
+            (true, false) => CollisionLayers::new(crate::core::PLAYER_CLIP_LAYER, LayerMask::DEFAULT),
+            (false, true) => CollisionLayers::new(crate::core::TRACE_ONLY_LAYER, LayerMask::NONE),
+            _ => CollisionLayers::new(LayerMask::DEFAULT, LayerMask::ALL & !crate::core::ITEM_LAYER),
+        };
+        let positions: Vec<Vec3> = data.collision_positions.iter().map(|p| Vec3::from(*p)).collect();
+        commands.entity(root).with_child((
+            Name::new(format!("Map collision ({})", set.name)),
+            MapPart,
+            RigidBody::Static,
+            Collider::trimesh(positions, set.indices.clone()),
+            layers,
+            Transform::default(),
+        ));
+    }
     // Glass and grates get a collider of their own, marked `SeeThrough`.
     let see_through: std::collections::HashSet<usize> = data.see_through_hulls.iter().copied().collect();
     for glass in [false, true] {

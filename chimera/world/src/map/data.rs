@@ -737,6 +737,9 @@ pub struct MapData {
     /// Collision triangles (surfaces with no solid volume, e.g. terrain).
     pub collision_positions: Vec<[f32; 3]>,
     pub collision_indices: Vec<[u32; 3]>,
+    /// More collision triangles (into `collision_positions`) that only
+    /// some things meet.
+    pub collision_sets: Vec<MapCollisionSet>,
     /// Solid convex volumes, each as its corner points: what stops shots
     /// and physics bodies (player-only clips are in `collision_brushes`
     /// only).
@@ -877,6 +880,23 @@ pub struct MapData {
     pub gib_physics: Option<breakables::MapGibPhysics>,
     /// Seconds each loading stage took (`loading::LoadTimer`), in order.
     pub load_times: Vec<(&'static str, f32)>,
+}
+
+/// Collision triangles that block only some things, for maps whose game
+/// says so per surface (Combat Arms: collision blockers stop players
+/// only, non-solid detail only traces). Each set is its own static
+/// collider: on `core::PLAYER_CLIP_LAYER` (characters only),
+/// `core::TRACE_ONLY_LAYER` (traces only) or the default layer (both).
+#[derive(Clone, Debug, Default)]
+pub struct MapCollisionSet {
+    pub name: String,
+    /// Triangles, indices into `MapData::collision_positions`.
+    pub indices: Vec<[u32; 3]>,
+    /// Characters' movement collides with them (`CHARACTER_FILTER`).
+    pub characters: bool,
+    /// Line traces and other gameplay queries (`SOLID_LAYERS`: shots,
+    /// sight, explosion cover, thrown objects) meet them.
+    pub traces: bool,
 }
 
 /// A muzzle flash: view-facing additive sprites strung out along the
@@ -1103,14 +1123,17 @@ pub struct MapSkyCamera {
 
 /// Distance fog, distances in meters as seen in the world. Source's range
 /// fog: f = clamp(min(max_density, (depth - start) / (end - start))), and
-/// the color moves toward the fog color by f^2 (specs/cs_source/shaders.md).
-#[derive(Clone, Debug)]
+/// the color moves toward the fog color by f^2 (specs/cs_source/shaders.md);
+/// with `linear`, by f (LithTech's table fog, specs/combat_arms/world_dat.md
+/// "Sky").
+#[derive(Clone, Debug, Default)]
 pub struct MapFog {
     /// sRGB color.
     pub color: [f32; 3],
     pub start: f32,
     pub end: f32,
     pub max_density: f32,
+    pub linear: bool,
 }
 
 /// A sky cubemap: per engine face (+X, -X, +Y, -Y, +Z, -Z), an index into

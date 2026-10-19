@@ -25,7 +25,8 @@
 //!   `MapData` (world_dat.md);
 //! - `model`: the install's models (`.ltb`) and their animations as
 //!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
-//! - `props`: models the maps' objects place, as animated props.
+//! - `props`: models the maps' objects place, as animated props;
+//! - `volumes`: the maps' volumes (water, kill and damage volumes).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -41,6 +42,7 @@ pub mod movement;
 pub mod net;
 pub mod props;
 pub mod rules;
+pub mod volumes;
 pub mod weapons;
 pub mod world;
 
@@ -143,6 +145,7 @@ impl PluginGroup for CombatArmsPlugins {
             // Before `weapons`: their hooks must be there when the data
             // loads.
             .add(inventory::CaInventoryPlugin)
+            .add(volumes::CaVolumesPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(attachments::CaAttachmentsPlugin)

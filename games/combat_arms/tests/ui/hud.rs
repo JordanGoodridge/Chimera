@@ -1417,3 +1417,13 @@ fn t77_panel_by_inventory_class() {
     assert_eq!(panel(1, true, false, 30, 120), None, "the mission bomb");
     assert_eq!(panel(0, false, false, 30, 120), None, "in no order list");
 }
+
+/// grenades.md case 55: the flash's white is drawn over the HUD, chat and
+/// pop-ups over the white.
+#[test]
+fn grenades_t55_flash_over_the_hud() {
+    use chimera_client::client::senses::FLASH_OVERLAY_Z;
+    assert!(combat_arms::ui::hud::HUD_Z < FLASH_OVERLAY_Z);
+    // The chat's lowest layer (41) and the in-game menu's (60).
+    assert!(FLASH_OVERLAY_Z < 41);
+}

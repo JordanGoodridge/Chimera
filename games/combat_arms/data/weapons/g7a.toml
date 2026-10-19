@@ -19,8 +19,10 @@ sprint_out = 0.267
 spawned = 1
 max = 2
 prefire = 0.7
-release_key = 0.067
+throw_loop = 0.067
 postfire = 0.366
+release_key = 0.133
+reload = 0.4
 perturb = [1, 10]
 dynamic_perturb = 1.0
 # Lifetime 3 s, Velocity 1550 [Data].
@@ -34,5 +36,5 @@ area_type = "none"
 # ProgDamage 6 HP/s of poison within ProgDamageRadius 350 for
 # ProgDamageLifetime 9 s, each entry lasting ProgDamageDuration 2.5 s [12].
 over_time = { kind = "poison", rate = 6.0, radius = 350.0, lifetime = 9.0, duration = 2.5 }
-# PLACEHOLDER (Open question 9).
-half_height = 2.0
+# The box: PLACEHOLDER, the M67's (not in the spec).
+box_half = [6.0, 6.0, 8.0]
