@@ -625,6 +625,12 @@ pub struct OwnState {
     pub seed: u64,
     /// The rules hold it (dead): its commands do nothing but look.
     pub held: bool,
+    /// In the game and alive: not dead (`core::Dead`, which a connecting
+    /// player is too) and above 0 health. When it changes the server
+    /// spawned, killed or let in the player outside its commands (moved
+    /// it to a spawn point, gave or dropped its weapons): the client
+    /// takes that state as a restart, not a prediction error.
+    pub alive: bool,
     /// The smallest lead of the commands heard since the last `OwnState`:
     /// the newest command's tick less the server's last tick when it
     /// arrived (1: just in time). None: none heard.

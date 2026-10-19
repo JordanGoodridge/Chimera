@@ -14,6 +14,8 @@
 //!   without error.
 //! - Switching (class keys, Q) and the knife (its swing predicted, its hit
 //!   the server's) are predicted without error.
+//! - From the first state on: joining and dying are restarts (the server
+//!   moves the player in, gives or drops its weapons), not errors.
 //!
 //! `cargo test -p combat_arms --features dev --test it net:: -- --nocapture`
 //! prints the numbers.
@@ -380,11 +382,14 @@ fn a_scoped_bolt_shot_is_predicted() {
         sim.clients[0].app.world().get::<chimera_sim::weapon::Zoomed>(me).is_some(),
         "the client zooms"
     );
-    client_intent(&mut sim, 0).pitch = 0.4; // over client 1: no death to correct
+    // On client 1's chest: the bolt kills it, and its client takes its
+    // death (the primary dropped) as a restart, not an error.
+    client_intent(&mut sim, 0).pitch = -0.08;
     client_intent(&mut sim, 0).fire = true;
     sim.step();
     client_intent(&mut sim, 0).fire = false;
     sim.ticks(120);
+    assert_eq!(server_health(&mut sim, 1), 0.0, "client 1 killed");
     let w = sim.clients[0].app.world().get::<Inventory>(me).unwrap().active.unwrap();
     let z = sim.clients[0].app.world().get::<CaZoom>(w).unwrap().clone();
     assert_eq!(z.level, 0, "the bolt's zoom-out");
@@ -423,4 +428,47 @@ fn a_knife_hit_is_predicted_and_the_servers() {
     assert!(!sim.clients[1].app.world().resource::<Seen>().taken.is_empty(), "client 1 hurt");
     assert_no_errors(&sim, "knifing");
     assert_agrees(&mut sim, 0, "knifing");
+}
+
+/// From the very first state, no prediction error (the counters never
+/// reset): joining (the server lets the player in at a spawn point with
+/// its loadout: a restart, `OwnState::alive` changing), idling, walking
+/// and switching weapons.
+#[test]
+fn no_errors_from_joining_on() {
+    let mut sim = NetSim::new(CaSim, link(50), 52, 2, setup);
+    sim.set_frame(TICK_INTERVAL);
+    sim.until_joined(600);
+    let check = |sim: &NetSim, what: &str| {
+        for i in 0..2 {
+            let g = graph(sim, i);
+            assert_eq!(
+                g.errors, 0,
+                "{what}: client {i} mispredicted tick {} ({:?})",
+                g.last_error_tick, g.last_differing
+            );
+        }
+    };
+    for _ in 0..240 {
+        sim.step();
+        check(&sim, "idle");
+    }
+    for k in 0..120u32 {
+        let mut i = client_intent(&mut sim, 0);
+        i.move_axis = if k < 80 { Vec2::Y } else { Vec2::ZERO };
+        i.select = match k {
+            20 => Some(2),
+            60 => Some(0),
+            _ => None,
+        };
+        sim.step();
+        check(&sim, "walking and switching");
+    }
+    sim.ticks(60);
+    assert_eq!(active_id(&mut sim, 0), RIFLE);
+    assert_eq!(server_active_id(&mut sim, 0), RIFLE);
+    assert_no_errors(&sim, "joined, idle, walking and switching");
+    for i in 0..2 {
+        assert!(graph(&sim, i).resyncs >= 1, "client {i}: the join is a restart");
+    }
 }

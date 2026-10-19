@@ -645,7 +645,9 @@ Prediction (`games/cs_source/tests/it/net_prediction.rs`): a client's `net::pred
 counts the server states it compared (`checked`), the ones that differed
 from its prediction (`errors`, `last_error`/`worst_error` in m, which
 components differed in the last one: `last_differing`, at server tick
-`last_error_tick`) and restarts (`resyncs`); `CommandClock` has the command tick and the lead
+`last_error_tick`) and restarts (`resyncs`: nothing predicted to compare,
+or the server let in, spawned or killed the player, `OwnState::alive`;
+so a test needn't reset the counters after joining); `CommandClock` has the command tick and the lead
 the server reports; the server's `net::server::CommandBuffer` on a
 player's character has its queued commands, `missed`, `late` and `early`
 counts. `PredictionHistory` holds the client's predicted ticks not yet
