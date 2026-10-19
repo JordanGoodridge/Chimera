@@ -1089,7 +1089,7 @@ row), random sources replaced by the stated draws.
     heard step.
 27. **Chase knows.** Bot loses sight, player runs to another room through a
     door; chase endurance 12 s (Easy) → the bot's path ends at the
-    player's current position (± 96 u offset) and is re-planned to his new
+    player's current position (± 96 u offset) and is re-planned to their new
     position when reached; 12 s after the pursuit began, with the player
     still out of sight, it gives up and patrols.
 28. **Attack chase timer.** Player ducks out of view during an attack,
