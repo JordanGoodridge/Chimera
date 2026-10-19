@@ -203,6 +203,15 @@ fn body(
     }
     let rig = Rig::new(loaded.model, loaded.list);
     let feet = rig.half_heights.0;
+    // The meshes in the body's frame (feet at the origin), as the root
+    // places the skeleton: in model space they would sit the root's lift
+    // below their nodes, and every turned node would swing its vertices
+    // about a point that far off.
+    for mesh in &mut m.meshes {
+        for p in &mut mesh.positions {
+            p[1] += feet * scale;
+        }
+    }
     register(&record.file, Arc::new(rig));
     Ok(MapCharacterModel {
         team: None,
