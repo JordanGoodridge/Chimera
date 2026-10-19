@@ -4,51 +4,79 @@
 //!
 //! The weapons are data (data/weapons/m67.toml and the others, the
 //! `combat_arms:grenade` hook: `GrenadeParams`), built as Chimera's
-//! `Throwable` (count, pin, release, post-fire and redraw, predicted with
-//! the weapon frame) with `ThrowOptions`: the release when the pre-fire
-//! ends, held or not (no cooking, 3; the spent weapon is kept at total 0
-//! by `inventory` with Chimera's `KeepSpent`); no default live drop on
-//! death (this module's `death_release`); and the projectile
-//! made here (`launch`): from the eye along the view, perturbed by the
-//! weapon's square spread, at `speed` with none of the thrower's velocity
-//! (4). It is a Chimera `Projectile` marked `GameFlown` with this game's
-//! state (`CaGrenade`), so the network draws it (`NetItem`), round
-//! restarts clear it and `Detonated` tells the presentation and clients.
+//! `Throwable` (count, pin, release, post-fire and re-ready, predicted with
+//! the weapon frame) with `ThrowOptions` (3): the 700 ms pre-fire (pin
+//! pull), then the 67 ms throw animation, which plays again for as long as
+//! fire is held when it ends (`hold_loop`: the grenade stays in hand, no
+//! cooking); the play running when fire is up is followed by the 366 ms
+//! post-fire, whose fire key at 133 ms releases the grenade (900 ms after
+//! a tap); with grenades left, the 400 ms reload re-readies the next. The
+//! three kinds' animations are alike. The spent weapon is kept at total 0
+//! by `inventory` with Chimera's `KeepSpent`; no default live drop on death
+//! (this module's `death_release`). The projectile is made here
+//! (`launch`): from the eye along the view, perturbed by the weapon's
+//! square spread (`throw_perturb`: weapon_firing.md's cone, the limits
+//! multiplied by the dynamic factor g first, none when the top is 0: the
+//! flash and smoke fly exactly along the view), at `speed` with none of
+//! the thrower's velocity (4). It is a Chimera `Projectile` marked
+//! `GameFlown` with this game's state (`CaGrenade`), so the network draws
+//! it (`NetItem`) and `Detonated` tells the presentation and clients; it
+//! and its smoke cloud `SurvivesRestart`: a new round leaves grenades in
+//! flight to go off on their fuse (15).
 //!
 //! On the server (authoritative), grenades, explosions and flash timers
 //! run on server frames of their own (`CaServerFrames`: the shipped
 //! server's 20 per second, each frame at the first tick at or after its
 //! time, dt exactly 0.05 s), in the spec's per-tick order:
 //!
-//! 1. A grenade made since the last frame starts there (its fuse counts
-//!    from that frame; its first physics step is the next frame's).
+//! 1. A grenade made since the last frame starts in this one: its start
+//!    time is the frame before's, and it is updated and stepped in this
+//!    frame (5, Q6: 49 steps before a 2.5 s fuse).
 //! 2. Each grenade in creation order: the one-time nudge of a grenade
-//!    that came to rest (6), the fuse (8: the first frame at or after
-//!    start + `fuse`), else its physics (`step`: |v|² < 0.1 zeroed, water
-//!    (7: `CaLiquid` volumes, the map's water at the defaults), the
-//!    quarter-gravity move of 5 under 1600 u/s², a point against the world:
-//!    a mirror bounce kept by the surface's hardness (`CaGrenadeSurfaces`,
-//!    data/grenade_surfaces.toml) with the rest test on the horizontal
-//!    speed, through invisible surfaces, gone on sky; characters touched by
-//!    their hit spheres slow it to 65 % and are passed). A detonation (8)
-//!    sends the effect (`Detonated`) and applies its instant part at once:
-//!    a frag's blast (9: everything whose box touches the sphere, players
-//!    twice (Quirk 3), d to the centre, two cover traces and the head-top
-//!    retry, the linear falloff from a quarter of the radius, friendly fire
-//!    by `core::DamageRules`, the armour step for explosions (no stock gear
-//!    lists them), death at 1 HP),
-//!    other grenades hit and chained in the same frame (13), a flash test
-//!    (10: players once, protection `CaFlashProtection`, a hard facing
-//!    split, a timer); a smoke's cloud is the clients' look only (11:
-//!    `SmokeCloud` without a `SightBlocker`, so nothing in game logic sees
-//!    it); fire and gas leave a `CaDamageSphere` (12).
+//!    that came to rest (6: back along the velocity it had at the start of
+//!    the stopping step, by its half-height `box_half`.y × max(0.1, h)), the
+//!    fuse (8: the first frame at or after start + `fuse`; or its hit
+//!    points gone, 13), else its physics (`step`: |v|² < 0.1 zeroed;
+//!    volumes (7, `volumes::CaVolume`: viscosity and current above 1 u/s,
+//!    the liquids' −200 u/s² gravity; other games' water as `Water`); the
+//!    quarter-gravity move of 5 under 1600 u/s²; a point against the
+//!    world (traces-only detail and solid world models too): a mirror
+//!    bounce with the engine's push (0.05 u/s per contact, twice) inside
+//!    the surface's hardness (`CaGrenadeSurfaces`,
+//!    data/grenade_surfaces.toml), the rest test on the horizontal speed,
+//!    through invisible surfaces, gone on sky; characters whose boxes the
+//!    step crosses (the character's, then its hit-box object's, the hit
+//!    spheres' bounds) while the line of motion passes a hit sphere slow
+//!    it by flesh for each, no mirror, every step it is inside
+//!    (`character_touches`); props slow it by their surface the same way;
+//!    grenades in flight whose box it crosses (`box_half`) slow both by
+//!    metal, between one thrower's only with `hits_same_kind`). A
+//!    detonation (8) sends the effect (`Detonated`) and applies its
+//!    instant part at once: a frag's blast (9: everything whose box
+//!    touches the sphere, players twice (Quirk 3), d to the centre, two
+//!    cover traces (every world surface blocks, invisible and traces-only
+//!    ones too; not characters, props or player blockers) and the head-top
+//!    retry, the linear falloff from a quarter of the radius, friendly
+//!    fire by `core::DamageRules`, the armour step for explosions on the
+//!    torso (no stock gear lists them), death at 1 HP), other grenades hit
+//!    and chained in the same frame (13), breakables without a cover test,
+//!    a flash test (10: players once, protection the victim's gear's torso
+//!    flash entries (`weapons::gear_torso`) plus `CaFlashProtection`, the
+//!    body's yaw for the facing, a timer); a smoke's cloud is the clients'
+//!    look only (11: `SmokeCloud` without a `SightBlocker`, so nothing in
+//!    game logic sees it); fire and gas leave a `CaDamageSphere` (12).
 //! 3. Damage spheres refresh the over-time entries of the players inside
 //!    (`CaGrenadeEffects::over_time`).
 //! 4. Flash timers that ran out send the flash (T ≥ 0.1 s) as Chimera's
 //!    `core::Blinded` (white, fading by the end, T/2: its network message
-//!    carries it to the victim's client) and `CaFlashed`; over-time
-//!    entries deal their rate × dt through the armour step (burn halved by
-//!    body armour with armour points left, poison by a gas mask only).
+//!    carries it to the victim's client; drawn over the HUD, under chat and
+//!    menus) and `CaFlashed`; over-time entries deal their rate × dt
+//!    through the armour step (burn halved by body armour with armour
+//!    points left, poison by a gas mask only).
+//!
+//! Bullets hit a grenade's box (`weapons`); `shot_grenades` takes the
+//! damage off its hit points and one at 1 or less goes off on the next
+//! frame as at its fuse, credited to its thrower (13).
 //!
 //! `flash_white` is the client's screen curve (cos(π t / T) until T/2).
 //! The server's "grenade in hand, pin pulled" flag (`CaPin`: on once the
@@ -62,46 +90,33 @@
 //!
 //! Known shortcuts (the spec's most literal reading where it is unclear,
 //! listed for its open questions):
-//! - The release key time k (Q3) is the throw animation's end (67 ms): the
-//!   grenade leaves 767 ms after the press, a switch before then keeps it;
-//!   the throw starts on the press's tick (the spec's one or two client
-//!   frames before the pre-fire are not modelled); the projectile appears
-//!   a tick after the release (`Throwable` throws strictly after its time),
-//!   then waits for the next server frame (Q6: its first step the frame
-//!   after). The XM84's and M18's animations are the M67's (Q3); the
-//!   re-draw after a throw with some left is the draw (Q5).
-//! - The spread: n = n_min + floor((n_max − n_min) p) g with p the weapon's
-//!   `CaSpread` meters (none on the stock grenades: p = 0, so n = n_min) and
-//!   the limits not multiplied by g, as section 4 gives the flash's 0.06°
-//!   with g = 0 (weapon_firing.md would make it 0). No throw perk (Q13).
-//! - The bounce uses the formula's −0.1 n (twice the Constants' 0.05
-//!   surface push), as the test cases do.
-//! - The at-rest nudge uses the data's `half_height` (PLACEHOLDER, Q9).
-//! - Characters touch a grenade only when its path enters one of their hit
-//!   spheres (the placeholder skeleton), once until it leaves them (a touch
-//!   a step would slow it again inside); the thrower never. Grenades never
-//!   touch each other (points; `hits_same_kind` is read, unused). Moving
-//!   brushes and props bounce it like the world (Q7: not solid in the
-//!   reference). No bounce sound or bots' hearing of it (no assets, no
-//!   bots); spin is drawn only.
-//! - Water: `CaLiquid` boxes with their own gravity, viscosity and current
-//!   (none on any map yet), the map's water volumes at the defaults (−200,
-//!   no viscosity or current); half-volume sounds don't exist.
-//! - Cover traces are blocked by static and kinematic bodies that aren't
-//!   characters, prop entities or "invisible" surfaces. Breakables
-//!   (`Damageable` bodies) take the blast without a cover test.
-//! - Armour: blasts and over-time damage hit the torso (types without
-//!   zones); flash protection is `CaFlashProtection` on the victim (no
-//!   goggles in `weapons::GEARS` yet).
-//! - The flash's facing is the body's yaw (Q11); W and C are the stock 2.0
-//!   and 1.0 (Quirk 6: the victim's weapon's, all the defaults). The screen
-//!   draws Chimera's white overlay over `Blinded` (a linear fade to T/2,
-//!   no screen capture or first-frame HUD hiding); `flash_white` gives the
-//!   spec's cosine for Combat Arms' own overlay when it is drawn.
-//! - Bullets don't hit grenades (Q8); no drop-grenade perk (Q13); no debug
-//!   bounce cap; the round's end doesn't detonate them (no rounds yet: a
-//!   restart clears them, Chimera's); the M67's knock-back is the infection
-//!   mode's (Q14).
+//! - The throw starts on the press's tick (the spec's one or two client
+//!   frames before the pre-fire are not modelled); each animation step
+//!   waits for the first tick at or after its time (a held throw play lasts
+//!   5 ticks, 75 ms); the projectile appears a tick after the release
+//!   (`Throwable` throws strictly after its time). A fire press during the
+//!   reload is not queued: fire must be held when it ends. No throw perk
+//!   (Q13).
+//! - The hit-box object's box is the hit spheres' bounds (its own dims
+//!   aren't in a spec). A character touch snaps the grenade to where the
+//!   step enters a hit sphere (the "short trace"), else leaves it at the
+//!   step's end. Grenade-on-grenade touches don't move either. M-23F and
+//!   G7A boxes are the M67's (PLACEHOLDER: not in the spec). No bounce
+//!   sound or bots' hearing of it (no assets, no bots); spin is drawn only.
+//! - Grenades don't tell the map's invisible polygons or sky portals apart
+//!   (Combat Arms maps' surfaces have no names here): they bounce off clip
+//!   walls and sky surfaces of the map; colliders named "invisible" and
+//!   "sky" behave as the spec says. Half-volume sounds in water don't
+//!   exist. Doors don't move (`world`), so "wherever they are in their
+//!   motion" is where they stand.
+//! - The screen draws Chimera's white overlay over `Blinded` (a linear
+//!   fade to T/2, no screen capture or first-frame HUD hiding);
+//!   `flash_white` gives the spec's cosine for Combat Arms' own overlay when
+//!   it is drawn. Gear is known by its flash entries only.
+//! - No drop-grenade perk (Q13); no debug bounce cap; no map cameras (a
+//!   grenade going off while one is on would be removed without effect);
+//!   a new round still ends a flash (Chimera's restart clears `Blinded`);
+//!   the M67's knock-back is the infection mode's (Q14).
 //! - Placeholder looks (L10 not lifted): a ball in flight, a grey ball for
 //!   the smoke (`ui::visuals`), no explosion or flash models.
 
@@ -113,9 +128,10 @@ use serde::Deserialize;
 
 use super::{
     inventory::{CaSelection, UNIT},
+    volumes::{CaVolume, LIQUID_GRAVITY},
     weapons::{
-        ArmourHit, BURN, CaArmor, CaSpread, EXPLOSION, HitSpheres, Location, MALE, POISON, armour_and_zone,
-        body_geometry, square_dir,
+        ArmourHit, BURN, CaArmor, CaSpread, EXPLOSION, FLASH, HitSpheres, Location, MALE, POISON, armour_and_zone,
+        body_geometry, box_entry, gear_torso, square_dir,
     },
 };
 use crate::{
@@ -129,7 +145,7 @@ use crate::{
         data::{WeaponData, WeaponDataAppExt},
         grenade::{
             Blast, Detonated, Flash, Flight, GameFlown, GrenadeEffect, GrenadeKind, Launch, Projectile, Smoke,
-            SmokeCloud, ThrowOptions, ThrowRule, Throwable, spawn_projectile,
+            SmokeCloud, SurvivesRestart, ThrowOptions, ThrowRule, Throwable, spawn_projectile,
         },
         random::shared_random,
     },
@@ -153,8 +169,13 @@ pub const OBJECT_GRAVITY: f32 = 1600.0;
 pub const GRAVITY_INTEGRATION_FACTOR: f32 = 0.25;
 /// A velocity with |v|² below this, (u/s)², is zeroed before the step.
 pub const SLOW_STOP: f32 = 0.1;
-/// The bounce's push off the surface, u/s (the formula's −0.1 n).
-pub const SURFACE_PUSH: f32 = 0.1;
+/// The engine's push into a surface per contact, u/s; a bounce takes it
+/// twice, inside the hardness (the formula's −0.1 n, Q18).
+pub const SURFACE_PUSH: f32 = 0.05;
+/// A grenade's own surface (what other grenades touching it meet).
+pub const GRENADE_SURFACE: &str = "metal";
+/// Viscosity and current act only above this speed, u/s.
+pub const VISCOSITY_MIN_SPEED: f32 = 1.0;
 /// `GrenadeDampenPercent`: what a bounce loses on a surface not in the
 /// table.
 pub const DEFAULT_DAMPEN: f32 = 0.35;
@@ -182,9 +203,10 @@ pub const WHITE_DECL: f32 = 2.0;
 pub const CAPTURED_DECL: f32 = 1.0;
 /// The live grenade released when its holder dies, u/s.
 pub const DEATH_RELEASE_SPEED: f32 = 500.0;
-/// A water volume's gravity unless the level sets another, u/s².
-pub const LIQUID_GRAVITY: f32 = -200.0;
-/// Speed lost per unit of a water volume's viscosity, u/s².
+/// The class defaults other games' water takes (`MapWater`): `Water`'s
+/// viscosity.
+pub const WATER_VISCOSITY: f32 = 0.035;
+/// Speed lost per unit of a volume's viscosity, u/s².
 pub const LIQUID_VISCOSITY_SCALE: f32 = 5000.0;
 /// A grenade at this many HP or fewer after damage goes off.
 pub const DESTROYED_AT: f32 = 1.0;
@@ -250,11 +272,14 @@ pub struct GrenadeParams {
     /// `SpawnedAmount`, `MaxAmount`.
     pub spawned: u32,
     pub max: u32,
-    /// Pre-fire (pin pull), the release key time inside the throw, the
-    /// post-fire.
+    /// The view-model animations (3): pre-fire (pin pull), the throw
+    /// (repeated while fire is held), the post-fire with the release's
+    /// key time inside it, and the reload that re-readies the next.
     pub prefire: f32,
-    pub release_key: f32,
+    pub throw_loop: f32,
     pub postfire: f32,
+    pub release_key: f32,
+    pub reload: f32,
     /// `MinPerturb`, `MaxPerturb` (thousandths), `DynamicPerturbFactor`.
     pub perturb: [u32; 2],
     #[serde(default)]
@@ -278,9 +303,10 @@ pub struct GrenadeParams {
     /// The lasting sphere (fire, gas).
     #[serde(default)]
     pub over_time: Option<OverTimeParams>,
-    /// The world model's half-height, for the at-rest nudge.
-    #[serde(default)]
-    pub half_height: f32,
+    /// The grenade's box, half-extents (u): its world model's first
+    /// animation × its scale 2 (`grenade_box`); y is the half-height of
+    /// the at-rest nudge.
+    pub box_half: [f32; 3],
 }
 
 /// Weapon part: a Combat Arms grenade's numbers, and its document's units
@@ -343,20 +369,8 @@ impl CaGrenadeSurfaces {
     }
 }
 
-/// A water volume (a LithTech container) as a box, world metres, with its
-/// gravity (u/s², the level's or `LIQUID_GRAVITY`), viscosity (0-1) and
-/// current (u/s).
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
-pub struct CaLiquid {
-    pub min: Vec3,
-    pub max: Vec3,
-    pub gravity: f32,
-    pub viscosity: f32,
-    pub current: Vec3,
-}
-
-/// A victim's flash protection: the sum of its gear's torso entries for
-/// the flash type (anti-flash goggles: 1.0; others 0.3, 0.5, 0.7).
+/// Flash protection a victim has beyond its gear's (`CaArmor`'s flash
+/// entries, summed with this; set items, tests).
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct CaFlashProtection(pub f32);
 
@@ -427,12 +441,12 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
         Throwable {
             count: p.spawned.min(p.max.max(p.spawned)),
             max: p.max,
-            // The release is the throw animation's fire event (3.4): the
-            // pin's time runs to it.
-            pin_time: p.prefire + p.release_key,
-            throw_delay: 0.0,
+            // The pre-fire, then the throw animation (`hold_loop`); the
+            // post-fire's key releases it; the reload re-readies (3).
+            pin_time: p.prefire,
+            throw_delay: p.release_key,
             throw_time: p.postfire,
-            redraw_time: d.draw,
+            redraw_time: p.reload,
             fuse: p.fuse,
             // Unused: `launch` makes the projectile and this module flies
             // it (`GameFlown`).
@@ -470,6 +484,7 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
         },
         ThrowOptions {
             release_at_pin_end: true,
+            hold_loop: Some(p.throw_loop),
             drop_primed: false,
             launch: Some(launch),
         },
@@ -507,8 +522,8 @@ pub struct CaGrenade {
     /// u, u/s.
     pub pos: Vec3,
     pub velocity: Vec3,
-    /// The server frame it started on (None until the first after it was
-    /// made).
+    /// The server frame its start time is (the one before the first it is
+    /// stepped in; None until then).
     pub created: Option<u64>,
     /// Physics steps run.
     pub steps: u32,
@@ -523,8 +538,8 @@ pub struct CaGrenade {
     /// Creation order (updates run in it).
     pub seq: u64,
     pub contacts: Vec<Contact>,
-    /// The character it is passing through.
-    pub inside: Option<Entity>,
+    /// Its hit points are gone (13): it goes off on the next frame.
+    pub destroyed: bool,
     /// Visual spin, rad/s.
     pub spin: Vec3,
 }
@@ -619,10 +634,46 @@ pub fn flight_step(v: Vec3, gravity: f32, dt: f32) -> (Vec3, Vec3) {
     (v * dt + GRAVITY_INTEGRATION_FACTOR * g * dt * dt, v + g * dt)
 }
 
-/// A bounce (6): the post-gravity `v` mirrored on `n`, pushed off and kept
-/// by the hardness `h`; and whether it comes to rest.
+/// The throw's cone n (thousandths, 4): weapon_firing.md's, the limits
+/// `perturb` multiplied by the dynamic factor `g` and truncated first,
+/// then n_min + ⌊(n_max − n_min) p⌋ g; none at all when n_max is 0.
+pub fn throw_perturb(perturb: [u32; 2], g: f32, p: f32) -> f32 {
+    let lo = (perturb[0].min(perturb[1]) as f64 * g as f64).floor();
+    let hi = (perturb[1] as f64 * g as f64).floor();
+    if hi <= 0.0 {
+        return 0.0;
+    }
+    (lo + ((hi - lo) * p as f64).floor() * g as f64) as f32
+}
+
+/// How many times a character slows a grenade in one step (6): a touch
+/// for each of its boxes the step `from`..`to` crosses (`min`..`max`, the
+/// character's; then its hit-box object's, the bounds of its hit
+/// `spheres`), counted only when the infinite line through `from` along
+/// `v` passes within a sphere's radius.
+pub fn character_touches(from: Vec3, to: Vec3, v: Vec3, min: Vec3, max: Vec3, spheres: &[(Vec3, f32)]) -> u32 {
+    let Some(line) = v.try_normalize() else { return 0 };
+    let passes = spheres.iter().any(|(c, r)| {
+        let w = *c - from;
+        (w - line * w.dot(line)).length_squared() <= r * r
+    });
+    if !passes {
+        return 0;
+    }
+    let d = to - from;
+    let (len, dir) = (d.length(), d.normalize_or_zero());
+    let crosses = |lo: Vec3, hi: Vec3| box_entry(lo, hi, from, dir, len).is_some();
+    let (slo, shi) = spheres.iter().fold((Vec3::MAX, Vec3::MIN), |(a, b), (c, r)| {
+        (a.min(*c - Vec3::splat(*r)), b.max(*c + Vec3::splat(*r)))
+    });
+    crosses(min, max) as u32 + (!spheres.is_empty() && crosses(slo, shi)) as u32
+}
+
+/// A bounce (6): the post-gravity `v` mirrored on `n`, the engine's push
+/// (0.05 u/s per contact, twice) inside, all kept by the hardness `h`; and
+/// whether it comes to rest.
 pub fn bounce(v: Vec3, n: Vec3, h: f32) -> (Vec3, bool) {
-    let out = h.clamp(0.0, 1.0) * (v - 2.0 * v.dot(n) * n - SURFACE_PUSH * n);
+    let out = h.clamp(0.0, 1.0) * (v - 2.0 * v.dot(n) * n - 2.0 * SURFACE_PUSH * n);
     if out.xz().length() < REST_SPEED && n.y > REST_FLOOR_NORMAL {
         (Vec3::ZERO, true)
     } else {
@@ -679,9 +730,25 @@ impl Plugin for CaGrenadesPlugin {
                         .after(WeaponFrame)
                         .in_set(SimSet::Weapons),
                     death_release.after(crate::core::apply_damage),
+                    shot_grenades.before(server_frames).in_set(SimSet::Weapons),
                 )
                     .run_if(crate::core::authoritative),
             );
+    }
+}
+
+/// Damage to a live grenade (bullets, 13) comes off its hit points; at 1
+/// or less it goes off on the next server frame, as at its fuse.
+fn shot_grenades(mut damage: MessageReader<Damage>, mut grenades: Query<&mut CaGrenade>) {
+    for d in damage.read() {
+        let Ok(mut g) = grenades.get_mut(d.target) else { continue };
+        if d.amount <= 0.0 || g.destroyed {
+            continue;
+        }
+        g.health -= d.amount / g.hp;
+        if g.health <= DESTROYED_AT {
+            g.destroyed = true;
+        }
     }
 }
 
@@ -751,8 +818,7 @@ pub fn launch(world: &mut World, l: Launch) {
     };
     let p = &data.params;
     let fraction = world.get::<CaSpread>(l.weapon).map_or(0.0, |s| s.fraction());
-    let (lo, hi) = (p.perturb[0].min(p.perturb[1]), p.perturb[1]);
-    let n = lo as f32 + ((hi - lo) as f32 * fraction).floor() * p.dynamic_perturb;
+    let n = throw_perturb(p.perturb, p.dynamic_perturb, fraction);
     let mut rng = shared_random(l.command, HOOK, 0);
     let (u1, u2) = (rng.next(), rng.next());
     let aim = Quat::from_euler(EulerRot::YXZ, l.yaw, l.pitch, 0.0);
@@ -790,6 +856,8 @@ pub fn spawn_grenade(
     }
     ent.insert((
         GameFlown,
+        // A new round leaves it (15).
+        SurvivesRestart,
         CaGrenade {
             weapon: id,
             params: data.params.clone(),
@@ -807,7 +875,7 @@ pub fn spawn_grenade(
             health: data.params.health,
             seq,
             contacts: Vec::new(),
-            inside: None,
+            destroyed: false,
             spin,
         },
     ));
@@ -873,7 +941,8 @@ struct GrenadeWorld<'w, 's> {
         Without<CaGrenade>,
     >,
     breakables: Query<'w, 's, (Entity, &'static ColliderAabb), (With<Damageable>, Without<Intent>)>,
-    liquids: Query<'w, 's, &'static CaLiquid>,
+    prop_boxes: Query<'w, 's, (Entity, &'static ColliderAabb), With<PropEntity>>,
+    volumes: Query<'w, 's, &'static CaVolume>,
     water: Option<Res<'w, MapWater>>,
     table: Res<'w, CaGrenadeSurfaces>,
     entities: &'w bevy::ecs::entity::Entities,
@@ -911,7 +980,8 @@ impl GrenadeWorld<'_, '_> {
     }
 
     /// The first world surface on the segment (m): distance (m), normal,
-    /// collider. Characters, `skip` and invisible surfaces are passed.
+    /// collider. Characters, props, `skip` and invisible surfaces are
+    /// passed; traces-only detail and solid world models are met (5, 6).
     fn cast(&self, from: Vec3, to: Vec3, skip: Option<Entity>) -> Option<(f32, Vec3, Entity)> {
         let d = to - from;
         let dir = Dir3::new(d).ok()?;
@@ -919,14 +989,28 @@ impl GrenadeWorld<'_, '_> {
         self.spatial
             .cast_ray_predicate(from, dir, d.length(), true, &filter, &|e| {
                 let body = self.body(e);
-                Some(body) != skip && !self.people.contains(body) && !self.invisible(e)
+                Some(body) != skip && !self.people.contains(body) && !self.props.contains(body) && !self.invisible(e)
             })
             .map(|h| (h.distance, h.normal, h.entity))
     }
 
-    /// Whether solid world geometry or a moving brush stops the segment
-    /// (m) one way (cover, 9): static and kinematic bodies, not
-    /// characters, prop entities or invisible surfaces.
+    /// The first prop on the segment (m): the fraction along it and its
+    /// surface's hardness (6: a touch, no mirror).
+    fn prop_touch(&self, from: Vec3, to: Vec3) -> Option<(f32, f32)> {
+        let d = to - from;
+        let (len, dir) = (d.length(), d.normalize_or_zero());
+        self.prop_boxes
+            .iter()
+            .filter_map(|(e, b)| {
+                let t = box_entry(b.min, b.max, from, dir, len)?;
+                Some((t / len.max(1e-9), self.table.hardness(self.surface(e).as_deref())))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+    }
+
+    /// Whether the world stops the segment (m) one way (cover, 9): every
+    /// static or kinematic surface queries meet (invisible and traces-only
+    /// ones too, not player blockers), not characters or props.
     fn blocked_one_way(&self, from: Vec3, to: Vec3) -> bool {
         let d = to - from;
         let Ok(dir) = Dir3::new(d) else { return false };
@@ -939,7 +1023,7 @@ impl GrenadeWorld<'_, '_> {
                     .get(e)
                     .or_else(|_| self.rigid.get(body))
                     .is_ok_and(|rb| !rb.is_dynamic());
-                solid && !self.people.contains(body) && !self.props.contains(body) && !self.invisible(e)
+                solid && !self.people.contains(body) && !self.props.contains(body)
             })
             .is_some()
     }
@@ -981,16 +1065,23 @@ impl GrenadeWorld<'_, '_> {
         out
     }
 
-    /// The water at `p` (m): (gravity u/s², viscosity, current u/s).
-    fn liquid(&self, p: Vec3) -> Option<(f32, f32, Vec3)> {
-        if let Some(l) = self.liquids.iter().find(|l| p.cmpge(l.min).all() && p.cmple(l.max).all()) {
-            return Some((l.gravity, l.viscosity, l.current));
-        }
+    /// The volumes `p` (m) is inside (7): (liquid, viscosity, current
+    /// u/s) each; other games' water as `Water` at its class defaults.
+    fn volumes_at(&self, p: Vec3) -> Vec<(bool, f32, Vec3)> {
+        let mut out: Vec<(bool, f32, Vec3)> = self
+            .volumes
+            .iter()
+            .filter(|v| v.contains(p))
+            .map(|v| (v.liquid, v.viscosity, v.current))
+            .collect();
         let wet = self.water.as_ref().is_some_and(|w| {
             w.0.iter()
                 .any(|v| v.brush.planes.iter().all(|(n, d)| n.dot(p) - d <= 0.0))
         });
-        wet.then_some((LIQUID_GRAVITY, 0.0, Vec3::ZERO))
+        if wet {
+            out.push((true, WATER_VISCOSITY, Vec3::ZERO));
+        }
+        out
     }
 }
 
@@ -1151,9 +1242,19 @@ fn run_frame(
     world: &GrenadeWorld,
     out: &mut Out,
 ) {
-    // 1-2. Grenades in creation order.
+    // 1-2. Grenades in creation order; what each is to the others (6).
     let mut order: Vec<(u64, Entity)> = grenades.iter().map(|(e, g, ..)| (g.seq, e)).collect();
     order.sort_unstable_by_key(|(s, _)| *s);
+    let mut others: Vec<Other> = grenades
+        .iter()
+        .map(|(e, g, ..)| Other {
+            entity: e,
+            pos: g.pos,
+            half: Vec3::from(g.params.box_half),
+            thrower: g.thrower,
+            resting: g.resting,
+        })
+        .collect();
     for (_, e) in order {
         if f.gone.contains(&e) {
             continue;
@@ -1162,41 +1263,51 @@ fn run_frame(
             let Ok((_, mut g, mut transform, _)) = grenades.get_mut(e) else {
                 continue;
             };
-            let created = match g.created {
-                None => {
-                    g.created = Some(f.frame);
-                    continue;
-                }
-                Some(c) => c,
-            };
+            // New: its start time is the frame before; stepped in this one.
+            let created = *g.created.get_or_insert(f.frame - 1);
             if let Some(n) = g.nudge.take() {
                 g.pos += n;
                 transform.translation = g.pos * g.unit;
             }
             let elapsed = (f.frame - created) as f64 * f.dt as f64;
-            elapsed + 1e-9 >= g.params.fuse as f64
+            g.destroyed || elapsed + 1e-9 >= g.params.fuse as f64
         };
         if fused {
             f.queue.push(e);
             detonations(f, grenades, world, out);
             continue;
         }
-        let Ok((_, mut g, mut transform, mut projectile)) = grenades.get_mut(e) else {
-            continue;
+        let touched = {
+            let Ok((_, mut g, mut transform, mut projectile)) = grenades.get_mut(e) else {
+                continue;
+            };
+            if g.resting {
+                continue;
+            }
+            let Some(touched) = step(f, e, &mut g, world, &others) else {
+                // Into the sky: gone without a trace.
+                f.gone.push(e);
+                out.commands.entity(e).try_despawn();
+                continue;
+            };
+            transform.translation = g.pos * g.unit;
+            let spin = g.spin * f.dt;
+            transform.rotation *= Quat::from_euler(EulerRot::YXZ, spin.y, spin.x, spin.z);
+            projectile.velocity = g.velocity * g.unit;
+            if let Some(o) = others.iter_mut().find(|o| o.entity == e) {
+                o.pos = g.pos;
+                o.resting = g.resting;
+            }
+            touched
         };
-        if g.resting {
-            continue;
+        // The grenades it touched meet its metal.
+        let metal = world.table.hardness(Some(GRENADE_SURFACE));
+        for o in touched {
+            if let Ok((_, mut other, _, mut projectile)) = grenades.get_mut(o) {
+                other.velocity *= metal;
+                projectile.velocity = other.velocity * other.unit;
+            }
         }
-        if !step(f, &mut g, world) {
-            // Into the sky: gone without a trace.
-            f.gone.push(e);
-            out.commands.entity(e).try_despawn();
-            continue;
-        }
-        transform.translation = g.pos * g.unit;
-        let spin = g.spin * f.dt;
-        transform.rotation *= Quat::from_euler(EulerRot::YXZ, spin.y, spin.x, spin.z);
-        projectile.velocity = g.velocity * g.unit;
     }
     // 3. Lasting explosions refresh the entries of the players inside.
     let bodies = world.bodies();
@@ -1277,9 +1388,19 @@ fn run_frame(
     }
 }
 
-/// One physics step (5-7) of a grenade not at rest. False when it went
-/// into the sky.
-fn step(f: &Frame, g: &mut CaGrenade, world: &GrenadeWorld) -> bool {
+/// Another grenade as one stepping sees it (6): its box (u) and thrower.
+struct Other {
+    entity: Entity,
+    pos: Vec3,
+    half: Vec3,
+    thrower: Option<Entity>,
+    resting: bool,
+}
+
+/// One physics step (5-7) of grenade `me`, not at rest: the grenades it
+/// touched (each slowed by its metal in turn), or None when it went into
+/// the sky.
+fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: &[Other]) -> Option<Vec<Entity>> {
     let dt = f.dt;
     let unit = g.unit;
     g.touched = false;
@@ -1287,21 +1408,26 @@ fn step(f: &Frame, g: &mut CaGrenade, world: &GrenadeWorld) -> bool {
     if v.length_squared() < SLOW_STOP {
         v = Vec3::ZERO;
     }
+    // Volumes (7): viscosity then current (above 1 u/s, viscosity above
+    // 0), each volume in turn; a liquid's gravity.
     let mut gravity = -OBJECT_GRAVITY;
-    if let Some((lg, c, current)) = world.liquid(g.pos * unit) {
-        gravity = lg;
-        if (0.0..=1.0).contains(&c) {
-            let speed = v.length();
-            let loss = LIQUID_VISCOSITY_SCALE * c * dt;
-            v = if loss >= speed { Vec3::ZERO } else { v * (speed - loss) / speed };
+    for (liquid, c, current) in world.volumes_at(g.pos * unit) {
+        let speed = v.length();
+        if c > 0.0 && speed > VISCOSITY_MIN_SPEED {
+            v = v / speed * (speed - LIQUID_VISCOSITY_SCALE * c * dt).max(0.0) + current * dt;
         }
-        v += current * dt;
+        if liquid {
+            gravity = LIQUID_GRAVITY;
+        }
     }
+    // The velocity at the start of the step, before its gravity: an
+    // at-rest nudge goes back along it (6).
+    let start_dir = v.normalize_or_zero();
     let (delta, after) = flight_step(v, gravity, dt);
     g.velocity = after;
     g.steps += 1;
     if delta == Vec3::ZERO {
-        return true;
+        return Some(Vec::new());
     }
     let from = g.pos;
     let to = from + delta;
@@ -1309,62 +1435,80 @@ fn step(f: &Frame, g: &mut CaGrenade, world: &GrenadeWorld) -> bool {
     // The world.
     let wall = world.cast(from * unit, to * unit, g.thrower);
     let wall_t = wall.map_or(f32::MAX, |(d, ..)| d / (delta.length() * unit));
-    // Characters, by their hit spheres (not the thrower, not one it is
-    // already passing through).
-    let mut touch: Option<(f32, Entity)> = None;
-    let mut still_inside = false;
-    for b in world.bodies() {
-        if Some(b.entity) == g.thrower {
+    let mut touched = Vec::new();
+    // Other grenades in flight whose box the step crosses: both slowed by
+    // the other's metal; between one thrower's, only if this kind touches
+    // its own.
+    for o in others {
+        if o.entity == me || o.resting || (o.thrower == g.thrower && !g.params.hits_same_kind) {
             continue;
         }
+        if box_entry(o.pos - o.half, o.pos + o.half, from, dir, delta.length())
+            .is_some_and(|t| t / delta.length() < wall_t)
+        {
+            g.velocity *= world.table.hardness(Some(GRENADE_SURFACE));
+            g.touched = true;
+            touched.push(o.entity);
+        }
+    }
+    // Props the step crosses: slowed by their surface, no mirror.
+    if let Some((t, h)) = world.prop_touch(from * unit, to * unit)
+        && t < wall_t
+    {
+        g.velocity *= h;
+        g.touched = true;
+    }
+    // Characters (not the thrower): a touch per box crossed while the line
+    // of motion passes a hit sphere, each slowing it by flesh, no mirror.
+    let flesh = world.table.hardness(Some("flesh"));
+    let mut snap: Option<f32> = None;
+    for b in world.bodies() {
+        if Some(b.entity) == g.thrower
+            || box_entry(b.min, b.max, from * unit, dir, delta.length() * unit)
+                .is_none_or(|t| t / (delta.length() * unit) >= wall_t)
+        {
+            continue;
+        }
+        let n = character_touches(from * unit, to * unit, g.velocity, b.min, b.max, &b.spheres);
+        if n == 0 {
+            continue;
+        }
+        g.velocity *= flesh.powi(n as i32);
+        g.touched = true;
+        // Snapped to where the step enters a sphere (the short trace).
         let entry = b
             .spheres
             .iter()
             .filter_map(|(c, r)| sphere_entry(from * unit, to * unit, *c, *r))
             .fold(f32::MAX, f32::min);
-        if entry == f32::MAX {
-            continue;
+        if entry < wall_t && snap.is_none_or(|s| entry < s) {
+            snap = Some(entry);
         }
-        if g.inside == Some(b.entity) {
-            still_inside = true;
-            continue;
-        }
-        if touch.is_none_or(|(t, _)| entry < t) {
-            touch = Some((entry, b.entity));
-        }
-    }
-    if !still_inside {
-        g.inside = None;
-    }
-    if let Some((t, who)) = touch
-        && t < wall_t
-    {
-        // Snapped to the contact, slowed by flesh, no mirror; on through.
-        g.pos = from + delta * t;
-        g.velocity *= world.table.hardness(Some("flesh"));
-        g.touched = true;
-        g.last_dir = dir;
-        g.inside = Some(who);
         g.contacts.push(Contact {
             step: g.steps,
-            at: g.pos,
+            at: from + delta * entry.min(1.0),
             velocity: g.velocity,
             rest: false,
         });
-        return true;
+    }
+    if let Some(t) = snap {
+        g.pos = from + delta * t;
+        g.last_dir = dir;
+        return Some(touched);
     }
     let Some((distance, n, collider)) = wall else {
         g.pos = to;
-        return true;
+        g.last_dir = dir;
+        return Some(touched);
     };
     let surface = world.surface(collider);
     if surface.as_deref() == Some("sky") {
-        return false;
+        return None;
     }
     let n = n.normalize_or(Vec3::Y);
     let at = from + dir * (distance / unit);
-    let (v2, rest) = bounce(g.velocity, n, world.table.hardness(surface.as_deref()));
     let h = world.table.hardness(surface.as_deref());
+    let (v2, rest) = bounce(g.velocity, n, h);
     g.pos = at + n * SKIN;
     g.velocity = v2;
     g.touched = true;
@@ -1385,9 +1529,9 @@ fn step(f: &Frame, g: &mut CaGrenade, world: &GrenadeWorld) -> bool {
     if rest {
         g.resting = true;
         g.spin = Vec3::ZERO;
-        g.nudge = Some(-dir * g.params.half_height * h.max(0.1));
+        g.nudge = Some(-start_dir * g.params.box_half[1] * h.max(0.1));
     }
-    true
+    Some(touched)
 }
 
 /// Detonate the queued grenades (8), and those their blasts set off (13).
@@ -1437,6 +1581,7 @@ fn detonations(f: &mut Frame, grenades: &mut Grenades, world: &GrenadeWorld, out
                 CaSmoke {
                     until: f.now + look.fade_end as f64,
                 },
+                SurvivesRestart,
                 Transform::from_translation(at),
             ));
         }
@@ -1563,7 +1708,10 @@ fn flash(f: &mut Frame, g: &CaGrenade, at: Vec3, world: &GrenadeWorld, out: &mut
         if out.spared(b.entity, g.thrower) {
             continue;
         }
-        let amount = p.area_damage * falloff(r, d) * (1.0 - b.flash_protection.clamp(0.0, 1.0));
+        // The gear's torso flash entries summed, with any other protection.
+        let gear = out.armour.get(b.entity).map_or(0.0, |a| gear_torso(&a.gear, FLASH));
+        let protection = (gear + b.flash_protection).clamp(0.0, 1.0);
+        let amount = p.area_damage * falloff(r, d) * (1.0 - protection);
         if amount <= FLASH_MIN_AMOUNT {
             continue;
         }

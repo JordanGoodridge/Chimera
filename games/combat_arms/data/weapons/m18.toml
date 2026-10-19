@@ -1,6 +1,6 @@
 # The M18 smoke grenade: numbers from specs/combat_arms/grenades.md
 # ("Data: one grenade of each kind", its sections in brackets); its
-# animations are assumed the M67's (Open question 3). Our numbers as the
+# animations are the M67's (section 3). Our numbers as the
 # spec gives them, not a file from the game. Units: world units (1.8 cm)
 # and hit points.
 id = "combat_arms:m18"
@@ -23,8 +23,10 @@ move_penalty = 0.03
 spawned = 2
 max = 2
 prefire = 0.7
-release_key = 0.067
+throw_loop = 0.067
 postfire = 0.366
+release_key = 0.133
+reload = 0.4
 # MinPerturb / MaxPerturb 1 / 1, DynamicPerturbFactor 0 [Data; 4].
 perturb = [1, 1]
 dynamic_perturb = 0.0
@@ -38,5 +40,5 @@ health = 50.0
 area_damage = 1.0
 area_radius = 0.0
 area_type = "smoke"
-# PLACEHOLDER (Open question 9).
-half_height = 2.0
+# The box, half-extents: (3, 5, 5) x the model scale 2 [6].
+box_half = [6.0, 10.0, 10.0]

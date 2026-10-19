@@ -527,6 +527,12 @@ pub struct ThrowOptions {
     /// is still held or not (a release before then waits for it); off:
     /// releasing the button releases the grenade.
     pub release_at_pin_end: bool,
+    /// With `release_at_pin_end`: after the pin animation a throw
+    /// animation of this length (s) plays, and plays again from its
+    /// start for as long as the button is held when it ends; the release
+    /// comes at the end of the play running when the button is up
+    /// (Combat Arms: the grenade stays in hand while fire is held).
+    pub hold_loop: Option<f32>,
     /// Dying with the pin out drops the grenade live (`drop_primed`).
     pub drop_primed: bool,
     /// The game makes the projectile itself when the grenade leaves the
@@ -539,6 +545,7 @@ impl Default for ThrowOptions {
     fn default() -> Self {
         Self {
             release_at_pin_end: false,
+            hold_loop: None,
             drop_primed: true,
             launch: None,
         }
@@ -780,7 +787,15 @@ fn throw_frame(
         // at once; or, with `release_at_pin_end`, when the pin's
         // animation ends, held or not).
         let released = if options.release_at_pin_end {
-            due >= st.next_primary
+            let play_over = due >= st.next_primary;
+            match options.hold_loop {
+                // Held when a play ends: it plays again.
+                Some(play) if play_over && intent.fire && active && alive && t.pin => {
+                    st.next_primary = now + play as f64;
+                    false
+                }
+                _ => play_over,
+            }
         } else {
             !intent.fire
         };
@@ -891,7 +906,7 @@ fn throw_frame(
             && due >= st.next_primary
         {
             t.pin = true;
-            st.next_primary = now + t.pin_time as f64;
+            st.next_primary = now + (t.pin_time + options.hold_loop.unwrap_or(0.0)) as f64;
             st.pending = t.pin_sounds.iter().map(|(s, e)| (now + *s as f64, e.clone())).collect();
             events.write(WeaponEvent {
                 owner,
@@ -1690,14 +1705,19 @@ fn smoke_clouds(mut clouds: Query<(Entity, &SmokeCloud, &mut SightBlocker)>, mut
     }
 }
 
+/// On a projectile or smoke cloud: a new round leaves it be (Combat Arms'
+/// grenades carry over into the next round, its grenades.md section 15).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct SurvivesRestart;
+
 /// A new round clears grenades in flight, spent ones, clouds and
-/// blindness.
+/// blindness (but what `SurvivesRestart` marks).
 #[allow(clippy::type_complexity)]
 fn clear_on_restart(
     restarts: Option<Res<RoundRestarts>>,
     mut seen: Local<u32>,
-    gone: Query<Entity, Or<(With<Projectile>, With<SmokeCloud>)>>,
-    clouds: Query<&SmokeCloud>,
+    gone: Query<Entity, (Or<(With<Projectile>, With<SmokeCloud>)>, Without<SurvivesRestart>)>,
+    clouds: Query<&SmokeCloud, Without<SurvivesRestart>>,
     blinded: Query<Entity, With<Blinded>>,
     mut commands: Commands,
 ) {

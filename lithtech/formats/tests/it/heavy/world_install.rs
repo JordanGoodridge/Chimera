@@ -544,3 +544,50 @@ fn case_7_keyed_maps() {
     }
     assert_eq!(n, 72);
 }
+
+/// Test cases 9 and 10 on the Steam copy of WAREHOUSE (the older
+/// client's has the same size): 4,960 of its 37,648 physics-BSP polygons
+/// lack the solid bit; 50 collision-blocker polygons.
+#[test]
+fn case_9_10_warehouse_solid_bits_and_blockers() {
+    let Some((_, w)) = read_map("WORLDS2.rez", "worlds2/warehouse.dat") else { return };
+    let physics = w.physics().unwrap();
+    let non_solid = (0..physics.polygons.len())
+        .filter(|&i| physics.polygon_surface(i).flags & lithtech_formats::world::surface_flags::SOLID == 0)
+        .count();
+    assert_eq!((non_solid, physics.polygons.len()), (4_960, 37_648));
+    assert_eq!(w.blockers.polygons.len(), 50);
+}
+
+/// Test case 21 on the 33 plain maps: every byte of every class name,
+/// property name, string property, world-model name, BSP texture name and
+/// render section name is below 0x80; and no object record's length
+/// disagrees with its content.
+#[test]
+fn case_21_eight_bit_text() {
+    let Some(maps) = plain_maps() else { return };
+    for (_, path, bytes) in maps {
+        let w = World::parse(&bytes).unwrap();
+        assert!(w.warnings.is_empty(), "{path}: {:?}", w.warnings);
+        let mut texts: Vec<&str> = Vec::new();
+        for o in &w.objects {
+            texts.push(&o.class);
+            for p in &o.properties {
+                texts.push(&p.name);
+                if let lithtech_formats::world::Value::String(s) = &p.value {
+                    texts.push(s);
+                }
+            }
+        }
+        for m in &w.models {
+            texts.push(&m.name);
+            texts.extend(m.textures.iter().map(String::as_str));
+        }
+        for b in w.render.all_blocks() {
+            for s in &b.sections {
+                texts.extend(s.textures.iter().map(String::as_str));
+            }
+        }
+        assert!(texts.iter().all(|t| t.chars().all(|c| (c as u32) < 0x80)), "{path}");
+    }
+}

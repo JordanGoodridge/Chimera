@@ -93,3 +93,48 @@ fn whole_install_sweep() {
         ])
     );
 }
+
+/// Test case 21: SPRINKLE_RIVER's detail link and 256XSPRINKLE01's
+/// self-link resolve to the same file; the detail scale is the base
+/// texture's (stored 0.0: 1.0). Case 22 on the same name without its
+/// extension: nothing to resolve.
+#[test]
+fn t21_t22_link_resolution() {
+    use lithtech_formats::dtx::{LinkKind, link_path};
+    let Some(b) = read("TEXTURES.rez", "textures/etc/sprinkle_river.dtx") else { return };
+    let river = Dtx::parse(b).unwrap();
+    let link = river.link().unwrap();
+    assert_eq!((link.kind, link.names[0].as_str()), (LinkKind::DetailTex, "textures\\Etc\\256xSprinkle01.dtx"));
+    assert_eq!((river.detail_scale, river.detail_rotation), (1.0, 0));
+    let target = link_path(&link.names[0]);
+    let sprinkle = Dtx::parse(read("TEXTURES.rez", &target).expect("resolves")).unwrap();
+    let own = link_path(&sprinkle.link().unwrap().names[0]);
+    assert_eq!(own, target, "the self-link: one texture");
+    let rez = RezArchive::open(game_dir().unwrap().join("TEXTURES.rez"), &RezKeys::new()).unwrap();
+    let bare = target.strip_suffix(".dtx").unwrap();
+    assert!(!rez.entries().iter().any(|e| e.path == bare), "no file without the extension");
+}
+
+/// Test case 15 on the install: the texture groups (0 nearly everywhere;
+/// 1, 2, 3 and 5 in `FX.rez`) and the levels the shipped DetailLevel 2
+/// skips for each (group 5: none, for want of its value, Q4).
+#[test]
+fn t15_groups_and_skipped_levels() {
+    use lithtech_formats::dtx::DETAIL_LEVEL;
+    let Some(game) = game_dir() else { return };
+    let rez = RezArchive::open(game.join("FX.rez"), &RezKeys::new()).unwrap();
+    let mut groups: BTreeMap<u8, usize> = BTreeMap::new();
+    for e in rez.entries().into_iter().filter(|e| e.path.ends_with(".dtx")) {
+        let Ok(t) = Dtx::parse(rez.read(&e.path).unwrap().unwrap()) else { continue };
+        *groups.entry(t.group).or_default() += 1;
+        let want = match t.group {
+            1 | 2 => 1,
+            3 => 2,
+            _ => 0,
+        };
+        assert_eq!(t.skipped_levels(DETAIL_LEVEL, 0), want.min(t.mip_count - 1), "{}", e.path);
+    }
+    for (g, n) in [(1, 111), (2, 157), (3, 40), (5, 28)] {
+        assert_eq!(groups.get(&g), Some(&n), "group {g}: {groups:?}");
+    }
+}

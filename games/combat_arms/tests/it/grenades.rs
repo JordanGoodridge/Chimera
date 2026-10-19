@@ -24,8 +24,8 @@ use std::time::Duration;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use chimera_core::core::{
-    Blinded, Damage, DamageKind, FriendlyFire, Health, Hitgroup, Intent, MovementState, PropSurface,
-    SightBlocker, Team,
+    Blinded, Damage, DamageKind, Damageable, FriendlyFire, Health, Hitgroup, Intent, MovementState,
+    PLAYER_CLIP_LAYER, PropSurface, RoundRestarts, SightBlocker, TRACE_ONLY_LAYER, Team,
 };
 use chimera_net::{harness::NetSim, net::memory::LinkConditions, net::predict::NetGraph};
 use chimera_sim::weapon::{
@@ -38,11 +38,12 @@ use combat_arms::{
     game::{
         TICK_INTERVAL,
         grenades::{
-            self, CaFlashProtection, CaFlashed, CaGrenade, CaLiquid, CaServerFrames, G7A, M18, M23F, M67, XM84,
-            bounce, flash_white,
+            self, CaFlashProtection, CaFlashed, CaGrenade, CaServerFrames, G7A, M18, M23F, M67, XM84, bounce,
+            character_touches, flash_white, throw_perturb,
         },
         movement,
-        weapons::{CaArmor, DEFAULT_BODY_GEAR, MALE, body_geometry},
+        volumes::CaVolume,
+        weapons::{CaArmor, DEFAULT_BODY_GEAR, MALE, body_geometry, gear},
     },
     harness::CaSim,
 };
@@ -96,6 +97,18 @@ fn solid(sim: &mut Sim, min: Vec3, max: Vec3, surface: Option<&str>) -> Entity {
         e.insert(PropSurface(s.into()));
     }
     let e = e.id();
+    sim.ticks(1);
+    e
+}
+
+/// A static box only some things meet, as a Combat Arms map's collision
+/// sets are (`layer`: the traces-only or the players-only layer).
+fn layered(sim: &mut Sim, min: Vec3, max: Vec3, layer: avian3d::prelude::LayerMask) -> Entity {
+    let e = solid(sim, min, max, None);
+    sim.app
+        .world_mut()
+        .entity_mut(e)
+        .insert(CollisionLayers::new(layer, LayerMask::NONE));
     sim.ticks(1);
     e
 }
@@ -276,12 +289,12 @@ fn t03_dropped_straight_down() {
     let c = s.contacts[0];
     assert!(c.rest && s.resting && s.velocity == Vec3::ZERO);
     assert_near(c.at, Vec3::ZERO, 0.05, "contact");
-    // Then only the one-time nudge (half-height x 0.65, up).
+    // Then only the one-time nudge (half-height 6 x 0.65, up: case 43).
     let created = s.created.unwrap();
     sim.seconds(1.0);
     let s = state(&sim, g);
     assert_eq!(s.steps, 6, "no more steps at rest");
-    assert_near(s.pos, Vec3::new(0.0, 2.0 * 0.65, 0.0), 0.05, "nudged");
+    assert_near(s.pos, Vec3::new(0.0, 3.9, 0.0), 0.05, "nudged");
     let (f, ..) = until_boom(&mut sim, 2.0);
     assert_eq!(f - created, 50, "at 2.5 s");
 }
@@ -656,14 +669,8 @@ fn t26_no_thrower_velocity() {
     sim.seconds(1.0);
     let v = sim.velocity(p);
     assert!(v.length() > 2.0, "moving: {v}");
-    sim.intent(p).fire = true;
-    for _ in 0..200 {
-        sim.ticks(1);
-        if !live(&mut sim).is_empty() {
-            break;
-        }
-    }
-    let g = live(&mut sim)[0];
+    // A tap (held, the grenade stays in hand: case 37).
+    let (g, _) = throw_timed(&mut sim, p, TICK_INTERVAL, 3.0).expect("thrown");
     let s = state(&sim, g);
     assert_near(s.velocity, Vec3::new(0.0, 0.0, 1550.0), 0.05, "the view's direction at 1550, nothing carried");
     let start = s.pos;
@@ -671,31 +678,89 @@ fn t26_no_thrower_velocity() {
     assert_near(s.pos - start, Vec3::new(0.0, -1.0, 77.5), 0.05, "test 1's step");
 }
 
+/// Press fire with a grenade in hand at tick t0 + 1, hold it `hold` s
+/// (at least a tick), run until a grenade leaves (or `limit` s): the
+/// grenade and its time since the press (s).
+fn throw_timed(sim: &mut Sim, p: Entity, hold: f64, limit: f64) -> Option<(Entity, f64)> {
+    let t0 = sim.tick();
+    sim.intent(p).fire = true;
+    for _ in 0..((limit / TICK_INTERVAL) as u64) {
+        sim.ticks(1);
+        let since = (sim.tick() - t0) as f64 * TICK_INTERVAL - TICK_INTERVAL;
+        if since + 1e-9 >= hold {
+            sim.intent(p).fire = false;
+        }
+        if let Some(g) = live(sim).first() {
+            return Some((*g, since));
+        }
+    }
+    None
+}
+
+/// Case 27's fuse part (its release time is case 37's): held 3 s, the
+/// grenade stays in hand; the fuse counts from the server's frame.
 #[test]
 fn t27_no_cooking() {
     let mut sim = sim();
     let (p, _) = holding(&mut sim, M67);
-    let t0 = sim.tick();
-    sim.intent(p).fire = true;
-    let mut out = None;
-    for _ in 0..200 {
-        sim.ticks(1);
-        if let Some(g) = live(&mut sim).first() {
-            out = Some((*g, (sim.tick() - t0) as f64 * TICK_INTERVAL));
-            break;
-        }
-    }
-    let (g, left) = out.expect("thrown while held");
-    // Pressed on tick t0 + 1: the release at 767 ms, the grenade a tick
-    // after it.
-    let since_press = left - TICK_INTERVAL;
-    assert!(since_press >= 0.767 - 1e-6 && since_press <= 0.767 + 2.0 * TICK_INTERVAL, "left at {since_press}");
+    let (g, left) = throw_timed(&mut sim, p, 3.0, 4.0).expect("thrown");
+    assert!(left > 3.0, "in hand while held: left at {left}");
     sim.ticks(5);
     let created = state(&sim, g).created.unwrap();
-    // Held 3 s in all; the fuse counts from the server's frame.
     let (f, ..) = until_boom(&mut sim, 3.5);
     assert_eq!(f - created, 50);
-    sim.intent(p).fire = false;
+}
+
+/// Cases 36 and 38: a tap. Throw animation 700-767 ms, the post-fire from
+/// 767 ms, the release at its key, 900 ms (none at the throw animation's
+/// end); for the XM84 with 2, the reload 1133-1533 ms, then the second
+/// pre-fire. Our ticks are 15 ms: each step waits for the first tick at or
+/// after its time, and the grenade appears a tick after the release.
+#[test]
+fn t36_t38_tap_throw_timing() {
+    let tick = TICK_INTERVAL;
+    for id in [M67, XM84, M18] {
+        let mut sim = sim();
+        let (p, w) = holding(&mut sim, id);
+        let (first, left) = throw_timed(&mut sim, p, tick, 2.0).expect("thrown");
+        assert!((0.900 - 1e-6..=0.900 + 3.0 * tick).contains(&left), "{id}: left at {left}");
+        if id == XM84 {
+            // The second: fire held from 1.2 s to 1.6 s starts its pre-fire
+            // when the reload ends (1533 ms), released at 1533 + 900.
+            assert_eq!(sim.app.world().get::<Throwable>(w).unwrap().count, 1);
+            let start = left + tick;
+            sim.seconds(1.2 - start);
+            let pressed = sim.tick();
+            sim.intent(p).fire = true;
+            let mut second = None;
+            for _ in 0..200 {
+                sim.ticks(1);
+                let t = 1.2 + (sim.tick() - pressed) as f64 * tick;
+                if t >= 1.6 {
+                    sim.intent(p).fire = false;
+                }
+                // (The first may have gone off: its fuse is 1.5 s.)
+                if live(&mut sim).iter().any(|g| *g != first) {
+                    second = Some(t);
+                    break;
+                }
+            }
+            let second = second.expect("a second throw");
+            assert!((2.433 - 1e-6..=2.433 + 8.0 * tick).contains(&second), "second at {second}");
+        }
+    }
+}
+
+/// Case 37: fire held until 3000 ms keeps the grenade in hand; the throw
+/// animation restarts while held, the post-fire starts when the play
+/// running at the release ends, and the grenade leaves 133 ms later. Our
+/// plays last whole ticks (5 of 15 ms for the 67 ms).
+#[test]
+fn t37_hold_throw_timing() {
+    let mut sim = sim();
+    let (p, _) = holding(&mut sim, M67);
+    let (_, left) = throw_timed(&mut sim, p, 3.0, 4.0).expect("thrown");
+    assert!((3.0 + 0.133..=3.0 + 0.075 + 0.133 + 3.0 * TICK_INTERVAL).contains(&left), "left at {left}");
 }
 
 #[test]
@@ -863,17 +928,450 @@ fn t34_nerve_gas() {
 #[test]
 fn t35_water() {
     let mut sim = sim();
-    sim.app.world_mut().spawn(CaLiquid {
-        min: Vec3::new(-5.0, -1.0, -5.0),
-        max: Vec3::new(5.0, 5.0, 5.0),
-        gravity: grenades::LIQUID_GRAVITY,
-        viscosity: 0.0,
-        current: Vec3::ZERO,
-    });
+    let box_min = Vec3::new(-5.0, -1.0, -5.0);
+    let box_max = Vec3::new(5.0, 5.0, 5.0);
+    sim.app
+        .world_mut()
+        .spawn(CaVolume::liquid_box(box_min, box_max, 0.0, Vec3::ZERO));
     let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 200.0, 0.0), Vec3::ZERO);
     let s = to_step(&mut sim, g, 1);
     assert_near(s.velocity, Vec3::new(0.0, -10.0, 0.0), 0.05, "v");
     assert!((200.0 - s.pos.y - 0.125).abs() < 1e-3, "drop {}", 200.0 - s.pos.y);
+}
+
+// ---------------------------------------------------------------------------
+// The follow-up answers (36-58)
+
+/// Cases 39 and 40: the flash and smoke fly exactly along the view
+/// (g = 0 makes the cone's top 0) whatever the thrower does; the frag's
+/// cone is 1 thousandth (p is 0 in stock play), 5 at p = 0.5.
+#[test]
+fn t39_t40_throw_spread() {
+    assert_eq!(throw_perturb([1, 1], 0.0, 0.0), 0.0);
+    assert_eq!(throw_perturb([1, 1], 0.0, 1.0), 0.0);
+    assert_eq!(throw_perturb([1, 10], 1.0, 0.0), 1.0);
+    assert_eq!(throw_perturb([1, 10], 1.0, 0.5), 5.0);
+    for (id, moving) in [(XM84, true), (M18, true), (M67, false)] {
+        let mut sim = sim();
+        let (p, _) = holding(&mut sim, id);
+        if moving {
+            sim.intent(p).move_axis = Vec2::new(0.0, 1.0);
+            sim.intent(p).jump = true;
+            sim.seconds(0.5);
+        }
+        let (g, _) = throw_timed(&mut sim, p, TICK_INTERVAL, 2.0).expect("thrown");
+        // The throw's velocity: gravity's taken off for any step already run.
+        let s = state(&sim, g);
+        let d = (s.velocity + Vec3::Y * 80.0 * s.steps as f32).normalize();
+        if id == M67 {
+            // Within 0.001 on each of the right and up axes.
+            assert!(d.x.abs() <= 0.001 + 1e-6 && (d.y / d.z).abs() <= 0.001 + 1e-6, "{d}");
+        } else {
+            assert!(d.x.abs() < 1e-6 && d.y.abs() < 1e-6, "{id}: exactly forward, {d}");
+        }
+    }
+}
+
+/// Case 41: the bounce's push (0.05 per contact, taken twice) sits inside
+/// the hardness.
+#[test]
+fn t41_bounce_push() {
+    let (v, rest) = bounce(Vec3::new(100.0, -300.0, 0.0), Vec3::Y, 0.65);
+    assert!(!rest);
+    assert!((v - Vec3::new(65.0, 194.935, 0.0)).abs().max_element() < 1e-3, "{v}");
+}
+
+/// Case 42: the first physics step is in the server frame the grenade is
+/// made in; its start time is the frame before; 49 steps, and it goes off
+/// at the start of the frame 2.45 s after the first.
+#[test]
+fn t42_first_step_in_the_creation_frame() {
+    let mut sim = sim();
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 20000.0, 0.0), Vec3::ZERO);
+    let frame = sim.app.world().resource::<CaServerFrames>().frame;
+    while sim.app.world().resource::<CaServerFrames>().frame == frame {
+        assert_eq!(state(&sim, g).steps, 0);
+        sim.ticks(1);
+    }
+    let first = sim.app.world().resource::<CaServerFrames>().frame;
+    let s = state(&sim, g);
+    assert_eq!((s.steps, s.created), (1, Some(first - 1)), "stepped in its first frame");
+    let s = to_step(&mut sim, g, 49);
+    let (boom, ..) = until_boom(&mut sim, 1.0);
+    assert_eq!(s.steps, 49);
+    assert_eq!(boom - first, 49, "2.45 s after the first frame");
+}
+
+/// Case 43's other grenades (the M67's is case 3): an XM84 dropped as in
+/// case 3 rises 10 x 0.65 = 6.5; on sand (0.1), 1.0.
+#[test]
+fn t43_rest_nudge_xm84() {
+    for (surface, up) in [(None, 6.5), (Some("desert sand"), 1.0)] {
+        let mut sim = sim();
+        if surface.is_some() {
+            solid(&mut sim, Vec3::new(-10.0, -0.5, -10.0), Vec3::new(10.0, 0.001, 10.0), surface);
+        }
+        let g = grenade(&mut sim, XM84, None, Vec3::new(0.0, 60.0, 0.0), Vec3::ZERO);
+        let s = to_step(&mut sim, g, 6);
+        assert!(s.resting, "{:?}", s.contacts);
+        sim.seconds(0.2);
+        // From the floor's top (the sand's is 0.001 m up).
+        let floor = if surface.is_some() { 0.001 / U } else { 0.0 };
+        assert_near(state(&sim, g).pos, Vec3::new(0.0, floor + up, 0.0), 0.05, "nudged");
+    }
+}
+
+/// Case 44: a slanted stop is nudged back along the velocity at the
+/// start of its step (76, -400, 0), not the step's path.
+#[test]
+fn t44_rest_nudge_slanted() {
+    let mut sim = sim();
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 10.0, 0.0), Vec3::new(76.0, -400.0, 0.0));
+    let s = to_step(&mut sim, g, 1);
+    let c = s.contacts[0];
+    assert!(c.rest, "{c:?}");
+    sim.seconds(0.2);
+    let moved = state(&sim, g).pos - c.at;
+    assert_near(moved, Vec3::new(-0.728, 3.831, 0.0), 0.05, "nudge");
+}
+
+/// Case 45: a character's boxes report a touch, its hit spheres decide
+/// it: a line of motion that misses every sphere does nothing; one through
+/// the chest whose segment crosses only the character's box slows it
+/// once; crossing the hit-box object's box (the spheres' bounds) too,
+/// twice.
+#[test]
+fn t45_character_touches() {
+    let (min, max) = (Vec3::new(-0.3, 0.0, -0.3), Vec3::new(0.3, 1.8, 0.3));
+    let spheres = [(Vec3::new(0.0, 1.3, 0.0), 0.15), (Vec3::new(0.0, 1.7, 0.0), 0.1)];
+    let v = Vec3::new(10.0, 0.0, 0.0);
+    // At knee height: through the box, no sphere on the line.
+    assert_eq!(character_touches(Vec3::new(-1.0, 0.4, 0.0), Vec3::new(1.0, 0.4, 0.0), v, min, max, &spheres), 0);
+    // Through the chest, stopping inside the box before the spheres' box.
+    assert_eq!(character_touches(Vec3::new(-1.0, 1.3, 0.0), Vec3::new(-0.25, 1.3, 0.0), v, min, max, &spheres), 1);
+    // Right through.
+    assert_eq!(character_touches(Vec3::new(-1.0, 1.3, 0.0), Vec3::new(1.0, 1.3, 0.0), v, min, max, &spheres), 2);
+    // The line counts, not the segment: one ending short of the sphere (it
+    // passes 0.14 from the chest's centre) but inside both boxes.
+    assert_eq!(character_touches(Vec3::new(-1.0, 1.44, 0.0), Vec3::new(-0.10, 1.44, 0.0), v, min, max, &spheres), 2);
+    // A grenade into a standing player's chest: slowed, not turned (no
+    // mirror), and again on later steps while inside.
+    let mut sim = sim();
+    let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
+    let (centre, _) = body(&mut sim, victim);
+    let chest = centre / U + Vec3::new(0.0, 15.0, 0.0);
+    let g = grenade(&mut sim, M67, None, chest - Vec3::new(0.0, 0.0, 100.0), Vec3::new(0.0, 0.0, 1000.0));
+    let s = to_step(&mut sim, g, 4);
+    assert!(s.velocity.z > 0.0 && s.velocity.z < 1000.0 * 0.65 + 1e-3, "slowed: {}", s.velocity);
+    assert!(s.velocity.x.abs() < 1e-3 && s.contacts.iter().all(|c| !c.rest), "{s:?}");
+}
+
+/// Cases 46 and 47 (and world_dat.md case 10): a solid door and non-solid
+/// level detail (traces only) bounce a grenade as case 4's wall does; a
+/// door with its solid flag off has no collision, and player blockers
+/// don't meet grenades.
+#[test]
+fn t46_t47_doors_detail_and_blockers() {
+    for layer in [None, Some(TRACE_ONLY_LAYER)] {
+        let mut sim = sim();
+        let (min, max) = (Vec3::new(-10.0, -1.0, 50.0 * U), Vec3::new(10.0, 10.0, 2.0));
+        match layer {
+            Some(l) => layered(&mut sim, min, max, l),
+            None => solid(&mut sim, min, max, None),
+        };
+        let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 60.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+        let c = to_step(&mut sim, g, 1).contacts[0];
+        assert_near(c.at, Vec3::new(0.0, 59.35, 50.0), 0.05, "wall");
+        assert_near(c.velocity, Vec3::new(0.0, -52.0, -1007.44), 0.05, "off the wall");
+    }
+    let mut sim = sim();
+    layered(&mut sim, Vec3::new(-10.0, -1.0, 50.0 * U), Vec3::new(10.0, 10.0, 2.0), PLAYER_CLIP_LAYER);
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 60.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+    let s = to_step(&mut sim, g, 2);
+    assert!(s.contacts.is_empty() && s.pos.z > 150.0, "through the blocker: {:?}", s.pos);
+}
+
+/// Case 48: grenades in flight touch through their boxes (each slowed by
+/// the other's metal, 0.65, no turn); grenades of one thrower only when
+/// the kind's `CanHitSameKind` says so; a resting grenade never.
+#[test]
+fn t48_grenades_and_grenades() {
+    // Two throwers' frags: A crosses B's box in A's second step.
+    let mut sim = sim();
+    let (ta, tb) = (far_thrower(&mut sim, 0), far_thrower(&mut sim, 0));
+    let a = grenade(&mut sim, M67, Some(ta), Vec3::new(0.0, 500.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+    let b = grenade(&mut sim, M67, Some(tb), Vec3::new(0.0, 500.0, 100.0), Vec3::ZERO);
+    let s = to_step(&mut sim, a, 2);
+    assert!((s.velocity.z - 1007.5).abs() < 0.05, "A: {}", s.velocity);
+    let s = state(&sim, b);
+    assert!((s.velocity.y - (-80.0 * 0.65 - 80.0)).abs() < 0.05, "B: {}", s.velocity);
+    // Two XM84s of one thrower: nothing.
+    let mut sim = self::sim();
+    let t = far_thrower(&mut sim, 0);
+    let a = grenade(&mut sim, XM84, Some(t), Vec3::new(0.0, 500.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+    grenade(&mut sim, XM84, Some(t), Vec3::new(0.0, 500.0, 100.0), Vec3::ZERO);
+    assert!((to_step(&mut sim, a, 2).velocity.z - 1550.0).abs() < 0.05);
+    // An M67 through a resting XM84's box: nothing.
+    let mut sim = self::sim();
+    let flash = grenade(&mut sim, XM84, None, Vec3::new(0.0, 5.0, 100.0), Vec3::ZERO);
+    sim.seconds(0.6);
+    assert!(state(&sim, flash).resting);
+    let rest = state(&sim, flash).pos;
+    let a = grenade(&mut sim, M67, None, Vec3::new(0.0, rest.y + 1.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+    let s = to_step(&mut sim, a, 2);
+    assert!(s.pos.z > 120.0 && (s.velocity.z - 1550.0).abs() < 0.05, "{s:?}");
+}
+
+/// Case 49: stock water (`Viscosity` 0.1, `Current` (0, 1500, 0)): the
+/// drag, then the current, then the liquid gravity; nothing at 1 u/s or
+/// less.
+#[test]
+fn t49_stock_water() {
+    for (v, want_v, want_d) in [
+        (Vec3::new(0.0, 0.0, -1000.0), Vec3::new(0.0, 65.0, -975.0), Some(Vec3::new(0.0, 3.625, -48.75))),
+        (Vec3::new(0.0, 0.0, 0.5), Vec3::new(0.0, -10.0, 0.5), None),
+    ] {
+        let mut sim = sim();
+        sim.app.world_mut().spawn(CaVolume::liquid_box(
+            Vec3::new(-50.0, -1.0, -50.0),
+            Vec3::new(50.0, 50.0, 50.0),
+            0.1,
+            Vec3::new(0.0, 1500.0, 0.0),
+        ));
+        let start = Vec3::new(0.0, 200.0, 0.0);
+        let g = grenade(&mut sim, M67, None, start, v);
+        let s = to_step(&mut sim, g, 1);
+        assert_near(s.velocity, want_v, 0.05, "v");
+        if let Some(d) = want_d {
+            assert_near(s.pos - start, d, 0.01, "moved");
+        }
+    }
+}
+
+/// Case 50: what blocks the blast's cover traces: walls of invisible
+/// polygons, non-solid level polygons (traces only), closed doors; not
+/// players, props or player blockers.
+#[test]
+fn t50_cover_blockers() {
+    #[derive(Clone, Copy, Debug)]
+    enum Wall {
+        Invisible,
+        TraceOnly,
+        Door,
+        PlayerBlocker,
+        Prop,
+        Player,
+    }
+    for (wall, want) in [
+        (Wall::Invisible, 100.0),
+        (Wall::TraceOnly, 100.0),
+        (Wall::Door, 100.0),
+        (Wall::PlayerBlocker, 0.0),
+        (Wall::Prop, 0.0),
+        (Wall::Player, 0.0),
+    ] {
+        let mut sim = sim();
+        let thrower = far_thrower(&mut sim, 0);
+        let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
+        let at = in_front(&mut sim, victim, 100.0, true);
+        let mid = (at + body(&mut sim, victim).0) / 2.0;
+        let (min, max) = (Vec3::new(-2.0, 0.0, mid.z - 0.05), Vec3::new(2.0, 4.0, mid.z + 0.05));
+        match wall {
+            Wall::Invisible => {
+                solid(&mut sim, min, max, Some("invisible"));
+            }
+            Wall::TraceOnly => {
+                layered(&mut sim, min, max, TRACE_ONLY_LAYER);
+            }
+            Wall::Door => {
+                solid(&mut sim, min, max, None);
+            }
+            Wall::PlayerBlocker => {
+                layered(&mut sim, min, max, PLAYER_CLIP_LAYER);
+            }
+            Wall::Prop => {
+                let e = solid(&mut sim, min, max, None);
+                sim.app
+                    .world_mut()
+                    .entity_mut(e)
+                    .insert(chimera_world::map::PropEntity(0));
+            }
+            Wall::Player => {
+                let other = player(&mut sim, 0.0, 0.0, 0.0, 0);
+                sim.app.world_mut().get_mut::<Transform>(other).unwrap().translation.z = mid.z;
+                sim.ticks(1);
+            }
+        }
+        explode_at(&mut sim, M67, Some(thrower), at);
+        assert_eq!(health(&sim, victim), want, "{wall:?}");
+    }
+}
+
+/// Case 51: a breakable takes the blast with no cover test.
+#[test]
+fn t51_breakables_skip_the_cover_test() {
+    #[derive(Resource, Default)]
+    struct Hits(Vec<f32>);
+    let mut sim = sim();
+    let thrower = far_thrower(&mut sim, 0);
+    let target = sim
+        .app
+        .world_mut()
+        .spawn((
+            RigidBody::Static,
+            Collider::cuboid(0.3, 0.3, 0.3),
+            Transform::from_xyz(0.0, 1.0, 0.0),
+            Damageable,
+        ))
+        .id();
+    sim.app.init_resource::<Hits>().add_systems(
+        FixedPostUpdate,
+        move |mut d: MessageReader<Damage>, mut hits: ResMut<Hits>| {
+            hits.0.extend(d.read().filter(|d| d.target == target).map(|d| d.amount / HP));
+        },
+    );
+    let at = Vec3::new(0.0, 1.0, 100.0 * U);
+    solid(&mut sim, Vec3::new(-2.0, 0.0, 50.0 * U), Vec3::new(2.0, 4.0, 52.0 * U), None);
+    explode_at(&mut sim, M67, Some(thrower), at);
+    let hits = &sim.app.world().resource::<Hits>().0;
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert!((hits[0] - 60.0).abs() < 0.01, "{hits:?}");
+}
+
+/// Case 52: flash protection from gear (torso entries summed): the
+/// ballistic mask (0.8), the eyepatch (0.15), the 50 goggles and the
+/// eyepatch together (0.65).
+#[test]
+fn t52_flash_gear() {
+    for (names, time) in [
+        (&["Ballistic_Mask"][..], 5.0),
+        (&["Eyepatch"][..], 21.25),
+        (&["Anti-Flash_50", "Eyepatch"][..], 8.75),
+    ] {
+        let mut sim = sim();
+        let thrower = far_thrower(&mut sim, 0);
+        let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
+        let worn = names.iter().map(|n| gear(n).unwrap_or_else(|| panic!("{n}"))).collect();
+        sim.app.world_mut().entity_mut(victim).insert(CaArmor {
+            points: 0.0,
+            gear: worn,
+        });
+        let (t, _) = flashed(&mut sim, victim, thrower, 200.0, true).expect("flashed");
+        assert!((t - time).abs() < 1e-3, "{names:?}: {t}");
+    }
+}
+
+/// Cases 53 and 54: the facing is the body's yaw only: looking 80° up
+/// with the blast ahead is facing it; a blast straight below the centre
+/// counts as behind (f . u = 0) whatever the pitch; the held weapon
+/// doesn't matter.
+#[test]
+fn t53_t54_flash_facing_is_yaw_only() {
+    let mut sim = sim();
+    let thrower = far_thrower(&mut sim, 0);
+    let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
+    sim.intent(victim).pitch = 80f32.to_radians();
+    let (t, delay) = flashed(&mut sim, victim, thrower, 200.0, true).expect("flashed");
+    assert!((t - 25.0).abs() < 1e-3, "{t}");
+    assert!(delay > 0.2, "{delay}");
+    // Straight above (below would be under the floor here; f . u = 0
+    // either way).
+    sim.app.world_mut().entity_mut(victim).remove::<CaFlashed>();
+    let (centre, _) = body(&mut sim, victim);
+    let g = grenade(&mut sim, XM84, Some(thrower), (centre + Vec3::new(0.0, 200.0 * U, 0.0)) / U, Vec3::ZERO);
+    sim.app.world_mut().get_mut::<CaGrenade>(g).unwrap().params.fuse = 0.0;
+    until_boom(&mut sim, 1.0);
+    let blast = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    sim.seconds(0.5);
+    let f = *sim.app.world().get::<CaFlashed>(victim).expect("flashed from below");
+    assert!((f.time - 6.25).abs() < 1e-3, "{}", f.time);
+    assert!(f.at - blast < 0.0833 + 0.05 + 0.016, "{}", f.at - blast);
+    // Holding the knife: the same.
+    let knife = {
+        let world = sim.app.world();
+        let inv = world.get::<Inventory>(victim).unwrap();
+        *inv.weapons
+            .iter()
+            .find(|w| world.get::<Weapon>(**w).unwrap().id == combat_arms::game::inventory::KNIFE)
+            .expect("the knife")
+    };
+    sim.app.world_mut().get_mut::<Inventory>(victim).unwrap().wanted = Some(knife);
+    sim.seconds(1.0);
+    sim.intent(victim).pitch = 0.0;
+    let (t, _) = flashed(&mut sim, victim, thrower, 200.0, true).expect("flashed");
+    assert!((t - 25.0).abs() < 1e-3, "{t}");
+}
+
+/// Case 56 (the carry-over part): a new round doesn't clear grenades in
+/// flight; they go off on their fuse.
+#[test]
+fn t56_round_end_carries_over() {
+    let mut sim = sim();
+    sim.app.init_resource::<RoundRestarts>();
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 20000.0, 0.0), Vec3::ZERO);
+    sim.seconds(1.0);
+    sim.app.world_mut().resource_mut::<RoundRestarts>().0 += 1;
+    sim.ticks(3);
+    assert!(sim.app.world().get::<CaGrenade>(g).is_some(), "carried over");
+    let (_, weapon, ..) = until_boom(&mut sim, 2.0);
+    assert_eq!(weapon, M67);
+}
+
+/// Case 58: bullets hit grenades; their damage comes off its hit points
+/// and at 1 or less it goes off at once, as at its fuse, credited to its
+/// thrower: a resting XM84 (50) on the second 25, a flying M67 (300) on
+/// the twelfth.
+#[test]
+fn t58_shooting_grenades() {
+    for (id, rounds, z) in [(XM84, 2, 0.0), (M67, 12, 1550.0)] {
+        let mut sim = sim();
+        let thrower = far_thrower(&mut sim, 0);
+        let g = grenade(&mut sim, id, Some(thrower), Vec3::new(0.0, 5000.0, 0.0), Vec3::new(0.0, 0.0, z));
+        sim.app.world_mut().get_mut::<CaGrenade>(g).unwrap().params.fuse = 100.0;
+        sim.ticks(5);
+        for i in 1..=rounds {
+            sim.app.world_mut().write_message(Damage {
+                target: g,
+                attacker: None,
+                amount: 25.0 * HP,
+                point: Vec3::ZERO,
+                dir: Vec3::Z,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            });
+            sim.ticks(4);
+            let gone = booms(&sim).len() == 1;
+            assert_eq!(gone, i == rounds, "{id}: after {i}");
+            if !gone {
+                assert!((state(&sim, g).health - (if id == XM84 { 50.0 } else { 300.0 } - 25.0 * i as f32)).abs() < 1e-3);
+            }
+        }
+    }
+    // A rifle round at a resting XM84 hits it.
+    let mut sim = sim();
+    let shooter = player(&mut sim, 0.0, 300.0, 0.0, 0);
+    let flash = grenade(&mut sim, XM84, None, Vec3::new(0.0, 60.0, 0.0), Vec3::ZERO);
+    sim.app.world_mut().get_mut::<CaGrenade>(flash).unwrap().params.fuse = 100.0;
+    sim.seconds(1.0);
+    assert!(state(&sim, flash).resting);
+    let rifle = weapon::give(sim.app.world_mut(), shooter, combat_arms::game::weapons::RIFLE).unwrap();
+    sim.seconds(1.5);
+    assert_eq!(sim.app.world().get::<Inventory>(shooter).unwrap().active, Some(rifle));
+    // Aim at it from the eye.
+    let eye = sim.position(shooter) + sim.state(shooter).eye_offset;
+    let to = state(&sim, flash).pos * U - eye;
+    let mut i = sim.intent(shooter);
+    i.yaw = (-to.x).atan2(-to.z);
+    i.pitch = (to.y / to.xz().length()).atan();
+    sim.ticks(10);
+    sim.intent(shooter).fire = true;
+    sim.ticks(1);
+    sim.intent(shooter).fire = false;
+    sim.ticks(10);
+    let left = sim.app.world().get::<CaGrenade>(flash).map(|g| g.health);
+    assert!(left.is_none_or(|h| h < 50.0), "hit: {left:?}");
 }
 
 // ---------------------------------------------------------------------------
