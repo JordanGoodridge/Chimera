@@ -666,6 +666,7 @@ pub fn split_mesh(mesh: &MapMesh, vis: Option<&MapVisibility>, size: f32) -> Vec
     template.joint_weights.clear();
     template.lightmap_uvs.clear();
     template.blend_weights.clear();
+    template.uvs2.clear();
     cells
         .into_values()
         .map(|(tris, mut clusters)| {
@@ -705,6 +706,7 @@ pub fn sub_mesh(mesh: &MapMesh, template: &MapMesh, indices: &[u32]) -> MapMesh 
         indices: new_indices,
         lightmap_uvs: pick(&mesh.lightmap_uvs, &used),
         blend_weights: pick(&mesh.blend_weights, &used),
+        uvs2: pick(&mesh.uvs2, &used),
         source_vertices: pick(&mesh.source_vertices, &used),
         ..template.clone()
     }

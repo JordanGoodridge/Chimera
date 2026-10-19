@@ -6,7 +6,10 @@
 //! real maps: `heavy::world`.
 
 use bevy::prelude::*;
-use chimera_world::{harness::Sim, map::MapSimPlugin};
+use chimera_world::{
+    harness::Sim,
+    map::{BlendMode, DetailMode, MapSimPlugin},
+};
 use combat_arms::{
     game::{movement, world},
     harness::CaSim,
@@ -524,3 +527,158 @@ fn volumes_from_the_map() {
     assert!(health <= 0.0, "killed: {health}");
 }
 
+
+/// A 4 x 4 BGRA texture file whose texels are all `bgra`, with texture
+/// flags `flags`, a command string and the detail fields (scale stored
+/// minus 1, rotation in degrees): textures_dtx.md's header.
+fn dtx_file(bgra: [u8; 4], flags: u32, command: &str, scale: f32, rotation: i16) -> Vec<u8> {
+    let mut b = vec![0u8; 164];
+    b[4..6].copy_from_slice(&4u16.to_le_bytes());
+    b[6..8].copy_from_slice(&4u16.to_le_bytes());
+    b[8..12].copy_from_slice(&(-5i32).to_le_bytes());
+    b[0x0C..0x0E].copy_from_slice(&1u16.to_le_bytes());
+    b[0x10..0x14].copy_from_slice(&(flags | 0x08).to_le_bytes());
+    b[0x19] = 1;
+    b[0x1A] = 3;
+    b[0x1E..0x22].copy_from_slice(&(scale - 1.0).to_le_bytes());
+    b[0x22..0x24].copy_from_slice(&rotation.to_le_bytes());
+    b[0x24..0x24 + command.len()].copy_from_slice(command.as_bytes());
+    b.extend((0..16).flat_map(|_| bgra));
+    b
+}
+
+/// world_dat.md "Second textures" (Q13) on a built world: a dual-texture
+/// section draws texture 1 at UV1 by the vertex alpha (added when texture
+/// 1 is fullbright); a base texture's `detailtex` link lays the detail
+/// texture over it at the base's scale and rotation, an `envmapalpha`
+/// link a flat environment map weighted by the base alpha; a link that
+/// doesn't resolve (textures_dtx.md case 22) leaves the surface without.
+#[test]
+fn t13_second_layers() {
+    let vertex = |pos: [f32; 3], alpha: u8| RenderVertex {
+        pos,
+        uv0: [pos[0] / 64.0, pos[2] / 64.0],
+        uv1: [pos[0] / 16.0 + 0.5, pos[2] / 16.0],
+        color: (u32::from(alpha) << 24) | 0x80_8080,
+        normal: [0.0, 1.0, 0.0],
+        ..default()
+    };
+    let section = |t0: &str, t1: &str, shader| Section {
+        textures: [t0.into(), t1.into()],
+        shader,
+        triangle_count: 1,
+        ..default()
+    };
+    let tri = |k: u32| Triangle {
+        indices: [3 * k, 3 * k + 1, 3 * k + 2],
+        polygon: k,
+    };
+    let corners = |x: f32, alpha: [u8; 3]| {
+        [[x, 0.0, 0.0], [x, 0.0, 100.0], [x + 100.0, 0.0, 0.0]]
+            .into_iter()
+            .zip(alpha)
+            .map(|(p, a)| vertex(p, a))
+            .collect::<Vec<_>>()
+    };
+    let mut w = small_world();
+    w.render.blocks = vec![RenderBlock {
+        sections: vec![
+            section("textures\\a.dtx", "textures\\b.dtx", shader::DUAL_TEXTURE),
+            section("textures\\a.dtx", "textures\\glow.dtx", shader::DUAL_TEXTURE),
+            section("textures\\detailed.dtx", "", shader::GOURAUD),
+            section("textures\\shiny.dtx", "", shader::GOURAUD),
+            section("textures\\lost.dtx", "", shader::GOURAUD),
+        ],
+        vertices: [
+            corners(0.0, [64, 255, 0]),
+            corners(200.0, [128; 3]),
+            corners(400.0, [255; 3]),
+            corners(600.0, [255; 3]),
+            corners(800.0, [255; 3]),
+        ]
+        .concat(),
+        triangles: (0..5).map(tri).collect(),
+        ..default()
+    }];
+    let file = |path: &str| -> Option<Vec<u8>> {
+        Some(match path {
+            "textures/a.dtx" => dtx_file([0, 0, 255, 255], 0, "", 1.0, 0),
+            "textures/b.dtx" => dtx_file([255, 0, 0, 255], 0, "", 1.0, 0),
+            "textures/glow.dtx" => dtx_file([255, 0, 0, 255], 1, "", 1.0, 0),
+            "textures/detailed.dtx" => dtx_file([128; 4], 0, "detailtex textures\\Grit.dtx", 4.0, 90),
+            "textures/grit.dtx" => dtx_file([100; 4], 0, "", 1.0, 0),
+            "textures/shiny.dtx" => dtx_file([128; 4], 0, "envmapalpha textures\\Env.dtx", 1.0, 0),
+            "textures/env.dtx" => dtx_file([200; 4], 0, "", 1.0, 0),
+            "textures/lost.dtx" => dtx_file([128; 4], 0, "detailtex textures\\nowhere.dtx", 1.0, 0),
+            _ => return None,
+        })
+    };
+    let map = world::convert(&w, "small", 0.01, &file);
+    let mesh = |name: &str, second: Option<&str>| {
+        map.meshes
+            .iter()
+            .find(|m| {
+                m.material == name && m.blend.and_then(|b| b.texture).map(|t| map.textures[t].name.as_str()) == second
+            })
+            .unwrap_or_else(|| panic!("{name} with {second:?}"))
+    };
+    // Dual texture: texture 1 at UV1, weight 1 − vertex alpha.
+    let m = mesh("textures\\a.dtx", Some("textures\\b.dtx"));
+    assert_eq!(m.blend.unwrap().mode, BlendMode::BaseAlpha);
+    assert_eq!(m.uvs2.len(), m.positions.len());
+    for (uv, uv2) in m.uvs.iter().zip(&m.uvs2) {
+        // uv0 = x / 64, uv1 = x / 16 + 0.5 (file x; z likewise).
+        assert!((uv2[0] - (uv[0] * 4.0 + 0.5)).abs() < 1e-5 && (uv2[1] - uv[1] * 4.0).abs() < 1e-5);
+    }
+    let mut weights = m.blend_weights.clone();
+    weights.sort_by(f32::total_cmp);
+    assert_eq!(weights, [0.0, 1.0 - 64.0 / 255.0, 1.0]);
+    // A fullbright texture 1 is added.
+    let m = mesh("textures\\a.dtx", Some("textures\\glow.dtx"));
+    assert_eq!(m.blend.unwrap().mode, BlendMode::BaseAlphaAdd);
+    assert!(m.blend_weights.iter().all(|w| (w - (1.0 - 128.0 / 255.0)).abs() < 1e-6));
+    // Detail: the signed add at the base's scale 4 and rotation 90°.
+    let d = mesh("textures\\detailed.dtx", None).detail.expect("a detail texture");
+    assert_eq!((d.mode, d.scale), (DetailMode::SignedAdd, [4.0; 2]));
+    assert!((d.rotation - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+    assert_eq!(map.textures[d.texture].name, "textures\\Grit.dtx");
+    // envmapalpha: a flat environment map weighted by the base alpha.
+    let e = mesh("textures\\shiny.dtx", None).flat_envmap.expect("an environment map");
+    assert!(e.by_base_alpha && e.signed_add && e.scale == 1.0);
+    assert_eq!(map.textures[e.texture].name, "textures\\Env.dtx");
+    // A link that doesn't resolve: nothing over the base.
+    let m = mesh("textures\\lost.dtx", None);
+    assert!(m.detail.is_none() && m.flat_envmap.is_none() && m.uvs2.is_empty());
+}
+
+/// world_dat.md case 16 and textures_dtx.md "Detail textures": the
+/// second layers' arithmetic (gamma-space colours) the world shader runs,
+/// on its CPU mirror (`chimera_world::map::material_fx`).
+#[test]
+fn t16_second_layer_maths() {
+    use chimera_world::map::material_fx::{detail_uv, dual_texture, flat_envmap_uv, signed_add};
+    let close = |a: Vec4, b: Vec4| (a - b).abs().max_element() < 1e-6;
+    // Vertex alpha 0.25, texture 0 red with alpha 1, texture 1 blue.
+    let base = dual_texture(Vec4::new(1.0, 0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, 1.0), 0.25, false);
+    assert!(close(base, Vec4::new(0.25, 0.0, 0.75, 0.25)), "{base}");
+    // Shader 8 with vertex colour 0.5: tex x colour x 2 (Saturate).
+    assert!(close((base.truncate() * 0.5 * 2.0).extend(0.25), base));
+    // Texture 1 fullbright: added.
+    let added = dual_texture(Vec4::new(1.0, 0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, 1.0), 0.25, true);
+    assert!(close(added, Vec4::new(1.0, 0.0, 0.25, 0.25)), "{added}");
+    // The weight takes texture 0's alpha too.
+    let half = dual_texture(Vec4::new(1.0, 0.0, 0.0, 0.5), Vec3::new(0.0, 0.0, 1.0), 1.0, false);
+    assert!(close(half, Vec4::new(0.5, 0.0, 0.5, 0.5)), "{half}");
+    // Detail: clamp(base + detail − 0.5); grey 0.5 leaves the base.
+    let same = signed_add(Vec3::new(0.3, 0.8, 0.1), Vec3::splat(0.5));
+    assert!((same - Vec3::new(0.3, 0.8, 0.1)).abs().max_element() < 1e-6, "{same}");
+    let d = signed_add(Vec3::new(0.3, 0.8, 0.1), Vec3::new(0.7, 0.9, 0.2));
+    assert!((d - Vec3::new(0.5, 1.0, 0.0)).abs().max_element() < 1e-6, "{d}");
+    // Detail coordinates: σ R(θ) (u, v); scale 8 (stored 7), rotation 0.
+    assert_eq!(detail_uv(Vec2::new(0.25, 0.5), 8.0, 0.0), Vec2::new(2.0, 4.0));
+    let r = detail_uv(Vec2::new(1.0, 0.0), 2.0, 90f32.to_radians());
+    assert!((r - Vec2::new(0.0, 2.0)).length() < 1e-6, "{r}");
+    // Flat environment map: a reflection straight back reads the centre.
+    assert_eq!(flat_envmap_uv(Vec3::Z, 1.0), Vec2::splat(0.5));
+    assert_eq!(flat_envmap_uv(Vec3::X, 1.0), Vec2::new(0.0, 0.5));
+}
