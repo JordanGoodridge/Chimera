@@ -123,6 +123,46 @@ eye only. refcmp drives CS:S by itself, as in sitting 3:
    setang 89 0 0` (looking down at the fan from 116 units above), a
    screenshot: are the blades lit like the vent around them, or darker?
 
+## Sitting 5: Combat Arms (a room with a friend or bots, about 40 min)
+
+Live checks the Wave 1 specs could not settle from the reference (each
+names its spec and open question in `specs/combat_arms/`). Combat Arms'
+own client, any map unless named; a screen recording of each is easiest.
+
+1. **Scale** (movement.md Q3): stand next to a standard door or crate of
+   known real size; note its height against the eye (83 units) from a
+   screenshot side on. Says whether bodies or the HUD's 40 units a metre
+   are to scale.
+2. **Teleporters** (movement.md Q16): on a map with a teleporter, use
+   one that drops you a long way: any fall damage on landing?
+3. **Second victim** (weapon_firing.md Q5): two players or bots standing
+   in line, one M4A1 round at the first's chest from about 2800 units:
+   does the second take damage (about 17 if unarmoured)?
+4. **Turn and spread** (weapon_firing.md Q13): stand still with the M4A1,
+   flick the mouse 30 degrees back and forth for a few seconds: does the
+   crosshair ever shrink faster than standing still without turning?
+   Then the same while strafing.
+5. **Pickup box** (inventory.md Q13): drop an M16A3 on flat ground and
+   aim at it from the side and from its end, moving the aim off it a
+   little at a time: at which offsets from its centre does the pickup
+   prompt appear and vanish (a screenshot at each edge)?
+6. **Spent grenade in the list** (inventory.md Q14): throw your last
+   grenade, then press 4 or another class key: is the grenade's entry in
+   the weapon list greyed, hidden or shown with 0?
+7. **Pickup switch** (inventory.md Q6): carry a pistol, hold the rifle,
+   pick up a pistol of the same kind dropped by someone: does the pistol
+   come out?
+8. **Drop spot** (inventory.md Q17): stand still facing one way on flat
+   ground and die (or swap weapons by picking one up), several times:
+   where does the item lie relative to where you stood (a screenshot
+   from above, `getpos` if the console allows)?
+9. **Free-for-all teams** (hud_crosshair.md Q15): in a free-for-all room,
+   hit another player: does the crosshair turn red? Do players you are
+   not aiming at show name tags?
+10. **Name tag height** (hud_crosshair.md Q10): a teammate on flat ground
+    next to a wall mark of known height at the same distance: a
+    screenshot to compare the tag's height with the mark.
+
 ## What each sitting unlocks
 
 - Sitting 1: movement and weapon checks against real human play (demosim),
@@ -134,3 +174,6 @@ eye only. refcmp drives CS:S by itself, as in sitting 3:
   what cs_assault's PVS hides past sky brushes.
 - Sitting 4: side-by-side checks of the 13 stock maps never compared
   (refcmp `report`), cs_compound's fog blend, prodigy's fan lighting.
+- Sitting 5: Combat Arms' scale, teleport falls, two-victim rounds, the
+  spread's turn term, pickup boxes and drop spots, the spent grenade's
+  list entry, free-for-all team ids and name tag height.

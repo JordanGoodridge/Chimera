@@ -174,6 +174,38 @@ impl T {
         self.forward(true);
         self.ticks(80);
     }
+
+    /// Teleport the hull's centre to `at` (u), keeping velocity and what
+    /// it stood on (a teleport resets nothing: spec "Falling and fall
+    /// damage").
+    fn teleport(&mut self, at: Vec3) {
+        let s = movement_data().meters_per_unit;
+        self.sim.app.world_mut().get_mut::<Transform>(self.p).unwrap().translation = at * s;
+    }
+
+    /// Put the hull's centre at `at` (u) at rest in the air: no velocity,
+    /// standing on nothing.
+    fn place_in_air(&mut self, at: Vec3) {
+        self.teleport(at);
+        self.sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(self.p).unwrap().0 = Vec3::ZERO;
+        self.mv_mut().standing = None;
+    }
+
+    /// The crouch key released clears the crouch flag at once (no 100 ms
+    /// release delay), for cases that set the flag tick by tick.
+    fn no_release_delay(&mut self) {
+        self.sim.app.world_mut().resource_mut::<movement::MovementData>().crouch_release_delay = 0.0;
+    }
+
+    fn feet(&self) -> f32 {
+        self.pos().y - self.mv().half_height
+    }
+
+    /// The eye's height above the hull's bottom (u).
+    fn eye_above_feet(&self) -> f32 {
+        let s = movement_data().meters_per_unit;
+        self.sim.state(self.p).eye_offset.y / s + self.mv().half_height
+    }
 }
 
 // --- Cases 1-4: running ---
@@ -327,16 +359,16 @@ fn case_9_stop() {
     assert_eq!(t.pos(), at5, "no move on tick 6");
 }
 
-/// Case 10 with our input: `Intent` has a move axis, so forward and back
-/// held together are an axis of 0, no keys (module doc, known shortcuts).
-/// What the spec's case checks still holds: no acceleration, no movement.
+/// Forward and back held together: an axis of 0 with `Intent::opposed`.
 #[test]
 fn case_10_opposing_keys() {
     let mut t = T::standing();
     let start = t.pos();
-    t.keys().move_axis = Vec2::new(0.0, 0.0);
+    t.keys().opposed.y = true;
     t.ticks(10);
-    assert_eq!(t.mv().accel, Vec3::ZERO);
+    let m = t.mv();
+    assert!(m.moving && m.forward && m.back, "both flags, moving");
+    assert_eq!(m.accel, Vec3::ZERO);
     assert_eq!(t.hspeed(), 0.0);
     assert_eq!(t.pos(), start);
 }
@@ -485,8 +517,13 @@ fn case_17_jump_while_standing_up() {
     assert!(t.mv().in_jump, "a new press after standing jumps");
 }
 
+/// At rest high in the air after one tick there (a spawn would put the
+/// player on the floor: case 47; this is a teleport), not in a jump.
 fn in_the_air() -> T {
-    T::new(vec![floor()], Vec3::new(0.0, 5000.0, 0.0))
+    let mut t = T::standing();
+    t.place_in_air(Vec3::new(0.0, 5000.0, 0.0));
+    t.tick();
+    t
 }
 
 #[test]
@@ -507,8 +544,7 @@ fn case_18_air_fall() {
 
 #[test]
 fn case_19_air_control_from_rest() {
-    let map = vec![floor()];
-    let mut t = T::new(map, Vec3::new(0.0, 5000.0, 0.0));
+    let mut t = in_the_air();
     // A fresh start in the air: zero what the first tick did.
     t.sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(t.p).unwrap().0 = Vec3::ZERO;
     let start = t.pos();
@@ -529,8 +565,8 @@ fn case_19_air_control_from_rest() {
 
 /// Case 20. In a jump the crouched air accel is 1500 x 0.1 = 150, and like
 /// every acceleration it is scaled by the jump factor while that is below
-/// 1 (spec "Acceleration"; the case's "+2.25 u/s per tick" is for j = 1:
-/// an open question).
+/// 1 (the case's "+2.25 u/s per tick" is for j = 1: its correction, case
+/// 37).
 #[test]
 fn case_20_crouched_air_control() {
     let mut t = T::standing();
@@ -552,8 +588,8 @@ fn case_20_crouched_air_control() {
     let mut t = in_the_air();
     t.keys().crouch = true;
     t.forward(true);
-    t.tick(); // the moving start: 500
-    // +22.5 a tick while under the crouch-blended limit (ticks 2-4).
+    // Crouched: no 500 start (case 38); +22.5 a tick while under the
+    // crouch-blended limit (ticks 1-3).
     for _ in 0..3 {
         let before = t.hspeed();
         t.tick();
@@ -742,10 +778,6 @@ fn case_29_sprint_blocked() {
         t.insert(movement_data().character.clone());
         t.forward(true);
         t.keys().sprint = true;
-        // `+speed` sets walk with sprint: walk alone is the walk key.
-        if what == "walk key held" {
-            t.keys().sprint = false;
-        }
         setup(&mut t);
         t.ticks(5);
         assert!(!t.mv().sprint, "{what}: no sprint");
@@ -794,15 +826,18 @@ fn case_31_fall_damage() {
     for (drop, want) in [(299.0, None), (300.0, Some(0.0)), (400.0, Some(50.0)), (500.0, Some(100.0)), (700.0, Some(200.0)), (1000.0, Some(350.0))] {
         assert_eq!(movement::fall_damage(drop, data), want, "drop {drop}");
     }
-    // Landing from 400 u: crush damage, upward, from the player itself.
-    let mut t = T::new(vec![floor()], on(0.0, 400.0, 0.0));
+    // Landing from 400 u (placed there: a spawn would start on the floor):
+    // crush damage, upward, from the player itself.
+    let mut t = T::standing();
+    t.place_in_air(on(0.0, 400.0, 0.0));
     t.ticks(100);
     let d = t.damage();
     assert_eq!(d.len(), 1, "one landing: {d:?}");
     close(d[0].amount * data.health_points, 50.0, 0.01, "damage from 400 u");
     assert_eq!((d[0].kind, d[0].dir, d[0].attacker), (DamageKind::Crush, Vec3::Y, Some(t.p)));
     // 299 u: none.
-    let mut t = T::new(vec![floor()], on(0.0, 299.0, 0.0));
+    let mut t = T::standing();
+    t.place_in_air(on(0.0, 299.0, 0.0));
     t.ticks(100);
     assert!(t.damage().is_empty());
 }
@@ -1019,7 +1054,360 @@ fn the_data_parses() {
     assert_eq!(d.run_forward, 285.0);
     assert_eq!(d.character.stamina_max(), 100.0);
     let _: &CaCharacter = &d.character;
+    // Body size: the 100 u standing hull is Chimera's character.
+    let height = 2.0 * d.stand_half_extents[1] * d.meters_per_unit;
+    assert!((height - chimera_core::character::CAPSULE_HEIGHT).abs() < 1e-5, "{height}");
+    assert_eq!(d.meters_per_unit, combat_arms::game::inventory::UNIT, "inventory's UNIT");
 }
 
 
 
+
+// --- Cases 37-55: the follow-up answers ---
+
+#[test]
+fn case_37_crouched_air_control_after_a_jump() {
+    let mut t = T::standing();
+    t.keys().jump = true;
+    t.tick(); // tick 0, the jump
+    t.keys().jump = false;
+    t.keys().crouch = true;
+    t.forward(true);
+    for n in 1..=40 {
+        let before = t.hspeed();
+        t.tick();
+        let want = match n {
+            1 => Some((45.0, 0.675)),
+            20 => Some((96.3, 1.4445)),
+            39 => Some((147.6, 2.214)),
+            40 => Some((150.0, 2.25)),
+            _ => None,
+        };
+        if let Some((accel, gain)) = want {
+            assert!(t.mv().in_jump, "tick {n}: in the jump");
+            close(t.mv().accel.length(), accel, 0.01, &format!("accel on tick {n}"));
+            // The gain until the crouched limit (about 50 u/s) clamps it.
+            if n <= 20 {
+                close(t.hspeed() - before, gain, TOL, &format!("gain on tick {n}"));
+            }
+        }
+    }
+}
+
+#[test]
+fn case_38_crouched_start_from_rest() {
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    t.ticks(30);
+    assert_eq!(t.mv().crouch_rate, 1.0);
+    let start = t.pos();
+    t.forward(true);
+    for (n, want) in [21.6770, 41.7876, 60.4451].into_iter().enumerate() {
+        t.tick();
+        close(t.mv().accel.length(), 1500.0, TOL, &format!("accel on tick {}", n + 1));
+        close(t.hspeed(), want, TOL, &format!("speed after tick {}", n + 1));
+    }
+    close(start.z - t.pos().z, 1.41097, TOL, "distance after tick 3");
+    t.tick();
+    close(t.hspeed(), 68.0641, TOL, "tick 4: clamped to 50, the steady end speed");
+}
+
+#[test]
+fn case_39_jump_request_tick_bypasses_the_ramp() {
+    let mut t = T::standing();
+    t.tick(); // tick 0: no keys
+    t.forward(true);
+    t.keys().jump = true;
+    t.tick();
+    assert!(t.mv().in_jump);
+    close(t.mv().accel.length(), 3000.0, TOL, "jump tick: 3000, no 500 start");
+    close(t.hspeed(), 45.0, TOL, "jump tick: no friction");
+    let before = t.hspeed();
+    t.tick();
+    close(t.mv().accel.length(), 177.0, 0.01, "tick 2: 590 x 0.3");
+    close(t.hspeed() - before, 2.655, TOL, "tick 2's gain");
+}
+
+const RATES_DOWN: [f32; 5] = [0.259615, 0.463208, 0.618555, 0.733433, 0.815619];
+
+#[test]
+fn case_40_crouch_reversal_halfway() {
+    let mut t = T::standing();
+    t.no_release_delay();
+    let feet = t.feet();
+    let halves = [47.40385, 45.36792, 43.81445, 42.66567, 41.84381, 44.43997, 46.47589, 48.02936, 49.17814, 50.0];
+    let rates = [RATES_DOWN.as_slice(), &[0.556003, 0.352411, 0.197064, 0.082186, 0.0]].concat();
+    for n in 1..=10 {
+        t.keys().crouch = n <= 5;
+        t.tick();
+        close(t.mv().crouch_rate, rates[n - 1], 2e-6, &format!("rate after tick {n}"));
+        close(t.mv().half_height, halves[n - 1], TOL, &format!("half-height after tick {n}"));
+        close(t.feet(), feet, TOL, &format!("feet after tick {n}"));
+    }
+}
+
+#[test]
+fn case_41_crouch_pressed_again_while_standing_up() {
+    let mut t = T::standing();
+    t.no_release_delay();
+    let want = [0.556003, 0.352411, 0.612026, 0.815619, 0.970965, 1.0, 1.0, 1.0];
+    for n in 1..=13 {
+        t.keys().crouch = n <= 5 || n >= 8;
+        t.tick();
+        if n >= 6 {
+            close(t.mv().crouch_rate, want[n - 6], 2e-6, &format!("rate after tick {n}"));
+        }
+    }
+}
+
+#[test]
+fn case_42_standing_up_on_the_ground_keeps_the_feet() {
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    t.ticks(30);
+    let feet = t.feet();
+    close(feet, 0.0, 2.0 * SKIN, "crouched on the floor");
+    t.keys().crouch = false;
+    while t.mv().crouch_rate == 1.0 {
+        t.tick();
+    }
+    close(t.mv().crouch_rate, 0.740385, 2e-6, "stand tick 1");
+    close(t.mv().half_height, 42.59615, TOL, "half-height after stand tick 1");
+    close(t.feet(), feet, TOL, "feet after stand tick 1");
+    t.ticks(9);
+    close(t.mv().half_height, 50.0, TOL, "after tick 10");
+    close(t.feet(), feet, TOL, "feet after tick 10");
+}
+
+/// Crouched, at rest in the air at `at`.
+fn crouched_in_air(at: Vec3) -> T {
+    let mut t = T::standing();
+    t.no_release_delay();
+    t.keys().crouch = true;
+    t.ticks(30);
+    t.place_in_air(at);
+    t
+}
+
+#[test]
+fn case_43_standing_up_in_open_air() {
+    // The same fall crouched and standing up: the centres match (gravity
+    // aside, the growth keeps the centre), the feet drop 10.
+    let at = Vec3::new(0.0, 2000.0, 0.0);
+    let mut held = crouched_in_air(at);
+    let mut up = crouched_in_air(at);
+    up.keys().crouch = false;
+    for n in 1..=10 {
+        held.tick();
+        up.tick();
+        close(up.pos().y, held.pos().y, TOL, &format!("centre after tick {n}"));
+    }
+    close(up.mv().half_height, 50.0, TOL, "stood up");
+    close(held.feet() - up.feet(), 10.0, TOL, "the feet dropped 10");
+}
+
+#[test]
+fn case_44_standing_up_just_above_the_floor() {
+    // Feet 1.0 u above the floor; the first stand tick grows the half-
+    // height by 2.59615: the bottom ends on the floor and the centre rises
+    // by the growth less the gap, instead of staying.
+    let mut t = crouched_in_air(Vec3::new(0.0, 41.0, 0.0));
+    close(t.feet(), 1.0, TOL, "1 u above the floor");
+    let centre = t.pos().y;
+    t.keys().crouch = false;
+    t.tick();
+    let grown = t.mv().half_height - 40.0;
+    close(grown, 2.59615, TOL, "grown");
+    close(t.feet(), 0.0, 2.0 * SKIN, "on the floor");
+    close(t.pos().y - centre, grown - 1.0, 2.0 * SKIN, "the centre rose");
+}
+
+#[test]
+fn case_45_not_a_step() {
+    use avian3d::prelude::Collider;
+    let s = movement_data().meters_per_unit;
+    // A 20 u box ahead: a character, a moving object, plain world.
+    for kind in ["character", "mover", "world"] {
+        let mut t = T::standing();
+        let mut e = t.sim.app.world_mut().spawn((
+            Collider::cuboid(200.0 * s, 20.0 * s, 200.0 * s),
+            Transform::from_translation(Vec3::new(0.0, 10.0, -200.0) * s),
+        ));
+        match kind {
+            "character" => e.insert((RigidBody::Static, chimera_core::core::Intent::default())),
+            "mover" => e.insert(RigidBody::Kinematic),
+            _ => e.insert(RigidBody::Static),
+        };
+        t.tick();
+        t.forward(true);
+        t.ticks(40);
+        if kind == "world" {
+            close(t.feet(), 20.0, 2.0 * SKIN, "stepped onto plain world");
+        } else {
+            close(t.feet(), 0.0, 2.0 * SKIN, &format!("blocked by a {kind}"));
+            assert!(t.pos().z > -86.0, "{kind}: stopped at the box: {}", t.pos());
+        }
+    }
+}
+
+#[test]
+fn case_46_ledge_on_the_flat_bottom() {
+    // A ledge 100 u high over z >= 0 (its edge at z = 0); the hull's
+    // centre 14 u beyond it overlaps it by 1 u.
+    let ledge = block(Vec3::new(0.0, 50.0, 200.0), Vec3::new(200.0, 50.0, 200.0));
+    let mut t = T::new(vec![floor(), ledge], on(0.0, 100.0, -14.0));
+    t.ticks(5);
+    let m = t.mv();
+    let n = m.standing.expect("stands on the ledge").normal;
+    assert!((n - Vec3::Y).length() < 1e-3, "flat: {n}");
+    assert!(m.on_ground);
+    close(t.feet(), 100.0, 2.0 * SKIN, "on the ledge");
+    t.keys().jump = true;
+    t.tick();
+    assert!(t.mv().in_jump, "jumps");
+    // 15.2 u beyond: no overlap, down to the floor.
+    let mut t = T::new(vec![floor(), ledge], on(0.0, 100.0, -15.2));
+    t.ticks(60);
+    close(t.feet(), 0.0, 2.0 * SKIN, "fell to the floor");
+}
+
+#[test]
+fn case_47_air_spawn() {
+    let mut t = T::new(vec![floor()], on(0.0, 200.0, 0.0));
+    close(t.feet(), 0.0, 2.0 * SKIN, "starts on the floor");
+    t.ticks(60);
+    assert!(t.damage().is_empty(), "{:?}", t.damage());
+}
+
+#[test]
+fn case_48_teleport_down_resets_nothing() {
+    let upper = block(Vec3::new(0.0, -50.0, 0.0), Vec3::new(200.0, 50.0, 200.0));
+    let lower = block(Vec3::new(2000.0, -450.0, 0.0), Vec3::new(500.0, 50.0, 500.0));
+    let mut t = T::new(vec![upper, lower], on(0.0, 0.0, 0.0));
+    t.tick();
+    assert!(t.mv().on_ground);
+    t.teleport(on(2000.0, -400.0, 0.0));
+    t.ticks(3);
+    let d = t.damage();
+    assert_eq!(d.len(), 1, "{d:?}");
+    close(d[0].amount * movement_data().health_points, 50.0, 0.01, "a 400 u drop");
+}
+
+#[test]
+fn case_49_walk_and_sprint_together() {
+    let mut t = T::standing();
+    t.keys().walk = true;
+    t.keys().sprint = true;
+    t.steady_forward();
+    let before = t.pos();
+    t.tick();
+    let m = t.mv();
+    assert!(!m.sprint);
+    assert_eq!(m.stamina_state, StaminaState::Recovering);
+    assert_eq!(m.stamina, 100.0);
+    close(m.speed_limit, 70.0, TOL, "limit");
+    close(before.z - t.pos().z, 1.34081, TOL, "89.387 u/s");
+}
+
+#[test]
+fn case_50_forward_back_and_sprint_drain() {
+    let mut t = T::standing();
+    t.keys().opposed.y = true;
+    t.keys().sprint = true;
+    // 1.000 s is 66.7 ticks: 67 ticks drain 30.15 (tolerance: one tick).
+    t.ticks(67);
+    let m = t.mv();
+    assert!(!m.sprint, "no sprint");
+    assert_eq!(m.stamina_state, StaminaState::Draining);
+    close(m.speed_limit, 285.0, TOL, "run limit");
+    assert_eq!(m.accel, Vec3::ZERO);
+    close(m.stamina, 70.0, 0.45, "gauge after 1 s");
+}
+
+#[test]
+fn case_51_opposing_keys_from_a_run() {
+    let mut t = T::standing();
+    t.steady_forward();
+    close(t.hspeed(), 307.7608, TOL, "steady");
+    t.keys().move_axis = Vec2::ZERO;
+    t.keys().opposed.y = true;
+    let before = t.pos();
+    t.tick();
+    close(t.hspeed(), 264.4069, TOL, "tick 1");
+    close(before.z - t.pos().z, 4.11862, TOL, "tick 1 distance");
+    assert_eq!(t.mv().accel, Vec3::ZERO);
+    t.tick();
+    close(t.hspeed(), 245.3018, TOL, "tick 2");
+    t.tick();
+    close(t.hspeed(), 227.5771, TOL, "tick 3: friction only, no braking");
+}
+
+#[test]
+fn case_52_eye_height() {
+    let d = movement_data();
+    let mut t = T::standing();
+    close(t.eye_above_feet(), 83.0, TOL, "standing");
+    close(50.0 - 0.5 * 10.0 + movement::eye_above_centre(0.5, d), 71.5, TOL, "r = 0.5");
+    let want = [77.0288, 72.3462, 68.7732, 66.1310, 64.2408];
+    t.keys().crouch = true;
+    for (n, want) in want.into_iter().enumerate() {
+        t.tick();
+        close(t.eye_above_feet(), want, TOL, &format!("tick {}", n + 1));
+    }
+    t.ticks(20);
+    close(t.eye_above_feet(), 60.0, TOL, "crouched");
+}
+
+#[test]
+fn case_53_camera_smoothing_up_a_step() {
+    let d = movement_data();
+    let mut cam = movement::CameraRise::default();
+    cam.step(0.0, 1.0 / 60.0, false, d);
+    let want = [5.0, 9.1667, 12.6389, 15.5324, 17.9437, 20.2770, 22.6103, 24.9437, 27.2770, 30.0];
+    for (n, want) in want.into_iter().enumerate() {
+        let h = cam.step(30.0, 1.0 / 60.0, false, d);
+        close(h, want, 1e-3, &format!("frame {}", n + 1));
+    }
+    // Down at once; in a jump at once.
+    assert_eq!(cam.step(10.0, 1.0 / 60.0, false, d), 10.0);
+    assert_eq!(cam.step(40.0, 1.0 / 60.0, true, d), 40.0);
+}
+
+#[test]
+fn case_54_unit_scale() {
+    let d = movement_data();
+    assert_eq!(movement::hud_metres(400.0, d), 10);
+    assert_eq!(movement::hud_metres(419.0, d), 10);
+}
+
+#[test]
+fn case_55_knock_back() {
+    use movement::{CaInfected, HitKnockback};
+    let push = |t: &mut T| {
+        let k = HitKnockback::hit(None, 40.0, 0.3, 0.0, Vec3::Z, 0.0).unwrap();
+        close(k.duration, 0.3, 1e-6, "0.3 s");
+        t.insert((CaInfected, k));
+    };
+    let mut t = T::standing();
+    push(&mut t);
+    t.tick();
+    let m = t.mv();
+    close(m.accel.z, 1600.0, 0.01, "K^2 along the hit");
+    assert!(!m.run, "run off");
+    close(t.vel().z, 23.1221, TOL, "first tick's end speed");
+    // Crouch held, no movement key: no velocity, no push.
+    let mut t = T::standing();
+    t.keys().crouch = true;
+    push(&mut t);
+    t.tick();
+    assert_eq!(t.mv().accel, Vec3::ZERO);
+    assert_eq!(t.hspeed(), 0.0);
+    // Over after 0.3 s: 20 ticks of 15 ms.
+    let mut t = T::standing();
+    push(&mut t);
+    t.ticks(21);
+    assert_eq!(t.mv().accel, Vec3::ZERO, "over");
+    // The M9 (duration 0): none; StiffDuration 0.5: 0.45 s.
+    assert!(HitKnockback::hit(None, 20.0, 0.0, 0.0, Vec3::Z, 0.0).is_none());
+    close(HitKnockback::hit(None, 40.0, 0.3, 0.5, Vec3::Z, 0.0).unwrap().duration, 0.45, 1e-6, "stiff");
+}

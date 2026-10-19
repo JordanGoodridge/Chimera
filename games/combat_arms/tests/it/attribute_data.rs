@@ -18,6 +18,11 @@ fn weapons(text: &str) -> Result<WeaponsFile, String> {
     WeaponsFile::read(&doc(text))
 }
 
+/// The built-in movement data's metres per world unit.
+pub fn meters_per_unit() -> f64 {
+    toml::from_str::<MovementData>(MOVEMENT_DATA).unwrap().meters_per_unit as f64
+}
+
 fn close(a: f64, b: f64) {
     assert!((a - b).abs() < 1e-9, "{a} != {b}");
 }
@@ -370,6 +375,7 @@ fn reference_m4a1_onto_our_documents() {
           FirePerturb=0.30 FireMovePerturb=0.38 FireDuckPerturb=0.30 FireMoveDuckPerturb=0.38
           WalkPerturb=0.04 RunPerturb=0.25 JumpPerturb=0.70 PerturbRecoil=1.0
           DecDelay=95 JitterDecDelay=95 JitterWaitRecover=0.1 JitterRecover=0.2
+          DamageMovePenalty=40 DamageMovePenaltyDuration=0.3
         [Ammo1] Name="9mm"
         [Weapon0] Name="M9" Guntype=1 AmmoName0="9mm"
         [Weapon1] Name="M4A1" Guntype=4 ShotsPerClip=30 RapidFireCount=0 FireDelay=0 Range=3500
@@ -383,7 +389,7 @@ fn reference_m4a1_onto_our_documents() {
           ReloadPerBullet=0
     "#;
     let f = weapons(install).unwrap();
-    let docs = merge_weapon_docs(WEAPON_DATA, &f, 0.01).unwrap();
+    let docs = merge_weapon_docs(WEAPON_DATA, &f, meters_per_unit()).unwrap();
     let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let merged = WeaponSet::parse(&refs, &[]).unwrap();
     let builtin = WeaponSet::parse(WEAPON_DATA, &[]).unwrap();
@@ -430,4 +436,81 @@ fn floats_close(a: &toml::Value, b: &toml::Value) -> bool {
         (Table(x), Table(y)) => y.iter().all(|(k, w)| x.get(k).is_some_and(|v| floats_close(v, w))),
         _ => a == b,
     }
+}
+
+/// 30. The knock-back fields: K and its duration from the ammo record;
+/// on an infected victim (movement.md case 55) 0.3 s from 40^2 = 1600
+/// u/s^2; the M9's duration 0: none; `StiffDuration` 0.5: 0.45 s. Our
+/// documents take them from the install's default ammo.
+#[test]
+fn case_30_knock_back_fields() {
+    use bevy::math::Vec3;
+    use combat_arms::game::movement::HitKnockback;
+    let f = weapons(
+        r#"[Ammo0] Name="a" DamageMovePenalty=40 DamageMovePenaltyDuration=0.3
+        [Ammo1] Name="m9" DamageMovePenalty=20 DamageMovePenaltyDuration=0
+        [Weapon0] Name="W" AmmoName0="a""#,
+    )
+    .unwrap();
+    let (a, m9) = (&f.ammo[0], &f.ammo[1]);
+    close(a.damage_move_penalty, 40.0);
+    close(a.damage_move_penalty_duration, 0.3);
+    let k = HitKnockback::hit(None, 40.0, 0.3, 0.0, Vec3::Z, 0.0).unwrap();
+    assert_eq!((k.strength * k.strength, k.duration), (1600.0, 0.3));
+    assert!(HitKnockback::hit(None, m9.damage_move_penalty as f32, m9.damage_move_penalty_duration as f32, 0.0, Vec3::Z, 0.0).is_none());
+    let k = HitKnockback::hit(None, 40.0, 0.3, 0.5, Vec3::Z, 0.0).unwrap();
+    assert!((k.duration - 0.45).abs() < 1e-6);
+    // Through the merge onto our M4A1.
+    use combat_arms::game::weapons::DamageParams;
+    let install = weapons(
+        r#"[Ammo0] Name="5.56mm" DamageMovePenalty=25 DamageMovePenaltyDuration=0.5
+        [Weapon0] Name="M4A1" AmmoName0="5.56mm""#,
+    )
+    .unwrap();
+    let ours = include_str!("../../data/weapons/m4a1.toml");
+    let docs = merge_weapon_docs(&[("m4a1.toml", ours)], &install, meters_per_unit()).unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set = WeaponSet::parse(&refs, &[]).unwrap();
+    let d: DamageParams = set.weapons[0].hook("combat_arms:damage").unwrap();
+    assert_eq!((d.move_penalty, d.move_penalty_duration), (25.0, 0.5));
+}
+
+/// 31. The inventory class and the command id come from the weapon
+/// order, not `Guntype`.
+#[test]
+fn case_31_inventory_class_from_the_weapon_order() {
+    let f = weapons(
+        r#"[Ammo0] Name="x"
+        [Weapon0] Name="A" Guntype=6 [Weapon1] Name="B" [Weapon2] Name="P" Guntype=1 [Weapon3] Name="Q"
+        [WeaponOrder] Class0="Primary" Class1="Secondary" Primary0="A" Primary1="B" Secondary0="P""#,
+    )
+    .unwrap();
+    let class: Vec<u8> = (0..4).map(|i| f.inventory_class(i)).collect();
+    assert_eq!(class, [1, 1, 2, 0]);
+    let ids: Vec<Option<usize>> = (0..4).map(|i| f.command_id(i)).collect();
+    assert_eq!(ids, [Some(0), Some(1), Some(2), None]);
+}
+
+/// 32. The HUD's fire-mode fields are read (the icon itself: the HUD's
+/// tests, tests/ui/hud.rs case 76); `HudFireMode` changes nothing.
+#[test]
+fn case_32_fire_mode_fields() {
+    let f = weapons(
+        r#"[Ammo0] Name="x"
+        [Weapon0] Name="Auto" RapidFireCount=0
+        [Weapon1] Name="Semi" RapidFireCount=1 ContinuousFire=1
+        [Weapon2] Name="Three" RapidFireCount=3
+        [Weapon3] Name="Burst2" TripleShotMode=1 TripleShotRoundNum=2
+        [Weapon4] Name="Burst" TripleShotMode=1 HudFireMode=5"#,
+    )
+    .unwrap();
+    let w = &f.weapons;
+    assert_eq!((w[0].rapid_fire_count, w[1].rapid_fire_count, w[2].rapid_fire_count), (0, 1, 3));
+    assert_eq!(w[1].continuous_fire, 1);
+    assert_eq!((w[3].triple_shot_mode, w[3].triple_shot_round_num), (1, 2));
+    assert_eq!(w[4].triple_shot_round_num, 3, "missing: 3 rounds");
+    assert_eq!(w[4].hud_fire_mode, 5);
+    // Our documents: RapidFireCount 0 automatic, 1 not.
+    let set = merged_w(r#"[Ammo0] Name="A" [Weapon0] Name="W" RapidFireCount=0 AmmoName0="A""#);
+    assert!(set.weapons[0].trigger.as_ref().unwrap().automatic);
 }

@@ -519,6 +519,22 @@ impl WeaponsFile {
         self.order.iter().flat_map(|(_, ids)| ids.iter().copied()).collect()
     }
 
+    /// A weapon's inventory class: the 1-based place of the order list it
+    /// is in (`Class0` is 1, primary; ... 6, mission), 0 in none. Not its
+    /// `Guntype`: the slot keys and the HUD's weapon panel read this.
+    pub fn inventory_class(&self, weapon: usize) -> u8 {
+        self.order
+            .iter()
+            .position(|(_, ids)| ids.contains(&weapon))
+            .map_or(0, |i| (i + 1).min(u8::MAX as usize) as u8)
+    }
+
+    /// A weapon's command id: its place in all order lists in a row (the
+    /// server's "better weapon" rule, inventory.md 11); None in no list.
+    pub fn command_id(&self, weapon: usize) -> Option<usize> {
+        self.order_flat().iter().position(|&w| w == weapon)
+    }
+
     /// A weapon by name (the first match).
     pub fn weapon(&self, name: &str) -> Option<&WeaponRecord> {
         find_by_name(&self.weapons, name, |w| &w.name).map(|(_, w)| w)
