@@ -71,6 +71,10 @@ pub fn fog_at(f: &FogUniform, eye: Vec3, point: Vec3, depth: f32) -> (Vec3, f32)
     if f.color.w < 0.5 {
         return (Vec3::ZERO, 0.0);
     }
+    // Linear fog (`MapFog::linear`): by f, not f^2.
+    if f.range.w > 0.5 {
+        return (f.color.truncate(), range_amount(f.range).sqrt());
+    }
     (f.color.truncate(), range_amount(f.range))
 }
 

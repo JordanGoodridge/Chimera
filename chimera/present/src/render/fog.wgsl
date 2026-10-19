@@ -9,7 +9,8 @@
 // near plane crosses it: Source's intersection view).
 //
 // Returns the fog colour (rgb) and how much of it to apply (a): range fog
-// is f^2, height fog is f (not squared).
+// is f^2 (f with `range.w` 1, a map's linear fog), height fog is f (not
+// squared).
 
 #define_import_path mashup::fog
 
@@ -78,6 +79,10 @@ fn source_fog(
     }
     if color.w < 0.5 {
         return vec4<f32>(0.0);
+    }
+    // range.w 1: linear fog (map::MapFog::linear), toward the colour by f.
+    if range.w > 0.5 {
+        return vec4<f32>(color.rgb, sqrt(range_amount(range, depth)));
     }
     return vec4<f32>(color.rgb, range_amount(range, depth));
 }

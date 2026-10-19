@@ -309,3 +309,76 @@ fn conventions() {
     assert_eq!(rotation_axes(0.0, 0.0, 0.0), [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
     assert!(rotation_axes(0.3, 0.0, 0.0)[2][1] < 0.0);
 }
+
+/// Fixture B with its object's properties replaced by `props` (name,
+/// type code, stored bytes) and its record length R set to the content's
+/// plus `r_off`; the later blocks moved to follow.
+fn fixture_b_with(props: &[(&str, u8, Vec<u8>)], r_off: i32) -> Vec<u8> {
+    let b = fixture_b();
+    let mut obj = W::default();
+    obj.lstring("Demo").u32(props.len() as u32);
+    for (name, code, data) in props {
+        obj.lstring(name).u8(*code).u32(0).u16(data.len() as u16).bytes(data);
+    }
+    let mut block = W::default();
+    block.u32(1).u16((obj.0.len() as i32 + r_off) as u16).bytes(&obj.0);
+    let delta = block.0.len() as i64 - (533 - 352);
+    let mut out = b[..352].to_vec();
+    for i in 1..6 {
+        let at = 4 + 4 * i;
+        let o = u32::from_le_bytes(out[at..at + 4].try_into().unwrap()) as i64 + delta;
+        out[at..at + 4].copy_from_slice(&(o as u32).to_le_bytes());
+    }
+    out.extend(block.0);
+    out.extend(&b[533..]);
+    out
+}
+
+/// Test case 17: an unknown shader code (Fixture B's section, byte 640,
+/// from 1 to 3) parses exactly as before and is kept (the drawing skips
+/// it).
+#[test]
+fn t17_unknown_shader_code() {
+    let mut b = fixture_b();
+    assert_eq!(b[640], 1);
+    b[640] = 3;
+    let w = World::parse(&b).unwrap();
+    let mut want = World::parse(&fixture_b()).unwrap();
+    want.render.blocks[0].sections[0].shader = 3;
+    assert_eq!(w, want);
+}
+
+/// Test case 18: the collision blockers' trailer (Fixture A, offset 408)
+/// is read and ignored.
+#[test]
+fn t18_blocker_trailer() {
+    let mut a = fixture_a();
+    a[408..412].copy_from_slice(&7u32.to_le_bytes());
+    let w = World::parse(&a).unwrap();
+    assert!(w.blockers.polygons.is_empty() && w.warnings.is_empty());
+}
+
+/// Test case 19: a real stored in 8 bytes uses its first four and the
+/// next property starts after all 8; one in 2 bytes is refused; a
+/// polygon of 41 vertices is refused. A record length that disagrees
+/// with the content is a warning, the list read on by content.
+#[test]
+fn t19_property_lengths() {
+    let real8 = [0.5f32.to_le_bytes(), 9.0f32.to_le_bytes()].concat();
+    let props = [("Real", 3, real8), ("Flag", 5, vec![1])];
+    let w = World::parse(&fixture_b_with(&props, 0)).unwrap();
+    let o = &w.objects[0];
+    assert_eq!((o.real("Real"), o.bool("Flag")), (Some(0.5), Some(true)));
+    assert!(w.warnings.is_empty());
+    assert!(World::parse(&fixture_b_with(&[("Real", 3, vec![0, 0])], 0)).is_err(), "D = 2");
+    for r_off in [-3, 5] {
+        let w = World::parse(&fixture_b_with(&props, r_off)).unwrap();
+        assert_eq!(w.objects[0].real("Real"), Some(0.5));
+        assert_eq!(w.warnings.len(), 1, "{:?}", w.warnings);
+    }
+    // Fixture A's polygon 0 has its vertex count byte at 249.
+    let mut a = fixture_a();
+    assert_eq!(a[249], 3);
+    a[249] = 41;
+    assert!(World::parse(&a).is_err());
+}

@@ -930,13 +930,17 @@ pub(crate) fn layer(z: i32) -> impl Bundle {
     )
 }
 
+/// The HUD's top layer: under the flash's white (grenades.md section 10:
+/// the HUD is drawn first, the white over it; chat and menus over both).
+pub const HUD_Z: i32 = 28;
+
 fn spawn(mut commands: Commands) {
-    commands.spawn((CrosshairRoot, layer(40)));
-    commands.spawn((DamageRoot, layer(39)));
-    commands.spawn((StatusRoot, layer(40)));
-    commands.spawn((WeaponRoot, layer(40)));
-    commands.spawn((FeedRoot, layer(40)));
-    commands.spawn((TagRoot, layer(38)));
+    commands.spawn((CrosshairRoot, layer(HUD_Z)));
+    commands.spawn((DamageRoot, layer(HUD_Z - 1)));
+    commands.spawn((StatusRoot, layer(HUD_Z)));
+    commands.spawn((WeaponRoot, layer(HUD_Z)));
+    commands.spawn((FeedRoot, layer(HUD_Z)));
+    commands.spawn((TagRoot, layer(HUD_Z - 2)));
 }
 
 /// A rect node, px.

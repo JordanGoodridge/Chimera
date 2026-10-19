@@ -1399,6 +1399,7 @@ fn parse_fog(e: &vbsp::RawEntity) -> Option<crate::map::MapFog> {
         start: start * METERS_PER_UNIT,
         end: end * METERS_PER_UNIT,
         max_density: e.prop("fogmaxdensity").and_then(|v| v.parse().ok()).unwrap_or(1.0),
+        linear: false,
     })
 }
 

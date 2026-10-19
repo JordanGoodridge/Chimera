@@ -21,21 +21,27 @@
 //! exactly its size from exactly its bytes), so a parsed world holds
 //! plain bytes.
 //!
+//! Malformed data ("Malformed records", Q16): objects are read in
+//! sequence by their content, as the engine reads them; a record length R
+//! that disagrees is a warning (`World::warnings`), not an error. A
+//! property longer than its type uses its leading bytes; one shorter is
+//! refused (the engine would read past it), as is a polygon of more than
+//! 40 vertices (it would overrun the engine's buffer). The blockers'
+//! trailer is reserved and kept as read (Q17); section shader codes are
+//! kept as read, sections with codes other than 1, 2, 4, 8 and 9 never
+//! drawn (the reader of `RenderWorld` skips them). Strings are 8-bit, no
+//! byte above 0x7F in any shipped map: each byte becomes the char of the
+//! same code (Latin-1), so nothing is lost.
+//!
 //! Known shortcuts (our reading where the spec leaves room):
-//! - Strict where the spec says "observed": a property whose stored
-//!   length doesn't fit its type (a vector not 12 bytes, ...) is an error,
-//!   as is an object record whose properties run past its length R (one
-//!   that ends early is skipped to R); a polygon with more than the
-//!   engine's 40 vertices, a render block with more than 65,535 vertices
-//!   and a block light group whose section count differs from its block's
-//!   are errors. The BSP's polygon-vertex total and texture-name length
-//!   are checked (the spec calls them consistency checks).
-//! - Not checked: the blockers' trailer (kept as read), surface texture
-//!   indices against the texture list, section shader codes (kept as
-//!   read; the spec's engine treats unknown ones as invalid when drawing).
-//! - Strings are 8-bit: each byte becomes the char of the same code
-//!   (Latin-1), so nothing is lost; full length is kept (the engine's
-//!   truncations are not applied, "Texture-name truncation").
+//! - Strict where the engine only reads: a render block with more than
+//!   65,535 vertices and a block light group whose section count differs
+//!   from its block's are errors. The BSP's polygon-vertex total and
+//!   texture-name length are checked (the spec calls them consistency
+//!   checks). Not checked: surface texture indices against the texture
+//!   list.
+//! - Strings keep their full length (the engine's truncations are not
+//!   applied, "Texture-name truncation").
 
 use std::fmt;
 
@@ -656,6 +662,9 @@ pub struct World {
     pub light_groups: Vec<WorldLightGroup>,
     /// The file's length.
     pub file_len: usize,
+    /// What the engine reads past without noticing (an object record
+    /// whose length R disagrees with its content).
+    pub warnings: Vec<String>,
 }
 
 impl World {
@@ -730,8 +739,9 @@ impl World {
         let count = c.count(2, "objects")?;
         w.objects = Vec::with_capacity(count);
         for i in 0..count {
-            w.objects
-                .push(parse_object(&mut c).map_err(|e| e.context(&format!("object {i}")))?);
+            let (o, warning) = parse_object(&mut c).map_err(|e| e.context(&format!("object {i}")))?;
+            w.objects.push(o);
+            w.warnings.extend(warning.map(|m| format!("object {i}: {m}")));
         }
         c.expect_end(offsets[1], "the object list", "the blind object data")?;
 
@@ -1256,13 +1266,13 @@ fn parse_bsp(c: &mut Cursor) -> Result<WorldModel> {
     Ok(m)
 }
 
-fn parse_object(c: &mut Cursor) -> Result<Object> {
+/// One object record ("Objects"), read in sequence as the engine does: by
+/// its content, the record length R only compared (a mismatch is returned
+/// as a warning, the next record read right after the last property).
+fn parse_object(c: &mut Cursor) -> Result<(Object, Option<String>)> {
     let len = c.u16()? as usize;
     let start = c.pos;
     let end = start + len;
-    if end > c.b.len() {
-        return Err(c.err(format!("the record's {len} bytes run past the file")));
-    }
     let class = c.lstring()?;
     let count = c.count(2 + 1 + 4 + 2, "properties")?;
     let mut properties = Vec::with_capacity(count);
@@ -1278,7 +1288,9 @@ fn parse_object(c: &mut Cursor) -> Result<Object> {
             message: format!("property {name}: {d} bytes don't hold a value of type {code}"),
         };
         let f = |i: usize| f32::from_le_bytes(data[4 * i..4 * i + 4].try_into().unwrap());
-        let fixed = |size: usize| if data.len() == size { Ok(()) } else { Err(bad()) };
+        // "Malformed records": a value longer than its type uses its
+        // leading bytes; a shorter one would be read past its data.
+        let fixed = |size: usize| if data.len() >= size { Ok(()) } else { Err(bad()) };
         let value = match code {
             0 => {
                 let n = data
@@ -1307,11 +1319,13 @@ fn parse_object(c: &mut Cursor) -> Result<Object> {
             value,
         });
     }
-    if c.pos > end {
-        return Err(c.err(format!("the properties run {} bytes past the record's length", c.pos - end)));
-    }
-    c.pos = end;
-    Ok(Object { class, properties })
+    let warning = (c.pos != end).then(|| {
+        format!(
+            "{class}: the record says {len} bytes, its properties take {}",
+            c.pos - start
+        )
+    });
+    Ok((Object { class, properties }, warning))
 }
 
 fn parse_light_grid(c: &mut Cursor) -> Result<LightGrid> {

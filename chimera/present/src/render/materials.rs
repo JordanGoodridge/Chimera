@@ -186,10 +186,11 @@ pub fn material_fog(data: &MapData, view: MapDebugView, skybox: bool) -> Option<
     })
 }
 
-/// Fog start, end (meters) and max density for shaders.
+/// Fog start, end (meters) and max density for shaders; w 1 for linear
+/// fog (`MapFog::linear`), 0 for Source's squared.
 pub fn fog_range(fog: Option<&MapFog>) -> Vec4 {
     fog.map_or(Vec4::new(0.0, 1.0, 0.0, 0.0), |f| {
-        Vec4::new(f.start, f.end.max(f.start + 0.01), f.max_density, 0.0)
+        Vec4::new(f.start, f.end.max(f.start + 0.01), f.max_density, if f.linear { 1.0 } else { 0.0 })
     })
 }
 
@@ -203,6 +204,7 @@ mod fog_tests {
             start,
             end,
             max_density: 0.8,
+            linear: false,
         }
     }
 
@@ -237,6 +239,18 @@ mod fog_tests {
         };
         assert!(material_fog(&unfogged, MapDebugView::Normal, true).is_none());
         assert!(material_fog(&unfogged, MapDebugView::Normal, false).is_some());
+    }
+
+    /// Linear fog (LithTech's) goes toward the colour by f, Source's by f².
+    #[test]
+    fn linear_fog_is_not_squared() {
+        let mut f = fog(0.0, 100.0);
+        f.max_density = 1.0;
+        let at = |f: &MapFog| super::super::fog::fog_at(&super::super::fog::world_fog(Some(f)), Vec3::ZERO, Vec3::ZERO, 50.0).1;
+        assert!((at(&f) - 0.25).abs() < 1e-6);
+        f.linear = true;
+        assert_eq!(fog_range(Some(&f)).w, 1.0);
+        assert!((at(&f) - 0.5).abs() < 1e-6);
     }
 }
 
