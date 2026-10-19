@@ -1,0 +1,52 @@
+# Combat Arms game modes: our defaults, from specs/combat_arms/game_modes.md
+# (section numbers in the comments). Read by
+# games/combat_arms/src/game/rules/settings.rs (`CaRuleSettings`); the
+# console's `ca_*` cvars set them after (the room's choices and the server
+# file's, as a lobby or a server's config would).
+
+# The room's mode, by its room key (Modes found): TDM (shown as
+# Elimination), TSV (Elimination Pro), or none (no mode: nobody is spawned,
+# counted or respawned by the rules).
+mode = "TDM"
+# The room's goal G (S2); 0: the mode's default (its `goal_default`).
+goal = 0
+# Room settings (S2): friendly fire (S8, the server's `NetFriendlyFire`)
+# and join in progress (`EnableJoinCombatSetting`, S1): 1 on, 0 off.
+friendly_fire = 0
+join_in_progress = 1
+
+# The dedicated server's file, section CombatMode (S2), the values of the
+# client's copy: round setup, round-over and intermission lengths (s).
+object_start = 0.0
+object_end = 3.0
+mission_end = 3.0
+
+# Constants (shared).
+# Respawn waits (S5): the client asks after more than this (s) ...
+respawn_wait_client = 7.0
+# ... and the server refuses a request sooner than this after the death (s).
+respawn_wait_server = 5.0
+# Spawn protection (S6): instant-hit shots pass through (s), and all damage
+# is blocked (s; the server's `RespawnInvulnerabilityTime`).
+protect_bullets = 3.0
+protect_all = 4.0
+# The warm-up's revive period (S9), s.
+warmup_revive = 5.0
+# Round modes hold a joiner only with at least this many players in (S1).
+late_join_wait = 3
+
+# Per mode (S2's goal table; the stock mission files' `TimeLimit` and
+# `TrainingTimeLimit`, s; no time_limit: the round has no timer).
+[modes.TDM]
+goal_min = 30
+goal_max = 140
+goal_step = 10
+goal_default = 100
+
+[modes.TSV]
+goal_min = 5
+goal_max = 9
+goal_step = 2
+goal_default = 7
+time_limit = 180.0
+training_time_limit = 10.0

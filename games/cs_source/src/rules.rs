@@ -666,17 +666,9 @@ fn count_deaths(mut died: MessageReader<Died>, mut scores: Query<&mut Score>, mu
     }
 }
 
-/// The dead neither move nor shoot (their intent is cleared each tick).
-fn hold_the_dead(mut dead: Query<&mut Intent, With<Dead>>) {
-    for mut intent in &mut dead {
-        let (yaw, pitch) = (intent.yaw, intent.pitch);
-        *intent = Intent {
-            yaw,
-            pitch,
-            ..default()
-        };
-    }
-}
+// The dead neither move nor shoot (their intent is cleared each tick):
+// every game's (`chimera_sim::spawning`).
+use chimera_sim::spawning::hold_the_dead;
 
 fn respawn(world: &mut World) {
     // Rounds respawn everyone at the round's start instead.
@@ -766,34 +758,15 @@ pub fn put_at_spawn(world: &mut World, e: Entity, fresh: bool) {
                 world.despawn(w);
             }
         }
-        // A noclip turned on with the console command ends: CS:S spawns
+        // Alive, still, at full health, at the spawn facing its way, and
+        // out of a noclip turned on with the console command: CS:S spawns
         // every player walking (a respawn, a round start, survivors too;
         // specs/cs_source/movement.md "Noclip and spawning").
-        chimera_sim::movement::noclip::end_toggled(world, e);
-        let Ok(mut ent) = world.get_entity_mut(e) else { return };
-        ent.remove::<(Dead, ColliderDisabled)>();
+        if !chimera_sim::spawning::revive(world, e, at) {
+            return;
+        }
         if fresh {
-            ent.insert(Inventory::default());
-        }
-        if let Some(mut h) = ent.get_mut::<Health>() {
-            h.current = h.max;
-        }
-        if let Some(mut v) = ent.get_mut::<Velocity>() {
-            v.0 = Vec3::ZERO;
-        }
-        if let Some(at) = at {
-            // Spawn points are already lifted to a character's centre.
-            if let Some(mut t) = ent.get_mut::<Transform>() {
-                t.translation = at.translation;
-            }
-            if let Some(mut p) = ent.get_mut::<Position>() {
-                p.0 = at.translation;
-            }
-            if let Some(mut i) = ent.get_mut::<Intent>() {
-                let (yaw, _, _) = at.rotation.to_euler(EulerRot::YXZ);
-                i.yaw = yaw;
-                i.pitch = 0.0;
-            }
+            world.entity_mut(e).insert(Inventory::default());
         }
         // A map's spawn equipment (game_player_equip) replaces the kit,
         // and comes at every spawn (survivors of a round too).

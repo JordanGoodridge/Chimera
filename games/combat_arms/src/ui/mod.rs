@@ -11,8 +11,10 @@
 //! - `draw`: a laid-out tree as the shell's UI nodes (the install's font
 //!   faces, stand-ins for the game's keyed art).
 //! - `hud` (crosshair and basic HUD, hud_crosshair.md): its texts placed
-//!   and sized by `layout`; `menu`: the in-game menu (Esc) in place of
-//!   the shell's default; `chat`: the match chat's queue (the model);
+//!   and sized by `layout`, with the game mode's score panel and round
+//!   timer (`hud::score`); `scoreboard`: the scoreboard (Tab, and a
+//!   round's result); `menu`: the in-game menu (Esc) in place of the
+//!   shell's default; `chat`: the match chat's queue (the model);
 //!   `visuals`: placeholder looks (box guns).
 //!
 //! `with_hud` puts Combat Arms' HUD among the shell's plugins (after its
@@ -20,14 +22,15 @@
 //! selection (`client::weapon_menu`, as CS:S's: `slot1`..`slot5`,
 //! `invnext` / `invprev`, here with no HUD row, so they switch at once;
 //! see `game::inventory`), as CS:S's `with_hud` does; `CaUiPlugin` adds
-//! the rest after the shell: the in-game menu and the visuals.
+//! the rest after the shell: the in-game menu, the scoreboard and the
+//! visuals.
 //!
 //! `CaUi` is the UI's data: our font list (`data/ui/fonts.toml`), string
 //! table (`data/ui/strings.txt`) and stand-in textures.
 //!
 //! Known shortcuts: no other screens (lobby, shop, result screen: the
-//! game has them as menus at 1024 x 768; no loading screen, scoreboard,
-//! kill cam or vote panel yet); the HUD's panels keep their places as
+//! game has them as menus at 1024 x 768; no loading screen, kill cam or
+//! vote panel yet); the HUD's panels keep their places as
 //! code (`hud::model`, from hud_crosshair.md) rather than binding named
 //! controls of the game's HUD layout, which sits in a keyed archive.
 
@@ -37,6 +40,7 @@ pub mod draw;
 pub mod hud;
 pub mod layout;
 pub mod menu;
+pub mod scoreboard;
 pub mod visuals;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
@@ -58,7 +62,7 @@ pub struct CaUiPlugin;
 
 impl Plugin for CaUiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((visuals::CaVisualsPlugin, menu::CaMenuPlugin));
+        app.add_plugins((visuals::CaVisualsPlugin, menu::CaMenuPlugin, scoreboard::CaScoreboardPlugin));
     }
 }
 
