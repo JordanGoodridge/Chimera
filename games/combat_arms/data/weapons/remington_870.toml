@@ -77,6 +77,16 @@ move_penalty = 0.08
 # install's modification file gives it).
 [hooks."combat_arms:attachments"]
 
+# view_models.md 4, 9, 10 (per-weapon placement): `MuzzlePos`,
+# `BreachOffset` (absent: zero), `PVMuzzleFXName`; `Recoil` (the shot jiggle) is
+# (0, 0, 0) in every stock record. Its animations are the view model's
+# own, by view_models.md 7's names (game/view_model.rs).
+[hooks."combat_arms:view_model"]
+muzzle_pos = [5.44, -3.2, 9.559921]
+breach_offset = [0.0, 0.0, 0.0]
+muzzle_fx = "AK47_pv_muzz"
+shells = true
+
 # The first-person model (unkeyed GUNS_M_PV_SG) and its skin (index 1,
 # unkeyed GUNS_T_PV_SG). Sequences by view_models.md 7 (select 1000 ms,
 # fire_0 600 ms; the shell reload PreReload 333 ms, reload 700 ms a
@@ -87,10 +97,3 @@ view_skins = ["", "guns_t_pv_sg/pv_r870.dtx"]
 # view_models.md, per-weapon placement: `Pos` (0.3, -0.7, 1.0).
 view_offset = [0.3, -0.7, 1.0]
 
-[anim.sequences]
-draw = ["select"]
-idle = ["idle_0"]
-fire = ["fire_0"]
-reload_start = ["PreReload"]
-reload_loop = ["reload"]
-reload_end = ["PostReload"]
