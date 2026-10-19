@@ -18,16 +18,17 @@ doctest = false
 # so a `.rez` archive is a mount layer like a VPK.
 [dependencies]
 source_formats.workspace = true
-# `.rez` payloads (specs/combat_arms/rez_archive.md, "Encryption"): V1
-# archives are Twofish-256-CBC, V2 ones AES-256-CBC (CBC and the plain
-# tail are ours, in rez_cipher.rs). Both RustCrypto, on cipher 0.5.
-twofish = "0.8"
+# `.rez` payloads (specs/combat_arms/rez_archive.md, "Encryption"): V2
+# archives are AES-256-CBC (CBC and the plain tail are ours, in
+# rez_cipher.rs). V1's Twofish is ours too (table-driven; RustCrypto's
+# `twofish`, a dev-dependency below, checks it).
 aes = "=0.9.3"
 
 # The heavy tests find the install and keys in chimera.local.toml
 # themselves (no Chimera crate here).
 [dev-dependencies]
 toml.workspace = true
+twofish = "0.8"
 
 # Integration tests as one binary (tests/it/): spec fixtures built in
 # code, and `heavy::` against the user's Combat Arms install.

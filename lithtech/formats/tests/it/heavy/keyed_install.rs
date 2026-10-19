@@ -139,7 +139,7 @@ fn v2_character_and_m4a1_models_parse() {
 }
 
 /// V1: ATTRIBUTES' weapons file decrypts (Twofish) to text the attribute
-/// reader parses, with an M4A1 record.
+/// reader parses, with `Weapon` records.
 #[test]
 fn v1_weapons_attributes_parse() {
     let Some((game, keys)) = keyed("V1") else { return };
