@@ -2,7 +2,9 @@
 //! side: the map carries named sound entries and decoded clips (and
 //! soundscapes); game code writes `PlaySound`, and starts, changes and
 //! stops long-lived sounds with `SoundControl` under a `SoundKey`; the
-//! distance model (`distance_gain`, also for bots' hearing) and the
+//! distance model (`distance_gain`, also for bots' hearing; a level is a
+//! Source sound level, an attenuation, or an inner and outer radius with
+//! a distance low-pass, `distance_cutoff`: LithTech's) and the
 //! surface under a point (`SurfaceGrid`, footsteps) and volumes that
 //! swap one surface's footsteps for another's (`StepRemap`). Playback is
 //! `audio`.
@@ -16,13 +18,22 @@ use bevy::prelude::*;
 pub use source_formats::wav::SoundClip as MapSoundClip;
 
 /// How a sound falls off with distance.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SoundLevel {
     /// Source sound level (0..255 "dB"); 0 is heard everywhere.
     Db(f32),
     /// Linear falloff, silent beyond 1000 / attenuation units (GoldSrc
     /// style, Source's "CompatibilityAttenuation").
     Attenuation(f32),
+    /// An inner and outer radius (meters), the gain falling with the
+    /// square of the distance between them (`radius_gain`: LithTech's
+    /// sounds), and optionally a low-pass that closes with distance
+    /// (`low_pass`: from `start` over `span` meters, `distance_cutoff`).
+    Radius {
+        inner: f32,
+        outer: f32,
+        low_pass: Option<(f32, f32)>,
+    },
 }
 
 /// A value drawn uniformly from start..start + range.
@@ -307,7 +318,56 @@ pub fn distance_gain(level: SoundLevel, units: f32) -> f32 {
         SoundLevel::Db(l) => (10f32.powf((l - 60.0) / 20.0) * MIN_DISTANCE / units.max(MIN_DISTANCE)).min(1.0),
         SoundLevel::Attenuation(a) if a <= 0.0 => 1.0,
         SoundLevel::Attenuation(a) => (1.0 - units * a / 1000.0).clamp(0.0, 1.0),
+        SoundLevel::Radius { inner, outer, .. } => radius_gain(inner, outer, units * METERS_PER_UNIT),
     }
+}
+
+/// The gain of a sound with inner radius `r` and outer radius `big_r` at
+/// distance `d` (any one unit): 1 within `r` (a sound that starts there
+/// keeps its full gain), `1 - (d² - r²) / (R - r)²` clamped to 0..1
+/// between (zero from `sqrt(r² + (R - r)²)` on), 0 from `R`.
+pub fn radius_gain(r: f32, big_r: f32, d: f32) -> f32 {
+    if d <= r {
+        return 1.0;
+    }
+    if d >= big_r || big_r <= r {
+        return 0.0;
+    }
+    (1.0 - (d * d - r * r) / ((big_r - r) * (big_r - r))).clamp(0.0, 1.0)
+}
+
+/// The low-pass cut-off of a sound at `units` from the listener, as a
+/// fraction of the full bandwidth (1: unfiltered): a `Radius` level's
+/// `low_pass` (start, span) between its radii (`low_pass_fraction`);
+/// 1 for every other level.
+pub fn distance_cutoff(level: SoundLevel, units: f32) -> f32 {
+    let SoundLevel::Radius {
+        inner,
+        outer,
+        low_pass: Some((start, span)),
+    } = level
+    else {
+        return 1.0;
+    };
+    let d = units * METERS_PER_UNIT;
+    if d <= inner || d >= outer {
+        return 1.0;
+    }
+    low_pass_fraction(d, start, span)
+}
+
+/// `c = clamp(1 - cos(pi u / 2), 0.1, 1)` with `u = clamp(1 - (d - start)
+/// / span, 0, 1)` (any one unit): 1 up to `start`, 0.1 from about
+/// `start + 0.75 span` on.
+pub fn low_pass_fraction(d: f32, start: f32, span: f32) -> f32 {
+    let u = if span > 0.0 {
+        (1.0 - (d - start) / span).clamp(0.0, 1.0)
+    } else if d <= start {
+        1.0
+    } else {
+        0.0
+    };
+    (1.0 - (std::f32::consts::FRAC_PI_2 * u).cos()).clamp(0.1, 1.0)
 }
 
 /// World triangles tagged with their surface, on a horizontal grid, to
@@ -518,6 +578,26 @@ pub struct StartSound {
 mod tests {
     use super::*;
     use crate::map::{MapData, MapMesh};
+
+    /// A radius level: full within the inner radius, the squared falloff
+    /// between, silent from the outer; the low-pass ramp between them.
+    #[test]
+    fn radius_levels() {
+        assert_eq!(radius_gain(1.0, 10.0, 0.5), 1.0);
+        assert!((radius_gain(1.0, 10.0, 5.0) - (1.0 - 24.0 / 81.0)).abs() < 1e-6);
+        assert_eq!(radius_gain(1.0, 10.0, 10.0), 0.0);
+        let level = SoundLevel::Radius {
+            inner: 1.0,
+            outer: 40.0,
+            low_pass: Some((20.0, 10.0)),
+        };
+        let units = |m: f32| m / METERS_PER_UNIT;
+        assert_eq!(distance_cutoff(level, units(10.0)), 1.0);
+        assert!((distance_cutoff(level, units(25.0)) - (1.0 - (std::f32::consts::FRAC_PI_4).cos())).abs() < 1e-4);
+        assert_eq!(distance_cutoff(level, units(39.0)), 0.1);
+        assert_eq!(distance_cutoff(SoundLevel::Db(75.0), units(39.0)), 1.0);
+        assert!((distance_gain(level, units(5.0)) - radius_gain(1.0, 40.0, 5.0)).abs() < 1e-5);
+    }
 
     /// A blended surface's triangles take `$surfaceprop2` where their
     /// corners' mean blend weight is over one half.
