@@ -82,6 +82,14 @@ fall_damage_at_full = 200.0
 fall_minimum = 50.0
 # Ours: hit points of a full-health player (Chimera's health is 1.0 at full).
 health_points = 100.0
+# Other modifiers: a volume's viscosity removes viscosity_max x its
+# `Viscosity` of speed per second (u/s^2). The movement spec names
+# viscosity_max without a value; this is the engine's figure from
+# grenades.md section 7 (5000 x c).
+viscosity_max = 5000.0
+# Constants: pusher air factor; pusher max upward speed (u/s).
+pusher_air_factor = 0.1
+pusher_max_up = 100.0
 
 # Crouch-spam penalty: the dedicated server's shipped configuration (the
 # "Server config key" table).

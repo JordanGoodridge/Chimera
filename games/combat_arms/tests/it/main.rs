@@ -24,6 +24,7 @@ mod inventory;
 mod mode_kit;
 mod model;
 mod movement;
+mod movement_volumes;
 mod net;
 mod net_modes;
 mod other_modes;
@@ -41,6 +42,7 @@ mod heavy {
     mod characters;
     mod effects_sounds;
     mod model;
+    mod movement_volumes;
     mod mount;
     mod view_model;
     mod world;

@@ -82,7 +82,7 @@ fn check_map(mount: &chimera_core::mount::Mount, name: &str) {
 }
 
 /// Maps whose spawns have no solid floor under them in the file: the
-/// player lands on a liquid's top and sinks (no swimming yet).
+/// player lands on a liquid's top and floats there.
 const NO_FLOOR: &[&str] = &["hgoilrig"];
 
 /// Every map whose archive folder is `folder`, two at a time; how many.
@@ -407,8 +407,8 @@ fn second_layer_census() {
 /// drops into the void: none of them sits on the world's outer box
 /// (10240 u down). Nothing solid lies under them in the file, only the
 /// sea (its sliding water's surface over a `Water` volume): a player
-/// spawned at one starts at the water's top, not 190 m down (it then
-/// sinks: no swimming yet). The rules' spawn list under TDM is the same
+/// spawned at one starts at the water's top, not 190 m down (and floats
+/// there: `heavy::movement_volumes`). The rules' spawn list under TDM is the same
 /// family's.
 #[test]
 fn hgoilrig_spawns_on_its_own_family() {
