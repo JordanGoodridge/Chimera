@@ -44,6 +44,10 @@ pub struct NavGenParams {
     pub max_cells: usize,
     /// Merged areas are at most this many cells a side.
     pub max_area: u32,
+    /// The physics layers the walker meets (a game's characters' filter,
+    /// e.g. `core::CHARACTER_FILTER`: players-only clips but not
+    /// traces-only surfaces).
+    pub mask: LayerMask,
 }
 
 impl Default for NavGenParams {
@@ -57,6 +61,7 @@ impl Default for NavGenParams {
             max_drop: 2.0,
             max_cells: 300_000,
             max_area: 8,
+            mask: crate::core::CHARACTER_FILTER,
         }
     }
 }
@@ -182,7 +187,7 @@ pub fn generate(
 ) -> NavMesh {
     let mut g = Grid {
         q,
-        filter: SpatialQueryFilter::default(),
+        filter: SpatialQueryFilter::from_mask(p.mask),
         ignore,
         p: *p,
         cells: Vec::new(),

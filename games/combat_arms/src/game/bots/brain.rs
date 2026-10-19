@@ -342,6 +342,13 @@ pub const JUMP_UP: f32 = 0.8;
 pub const JUMP_RISE: f32 = 0.35;
 pub const JUMP_AHEAD: f32 = 1.2;
 
+/// What sight, the line of fire and the grenade's line meet: the gameplay
+/// layers (`core::SOLID_LAYERS`: not players-only clips or ragdolls;
+/// traces-only detail does block).
+fn sight_filter() -> SpatialQueryFilter {
+    SpatialQueryFilter::from_mask(crate::core::SOLID_LAYERS)
+}
+
 /// The generator's walker: Chimera's 1.8 m hull, the fallback hull's half
 /// width, rises up to `JUMP_UP`.
 pub fn nav_params() -> crate::map::nav_gen::NavGenParams {
@@ -635,6 +642,7 @@ impl Snap {
             let chars: HashSet<Entity> = chars.iter().map(|c| c.e).collect();
             all.difference(&chars).copied().collect()
         };
+        // Sight passes characters and moving bodies (5.2 step 6).
         let see_through = moving_bodies(world);
         let camping: HashMap<Entity, f32> = world.query::<(Entity, &CaCamping)>().iter(world).map(|(e, c)| (e, c.time)).collect();
         let dangers: Vec<Danger> = world
@@ -794,7 +802,7 @@ fn sight(ctx: &Ctx, me: &Char, t: &Char, alert: bool) -> Option<bool> {
         let len = d.length();
         let Ok(dir) = Dir3::new(d) else { return true };
         ctx.q
-            .cast_ray_predicate(eye, dir, len, true, &SpatialQueryFilter::default(), &|e| !ctx.see_through.contains(&e))
+            .cast_ray_predicate(eye, dir, len, true, &sight_filter(), &|e| !ctx.see_through.contains(&e))
             .is_none()
     };
     if clear(t.pos) {
@@ -809,7 +817,7 @@ fn fire_line(ctx: &Ctx, me: &Char, target: Entity, to: Vec3) -> Option<Option<En
     let eye = me.eye();
     let d = to - eye;
     let dir = Dir3::new(d).ok()?;
-    let hit = ctx.q.cast_ray_predicate(eye, dir, d.length(), true, &SpatialQueryFilter::default(), &|e| {
+    let hit = ctx.q.cast_ray_predicate(eye, dir, d.length(), true, &sight_filter(), &|e| {
         e != me.e && e != target && !ctx.loose.contains(&e)
     })?;
     Some(ctx.chars.iter().any(|c| c.e == hit.entity).then_some(hit.entity))
@@ -1087,7 +1095,7 @@ fn investigate(ctx: &Ctx, bot: &mut CaBot, me: &Char, spot: Vec3, gunfire: bool,
         let d = spot + Vec3::Y * 0.5 - eye;
         Dir3::new(d).ok().is_some_and(|dir| {
             ctx.q
-                .cast_ray_predicate(eye, dir, d.length(), true, &SpatialQueryFilter::default(), &|e| !ctx.see_through.contains(&e))
+                .cast_ray_predicate(eye, dir, d.length(), true, &sight_filter(), &|e| !ctx.see_through.contains(&e))
                 .is_none()
         })
     };
@@ -1283,7 +1291,7 @@ fn grenade_danger(ctx: &Ctx, bot: &mut CaBot, me: &Char) {
         if let Ok(dir) = Dir3::new(to) {
             let blocked = ctx
                 .q
-                .cast_ray_predicate(g.pos, dir, to.length(), true, &SpatialQueryFilter::default(), &|e| {
+                .cast_ray_predicate(g.pos, dir, to.length(), true, &sight_filter(), &|e| {
                     !ctx.see_through.contains(&e)
                 })
                 .is_some();

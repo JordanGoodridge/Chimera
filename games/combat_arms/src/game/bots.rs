@@ -54,7 +54,9 @@
 //!   jumps (the spec has no unstick logic, Open question 11).
 //! - Senses: a character's torso is 0.2 m above its centre, its head 0.6
 //!   m (no skeletons); the eye is the movement's; the sight shortcut through
-//!   areas is the floor-level straight walk; footsteps are posted every
+//!   areas is the floor-level straight walk; sight rays meet the gameplay
+//!   layers (`core::SOLID_LAYERS`: players-only blockers pass, traces-only
+//!   detail and see-through surfaces such as glass block); footsteps are posted every
 //!   0.4 s while a character moves on the ground faster than 100 u/s
 //!   (no footstep events yet), surface noise 1; "false stimulations" aren't
 //!   counted; gunfire is heard by enemies only (ally gunfire off). Grenade
