@@ -18,11 +18,21 @@
 //!   (grade C and Red silencers). Its light and every effect group's
 //!   `DynaLight` are point lights without shadows (`lights`).
 //! - Effect groups' particles are Chimera's pool's (drawn by the map).
+//! - The first-person camera (`camera_motion`, after the shell places it
+//!   and before transforms propagate): while it is the eye (first person,
+//!   no spectating, free or map camera), its upward smoothing
+//!   (specs/combat_arms/movement.md "Eye (camera) height",
+//!   `movement::CameraRise`, per rendered frame, `CaMovement::in_jump` its
+//!   jump); then the effect groups' camera jitter (CamJitter: a random
+//!   offset in [−a, a] u on each world axis every frame, a =
+//!   `CaFx::jitter_at` the camera).
 //!
 //! Known shortcuts: lights light what Bevy lights (the lightmapped world
-//! may not show them); the camera jitter (`CaFx::jitter_at`) isn't added
-//! to the view; decals aren't clipped to their polygon (as the game's
-//! `MarksClip` 0) and lie 0.2 cm off the surface.
+//! may not show them); decals aren't clipped to their polygon (as the
+//! game's `MarksClip` 0) and lie 0.2 cm off the surface; the camera's rise
+//! isn't held off in free-movement volumes (players' volumes aren't
+//! modelled: `movement`); with several jitters the largest amplitude
+//! counts (the spec says nothing of overlaps).
 
 use std::collections::HashMap;
 
@@ -36,8 +46,12 @@ use bevy::{
 use lithtech_formats::{dtx::Dtx, fxf::sample_keys};
 
 use crate::{
-    client::FirstPersonCamera,
-    core::LocalPlayer,
+    client::{
+        FirstPersonCamera,
+        spectate::SpecView,
+        view::{CameraMode, FreeCam, Watch},
+    },
+    core::{LocalPlayer, MapView},
     game::{
         attachments::CaMods,
         effects::{
@@ -48,6 +62,7 @@ use crate::{
             pv_muzzle, rules,
         },
         inventory::UNIT,
+        movement::{CaMovement, CameraRise, movement_data},
         view_model::{CaViewModel, CaViewParams, VIEW_SCALE},
     },
     map::view_model::{VIEW_MODEL_LAYER, ViewModelCamera},
@@ -65,7 +80,8 @@ impl Plugin for CaEffectsDrawPlugin {
                 (decals, tracers, casings, muzzle_flash, lights)
                     .after(crate::map::DriveAnimation)
                     .after(crate::game::effects::CaEffectsSet),
-            );
+            )
+            .add_systems(PostUpdate, camera_motion.before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -549,5 +565,72 @@ fn lights(fx: Res<CaFx>, mut slots: Query<(&FxLightSlot, &mut Transform, &mut Po
             }
             None => *v = Visibility::Hidden,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The camera's rise and jitter
+
+/// `camera_motion`'s state: the rise's last height and the jitter's draws.
+#[derive(Default)]
+pub struct CameraMotion {
+    pub rise: CameraRise,
+    rng: u32,
+}
+
+impl CameraMotion {
+    /// A draw in [−1, 1].
+    fn signed(&mut self) -> f32 {
+        self.rng = self.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (self.rng >> 8) as f32 / (1u32 << 23) as f32 - 1.0
+    }
+}
+
+/// A camera jitter's offset (metres) for amplitude `a` (u): each world
+/// axis uniform in [−a, a] (effects_sounds.md, CamJitter).
+pub fn jitter_offset(a: f32, draws: [f32; 3]) -> Vec3 {
+    Vec3::from(draws).clamp(Vec3::splat(-1.0), Vec3::ONE) * a * UNIT
+}
+
+/// The local player's first-person camera, as the shell placed it this
+/// frame: risen smoothly (while it is the eye) and jittered.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn camera_motion(
+    time: Res<Time>,
+    fx: Option<Res<CaFx>>,
+    player: Option<Single<(&Transform, Option<&CaMovement>, Has<MapView>, &Children), (With<LocalPlayer>, Without<FirstPersonCamera>)>>,
+    mut cameras: Query<&mut Transform, With<FirstPersonCamera>>,
+    (mode, freecam, spec, watch): (Option<Res<CameraMode>>, Option<Res<FreeCam>>, Option<Res<SpecView>>, Option<Res<Watch>>),
+    mut state: Local<CameraMotion>,
+) {
+    let Some(player) = player else {
+        state.rise = CameraRise::default();
+        return;
+    };
+    let (body, movement, map_view, children) = *player;
+    let mut cams = cameras.iter_many_mut(children);
+    let Some(mut cam) = cams.fetch_next() else { return };
+    let at = body.transform_point(cam.translation);
+    let mut offset = Vec3::ZERO;
+    let eye = !mode.is_some_and(|m| m.third_person)
+        && freecam.is_none_or(|f| f.mode == 0)
+        && spec.is_none_or(|s| s.pose.is_none())
+        && watch.is_none_or(|w| w.0 == 0)
+        && !map_view;
+    if eye {
+        let wanted = at.y / UNIT;
+        let in_jump = movement.is_some_and(|m| m.in_jump);
+        let h = state.rise.step(wanted, time.delta_secs(), in_jump, movement_data());
+        offset.y += (h - wanted) * UNIT;
+    } else {
+        state.rise = CameraRise::default();
+    }
+    let a = fx.map_or(0.0, |fx| fx.jitter_at(at));
+    if a > 0.0 {
+        let draws = [state.signed(), state.signed(), state.signed()];
+        offset += jitter_offset(a, draws);
+    }
+    if offset != Vec3::ZERO {
+        cam.translation += body.rotation.inverse() * offset / body.scale;
     }
 }

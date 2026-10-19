@@ -31,7 +31,8 @@
 //! reads the stamina gauge and the crouch lock-out from `CaMovement`.
 //! The eye sits `eye_above_centre` over the hull's centre (83 u above the
 //! feet standing, 60 crouched); `CameraRise` is the camera's upward
-//! smoothing. An infected character (`CaInfected`) hit by the other team
+//! smoothing (the front end's `ui::effects::camera_motion` applies it to
+//! the first-person camera each rendered frame). An infected character (`CaInfected`) hit by the other team
 //! gets a `HitKnockback` from the weapon part (its ammo's
 //! `DamageMovePenalty`): the push replaces the acceleration while it runs.
 //! A spawn or respawn puts the player on the floor below and measures
@@ -44,8 +45,7 @@
 //! `TickClock`, not wired to the engine's fixed clock. So what the spec
 //! runs per rendered frame runs per tick here: the stamina gauge, and the
 //! crouch release delay is checked against the tick's time, not the
-//! frame's (the same totals; edges a frame apart). `CameraRise` isn't
-//! applied to the client's camera yet. Sprint applies at once (the
+//! frame's (the same totals; edges a frame apart). Sprint applies at once (the
 //! spec's listen-server case). Not modelled: ladders, volumes (water,
 //! viscosity, currents, gravity, jump pads, safety nets), explosion
 //! pushers, movement disallowed (freeze), the infection stagger (nothing
@@ -302,7 +302,7 @@ impl HitKnockback {
 /// height"): rising more than 1 u (not in a jump) it moves at
 /// `max(gap / 0.1 s, 140 u/s)`, at most 30 u behind, and snaps once
 /// within 1 u; downward moves are immediate. Heights in u. The client's
-/// camera doesn't use it yet (module doc, known shortcuts).
+/// camera runs it each rendered frame (`ui::effects::camera_motion`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CameraRise {
     pub height: Option<f32>,

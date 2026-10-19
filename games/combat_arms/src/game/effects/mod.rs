@@ -39,6 +39,13 @@
 //!   gait's animation keys (`rules::footsteps_between`: walking and
 //!   crouching silent), the surface under the feet (ladders 200), radius
 //!   1200; your jump voice.
+//! - **Liquids** (`volumes::in_liquid`, 5, 8, 11): an impact whose point
+//!   plus normal is in a liquid volume (`submerge`) plays its sound at half
+//!   volume and the surface's under-water group in place of its burst
+//!   (none in stock data), and draws no tracer; casings in water fall at
+//!   half gravity, keep a quarter per bounce and make no sound; a footstep
+//!   on an unknown surface in water is Water's; grenade bounces in water
+//!   are at half volume (`bounce_volume`, with the contact's loudness).
 //! - **Stepping** (`step_effects`): decals age (frozen while paused),
 //!   tracers fly, casings fall and bounce (`rules::Casing`; the first
 //!   bounce's sound), effect groups play (`fx::CaFx` on Chimera's
@@ -54,9 +61,11 @@
 //!   models' own flash sockets without the V2 key), the sound of their
 //!   shots at their eye; hit-zone surfaces for others' shots on a
 //!   network client are the body's (6): a client sees no hit zones.
-//! - No liquid volumes: nothing is under water (no half-volume impact
-//!   sounds, under-water records, bubbles), a ray doesn't go on through
-//!   water; exit decals and debris are off (as in all stock records).
+//! - Liquids: the ammo's own under-water record (`UWBullet`: its
+//!   contents aren't in the spec) isn't swapped in, no bubble trail (its
+//!   look isn't either), a ray doesn't go on through a water surface (the
+//!   rays are `weapons`'); exit decals and debris are off (as in all stock
+//!   records).
 //! - The world's surface types come by texture (`library::tag_surfaces`);
 //!   props and doors are the world's; movable objects take no decals
 //!   (none move yet), and no server-side decals on movers.
@@ -91,6 +100,7 @@ use super::{
     grenades::CaGrenade,
     inventory::UNIT,
     view_model::{CaViewKey, CaViewModel, CaViewParams, machine::ViewKey},
+    volumes::{CaVolume, in_liquid},
     weapons::CaZoom,
 };
 use crate::{
@@ -413,6 +423,29 @@ pub struct Impact {
     /// Decal sprite and width (u).
     pub mark: Option<(String, f32)>,
     pub burst: Option<String>,
+    /// Under water (5): the sound at half volume.
+    pub under_water: bool,
+}
+
+/// The impact sound's volume (0..100): 50 under water (11).
+impl Impact {
+    pub fn sound_volume(&self) -> f32 {
+        if self.under_water { 50.0 } else { 100.0 }
+    }
+}
+
+/// An impact under water (5: its point + normal inside a liquid volume):
+/// the surface's under-water group (`UWImpactFXName`, `UWGrenadeFXName`
+/// for thrown ammo; none in stock data) in place of its burst, when the
+/// impact is seen and the record does surface effects; half volume for
+/// its sound. The ammo's own under-water record isn't swapped in (its
+/// contents aren't in the spec: the record is kept).
+pub fn submerge(out: &mut Impact, record: &ImpactFx, surface: &data::Surface, kind: AmmoKind, seen: bool) {
+    out.under_water = true;
+    if seen && record.surface_fx && !surface.sky {
+        let group = if kind == AmmoKind::Thrown { &surface.uw_grenade_fx } else { &surface.uw_impact_fx };
+        out.burst = (!group.is_empty()).then(|| group.clone());
+    }
 }
 
 /// What an impact on surface `surface` with record `record` makes, by
@@ -490,7 +523,7 @@ fn shot_effects(
     mut dings: ResMut<DingQueue>,
     mut sounds: MessageWriter<CaSound>,
     mut fx: MessageWriter<CaFxRequest>,
-    mut state: Local<ShotState>,
+    (mut state, volumes): (Local<ShotState>, Query<&CaVolume>),
     mut commands: Commands,
 ) {
     // Others' rounds on a network client arrive as `RemoteShot`s (their
@@ -602,6 +635,12 @@ fn shot_effects(
                 let first = matches!(e.kind, WeaponEventKind::Shot { .. });
                 let round = rounds.get_mut(&e.owner);
                 let fire = round.as_ref().map_or(*from, |r| r.fire);
+                let dir = (*to - *from).normalize_or_zero();
+                let n = normal.unwrap_or(-dir);
+                // The impact point, backed off 1 u along the ray; under
+                // water when it + the normal is in a liquid (5).
+                let at = *to - dir * UNIT;
+                let wet = hit.is_some() && in_liquid(volumes.iter(), at + n * UNIT);
                 // 4: the tracer, once per ray, drawn on a round's first.
                 if first && wfx.ammo_kind == AmmoKind::Bullet {
                     let f = if mine {
@@ -614,6 +653,7 @@ fn shot_effects(
                         && counters.0.entry(e.weapon).or_default().ray(f)
                         && first_ray
                         && settings.tracers
+                        && !wet
                         && let Some(look) = tracer_look(&tables, wfx, mods)
                         && let Some(path) = TracerPath::new(fire / UNIT, *to / UNIT, look.velocity, look.length)
                     {
@@ -628,10 +668,6 @@ fn shot_effects(
                     }
                 }
                 let Some(hit) = hit else { continue };
-                let dir = (*to - *from).normalize_or_zero();
-                let n = normal.unwrap_or(-dir);
-                // The impact point, backed off 1 u along the ray.
-                let at = *to - dir * UNIT;
                 let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));
                 let character = has_health && is_character;
                 let ty = if character {
@@ -644,7 +680,7 @@ fn shot_effects(
                 let gates = cam.map(|c| c.gates(fire, at, !mine)).unwrap_or_default();
                 let zoomed = zoom.is_some_and(|z| z.level > 0);
                 let rolls = [state.rolls.next(), state.rolls.next()];
-                let out = impact(
+                let mut out = impact(
                     record,
                     surface,
                     wfx.ammo_kind,
@@ -654,6 +690,9 @@ fn shot_effects(
                     &settings,
                     rolls,
                 );
+                if wet {
+                    submerge(&mut out, record, surface, wfx.ammo_kind, gates.impact_seen);
+                }
                 emit_impact(&out, at, n, &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
                 // 11: fly-by of others' bullets.
                 if first
@@ -686,7 +725,10 @@ fn shot_effects(
                 let Some(record) = tables.impact(&wfx.impact) else { continue };
                 let seen = cam.is_some_and(|c| c.gates(*point, *point, !mine).impact_seen);
                 let rolls = [state.rolls.next(), state.rolls.next()];
-                let out = impact(record, tables.surface(ty), AmmoKind::Melee, seen, false, false, &settings, rolls);
+                let mut out = impact(record, tables.surface(ty), AmmoKind::Melee, seen, false, false, &settings, rolls);
+                if in_liquid(volumes.iter(), *point + *n * UNIT) {
+                    submerge(&mut out, record, tables.surface(ty), AmmoKind::Melee, seen);
+                }
                 emit_impact(&out, *point, *n, &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
             }
             WeaponEventKind::DryFire => {
@@ -725,7 +767,7 @@ fn emit_impact(
     record: &ImpactFx,
 ) {
     if let Some((file, radius)) = &out.sound {
-        sounds.write(CaSound::at(file, at, *radius));
+        sounds.write(CaSound::at(file, at, *radius).volume(out.sound_volume()));
     }
     if let Some(g) = &out.ammo_fx {
         fx.write(CaFxRequest {
@@ -890,6 +932,7 @@ fn grenade_effects(
     mut fx: MessageWriter<CaFxRequest>,
     mut marks: ResMut<rules::CaMarks>,
     mut rolls: Local<Rolls>,
+    volumes: Query<&CaVolume>,
 ) {
     let cam = camera(&cameras);
     for d in detonations.read() {
@@ -911,6 +954,11 @@ fn grenade_effects(
             &settings,
             [rolls.next(), rolls.next()],
         );
+        // In water (its point + the up normal in a liquid): the surface's
+        // under-water grenade group, half volume (Edge cases).
+        if in_liquid(volumes.iter(), d.at + Vec3::Y * UNIT) {
+            submerge(&mut out, record, surface, AmmoKind::Thrown, seen);
+        }
         // The grenade's look is its surface's grenade group.
         if let Some(b) = out.burst.take() {
             fx.write(CaFxRequest {
@@ -924,18 +972,29 @@ fn grenade_effects(
     }
 }
 
+/// The Water surface type (footsteps on an unknown surface in water).
+pub const WATER_SURFACE: u16 = 204;
+
 /// How far (u) a detonation's point may lie from a surface for its type
 /// to count (else it is in mid-air: Air).
 pub const GRENADE_SURFACE_REACH: f32 = 16.0;
 
+/// A grenade bounce sound's volume (grenades.md 6, step 4): 100, 50 in
+/// water, × the contact's loudness (min(1, |v''| h / 200)).
+pub fn bounce_volume(in_water: bool, loudness: f32) -> f32 {
+    (if in_water { 50.0 } else { 100.0 }) * loudness.clamp(0.0, 1.0)
+}
+
 /// The server's bounce sounds: each new contact of a grenade plays its
-/// surface's grenade sound (a new one replaces the grenade's last).
+/// surface's grenade sound (a new one replaces the grenade's last) at
+/// `bounce_volume`.
 fn bounce_sounds(
     grenades: Query<(Entity, &CaGrenade), Changed<CaGrenade>>,
     grid: Option<Res<SurfaceGrid>>,
     tables: Res<CaFxTables>,
     mut seen: Local<HashMap<Entity, usize>>,
     mut sounds: MessageWriter<CaSound>,
+    volumes: Query<&CaVolume>,
 ) {
     for (e, g) in &grenades {
         let n = seen.entry(e).or_insert(0);
@@ -946,7 +1005,12 @@ fn bounce_sounds(
                 continue;
             }
             let radii = rules::server_radii(rules::inner_radius(surface.grenade_radius), surface.grenade_radius);
-            sounds.write(sounds::server_sound(&surface.grenade, at, radii).from_source(e, CHANNEL_GRENADE));
+            let volume = bounce_volume(in_liquid(volumes.iter(), at), c.loudness);
+            sounds.write(
+                sounds::server_sound(&surface.grenade, at, radii)
+                    .volume(volume)
+                    .from_source(e, CHANNEL_GRENADE),
+            );
         }
         *n = g.contacts.len();
     }
@@ -1044,6 +1108,7 @@ fn footsteps(
     mut rolls: Local<Rolls>,
     mut last: Local<HashMap<Entity, (Vec3, bool)>>,
     mut commands: Commands,
+    volumes: Query<&CaVolume>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
@@ -1061,10 +1126,13 @@ fn footsteps(
             let ty = if ms.on_ladder {
                 200
             } else {
-                grid.as_deref()
+                let ty = grid
+                    .as_deref()
                     .and_then(|g| g.below(feet + Vec3::Y * 50.0 * UNIT, 100.0 * UNIT))
                     .and_then(|s| s.parse().ok())
-                    .unwrap_or(0)
+                    .unwrap_or(0);
+                // An unknown surface inside a water volume is Water.
+                if ty == 0 && in_liquid(volumes.iter(), feet) { WATER_SURFACE } else { ty }
             };
             let s = tables.surface(ty);
             if s.invisible {
@@ -1154,6 +1222,7 @@ fn step_effects(
     mut sounds: MessageWriter<CaSound>,
     mut last_owner: Local<HashMap<Entity, Vec3>>,
     mut commands: Commands,
+    volumes: Query<&CaVolume>,
 ) {
     let dt = time.delta_secs();
     marks.step(dt);
@@ -1171,6 +1240,8 @@ fn step_effects(
             let before = last_owner.get(&s.owner).copied().unwrap_or(now);
             (now - before) / UNIT
         });
+        // In water: half gravity, a quarter kept per bounce, no sound (8).
+        s.casing.in_water = in_liquid(volumes.iter(), s.casing.at * UNIT);
         let step = s.casing.step(dt, carry, |from, to| {
             let d = (to - from) * UNIT;
             let dir = Dir3::new(d).ok()?;
