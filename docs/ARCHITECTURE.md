@@ -34,7 +34,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; gr
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
-                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation)
+                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
 
 - The loader layers: `source/` (Source's formats and map logic) and
@@ -343,7 +343,7 @@ that the paths exist).
 - `chimera/world/src/map/entities.rs`: `MapEntity`, entity-space helpers, anchors, prop-data keys (map)
 - `chimera/world/src/map/loading.rs`: how far a map load has come, for a loading screen (map)
 - `chimera/world/src/map/collision.rs`, `sky.rs`: colliders and the sky built from map data (map)
-- `chimera/world/src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination (map)
+- `chimera/world/src/map/material_fx.rs`: what world and prop shaders share: UV transforms, detail modes, self-illumination; second-layer maths (map)
 - `chimera/world/src/map/vis.rs`: visibility data: PVS clusters, area portals, occluders, chunking (map)
 - `chimera/world/src/map/lod.rs`: `MapLod`: a model's lower levels of detail as data (map)
 - `chimera/world/src/map/logic_view.rs`: what map logic shows a player (HUD messages, fades, shakes) and tools (map)
@@ -411,7 +411,7 @@ that the paths exist).
 - `chimera/present/src/render/monitor.rs`: func_monitor screens drawn from point_camera views (render)
 - `chimera/present/src/render/shadows.rs`, `shadow.wgsl`: dynamic shadows as the shadow-detail setting asks (render)
 - `chimera/present/src/render/sky.rs`: the sky on the cameras, the 3D skybox's camera, the sky resources (render)
-- `chimera/present/src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections (render)
+- `chimera/present/src/render/world_material.rs`, `world.wgsl`: world surfaces: texture, baked light, bump, cubemap reflections, second layers (render)
 - `chimera/present/src/render/prop_material.rs`, `prop.wgsl`: props lit by a light probe, plus point lights (render)
 - `chimera/present/src/render/fog.rs`, `fog.wgsl`: Source's range and height fog shared by map shaders; the scene's fog (render)
 - `chimera/present/src/render/probe_lit.rs`: moving models lit from the baked light field (render)
@@ -495,7 +495,9 @@ that the paths exist).
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
 - `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
-- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash, shells (games)
+- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash timer, flash and breach points (games)
+- `games/combat_arms/src/game/effects/`: Combat Arms' effects and sounds: shots, impacts, decals, tracers, casings, footsteps, the effect file's groups (games)
+- `games/combat_arms/data/effects.toml`: Combat Arms' effect and sound tables: ImpactFX, FireFX, TracerFX, sounds, surfaces (games)
 - `games/combat_arms/src/game/view_model/`: the view model's animation state machine, sway, placement maths and hand model (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/weapons/zoom.rs`: Combat Arms' zoom and scope: levels, FOV transitions, bolt zoom-out, sway (games)
@@ -514,6 +516,7 @@ that the paths exist).
 - `games/combat_arms/data/modes.toml`: Combat Arms' mode settings: room and server-file values, shared constants, each mode's goal and mission data (games)
 - `games/combat_arms/src/ui/hud/score.rs`: Combat Arms' score panel and round timer from the match (games_ui)
 - `games/combat_arms/src/ui/scoreboard.rs`: Combat Arms' scoreboard (Tab, and a round's result) (games_ui)
+- `games/combat_arms/src/ui/effects.rs`: drawing Combat Arms' decals, tracers, casings, first-person flash and effect lights (games_ui)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1, M9 knife, grenades and one weapon per class (games)
@@ -546,10 +549,11 @@ that the paths exist).
 
 - `lithtech/formats/src/attributes.rs`: attribute files ("butes"): sections of typed values, strict typed reads, records and lists
 - `lithtech/formats/src/rez.rs`: `.rez` archives (header, check block, directory) as a `FileSource`; `open_dir`
-- `lithtech/formats/src/rez_cipher.rs`: the `.rez` payload cipher (Twofish-CBC, key supplied at run time)
+- `lithtech/formats/src/rez_cipher.rs`: the `.rez` payload ciphers by title (V1 Twofish-CBC, V2 AES-256-CBC; keys supplied at run time)
 - `lithtech/formats/src/world.rs`: world files (`.dat`, version 85): BSPs, objects, light grid, blockers, render data, lightmaps
 - `lithtech/formats/src/dtx.rs`: textures (`.dtx`, version -5): header, mip layout, BGRA and DXT1/3/5 decoding
 - `lithtech/formats/src/ltb.rs`: models (`.ltb`, versions 23/25): pieces, LODs, mesh kinds, node tree, weight sets, children, animations, sockets, bindings
+- `lithtech/formats/src/fxf.rs`: the client effect file (`CLIENTFX.FXF`, text form): effect groups, timed keys, typed properties
 - `lithtech/formats/src/anim.rs`: animation lists, sampling, the millisecond tracker, key strings, layering, node and skinning matrices
 
 ### Apps, binaries and the test harness

@@ -114,6 +114,7 @@ impl<K: Clone + Eq + std::hash::Hash> Merger<K> {
             template.uvs.clear();
             template.lightmap_uvs.clear();
             template.blend_weights.clear();
+            template.uvs2.clear();
             template.indices.clear();
             self.groups.push((key, cell, template, Vec::new(), Vec::new()));
             self.groups.len() - 1
@@ -137,6 +138,9 @@ impl<K: Clone + Eq + std::hash::Hash> Merger<K> {
         }
         if m.blend_weights.len() == m.positions.len() {
             out.blend_weights.extend_from_slice(&m.blend_weights);
+        }
+        if m.uvs2.len() == m.positions.len() {
+            out.uvs2.extend_from_slice(&m.uvs2);
         }
         out.indices.extend(m.indices.iter().map(|i| i + base));
         match parts.last_mut() {

@@ -12,6 +12,9 @@
 //!   with a game's numbers: sections of typed values, strict typed reads.
 //! - `dtx`: textures (`.dtx`, version -5): header, mip layout, 32-bit
 //!   BGRA and DXT1/3/5 decoded to RGBA8.
+//! - `fxf`: the client effect file (`CLIENTFX.FXF`, text form): named
+//!   effect groups of timed keys (particle systems, sprites, lights,
+//!   camera jitter...) with typed properties.
 //! - `ltb`: models (`.ltb`, versions 23 and 25): pieces and levels of
 //!   detail with rigid, skinned and vertex-animated meshes, the node
 //!   tree, weight sets, child models, animations, sockets and bindings,
@@ -19,8 +22,9 @@
 //! - `rez`: `.rez` resource archives (header, directory, file data) as a
 //!   mount layer (`source_formats::fs::FileSource`), and a folder of them
 //!   as a `Mount`.
-//! - `rez_cipher`: the payload cipher (Twofish-CBC with a key supplied at
-//!   run time; keys never live in the repo).
+//! - `rez_cipher`: the payload ciphers, chosen by the archive's title (V1
+//!   Twofish-CBC, V2 AES-256-CBC) with keys supplied at run time; keys
+//!   never live in the repo.
 //! - `world`: world files (the compiled map, `.dat`, version 85): BSPs,
 //!   objects, the light grid, blockers and the render data with its
 //!   lightmaps, bounds-checked.
@@ -31,6 +35,7 @@
 pub mod anim;
 pub mod attributes;
 pub mod dtx;
+pub mod fxf;
 pub mod ltb;
 pub mod rez;
 pub mod rez_cipher;

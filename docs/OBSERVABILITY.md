@@ -1241,10 +1241,30 @@ bones, sockets, animations with their lengths and key strings, the
 state machine, sway and placement cases without the install: `--test it
 view_model::`.
 
+Combat Arms' effects and sounds (`game::effects`): fire at a wall in a
+map run to see impacts, decals and tracers, e.g. `--map
+combat_arms:warehouse --window 1280x720 --frames 400 +wait 30 +give
+combat_arms:m60 +wait 150 ++attack +wait 60 +screenshot fx.png` (the M60:
+a tracer every third round). The rules (gain, low-pass, gates, tracer
+cadence, decals, casings, footsteps, hurt limit) and the effects in play
+on the greybox, sounds read as `CaSound` messages: `--test it
+effects_sounds::`; the install's sound and effect archives (which are
+unkeyed), every named file, the effect file's numbers and a shot on
+WAREHOUSE: `--test it heavy::effects_sounds -- --nocapture`. A map load
+warns when effect textures don't read; a sound that doesn't read logs
+one warning and stays silent.
+
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
 list but skip extraction until their scheme's key is in
-`chimera.local.toml` (`[games.combat_arms.keys.V1]`, `key` and `iv` as
-hex). Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
+`chimera.local.toml`: a `[games.combat_arms.keys.V1]` table and a
+`[games.combat_arms.keys.V2]` table, each with `key` (64 hex characters)
+and `iv` (32 hex characters). The table's name picks the cipher (V1
+Twofish, V2 AES-256); there is no cipher field. Keys stay in that local
+file only: never in the repo, tests, logs or commit messages (`cargo test
+-p repo_checks` refuses tracked keys). With both keys,
+`cargo test -p lithtech_formats --test it heavy::keyed_install --
+--nocapture` checks each family decrypts to the formats' own headers;
+without them those tests pass with a note. Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
 refuses any folder inside the repository.
 
 ### Sweeping every cached map (mapsweep)

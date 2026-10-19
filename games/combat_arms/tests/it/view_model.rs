@@ -23,9 +23,11 @@ use chimera_world::{
 };
 use combat_arms::{
     game::{
-        TICK_INTERVAL, movement,
+        TICK_INTERVAL,
+        effects::CaShell,
+        movement,
         view_model::{
-            CaShell, CaViewKey, CaViewModel, DEFAULT_FOV, VIEW_SCALE, VIEWMODEL_FOV,
+            CaViewKey, CaViewModel, DEFAULT_FOV, VIEW_SCALE, VIEWMODEL_FOV,
             hands::{self, HandProfile},
             machine::{AnimInfo, Class, FireType, Inputs, Rates, Setup, Stage, ViewKey, ViewMachine},
             place::{self, CameraAxes, FlashTimer},
