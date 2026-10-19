@@ -18,6 +18,7 @@ mod model;
 mod movement;
 mod net;
 mod skeleton;
+mod view_model;
 mod weapon_classes;
 mod weapon_firing;
 mod world;
@@ -27,5 +28,6 @@ mod heavy {
     mod attributes;
     mod model;
     mod mount;
+    mod view_model;
     mod world;
 }

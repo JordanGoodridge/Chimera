@@ -167,6 +167,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms: Firing: placeholder hit-sphere places, no client-reported victim, spread per tick, default gear for all, nothing infected yet (`games/combat_arms/src/game/weapons.rs`)
 - games/combat_arms zoom: Placeholder overlay, no zoom sounds; the camera keeps Chimera's vertical FOV rule (`games/combat_arms/src/game/weapons/zoom.rs`)
 - games/combat_arms attachments: Parts from `CaLoadout` (no lobby); accepted lists only where the spec gives them; stun applied on the server; no muzzle effects, tracers, part models, dot-sight mode or gear mods (`games/combat_arms/src/game/attachments.rs`)
+- games/combat_arms: View models: part of view_models.md: no hand model, postfire, full idle, sprint pose, sway, key events, muzzle flash or shells; events, not its state machine, start sequences (`games/combat_arms/src/game/view_model.rs`)
 - games/combat_arms classes: Minigun rounds by the trigger's cycle, not its fire keys; no continuous fire, pre- or post-fire, launchers or projectiles; one reload time for the double barrel (`games/combat_arms/src/game/weapons/classes.rs`)
 - apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
 - games/combat_arms models: Animations resampled at 30 fps for Chimera's AnimSet (no LithTech tracker: no key strings, transitions or L + 1 done); LOD 0 only; vertex animation, render styles and extra textures ignored (`games/combat_arms/src/game/model.rs`)

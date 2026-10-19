@@ -455,6 +455,14 @@ pub struct ModelsData {
     pub view: Option<String>,
     #[serde(default)]
     pub view_right_handed: bool,
+    /// The view model's skins (textures by the model's texture index), for
+    /// models that don't name their own (LithTech's).
+    #[serde(default)]
+    pub view_skins: Vec<String>,
+    /// Where the view model's origin sits in the eye's space, in the
+    /// game's own units and axes (its loader converts them).
+    #[serde(default)]
+    pub view_offset: Option<[f32; 3]>,
 }
 
 /// The HUD's names for it: `name` (a string token), `icon` (a kill icon).
@@ -479,6 +487,11 @@ pub struct AnimData {
     pub idle_interval: f32,
     #[serde(default)]
     pub idle_after_draw: bool,
+    /// What the view model plays, by action (`view_anim::ACTIONS`: draw,
+    /// idle, fire, reload, ...) -> sequence names (one at random); empty:
+    /// the game's `view_anim::ViewAnimRules` choose.
+    #[serde(default)]
+    pub sequences: BTreeMap<String, Vec<String>>,
 }
 
 impl WeaponData {
@@ -571,6 +584,10 @@ impl WeaponSet {
             }
             if w.hitscan.is_some() && w.trigger.is_none() {
                 return Err(format!("{id}: [hitscan] without [trigger]"));
+            }
+            let action = |a: &&String| super::view_anim::ACTIONS.contains(&a.as_str());
+            if let Some(a) = w.anim.sequences.keys().find(|a| !action(a)) {
+                return Err(format!("{id}: [anim.sequences] {a} is not a view-model action"));
             }
             weapons.push(w);
         }
@@ -1081,6 +1098,11 @@ mod tests {
             "id = \"t:a\"\nslot = 0\ndraw = 1.0\n[magazine]\nclip = 1\nammo = \"t:x\"\nreload = 1.0",
         )]);
         assert!(e.contains("unknown ammo t:x"), "{e}");
+        let e = err(&[(
+            "a",
+            "id = \"t:a\"\nslot = 0\ndraw = 1.0\n[anim.sequences]\nshoot = [\"fire\"]",
+        )]);
+        assert!(e.contains("shoot is not a view-model action"), "{e}");
         let e = err(&[
             ("a", "id = \"t:a\"\nbase = \"t:b\""),
             ("b", "id = \"t:b\"\nbase = \"t:a\""),
