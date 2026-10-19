@@ -75,6 +75,11 @@ in the lowest crate whose public API it needs:
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`) in
   tests/ui/, built with `ui`;
+- `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
+  Arms' dedicated server as its binary composes it (`ServerPlugin`, its
+  command line) with headless clients over UDP on loopback (`dedicated`:
+  two clients play a TDM kill on the greybox; `MaxPlayer` fills it with
+  bots);
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's
@@ -121,10 +126,10 @@ build.rs select everything; Markdown and docs only `repo_checks`.
   the playtest and release builds use that configuration and the tests
   don't), even with `CHIMERA_PUSH_TESTS=0`. The debugging binaries are
   built only with `--features tools` (so `cargo test` doesn't link them).
-  It also checks the dedicated server as released, alone and so without
-  the presentation (`cargo check -p cs_source_server`;
-  `architecture::server_builds_without_presentation` checks its
-  dependencies).
+  It also checks the dedicated servers as released, alone and so without
+  the presentation (`cargo check -p cs_source_server -p
+  combat_arms_server`; `architecture::server_builds_without_presentation`
+  checks their dependencies).
 - Before a push or a merge to main (`.githooks/pre-push`): the tests,
   heavy ones included, of the crates what's pushed can affect (each
   pushed ref against the remote's copy, a new branch against its
@@ -1213,6 +1218,18 @@ triangles, textures, spawns and warnings. The world files' numbers:
 `+ingamemenu` opens Combat Arms' in-game menu (Esc) for a screenshot of
 it, e.g. `--window 1280x720 --screenshot menu.png --frames 120
 +ingamemenu`.
+
+Combat Arms' dedicated server: `cargo run --features dev --bin
+combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM
++ca_goal 50 +MaxPlayer 6 +BotLevel 1` (`--help`; console on stdin:
+`status`, `ca_bot_add`, `ca_bot_kick`, `MaxPlayer <n>`, `ca_mode <mode>`,
+`ca_restart`, `changelevel <map>`, `quit`); players join with
+`combat_arms +connect 127.0.0.1:27042` (their own install's copy of the
+map). The startup line says `Chimera Combat Arms dedicated server
+<version>: <map> on UDP <addr>, <n> players`; bots log whether they walk
+the map's AI volumes (`bots: the map's N AI volumes as navigation
+areas`) or generated ones (`bots: generated a navigation mesh of N
+areas`).
 
 Combat Arms' models: `CHIMERA_CA_PROP=<model>[,<skin>...]` (archive
 paths) puts that model, playing its first animation, 3 m in front of the

@@ -121,10 +121,15 @@ cargo run --release -p cs_source_server -- +map de_dust2 +maxplayers 10
 Players join with `connect <your ip>` (UDP port 27015, change it with
 `+hostport`), or find it in Find Servers on the same network.
 
+Combat Arms has one too: `cargo run --release -p combat_arms_server --
++map combat_arms:warehouse +ca_mode TDM +MaxPlayer 6`; players join with
+`combat_arms +connect <your ip>`.
+
 ## How it is built
 
 ```
-apps/       the programs: apps/cs_source (the game), apps/cs_source_server
+apps/       the programs: apps/cs_source (the game), apps/cs_source_server,
+            apps/combat_arms and apps/combat_arms_server
 games/      each game as a library of parts: games/cs_source
 source/     Source engine file formats and map logic, shared by Source games
 chimera/    the engine: simulation, physics, rendering, sound, network, UI shell

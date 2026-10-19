@@ -8,9 +8,8 @@
 //! Network play is the CS:S app's (the shell's `connect`, `-port`,
 //! `maxplayers`, `map`): host a listen server with `combat_arms -port
 //! 27016 +maxplayers 4 +map greybox`, join it with `combat_arms +connect
-//! <ip>:27016` (Combat Arms' part of it: `combat_arms::game::net`).
-//! Known shortcuts: no dedicated server for Combat Arms yet (listen
-//! servers only).
+//! <ip>:27016` (Combat Arms' part of it: `combat_arms::game::net`), or a
+//! dedicated server (apps/combat_arms_server, `combat_arms_server`).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -26,7 +25,7 @@ fn main() {
             "combat_arms: Combat Arms on Chimera (its movement, the M4A1 and the M9 on the greybox,\n\
              or a map of the install: --map combat_arms:<name>, e.g. combat_arms:warehouse).\n\
              The options are the shell's (below, named after the CS:S app; all apply here).\n\
-             Network play (a listen server; no dedicated one yet):\n\
+             Network play (a listen server, or the dedicated combat_arms_server):\n\
              \x20 host:    combat_arms -port 27016 +maxplayers 4 +map greybox\n\
              \x20 join:    combat_arms +connect 127.0.0.1:27016\n"
         );

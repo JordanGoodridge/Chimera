@@ -844,6 +844,10 @@ fn workspace_crates() {
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
+    const CA_SERVER: &str = "is Combat Arms' dedicated server (docs/ARCHITECTURE.md, \"Crates\"): Chimera's \
+        simulation crates and Combat Arms without its front end (`ui`), no presentation, client shell or \
+        Combat Arms app (`server_builds_without_presentation`), and never CS:S or Source's logic. Move what \
+        needs them into the client's side (the app, `ui`).";
     const TOOLS: &str = "is a layer's tools (docs/ARCHITECTURE.md, \"Crates\"): a tool lives at the lowest \
         layer whose knowledge it needs, and uses nothing above it. Move the tool (or the part of it that \
         needs the layer above) into that layer's tools: chimera/tools, source/tools, games/<game>/tools.";
@@ -896,6 +900,21 @@ fn workspace_crates() {
             "apps/cs_source_server",
             &["chimera_present", "chimera_client", "bevy_egui", "bevy-inspector-egui", "arboard", "mashup"],
             SERVER,
+        ),
+        (
+            "apps/combat_arms_server",
+            &[
+                "chimera_present",
+                "chimera_client",
+                "bevy_egui",
+                "bevy-inspector-egui",
+                "arboard",
+                "combat_arms_app",
+                "cs_source",
+                "source_logic",
+                "mashup",
+            ],
+            CA_SERVER,
         ),
         (
             "chimera/client",
@@ -1024,12 +1043,13 @@ fn game_ui_only_with_its_feature() {
     }
 }
 
-/// The dedicated server builds without the presentation
+/// The dedicated servers build without the presentation
 /// (docs/ARCHITECTURE.md, "Crates"): `cs_source_server` uses the app's
-/// glue (`cs_source_app`) without its default feature `present`, so it
-/// depends on no `chimera_present` and links no render or audio code.
-/// (That it compiles that way the pre-push hook checks: `cargo check -p
-/// cs_source_server`.)
+/// glue (`cs_source_app`) without its default feature `present`, and
+/// `combat_arms_server` Chimera's simulation crates and Combat Arms
+/// without `ui`, so neither depends on `chimera_present` or links render
+/// or audio code. (That they compile that way the pre-push hook checks:
+/// `cargo check -p cs_source_server`, `-p combat_arms_server`.)
 #[test]
 fn server_builds_without_presentation() {
     // The presentation and crates only the client shell uses (not those
@@ -1066,6 +1086,18 @@ fn server_builds_without_presentation() {
          (chimera_present) and the client-only crates are optional in `cs_source_app`, behind its default \
          feature `present` (apps/cs_source/Cargo.toml): make the new dependency optional and add it to \
          `present`, or move what the simulation needs out of the presentation."
+    );
+    let server = tree("combat_arms_server");
+    let present: Vec<&str> = server
+        .lines()
+        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "`combat_arms_server` (the Combat Arms dedicated server's build) depends on {present:?}. It uses \
+         Chimera's simulation crates and `combat_arms` without its `ui` feature (apps/combat_arms_server/\
+         Cargo.toml): don't turn on `ui` or depend on the app (`combat_arms_app`), and keep the new \
+         dependency out of the simulation crates (the front end's optional ones: UI_FEATURES)."
     );
 }
 

@@ -100,6 +100,8 @@ pub fn add_bot(world: &mut World, team: Option<u8>) -> Option<Entity> {
         Seed(rho),
         OwnKit(kit.iter().flatten().copied().collect()),
         super::super::weapons::ExactAim,
+        // The bot's knife reaches 130 u (8.4), the player's 105.
+        super::super::inventory::KnifeReach(super::brain::KNIFE_RANGE * super::super::inventory::UNIT),
         bot,
     ));
     // Into the game as a player coming in: the mode's spawn, or a free

@@ -60,7 +60,8 @@
 //! where the server has them); armour, the pickup prompt and the
 //! statistics go to every client, not only the player's own; a refused
 //! respawn request isn't told to the client (it stays dead, as S5 has
-//! it); listen server only (no Combat Arms dedicated server binary).
+//! it). A listen server is the app's (`combat_arms`), a dedicated one
+//! apps/combat_arms_server.
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;

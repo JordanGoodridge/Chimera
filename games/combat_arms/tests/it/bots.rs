@@ -16,7 +16,10 @@ use chimera_core::{
 use chimera_sim::weapon::{Inventory, Magazine, OwnKit, Weapon, WeaponEvent, WeaponEventKind, grenade::Throwable};
 use chimera_world::{
     harness::Sim,
-    map::nav::{NavArea, NavMesh, Side, Via},
+    map::{
+        MapEntities, MapEntity, SeeThrough,
+        nav::{NavArea, NavMesh, Side, Via},
+    },
 };
 use combat_arms::{
     game::{
@@ -24,11 +27,12 @@ use combat_arms::{
             self, BotSettings, BotState, CaBot, Level, Template,
             brain::{self, CaCamping, Kind, Stimuli},
             data::{BotData, ItemSet, SlotList},
+            map_ai::MapAi,
             math::{self, Choice, HitCycle, Move, Tracking},
             nav as bot_nav, roster,
         },
         grenades::{self, CaGrenade, M18, M67},
-        inventory::{KNIFE, UNIT},
+        inventory::{KNIFE, KnifeReach, UNIT},
         rules::{CaMatch, Phase, spawns::CaProtected},
         weapons::RIFLE,
     },
@@ -1230,4 +1234,158 @@ fn bots_fight_on_the_greybox() {
     let m = sim.app.world().resource::<CaMatch>().clone();
     assert!(deaths >= 1, "nobody died: {m:?}");
     assert!(m.score.iter().sum::<i32>() >= 1, "kills scored: {:?}", m.score);
+}
+
+// ---------------------------------------------------------------------------
+// The map's AI data, glass, the knife's reach
+
+/// An AI volume as `game::world` passes it through: class, name, `origin`
+/// and `Dims` in entity axes (the file's x, z, y), units.
+fn ai_volume(name: &str, centre: [f32; 3], dims: [f32; 3]) -> MapEntity {
+    let kv = |k: &str, v: String| (k.to_string(), v);
+    MapEntity {
+        keyvalues: vec![
+            kv("classname", "AIVolume".into()),
+            kv("targetname", name.into()),
+            kv("origin", format!("{} {} {}", centre[0], centre[2], centre[1])),
+            kv("Dims", format!("{} {} {}", dims[0], dims[2], dims[1])),
+        ],
+        ..default()
+    }
+}
+
+/// A patrol node at `pos` (file axes, u) linking to `next`.
+fn patrol_node(name: &str, pos: [f32; 3], next: &str) -> MapEntity {
+    let kv = |k: &str, v: String| (k.to_string(), v);
+    MapEntity {
+        keyvalues: vec![
+            kv("classname", "AINodePatrol".into()),
+            kv("targetname", name.into()),
+            kv("origin", format!("{} {} {}", pos[0], pos[2], pos[1])),
+            kv("Next", next.into()),
+            kv("StartDisabled", "0".into()),
+        ],
+        ..default()
+    }
+}
+
+/// bots.md 3: volumes link where their boxes overlap or touch on all
+/// three axes, across the shared rectangle of their tops, and not when
+/// it is shorter than 48 u; patrol nodes link by `Next` both ways.
+#[test]
+fn map_volumes_link_by_their_boxes() {
+    let s = UNIT;
+    let entities = vec![
+        // A 400 x 400 u floor box, its bottom at y 0 (file axes).
+        ai_volume("A", [0.0, 32.0, 0.0], [200.0, 32.0, 200.0]),
+        // Touching A's +x face, 400 u of shared edge.
+        ai_volume("B", [400.0, 32.0, 0.0], [200.0, 32.0, 200.0]),
+        // Touching B's +x face over only 40 u of z: too short.
+        ai_volume("C", [800.0, 32.0, 360.0], [200.0, 32.0, 200.0]),
+        // Overlapping A on its -z side, 300 u of shared edge.
+        ai_volume("D", [0.0, 32.0, -350.0], [150.0, 32.0, 200.0]),
+        // Above A, apart from it: not linked.
+        ai_volume("E", [0.0, 300.0, 0.0], [200.0, 32.0, 200.0]),
+        patrol_node("N0", [0.0, 16.0, 0.0], "N1"),
+        patrol_node("N1", [400.0, 16.0, 0.0], ""),
+        patrol_node("N2", [0.0, 16.0, -350.0], "N0"),
+    ];
+    let ai = MapAi::read(&entities, s);
+    assert_eq!((ai.volumes.len(), ai.patrol.len()), (5, 3));
+    let a = &ai.volumes[0];
+    assert!(a.min.abs_diff_eq(Vec3::new(-200.0, 0.0, -200.0) * s, 1e-5), "{a:?}");
+    assert!(a.max.abs_diff_eq(Vec3::new(200.0, 64.0, 200.0) * s, 1e-5), "{a:?}");
+    // File z is mirrored: D at z -350 is engine z +350.
+    assert!((ai.volumes[3].min.z - 150.0 * s).abs() < 1e-5, "{:?}", ai.volumes[3]);
+    let mesh = ai.nav_mesh(s, |_, _| None).unwrap();
+    let links = |i: usize| -> Vec<(usize, Via)> { mesh.areas[i].links.clone() };
+    assert_eq!(links(0), vec![(1, Via::Walk(Side::MaxX)), (3, Via::Walk(Side::MaxZ))]);
+    assert_eq!(links(1), vec![(0, Via::Walk(Side::MinX))], "B-C's 40 u edge dropped");
+    assert!(links(2).is_empty() && links(4).is_empty());
+    assert_eq!(mesh.areas[0].heights, [0.0; 4], "floors at the boxes' bottoms without a floor found");
+    let graph = ai.patrol_graph(&mesh).unwrap();
+    assert_eq!(graph.links, vec![vec![1, 2], vec![0], vec![0]]);
+    assert_eq!(graph.nodes, vec![0, 1, 3]);
+    assert!(graph.points[1].abs_diff_eq(Vec3::new(400.0, 0.0, 0.0) * s, 1e-5), "on the floor: {:?}", graph.points);
+    // Over the limit: none.
+    let many: Vec<MapEntity> = (0..1025).map(|i| ai_volume("V", [i as f32 * 500.0, 32.0, 0.0], [100.0; 3])).collect();
+    assert!(MapAi::read(&many, s).nav_mesh(s, |_, _| None).is_none());
+}
+
+/// A map with AI volumes and patrol nodes: the bots walk its volumes (not
+/// generated areas) and patrol its nodes.
+#[test]
+fn bots_use_the_maps_volumes_and_patrol_nodes() {
+    let mut sim = world();
+    // Two floor boxes end to end along z (file axes), 6000 u long each,
+    // over the start points (engine z ±100 m), and a patrol chain along
+    // them.
+    let entities = vec![
+        ai_volume("A", [0.0, 32.0, 3000.0], [600.0, 32.0, 3000.0]),
+        ai_volume("B", [0.0, 32.0, -3000.0], [600.0, 32.0, 3000.0]),
+        patrol_node("P0", [0.0, 16.0, 5000.0], "P1"),
+        patrol_node("P1", [0.0, 16.0, 0.0], "P2"),
+        patrol_node("P2", [0.0, 16.0, -5000.0], ""),
+    ];
+    sim.app.world_mut().insert_resource(MapEntities {
+        entities: std::sync::Arc::new(entities),
+        scale: UNIT,
+    });
+    let bt = bots::add_bot(sim.app.world_mut(), Some(ALPHA)).unwrap();
+    sim.seconds(1.0);
+    let nav = sim.app.world().resource::<brain::BotNav>().clone();
+    assert_eq!(nav.mesh.areas.len(), 2, "the map's two volumes, not generated areas");
+    // A (the file's +z) is engine -z: B lies across its +z side.
+    assert_eq!(nav.mesh.areas[0].links, vec![(1, Via::Walk(Side::MaxZ))]);
+    assert_eq!(nav.patrol.points.len(), 3, "the map's patrol nodes");
+    assert!(nav.mesh.areas[0].heights[0].abs() < 0.05, "the floor found inside the box: {:?}", nav.mesh.areas[0].heights);
+    // The bot patrols node to node along the volumes.
+    let reached = until(&mut sim, 80.0, |s| s.app.world().resource::<brain::PatrolClock>().reached.len() >= 2);
+    assert!(reached.is_some(), "patrol nodes reached: {:?}", sim.app.world().resource::<brain::PatrolClock>().reached);
+    let feet = sim.app.world().get::<Transform>(bt).unwrap().translation;
+    assert!(feet.x.abs() < 600.0 * UNIT, "stayed over the volumes: {feet}");
+}
+
+/// bots.md 5.2 step 6: see-through surfaces (glass, Chimera's
+/// `SeeThrough`) don't block sight; a wall does.
+#[test]
+fn bots_see_through_glass() {
+    let (mut sim, p, bt) = duel(Level::Veteran, 0, 800.0, RIFLE_KIT);
+    let pane = sim
+        .app
+        .world_mut()
+        .spawn((
+            RigidBody::Static,
+            Collider::cuboid(6.0, 3.0, 0.05),
+            Transform::from_xyz(0.0, 1.5, u(400.0)),
+            SeeThrough,
+        ))
+        .id();
+    // The navigation areas made again around the pane (no straight walk
+    // through it: the ray decides, 5.2 step 5).
+    sim.ticks(1);
+    sim.app.world_mut().remove_resource::<NavMesh>();
+    sim.ticks(2);
+    assert_eq!(brain::sees(sim.app.world_mut(), bt, p), Some(false), "seen through the glass");
+    sim.app.world_mut().entity_mut(pane).remove::<SeeThrough>();
+    sim.ticks(2);
+    assert_eq!(brain::sees(sim.app.world_mut(), bt, p), None, "the same pane as a wall hides the player");
+}
+
+/// bots.md 8.4: the bot's knife reaches 130 u (the player's 105): a bot
+/// with only its knife, kept from moving, cuts a player 120 u away, not
+/// one 140 u away.
+#[test]
+fn the_bot_knife_reaches_130_units() {
+    let knife_only = [None, None, None, Some(KNIFE), None, None];
+    let cut = |d: f32| {
+        let (mut sim, p, bt) = duel(Level::Veteran, 0, d, knife_only);
+        assert_eq!(sim.app.world().get::<KnifeReach>(bt), Some(&KnifeReach(130.0 * UNIT)));
+        let hurt = until(&mut sim, 4.0, |s| s.app.world().get::<Health>(p).unwrap().current < 1000.0);
+        let held = sim.app.world().get::<Inventory>(bt).and_then(|i| i.active);
+        let id = held.and_then(|w| sim.app.world().get::<Weapon>(w)).map(|w| w.id);
+        (hurt.is_some(), id)
+    };
+    assert_eq!(cut(120.0), (true, Some(KNIFE)), "cut at 120 u");
+    assert!(!cut(140.0).0, "out of reach at 140 u");
 }

@@ -2772,6 +2772,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "combat_arms_server"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chimera_core",
+ "chimera_net",
+ "chimera_sim",
+ "chimera_world",
+ "combat_arms",
+ "workspace-hack",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

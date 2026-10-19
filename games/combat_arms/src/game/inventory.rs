@@ -346,6 +346,11 @@ pub struct KnifeState {
     pub hits: usize,
 }
 
+/// A character's own knife reach (m), over the knife's `range`: a bot's
+/// 130 u (bots.md 8.4; the player's knife reaches 105 u).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct KnifeReach(pub f32);
+
 /// A knife (`combat_arms:knife`): two attacks with timed hit events.
 #[derive(Component, Clone, Debug)]
 pub struct Knife {
@@ -894,7 +899,7 @@ pub(super) fn hands(
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn swing_knives(
     owners: Query<
-        (&Intent, &Inventory, &CaSelection, &Transform, &MovementState, Option<&Health>),
+        (&Intent, &Inventory, &CaSelection, &Transform, &MovementState, Option<&Health>, Option<&KnifeReach>),
         Without<NetDrawn>,
     >,
     mut knives: Query<(Entity, &Weapon, &mut Knife)>,
@@ -913,9 +918,10 @@ fn swing_knives(
     let server = role.as_deref().is_none_or(|r| *r != NetRole::Client);
     for (entity, weapon, mut knife) in &mut knives {
         let Some(owner) = weapon.owner else { continue };
-        let Ok((intent, inv, sel, at, state, health)) = owners.get(owner) else {
+        let Ok((intent, inv, sel, at, state, health, reach)) = owners.get(owner) else {
             continue;
         };
+        let range = reach.map_or(knife.range, |r| r.0);
         if inv.active != Some(entity) || health.is_some_and(|h| h.current <= 0.0) {
             knife.state = KnifeState::default();
             continue;
@@ -976,8 +982,8 @@ fn swing_knives(
                     let Ok(ray) = Dir3::new(dir) else { continue };
                     let filter = SpatialQueryFilter::from_excluded_entities([owner])
                         .with_mask(core::SOLID_LAYERS.0 & !core::ITEM_LAYER.0);
-                    let hit = spatial.cast_ray(eye, ray, knife.range, true, &filter);
-                    let end = hit.map_or(eye + dir * knife.range, |h| eye + dir * h.distance);
+                    let hit = spatial.cast_ray(eye, ray, range, true, &filter);
+                    let end = hit.map_or(eye + dir * range, |h| eye + dir * h.distance);
                     let body = hit.map(|h| colliders.get(h.entity).map_or(h.entity, |c| c.body));
                     events.write(WeaponEvent {
                         owner,
@@ -1008,7 +1014,7 @@ fn swing_knives(
                     let sphere = bodies.get(target).ok().and_then(|(t, i, s, aabb, spheres)| {
                         let data = spheres.map_or(MALE, |h| h.0);
                         let (_, _, world) = body_geometry(t, i, s, aabb, data)?;
-                        let through = end + dir * knife.range;
+                        let through = end + dir * range;
                         pick_sphere(&world, eye, through).map(|k| data[k])
                     });
                     let (location, zone) = sphere.map_or((Location::Torso, 1.0), |s| (s.location, s.factor));

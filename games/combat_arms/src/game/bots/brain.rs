@@ -27,6 +27,7 @@ use bevy::{ecs::system::SystemState, prelude::*};
 use super::{
     BotSettings, BotState, CaBot, Pending,
     data::{BotData, GunAi},
+    map_ai::MapAi,
     math::{self, Choice, MOVES, Move},
     nav,
 };
@@ -38,7 +39,7 @@ use super::super::{
 };
 use crate::{
     core::{Damage, Dead, FreezeTime, Health, Intent, MovementState, SimClock, Spectating, Team, Velocity},
-    map::nav::NavMesh,
+    map::{SeeThrough, nav::NavMesh},
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, grenade::Throwable},
 };
 
@@ -67,7 +68,8 @@ pub const CALL_LIFE: f64 = 1.0;
 pub const REARM_GAP: f64 = 5.0;
 /// The investigate goal's decay time (s).
 pub const INVESTIGATE_TIME: f64 = 10.0;
-/// The bot's knife reach (u) and where it swings from (ours, u).
+/// The bot's knife reach (u, 8.4: its swings reach that far,
+/// `inventory::KnifeReach`) and how close it closes in (ours, u).
 pub const KNIFE_RANGE: f32 = 130.0;
 pub const KNIFE_SWING: f32 = 90.0;
 /// The chase path's rotating offset (u).
@@ -300,9 +302,13 @@ pub fn ensure_nav(world: &mut World) {
             || world.is_resource_changed::<NavMesh>();
         if stale {
             let mesh = world.resource::<NavMesh>().clone();
+            // The map's patrol nodes, else ours.
+            let patrol = MapAi::of(world)
+                .and_then(|ai| ai.patrol_graph(&mesh))
+                .unwrap_or_else(|| nav::PatrolGraph::build(&mesh));
             world.insert_resource(BotNav {
                 id: mesh.areas.len(),
-                patrol: std::sync::Arc::new(nav::PatrolGraph::build(&mesh)),
+                patrol: std::sync::Arc::new(patrol),
                 mesh: std::sync::Arc::new(mesh),
             });
         }
@@ -327,6 +333,16 @@ pub fn ensure_nav(world: &mut World) {
             .map(|t| t.translation - Vec3::Y * 0.8),
     );
     let ignore: HashSet<Entity> = moving_bodies(world);
+    // The map's AI volumes where it has them (`map_ai`).
+    if let Some(mesh) = MapAi::of(world).and_then(|ai| {
+        let mut state = SystemState::<SpatialQuery>::new(world);
+        let q = state.get(world).unwrap();
+        ai.nav_mesh(UNIT, |min, max| volume_floor(&q, &ignore, min, max))
+    }) {
+        info!("bots: the map's {} AI volumes as navigation areas", mesh.areas.len());
+        world.insert_resource(mesh);
+        return;
+    }
     let mesh = {
         let mut state = SystemState::<SpatialQuery>::new(world);
         let q = state.get(world).unwrap();
@@ -334,6 +350,21 @@ pub fn ensure_nav(world: &mut World) {
     };
     info!("bots: generated a navigation mesh of {} areas", mesh.areas.len());
     world.insert_resource(mesh);
+}
+
+/// How far under an AI volume's box its floor may be (m, ours).
+pub const FLOOR_BELOW: f32 = 1.5;
+
+/// The floor inside an AI volume's box (`min`, `max`, m): the first
+/// surface a ray down from the top of the box meets at its centre, within
+/// the box or under it within `FLOOR_BELOW` (costarecon_cp's boxes sit
+/// 0.2-0.8 m above their floors); None where there is none.
+fn volume_floor(q: &SpatialQuery, ignore: &HashSet<Entity>, min: Vec3, max: Vec3) -> Option<f32> {
+    let c = (min + max) * 0.5;
+    let top = Vec3::new(c.x, max.y, c.z);
+    let reach = max.y - min.y + FLOOR_BELOW;
+    q.cast_ray_predicate(top, Dir3::NEG_Y, reach, true, &sight_filter(), &|e| !ignore.contains(&e))
+        .map(|h| top.y - h.distance)
 }
 
 /// Ours: the highest rise between navigation cells (m), and a rise above
@@ -642,8 +673,11 @@ impl Snap {
             let chars: HashSet<Entity> = chars.iter().map(|c| c.e).collect();
             all.difference(&chars).copied().collect()
         };
-        // Sight passes characters and moving bodies (5.2 step 6).
-        let see_through = moving_bodies(world);
+        // Sight passes characters, moving bodies and see-through
+        // surfaces: the map's glass (5.2 step 6; `world::
+        // GLASS_SURFACE_TYPES`).
+        let mut see_through = moving_bodies(world);
+        see_through.extend(world.query_filtered::<Entity, With<SeeThrough>>().iter(world));
         let camping: HashMap<Entity, f32> = world.query::<(Entity, &CaCamping)>().iter(world).map(|(e, c)| (e, c.time)).collect();
         let dangers: Vec<Danger> = world
             .query::<(Entity, &CaGrenade)>()
@@ -1541,7 +1575,7 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
         bot.burst_left = bot.dice.int(gun.burst.0.max(1), gun.burst.1.max(1));
     }
     let knife = Some(held.id) == bot.kit[3];
-    let in_reach = !knife || d <= KNIFE_SWING + 15.0;
+    let in_reach = !knife || d <= KNIFE_RANGE;
     let line = fire_line(ctx, me, target.e, base);
     if let Some(Some(mate)) = line
         && ctx.chars.iter().any(|c| c.e == mate && c.team == me.team)
@@ -1623,13 +1657,13 @@ fn walk(ctx: &Ctx, bot: &mut CaBot, me: &Char, goal: Vec3, diverge: bool, io: &m
 /// The patrol (4): node to node of the patrol graph by the link choice,
 /// along planned paths.
 fn patrol(ctx: &Ctx, bot: &mut CaBot, me: &Char, io: &mut IntentOut, out: &mut Out) {
-    let (Some(mesh), Some(graph)) = (ctx.mesh, ctx.graph) else { return };
+    let (Some(_), Some(graph)) = (ctx.mesh, ctx.graph) else { return };
     if graph.nodes.is_empty() {
         return;
     }
     let feet = me.feet();
     if bot.patrol_to.is_none() {
-        let here = bot.patrol_from.filter(|&n| n < graph.nodes.len()).or_else(|| graph.nearest(mesh, feet));
+        let here = bot.patrol_from.filter(|&n| n < graph.nodes.len()).or_else(|| graph.nearest(feet));
         let Some(here) = here else { return };
         let from = bot.patrol_came;
         let mut links: Vec<usize> = graph.links[here].iter().copied().filter(|&n| Some(n) != from).collect();
@@ -1640,13 +1674,13 @@ fn patrol(ctx: &Ctx, bot: &mut CaBot, me: &Char, io: &mut IntentOut, out: &mut O
             // A node with no links: head for the nearest other one.
             links = (0..graph.nodes.len()).filter(|&n| n != here).collect();
         }
-        let at = mesh.areas[graph.nodes[here]].center;
+        let at = graph.points[here];
         let options: Vec<(f64, Vec3)> = links
             .iter()
             .map(|&n| {
                 (
                     ctx.patrol.reached.get(&n).copied().unwrap_or(0.0),
-                    mesh.areas[graph.nodes[n]].center - at,
+                    graph.points[n] - at,
                 )
             })
             .collect();
@@ -1660,7 +1694,7 @@ fn patrol(ctx: &Ctx, bot: &mut CaBot, me: &Char, io: &mut IntentOut, out: &mut O
         bot.patrol_to = None;
         return;
     };
-    let goal = mesh.areas[graph.nodes[to]].center;
+    let goal = graph.points[to];
     if goal.xz().distance(feet.xz()) < 0.8 && (goal.y - feet.y).abs() < 1.5 {
         out.reached = Some(to);
         bot.patrol_from = Some(to);
