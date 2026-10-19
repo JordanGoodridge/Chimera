@@ -5,5 +5,6 @@
 //! `cargo test -p combat_arms --features dev,ui --test ui`; where tests
 //! go: docs/OBSERVABILITY.md, section 1.
 
+mod attachments;
 mod hud;
 mod net_hud;

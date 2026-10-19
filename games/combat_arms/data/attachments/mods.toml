@@ -1,0 +1,730 @@
+# Combat Arms' weapon attachments ("modifications"): the reference build's
+# records as specs/combat_arms/attachments.md gives them (section names in
+# brackets: [Muzzle], [Sight], [Magazine], [Bullet], [Mechanical sight],
+# [Data] for "How attachments are described in the data") and the scope
+# records of specs/combat_arms/weapon_classes.md ([WC: Scope records]).
+# Our numbers, not a file from the game: the install's own modification
+# file (MOD.TXT) overrides these by name when it can be read
+# (game/data.rs).
+#
+# One `[[mod]]` per record. `name` may hold `{class}`, expanded once per
+# entry of `classes` ([Which weapon accepts which]: the AR, SMG, SR, MG,
+# Pistol and SG families differ only in models, tracer and magazine
+# columns, so a family shares its numbers). Keys are the record's fields
+# in snake case (game/attachments.rs, `ModRecord`): `kinds` is the slot (0
+# muzzle, 1 sight, 2 magazine, 3 bullet, 4 mechanical sight), `type` 0
+# silencer, 1 scope, 2 dot sight, 3 flash hider, 4 muzzle attachment, 5
+# magazine; fractions are fractions (-0.1 is -10 %). A field left out is
+# 0 (none). `socket`: where a part model goes on the gun (muzzle flash,
+# breach, scope); no model names (the install's).
+
+# ---------------------------------------------------------------------------
+# Muzzle (slot 0): [Muzzle]'s table. Type 0, SilencerLevel 1, Integrated 1.
+
+[[mod]]
+name = "Silencer_A_{class}"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+inst_damage = -0.10
+base_cam_recoil_pitch = -0.10
+max_random_pitch = -2.0
+
+[[mod]]
+name = "Silencer_B_{class}"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+inst_damage = -0.10
+
+[[mod]]
+name = "Silencer_C_{class}"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+inst_damage = -0.10
+
+[[mod]]
+name = "Silencer_A_{class}_Gold"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+base_cam_recoil_pitch = -0.15
+max_random_pitch = -2.0
+
+[[mod]]
+name = "Silencer_B_{class}_Gold"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+base_cam_recoil_pitch = -0.05
+max_random_pitch = -2.0
+
+[[mod]]
+name = "Silencer_C_{class}_Gold"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+base_cam_recoil_pitch = -0.10
+max_random_pitch = -2.0
+
+[[mod]]
+name = "Silencer_A_{class}_Red"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+inst_damage = 0.05
+base_cam_recoil_pitch = -0.20
+max_random_pitch = -2.0
+
+[[mod]]
+name = "Silencer_B_{class}_Red"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+inst_damage = 0.05
+base_cam_recoil_pitch = -0.10
+max_random_pitch = -2.0
+
+[[mod]]
+name = "Silencer_C_{class}_Red"
+classes = ["AR", "SMG", "SR", "Pistol"]
+kinds = 0
+type = 0
+integrated = 1
+socket = "muzzle"
+silencer_level = 1
+inst_damage = 0.05
+base_cam_recoil_pitch = -0.20
+max_random_pitch = -2.0
+
+# [Data]: the one record with Integrated 0 (never fitted; test case 3).
+[[mod]]
+name = "Sniper Silencer"
+kinds = 0
+type = 0
+integrated = 0
+socket = "muzzle"
+silencer_level = 1
+
+# ---------------------------------------------------------------------------
+# Sight (slot 1): [Sight]'s table. Every sight is Type 1 (a scope, even the
+# red dots: Quirk Q7) with one zoom level; style 1 is the range readout
+# (TargetRange 10000), 2 the health/ammo gauge.
+
+[[mod]]
+name = "DotSight_A_{class}"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 1
+target_range = 10000
+
+[[mod]]
+name = "DotSight_Holosight_{class}"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 1
+target_range = 10000
+
+[[mod]]
+name = "DotSight_B_{class}"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 2
+
+[[mod]]
+name = "DotSight_ITECH_{class}"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [75.0]
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.03
+
+[[mod]]
+name = "DotSight_HDS-4_{class}"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [75.0]
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.05
+
+# Gold grades: as the base sight, styles 1 (A, ITECH, Holosight) or 2 (B,
+# HDS-4), +0.1 / +0.05.
+[[mod]]
+name = "DotSight_A_{class}_Gold"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 1
+target_range = 10000
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.05
+
+[[mod]]
+name = "DotSight_Holosight_{class}_Gold"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 1
+target_range = 10000
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.05
+
+[[mod]]
+name = "DotSight_ITECH_{class}_Gold"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [75.0]
+sight_style = 1
+target_range = 10000
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.05
+
+[[mod]]
+name = "DotSight_B_{class}_Gold"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 2
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.05
+
+[[mod]]
+name = "DotSight_HDS-4_{class}_Gold"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [75.0]
+sight_style = 2
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.05
+
+# Red grades: as Gold, +0.1 / +0.08, BaseCamRecoilPitch -0.03,
+# MaxRandomPitch -2.
+[[mod]]
+name = "DotSight_A_{class}_Red"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 1
+target_range = 10000
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.08
+base_cam_recoil_pitch = -0.03
+max_random_pitch = -2.0
+
+[[mod]]
+name = "DotSight_Holosight_{class}_Red"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 1
+target_range = 10000
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.08
+base_cam_recoil_pitch = -0.03
+max_random_pitch = -2.0
+
+[[mod]]
+name = "DotSight_ITECH_{class}_Red"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [75.0]
+sight_style = 1
+target_range = 10000
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.08
+base_cam_recoil_pitch = -0.03
+max_random_pitch = -2.0
+
+[[mod]]
+name = "DotSight_B_{class}_Red"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [50.0]
+sight_style = 2
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.08
+base_cam_recoil_pitch = -0.03
+max_random_pitch = -2.0
+
+[[mod]]
+name = "DotSight_HDS-4_{class}_Red"
+classes = ["AR", "SMG", "Pistol"]
+kinds = 1
+type = 1
+integrated = 1
+socket = "breach"
+zoom_level = 1
+zoom_fov = [75.0]
+sight_style = 2
+perturb_dec_speed = 0.1
+zoomed_perturb_dec_speed = 0.08
+base_cam_recoil_pitch = -0.03
+max_random_pitch = -2.0
+
+# Built-in scopes ([Sight]; [WC: Scope records]): one level each but the
+# Barrett Scope's two; style 0, no spread bonuses.
+[[mod]]
+name = "Sniper Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [20.0]
+
+[[mod]]
+name = "Dragunov Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [20.0]
+
+[[mod]]
+name = "PSG Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [35.0]
+
+[[mod]]
+name = "Barrett Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 2
+zoom_fov = [30.0, 10.0]
+
+[[mod]]
+name = "L115 Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [15.0]
+
+[[mod]]
+name = "M200 Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [15.0]
+
+[[mod]]
+name = "G36 sight"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [20.0]
+
+[[mod]]
+name = "AUG-A1 sight"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [20.0]
+
+[[mod]]
+name = "L85A1 MOD Scope"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [20.0]
+
+[[mod]]
+name = "P90 sight"
+kinds = 1
+type = 1
+integrated = 1
+socket = "scope"
+zoom_level = 1
+zoom_fov = [75.0]
+
+# ---------------------------------------------------------------------------
+# Magazine (slot 2): [Magazine]'s table, Type 5, no socket. The bonus
+# columns are the weapon's variant index (0..9); rifles (AR) use column 0,
+# the only one the spec gives for them. Columns not given are 0.
+
+[[mod]]
+name = "Magazine_A_AR"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [10]
+max_amount_plus = [40]
+reload_ani_rate = -0.1
+
+[[mod]]
+name = "Magazine_B_AR"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [15]
+max_amount_plus = [40]
+reload_ani_rate = -0.2
+
+[[mod]]
+name = "Magazine_C_AR"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [-6]
+max_amount_plus = [30]
+reload_ani_rate = 0.2
+
+[[mod]]
+name = "Magazine_D_AR"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [-9]
+max_amount_plus = [30]
+reload_ani_rate = 0.3
+
+[[mod]]
+name = "Magazine_A_AR_Gold"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [14]
+max_amount_plus = [40]
+
+[[mod]]
+name = "Magazine_B_AR_Gold"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [28]
+max_amount_plus = [40]
+reload_ani_rate = -0.1
+
+[[mod]]
+name = "Magazine_C_AR_Gold"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [0]
+max_amount_plus = [30]
+reload_ani_rate = 0.3
+
+[[mod]]
+name = "Magazine_D_AR_Gold"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [-4]
+max_amount_plus = [30]
+reload_ani_rate = 0.45
+
+[[mod]]
+name = "Magazine_A_AR_Red"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [20]
+max_amount_plus = [40]
+
+[[mod]]
+name = "Magazine_B_AR_Red"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [40]
+max_amount_plus = [40]
+reload_ani_rate = -0.1
+
+[[mod]]
+name = "Magazine_C_AR_Red"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [0]
+max_amount_plus = [30]
+reload_ani_rate = 0.4
+
+[[mod]]
+name = "Magazine_D_AR_Red"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [-4]
+max_amount_plus = [30]
+reload_ani_rate = 0.6
+
+# Snipers (SR): [Magazine] "column 4 of A for snipers is +5, column 1 of C
+# for snipers is -1", and test case 17's L96A1 (5 + C's column 0 = 4).
+# The reload rates are the rifles' (the families differ only in columns).
+[[mod]]
+name = "Magazine_A_SR"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [0, 0, 0, 0, 5]
+reload_ani_rate = -0.1
+
+[[mod]]
+name = "Magazine_C_SR"
+kinds = 2
+type = 5
+integrated = 1
+shots_per_clip_plus = [-1, -1]
+reload_ani_rate = 0.2
+
+# ---------------------------------------------------------------------------
+# Bullet (slot 3): [Bullet]'s table; stat-only (no type, no socket). The
+# special functions: `type` InstDamage, Stun, Knockback or Crit, `target`
+# All, Player, Npc, Human, Zombie, PH, PZ, NH or NZ (default All),
+# `probability` (default 1). QR II and III and the pistols' PVP Damage I
+# carry only the misspelled range key nothing reads (Quirk Q5): no
+# `range_per` here.
+
+[[mod]]
+name = "Bullet_FT_I_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.25
+special = [{ type = "InstDamage", target = "NZ", value = 2.0 }]
+
+[[mod]]
+name = "Bullet_FT_II_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.25
+special = [{ type = "InstDamage", target = "NZ", value = 8.0 }]
+
+[[mod]]
+name = "Bullet_FT_III_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.25
+special = [{ type = "InstDamage", target = "NZ", value = 11.0 }]
+
+[[mod]]
+name = "Bullet_PVP_Damage_I_{class}"
+classes = ["AR", "SMG", "SR", "MG", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.25
+special = [{ type = "InstDamage", target = "NZ", value = 13.0 }]
+
+[[mod]]
+name = "Bullet_PVP_Damage_I_Pistol"
+kinds = 3
+integrated = 1
+special = [{ type = "InstDamage", target = "NZ", value = 13.0 }]
+
+[[mod]]
+name = "Bullet_PVP_Damage_II_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.25
+special = [{ type = "InstDamage", target = "NZ", value = 20.0 }]
+
+[[mod]]
+name = "Bullet_PVP_Damage_III_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+special = [{ type = "InstDamage", target = "Player", value = 0.22 }]
+
+# Pistols and shotguns only.
+[[mod]]
+name = "Bullet_PVP_Range_I_{class}"
+classes = ["Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.25
+special = [{ type = "InstDamage", target = "All", value = 0.03 }]
+
+[[mod]]
+name = "Bullet_PVP_Range_II_{class}"
+classes = ["Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.50
+special = [{ type = "InstDamage", target = "All", value = 0.07 }]
+
+[[mod]]
+name = "Bullet_PVP_Range_III_{class}"
+classes = ["Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 0.70
+special = [{ type = "InstDamage", target = "All", value = 0.10 }]
+
+[[mod]]
+name = "Bullet_PVP_Stun_I_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+special = [
+    { type = "InstDamage", target = "Player", value = -0.1 },
+    { type = "Stun", target = "Player", value = 0.20, duration = 1.0, probability = 0.5 },
+]
+
+[[mod]]
+name = "Bullet_PVP_Stun_II_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 2.0
+special = [{ type = "InstDamage", target = "NZ", value = 0.0 }]
+
+[[mod]]
+name = "Bullet_PVP_Stun_III_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 7.0
+special = [{ type = "InstDamage", target = "NZ", value = 0.0 }]
+
+[[mod]]
+name = "Bullet_QR_I_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+range_per = 9.0
+special = [{ type = "InstDamage", target = "NZ", value = 0.0 }]
+
+[[mod]]
+name = "Bullet_QR_II_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+special = [{ type = "InstDamage", target = "NZ", value = 0.0 }]
+
+[[mod]]
+name = "Bullet_QR_III_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 3
+integrated = 1
+special = [{ type = "InstDamage", target = "NZ", value = 0.0 }]
+
+# ---------------------------------------------------------------------------
+# Mechanical sight (slot 4): [Mechanical sight]'s table; stat-only.
+
+[[mod]]
+name = "MechSight_Aim_I_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 4
+integrated = 1
+perturb_dec_speed = 0.10
+zoomed_perturb_dec_speed = 0.05
+special = [{ type = "InstDamage", target = "All", value = -0.03 }]
+
+[[mod]]
+name = "MechSight_Aim_II_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 4
+integrated = 1
+perturb_dec_speed = 0.13
+zoomed_perturb_dec_speed = 0.13
+
+[[mod]]
+name = "MechSight_Aim_III_{class}"
+classes = ["AR", "SMG", "SR", "MG", "Pistol", "SG"]
+kinds = 4
+integrated = 1
+perturb_dec_speed = 0.16
+zoomed_perturb_dec_speed = 0.20

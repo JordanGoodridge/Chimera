@@ -71,13 +71,35 @@ random_wag = 0.0
 jitter_dec_delay = 2400.0
 
 # [TW: ZoomTime] 0.18 s, [TW: Sway] X 4.5/10, Y 1.1/10,
-# [TW: ReloadAfterFire] 1; [TW: Scope] / [SR] "Sniper Scope", one level
-# at 20 degrees.
+# [TW: ReloadAfterFire] 1. Its scope is the attachment below.
 [hooks."combat_arms:zoom"]
 zoom_time = 0.18
 sway = { x_speed = 4.5, x_freq = 10.0, y_speed = 1.1, y_freq = 10.0 }
 reload_after_fire = true
-scope = { name = "Sniper Scope", fov = [20.0] }
+
+# attachments.md: [TW: Scope] / [SR] DefaultScopeAttach "Sniper Scope"
+# (one level at 20 degrees), fitted when the weapon is given ("Fitting");
+# "Which weapon accepts which": snipers take silencers, magazines,
+# bullets and mechanical sights (the SR family) and fill the sight slot
+# with their built-in scope; test case 17: Magazine_C_SR at variant 0
+# (the other magazines' columns for the L96A1 aren't given: not listed).
+# "Sound": FireSndRadius 3000, silenced 1500.
+[hooks."combat_arms:attachments"]
+fire_sound_radius = 3000
+silenced_radius = [1500, 1500]
+defaults = { sight = "Sniper Scope" }
+accepts = [
+    "Sniper Scope",
+    "Silencer_A_SR", "Silencer_B_SR", "Silencer_C_SR",
+    "Silencer_A_SR_Gold", "Silencer_B_SR_Gold", "Silencer_C_SR_Gold",
+    "Silencer_A_SR_Red", "Silencer_B_SR_Red", "Silencer_C_SR_Red",
+    "Magazine_C_SR",
+    "Bullet_FT_I_SR", "Bullet_FT_II_SR", "Bullet_FT_III_SR",
+    "Bullet_PVP_Damage_I_SR", "Bullet_PVP_Damage_II_SR", "Bullet_PVP_Damage_III_SR",
+    "Bullet_PVP_Stun_I_SR", "Bullet_PVP_Stun_II_SR", "Bullet_PVP_Stun_III_SR",
+    "Bullet_QR_I_SR", "Bullet_QR_II_SR", "Bullet_QR_III_SR",
+    "MechSight_Aim_I_SR", "MechSight_Aim_II_SR", "MechSight_Aim_III_SR",
+]
 
 # [TW: MovePenalty] 0.24.
 [hooks."combat_arms:handling"]

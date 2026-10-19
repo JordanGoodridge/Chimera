@@ -154,7 +154,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
-  grenades and the weapon classes so far;
+  grenades, the weapon classes and attachments so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
@@ -490,6 +490,8 @@ that the paths exist).
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/weapons/zoom.rs`: Combat Arms' zoom and scope: levels, FOV transitions, bolt zoom-out, sway (games)
 - `games/combat_arms/src/game/weapons/classes.rs`: Combat Arms' class rules: shell reloads, minigun spin, alt-fire volleys, pellet carry-over (games)
+- `games/combat_arms/src/game/attachments.rs`: Combat Arms' weapon attachments: records, accepted lists, fitting and their effects (games)
+- `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
@@ -497,7 +499,7 @@ that the paths exist).
 - `games/combat_arms/data/grenade_surfaces.toml`: Combat Arms' surface hardness for grenade bounces (the grenades spec's table) (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
-- `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, armour, player, body types) with the spec's defaults (games)
+- `games/combat_arms/src/game/data/attributes.rs`: Combat Arms' attribute records (weapons, ammo, gear, bodies, mods) with the spec's defaults (games)
 - `games/cs_source/data/`: CS:S's shop (`economy.toml`), penetration and round numbers as data (our numbers, built in) (games)
 
 ### Source formats (crate `source_formats`, `source/formats/`)

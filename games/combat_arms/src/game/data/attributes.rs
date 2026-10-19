@@ -12,6 +12,10 @@
 //!   (`SERVERBUTES.TXT`).
 //! - `ModelsFile`: body types, characters and head pieces
 //!   (`MODELBUTES.TXT`).
+//! - `ModFile`: the modification file (`MOD.TXT`,
+//!   specs/combat_arms/attachments.md): attachment records (`Mod#`, as
+//!   `attachments::ModRecord`) and each weapon's accepted list
+//!   (`Weapon#`, unknown names dropped with their variant index).
 //!
 //! Names are kept as text (ASCII in shipped data; other bytes as
 //! Latin-1); `$` strings are kept as they are.
@@ -30,11 +34,14 @@
 
 use lithtech_formats::attributes::{Document, Section, c_atof, c_atoi};
 
+use crate::game::attachments::ModRecord;
+
 /// The four files a loader for this spec needs, in-archive paths
 /// ("Where the data sits"), as the mount names them.
 pub const WEAPONS_FILE: &str = "attributes/weapons.txt";
 pub const SERVER_FILE: &str = "attributes/serverbutes.txt";
 pub const MODELS_FILE: &str = "attributes/modelbutes.txt";
+pub const MOD_FILE: &str = "attributes/mod.txt";
 
 /// The "none" fallback of `Maxstamina`, `DashGauge`, `GaugeRec`.
 pub const NO_INT: i32 = i32::MIN;
@@ -234,8 +241,16 @@ pub struct WeaponRecord {
     /// missing).
     pub accum_pre_fire: i32,
     /// `DefaultScopeAttach`: the scope fitted at spawn, by name (the
-    /// modifications file's; empty when missing).
+    /// modifications file's; empty when missing). The other slots'
+    /// defaults: `DefaultMuzzleAttach`, `DefaultMagazineAttach`,
+    /// `DefaultBulletAttach`, `DefaultMechSightAttach` (attachments.md).
     pub default_scope_attach: String,
+    pub default_muzzle_attach: String,
+    pub default_magazine_attach: String,
+    pub default_bullet_attach: String,
+    pub default_mech_sight_attach: String,
+    /// `DefaultScopeVisible` (default 1).
+    pub default_scope_visible: bool,
     pub vectors_per_round: i32,
     /// World units.
     pub range: i32,
@@ -329,6 +344,11 @@ impl WeaponRecord {
             reload_after_fire: i("ReloadAfterFire", 0),
             accum_pre_fire: i("AccumPreFire", 0),
             default_scope_attach: s.fixed_string("DefaultScopeAttach", ""),
+            default_muzzle_attach: s.fixed_string("DefaultMuzzleAttach", ""),
+            default_magazine_attach: s.fixed_string("DefaultMagazineAttach", ""),
+            default_bullet_attach: s.fixed_string("DefaultBulletAttach", ""),
+            default_mech_sight_attach: s.fixed_string("DefaultMechSightAttach", ""),
+            default_scope_visible: s.int("DefaultScopeVisible", 1) != 0,
             vectors_per_round: i("VectorsPerRound", 1),
             range: i("Range", 3000),
             effect_range: bands("Effectrange"),
@@ -678,5 +698,161 @@ impl ModelsFile {
             models: doc.records("Model").into_iter().map(WearRecord::read).collect(),
             hair: doc.records("Hair").into_iter().map(WearRecord::read).collect(),
         }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// The modification file (specs/combat_arms/attachments.md, "How
+// attachments are described in the data")
+
+/// A special function's kind or target written as a name (any case); a
+/// number or an unknown name is `None` (the spec doesn't say how numbers
+/// map).
+fn named<T: Copy>(s: &Section, key: &str, names: &[(&str, T)]) -> Option<T> {
+    let v = text(s.string(key)?);
+    names.iter().find(|(n, _)| n.eq_ignore_ascii_case(&v)).map(|(_, t)| *t)
+}
+
+/// `Mod<N>`: an attachment record, as our data's (`ModRecord`); fields
+/// missing or of another type are 0 (empty).
+pub fn read_mod(s: &Section) -> ModRecord {
+    use crate::game::attachments::{Special, SpecialKind as K, Target as T};
+    let n = |k: &str| s.number(k, 0.0) as f32;
+    let i = |k: &str| s.int(k, 0);
+    let opt_int = |k: &str| match s.get(k) {
+        Some(lithtech_formats::attributes::Value::Int(v)) => Some(*v),
+        _ => None,
+    };
+    let column = |k: &str| (0..10).map(|c| s.int(&format!("{k}{c}"), 0)).collect::<Vec<_>>();
+    let kinds = [("InstDamage", K::InstDamage), ("Stun", K::Stun), ("Knockback", K::Knockback), ("Crit", K::Crit)];
+    let targets = [
+        ("All", T::All),
+        ("Player", T::Player),
+        ("Npc", T::Npc),
+        ("Human", T::Human),
+        ("Zombie", T::Zombie),
+        ("PH", T::PH),
+        ("PZ", T::PZ),
+        ("NH", T::NH),
+        ("NZ", T::NZ),
+    ];
+    let mut special = Vec::new();
+    for j in 0.. {
+        let ty = format!("SFType{j}");
+        if s.get(&ty).is_none() {
+            break;
+        }
+        let Some(kind) = named(s, &ty, &kinds) else { continue };
+        let target_key = format!("SFTargetType{j}");
+        let target = if s.get(&target_key).is_none() {
+            T::All
+        } else {
+            match named(s, &target_key, &targets) {
+                Some(t) => t,
+                None => continue,
+            }
+        };
+        special.push(Special {
+            kind,
+            target,
+            value: n(&format!("SFValue{j}")),
+            duration: n(&format!("SFDuration{j}")),
+            probability: s.number(&format!("SFProbability{j}"), 1.0) as f32,
+        });
+    }
+    let fov: Vec<f32> = (0..10).map_while(|l| s.number_opt(&format!("ZoomFov{l}")).map(|v| v as f32)).collect();
+    let socket = s.fixed_string("Socket", "");
+    ModRecord {
+        name: name_of(s),
+        kinds: opt_int("Kinds"),
+        kind: opt_int("Type"),
+        integrated: i("Integrated"),
+        socket: (!socket.is_empty()).then_some(socket),
+        silencer_level: i("SilencerLevel"),
+        flash_hider_level: i("FlashHiderLevel"),
+        zoom_level: i("ZoomLevel"),
+        zoom_fov: fov,
+        sight_style: i("SightSystemStyle"),
+        target_range: i("TargetRange"),
+        inst_damage: n("Instdamage"),
+        inst_damage_per: n("InstDamagePer"),
+        range_per: n("RangePer"),
+        fire_ani_rate: n("Fireanirate"),
+        reload_ani_rate: n("Reloadanirate"),
+        select_ani_rate: n("Selectanirate"),
+        perturb_inc_speed: n("PerturbIncSpeed"),
+        perturb_dec_speed: n("PerturbDecSpeed"),
+        zoomed_perturb_inc_speed: n("ZoomedPerturbIncSpeed"),
+        zoomed_perturb_dec_speed: n("ZoomedPerturbDecSpeed"),
+        walk_perturb: n("WalkPerturb"),
+        run_perturb: n("RunPerturb"),
+        fire_perturb: n("FirePerturb"),
+        fire_duck_perturb: n("FireDuckPerturb"),
+        zoomed_min_perturb: n("ZoomedMinPerturb"),
+        zoomed_max_perturb: n("ZoomedMaxPerturb"),
+        dynamic_perturb_factor: n("DynamicPerturbFactor"),
+        min_perturb_per: n("MinPerturbPer"),
+        base_cam_recoil_pitch: n("BaseCamRecoilPitch"),
+        base_cam_recoil_pitch_per: n("BaseCamRecoilPitchPer"),
+        max_cam_recoil_pitch_per: n("MaxCamRecoilPitchPer"),
+        base_cam_recoil_accel_pitch: n("BaseCamRecoilAccelPitch"),
+        max_random_pitch: n("MaxRandomPitch"),
+        camera_sway: [
+            n("CameraSwayXSpeed"),
+            n("CameraSwayYSpeed"),
+            n("CameraSwayXFreq"),
+            n("CameraSwayYFreq"),
+        ],
+        vectors_per_round_per: n("VectorsPerRoundPer"),
+        shots_per_clip_plus: column("ShotsPerClipPlus"),
+        max_amount_plus: column("MaxAmountPlus"),
+        selection_amount_plus: column("SelectionAmountPlus"),
+        special,
+    }
+}
+
+/// `Weapon<N>` of the modification file: the accepted list of the weapon
+/// with the same N in the weapons file (Q13: by position).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ModWeaponRecord {
+    /// `Name` (informational).
+    pub name: String,
+    /// `ModName#` with its `ModModel#` (default 0); a name that matches no
+    /// attachment is dropped with its index.
+    pub accepts: Vec<(String, i32)>,
+}
+
+/// The modification file (`MOD.TXT`): attachment records and per-weapon
+/// accepted lists.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ModFile {
+    pub mods: Vec<ModRecord>,
+    pub weapons: Vec<ModWeaponRecord>,
+}
+
+impl ModFile {
+    pub fn read(doc: &Document) -> Self {
+        let mods: Vec<ModRecord> = doc.records("Mod").into_iter().map(read_mod).collect();
+        let weapons = doc
+            .records("Weapon")
+            .into_iter()
+            .map(|s| {
+                let accepts = s
+                    .string_list("ModName")
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(k, name)| {
+                        let (_, m) = find_by_name(&mods, &text(name), |m| &m.name)?;
+                        Some((m.name.clone(), s.int(&format!("ModModel{k}"), 0)))
+                    })
+                    .collect();
+                ModWeaponRecord {
+                    name: name_of(s),
+                    accepts,
+                }
+            })
+            .collect();
+        Self { mods, weapons }
     }
 }
