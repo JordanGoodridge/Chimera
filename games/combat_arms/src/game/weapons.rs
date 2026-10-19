@@ -1183,6 +1183,12 @@ pub const GAS_MASK: Gear = Gear {
     }],
 };
 
+/// A shooter whose rounds go exactly where it looks: no spread cone, one
+/// ray per shot (no extra pellets) and no recoil kick. Combat Arms' bots
+/// (bots.md 7.3, Quirk 7), whose brain picks each shot's aim point.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ExactAim;
+
 /// A character's armour: points (AP, hit points) and gear worn. The
 /// server's; replicated to clients (`game::net`).
 #[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1743,6 +1749,7 @@ fn after_shots(
         Option<&CaZoom>,
     )>,
     mut delivery: Delivery,
+    exact: Query<(), With<ExactAim>>,
     clock: Res<SimClock>,
     scales: Res<SpreadScales>,
     (options, carry_over): (Res<SpreadOptions>, Res<PelletCarryOver>),
@@ -1781,8 +1788,13 @@ fn after_shots(
             continue;
         };
         let mode = mode_of(r.mode, burst, zoom, ca_zoom);
-        let half = spread.as_ref().map_or(0.0, |s| s.cone(mode)) / 1000.0;
-        let pellets = scan.map_or(1, |s| s.pellets.max(1));
+        let exact_aim = exact.contains(r.owner);
+        let half = if exact_aim {
+            0.0
+        } else {
+            spread.as_ref().map_or(0.0, |s| s.cone(mode)) / 1000.0
+        };
+        let pellets = if exact_aim { 1 } else { scan.map_or(1, |s| s.pellets.max(1)) };
         let range = scan.map_or(0.0, |s| s.range);
         let server = delivery.authoritative() && delivery.first.0 && !r.replay;
         if server {
@@ -1861,6 +1873,9 @@ fn after_shots(
             step_spread(&mut s, &scales, &options, &tick);
         }
         let Some(mut recoil) = recoil else { continue };
+        if exact.contains(owner) {
+            continue;
+        }
         for (i, r) in mine.iter().enumerate() {
             let up = recoil.kick(fire_mode(r.mode, burst, zoom) == FireMode::Burst, now);
             let roll = shared_random(intent.command, "combat_arms:wag", i as i32).next();

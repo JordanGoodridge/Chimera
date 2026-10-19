@@ -154,12 +154,13 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
 - `combat_arms` (games/combat_arms/) is Combat Arms, wave 0: a skeleton
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
-  grenades, the weapon classes, attachments and the game modes TDM and
-  Elimination Pro so far;
+  grenades, the weapon classes, attachments, the game modes TDM and
+  Elimination Pro, and bots so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`: its game modes as rule
-  modules, `net`: its part of the
+  modules, `bots`: Bot Deathmatch's computer soldiers writing `Intent`,
+  `net`: its part of the
   network on `chimera_net`, `world`: the install's maps as `MapData`),
   with its feature `ui` its
   front end (`ui::layout`: its layouts on Chimera's `client::canvas`,
@@ -375,6 +376,7 @@ that the paths exist).
 - `chimera/world/src/map/decal.rs`: runtime decals and players' sprays as data, impacts' lift (map)
 - `chimera/world/src/map/rope_sway.rs`: ropes' settling step and spline (map)
 - `chimera/world/src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
+- `chimera/world/src/map/nav_gen.rs`: a `NavMesh` generated from a map's collision (grid flood fill merged into rectangles) (map)
 - `chimera/world/src/map/sound.rs`: the simulation's side of sounds (map)
 - `chimera/world/src/map/radio.rs`: a game's team radio data and chat line format (map)
 - `chimera/world/src/map/hud.rs`: a game's own HUD, menus and GameUI look as data (map)
@@ -502,6 +504,9 @@ that the paths exist).
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
 - `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules: TDM, Elimination Pro (games)
 - `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, scoreboard rows and each mode (games)
+- `games/combat_arms/src/game/bots.rs`: Combat Arms' bots: settings, console, the bot's state; Bot Deathmatch on any mode (games)
+- `games/combat_arms/src/game/bots/`: the bots' roster and kits, data, formulas, volume path search and brain (senses, goals, aim, fire) (games)
+- `games/combat_arms/data/bots.toml`: Combat Arms' bot templates, per-weapon AI rows, profile counts and item sets (games)
 - `games/combat_arms/data/modes.toml`: Combat Arms' mode settings: room and server-file values, shared constants, each mode's goal and mission data (games)
 - `games/combat_arms/src/ui/hud/score.rs`: Combat Arms' score panel and round timer from the match (games_ui)
 - `games/combat_arms/src/ui/scoreboard.rs`: Combat Arms' scoreboard (Tab, and a round's result) (games_ui)

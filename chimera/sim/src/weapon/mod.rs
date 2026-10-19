@@ -23,7 +23,8 @@
 //! `WeaponSounds`, attack2 modes (`AltModes`, with `Zoom` (owner gets `Zoomed`,
 //! max speed; a game zooming its own way marks the weapon `OwnZoom` and sets
 //! `Zoomed` itself, with its own mouse scale) and `Burst`); `Inventory`, `WeaponState` timers,
-//! `WeaponRegistry`/`StartingWeapons` (per team), `give`; selection (or a
+//! `WeaponRegistry`/`StartingWeapons` (per team; a character's own `OwnKit`
+//! instead), `give`; selection (or a
 //! game's own slot-key rules: `OwnSelection`) and deploy before movement, the Source-style weapon frame in `SimSet::Weapons` (spec
 //! weapons.md 3–4; both in `core::Predict` schedules, timed by
 //! `core::SimClock`; characters a network client draws from snapshots
@@ -567,19 +568,32 @@ pub fn spawn_weapon(world: &mut World, id: &str, owner: Entity) -> Option<Entity
     Some(weapon)
 }
 
+/// A character's own starting weapons, given in place of
+/// `StartingWeapons` (and of a map's spawn equipment) whenever it has no
+/// inventory: a bot's kit (Combat Arms' item sets).
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct OwnKit(pub Vec<&'static str>);
+
 fn give_starting_weapons(world: &mut World) {
-    let new: Vec<(Entity, Option<u8>)> = world
-        .query_filtered::<(Entity, Option<&Team>), (With<Intent>, With<Health>, Without<Inventory>)>()
+    #[allow(clippy::type_complexity)]
+    let new: Vec<(Entity, Option<u8>, Option<OwnKit>)> = world
+        .query_filtered::<(Entity, Option<&Team>, Option<&OwnKit>), (With<Intent>, With<Health>, Without<Inventory>)>()
         .iter(world)
-        .map(|(e, t)| (e, t.map(|t| t.0)))
+        .map(|(e, t, k)| (e, t.map(|t| t.0), k.cloned()))
         .collect();
     if new.is_empty() {
         return;
     }
     let start = world.resource::<StartingWeapons>().clone();
     let equipment = world.resource::<equip::SpawnEquipment>().0.clone();
-    for (owner, team) in new {
+    for (owner, team, kit) in new {
         world.entity_mut(owner).insert(Inventory::default());
+        if let Some(kit) = kit {
+            for id in kit.0 {
+                give(world, owner, id);
+            }
+            continue;
+        }
         // A map's spawn equipment replaces the starting weapons.
         if let Some(items) = &equipment {
             for (name, count) in items {

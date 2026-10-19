@@ -26,8 +26,7 @@
 //! (the engine's base, `chimera_sim::SimBasePlugins`, and the tick
 //! metrics); the app runs it with `game::CombatArmsPlugins` after it.
 //!
-//! Known shortcuts: no bots yet (bots.md, and the lift of CS:S's bot
-//! brain into Chimera: the plan's "lift into Chimera" list).
+//! Bots (bots.md) are `game::bots`; their Known shortcuts are there.
 
 pub mod game;
 pub mod harness;

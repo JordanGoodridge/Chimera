@@ -62,6 +62,7 @@ pub use material_fx::{DetailMode, MapSelfIllum, MapTextureAnim, MapUvTransform, 
 pub mod bot_profiles;
 pub mod monitor;
 pub mod nav;
+pub mod nav_gen;
 pub mod particles;
 pub mod physics_clip;
 pub mod placed_ragdoll;
