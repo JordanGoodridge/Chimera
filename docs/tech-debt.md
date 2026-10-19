@@ -154,6 +154,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source ui: Voice HUD rows' order and box guessed; no avatars, fades or icons over heads (`games/cs_source/src/ui/voice_hud.rs`)
 - games/cs_source: func_footstep_control from the public FGD only: feet point inside, the replaced surface's step volume and timing (`games/cs_source/src/game/sound.rs`)
 - games/combat_arms: Inventory: updates per tick, not per rendered frame; no skeleton (drops at the hull's bottom centre, placeholder zones), items' boxes ours; no objective key, "in use" weapons or dead-body interactions (`games/combat_arms/src/game/inventory.rs`)
+- games/combat_arms: Grenades: release key time, re-draw, rest nudge's half-height and grenade-vs-character touches assumed; no bounce sounds, perks or bullets hitting grenades; flash drawn with Chimera's linear overlay; no flash goggles in the gear table (`games/combat_arms/src/game/grenades.rs`)
 - games/combat_arms: Wave 0 skeleton: no rounds, respawn or bots (`games/combat_arms/src/lib.rs`)
 - games/combat_arms net: Knife not lag compensated; armour and pickup prompt to all clients; listen server only (`games/combat_arms/src/game/net.rs`)
 - games/combat_arms movement: Per engine tick, not the spec's frame clock (stamina too); no ladders, volumes or pushers; camera rise not on the client's camera; scale by body size unconfirmed (`games/combat_arms/src/game/movement.rs`)
