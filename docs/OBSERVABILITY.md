@@ -73,7 +73,9 @@ in the lowest crate whose public API it needs:
   spawn, the plain ones in one test and the V2-keyed ones one test per
   archive, two maps at a time; a player walks and collides on
   WAREHOUSE; `heavy::model`: a prop model converts and animates as
-  LithTech samples it); its front end's (the
+  LithTech samples it; `heavy::movement_volumes`: the volume census of
+  the 105 maps and players in their sea, ladders, gravity volumes, safety
+  nets and jump pads); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`) in
   tests/ui/, built with `ui` (`heavy::install_ui`: the install's own
