@@ -46,6 +46,8 @@ use chimera_world::map;
 // The front end's: the shell.
 #[cfg(feature = "ui")]
 use chimera_client::client;
+#[cfg(feature = "ui")]
+use chimera_core::console;
 
 use bevy::prelude::*;
 

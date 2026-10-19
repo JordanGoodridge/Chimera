@@ -160,7 +160,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `grenades`, `attachments`, `data`, `rules`, `net`: its part of the
   network on `chimera_net`, `world`: the install's maps as `MapData`),
   with its feature `ui` its
-  front end (`ui::hud`, `ui::visuals`), and `harness::CaSim` as its
+  front end (`ui::layout`: its layouts on Chimera's `client::canvas`,
+  `ui::hud`, `ui::menu`: the Esc menu, `ui::visuals`), and `harness::CaSim` as its
   scenario tests' base (with chimera_net's `NetSim` for its network
   tests). Layered as `cs_source`: the engine crates only,
   never `cs_source`, Source's logic, `mashup` or an app (checked); only
@@ -494,6 +495,9 @@ that the paths exist).
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1, M9 knife, grenades and one weapon per class (games)
+- `games/combat_arms/src/ui/layout/`: Combat Arms' layouts: widget trees, scaling, fonts, strings, `CBALAYOUT` files (games_ui)
+- `games/combat_arms/src/ui/menu.rs`: Combat Arms' in-game menu (Esc): a modal popup centred 1:1 (games_ui)
+- `games/combat_arms/data/ui/`: Combat Arms' font list, strings and in-game menu layout, ours (games)
 - `games/combat_arms/data/grenade_surfaces.toml`: Combat Arms' surface hardness for grenade bounces (the grenades spec's table) (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
@@ -594,6 +598,7 @@ that the paths exist).
 - `games/cs_source/src/ui/first_run.rs`: finding CS:S on first run (games_ui)
 - `chimera/client/src/client/fonts.rs`: the one font service (client)
 - `chimera/client/src/client/widgets.rs`: VGUI control state machines and drawing (client)
+- `chimera/client/src/client/canvas.rs`: reference-canvas widget trees: scale, hit tests, modal layers, text alignment, fades (client)
 - `chimera/client/src/client/vgui.rs`: drawing a game's own menu layouts; the mouse free while one is open (client)
 - `games/cs_source/src/ui/game_menu/`: the main menu and game menu dialogs, the vote setup dialog (games_ui)
 - `games/cs_source/src/ui/server_browser.rs`: the server browser (games_ui)

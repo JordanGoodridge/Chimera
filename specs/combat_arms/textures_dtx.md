@@ -1,6 +1,6 @@
 # Combat Arms: textures (.dtx)
 
-Source basis: reference material the user pointed the spec session to on the engine's texture loading (the texture file reader and writer, the pixel-format helpers, the Direct3D texture setup and the world and model render paths that read texture properties), plus the game's performance options. All numbers in Test cases and the statistics were measured on the Steam install on the Windows PC (Steam build 25595979), reading each `.dtx` straight out of the unkeyed archives with a throwaway reader written from `rez_archive.md`.
+Source basis: reference material the user pointed the spec session to on the engine's texture loading (the texture file reader and writer, the pixel-format helpers, the Direct3D texture setup and the world and model render paths that read texture properties), plus the game's performance options. All numbers in Test cases and the statistics were measured on the Steam install on the Windows PC (Steam build 25595979), reading each `.dtx` straight out of the unkeyed archives with a throwaway reader written from `rez_archive.md`. A follow-up session added the engine's software pixel-format converters, the linked-texture loader, the game's graphics options screen and performance presets, and the Steam install's player profile.
 Status: draft
 
 Sections: Summary; Units and conventions; Header; Format codes and pixel layouts; Mipmap chain; Sections after the pixels (palette, cube map); What the install contains; Load-time behaviour (version check, mip skipping); Render behaviour from the header (alpha test, fullbright, detail textures, environment maps, wrapping); How other files name a texture, and missing textures; Edge cases; Quirks; Test cases; Synthetic fixtures; Open questions.
@@ -117,6 +117,13 @@ The four palette entries P0..P3 are built per channel from C0 and C1, the widene
 
 In DXT1, every colour other than P3 in the 3-colour mode has alpha 255. In DXT3 and DXT5 the colour block is always read in 4-colour mode, whatever the order of c0 and c1. The game hands DXT data to the graphics card, so the rounding of the interpolated entries is the card's. A reader should round to nearest. The fixtures below use only values that divide exactly.
 
+**Rounding** (Open question 10). With texture compression on (the default, and every current card supports DXT) the game never decodes DXT itself: the card does, and current cards compute the 1/3 and 2/3 entries to within one step of the exact value, typically rounded. So round to nearest is the reading to keep for what players see. The engine also has its own software decoder, used only when the card cannot take compressed textures (DXT data is then expanded to 16- or 32-bit). It differs in four ways, given here for a byte-exact comparison with that path:
+
+- channels are widened by ⌊c·255/(2^b − 1)⌋, not by repeating bits (for 5-bit 16: 131, not 132);
+- P2, P3 and the 3-colour midpoint truncate: ⌊(2C₀ + C₁)/3⌋, ⌊(C₀ + 2C₁)/3⌋, ⌊(C₀ + C₁)/2⌋;
+- DXT5 alpha entries truncate: ⌊((8−k)a₀ + (k−1)a₁)/7⌋ and ⌊((6−k)a₀ + (k−1)a₁)/5⌋; DXT3 alpha is a₄·17 (exact either way);
+- it picks the 3-colour mode by c0 ≤ c1 in DXT3 and DXT5 blocks too.
+
 **DXT3 alpha** (the first 8 bytes of a 16-byte block): 16 explicit 4-bit alphas. Texel t is in byte ⌊t/2⌋: even t in the low nibble, odd t in the high nibble. The 8-bit alpha is a₄ · 17.
 
 **DXT5 alpha** (the first 8 bytes of a 16-byte block):
@@ -206,6 +213,7 @@ Measured on Steam build 25595979:
 
    - g is the texture group. GroupOffset[g] counts only when g < 49; otherwise k uses MipMapOffset alone (still at least 0).
    - Both are console variables, default 0. The engine's own defaults for groups 0..3 are 0, 0, 1, 1.
+   - **Groups 4 to 48 have no variable.** The engine's table of group offsets has only four entries (groups 0..3), but the loader accepts any g below 49 and reads entry g, so for g = 4..48 it reads whatever engine value follows the table in memory (Open question 4). Group 5, used by 28 files in `FX.rez`, is in that range. The value is not knowable from the reference; a reader should use 0 for groups 4..48 until a measurement settles it.
    - The game then rewrites GroupOffset1..3 from its "DetailLevel" option, index d = 0, 1, 2:
 
    | d | GroupOffset1 | GroupOffset2 | GroupOffset3 |
@@ -214,7 +222,17 @@ Measured on Steam build 25595979:
    | 1 | 0 | 1 | 1 |
    | 2 | 1 | 1 | 2 |
 
-   - All three presets in the reference use d = 2, and the install's player profile holds `DetailLevel = 2`. So in practice FX textures in groups 1 and 2 load one level down and those in group 3 two levels down. Group 0, which is nearly everything, and group 5 are untouched.
+   - All three presets in the reference use d = 2, and the install's player profile holds `DetailLevel = 2`. So in practice FX textures in groups 1 and 2 load one level down and those in group 3 two levels down. Group 0, which is nearly everything, is untouched; group 5 is unknown (above).
+   - **No in-game option changes it** (Open question 4). The graphics options screen has a quality preset (low, medium, high, user) and separate switches (shell casings, tracers, shadows, anisotropic and trilinear filtering, environment detail, shaders, bloom, effects detail, resolution, colour depth, anti-aliasing, gamma), but none of them writes `DetailLevel`, and every preset carries d = 2. The Steam profile (`PerformanceSetting = 3`, the user preset) also holds `DetailLevel = 2`. Only editing the profile or the console changes it. Levels skipped, k before the N − 1 clamp, with MipMapOffset 0:
+
+   | Group | d = 0 | d = 1 | d = 2 (shipped, every option value) |
+   |---|---|---|---|
+   | 0 | 0 | 0 | 0 |
+   | 1 | 0 | 0 | 1 |
+   | 2 | 0 | 1 | 1 |
+   | 3 | 0 | 1 | 2 |
+   | 4–48 (5 occurs) | undefined (read past the table) | undefined | undefined |
+   | ≥ 49 | 0 | 0 | 0 |
    - The dropped levels are skipped in the file, not read. The texture then reports level k as its full size, (W ≫ k) × (H ≫ k), but its original size stays known to the engine.
 3. **Choose levels for the renderer.**
    - The starting level s is the first remaining level that fits the device's maximum texture size (default limit 16,384, so in practice level 0 of what was kept). If the card cannot take compressed data, s is also at least the extra-drop field at 0x1B, but never past the last level.
@@ -256,7 +274,8 @@ At most one of these takes effect. The engine tests them in the order below, and
 | `DOT3EnvBumpMap` | env name, bump name | DOT3 bump mapping plus an environment map |
 | `Effect` | shader id, then up to 4 names | A numbered effect shader with up to four extra textures |
 
-- Each name is resolved like any other texture name (see the next section).
+- Each name is resolved like any other texture name (see the next section). In detail (Open question 11): the name is the command's second word exactly as written (a `"`-quoted word may hold spaces); it is handed to the client file manager as a client file and looked up in the mounted archive tree like every texture: a path from the game folder whose first component is the archive's root directory, `\` or `/` as separator, ASCII case ignored, and the extension as written. Nothing is added or removed: `textures\Etc\256xSprinkle01.dtx` resolves, `textures\Etc\256xSprinkle01` would not. The result is the shared texture for that name, so two links to the same file (or a texture linking to itself) give one texture object. The linked file is loaded with its own header (its own group, mip and format settings); its own command string is parsed when it loads, like any texture's.
+- The **detail scale and rotation** come from the **base** texture's header (0x1E, 0x22), not from the detail texture's; the blend is the signed add (or multiply) under Detail textures below. In the install, the three `detailtex` users store scale field 0.0 (scale 1.0) except `TEXFX\ENVMAP\DUSTBEAM1.DTX` (7.0, so 8.0), whose link does not resolve; all three have rotation 0.
 - A keyword with too few words makes the engine report an invalid file. The base texture has already been installed by then and stays usable.
 - In the install only `detailtex`, `envmap` and `envmapalpha` occur.
 
@@ -385,6 +404,14 @@ All on Steam build 25595979. Read each file with the `.rez` reader from the name
     - 9,657 parse with version −5 and size exactly 164 + Σ S. 1 is empty.
     - Format counts: 3,237 / 4,068 / 457 / 1,895 for codes 3 / 4 / 5 / 6.
     - Every flags value includes 0x8, and every section count is 0.
+15. **Mip skip by group, shipped settings.** DetailLevel 2, MipMapOffset 0, textures with N = 4 → k = 0 for group 0, 1 for groups 1 and 2, 2 for group 3, 0 for group 49 or above. Group 3 with N = 2 → k = 1 (clamped to N − 1). The same group-3 texture with DetailLevel 0 → k = 0.
+16. **Options do not change it.** Switching the quality preset between low, medium, high and user in the graphics options → GroupOffset1, 2, 3 stay 1, 1, 2.
+17. **Interpolated colour rounding.** DXT1 block c0 = 0xF800 (red 31 → 255), c1 = 0x0800 (red 1 → 8), index 2 → red 173 when rounding to nearest (the reading to keep), 172 on the engine's software path; index 3 → red 90 either way.
+18. **Software-path widening.** c0 = 0x8000 (red 16) → 132 by bit repetition (the reading to keep), 131 on the engine's software path.
+19. **DXT5 alpha rounding.** a0 = 255, a1 = 0 → A2 = 219, A3 = 182, A4 = 146, A5 = 109, A6 = 73, A7 = 36 rounding to nearest; the software path gives 218, 182, 145, 109, 72, 36.
+20. **Software path, DXT3 with c0 ≤ c1.** A DXT3 block with c0 = 0x0000 and c1 = 0xFFFF, colour index 3, explicit alpha 15 → the software path gives black with alpha 255 (3-colour mode); the reading to keep gives the 2/3 entry (170, 170, 170) with alpha 255.
+21. **Link resolution.** `TEXTURES\ETC\SPRINKLE_RIVER.DTX` (command `detailtex textures\Etc\256xSprinkle01.dtx`) and `TEXTURES\ETC\256XSPRINKLE01.DTX` (self-link) → both links give the one texture object of `TEXTURES\ETC\256XSPRINKLE01.DTX`. The detail scale used for SPRINKLE_RIVER's surfaces is SPRINKLE_RIVER's own field (stored 0.0, scale 1.0).
+22. **Link without extension.** A command `detailtex textures\Etc\256xSprinkle01` (no `.dtx`) → the link is empty, the base texture draws without detail.
 
 ## Synthetic fixtures
 
@@ -501,9 +528,11 @@ These go in the 128-byte field from 0x24.
 1. **Keyed archives.** About 58% of the `.dtx` files (character, attachment and weapon skins, most menu screens, item images) are in `V2_RESOURCES_KEY` archives. They could not be decrypted here, so it is assumed, not checked, that their plaintext has the same layout. The sizes fit. Re-run test case 14 on the keyed archives once the coordinator's box has the V2 key.
 2. **Palette channel order.** For format code 7, the 4-byte palette entries are read in the engine as alpha, red, green, blue at increasing addresses. That has not been confirmed on a real palettised file, because the install has none and the runtime cannot load the palette anyway. It is low priority.
 3. **Section header size.** The 32-byte size (25 bytes of text, 3 of padding, then the length) is inferred from the in-memory layout with default alignment. No file in the install has a section to check it against.
-4. **Is the shipped DetailLevel really 2?** It is in all three presets and the install's player profile, so groups 1 to 3 lose top mips. In the live game, check whether an FX sprite of group 3 (for example one of the 40 in `FX.rez`) looks blurrier than its file, and whether the in-game texture quality option changes the "DetailLevel" value.
+4. **Is the shipped DetailLevel really 2?** It is in all three presets and the install's player profile, so groups 1 to 3 lose top mips. In the live game, check whether an FX sprite of group 3 (for example one of the 40 in `FX.rez`) looks blurrier than its file, and whether the in-game texture quality option changes the "DetailLevel" value. **Answered (mostly):** there is no in-game texture quality option; nothing in the graphics options writes DetailLevel, every preset carries 2, and the Steam profile holds 2, so groups 0..3 skip 0, 1, 1, 2 levels whatever the options say (table in Load-time behaviour, cases 15–16). **Still open: groups 4..48.** The engine reads their offset from beyond its four-entry table, so the value is not in the reference. Measurement: in the live game, open the console and look at a group-5 texture (28 in `FX.rez`) through any effect that shows it at a known size, or compare a screenshot of it with its file's level 0 and level 1; whether it is one level down tells the value. The group-3 check above still confirms the d = 2 reading.
 5. **Untextured world surfaces.** When a world surface's texture and the `textures\default_texture.dtx` fallback are both missing, it is not settled what the renderer draws: white, flat lit, or nothing. Check in game on a surface whose texture name does not resolve, if the world spec finds one.
 6. **Fullbright outside the world.** For models and sprites, the reference passes the fullbright bit through, but this session did not trace how each path uses it. The models spec should settle it.
 7. **HUD wrap or clamp.** The interface drawing calls choose their own addressing. The HUD spec should say which.
 8. **The renderer in the Steam build.** The behaviour above follows the reference's Direct3D 9 renderer. The Steam client may ship a later renderer, for example one with deferred lighting: the reference also contains a path that turns the fullbright pass off under deferred lighting. If so, fullbright and detail blending may differ in detail.
 9. **`viewmodes` command.** One texture (`FX\TEST\LIGHTNING_1.DTX`) has `ViewModes Nightvision Normal;`. The engine's texture loader ignores it. Whether the game reads it anywhere is unknown, and it matters only to a night-vision feature.
+10. **DXT interpolation rounding.** Implementers round the 1/3 and 2/3 colours to nearest; does the game truncate, and what about the alpha block? **Answered:** what players see is decoded by the graphics card (compression is on by default and on every current card), which rounds to within one step; keep round to nearest and bit-repeating widening. The engine's own software decoder, used only when the card cannot take DXT, truncates everywhere (colour entries, midpoint, DXT5 alpha entries), widens by ⌊c·255/max⌋ and picks the 3-colour mode by c0 ≤ c1 even for DXT3/DXT5. Applies in Format codes and pixel layouts (Rounding) and cases 17–20.
+11. **Detail and environment links.** How a command string names its detail texture or environment map, how the name resolves, and the detail scale and blend. **Answered:** the keyword's second word, as written, is resolved as a client file in the mounted archives like any texture name (no extension added, ASCII case ignored, either separator) and becomes a shared texture; the detail scale and rotation are the base texture's header fields times `DetailTextureScale`, and the blend is the signed add (`DetailTextureAdd` 1, default) or multiply. Applies in Render behaviour (Linked textures, Detail textures) and cases 21–22.
