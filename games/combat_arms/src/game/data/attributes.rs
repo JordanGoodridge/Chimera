@@ -10,8 +10,8 @@
 //!   its load failures ("Weapons file: record kinds and load order").
 //! - `ServerPlayer`: `[Player]` in the server attributes file
 //!   (`SERVERBUTES.TXT`).
-//! - `ModelsFile`: body types, characters and head pieces
-//!   (`MODELBUTES.TXT`).
+//! - `ModelsFile`: body types, characters, head pieces and faces
+//!   (`MODELBUTES.TXT`; the pieces' files and skins as `PieceRecord`s).
 //! - `ModFile`: the modification file (`MOD.TXT`,
 //!   specs/combat_arms/attachments.md): attachment records (`Mod#`, as
 //!   `attachments::ModRecord`) and each weapon's accepted list
@@ -704,12 +704,50 @@ impl WearRecord {
     }
 }
 
-/// The models file's body types, characters and head pieces.
+/// A model piece's files (characters.md section 2): a head piece
+/// (`Hair<N>`: `ModelFile0`, `ModelFile1` by skeleton) or a face
+/// (`Face<N>`: `ModelFile`), its skins (`Skin0..`, by camouflage index for
+/// a head piece) and, for a face, the head piece it comes with
+/// (`HairIndex`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PieceRecord {
+    pub name: String,
+    pub files: Vec<String>,
+    pub skins: Vec<String>,
+    pub hair: Option<i32>,
+}
+
+impl PieceRecord {
+    pub fn read(s: &Section) -> Self {
+        let list = |prefix: &str| -> Vec<String> {
+            (0..)
+                .map_while(|i| s.string(&format!("{prefix}{i}")).map(text))
+                .collect()
+        };
+        let mut files = list("ModelFile");
+        if files.is_empty()
+            && let Some(f) = s.string("ModelFile")
+        {
+            files.push(text(f));
+        }
+        Self {
+            name: name_of(s),
+            files,
+            skins: list("Skin"),
+            hair: s.get("HairIndex").map(|_| s.int("HairIndex", -1)).filter(|&h| h >= 0),
+        }
+    }
+}
+
+/// The models file's body types, characters, head pieces and faces.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModelsFile {
     pub figure_types: Vec<FigureTypeRecord>,
     pub models: Vec<WearRecord>,
     pub hair: Vec<WearRecord>,
+    /// `Hair<N>`'s and `Face<N>`'s files, by record index.
+    pub hair_pieces: Vec<PieceRecord>,
+    pub faces: Vec<PieceRecord>,
 }
 
 impl ModelsFile {
@@ -718,6 +756,8 @@ impl ModelsFile {
             figure_types: doc.records("FigureType").into_iter().map(FigureTypeRecord::read).collect(),
             models: doc.records("Model").into_iter().map(WearRecord::read).collect(),
             hair: doc.records("Hair").into_iter().map(WearRecord::read).collect(),
+            hair_pieces: doc.records("Hair").into_iter().map(PieceRecord::read).collect(),
+            faces: doc.records("Face").into_iter().map(PieceRecord::read).collect(),
         }
     }
 }

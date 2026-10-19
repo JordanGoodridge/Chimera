@@ -64,10 +64,16 @@
 //! - With models: only the default male and female bodies load
 //!   (`models::LOADED`: each parses its sex's whole library; another
 //!   selection stays a capsule on the spec's skeleton); the pose is
-//!   computed per tick (not per rendered frame) and drawn as is; goggles, backpacks, faces, cosmetics, the clan
-//!   pieces and infection overrides aren't loaded (nothing selects them);
-//!   the head piece is the selection's default (none); render styles are
-//!   ignored; the drawn body's feet sit at the standing hull's bottom; a
+//!   computed per tick (not per rendered frame) and drawn as is; each
+//!   body wears its default face (the first face the default selection
+//!   draws it with: 0, the female twin's 4) and, as the default head
+//!   piece (`HBasic`) has no model, the head piece that face names in the
+//!   install's `HairIndex` (our reading: the spec doesn't say what
+//!   `HairIndex` does; the female's hair), so other faces and head pieces
+//!   aren't drawn; goggles, backpacks, cosmetics, the clan pieces and
+//!   infection overrides aren't loaded (nothing selects them); a face's
+//!   skins by camouflage index (its colour overrides not read); render
+//!   styles are ignored; the drawn body's feet sit at the standing hull's bottom; a
 //!   corpse (`CaBody`) isn't drawn and has no hit spheres (Open question
 //!   9); the stock bodies' skins other than the default male's are not in
 //!   our data. A weapon names its third-person model only with the V1 key (the
