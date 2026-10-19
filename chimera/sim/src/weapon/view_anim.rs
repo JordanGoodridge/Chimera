@@ -27,7 +27,10 @@
 //!   weapon's view model shows its reference pose.
 //!
 //! Games add `ViewAnimPlugin` and insert their `ViewAnimRules` and
-//! `map::ViewModelSettings` (field of view, hand).
+//! `map::ViewModelSettings` (field of view, hand). A game that drives a
+//! character's view model itself (its `ViewAnimator`, e.g. Combat Arms'
+//! own state machine) puts `OwnViewAnim` on it and the driver leaves it
+//! alone.
 
 use bevy::prelude::*;
 
@@ -71,6 +74,11 @@ impl Plugin for ViewAnimPlugin {
             .add_systems(Update, drive.in_set(DriveAnimation));
     }
 }
+
+/// On a character whose view model the game drives itself: the driver
+/// skips it.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct OwnViewAnim;
 
 /// Sequences to play: the first activity any sequence has (a weighted
 /// pick among its sequences), or one of the named sequences at random.
@@ -274,14 +282,17 @@ pub fn drive(
     time: Res<Time>,
     models: Option<Res<ViewModels>>,
     rules: Option<Res<ViewAnimRules>>,
-    mut characters: Query<(
-        Entity,
-        &Inventory,
-        Option<&Health>,
-        Option<&mut ViewAnimator>,
-        Option<&mut ViewModelPlay>,
-        Option<&Zoomed>,
-    )>,
+    mut characters: Query<
+        (
+            Entity,
+            &Inventory,
+            Option<&Health>,
+            Option<&mut ViewAnimator>,
+            Option<&mut ViewModelPlay>,
+            Option<&Zoomed>,
+        ),
+        Without<OwnViewAnim>,
+    >,
     weapons: Query<(
         &Weapon,
         Option<&AltModes>,

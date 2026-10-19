@@ -56,3 +56,13 @@ area_type = "explode"
 # The world model's half-height, for the at-rest nudge [6]: PLACEHOLDER
 # (Open question 9: the model's dims x its scale 2, not read yet).
 half_height = 2.0
+
+# view_models.md 4, 9, 10 (per-weapon placement): `MuzzlePos`,
+# `BreachOffset`, `PVMuzzleFXName`; `Recoil` (the shot jiggle) is
+# (0, 0, 0) in every stock record. Its animations are the view model's
+# own, by view_models.md 7's names (game/view_model.rs).
+[hooks."combat_arms:view_model"]
+muzzle_pos = [1.94, -2.18, 10.359921]
+breach_offset = [0.0, 0.0, 0.0]
+muzzle_fx = ""
+shells = false

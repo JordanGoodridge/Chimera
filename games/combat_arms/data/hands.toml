@@ -1,0 +1,26 @@
+# Combat Arms' first-person hands (specs/combat_arms/view_models.md 1
+# and 2): which hand model a character's view model wears and its sleeve
+# texture. Our numbers from the spec, not a file from the game; the
+# install's character-model table (124 hand records, 426 models) replaces
+# this once it can be read (V2-keyed).
+#
+# `hands`: the `[HandN]` records (model file, skins by texture index).
+# `models`: the character models' `HandIndex` and `HandsSkin` patterns, one
+# per face, filled with the uniform item index (`%02d`). Archive paths
+# lower case with `/`.
+
+# Hand 0: the stock male hand (43 nodes: the weapon skeleton's arm nodes;
+# pieces `arm_SH`, the sleeves, and `Object01`, the hands).
+[[hands]]
+model = "chars_m_hand/normal_m_hand.ltb"
+skins = ["chars_t_hand/hand_00_00.dtx"]
+
+# Model 0: the default character (case 3: face 0, uniform 0 ->
+# hand_00_00; face 2, uniform 3 -> hand_02_03).
+[[models]]
+hand_index = 0
+hands_skins = [
+    "chars_t_hand/hand_00_%02d.dtx",
+    "chars_t_hand/hand_01_%02d.dtx",
+    "chars_t_hand/hand_02_%02d.dtx",
+]

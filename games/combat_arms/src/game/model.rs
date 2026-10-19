@@ -23,7 +23,8 @@
 //!   included, rotation-only nodes at their bind offset).
 //!
 //! Known shortcuts (docs/tech-debt.md):
-//! - Animations are resampled at `SAMPLE_FPS` frames per second (and
+//! - Animations are resampled at `SAMPLE_FPS` frames per second
+//!   (`VIEW_SAMPLE_FPS` for view models) (and
 //!   exactly at the last key) for Chimera's frame-based `AnimSet`, which
 //!   then interpolates between samples (nlerp instead of the spec's
 //!   slerp between the original keys). LithTech's millisecond tracker
@@ -55,6 +56,9 @@ use crate::map::{
 
 /// Frames per second animations are resampled at.
 pub const SAMPLE_FPS: f32 = 30.0;
+/// The same for first-person view models (`convert_at`): their fire
+/// kicks last a few frames of 30 fps.
+pub const VIEW_SAMPLE_FPS: f32 = 240.0;
 
 /// A model file and its children, read and checked.
 pub struct LoadedModel {
@@ -137,6 +141,11 @@ pub fn bones(model: &Model) -> Vec<MapBone> {
 
 /// Every entry of `list` as a looping sequence on the skeleton.
 pub fn anim_set(model: &Model, list: &AnimList, bones: &[MapBone]) -> AnimSet {
+    anim_set_at(model, list, bones, SAMPLE_FPS)
+}
+
+/// `anim_set`, resampled at `fps`.
+pub fn anim_set_at(model: &Model, list: &AnimList, bones: &[MapBone], fps: f32) -> AnimSet {
     let defaults: Vec<BonePose> = bones.iter().map(|b| (b.rotation, b.position)).collect();
     let n = model.nodes.len();
     let mut set = AnimSet {
@@ -150,9 +159,9 @@ pub fn anim_set(model: &Model, list: &AnimList, bones: &[MapBone]) -> AnimSet {
     for (i, entry) in list.entries.iter().enumerate() {
         let length = entry.length() as f32;
         let (frames, fps) = if entry.animation.keys.len() <= 1 || length <= 0.0 {
-            (1, SAMPLE_FPS)
+            (1, fps)
         } else {
-            let frames = (length / 1000.0 * SAMPLE_FPS).ceil() as usize + 1;
+            let frames = (length / 1000.0 * fps).ceil() as usize + 1;
             (frames, (frames - 1) as f32 * 1000.0 / length)
         };
         let tracks = (0..n)
@@ -201,9 +210,14 @@ pub fn anim_set(model: &Model, list: &AnimList, bones: &[MapBone]) -> AnimSet {
 /// to its nodes) and its rig; `texture` gives a piece's material name
 /// from its LOD (empty: none).
 pub fn convert(loaded: &LoadedModel, scale: f32, texture: &dyn Fn(&ltb::Lod) -> String) -> MapModel {
+    convert_at(loaded, scale, texture, SAMPLE_FPS)
+}
+
+/// `convert`, its animations resampled at `fps`.
+pub fn convert_at(loaded: &LoadedModel, scale: f32, texture: &dyn Fn(&ltb::Lod) -> String, fps: f32) -> MapModel {
     let model = &loaded.model;
     let bones = bones(model);
-    let animations = Arc::new(anim_set(model, &loaded.list, &bones));
+    let animations = Arc::new(anim_set_at(model, &loaded.list, &bones, fps));
     let mut meshes = Vec::new();
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
     for piece in &model.pieces {
