@@ -121,8 +121,8 @@ does for BSP.
 | Item | Spec | Status | Notes |
 |---|---|---|---|
 | `games/combat_arms` crate + app into the greybox; slots for movement, weapons, HUD; plain Chimera HUD; one module per subsystem | none | implementing (another agent) | Every later item lands in its module; read the crate's `//!` doc for the layout once merged |
-| `.rez` archive reader (header, directory, Twofish-CBC payloads) | `rez_archive.md` | done (2026-10-18), in `lithtech/formats` (`lithtech_formats::rez`); spec still needs the user's review | Heavy tests on this box: 108 archives open with matching check sums, 32,024 files, 40 locked without keys, 33 maps in WORLDS2/WORLDS3 read; `dump combat_arms` lists them. `combat_arms::game::mount` (`INFO.open`) mounts the install with it |
-| V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | none | not started | Keys in `chimera.local.toml` only, per install fingerprint; reader refuses keyed archives without them |
+| `.rez` archive reader (header, directory, payloads: V1 Twofish-CBC, V2 AES-256-CBC, plain raw) | `rez_archive.md` | done (2026-10-18), in `lithtech/formats` (`lithtech_formats::rez`); spec still needs the user's review | Heavy tests on this box: 108 archives open with matching check sums, 32,024 files, 40 locked without keys, 33 maps in WORLDS2/WORLDS3 read; `dump combat_arms` lists them. `combat_arms::game::mount` (`INFO.open`) mounts the install with it |
+| V1 key (ATTRIBUTES, XML: weapon/movement data) and V2 key (models, textures, most maps) | `rez_archive.md` (Cipher by title) | done (2026-10-19): the title picks the cipher (V1 Twofish-CBC, V2 AES-256-CBC, `LithTech Resource File` raw; plain `size & 15` tail); the user's keys are on the Linux box | Keys in `chimera.local.toml` only (`[games.combat_arms.keys.V1]` / `.V2`, hex `key` and `iv`); the reader refuses keyed archives without them. Fixtures encrypt with made-up keys per family; `heavy::keyed_install` checks every V2 archive's first texture and each type's header, a WORLDS/WORLDS4 map, a CHARS_* body, the first-person M4A1 and V1 ATTRIBUTES' weapons file |
 
 ### Wave 0.5: shared pieces
 

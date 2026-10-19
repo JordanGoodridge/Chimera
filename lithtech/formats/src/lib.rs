@@ -19,8 +19,9 @@
 //! - `rez`: `.rez` resource archives (header, directory, file data) as a
 //!   mount layer (`source_formats::fs::FileSource`), and a folder of them
 //!   as a `Mount`.
-//! - `rez_cipher`: the payload cipher (Twofish-CBC with a key supplied at
-//!   run time; keys never live in the repo).
+//! - `rez_cipher`: the payload ciphers, chosen by the archive's title (V1
+//!   Twofish-CBC, V2 AES-256-CBC) with keys supplied at run time; keys
+//!   never live in the repo.
 //! - `world`: world files (the compiled map, `.dat`, version 85): BSPs,
 //!   objects, the light grid, blockers and the render data with its
 //!   lightmaps, bounds-checked.
