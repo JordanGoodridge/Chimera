@@ -155,11 +155,18 @@ hud_icon = "ammo_762"
   (games/combat_arms/src/game/grenades.rs: counts, pre-fire, release and
   post-fire times, perturb, fuse, speed, hit points, the area damage and
   its type, the over-time sphere; data/weapons/m67.toml), `combat_arms:zoom`
-  (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`, the
-  stock `scope = { name, fov = [per level] }`: game/weapons/zoom.rs),
+  (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`:
+  game/weapons/zoom.rs; the scope is the fitted sight's),
   `combat_arms:spin` (a minigun's `prefire`, `postfire`, `loop_len`,
-  `reversible`) and `combat_arms:alt_fire` (attack2's volley: `rounds`,
-  `interval`, `cycle`; both game/weapons/classes.rs).
+  `reversible`), `combat_arms:alt_fire` (attack2's volley: `rounds`,
+  `interval`, `cycle`; both game/weapons/classes.rs) and
+  `combat_arms:attachments` (game/attachments.rs: `accepts`, the parts it
+  takes as names or `{ name, variant }`; `defaults = { muzzle, sight,
+  magazine, bullet, mech_sight }`; `default_sight_visible`,
+  `fire_sound_radius`, `silenced_radius = [per silencer level]`). The
+  parts themselves are records in games/combat_arms/data/attachments/
+  (`[[mod]]` tables, `{class}` in a name expanded per `classes`), not
+  weapon documents.
 - **Errors.** Unknown keys, an unknown base, ammo type or hook, a loop of
   bases, a duplicate ID and hook parameters the hook can't read are load
   errors naming the document and key. A game's own data failing to load

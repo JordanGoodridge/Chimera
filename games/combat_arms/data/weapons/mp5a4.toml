@@ -73,6 +73,12 @@ max_wag = 15.0
 [hooks."combat_arms:zoom"]
 zoom_time = 0.15
 
+# attachments.md "Sound": FireSndRadius 1800, silenced 1200. Its accepted
+# list isn't in the spec: none (the install's modification file gives it).
+[hooks."combat_arms:attachments"]
+fire_sound_radius = 1800
+silenced_radius = [1200, 1200]
+
 # [TW: MovePenalty] 0.07.
 [hooks."combat_arms:handling"]
 move_penalty = 0.07
