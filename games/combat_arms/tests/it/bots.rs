@@ -1192,6 +1192,20 @@ fn greybox() -> Sim {
     sim
 }
 
+/// The quota fills while the match starts (bots given their kit in the
+/// tick the mission start respawns everyone): all in, armed.
+#[test]
+fn bots_join_while_the_match_starts() {
+    let mut sim = world();
+    let _p = human(&mut sim, BRAVO);
+    console(&mut sim, "MaxPlayer 6");
+    sim.seconds(3.0);
+    let w = sim.app.world_mut();
+    let bots: Vec<(u8, bool)> = w.query::<(&Team, &CaBot)>().iter(w).map(|(t, b)| (t.0, b.armed)).collect();
+    assert_eq!(bots.len(), 6);
+    assert!(bots.iter().all(|&(t, armed)| t == ALPHA && armed), "{bots:?}");
+}
+
 /// Bots fight each other in TDM on the greybox: they find, shoot and kill
 /// each other, and the dead come back.
 #[test]

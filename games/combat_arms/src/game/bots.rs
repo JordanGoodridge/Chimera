@@ -154,6 +154,7 @@ pub struct Pending {
 /// A bot: its brain's state. Positions in metres (engine), the spec's
 /// numbers in world units where named so.
 #[derive(Component, Clone, Debug)]
+#[require(crate::core::Bot)]
 pub struct CaBot {
     pub profile: usize,
     pub template: Template,
@@ -308,6 +309,23 @@ impl Plugin for CaBotsPlugin {
                 )
                     .run_if(server),
             );
+        // The network's `kick <name>` and its quota at serving's start.
+        app.insert_resource(crate::net::BotHooks {
+            kick: |w, e| {
+                kick(w, e);
+                let mut s = w.resource_mut::<BotSettings>();
+                s.quota = s.quota.saturating_sub(1);
+                s.quota_set = true;
+            },
+            sync_quota: |w| {
+                let n = w.query_filtered::<(), With<CaBot>>().iter(w).count() as u32;
+                let mut s = w.resource_mut::<BotSettings>();
+                if n > 0 {
+                    s.quota = n;
+                    s.quota_set = true;
+                }
+            },
+        });
         resource_cvar::<BotSettings, u32>(app, "MaxPlayer", "Bots the server keeps in the game (Bot Deathmatch's player count).", |s| {
             &mut s.quota
         });

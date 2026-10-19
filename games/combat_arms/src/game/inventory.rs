@@ -239,7 +239,9 @@ pub fn better_weapon(in_hand: Option<usize>, picked: usize, already_carried: boo
 /// throwable.
 fn keep_spent(new: Query<Entity, (Added<Throwable>, Without<KeepSpent>)>, mut commands: Commands) {
     for e in &new {
-        commands.entity(e).insert(KeepSpent);
+        // A weapon given and taken back in one tick (a bot's kit before
+        // the round's respawn) may be gone when this applies.
+        commands.entity(e).try_insert(KeepSpent);
     }
 }
 
