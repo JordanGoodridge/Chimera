@@ -546,6 +546,7 @@ that the paths exist).
 - `lithtech/formats/src/attributes.rs`: attribute files ("butes"): sections of typed values, strict typed reads, records and lists
 - `lithtech/formats/src/rez.rs`: `.rez` archives (header, check block, directory) as a `FileSource`; `open_dir`
 - `lithtech/formats/src/rez_cipher.rs`: the `.rez` payload ciphers by title (V1 Twofish-CBC, V2 AES-256-CBC; keys supplied at run time)
+- `lithtech/formats/src/rez_cipher/twofish.rs`: table-driven Twofish-256 for V1 payloads (the RustCrypto crate is too slow)
 - `lithtech/formats/src/world.rs`: world files (`.dat`, version 85): BSPs, objects, light grid, blockers, render data, lightmaps
 - `lithtech/formats/src/dtx.rs`: textures (`.dtx`, version -5): header, mip layout, BGRA and DXT1/3/5 decoding
 - `lithtech/formats/src/ltb.rs`: models (`.ltb`, versions 23/25): pieces, LODs, mesh kinds, node tree, weight sets, children, animations, sockets, bindings

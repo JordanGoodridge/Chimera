@@ -11,14 +11,20 @@
 //! (`[games.combat_arms.keys.V1]` / `.V2`, hex `key` and `iv`, in
 //! chimera.local.toml); the scheme name chooses the cipher. Keys never
 //! appear in the repo, in errors or in `Debug` output.
+//!
+//! AES is RustCrypto's `aes`; Twofish is ours (`twofish`), table-driven,
+//! because the RustCrypto crate decrypts at about 2 MB/s.
+
+mod twofish;
 
 use std::collections::HashMap;
 
-use aes::Aes256;
-use twofish::{
-    Twofish,
+use aes::{
+    Aes256,
     cipher::{Block, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit},
 };
+
+use self::twofish::Twofish256;
 
 /// The block cipher under CBC, chosen by the key scheme.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,7 +49,7 @@ impl RezCipherKind {
 
 #[derive(Clone)]
 enum Algo {
-    Twofish(Twofish),
+    Twofish(Twofish256),
     Aes256(Aes256),
 }
 
@@ -70,7 +76,7 @@ impl RezCipher {
     /// order (the published test vectors apply unchanged).
     pub fn new(kind: RezCipherKind, key: &[u8; 32], iv: &[u8; 16]) -> Self {
         let algo = match kind {
-            RezCipherKind::Twofish => Algo::Twofish(Twofish::new_from_slice(key).expect("a 32-byte Twofish key")),
+            RezCipherKind::Twofish => Algo::Twofish(Twofish256::new(key)),
             RezCipherKind::Aes256 => Algo::Aes256(Aes256::new_from_slice(key).expect("a 32-byte AES key")),
         };
         Self { algo, iv: *iv }
@@ -106,17 +112,23 @@ impl RezCipher {
         ))
     }
 
-    fn decrypt_block(&self, block: &mut Block<Twofish>) {
+    fn decrypt_block(&self, block: &mut [u8; 16]) {
         match &self.algo {
             Algo::Twofish(c) => c.decrypt_block(block),
-            Algo::Aes256(c) => c.decrypt_block(block),
+            Algo::Aes256(c) => {
+                let b: &mut Block<Aes256> = block.into();
+                c.decrypt_block(b);
+            }
         }
     }
 
-    fn encrypt_block(&self, block: &mut Block<Twofish>) {
+    fn encrypt_block(&self, block: &mut [u8; 16]) {
         match &self.algo {
             Algo::Twofish(c) => c.encrypt_block(block),
-            Algo::Aes256(c) => c.encrypt_block(block),
+            Algo::Aes256(c) => {
+                let b: &mut Block<Aes256> = block.into();
+                c.encrypt_block(b);
+            }
         }
     }
 
@@ -127,11 +139,9 @@ impl RezCipher {
         let mut prev = self.iv;
         for chunk in data.as_chunks_mut::<16>().0 {
             let stored = *chunk;
-            let mut block = Block::<Twofish>::default();
-            block.copy_from_slice(chunk);
-            self.decrypt_block(&mut block);
-            for (out, (p, c)) in chunk.iter_mut().zip(block.iter().zip(prev)) {
-                *out = p ^ c;
+            self.decrypt_block(chunk);
+            for (out, c) in chunk.iter_mut().zip(prev) {
+                *out ^= c;
             }
             prev = stored;
         }
@@ -141,12 +151,10 @@ impl RezCipher {
     pub fn encrypt(&self, data: &mut [u8]) {
         let mut prev = self.iv;
         for chunk in data.as_chunks_mut::<16>().0 {
-            let mut block = Block::<Twofish>::default();
-            for (b, (p, c)) in block.iter_mut().zip(chunk.iter().zip(prev)) {
-                *b = p ^ c;
+            for (b, c) in chunk.iter_mut().zip(prev) {
+                *b ^= c;
             }
-            self.encrypt_block(&mut block);
-            chunk.copy_from_slice(&block);
+            self.encrypt_block(chunk);
             prev = *chunk;
         }
     }

@@ -233,6 +233,12 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+# The `.rez` ciphers' block functions are inlined into lithtech_formats'
+# CBC loop, so they build at its level: at 1, V1 (Twofish) decrypts at
+# about 2 MB/s and stalls loading Combat Arms' keyed archives.
+[profile.dev.package.lithtech_formats]
+opt-level = 3
+
 # Build scripts, proc macros and their dependencies: no debuginfo, always.
 # Left to cargo, a build-time dependency keeps debuginfo only when a
 # runtime dependency shares it, so `cargo test -p <crate>` (fewer runtime
