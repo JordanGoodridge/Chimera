@@ -189,7 +189,7 @@ fn muzzle_flash(
         let ball = commands
             .spawn((
                 FlashBall,
-                Mesh3d(meshes.add(Sphere::new(0.02))),
+                Mesh3d(meshes.add(Sphere::new(0.008))),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: Color::srgba(1.0, 0.7, 0.25, 0.85),
                     emissive: LinearRgba::rgb(4.0, 2.2, 0.6),
