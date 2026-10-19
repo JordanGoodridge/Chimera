@@ -162,6 +162,30 @@ own client, any map unless named; a screen recording of each is easiest.
 10. **Name tag height** (hud_crosshair.md Q10): a teammate on flat ground
     next to a wall mark of known height at the same distance: a
     screenshot to compare the tag's height with the mark.
+11. **Server frame rate** (grenades.md Q6): drop a frag from a known
+    height onto flat ground (look straight down, release): count the
+    frames between bounces in a recording, or read the server's frame time
+    from a packet capture. We use the shipped server's 20 Hz.
+12. **Frag through a body** (grenades.md Q7): throw a frag at a standing
+    teammate's chest from about 100 units: where does it land compared
+    with the same throw past them (1 to 3 factors of 0.65 expected)? We
+    count the character's box and its hit-box object's (taken as the hit
+    spheres' bounds), each step inside.
+13. **End-of-round phase** (grenades.md Q20): time from a round's result
+    to the respawn in Elimination or Search & Destroy (the shipped
+    configuration says 3 s); a frag thrown just before the result: does it
+    hurt players after the respawn?
+14. **Sky edge** (world_dat.md Q11): look at the sky over a low roof edge
+    on WAREHOUSE and SNOWSTORM: a screenshot. We draw the sky world model
+    over the whole screen behind the world; the game only inside the sky
+    portals' screen rectangle.
+15. **Fullbright texture in the dark** (world_dat.md Q13): find a surface
+    whose texture has the fullbright flag (textures_dtx.md case 5's,
+    TEXTURES\FLOOR\GB_CELLING_FB005.DTX, or any glowing sign) in a dark
+    corner: do its bright parts stay at full brightness? We draw it lit.
+16. **Group 5 textures** (textures_dtx.md Q4): an effect that shows one of
+    `FX.rez`'s 28 group-5 textures at a known size (a screenshot close up):
+    is it its file's level 0 or one level down? We load level 0.
 
 ## What each sitting unlocks
 
@@ -176,4 +200,6 @@ own client, any map unless named; a screen recording of each is easiest.
   (refcmp `report`), cs_compound's fog blend, prodigy's fan lighting.
 - Sitting 5: Combat Arms' scale, teleport falls, two-victim rounds, the
   spread's turn term, pickup boxes and drop spots, the spent grenade's
-  list entry, free-for-all team ids and name tag height.
+  list entry, free-for-all team ids and name tag height; the server's
+  frame rate, grenades through bodies, the end-of-round phase, the sky's
+  edge, fullbright textures and group-5 mip skipping.

@@ -27,7 +27,9 @@
 //!   sphere with the smallest |p|^2 - r^2 wins, `pick_sphere`), walls by
 //!   their surface (`CaSurfaces`, data/surfaces.toml: passed when no
 //!   thicker than its limit, the range and damage dampened and the
-//!   direction re-perturbed), at most 3 segments. Damage
+//!   direction re-perturbed), live grenades by their boxes (the round
+//!   stops there; its banded damage comes off the grenade's hit points,
+//!   grenades.md 13), at most 3 segments. Damage
 //!   (`base_damage`, `armour_and_zone`): `InstDamage` x a uniform roll of
 //!   +-`DamageRFacter` x 1.3 from behind (`is_behind`, the first,
 //!   "client-reported" victim only) x the stepped range band
@@ -238,6 +240,8 @@ pub const BULLET: i32 = 2;
 pub const BURN: i32 = 3;
 pub const EXPLOSION: i32 = 7;
 pub const POISON: i32 = 9;
+/// A flash grenade's damage type (protection only: it does no damage).
+pub const FLASH: i32 = 34;
 pub const MELEE: i32 = 13;
 /// How far mouse yaw turns the upper body before the body yaw follows,
 /// with no movement key held (half of `PlayerTwistYawMax` 90 degrees).
@@ -1004,6 +1008,23 @@ pub struct Gear {
     pub protects: &'static [Protection],
 }
 
+/// Gear whose only entry is a flash protection of `$v` on the head and
+/// torso (grenades.md section 10).
+macro_rules! flash_gear {
+    ($v:expr) => {
+        Gear {
+            protects: &[Protection {
+                damage_type: FLASH,
+                head: $v,
+                torso: $v,
+                arm: 0.0,
+                leg: 0.0,
+                consumable: false,
+            }],
+        }
+    };
+}
+
 /// Every piece of gear there is, by name (`Gear` goes over the network as
 /// its place here).
 pub const GEARS: &[(&str, Gear)] = &[
@@ -1012,7 +1033,61 @@ pub const GEARS: &[(&str, Gear)] = &[
     ("heavy body", HEAVY_BODY_GEAR),
     ("default head", DEFAULT_HEAD_GEAR),
     ("gas mask", GAS_MASK),
+    // Gear with a flash entry (grenades.md section 10, its torso value,
+    // which is its head value too), by data name; a name with two records
+    // takes its first. Only the flash entries: their other protection
+    // isn't in a spec here.
+    ("Anti-Flash", flash_gear!(1.0)),
+    ("Skull_head", flash_gear!(1.0)),
+    ("Codename_Raven", flash_gear!(1.0)),
+    ("Prison_Recon_S_grade", flash_gear!(1.0)),
+    ("Assassin_F", flash_gear!(1.0)),
+    ("Assassin_M", flash_gear!(1.0)),
+    ("Protect_flash_100", flash_gear!(1.0)),
+    ("Ballistic_Mask", flash_gear!(0.8)),
+    ("SnowMan_Head", flash_gear!(0.8)),
+    ("Davil_Mask", flash_gear!(0.8)),
+    ("Guy_Fawkes_mask", flash_gear!(0.8)),
+    ("Protect_flash_75", flash_gear!(0.75)),
+    ("Anti-Flash_70", flash_gear!(0.7)),
+    ("Recruit_Survival_Bandana", flash_gear!(0.7)),
+    ("Protect_flash_45", flash_gear!(0.55)),
+    ("Protect_flash_55", flash_gear!(0.55)),
+    ("Protect_fire_24", flash_gear!(0.55)),
+    ("Anti-Flash_50", flash_gear!(0.5)),
+    ("Codename_Viper", flash_gear!(0.5)),
+    ("Powered_Suit_Helmet_Extreme", flash_gear!(0.5)),
+    ("Stek_Headgear", flash_gear!(0.5)),
+    ("RoboSkull_HauserRider_G", flash_gear!(0.5)),
+    ("Protect_flash_25", flash_gear!(0.45)),
+    ("Protect_flash_35", flash_gear!(0.45)),
+    ("Protect_fire_22", flash_gear!(0.45)),
+    ("RoboSkull_HauserRider_S", flash_gear!(0.4)),
+    ("Protect_fire_20", flash_gear!(0.35)),
+    ("Anti-Flash_30", flash_gear!(0.3)),
+    ("Eyepatch_Skull", flash_gear!(0.3)),
+    ("Powered_Suit_Helmet_Hard", flash_gear!(0.3)),
+    ("Protect_gas_20", flash_gear!(0.25)),
+    ("Eyepatch", flash_gear!(0.15)),
+    ("Protect_flash_15", flash_gear!(0.15)),
+    ("Protect_fire_16", flash_gear!(0.15)),
+    ("Protect_gas_16", flash_gear!(0.15)),
+    ("Protect_flash_12", flash_gear!(0.12)),
+    ("Protect_flash_9", flash_gear!(0.09)),
+    ("Infected", flash_gear!(1.0)),
+    ("Host_Infected", flash_gear!(1.0)),
 ];
+
+/// A piece of gear by its name in `GEARS`.
+pub fn gear(name: &str) -> Option<Gear> {
+    GEARS.iter().find(|(n, _)| *n == name).map(|(_, g)| *g)
+}
+
+/// The sum of `gear`'s torso entries for `damage_type` (flash protection
+/// sums them, grenades.md section 10), before any clamp.
+pub fn gear_torso(gear: &[Gear], damage_type: i32) -> f32 {
+    gear.iter().filter_map(|g| g.against(damage_type)).map(|p| p.torso).sum()
+}
 
 impl Serialize for Gear {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -1510,6 +1585,8 @@ struct Delivery<'w, 's> {
     colliders: Query<'w, 's, &'static ColliderOf>,
     bodies: Query<'w, 's, (&'static RigidBody, Option<&'static ColliderAabb>)>,
     table: Res<'w, CaSurfaces>,
+    /// Live grenades, which rounds hit (grenades.md 13).
+    grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
     damage: MessageWriter<'w, Damage>,
     rules: DamageRules<'w, 's>,
     first: Res<'w, FirstTimePredicted>,
@@ -1992,6 +2069,38 @@ fn walk(
             kind,
             replay: r.replay,
         };
+        // A live grenade's box before the wall and any character
+        // (grenades.md 13): the round stops on its metal, its damage (with
+        // the range band, no zone) off the grenade's hit points.
+        let grenade = w
+            .grenades
+            .iter()
+            .filter_map(|(e, g)| {
+                let (c, half) = (g.pos * g.unit, Vec3::from(g.params.box_half) * g.unit);
+                box_entry(c - half, c + half, from, dir, wall).map(|t| (t, e))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((t, hit)) = grenade
+            && best.is_none_or(|(bt, ..)| t < bt)
+        {
+            let point = from + dir * t;
+            out.push(event(kind(from, point, Some(hit), Some(-dir))));
+            if server {
+                let d = base_damage(dmg, rng.next(), false, point.distance(r.origin)) * dampen;
+                w.damage.write(Damage {
+                    target: hit,
+                    attacker: Some(r.owner),
+                    amount: d,
+                    point,
+                    dir,
+                    hitgroup: Hitgroup::Generic,
+                    kind: DamageKind::Bullet,
+                    weapon: None,
+                    force: Vec3::ZERO,
+                });
+            }
+            break;
+        }
         if let Some((t, bi, si)) = best {
             let b = &bodies[bi];
             // The reported point: where the ray enters the plain box.

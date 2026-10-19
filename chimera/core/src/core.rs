@@ -727,8 +727,18 @@ pub struct Died {
 pub const RAGDOLL_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(1 << 1);
 /// Every layer but ragdolls, physics shadows (and the loose items' copy
 /// of the terrain): the mask for gameplay spatial queries.
-pub const SOLID_LAYERS: avian3d::prelude::LayerMask =
-    avian3d::prelude::LayerMask(!(1 << 1) & !(1 << 3) & !SHADOW_LAYER.0 & !PHYSICS_CLIP_LAYER.0);
+pub const SOLID_LAYERS: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(
+    !(1 << 1) & !(1 << 3) & !SHADOW_LAYER.0 & !PHYSICS_CLIP_LAYER.0 & !PLAYER_CLIP_LAYER.0,
+);
+/// Physics layer of map surfaces only characters' movement meets
+/// (`MapCollisionSet` with `characters` alone: Combat Arms' collision
+/// blockers). Spatial queries with `SOLID_LAYERS` (shots, sight, cover)
+/// pass through; `CHARACTER_FILTER` meets them.
+pub const PLAYER_CLIP_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(1 << 6);
+/// Physics layer of map surfaces only traces meet (`MapCollisionSet` with
+/// `traces` alone: Combat Arms' non-solid detail and ray-hit-only world
+/// models): in `SOLID_LAYERS`, not in `CHARACTER_FILTER`.
+pub const TRACE_ONLY_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(1 << 7);
 /// Physics layer of brushes solid to physics objects only (Source's
 /// func_clip_vphysics, `map::physics_clip`): props and physics brushes
 /// collide with them; characters, ragdolls, loose items and every
@@ -748,8 +758,10 @@ pub const NOT_SHADOW: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(
 /// isn't shoved out of them. Shots and other gameplay queries still see
 /// them.
 pub const ITEM_LAYER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(1 << 2);
-/// What a character's body collides with: solid things but loose items.
-pub const CHARACTER_FILTER: avian3d::prelude::LayerMask = avian3d::prelude::LayerMask(SOLID_LAYERS.0 & !ITEM_LAYER.0);
+/// What a character's body collides with: solid things but loose items
+/// and traces-only surfaces, and players-only ones.
+pub const CHARACTER_FILTER: avian3d::prelude::LayerMask =
+    avian3d::prelude::LayerMask((SOLID_LAYERS.0 | PLAYER_CLIP_LAYER.0) & !ITEM_LAYER.0 & !TRACE_ONLY_LAYER.0);
 /// The map's displacement surfaces as loose items collide with them (a
 /// copy with its internal edges fixed, `map::spawn_map`); nothing else
 /// touches or queries it.
