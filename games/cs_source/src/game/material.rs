@@ -378,6 +378,7 @@ impl<'a> MaterialLoader<'a> {
                     .get("$basetexturetransform2")
                     .and_then(|v| crate::map::MapUvTransform::parse(v))
                     .unwrap_or_default(),
+                ..Default::default()
             }),
             _ => None,
         };
@@ -524,6 +525,7 @@ impl<'a> MaterialLoader<'a> {
             factor,
             mode,
             tint,
+            rotation: 0.0,
         })
     }
 

@@ -39,6 +39,17 @@
 //!   `alpharef` cuts out); the plain maps' world textures are in unkeyed
 //!   archives. A texture that doesn't resolve (keyed archives without the
 //!   V2 key) leaves a flat colour of its own per name.
+//! - Second textures ("Second textures", Q13; `second_layers`), over the
+//!   base texture before the lighting, in gamma space: dual-texture
+//!   sections (8, 9) blend texture 1 at UV1 (`MapMesh::uvs2`) by a =
+//!   vertex alpha x texture 0's alpha (`BlendMode::BaseAlpha`; added when
+//!   texture 1 is fullbright, `BaseAlphaAdd`); a base texture's
+//!   `detailtex` link is a detail texture at the base's detail scale and
+//!   rotation (`DetailMode::SignedAdd`, `MapDetail::rotation`), its
+//!   `envmap` / `envmapalpha` link a flat environment map
+//!   (`MapFlatEnvmap`), both as the signed add (`DetailTextureAdd` and
+//!   `EnvMapAdd` 1, the defaults). A link that doesn't resolve draws
+//!   without (textures_dtx.md case 22).
 //! - Sky (Q11): the last `DemoSkyWorldModel`'s world model is drawn by
 //!   Chimera's sky camera (`MapMesh::skybox`, `MapSkyCamera`): it follows
 //!   the player through the object's inner box (its position ±
@@ -61,20 +72,23 @@
 //!   flags, whose model needs the V2 key).
 //! - View models: the weapons' first-person models their data names
 //!   (`view_model`), loaded with every map from the install (`load_from`).
-//! - No map file hash (Q15): the game checks none, a client loads its own
-//!   copy by name, so the network handshake compares only the name.
 //! - Spawns: the `GameStartPoint` objects that serve the team modes'
 //!   family (`SPAWN_GAME_TYPE`, `Team Death Match`: game_modes.md S4,
 //!   `qualifies`: unlocked, `Spawn` exactly 1), in the map's order (the
 //!   rules' spawn cursors walk it), else the map's first start point;
 //!   dropped to the floor below them, facing their yaw; `Teams` JSF is
 //!   `Team(1)`, Creed `Team(2)`, `<none>` neither.
+//! - No map file hash (Q15): the game checks none, a client loads its own
+//!   copy by name, so the network handshake compares only the name.
 //!
-//! Known shortcuts (docs/tech-debt.md): second textures (dual-texture
-//! sections draw texture 0; detail textures, environment maps and
-//! fullbright masks aren't drawn: Chimera's world material has no second
-//! UV set or LithTech's signed-add blend; the links are read,
-//! `lithtech_formats::dtx::Dtx::link`). The sky world model is drawn with
+//! Known shortcuts (docs/tech-debt.md): fullbright masks aren't drawn
+//! (Q13 still open: whether the lightmap multiplies over them). The flat
+//! environment map's world environment-map matrix is taken as the
+//! identity and `EnvScale` as 1 (neither is in the specs), so it reads
+//! (r.x, r.y) x -0.5 + 0.5 of the view-space reflection; the console
+//! values (`DetailTextures`, `DetailTextureScale`, `EnvMapEnable`) are
+//! at their defaults. Second layers are the world's only: props and view
+//! models don't take their textures' links. The sky world model is drawn with
 //! depth (the game draws it in order without), from one scale for all
 //! three axes (the game's inner box scales each), over the whole screen
 //! (the game only inside the sky portals' rectangle); `FarZ`, the sky's
@@ -88,15 +102,15 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 use lithtech_formats::{
-    dtx::{DETAIL_LEVEL, Dtx},
+    dtx::{DETAIL_LEVEL, Dtx, FLAG_FULLBRIGHT, LinkKind, link_path},
     world::{self as lt, Object, RenderWorld, World, shader, surface_flags},
 };
 
 use crate::{
     core::Team,
     map::{
-        MapAlpha, MapCollisionSet, MapData, MapEntity, MapFog, MapHull, MapLightmap, MapMesh, MapSkyCamera,
-        MapTexture, entities::engine_to_entity,
+        BlendMode, DetailMode, MapAlpha, MapBlend, MapCollisionSet, MapData, MapDetail, MapEntity, MapFlatEnvmap,
+        MapFog, MapHull, MapLightmap, MapMesh, MapSkyCamera, MapTexture, entities::engine_to_entity,
     },
     mount::Mount,
 };
@@ -215,7 +229,7 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
         Some((w, model_look(world, n)?, false))
     }));
     let mut atlas = Atlas::default();
-    let mut meshes: HashMap<String, (MapMesh, Vec<u32>)> = HashMap::new();
+    let mut meshes: HashMap<String, Building> = HashMap::new();
     for (render, alpha, skybox) in &worlds {
         for block in &render.blocks {
             let lit = Lighting {
@@ -226,17 +240,19 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
         }
     }
     let lightmap = atlas.finish();
-    let mut meshes: Vec<MapMesh> = meshes
+    let mut built: Vec<(MapMesh, Option<String>)> = meshes
         .into_values()
-        .map(|(mut m, rects)| {
-            for (uv, rect) in m.lightmap_uvs.iter_mut().zip(rects) {
+        .map(|mut b| {
+            for (uv, rect) in b.mesh.lightmap_uvs.iter_mut().zip(b.rects) {
                 *uv = lightmap.uv(rect, *uv);
             }
-            m
+            (b.mesh, b.second)
         })
         .collect();
-    meshes.sort_by(|a, b| (a.skybox, &a.material).cmp(&(b.skybox, &b.material)));
+    built.sort_by(|(a, a2), (b, b2)| (a.skybox, &a.material, a2).cmp(&(b.skybox, &b.material, b2)));
+    let (mut meshes, seconds): (Vec<MapMesh>, Vec<Option<String>>) = built.into_iter().unzip();
     textures(&mut meshes, &mut map, file);
+    second_layers(&mut meshes, &seconds, &mut map, file);
     map.meshes = meshes;
     map.lightmap = Some(lightmap.map);
 
@@ -350,6 +366,10 @@ struct Corner {
     normal: lt::Vec3,
     uv: [f32; 2],
     lm: [f32; 2],
+    /// Dual-texture sections: UV1 and the second texture's weight (1 −
+    /// the vertex alpha).
+    uv1: [f32; 2],
+    weight: f32,
 }
 
 impl Corner {
@@ -361,6 +381,8 @@ impl Corner {
             normal: l3(a.normal, b.normal),
             uv: l2(a.uv, b.uv),
             lm: l2(a.lm, b.lm),
+            uv1: l2(a.uv1, b.uv1),
+            weight: a.weight + (b.weight - a.weight) * t,
         }
     }
 }
@@ -420,7 +442,7 @@ fn add_block(
     skybox: bool,
     lit: &Lighting,
     atlas: &mut Atlas,
-    meshes: &mut HashMap<String, (MapMesh, Vec<u32>)>,
+    meshes: &mut HashMap<String, Building>,
     to_engine: &impl Fn(lt::Vec3) -> Vec3,
 ) {
     let groups = lit.on(block);
@@ -482,22 +504,32 @@ fn add_block(
             _ => continue,
         };
         let name = s.textures[0].to_lowercase();
-        let key = format!("{name}|{alpha:?}|{skybox}");
-        let (mesh, rects) = meshes.entry(key).or_insert_with(|| {
-            let mesh = MapMesh {
+        // Dual-texture sections (8, 9) draw their second texture at UV1
+        // ("Second textures"); a mesh per pair.
+        let dual = matches!(s.shader, shader::DUAL_TEXTURE | shader::LIGHTMAP_DUAL_TEXTURE);
+        let second = (dual && !s.textures[1].is_empty()).then(|| s.textures[1].clone());
+        let key = format!("{name}|{}|{alpha:?}|{skybox}", second.as_deref().unwrap_or("").to_lowercase());
+        let Building { mesh, rects, .. } = meshes.entry(key).or_insert_with(|| Building {
+            mesh: MapMesh {
                 material: s.textures[0].clone(),
                 color: flat_color(&name),
                 alpha,
                 skybox,
                 ..default()
-            };
-            (mesh, Vec::new())
+            },
+            rects: Vec::new(),
+            second: second.clone(),
         });
+        let has_second = second.is_some();
         let push = |mesh: &mut MapMesh, rects: &mut Vec<u32>, c: &Corner, rect: u32| {
             mesh.positions.push(to_engine(c.pos).to_array());
             mesh.normals.push(Vec3::from(lt::to_right_handed(c.normal)).normalize_or_zero().to_array());
             mesh.uvs.push(c.uv);
             mesh.lightmap_uvs.push(c.lm);
+            if has_second {
+                mesh.uvs2.push(c.uv1);
+                mesh.blend_weights.push(c.weight);
+            }
             rects.push(rect);
             (mesh.positions.len() - 1) as u32
         };
@@ -510,6 +542,8 @@ fn add_block(
                     normal: v.normal,
                     uv: v.uv0,
                     lm: [0.5, 0.5],
+                    uv1: v.uv1,
+                    weight: 1.0 - v.rgba()[3] as f32 / 255.0,
                 }
             });
             if !lightmapped {
@@ -607,6 +641,124 @@ pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(
     if missing > 0 {
         map.warnings
             .push(format!("{missing} textures missing or unreadable (keyed archives need the V2 key): flat colours"));
+    }
+}
+
+/// A mesh being built from the sections: its vertices' lightmap
+/// rectangles (`add_block`) and its second texture's name (dual-texture
+/// sections).
+struct Building {
+    mesh: MapMesh,
+    rects: Vec<u32>,
+    second: Option<String>,
+}
+
+/// The console values the second layers follow, at their defaults
+/// (world_dat.md "Second textures", textures_dtx.md "Detail textures"):
+/// `DetailTextureScale` 1 and `EnvScale`, which the specs don't give
+/// (taken as 1).
+const DETAIL_TEXTURE_SCALE: f32 = 1.0;
+const ENV_SCALE: f32 = 1.0;
+
+/// The world meshes' second layers ("Second textures"): a dual-texture
+/// mesh's texture 1 (`seconds`, by mesh) blended by the vertex alpha
+/// (`BlendMode::BaseAlpha`, or `BaseAlphaAdd` when texture 1 is
+/// fullbright), and the base texture's linked texture: a detail texture
+/// (`detailtex`: the signed add at the base texture's detail scale and
+/// rotation) or a flat environment map (`envmap`, `envmapalpha`: signed
+/// add, weighted by the base alpha for the latter). Links that don't
+/// resolve leave the surface without (textures_dtx.md case 22); the other
+/// link kinds don't occur in the install. Each linked texture loads once.
+pub(crate) fn second_layers(
+    meshes: &mut [MapMesh],
+    seconds: &[Option<String>],
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) {
+    /// A loaded texture: its index, and whether it is fullbright.
+    #[derive(Clone)]
+    struct Loaded {
+        index: usize,
+        fullbright: bool,
+    }
+    let mut loaded: HashMap<String, Option<Loaded>> = HashMap::new();
+    let mut load = |map: &mut MapData, name: &str| -> Option<Loaded> {
+        let path = link_path(name);
+        loaded
+            .entry(path.clone())
+            .or_insert_with(|| {
+                let dtx = Dtx::parse(file(&path)?).ok()?;
+                let level = dtx.skipped_levels(DETAIL_LEVEL, 0);
+                let (width, height) = dtx.level_dims(level);
+                map.textures.push(MapTexture {
+                    name: name.to_string(),
+                    srgb: true,
+                    mips: Vec::new(),
+                    width,
+                    height,
+                    rgba8: dtx.rgba(level),
+                });
+                Some(Loaded {
+                    index: map.textures.len() - 1,
+                    fullbright: dtx.flags & FLAG_FULLBRIGHT != 0,
+                })
+            })
+            .clone()
+    };
+    let mut bases: HashMap<String, Option<(lithtech_formats::dtx::Link, f32, i16)>> = HashMap::new();
+    for (m, second) in meshes.iter_mut().zip(seconds) {
+        if let Some(second) = second
+            && let Some(t) = load(map, second)
+        {
+            m.blend = Some(MapBlend {
+                texture: Some(t.index),
+                mode: if t.fullbright {
+                    BlendMode::BaseAlphaAdd
+                } else {
+                    BlendMode::BaseAlpha
+                },
+                ..default()
+            });
+        } else {
+            // Without its second texture (or one that doesn't resolve) a
+            // dual-texture mesh draws texture 0 alone.
+            m.uvs2.clear();
+            m.blend_weights.clear();
+        }
+        if m.texture.is_none() {
+            continue;
+        }
+        // The base texture's link and detail fields (its pixels are
+        // `textures`').
+        let base = bases.entry(link_path(&m.material)).or_insert_with_key(|path| {
+            let d = Dtx::parse(file(path)?).ok()?;
+            Some((d.link()?, d.detail_scale, d.detail_rotation))
+        });
+        let Some((link, detail_scale, detail_rotation)) = base.clone() else { continue };
+        match link.kind {
+            LinkKind::DetailTex => {
+                let Some(texture) = load(map, &link.names[0]).map(|t| t.index) else { continue };
+                let scale = detail_scale * DETAIL_TEXTURE_SCALE;
+                m.detail = Some(MapDetail {
+                    texture,
+                    scale: [scale; 2],
+                    factor: 1.0,
+                    mode: DetailMode::SignedAdd,
+                    tint: [1.0; 3],
+                    rotation: (detail_rotation as f32).to_radians(),
+                });
+            }
+            LinkKind::EnvMap | LinkKind::EnvMapAlpha => {
+                let Some(texture) = load(map, &link.names[0]).map(|t| t.index) else { continue };
+                m.flat_envmap = Some(MapFlatEnvmap {
+                    texture,
+                    scale: ENV_SCALE,
+                    signed_add: true,
+                    by_base_alpha: link.kind == LinkKind::EnvMapAlpha,
+                });
+            }
+            _ => {}
+        }
     }
 }
 
@@ -982,4 +1134,3 @@ impl LaidOut {
         ]
     }
 }
-

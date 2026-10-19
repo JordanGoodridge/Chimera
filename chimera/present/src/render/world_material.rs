@@ -8,6 +8,21 @@
 //! `$detailtint`, `$selfillum`, `$basetexturetransform` (and
 //! `$basetexturetransform2` on the second layer).
 //!
+//! Second layers of other games (off unless a mesh asks; Source surfaces
+//! never do): a second texture at its own coordinates (`MapMesh::uvs2`)
+//! combined LithTech's dual-texture way (`BlendMode::BaseAlpha`,
+//! `BaseAlphaAdd`), a detail texture as a signed add at rotated
+//! coordinates (`DetailMode::SignedAdd`, `MapDetail::rotation`) and a flat
+//! environment map (`MapFlatEnvmap`), each in gamma space before lighting
+//! (`map::material_fx` mirrors the maths).
+//!
+//! Known shortcuts (docs/tech-debt.md): the second coordinate set rides in
+//! the vertex colour's red and green (Bevy's world vertex output has two
+//! UV sets, the lightmap's taking the second), so a surface can't have
+//! both it and a window's jagged mask; the depth prepass cuts alpha-tested
+//! surfaces by the base texture's alpha, not a dual texture's blended one.
+//! Why it's OK for now: neither combination occurs in the maps we load.
+//!
 //! Back faces are culled, in the depth prepass too, except on `$nocull`
 //! materials (`prop_material::face_cull`), as Source draws them.
 //!
@@ -107,6 +122,21 @@ pub struct WorldParams {
     /// sampled at the colour's red and green (meshes without vertex
     /// colours, the cracked face, are left as they are).
     pub pane_mask: f32,
+    /// How the second texture combines (`map::BlendMode::shader_value`):
+    /// 0 Source's mix, 1 and 2 LithTech's dual texture (gamma space).
+    pub blend_mode: f32,
+    /// 1: the second texture is sampled at the mesh's second coordinate
+    /// set (`MapMesh::uvs2`, riding in the vertex colour's red and green).
+    pub blend_uv2: f32,
+    /// The detail coordinates' rotation, radians (`MapDetail::rotation`).
+    pub detail_rotation: f32,
+    /// A flat environment map (`MapFlatEnvmap`, bound as `flat_envmap`):
+    /// 0 none, 1 signed add, 2 multiply.
+    pub flat_envmap: f32,
+    /// 1: weighted by the base texture's alpha.
+    pub flat_envmap_alpha: f32,
+    /// `EnvScale`.
+    pub flat_envmap_scale: f32,
 }
 
 impl WorldParams {
@@ -122,6 +152,7 @@ impl WorldParams {
             detail_tint: Vec4::ONE,
             selfillum_tint: Vec4::ONE,
             modulation: Vec4::ONE,
+            flat_envmap_scale: 1.0,
             ..Default::default()
         }
     }
@@ -164,6 +195,10 @@ pub struct WorldMaterial {
     pub envmap: Option<Handle<Image>>,
     #[texture(16)]
     pub envmap_mask: Option<Handle<Image>>,
+    /// A flat environment map (`WorldParams::flat_envmap`), sampled like
+    /// `base`.
+    #[texture(17)]
+    pub flat_envmap: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub double_sided: bool,
     /// A map overlay or decal lying on a surface: drawn with its own blend

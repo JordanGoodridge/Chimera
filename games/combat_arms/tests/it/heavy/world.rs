@@ -207,3 +207,110 @@ fn warehouse_walk_and_collide() {
     assert!(moved < dist, "stopped at {moved} m of the wall's {dist} m");
     assert!(moved > dist - 1.5, "reached the wall: {moved} m of {dist} m");
 }
+
+/// The second layers built from the install (world_dat.md "Second
+/// textures"): WAREHOUSE's 12 dual-texture sections become meshes with a
+/// second texture, coordinate set and weights; SNOWVALLEY's dual sections
+/// carry a UV1 of their own; TOWERBRIDGE's car windows take a flat
+/// environment map (`envmapalpha`) and its river the self-linked detail
+/// texture.
+#[test]
+fn second_layers_from_the_install() {
+    use chimera_world::map::{BlendMode, DetailMode};
+    let Some(mount) = mount() else { return };
+    let dual = |map: &MapData| -> Vec<usize> {
+        (0..map.meshes.len())
+            .filter(|&i| map.meshes[i].blend.is_some_and(|b| b.texture.is_some()))
+            .collect()
+    };
+    let map = world::load_from(&mount, "warehouse").unwrap();
+    let meshes = dual(&map);
+    assert!(!meshes.is_empty(), "WAREHOUSE has dual-texture meshes");
+    for &i in &meshes {
+        let m = &map.meshes[i];
+        assert_eq!(m.blend.unwrap().mode, BlendMode::BaseAlpha);
+        assert_eq!((m.uvs2.len(), m.blend_weights.len()), (m.positions.len(), m.positions.len()));
+        assert!(m.blend_weights.iter().all(|w| (0.0..=1.0).contains(w)));
+    }
+    let map = world::load_from(&mount, "snowvalley").unwrap();
+    assert!(
+        dual(&map).iter().any(|&i| {
+            let m = &map.meshes[i];
+            m.uvs.iter().zip(&m.uvs2).any(|(a, b)| a != b)
+        }),
+        "SNOWVALLEY's UV1 differs from UV0"
+    );
+    let map = world::load_from(&mount, "towerbridge").unwrap();
+    let windows: Vec<_> = map.meshes.iter().filter_map(|m| m.flat_envmap).collect();
+    assert!(windows.len() >= 10, "{} meshes with an environment map", windows.len());
+    assert!(windows.iter().all(|e| e.by_base_alpha && e.signed_add));
+    assert!(windows.iter().any(|e| map.textures[e.texture].name.eq_ignore_ascii_case("TEXFX\\SKY\\SKY20_RT.dtx")));
+    let river = map
+        .meshes
+        .iter()
+        .find(|m| m.material.eq_ignore_ascii_case("textures\\etc\\sprinkle_river.dtx"))
+        .expect("the river");
+    let d = river.detail.expect("its detail texture");
+    assert_eq!((d.mode, d.scale, d.rotation), (DetailMode::SignedAdd, [1.0; 2], 0.0));
+}
+
+/// Census of the second texture layers on the plain maps (world_dat.md
+/// "Second textures"): dual-texture sections, and base textures that link
+/// a detail texture or an environment map.
+#[test]
+fn second_layer_census() {
+    use lithtech_formats::{
+        dtx::{Dtx, LinkKind, link_path},
+        world::{World, shader},
+    };
+    let Some(mount) = mount() else { return };
+    let dtx = |name: &str| mount.read(&link_path(name)).ok().and_then(|b| Dtx::parse(b).ok());
+    for name in world::map_names(&mount) {
+        let path = world::find(&mount, &name).unwrap();
+        if !(path.starts_with("worlds2/") || path.starts_with("worlds3/")) {
+            continue;
+        }
+        let w = World::parse(&mount.read(&path).unwrap()).unwrap();
+        let (mut dual, mut uv_differs, mut tex1_fb, mut tex0_alpharef) = (0, 0, 0, 0);
+        let mut links: std::collections::BTreeMap<String, (LinkKind, String, usize)> = Default::default();
+        let renders = std::iter::once(&w.render).chain(w.render.models.iter().map(|(_, r)| r));
+        for r in renders {
+            for b in &r.blocks {
+                for (s, tris) in b.section_triangles() {
+                    let drawn = [
+                        shader::GOURAUD,
+                        shader::LIGHTMAP_TEXTURE,
+                        shader::DUAL_TEXTURE,
+                        shader::LIGHTMAP_DUAL_TEXTURE,
+                    ];
+                    if !drawn.contains(&s.shader) {
+                        continue;
+                    }
+                    if s.shader == shader::DUAL_TEXTURE || s.shader == shader::LIGHTMAP_DUAL_TEXTURE {
+                        dual += 1;
+                        let differs = tris.iter().flat_map(|t| t.indices).any(|i| {
+                            let v = &b.vertices[i as usize];
+                            v.uv0 != v.uv1
+                        });
+                        uv_differs += differs as usize;
+                        tex1_fb += dtx(&s.textures[1]).is_some_and(|d| d.flags & 1 != 0) as usize;
+                        tex0_alpharef += dtx(&s.textures[0]).is_some_and(|d| d.alpha_ref().is_some()) as usize;
+                    }
+                    if let Some(l) = dtx(&s.textures[0]).and_then(|d| d.link()) {
+                        let e = links
+                            .entry(s.textures[0].to_lowercase())
+                            .or_insert((l.kind, l.names[0].clone(), 0));
+                        e.2 += 1;
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "{name}: {dual} dual sections ({uv_differs} with UV1 != UV0, {tex1_fb} fullbright texture 1, \
+             {tex0_alpharef} alpha-tested texture 0)"
+        );
+        for (t, (k, l, n)) in links {
+            eprintln!("    {t}: {k:?} {l} ({n} sections, resolves: {})", dtx(&l).is_some());
+        }
+    }
+}
