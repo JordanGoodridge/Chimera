@@ -1,0 +1,220 @@
+# Combat Arms bots: our defaults, from specs/combat_arms/bots.md
+# ("Constants", "Difficulty, profiles and loadouts"). Read by
+# games/combat_arms/src/game/bots/data.rs (`BotData`).
+#
+# Per-template values are arrays of 12, one per attribute template, in
+# the spec's column order:
+#   NN NH NE  (Easy: level "Normal", archetypes N, H, E)
+#   HN HH HE  (Normal: level "Hard")
+#   XN XH XE  (Veteran: level "Extreme")
+#   TN TH TE  (training: level "Tutorial")
+# A single number is the same in every column. Distances are world units
+# (u), times seconds.
+
+[template]
+reaction_min = [0.6, 0.5, 0.4, 0.4, 0.3, 0.2, 0.2, 0.1, 0.1, 0.8, 0.8, 0.8]
+reaction_max = [0.9, 0.8, 0.7, 0.7, 0.6, 0.5, 0.5, 0.4, 0.3, 1.2, 1.2, 1.2]
+run_speed = [270, 270, 270, 285, 285, 285, 300, 300, 300, 250, 250, 250]
+jump_speed = [300, 300, 300, 315, 315, 315, 315, 315, 315, 300, 300, 300]
+# The notice roll (5.2): 100 % up to `notice_near`, falling linearly to
+# `notice_far_percent` at `notice_far`.
+notice_near = 700
+notice_far = [2400, 2600, 2800, 2800, 3000, 3200, 3200, 3400, 3600, 2200, 2200, 2200]
+notice_far_percent = [10, 15, 20, 20, 25, 30, 30, 35, 40, 10, 15, 20]
+# Beyond this the sight cooldown refuses stimuli while patrolling.
+sight_cooldown_min = [450, 500, 550, 550, 550, 600, 600, 650, 700, 350, 350, 350]
+# Camping bonus to the notice roll, percent points per 10 s.
+camp_sight_step = [0.1, 0.1, 0.1, 0.25, 0.25, 0.25, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1]
+# Shots before a grenade (8.5); the `_Flash` and `_Smoke` variants'.
+grenade_shots = [18, 18, 18, 15, 15, 15, 12, 12, 12, 18, 18, 18]
+grenade_shots_flash = [50, 50, 50, 40, 40, 40, 30, 30, 30, 50, 50, 50]
+grenade_shots_smoke = [15, 15, 15, 12, 12, 12, 9, 9, 9, 15, 15, 15]
+attack_move_min = [0.8, 0.7, 0.6, 0.6, 0.5, 0.4, 0.4, 0.3, 0.2, 0.8, 0.7, 0.6]
+attack_move_max = [1.8, 1.6, 1.4, 1.4, 1.2, 1.0, 1.0, 0.9, 0.8, 1.8, 1.6, 1.4]
+shuffle = [30, 40, 50, 30, 40, 50, 30, 40, 50, 10, 20, 30]
+chase_endurance = [12, 12, 12, 16, 16, 16, 22, 22, 22, 12, 12, 12]
+dodge_delay_min = [0.3, 0.3, 0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.6, 0.6, 0.6]
+dodge_delay_max = [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.2, 0.2, 0.2, 1.4, 1.4, 1.4]
+# Not seen within this times a placed device's blast radius.
+safe_device = [0.3, 0.3, 0.3, 0.4, 0.4, 0.4, 0.5, 0.5, 0.5, 0.3, 0.3, 0.3]
+mine_min = [8, 5, 3, 8, 5, 3, 8, 5, 3, 8, 5, 3]
+mine_max = 12
+
+# Per-weapon AI data (7.3, 8.2, 8.3) by gun type: accuracy `a`,
+# movement-inaccuracy cap `c_max` and its decay per second, burst rounds,
+# pause between bursts, engagement range, the full-accuracy value (compared
+# with the squared distance, Quirk 5), the miss offset, the ammunition
+# multiplier and the forced fire interval during a hit reaction.
+[guns.Default]
+a = [0.17, 0.20, 0.23, 0.23, 0.27, 0.31, 0.36, 0.41, 0.46, 0.14, 0.14, 0.14]
+c_max = [0.020, 0.017, 0.014, 0.014, 0.011, 0.009, 0.009, 0.006, 0.003, 0.020, 0.017, 0.014]
+decay = 0.03
+burst_min = 3
+burst_max = [6, 6, 6, 7, 7, 7, 7, 7, 7, 6, 6, 6]
+pause_min = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.1, 0.1, 0.1, 0.3, 0.3, 0.3]
+pause_max = [0.6, 0.6, 0.6, 0.4, 0.4, 0.4, 0.3, 0.3, 0.3, 0.6, 0.6, 0.6]
+range_min = 0
+range_max = [1000, 1000, 1000, 1500, 1500, 1500, 1500, 1500, 1500, 1000, 1000, 1000]
+full_accuracy = 100
+miss_offset = 100
+ammo = 10
+fire_frame = 0.1
+
+[guns.MG]
+a = [0.10, 0.13, 0.15, 0.15, 0.17, 0.19, 0.19, 0.21, 0.23, 0.08, 0.08, 0.08]
+c_max = [0.15, 0.14, 0.13, 0.13, 0.12, 0.11, 0.11, 0.10, 0.09, 0.15, 0.14, 0.13]
+decay = 0.03
+burst_min = 20
+burst_max = 30
+pause_min = [1.2, 1.1, 1.0, 1.0, 0.9, 0.8, 0.8, 0.7, 0.6, 1.2, 1.1, 1.0]
+pause_max = [2.5, 2.4, 2.3, 2.3, 2.2, 2.1, 2.1, 2.0, 1.9, 2.5, 2.4, 2.3]
+range_min = 0
+range_max = [1000, 1000, 1000, 1500, 1500, 1500, 1500, 1500, 1500, 1000, 1000, 1000]
+full_accuracy = 100
+miss_offset = 100
+ammo = 10
+fire_frame = 0.01
+
+[guns.SG]
+a = [0.50, 0.55, 0.60, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.40, 0.40, 0.40]
+c_max = 0.01
+decay = 0.03
+burst_min = [1, 1, 1, 20, 20, 20, 20, 20, 20, 1, 1, 1]
+burst_max = [1, 1, 1, 30, 30, 30, 30, 30, 30, 1, 1, 1]
+pause_min = [1.5, 1.3, 1.1, 1.1, 0.9, 0.7, 0.7, 0.5, 0.3, 1.5, 1.3, 1.1]
+pause_max = [2.5, 2.3, 2.1, 2.1, 1.9, 1.7, 1.7, 1.5, 1.3, 2.5, 2.3, 2.1]
+range_min = 0
+range_max = [600, 600, 600, 1500, 1500, 1500, 1500, 1500, 1500, 600, 600, 600]
+full_accuracy = 400
+miss_offset = 100
+ammo = [10, 10, 10, 4, 6, 8, 8, 10, 12, 10, 10, 10]
+fire_frame = 0.4
+
+[guns.SR]
+a = [0.50, 0.55, 0.60, 0.60, 0.65, 0.70, 0.70, 0.75, 0.80, 0.40, 0.40, 0.40]
+c_max = [0.30, 0.28, 0.32, 0.32, 0.36, 0.40, 0.40, 0.44, 0.48, 0.30, 0.28, 0.32]
+decay = 0.03
+burst_min = 1
+burst_max = 2
+pause_min = [1.0, 0.9, 0.8, 0.8, 0.7, 0.6, 0.6, 0.5, 0.4, 1.0, 0.9, 0.8]
+pause_max = [1.5, 1.4, 1.3, 1.3, 1.2, 1.1, 1.1, 1.0, 0.9, 1.5, 1.4, 1.3]
+range_min = 1000
+range_max = 5000
+full_accuracy = 50
+miss_offset = 100
+ammo = 10
+fire_frame = 0.5
+
+[guns.Pistol]
+a = 0.8
+c_max = 0.10
+decay = 0.04
+burst_min = 1
+burst_max = 1
+pause_min = 0.8
+pause_max = 1.3
+range_min = 0
+range_max = 500
+full_accuracy = 50
+miss_offset = 100
+ammo = 10
+fire_frame = 0.5
+
+[guns.Knife]
+a = 0.95
+c_max = 0.05
+decay = 0.03
+burst_min = 1
+burst_max = 1
+pause_min = 0
+pause_max = 0
+range_min = 0
+range_max = 130
+full_accuracy = 50
+miss_offset = 2
+ammo = 1
+fire_frame = 0.7
+
+[guns.ThrowWeapon]
+a = 1
+c_max = 0
+decay = 0
+burst_min = 1
+burst_max = 1
+pause_min = 0
+pause_max = 0
+range_min = 300
+range_max = 1200
+full_accuracy = 0
+miss_offset = 0
+ammo = 1
+fire_frame = 0
+
+# Which gun type each of our weapons is (the weapons file's class); a
+# weapon not listed has no AI row (as rocket launchers, Quirk 6).
+[gun_types]
+"combat_arms:m4a1" = "Default"
+"combat_arms:mp5a4" = "Default"
+"combat_arms:m60" = "MG"
+"combat_arms:remington_870" = "SG"
+"combat_arms:l96a1" = "SR"
+"combat_arms:dragunov_svd" = "SR"
+"combat_arms:beretta_m92fs" = "Pistol"
+"combat_arms:m9_knife" = "Knife"
+"combat_arms:m67" = "ThrowWeapon"
+"combat_arms:xm84" = "ThrowWeapon"
+"combat_arms:m18" = "ThrowWeapon"
+
+# Profiles per level (the counts are the spec's: Easy 22, Normal 25,
+# Veteran 26, Tutorial 6). The install's profile file (names, clans,
+# ranks, chat) isn't read: a bot is named after its team and profile
+# number (`AI_Alpha_<n>`, `AI_Bravo_<n>`), its archetype is PLACEHOLDER
+# (profile number mod 3: N, H, E), its item sets those of its level below.
+[profiles]
+easy = 22
+normal = 25
+veteran = 26
+tutorial = 6
+
+# Item sets (PLACEHOLDER: the install's sets name weapons we don't have
+# yet; these use ours, with the spec's use-percents). Slots in filling
+# order: model, backpack, head, goggle (cosmetic, empty here), then the
+# weapon slots mid primary, long primary, secondary, melee, grenade,
+# mine. `level` is easy, normal, veteran or tutorial.
+[[item_sets]]
+level = "easy"
+mid = { percent = 100, items = ["combat_arms:m4a1", "combat_arms:mp5a4"] }
+long = { percent = 60, items = ["combat_arms:l96a1"] }
+secondary = { percent = 100, items = ["combat_arms:beretta_m92fs"] }
+melee = { percent = 100, items = ["combat_arms:m9_knife"] }
+grenade = { percent = 45, items = ["combat_arms:m67"] }
+
+[[item_sets]]
+level = "easy"
+mid = { percent = 100, items = ["combat_arms:remington_870"] }
+secondary = { percent = 100, items = ["combat_arms:beretta_m92fs"] }
+melee = { percent = 100, items = ["combat_arms:m9_knife"] }
+grenade = { percent = 45, items = ["combat_arms:m67"] }
+
+[[item_sets]]
+level = "normal"
+mid = { percent = 100, items = ["combat_arms:m4a1", "combat_arms:mp5a4", "combat_arms:m60"] }
+long = { percent = 60, items = ["combat_arms:l96a1", "combat_arms:dragunov_svd"] }
+secondary = { percent = 100, items = ["combat_arms:beretta_m92fs"] }
+melee = { percent = 100, items = ["combat_arms:m9_knife"] }
+grenade = { percent = 75, items = ["combat_arms:m67"] }
+
+[[item_sets]]
+level = "veteran"
+mid = { percent = 100, items = ["combat_arms:m4a1", "combat_arms:mp5a4", "combat_arms:m60"] }
+long = { percent = 60, items = ["combat_arms:l96a1", "combat_arms:dragunov_svd"] }
+secondary = { percent = 100, items = ["combat_arms:beretta_m92fs"] }
+melee = { percent = 100, items = ["combat_arms:m9_knife"] }
+grenade = { percent = 75, items = ["combat_arms:m67"] }
+
+[[item_sets]]
+level = "tutorial"
+mid = { percent = 100, items = ["combat_arms:m4a1"] }
+secondary = { percent = 100, items = ["combat_arms:beretta_m92fs"] }
+melee = { percent = 100, items = ["combat_arms:m9_knife"] }
+grenade = { percent = 45, items = ["combat_arms:m67"] }
