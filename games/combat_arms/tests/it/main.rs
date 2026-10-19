@@ -12,6 +12,7 @@
 
 mod attribute_data;
 mod inventory;
+mod model;
 mod movement;
 mod net;
 mod skeleton;
@@ -21,6 +22,7 @@ mod world;
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
     mod attributes;
+    mod model;
     mod mount;
     mod world;
 }

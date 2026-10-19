@@ -31,6 +31,8 @@
 //!   one of `SOLID_CLASSES`: doors, moving world models, breakables)
 //!   where they stand at load, and the collision blockers, as one
 //!   triangle mesh.
+//! - Props: objects that name a model (`props`: the capture-the-flag
+//!   flags, whose model needs the V2 key).
 //! - Spawns: `GameStartPoint` objects of one game type (`SPAWN_GAME_TYPE`
 //!   when the map has it, else all), dropped to the floor below them,
 //!   facing their yaw; `Teams` JSF is `Team(1)`, Creed `Team(2)`.
@@ -136,7 +138,12 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
     let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
     let world = World::parse(&bytes).map_err(|e| format!("{path}: {e}"))?;
     let scale = super::movement::movement_data().meters_per_unit;
-    Ok(convert(&world, name, scale, &|path: &str| mount.read(path).ok()))
+    let file = |path: &str| mount.read(path).ok();
+    let mut map = convert(&world, name, scale, &file);
+    if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
+        super::props::dev_prop(&world, &mut map, &spec, scale, &file);
+    }
+    Ok(map)
 }
 
 /// A world as Chimera's map, `scale` metres per world unit; `file` reads
@@ -180,6 +187,7 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
 
     collision(world, &mut map, &to_engine);
     spawns(world, &mut map, &to_engine);
+    super::props::add_objects(world, &mut map, scale, file);
     if map.spawns.is_empty() {
         map.warnings.push("no GameStartPoint: spawning at the origin".into());
         map.spawns.push((Vec3::ZERO, None));
@@ -289,7 +297,7 @@ fn add_block(
 /// Each mesh's texture from the install (`.dtx`, level 0; an alpha-tested
 /// one cut out at its `alpharef`); a name that doesn't resolve keeps the
 /// mesh's flat colour, with a warning.
-fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let mut missing = 0;
     for m in meshes {
         if m.material.is_empty() || m.material.eq_ignore_ascii_case("default") {

@@ -70,7 +70,8 @@ in the lowest crate whose public API it needs:
   converted from a world built in code (`world.rs`); its spec test cases
   as each subsystem is implemented; in `heavy` the install's maps
   (`heavy::world`: every plain map converts, a player walks and collides
-  on WAREHOUSE); its front end's (the
+  on WAREHOUSE; `heavy::model`: a prop model converts and animates as
+  LithTech samples it); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless) in tests/ui/, built with `ui`;
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
@@ -1205,6 +1206,17 @@ others need the V2 key); add `--screenshot shot.png --frames 120 --window
 triangles, textures, spawns and warnings. The world files' numbers:
 `cargo test -p lithtech_formats -- heavy::world_install --nocapture`
 (`every_plain_map_summary` prints each map's version and counts).
+
+Combat Arms' models: `CHIMERA_CA_PROP=<model>[,<skin>...]` (archive
+paths) puts that model, playing its first animation, 3 m in front of the
+first spawn of the `--map` loaded (`game::props::dev_prop`), e.g.
+`CHIMERA_CA_PROP=props/headquaters/hq_flag01.ltb` with `--map
+combat_arms:warehouse --screenshot shot.png --frames 120`. Readable
+without keys: props, models, FX, the gunsmith NPC and the first-person
+pistols, shotguns, machine guns and launchers; characters, rifles, SMGs,
+snipers, knives, grenades, third-person weapons and the maps' flags need the V2 key. The
+readers' numbers: `cargo test -p lithtech_formats -- heavy::ltb_install
+--nocapture` (`census` prints the install's model and animation counts).
 
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
 list but skip extraction until their scheme's key is in
