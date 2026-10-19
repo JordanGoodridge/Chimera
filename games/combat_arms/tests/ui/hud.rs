@@ -1359,12 +1359,19 @@ fn t73_gap_unrounded() {
 
 #[test]
 fn t74_name_tag_anchor() {
-    // No models yet, so no name socket: the hull centre, no offset.
+    // The skeleton's name socket (characters.md 3: the spec's stand pose
+    // without a body model), turned with the character.
     let (mut sim, me) = setup(&[RIFLE]);
     let foe = other(&mut sim, me, 5.0, 2, "Foe");
     look_at(&mut sim, me, foe);
     let tag = hud(&sim).tags.into_iter().find(|t| t.entity == foe).expect("tag shown");
-    assert!((tag.anchor - sim.position(foe)).length() < 1e-5, "{} vs {}", tag.anchor, sim.position(foe));
+    let world = sim.app.world();
+    let pose = world.get::<combat_arms::game::characters::CaPose>(foe).unwrap();
+    let state = world.get::<chimera_core::core::MovementState>(foe).unwrap();
+    let want = pose.world(world.get::<Transform>(foe).unwrap(), state, inventory::UNIT, pose.name_tag.unwrap());
+    assert!((tag.anchor - want).length() < 1e-5, "{} vs {want}", tag.anchor);
+    let above = (want - sim.position(foe)).y / inventory::UNIT;
+    assert!((above - 45.87).abs() < 1e-2, "45.87 u above the hull centre: {above}");
 }
 
 #[test]

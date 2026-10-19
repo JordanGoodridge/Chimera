@@ -95,6 +95,12 @@ fn the_rifle_fires_and_hurts_a_target() {
     let shooter = player(&mut sim, greybox::SPAWNS[0]);
     // A target 5 m straight ahead (yaw 0 looks down -Z), on the same floor.
     let target = player(&mut sim, greybox::SPAWNS[0] - Vec3::Z * 5.0);
+    // At the target's chest (hull centre): its head leans to the rifle,
+    // off the line of the eyes (characters.md 11).
+    {
+        let d = sim.position(target) - (sim.position(shooter) + sim.state(shooter).eye_offset);
+        sim.intent(shooter).pitch = d.y.atan2(d.xz().length());
+    }
     let before = health(&sim, target);
     let full = clip(&sim, shooter);
     sim.intent(shooter).fire = true;

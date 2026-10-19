@@ -1,0 +1,331 @@
+# Combat Arms' player characters: the records specs/combat_arms/characters.md
+# gives (section numbers below are its), our numbers, not a file from the
+# game. The install's MODELBUTES.TXT, ATTACHMENTS.TXT and MARKS.TXT would
+# override them once the V1 key is configured (attribute_data.md); the
+# skeleton's measured positions come from the US reference client's
+# character archives, as the spec measured them.
+#
+# Units: LithTech world units ("u"), left-handed (+X right, +Y up, +Z
+# forward), model space relative to the hull centre (the stock feet stand
+# at y = -50), unless a field says otherwise. Quaternions (x, y, z, w).
+# Read by game/characters/records.rs.
+
+# Section 1: the stock player bodies (US data). `skins` are the upper and
+# leg textures per camouflage index (`UpperSkin#`, `LowerSkin#`); only the
+# default body's are given by the spec (test case 3), the others are left
+# empty until the install's records are read. `faces` is
+# `FaceRelationModel#` by face index (-1: keep this record).
+[[model]]
+id = 0
+name = "Normal"
+file = "CHARS_M_BODY\\CM_VST_NM_DF_Nuts_JS.ltb"
+skeleton = 0
+figure = 0
+gear = 0
+faces = [-1, -1, -1, -1, 7, 7, 7, 7]
+upper_skins = [
+    "CHARS_T_BODY\\Nomal_vest_body.dtx",
+    "CHARS_T_BODY\\Nomal_vest_body_DE.dtx",
+    "CHARS_T_BODY\\Nomal_vest_body_SN.dtx",
+    "CHARS_T_BODY\\Nomal_vest_body_UR.dtx",
+    "CHARS_T_BODY\\Nomal_vest_body_WL.dtx",
+    "CHARS_T_BODY\\Nomal_vest_body_FK.dtx",
+    "CHARS_T_BODY\\Nomal_vest_body_TG.dtx",
+]
+lower_skins = [
+    "CHARS_T_BODY\\Nomal_vest_leg.dtx",
+    "CHARS_T_BODY\\Nomal_vest_leg_DE.dtx",
+    "CHARS_T_BODY\\Nomal_vest_leg_SN.dtx",
+    "CHARS_T_BODY\\Nomal_vest_leg_UR.dtx",
+    "CHARS_T_BODY\\Nomal_vest_leg_WL.dtx",
+    "CHARS_T_BODY\\Nomal_vest_leg_FK.dtx",
+    "CHARS_T_BODY\\Nomal_vest_leg_TG.dtx",
+]
+
+[[model]]
+id = 1
+name = "Light"
+file = "CHARS_M_BODY\\CM_VST_LT_DF_Nuts_JS.ltb"
+skeleton = 0
+figure = 0
+gear = 1
+faces = [-1, -1, -1, -1, 8, 8, 8, 8]
+
+[[model]]
+id = 2
+name = "Heavy"
+file = "CHARS_M_BODY\\CM_VST_HV_DF_Nuts_JS.ltb"
+skeleton = 0
+figure = 0
+gear = 2
+faces = [-1, -1, -1, -1, 9, 9, 9, 9]
+
+[[model]]
+id = 7
+name = "Female Normal"
+file = "CHARS_M_BODY\\Nomal_W_vest.ltb"
+skeleton = 1
+figure = 1
+gear = 0
+
+[[model]]
+id = 8
+name = "Female Light"
+file = "CHARS_M_BODY\\Light_W_vest.ltb"
+skeleton = 1
+figure = 1
+gear = 1
+
+[[model]]
+id = 9
+name = "Female Heavy"
+file = "CHARS_M_BODY\\Heavy_W_vest.ltb"
+skeleton = 1
+figure = 1
+gear = 2
+
+# Head pieces (`Hair#`): the file per skeleton index (2: an empty name is
+# no head piece).
+[[head]]
+id = 0
+name = "HBasic"
+files = []
+
+[[head]]
+id = 2
+name = "Combat_Helmet"
+files = ["CHARS_M_HEAD\\Combat_Helmet.ltb", "CHARS_M_HEAD\\W_Combat_Helmet.ltb"]
+
+# Goggles and masks (`Goggle#`): the socket and the file per figure type
+# (the male one is not in the spec).
+[[goggle]]
+id = 0
+socket = "Eyes"
+files = ["", "ATTACH_M\\W_Glass.ltb"]
+
+# Team marks (`[TeamMark]`, 2): 0 shows nothing (the transparent mark
+# style), 1 a teammate's.
+[marks]
+enemy = "CHARS_T_BODY\\Alpha.dtx"
+teammate = "CHARS_T_BODY\\RED_Tie.dtx"
+
+# Each weapon's third-person animation class (`AniType`, 5) and leg set
+# (`LowerAniType`: 0 normal, 1 infected, 2 infected with a club); `skins`
+# its `HHSkin#` list and `frames` its `HHAniFrame_0..9` (ms, 0 none: no
+# rate change; absent in the stock data, 7). The classes are ours by the
+# weapon's kind (the weapons file's `AniType` is V1-keyed): the M4A1's 0
+# is the spec's.
+[weapons."combat_arms:m4a1"]
+ani_type = 0
+[weapons."combat_arms:mp5a4"]
+ani_type = 3
+[weapons."combat_arms:m60"]
+ani_type = 8
+[weapons."combat_arms:remington_870"]
+ani_type = 7
+[weapons."combat_arms:l96a1"]
+ani_type = 5
+[weapons."combat_arms:dragunov_svd"]
+ani_type = 5
+[weapons."combat_arms:beretta_m92fs"]
+ani_type = 10
+[weapons."combat_arms:m9_knife"]
+ani_type = 14
+[weapons."combat_arms:m67"]
+ani_type = 11
+[weapons."combat_arms:xm84"]
+ani_type = 11
+[weapons."combat_arms:m18"]
+ani_type = 11
+[weapons."combat_arms:m23f"]
+ani_type = 11
+[weapons."combat_arms:g7a"]
+ani_type = 11
+
+# How long a player's body stays after its owner respawned and its death
+# animation ended (10), seconds by game mode (`ca_mode`); a mode not
+# listed never removes it (a new round does).
+[body_removal]
+"combat_arms:tdm" = 5.0
+
+# Sections 3 and 11: the stock skeletons. `nodes` are the tree's nodes the
+# game uses (name, parent; `at`: where the spec measured them at `LST`
+# t = 0, the fallback pose while no model is loaded); `spheres` the hit
+# table (`Skeleton#`: radius, location 1 head 2 torso 3 arm 4 leg 5 groin,
+# damage factor; `socket` when it sits on a socket of that parent and
+# offset, `absent` when no stock body has it; `bind` and `at` its centre
+# in the bind pose and at `LST` t = 0); `sockets` the sockets the game uses
+# (parent, offset, rotation, `bind`, and `at`: the "stand" pose's position
+# where the spec gives one, our fallback). `aim` is section 8's seven
+# nodes in order.
+
+# Table 0, the default male body (53 nodes).
+[[skeleton]]
+name = "male"
+aim = ["Right_pelvis", "Torso", "Upper_torso", "Neck", "Head", "Left_shoulder", "Right_shoulder"]
+nodes = [
+    { name = "Scene Root" },
+    { name = "_zN_LowerBody", parent = "Scene Root", at = [0.0, -7.70, 1.46] },
+    { name = "Left_pelvis", parent = "_zN_LowerBody", at = [-0.27, -6.89, -0.69] },
+    { name = "Right_pelvis", parent = "Left_pelvis", at = [-0.27, 2.26, -0.69] },
+    { name = "Torso", parent = "Right_pelvis", at = [-0.08, 5.88, -0.02] },
+    { name = "Upper_torso", parent = "Torso", at = [1.15, 14.52, 2.69] },
+    { name = "Neck", parent = "Upper_torso", at = [5.22, 27.27, 9.60] },
+    { name = "Head", parent = "Neck", at = [6.45, 29.03, 10.90] },
+    { name = "Face_Jaw", parent = "Head", at = [6.89, 30.82, 13.42] },
+    { name = "Face_Eyelid", parent = "Head" },
+    { name = "Left_shoulder", parent = "Neck", at = [1.94, 25.53, 11.84] },
+    { name = "Left_armu", parent = "Left_shoulder", at = [-4.11, 25.07, 16.96] },
+    { name = "Left_arml", parent = "Left_armu", at = [0.44, 12.73, 23.33] },
+    { name = "left_hand", parent = "Left_arml", at = [10.35, 21.70, 28.98] },
+    { name = "Right_shoulder", parent = "Neck", at = [7.19, 27.15, 5.74] },
+    { name = "Right_armu", parent = "Right_shoulder", at = [14.03, 25.76, 1.95] },
+    { name = "Right_arml", parent = "Right_armu", at = [22.98, 14.22, 2.33] },
+    { name = "Right_hand", parent = "Right_arml", at = [15.43, 18.88, 13.81] },
+    { name = "Left_legu", parent = "Right_pelvis", at = [-4.67, -6.89, 3.58] },
+    { name = "Left_legl", parent = "Left_legu", at = [-5.43, -20.85, 14.39] },
+    { name = "Left_foot", parent = "Left_legl", at = [-9.95, -42.12, 11.46] },
+    { name = "Bip01 L Toe0", parent = "Left_foot", at = [-8.48, -49.85, 20.24] },
+    { name = "Right_Legu", parent = "Right_pelvis", at = [4.14, -6.89, -4.96] },
+    { name = "Right_legl", parent = "Right_Legu", at = [14.02, -21.52, -4.22] },
+    { name = "Right_foot", parent = "Right_legl", at = [12.62, -41.96, -12.09] },
+    { name = "Bip01 R Toe0", parent = "Right_foot", at = [20.91, -49.78, -9.09] },
+]
+spheres = [
+    { index = 3, name = "Left_pelvis", radius = 8.0, location = 4, factor = 0.9, bind = [0.00, -7.70, 0.75], at = [-0.27, -6.89, -0.69] },
+    { index = 4, name = "Right_pelvis", radius = 8.5, location = 4, factor = 0.9, bind = [0.00, 1.45, 0.75], at = [-0.27, 2.26, -0.69] },
+    { index = 5, name = "Torso", radius = 9.0, location = 2, factor = 1.0, bind = [0.00, 5.14, 0.74], at = [-0.08, 5.88, -0.02] },
+    { index = 6, name = "Upper_torso", radius = 10.0, location = 2, factor = 1.0, bind = [0.00, 14.27, 0.74], at = [1.15, 14.52, 2.69] },
+    { index = 7, name = "Neck", radius = 3.0, location = 2, factor = 1.0, bind = [0.00, 29.31, -0.10], at = [5.22, 27.27, 9.60] },
+    { index = 8, name = "Head", radius = 1.0, location = 1, factor = 6.0, bind = [0.00, 31.57, 0.99], at = [6.45, 29.03, 10.90] },
+    { index = 9, name = "Face_Jaw", radius = 3.0, location = 1, factor = 6.0, bind = [0.00, 33.49, 3.45], at = [6.89, 30.82, 13.42] },
+    { index = 10, name = "Face_Eyelid", radius = 0.0, location = 1, factor = 6.0 },
+    { index = 11, name = "Left_shoulder", radius = 5.5, location = 3, factor = 0.9, bind = [-4.10, 27.95, -0.43], at = [1.94, 25.53, 11.84] },
+    { index = 12, name = "Left_armu", radius = 4.5, location = 3, factor = 0.9, bind = [-11.36, 24.91, -1.53], at = [-4.11, 25.07, 16.96] },
+    { index = 13, name = "Left_arml", radius = 4.0, location = 3, factor = 0.9, bind = [-21.43, 14.33, -1.77], at = [0.44, 12.73, 23.33] },
+    { index = 14, name = "left_hand", radius = 3.2, location = 3, factor = 0.9, bind = [-31.19, 4.32, 2.14], at = [10.35, 21.70, 28.98] },
+    { index = 24, name = "Right_shoulder", radius = 5.5, location = 3, factor = 0.9, bind = [4.10, 27.95, -0.43], at = [7.19, 27.15, 5.74] },
+    { index = 25, name = "Right_armu", radius = 4.5, location = 3, factor = 0.9, bind = [11.36, 24.91, -1.53], at = [14.03, 25.76, 1.95] },
+    { index = 26, name = "Right_arml", radius = 4.0, location = 3, factor = 0.9, bind = [21.43, 14.33, -1.77], at = [22.98, 14.22, 2.33] },
+    { index = 27, name = "Right_hand", radius = 3.2, location = 3, factor = 0.9, bind = [31.19, 4.32, 2.14], at = [15.43, 18.88, 13.81] },
+    { index = 39, name = "Left_legu", radius = 8.0, location = 4, factor = 0.9, bind = [-6.14, -7.70, 0.75], at = [-4.67, -6.89, 3.58] },
+    { index = 40, name = "Left_legl", radius = 6.0, location = 4, factor = 0.75, bind = [-7.91, -25.25, 1.87], at = [-5.43, -20.85, 14.39] },
+    { index = 41, name = "Left_foot", radius = 5.0, location = 4, factor = 0.5, bind = [-9.72, -46.74, -2.14], at = [-9.95, -42.12, 11.46] },
+    { index = 42, name = "Bip01 L Toe0", radius = 3.0, location = 4, factor = 0.5, bind = [-11.68, -54.32, 6.67], at = [-8.48, -49.85, 20.24] },
+    { index = 43, name = "Right_Legu", radius = 8.0, location = 4, factor = 0.9, bind = [6.14, -7.70, 0.75], at = [4.14, -6.89, -4.96] },
+    { index = 44, name = "Right_legl", radius = 6.0, location = 4, factor = 0.75, bind = [7.91, -25.25, 1.87], at = [14.02, -21.52, -4.22] },
+    { index = 45, name = "Right_foot", radius = 5.0, location = 4, factor = 0.5, bind = [9.72, -46.74, -2.14], at = [12.62, -41.96, -12.09] },
+    { index = 46, name = "Bip01 R Toe0", radius = 3.0, location = 4, factor = 0.5, bind = [11.68, -54.32, 6.67], at = [20.91, -49.78, -9.09] },
+    { index = 53, name = "Face_Eyelid1", radius = 4.6, location = 1, factor = 6.0, socket = { parent = "Face_Eyelid", offset = [0.0, 0.0, 7.0] }, bind = [0.03, 36.67, 1.29], at = [7.48, 34.01, 11.37] },
+    { index = 54, name = "Left_armu1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Left_armu", offset = [7.25, 0.0, 0.0] }, bind = [-16.36, 19.66, -1.65], at = [-1.85, 18.95, 20.12] },
+    { index = 55, name = "Left_arml1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Left_arml", offset = [7.25, 0.0, 0.0] }, bind = [-26.31, 9.33, 0.18], at = [5.39, 17.21, 26.15] },
+    { index = 56, name = "Right_armu1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Right_armu", offset = [7.25, 0.0, 0.0] }, bind = [16.36, 19.66, -1.65], at = [18.47, 20.04, 2.14] },
+    { index = 57, name = "Right_arml1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Right_arml", offset = [7.25, 0.0, 0.0] }, bind = [26.31, 9.33, 0.18], at = [19.21, 16.55, 8.07] },
+    { index = 58, name = "Left_legu1", radius = 7.0, location = 4, factor = 0.9, socket = { parent = "Left_legu", offset = [8.8, 0.0, 0.0] }, bind = [-7.02, -16.44, 1.31], at = [-5.05, -13.84, 8.96] },
+    { index = 59, name = "Left_legl1", radius = 6.0, location = 4, factor = 0.75, socket = { parent = "Left_legl", offset = [11.0, 0.0, 0.0] }, bind = [-8.81, -36.03, -0.14], at = [-7.70, -31.52, 12.92] },
+    { index = 60, name = "Right_Legu1", radius = 7.0, location = 4, factor = 0.9, socket = { parent = "Right_Legu", offset = [8.8, 0.0, 0.0] }, bind = [7.02, -16.44, 1.31], at = [9.06, -14.18, -4.59] },
+    { index = 61, name = "Right_legl1", radius = 6.0, location = 4, factor = 0.75, socket = { parent = "Right_legl", offset = [11.0, 0.0, 0.0] }, bind = [8.81, -36.03, -0.14], at = [13.32, -31.77, -8.17] },
+    { index = 62, name = "Left_Shld", radius = 7.0, location = 3, factor = 0.9, absent = true },
+    { index = 63, name = "Right_Shld", radius = 7.0, location = 3, factor = 0.9, absent = true },
+    # Location 5 as weapon_firing.md and the BR data have it (the US data
+    # says 2; characters.md Open question 1b).
+    { index = 64, name = "Nuts", radius = 3.0, location = 5, factor = 1.0, socket = { parent = "Left_pelvis", offset = [2.0, 0.0, 6.0] }, bind = [0.00, -5.70, 6.75], at = [3.91, -4.89, 3.61] },
+]
+sockets = [
+    { name = "RightHand", parent = "Right_hand", offset = [7.085, 1.661, 1.277], rotation = [0.0573, -0.7151, -0.0818, 0.6918], bind = [35.69, -1.14, 4.24], at = [12.54, 22.90, 19.93] },
+    { name = "LeftHand", parent = "left_hand", offset = [0.0, 0.0, 0.0], rotation = [0.0, 0.0, 0.0, 0.7071], bind = [-31.19, 4.32, 2.14] },
+    { name = "Eyes", parent = "Face_Eyelid", offset = [3.011, 0.0, 1.314], rotation = [-0.9772, 0.0, 0.2122, 0.0], bind = [0.03, 41.38, 5.68] },
+    { name = "1W_N", parent = "Upper_torso", offset = [-18.328, 0.0, 0.0], rotation = [0.0, 0.0, -0.7071, 0.7071], bind = [0.00, -3.98, 2.40] },
+    { name = "NAME_socket", parent = "Head", offset = [16.5, 0.0, 0.906], rotation = [0.0, 0.0, 0.0, 1.0], bind = [0.00, 47.97, 3.05], at = [8.63, 45.87, 11.51] },
+    { name = "P_BAG_N", parent = "Torso", offset = [0.0, 0.0, 0.0], rotation = [0.0, 0.0, 0.0, 1.0], bind = [0.00, 5.14, 0.74] },
+]
+# The drop point (inventory.md 12) where the spec gives it for the stand
+# pose (test case 27).
+left_foot = [-10.02, -41.49, 13.52]
+
+# Table 1, the default female body (60 nodes). `Bip01 Neck` has no
+# measured LST position (no sphere): ours, the head's minus the bind
+# offset between them.
+[[skeleton]]
+name = "female"
+aim = ["Right_pelvis", "Torso", "Upper_torso", "Bip01 Neck", "Bip01 Head", "Left_shoulder", "Bip01 R Clavicle"]
+nodes = [
+    { name = "Scene Root" },
+    { name = "Bip_root01", parent = "Scene Root" },
+    { name = "_zN_LowerBod", parent = "Bip_root01" },
+    { name = "Left_pelvis", parent = "_zN_LowerBod", at = [-1.44, 0.48, -1.66] },
+    { name = "Right_pelvis", parent = "Left_pelvis", at = [-1.21, 6.28, -1.42] },
+    { name = "Torso", parent = "Right_pelvis", at = [-1.65, 8.81, -1.55] },
+    { name = "Upper_torso", parent = "Torso", at = [-1.09, 16.67, 1.19] },
+    { name = "Bip01 Neck", parent = "Upper_torso", at = [2.95, 27.76, 9.57] },
+    { name = "Bip01 Head", parent = "Bip01 Neck", at = [2.96, 31.08, 10.21] },
+    { name = "Left_shoulder", parent = "Bip01 Neck", at = [-1.27, 24.52, 8.72] },
+    { name = "Left_armu", parent = "Left_shoulder", at = [-4.82, 23.56, 12.54] },
+    { name = "Left_arml", parent = "Left_armu", at = [-7.02, 13.33, 21.82] },
+    { name = "left_hand", parent = "Left_arml", at = [2.96, 23.41, 30.87] },
+    { name = "Bip01 R Clavicle", parent = "Bip01 Neck", at = [2.21, 26.17, 5.33] },
+    { name = "Right_armu", parent = "Bip01 R Clavicle", at = [7.00, 24.90, 3.42] },
+    { name = "Right_arml", parent = "Right_armu", at = [13.56, 12.62, 2.18] },
+    { name = "Right_hand", parent = "Right_arml", at = [7.23, 20.85, 15.42] },
+    { name = "Bone_r_Clavicle01", parent = "Upper_torso", at = [6.47, 20.79, 1.12] },
+    { name = "Bone_l_Clavicle01", parent = "Upper_torso", at = [-5.16, 19.46, 10.92] },
+    { name = "spine_right", parent = "Upper_torso", at = [4.56, 19.91, 2.12] },
+    { name = "spine_left", parent = "Upper_torso", at = [-1.04, 17.26, 7.56] },
+    { name = "Left_legu", parent = "Left_pelvis", at = [-5.64, -0.22, 2.21] },
+    { name = "Left_legl", parent = "Left_legu", at = [-5.24, -16.63, 16.49] },
+    { name = "Left_foot", parent = "Left_legl", at = [-7.73, -39.56, 12.91] },
+    { name = "Bip01 L Toe0", parent = "Left_foot", at = [-7.22, -47.59, 16.09] },
+    { name = "Right_Legu", parent = "Left_pelvis", at = [2.76, 1.17, -5.53] },
+    { name = "Right_legl", parent = "Right_Legu", at = [7.47, -19.86, -2.56] },
+    { name = "Right_foot", parent = "Right_legl", at = [2.90, -39.47, -14.37] },
+    { name = "Bip01 R Toe0", parent = "Right_foot", at = [5.52, -47.55, -12.69] },
+]
+spheres = [
+    { index = 3, name = "Left_pelvis", radius = 8.0, location = 4, factor = 0.9, bind = [0.00, 55.24, 3.14], at = [-1.44, 0.48, -1.66] },
+    { index = 4, name = "Right_pelvis", radius = 8.5, location = 4, factor = 0.9, bind = [0.00, 60.95, 4.23], at = [-1.21, 6.28, -1.42] },
+    { index = 5, name = "Torso", radius = 9.0, location = 2, factor = 1.0, bind = [0.01, 63.51, 4.22], at = [-1.65, 8.81, -1.55] },
+    { index = 6, name = "Upper_torso", radius = 10.0, location = 2, factor = 1.0, bind = [0.03, 71.80, 3.33], at = [-1.09, 16.67, 1.19] },
+    { index = 7, name = "Bip01 Neck", radius = 0.0, location = 2, factor = 1.0 },
+    { index = 8, name = "Bip01 Head", radius = 3.0, location = 1, factor = 1.0, bind = [0.08, 89.37, 1.94], at = [2.96, 31.08, 10.21] },
+    { index = 20, name = "Left_shoulder", radius = 5.5, location = 3, factor = 0.9, bind = [-2.51, 82.15, 1.13], at = [-1.27, 24.52, 8.72] },
+    { index = 21, name = "Left_armu", radius = 4.5, location = 3, factor = 0.9, bind = [-7.74, 81.26, 1.30], at = [-4.82, 23.56, 12.54] },
+    { index = 22, name = "Left_arml", radius = 4.0, location = 3, factor = 0.9, bind = [-17.54, 71.54, -0.89], at = [-7.02, 13.33, 21.82] },
+    { index = 23, name = "left_hand", radius = 3.2, location = 3, factor = 0.9, bind = [-29.16, 59.40, 0.02], at = [2.96, 23.41, 30.87] },
+    { index = 33, name = "Bip01 R Clavicle", radius = 5.5, location = 3, factor = 0.9, bind = [2.62, 82.13, 1.13], at = [2.21, 26.17, 5.33] },
+    { index = 34, name = "Right_armu", radius = 4.5, location = 3, factor = 0.9, bind = [7.85, 81.21, 1.30], at = [7.00, 24.90, 3.42] },
+    { index = 35, name = "Right_arml", radius = 4.0, location = 3, factor = 0.9, bind = [17.65, 71.50, -0.90], at = [13.56, 12.62, 2.18] },
+    { index = 36, name = "Right_hand", radius = 3.2, location = 3, factor = 0.9, bind = [29.27, 59.36, 0.02], at = [7.23, 20.85, 15.42] },
+    { index = 46, name = "Bone_r_Clavicle01", radius = 3.0, location = 2, factor = 1.0, bind = [7.99, 76.65, 1.76], at = [6.47, 20.79, 1.12] },
+    { index = 47, name = "Bone_l_Clavicle01", radius = 3.0, location = 2, factor = 1.0, bind = [-7.81, 76.69, 1.76], at = [-5.16, 19.46, 10.92] },
+    { index = 48, name = "spine_right", radius = 3.0, location = 2, factor = 1.0, bind = [4.31, 76.34, 5.43], at = [4.56, 19.91, 2.12] },
+    { index = 49, name = "spine_left", radius = 3.0, location = 2, factor = 1.0, bind = [-3.94, 76.36, 5.43], at = [-1.04, 17.26, 7.56] },
+    { index = 50, name = "Left_legu", radius = 8.0, location = 4, factor = 0.9, bind = [-5.75, 55.19, 3.14], at = [-5.64, -0.22, 2.21] },
+    { index = 51, name = "Left_legl", radius = 6.0, location = 4, factor = 0.75, bind = [-7.00, 33.52, 1.55], at = [-5.24, -16.63, 16.49] },
+    { index = 52, name = "Left_foot", radius = 5.0, location = 4, factor = 0.5, bind = [-8.34, 10.28, -0.20], at = [-7.73, -39.56, 12.91] },
+    { index = 53, name = "Bip01 L Toe0", radius = 3.0, location = 4, factor = 0.5, bind = [-8.87, 2.33, 3.17], at = [-7.22, -47.59, 16.09] },
+    { index = 54, name = "Right_Legu", radius = 8.0, location = 4, factor = 0.9, bind = [5.75, 55.29, 3.13], at = [2.76, 1.17, -5.53] },
+    { index = 55, name = "Right_legl", radius = 6.0, location = 4, factor = 0.75, bind = [7.00, 33.62, 1.54], at = [7.47, -19.86, -2.56] },
+    { index = 56, name = "Right_foot", radius = 5.0, location = 4, factor = 0.5, bind = [8.34, 10.38, -0.21], at = [2.90, -39.47, -14.37] },
+    { index = 57, name = "Bip01 R Toe0", radius = 3.0, location = 4, factor = 0.5, bind = [8.87, 2.43, 3.16], at = [5.52, -47.55, -12.69] },
+    { index = 60, name = "Face_Eyelid1", radius = 0.0, location = 1, factor = 6.0 },
+    { index = 61, name = "Left_armu1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Left_armu", offset = [7.25, 0.0, 0.0] }, bind = [-12.82, 76.22, 0.16], at = [-5.96, 18.25, 17.35] },
+    { index = 62, name = "Left_arml1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Left_arml", offset = [7.25, 0.0, 0.0] }, bind = [-22.55, 66.31, -0.50], at = [-2.72, 17.67, 25.72] },
+    { index = 63, name = "Right_armu1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Right_armu", offset = [7.25, 0.0, 0.0] }, bind = [12.93, 76.17, 0.16], at = [10.40, 18.53, 2.78] },
+    { index = 64, name = "Right_arml1", radius = 4.0, location = 3, factor = 0.9, socket = { parent = "Right_arml", offset = [7.25, 0.0, 0.0] }, bind = [22.66, 66.27, -0.50], at = [10.84, 16.17, 7.88] },
+    { index = 65, name = "Left_legu1", radius = 7.0, location = 4, factor = 0.9, socket = { parent = "Left_legu", offset = [8.8, 0.0, 0.0] }, bind = [-6.26, 46.42, 2.50], at = [-5.48, -6.86, 7.99] },
+    { index = 66, name = "Left_legl1", radius = 6.0, location = 4, factor = 0.75, socket = { parent = "Left_legl", offset = [11.0, 0.0, 0.0] }, bind = [-7.63, 22.57, 0.73], at = [-6.41, -27.44, 14.80] },
+    { index = 67, name = "Right_Legu1", radius = 7.0, location = 4, factor = 0.9, socket = { parent = "Right_Legu", offset = [8.8, 0.0, 0.0] }, bind = [6.26, 46.52, 2.49], at = [4.66, -7.33, -4.33] },
+    { index = 68, name = "Right_legl1", radius = 6.0, location = 4, factor = 0.75, socket = { parent = "Right_legl", offset = [11.0, 0.0, 0.0] }, bind = [7.63, 22.67, 0.72], at = [5.31, -29.10, -8.12] },
+    { index = 69, name = "Headfuck", radius = 4.7, location = 1, factor = 6.0, socket = { parent = "Bip01 Head", offset = [3.219, 0.0, 1.031] }, bind = [0.08, 92.36, 3.53], at = [4.12, 33.37, 12.42] },
+    { index = 70, name = "Headfuck2", radius = 4.7, location = 1, factor = 6.0, socket = { parent = "Bip01 Head", offset = [4.453, 0.0, -0.562] }, bind = [0.08, 93.86, 2.18], at = [4.76, 35.01, 11.44] },
+]
+# The female right-hand socket has no measured stand position: ours, the
+# male's offset from the hand applied to the female hand.
+sockets = [
+    { name = "RightHand", parent = "Right_hand", offset = [7.085, 1.661, 1.277], rotation = [0.0573, -0.7151, -0.0818, 0.6918], bind = [33.13, 53.21, 1.37], at = [4.34, 24.87, 21.54] },
+    { name = "LeftHand", parent = "left_hand", offset = [0.0, 0.0, 0.0], rotation = [0.0, 0.0, 0.0, 0.7071], bind = [-29.16, 59.40, 0.02] },
+    { name = "Eyes", parent = "Bip01 Head", offset = [-85.255, 0.001, 18.748], rotation = [-0.0846, 0.0846, -0.7020, 0.7020], bind = [0.08, 2.14, 5.20] },
+    { name = "1W_N", parent = "Upper_torso", offset = [-18.328, 0.0, 0.0], rotation = [0.0, 0.0, -0.7071, 0.7071], bind = [-0.02, 53.78, 6.65] },
+    { name = "NAME_socket", parent = "Bip01 Head", offset = [16.5, 0.0, 0.906], rotation = [0.0, 0.0, 0.0, 1.0], bind = [0.08, 105.45, 5.78], at = [9.28, 43.71, 19.18] },
+]
+left_foot = [-7.73, -39.56, 12.91]

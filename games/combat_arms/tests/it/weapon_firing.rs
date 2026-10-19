@@ -134,11 +134,8 @@ fn eye(sim: &Sim, p: Entity) -> Vec3 {
 }
 
 /// Where `name`'s sphere of the male skeleton is on `p`.
-fn sphere(sim: &Sim, p: Entity, name: &str) -> Vec3 {
-    let world = sim.app.world();
-    let i = MALE.iter().position(|s| s.name == name).unwrap();
-    let (_, _, spheres) = geometry(world, p);
-    spheres[i].0
+fn sphere(sim: &Sim, shooter: Entity, p: Entity, name: &str) -> Vec3 {
+    super::aim_points::point(sim.app.world(), shooter, p, name)
 }
 
 fn geometry(world: &World, p: Entity) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
@@ -147,7 +144,7 @@ fn geometry(world: &World, p: Entity) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
         world.get::<Intent>(p).unwrap(),
         world.get::<MovementState>(p).unwrap(),
         world.get::<ColliderAabb>(p),
-        MALE,
+        *MALE,
     )
     .unwrap()
 }
@@ -176,7 +173,7 @@ fn shoot(sim: &mut Sim, shooter: Entity, target: Entity) -> f32 {
 
 /// Aim at `name` on `target` and fire one round.
 fn shoot_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str) -> f32 {
-    let at = sphere(sim, target, name);
+    let at = sphere(sim, shooter, target, name);
     aim(sim, shooter, at);
     shoot(sim, shooter, target)
 }
@@ -186,7 +183,7 @@ fn shoot_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str) -> f32 {
 fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f32) {
     for _ in 0..6 {
         let from = eye(sim, shooter);
-        let dir = (sphere(sim, target, name) - from).normalize();
+        let dir = (sphere(sim, shooter, target, name) - from).normalize();
         let (min, max, _) = geometry(sim.app.world(), target);
         let t = ca::box_entry(min, max, from, dir, f32::INFINITY).unwrap();
         let err = t - units * U;
@@ -226,8 +223,8 @@ fn t01_range_bands() {
         (3000.5, 12.25),
         (3500.0, 12.25),
     ] {
-        place_at(&mut sim, shooter, target, "chest", d);
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-3, &format!("at {d} units"));
+        place_at(&mut sim, shooter, target, "Torso", d);
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-3, &format!("at {d} units"));
     }
 }
 
@@ -236,8 +233,8 @@ fn t01_range_bands() {
 fn t02_beyond_the_last_band() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_range_mod", 3600.0);
-    place_at(&mut sim, shooter, target, "chest", 3600.0);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 35.0, 1e-3, "at 3600 units");
+    place_at(&mut sim, shooter, target, "Torso", 3600.0);
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 35.0, 1e-3, "at 3600 units");
 }
 
 /// 3. The roll's bounds: 33.25 to 36.75 at d = 100.
@@ -245,7 +242,7 @@ fn t02_beyond_the_last_band() {
 fn t03_random_roll_bounds() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_rolling", 100.0);
-    place_at(&mut sim, shooter, target, "chest", 100.0);
+    place_at(&mut sim, shooter, target, "Torso", 100.0);
     let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
     let dmg = sim.app.world().get::<CaDamage>(w).unwrap().clone();
     // The roll at its ends.
@@ -257,7 +254,7 @@ fn t03_random_roll_bounds() {
         if i % 25 == 0 {
             set_mag(&mut sim, w, 30, 90);
         }
-        hits.push(shoot_at(&mut sim, shooter, target, "chest"));
+        hits.push(shoot_at(&mut sim, shooter, target, "Torso"));
     }
     let (lo, hi) = hits.iter().fold((f32::MAX, f32::MIN), |(lo, hi), h| (lo.min(*h), hi.max(*h)));
     assert!(lo >= 33.25 - 1e-3 && hi <= 36.75 + 1e-3, "{hits:?}");
@@ -271,16 +268,16 @@ fn t04_zones() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 1000.0);
     for (name, want) in [
-        ("upper face", 210.0),
-        ("neck", 35.0),
-        ("chest", 35.0),
-        ("groin", 35.0),
-        ("hip right", 31.5),
-        ("upper arm right", 31.5),
-        ("hand right", 31.5),
-        ("thigh right", 31.5),
-        ("shin right", 26.25),
-        ("foot right", 17.5),
+        ("Face_Eyelid1", 210.0),
+        ("Neck", 35.0),
+        ("Torso", 35.0),
+        ("Nuts", 35.0),
+        ("Right_pelvis", 31.5),
+        ("Right_armu", 31.5),
+        ("Right_hand", 31.5),
+        ("Right_Legu", 31.5),
+        ("Right_legl", 26.25),
+        ("Right_foot", 17.5),
     ] {
         close(shoot_at(&mut sim, shooter, target, name), want, 1e-3, name);
     }
@@ -302,11 +299,12 @@ fn t05_behind_bonus() {
         assert_eq!(ca::sector(f, r, dir), sector, "{dir}");
         let mut sim = sim();
         let target = player(&mut sim, Vec3::new(30.0, 1.0, 20.0), std::f32::consts::PI, 100.0);
-        let chest = sphere(&sim, target, "chest");
+        let i = MALE.iter().position(|s| s.name == "Torso").unwrap();
+        let chest = geometry(sim.app.world(), target).2[i].0;
         let from = (chest - dir * 8.0).with_y(1.0);
         let shooter = player(&mut sim, from, 0.0, 1.0);
         arm(&mut sim, shooter, "test:m4a1_exact");
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-3, &format!("sector {sector}"));
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-3, &format!("sector {sector}"));
     }
 }
 
@@ -317,7 +315,7 @@ fn t06_body_armour() {
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
     set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR]);
     sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 1.0;
-    close(shoot_at(&mut sim, shooter, target, "chest"), 29.75, 1e-3, "damage");
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 29.75, 1e-3, "damage");
     close(armour(&sim, target), 94.75, 1e-3, "armour");
     close(health(&sim, target) / HP, 70.25, 1e-3, "health");
 }
@@ -331,7 +329,7 @@ fn t07_armour_and_headshot() {
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
         set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR, DEFAULT_HEAD_GEAR]);
         sim.app.world_mut().get_mut::<Health>(target).unwrap().current = start;
-        let lost = shoot_at(&mut sim, shooter, target, "upper face");
+        let lost = shoot_at(&mut sim, shooter, target, "Face_Eyelid1");
         close(armour(&sim, target), 91.25, 1e-3, "armour");
         if start > 1.0 {
             close(lost, 157.5, 1e-3, "damage");
@@ -347,7 +345,7 @@ fn t08_body_gear_does_not_cover_the_head() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
     set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR]);
-    close(shoot_at(&mut sim, shooter, target, "upper face"), 210.0, 1e-3, "damage");
+    close(shoot_at(&mut sim, shooter, target, "Face_Eyelid1"), 210.0, 1e-3, "damage");
     close(armour(&sim, target), 100.0, 1e-3, "armour");
 }
 
@@ -357,7 +355,7 @@ fn t09_armour_runs_out() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
     set_armour(&mut sim, target, 3.0, vec![DEFAULT_BODY_GEAR]);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 32.0, 1e-3, "damage");
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 32.0, 1e-3, "damage");
     close(armour(&sim, target), 0.0, 1e-3, "armour");
 }
 
@@ -367,7 +365,7 @@ fn t10_zero_armour_means_no_protection() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
     set_armour(&mut sim, target, 0.0, vec![HEAVY_BODY_GEAR]);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 35.0, 1e-3, "damage");
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 35.0, 1e-3, "damage");
 }
 
 /// 11. Banded damage with armour at 2800 units: 24.5, 3.675 blocked,
@@ -376,9 +374,9 @@ fn t10_zero_armour_means_no_protection() {
 fn t11_banded_damage_with_armour() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 2800.0);
-    place_at(&mut sim, shooter, target, "chest", 2800.0);
+    place_at(&mut sim, shooter, target, "Torso", 2800.0);
     set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR]);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 20.825, 1e-3, "damage");
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 20.825, 1e-3, "damage");
     close(armour(&sim, target), 96.325, 1e-3, "armour");
 }
 
@@ -390,7 +388,7 @@ fn t12_death_threshold() {
         let mut sim = sim();
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
         sim.app.world_mut().get_mut::<Health>(target).unwrap().current = start * HP;
-        shoot_at(&mut sim, shooter, target, "chest");
+        shoot_at(&mut sim, shooter, target, "Torso");
         let left = health(&sim, target) / HP;
         if alive {
             close(left, 1.01, 1e-3, "left");
@@ -412,7 +410,7 @@ fn t13_hits_to_kill() {
             set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR]);
         }
         for (i, want) in steps.iter().enumerate() {
-            shoot_at(&mut sim, shooter, target, "chest");
+            shoot_at(&mut sim, shooter, target, "Torso");
             close(health(&sim, target) / HP, *want, 1e-3, &format!("armoured {armoured}, hit {}", i + 1));
         }
     }
@@ -1046,7 +1044,7 @@ fn t35_server_rate_limit() {
         .unwrap();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_fast", 1000.0);
     let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
-    let at = sphere(&sim, target, "chest");
+    let at = sphere(&sim, shooter, target, "Torso");
     aim(&mut sim, shooter, at);
     let before = health(&sim, target);
     sim.intent(shooter).fire = true;
@@ -1077,9 +1075,9 @@ fn t36_penetration() {
     for (thick, want) in [(6.0, 17.5), (12.0, 0.0)] {
         let mut sim = sim();
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 1000.0);
-        place_at(&mut sim, shooter, target, "chest", 1000.0);
+        place_at(&mut sim, shooter, target, "Torso", 1000.0);
         panel(&mut sim, 32.0, thick, "Wood");
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-3, &format!("{thick} units of wood"));
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-3, &format!("{thick} units of wood"));
     }
 }
 
@@ -1088,10 +1086,10 @@ fn t36_penetration() {
 fn t37_two_panels() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 1000.0);
-    place_at(&mut sim, shooter, target, "chest", 1000.0);
+    place_at(&mut sim, shooter, target, "Torso", 1000.0);
     panel(&mut sim, 33.0, 6.0, "Glass");
     panel(&mut sim, 31.0, 6.0, "Plywood");
-    close(shoot_at(&mut sim, shooter, target, "chest"), 18.9, 1e-3, "glass and plywood");
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 18.9, 1e-3, "glass and plywood");
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,10 +1255,12 @@ fn t45_mu_uses_the_penalised_limit() {
 fn in_line(sim: &mut Sim, units: f32, first_yaw: f32) -> (Entity, Entity, Entity) {
     let (shooter, first) = range_lane(sim, "test:m4a1_exact", units);
     sim.intent(first).yaw = first_yaw;
-    place_at(sim, shooter, first, "chest", units);
+    place_at(sim, shooter, first, "Torso", units);
     let behind = sim.position(first) - Vec3::Z * 0.6;
-    let second = player(sim, behind, std::f32::consts::PI, 100.0);
-    let at = sphere(sim, first, "chest");
+    // Facing as the first, so the ray meets its torso as it met the
+    // first's (the spec's skeleton holds an arm before the chest).
+    let second = player(sim, behind, first_yaw, 100.0);
+    let at = sphere(sim, shooter, first, "Torso");
     aim(sim, shooter, at);
     (shooter, first, second)
 }
@@ -1326,7 +1326,7 @@ fn t47_fire_delay_clock() {
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_spaced", 1000.0);
         sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 10.0;
         let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
-        let at = sphere(&sim, target, "chest");
+        let at = sphere(&sim, shooter, target, "Torso");
         aim(&mut sim, shooter, at);
         let t0 = sim.tick();
         for (i, t) in times.into_iter().enumerate() {
@@ -1371,7 +1371,7 @@ fn t48_armour_by_damage_type() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 1000.0);
     set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR]);
-    close(shoot_at(&mut sim, shooter, target, "groin"), 35.0, 1e-3, "groin");
+    close(shoot_at(&mut sim, shooter, target, "Nuts"), 35.0, 1e-3, "Nuts");
     close(armour(&sim, target), 100.0, 1e-3, "no armour used");
 }
 
@@ -1403,7 +1403,7 @@ fn knock_back_on_an_infected_victim() {
         if infected {
             sim.app.world_mut().entity_mut(target).insert(movement::CaInfected);
         }
-        shoot_at(&mut sim, shooter, target, "chest");
+        shoot_at(&mut sim, shooter, target, "Torso");
         let k = sim.app.world().get::<movement::HitKnockback>(target).copied();
         if infected {
             let k = k.expect("knocked back");

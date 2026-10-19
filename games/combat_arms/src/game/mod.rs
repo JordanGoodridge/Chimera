@@ -22,6 +22,9 @@
 //! - `bots`: the computer soldiers of Bot Deathmatch (bots.md): roster,
 //!   senses, goals, aim and fire, on navigation areas generated from the
 //!   map's collision;
+//! - `characters`: the player characters (characters.md): model choice,
+//!   third-person animation, the posed skeleton's hit spheres and
+//!   sockets, death animations and bodies;
 //! - `rules`: game modes as rule modules (game_modes.md: Team Death
 //!   Match and Elimination Pro, `ca_mode`);
 //! - `net`: the game's part of the network (armour, the pickup prompt,
@@ -42,6 +45,7 @@
 
 pub mod attachments;
 pub mod bots;
+pub mod characters;
 pub mod data;
 pub mod grenades;
 pub mod hud;
@@ -165,6 +169,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(bots::CaBotsPlugin)
+            .add(characters::CaCharactersPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
     }

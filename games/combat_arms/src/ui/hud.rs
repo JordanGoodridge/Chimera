@@ -47,9 +47,11 @@
 //! - A round's end: the next round's start (`RoundRestarts`).
 //! - Spec yaw grows turning right: ours is `-Intent::yaw` (Q4).
 //! - Name tag opacity (255 seen, 125 blocked) multiplies the name
-//!   colour's own alpha (200); no models, so no name socket: the tag is
-//!   anchored at the character's position (the hull centre, the spec's
-//!   fallback); no distance limit, hidden only behind the camera (Q10).
+//!   colour's own alpha (200); the tag is anchored at the skeleton's
+//!   `NAME_socket` (`characters::CaPose`: a body model's, else the spec's
+//!   "stand" pose, characters.md 3), at the character's position (the
+//!   hull centre) without one; no distance limit, hidden only behind the
+//!   camera (Q10).
 //! - Text (Q2 and Q3, settled by ui_system.md): placed by `ui::layout`
 //!   (its T2-T6): fonts of the font list (`data/ui/fonts.toml`) scaled
 //!   ⌊H_f y_r⌋ tall and ⌊a_f x_r⌋ a glyph; aligned texts in their box,
@@ -575,6 +577,8 @@ struct HudInputs<'w, 's> {
     dropped: Query<'w, 's, &'static Dropped>,
     ids: Query<'w, 's, &'static Weapon>,
     spatial: SpatialQuery<'w, 's>,
+    /// Name sockets (characters.md 3).
+    poses: Query<'w, 's, (&'static crate::game::characters::CaPose, &'static crate::core::MovementState)>,
 }
 
 /// This frame's `CaHud` from the world and the memory.
@@ -811,9 +815,14 @@ fn update(
             if e == me {
                 continue;
             }
-            // The model's name socket; without one (no models yet) the
-            // character's position, the hull centre (Open question 10).
-            let anchor = t.translation;
+            // The skeleton's name socket; without one the character's
+            // position, the hull centre (Open question 10).
+            let anchor = world
+                .poses
+                .get(e)
+                .ok()
+                .and_then(|(p, s)| Some(p.world(t, s, UNIT, p.name_tag?)))
+                .unwrap_or(t.translation);
             let inputs = TagInputs {
                 local_alive,
                 teammate: !enemies(my_team, team),

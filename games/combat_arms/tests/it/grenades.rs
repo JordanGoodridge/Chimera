@@ -192,7 +192,7 @@ fn body(sim: &mut Sim, p: Entity) -> (Vec3, f32) {
     let world = sim.app.world_mut();
     let mut q = world.query::<(&Transform, &Intent, &MovementState, Option<&ColliderAabb>)>();
     let (t, i, s, a) = q.get(world, p).unwrap();
-    let (min, max, spheres) = body_geometry(t, i, s, a, MALE).unwrap();
+    let (min, max, spheres) = body_geometry(t, i, s, a, *MALE).unwrap();
     let top = MALE
         .iter()
         .zip(&spheres)
@@ -635,6 +635,12 @@ fn t25_smoke() {
     let rifle = weapon::give(sim.app.world_mut(), shooter, combat_arms::game::weapons::RIFLE).unwrap();
     sim.seconds(1.5);
     assert_eq!(sim.app.world().get::<Inventory>(shooter).unwrap().active, Some(rifle));
+    // At the target's chest (hull centre): its head leans to the rifle,
+    // off the line of the eyes (characters.md 11).
+    {
+        let d = sim.position(target) - (sim.position(shooter) + sim.state(shooter).eye_offset);
+        sim.intent(shooter).pitch = d.y.atan2(d.xz().length());
+    }
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;

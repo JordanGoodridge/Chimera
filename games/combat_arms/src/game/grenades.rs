@@ -1040,7 +1040,7 @@ impl GrenadeWorld<'_, '_> {
             if health.current <= 0.0 {
                 continue;
             }
-            let data = spheres.map_or(MALE, |s| s.0);
+            let data = spheres.map_or(*MALE, |s| s.0);
             let Some((min, max, spheres)) = body_geometry(t, intent, state, aabb, data) else {
                 continue;
             };
