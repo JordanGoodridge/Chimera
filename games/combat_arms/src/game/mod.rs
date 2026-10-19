@@ -28,7 +28,10 @@
 //!   `MapData` (world_dat.md);
 //! - `model`: the install's models (`.ltb`) and their animations as
 //!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
-//! - `props`: models the maps' objects place, as animated props.
+//! - `props`: models the maps' objects place, as animated props;
+//! - `view_model`: the weapons' first-person models from the install,
+//!   played by Chimera's view-model driver (provisional until
+//!   view_models.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -44,6 +47,7 @@ pub mod movement;
 pub mod net;
 pub mod props;
 pub mod rules;
+pub mod view_model;
 pub mod weapons;
 pub mod world;
 
@@ -154,5 +158,6 @@ impl PluginGroup for CombatArmsPlugins {
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
+            .add(view_model::CaViewModelPlugin)
     }
 }

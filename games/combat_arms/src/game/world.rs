@@ -33,6 +33,8 @@
 //!   triangle mesh.
 //! - Props: objects that name a model (`props`: the capture-the-flag
 //!   flags, whose model needs the V2 key).
+//! - View models: the weapons' first-person models their data names
+//!   (`view_model`), loaded with every map from the install (`load_from`).
 //! - Spawns: the `GameStartPoint` objects that serve the team modes'
 //!   family (`SPAWN_GAME_TYPE`, `Team Death Match`: game_modes.md S4,
 //!   `qualifies`: unlocked, `Spawn` exactly 1), in the map's order (the
@@ -143,6 +145,7 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
     let scale = super::movement::movement_data().meters_per_unit;
     let file = |path: &str| mount.read(path).ok();
     let mut map = convert(&world, name, scale, &file);
+    super::view_model::add_view_models(&mut map, &file);
     if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
         super::props::dev_prop(&world, &mut map, &spec, scale, &file);
     }

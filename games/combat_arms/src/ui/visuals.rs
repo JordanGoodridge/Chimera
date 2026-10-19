@@ -1,6 +1,8 @@
 //! Combat Arms' placeholder looks (wave 0), until its models load: the
 //! local player's weapon in first person as a box (a long dark one for a
-//! gun, a thin light one for a melee weapon); grenades in flight as small
+//! gun, a thin light one for a melee weapon) when the map has no view
+//! model for it (`game::view_model`: keyed ones without the V2 key);
+//! grenades in flight as small
 //! dark balls and smoke clouds as grey balls of the cloud's size
 //! (`grenade_balls`, `smoke_balls`). Other characters are the shell's
 //! capsules (`client::hud`). Nothing here is Combat Arms' look.
@@ -18,8 +20,8 @@ use bevy::prelude::*;
 use crate::{
     client::FirstPersonCamera,
     core::LocalPlayer,
-    map::loose::ShownItem,
-    weapon::{Hitscan, Inventory, Melee, grenade::SmokeCloud},
+    map::{ViewModels, loose::ShownItem},
+    weapon::{Hitscan, Inventory, Melee, Weapon, grenade::SmokeCloud},
 };
 
 /// The placeholder looks.
@@ -37,10 +39,12 @@ pub struct BoxGun(pub Entity);
 
 /// Keep a box in front of the first-person camera for the local player's
 /// active weapon: a gun's or a melee weapon's shape, none for anything
-/// else (or no weapon).
+/// else (or no weapon, or one the map has a view model for).
+#[allow(clippy::too_many_arguments)]
 fn box_gun(
     player: Option<Single<&Inventory, With<LocalPlayer>>>,
-    kinds: Query<(Has<Hitscan>, Has<Melee>)>,
+    kinds: Query<(&Weapon, Has<Hitscan>, Has<Melee>)>,
+    view_models: Option<Res<ViewModels>>,
     camera: Option<Single<Entity, With<FirstPersonCamera>>>,
     shown: Query<(Entity, &BoxGun)>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -57,9 +61,12 @@ fn box_gun(
     let (Some(weapon), Some(camera)) = (active, camera) else {
         return;
     };
-    let Ok((gun, melee)) = kinds.get(weapon) else {
+    let Ok((w, gun, melee)) = kinds.get(weapon) else {
         return;
     };
+    if view_models.is_some_and(|v| v.get(w.id).is_some()) {
+        return;
+    }
     // Metres, in the camera's space (-Z ahead, +X right, +Y up).
     let (size, colour, at) = if gun {
         (Vec3::new(0.04, 0.06, 0.45), Color::srgb(0.15, 0.15, 0.17), Vec3::new(0.16, -0.14, -0.45))

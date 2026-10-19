@@ -255,7 +255,8 @@ impl Mesh {
                     let bones: Vec<u32> = set.used().map(u32::from).collect();
                     let first = set.first_vertex as usize;
                     for v in first..first + set.vertex_count as usize {
-                        out[v] = blend(&bones, &geometry.weights[v]);
+                        // No stored weights when every set has one bone.
+                        out[v] = blend(&bones, geometry.weights.get(v).unwrap_or(&[0.0; 4]));
                     }
                 }
                 out
