@@ -14,12 +14,15 @@
 //!
 //! Weapons as parts (README, "Weapons and items"): `Trigger` (a per-pull
 //! limit), `Magazine` (cost; `ShellReload`: one round at a time, a shot stops
-//! it; `auto_reload`: an empty clip reloads, held or not), `Hitscan` (pellets
+//! it, optionally back to back with a closing part; `auto_reload`: an empty
+//! clip reloads, held or not; `WeaponState::reload_held`: a game holds
+//! reloads), `Hitscan` (pellets
 //! share a shot's inaccuracy offset; without a `DamageEffect` only its `Fired`
 //! event, for a game that delivers rounds itself)/`Melee` (delivery), `Penetration` with
 //! `PassMaterials` (bullets through walls and characters), `DamageEffect`,
 //! `WeaponSounds`, attack2 modes (`AltModes`, with `Zoom` (owner gets `Zoomed`,
-//! max speed) and `Burst`); `Inventory`, `WeaponState` timers,
+//! max speed; a game zooming its own way marks the weapon `OwnZoom` and sets
+//! `Zoomed` itself, with its own mouse scale) and `Burst`); `Inventory`, `WeaponState` timers,
 //! `WeaponRegistry`/`StartingWeapons` (per team), `give`; selection (or a
 //! game's own slot-key rules: `OwnSelection`) and deploy before movement, the Source-style weapon frame in `SimSet::Weapons` (spec
 //! weapons.md 3–4; both in `core::Predict` schedules, timed by
@@ -623,6 +626,14 @@ pub struct Inventory {
     prev_use: bool,
 }
 
+impl Inventory {
+    /// Attack2 as the weapon frame last saw it (the last tick's, before
+    /// this tick's frame): a game's own press edges (Combat Arms' zoom).
+    pub fn prev_secondary(&self) -> bool {
+        self.prev_secondary
+    }
+}
+
 /// A weapon's identity and handling.
 #[derive(Component, Clone, Debug)]
 pub struct Weapon {
@@ -693,13 +704,19 @@ pub struct Magazine {
 /// Magazine add-on: rounds go in one at a time (shotguns; spec 3.4,
 /// "reload one at a time", the CS-derived form). A reload first takes
 /// `start` (attacks wait for it), then each round `insert`, the next one
-/// starting a tick after the last went in, until the clip is full or the
-/// reserve empty. Firing with rounds in the clip stops it; switching away
-/// too. Reload sounds (`WeaponSounds::reload`) play from each insert.
+/// starting a tick after the last went in (`back_to_back`: as the last
+/// goes in, timed from when it was due), until the clip is full or the
+/// reserve empty, then `finish` (0: none; still reloading, a shot ends
+/// it). Firing with rounds in the clip stops it; switching away too.
+/// Reload sounds (`WeaponSounds::reload`) play from each insert.
 #[derive(Component, Clone, Debug)]
 pub struct ShellReload {
     pub start: f32,
     pub insert: f32,
+    /// The closing part after the last round (Combat Arms' post-reload).
+    pub finish: f32,
+    /// No tick between rounds (Combat Arms' reload loop).
+    pub back_to_back: bool,
 }
 
 /// Where a one-at-a-time reload is (`ShellReload`).
@@ -712,6 +729,8 @@ pub enum ShellStage {
     Starting,
     /// A round going in, in at `shell_next`.
     Inserting,
+    /// The closing part (`ShellReload::finish`) until `shell_next`.
+    Finishing,
 }
 
 /// Delivery: instant traces from the eye. Without a `DamageEffect` the
@@ -908,11 +927,20 @@ pub struct Burst {
 
 /// On a character looking through a zoomed weapon: its field of view
 /// (horizontal degrees at 4:3) and whether that is a sniper scope.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Zoomed {
     pub fov: f32,
     pub scope: bool,
+    /// The mouse turn multiplier the game wants (Combat Arms' by zoom
+    /// level); none: the client's FOV rule (`zoom_sensitivity_ratio`).
+    pub sensitivity: Option<f32>,
 }
+
+/// On a weapon: the game keeps its owner's `Zoomed` itself while it is
+/// drawn (Combat Arms' scopes, with their transitions); `apply_zoom`
+/// leaves it alone then.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct OwnZoom;
 
 /// Delivery: melee swings, one per attack button.
 #[derive(Component, Clone, Debug)]
@@ -1182,6 +1210,9 @@ pub struct WeaponState {
     /// A one-at-a-time reload (`ShellReload`) and when its stage ends.
     pub shells: ShellStage,
     pub shell_next: f64,
+    /// The game holds reloads (the key's and the automatic ones) while
+    /// set: Combat Arms zooms out first, then reloads.
+    pub reload_held: bool,
 }
 
 impl WeaponState {
@@ -1608,12 +1639,15 @@ fn weapon_frame(
         // One-at-a-time reloads step on (spec 3.4; T25): the start, then a
         // round per insert, the next insert a tick after.
         if w.state.shells != ShellStage::Idle && due >= w.state.shell_next {
-            let insert = w.shells.map_or(0.0, |s| s.insert) as f64;
+            let (insert, finish, back_to_back) =
+                w.shells.map_or((0.0, 0.0, false), |s| (s.insert as f64, s.finish as f64, s.back_to_back));
+            // Back to back, each part runs from when the last was due.
+            let from = if back_to_back { w.state.shell_next } else { now };
             let room = w.magazine.as_ref().is_some_and(|m| m.clip < m.size && m.reserve > 0);
             match w.state.shells {
                 ShellStage::Starting if room => {
                     w.state.shells = ShellStage::Inserting;
-                    w.state.shell_next = now + insert;
+                    w.state.shell_next = from + insert;
                     if let Some(s) = w.sounds {
                         w.state.pending = s.reload.iter().map(|(t, e)| (now + *t as f64, e.clone())).collect();
                     }
@@ -1629,12 +1663,26 @@ fn weapon_frame(
                     }
                     w.state.shells = ShellStage::Starting;
                     w.state.shell_next = now;
-                    if !w.magazine.as_ref().is_some_and(|m| m.clip < m.size && m.reserve > 0) {
-                        w.state.shells = ShellStage::Idle;
+                    let room = w.magazine.as_ref().is_some_and(|m| m.clip < m.size && m.reserve > 0);
+                    if room && back_to_back {
+                        // The next round starts as this one goes in.
+                        w.state.shells = ShellStage::Inserting;
+                        w.state.shell_next = from + insert;
+                        if let Some(s) = w.sounds {
+                            w.state.pending = s.reload.iter().map(|(t, e)| (now + *t as f64, e.clone())).collect();
+                        }
+                        ctx.w.event(owner, active, WeaponEventKind::ShellInserting);
+                    } else if !room {
                         if let Some(s) = w.sounds {
                             w.state.pending = s.finish.iter().map(|(t, e)| (now + *t as f64, e.clone())).collect();
                         }
-                        ctx.w.event(owner, active, WeaponEventKind::Reloaded);
+                        if finish > 0.0 {
+                            w.state.shells = ShellStage::Finishing;
+                            w.state.shell_next = from + finish;
+                        } else {
+                            w.state.shells = ShellStage::Idle;
+                            ctx.w.event(owner, active, WeaponEventKind::Reloaded);
+                        }
                     }
                 }
                 _ => {
@@ -1689,7 +1737,8 @@ fn weapon_frame(
         }
 
         // An empty clip reloading by itself (`Magazine::auto_reload`).
-        if w.magazine.as_ref().is_some_and(|m| m.auto_reload && m.clip == 0 && m.reserve > 0)
+        if !w.state.reload_held
+            && w.magazine.as_ref().is_some_and(|m| m.auto_reload && m.clip == 0 && m.reserve > 0)
             && w.state.next_primary <= due
             && w.state.next_secondary <= due
             && !w.state.reloading()
@@ -1784,7 +1833,7 @@ fn weapon_frame(
         }
 
         // 5. Reload key.
-        if intent.reload && w.state.next_primary <= due && !w.state.reloading() {
+        if intent.reload && !w.state.reload_held && w.state.next_primary <= due && !w.state.reloading() {
             try_reload(&mut w, &mut inv, now, owner, ctx.w);
             w.state.fire_duration = 0.0;
         }
@@ -1793,6 +1842,7 @@ fn weapon_frame(
         if !intent.fire && !intent.secondary && !intent.reload {
             w.state.fired_on_empty = false;
             if w.magazine.as_ref().is_some_and(|m| m.clip == 0)
+                && !w.state.reload_held
                 && w.state.next_primary <= due
                 && w.state.next_secondary <= due
                 && !w.state.reloading()
@@ -1860,16 +1910,16 @@ fn try_reload(w: &mut WeaponPartsItem, inv: &mut Inventory, now: f64, owner: Ent
     events.event(owner, w.entity, WeaponEventKind::ReloadStarted);
 }
 
-/// Characters look through their active weapon's zoom (`Zoomed`) and move
-/// at its zoomed speed.
+/// Characters look through their active weapon's zoom (`Zoomed`; a weapon
+/// with `OwnZoom` leaves it to the game) and move at its zoomed speed.
 #[allow(clippy::type_complexity)]
 fn apply_zoom(
     owners: Query<(Entity, &Inventory, Option<&Zoomed>, Option<&MaxSpeed>), Without<NetDrawn>>,
-    weapons: Query<(&Weapon, Option<&AltModes>, Option<&Zoom>)>,
+    weapons: Query<(&Weapon, Option<&AltModes>, Option<&Zoom>, Has<OwnZoom>)>,
     mut commands: Commands,
 ) {
     for (owner, inv, zoomed, speed) in &owners {
-        let Some((weapon, modes, zoom)) = inv.active.and_then(|a| weapons.get(a).ok()) else {
+        let Some((weapon, modes, zoom, own)) = inv.active.and_then(|a| weapons.get(a).ok()) else {
             if zoomed.is_some() {
                 commands.entity(owner).remove::<Zoomed>();
             }
@@ -1881,12 +1931,14 @@ fn apply_zoom(
                 Zoomed {
                     fov: *z.fov.get(mode - 1)?,
                     scope: z.scope,
+                    sensitivity: None,
                 },
                 z.max_speed.or(weapon.max_speed),
             ))
         });
         let want_speed = now.map_or(weapon.max_speed, |(_, s)| s);
-        if zoomed != now.as_ref().map(|(z, _)| z) {
+        // The game's own zoom (`OwnZoom`) keeps its `Zoomed` itself.
+        if !own && zoomed != now.as_ref().map(|(z, _)| z) {
             match now {
                 Some((z, _)) => commands.entity(owner).insert(z),
                 None => commands.entity(owner).remove::<Zoomed>(),

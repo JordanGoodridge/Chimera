@@ -77,6 +77,16 @@ impl MouseSettings {
     pub fn zoom_scale(&self, zoomed_fov: Option<f32>) -> f32 {
         zoomed_fov.map_or(1.0, |fov| self.zoom_ratio * fov / 90.0)
     }
+
+    /// The turn multiplier looking through `zoomed`: the game's own
+    /// (`Zoomed::sensitivity`, Combat Arms' by zoom level) or else the
+    /// FOV rule (`zoom_scale`).
+    pub fn zoomed_scale(&self, zoomed: Option<&crate::weapon::Zoomed>) -> f32 {
+        match zoomed {
+            Some(z) => z.sensitivity.unwrap_or_else(|| self.zoom_scale(Some(z.fov))),
+            None => 1.0,
+        }
+    }
 }
 
 pub struct LocalInputPlugin;
@@ -374,7 +384,7 @@ pub fn write_local_intent(
         bound("+forward") && bound("+back"),
     );
 
-    let zoom = mouse_settings.zoom_scale(zoomed.iter().next().map(|z| z.fov));
+    let zoom = mouse_settings.zoomed_scale(zoomed.iter().next());
     let turn = mouse_settings.look_delta(motion_counts) * zoom;
     if freelook {
         free.turn(turn, intent.pitch);
@@ -441,6 +451,17 @@ mod tests {
         assert_eq!(m.zoom_scale(None), 1.0);
         // AWP first zoom (40 degrees): 1.2 * 40 / 90.
         assert!((m.zoom_scale(Some(40.0)) - 1.2 * 40.0 / 90.0).abs() < 1e-6);
+        // A game's own scale wins over the FOV rule (Combat Arms: 1/4 at
+        // its first zoom level).
+        let mut z = crate::weapon::Zoomed {
+            fov: 20.0,
+            scope: true,
+            sensitivity: None,
+        };
+        assert!((m.zoomed_scale(Some(&z)) - 1.2 * 20.0 / 90.0).abs() < 1e-6);
+        z.sensitivity = Some(0.25);
+        assert_eq!(m.zoomed_scale(Some(&z)), 0.25);
+        assert_eq!(m.zoomed_scale(None), 1.0);
     }
 
     #[test]

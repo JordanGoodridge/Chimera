@@ -1,0 +1,88 @@
+# Combat Arms' L96A1, the bolt-action sniper rifle of
+# specs/combat_arms/weapon_classes.md: the reference build's numbers as
+# its "Typical weapons" table gives them ([TW: row]) and section 6
+# ([6.x]); its scope, "Sniper Scope", from "Scope records" ([SR]). Fields
+# the class spec doesn't give are left to the attribute defaults
+# (specs/combat_arms/attribute_data.md). The install's own record
+# overrides these when it can be read. Our numbers, not a file from the
+# game.
+#
+# The format: docs/weapon-data.md; the hooks: game/weapons.rs. Units:
+# world units (1.8 cm each, by body size) and hit points.
+id = "combat_arms:l96a1"
+units = { length = 0.018, damage = 0.01 }
+# A primary (inventory class 1).
+slot = 0
+# [TW: Draw] 1100 ms.
+draw = 1.1
+
+# [TW: Clip / total] 5 / 20.
+[ammo."combat_arms:7.62mm_l96a1"]
+max = 15
+
+# [TW: RapidFireCount] 1, [TW: Fire] 1400 ms: [6.2] the bolt is the fire
+# animation (43 rounds/min).
+[trigger]
+automatic = false
+cycle = 1.4
+timing = "accumulate"
+
+# [TW: Clip / total] 5, [TW: Reload] 2900 ms.
+[magazine]
+clip = 5
+ammo = "combat_arms:7.62mm_l96a1"
+reload = 2.9
+auto_reload = true
+
+# [TW: Range] 5000, one ray.
+[hitscan]
+range = 5000.0
+pellets = 1
+punch_scale = 1.0
+
+# [TW: Rays x damage] 160, [TW: Bands] 4000/4500/5000 at 1.0/0.7/0.35.
+[hooks."combat_arms:damage"]
+damage = 160.0
+damage_type = 2
+effect_range = [4000.0, 4500.0, 5000.0]
+range_damage = [1.0, 0.7, 0.35]
+
+# [TW: MinPerturb/MaxPerturb] 100/100 ([6.1]: the fixed no-scope cone),
+# [TW: DynamicPerturbFactor] 1.0, [TW: PerturbIncSpeed/DecSpeed] 1.0/0.1,
+# [TW: Zoomed min/max] 4/60 and inc/dec 1.0/0.5, [TW: Fire cap] 1.0 all,
+# [TW: Walk / run / jump target] 1.0 all, [TW: DecDelay] 2400 ms.
+[hooks."combat_arms:spread"]
+cone = { min = 100, max = 100, inc = 1.0, dec = 0.1 }
+zoomed_cone = { min = 4, max = 60, inc = 1.0, dec = 0.5 }
+dynamic_factor = 1.0
+state = { fire = 1.0, fire_move = 1.0, fire_duck = 1.0, fire_move_duck = 1.0, walk = 1.0, run = 1.0, jump = 1.0 }
+dec_delay = 2400.0
+
+# [TW: Kick] 5 / 5, [TW: MaxRandomPitch] 0, [TW: Wag] -1/1, 10; [6.4]
+# MaxRandomwag 0 and JitterDecDelay 2400 ms.
+[hooks."combat_arms:recoil"]
+pitch = 5.0
+max_pitch = 5.0
+random_pitch = 0.0
+wag_r = -1.0
+wag_l = 1.0
+max_wag = 10.0
+random_wag = 0.0
+jitter_dec_delay = 2400.0
+
+# [TW: ZoomTime] 0.18 s, [TW: Sway] X 4.5/10, Y 1.1/10,
+# [TW: ReloadAfterFire] 1; [TW: Scope] / [SR] "Sniper Scope", one level
+# at 20 degrees.
+[hooks."combat_arms:zoom"]
+zoom_time = 0.18
+sway = { x_speed = 4.5, x_freq = 10.0, y_speed = 1.1, y_freq = 10.0 }
+reload_after_fire = true
+scope = { name = "Sniper Scope", fov = [20.0] }
+
+# [TW: MovePenalty] 0.24.
+[hooks."combat_arms:handling"]
+move_penalty = 0.24
+
+# [TW: DisableCrosshair] 1.
+[hooks."combat_arms:hud"]
+disable_crosshair = true

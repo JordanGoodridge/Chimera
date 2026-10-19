@@ -904,7 +904,7 @@ mod tests {
         assert!((fov(&app) - vertical_fov(90.0)).abs() < 1e-3);
         // A scope's zoom is its own, whatever fov_desired is.
         app.world_mut().resource_mut::<Console>().submit("fov_desired 80");
-        app.world_mut().entity_mut(player).insert(crate::weapon::Zoomed { fov: 40.0, scope: true });
+        app.world_mut().entity_mut(player).insert(crate::weapon::Zoomed { fov: 40.0, scope: true, sensitivity: None });
         app.update();
         app.update();
         assert!((fov(&app) - vertical_fov(40.0)).abs() < 1e-3);

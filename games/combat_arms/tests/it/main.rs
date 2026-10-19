@@ -17,6 +17,7 @@ mod model;
 mod movement;
 mod net;
 mod skeleton;
+mod weapon_classes;
 mod weapon_firing;
 mod world;
 

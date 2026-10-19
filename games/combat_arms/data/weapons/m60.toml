@@ -1,0 +1,69 @@
+# Combat Arms' M60, the machine gun of specs/combat_arms/weapon_classes.md:
+# the reference build's numbers as its "Typical weapons" table gives them
+# ([TW: row]) and section 3 ([3.1]). Fields the class spec doesn't give
+# are left to the attribute defaults (specs/combat_arms/attribute_data.md).
+# The install's own record overrides these when it can be read. Our
+# numbers, not a file from the game.
+#
+# The format: docs/weapon-data.md; the hooks: game/weapons.rs. Units:
+# world units (1.8 cm each, by body size) and hit points.
+id = "combat_arms:m60"
+units = { length = 0.018, damage = 0.01 }
+# A primary (inventory class 1).
+slot = 0
+# [TW: Draw] 1500 ms.
+draw = 1.5
+
+# [TW: Clip / total] 100 / 200.
+[ammo."combat_arms:7.62mm_m60"]
+max = 100
+
+# [TW: RapidFireCount] 0, [TW: Fire] 115 ms ([3.2]: 522 rounds/min).
+[trigger]
+automatic = true
+cycle = 0.115
+timing = "accumulate"
+
+# [TW: Clip / total] 100, [TW: Reload] 3500 ms.
+[magazine]
+clip = 100
+ammo = "combat_arms:7.62mm_m60"
+reload = 3.5
+auto_reload = true
+
+# [TW: Range] 3000, one ray.
+[hitscan]
+range = 3000.0
+pellets = 1
+punch_scale = 1.0
+
+# [TW: Rays x damage] 47, [TW: Bands] 1500/2500/3000 at 1.0/0.7/0.35.
+[hooks."combat_arms:damage"]
+damage = 47.0
+damage_type = 2
+effect_range = [1500.0, 2500.0, 3000.0]
+range_damage = [1.0, 0.7, 0.35]
+
+# [TW: MinPerturb/MaxPerturb] 13/100, [TW: DynamicPerturbFactor] 1.1,
+# [TW: PerturbIncSpeed/DecSpeed] 1.5/0.3, [TW: Fire cap] .22/.42/.14/.28
+# ([3.1]: crouching pays off through the cap only), [TW: Walk / run /
+# jump target] .18/.24/.80, [TW: DecDelay] 100 ms. No zoomed values ([TW]
+# "-").
+[hooks."combat_arms:spread"]
+cone = { min = 13, max = 100, inc = 1.5, dec = 0.3 }
+dynamic_factor = 1.1
+state = { fire = 0.22, fire_move = 0.42, fire_duck = 0.14, fire_move_duck = 0.28, walk = 0.18, run = 0.24, jump = 0.80 }
+dec_delay = 100.0
+
+# [TW: Kick] 3.0 / 18, [TW: MaxRandomPitch] 0.03, [TW: Wag] -1.25/1.25, 18.
+[hooks."combat_arms:recoil"]
+pitch = 3.0
+max_pitch = 18.0
+random_pitch = 0.03
+wag_r = -1.25
+wag_l = 1.25
+max_wag = 18.0
+
+# [TW: MovePenalty] 0.33.
+[hooks."combat_arms:handling"]
+move_penalty = 0.33

@@ -58,10 +58,21 @@
 //! - `combat_arms:handling` (`CaHandling`): the held weapon's
 //!   `MovePenalty`, set on its carrier as the movement's `HeldMovePenalty`
 //!   when it is drawn (in the predicted tick, `core::Predict::Select`).
+//! - `combat_arms:zoom` (`zoom`, `CaZoom`): zoom and scopes
+//!   (weapon_classes.md 7); while zoomed (`CaZoom::zoomed`) the spread uses
+//!   its zoomed values (`mode_of`).
+//! - `combat_arms:spin`, `combat_arms:alt_fire` and the class rules
+//!   (`classes`): what differs between the classes (weapon_classes.md:
+//!   shell reloads stopped by fire, minigun spin, alt-fire volleys, the
+//!   pellet hit carry-over in the delivery here).
 //!
-//! A network client predicts `CaSpread` and `CaRecoil` with the weapon
-//! (`weapon::NetPart`: the server's state goes with its player's;
-//! `game::net`).
+//! The cone's arithmetic is weapon_classes.md's "Cone integers": the
+//! limits truncated after multiplying by the dynamic factor (a 32-bit
+//! value, the products in double precision), the cone truncated again.
+//!
+//! A network client predicts `CaSpread`, `CaRecoil`, `CaZoom` and `CaSpin`
+//! with the weapon (`weapon::NetPart`: the server's state goes with its
+//! player's; `game::net`).
 //!
 //! The data's `combat_arms:inventory` table (sprint-out time) is
 //! `inventory`'s hook.
@@ -107,13 +118,16 @@
 //!   (both figure types). Nothing marks a character infected yet (no game
 //!   modes).
 //! - Not done: the back push (`BaseCamBackJitter`) and the view-model
-//!   jiggle (presentation), continuous fire, prefire, per-round reloads,
-//!   mod and perk bonuses (Q8: identity in a plain match), the fire-mode
+//!   jiggle (presentation), continuous fire, prefire (but the minigun's,
+//!   `classes`), mod and perk bonuses (Q8: identity in a plain match), the fire-mode
 //!   key (the toggle is attack2 until the binds come), the out-of-ammo
 //!   voice line.
 //!
 //! Slots and switching are `inventory`'s, thrown weapons `grenades`',
 //! attachments `attachments`'.
+
+pub mod classes;
+pub mod zoom;
 
 use std::sync::OnceLock;
 
@@ -133,6 +147,11 @@ use crate::{
         lagcomp::{self, HitHistory, LagCompSettings, LagCompStats, ViewTick},
         random::{Rng, shared_random},
     },
+};
+
+pub use self::{
+    classes::{ALT_FIRE, CaAltFire, CaSpin, CarryOver, PelletCarryOver, SPIN, SpinParams, SpinState, reported_hits},
+    zoom::{CaZoom, Scope, Sway, ZOOM, ZoomParams},
 };
 
 /// The M4A1 (data/weapons/m4a1.toml): the rifle players start with.
@@ -479,6 +498,16 @@ pub fn fire_mode(mode: u8, burst: Option<&Burst>, zoom: Option<&Zoom>) -> FireMo
     }
 }
 
+/// `fire_mode`, zoomed whenever Combat Arms' own zoom is (`CaZoom::zoomed`:
+/// a level or a transition, weapon_classes.md 7).
+pub fn mode_of(mode: u8, burst: Option<&Burst>, zoom: Option<&Zoom>, ca_zoom: Option<&CaZoom>) -> FireMode {
+    if ca_zoom.is_some_and(CaZoom::zoomed) {
+        FireMode::Zoomed
+    } else {
+        fire_mode(mode, burst, zoom)
+    }
+}
+
 /// A weapon's spread (`combat_arms:spread`): the data and the two meters.
 #[derive(Component, Clone, Debug)]
 pub struct CaSpread {
@@ -561,17 +590,20 @@ impl CaSpread {
     }
 
     /// The cone `n` (thousandths) a shot fired now gets in `mode`, from
-    /// the meters as they stand: n_min + floor((n_max - n_min) p) g.
+    /// the meters as they stand: trunc(n_min + floor((n_max - n_min) p) g),
+    /// each limit truncated after multiplying by g (weapon_classes.md,
+    /// "Cone integers"; Q7: g the 32-bit value, the products in double
+    /// precision, so 50 x 1.3 is 64).
     pub fn cone(&self, mode: FireMode) -> f32 {
         let c = self.cone_params(mode);
-        let g = self.params.dynamic_factor;
-        let max = (c.max as f32 * g).trunc();
-        let min = (c.min as f32 * g).trunc().min(max);
+        let g = self.params.dynamic_factor as f64;
+        let max = (c.max as f64 * g).trunc();
+        let min = (c.min as f64 * g).trunc().min(max);
         if max <= 0.0 {
             return 0.0;
         }
         let p = self.fraction() as f64;
-        min + (((max - min) as f64 * p).floor() as f32) * g
+        (min + ((max - min) * p).floor() * g).trunc() as f32
     }
 
     /// One firing-meter sub-step at `now`: a shot grows it toward `cap`
@@ -1203,6 +1235,18 @@ impl Plugin for CaWeaponsPlugin {
         })
         .register_weapon_hook::<CaHandling>(HANDLING, |e, _, p| {
             e.insert(*p);
+        })
+        .register_weapon_hook::<ZoomParams>(ZOOM, |e, _, p| {
+            e.insert((CaZoom::new(p.clone()), crate::weapon::OwnZoom));
+        })
+        .register_weapon_hook::<SpinParams>(SPIN, |e, _, p| {
+            e.insert(CaSpin {
+                params: *p,
+                state: SpinState::Idle,
+            });
+        })
+        .register_weapon_hook::<CaAltFire>(ALT_FIRE, |e, _, p| {
+            e.insert((*p, p.burst()));
         });
         if let Err(e) = app.add_weapon_set(super::data::weapon_set()) {
             panic!("Combat Arms weapon data: {e}");
@@ -1212,9 +1256,24 @@ impl Plugin for CaWeaponsPlugin {
             .insert_resource(CaSurfaces::built_in().clone())
             .add_message::<WeaponEvent>()
             .add_message::<Damage>()
+            .init_resource::<PelletCarryOver>()
             .add_systems(
                 Predict::Weapons,
-                (before_shots.before(WeaponFrame), after_shots.after(WeaponFrame)),
+                (
+                    // The class rules and the zoom step after the hands
+                    // (`inventory`), then the cone the frame shows.
+                    (classes::class_rules, zoom::zoom_step, before_shots)
+                        .chain()
+                        .after(super::inventory::hands)
+                        .before(WeaponFrame),
+                    (after_shots, zoom::bolt_zoom_out).chain().after(WeaponFrame),
+                ),
+            )
+            // Zoom presses before movement (the scoped speed limit from
+            // the press's tick), after selection (a switch resets).
+            .add_systems(
+                Predict::Select,
+                zoom::zoom_input.after(crate::weapon::SelectWeapons).after(apply_handling),
             )
             .add_systems(FixedUpdate, give_armour.run_if(crate::core::authoritative))
             // In the predicted tick: a client replaying a switch moves
@@ -1223,7 +1282,9 @@ impl Plugin for CaWeaponsPlugin {
             // The meters and the kick are predicted with the weapon and
             // go to the client predicting it (`weapon::sync`).
             .predicted_part::<CaSpread>()
-            .predicted_part::<CaRecoil>();
+            .predicted_part::<CaRecoil>()
+            .predicted_part::<CaZoom>()
+            .predicted_part::<CaSpin>();
     }
 }
 
@@ -1296,6 +1357,7 @@ fn before_shots(
         Option<&AltModes>,
         Option<&Burst>,
         Option<&Zoom>,
+        Option<&CaZoom>,
     )>,
     clock: Res<SimClock>,
     mut commands: Commands,
@@ -1303,7 +1365,7 @@ fn before_shots(
     let (dt, now) = (clock.dt(), clock.now);
     for (owner, inv, mut punch) in &mut owners {
         for &w in &inv.weapons {
-            let Ok((_, recoil, spread, scan, modes, burst, zoom)) = weapons.get_mut(w) else {
+            let Ok((_, recoil, spread, scan, modes, burst, zoom, ca_zoom)) = weapons.get_mut(w) else {
                 continue;
             };
             if let Some(mut r) = recoil
@@ -1321,7 +1383,7 @@ fn before_shots(
             if Some(w) == inv.active
                 && let (Some(s), Some(mut scan)) = (spread, scan)
             {
-                let mode = fire_mode(modes.map_or(0, |m| m.current), burst, zoom);
+                let mode = mode_of(modes.map_or(0, |m| m.current), burst, zoom, ca_zoom);
                 let n = s.cone(mode) / 1000.0;
                 let want = SpreadShape::Disc {
                     inaccuracy: n,
@@ -1544,11 +1606,12 @@ fn after_shots(
         Option<&AltModes>,
         Option<&Burst>,
         Option<&Zoom>,
+        Option<&CaZoom>,
     )>,
     mut delivery: Delivery,
     clock: Res<SimClock>,
     scales: Res<SpreadScales>,
-    options: Res<SpreadOptions>,
+    (options, carry_over): (Res<SpreadOptions>, Res<PelletCarryOver>),
     mut commands: Commands,
 ) {
     let now = clock.now;
@@ -1580,10 +1643,10 @@ fn after_shots(
     // Deliver, with the cone the meters give before this tick's steps.
     let mut out: Vec<WeaponEvent> = Vec::new();
     for r in &rounds {
-        let Ok((Some(mut dmg), spread, _, scan, _, burst, zoom)) = weapons.get_mut(r.weapon) else {
+        let Ok((Some(mut dmg), spread, _, scan, _, burst, zoom, ca_zoom)) = weapons.get_mut(r.weapon) else {
             continue;
         };
-        let mode = fire_mode(r.mode, burst, zoom);
+        let mode = mode_of(r.mode, burst, zoom, ca_zoom);
         let half = spread.as_ref().map_or(0.0, |s| s.cone(mode)) / 1000.0;
         let pellets = scan.map_or(1, |s| s.pellets.max(1));
         let range = scan.map_or(0.0, |s| s.range);
@@ -1602,22 +1665,34 @@ fn after_shots(
         }
         let aim = aim_of(r.yaw, r.pitch);
         let rewound = delivery.rewind(r.owner, server);
+        let bodies = delivery.bodies(r.owner, &rewound);
+        // Weapon_classes.md 5.7: a pellet that hits no one reports the
+        // shot's most recent real hit.
+        let mut carry = CarryOver::new(carry_over.0);
         for pellet in 0..pellets {
             let mut rng = Rng::new(r.seed.wrapping_add(1 + pellet));
             let (u1, u2) = (rng.next(), rng.next());
             let dir = square_dir(aim, half, u1, u2);
-            walk(&mut delivery, &dmg, r, dir, range, &rewound, &mut rng, server, &mut out);
+            let real = walk(&mut delivery, &dmg, r, dir, range, &bodies, &mut rng, server, &mut out);
+            if let Some(c) = carry.pellet(real) {
+                let b = &bodies[c.body];
+                let behind = is_behind(b.forward, b.right, c.dir);
+                let d = base_damage(&dmg, rng.next(), behind, c.distance);
+                if server {
+                    hurt(&mut delivery, &dmg, r, b, c.sphere, d, c.point, c.dir, &mut out);
+                }
+            }
         }
     }
 
     // Spread sub-steps for each owner's active weapon, then the kicks.
     for (owner, inv, intent, state, vel, mut punch, ca_move) in &mut owners {
         let Some(active) = inv.active else { continue };
-        let Ok((_, spread, recoil, _, modes, burst, zoom)) = weapons.get_mut(active) else {
+        let Ok((_, spread, recoil, _, modes, burst, zoom, ca_zoom)) = weapons.get_mut(active) else {
             continue;
         };
         let mine: Vec<&Round> = rounds.iter().filter(|r| r.owner == owner && r.weapon == active).collect();
-        let mode = fire_mode(modes.map_or(0, |m| m.current), burst, zoom);
+        let mode = mode_of(modes.map_or(0, |m| m.current), burst, zoom, ca_zoom);
         if let Some(mut s) = spread {
             let tick = SpreadTick {
                 intent,
@@ -1742,8 +1817,21 @@ fn step_spread(s: &mut CaSpread, scales: &SpreadScales, options: &SpreadOptions,
     }
 }
 
+/// A pellet's real hit on a character in the shooter's own test (the
+/// ray's first segment), for the carry-over (weapon_classes.md 5.7).
+#[derive(Clone, Copy, Debug)]
+struct PelletHit {
+    /// Index in the round's bodies.
+    body: usize,
+    sphere: usize,
+    point: Vec3,
+    dir: Vec3,
+    /// From the round's origin, metres.
+    distance: f32,
+}
+
 /// Walk one pellet's ray from the round's origin (the spec's "Hitscan",
-/// "Penetration" and "Damage per ray").
+/// "Penetration" and "Damage per ray"); its first segment's character hit.
 #[allow(clippy::too_many_arguments)]
 fn walk(
     w: &mut Delivery,
@@ -1751,12 +1839,12 @@ fn walk(
     r: &Round,
     dir: Vec3,
     range: f32,
-    rewound: &[lagcomp::Rewound],
+    bodies: &[Body],
     rng: &mut Rng,
     server: bool,
     out: &mut Vec<WeaponEvent>,
-) {
-    let bodies = w.bodies(r.owner, rewound);
+) -> Option<PelletHit> {
+    let mut real = None;
     let excluded: Vec<Entity> = std::iter::once(r.owner)
         .chain(w.characters.iter().map(|(e, ..)| e))
         .collect();
@@ -1815,6 +1903,15 @@ fn walk(
             // The reported point: where the ray enters the plain box.
             let t_point = box_entry(b.min, b.max, from, dir, left).unwrap_or(t);
             let point = from + dir * t_point;
+            if segment == 0 {
+                real = Some(PelletHit {
+                    body: bi,
+                    sphere: si,
+                    point,
+                    dir,
+                    distance: point.distance(r.origin),
+                });
+            }
             out.push(event(kind(from, point, Some(b.entity), Some(-dir))));
             let d = match first {
                 // One behind the first victim (Q5): its damage banded
@@ -1883,6 +1980,7 @@ fn walk(
         dir = (dir + q * Vec3::X * rng.range(-p, p) + q * Vec3::Y * rng.range(-p, p)).normalize();
         from = exit + dir * 1e-3;
     }
+    real
 }
 
 /// Damage `d` (health units, before the victim) to the sphere `si` of

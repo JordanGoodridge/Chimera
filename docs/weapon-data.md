@@ -50,6 +50,8 @@ clip = 30
 ammo = "cs_source:762mm"        # an ammo type: reserve max, box, penetration
 reload = 2.4324                 # s (a shell's, with `shells`)
 # shells = { start = 0.5, insert = 0.45 }   # one round at a time
+#   (+ finish = 0.9: a closing part, back_to_back = true: no tick
+#   between rounds; Combat Arms' shotguns)
 # reload_while_held = false
 # auto_reload = false           # an empty clip reloads, held or not (CA)
 
@@ -152,7 +154,12 @@ hud_icon = "ammo_762"
   (`move_penalty`, the carrier's `HeldMovePenalty`), `combat_arms:grenade`
   (games/combat_arms/src/game/grenades.rs: counts, pre-fire, release and
   post-fire times, perturb, fuse, speed, hit points, the area damage and
-  its type, the over-time sphere; data/weapons/m67.toml).
+  its type, the over-time sphere; data/weapons/m67.toml), `combat_arms:zoom`
+  (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`, the
+  stock `scope = { name, fov = [per level] }`: game/weapons/zoom.rs),
+  `combat_arms:spin` (a minigun's `prefire`, `postfire`, `loop_len`,
+  `reversible`) and `combat_arms:alt_fire` (attack2's volley: `rounds`,
+  `interval`, `cycle`; both game/weapons/classes.rs).
 - **Errors.** Unknown keys, an unknown base, ammo type or hook, a loop of
   bases, a duplicate ID and hook parameters the hook can't read are load
   errors naming the document and key. A game's own data failing to load

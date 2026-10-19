@@ -163,6 +163,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - lithtech: Attribute files: no event text-change overwrite layer; literal readings where the spec is silent on spacing (`lithtech/formats/src/attributes.rs`)
 - games/combat_arms ui: HUD: no items, attachments, modes, score panel or heartbeat sound driving it yet; name tags on the hull centre (no name socket); placeholder art (`games/combat_arms/src/ui/hud.rs`)
 - games/combat_arms: Firing: placeholder hit-sphere places, no client-reported victim, spread per tick, default gear for all, nothing infected yet (`games/combat_arms/src/game/weapons.rs`)
+- games/combat_arms zoom: Scopes from the weapon's data (no attachments or modifications file); placeholder overlay, no zoom sounds; the camera keeps Chimera's vertical FOV rule (`games/combat_arms/src/game/weapons/zoom.rs`)
+- games/combat_arms classes: Minigun rounds by the trigger's cycle, not its fire keys; no continuous fire, pre- or post-fire, launchers or projectiles; one reload time for the double barrel (`games/combat_arms/src/game/weapons/classes.rs`)
 - apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
 - games/combat_arms models: Animations resampled at 30 fps for Chimera's AnimSet (no LithTech tracker: no key strings, transitions or L + 1 done); LOD 0 only; vertex animation, render styles and extra textures ignored (`games/combat_arms/src/game/model.rs`)
 - games/combat_arms props: Object Scale, MoveToFloor, Rotate and game type ignored; props don't collide; light from the nearest light-grid sample (`games/combat_arms/src/game/props.rs`)

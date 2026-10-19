@@ -794,8 +794,16 @@ fn case_29_sprint_blocked() {
     t.ticks(15);
     assert!(t.mv().sprint, "sprint once fully up");
     // Zoomed: the flag may be on but the limit is the walk speed.
-    t.insert(chimera_sim::weapon::Zoomed { fov: 40.0, scope: true });
+    // (The rifle with a 40 degree scope, zoomed in: weapon_classes.md 7.9.)
+    let w = t.sim.app.world().get::<chimera_sim::weapon::Inventory>(t.p).unwrap().active.unwrap();
+    t.sim.app.world_mut().get_mut::<combat_arms::game::weapons::CaZoom>(w).unwrap().params.scope =
+        Some(combat_arms::game::weapons::Scope {
+            name: "test".into(),
+            fov: vec![40.0],
+        });
+    t.keys().secondary = true;
     t.tick();
+    assert!(t.sim.app.world().get::<chimera_sim::weapon::Zoomed>(t.p).is_some(), "zoomed");
     assert!(t.mv().sprint);
     close(t.mv().speed_limit, 70.0, TOL, "zoomed limit");
 }
