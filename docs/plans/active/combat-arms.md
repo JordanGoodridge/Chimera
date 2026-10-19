@@ -162,6 +162,19 @@ does for BSP.
 | 16 | First-person view models: animation per action, bob and sway, FOV, muzzle and shell sockets, arms plus weapon | `view_models.md` | implementing (`worktree-agent-a6c55bd8ac02eb20a`, on `worktree-agent-a22915a811737c642`'s first part): the unkeyed player-view models (M92FS, Remington 870, M60) at their `Pos` with the 50 degree projection, sockets and key strings from the files; 7's state machine per rendered frame (`view_model::machine`: pre-fire but for pistols/knives/shotguns, `postfire` and the semi-automatic cancel, full idle `idle_1` after 5-15 s still, sprint pose `PreRush`/`rush`/`PostRush`, shell reloads, grenade cock/throw/re-ready, rates from the weapon's and attachments' fire/reload/draw rates, Quirk 1's pop), key events (8) as `CaViewKey` messages, sway (6), jiggle, flash and breach points (4, 10), placeholder flash at the `Flash` socket and shells (9, 10), hidden from zoom-in to zoom-out end (11), the hand model combination (1, 2: data/hands.toml, bone match by name; `CHARS_M_HAND` is V2-keyed so tested on stand-ins); spec cases 1-7, 9-32 as tests (8 needs the keyed M4A1) | L12: activity driver lifted (`weapon::view_anim`; `OwnViewAnim` lets a game drive a character itself, as CA now does); bob and sway not lifted: CA's sway (6) is its own | Needs 10 (10a, 10c); timings tie to 2, 4, 6. Left (game/view_model.rs Known shortcuts): the machine drives the picture only (the weapon frame keeps shots, knife hits per inventory.md's timings despite C1, ammo); effects are placeholders (effects_sounds.md); key sounds unplayed; no hidden/projectile pieces, attached effects, character data (default hands) or file-name reset. Found: the root translation was already in (`lithtech_formats::anim::sample`): cases 5-7 match to 1e-4 by the game's sampling; 30 fps resampling missed the M92FS's fire kick by 0.06 u, so view models resample at 240 fps (`model::VIEW_SAMPLE_FPS`) |
 | 17 | Effects and sounds: muzzle flash, impacts per surface, tracers, blood, shells; weapon, footstep and impact sounds and attenuation | `effects_sounds.md` | implementing (`worktree-agent-ae71014855c22f902`): all 39 spec cases as tests (`tests/it/effects_sounds.rs`; the effect file's numbers of 21, 24, 32, 34, 35 and the install's files in `heavy::effects_sounds`); `game::effects` builds every shot's, impact's, grenade's and step's effects and sounds where they are shown (rules in `effects::rules`: gain, low-pass, gates, tracer cadence and motion, decal list, casings, fly-by, footsteps, hurt limit, dings), the install's effect file (`lithtech_formats::fxf`, CLIENTFX) played on Chimera's particle pool, sounds from the unkeyed GUNS_SND_*, SND, CHARS_SND, UI_SND archives; `ui::effects` draws decals, tracers (no depth test), casings (GUNS_SC models), the first-person flash and lights | L11 not lifted (CA's decals, crowding and surface tables share nothing with CS:S's projected decals and `.pcf` effects; CA uses Chimera's particle pool as it is); L3 not lifted (CA's hurt sounds are by kind with a server-wide limit, CS:S's by hitgroup and helmet: different rules); L10 not lifted (the looks are the effect file's groups). Chimera gained `SoundLevel::Radius` (inner and outer radius, squared falloff, distance low-pass) and a per-sound low-pass (`Gains::with_cutoff`); CS:S unchanged | Tables as data (`data/effects.toml`, the weapons' `combat_arms:effects` hooks); replaces items 6's and 16's placeholder looks (smoke ball kept without an install). Left (Known shortcuts in `game/effects/`): third-person points at the eye, no liquids, call-outs or map sounds, effect keys at their point, camera jitter not applied |
 
+### Wave 4
+
+Briefs in "Spec briefs (Wave 4)"; the Wave 3 implementers' open
+questions in "Follow-up brief (Wave 3 open questions)".
+
+| # | Item | Spec | Status | Lift | Notes |
+|---|---|---|---|---|---|
+| 18 | Game modes, part 2: Hired Guns (AI mercenaries, bullion and banks), VIP Escort (the VIP's spawn and the exit), the clan variants' half-time side swaps, Snowball Fight | `game_modes_2.md` | not started | none expected (builds on item 13's `game/rules/`) | Fills game_modes.md M11, M13, M16 and M18; the mission data they read is item 22's |
+| 19 | Bot objectives: bombs, flags, VIPs, seize points, bullion and intel per mode | `bots_objectives.md` | not started | none expected | On item 14's brain; today bots fight in every mode but play no objective |
+| 20 | Lobby, room flow and menus for offline and LAN play: main menu, room list, room creation, loadout, shop and inventory screens | `lobby.md` | not started | maybe L13's team and buy screens (survey: none to lift; CA's screens are its own canvas layouts) | On item 11's `ui::layout` and `client::canvas`; replaces the in-game menu's "Leave Game" stand-in |
+| 21 | Per-map mission files: the settings modes read (timers, goals, spawn families, objective data) | `missions.md` | not started | none (its reader may go in `lithtech/` if the format is LithTech's) | Replaces `game/rules/settings.rs`'s stock values |
+| 22 | Gear, body types and perks: vests, helmets, backpacks, goggles, perks and what each changes | `gear_perks.md` | not started | none expected | Builds on characters.md's selection and attribute_data.md's records |
+
 ## Lift survey (Wave 0.5)
 
 Done 2026-10-18 from main at 43fd113b, by reading every module of
@@ -332,6 +345,10 @@ Notes:
   hidden under water, the grenade's 400 ms re-ready animation, bounce
   sound loudness, the camera's rise and effect jitter on the client
   camera.
+- 2026-10-19: Follow-up brief for Wave 3's open questions (56 questions
+  from the characters, view model, game mode, bot, effects and UI
+  modules' Known shortcuts) and Wave 4 briefs (18-22: game modes part 2,
+  bot objectives, lobby, mission files, gear and perks) written.
 
 ## How to run a spec wave (for the user)
 
@@ -1516,4 +1533,523 @@ stop and ask me) in UTC: in PowerShell run `$env:TZ="UTC"` before `git
 commit`. End the message with "Co-Authored-By: Claude Opus 5.5
 <noreply@anthropic.com>". Never skip hooks. Then `git pull --rebase` and
 `git push` to main.
+```
+
+## Follow-up brief (Wave 3 open questions)
+
+Questions the Wave 3 implementers answered for themselves (each module's
+`//!` "Known shortcuts" on main: `games/combat_arms/src/game/`
+`characters.rs`, `view_model.rs` and `view_model/hands.rs`, `rules.rs`
+and `rules/*.rs`, `bots.rs` and `bots/map_ai.rs`, `effects/mod.rs`,
+`effects/fx.rs` and `effects/sounds.rs`; `src/ui/` `hud/score.rs`,
+`scoreboard.rs` and `effects.rs`). Items that are whole missing topics
+(the mission files, the lobby, gear, the missing modes, bots' objectives)
+are Wave 4's briefs, not questions here. Paste the brief below into one
+session (or hand it to a subagent); the implementers then change their
+code to the answers.
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+
+This is a follow-up session. The Wave 3 specs characters.md,
+view_models.md, game_modes.md, bots.md and effects_sounds.md in
+specs/combat_arms/ have been implemented, and the implementers had to pick
+a reading where the spec was silent or ambiguous. Answer the numbered
+questions below from the reference material. For each one, in the spec
+named after it:
+
+- add the question to that spec's "Open questions" section if it isn't
+  there (or find the existing one), and mark it "Answered:" with the answer
+  in your own words, the constants and formulas it needs, and where in the
+  spec's body it applies;
+- where the answer changes or completes the behaviour, fix the body text
+  too (sections, constants table, per-tick order), not only the question;
+- add numbered test cases after the existing ones (never renumber or
+  remove existing cases; if one is wrong, say so in it and add the
+  corrected case), with concrete numbers an implementer without the game
+  can check; mark the ones that need the install and say the Steam build
+  id you measured;
+- if the reference can't settle it, say what you checked and give a short
+  live-game measurement that would (setup, action, what to read off),
+  and leave the question open.
+
+The questions (Q = an existing "Open questions" number in that spec, C =
+a contradiction note, M/S = a section, case = a test case number):
+
+characters.md
+1. Hit spheres and animation: does the server place the hit spheres on
+   the animated skeleton every update (which trackers count: the walking
+   legs, the upper body's weapon and aim pose) or on a fixed pose? We use
+   the measured `LST` t = 0 pose, crouched by squashing heights towards
+   the feet, turned by the aim. Give the female `Bip01 Neck` node and the
+   female right-hand socket's parent and offset too (not measured).
+2. Update rate: is a character's pose decided per server frame, per
+   movement tick or per rendered frame on the client, and does the server
+   animate characters at all?
+3. The drawn body against the hull: the body's offset from the standing
+   and the crouched hull (feet at the hull's bottom?), and during the
+   crouch transition.
+4. Defaults without lobby data: which head piece, goggle, backpack, face
+   and skin a player gets when the selection carries none (offline, a bot),
+   per stock body, and the skin tables of the stock bodies other than the
+   default male (as data by role).
+5. Upper-body rates: where `HHAniFrame` (or the field that sets the upper
+   body's playback rate per weapon) lives and its default; confirm the
+   digit suffixes of classes 24, 26, 27 and 29 (we read revolver 1, FAMAS
+   2, double barrel 1, snowball 2).
+6. "Firing" for the driver: the exact condition for the fire posture
+   (fire held; a magazine weapon not reloading and not empty;
+   semi-automatic between shots; the knife; a grenade being cooked).
+7. Q2 (the server's reload timer and its 500 ms fallback): settle it, and
+   say whether a reload's end is the weapon's or the animation's.
+8. Q5 (the server's `Torso` pitch 0): intended, and which hit tests use
+   the server's spheres rather than the client's.
+9. Death choice: how poison and the endless fall pick death animations
+   (which damage kinds name them), and Quirk 6's coin (the clock in
+   seconds or a random draw); is the dead player's position moved to the
+   floor, or only the body's?
+10. Q9 (corpses and shots): are bodies drawn with hit spheres, and do they
+    stop bullets for the client's test?
+11. Third-person weapons: which attribute field names a weapon's
+    third-person model, the socket it hangs on (`RightHand`?) and its
+    offset and rotation there, and where carried weapons sit (back,
+    holster).
+12. Emotes and the hit kick on remote characters: what triggers each,
+    which animations, their length and layering.
+
+view_models.md
+13. C1 and the gameplay clock: does the view model's key (or its fire
+    animation) time the shot, the knife's hit and the clip's refill, or the
+    weapon's own timers (inventory.md 8.2, weapon_firing.md)? For a
+    full-automatic: does the fire animation restart on the frame after it
+    ends while shots run on the fire delay? A reload asked for during the
+    fire sequence: after `postfire`, and when is the clip filled?
+14. C6 (dry fire): when the dry-fire animation plays, and its sound.
+15. Holster: does `deselect` play, and with what length (we use holster
+    time 0)? When does `reload_1` play instead of `reload`?
+16. Pieces and attachments on the view model: hidden pieces, projectile
+    pieces, `PVAttachFX` (attached effects) and player-view attachment
+    models: how each is chosen, placed and shown.
+17. The hand model per character: how a character, uniform and colour
+    pick the hands (the hand colour variants' table by role), and the
+    file-name reset when the character or uniform changes.
+18. Projection: confirm the 0.1 u near and 7 u far planes of the view
+    model and how the world's FOV is given (vertical 75 degrees at 4:3?
+    horizontal?) and what other aspect ratios do to it.
+19. Spectating: the sway of a spectated player's view model, and the
+    150-unit footing ray (what it tests, what it changes).
+20. The flash hider: what it changes on the first-person muzzle flash.
+
+game_modes.md
+21. M3's bomb detonation: the blast's damage (radius, falloff formula,
+    maximum, through walls or with a cover test, who is hurt: everyone or
+    one team, whether the planter is credited with its kills and whether
+    they count as kills or suicides), its effect and sound (by role; put
+    the look in effects_sounds.md if that is its place), and the planted
+    bomb's own object (model, beeping, light, which client sees what).
+    Settle Q4 too (standing still during the plant, a partial defuse's
+    progress).
+22. The sites' `PlantedCommand` and other command strings: what they do
+    (we only close the other site), and which other map objects modes run
+    commands on.
+23. Quirk 11 and S3: does `MissionTimeLimit` end anything? Does the
+    intermission (`MissionEnd`) come after every round's end or only
+    before the match's result (S3 step 6)?
+24. Spawn families: which `GameStartPoint` `GameType` Bombing Run (M9)
+    and Seize and Secure (M10) use, and where Seize and Secure's flag pole
+    stands (object class, properties).
+25. Arms Race (M14): the weapon table's source and its kill steps, and
+    the random roll between the table and the player's equipment (odds).
+26. VIP Elimination (M12): the VIP data (each rank's points) and how a
+    player gets a rank.
+27. Spy Hunt (M7, Q10): `Stage2PlayTime` and the time-out's winner; the
+    stage-2 refill (health only, or ammunition too).
+28. Quarantine Regen (M8, Q12): when a human killed by an infected comes
+    back infected (at once, after the wait, at which point), the infected's
+    model and weapon (from where), whether host selection runs in the
+    warm-up, the heal's unit, and the match winner.
+29. Hunted (M15): the scavenging (starting loadout, supply drops: what,
+    where, when), the `DyingTime` hold, and how time hunted is counted.
+30. S12's room options: what mutation boxes and the revenge buff do.
+31. Objects and boxes: is a box object's `Dims` a half-extent or a full
+    size? A player's box for S4's occupied test and objective touches (per
+    figure type, or the fallback 15 x 50 x 15)? The pick-up box of the
+    bomb (M9) and intel (M7) on the ground, and how their floor is found.
+32. Spawn protection (S6): do instant-hit shots pass through a protected
+    player during `protect_bullets`, or stop and do nothing; does the
+    client draw blood? A point's `Command` on respawn; the fast respawn
+    item.
+33. Scoring (S7, S8): is damage scaled before or after armour; the team
+    id "0 or above 254" filter; heals (which exist outside Quarantine);
+    the teammate-hit voice.
+34. M3: do sides ever swap outside the clan variants; when the bomb is
+    handed out relative to the setup's respawn and loadout.
+35. The HUD and scoreboard per mode (S13, hud_crosshair.md D6/D7): the
+    goal string per mode, the objective lines and the action gauge's
+    looks, the scoreboard's columns per mode and their order, the level
+    icon and clan emblem, how ties are ordered, and the round or match
+    result screen.
+36. Random draws (drop points, hosts): which generator and seed, or is
+    any uniform draw parity?
+37. Capture the Flag (M4): where a carried flag is drawn (socket,
+    offset), whether taking and returning work outside the Live phase,
+    and assists.
+38. Elimination modes: whom the dead may spectate (team only, free, a
+    fixed camera), and the late-join closing (Q11).
+
+bots.md
+39. Q6: the templates' speeds and the confinement to AI volumes: give the
+    run, walk and jump speeds per template and what happens at a volume's
+    edge, so a bot moving through the player's movement can match them;
+    do AI shooters get hit-zone factors?
+40. Q3 (fire key timing): the bot's fire rate per weapon class as numbers.
+41. Navigation volumes: what each volume type does (ladder, stairs,
+    ledge, jump-up, jump-over, junction, teleport: one-way links, climbs,
+    jumps), doors, path weights (`PreferredPath`), a neighbour cap; the
+    bot game-mode file's patrol start nodes (`PatrolNode_Alpha0` ...), node
+    actions (waits, look-arounds), guard nodes, and `AIRegion`,
+    `AINodeGoto`, `AINodeUseObject`.
+42. Q11 (stuck bots): what a bot does when it makes no progress.
+43. Senses: the torso and head points sight tests aim at (sockets or
+    heights), footstep stimuli (cadence, speed threshold, per-surface
+    noise), "false stimulations", and Q14 (ally gunfire).
+44. Grenade danger: are bot-thrown grenades announced too, and how many
+    directions the dodge tries.
+45. Small timings: the "catch breath" stop, a teammate's crouch request,
+    the roll, the knife approach and swing distances, and whether a
+    reload's attack move starts with the reload key or its animation.
+46. Bots' spawn protection and respawn wait: the bot base's 3 s or the
+    mode's.
+47. Profiles: the profile file's fields by role (name format, archetype,
+    item sets) and the draw ρ (the clock plus a random number: parity or
+    any seeded draw?).
+48. Bot chat: when bots talk and what (string ids by role).
+
+effects_sounds.md
+49. Third-person points: where others' muzzle flash and casings start
+    (the third-person weapon's sockets: names, offsets) and where their
+    shot sounds come from; do clients know others' hit zones (6)?
+50. Liquids: the ammo's under-water record (`UWBullet`) contents, the
+    bubble trail's look, and whether a ray goes on through a water
+    surface.
+51. Others' footsteps: their animation rate and gait on a network client
+    (Q8).
+52. Kill call-outs (`EnemyDown`): who hears them and when; map
+    `SoundFX` objects (properties, looping, radius).
+53. Critical hits, ricochets, the pusher, screen tints and blast lights:
+    what each is and when it shows.
+54. The effect file: `UpdatePos` attach modes and `Follow`; how multi-key
+    scale, colour and alpha curves interpolate; cone and cylinder
+    emitters' shapes; `AdditionalAcceleration`; bounce planes (which
+    particles bounce, how the plane is found); friction; `DisableZ` and
+    `CastVisibleRay` sprites; `LightningFX`, `LTBModel`, `PolyTrail` and
+    `PlaySound` keys.
+55. Sounds: is a playing 3D sound's gain and low-pass updated as the
+    listener moves; Q1 and the 2R send radius; priorities and the voice
+    cap (which sound is dropped).
+56. Camera and decals: several camera jitters at once (largest, sum?),
+    the camera's rise in free-movement volumes, decal clipping
+    (`MarksClip`) and offset from the surface, and Q4 (lights through
+    walls).
+
+Write only these files: specs/combat_arms/{characters,view_models,
+game_modes,bots,effects_sounds}.md; change nothing else. Commit with the
+repo's identity (CLAUDE.md "Commit identity"; check `git config user.name`
+is r0pi0x, else stop and ask me) in UTC: in PowerShell run `$env:TZ="UTC"`
+before `git commit`. End the message with "Co-Authored-By: Claude Opus 5.5
+<noreply@anthropic.com>". Never skip hooks. Then `git pull --rebase` and
+`git push` to main (or to `specs-incoming` if I say so).
+```
+
+## How to run Wave 4
+
+Same as Wave 3: `git pull` in a clean checkout on the Windows PC, then
+one session that hands each brief below to its own subagent while the
+main session alone does the git work (pull, commit, push). Each brief
+writes only its own file. Push to the `specs-incoming` branch for review,
+or straight to main. Board numbers continue from 17 (18 to 22). Items 18
+and 19 read missions.md (21) where it has landed; they can run beside it
+and leave mission-file details to it. The follow-up brief above
+("Follow-up brief (Wave 3 open questions)") can run beside them: it edits
+only Wave 3 specs.
+
+## Spec briefs (Wave 4)
+
+Each brief is complete on its own; paste it as is.
+
+### 18. Game modes, part 2
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/game_modes.md first (its shared rules S1-S14 and
+sections M11, M13, M16 and M18, which this spec completes), and
+missions.md and bots.md if they have landed (`git pull`): this spec
+continues them and must not contradict them; where it does, say so in
+"Open questions".
+
+Write specs/combat_arms/game_modes_2.md: the modes game_modes.md names
+but doesn't describe enough to build, each in its own top-level section,
+using game_modes.md's section names and shared rules (refer to them, don't
+repeat them). Hired Guns (`SQM`): the AI mercenaries (who they are, how
+many, which team, how they spawn and respawn, their weapons and health,
+whether they are bots.md's bots or other AI, what they do), the bullion
+(bars dropped on drop points: how many, when, where; the pocket: carry
+limit, pick-up and drop rules, what a death drops), the banks (objects,
+properties, how banking works, time to bank), the bank bonuses for kills
+and deaths and where their numbers come from, the HUD and scoreboard
+lines. VIP Escort (`ESC`, `CESC`): how the VIP is chosen, the VIP's spawn
+point (object class and properties), the VIP's loadout, health and
+limits, the exit (object, how escape is detected), the side swap's
+timing and what it resets. The clan variants (`CDM`, `CMM`, `CCTF`,
+`CTSV`, `CESC`): the half-time side swap per mode (the trigger, the
+notice, what is kept and reset: scores, round wins, loadouts, the bomb,
+flags), the warm-up, and anything else that differs from the public
+mode. Snowball Fight (`SFM`): it is in the reference but not playable in
+the US data; describe the tickets, freezing (how a snowball freezes, how
+long, unfreezing, the frozen player's state), the snowball weapon's data,
+and the "recovery" variant, at the depth the reference supports, and say
+which build has it playable if any. If the reference has the co-operative
+modes' details (game_modes.md M19, its Open questions 9) settle what you
+can in an extra section.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math, per-tick order (a banking and a death on the same tick, the VIP
+escaping as the clock ends), server or client, edge cases (the VIP
+leaving, a carrier dying inside a bank, all mercenaries dead), quirks
+players rely on. Setting names, mode names and object class names the
+game exposes are data and may be named; never paste code or translate it
+line by line; no fenced code blocks except ```math. Name files only by
+their in-game role, never by path. End with a numbered list of concrete
+test cases grouped by mode (setup: settings, players, time; events ->
+expected score, time, winner, spawn chosen, side after the swap) that an
+implementer without the game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/game_modes_2.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 19. Bot objectives
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/bots.md (navigation, senses, goals, the bot
+game-mode file), game_modes.md (the objectives: bomb sites, flags, intel,
+seize points, the shared bomb) and game_modes_2.md and missions.md if
+they have landed (`git pull`) first: this spec continues bots.md and
+must not contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/bots_objectives.md: what bots do about each
+mode's objectives. First say, per mode, whether the reference's bots play
+it at all (bots.md says bots exist in Bot Elimination and the
+single-player builds; check whether any other mode runs bot goals for
+objectives, and what the bot game-mode file holds per mode). For each
+mode where they do: Search & Destroy (attackers: who carries the bomb,
+choosing a site, going there, planting, guarding the planted bomb;
+defenders: guarding sites, hearing a plant, going to defuse, when to
+defuse rather than fight), Capture the Flag (attack, escort, defend,
+return a dropped flag, carry home), VIP Escort (the VIP's own route,
+escorting, hunting the VIP), Seize and Secure and Bombing Run (taking
+and holding points, carrying the shared bomb), Spy Hunt and Hired Guns
+(picking up intel or bullion, banking), and any other the reference
+covers. Cover: how a bot picks its role and target (scores, team
+quotas, randomness), the goals' priorities against fighting, how it
+paths there (map nodes or volumes named by mode), how long it waits or
+guards, how it reacts to the objective's events (plant, drop, capture,
+pick-up), and difficulty's effect. If a mode has no bot behaviour in
+the reference, say so in its section and don't invent one.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math, the order of objective goals within a bot's think, randomness
+(distributions and ranges), edge cases (the carrier dies, the objective
+moves, no path to the site), quirks players rely on. Object and node
+class names the game exposes are data and may be named; never paste code
+or translate it line by line; no fenced code blocks except ```math. Name
+files only by their in-game role, never by path. End with a numbered list
+of concrete test cases (setup: mode, map objects, bots and their
+positions; time -> expected goal, target, path, action) that an
+implementer without the game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/bots_objectives.md; change nothing else.
+Commit with the repo's identity (CLAUDE.md "Commit identity"; check `git
+config user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell
+run `$env:TZ="UTC"` before `git commit`. End the message with
+"Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>". Never skip
+hooks. Then `git pull --rebase` and `git push` to main (or to
+`specs-incoming` if I say so).
+```
+
+### 20. Lobby, rooms and menus
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/ui_system.md (how menus are built: layouts,
+controls, the canvas; its Open question 6), game_modes.md (S2, the
+server's mode settings the room sets) and inventory.md and
+attachments.md (loadouts) first: this spec uses their terms and must not
+contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/lobby.md: the screens and flow from starting the
+game to a match and back, as far as they matter for offline and LAN play
+(we have no online service: describe what the game does and say which
+parts depend on its servers). Cover: the main menu and its entries; the
+server and channel choice and the room list (columns, filters, sorting,
+refresh, joining a room, password, full and in-progress rooms); room
+creation (every option by the name the game shows: mode, map, goal,
+time, player count, team balance, friendly fire, join in progress,
+password, spectators, the room options of game_modes.md S12, their
+ranges, steps and defaults, which combinations are refused); inside a
+room (slots, teams, ready, the host's controls, kicking, chat, map and
+mode change, the start conditions, the countdown); loadout selection
+(the loadout slots, how many sets, what may go in each slot, defaults
+for a new player); the shop and inventory screens (only what decides a
+player's equipment and gear: items, rental durations as data, what an
+expired item does; leave out payment); the result screen after a match
+and the return to the room; and the in-game menu's "return to lobby"
+and leaving mid-match. For each screen: its layout file by role (the
+layout itself is data in ui_system.md's format), controls and what each
+does, keys, and the messages the client and server exchange as events
+(not their bytes).
+
+Describe behaviour in your own words: exact constants, ranges and
+defaults, the order of events (who decides what, client or server or the
+lobby service), edge cases (the host leaving, a player joining while the
+match starts, an invalid loadout), quirks players rely on. Option names,
+mode names and item ids the game exposes are data and may be named; no
+art (name an image only by its role or its file name inside the game's
+archives); never paste code or translate it line by line; no fenced code
+blocks except ```math. Name files only by their in-game role or their
+file name inside the game's archives, never by a machine path. End with
+a numbered list of concrete test cases (screen, action -> expected
+state, message, room setting, loadout) that an implementer without the
+game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/lobby.md; change nothing else. Commit with
+the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 21. Mission files
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/game_modes.md (S2 settings, S3 phases, S4 spawns,
+S12 drop points, and every mode's reference to mission data),
+world_dat.md (map objects) and attribute_data.md (the attribute file
+format) first: this spec gives the data they read and must not contradict
+them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/missions.md: the per-map mission data the modes
+read. Cover: where it lives (archive and file name by role, one file per
+map or one table for all, keyed or not), its format (if it is
+attribute_data.md's format or the world file's objects, say so and give
+only the differences; else describe it field by field), how a map and a
+mode find their mission entry (by map name, mode, room key), and every
+field a mode reads: timers (round and match time, warm-up, phase
+lengths: `ObjectStart`, `ObjectEnd`, `MissionEnd`, `MissionTimeLimit`),
+goals and their ranges, spawn families (which `GameStartPoint`
+`GameType` each mode uses on each map, team assignments, offence and
+defence teams), objective weapons (the bomb, the infected's weapon and
+model), objective objects (bomb sites, flags, intel, seize points, banks,
+the VIP's spawn and exit), loadout restrictions, bonuses (Hired Guns'
+bank bonuses), Arms Race's weapon table, co-op lives (`LifeCount`), and
+anything else. For each field: name as the data exposes it, type, unit,
+default when missing, and which rule reads it (game_modes.md section).
+Also the server's own settings file that game_modes.md S3 mentions (the
+phase lengths' defaults) and how a room's settings override the mission's.
+Give a table of the stock maps' values for the fields modes need most
+(time limits, goals, spawn families) per map and mode.
+
+Describe behaviour in your own words: exact constants with units, the
+order of overrides (stock default, mission, server file, room), edge
+cases (a map without an entry for the chosen mode, a field out of range),
+quirks players rely on. Field, map and mode names the game exposes are
+data and may be named; never paste code or translate it line by line;
+no fenced code blocks except ```math. Name files only by their in-game
+role or their file name inside the game's archives, never by a machine
+path. End with a numbered list of concrete test cases (map, mode, room
+settings -> expected time limit, goal, spawn family, objective data;
+the ones that need the install marked, with the Steam build id you
+measured) that an implementer without the game can check, and an "Open
+questions" list.
+
+Write only specs/combat_arms/missions.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 22. Gear, body types and perks
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/characters.md (the selection record, model
+records with `GearID`, `MaxArmor`, `MovePenalty`, `DashSpeed`, figure
+types), attribute_data.md, movement.md (sprint and stamina),
+weapon_firing.md (armour) and grenades.md (flash protection, its answered
+question on gear) first: this spec gives gear its gameplay and must not
+contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/gear_perks.md: what a player's gear and perks
+change. Cover: body types and figure types (each stock one's stats:
+speed, sprint, stamina, armour, mass, and how they combine with the
+weapon's movement penalty); vests (armour amount, which zones and damage
+kinds it covers, how it wears down, movement cost); helmets (headshot
+protection: damage factor, armour, which zones); backpacks (extra
+ammunition, grenades or slots, by how much); goggles and masks (flash,
+smoke or gas protection, by how much); every perk or special item the
+reference has (extra ammunition, faster reload, faster respawn, more
+health or stamina, radar, the fast respawn item game_modes.md mentions,
+and anything else: what it changes, by how much, how long, and whether
+it stacks); where each item's data lives by role (attribute files,
+item tables) and its fields; how gear reaches the match (the loadout,
+the selection record, the server's validation) and what applies when a
+player has none (offline, bots). Give each stock item's numbers as a
+table, or the formula and the data field it reads.
+
+Describe behaviour in your own words: exact constants with units,
+formulas as math, the order in which gear modifiers apply (armour before
+or after zone factors, movement penalties combined), server or client,
+edge cases (two items changing the same number, gear that expires
+mid-match), quirks players rely on. Item ids and field names the game
+exposes are data and may be named; no art; never paste code or translate
+it line by line; no fenced code blocks except ```math. Name files only by
+their in-game role or their file name inside the game's archives, never
+by a machine path. End with a numbered list of concrete test cases
+(gear, event -> expected damage taken, speed, stamina, ammunition,
+protection) that an implementer without the game can check, and an
+"Open questions" list.
+
+Write only specs/combat_arms/gear_perks.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
 ```
