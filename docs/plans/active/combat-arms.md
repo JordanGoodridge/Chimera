@@ -332,6 +332,18 @@ Notes:
   hidden under water, the grenade's 400 ms re-ready animation, bounce
   sound loudness, the camera's rise and effect jitter on the client
   camera.
+- 2026-10-19: Checked with the user's V1 and V2 keys: all 72 keyed maps
+  (WORLDS, WORLDS4, WORLDS5) and the 33 plain ones convert and load
+  (fixed: spawns more than 4 m above the floor, TERRORDOME's 4096 x 19428
+  lightmap atlas, sprite world textures); the install's weapon models
+  and placement merge into ours (all 13 weapons draw their own view
+  model with hands, textured; the knife is the install's `M9`, the
+  incendiary its `M-23F`); third-person bodies draw posed (they were
+  skinned outside the root's frame: torn apart); XML.rez's 306 layouts
+  and the language pack's string tables read through the UI system's
+  readers. Open: bodies are headless (no face or head piece selected),
+  install weapons beyond ours draw placeholders, the game's own layouts
+  and strings are read in tests only.
 
 ## How to run a spec wave (for the user)
 
