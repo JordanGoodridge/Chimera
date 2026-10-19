@@ -45,10 +45,11 @@
 //! point F and breach point B (`BreachOffset`) are kept on `CaViewModel`;
 //! a shot (the weapon's `Fired`) starts the muzzle flash timer (9: shown
 //! while the clock is before the shot + the effect's length, the model
-//! visible and the player alive) and throws a shell from B (10, the first
-//! person's only: `LocalPlayer`; `CaShell`, stepped by `step_shells`).
-//! Both are placeholder looks in `ui::visuals` (a flash at the `Flash`
-//! socket + (0, 0, 0.5), a brass box).
+//! visible and the player alive); the shot's casing leaves from B
+//! (`effects`: the ammo's FireFX says whether it ejects; 10's start
+//! velocities and effects_sounds.md 8's motion). The front end draws the
+//! flash (`ui::effects`: the muzzle part's or the weapon's
+//! `PVMuzzleFXName` group at the `Flash` socket + (0, 0, 0.5)).
 //!
 //! Readable without keys: the player-view archives of pistols, shotguns
 //! and machine guns (`GUNS_M_PV_Pistol`, `_SG`, `_MG`); the rifles',
@@ -74,12 +75,8 @@
 //!   (`PVAttachFX`), player-view attachments, the file-name reset when the
 //!   character or uniform changes, spectating's sway and the 150-unit
 //!   footing ray (the footing is on the ground or a ladder).
-//! - Effects are placeholders (effects_sounds.md is its own item): the
-//!   flash is one sprite at the `Flash` socket, no light at F, no flash
-//!   hider or muzzle part's effect, nothing under water but its rule; the
-//!   shells are boxes under a fixed gravity, bouncing off the ground three
-//!   times with half their speed, the ammo's fire-effect velocity and
-//!   shell model not read; key sounds are messages nothing plays yet.
+//! - No flash hider's effect; nothing is under water (the flash's rule is
+//!   there). Key sounds and casings are `effects`' (CaViewKey).
 //! - Projection (5.1): Chimera's view-model camera keeps its 1 cm near
 //!   plane (`VIEW_SCALE` makes that the spec's 0.1 u) and no far plane
 //!   (the spec's 7 u); `ViewModelSettings` would zoom the view model with
@@ -96,7 +93,6 @@ pub mod sway;
 
 use std::{collections::HashMap, sync::Arc};
 
-use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 use serde::Deserialize;
 
@@ -112,7 +108,7 @@ use super::{
     weapons::CaZoom,
 };
 use crate::{
-    core::{Health, Intent, LocalPlayer, MovementState, SOLID_LAYERS, Velocity},
+    core::{Health, Intent, LocalPlayer, MovementState, Velocity},
     map::{MapAttachment, MapData, MapViewModel, ViewAnimator, ViewModelOffset, ViewModelSettings, ViewModels, anim::AnimEvent},
     weapon::{
         Hitscan, Inventory, Magazine, ShellReload, Trigger, Weapon, WeaponEvent, WeaponEventKind, aim_of,
@@ -142,20 +138,6 @@ pub const VIEW: &str = "combat_arms:view_model";
 /// archives without the V2 key): a gunmetal grey, so the shape reads.
 const UNSKINNED: [u8; 3] = [90, 92, 96];
 
-/// Shells: lifetime (s), bounces before resting, the scale's growth time
-/// (s) and final factor (`shell_life`, `shell_bounces`, `shell_scale`).
-pub const SHELL_LIFE: f32 = 3.0;
-pub const SHELL_BOUNCES: u32 = 3;
-pub const SHELL_SCALE_TIME: f32 = 0.5;
-pub const SHELL_MAX_SCALE: f32 = 2.0;
-/// Start speeds in camera axes (units/s): up, right, forward ranges.
-pub const SHELL_UP: (f32, f32) = (30.0, 75.0);
-pub const SHELL_RIGHT: (f32, f32) = (50.0, 75.0);
-pub const SHELL_FORWARD: (f32, f32) = (20.0, 50.0);
-/// Ours (placeholder): the shells' fall (m/s^2) and the speed a bounce keeps.
-pub const SHELL_GRAVITY: f32 = 9.8;
-pub const SHELL_BOUNCE_KEEP: f32 = 0.5;
-
 /// `combat_arms:view_model`: the weapon's placement data (camera axes,
 /// units) and first-person muzzle effect.
 #[derive(Component, Clone, Debug, Deserialize, PartialEq)]
@@ -173,7 +155,8 @@ pub struct CaViewParams {
     pub flash_time: f32,
     /// `UseUWMuzzleFX`: the flash shows under water too.
     pub under_water_flash: bool,
-    /// The ammo's fire effect ejects shells.
+    /// The view model throws casings (kept as data; which shots eject is
+    /// the ammo's FireFX, `effects`).
     pub shells: bool,
 }
 
@@ -246,21 +229,6 @@ impl CaViewModel {
         self.rng = x;
         (x >> 8) as f32 / (1u32 << 24) as f32
     }
-
-    fn range(&mut self, (lo, hi): (f32, f32)) -> f32 {
-        lo + (hi - lo) * self.roll()
-    }
-}
-
-/// A first-person shell casing (10), world space (metres).
-#[derive(Component, Clone, Debug)]
-pub struct CaShell {
-    pub owner: Entity,
-    pub velocity: Vec3,
-    pub age: f32,
-    pub bounces: u32,
-    pub scale: f32,
-    pub resting: bool,
 }
 
 /// The view-model settings Combat Arms starts with.
@@ -291,8 +259,7 @@ impl Plugin for CaViewModelPlugin {
         .add_message::<CaViewKey>()
         .add_systems(
             Update,
-            (drive, step_shells)
-                .chain()
+            drive
                 .in_set(crate::map::DriveAnimation)
                 .before(crate::weapon::view_anim::drive),
         );
@@ -551,7 +518,7 @@ fn drive(
     if models.as_ref().is_some_and(|m| m.is_changed()) {
         tables.clear();
     }
-    for (e, inventory, intent, (state, health, velocity, transform), (view, vm, offset, owned, local)) in &mut characters {
+    for (e, inventory, intent, (state, health, velocity, transform), (view, vm, offset, owned, _local)) in &mut characters {
         let (Some(mut view), Some(mut vm), Some(mut offset), true) = (view, vm, offset, owned) else {
             commands.entity(e).insert((
                 ViewAnimator::default(),
@@ -688,26 +655,6 @@ fn drive(
         } else {
             None
         };
-        // 10: a shell from B (first person only).
-        if shot && local && params.shells {
-            let v = Vec3::new(
-                vm.range(SHELL_RIGHT),
-                vm.range(SHELL_UP),
-                vm.range(SHELL_FORWARD),
-            );
-            commands.spawn((
-                Name::new("Shell"),
-                CaShell {
-                    owner: e,
-                    velocity: axes.apply(v) * UNIT,
-                    age: 0.0,
-                    bounces: 0,
-                    scale: 1.0,
-                    resting: false,
-                },
-                Transform::from_translation(vm.breach_point),
-            ));
-        }
         // 5.7 / 8: the engine's advance, its keys.
         if let Some(m) = vm.machine.as_mut() {
             for k in m.advance(dt) {
@@ -750,41 +697,3 @@ fn flash_socket(
     Some(m.transform_point3(Vec3::new(fx.x, fx.y, -fx.z)))
 }
 
-/// Shells fly, follow their owner's motion (10), bounce, rest and go.
-fn step_shells(
-    time: Res<Time>,
-    mut shells: Query<(Entity, &mut CaShell, &mut Transform)>,
-    owners: Query<&Velocity>,
-    spatial: SpatialQuery,
-    mut commands: Commands,
-) {
-    let dt = time.delta_secs();
-    let filter = SpatialQueryFilter::from_mask(SOLID_LAYERS);
-    for (e, mut s, mut t) in &mut shells {
-        s.age += dt;
-        if s.age >= SHELL_LIFE {
-            commands.entity(e).despawn();
-            continue;
-        }
-        s.scale = 1.0 + (SHELL_MAX_SCALE - 1.0) * (s.age / SHELL_SCALE_TIME).min(1.0);
-        if s.resting {
-            continue;
-        }
-        s.velocity.y -= SHELL_GRAVITY * dt;
-        let carried = owners.get(s.owner).map_or(Vec3::ZERO, |v| v.0);
-        let step = (s.velocity + carried) * dt;
-        let Ok(dir) = Dir3::new(step) else { continue };
-        match spatial.cast_ray(t.translation, dir, step.length(), true, &filter) {
-            Some(hit) => {
-                t.translation += dir * hit.distance;
-                let n = hit.normal;
-                s.velocity = (s.velocity - 2.0 * s.velocity.dot(n) * n) * SHELL_BOUNCE_KEEP;
-                s.bounces += 1;
-                if s.bounces >= SHELL_BOUNCES {
-                    s.resting = true;
-                }
-            }
-            None => t.translation += step,
-        }
-    }
-}

@@ -13,6 +13,7 @@
 mod attachments;
 mod attribute_data;
 mod bots;
+mod effects_sounds;
 mod game_modes;
 mod grenades;
 mod inventory;
@@ -30,6 +31,7 @@ mod world;
 mod heavy {
     mod attributes;
     mod bots;
+    mod effects_sounds;
     mod model;
     mod mount;
     mod view_model;

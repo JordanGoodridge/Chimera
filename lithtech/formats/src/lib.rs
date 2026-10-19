@@ -12,6 +12,9 @@
 //!   with a game's numbers: sections of typed values, strict typed reads.
 //! - `dtx`: textures (`.dtx`, version -5): header, mip layout, 32-bit
 //!   BGRA and DXT1/3/5 decoded to RGBA8.
+//! - `fxf`: the client effect file (`CLIENTFX.FXF`, text form): named
+//!   effect groups of timed keys (particle systems, sprites, lights,
+//!   camera jitter...) with typed properties.
 //! - `ltb`: models (`.ltb`, versions 23 and 25): pieces and levels of
 //!   detail with rigid, skinned and vertex-animated meshes, the node
 //!   tree, weight sets, child models, animations, sockets and bindings,
@@ -31,6 +34,7 @@
 pub mod anim;
 pub mod attributes;
 pub mod dtx;
+pub mod fxf;
 pub mod ltb;
 pub mod rez;
 pub mod rez_cipher;

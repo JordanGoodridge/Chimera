@@ -49,3 +49,18 @@ muzzle_pos = [0.0, 0.0, 0.0]
 breach_offset = [0.0, 0.0, 0.0]
 muzzle_fx = ""
 shells = false
+
+# effects_sounds.md, "How effects are described as data" and 11: the
+# ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
+# third-person muzzle group and the weapon's sounds (files inside the
+# install's archives; knives: ImpactFX Melee, FireFX FireSoundOnly, FireSndRadius 300).
+[hooks."combat_arms:effects"]
+ammo_kind = "melee"
+impact = "Melee"
+fire = "FireSoundOnly"
+tracer = ""
+hh_muzzle = ""
+fire_sound = "guns_snd_melee/m9/fire.wav"
+fire_radius = 300
+select_sound = "guns_snd_melee/m9/select.wav"
+reload_radius = 300
