@@ -1,7 +1,9 @@
 //! Combat Arms' in-game menu (Esc; specs/combat_arms/ui_system.md H, M2,
 //! S1, I1-I3), in the shell's place (without a game menu the shell's Esc
-//! only frees the mouse): a popup read from our layout
-//! (`data/ui/ingame_menu.xml`, the game's format), drawn 1:1 in screen px
+//! only frees the mouse): a popup read from the game's own layout when
+//! the install's can be read (`ui::install::MENU_FILE`: its buttons bound
+//! by name, `INSTALL_BUTTONS`, its art and strings the install's), else
+//! from ours (`data/ui/ingame_menu.xml`, the game's format), drawn 1:1 in screen px
 //! with its first control centred on the screen (⌊W/2⌋ − ⌊w/2⌋), modal
 //! (`desk::Desk`'s capture: nothing under it takes a click), its buttons
 //! firing on the left button going down with their sounds.
@@ -20,9 +22,10 @@
 //! console) toggles it, for screenshots.
 //!
 //! Known shortcuts (the spec's most literal reading where it is unclear):
-//! - "Return to lobby" quits the game (there is no lobby yet), so its
-//!   label says "Leave Game"; reporting a user and recording have no
-//!   flow, so their buttons are disabled (the D look).
+//! - "Return to lobby" quits the game (there is no lobby yet), so our
+//!   label says "Leave Game" (the game's layout keeps its own words);
+//!   reporting a user, recording and (the game's) options have no flow,
+//!   so their buttons are disabled (the D look).
 //! - While the menu is open the player stops moving and looking, as with
 //!   any free mouse in the shell (the spec's Open question 6 asks whether
 //!   the real game keeps movement).
@@ -55,6 +58,21 @@ pub const CMD_LOBBY: i32 = 1;
 pub const CMD_REPORT: i32 = 2;
 pub const CMD_RECORD: i32 = 3;
 pub const CMD_CANCEL: i32 = 4;
+/// The game's layout's options button (no options flow: disabled).
+pub const CMD_OPTION: i32 = 5;
+/// The game's layout's first control (`install::MENU_FILE`).
+pub const INSTALL_BOX: &str = "exit_popup";
+/// The game's layout's buttons by name, their commands (its `Cmd_id`s
+/// aren't the commands: code binds the buttons by name, ui_system.md D),
+/// and whether they work here.
+pub const INSTALL_BUTTONS: &[(&str, i32, bool)] = &[
+    ("button_lobby", CMD_LOBBY, true),
+    ("button_userreport", CMD_REPORT, false),
+    ("button_record", CMD_RECORD, false),
+    ("button_option", CMD_OPTION, false),
+    ("button_cancel", CMD_CANCEL, true),
+    ("button_exit_title", CMD_CANCEL, true),
+];
 
 /// The in-game menu: its popup on a desk, open or not, the screen it is
 /// centred on, and the interface sounds it has played.
@@ -67,12 +85,28 @@ pub struct InGameMenu {
     pub played: Vec<Sound>,
     /// Buttons fired, by name (for tests and the log).
     pub fired: Vec<String>,
+    /// The control centred on the screen.
+    pub box_name: &'static str,
 }
 
 impl InGameMenu {
     pub fn new(ui: &CaUi) -> Self {
-        let layout = xml::read(LAYOUT).expect("data/ui/ingame_menu.xml");
-        layout.check_fonts(&ui.fonts).expect("data/ui/ingame_menu.xml fonts");
+        let install = ui.install.as_ref().and_then(|i| i.menu.clone());
+        let installed = install.is_some();
+        let mut layout = install.unwrap_or_else(|| xml::read(LAYOUT).expect("data/ui/ingame_menu.xml"));
+        layout.check_fonts(&ui.fonts).expect("the in-game menu's fonts");
+        let mut disabled: Vec<&str> = vec!["Report", "Record"];
+        if installed {
+            disabled.clear();
+            for &(name, cmd, works) in INSTALL_BUTTONS {
+                if let Some(id) = layout.find(name) {
+                    layout.widget_mut(id).cmd = cmd;
+                    if !works {
+                        disabled.push(name);
+                    }
+                }
+            }
+        }
         let mut desk = Desk::default();
         let sheet = desk.add("ingame_menu", layout, true);
         let mut menu = Self {
@@ -82,8 +116,9 @@ impl InGameMenu {
             screen: IVec2::new(1024, 768),
             played: Vec::new(),
             fired: Vec::new(),
+            box_name: if installed { INSTALL_BOX } else { BOX },
         };
-        for name in ["Report", "Record"] {
+        for name in disabled {
             if let Some(id) = menu.layout().find(name) {
                 menu.layout_mut().widget_mut(id).enabled = false;
             }
@@ -102,9 +137,9 @@ impl InGameMenu {
 
     /// Centre the first control on the screen, 1:1.
     pub fn place(&mut self) {
-        let screen = self.screen;
+        let (screen, name) = (self.screen, self.box_name);
         let l = self.layout_mut();
-        if let Some(id) = l.find(BOX) {
+        if let Some(id) = l.find(name) {
             l.centre(id, screen);
         }
     }
@@ -319,10 +354,11 @@ fn draw_menu(
     ui: Res<CaUi>,
     fonts: Option<Res<UiFonts>>,
     faces: Option<Res<CaFaces>>,
+    art: Option<Res<draw::CaArt>>,
     root: Single<(Entity, &mut Visibility), With<MenuRoot>>,
     mut commands: Commands,
 ) {
-    if !menu.is_changed() && !faces.as_ref().is_some_and(|f| f.is_changed()) {
+    if !menu.is_changed() && !faces.as_ref().is_some_and(|f| f.is_changed()) && !art.as_ref().is_some_and(|a| a.is_changed()) {
         return;
     }
     let (root, mut vis) = root.into_inner();
@@ -333,6 +369,6 @@ fn draw_menu(
     }
     let draws = menu.layout().draw(&ui.ctx());
     commands.entity(root).with_children(|p| {
-        draw::spawn_draws(p, &draws, &ui.stand_ins, fonts.as_deref(), faces.as_deref());
+        draw::spawn_draws(p, &draws, &ui.stand_ins, art.as_deref(), fonts.as_deref(), faces.as_deref());
     });
 }
