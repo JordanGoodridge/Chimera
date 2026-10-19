@@ -31,13 +31,17 @@
 //! - `props`: models the maps' objects place, as animated props;
 //! - `view_model`: the weapons' first-person models from the install
 //!   with the character's hands, their animation state machine, sway,
-//!   muzzle flash and shells (view_models.md).
+//!   muzzle flash and shells (view_models.md);
+//! - `effects`: muzzle flashes, tracers, impacts and decals by surface,
+//!   blood, casings, grenade looks, and how every sound is chosen and
+//!   played (effects_sounds.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
 
 pub mod attachments;
 pub mod data;
+pub mod effects;
 pub mod grenades;
 pub mod hud;
 pub mod inventory;
@@ -155,6 +159,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(view_model::CaViewModelPlugin)
+            .add(effects::CaEffectsPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)

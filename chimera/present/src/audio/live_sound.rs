@@ -104,6 +104,9 @@ pub struct Gains {
     right: AtomicU32,
     send: AtomicU32,
     fading: AtomicBool,
+    /// A low-pass cut-off as a fraction of the clip's bandwidth (its
+    /// Nyquist frequency); 0 or 1 and above: none.
+    cutoff: AtomicU32,
 }
 
 impl Gains {
@@ -116,6 +119,15 @@ impl Gains {
     pub fn with_send(self, send: f32) -> Self {
         self.set_send(send);
         self
+    }
+    /// Low-passed at `fraction` of the clip's bandwidth (a one-pole
+    /// filter; 1: unfiltered; `map::sound::distance_cutoff`).
+    pub fn with_cutoff(self, fraction: f32) -> Self {
+        self.cutoff.store(fraction.to_bits(), Ordering::Relaxed);
+        self
+    }
+    fn cutoff(&self) -> f32 {
+        f32::from_bits(self.cutoff.load(Ordering::Relaxed))
     }
     fn set(&self, left: f32, right: f32) {
         self.left.store(left.to_bits(), Ordering::Relaxed);
@@ -194,6 +206,10 @@ pub struct LiveDecoder {
     /// Fading out (`Gains::fade_out`): the gain left, down to 0, where
     /// the clip ends.
     fade: f32,
+    /// The distance low-pass (`Gains::with_cutoff`): its coefficient (0:
+    /// off) and each ear's last output.
+    low_alpha: f32,
+    low: (f32, f32),
 }
 
 /// How fast the applied gains follow a change, per frame of audio
@@ -231,10 +247,15 @@ impl Iterator for LiveDecoder {
         self.current.0 += (tl - self.current.0) * GAIN_SMOOTHING;
         self.current.1 += (tr - self.current.1) * GAIN_SMOOTHING;
         let fade = self.fade.max(0.0);
-        let (l, r) = (
+        let (mut l, mut r) = (
             l as f32 / 32768.0 * self.current.0 * fade,
             r as f32 / 32768.0 * self.current.1 * fade,
         );
+        if self.low_alpha > 0.0 {
+            self.low.0 += (l - self.low.0) * self.low_alpha;
+            self.low.1 += (r - self.low.1) * self.low_alpha;
+            (l, r) = self.low;
+        }
         if let Some(room) = &mut self.room {
             room.push((l + r) * 0.5 * self.gains.send());
         }
@@ -264,7 +285,16 @@ impl Decodable for LiveClip {
 
     fn decoder(&self) -> LiveDecoder {
         let start = self.gains.get();
+        let rate = self.clip.rate.max(1) as f32;
+        let cutoff = self.gains.cutoff();
+        let low_alpha = if cutoff > 0.0 && cutoff < 1.0 {
+            super::hearing::low_pass_alpha(cutoff * rate / 2.0, rate)
+        } else {
+            0.0
+        };
         LiveDecoder {
+            low_alpha,
+            low: (0.0, 0.0),
             samples: self.clip.samples.clone(),
             channels: self.clip.channels as usize,
             rate: SampleRate::new(self.clip.rate.max(1)).unwrap(),

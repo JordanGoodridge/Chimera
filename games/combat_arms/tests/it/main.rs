@@ -12,6 +12,7 @@
 
 mod attachments;
 mod attribute_data;
+mod effects_sounds;
 mod game_modes;
 mod grenades;
 mod inventory;
@@ -28,6 +29,7 @@ mod world;
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
     mod attributes;
+    mod effects_sounds;
     mod model;
     mod mount;
     mod view_model;
