@@ -359,9 +359,8 @@ fn unreadable_files_are_reported() {
 
 /// The merge onto our built-in documents as they are: an install with the
 /// spec's reference M4A1 ("Reference values (one rifle)") gives back our
-/// M4A1's numbers, every hook still reads its parameters, and the
-/// install's "M9" (not our knife, `combat_arms:m9_knife`) changes nothing
-/// of ours.
+/// M4A1's numbers, every hook still reads its parameters, and an
+/// install pistol with no matched pistol of ours adds no weapon.
 #[test]
 fn reference_m4a1_onto_our_documents() {
     use combat_arms::game::{
@@ -378,7 +377,7 @@ fn reference_m4a1_onto_our_documents() {
           DecDelay=95 JitterDecDelay=95 JitterWaitRecover=0.1 JitterRecover=0.2
           DamageMovePenalty=40 DamageMovePenaltyDuration=0.3
         [Ammo1] Name="9mm"
-        [Weapon0] Name="M9" Guntype=1 AmmoName0="9mm"
+        [Weapon0] Name="M9_Pistol" Guntype=1 AmmoName0="9mm"
         [Weapon1] Name="M4A1" Guntype=4 ShotsPerClip=30 RapidFireCount=0 FireDelay=0 Range=3500
           VectorsPerRound=1 MinPerturb=3 MaxPerturb=100 DuckPerturb=2 MoveDuckPerturb=3
           PerturbIncSpeed=1.3 PerturbDecSpeed=0.3 ZoomedMinPerturb=2 ZoomedMaxPerturb=30
@@ -406,9 +405,6 @@ fn reference_m4a1_onto_our_documents() {
                 // Same numbers, up to the f32 the hooks read them as.
                 assert!(floats_close(mv, bv), "{}: {name}\n{mv}\n{bv}", m.id);
             }
-        }
-        if m.id == "combat_arms:m9_knife" {
-            assert_eq!(m.hooks, b.hooks, "the install's M9 must not patch the knife");
         }
     }
     let m4 = merged.weapons.iter().find(|w| w.id == "combat_arms:m4a1").unwrap();
@@ -514,4 +510,44 @@ fn case_32_fire_mode_fields() {
     // Our documents: RapidFireCount 0 automatic, 1 not.
     let set = merged_w(r#"[Ammo0] Name="A" [Weapon0] Name="W" RapidFireCount=0 AmmoName0="A""#);
     assert!(set.weapons[0].trigger.as_ref().unwrap().automatic);
+}
+
+/// The models: an install weapon's `PVModelNormal`, `PVSkin#` (the
+/// `Hands` placeholder and other non-texture entries empty) and `Pos`
+/// become our document's view model, `HHModel` its held model,
+/// `MuzzlePos` and `BreachOffset` the view-model table's; the knife is
+/// the install's "M9" and the incendiary grenade its "M-23F" (names
+/// that aren't our IDs' slugs).
+#[test]
+fn models_and_names_from_the_install() {
+    use combat_arms::game::view_model::CaViewParams;
+    let install = weapons(
+        r#"[Ammo0] Name="k"
+        [Weapon0] Name="M9" Guntype=0 AmmoName0="k" PVModelNormal="GUNS_M_PV_MELEE\PV_Melee_M9_SH.ltb"
+          PVSkin0="Hands" PVSkin1="GUNS_T_PV_MELEE\PV_M9.dtx" PVSkin2="PV_L_ARM" Pos=<0.5, -0.9, 1.5>
+          HHModel="GUNS_M_HH\HH_M9.ltb" MuzzlePos=<1, 2, 3> BreachOffset=<1, 1, 1>
+        [Weapon1] Name="M-23F" Guntype=7 AmmoName0="k" PVModelNormal="GUNS_M_PV_Throwing\PV_Throwing_M18Smoke_SH.ltb""#,
+    )
+    .unwrap();
+    let docs = merge_weapon_docs(
+        &[
+            ("m9.toml", include_str!("../../data/weapons/m9.toml")),
+            ("m23f.toml", include_str!("../../data/weapons/m23f.toml")),
+        ],
+        &install,
+        meters_per_unit(),
+    )
+    .unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set = WeaponSet::parse(&refs, &[]).unwrap();
+    assert_eq!(set.weapons.len(), 2, "both matched, nothing new");
+    let knife = set.get("combat_arms:m9_knife").unwrap();
+    assert_eq!(knife.models.view.as_deref(), Some("guns_m_pv_melee/pv_melee_m9_sh.ltb"));
+    assert_eq!(knife.models.view_skins, ["", "guns_t_pv_melee/pv_m9.dtx", ""]);
+    assert_eq!(knife.models.view_offset, Some([0.5, -0.9, 1.5]));
+    assert_eq!(knife.models.world.as_deref(), Some("guns_m_hh/hh_m9.ltb"));
+    let p: CaViewParams = knife.hook("combat_arms:view_model").unwrap();
+    assert_eq!((p.muzzle_pos, p.breach_offset), ([1.0, 2.0, 3.0], [1.0; 3]));
+    let grenade = set.get("combat_arms:m23f").unwrap();
+    assert_eq!(grenade.models.view.as_deref(), Some("guns_m_pv_throwing/pv_throwing_m18smoke_sh.ltb"));
 }

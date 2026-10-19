@@ -311,6 +311,20 @@ pub struct WeaponRecord {
     pub damage_weapon: bool,
     pub check_reload_ani_time: bool,
     pub hidden: bool,
+    /// `PVModelNormal`: the first-person model, an archive path as stored
+    /// (empty when missing; view_models.md 1: every stock character's
+    /// player-view entry is `Normal`).
+    pub pv_model: String,
+    /// `PVSkin0..`: its skins by texture index.
+    pub pv_skins: Vec<String>,
+    /// `HHModel` and `HHSkin0..`: the third-person model and its skins.
+    pub hh_model: String,
+    pub hh_skins: Vec<String>,
+    /// `Pos`, `MuzzlePos`, `BreachOffset` (camera space, world units;
+    /// missing: zero).
+    pub pos: [f64; 3],
+    pub muzzle_pos: [f64; 3],
+    pub breach_offset: [f64; 3],
 }
 
 impl WeaponRecord {
@@ -425,6 +439,13 @@ impl WeaponRecord {
             damage_weapon: s.bool("DamageWeapon", true),
             check_reload_ani_time: s.bool("CheckReloadAniTime", true),
             hidden: s.bool("Hidden", false),
+            pv_model: s.string("PVModelNormal").map(text).unwrap_or_default(),
+            pv_skins: s.string_list("PVSkin").iter().map(|v| text(v)).collect(),
+            hh_model: s.string("HHModel").map(text).unwrap_or_default(),
+            hh_skins: s.string_list("HHSkin").iter().map(|v| text(v)).collect(),
+            pos: s.vector("Pos").unwrap_or_default(),
+            muzzle_pos: s.vector("MuzzlePos").unwrap_or_default(),
+            breach_offset: s.vector("BreachOffset").unwrap_or_default(),
         }
     }
 

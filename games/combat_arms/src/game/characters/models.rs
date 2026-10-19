@@ -94,7 +94,8 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
         ));
     }
     let Some(hand) = data.skeleton(0).socket("RightHand") else { return };
-    for w in &super::super::data::weapon_set().weapons {
+    let ours = super::super::data::builtin_weapon_ids();
+    for w in super::super::data::weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
         let Some(path) = w.models.world.as_deref() else { continue };
         let look = data.weapon(Some(&w.id));
         match held(path, &w.id, &look.skins, hand, map, file) {
@@ -202,6 +203,15 @@ fn body(
     }
     let rig = Rig::new(loaded.model, loaded.list);
     let feet = rig.half_heights.0;
+    // The meshes in the body's frame (feet at the origin), as the root
+    // places the skeleton: in model space they would sit the root's lift
+    // below their nodes, and every turned node would swing its vertices
+    // about a point that far off.
+    for mesh in &mut m.meshes {
+        for p in &mut mesh.positions {
+            p[1] += feet * scale;
+        }
+    }
     register(&record.file, Arc::new(rig));
     Ok(MapCharacterModel {
         team: None,

@@ -536,6 +536,27 @@ fn case_7_keyed_maps() {
             let bytes = rez.read(&e.path).unwrap().unwrap();
             let w = World::parse(&bytes).unwrap_or_else(|err| panic!("{}: {err}", e.path));
             assert_eq!(w.header.version, 85);
+            let t = totals(&w);
+            eprintln!(
+                "{archive} {}: {} models, {} objects, {} polys, {} render triangles in {} blocks ({} world models), \
+                 {} lightmaps, shaders {:?}, {} spawns",
+                e.path,
+                w.models.len(),
+                w.objects.len(),
+                t.polygons,
+                t.render_triangles,
+                w.render.blocks.len(),
+                w.render.models.len(),
+                t.lightmaps,
+                t.by_shader,
+                w.objects_of("GameStartPoint").count()
+            );
+            if t.render_triangles < 1000 {
+                eprintln!("    objects: {:?}", class_counts(&w));
+                for o in w.objects.iter().filter(|o| o.string("Filename").is_some()).take(20) {
+                    eprintln!("    {} {:?}: {:?}", o.class, o.string("Name"), o.string("Filename"));
+                }
+            }
             if e.path == "worlds/piazza.dat" {
                 assert_eq!(bytes.len(), 35_895_268);
             }
