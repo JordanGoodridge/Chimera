@@ -39,3 +39,13 @@ primary = { prefire = 0.001, length = 0.65, hits = [0.155, 0.402], damage = 45.0
 # Secondary (stab, zoom): 1 ms pre-fire, an 1100 ms stab hitting at 367 ms
 # for 75 [Constants: M9 attack data; 8.2].
 secondary = { prefire = 0.001, length = 1.1, hits = [0.367], damage = 75.0, postfire = 0.001 }
+
+# view_models.md 4, 9, 10 (per-weapon placement): `MuzzlePos`,
+# `BreachOffset`, `PVMuzzleFXName`; `Recoil` (the shot jiggle) is
+# (0, 0, 0) in every stock record. Its animations are the view model's
+# own, by view_models.md 7's names (game/view_model.rs).
+[hooks."combat_arms:view_model"]
+muzzle_pos = [0.0, 0.0, 0.0]
+breach_offset = [0.0, 0.0, 0.0]
+muzzle_fx = ""
+shells = false

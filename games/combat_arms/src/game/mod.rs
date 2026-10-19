@@ -29,9 +29,9 @@
 //! - `model`: the install's models (`.ltb`) and their animations as
 //!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
 //! - `props`: models the maps' objects place, as animated props;
-//! - `view_model`: the weapons' first-person models from the install,
-//!   played by Chimera's view-model driver (provisional until
-//!   view_models.md).
+//! - `view_model`: the weapons' first-person models from the install
+//!   with the character's hands, their animation state machine, sway,
+//!   muzzle flash and shells (view_models.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -154,10 +154,10 @@ impl PluginGroup for CombatArmsPlugins {
             .add(inventory::CaInventoryPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(attachments::CaAttachmentsPlugin)
+            .add(view_model::CaViewModelPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
-            .add(view_model::CaViewModelPlugin)
     }
 }
