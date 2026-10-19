@@ -233,3 +233,48 @@ fn unkeyed_bodies_on_the_stock_skeletons() {
         eprintln!("{path}: every node sphere's node there; farthest from the default body's bind: {far:.2} u; sockets {:?}", rig.model.sockets.iter().map(|s| &s.name).collect::<Vec<_>>());
     }
 }
+
+/// On WAREHOUSE with the install's bodies (when they read): the map
+/// carries the default male and female bodies as character models, a player wears the
+/// default one (`BodyName`), its hit spheres come from the model's pose
+/// (not the spec's skeleton), and its drawn pose is the driver's.
+#[test]
+fn warehouse_players_wear_their_bodies() {
+    use chimera_world::{
+        harness::Sim,
+        map::{BodyName, MapSimPlugin, anim::Animator},
+    };
+    use combat_arms::{
+        game::{
+            characters::{CaAnim, CaPose, models},
+            movement, world,
+        },
+        harness::CaSim,
+    };
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let map = world::load_from(&mount, "warehouse").unwrap();
+    let names: Vec<_> = map.characters.iter().filter_map(|c| c.name.clone()).collect();
+    if !names.contains(&models::body_name(0)) {
+        eprintln!("skipping: no character bodies ({:?})", map.warnings.iter().find(|w| w.contains("character")));
+        return;
+    }
+    assert_eq!(names, [models::body_name(0), models::body_name(7)]);
+    let spawn = map.spawns[0].0;
+    let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
+    sim.ticks(2);
+    let p = sim.spawn_character(spawn + Vec3::Y, movement::ID);
+    sim.seconds(1.0);
+    let world = sim.app.world();
+    assert_eq!(world.get::<BodyName>(p).map(|b| b.0.as_str()), Some(models::body_name(0).as_str()));
+    assert!(world.get::<CaAnim>(p).unwrap().rig.is_some());
+    let pose = world.get::<CaPose>(p).unwrap();
+    assert!(pose.modelled);
+    let found = pose.spheres.iter().filter(|s| s.is_some()).count();
+    assert_eq!(found, 33, "the default male's 33 spheres");
+    let animator = world.get::<Animator>(p).expect("the body's animator");
+    assert!(animator.fixed.is_some(), "drawn from the driver's pose");
+}

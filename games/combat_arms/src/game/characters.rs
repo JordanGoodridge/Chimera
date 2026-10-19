@@ -61,8 +61,10 @@
 //!   feet (the hull's height over the standing one), turned by the aim:
 //!   so spheres don't follow the walking legs or the weapon's aim pose,
 //!   and the female `Bip01 Neck` and right-hand socket places are ours.
-//! - With models: the pose is computed per tick (not per rendered frame)
-//!   and drawn as is; goggles, backpacks, faces, cosmetics, the clan
+//! - With models: only the default male and female bodies load
+//!   (`models::LOADED`: each parses its sex's whole library; another
+//!   selection stays a capsule on the spec's skeleton); the pose is
+//!   computed per tick (not per rendered frame) and drawn as is; goggles, backpacks, faces, cosmetics, the clan
 //!   pieces and infection overrides aren't loaded (nothing selects them);
 //!   the head piece is the selection's default (none); render styles are
 //!   ignored; the drawn body's feet sit at the standing hull's bottom; a

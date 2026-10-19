@@ -49,9 +49,10 @@
 //!
 //! Known shortcuts (the spec's most literal reading where unclear;
 //! docs/tech-debt.md):
-//! - Third-person points: others' muzzle (flash socket), breach (casing
-//!   start) and the sound of their shots are at their eye (no character
-//!   models yet: characters.md); hit-zone surfaces for others' shots on a
+//! - Third-person points: others' muzzle and breach (casing start) are at
+//!   their posed `RightHand` socket (`characters::CaPose`; no weapon
+//!   models' own flash sockets without the V2 key), the sound of their
+//!   shots at their eye; hit-zone surfaces for others' shots on a
 //!   network client are the body's (6): a client sees no hit zones.
 //! - No liquid volumes: nothing is under water (no half-volume impact
 //!   sounds, under-water records, bubbles), a ray doesn't go on through
@@ -479,6 +480,7 @@ fn shot_effects(
     cameras: CameraQuery,
     weapons: WeaponFxQuery,
     characters: Query<(Has<Health>, Has<Intent>, Option<&CaViewModel>, Option<&Transform>)>,
+    hands: Query<(&super::characters::CaPose, &Transform, &MovementState)>,
     grid: Option<Res<SurfaceGrid>>,
     tables: Res<CaFxTables>,
     settings: Res<CaFxSettings>,
@@ -539,7 +541,13 @@ fn shot_effects(
             WeaponEventKind::Fired { origin, yaw, pitch, .. } => {
                 let dir = aim_of(*yaw, *pitch) * Vec3::NEG_Z;
                 let vm = characters.get(e.owner).ok().and_then(|c| c.2);
-                let fire = if mine { vm.map_or(*origin, |v| v.flash_point) } else { *origin };
+                // Others': their weapon's socket (`RightHand`, characters.md
+                // 3), else the shot's origin.
+                let hand = hands
+                    .get(e.owner)
+                    .ok()
+                    .and_then(|(p, t, s)| Some(p.world(t, s, UNIT, p.right_hand?)));
+                let fire = if mine { vm.map_or(*origin, |v| v.flash_point) } else { hand.unwrap_or(*origin) };
                 rounds.insert(e.owner, Round { fire, first_ray: true });
                 // The fire sound.
                 if let Some((file, radius)) = fire_sound(wfx, mods, mine) {

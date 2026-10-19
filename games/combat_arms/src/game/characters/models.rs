@@ -1,6 +1,6 @@
 //! The characters' models from the install (specs/combat_arms/
-//! characters.md section 2): each stock body record's body file with its
-//! animation library (`game::model`), as Chimera's character model named
+//! characters.md section 2): the default male and female body records'
+//! (`LOADED`) body files with their animation library (`game::model`), as Chimera's character model named
 //! `body_name(id)`, its texture slots filled per camouflage index and
 //! team mark (skin family `family(c, teammate)`), the default head piece
 //! merged onto its skeleton when it has a file; each weapon's third-person
@@ -68,12 +68,18 @@ pub fn unregister(path: &str) {
     }
 }
 
-/// Every stock body and third-person weapon into `map` (when they read).
+/// The bodies loaded with a map: the default male's and female's (what a
+/// selection draws without gear, by its face). Each has its sex's whole
+/// animation library (tens of megabytes), parsed per body.
+pub const LOADED: &[i32] = &[0, 7];
+
+/// The loaded bodies (`LOADED`) and every third-person weapon into `map`
+/// (when they read).
 pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let scale = super::super::movement::movement_data().meters_per_unit;
     let data = records::data();
     let mut failed = Vec::new();
-    for record in &data.model {
+    for record in data.model.iter().filter(|r| LOADED.contains(&r.id)) {
         match body(record, scale, map, file) {
             Ok(c) => map.characters.push(c),
             Err(e) => failed.push(e),
@@ -83,7 +89,7 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
         map.warnings.push(format!(
             "character models: {} of {} bodies did not load (capsules instead; CHARS_* need the V2 key): {}",
             failed.len(),
-            data.model.len(),
+            LOADED.len(),
             failed[0]
         ));
     }
@@ -153,7 +159,18 @@ fn body(
         .iter()
         .map(|p| p.lods.first().and_then(|l| l.used_textures().first().copied()).unwrap_or(-1))
         .collect();
-    let mut m = model::convert(&loaded, scale, &|lod| {
+    // Chimera's animation set only needs the body's own pose (the
+    // driver lays the pose out itself, `Animator::fixed`): no resampling
+    // of the library.
+    let own = model::LoadedModel {
+        path: loaded.path.clone(),
+        model: loaded.model.clone(),
+        list: lithtech_formats::anim::AnimList {
+            entries: loaded.list.entries.iter().take(1).cloned().collect(),
+            offsets: vec![Some(0)],
+        },
+    };
+    let mut m = model::convert(&own, scale, &|lod| {
         let s = lod.used_textures().first().copied().unwrap_or(-1);
         slot(record, s, 0, false)
     });
@@ -183,7 +200,7 @@ fn body(
         mesh.alpha = look.alpha;
         mesh.color = if look.texture.is_some() { [255; 3] } else { [150; 3] };
     }
-    let rig = Rig::new(loaded.model.clone(), loaded.list.clone());
+    let rig = Rig::new(loaded.model, loaded.list);
     let feet = rig.half_heights.0;
     register(&record.file, Arc::new(rig));
     Ok(MapCharacterModel {
