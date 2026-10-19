@@ -9,7 +9,9 @@
 //! - `weapons`: firing (the weapon frame on placeholder data);
 //! - `inventory`: classes, switching, the loadout, the knife, pickup and
 //!   drop (inventory.md, implemented);
-//! - `grenades`: thrown weapons (none yet);
+//! - `grenades`: thrown weapons: the M67, XM84, M18, M-23F and G7A, their
+//!   throw, flight, fuse and effects on the server's 20 Hz frames
+//!   (grenades.md, implemented);
 //! - `attachments`: weapon attachments (none yet);
 //! - `hud`: the weapon data the HUD reads (`combat_arms:hud`: crosshair
 //!   fields and the weapon panel's class; hud_crosshair.md);
@@ -133,11 +135,11 @@ impl PluginGroup for CombatArmsPlugins {
             .add(data::CaDataPlugin)
             .add(movement::CaMovementPlugin)
             .add(hud::CaHudDataPlugin)
-            // Before `weapons`: its hooks must be there when the data
+            // Before `weapons`: their hooks must be there when the data
             // loads.
             .add(inventory::CaInventoryPlugin)
-            .add(weapons::CaWeaponsPlugin)
             .add(grenades::CaGrenadesPlugin)
+            .add(weapons::CaWeaponsPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(rules::CaRulesPlugin)
             .add(net::CaNetPlugin)

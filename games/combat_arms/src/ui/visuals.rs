@@ -1,7 +1,9 @@
 //! Combat Arms' placeholder looks (wave 0), until its models load: the
 //! local player's weapon in first person as a box (a long dark one for a
-//! gun, a thin light one for a melee weapon). Other characters are the
-//! shell's capsules (`client::hud`). Nothing here is Combat Arms' look.
+//! gun, a thin light one for a melee weapon); grenades in flight as small
+//! dark balls and smoke clouds as grey balls of the cloud's size
+//! (`grenade_balls`, `smoke_balls`). Other characters are the shell's
+//! capsules (`client::hud`). Nothing here is Combat Arms' look.
 //!
 //! The seam: Combat Arms' models (players, view models, held weapons)
 //! come from its install through its loader (specs/combat_arms/models_ltb.md,
@@ -16,7 +18,8 @@ use bevy::prelude::*;
 use crate::{
     client::FirstPersonCamera,
     core::LocalPlayer,
-    weapon::{Hitscan, Inventory, Melee},
+    map::loose::ShownItem,
+    weapon::{Hitscan, Inventory, Melee, grenade::SmokeCloud},
 };
 
 /// The placeholder looks.
@@ -24,7 +27,7 @@ pub struct CaVisualsPlugin;
 
 impl Plugin for CaVisualsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, box_gun);
+        app.add_systems(Update, (box_gun, grenade_balls, smoke_balls));
     }
 }
 
@@ -80,4 +83,59 @@ fn box_gun(
         ))
         .id();
     commands.entity(*camera).add_child(entity);
+}
+
+/// A Combat Arms grenade in flight (its `ShownItem`, on the server's world
+/// or a client's) gets a small dark ball.
+fn grenade_balls(
+    new: Query<(Entity, &ShownItem), (Added<ShownItem>, Without<Mesh3d>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
+) {
+    for (e, item) in &new {
+        if !item.0.starts_with(crate::game::GAME) {
+            continue;
+        }
+        commands.entity(e).insert((
+            Mesh3d(meshes.add(Sphere::new(0.04))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.2, 0.25, 0.15),
+                perceptual_roughness: 0.7,
+                ..default()
+            })),
+            Visibility::default(),
+        ));
+    }
+}
+
+/// A smoke cloud is a translucent grey ball of its radius and alpha.
+fn smoke_balls(
+    mut clouds: Query<(Entity, &SmokeCloud, Option<&mut Transform>, Has<Mesh3d>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    time: Res<Time>,
+    mut commands: Commands,
+) {
+    let now = time.elapsed_secs_f64();
+    for (e, cloud, transform, drawn) in &mut clouds {
+        let t = (now - cloud.started) as f32;
+        let r = cloud.radius(t).max(1e-3);
+        let pose = Transform::from_translation(cloud.centre).with_scale(Vec3::splat(r));
+        if !drawn {
+            commands.entity(e).insert((
+                Mesh3d(meshes.add(Sphere::new(1.0))),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::srgba(0.7, 0.7, 0.7, 0.8),
+                    alpha_mode: AlphaMode::Blend,
+                    unlit: true,
+                    ..default()
+                })),
+                pose,
+                Visibility::default(),
+            ));
+        } else if let Some(mut tr) = transform {
+            *tr = pose;
+        }
+    }
 }
