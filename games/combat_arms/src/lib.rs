@@ -9,7 +9,8 @@
 //! implementation work never edits the same file: `movement`, `weapons`
 //! (firing), `inventory` (slots, switching, the knife), `grenades`,
 //! `attachments`, `data` (its data files and, later, the install's
-//! attribute files), `rules` (game modes) and `world` (the install's
+//! attribute files), `rules` (game modes: TDM, Elimination Pro) and
+//! `world` (the install's
 //! maps); `CombatArmsPlugins` adds
 //! them all. With the `ui` feature, `ui` is its front end on the client
 //! shell: `ui::hud` (crosshair and basic HUD) and `ui::visuals`
@@ -25,9 +26,8 @@
 //! (the engine's base, `chimera_sim::SimBasePlugins`, and the tick
 //! metrics); the app runs it with `game::CombatArmsPlugins` after it.
 //!
-//! Known shortcuts: the skeleton has no bots, rounds, game teams or
-//! respawning (each waits for its spec, and some for a lift of
-//! CS:S's code into Chimera: the plan's "lift into Chimera" list).
+//! Known shortcuts: no bots yet (bots.md, and the lift of CS:S's bot
+//! brain into Chimera: the plan's "lift into Chimera" list).
 
 pub mod game;
 pub mod harness;
@@ -38,16 +38,14 @@ pub mod ui;
 // `crate::core`, `crate::weapon` and the rest inside, as in CS:S's crate
 // (the architecture check reads `crate::<module>` against its layering
 // table).
-use chimera_core::{character, core, game_registry, mount, slots};
+use chimera_core::{character, console, core, game_registry, mount, slots};
 use chimera_net::net;
-use chimera_sim::{rule_module, weapon};
+use chimera_sim::{rule_module, spawning, weapon};
 use chimera_world::map;
 
 // The front end's: the shell.
 #[cfg(feature = "ui")]
 use chimera_client::client;
-#[cfg(feature = "ui")]
-use chimera_core::console;
 
 use bevy::prelude::*;
 

@@ -8,4 +8,5 @@
 
 mod hud;
 mod net_hud;
+mod score;
 mod ui_system;

@@ -18,8 +18,10 @@
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
 //!   the install's attribute files;
 //! - `mount`: the install's `.rez` archives as a mount (`INFO.open`);
-//! - `rules`: game modes as rule modules;
-//! - `net`: the game's part of the network (armour, the pickup prompt;
+//! - `rules`: game modes as rule modules (game_modes.md: Team Death
+//!   Match and Elimination Pro, `ca_mode`);
+//! - `net`: the game's part of the network (armour, the pickup prompt,
+//!   the match, respawn requests;
 //!   the parts above register what a client predicts themselves);
 //! - `world`: the install's maps (world `.dat` files) as Chimera's
 //!   `MapData` (world_dat.md);
@@ -105,6 +107,8 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("3", "slot3"),
     ("4", "slot4"),
     ("5", "slot5"),
+    // The scoreboard while held (ui_system.md I2; the key is ours).
+    ("tab", "+showscores"),
 ];
 
 /// The defaults before walk and sprint were two keys (`GameInfo::

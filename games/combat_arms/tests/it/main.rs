@@ -11,11 +11,13 @@
 //! is implemented.
 
 mod attribute_data;
+mod game_modes;
 mod grenades;
 mod inventory;
 mod model;
 mod movement;
 mod net;
+mod net_modes;
 mod skeleton;
 mod weapon_classes;
 mod weapon_firing;
