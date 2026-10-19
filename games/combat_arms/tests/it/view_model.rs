@@ -2,9 +2,11 @@
 //! Chimera's `weapon::view_anim` on the weapon data's `[anim.sequences]`),
 //! on the greybox with stand-in view models named as the install's
 //! (one bone; the real M92FS is heavy::view_model's): the draw, then
-//! idle; fire on a round, the last round's own; reload; a shell reload's
-//! start, loop and end; zoom in and out. The mapping is provisional
-//! (no view_models.md yet).
+//! idle; fire on a round (the M92FS has no last-round sequence, view_models.md
+//! 7; a test weapon maps one); reload; a shell reload's start, loop and
+//! end; zoom in and out (no stock weapon has zoom sequences: the data
+//! actions on a test weapon). Not yet view_models.md 7's state machine
+//! (game/view_model.rs).
 
 use std::sync::Arc;
 

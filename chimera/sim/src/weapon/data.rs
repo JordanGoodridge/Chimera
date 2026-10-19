@@ -459,6 +459,10 @@ pub struct ModelsData {
     /// models that don't name their own (LithTech's).
     #[serde(default)]
     pub view_skins: Vec<String>,
+    /// Where the view model's origin sits in the eye's space, in the
+    /// game's own units and axes (its loader converts them).
+    #[serde(default)]
+    pub view_offset: Option<[f32; 3]>,
 }
 
 /// The HUD's names for it: `name` (a string token), `icon` (a kill icon).

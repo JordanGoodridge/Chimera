@@ -74,17 +74,19 @@ max_wag = 50.0
 move_penalty = 0.08
 
 # The first-person model (unkeyed GUNS_M_PV_SG) and its skin (index 1,
-# unkeyed GUNS_T_PV_SG). Provisional mapping (no view_models.md yet): the
-# model's names, their lengths the times above (select 1000 ms, fire_0
-# 600 ms, prereload 333 ms, reload 700 ms a shell, postreload 900 ms).
+# unkeyed GUNS_T_PV_SG). Sequences by view_models.md 7 (select 1000 ms,
+# fire_0 600 ms; the shell reload PreReload 333 ms, reload 700 ms a
+# shell, PostReload 900 ms; names case-insensitive).
 [models]
 view = "guns_m_pv_sg/pv_sg_r870_sh.ltb"
 view_skins = ["", "guns_t_pv_sg/pv_r870.dtx"]
+# view_models.md, per-weapon placement: `Pos` (0.3, -0.7, 1.0).
+view_offset = [0.3, -0.7, 1.0]
 
 [anim.sequences]
 draw = ["select"]
-idle = ["idle_0", "idle_1"]
+idle = ["idle_0"]
 fire = ["fire_0"]
-reload_start = ["prereload"]
+reload_start = ["PreReload"]
 reload_loop = ["reload"]
-reload_end = ["postreload"]
+reload_end = ["PostReload"]

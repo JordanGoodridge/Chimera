@@ -1,40 +1,53 @@
-//! Combat Arms' first-person view models: each weapon whose data names a
-//! view model (`[models] view`, an archive path of the install, with
-//! `view_skins`: its textures by the model's texture index) gets it
-//! loaded with the map (`add_view_models`, from `world::load_from`) as
-//! Chimera's `MapViewModel`, converted by `model` (the weapon's pieces on
-//! the arms' skeleton, the animation child's sequences included), in the
-//! eye's space: LithTech's player-view models have their origin at the eye and
-//! face forward, so the model's own frame after `model`'s conversion is
-//! the camera's (-Z ahead), scaled by `VIEW_SCALE` metres per unit.
-//! Chimera's view-model driver (`weapon::view_anim`) plays the weapon
-//! data's `[anim.sequences]` on the weapon frame's events (draw, fire,
-//! reload, shell reload, zoom) and the presentation draws it at the local
-//! player's first-person camera with `settings`' field of view.
+//! Combat Arms' first-person view models (specs/combat_arms/view_models.md,
+//! in part; section numbers below are its): each weapon whose data names a
+//! player-view model (`[models] view`, an archive path of the install,
+//! with `view_skins`: the weapon's skins by texture index, 2, and
+//! `view_offset`: its `Pos`, 4) gets it loaded with the map
+//! (`add_view_models`, from `world::load_from`) as Chimera's
+//! `MapViewModel`, converted by `model` (the gun's pieces on the arm
+//! skeleton, the `ANI_*` child's animations appended, 1). The model's frame
+//! after `model`'s conversion is the camera's (-Z ahead, 4: rotation
+//! identity in camera space), its origin at `Pos`, scaled by `VIEW_SCALE`.
+//! It is drawn at the local player's first-person camera with its own
+//! projection (`settings`: 50 degrees vertical, 5.1). Chimera's view-model
+//! driver (`weapon::view_anim`) plays the data's `[anim.sequences]` on the
+//! weapon frame's events, by 7's names: `select` on the draw, `idle_0`,
+//! `fire_0` per round, `reload`, and `PreReload`/`reload` per
+//! shell/`PostReload` (the files spell them in either case).
 //!
-//! Sequences are non-looping but for the idles (`LOOPING`), so a fire or
-//! reload plays once and the driver goes back to idle when it ends.
+//! Sequences are non-looping but for the subtle idle (`LOOPING`: 7
+//! restarts it each time it ends), so a fire or reload plays once and the
+//! driver goes back to idle when it ends.
 //!
 //! Readable without keys: the player-view archives of pistols, shotguns
 //! and machine guns (`GUNS_M_PV_Pistol`, `_SG`, `_MG`); the rifles',
-//! SMGs', snipers', knives' and grenades' need the V2 key, and a weapon
-//! whose view model doesn't load keeps the front end's placeholder box
-//! (the map's warnings say which).
+//! SMGs', snipers', knives', grenades' and the hand models' need the V2 key,
+//! and a weapon whose view model doesn't load keeps the front end's
+//! placeholder box (the map's warnings say which).
 //!
-//! Known shortcuts (docs/tech-debt.md): there is no view_models.md spec
-//! yet (docs/plans/active/combat-arms.md, row 16): the action ->
-//! sequence mapping in the data is provisional (the animation names as
-//! found in the models, the timings the weapon frame's from the firing,
-//! classes and inventory specs, the animations played at their own
-//! length, not stretched to the frame's times); the field of view
-//! (`VIEWMODEL_FOV`), the scale and the placement are guesses; no bob or
-//! sway (Chimera's lift of CS:S's `view_motion` waits for the spec's
-//! numbers), no muzzle flash, brass or sockets, no key strings (sounds)
-//! from the animations, no holster animation (the holster is instant,
-//! inventory.md), no sprint pose animation, no arms (the models carry the
-//! arm bones but no arm piece: every piece is skin 1, the weapon), no
-//! left-handed mirroring and no skins by attachment; a piece whose skin
-//! is in a keyed archive is drawn flat grey (`UNSKINNED`).
+//! Known shortcuts (docs/tech-debt.md); written before view_models.md
+//! landed, what it says that isn't done yet:
+//! - No hand model (1): the arms and sleeves are a separate model from
+//!   `CHARS_M_HAND` (V2-keyed), bound by node name, skinned by the
+//!   character, face and uniform (2); only the gun's pieces are drawn. A
+//!   piece whose skin is in a keyed archive is flat grey (`UNSKINNED`).
+//! - Animation (7): no pre-fire (no stock unkeyed gun plays one), no
+//!   `postfire` when the trigger is let go, no full idle (`idle_1` after
+//!   5-15 s still), no sprint pose (`PreRush`/`rush`/`PostRush`); the
+//!   animations play at rate 1, not the fire, reload and draw rates (equal
+//!   for the stock data: the frame's times are the animations' lengths);
+//!   transitions snap (`model`'s shortcuts); a sequence starts on the
+//!   weapon frame's event, not by 7's state machine (Quirk 1's one-frame
+//!   switch, the semi-automatic `postfire` cancel).
+//! - No sway (6), shot jiggle (4, zero in the stock data), key events (8:
+//!   sounds, knife hits), muzzle flash (9), shells (10) or attachments (3).
+//! - Projection (5.1): Chimera's view-model camera keeps its 1 cm near
+//!   plane (`VIEW_SCALE` makes that the spec's 0.1 u) and no far plane
+//!   (the spec's 7 u); `ViewModelSettings` zooms the view model with the
+//!   world's zoom (the spec: only the world's FOV changes; scopes hide the
+//!   model either way). The world camera's FOV is the shell's (5.2: 75
+//!   degrees vertical).
+//! - No left-handed mirroring (none in the game).
 
 use std::sync::Arc;
 
@@ -47,26 +60,25 @@ use crate::{
 
 use super::model;
 
-/// The view model's horizontal field of view at 4:3 (degrees): the
-/// player's own 90 for now (provisional: view_models.md will say).
-pub const VIEWMODEL_FOV: f32 = 90.0;
-/// The player's unzoomed horizontal field of view at 4:3.
-pub const DEFAULT_FOV: f32 = 90.0;
+/// The view model's horizontal field of view at 4:3 (degrees), from 5.1's
+/// 50 degrees vertical (`PVModelFOV`): 2 atan(4/3 tan 25 degrees).
+pub const VIEWMODEL_FOV: f32 = 63.74;
+/// The player's unzoomed horizontal field of view at 4:3 (5.2: 75 degrees
+/// vertical, 2 atan(4/3 tan 37.5 degrees)).
+pub const DEFAULT_FOV: f32 = 91.31;
 
-/// Metres per view-model unit (provisional: the player-view skeletons'
-/// arms are about 2.8 units from shoulder to wrist, read as an arm's
-/// 0.55 m). Only the near plane sees it: the view model has its own
-/// camera, so a larger or smaller scale draws the same picture once the
-/// model is beyond the view-model camera's 1 cm near plane (the M92FS's
-/// hands and gun sit 0.2 to 1 unit ahead of the eye in its idle).
-pub const VIEW_SCALE: f32 = 0.2;
+/// Metres per view-model unit: 0.1, so that Chimera's view-model near
+/// plane (1 cm) cuts where the game's (`reallyclose_near`, 0.1 u, 5.1)
+/// does. The view model has its own camera, so the scale changes nothing
+/// else on screen.
+pub const VIEW_SCALE: f32 = 0.1;
 
 /// The colour of a piece whose skin doesn't read (keyed texture
 /// archives without the V2 key): a gunmetal grey, so the shape reads.
 const UNSKINNED: [u8; 3] = [90, 92, 96];
 
-/// Sequences that loop (by name, lower case): the idles.
-const LOOPING: &[&str] = &["idle"];
+/// Sequences that loop (by name, lower case): the subtle idle.
+const LOOPING: &[&str] = &["idle_0"];
 
 /// The view-model settings Combat Arms starts with.
 pub fn settings() -> ViewModelSettings {
@@ -91,11 +103,13 @@ impl Plugin for CaViewModelPlugin {
 }
 
 /// View model `path` for weapon `key`, skinned with `skins` (textures by
-/// the model's texture index), its textures added to `map`.
+/// the model's texture index), its origin at `offset` (the game's camera
+/// space: units, +Z ahead), its textures added to `map`.
 pub fn load(
     path: &str,
     key: &str,
     skins: &[String],
+    offset: [f32; 3],
     map: &mut MapData,
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<MapViewModel, String> {
@@ -119,6 +133,12 @@ pub fn load(
         .and_then(|r| Arc::try_unwrap(r).ok())
         .ok_or_else(|| format!("{path}: no skeleton"))?;
     let mut animations = Arc::try_unwrap(rig.animations).map_err(|_| format!("{path}: animations shared"))?;
+    // The origin moves to `offset`: the skeleton's root and the meshes
+    // (in the eye's space at the reference pose) alike.
+    let offset = Vec3::from(lithtech_formats::ltb::to_rh_vec(offset)) * VIEW_SCALE;
+    for p in m.meshes.iter_mut().flat_map(|m| m.positions.iter_mut()) {
+        *p = (Vec3::from(*p) + offset).to_array();
+    }
     for s in &mut animations.sequences {
         s.looping = LOOPING.iter().any(|l| s.name.to_lowercase().starts_with(l));
     }
@@ -126,7 +146,7 @@ pub fn load(
         key: key.to_string(),
         model: m,
         bones: rig.bones,
-        root: rig.root,
+        root: rig.root.with_translation(offset),
         animations: Some(Arc::new(animations)),
         right_handed: true,
         allow_flipping: false,
@@ -140,7 +160,8 @@ pub fn load(
 pub fn add_view_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     for w in &super::data::weapon_set().weapons {
         let Some(path) = w.models.view.as_deref() else { continue };
-        match load(path, &w.id, &w.models.view_skins, map, file) {
+        let offset = w.models.view_offset.unwrap_or_default();
+        match load(path, &w.id, &w.models.view_skins, offset, map, file) {
             Ok(v) => map.view_models.push(v),
             Err(e) => map.warnings.push(format!("{} view model: {e}", w.id)),
         }

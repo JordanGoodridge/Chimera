@@ -91,7 +91,9 @@ draw = [[0.3667, "Weapon_AK47.BoltPull"]]
 world = "models/weapons/w_rif_ak47.mdl"
 view = "models/weapons/v_rif_ak47.mdl"
 # world_alt (silenced), view_right_handed, view_skins (textures by the
-# model's texture index, for models that don't name theirs: LithTech's)
+# model's texture index, for models that don't name theirs: LithTech's),
+# view_offset ([x, y, z]: the view model's origin in the eye's space, in
+# the game's own units and axes)
 
 [hud]
 name = "Cstrike_WPNHUD_AK47"    # string token
