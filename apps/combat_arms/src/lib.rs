@@ -99,7 +99,7 @@ mod tests {
             harness::Sim,
         };
         use combat_arms::{
-            game::{inventory, movement, weapons},
+            game::{grenades, inventory, movement, weapons},
             harness::CaSim,
         };
 
@@ -131,6 +131,6 @@ mod tests {
         command(&mut sim, "invprev");
         assert_eq!(active(&sim), weapons::RIFLE);
         command(&mut sim, "invprev");
-        assert_eq!(active(&sim), inventory::KNIFE, "wraps");
+        assert_eq!(active(&sim), grenades::M67, "wraps to the loadout's last");
     }
 }

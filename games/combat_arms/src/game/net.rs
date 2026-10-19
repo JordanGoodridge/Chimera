@@ -25,7 +25,13 @@
 //!   shooter's view tick); a client deals no damage;
 //! - `inventory`: the selection (`CaSelection`: class cursors, last
 //!   chosen, Q, the sprint pose; weapons as inventory indices) and the
-//!   knife's attack (`Knife`'s `KnifeState`).
+//!   knife's attack (`Knife`'s `KnifeState`);
+//! - `grenades`: the throw is Chimera's predicted `Throwable` (pin,
+//!   release, post-fire, the count) with the sprint gate in the predicted
+//!   tick; the grenade, its blast, flash timers and fire are the server's,
+//!   and Chimera's network carries them: the grenade in flight as a
+//!   `NetItem`, its detonation as `Detonation`, a flash as the victim's
+//!   `Senses` (`Blinded`), a smoke cloud as `NetSmoke`, damage as health.
 //!
 //! What this part adds (`CaNetPlugin`, registered as `combat_arms`):
 //!

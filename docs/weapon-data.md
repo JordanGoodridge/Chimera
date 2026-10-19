@@ -151,7 +151,10 @@ hud_icon = "ammo_762"
   `combat_arms:damage` (damage per ray, roll, range bands, server
   spacing), `combat_arms:spread` (cones and the meters' values),
   `combat_arms:recoil` (the view kick and its return), `combat_arms:handling`
-  (`move_penalty`, the carrier's `HeldMovePenalty`), `combat_arms:zoom`
+  (`move_penalty`, the carrier's `HeldMovePenalty`), `combat_arms:grenade`
+  (games/combat_arms/src/game/grenades.rs: counts, pre-fire, release and
+  post-fire times, perturb, fuse, speed, hit points, the area damage and
+  its type, the over-time sphere; data/weapons/m67.toml), `combat_arms:zoom`
   (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`, the
   stock `scope = { name, fov = [per level] }`: game/weapons/zoom.rs),
   `combat_arms:spin` (a minigun's `prefire`, `postfire`, `loop_len`,

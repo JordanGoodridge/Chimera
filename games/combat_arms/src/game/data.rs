@@ -6,10 +6,12 @@
 //!
 //! Built in: the M4A1 (data/weapons/m4a1.toml, the numbers of
 //! weapon_firing.md's worked example), the M9 knife (m9.toml,
-//! inventory.md's numbers), one weapon per class from weapon_classes.md's
-//! "Typical weapons" (mp5a4, m60, beretta_m92fs, remington_870, l96a1,
-//! dragunov_svd: an install weapon of a class we have no document for is
-//! skipped, one of a class we have copies it) and the movement numbers
+//! inventory.md's numbers), the grenades (m67.toml, xm84.toml, m18.toml,
+//! m23f.toml, g7a.toml: grenades.md's), one weapon per class from
+//! weapon_classes.md's "Typical weapons" (mp5a4, m60, beretta_m92fs,
+//! remington_870, l96a1, dragunov_svd: an install weapon of a class we
+//! have no document for is skipped, one of a class we have copies it) and
+//! the movement numbers
 //! (data/movement.toml, `movement::MovementData`).
 //!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
@@ -94,6 +96,11 @@ macro_rules! data_file {
 pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("m9.toml"),
     data_file!("m4a1.toml"),
+    data_file!("m67.toml"),
+    data_file!("xm84.toml"),
+    data_file!("m18.toml"),
+    data_file!("m23f.toml"),
+    data_file!("g7a.toml"),
     // One weapon per class (weapon_classes.md, "Typical weapons").
     data_file!("mp5a4.toml"),
     data_file!("m60.toml"),

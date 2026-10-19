@@ -72,10 +72,12 @@
 //!   server only applies messages). Test case 37 runs with the tick set to
 //!   the frame's length.
 //! - Fire-gating by sprint and use applies to magazine weapons and the
-//!   knife; thrown weapons follow Chimera's `grenade::Throwable`. The
-//!   cooked-grenade release on death (12.1) is grenades.md's. A
-//!   shell-by-shell weapon's reload during sprint or its draw goes to
-//!   Chimera's frame (refused while held).
+//!   knife; thrown weapons are `grenades`' (sprint holds their fire there,
+//!   use doesn't), on Chimera's `grenade::Throwable` (a spent one kept at
+//!   total 0: `grenade::KeepSpent`). The cooked-grenade release on death
+//!   (12.1) is grenades.md's (`grenades`). A shell-by-shell weapon's
+//!   reload during sprint or its draw goes to Chimera's frame (refused
+//!   while held).
 //! - Reloads started here (6.6, Quirk 2, under sprint) play no reload
 //!   sounds (the frame's sound queue is private).
 //! - No skeleton yet: the left foot is the hull's bottom centre (the
@@ -133,8 +135,8 @@ pub const KNIFE: &str = "combat_arms:m9_knife";
 
 /// What every Combat Arms player starts with, in loadout order (primary,
 /// secondary, melee, throw, backpack; 1). PLACEHOLDER: the skeleton's
-/// rifle until weapon_firing.md's and the M9.
-pub const STARTING_WEAPONS: &[&str] = &[RIFLE, KNIFE];
+/// rifle until weapon_firing.md's, the M9 and the M67 (grenades.md).
+pub const STARTING_WEAPONS: &[&str] = &[RIFLE, KNIFE, super::grenades::M67];
 
 /// Metres per LithTech unit: movement's `meters_per_unit` (by body size;
 /// see Known shortcuts).

@@ -1,0 +1,25 @@
+# Combat Arms' surface hardness for grenades: specs/combat_arms/grenades.md,
+# section 6 (the surface table's `Hardness`, clamped to [0, 1]). Our
+# numbers as the spec gives them, not a file from the game. Surfaces not
+# listed take `GrenadeDampenPercent` (x 0.65); nearly every stock surface
+# is 0.65 too. Grenades fly through "invisible" surfaces (clip brushes)
+# and vanish on "sky" (section 5).
+#
+# `names`: the surface names a row covers (matched without case against a
+# collider's `PropSurface`); `hardness`: what a bounce keeps of the
+# velocity. Characters are "flesh".
+[[surface]]
+names = ["flesh"]
+hardness = 0.65
+
+[[surface]]
+names = ["chain-link fence"]
+hardness = 0.5
+
+[[surface]]
+names = ["water", "liquid", "invisible", "desert sand"]
+hardness = 0.1
+
+[[surface]]
+names = ["air", "sky"]
+hardness = 0.0
