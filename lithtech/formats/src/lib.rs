@@ -4,10 +4,18 @@
 //! converts what these read into Chimera's neutral types, as `cs_source`
 //! does with `source_formats`.
 //!
+//! - `anim`: skeletal animation maths and playback on a model's
+//!   animation data: the combined list with child models, sampling, the
+//!   millisecond tracker (keys, looping, transitions), key strings,
+//!   layering, node evaluation and skinning matrices.
 //! - `attributes`: attribute files ("butes"), the INI-like text documents
 //!   with a game's numbers: sections of typed values, strict typed reads.
 //! - `dtx`: textures (`.dtx`, version -5): header, mip layout, 32-bit
 //!   BGRA and DXT1/3/5 decoded to RGBA8.
+//! - `ltb`: models (`.ltb`, versions 23 and 25): pieces and levels of
+//!   detail with rigid, skinned and vertex-animated meshes, the node
+//!   tree, weight sets, child models, animations, sockets and bindings,
+//!   bounds-checked.
 //! - `rez`: `.rez` resource archives (header, directory, file data) as a
 //!   mount layer (`source_formats::fs::FileSource`), and a folder of them
 //!   as a `Mount`.
@@ -20,8 +28,10 @@
 //! Each format follows its spec under specs/ (specs/README.md); comments
 //! name the spec's sections.
 
+pub mod anim;
 pub mod attributes;
 pub mod dtx;
+pub mod ltb;
 pub mod rez;
 pub mod rez_cipher;
 pub mod world;

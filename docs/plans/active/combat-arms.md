@@ -102,6 +102,9 @@ does for BSP.
 - 2026-10-18: `lithtech_formats::attributes` reads attribute files
   (`attribute_data.md`'s format); Combat Arms' records and the merge
   over our TOML are the game's (`game/data.rs`, `game/data/attributes.rs`).
+- 2026-10-18: `lithtech_formats::ltb` reads models and `anim` their
+  animation data and playback rules; `games/combat_arms`' `game::model`
+  turns a model into a skinned `MapModel` with Chimera's `AnimSet`.
 - LithTech behaviour that every game could use (as with CS:S pieces) is
   lifted into Chimera, not kept in `lithtech/`; `lithtech/` holds only what
   is about LithTech's files and conventions.
@@ -145,7 +148,7 @@ does for BSP.
 | 7 | Weapon classes: rifle/SMG/sniper + scope/shotgun/LMG/pistol differences | `weapon_classes.md` | not started | L7 (the scope overlay's look as data); zoom (`AltModes`, `Zoom`) and the overlay are already Chimera's | Mostly data over 2; scope as an `alt` kind |
 | 8 | Attachments | `attachments.md` | not started | none (new in Chimera) | Data-driven parts (docs/weapon-data.md) |
 | 9 | LithTech world format `.dat`: geometry, lightmaps, collision, spawns, objects | `world_dat.md` | implementing (`worktree-agent-a4ca3acf25749c867`): reader and loading done | L11 (impact effects and runtime decals by surface class) not needed yet; nothing lifted (the map layer took `MapData` as is) | Reader `lithtech_formats::world` (fixtures A, B, C1-C7; heavy: test cases 1-6 on the 33 plain maps, all version 85; 7 waits for the V2 key); `game::world` converts to `MapData` (render data with a lightmap atlas, the install's `.dtx` textures through a first `lithtech_formats::dtx`, physics-BSP collision, `GameStartPoint` spawns); `--map combat_arms:<name>` in the app; scenario tests `tests/it/world.rs`, `heavy::world`; ambiguities in `game/world.rs`'s Known shortcuts |
-| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md`, `textures_dtx.md`, `animation.md` (briefs 10a-c) | not started (10b: `lithtech_formats::dtx` reads and decodes textures for item 9's maps, fixtures F1-F8 and the install sweep pass; load-time mip skipping, links and sections left) | L12 (view-model activity driver, bob and sway); `map::anim` and `map::view_model` are already Chimera's; the readers go in `lithtech/` | This box (real models); fixture files for the readers' unit tests |
+| 10 | Models `.ltb`, textures `.dtx`, skeletons and animation | `models_ltb.md`, `textures_dtx.md`, `animation.md` (briefs 10a-c) | implementing (`worktree-agent-a7e5358fb2c4b10b3`): 10a and 10c readers and props done; 10b: `lithtech_formats::dtx` reads and decodes textures for item 9's maps, fixtures F1-F8 and the install sweep pass; load-time mip skipping, links and sections left | L12 not lifted (no readable view model for the loadout's M4A1 and M9: both V2-keyed; the box placeholders stay); `map::anim` and `map::view_model` are already Chimera's | `lithtech_formats::ltb` (models: every kind, bounds-checked) and `anim` (combined list, sampling, ms tracker, key strings, layering, skinning maths): fixture cases, heavy cases on the unkeyed archives (census 815 models, flag, flagpole, laptop, M92FS pair, gunsmith, mine; V2 cases skip). `game::model` converts a model and its children to a skinned `MapModel` + `MapRig`/`AnimSet` (resampled at 30 fps); `game::props` places models world objects name (only the CTF `FlagItem`s, V2-keyed) and `CHIMERA_CA_PROP` for a dev prop; shortcuts in their `//!` docs |
 | 11 | CA UI system: how HUD and menus are built | `ui_system.md` | implementing (`worktree-agent-adef27468c6583569`): all 22 spec cases pass headless (`tests/ui/ui_system.rs`); ambiguities in `ui/menu.rs`, `ui/draw.rs`, `ui/chat.rs` Known shortcuts | L13 not needed (no in-match buy or team screens; the scoreboard is CA's own layout, waiting for modes); new generic piece instead: Chimera's `client::canvas` (reference-canvas trees, hit tests, modal layers, alignment, wrapping, fades, blinks, gauges); CS:S unchanged | `ui::layout` reads the game's `CBALAYOUT` format (the install's layouts are in V1-keyed XML.rez, so ours are data in that format: `data/ui/`); fonts scale with both factors and texts align in their parent (hud_crosshair.md Q2/Q3 settled, the HUD's texts and kill feed moved onto it); Esc opens CA's in-game menu (1:1, centred, modal) in place of the shell's default; the install's font files (FONTS.rez, unkeyed) drawn when present; chat queue as a model only |
 | 15 | Network part: listen server and clients, prediction | none (our engine's behaviour) | implementing (`worktree-agent-ab543578c13acdc9d`) | Join flow lifted: Chimera's default `JoinRules::enter` is `net::parts::enter_at_spawn` (a free spawn point of the team, full health); game state needs no lift yet (a game's rule state is its `net_part`, as CS:S's round) | `game/net.rs` (CA's part: `CaArmor` and the pickup prompt replicated); predicted: `CaMovement`, `CaSpread`/`CaRecoil`/`Knife` as weapon parts, `CaSelection` (weapons as inventory indices), the move penalty in the predicted tick; the server's rounds lag compensated; the HUD reads the server's hits and damage on a client; tests in `tests/it/net.rs`; listen server only (no CA dedicated server binary yet) |
 
@@ -153,9 +156,11 @@ does for BSP.
 
 | # | Item | Spec | Status | Lift | Notes |
 |---|---|---|---|---|---|
-| 12 | Character models, rigging, third-person animation | `characters.md` | not started | L14 (player animation driver) | Needs 10 |
-| 13 | Game modes: TDM, elimination | `game_modes.md` | not started | L15 (teams, respawn, round loop, game end, their network part); spectating is already Chimera's (`client::spectate`) | Rule modules on Chimera's rounds |
+| 12 | Character models, gear and skins, sockets, third-person animation, death, hit-sphere placement | `characters.md` | not started | L14 (player animation driver) | Needs 10 (done for the readers and `game::model`); every character archive (CHARS_*) and the third-person guns (GUNS_M_HH) are V2-keyed, so characters stay the shell's capsules until the V2 key is on the box |
+| 13 | Game modes: Team Death Match first, then Elimination, Search & Destroy, Capture the Flag and the rest, one section each; the server's mode settings | `game_modes.md` | not started | L15 (teams, respawn, round loop, game end, their network part); spectating is already Chimera's (`client::spectate`); S&D may lift CS-style objectives | Rule modules in `game/rules.rs` on Chimera's rounds; one mode at a time |
 | 14 | Bots | `bots.md` | not started | L16 (bot brain, path cost, corner checks, bot grenades) | Brains write `Intent`, like CS:S's bots; navigation on CA maps needs 9 |
+| 16 | First-person view models: animation per action, bob and sway, FOV, muzzle and shell sockets, arms plus weapon | `view_models.md` | not started | L12 (view-model activity driver, bob and sway); `map::view_model` is already Chimera's | Needs 10 (10a, 10c); timings tie to 2, 4, 6 |
+| 17 | Effects and sounds: muzzle flash, impacts per surface, tracers, blood, shells; weapon, footstep and impact sounds and attenuation | `effects_sounds.md` | not started | L11 (impact effects and decals by surface class), L3 (pain sounds as data), L10 (grenade looks) | Effect and sound tables as data; replaces item 6's placeholder looks |
 
 ## Lift survey (Wave 0.5)
 
@@ -317,6 +322,10 @@ Notes:
 - 2026-10-18: Wave 2 briefs (6-11, with 10 split into models, textures
   and animation) and the follow-up brief for Wave 1's open questions
   (29 questions from the implementers' Known shortcuts) written.
+- 2026-10-18: Wave 3 briefs (12, 13, 14, 16, 17; items 16 and 17 added
+  to the board, existing numbers kept) and the follow-up brief for Wave
+  2's open questions (25 questions from grenades, the world and texture
+  readers' Known shortcuts) written.
 
 ## How to run a spec wave (for the user)
 
@@ -1066,4 +1075,432 @@ user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
 `$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
 Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
 --rebase` and `git push` to main.
+```
+
+## How to run Wave 3
+
+Same as Waves 1 and 2: `git pull` in a clean checkout on the Windows PC,
+then paste each brief below into its own session, or into one session that
+hands each brief to a subagent while the main session alone does the git
+work. Each brief writes only its own file. Board numbers are kept: 12, 13
+and 14 were already on the board (15 is the network part, which has no
+spec), so view models are 16 and effects and sounds 17. Items 12 and 16
+build on the loader specs of item 10 (`models_ltb.md`, `animation.md`):
+pull first so they can refer to them. The follow-up brief at the end
+("Follow-up brief (Wave 2 open questions)") can run beside them: it edits
+only Wave 2 specs.
+
+## Spec briefs (Wave 3)
+
+Each brief is complete on its own; paste it as is.
+
+### 12. Characters
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/models_ltb.md, animation.md, weapon_firing.md
+(its hit spheres and "Open questions" 9), inventory.md (drops) and
+hud_crosshair.md (name tags) first, if they have landed (`git pull`): this
+spec builds on the model and animation layouts and must not contradict
+the gameplay specs; where it does, say so in "Open questions".
+
+Write specs/combat_arms/characters.md: the player characters as the game
+builds, dresses and animates them. Cover: which character models exist and
+how a player's model is chosen (team, gender or body type, the figure type
+the hit-sphere tables key on, the default when the choice is missing);
+gear and skins (how headgear, vests, backpacks and other gear swap pieces
+or textures, how a skin is applied, what is data and where the data lives
+by role); the rigging (the skeleton's nodes by role, and every socket the
+game uses: the hand that holds the weapon, back and holster sockets for
+carried weapons, the name tag's anchor, where dropped items and thrown
+grenades leave from, the eye or camera node), with each socket's parent
+node and offset; third-person animation selection: for each state (stance:
+stand, crouch; movement: idle, walk, run, sprint, strafe, backwards, jump,
+fall, land; weapon class held; firing, reloading, drawing, switching,
+throwing a grenade, knifing; hit reactions; dying) which animation plays,
+how the name is built (prefixes, suffixes per weapon class), how upper
+and lower body are layered, aim pitch and yaw (blend or bone twist, the
+limits), how ground speed drives the playback rate, and blend times
+between them; death (a death animation chosen by what, a ragdoll or not,
+how long the body stays, what happens to the weapon); and hit-sphere
+placement: for each sphere of weapon_firing.md's tables, which skeleton
+node it sits on and its offset from it, so the spheres follow the animated
+bones, for the male and the female skeleton.
+
+Describe behaviour in your own words: exact constants with units (say the
+distance unit and up axis), formulas as math, per-tick order (when the
+animation state is decided relative to movement and firing; server or
+client), edge cases (switching weapons mid-reload, dying while crouched or
+in the air, a model missing a socket), quirks players rely on (a hit
+sphere that sticks out of the body, a crouch animation that lowers the
+head more than the hull). Animation and node names as stored in the model
+files are data and may be named; never paste code or translate it line by
+line; no fenced code blocks except ```math. Name files only by their
+in-game role or their file name inside the game's archives, never by a
+machine path. End with a numbered list of concrete test cases that an
+implementer can check (state -> expected animation name and rate; node ->
+sphere centre in model space in the bind pose and in one animation at a
+given time; socket -> parent and offset), the ones that need the install
+marked so this box can check them against its own copy (say the Steam
+build id you measured), and an "Open questions" list.
+
+Write only specs/combat_arms/characters.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main.
+```
+
+### 13. Game modes
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/inventory.md (death drops), grenades.md (its
+"Open questions" 14, the infection mode's knock-back), hud_crosshair.md
+(timer and score) and world_dat.md ("Open questions" 3, the spawn point
+objects) first: this spec continues them and must not contradict them;
+where it does, say so in "Open questions".
+
+Write specs/combat_arms/game_modes.md: the match rules of every game mode,
+each mode in its own top-level section so they can be implemented one by
+one, Team Death Match first, then Elimination, Search & Destroy, Capture
+the Flag, and every other mode the reference has (say which ones you found
+and give each its own section, even a short one). Start with what all
+modes share: teams (how many, names, how a player joins or is assigned,
+balancing, switching team mid-match), the spawn (which spawn objects of a
+map a mode uses and by which properties, how one is chosen: random,
+farthest from enemies, blocked when occupied; spawn protection: length,
+what ends it early, what it blocks, how it shows), respawn (delay, by key
+or automatic, what the player respawns with), the match clock and
+rounds, score and kill counting (kills, deaths, assists, suicides, team
+kills, the points each gives), friendly fire, the end of a round and of
+the match (limits, ties, overtime or sudden death), what happens to
+dropped weapons and live grenades at a round's end, the data the
+scoreboard shows per player and per team, and the server's mode settings
+(each setting by its name as the game exposes it, type, range, default,
+and which rule reads it). Then, per mode, only what differs: its win
+conditions, round structure, objectives (bomb sites, flags, their
+objects in the map, carry and drop rules, plant and defuse times, capture
+and return rules), respawn or not, and its scoring.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math, per-tick order (when deaths are counted against the round's end,
+the order of a round's end, score and respawn), server or client, edge
+cases (the last player of a team leaving, two objectives finishing on the
+same tick, killing yourself with a grenade after the round ends), quirks
+players rely on. Setting names, mode names and object class names the
+game exposes are data and may be named; never paste code or translate it
+line by line; no fenced code blocks except ```math. Name files only by
+their in-game role, never by path. End with a numbered list of concrete
+test cases, grouped by mode (setup: settings, players, time; events ->
+expected score, time, winner, spawn chosen, respawn time), that an
+implementer without the game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/game_modes.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main.
+```
+
+### 14. Bots
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/movement.md, weapon_firing.md, inventory.md and
+grenades.md first (grenades.md already points to bots.md: a resting
+grenade announced as danger, bots not blinded, smoke not blocking bot
+sight): bots move, aim and fire through those rules and this spec must
+not contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/bots.md: computer-controlled players. First say
+whether the game has bots or AI opponents at all, in which modes (for
+example a training or AI mode, or enemies in a co-op mode) and how they
+are added (server setting, menu, count, names). If it has none, say so,
+list what the reference does have that comes closest, and stop there with
+"Open questions". Otherwise cover: navigation (what the bots move on: a
+navigation mesh or waypoints, how it is built or stored in the map's
+files, how a path is found and its costs, how they handle doors, ladders,
+jumps, drops and getting stuck), perception (view cone and distance, how
+sight is tested, hearing of shots, steps and grenades, memory of a target
+after losing sight), target selection (scores by distance, threat, angle,
+health), aim and reaction (reaction time, aim speed and error as
+formulas, where they aim on the body, how the error shrinks while
+tracking), weapon use (which weapon at which range, firing in bursts or
+taps, reloading, switching, knifing, throwing grenades: when and how they
+aim the throw), movement in a fight (strafing, crouching, taking cover,
+retreating at low health), team behaviour and objectives per game mode,
+and difficulty settings (each level's values for the numbers above, and
+how the level is chosen).
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math, the order of a bot's think within a tick and how often it
+thinks, randomness (distributions and ranges), edge cases (no path, a
+target behind smoke, a teammate in the line of fire), quirks players rely
+on. Never paste code or translate it line by line; no fenced code blocks
+except ```math. Name files only by their in-game role, never by path.
+End with a numbered list of concrete test cases (setup: bot difficulty,
+target position and motion; time -> expected reaction delay, aim error
+range, weapon chosen, path taken) that an implementer without the game
+can check, and an "Open questions" list.
+
+Write only specs/combat_arms/bots.md; change nothing else. Commit with
+the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main.
+```
+
+### 16. View models
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/animation.md, models_ltb.md, inventory.md,
+weapon_firing.md, weapon_classes.md, grenades.md and attachments.md first,
+if they have landed (`git pull`): their draw, holster, reload, fire and
+throw timings must line up with the view model's animations; where they
+don't, say so in "Open questions" (grenades.md's "Open questions" 3 and
+5, the throw animation's release time and the re-draw, are this spec's
+to settle if the reference allows).
+
+Write specs/combat_arms/view_models.md: the first-person weapon as the
+player sees it. Cover: which model is drawn (the weapon's first-person
+model, the arms or hands model, how they combine: one model, a child
+model, or arms attached to the weapon's nodes; how sleeves or gloves
+follow the player's character or team; how attachments show); animation
+selection: for each action (draw, holster, idle and its variations, fire
+per fire mode and the last shot, dry fire, reload full and empty and
+shell by shell, sprint start, loop and end, inspect if any, knife swings,
+grenade pin pull and throw, scope in and out) which animation plays,
+how the name is found, its length and which gameplay timing it sets or
+must match (inventory.md's draw and holster, weapon_firing.md's fire
+delay and reload, grenades.md's throw), animation key events (sounds,
+shell ejection, muzzle flash) and their times; bob and sway (per stance
+and movement speed, as formulas with constants, how turning and landing
+move the model, what zooming does to it); the field of view of the view
+model and of the world, and any per-weapon offset; the sockets or nodes
+for the muzzle flash and the shell ejection and how the effect is placed
+there; and the per-frame order (when the view model's pose is decided
+relative to the camera, firing and recoil).
+
+Describe behaviour in your own words: exact constants with units (say the
+distance unit and axes), formulas as math, frame or tick dependence, edge
+cases (firing during the draw, sprinting mid-reload, switching while
+zoomed, the last round), quirks players rely on (an animation cancel that
+shortens a reload, a bob that hides the crosshair). Animation, node and
+socket names as stored in the model files are data and may be named;
+never paste code or translate it line by line; no fenced code blocks
+except ```math. Name files only by their in-game role or their file name
+inside the game's archives, never by a machine path. End with a numbered
+list of concrete test cases (weapon, action, time -> expected animation
+and frame time, bob offset, field of view, muzzle socket position), the
+ones that need the install marked so this box can check them against its
+own copy (say the Steam build id you measured), and an "Open questions"
+list.
+
+Write only specs/combat_arms/view_models.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main.
+```
+
+### 17. Effects and sounds
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+Read specs/combat_arms/weapon_firing.md (surfaces), grenades.md (its
+"Open questions" 10, the smoke's emission), movement.md (footsteps),
+attachments.md (the suppressed shot) and world_dat.md (surface flags)
+first: this spec gives their events a look and a sound and must not
+contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/effects_sounds.md: what the player sees and hears
+when things happen. Effects: the muzzle flash (per weapon or class,
+first and third person, size, lifetime, light), tracers (which shots get
+one: every n-th, per weapon; speed, length, look by role), impacts per
+surface type (how a hit surface's type is found from the world and from
+models, and for each type the particles, decal, its size and lifetime,
+how many decals stay), blood (on hit, by zone, on walls behind, at
+death), shell casings (ejected from where, velocity, bounce, lifetime,
+sound), grenade explosions, flash and smoke looks (grenades.md's
+behaviour, the look here), and how the effect files are structured if the
+game describes effects as data (format, fields, by role). Sounds: how a
+sound is chosen for each event (weapon fire first and third person, near
+and far, suppressed; reload and draw key sounds; footsteps by surface,
+stance and speed, and when a step is silent; impacts by surface; bullet
+flybys; hurt, death and hit-confirm sounds; grenade bounces and
+explosions; ambient and map sounds), random variations, volume and pitch,
+attenuation with distance (formula, inner and outer radius per class of
+sound), what hears what (teammates, occlusion through walls), how many
+sounds play at once and which are dropped, and the order of these within
+a frame.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math, frame or tick dependence, server or client, edge cases (shooting
+a surface with no type, many impacts at once, a sound beyond range), quirks
+players rely on (hearing footsteps through walls, a flash that gives away
+a position). Effect and sound names as data and surface type names the
+game exposes may be named; never paste code or translate it line by line;
+no fenced code blocks except ```math; no art and no audio (name an asset
+only by its role or its file name inside the game's archives, never by a
+machine path). End with a numbered list of concrete test cases (event,
+surface, distance -> expected effect, decal, sound name and volume) that
+an implementer without the game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/effects_sounds.md; change nothing else.
+Commit with the repo's identity (CLAUDE.md "Commit identity"; check `git
+config user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell
+run `$env:TZ="UTC"` before `git commit`. End the message with
+"Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>". Never skip
+hooks. Then `git pull --rebase` and `git push` to main.
+```
+
+## Follow-up brief (Wave 2 open questions)
+
+Optional. Questions the Wave 2 implementers answered for themselves (each
+module's `//!` "Known shortcuts" on main: `games/combat_arms/src/game/`
+`grenades.rs` and `world.rs`, `lithtech/formats/src/` `world.rs` and
+`dtx.rs`; the model, prop and animation readers have no implementation
+yet, so 10a and 10c have no questions here). Paste the brief below into
+one session; the implementers then change their code to the answers.
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+
+This is a follow-up session. The Wave 2 specs grenades.md, world_dat.md and
+textures_dtx.md in specs/combat_arms/ have been implemented, and the
+implementers had to pick a reading where the spec was silent or ambiguous.
+Answer the numbered questions below from the reference material. For each
+one, in the spec named after it:
+
+- add the question to that spec's "Open questions" section if it isn't
+  there (or find the existing one), and mark it "Answered:" with the answer
+  in your own words, the constants and formulas it needs, and where in the
+  spec's body it applies;
+- where the answer changes or completes the behaviour, fix the body text
+  too (sections, constants table, per-tick order), not only the question;
+- add numbered test cases after the existing ones (never renumber or
+  remove existing cases; if one is wrong, say so in it and add the
+  corrected case), with concrete numbers an implementer without the game
+  can check;
+- if the reference can't settle it, say what you checked and give a short
+  live-game measurement that would (setup, action, what to read off),
+  and leave the question open.
+
+The questions (Q = an existing "Open questions" number in that spec, case =
+a test case number):
+
+grenades.md
+1. The throw's timing (Q3, Q5): we release the grenade at the end of the
+   67 ms throw animation (767 ms after the press), start the throw on the
+   press's tick, and use the M67's animations for the XM84 and M18. Is
+   the release at the animation's end or at a key inside it, do the
+   flash's and smoke's animations differ, and is the re-draw after a
+   throw with grenades left the ordinary draw (its length)?
+2. The first physics step (Q6): does a new grenade take its first step in
+   the server frame it is created in or the next (cases 1-5 assume the
+   next)?
+3. The throw spread: we use n = n_min + floor((n_max - n_min) p) g, with
+   p the thrower's spread fraction and the limits not multiplied by g, so
+   section 4's 0.06 degrees for the flash survive g = 0 (weapon_firing.md's
+   rule would make it 0). Which is right, and does any stock grenade have
+   p > 0?
+4. The bounce's push off the surface: the formula has -0.1 n, the
+   Constants table 0.05. Which value, and where in the bounce step?
+5. The grenade half-height for the at-rest nudge (Q9): the number per
+   grenade (we use a placeholder).
+6. Grenades and characters (Q7): is the touch tested against the hit
+   spheres or the character's box, does a grenade slow again while still
+   inside, do grenades touch each other (the data's same-kind flag), and do
+   moving brushes and props bounce it like the world?
+7. Water: how a liquid volume is marked in a map (object class and
+   properties, as world_dat.md names them), and its default gravity,
+   viscosity and current.
+8. Cover traces: exactly what blocks the blast's line of sight
+   (characters, props, invisible surfaces, moving brushes), and whether
+   breakables take the blast with or without a cover test.
+9. Armour against blasts and damage over time: which zone's armour (we
+   use the torso), and which gear gives flash protection and how much.
+10. The flash's facing and strength (Q11, Q12): yaw only or with pitch;
+    the W and C factors from the victim's weapon (Quirk 6) for weapons
+    other than the defaults; is the white drawn over the HUD?
+11. Grenades at a round's end: does a grenade in flight or cooking
+    explode, vanish or carry over into the next round? (If game_modes.md
+    has landed, use its terms; answer it in grenades.md only.)
+12. Shooting grenades (Q8): can a bullet hit a flying or resting grenade,
+    and what happens when its hit points run out?
+
+world_dat.md
+13. Which surfaces collide (Q5): we let a polygon block players and
+    bullets when its surface has the solid bit, ignoring the invisible
+    bit. Is that right, and do collision blockers stop bullets or only
+    players?
+14. Lightmap coordinates beyond 0..1 (some up to 3.02): clamped per texel
+    by the sampler, wrapped, or clamped per vertex? And Q7: the extra
+    lightmap scale (the world properties' factor), with its value.
+15. Vertex lighting: one colour per section or per vertex, and where the
+    per-vertex colours sit if they exist.
+16. The sky: how the sky portals, the sky's own world model and the sky
+    scene object are drawn (order, depth, camera offset or scale), and
+    which world properties set fog (start, end, colour) and what else they
+    hold.
+17. Light groups: their state when a map loads, what switches them, and
+    how a switched group changes the lightmaps.
+18. Second textures in a section: how detail textures, environment maps,
+    fullbright masks and dual-texture sections combine with the base
+    texture (blend, scale, which UVs).
+19. Moving world models: which object classes move a world model (doors,
+    rotating doors, breakables), the properties that drive them, and
+    whether they block bullets and players while moving; and what the
+    endless-fall volume and the other volume classes do.
+20. Map identity: does the game check a map file's hash or size between
+    server and client, and how?
+21. Malformed data: what does the engine do with a property whose stored
+    length doesn't fit its type, a polygon over 40 vertices, or an object
+    record that ends early (we refuse the first two)? And the string
+    encoding: which code page are names and strings in?
+22. The blockers' trailer and unknown section shader codes: what the
+    trailer holds, and which shader codes exist beyond those the spec
+    lists.
+
+textures_dtx.md
+23. Load-time mip skipping (Q4): the shipped DetailLevel and the in-game
+    texture quality option's effect, as a table of texture group ->
+    levels skipped per option value.
+24. Detail and environment links: how a texture's command string names
+    its detail texture or environment map, how the name resolves (archive
+    file name, extension), and the detail scale and blend.
+25. DXT colour interpolation: do the 1/3 and 2/3 colours round to nearest
+    or truncate (we round), and the same for the alpha block?
+
+Write only these files: specs/combat_arms/{grenades,world_dat,
+textures_dtx}.md; change nothing else. Commit with the repo's identity
+(CLAUDE.md "Commit identity"; check `git config user.name` is r0pi0x, else
+stop and ask me) in UTC: in PowerShell run `$env:TZ="UTC"` before `git
+commit`. End the message with "Co-Authored-By: Claude Opus 5.5
+<noreply@anthropic.com>". Never skip hooks. Then `git pull --rebase` and
+`git push` to main.
 ```

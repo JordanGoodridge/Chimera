@@ -34,7 +34,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; gr
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
-                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures)
+                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation)
 ```
 
 - The loader layers: `source/` (Source's formats and map logic) and
@@ -486,6 +486,8 @@ that the paths exist).
 - `games/cs_source/data/weapons/`: CS:S's weapons and ammo types as data (our numbers, built in) (games)
 - `games/combat_arms/src/game/`: Combat Arms' parts, one placeholder module per subsystem until its specs (games)
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
+- `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
+- `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour and the pickup prompt; what each part predicts (games)
@@ -523,6 +525,8 @@ that the paths exist).
 - `lithtech/formats/src/rez_cipher.rs`: the `.rez` payload cipher (Twofish-CBC, key supplied at run time)
 - `lithtech/formats/src/world.rs`: world files (`.dat`, version 85): BSPs, objects, light grid, blockers, render data, lightmaps
 - `lithtech/formats/src/dtx.rs`: textures (`.dtx`, version -5): header, mip layout, BGRA and DXT1/3/5 decoding
+- `lithtech/formats/src/ltb.rs`: models (`.ltb`, versions 23/25): pieces, LODs, mesh kinds, node tree, weight sets, children, animations, sockets, bindings
+- `lithtech/formats/src/anim.rs`: animation lists, sampling, the millisecond tracker, key strings, layering, node and skinning matrices
 
 ### Apps, binaries and the test harness
 
