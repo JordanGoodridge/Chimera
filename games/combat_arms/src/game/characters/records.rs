@@ -171,8 +171,31 @@ pub struct CharacterData {
 pub fn data() -> &'static CharacterData {
     static DATA: OnceLock<CharacterData> = OnceLock::new();
     DATA.get_or_init(|| {
-        toml::from_str(include_str!("../../../data/characters.toml")).expect("data/characters.toml")
+        let mut data: CharacterData =
+            toml::from_str(include_str!("../../../data/characters.toml")).expect("data/characters.toml");
+        merge_install_weapons(&mut data);
+        data
     })
+}
+
+/// The install's weapons file over our weapon looks: each weapon of the
+/// set with an install record takes its `AniType`, `LowerAniType` and
+/// `HHSkin#` (characters.md's "Third-person weapon model and animation
+/// class"); `HHAniFrame_#` isn't read (our data has none either).
+fn merge_install_weapons(data: &mut CharacterData) {
+    use super::super::data as ca;
+    if ca::install_attributes().is_none() {
+        return;
+    }
+    for id in ca::builtin_weapon_ids() {
+        let Some(r) = ca::install_weapon(id) else { continue };
+        let look = data.weapons.entry(id.clone()).or_default();
+        look.ani_type = r.ani_type;
+        look.lower_ani_type = r.lower_ani_type;
+        if !r.hh_skins.is_empty() {
+            look.skins = ca::skin_paths(&r.hh_skins);
+        }
+    }
 }
 
 /// A weapon's class when it has no record: the weapons file's `AniType`

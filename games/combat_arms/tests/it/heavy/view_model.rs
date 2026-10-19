@@ -103,6 +103,65 @@ fn data_view_models_load_skinned() {
     }
 }
 
+/// With both keys (V1: the install's weapons file names each weapon's
+/// `PVModelNormal`, `PVSkin#` and `Pos`; V2: the models and textures):
+/// every weapon of ours loads its own first-person model with the hand
+/// model attached, every piece textured.
+#[test]
+fn keyed_view_models_with_hands() {
+    let Some(mount) = mount() else { return };
+    let keys = combat_arms::game::mount::keys().unwrap();
+    if !(keys.contains_key("V1") && keys.contains_key("V2")) {
+        eprintln!("skipping: needs the V1 and V2 keys");
+        return;
+    }
+    if combat_arms::game::data::install_attributes().is_none() {
+        eprintln!("skipping: the process runs on the built-in data");
+        return;
+    }
+    let file = |p: &str| mount.read(p).ok();
+    let mut map = MapData::default();
+    view_model::add_view_models(&mut map, &file);
+    for w in &map.warnings {
+        eprintln!("warning: {w}");
+    }
+    assert!(map.warnings.is_empty(), "{:?}", map.warnings);
+    let set = combat_arms::game::data::weapon_set();
+    for id in [
+        "m4a1",
+        "mp5a4",
+        "l96a1",
+        "dragunov_svd",
+        "m9_knife",
+        "m67",
+        "xm84",
+        "m18",
+        "m23f",
+        "g7a",
+        "beretta_m92fs",
+        "m60",
+        "remington_870",
+    ] {
+        let id = format!("combat_arms:{id}");
+        let v = map.view_models.iter().find(|v| v.key == id).unwrap_or_else(|| panic!("{id}: no view model"));
+        let d = set.get(&id).unwrap();
+        let untextured: Vec<&str> =
+            v.model.meshes.iter().filter(|m| m.texture.is_none()).map(|m| m.material.as_str()).collect();
+        eprintln!(
+            "{id}: {} ({} meshes, {} bones), skins {:?}, untextured {untextured:?}",
+            d.models.view.as_deref().unwrap_or("-"),
+            v.model.meshes.len(),
+            v.bones.len(),
+            d.models.view_skins
+        );
+        assert!(untextured.is_empty(), "{id}: untextured pieces {untextured:?}");
+        let set = v.animations.as_ref().unwrap();
+        for name in ["select", "idle_0", "fire_0"] {
+            assert!(set.sequence(name).is_some(), "{id}: {name}");
+        }
+    }
+}
+
 /// Cases 1 and 2: the M92FS's 51 nodes (the gun's eight between the two
 /// arms, under the right hand) and 5 pieces; the animation child's pieces
 /// are not drawn. The hand model's side needs the V2 key.

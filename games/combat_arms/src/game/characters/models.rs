@@ -94,7 +94,8 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
         ));
     }
     let Some(hand) = data.skeleton(0).socket("RightHand") else { return };
-    for w in &super::super::data::weapon_set().weapons {
+    let ours = super::super::data::builtin_weapon_ids();
+    for w in super::super::data::weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
         let Some(path) = w.models.world.as_deref() else { continue };
         let look = data.weapon(Some(&w.id));
         match held(path, &w.id, &look.skins, hand, map, file) {

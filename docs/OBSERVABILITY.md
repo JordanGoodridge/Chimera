@@ -69,12 +69,15 @@ in the lowest crate whose public API it needs:
   whole simulation, placeholders included) and the greybox, or a map
   converted from a world built in code (`world.rs`); its spec test cases
   as each subsystem is implemented; in `heavy` the install's maps
-  (`heavy::world`: every plain map converts, a player walks and collides
-  on WAREHOUSE; `heavy::model`: a prop model converts and animates as
+  (`heavy::world`: every map converts and a player lands at its first
+  spawn, the plain ones in one test and the V2-keyed ones one test per
+  archive, two maps at a time; a player walks and collides on
+  WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`) in
-  tests/ui/, built with `ui`;
+  tests/ui/, built with `ui` (`heavy::install_ui`: the install's own
+  layouts and string tables through the UI system's readers, V1 key);
 - `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
   Arms' dedicated server as its binary composes it (`ServerPlugin`, its
   command line) with headless clients over UDP on loopback (`dedicated`:

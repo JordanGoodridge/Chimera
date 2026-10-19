@@ -1,5 +1,7 @@
 //! Combat Arms' maps from the user's install (`game::world`): every
-//! plain map converts, and a player spawned on WAREHOUSE stands on its
+//! map converts and loads, a player landing at its first spawn (the 33
+//! plain ones; with the V2 key the 72 of WORLDS, WORLDS4 and WORLDS5, a
+//! test per archive), and a player spawned on WAREHOUSE stands on its
 //! floor, walks, and stops at a wall. Passes with a note without
 //! `[games.combat_arms] path` in chimera.local.toml.
 
@@ -27,41 +29,116 @@ fn mount() -> Option<chimera_core::mount::Mount> {
     Some((INFO.open)(&install).unwrap())
 }
 
-/// The 33 plain maps convert: drawn meshes with lightmap coordinates
-/// inside the atlas, a collision mesh, and spawns on a floor.
-#[test]
-fn every_plain_map_converts() {
-    let Some(mount) = mount() else { return };
-    let names = world::map_names(&mount);
-    let mut loaded = 0;
-    for name in &names {
-        let path = world::find(&mount, name).unwrap();
-        if !(path.starts_with("worlds2/") || path.starts_with("worlds3/")) {
-            continue;
-        }
-        let map = world::load_from(&mount, name).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let lightmap = map.lightmap.as_ref().unwrap();
-        eprintln!(
-            "{name}: {} meshes, {} triangles, {} collision triangles, {} spawns, lightmap {} x {}",
-            map.meshes.len(),
-            map.triangle_count(),
-            map.collision_indices.len(),
-            map.spawns.len(),
-            lightmap.width,
-            lightmap.height
-        );
+/// One map converted, with what every map must have: drawn meshes with
+/// lightmap coordinates inside the atlas, a collision mesh, and spawns;
+/// then loaded into a simulation, where a player at the first spawn
+/// lands on a floor.
+fn check_map(mount: &chimera_core::mount::Mount, name: &str) {
+    let started = std::time::Instant::now();
+    let map = world::load_world(mount, name).unwrap_or_else(|e| panic!("{name}: {e}"));
+    let lightmap = map.lightmap.as_ref().unwrap_or_else(|| panic!("{name}: no lightmap"));
+    eprintln!(
+        "{name}: {} meshes, {} triangles, {} collision triangles, {} spawns, lightmap {} x {}, {} warnings",
+        map.meshes.len(),
+        map.triangle_count(),
+        map.collision_indices.len(),
+        map.spawns.len(),
+        lightmap.width,
+        lightmap.height,
+        map.warnings.len()
+    );
+    for w in &map.warnings {
+        eprintln!("{name}: warning: {w}");
+    }
+    // TWINTOWER's file holds 220 polygons (564 render triangles, all
+    // vertex-lit): a stub world, drawn as it is.
+    if name != "twintower" {
         assert!(map.triangle_count() > 1000, "{name}");
         assert!(map.collision_indices.len() > 1000, "{name}");
-        assert!(lightmap.width <= 8192 && lightmap.height <= 8192, "{name}");
-        for m in &map.meshes {
-            assert_eq!(m.lightmap_uvs.len(), m.positions.len(), "{name}");
-            assert!(m.lightmap_uvs.iter().flatten().all(|c| (0.0..=1.0).contains(c)), "{name}");
-            assert!(m.indices.iter().all(|&i| (i as usize) < m.positions.len()), "{name}");
-        }
-        assert!(!map.spawns.is_empty() && map.spawn_yaws.len() == map.spawns.len(), "{name}");
-        loaded += 1;
     }
-    assert_eq!(loaded, 33);
+    assert!(lightmap.width <= world::ATLAS_MAX && lightmap.height <= world::ATLAS_MAX, "{name}");
+    for m in &map.meshes {
+        assert_eq!(m.lightmap_uvs.len(), m.positions.len(), "{name}");
+        assert!(m.lightmap_uvs.iter().flatten().all(|c| (0.0..=1.0).contains(c)), "{name}");
+        assert!(m.indices.iter().all(|&i| (i as usize) < m.positions.len()), "{name}");
+        assert!(m.positions.iter().flatten().all(|c| c.is_finite()), "{name}");
+    }
+    assert!(!map.spawns.is_empty() && map.spawn_yaws.len() == map.spawns.len(), "{name}");
+    assert!(map.spawns.iter().all(|(p, _)| p.is_finite()), "{name}");
+    let converted = started.elapsed();
+    let (feet, _) = map.spawns[0];
+    let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
+    sim.ticks(2);
+    let p = sim.spawn_character(feet + Vec3::Y * 0.5, movement::ID);
+    sim.seconds(1.0);
+    let at = sim.position(p);
+    eprintln!("{name}: converted in {converted:.1?}, spawned at {feet}, standing at {at} ({:.1?} in all)", started.elapsed());
+    assert!(at.y > feet.y - 0.5 && at.y < feet.y + 2.0, "{name}: standing at {at}, spawn {feet}");
+}
+
+/// Every map whose archive folder is `folder`, two at a time; how many.
+fn check_maps_in(folder: &str) -> Option<usize> {
+    let mount = mount()?;
+    let names: Vec<String> = world::map_names(&mount)
+        .into_iter()
+        .filter(|n| world::find(&mount, n).is_some_and(|p| p.split('/').next() == Some(folder)))
+        .collect();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let failed = std::sync::Mutex::new(Vec::new());
+    std::thread::scope(|s| {
+        for _ in 0..2 {
+            s.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(name) = names.get(i) else { break };
+                    let check = std::panic::AssertUnwindSafe(|| check_map(&mount, name));
+                    if std::panic::catch_unwind(check).is_err() {
+                        failed.lock().unwrap().push(name.clone());
+                    }
+                }
+            });
+        }
+    });
+    let failed = failed.into_inner().unwrap();
+    assert!(failed.is_empty(), "{folder}: {failed:?} failed (above)");
+    Some(names.len())
+}
+
+/// The keyed maps (V2) of one archive; skipped without the key.
+fn keyed_maps(folder: &str, count: usize) {
+    if !combat_arms::game::mount::keys().is_ok_and(|k| k.contains_key("V2")) {
+        eprintln!("skipping: no V2 key in chimera.local.toml");
+        return;
+    }
+    if let Some(n) = check_maps_in(folder) {
+        assert_eq!(n, count, "maps in {folder}");
+    }
+}
+
+/// The 33 plain maps (WORLDS2, WORLDS3) convert.
+#[test]
+fn every_plain_map_converts() {
+    let Some(a) = check_maps_in("worlds2") else { return };
+    let b = check_maps_in("worlds3").unwrap();
+    assert_eq!(a + b, 33);
+}
+
+/// WORLDS.rez's maps (V2) convert.
+#[test]
+fn keyed_maps_worlds() {
+    keyed_maps("worlds", 36);
+}
+
+/// WORLDS4.rez's maps (V2) convert.
+#[test]
+fn keyed_maps_worlds4() {
+    keyed_maps("worlds4", 32);
+}
+
+/// WORLDS5.rez's maps (V2) convert.
+#[test]
+fn keyed_maps_worlds5() {
+    keyed_maps("worlds5", 4);
 }
 
 fn warehouse() -> Option<MapData> {

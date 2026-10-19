@@ -37,8 +37,13 @@
 //! - Textures come from the install's `.dtx` files (`lithtech_formats::
 //!   dtx`, the level the shipped "DetailLevel" loads: `skipped_levels`;
 //!   `alpharef` cuts out); the plain maps' world textures are in unkeyed
-//!   archives. A texture that doesn't resolve (keyed archives without the
-//!   V2 key) leaves a flat colour of its own per name.
+//!   archives. A sprite (`.spr`) draws its first frame's texture
+//!   (`effects::library::sprite_texture`). A texture that doesn't resolve
+//!   (keyed archives without the V2 key; with it, a few files the install
+//!   lacks or ships empty) leaves a flat colour of its own per name, named
+//!   in the map's warnings.
+//! - With the V2 key every map of WORLDS, WORLDS4 and WORLDS5 (72) converts
+//!   too (`heavy::world`); TWINTOWER's file is a stub of 220 polygons.
 //! - Second textures ("Second textures", Q13; `second_layers`), over the
 //!   base texture before the lighting, in gamma space: dual-texture
 //!   sections (8, 9) blend texture 1 at UV1 (`MapMesh::uvs2`) by a =
@@ -86,7 +91,11 @@
 //!   copy by name, so the network handshake compares only the name.
 //!
 //! Known shortcuts (docs/tech-debt.md): fullbright masks aren't drawn
-//! (Q13 still open: whether the lightmap multiplies over them). The flat
+//! (Q13 still open: whether the lightmap multiplies over them). A map
+//! whose lightmaps don't fit one 8192 x 8192 atlas (`ATLAS_MAX`, the GPU's
+//! limit; TERRORDOME's are 4096 x 19428) has them all at half resolution
+//! (one atlas, not the game's pages). A sprite texture doesn't animate.
+//! The spawns drop straight down by a ray (not the hull). The flat
 //! environment map's world environment-map matrix is taken as the
 //! identity and `EnvScale` as 1 (neither is in the specs), so it reads
 //! (r.x, r.y) x -0.5 + 0.5 of the view-space reflection; the console
@@ -152,6 +161,11 @@ pub const SATURATE: f32 = 2.0;
 /// Atlas texels between packed lightmaps' borders and its width.
 const ATLAS_WIDTH: u32 = 4096;
 
+/// The largest atlas side: the GPU's 2D texture limit (wgpu's default
+/// 8192). A map whose lightmaps don't fit is laid out 8192 wide, then
+/// with its lightmaps at half resolution until they do (TERRORDOME).
+pub const ATLAS_MAX: u32 = 8192;
+
 /// Map `id` (`combat_arms:<name>`, or the bare name) from the install.
 pub fn load(id: &str) -> Result<MapData, String> {
     let name = map_name(id);
@@ -196,8 +210,19 @@ pub fn map_names(mount: &Mount) -> Vec<String> {
     names
 }
 
-/// Map `name` from a mounted install.
+/// Map `name` from a mounted install, with the view models and
+/// character models every map carries.
 pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
+    let mut map = load_world(mount, name)?;
+    let file = |path: &str| mount.read(path).ok();
+    super::view_model::add_view_models(&mut map, &file);
+    super::characters::models::add_character_models(&mut map, &file);
+    Ok(map)
+}
+
+/// Map `name` from a mounted install: the world and its effects only
+/// (`load_from` without the models every map shares).
+pub fn load_world(mount: &Mount, name: &str) -> Result<MapData, String> {
     let path = find(mount, name).ok_or_else(|| format!("{name}: no such map (worlds*/{name}.dat)"))?;
     let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
     let world = World::parse(&bytes).map_err(|e| format!("{path}: {e}"))?;
@@ -205,8 +230,6 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
     let file = |path: &str| mount.read(path).ok();
     let mut map = convert(&world, name, scale, &file);
     map.warnings.extend(world.warnings.iter().map(|w| format!("{path}: {w}")));
-    super::view_model::add_view_models(&mut map, &file);
-    super::characters::models::add_character_models(&mut map, &file);
     super::effects::library::add_to_map(&mut map, &world, &file);
     if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
         super::props::dev_prop(&world, &mut map, &spec, scale, &file);
@@ -623,15 +646,29 @@ fn add_block(
 /// `alpharef`); a name that doesn't resolve keeps the mesh's flat colour,
 /// with a warning.
 pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
-    let mut missing = 0;
+    let mut missing = std::collections::BTreeMap::<String, String>::new();
     for m in meshes {
         if m.material.is_empty() || m.material.eq_ignore_ascii_case("default") {
             continue;
         }
-        let path = m.material.replace('\\', "/").to_lowercase();
-        let Some(dtx) = file(&path).and_then(|b| Dtx::parse(b).ok()) else {
-            missing += 1;
-            continue;
+        let mut path = m.material.replace('\\', "/").to_lowercase();
+        // A sprite (world_dat.md: a name ending in `.spr`) draws its
+        // first frame's texture.
+        if path.ends_with(".spr")
+            && let Some(first) = file(&path).and_then(|b| super::effects::library::sprite_texture(&b))
+        {
+            path = first;
+        }
+        let dtx = match file(&path).map(Dtx::parse) {
+            Some(Ok(d)) => d,
+            Some(Err(e)) => {
+                missing.insert(path, format!("unreadable: {e}"));
+                continue;
+            }
+            None => {
+                missing.insert(path, "missing or locked".into());
+                continue;
+            }
         };
         if let (Some(r), MapAlpha::Opaque) = (dtx.alpha_ref(), m.alpha) {
             m.alpha = MapAlpha::Mask(r as f32 / 255.0);
@@ -649,9 +686,13 @@ pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(
         m.texture = Some(map.textures.len() - 1);
         m.color = [255; 3];
     }
-    if missing > 0 {
-        map.warnings
-            .push(format!("{missing} textures missing or unreadable (keyed archives need the V2 key): flat colours"));
+    if !missing.is_empty() {
+        let names: Vec<String> = missing.iter().take(8).map(|(p, why)| format!("{p} ({why})")).collect();
+        map.warnings.push(format!(
+            "{} textures missing or unreadable (keyed archives need the V2 key), flat colours: {}",
+            missing.len(),
+            names.join(", ")
+        ));
     }
 }
 
@@ -1085,7 +1126,9 @@ impl<'a> Floor<'a> {
         }
     }
 
-    /// The highest surface point at or below `at` (within 4 m).
+    /// The highest surface point at or below `at`, however far down
+    /// (movement.md "Spawn and respawn", case 47: an air spawn starts on
+    /// the floor).
     fn below(&self, at: Vec3) -> Option<Vec3> {
         let p = |i: u32| Vec3::from(self.positions[i as usize]);
         let mut best: Option<f32> = None;
@@ -1100,7 +1143,7 @@ impl<'a> Floor<'a> {
             }
             // The plane's height at (x, z), then inside the triangle.
             let y = a.y - (n.x * (at.x - a.x) + n.z * (at.z - a.z)) / n.y;
-            if y > at.y + 0.01 || y < at.y - 4.0 {
+            if y > at.y + 0.01 {
                 continue;
             }
             let q = Vec3::new(at.x, y, at.z);
@@ -1125,6 +1168,51 @@ struct Atlas {
 }
 
 impl Atlas {
+    /// Shelf places (tallest first) at `width`, and the height used.
+    fn shelves(&self, width: u32) -> (Vec<(u32, u32)>, u32) {
+        let mut order: Vec<usize> = (0..self.rects.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse((self.rects[i].1, self.rects[i].0)));
+        let mut places = vec![(0u32, 0u32); self.rects.len()];
+        let (mut x, mut y, mut shelf) = (0u32, 0u32, 0u32);
+        for &i in &order {
+            let (w, h) = (self.rects[i].0 + 2, self.rects[i].1 + 2);
+            if x + w > width {
+                (x, y, shelf) = (0, y + shelf, 0);
+            }
+            places[i] = (x, y);
+            x += w;
+            shelf = shelf.max(h);
+        }
+        (places, (y + shelf).max(1).next_multiple_of(4))
+    }
+
+    /// Every rectangle bigger than 2 x 2 at half its resolution (each
+    /// texel the mean of the up to 2 x 2 it covers); the 2 x 2 ones are
+    /// vertex lighting's exact blends and stay.
+    fn halve(&mut self) {
+        for (w, h, texels) in &mut self.rects {
+            if *w * *h <= 4 {
+                continue;
+            }
+            let (nw, nh) = (w.div_ceil(2), h.div_ceil(2));
+            let mut out = Vec::with_capacity((nw * nh) as usize);
+            for y in 0..nh {
+                for x in 0..nw {
+                    let mut sum = Vec3::ZERO;
+                    let mut n = 0.0;
+                    for (sx, sy) in [(2 * x, 2 * y), (2 * x + 1, 2 * y), (2 * x, 2 * y + 1), (2 * x + 1, 2 * y + 1)] {
+                        if sx < *w && sy < *h {
+                            sum += Vec3::from(texels[(sy * *w + sx) as usize]);
+                            n += 1.0;
+                        }
+                    }
+                    out.push((sum / n).to_array());
+                }
+            }
+            (*w, *h, *texels) = (nw, nh, out);
+        }
+    }
+
     fn add(&mut self, width: u32, height: u32, texels: Vec<[f32; 3]>) -> u32 {
         self.rects.push((width, height, texels));
         (self.rects.len() - 1) as u32
@@ -1142,22 +1230,19 @@ impl Atlas {
 
     /// Lay the rectangles out in shelves (tallest first), each with a
     /// one-texel border copied from its edge.
-    fn finish(self) -> LaidOut {
-        let mut order: Vec<usize> = (0..self.rects.len()).collect();
-        order.sort_by_key(|&i| std::cmp::Reverse((self.rects[i].1, self.rects[i].0)));
-        let mut places = vec![(0u32, 0u32); self.rects.len()];
-        let (mut x, mut y, mut shelf) = (0u32, 0u32, 0u32);
-        for &i in &order {
-            let (w, h) = (self.rects[i].0 + 2, self.rects[i].1 + 2);
-            if x + w > ATLAS_WIDTH {
-                (x, y, shelf) = (0, y + shelf, 0);
+    fn finish(mut self) -> LaidOut {
+        let mut width = ATLAS_WIDTH;
+        let (places, height) = loop {
+            let (places, height) = self.shelves(width);
+            if height <= ATLAS_MAX {
+                break (places, height);
             }
-            places[i] = (x, y);
-            x += w;
-            shelf = shelf.max(h);
-        }
-        let width = ATLAS_WIDTH;
-        let height = (y + shelf).max(1).next_multiple_of(4);
+            if width < ATLAS_MAX {
+                width = ATLAS_MAX;
+            } else {
+                self.halve();
+            }
+        };
         let mut rgb = vec![[1.0f32; 3]; (width * height) as usize];
         for (i, (w, h, texels)) in self.rects.iter().enumerate() {
             let (px, py) = places[i];

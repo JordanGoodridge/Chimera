@@ -3,7 +3,8 @@
 //! scenario tests that read its state (`ui::hud::CaHud`, headless, on
 //! `combat_arms::harness::CaSim` and the greybox, as tests/it/'s); the UI
 //! system's layout, text, input and in-game menu (`ui_system`); the
-//! first-person camera's rise and jitter (`camera`).
+//! first-person camera's rise and jitter (`camera`); in `heavy` the
+//! install's own layouts and string tables (`install_ui`, V1 key).
 //! `cargo test -p combat_arms --features dev,ui --test ui`; where tests
 //! go: docs/OBSERVABILITY.md, section 1.
 
@@ -13,3 +14,8 @@ mod hud;
 mod net_hud;
 mod score;
 mod ui_system;
+
+// Slow ones (the user's install): the fast tier skips `heavy::`.
+mod heavy {
+    mod install_ui;
+}

@@ -108,3 +108,119 @@ fn install_attribute_data() {
     let set = WeaponSet::parse(&refs, &[]).unwrap();
     eprintln!("merged: {} weapons", set.weapons.len());
 }
+
+/// Every number under `path` in `a` against the same place in `b`:
+/// `(path, ours, theirs)` where they differ by more than a factor of
+/// two (or one is zero and the other isn't).
+fn far_apart(path: &str, a: &toml::Value, b: Option<&toml::Value>, out: &mut Vec<(String, f64, f64)>) {
+    use toml::Value;
+    let num = |v: &Value| v.as_float().or_else(|| v.as_integer().map(|i| i as f64));
+    match (a, b) {
+        (Value::Table(t), Some(Value::Table(u))) => {
+            for (k, v) in t {
+                far_apart(&format!("{path}.{k}"), v, u.get(k), out);
+            }
+        }
+        (Value::Array(t), Some(Value::Array(u))) => {
+            for (i, v) in t.iter().enumerate() {
+                far_apart(&format!("{path}[{i}]"), v, u.get(i), out);
+            }
+        }
+        (x, Some(y)) => {
+            if let (Some(p), Some(q)) = (num(x), num(y)) {
+                let far = if p == 0.0 || q == 0.0 {
+                    p != q
+                } else {
+                    (p / q).abs().max((q / p).abs()) > 2.0 || p.signum() != q.signum()
+                };
+                if far {
+                    out.push((path.to_string(), p, q));
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The install's data as the game merges it (weapons with the
+/// modification file, the body type, the attachment records) loads, and
+/// the numbers that differ from our spec defaults by more than a factor
+/// of two are listed (a sanity check: printed, not asserted).
+#[test]
+fn merged_numbers_against_ours() {
+    use combat_arms::game::{
+        attachments::CaModTable,
+        data::{merge_mods, merge_movement, merge_weapon_docs_with_mods},
+        movement::{MOVEMENT_DATA, MovementData},
+    };
+    let Some(path) = attributes_rez() else { return };
+    let Ok(attrs) = open_attributes(&path) else {
+        eprintln!("skipping: no V1 key");
+        return;
+    };
+    let w = attrs.weapons.as_ref().unwrap();
+    let mpu = crate::attribute_data::meters_per_unit();
+    let docs = merge_weapon_docs_with_mods(WEAPON_DATA, w, attrs.mods.as_ref(), mpu).unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set = WeaponSet::parse(&refs, &[]).unwrap();
+    let new = docs.len() - WEAPON_DATA.len();
+    eprintln!("merged: {} weapons ({new} from the install)", set.weapons.len());
+    assert!(new > 0);
+    // Each of ours has its install record.
+    for id in combat_arms::game::data::builtin_weapon_ids() {
+        let r = combat_arms::game::data::install_weapon_in(w, id);
+        eprintln!("{id}: install record {:?}", r.map(|r| &r.name));
+        assert!(r.is_some(), "{id}: no install record");
+    }
+    let mut differ = Vec::new();
+    for (name, text) in WEAPON_DATA {
+        let ours: toml::Value = text.parse::<toml::Table>().unwrap().into();
+        let (_, merged) = docs.iter().find(|(n, _)| n == name).unwrap();
+        let theirs: toml::Value = merged.parse::<toml::Table>().unwrap().into();
+        far_apart(name, &ours, Some(&theirs), &mut differ);
+    }
+    for (p, a, b) in &differ {
+        eprintln!("weapon {p}: ours {a}, install {b}");
+    }
+    // Every merged weapon: a hit-scan range that is positive.
+    for (name, text) in &docs {
+        let doc: toml::Table = text.parse().unwrap();
+        if let Some(r) = doc.get("hitscan").and_then(|h| h.get("range")).and_then(|r| r.as_float()) {
+            assert!(r > 0.0 && r.is_finite(), "{name}: range {r}");
+        }
+    }
+
+    // Movement: the body type over ours.
+    let ours: MovementData = toml::from_str(MOVEMENT_DATA).unwrap();
+    let mut merged = ours.clone();
+    merge_movement(&mut merged, attrs.models.as_ref().unwrap());
+    let (a, b) = (&ours.character.figure, &merged.character.figure);
+    for (k, x, y) in [
+        ("dash_speed", a.dash_speed, b.dash_speed),
+        ("dash_gauge", a.dash_gauge, b.dash_gauge),
+        ("gauge_recovery", a.gauge_recovery, b.gauge_recovery),
+        ("max_stamina", a.max_stamina, b.max_stamina),
+        ("variable_speed", a.variable_speed, b.variable_speed),
+        ("variable_weight", a.variable_weight, b.variable_weight),
+        ("variable_jump", a.variable_jump, b.variable_jump),
+        ("stiff_duration", a.stiff_duration, b.stiff_duration),
+    ] {
+        eprintln!("movement figure.{k}: ours {x}, install {y}");
+        assert!(y.is_finite(), "{k}");
+    }
+
+    // Attachments: the modification file's records over ours by name.
+    let built_in = CaModTable::built_in();
+    let mut table = built_in.clone();
+    merge_mods(&mut table, attrs.mods.as_ref().unwrap());
+    eprintln!("attachments: {} ours, {} merged", built_in.records.len(), table.records.len());
+    let mut mod_differ = Vec::new();
+    for r in &built_in.records {
+        let Some(m) = table.records.iter().find(|m| m.name == r.name) else { continue };
+        let (x, y) = (toml::Value::try_from(r).unwrap(), toml::Value::try_from(m).unwrap());
+        far_apart(&r.name, &x, Some(&y), &mut mod_differ);
+    }
+    for (p, a, b) in &mod_differ {
+        eprintln!("attachment {p}: ours {a}, install {b}");
+    }
+}

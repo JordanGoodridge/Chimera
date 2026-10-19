@@ -24,8 +24,14 @@
 //! modification files (`attributes`). Then:
 //! - weapons (`merge_weapon_docs`): each of our documents whose ID (after
 //!   `combat_arms:`) matches an install weapon's `Name` (case-insensitive,
-//!   spaces as `_`: `slug`) takes the install's numbers for every field
-//!   it maps (`weapon_values`): the record's value, or the spec's
+//!   spaces as `_`: `slug`; `INSTALL_NAMES` for the two of ours named
+//!   otherwise, the knife `M9` and the `M-23F`) takes the install's
+//!   numbers for every field it maps (`weapon_values`; the models,
+//!   `model_values`: `PVModelNormal`, `PVSkin#` and `Pos` as `[models]
+//!   view`, `view_skins`, `view_offset`, `HHModel` as `world`,
+//!   `MuzzlePos` and `BreachOffset` in `combat_arms:view_model`; the
+//!   third-person `AniType`, `LowerAniType` and `HHSkin#` go to
+//!   `characters::records`): the record's value, or the spec's
 //!   built-in default when the install lacks it, never ours, and the
 //!   inventory class from `[WeaponOrder]` as its `slot` (the class - 1;
 //!   in no list: ours). Install
@@ -62,7 +68,7 @@
 //!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps our shell
 //!   timings: they are the view model's animations). Not mapped (no field
 //!   in our data yet): `TripleShot*` timing,
-//!   `ContinuousFire`, sounds and sound radii, models,
+//!   `ContinuousFire`, sounds and sound radii, render styles,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
 //!   and worn gear, the modification file's gear lists and per-slot
@@ -80,6 +86,11 @@
 //!   our movement data has one figure.
 //! - Test case 29's install document has no `Ammo0`, which case 26 says
 //!   fails to load; its test adds one.
+//! - The install adds some 2,000 weapons; a map loads the view and held
+//!   models of ours only (`builtin_weapon_ids`: what players are given),
+//!   so an install weapon given by other means draws as a placeholder.
+//!   The skins' `Hands` placeholder and `PV_L_ARM` / `PV_R_ARM` tags (no
+//!   `.dtx`) are empty slots (`skin_paths`).
 
 pub mod attributes;
 
@@ -450,6 +461,88 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
     out
 }
 
+/// An attribute file's skin list as archive paths: entries that aren't
+/// texture files (the stock data's `Hands` placeholder and the
+/// `PV_L_ARM` / `PV_R_ARM` tags, view_models.md 2) are empty.
+pub fn skin_paths(skins: &[String]) -> Vec<String> {
+    skins
+        .iter()
+        .map(|s| {
+            let p = super::model::normalize(s);
+            if p.ends_with(".dtx") { p } else { String::new() }
+        })
+        .collect()
+}
+
+/// The install weapon's models and their placement: `PVModelNormal`
+/// with `PVSkin#` and `Pos` as the view model, `HHModel` as the held one,
+/// `MuzzlePos` and `BreachOffset` in our `combat_arms:view_model` table
+/// (when the document has one).
+fn model_values(w: &WeaponRecord) -> Vec<Set> {
+    let vec3 = |v: [f64; 3]| floats(v);
+    let mut out = vec![
+        set(&["hooks", super::view_model::VIEW, "muzzle_pos"], vec3(w.muzzle_pos)),
+        set(&["hooks", super::view_model::VIEW, "breach_offset"], vec3(w.breach_offset)),
+    ];
+    if !w.pv_model.is_empty() {
+        let skins = skin_paths(&w.pv_skins).into_iter().map(Value::String).collect::<Vec<_>>();
+        out.extend([
+            set(&["models", "view"], super::model::normalize(&w.pv_model)),
+            set(&["models", "view_skins"], Value::Array(skins)),
+            set(&["models", "view_offset"], vec3(w.pos)),
+        ]);
+    }
+    if !w.hh_model.is_empty() {
+        out.push(set(&["models", "world"], super::model::normalize(&w.hh_model)));
+    }
+    out
+}
+
+/// Our IDs (after `combat_arms:`) whose install `Name` is not their
+/// slug: the knife is the install's `M9`, the incendiary grenade its
+/// `M-23F`.
+const INSTALL_NAMES: &[(&str, &str)] = &[("m9_knife", "M9"), ("m23f", "M-23F")];
+
+/// Whether install weapon `name` is our document `id` (without
+/// `combat_arms:`): case-insensitively by name ("Our loader"), through
+/// its slug or `INSTALL_NAMES`.
+fn is_install_name(name: &str, id: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    match INSTALL_NAMES.iter().find(|(ours, _)| *ours == id) {
+        Some((_, install)) => name.eq_ignore_ascii_case(install),
+        None => slug(name) == id,
+    }
+}
+
+/// The IDs of our own weapon documents (the weapons a player is given:
+/// `inventory`, the modes, the bots). The models a map loads are theirs
+/// only: the install adds some 2,000 weapons, too many to load per map.
+pub fn builtin_weapon_ids() -> &'static std::collections::HashSet<String> {
+    static IDS: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    IDS.get_or_init(|| {
+        WEAPON_DATA
+            .iter()
+            .filter_map(|(_, text)| doc_id(&text.parse::<Table>().ok()?).map(String::from))
+            .collect()
+    })
+}
+
+/// The install's record of weapon `id` (ours or one merged from the
+/// install: `combat_arms:<slug of its Name>`), when the install's
+/// weapons file was read.
+pub fn install_weapon(id: &str) -> Option<&'static WeaponRecord> {
+    install_weapon_in(install_attributes()?.weapons.as_ref()?, id)
+}
+
+/// Weapon `id`'s record in `file` (the merge's match: `combat_arms:` and
+/// the slug of its `Name`).
+pub fn install_weapon_in<'a>(file: &'a WeaponsFile, id: &str) -> Option<&'a WeaponRecord> {
+    let id = id.strip_prefix(NS)?;
+    file.weapons.iter().find(|w| is_install_name(&w.name, id))
+}
+
 /// Write `s` into `doc` when its rule allows; whether it was written.
 fn apply(doc: &mut Table, s: &Set) -> bool {
     let Some((last, parents)) = s.path.split_last() else {
@@ -547,6 +640,14 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     for s in weapon_values(w, ammo, length_scale) {
         apply(doc, &s);
     }
+    // The models (view_models.md 1, 2, 4; characters.md 2): the install's
+    // files replace ours, its placement with them.
+    if !(w.pv_model.is_empty() && w.hh_model.is_empty()) && !doc.contains_key("models") {
+        doc.insert("models".into(), Value::Table(Table::new()));
+    }
+    for s in model_values(w) {
+        apply(doc, &s);
+    }
     // `ReloadPerBullet` 0: a magazine reload (our shell timings stay when
     // it is 1: they are the animations').
     if w.reload_per_bullet == 0
@@ -596,7 +697,7 @@ pub fn merge_weapon_docs_with_mods(
         .iter()
         .map(|(_, t)| {
             let id = doc_id(t)?.strip_prefix(NS)?;
-            install.weapons.iter().position(|w| !w.name.is_empty() && slug(&w.name) == id)
+            install.weapons.iter().position(|w| is_install_name(&w.name, id))
         })
         .collect();
     let mut ids: std::collections::HashSet<String> = docs.iter().filter_map(|(_, t)| doc_id(t).map(String::from)).collect();
