@@ -11,6 +11,7 @@
 //! `<map>NNNN.png`) console commands (`capture.rs`), remote protocol.
 
 pub mod aim;
+pub mod canvas;
 pub mod app;
 pub mod audio;
 pub mod binds;

@@ -50,10 +50,16 @@
 //!   colour's own alpha (200); no models, so no name socket: the tag is
 //!   anchored at the character's position (the hull centre, the spec's
 //!   fallback); no distance limit, hidden only behind the camera (Q10).
-//! - Fonts: the shell's stand-in faces at the spec's point sizes times
-//!   y_r (Q2); text boxes align inside their box (Q3); the kill feed's
-//!   names advance by their rendered width (`model::feed_line` estimates
-//!   it at 7 ref px a character, for the state only).
+//! - Text (Q2 and Q3, settled by ui_system.md): placed by `ui::layout`
+//!   (its T2-T6): fonts of the font list (`data/ui/fonts.toml`) scaled
+//!   ⌊H_f y_r⌋ tall and ⌊a_f x_r⌋ a glyph; aligned texts in their box,
+//!   their own position ignored on the aligned axis (the weapon name
+//!   right-aligned in its 250 x 10 box and centred on its y, the values
+//!   centred, labels and ammo at their positions); outlines and shadows
+//!   1 px at every size; the kill feed's names advance by their reference
+//!   width ⌊w_px / x_r⌋ (`feed_width`). Glyph widths are our monospaced
+//!   estimate (ui_system.md's Open question 3), drawn with the install's
+//!   faces or stand-ins (`ui::draw`).
 //! - The weapon panel's class is the inventory class (the data's `slot`,
 //!   Q16); the fire-mode icon's `RapidFireCount` comes from the trigger
 //!   (`rapid_fire_count`); continuous fire isn't done, so never on.
@@ -103,6 +109,16 @@ use crate::{
     },
 };
 use model::*;
+
+use super::{
+    CaUi,
+    draw::{self, CaFaces},
+    layout::{self, Effect, FontList, REFERENCE, TextLook, text},
+};
+use crate::client::canvas::{HAlign, Scale, VAlign};
+
+/// The kill feed's names' font (D5).
+pub const FEED_FONT: &str = "bold 12";
 
 /// Metres per world unit (the aim ray's reach).
 const UNIT: f32 = inventory::UNIT;
@@ -246,6 +262,7 @@ pub struct CaHudStatePlugin;
 impl Plugin for CaHudStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<HudScreen>()
+            .init_resource::<CaUi>()
             .init_resource::<HudOptions>()
             .init_resource::<HudMemory>()
             .init_resource::<CaHud>()
@@ -429,6 +446,19 @@ struct SpreadLimits {
     burst_cone: Option<Cone>,
 }
 
+/// A kill-feed name's width in ref px (Q2, ui_system.md T3): measured in
+/// screen px with its font scaled to the screen, ⌊w_px / x_r⌋.
+pub fn feed_width(fonts: &FontList, screen: Screen, s: &str) -> f32 {
+    fonts
+        .get(FEED_FONT)
+        .map_or(0.0, |f| text::measure(s, f, 0, scale(screen)).reference.x as f32)
+}
+
+/// The HUD's screen scale (x_r, y_r).
+pub fn scale(screen: Screen) -> Scale {
+    Scale::of(Vec2::new(screen.w, screen.h), REFERENCE)
+}
+
 /// The firing part's spread hook (weapon_firing.md).
 pub const SPREAD_HOOK: &str = "combat_arms:spread";
 
@@ -549,6 +579,7 @@ fn update(
     (time, real, sim): (Res<Time>, Res<Time<Real>>, Option<Res<SimClock>>),
     screen: Res<HudScreen>,
     options: Res<HudOptions>,
+    ui: Res<CaUi>,
     mut memory: ResMut<HudMemory>,
     world: HudInputs,
     mut hud: ResMut<CaHud>,
@@ -751,7 +782,7 @@ fn update(
         .map(|(i, (_, k))| FeedLineView {
             y: KillFeed::line_y(i),
             kill: k.clone(),
-            items: feed_line(k, |s| 7.0 * s.chars().count() as f32),
+            items: feed_line(k, |s| feed_width(&ui.fonts, screen, s)),
         })
         .collect();
 
@@ -837,7 +868,7 @@ impl Plugin for CaHudPlugin {
                 hit_marker: true,
                 killfeed: true,
             })
-            .add_systems(Startup, spawn)
+            .add_systems(Startup, (spawn, draw::load_faces))
             .add_systems(Update, screen_size.before(HudUpdate))
             .add_systems(
                 Update,
@@ -931,52 +962,66 @@ fn line(a: Vec2, b: Vec2, thickness: f32, c: Color) -> impl Bundle {
     )
 }
 
-/// Text in a box (ref), aligned inside it; size in points times y_r.
-#[allow(clippy::too_many_arguments)]
-fn text_box(
-    fonts: Option<&UiFonts>,
+/// What HUD texts are drawn with: the UI's fonts, the shell's stand-in
+/// faces and the install's, on the HUD's screen.
+#[derive(Clone, Copy)]
+struct Pen<'a> {
+    ui: &'a CaUi,
+    fonts: Option<&'a UiFonts>,
+    faces: Option<&'a CaFaces>,
     screen: Screen,
-    at: Vec2,
-    size: Vec2,
-    text: String,
-    points: f32,
-    bold: bool,
-    c: Rgba,
-    justify: JustifyContent,
-) -> impl Bundle {
-    let r = screen.rect(at, size);
-    let s = r.size();
-    let px_size = points * screen.yr();
-    let font = fonts.map_or_else(
-        || TextFont {
-            font_size: FontSize::Px(px_size),
-            ..default()
-        },
-        |f| f.em("Tahoma", bold, px_size),
+}
+
+/// A HUD text (ui_system.md T2-T6, settling hud_crosshair.md Q2 and Q3):
+/// `string` in `font` scaled with both factors, in a box (`at`, `size`,
+/// ref px) at `own` inside it, aligned in the box on each aligned axis
+/// (its own position ignored there), drawn with its effect's copies.
+#[allow(clippy::too_many_arguments)]
+fn hud_text(
+    p: &mut ChildSpawnerCommands,
+    pen: Pen,
+    (at, size, own): (Vec2, Vec2, Vec2),
+    string: &str,
+    font: &str,
+    (h, v): (HAlign, VAlign),
+    effect: Effect,
+    colour: Rgba,
+) {
+    let look = TextLook {
+        font: font.to_string(),
+        h,
+        v,
+        effect,
+        colour,
+        stroke: [0, 0, 0, 255],
+        shadow: [0, 0, 0, 255],
+        set: Some(string.to_string()),
+        ..default()
+    };
+    if let Some(t) = layout::boxed_text(
+        at.as_ivec2(),
+        size.as_ivec2(),
+        own.as_ivec2(),
+        look,
+        scale(pen.screen),
+        &pen.ui.fonts,
+    ) {
+        draw::spawn_text(p, &t, pen.fonts, pen.faces);
+    }
+}
+
+/// A text at a reference position (default alignment).
+fn hud_text_at(p: &mut ChildSpawnerCommands, pen: Pen, at: Vec2, string: &str, font: &str, effect: Effect, colour: Rgba) {
+    hud_text(
+        p,
+        pen,
+        (Vec2::ZERO, Vec2::ZERO, at),
+        string,
+        font,
+        (HAlign::Default, VAlign::Default),
+        effect,
+        colour,
     );
-    (
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(r.min.x),
-            top: px(r.min.y),
-            width: px(s.x),
-            height: px(s.y),
-            justify_content: justify,
-            align_items: AlignItems::Center,
-            overflow: Overflow::visible(),
-            ..default()
-        },
-        children![(
-            Text::new(text),
-            font,
-            TextColor(colour(c)),
-            TextShadow {
-                offset: Vec2::splat(1.0),
-                color: Color::srgba(0.0, 0.0, 0.0, 0.8),
-            },
-            TextLayout::no_wrap(),
-        )],
-    )
 }
 
 /// Redraw a layer's children when what it shows changed.
@@ -996,7 +1041,7 @@ fn rebuild<T: PartialEq + Clone + Send + Sync + 'static>(
 
 fn draw_crosshair(
     hud: Res<CaHud>,
-    fonts: Option<Res<UiFonts>>,
+    params: PenParams,
     root: Single<Entity, With<CrosshairRoot>>,
     mut last: Local<Option<(CrosshairView, Screen)>>,
     mut commands: Commands,
@@ -1006,20 +1051,25 @@ fn draw_crosshair(
         return;
     }
     let col = colour(c.colour);
-    let (screen, fonts) = (hud.screen, fonts.as_deref());
+    let pen = pen(&params, hud.screen);
     commands.entity(*root).with_children(|p| {
         // The range readout, right-aligned at `RANGE_AT` (A9).
         if let Some((t, rgba)) = &c.range {
             let size = Vec2::new(120.0, 16.0);
-            p.spawn(text_box(fonts, screen, RANGE_AT - Vec2::new(size.x, 0.0), size, t.clone(), 12.0, true, *rgba, JustifyContent::End));
+            let boxed = (RANGE_AT - Vec2::new(size.x, 0.0), size, Vec2::ZERO);
+            let align = (HAlign::Right, VAlign::Centre);
+            hud_text(p, pen, boxed, t, looks::PROMPT, align, Effect::Shadow, *rgba);
         }
         // PLACEHOLDER for the gauge sight's images: their numbers beside
         // the centre, health left, clip right.
         if let Some((hp, clip)) = c.gauge {
             let size = Vec2::new(60.0, 16.0);
             let white = [255, 255, 255, 220];
-            p.spawn(text_box(fonts, screen, Vec2::new(512.0 - 90.0 - size.x, 376.0), size, format!("HP {hp}"), 11.0, false, white, JustifyContent::End));
-            p.spawn(text_box(fonts, screen, Vec2::new(512.0 + 90.0, 376.0), size, format!("{clip} AMMO"), 11.0, false, white, JustifyContent::Start));
+            let left = (Vec2::new(512.0 - 90.0 - size.x, 376.0), size, Vec2::ZERO);
+            let right = (Vec2::new(512.0 + 90.0, 376.0), size, Vec2::ZERO);
+            let (l, r) = ((HAlign::Right, VAlign::Centre), (HAlign::Left, VAlign::Centre));
+            hud_text(p, pen, left, &format!("HP {hp}"), looks::ICON_WORD, l, Effect::Shadow, white);
+            hud_text(p, pen, right, &format!("{clip} AMMO"), looks::ICON_WORD, r, Effect::Shadow, white);
         }
         for _ in 0..c.draws.dot_sight {
             // PLACEHOLDER for the weapon's reticle image: a red outline.
@@ -1084,9 +1134,33 @@ fn draw_damage(
     });
 }
 
+/// The HUD texts' fonts and looks (hud_crosshair.md D2, D4, D5).
+mod looks {
+    pub const LABEL: &str = "bold 16";
+    pub const VALUE: &str = "number 25";
+    pub const NAME: &str = "bold 16";
+    pub const CLIP: &str = "number 26";
+    pub const SLASH: &str = "bold 25";
+    pub const RESERVE: &str = "number 25";
+    /// Ours: placeholder words for icons, and the pickup prompt.
+    pub const ICON_WORD: &str = "bold 11";
+    pub const PROMPT: &str = "bold 14";
+}
+
+type PenParams<'a> = (Res<'a, CaUi>, Option<Res<'a, UiFonts>>, Option<Res<'a, CaFaces>>);
+
+fn pen<'a>(params: &'a PenParams, screen: Screen) -> Pen<'a> {
+    Pen {
+        ui: &params.0,
+        fonts: params.1.as_deref(),
+        faces: params.2.as_deref(),
+        screen,
+    }
+}
+
 fn draw_status(
     hud: Res<CaHud>,
-    fonts: Option<Res<UiFonts>>,
+    params: PenParams,
     root: Single<Entity, With<StatusRoot>>,
     mut last: Local<Option<(Option<StatusView>, Option<String>, Screen)>>,
     mut commands: Commands,
@@ -1095,21 +1169,21 @@ fn draw_status(
         return;
     }
     let screen = hud.screen;
-    let fonts = fonts.as_deref();
+    let pen = pen(&params, screen);
+    let resolve = |id: &str| pen.ui.strings.resolve(id);
     commands.entity(*root).with_children(|p| {
         if let Some(prompt) = &hud.pickup {
             // Ours: the spec gives the prompt no look or place.
-            p.spawn(text_box(
-                fonts,
-                screen,
-                Vec2::new(312.0, 430.0),
-                Vec2::new(400.0, 20.0),
-                prompt.clone(),
-                14.0,
-                true,
+            hud_text(
+                p,
+                pen,
+                (Vec2::new(312.0, 430.0), Vec2::new(400.0, 20.0), Vec2::ZERO),
+                prompt,
+                looks::PROMPT,
+                (HAlign::Centre, VAlign::Centre),
+                Effect::Shadow,
                 [255, 255, 255, 255],
-                JustifyContent::Center,
-            ));
+            );
         }
         let Some(s) = &hud.status else { return };
         let box_of = |(at, size): (Vec2, Vec2)| screen.rect(at, size);
@@ -1128,18 +1202,27 @@ fn draw_status(
         let x = sil.min.x + (sil.size().x - w) / 2.0;
         let tint = s.colours.silhouette.map_or(Color::srgba(0.75, 0.75, 0.75, 0.8), colour);
         p.spawn(rect(PxRect::new(x, x + w, bottom - h, bottom), tint));
-        let label = |at: Vec2, t: &str, c: Rgba| {
-            text_box(fonts, screen, at, Vec2::new(30.0, 16.0), t.to_string(), 16.0, true, c, JustifyContent::Start)
-        };
-        p.spawn(label(status::HP_LABEL, "HP", s.colours.hp_ap_labels));
-        p.spawn(label(status::AP_LABEL, "AP", s.colours.hp_ap_labels));
-        p.spawn(label(status::SP_LABEL, "SP", s.colours.other_labels));
-        p.spawn(label(status::SET_LABEL, "SET", s.colours.other_labels));
-        let value = |(at, size): (Vec2, Vec2), t: &str| {
-            text_box(fonts, screen, at, size, t.to_string(), 25.0, false, s.colours.values, JustifyContent::Center)
-        };
-        p.spawn(value(status::HP_BOX, &s.hp));
-        p.spawn(value(status::AP_BOX, &s.ap));
+        // Labels at their positions; values centred in their boxes.
+        for (at, id, c) in [
+            (status::HP_LABEL, "$hud_hp", s.colours.hp_ap_labels),
+            (status::AP_LABEL, "$hud_ap", s.colours.hp_ap_labels),
+            (status::SP_LABEL, "$hud_sp", s.colours.other_labels),
+            (status::SET_LABEL, "$hud_set", s.colours.other_labels),
+        ] {
+            hud_text_at(p, pen, at, &resolve(id), looks::LABEL, Effect::Shadow, c);
+        }
+        for ((at, size), t) in [(status::HP_BOX, &s.hp), (status::AP_BOX, &s.ap)] {
+            hud_text(
+                p,
+                pen,
+                (at, size, Vec2::ZERO),
+                t,
+                looks::VALUE,
+                (HAlign::Centre, VAlign::Centre),
+                Effect::Shadow,
+                s.colours.values,
+            );
+        }
         if s.stamina_bar > 0.0 {
             p.spawn(rect(
                 screen.rect(status::STAMINA_BAR, Vec2::new(s.stamina_bar, status::STAMINA_BAR_HEIGHT)),
@@ -1151,7 +1234,7 @@ fn draw_status(
 
 fn draw_weapon(
     hud: Res<CaHud>,
-    fonts: Option<Res<UiFonts>>,
+    params: PenParams,
     root: Single<Entity, With<WeaponRoot>>,
     mut last: Local<Option<(Option<WeaponPanel>, Screen)>>,
     mut commands: Commands,
@@ -1160,17 +1243,24 @@ fn draw_weapon(
         return;
     }
     let Some(w) = &hud.weapon else { return };
-    let (screen, fonts) = (hud.screen, fonts.as_deref());
+    let pen = pen(&params, hud.screen);
     commands.entity(*root).with_children(|p| {
+        // Right-aligned in its box, centred on its y (Q3).
         let (at, size) = panel::NAME_BOX;
-        p.spawn(text_box(fonts, screen, at, size, w.name.clone(), 16.0, true, panel::NAME, JustifyContent::End));
+        hud_text(
+            p,
+            pen,
+            (at, size, Vec2::ZERO),
+            &w.name,
+            looks::NAME,
+            (HAlign::Right, VAlign::Centre),
+            Effect::Stroke,
+            panel::NAME,
+        );
         if let Some((clip, reserve)) = &w.ammo {
-            let at = |a: Vec2, t: &str, pts: f32, c: Rgba| {
-                text_box(fonts, screen, a, Vec2::new(0.0, 26.0), t.to_string(), pts, false, c, JustifyContent::Start)
-            };
-            p.spawn(at(panel::CLIP_AT, clip, 26.0, panel::CLIP));
-            p.spawn(at(panel::SLASH_AT, "/", 25.0, panel::RESERVE));
-            p.spawn(at(panel::RESERVE_AT, reserve, 25.0, panel::RESERVE));
+            hud_text_at(p, pen, panel::CLIP_AT, clip, looks::CLIP, Effect::Stroke, panel::CLIP);
+            hud_text_at(p, pen, panel::SLASH_AT, "/", looks::SLASH, Effect::Stroke, panel::RESERVE);
+            hud_text_at(p, pen, panel::RESERVE_AT, reserve, looks::RESERVE, Effect::Stroke, panel::RESERVE);
         }
         if let Some(icon) = w.icon {
             // PLACEHOLDER for the fire-mode icon: its name.
@@ -1180,15 +1270,14 @@ fn draw_weapon(
                 FireIcon::Auto => "AUTO",
                 FireIcon::Single => "SEMI",
             };
-            let (at, size) = panel::ICON;
-            p.spawn(text_box(fonts, screen, at, size, t.to_string(), 10.0, true, panel::RESERVE, JustifyContent::Start));
+            hud_text_at(p, pen, panel::ICON.0, t, looks::ICON_WORD, Effect::None, panel::RESERVE);
         }
     });
 }
 
 fn draw_feed(
     hud: Res<CaHud>,
-    fonts: Option<Res<UiFonts>>,
+    params: PenParams,
     root: Single<Entity, With<FeedRoot>>,
     mut last: Local<Option<(Vec<FeedLineView>, Screen)>>,
     mut commands: Commands,
@@ -1196,70 +1285,37 @@ fn draw_feed(
     if !rebuild(&mut last, (hud.feed.clone(), hud.screen), *root, &mut commands) {
         return;
     }
-    let (screen, fonts) = (hud.screen, fonts.as_deref());
-    let pts = 12.0 * screen.yr();
-    let font = |bold| {
-        fonts.map_or_else(
-            || TextFont {
-                font_size: FontSize::Px(pts),
-                ..default()
-            },
-            |f| f.em("Tahoma", bold, pts),
-        )
-    };
-    let word = |t: String, c: Rgba, w: Option<f32>| {
-        (
-            Node {
-                width: w.map_or(Val::Auto, |w| px(w * screen.xr())),
-                height: percent(100.0),
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            children![(Text::new(t), font(true), TextColor(colour(c)), TextLayout::no_wrap())],
-        )
-    };
+    let pen = pen(&params, hud.screen);
+    let grey = [200, 200, 200, FEED_TEXT_ALPHA];
     commands.entity(*root).with_children(|p| {
         for l in &hud.feed {
-            let r = screen.rect(Vec2::new(0.0, l.y), Vec2::new(350.0, FEED_LINE_HEIGHT));
-            let s = r.size();
-            let mut row = p.spawn(Node {
-                position_type: PositionType::Absolute,
-                left: px(r.min.x),
-                top: px(r.min.y),
-                width: px(s.x),
-                height: px(s.y),
-                padding: UiRect::left(px(FEED_LEFT * screen.xr())),
-                flex_direction: FlexDirection::Row,
-                ..default()
-            });
-            let k = &l.kill;
-            let (killer, mate) = k.killer.clone().unwrap_or_else(|| k.victim.clone());
-            let grey = [200, 200, 200, FEED_TEXT_ALPHA];
-            // PLACEHOLDER icons and badges: words in their slots.
-            let icon = match &k.icon {
-                KillIcon::Weapon(Some(id)) => format!("[{}]", id.rsplit(':').next().unwrap_or(id)),
-                KillIcon::Weapon(None) => String::new(),
-                KillIcon::Suicide => "[suicide]".into(),
-                KillIcon::Barrel => "[blast]".into(),
-                KillIcon::Fire => "[fire]".into(),
-                KillIcon::Poison => "[poison]".into(),
-                KillIcon::Bleeding => "[bleed]".into(),
-                KillIcon::Npc => "[npc]".into(),
-            };
-            let badge = |b: Badge| format!("{b:?}").chars().take(2).collect::<String>().to_uppercase();
-            row.with_children(|r| {
-                r.spawn(word(killer, feed_colour(mate), None));
-                r.spawn(word(icon, grey, Some(FEED_ICON_WIDTH)));
-                for (i, _) in k.badges.iter().enumerate() {
-                    let shown = match i {
-                        0 => Some(k.badges[0]),
-                        1 => k.badges.last().copied(),
-                        _ => None,
-                    };
-                    r.spawn(word(shown.map(badge).unwrap_or_default(), grey, Some(FEED_BADGE_WIDTH)));
+            // Each element at the running x (`feed_line`, names advancing by
+            // their measured width), 3 ref px down the line.
+            for item in &l.items {
+                match item {
+                    FeedItem::Text { x, text, colour } => {
+                        hud_text_at(p, pen, Vec2::new(*x, l.y + 3.0), text, FEED_FONT, Effect::Stroke, *colour);
+                    }
+                    // PLACEHOLDER icons and badges: words in their slots.
+                    FeedItem::Icon { x, icon } => {
+                        let word = match icon {
+                            KillIcon::Weapon(Some(id)) => format!("[{}]", id.rsplit(':').next().unwrap_or(id)),
+                            KillIcon::Weapon(None) => String::new(),
+                            KillIcon::Suicide => "[suicide]".into(),
+                            KillIcon::Barrel => "[blast]".into(),
+                            KillIcon::Fire => "[fire]".into(),
+                            KillIcon::Poison => "[poison]".into(),
+                            KillIcon::Bleeding => "[bleed]".into(),
+                            KillIcon::Npc => "[npc]".into(),
+                        };
+                        hud_text_at(p, pen, Vec2::new(*x, l.y + 4.0), &word, looks::ICON_WORD, Effect::Stroke, grey);
+                    }
+                    FeedItem::Badge { x, badge } => {
+                        let word = format!("{badge:?}").chars().take(2).collect::<String>().to_uppercase();
+                        hud_text_at(p, pen, Vec2::new(*x, l.y + 4.0), &word, looks::ICON_WORD, Effect::Stroke, grey);
+                    }
                 }
-                r.spawn(word(k.victim.0.clone(), feed_colour(k.victim.1), None));
-            });
+            }
         }
     });
 }

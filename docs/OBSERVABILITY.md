@@ -72,7 +72,9 @@ in the lowest crate whose public API it needs:
   (`heavy::world`: every plain map converts, a player walks and collides
   on WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it); its front end's (the
-  HUD's state, `ui::hud::CaHud`, headless) in tests/ui/, built with `ui`;
+  HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
+  text and input cases and the in-game menu, `ui_system.rs`) in
+  tests/ui/, built with `ui`;
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's
@@ -645,7 +647,9 @@ Prediction (`games/cs_source/tests/it/net_prediction.rs`): a client's `net::pred
 counts the server states it compared (`checked`), the ones that differed
 from its prediction (`errors`, `last_error`/`worst_error` in m, which
 components differed in the last one: `last_differing`, at server tick
-`last_error_tick`) and restarts (`resyncs`); `CommandClock` has the command tick and the lead
+`last_error_tick`) and restarts (`resyncs`: nothing predicted to compare,
+or the server let in, spawned or killed the player, `OwnState::alive`;
+so a test needn't reset the counters after joining); `CommandClock` has the command tick and the lead
 the server reports; the server's `net::server::CommandBuffer` on a
 player's character has its queued commands, `missed`, `late` and `early`
 counts. `PredictionHistory` holds the client's predicted ticks not yet
@@ -1206,6 +1210,9 @@ others need the V2 key); add `--screenshot shot.png --frames 120 --window
 triangles, textures, spawns and warnings. The world files' numbers:
 `cargo test -p lithtech_formats -- heavy::world_install --nocapture`
 (`every_plain_map_summary` prints each map's version and counts).
+`+ingamemenu` opens Combat Arms' in-game menu (Esc) for a screenshot of
+it, e.g. `--window 1280x720 --screenshot menu.png --frames 120
++ingamemenu`.
 
 Combat Arms' models: `CHIMERA_CA_PROP=<model>[,<skin>...]` (archive
 paths) puts that model, playing its first animation, 3 m in front of the

@@ -1,0 +1,32 @@
+# Combat Arms' font list (specs/combat_arms/ui_system.md T1), ours: the
+# faces and the heights the spec names ("bold 11" to "bold 60", "Light
+# 11" to "Light 15", "number 11" to "number 40"; the number in a name is
+# its height in px at 1024 x 768). A layout's Font matches a name exactly.
+#
+# `average`: the average glyph width over the height, our estimate (the
+# real faces' metrics are the spec's Open question 3); text is measured
+# monospaced at that width. `file`: the face in the install (FONTS.rez,
+# unkeyed), drawn with when the install is there, else a stand-in
+# (`ui::draw`); which file is which face is our reading of their names.
+
+[[face]]
+role = "bold"
+prefix = "bold"
+heights = [11, 60]
+average = 0.55
+file = "fonts/akzidenz_hs.ttf"
+bold = true
+
+[[face]]
+role = "light"
+prefix = "Light"
+heights = [11, 15]
+average = 0.5
+file = "fonts/akzidenz_hs_lt.ttf"
+
+[[face]]
+role = "number"
+prefix = "number"
+heights = [11, 40]
+average = 0.6
+file = "fonts/number.ttf"

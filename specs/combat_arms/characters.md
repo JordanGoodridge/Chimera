@@ -1,0 +1,561 @@
+# Combat Arms: player characters
+
+Source basis: reference material the user pointed the spec session to on the game's player characters: the shared character-model attribute manager and the per-player model selection record, the player object's model building, attachments, death and body code on the server, the client's character effect (aim twisting, hit-sphere display), the shared third-person animation driver and its animation-set tables, the client and server animation updaters, the body object and its states, and the client hit-sphere test. Data was read from a US-region attribute data set (the model, attachment, mark and weapon attribute files) and, where it differs, compared with a BR-region set. Model numbers were measured with a throwaway reader written from `models_ltb.md` and `animation.md` on the character archives of the US reference client (build 1501.04), whose character archives are not keyed. The Steam install on the Windows PC (manifest build id 25595979) keys its character archives (`V2_RESOURCES_KEY`), so those numbers are marked "install" in Test cases and must be re-measured there.
+Status: draft
+
+Sections: Summary; Units and conventions; Constants; Behaviour (1 character records and model choice, 2 assembling the model: pieces, skins, head and face, attachments, 3 skeleton and sockets, 4 trackers and layering, 5 deciding the animation state, 6 building the animation names, 7 starting, restarting, syncing, rates and blend times, 8 aim pitch and twist, 9 hit reactions, emotes, 10 death and bodies, 11 hit-sphere placement); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+
+---
+
+## Summary
+
+- A player character is one skinned **body model** (with the shared animation library of its sex as child model), plus a **head piece** and optionally a **face piece** drawn as additional models on the body's skeleton, plus rigid **socket attachments**: the hand-held weapon (`RightHand`), a second gun for dual weapons (`LeftHand`), goggles and masks (`Eyes`), backpacks and flags (`1W_N`). Carried but unselected weapons are not shown.
+- Which body is used comes from the player's own loadout (model, face, head piece, camouflage index, cosmetics), not from the team. The face can redirect a male body record to its female twin. Team only changes one texture slot (the "friendly sign").
+- The hit spheres, death animations and ragdoll-free body are keyed on the model record's **skeleton** index (0 male, 1 female in the stock player set). Each sphere sits on a node of that name, or, if the model has no such node, on a socket of that name; missing ones are skipped. On the stock bodies the two 7.0 "shoulder pad" spheres of the male table never exist.
+- Third-person animation runs on four trackers: the main tracker (the body's own bind-pose animation, never changed while alive), an upper-body tracker, a lower-body tracker and a crouch tracker whose weight is the crouch fraction. Names are built from a weapon-class code, a stance letter, an action and a direction (`URFRAmS`, `LRF`, `LC`...). A name the library lacks is silently skipped and the previous animation keeps playing.
+- Playback rate is 1 for the legs whatever the ground speed; the upper body is rate 1 too in the stock data. Aim pitch and the upper-body twist are bone rotations applied after animation, spread over torso, neck, head and shoulders, with pitch clamped to ±45°.
+- Death plays one non-looping animation picked from the last hit sphere's location, the shot direction, the damage type and a coin flip; the body is a separate object that stays until its owner respawns and is removed 5 s after that in the common modes. There is no ragdoll.
+
+## Units and conventions
+
+- Distance: LithTech world units ("u"). Up is +Y, the frame is left-handed: +X right, +Z forward (`models_ltb.md`). All model-space positions below are relative to the object position, which is the centre of the movement hull; the feet of the stock characters are at y = −50 when standing (the animations' root translation, `animation.md`).
+- Angles: radians in the game; degrees in this spec where stated. Positive pitch looks down, positive yaw turns right (forward +Z towards +X). "Rotation about axis a by θ" means the usual right-hand-rule formula applied to column vectors in these coordinates; with it, +θ about +X tips +Y towards +Z (a forward bow) and +θ about +Y turns +Z towards +X.
+- Time: integer milliseconds for animations, seconds for body lifetimes.
+- Quaternions are (x, y, z, w). Node and socket offsets are in the parent node's space unless "model space" is said.
+- "Male library" is `CHARS_M_BODY\ST_M_CHILD.LTB`, "female library" `CHARS_M_BODY\ST_W_CHILD.LTB` (the female library lives in the male body archive).
+
+## Constants
+
+| Name (ours) | Value | Unit | Meaning |
+|---|---|---|---|
+| stand half-extents (fallback) | (15, 50, 15) | u | Used if the model lacks `LST` or `LC` (`models_ltb.md`) |
+| crouch half-extents (fallback) | (15, 40, 15) | u | Same |
+| twist limit | ±45 (`PlayerTwistYawMax` 90 × 0.5, `PlayerTwistYawMin` −90 × 0.5) | ° | Upper-body twist range; also the third-person aim pitch clamp |
+| aim byte scale | 127 / (π/2) | steps per rad | Pitch and twist sent in one signed byte each on the legacy path |
+| torso yaw share (`LowerYawRatio`) | 7/17 | | Fraction of the twist applied at `Torso` |
+| upper-torso yaw share (`UpperYawRatio`) | 10/17 | | Fraction applied at `Upper_torso` |
+| pelvis yaw share (`PelvisYawRatio`) | 0 | | At `Right_pelvis` |
+| pitch shares, looking up | Torso 0.15, Upper_torso 0.15, Neck 0.25, shoulders 0.45, Head 0.50 | | `LowerPitchUpRatio` ... `HeadPitchUpRatio` |
+| pitch shares, looking down | Torso 0.35, Upper_torso 0.45, Neck 0.10, shoulders 0.10, Head 0.35 | | `LowerPitchDownRatio` ... `HeadPitchDownRatio` |
+| hit-reaction pitch kick | 0.1 rad × a 1–5–0 counter, 0.5 rad peak | rad | Remote characters only, see 9 |
+| body spawn lift | 0.1 | u | Body created this far above the dead player's (floor-snapped) position |
+| body removal delay | 5 / 500 / 1000 | s | After the fade state starts and the death animation is done: most modes / Combat, clan default and ESL modes / Hunger Game mode |
+| body lifetime console variable | `BodyLifetime` 30 | s | Only for bodies given a positive lifetime; players' bodies have none (−1) |
+| left-hand weapon offsets | per weapon | u, ° | `LeftHHModelPosOffset`, `LeftHHModelRotOffset`, `LeftHHScale` |
+| third-person frame lengths | `HHAniFrame_0` … `HHAniFrame_9`, `HHAniFrame_5_1` | ms | Per weapon, per posture; 0 or absent = no rate change. Absent from both stock data sets read |
+| server reload fallback | 500 | ms | Server reload timer when no third-person reload animation is found |
+| hit-sphere debug console variables | `ShowHitSphere`, `ShowLocalHitSphere` | | Draw spheres on remote / own character (non-final builds) |
+
+## Behaviour
+
+### 1. Character records and model choice
+
+**Where the data lives (by role).**
+
+| Data | File in the attribute archive | Records |
+|---|---|---|
+| Bodies, head pieces, faces, first-person hands, body types, hit skeletons, infection overrides | `MODELBUTES.TXT` | `Model#`, `Hair#`, `Face#`, `Hand#`, `FigureType#`, `Skeleton#`, `Overidable_Model#` |
+| Goggles and masks, backpacks, flags | `ATTACHMENTS.TXT` | `Goggle#`, `Backpack#`, `Flag#` |
+| Team mark textures | `MARKS.TXT` | `[TeamMark]` `TeamName#`, `RenderStyle#` |
+| Third-person weapon model and animation class | `WEAPONS.TXT` | `HHModel`, `HHSkin#`, `HHRenderStyle#`, `LeftHHModel`, `AniType`, `LowerAniType`, `HHAniFrame_#` |
+| Armour per gear id | `MODELBUTES.TXT` / gear records | `GearID` on models, head pieces and goggles (`weapon_firing.md`, Armour) |
+
+A `Model#` record holds: `Name`, `ModelFile` (body), `RenderStyle0..`, `Skeleton` (hit table index), `FigureType` (body type record: sex, sounds, sprint and stamina stats; `attribute_data.md`), `GearID`, `MaxArmor`, `MovePenalty`, `DashSpeed`, `Mass`, `UpperSkin0..6`, `LowerSkin0..6`, `HandsSkin0..`, `HandIndex`, `FaceRelationModel0..`, `InfectedOveridable`, `HostInfectedOveridable`, screen-only animation and light names. A record with at least one `UpperSkin` is a "player body" (two-texture vest/legs scheme); other records use a plain `Skin#` list.
+
+**The selection.** Each player's client sends, with its character info, a record of small integers: figure type, model id, head piece id, face id, clan mark, team mark, backpack id, goggle id, "default goggle" flag, camouflage index, infection-override index, clan emblem and clan background texture names, cosmetic character, helmet, goggle, vest and backpack ids, and colour indices for model, helmet, goggle and backpack. The server validates it (an unknown model id rejects the record; unknown face, head piece, backpack or goggle ids become "none"; a figure type whose sex does not match is reset to the default of that sex) and sends it to every client.
+
+**Effective body.**
+
+1. Start from the cosmetic character if it is ≥ 0, else the cosmetic vest if ≥ 0, else the model id.
+2. **Face redirect:** if the face index f is valid and the record's `FaceRelationModel{f}` is ≥ 0, use that model instead. In the stock data the three standard bodies redirect faces 4–7 (the female faces) to their female twins: `Normal` (0) → `Female Normal` (7), `Light` (1) → 8, `Heavy` (2) → 9; `balance` (25) → 26, `balance_NX` (28) → 29. Faces 0–3 (male) keep the record. So gender is chosen by the face.
+3. The body file, skins, render styles, scale and **skeleton** come from the redirected effective record. The **figure type** comes from the redirected *base* model (step 2 applied to the model id without cosmetics).
+
+**Default.** A fresh selection is model 0 (`Normal`, `CHARS_M_BODY\CM_VST_NM_DF_Nuts_JS.ltb`, skeleton 0, figure type 0, gear 0), head piece 0 (`HBasic`, no model), face 0 (`Face_a`), no goggle, no backpack, camouflage 0. A model id outside the table becomes 0.
+
+**Stock player bodies** (US data set):
+
+| Id | Name | Body file | Skeleton | Figure | GearID | Skins (camo variants) |
+|---|---|---|---|---|---|---|
+| 0 | Normal | `CHARS_M_BODY\CM_VST_NM_DF_Nuts_JS.ltb` | 0 | 0 | 0 | 7 |
+| 1 | Light | `CHARS_M_BODY\CM_VST_LT_DF_Nuts_JS.ltb` | 0 | 0 | 1 | 7 |
+| 2 | Heavy | `CHARS_M_BODY\CM_VST_HV_DF_Nuts_JS.ltb` | 0 | 0 | 2 | 7 |
+| 7 | Female Normal | `CHARS_M_BODY\Nomal_W_vest.ltb` | 1 | 1 | 0 | 7 |
+| 8 | Female Light | `CHARS_M_BODY\Light_W_vest.ltb` | 1 | 1 | 1 | 7 |
+| 9 | Female Heavy | `CHARS_M_BODY\Heavy_W_vest.ltb` | 1 | 1 | 2 | 7 |
+
+The US data has 431 `Model#` records in all (named mercenaries, cosmetics, NPCs). 260 pair skeleton 0 with figure type 0 and 158 skeleton 1 with figure 1; 13 do not (for example the `Nemexis_Enemy_Woman` records use skeleton 1 with figure type 0, and the powered suits use skeletons 5 and 6). The hit table follows the skeleton, the sounds and stats the figure type.
+
+**Team.** The team never changes the body. It sets the team-mark texture (2, below) and nothing else on the model.
+
+### 2. Assembling the model
+
+**Body.** The body model is created with the effective record's file, skins and render styles. Its child (`ST_M_child.ltb` or `ST_W_Child.ltb`) provides the animations. The male player bodies (the three in the table above and the named male mercenaries) have 53 nodes and share one tree shape, the female ones 60; a few special bodies (powered suits, some infected) use other skeletons and libraries. The model's scale is the record's scale (1 for the stock bodies).
+
+**Texture slots of a player body** (piece texture indices point here; `models_ltb.md`):
+
+| Slot | Content |
+|---|---|
+| 0 | Upper body: `UpperSkin{c}` |
+| 1 | Legs: `LowerSkin{c}` |
+| 2 | Team mark (the `Friendly_Sign` piece) |
+| 3 | Clan background (the client's clan background texture, else team mark 0) |
+| 4 | Clan emblem (likewise) |
+| 5 … | The record's additional skins, if any |
+
+- c is the camouflage index; if c ≥ the number of `UpperSkin` entries, c = 0. If the model colour index selects a colour skin list that exists, it replaces the upper and lower lists. The stock suffixes for c = 0..6 are none, `_DE`, `_SN`, `_UR`, `_WL`, `_FK` and a `TG` variant (Open question 3).
+- **Team mark** (client side): if the character is on the local player's team, slot 2 gets mark 1 (`CHARS_T_BODY\RED_Tie.dtx`), otherwise mark 0 (`CHARS_T_BODY\Alpha.dtx`, drawn with the transparent mark render style, so enemies show nothing). In the infection mode every character gets mark 0. Dead bodies created by the server use mark 0.
+- Render styles 0, 1, 2 of the stock bodies are `RS\default.ltb`, `RS\GLOW.LTB`, `RS\MARKTRANSPARENT.LTB`; the sign and clan pieces use style 2. An infection override record (`Overidable_Model#`) replaces the render styles, armour, hit points and hand model.
+
+**Head piece** (`Hair#`): `ModelFile0` for skeleton 0, `ModelFile1` for skeleton 1 (indexed by the effective skeleton; an index past the list means no head model). An empty file name means no head piece (`HBasic`). The skin is chosen by the camouflage index (out of range → 0), or by figure type if the record says its skins are per figure type; colour skins override. The head piece is an **additional model**: it is skinned with the body's node transforms, its bones matched to the body's by name (as the first-person hands are, `animation.md`). It therefore follows every body animation and aim rotation and has no sockets of its own that the game uses.
+
+**Face piece** (`Face#`): an additional model like the head piece, created only for records that allow a separate face; otherwise the face index is forced to 0. Its skin list is per face record (with colour overrides).
+
+**Socket attachments** (rigid models fixed to a socket, following its animated transform):
+
+| What | Socket | Model | Offset and rotation |
+|---|---|---|---|
+| Weapon in hand | `RightHand` | the current weapon's `HHModel` with `HHSkin#`, `HHRenderStyle#` | none (identity): the weapon model's own origin and axes are the grip |
+| Second gun (dual weapons) | `LeftHand` | `LeftHHModel` | `LeftHHModelPosOffset` (u); an Euler rotation from `LeftHHModelRotOffset` with pitch = its second component, yaw = its first, roll = its third (as stored); the model is then scaled by `LeftHHScale` |
+| Goggles, masks, beards | `Socket` of the `Goggle#` record (all stock records: `Eyes`) | `Model0` for figure type 0, `Model1` for figure type 1 | none; skins by camouflage index and colour |
+| Backpack | `Socket` of the `Backpack#` record (all stock: `1W_N`) | per figure type | none; slots 7 and 8 get the clan emblem and background |
+| Carried flag (flag modes) | `1W_N` (`Flag#` records) | | none |
+
+- Only one weapon is shown: the right-hand attachment swaps its model when the weapon changes. There is no back or holster display of the other carried weapons.
+- Goggles, backpacks and the second gun are flagged "hide in first person, show in third person" and become invisible if their parent is.
+- If the socket is missing the attachment is simply not attached (not drawn).
+
+### 3. Skeleton and sockets
+
+**Node roles.** Both sexes share the core names; the female tree has 7 more nodes (hair or ribbon bones under the head, two clavicle and two spine helper bones, two hip helpers) and uses `Bip01` names for neck, head and right clavicle. Bind positions are model-space, as stored (the male bind pose is centred on the hull, feet near y = −54; the female bind pose stands on y ≈ 2, which the animations' root translation corrects).
+
+| Role | Male node (index, parent) | Male bind position | Female node (index, parent) | Female bind position |
+|---|---|---|---|---|
+| Root | `Scene Root` (0) | (0, 0, 0) | `Scene Root` (0) | (0, 0, 0) |
+| Extra root child | `Object08` (1), `Object05` (52) | | `Bip_root01` (1, root) | (0, 2.27, 29.10) |
+| Hips (animation root of the legs) | `_zN_LowerBody` (2, root) | (0, −7.70, 1.46) | `_zN_LowerBod` (2, 1) | (0, 55.24, 3.14) |
+| Pelvis (left / right, chained) | `Left_pelvis` (3, 2), `Right_pelvis` (4, 3) | (0, −7.70, 0.75), (0, 1.45, 0.75) | (3, 2), (4, 3) | (0, 55.24, 3.14), (0, 60.95, 4.23) |
+| Lower spine | `Torso` (5, 4) | (0, 5.14, 0.74) | `Torso` (5, 4) | (0.01, 63.51, 4.22) |
+| Chest | `Upper_torso` (6, 5) | (0, 14.27, 0.74) | `Upper_torso` (6, 5) | (0.03, 71.80, 3.33) |
+| Neck | `Neck` (7, 6) | (0, 29.31, −0.10) | `Bip01 Neck` (7, 6) | (0.07, 86.05, 1.30) |
+| Head | `Head` (8, 7) | (0, 31.57, 0.99) | `Bip01 Head` (8, 7) | (0.08, 89.37, 1.94) |
+| Face | `Face_Jaw` (9, 8), `Face_Eyelid` (10, 8) | (0, 33.49, 3.45), (0.03, 38.96, 7.91) | `Bip01 HeadNub` (9, 8) and hair bones 10–19 | |
+| Shoulders | `Left_shoulder` (11, 7), `Right_shoulder` (24, 7) | (∓4.10, 27.95, −0.43) | `Left_shoulder` (20, 7), `Bip01 R Clavicle` (33, 7) | (−2.51, 82.15, 1.13), (2.62, 82.13, 1.13) |
+| Upper arms | `Left_armu` (12), `Right_armu` (25) | (∓11.36, 24.91, −1.53) | (21), (34) | |
+| Forearms | `Left_arml` (13), `Right_arml` (26) | (∓21.43, 14.33, −1.77) | (22), (35) | |
+| Hands | `left_hand` (14), `Right_hand` (27) | (∓31.19, 4.32, 2.14) | (23), (36) | |
+| Fingers | 15–23, 28–37 | | 24–32, 37–45 | |
+| Back helper | `Bone06` (38, 6) | (0.27, 19.79, −11.88) | `Bone_r_Clavicle01`, `Bone_l_Clavicle01`, `spine_right`, `spine_left` (46–49, 6) | |
+| Thighs, shins, feet, toes | `Left_legu` (39, 4), `Left_legl` (40), `Left_foot` (41), `Bip01 L Toe0` (42); right 43–46 | left foot (−9.72, −46.74, −2.14) | 50–53, 54–57 (thighs parented to `Left_pelvis`) | left foot (−8.34, 10.28, −0.20) |
+| Pelvis helpers | `Bone01`–`Bone05` (47–51, 3) | | `Bone_LHip`, `Bone_RHip` (58, 59, 3) | |
+
+The odd chain (right pelvis a child of the left pelvis, legs children of the right pelvis on the male) is data; keep it (`models_ltb.md` Quirks).
+
+**Weight sets** (stored in the body): `upper`, `Lower`, `blend`. Male: `upper` 1 on nodes 5–38, 0 elsewhere; `Lower` 1 on 0–3 and 39–52, 0.7 on 4, 0.3 on 5, 0 elsewhere (as `animation.md`). Female: `upper` 1 on 5–49; `Lower` 1 on 0–3 and 50–59, 0.7 on 4, 0.3 on 5. `blend` is unused by players.
+
+**Sockets the game uses.** Offsets are in the parent node's space; "model space" positions are for the bind pose. Same parents and offsets on every stock male body read; the female set is the stock female body's.
+
+| Socket | Role | Male parent node, offset, rotation | Male bind model space | Female parent, offset, rotation | Female bind model space |
+|---|---|---|---|---|---|
+| `RightHand` | Hand-held weapon | `Right_hand`, (7.085, 1.661, 1.277), (0.0573, −0.7151, −0.0818, 0.6918) | (35.69, −1.14, 4.24) | `Right_hand`, same offset and rotation | (33.13, 53.21, 1.37) |
+| `LeftHand` | Second gun of dual weapons | `left_hand`, (0, 0, 0), (0, 0, 0, 0.7071) (= identity) | (−31.19, 4.32, 2.14) | `left_hand`, (0, 0, 0), identity | (−29.16, 59.40, 0.02) |
+| `Eyes` | Goggles and masks; the dead player's head camera (Open question 7) | `Face_Eyelid`, (3.011, 0, 1.314), (−0.9772, 0, 0.2122, 0) | (0.03, 41.38, 5.68) | `Bip01 Head`, (−85.255, 0.001, 18.748), (−0.0846, 0.0846, −0.7020, 0.7020) | (0.08, 2.14, 5.20) |
+| `1W_N` | Backpacks and carried flags | `Upper_torso`, (−18.328, 0, 0), (0, 0, −0.7071, 0.7071) | (0, −3.98, 2.40) | same | (−0.02, 53.78, 6.65) |
+| `NAME_socket` | Name-tag anchor (`hud_crosshair.md`) | `Head`, (16.5, 0, 0.906), identity | (0, 47.97, 3.05) | `Bip01 Head`, same | (0.08, 105.45, 5.78) |
+| `P_BAG_N` | None (present, unused) | `Torso`, (0, 0, 0) | (0, 5.14, 0.74) | `Torso` | |
+| Hit-sphere sockets | See 11 | | | | |
+
+- Sockets and nodes are looked up by name without regard to case.
+- **Dropped weapons** do not use a socket: they appear at the world position of the node `Left_foot` (`inventory.md` section 12).
+- **Thrown grenades and bullets** do not use a character socket: their origin is the camera (first person) or the weapon model's position (third person; `grenades.md`, `weapon_firing.md`).
+- **The live first-person camera** is not a node either: it is the hull centre plus the eye height of `movement.md`.
+- The female `Eyes` socket sits near the floor in model space; the stock female goggle models (`Model1`, for example `ATTACH_M\W_Glass.ltb`) are authored about 89 u up, in the female bind frame, so the pair lands on the face. A goggle model must be paired with the socket of its own figure type.
+
+### 4. Trackers and layering
+
+Each player model runs four trackers (`animation.md`, Layered playback), in this order:
+
+| Tracker | Weight set | Multiplier | Plays |
+|---|---|---|---|
+| Main | ignored (sets the base pose) | | Entry 0 of the combined list: the body's own animation (`baseAnim`, 4800 ms, on the default male; `W_VST_NM`, 3333 ms, on the default female), looping. The game never changes it while the player is alive. |
+| Upper | `Upper` (the model's `upper`) | 1 | Upper-body animation (`U...`) |
+| Lower | `Lower` | 1 | Leg animation (`L...`). Also the tracker whose animation would set the hull box; for players the box setter accepts and ignores it (the hull comes from `movement.md`). |
+| Crouch | `Lower` | the crouch fraction r ∈ [0, 1] each update | The crouch leg animation for the current direction |
+
+Per node j, with the main pose (p₀, q₀), weights u_j (upper) and l_j (lower):
+
+```math
+(p,q) \leftarrow (p_0,q_0);\quad (p,q) \leftarrow \mathrm{blend}\big((p,q),\ U_j,\ u_j\big);\quad (p,q) \leftarrow \mathrm{blend}\big((p,q),\ L_j,\ l_j\big);\quad (p,q) \leftarrow \mathrm{blend}\big((p,q),\ C_j,\ l_j\, r\big)
+```
+
+where blend(a, b, f) lerps positions and slerps rotations by f and is skipped when f = 0. Consequences: the main pose shows only at node 4 (`Right_pelvis`, 30 %); node 5 (`Torso`) is 70 % upper, 30 % legs; fully crouched (r = 1) the legs, hips and root are entirely the crouch animation. The root translation (−50 for stand animations, −40 for crouch ones) lives on node 0 and therefore comes from the leg trackers, so the skeleton's feet stay at the bottom of whichever hull the crouch fraction implies.
+
+The crouch fraction r is the movement code's crouch rate (`movement.md`). The server uses the client-reported value, sent as a byte n with r = n / 255.
+
+### 5. Deciding the animation state
+
+Every update the driver is given four values, then picks animations from them, then resets them to their defaults (rifle class, aim, walk, no direction); so a value nobody sets this update means its default.
+
+**Weapon class** = the current weapon's `AniType` (knife class 14 if there is no weapon); the leg set = its `LowerAniType` (0 normal, 1 infected, 2 infected with club).
+
+**Posture** (upper-body action), from the weapon status the client reports (select, deselect, reloading, idle, hit) and the firing flags, evaluated in this order:
+
+1. Status "idle" (a status the client weapon can report): posture aim, status cleared, stop.
+2. If the weapon is reloading: when the reload may finish (server: its reload timer has expired; client: the weapon has left the reload state) or the reload animation is done, finish the reload and clear the status; otherwise posture reload (if the last posture was post-fire, only once that animation is done).
+3. Then, overriding step 2: if the status is "select", or the post-fire animation is done, or a select animation is playing: posture select, except that a finished select clears the status. (After a finished post-fire with the status "none", step 4 replaces this select by aim or fire in the same update, so it has no visible effect.) Else if the status is "deselect": clear it. Else if the status is "hit" or a hit animation is playing: see 9.
+4. Only if the status is now "none": the firing choice.
+   - Sniper class (5) and land-mine class (20): fire while firing or while the fire animation plays; aim once the last animation is done.
+   - Grenade class (11) and claymore class (21): a small sequence on the fire button: at aim with fire held → pre-fire; pre-fire done → fire; fire with the button up → post-fire; post-fire done → aim; anything else → aim.
+   - Other classes: fire held (the client counts only a weapon in a firing state) or a fire animation still playing → fire, but if the last posture was reload, select or alt-fire, only once that animation is done. Else alt-fire held or playing → alt-fire (same wait after reload or select). Else aim.
+   - If the current ammo count is 0 and the upper animation is done → aim.
+
+**Movement** (legs), from the movement flags:
+
+- After a jump starts (the client reports "jumped") and while the crouch key is up: movement jump, direction kept from the previous update. When the jump animation is done the status becomes "falling" and nothing is set (so: walk, no direction). "Landed" clears the status.
+- Otherwise: run if the run flag is set and the player is not zoomed, else walk; sprint overrides both while sprinting. The run flag is set at rest unless walking or crouched (`weapon_firing.md`, Open question 6), so standing still is "run, no direction".
+- Direction from the keys: forward; backward; right strafe → right, right-forward or right-backward with forward or backward; left strafe likewise. With both strafes held the left one wins.
+- The crouch key does not set a movement value; crouching is entirely the crouch tracker.
+
+### 6. Building the animation names
+
+**Legs** (looping unless marked), for the normal leg set:
+
+| Movement | None | F | B | L | R | FL | FR | BL | BR |
+|---|---|---|---|---|---|---|---|---|---|
+| walk | `LST` | `LWF` | `LWB` | `LWL` | `LWR` | `LWFL` | `LWFR` | `LWBL` | `LWBR` |
+| run | `LST` | `LRF` | `LRB` | `LRL` | `LRR` | `LRFL` | `LRFR` | `LRBL` | `LRBR` |
+| crouch tracker | `LC` | `LCF` | `LCB` | `LCL` | `LCR` | `LCFL` | `LCFR` | `LCBL` | `LCBR` |
+| jump (non-looping) | `LSJ` | `LJJ` | `LJB` | `LJL` | `LJR` | `LJJL` | `LJJR` | `LJBL` | `LJBR` |
+| sprint | none | `LRRF` | | | | `LRRL` | `LRRR` | | |
+| sprint jump (unreachable, Quirk 3) | | `LRRJF` | | | | `LRRJL` | `LRRJR` | | |
+
+The infected leg sets prefix these names with `V` (`VLST`, `VLRF`, ...) and `VG` (`VGLST`, ...).
+
+**Upper body.** Name = `U` + class code + stance + action + direction suffix, with these parts:
+
+- **Class code** by `AniType`: 0 rifle `RF`; 1 bullpup rifle `RF` (its moving reload `URBRReS`); 2 rifle `RH`; 3 SMG `SM`; 4 SMG `SH`; 5 sniper `SN` (its select and reload reuse the rifle's `URFRSeS` / `URFRReS`); 6 automatic shotgun `SG`; 7 pump shotgun `G`; 8 machine gun `M`; 9 Vulcan `V`; 10 pistol `P`; 11 grenade `T`; 12 rocket launcher `RL`; 13 time bomb `TB`; 14 knife `K`; 15 bullpup shotgun `F`; 16 knife `BK`; 17 flamethrower `FT`; 18 heartbeat sensor `HS`; 19 rocket launcher `RW`; 20 land mine `LM`; 21 claymore `CM`; 22 claymore detonator `CT`; 23 rifle `RA`; 25 P90 `P9`; 28 chain gun `GG`. Classes 24 (revolver), 26 (FAMAS), 27 (double barrel) and 29 (snowball gun) reuse the pistol, SMG and shotgun names with a digit suffix on reloads and fires (`UPRReS1`, `USMRReS2`, `USGRFiS1`, `USGRFiS2`).
+- **Stance** letter: `R` for run (also standing still), `W` for walk, `C` for crouch, `RR` for sprint. Each table entry holds a run, a walk, a crouch and a sprint name; the crouch name is never used by players (no player movement is "crouch", Quirk 2).
+- **Action**: `Am` aim (looping), `Fi` fire, `Se` select (draw), `Re` reload; with no direction the select and reload use the standing forms `SSe` and `SRe` (`URFRSSeS`, `URFRSReS`). Fire, select and reload are non-looping. Grenade and claymore pre-fire, fire and post-fire add `_A`, `_B`, `_C` to the fire name (`UTRFiS_A`, `UTRFiS_B`, `UTRFiS_C`). Knife-type alt fire adds `2` (`UKRFiS2`); knife fires use the standing name in every direction.
+- **Direction**: `S` none, `F` forward (also both forward diagonals), `B` backward (also both backward diagonals), `L`, `R`.
+- **Sprint**: the sprint name of aim and fire is the class's sprint aim (`URFRRAmF`); of select and reload `URFRRSeS`, `URFRRReS`.
+- **Hit reactions** (posture hit / hit2) ignore class, direction and stance: `D_HIT` and `D_HITT` (see 9).
+
+Which name of the entry plays: the run name, replaced by the walk name when the movement is walk and the walk name exists in the library, by the sprint name when sprinting and it exists. The full rifle table (`AniType` 0, the M4A1's class):
+
+| Posture | None | F (and FL, FR) | B (and BL, BR) | L | R | Sprint |
+|---|---|---|---|---|---|---|
+| aim | `URFRAmS` / walk `URFWAmS` | `URFRAmF` / `URFWAmF` | `URFRAmB` / `URFWAmB` | `URFRAmL` / `URFWAmL` | `URFRAmR` / `URFWAmR` | `URFRRAmF` |
+| fire | `URFRFiS` | `URFRFiF` / `URFWFiF` | `URFRFiB` / `URFWFiB` | `URFRFiL` / `URFWFiL` | `URFRFiR` / `URFWFiR` | `URFRRAmF` |
+| select | `URFRSSeS` | `URFRSeS` | `URFRSeS` | `URFRSeS` | `URFRSeS` | `URFRRSeS` |
+| reload | `URFRSReS` | `URFRReS` | `URFRReS` | `URFRReS` | `URFRReS` | `URFRRReS` |
+| alt-fire | `URFRAmS` (aim) | `URFRAmS` | `URFRAmS` | `URFRAmS` | `URFRAmS` | `URFRAmS` |
+
+**Names that do not exist** in a library are dropped when the tables are built (the library is searched once per body file, case-insensitively). In the US libraries the rifle's `URFWAmS` and all moving rifle fires (`URFRFiF`, `URFRFiB`, `URFRFiL`, `URFRFiR` and their walk forms) are missing, as are the whole `SH`, `G` and `M` families. A missing walk or sprint name falls back to the run name; a missing run name means nothing is started and the tracker keeps its current animation (Quirk 1).
+
+### 7. Starting, restarting, syncing, rates and blend times
+
+Each update, after the state is decided:
+
+1. Both upper and lower trackers get their looping flag from the chosen entry.
+2. If the body file just changed (new model): start the crouch, lower and upper animations.
+3. Otherwise:
+   - start the crouch tracker's animation and the lower animation (every update; starting the animation already playing does nothing unless it is done, see below);
+   - the upper animation is started if the weapon class or posture changed, or if the name differs from the last one started and the posture is aim, fire or alt-fire (so moving changes the aim animation at once, but a reload or draw keeps the variant it began with);
+   - if movement or direction changed, the upper tracker's time is set to the lower tracker's current time (no key strings fire), so legs and torso stay in step. This copy is skipped when the last posture was fire or alt-fire, and for pre-fire, post-fire, reload, select and the hits it happens only once that animation is done.
+4. The crouch tracker's multiplier is set to r.
+5. The four values are remembered as "last" and reset to defaults.
+
+**Starting an animation** on a tracker: if a different animation is playing, switch to it (a transition over the new animation's own interpolation time, `animation.md`); if the same animation is playing and is done, restart it from 0 (this is how a fire animation repeats once per shot cycle while firing); if it is the same and still playing, nothing. The grenade class never restarts a finished animation this way.
+
+**Rates.** The lower and crouch trackers always play at rate 1: ground speed does not drive the legs. When the upper animation is started with a new posture, the upper rate is set to
+
+```math
+r_{upper} = \begin{cases} \dfrac{L_{3p}\, r_w}{F} & F > 0 \\ 1 & \text{otherwise} \end{cases}
+```
+
+where L₃ₚ is the new animation's length, F the weapon's `HHAniFrame_{posture}` (posture index: 0 aim, 1 pre-fire, 2 fire, 3 post-fire, 4 select, 5 reload, 6–8 hits, 9 alt-fire; `HHAniFrame_5_1` for a double barrel reloading with rounds left) and r_w the weapon rate of that posture: reload 1 + mod reload bonuses + model reload bonus + set bonus (server: capped at 2.0 and multiplied by 2 − the server's reload check time); select 1 + mod, model and set select bonuses; fire, pre-fire and post-fire the fire rate of `weapon_firing.md`. The effect is that the third-person action lasts F / r_w ms. No `HHAniFrame` keys exist in the data sets read, so every upper rate is 1.
+
+**Blend times** are the animations' own interpolation times. In the US male library every locomotion, aim, fire, select, reload and death animation used here has 0 ms; `D_HIT` and `D_HITT` have 200 ms. In the US female library `LST` and `LC` have 200 ms, the rifle aim, select and reload animations 100 ms, fires, hits and deaths 0 ms. During a blend the new animation does not advance.
+
+Measured lengths (US male library; female in brackets where different): `LST` 4000, `LC` 4000, `LWF` 1000, `LRF`/`LRB`/`LRL`/`LRR` 600, `LCF` 1400, `LSJ`/`LJJ`/`LJB` 666, `LRRF` 500 (533), `URFRAmS` 4000, `URFRFiS` 100, `URFRSSeS` 733, `URFRSReS` 1866, `UKRFiS` 500, `UKRFiS2` 800, `UTRFiS_A` 267 (266), `UTRFiS_B` 1, `UTRFiS_C` 900, `D_HIT` 467 (533), `D_HITT` 400 (466) ms.
+
+**Footsteps** come from the leg animations' `FOOTSTEP_KEY` / `FOOTPRINT_KEY` strings (`animation.md`), for example `LRF` at 50 ms (`FOOTSTEP_KEY 2`) and 350 ms (`FOOTSTEP_KEY 1`).
+
+### 8. Aim pitch and twist
+
+Aim is applied as **bone rotations after the animation pose**, on seven nodes, parent before child, each change propagating to its children:
+
+| Order | Node (male / female) | Yaw share | Pitch share up / down | Its "parent" for the yaw sum |
+|---|---|---|---|---|
+| 1 | `Right_pelvis` | 0 | 0 / 0 | none |
+| 2 | `Torso` | 7/17 | 0.15 / 0.35 (server: 0 / 0) | 1 |
+| 3 | `Upper_torso` | 10/17 | 0.15 / 0.45 | 2 |
+| 4 | `Neck` / `Bip01 Neck` | 0 | 0.25 / 0.10 | 3 |
+| 5 | `Head` / `Bip01 Head` | 0 | 0.50 / 0.35 | 4 |
+| 6 | `Left_shoulder` | 0 | 0.45 / 0.10 | 4 |
+| 7 | `Right_shoulder` / `Bip01 R Clavicle` | 0 | 0.45 / 0.10 | 4 |
+
+Inputs: pitch φ (radians, positive down) clamped to ±45°, and twist τ (the upper-body twist of `weapon_firing.md`: the view yaw minus the body yaw, within ±45°, 0 while any movement key is held). For each node in order, with its global (world) transform G, its yaw share y and pitch shares (u, d):
+
+```math
+A_{node} = y\,\tau + A_{parent},\qquad G \leftarrow \mathrm{Rot}_{\,\hat Y,\ p}\!\left(y\,\tau\right) G,\qquad G \leftarrow \mathrm{Rot}_{\,\hat X(A_{node}),\ p}\!\left(\varphi\cdot\begin{cases}u & \varphi<0\\ d & \varphi\ge 0\end{cases}\right) G
+```
+
+where Rot_{a,p}(θ) is the rotation by θ about the world axis a through the node's own position p, Ŷ is world up, and X̂(A) is the character's right axis turned by A about up (the object's yaw plus the accumulated twist). The sums are what players see: the chest turns the full twist (7/17 at the lower spine, the rest at the chest); the arms and weapon pitch exactly φ (0.15 + 0.15 + 0.25 + 0.45 = 1 up, 0.35 + 0.45 + 0.10 + 0.10 = 1 down); the head over-rotates (1.05 φ up, 1.25 φ down); the legs never pitch.
+
+- **Who applies it.** Each client applies it to every character it draws (its own third-person model with its own aim; remote characters with the aim sent by the server). The server applies the same rotations to its own copy of each player, except that `Torso` gets no pitch there, so the server's arms pitch only 0.85 φ up and 0.65 φ down (Open question 5).
+- **Transport (legacy update path):** pitch and twist travel as one signed byte each, b = trunc(θ · 127 / (π/2)), θ' = b · (π/2) / 127 (steps of about 0.709°). The newer update path carries them in the per-object update data (resolution not traced; Open question 6).
+- **Dead characters:** the server zeroes the pitch at death.
+
+### 9. Hit reactions, emotes
+
+- **Hit reaction:** when the server applies damage to a player (and on the victim's own client when it is damaged) the weapon status becomes "hit". On the next update, if the character took damage (last damage > 0) and is not in spawn protection, the posture becomes hit or hit2 with equal chance (`D_HIT` or `D_HITT`, upper body only, non-looping), held until that animation is done; then the status clears. While the status is "hit" no fire or aim choice is made, so a hit interrupts the firing pose for its length. With the infected body sets the names are `V_HIT` / `V_HITT` (`VD_HIT` / `VD_HITT` for bodies without `D_HIT`).
+- **Hit kick on remote characters:** each time a client is told another character was damaged by someone other than itself, the next aim update of that character raises its displayed pitch (negative) by an amount that depends on a per-character counter k of such events: 0.1 k rad for k = 1..5, 0.1 (10 − k) for k = 6..10, and on the 11th event nothing and the counter restarts. The offset lasts until the next aim update. Display only; seen on the paths where the client recomputes aim (Open question 6).
+- **Emotes** (`DT`, `Insult`, `Surrender`, `Insult_Dance`, `Salute`) replace both the upper and the lower animation, non-looping, only while aiming with no direction and walking or running; they end when done or when that condition breaks. The US male library lacks `Insult` and `Salute` (nothing plays).
+
+### 10. Death and bodies
+
+Order on the server when a player dies:
+
+1. The player object is moved down onto the floor (dying in the air snaps the body to the ground below), the backpack, goggle, flag and second-gun attachments are removed from the player object, the player becomes non-solid, and the death animation is chosen and set on its main tracker, non-looping.
+2. A **body** object is created at the player's position + (0, 0.1, 0) with the player's rotation, the same body file and skins (team mark 0), render styles, scale and hull dims, and the head and face pieces as additional models. It copies the main-tracker animation (the death animation) and plays it from 0, non-looping. It has no upper, lower or crouch tracker, no aim rotation, and is not damageable. Its client effect re-creates the goggles and backpack on their sockets. The held weapon is not transferred to it: the last-selected primary is dropped at `Left_foot` (`inventory.md`); every other weapon disappears.
+3. The body keeps hit spheres: the client's character ray test also tests bodies (11), so a corpse can catch a client-side shot (Open question 9).
+
+**Death animation choice.** Inputs: the death damage type, the death direction d (the direction the killing damage travelled), the character's forward f and right r, the location of the last hit sphere (11), and a coin c = rand() mod 2 drawn right after seeding the generator with the current time in seconds. Let cf = d · f, cr = d · r; front ⇔ cf < 0; left ⇔ cr > 0 (the shot travels towards the character's right, so it came from the left); head ⇔ the last hit sphere's location is head (1); groin ⇔ its location is 5.
+
+- Explosion, claymore and land-mine deaths ("blown off"): front and cf < −cos 45° → `D_BO_F`; back and cf > cos 45° → `D_BO_B`; otherwise left → `D_BO_L`, right → `D_BO_R`.
+- Endless fall → `D_W`; poison → `D_P`; melee → `D_S`.
+- Otherwise:
+  - front, strongly (cf < −cos 45°): head → `DH` (c = 1) or `DH_1` (c = 0); else `DT` / `DT_1`;
+  - front, side: left → `DLSH` (head or not, Quirk 5); right → head `DRSH`, else `DRT`;
+  - back, strongly (cf > cos 45°): head → `DHB` / `DHB_1`; else `DTB` / `DTB_1`;
+  - back, side: left → head `DLSH`, else `DLT`; right → head `DRSH`, else `DRT`;
+  - the crouched variants (`DC`, `DC_1`, `DCH`, `DCH_1`, `DCB`, `DCB_1`, `DCBH`, `DCBH_1`) are chosen only if the last movement was "crouch", which no player sets (Quirk 2);
+  - groin overrides all of these: `NS1` (c = 1) or `NS2` (c = 0).
+- If the player was in the jump state at death, c is forced to 0 and the body is first turned to yaw = atan(d_x / d_z) (+π if d_z > 0; ±π/2 if d_z = 0 by the sign of d_x).
+- If the chosen name does not exist in the library, `DC` plays. A model record may name a special death animation, which then always plays. In the snowball mode a frozen player plays `SD`.
+
+Lengths (US male): `DH` 1433, `DH_1` 1700, `DT` 3033, `DT_1` 1333, `DHB` 1566, `DTB` 1766, `DLSH` 1766, `DLT` 1333, `DRSH` 1233, `DRT` 1433, `DC` 1900, `D_S` 3033, `D_P` 5633, `D_W` 7800, `D_BO_F` 1500, `NS1` 5566, `NS2` 3166 ms. The female library has no `NS1` / `NS2` (a groin death falls back to `DC`).
+
+**No ragdoll.** A ragdoll set-up exists in the client but is never enabled; the body is pure keyframe animation and holds the last key of the death animation.
+
+**How long the body stays.** A player's body has no lifetime of its own. When its owner respawns, the body enters the fade state. In the fade state, on the first update where its animation is done, it tells clients to fade (the client fade is disabled, so the body stays opaque) and schedules removal: 5 s later in team deathmatch, VIP elimination, clan team deathmatch, capture the flag (and clan), free-for-all, VIP weapon race, last man standing, snowball fight, survival (and clan), sabotage and headquarters; 500 s in Combat, clan default and ESL modes; 1000 s in Hunger Game mode; never in other modes. A fast respawn removes it at once. So in the common modes a body disappears 5 s after its owner respawns (or 5 s after the death animation ends, if that is later).
+
+### 11. Hit-sphere placement
+
+The hit tables are `Skeleton#` records: for each table index n, `Node{n}Name`, `Node{n}Radius` (u), `Node{n}Location` (1 head, 2 torso, 3 arm, 4 leg, 5 groin), `Node{n}DamageFactor` and per-node death and recoil animation names (unused by players). A character uses table `Skeleton` of its effective record. For every entry with radius > 0:
+
+1. If the model has a **node** of that name, the sphere centre is the node's animated position (no offset).
+2. Else, if it has a **socket** of that name, the centre is the socket's animated position: node position + node rotation × socket offset.
+3. Else the entry is skipped.
+
+Positions are the full pose as drawn: all four trackers and the aim rotations (8). Spheres therefore follow crouching, aiming and the death animation (on bodies).
+
+**Male, table 0, on the default male body** (positions in model space; "LST 0" = the single animation `LST` at t = 0 applied to all nodes, root translation included):
+
+| # | Name | r | Loc | Factor | On | Parent, offset | Bind centre | LST 0 centre |
+|---|---|---|---|---|---|---|---|---|
+| 3 | `Left_pelvis` | 8.0 | 4 | 0.9 | node | | (0.00, −7.70, 0.75) | (−0.27, −6.89, −0.69) |
+| 4 | `Right_pelvis` | 8.5 | 4 | 0.9 | node | | (0.00, 1.45, 0.75) | (−0.27, 2.26, −0.69) |
+| 5 | `Torso` | 9.0 | 2 | 1.0 | node | | (0.00, 5.14, 0.74) | (−0.08, 5.88, −0.02) |
+| 6 | `Upper_torso` | 10.0 | 2 | 1.0 | node | | (0.00, 14.27, 0.74) | (1.15, 14.52, 2.69) |
+| 7 | `Neck` | 3.0 | 2 | 1.0 | node | | (0.00, 29.31, −0.10) | (5.22, 27.27, 9.60) |
+| 8 | `Head` | 1.0 | 1 | 6.0 | node | | (0.00, 31.57, 0.99) | (6.45, 29.03, 10.90) |
+| 9 | `Face_Jaw` | 3.0 | 1 | 6.0 | node | | (0.00, 33.49, 3.45) | (6.89, 30.82, 13.42) |
+| 10 | `Face_Eyelid` | 0 | 1 | 6.0 | (unhittable) | | | |
+| 11 | `Left_shoulder` | 5.5 | 3 | 0.9 | node | | (−4.10, 27.95, −0.43) | (1.94, 25.53, 11.84) |
+| 12 | `Left_armu` | 4.5 | 3 | 0.9 | node | | (−11.36, 24.91, −1.53) | (−4.11, 25.07, 16.96) |
+| 13 | `Left_arml` | 4.0 | 3 | 0.9 | node | | (−21.43, 14.33, −1.77) | (0.44, 12.73, 23.33) |
+| 14 | `left_hand` | 3.2 | 3 | 0.9 | node | | (−31.19, 4.32, 2.14) | (10.35, 21.70, 28.98) |
+| 24 | `Right_shoulder` | 5.5 | 3 | 0.9 | node | | (4.10, 27.95, −0.43) | (7.19, 27.15, 5.74) |
+| 25 | `Right_armu` | 4.5 | 3 | 0.9 | node | | (11.36, 24.91, −1.53) | (14.03, 25.76, 1.95) |
+| 26 | `Right_arml` | 4.0 | 3 | 0.9 | node | | (21.43, 14.33, −1.77) | (22.98, 14.22, 2.33) |
+| 27 | `Right_hand` | 3.2 | 3 | 0.9 | node | | (31.19, 4.32, 2.14) | (15.43, 18.88, 13.81) |
+| 39 | `Left_legu` | 8 | 4 | 0.9 | node | | (−6.14, −7.70, 0.75) | (−4.67, −6.89, 3.58) |
+| 40 | `Left_legl` | 6.0 | 4 | 0.75 | node | | (−7.91, −25.25, 1.87) | (−5.43, −20.85, 14.39) |
+| 41 | `Left_foot` | 5 | 4 | 0.5 | node | | (−9.72, −46.74, −2.14) | (−9.95, −42.12, 11.46) |
+| 42 | `Bip01 L Toe0` | 3.0 | 4 | 0.5 | node | | (−11.68, −54.32, 6.67) | (−8.48, −49.85, 20.24) |
+| 43 | `Right_Legu` | 8 | 4 | 0.9 | node | | (6.14, −7.70, 0.75) | (4.14, −6.89, −4.96) |
+| 44 | `Right_legl` | 6.0 | 4 | 0.75 | node | | (7.91, −25.25, 1.87) | (14.02, −21.52, −4.22) |
+| 45 | `Right_foot` | 5 | 4 | 0.5 | node | | (9.72, −46.74, −2.14) | (12.62, −41.96, −12.09) |
+| 46 | `Bip01 R Toe0` | 3.0 | 4 | 0.5 | node | | (11.68, −54.32, 6.67) | (20.91, −49.78, −9.09) |
+| 53 | `Face_Eyelid1` | 4.6 | 1 | 6.0 | socket | `Face_Eyelid`, (0, 0, 7) | (0.03, 36.67, 1.29) | (7.48, 34.01, 11.37) |
+| 54 | `Left_armu1` | 4.0 | 3 | 0.9 | socket | `Left_armu`, (7.25, 0, 0) | (−16.36, 19.66, −1.65) | (−1.85, 18.95, 20.12) |
+| 55 | `Left_arml1` | 4.0 | 3 | 0.9 | socket | `Left_arml`, (7.25, 0, 0) | (−26.31, 9.33, 0.18) | (5.39, 17.21, 26.15) |
+| 56 | `Right_armu1` | 4.0 | 3 | 0.9 | socket | `Right_armu`, (7.25, 0, 0) | (16.36, 19.66, −1.65) | (18.47, 20.04, 2.14) |
+| 57 | `Right_arml1` | 4.0 | 3 | 0.9 | socket | `Right_arml`, (7.25, 0, 0) | (26.31, 9.33, 0.18) | (19.21, 16.55, 8.07) |
+| 58 | `Left_legu1` | 7 | 4 | 0.9 | socket | `Left_legu`, (8.8, 0, 0) | (−7.02, −16.44, 1.31) | (−5.05, −13.84, 8.96) |
+| 59 | `Left_legl1` | 6 | 4 | 0.75 | socket | `Left_legl`, (11, 0, 0) | (−8.81, −36.03, −0.14) | (−7.70, −31.52, 12.92) |
+| 60 | `Right_Legu1` | 7 | 4 | 0.9 | socket | `Right_Legu`, (8.8, 0, 0) | (7.02, −16.44, 1.31) | (9.06, −14.18, −4.59) |
+| 61 | `Right_legl1` | 6 | 4 | 0.75 | socket | `Right_legl`, (11, 0, 0) | (8.81, −36.03, −0.14) | (13.32, −31.77, −8.17) |
+| 62 | `Left_Shld` | 7.0 | 3 | 0.9 | absent | no such node or socket on any stock body | | |
+| 63 | `Right_Shld` | 7.0 | 3 | 0.9 | absent | likewise | | |
+| 64 | `Nuts` | 3.0 | 2 (US) / 5 (BR) | 1.0 | socket | `Left_pelvis`, (2, 0, 6) | (0.00, −5.70, 6.75) | (3.91, −4.89, 3.61) |
+
+The `Nuts` socket exists on 43 of the 61 bodies with the 53-node male skeleton (all `CM_VST_..._Nuts...` bodies have it, including the three standard male ones; `CM_HV_UR_Brandon_JS.ltb`, the `MT_*` and the older `*_VEST.LTB` bodies do not); on the others the groin sphere does not exist.
+
+**Female, table 1, on the default female body:**
+
+| # | Name | r | Loc | Factor | On | Parent, offset | Bind centre | LST 0 centre |
+|---|---|---|---|---|---|---|---|---|
+| 3 | `Left_pelvis` | 8.0 | 4 | 0.9 | node | | (0.00, 55.24, 3.14) | (−1.44, 0.48, −1.66) |
+| 4 | `Right_pelvis` | 8.5 | 4 | 0.9 | node | | (0.00, 60.95, 4.23) | (−1.21, 6.28, −1.42) |
+| 5 | `Torso` | 9.0 | 2 | 1.0 | node | | (0.01, 63.51, 4.22) | (−1.65, 8.81, −1.55) |
+| 6 | `Upper_torso` | 10.0 | 2 | 1.0 | node | | (0.03, 71.80, 3.33) | (−1.09, 16.67, 1.19) |
+| 7 | `Bip01 Neck` | 0 | 2 | 1.0 | (unhittable) | | | |
+| 8 | `Bip01 Head` | 3 | 1 | **1.0** | node | | (0.08, 89.37, 1.94) | (2.96, 31.08, 10.21) |
+| 20 | `Left_shoulder` | 5.5 | 3 | 0.9 | node | | (−2.51, 82.15, 1.13) | (−1.27, 24.52, 8.72) |
+| 21 | `Left_armu` | 4.5 | 3 | 0.9 | node | | (−7.74, 81.26, 1.30) | (−4.82, 23.56, 12.54) |
+| 22 | `Left_arml` | 4.0 | 3 | 0.9 | node | | (−17.54, 71.54, −0.89) | (−7.02, 13.33, 21.82) |
+| 23 | `left_hand` | 3.2 | 3 | 0.9 | node | | (−29.16, 59.40, 0.02) | (2.96, 23.41, 30.87) |
+| 33 | `Bip01 R Clavicle` | 5.5 | 3 | 0.9 | node | | (2.62, 82.13, 1.13) | (2.21, 26.17, 5.33) |
+| 34 | `Right_armu` | 4.5 | 3 | 0.9 | node | | (7.85, 81.21, 1.30) | (7.00, 24.90, 3.42) |
+| 35 | `Right_arml` | 4 | 3 | 0.9 | node | | (17.65, 71.50, −0.90) | (13.56, 12.62, 2.18) |
+| 36 | `Right_hand` | 3.2 | 3 | 0.9 | node | | (29.27, 59.36, 0.02) | (7.23, 20.85, 15.42) |
+| 46 | `Bone_r_Clavicle01` | 3 | 2 | 1.0 | node | | (7.99, 76.65, 1.76) | (6.47, 20.79, 1.12) |
+| 47 | `Bone_l_Clavicle01` | 3 | 2 | 1.0 | node | | (−7.81, 76.69, 1.76) | (−5.16, 19.46, 10.92) |
+| 48 | `spine_right` | 3 | 2 | 1.0 | node | | (4.31, 76.34, 5.43) | (4.56, 19.91, 2.12) |
+| 49 | `spine_left` | 3 | 2 | 1.0 | node | | (−3.94, 76.36, 5.43) | (−1.04, 17.26, 7.56) |
+| 50 | `Left_legu` | 8 | 4 | 0.9 | node | | (−5.75, 55.19, 3.14) | (−5.64, −0.22, 2.21) |
+| 51 | `Left_legl` | 6.0 | 4 | 0.75 | node | | (−7.00, 33.52, 1.55) | (−5.24, −16.63, 16.49) |
+| 52 | `Left_foot` | 5.0 | 4 | 0.5 | node | | (−8.34, 10.28, −0.20) | (−7.73, −39.56, 12.91) |
+| 53 | `Bip01 L Toe0` | 3.0 | 4 | 0.5 | node | | (−8.87, 2.33, 3.17) | (−7.22, −47.59, 16.09) |
+| 54 | `Right_Legu` | 8 | 4 | 0.9 | node | | (5.75, 55.29, 3.13) | (2.76, 1.17, −5.53) |
+| 55 | `Right_legl` | 6.0 | 4 | 0.75 | node | | (7.00, 33.62, 1.54) | (7.47, −19.86, −2.56) |
+| 56 | `Right_foot` | 5 | 4 | 0.5 | node | | (8.34, 10.38, −0.21) | (2.90, −39.47, −14.37) |
+| 57 | `Bip01 R Toe0` | 3 | 4 | 0.5 | node | | (8.87, 2.43, 3.16) | (5.52, −47.55, −12.69) |
+| 60 | `Face_Eyelid1` | 0 | 1 | 6.0 | (unhittable) | | | |
+| 61 | `Left_armu1` | 4.0 | 3 | 0.9 | socket | `Left_armu`, (7.25, 0, 0) | (−12.82, 76.22, 0.16) | (−5.96, 18.25, 17.35) |
+| 62 | `Left_arml1` | 4.0 | 3 | 0.9 | socket | `Left_arml`, (7.25, 0, 0) | (−22.55, 66.31, −0.50) | (−2.72, 17.67, 25.72) |
+| 63 | `Right_armu1` | 4.0 | 3 | 0.9 | socket | `Right_armu`, (7.25, 0, 0) | (12.93, 76.17, 0.16) | (10.40, 18.53, 2.78) |
+| 64 | `Right_arml1` | 4.0 | 3 | 0.9 | socket | `Right_arml`, (7.25, 0, 0) | (22.66, 66.27, −0.50) | (10.84, 16.17, 7.88) |
+| 65 | `Left_legu1` | 7 | 4 | 0.9 | socket | `Left_legu`, (8.8, 0, 0) | (−6.26, 46.42, 2.50) | (−5.48, −6.86, 7.99) |
+| 66 | `Left_legl1` | 6 | 4 | 0.75 | socket | `Left_legl`, (11, 0, 0) | (−7.63, 22.57, 0.73) | (−6.41, −27.44, 14.80) |
+| 67 | `Right_Legu1` | 7 | 4 | 0.9 | socket | `Right_Legu`, (8.8, 0, 0) | (6.26, 46.52, 2.49) | (4.66, −7.33, −4.33) |
+| 68 | `Right_legl1` | 6 | 4 | 0.75 | socket | `Right_legl`, (11, 0, 0) | (7.63, 22.67, 0.72) | (5.31, −29.10, −8.12) |
+| 69 | `Headfuck` | 4.7 | 1 | 6.0 | socket | `Bip01 Head`, (3.219, 0, 1.031) | (0.08, 92.36, 3.53) | (4.12, 33.37, 12.42) |
+| 70 | `Headfuck2` | 4.7 | 1 | 6.0 | socket | `Bip01 Head`, (4.453, 0, −0.562) | (0.08, 93.86, 2.18) | (4.76, 35.01, 11.44) |
+
+The female table has no neck sphere, no groin sphere and no 7.0 shoulder spheres, and has four 3 u torso spheres the male lacks (Open question 1).
+
+## Per-tick order
+
+**Server, per client movement frame received** (each frame of the client's update packet, in sequence):
+
+1. Apply the frame's control flags, input-allowed flag, third-person flag, sprint state, firing and alt-firing flags, zoom, dot sight and bomb-planting flags.
+2. Animation: weapon class from the current weapon; posture and movement from the statuses and flags (5); then pick, start, sync and weight the animations (7). Skipped (and the state just reset) while dead or frozen.
+3. Movement for that frame (`movement.md`).
+
+**Server, each server update:** recompute the weapon class, posture and movement values from the latest flags (no animation start), apply the aim rotations' inputs (pitch, twist), and, if dead, set the death animation and create the body once (10).
+
+**Client, own character, each frame:** control flags → crouch rate update → the same animation driver on the client's copy of its own model (only while the client drives its own object) → hull dims → movement. Engine animation advance happens once per frame before game logic (`animation.md`); aim rotations are applied when node transforms are next evaluated.
+
+**Client, other characters, each frame:** tracker states come from the server; the client takes the latest pitch and twist (from the update data, or from the aim messages on the legacy path), applies the hit kick (9), and sets the aim rotations; hit spheres are evaluated from that pose when a ray test needs them.
+
+## Edge cases
+
+- **Switching weapons mid-reload:** the client reports "select"; the select branch overrides the reload posture on the next update, so the new weapon's select animation plays at once (class changed, so the upper animation restarts). The reload itself is abandoned as `weapon_firing.md` says.
+- **Firing during reload or draw:** while the weapon status is reloading or selecting no firing choice is made; the upper body keeps the reload or draw animation. The fire pose starts only after the status clears.
+- **Firing while moving with a class whose moving fire names are missing** (the rifle class in the US libraries): no fire animation plays; the aim animation for the direction keeps playing (Quirk 1).
+- **Dying crouched:** the crouched death animations are never chosen; a standing death animation plays from the crouched pose (the body copies the dead player's crouched hull dims).
+- **Dying in the air:** the player is snapped to the floor first, so the body never falls; if the player was in the jump state the body is turned to face away from the shot and c = 0 is used.
+- **Sprint with a direction that has no sprint leg animation** (backward, pure strafe): the lookup fails, the driver returns without starting anything or recording the state, and the previous animations continue (Open question 4).
+- **Jumping while holding crouch:** the jump branch is skipped; normal locomotion with the crouch tracker plays in the air.
+- **Walking off a ledge:** no "jumped" status, so the run or walk animation keeps playing while falling.
+- **A model missing a socket:** weapon (`RightHand`), second gun (`LeftHand`), goggles (`Eyes`) or backpack (`1W_N`) are not attached; the name tag falls back to the object position (`hud_crosshair.md`); a missing hit-sphere socket or node removes that sphere; a missing `Left_foot` node has no fallback in the reference (`inventory.md` gives ours).
+- **A missing animation name** anywhere (lower, crouch, upper, death): nothing new is started; death falls back to `DC`.
+- **A model without the `Lower` or `Upper` weight sets:** those trackers cannot be enabled and keep no weight set; with the engine's rule that an extra tracker without a valid set freezes the pose (`animation.md`, Quirk 5) the character would not animate. Every stock player body has both.
+- **Changing body mid-life** (cosmetic swap, infection): all trackers are removed and re-added, the tables are looked up for the new file, and the first update starts all three animations unconditionally.
+- **Shots at corpses:** bodies keep hit spheres for the client ray test (10, Open question 9).
+
+## Quirks
+
+1. **Missing names keep the old animation.** A name absent from the library is dropped, and an entry whose run name is absent starts nothing. With the US libraries the M4A1 class shows no fire animation while moving, and SMG-H, pump-shotgun and machine-gun classes show nothing new at all. Keep (it is the shipped look); an implementation must not substitute another animation.
+2. **Players are never "crouching" to the animation driver.** Crouch exists only as the crouch tracker, so the upper body never plays its `...C...` crouch animations and the crouched death animations never play. Keep.
+3. **Sprint jump is unreachable.** The test for it requires the last direction to be forward, left-forward and right-forward at once, so `LRRJF` / `LRRJL` / `LRRJR` never play; a sprinting jump plays `LJJ`. Keep.
+4. **Hit status without damage sticks.** If the "hit" status arrives while the character has no recorded damage (or is spawn-protected), no hit animation starts and the status is not cleared, so the firing choice stays suspended (aim pose) until another status replaces it. Keep, but see Open question 12.
+5. **Front-left body hits use the head animation.** A front side hit from the left plays `DLSH` whether or not the head was hit (from behind it is `DLT`). Keep.
+6. **The coin is reseeded every death** from the clock in seconds, so deaths within the same second pick the same variant. Keep the behaviour (or use any RNG; nothing visible depends on it beyond correlation).
+7. **The crouch lowers the female head more than the hull.** Fully crouched with the rifle aim, the default female's head node drops 25.2 u (from 80.6 to 55.4 above the feet) while the hull top drops 20 u; the default male's drops 18.1 u (79.7 to 61.6). The female upper-face spheres follow (82.8 → 57.2). Keep: it changes head hitboxes.
+8. **Spheres outside the box.** The left hand and forearm sit far forward of the hull: standing with the rifle, the left hand sphere's front reaches z = 31.5 (28.3 + 3.2), past the 2×-widened first-test box (half-depth 30) of a character facing along a world axis; crouched it reaches 33.8. The parts outside the box cannot be hit. Keep.
+9. **The head node sphere is tiny and low.** On the male the head-location spheres are a 1.0 u sphere at the base of the skull (`Head`), the 3.0 jaw and the 4.6 upper-face socket, which sits 7 u behind the eyelid node inside the head. Keep.
+10. **Server and client aim poses differ** (the server does not pitch `Torso`), so the server's own sphere tests see arms and head pitched less than drawn. Keep, and see Open question 5.
+11. **Upper and lower trackers resync on every movement change** (the torso's time is set to the legs'), which restarts the aim cycle when the legs change animation. Keep.
+
+## Test cases
+
+"Install" marks values that depend on the character archives: they were measured on the US reference client 1501.04 and must be re-checked on the Steam install, build 25595979, after decryption of `CHARS_M_BODY.rez` (the Steam body files have the same sizes as the US ones, 429,442 and 237,832 bytes, but the Steam libraries differ: `ST_M_CHILD.LTB` 66,900,324 vs 63,225,013 bytes, `ST_W_CHILD.LTB` 95,232,495 vs 91,210,809). "Data" marks values from the US attribute data set. Positions in u, model space, left-handed; tolerance 0.01. The "stand" pose is the layered pose of 4 at t = 0 for every tracker: main entry 0, upper `URFRAmS`, lower `LST`, crouch `LC` with multiplier 0; "crouch" is the same with multiplier 1.
+
+**Model choice (data)**
+
+1. Selection model 0, face 0 → body `CHARS_M_BODY\CM_VST_NM_DF_Nuts_JS.ltb`, skeleton 0, figure type 0. Same with face 5 → model 7, `CHARS_M_BODY\Nomal_W_vest.ltb`, skeleton 1, figure type 1. Model 2 with face 4 → model 9 (`Heavy_W_vest.ltb`).
+2. Missing or out-of-range model id → model 0. Head piece 0 → no head model.
+3. Model 0, camouflage index 3 → slot 0 `CHARS_T_BODY\Nomal_vest_body_UR.dtx`, slot 1 `CHARS_T_BODY\Nomal_vest_leg_UR.dtx`; index 9 → `Nomal_vest_body.dtx`, `Nomal_vest_leg.dtx`.
+4. Team mark on a client: a teammate's slot 2 = `CHARS_T_BODY\RED_Tie.dtx`; an enemy's = `CHARS_T_BODY\Alpha.dtx`; any character in the infection mode = `Alpha.dtx`.
+5. Head piece `Combat_Helmet` (Hair2): skeleton 0 → `CHARS_M_HEAD\Combat_Helmet.ltb`, skeleton 1 → `CHARS_M_HEAD\W_Combat_Helmet.ltb`. Goggle0 on figure type 1 → `ATTACH_M\W_Glass.ltb` on socket `Eyes`.
+
+**State → animation (install for names and lengths; rates data)**
+
+6. M4A1 (class 0), standing still, run flag on → lower `LST` (looping, rate 1), upper `URFRAmS` (looping, rate 1), crouch tracker `LC` at weight r.
+7. Walk key and forward → movement walk → lower `LWF`, upper `URFWAmF`. Same with no direction → upper `URFRAmS` (the walk name is missing).
+8. Run forward-left → lower `LRFL` (600 ms), upper `URFRAmF`. Backward-right → `LRBR`, `URFRAmB`. Strafe right → `LRR`, `URFRAmR`.
+9. Sprint forward → lower `LRRF` (500 ms), upper `URFRRAmF`. Sprint right-forward → `LRRR`.
+10. Crouched (r = 1) and still → lower `LST`, crouch tracker `LC` at weight 1, upper `URFRAmS`. Crouched moving forward → lower `LWF` (walk, run flag off), crouch `LCF` (1400 ms), upper `URFWAmF`.
+11. Jump from standing → lower `LSJ`, non-looping, 666 ms; it reports done after 667 ms; next update the status is falling and the lower animation becomes `LST`. Jump while running forward (direction forward last update) → `LJJ`. Sprinting jump → `LJJ`, never `LRRJF`.
+12. Fire held, standing, M4A1 → upper `URFRFiS` (100 ms, non-looping); while fire stays held it restarts on the first update after it reports done. Fire held while running forward → the upper animation stays `URFRAmF`.
+13. Reload standing → `URFRSReS` (1866 ms); reload started while moving → `URFRReS`, kept even if the player stops. Draw standing → `URFRSSeS` (733 ms); moving → `URFRSeS`; sprinting → `URFRRSeS`.
+14. Pistol (class 10) fire while running forward → `UPRFiF`; knife (14) fire → `UKRFiS` (500 ms) in every direction; knife alt fire → `UKRFiS2` (800 ms).
+15. Grenade (class 11): at rest press fire → `UTRFiS_A` (267 ms); when it is done → `UTRFiS_B` (1 ms); fire released → `UTRFiS_C` (900 ms); when done (status "none") → `UTRAmS`; if the client has meanwhile reported "select" (next grenade drawn) → `UTRSSeS`.
+16. Damage received, not in spawn protection → upper `D_HIT` (467 ms, 200 ms blend) or `D_HITT` (400 ms, 200 ms blend), 50 % each; fire held meanwhile → no fire animation until it is done.
+17. Rates: any upper animation with weapon data lacking `HHAniFrame_n` → 1.0. A weapon with `HHAniFrame_5` = 2300, reload rate 1, third-person reload length 1866 → upper rate 0.8113 (lasts 2300 ms). The legs play at 1.0 at any speed.
+
+**Aim (data for shares; install for positions)**
+
+18. Twist 45° → `Torso` turns 18.53°, `Upper_torso` 26.47° more (chest total 45°); neck, head and shoulders add nothing.
+19. Pitch shares: arms total exactly φ up and down; head 1.05 φ up, 1.25 φ down. Server: arms 0.85 φ up, 0.65 φ down.
+20. Pitch 60° down → clamped to 45°. Byte transport: 30° → byte 42 → 29.764°; −45° → −63 → −44.646°.
+21. Default male, stand pose: no aim → `Head` (5.66, 29.72, 9.65), `RightHand` (12.54, 22.90, 19.93); pitch +30° (down) → `Head` (5.66, 24.68, 16.72), `RightHand` (12.54, 13.34, 22.19), `Face_Eyelid1` (6.62, 28.50, 19.96); pitch −30° (up) → `Head` (5.66, 30.98, 6.23); twist +45° → `Head` (10.30, 29.72, 3.59), `RightHand` (22.43, 22.90, 6.00); server, pitch +30° → `Head` (5.66, 27.45, 13.02).
+22. Default female, stand pose, pitch +30° → `Bip01 Head` (2.95, 24.74, 17.70), `Headfuck` (4.07, 25.08, 20.87).
+
+**Sockets (install)**
+
+23. `RightHand` → parent `Right_hand`, offset (7.085, 1.661, 1.277), rotation (0.0573, −0.7151, −0.0818, 0.6918); male bind (35.69, −1.14, 4.24); male stand (12.54, 22.90, 19.93).
+24. `NAME_socket` → `Head`, (16.5, 0, 0.906); male bind (0.00, 47.97, 3.05), `LST` 0 (9.70, 45.02, 13.52), stand (8.63, 45.87, 11.51), crouch (6.13, 37.57, 15.21). Female (`Bip01 Head`): bind (0.08, 105.45, 5.78), stand (9.28, 43.71, 19.18). A tag over a male standing at object position P is anchored at P + (8.63, 45.87, 11.51) rotated by the object's yaw.
+25. `Eyes` → male `Face_Eyelid`, (3.011, 0, 1.314), bind (0.03, 41.38, 5.68); female `Bip01 Head`, (−85.255, 0.001, 18.748), bind (0.08, 2.14, 5.20).
+26. `1W_N` → `Upper_torso`, (−18.328, 0, 0), rotation (0, 0, −0.7071, 0.7071); male bind (0.00, −3.98, 2.40). `LeftHand` → `left_hand`, (0, 0, 0); male bind (−31.19, 4.32, 2.14).
+27. Death drop origin = `Left_foot`: male stand (−10.02, −41.49, 13.52), female stand (−7.73, −39.56, 12.91).
+
+**Hit spheres (install)**
+
+28. Male bind pose: every centre in the table of 11 ("Bind centre"), for example `Upper_torso` (0.00, 14.27, 0.74) r 10, `Face_Eyelid1` (0.03, 36.67, 1.29) r 4.6, `Nuts` (0.00, −5.70, 6.75) r 3, `Left_armu1` (−16.36, 19.66, −1.65) r 4.
+29. Male `LST` at t = 0 (single animation): every "LST 0 centre", for example `Head` (6.45, 29.03, 10.90), `Left_foot` (−9.95, −42.12, 11.46).
+30. Male `LRF` at t = 300 (single animation): `Left_foot` (−3.53, −33.27, −23.60), `Right_foot` (3.44, −40.27, 18.95), `Head` (2.70, 28.39, 13.53), `Right_legl1` (4.26, −30.65, 13.80).
+31. Male stand and crouch poses: `Head` (5.66, 29.72, 9.65) → (3.21, 21.61, 12.05); `Torso` (−0.15, 5.91, −0.22) → (−0.69, −1.65, 0.15); `Face_Eyelid1` (6.62, 34.74, 9.89) → (4.24, 26.57, 12.72); `left_hand` (8.84, 23.46, 28.27) → (1.39, 14.69, 30.63).
+32. Female bind and `LST` 0: every centre of the female table, for example `Headfuck` (0.08, 92.36, 3.53) / (4.12, 33.37, 12.42), `Bip01 Head` (0.08, 89.37, 1.94) / (2.96, 31.08, 10.21).
+33. Female stand → crouch: `Bip01 Head` (2.95, 30.63, 11.32) → (2.48, 15.39, 15.58); above the feet 80.63 → 55.39 (Quirk 7).
+34. Default male: table entries 62 and 63 (`Left_Shld`, `Right_Shld`) produce no sphere; 35 entries of table 0 have radius > 0, 33 exist on the body. Default female: 35 entries of table 1 have radius > 0, all 35 exist.
+35. A body without the `Nuts` socket (for example `CHARS_M_BODY\CM_HV_UR_Brandon_JS.ltb`, which has no `Nuts` socket in the US archive): no groin sphere.
+
+**Death and bodies (data and logic)**
+
+36. Bullet death, shot travelling along the victim's −forward (cf = −1), last hit sphere `Face_Jaw` (head), c = 1 → `DH`; c = 0 → `DH_1`. Same with `Upper_torso` → `DT` / `DT_1`.
+37. Shot along +forward (cf = 1), torso → `DTB` / `DTB_1`; head → `DHB` / `DHB_1`.
+38. Shot with d = (0.94, 0, −0.34) (from the left, slightly from the front; cf = −0.34 > −cos 45°): torso → `DLSH`, head → `DLSH`. d = (0.94, 0, 0.34) (from the left, behind): torso → `DLT`, head → `DLSH`. d = (−0.94, 0, −0.34): torso → `DRT`, head → `DRSH`.
+39. Explosion with cf = −1 → `D_BO_F`; melee → `D_S`; poison → `D_P`; endless fall → `D_W`; female groin death → `DC` (no `NS1`). With BR data, male groin (`Nuts`, location 5) → `NS1` / `NS2`; with US data (location 2) → the torso choices.
+40. Death crouched, front, torso → `DT` / `DT_1` (never `DC`).
+41. Owner dies at t = 0 with `DT` (3033 ms), respawns at t = 2.0 s in team deathmatch → the body is removed at t = 3.033 + 5 = 8.04 s (first update after). Respawning at t = 10 s → removed at 15 s. In Combat mode, respawn at 10 s → removed at 510 s.
+42. Body creation: dead player at hull centre (100, 200, 300) after the floor snap → body at (100, 200.1, 300), no weapon attachment.
+
+## Open questions
+
+1. **Contradictions with `weapon_firing.md`'s hit-zone table.** (a) The male "Shoulders: 5.5 each, plus 7.0 each" — the 7.0 spheres (`Left_Shld`, `Right_Shld`) are table entries with no node or socket on any of the 100 bodies read, so they never exist; only the 5.5 shoulder spheres do. (b) Groin location: the US data gives `Nuts` location 2 (torso), the BR data 5 (groin); `weapon_firing.md` uses 5 (no armour, groin death animation). Which does the Steam data use? Check the decrypted Steam `MODELBUTES.TXT`. (c) "The female skeleton has the same body and limb spheres": it has no neck sphere and no groin sphere, and has four extra 3 u torso spheres (clavicle and spine helpers). (d) The tables key on the model's `Skeleton` value, not on `FigureType`: 13 US records pair them differently (for example female-shaped enemy NPCs on skeleton 1 with figure type 0). Update `weapon_firing.md` after a review.
+2. **Reload timing on the server.** The server finishes a player's reload (and, for weapons with `CheckReloadAniTime`, default true, refills its copy of the clip) when its timer of third-person reload length ÷ reload rate expires, or when the third-person reload animation is done. For the M4A1 that is about 1866 ms (US library), while `weapon_firing.md` gives 2300 ms from the first-person animation. Does the server's clip become full before the client's? Check against the Steam libraries' `URFRSReS` length and with a live test (fire right after 1.9 s of reloading).
+3. **Camouflage index.** It arrives with the character info; its source on the client (presumably the equipped uniform item) was not traced, nor the meaning of skin index 5 (`_FK`) and 6 (`TG`).
+4. **Sprint directions.** Can a player sprint with a backward or pure strafe direction? If so the animation driver stops updating (Edge cases). Check `movement.md`'s sprint conditions or in game.
+5. **Server pitch at `Torso`.** The server pitches `Torso` by 0 while clients use 0.15 / 0.35. This affects only server-side sphere tests (shots the client reported as non-player hits, `weapon_firing.md`). Confirm it is intended, and whether our implementation should keep the mismatch.
+6. **Aim precision on the current update path.** The newer per-object update data carries aim pitch and yaw for remote characters; its encoding was not traced. Test: look 0.3° up and down repeatedly in front of another client and watch whether its model moves.
+7. **`Eyes` as the death camera.** The client can attach the camera to the dead body's `Eyes` socket; on the female body that socket is near the floor. Is the head-attached death camera used in this build? If so, the female death view starts at floor height.
+8. **Steam libraries.** The Steam animation libraries are larger than the US ones (more animations). Re-measure every "install" case, and re-check which names exist (Quirk 1: the moving rifle fires may exist on Steam).
+9. **Corpses and shots.** The client ray test also tests dead bodies' spheres, and bodies keep a hit box. Do bodies stop bullets for the client test (making the shooter report a "body" instead of a player behind it)? Check in game by shooting through a fresh corpse at a player.
+10. **Shotgun per-round reloads.** The automatic-shotgun tables contain separate pre-reload, per-round and post-reload names (`USGRReS-A`, `-B`, `-C`), but the posture set has only "reload"; which of them the reload posture uses for players was not traced beyond the main reload entry (`USGRSReS` standing, `USGRReS-B` moving). The `USGRReS-*` names are also missing from the US female library.
+11. **Weight-set name case.** The trackers ask for `Upper` and `Lower`; the bodies store `upper` and `Lower`. This works only if the engine's weight-set lookup ignores case (assumed here, as for all other names).
+12. **Stuck hit status.** Quirk 4 follows from the decision order read; check in game whether a player who is hit while spawn-protected keeps an aim pose while firing until the next weapon status (switch or reload).

@@ -936,9 +936,6 @@ fn net_thrown_grenade_seen_and_damaging() {
     sim.until_joined(600);
     sim.ticks(240);
     let me = sim.local_player(0).unwrap();
-    for c in &mut sim.clients {
-        *c.app.world_mut().resource_mut::<NetGraph>() = NetGraph::default();
-    }
     // Key 4: the M67.
     sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().select = Some(3);
     sim.ticks(1);
