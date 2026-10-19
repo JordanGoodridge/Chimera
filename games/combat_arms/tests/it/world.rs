@@ -185,6 +185,12 @@ fn shoot(ahead: f32, wall: bool) -> bool {
     sim.seconds(1.5);
     let health = |sim: &Sim| sim.app.world().get::<chimera_core::core::Health>(target).unwrap().current;
     let full = health(&sim);
+    // At the target's chest (hull centre): its head leans to the rifle,
+    // off the line of the eyes (characters.md 11).
+    {
+        let d = sim.position(target) - (sim.position(shooter) + sim.state(shooter).eye_offset);
+        sim.intent(shooter).pitch = d.y.atan2(d.xz().length());
+    }
     sim.intent(shooter).fire = true;
     sim.seconds(0.5);
     sim.intent(shooter).fire = false;
@@ -270,6 +276,12 @@ fn shoot_world(w: World, ahead: f32) -> bool {
     sim.seconds(1.5);
     let health = |sim: &Sim| sim.app.world().get::<chimera_core::core::Health>(target).unwrap().current;
     let full = health(&sim);
+    // At the target's chest (hull centre): its head leans to the rifle,
+    // off the line of the eyes (characters.md 11).
+    {
+        let d = sim.position(target) - (sim.position(shooter) + sim.state(shooter).eye_offset);
+        sim.intent(shooter).pitch = d.y.atan2(d.xz().length());
+    }
     sim.intent(shooter).fire = true;
     sim.seconds(0.5);
     sim.intent(shooter).fire = false;

@@ -204,7 +204,7 @@ pub fn attach(
     Ok(map)
 }
 
-fn blend(
+pub(crate) fn blend(
     to: &[Mat4],
     joints: Option<&[u16; 4]>,
     weights: Option<&[f32; 4]>,

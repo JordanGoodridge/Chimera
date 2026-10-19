@@ -237,14 +237,13 @@ fn geometry(world: &World, p: Entity) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
         world.get::<Intent>(p).unwrap(),
         world.get::<MovementState>(p).unwrap(),
         world.get::<ColliderAabb>(p),
-        MALE,
+        *MALE,
     )
     .unwrap()
 }
 
-fn sphere(sim: &Sim, p: Entity, name: &str) -> Vec3 {
-    let i = MALE.iter().position(|s| s.name == name).unwrap();
-    geometry(sim.app.world(), p).2[i].0
+fn sphere(sim: &Sim, shooter: Entity, p: Entity, name: &str) -> Vec3 {
+    super::aim_points::point(sim.app.world(), shooter, p, name)
 }
 
 fn aim(sim: &mut Sim, shooter: Entity, point: Vec3) {
@@ -267,7 +266,7 @@ fn shoot(sim: &mut Sim, shooter: Entity, target: Entity) -> f32 {
 }
 
 fn shoot_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str) -> f32 {
-    let at = sphere(sim, target, name);
+    let at = sphere(sim, shooter, target, name);
     aim(sim, shooter, at);
     shoot(sim, shooter, target)
 }
@@ -277,7 +276,7 @@ fn shoot_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str) -> f32 {
 fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f32) {
     for _ in 0..6 {
         let from = eye(sim, shooter);
-        let dir = (sphere(sim, target, name) - from).normalize();
+        let dir = (sphere(sim, shooter, target, name) - from).normalize();
         let (min, max, _) = geometry(sim.app.world(), target);
         let t = ca::box_entry(min, max, from, dir, f32::INFINITY).unwrap();
         let err = t - units * U;
@@ -305,8 +304,8 @@ fn chest_damage(id: &str, parts: &[&str], units: f32, victim: impl FnOnce(&mut W
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, id, parts, units);
     victim(sim.app.world_mut(), target);
-    place_at(&mut sim, shooter, target, "chest", units);
-    shoot_at(&mut sim, shooter, target, "chest")
+    place_at(&mut sim, shooter, target, "Torso", units);
+    shoot_at(&mut sim, shooter, target, "Torso")
 }
 
 fn as_player(_: &mut World, _: Entity) {}
@@ -396,8 +395,8 @@ fn t01_fitting_accepted() {
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", &["Silencer_A_AR"], 100.0);
     let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
     assert_eq!(fitted(&sim, w)[at::MUZZLE], name("Silencer_A_AR"));
-    place_at(&mut sim, shooter, target, "chest", 100.0);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 31.5, 1e-3, "damage");
+    place_at(&mut sim, shooter, target, "Torso", 100.0);
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 31.5, 1e-3, "damage");
 }
 
 /// 2. M4A1 + Silencer_A_SR (not on its list): the muzzle slot empty;
@@ -409,8 +408,8 @@ fn t02_fitting_not_listed() {
     let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
     assert_eq!(fitted(&sim, w), [None, None, None, None, None]);
     assert!(sim.app.world().get::<CaFitted>(w).unwrap().given);
-    place_at(&mut sim, shooter, target, "chest", 100.0);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 35.0, 1e-3, "damage");
+    place_at(&mut sim, shooter, target, "Torso", 100.0);
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 35.0, 1e-3, "damage");
     assert_eq!(mods(&sim, w).fire_sound(), FireSound { silenced: None, radius: 2000 });
     close(first_kick(&["Silencer_A_SR"]), 1.300, 1e-3, "first kick");
 }
@@ -485,11 +484,11 @@ fn t06_silencer_damage_by_range() {
     let mut sim = sim();
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", &["Silencer_A_AR"], 100.0);
     for (d, want) in [(100.0, 31.5), (2800.0, 22.05), (3200.0, 11.025)] {
-        place_at(&mut sim, shooter, target, "chest", d);
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-3, &format!("at {d}"));
+        place_at(&mut sim, shooter, target, "Torso", d);
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-3, &format!("at {d}"));
     }
-    place_at(&mut sim, shooter, target, "upper face", 100.0);
-    close(shoot_at(&mut sim, shooter, target, "upper face"), 189.0, 1e-3, "head at 100");
+    place_at(&mut sim, shooter, target, "Face_Eyelid1", 100.0);
+    close(shoot_at(&mut sim, shooter, target, "Face_Eyelid1"), 189.0, 1e-3, "head at 100");
 }
 
 /// 7. Hits to kill (unarmoured torso, d <= 2500): Silencer_A_AR 4 (68.5,
@@ -503,9 +502,9 @@ fn t07_hits_to_kill() {
         let mut sim = sim();
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", &[part], 1000.0);
         sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 1.0;
-        place_at(&mut sim, shooter, target, "chest", 1000.0);
+        place_at(&mut sim, shooter, target, "Torso", 1000.0);
         for (i, want) in steps.iter().enumerate() {
-            shoot_at(&mut sim, shooter, target, "chest");
+            shoot_at(&mut sim, shooter, target, "Torso");
             close(health(&sim, target) / HP, *want, 1e-3, &format!("{part}, hit {}", i + 1));
         }
     }
@@ -555,10 +554,10 @@ fn t12_bullet_range_client() {
     let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", &["Bullet_FT_I_AR"], 3600.0);
     let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
     assert_eq!(mods(&sim, w).damage().client_range(3500.0), 4375.0);
-    place_at(&mut sim, shooter, target, "chest", 3600.0);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 35.0, 1e-3, "at 3600");
-    place_at(&mut sim, shooter, target, "chest", 4400.0);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 0.0, 0.0, "at 4400");
+    place_at(&mut sim, shooter, target, "Torso", 3600.0);
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 35.0, 1e-3, "at 3600");
+    place_at(&mut sim, shooter, target, "Torso", 4400.0);
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 0.0, 0.0, "at 4400");
 }
 
 /// A static panel `units` thick across the lane at z.
@@ -580,11 +579,11 @@ fn t13_bullet_range_server_ray() {
     for (wood, want) in [(true, 0.0), (false, 35.0)] {
         let mut sim = sim();
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", &["Bullet_FT_I_AR"], 3800.0);
-        place_at(&mut sim, shooter, target, "chest", 3800.0);
+        place_at(&mut sim, shooter, target, "Torso", 3800.0);
         if wood {
             panel(&mut sim, 32.0, 6.0, "Wood");
         }
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-3, &format!("wood {wood}"));
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-3, &format!("wood {wood}"));
     }
 }
 
@@ -1013,9 +1012,9 @@ fn t35_stun_bullet() {
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", &["Bullet_PVP_Stun_I_AR"], 100.0);
         // From another team (the stun's condition).
         sim.app.world_mut().entity_mut(target).insert(Team(1));
-        place_at(&mut sim, shooter, target, "chest", 100.0);
+        place_at(&mut sim, shooter, target, "Torso", 100.0);
         let before = speed_limit(&sim, target);
-        let chest = sphere(&sim, target, "chest");
+        let chest = sphere(&sim, shooter, target, "Torso");
         aim(&mut sim, shooter, chest);
         let hp = health(&sim, target);
         sim.intent(shooter).fire = true;

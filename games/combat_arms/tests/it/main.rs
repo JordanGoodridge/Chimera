@@ -10,9 +10,11 @@
 //! cases (specs/combat_arms/) get their own files here as each subsystem
 //! is implemented.
 
+mod aim_points;
 mod attachments;
 mod attribute_data;
 mod bots;
+mod characters;
 mod effects_sounds;
 mod game_modes;
 mod grenades;
@@ -31,6 +33,7 @@ mod world;
 mod heavy {
     mod attributes;
     mod bots;
+    mod characters;
     mod effects_sounds;
     mod model;
     mod mount;

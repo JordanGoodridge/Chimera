@@ -1,0 +1,298 @@
+//! The character's skeleton as posed (specs/combat_arms/characters.md
+//! sections 3, 4, 8 and 11): the four trackers layered by the body's
+//! weight sets (`Rig::layered`), the aim's bone rotations after the
+//! animation (`Posed::aim`), and what sits on the posed nodes: hit-sphere
+//! centres (a node of the entry's name, else a socket of it) and sockets.
+//!
+//! Everything here is LithTech's frame: left-handed (+X right, +Y up, +Z
+//! forward), world units, model space relative to the hull centre (the
+//! object position). `to_body` turns a point into the character's frame
+//! as the rest of the game keeps it (right-handed, facing -Z, feet at the
+//! origin).
+//!
+//! Without a body model (no V2 key), `fallback` poses the spec's
+//! skeleton: every node, socket sphere and socket at the position the
+//! spec measured (`LST` at t = 0 for nodes and spheres, the "stand" pose
+//! for sockets), squashed towards the feet by the crouch, with the same
+//! aim rotations; orientations stay identity (only positions are known).
+
+use bevy::prelude::*;
+use lithtech_formats::{
+    anim::{self as lta, AnimList, Tracker},
+    ltb,
+};
+
+use super::records::SkeletonRecord;
+
+/// The upper-body twist limit and the third-person pitch clamp (degrees).
+pub const AIM_LIMIT_DEG: f32 = 45.0;
+/// Yaw shares of the seven aim nodes (`PelvisYawRatio`, `LowerYawRatio`,
+/// `UpperYawRatio`, then none).
+pub const YAW_SHARES: [f32; 7] = [0.0, 7.0 / 17.0, 10.0 / 17.0, 0.0, 0.0, 0.0, 0.0];
+/// Pitch shares looking up and looking down, per aim node.
+pub const PITCH_UP: [f32; 7] = [0.0, 0.15, 0.15, 0.25, 0.50, 0.45, 0.45];
+pub const PITCH_DOWN: [f32; 7] = [0.0, 0.35, 0.45, 0.10, 0.35, 0.10, 0.10];
+/// Each aim node's "parent" for the yaw sum (8's table).
+pub const AIM_PARENT: [Option<usize>; 7] = [None, Some(0), Some(1), Some(2), Some(3), Some(3), Some(3)];
+/// Steps per radian of the legacy aim bytes.
+pub const AIM_BYTE_SCALE: f32 = 127.0 / std::f32::consts::FRAC_PI_2;
+
+/// Pitch (radians, positive down) clamped to the third-person limit.
+pub fn clamp_aim(theta: f32) -> f32 {
+    let limit = AIM_LIMIT_DEG.to_radians();
+    theta.clamp(-limit, limit)
+}
+
+/// The legacy transport's byte for an aim angle (truncated).
+pub fn aim_byte(theta: f32) -> i8 {
+    (theta * AIM_BYTE_SCALE).trunc().clamp(-128.0, 127.0) as i8
+}
+
+/// The angle a received aim byte stands for.
+pub fn from_aim_byte(b: i8) -> f32 {
+    b as f32 / AIM_BYTE_SCALE
+}
+
+/// A posed skeleton: global transforms per node, and the sockets on them.
+#[derive(Clone, Debug, Default)]
+pub struct Posed {
+    pub names: Vec<String>,
+    pub parents: Vec<Option<usize>>,
+    /// Model space (position, rotation).
+    pub globals: Vec<(Vec3, Quat)>,
+    /// Name, parent node, offset and rotation in the parent's space.
+    pub sockets: Vec<(String, usize, Vec3, Quat)>,
+    /// The feet's height in model space.
+    pub feet: f32,
+}
+
+impl Posed {
+    /// A node by name (case ignored).
+    pub fn node(&self, name: &str) -> Option<usize> {
+        self.names.iter().position(|n| n.eq_ignore_ascii_case(name))
+    }
+
+    /// A socket's transform by name (case ignored).
+    pub fn socket(&self, name: &str) -> Option<(Vec3, Quat)> {
+        let (_, parent, offset, rotation) = self.sockets.iter().find(|s| s.0.eq_ignore_ascii_case(name))?;
+        let (p, q) = self.globals[*parent];
+        Some((p + q * *offset, q * *rotation))
+    }
+
+    /// A hit sphere's centre (11): the node of that name, else the socket.
+    pub fn sphere(&self, name: &str) -> Option<Vec3> {
+        match self.node(name) {
+            Some(j) => Some(self.globals[j].0),
+            None => self.socket(name).map(|s| s.0),
+        }
+    }
+
+    /// A socket the game uses, or (the fallback's points) a node of that
+    /// name.
+    pub fn place(&self, name: &str) -> Option<(Vec3, Quat)> {
+        self.socket(name).or_else(|| self.node(name).map(|j| self.globals[j]))
+    }
+
+    fn descends(&self, mut j: usize, k: usize) -> bool {
+        while let Some(p) = self.parents[j] {
+            if p == k {
+                return true;
+            }
+            j = p;
+        }
+        false
+    }
+
+    /// Section 8: the aim's bone rotations on the seven aim nodes `aim`
+    /// (by name; a missing node is skipped), parent before child, each
+    /// moving its subtree. `pitch` positive looks down, `twist` positive
+    /// turns the upper body right (radians); both clamped to 45 degrees.
+    /// The server pitches `Torso` by nothing.
+    pub fn aim(&mut self, aim: &[String], pitch: f32, twist: f32, server: bool) {
+        let (pitch, twist) = (clamp_aim(pitch), clamp_aim(twist));
+        let mut sums = [0.0f32; 7];
+        for i in 0..7 {
+            let y = YAW_SHARES[i];
+            sums[i] = y * twist + AIM_PARENT[i].map_or(0.0, |p| sums[p]);
+            let Some(k) = aim.get(i).and_then(|n| self.node(n)) else {
+                continue;
+            };
+            let mut share = if pitch < 0.0 { PITCH_UP[i] } else { PITCH_DOWN[i] };
+            if server && i == 1 {
+                share = 0.0;
+            }
+            let axis = Vec3::new(sums[i].cos(), 0.0, -sums[i].sin());
+            let turn = Quat::from_axis_angle(axis, pitch * share) * Quat::from_rotation_y(y * twist);
+            if turn == Quat::IDENTITY {
+                continue;
+            }
+            let pivot = self.globals[k].0;
+            for j in 0..self.globals.len() {
+                if j == k || self.descends(j, k) {
+                    let (p, q) = self.globals[j];
+                    self.globals[j] = (pivot + turn * (p - pivot), (turn * q).normalize());
+                }
+            }
+        }
+    }
+
+    /// Each node's pose relative to its parent, right-handed (Chimera's
+    /// `BonePose`: rotation, translation), for drawing.
+    pub fn locals_rh(&self) -> Vec<(Quat, Vec3)> {
+        (0..self.globals.len())
+            .map(|j| {
+                let (p, q) = self.globals[j];
+                let (lp, lq) = match self.parents[j] {
+                    Some(parent) => {
+                        let (pp, pq) = self.globals[parent];
+                        let inv = pq.inverse();
+                        (inv * (p - pp), inv * q)
+                    }
+                    None => (p, q),
+                };
+                (Quat::from_xyzw(-lq.x, -lq.y, lq.z, lq.w), Vec3::new(lp.x, lp.y, -lp.z))
+            })
+            .collect()
+    }
+}
+
+/// A model-space point (hull-centre relative, left-handed) in the
+/// character's frame: right-handed, facing -Z, feet at the origin.
+pub fn to_body(p: Vec3, feet: f32) -> Vec3 {
+    Vec3::new(p.x, p.y - feet, -p.z)
+}
+
+/// The stock feet height while standing (the stand animations' root
+/// translation).
+pub const STAND_FEET: f32 = -50.0;
+
+/// The spec's skeleton as a pose (no model): nodes at their measured
+/// `LST` t = 0 positions, socket spheres and sockets as points under
+/// their parent, every height squashed towards the feet by `squash` (1
+/// standing; the crouched hull's height over the standing one).
+pub fn fallback(skel: &SkeletonRecord, squash: f32) -> Posed {
+    let mut posed = Posed {
+        feet: STAND_FEET,
+        ..default()
+    };
+    let squashed = |a: [f32; 3]| Vec3::new(a[0], STAND_FEET + (a[1] - STAND_FEET) * squash, a[2]);
+    let push = |posed: &mut Posed, name: &str, parent: Option<&str>, at: Option<[f32; 3]>| {
+        let parent = parent.and_then(|p| posed.node(p));
+        let at = match at {
+            Some(a) => squashed(a),
+            None => parent.map_or(Vec3::ZERO, |p| posed.globals[p].0),
+        };
+        posed.names.push(name.to_string());
+        posed.parents.push(parent);
+        posed.globals.push((at, Quat::IDENTITY));
+    };
+    for n in &skel.nodes {
+        push(&mut posed, &n.name, n.parent.as_deref(), n.at);
+    }
+    for s in &skel.spheres {
+        if let Some(place) = &s.socket {
+            push(&mut posed, &s.name, Some(&place.parent), s.at);
+        }
+    }
+    for s in &skel.sockets {
+        push(&mut posed, &s.name, Some(&s.parent), s.at);
+    }
+    posed
+}
+
+/// A body model loaded for posing: its nodes, sockets, weight sets and
+/// combined animation list.
+#[derive(Clone, Debug)]
+pub struct Rig {
+    pub model: ltb::Model,
+    pub list: AnimList,
+    /// The `upper` and `Lower` weight sets (case ignored).
+    pub upper: Option<usize>,
+    pub lower: Option<usize>,
+    /// Standing and crouched half-heights (the `LST` and `LC` boxes).
+    pub half_heights: (f32, f32),
+}
+
+impl Rig {
+    pub fn new(model: ltb::Model, list: AnimList) -> Self {
+        let set = |name: &str| model.weight_sets.iter().position(|w| w.name.eq_ignore_ascii_case(name));
+        let (stand, crouch) = list.hull_boxes();
+        Self {
+            upper: set("upper"),
+            lower: set("lower"),
+            half_heights: (stand[1], crouch[1]),
+            model,
+            list,
+        }
+    }
+
+    /// Section 4: the main tracker's pose with the upper, lower and
+    /// crouch trackers blended in by their weight sets (the crouch's
+    /// multiplier `crouch`). A missing weight set leaves its trackers out.
+    pub fn layered(&self, main: &Tracker, upper: &Tracker, lower: &Tracker, crouch: &Tracker, r: f32) -> Vec<(ltb::Vec3, ltb::Quat)> {
+        let weight = |set: Option<usize>, j: usize| set.map_or(0.0, |s| self.model.weight_sets[s].weights.get(j).copied().unwrap_or(0.0));
+        let base = |t: &Tracker, j: usize| self.list.entries[t.previous].animation.key_value(j, 0);
+        (0..self.model.nodes.len())
+            .map(|j| {
+                let mut pose = main.pose(&self.list, j);
+                pose = lta::blend_layer(pose, upper.pose(&self.list, j), weight(self.upper, j), 1.0, base(upper, j));
+                pose = lta::blend_layer(pose, lower.pose(&self.list, j), weight(self.lower, j), 1.0, base(lower, j));
+                lta::blend_layer(pose, crouch.pose(&self.list, j), weight(self.lower, j), r, base(crouch, j))
+            })
+            .collect()
+    }
+
+    /// The posed skeleton from local poses (`layered`), the feet where the
+    /// crouch `r` puts them.
+    pub fn posed(&self, pose: &[(ltb::Vec3, ltb::Quat)], r: f32) -> Posed {
+        let globals = lta::globals(&self.model, pose)
+            .iter()
+            .map(|m| {
+                let (_, q, p) = Mat4::from_cols_array_2d(m).transpose().to_scale_rotation_translation();
+                (p, q.normalize())
+            })
+            .collect();
+        let (hs, hc) = self.half_heights;
+        Posed {
+            names: self.model.nodes.iter().map(|n| n.name.clone()).collect(),
+            parents: self.model.parents(),
+            globals,
+            sockets: self
+                .model
+                .sockets
+                .iter()
+                .map(|s| {
+                    let q = Quat::from_array(s.rotation);
+                    let q = if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY };
+                    (s.name.clone(), s.node as usize, Vec3::from(s.position), q)
+                })
+                .collect(),
+            feet: -(hs + (hc - hs) * r),
+        }
+    }
+
+    /// The bind pose (every node at its stored bind transform).
+    pub fn bind(&self) -> Posed {
+        let locals: Vec<(ltb::Vec3, ltb::Quat)> = (0..self.model.nodes.len())
+            .map(|j| {
+                let m = Mat4::from_cols_array_2d(&lta::bind_local(&self.model, j)).transpose();
+                let (_, q, p) = m.to_scale_rotation_translation();
+                (p.to_array(), q.to_array())
+            })
+            .collect();
+        self.posed(&locals, 0.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aim_bytes() {
+        assert_eq!(aim_byte(30f32.to_radians()), 42);
+        assert!((from_aim_byte(42).to_degrees() - 29.764).abs() < 1e-3);
+        assert_eq!(aim_byte(-45f32.to_radians()), -63);
+        assert!((from_aim_byte(-63).to_degrees() + 44.646).abs() < 1e-3);
+    }
+}

@@ -925,14 +925,13 @@ fn geometry(world: &World, p: Entity) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
         world.get::<Intent>(p).unwrap(),
         world.get::<MovementState>(p).unwrap(),
         world.get::<ColliderAabb>(p),
-        MALE,
+        *MALE,
     )
     .unwrap()
 }
 
-fn sphere(sim: &Sim, p: Entity, name: &str) -> Vec3 {
-    let i = MALE.iter().position(|s| s.name == name).unwrap();
-    geometry(sim.app.world(), p).2[i].0
+fn sphere(sim: &Sim, shooter: Entity, p: Entity, name: &str) -> Vec3 {
+    super::aim_points::point(sim.app.world(), shooter, p, name)
 }
 
 fn aim_at(sim: &mut Sim, shooter: Entity, point: Vec3) {
@@ -947,7 +946,7 @@ fn aim_at(sim: &mut Sim, shooter: Entity, point: Vec3) {
 fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f32) {
     for _ in 0..6 {
         let from = eye(sim, shooter);
-        let dir = (sphere(sim, target, name) - from).normalize();
+        let dir = (sphere(sim, shooter, target, name) - from).normalize();
         let (min, max, _) = geometry(sim.app.world(), target);
         let t = ca::box_entry(min, max, from, dir, f32::INFINITY).unwrap();
         let err = t - units * U;
@@ -958,7 +957,7 @@ fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f
 
 /// Aim at `name` on `target`, fire one round: the hit points it lost.
 fn shoot_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str) -> f64 {
-    let at = sphere(sim, target, name);
+    let at = sphere(sim, shooter, target, name);
     aim_at(sim, shooter, at);
     let before = sim.app.world().get::<Health>(target).unwrap().current;
     fire_once(sim, shooter);
@@ -978,15 +977,15 @@ fn t22_pellet_damage_and_falloff() {
     let mut sim = new_sim();
     let (shooter, target) = range_lane(&mut sim, "test:r870_exact", 500.0);
     for (d, want) in [(500.0, 72.0), (600.0, 72.0), (700.0, 50.4), (900.0, 25.2), (1100.0, 0.0)] {
-        place_at(&mut sim, shooter, target, "chest", d);
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-2, &format!("at {d}"));
+        place_at(&mut sim, shooter, target, "Torso", d);
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-2, &format!("at {d}"));
     }
     let mut sim = new_sim();
     let (shooter, target) = range_lane(&mut sim, "test:r870_one_pellet", 500.0);
-    place_at(&mut sim, shooter, target, "chest", 500.0);
-    let head = shoot_at(&mut sim, shooter, target, "upper face");
+    place_at(&mut sim, shooter, target, "Torso", 500.0);
+    let head = shoot_at(&mut sim, shooter, target, "Face_Eyelid1");
     arm(&mut sim, shooter, "test:r870_seven_pellets");
-    let torso = shoot_at(&mut sim, shooter, target, "chest");
+    let torso = shoot_at(&mut sim, shooter, target, "Torso");
     close(head, 54.0, 1e-3, "the head pellet");
     close(head + torso, 117.0, 1e-2, "one head and 7 torso");
 }
@@ -1010,8 +1009,8 @@ fn t23_pellet_carry_over() {
         let mut sim = new_sim();
         sim.app.insert_resource(PelletCarryOver(on));
         let (shooter, target) = range_lane(&mut sim, "test:r870_wide", 500.0);
-        place_at(&mut sim, shooter, target, "chest", 500.0);
-        let at = sphere(&sim, target, "chest");
+        place_at(&mut sim, shooter, target, "Torso", 500.0);
+        let at = sphere(&sim, shooter, target, "Torso");
         aim_at(&mut sim, shooter, at);
         sim.app.world_mut().resource_mut::<Log>().0.clear();
         fire_once(&mut sim, shooter);
@@ -1297,8 +1296,8 @@ fn t30_smg() {
     let mut sim = new_sim();
     let (shooter, target) = range_lane(&mut sim, "test:mp5a4_exact", 400.0);
     for (d, want) in [(400.0, 31.9), (1000.0, 20.3), (2200.0, 10.15)] {
-        place_at(&mut sim, shooter, target, "chest", d);
-        close(shoot_at(&mut sim, shooter, target, "chest"), want, 1e-2, &format!("at {d}"));
+        place_at(&mut sim, shooter, target, "Torso", d);
+        close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-2, &format!("at {d}"));
     }
 }
 
@@ -1413,9 +1412,9 @@ fn t34_sniper_kick() {
 fn t35_sniper_damage() {
     let mut sim = new_sim();
     let (shooter, target) = range_lane(&mut sim, "test:l96a1_exact", 3000.0);
-    place_at(&mut sim, shooter, target, "chest", 3000.0);
-    close(shoot_at(&mut sim, shooter, target, "chest"), 160.0, 1e-3, "torso at 3000");
-    close(shoot_at(&mut sim, shooter, target, "upper face"), 960.0, 1e-3, "head at 3000");
+    place_at(&mut sim, shooter, target, "Torso", 3000.0);
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 160.0, 1e-3, "torso at 3000");
+    close(shoot_at(&mut sim, shooter, target, "Face_Eyelid1"), 960.0, 1e-3, "head at 3000");
     // Farther than the greybox's lane: the weapon's own damage part.
     let w = sim.app.world().get::<Inventory>(shooter).unwrap().active.unwrap();
     let dmg = sim.app.world().get::<ca::CaDamage>(w).unwrap().clone();
@@ -1423,7 +1422,7 @@ fn t35_sniper_damage() {
         close((ca::base_damage(&dmg, 0.5, false, d * U) / HP) as f64, want, 1e-3, &format!("at {d}"));
     }
     arm(&mut sim, shooter, "test:svd_exact");
-    close(shoot_at(&mut sim, shooter, target, "chest"), 100.0, 1e-3, "Dragunov at 3000");
+    close(shoot_at(&mut sim, shooter, target, "Torso"), 100.0, 1e-3, "Dragunov at 3000");
 }
 
 /// 36. No scope, no zoom: the M4A1's zoom key changes nothing.

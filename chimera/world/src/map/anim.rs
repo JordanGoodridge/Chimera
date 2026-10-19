@@ -700,6 +700,10 @@ pub struct Animator {
     pub yaw: Option<f32>,
     /// Limbs pulled onto bones after the layers (`AnimSet::solve_ik`).
     pub ik: Vec<IkGoal>,
+    /// A pose the game laid out itself (its own layering and bone
+    /// controllers: Combat Arms' trackers and aim), one per bone:
+    /// `pose` returns it as it is, and the sequences above are ignored.
+    pub fixed: Option<Arc<Vec<BonePose>>>,
 }
 
 impl Animator {
@@ -804,8 +808,12 @@ impl Animator {
         self.fading.retain(|f| f.weight(now) > 0.0);
     }
 
-    /// The whole body's pose (§ "Bone setup").
+    /// The whole body's pose (§ "Bone setup"), or the game's own
+    /// (`fixed`).
     pub fn pose(&self, now: f64) -> Vec<BonePose> {
+        if let Some(fixed) = &self.fixed {
+            return fixed.to_vec();
+        }
         let set = &*self.set;
         let mut pose = set.defaults.clone();
         if let Some(s) = self.main {
@@ -841,6 +849,20 @@ mod tests {
             end,
             looping,
         }
+    }
+
+    /// A game's own pose is the pose, whatever the sequences say.
+    #[test]
+    fn fixed_pose_wins() {
+        let set = Arc::new(AnimSet {
+            defaults: vec![(Quat::IDENTITY, Vec3::ZERO)],
+            parents: vec![None],
+            ..default()
+        });
+        let mut a = Animator::new(set);
+        let pose = vec![(Quat::from_rotation_y(0.5), Vec3::X)];
+        a.fixed = Some(Arc::new(pose.clone()));
+        assert_eq!(a.pose(0.0), pose);
     }
 
     #[test]

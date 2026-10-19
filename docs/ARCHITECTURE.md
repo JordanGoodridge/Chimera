@@ -156,12 +156,13 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
   grenades, the weapon classes, attachments, the game modes TDM and
-  Elimination Pro, and bots so far;
+  Elimination Pro, bots and the player characters so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`: its game modes as rule
   modules, `bots`: Bot Deathmatch's computer soldiers writing `Intent`,
-  `net`: its part of the
+  `characters`: model choice, third-person animation, the posed
+  skeleton's hit spheres and sockets, death and bodies, `net`: its part of the
   network on `chimera_net`, `world`: the install's maps as `MapData`),
   with its feature `ui` its
   front end (`ui::layout`: its layouts on Chimera's `client::canvas`,
@@ -357,7 +358,7 @@ that the paths exist).
 - `chimera/world/src/map/interp.rs`: drawing between simulation ticks (map)
 - `chimera/world/src/map/bodies.rs`: which body and held model a character has, hitboxes (map)
 - `chimera/world/src/map/props.rs`: placed props after spawning: physics props, sequences (map)
-- `chimera/world/src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK (map)
+- `chimera/world/src/map/anim.rs`: skeletal animation: `AnimSet`, blending, layers, IK, a game's own pose (`Animator::fixed`) (map)
 - `chimera/world/src/map/view_model.rs`: first-person view models' data, animator, events and placement maths (map)
 - `chimera/world/src/map/ragdoll.rs`: ragdolls on character models (map)
 - `chimera/world/src/map/placed_ragdoll.rs`: map-placed ragdolls (prop_ragdoll) (map)
@@ -513,6 +514,9 @@ that the paths exist).
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
 - `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules: TDM, Elimination Pro (games)
 - `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, scoreboard rows and each mode (games)
+- `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
+- `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)
+- `games/combat_arms/data/characters.toml`: Combat Arms' character records, skeletons, hit tables, sockets (games)
 - `games/combat_arms/src/game/bots.rs`: Combat Arms' bots: settings, console, the bot's state; Bot Deathmatch on any mode (games)
 - `games/combat_arms/src/game/bots/`: the bots' roster, data, formulas, the map's AI volumes and nodes, path search and brain (games)
 - `games/combat_arms/data/bots.toml`: Combat Arms' bot templates, per-weapon AI rows, profile counts and item sets (games)

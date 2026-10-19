@@ -80,10 +80,11 @@
 //!   while held).
 //! - Reloads started here (6.6, Quirk 2, under sprint) play no reload
 //!   sounds (the frame's sound queue is private).
-//! - No skeleton yet: the left foot is the hull's bottom centre (the
-//!   spec's fallback for us; its real offset is a live measurement, Open
-//!   question 17), the swap's jitter +-0.5 x the hull's half-extents; the
-//!   knife's zones are the placeholder spheres of `weapons`.
+//! - The left foot is the `Left_foot` node of the character's posed
+//!   skeleton (`characters::CaPose`: a body model's, else the spec's
+//!   "stand" pose, characters.md test case 27), the hull's bottom centre
+//!   only for a character without one; the swap's jitter +-0.5 x the
+//!   hull's half-extents; the knife's zones are `weapons`' hit spheres.
 //! - Pickup: an item's box is its body's, else 10 units each way (the
 //!   reference's is its world model's extents: Open question 13, to be
 //!   measured); no dead-body interactions (the fallback's only use). The
@@ -1012,7 +1013,7 @@ fn swing_knives(
                     // (8.4: melee uses the zones), then the armour step
                     // (no stock gear covers melee).
                     let sphere = bodies.get(target).ok().and_then(|(t, i, s, aabb, spheres)| {
-                        let data = spheres.map_or(MALE, |h| h.0);
+                        let data = spheres.map_or(*MALE, |h| h.0);
                         let (_, _, world) = body_geometry(t, i, s, aabb, data)?;
                         let through = end + dir * range;
                         pick_sphere(&world, eye, through).map(|k| data[k])
@@ -1270,7 +1271,13 @@ pub fn drop_item(world: &mut World, owner: Entity, weapon: Entity, jitter: bool)
     };
     let mut rng: Rng = shared_random(intent.command, "combat_arms:drop", index as i32);
     let half = (hi - lo) / 2.0;
-    let mut spot = at.translation + Vec3::Y * lo.y;
+    // The left foot's node (characters.md 3), else the hull's bottom
+    // centre.
+    let foot = world.get::<super::characters::CaPose>(owner).and_then(|p| {
+        let state = world.get::<MovementState>(owner)?;
+        Some(p.world(&at, state, UNIT, p.left_foot?))
+    });
+    let mut spot = foot.unwrap_or(at.translation + Vec3::Y * lo.y);
     if jitter {
         spot.x += rng.range(-0.5, 0.5) * half.x;
         spot.z += rng.range(-0.5, 0.5) * half.z;

@@ -90,19 +90,27 @@
 //! run (the first one a firing one when a round left), then each round
 //! kicks the view. Every character gets the default armour
 //! (`CaArmor::default`: 100 points, the default body gear) when it first
-//! has health, and is hit through `HitSpheres` (the male skeleton when it
-//! has none).
+//! has health, and is hit through `HitSpheres`: its skeleton's hit table
+//! (characters.md 11: `MALE`, `FEMALE` from data/characters.toml, set by
+//! `characters` from the body's skeleton; the male one when it has none),
+//! each sphere on its node or socket of the posed skeleton: a body
+//! model's own pose (`characters::CaPose`, `posed_geometry`), else the
+//! spec's measured skeleton crouched by the box's height and pitched by
+//! the look (`geometry_at`).
 //!
-//! Units: the data's (world units, hit points; `units` in each document);
-//! the hit spheres are scaled to the character's box (`SKELETON_HEIGHT`).
+//! Units: the data's (world units, hit points; `units` in each document).
 //!
 //! Known shortcuts (the spec's most literal reading where it is unclear,
 //! listed for its open questions):
 //! - The scale is movement's `meters_per_unit` (the data's `units`; by
 //!   body size: movement.md Q3).
-//! - The placeholder skeleton (`MALE`): sphere radii, locations and
-//!   factors are the spec's, their places ours (Q9: no models yet), in a
-//!   standing pose scaled to the character's box, crouched or not.
+//! - Without a body model (no V2 key) the spheres sit on the spec's
+//!   skeleton as measured at `LST` t = 0 (characters.md 11), squashed
+//!   towards the feet when crouched and pitched by the look, the whole
+//!   body turned to the view (no upper-body twist); they don't follow
+//!   the legs' or the weapon's animation (`characters` Known shortcuts).
+//!   The groin sphere (`Nuts`) has location 5, as this spec and the BR
+//!   data have it (the US data: 2; characters.md Q1b).
 //! - The spec's client and server halves aren't split by process: the
 //!   "client" test is the ray's first segment, the "server" walk the rest,
 //!   both run where the round is delivered. In a network game the shooter's
@@ -136,7 +144,7 @@
 pub mod classes;
 pub mod zoom;
 
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -156,6 +164,7 @@ use crate::{
     },
 };
 
+use super::characters;
 use super::attachments::{CaNpc, CaSpecialRoll, DamageMods, RecoilMods, SpecialKind, SpreadMods, Victim};
 
 pub use self::{
@@ -231,10 +240,6 @@ pub const HITBOX_WIDEN: f32 = 2.0;
 pub const SERVER_TRACE_STEPS: u32 = 3;
 /// `DamageRFacter` used when the data's is outside [0, 1].
 pub const DAMAGE_ROLL_INVALID: f32 = 0.2;
-/// The placeholder skeleton's standing height, world units (movement.md's
-/// standing half-height 50): spheres scale by the character's box height
-/// over this.
-pub const SKELETON_HEIGHT: f32 = 100.0;
 /// Damage types (`InstDamageType`) the armour step knows.
 pub const BULLET: i32 = 2;
 pub const BURN: i32 = 3;
@@ -862,9 +867,12 @@ pub enum Location {
     Groin,
 }
 
-/// One hit sphere of a skeleton: in the character's frame (feet at the
-/// origin, +Y up, facing -Z, +X its right), world units of a standing
-/// figure `SKELETON_HEIGHT` tall.
+/// One hit sphere of a skeleton (specs/combat_arms/characters.md 11):
+/// its hit-table entry's node or socket name, radius, location and damage
+/// factor, and `at`: its centre in the spec's measured standing pose (`LST`
+/// at t = 0) in the character's frame (feet at the origin, +Y up, facing
+/// -Z, +X its right), world units. Entries no stock body has, or with
+/// radius 0, have radius 0 here (never hit).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HitSphere {
     pub name: &'static str,
@@ -872,93 +880,43 @@ pub struct HitSphere {
     pub radius: f32,
     pub location: Location,
     pub factor: f32,
-}
-
-const fn sphere(name: &'static str, at: [f32; 3], radius: f32, location: Location, factor: f32) -> HitSphere {
-    HitSphere {
-        name,
-        at: Vec3::new(at[0], at[1], at[2]),
-        radius,
-        location,
-        factor,
-    }
+    /// The skeleton (`characters::records` index: 0 male, 1 female).
+    pub skeleton: usize,
 }
 
 use Location::{Arm, Groin, Head, Leg, Torso};
 
-/// The male skeleton's hittable spheres (the spec's "Hit zones": radii,
-/// locations and factors; the places are ours, a placeholder figure). The
-/// right side is +X.
-pub const MALE: &[HitSphere] = &[
-    sphere("skull", [0.0, 97.0, 0.0], 1.0, Head, 6.0),
-    sphere("jaw", [0.0, 87.5, -1.0], 3.0, Head, 6.0),
-    sphere("upper face", [0.0, 93.0, -1.0], 4.6, Head, 6.0),
-    sphere("neck", [0.0, 82.0, 0.0], 3.0, Torso, 1.0),
-    sphere("upper chest", [0.0, 70.0, 0.0], 10.0, Torso, 1.0),
-    sphere("chest", [0.0, 58.0, 0.0], 9.0, Torso, 1.0),
-    sphere("groin", [0.0, 45.0, -2.0], 3.0, Groin, 1.0),
-    sphere("hip left", [-10.0, 48.0, 2.0], 8.0, Leg, 0.9),
-    sphere("hip right", [10.0, 48.0, 2.0], 8.5, Leg, 0.9),
-    sphere("shoulder left", [-14.0, 77.0, 0.0], 5.5, Arm, 0.9),
-    sphere("shoulder right", [14.0, 77.0, 0.0], 5.5, Arm, 0.9),
-    sphere("shoulder left 2", [-14.0, 72.0, 1.0], 7.0, Arm, 0.9),
-    sphere("shoulder right 2", [14.0, 72.0, 1.0], 7.0, Arm, 0.9),
-    sphere("upper arm left", [-19.0, 64.0, 0.0], 4.5, Arm, 0.9),
-    sphere("upper arm right", [19.0, 64.0, 0.0], 4.5, Arm, 0.9),
-    sphere("upper arm left 2", [-19.0, 58.0, 0.0], 4.0, Arm, 0.9),
-    sphere("upper arm right 2", [19.0, 58.0, 0.0], 4.0, Arm, 0.9),
-    sphere("forearm left", [-20.0, 51.0, -1.0], 4.0, Arm, 0.9),
-    sphere("forearm right", [20.0, 51.0, -1.0], 4.0, Arm, 0.9),
-    sphere("forearm left 2", [-20.0, 44.0, -2.0], 4.0, Arm, 0.9),
-    sphere("forearm right 2", [20.0, 44.0, -2.0], 4.0, Arm, 0.9),
-    sphere("hand left", [-20.0, 36.0, -3.0], 3.2, Arm, 0.9),
-    sphere("hand right", [20.0, 36.0, -3.0], 3.2, Arm, 0.9),
-    sphere("thigh left", [-6.0, 36.0, 0.0], 8.0, Leg, 0.9),
-    sphere("thigh right", [6.0, 36.0, 0.0], 8.0, Leg, 0.9),
-    sphere("thigh left 2", [-6.0, 27.0, 0.0], 7.0, Leg, 0.9),
-    sphere("thigh right 2", [6.0, 27.0, 0.0], 7.0, Leg, 0.9),
-    sphere("shin left", [-6.0, 19.0, 0.0], 6.0, Leg, 0.75),
-    sphere("shin right", [6.0, 19.0, 0.0], 6.0, Leg, 0.75),
-    sphere("shin left 2", [-6.0, 12.0, 0.0], 6.0, Leg, 0.75),
-    sphere("shin right 2", [6.0, 12.0, 0.0], 6.0, Leg, 0.75),
-    sphere("foot left", [-6.0, 4.0, -3.0], 5.0, Leg, 0.5),
-    sphere("foot right", [6.0, 4.0, -3.0], 5.0, Leg, 0.5),
-    sphere("toe left", [-6.0, 2.0, -10.0], 3.0, Leg, 0.5),
-    sphere("toe right", [6.0, 2.0, -10.0], 3.0, Leg, 0.5),
-];
+/// Skeleton `index`'s hit table from data/characters.toml.
+fn hit_table(index: usize) -> &'static [HitSphere] {
+    let skel = characters::records::data().skeleton(index);
+    let table: Vec<HitSphere> = skel
+        .spheres
+        .iter()
+        .map(|s| HitSphere {
+            name: s.name.clone().leak(),
+            at: s.at.map_or(Vec3::ZERO, |a| characters::skeleton::to_body(Vec3::from(a), characters::skeleton::STAND_FEET)),
+            radius: if s.absent || s.at.is_none() { 0.0 } else { s.radius },
+            location: match s.location {
+                1 => Head,
+                3 => Arm,
+                4 => Leg,
+                5 => Groin,
+                _ => Torso,
+            },
+            factor: s.factor,
+            skeleton: index,
+        })
+        .collect();
+    table.leak()
+}
 
-/// The female skeleton: the male's body and limbs with its own head (the
-/// upper face unhittable, two head spheres of 4.7 at 6.0 and one
-/// head-located sphere of 3.0 at 1.0, Q9).
-pub const FEMALE: &[HitSphere] = &[
-    sphere("skull", [0.0, 97.0, 0.0], 1.0, Head, 6.0),
-    sphere("jaw", [0.0, 87.5, -1.0], 3.0, Head, 1.0),
-    sphere("head", [0.0, 92.0, -1.0], 4.7, Head, 6.0),
-    sphere("head 2", [0.0, 95.0, 1.0], 4.7, Head, 6.0),
-    sphere("upper face", [0.0, 93.0, -1.0], 0.0, Head, 6.0),
-    sphere("neck", [0.0, 82.0, 0.0], 3.0, Torso, 1.0),
-    sphere("upper chest", [0.0, 70.0, 0.0], 10.0, Torso, 1.0),
-    sphere("chest", [0.0, 58.0, 0.0], 9.0, Torso, 1.0),
-    sphere("groin", [0.0, 45.0, -2.0], 3.0, Groin, 1.0),
-    sphere("hip left", [-10.0, 48.0, 2.0], 8.0, Leg, 0.9),
-    sphere("hip right", [10.0, 48.0, 2.0], 8.5, Leg, 0.9),
-    sphere("shoulder left", [-14.0, 77.0, 0.0], 5.5, Arm, 0.9),
-    sphere("shoulder right", [14.0, 77.0, 0.0], 5.5, Arm, 0.9),
-    sphere("upper arm left", [-19.0, 64.0, 0.0], 4.5, Arm, 0.9),
-    sphere("upper arm right", [19.0, 64.0, 0.0], 4.5, Arm, 0.9),
-    sphere("forearm left", [-20.0, 51.0, -1.0], 4.0, Arm, 0.9),
-    sphere("forearm right", [20.0, 51.0, -1.0], 4.0, Arm, 0.9),
-    sphere("hand left", [-20.0, 36.0, -3.0], 3.2, Arm, 0.9),
-    sphere("hand right", [20.0, 36.0, -3.0], 3.2, Arm, 0.9),
-    sphere("thigh left", [-6.0, 36.0, 0.0], 8.0, Leg, 0.9),
-    sphere("thigh right", [6.0, 36.0, 0.0], 8.0, Leg, 0.9),
-    sphere("shin left", [-6.0, 19.0, 0.0], 6.0, Leg, 0.75),
-    sphere("shin right", [6.0, 19.0, 0.0], 6.0, Leg, 0.75),
-    sphere("foot left", [-6.0, 4.0, -3.0], 5.0, Leg, 0.5),
-    sphere("foot right", [6.0, 4.0, -3.0], 5.0, Leg, 0.5),
-];
+/// The male skeleton's hit table (table 0, the default male body).
+pub static MALE: LazyLock<&'static [HitSphere]> = LazyLock::new(|| hit_table(0));
+/// The female skeleton's (table 1).
+pub static FEMALE: LazyLock<&'static [HitSphere]> = LazyLock::new(|| hit_table(1));
 
-/// A character's hit spheres (`MALE` when it has none).
+/// A character's hit table (`MALE` when it has none; `characters` sets
+/// it from the body's skeleton).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct HitSpheres(pub &'static [HitSphere]);
 
@@ -1572,6 +1530,7 @@ struct Delivery<'w, 's> {
             &'static Health,
             Option<&'static ColliderAabb>,
             Option<&'static HitSpheres>,
+            Option<&'static characters::CaPose>,
         ),
     >,
     armor: Query<'w, 's, &'static mut CaArmor>,
@@ -1638,18 +1597,26 @@ impl Delivery<'_, '_> {
     fn bodies(&self, owner: Entity, rewound: &[lagcomp::Rewound]) -> Vec<Body> {
         self.characters
             .iter()
-            .filter(|(e, .., h, _, _)| *e != owner && h.current > 0.0)
-            .filter_map(|(entity, t, intent, state, _, aabb, spheres)| {
-                let data = spheres.map_or(MALE, |s| s.0);
+            .filter(|(e, .., h, _, _, _)| *e != owner && h.current > 0.0)
+            .filter_map(|(entity, t, intent, state, _, aabb, spheres, pose)| {
+                let data = spheres.map_or(*MALE, |s| s.0);
+                // A body model's own pose; else the spec's skeleton.
+                let modelled = pose.filter(|p| p.modelled && p.skeleton == data.first().map_or(0, |s| s.skeleton));
                 let (min, max, spheres, turn) = match rewound.iter().find(|r| r.entity == entity) {
                     Some(r) => {
                         let b = r.aabb();
                         let turn = Quat::from_rotation_y(r.yaw);
-                        let (min, max, spheres) = geometry_at(r.origin, turn, b.min, b.max, data);
+                        let (min, max, mut spheres) = geometry_at(r.origin, turn, b.min, b.max, data, -intent.pitch);
+                        if let Some(p) = modelled {
+                            spheres = posed_geometry(r.origin, min, r.yaw + (p.body_yaw - intent.yaw), p, data);
+                        }
                         (min, max, spheres, turn)
                     }
                     None => {
-                        let (min, max, spheres) = body_geometry(t, intent, state, aabb, data)?;
+                        let (min, max, mut spheres) = body_geometry(t, intent, state, aabb, data)?;
+                        if let Some(p) = modelled {
+                            spheres = posed_geometry(t.translation, min, p.body_yaw, p, data);
+                        }
                         (min, max, spheres, intent.yaw_rotation())
                     }
                 };
@@ -1678,7 +1645,8 @@ impl Delivery<'_, '_> {
 
 /// A character's box (world min, max: its movement's hull, else its
 /// collider's bounds) and its spheres `data` in the world (centre,
-/// radius), scaled to the box's height.
+/// radius): the spec's skeleton (`characters::skeleton::fallback`)
+/// crouched by the box's height and pitched by the look.
 pub fn body_geometry(
     t: &Transform,
     intent: &Intent,
@@ -1692,16 +1660,43 @@ pub fn body_geometry(
         let b = aabb?;
         (b.min, b.max)
     };
-    Some(geometry_at(t.translation, intent.yaw_rotation(), min, max, data))
+    Some(geometry_at(t.translation, intent.yaw_rotation(), min, max, data, -intent.pitch))
 }
 
 /// A character's spheres `data` in the world for its box `min..max`
-/// (world) around `origin`, turned by `turn`: (min, max, spheres).
-fn geometry_at(origin: Vec3, turn: Quat, min: Vec3, max: Vec3, data: &[HitSphere]) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
-    let scale = (max.y - min.y) / SKELETON_HEIGHT;
+/// (world) around `origin`, turned by `turn`, with the third-person aim
+/// pitch `pitch` (radians, positive down): (min, max, spheres). The
+/// skeleton is squashed by the box's height over the standing one.
+pub fn geometry_at(origin: Vec3, turn: Quat, min: Vec3, max: Vec3, data: &[HitSphere], pitch: f32) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
+    let unit = super::movement::movement_data().meters_per_unit;
+    let squash = ((max.y - min.y) / (characters::STAND_HEIGHT * unit)).max(0.0);
+    let skel = characters::records::data().skeleton(data.first().map_or(0, |s| s.skeleton));
+    let mut posed = characters::skeleton::fallback(skel, squash);
+    posed.aim(&skel.aim, pitch, 0.0, false);
     let feet = origin.with_y(min.y);
-    let spheres = data.iter().map(|s| (feet + turn * (s.at * scale), s.radius * scale)).collect();
+    let spheres = data
+        .iter()
+        .map(|s| {
+            let p = posed.sphere(s.name).map_or(Vec3::ZERO, |p| characters::skeleton::to_body(p, posed.feet));
+            (feet + turn * (p * unit), s.radius * unit)
+        })
+        .collect();
     (min, max, spheres)
+}
+
+/// A character's spheres from its posed body model (`characters::CaPose`)
+/// for its box `min..max` around `origin`, its legs turned to `yaw`.
+pub fn posed_geometry(origin: Vec3, min: Vec3, yaw: f32, pose: &characters::CaPose, data: &[HitSphere]) -> Vec<(Vec3, f32)> {
+    let unit = super::movement::movement_data().meters_per_unit;
+    let feet = origin.with_y(min.y);
+    let turn = Quat::from_rotation_y(yaw);
+    data.iter()
+        .enumerate()
+        .map(|(i, s)| match pose.spheres.get(i).copied().flatten() {
+            Some(p) => (feet + turn * (p * unit), s.radius * unit),
+            None => (feet, 0.0),
+        })
+        .collect()
 }
 
 /// Where a ray enters an axis-aligned box (distance along the unit `dir`,
@@ -2272,7 +2267,7 @@ fn hurt(
             w.commands.entity(b.entity).insert(k);
         }
     }
-    let health = w.characters.get(b.entity).map_or(0.0, |(.., h, _, _)| h.current);
+    let health = w.characters.get(b.entity).map_or(0.0, |(.., h, _, _, _)| h.current);
     // Dead at 1 HP or less.
     damage.amount = if points > 0.0 && health - points <= DEATH_THRESHOLD * hp + 1e-6 {
         points.max(health)
@@ -2307,7 +2302,7 @@ mod tests {
 
     #[test]
     fn spheres_are_named_once() {
-        for set in [MALE, FEMALE] {
+        for set in [*MALE, *FEMALE] {
             for (i, s) in set.iter().enumerate() {
                 assert!(set[..i].iter().all(|o| o.name != s.name), "{}", s.name);
             }

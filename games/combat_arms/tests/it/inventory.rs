@@ -843,16 +843,14 @@ fn items(sim: &mut Sim) -> Vec<(Entity, Dropped, String, Vec3)> {
         .collect()
 }
 
-/// The hull's bottom centre (the drop spot without a skeleton) and its
-/// width.
+/// The left foot (characters.md 3: the drop spot, on the spec's
+/// skeleton) and the hull's width.
 fn feet(sim: &Sim, p: Entity) -> (Vec3, f32) {
     let s: MovementState = sim.state(p);
-    let (lo, hi) = if s.hull_max != s.hull_min {
-        (s.hull_min, s.hull_max)
-    } else {
-        (Vec3::new(-0.4, -0.9, -0.4), Vec3::new(0.4, 0.9, 0.4))
-    };
-    (sim.position(p) + Vec3::Y * lo.y, hi.x - lo.x)
+    let w = sim.app.world();
+    let pose = w.get::<combat_arms::game::characters::CaPose>(p).unwrap();
+    let foot = pose.world(w.get::<Transform>(p).unwrap(), &s, UNIT, pose.left_foot.unwrap());
+    (foot, s.hull_max.x - s.hull_min.x)
 }
 
 #[test]
@@ -1204,7 +1202,7 @@ fn t42_better_weapon_rule() {
 /// default body gear a torso hit is 45 and uses no armour.
 #[test]
 fn t43_knife_ray_and_zones() {
-    use combat_arms::game::weapons::{self as ca, CaArmor};
+    use combat_arms::game::weapons::CaArmor;
     let (mut sim, p) = knife_out(STOCK);
     let k = carried(&sim, p, KNIFE);
     assert!((sim.app.world().get::<Knife>(k).unwrap().perturb - 0.001).abs() < 1e-7, "n = 1");
@@ -1214,19 +1212,7 @@ fn t43_knife_ray_and_zones() {
     sim.intent(target).yaw = std::f32::consts::PI;
     sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 10.0;
     sim.seconds(0.5);
-    let sphere = |sim: &Sim, name: &str| {
-        let w = sim.app.world();
-        let i = ca::MALE.iter().position(|s| s.name == name).unwrap();
-        let (_, _, spheres) = ca::body_geometry(
-            w.get::<Transform>(target).unwrap(),
-            w.get::<chimera_core::core::Intent>(target).unwrap(),
-            w.get::<MovementState>(target).unwrap(),
-            w.get::<avian3d::prelude::ColliderAabb>(target),
-            ca::MALE,
-        )
-        .unwrap();
-        spheres[i].0
-    };
+    let sphere = |sim: &Sim, name: &str| super::aim_points::point(sim.app.world(), p, target, name);
     let hit_at = |sim: &mut Sim, name: &str| {
         let d = sphere(sim, name) - (sim.position(p) + sim.state(p).eye_offset);
         let mut i = sim.intent(p);
@@ -1235,7 +1221,7 @@ fn t43_knife_ray_and_zones() {
         sim.ticks(1);
         one_hit(sim, p, target, false)
     };
-    for (name, want) in [("upper face", 270.0), ("chest", 45.0), ("shin right 2", 33.75), ("foot right", 22.5)] {
+    for (name, want) in [("Face_Eyelid1", 270.0), ("Torso", 45.0), ("Right_legl1", 33.75), ("Right_foot", 22.5)] {
         let got = hit_at(&mut sim, name);
         assert!((got - want).abs() < 1e-3, "{name}: {got}, want {want}");
     }
@@ -1243,8 +1229,9 @@ fn t43_knife_ray_and_zones() {
     assert_eq!(ap, 100.0, "the default body gear: melee uses no armour");
 }
 
-/// 44. Drop positions without a skeleton: the death drop exactly at the
-/// hull's bottom centre; the swap drop within 0.5 x the half-extents
+/// 44. Drop positions: the death drop exactly at the left foot (the
+/// spec's skeleton, characters.md 3; the hull's bottom centre without
+/// one); the swap drop within 0.5 x the half-extents
 /// (7.5 units) on X and Z, at the same height.
 #[test]
 fn t44_drop_positions() {
@@ -1253,7 +1240,7 @@ fn t44_drop_positions() {
     kill(&mut sim, p);
     let dropped = items(&mut sim);
     let at = dropped[0].3;
-    assert!((at - foot).length() < 1e-4, "death drop at the bottom centre: {at} vs {foot}");
+    assert!((at - foot).length() < 1e-4, "death drop at the left foot: {at} vs {foot}");
 
     for _ in 0..3 {
         let (mut sim, p) = setup(STOCK);
