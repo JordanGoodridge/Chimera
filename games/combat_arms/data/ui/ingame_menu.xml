@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combat Arms' in-game menu (Esc), ours, in the game's layout format
+     (specs/combat_arms/ui_system.md L1-L4). Its first control is the
+     220 x 145 box the popup centres on the screen (test case 17), drawn
+     1:1; the buttons are the spec's (H): return to lobby, report a user,
+     start/stop recording, cancel. Places inside the box and the texture
+     names are ours (stand-ins drawn by ui::draw). -->
+<CBALAYOUT>
+  <Control Type="window">
+    <Property Name="InGameMenu" Size="220,145" Position="402,312" Texture="igm_back"/>
+    <Control Type="text">
+      <Property Name="Title" Position="0,7" Font="bold 13" Element="$igm_title" HorizontalAlign="HCENTER" Normalcolor="222,222,222" Effect="STROKE"/>
+    </Control>
+    <Control Type="button">
+      <Property Name="Lobby" Size="196,24" Position="12,27" ButtonTexture="igm_button_" Cmd_id="1"/>
+      <Control Type="buttontypetext">
+        <Property Name="LobbyText" Font="bold 12" Element="$igm_lobby" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/>
+      </Control>
+    </Control>
+    <Control Type="button">
+      <Property Name="Report" Size="196,24" Position="12,55" ButtonTexture="igm_button_" Cmd_id="2"/>
+      <Control Type="buttontypetext">
+        <Property Name="ReportText" Font="bold 12" Element="$igm_report" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/>
+      </Control>
+    </Control>
+    <Control Type="button">
+      <Property Name="Record" Size="196,24" Position="12,83" ButtonTexture="igm_button_" Cmd_id="3"/>
+      <Control Type="buttontypetext">
+        <Property Name="RecordText" Font="bold 12" Element="$igm_record" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/>
+      </Control>
+    </Control>
+    <Control Type="button">
+      <Property Name="Cancel" Size="196,24" Position="12,111" ButtonTexture="igm_button_" Cmd_id="4"/>
+      <Control Type="buttontypetext">
+        <Property Name="CancelText" Font="bold 12" Element="$igm_cancel" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/>
+      </Control>
+    </Control>
+  </Control>
+</CBALAYOUT>

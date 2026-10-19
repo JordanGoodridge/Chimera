@@ -71,7 +71,9 @@ in the lowest crate whose public API it needs:
   as each subsystem is implemented; in `heavy` the install's maps
   (`heavy::world`: every plain map converts, a player walks and collides
   on WAREHOUSE); its front end's (the
-  HUD's state, `ui::hud::CaHud`, headless) in tests/ui/, built with `ui`;
+  HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
+  text and input cases and the in-game menu, `ui_system.rs`) in
+  tests/ui/, built with `ui`;
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's
@@ -1205,6 +1207,9 @@ others need the V2 key); add `--screenshot shot.png --frames 120 --window
 triangles, textures, spawns and warnings. The world files' numbers:
 `cargo test -p lithtech_formats -- heavy::world_install --nocapture`
 (`every_plain_map_summary` prints each map's version and counts).
+`+ingamemenu` opens Combat Arms' in-game menu (Esc) for a screenshot of
+it, e.g. `--window 1280x720 --screenshot menu.png --frames 120
++ingamemenu`.
 
 Combat Arms' archives are read by `lithtech_formats::rez`. Encrypted ones
 list but skip extraction until their scheme's key is in

@@ -162,6 +162,8 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms data: Attribute records read only the spec's tabled fields; unstated "none" defaults taken as the smallest integer (`games/combat_arms/src/game/data/attributes.rs`)
 - lithtech: Attribute files: no event text-change overwrite layer; literal readings where the spec is silent on spacing (`lithtech/formats/src/attributes.rs`)
 - games/combat_arms ui: HUD: no items, attachments, modes, score panel or heartbeat sound driving it yet; name tags on the hull centre (no name socket); placeholder art (`games/combat_arms/src/ui/hud.rs`)
+- games/combat_arms ui: UI system: monospaced font metrics (our estimate), stand-in art, glyphs not stretched; HUD panels placed in code, not the game's (keyed) HUD layout; no lobby, scoreboard or own chat panel (`games/combat_arms/src/ui/mod.rs`)
+- games/combat_arms ui: Esc menu: leave quits (no lobby), report and record disabled, sounds counted not played, player stops while open (`games/combat_arms/src/ui/menu.rs`)
 - games/combat_arms: Firing: placeholder hit-sphere places, no client-reported victim, spread per tick, default gear for all, nothing infected yet (`games/combat_arms/src/game/weapons.rs`)
 - apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
 - games/combat_arms maps: No sky, fog or switchable light groups; vertex light one colour per section; world models static; blockers stop shots; object properties read by name (`games/combat_arms/src/game/world.rs`)
