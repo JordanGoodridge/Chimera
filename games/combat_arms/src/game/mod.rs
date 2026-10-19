@@ -126,6 +126,8 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("3", "slot3"),
     ("4", "slot4"),
     ("5", "slot5"),
+    // The objective class (the mission bomb; `ui`'s `slot6`).
+    ("6", "slot6"),
     // The scoreboard while held (ui_system.md I2; the key is ours).
     ("tab", "+showscores"),
 ];

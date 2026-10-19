@@ -25,6 +25,18 @@ pub fn enemy(team: u8) -> u8 {
     if team == ALPHA { BRAVO } else { ALPHA }
 }
 
+/// The first and last team ids a free-for-all player is given (S1: every
+/// player a team of their own; the lobby's numbering is an open question,
+/// ours the lowest free id from 3).
+pub const FFA_FIRST: u8 = 3;
+pub const FFA_LAST: u8 = 254;
+
+/// A team id that plays (S1): Alpha, Bravo or a free-for-all player's own;
+/// not 0 (none) or 255 (observers).
+pub fn plays(team: u8) -> bool {
+    (ALPHA..=FFA_LAST).contains(&team)
+}
+
 /// The match's phases (S3; ours names). Mission start and round end are
 /// steps between them, not phases of their own.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -85,6 +97,14 @@ pub struct CaMatch {
     /// time-out).
     pub round_kills: [u32; 2],
     pub round_deaths: [u32; 2],
+    /// The match's enemy kills, deaths and flag returns per team (the
+    /// tie-breaks of capture the flag and Seize and Secure).
+    pub kills: [u32; 2],
+    pub deaths: [u32; 2],
+    pub returns: [u32; 2],
+    /// The round ends without a winner whatever the time-out rule says
+    /// (Quarantine's void round).
+    pub void: bool,
     /// The match's result, once decided: Some(winner), Some(None) a draw.
     pub result: Option<Option<u8>>,
     /// The round results so far, in order.
@@ -105,6 +125,13 @@ impl CaMatch {
         self.winner = Some(winner);
         self.end_requested = true;
     }
+
+    /// Ask for the round's end with no winner.
+    pub fn end_without_winner(&mut self) {
+        self.winner = None;
+        self.void = true;
+        self.end_requested = true;
+    }
 }
 
 /// A player's statistics for the whole match (S7): what the scoreboard
@@ -118,6 +145,17 @@ pub struct CaStats {
     pub suicides: u32,
     pub friendly_kills: u32,
     pub assists: u32,
+    /// The modes' own (S7, S13's mode column): flag captures and returns,
+    /// bomb plants, detonations and defuses, mission points (Quarantine's,
+    /// VIP Elimination's, intel, flag raises) and round wins (the
+    /// free-for-all round modes).
+    pub captures: u32,
+    pub returns: u32,
+    pub plants: u32,
+    pub detonations: u32,
+    pub defuses: u32,
+    pub mission_points: i32,
+    pub round_wins: u32,
 }
 
 /// How a death came about (S7's rows).

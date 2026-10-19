@@ -8,8 +8,11 @@
 //!
 //! Hits are `core::Damage` messages of the kind the weapon parts write
 //! (bullets, blasts; health 1.0 = 100 HP), so a rifle hit of 40 is 0.40.
-//! Not here: case 10's One Man Army half and case 13 (modes that aren't
-//! there yet), case 16's bodies (no ragdolls without character models).
+//! Elsewhere: case 10's One Man Army half (free_for_all.rs), case 13
+//! (other_modes.rs), case 17 as S&D (search_destroy.rs) and the other
+//! modes' cases (search_destroy.rs, capture_the_flag.rs, free_for_all.rs,
+//! other_modes.rs). Not here: case 16's bodies (no ragdolls without
+//! character models).
 
 use bevy::prelude::*;
 use chimera_core::core::{Damage, DamageKind, Dead, FreezeTime, Health, Hitgroup, SimClock, SpawnPoint, Team};

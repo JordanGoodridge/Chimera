@@ -599,8 +599,16 @@ fn ai_objects_pass_through() {
     }
     let map = world::convert(&w, "small", s, &|_| None);
     let classes: Vec<&str> = map.entities.iter().map(|e| e.classname()).collect();
-    assert_eq!(classes, ["AIVolume", "AINodePatrol", "AINodePatrol"]);
-    let v = &map.entities[0];
+    // The start point goes through too, for the game modes (`rules::objects`),
+    // its feet on the floor and its yaw added.
+    assert_eq!(classes, ["GameStartPoint", "AIVolume", "AINodePatrol", "AINodePatrol"]);
+    let start = &map.entities[0];
+    assert!(start.get(world::FEET_KEY).is_some() && start.get(world::YAW_KEY).is_some());
+    let objects = combat_arms::game::rules::objects::read(&map.entities, map.entity_scale);
+    assert_eq!(objects.starts.len(), 1);
+    let feet = objects.starts[0].at.translation - Vec3::Y * chimera_world::map::SPAWN_LIFT;
+    assert!(feet.abs_diff_eq(map.spawns[0].0, 1e-4), "{feet} vs {}", map.spawns[0].0);
+    let v = &map.entities[1];
     assert_eq!(v.get("targetname"), Some("AIVolume01"));
     assert_eq!(v.get("origin"), Some("0 300 32"));
     assert_eq!(v.get("PreferredPath"), Some("0"));

@@ -49,10 +49,11 @@ use super::{
 };
 use crate::{
     core::{
-        Connecting, Damage, DamageFilter, DamageKind, Dead, Health, Hitgroup, Intent, Npc, RemotePlayer, SimClock,
-        SpawnPoint, Spectating, Team,
+        Connecting, Damage, DamageFilter, DamageKind, Dead, Health, Hitgroup, Intent, MapLoads, Npc, RemotePlayer,
+        SimClock, SpawnPoint, Spectating, Team,
     },
     spawning,
+    weapon::{WeaponEvent, WeaponEventKind},
 };
 
 /// The fallback hull's half-extents, world units (S4).
@@ -143,18 +144,65 @@ fn others(world: &mut World, me: Entity) -> Vec<(Entity, Vec3, bool)> {
         .collect()
 }
 
+/// The seed the shuffled lists are ordered by (a map load's).
+fn shuffle_key(world: &World, index: usize) -> u64 {
+    let loads = world.get_resource::<MapLoads>().map_or(0, |l| l.0 as u64);
+    super::objectives::hash((loads << 32) ^ index as u64 ^ 0x5CA1_AB1E)
+}
+
+/// The list a player of `team` spawns from in the running mode (S4): its
+/// family's qualifying points (the map's start points, `CaMapObjects`),
+/// per team or one list, shuffled once a map load where the mode says;
+/// None when the list is empty (the map's first point is used). On a map
+/// without start point objects (the greybox, tests), Chimera's spawn
+/// points: per team, or all of them for a one-list mode. Also the cursor
+/// it uses (one-list modes share Alpha's).
+pub fn spawn_list(world: &mut World, team: u8) -> (Vec<Transform>, usize) {
+    let mode = current_mode(world);
+    let spawns = mode.map_or(super::TEAM_POINTS, |m| m.spawns);
+    let warmup = world.resource::<super::CaMatch>().warmup;
+    let cursor = if spawns.one_list { 0 } else { side(team).unwrap_or(0) };
+    let starts = world.resource::<super::objects::CaMapObjects>().starts.clone();
+    let mut list: Vec<(usize, Transform)> = if starts.is_empty() {
+        let all = points(world, if spawns.one_list { None } else { Some(team) });
+        all.into_iter().enumerate().collect()
+    } else {
+        let family = spawns.family.unwrap_or(super::super::world::SPAWN_GAME_TYPE);
+        let locked = spawns.locked_rounds && !warmup;
+        starts
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.qualifies(family, locked) && (spawns.one_list || p.team == Some(team)))
+            .map(|(i, p)| (i, p.at))
+            .collect()
+    };
+    if spawns.shuffled {
+        list.sort_by_key(|(i, _)| shuffle_key(world, *i));
+    }
+    (list.into_iter().map(|(_, t)| t).collect(), cursor)
+}
+
+/// The map's first start point (S4: an empty list's).
+fn first_point(world: &mut World) -> Option<Transform> {
+    let starts = &world.resource::<super::objects::CaMapObjects>().starts;
+    if let Some(p) = starts.first() {
+        return Some(p.at);
+    }
+    points(world, None).first().copied()
+}
+
 /// S4: the point `me` (on `team`) spawns at, its cursor advanced; None
 /// without any point. Also whether every point tested was occupied.
 pub fn pick(world: &mut World, me: Entity, team: u8) -> Option<(Transform, bool)> {
     let unit = inventory::UNIT;
     let others = others(world, me);
     let taken = |p: &Transform| others.iter().any(|(_, at, _)| occupied((*at - p.translation) / unit));
-    let Some(i) = side(team) else {
-        return points(world, None).first().map(|p| (*p, taken(p)));
-    };
-    let list = points(world, Some(team));
+    if side(team).is_none() && !super::state::plays(team) {
+        return first_point(world).map(|p| (p, taken(&p)));
+    }
+    let (list, i) = spawn_list(world, team);
     if list.is_empty() {
-        return points(world, None).first().map(|p| (*p, taken(p)));
+        return first_point(world).map(|p| (p, taken(&p)));
     }
     let mut cursor = world.resource::<CaSpawnCursors>().0[i];
     let mut full = true;
@@ -262,6 +310,28 @@ pub(super) fn end_protection(
     }
 }
 
+/// S6: in the modes where it does (`CaMode::fire_ends_protection`),
+/// firing a weapon ends both parts of the shooter's protection at once.
+pub(super) fn firing_ends_protection(
+    mut events: MessageReader<WeaponEvent>,
+    protected: Query<(), With<CaProtected>>,
+    settings: Res<CaRuleSettings>,
+    mut commands: Commands,
+) {
+    let ends = super::mode_by_key(&settings.mode).is_some_and(|m| m.fire_ends_protection);
+    for ev in events.read() {
+        let fired = matches!(
+            ev.kind,
+            WeaponEventKind::Fired { .. } | WeaponEventKind::Swing { .. } | WeaponEventKind::Thrown
+        );
+        if !ends || ev.replay || !fired || protected.get(ev.owner).is_err() {
+            continue;
+        }
+        let owner = ev.owner;
+        commands.queue(move |w: &mut World| unprotect(w, owner));
+    }
+}
+
 /// End `e`'s protection now (a mode where firing ends it, a match reset).
 pub fn unprotect(world: &mut World, e: Entity) {
     let Some(p) = world.get::<CaProtected>(e).cloned() else { return };
@@ -291,7 +361,7 @@ pub fn request_respawn(world: &mut World, e: Entity) -> Result<(), String> {
     world.entity_mut(e).insert(CaAsked);
     let now = world.resource::<SimClock>().now;
     let wait = world.resource::<CaRuleSettings>().respawn_wait_server as f64;
-    if !mode.respawns {
+    if !mode.respawns || !(mode.hooks.may_respawn)(world, e) {
         warn!("illegal respawn request: {} doesn't respawn", mode.key);
         return Err("this mode doesn't respawn".into());
     }
@@ -324,7 +394,7 @@ pub(super) fn ask_for_respawns(world: &mut World) {
             Without<Npc>,
         )>()
         .iter(world)
-        .filter(|(_, d, t)| side(t.0).is_some() && now - d.since > wait + 1e-9)
+        .filter(|(_, d, t)| super::state::plays(t.0) && now - d.since > wait + 1e-9)
         .map(|(e, ..)| e)
         .collect();
     for e in due {

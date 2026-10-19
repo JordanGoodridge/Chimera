@@ -999,7 +999,7 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
     let mut enemies: Vec<(&Char, f32)> = ctx
         .chars
         .iter()
-        .filter(|c| c.alive && c.team != me.team && (c.team == 1 || c.team == 2))
+        .filter(|c| c.alive && c.team != me.team && crate::game::rules::state::plays(c.team))
         .map(|c| (c, u(me.pos.distance(c.pos))))
         .collect();
     enemies.sort_by(|a, b| a.1.total_cmp(&b.1));

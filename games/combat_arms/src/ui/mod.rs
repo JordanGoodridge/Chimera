@@ -24,8 +24,8 @@
 //! selection (`client::weapon_menu`, as CS:S's: `slot1`..`slot5`,
 //! `invnext` / `invprev`, here with no HUD row, so they switch at once;
 //! see `game::inventory`), as CS:S's `with_hud` does; `CaUiPlugin` adds
-//! the rest after the shell: the in-game menu, the scoreboard and the
-//! visuals.
+//! the rest after the shell: the in-game menu, the scoreboard, the
+//! visuals and `slot6` (key 6, the objective class: the mission bomb).
 //!
 //! `CaUi` is the UI's data: our font list (`data/ui/fonts.toml`), string
 //! table (`data/ui/strings.txt`) and stand-in textures.
@@ -67,12 +67,21 @@ pub struct CaUiPlugin;
 
 impl Plugin for CaUiPlugin {
     fn build(&self, app: &mut App) {
+        use crate::console::ConsoleAppExt;
         app.add_plugins((
             visuals::CaVisualsPlugin,
             effects::CaEffectsDrawPlugin,
             menu::CaMenuPlugin,
             scoreboard::CaScoreboardPlugin,
-        ));
+        ))
+        // Key 6, the objective class (inventory.md 2, 3: the mission
+        // bomb), through the shell's selection as slot 6.
+        .console_command("slot6", "The objective class (the mission bomb).", |w, _| {
+            if let Some(mut m) = w.get_resource_mut::<crate::client::weapon_menu::WeaponMenu>() {
+                m.pressed.push(5);
+            }
+            Ok(None)
+        });
     }
 }
 

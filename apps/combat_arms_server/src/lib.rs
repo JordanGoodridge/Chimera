@@ -15,7 +15,9 @@
 //!   Clients load the map from their own install by name (Combat Arms'
 //!   maps have no file hash: `game::world`, Q15), so no `net::maps::
 //!   MapFiles`: nothing to download.
-//! - Game modes: `ca_mode` (`TDM`, `TSV`, `none`), `ca_goal`, `ca_restart`
+//! - Game modes: `ca_mode` (a room key: `TDM`, `TSV`, `TMM`, `CTF`,
+//!   `FFA`, `LMS`, `BNT`, `QRT`, `SBT`, `HQM`, `SQM2`, `VTDM`, `VWRM`,
+//!   `HG`, `ESL`, or `none`), `ca_goal`, `ca_restart`
 //!   and the other `ca_*` settings (`combat_arms::game::rules`); TDM by
 //!   default (the rules' own default).
 //! - Bots: `MaxPlayer` (the quota), `BotLevel`, `ca_bot_add`,

@@ -49,10 +49,10 @@ use bevy::prelude::*;
 
 use super::{
     super::{grenades::SERVER_FRAME, inventory::Dropped},
-    CaRuleSettings, current_mode,
+    CaRuleSettings, RoundTime, Teams, current_mode, objectives,
     scoring::{CaDamageLog, sync_score},
     spawns::{self, CaHeld, CaSpawnCursors},
-    state::{CaMatch, CaStats, Phase, RoundResult, side},
+    state::{ALPHA, BRAVO, CaMatch, CaStats, FFA_FIRST, FFA_LAST, Phase, RoundResult, plays, side},
 };
 use crate::{
     core::{Connecting, Dead, FreezeTime, Health, Intent, MapLoads, Npc, SimClock, Spectating, Team},
@@ -76,7 +76,7 @@ pub fn players(world: &mut World) -> Vec<(Entity, u8)> {
             Without<Npc>,
         )>()
         .iter(world)
-        .filter(|(_, t, _)| side(t.0).is_some())
+        .filter(|(_, t, _)| plays(t.0))
         .map(|(e, t, o)| (o.map_or(u64::MAX, |o| o.0), e, t.0))
         .collect();
     all.sort();
@@ -108,6 +108,57 @@ pub fn alive(world: &mut World, team: u8) -> usize {
         .into_iter()
         .filter(|(e, t)| *t == team && living.contains(e))
         .count()
+}
+
+/// Every living player in the match (any team).
+pub fn alive_players(world: &mut World) -> Vec<(Entity, u8)> {
+    let living: Vec<Entity> = world
+        .query_filtered::<(Entity, &Health), (Without<Dead>, Without<CaHeld>)>()
+        .iter(world)
+        .filter(|(_, h)| h.current > 0.0)
+        .map(|(e, _)| e)
+        .collect();
+    players(world).into_iter().filter(|(e, _)| living.contains(e)).collect()
+}
+
+/// S1: `e`'s team as the mode makes teams: Alpha or Bravo (a player
+/// without one goes on the smaller team, Alpha on a tie); every player a
+/// team of their own in a free-for-all mode (the lowest free id from
+/// `FFA_FIRST`); Alpha for everyone at a round's setup in Spy Hunt and
+/// Quarantine (`reset`). Observers and players without a team are left
+/// alone.
+pub fn assign_team(world: &mut World, e: Entity, reset: bool) {
+    let Some(mode) = current_mode(world) else { return };
+    let Some(team) = world.get::<crate::core::Team>(e).map(|t| t.0) else { return };
+    if !plays(team) {
+        return;
+    }
+    let others: Vec<u8> = players(world).into_iter().filter(|(p, _)| *p != e).map(|(_, t)| t).collect();
+    let want = match mode.teams {
+        Teams::Two => {
+            if side(team).is_some() {
+                return;
+            }
+            let count = |t: u8| others.iter().filter(|o| **o == t).count();
+            if count(BRAVO) < count(ALPHA) { BRAVO } else { ALPHA }
+        }
+        Teams::AllAlpha => {
+            if !reset && side(team).is_some() {
+                return;
+            }
+            ALPHA
+        }
+        Teams::FreeForAll => {
+            if team >= FFA_FIRST && !others.contains(&team) {
+                return;
+            }
+            let Some(free) = (FFA_FIRST..=FFA_LAST).find(|t| !others.contains(t)) else { return };
+            free
+        }
+    };
+    if want != team {
+        world.entity_mut(e).insert(crate::core::Team(want));
+    }
 }
 
 /// The mission update, once per server frame (the server's, with a mode).
@@ -194,15 +245,23 @@ fn mission_start(world: &mut World, now: f64, first: bool) {
         m.round_deaths = [0; 2];
         m.winner = None;
         m.end_requested = false;
+        m.void = false;
         m.round_ends = None;
     }
     if first {
         reset_stats(world);
     }
-    // Everyone on a team respawned, held players with them.
+    world.resource_mut::<super::super::inventory::CaDeathDrops>().0 = mode.death_drops;
+    objectives::clear_players(world);
+    // Everyone on a team respawned, held players with them, on the team
+    // the mode gives.
+    for (e, _) in players(world) {
+        assign_team(world, e, true);
+    }
     for (e, _) in players(world) {
         spawns::respawn(world, e);
     }
+    (mode.hooks.setup)(world);
     let setup = mode.forced_setup.unwrap_or(settings.object_start) as f64;
     world.resource_mut::<CaMatch>().phase = Phase::Setup { until: now + setup };
     world.resource_mut::<FreezeTime>().0 = true;
@@ -210,8 +269,10 @@ fn mission_start(world: &mut World, now: f64, first: bool) {
 
 /// S3 step 4: live.
 fn go_live(world: &mut World, now: f64) {
+    let Some(mode) = current_mode(world) else { return };
     let settings = world.resource::<CaRuleSettings>().clone();
     let data = settings.mode_data();
+    let goal = settings.goal() as f32;
     world.resource_mut::<FreezeTime>().0 = false;
     let revive = settings.warmup_revive as f64;
     let mut m = world.resource_mut::<CaMatch>();
@@ -221,7 +282,11 @@ fn go_live(world: &mut World, now: f64) {
     let length = if m.warmup {
         data.training_time_limit
     } else {
-        data.time_limit
+        match mode.round_time {
+            RoundTime::Mission => data.time_limit,
+            RoundTime::MissionTimesGoal => data.time_limit.map(|t| t * goal),
+            RoundTime::GoalMinutes => Some(goal * 60.0),
+        }
     };
     m.round_ends = length.map(|l| now + l as f64);
     m.next_revive = now + revive;
@@ -230,11 +295,21 @@ fn go_live(world: &mut World, now: f64) {
 /// S3 step 5: round over.
 fn round_over(world: &mut World, now: f64) {
     let Some(mode) = current_mode(world) else { return };
-    let warmup = world.resource::<CaMatch>().warmup;
-    if warmup {
+    let (warmup, void) = {
+        let m = world.resource::<CaMatch>();
+        (m.warmup, m.void)
+    };
+    if warmup || void {
         world.resource_mut::<CaMatch>().winner = None;
     } else if world.resource::<CaMatch>().winner.is_none() {
         (mode.time_out)(world);
+    }
+    // A free-for-all round's winner is a player (its own team id).
+    if !warmup
+        && let Some(w) = world.resource::<CaMatch>().winner.filter(|w| side(*w).is_none())
+        && let Some((p, _)) = players(world).into_iter().find(|(_, t)| *t == w)
+    {
+        super::scoring::stats(world, p).round_wins += 1;
     }
     let object_end = world.resource::<CaRuleSettings>().object_end as f64;
     let mut m = world.resource_mut::<CaMatch>();
@@ -250,11 +325,13 @@ fn round_over(world: &mut World, now: f64) {
     m.results.push(result);
     m.phase = Phase::RoundOver { until: now + object_end };
     m.round_ends = None;
+    (mode.hooks.round_over)(world);
 }
 
 /// S3 step 6: round end, then the intermission.
 fn round_end(world: &mut World, now: f64) {
     let Some(mode) = current_mode(world) else { return };
+    (mode.hooks.round_end)(world);
     clean_up(world);
     let warmup = {
         let mut m = world.resource_mut::<CaMatch>();
@@ -377,9 +454,11 @@ pub fn enter_game(world: &mut World, e: Entity) {
     let settings = world.resource::<CaRuleSettings>().clone();
     let phase = world.resource::<CaMatch>().phase;
     let started = !matches!(phase, Phase::Waiting | Phase::Starting);
+    assign_team(world, e, false);
     let in_game = players(world).iter().filter(|(p, _)| *p != e).count() as u32;
     let hold = (started && settings.join_in_progress == 0)
-        || (!mode.respawns && phase == Phase::Live && in_game >= settings.late_join_wait);
+        || (!mode.respawns && phase == Phase::Live && in_game >= settings.late_join_wait)
+        || (!mode.respawns && phase == Phase::Live && (mode.hooks.holds_joiner)(world));
     if hold {
         spawns::hold(world, e);
     } else {
@@ -401,5 +480,6 @@ pub fn restart(world: &mut World) {
     *world.resource_mut::<CaMatch>() = CaMatch::default();
     *world.resource_mut::<CaSpawnCursors>() = CaSpawnCursors::default();
     world.resource_mut::<FreezeTime>().0 = false;
+    objectives::reset(world);
     reset_stats(world);
 }
