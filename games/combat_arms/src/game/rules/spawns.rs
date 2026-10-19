@@ -10,7 +10,9 @@
 //!   the first point no other player object stands near (`occupied`:
 //!   within twice the fallback hull's half-extents on every axis, strict),
 //!   at most once round the list; else the last tested. An empty team
-//!   list: the map's first point.
+//!   list: the map's own family's unlocked qualifying points as one list
+//!   (`world::map_family`: a Hunted map's `HungerGame` points under TDM),
+//!   else the map's first point.
 //! - The respawn (`respawn`, S5): the loadout rebuilt (`inventory::
 //!   respawn_inventory`), full health (`spawning::revive`, Chimera's) and
 //!   armour (`CaArmor`'s default), at the point facing its yaw; then a
@@ -153,7 +155,9 @@ fn shuffle_key(world: &World, index: usize) -> u64 {
 /// The list a player of `team` spawns from in the running mode (S4): its
 /// family's qualifying points (the map's start points, `CaMapObjects`),
 /// per team or one list, shuffled once a map load where the mode says;
-/// None when the list is empty (the map's first point is used). On a map
+/// when the mode's family has none for the team, the map's own family's
+/// (`world::map_family`); None when that is empty too (the map's first
+/// point is used). On a map
 /// without start point objects (the greybox, tests), Chimera's spawn
 /// points: per team, or all of them for a one-list mode. Also the cursor
 /// it uses (one-list modes share Alpha's).
@@ -169,12 +173,28 @@ pub fn spawn_list(world: &mut World, team: u8) -> (Vec<Transform>, usize) {
     } else {
         let family = spawns.family.unwrap_or(super::super::world::SPAWN_GAME_TYPE);
         let locked = spawns.locked_rounds && !warmup;
-        starts
+        let list: Vec<(usize, Transform)> = starts
             .iter()
             .enumerate()
             .filter(|(_, p)| p.qualifies(family, locked) && (spawns.one_list || p.team == Some(team)))
             .map(|(i, p)| (i, p.at))
-            .collect()
+            .collect();
+        if list.is_empty() {
+            // The map has none of the mode's: its own family's, as one
+            // list (`world::map_family`).
+            let points = starts.iter().map(|p| (p.family.as_str(), !p.locked, p.spawn == 1, p.team.is_some()));
+            match super::super::world::map_family(points) {
+                Some(own) => starts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.qualifies(own, false))
+                    .map(|(i, p)| (i, p.at))
+                    .collect(),
+                None => list,
+            }
+        } else {
+            list
+        }
     };
     if spawns.shuffled {
         list.sort_by_key(|(i, _)| shuffle_key(world, *i));
