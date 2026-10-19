@@ -1,0 +1,15 @@
+; Combat Arms' strings, ours (specs/combat_arms/ui_system.md R1's format:
+; key = "value"; a line without "=" is ignored). The ids are ours.
+[HUD]
+hud_hp = "HP"
+hud_ap = "AP"
+hud_sp = "SP"
+hud_set = "SET"
+hud_pickup = "Press [E] to pick up %s"
+[InGameMenu]
+igm_title = "MENU"
+igm_lobby = "Leave Game"
+igm_report = "Report User"
+igm_record = "Start Recording"
+igm_record_stop = "Stop Recording"
+igm_cancel = "Cancel"
