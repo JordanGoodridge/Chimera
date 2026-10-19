@@ -2750,6 +2750,7 @@ dependencies = [
  "lithtech_formats",
  "postcard",
  "serde",
+ "source_formats",
  "toml",
  "workspace-hack",
 ]

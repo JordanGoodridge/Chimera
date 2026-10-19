@@ -92,3 +92,20 @@ view_skins = ["", "guns_t_pv_mg/pv_m60.dtx"]
 # view_models.md, per-weapon placement: `Pos` (0.4, -0.6, 1.5).
 view_offset = [0.4, -0.6, 1.5]
 
+# effects_sounds.md, "How effects are described as data" and 11: the
+# ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
+# third-person muzzle group and the weapon's sounds (files inside the
+# install's archives; machine guns: MG01 and M4_HH_Muzz; FireSndRadius PLACEHOLDER 2200, the MK.48's).
+[hooks."combat_arms:effects"]
+ammo_kind = "bullet"
+impact = "BulletFmj"
+fire = "7.62mm"
+tracer = "MG01"
+hh_muzzle = "M4_HH_Muzz"
+fire_sound = "guns_snd_mg/m60/fire.wav"
+fire_radius = 2200
+dry_fire_sound = "guns_snd_mg/m60/dryfire.wav"
+reload_sounds = ["guns_snd_mg/m60/reload1.wav", "guns_snd_mg/m60/reload2.wav", "guns_snd_mg/m60/reload3.wav"]
+misc_sounds = ["guns_snd_mg/m60/reload4.wav"]
+select_sound = "guns_snd_mg/m60/select.wav"
+deselect_sound = "guns_snd_mg/m60/deselect.wav"

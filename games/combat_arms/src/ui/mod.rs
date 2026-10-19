@@ -15,7 +15,9 @@
 //!   timer (`hud::score`); `scoreboard`: the scoreboard (Tab, and a
 //!   round's result); `menu`: the in-game menu (Esc) in place of the
 //!   shell's default; `chat`: the match chat's queue (the model);
-//!   `visuals`: placeholder looks (box guns).
+//!   `visuals`: placeholder looks (box guns); `effects`: decals, tracers,
+//!   casings, the first-person muzzle flash and effect lights
+//!   (game::effects).
 //!
 //! `with_hud` puts Combat Arms' HUD among the shell's plugins (after its
 //! fallback HUD, `client::hud::HudPlugin`) and the shell's weapon
@@ -37,6 +39,7 @@
 pub mod chat;
 pub mod desk;
 pub mod draw;
+pub mod effects;
 pub mod hud;
 pub mod layout;
 pub mod menu;
@@ -52,6 +55,8 @@ use layout::{Ctx, FontList, Strings};
 /// shell's weapon selection where CS:S has its own (after the views).
 pub fn with_hud(shell: PluginGroupBuilder) -> PluginGroupBuilder {
     shell
+        // Combat Arms draws its own shot effects (`effects`).
+        .disable::<crate::client::effects::ShotEffectsPlugin>()
         .add_after::<crate::client::hud::HudPlugin>(hud::CaHudPlugin)
         .add_after::<crate::client::view::ViewPlugin>(crate::client::weapon_menu::WeaponMenuPlugin)
 }
@@ -62,7 +67,12 @@ pub struct CaUiPlugin;
 
 impl Plugin for CaUiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((visuals::CaVisualsPlugin, menu::CaMenuPlugin, scoreboard::CaScoreboardPlugin));
+        app.add_plugins((
+            visuals::CaVisualsPlugin,
+            effects::CaEffectsDrawPlugin,
+            menu::CaMenuPlugin,
+            scoreboard::CaScoreboardPlugin,
+        ));
     }
 }
 

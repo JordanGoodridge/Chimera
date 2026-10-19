@@ -97,3 +97,18 @@ view_skins = ["", "guns_t_pv_sg/pv_r870.dtx"]
 # view_models.md, per-weapon placement: `Pos` (0.3, -0.7, 1.0).
 view_offset = [0.3, -0.7, 1.0]
 
+# effects_sounds.md, "How effects are described as data" and 11: the
+# ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
+# third-person muzzle group and the weapon's sounds (files inside the
+# install's archives; shotguns have no tracer; FireSndRadius PLACEHOLDER 1600, the SPAS-12's).
+[hooks."combat_arms:effects"]
+ammo_kind = "bullet"
+impact = "BulletFmj"
+fire = "12Gauge_G"
+tracer = ""
+hh_muzzle = "WEAPON_HH"
+fire_sound = "guns_snd_sg/r870/fire.wav"
+fire_radius = 1600
+dry_fire_sound = "guns_snd_sg/r870/dryfire.wav"
+reload_sounds = ["guns_snd_sg/r870/reload1.wav", "guns_snd_sg/r870/reload2.wav", "guns_snd_sg/r870/reload3.wav"]
+select_sound = "guns_snd_sg/r870/select.wav"

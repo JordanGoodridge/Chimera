@@ -34,7 +34,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; gr
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
-                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation)
+                      lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
 
 - The loader layers: `source/` (Source's formats and map logic) and
@@ -494,7 +494,9 @@ that the paths exist).
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
 - `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
-- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash, shells (games)
+- `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash timer, flash and breach points (games)
+- `games/combat_arms/src/game/effects/`: Combat Arms' effects and sounds: shots, impacts, decals, tracers, casings, footsteps, the effect file's groups (games)
+- `games/combat_arms/data/effects.toml`: Combat Arms' effect and sound tables: ImpactFX, FireFX, TracerFX, sounds, surfaces (games)
 - `games/combat_arms/src/game/view_model/`: the view model's animation state machine, sway, placement maths and hand model (games)
 - `games/combat_arms/src/game/weapons.rs`: Combat Arms' firing: hit spheres, damage, armour, spread and recoil as hooks (games)
 - `games/combat_arms/src/game/weapons/zoom.rs`: Combat Arms' zoom and scope: levels, FOV transitions, bolt zoom-out, sway (games)
@@ -510,6 +512,7 @@ that the paths exist).
 - `games/combat_arms/data/modes.toml`: Combat Arms' mode settings: room and server-file values, shared constants, each mode's goal and mission data (games)
 - `games/combat_arms/src/ui/hud/score.rs`: Combat Arms' score panel and round timer from the match (games_ui)
 - `games/combat_arms/src/ui/scoreboard.rs`: Combat Arms' scoreboard (Tab, and a round's result) (games_ui)
+- `games/combat_arms/src/ui/effects.rs`: drawing Combat Arms' decals, tracers, casings, first-person flash and effect lights (games_ui)
 - `games/combat_arms/src/ui/`: Combat Arms' HUD and placeholder looks on the shell (feature `ui`) (games_ui)
 - `games/combat_arms/src/game/grenades.rs`: Combat Arms' grenades: throw, flight, blast, flash, smoke, fire on 20 Hz server frames (games)
 - `games/combat_arms/data/weapons/`: Combat Arms' weapons as data: the specs' M4A1, M9 knife, grenades and one weapon per class (games)
@@ -546,6 +549,7 @@ that the paths exist).
 - `lithtech/formats/src/world.rs`: world files (`.dat`, version 85): BSPs, objects, light grid, blockers, render data, lightmaps
 - `lithtech/formats/src/dtx.rs`: textures (`.dtx`, version -5): header, mip layout, BGRA and DXT1/3/5 decoding
 - `lithtech/formats/src/ltb.rs`: models (`.ltb`, versions 23/25): pieces, LODs, mesh kinds, node tree, weight sets, children, animations, sockets, bindings
+- `lithtech/formats/src/fxf.rs`: the client effect file (`CLIENTFX.FXF`, text form): effect groups, timed keys, typed properties
 - `lithtech/formats/src/anim.rs`: animation lists, sampling, the millisecond tracker, key strings, layering, node and skinning matrices
 
 ### Apps, binaries and the test harness
