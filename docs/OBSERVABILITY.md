@@ -75,15 +75,21 @@ in the lowest crate whose public API it needs:
   WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it; `heavy::movement_volumes`: the volume census of
   the 105 maps and players in their sea, ladders, gravity volumes, safety
-  nets and jump pads); the death camera (`death_killcam.rs`: the
+  nets and jump pads); gear and perks (`gear_perks.rs`: the spec's 56
+  cases on the movement tests' player and the greybox, the console's
+  loadout, a loadout over `NetSim`); the death camera (`death_killcam.rs`: the
   pull-back and orbit maths, the phase machine and the respawn countdown
-  headless, and `CaDeathCam` on players in a match); its front end's (the
+  headless, and `CaDeathCam` on players in a match); radio and chat
+  (`radio_chat.rs`: a room of players through each side's own functions;
+  `radio_chat_net.rs`: a server and two clients; `heavy::radio`: the
+  install's radio file); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`; the kill
   feed, score panel, scoreboard and loading screen bound by name,
   `bound.rs`; the radar and the full map's state, `ui::hud::radar` and
   `full_map`, `radar.rs`; the death screen bound by role and the dead player's name
-  tags, `death_screen.rs`; the options screen, its key capture and what it
+  tags, `death_screen.rs`; the chat panel, input and radio window,
+  `radio_chat.rs`; the options screen, its key capture and what it
   hands the shell, with the HUD on/off key and the radar zoom in the
   profile, `options.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
   install's own layouts and string tables through the UI system's
@@ -1262,7 +1268,19 @@ for the bot, `setpos`/`setang` beside it (Source-style inches, z up)
 and `screenshot <file.png>`. Your own look: `ca_model`, `ca_face`,
 `ca_head`, `ca_camo`, `ca_goggle`, `ca_backpack` (a client sends it to the
 server, which shows it to every player; bots draw theirs from data/characters.toml's
-`[loadouts]`).
+`[loadouts]`); these choose the gear too (the body is the vest, the head
+piece the helmet, the goggle and backpack as such: armour, speed and
+stamina from data/gear.toml). Your loadout (gear_perks.md; it goes to the
+server, which checks it and shows it to every player): `ca_perks "16012
+16001"` (perk items; they must fit 3 slots, 4 with `ca_skill_extender 1`),
+`ca_head_mods`, `ca_face_mods`, `ca_vest_mods` (up to 3 gear mod ids each),
+`ca_items` (equipped item numbers for set tiers), `ca_fast_respawns`,
+`ca_fast_respawns_max`, `ca_fast_pass` (F7's allowance), `ca_infected_item`
+(Fighting Chance in Quarantine), `ca_perks_enabled` (the room's Perks
+option) and `ca_gear_byte_ids 1` (the reference's byte-wide gear ids: quirk
+1). `ca_perk <1-4>` starts the active perk in that position. Live: `world.query`
+`CaArmor` (points and pieces), `CaCharacter` (the figure's and worn terms),
+`CaPerks`, `CaPerkEffects`, `CaLoadout` on a player.
 When a spot hurts or kills (a playtest's
 `setpos` line: the feet, in inches as CS:S's, not Combat Arms units),
 `ca_volumes_here [radius u]` lists the map's volumes at the player's

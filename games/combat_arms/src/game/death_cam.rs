@@ -60,8 +60,9 @@
 //!   one isn't chosen), the user type and the map (those conditions
 //!   pass). The guide file is the attributes archive's `guide.txt`.
 //! - Relentless (`CaRelentless`) and the fast-respawn counts and premium
-//!   pass (`CaFastRespawn`) are components nothing grants yet (perks and
-//!   the lobby aren't built); the fast respawn item isn't there.
+//!   pass (`CaFastRespawn`) are granted by `perks::wire_respawn` from the
+//!   player's loadout (the console's `ca_perks`, `ca_fast_respawns`; no
+//!   lobby); the fast respawn item isn't there.
 //! - Clients get a player's `CaKillMe`, `CaSlot` and `CaFastRespawn` as
 //!   every replicated component (not only the owner's).
 //! - Free-camera speed: velocity from the acceleration over the frame's

@@ -527,7 +527,9 @@ fn the_table_matches_the_default_profile() {
     load(&mut s, None);
     let binds = &s.app.world().resource::<Console>().binds;
     for (k, cmd) in combat_arms::game::DEFAULT_BINDS {
-        if *k == "tab" {
+        // Keys the spec doesn't list as actions: the scoreboard, clan chat
+        // and voice output (Esc, Pause and F8 can't be captured).
+        if ["tab", "f4", "f8"].contains(k) {
             continue;
         }
         assert!(binds.get(*k).is_some_and(|l| l.split(';').any(|p| p.trim() == *cmd)), "{k} {cmd}: {:?}", binds.get(*k));

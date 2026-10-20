@@ -7,9 +7,8 @@
 //! the template's wrapped text measured at the HUD's scale, truncated to
 //! ref px, so the capacity depends on the resolution.
 //!
-//! Known shortcuts: the chat drawn in a match is still the shell's
-//! (`client::chat`); this queue is the spec's model, tested
-//! (tests/ui/ui_system.rs), for when Combat Arms draws its own chat panel.
+//! The match's chat panel (`talk`) shows the lines `game::chat` keeps
+//! through this queue (radio_chat.md).
 
 use std::collections::VecDeque;
 
@@ -31,26 +30,23 @@ pub const SYSTEM_LIVES: [f64; 2] = [5000.0, 15000.0];
 /// The chat input's limit, characters.
 pub const INPUT_MAX: usize = 119;
 
-/// Message colours (the HUD layout attributes').
+/// Message colours (the HUD layout attributes'), `game::chat`'s.
 pub mod colours {
-    use super::super::layout::Rgba;
-    pub const ALL_TEAMMATE: Rgba = [63, 191, 87, 255];
-    pub const ALL_ENEMY: Rgba = [230, 87, 87, 255];
-    pub const TEAM: Rgba = [196, 196, 196, 255];
-    pub const OWN_TEAM: Rgba = [255, 255, 255, 255];
-    pub const RADIO: Rgba = [107, 142, 242, 255];
-    pub const CLAN: Rgba = [35, 206, 255, 255];
-    pub const GM: Rgba = [255, 240, 0, 255];
+    pub use crate::game::chat::show::colours::*;
 }
 
 /// A queued message.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Message {
     pub text: String,
     pub born: f64,
     pub life: f64,
     /// Ref px.
     pub height: i32,
+    /// The text's colour, and the sender's name (byte range of the text)
+    /// with its own.
+    pub colour: super::layout::Rgba,
+    pub name: Option<(usize, usize, super::layout::Rgba)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

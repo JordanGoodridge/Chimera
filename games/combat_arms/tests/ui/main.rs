@@ -17,6 +17,7 @@ mod death_screen;
 mod hud;
 mod net_hud;
 mod options;
+mod radio_chat;
 mod radar;
 mod score;
 mod ui_system;

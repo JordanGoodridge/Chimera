@@ -48,11 +48,17 @@
 //!   scanner items, what the server sends at a round start;
 //!   radar_minimap.md);
 //! - `volumes`: the maps' volumes (water, kill and damage volumes);
+//! - `gear`: what a player's vest, helmet, goggles, backpack, gear mods and
+//!   set items change, and the loadout that brings them (gear_perks.md);
+//! - `perks`: the perks a loadout switches on and what each changes;
 //! - `objects`: the maps' world objects: doors, moving and spinning world
 //!   models, keyframers, breakables, triggers and the command strings
-//!   they run (world_objects.md).
+//!   they run (world_objects.md);
 //! - `death_cam`: the death camera, the kill-cam screen's values and the
 //!   respawn countdown, the client's own (death_killcam.md).
+//! - `chat`: radio and chat: the radio menus and calls, chat channels,
+//!   text commands, filter, muting, spam limits and voice channels
+//!   (radio_chat.md).
 //! - `options`: the options' settings, the player profile, key binding,
 //!   the mouse, sliders, gamma and quality presets, sound levels and the
 //!   Other tab's social options (options.md).
@@ -63,9 +69,11 @@
 pub mod attachments;
 pub mod bots;
 pub mod characters;
+pub mod chat;
 pub mod data;
 pub mod death_cam;
 pub mod effects;
+pub mod gear;
 pub mod grenades;
 pub mod hud;
 pub mod inventory;
@@ -73,6 +81,7 @@ pub mod model;
 pub mod mount;
 pub mod movement;
 pub mod net;
+pub mod perks;
 pub mod objects;
 pub mod options;
 pub mod props;
@@ -151,6 +160,18 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("6", "slot6"),
     // The scoreboard while held (ui_system.md I2; the key is ours).
     ("tab", "+showscores"),
+    // Radio and chat (radio_chat.md Open question 5: from a development
+    // seed profile): report, answer and request menus; all, team and clan
+    // chat; Enter opens the input; push-to-talk and voice output.
+    ("b", "radio_report"),
+    ("v", "radio_answer"),
+    ("n", "radio_request"),
+    ("enter", "chat_open"),
+    ("f2", "chat_all"),
+    ("f3", "chat_team"),
+    ("f4", "chat_clan"),
+    ("t", "+voicechat"),
+    ("f8", "voice_toggle"),
     // The radar's zoom (`=` expands, `-` decreases) and the full-screen
     // map while held (radar_minimap.md R3, F1; the engine's defaults).
     ("=", "+incradarscale"),
@@ -207,8 +228,11 @@ impl PluginGroup for CombatArmsPlugins {
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(death_cam::CaDeathCamPlugin)
+            .add(chat::CaChatPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
+            .add(gear::CaGearPlugin)
+            .add(perks::CaPerksPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
     }

@@ -96,8 +96,8 @@
 //!   waits for the first tick at or after its time (a held throw play lasts
 //!   5 ticks, 75 ms); the projectile appears a tick after the release
 //!   (`Throwable` throws strictly after its time). A fire press during the
-//!   reload is not queued: fire must be held when it ends. No throw perk
-//!   (Q13).
+//!   reload is not queued: fire must be held when it ends. The throw
+//!   perk is Pitcher's (`perks::throw_force`).
 //! - The hit-box object's box is the hit spheres' bounds (its own dims
 //!   aren't in a spec). A character touch snaps the grenade to where the
 //!   step enters a hit sphere (the "short trace"), else leaves it at the
@@ -880,7 +880,9 @@ pub fn launch(world: &mut World, l: Launch) {
     let aim = Quat::from_euler(EulerRot::YXZ, l.yaw, l.pitch, 0.0);
     let dir = square_dir(aim, n / 1000.0, u1, u2);
     let at = fire_offset(world, l.thrower, l.eye, dir, p.fire_offset * data.unit);
-    spawn_grenade(world, l.weapon, Some(l.thrower), at, dir * p.speed * data.unit);
+    // Pitcher's force (gear_perks.md 14; 1 without it).
+    let force = super::perks::throw_force(world, l.thrower);
+    spawn_grenade(world, l.weapon, Some(l.thrower), at, dir * p.speed * data.unit * force);
 }
 
 /// Where the server starts a throw (Corrections 1): `eye` moved `offset`

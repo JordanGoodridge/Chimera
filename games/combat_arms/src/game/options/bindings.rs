@@ -18,7 +18,7 @@
 //!   also run `choose_1`..`choose_6`.
 //!
 //! Known shortcuts: the commands of actions whose features aren't built
-//! (radio, voice, recording, co-op, quests, the help popup's draw) are
+//! (recording, the fire mode, co-op, quests, the super-soldier item, night vision, the help popup's draw) are
 //! bound all the same; the console prints "Unknown command" for the ones
 //! nothing registers (`COMMANDS_UNBUILT`); the key a bind is "already
 //! taken" by (K3's remappable rule) is a console bind that isn't one of
@@ -100,11 +100,11 @@ pub const ACTIONS: &[Action] = &[
     a("SupportItem", "MiscWeapon", "slot4", NoFallback),
     a("SpecialItem", "SpecialWeapon", "slot5", Always("##6")),
     a("MissionItem", "ObjectiveWeapon", "slot6", NoFallback),
-    a("Chatting", "SendMessage", "messagemode", NoFallback),
-    a("SocialMsg", "RadioRequest", "radiorequest", NoFallback),
-    a("TalkInGamePlay", "VoiceChatToggle", "voicechattoggle", NoFallback),
-    a("TacticalMsg", "RadioAnswer", "radioanswer", NoFallback),
-    a("ReportMsg", "RadioReport", "radioreport", NoFallback),
+    a("Chatting", "SendMessage", "chat_open", NoFallback),
+    a("SocialMsg", "RadioRequest", "radio_request", NoFallback),
+    a("TalkInGamePlay", "VoiceChatToggle", "+voicechat", NoFallback),
+    a("TacticalMsg", "RadioAnswer", "radio_answer", NoFallback),
+    a("ReportMsg", "RadioReport", "radio_report", NoFallback),
     a("HUDOnOff", "HUDOnOff", "hudonoff", IfFree("##201")),
     a("VideoCapture", "VideoCapture", "record", IfFree("##209")),
     a("Help", "HelpScreen", "helpscreen", NoFallback),
@@ -117,18 +117,15 @@ pub const ACTIONS: &[Action] = &[
     a("QuestState", "QuestState", "queststate", IfFree("##36")),
     hidden("NightVision", "nightvision", NoFallback),
     hidden("Duck", "+duck", NoFallback),
-    hidden("TeamChat", "messagemode2", Always("##211")),
-    hidden("BroadCastChat", "messagemode", NoFallback),
+    hidden("TeamChat", "chat_team", Always("##211")),
+    hidden("BroadCastChat", "chat_all", NoFallback),
 ];
 
 /// Commands in `ACTIONS` that nothing registers yet (their features
 /// aren't built): the console reports them unknown when pressed.
 pub const COMMANDS_UNBUILT: &[&str] = &[
     "firemode",
-    "radiorequest",
-    "voicechattoggle",
-    "radioanswer",
-    "radioreport",
+    "record",
     "usemutationitem",
     "commandnpcshop",
     "commandnpcorder",
