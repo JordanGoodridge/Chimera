@@ -64,7 +64,7 @@ fn tdm_panel_counts_kills_without_a_timer() {
     let hud = score_hud(&sim);
     let panel = hud.panel.expect("a panel in TDM");
     assert_eq!(panel.mode_name, "Elimination");
-    assert_eq!(panel.goal, "100 kills");
+    assert_eq!(panel.goal, "100 Kills");
     assert_eq!((panel.rows[0].score.as_str(), panel.rows[1].score.as_str()), ("1", "0"));
     assert_eq!(panel.rows[0].colour, SCORE_ALPHA, "our team highlighted");
     assert_eq!(panel.rows[1].colour, SCORE_PLAIN);

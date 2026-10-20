@@ -85,6 +85,7 @@ pub mod free_for_all;
 pub mod go4ca;
 pub mod hunted;
 pub mod last_man;
+pub mod mutation;
 pub mod objectives;
 pub mod objects;
 pub mod quarantine;
@@ -230,6 +231,8 @@ pub enum ScoreOrder {
     MissionPoints,
     /// Mission points only.
     MissionOnly,
+    /// Mission points, time hunted, kills (Hunted).
+    Hunted,
 }
 
 /// A mode's hooks on the shared rules (`NO_HOOKS` do nothing).
@@ -528,6 +531,20 @@ fn mode_update(world: &mut World) {
 /// Combat Arms' rule modules and the shared rules' systems.
 pub struct CaRulesPlugin;
 
+/// Whom the dead may watch (M2, Open question 35): in the team round
+/// modes their living teammates, then anyone once none is left
+/// (`client::spectate`'s force 2); in the free-for-all modes (Last Man
+/// Standing, Hunted) anyone.
+fn spectator_rules(settings: Res<CaRuleSettings>, mut rules: ResMut<crate::core::SpectatorRules>) {
+    let force = match mode_by_key(&settings.mode).map(|m| m.teams) {
+        Some(Teams::Two) => 2,
+        _ => 0,
+    };
+    if rules.force_camera != force {
+        rules.force_camera = force;
+    }
+}
+
 impl Plugin for CaRulesPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<RuleModules>() {
@@ -551,11 +568,13 @@ impl Plugin for CaRulesPlugin {
             .init_resource::<ctf::CaFlagCarriers>()
             .init_resource::<bombing_run::CaCarrier>()
             .init_resource::<quarantine::CaQuarantine>()
+            .init_resource::<super::missions::CaMission>()
+            .init_resource::<crate::core::SpectatorRules>()
             .insert_resource(crate::core::NewGame(flow::new_game))
             .add_observer(on_leave)
             .add_observer(flow::number_players)
             .add_systems(FixedUpdate, objects::read_map_objects.before(SimSet::Rules))
-            .add_systems(Update, ctf::show_flags)
+            .add_systems(Update, (ctf::show_flags, spectator_rules))
             .add_systems(
                 FixedUpdate,
                 (

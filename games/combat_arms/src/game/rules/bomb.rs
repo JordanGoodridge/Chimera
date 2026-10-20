@@ -2,13 +2,16 @@
 //! defusing and the detonation, shared by Search & Destroy and Bombing
 //! Run, on the map's bomb sites (`objects::BombZone`).
 //!
-//! - Plant: a player holding the bomb (`objectives::BOMB`, in hand) and
-//!   fire, inside a site's box widened by `plant_margin` (50 u) on each
-//!   axis, of a site its own team doesn't defend (`DefusableTeam` is the
-//!   other team), while the round counts and is undecided and no bomb was
-//!   planted this round, fills the plant gauge (`bomb_plant`, 4 s;
-//!   `objectives::CaAction`); letting go of fire, leaving the box or
-//!   putting the bomb away empties it. When it fills: the bomb is planted
+//! - Plant (Open question 4, answered): a player holding the bomb
+//!   (`objectives::BOMB`, in hand) and fire, inside a site's box widened
+//!   by `plant_margin` (50 u) on each axis, of a site its own team doesn't
+//!   defend (`DefusableTeam` is the other team), while the round counts
+//!   and is undecided and no bomb was planted this round, plays the bomb's
+//!   fire animation up to its fire key (`bomb_plant`, 3.904 s of XK-2's
+//!   `fire_0`; `objectives::CaAction`, the HUD's 4 s gauge) with its
+//!   movement locked (`flow::hold_frozen`: turning still works); letting
+//!   go of fire, leaving the box or putting the bomb away cancels it and
+//!   keeps nothing. At the key: the bomb is planted
 //!   where the planter stands, its fuse the site's `DetonateTime` (40 s),
 //!   the round timer gets the fuse added to what is left, the planter's
 //!   bomb is gone, its plants +1. Only one bomb a round.
@@ -17,14 +20,20 @@
 //!   (the site's `DefuseTime`, 7 s); letting go cancels it (progress
 //!   lost). When it fills while the round counts and is undecided: the
 //!   defenders win the round, the defuser's defuses +1, the bomb is gone.
-//! - Detonation: at the fuse's end, while the round counts and is
-//!   undecided, the planting team wins and the planter's detonations +1;
-//!   the bomb is gone either way.
+//! - Detonation (Open question 17, answered): at the fuse's end, while the
+//!   round counts and is undecided, the planting team wins and the
+//!   planter's detonations +1; the bomb is gone either way. Nobody is hurt
+//!   (S15: the stock sites' commands only win the round and play the
+//!   explosion show): `CaObjectives::detonation` says where and when, and
+//!   every machine plays the show's effects (`effects::bomb_show`). A
+//!   partial defuse keeps nothing (every attempt the full `DefuseTime`).
 //!
-//! Known shortcuts: the detonation deals no damage and shows no blast;
-//! the sites' `PlantedCommand` isn't run (the other site closes by the
-//! one-bomb rule); a plant needn't stand still (Open question 4); a
-//! partial defuse keeps nothing.
+//! Known shortcuts: the sites' `PlantedCommand`, `DetonatedCommand` and
+//! the other command strings aren't run (no map commands yet: the other
+//! site closes by the one-bomb rule, the show is ours from S15's
+//! timings); the map camera (`Camera0`) doesn't take the views during
+//! the show; the defuse is the use key inside the site's box (no look or
+//! use-range test).
 
 use bevy::prelude::*;
 
@@ -111,7 +120,11 @@ pub fn update(world: &mut World, family: &str) {
     for p in &players {
         let on = z.can_defuse && p.team == z.defusers && p.intent.use_key && z.area.contains(p.at, 0.0);
         if objectives::hold_action(world, p.e, ActionKind::Defuse, length, on) {
-            world.resource_mut::<CaObjectives>().planted = None;
+            {
+                let mut o = world.resource_mut::<CaObjectives>();
+                o.planted = None;
+                o.defused = Some(bomb.at);
+            }
             if open(world) {
                 stats(world, p.e).defuses += 1;
                 world.resource_mut::<CaMatch>().win(z.defusers);
@@ -122,7 +135,11 @@ pub fn update(world: &mut World, family: &str) {
     }
     // The fuse.
     if now + 1e-9 >= bomb.detonates {
-        world.resource_mut::<CaObjectives>().planted = None;
+        {
+            let mut o = world.resource_mut::<CaObjectives>();
+            o.planted = None;
+            o.detonation = Some((z.area.centre, now));
+        }
         if open(world) {
             if let Some(planter) = world.resource::<CaPlanter>().0
                 && world.get_entity(planter).is_ok()
@@ -150,5 +167,7 @@ pub fn remove_all(world: &mut World) {
     let mut o = world.resource_mut::<CaObjectives>();
     o.planted = None;
     o.loose_bomb = None;
+    o.detonation = None;
+    o.defused = None;
     world.resource_mut::<CaPlanter>().0 = None;
 }

@@ -20,7 +20,8 @@
 //!   has no attacker, or a telefrag's crush) sends it home at once; a
 //!   carrier who leaves drops it where they last were.
 //! - Capture: a carrier of the enemy flag touching their own team's flag
-//!   zone while their own flag is home, in the live phase: team captures
+//!   zone while their own flag is home, in any phase but the warm-up (a
+//!   capture in the round-over hold still counts, Quirk 13): team captures
 //!   (the team counter, `CaMatch::score`) +1, player captures +1, the
 //!   carried flag home. The capture that brings a team to G wins.
 //! - Deaths (S7's CTF column): enemy kill, killer kills +1, victim deaths
@@ -37,10 +38,13 @@
 //!   only in capture the flag, at home or where dropped, hidden while
 //!   carried (`show_flags`, every machine).
 //!
-//! Known shortcuts: a carried flag isn't drawn on the carrier's back (no
-//! flag socket model is placed); taking and returning work in every phase
-//! (only a capture is tied to the live phase); no assists (the mode isn't
-//! in S7's assist list); no late-join closing.
+//! Taking and returning work in every phase; returns, like captures,
+//! count except in the warm-up (Open question 34, answered). No assists
+//! (S7's list hasn't the mode).
+//!
+//! Known shortcuts: a carried flag isn't drawn on the carrier's back (the
+//! attachments file's `Flag#` models on `1W_N` aren't loaded); no
+//! late-join closing.
 
 use bevy::prelude::*;
 
@@ -49,7 +53,7 @@ use super::{
     objectives::{self, CaCarry, CaObjectives, Flag, FlagAt},
     objects::CaMapObjects,
     scoring::{personal, stats},
-    state::{CaMatch, Death, DeathKind, enemy, side},
+    state::{CaMatch, Death, DeathKind, Phase, enemy, side},
 };
 use crate::core::{DamageKind, Died, SimClock};
 
@@ -228,14 +232,24 @@ fn update(world: &mut World) {
             }
             if f.team == p.team && matches!(f.at, FlagAt::Dropped { .. }) {
                 send_home(world, f.team);
-                if let Some(i) = side(p.team) {
-                    world.resource_mut::<CaMatch>().returns[i] += 1;
+                if credits(world) {
+                    if let Some(i) = side(p.team) {
+                        world.resource_mut::<CaMatch>().returns[i] += 1;
+                    }
+                    stats(world, p.e).returns += 1;
                 }
-                stats(world, p.e).returns += 1;
             }
         }
         capture(world, p.e, p.team, p.at);
     }
+}
+
+/// Captures and returns count in every phase of the match but the
+/// warm-up (Open question 34, Quirk 13: a capture in the round-over hold
+/// still scores).
+fn credits(world: &World) -> bool {
+    let m = world.resource::<CaMatch>();
+    !m.warmup && !matches!(m.phase, Phase::Waiting | Phase::Starting | Phase::MatchOver)
 }
 
 /// `e` (on `team`) takes `flag`'s flag.
@@ -258,7 +272,7 @@ fn take(world: &mut World, e: Entity, _team: u8, flag: u8, at: Vec3) {
 fn capture(world: &mut World, e: Entity, team: u8, at: Vec3) {
     let c = objectives::carry(world, e);
     let Some(flag) = c.flag else { return };
-    if flag == team || !world.resource::<CaMatch>().counting() {
+    if flag == team || !credits(world) {
         return;
     }
     let own_home = world

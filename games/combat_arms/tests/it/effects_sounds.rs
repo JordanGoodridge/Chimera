@@ -410,7 +410,7 @@ fn t23_silencer_flash() {
     let c = mods(&["Silencer_C_AR"], 2000, 1400);
     let a = mods(&["Silencer_A_AR"], 2000, 1400);
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&c)), "Silenced01_HH_Muzz", "a group the file lacks: nothing");
-    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", Some(&c)), "Silenced01_PV_Muzz");
+    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", &[], Some(&c)), "Silenced01_PV_Muzz");
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&a)), "WEAPON_HH");
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&mods(&["Silencer_A_AR_Red"], 2000, 1400))), "Silenced01_HH_Muzz");
     for m in [&c, &a] {
@@ -425,7 +425,7 @@ fn t23_silencer_flash() {
 fn t24_own_muzzle() {
     let params: combat_arms::game::view_model::CaViewParams =
         weapon_set().get("combat_arms:m4a1").unwrap().hook(combat_arms::game::view_model::VIEW).unwrap();
-    assert_eq!(effects::pv_muzzle(t(), &params.muzzle_fx, None), "AK47_pv_muzz");
+    assert_eq!(effects::pv_muzzle(t(), &params.muzzle_fx, &[], None), "AK47_pv_muzz");
     assert_eq!(rules::FLASH_TIME, 0.05);
     assert_eq!(t().fire(&wfx("combat_arms:m4a1").fire).unwrap().fx, "test", "the smoke puff's group");
 }
@@ -1073,4 +1073,17 @@ fn grenade_bounce_volume() {
     assert_eq!(effects::bounce_volume(true, 1.0), 50.0, "half in water");
     assert_eq!(effects::bounce_volume(true, 0.5), 25.0);
     assert_eq!(effects::bounce_volume(false, 3.0), 100.0);
+}
+
+/// view_models.md case 43: a muzzle part with `FlashHiderLevel` 2 on a
+/// weapon with `PVFlashHiderFXName2` = G takes G; without that key no
+/// first-person flash at all.
+#[test]
+fn view_models_43_flash_hider() {
+    let mut c = mods(&["Silencer_C_AR"], 2000, 1400);
+    let slot = c.parts.iter().position(Option::is_some).unwrap();
+    c.parts[slot].as_mut().unwrap().record.flash_hider_level = 2;
+    let hider = vec![String::new(), String::new(), "G".to_string()];
+    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", &hider, Some(&c)), "G");
+    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", &[], Some(&c)), "", "no flash");
 }

@@ -28,7 +28,8 @@
 //! [4\|5\|6]` cycles first person, chase and free look; attack/attack2 /
 //! `spec_next`/`spec_prev` the target; a dead target lingers
 //! `TARGET_DEATH_HOLD` (3 s) then the next; back to the eye on living again),
-//! `mp_forcecamera` (`ForceCamera`: 1 only teammates, none once all are dead),
+//! `mp_forcecamera` (`ForceCamera`: 1 only teammates, none once all are dead;
+//! 2, a game's own: teammates, anyone once all are dead),
 //! `SpecView` (the camera pose `follow_eye` uses; the first-person target,
 //! whose body is hidden, whose zoom the camera takes and whose view model the
 //! anchor draws through `map::ViewModelSource`), the spectator bars (the
@@ -275,13 +276,19 @@ impl FreezeCamSettings {
 /// The candidates you may watch: everyone living, or with `force` 1 (and
 /// a team) only your living teammates, none once they are all dead (CS:S
 /// put its dead on no one rather than an enemy: specs/cs_source/
-/// spectating.md).
+/// spectating.md); with `force` 2 your living teammates, everyone once
+/// they are all dead (Combat Arms' rounds: specs/combat_arms/
+/// game_modes.md M2).
 pub fn allowed(living: &[Candidate], team: Option<Team>, force: u8) -> Vec<Entity> {
-    living
+    let mates: Vec<Entity> = living
         .iter()
         .filter(|c| force == 0 || team.is_none() || c.team == team)
         .map(|c| c.entity)
-        .collect()
+        .collect();
+    if force == 2 && mates.is_empty() {
+        return living.iter().map(|c| c.entity).collect();
+    }
+    mates
 }
 
 /// The target `step` places from `current` in `allowed` (wrapping); from
@@ -1020,6 +1027,16 @@ mod tests {
         // The spectator team (no team): anyone.
         assert_eq!(allowed(&living, None, 1), vec![e(1), e(2), e(3)]);
         assert!(allowed(&[], Some(Team(2)), 1).is_empty());
+    }
+
+    /// Force 2 (Combat Arms' rounds): your teammates while any lives, then
+    /// anyone.
+    #[test]
+    fn force_two_moves_on_to_enemies_when_your_team_is_dead() {
+        let living = [cand(1, 1, 1.0), cand(2, 2, 5.0), cand(3, 2, 9.0)];
+        assert_eq!(allowed(&living, Some(Team(2)), 2), vec![e(2), e(3)]);
+        assert_eq!(allowed(&living[..1], Some(Team(2)), 2), vec![e(1)]);
+        assert!(allowed(&[], Some(Team(2)), 2).is_empty());
     }
 
     #[test]

@@ -4,22 +4,27 @@
 //! sites; rounds without respawn after a warm-up; G round wins take the
 //! match.
 //!
-//! - Bombs: at each real round's setup every living JSF player gets the
-//!   mission bomb (`objectives::BOMB`, class 6; once its loadout is
-//!   there); never dropped on death; leftover bombs go at the round's end.
-//!   No bombs in the warm-up (S9).
+//! - Bombs: at each real round's setup every living team-1 player gets
+//!   the mission's objective weapons (`[Object0]` `JSFWeapon` and
+//!   `CreedWeapon`, both to team 1: missions.md Quirk 3; `XK-2`, the
+//!   mission bomb `objectives::BOMB`, class 6), once its loadout is there
+//!   and without drawing it (Open question 33); never dropped on death;
+//!   leftover bombs go at the round's end. No bombs in the warm-up (S9).
 //! - Sites: the map's `BombZoneTrigger`s of `GameType` `Doobic` (`bomb`:
 //!   plant, defuse, fuse).
 //! - Deaths (S7's S&D column): enemy kill, killer kills +1 and victim
 //!   deaths +1; team kill, killer friendly kills +1 (no death, Quirk 3);
 //!   own damage, victim deaths and suicides +1; no killer, victim deaths
 //!   +1. Assists as S7.
+//! - Offence and defence are the mission's `OffenceTeam` / `DefenceTeam`
+//!   (`missions::sides`; JSF and Creed in every stock file).
 //! - Round win by elimination: a death leaving Creed with nobody alive
 //!   gives the round to JSF, even with the bomb planted; one leaving JSF
 //!   with nobody alive gives it to Creed only if no bomb is ticking; one
 //!   leaving both empty to the victim's enemy team. A defuse wins for
 //!   Creed, the detonation for JSF.
-//! - Time-out (`TimeLimit` 180 s, a plant adds the fuse): Creed wins.
+//! - Time-out (`TimeLimit` 180 s, a plant adds the fuse): the defence
+//!   wins. The detonation hurts nobody (`bomb`).
 //! - Match end, after each real round: a team has G round wins, or a team
 //!   is empty; the winner more round wins, else Bravo (Quirk 4, test case
 //!   42).
@@ -29,16 +34,21 @@
 //! - Spawns: the `Doobic` points per team. Statistics: plants, detonations
 //!   and defuses.
 //!
-//! Known shortcuts: sides never swap (as the stock files); the bomb's
-//! hand-out waits for the loadout (the tick after the setup's respawn).
+//! Sides never swap (Open question 33: only the clan variants and VIP
+//! Escort do).
+//!
+//! Known shortcuts: the bomb's hand-out waits for the loadout (the tick
+//! after the setup's respawn) and comes after the freeze starts (the
+//! mission's start triggers aren't run).
 
 use bevy::prelude::*;
 
 use super::{
+    super::missions,
     CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, SEARCH_DESTROY, ScoreOrder, Spawns, Teams,
     bomb,
     flow::alive,
-    objectives::{self, BOMB},
+    objectives,
     scoring::stats,
     state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, enemy},
 };
@@ -77,7 +87,7 @@ pub const MODE: CaMode = CaMode {
     panel: Panel::RoundWins,
     order: ScoreOrder::Kills,
     on_death,
-    time_out: |w| w.resource_mut::<CaMatch>().winner = Some(DEFENCE),
+    time_out: |w| w.resource_mut::<CaMatch>().winner = Some(missions::sides(w).1),
     match_end,
     leaving: super::elimination::leaving,
     hooks: HOOKS,
@@ -96,28 +106,43 @@ pub const HOOKS: Hooks = Hooks {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct CaBombDue;
 
-/// A real round's setup: every living JSF player is due a bomb.
+/// A real round's setup: every living team-1 player is due the
+/// objective weapons (Quirk 14: whichever team the mission names).
 fn setup(world: &mut World) {
     world.resource_mut::<bomb::CaPlanter>().0 = None;
     if world.resource::<CaMatch>().warmup {
         return;
     }
     for p in objectives::living(world) {
-        if p.team == OFFENCE {
+        if p.team == ALPHA {
             world.entity_mut(p.e).insert(CaBombDue);
         }
     }
 }
 
-/// The bombs handed out, then plants, defuses and the fuse.
+/// The objective weapons of the mission's `[Object0]`: `JSFWeapon`'s,
+/// then `CreedWeapon`'s (missions.md Quirk 3: both go to team 1); our
+/// bomb when the mission names none we have.
+pub fn handed_out(world: &World) -> Vec<&'static str> {
+    let mut ids = missions::objective_weapons(world, missions::JSF);
+    ids.extend(missions::objective_weapons(world, missions::CREED));
+    ids.dedup();
+    ids
+}
+
+/// The bombs handed out (not drawn: the player keeps the primary in
+/// hand), then plants, defuses and the fuse.
 fn update(world: &mut World) {
     let due: Vec<Entity> = world.query_filtered::<Entity, With<CaBombDue>>().iter(world).collect();
+    let ids = handed_out(world);
     for e in due {
         let ready = world
             .get::<crate::weapon::Inventory>(e)
             .is_some_and(|i| !i.weapons.is_empty());
         if ready {
-            objectives::give_weapon(world, e, BOMB);
+            for id in &ids {
+                objectives::give_weapon(world, e, id);
+            }
             world.entity_mut(e).remove::<CaBombDue>();
         }
     }
@@ -147,11 +172,12 @@ fn on_death(world: &mut World, d: &Death) {
     if world.resource::<CaMatch>().winner.is_some() {
         return;
     }
-    let (a, b) = (alive(world, OFFENCE), alive(world, DEFENCE));
+    let (offence, defence) = missions::sides(world);
+    let (a, b) = (alive(world, offence), alive(world, defence));
     let winner = match (a, b) {
         (0, 0) => Some(enemy(d.victim_team)),
-        (_, 0) => Some(OFFENCE),
-        (0, _) if !bomb::ticking(world) => Some(DEFENCE),
+        (_, 0) => Some(offence),
+        (0, _) if !bomb::ticking(world) => Some(defence),
         _ => None,
     };
     if let Some(w) = winner {

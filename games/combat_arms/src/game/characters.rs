@@ -56,18 +56,38 @@
 //! players' trackers from it and poses them with the received aim, as the
 //! spec's clients do.
 //!
+//! The follow-up answers (characters.md Open questions 2, 5, 9, 13-22):
+//! the hit spheres sit on the animated pose (every tracker and the aim)
+//! where a body model is loaded; the server's own pose (no `Torso`
+//! pitch: `CaPose::server_spheres`) takes the hits the server traces
+//! itself (bots' rounds, `weapons`); the skeleton's root follows the
+//! crouch to the hull's bottom; the defaults without lobby data are the
+//! fresh selection with the face's own hair; the digit classes carry
+//! their digit as 6 says; "fire held" is the raw flag on the server and
+//! the masked one on a client's own body (`driver::fire_held`); the
+//! server times its reload from the third-person reload (`driver::
+//! server_reload_timer`: L / 1.2 min(r, 2), 500 ms without one, none with
+//! `HHAniFrame_5`); the death types `D_W` and `D_P` come from the endless
+//! fall's volume damage and a thrown weapon's lasting damage, the coin
+//! from the clock in seconds (`death::coin`, the C library's generator);
+//! the dead player itself comes down onto the floor (`snap`); corpses
+//! neither stop shots nor have spheres; a remote character's displayed
+//! pitch kicks on others' hits (`driver::hit_kick`); emotes (Hunted,
+//! `ca_emote`) play on both trackers with the weapon hidden.
+//!
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear, listed for its open questions):
 //! - No V2 key: no body, head piece, goggle or third-person weapon model
 //!   loads (the unkeyed corpses and zombie bodies on the stock trees
-//!   aren't player records; `heavy::characters` poses them) (characters are the shell's capsules) and the library is the
-//!   spec's names and measured lengths (`driver::spec_library`; names
-//!   the spec doesn't measure get their kind's length). The skeleton is
-//!   the spec's measured `LST` t = 0 pose for nodes and spheres and the
-//!   "stand" pose for sockets, crouched by squashing heights towards the
-//!   feet (the hull's height over the standing one), turned by the aim:
-//!   so spheres don't follow the walking legs or the weapon's aim pose,
-//!   and the female `Bip01 Neck` and right-hand socket places are ours.
+//!   aren't player records; `heavy::characters` poses them; characters
+//!   are the shell's capsules) and the library is the spec's names and
+//!   measured lengths (`driver::spec_library`; names the spec doesn't
+//!   measure get their kind's length). The skeleton is then the spec's
+//!   measured `LST` t = 0 pose for nodes and spheres and the "stand" pose
+//!   for sockets, crouched by squashing heights towards the feet (the
+//!   hull's height over the standing one), turned by the aim: so without
+//!   a model the spheres don't follow the walking legs or the weapon's
+//!   aim pose (Open question 13 says they do).
 //! - With models: the six stock bodies load (`models::LOADED`), one
 //!   character model per sex: the first body with its library, the
 //!   other bodies (the Light and Heavy vests), the faces of the loadout
@@ -76,46 +96,39 @@
 //!   Light and Heavy bodies pose on the Normal one's library; another
 //!   selection's body stays a capsule on the spec's skeleton, a face or
 //!   head piece outside the pool shows the body's default; the pose is
-//!   computed per tick (not per rendered frame) and drawn as is; with the
-//!   default head piece (`HBasic`, no model) a body wears the head piece
-//!   its face names in the install's `HairIndex` (our reading: the spec
-//!   doesn't say what `HairIndex` does; the female's hair); goggles and
-//!   backpacks (the console's `ca_goggle`, `ca_backpack`; the bots'
-//!   pool) are body-part choices too, rigid on their socket's node at its
-//!   bind transform (`models::attach`), only the pool's (another shows
-//!   none), and not hidden for a first-person owner (bodies aren't
-//!   drawn there anyway); cosmetics, the clan pieces and infection
-//!   overrides aren't loaded (nothing selects them); a face's skins by camouflage
-//!   index (its colour overrides not read); render styles as
-//!   `render_style` reads them; the drawn body's feet sit at the standing hull's bottom; a
-//!   corpse (`CaBody`) isn't drawn and has no hit spheres (Open question
-//!   9); the stock bodies' skins other than the default male's are not in
-//!   our data (the install's models file gives them). Bots' looks are
-//!   ours (the spec has no loadouts for them). The look a client sends
-//!   is its selection's ids only (no figure type, clan or team mark,
-//!   colour indices, infection override or default-goggle flag: nothing
-//!   uses them yet); without the install's models file a face is known
-//!   when the body's face redirect covers it and a head piece when ours
-//!   or the bots' pool names it (`validated`). A weapon names its third-person model only with the V1 key (the
-//!   install's `HHModel`, `data`); ours name none.
-//! - The driver: emotes (9) and the hit kick on remote characters (9:
-//!   display only) aren't there; `HHAniFrame` is absent from our data
-//!   (every upper rate 1); "fire held" is the fire button with a magazine
-//!   weapon not reloading and not empty (the client's "firing state");
-//!   a reload ends when the weapon's does (the server's reload timer and
-//!   its 500 ms fallback, Open question 2, are the weapon frame's
-//!   business); classes 24, 26, 27 and 29's digits are our reading of the
-//!   examples (revolver 1, FAMAS 2, double barrel 1, snowball 2); the
+//!   computed per tick (the server's driver runs per movement frame, its
+//!   trackers per server frame: Open question 14) and drawn as is; with
+//!   the default head piece (`HBasic`, no model) a body wears the head
+//!   piece its face names (`HairIndex`); goggles and backpacks (the
+//!   console's `ca_goggle`, `ca_backpack`; the bots' pool) are body-part
+//!   choices too, rigid on their socket's node at its bind transform
+//!   (`models::attach`), only the pool's (another shows none), and not
+//!   hidden for a first-person owner (bodies aren't drawn there anyway);
+//!   cosmetics, the clan pieces and infection overrides aren't loaded
+//!   (nothing selects them); a face's skins by camouflage index (its
+//!   colour overrides not read); render styles as `render_style` reads
+//!   them; a corpse (`CaBody`) isn't drawn. Bots' looks are ours (the
+//!   spec has no loadouts for them). The look a client sends is its
+//!   selection's ids only; without the install's models file a face is
+//!   known when the body's face redirect covers it and a head piece when
+//!   ours or the bots' pool names it (`validated`). A weapon names its
+//!   third-person model only with the V1 key (the install's `HHModel`,
+//!   `data`, on `RightHand` with no offset); ours name none.
+//! - The driver: `HHAniFrame` is absent from our data (every upper rate
+//!   1; the install's weapons file gives it with the V1 key); the
 //!   weapons' classes are ours by kind (data/characters.toml) unless the
-//!   install's weapons file (V1) gives their `AniType`.
-//! - Aim: the client's shares everywhere (`Torso` pitched on the server
-//!   too, Open question 5: the hit spheres are the client's, where our one
-//!   ray walk stands for the client's test); pitch and twist from the
-//!   look and the weapon's body yaw (`weapons::CaSpread::body_yaw`).
-//! - Death: poison and the endless fall can't be told from other damage
-//!   (core's damage kinds), so they play the bullet choices; the coin is
-//!   our dice, not the clock in seconds (Quirk 6); the dead player is not
-//!   moved onto the floor (only its body is placed there).
+//!   install's weapons file (V1) gives their `AniType`; the server's
+//!   reload rate is 1 (no reload bonuses read); the hit kick shows on a
+//!   network client's remote characters only (a single player's world is
+//!   the server's); an emote plays no sound (the emotion files aren't
+//!   named by role) and is asked for on the local player only (no menu,
+//!   no network message); whether the per-frame leg start replaces an
+//!   emote on the lower tracker is open (we hold both).
+//! - Aim: pitch and twist from the look and the weapon's body yaw
+//!   (`weapons::CaSpread::body_yaw`); the client's shares everywhere but
+//!   the bots' rounds.
+//! - Death: the coin's clock is the game's, not the wall clock; the
+//!   floor snap skips a player standing on the ground.
 
 pub mod death;
 pub mod driver;
@@ -141,7 +154,7 @@ use super::{
 };
 use crate::{
     core::{
-        self, Damage, DamageKind, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole, RoundRestarts,
+        self, Damage, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole, RoundRestarts,
         SimClock, SimSet, Team,
     },
     map::{BodyName, BodyNumber, BodySkin, CharacterModels, Held, anim::Animator},
@@ -180,6 +193,15 @@ pub struct CaAnim {
     pub twist: f32,
     /// The death animation playing (None: alive).
     pub death: Option<String>,
+    /// The hit kick (9): damage notices counted, the pitch offset for the
+    /// next aim update (radians, upward).
+    pub kick_count: u32,
+    pub kick: f32,
+    /// An emote asked for (`ca_emote`: 0..3, `driver::EMOTES`).
+    pub pending_emote: Option<usize>,
+    /// The server's reload in progress: when it started (s) and its timer
+    /// (ms; None: the animation ends it), 7.
+    pub server_reload: Option<(f64, Option<u32>)>,
     dice: u32,
 }
 
@@ -197,6 +219,10 @@ impl CaAnim {
             pitch: 0.0,
             twist: 0.0,
             death: None,
+            kick_count: 0,
+            kick: 0.0,
+            pending_emote: None,
+            server_reload: None,
             dice: 0x9e37_79b9,
         }
     }
@@ -244,6 +270,9 @@ pub struct CaPose {
     /// Per entry of the skeleton's hit table: its centre (None: the body
     /// has no node or socket of that name, or its radius is 0).
     pub spheres: Vec<Option<Vec3>>,
+    /// The same on the server's pose (no `Torso` pitch, 8): the hits the
+    /// server traces itself (bots' shots).
+    pub server_spheres: Vec<Option<Vec3>>,
     /// The skeleton (hit table) index.
     pub skeleton: usize,
     /// `NAME_socket`, `Left_foot`, `RightHand`.
@@ -317,6 +346,22 @@ impl Plugin for CaCharactersPlugin {
             .add_systems(FixedUpdate, wear_looks.before(setup).run_if(core::authoritative))
             .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others));
         look_cvars(app);
+        use crate::console::ConsoleAppExt;
+        app.console_command(
+            "ca_emote",
+            "Hunted only: play emote 1 Insult, 2 Surrender, 3 Insult_Dance or 4 Salute (characters.md 9; the G menu's).",
+            |w, args| {
+                let n: usize = args.first().and_then(|a| a.parse().ok()).filter(|n| (1..=4).contains(n)).ok_or("ca_emote 1-4")?;
+                if w.get_resource::<super::rules::CaRuleSettings>().is_none_or(|s| s.mode != "HG") {
+                    return Ok(Some("emotes only in Hunted".into()));
+                }
+                let me = w.query_filtered::<Entity, With<LocalPlayer>>().iter(w).next().ok_or("no player")?;
+                if let Some(mut a) = w.get_mut::<CaAnim>(me) {
+                    a.pending_emote = Some(n - 1);
+                }
+                Ok(None)
+            },
+        );
     }
 }
 
@@ -487,8 +532,15 @@ fn setup(
 }
 
 /// Weapon statuses (a draw starts: "select") and damage ("hit") since
-/// the last update.
-fn listen(mut events: MessageReader<WeaponEvent>, mut damage: MessageReader<Damage>, mut anims: Query<&mut CaAnim>) {
+/// the last update; damage by someone other than the local player kicks
+/// the character's displayed pitch (9).
+fn listen(
+    mut events: MessageReader<WeaponEvent>,
+    mut damage: MessageReader<Damage>,
+    mut anims: Query<&mut CaAnim>,
+    local: Query<Entity, With<LocalPlayer>>,
+) {
+    let me = local.iter().next();
     for ev in events.read().filter(|e| e.shown()) {
         if matches!(ev.kind, WeaponEventKind::Deployed)
             && let Ok(mut a) = anims.get_mut(ev.owner)
@@ -500,6 +552,11 @@ fn listen(mut events: MessageReader<WeaponEvent>, mut damage: MessageReader<Dama
         if let Ok(mut a) = anims.get_mut(d.target) {
             a.damaged = d.amount > 0.0;
             a.pending = Some(Status::Hit);
+            if d.attacker.is_none() || d.attacker != me {
+                let (kick, count) = driver::hit_kick(a.kick_count);
+                a.kick = kick;
+                a.kick_count = count;
+            }
         }
     }
 }
@@ -539,13 +596,11 @@ fn die(
         };
         let yaw = pose.map_or(intent.yaw, |p| p.body_yaw);
         let (forward, right) = axes(yaw);
-        let kind = match d.damage.kind {
-            DamageKind::Blast => death::DeathKind::Explosion,
-            DamageKind::Melee => death::DeathKind::Melee,
-            _ => death::DeathKind::Other,
-        };
+        let kind = death::kind_of(d.damage.kind, d.damage.weapon);
         let location = location_of(d.damage.hitgroup);
-        let coin = anim.coin();
+        // Quirk 6 (Open question 21): a fresh C-library generator seeded
+        // with the clock in whole seconds, one draw.
+        let coin = death::coin(clock.now.floor() as u32);
         let jumping = movement.is_some_and(|m| m.in_jump);
         let inputs = death::DeathInputs {
             kind,
@@ -584,7 +639,20 @@ fn die(
         let at = t.translation;
         let since = clock.now;
         commands.queue(move |w: &mut World| {
-            let at = floor_snapped(w, owner, at) + Vec3::Y * BODY_LIFT * unit();
+            // The player object itself comes down onto the floor (10 step
+            // 1, Open question 21), the body 0.1 u above it.
+            let snapped = floor_snapped(w, owner, at);
+            if snapped != at
+                && let Ok(mut e) = w.get_entity_mut(owner)
+            {
+                if let Some(mut t) = e.get_mut::<Transform>() {
+                    t.translation = snapped;
+                }
+                if let Some(mut p) = e.get_mut::<avian3d::prelude::Position>() {
+                    p.0 = snapped;
+                }
+            }
+            let at = snapped + Vec3::Y * BODY_LIFT * unit();
             w.spawn((
                 Name::new("Body"),
                 Replicated,
@@ -611,16 +679,27 @@ fn floor_snapped(world: &mut World, owner: Entity, at: Vec3) -> Vec3 {
     if state.on_ground || state.hull_max == state.hull_min {
         return at;
     }
-    let bottom = at + Vec3::Y * state.hull_min.y;
+    let half = -state.hull_min.y;
     let mut system_state: bevy::ecs::system::SystemState<avian3d::prelude::SpatialQuery> =
         bevy::ecs::system::SystemState::new(world);
     let Ok(spatial) = system_state.get(world) else { return at };
     let filter = avian3d::prelude::SpatialQueryFilter::from_mask(core::SOLID_LAYERS).with_excluded_entities([owner]);
-    match spatial.cast_ray(bottom, Dir3::NEG_Y, 1000.0, true, &filter) {
-        Some(hit) => at - Vec3::Y * hit.distance,
+    let reach = FLOOR_RAY * unit();
+    match spatial.cast_ray(at, Dir3::NEG_Y, reach, true, &filter) {
+        Some(hit) => snap(at, hit.distance, half, BODY_LIFT * unit()),
         None => at,
     }
 }
+
+/// 10 step 1's snap: a centre `at` whose floor is `below` straight down,
+/// for a hull of half-height `half`: unmoved when the floor is within the
+/// half-height, else the centre at the floor + `half` + `lift`.
+pub fn snap(at: Vec3, below: f32, half: f32, lift: f32) -> Vec3 {
+    if below <= half { at } else { Vec3::new(at.x, at.y - below + half + lift, at.z) }
+}
+
+/// How far down the floor snap looks (u).
+pub const FLOOR_RAY: f32 = 10_000.0;
 
 /// Each tick: every living character's driver (a client's own player
 /// only; others follow the server's `CaAnimNet`), then its pose.
@@ -665,8 +744,17 @@ fn drive(
             if let (Some(net), Some(clock)) = (net.as_deref(), server_time.as_deref()) {
                 follow(&mut anim, net, clock.0, clock.1);
             }
+            // The hit kick shows for one aim update (display only).
+            let kick = std::mem::take(&mut anim.kick);
+            anim.pitch = skeleton::clamp_aim(anim.pitch - kick);
         } else {
-            let inputs = inputs(&mut anim, intent, movement, weapon, protected, r);
+            anim.kick = 0.0;
+            if let Some(n) = anim.pending_emote.take()
+                && let Some(name) = driver::EMOTES.get(n)
+            {
+                anim.driver.start_emote(name);
+            }
+            let inputs = inputs(&mut anim, intent, movement, weapon, protected, r, !client, clock.now);
             anim.driver.update(ms, &inputs);
             // The aim: pitch from the look, the twist from the body yaw.
             anim.pitch = skeleton::clamp_aim(-intent.pitch);
@@ -680,6 +768,10 @@ fn drive(
         };
         let posed = anim.posed(r, squash, false);
         *pose = pose_of(&anim, &posed, body_yaw, squash);
+        if !client {
+            let server = anim.posed(r, squash, true);
+            pose.server_spheres = pose_of(&anim, &server, body_yaw, squash).spheres;
+        }
         if let (true, Some(mut animator)) = (anim.rig.is_some(), animator) {
             animator.fixed = Some(Arc::new(posed.locals_rh()));
             if animator.main.is_none() {
@@ -710,7 +802,10 @@ fn wrap(a: f32) -> f32 {
     if a > PI { a - TAU } else { a }
 }
 
-/// The driver's inputs from the character's state (5).
+/// The driver's inputs from the character's state (5). "Fire held"
+/// (Open question 17): the server's (`server`) is the frame's raw fire
+/// flag (cleared only while use is held); a client's own body's is masked
+/// by its weapon being in a firing state (not reloading, not empty).
 fn inputs(
     anim: &mut CaAnim,
     intent: &Intent,
@@ -718,6 +813,8 @@ fn inputs(
     weapon: Option<(&Weapon, Option<&WeaponState>, Option<&Magazine>, Option<&CaZoom>, Option<&CaSpread>)>,
     protected: Option<&CaProtected>,
     r: f32,
+    server: bool,
+    now: f64,
 ) -> Inputs {
     let look = records::data().weapon(weapon.map(|w| w.0.id));
     let reloading = weapon.and_then(|w| w.1).is_some_and(|s| s.reloading());
@@ -728,13 +825,28 @@ fn inputs(
     anim.in_jump = in_jump;
     let coin = anim.coin();
     let m = movement.cloned().unwrap_or_default();
+    // The server's own reload timer (7): from the third-person reload
+    // animation's length at the reload's start; the reload may finish
+    // when it runs out.
+    if !reloading {
+        anim.server_reload = None;
+    } else if server && anim.server_reload.is_none() {
+        let (name, _, _) = driver::upper_names(look.ani_type, driver::Posture::Reload, driver::Direction::None);
+        let length = anim.driver.find(&name).map(|e| anim.driver.list.entries[e].length());
+        let frame = look.frames.get(driver::Posture::Reload.frame_index()).copied().unwrap_or(0);
+        anim.server_reload = Some((now, driver::server_reload_timer(length, 1.0, frame)));
+    }
+    let may_finish = server
+        && anim
+            .server_reload
+            .is_some_and(|(since, timer)| timer.is_some_and(|t| (now - since) * 1000.0 + 1e-6 >= t as f64));
     Inputs {
         class: look.ani_type,
         legs: look.lower_ani_type,
         status: anim.pending.take(),
         reloading,
-        reload_may_finish: false,
-        fire: intent.fire && !(magazine && (reloading || empty)),
+        reload_may_finish: may_finish,
+        fire: driver::fire_held(intent.fire, intent.use_key, server, magazine, reloading, empty),
         alt_fire: intent.secondary && matches!(look.ani_type, 14 | 16),
         empty,
         run: m.run,
@@ -773,6 +885,7 @@ pub fn pose_of(anim: &CaAnim, posed: &Posed, body_yaw: f32, squash: f32) -> CaPo
             .iter()
             .map(|s| (s.radius > 0.0).then(|| posed.sphere(&s.name)).flatten().map(body))
             .collect(),
+        server_spheres: Vec::new(),
         skeleton: anim.skeleton,
         name_tag: posed.place("NAME_socket").map(|p| body(p.0)),
         left_foot: left_foot.map(body),
@@ -845,7 +958,9 @@ fn bodies(
 ) {
     let new_round = round.is_some_and(|r| r != restarts.0);
     *round = Some(restarts.0);
-    let delay = settings.and_then(|s| records::data().body_removal(&s.mode));
+    let delay = settings
+        .and_then(|s| super::rules::mode_by_key(&s.mode))
+        .and_then(|m| records::data().body_removal(m.module));
     for (e, mut b) in &mut bodies {
         if new_round {
             commands.entity(e).despawn();
@@ -880,6 +995,7 @@ fn dress(
     )>,
     local: Query<Option<&Team>, With<LocalPlayer>>,
     weapons: Query<&Weapon>,
+    anims: Query<&CaAnim>,
     mut commands: Commands,
 ) {
     let Some(models) = models else { return };
@@ -900,7 +1016,13 @@ fn dress(
         if skin != Some(&family) {
             commands.entity(e).insert(family);
         }
-        let id = inventory.and_then(|i| i.active).and_then(|w| weapons.get(w).ok()).map(|w| w.id.to_string());
+        // An emote hides the weapon in hand (2).
+        let emoting = anims.get(e).is_ok_and(|a| a.driver.emote.is_some());
+        let id = inventory
+            .and_then(|i| i.active)
+            .and_then(|w| weapons.get(w).ok())
+            .map(|w| w.id.to_string())
+            .filter(|_| !emoting);
         if held.is_none_or(|h| h.0 != id) {
             commands.entity(e).insert(Held(id));
         }

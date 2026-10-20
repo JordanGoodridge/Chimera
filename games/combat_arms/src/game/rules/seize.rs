@@ -21,15 +21,21 @@
 //! - Deaths: S7's personal counts, the victim's team's deaths +1.
 //!   Friendly fire on is full damage (S8, test case 13).
 //!
-//! Known shortcuts: the pole is a state only (no pole or flag models are
-//! placed: the map's flag pole position isn't named by the spec); the
-//! spawn family isn't in the spec (the `Team Death Match` points stand
-//! in); no late-join closing.
+//! - Spawns: the `HeadQuaters` points per team (Open question 19; Squad
+//!   Match 2 its `SquadMatch2`). The use time of each trigger, the rise
+//!   time and the bonus are the mission's (`missions::activate_time`,
+//!   `missions::seize`: `ActivateTriggerTimeAmount` 5 s,
+//!   `FlagMoveTime` 120 s, `LastOccupyBonus` 50), else our data's.
+//!
+//! Known shortcuts: the pole is a state only: the map's `FlagPolePos`
+//! is known (`CaMapObjects::flag_pole`, Open question 24) but no pole or
+//! flag models are placed (the prop table's `HQ_Flag_Pole` isn't read);
+//! the anti-abuse timers aren't kept; no late-join closing.
 
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, SEIZE_AND_SECURE, SQUAD_MATCH_2, ScoreOrder, Spawns,
+    CaMode, Hooks, NO_HOOKS, Panel, RoundTime, SEIZE_AND_SECURE, SQUAD_MATCH_2, ScoreOrder, Spawns,
     TEAM_POINTS, Teams,
     ctf::pick,
     flow::players,
@@ -55,7 +61,10 @@ pub const MODE: CaMode = CaMode {
     timer_shown: true,
     forced_setup: None,
     teams: Teams::Two,
-    spawns: Spawns { family: None, ..TEAM_POINTS },
+    spawns: Spawns {
+        family: Some(FAMILY),
+        ..TEAM_POINTS
+    },
     round_time: RoundTime::GoalMinutes,
     fire_ends_protection: false,
     death_drops: true,
@@ -80,14 +89,21 @@ pub const MODE: CaMode = CaMode {
     },
 };
 
-/// Squad Match 2 (M11): Seize and Secure's rules.
+/// Squad Match 2 (M11): Seize and Secure's rules on its own points.
 pub const SQUAD_MATCH: CaMode = CaMode {
     module: SQUAD_MATCH_2,
     key: "SQM2",
     shown_as: "Squad Match 2",
-    description: "Squad Match 2: Seize and Secure's rules (no room entry in the US data)",
+    description: "Squad Match 2: Seize and Secure's rules (reached through Hired Guns 2's mission file)",
+    spawns: Spawns {
+        family: Some("SquadMatch2"),
+        ..TEAM_POINTS
+    },
     ..MODE
 };
+
+/// Seize and Secure's start points' game type (spelled so).
+pub const FAMILY: &str = "HeadQuaters";
 
 /// Whether trigger `name` is `team`'s (`ActivateTrigger_A` JSF, `_B`
 /// Creed).
@@ -118,16 +134,18 @@ fn score_pole(world: &mut World, now: f64) {
 
 fn update(world: &mut World) {
     let now = world.resource::<SimClock>().now;
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
+    let (move_time, _) = super::super::missions::seize(world);
     let counting = world.resource::<CaMatch>().counting() && world.resource::<CaMatch>().winner.is_none();
     let Some(pole) = world.resource::<CaObjectives>().pole else { return };
     let triggers = world.resource::<CaMapObjects>().triggers.clone();
     for p in objectives::living(world) {
         let inside = triggers
             .iter()
-            .any(|t| trigger_of(&t.name, p.team) && t.area.contains(p.at, 0.0));
-        let on = counting && p.intent.use_key && inside && pole.team != Some(p.team);
-        if objectives::hold_action(world, p.e, ActionKind::Seize, o.seize_time, on) {
+            .find(|t| trigger_of(&t.name, p.team) && t.area.contains(p.at, 0.0));
+        let on = counting && p.intent.use_key && inside.is_some() && pole.team != Some(p.team);
+        // The use time the mission sets on that trigger (5 s stock).
+        let time = inside.map_or(0.0, |t| super::super::missions::activate_time(world, &t.name));
+        if objectives::hold_action(world, p.e, ActionKind::Seize, time, on) {
             score_pole(world, now);
             world.resource_mut::<CaObjectives>().pole = Some(Pole {
                 team: Some(p.team),
@@ -144,7 +162,7 @@ fn update(world: &mut World) {
     }
     score_pole(world, now);
     if let Some(Pole { team: Some(t), since, .. }) = world.resource::<CaObjectives>().pole
-        && now + 1e-9 >= since + o.flag_move_time as f64
+        && now + 1e-9 >= since + move_time as f64
     {
         world.resource_mut::<CaMatch>().win(t);
     }
@@ -155,7 +173,7 @@ fn update(world: &mut World) {
 fn time_out(world: &mut World) {
     let now = world.resource::<SimClock>().now;
     score_pole(world, now);
-    let bonus = world.resource::<CaRuleSettings>().objectives.last_occupy_bonus;
+    let (_, bonus) = super::super::missions::seize(world);
     if let Some(Pole { team: Some(t), .. }) = world.resource::<CaObjectives>().pole
         && let Some(i) = side(t)
     {

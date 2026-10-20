@@ -11,7 +11,7 @@
 //!   floor) and makes them a hunter again.
 //! - Stage 2: the player holding all the intel becomes the final spy
 //!   (Bravo), everyone else a hunter; every dead player is revived, every
-//!   living one's health refilled; respawning stops. The hunters win by
+//!   living one refilled (health, ammunition, armour); respawning stops. The hunters win by
 //!   killing the final spy, the final spy when no hunter is left alive.
 //! - Deaths: One Man Army's counts (`scoring::free_for_all`).
 //! - Leaving: in stage 2 the last of a side leaving gives the round to the
@@ -19,16 +19,24 @@
 //!   left.
 //! - Spawns: the `BountyHunter` points, one list.
 //!
-//! Known shortcuts: the stage-2 time (`Stage2PlayTime`) and the time-out's
-//! winner weren't traced (Open question 10): the round runs its G minutes
-//! and a time-out has no winner; the refill at stage 2 is health only (no
-//! ammunition); intel on the ground isn't drawn (no item model; the HUD
-//! says how many lie about); its pick-up box is the flag's default.
+//! - Stage 2's clock (Open question 10, answered): the views on the map
+//!   camera for `AgentCameraHoldingTime` (`CaObjectives::camera_until`),
+//!   then the round timer restarted with `Stage2PlayTime`; a time-out in
+//!   either stage goes to the hunters (Alpha). The numbers are the
+//!   mission's (`missions::spy_hunt`: `[IntelObject]` `TotalNum`), else
+//!   our data's.
+//!
+//! Known shortcuts: no spy or agent models (`SpyModelSetting`,
+//! `AgentModelSetting` are read, not worn) and no agent weapons; the map
+//! camera (`CameraPoint00`) isn't one: the views stay their own during
+//! the hold; the mission's `AgentTrigger` isn't run; intel on the ground
+//! isn't drawn (no item model; the HUD says how many lie about); its
+//! pick-up box is (10, 25, 10) as the spec says, moved to the floor.
 
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaRuleSettings, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SPY_HUNT, ScoreOrder, Spawns, Teams,
+    CaMode, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SPY_HUNT, ScoreOrder, Spawns, Teams,
     flow::{alive, players},
     objectives::{self, CaObjectives},
     objects::{CaMapObjects, FLAG_DIMS, ObjBox},
@@ -68,7 +76,8 @@ pub const MODE: CaMode = CaMode {
     panel: Panel::Kills,
     order: ScoreOrder::MissionPoints,
     on_death,
-    time_out: |_| {},
+    // Open question 10, answered: the hunters (Alpha) in both stages.
+    time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
     match_end: |w| Some(w.resource::<CaMatch>().winner),
     leaving,
     hooks: Hooks {
@@ -83,7 +92,7 @@ pub const MODE: CaMode = CaMode {
 /// The intel at the round's start (stage 1).
 fn setup(world: &mut World) {
     let warmup = world.resource::<CaMatch>().warmup;
-    let count = world.resource::<CaRuleSettings>().objectives.intel_count as usize;
+    let count = super::super::missions::spy_hunt(world).0 as usize;
     let mut points: Vec<Vec3> = world
         .resource::<CaMapObjects>()
         .drops
@@ -123,10 +132,14 @@ fn died(world: &mut World, d: &Died) {
 
 /// Pick-ups, then stage 2 when one player holds it all.
 fn update(world: &mut World) {
+    let now = world.resource::<crate::core::SimClock>().now;
+    if world.resource::<CaObjectives>().camera_until.is_some_and(|t| now + 1e-9 >= t) {
+        world.resource_mut::<CaObjectives>().camera_until = None;
+    }
     if !world.resource::<CaMatch>().counting() || world.resource::<CaObjectives>().stage != 1 {
         return;
     }
-    let total = world.resource::<CaRuleSettings>().objectives.intel_count as u8;
+    let total = super::super::missions::spy_hunt(world).0 as u8;
     let half = objectives::player_half();
     for p in objectives::living(world) {
         let items = world.resource::<CaObjectives>().intel.clone();
@@ -156,19 +169,45 @@ fn update(world: &mut World) {
     }
 }
 
-/// `spy` holds all the intel: the final spy against everyone else.
+/// `spy` holds all the intel: the final spy against everyone else. The
+/// views go to the map camera for `AgentCameraHoldingTime` (5 s), then the
+/// round timer restarts with `Stage2PlayTime` (180 s); the dead are
+/// respawned, the living refilled: full health, every weapon's ammunition
+/// and their armour (Open question 10, answered).
 fn stage_two(world: &mut World, spy: Entity) {
-    world.resource_mut::<CaObjectives>().stage = 2;
-    world.resource_mut::<CaObjectives>().intel.clear();
+    let now = world.resource::<crate::core::SimClock>().now;
+    let (_, stage2, hold) = super::super::missions::spy_hunt(world);
+    {
+        let mut o = world.resource_mut::<CaObjectives>();
+        o.stage = 2;
+        o.intel.clear();
+        o.camera_until = Some(now + hold as f64);
+    }
+    world.resource_mut::<CaMatch>().round_ends = Some(now + (hold + stage2) as f64);
     for (e, _) in players(world) {
         world.entity_mut(e).insert(Team(if e == spy { BRAVO } else { ALPHA }));
         if world.get::<Dead>(e).is_some() {
             spawns::respawn(world, e);
-        } else if let Some(mut h) = world.get_mut::<Health>(e) {
-            h.current = h.max;
+        } else {
+            refill(world, e);
         }
     }
     info!("Spy Hunt stage 2: the final spy is {spy:?}");
+}
+
+/// Full health, every carried weapon's clip and reserve, the armour.
+pub fn refill(world: &mut World, e: Entity) {
+    if let Some(mut h) = world.get_mut::<Health>(e) {
+        h.current = h.max;
+    }
+    let weapons = world.get::<crate::weapon::Inventory>(e).map(|i| i.weapons.clone()).unwrap_or_default();
+    for w in weapons {
+        if let Some(mut m) = world.get_mut::<crate::weapon::Magazine>(w) {
+            m.clip = m.size;
+            m.reserve = m.reserve_max;
+        }
+    }
+    world.entity_mut(e).insert(super::super::weapons::CaArmor::default());
 }
 
 fn on_death(world: &mut World, d: &Death) {

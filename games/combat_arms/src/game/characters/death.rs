@@ -18,6 +18,33 @@ pub enum DeathKind {
     Frozen,
 }
 
+/// The death's damage kind (10, Open question 21): `Melee` the knife's,
+/// blasts the blown-off set, an `EndlessFall` volume's damage (its weapon
+/// `volumes::ENDLESS_FALL`) the endless fall, a thrown weapon's lasting
+/// generic damage (a gas grenade's `Poison`) poison; the rest bullet-style.
+pub fn kind_of(kind: crate::core::DamageKind, weapon: Option<&str>) -> DeathKind {
+    use crate::core::DamageKind as K;
+    match kind {
+        K::Blast => DeathKind::Explosion,
+        K::Melee => DeathKind::Melee,
+        _ if weapon == Some(super::super::volumes::ENDLESS_FALL) => DeathKind::EndlessFall,
+        K::Generic if weapon.is_some_and(is_thrown) => DeathKind::Poison,
+        _ => DeathKind::Other,
+    }
+}
+
+/// A thrown weapon (grenade data).
+fn is_thrown(id: &str) -> bool {
+    crate::weapon::data::lookup(id).is_some_and(|d| d.has_hook(super::super::grenades::HOOK))
+}
+
+/// The C library's generator (the Microsoft LCG) seeded with `seed`,
+/// first draw mod 2 (Quirk 6: the coin, true for 1).
+pub fn coin(seed: u32) -> bool {
+    let next = seed.wrapping_mul(214_013).wrapping_add(2_531_011);
+    ((next >> 16) & 0x7fff) % 2 == 1
+}
+
 /// The choice's inputs. Directions in the character's frame or the
 /// world's, as long as all three agree.
 #[derive(Clone, Debug)]

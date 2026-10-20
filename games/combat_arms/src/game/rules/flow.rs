@@ -7,11 +7,13 @@
 //!   next frame (the counters reset), which sets the round up at once:
 //!   everyone on Alpha and Bravo respawned (S5, the living too), held
 //!   players released, the living frozen (`core::FreezeTime`: movement
-//!   keys held, `frozen_intent`) until `object_start` s (the mode's forced
-//!   length: TDM 0, one frame).
+//!   keys held, `frozen_intent`) until `object_start` s, or 0 s (one
+//!   frame) in the modes that force it (`missions::setup_length`).
 //! - Live at the next frame after the setup's end: unfrozen, the winner
-//!   cleared, the round timer started (the warm-up's `training_time_limit`,
-//!   else the mode's `time_limit`; none: no timer).
+//!   cleared, the round timer started from the mission's `TimeLimit` and
+//!   `TrainingTimeLimit` by the mode's rule (missions.md "Timers per
+//!   mode": `missions::real_round`, `missions::warmup`; the install's
+//!   mission file, else our data; none: no timer).
 //! - Round over at the first frame that sees a requested end or the timer
 //!   at 0: the mode's time-out rule picks a winner if none was set, the
 //!   winner's round wins +1 (not in the warm-up), the result recorded
@@ -39,17 +41,17 @@
 //! (`CaMatch::results`, `result`) and replicated (`game::net`); the reward
 //! roulette, the report to the lobby and the late-join closing (S1) aren't
 //! there; the match clock (`MissionTimeLimit`) isn't kept (it ends
-//! nothing, Quirk 11); between rounds the intermission (`MissionEnd`)
-//! comes after every round's end (S3's 3 + 3 + 0 s between rounds; its
-//! step 6 names it only before the match's result); map triggers and
-//! objective weapons at the setup don't exist yet; a match over stays over
-//! until `ca_restart` or a map load.
+//! nothing, Quirk 11); the intermission (`MissionEnd`) comes after every
+//! round's end (S3 step 6, Open question 21: every stock file's next
+//! objective is -1, so a file's `JSFWin`/`CreedWin` aren't read); the
+//! mission's triggers and controllers aren't run (no map commands yet);
+//! a match over stays over until `ca_restart` or a map load.
 
 use bevy::prelude::*;
 
 use super::{
-    super::{grenades::SERVER_FRAME, inventory::Dropped},
-    CaRuleSettings, RoundTime, Teams, current_mode, objectives,
+    super::{grenades::SERVER_FRAME, inventory::Dropped, missions},
+    CaRuleSettings, Teams, current_mode, objectives,
     scoring::{CaDamageLog, sync_score},
     spawns::{self, CaHeld, CaSpawnCursors},
     state::{ALPHA, BRAVO, CaMatch, CaStats, FFA_FIRST, FFA_LAST, Phase, RoundResult, plays, side},
@@ -230,12 +232,11 @@ fn step(world: &mut World, now: f64) {
 /// then the round's setup.
 fn mission_start(world: &mut World, now: f64, first: bool) {
     let Some(mode) = current_mode(world) else { return };
-    let settings = world.resource::<CaRuleSettings>().clone();
-    let training = settings.mode_data().training_time_limit.unwrap_or(0.0);
+    let has_warmup = missions::warmup(world).is_some();
     {
         let mut m = world.resource_mut::<CaMatch>();
         if first {
-            let warmup = mode.warmup && training > 0.0;
+            let warmup = mode.warmup && has_warmup;
             *m = CaMatch {
                 warmup,
                 ..default()
@@ -262,32 +263,28 @@ fn mission_start(world: &mut World, now: f64, first: bool) {
         spawns::respawn(world, e);
     }
     (mode.hooks.setup)(world);
-    let setup = mode.forced_setup.unwrap_or(settings.object_start) as f64;
+    let setup = mode.forced_setup.unwrap_or_else(|| missions::setup_length(world)) as f64;
     world.resource_mut::<CaMatch>().phase = Phase::Setup { until: now + setup };
     world.resource_mut::<FreezeTime>().0 = true;
 }
 
 /// S3 step 4: live.
 fn go_live(world: &mut World, now: f64) {
-    let Some(mode) = current_mode(world) else { return };
+    if current_mode(world).is_none() {
+        return;
+    }
     let settings = world.resource::<CaRuleSettings>().clone();
-    let data = settings.mode_data();
-    let goal = settings.goal() as f32;
+    let length = if world.resource::<CaMatch>().warmup {
+        missions::warmup(world)
+    } else {
+        missions::real_round(world)
+    };
     world.resource_mut::<FreezeTime>().0 = false;
     let revive = settings.warmup_revive as f64;
     let mut m = world.resource_mut::<CaMatch>();
     m.phase = Phase::Live;
     m.winner = None;
     m.end_requested = false;
-    let length = if m.warmup {
-        data.training_time_limit
-    } else {
-        match mode.round_time {
-            RoundTime::Mission => data.time_limit,
-            RoundTime::MissionTimesGoal => data.time_limit.map(|t| t * goal),
-            RoundTime::GoalMinutes => Some(goal * 60.0),
-        }
-    };
     m.round_ends = length.map(|l| now + l as f64);
     m.next_revive = now + revive;
 }
@@ -421,14 +418,14 @@ pub fn frozen_intent(i: &Intent) -> Intent {
 }
 
 /// The setup's freeze on every intent (the server's and, through
-/// `net::Holds`, a client's prediction).
-pub(super) fn hold_frozen(frozen: Res<FreezeTime>, mut intents: Query<&mut Intent>) {
-    if !frozen.0 {
-        return;
-    }
-    for mut i in &mut intents {
-        let held = frozen_intent(&i);
-        *i = held;
+/// `net::Holds`, a client's prediction), and a planter's while the
+/// bomb's fire animation plays (M3: movement locked, turning allowed).
+pub(super) fn hold_frozen(frozen: Res<FreezeTime>, mut intents: Query<(&mut Intent, Option<&objectives::CaAction>)>) {
+    for (mut i, action) in &mut intents {
+        if frozen.0 || action.is_some_and(|a| a.kind == objectives::ActionKind::Plant) {
+            let held = frozen_intent(&i);
+            *i = held;
+        }
     }
 }
 
@@ -477,6 +474,7 @@ pub fn new_game(world: &mut World) {
 /// The match from the start (`ca_restart`): waiting for players (the
 /// next frame starts it when there are some).
 pub fn restart(world: &mut World) {
+    missions::resolve(world);
     *world.resource_mut::<CaMatch>() = CaMatch::default();
     *world.resource_mut::<CaSpawnCursors>() = CaSpawnCursors::default();
     world.resource_mut::<FreezeTime>().0 = false;

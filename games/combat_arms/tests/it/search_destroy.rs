@@ -73,9 +73,10 @@ fn case_34_bomb_hand_out() {
 fn case_35_plant_and_detonate() {
     let (mut sim, a, _b) = game_sd(1, 1);
     let t = now(&sim);
-    // So that 80 s are left when the 4 s plant completes.
+    // So that 80 s are left when the plant (3.9 s: the bomb's fire key)
+    // completes.
     sim.app.world_mut().resource_mut::<CaMatch>().round_ends = Some(t + 84.0 + 0.5);
-    plant(&mut sim, a[0], 4.6);
+    plant(&mut sim, a[0], 4.0);
     let bomb = objectives(&sim).planted.expect("planted");
     let n = now(&sim);
     let left = m(&sim).round_ends.unwrap() - n;

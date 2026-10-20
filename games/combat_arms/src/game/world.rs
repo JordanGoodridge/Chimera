@@ -1230,7 +1230,8 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
 /// rotations and unknown values left out.
 fn objects(world: &World, map: &mut MapData, scale: f32, wanted: fn(&str) -> bool) {
     let mut any = false;
-    for o in world.objects.iter().filter(|o| wanted(&o.class)) {
+    let pole = |o: &lt::Object| o.name() == Some(super::rules::objects::FLAG_POLE);
+    for o in world.objects.iter().filter(|o| wanted(&o.class) || pole(o)) {
         let mut keyvalues = vec![("classname".to_string(), o.class.clone())];
         for p in &o.properties {
             let key = match p.name.as_str() {

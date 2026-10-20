@@ -89,6 +89,14 @@ pub struct CaObjectives {
     pub intel: Vec<Vec3>,
     /// Spy Hunt's stage (1, 2; 0 before a round).
     pub stage: u8,
+    /// The bomb that went off this round: the site's centre and when (game
+    /// seconds), for its explosion show (game_modes.md S15).
+    pub detonation: Option<(Vec3, f64)>,
+    /// The bomb defused this round: where (its defused sound).
+    pub defused: Option<Vec3>,
+    /// Spy Hunt's stage-2 camera hold: when it ends (game seconds; every
+    /// view on the map camera until then, M7).
+    pub camera_until: Option<f64>,
 }
 
 impl CaObjectives {
@@ -104,6 +112,12 @@ impl CaObjectives {
         }
         if let Some(p) = &mut self.pole {
             p.since = f(p.since);
+        }
+        if let Some((_, t)) = &mut self.detonation {
+            *t = f(*t);
+        }
+        if let Some(t) = &mut self.camera_until {
+            *t = f(*t);
         }
     }
 

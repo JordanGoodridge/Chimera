@@ -10,12 +10,14 @@
 //! replicated, and the characters' names), so a network client builds the
 //! same board; the front end draws it (`ui::scoreboard`).
 //!
+//! Hunted: mission points, time hunted, kills (`ScoreOrder::Hunted`).
+//!
 //! Known shortcuts: no level icon or clan emblem; the mode column is the
 //! captures (capture the flag) or the mission points (the modes ordered
 //! by them), none otherwise; ties keep the server's player order
 //! (entities), as a stable sort of its list would; VIP Elimination's VIP
-//! rank and Hunted's time hunted aren't columns (no VIP data, no time
-//! kept); ping is the network's (`net::NetScore`) when there is one.
+//! rank and Hunted's time hunted aren't columns; ping is the network's
+//! (`net::NetScore`) when there is one.
 
 use bevy::prelude::*;
 
@@ -37,6 +39,8 @@ pub struct ScoreRow {
     pub captures: u32,
     pub returns: u32,
     pub mission_points: i32,
+    /// Hunted's time hunted, ms.
+    pub hunted_ms: u32,
     /// Milliseconds, when the network knows it.
     pub ping: Option<u32>,
 }
@@ -47,9 +51,26 @@ impl ScoreRow {
         match order {
             ScoreOrder::Kills => None,
             ScoreOrder::Captures => Some(self.captures as i64),
-            ScoreOrder::MissionPoints | ScoreOrder::MissionOnly => Some(self.mission_points as i64),
+            ScoreOrder::MissionPoints | ScoreOrder::MissionOnly | ScoreOrder::Hunted => Some(self.mission_points as i64),
         }
     }
+}
+
+/// The scoreboard's mode-column title per mode (S13, Open question 31; US
+/// strings, as spelled); None: the mode has none.
+pub fn mode_column_title(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "TMM" | "ESL" => "Explode / Defuse",
+        "SBT" => "Explode/Defuse",
+        "CTF" => "Thouch Down / Recover",
+        "BNT" => "Intels / Total",
+        "QRT" => "H./I. Survival",
+        "LMS" => "Last Man Points",
+        "HQM" | "SQM2" => "HQ Point",
+        "HG" => "Hunted Points",
+        "COOP" | "IFS" | "COOP_CF" => "Mission",
+        _ => return None,
+    })
 }
 
 /// S13's order for `order` (stable).
@@ -65,6 +86,12 @@ pub fn sort_by(rows: &mut [ScoreRow], order: ScoreOrder) {
         }),
         ScoreOrder::MissionPoints => rows.sort_by(|a, b| b.mission_points.cmp(&a.mission_points).then(kills(a, b))),
         ScoreOrder::MissionOnly => rows.sort_by(|a, b| b.mission_points.cmp(&a.mission_points)),
+        ScoreOrder::Hunted => rows.sort_by(|a, b| {
+            b.mission_points
+                .cmp(&a.mission_points)
+                .then(b.hunted_ms.cmp(&a.hunted_ms))
+                .then(b.kills.cmp(&a.kills))
+        }),
     }
 }
 
@@ -109,6 +136,7 @@ pub fn rows(world: &mut World) -> Vec<ScoreRow> {
                 captures: s.captures,
                 returns: s.returns,
                 mission_points: s.mission_points,
+                hunted_ms: s.hunted_ms,
                 ping: net.map(|n| n.ping as u32),
             }
         })
@@ -130,6 +158,7 @@ mod tests {
             captures: 0,
             returns: 0,
             mission_points: 0,
+            hunted_ms: 0,
             ping: None,
         }
     }

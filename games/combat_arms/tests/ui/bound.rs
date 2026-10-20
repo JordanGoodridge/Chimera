@@ -226,7 +226,7 @@ fn score_panel_binds_by_name() {
     let view = ScorePanelView {
         mode_key: "TDM".into(),
         mode_name: "Team Deathmatch".into(),
-        goal: "50 kills".into(),
+        goal: "50 Kills".into(),
         rows,
         labels: ["Alpha".into(), "Bravo".into()],
         highlight,
@@ -236,7 +236,7 @@ fn score_panel_binds_by_name() {
     let t = texts(&draws);
     eprintln!("{t:?}");
     let find = |s: &str| t.iter().find(|x| x.0 == s).cloned();
-    assert!(find("Team Deathmatch").is_some() && find("50 kills").is_some());
+    assert!(find("Team Deathmatch").is_some() && find("50 Kills").is_some());
     assert_eq!(find("25").unwrap().2, SCORE_ALPHA);
     assert_eq!(find("10").unwrap().2, SCORE_PLAIN);
     // The labels are the layout's string ids (unresolved here: the raw
@@ -319,6 +319,7 @@ fn row(name: &str, team: u8, kills: u32) -> ScoreRow {
         captures: 2,
         returns: 0,
         mission_points: 0,
+        hunted_ms: 0,
         ping: Some(120),
     }
 }
@@ -351,6 +352,7 @@ fn scoreboard_binds_by_name() {
         headers: ["Alpha".into(), "Bravo".into()],
         order: Some(ScoreOrder::Kills),
         ffa: false,
+        mode: None,
         result: None,
     };
     let l = bound.build(&board, Scale::ONE).unwrap();

@@ -156,6 +156,8 @@ pub struct CaStats {
     pub defuses: u32,
     pub mission_points: i32,
     pub round_wins: u32,
+    /// Hunted: the time hunted, ms (M15).
+    pub hunted_ms: u32,
 }
 
 /// How a death came about (S7's rows).

@@ -444,7 +444,8 @@ fn muzzle_flash(
         let (vm, inv) = (p.0, p.1);
         let at = vm.flash_at?;
         let (view, mods) = inv.active.and_then(|w| weapons.get(w).ok())?;
-        let group = pv_muzzle(&tables, &view?.muzzle_fx, mods).to_string();
+        let view = view?;
+        let group = pv_muzzle(&tables, &view.muzzle_fx, &view.flash_hider_fx, mods).to_string();
         Some((vm.clone(), at, group))
     });
     let Some((vm, at, group)) = shown else {

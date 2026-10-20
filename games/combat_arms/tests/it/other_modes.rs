@@ -287,19 +287,30 @@ fn seizing_needs_your_own_trigger() {
 
 // --- M12 VIP Elimination
 
-/// A death is worth the victim's VIP rank's points; the killer's mission
-/// points show them.
+/// M12 (cases 71, 72; missions.md 23): G 140 and a team of 5 has 2
+/// VIPs: its top player (here by name, no one has VIP points yet) silver
+/// (5 points), the next bronze (3), the rest 1. Killing the silver VIP
+/// adds 5 to the killer's team and the killer's VIP points; the ranks
+/// follow the points (the killer's team re-ranked as its score rose).
 #[test]
 fn vip_elimination_weights_deaths() {
     let mut sim = game("VTDM", 12);
-    settings(&mut sim).objectives.vip_points = vec![1, 5];
-    let a = join(&mut sim, JSF);
-    let b = join(&mut sim, CREED);
-    sim.app.world_mut().entity_mut(b).insert(CaVipRank(1));
+    settings(&mut sim).goal = 140;
+    let a: Vec<Entity> = (0..5).map(|_| join(&mut sim, JSF)).collect();
+    let b: Vec<Entity> = (0..5).map(|_| join(&mut sim, CREED)).collect();
+    for (i, e) in a.iter().chain(b.iter()).enumerate() {
+        sim.app.world_mut().entity_mut(*e).insert(Name::new(format!("p{i:02}")));
+    }
     until_live(&mut sim);
+    sim.ticks(2);
     unprotect_all(&mut sim);
-    kill_now(&mut sim, b, a);
+    let rank = |sim: &Sim, e: Entity| sim.app.world().get::<CaVipRank>(e).map_or(0, |r| r.0);
+    assert_eq!(b.iter().map(|e| rank(&sim, *e)).collect::<Vec<_>>(), vec![2, 1, 0, 0, 0]);
+    kill_now(&mut sim, b[0], a[3]);
     assert_eq!(m(&sim).score, [5, 0]);
-    assert_eq!(stats(&sim, a).mission_points, 5);
+    assert_eq!(stats(&sim, a[3]).mission_points, 5);
+    assert_eq!(rank(&sim, a[3]), 2, "the killer leads its team now");
+    kill_now(&mut sim, b[2], a[3]);
+    assert_eq!(m(&sim).score, [6, 0], "a rank-0 victim is worth 1");
     assert_eq!(m(&sim).round_ends, None, "no timer, as TDM");
 }

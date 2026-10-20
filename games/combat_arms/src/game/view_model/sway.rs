@@ -23,6 +23,27 @@ pub const MOVE_THRESHOLD: f64 = 0.1;
 /// The game's frame time clamp (s).
 pub const FRAME_TIME_CAP: f64 = 0.1;
 
+/// The footing ray's reach below the hull centre (u, 6).
+pub const FOOTING_RAY: f64 = 150.0;
+
+/// The footing test (6, Open question 15): on sky, no; on a ladder or the
+/// ground, yes; jumped and not landed, no; else whether a ray straight
+/// down from the hull centre meets the floor within `FOOTING_RAY` (`floor`:
+/// its distance, u). The sway, own footsteps and the start of a fall
+/// follow it.
+pub fn can_step(on_sky: bool, ladder: bool, ground: bool, jumped: bool, floor: Option<f64>) -> bool {
+    if on_sky {
+        return false;
+    }
+    if ladder || ground {
+        return true;
+    }
+    if jumped {
+        return false;
+    }
+    floor.is_some_and(|d| d <= FOOTING_RAY)
+}
+
 /// One frame's inputs.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SwayInputs {

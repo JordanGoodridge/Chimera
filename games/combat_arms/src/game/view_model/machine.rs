@@ -36,6 +36,10 @@ pub mod names {
     pub const POSTFIRE: &str = "postfire";
     pub const DRY_FIRE: &str = "dryfire";
     pub const RELOAD: &str = "reload";
+    /// The double barrel's "one barrel left" reload (7).
+    pub const RELOAD_ONE: &str = "reload_1";
+    /// The holster, when a file has one (none stock).
+    pub const DESELECT: &str = "deselect";
     pub const PRE_RELOAD: &str = "prereload";
     pub const POST_RELOAD: &str = "postreload";
     pub const PRE_RUSH: &str = "prerush";
@@ -123,6 +127,43 @@ pub struct Setup {
     /// Clip size (0: no magazine, never reloads).
     pub clip_size: u32,
     pub rates: Rates,
+    /// The double-barrel gun type: `reload_1` with rounds left (7).
+    pub double_barrel: bool,
+    /// The ammo's maximum (the projectile piece shows at a draw with a
+    /// full total, 3).
+    pub ammo_max: u32,
+    /// `PVAttachFXName0..` effects, and `PVAttachFXAlwaysShow` (3).
+    pub attach_fx: usize,
+    pub attach_fx_always: bool,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            class: Class::Primary,
+            per_press: 0,
+            shells: false,
+            clip_size: 0,
+            rates: Rates::default(),
+            double_barrel: false,
+            ammo_max: 0,
+            attach_fx: 0,
+            attach_fx_always: false,
+        }
+    }
+}
+
+/// What the pieces and attached effects of the model show (3): the
+/// `HiddenPiece` list hidden (total ammunition below 1, checked at the
+/// draw and the end of each fire sequence), the `ProjectilePiece` shown,
+/// each attached effect's state.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Pieces {
+    pub hidden_list: bool,
+    pub projectile: bool,
+    /// Per attached effect: shown now, hidden by a key.
+    pub fx_shown: Vec<bool>,
+    pub fx_hidden_by_key: Vec<bool>,
 }
 
 /// One weapon update's inputs.
@@ -208,6 +249,8 @@ pub enum Stage {
     Firing(FireStage),
     Reloading(ReloadStage),
     Sprint(SprintStage),
+    /// `deselect` playing: the switch waits for it.
+    Holstering,
 }
 
 /// The model's main tracker.
@@ -246,6 +289,9 @@ pub struct ViewMachine {
     clock: f64,
     idle_at: f64,
     rng: u32,
+    /// The pieces and attached effects (3); the model visible (11).
+    pub pieces: Pieces,
+    visible: bool,
 }
 
 impl ViewMachine {
@@ -264,9 +310,50 @@ impl ViewMachine {
             clock: 0.0,
             idle_at: f64::MAX,
             rng: seed | 1,
+            pieces: Pieces {
+                fx_shown: vec![false; setup.attach_fx],
+                fx_hidden_by_key: vec![false; setup.attach_fx],
+                ..Default::default()
+            },
+            visible: false,
         };
         m.start(names::SELECT, true, setup.rates.draw);
         m
+    }
+
+    /// The pieces at the draw (3): the hidden list by the total, the
+    /// projectile piece shown with rounds in the clip or a full total.
+    pub fn draw_ammo(&mut self, clip: u32, total: u32) {
+        self.pieces.hidden_list = total < 1;
+        self.pieces.projectile = clip > 0 || (self.setup.ammo_max > 0 && total >= self.setup.ammo_max);
+    }
+
+    /// The model shown or hidden (the draw, a scope, 11): attached effects
+    /// not hidden by a key show (all of them with `PVAttachFXAlwaysShow`),
+    /// and all hide with the model.
+    pub fn set_visible(&mut self, visible: bool) {
+        if visible == self.visible {
+            return;
+        }
+        self.visible = visible;
+        for (i, shown) in self.pieces.fx_shown.iter_mut().enumerate() {
+            *shown = visible && (self.setup.attach_fx_always || !self.pieces.fx_hidden_by_key[i]);
+        }
+    }
+
+    /// Holster (7): `deselect` at rate 1.0 when the file has it (the
+    /// switch waits for `holstered`); false without it (an instant switch).
+    pub fn holster(&mut self) -> bool {
+        if !self.start(names::DESELECT, false, 1.0) {
+            return false;
+        }
+        self.stage = Stage::Holstering;
+        true
+    }
+
+    /// The holster is over (or there was none).
+    pub fn holstered(&self) -> bool {
+        self.stage != Stage::Holstering || self.done()
     }
 
     pub fn setup(&self) -> &Setup {
@@ -426,7 +513,13 @@ impl ViewMachine {
             }
         } else {
             self.stage = Stage::Reloading(ReloadStage::Magazine);
-            self.start(names::RELOAD, false, rate);
+            let one = self.setup.double_barrel && i.clip > 0 && self.find(names::RELOAD_ONE).is_some();
+            self.start(if one { names::RELOAD_ONE } else { names::RELOAD }, false, rate);
+        }
+        // The projectile piece shows when a reload starts with rounds to
+        // load.
+        if self.setup.clip_size > 0 && i.total > i.clip {
+            self.pieces.projectile = true;
         }
     }
 
@@ -452,6 +545,7 @@ impl ViewMachine {
         };
         if out.shot.is_some() {
             self.press_shots += 1;
+            self.pieces.projectile = false;
         }
         let held = i.fire || (self.setup.class == Class::Melee && i.alt_fire);
         if !held {
@@ -558,6 +652,7 @@ impl ViewMachine {
                     match r {
                         ReloadStage::Magazine => {
                             out.reloaded = true;
+                            self.pieces.projectile = true;
                             if i.sprinting {
                                 self.sprint_in();
                             } else {
@@ -584,6 +679,7 @@ impl ViewMachine {
                     }
                 }
             }
+            Stage::Holstering => {}
             Stage::Sprint(s) => match s {
                 SprintStage::In | SprintStage::Loop if !i.sprinting => {
                     self.stage = Stage::Sprint(SprintStage::Out);
@@ -616,7 +712,9 @@ impl ViewMachine {
 
     /// The main fire animation ended without a repeat: post-fire if the
     /// model has one, else idle.
-    fn after_fire(&mut self, _i: &Inputs, out: &mut Update) {
+    fn after_fire(&mut self, i: &Inputs, out: &mut Update) {
+        // The end of a fire sequence checks the hidden pieces (3).
+        self.pieces.hidden_list = i.total < 1;
         if self.start(names::POSTFIRE, true, self.setup.rates.fire) {
             self.stage = Stage::Firing(FireStage::Post);
             out.events.push(ViewKey::PostFireSound);
@@ -677,6 +775,18 @@ impl ViewMachine {
             "throw_key" => Some(ViewKey::Throw),
             "sound_key" => cmd.get(1)?.parse().ok().map(ViewKey::Sound),
             "shell_casing" => Some(ViewKey::ShellCasing),
+            "hide_pvattachfx" | "show_pvattachfx" => {
+                let hide = word == "hide_pvattachfx";
+                if self.visible && !(hide && self.setup.attach_fx_always) {
+                    for i in cmd.iter().skip(1).filter_map(|n| n.parse::<usize>().ok()) {
+                        if i < self.pieces.fx_shown.len() {
+                            self.pieces.fx_hidden_by_key[i] = hide;
+                            self.pieces.fx_shown[i] = !hide;
+                        }
+                    }
+                }
+                None
+            }
             _ => None,
         }
     }

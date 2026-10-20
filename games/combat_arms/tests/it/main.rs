@@ -19,8 +19,10 @@ mod characters;
 mod effects_sounds;
 mod free_for_all;
 mod game_modes;
+mod game_modes_followups;
 mod grenades;
 mod inventory;
+mod missions;
 mod mode_kit;
 mod model;
 mod movement;
@@ -43,6 +45,7 @@ mod heavy {
     mod effects_sounds;
     mod junk_flea2;
     mod map_load;
+    mod missions;
     mod model;
     mod movement_volumes;
     mod mount;

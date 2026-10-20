@@ -14,8 +14,11 @@
 //! (`bound::ScorePanel`) and the gauge the game's action panel
 //! (`bound::ActionPanel`); without them, ours at D6's places.
 //!
-//! Known shortcuts: the goal text is ours ("G kills" / "G wins": the
-//! mode's goal string isn't in our string table); the round modes show
+//! The goal text is S13's by mode (`goal_unit`: "5 Rounds", "100 Kills",
+//! "12 Min.", "5 Points").
+//!
+//! Known shortcuts: the goal text has no "current round /" in front; the
+//! round modes show
 //! their round wins on the same counters (D6 describes TDM's only); the
 //! objectives' lines are ours (text under the timer: the spec gives
 //! their lengths, not their looks), the gauge too without the install;
@@ -105,15 +108,16 @@ pub mod looks {
     pub const HEADER: [u8; 4] = [218, 218, 218, 255];
 }
 
-/// The goal's unit as the panel prints it ("G kills").
+/// The goal's unit as the HUD prints it after G (game_modes.md S13, Open
+/// question 31; the US strings): "Rounds" for the round modes, "Kills"
+/// for the kill modes, "Min." for Spy Hunt and Seize and Secure,
+/// "Points" for capture the flag, Squad Match 2 and VIP Elimination.
 pub fn goal_unit(key: &str) -> &'static str {
     match key {
-        "TDM" | "FFA" | "VWRM" => "kills",
-        "VTDM" => "points",
-        "CTF" => "captures",
-        "HQM" | "SQM2" | "BNT" => "min",
-        "LMS" | "HG" | "QRT" | "ESL" => "rounds",
-        _ => "wins",
+        "TDM" | "FFA" | "VWRM" | "SFM" | "BDM" => "Kills",
+        "VTDM" | "CTF" | "SQM2" => "Points",
+        "HQM" | "BNT" => "Min.",
+        _ => "Rounds",
     }
 }
 

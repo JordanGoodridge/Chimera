@@ -9,7 +9,7 @@ use chimera_world::harness::Sim;
 use combat_arms::game::{
     grenades::M67,
     rules::{
-        self, CaMatch, CaRuleSettings, CaStats, Phase,
+        self, CaMatch, CaStats, Phase,
         last_man::winner_of,
         objects::StartPoint,
         spawns::{self, CaProtected, CaSpawnCursors},
@@ -243,23 +243,51 @@ fn spy_hunt_stages() {
     assert_eq!(m(&sim).winner, Some(JSF), "the hunters win");
 }
 
-/// M14: Arms Race's ladder: every `ladder_kills` kills the next weapon,
-/// drawn; no death drops.
+/// Arms Race with `n` players, the default ladder's `Percent` at
+/// `percent` from the start.
+fn arms_race(n: usize, percent: i32) -> (Sim, Vec<Entity>) {
+    let mut sim = game("VWRM", 12);
+    settings(&mut sim).objectives.ladder_percent = percent;
+    let players: Vec<Entity> = (0..n).map(|_| join(&mut sim, JSF)).collect();
+    until_live(&mut sim);
+    sim.ticks(3);
+    unprotect_all(&mut sim);
+    (sim, players)
+}
+
+/// M14 (missions.md F4.8): Arms Race's ladder at G 15 (the stock
+/// default ladder: 0 kills ACR, 4 the Kriss; our M4A1 and MP5A4 stand in
+/// for them without the install): the step's weapon at spawn and at the
+/// kill that reaches a step, drawn; no death drops. With the roll always
+/// below `Percent` the table's weapon, never its own.
 #[test]
 fn arms_race_ladder() {
-    let (mut sim, p) = ffa("VWRM", 3);
-    sim.ticks(3);
-    let o = sim.app.world().resource::<CaRuleSettings>().objectives.clone();
-    assert_eq!(o.ladder_kills, 2);
+    let (mut sim, p) = arms_race(5, 101);
     assert!(!sim.app.world().resource::<combat_arms::game::inventory::CaDeathDrops>().0);
-    kill_now(&mut sim, p[1], p[0]);
-    assert!(!weapons(&sim, p[0]).contains(&o.ladder[1].as_str()), "not after one kill");
-    kill_now(&mut sim, p[2], p[0]);
+    assert!(wait_for(&mut sim, 1.0, |s| weapons(s, p[0]).contains(&"combat_arms:m4a1")), "{:?}", weapons(&sim, p[0]));
+    for (i, v) in [1, 2, 3].into_iter().enumerate() {
+        kill_now(&mut sim, p[v], p[0]);
+        sim.ticks(1);
+        assert!(!weapons(&sim, p[0]).contains(&"combat_arms:mp5a4"), "not after {} kills", i + 1);
+    }
+    kill_now(&mut sim, p[4], p[0]);
     sim.ticks(1);
-    assert!(weapons(&sim, p[0]).contains(&o.ladder[1].as_str()), "{:?}", weapons(&sim, p[0]));
-    assert!(!weapons(&sim, p[0]).contains(&RIFLE), "the primary replaced");
-    let next = o.ladder[1].clone();
-    assert!(wait_for(&mut sim, 2.0, |s| in_hand(s, p[0]) == Some(next.as_str())), "drawn");
+    assert!(weapons(&sim, p[0]).contains(&"combat_arms:mp5a4"), "{:?}", weapons(&sim, p[0]));
+    assert!(wait_for(&mut sim, 2.0, |s| in_hand(s, p[0]) == Some("combat_arms:mp5a4")), "drawn");
+    let l = sim.app.world().get::<combat_arms::game::rules::arms_race::CaLadder>(p[0]).cloned().unwrap();
+    assert_eq!((l.next, l.last_stage), (Some(7), false));
+}
+
+/// M14: a roll at or above `Percent` keeps the player's own weapon.
+#[test]
+fn arms_race_roll_keeps_your_own() {
+    let (mut sim, p) = arms_race(5, 0);
+    for v in [1, 2, 3, 4] {
+        kill_now(&mut sim, p[v], p[0]);
+    }
+    sim.ticks(2);
+    assert!(!weapons(&sim, p[0]).contains(&"combat_arms:mp5a4"), "{:?}", weapons(&sim, p[0]));
+    assert!(weapons(&sim, p[0]).contains(&RIFLE), "own primary kept: {:?}", weapons(&sim, p[0]));
 }
 
 /// M15: Hunted plays on the unlocked `HungerGame` points in the warm-up
@@ -283,7 +311,7 @@ fn hunted_spawns() {
     join(&mut sim, JSF);
     until_live(&mut sim);
     assert!(at(&sim, p).xz().distance(warm.xz()) < 0.05, "warm-up: {}", at(&sim, p));
-    until(&mut sim, 20.0, |p| matches!(p, Phase::Setup { .. }));
+    until(&mut sim, 30.0, |p| matches!(p, Phase::Setup { .. }));
     sim.ticks(1);
     assert!(at(&sim, p).xz().distance(round.xz()) < 0.05, "round: {}", at(&sim, p));
 }

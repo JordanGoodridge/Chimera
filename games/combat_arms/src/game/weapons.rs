@@ -1535,6 +1535,8 @@ struct Delivery<'w, 's> {
     >,
     armor: Query<'w, 's, &'static mut CaArmor>,
     infected: Query<'w, 's, (), With<super::movement::CaInfected>>,
+    /// The bots, whose shots the server traces on its own pose.
+    bots: Query<'w, 's, (), With<crate::core::Bot>>,
     teams: Query<'w, 's, &'static crate::core::Team>,
     figures: Query<'w, 's, Option<&'static super::movement::CaCharacter>>,
     knockback: Query<'w, 's, &'static super::movement::HitKnockback>,
@@ -1548,6 +1550,9 @@ struct Delivery<'w, 's> {
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
     damage: MessageWriter<'w, Damage>,
     rules: DamageRules<'w, 's>,
+    /// The mode and friendly fire (game_modes.md S8: a teammate's round is
+    /// scaled before armour and the zone factor).
+    settings: Option<Res<'w, super::rules::CaRuleSettings>>,
     first: Res<'w, FirstTimePredicted>,
     role: Option<Res<'w, NetRole>>,
     playback: Option<Res<'w, crate::core::Playback>>,
@@ -1595,6 +1600,9 @@ impl Delivery<'_, '_> {
     /// Every living character but `owner`, as the ray sees it: where it
     /// is, or where `rewound` puts it (its box and look then).
     fn bodies(&self, owner: Entity, rewound: &[lagcomp::Rewound]) -> Vec<Body> {
+        // A bot's shot is traced on the server's pose (characters.md 8,
+        // Open question 5: no `Torso` pitch there).
+        let server = self.bots.contains(owner);
         self.characters
             .iter()
             .filter(|(e, .., h, _, _, _)| *e != owner && h.current > 0.0)
@@ -1606,16 +1614,16 @@ impl Delivery<'_, '_> {
                     Some(r) => {
                         let b = r.aabb();
                         let turn = Quat::from_rotation_y(r.yaw);
-                        let (min, max, mut spheres) = geometry_at(r.origin, turn, b.min, b.max, data, -intent.pitch);
+                        let (min, max, mut spheres) = geometry_at_by(r.origin, turn, b.min, b.max, data, -intent.pitch, server);
                         if let Some(p) = modelled {
-                            spheres = posed_geometry(r.origin, min, r.yaw + (p.body_yaw - intent.yaw), p, data);
+                            spheres = posed_geometry_by(r.origin, min, r.yaw + (p.body_yaw - intent.yaw), p, data, server);
                         }
                         (min, max, spheres, turn)
                     }
                     None => {
-                        let (min, max, mut spheres) = body_geometry(t, intent, state, aabb, data)?;
+                        let (min, max, mut spheres) = body_geometry_by(t, intent, state, aabb, data, server)?;
                         if let Some(p) = modelled {
-                            spheres = posed_geometry(t.translation, min, p.body_yaw, p, data);
+                            spheres = posed_geometry_by(t.translation, min, p.body_yaw, p, data, server);
                         }
                         (min, max, spheres, intent.yaw_rotation())
                     }
@@ -1631,6 +1639,17 @@ impl Delivery<'_, '_> {
                 })
             })
             .collect()
+    }
+
+    /// S8's factor on a round from `a` to `b` (Open question 26: before
+    /// armour and the zone factor): `FF_SCALE` between teammates of a
+    /// team mode that scales friendly fire, with it on; else 1.
+    fn friendly_scale(&self, a: Entity, b: Entity) -> f32 {
+        let Some(s) = self.settings.as_deref() else { return 1.0 };
+        let scaled = s.friendly_fire != 0 && super::rules::mode_by_key(&s.mode).is_some_and(|m| m.ff_scaled);
+        let mates = a != b
+            && matches!((self.teams.get(a), self.teams.get(b)), (Ok(x), Ok(y)) if x == y && matches!(x.0, 1 | 2));
+        if scaled && mates { super::rules::scoring::FF_SCALE } else { 1.0 }
     }
 
     /// Both on one team (neither without one).
@@ -1663,16 +1682,48 @@ pub fn body_geometry(
     Some(geometry_at(t.translation, intent.yaw_rotation(), min, max, data, -intent.pitch))
 }
 
+/// `body_geometry` with the server's aim shares (`server`: no `Torso`
+/// pitch, characters.md 8) for the hits the server traces itself.
+pub fn body_geometry_by(
+    t: &Transform,
+    intent: &Intent,
+    state: &MovementState,
+    aabb: Option<&ColliderAabb>,
+    data: &[HitSphere],
+    server: bool,
+) -> Option<(Vec3, Vec3, Vec<(Vec3, f32)>)> {
+    let (min, max) = if state.hull_max != state.hull_min {
+        (t.translation + state.hull_min, t.translation + state.hull_max)
+    } else {
+        let b = aabb?;
+        (b.min, b.max)
+    };
+    Some(geometry_at_by(t.translation, intent.yaw_rotation(), min, max, data, -intent.pitch, server))
+}
+
 /// A character's spheres `data` in the world for its box `min..max`
 /// (world) around `origin`, turned by `turn`, with the third-person aim
 /// pitch `pitch` (radians, positive down): (min, max, spheres). The
 /// skeleton is squashed by the box's height over the standing one.
 pub fn geometry_at(origin: Vec3, turn: Quat, min: Vec3, max: Vec3, data: &[HitSphere], pitch: f32) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
+    geometry_at_by(origin, turn, min, max, data, pitch, false)
+}
+
+/// `geometry_at` with the server's aim shares when `server`.
+pub fn geometry_at_by(
+    origin: Vec3,
+    turn: Quat,
+    min: Vec3,
+    max: Vec3,
+    data: &[HitSphere],
+    pitch: f32,
+    server: bool,
+) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
     let unit = super::movement::movement_data().meters_per_unit;
     let squash = ((max.y - min.y) / (characters::STAND_HEIGHT * unit)).max(0.0);
     let skel = characters::records::data().skeleton(data.first().map_or(0, |s| s.skeleton));
     let mut posed = characters::skeleton::fallback(skel, squash);
-    posed.aim(&skel.aim, pitch, 0.0, false);
+    posed.aim(&skel.aim, pitch, 0.0, server);
     let feet = origin.with_y(min.y);
     let spheres = data
         .iter()
@@ -1687,12 +1738,26 @@ pub fn geometry_at(origin: Vec3, turn: Quat, min: Vec3, max: Vec3, data: &[HitSp
 /// A character's spheres from its posed body model (`characters::CaPose`)
 /// for its box `min..max` around `origin`, its legs turned to `yaw`.
 pub fn posed_geometry(origin: Vec3, min: Vec3, yaw: f32, pose: &characters::CaPose, data: &[HitSphere]) -> Vec<(Vec3, f32)> {
+    posed_geometry_by(origin, min, yaw, pose, data, false)
+}
+
+/// `posed_geometry` on the server's pose (`CaPose::server_spheres`) when
+/// `server`.
+pub fn posed_geometry_by(
+    origin: Vec3,
+    min: Vec3,
+    yaw: f32,
+    pose: &characters::CaPose,
+    data: &[HitSphere],
+    server: bool,
+) -> Vec<(Vec3, f32)> {
     let unit = super::movement::movement_data().meters_per_unit;
     let feet = origin.with_y(min.y);
     let turn = Quat::from_rotation_y(yaw);
+    let centres = if server && !pose.server_spheres.is_empty() { &pose.server_spheres } else { &pose.spheres };
     data.iter()
         .enumerate()
-        .map(|(i, s)| match pose.spheres.get(i).copied().flatten() {
+        .map(|(i, s)| match centres.get(i).copied().flatten() {
             Some(p) => (feet + turn * (p * unit), s.radius * unit),
             None => (feet, 0.0),
         })
@@ -2248,6 +2313,7 @@ fn hurt(
         });
     }
     let knock = dmg.mods.stun(SpecialKind::Knockback, victim, &mut draw).unwrap_or_default();
+    let ff = w.friendly_scale(r.owner, b.entity);
     let armor = w.armor.get_mut(b.entity).ok();
     let hit = ArmourHit {
         damage_type: dmg.damage_type,
@@ -2255,7 +2321,7 @@ fn hurt(
         zone: sphere.factor,
         infected,
     };
-    let points = armour_and_zone(d / hp, hit, armor.map(|a| a.into_inner()), lands) * hp;
+    let points = armour_and_zone(d * ff / hp, hit, armor.map(|a| a.into_inner()), lands) * hp;
     // An infected victim hit by the other team is knocked back (movement.md,
     // "Hit knock-back").
     if infected && lands && enemy {
@@ -2284,6 +2350,9 @@ fn hurt(
         },
         replay: r.replay,
     });
+    // The rules' friendly-fire step scales the message again (S8): it
+    // carries the amount before that step.
+    damage.amount /= ff;
     w.damage.write(damage);
 }
 

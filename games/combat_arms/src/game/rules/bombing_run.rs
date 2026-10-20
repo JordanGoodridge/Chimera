@@ -18,15 +18,19 @@
 //! - Deaths: S7's personal counts (`scoring::personal`; the mode has no
 //!   column of its own). Friendly fire on is full damage (S8).
 //!
-//! Known shortcuts: the spawn family isn't in the spec (the `Team Death
-//! Match` points stand in); the bomb on the ground isn't drawn (no item
-//! model; the HUD shows where it is); its pick-up box is the flag's
-//! default (10, 25, 10); a map without `Sabotage` drop points has no bomb.
+//! - Spawns: the `Sabotage` points per team (Open question 19). The
+//!   carrier is given its own team's objective weapons of the mission
+//!   (`missions::objective_weapons`: `XK-2` for both in stock files).
+//!
+//! Known shortcuts: the bomb on the ground isn't drawn (no item model:
+//! the mission's `[DropObject]` look isn't read; the HUD shows where it
+//! is); its pick-up box is (10, 25, 10) as the spec says; a map without
+//! `Sabotage` drop points has no bomb.
 
 use bevy::prelude::*;
 
 use super::{
-    BOMBING_RUN, CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, ScoreOrder, TEAM_POINTS, Teams, bomb,
+    BOMBING_RUN, CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, ScoreOrder, Spawns, TEAM_POINTS, Teams, bomb,
     objectives::{self, BOMB, CaObjectives},
     objects::{CaMapObjects, FLAG_DIMS, ObjBox},
     scoring::personal,
@@ -52,7 +56,10 @@ pub const MODE: CaMode = CaMode {
     timer_shown: true,
     forced_setup: None,
     teams: Teams::Two,
-    spawns: TEAM_POINTS,
+    spawns: Spawns {
+        family: Some(FAMILY),
+        ..TEAM_POINTS
+    },
     round_time: RoundTime::Mission,
     fire_ends_protection: false,
     death_drops: true,
@@ -147,7 +154,15 @@ fn update(world: &mut World) {
             && world.get::<crate::weapon::Inventory>(p.e).is_some_and(|i| !i.weapons.is_empty())
         {
             world.resource_mut::<CaObjectives>().loose_bomb = None;
-            objectives::give_weapon(world, p.e, BOMB);
+            // The taker's own team's field (missions.md F3: `JSFWeapon` for
+            // JSF, `CreedWeapon` for Creed; both `XK-2`).
+            let mut ids = super::super::missions::objective_weapons(world, p.team);
+            if ids.is_empty() {
+                ids.push(BOMB);
+            }
+            for id in ids {
+                objectives::give_weapon(world, p.e, id);
+            }
             let mut c = objectives::carry(world, p.e);
             c.bomb = true;
             objectives::set_carry(world, p.e, c);

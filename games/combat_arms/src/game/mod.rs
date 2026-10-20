@@ -57,6 +57,7 @@ pub mod grenades;
 pub mod hud;
 pub mod inventory;
 pub mod model;
+pub mod missions;
 pub mod mount;
 pub mod movement;
 pub mod net;

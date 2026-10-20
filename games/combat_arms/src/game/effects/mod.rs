@@ -78,6 +78,7 @@
 //! - Critical hits, ricochets, the pusher, screen tints and blast lights
 //!   (never at detail 3: Quirk 9) aren't modelled.
 
+pub mod bomb;
 pub mod data;
 pub mod fx;
 pub mod library;
@@ -247,6 +248,7 @@ impl Plugin for CaEffectsPlugin {
                 shot_effects,
                 key_sounds,
                 grenade_effects,
+                bomb::bomb_effects,
                 footsteps,
                 step_effects,
                 spawn_fx,
@@ -392,11 +394,17 @@ pub fn hh_muzzle<'a>(t: &'a CaFxTables, fx: &'a CaWeaponFx, mods: Option<&CaMods
         .unwrap_or(&fx.hh_muzzle)
 }
 
-/// The first-person muzzle group: the muzzle part's, else the weapon's
-/// (`PVMuzzleFXName`, the view model's `muzzle_fx`).
-pub fn pv_muzzle<'a>(t: &'a CaFxTables, view: &'a str, mods: Option<&CaMods>) -> &'a str {
-    mods.and_then(|m| m.part(MUZZLE))
-        .and_then(|p| t.attachment(&p.record.name))
+/// The first-person muzzle group: a muzzle part with a flash hider
+/// (`FlashHiderLevel` h > 0, view_models.md 9, Open question 16) takes the
+/// weapon's `PVFlashHiderFXName`h (`hider`, by level; none: no flash at
+/// all); else the muzzle part's group, else the weapon's
+/// (`PVMuzzleFXName`, the view model's `muzzle_fx`). Empty: no flash.
+pub fn pv_muzzle<'a>(t: &'a CaFxTables, view: &'a str, hider: &'a [String], mods: Option<&CaMods>) -> &'a str {
+    let part = mods.and_then(|m| m.part(MUZZLE));
+    if let Some(level) = part.map(|p| p.record.flash_hider_level).filter(|l| *l > 0) {
+        return hider.get(level as usize).map_or("", String::as_str);
+    }
+    part.and_then(|p| t.attachment(&p.record.name))
         .and_then(|a| a.pv_muzzle.as_deref())
         .unwrap_or(view)
 }
@@ -523,7 +531,11 @@ fn shot_effects(
     mut dings: ResMut<DingQueue>,
     mut sounds: MessageWriter<CaSound>,
     mut fx: MessageWriter<CaFxRequest>,
-    (mut state, volumes): (Local<ShotState>, Query<&CaVolume>),
+    (mut state, volumes, protected): (
+        Local<ShotState>,
+        Query<&CaVolume>,
+        Query<(), With<super::rules::spawns::CaProtected>>,
+    ),
     mut commands: Commands,
 ) {
     // Others' rounds on a network client arrive as `RemoteShot`s (their
@@ -668,6 +680,11 @@ fn shot_effects(
                     }
                 }
                 let Some(hit) = hit else { continue };
+                // A spawn-protected player absorbs the round: no blood, no
+                // impact (game_modes.md S6, Open question 25).
+                if protected.contains(*hit) {
+                    continue;
+                }
                 let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));
                 let character = has_health && is_character;
                 let ty = if character {

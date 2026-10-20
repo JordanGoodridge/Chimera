@@ -16,7 +16,9 @@
 //!   when absent), at `Pos` (home);
 //! - flag zones (`FlagZoneTrigger`): `Team`, `LinkedFlag`, a box;
 //! - use triggers (`ActivateTrigger`, Seize and Secure's
-//!   `ActivateTrigger_A` and `_B` by `Name`): a box.
+//!   `ActivateTrigger_A` and `_B` by `Name`): a box;
+//! - Seize and Secure's flag pole: the object named `FlagPolePos`, its
+//!   position.
 //!
 //! Boxes are axis-aligned in the map's axes (so in ours), engine metres.
 //! A test (or a tool) may put its own `CaMapObjects` in after a map loaded;
@@ -48,6 +50,10 @@ pub const MODE_CLASSES: &[&str] = &[
 pub fn is_mode_object(class: &str) -> bool {
     MODE_CLASSES.contains(&class)
 }
+
+/// The name of Seize and Secure's flag pole position object (M10), passed
+/// through whatever its class.
+pub const FLAG_POLE: &str = "FlagPolePos";
 
 /// A flag's box half-extents when its object has none (M4), world units.
 pub const FLAG_DIMS: Vec3 = Vec3::new(10.0, 25.0, 10.0);
@@ -153,6 +159,9 @@ pub struct CaMapObjects {
     pub flags: Vec<FlagObject>,
     pub flag_zones: Vec<FlagZone>,
     pub triggers: Vec<UseTrigger>,
+    /// Seize and Secure's flag pole: the object named `FlagPolePos`
+    /// (M10, Open question 24; engine metres).
+    pub flag_pole: Option<Vec3>,
 }
 
 /// A team name (`JSF`, `Creed`, their ids or `Alpha`/`Bravo`) as a team id.
@@ -193,6 +202,9 @@ fn area(e: &MapEntity, scale: f32, default_dims: Vec3) -> ObjBox {
 pub fn read(entities: &[MapEntity], scale: f32) -> CaMapObjects {
     let mut out = CaMapObjects::default();
     for e in entities {
+        if e.get("targetname") == Some(FLAG_POLE) {
+            out.flag_pole = Some(entity_to_engine(e.origin(), scale));
+        }
         let family = e.get("GameType").unwrap_or("").to_string();
         match e.classname() {
             "GameStartPoint" => {
