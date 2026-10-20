@@ -69,9 +69,14 @@
 //!   and `ca_order`) go to the server, which checks them
 //!   (`mercs::hire`, `mercs::set_order`).
 //! - **Respawning** (game_modes.md S5): a client's player, dead for more
-//!   than `respawn_wait_client` s by its own clock in a mode that
-//!   respawns, asks once (`CaRespawnRequest`); the server checks it
-//!   (`rules::spawns::request_respawn`).
+//!   than its wait (`respawn_wait_client` s, Relentless's shorter) by its
+//!   own clock in a mode that respawns, asks once (`CaRespawnRequest`,
+//!   with F7's fast flag): its death camera sends it (`death_cam`); the
+//!   server checks it (`rules::spawns::request_respawn_with`).
+//! - **The death camera's facts** (`death_cam::register`, its own part):
+//!   each player's client id (`CaSlot`), the kill-me counts, the room's
+//!   Kill Cam option on the match, fast respawns and Relentless, and
+//!   the held joiners' marker (`CaHeld`).
 //! - **Hooks**: the join flow (`net::JoinRules::enter`:
 //!   `rules::flow::enter_game`, S1: in at once, or held until the next
 //!   round), the setup's freeze for a client's prediction (`net::Holds`:
@@ -102,7 +107,7 @@ use super::{
     weapons::CaArmor,
 };
 use crate::{
-    core::{Dead, LocalPlayer, NetRole, SimClock},
+    core::{NetRole, SimClock},
     net::{
         Holds, JoinRules, NetAppExt, NetBody, NetCharacter, NetHooks,
         game::{ServerTime, tick_of},
@@ -177,7 +182,7 @@ fn register(app: &mut App) {
                 .after(crate::net::predict::rebuild_own_states)
                 .run_if(client()),
         )
-        .add_systems(PostUpdate, ask_to_respawn.before(ClientSystems::Send).run_if(client()));
+        ;
     app.world_mut()
         .resource_mut::<NetHooks>()
         .stopped_serving
@@ -222,9 +227,13 @@ pub mod match_phase {
     pub const MATCH_OVER: u8 = 6;
 }
 
-/// A client's player asks to respawn (game_modes.md S5).
+/// A client's player asks to respawn (game_modes.md S5); `fast` is F7's
+/// fast-respawn flag (death_killcam.md 6, 9). The client sends it itself:
+/// its death camera's countdown (`death_cam`).
 #[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
-pub struct CaRespawnRequest;
+pub struct CaRespawnRequest {
+    pub fast: bool,
+}
 
 /// A client asks to hire unit `unit` (game_modes_2.md M11.7).
 #[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
@@ -333,10 +342,10 @@ fn receive_respawns(mut requests: MessageReader<FromClient<CaRespawnRequest>>, p
     for r in requests.read() {
         let Some(client) = r.client_id.entity() else { continue };
         let Ok(p) = players.get(client) else { continue };
-        let character = p.character;
+        let (character, fast) = (p.character, r.message.fast);
         commands.queue(move |w: &mut World| {
             if w.get_entity(character).is_ok()
-                && let Err(why) = spawns::request_respawn(w, character)
+                && let Err(why) = spawns::request_respawn_with(w, character, fast)
             {
                 debug!("respawn request refused: {why}");
             }
@@ -386,29 +395,6 @@ fn apply_match(world: &mut World) {
     };
     if *world.resource::<CaMatchView>() != view {
         world.insert_resource(view);
-    }
-}
-
-/// Our player, dead for more than the client's wait in a mode that
-/// respawns, asks once per death (S5: a refused request isn't retried).
-fn ask_to_respawn(
-    me: Query<&Dead, With<LocalPlayer>>,
-    view: Res<CaMatchView>,
-    settings: Res<CaRuleSettings>,
-    time: Res<Time<Fixed>>,
-    mut asked: Local<Option<f64>>,
-    mut out: MessageWriter<CaRespawnRequest>,
-) {
-    let Ok(dead) = me.single() else {
-        *asked = None;
-        return;
-    };
-    if !view.mode().is_some_and(|m| m.respawns) || *asked == Some(dead.since) {
-        return;
-    }
-    if time.elapsed_secs_f64() - dead.since > settings.respawn_wait_client as f64 {
-        *asked = Some(dead.since);
-        out.write(CaRespawnRequest);
     }
 }
 

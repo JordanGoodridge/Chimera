@@ -15,7 +15,9 @@
 //!   timer (`hud::score`); `scoreboard`: the scoreboard (Tab, and a
 //!   round's result); `loading`: the loading screen while joining;
 //!   `menu`: the in-game menu (Esc) in place of the
-//!   shell's default; `chat`: the match chat's queue (the model);
+//!   shell's default; `hud::death`: the death screen on the install's
+//!   kill-cam layout, and the death camera's input and camera on the shell;
+//!   `chat`: the match chat's queue (the model);
 //!   `visuals`: placeholder looks (box guns); `effects`: decals, tracers,
 //!   casings, the first-person muzzle flash and effect lights
 //!   (game::effects).
@@ -42,8 +44,8 @@
 //! headless tests'.
 //!
 //! Known shortcuts: no other screens (lobby, shop, result screen: the
-//! game has them as menus at 1024 x 768; no kill cam or vote panel
-//! yet); without the install the HUD's panels keep their places as code
+//! game has them as menus at 1024 x 768; no vote panel yet, and the
+//! death screen only with the install's layout); without the install the HUD's panels keep their places as code
 //! (`hud::model`, from hud_crosshair.md); with it the crosshair and name
 //! tags stay code-drawn (as the spec has them), the objectives' lines
 //! ours.
@@ -88,6 +90,7 @@ impl Plugin for CaUiPlugin {
             menu::CaMenuPlugin,
             scoreboard::CaScoreboardPlugin,
             loading::CaLoadingPlugin,
+            hud::death::CaDeathScreenPlugin,
         ))
         // Key 6, the objective class (inventory.md 2, 3: the mission
         // bomb), through the shell's selection as slot 6.
@@ -193,7 +196,7 @@ impl CaUi {
         if let Some(f) = inst.fonts.iter().find(|f| f.number == hud::model::RANGE_SYSFONT) {
             range_font(&mut ui.fonts, &f.name.clone());
         }
-        for l in [&inst.hud, &inst.menu, &inst.indicator, &inst.result, &inst.team_list, &inst.no_team_list, &inst.loading]
+        for l in [&inst.hud, &inst.menu, &inst.indicator, &inst.result, &inst.team_list, &inst.no_team_list, &inst.loading, &inst.kill_cam]
             .into_iter()
             .flatten()
         {

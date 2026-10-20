@@ -16,9 +16,9 @@
 //!
 //! Known shortcuts: no scavenging (the mission's map item tables and the
 //! map's `RandomMapItem` commands aren't run: no supply drops), no emotes
-//! (characters.md 9), no system scan; the death camera's `DyingTime` hold
-//! (3.5 s, a client's) only matters before a respawn, which Hunted's
-//! rounds don't have.
+//! (characters.md 9), no system scan. The death camera's hold, pull-back
+//! and free cameras are the client's (`game::death_cam`; its hold rides
+//! the body's place, not the `Eyes` socket).
 
 use bevy::prelude::*;
 

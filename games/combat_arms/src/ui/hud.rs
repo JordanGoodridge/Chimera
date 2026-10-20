@@ -126,6 +126,7 @@
 
 pub mod action;
 pub mod bound;
+pub mod death;
 pub mod install;
 pub mod model;
 pub mod score;
@@ -691,6 +692,8 @@ struct HudInputs<'w, 's> {
     bodies: Query<'w, 's, &'static CaBody>,
     carry: Query<'w, 's, &'static CaCarry>,
     items: Res<'w, ItemNames>,
+    /// The death camera: whom the dead player watches.
+    death: Option<Res<'w, crate::game::death_cam::CaDeathCam>>,
 }
 
 /// This frame's `CaHud` from the world and the memory.
@@ -967,7 +970,8 @@ fn update(
                 revealed: false,
                 flashing: memory.flashes.contains_key(&e),
                 seen: aim::clear_line(&world.spatial, ray.eye, anchor, &[me, e]),
-                chased: in_eye == Some(e),
+                chased: in_eye == Some(e) || world.death.as_ref().is_some_and(|d| d.watched == Some(e)),
+                everyone: !local_alive && world.death.as_ref().is_some_and(|d| d.rules.hunted),
                 state_viewer: false,
                 body_visible: body.is_some(),
                 flag: world.carry.get(e).is_ok_and(|c| c.flag.is_some()),

@@ -159,7 +159,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   grenades, the weapon classes, attachments, the game modes (TDM,
   Elimination Pro, S&D, CTF, One Man Army and the rest; Hired Guns with
   its AI mercenaries, VIP Escort, the clan modes), bots and the
-  player characters so far;
+  player characters and the death camera so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`: its game modes as rule
@@ -528,6 +528,8 @@ that the paths exist).
 - `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
 - `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules (TDM, S&D, CTF, Hired Guns, VIP Escort, clan modes, the rest) (games)
+- `games/combat_arms/src/game/death_cam.rs`: Combat Arms' death camera, kill-cam values and respawn countdown, the client's own (games)
+- `games/combat_arms/src/game/death_cam/`: the pull-back and orbit maths, the phase machine with targets and keys, the death screen's values and tips (games)
 - `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, bomb, mercenaries, each mode (games)
 - `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
 - `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)
@@ -551,6 +553,7 @@ that the paths exist).
 - `games/combat_arms/src/ui/install.rs`: the install's own layouts, string table and art for Combat Arms' UI (V1 key) (games_ui)
 - `games/combat_arms/src/ui/hud/install.rs`: the game's HUD layout's health and weapon panels bound to the HUD's values by name (games_ui)
 - `games/combat_arms/src/ui/hud/bound.rs`: the game's kill feed, mode score panel, action message and gauge bound by name (games_ui)
+- `games/combat_arms/src/ui/hud/death.rs`: the death screen on the install's kill-cam layout; the death camera's input and camera (games_ui)
 - `games/combat_arms/src/ui/hud/action.rs`: Combat Arms' action message: the bomb prompts and its 100 ms life (games_ui)
 - `games/combat_arms/src/ui/loading.rs`: Combat Arms' loading screen from the install's layout while joining (games_ui)
 - `games/combat_arms/data/ui/`: Combat Arms' font list, strings and in-game menu layout, ours (games)
