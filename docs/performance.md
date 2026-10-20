@@ -1138,6 +1138,81 @@ buffer, rows 256-aligned, bytes as the whole-image encoders write them),
 `source_ldr_tables_match_the_formula`; `kept_states_skip_relighting`
 checks that a state seen before is copied, not worked out again.
 
+## Combat Arms map loads (2026-10-19)
+
+A Combat Arms map took 4-8 s to load and spawn and ~1-1.8 GB in the
+loader (~10 GB and 17 s at 0a9bd397, when every install weapon's view
+model loaded with each map; f5d1909e had cut that to our 13). Measured
+with both keys, the dev profile, other agents building (load 20-48).
+
+Where the time went (main, `world::load_from`'s parts timed one by one):
+
+| | WAREHOUSE | JUNK_FLEA | TERRORDOME |
+|---|---|---|---|
+| weapon data (once per session; the app reads it at startup) | 2.0 s | 2.1 s | 2.0 s |
+| read and parse the world | 0.1 s | 0.1 s | 0.7 s |
+| convert (`world::convert`) | 0.45 s | 0.40 s | 3.9 s: 2.6 s lighting the lightmap texels (a `powf` each, 80 million), 0.4 s the atlas, 0.4 s textures |
+| effects | 0.14 s | 0.13 s | 0.11 s |
+| view models (14, with hands) | 0.43 s, +110 MB | 0.42 s | 0.35 s |
+| character bodies and held weapons | 1.0 s, +340 MB | 1.0 s | 0.6 s |
+| peak memory | 1,076 MB | 1,044 MB | 1,833 MB |
+
+and in the app, on the main thread, the spawn (`spawning map` to the
+props line): WAREHOUSE 2.5 s, JUNK_FLEA 1.9 s, TERRORDOME 4.5 s, most of
+it the lightmap: its plain and world images (the same texels when the
+game has no encoding of its own) each converted to f16 one channel at a
+time and copied once more on the way into `Assets<Image>`.
+
+What changed:
+
+- View models load on demand (`view_model::on_demand`): a weapon's when
+  it first wants drawing (the local player's inventory, a character's
+  shown weapon), in the background, once per session, through
+  `map::add_view_model` with its own textures; `render::view_model::
+  build_late` builds it on the next frame, the placeholder box stands
+  in meanwhile (the M4A1 with hands: 30 ms).
+- Character bodies and held weapons convert once per session on a
+  thread beside the world (`characters::models::shared_character_models`)
+  and are copied into each map.
+- Lightmap texels are looked up per byte (`LightLut`) and kept as bytes
+  until the atlas is laid out (a quarter of the memory), copied by rows;
+  each texture file is read once (meshes differ by blend and sky too)
+  and decoded with its mip chain on up to 8 threads (`decode_all`,
+  `MapTexture::box_mips`: the drawing's own box filter, now shared).
+- Spawn: one lightmap image when plain and world copies agree, built
+  without copies, f16 on threads for big atlases.
+- Not done: a disk cache of converted maps (DESIGN.md allows one, per
+  user). A map now converts in 0.2-1.3 s, about what reading back its
+  textures, mips and f32 lightmap (hundreds of MB) would take, and the
+  session's first load is bound by the character models beside it, not
+  the world. The bots' navigation mesh (`bots::brain::ensure_nav`) is
+  still generated on the main thread: a 0.2-0.3 s tick when the first
+  bot plays (WAREHOUSE 550 areas, TERRORDOME 980).
+
+After (`heavy::map_load`, a process per test; the first load includes
+the 2 s of weapon data the app reads at startup):
+
+| | WAREHOUSE | JUNK_FLEA | TERRORDOME |
+|---|---|---|---|
+| first load of a session | 2.9 s (was ~4.2) | - | 3.0-3.3 s (was ~7.6) |
+| a second map after it | 0.25 s | 0.31 s (was ~2.1) | - |
+| loader's peak memory | 922 MB (was 1,076) | 1,181 MB after both | 1,569 MB with a second map (was 1,833 alone) |
+| spawn into a simulation (collision) | 0.34 s | - | 0.65 s |
+
+The app (`--map combat_arms:<name> --frames 300 --screenshot`, start
+to the `loaded` line, which includes process start and the weapon data;
+the spawn; the process's peak memory), main / this change:
+
+| | WAREHOUSE | JUNK_FLEA | TERRORDOME |
+|---|---|---|---|
+| loaded after | 3.9 s / 3.4 s | 3.5 s / 3.0 s | 6.9 s / 3.0 s |
+| spawn (main thread) | 2.5 s / 0.27 s | 1.9 s / 0.22 s | 4.5 s / 0.6 s |
+| peak memory | 2,503 / 2,193 MB | 2,305 / 2,122 MB | 3,570 / 3,393 MB |
+
+`heavy::map_load` keeps loads under budget (20 s, 30 s for TERRORDOME,
+the spawn and the navigation tick too; peak 2.5 and 3.5 GB): room for a
+busy box, a regression check rather than a target.
+
 ## Test cycle
 
 How long `cargo test` takes to build and run, and why the tests are laid
@@ -1275,7 +1350,8 @@ maps in one test (1,050 s at load ~20) beside up to four other such
 tests. Loading maps on threads in one process didn't help then (5 maps:
 75 s on five threads, 83 s on one, 16 GB). Main's keyed-install work
 then gave the map sweeps `load_world` (no view models: 1.3-2.3 GB, the
-plain maps in 23 s) and split the keyed maps per archive.
+plain maps in 23 s) and split the keyed maps per archive. Then
+view models loaded on demand ("Combat Arms map loads").
 
 What changed here:
 
