@@ -31,6 +31,9 @@ usage: dump <game> [options]
                        duration, looping, ground speed) and pose parameters, includes merged
   --lods <model|text>  cs_source: each model's LODs (switch point, triangles) from its .dx90.vtx;
                        with text, every .mdl whose path contains it
+  --objects <map>      combat_arms: a world file's objects (class, every property) and
+                       its world models' boxes; --filter keeps objects whose class,
+                       name or a property value contains <text>
   --filter <text>      only paths containing <text> (case-insensitive)
   --extract            write the (filtered) files to --out
   --out <dir>          extraction folder (default: per-user data dir; never inside the repo)
@@ -44,6 +47,7 @@ struct Args {
     filter: Option<String>,
     sequences: Option<String>,
     lods: Option<String>,
+    objects: Option<String>,
     out: Option<PathBuf>,
     install: Option<PathBuf>,
 }
@@ -62,6 +66,7 @@ fn parse() -> Result<Args, String> {
         filter: None,
         sequences: None,
         lods: None,
+        objects: None,
         out: None,
         install: None,
     };
@@ -74,6 +79,7 @@ fn parse() -> Result<Args, String> {
             "--filter" => a.filter = Some(value()?.to_lowercase()),
             "--sequences" => a.sequences = Some(value()?.to_lowercase().replace('\\', "/")),
             "--lods" => a.lods = Some(value()?.to_lowercase().replace('\\', "/")),
+            "--objects" => a.objects = Some(value()?.to_lowercase()),
             "--out" => a.out = Some(value()?.into()),
             "--install" => a.install = Some(value()?.into()),
             _ => return Err(format!("unknown option {flag}")),
@@ -166,6 +172,9 @@ fn dump_combat_arms(args: &Args, install: &Path) -> Result<(), String> {
     let game = install.join("Game");
     let (mount, locked) =
         rez::open_dir(&game, &keys).map_err(|e| format!("{e}; is {} a Combat Arms install?", install.display()))?;
+    if let Some(map) = &args.objects {
+        return world_objects(&mount, map, args.filter.as_deref());
+    }
     if args.archives {
         println!("{:>10}  {:7}  {:16}  {:>6}  name", "size", "entropy", "title", "files");
         for layer in mount.layers() {
@@ -183,6 +192,58 @@ fn dump_combat_arms(args: &Args, install: &Path) -> Result<(), String> {
         }
     }
     report(args, &mount, &locked)
+}
+
+/// A Combat Arms world file's objects (class and properties, in file
+/// order) and the boxes and centres of its world models (file axes),
+/// read in memory: numbers and structure for checking specs' cases.
+fn world_objects(mount: &Mount, map: &str, filter: Option<&str>) -> Result<(), String> {
+    use lithtech_formats::world::{Value, World};
+    let file = format!("/{map}.dat");
+    let path = mount
+        .entries()
+        .into_iter()
+        .map(|(e, _)| e.path)
+        .filter(|p| p.starts_with("worlds") && p.ends_with(&file))
+        .min()
+        .ok_or_else(|| format!("{map}: no worlds*/{map}.dat"))?;
+    let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
+    let world = World::parse(&bytes).map_err(|e| format!("{path}: {e}"))?;
+    let text = |v: &Value| match v {
+        Value::String(s) => format!("{s:?}"),
+        Value::Vector(v) => format!("({}, {}, {})", v[0], v[1], v[2]),
+        Value::Color(c) => format!("rgb({}, {}, {})", c[0], c[1], c[2]),
+        Value::Real(x) => format!("{x}"),
+        Value::Flags(x) => format!("flags {x}"),
+        Value::Long(x) => format!("long {x}"),
+        Value::Bool(b) => format!("{b}"),
+        Value::Rotation(r) => format!("rot({}, {}, {})", r[0], r[1], r[2]),
+        Value::Unknown { code, data } => format!("unknown {code} ({} bytes)", data.len()),
+    };
+    let wanted = |s: &str| filter.is_none_or(|f| s.to_lowercase().contains(f));
+    println!("{path}: {} objects, {} world models, {} blind chunks", world.objects.len(), world.models.len(), world.blind_data.len());
+    for (i, o) in world.objects.iter().enumerate() {
+        let props: Vec<String> = o.properties.iter().map(|p| format!("{} = {}", p.name, text(&p.value))).collect();
+        if !(wanted(&o.class) || props.iter().any(|p| wanted(p))) {
+            continue;
+        }
+        println!("[{i}] {}", o.class);
+        for p in props {
+            println!("    {p}");
+        }
+        if let Some(m) = o.name().and_then(|n| world.models.iter().find(|m| m.name == n)) {
+            println!(
+                "    (world model: min {:?} max {:?} translation {:?}, {} polygons)",
+                m.min, m.max, m.translation, m.polygons.len()
+            );
+        }
+    }
+    for (i, c) in world.blind_data.iter().enumerate() {
+        if filter.is_none() {
+            println!("blind chunk {i}: id {:#010x}, {} bytes", c.id, c.data.len());
+        }
+    }
+    Ok(())
 }
 
 /// Shannon entropy in bits per byte of up to `len` bytes from the middle

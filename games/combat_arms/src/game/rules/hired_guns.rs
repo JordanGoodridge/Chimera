@@ -54,8 +54,8 @@
 //!
 //! Known shortcuts: a bar's box is 10 u each way and a bag's 16 (the
 //! props' sizes aren't in the spec), the view ray isn't stopped by walls;
-//! the "saved" event's sounds and effect, the map's vault doors and
-//! way-points (world objects) and the chat warning (the HUD's objective
+//! the "saved" event's sounds and effect, the way-points (target
+//! triggers: state only, `objects`) and the chat warning (the HUD's objective
 //! line says it) aren't there; no headshot statistic for a mercenary
 //! kill (`CaStats` has none); the per-map mission file isn't read (Blood
 //! Money's values are data/modes.toml's `[hired_guns]`).

@@ -5,13 +5,15 @@
 //! (the `UI_*` archives' `.dtx` files, decoded by `lithtech_formats::dtx`)
 //! take the place of ours (data/ui/); without them ours stay.
 //!
-//! - Layouts: the main HUD (`HUD_FILE`, whose panels `ui::hud::install`
+//! - Layouts: the death screen (`KILLCAM_FILE`, `ui::hud::death`), the
+//!   main HUD (`HUD_FILE`, whose panels `ui::hud::install`
 //!   and `ui::hud::bound` bind by name), the mode score panels
 //!   (`INDICATOR_FILE`), the scoreboard's frame and lists
 //!   (`RESULT_FILE`, `TEAM_LIST_FILE`, `NO_TEAM_LIST_FILE`,
 //!   `ui::scoreboard`), the loading screen (`LOADING_FILE`,
 //!   `ui::loading`) and the in-game menu (`MENU_FILE`, `ui::menu`).
-//! - The HUD layout attributes (`LAYOUT_ATTRIBUTES`' `[HUDLayout0]`,
+//! - The HUD layout attributes (`LAYOUT_ATTRIBUTES`' `[HUDLayout0]` and
+//!   `[Observe_Mode]`,
 //!   `hud_layout`): the textures the HUD code draws by name
 //!   (`HUD_LAYOUT_ART`: the hit overlay and direction indicator, the kill
 //!   feed's special icons and badges, the result banners, the action
@@ -66,6 +68,9 @@ pub const TEAM_LIST_FILE: &str = "xml/hud_result_team.xml";
 pub const NO_TEAM_LIST_FILE: &str = "xml/hud_result_noteam.xml";
 /// The loading screen's layout (H).
 pub const LOADING_FILE: &str = "xml/hud_maploading.xml";
+/// The death screen's layout (`Hud_KillCam`, root `KillCam`;
+/// death_killcam.md 8).
+pub const KILLCAM_FILE: &str = "xml/hud_killcam.xml";
 /// The attribute file with the HUD layout attributes (`[HUDLayout0]`:
 /// the damage overlays' and kill feed's textures, the result banners)
 /// and the font list (T1).
@@ -77,6 +82,21 @@ pub const HUD_LAYOUT: &str = "HUDLayout0";
 /// `DefaultWorldSize`, `[HUDLargeMap]`'s icon roles, the legend's
 /// `[IconListN]` sections).
 pub const LARGE_MAP_ATTRIBUTES: &str = "attributes/largemapdesc.txt";
+/// The section with the death screen's zone icons
+/// (`DamagePointIcon<Zone>Tex`; death_killcam.md 8), read into the same
+/// map as `HUD_LAYOUT`'s.
+pub const OBSERVE_MODE: &str = "Observe_Mode";
+/// What the death screen draws from those attributes: the hit-zone icons
+/// and the respawn gauge's bars (`[HUDLayout0]`'s).
+pub const DEATH_LAYOUT_ART: &[&str] = &[
+    "damagepointiconheadtex",
+    "damagepointiconbodytex",
+    "damagepointiconarmstex",
+    "damagepointiconlegtex",
+    "damagepointiconnuttex",
+    "respawngauge_normal",
+    "respawngauge_perk",
+];
 
 /// Textures the HUD code picks by state (stance silhouettes, fire-mode
 /// icons) and the kill feed's badges.
@@ -129,6 +149,8 @@ pub struct InstallUi {
     pub team_list: Option<Layout>,
     pub no_team_list: Option<Layout>,
     pub loading: Option<Layout>,
+    /// The death screen (`ui::hud::death`).
+    pub kill_cam: Option<Layout>,
     /// The HUD layout attributes' strings (`[HUDLayout0]`), by key in
     /// lower case: texture names.
     pub hud_layout: HashMap<String, String>,
@@ -150,6 +172,7 @@ impl std::fmt::Debug for InstallUi {
             .field("indicator", &self.indicator.is_some())
             .field("scoreboard", &self.team_list.is_some())
             .field("loading", &self.loading.is_some())
+            .field("kill_cam", &self.kill_cam.is_some())
             .field("fonts", &self.fonts.len())
             .field("strings", &self.strings.as_ref().map(|s| s.values.len()))
             .field("language", &self.language)
@@ -233,8 +256,10 @@ pub fn hud_layout(mount: &Mount) -> HashMap<String, String> {
     else {
         return HashMap::new();
     };
-    let Some(s) = doc.section(HUD_LAYOUT) else { return HashMap::new() };
-    s.iter()
+    [HUD_LAYOUT, OBSERVE_MODE]
+        .into_iter()
+        .filter_map(|name| doc.section(name))
+        .flat_map(|s| s.iter())
         .filter_map(|(k, v)| match v {
             lithtech_formats::attributes::Value::Str(b) => {
                 Some((k.to_lowercase(), String::from_utf8_lossy(b).trim().to_string()))
@@ -412,15 +437,23 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
     let (indicator, result) = (layout(mount, INDICATOR_FILE), layout(mount, RESULT_FILE));
     let (team_list, no_team_list) = (layout(mount, TEAM_LIST_FILE), layout(mount, NO_TEAM_LIST_FILE));
     let loading = layout(mount, LOADING_FILE);
+    let kill_cam = layout(mount, KILLCAM_FILE);
     let hud_layout = hud_layout(mount);
     let fonts = font_list(mount);
-    let mut names: Vec<String> = [&hud, &menu, &indicator, &result, &team_list, &no_team_list, &loading]
+    let mut names: Vec<String> = [&hud, &menu, &indicator, &result, &team_list, &no_team_list, &loading, &kill_cam]
         .into_iter()
         .flatten()
         .flat_map(layout_textures)
         .collect();
     names.extend(EXTRA_ART.iter().map(|s| s.to_string()));
     names.extend(HUD_LAYOUT_ART.iter().filter_map(|k| hud_layout.get(*k).cloned()));
+    names.extend(DEATH_LAYOUT_ART.iter().filter_map(|k| hud_layout.get(*k).cloned()));
+    // The death screen's tips' banners.
+    if let Ok(bytes) = mount.read(crate::game::death_cam::GUIDE_FILE)
+        && let Ok(doc) = lithtech_formats::attributes::Document::parse(&bytes)
+    {
+        names.extend(crate::game::death_cam::screen::parse_guide(&doc).into_iter().map(|t| t.icon).filter(|i| !i.is_empty()));
+    }
     // The gauge sight's images: each prefix with 0, 10, ... 100.
     for k in GAUGE_SIGHT_PREFIXES {
         if let Some(prefix) = hud_layout.get(*k) {
@@ -466,6 +499,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         team_list,
         no_team_list,
         loading,
+        kill_cam,
         hud_layout,
         fonts,
         strings,

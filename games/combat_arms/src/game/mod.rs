@@ -47,7 +47,12 @@
 //!   spec's arithmetic, who is shown, the mission files' map images, the
 //!   scanner items, what the server sends at a round start;
 //!   radar_minimap.md);
-//! - `volumes`: the maps' volumes (water, kill and damage volumes).
+//! - `volumes`: the maps' volumes (water, kill and damage volumes);
+//! - `objects`: the maps' world objects: doors, moving and spinning world
+//!   models, keyframers, breakables, triggers and the command strings
+//!   they run (world_objects.md).
+//! - `death_cam`: the death camera, the kill-cam screen's values and the
+//!   respawn countdown, the client's own (death_killcam.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -56,6 +61,7 @@ pub mod attachments;
 pub mod bots;
 pub mod characters;
 pub mod data;
+pub mod death_cam;
 pub mod effects;
 pub mod grenades;
 pub mod hud;
@@ -64,6 +70,7 @@ pub mod model;
 pub mod mount;
 pub mod movement;
 pub mod net;
+pub mod objects;
 pub mod props;
 pub mod radar;
 pub mod render_style;
@@ -184,6 +191,7 @@ impl PluginGroup for CombatArmsPlugins {
             // loads.
             .add(inventory::CaInventoryPlugin)
             .add(volumes::CaVolumesPlugin)
+            .add(objects::CaObjectsPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(special::CaSpecialPlugin)
             // Its scanner hook must be there when the weapons' data loads.
@@ -193,6 +201,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(effects::CaEffectsPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
+            .add(death_cam::CaDeathCamPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
             .add(net::CaNetPlugin)

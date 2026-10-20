@@ -13,6 +13,7 @@
 mod attachments;
 mod bound;
 mod camera;
+mod death_screen;
 mod hud;
 mod net_hud;
 mod radar;
@@ -21,5 +22,6 @@ mod ui_system;
 
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
+    mod death_screen;
     mod install_ui;
 }

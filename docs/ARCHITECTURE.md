@@ -159,7 +159,7 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   grenades, the weapon classes, attachments, the game modes (TDM,
   Elimination Pro, S&D, CTF, One Man Army and the rest; Hired Guns with
   its AI mercenaries, VIP Escort, the clan modes), bots and the
-  player characters so far;
+  player characters and the death camera so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
   `grenades`, `attachments`, `data`, `rules`: its game modes as rule
@@ -516,6 +516,7 @@ that the paths exist).
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
 - `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
+- `games/combat_arms/src/game/objects/`: world objects: doors, movers, keyframers, breakables, triggers, the command language, their network (games)
 - `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash timer, flash and breach points (games)
 - `games/combat_arms/src/game/effects/`: Combat Arms' effects and sounds: shots, impacts, decals, tracers, casings, footsteps, the effect file's groups (games)
 - `games/combat_arms/data/effects.toml`: Combat Arms' effect and sound tables: ImpactFX, FireFX, TracerFX, sounds, surfaces (games)
@@ -527,6 +528,8 @@ that the paths exist).
 - `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
 - `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules (TDM, S&D, CTF, Hired Guns, VIP Escort, clan modes, the rest) (games)
+- `games/combat_arms/src/game/death_cam.rs`: Combat Arms' death camera, kill-cam values and respawn countdown, the client's own (games)
+- `games/combat_arms/src/game/death_cam/`: the pull-back and orbit maths, the phase machine with targets and keys, the death screen's values and tips (games)
 - `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, bomb, mercenaries, each mode (games)
 - `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
 - `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)
@@ -549,6 +552,7 @@ that the paths exist).
 - `games/combat_arms/src/ui/install.rs`: the install's own layouts, string table and art for Combat Arms' UI (V1 key) (games_ui)
 - `games/combat_arms/src/ui/hud/install.rs`: the game's HUD layout's health and weapon panels bound to the HUD's values by name (games_ui)
 - `games/combat_arms/src/ui/hud/bound.rs`: the game's kill feed, mode score panel, action message and gauge bound by name (games_ui)
+- `games/combat_arms/src/ui/hud/death.rs`: the death screen on the install's kill-cam layout; the death camera's input and camera (games_ui)
 - `games/combat_arms/src/ui/hud/action.rs`: Combat Arms' action message: the bomb prompts and its 100 ms life (games_ui)
 - `games/combat_arms/src/game/radar/`: Combat Arms' radar and map data: arithmetic, who is shown, mission images, scanners (games)
 - `games/combat_arms/src/ui/hud/radar.rs`: Combat Arms' radar panel: zoom, marks, wedges, edge arrows, picture window (games_ui)
