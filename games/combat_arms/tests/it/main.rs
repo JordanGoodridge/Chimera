@@ -21,6 +21,7 @@ mod clan_modes;
 mod death_killcam;
 mod effects_sounds;
 mod free_for_all;
+mod gear_perks;
 mod game_modes;
 mod grenades;
 mod hired_guns;

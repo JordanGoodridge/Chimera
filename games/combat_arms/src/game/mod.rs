@@ -48,9 +48,12 @@
 //!   scanner items, what the server sends at a round start;
 //!   radar_minimap.md);
 //! - `volumes`: the maps' volumes (water, kill and damage volumes);
+//! - `gear`: what a player's vest, helmet, goggles, backpack, gear mods and
+//!   set items change, and the loadout that brings them (gear_perks.md);
+//! - `perks`: the perks a loadout switches on and what each changes;
 //! - `objects`: the maps' world objects: doors, moving and spinning world
 //!   models, keyframers, breakables, triggers and the command strings
-//!   they run (world_objects.md).
+//!   they run (world_objects.md);
 //! - `death_cam`: the death camera, the kill-cam screen's values and the
 //!   respawn countdown, the client's own (death_killcam.md).
 //! - `chat`: radio and chat: the radio menus and calls, chat channels,
@@ -69,6 +72,7 @@ pub mod chat;
 pub mod data;
 pub mod death_cam;
 pub mod effects;
+pub mod gear;
 pub mod grenades;
 pub mod hud;
 pub mod inventory;
@@ -77,6 +81,7 @@ pub mod music;
 pub mod mount;
 pub mod movement;
 pub mod net;
+pub mod perks;
 pub mod objects;
 pub mod props;
 pub mod radar;
@@ -225,6 +230,8 @@ impl PluginGroup for CombatArmsPlugins {
             .add(music::CaMusicPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
+            .add(gear::CaGearPlugin)
+            .add(perks::CaPerksPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
     }

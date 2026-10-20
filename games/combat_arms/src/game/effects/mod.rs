@@ -103,7 +103,7 @@ use super::{
     weapons::CaZoom,
 };
 use crate::{
-    core::{Damage, DamageKind, Health, Hitgroup, Intent, LocalPlayer, MovementState, SOLID_LAYERS, authoritative},
+    core::{Damage, DamageKind, Health, Hitgroup, Intent, LocalPlayer, MovementState, SOLID_LAYERS, Team, authoritative},
     map::{
         particles::{ParticleMaterials, Particles, WorldTracer},
         SurfaceNames,
@@ -1145,7 +1145,9 @@ fn footsteps(
         Has<LocalPlayer>,
         Option<&mut OwnSteps>,
         Option<&mut OthersSteps>,
+        (Option<&super::perks::CaPerkEffects>, Option<&Team>),
     )>,
+    listener: Query<(&super::perks::CaPerkEffects, Option<&Team>), With<LocalPlayer>>,
     grid: Ground,
     tables: Res<CaFxTables>,
     mut sounds: MessageWriter<CaSound>,
@@ -1158,7 +1160,9 @@ fn footsteps(
     if dt <= 0.0 {
         return;
     }
-    for (e, t, ms, intent, health, local, own, others) in &mut players {
+    // What the listener's Awareness does to enemy steps (gear_perks.md 14).
+    let listener = listener.single().ok().filter(|(fx, _)| fx.awareness).map(|(fx, t)| (*fx, t.map(|t| t.0)));
+    for (e, t, ms, intent, health, local, own, others, (perk, team)) in &mut players {
         let Some(ms) = ms else { continue };
         let alive = health.is_none_or(|h| h.current > 0.0);
         let (before, was_ground) = last.insert(e, (t.translation, ms.on_ground)).unwrap_or((t.translation, ms.on_ground));
@@ -1236,10 +1240,26 @@ fn footsteps(
         };
         steps.airborne = !ms.on_ground;
         steps.clock = if matches!(gait, Gait::Run | Gait::Sprint) { steps.clock + dt } else { 0.0 };
+        // Specter quiets the walker's own steps (sprinting: its dash
+        // volume); a listener's Awareness plays an enemy's at its own
+        // volume and radius, plus one more step sound.
+        let mut volume = perk.map_or(1.0, |p| if ms.sprinting { p.dash_volume } else { p.step_volume });
+        let mut radius = rules::FOOTSTEP_RADIUS;
+        let mut extra = 0;
+        if let Some((fx, mine)) = listener
+            && mine != team.map(|t| t.0)
+        {
+            volume *= fx.aware_volume;
+            radius *= fx.aware_radius;
+            extra = 1;
+        }
         for i in 0..n {
             let roll = if (steps.clock * 1000.0) as u32 / 300 % 2 == 0 && i == 0 { 0.0 } else { 1.0 };
-            if let Some(f) = surface(roll, &mut rolls) {
-                sounds.write(CaSound::at(f, feet, rules::FOOTSTEP_RADIUS));
+            for k in 0..=extra {
+                let roll = if k == 0 { roll } else { rolls.next() };
+                if let Some(f) = surface(roll, &mut rolls) {
+                    sounds.write(CaSound::at(f, feet, radius).volume(100.0 * volume));
+                }
             }
         }
     }
