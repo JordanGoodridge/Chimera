@@ -44,6 +44,9 @@ automatic = true
 cycle = 0.1                     # s between shots
 # timing = "carry_over"         # or "set", "accumulate" (from the base here)
 # per_press = 3                 # most shots per pull (0: no limit)
+# latency = 3                   # updates from entering the firing state to
+#   the first round (0: that update; CA's view-model chain: 3, primary
+#   shotguns 2)
 
 [magazine]
 clip = 30

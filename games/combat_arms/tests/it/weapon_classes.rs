@@ -29,7 +29,8 @@ use combat_arms::{
         TICK_INTERVAL,
         movement::{self, CaMovement},
         weapons::{
-            self as ca, CaArmor, CaRecoil, CaSpin, CaSpread, CaZoom, FireMode, MALE, PelletCarryOver, SpinState,
+            self as ca, CaArmor, CaKick, CaRecoil, CaSpin,
+ CaSpread, CaZoom, FireMode, MALE, PelletCarryOver, SpinState,
             SpreadScales, reported_hits, zoom,
         },
     },
@@ -122,6 +123,8 @@ base = "combat_arms:m60"
 max = 0
 [trigger]
 cycle = 0.034
+# The spin-up is its pre-fire (Corrections 3).
+latency = 1
 [magazine]
 clip = 500
 ammo = "test:minigun"
@@ -583,13 +586,14 @@ fn t09_quick_scope() {
     let mut sim = new_sim();
     let (p, w) = holding(&mut sim, L96A1);
     assert_eq!(shown_cone(&sim, w), 100);
-    let clip = mag(&sim, w).clip;
     sim.intent(p).secondary = true;
     sim.intent(p).fire = true;
     sim.ticks(1);
-    assert_eq!(mag(&sim, w).clip, clip - 1, "fired");
+    sim.intent(p).secondary = false;
+    // The round 3 updates after the press (Corrections 3), mid-transition.
+    until_round(&mut sim, w);
     assert_eq!(shown_cone(&sim, w), 4, "the round's cone");
-    assert!(cz(&sim, w).fov > 80.0, "FOV still near 90: {}", cz(&sim, w).fov);
+    assert!(cz(&sim, w).fov > 20.0, "FOV still in its transition: {}", cz(&sim, w).fov);
 }
 
 /// 10. Scoped and walking at full scoped speed (mu = 1): the movement
@@ -633,11 +637,10 @@ fn t11_scoped_follow_ups() {
         ticks_until(&mut sim, 200, |s| !cz(s, w).bolt_busy && cz(s, w).transition.is_none());
         sim.intent(p).secondary = cz(&sim, w).level == 0;
         sim.intent(p).fire = true;
-        let clip = mag(&sim, w).clip;
         sim.ticks(1);
         sim.intent(p).secondary = false;
         sim.intent(p).fire = false;
-        assert_eq!(mag(&sim, w).clip, clip - 1);
+        until_round(&mut sim, w);
         cones.push(shown_cone(&sim, w));
     }
     assert_eq!(cones, [4, 6, 8, 10, 12, 14]);
@@ -650,6 +653,7 @@ fn t11_scoped_follow_ups() {
         sim.intent(p).fire = true;
         sim.ticks(1);
         sim.intent(p).fire = false;
+        until_round(&mut sim, w);
         cones.push(shown_cone(&sim, w));
         sim.seconds(0.45);
     }
@@ -681,7 +685,8 @@ fn t13_bolt_cycle_and_zoom_out() {
     zoomed_in(&mut sim, p, w);
     let clip = mag(&sim, w).clip;
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    // t = 0 at the round (3 updates after the press: Corrections 3).
+    until_round(&mut sim, w);
     let t0 = now(&sim);
     ticks_until(&mut sim, 100, |s| cz(s, w).level == 0);
     close(now(&sim) - t0, 0.31, 1e-6, "zoom-out starts on the first frame after 300 ms");
@@ -721,7 +726,7 @@ fn t14_bolt_with_a_two_level_scope() {
     zoomed_in(&mut sim, p, w);
     let tick = dt(&sim);
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    until_round(&mut sim, w);
     sim.intent(p).fire = false;
     let t0 = now(&sim);
     ticks_until(&mut sim, 100, |s| cz(s, w).level == 2);
@@ -741,7 +746,7 @@ fn t15_semi_sniper_stays_zoomed() {
     let (p, w) = holding(&mut sim, SVD);
     zoomed_in(&mut sim, p, w);
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    until_round(&mut sim, w);
     let t0 = now(&sim);
     sim.intent(p).fire = false;
     while now(&sim) - t0 < 0.2 - 1e-9 {
@@ -871,12 +876,21 @@ fn t20_sway_drift() {
 // ---------------------------------------------------------------------------
 // Shotguns (5)
 
-/// Fire one round with a one-tick pull, then let go for a tick.
+/// Hold fire (as set) until `w` spends a round (its chain: at most 3
+/// updates after the press's, weapon_classes.md Corrections 3); the
+/// round's tick is the last one run.
+fn until_round(sim: &mut Sim, w: Entity) {
+    let clip = mag(sim, w).clip;
+    ticks_until(sim, 6, |s| mag(s, w).clip < clip);
+}
+
+/// Fire one round with a one-tick pull, then let go until the chain's
+/// round has gone (3 updates at most: Corrections 3).
 fn fire_once(sim: &mut Sim, p: Entity) {
     sim.intent(p).fire = true;
     sim.ticks(1);
     sim.intent(p).fire = false;
-    sim.ticks(1);
+    sim.ticks(4);
 }
 
 /// 21. The Remington 870's cone is 42 for every shot: standing, running,
@@ -948,7 +962,11 @@ fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f
         let from = eye(sim, shooter);
         let dir = (sphere(sim, shooter, target, name) - from).normalize();
         let (min, max, _) = geometry(sim.app.world(), target);
-        let t = ca::box_entry(min, max, from, dir, f32::INFINITY).unwrap();
+        // The reported point: the widened box's entry (weapon_firing.md
+        // Corrections 8).
+        let (c, half) = ((min + max) / 2.0, (max - min) / 2.0 * Vec3::new(ca::HITBOX_WIDEN, 1.0, ca::HITBOX_WIDEN));
+        let t = ca::box_entry(c - half, c + half, from, dir, f32::INFINITY).unwrap();
+
         let err = t - units * U;
         sim.app.world_mut().get_mut::<Transform>(target).unwrap().translation.z += err / dir.z.abs();
         sim.ticks(1);
@@ -970,13 +988,15 @@ fn shoot_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str) -> f64 {
 }
 
 /// 22. Pellet damage and falloff: 8 on the torso at 500 / 600 / 700 / 900
-/// units, 72 / 72 / 50.4 / 25.2; past 1000, nothing. One head pellet and
-/// 7 torso at 500: 117.
+/// units, as corrected (Corrections 1, case 37: the server drops the last
+/// pellet at `FireDelay` 30) 7 land: 63 / 63 / 44.1 / 22.05 (the spec's
+/// 72 / 72 / 50.4 / 25.2 counted 8); past 1000, nothing. One head pellet
+/// and 7 torso at 500: 54 + 6 x 9 = 108 (the spec's 117).
 #[test]
 fn t22_pellet_damage_and_falloff() {
     let mut sim = new_sim();
     let (shooter, target) = range_lane(&mut sim, "test:r870_exact", 500.0);
-    for (d, want) in [(500.0, 72.0), (600.0, 72.0), (700.0, 50.4), (900.0, 25.2), (1100.0, 0.0)] {
+    for (d, want) in [(500.0, 63.0), (600.0, 63.0), (700.0, 44.1), (900.0, 22.05), (1100.0, 0.0)] {
         place_at(&mut sim, shooter, target, "Torso", d);
         close(shoot_at(&mut sim, shooter, target, "Torso"), want, 1e-2, &format!("at {d}"));
     }
@@ -987,7 +1007,7 @@ fn t22_pellet_damage_and_falloff() {
     arm(&mut sim, shooter, "test:r870_seven_pellets");
     let torso = shoot_at(&mut sim, shooter, target, "Torso");
     close(head, 54.0, 1e-3, "the head pellet");
-    close(head + torso, 117.0, 1e-2, "one head and 7 torso");
+    close(head + torso, 108.0, 1e-2, "one head and 7 torso (the 7th dropped)");
 }
 
 /// 23. Pellet hit carry-over: only pellet 3 hits (torso, 500 units): with
@@ -1030,11 +1050,14 @@ fn t23_pellet_carry_over() {
     let with = run(true);
     let without = run(false);
     assert_eq!(without.len(), 8);
-    let first = without.iter().position(Option::is_some).expect("a pellet hits");
+    // The 8th report is the server's spacing drop either way (case 38).
+    assert_eq!((with[7], without[7]), (None, None), "the last pellet dropped");
+    let first = without[..7].iter().position(Option::is_some).expect("a pellet hits");
     let real = without.iter().filter(|h| h.is_some()).count();
-    assert!(real < 8, "some pellets miss: {without:?}");
-    assert_eq!(with, reported_hits(&without, true), "carried from pellet {}", first + 1);
-    assert_eq!(with.iter().filter(|h| h.is_some()).count(), 8 - first);
+    assert!(real < 7, "some pellets miss: {without:?}");
+    assert_eq!(with[..7], reported_hits(&without[..7], true), "carried from pellet {}", first + 1);
+    assert_eq!(with.iter().filter(|h| h.is_some()).count(), 7 - first);
+
 }
 
 /// The times (relative to `t0`) at which `w`'s clip changed, and what to.
@@ -1128,6 +1151,8 @@ fn t25_shell_reload_interrupted() {
     sim.intent(p).fire = true;
     sim.ticks(1);
     sim.intent(p).fire = false;
+    // The shotgun's chain: 2 updates (Corrections 3).
+    until_round(&mut sim, w);
     let m = mag(&sim, w);
     assert_eq!((m.clip, m.clip + m.reserve), (3, 34));
     assert_eq!(rounds(&sim, w, t0).len(), 1, "one round at once");
@@ -1152,8 +1177,9 @@ fn t26_empty_pump_gun_trigger_held() {
     }
     let fired: Vec<f64> = rounds(&sim, w, t0).iter().map(|t| t - t0).collect();
     assert_eq!(fired.len(), 3, "{fired:?}");
-    for (t, want) in fired.iter().zip([1.033, 2.666, 4.299]) {
-        close(*t, want, tick, "a round");
+    // Each shell's round its chain later: 2 updates (Corrections 3).
+    for (i, (t, want)) in fired.iter().zip([1.033, 2.666, 4.299]).enumerate() {
+        close(*t, want + 2.0 * (i + 1) as f64 * tick, tick, "a round");
     }
 }
 
@@ -1186,10 +1212,11 @@ fn t27_pistol_semi_auto() {
         }
         let fired: Vec<f64> = rounds(&sim, w, t0).iter().map(|t| t - t0).collect();
         assert_eq!(fired.len(), 1 + second.is_some() as usize, "{presses:?}: {fired:?}");
-        close(fired[0], 0.0, 1e-6, "the first round");
+        // The chain: 3 updates after the press (Corrections 3), and
+        // everything after it as much later.
+        close(fired[0], 0.03, 1e-6, "the first round");
         if let Some(s) = second {
-            // Plus at most one update (the zero-length pre-fire's).
-            close(fired[1], s, 0.0101, &format!("{presses:?}"));
+            close(fired[1], s + 0.03, 0.0101, &format!("{presses:?}"));
         }
     }
 }
@@ -1202,7 +1229,7 @@ fn t28_desert_eagle_hold() {
     let (p, w) = holding(&mut sim, "test:desert_eagle");
     let tick = dt(&sim);
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    until_round(&mut sim, w);
     let t0 = now(&sim);
     sim.seconds(4.5);
     let fired: Vec<f64> = rounds(&sim, w, t0).iter().map(|t| t - t0).collect();
@@ -1239,8 +1266,9 @@ fn cones_held(sim: &mut Sim, p: Entity, w: Entity, n: usize) -> Vec<i32> {
 
 /// Fresh kicks with no recovery, degrees up.
 fn kicks(sim: &Sim, w: Entity, n: usize) -> Vec<f64> {
-    let mut r = CaRecoil::new(sim.app.world().get::<CaRecoil>(w).unwrap().params);
-    (0..n).map(|_| r.kick(false, 0.0).to_degrees() as f64).collect()
+    let r = CaRecoil::new(sim.app.world().get::<CaRecoil>(w).unwrap().params);
+    let mut k = CaKick::default();
+    (0..n).map(|_| r.kick(&mut k, false, 0.0).to_degrees() as f64).collect()
 }
 
 /// 29. M92FS standing, every shot within DecDelay: 11, 14, 18, 23, 26, 30,
@@ -1254,6 +1282,7 @@ fn t29_pistol_cones_and_kick() {
         sim.intent(p).fire = true;
         sim.ticks(1);
         sim.intent(p).fire = false;
+        until_round(&mut sim, w);
         cones.push(shown_cone(&sim, w));
         sim.seconds(0.2);
     }
@@ -1285,7 +1314,7 @@ fn t30_smg() {
     let (p, w) = holding(&mut sim, MP5);
     let tick = dt(&sim);
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    until_round(&mut sim, w);
     let t0 = now(&sim);
     sim.seconds(2.5);
     sim.intent(p).fire = false;
@@ -1327,18 +1356,21 @@ fn t32_minigun_spin_up() {
     let mut sim = sim_at(0.01);
     let (p, w) = holding(&mut sim, "test:minigun_special");
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    // The press's update enters the firing state; the spin-up starts on
+    // the next (t = 0), the round on the update after the one that sees
+    // it done (Corrections 3).
+    sim.ticks(2);
     let t0 = now(&sim);
     sim.seconds(1.5);
     sim.intent(p).fire = false;
     let fired: Vec<f64> = rounds(&sim, w, t0).iter().map(|t| t - t0).collect();
-    close(fired[0], 1.3, 1e-6, "the first round");
-    let in_loop = fired.iter().filter(|t| **t >= 1.3 - 1e-9 && **t < 1.47 - 1e-9).count();
+    close(fired[0], 1.31, 1e-6, "the first round");
+    let in_loop = fired.iter().filter(|t| **t >= 1.31 - 1e-9 && **t < 1.48 - 1e-9).count();
     assert!((5..=6).contains(&in_loop), "{in_loop} in the first loop: {fired:?}");
     sim.seconds(3.0);
 
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    sim.ticks(2);
     let t0 = now(&sim);
     while now(&sim) - t0 < 0.64 - 1e-9 {
         sim.ticks(1);
@@ -1400,10 +1432,11 @@ fn t33_double_barrel() {
 fn t34_sniper_kick() {
     let mut sim = new_sim();
     let (_, w) = holding(&mut sim, L96A1);
-    let mut r = CaRecoil::new(sim.app.world().get::<CaRecoil>(w).unwrap().params);
-    close(r.kick(false, 0.0).to_degrees() as f64, 5.0, 1e-3, "first kick");
-    close(r.wag(0.3).abs().to_degrees() as f64, 1.0, 1e-3, "side");
-    close(r.kick(false, 0.0).to_degrees() as f64, 2.5, 1e-3, "second kick");
+    let r = CaRecoil::new(sim.app.world().get::<CaRecoil>(w).unwrap().params);
+    let mut k = CaKick::default();
+    close(r.kick(&mut k, false, 0.0).to_degrees() as f64, 5.0, 1e-3, "first kick");
+    close(r.wag(&mut k, 0.3).abs().to_degrees() as f64, 1.0, 1e-3, "side");
+    close(r.kick(&mut k, false, 0.0).to_degrees() as f64, 2.5, 1e-3, "second kick");
 }
 
 /// 35. Damage: L96A1 torso at 3000 / 4200 / 4800 units 160 / 112 / 56, head

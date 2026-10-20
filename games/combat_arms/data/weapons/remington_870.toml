@@ -25,6 +25,11 @@ max = 28
 automatic = false
 cycle = 0.6
 timing = "accumulate"
+# weapon_firing.md Corrections 10: the update that sees the press only
+# enters the firing state; the pre-fire (even a 0 ms one) and fire_0 take
+# one update each, so the first round comes 3 updates on;
+# a primary shotgun skips the pre-fire: 2.
+latency = 2
 
 # [TW: Clip / total] 7; [TW: ReloadPerBullet] 1 and [TW: Reload] 333 +
 # 700/shell + 900 ms: [5.5] PreReload once, a loop per shell back to

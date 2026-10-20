@@ -783,7 +783,9 @@ fn fire_once(sim: &mut Sim, p: Entity) {
     sim.intent(p).fire = true;
     sim.ticks(1);
     sim.intent(p).fire = false;
-    sim.ticks(2);
+    // The round on the 3rd update after the press (weapon_firing.md
+    // Corrections 10), then one for its effects.
+    sim.ticks(4);
 }
 
 /// The floor typed `ty` (the greybox has no surface types): a plane at

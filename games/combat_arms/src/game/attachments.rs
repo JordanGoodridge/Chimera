@@ -299,7 +299,9 @@ pub struct ModRecord {
     /// `CameraSwayXSpeed`, `CameraSwayYSpeed`, `CameraSwayXFreq`,
     /// `CameraSwayYFreq`: added to the weapon's sway.
     pub camera_sway: [f32; 4],
-    /// `VectorsPerRoundPer` (not applied: no record).
+    /// `VectorsPerRoundPer`: the client reads the magazine part's, the
+    /// server the muzzle part's (Corrections 1; no stock record has one).
+
     pub vectors_per_round_per: f32,
     /// `ShotsPerClipPlus0..9`, `MaxAmountPlus0..9`,
     /// `SelectionAmountPlus0..9`: one per column.
@@ -683,9 +685,22 @@ pub struct DamageMods {
     pub sight_range_per: f32,
     /// Every fitted part's special functions, slot order.
     pub specials: Vec<Special>,
+    /// `VectorsPerRoundPer` as each side reads it (Corrections 1): the
+    /// client's rays from the magazine part's, the server's expected count
+    /// from the muzzle part's.
+    pub pellets_client: f32,
+    pub pellets_server: f32,
+    /// The summed reload rate bonus (the server's reload window).
+    pub reload_rate: f32,
 }
 
 impl DamageMods {
+    /// A shot's rays for `n` (`VectorsPerRound`) with a pellet fraction
+    /// `v`: n + floor(n v).
+    pub fn rays(&self, n: u32, v: f32) -> u32 {
+        (n as i64 + (n as f64 * v as f64).floor() as i64).max(0) as u32
+    }
+
     /// The client ray (units): Range + trunc(Range x sum RangePer).
     pub fn client_range(&self, range: f64) -> f64 {
         range + (range * self.range_per as f64).trunc()
@@ -756,6 +771,10 @@ impl CaMods {
             range_per: self.sum(|r| r.range_per),
             sight_range_per: self.part(SIGHT).map_or(0.0, |p| p.record.range_per),
             specials: self.fitted().flat_map(|p| p.record.special.iter().cloned()).collect(),
+            pellets_client: self.part(MAGAZINE).map_or(0.0, |p| p.record.vectors_per_round_per),
+            pellets_server: self.part(MUZZLE).map_or(0.0, |p| p.record.vectors_per_round_per),
+            reload_rate: self.socket_sum(|r| r.reload_ani_rate),
+
         }
     }
 

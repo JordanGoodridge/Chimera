@@ -23,6 +23,10 @@ max = 100
 automatic = true
 cycle = 0.115
 timing = "accumulate"
+# weapon_firing.md Corrections 10: the update that sees the press only
+# enters the firing state; the pre-fire (even a 0 ms one) and fire_0 take
+# one update each, so the first round comes 3 updates on.
+latency = 3
 
 # [TW: Clip / total] 100, [TW: Reload] 3500 ms.
 [magazine]

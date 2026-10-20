@@ -42,7 +42,9 @@ use combat_arms::{
         },
         inventory::{self, Dropped},
         movement::{self, CaMovement, StunPenalty},
-        weapons::{self as ca, CaArmor, CaRecoil, CaSpread, CaZoom, FireMode, MALE, RIFLE, SpreadScales},
+        weapons::{
+            self as ca, CaArmor, CaKick, CaRecoil, CaSpread, CaZoom, FireMode, MALE, RIFLE, RecoilParams, SpreadScales,
+        },
     },
     harness::CaSim,
 };
@@ -144,6 +146,22 @@ base = "combat_arms:m4a1"
 accepts = ["Test_Rate_Bullet"]
 "#;
 
+/// A Remington 870 with no spread, roll, kick or spacing that takes the
+/// test pellet parts (case 38).
+const PELLETS: &str = r#"
+id = "test:r870_pellets"
+base = "combat_arms:remington_870"
+[hooks."combat_arms:damage"]
+roll = 0.0
+fire_delay = 0.0
+[hooks."combat_arms:spread"]
+cone = { min = 0, max = 0, inc = 5.0, dec = 1.0 }
+[hooks."combat_arms:recoil"]
+pitch = 0.0
+[hooks."combat_arms:attachments"]
+accepts = ["Test_Pellet_Mag", "Test_Pellet_Muzzle"]
+"#;
+
 fn sim() -> Sim {
     let mut sim = Sim::new(CaSim, GreyboxMapPlugin);
     sim.set_tick_interval(TICK_INTERVAL);
@@ -158,7 +176,9 @@ fn sim() -> Sim {
             ("barrett", BARRETT),
             ("ak47", AK47),
             ("rate_bullet", RATE_BULLET),
+            ("pellets", PELLETS),
         ])
+
         .unwrap();
     sim
 }
@@ -259,7 +279,9 @@ fn shoot(sim: &mut Sim, shooter: Entity, target: Entity) -> f32 {
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;
-    sim.ticks(1);
+    // The chain's round, 3 updates after the press (weapon_firing.md
+    // Corrections 10).
+    sim.ticks(4);
     let lost = (before - health(sim, target)) / HP;
     sim.seconds(0.2);
     lost
@@ -278,7 +300,11 @@ fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f
         let from = eye(sim, shooter);
         let dir = (sphere(sim, shooter, target, name) - from).normalize();
         let (min, max, _) = geometry(sim.app.world(), target);
-        let t = ca::box_entry(min, max, from, dir, f32::INFINITY).unwrap();
+        // The reported point: the widened box's entry (weapon_firing.md
+        // Corrections 8).
+        let (c, half) = ((min + max) / 2.0, (max - min) / 2.0 * Vec3::new(ca::HITBOX_WIDEN, 1.0, ca::HITBOX_WIDEN));
+        let t = ca::box_entry(c - half, c + half, from, dir, f32::INFINITY).unwrap();
+
         let err = t - units * U;
         sim.app.world_mut().get_mut::<Transform>(target).unwrap().translation.z += err / dir.z.abs();
         sim.ticks(1);
@@ -359,10 +385,8 @@ fn scales(sim: &Sim) -> SpreadScales {
 fn first_kick(parts: &[&str]) -> f32 {
     let mut sim = sim();
     let (_, w) = holding(&mut sim, RIFLE, parts);
-    let mut r = sim.app.world().get::<CaRecoil>(w).unwrap().clone();
-    r.pitch = 0.0;
-    r.yaw = 0.0;
-    r.kick(false, 0.0).to_degrees()
+    let r = sim.app.world().get::<CaRecoil>(w).unwrap().clone();
+    r.kick(&mut CaKick::default(), false, 0.0).to_degrees()
 }
 
 /// The view's (pitch, yaw) kick after each of `rounds` held rounds of the
@@ -1020,6 +1044,9 @@ fn t35_stun_bullet() {
         sim.intent(shooter).fire = true;
         sim.ticks(1);
         sim.intent(shooter).fire = false;
+        // The round on the 3rd update after the press (weapon_firing.md
+        // Corrections 10).
+        sim.ticks(3);
         let hit_at = sim.app.world().resource::<SimClock>().now;
         sim.ticks(1);
         close((hp - health(&sim, target)) / HP, 31.5, 1e-3, &format!("damage, draw {draw}"));
@@ -1165,4 +1192,94 @@ fn fitted_parts_are_the_servers_and_predicted() {
     let (server, client) = (sim.server.app.world(), sim.clients[0].app.world());
     assert!(clip(server, sw) < 40, "fired");
     assert_eq!(clip(client, cw), clip(server, sw));
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-19): 38-40
+
+/// The test parts with `VectorsPerRoundPer` `v`: a magazine and a muzzle
+/// part.
+fn pellet_parts(sim: &mut Sim, mag: f32, muzzle: f32) {
+    let mut table = sim.app.world_mut().resource_mut::<CaModTable>();
+    table.insert(ModRecord {
+        name: "Test_Pellet_Mag".into(),
+        kinds: Some(at::MAGAZINE as i32),
+        kind: Some(at::MAGAZINE_TYPE),
+        integrated: 1,
+        vectors_per_round_per: mag,
+        ..default()
+    });
+    table.insert(ModRecord {
+        name: "Test_Pellet_Muzzle".into(),
+        kinds: Some(at::MUZZLE as i32),
+        kind: Some(at::SILENCER),
+        integrated: 1,
+        vectors_per_round_per: muzzle,
+        ..default()
+    });
+}
+
+/// 38. A pellet-count mismatch: 8 rays, the magazine's 0.25 alone → the
+/// client sends 10, the server expects 8: nothing; the muzzle's alone →
+/// 8 sent, 10 expected: nothing; both → 10 rays land (9 each).
+#[test]
+fn t38_pellet_count_mismatch() {
+    for (mag, muzzle, want) in [(0.25, 0.0, 0.0), (0.0, 0.25, 0.0), (0.25, 0.25, 90.0), (0.0, 0.0, 72.0)] {
+        let mut sim = sim();
+        pellet_parts(&mut sim, mag, muzzle);
+        let (shooter, target) = range_lane(&mut sim, "test:r870_pellets", &["Test_Pellet_Mag", "Test_Pellet_Muzzle"], 500.0);
+        place_at(&mut sim, shooter, target, "Upper_torso", 500.0);
+        close(shoot_at(&mut sim, shooter, target, "Upper_torso"), want, 1e-2, &format!("magazine {mag}, muzzle {muzzle}"));
+    }
+}
+
+/// 39. The burst return with a muzzle part: `TripleShotMaxCamRecoilPitch`
+/// 8 and the muzzle's `MaxCamRecoilPitchPer` 0.25 → a cap of rad 10.
+#[test]
+fn t39_burst_return_with_a_muzzle_part() {
+    let mut r = CaRecoil::new(RecoilParams {
+        max_pitch: 5.0,
+        burst_max_pitch: 8.0,
+        ..default()
+    });
+    r.mods.return_max = 0.25;
+    close(r.return_cap(true), 10f32.to_radians(), 1e-7, "burst");
+    close(r.return_cap(false), 6.25f32.to_radians(), 1e-7, "normal");
+}
+
+/// 40. A switch after a kick: the M4A1 with a silencer kicks, then the
+/// knife in hand: the next return steps with the knife's (the record
+/// defaults: no muzzle term) cap and rates.
+#[test]
+fn t40_switch_after_a_kick() {
+    let mut sim = sim();
+    let (p, w) = holding(&mut sim, RIFLE, &["Silencer_A_AR"]);
+    assert!(sim.app.world().get::<CaRecoil>(w).unwrap().mods != default(), "the silencer's terms");
+    sim.intent(p).fire = true;
+    sim.ticks(4);
+    sim.intent(p).fire = false;
+    let knife = sim
+        .app
+        .world()
+        .get::<Inventory>(p)
+        .unwrap()
+        .weapons
+        .iter()
+        .copied()
+        .find(|e| sim.app.world().get::<CaRecoil>(*e).is_none() && *e != w)
+        .expect("a weapon with no recoil table");
+    let slot = sim.app.world().get::<chimera_sim::weapon::Weapon>(knife).unwrap().slot;
+    sim.intent(p).select = Some(slot);
+    sim.ticks(1);
+    sim.intent(p).select = None;
+    assert_eq!(sim.app.world().get::<Inventory>(p).unwrap().active, Some(knife));
+    let mut k = sim.app.world().get::<CaKick>(p).unwrap().clone();
+    assert!(k.pitch > 0.0, "kicked");
+    let now = sim.app.world().resource::<chimera_core::core::SimClock>().now + TICK_INTERVAL;
+    let (down, _) = ca::DEFAULT_RECOIL.recover(&mut k, TICK_INTERVAL as f32, now, false);
+    let before = sim.app.world().get::<ViewPunch>(p).unwrap().0.x;
+    sim.ticks(1);
+    let moved = before - sim.app.world().get::<ViewPunch>(p).unwrap().0.x;
+    close(moved, down, 1e-6, "the knife's return");
+    close(sim.app.world().get::<CaKick>(p).unwrap().pitch, k.pitch, 1e-7, "J");
 }

@@ -195,6 +195,10 @@ pub struct TriggerData {
     /// Most shots per pull, 0 for no limit (`Trigger::per_press`).
     #[serde(default)]
     pub per_press: u32,
+    /// Updates from entering the firing state to the first round
+    /// (`Trigger::latency`; 0: none).
+    #[serde(default)]
+    pub latency: u32,
 }
 
 /// `Magazine` (and `ShellReload`): the reserve starts full and holds the
@@ -879,6 +883,7 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
                 TimingData::CarryOver => FireTiming::CarryOver,
             },
             per_press: t.per_press,
+            latency: t.latency,
         });
     }
     if let (Some(m), Some(a)) = (&d.magazine, &d.ammo) {
