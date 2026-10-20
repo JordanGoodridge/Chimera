@@ -383,7 +383,8 @@ fn round_at(sim: &mut Sim, shooter: Entity, target: Entity) -> (f32, f32) {
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;
-    sim.ticks(2);
+    // The round goes the trigger's latency (3 updates) after the press.
+    sim.ticks(4);
     let lost = (1.0 - health(sim, target)) / HP;
     let used = armour - sim.app.world().get::<CaArmor>(target).unwrap().points;
     sim.seconds(0.3);

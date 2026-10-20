@@ -74,11 +74,19 @@
 //!   Chimera's `SeeThrough` (bots see through them, bots.md 5.2).
 //! - Volumes (`volumes`): `Water`, `EndlessFall` and the other volume
 //!   classes go to the map's entities (class, properties, the world
-//!   model's faces as one hull) for `volumes::CaVolume`; one the map's
-//!   start-up commands switch off (`StartupCommand`'s `Command`: `msg
-//!   <name> off`, run as the map starts) is hidden, as JUNK_FLEA2's
-//!   `Box_Kill01`, a kill volume its scripts switch on for half a
-//!   second when a trigger drops something there.
+//!   model's faces as one hull) for `volumes::CaVolume`, which the map's
+//!   objects switch and move (`objects`).
+//! - World objects (world_objects.md 1; `world_model_nodes`): the world
+//!   models that can move, hide or break (the active classes, and
+//!   `WorldModel`s that are keyframed, start hidden, can be destroyed,
+//!   attach others or are named in another object's commands) are the
+//!   map's first entities, each a mover node of its own placed at its
+//!   BSP's centre (its meshes relative to it, its polygons as hulls the
+//!   node collides as triangles; where they stand at load they stay
+//!   floors for the spawns' drop only); the logic objects (triggers, counters, start-up
+//!   commands, keyframers with their keys' blind data, explosions,
+//!   sounds, lights, cameras, points) pass through with every property
+//!   (`object_keyvalues`), for `objects`.
 //! - AI objects (`objects`): the AI volumes, nodes and regions as map
 //!   entities, every property as text, for the bots (`bots::map_ai`).
 //! - Mode objects (`objects` too): every `GameStartPoint` (with its feet
@@ -128,9 +136,9 @@
 //! start points (its one team point and the `HungerGame` ones) have no
 //! solid floor below them in the physics BSP, only the sliding water's
 //! surface over the `Water` volume and the outer box: they land on the
-//! water and float there (`movement`). Nothing is drawn under them
-//! either, and no world model reaches there: the deck they stand on in
-//! the game is not in the file (a mode's vehicle or prop, perhaps). The flat
+//! water and float there (`movement`), as in the game: the map is a copy
+//! of DARKHILLS with its terrain and barn removed, so no deck ever
+//! existed (world_objects.md 16). The flat
 //! environment map's world environment-map matrix is taken as the
 //! identity and `EnvScale` as 1 (neither is in the specs), so it reads
 //! (r.x, r.y) x -0.5 + 0.5 of the view-space reflection; the console
@@ -141,10 +149,9 @@
 //! three axes (the game's inner box scales each), over the whole screen
 //! (the game only inside the sky portals' rectangle); `FarZ`, the sky's
 //! far plane and fog-disable flag, panning skies and volumetric fog aren't
-//! read. Light groups stay as they start (no map scripts to switch them;
-//! the light grid's fix-ups aren't applied). World models don't move
-//! (doors and breakables stand as placed and block); volumes are their
-//! world models' face planes.
+//! read. Light groups stay as they start (the objects keep their on/off
+//! state only; the light grid's fix-ups aren't applied); volumes are
+//! their world models' face planes.
 
 use std::collections::HashMap;
 
@@ -342,20 +349,29 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
         .unwrap_or([1.0; 3]);
     let groups = light_group_colours(world);
     let sky = sky_object(world);
-    let mut worlds: Vec<(&RenderWorld, MapAlpha, bool)> = vec![(&world.render, MapAlpha::Opaque, false)];
+    // World models that move, hide or break: a node each (the map's first
+    // entities), drawn and collided there.
+    let nodes = world_model_nodes(world, &mut map, scale);
+    // Each render world drawn: its look, whether it's the sky, its node.
+    type Drawn<'a> = (&'a RenderWorld, MapAlpha, bool, Option<(usize, Vec3)>);
+    let mut worlds: Vec<Drawn> = vec![(&world.render, MapAlpha::Opaque, false, None)];
     worlds.extend(world.render.models.iter().filter_map(|(n, w)| {
         if sky.and_then(Object::name) == Some(n.as_str()) {
-            return Some((w, MapAlpha::Opaque, true));
+            return Some((w, MapAlpha::Opaque, true, None));
         }
-        Some((w, model_look(world, n)?, false))
+        if let Some(&(i, centre)) = nodes.get(n.as_str()) {
+            let o = world.objects.iter().find(|o| o.name() == Some(n.as_str()))?;
+            return Some((w, blend_of(o), false, Some((i, centre))));
+        }
+        Some((w, model_look(world, n)?, false, None))
     }));
     let lut = LightLut::new(t_factor);
     let mut atlas = Atlas::new(lut);
     let mut meshes: HashMap<String, Building> = HashMap::new();
-    for (render, alpha, skybox) in &worlds {
+    for (render, alpha, skybox, entity) in &worlds {
         for block in &render.blocks {
             let lit = Lighting { groups: &groups, lut };
-            add_block(block, *alpha, *skybox, &lit, &mut atlas, &mut meshes, &to_engine);
+            add_block(block, *alpha, *skybox, *entity, &lit, &mut atlas, &mut meshes, &to_engine);
         }
     }
     let lightmap = atlas.finish();
@@ -377,10 +393,12 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
 
     map.fog = properties.and_then(|o| world_fog(o, scale, false));
     map.sky_camera = sky.and_then(|o| sky_camera(world, o, properties, scale));
-    let sky = collision(world, &mut map, &to_engine);
+    let sky = collision(world, &mut map, &to_engine, &nodes);
     volumes(world, &mut map, scale);
     objects(world, &mut map, scale, |o| {
-        super::bots::map_ai::is_ai_object(&o.class) || super::rules::objects::is_mode_object(&o.class, o.name())
+        super::bots::map_ai::is_ai_object(&o.class)
+            || super::rules::objects::is_mode_object(&o.class, o.name())
+            || super::objects::is_logic_object(&o.class)
     });
     spawns(world, &mut map, &sky, &to_engine);
     start_point_feet(world, &mut map, &sky, scale, &to_engine);
@@ -402,11 +420,84 @@ fn model_look(world: &World, name: &str) -> Option<MapAlpha> {
     if o.class == "DemoSkyWorldModel" || o.bool("Visible") == Some(false) || o.bool("StartHidden") == Some(true) {
         return None;
     }
-    Some(match o.string("BlendMode") {
+    Some(blend_of(o))
+}
+
+/// An object's `BlendMode` as drawn (`Additive`, `Translucent`, opaque
+/// otherwise).
+fn blend_of(o: &Object) -> MapAlpha {
+    match o.string("BlendMode") {
         Some(b) if b.eq_ignore_ascii_case("Additive") => MapAlpha::Add,
         Some(b) if b.eq_ignore_ascii_case("Translucent") => MapAlpha::Blend,
         _ => MapAlpha::Opaque,
-    })
+    }
+}
+
+/// The world-model objects that get a node of their own
+/// (`objects::is_node_object`: the active classes, and plain
+/// `WorldModel`s a keyframer, a command, an attachment or their own
+/// properties can move, hide or break), each as a mover map entity
+/// (world_objects.md 1): placed at its BSP's centre with no rotation,
+/// every property as text (`object_keyvalues`, `Pos` kept as itself:
+/// the default pivot), its box's half-extents, whether it collides and
+/// stops rays (`model_flags`), and each polygon's corners as a hull
+/// about the centre (`objects` collides the node as their triangles). By
+/// name: its entity index and centre (engine axes).
+fn world_model_nodes(world: &World, map: &mut MapData, scale: f32) -> HashMap<String, (usize, Vec3)> {
+    use super::objects::runtime::keys;
+    let named = super::objects::names_in_commands(world.objects.iter().flat_map(|o| {
+        o.properties.iter().filter(|p| !p.name.eq_ignore_ascii_case("Name")).filter_map(|p| match &p.value {
+            lt::Value::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+    }));
+    let mut out = HashMap::new();
+    for o in &world.objects {
+        let Some(name) = o.name() else { continue };
+        if out.contains_key(name) || o.class == "DemoSkyWorldModel" || super::volumes::is_volume(&o.class) {
+            continue;
+        }
+        let Some((_, m)) = world.model(name) else { continue };
+        if m.is_physics() || !super::objects::is_node_object(o, named.contains(&name.to_ascii_lowercase())) {
+            continue;
+        }
+        let centre = Vec3::from(m.translation);
+        let half = (Vec3::from(m.max) - Vec3::from(m.min)) / 2.0;
+        let (solid, rayhit) = model_flags(world, name);
+        let mut keyvalues = object_keyvalues(o, false);
+        let e = |v: Vec3| format!("{} {} {}", v.x, v.z, v.y);
+        keyvalues.push(("origin".into(), e(centre)));
+        keyvalues.push((keys::HALF.into(), e(half)));
+        keyvalues.push((keys::SOLID.into(), (solid as u8).to_string()));
+        keyvalues.push((keys::RAYHIT.into(), (rayhit as u8).to_string()));
+        // Each polygon as a hull of its corners (about the centre, entity
+        // axes): the node collides as their triangles (`objects`).
+        let hulls = (0..m.polygons.len())
+            .map(|i| MapHull {
+                planes: Vec::new(),
+                points: m
+                    .polygon_vertices(i)
+                    .map(|p| {
+                        let d = Vec3::from(p) - centre;
+                        Vec3::new(d.x, d.z, d.y)
+                    })
+                    .collect(),
+            })
+            .filter(|h| h.points.len() >= 3)
+            .collect();
+        let index = map.entities.len();
+        map.entities.push(MapEntity {
+            keyvalues,
+            hulls,
+            mover: true,
+            ..default()
+        });
+        out.insert(name.to_string(), (index, Vec3::from(lt::to_right_handed(centre.into())) * scale));
+    }
+    if !out.is_empty() {
+        map.entity_scale = scale;
+    }
+    out
 }
 
 /// A colour property as 0..1 per channel (stored 0..255).
@@ -575,10 +666,12 @@ fn clamp_cut(tri: [Corner; 3]) -> Vec<Vec<Corner>> {
 /// One render block's drawn sections into the meshes (by texture; each
 /// with its vertices' lightmap rectangles, whose coordinates the mesh's
 /// `lightmap_uvs` hold until the atlas is laid out).
+#[allow(clippy::too_many_arguments)]
 fn add_block(
     block: &lt::RenderBlock,
     alpha: MapAlpha,
     skybox: bool,
+    entity: Option<(usize, Vec3)>,
     lit: &Lighting,
     atlas: &mut Atlas,
     meshes: &mut HashMap<String, Building>,
@@ -647,13 +740,19 @@ fn add_block(
         // ("Second textures"); a mesh per pair.
         let dual = matches!(s.shader, shader::DUAL_TEXTURE | shader::LIGHTMAP_DUAL_TEXTURE);
         let second = (dual && !s.textures[1].is_empty()).then(|| s.textures[1].clone());
-        let key = format!("{name}|{}|{alpha:?}|{skybox}", second.as_deref().unwrap_or("").to_lowercase());
+        let key = format!(
+            "{name}|{}|{alpha:?}|{skybox}|{:?}",
+            second.as_deref().unwrap_or("").to_lowercase(),
+            entity.map(|(i, _)| i)
+        );
+        let origin = entity.map_or(Vec3::ZERO, |(_, o)| o);
         let Building { mesh, rects, .. } = meshes.entry(key).or_insert_with(|| Building {
             mesh: MapMesh {
                 material: s.textures[0].clone(),
                 color: flat_color(&name),
                 alpha,
                 skybox,
+                entity: entity.map(|(i, _)| i),
                 ..default()
             },
             rects: Vec::new(),
@@ -661,7 +760,7 @@ fn add_block(
         });
         let has_second = second.is_some();
         let push = |mesh: &mut MapMesh, rects: &mut Vec<u32>, c: &Corner, rect: u32| {
-            mesh.positions.push(to_engine(c.pos).to_array());
+            mesh.positions.push((to_engine(c.pos) - origin).to_array());
             mesh.normals.push(Vec3::from(lt::to_right_handed(c.normal)).normalize_or_zero().to_array());
             mesh.uvs.push(c.uv);
             mesh.lightmap_uvs.push(c.lm);
@@ -1067,7 +1166,12 @@ fn model_flags(world: &World, name: &str) -> (bool, bool) {
 /// ray-hit-only world models for traces only; the collision blockers for
 /// players only. Returns the solid sky-portal triangles (the world's outer
 /// box among them), which are no floor to drop a spawn on.
-fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> Vec3) -> Vec<[u32; 3]> {
+fn collision(
+    world: &World,
+    map: &mut MapData,
+    to_engine: &impl Fn(lt::Vec3) -> Vec3,
+    nodes: &HashMap<String, (usize, Vec3)>,
+) -> Vec<[u32; 3]> {
     let positions = &mut map.collision_positions;
     let mut fan = |points: &mut dyn Iterator<Item = lt::Vec3>, out: &mut Vec<[u32; 3]>| {
         let base = positions.len() as u32;
@@ -1084,7 +1188,11 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
     let (mut solid, mut traces, mut blockers) = (Vec::new(), Vec::new(), Vec::new());
     let (mut glass, mut glass_traces) = (Vec::new(), Vec::new());
     let mut sky = Vec::new();
+    // Nodes' world models collide by their nodes; where they stand at
+    // load they are floors for dropping spawns only.
+    let (mut node_floors, mut node_surfaces) = (Vec::new(), Vec::new());
     for m in &world.models {
+        let node = nodes.contains_key(&m.name);
         let (is_solid, rayhit) = if m.is_physics() { (true, true) } else { model_flags(world, &m.name) };
         if !(is_solid || rayhit) {
             continue;
@@ -1092,7 +1200,10 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
         for i in 0..m.polygons.len() {
             let surface = m.polygon_surface(i);
             let see_through = GLASS_SURFACE_TYPES.contains(&surface.surface_type);
-            let out = match (is_solid && surface.flags & surface_flags::SOLID != 0, see_through) {
+            let solid_face = is_solid && surface.flags & surface_flags::SOLID != 0;
+            let out = match (solid_face, see_through) {
+                _ if node && solid_face => &mut node_floors,
+                _ if node => &mut node_surfaces,
                 (true, false) => &mut solid,
                 (true, true) => &mut glass,
                 (false, false) => &mut traces,
@@ -1100,7 +1211,7 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
             };
             let before = out.len();
             fan(&mut m.polygon_vertices(i), out);
-            if is_solid && surface.flags & (surface_flags::SOLID | surface_flags::SKY_PORTAL) == (surface_flags::SOLID | surface_flags::SKY_PORTAL) {
+            if !node && is_solid && surface.flags & (surface_flags::SOLID | surface_flags::SKY_PORTAL) == (surface_flags::SOLID | surface_flags::SKY_PORTAL) {
                 sky.extend_from_slice(&out[before..]);
             }
         }
@@ -1139,9 +1250,26 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
             traces: true,
             see_through: true,
         },
+        // Neither: no collider (the nodes have theirs), floors for spawns.
+        MapCollisionSet {
+            name: NODE_FLOORS.into(),
+            indices: node_floors,
+            ..default()
+        },
+        MapCollisionSet {
+            name: NODE_SURFACES.into(),
+            indices: node_surfaces,
+            ..default()
+        },
     ];
     sky
 }
+
+/// The collision sets of the nodes' world models where they stand at load
+/// (solid faces, other faces): no collider, only floors for dropping
+/// spawns (`Floor`), as they were before they moved.
+pub const NODE_FLOORS: &str = "world models at load (solid)";
+pub const NODE_SURFACES: &str = "world models at load (ray-hit)";
 
 /// The volume objects (`volumes::is_volume`) as map entities: their class
 /// and properties (engine axes: `Current` with Z mirrored; a jump
@@ -1150,16 +1278,6 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
 /// commands leave it: `StartupCommand`'s `msg <name> off`) and their
 /// world model's faces as one hull (planes facing out), in entity space.
 fn volumes(world: &World, map: &mut MapData, scale: f32) {
-    // What the map's start-up commands switch on or off at once (a
-    // volume's `Hidden` is switched by `ON` / `OFF`).
-    let switched: HashMap<String, bool> = world
-        .objects
-        .iter()
-        .filter(|o| o.class == "StartupCommand")
-        .filter_map(|o| o.string("Command"))
-        .flat_map(super::volumes::startup_switches)
-        .map(|(n, on)| (n.to_ascii_lowercase(), on))
-        .collect();
     let mut any = false;
     for o in &world.objects {
         if !super::volumes::is_volume(&o.class) {
@@ -1206,12 +1324,7 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
             let [x, y, z] = lt::to_right_handed(lt::rotation_axes(pitch, yaw, roll)[2]);
             keyvalues.push(("JumpDirection".into(), format!("{x} {y} {z}")));
         }
-        let hidden = o
-            .name()
-            .and_then(|n| switched.get(&n.to_ascii_lowercase()))
-            .map(|on| !on)
-            .or_else(|| o.bool("Hidden"));
-        if let Some(h) = hidden {
+        if let Some(h) = o.bool("Hidden") {
             keyvalues.push(("Hidden".into(), (h as u8).to_string()));
         }
         map.entities.push(MapEntity {
@@ -1239,22 +1352,15 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
 fn objects(world: &World, map: &mut MapData, scale: f32, wanted: fn(&lt::Object) -> bool) {
     let mut any = false;
     for o in world.objects.iter().filter(|o| wanted(o)) {
-        let mut keyvalues = vec![("classname".to_string(), o.class.clone())];
-        for p in &o.properties {
-            let key = match p.name.as_str() {
-                n if n.eq_ignore_ascii_case("Name") => "targetname",
-                n if n.eq_ignore_ascii_case("Pos") => "origin",
-                n => n,
-            };
-            let value = match &p.value {
-                lt::Value::String(s) => s.clone(),
-                lt::Value::Vector(v) => format!("{} {} {}", v[0], v[2], v[1]),
-                lt::Value::Color(c) => format!("{} {} {}", c[0], c[1], c[2]),
-                lt::Value::Real(x) | lt::Value::Flags(x) | lt::Value::Long(x) => x.to_string(),
-                lt::Value::Bool(b) => (*b as u8).to_string(),
-                lt::Value::Rotation(_) | lt::Value::Unknown { .. } => continue,
-            };
-            keyvalues.push((key.to_string(), value));
+        let mut keyvalues = object_keyvalues(o, true);
+        // A keyframer's keys: its blind-data chunk (world_objects.md 9).
+        if o.class == "KeyFramer"
+            && let Some(i) = o.real("KeyDataIndex").filter(|i| *i >= 0.0)
+            && let Some(c) = world.blind_data.get(i as usize)
+            && c.id == super::objects::keyframer::KEY_CHUNK_ID
+        {
+            let hex: String = c.data.iter().map(|b| format!("{b:02x}")).collect();
+            keyvalues.push((super::objects::runtime::keys::KEYS.into(), hex));
         }
         map.entities.push(MapEntity { keyvalues, ..default() });
         any = true;
@@ -1262,6 +1368,34 @@ fn objects(world: &World, map: &mut MapData, scale: f32, wanted: fn(&lt::Object)
     if any {
         map.entity_scale = scale;
     }
+}
+
+/// An object's properties as map-entity keyvalues: `classname` the class,
+/// `targetname` its `Name`, `origin` its `Pos` (with `pos_as_origin`;
+/// else `Pos` itself), and every other property by its name as text:
+/// vectors in entity axes (x, z, y of the file's), colours "r g b",
+/// numbers as numbers, booleans 1 or 0, rotations "pitch yaw roll"
+/// (radians, the file's); unknown values left out.
+fn object_keyvalues(o: &lt::Object, pos_as_origin: bool) -> Vec<(String, String)> {
+    let mut keyvalues = vec![("classname".to_string(), o.class.clone())];
+    for p in &o.properties {
+        let key = match p.name.as_str() {
+            n if n.eq_ignore_ascii_case("Name") => "targetname",
+            n if pos_as_origin && n.eq_ignore_ascii_case("Pos") => "origin",
+            n => n,
+        };
+        let value = match &p.value {
+            lt::Value::String(s) => s.clone(),
+            lt::Value::Vector(v) => format!("{} {} {}", v[0], v[2], v[1]),
+            lt::Value::Color(c) => format!("{} {} {}", c[0], c[1], c[2]),
+            lt::Value::Real(x) | lt::Value::Flags(x) | lt::Value::Long(x) => x.to_string(),
+            lt::Value::Bool(b) => (*b as u8).to_string(),
+            lt::Value::Rotation(r) => format!("{} {} {}", r[0], r[1], r[2]),
+            lt::Value::Unknown { .. } => continue,
+        };
+        keyvalues.push((key.to_string(), value));
+    }
+    keyvalues
 }
 
 /// Whether a start point serves the versus modes' `family`
@@ -1397,7 +1531,11 @@ impl<'a> Floor<'a> {
             let [a, b, c] = t.map(p);
             (*t, a.xz().min(b.xz()).min(c.xz()), a.xz().max(b.xz()).max(c.xz()))
         };
-        let players = map.collision_sets.iter().filter(|s| s.characters).flat_map(|s| &s.indices);
+        let players = map
+            .collision_sets
+            .iter()
+            .filter(|s| s.characters || s.name == NODE_FLOORS)
+            .flat_map(|s| &s.indices);
         let triangles = map
             .collision_indices
             .iter()
@@ -1408,7 +1546,7 @@ impl<'a> Floor<'a> {
         let surfaces = map
             .collision_sets
             .iter()
-            .filter(|s| !s.characters && s.traces)
+            .filter(|s| (!s.characters && s.traces) || s.name == NODE_SURFACES)
             .flat_map(|s| &s.indices)
             .map(boxed)
             .collect();

@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 use bevy::prelude::*;
 use serde::Deserialize;
 
+use super::super::weapons::CaAiDamage;
 use crate::{console::resource_cvar, rule_module};
 
 /// data/modes.toml, built in.
@@ -305,6 +306,23 @@ pub(super) fn plugin(app: &mut App) {
         s.object_end = server.object_end as f32;
         s.mission_end = server.mission_end as f32;
     }
+    // The AI cap from the data; the factor is the console variable's.
+    let cap = app.world().resource::<CaRuleSettings>().ai_damage.clone();
+    let factor = app.world().get_resource::<CaAiDamage>().map_or(CaAiDamage::default().factor, |a| a.factor);
+    app.insert_resource(CaAiDamage {
+        factor,
+        cap: cap.cap,
+        cap_big: cap.cap_big,
+        big: cap.big,
+    });
+    resource_cvar::<CaAiDamage, f32>(
+        app,
+        "ca_ai_damage_factor",
+        "AIDamageFactor: every AI's (bot's, mercenary's) damage x this before armour (0.8; a Hired Guns round sets \
+         its objective's).",
+        |s| &mut s.factor,
+    );
+
     resource_cvar::<CaRuleSettings, String>(
         app,
         "ca_mode",

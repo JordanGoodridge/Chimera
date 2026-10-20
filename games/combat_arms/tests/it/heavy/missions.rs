@@ -137,6 +137,16 @@ fn install_missions_for_the_modes() {
     // Squad Match 2.
     let sq = i.index.find("hiredguns2", "SQM").expect("Hired Guns 2's SQM");
     assert_eq!((sq.path.as_str(), sq.mission.mode.as_str()), ("gms/hiredguns2_hqm.gms", "SQM2"));
+    // The map messages the rules send (S15): GRAYHAMMER's S&D and CTF
+    // start triggers at the setup, their end triggers at round over.
+    for (key, level) in [("TMM", "Level02"), ("CTF", "Level05")] {
+        let m = i.index.find("grayhammer", key).expect("GRAYHAMMER's mission");
+        let o = m.object();
+        let names = |step| m.map_messages(step, &o).into_iter().map(|(n, msg)| format!("{n} {msg}")).collect::<Vec<_>>();
+        eprintln!("grayhammer {key}: mission start {:?}", names(missions::MapStep::MissionStart));
+        assert!(names(missions::MapStep::RoundSetup).contains(&format!("{level}StartTrigger TRIGGER")), "{key}");
+        assert!(names(missions::MapStep::RoundOver).contains(&format!("{level}EndTrigger TRIGGER")), "{key}");
+    }
     for (key, map) in [("HQM", "ghosttown"), ("BNT", "ghosttown"), ("SBT", "ghosttown"), ("CTF", "ghosttown"), ("LMS", "ghosttown")] {
         if let Some(m) = i.index.find(map, key) {
             let o = m.object();

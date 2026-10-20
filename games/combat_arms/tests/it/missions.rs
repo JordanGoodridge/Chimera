@@ -7,6 +7,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bevy::prelude::*;
+use chimera_world::harness::Sim;
 use combat_arms::game::{
     missions::{self, CaMission, Mission, MissionIndex, ServerFile, VipData},
     rules::{CaMatch, CaRuleSettings, Phase, objectives::BOMB},
@@ -462,4 +463,53 @@ fn map_messages_per_step() {
     // No names: nothing.
     let bare = mission(&file("w", "TDM", "TimeLimit = 0"));
     assert!(bare.map_messages(RoundSetup, &bare.object()).is_empty());
+}
+
+/// The rules send the mission's map messages as the match runs (S3, S15):
+/// controllers and start triggers at each mission start and setup, end
+/// triggers at round over, the mission's at round end; again for the next
+/// round (every round ends its mission).
+#[test]
+fn map_messages_follow_the_match() {
+    use combat_arms::game::objects::CaObjectMessage;
+    let file = mission(
+        "[MapInfo]\nMap = \"w\"\n[Mission0]\nMissionMode = \"TMM\"\nController = \"Control\"\n\
+         EndTrigger = \"MissionEndTrigger\"\n[Object0]\nTimeLimit = 2\nTrainingTimeLimit = 1\n\
+         StartTrigger = \"Level01StartTrigger\"\nEndTrigger = \"Level01EndTrigger\"\n",
+    );
+    let mut sim = game("TMM", 2);
+    sim.app.world_mut().insert_resource(CaMission(Some(Arc::new(file))));
+    let mut cursor = sim.app.world().resource::<Messages<CaObjectMessage>>().get_cursor();
+    let mut seen: Vec<(String, Phase)> = Vec::new();
+    let mut step = |sim: &mut Sim, seen: &mut Vec<(String, Phase)>| {
+        sim.ticks(1);
+        let w = sim.app.world();
+        let p = w.resource::<CaMatch>().phase;
+        for msg in cursor.read(w.resource::<Messages<CaObjectMessage>>()) {
+            seen.push((format!("{} {}", msg.target, msg.message), p));
+        }
+    };
+    join(&mut sim, JSF);
+    join(&mut sim, CREED);
+    // The first round and the next one's setup.
+    while seen.len() < 6 && now(&sim) < 20.0 {
+        step(&mut sim, &mut seen);
+    }
+    let names: Vec<&str> = seen.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Control ON",
+            "Level01StartTrigger TRIGGER",
+            "Level01EndTrigger TRIGGER",
+            "MissionEndTrigger TRIGGER",
+            "Control ON",
+            "Level01StartTrigger TRIGGER"
+        ],
+        "{seen:?}"
+    );
+    assert!(matches!(seen[1].1, Phase::Setup { .. }), "at the setup: {:?}", seen[1]);
+    assert!(matches!(seen[2].1, Phase::RoundOver { .. }), "at round over: {:?}", seen[2]);
+    assert!(matches!(seen[3].1, Phase::Intermission { .. }), "at round end: {:?}", seen[3]);
+    assert!(matches!(seen[5].1, Phase::Setup { .. }), "the next setup: {:?}", seen[5]);
 }

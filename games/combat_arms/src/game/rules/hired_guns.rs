@@ -54,8 +54,8 @@
 //!
 //! Known shortcuts: a bar's box is 10 u each way and a bag's 16 (the
 //! props' sizes aren't in the spec), the view ray isn't stopped by walls;
-//! the "saved" event's sounds and effect, the map's vault doors and
-//! way-points (world objects) and the chat warning (the HUD's objective
+//! the "saved" event's sounds and effect, the way-points (target
+//! triggers: state only, `objects`) and the chat warning (the HUD's objective
 //! line says it) aren't there; no headshot statistic for a mercenary
 //! kill (`CaStats` has none); the per-map mission file isn't read (Blood
 //! Money's values are data/modes.toml's `[hired_guns]`).
@@ -234,7 +234,12 @@ fn setup(world: &mut World) {
         return;
     }
     let h = world.resource::<CaRuleSettings>().hired_guns.clone();
+    // The objective's `AIDamageFactor` becomes the console variable's.
+    if let Some(mut ai) = world.get_resource_mut::<super::super::weapons::CaAiDamage>() {
+        ai.factor = h.ai_damage_factor;
+    }
     let winner = world.resource::<CaHiredGuns>().last_winner;
+
     for (e, team) in flow::players(world) {
         let win = if winner == Some(team) { h.round_win_bonus } else { 0 };
         pay(world, e, h.base_bank + win);

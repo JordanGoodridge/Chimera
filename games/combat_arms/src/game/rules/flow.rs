@@ -24,6 +24,11 @@
 //!   whether the match is over (`CaMode::match_end`, never after the
 //!   warm-up); then the intermission (`mission_end` s), then the next
 //!   mission start or the match's result.
+//! - The map's objects (S15): at mission start the mission's controllers
+//!   (`ON`) and start triggers (`TRIGGER`), then the round's; at round
+//!   over the round's end triggers; at round end the mission's
+//!   (`missions::map_messages`, the stock maps' `LevelNNStartTrigger` /
+//!   `LevelNNEndTrigger`), as `objects::CaObjectMessage`s.
 //! - The warm-up (S9, `CaMode::warmup`): the match's first round, nothing
 //!   counts, no winner; the dead revived every `warmup_revive` s in the
 //!   modes that do (`CaMode::warmup_revives`).
@@ -43,14 +48,13 @@
 //! there; the match clock (`MissionTimeLimit`) isn't kept (it ends
 //! nothing, Quirk 11); the intermission (`MissionEnd`) comes after every
 //! round's end (S3 step 6, Open question 21: every stock file's next
-//! objective is -1, so a file's `JSFWin`/`CreedWin` aren't read); the
-//! mission's triggers and controllers aren't run (no map commands yet);
+//! objective is -1, so a file's `JSFWin`/`CreedWin` aren't read);
 //! a match over stays over until `ca_restart` or a map load.
 
 use bevy::prelude::*;
 
 use super::{
-    super::{grenades::SERVER_FRAME, inventory::Dropped, missions},
+    super::{grenades::SERVER_FRAME, inventory::Dropped, missions, objects::CaObjectMessage},
     CaRuleSettings, Teams, current_mode, objectives,
     scoring::{CaDamageLog, sync_score},
     spawns::{self, CaHeld, CaSpawnCursors},
@@ -263,6 +267,10 @@ fn mission_start(world: &mut World, now: f64, first: bool) {
     }
     world.resource_mut::<super::super::inventory::CaDeathDrops>().0 = mode.death_drops;
     objectives::clear_players(world);
+    // The map's mode objects: the mission's controllers and start
+    // triggers, then the round's (S3 steps 2 and 3, S15).
+    map_step(world, missions::MapStep::MissionStart);
+    map_step(world, missions::MapStep::RoundSetup);
     // Everyone on a team respawned, held players with them, on the team
     // the mode gives.
     for (e, _) in players(world) {
@@ -334,6 +342,8 @@ fn round_over(world: &mut World, now: f64) {
     m.round_ends = None;
     m.hold_until = None;
     (mode.hooks.round_over)(world);
+    // The round's end triggers (S3 step 5).
+    map_step(world, missions::MapStep::RoundOver);
 }
 
 /// S3 step 6: round end, then the intermission.
@@ -341,6 +351,8 @@ fn round_end(world: &mut World, now: f64) {
     let Some(mode) = current_mode(world) else { return };
     (mode.hooks.round_end)(world);
     clean_up(world);
+    // Every round ends its mission: the mission's end triggers.
+    map_step(world, missions::MapStep::MissionEnd);
     world.resource_mut::<FreezeTime>().0 = false;
     world.resource_mut::<CaMatch>().immune = false;
     let warmup = {
@@ -361,6 +373,21 @@ fn round_end(world: &mut World, now: f64) {
     let mission_end = world.resource::<CaRuleSettings>().mission_end as f64;
     world.resource_mut::<CaMatch>().phase = Phase::Intermission { until: now + mission_end };
     (mode.hooks.after_round)(world);
+}
+
+/// The playing mission's messages of `step` to the map's objects
+/// (`objects::CaObjectMessage`, run at the objects' next frame); none
+/// without the install's mission or the objects.
+fn map_step(world: &mut World, step: missions::MapStep) {
+    if !world.contains_resource::<Messages<CaObjectMessage>>() {
+        return;
+    }
+    for (target, message) in missions::map_messages(world, step) {
+        world.write_message(CaObjectMessage {
+            target,
+            message: message.into(),
+        });
+    }
 }
 
 /// S11: every body and every weapon item on the ground goes (live

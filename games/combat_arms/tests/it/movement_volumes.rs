@@ -901,15 +901,3 @@ fn case_79_safety_net_physics() {
     close(t.mv().speed_limit, 285.0, TOL, "limit");
     close(before.z - t.pos().z, 4.44784, TOL, "distance");
 }
-
-/// A map's start-up command line: the `msg <name> on|off` switches that
-/// run at once, in order; delayed ones and other messages are not.
-#[test]
-fn startup_switches() {
-    let line = "msg Collision_Box01 (solid 0);\r\nmsg Box_Kill01 off;\r\nmsg Sub_Box_Kill01 OFF;\r\n\
-                delay 7 (msg Box_Kill01 on);msg Lift on";
-    assert_eq!(
-        combat_arms::game::volumes::startup_switches(line),
-        [("Box_Kill01".to_string(), false), ("Sub_Box_Kill01".to_string(), false), ("Lift".to_string(), true)]
-    );
-}

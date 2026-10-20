@@ -99,7 +99,10 @@ fn until(sim: &mut Sim, secs: f64, test: impl Fn(&Sim) -> bool) -> bool {
     test(sim)
 }
 
-/// Bots fight in S&D and CTF on GRAYHAMMER but take no objective.
+/// Bots fight in S&D and CTF on GRAYHAMMER but take no objective (the
+/// rules fire each mode's start trigger from the mission data, S&D's
+/// `Level02StartTrigger`, CTF's `Level05StartTrigger`: it shows the map's
+/// gate, `Gate_Nml`, among its mode's objects).
 #[test]
 fn bots_play_no_objective_on_grayhammer() {
     let Some(mount) = mount() else { return };
@@ -183,9 +186,9 @@ fn hired_guns_on_bloodmoney() {
     let merc = mercs::hire(sim.app.world_mut(), a, 0).unwrap();
     assert!((sim.position(merc) - spawn).length() < 0.05);
     mercs::set_order(sim.app.world_mut(), a, MercOrder::FollowMe);
-    // The unit spawn is behind the map's doors (world objects: not yet), so
-    // the unit and its hirer go to two corners of the map's largest flat
-    // navigation area.
+    // The unit and its hirer go to two corners of the map's largest flat
+    // navigation area (the unit walking out through the truck's doors:
+    // `heavy::world_objects`).
     sim.ticks(2);
     let nav = sim.app.world().resource::<bots::brain::BotNav>().clone();
     let area = nav

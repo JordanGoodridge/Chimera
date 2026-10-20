@@ -316,7 +316,8 @@ fn t01_draw_rifle() {
     assert_eq!(active_id(&sim, p), RIFLE, "in hand at t = 0");
     let rifle = carried(&sim, p, RIFLE);
     let t = first_shot(&mut sim, p, t0, rifle);
-    assert!(close(t, 1.2, 2.0), "first shot at {t}");
+    // As corrected (Corrections 1): 3 updates after the draw's end.
+    assert!(close(t, 1.25, 2.0), "first shot at {t}");
     assert_eq!(ammo(&sim, pistol), pistol_ammo);
 }
 
@@ -328,7 +329,8 @@ fn t02_draw_pistol() {
     assert_eq!(active_id(&sim, p), PISTOL);
     let pistol = carried(&sim, p, PISTOL);
     let t = first_shot(&mut sim, p, t0, pistol);
-    assert!(close(t, 0.65, 2.0), "ready at {t}");
+    // As corrected: 700 ms.
+    assert!(close(t, 0.7, 2.0), "ready at {t}");
 }
 
 #[test]
@@ -367,7 +369,8 @@ fn t05_no_redraw() {
     key(&mut sim, p, 1);
     assert_eq!(active(&sim, p), Some(rifle), "nothing changes");
     let t = first_shot(&mut sim, p, t0, rifle);
-    assert!(close(t, 1.2, 2.0), "ready at {t}");
+    // Ready 3 updates after the draw (Corrections 1).
+    assert!(close(t, 1.25, 2.0), "ready at {t}");
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +481,8 @@ fn t11_switch_mid_reload() {
     key(&mut sim, p, 1);
     assert_eq!(ammo(&sim, rifle), (10, 100), "the reload never completed");
     let t = first_shot(&mut sim, p, t0, rifle);
-    assert!(close(t, 3.2, 2.0), "ready at {t}");
+    // As corrected: 3250 ms.
+    assert!(close(t, 3.25, 2.0), "ready at {t}");
 }
 
 #[test]
@@ -495,12 +499,13 @@ fn t12_switch_to_an_empty_clip() {
         vec![t0],
         "the reload starts at once"
     );
+    sim.intent(p).fire = true;
     let t = until(&mut sim, t0, 4.0, |s| ammo(s, rifle).0 > 0);
     assert!(close(t, 2.3, 2.0), "reloaded at {t}");
     assert_eq!(ammo(&sim, rifle), (30, 90));
-    let t1 = mark(&sim);
-    let shot = first_shot(&mut sim, p, t1, rifle);
-    assert!(shot < 1.5 * F, "ready: shot after {shot}");
+    // As corrected: ready (fire held) at 2350 ms.
+    let shot = until(&mut sim, t0, 4.0, |s| ammo(s, rifle).0 < 30);
+    assert!(close(shot, 2.35, 2.0), "ready at {shot}");
 }
 
 #[test]
@@ -517,11 +522,13 @@ fn t13_reload_cancels_the_draw() {
     let started = logged(&sim, p, |k| matches!(k, WeaponEventKind::ReloadStarted));
     assert_eq!(started.len(), 1);
     assert!(close(time_of(&sim, t0, started[0]), 0.1, 1.0));
+    sim.intent(p).fire = true;
     let t = until(&mut sim, t0, 4.0, |s| ammo(s, rifle).0 == 30);
-    assert!(close(t, 2.4, 2.0), "ready at {t}");
+    assert!(close(t, 2.4, 2.0), "reloaded at {t}");
     assert_eq!(ammo(&sim, rifle), (30, 110));
-    let t1 = mark(&sim);
-    assert!(first_shot(&mut sim, p, t1, rifle) < 1.5 * F);
+    // As corrected: ready (fire held) at 2450 ms.
+    let shot = until(&mut sim, t0, 4.0, |s| ammo(s, rifle).0 < 30);
+    assert!(close(shot, 2.45, 2.0), "ready at {shot}");
 }
 
 #[test]
@@ -534,7 +541,12 @@ fn t14_fire_during_reload() {
     wait_until(&mut sim, t0, 0.5);
     sim.intent(p).fire = true;
     let t = until(&mut sim, t0, 4.0, |s| ammo(s, rifle).0 != 5);
-    assert!(close(t, 2.3, 1.0), "first shot at {t}");
+    assert!(close(t, 2.3, 1.0), "reloaded at {t}");
+    assert_eq!(ammo(&sim, rifle), (30, 65));
+    // As corrected: the first shot on the 3rd update after the one that
+    // completes the reload, 2350 ms.
+    let t = until(&mut sim, t0, 4.0, |s| ammo(s, rifle).0 != 30);
+    assert!(close(t, 2.35, 1.0), "first shot at {t}");
     assert_eq!(ammo(&sim, rifle), (29, 64));
 }
 
@@ -582,14 +594,15 @@ fn t16_leaving_sprint() {
     let (mut sim, p) = setup(STOCK);
     let rifle = carried(&sim, p, RIFLE);
     let t = leave_sprint(&mut sim, p, |s| ammo(s, rifle).0 < 30);
-    assert!(close(t, 0.367, 2.0), "rifle: first shot at {t}");
+    // As corrected: 367 + 66.7 (4 updates) ms.
+    assert!(close(t, 0.367 + 4.0 * F, 2.0), "rifle: first shot at {t}");
 
     let (mut sim, p) = setup(STOCK);
     key(&mut sim, p, 2);
     sim.seconds(1.0);
     let pistol = carried(&sim, p, PISTOL);
     let t = leave_sprint(&mut sim, p, |s| ammo(s, pistol).0 < 15);
-    assert!(close(t, 0.4, 2.0), "pistol: first shot at {t}");
+    assert!(close(t, 0.4 + 4.0 * F, 2.0), "pistol: first shot at {t}");
 
     let (mut sim, p) = setup(STOCK);
     key(&mut sim, p, 3);
@@ -783,7 +796,8 @@ fn t24_swing_cut_by_a_switch() {
     let hits: Vec<f64> = swings(&sim, p).into_iter().map(|t| time_of(&sim, t0, t)).collect();
     assert_eq!(hits.len(), 1, "exactly one hit: {hits:?}");
     assert!(close(hits[0], 0.156, 3.0));
-    assert!(close(t, 0.9, 2.0), "pistol ready at {t}");
+    // Ready 3 updates after the draw (Corrections 1).
+    assert!(close(t, 0.95, 2.0), "pistol ready at {t}");
 }
 
 #[test]
@@ -930,7 +944,8 @@ fn t28_pickup_swap() {
     assert_eq!(ammo(&sim, b), (30, 60));
     assert_eq!(active(&sim, p), Some(b), "B drawn");
     let t = first_shot(&mut sim, p, t0, b);
-    assert!(close(t, 1.2, 2.0), "ready after B's draw: {t}");
+    // 3 updates after the draw (Corrections 1).
+    assert!(close(t, 1.25, 2.0), "ready after B's draw: {t}");
 }
 
 #[test]
@@ -1252,4 +1267,112 @@ fn t44_drop_positions() {
         assert!(off.x.abs() <= 7.5 * UNIT + 1e-5 && off.z.abs() <= 7.5 * UNIT + 1e-5, "swap drop: {off}");
         assert!(off.y.abs() < 1e-4, "same height: {off}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-19): 45-49
+
+/// A player with the stock loadout at 60 updates a second.
+fn setup_60() -> (Sim, Entity) {
+    let mut sim = sim_with(STOCK);
+    sim.set_tick_interval(F);
+    let p = player(&mut sim, greybox::SPAWNS[0]);
+    (sim, p)
+}
+
+/// The update (from `t0`) on which `w`'s clip first satisfies `cond`.
+fn update_of(sim: &mut Sim, t0: u64, w: Entity, cond: impl Fn((u32, u32)) -> bool) -> u64 {
+    let w2 = w;
+    until(sim, t0, 6.0, move |s| cond(ammo(s, w2)));
+    sim.tick() - t0
+}
+
+/// 45. A shot after a reload, fire held: the update at 2300 ms completes
+/// it (clip 30) and enters the firing state; the round on the update at
+/// 2350 ms (clip 29, total 64).
+#[test]
+fn t45_shot_after_a_reload() {
+    let (mut sim, p) = setup_60();
+    let rifle = carried(&sim, p, RIFLE);
+    set_ammo(&mut sim, rifle, 5, 65);
+    let t0 = mark(&sim);
+    tap(&mut sim, p, |i, on| i.reload = on);
+    wait_until(&mut sim, t0, 0.5);
+    sim.intent(p).fire = true;
+    let full = update_of(&mut sim, t0, rifle, |a| a.0 == 30);
+    assert_eq!(ammo(&sim, rifle), (30, 65));
+    let round = update_of(&mut sim, t0, rifle, |a| a.0 < 30);
+    assert_eq!(round - full, 3, "the 3rd update after: {full} then {round}");
+    assert!(close(time_of(&sim, t0, t0 + round), 2.35, 1.0), "at {round}");
+    assert_eq!(ammo(&sim, rifle), (29, 64));
+}
+
+/// 46. A shot after a draw: pistol in hand, 1 pressed with fire held →
+/// nothing before the update at 1250 ms, the round on it.
+#[test]
+fn t46_shot_after_a_draw() {
+    let (mut sim, p) = setup_60();
+    key(&mut sim, p, 2);
+    sim.seconds(1.0);
+    let rifle = carried(&sim, p, RIFLE);
+    let t0 = mark(&sim);
+    sim.intent(p).fire = true;
+    key(&mut sim, p, 1);
+    let round = update_of(&mut sim, t0, rifle, |a| a.0 < 30);
+    assert_eq!(round, 75, "1250 ms is update 75");
+}
+
+/// 47. A primary shotgun after a draw (1000 ms, fire held): the round on
+/// the update at 1033.3 ms (2 updates).
+#[test]
+fn t47_shotgun_after_a_draw() {
+    let (mut sim, p) = setup_60();
+    sim.intent(p).fire = true;
+    let t0 = mark(&sim);
+    let w = chimera_sim::weapon::give(sim.app.world_mut(), p, "combat_arms:remington_870").unwrap();
+    let round = update_of(&mut sim, t0, w, |a| a.0 < 7);
+    assert_eq!(round, 62, "1033.3 ms is update 62");
+}
+
+/// 48. Leaving sprint: the update that sees the post-sprint pose end
+/// returns to idle; firing, pre-fire and fire animation take the next
+/// three; the round on the 4th after it (367 ms seen on the update at
+/// 383.3, the round at 450 ms).
+#[test]
+fn t48_leaving_sprint() {
+    let (mut sim, p) = setup_60();
+    let rifle = carried(&sim, p, RIFLE);
+    let t = leave_sprint(&mut sim, p, |s| ammo(s, rifle).0 < 30);
+    assert!(close(t, 0.45, 1.0), "first shot at {t}");
+}
+
+/// 49. Backstab by the body: a standing victim whose legs are 44.7
+/// degrees off its view; a stab behind it by the view but not by the
+/// body deals the front's damage ([67.5, 82.5] around 75), not 97.5.
+#[test]
+fn t49_backstab_by_the_body() {
+    let dir = Vec3::NEG_Z;
+    let twist = 0.78;
+    let rear = |yaw: f32| {
+        let q = Quat::from_rotation_y(yaw);
+        inventory::behind(q * Vec3::NEG_Z, q * Vec3::X, dir)
+    };
+    // The middle of the views that are behind by the view, not by the
+    // body (clear of the sectors' edges).
+    let views: Vec<f32> = (0..360)
+        .map(|d| (d as f32).to_radians())
+        .filter(|v| rear(*v) && !rear(v - twist))
+        .collect();
+    let view = views[views.len() / 2];
+    let (mut sim, p, target) = knife_target(50.0 * UNIT, view);
+    // The body yaw is kept by a Combat Arms weapon's spread.
+    let w = chimera_sim::weapon::give(sim.app.world_mut(), target, "combat_arms:m4a1").unwrap();
+    sim.seconds(1.5);
+    {
+        let mut s = sim.app.world_mut().get_mut::<combat_arms::game::weapons::CaSpread>(w).expect("its spread");
+        s.body_yaw = Some(view - twist);
+        s.prev_view = None;
+    }
+    let d = one_hit(&mut sim, p, target, true);
+    assert!(in_range(d, 67.5, 82.5), "a stab from the front by the body: {d}");
 }
