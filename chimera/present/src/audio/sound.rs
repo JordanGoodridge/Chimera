@@ -21,7 +21,7 @@ use super::{
 };
 use crate::map::{
     MapHooks, MapSoundClip, PlaySound, SoundLevel,
-    sound::{METERS_PER_UNIT, SoundBank, distance_cutoff, distance_gain},
+    sound::{SoundBank, distance_cutoff, distance_gain},
 };
 
 /// Who's listening (the camera the player sees through). The entity it
@@ -56,7 +56,7 @@ impl Ear {
     /// while the camera is drawn between the last two ticks
     /// (`map::interp`), so while strafing a shot sat a few centimetres to
     /// the side of the ear, and `pan` of that direction is a hard pan.
-    /// Other sounds within `NEAR_PAN_UNITS` of the ear blend toward the
+    /// Other sounds within `NEAR_PAN` of the ear blend toward the
     /// centre for the same reason (a spectated player's eye).
     pub fn gains(&self, at: Vec3, source: Option<Entity>, level: SoundLevel) -> (f32, f32, f32) {
         if source.is_some() && source == self.owner {
@@ -64,18 +64,18 @@ impl Ear {
             return (g, g, distance_send(0.0));
         }
         let to = at - self.at.translation();
-        let units = to.length() / METERS_PER_UNIT;
-        let g = distance_gain(level, units);
+        let d = to.length();
+        let g = distance_gain(level, d);
         let (pl, pr) = pan(to.normalize_or_zero(), self.at.right().as_vec3());
-        let near = (units / NEAR_PAN_UNITS).clamp(0.0, 1.0);
+        let near = (d / NEAR_PAN).clamp(0.0, 1.0);
         let (pl, pr) = (1.0 + (pl - 1.0) * near, 1.0 + (pr - 1.0) * near);
-        (g * pl, g * pr, distance_send(units))
+        (g * pl, g * pr, distance_send(d))
     }
 }
 
-/// Sounds this close to the listener (Source units, about a head's
-/// width) pan less, down to centred at the ear.
-pub const NEAR_PAN_UNITS: f32 = 16.0;
+/// Sounds this close to the listener (metres, about a head's width)
+/// pan less, down to centred at the ear.
+pub const NEAR_PAN: f32 = 0.4;
 
 /// A playing sound: who made it on which channel, and its live gains
 /// (to fade it out when another replaces it).
@@ -176,7 +176,7 @@ fn play_sounds(
         // A level's distance low-pass (none for the listener's own sounds).
         let cutoff = match (m.at, listener) {
             (Some(at), Some(ear)) if m.source.is_none() || m.source != ear.owner => {
-                distance_cutoff(level, at.distance(ear.at.translation()) / METERS_PER_UNIT)
+                distance_cutoff(level, at.distance(ear.at.translation()))
             }
             _ => 1.0,
         };

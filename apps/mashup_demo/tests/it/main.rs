@@ -6,5 +6,6 @@
 
 // Slow ones (the user's installs): the fast tier skips `heavy::`.
 mod heavy {
+    mod cs_maps;
     mod dust2;
 }

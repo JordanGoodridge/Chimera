@@ -25,7 +25,7 @@ use super::{
 };
 use crate::map::{
     MapSoundClip, SoundControl, SoundKey, SoundLevel, StartSound,
-    sound::{METERS_PER_UNIT, SOUNDSCAPE_KEYS, ScapePosition, SoundBank, distance_gain},
+    sound::{SOUNDSCAPE_KEYS, SOURCE_UNIT as METERS_PER_UNIT, ScapePosition, SoundBank, distance_gain},
     vis::ActiveVisibility,
 };
 
@@ -398,10 +398,10 @@ fn play_randoms(
         let (left, right, send) = match at {
             Some(at) => {
                 let to = at - ear.translation();
-                let units = to.length() / METERS_PER_UNIT;
-                let g = distance_gain(SoundLevel::Db(level), units) * volume;
+                let d = to.length();
+                let g = distance_gain(SoundLevel::Db(level), d) * volume;
                 let (pl, pr) = pan(to.normalize_or_zero(), ear.right().as_vec3());
-                (g * pl, g * pr, distance_send(units))
+                (g * pl, g * pr, distance_send(d))
             }
             None => (volume, volume, AMBIENT_SEND),
         };
