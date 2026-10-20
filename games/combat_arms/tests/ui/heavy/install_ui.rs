@@ -229,3 +229,152 @@ fn install_string_tables_read() {
     }
     assert!(tables > 0, "no string table in Language_Pack.rez");
 }
+
+/// With the keys the rest of the HUD is the game's own layouts, bound by
+/// name: the kill feed's line (`KillDeath`) with the install's weapon
+/// icon and headshot badge, the TDM score panel (`hud_indicator.xml`'s
+/// `Eli`) at D6's places, the pickup prompt in `Action`, the scoreboard
+/// (`hud_result_team.xml`) with rows at test case 18's places and the
+/// result banner (the HUD layout attributes' `scoreboardwintex`), the
+/// loading screen (`hud_maploading.xml`) with the map's picture; every
+/// texture they draw is the install's art, every text resolved.
+#[test]
+fn install_hud_rest_binds() {
+    use combat_arms::{
+        game::rules::{ScoreOrder, scoreboard::ScoreRow},
+        ui::{
+            hud::{
+                BoundHud, FeedLineView,
+                bound::FeedArt,
+                model::{Badge, Kill, KillIcon, feed_line, score_panel},
+                score::ScorePanelView,
+            },
+            layout::Draw,
+            loading::{self, CaLoading},
+            scoreboard::{BoundBoard, CaScoreboard, RoundResult},
+        },
+    };
+    use chimera_client::client::canvas::Scale;
+    let Some(mount) = install() else { return };
+    let (ui, inst) = installed_ui(&mount);
+    eprintln!("{inst:?}");
+    assert!(inst.fonts.len() > 10, "the install's font list");
+    assert!(ui.fonts.get("bold 12").is_some());
+    let hud = BoundHud::of(&ui);
+    let (feed, score, action) = (hud.feed.as_ref().unwrap(), hud.score.as_ref().unwrap(), hud.action.as_ref().unwrap());
+    let check = |what: &str, draws: &[Draw]| {
+        for d in draws {
+            match d {
+                Draw::Quad(_, q) => assert!(
+                    inst.art.contains_key(&install::texture_key(&q.texture)),
+                    "{what}: {} not in the install's art",
+                    q.texture
+                ),
+                Draw::Text(t) => {
+                    let s: String = t.lines.iter().map(|l| l.1.clone()).collect();
+                    assert!(!s.starts_with('$') && !s.starts_with("XXX") && !s.contains("999"), "{what}: {s:?}");
+                }
+            }
+        }
+    };
+    let texts = |draws: &[Draw]| -> Vec<(String, bevy::math::IVec2)> {
+        draws
+            .iter()
+            .filter_map(|d| match d {
+                Draw::Text(t) => Some((t.lines.iter().map(|l| l.1.clone()).collect(), t.reference_at)),
+                _ => None,
+            })
+            .collect()
+    };
+    // The kill feed.
+    let kill = Kill {
+        killer: Some(("Alpha One".into(), true)),
+        victim: ("Bravo Two".into(), false),
+        icon: KillIcon::Weapon(Some("combat_arms:m4a1".into())),
+        badges: vec![Badge::Headshot],
+    };
+    let line = FeedLineView {
+        y: 45.0,
+        items: feed_line(&kill, |s| combat_arms::ui::hud::feed_width(&ui.fonts, Default::default(), s)),
+        kill,
+    };
+    let art = FeedArt {
+        icon: &|i| hud.icon(i),
+        badge: &|b| hud.badge(b),
+    };
+    let draws = feed.build(&[line], &art, Scale::ONE).draw(&ui.ctx());
+    eprintln!("feed: {:?}", texts(&draws));
+    check("feed", &draws);
+    assert!(texts(&draws).iter().any(|(s, at)| s == "Alpha One" && *at == bevy::math::IVec2::new(5, 48)));
+    assert_eq!(draws.iter().filter(|d| matches!(d, Draw::Quad(..))).count(), 2, "weapon icon and badge");
+    // The score panel.
+    let (rows, highlight) = score_panel([12, 7], 50, Some(1));
+    let view = ScorePanelView {
+        mode_key: "TDM".into(),
+        mode_name: "Team Deathmatch".into(),
+        goal: "50 kills".into(),
+        rows,
+        labels: ["Alpha".into(), "Bravo".into()],
+        highlight,
+    };
+    let draws = score.build("TDM", &view, None, Scale::ONE).expect("Eli").draw(&ui.ctx());
+    eprintln!("score: {:?}", texts(&draws));
+    check("score panel", &draws);
+    let t = texts(&draws);
+    let at = |s: &str| t.iter().find(|x| x.0 == s).map(|x| x.1).unwrap_or_else(|| panic!("{s} not drawn"));
+    assert!(at("12").x >= 612 && at("12").x < 677, "Alpha's score in its box (612, 23) 65 wide");
+    assert!(at("7").y >= 43 && at("7").y < 61);
+    for key in ["TSV", "TMM", "CTF", "FFA", "LMS", "QRT", "ESL"] {
+        let l = score.build(key, &view, Some("02 : 00"), Scale::ONE).unwrap_or_else(|| panic!("{key}"));
+        check(key, &l.draw(&ui.ctx()));
+    }
+    // The pickup prompt.
+    let draws = action.build(Some("Press [E] to pick up M4A1"), None, Scale::ONE).unwrap().draw(&ui.ctx());
+    check("action", &draws);
+    assert_eq!(texts(&draws).len(), 1);
+    // The scoreboard.
+    let row = |name: &str, team: u8| ScoreRow {
+        player: bevy::prelude::Entity::PLACEHOLDER,
+        name: name.into(),
+        team,
+        kills: 3,
+        deaths: 1,
+        assists: 0,
+        captures: 0,
+        returns: 0,
+        mission_points: 0,
+        ping: None,
+    };
+    let board = CaScoreboard {
+        shown: true,
+        lists: [vec![row("A0", 1), row("A1", 1)], vec![row("B0", 2)]],
+        scores: [6, 3],
+        headers: ["Alpha".into(), "Bravo".into()],
+        order: Some(ScoreOrder::Kills),
+        ffa: false,
+        result: Some(RoundResult::Win),
+    };
+    let bound = BoundBoard::of(&ui);
+    let draws = bound.build(&board, Scale::ONE).expect("the team list").draw(&ui.ctx());
+    eprintln!("scoreboard: {:?}", texts(&draws));
+    check("scoreboard", &draws);
+    let t = texts(&draws);
+    let a1 = t.iter().find(|x| x.0 == "A1").unwrap().1;
+    let b0 = t.iter().find(|x| x.0 == "B0").unwrap().1;
+    assert!((217..242).contains(&a1.y) && (392..417).contains(&b0.y), "{a1} {b0}");
+    let banner = bound.banners[0].clone().expect("the win banner");
+    assert!(draws.iter().any(|d| matches!(d, Draw::Quad(_, q) if install::texture_key(&q.texture) == banner)));
+    // The loading screen (the map picture read as the screen opens).
+    let src = inst.loading.as_ref().expect("hud_maploading.xml");
+    let state = CaLoading {
+        label: Some("combat_arms:junkflea".into()),
+        progress: 0.5,
+    };
+    let image = loading::map_image("junkflea").unwrap();
+    assert!(install::decode(&mount, &image).is_some(), "{image}");
+    let draws = loading::build(src, &state, Some(&image), &ui.strings, Scale::ONE).unwrap().draw(&ui.ctx());
+    eprintln!("loading: {:?}", texts(&draws));
+    let t = texts(&draws);
+    assert!(t.iter().any(|x| x.0 == "JUNKFLEA"));
+    assert!(t.iter().all(|x| !x.0.starts_with('$')), "{t:?}");
+}

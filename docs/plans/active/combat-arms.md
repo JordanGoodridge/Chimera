@@ -175,6 +175,20 @@ questions in "Follow-up brief (Wave 3 open questions)".
 | 21 | Per-map mission files: the settings modes read (timers, goals, spawn families, objective data) | `missions.md` | not started | none (its reader may go in `lithtech/` if the format is LithTech's) | Replaces `game/rules/settings.rs`'s stock values |
 | 22 | Gear, body types and perks: vests, helmets, backpacks, goggles, perks and what each changes | `gear_perks.md` | not started | none expected | Builds on characters.md's selection and attribute_data.md's records |
 
+### Wave 5
+
+Briefs in "Spec briefs (Wave 5)".
+
+| # | Item | Spec | Status | Lift | Notes |
+|---|---|---|---|---|---|
+| 23 | World objects that move or act: doors, elevators and platforms, keyframers and key paths, rotating and moving world models, breakables, event triggers and volumes, the map's command strings, object sounds, spawned props; placing world models objects name; their networking | `world_objects.md` | not started | maybe CS:S's func_door/func_breakable logic (Source's I/O, not LithTech's: likely none; a generic mover in Chimera if both fit) | On item 9's objects (`game::world`) and item 10's props; world models are static today (tech-debt); HGOILRIG's spawn decks are missing from our conversion: the spec says where such geometry comes from |
+| 24 | Special weapons: grenade and rocket launchers (M32 and the rest), continuous-fire and pre-fire weapons, melee beyond the M9, deployables, mines and devices, classes weapon_classes.md skipped; projectile flight, blast, arming distance | `special_weapons.md` | not started | Chimera's `weapon::grenade` projectiles (`GameFlown`, `Detonation`) as item 6 uses them | On items 2, 6 and 7; bots.md's placed devices and mines wait on it |
+| 25 | Radar and minimap: map images, scale and offset per map, who and what is shown, the full-screen map | `radar_minimap.md` | not started | none expected (CS:S has no radar yet) | A HUD panel on item 11's canvas and item 5's HUD |
+| 26 | Death and kill cam: the death camera, kill cam, respawn countdown, spectating rules per mode, the death screen | `death_killcam.md` | not started | Chimera's `client::spectate` and `chimera_sim::spawning` | On items 12 (death poses) and 13 (respawn rules) |
+| 27 | Radio and chat: radio and quick commands, chat channels, commands, filters, spam limits, voice | `radio_chat.md` | not started | maybe CS:S's chat and radio menus if they are generic | On item 11's chat queue; bots.md's chat waits on it |
+| 28 | Options menus: controls and key binding, mouse, video, audio, gameplay (crosshair, HUD toggles); storage, defaults, ranges | `options.md` | not started | L5 (default binds per game, done); the shell's own settings where they match | On item 11's menus; feeds items 5's crosshair and 7's zoom sensitivity |
+| 29 | Music and ambience: BGM selection and timing (menus, match start, round end), ambient map sounds, volume channels | `music_ambience.md` | not started | none expected | On item 17's sound playback and item 23's sound objects |
+
 ## Lift survey (Wave 0.5)
 
 Done 2026-10-18 from main at 43fd113b, by reading every module of
@@ -383,6 +397,20 @@ Notes:
   (jump pad) (`heavy::movement_volumes`). Open: a ladder can't be
   climbed from the ground as the spec's integrator stands (its follow-up
   brief, "Follow-up brief (movement in volumes)", with nine more).
+- 2026-10-19: With the keys, model pieces draw in their render styles
+  (by the style file's name: an enemy's team mark is clear, no white
+  patch; glass and additive pieces blended), the rest of the HUD is the
+  install's layouts bound by name (kill feed, each mode's score panel
+  and timer, pickup prompt and action gauge, hit overlay and direction
+  indicator images, scoreboard with the result banner, the loading
+  screen while joining; the install's font list), and soldiers differ:
+  the Light and Heavy vests, faces and head pieces are body-part
+  choices of one model per sex, bots draw a look from a loadout pool,
+  the local player's from `ca_model`/`ca_face`/`ca_head`/`ca_camo`.
+  Open: the render-style files' format (no spec), per-language
+  textures (format not in ui_system.md), goggles and backpacks, the
+  crosshair item images and the dot sight's image, other players'
+  looks over the network (no character info sent yet).
 - 2026-10-19: Follow-up brief for Wave 3's open questions (56 questions
   from the characters, view model, game mode, bot, effects and UI
   modules' Known shortcuts) and Wave 4 briefs (18-22: game modes part 2,
@@ -2151,4 +2179,380 @@ user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
 `$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
 Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
 --rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+## How to run Wave 5
+
+Same as Waves 3 and 4: `git pull` in a clean checkout on the Windows PC,
+then one session that hands each brief below to its own subagent while
+the main session alone does the git work (pull, commit, push). Each brief
+writes only its own file. Push to the `specs-incoming` branch for review,
+or straight to main. Board numbers continue from 22 (23 to 29). All seven
+can run side by side; item 29 reads world_objects.md (23) for sound
+objects where it has landed and otherwise leaves them to it.
+
+## Spec briefs (Wave 5)
+
+Each brief is complete on its own; paste it as is.
+
+### 23. World objects
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/world_dat.md (the
+object list, world models, property encodings), models_ltb.md and
+animation.md (props), movement.md (volumes), game_modes.md (objective
+objects) and effects_sounds.md (sounds) first: this spec continues them
+and must not contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/world_objects.md: the map objects that move or
+act, one section per object class. Cover: doors (sliding, rotating; open
+and close triggers, speeds, waits, blocking a player, locked doors, what
+crushes); elevators, platforms and keyframers (key objects and their
+paths: how a keyframer finds its keys, the interpolation between keys,
+timing per segment, looping, ping-pong, start and stop by event, what
+riders do); rotating and moving world models (axis, speed, acceleration);
+breakables (health, what damages them, debris, the opening left); triggers
+and volumes that fire events (enter, leave, use, damage; filters by team
+or player; once or repeating; delays); the map's scripted events (the
+command strings objects send each other: their syntax, the commands that
+exist, targets by name, timing); object sounds (looping and one-shot,
+radii, when they play); spawned props and their models. Then how a world
+model an object names is positioned and drawn: its own geometry in the
+world file, its origin and rotation, whether it is hidden until used, and
+anything a mode adds. Our conversion of HGOILRIG has no decks under its
+spawn points (`HungerGame` family and its team point): nothing in the
+physics tree, the render data or any world model reaches there, so players
+land on the sea. Say where such geometry comes from in the game (an
+object, a prop model, a world model moved by a keyframer, a mode's
+vehicle, another file) and how to find it for any map. Last: what of an
+object's state the server sends and what each client runs itself
+(positions, door states, broken pieces, late joiners).
+
+Describe behaviour in your own words: exact constants with units, property
+names and their defaults, formulas as math (key path interpolation, door
+motion), per-tick order (a trigger firing and a door moving on the same
+tick, a player standing on a moving platform), server or client, edge
+cases (a door blocked by a player, a breakable hit by a grenade, a
+keyframer with one key), quirks players rely on. Object class and
+property names the game exposes are data and may be named; never paste
+code or translate it line by line; no fenced code blocks except ```math.
+Name files only by their in-game role or their file name inside the
+game's archives, never by a machine path. End with a numbered list of
+concrete test cases that an implementer without the game can check
+(objects and properties, events, time -> expected position, state,
+sound), and some the coordinator's Linux box can check against its own
+copy of the install (say the Steam build id you measured): for two or
+three maps, the count of each moving class, one keyframer's key count and
+path length, one door's decoded properties, HGOILRIG's deck source. End
+with an "Open questions" list.
+
+Write only specs/combat_arms/world_objects.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 24. Special weapons
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/weapon_firing.md,
+weapon_classes.md (the classes it covers, the minigun's spin), grenades.md
+(projectile flight and blasts), attribute_data.md, inventory.md,
+view_models.md and effects_sounds.md first: this spec continues them and
+must not contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/special_weapons.md: the weapons the earlier specs
+leave out, one section per kind. Grenade launchers (under-barrel and
+stand-alone, the M32's revolving cylinder and its reload), rocket
+launchers (lock-on if any, back-blast if any), continuous-fire and
+pre-fire weapons other than the minigun's spin (a flamethrower if the game
+has one: range, damage over time, fuel), melee weapons beyond the M9
+(each kind's reach, swing timings, damage by zone, back-stab, lunge),
+deployables, mines and devices (placing, arming, triggering, owner and
+team rules, how many at once, removal on death or round end), and any
+other weapon class weapon_classes.md skipped (list them first). For every
+projectile: launch speed and direction, gravity, drag, bounce or impact
+fuse, arming distance and what happens before it (a dud, direct-hit
+damage), fuse time, blast radius, damage by distance, self and team
+damage, what blocks the blast, knock-back. Say which records and fields
+hold each number (attribute_data.md's format), and give the stock
+weapons' values as a table.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math, per-tick order (launch, flight step, impact, blast), server or
+client, edge cases (firing point-blank into a wall, a mine under a door,
+the owner dying with a projectile in flight), quirks players rely on.
+Weapon names, record and field names the game exposes are data and may be
+named; never paste code or translate it line by line; no fenced code
+blocks except ```math. Name files only by their in-game role or their
+file name inside the game's archives, never by a machine path. End with a
+numbered list of concrete test cases (weapon, setup, input, time ->
+expected projectile position, detonation or dud, damage per target, ammo
+left) that an implementer without the game can check, and an "Open
+questions" list.
+
+Write only specs/combat_arms/special_weapons.md; change nothing else.
+Commit with the repo's identity (CLAUDE.md "Commit identity"; check `git
+config user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell
+run `$env:TZ="UTC"` before `git commit`. End the message with
+"Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>". Never skip
+hooks. Then `git pull --rebase` and `git push` to main (or to
+`specs-incoming` if I say so).
+```
+
+### 25. Radar and minimap
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/hud_crosshair.md,
+ui_system.md (layouts, the canvas), game_modes.md (objectives),
+world_dat.md (coordinates) and textures_dtx.md (images) first: this spec
+continues them and must not contradict them; where it does, say so in
+"Open questions".
+
+Write specs/combat_arms/radar_minimap.md: the radar or minimap and the
+full-screen map. Cover: its data (the per-map image: which file by role
+and its file name inside the game's archives, size, format; the per-map
+scale and offset or corner points that map world coordinates to image
+pixels, where they live; maps without an image), the panel (position on
+the 1024x768 canvas, size, shape, rotating or fixed north, zoom, range),
+what is shown and when (the player, teammates, enemies: always, when
+firing, when seen, for how long after; the dead; objectives per mode:
+bomb sites, the bomb, flags, seize points, intel, VIPs; pings or markers
+if any; height above or below), icons by role and their colours, the
+full-screen map (key, layout, what differs), any gear or perk that
+changes it, and the options that toggle it. Say what the server sends for
+it and what the client works out alone.
+
+Describe behaviour in your own words: exact constants with units, the
+coordinate transform as math (world to radar pixel, rotation by the view
+yaw, clamping at the edge), update rates, server or client, edge cases
+(an enemy firing a silenced weapon, a teammate out of range, a map
+without radar data), quirks players rely on. Map and field names the game
+exposes are data and may be named; no art (name an image by its role or
+file name inside the archives); never paste code or translate it line by
+line; no fenced code blocks except ```math. Name files only by their
+in-game role or their file name inside the game's archives, never by a
+machine path. End with a numbered list of concrete test cases (map,
+positions, yaw, events -> expected icon, pixel position, visibility time)
+that an implementer without the game can check; for the per-map data, a
+few the coordinator's Linux box can check against its own copy of the
+install (say the Steam build id you measured: two or three maps' image
+file sizes, pixel sizes, scale and offset). End with an "Open questions"
+list.
+
+Write only specs/combat_arms/radar_minimap.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 26. Death and kill cam
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/characters.md
+(death choice, bodies), game_modes.md (respawn rules, the dead in each
+mode, spectating), hud_crosshair.md (the kill feed) and ui_system.md
+first: this spec continues them and must not contradict them; where it
+does, say so in "Open questions".
+
+Write specs/combat_arms/death_killcam.md: what a player sees and can do
+from the moment of death until respawn or round end. Cover: the death
+camera (where it starts, how it moves: orbit, follow the body, look at
+the killer; its speed, distance, collision with walls, how long), the
+kill cam if the game has one (what it shows, from whose view, how long,
+skipping it), the death screen and its data (killer's name, weapon,
+distance, hit zone, health left, the killer's loadout, any stats; layout
+by role on the canvas), the respawn countdown (its length per mode and
+where it comes from, what shortens it, the key to respawn if any, the
+spawn protection after), spectating (who may be watched per mode: team
+only, everyone, free camera; switching keys; first or third person; what
+the spectated view shows), and the order of these phases. Say what the
+server sends for each and what the client works out alone.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math (camera paths), the order of events after a kill, server or
+client, edge cases (suicide, a fall or world kill, the killer dying first,
+the round ending during the death camera, the last teammate dying in an
+elimination mode), quirks players rely on. Mode names and setting names
+the game exposes are data and may be named; no art; never paste code or
+translate it line by line; no fenced code blocks except ```math. Name
+files only by their in-game role or their file name inside the game's
+archives, never by a machine path. End with a numbered list of concrete
+test cases (mode, kill event, time since death, input -> expected camera
+position and target, screen contents, countdown, spectated player) that
+an implementer without the game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/death_killcam.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 27. Radio and chat
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/ui_system.md (the
+chat queue, text controls), hud_crosshair.md, game_modes.md,
+effects_sounds.md (sound playback) and bots.md (bot chat, if any) first:
+this spec continues them and must not contradict them; where it does,
+say so in "Open questions".
+
+Write specs/combat_arms/radio_chat.md: how players talk. Cover: radio and
+quick commands (the menus, their keys and entries, the text each shows
+and the sound each plays by role, who hears them, any marker on the
+radar or HUD, per-team or per-character voices); chat channels (all,
+team, whisper, room or lobby, clan; how each is opened, which keys, who
+receives it, alive and dead rules); the chat panel (lines kept, fade
+times, colours by channel and team, scrolling); text commands typed into
+chat; filters (bad-word list: where it lives by role and how matching and
+replacement work); spam limits (messages per time, repeats, the penalty);
+muting; length limits; voice chat if the game has one (keys, who hears).
+Say what goes through the server and what the client does alone.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math (rate limits), the order of filtering, limiting and sending,
+server or client, edge cases (a dead player's team chat, a message at the
+length limit, a filtered word inside another word), quirks players rely
+on. Command names, string ids and key names the game exposes are data and
+may be named; never quote the filter list's words; never paste code or
+translate it line by line; no fenced code blocks except ```math. Name
+files only by their in-game role or their file name inside the game's
+archives, never by a machine path. End with a numbered list of concrete
+test cases (sender, channel, text or command, time -> who receives it,
+what is shown, colour, sound, whether it is blocked) that an implementer
+without the game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/radio_chat.md; change nothing else. Commit
+with the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 28. Options
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/ui_system.md
+(menus, controls), hud_crosshair.md (the crosshair's settings),
+inventory.md (keys), movement.md (walk and sprint keys) and
+weapon_classes.md (zoom sensitivity) first: this spec continues them and
+must not contradict them; where it does, say so in "Open questions".
+
+Write specs/combat_arms/options.md: the options and settings menus. One
+section per page: controls and key binding (every action by the name the
+game shows and its console or command name, the default keys, how a key
+is rebound, conflicts, mouse buttons and wheel, resetting), mouse
+(sensitivity and its formula, zoomed sensitivity, inversion, smoothing or
+acceleration), video (resolution, window mode, brightness or gamma,
+texture and effect quality, what each level changes), audio (master,
+effects, music, voice and any other channel: range, step, default, how
+each scales gain), gameplay (crosshair style, colour and size, HUD
+toggles, kill feed, name tags, blood, and anything else). For every
+option: its name as shown, the stored name, type, range, step, default,
+and when it applies (at once, on Apply, on restart). Then the storage:
+which file or registry place by role, its format, what is per user or per
+machine, what the server may override. Last, the layout files of these
+pages by role (the layouts themselves are data in ui_system.md's format).
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math (sensitivity, gain), the order of loading, defaults and saving,
+edge cases (an out-of-range stored value, a missing file, two actions on
+one key), quirks players rely on. Option, action and command names the
+game exposes are data and may be named; no art; never paste code or
+translate it line by line; no fenced code blocks except ```math. Name
+files only by their in-game role or their file name inside the game's
+archives, never by a machine path. End with a numbered list of concrete
+test cases (stored settings, menu action -> expected stored value,
+binding, sensitivity, gain, HUD state) that an implementer without the
+game can check, and an "Open questions" list.
+
+Write only specs/combat_arms/options.md; change nothing else. Commit with
+the repo's identity (CLAUDE.md "Commit identity"; check `git config
+user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell run
+`$env:TZ="UTC"` before `git commit`. End the message with "Co-Authored-By:
+Claude Opus 5.5 <noreply@anthropic.com>". Never skip hooks. Then `git pull
+--rebase` and `git push` to main (or to `specs-incoming` if I say so).
+```
+
+### 29. Music and ambience
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Work from the reference material I point
+you to (ask me in chat where it is); never write that path, or any machine
+path, into the repo or a commit. Read specs/combat_arms/effects_sounds.md
+(sound playback, attenuation), game_modes.md (phases, round end),
+world_dat.md (sound objects), ui_system.md, and lobby.md, options.md and
+world_objects.md if they have landed (`git pull`) first: this spec
+continues them and must not contradict them; where it does, say so in
+"Open questions".
+
+Write specs/combat_arms/music_ambience.md: music and ambient sound. Cover:
+the background music archive (BGM.rez: its files by name inside the
+archive, their format, length, loop points if any), how a track is chosen
+for each moment (main menu, lobby and room, loading, match start, during
+play if any, round end, win and loss, match end; per map or mode or
+random, the random rule) and its timing (start delay, fades in and out,
+looping, what interrupts it); ambient map sounds (the sound objects and
+properties a map uses: looping or random interval, radius, volume,
+positional or global, inside volumes; how many play at once); announcer
+or stinger sounds tied to phases if effects_sounds.md left them out; and
+the volume channels (music, effects, ambient, voice, master: how each
+scales gain, defaults, how options.md's sliders feed them). Say what the
+server triggers and what the client decides alone.
+
+Describe behaviour in your own words: exact constants with units, formulas
+as math (fades, gain), the order of events at phase changes, server or
+client, edge cases (a round ending during a fade, music muted, a missing
+track), quirks players rely on. Track, object and property names the game
+exposes are data and may be named; never paste code or translate it line
+by line; no fenced code blocks except ```math. Name files only by their
+in-game role or their file name inside the game's archives, never by a
+machine path. End with a numbered list of concrete test cases (moment,
+settings, time -> expected track, gain, fade state) that an implementer
+without the game can check, and some the coordinator's Linux box can
+check against its own copy of the install (say the Steam build id you
+measured): BGM.rez's file count, a few tracks' names, sizes and lengths,
+one map's ambient sound object count and one decoded object. End with an
+"Open questions" list.
+
+Write only specs/combat_arms/music_ambience.md; change nothing else.
+Commit with the repo's identity (CLAUDE.md "Commit identity"; check `git
+config user.name` is r0pi0x, else stop and ask me) in UTC: in PowerShell
+run `$env:TZ="UTC"` before `git commit`. End the message with
+"Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>". Never skip
+hooks. Then `git pull --rebase` and `git push` to main (or to
+`specs-incoming` if I say so).
 ```

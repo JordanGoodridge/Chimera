@@ -35,6 +35,8 @@
 //! - `model`: the install's models (`.ltb`) and their animations as
 //!   Chimera's `MapModel` and `AnimSet` (models_ltb.md, animation.md);
 //! - `props`: models the maps' objects place, as animated props;
+//! - `render_style`: how a model piece's render style draws (blended,
+//!   added, glowing; models_ltb.md, characters.md 2);
 //! - `view_model`: the weapons' first-person models from the install
 //!   with the character's hands, their animation state machine, sway,
 //!   muzzle flash and shells (view_models.md);
@@ -59,6 +61,7 @@ pub mod mount;
 pub mod movement;
 pub mod net;
 pub mod props;
+pub mod render_style;
 pub mod rules;
 pub mod view_model;
 pub mod volumes;

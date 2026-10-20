@@ -13,7 +13,8 @@
 //! - `hud` (crosshair and basic HUD, hud_crosshair.md): its texts placed
 //!   and sized by `layout`, with the game mode's score panel and round
 //!   timer (`hud::score`); `scoreboard`: the scoreboard (Tab, and a
-//!   round's result); `menu`: the in-game menu (Esc) in place of the
+//!   round's result); `loading`: the loading screen while joining;
+//!   `menu`: the in-game menu (Esc) in place of the
 //!   shell's default; `chat`: the match chat's queue (the model);
 //!   `visuals`: placeholder looks (box guns); `effects`: decals, tracers,
 //!   casings, the first-person muzzle flash and effect lights
@@ -30,19 +31,22 @@
 //! `CaUi` is the UI's data: our font list (`data/ui/fonts.toml`), string
 //! table (`data/ui/strings.txt`) and stand-in textures.
 //!
-//! With the V1 key the install's own layouts, string table and art
-//! (`install`) replace ours in the app (`CaUi::installed`): the HUD's
-//! health and weapon panels are the game's HUD layout's named controls,
-//! bound to the HUD's values (`hud::install`), and the in-game menu is
-//! the game's (`menu`); ours stay the fallback, and the headless tests'.
+//! With the V1 key the install's own layouts, string table, font list
+//! and art (`install`) replace ours in the app (`CaUi::installed`): the
+//! HUD's health and weapon panels are the game's HUD layout's named
+//! controls, bound to the HUD's values (`hud::install`), as are its kill
+//! feed, the mode's score panel, the pickup prompt and the action gauge
+//! (`hud::bound`), the scoreboard and its result banner
+//! (`scoreboard::BoundBoard`) and the loading screen (`loading`); the
+//! in-game menu is the game's (`menu`); ours stay the fallback, and the
+//! headless tests'.
 //!
 //! Known shortcuts: no other screens (lobby, shop, result screen: the
-//! game has them as menus at 1024 x 768; no loading screen, kill cam or
-//! vote panel yet); without the install the HUD's panels keep their
-//! places as code (`hud::model`, from hud_crosshair.md); with it the
-//! crosshair, damage overlay, name tags, kill feed and score panel stay
-//! code-placed (the kill feed and score panel's geometry are the spec's;
-//! the feed's icons are the install's art when it has them).
+//! game has them as menus at 1024 x 768; no kill cam or vote panel
+//! yet); without the install the HUD's panels keep their places as code
+//! (`hud::model`, from hud_crosshair.md); with it the crosshair and name
+//! tags stay code-drawn (as the spec has them), the objectives' lines
+//! ours.
 
 pub mod chat;
 pub mod desk;
@@ -51,6 +55,7 @@ pub mod effects;
 pub mod hud;
 pub mod install;
 pub mod layout;
+pub mod loading;
 pub mod menu;
 pub mod scoreboard;
 pub mod visuals;
@@ -82,6 +87,7 @@ impl Plugin for CaUiPlugin {
             effects::CaEffectsDrawPlugin,
             menu::CaMenuPlugin,
             scoreboard::CaScoreboardPlugin,
+            loading::CaLoadingPlugin,
         ))
         // Key 6, the objective class (inventory.md 2, 3: the mission
         // bomb), through the shell's selection as slot 6.
@@ -145,7 +151,11 @@ impl CaUi {
             }
             ui.strings = strings;
         }
-        for l in inst.hud.iter().chain(inst.menu.iter()) {
+        install::apply_font_list(&inst.fonts, &mut ui.fonts);
+        for l in [&inst.hud, &inst.menu, &inst.indicator, &inst.result, &inst.team_list, &inst.no_team_list, &inst.loading]
+            .into_iter()
+            .flatten()
+        {
             install::add_fonts(l, &mut ui.fonts);
         }
         for (k, a) in &inst.art {

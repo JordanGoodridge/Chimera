@@ -90,6 +90,66 @@ fn t03_camouflage_skins() {
     assert_eq!(models::family(9, false), 0);
 }
 
+/// Ours (characters.md 1, 2: each player's own look): bots draw their
+/// look from the loadout pool, the same seed the same look, and a crowd
+/// of them doesn't all look the same.
+#[test]
+fn bot_looks_vary() {
+    let d = records::data();
+    assert_eq!(d.bot_look(7), d.bot_look(7));
+    let looks: Vec<Selection> = (0..16).map(|s| d.bot_look(s)).collect();
+    let distinct = |f: fn(&Selection) -> i32| {
+        let mut v: Vec<i32> = looks.iter().map(f).collect();
+        v.sort();
+        v.dedup();
+        v.len()
+    };
+    assert!(distinct(|l| l.model) > 1, "{looks:?}");
+    assert!(distinct(|l| l.face) > 1, "{looks:?}");
+    assert!(distinct(|l| l.camouflage) > 1, "{looks:?}");
+    for l in &looks {
+        assert!(d.loadouts.models.contains(&l.model) && d.loadouts.faces.contains(&l.face));
+        assert!(d.loadouts.heads.contains(&l.head) && d.loadouts.camouflages.contains(&l.camouflage));
+    }
+}
+
+/// A body group's choices (characters.md 2 as Chimera's body parts): the
+/// effective body record, the face (else the body's default) and the
+/// head piece worn pick one choice of each part; the number is their
+/// mixed radix.
+#[test]
+fn body_group_numbers() {
+    let g = models::BodyGroup {
+        skeleton: 0,
+        records: vec![0, 1, 2],
+        faces: vec![0, 1, 2, 3],
+        heads: vec![-1, 2],
+    };
+    assert_eq!(g.parts(), [3, 4, 2]);
+    assert_eq!(g.number(0, 0, -1), 0);
+    assert_eq!(g.number(2, 0, -1), 2);
+    assert_eq!(g.number(0, 3, -1), 9);
+    assert_eq!(g.number(1, 2, 2), 1 + 3 * (2 + 4));
+    // Not in the group: the first choice.
+    assert_eq!(g.number(9, 7, 5), 0);
+    for (n, part, want) in [(19, 0, 1), (19, 1, 2), (19, 2, 1)] {
+        assert_eq!(chimera_world::map::body_choice(&g.parts(), n, part), want);
+    }
+    models::register_group(g.clone());
+    let d = records::data();
+    // Model 1 (Light), face 2, head piece 2 (the combat helmet).
+    let look = Selection {
+        model: 1,
+        face: 2,
+        head: 2,
+        ..default()
+    };
+    let head = if d.head_file(2, 0).is_some() { 2 } else { -1 };
+    assert_eq!(models::drawn(&look), Some((models::body_name(0), g.number(1, 2, head))));
+    // A female face: the female group, absent here.
+    assert_eq!(models::drawn(&Selection { face: 5, ..default() }), None);
+}
+
 #[test]
 fn t04_team_marks() {
     let d = records::data();
@@ -1124,4 +1184,43 @@ fn net_others_follow_the_server() {
     sim.clients[1].app.world_mut().get_mut::<chimera_core::core::Intent>(other).unwrap().move_axis = Vec2::Y;
     sim.ticks(40);
     assert_eq!(them(&mut sim), ("LRF".into(), "LRF".into(), "URFRAmF".into()));
+}
+
+/// Looks in play (characters.md 1, ours for bots): a bot wears the look
+/// its name draws from the loadout pool, and keeps it; the local player
+/// wears `CaOwnLook` (the console's `ca_model`, `ca_face`, `ca_head`,
+/// `ca_camo`), changed at once; another player keeps the default.
+#[test]
+fn looks_in_play() {
+    use chimera_core::core::{Bot, LocalPlayer};
+    use combat_arms::game::characters::CaOwnLook;
+    let mut sim = sim();
+    let bot = sim.spawn_character(Vec3::new(0.0, 1.0, 10.0), movement::ID);
+    let me = sim.spawn_character(Vec3::new(2.0, 1.0, 10.0), movement::ID);
+    let other = sim.spawn_character(Vec3::new(4.0, 1.0, 10.0), movement::ID);
+    sim.app.world_mut().entity_mut(bot).insert((Bot, Name::new("Bot Kilo")));
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let mine = Selection {
+        model: 2,
+        face: 6,
+        head: 2,
+        camouflage: 3,
+        ..default()
+    };
+    sim.app.world_mut().insert_resource(CaOwnLook(mine));
+    sim.seconds(0.2);
+    let look = |sim: &Sim, e: Entity| *sim.app.world().get::<Selection>(e).unwrap();
+    let drawn = look(&sim, bot);
+    let seed = "Bot Kilo".bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+    assert_eq!(drawn, records::data().bot_look(seed));
+    assert_eq!(look(&sim, me), mine);
+    assert_eq!(look(&sim, other), Selection::default());
+    // The female face: the female body, its skeleton and hit table.
+    assert_eq!(sim.app.world().get::<CaAnim>(me).unwrap().skeleton, 1);
+    sim.app.world_mut().resource_mut::<CaOwnLook>().0.face = 1;
+    sim.seconds(0.2);
+    assert_eq!(look(&sim, me).face, 1);
+    assert_eq!(sim.app.world().get::<CaAnim>(me).unwrap().skeleton, 0);
+    sim.seconds(1.0);
+    assert_eq!(look(&sim, bot), drawn, "a bot keeps its look");
 }

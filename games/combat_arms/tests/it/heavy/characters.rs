@@ -374,17 +374,19 @@ fn warehouse_players_wear_their_bodies() {
     assert!(animator.fixed.is_some(), "drawn from the driver's pose");
 }
 
-/// characters.md section 2 with the keys: each loaded body (the default
-/// male, record 0, and its female twin, record 7) wears its default face
-/// (face 0, and 4 for the female: the face redirect) and the head piece
-/// that goes with it (the default selection's `HBasic` has no model, so
-/// the face's `HairIndex`, when it has one), merged on its skeleton:
-/// every piece of the body, the face and the head piece is in the drawn
-/// model, textured, and the merged pieces reach the head (above 1.3 m).
+/// characters.md section 2 with the keys: each sex's character model
+/// (the default male, record 0, and its female twin, record 7) has the
+/// stock bodies (Normal, Light, Heavy) as its first body part, the faces
+/// as the second (its default face first: 0, and 4 for the female) and
+/// the head pieces as the third (none first; the female face's hair
+/// among them), merged on its skeleton: every piece is in the drawn
+/// model, textured, and the faces and head pieces reach the head (above
+/// 1.3 m). The team-mark pieces (texture slot 2) draw in the transparent
+/// mark style, blended: an enemy's mark, `Alpha.dtx`, shows nothing.
 /// Skips without the V1 and V2 keys.
 #[test]
 fn default_bodies_wear_face_and_head() {
-    use chimera_world::map::MapData;
+    use chimera_world::map::{MapAlpha, MapData};
     use combat_arms::game::characters::models;
     let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
     if !install.join("Game").is_dir() {
@@ -401,37 +403,61 @@ fn default_bodies_wear_face_and_head() {
     assert!(data.face(0).and_then(|f| f.file.as_ref()).is_some(), "the install's Face0 has a file");
     let mut map = MapData::default();
     models::add_character_models(&mut map, &file);
+    eprintln!("warnings: {:?}", map.warnings);
+    let groups = models::loaded_groups();
     for (id, face_id) in [(0, 0), (7, 4)] {
-        let record = data.model(id).unwrap();
         assert_eq!(data.default_face(id), face_id);
-        let face = data.face(face_id).unwrap();
-        let head = data.worn_head(0, face_id, record.skeleton);
-        let pieces = |path: &str| model::load(path, &file).unwrap().model.pieces.len();
-        let body_pieces = pieces(&record.file);
-        let face_file = face.file.clone().expect("face file");
-        let face_pieces = pieces(&face_file);
-        let head_file = data.head_file(head, record.skeleton).map(str::to_string);
-        let head_pieces = head_file.as_deref().map_or(0, pieces);
-        eprintln!(
-            "body {id} ({}): {body_pieces} pieces; face {face_id} {face_file}: {face_pieces}; head piece {head} {head_file:?}: {head_pieces}",
-            record.file
-        );
+        let group = groups.iter().find(|g| g.records.first() == Some(&id)).expect("the group");
+        eprintln!("group {id}: {group:?}");
+        assert_eq!(group.records.len(), 3, "the three stock bodies");
+        assert_eq!(group.faces.first(), Some(&face_id));
+        // The sex's four faces (the Steam install lacks one female face's
+        // file: a warning).
+        assert!(group.faces.len() >= 3, "the sex's faces");
+        assert_eq!(group.heads.first(), Some(&-1));
         let body = map
             .characters
             .iter()
             .find(|c| c.name.as_deref() == Some(models::body_name(id).as_str()))
             .unwrap_or_else(|| panic!("body {id} not loaded: {:?}", map.warnings));
         let meshes = &body.model.meshes;
-        assert!(face_pieces > 0);
-        assert!(meshes.len() >= body_pieces + face_pieces + head_pieces, "{} meshes", meshes.len());
-        // The merged pieces: textured, and at the head (the body's feet
-        // at 0, the head about 1.5 m up).
-        for (k, mesh) in meshes.iter().enumerate().skip(meshes.len() - face_pieces - head_pieces) {
-            assert!(mesh.texture.is_some(), "body {id}: merged mesh {k} ({}) untextured", mesh.material);
-            let top = mesh.positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
-            assert!(top > 1.3, "body {id}: merged mesh {k} tops out at {top} m");
+        assert_eq!(body.model.body_parts, group.parts());
+        for part in 0..3u16 {
+            let n = group.parts()[part as usize];
+            for choice in 0..n {
+                // Head piece choice 0 is none: no meshes.
+                let has = meshes.iter().any(|m| m.body == Some((part, choice)));
+                assert_eq!(has, !(part == 2 && choice == 0), "part {part} choice {choice}");
+            }
+        }
+        for (k, mesh) in meshes.iter().enumerate() {
+            assert!(mesh.texture.is_some() || mesh.material.is_empty(), "body {id}: mesh {k} ({}) untextured", mesh.material);
+            if matches!(mesh.body, Some((1 | 2, _))) {
+                let top = mesh.positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+                assert!(top > 1.3, "body {id}: face or head mesh {k} tops out at {top} m");
+            }
         }
         assert!(body.model.skins.iter().all(|s| s.len() == meshes.len()));
+        // The team marks: blended in both families, the enemy's texture
+        // (mark 0) clear, the teammate's (mark 1) not.
+        let enemy = &body.model.skins[models::family(0, false) as usize];
+        let mate = &body.model.skins[models::family(0, true) as usize];
+        let marks: Vec<usize> = (0..meshes.len())
+            .filter(|&k| mate[k].material.eq_ignore_ascii_case(&data.marks.teammate) && meshes[k].body == Some((0, 0)))
+            .collect();
+        assert!(!marks.is_empty(), "body {id}: no team-mark piece");
+        for &k in &marks {
+            assert_eq!(enemy[k].alpha, MapAlpha::Blend, "body {id}: mark {k}");
+            assert_eq!(mate[k].alpha, MapAlpha::Blend);
+            assert!(enemy[k].material.eq_ignore_ascii_case(&data.marks.enemy));
+            let opacity = |t: Option<usize>| {
+                let t = &map.textures[t.expect("textured")];
+                t.rgba8.chunks(4).map(|p| p[3] as f32).sum::<f32>() / (t.rgba8.len() / 4) as f32
+            };
+            let (clear, shown) = (opacity(enemy[k].texture), opacity(mate[k].texture));
+            eprintln!("body {id}: mark {k}: enemy alpha {clear:.1}, teammate {shown:.1}");
+            assert!(clear < 8.0 && shown > 64.0);
+        }
     }
     // The female face comes with a head piece (its hair).
     assert!(data.face(4).and_then(|f| f.hair).is_some());

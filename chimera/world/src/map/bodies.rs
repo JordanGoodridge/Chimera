@@ -4,7 +4,7 @@
 //! headless, for the server's hit tests). The drawn body, held model and
 //! their posing are `render::bodies`, which draws what these say.
 //!
-//! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `Held`,
+//! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `BodyNumber`, `Held`,
 //! `ShowLocalBody`;
 //! hitboxes on the skeleton (also headless), `SimAnimator`/`SimPose`.
 //!
@@ -79,6 +79,13 @@ pub struct BodyName(pub String);
 /// hostage keeps its own); without it, the model's first.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BodySkin(pub i32);
+
+/// Which choice of each body part a character's body shows (Source's
+/// body number: `MapModel::body_choice` over the model's `body_parts`;
+/// meshes with no `MapMesh::body` always show); without it, choice 0 of
+/// each.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BodyNumber(pub i32);
 
 /// Whether the local player's own body is drawn (third person). The
 /// client sets it; the body is there either way, animated, and hidden

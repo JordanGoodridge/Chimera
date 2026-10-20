@@ -10,6 +10,11 @@
 # at y = -50), unless a field says otherwise. Quaternions (x, y, z, w).
 # Read by game/characters/records.rs.
 
+# Render styles 0, 1, 2 of the stock bodies (2: the sign and clan pieces
+# use 2, the transparent mark); a record without `render_styles` takes
+# these. How each file draws: data/render_styles.toml.
+body_render_styles = ["RS\\default.ltb", "RS\\GLOW.LTB", "RS\\MARKTRANSPARENT.LTB"]
+
 # Section 1: the stock player bodies (US data). `skins` are the upper and
 # leg textures per camouflage index (`UpperSkin#`, `LowerSkin#`); only the
 # default body's are given by the spec (test case 3), the others are left
@@ -116,6 +121,20 @@ files = ["", "ATTACH_M\\W_Glass.ltb"]
 [marks]
 enemy = "CHARS_T_BODY\\Alpha.dtx"
 teammate = "CHARS_T_BODY\\RED_Tie.dtx"
+
+# Ours: the looks bots draw from, one entry of each list per bot (the
+# spec gives every player's look from their own loadout, 1; the stock
+# bots have none). Ids are the install's records: `models` the stock
+# bodies (Normal, Light, Heavy: their vests), `faces` 0-3 male, 4-7
+# female (the face redirect), `heads` head pieces (0: `HBasic`, none;
+# the helmets, caps, beret, beanie and boonie hat of the install's
+# `Hair#` records),
+# `camouflages` the skin index (0-6).
+[loadouts]
+models = [0, 1, 2]
+faces = [0, 1, 2, 3, 4, 5, 6, 7]
+heads = [0, 0, 1, 2, 3, 4, 5, 9, 15]
+camouflages = [0, 1, 2, 3, 4]
 
 # Each weapon's third-person animation class (`AniType`, 5) and leg set
 # (`LowerAniType`: 0 normal, 1 infected, 2 infected with a club); `skins`
