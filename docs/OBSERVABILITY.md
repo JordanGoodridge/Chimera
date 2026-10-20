@@ -65,7 +65,7 @@ in the lowest crate whose public API it needs:
   state go in tests/ui/, built with `ui` (`stack::client`), so an edit to
   `src/ui/` runs only those (and the crates above);
 - `combat_arms` (games/combat_arms/tests/it/): Combat Arms' scenario
-  tests on `Sim::new(CaSim, ..)` (`combat_arms::harness::CaSim`: its
+  tests (the options' profile, bindings and settings: `options.rs`) on `Sim::new(CaSim, ..)` (`combat_arms::harness::CaSim`: its
   whole simulation, placeholders included) and the greybox, or a map
   converted from a world built in code (`world.rs`); its spec test cases
   as each subsystem is implemented; in `heavy` the install's maps
@@ -83,12 +83,16 @@ in the lowest crate whose public API it needs:
   feed, score panel, scoreboard and loading screen bound by name,
   `bound.rs`; the radar and the full map's state, `ui::hud::radar` and
   `full_map`, `radar.rs`; the death screen bound by role and the dead player's name
-  tags, `death_screen.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
+  tags, `death_screen.rs`; the options screen, its key capture and what it
+  hands the shell, with the HUD on/off key and the radar zoom in the
+  profile, `options.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
   install's own layouts and string tables through the UI system's
   readers, the game's HUD panels, scoreboard and loading screen bound
   by name and its in-game menu, V1 key; `heavy::radar`: the map images'
   sizes and formats, the radar art and icons, the mission files' corners
-  on four maps, the large-map attribute file, V1 key);
+  on four maps, the large-map attribute file, V1 key; `heavy::options`
+  (tests/it/: the key-name file; tests/ui/: the install's five options
+  layouts and the controls the screen binds in them, V1 key));
 - `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
   Arms' dedicated server as its binary composes it (`ServerPlugin`, its
   command line) with headless clients over UDP on loopback (`dedicated`:

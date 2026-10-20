@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combat Arms' options screen, ours, in the game's layout format
+     (specs/combat_arms/ui_system.md L1-L4), written by a generator from the
+     control names of specs/combat_arms/options.md L. Places and texture
+     names are ours (flat stand-ins drawn by ui::draw); the screen is
+     drawn 1:1 on the 1024 x 768 menu. The install's own layouts replace
+     these when it is there. -->
+<CBALAYOUT>
+<Control Type="Window"><Property Name="popup_option" Position="162,124" Size="700,520" Texture="opt_back"/>
+<Control Type="Text"><Property Name="Title" Position="0,10" Font="bold 16" Element="Options" HorizontalAlign="HCENTER" Normalcolor="230,230,230" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="tab_graphic" Position="10,40" Size="100,24" ButtonTexture="opt_tab_" Cmd_id="1" /><Control Type="ButtonTypeText"><Property Name="tab_graphic_text" Font="bold 12" Element="Graphic" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="tab_sound" Position="114,40" Size="100,24" ButtonTexture="opt_tab_" Cmd_id="2" /><Control Type="ButtonTypeText"><Property Name="tab_sound_text" Font="bold 12" Element="Sound" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="tab_control" Position="218,40" Size="100,24" ButtonTexture="opt_tab_" Cmd_id="3" /><Control Type="ButtonTypeText"><Property Name="tab_control_text" Font="bold 12" Element="Control" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="tab_other" Position="322,40" Size="100,24" ButtonTexture="opt_tab_" Cmd_id="4" /><Control Type="ButtonTypeText"><Property Name="tab_other_text" Font="bold 12" Element="Other" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="button_ok" Position="400,484" Size="90,26" ButtonTexture="opt_btn_" Cmd_id="5" /><Control Type="ButtonTypeText"><Property Name="button_ok_text" Font="bold 12" Element="OK" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="button_cancel" Position="500,484" Size="90,26" ButtonTexture="opt_btn_" Cmd_id="6" /><Control Type="ButtonTypeText"><Property Name="button_cancel_text" Font="bold 12" Element="Cancel" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="button_default" Position="10,484" Size="90,26" ButtonTexture="opt_btn_" Cmd_id="7" /><Control Type="ButtonTypeText"><Property Name="button_default_text" Font="bold 12" Element="Default" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="button_close" Position="668,6" Size="24,24" ButtonTexture="opt_btn_" Cmd_id="8" /><Control Type="ButtonTypeText"><Property Name="button_close_text" Font="bold 12" Element="X" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+</Control>
+</CBALAYOUT>

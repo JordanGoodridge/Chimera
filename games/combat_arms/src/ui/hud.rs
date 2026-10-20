@@ -354,8 +354,32 @@ impl Plugin for CaHudStatePlugin {
             .add_plugins(radar::CaRadarStatePlugin)
             .add_systems(
                 Update,
-                (track, update, action::prompts, score::update_score).chain().in_set(HudUpdate),
+                (track, update, action::prompts, score::update_score, hide_panels)
+                    .chain()
+                    .in_set(HudUpdate),
             );
+    }
+}
+
+/// The HUD on/off key (options.md H): off hides every layout-built panel
+/// (health, ammo, the kill feed, the prompt, the score panels); the
+/// code-drawn items (crosshair, damage overlays, name tags) stay.
+fn hide_panels(
+    switch: Option<Res<crate::game::options::CaHudSwitch>>,
+    mut hud: ResMut<CaHud>,
+    mut score: ResMut<score::CaScoreHud>,
+) {
+    if switch.is_none_or(|s| s.panels()) {
+        return;
+    }
+    if hud.status.is_some() || hud.weapon.is_some() || !hud.feed.is_empty() || hud.action.is_some() {
+        hud.status = None;
+        hud.weapon = None;
+        hud.feed.clear();
+        hud.action = None;
+    }
+    if *score != score::CaScoreHud::default() {
+        *score = score::CaScoreHud::default();
     }
 }
 

@@ -21,8 +21,9 @@
 //! works out from ordinary objects.
 //!
 //! The options live here as the player's profile (R10): `RadarScale`
-//! (saved when the radar hides) and `RotateRadar`, console variables that
-//! are saved in the config (`radarscale`, `rotateradar`). The world offset
+//! (saved when the radar hides) and `RotateRadar`, console variables
+//! (`radarscale`, `rotateradar`) that the options' profile keeps
+//! (`game::options`: `[Display] RadarScale`, `[Controls] RotateRadar`). The world offset
 //! the map data adds (R5, F3) is the world file's, kept by `game::world`
 //! as a pass-through entity (`WORLD_INFO`) and read into `CaWorldOffset`.
 //!
@@ -174,8 +175,6 @@ impl Plugin for CaRadarPlugin {
         resource_cvar(app, "rotateradar", "1: the radar turns with the view (read when a map loads).", |r: &mut CaRadarProfile| {
             &mut r.rotate
         });
-        app.world_mut().resource_mut::<crate::console::Console>().archive("radarscale");
-        app.world_mut().resource_mut::<crate::console::Console>().archive("rotateradar");
     }
 }
 

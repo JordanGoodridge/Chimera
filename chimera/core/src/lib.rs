@@ -19,4 +19,5 @@ pub mod game_log;
 pub mod game_registry;
 pub mod metrics;
 pub mod mount;
+pub mod profile;
 pub mod slots;

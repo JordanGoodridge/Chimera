@@ -16,6 +16,7 @@ mod camera;
 mod death_screen;
 mod hud;
 mod net_hud;
+mod options;
 mod radar;
 mod score;
 mod ui_system;
@@ -24,4 +25,5 @@ mod ui_system;
 mod heavy {
     mod death_screen;
     mod install_ui;
+    mod options;
 }

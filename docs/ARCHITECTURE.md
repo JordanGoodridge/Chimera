@@ -261,7 +261,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
             console              (cvars, commands, queue; games and client register)
                |                 (game_log beside it: game events, the server log)
              core                (shared vocabulary)
-                                 (env under console and mount: variables, user folders)
+                                 (env under console and mount: variables, user folders;
+                                  profile beside them: a player's settings file)
 ```
 
 Exact edges: game_log uses core and console; net uses the engine's
@@ -344,6 +345,7 @@ that the paths exist).
 - `apps/cs_source/src/core.rs`: `chimera_core::core` re-exported, plus the build's `VERSION` (stamped by build.rs) (core)
 - `chimera/core/src/console.rs`: cvar and command registry, Source-style parsing, aliases, binds, config files, built-ins, cvar scopes (console)
 - `chimera/core/src/env.rs`: `CHIMERA_*` variables (old `MASHUP_*` read too), the per-user folder (env)
+- `chimera/core/src/profile.rs`: a player profile file: `[Section]`, `Key = value`, case-insensitive, unmanaged lines kept (profile)
 - `chimera/core/src/game_log.rs`: game events (`GameEvent`) and the server log (`LogLine`, `log on`, `sv_logecho`, `sv_logfile`) (game_log)
 - `chimera/core/src/slots.rs`: `MovementRegistry`, `Loadout`, `set_movement` (slots)
 - `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
@@ -558,8 +560,12 @@ that the paths exist).
 - `games/combat_arms/src/ui/hud/radar.rs`: Combat Arms' radar panel: zoom, marks, wedges, edge arrows, picture window (games_ui)
 - `games/combat_arms/src/ui/hud/full_map.rs`: Combat Arms' full-screen map (M): picture, icons, names, death marks, legend, drawn on the shell's UI (games_ui)
 - `games/combat_arms/src/ui/hud/scene.rs`: what the radar and the map know each frame: players, objectives, spawn markers, death marks (games_ui)
+- `games/combat_arms/src/game/options/`: Combat Arms' options: settings table, profile, key binding, mouse, gamma, sound levels (games)
+- `games/combat_arms/src/ui/options.rs`: Combat Arms' options screen: tabs, check pairs, sliders, binding rows, key capture (games_ui)
+- `games/combat_arms/src/ui/options_apply.rs`: the options' mouse look, volumes and brightness handed to the shell (games_ui)
 - `games/combat_arms/src/ui/loading.rs`: Combat Arms' loading screen from the install's layout while joining (games_ui)
-- `games/combat_arms/data/ui/`: Combat Arms' font list, strings and in-game menu layout, ours (games)
+- `games/combat_arms/data/ui/`: Combat Arms' font list, strings, in-game menu and options layouts, ours (games)
+- `games/combat_arms/data/options/`: Combat Arms' default profile (the stock keys) and the quality presets' table (games)
 - `games/combat_arms/data/grenade_surfaces.toml`: Combat Arms' surface hardness for grenade bounces (the grenades spec's table) (games)
 - `games/combat_arms/data/surfaces.toml`: Combat Arms' shoot-through surfaces (the firing spec's table) (games)
 - `games/combat_arms/data/movement.toml`: Combat Arms' movement numbers from specs/combat_arms/movement.md (games)
@@ -654,7 +660,7 @@ that the paths exist).
 - `chimera/client/src/client/color_correction.rs`, `color_correction.wgsl`: `mat_colorcorrection` on the finished frame (client)
 - `chimera/client/src/client/app.rs`: what every game binary does with its app: executors, `CHIMERA_SYSTEM_DUMP`, run (client)
 - `chimera/client/src/client/audio.rs`: the options' sound settings (client)
-- `chimera/client/src/client/binds.rs`: every game key is a bind; default binds (the default game's) (client)
+- `chimera/client/src/client/binds.rs`: every game key is a bind (one key may hold `a; b`); default binds (the default game's) (client)
 - `chimera/client/src/client/video.rs`: field of view, video and texture settings (client)
 - `chimera/client/src/client/voice.rs`: voice chat: `+voicerecord`, microphone, Opus, playback (client)
 - `games/cs_source/src/ui/options.rs`: the options dialogs' settings (games_ui)

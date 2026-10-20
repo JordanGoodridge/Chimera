@@ -71,6 +71,15 @@ pub const LOADING_FILE: &str = "xml/hud_maploading.xml";
 /// The death screen's layout (`Hud_KillCam`, root `KillCam`;
 /// death_killcam.md 8).
 pub const KILLCAM_FILE: &str = "xml/hud_killcam.xml";
+/// The options screen's five layouts (options.md L): the frame, then the
+/// Graphic, Sound, Control and Other windows.
+pub const OPTION_FILES: [&str; 5] = [
+    "xml/popup_option.xml",
+    "xml/popup_option_graphic.xml",
+    "xml/popup_option_sound.xml",
+    "xml/popup_option_control.xml",
+    "xml/popup_option_other.xml",
+];
 /// The attribute file with the HUD layout attributes (`[HUDLayout0]`:
 /// the damage overlays' and kill feed's textures, the result banners)
 /// and the font list (T1).
@@ -151,6 +160,8 @@ pub struct InstallUi {
     pub loading: Option<Layout>,
     /// The death screen (`ui::hud::death`).
     pub kill_cam: Option<Layout>,
+    /// The options screen's five layouts (`OPTION_FILES`), when all read.
+    pub options: Option<Vec<Layout>>,
     /// The HUD layout attributes' strings (`[HUDLayout0]`), by key in
     /// lower case: texture names.
     pub hud_layout: HashMap<String, String>,
@@ -438,11 +449,13 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
     let (team_list, no_team_list) = (layout(mount, TEAM_LIST_FILE), layout(mount, NO_TEAM_LIST_FILE));
     let loading = layout(mount, LOADING_FILE);
     let kill_cam = layout(mount, KILLCAM_FILE);
+    let options: Option<Vec<Layout>> = OPTION_FILES.iter().map(|f| layout(mount, f)).collect();
     let hud_layout = hud_layout(mount);
     let fonts = font_list(mount);
     let mut names: Vec<String> = [&hud, &menu, &indicator, &result, &team_list, &no_team_list, &loading, &kill_cam]
         .into_iter()
         .flatten()
+        .chain(options.iter().flatten())
         .flat_map(layout_textures)
         .collect();
     names.extend(EXTRA_ART.iter().map(|s| s.to_string()));
@@ -500,6 +513,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         no_team_list,
         loading,
         kill_cam,
+        options,
         hud_layout,
         fonts,
         strings,

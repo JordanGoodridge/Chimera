@@ -1731,10 +1731,11 @@ fn run_binds(
         let Some(cmd) = console.binds.get(&key).cloned() else {
             continue;
         };
-        // Read from the held keys by the systems that own them.
-        if super::binds::is_polled(&cmd) {
+        // Read from the held keys by the systems that own them; a line
+        // of several commands runs the rest.
+        let Some(cmd) = super::binds::runnable(&cmd) else {
             continue;
-        }
+        };
         if pressed {
             console.submit(cmd);
         } else {

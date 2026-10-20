@@ -170,6 +170,7 @@ pub fn update_radar(
     scene: Res<CaScene>,
     keys: Res<RadarKeys>,
     chat: Option<Res<ChatInput>>,
+    switch: Option<Res<crate::game::options::CaHudSwitch>>,
     loads: Option<Res<MapLoads>>,
     offset: Res<CaWorldOffset>,
     round: Res<CaRadarRound>,
@@ -190,23 +191,26 @@ pub fn update_radar(
     }
     let me = scene.me.as_ref();
     let visible = me.is_some_and(|m| m.alive);
+    // The HUD on/off key hides the panels, the radar among them (its zoom
+    // is kept and doesn't change meanwhile: the radar isn't shown).
+    let visible_now = visible && switch.is_none_or(|w| w.panels());
     if !visible && memory.was_visible {
         // Hiding saves the zoom to the profile.
         profile.scale = memory.zoom;
     }
     memory.was_visible = visible;
-    if visible && chat.is_none_or(|c| c.open.is_none()) {
+    if visible_now && chat.is_none_or(|c| c.open.is_none()) {
         memory.zoom = maths::zoom_step(memory.zoom, keys.expand, keys.decrease);
     }
     let mut next = CaRadar {
         screen: s,
-        visible,
+        visible: visible_now,
         zoom: memory.zoom,
         rotate: memory.rotate,
         knob: maths::knob_y(memory.zoom),
         ..default()
     };
-    if let (true, Some(me)) = (visible, me) {
+    if let (true, Some(me)) = (visible_now, me) {
         fill(&mut next, me, &scene, offset.0, &round);
     }
     if *radar != next {

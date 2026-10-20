@@ -53,6 +53,9 @@
 //!   they run (world_objects.md).
 //! - `death_cam`: the death camera, the kill-cam screen's values and the
 //!   respawn countdown, the client's own (death_killcam.md).
+//! - `options`: the options' settings, the player profile, key binding,
+//!   the mouse, sliders, gamma and quality presets, sound levels and the
+//!   Other tab's social options (options.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -71,6 +74,7 @@ pub mod mount;
 pub mod movement;
 pub mod net;
 pub mod objects;
+pub mod options;
 pub mod props;
 pub mod radar;
 pub mod render_style;
@@ -196,6 +200,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(special::CaSpecialPlugin)
             // Its scanner hook must be there when the weapons' data loads.
             .add(radar::CaRadarPlugin)
+            .add(options::CaOptionsPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(view_model::CaViewModelPlugin)
             .add(effects::CaEffectsPlugin)

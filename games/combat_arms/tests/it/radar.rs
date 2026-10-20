@@ -507,8 +507,10 @@ fn the_radar_options_are_saved_with_the_profile() {
     let sim = game("TDM", 1);
     let console = sim.app.world().resource::<chimera_core::console::Console>();
     for name in ["radarscale", "rotateradar"] {
+        // The options' profile keeps them (tests/it/options.rs), not the
+        // console's config.
         let c = console.cvar(name).unwrap_or_else(|| panic!("{name}"));
-        assert!(c.archive, "{name} is saved in the config");
+        assert!(!c.archive, "{name} is the profile's, not the config's");
     }
     assert_eq!(*sim.app.world().resource::<CaRadarProfile>(), CaRadarProfile { scale: 1.0, rotate: 0 });
 }

@@ -61,6 +61,8 @@ pub mod install;
 pub mod layout;
 pub mod loading;
 pub mod menu;
+pub mod options;
+pub mod options_apply;
 pub mod scoreboard;
 pub mod visuals;
 
@@ -90,6 +92,8 @@ impl Plugin for CaUiPlugin {
             visuals::CaVisualsPlugin,
             effects::CaEffectsDrawPlugin,
             menu::CaMenuPlugin,
+            options::CaOptionsPlugin,
+            options_apply::CaOptionsApplyPlugin,
             scoreboard::CaScoreboardPlugin,
             loading::CaLoadingPlugin,
             hud::death::CaDeathScreenPlugin,
@@ -128,6 +132,22 @@ impl Default for CaUi {
         add("igm_button_B", (196, 24), [84, 92, 100, 255]);
         add("igm_button_C", (196, 24), [120, 96, 30, 255]);
         add("igm_button_D", (196, 24), [38, 40, 44, 200]);
+        // PLACEHOLDERS for the options screen's art (`options`): flat
+        // boxes, a state to a texture (A normal, B hover, C pressed or
+        // checked, D disabled).
+        add("opt_back", (700, 520), [22, 26, 30, 245]);
+        add("opt_list", (660, 100), [14, 16, 20, 255]);
+        for (prefix, size, states) in [
+            ("opt_tab_", (100, 24), [[52, 58, 64, 255], [84, 92, 100, 255], [120, 96, 30, 255], [38, 40, 44, 200]]),
+            ("opt_btn_", (90, 26), [[52, 58, 64, 255], [84, 92, 100, 255], [120, 96, 30, 255], [38, 40, 44, 200]]),
+            ("opt_chk_", (14, 14), [[60, 66, 74, 255], [90, 98, 108, 255], [255, 198, 0, 255], [40, 42, 46, 255]]),
+            ("opt_drop_", (150, 20), [[40, 44, 50, 255], [70, 78, 86, 255], [120, 96, 30, 255], [30, 32, 36, 255]]),
+            ("opt_row_", (330, 15), [[34, 38, 44, 255], [60, 68, 76, 255], [120, 96, 30, 255], [30, 32, 36, 255]]),
+        ] {
+            for (state, c) in ['A', 'B', 'C', 'D'].into_iter().zip(states) {
+                add(&format!("{prefix}{state}"), size, c);
+            }
+        }
         // PLACEHOLDER for a round mode's bar divider marks
         // (hud_crosshair.md D6: their look isn't given).
         add(hud::bound::DIVIDER, (1, 1), [20, 20, 20, 220]);
@@ -182,6 +202,7 @@ impl CaUi {
         for l in [&inst.hud, &inst.menu, &inst.indicator, &inst.result, &inst.team_list, &inst.no_team_list, &inst.loading, &inst.kill_cam]
             .into_iter()
             .flatten()
+            .chain(inst.options.iter().flatten())
         {
             install::add_fonts(l, &mut ui.fonts);
         }

@@ -33,6 +33,7 @@ mod movement_volumes;
 mod net;
 mod net_modes;
 mod net_modes_2;
+mod options;
 mod other_modes;
 mod radar;
 mod search_destroy;
@@ -60,6 +61,7 @@ mod heavy {
     mod model;
     mod movement_volumes;
     mod mount;
+    mod options;
     mod props;
     mod radar;
     mod view_model;

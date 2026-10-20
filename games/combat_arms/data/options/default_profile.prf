@@ -1,0 +1,104 @@
+// Combat Arms' default profile, ours (specs/combat_arms/options.md F1,
+// F2): what a player without a profile starts from, and what the
+// options screen's Default button restores. The key/value format is the
+// spec's (sections, `Key = value`, `//` comments); the stock keys are the
+// spec's K1 table. The values are ours (the spec could not read the
+// game's template, Open questions 1 and 2).
+//
+// Bump `Major` when a template change must reset every player's profile.
+[Version]
+Major = 1
+
+[Display]
+windowed = 0
+ScreenWidth = 1024
+ScreenHeight = 768
+ScreenBitDepth = 32
+ScreenGamma = 1.22
+AntiAlias = 0
+HardwareCursor = FALSE
+VSync = FALSE
+RadarScale = 1.0
+
+[Controls]
+Sensitivity = 5
+InvertMouse = 0
+RotateRadar = 0
+
+[Bindings]
+// "keyboard@mouse@joystick": ##n is a scan code, #U/#D the wheel.
+SensitivityInc = "##27@ @ "
+SensitivityDec = "##26@ @ "
+Forward = "##17@ @ "
+Backward = "##31@ @ "
+Left = "##30@ @ "
+Right = "##32@ @ "
+Activate = "##18@ @ "
+Jump = "##57@ @ "
+Speed = "##46@ @ "
+DuckLock = "##29@ @ "
+Dash = "##42@ @ "
+Fire = " @##3@ "
+Reload = "##19@ @ "
+TripleShotMode = "##33@ @ "
+ZoomIn = " @##4@ "
+FullTacticalMap = "##50@ @ "
+Prev_Weapon = "##16@ @ "
+PrimaryWeapon = "##2@ @ "
+SecondaryWeapon = "##3@ @ "
+MeleeWeapon = "##4@ @ "
+MiscWeapon = "##5@ @ "
+SpecialWeapon = "##6@ @ "
+ObjectiveWeapon = "##7@ @ "
+SendMessage = "##28@ @ "
+RadioRequest = "##49@ @ "
+VoiceChatToggle = "##20@ @ "
+RadioAnswer = "##47@ @ "
+RadioReport = "##48@ @ "
+HUDOnOff = "##201@ @ "
+VideoCapture = "##209@ @ "
+HelpScreen = "##59@ @ "
+DecRadarScale = "##12@ @ "
+IncRadarScale = "##13@ @ "
+UseMutationItem = "##56@ @ "
+CommandNPCShop = "##34@ @ "
+CommandNPCOrder = "##35@ @ "
+CommandUsePerk = "##41@ @ "
+QuestState = "##36@ @ "
+NightVision = " @ @ "
+Duck = " @ @ "
+TeamChat = "##61@ @ "
+BroadCastChat = "##60@ @ "
+
+[Game]
+AlwaysRun = 1
+AutoWeaponSwitch = 1
+WeaponSway = 10
+MessageDur = 10
+HUDLayout = 0
+LightMap = 1
+DirectSound = 0
+Gore = 0
+
+[Sound]
+musicenable = TRUE
+musicvolume = 50
+bgmrotation = TRUE
+soundenable = TRUE
+soundvolume = 70
+EnableVoiceChat = FALSE
+SoundAdjustVolume = 0
+MicVolume = 50
+MicDeviceIndex = 0
+SpeakerVolume = 70
+SpeakerDeviceIndex = 0
+
+[Settings]
+PerformanceSetting = 2
+
+[OtherOption]
+Whisper = FALSE
+BlockInvite = FALSE
+CurseFilter = TRUE
+AllowNote = TRUE
+DailyQuest = TRUE
