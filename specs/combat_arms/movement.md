@@ -15,7 +15,7 @@ sprint and stamina, slopes and steps, falling and fall damage, volumes
 (ladders, liquids, friction, speed factors, gravity volumes, jump pads,
 safety nets, damage volumes), other modifiers including pushers and hit
 knock-back, eye height); Per-tick order; Edge cases;
-Quirks; Test cases; Open questions.
+Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -81,7 +81,7 @@ no friction), and a short-lived jump factor weakens back-to-back jumps.
 | jump factor after a jump | 0.3 | × | Set on every jump |
 | jump factor recovery | 1.2 | 1/s | Added per second while not jumping, until ≥ 1 |
 | jump stance tolerance | 0.5 | u | Jump needs current half-height ≥ standing half-height - 0.5 |
-| walkable normal | 0.7071 | normal.y | Ground steeper than this (normal.y < 0.7071) is not ground |
+| walkable normal | 0.7071 | normal.y | Ground steeper than this (normal.y < 0.7071) is not ground for the integrator and the mover; the movement's own "on ground" flag uses 0.707 (Corrections 18) |
 | stair step height | 30 (+0.5) | u | Server console variable `StairStepHeight`; mover uses 30.5 |
 | standing probe | 0.02 × halfY | u | Distance below the hull that still counts as standing (1 u at halfY 50) |
 | fall-probe ray | 150 | u | Downward ray for "falling" status (sound/animation only) |
@@ -179,6 +179,24 @@ before reading it are the client defaults with both penalties switched on.
     as one resize per tick, before the motion step.
   - **Sprint speed** needs the server's confirmation (Sprint and stamina);
     it does not take effect on the tick the key is pressed.
+- **Client and server** (Corrections 20). The movement rules in this spec
+  run only on the owning client. Each tick's result is sent to the server
+  as a record: the displacement, the control flags, the sprint and
+  stamina-increment flags, the hull size, zoom and firing states. The
+  server does not re-run the rules: it moves its copy of the player by the
+  reported displacement through its own collision (the same mover, with the
+  other characters rewound to the time the client saw), then, if the
+  result is within its error tolerances of the client's reported position,
+  puts the player exactly there. Lost records are filled in from the next
+  one. The server keeps its own stamina gauge, advanced per record with the
+  record's duration clamped to 100 ms, draining while the record says
+  sprint and refilling only when it says "increment"; when its gauge
+  reaches 0 it ends sprint and tells the client, which then loses the
+  sprint speed (Speed limit). Fall damage, ladder state for fall damage and
+  safety nets are judged on the server from the resulting positions, and
+  only on records that moved the player. When the server forces a position
+  (teleport, respawn) the client takes it with zero velocity and
+  acceleration.
 
 ### Input to control state
 
@@ -187,12 +205,18 @@ no focus for movement (menus, shop open, external camera), all flags clear
 except crouch, and sprint ends.
 
 1. **Crouch.** Set while the crouch key is held (the "crouch toggle" binding
-   behaves as hold). When the key is released, crouch stays set if less than
-   100 ms of wall-clock time has passed since it was pressed, or if the
-   standing hull does not fit (a test resize to standing size fails). The
-   raw "crouch key pressed" state for the spam penalty is taken here. Then,
-   if the lock-out penalty is active and the crouch rate is 0, crouch is
-   cleared.
+   behaves as hold). The press time is noted only on a tick where the
+   crouch flag turns on after being off on the previous tick (a re-press
+   while the flag is still held on by the delay does not restart it). When
+   the key is up and the flag was set last tick, crouch stays set if less
+   than 100 ms of wall-clock time has passed since that press time, or if
+   the standing hull does not fit. The fit test only runs when the hull is
+   at (or below) the crouched half-height; a hull that is partly crouched
+   (`r < 1`, hull taller than the crouch box) always counts as fitting
+   (Corrections 16). The "crouch key pressed" state for the spam penalty is
+   the crouch flag **after** these two holds (not the raw key), and a "key
+   press" is that flag turning on (Corrections 8). Then, if the lock-out
+   penalty is active and the crouch rate is 0, crouch is cleared.
 2. **Run.** Only when crouch is not set: run is set when `walk key held XOR
    always-run`. Always-run is on by default, so run is the default state and
    the walk key turns it off. The run flag does not depend on movement keys:
@@ -219,6 +243,10 @@ except crouch, and sprint ends.
    exactly 0 (see Acceleration and Open question 17).
 8. **Jump request:** if the jump flag is set now but was not last tick, and
    the player is not in a jump and jumping is allowed, a jump is requested.
+   The request is a remembered state, not a one-tick event: it is cleared
+   only by a jump that happens, by every tick of free movement (Volumes),
+   and on entering a world. A request the motion step cannot honour (not
+   on ground any more, see Jumping) stays pending (Corrections 6).
 9. While a hit-stagger timer runs (only infected characters in the infection
    mode), run and sprint are cleared.
 
@@ -269,6 +297,12 @@ V = V_1 \cdot (1 - P + S_{set}) \cdot f_{slow} \cdot f_{container}
   `S_set` is a set-item speed bonus (0), `f_slow` a temporary slow from
   damage (1 when inactive), `f_container` the product of the
   `PlayerSpeedFactor`s of the volumes the player is in (1; Volumes).
+  Between the `(1 - P + S_set)` factor and `f_slow` two mode-only factors
+  apply in this order: a mutation-item buff or nerf of the move speed, and,
+  for a human (not infected) player in the infection mode while the
+  infected side has an infected mercenary, that perk's speed rate. Both
+  are 1 outside those modes; their values belong to the game-mode specs
+  (Corrections 21).
 
 The reference character (figure DashSpeed 1.0, default vest MovePenalty 0.1
 and DashSpeed 0.4, no other gear) holding an M4A1-class rifle (0.1) has
@@ -288,8 +322,10 @@ removed.
 
 - Base magnitude `A = 3000`; halved to 1500 if the crouch flag is set (not
   on ladders); then × 0.1 if in a jump.
-- If the tick is the jump-request tick or the crouch flag is set, the
-  directional accelerations are simply `A·F` and `A·R` (Open question 12).
+- If a jump request is pending (normally only the jump-request tick, but
+  see Corrections 6), in free movement the jump flag is set, or the crouch
+  flag is set, the directional accelerations are simply `A·F` and `A·R`
+  (Open question 12).
   The whole ramp block is skipped on such a tick: there is no start rescale
   to 500, even on the tick the moving flag turns on, and `L_f` and `L_r` are
   neither ramped nor reset; they keep the values they had before. So a
@@ -300,13 +336,18 @@ removed.
 - Otherwise a per-axis ramp replaces their magnitude. Two remembered values,
   `L_f` (forward/back) and `L_r` (strafe), start at 500:
   - On the tick the moving flag turns on, `L_f = L_r = 500` and the whole
-    result is later rescaled to 500 (see below).
-  - Forward/back axis: if the key direction reversed since last tick
-    (forward now, back last tick, or the opposite), the forward accel is
-    500 and `L_f = 500`. Else, if forward or back is held (and the moving
-    flag did not just turn on): if `L_f + 6000·dt < 3000`, the magnitude is
-    `L_f + 6000·dt` and `L_f` takes that value; otherwise 3000 and
-    `L_f = 3000`.
+    result is later rescaled to 500 (see below). On that tick the forward
+    axis is not ramped: its magnitude is the base `A` (3000, or 300 in a
+    jump), so the direction of the 500 start follows `(A, a_r)`, not
+    `(500, a_r)` (Corrections 15).
+  - Forward/back axis: if forward is held now and back was held last tick,
+    or back now and forward last tick, the forward accel is 500 and
+    `L_f = 500`. Whether the other key is still held does not matter: while
+    forward and back are both held this is true on every tick, so `L_f`
+    stays at 500 (Corrections 7). Else, if forward or back is held (and the
+    moving flag did not just turn on): if `L_f + 6000·dt < 3000`, the
+    magnitude is `L_f + 6000·dt` and `L_f` takes that value; otherwise
+    3000 and `L_f = 3000`.
   - Strafe axis: same with left/right and `L_r` (this axis ramps even on the
     tick the moving flag turns on, so `L_r` is 590 after that tick).
   - An axis with neither key held resets its `L` to 500.
@@ -318,9 +359,11 @@ removed.
   acceleration, including the bypassed crouched one: crouched in a jump the
   acceleration is `150·j`, not 150 (Open question 11).
 - Holding opposing keys gives `a = 0` on that axis but still counts as
-  moving. The two keys use the same ramped vector, so the cancellation is
-  exact; the axis's `L` keeps ramping (it reaches 3000 after 28 ticks), and
-  the start rescale does nothing because `a = 0`. Because the moving flag is
+  moving. The two keys use the same vector, so the cancellation is exact;
+  the axis's `L` is reset to 500 on every such tick (each key was held on
+  the tick before, which reads as a reversal), and the start rescale does
+  nothing because `a = 0`. Releasing one of the two is a reversal too, so
+  the remaining key starts again at 500 (test case 80). Because the moving flag is
   on, braking does not run: on the ground only the engine friction slows the
   player (`v ← v·e^{-k·dt}` per tick), and they never snap to a stop until
   `|v|² < 0.1`.
@@ -338,6 +381,11 @@ The engine integrates the object's velocity `v` and acceleration `a` over
   while standing on walkable ground.
 - **Standing on something**, and both are below threshold: the object
   stops (velocity and acceleration zero, no move).
+- The surface normal `n` used below is the plane of the world polygon
+  stood on (world geometry, including a world model's own polygons). When
+  the thing stood on is a model (another character, a prop model), `n` is
+  taken as straight up, (0, 1, 0): such a surface is never steep for the
+  integrator and gets ground friction (Corrections 19).
 - **Standing on ground that is too steep** (`n.y < 0.7071` for the surface
   normal `n`): the acceleration including gravity is projected onto the
   plane, any up-slope part along gravity removed, and rescaled to its
@@ -374,12 +422,15 @@ v_{new} = v + a\,dt, \qquad \Delta x = v\,dt + \tfrac{1}{4} a\,dt^2
 (the displacement uses a quarter, not a half; see Quirks).
 
 The displacement is then moved through the world by the collision mover
-(slide along up to 5 planes, stair-step, see Slopes and steps). After the
-move:
+(slide along at most two planes, stair-step, see Slopes and steps), only
+when its squared length is above 10⁻⁶. After the move:
 
 - If the attempted move had both horizontal components above 0.01, the
-  player is not on ground and the position did not change at all, the
-  horizontal velocity is zeroed (stuck against a wall in the air).
+  movement's "on ground" flag of this tick (the one set at step 7c, before
+  the move: false in a jump, on steep ground and on another character) is
+  false, and the position did not change (within 10⁻⁶), the horizontal
+  velocity is zeroed (stuck against a wall in the air). What the player
+  stands on after the move does not matter (Corrections 17).
 - Otherwise, if the attempted vertical move was above 0.01 in size but the
   actual vertical change was below 0.01, the vertical velocity is zeroed
   (landing, hitting a ceiling, or resting on a slope you would slide on).
@@ -406,7 +457,8 @@ the velocity:
 
 - Let `h` = horizontal velocity. If `|h| > 5`: reduce its magnitude by
   `dt · K / 0.1` (42.75 u/s per tick at `K = 285`); if that would reach or
-  pass zero, the whole velocity becomes zero. Vertical velocity is kept.
+  pass zero, the horizontal velocity becomes zero. In both cases the
+  vertical velocity is kept (Corrections 14).
 - If `|h| ≤ 5`: the whole velocity, vertical included, becomes zero.
 
 The engine friction then also applies (acceleration is 0, so the velocity
@@ -430,6 +482,17 @@ v_y = 330 \cdot (1 + J_{fig} + J_{model}) \cdot j
   the request itself, without the jump key, and its launch velocity is
   added to the whole velocity instead of setting `v_y` (Volumes, "Jump
   pads").
+- **Pending request** (Corrections 6). If a request is pending but the
+  player is not on ground at the motion step (or is on a ladder, or dead),
+  nothing happens and the request stays. While it is pending: the ramp is
+  bypassed every tick (directional accel = base `A`, 3000, with no 500
+  start; the 0.1 in-air factor does not apply because the player is not in
+  a jump), the jump factor does **not** recover, and on the first tick the
+  player is on ground again (the landing tick after a fall) the jump
+  happens by itself, without the key. The usual way to get one: pressing
+  jump on the tick after the move that carried the hull off a ledge (the
+  key reads the on-ground state one tick older than the motion step), or
+  pressing jump while movement is disallowed (Other modifiers).
 - **Jump factor `j`.** Starts at 1. On a jump tick, `j` becomes 0.3 (if it was
   already below 0.3 it decreases by `0.05·dt` instead, which cannot happen in
   practice). On every other tick, if `j < 1` it increases by `1.2·dt`
@@ -673,11 +736,15 @@ below 1) and refills from 0 in 4 s once the sprint key is released.
   1. **Floor plane.** If the player was standing on something, a probe
      straight down from the start (to 0.1 × half-height below the lower of
      start and target) finds the floor. If its normal faces against the
-     move, it is the floor plane; if that floor is steep
-     (0 < n.y < 0.7071) and the move would go up it, the move is reduced to
-     its part along the slope's level direction (sideways only).
-  2. **Low path.** Slide toward the target at the current height (up to 5
-     slides, see Integration). If the low slide touched nothing, keep it. If
+     move (`move·n ≤ 0`), it is the floor plane; if that floor is steep
+     (0 < n.y < 0.7071) and the move projected onto that plane would go up
+     (`(move - n(move·n)).y > 0`), the **whole** move, vertical part
+     included, is replaced by its part along the slope's level direction
+     `n × (0, 1, 0)` normalized (sideways only). The floor plane is not
+     used for anything else: the low path is not projected onto it
+     (Corrections 13).
+  2. **Low path.** Slide toward the target at the current height (see
+     "Sliding" below). If the low slide touched nothing, keep it. If
      anything it touched during the slide is "not a step", keep it too. Not
      a step: a surface flagged not-a-step in the map, any object that uses
      player collision (moving world objects), and any character. Any other
@@ -700,6 +767,25 @@ below 1) and refills from 0 in 4 s once the sprint key is released.
      `h = (high - start)·o` with `l = max(0, (low - start)·o)`; take the high
      result when `1.01·l < h`. If both results end at the same X and Z, take
      the high one when it is not lower than the low one.
+- **Sliding** (Corrections 13). One slide sweeps the hull from its start
+  toward its target and stops at the first contact (with the 0.1 u
+  clearance). With `o` the remaining move and `n` the contact normal:
+  - first contact: if `o·n < 0`, `o ← o + 1.001·|o·n|·n` (the extra
+    0.1 % pushes the hull very slightly off the surface), then the rest of
+    `o` (scaled by the unused fraction of the sweep) is swept again;
+  - second contact with a normal not parallel to the first
+    (`|n₂·n₁| < 0.999`): the rest moves only along the crease,
+    `o ← c (o·c)` with `c = unit(n₂ × n₁)`;
+  - a second contact parallel to the first, or any third contact: stop at
+    that contact point;
+  - stop as well when the rest is shorter than 0.01 u (squared length
+    below 10⁻⁴), when the sweep's target lies behind the start along the
+    original move, or after 5 sweeps.
+  So at most two surfaces are slid along; a player pushed into a third
+  surface in the same tick stops there. A hull that starts a sweep
+  already overlapping a surface (contact at time 0 twice on the same
+  normal before moving) is moved out along that normal by a quarter of
+  the move length, up to four times, before giving up.
 - **No ground snap or downhill projection in the mover.** Nothing pulls the
   hull down onto the ground after a move. Walking downhill works through the
   integrator (acceleration pushed into the surface, see Integration) and
@@ -972,9 +1058,22 @@ test case 74).
   players. The only working pusher is sent by the server when an AI kicks
   a door open in front of its player target: at the door's position,
   radius 96, no delay, 1 s, strength 1000 (66 active ticks).
-- **Movement disallowed** (frozen, round start): horizontal velocity halved
-  each tick, upward velocity removed, acceleration cleared except gravity
-  (at most -1100 downward).
+- **Movement disallowed** (Corrections 9): while the client locks
+  movement (planting the bomb or installing a MOAB, game_modes.md; also
+  some developer camera tools), the movement keys set no flags (sprint
+  ends), but crouch and the jump key are still read, the crouch rate still
+  updates and the hull still resizes. The motion step is replaced by:
+  the stored acceleration (last tick's, gravity included) keeps only its
+  vertical part, an upward part is removed and a downward part is limited
+  to -1100; the velocity's horizontal part is halved and an upward part
+  removed (no speed clamp, no volumes, no ground check, no jump). Braking
+  (Stopping) then still runs on the halved velocity, using the on-ground
+  state and volume totals left from the last normal tick, and the
+  integrator adds gravity on top of the kept acceleration, so a player
+  locked in the air falls at 2200 u/s². A jump pressed during the lock
+  becomes a pending request (Jumping) and fires on the first unlocked tick
+  on ground. While dying, or when the game disallows player movement
+  altogether, velocity and acceleration are zeroed instead (step 7g).
 - **Hit knock-back (infection mode only)** (Open question 19). When the
   local player is an infected character and takes damage from someone not
   on their team, with ammo whose `DamageMovePenalty` `K > 0` and
@@ -993,9 +1092,11 @@ a = \hat d_{xz}\cdot K^2\,(1 - t)
 ```
 
     where `t` is the game time in seconds since the timer started (the same
-    for every tick of a frame). With crouch held the push is × 0.25 when a
-    movement key is held; with crouch held and no movement key the velocity
-    is zeroed and there is no push;
+    for every tick of a frame). With the crouch flag set (the flag, so the
+    100 ms release hold and the no-headroom hold count, and a lock-out
+    clears it) the push is × 0.25 when the moving flag is set (a movement
+    key or the jump flag); with the crouch flag set and the moving flag off
+    the velocity is zeroed and there is no push (Corrections 22);
   - a hit with no horizontal direction gives `a = 0`.
   Other characters are not affected: for a normal (non-infected) player the
   value does nothing.
@@ -1060,8 +1161,10 @@ one (80), not 0.9.
    e. compute the acceleration (base, crouch, air factor, ramp, sum, clamp,
       start rescale), then scale by the jump factor if below 1; while the
       infection-mode knock-back timer runs, replace it by the push;
-   f. if a jump is requested and allowed, set vertical velocity, start the
-      jump, set the jump factor to 0.3; otherwise recover the jump factor;
+   f. if a jump is requested (or pending) and allowed, set vertical
+      velocity, start the jump, set the jump factor to 0.3; if one is
+      requested but not allowed, keep it pending and leave the jump factor
+      alone; otherwise recover the jump factor;
    g. add volume currents to velocity; if dying or movement is blocked,
       zero velocity and acceleration.
 8. Braking when no movement keys are held (Stopping).
@@ -1080,7 +1183,11 @@ Stamina and the HUD update once per rendered frame after the ticks.
 
 - **Rising edge of moving while in the air** also uses the 500 start accel.
 - **Reversal:** pressing forward on the tick after back (or the reverse)
-  resets that axis to 500 even if both keys overlap.
+  resets that axis to 500 even if both keys overlap; holding both keeps
+  resetting it, and releasing one resets it once more (test case 80).
+- **Late jump at a ledge:** a jump pressed one tick too late at a ledge
+  does not jump in the air; it stays pending and fires by itself on the
+  landing (Jumping, "Pending request"; test case 82).
 - **Diagonal movement** is not faster: accel is capped at 3000 total and
   the speed limit applies to the horizontal magnitude.
 - **Backpedal and strafe** use their own run speeds (all 285 by default);
@@ -1167,11 +1274,297 @@ Stamina and the HUD update once per rendered frame after the ticks.
 - **Bullet impacts carry a pusher of radius 0**, which can never reach
   anyone, so bullets and explosions do not push players. Keep (do not
   invent a radius).
+- **Pending jump.** A jump that could not happen stays requested and fires
+  on the next landing, with full unramped air acceleration meanwhile
+  (Corrections 6). Keep.
+- **Partly crouched players always stand up.** The no-headroom hold only
+  tests a fully crouched hull, so releasing crouch halfway under a low
+  ceiling grows the hull into the ceiling (forced overlap) (Corrections
+  16). Keep.
+- **Bomb-plant lock stops a runner in about three ticks** (velocity halved
+  and braked each tick) and makes an airborne player fall at double
+  gravity (Corrections 9). Keep.
 - **Jump pads keep their horizontal part for one tick only.** The stance
   clamp applies from the next tick, so a pad's horizontal launch (the dam
   map's pads, whose direction points 45° down toward -Z by the rotation
   reading in world_dat.md, Open question 29) moves the player about 20 u
   on the launch tick and is then cut to the run speed. Keep.
+
+## Corrections (2026-10-19)
+
+A behaviour-by-behaviour comparison of the reference's movement (client
+movement manager, engine integrator and player mover, server player
+object) with this spec and with our implementation
+(`games/combat_arms/src/game/movement.rs`, `volumes.rs`,
+`data/movement.toml`). The reference is the truth. "Spec" means this file
+before these corrections; the body above is already fixed. Ordered by how
+much they change play. Each names the test cases that check it (new ones
+from 80 on).
+
+1. **Ladders are climbed from the ground** (implementation). Reference: on
+   every tick the hull touches a visible ladder, and on the first tick
+   after it stops touching one, the player's gravity is switched off, and
+   with gravity off the integrator skips all ground handling: no
+   push-into-surface of an upward acceleration, no ground friction, no
+   slope projection; `v ← v + a·dt`, `Δx = v·dt + a·dt²/4`, and it stops
+   only when `|v|²` and `|a|²` are both below 0.1. So a player standing at a
+   ladder's foot, looking up and holding forward, rises at once (500 u/s²
+   on tick 1). Ours: gravity is set to 0 on a ladder
+   (movement.rs:1135-1136) but the ground branches still run whenever the
+   player stands on something (movement.rs:1370-1398): the upward
+   acceleration is pushed back into the floor and friction applies, so a
+   ladder can only be entered from the air; and gravity returns on the
+   very tick the ladder is left (no one-tick delay). Matters: every ladder
+   in every map. Numbers: test cases 56 (climb from the floor: 7.5, 8.85,
+   10.2 u/s after ticks 1-3), 57, 59 (top hop: 3.675 u then 3.613125 u).
+
+2. **A volume acts when the hull box touches it** (implementation).
+   Reference: the volumes acting on movement are found by overlapping the
+   player's whole axis-aligned box (half-extents 15 × h_y × 15 around the
+   centre; touching counts) with each volume's brush. Ours: a volume acts
+   only when the hull's centre is inside (movement.rs:962-963,
+   volumes.rs:164-170). Matters: ladders (a player walking up to a ladder
+   touches it 15 u before the centre gets there; a ladder volume thinner
+   than the hull may never contain the centre), shallow water (a 20 u deep
+   pool slows the legs: case 62), jump pads, friction and gravity volumes
+   all start and stop up to 15 u (sideways) or `h_y` (vertically) early
+   or late. Also from the reference, for the same lists: the speed factor
+   and viscosity of only the **first** touched ladder count (ours
+   multiplies every ladder's factor, movement.rs:1142); braking is blocked
+   by the **sums** of current (as `current × dt`) and viscosity of the
+   visible volumes, so two opposite currents that cancel do not block it
+   (ours blocks on any non-zero one, movement.rs:1309). Test cases 62, 69,
+   92.
+
+3. **Ladder speed and controls** (implementation). Reference: on a ladder
+   there is no horizontal speed clamp at all; only the upward speed is
+   capped, at a plain 200 u/s (no penalty, no speed factor, no downward
+   cap); the crouch flag sets the vertical acceleration to -3000 (climb
+   down) and does not halve the acceleration. Ours: the horizontal speed is
+   clamped to `200 × (1 - P) × f_container` and the upward cap is applied
+   as well (movement.rs:1164, 1173-1183), and crouching on a ladder only
+   skips the halving, with no downward acceleration (movement.rs:1195,
+   1204). Matters: with the reference loadout ours caps ladder sideways
+   speed at 160 instead of none; crouch does nothing on our ladders
+   instead of sliding down at -45 u/s per tick. Test cases 56, 58, 61.
+
+4. **Free movement (swimming) follows the eye** (implementation).
+   Reference: "free movement" is the camera point being in a liquid
+   (`Water`, `FreezingWater`; `CorrosiveFluid` never, Quirks) or a ladder,
+   or the hull touching a visible ladder. In free movement: forward is the
+   camera direction with any upward part removed and renormalized (looking
+   down swims down), crouch sets the vertical acceleration to -1500 (base
+   halved), a jump from the bottom also adds +3000 upward acceleration on
+   its tick, the 0.1 in-air factor never applies, jump-pad requests are
+   dropped, and the crouch rate is held at 0. When last tick's eye volume
+   was free movement and this tick is not, the whole velocity is zeroed
+   once (after the speed clamp). Ours: none of the swim controls exist;
+   the crouch rate is held at 0 whenever the hull's **centre** is in any
+   liquid (movement.rs:965, 1063), so a player in waist-deep water cannot
+   crouch although the reference lets them; the velocity is zeroed when the
+   centre leaves a liquid (movement.rs:1125-1127), not when the eye leaves
+   a liquid or ladder. Matters: water maps (can't dive, can't sink, can't
+   crouch in shallow water, wrong stop when climbing out). Test cases 60,
+   62, 65-69.
+
+5. **Jump pads fire by themselves, along the pad's rotation**
+   (implementation). Reference: a pad whose box the hull touches requests
+   a jump whenever the player was on ground last tick and not in a jump
+   (no key needed; switched-off pads too), and the launch is
+   `Velocity × forward(Rotation)` added to the whole velocity, not scaled
+   by the jump factor. Ours: only a jump-key jump inside a pad launches,
+   and the launch is straight up (movement.rs:1279-1281,
+   volumes.rs:111-114, 198). Matters: on the jump-pad maps, walking onto a
+   pad must throw the player; ours needs a key press and ignores the
+   pad's direction. Test cases 70, 71.
+
+6. **A jump request stays pending** (spec gap and implementation).
+   Reference: the jump request set on the jump flag's rising edge is a
+   remembered state. It is cleared only by a jump that happens, by any tick
+   of free movement and on entering a world. If at the motion step the
+   player is not on ground (or is on a ladder, or dead), nothing happens
+   and the request stays. While pending: the acceleration ramp is skipped
+   every tick (each axis gets the base 3000, no 500 start, no ramp, `L_f`
+   and `L_r` untouched; not in a jump, so no 0.1 factor), the jump factor
+   does not recover, and the jump fires by itself on the first tick the
+   player is on ground again. Because the jump flag reads the on-ground
+   state one tick older than the motion step, pressing jump on the tick
+   after the move that carried the hull off a ledge creates exactly this.
+   Ours: the request is a one-tick event (movement.rs:1052, 1277); a late
+   press is lost. Matters: edge jumps a tick late turn into an automatic
+   hop on landing in the reference, with strong air control during the
+   fall; a jump pressed while planting fires when the plant is cancelled
+   (Correction 9). Test case 82.
+
+7. **Opposing keys and reversals reset the ramp every tick** (spec and
+   implementation). Reference: the forward axis is reset to 500 whenever
+   forward is held now and back was held last tick, or back now and
+   forward last tick, regardless of the other key; the strafe axis the
+   same with left and right. Holding both keys therefore resets the axis
+   on every tick, and releasing one of them resets it once more. Spec: said
+   `L_f` keeps ramping to 3000 while both are held (Acceleration; case 51).
+   Ours: a reversal needs the newly held key to have been up last tick
+   (movement.rs:1220, 1229), so holding both keeps ramping and releasing
+   back while holding forward goes straight on at 3000. Matters: after a
+   forward+back hold (a common stop-and-go habit) the reference restarts
+   slowly (500, 590, 680 u/s²), ours at 3000: 36 u/s more speed on the
+   first tick. Test cases 51 (corrected), 80.
+
+8. **The crouch "press" is the crouch flag, holds included** (spec
+   ambiguous, implementation). Reference: the press time for the 100 ms
+   release hold is set only when the crouch flag turns on after being off
+   last tick; the crouch-spam "key press" is the crouch flag (after the
+   100 ms hold and the no-headroom hold, before the lock-out clears it)
+   turning on. So a release and re-press inside the 100 ms hold is one
+   press, and it does not extend the hold. Ours: the raw key is used for
+   both (movement.rs:973-988, 1096), so fast taps are charged twice and the
+   hold restarts. Matters: crouch spam: ours locks out sooner (two quick
+   taps cost 0.8 of the lock-out gauge instead of 0.4, and 1.0 of the
+   slowdown gauge instead of 0.5). Test case 85.
+
+9. **Movement disallowed (bomb plant)** (spec incomplete, implementation).
+   Reference: while the client locks movement (planting the bomb,
+   installing a MOAB): no movement-key flags; crouch, crouch rate, hull
+   resize and the jump key still run; the motion step is replaced by
+   "horizontal velocity halved, upward velocity removed, stored
+   acceleration reduced to its vertical part with any upward part removed
+   and a downward part limited to -1100"; braking still runs afterwards
+   (using the last normal tick's on-ground state and volume totals); the
+   integrator then adds gravity on top, so airborne the fall is 2200 u/s².
+   A jump pressed during the lock stays pending (Correction 6). Spec: only
+   the halving, and named it for freezes and round start. Ours: not
+   modelled (movement.rs:88); the round-setup freeze masks the movement
+   keys (rules `frozen_intent`), which leaves normal braking. Matters: a
+   runner who starts a plant is at rest from the third tick after
+   1.73 u in the reference, after 6 ticks and 9.4 u with braking alone
+   (case 9). Test case 88.
+
+10. **Viscosity is skipped for the whole jump** (implementation).
+    Reference: a volume's viscosity is neither applied nor added to the
+    braking total on any tick the player is in a jump (from the tick after
+    the jump tick through the landing tick), except on a ladder; it acts
+    only when the speed is above 1 u/s. Ours: skipped only on the tick
+    after the jump tick (movement.rs:1128-1134), and applied at any speed
+    (a speed below 1 u/s is zeroed). Matters: jumping out of water or
+    viscous volumes: in ours the jump is slowed from its second tick (a
+    330 jump in stock water loses 7.5 u/s per tick) and is much lower.
+    Test case 64.
+
+11. **Ground friction from volumes** (implementation). Reference: `k = 5 ×
+    min(1, Friction)` over every touched volume except `Filter`,
+    `SafteyNet` and jump pads, **hidden ones included**; `k = 0` uses the
+    frictionless formulas, with the quarter-step displacement
+    `v·dt + a·dt²/4`. Ours: hidden volumes are left out (they are not
+    "contained", volumes.rs:166), `Filter` counts (movement.rs:1403), and
+    `k = 0` uses `a·dt²/2` (movement.rs:1410-1412). Matters: ice and
+    freezing-water floors (switched-off ice still slippery in the
+    reference); per-tick distance on ice 4.44375 u vs ours 4.6125 u at a
+    steady run (`P` = 0). Test cases 72, 73.
+
+12. **Pushers last and cap hard** (implementation). Reference: a pusher
+    has a start delay and a duration; it pushes on every tick while active
+    (`strength·(1 - d/radius)` from the pusher to the hull centre, a tenth
+    when standing on nothing), and after each push an upward speed above
+    100 is set to 100 even if it was already above. Ours: a pusher pushes
+    once at its time and the cap only limits the part the push added
+    (movement.rs:1328-1356). Matters only for the AI door kick (radius 96,
+    1 s, 1000), the only working pusher. Test case 77.
+
+13. **Sliding: two planes at most, no floor projection** (spec and
+    implementation). Reference: the mover slides along the first surface
+    with a 1.001 deflection, along the crease of the first two
+    non-parallel surfaces, and stops at a third contact (or a second one
+    parallel to the first); the floor plane is not used to steer the low
+    path; and on a steep floor a move whose on-plane projection goes up
+    is replaced, vertical part included, by its part along the slope's
+    level direction. Spec: said "up to 5 planes" and left the floor plane's
+    use open. Ours: avian projection over up to 5 planes
+    (movement.rs:689-715), the low path projected onto the floor plane
+    (movement.rs:800-803), and the steep-slope cut keeps the vertical part
+    and uses the horizontal normal (movement.rs:787-796). Matters: corners
+    and wedges (the reference stops dead where ours keeps sliding),
+    behaviour on ramps and steep slopes. Test cases 87, 94.
+
+14. **Braking keeps the vertical speed** (spec and implementation).
+    Reference: when braking takes the horizontal speed to zero or past it,
+    only the horizontal part is zeroed; the vertical speed is kept. The
+    whole velocity is zeroed only when the horizontal speed is already 5
+    or less. Spec and ours (movement.rs:1314-1316): the whole velocity.
+    Matters little: on flat ground the vertical speed is zeroed by the
+    blocked-move rule anyway; on a downhill slope the player keeps sinking
+    onto it. Test case 81.
+
+15. **The 500 start keeps the unramped forward direction** (spec gap,
+    implementation). Reference: on the tick the moving flag turns on, the
+    forward axis is not ramped and keeps the base magnitude `A` (3000; 300
+    in a jump; 1500 crouched never reaches here), the strafe axis is
+    ramped (590), the sum is clamped to 3000 and then rescaled to 500. So
+    a diagonal start is mostly forward on the ground and mostly sideways in
+    a jump. Ours: the forward axis uses 500 (movement.rs:1224), giving a
+    different direction. Matters: one tick of direction (a few u/s);
+    visible in air strafing starts. Test case 83.
+
+16. **The no-headroom hold only tests a fully crouched hull** (spec and
+    implementation). Reference: when crouch is released, the "can stand
+    up" test returns yes at once if the hull is taller than the crouch box
+    (`r < 1`); only a fully crouched hull is test-resized to standing
+    size. Ours: tests the standing hull at any crouch rate
+    (movement.rs:986), and also while the flag was already off. Matters:
+    releasing crouch halfway under a low ceiling stands up into the
+    ceiling (forced overlap) in the reference. Test case 86.
+
+17. **Stuck-at-wall uses the movement's on-ground flag** (spec ambiguous,
+    implementation). Reference: the horizontal velocity is zeroed after a
+    fully blocked move with both horizontal components above 0.01 when the
+    movement's "on ground" flag of this tick (set before the move) is
+    false. Ours: tests that nothing is stood on after the move
+    (movement.rs:1425). Matters: a player in a jump wedged on a ledge, on
+    a steep slope or on another player's head keeps its horizontal speed
+    in ours. Test case 89.
+
+18. **"On ground" uses 0.707** (spec and implementation). Reference: the
+    movement's on-ground flag (jump allowed, braking, landing) needs a
+    normal with `n.y ≥ 0.707`; the integrator and the mover use 0.7071.
+    Ours: 0.7071 everywhere (data/movement.toml:68, movement.rs:1149).
+    Matters only for surfaces between 45.0° and 45.004°. Test case 90.
+
+19. **Standing on a model is flat for the integrator** (spec gap,
+    implementation). Reference: the integrator uses the stood-on world
+    polygon's plane; standing on a model (another character, a prop
+    model) it uses (0, 1, 0): never steep, ground friction applies (the
+    movement still does not count it as ground: no jump, no braking).
+    Ours: the normal of the probe's contact (movement.rs:1372, 1384), so a
+    rounded or tilted model can make the player slide. Test case 93.
+
+20. **Client authority with server collision** (spec gap; ours differs by
+    design). Reference: only the client runs these rules; the server moves
+    its copy by the client's per-tick displacement through its own
+    collision and snaps to the client's position within tolerance; the
+    server's own stamina gauge (record durations clamped to 100 ms) decides
+    when sprint ends; fall damage is judged on the server from positions.
+    Ours: the server re-runs the full movement from inputs and the client
+    predicts (net.rs:16). Keep ours, but the sprint end must still come
+    from a gauge advanced per tick with at most 100 ms per step, and a
+    client's sprint speed must drop when the authority ends sprint. Test
+    case 91.
+
+21. **Mode speed factors** (spec gap). Reference: after the penalty factor
+    the limit is scaled by a mutation-item buff or nerf and, for humans in
+    the infection mode when the infected side has an infected mercenary,
+    that perk's speed rate (stamina capacity likewise). 1 outside those
+    modes. Ours: none. Values belong to the game-mode specs.
+
+22. **Knock-back reads the crouch and moving flags** (spec and
+    implementation). Reference: the crouched knock-back variants use the
+    crouch **flag** and the **moving** flag (movement keys or the jump
+    flag). Spec said "crouch held" and "a movement key"; ours uses the raw
+    crouch key and the four movement keys (movement.rs:1265-1266). Matters
+    in the infection mode only: a crouch tap held on by the 100 ms hold
+    still quarters the push in the reference.
+
+Follow-up brief (movement in volumes), questions 1-10: re-checked against
+the reference; the answers in Open questions 10 and 20-28 stand. What our
+implementation still lacks for them is Corrections 1-5 and 10-12.
 
 ## Test cases
 
@@ -1363,7 +1756,8 @@ Numbers rounded to 4 decimals where not exact.
 51. **Opposing keys from a run.** Steady run (end speed 307.7608), then hold
     forward + back. Tick 1: clamped to 285, end speed 264.4069, distance
     4.11862 u; tick 2: 245.3018; tick 3: 227.5771 (friction only, no
-    braking). `L_f` keeps ramping: 3000 throughout.
+    braking). *Corrected (Corrections 7):* `L_f` is reset to 500 on each of
+    these ticks, not kept ramping at 3000 (test case 80).
 52. **Eye height.** Fallback boxes, on the ground, feet at y = 0: standing
     eye at 83.0; fully crouched 60.0; at `r = 0.5`, 71.5. Case 40's ticks
     1–5 give eye heights 77.0288, 72.3462, 68.7732, 66.1310, 64.2408.
@@ -1493,6 +1887,110 @@ hull is the fallback box; "at full ramp" means `L_f` = 3000.
 79. **Safety net physics.** Walking into a `SafteyNet` volume (stored
     `Friction` 0): speed limit, friction (`k` = 5), braking and steady
     distances exactly as without it (case 4).
+
+Correction cases (80-94), same conventions; "Corr. n" is the entry in
+Corrections (2026-10-19) each one checks.
+
+80. **Opposing keys, then release back** (Corr. 7). Steady forward run
+    (end speed 307.7608, `L_f` 3000). Ticks 1-3: forward and back held:
+    end speeds 264.4069, 245.3018, 227.5771 (distance 4.11862, 3.82102,
+    3.54493 u), forward-axis acceleration 0, `L_f` = 500 after each tick.
+    Tick 4: forward only: acceleration 500 (back was held last tick), end
+    speed 218.3588, distance 3.34366 u; tick 5: 590, 211.1073 (3.22032 u);
+    tick 6: 680, 205.6803 (3.12540 u). (Ramping on through the hold would
+    give 3000 and 254.4871 on tick 4: wrong.) The same with left and right
+    on the strafe axis.
+81. **Braking keeps the vertical speed** (Corr. 14). On walkable ground,
+    not in a jump, no keys, no volumes, `K` = 285. Velocity entering
+    braking (20, -11.547, 0): after braking (0, -11.547, 0). (60, -11.547,
+    0): (17.25, -11.547, 0). (4, -11.547, 0): (0, 0, 0). On flat ground the
+    end-of-tick result is the same as zeroing everything (the blocked
+    downward move zeroes `v_y`), so check the braking step itself.
+82. **Pending jump** (Corr. 6). In the air after walking off a 100 u
+    ledge (not in a jump, `j` = 1, horizontal speed 0, forward held), with a
+    jump request pending (the key was pressed on the tick after the move
+    that left the ledge). No jump in the air. Horizontal acceleration 3000
+    on every pending tick (no 500 start, no ramp, no 0.1 factor): speed 45,
+    90, 135 u/s and total horizontal distance 0.16875, 1.0125, 2.53125 u
+    after pending ticks 1-3 (the 285 clamp applies as usual later).
+    Vertical motion as case 18. On the tick the landing is detected the
+    jump fires without the key: `v_y` = 330, in a jump, `j` → 0.3. With
+    `j` = 0.6 when the request became pending: the acceleration is
+    1800 u/s², `j` stays 0.6 on every pending tick (no recovery), and the
+    landing jump is 198 u/s. A request made while in free movement is
+    dropped on that tick.
+83. **Start direction** (Corr. 15). At rest on the ground, forward and
+    right pressed on tick 1: acceleration 490.6023 forward and 96.4851
+    right (|a| = 500), end speeds 7.0897 forward, 1.3943 right. Tick 2:
+    forward 590 (not ramped on tick 1, `L_f` = 500), right 680. In a jump,
+    keys up since the jump tick, forward and right pressed on tick 5 after
+    the jump (`j` = 0.372): before `j`, 226.6233 forward and 445.6926 right
+    (`500 × (300, 590)/|(300, 590)|`); after `j`, 84.3039 and 165.7976.
+84. **Jump pressed during a plant** (Corr. 6, 9). On flat ground at rest,
+    movement locked from tick 1; jump pressed on tick 3 and released on
+    tick 4; lock ends at tick 10. No jump on ticks 3-9; on tick 10 the
+    jump fires (`v_y` = 330, in a jump) without the key held.
+85. **Crouch taps inside the release hold** (Corr. 8). Shipped crouch-spam
+    config, running (not still), on ground; tick `n` at wall time `15n`
+    ms. Crouch key down on tick 1, up on tick 2, down on tick 3, up from
+    tick 4. Crouch flag: on for ticks 1-7 (one press, at 15 ms), off from
+    tick 8 (120 ms). Lock-out value after ticks 1, 2, 3: 0.6, 0.61, 0.62;
+    slowdown value 0.5 after each of them (no refill while the rate
+    moves). Wrong (raw key): a second charge on tick 3 (lock-out 0.21,
+    slowdown 0) and the flag held until tick 10.
+86. **Standing up halfway under a low ceiling** (Corr. 16). Fallback boxes,
+    standing still on a floor with a ceiling 95 u above it (no room for the
+    100 u standing hull, room for the 80 u crouched one). Crouch key down
+    on tick 1 only (wall 15 ms): the flag is held by the 100 ms hold
+    through tick 7 (rate 0.913022, half-height 40.87698). Tick 8: the flag
+    clears, because the hull is taller than the crouch box (the standing
+    fit is not tested). Rates after ticks 8-11: 0.653407, 0.449814,
+    0.294467, 0.179589; half-heights 43.46593, 45.50186, 47.05533,
+    48.20411; on tick 11 the wanted 96.41 u hull does not fit and is forced,
+    overlapping the ceiling. Holding crouch until `r` = 1 and then
+    releasing: the flag stays on (no room), as before.
+87. **Slide deflection and the third contact** (Corr. 13). Hull resting
+    0.1 u from a flat wall with normal (0, 0, -1); displacement
+    (3.14510, 0, 3.14510) into it: end displacement (3.14510, 0, -0.00315)
+    (along the wall, 0.1 % pushed off it). Into a 90° corner of two walls:
+    the second contact leaves only the crease (vertical), so a horizontal
+    move stops at the corner. A move whose remainder meets a third surface
+    in the same tick stops at that contact point (no further sliding).
+88. **Movement locked while running** (Corr. 9). Steady run (end speed
+    307.7608), the lock starts on tick 1, no keys, no volumes, on flat
+    ground: speed after halving and braking, then friction: tick 1: 153.88
+    halved, 111.13 braked, end 103.1005, distance 1.60598 u; tick 2: end
+    8.1644, distance 0.12718 u; tick 3: 4.08 halved, 5 or less, all zero.
+    Locked in the air at rest: vertical speed -33, -66, -99 and fallen
+    0.12375, 0.7425, 1.85625 u after ticks 1-3 (2200 u/s²). The crouch
+    rate still follows the crouch key while locked.
+89. **Stuck at a wall in a jump** (Corr. 17). In a jump, the attempted
+    move (2, -1, 2) is completely blocked (position unchanged) while the
+    hull stands on a ledge after it: horizontal velocity set to 0. The same
+    blocked move on walkable ground, not in a jump: horizontal velocity
+    kept (the vertical rule applies instead).
+90. **The 0.707 on-ground threshold** (Corr. 18). Ground with normal.y
+    0.70705: the movement counts the player on ground (a jump starts,
+    braking runs, a landing ends a jump), while the integrator treats it as
+    steep (acceleration projected along the slope, no friction). With
+    normal.y 0.70695 it is steep for both (no jump, no braking).
+91. **Server stamina steps** (Corr. 20). Server gauge 100, records of
+    250 ms each: sprinting drains 3.0 per record (100 ms × 30/s), not 7.5;
+    a refill record adds 2.5. When the server's gauge reaches 0 it ends
+    sprint, and from the client's next tick its limit is the run speed even
+    if the client's own gauge still reads 1 or more.
+92. **Ladder by the box** (Corr. 2). A ladder volume spanning x from 0 to
+    10 (and the player's height range); hull centre at x = -10 (box edge
+    at x = 5): on a ladder (gravity off, case 56's climb applies). Centre at
+    x = -15.5 (box edge at -0.5): not on a ladder.
+93. **Standing on another player** (Corr. 19). Resting on another
+    character's head, horizontal velocity (100, 0, 0), no keys: not on
+    ground (no braking, the jump key does nothing), but ground friction
+    applies with a flat normal: end speed 92.7743 u/s, distance 1.44513 u.
+94. **Up a steep slope** (Corr. 13). Standing on a steep slope with normal
+    (0.8, 0.6, 0) (up-hill is -X), displacement (-1, -0.5, 0.3): replaced
+    by (0, 0, 0.3) before sliding (vertical part dropped). Displacement
+    (1, -0.5, 0.3) (down-hill, `move·n` > 0): not changed.
 
 ## Open questions
 
@@ -1655,6 +2153,9 @@ hull is the fallback box; "at full ramp" means `L_f` = 3000.
     when the eye was in the ladder (or a liquid) on the previous tick and
     nothing gives free movement now (case 60). Applies in Volumes,
     "Ladders", and Integration; test cases 56–61.
+    Re-checked against the reference (2026-10-19): confirmed. The
+    implementation still runs the ground rules with gravity 0 on a ladder
+    (Corrections 1, 3).
 21. **Container membership.** Is a player "in" a volume when the hull's
     centre is inside, or when the hull touches it?
     **Answered:** for movement (ladder, viscosity, current, speed factor,
@@ -1691,6 +2192,11 @@ hull is the fallback box; "at full ramp" means `L_f` = 3000.
     classes plus `Ladder`, by the eye point (or the hull touching a
     ladder); `CorrosiveFluid` never counts (quirk). Applies in Volumes,
     "Liquids and swimming"; test cases 62 and 65–69.
+    Re-checked against the reference (2026-10-19): confirmed, including
+    no drowning or breath (no air timer or drowning damage exists in the
+    movement, the player object or the HUD). The implementation has none of
+    the swim controls yet and tests free movement by the hull centre
+    (Corrections 4).
 25. **Ladder speed.** Is the 200 limit scaled by the penalty and the speed
     factors like the other limits?
     **Answered:** no. On a ladder the horizontal speed is not limited at
