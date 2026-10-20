@@ -1241,7 +1241,13 @@ DEU, ITA, POL, ARB, SCN) picks one. To see a bot from another player's
 view, run the game live and use the remote console: `ca_bot_add alpha`,
 then `world.query` the `Transform` of entities with `Intent` and `Name`
 for the bot, `setpos`/`setang` beside it (Source-style inches, z up)
-and `screenshot <file.png>`.
+and `screenshot <file.png>`. When a spot hurts or kills (a playtest's
+`setpos` line: the feet, in inches as CS:S's, not Combat Arms units),
+`ca_volumes_here [radius u]` lists the map's volumes at the player's
+centre or within the radius: name, class, bounds (Combat Arms units,
+engine axes), damage per second, pending time, hidden, and `INSIDE`
+for the ones the player is in (`heavy::junk_flea2` is such a spot as a
+test).
 
 Combat Arms' dedicated server: `cargo run --features dev --bin
 combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM

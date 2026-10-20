@@ -74,7 +74,11 @@
 //!   Chimera's `SeeThrough` (bots see through them, bots.md 5.2).
 //! - Volumes (`volumes`): `Water`, `EndlessFall` and the other volume
 //!   classes go to the map's entities (class, properties, the world
-//!   model's faces as one hull) for `volumes::CaVolume`.
+//!   model's faces as one hull) for `volumes::CaVolume`; one the map's
+//!   start-up commands switch off (`StartupCommand`'s `Command`: `msg
+//!   <name> off`, run as the map starts) is hidden, as JUNK_FLEA2's
+//!   `Box_Kill01`, a kill volume its scripts switch on for half a
+//!   second when a trigger drops something there.
 //! - AI objects (`objects`): the AI volumes, nodes and regions as map
 //!   entities, every property as text, for the bots (`bots::map_ai`).
 //! - Mode objects (`objects` too): every `GameStartPoint` (with its feet
@@ -1001,9 +1005,20 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
 
 /// The volume objects (`volumes::is_volume`) as map entities: their class
 /// and properties (engine axes: `Current` with Z mirrored; a jump
-/// volume's `Velocity` is a number) and their world
-/// model's faces as one hull (planes facing out), in entity space.
+/// volume's `Velocity` is a number; `Hidden` as the map's start-up
+/// commands leave it: `StartupCommand`'s `msg <name> off`) and their
+/// world model's faces as one hull (planes facing out), in entity space.
 fn volumes(world: &World, map: &mut MapData, scale: f32) {
+    // What the map's start-up commands switch on or off at once (a
+    // volume's `Hidden` is switched by `ON` / `OFF`).
+    let switched: HashMap<String, bool> = world
+        .objects
+        .iter()
+        .filter(|o| o.class == "StartupCommand")
+        .filter_map(|o| o.string("Command"))
+        .flat_map(super::volumes::startup_switches)
+        .map(|(n, on)| (n.to_ascii_lowercase(), on))
+        .collect();
     let mut any = false;
     for o in &world.objects {
         if !super::volumes::is_volume(&o.class) {
@@ -1043,7 +1058,12 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
                 keyvalues.push((key.into(), format!("{x} {y} {z}")));
             }
         }
-        if let Some(h) = o.bool("Hidden") {
+        let hidden = o
+            .name()
+            .and_then(|n| switched.get(&n.to_ascii_lowercase()))
+            .map(|on| !on)
+            .or_else(|| o.bool("Hidden"));
+        if let Some(h) = hidden {
             keyvalues.push(("Hidden".into(), (h as u8).to_string()));
         }
         map.entities.push(MapEntity {
