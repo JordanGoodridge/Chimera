@@ -56,6 +56,8 @@
 //! - `chat`: radio and chat: the radio menus and calls, chat channels,
 //!   text commands, filter, muting, spam limits and voice channels
 //!   (radio_chat.md).
+//! - `music`: the menu playlist, the cues of a match, map music triggers,
+//!   ambient map sounds and the two volume channels (music_ambience.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -71,6 +73,7 @@ pub mod grenades;
 pub mod hud;
 pub mod inventory;
 pub mod model;
+pub mod music;
 pub mod mount;
 pub mod movement;
 pub mod net;
@@ -219,6 +222,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(rules::CaRulesPlugin)
             .add(death_cam::CaDeathCamPlugin)
             .add(chat::CaChatPlugin)
+            .add(music::CaMusicPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
             .add(net::CaNetPlugin)

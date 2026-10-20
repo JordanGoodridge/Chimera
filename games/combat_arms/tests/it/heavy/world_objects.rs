@@ -114,7 +114,7 @@ impl T {
         self.w.objects[self.id(name) as usize].awm().unwrap().angles
     }
     fn on(&self, name: &str) -> bool {
-        matches!(self.w.objects[self.id(name) as usize].kind, Kind::Switchable { on: true })
+        matches!(self.w.objects[self.id(name) as usize].kind, Kind::Switchable { on: true, .. })
     }
 }
 

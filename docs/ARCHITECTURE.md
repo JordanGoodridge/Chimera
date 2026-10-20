@@ -32,7 +32,7 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
 chimera_present (chimera/present/)   render, audio, MapPlugin
   |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, spawning; SimBasePlugins
   |    |
-chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; greybox, harness::Sim
+chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
@@ -349,6 +349,7 @@ that the paths exist).
 - `chimera/core/src/character.rs`: `character_bundle`, `spawn_character`, capsule size (character)
 - `chimera/sim/src/movement/`: `placeholder` (stand-in walking) and `noclip` movement implementations (movement)
 - `chimera/world/src/greybox.rs`: a map slot built in code: ramps, crates, a ladder, a water tank (greybox)
+- `chimera/world/src/music.rs`: `MusicPlayer`: two stream slots, linear fade-in and cross-fade on a wall clock, pure state (map)
 - `chimera/core/src/mount/`: the VFS and KeyValues (re-exported from `source_formats`), `chimera.local.toml`, finding game installs (mount)
 - `chimera/core/src/game_registry.rs`: `GameInfo` (what a game tells the shell), `Games`, `RegisterGame`; the default game (game_registry)
 - `chimera/core/src/metrics/`: load-independent performance metrics: per-thread CPU time, hardware counters, distributions, tick metrics (metrics)
@@ -532,6 +533,9 @@ that the paths exist).
 - `games/combat_arms/src/game/death_cam/`: the pull-back and orbit maths, the phase machine with targets and keys, the death screen's values and tips (games)
 - `games/combat_arms/src/game/chat.rs`: Combat Arms' radio and chat: the server's limiter and relay, the receiving client, the keys' commands (games)
 - `games/combat_arms/src/game/chat/`: text commands, filter, block list, spam limits, radio file, line colours, the sender's state machine, voice (games)
+- `games/combat_arms/src/game/music/`: Combat Arms' menu playlist, match music cues, map music triggers, ambient sounds, volumes (games)
+- `games/combat_arms/data/music.toml`: Combat Arms' music files, playlist, cues and mode start tracks (inferred values) (games)
+- `games/combat_arms/src/ui/music.rs`: plays Combat Arms' music and ambient sounds; finds the install's BGM files (games_ui)
 - `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, bomb, mercenaries, each mode (games)
 - `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
 - `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)

@@ -556,12 +556,12 @@ pub fn voice_key(world: &mut World, down: bool) {
 
 /// A reader of chat: where its messages go and which character it is.
 #[derive(Clone, Copy)]
-enum Target {
+pub(crate) enum Target {
     Local,
     Client(ClientId),
 }
 
-fn send<M: Message>(world: &mut World, to: Target, message: M)
+pub(crate) fn send<M: Message>(world: &mut World, to: Target, message: M)
 where
     ToClients<M>: Message,
 {
@@ -580,7 +580,7 @@ where
 
 /// Everyone who reads chat on this machine, with their characters: a
 /// game of one has its player; a server its remote players and its host.
-fn readers(world: &mut World) -> Vec<(Target, Entity)> {
+pub(crate) fn readers(world: &mut World) -> Vec<(Target, Entity)> {
     if world.get_resource::<NetRole>().is_none_or(|r| *r == NetRole::Standalone) {
         return local_player(world).map(|e| (Target::Local, e)).into_iter().collect();
     }

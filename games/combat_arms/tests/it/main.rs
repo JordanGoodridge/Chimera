@@ -30,6 +30,7 @@ mod model;
 mod movement;
 mod movement_corrections;
 mod movement_volumes;
+mod music_ambience;
 mod net;
 mod net_modes;
 mod net_modes_2;
@@ -59,6 +60,7 @@ mod heavy {
     mod junk_flea2;
     mod map_load;
     mod modes_part_two;
+    mod music_ambience;
     mod model;
     mod movement_volumes;
     mod mount;

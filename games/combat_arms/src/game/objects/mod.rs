@@ -98,6 +98,7 @@ pub const LOGIC_CLASSES: &[&str] = &[
     "KeyFramer",
     "Explosion",
     "SoundFX",
+    "BGMTrigger",
     "SpecialFX",
     "LightGroup",
     "Camera",
@@ -726,6 +727,10 @@ fn effect(world: &mut World, f: Fx, scale: f32) {
                 channel: None,
                 server: true,
             });
+        }
+        Fx::Music { id, on } => {
+            let props = world.resource::<CaObjects>().world.objects[id as usize].props.clone();
+            super::music::trigger::on_message(world, id, on, &props);
         }
         Fx::Carry { who, delta } => {
             let Some(e) = CaObjects::entity(who) else { return };
