@@ -37,6 +37,7 @@ mod skeleton;
 mod view_model;
 mod vip_escort;
 mod weapon_classes;
+mod weapon_corrections;
 mod weapon_firing;
 mod world;
 

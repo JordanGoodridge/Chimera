@@ -21,27 +21,48 @@
 //!
 //! - `combat_arms:damage` (`CaDamage`): delivery and damage. Each pellet
 //!   draws its own uniform square offset (`square_dir`) of the cone the
-//!   spread meters give before this tick's sub-steps, then walks the ray
-//!   (`deliver`): characters by their hit spheres (`HitSpheres`: the box
-//!   widened 2x on X and Z, hit only when the ray passes a sphere; the
-//!   sphere with the smallest |p|^2 - r^2 wins, `pick_sphere`), walls by
-//!   their surface (`CaSurfaces`, data/surfaces.toml: passed when no
-//!   thicker than its limit, the range and damage dampened and the
-//!   direction re-perturbed), live grenades by their boxes (the round
-//!   stops there; its banded damage comes off the grenade's hit points,
-//!   grenades.md 13), at most 3 segments. Damage
-//!   (`base_damage`, `armour_and_zone`): `InstDamage` x a uniform roll of
-//!   +-`DamageRFacter` x 1.3 from behind (`is_behind`, the first,
-//!   "client-reported" victim only) x the stepped range band
-//!   (`band_scale`; beyond the last band: 1) x penetration dampening, then
-//!   armour (`CaArmor`: gear protection by damage type and location, the
-//!   groin unprotected but on an infected victim, armour points) and the
-//!   sphere's zone factor; the victim dies at 1 HP or less. A second
-//!   victim behind the first takes the first's damage banded again at the
-//!   first hit's distance. The server spacing `fireDelay` drops a round
-//!   less than its whole milliseconds after the last one that passed
-//!   (spent all the same). An infected victim (`movement::CaInfected`) of
-//!   the other team gets the ammo's knock-back (`movement::HitKnockback`).
+//!   spread meters give before this tick's sub-steps. The shooter's test
+//!   (`client_test`): characters by their hit spheres (`HitSpheres`: the
+//!   box widened 2x on X and Z, hit only when the whole segment passes a
+//!   sphere; the sphere with the smallest |p|^2 - r^2 wins,
+//!   `pick_sphere`), never through anything; the plain box decides what
+//!   is reported (the widened box's entry, or, on a near miss, the thing
+//!   behind whose plane the victim stands: Corrections 8). The server's
+//!   own walk (`server_walk`, Corrections 4, 5, 9): from the fire position,
+//!   at most 4 intersections (surfaces, objects, the reported victim's
+//!   box, which it skips), walls passed by their surface (`CaSurfaces`,
+//!   data/surfaces.toml: the back-cast from the limit + 1 unit, the restart
+//!   at the exit or the entry by the surface, the range left from the fire
+//!   position, the damage dampened, a whole-thousandth re-perturb on a
+//!   look rotation with world up, `reperturb`), live grenades by their
+//!   boxes (the round stops there; its banded damage comes off the
+//!   grenade's hit points, grenades.md 13), and ends at the first character
+//!   it damages: hit on its plain box, in the sphere of the highest
+//!   `Node#Priority` within its radius of the line (`priority_sphere`), or
+//!   passed 5 units on. Damage (`base_damage`, `armour_and_zone`):
+//!   `InstDamage` x a uniform roll of +-`DamageRFacter` x 1.3 from behind
+//!   (`is_behind` on the victim's body yaw, `body_yaw`: Corrections 6; the
+//!   reported victim only) x the stepped range band at the reported point
+//!   (`band_scale`; beyond the last band: 1) x penetration dampening, an
+//!   AI's x `AIDamageFactor` (`CaAiDamage`, `AiHits`), then armour
+//!   (`CaArmor`: gear protection by damage type and location, the groin
+//!   unprotected but on an infected victim, armour points) and the
+//!   sphere's zone factor, an AI's hit on a player capped (50; 990 at
+//!   1000 or more; not melee: Corrections 7); the victim dies at 1 HP or
+//!   less. A victim the server's walk finds takes the reported hit's damage
+//!   banded again at the reported distance (a second victim), or base x
+//!   roll x the band twice (a wall-bang), with no behind bonus. The server
+//!   spacing `fireDelay` (`spacing`, Corrections 3) checks a shot's last
+//!   ray only, every earlier ray stamping the clock: a multi-ray shot loses
+//!   its last ray when it is above 0 (spent all the same). The rays: the
+//!   client sends n + floor(n v) by the magazine part's
+//!   `VectorsPerRoundPer`, the server expects the muzzle part's; different
+//!   counts and the whole shot does nothing (attachments.md Corrections 1).
+//!   A shot inside the server's reload window (`server_reload_mark`: the
+//!   third-person reload / (min(rate, 2) x (2 - `ReloadCheckTime`)),
+//!   `CaServerSettings`) is dropped. An infected victim
+//!   (`movement::CaInfected`) of the other team gets the ammo's knock-back
+//!   (`movement::HitKnockback`).
 //! - `combat_arms:spread` (`CaSpread`): the firing and movement meters on
 //!   fixed 1/80 s sub-steps (an exact accumulator keeping the remainder,
 //!   Q2's recommendation; `SpreadOptions::quantised` discards it as the
@@ -55,8 +76,11 @@
 //!   burst values.
 //! - `combat_arms:recoil` (`CaRecoil`): the view kick on the owner's
 //!   `ViewPunch` (its pitch twice the accumulator, Q4), the side wag with
-//!   its 50 % flips, and the return each tick before the frame, at the
-//!   waiting rate for `JitterDecDelay` after a kick.
+//!   its 50 % flips, and the return each tick after the frame (so a shot
+//!   leaves before this tick's return: Corrections 11), at the waiting rate
+//!   for `JitterDecDelay` after a kick, against the burst cap in burst
+//!   mode. The state is the player's (`CaKick`: Corrections 1), read with
+//!   the weapon in hand's data (the record defaults when it has none).
 //! - `combat_arms:handling` (`CaHandling`): the held weapon's
 //!   `MovePenalty`, set on its carrier as the movement's `HeldMovePenalty`
 //!   when it is drawn (in the predicted tick, `core::Predict::Select`).
@@ -77,18 +101,20 @@
 //! limits truncated after multiplying by the dynamic factor (a 32-bit
 //! value, the products in double precision), the cone truncated again.
 //!
-//! A network client predicts `CaSpread`, `CaRecoil`, `CaZoom` and `CaSpin`
-//! with the weapon (`weapon::NetPart`: the server's state goes with its
-//! player's; `game::net`).
+//! A network client predicts `CaSpread`, `CaZoom` and `CaSpin` with the
+//! weapon (`weapon::NetPart`: the server's state goes with its player's) and
+//! `CaKick` with the player (`game::net`).
 //!
 //! The data's `combat_arms:inventory` table (sprint-out time) is
 //! `inventory`'s hook.
 //!
-//! Per tick (the spec's "Per-tick order"): before the frame, the recoil
-//! returns and the cone is set from the meters; the frame fires; after
-//! it, each round is delivered with that cone, then the spread sub-steps
-//! run (the first one a firing one when a round left), then each round
-//! kicks the view. Every character gets the default armour
+//! Per tick (the spec's "Per-tick order"): before the frame, the cone is
+//! set from the meters; the frame fires (its first round of a pull
+//! `Trigger::latency` updates after the one that entered the firing
+//! state, the data's 3, 2 on a primary shotgun: Corrections 10); after
+//! it, each round is delivered with that cone, the recoil returns, the
+//! spread sub-steps run (the first one a firing one when a round left),
+//! then each round kicks the view. Every character gets the default armour
 //! (`CaArmor::default`: 100 points, the default body gear) when it first
 //! has health, and is hit through `HitSpheres`: its skeleton's hit table
 //! (characters.md 11: `MALE`, `FEMALE` from data/characters.toml, set by
@@ -112,20 +138,27 @@
 //!   The groin sphere (`Nuts`) has location 5, as this spec and the BR
 //!   data have it (the US data: 2; characters.md Q1b).
 //! - The spec's client and server halves aren't split by process: the
-//!   "client" test is the ray's first segment, the "server" walk the rest,
-//!   both run where the round is delivered. In a network game the shooter's
-//!   client predicts the round (its meters, kick and events; no damage) and
-//!   the server walks it again against where the shooter saw the others
-//!   (lag compensation, `weapon::lagcomp`, their boxes and looks then);
-//!   nothing the client found is sent (no client-reported victim). The
-//!   fire delay compares the rounds' tick times (the client's timestamps).
+//!   "client" test and the "server" walk both run where the round is
+//!   delivered. In a network game the shooter's client predicts the round
+//!   (its meters, kick and events; no damage) and the server runs both
+//!   against where the shooter saw the others (lag compensation,
+//!   `weapon::lagcomp`, their boxes and looks then); nothing the client
+//!   found is sent (no client-reported victim). The fire delay compares
+//!   the rounds' tick times (the client's timestamps). The server's clip
+//!   isn't separate: a shot dropped in its reload window spends the
+//!   client's round, and nothing refills at the window's end.
+//! - The hit priorities (`Node#Priority`) are ours by location
+//!   (data/characters.toml `hit_priority`: torso and groin 3, head 2,
+//!   limbs 1; the stock values are unknown). A wall-bang's band is applied
+//!   twice at the real distance (Q13's recommendation for the first).
+//! - The side direction is drawn at the first side kick (the game draws it
+//!   as the player enters the map), from the command's shared random.
 //! - The spread runs per tick (the spec's per frame), its sub-steps on an
 //!   exact 80 Hz clock (`SpreadOptions::quantised` drops the remainder
 //!   as the game does); the body's twist is ours to keep (`body_yaw`).
-//! - After a character, the ray goes on past it (no dampening); hits
-//!   behind a wall use the real distance (Q13's recommendation). World
-//!   surfaces have no names yet (no Combat Arms maps): only colliders with
-//!   a `PropSurface` named in the table pass.
+//! - World surfaces are named only where a map or prop gives a
+//!   `PropSurface`; only those named in the table pass. A surface's
+//!   "flags" for the restart point are its name.
 //! - Armour: the gear (which pieces a character wears, Q7) is the default
 //!   body gear for everyone, with the spec's stock coverage (bullets and
 //!   burn on body gear, bullets on head gear, poison on the gas mask);
@@ -133,10 +166,12 @@
 //!   (both figure types). Nothing marks a character infected yet (no game
 //!   modes).
 //! - Not done: the back push (`BaseCamBackJitter`) and the view-model
-//!   jiggle (presentation), continuous fire, prefire (but the minigun's,
-//!   `classes`), perk and set bonuses (Q8: identity in a plain match), the fire-mode
-//!   key (the toggle is attack2 until the binds come), the out-of-ammo
-//!   voice line.
+//!   jiggle (presentation), continuous fire, perk and set bonuses (Q8:
+//!   identity in a plain match), the fire-mode key (the toggle is attack2
+//!   until the binds come), the out-of-ammo voice line. The pre-fire is the
+//!   trigger's latency, not an animation (the minigun's spin is,
+//!   `classes`); an alt-fire volley has none.
+
 //!
 //! Slots and switching are `inventory`'s, thrown weapons `grenades`',
 //! attachments `attachments`'.
@@ -144,7 +179,10 @@
 pub mod classes;
 pub mod zoom;
 
-use std::sync::{LazyLock, OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{LazyLock, OnceLock},
+};
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -153,10 +191,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     core::{
         Damage, DamageKind, DamageRules, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole, Predict,
-        PropSurface, SOLID_LAYERS, SimClock, Velocity,
+        PredictedAppExt, PropSurface, SOLID_LAYERS, SimClock, Velocity,
     },
+
     weapon::{
-        AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, Weapon, WeaponEvent,
+        AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, WeaponEvent,
         WeaponEventKind, WeaponFrame, Zoom, aim_of,
         data::{WeaponData, WeaponDataAppExt},
         lagcomp::{self, HitHistory, LagCompSettings, LagCompStats, ViewTick},
@@ -236,8 +275,12 @@ pub const BEHIND_BONUS: f32 = 1.3;
 pub const DEATH_THRESHOLD: f32 = 1.0;
 /// Horizontal widening of a character's box in the first ray test.
 pub const HITBOX_WIDEN: f32 = 2.0;
-/// Most ray segments a round walks.
-pub const SERVER_TRACE_STEPS: u32 = 3;
+/// Most intersections the server's own walk makes (every surface, object
+/// or skipped character box counts one; Corrections 4).
+pub const SERVER_INTERSECTIONS: u32 = 4;
+/// How far past a character box the server's walk restarts when its line
+/// is within none of the spheres (units; Corrections 5).
+pub const SERVER_SKIP: f32 = 5.0;
 /// `DamageRFacter` used when the data's is outside [0, 1].
 pub const DAMAGE_ROLL_INVALID: f32 = 0.2;
 /// Damage types (`InstDamageType`) the armour step knows.
@@ -257,6 +300,71 @@ pub const RUN_SPEED: f32 = 285.0;
 pub const WALK_SPEED: f32 = 70.0;
 pub const CROUCH_SPEED: f32 = 50.0;
 pub const LADDER_SPEED: f32 = 200.0;
+
+/// AI damage (weapon_firing.md Corrections 7, attribute_data.md
+/// Corrections 3): the server console variable `AIDamageFactor` (built-in
+/// 0.8; a Hired Guns match or a mission sets its objective's) on every hit
+/// an AI (a bot, a mercenary) deals, before armour; then, on a player
+/// (not an AI) and not melee, one hit's health damage capped: `cap` (50),
+/// or `cap_big` (990) when it was `big` (1000) or more.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct CaAiDamage {
+    pub factor: f32,
+    pub cap: f32,
+    pub cap_big: f32,
+    pub big: f32,
+}
+
+impl Default for CaAiDamage {
+    fn default() -> Self {
+        Self {
+            factor: 0.8,
+            cap: 50.0,
+            cap_big: 990.0,
+            big: 1000.0,
+        }
+    }
+}
+
+impl CaAiDamage {
+    /// One AI hit's health damage `hp` (HP) on a player after armour,
+    /// capped (a melee hit isn't).
+    pub fn capped(&self, hp: f32, melee: bool) -> f32 {
+        if melee {
+            hp
+        } else if hp >= self.big {
+            self.cap_big
+        } else {
+            hp.min(self.cap)
+        }
+    }
+}
+
+/// Who a hit is from and on, for the AI damage rule (`CaAiDamage`): AIs
+/// are bots and mercenaries (`core::Bot`, which `bots::CaBot` brings); a
+/// player is a character that
+/// is neither an AI nor a non-player (`core::Npc`).
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct AiHits<'w, 's> {
+    ai: Query<'w, 's, (), With<crate::core::Bot>>,
+    npcs: Query<'w, 's, (), With<crate::core::Npc>>,
+    settings: Res<'w, CaAiDamage>,
+}
+
+impl AiHits<'_, '_> {
+    /// The factor on `attacker`'s damage before armour (1: not an AI).
+    pub fn factor(&self, attacker: Option<Entity>) -> f32 {
+        if attacker.is_some_and(|a| self.ai.contains(a)) { self.settings.factor } else { 1.0 }
+    }
+
+    /// `points` (HP, after armour and zone) of `attacker` on `victim`,
+    /// with the AI cap on a player.
+    pub fn cap(&self, attacker: Option<Entity>, victim: Entity, points: f32, melee: bool) -> f32 {
+        let ai = attacker.is_some_and(|a| a != victim && self.ai.contains(a));
+        let player = !self.ai.contains(victim) && !self.npcs.contains(victim);
+        if ai && player { self.settings.capped(points, melee) } else { points }
+    }
+}
 
 /// The global spread scales (the weapons file's `[Perturb]` section, as the
 /// client uses them after swapping firing and movement, Q1) and the turn
@@ -328,6 +436,11 @@ pub struct DamageParams {
     /// `DamageMovePenaltyDuration` (ammo), s; not above 0: none.
     #[serde(default = "no_duration")]
     pub move_penalty_duration: f32,
+    /// The third-person reload's length at rate 1 (s; by stance in the
+    /// game, ours one): the server's reload window (weapon_classes.md
+    /// Corrections 2). None: the magazine's reload.
+    #[serde(default)]
+    pub reload_third_person: Option<f32>,
 }
 
 fn bullet_type() -> i32 {
@@ -377,11 +490,15 @@ pub struct StateParams {
 #[serde(deny_unknown_fields)]
 pub struct SpreadParams {
     pub cone: ConeParams,
-    /// Zoomed values (`Zoomed*`), used while zoomed where non-zero.
-    #[serde(default)]
+    /// Zoomed values (`Zoomed*`), used while zoomed where non-zero; the
+    /// record defaults (1/500, 3.0/3.0) when the document leaves them out
+    /// (attribute_data.md Corrections 2).
+    #[serde(default = "zoomed_default")]
     pub zoomed_cone: Option<ConeParams>,
-    /// Burst values (`TripleShot*Perturb*`), used in burst mode.
-    #[serde(default)]
+    /// Burst values (`TripleShot*Perturb*`), used in burst mode where
+    /// non-zero, field by field; the record defaults (7/100, 1.0/1.0) when
+    /// left out.
+    #[serde(default = "burst_default")]
     pub burst_cone: Option<ConeParams>,
     /// `DynamicPerturbFactor`.
     #[serde(default = "one")]
@@ -397,6 +514,29 @@ pub struct SpreadParams {
 
 fn default_dec_delay() -> f32 {
     150.0
+}
+
+/// The record defaults of `ZoomedMinPerturb`/`MaxPerturb` and the zoomed
+/// speeds (attribute_data.md, Field table: weapons).
+fn zoomed_default() -> Option<ConeParams> {
+    Some(ConeParams {
+        min: 1,
+        max: 500,
+        inc: 3.0,
+        dec: 3.0,
+        zoomed: false,
+    })
+}
+
+/// The record defaults of the `TripleShot*Perturb*` fields.
+fn burst_default() -> Option<ConeParams> {
+    Some(ConeParams {
+        min: 7,
+        max: 100,
+        inc: 1.0,
+        dec: 1.0,
+        zoomed: false,
+    })
 }
 
 /// `combat_arms:recoil` (degrees but the two random thresholds, radians;
@@ -422,8 +562,10 @@ pub struct RecoilParams {
     /// `BaseCamBackJitter`, `BackJitterRecover` (not used yet).
     pub back_jitter: f32,
     pub back_jitter_recover: f32,
-    /// `TripleShotBaseCamRecoilPitch`, `TripleShotMaxCamRecoilPitch`: in
-    /// burst mode when both are non-zero.
+    /// `TripleShotBaseCamRecoilPitch`, `TripleShotMaxCamRecoilPitch`: the
+    /// kick's in burst mode when both are non-zero, the return's cap when
+    /// the cap is (record defaults 1.0 and 50.0, attribute_data.md
+    /// Corrections 2).
     pub burst_pitch: f32,
     pub burst_max_pitch: f32,
     /// `JitterDecDelay` (ammo), ms.
@@ -446,8 +588,8 @@ impl Default for RecoilParams {
             random_wag: 0.015,
             back_jitter: 0.5,
             back_jitter_recover: 3.0,
-            burst_pitch: 0.0,
-            burst_max_pitch: 0.0,
+            burst_pitch: 1.0,
+            burst_max_pitch: 50.0,
             jitter_dec_delay: 600.0,
             jitter_wait_recover: 0.1,
             jitter_recover: 0.3,
@@ -481,6 +623,34 @@ pub struct CaDamage {
     pub move_penalty_duration: f32,
     /// The fitted attachments' terms (`attachments`).
     pub mods: DamageMods,
+    /// The third-person reload's length at rate 1, s.
+    pub reload_third_person: f32,
+    /// The server's reload window ends then (weapon_classes.md
+    /// Corrections 2): shots before it are dropped.
+    pub reload_mark: Option<f64>,
+}
+
+/// The server's reload window (weapon_classes.md 5.6, Corrections 2): the
+/// third-person reload `length` (s) / (min(`rate`, 2) x (2 -
+/// `ReloadCheckTime`)); the rate is 1 + the reload bonuses, capped at 2
+/// (not the client's "above 2 plays at 1").
+pub fn server_reload_mark(length: f64, rate: f64, check: f64) -> f64 {
+    length / (rate.min(2.0) * (2.0 - check))
+}
+
+/// The server's settings firing reads (attribute_data.md Corrections 3):
+/// `ReloadCheckTime` (the install's `[TimeWeight]`, else 0.8).
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct CaServerSettings {
+    pub reload_check_time: f64,
+}
+
+impl Default for CaServerSettings {
+    fn default() -> Self {
+        Self {
+            reload_check_time: super::data::reload_check_time(),
+        }
+    }
 }
 
 impl CaDamage {
@@ -499,6 +669,8 @@ impl CaDamage {
             move_penalty: p.move_penalty,
             move_penalty_duration: p.move_penalty_duration,
             mods: DamageMods::default(),
+            reload_third_person: p.reload_third_person.unwrap_or(0.0),
+            reload_mark: None,
         }
     }
 }
@@ -578,7 +750,18 @@ impl CaSpread {
         let base = self.params.cone;
         match mode {
             FireMode::Normal => base,
-            FireMode::Burst => self.params.burst_cone.unwrap_or(base),
+            // Each burst field replaces its plain one when non-zero
+            // (Corrections 12).
+            FireMode::Burst => match self.params.burst_cone {
+                Some(z) => ConeParams {
+                    min: if z.min != 0 { z.min } else { base.min },
+                    max: if z.max != 0 { z.max } else { base.max },
+                    inc: if z.inc != 0.0 { z.inc } else { base.inc },
+                    dec: if z.dec != 0.0 { z.dec } else { base.dec },
+                    zoomed: false,
+                },
+                None => base,
+            },
             FireMode::Zoomed => match self.params.zoomed_cone {
                 Some(z) => ConeParams {
                     min: if z.min != 0 { z.min } else { base.min },
@@ -742,30 +925,39 @@ impl CaSpread {
     }
 }
 
-/// A weapon's view kick (`combat_arms:recoil`): the data, the vertical
+/// A player's view kick (weapon_firing.md Corrections 1): the vertical
 /// accumulator J and the side one J_y (radians, half the view offset each
-/// caused, Q4), the side direction and the last kick's time.
-#[derive(Component, Clone, Debug)]
-pub struct CaRecoil {
-    pub params: RecoilParams,
+/// caused, Q4), the side direction and the last kick's time. One per
+/// player, never reset by a switch, a death or a respawn (only returned);
+/// every kick and return reads the data of the weapon in hand then
+/// (`CaRecoil`). Predicted with the player (`game::net`).
+#[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CaKick {
     pub pitch: f32,
     pub yaw: f32,
     /// The side kick goes right (`wag_r`); None until the first one picks
-    /// at random.
+    /// at random (the game draws it as the player enters the map).
     pub right: Option<bool>,
     pub last_kick: Option<f64>,
+}
+
+/// A weapon's view-kick data (`combat_arms:recoil`) and its fitted
+/// attachments' terms; the state is its holder's (`CaKick`).
+#[derive(Component, Clone, Debug)]
+pub struct CaRecoil {
+    pub params: RecoilParams,
     /// The fitted attachments' terms (`attachments`; zero: stock).
     pub mods: RecoilMods,
 }
+
+/// The recoil of a weapon with no `combat_arms:recoil` table: the record
+/// defaults (a knife or a grenade in hand still returns the view).
+pub static DEFAULT_RECOIL: LazyLock<CaRecoil> = LazyLock::new(|| CaRecoil::new(RecoilParams::default()));
 
 impl CaRecoil {
     pub fn new(params: RecoilParams) -> Self {
         Self {
             params,
-            pitch: 0.0,
-            yaw: 0.0,
-            right: None,
-            last_kick: None,
             mods: RecoilMods::default(),
         }
     }
@@ -782,71 +974,78 @@ impl CaRecoil {
         ((b * (1.0 + self.mods.pitch)).to_radians(), (max * (1.0 + cap)).to_radians())
     }
 
-    /// One shot's kick at `now`: returns how far the view goes up,
+    /// The return's cap, radians: in burst mode the burst cap whenever it
+    /// is non-zero (the kick needs both burst values, the return only
+    /// this: Corrections 2), else the normal one; scaled by the muzzle
+    /// part's `MaxCamRecoilPitchPer` alone.
+    pub fn return_cap(&self, burst: bool) -> f32 {
+        let p = &self.params;
+        let max = if burst && p.burst_max_pitch != 0.0 { p.burst_max_pitch } else { p.max_pitch };
+        (max * (1.0 + self.mods.return_max)).to_radians()
+    }
+
+    /// One shot's kick on `k` at `now`: returns how far the view goes up,
     /// radians (2h).
-    pub fn kick(&mut self, burst: bool, now: f64) -> f32 {
+    pub fn kick(&self, k: &mut CaKick, burst: bool, now: f64) -> f32 {
         let (b, max) = self.pitch_params(burst, self.mods.max_pitch);
         if max <= 0.0 {
             return 0.0;
         }
-        let j = self.pitch.clamp(0.0, max);
-        let k = b * (1.0 - j / max);
+        let j = k.pitch.clamp(0.0, max);
+        let kick = b * (1.0 - j / max);
         let accel = self.params.accel_pitch + self.mods.accel;
-        let k = if k > 0.0 { k + accel * j } else { k };
-        let h = (k / 2.0).min(max - j);
-        self.pitch = j + h;
-        self.last_kick = Some(now);
+        let kick = if kick > 0.0 { kick + accel * j } else { kick };
+        let h = (kick / 2.0).min(max - j);
+        k.pitch = j + h;
+        k.last_kick = Some(now);
         2.0 * h
     }
 
     /// The side wag after a kick: returns the yaw change in the engine's
     /// sense (radians, + left), 0 without one. `roll` in [0, 1) picks the
     /// first direction and the flips.
-    pub fn wag(&mut self, roll: f32) -> f32 {
+    pub fn wag(&self, k: &mut CaKick, roll: f32) -> f32 {
         let p = self.params;
         // The threshold adds the attachments' `MaxRandomPitch` (a
         // silencer's -2 kicks from the first shot: Q11).
-        if self.pitch.abs() <= p.random_pitch + self.mods.random_pitch {
+        if k.pitch.abs() <= p.random_pitch + self.mods.random_pitch {
             return 0.0;
         }
-        let right = *self.right.get_or_insert(roll < 0.5);
+        let right = *k.right.get_or_insert(roll < 0.5);
         let max = p.max_wag.to_radians();
-        let q = if max != 0.0 { 1.0 - self.yaw.abs() / max } else { 1.0 };
+        let q = if max != 0.0 { 1.0 - k.yaw.abs() / max } else { 1.0 };
         let w = q * if right { p.wag_r } else { p.wag_l }.to_radians();
-        self.yaw += w / 2.0;
-        if self.yaw.abs() > p.random_wag && (roll * 2.0).fract() < 0.5 {
-            self.right = Some(!right);
+        k.yaw += w / 2.0;
+        if k.yaw.abs() > p.random_wag && (roll * 2.0).fract() < 0.5 {
+            k.right = Some(!right);
         }
         // Combat Arms turns yaw by -w (+ right); the engine's yaw is + left.
         w
     }
 
-    /// The return over `dt` seconds at `now`: (pitch down, yaw change in
-    /// the engine's sense), radians.
-    pub fn recover(&mut self, dt: f32, now: f64) -> (f32, f32) {
+    /// The return of `k` over `dt` seconds at `now` (`burst`: the weapon
+    /// in hand is in burst mode): (pitch down, yaw change in the engine's
+    /// sense), radians.
+    pub fn recover(&self, k: &mut CaKick, dt: f32, now: f64, burst: bool) -> (f32, f32) {
         let p = self.params;
-        let waiting = self
-            .last_kick
-            .is_some_and(|t| now - t < p.jitter_dec_delay as f64 / 1000.0);
+        let waiting = k.last_kick.is_some_and(|t| now - t < p.jitter_dec_delay as f64 / 1000.0);
         let rate = if waiting { p.jitter_wait_recover } else { p.jitter_recover };
         let step = |acc: f32, max: f32| {
             let scale = if max > 0.0 { 1.0 + acc / max } else { 1.0 };
             acc.min(dt * rate * scale)
         };
         let mut down = 0.0;
-        if self.pitch > 0.0 {
-            // The cap scaled by the muzzle part's alone.
-            let (_, max) = self.pitch_params(false, self.mods.return_max);
-            down = step(self.pitch, max);
-            self.pitch -= down / 2.0;
+        if k.pitch > 0.0 {
+            down = step(k.pitch, self.return_cap(burst));
+            k.pitch -= down / 2.0;
         }
         let mut side = 0.0;
-        if self.yaw != 0.0 {
-            let v = step(self.yaw.abs(), p.max_wag.to_radians());
-            let sign = self.yaw.signum();
-            self.yaw -= sign * v / 2.0;
-            if self.yaw.signum() != sign {
-                self.yaw = 0.0;
+        if k.yaw != 0.0 {
+            let v = step(k.yaw.abs(), p.max_wag.to_radians());
+            let sign = k.yaw.signum();
+            k.yaw -= sign * v / 2.0;
+            if k.yaw.signum() != sign {
+                k.yaw = 0.0;
             }
             side = -sign * v;
         }
@@ -882,6 +1081,9 @@ pub struct HitSphere {
     pub factor: f32,
     /// The skeleton (`characters::records` index: 0 male, 1 female).
     pub skeleton: usize,
+    /// `Node#Priority`: the server's own walk picks the highest
+    /// (`priority_sphere`; data/characters.toml, ours by location).
+    pub priority: f32,
 }
 
 use Location::{Arm, Groin, Head, Leg, Torso};
@@ -905,6 +1107,7 @@ fn hit_table(index: usize) -> &'static [HitSphere] {
             },
             factor: s.factor,
             skeleton: index,
+            priority: s.priority.unwrap_or_else(|| skel.hit_priority.of(s.location)),
         })
         .collect();
     table.leak()
@@ -943,6 +1146,27 @@ pub fn pick_sphere(spheres: &[(Vec3, f32)], start: Vec3, end: Vec3) -> Option<us
         })
         .map(|(i, (c, r))| (i, (*c - start).length_squared() - r * r))
         .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(i, _)| i)
+}
+
+/// Which sphere a character found by the server's own walk is hit in
+/// (weapon_firing.md Corrections 5): of the spheres (centre, radius) whose
+/// centre is within its radius of the infinite line through `at` along
+/// the unit `dir`, wherever along the line, the one with the highest
+/// `priority`; on a tie the later one. None: the line passes them all.
+pub fn priority_sphere(spheres: &[(Vec3, f32)], data: &[HitSphere], at: Vec3, dir: Vec3) -> Option<usize> {
+    spheres
+        .iter()
+        .enumerate()
+        .filter(|(_, (c, r))| {
+            let p = *c - at;
+            *r > 0.0 && (p - dir * p.dot(dir)).length_squared() <= r * r
+        })
+        .map(|(i, _)| (i, data.get(i).map_or(0.0, |s| s.priority)))
+        .fold(None, |best: Option<(usize, f32)>, (i, pr)| match best {
+            Some((_, b)) if b > pr => best,
+            _ => Some((i, pr)),
+        })
         .map(|(i, _)| i)
 }
 
@@ -1318,7 +1542,11 @@ pub struct CaWeaponsPlugin;
 impl Plugin for CaWeaponsPlugin {
     fn build(&self, app: &mut App) {
         app.register_weapon_hook::<DamageParams>(DAMAGE, |e, d: &'static WeaponData, p| {
-            e.insert(CaDamage::new(p, d.units.length, d.units.damage));
+            let mut dmg = CaDamage::new(p, d.units.length, d.units.damage);
+            if p.reload_third_person.is_none() {
+                dmg.reload_third_person = e.get::<crate::weapon::Magazine>().map_or(0.0, |m| m.reload_time);
+            }
+            e.insert(dmg);
         })
         .register_weapon_hook::<SpreadParams>(SPREAD, |e, d, p| {
             e.insert(CaSpread::new(p.clone(), d.units.length));
@@ -1346,6 +1574,8 @@ impl Plugin for CaWeaponsPlugin {
         }
         app.init_resource::<SpreadScales>()
             .init_resource::<SpreadOptions>()
+            .init_resource::<CaAiDamage>()
+            .init_resource::<CaServerSettings>()
             .insert_resource(CaSurfaces::built_in().clone())
             .add_message::<WeaponEvent>()
             .add_message::<Damage>()
@@ -1372,12 +1602,13 @@ impl Plugin for CaWeaponsPlugin {
             // In the predicted tick: a client replaying a switch moves
             // with the penalty of the weapon it held then.
             .add_systems(Predict::Select, apply_handling.after(crate::weapon::SelectWeapons))
-            // The meters and the kick are predicted with the weapon and
-            // go to the client predicting it (`weapon::sync`).
+            // The meters are predicted with the weapon and go to the
+            // client predicting it (`weapon::sync`); the kick with the
+            // player.
             .predicted_part::<CaSpread>()
-            .predicted_part::<CaRecoil>()
             .predicted_part::<CaZoom>()
-            .predicted_part::<CaSpin>();
+            .predicted_part::<CaSpin>()
+            .predicted_net::<CaKick>();
     }
 }
 
@@ -1409,20 +1640,6 @@ impl NetPart for CaSpread {
     }
 }
 
-impl NetPart for CaRecoil {
-    /// The accumulators, the side direction and the last kick's time.
-    type Net = (f32, f32, Option<bool>, Option<f64>);
-    fn net(&self) -> Self::Net {
-        (self.pitch, self.yaw, self.right, self.last_kick)
-    }
-    fn set_net(&mut self, (pitch, yaw, right, last_kick): Self::Net) {
-        self.pitch = pitch;
-        self.yaw = yaw;
-        self.right = right;
-        self.last_kick = last_kick;
-    }
-}
-
 /// Characters get the default armour when they first have health.
 fn give_armour(new: Query<Entity, (With<Health>, With<Intent>, Without<CaArmor>)>, mut commands: Commands) {
     for e in &new {
@@ -1437,14 +1654,14 @@ fn wrap_angle(a: f32) -> f32 {
     if a > std::f32::consts::PI { a - tau } else { a }
 }
 
-/// Before the frame: the recoil returns, and each active weapon's cone is
-/// what the HUD reads (`Hitscan::spread`, a disc of n / 1000).
+/// Before the frame: each active weapon's cone is what the HUD reads
+/// (`Hitscan::spread`, a disc of n / 1000). The recoil returns after the
+/// frame (`after_shots`): the shot leaves along the view as it was before
+/// this tick's return (Corrections 11).
 #[allow(clippy::type_complexity)]
 fn before_shots(
-    mut owners: Query<(Entity, &Inventory, Option<&mut ViewPunch>)>,
+    owners: Query<&Inventory>,
     mut weapons: Query<(
-        &Weapon,
-        Option<&mut CaRecoil>,
         Option<&CaSpread>,
         Option<&mut Hitscan>,
         Option<&AltModes>,
@@ -1452,40 +1669,20 @@ fn before_shots(
         Option<&Zoom>,
         Option<&CaZoom>,
     )>,
-    clock: Res<SimClock>,
-    mut commands: Commands,
 ) {
-    let (dt, now) = (clock.dt(), clock.now);
-    for (owner, inv, mut punch) in &mut owners {
-        for &w in &inv.weapons {
-            let Ok((_, recoil, spread, scan, modes, burst, zoom, ca_zoom)) = weapons.get_mut(w) else {
-                continue;
-            };
-            if let Some(mut r) = recoil
-                && (r.pitch > 0.0 || r.yaw != 0.0)
-            {
-                let (down, side) = r.recover(dt, now);
-                let delta = Vec3::new(-down, side, 0.0);
-                match punch.as_mut() {
-                    Some(p) => p.0 += delta,
-                    None => {
-                        commands.entity(owner).insert(ViewPunch(delta));
-                    }
-                }
-            }
-            if Some(w) == inv.active
-                && let (Some(s), Some(mut scan)) = (spread, scan)
-            {
-                let mode = mode_of(modes.map_or(0, |m| m.current), burst, zoom, ca_zoom);
-                let n = s.cone(mode) / 1000.0;
-                let want = SpreadShape::Disc {
-                    inaccuracy: n,
-                    spread: 0.0,
-                };
-                if scan.spread != want {
-                    scan.spread = want;
-                }
-            }
+    for inv in &owners {
+        let Some(w) = inv.active else { continue };
+        let Ok((Some(s), Some(mut scan), modes, burst, zoom, ca_zoom)) = weapons.get_mut(w) else {
+            continue;
+        };
+        let mode = mode_of(modes.map_or(0, |m| m.current), burst, zoom, ca_zoom);
+        let n = s.cone(mode) / 1000.0;
+        let want = SpreadShape::Disc {
+            inaccuracy: n,
+            spread: 0.0,
+        };
+        if scan.spread != want {
+            scan.spread = want;
         }
     }
 }
@@ -1506,9 +1703,12 @@ struct Round {
 /// A character as the ray sees it.
 struct Body {
     entity: Entity,
+    /// Its origin (the near-miss test's plane side).
+    origin: Vec3,
     /// World box (min, max).
     min: Vec3,
     max: Vec3,
+    /// Its body's forward and right (the legs': Corrections 6).
     forward: Vec3,
     right: Vec3,
     /// World spheres (centre, radius) and their data.
@@ -1554,6 +1754,8 @@ struct Delivery<'w, 's> {
     /// The attachments' target groups (an AI victim) and a forced draw for
     /// their probabilities.
     attach: (Query<'w, 's, &'static CaNpc>, Res<'w, CaSpecialRoll>),
+    /// AI damage (Corrections 7).
+    ai: AiHits<'w, 's>,
     /// Lag compensation (a network server): each shooter's view tick,
     /// the characters' kept hit volumes, `sv_unlag`.
     lag: (
@@ -1593,16 +1795,19 @@ impl Delivery<'_, '_> {
     }
 
     /// Every living character but `owner`, as the ray sees it: where it
-    /// is, or where `rewound` puts it (its box and look then).
-    fn bodies(&self, owner: Entity, rewound: &[lagcomp::Rewound]) -> Vec<Body> {
+    /// is, or where `rewound` puts it (its box and look then); `yaws`:
+    /// each character's body yaw (`body_yaw`; none: its view's).
+    fn bodies(&self, owner: Entity, rewound: &[lagcomp::Rewound], yaws: &HashMap<Entity, f32>) -> Vec<Body> {
         self.characters
             .iter()
             .filter(|(e, .., h, _, _, _)| *e != owner && h.current > 0.0)
             .filter_map(|(entity, t, intent, state, _, aabb, spheres, pose)| {
                 let data = spheres.map_or(*MALE, |s| s.0);
+                // The body's twist from its view (the legs lag the mouse).
+                let twist = yaws.get(&entity).map_or(0.0, |b| wrap_angle(b - intent.yaw));
                 // A body model's own pose; else the spec's skeleton.
                 let modelled = pose.filter(|p| p.modelled && p.skeleton == data.first().map_or(0, |s| s.skeleton));
-                let (min, max, spheres, turn) = match rewound.iter().find(|r| r.entity == entity) {
+                let (origin, min, max, spheres, body) = match rewound.iter().find(|r| r.entity == entity) {
                     Some(r) => {
                         let b = r.aabb();
                         let turn = Quat::from_rotation_y(r.yaw);
@@ -1610,18 +1815,20 @@ impl Delivery<'_, '_> {
                         if let Some(p) = modelled {
                             spheres = posed_geometry(r.origin, min, r.yaw + (p.body_yaw - intent.yaw), p, data);
                         }
-                        (min, max, spheres, turn)
+                        (r.origin, min, max, spheres, r.yaw + twist)
                     }
                     None => {
                         let (min, max, mut spheres) = body_geometry(t, intent, state, aabb, data)?;
                         if let Some(p) = modelled {
                             spheres = posed_geometry(t.translation, min, p.body_yaw, p, data);
                         }
-                        (min, max, spheres, intent.yaw_rotation())
+                        (t.translation, min, max, spheres, intent.yaw + twist)
                     }
                 };
+                let turn = Quat::from_rotation_y(body);
                 Some(Body {
                     entity,
+                    origin,
                     min,
                     max,
                     forward: turn * Vec3::NEG_Z,
@@ -1641,6 +1848,22 @@ impl Delivery<'_, '_> {
     fn body(&self, collider: Entity) -> Entity {
         self.colliders.get(collider).map_or(collider, |c| c.body)
     }
+
+    /// A collider's surface name (its own, else its body's).
+    fn surface(&self, collider: Entity) -> Option<String> {
+        self.surfaces
+            .get(collider)
+            .or_else(|_| self.surfaces.get(self.body(collider)))
+            .ok()
+            .map(|s| s.0.clone())
+    }
+}
+
+/// A character's body yaw (weapon_firing.md Corrections 6, inventory.md
+/// Corrections 2): its view yaw `view` minus the upper body's twist, as
+/// its weapon's spread keeps it (`CaSpread::body_yaw`; none: the view's).
+pub fn body_yaw(view: f32, kept: Option<f32>) -> f32 {
+    kept.unwrap_or(view)
 }
 
 /// A character's box (world min, max: its movement's hull, else its
@@ -1717,7 +1940,43 @@ pub fn box_entry(min: Vec3, max: Vec3, from: Vec3, dir: Vec3, limit: f32) -> Opt
     (enter <= leave && leave >= 0.0 && enter.max(0.0) <= limit).then_some(enter.max(0.0))
 }
 
-/// After the frame: deliver each round, step the spread, kick the view.
+/// The direction after a shoot-through surface (Corrections 9): `dir`
+/// plus `k_r` / 1000 and `k_u` / 1000 on the right and up axes of a look
+/// rotation along it with world up, normalised.
+pub fn reperturb(dir: Vec3, k_r: i32, k_u: i32) -> Vec3 {
+    let right = Vec3::Y.cross(dir).try_normalize().unwrap_or(Vec3::X);
+    let up = dir.cross(right);
+    (dir + right * (k_r as f32 / 1000.0) + up * (k_u as f32 / 1000.0)).normalize()
+}
+
+/// A whole number drawn uniformly from {-p..p} with `u` in [0, 1).
+pub fn whole_draw(u: f32, p: i32) -> i32 {
+    let p = p.max(0);
+    ((u * (2 * p + 1) as f32) as i32).min(2 * p) - p
+}
+
+/// Whether a ray of the server's spacing check (Corrections 3) passes:
+/// a shot of `rays` rays at `now` (s) whose last ray only is checked
+/// against `last` (the last ray that passed or wasn't checked) and
+/// `delay` (s), strictly in whole ms; every other ray stamps the clock.
+/// Returns, per ray, whether it lands, and updates `last`.
+pub fn spacing(rays: u32, now: f64, delay: f64, last: &mut Option<f64>) -> Vec<bool> {
+    (0..rays)
+        .map(|i| {
+            if i + 1 == rays {
+                let early = last.is_some_and(|t| ((now - t) * 1000.0 + 1e-6).floor() < delay * 1000.0 - 1e-6);
+                if early {
+                    return false;
+                }
+            }
+            *last = Some(now);
+            true
+        })
+        .collect()
+}
+
+/// After the frame: deliver each round, return the recoil, step the
+/// spread, kick the view.
 #[allow(clippy::type_complexity)]
 fn after_shots(
     mut events: ParamSet<(MessageReader<WeaponEvent>, MessageWriter<WeaponEvent>)>,
@@ -1730,13 +1989,13 @@ fn after_shots(
             &Velocity,
             Option<&mut ViewPunch>,
             Option<&super::movement::CaMovement>,
+            Option<&mut CaKick>,
         ),
-
     >,
     mut weapons: Query<(
         Option<&mut CaDamage>,
         Option<&mut CaSpread>,
-        Option<&mut CaRecoil>,
+        Option<&CaRecoil>,
         Option<&Hitscan>,
         Option<&AltModes>,
         Option<&Burst>,
@@ -1747,14 +2006,30 @@ fn after_shots(
     exact: Query<(), With<ExactAim>>,
     clock: Res<SimClock>,
     scales: Res<SpreadScales>,
-    (options, carry_over): (Res<SpreadOptions>, Res<PelletCarryOver>),
+    (options, carry_over, server_settings): (Res<SpreadOptions>, Res<PelletCarryOver>, Res<CaServerSettings>),
     mut commands: Commands,
 ) {
     let now = clock.now;
-    let rounds: Vec<Round> = events
-        .p0()
-        .read()
+    let all: Vec<WeaponEvent> = events.p0().read().cloned().collect();
+    // The server's reload windows (weapon_classes.md Corrections 2).
+    if delivery.authoritative() && delivery.first.0 {
+        let started: Vec<Entity> = all
+            .iter()
+            .filter(|e| !e.replay && matches!(e.kind, WeaponEventKind::ReloadStarted))
+            .map(|e| e.weapon)
+            .collect();
+        for w in started {
+            if let Ok((Some(mut dmg), ..)) = weapons.get_mut(w) {
+                let rate = 1.0 + dmg.mods.reload_rate as f64;
+                let mark = server_reload_mark(dmg.reload_third_person as f64, rate, server_settings.reload_check_time);
+                dmg.reload_mark = Some(now + mark);
+            }
+        }
+    }
+    let rounds: Vec<Round> = all
+        .iter()
         .filter_map(|e| match e.kind {
+
             WeaponEventKind::Fired {
                 origin,
                 yaw,
@@ -1776,6 +2051,19 @@ fn after_shots(
         })
         .collect();
 
+    // Each character's body yaw, for the behind test.
+    let yaws: HashMap<Entity, f32> = if rounds.is_empty() {
+        HashMap::new()
+    } else {
+        owners
+            .iter()
+            .map(|(e, inv, intent, ..)| {
+                let kept = inv.active.and_then(|w| weapons.get(w).ok()).and_then(|w| w.1.and_then(|s| s.body_yaw));
+                (e, body_yaw(intent.yaw, kept))
+            })
+            .collect()
+    };
+
     // Deliver, with the cone the meters give before this tick's steps.
     let mut out: Vec<WeaponEvent> = Vec::new();
     for r in &rounds {
@@ -1789,25 +2077,36 @@ fn after_shots(
         } else {
             spread.as_ref().map_or(0.0, |s| s.cone(mode)) / 1000.0
         };
-        let pellets = if exact_aim { 1 } else { scan.map_or(1, |s| s.pellets.max(1)) };
         let range = scan.map_or(0.0, |s| s.range);
         let server = delivery.authoritative() && delivery.first.0 && !r.replay;
-        if server {
-            // The server's spacing (Q14): a round less than `fireDelay` ms
-            // after the last one that passed is dropped (spent all the
-            // same) and doesn't restart the clock.
-            let early = dmg
-                .last_round
-                .is_some_and(|t| ((now - t) * 1000.0 + 1e-6).floor() < dmg.fire_delay * 1000.0 - 1e-6);
-            if early {
-                continue;
-            }
-            dmg.last_round = Some(now);
+        // The rays (attachments.md Corrections 1): the client sends n +
+        // floor(n v) with the magazine part's `VectorsPerRoundPer`, the
+        // server expects the muzzle part's; when they differ it ignores
+        // the whole shot.
+        let n = if exact_aim { 1 } else { scan.map_or(1, |s| s.pellets.max(1)) };
+        let (sent, expected) = if exact_aim {
+            (1, 1)
+        } else {
+            (dmg.mods.rays(n, dmg.mods.pellets_client), dmg.mods.rays(n, dmg.mods.pellets_server))
+        };
+        // The server's spacing (Corrections 3): checked on the last ray
+        // only; every earlier ray stamps the clock with the shot's time.
+        // A shot during the server's reload window is dropped (no server
+        // ammo spent, Corrections 2).
+        let reloading = dmg.reload_mark.is_some_and(|m| now + 1e-9 < m);
+        if !reloading && dmg.reload_mark.is_some() && server {
+            dmg.reload_mark = None;
         }
+        let lands = if server && sent == expected && !reloading {
+            spacing(sent, now, dmg.fire_delay, &mut dmg.last_round)
+        } else {
+            vec![false; sent as usize]
+        };
+
         // The attachments (attachments.md, "Damage" and "Ray length"): the
-        // base damage x (1 + sum Instdamage); the shooter's ray (the first
-        // segment) Range + trunc(Range x sum RangePer), the server's own
-        // (through walls, behind a victim) Range x (1 + the sight's).
+        // base damage x (1 + sum Instdamage); the shooter's ray (the
+        // client test) Range + trunc(Range x sum RangePer), the server's
+        // own walk Range x (1 + the sight's).
         let mut eff = dmg.clone();
         eff.damage *= 1.0 + eff.mods.damage;
         let units = (range / eff.unit).round() as f64;
@@ -1824,36 +2123,71 @@ fn after_shots(
         let dmg = &eff;
         let aim = aim_of(r.yaw, r.pitch);
         let rewound = delivery.rewind(r.owner, server);
-        let bodies = delivery.bodies(r.owner, &rewound);
+        let bodies = delivery.bodies(r.owner, &rewound, &yaws);
         // Weapon_classes.md 5.7: a pellet that hits no one reports the
         // shot's most recent real hit.
         let mut carry = CarryOver::new(carry_over.0);
-        for pellet in 0..pellets {
-            let mut rng = Rng::new(r.seed.wrapping_add(1 + pellet));
+        for (pellet, land) in lands.into_iter().enumerate() {
+            let mut rng = Rng::new(r.seed.wrapping_add(1 + pellet as u32));
             let (u1, u2) = (rng.next(), rng.next());
             let dir = square_dir(aim, half, u1, u2);
-            let rays = (client_range, server_range);
-            let real = walk(&mut delivery, dmg, r, dir, rays, &bodies, &mut rng, server, &mut out);
-            if let Some(c) = carry.pellet(real) {
+            let real = client_test(&mut delivery, r, dir, client_range, &bodies, &mut out);
+            let report = carry.pellet(real).or(real);
+            // The reported hit: the roll, from behind (the body's), the
+            // band at the reported point; then the server's own walk.
+            let u = rng.next();
+            let mut first = None;
+            if let Some(c) = report {
                 let b = &bodies[c.body];
                 let behind = is_behind(b.forward, b.right, c.dir);
-                let d = base_damage(dmg, rng.next(), behind, c.distance);
-                if server {
+                let d = base_damage(dmg, u, behind, c.distance);
+                if land {
                     hurt(&mut delivery, dmg, r, b, c.sphere, d, c.point, c.dir, &mut out);
                 }
+                first = Some((d, c.distance));
             }
+            let walk = Walk {
+                dir,
+                range: server_range,
+                lands: land,
+                skip_first: report.is_some(),
+                first,
+            };
+            server_walk(&mut delivery, dmg, r, walk, &bodies, &mut rng, &mut out);
         }
     }
 
-    // Spread sub-steps for each owner's active weapon, then the kicks.
-    for (owner, inv, intent, state, vel, mut punch, ca_move) in &mut owners {
-        let Some(active) = inv.active else { continue };
-        let Ok((_, spread, recoil, _, modes, burst, zoom, ca_zoom)) = weapons.get_mut(active) else {
-            continue;
+    // The recoil returns, the spread steps for each owner's active
+    // weapon, then the kicks.
+    let dt = clock.dt();
+    for (owner, inv, intent, state, vel, mut punch, ca_move, kick) in &mut owners {
+        let active = inv.active.and_then(|a| weapons.get_mut(a).ok().map(|w| (a, w)));
+        let (recoil, mode, burst_mode) = match &active {
+            Some((_, (_, _, recoil, _, modes, burst, zoom, ca_zoom))) => {
+                let current = modes.map_or(0, |m| m.current);
+                (
+                    recoil.cloned().unwrap_or_else(|| DEFAULT_RECOIL.clone()),
+                    mode_of(current, *burst, *zoom, *ca_zoom),
+                    fire_mode(current, *burst, *zoom) == FireMode::Burst,
+                )
+            }
+            None => (DEFAULT_RECOIL.clone(), FireMode::Normal, false),
         };
-        let mine: Vec<&Round> = rounds.iter().filter(|r| r.owner == owner && r.weapon == active).collect();
-        let mode = mode_of(modes.map_or(0, |m| m.current), burst, zoom, ca_zoom);
-        if let Some(mut s) = spread {
+        let (burst_part, zoom_part) = match &active {
+            Some((_, w)) => (w.5.cloned(), w.6.cloned()),
+            None => (None, None),
+        };
+        let mut k = kick.as_deref().cloned().unwrap_or_default();
+        // The return, with the data of the weapon in hand (Corrections 1).
+        if k.pitch > 0.0 || k.yaw != 0.0 {
+            let (down, side) = recoil.recover(&mut k, dt, now, burst_mode);
+            add_punch(&mut punch, &mut commands, owner, Vec3::new(-down, side, 0.0));
+        }
+        let mine: Vec<&Round> = active
+            .as_ref()
+            .map(|(a, _)| rounds.iter().filter(|r| r.owner == owner && r.weapon == *a).collect())
+            .unwrap_or_default();
+        if let Some((_, (_, Some(mut s), ..))) = active {
             let tick = SpreadTick {
                 intent,
                 state,
@@ -1863,23 +2197,29 @@ fn after_shots(
                 mode,
                 fired: !mine.is_empty(),
                 now,
-                dt: clock.dt(),
+                dt,
             };
             step_spread(&mut s, &scales, &options, &tick);
         }
-        let Some(mut recoil) = recoil else { continue };
-        if exact.contains(owner) {
-            continue;
+        if !exact.contains(owner) {
+            for (i, r) in mine.iter().enumerate() {
+                let burst = fire_mode(r.mode, burst_part.as_ref(), zoom_part.as_ref()) == FireMode::Burst;
+                let up = recoil.kick(&mut k, burst, now);
+
+                let roll = shared_random(intent.command, "combat_arms:wag", i as i32).next();
+                let side = recoil.wag(&mut k, roll);
+                add_punch(&mut punch, &mut commands, owner, Vec3::new(up, side, 0.0));
+            }
         }
-        for (i, r) in mine.iter().enumerate() {
-            let up = recoil.kick(fire_mode(r.mode, burst, zoom) == FireMode::Burst, now);
-            let roll = shared_random(intent.command, "combat_arms:wag", i as i32).next();
-            let side = recoil.wag(roll);
-            let delta = Vec3::new(up, side, 0.0);
-            match punch.as_mut() {
-                Some(p) => p.0 += delta,
-                None => {
-                    commands.entity(owner).insert(ViewPunch(delta));
+        match kick {
+            Some(mut have) => {
+                if *have != k {
+                    *have = k;
+                }
+            }
+            None => {
+                if k != CaKick::default() {
+                    commands.entity(owner).insert(k);
                 }
             }
         }
@@ -1887,6 +2227,16 @@ fn after_shots(
     let mut writer = events.p1();
     for e in out {
         writer.write(e);
+    }
+}
+
+/// Add `delta` to `owner`'s view punch (giving it one).
+fn add_punch(punch: &mut Option<Mut<ViewPunch>>, commands: &mut Commands, owner: Entity, delta: Vec3) {
+    match punch.as_mut() {
+        Some(p) => p.0 += delta,
+        None => {
+            commands.entity(owner).insert(ViewPunch(delta));
+        }
     }
 }
 
@@ -1917,6 +2267,14 @@ struct SpreadTick<'a> {
     dt: f32,
 }
 
+/// The movement target S in a jump (Corrections 12): the zoomed
+/// `ZoomedJumpPerturb` only zoomed with the run flag off and non-zero,
+/// else the plain `JumpPerturb`.
+pub fn jump_target(params: &SpreadParams, mode: FireMode, run: bool) -> f32 {
+    let z = params.zoomed_state.jump;
+    if mode == FireMode::Zoomed && !run && z != 0.0 { z } else { params.state.jump }
+}
+
 /// One tick of a weapon's spread meters (the spec's step 8).
 fn step_spread(s: &mut CaSpread, scales: &SpreadScales, options: &SpreadOptions, k: &SpreadTick) {
     let (intent, state) = (k.intent, k.state);
@@ -1931,7 +2289,9 @@ fn step_spread(s: &mut CaSpread, scales: &SpreadScales, options: &SpreadOptions,
     let jumping = k.movement.map_or(s.jumped && !state.on_ground, |m| m.in_jump);
     let cone = s.cone_params(k.mode);
     let st = s.states(k.mode);
-    if cone.max == 0 {
+    // "No spread" holds both meters at 0: the plain `MaxPerturb` 0
+    // (Corrections 12), whatever the mode's.
+    if s.params.cone.max == 0 {
         s.fire = 0.0;
         s.movement = 0.0;
         return;
@@ -1948,7 +2308,7 @@ fn step_spread(s: &mut CaSpread, scales: &SpreadScales, options: &SpreadOptions,
     let target = if state.on_ladder {
         st.run
     } else if jumping {
-        st.jump
+        jump_target(&s.params, k.mode, run)
     } else if run {
         st.run
     } else {
@@ -1974,99 +2334,186 @@ fn step_spread(s: &mut CaSpread, scales: &SpreadScales, options: &SpreadOptions,
     // The turn (Q13): the body yaw's change, all on the first sub-step.
     let wag = k.punch.map_or(0.0, |p| p.0.y);
     let turned = s.body_turn(intent.yaw, wag, keys);
+    // The falling branch's clamp is the plain `JumpPerturb` (Corrections
+    // 12).
+    let jump_cap = s.params.state.jump;
     for (i, rho) in substep_turns(scales, turned, n).into_iter().enumerate() {
-        s.move_substep(scales, cone, target, mu_s, rho, jumping, st.jump);
+        s.move_substep(scales, cone, target, mu_s, rho, jumping, jump_cap);
         s.fire_substep(scales, cone, k.fired && i == 0, cap, k.now);
     }
 }
 
-/// A pellet's real hit on a character in the shooter's own test (the
-/// ray's first segment), for the carry-over (weapon_classes.md 5.7).
+/// A pellet's real hit on a character in the shooter's own test, the hit
+/// it reports (weapon_classes.md 5.7's carry-over reports one too).
 #[derive(Clone, Copy, Debug)]
 struct PelletHit {
     /// Index in the round's bodies.
     body: usize,
     sphere: usize,
+    /// The reported point: the widened box's entry (Corrections 8).
     point: Vec3,
     dir: Vec3,
     /// From the round's origin, metres.
     distance: f32,
 }
 
-/// Walk one pellet's ray from the round's origin (the spec's "Hitscan",
-/// "Penetration" and "Damage per ray"); its first segment's character hit.
-/// `(range, server_range)`: the first segment (the shooter's test) reaches
-/// `range`, the rest (the server's own ray) no farther than
-/// `server_range` from the origin (attachments.md, Q12).
-#[allow(clippy::too_many_arguments)]
-fn walk(
-    w: &mut Delivery,
-    dmg: &CaDamage,
-    r: &Round,
+/// The shooter's own test of one ray (the spec's "Client test"): the
+/// widened boxes whose spheres the whole segment passes, the nearest
+/// before any wall; then the plain test decides what is reported
+/// (Corrections 8): the same character at the widened box's entry, or
+/// something else whose plane has the victim's origin behind it (no
+/// player hit), else still the character. A live grenade in front stops
+/// the round. Its `Shot` event; the character hit, if any. Never through
+/// anything.
+fn client_test(w: &mut Delivery, r: &Round, dir: Vec3, range: f32, bodies: &[Body], out: &mut Vec<WeaponEvent>) -> Option<PelletHit> {
+    let excluded: Vec<Entity> = std::iter::once(r.owner).chain(w.characters.iter().map(|(e, ..)| e)).collect();
+    let filter = SpatialQueryFilter::from_excluded_entities(excluded).with_mask(SOLID_LAYERS);
+    let from = r.origin;
+    let event = |to: Vec3, hit: Option<Entity>, normal: Option<Vec3>| WeaponEvent {
+        owner: r.owner,
+        weapon: r.weapon,
+        kind: WeaponEventKind::Shot { from, to, hit, normal },
+        replay: r.replay,
+    };
+    let Ok(d3) = Dir3::new(dir) else { return None };
+    let world = w.spatial.cast_ray(from, d3, range, true, &filter);
+    let wall = world.as_ref().map_or(range, |h| h.distance);
+    let end = from + dir * range;
+    // The nearest character whose widened box the ray enters before the
+    // wall and whose spheres the whole segment passes.
+    let mut best: Option<(f32, usize, usize)> = None;
+    for (bi, b) in bodies.iter().enumerate() {
+        let c = (b.min + b.max) / 2.0;
+        let half = (b.max - b.min) / 2.0 * Vec3::new(HITBOX_WIDEN, 1.0, HITBOX_WIDEN);
+        let Some(t) = box_entry(c - half, c + half, from, dir, wall) else {
+            continue;
+        };
+        if best.is_some_and(|(bt, ..)| bt <= t) {
+            continue;
+        }
+        let Some(si) = pick_sphere(&b.spheres, from, end) else {
+            continue;
+        };
+        best = Some((t, bi, si));
+    }
+    // A live grenade's box before them (grenades.md 13): the round stops
+    // on its metal (the server's walk deals its damage).
+    let grenade = w
+        .grenades
+        .iter()
+        .filter_map(|(e, g)| {
+            let (c, half) = (g.pos * g.unit, Vec3::from(g.params.box_half) * g.unit);
+            box_entry(c - half, c + half, from, dir, wall).map(|t| (t, e))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    if let Some((t, hit)) = grenade
+        && best.is_none_or(|(bt, ..)| t < bt)
+    {
+        out.push(event(from + dir * t, Some(hit), Some(-dir)));
+        return None;
+    }
+    let world_hit = world.map(|h| (from + dir * h.distance, h.normal, w.body(h.entity)));
+    let Some((t_wide, bi, si)) = best else {
+        out.push(match world_hit {
+            Some((point, normal, body)) => event(point, Some(body), Some(normal)),
+            None => event(end, None, None),
+        });
+        return None;
+    };
+    let b = &bodies[bi];
+    // The plain test: what it meets first.
+    let plain = |o: &Body| box_entry(o.min, o.max, from, dir, wall).filter(|_| pick_sphere(&o.spheres, from, end).is_some());
+    let own = plain(b);
+    let other = bodies
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != bi)
+        .filter_map(|(i, o)| plain(o).map(|t| (t, i)))
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    let own_first = own.is_some_and(|t| other.is_none_or(|(o, _)| t <= o));
+    if !own_first {
+        let something = match other {
+            Some((t, i)) => Some((from + dir * t, -dir, bodies[i].entity)),
+            None => world_hit,
+        };
+        if let Some((point, normal, thing)) = something
+            && (b.origin - point).dot(normal) < 0.0
+        {
+            out.push(event(point, Some(thing), Some(normal)));
+            return None;
+        }
+    }
+    let point = from + dir * t_wide;
+    out.push(event(point, Some(b.entity), Some(-dir)));
+    Some(PelletHit {
+        body: bi,
+        sphere: si,
+        point,
+        dir,
+        distance: t_wide,
+    })
+}
+
+/// How the server walks one ray.
+struct Walk {
     dir: Vec3,
-    (range, server_range): (f32, f32),
-    bodies: &[Body],
-    rng: &mut Rng,
-    server: bool,
-    out: &mut Vec<WeaponEvent>,
-) -> Option<PelletHit> {
-    let mut real = None;
-    let excluded: Vec<Entity> = std::iter::once(r.owner)
-        .chain(w.characters.iter().map(|(e, ..)| e))
-        .collect();
+    /// The server's ray length (m).
+    range: f32,
+    /// Its damage lands (the server, the shot accepted, the ray not
+    /// dropped by the spacing).
+    lands: bool,
+    /// A player hit was reported: the walk skips the first character box
+    /// it meets.
+    skip_first: bool,
+    /// The reported hit's damage and distance (a second victim's start).
+    first: Option<(f32, f32)>,
+}
+
+/// The server's own walk of one ray (the spec's "Server" and
+/// "Penetration"): from the fire position, at most `SERVER_INTERSECTIONS`
+/// intersections (every surface, object or skipped character box counts
+/// one); shoot-through surfaces pass (the back-cast from the limit + 1
+/// unit, the restart point, the range left from the fire position, the
+/// damage dampened, the whole-thousandth re-perturb); a live grenade
+/// stops it with its damage; the first character box after the skipped
+/// one is hit in the sphere of the highest priority on the line
+/// (`priority_sphere`), on its unwidened box, and the walk ends there
+/// (none on the line: it goes on 5 units past the box's entry). That
+/// character's damage: a reported hit's running value banded again at
+/// the reported distance, else base x roll x the band (twice, at the real
+/// distance: Q13's recommendation), dampened; no behind bonus.
+/// `ShotContinued` events past the first intersection (the shooter's test
+/// drew that one).
+fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: &[Body], rng: &mut Rng, out: &mut Vec<WeaponEvent>) {
+    let excluded: Vec<Entity> = std::iter::once(r.owner).chain(w.characters.iter().map(|(e, ..)| e)).collect();
     let filter = SpatialQueryFilter::from_excluded_entities(excluded).with_mask(SOLID_LAYERS);
     let unit = dmg.unit;
     let mut from = r.origin;
-    let mut dir = dir;
-    let mut left = range;
-    // Penetration dampening so far; the first victim's damage (after its
-    // band) for one behind it; characters passed.
+    let mut dir = walk.dir;
+    let mut left = walk.range;
     let mut dampen = 1.0;
-    let mut first: Option<(f32, f32)> = None;
     let mut skip: Vec<Entity> = Vec::new();
-    for segment in 0..SERVER_TRACE_STEPS {
+    let mut to_skip = walk.skip_first;
+    for i in 0..SERVER_INTERSECTIONS {
         if left < unit {
             break;
         }
         let Ok(d3) = Dir3::new(dir) else { break };
         let world = w.spatial.cast_ray(from, d3, left, true, &filter);
         let wall = world.as_ref().map_or(left, |h| h.distance);
-        // The nearest character whose widened box the ray enters before
-        // the wall and whose spheres it passes.
-        let mut best: Option<(f32, usize, usize)> = None;
-        for (bi, b) in bodies.iter().enumerate() {
-            if skip.contains(&b.entity) {
-                continue;
-            }
-            let c = (b.min + b.max) / 2.0;
-            let half = (b.max - b.min) / 2.0 * Vec3::new(HITBOX_WIDEN, 1.0, HITBOX_WIDEN);
-            let Some(t) = box_entry(c - half, c + half, from, dir, wall) else {
-                continue;
-            };
-            if best.is_some_and(|(bt, ..)| bt <= t) {
-                continue;
-            }
-            let Some(si) = pick_sphere(&b.spheres, from, from + dir * left) else {
-                continue;
-            };
-            best = Some((t, bi, si));
-        }
-        let kind = |from: Vec3, to: Vec3, hit: Option<Entity>, normal: Option<Vec3>| {
-            if segment == 0 {
-                WeaponEventKind::Shot { from, to, hit, normal }
-            } else {
-                WeaponEventKind::ShotContinued { from, to, hit, normal }
-            }
-        };
-        let event = |kind| WeaponEvent {
+        let show = i > 0;
+        let event = |from: Vec3, to: Vec3, hit: Option<Entity>, normal: Option<Vec3>| WeaponEvent {
             owner: r.owner,
             weapon: r.weapon,
-            kind,
+            kind: WeaponEventKind::ShotContinued { from, to, hit, normal },
             replay: r.replay,
         };
-        // A live grenade's box before the wall and any character
-        // (grenades.md 13): the round stops on its metal, its damage (with
-        // the range band, no zone) off the grenade's hit points.
+        let body = bodies
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| !skip.contains(&b.entity))
+            .filter_map(|(bi, b)| box_entry(b.min, b.max, from, dir, wall).map(|t| (t, bi)))
+            .min_by(|a, b| a.0.total_cmp(&b.0));
         let grenade = w
             .grenades
             .iter()
@@ -2075,13 +2522,19 @@ fn walk(
                 box_entry(c - half, c + half, from, dir, wall).map(|t| (t, e))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0));
+        // A live grenade's box (grenades.md 13): the round stops on its
+        // metal, its damage (with the range band, no zone) off the
+        // grenade's hit points.
         if let Some((t, hit)) = grenade
-            && best.is_none_or(|(bt, ..)| t < bt)
+            && body.is_none_or(|(bt, _)| t < bt)
         {
             let point = from + dir * t;
-            out.push(event(kind(from, point, Some(hit), Some(-dir))));
-            if server {
-                let d = base_damage(dmg, rng.next(), false, point.distance(r.origin)) * dampen;
+            if show {
+                out.push(event(from, point, Some(hit), Some(-dir)));
+            }
+            let u = rng.next();
+            if walk.lands {
+                let d = base_damage(dmg, u, false, point.distance(r.origin)) * dampen;
                 w.damage.write(Damage {
                     target: hit,
                     attacker: Some(r.owner),
@@ -2094,75 +2547,72 @@ fn walk(
                     force: Vec3::ZERO,
                 });
             }
-            break;
+            return;
         }
-        if let Some((t, bi, si)) = best {
+        if let Some((t, bi)) = body {
             let b = &bodies[bi];
-            // The reported point: where the ray enters the plain box.
-            let t_point = box_entry(b.min, b.max, from, dir, left).unwrap_or(t);
-            let point = from + dir * t_point;
-            if segment == 0 {
-                real = Some(PelletHit {
-                    body: bi,
-                    sphere: si,
-                    point,
-                    dir,
-                    distance: point.distance(r.origin),
-                });
+            let at = from + dir * t;
+            if to_skip {
+                // The reported victim's box (or the first met).
+                to_skip = false;
+                skip.push(b.entity);
+                left -= t;
+                from = at;
+                continue;
             }
-            out.push(event(kind(from, point, Some(b.entity), Some(-dir))));
-            let d = match first {
-                // One behind the first victim (Q5): its damage banded
-                // again at the first hit's distance.
+            let Some(si) = priority_sphere(&b.spheres, b.data, at, dir) else {
+                // The line passes it: on, 5 units past its entry.
+                skip.push(b.entity);
+                let step = SERVER_SKIP * unit;
+                left -= t + step;
+                from = at + dir * step;
+                continue;
+            };
+            if show {
+                out.push(event(from, at, Some(b.entity), Some(-dir)));
+            }
+            let u = rng.next();
+            let d = match walk.first {
+                // One behind the reported victim (Q5): its damage banded
+                // again at the reported distance.
                 Some((prev, distance)) => prev * band_scale(dmg, distance),
                 None => {
-                    // The first segment is the shooter's own test: the
-                    // roll, from behind, the band.
-                    let distance = point.distance(r.origin);
-                    let behind = segment == 0 && is_behind(b.forward, b.right, dir);
-                    let d = base_damage(dmg, rng.next(), behind, distance);
-                    first = Some((d, distance));
-                    d
+                    let distance = at.distance(r.origin);
+                    base_damage(dmg, u, false, distance) * band_scale(dmg, distance)
                 }
             };
-            if server {
-                hurt(w, dmg, r, b, si, d * dampen, point, dir, out);
+            if walk.lands {
+                hurt(w, dmg, r, b, si, d * dampen, at, dir, out);
             }
-            skip.push(b.entity);
-            left -= t_point;
-            if segment == 0 {
-                left -= range - server_range;
-            }
-            from = point;
-            continue;
+            return;
         }
         let Some(hit) = world else {
-            out.push(event(kind(from, from + dir * left, None, None)));
-            break;
+            if show {
+                out.push(event(from, from + dir * left, None, None));
+            }
+            return;
         };
         let point = from + dir * hit.distance;
         let body = w.body(hit.entity);
-        out.push(event(kind(from, point, Some(body), Some(hit.normal))));
+        if show {
+            out.push(event(from, point, Some(body), Some(hit.normal)));
+        }
         // Through it?
-        let name = w.surfaces.get(hit.entity).or_else(|_| w.surfaces.get(body)).ok();
-        let Some(pass) = name.and_then(|n| w.table.get(&n.0)) else { break };
-        let exit = if pass.thickness <= 0.0 {
+        let name = w.surface(hit.entity);
+        let Some(pass) = name.as_deref().and_then(|n| w.table.get(n)) else { return };
+        let restart = if pass.thickness <= 0.0 {
             point
         } else {
-            // Cast back from the limit (plus a unit) beyond the entry.
+            // Cast back from the limit + 1 unit beyond the entry to 1 unit
+            // before it: anything it meets passes (the thickness itself is
+            // never compared).
             let reach = pass.thickness + unit;
             let far = point + dir * reach;
             let back = Dir3::new(-dir).unwrap_or(Dir3::NEG_Z);
-            let hit_back = w.spatial.cast_ray_predicate(far, back, reach, true, &SpatialQueryFilter::default(), &|e| {
-                e == hit.entity
-            });
-            let exit = match hit_back {
-                Some(h) if h.distance <= 0.0 => break,
-                Some(h) => far - dir * h.distance,
-                None => point,
-            };
-            if exit.distance(point) > pass.thickness + 1e-4 {
-                break;
+            let Some(h) = w.spatial.cast_ray(far, back, reach + unit, true, &filter) else { return };
+            if h.distance <= 0.0 {
+                // Still inside it at the limit: too thick.
+                return;
             }
             // An object (not the world) must be thinner than the limit on
             // some axis too.
@@ -2170,23 +2620,23 @@ fn walk(
                 && !rb.is_static()
                 && aabb.is_some_and(|b| (b.max - b.min).min_element() >= pass.thickness)
             {
-                break;
+                return;
             }
-            exit
+            // The exit when its surface is the entry's, else the entry.
+            if w.surface(h.entity) == name { far - dir * h.distance } else { point }
         };
-        let shorter = if segment == 0 { range - server_range } else { 0.0 };
-        left = (left - exit.distance(from) - shorter) * pass.range;
+        left = (walk.range - restart.distance(r.origin)) * pass.range;
         dampen *= pass.damage;
-        let q = Quat::from_rotation_arc(Vec3::NEG_Z, dir);
-        let p = pass.perturb / 1000.0;
-        dir = (dir + q * Vec3::X * rng.range(-p, p) + q * Vec3::Y * rng.range(-p, p)).normalize();
-        from = exit + dir * 1e-3;
+        let p = pass.perturb.round() as i32;
+        let (k_r, k_u) = (whole_draw(rng.next(), p), whole_draw(rng.next(), p));
+        dir = reperturb(dir, k_r, k_u);
+        from = restart + dir * 1e-3;
     }
-    real
 }
 
 /// Damage `d` (health units, before the victim) to the sphere `si` of
-/// `b`: armour and zone, the death threshold.
+/// `b`: the attachments' victim factor, the AI factor, armour and zone,
+/// the AI cap, the death threshold.
 #[allow(clippy::too_many_arguments)]
 fn hurt(
     w: &mut Delivery,
@@ -2234,7 +2684,8 @@ fn hurt(
     let forced = w.attach.1.0;
     let mut draws = Rng::new(r.seed.wrapping_mul(0x9e37_79b9).wrapping_add(si as u32));
     let mut draw = |_: usize| forced.unwrap_or_else(|| draws.next());
-    let d = d * dmg.mods.victim_factor(victim, &mut draw);
+    // Then an AI's damage x `AIDamageFactor` (Corrections 7).
+    let d = d * dmg.mods.victim_factor(victim, &mut draw) * w.ai.factor(Some(r.owner));
     let enemy = !w.same_team(r.owner, b.entity);
     // Stun: the shooter's passing Stun functions slow the victim (movement's
     // P_stun) for their duration.
@@ -2255,7 +2706,9 @@ fn hurt(
         zone: sphere.factor,
         infected,
     };
-    let points = armour_and_zone(d / hp, hit, armor.map(|a| a.into_inner()), lands) * hp;
+    let after = armour_and_zone(d / hp, hit, armor.map(|a| a.into_inner()), lands);
+    // An AI's hit on a player is capped (not melee).
+    let points = w.ai.cap(Some(r.owner), b.entity, after, dmg.damage_type == MELEE) * hp;
     // An infected victim hit by the other team is knocked back (movement.md,
     // "Hit knock-back").
     if infected && lands && enemy {

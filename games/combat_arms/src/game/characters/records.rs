@@ -190,6 +190,38 @@ pub struct SphereRecord {
     /// Its centre at `LST` t = 0 (the fallback pose).
     #[serde(default)]
     pub at: Option<[f32; 3]>,
+    /// `Node#Priority` (attribute_data.md Corrections 1): which sphere the
+    /// server's own walk picks (the highest; a tie, the later node). None:
+    /// the skeleton's `hit_priority` for its location.
+    #[serde(default)]
+    pub priority: Option<f32>,
+}
+
+/// A skeleton's hit priority by location, for spheres that give none
+/// (the stock values are an open question, weapon_firing.md Corrections
+/// 5: ours rank the torso first).
+#[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct HitPriority {
+    pub head: f32,
+    pub torso: f32,
+    pub arm: f32,
+    pub leg: f32,
+    pub groin: f32,
+}
+
+impl HitPriority {
+    /// The priority of location code `location` (1 head, 2 torso, 3 arm,
+    /// 4 leg, 5 groin; anything else counts as torso).
+    pub fn of(&self, location: u8) -> f32 {
+        match location {
+            1 => self.head,
+            3 => self.arm,
+            4 => self.leg,
+            5 => self.groin,
+            _ => self.torso,
+        }
+    }
 }
 
 /// A socket the game uses.
@@ -218,6 +250,9 @@ pub struct SkeletonRecord {
     pub sockets: Vec<SocketRecord>,
     /// The `Left_foot` node in the "stand" pose (the drop point).
     pub left_foot: [f32; 3],
+    /// The hit priority of spheres without their own.
+    #[serde(default)]
+    pub hit_priority: HitPriority,
 }
 
 impl SkeletonRecord {

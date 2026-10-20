@@ -20,6 +20,7 @@ use combat_arms::game::{
         objects::{BankTrigger, NamedPoint},
         scoreboard::{ScoreRow, sort_by},
     },
+    weapons::CaAiDamage,
 };
 
 use crate::mode_kit::*;
@@ -372,14 +373,22 @@ fn case_10_hiring() {
     assert!(mercs::living_units(sim.app.world_mut(), a[0]).is_empty());
 }
 
-/// 11. A mercenary's rifle hit of 80 on a player takes 50 at most; a
-/// teammate's mercenary does nothing, friendly fire on or off (Quirk 12).
+/// 11. A mercenary's rifle hit of 80 on a player takes 50 at most (the
+/// cap is every AI's: `CaAiDamage`); a teammate's mercenary does nothing,
+/// friendly fire on or off (Quirk 12).
 #[test]
 fn case_11_mercenary_damage() {
     let (mut sim, a, b) = hg(2, 1);
     settings(&mut sim).friendly_fire = 1;
     let merc = hire(&mut sim, a[0], 0).unwrap();
-    hit(&mut sim, b[0], Some(merc), 0.8, DamageKind::Bullet, Some(combat_arms::game::weapons::RIFLE));
+    // The factor (the objective's, 1.0 on Blood Money) and the cap are
+    // every AI's, applied where a hit's damage is worked out
+    // (`weapons::AiHits`; weapon_firing.md Corrections 7): an 80 hit is
+    // 50, a melee one isn't capped.
+    let ai = *sim.app.world().resource::<CaAiDamage>();
+    assert_eq!(ai.factor, 1.0, "Hired Guns' AIDamageFactor");
+    assert_eq!((ai.capped(80.0, false), ai.capped(45.0, true)), (50.0, 45.0));
+    hit(&mut sim, b[0], Some(merc), 0.5, DamageKind::Bullet, Some(combat_arms::game::weapons::RIFLE));
     sim.ticks(1);
     assert!((health(&sim, b[0]) - 0.5).abs() < 1e-4, "{}", health(&sim, b[0]));
     hit(&mut sim, a[1], Some(merc), 0.8, DamageKind::Bullet, Some(combat_arms::game::weapons::RIFLE));
@@ -387,10 +396,6 @@ fn case_11_mercenary_damage() {
     sim.ticks(1);
     assert_eq!(health(&sim, a[1]), 1.0);
     assert_eq!(health(&sim, merc), 1.0);
-    // Melee isn't capped.
-    hit(&mut sim, b[0], Some(merc), 0.45, DamageKind::Melee, None);
-    sim.ticks(1);
-    assert!((health(&sim, b[0]) - 0.05).abs() < 1e-4);
 }
 
 /// 12. "Follow me", the hirer standing 250 u away from a holding unit:

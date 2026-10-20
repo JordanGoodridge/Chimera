@@ -26,8 +26,11 @@
 //!   during a magazine weapon's draw starts the reload at once (Quirk 2);
 //!   sprint (`MovementState::sprinting`) puts an idle weapon in the sprint
 //!   pose, which holds fire until sprint ends and the weapon's post-sprint
-//!   time (`CaItem::sprint_out`) passes; a reload started or running under
-//!   sprint completes; holding use holds fire.
+//!   time (`CaItem::sprint_out`) passes, and one update more (the update
+//!   that sees the pose end only returns to idle); a reload started or
+//!   running under sprint completes; holding use holds fire. Sprint and
+//!   use end the firing state, so the first round after them, a draw or a
+//!   reload is the trigger's chain (`Trigger::latency`, Corrections 1).
 //! - The knife (8): the `combat_arms:knife` hook (`Knife`), its own state
 //!   machine per update: the first update after a press arms it, the next
 //!   starts the pre-fire, the swing starts at the update that sees it done;
@@ -35,7 +38,9 @@
 //!   at the knife's cone (`perturb`, n = 1 for the M9), range, first thing
 //!   hit, no penetration, dealing `B x u x b x k_zone` after armour (u
 //!   uniform in 1 +- the damage spread, b = 1 + `BEHIND_BONUS` from the
-//!   victim's rear sector, `behind`; the zone of the hit sphere the ray
+//!   victim's rear sector by its body yaw, `behind`, `weapons::body_yaw`:
+//!   Corrections 2; an AI's x `AIDamageFactor`, uncapped;
+//!   the zone of the hit sphere the ray
 //!   passes, `weapons::pick_sphere`; melee gear coverage: none in stock); a
 //!   held button chains the next swing at once, fire beating alt-fire. No
 //!   quick-knife (9).
@@ -877,10 +882,15 @@ pub(super) fn hands(
             sel.sprint_out_until = now + item.map_or(0.0, |i| i.sprint_out) as f64;
         }
         let Some(m) = mag else { continue };
+        // The update that sees the post-sprint pose end only returns to
+        // idle (Corrections 1): fire waits one update more, then the
+        // weapon's own chain (`Trigger::latency`).
         let blocked_until = if sel.sprint_pose || intent.use_key {
             now + dt
+        } else if sel.sprint_out_until > 0.0 {
+            sel.sprint_out_until + dt
         } else {
-            sel.sprint_out_until
+            0.0
         };
         let held = blocked_until > due;
         if intent.reload && !reloading && !shells && (drawing || held) && start_reload(&mut inv, &mut st, &m, now) {
@@ -890,6 +900,14 @@ pub(super) fn hands(
             st.next_primary = st.next_primary.max(blocked_until);
             st.next_secondary = st.next_secondary.max(blocked_until);
         }
+        // Sprint and use end the firing state (a held trigger starts the
+        // chain again after them).
+        if held && (st.firing || st.armed_round) {
+            st.firing = false;
+            st.arming = 0;
+            st.armed_round = false;
+        }
+
     }
 }
 
@@ -905,7 +923,9 @@ fn swing_knives(
         Without<NetDrawn>,
     >,
     mut knives: Query<(Entity, &Weapon, &mut Knife)>,
-    targets: Query<(Option<&Intent>, Has<Health>)>,
+    targets: Query<(Option<&Intent>, Has<Health>, Option<&Inventory>)>,
+    spreads: Query<&super::weapons::CaSpread>,
+    ai: super::weapons::AiHits,
     bodies: Query<(&Transform, &Intent, &MovementState, Option<&ColliderAabb>, Option<&HitSpheres>)>,
     mut armour: Query<&mut CaArmor>,
     infected: Query<(), With<CaInfected>>,
@@ -999,14 +1019,17 @@ fn swing_knives(
                         replay: !first.0,
                     });
                     let Some(target) = body else { continue };
-                    let Ok((t_intent, alive)) = targets.get(target) else { continue };
+                    let Ok((t_intent, alive, t_inv)) = targets.get(target) else { continue };
                     if !alive || !server || !first.0 {
                         continue;
                     }
                     let mut roll = shared_random(intent.command, "combat_arms:knife", n as i32);
                     let u = roll.range(1.0 - knife.spread, 1.0 + knife.spread);
+                    // The rear sector from the victim's body, not its view
+                    // (Corrections 2).
                     let rear = t_intent.is_some_and(|i| {
-                        let yaw = i.yaw_rotation();
+                        let kept = t_inv.and_then(|v| v.active).and_then(|w| spreads.get(w).ok()).and_then(|s| s.body_yaw);
+                        let yaw = Quat::from_rotation_y(super::weapons::body_yaw(i.yaw, kept));
                         behind(yaw * Vec3::NEG_Z, yaw * Vec3::X, dir)
                     });
                     let b = if rear { 1.0 + BEHIND_BONUS } else { 1.0 };
@@ -1026,8 +1049,11 @@ fn swing_knives(
                         zone,
                         infected: infected.contains(target),
                     };
-                    let points = attack.damage * u * b / HP;
+                    // An AI's knife x `AIDamageFactor` (weapon_firing.md
+                    // Corrections 7; melee: no cap).
+                    let points = attack.damage * u * b / HP * ai.factor(Some(owner));
                     let amount = armour_and_zone(points, hit, armour.get_mut(target).ok().map(|a| a.into_inner()), true) * HP;
+
                     let side = |l, r| if sphere.is_some_and(|s| s.at.x < 0.0) { l } else { r };
                     let hitgroup = match sphere.map(|s| s.location) {
                         None => Hitgroup::Generic,

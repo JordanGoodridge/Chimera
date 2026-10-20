@@ -17,8 +17,10 @@
 //!   weapon may fire now (Chimera's frame then fires and stops it when a
 //!   round is in; its own start would hold fire for the start).
 //! - **Minigun spin** (3.3, the `combat_arms:spin` hook, `CaSpin`): fire
-//!   held from idle spins up for the pre-fire (`prefire`) and fires when it
-//!   ends; released, the loop (`loop_len`) finishes and the post-fire spins
+//!   held in the firing state spins up for the pre-fire (`prefire`, from
+//!   the update after the press's) and fires on the update after the one
+//!   that sees it end (Corrections 3); released,
+//!   the loop (`loop_len`) finishes and the post-fire spins
 //!   down. With `reversible` (`AccumPreFire`) a release mid-spin-up starts
 //!   the spin-down part-way and a press mid-spin-down the spin-up (the
 //!   whole-ms formulas of 3.3); otherwise each restarts from 0.
@@ -38,13 +40,17 @@
 //!   170 ms loop, Open question 3's lower count), not by its fire keys.
 //! - The double barrel's `reload_1` (one round left) isn't separate: one
 //!   reload time. An alt-fire volley needs a fresh press.
-//! - No continuous-fire mode (`ContinuousFire`), no pre-fire or post-fire
-//!   on other weapons (a pistol's post-fire never delays a press; an
-//!   automatic's post-fire isn't waited for; the zero-length pre-fire's
-//!   extra update isn't there), no launchers, M32, snowball gun or crossbow
-//!   (projectiles: their own specs).
-//! - 5.6 (the server's reload bookkeeping): there is one simulation, so a
-//!   shotgun's shot is let through whenever its clip has a round.
+//! - No continuous-fire mode (`ContinuousFire`), no post-fire on other
+//!   weapons (a pistol's post-fire never delays a press; an automatic's
+//!   post-fire isn't waited for); the pre-fire is the trigger's latency
+//!   (`Trigger::latency`: 3 updates from the press, 2 on primary shotguns,
+//!   Corrections 3; the minigun's 1 with its spin-up), none on an alt-fire
+//!   volley; no launchers, M32, snowball gun or crossbow (projectiles:
+//!   their own specs).
+//! - 5.6 (the server's reload bookkeeping): its window drops shots
+//!   (`weapons::server_reload_mark`, Corrections 2), but there is one clip,
+//!   so nothing refills at its end and a shotgun's shot is let through
+//!   whenever its clip has a round.
 //! - Ammo pickups by class and the "last primary" record (inventory and
 //!   game modes) aren't here.
 
@@ -64,7 +70,11 @@ pub const ALT_FIRE: &str = "combat_arms:alt_fire";
 /// Timers due on a tick count on it (as the weapon frame does).
 const SLACK: f64 = 1e-5;
 
+/// Not this update but the next (a tick is longer).
+const NEXT_UPDATE: f64 = 1e-3;
+
 /// Whole milliseconds of `secs` (3.3's times).
+
 fn ms(secs: f64) -> f64 {
     (secs * 1000.0 + 1e-6).floor()
 }
@@ -276,9 +286,24 @@ pub(super) fn class_rules(
             }
             let ready = due >= inv.next_attack && !st.reloading();
             if let Some(mut spin) = spin {
-                let held = intent.fire && clip > 0 && ready;
+                // The spin-up is the pre-fire (Corrections 3): it starts
+                // on the update after the one that entered the firing
+                // state (`Trigger::latency` 1), and `fire_0` starts on the
+                // update that sees it done, the round on the next.
+                let held = intent.fire && clip > 0 && ready && st.firing;
+                let was = spin.state;
                 if let Some(first) = spin.update(held, now) {
                     st.next_primary = first;
+                }
+                match (was, spin.state) {
+                    (SpinState::Up { .. }, SpinState::Firing { .. }) => st.next_primary = now + NEXT_UPDATE,
+                    (_, SpinState::Idle | SpinState::Down { .. }) if st.firing || st.armed_round => {
+                        // Let go during the spin-up: no round.
+                        st.firing = false;
+                        st.arming = 0;
+                        st.armed_round = false;
+                    }
+                    _ => {}
                 }
             }
             if let Some(alt) = alt

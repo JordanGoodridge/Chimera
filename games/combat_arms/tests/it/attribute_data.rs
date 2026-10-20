@@ -551,3 +551,76 @@ fn models_and_names_from_the_install() {
     let grenade = set.get("combat_arms:m23f").unwrap();
     assert_eq!(grenade.models.view.as_deref(), Some("guns_m_pv_throwing/pv_throwing_m18smoke_sh.ltb"));
 }
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-19): 33-36
+
+/// 33. The node priority read: `Node4Priority=2.5` → 2.5; a node without
+/// the key → 0. And our data's priorities by location.
+#[test]
+fn case_33_node_priority_read() {
+    let d = doc(
+        r#"[Skeleton0] Node0Name="a" Node1Name="b" Node2Name="c" Node3Name="d" Node4Name="e"
+        Node4Priority=2.5 Node4Radius=3.0 Node4Location=1 Node4DamageFactor=6.0"#,
+    );
+    let nodes = SkeletonNode::read_all(d.records("Skeleton")[0]);
+    assert_eq!(nodes.len(), 5);
+    assert_eq!(nodes[4].priority, 2.5);
+    assert_eq!((nodes[4].radius, nodes[4].location, nodes[4].damage_factor), (3.0, 1, 6.0));
+    assert_eq!(nodes[3].priority, 0.0);
+    let male = *combat_arms::game::weapons::MALE;
+    let head = male.iter().find(|s| s.name == "Head").unwrap();
+    let chest = male.iter().find(|s| s.name == "Upper_torso").unwrap();
+    assert!(chest.priority > head.priority, "ours: the torso first");
+}
+
+/// 34. Burst defaults: a record with `TripleShotMode=1` and no other
+/// `TripleShot*` key → kick 1.0, cap 50, cone 7/100, speeds 1.0/1.0,
+/// delays 300/400 ms, 3 rounds; a hand-written document that leaves them
+/// out gets the same (Corrections 2).
+#[test]
+fn case_34_burst_defaults() {
+    let f = weapons(r#"[Ammo0] Name="a" [Weapon0] Name="W" AmmoName0="a" TripleShotMode=1"#).unwrap();
+    let w = &f.weapons[0];
+    assert_eq!((w.triple_shot_base_cam_recoil_pitch, w.triple_shot_max_cam_recoil_pitch), (1.0, 50.0));
+    assert_eq!((w.triple_shot.min, w.triple_shot.max, w.triple_shot.inc, w.triple_shot.dec), (7, 100, 1.0, 1.0));
+    assert_eq!((w.triple_shot_delay, w.triple_shot_select_delay, w.triple_shot_round_num), (300, 400, 3));
+    use combat_arms::game::weapons::{RecoilParams, SpreadParams};
+    let r: RecoilParams = toml::from_str("").unwrap();
+    assert_eq!((r.burst_pitch, r.burst_max_pitch), (1.0, 50.0));
+    let s: SpreadParams = toml::from_str("cone = { min = 3, max = 100, inc = 1.3, dec = 0.3 }\nstate = {}").unwrap();
+    let b = s.burst_cone.unwrap();
+    assert_eq!((b.min, b.max, b.inc, b.dec), (7, 100, 1.0, 1.0));
+}
+
+/// 35. Zoomed defaults: a record with no `Zoomed*` key → 1/500, 3.0/3.0;
+/// the same for a hand-written document.
+#[test]
+fn case_35_zoomed_defaults() {
+    let f = weapons(r#"[Ammo0] Name="a" [Weapon0] Name="W" AmmoName0="a""#).unwrap();
+    let w = &f.weapons[0];
+    assert_eq!((w.zoomed.min, w.zoomed.max, w.zoomed.inc, w.zoomed.dec), (1, 500, 3.0, 3.0));
+    let s: combat_arms::game::weapons::SpreadParams =
+        toml::from_str("cone = { min = 3, max = 100, inc = 1.3, dec = 0.3 }\nstate = {}").unwrap();
+    let z = s.zoomed_cone.unwrap();
+    assert_eq!((z.min, z.max, z.inc, z.dec), (1, 500, 3.0, 3.0));
+}
+
+/// 36. Server settings: no `[TimeWeight]` → `ReloadCheckTime` 0.8;
+/// `ReloadCheckTime=1.0` → the window is the third-person reload at
+/// rate 1.
+#[test]
+fn case_36_server_settings() {
+    assert_eq!(ServerTimeWeight::read(&doc(r#"[Player] WalkSpeed=70.0"#)).reload_check_time, 0.8);
+    let t = ServerTimeWeight::read(&doc(r#"[TimeWeight] ReloadCheckTime=1.0"#));
+    assert_eq!(t.reload_check_time, 1.0);
+    close(combat_arms::game::weapons::server_reload_mark(2.4, 1.0, t.reload_check_time), 2.4);
+    let (attrs, _) = read_attributes(|name| {
+        if name == SERVER_FILE {
+            Ok(b"[TimeWeight] ReloadCheckTime=0.5".to_vec())
+        } else {
+            Err(std::io::Error::other("absent"))
+        }
+    });
+    assert_eq!(attrs.time_weight.map(|t| t.reload_check_time), Some(0.5));
+}

@@ -68,7 +68,10 @@
 //!   `combat_arms:zoom` table, `AccumPreFire` in `combat_arms:spin`'s;
 //!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps our shell
 //!   timings: they are the view model's animations). Not mapped (no field
-//!   in our data yet): `TripleShot*` timing,
+//!   in our data yet): the trigger's `latency` (the pre-fire's updates:
+//!   ours, 3 or a primary shotgun's 2, copied with the class's document),
+//!   the projectile's `FireOffset`, `TripleShot*` timing,
+
 //!   `ContinuousFire`, sounds and sound radii, render styles,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
@@ -110,7 +113,8 @@ use lithtech_formats::attributes::Document;
 use toml::{Table, Value};
 
 use self::attributes::{
-    ATTACHMENTS_FILE, AmmoRecord, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord,
+    ATTACHMENTS_FILE, AmmoRecord, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, ServerTimeWeight, WEAPONS_FILE,
+ WeaponRecord,
     WeaponsFile,
 };
 use super::{attachments::CaModTable, movement::MovementData};
@@ -225,6 +229,8 @@ pub fn with_install_movement(mut data: MovementData) -> MovementData {
 pub struct InstallAttributes {
     pub weapons: Option<WeaponsFile>,
     pub server: Option<ServerPlayer>,
+    /// The server file's `[TimeWeight]` (`ReloadCheckTime`).
+    pub time_weight: Option<ServerTimeWeight>,
     pub models: Option<ModelsFile>,
     /// The modification file (attachments).
     pub mods: Option<ModFile>,
@@ -264,6 +270,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     });
     let attrs = InstallAttributes {
         weapons,
+        time_weight: server.as_ref().map(ServerTimeWeight::read),
         server: server.and_then(|d| ServerPlayer::read(&d)),
         models: models.map(|d| ModelsFile::read(&d)),
         mods: mods.map(|d| ModFile::read(&d)),
@@ -294,6 +301,14 @@ pub fn install_attributes() -> Option<&'static InstallAttributes> {
             Some(attrs)
         })
         .as_ref()
+}
+
+/// The server's `ReloadCheckTime` (attribute_data.md Corrections 3): the
+/// install's `[TimeWeight]`, else the built-in 0.8.
+pub fn reload_check_time() -> f64 {
+    install_attributes()
+        .and_then(|a| a.time_weight)
+        .map_or(ServerTimeWeight::BUILT_IN, |t| t.reload_check_time)
 }
 
 /// Read an install's `ATTRIBUTES.rez` with the configured keys. `Err`

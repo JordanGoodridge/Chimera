@@ -1508,3 +1508,39 @@ fn net_thrown_grenade_seen_and_damaging() {
         .collect();
     assert!(others.contains(&after), "the thrower's client has it: {others:?}");
 }
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-19): 59-60
+
+/// 59. The fire offset: 20 u clear ahead of an eye at (0, 64, 0) looking
+/// along +Z → the grenade starts at (0, 64, 20); a wall 10 u ahead → at
+/// the eye; offset 0 → at the eye. And the data's default is 0.
+#[test]
+fn t59_fire_offset() {
+    let mut sim = sim();
+    let thrower = player(&mut sim, 0.0, -500.0, 0.0, 0);
+    let eye = Vec3::new(0.0, 64.0, 0.0) * U;
+    let at = grenades::fire_offset(sim.app.world_mut(), thrower, eye, Vec3::Z, 20.0 * U);
+    assert_near(at / U, Vec3::new(0.0, 64.0, 20.0), 1e-3, "clear");
+    let at = grenades::fire_offset(sim.app.world_mut(), thrower, eye, Vec3::Z, 0.0);
+    assert_near(at / U, Vec3::new(0.0, 64.0, 0.0), 1e-6, "no offset");
+    solid(&mut sim, Vec3::new(-50.0, 0.0, 10.0) * U, Vec3::new(50.0, 100.0, 12.0) * U, None);
+    let at = grenades::fire_offset(sim.app.world_mut(), thrower, eye, Vec3::Z, 20.0 * U);
+    assert_near(at / U, Vec3::new(0.0, 64.0, 0.0), 1e-6, "a wall 10 u ahead");
+    let w = weapon_of(&mut sim, M67, None);
+    let data = sim.app.world().get::<grenades::CaGrenadeData>(w).unwrap();
+    assert_eq!(data.params.fire_offset, 0.0, "stock: 0 (Open question 23)");
+}
+
+/// 60. The big-object slack on a character: dims 130 long, 300 u away →
+/// 270: 60 x (1 - (270 - 112.5) / 337.5) = 32.0 a hit. A stock body's
+/// dims (15, 50, 15) change nothing.
+#[test]
+fn t60_slack_on_a_large_character() {
+    let dims = Vec3::new(0.0, 130.0, 0.0);
+    let d = grenades::blast_distance(300.0, dims);
+    assert!((d - 270.0).abs() < 1e-4, "{d}");
+    let per_hit = 60.0 * grenades::falloff(450.0, d);
+    assert!((per_hit - 32.0).abs() < 1e-3, "{per_hit}");
+    assert_eq!(grenades::blast_distance(300.0, Vec3::new(15.0, 50.0, 15.0)), 300.0);
+}

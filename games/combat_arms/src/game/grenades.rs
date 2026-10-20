@@ -18,7 +18,8 @@
 //! square spread (`throw_perturb`: weapon_firing.md's cone, the limits
 //! multiplied by the dynamic factor g first, none when the top is 0: the
 //! flash and smoke fly exactly along the view), at `speed` with none of
-//! the thrower's velocity (4). It is a Chimera `Projectile` marked
+//! the thrower's velocity (4), started `FireOffset` along the throw when that
+//! segment is clear (`fire_offset`, Corrections 1). It is a Chimera `Projectile` marked
 //! `GameFlown` with this game's state (`CaGrenade`), so the network draws
 //! it (`NetItem`) and `Detonated` tells the presentation and clients; it
 //! and its smoke cloud `SurvivesRestart`: a new round leaves grenades in
@@ -188,7 +189,7 @@ pub const REST_FLOOR_NORMAL: f32 = 0.75;
 /// Blast and flash are full inside this fraction of the radius.
 pub const BLAST_FULL_FRACTION: f32 = 0.25;
 /// Objects whose dims vector is longer than this (u) have the excess taken
-/// off their blast distance (not players).
+/// off their blast distance (characters too, by their dims: Corrections 2).
 pub const BIG_OBJECT_SLACK: f32 = 100.0;
 /// `FlashBangDelay`: blast to blindness facing it, s; facing away a third.
 pub const FLASH_DELAY: f64 = 0.25;
@@ -308,6 +309,12 @@ pub struct GrenadeParams {
     /// animation × its scale 2 (`grenade_box`); y is the half-height of
     /// the at-rest nudge.
     pub box_half: [f32; 3],
+    /// The projectile record's `FireOffset` (u; Corrections 1): the
+    /// server starts the grenade this far along the throw when that
+    /// segment is clear (0: at the eye; the stock value is Open question
+    /// 23's).
+    #[serde(default)]
+    pub fire_offset: f32,
 }
 
 /// Weapon part: a Combat Arms grenade's numbers, and its document's units
@@ -834,7 +841,25 @@ pub fn launch(world: &mut World, l: Launch) {
     let (u1, u2) = (rng.next(), rng.next());
     let aim = Quat::from_euler(EulerRot::YXZ, l.yaw, l.pitch, 0.0);
     let dir = square_dir(aim, n / 1000.0, u1, u2);
-    spawn_grenade(world, l.weapon, Some(l.thrower), l.eye, dir * p.speed * data.unit);
+    let at = fire_offset(world, l.thrower, l.eye, dir, p.fire_offset * data.unit);
+    spawn_grenade(world, l.weapon, Some(l.thrower), at, dir * p.speed * data.unit);
+}
+
+/// Where the server starts a throw (Corrections 1): `eye` moved `offset`
+/// (m) along `dir` when nothing but the thrower is on that segment, else
+/// the eye.
+pub fn fire_offset(world: &mut World, thrower: Entity, eye: Vec3, dir: Vec3, offset: f32) -> Vec3 {
+    if offset == 0.0 {
+        return eye;
+    }
+    let Ok(ray) = Dir3::new(dir * offset.signum()) else { return eye };
+    let mut state = bevy::ecs::system::SystemState::<SpatialQuery>::new(world);
+    let Ok(spatial) = state.get(world) else { return eye };
+    let filter = SpatialQueryFilter::from_excluded_entities([thrower]).with_mask(SOLID_LAYERS);
+    match spatial.cast_ray(eye, ray, offset.abs(), true, &filter) {
+        Some(_) => eye,
+        None => eye + dir * offset,
+    }
 }
 
 /// A live grenade of `weapon`'s kind (a Combat Arms `Throwable`) at `at`
@@ -1137,6 +1162,7 @@ struct Out<'w, 's> {
     armour: Query<'w, 's, &'static mut CaArmor>,
     effects: ResMut<'w, CaGrenadeEffects>,
     commands: Commands<'w, 's>,
+    ai: super::weapons::AiHits<'w, 's>,
 }
 
 impl Out<'_, '_> {
@@ -1183,8 +1209,10 @@ impl Out<'_, '_> {
 
     /// `amount` (health) of `damage_type` on `victim`'s torso after its
     /// armour (weapon_firing.md, Armour), which takes its share if the
-    /// hit lands.
+    /// hit lands; an AI's x `AIDamageFactor` first and capped on a player
+    /// after (weapon_firing.md Corrections 7).
     fn armoured(&mut self, victim: Entity, attacker: Option<Entity>, amount: f32, damage_type: i32, hp: f32) -> f32 {
+        let amount = amount * self.ai.factor(attacker);
         let lands = !self.spared(victim, attacker);
         let hit = ArmourHit {
             damage_type,
@@ -1193,7 +1221,8 @@ impl Out<'_, '_> {
             infected: false,
         };
         let armour = self.armour.get_mut(victim).ok().map(|a| a.into_inner());
-        armour_and_zone(amount / hp, hit, armour, lands) * hp
+        let after = armour_and_zone(amount / hp, hit, armour, lands);
+        self.ai.cap(attacker, victim, after, false) * hp
     }
 
     /// Whether the team rules spare `victim` from `attacker`'s grenade.
@@ -1620,6 +1649,13 @@ fn detonations(f: &mut Frame, grenades: &mut Grenades, world: &GrenadeWorld, out
     }
 }
 
+/// The blast distance (u) of an object `d` (u) from the blast whose
+/// half-dims are `dims` (u): less the length of its dims over
+/// `BIG_OBJECT_SLACK` (9; every object, characters too: Corrections 2).
+pub fn blast_distance(d: f32, dims: Vec3) -> f32 {
+    (d - (dims.length() - BIG_OBJECT_SLACK).max(0.0)).max(0.0)
+}
+
 /// The closest point of a box to `p`.
 fn box_distance(min: Vec3, max: Vec3, p: Vec3) -> f32 {
     p.clamp(min, max).distance(p)
@@ -1645,7 +1681,9 @@ fn blast(
         if box_distance(b.min, b.max, at) > r * unit {
             continue;
         }
-        let d = b.centre.distance(at) / unit;
+        // The big-object slack applies to characters too, by their dims
+        // (Corrections 2: nothing for a stock body).
+        let d = blast_distance(b.centre.distance(at) / unit, (b.max - b.min) / 2.0 / unit);
         if d > r {
             continue;
         }

@@ -13,7 +13,8 @@
 //! Units: meters, seconds, damage normalized like `Health`.
 //!
 //! Weapons as parts (README, "Weapons and items"): `Trigger` (a per-pull
-//! limit), `Magazine` (cost; `ShellReload`: one round at a time, a shot stops
+//! limit; `latency`: updates from entering the firing state to a pull's
+//! first round, which goes even if let go), `Magazine` (cost; `ShellReload`: one round at a time, a shot stops
 //! it, optionally back to back with a closing part; `auto_reload`: an empty
 //! clip reloads, held or not; `WeaponState::reload_held`: a game holds
 //! reloads), `Hitscan` (pellets
@@ -681,6 +682,16 @@ pub struct Trigger {
     /// `RapidFireCount` above 1): holding stops after this many until the
     /// trigger is let go. A semi-automatic (`automatic` false) is 1.
     pub per_press: u32,
+    /// Weapon updates from the one that starts firing to the one that
+    /// spends the first round (0: that same update, Source). Combat Arms'
+    /// view-model chain (specs/combat_arms/weapon_firing.md, Corrections
+    /// 10): the update that sees the request (or the end of a draw or
+    /// reload with fire held) only enters the firing state, the pre-fire
+    /// and the fire animation take one each, so its first round comes 3
+    /// updates later (2 without a pre-fire). Once the chain has started its
+    /// round goes even if the trigger is let go; while firing (fire held,
+    /// or the last cycle not over) later rounds keep the cycle alone.
+    pub latency: u32,
 }
 
 /// How refire times are kept (spec 3.2).
@@ -1228,6 +1239,14 @@ pub struct WeaponState {
     /// The game holds reloads (the key's and the automatic ones) while
     /// set: Combat Arms zooms out first, then reloads.
     pub reload_held: bool,
+    /// In the firing state (`Trigger::latency`): entered by the update
+    /// that starts the chain, left when the trigger is let go with no
+    /// round pending and the last cycle over, and by a draw or a reload.
+    pub firing: bool,
+    /// Updates of the chain still to go before its first round, and
+    /// whether that round is still to come.
+    pub arming: u32,
+    pub armed_round: bool,
 }
 
 impl WeaponState {
@@ -1589,9 +1608,21 @@ fn weapon_frame(
             w.state.rezoom = None;
             w.set_mode(mode, owner, &mut world);
         }
+        // The firing state (`Trigger::latency`) ends with a draw or a
+        // reload: the update that sees either end starts the chain again.
+        let latency = w.trigger.map_or(0, |t| t.latency);
+        if latency > 0 && (due < inv.next_attack || w.state.reloading()) && (w.state.firing || w.state.armed_round) {
+            w.state.firing = false;
+            w.state.arming = 0;
+            w.state.armed_round = false;
+        }
         // Busy (drawing, reloading): only the timers run.
         if due < inv.next_attack {
             continue;
+        }
+        // The chain's updates before its first round.
+        if w.state.arming > 0 {
+            w.state.arming -= 1;
         }
         let eye = transform.translation + state.eye_offset;
         // Shots follow the view plus the weapon's share of the recoil.
@@ -1761,8 +1792,9 @@ fn weapon_frame(
             try_reload(&mut w, &mut inv, now, owner, ctx.w);
         }
 
-        // 4. Primary attack.
-        if intent.fire && !blocked && w.state.next_primary <= due {
+        // 4. Primary attack (or the chain's round, `Trigger::latency`).
+        if (intent.fire || w.state.armed_round) && !blocked && w.state.next_primary <= due && w.state.arming == 0 {
+            let chain_round = std::mem::take(&mut w.state.armed_round);
             let automatic = w.trigger.is_none_or(|t| t.automatic);
             let per_press = w.trigger.map_or(0, |t| t.per_press);
             let empty = w.magazine.as_ref().is_some_and(|m| m.clip == 0);
@@ -1793,9 +1825,18 @@ fn weapon_frame(
                     w.state.next_primary = now + 0.2;
                     ctx.w.event(owner, active, WeaponEventKind::DryFire);
                 }
+            } else if latency > 0 && !w.state.firing {
+                // Enter the firing state: the round comes `latency`
+                // updates on, the trigger held or not; a shell reload
+                // stops now.
+                w.state.firing = true;
+                w.state.arming = latency;
+                w.state.armed_round = true;
+                w.state.shells = ShellStage::Idle;
             } else {
-                if pressed || released2 {
-                    // A fresh press drops any accumulated lag (spec 3.2).
+                if pressed || released2 || chain_round {
+                    // A fresh press drops any accumulated lag (spec 3.2);
+                    // so does the chain's first round.
                     w.state.next_primary = now;
                 }
                 // A shot stops a one-at-a-time reload.
@@ -1845,6 +1886,12 @@ fn weapon_frame(
                     }
                 }
             }
+        }
+
+        // The firing state ends once the trigger is let go, no chain
+        // round is pending and the last cycle is over.
+        if w.state.firing && !intent.fire && !w.state.armed_round && w.state.next_primary <= due {
+            w.state.firing = false;
         }
 
         // 5. Reload key.

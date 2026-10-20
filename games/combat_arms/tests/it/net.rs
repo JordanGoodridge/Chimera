@@ -40,7 +40,8 @@ use combat_arms::{
         TICK_INTERVAL,
         inventory::{CaSelection, KNIFE, Knife, KnifePhase},
         movement::CaMovement,
-        weapons::{CaArmor, CaRecoil, CaSpread, CaZoom, RIFLE},
+        weapons::{CaArmor, CaKick, CaSpread, CaZoom, RIFLE},
+
     },
     harness::CaSim,
 };
@@ -295,9 +296,10 @@ fn shots_and_damage_are_seen_by_both() {
     client_intent(&mut sim, 0).fire = false;
     // The shooter's client predicted its spread and kick.
     {
+        let me = sim.local_player(0).unwrap();
         let world = sim.clients[0].app.world();
         assert!(world.get::<CaSpread>(rifle).unwrap().fire > 0.0, "the firing meter grew");
-        assert!(world.get::<CaRecoil>(rifle).unwrap().pitch > 0.0, "the view kicked");
+        assert!(world.get::<CaKick>(me).unwrap().pitch > 0.0, "the view kicked");
     }
     sim.ticks(60);
     assert_no_errors(&sim, "shooting");

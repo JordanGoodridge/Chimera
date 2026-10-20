@@ -22,7 +22,7 @@ use combat_arms::{
     game::{
         movement,
         weapons::{
-            self as ca, CaArmor, CaDamage, CaRecoil, CaSpread, DEFAULT_BODY_GEAR, DEFAULT_HEAD_GEAR, FireMode,
+            self as ca, CaArmor, CaDamage, CaKick, CaRecoil, CaSpread, DEFAULT_BODY_GEAR, DEFAULT_HEAD_GEAR, FireMode,
             HEAVY_BODY_GEAR, MALE, SpreadScales,
         },
     },
@@ -157,14 +157,18 @@ fn aim(sim: &mut Sim, shooter: Entity, point: Vec3) {
     i.pitch = d.y.atan2(d.xz().length());
 }
 
-/// Fire one round (a one-tick pull) and let it land; the hit points
-/// `target` lost.
+/// Updates from the press to the first round (the M4A1's `latency`,
+/// Corrections 10): the round goes on the 3rd update after the press's.
+const LATENCY: u64 = 3;
+
+/// Fire one round (a one-tick pull: the chain's round goes all the same)
+/// and let it land; the hit points `target` lost.
 fn shoot(sim: &mut Sim, shooter: Entity, target: Entity) -> f32 {
     let before = health(sim, target);
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;
-    sim.ticks(1);
+    sim.ticks(LATENCY + 1);
     let lost = (before - health(sim, target)) / HP;
     // Ready for the next round.
     sim.seconds(0.2);
@@ -185,7 +189,11 @@ fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f
         let from = eye(sim, shooter);
         let dir = (sphere(sim, shooter, target, name) - from).normalize();
         let (min, max, _) = geometry(sim.app.world(), target);
-        let t = ca::box_entry(min, max, from, dir, f32::INFINITY).unwrap();
+        // The reported point: the widened box's entry (weapon_firing.md
+        // Corrections 8).
+        let (c, half) = ((min + max) / 2.0, (max - min) / 2.0 * Vec3::new(ca::HITBOX_WIDEN, 1.0, ca::HITBOX_WIDEN));
+        let t = ca::box_entry(c - half, c + half, from, dir, f32::INFINITY).unwrap();
+
         let err = t - units * U;
         sim.app.world_mut().get_mut::<Transform>(target).unwrap().translation.z += err / dir.z.abs();
         // The physics moves its bounds (`ColliderAabb`).
@@ -193,7 +201,20 @@ fn place_at(sim: &mut Sim, shooter: Entity, target: Entity, name: &str, units: f
     }
 }
 
+/// Turn `p` to `yaw` with its body (legs) turned too: no upper-body
+/// twist (Corrections 6).
+fn face(sim: &mut Sim, p: Entity, yaw: f32) {
+    sim.intent(p).yaw = yaw;
+    if let Some(w) = sim.app.world().get::<Inventory>(p).and_then(|i| i.active)
+        && let Some(mut s) = sim.app.world_mut().get_mut::<CaSpread>(w)
+    {
+        s.body_yaw = Some(yaw);
+        s.prev_view = None;
+    }
+}
+
 fn close(a: f32, b: f32, tol: f32, what: &str) {
+
     assert!((a - b).abs() <= tol, "{what}: {a}, expected {b}");
 }
 
@@ -660,8 +681,8 @@ fn kicks(rounds: usize) -> Vec<(f32, f32, f32, f32)> {
         if now < clip {
             clip = now;
             let punch = sim.app.world().get::<ViewPunch>(p).map_or(Vec3::ZERO, |p| p.0);
-            let r = sim.app.world().get::<CaRecoil>(w).unwrap();
-            out.push((punch.x.to_degrees(), punch.y.to_degrees(), r.pitch, r.yaw));
+            let k = sim.app.world().get::<CaKick>(p).unwrap();
+            out.push((punch.x.to_degrees(), punch.y.to_degrees(), k.pitch, k.yaw));
         }
     }
     out
@@ -702,15 +723,17 @@ fn t24_wag_start() {
 fn t25_recoil_return() {
     let mut sim = sim();
     let (_, w) = m4a1(&mut sim);
-    let base = sim.app.world().get::<CaRecoil>(w).unwrap().clone();
+    let r = sim.app.world().get::<CaRecoil>(w).unwrap().clone();
     for (since, down, left) in [(0.050, 0.0018080, 0.0104406), (0.120, 0.0036160, 0.0095366)] {
-        let mut r = base.clone();
-        r.pitch = 0.0113446;
-        r.last_kick = Some(10.0 - since);
-        let (d, side) = r.recover(0.016, 10.0);
+        let mut k = CaKick {
+            pitch: 0.0113446,
+            last_kick: Some(10.0 - since),
+            ..default()
+        };
+        let (d, side) = r.recover(&mut k, 0.016, 10.0, false);
         close(d, down, 1e-7, &format!("{since} s after"));
         close(side, 0.0, 0.0, "no side");
-        close(r.pitch, left, 1e-7, "J");
+        close(k.pitch, left, 1e-7, "J");
     }
 }
 
@@ -722,8 +745,9 @@ fn fired(sim: &Sim, w: Entity) -> u32 {
     30 - mag(sim, w).clip
 }
 
-/// 26. The fire cycle: exact time fires at 0, 105, 210, ... ms, 30 by
-/// 3045 ms; frame-quantised at 60 fps one round every 7 frames.
+/// 26. The fire cycle: exact time fires at 0, 105, 210, ... ms from the
+/// first round (the 3rd update after the press, case 64), 30 by 3045 ms;
+/// frame-quantised at 60 fps one round every 7 frames.
 #[test]
 fn t26_fire_cycle() {
     let mut sim = self::sim();
@@ -735,13 +759,13 @@ fn t26_fire_cycle() {
     let mut ticks = 0u32;
     while fired(&sim, w) < 30 {
         sim.ticks(1);
-        // The press tick is t = 0.
-        let t = ticks as f64 * dt;
-        let want = ((t + 1e-6) / 0.105).floor() as u32 + 1;
+        // The press tick is 0, the first round's t = 0.
+        let t = (ticks as f64 - LATENCY as f64) * dt;
+        let want = if t < -1e-9 { 0 } else { ((t + 1e-6) / 0.105).floor() as u32 + 1 };
         assert_eq!(fired(&sim, w), want.min(30), "at {t} s");
         ticks += 1;
     }
-    let t = (ticks - 1) as f64 * dt;
+    let t = (ticks as f64 - 1.0 - LATENCY as f64) * dt;
     assert!(t >= 3.045 && t < 3.045 + dt, "30th at {t} s");
 
     // Frame-quantised, 60 frames a second.
@@ -831,9 +855,10 @@ fn ticks_for(sim: &Sim, secs: f64) -> u64 {
     (secs * sim.tick_hz() - 1e-6).ceil() as u64
 }
 
-/// 28. Bursts: held for 2 s, 3 rounds (0, 105, 210 ms) then none; a tap
-/// released at 20 ms still 3; a press 90 ms after the third waits until
-/// 420 ms after the first; a new press then gives the next burst.
+/// 28. Bursts: held for 2 s, 3 rounds (0, 105, 210 ms from the first,
+/// which is the 3rd update after the press) then none; a tap released at
+/// 20 ms still 3; a press 90 ms after the third waits until 420 ms after
+/// the first; a new press then gives the next burst.
 #[test]
 fn t28_burst() {
     let (mut sim, p, w) = m16a3(0.35);
@@ -847,17 +872,18 @@ fn t28_burst() {
             at.push(tick);
         }
     }
-    let want: Vec<u64> = [0.0, 0.105, 0.210].iter().map(|t| ticks_for(&sim, *t)).collect();
+    let want: Vec<u64> = [0.0, 0.105, 0.210].iter().map(|t| LATENCY + ticks_for(&sim, *t)).collect();
     assert_eq!(at, want, "held for 2 s");
     sim.intent(p).fire = false;
 
     // A tap, released at 20 ms (held on the ticks before it).
     let (mut sim, p, w) = m16a3(0.35);
-    // The next tick is t = 0; `next` is the time of the tick to come.
-    let start = sim.tick();
-    let next = |sim: &Sim| (sim.tick() - start) as f64 / sim.tick_hz();
+    // The press tick is 0; `next` is the time of the tick to come from
+    // the first round.
+    let start = sim.tick() + LATENCY;
+    let next = |sim: &Sim| (sim.tick() as f64 - start as f64) / sim.tick_hz();
     sim.intent(p).fire = true;
-    while next(&sim) < 0.020 {
+    while next(&sim) < 0.020 - LATENCY as f64 / sim.tick_hz() {
         sim.ticks(1);
     }
     sim.intent(p).fire = false;
@@ -871,6 +897,8 @@ fn t28_burst() {
         sim.ticks(1);
         assert_eq!(fired(&sim, w), 3, "before 420 ms");
     }
+    // Still in the firing state (the lockout is the last cycle): the
+    // held trigger fires when it ends, no chain.
     sim.ticks(1);
     assert_eq!(fired(&sim, w), 4, "the next burst from 420 ms");
 }
@@ -890,7 +918,9 @@ fn t29_burst_toggle_lockout() {
         sim.ticks(1);
     }
     let t = (sim.tick() - 1 - toggled) as f64 / sim.tick_hz();
-    assert!(t >= 0.300 - 1e-6 && t < 0.300 + 1.0 / sim.tick_hz(), "first round at {t} s");
+    // The chain starts once the lockout is over (Corrections 10).
+    let latency = LATENCY as f64 / sim.tick_hz();
+    assert!(t >= 0.300 + latency - 1e-6 && t < 0.300 + latency + 1.0 / sim.tick_hz(), "first round at {t} s");
 }
 
 /// 30. Empty with a reserve: one round, the reload starts by itself about
@@ -904,7 +934,7 @@ fn t30_empty_and_auto_reload() {
     sim.seconds(1.0);
     set_mag(&mut sim, w, 1, 60);
     sim.intent(p).fire = true;
-    sim.ticks(1);
+    sim.ticks(LATENCY + 1);
     let m = mag(&sim, w);
     assert_eq!((m.clip, m.clip + m.reserve), (0, 60));
     let shot = sim.tick() - 1;
@@ -921,8 +951,11 @@ fn t30_empty_and_auto_reload() {
     let took = (sim.tick() - 1 - begin) as f64 / sim.tick_hz();
     assert!((2.3 - 1e-6..2.3 + 1.0 / sim.tick_hz()).contains(&took), "took {took}");
     let m = mag(&sim, w);
-    // Held: the first round goes the same update the clip fills.
-    assert!(m.clip == 29 || m.clip == 30, "{}", m.clip);
+    // Held: the update that fills the clip enters the firing state, the
+    // round goes 3 updates later (inventory.md case 45).
+    assert_eq!(m.clip, 30);
+    sim.ticks(LATENCY - 1);
+    assert_eq!(mag(&sim, w).clip, 30, "not yet");
     sim.ticks(1);
     let m = mag(&sim, w);
     assert_eq!((m.clip, m.clip + m.reserve), (29, 59), "firing again");
@@ -1019,7 +1052,7 @@ fn t34_fire_during_reload() {
         assert_eq!(mag(&sim, w).clip, 0, "no round during the reload");
         sim.ticks(1);
     }
-    sim.ticks(2);
+    sim.ticks(LATENCY + 1);
     let m = mag(&sim, w);
     assert_eq!((m.clip, m.reserve), (29, 60));
 }
@@ -1254,7 +1287,7 @@ fn t45_mu_uses_the_penalised_limit() {
 /// hits the first's chest at `units`.
 fn in_line(sim: &mut Sim, units: f32, first_yaw: f32) -> (Entity, Entity, Entity) {
     let (shooter, first) = range_lane(sim, "test:m4a1_exact", units);
-    sim.intent(first).yaw = first_yaw;
+    face(sim, first, first_yaw);
     place_at(sim, shooter, first, "Torso", units);
     let behind = sim.position(first) - Vec3::Z * 0.6;
     // Facing as the first, so the ray meets its torso as it met the
@@ -1271,7 +1304,7 @@ fn one_round(sim: &mut Sim, shooter: Entity, targets: [Entity; 2]) -> [f32; 2] {
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;
-    sim.ticks(1);
+    sim.ticks(LATENCY + 1);
     let lost = [0, 1].map(|i| (before[i] - health(sim, targets[i])) / HP);
     sim.seconds(0.2);
     lost
@@ -1337,6 +1370,7 @@ fn t47_fire_delay_clock() {
             sim.intent(shooter).fire = true;
             sim.ticks(1);
             sim.intent(shooter).fire = false;
+            sim.ticks(LATENCY);
             assert_eq!(fired(&sim, w), i as u32 + 1, "{times:?}: round {} spent", i + 1);
             let lost = (before - health(&sim, target)) / HP;
             close(lost, if dealt[i] { 35.0 } else { 0.0 }, 1e-3, &format!("{times:?}: round {}", i + 1));
