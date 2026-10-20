@@ -18,6 +18,7 @@ mod bots;
 mod capture_the_flag;
 mod characters;
 mod clan_modes;
+mod death_killcam;
 mod effects_sounds;
 mod free_for_all;
 mod game_modes;
