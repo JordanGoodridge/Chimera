@@ -22,6 +22,7 @@ use combat_arms::{
             trigger::{CaMapMusic, CaMusicOn},
         },
         objects::runtime::Props,
+        perks::CaPerkState,
         rules::Phase,
         world,
     },
@@ -539,6 +540,72 @@ fn round_result_sounds() {
     // A perk's cue replaces the mode music and it does not come back.
     m.perk_cue(true, 3_000.0);
     assert_eq!(playing(&m), [data().cues.war_cry.clone()]);
+}
+
+/// A perk's buff beginning plays its sound file as music; the mode's
+/// music does not come back (Quirk 5) - from the facts and from a living
+/// player's perk state.
+#[test]
+fn a_perk_cue_follows_the_buff() {
+    let mut m = all_files();
+    let mut prev = MusicFacts {
+        screen: Screen::Match,
+        mode: "TMM".into(),
+        ..Default::default()
+    };
+    step(&mut m, &mut prev, match_facts("TMM", SETUP, false), 0.0);
+    assert_eq!(playing(&m), [data().mode_track("TMM", None).unwrap().0.to_string()]);
+    step(
+        &mut m,
+        &mut prev,
+        MusicFacts {
+            war_cry: true,
+            ..match_facts("TMM", Phase::Live, false)
+        },
+        1_000.0,
+    );
+    assert_eq!(playing(&m), [data().cues.war_cry.clone()]);
+    // Held: nothing more; ended: the mode music stays gone.
+    step(
+        &mut m,
+        &mut prev,
+        MusicFacts {
+            war_cry: true,
+            ..match_facts("TMM", Phase::Live, false)
+        },
+        2_000.0,
+    );
+    step(&mut m, &mut prev, match_facts("TMM", Phase::Live, false), 3_000.0);
+    assert_eq!(playing(&m), [data().cues.war_cry.clone()]);
+    step(
+        &mut m,
+        &mut prev,
+        MusicFacts {
+            eagle_eye: true,
+            ..match_facts("TMM", Phase::Live, false)
+        },
+        4_000.0,
+    );
+    assert_eq!(playing(&m), [data().cues.eagle_eye.clone()]);
+
+    // The same from a player's perk state.
+    let mut sim = sim_with(vec![], "TMM");
+    let (p, _) = {
+        let w = sim.app.world_mut();
+        let p = w.query_filtered::<Entity, With<LocalPlayer>>().single(w).unwrap();
+        (p, ())
+    };
+    sim.app.world_mut().resource_mut::<CaMusic>().files = MusicFiles::from_data(data());
+    sim.seconds(0.2);
+    let mut state = CaPerkState::default();
+    state.war_cry = Some((1e9, p));
+    sim.app.world_mut().entity_mut(p).insert(state);
+    sim.seconds(0.2);
+    let music = sim.app.world().resource::<CaMusic>();
+    assert_eq!(
+        music.player.primary.as_ref().map(|s| s.file.as_str()),
+        Some(data().cues.war_cry.as_str())
+    );
 }
 
 #[test]

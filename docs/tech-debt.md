@@ -181,7 +181,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms Hunted: No scavenging, supply drops or time hunted; the death-camera hold rides the body's place (`games/combat_arms/src/game/rules/hunted.rs`)
 - games/combat_arms death camera: Game clock not the OS tick; rays hit props; no listener move, `Eyes` socket, rank or weapon icon; Relentless and fast respawns granted by nothing (`games/combat_arms/src/game/death_cam.rs`)
 - games/combat_arms radio and chat: Command aliases, labels and notices ours; radio file name guessed, no voice set per character; no lobby or clan service, voice audio or HUD layout chat controls; name colours, GM and options set by tests (`games/combat_arms/src/game/chat.rs`)
-- games/combat_arms music and ambience: Keyed attribute values (playlist, interface sound files, mode start tracks) inferred or missing; no stored ticks; perk cues have no caller; minimized = window without pixels (`games/combat_arms/src/game/music/mod.rs`)
+- games/combat_arms music and ambience: Keyed attribute values (playlist, interface sound files, mode start tracks) inferred or missing; no stored ticks; perk cues follow the local buff; minimized = window without pixels (`games/combat_arms/src/game/music/mod.rs`)
 - games/combat_arms spawns: Fallback hull for every player; dead players occupy where they lie; shots don't pass through a protected player (they stop and do nothing) (`games/combat_arms/src/game/rules/spawns.rs`)
 - games/combat_arms scoring: Friendly-fire scale after armour; no team-0 filter; heals have no caller yet (`games/combat_arms/src/game/rules/scoring.rs`)
 - games/combat_arms TDM: No revenge buff or mutation boxes (`games/combat_arms/src/game/rules/tdm.rs`)

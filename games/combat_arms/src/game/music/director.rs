@@ -474,6 +474,9 @@ pub struct MusicFacts {
     pub last_stage: u32,
     /// The local player is first on the scoreboard.
     pub first: bool,
+    /// The local player has War Cry's or Eagle Eye's buff.
+    pub war_cry: bool,
+    pub eagle_eye: bool,
 }
 
 fn in_round(p: &rules::Phase) -> bool {
@@ -530,6 +533,14 @@ pub fn observe(m: &mut CaMusic, prev: &MusicFacts, now: &MusicFacts, ms: f64) {
     }
     if now.mode == "VWRM" && now.phase == Phase::Live {
         m.last_stage(now.last_stage, ms);
+    }
+    // A perk with a sound file as music: when the buff begins.
+    if prev.screen == Screen::Match {
+        if now.war_cry && !prev.war_cry {
+            m.perk_cue(true, ms);
+        } else if now.eagle_eye && !prev.eagle_eye {
+            m.perk_cue(false, ms);
+        }
     }
     // A round's result (the warm-up's too).
     if matches!(now.phase, Phase::RoundOver { .. }) && !matches!(before, Phase::RoundOver { .. }) {

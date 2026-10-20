@@ -41,8 +41,9 @@
 //! the seasonal substitution isn't applied; the saved ticks and the
 //! random-mode switch aren't stored (options.md hasn't landed: only
 //! `Playlist::saved` and `apply`); the room data's map index isn't known,
-//! so no mode has a per-map start track; the perk cues have no caller
-//! (gear_perks.md isn't implemented); Arms Race's last-stage event is
+//! so no mode has a per-map start track; the perk cues play when the local player's War Cry or Eagle Eye buff begins
+//! (the replicated effects on a client: its free stamina and spread cut, so
+//! Virulent's free stamina plays War Cry's cue too); Arms Race's last-stage event is
 //! derived from the replicated statistics on each client, not sent;
 //! "loading reports finished" isn't known, so the loading track is
 //! stopped when the screen closes; a trigger's `OFF` does nothing in
@@ -69,6 +70,7 @@ use self::{
 use super::{
     effects::sounds::CaSound,
     objects::CaObjects,
+    perks::{CaPerkEffects, CaPerkState},
     rules::{CaMatchView, CaRuleSettings, CaStats, Phase, arms_race, objectives::CaObjectives, scoreboard},
 };
 use crate::{
@@ -193,6 +195,17 @@ fn gather(world: &mut World) {
             scoreboard::sort(&mut rows);
             rows.first().is_some_and(|r| r.player == me)
         });
+    // War Cry's and Eagle Eye's buffs: the server's state where there is
+    // one, else the effects it replicates.
+    let (war_cry, eagle_eye) = me.map_or((false, false), |e| {
+        if let Some(s) = world.get::<CaPerkState>(e) {
+            (s.war_cry.is_some(), s.eagle_eye.is_some())
+        } else if let Some(fx) = world.get::<CaPerkEffects>(e) {
+            (fx.free_stamina, fx.spread_cut > 0.0)
+        } else {
+            (false, false)
+        }
+    });
     let facts = MusicFacts {
         screen,
         mode: view.mode.clone(),
@@ -206,6 +219,8 @@ fn gather(world: &mut World) {
         capture_left,
         last_stage,
         first,
+        war_cry,
+        eagle_eye,
     };
     if *world.resource::<MusicFacts>() != facts {
         world.insert_resource(facts);
