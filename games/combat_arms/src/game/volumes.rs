@@ -4,8 +4,9 @@
 //! model of its `Name`, as `CaVolume`s in the world.
 //!
 //! `world` hands them over as map entities (`MapEntities`: the class, its
-//! `Viscosity`, `Current`, `Damage`, `PendingSec` and `Hidden`, and the
-//! world model's polygons as one hull of planes). `load_volumes` makes a
+//! `Viscosity`, `Current`, `Damage`, `PendingSec`, `Hidden`, `Friction`,
+//! `PlayerSpeedFactor`, `PlayerGravity` and `Velocity`, and the world
+//! model's polygons as one hull of planes). `load_volumes` makes a
 //! `CaVolume` of each (class defaults where a property is missing) when a
 //! map loads. A point is inside when it is behind every plane.
 //!
@@ -13,18 +14,21 @@
 //! (grenades, `grenades::step`) and the liquids (`Water`,
 //! `CorrosiveFluid`, `FreezingWater`) set their gravity to −200 u/s²
 //! (`in_liquid`: also the effects' under-water tests and the first-person
-//! muzzle flash's);
+//! muzzle flash's); players' movement in them (ladders, liquids,
+//! viscosity, currents, friction, speed factors, player gravity, jump
+//! pads, safety nets) is movement.md's (`movement`);
 //! players inside take `Damage` per second (`volume_damage`, on the
-//! server), `EndlessFall`'s 10⁸ killing them, after `PendingSec` inside
-//! when it is set.
+//! server; burn for `CorrosiveFluid` and `Burn`), `EndlessFall`'s 10⁸
+//! killing them, after `PendingSec` inside when it is set.
 //!
 //! Known shortcuts: the volume is its world model's polygons' planes (the
 //! exact shape for a convex brush; a concave one is taken as the
 //! intersection of its faces' half-spaces); `Hidden` volumes stay off (no
-//! map scripts to switch them); damage types, armour and the sound
-//! filter, fog, tint, friction, ladder, wind, jump and player gravity
-//! volumes aren't modelled (players' volume movement is movement.md's);
-//! the pending time is checked every tick, not every 0.5 s.
+//! map scripts to switch them); the `DamageType` property, armour, the
+//! sound filter, fog and tint aren't read (freezing damage is generic);
+//! the class defaults of `Friction` (1, `Ice` 0) and `PlayerSpeedFactor`
+//! (1) are ours (world_dat.md gives Ice's and Wind's only); the pending
+//! time is checked every tick, not every 0.5 s.
 
 use std::collections::HashMap;
 
@@ -62,6 +66,12 @@ pub const VOLUME_CLASSES: &[(&str, bool, f32, f32)] = &[
     ("JumpVolume", false, 0.0, 0.0),
 ];
 
+/// A `Gravity` volume's `PlayerGravity` by default, u/s^2.
+pub const DEFAULT_PLAYER_GRAVITY: f32 = -2000.0;
+
+/// The classes whose damage burns (corrosive 5 burn/s, `Burn`).
+const BURNING: &[&str] = &["CorrosiveFluid", "Burn"];
+
 /// Whether objects of `class` are volumes.
 pub fn is_volume(class: &str) -> bool {
     VOLUME_CLASSES.iter().any(|(c, ..)| *c == class)
@@ -85,6 +95,20 @@ pub struct CaVolume {
     /// Seconds a player must be inside before it takes the damage.
     pub pending: f32,
     pub hidden: bool,
+    /// `Friction`: the player's ground friction is 5 x the least of the
+    /// volumes' it is in (movement.md "Constants"); 1, `Ice` 0.
+    pub friction: f32,
+    /// `PlayerSpeedFactor`: multiplies the player's speed limit; 1.
+    pub speed_factor: f32,
+    /// A `Gravity` volume's `PlayerGravity` (u/s^2 along Y, −2000): the
+    /// players' gravity inside is the sum of these.
+    pub player_gravity: Option<f32>,
+    /// A `JumpVolume`'s `Velocity` (u/s, a number in the maps, taken as
+    /// straight up: ours): added to a player's velocity by a jump inside,
+    /// in place of the jump speed.
+    pub jump_velocity: Option<Vec3>,
+    /// The damage's kind: burn for the burning classes, else generic.
+    pub kind: DamageKind,
 }
 
 impl CaVolume {
@@ -92,17 +116,44 @@ impl CaVolume {
     /// current (u/s).
     pub fn liquid_box(min: Vec3, max: Vec3, viscosity: f32, current: Vec3) -> Self {
         Self {
-            class: "Water".into(),
+            viscosity,
+            current,
+            ..Self::class_box("Water", min, max).expect("a volume class")
+        }
+    }
+
+    /// A box of volume class `class` from `min` to `max` (m) with the
+    /// class's defaults; None for a class that isn't a volume's.
+    pub fn class_box(class: &str, min: Vec3, max: Vec3) -> Option<Self> {
+        let &(class, liquid, viscosity, damage) = VOLUME_CLASSES.iter().find(|(c, ..)| *c == class)?;
+        Some(Self {
+            class: class.into(),
             planes: Vec::new(),
             min,
             max,
-            liquid: true,
+            liquid,
             viscosity,
-            current,
-            damage: 0.0,
+            current: Vec3::ZERO,
+            damage,
             pending: 0.0,
             hidden: false,
-        }
+            friction: if class == "Ice" { 0.0 } else { 1.0 },
+            speed_factor: 1.0,
+            player_gravity: (class == "Gravity").then_some(DEFAULT_PLAYER_GRAVITY),
+            jump_velocity: (class == "JumpVolume").then_some(Vec3::ZERO),
+            kind: if BURNING.contains(&class) { DamageKind::Burn } else { DamageKind::Generic },
+        })
+    }
+
+    /// A ladder (`Ladder`): characters inside climb (movement.md "Other
+    /// modifiers").
+    pub fn is_ladder(&self) -> bool {
+        self.class == "Ladder"
+    }
+
+    /// A safety net (`SafteyNet`): no fall damage inside.
+    pub fn is_safety_net(&self) -> bool {
+        self.class == "SafteyNet"
     }
 
     /// Whether the point `p` (m) is inside.
@@ -116,8 +167,7 @@ impl CaVolume {
     /// The volume of map entity `e` (`MapEntities` with `scale` metres per
     /// entity unit), if its class is a volume's and it has a hull.
     pub fn from_entity(e: &MapEntity, scale: f32) -> Option<Self> {
-        let class = e.classname();
-        let &(class, liquid, viscosity, damage) = VOLUME_CLASSES.iter().find(|(c, ..)| *c == class)?;
+        let defaults = Self::class_box(e.classname(), Vec3::ZERO, Vec3::ZERO)?;
         let hull = e.hulls.first()?;
         let points: Vec<Vec3> = hull.points.iter().map(|p| entity_to_engine(*p, scale)).collect();
         let (min, max) = points
@@ -125,7 +175,6 @@ impl CaVolume {
             .fold((Vec3::MAX, Vec3::MIN), |(a, b), p| (a.min(*p), b.max(*p)));
         let real = |k: &str| e.get(k).and_then(|v| v.trim().parse::<f32>().ok());
         Some(Self {
-            class: class.into(),
             planes: hull
                 .planes
                 .iter()
@@ -133,12 +182,16 @@ impl CaVolume {
                 .collect(),
             min,
             max,
-            liquid,
-            viscosity: real("Viscosity").unwrap_or(viscosity).clamp(0.0, 1.0),
+            viscosity: real("Viscosity").unwrap_or(defaults.viscosity).clamp(0.0, 1.0),
             current: e.get("Current").map_or(Vec3::ZERO, |_| e.vector("Current")),
-            damage: real("Damage").unwrap_or(damage),
+            damage: real("Damage").unwrap_or(defaults.damage),
             pending: real("PendingSec").unwrap_or(0.0),
             hidden: e.get("Hidden").is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true")),
+            friction: real("Friction").unwrap_or(defaults.friction),
+            speed_factor: real("PlayerSpeedFactor").unwrap_or(defaults.speed_factor),
+            player_gravity: defaults.player_gravity.map(|g| real("PlayerGravity").unwrap_or(g)),
+            jump_velocity: defaults.jump_velocity.map(|v| real("Velocity").map_or(v, |up| Vec3::Y * up)),
+            ..defaults
         })
     }
 }
@@ -216,7 +269,7 @@ fn volume_damage(
                 point: centre,
                 dir: Vec3::ZERO,
                 hitgroup: Hitgroup::Generic,
-                kind: DamageKind::Generic,
+                kind: v.kind,
                 weapon: None,
                 force: Vec3::ZERO,
             });

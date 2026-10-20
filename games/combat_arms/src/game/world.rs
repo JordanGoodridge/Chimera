@@ -110,8 +110,9 @@
 //! start points (its one team point and the `HungerGame` ones) have no
 //! solid floor below them in the physics BSP, only the sliding water's
 //! surface over the `Water` volume and the outer box: they land on the
-//! water (the floor the world's geometry under them may lack, a
-//! keyframed or unconverted piece, is not looked for). The flat
+//! water and float there (`movement`). Nothing is drawn under them
+//! either, and no world model reaches there: the deck they stand on in
+//! the game is not in the file (a mode's vehicle or prop, perhaps). The flat
 //! environment map's world environment-map matrix is taken as the
 //! identity and `EnvScale` as 1 (neither is in the specs), so it reads
 //! (r.x, r.y) x -0.5 + 0.5 of the view-space reflection; the console
@@ -999,7 +1000,8 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
 }
 
 /// The volume objects (`volumes::is_volume`) as map entities: their class
-/// and properties (engine axes: `Current` with Z mirrored) and their world
+/// and properties (engine axes: `Current` with Z mirrored; a jump
+/// volume's `Velocity` is a number) and their world
 /// model's faces as one hull (planes facing out), in entity space.
 fn volumes(world: &World, map: &mut MapData, scale: f32) {
     let mut any = false;
@@ -1030,14 +1032,16 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
         if let Some(n) = o.name() {
             keyvalues.push(("targetname".into(), n.into()));
         }
-        for key in ["Viscosity", "Damage", "PendingSec"] {
+        for key in ["Viscosity", "Damage", "PendingSec", "Friction", "PlayerSpeedFactor", "PlayerGravity", "Velocity"] {
             if let Some(v) = o.real(key) {
                 keyvalues.push((key.into(), v.to_string()));
             }
         }
-        if let Some(c) = o.vector("Current") {
-            let [x, y, z] = lt::to_right_handed(c);
-            keyvalues.push(("Current".into(), format!("{x} {y} {z}")));
+        for key in ["Current"] {
+            if let Some(c) = o.vector(key) {
+                let [x, y, z] = lt::to_right_handed(c);
+                keyvalues.push((key.into(), format!("{x} {y} {z}")));
+            }
         }
         if let Some(h) = o.bool("Hidden") {
             keyvalues.push(("Hidden".into(), (h as u8).to_string()));

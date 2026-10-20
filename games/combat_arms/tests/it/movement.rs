@@ -21,29 +21,29 @@ use combat_arms::{
     harness::CaSim,
 };
 
-const TOL: f32 = 1e-3;
+pub(crate) const TOL: f32 = 1e-3;
 const TOL_SUM: f32 = 5e-3;
 /// The collision mover's gap from surfaces (data/movement.toml `skin`).
 const SKIN: f32 = 0.1 + 1e-3;
 
-fn close(got: f32, want: f32, tol: f32, what: &str) {
+pub(crate) fn close(got: f32, want: f32, tol: f32, what: &str) {
     assert!((got - want).abs() <= tol, "{what}: got {got}, want {want} (tolerance {tol})");
 }
 
 /// A static box: centre and half-extents in u, optional rotation about X.
 #[derive(Clone, Copy)]
-struct Block {
+pub(crate) struct Block {
     centre: Vec3,
     half: Vec3,
     tilt: f32,
 }
 
-fn block(centre: Vec3, half: Vec3) -> Block {
+pub(crate) fn block(centre: Vec3, half: Vec3) -> Block {
     Block { centre, half, tilt: 0.0 }
 }
 
 /// The floor: top at y = 0, wide enough for every test.
-fn floor() -> Block {
+pub(crate) fn floor() -> Block {
     block(Vec3::new(0.0, -50.0, 0.0), Vec3::new(20000.0, 50.0, 20000.0))
 }
 
@@ -70,22 +70,22 @@ fn log_damage(mut damage: MessageReader<Damage>, mut log: ResMut<DamageLog>) {
 
 use avian3d::prelude::RigidBody;
 
-struct T {
-    sim: Sim,
-    p: Entity,
+pub(crate) struct T {
+    pub(crate) sim: Sim,
+    pub(crate) p: Entity,
 }
 
 const STAND_H: f32 = 50.0;
 
 /// A player's hull centre resting with its feet on a surface at `y`.
-fn on(x: f32, y: f32, z: f32) -> Vec3 {
+pub(crate) fn on(x: f32, y: f32, z: f32) -> Vec3 {
     Vec3::new(x, y + STAND_H + movement_data().skin, z)
 }
 
 impl T {
     /// A player with its hull centre at `at` (u) on a map of `blocks`, no
     /// gear, after one tick at rest (it finds what it stands on).
-    fn new(blocks: Vec<Block>, at: Vec3) -> Self {
+    pub(crate) fn new(blocks: Vec<Block>, at: Vec3) -> Self {
         let map = TestMap(blocks);
         let mut sim = Sim::with(CaSim, move |app| {
             app.insert_resource(map)
@@ -108,7 +108,7 @@ impl T {
 
     /// Standing at rest on the floor (two ticks: the first finds the floor,
     /// the second counts it as ground).
-    fn standing() -> Self {
+    pub(crate) fn standing() -> Self {
         let mut t = Self::new(vec![floor()], on(0.0, 0.0, 0.0));
         t.tick();
         let m = t.mv();
@@ -116,43 +116,43 @@ impl T {
         t
     }
 
-    fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) {
         self.sim.ticks(1);
     }
 
-    fn ticks(&mut self, n: u64) {
+    pub(crate) fn ticks(&mut self, n: u64) {
         self.sim.ticks(n);
     }
 
-    fn pos(&self) -> Vec3 {
+    pub(crate) fn pos(&self) -> Vec3 {
         self.sim.position(self.p) / movement_data().meters_per_unit
     }
 
-    fn vel(&self) -> Vec3 {
+    pub(crate) fn vel(&self) -> Vec3 {
         self.sim.velocity(self.p) / movement_data().meters_per_unit
     }
 
-    fn hspeed(&self) -> f32 {
+    pub(crate) fn hspeed(&self) -> f32 {
         self.vel().xz().length()
     }
 
-    fn mv(&self) -> CaMovement {
+    pub(crate) fn mv(&self) -> CaMovement {
         self.sim.app.world().get::<CaMovement>(self.p).unwrap().clone()
     }
 
-    fn mv_mut(&mut self) -> Mut<'_, CaMovement> {
+    pub(crate) fn mv_mut(&mut self) -> Mut<'_, CaMovement> {
         self.sim.app.world_mut().get_mut::<CaMovement>(self.p).unwrap()
     }
 
-    fn keys(&mut self) -> Mut<'_, chimera_core::core::Intent> {
+    pub(crate) fn keys(&mut self) -> Mut<'_, chimera_core::core::Intent> {
         self.sim.intent(self.p)
     }
 
-    fn forward(&mut self, on: bool) {
+    pub(crate) fn forward(&mut self, on: bool) {
         self.keys().move_axis.y = if on { 1.0 } else { 0.0 };
     }
 
-    fn release_all(&mut self) {
+    pub(crate) fn release_all(&mut self) {
         let mut i = self.keys();
         i.move_axis = Vec2::ZERO;
         i.jump = false;
@@ -161,16 +161,16 @@ impl T {
         i.walk = false;
     }
 
-    fn insert(&mut self, c: impl Bundle) {
+    pub(crate) fn insert(&mut self, c: impl Bundle) {
         self.sim.app.world_mut().entity_mut(self.p).insert(c);
     }
 
-    fn damage(&self) -> Vec<Damage> {
+    pub(crate) fn damage(&self) -> Vec<Damage> {
         self.sim.app.world().resource::<DamageLog>().0.clone()
     }
 
     /// Hold forward until the run is steady (speed limit reached).
-    fn steady_forward(&mut self) {
+    pub(crate) fn steady_forward(&mut self) {
         self.forward(true);
         self.ticks(80);
     }
@@ -178,14 +178,14 @@ impl T {
     /// Teleport the hull's centre to `at` (u), keeping velocity and what
     /// it stood on (a teleport resets nothing: spec "Falling and fall
     /// damage").
-    fn teleport(&mut self, at: Vec3) {
+    pub(crate) fn teleport(&mut self, at: Vec3) {
         let s = movement_data().meters_per_unit;
         self.sim.app.world_mut().get_mut::<Transform>(self.p).unwrap().translation = at * s;
     }
 
     /// Put the hull's centre at `at` (u) at rest in the air: no velocity,
     /// standing on nothing.
-    fn place_in_air(&mut self, at: Vec3) {
+    pub(crate) fn place_in_air(&mut self, at: Vec3) {
         self.teleport(at);
         self.sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(self.p).unwrap().0 = Vec3::ZERO;
         self.mv_mut().standing = None;
@@ -197,7 +197,7 @@ impl T {
         self.sim.app.world_mut().resource_mut::<movement::MovementData>().crouch_release_delay = 0.0;
     }
 
-    fn feet(&self) -> f32 {
+    pub(crate) fn feet(&self) -> f32 {
         self.pos().y - self.mv().half_height
     }
 
