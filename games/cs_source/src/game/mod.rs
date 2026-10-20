@@ -242,6 +242,24 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
     movement_cvars: movement::CVARS,
 };
 
+/// CS:S's maps from the install (`map::MapLoader`): what an app that
+/// plays CS:S maps chooses, the faithful one or a mashup
+/// (`map::MapSources`).
+pub static MAP_LOADER: crate::map::MapLoader = crate::map::MapLoader {
+    game: GAME,
+    load: load_installed_map,
+};
+
+/// Map `name` (`de_dust2`) from the install (`mount::install`:
+/// chimera.local.toml, saved, or Steam) at a `mat_hdr_level`.
+pub fn load_installed_map(name: &str, hdr_level: u8) -> Result<crate::map::MapData, String> {
+    let install = INFO
+        .install()
+        .ok_or_else(|| format!("no `{GAME}` install found (chimera_install <folder>, or chimera.local.toml)"))?;
+    let mount = mount::open(&install).map_err(|e| e.to_string())?;
+    bsp::load_level(&mount, name, hdr_level)
+}
+
 /// CS:S's default binds as its `cfg/config_default.cfg` lists them (what a
 /// fresh CS:S config gets), in that file's order: the fallback when the
 /// install's file can't be read (the shell's `binds::read_install_defaults`
