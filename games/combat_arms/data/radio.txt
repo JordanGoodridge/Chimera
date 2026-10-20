@@ -1,0 +1,65 @@
+// Combat Arms' radio menus, ours (specs/combat_arms/radio_chat.md R1, in the
+// attribute documents' own syntax). PLACEHOLDER: the texts are ours and no
+// voice files are named, so the radio is silent without the install's file
+// (attributes/radiomsgsound.txt, which replaces this one when it can be
+// read).
+
+[SoundTemplate]
+Template0 = "Male"
+Template1 = "Female"
+
+[RadioClass]
+RadioClass0 = "Report"
+RadioClass1 = "Answer"
+RadioClass2 = "Request"
+
+[Report0]
+SendToEnemy = 0
+ListText = "Enemy spotted"
+Chat0 = "Enemy spotted!"
+Chat1 = "Contact!"
+
+[Report1]
+SendToEnemy = 0
+ListText = "Under fire"
+Chat0 = "I am under fire!"
+
+[Report2]
+SendToEnemy = 0
+ListText = "Area clear"
+Chat0 = "Area clear."
+
+[Report3]
+SendToEnemy = 0
+ListText = "Grenade!"
+Chat0 = "Grenade!"
+
+[Answer0]
+SendToEnemy = 0
+ListText = "Roger"
+Chat0 = "Roger."
+
+[Answer1]
+SendToEnemy = 0
+ListText = "Negative"
+Chat0 = "Negative."
+
+[Answer2]
+SendToEnemy = 0
+ListText = "Thanks"
+Chat0 = "Thanks."
+
+[Request0]
+SendToEnemy = 0
+ListText = "Need backup"
+Chat0 = "I need backup!"
+
+[Request1]
+SendToEnemy = 0
+ListText = "Cover me"
+Chat0 = "Cover me!"
+
+[Request2]
+SendToEnemy = 0
+ListText = "Follow me"
+Chat0 = "Follow me."
