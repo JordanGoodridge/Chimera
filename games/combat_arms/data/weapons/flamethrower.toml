@@ -1,0 +1,66 @@
+# The flamethrower: numbers from specs/combat_arms/special_weapons.md (its sections
+# in brackets), in our own data format (docs/weapon-data.md; hooks:
+# games/combat_arms/src/game/special/). Our numbers as the spec gives them,
+# not a file from the game; the install's attribute data overrides them
+# where it can be read (game/data.rs). Where the spec has no value the line
+# says PLACEHOLDER. Units: world units (1.8 cm each, by body size) and hit
+# points. No sounds or models yet (the front end draws a placeholder).
+id = "combat_arms:flamethrower"
+units = { length = 0.018, damage = 0.01 }
+# Special class (key 5) [inventory.md 1, 4].
+slot = 4
+# The view model's draw animation [4].
+draw = 1.2
+
+# Clip 300 and total 300 [4].
+[ammo."combat_arms:flame_fuel"]
+max = 0
+
+# RapidFireCount 0; the stream's own key schedule paces the trigger
+# (`combat_arms:flame` below) [4].
+[trigger]
+automatic = true
+cycle = 0.1
+timing = "accumulate"
+
+[magazine]
+clip = 300
+ammo = "combat_arms:flame_fuel"
+reload = 2.133
+auto_reload = true
+
+[hitscan]
+range = 1.0
+pellets = 1
+punch_scale = 0.0
+
+# `prefire` 200 ms, then `fire_0` (734 ms) loops with eight fire keys at
+# 0, 100, ... 700 ms; `postfire` 333 ms [4].
+[hooks."combat_arms:flame"]
+prefire = 0.2
+loop_len = 0.734
+keys = 8
+interval = 0.1
+postfire = 0.333
+
+# The `Yellow_Flame` record [4]: 500 u/s straight for 1 s, no model, cone
+# 8..8 x 1.2 (n = 9); no instant damage; a sphere of `ProgDamageRadius` 75
+# u alive `ProgDamageLifetime` 2 s that keeps a 12 HP/s burn entry of 1 s on
+# each player inside; a Guntype 9 weapon's burn never hurts its shooter.
+[hooks."combat_arms:projectile"]
+speed = 500.0
+gravity = false
+lifetime = 1.0
+health = 1.0
+box_half = [0.0, 0.0, 0.0]
+hits_same_kind = false
+perturb = [8, 8]
+dynamic_perturb = 1.2
+area_damage = 0.0
+area_radius = 0.0
+shooter_exempt = true
+over_time = { kind = "burn", rate = 12.0, radius = 75.0, lifetime = 2.0, duration = 1.0 }
+
+# MovePenalty 0.2 [4].
+[hooks."combat_arms:handling"]
+move_penalty = 0.2

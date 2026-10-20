@@ -1,0 +1,58 @@
+# The MZP_1 grenade launcher: numbers from specs/combat_arms/special_weapons.md (its sections
+# in brackets), in our own data format (docs/weapon-data.md; hooks:
+# games/combat_arms/src/game/special/). Our numbers as the spec gives them,
+# not a file from the game; the install's attribute data overrides them
+# where it can be read (game/data.rs). Where the spec has no value the line
+# says PLACEHOLDER. Units: world units (1.8 cm each, by body size) and hit
+# points. No sounds or models yet (the front end draws a placeholder).
+id = "combat_arms:mzp_1"
+units = { length = 0.018, damage = 0.01 }
+# Special class (key 5) [inventory.md 1, 3.3].
+slot = 4
+# The view model's draw animation [3.3].
+draw = 1.0
+
+# Clip 1 and total 4 [3.3, Stock values].
+[ammo."combat_arms:mzp1_shell"]
+max = 3
+
+# RapidFireCount 1: one shot a press; the cycle is the fire animation [3.3].
+[trigger]
+automatic = false
+cycle = 1.0
+timing = "accumulate"
+
+# The reload animation; an empty clip reloads once the fire animation ends
+# [weapon_firing.md]. Rounds are made by `combat_arms:projectile` below,
+# so the frame traces nothing ([hitscan] only gives it a `Fired` round).
+[magazine]
+clip = 1
+ammo = "combat_arms:mzp1_shell"
+reload = 2.935
+auto_reload = true
+
+[hitscan]
+range = 1.0
+pellets = 1
+punch_scale = 1.0
+
+# The `M32_Grenade` record [3]: 1550 u/s under the object gravity, no fuse
+# (10000 s), 300 HP, the rocket model's box 128 x 16 x 16 at scale 1
+# (Quirk 5), `CanHitSameKind` 1; cone 8..8 x 1.2 (n = 9); the ammo's blast
+# 42.0 / 300, explode (type 7).
+[hooks."combat_arms:projectile"]
+speed = 1550.0
+gravity = true
+lifetime = 10000.0
+health = 300.0
+box_half = [128.0, 16.0, 16.0]
+hits_same_kind = true
+perturb = [8, 8]
+dynamic_perturb = 1.2
+area_damage = 42.0
+area_radius = 300.0
+area_type = 7
+
+# MovePenalty [3.3].
+[hooks."combat_arms:handling"]
+move_penalty = 0.18
