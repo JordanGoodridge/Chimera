@@ -366,6 +366,10 @@ fn bind(world: &mut World) {
         .map(|(e, i, v)| (e, i.0, v.clone()))
         .collect();
     let mut o = world.resource_mut::<CaObjects>();
+    // Only Combat Arms' world models: another game's mover nodes (a
+    // mashup's map) are its own logic's.
+    let nodes: Vec<(Entity, usize)> =
+        nodes.into_iter().filter(|(_, i)| o.world.objects.get(*i).is_some_and(|ob| ob.node)).collect();
     o.nodes = nodes.iter().map(|(e, i)| (*i as ObjId, *e)).collect();
     o.volumes = volumes.iter().map(|(e, i, _)| (*i as ObjId, *e)).collect();
     for (e, i) in nodes {
