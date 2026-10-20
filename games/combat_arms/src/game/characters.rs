@@ -44,8 +44,13 @@
 //! owner respawned and its animation ended in the modes that remove
 //! bodies (data's `body_removal`), or at a new round.
 //!
-//! Network (`CaCharactersNetPlugin`, part `combat_arms_characters`): the
-//! server sends each character's selection (`CaLook`), its trackers' names
+//! Network (`CaCharactersNetPlugin`, part `combat_arms_characters`): each
+//! client sends its own look (`CaLookRequest`, from `CaOwnLook`: when its
+//! player appears and whenever it changes); the server validates it
+//! (`CharacterData::validated`: an unknown body refused, unknown pieces
+//! none), keeps it on the client's entity (`CaClientLook`) and dresses
+//! that client's player in it (`wear_looks`). The server sends each
+//! character's selection (`CaLook`: players', bots'), its trackers' names
 //! and start ticks with the crouch, pitch and twist bytes (`CaAnimNet`,
 //! 8's legacy transport), and bodies (`CaBody`); a client plays other
 //! players' trackers from it and poses them with the received aim, as the
@@ -74,16 +79,24 @@
 //!   computed per tick (not per rendered frame) and drawn as is; with the
 //!   default head piece (`HBasic`, no model) a body wears the head piece
 //!   its face names in the install's `HairIndex` (our reading: the spec
-//!   doesn't say what `HairIndex` does; the female's hair); goggles,
-//!   backpacks, cosmetics, the clan pieces and infection overrides
-//!   aren't loaded (nothing selects them); a face's skins by camouflage
+//!   doesn't say what `HairIndex` does; the female's hair); goggles and
+//!   backpacks (the console's `ca_goggle`, `ca_backpack`; the bots'
+//!   pool) are body-part choices too, rigid on their socket's node at its
+//!   bind transform (`models::attach`), only the pool's (another shows
+//!   none), and not hidden for a first-person owner (bodies aren't
+//!   drawn there anyway); cosmetics, the clan pieces and infection
+//!   overrides aren't loaded (nothing selects them); a face's skins by camouflage
 //!   index (its colour overrides not read); render styles as
 //!   `render_style` reads them; the drawn body's feet sit at the standing hull's bottom; a
 //!   corpse (`CaBody`) isn't drawn and has no hit spheres (Open question
 //!   9); the stock bodies' skins other than the default male's are not in
 //!   our data (the install's models file gives them). Bots' looks are
-//!   ours (the spec has no loadouts for them); other players on a server
-//!   wear the default (no character info is sent yet). A weapon names its third-person model only with the V1 key (the
+//!   ours (the spec has no loadouts for them). The look a client sends
+//!   is its selection's ids only (no figure type, clan or team mark,
+//!   colour indices, infection override or default-goggle flag: nothing
+//!   uses them yet); without the install's models file a face is known
+//!   when the body's face redirect covers it and a head piece when ours
+//!   or the bots' pool names it (`validated`). A weapon names its third-person model only with the V1 key (the
 //!   install's `HHModel`, `data`); ours name none.
 //! - The driver: emotes (9) and the hit kick on remote characters (9:
 //!   display only) aren't there; `HHAniFrame` is absent from our data
@@ -132,7 +145,7 @@ use crate::{
         SimClock, SimSet, Team,
     },
     map::{BodyName, BodyNumber, BodySkin, CharacterModels, Held, anim::Animator},
-    net::{NetAppExt, game::ServerTime, ordered::OrderedAppExt},
+    net::{NetAppExt, game::ServerTime, ordered::OrderedAppExt, server::Player},
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, WeaponState},
 };
 
@@ -315,7 +328,68 @@ fn register(app: &mut App) {
         .replicate::<CaAnimNet>()
         .ordered::<CaAnimNet>()
         .replicate::<CaBody>()
-        .ordered::<CaBody>();
+        .ordered::<CaBody>()
+        .add_client_message::<CaLookRequest>(Channel::Ordered)
+        .add_systems(
+            PreUpdate,
+            receive_looks
+                .after(ServerSystems::Receive)
+                .run_if(in_state(ServerState::Running)),
+        )
+        .add_systems(
+            PostUpdate,
+            send_look.before(ClientSystems::Send).run_if(resource_equals(NetRole::Client)),
+        );
+}
+
+/// A client's own look, sent to the server with its character info
+/// (characters.md 1, "The selection").
+#[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct CaLookRequest(pub Selection);
+
+/// The look a connected client chose (the server's, on the client's
+/// entity, validated: `CharacterData::validated`); its player's
+/// characters wear it (`wear_looks`).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct CaClientLook(pub Selection);
+
+/// A client sends its look when its player appears and whenever it
+/// changes (`CaOwnLook`, the console's `ca_*`).
+fn send_look(
+    loadout: Res<CaOwnLook>,
+    me: Query<Entity, With<LocalPlayer>>,
+    mut sent: Local<Option<(Entity, Selection)>>,
+    mut out: MessageWriter<CaLookRequest>,
+) {
+    let Ok(e) = me.single() else {
+        *sent = None;
+        return;
+    };
+    if *sent != Some((e, loadout.0)) {
+        *sent = Some((e, loadout.0));
+        out.write(CaLookRequest(loadout.0));
+    }
+}
+
+/// The server keeps each client's look, validated (an unknown body is
+/// refused: the client keeps its previous look).
+fn receive_looks(
+    mut requests: MessageReader<FromClient<CaLookRequest>>,
+    clients: Query<(), With<Player>>,
+    mut commands: Commands,
+) {
+    for r in requests.read() {
+        let Some(client) = r.client_id.entity() else { continue };
+        if clients.get(client).is_err() {
+            continue;
+        }
+        match records::data().validated(r.message.0) {
+            Some(look) => {
+                commands.entity(client).insert(CaClientLook(look));
+            }
+            None => debug!("look refused: body record {} unknown", r.message.0.model),
+        }
+    }
 }
 
 /// Metres per world unit.
@@ -348,6 +422,8 @@ pub fn look_cvars(app: &mut App) {
     resource_cvar::<CaOwnLook, i32>(app, "ca_face", "Your face (0-3 male, 4-7 female).", |l| &mut l.0.face);
     resource_cvar::<CaOwnLook, i32>(app, "ca_head", "Your head piece (0: none).", |l| &mut l.0.head);
     resource_cvar::<CaOwnLook, i32>(app, "ca_camo", "Your camouflage index (0-6).", |l| &mut l.0.camouflage);
+    resource_cvar::<CaOwnLook, i32>(app, "ca_goggle", "Your goggles or mask (-1: none).", |l| &mut l.0.goggle);
+    resource_cvar::<CaOwnLook, i32>(app, "ca_backpack", "Your backpack (-1: none).", |l| &mut l.0.backpack);
 }
 
 /// A seed for a bot's look: its name's (stable across rounds), else its
@@ -361,11 +437,12 @@ fn look_seed(name: Option<&Name>, e: Entity) -> u64 {
 
 /// Looks (the server's): a bot without one draws its own from the
 /// loadout pool (`CharacterData::bot_look`); the local player wears
-/// `CaOwnLook` (changed from the console at once); other players keep
-/// the default (no character info reaches the server yet).
+/// `CaOwnLook` (changed from the console at once); a client's player the
+/// look its client sent (`CaClientLook`); others keep the default.
 #[allow(clippy::type_complexity)]
 fn wear_looks(
     loadout: Res<CaOwnLook>,
+    clients: Query<(&Player, &CaClientLook)>,
     characters: Query<
         (Entity, Option<&Selection>, Option<&Name>, Has<core::Bot>, Has<LocalPlayer>),
         (With<Intent>, With<MovementState>),
@@ -373,8 +450,11 @@ fn wear_looks(
     mut commands: Commands,
 ) {
     for (e, look, name, bot, local) in &characters {
+        let sent = clients.iter().find(|(p, _)| p.character == e).map(|(_, l)| l.0);
         let want = if local {
             loadout.0
+        } else if let Some(sent) = sent {
+            sent
         } else if bot && look.is_none() {
             records::data().bot_look(look_seed(name, e))
         } else {

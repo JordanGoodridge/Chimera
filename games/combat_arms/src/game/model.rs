@@ -35,8 +35,8 @@
 //! - Only LOD 0 (Chimera's model levels of detail aren't used for rigged
 //!   models); vertex-animated pieces are drawn at their stored positions
 //!   (not animated); render priority is ignored, and the render style
-//!   is the caller's to apply (`render_style`, by `slot_and_style`;
-//!   props don't yet); only a piece's first texture index is used.
+//!   is the caller's to apply (`render_style`, by `slot_and_style` or the
+//!   LOD's index); only a piece's first texture index is used.
 //! - A missing or unreadable child, or one whose skeleton shape differs,
 //!   fails the whole model (models_ltb.md "Child models"; animation.md
 //!   open question 4 is left as models_ltb.md says).

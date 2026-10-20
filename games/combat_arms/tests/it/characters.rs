@@ -124,14 +124,25 @@ fn body_group_numbers() {
         records: vec![0, 1, 2],
         faces: vec![0, 1, 2, 3],
         heads: vec![-1, 2],
+        ..default()
     };
-    assert_eq!(g.parts(), [3, 4, 2]);
+    assert_eq!(g.parts(), [3, 4, 2, 1, 1]);
     assert_eq!(g.number(0, 0, -1), 0);
     assert_eq!(g.number(2, 0, -1), 2);
     assert_eq!(g.number(0, 3, -1), 9);
     assert_eq!(g.number(1, 2, 2), 1 + 3 * (2 + 4));
     // Not in the group: the first choice.
     assert_eq!(g.number(9, 7, 5), 0);
+    // Goggles and a backpack (parts 3 and 4).
+    let worn = models::BodyGroup {
+        goggles: vec![-1, 3],
+        backpacks: vec![-1, 0, 2],
+        ..g.clone()
+    };
+    assert_eq!(worn.parts(), [3, 4, 2, 2, 3]);
+    assert_eq!(worn.number_with(1, 2, 2, 3, 2), 1 + 3 * (2 + 4 * (1 + 2 * (1 + 2 * 2))));
+    assert_eq!(worn.number_with(1, 2, 2, -1, -1), worn.number(1, 2, 2));
+    assert_eq!(chimera_world::map::body_choice(&worn.parts(), 139, 4), 2);
     for (n, part, want) in [(19, 0, 1), (19, 1, 2), (19, 2, 1)] {
         assert_eq!(chimera_world::map::body_choice(&g.parts(), n, part), want);
     }
@@ -1184,6 +1195,82 @@ fn net_others_follow_the_server() {
     sim.clients[1].app.world_mut().get_mut::<chimera_core::core::Intent>(other).unwrap().move_axis = Vec2::Y;
     sim.ticks(40);
     assert_eq!(them(&mut sim), ("LRF".into(), "LRF".into(), "URFRAmF".into()));
+}
+
+/// Looks over the network (characters.md 1, "The selection"): each
+/// client sends its own look (`CaOwnLook`); the server validates it and
+/// sends every player's to every client, so two clients with different
+/// looks see each other as chosen, a change follows, and a bot's drawn
+/// look reaches them too. An unknown face becomes none; an unknown body
+/// is refused.
+#[test]
+fn net_looks_reach_every_client() {
+    use chimera_net::{
+        harness::NetSim,
+        net::{NetCharacter, memory::LinkConditions},
+    };
+    use combat_arms::game::{bots, characters::CaOwnLook};
+    let link = LinkConditions {
+        latency: std::time::Duration::from_millis(30),
+        jitter: std::time::Duration::ZERO,
+        loss: 0.0,
+    };
+    let a = Selection {
+        model: 2,
+        face: 1,
+        head: 2,
+        camouflage: 3,
+        goggle: 0,
+        ..default()
+    };
+    let b = Selection {
+        model: 1,
+        face: 6,
+        head: 0,
+        camouflage: 5,
+        ..default()
+    };
+    let mut sim = NetSim::new(CaSim, link, 7, 2, |app: &mut App| {
+        app.add_plugins(GreyboxMapPlugin);
+    });
+    sim.clients[0].app.world_mut().insert_resource(CaOwnLook(a));
+    sim.clients[1].app.world_mut().insert_resource(CaOwnLook(b));
+    sim.set_frame(TICK_INTERVAL);
+    sim.until_joined(600);
+    let bot = bots::add_bot(sim.server.app.world_mut(), None).expect("a bot");
+    let bot_look = sim.server.app.world().get::<Selection>(bot).copied();
+    sim.ticks(60);
+    let bot_look = sim.server.app.world().get::<Selection>(bot).copied().or(bot_look).expect("the bot's look");
+    let ids = [sim.client_id(0), sim.client_id(1)];
+    // What client `i` sees of the player owned by `owner` (None: the bot).
+    let seen = |sim: &mut NetSim, i: usize, owner: Option<u64>| -> Option<Selection> {
+        let world = sim.clients[i].app.world_mut();
+        let mut q = world.query::<(&NetCharacter, &Selection)>();
+        q.iter(world).find(|(c, _)| c.owner == owner).map(|(_, s)| *s)
+    };
+    for i in 0..2 {
+        assert_eq!(seen(&mut sim, i, Some(ids[0])), Some(a), "client {i} sees client 0");
+        assert_eq!(seen(&mut sim, i, Some(ids[1])), Some(b), "client {i} sees client 1");
+        assert_eq!(seen(&mut sim, i, None), Some(bot_look), "client {i} sees the bot");
+    }
+    // The body each client poses for the other: the female twin of the
+    // Light body (face 6), the male Heavy (face 1).
+    let other = sim.character_of(1).unwrap();
+    assert_eq!(sim.server.app.world().get::<CaAnim>(other).unwrap().body, 8);
+    {
+        let world = sim.clients[0].app.world_mut();
+        let mut q = world.query::<(&NetCharacter, &CaAnim)>();
+        let (_, anim) = q.iter(world).find(|(c, _)| c.owner == Some(ids[1])).unwrap();
+        assert_eq!((anim.body, anim.skeleton), (8, 1));
+    }
+    // A change on client 1 follows; an unknown face becomes none.
+    sim.clients[1].app.world_mut().resource_mut::<CaOwnLook>().0 = Selection { face: 9999, ..b };
+    sim.ticks(30);
+    assert_eq!(seen(&mut sim, 0, Some(ids[1])), Some(Selection { face: -1, ..b }));
+    // An unknown body is refused: the last look stays.
+    sim.clients[1].app.world_mut().resource_mut::<CaOwnLook>().0 = Selection { model: 999, ..b };
+    sim.ticks(30);
+    assert_eq!(seen(&mut sim, 0, Some(ids[1])), Some(Selection { face: -1, ..b }));
 }
 
 /// Looks in play (characters.md 1, ours for bots): a bot wears the look
