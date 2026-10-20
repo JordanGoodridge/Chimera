@@ -12,7 +12,12 @@
 //! and after a plant the bomb's fuse in its own timer (`BombTime`) with
 //! the round timer hidden; at a round's result (until the next round's
 //! setup, `result_showing`) the panel, its timers and our objectives'
-//! lines hide (Corrections 10). The action gauge is the viewed player's
+//! lines hide (Corrections 10). The objectives' lines
+//! (`game::rules::objectives`: the planted bomb's site, the flags, the
+//! pole, the intel, what you carry; Hired Guns' bars banked, in bags and
+//! unclaimed, your pocket, bank and mercenaries with their order; VIP
+//! Escort's roles, the VIP, the exit, the rounds until the swap and its
+//! notice; the clan modes' half) are ours. The action gauge is the viewed player's
 //! (whom a first-person spectator watches): its title the string table's,
 //! its fill in whole percent on its own game-clock timer, hidden at its
 //! total even while held (`model::ActionGauge`, Corrections 12).
@@ -45,6 +50,9 @@ use crate::{
     core::{Dead, Health, Intent, LocalPlayer, SimClock, Team},
     game::rules::{
         CaMatchView, CaStats, Panel, Phase,
+        escort::CaVip,
+        hired_guns::CaBank,
+        mercs::{CaMerc, CaSquadOrder, MercOrder},
         objectives::{ActionKind, CaAction, CaCarry, CaObjectives, FlagAt},
     },
     ui::{CaUi, layout::Effect},
@@ -179,6 +187,60 @@ pub fn objective_lines(o: &CaObjectives, mine: CaCarry, now: f64) -> Vec<String>
     if mine.intel > 0 {
         lines.push(format!("You carry {} intel", mine.intel));
     }
+    // Hired Guns (game_modes_2.md M11.10; the chat warning of M11.4 as a
+    // line).
+    if o.placed > 0 || !o.bullion.is_empty() {
+        let (level, bags) = o.bars_on_ground();
+        lines.push(format!("Banked {} - {}, in bags {bags}, unclaimed {level}", o.banked[0], o.banked[1]));
+    }
+    if mine.bars > 0 {
+        lines.push(format!("Pocket {:02} bars", mine.bars));
+        if mine.bars >= 11 {
+            let pct = (mine.bars.min(25) - 10) * 3;
+            lines.push(format!("Speed penalty {pct} % with {} bars", mine.bars));
+        }
+    }
+    // VIP Escort (M13).
+    if o.escort != 0 {
+        lines.push(format!("{} escorts the VIP", team(o.escort)));
+    }
+    if let Some(x) = o.exit.filter(|x| x.open || x.opens.is_finite()) {
+        lines.push(if x.open {
+            "The exit is open".into()
+        } else {
+            format!("The exit opens in {} s", secs(x.opens))
+        });
+    }
+    if let Some(n) = o.swap_notice.filter(|n| *n > now) {
+        lines.push(format!("Sides swap in {} s", secs(n) + 1));
+    } else if o.rounds_to_swap != 0 && o.rounds_to_swap != 255 {
+        lines.push(format!("Rounds until the swap: {}", o.rounds_to_swap));
+    }
+    if o.half != 0 {
+        lines.push(format!("Half {}", o.half));
+    }
+    lines
+}
+
+/// Hired Guns' own lines for the local player: its bank, its mercenaries
+/// (health, %) and their order (M11.10).
+pub fn squad_lines(bank: Option<i32>, order: Option<MercOrder>, units: &[(String, f32)]) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(b) = bank {
+        lines.push(format!("Bank {b}"));
+    }
+    if !units.is_empty() {
+        let order = match order.unwrap_or_default() {
+            MercOrder::Default => "default",
+            MercOrder::FollowMe => "follow me",
+            MercOrder::Hold => "hold position",
+            MercOrder::AttackMove(_) => "attack move",
+        };
+        lines.push(format!("Mercenaries ({order}):"));
+        for (name, health) in units {
+            lines.push(format!("  {name} {:.0} %", health * 100.0));
+        }
+    }
     lines
 }
 
@@ -206,6 +268,11 @@ pub(super) fn update_score(
     local: Query<(Entity, &Team, Option<&CaStats>, Option<&CaCarry>), With<LocalPlayer>>,
     actions: Query<&CaAction>,
     spec: Option<Res<SpecView>>,
+    squad: (
+        Query<(Entity, Option<&CaBank>, Option<&CaSquadOrder>, Has<CaVip>), With<LocalPlayer>>,
+        Query<(&CaMerc, Option<&Name>, Option<&crate::core::Health>)>,
+        Query<Option<&Name>, With<CaVip>>,
+    ),
     everyone: Query<&CaStats>,
     living: Query<(&Team, &Health, Has<Dead>), With<Intent>>,
     (clock, time, ui): (Option<Res<SimClock>>, Res<Time>, Res<CaUi>),
@@ -299,13 +366,28 @@ pub(super) fn update_score(
                 titles_are_counts: counts,
                 dividers: if counts { view.goal } else { 0 },
             });
+            let mut lines = objectives.map_or_else(Vec::new, |o| objective_lines(&o, carry, now));
+            let (local_squad, mercs, vips) = &squad;
+            if let Ok((me, bank, order, vip)) = local_squad.single() {
+                let units: Vec<(String, f32)> = mercs
+                    .iter()
+                    .filter(|(m, ..)| m.leader == me && m.died.is_none())
+                    .map(|(m, n, h)| {
+                        let name = n.map_or_else(|| format!("unit {}", m.unit), |n| n.as_str().to_string());
+                        (name, h.map_or(0.0, |h| h.current.max(0.0) / h.max.max(1e-6)))
+                    })
+                    .collect();
+                lines.extend(squad_lines(bank.map(|b| b.0), order.map(|o| o.0), &units));
+                if vip {
+                    lines.push("You are the VIP".into());
+                } else if let Some(name) = vips.iter().next() {
+                    lines.push(format!("VIP: {}", name.map_or("?", |n| n.as_str())));
+                }
+            }
             CaScoreHud {
                 timer: panel.as_ref().and(timer),
                 bomb_timer: panel.as_ref().and(bomb_timer),
-                objectives: match (&panel, objectives) {
-                    (Some(_), Some(o)) => objective_lines(&o, carry, now),
-                    _ => Vec::new(),
-                },
+                objectives: if panel.is_some() { lines } else { Vec::new() },
                 panel,
                 gauge: gauge.clone(),
             }

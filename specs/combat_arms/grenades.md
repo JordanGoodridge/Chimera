@@ -27,7 +27,7 @@ each kind; Behavior (1 kinds, 2 carrying and starting counts, 3 pin pull and
 8 detonation, 9 blast damage, 10 flash, 11 smoke, 12 fire and gas, 13 the
 grenade as a target, 14 death release and the drop perk, 15 the end of a
 round); Per-tick order;
-Edge cases; Quirks; Test cases; Open questions.
+Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -102,7 +102,7 @@ Fixed in code (not in the attribute data):
 | spin_pitch | uniform [−π, π] | rad/s | Visual spin, re-rolled at every bounce |
 | spin_yaw, spin_roll | uniform [−2π, 2π] | rad/s | Same |
 | blast_full_fraction | 0.25 | × radius | Blast and flash are at full strength inside this fraction of the radius |
-| big_object_slack | 100 | u | For objects whose dims vector is longer than this, the excess is subtracted from their blast distance (not players) |
+| big_object_slack | 100 | u | For objects whose dims vector is longer than this, the excess is subtracted from their blast distance (every object, players and hit boxes included; their stock dims are far below 100, Corrections 2) |
 | flash_delay | 0.25 | s | Console variable `FlashBangDelay`: time from blast to blindness, victim facing the blast |
 | flash_delay_back | flash_delay / 3 | s | Same, victim facing away (0.0833 s) |
 | flash_back_factor | ¼ | × | Flash time when facing away |
@@ -264,7 +264,8 @@ At release (client):
 
 - **Origin**: the camera position in first person. In third person or an
   external camera, the hand-held weapon's fire position. The server uses
-  the origin the client sends.
+  the origin the client sends, moved forward along the throw by the
+  projectile record's `FireOffset` when that segment is clear (Corrections 1).
 - **Direction**: the camera's forward vector, perturbed by the weapon's
   spread exactly as for bullets (`weapon_firing.md`, Spread), computed on
   the client and sent as the throw direction. The cone limits are
@@ -891,6 +892,35 @@ Keep all of these unless noted.
    brushes. Keep; verify the character part (Open question 7).
 10. **Smoke blocks nothing.** Bots and name tags see through smoke. Keep.
 
+## Corrections (2026-10-19)
+
+From a second pass over the reference's server projectile creation and
+explosion code, compared with this spec and our implementation. Test cases
+59–60.
+
+1. **The server moves the spawn point by the projectile's `FireOffset`.**
+   - Reference: when the projectile-effect record's `FireOffset` (number,
+     units, default 0) is non-zero, the server tests the segment from the
+     client's origin to origin + `FireOffset` × the throw direction against
+     objects and the level, ignoring the thrower. If nothing is hit, the
+     grenade is created at the far end of that segment; if something is hit,
+     at the client's origin. Speed, direction and fuse are unchanged.
+   - Ours: section 4 said "The server uses the origin the client sends",
+     and `launch` spawns at the eye (`games/combat_arms/src/game/grenades.rs:826-837`).
+     The field is in no table of this spec or `attribute_data.md`.
+   - Why it matters: with a positive offset the grenade starts ahead of the
+     face, so it clears a lip or railing right in front of the thrower, and
+     it lands that much further. With the stock value unknown (Open
+     question below), the size of the effect is unknown; 0 changes nothing.
+2. **The big-object slack applies to players too, by their dims.**
+   - Reference: the "length of the dims vector over 100" subtraction of
+     section 9 is made for every game object, players and hit boxes
+     included. Stock player and hit-box dims are well under 100 long, so
+     it changes nothing for them. It would apply to an oversized
+     character model.
+   - Ours: section 9 said "(not players)". The implementation applies it as
+     the spec said (no player case to check). Text fix only.
+
 ## Test cases
 
 Common setup unless stated: server dt = 0.05 s; flat floor y = 0 with
@@ -1091,6 +1121,14 @@ from the blast point, in the open, armour points 0, no gear, no buffs.
     each → after one hit 25 HP left; the second hit detonates it (flash) at
     once, credited to its thrower. A flying M67 hit by twelve such rounds →
     detonates on the twelfth (11 leave 25 HP).
+59. **Fire offset (Corrections 1).** Projectile `FireOffset` 20 (for the
+    test), thrower's eye at (0, 64, 0) looking along +Z, nothing within
+    20 units → the M67 starts at (0, 64, 20) with velocity (0, 0, 1550)
+    (before the ±0.001 spread). A wall 10 units ahead → it starts at the
+    eye. `FireOffset` 0 → at the eye.
+60. **Slack on a large character (Corrections 2).** A character whose dims
+    vector is 130 units long, 300 units from a frag's blast point →
+    distance 270: 60 × (1 − (270 − 112.5)/337.5) = 32.0 per hit.
 
 ## Open questions
 
@@ -1261,3 +1299,9 @@ from the blast point, in the open, armour points 0, no gear, no buffs.
     34 entries; the full list with values is in section 10 (stock
     anti-flash goggles 1.0 / 0.7 / 0.5 / 0.3, masks 0.8, eyepatch 0.15, and
     others). Applies in sections 9–10 and case 52.
+23. **Projectile `FireOffset`** (Corrections 1). The stock value for the
+    M67, XM84, M18, M-23F and G7A projectile records was not read (no data
+    on the reference machine). Read it from the install. Live check: on flat
+    ground, throw level from a standing position and measure where the
+    first bounce lands; compare with section 5's arc from the eye. A landing
+    further by about the offset means it is positive.

@@ -101,6 +101,7 @@ pub static INFO: GameInfo = GameInfo {
     // two keys.
     old_default_binds: OLD_DEFAULT_BINDS,
     movement_cvars: &[],
+    meters_per_unit: inventory::UNIT,
 };
 
 /// Combat Arms' default binds. Weapons, use and sprint are the default

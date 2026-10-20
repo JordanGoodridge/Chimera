@@ -1,700 +1,1140 @@
-# Plan: architecture review and refactoring (2026-10-13)
+# Plan: architecture review and refactoring
 
-Status: approved 2026-10-13 (engine-split.md, "Crates and compile
-time", has the order and progress). Done: the tool binaries behind
-features (P9's cheap win), P1 (`map/mod.rs` split, `spawn_map` in
-phases), P3's audio and render slices (render: the materials, WGSL and
-every drawn part out of `map`, play-time parts through drawn-part
-requests; `client`'s folders not yet). Measured on the dev box under load
-(other agents building; load averages given with the times), so compare
-ratios, not absolutes.
+Status: second pass 2026-10-20, on main at 1cdaf890 (the first pass,
+2026-10-13, approved then, is summarised in section 1 and its full text
+is in this file's git history). The second pass reviews the workspace
+against the long-term goals: Chimera as an engine for faithful
+first-person recreations (CS:S and Combat Arms first), each game
+playable alone and usable as a library; Lucker Party as the end goal
+(minigames and mashups mixing parts of several games, then original
+minigames); data and registered hooks over hard-coded Rust; multiplayer
+with client prediction; Linux and Windows.
 
-The question: the repository is "about 246,000 lines"; is there
-architectural work that would make it smaller, faster to iterate on, and
-easier to keep correct (CS:S parity)?
+Method: read-only. Line counts, function lengths, ECS pattern counts,
+`cargo metadata`, `git log`; no builds (the dev box was busy), so every
+time below is either quoted from docs/performance.md with its date or
+marked as an estimate with what to measure instead. Counts exclude
+tests unless they say so. The survey scripts are throwaway (section 2,
+end); keeping them under `tools/` is item N6's.
 
-Short answer: the architecture is sound and mostly enforced; the code is
-not bloated by dead code or wild duplication. What hurts is a handful of
-very large units that everything touches (`map/mod.rs` and its
-1,840-line `spawn_map`, `map` as a whole as the catch-all lowest layer,
-`client` as a flat bag of 46 files, the docs' module table), a few
-repeated patterns (VGUI dialog plumbing, KeyValues tokenizers, test
-setup), and build/test cycle costs: every source edit recompiles the
-whole 165k-line library, 7 unused tool binaries relink on every test
-build, and the full suite has grown to ~70 minutes (under load), 84% of
-it real-map tests. The biggest wins are cheap, move-only slices. The
-crate split as drawn in engine-split.md would not speed up iteration
-(60% of source commits touch `core` or `map`, at the bottom of it);
-split finer, after sorting `map`, it would cut roughly a fifth to a
-third of a test cycle.
+## 0. Summary
 
-## 1. Facts
+The crate split worked: 23 crates, the layering checked by the compiler
+and `repo_checks`, leaf edits test-built in 14-30 s, and Combat Arms
+went from nothing to 40k lines plus 25k of tests since 2026-10-18
+without a layering violation. The first pass's structural proposals are done.
+What the code does not have yet is the thing Lucker Party needs most:
+**two games' gameplay in one running app, chosen at run time**. Today
+an app is a compile-time composition in which the first registered game
+is "the" game (its tick, binds, HUD), each game's simulation plugin set
+brings its own copy of the engine's base, and most of a game's systems
+run whenever its plugins are added. The mashup demo works around this
+by not adding CS:S's simulation at all, which is why a CS:S map's
+doors, buttons and breakables stand as placed in it and CS:S's guns
+can't be offered.
 
-### 1.1 Size
+The second theme is state with no owner: `MapData` (73 fields) stays
+resident for a map's whole life, map unloading is a hand-kept list of 25
+resources, a mashup strips another game's parts with another hand-kept
+list, and about 40 process-wide statics (weapon sets leaked by design,
+Combat Arms' data, effects and model caches) sit outside any `World`.
+Each is a small bug source today and a blocker for a server hosting
+several matches, for hot-reloading data and for memory once two games'
+content share a session.
 
-The 246k is every tracked line, not code:
+The third theme is determinism as composition grows: tests run Bevy's
+multi-threaded executor while the game and servers run single-threaded
+ones, no simulation schedule is checked for ambiguous order, the client
+and the server build different plugin sets, and Windows-to-Linux
+prediction has never been measured.
 
-| What | Lines |
+Recommendations, in priority order (sections 3-8 have the evidence and
+migration of each; section 11 orders them for parallel agents):
+
+| # | Recommendation | Section | Size | Phase |
+|---|---|---|---|---|
+| 1 | Games as parts without the engine base; the gameplay a run-time slot gating each game's match-wide systems | A1 | M | now, next |
+| 2 | Determinism guards: tests on the production executor, an ambiguity ratchet on the simulation schedules, server and client order compared | E1 | S-M | now |
+| 3 | Map lifetime: map-scoped resources registered once, `MapData`'s bulk dropped after spawning, then the world split from the gameplay's kit | A2, F2 | M | now, next |
+| 4 | Lean map loads: load options (no textures for servers and tests), CS:S texture decode on threads | F1 | S-M | now |
+| 5 | Process-wide statics into resources or assets, and a check against new ones | E2 | M | next |
+| 6 | Source-shaped vocabulary out of Chimera: `OwnState` parts, named `Intent` actions, Steam table and map files in `GameInfo`, units | A3 | M (slices) | next |
+| 7 | A mode lifecycle lifted from Combat Arms' `CaMode`, then minigame definitions as data on it | D2 | L | later |
+| 8 | Party networking: a match manifest in the handshake, the mount doctor, one app per match | M1-M4 | L | later |
+| 9 | Engine contract tests on a Chimera test kit; CI on Linux and Windows without installs | T2, T3 | M | now, next |
+| 10 | Docs that stop colliding: debt and module indexes generated from `//!` docs, finished briefs archived | T5 | S | now |
+
+## 1. The first pass (2026-10-13): what became of it
+
+| P | Proposal | Status (2026-10-20) | Evidence |
+|---|---|---|---|
+| P1 | Split `map/mod.rs`, `spawn_map` in phases | **done** | `chimera/world/src/map/mod.rs` 368 lines, `map/spawn.rs` 872, drawn phases in `chimera/present/src/render/spawn.rs` (1,901); the spawn dump tool kept (`heavy/map_spawn_dump.rs`) |
+| P2 | Docs diet: one line per module and debt | **done, regressing** | ARCHITECTURE.md 133 KB to 22 KB on 10-13, 62 KB now; tech-debt.md 15 KB then, 34 KB now; both still top conflict files (2.6); T5 |
+| P3 | Sort `map` and `client` into modules | **done** (became crates) | `chimera_present` (render, audio), `chimera_client`, `chimera_world`; `simulation_builds_no_drawn_parts` checks it |
+| P4 | Test support module | **partial** | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
+| P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); no lean load path or cache yet: F1 |
+| P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the 12 material plugins and the physics setup are listed by hand in all three game apps (`apps/*/src/main.rs`); A4 |
+| P6 | One VGUI dialog layer | **open, lower** | 7 copies of the UI scale clamp, no shared `Hit<T>`; Combat Arms built its own canvas (`client::canvas`), so this is CS:S-internal now |
+| P7 | One KeyValues tokenizer, one binary reader | **tokenizer done; reader open, grown** | six private cursor types now (`nav`, `pcf`, `vpk`, `net::query`, LithTech `ltb` and `world`) |
+| P8 | Split the giant systems | **open, grown** | `bot::think` 696 lines (was 667), Combat Arms' `movement::step` 634 (new), `apply_effects` 439; E3 |
+| P9 | The crate split along fine lines; cheap wins first | **done**, beyond the plan | 23 crates; tools behind `tools`; mold and `line-tables-only` still unmeasured on a full cycle |
+
+The first pass's "not worth doing" list still holds (section 10).
+
+## 2. Facts (main at 1cdaf890)
+
+### 2.1 Size
+
+Rust lines per crate (non-test code; tests in `tests/` and inline
+`#[cfg(test)]` modules separately; `#[test]` attributes):
+
+| Crate | Code | Inline tests | Test files | `#[test]` |
+|---|---|---|---|---|
+| `cs_source` (+ `ui`) | 61,366 | 6,077 | 52,537 | 1,138 |
+| `combat_arms` (+ `ui`) | 40,115 | 430 | 25,123 | 841 |
+| `chimera_client` | 20,451 | 2,713 | 132 | 115 |
+| `chimera_present` | 18,842 | 3,207 | 1,265 | 130 |
+| `source_logic` | 18,828 | 183 | 7,200 | 226 |
+| `chimera_world` | 18,107 | 1,602 | 0 | 56 |
+| `chimera_net` | 13,918 | 813 | 0 | 37 |
+| `chimera_sim` | 10,507 | 888 | 147 | 39 |
+| `lithtech_formats` | 5,850 | 213 | 3,888 | 110 |
+| `chimera_core` | 5,636 | 536 | 0 | 22 |
+| `source_formats` | 5,554 | 1,295 | 0 | 42 |
+| tools, apps, checks, shims (10 crates) | 8,736 | 538 | 1,646 | 44 |
+| **total** | **227,919** | **18,495** | **91,938** | **2,800** |
+
+Plus 1,976 lines of WGSL, 39k lines of specs, 1.17 MB of docs.
+Growth since the first pass: its 165k lines of `src/` (inline tests
+included) are 246k now (228k of code, 18.5k of inline tests) a week
+later; Combat Arms is 40k of the code.
+
+Functions: 6,862; 3 over 400 lines, 39 of 200-400, 181 of 100-200.
+185 take 8 or more parameters (35 take 12-16, Bevy's limit is 16);
+170 `too_many_arguments` allows, 17 `#[derive(SystemParam)]`. Largest:
+`cs_source::bot::think` (696 lines, 16 params,
+games/cs_source/src/bot/mod.rs:1122), `combat_arms::movement::step`
+(634, games/combat_arms/src/game/movement.rs:863),
+`logic::bridge::apply_effects` (439), `logic::classes::class_input`
+(394), `cs_source::bsp::load_level_bytes` (372),
+`client::console::client_commands` (335), `weapon::weapon_frame` (324).
+
+### 2.2 Crate graph
+
+```
+apps:     cs_source_app <- cs_source_server; combat_arms_app; combat_arms_server; mashup_demo
+games:    cs_source (+ui)              combat_arms (+ui)
+loaders:  source_logic   source_formats   lithtech_formats (uses source_formats' VFS)
+chimera:  chimera_client -> chimera_net, chimera_present, chimera_sim, chimera_world, chimera_core
+          chimera_net -> chimera_sim -> chimera_world -> chimera_core -> source_formats
+```
+
+From `cargo metadata` (23 members, 790 packages in Cargo.lock):
+
+- Every Chimera crate's closure contains `bevy_render` and `wgpu`
+  (631 crates for `chimera_core` alone): the workspace's `bevy` has its
+  default features, so the dedicated servers still compile Bevy's
+  render, window and audio crates (engine-split.md lists the blockers).
+- `chimera_core` depends on `source_formats` (the VFS and KeyValues
+  for `mount`), and `lithtech_formats` on `source_formats` for the VFS:
+  the engine's base and the LithTech loader both sit on a Source crate.
+- `source_logic` depends on `chimera_net` (its replicated movers and
+  HUD messages), so Source's map logic can't be used without the
+  network crate.
+- `cs_source_tools` depends on `cs_source_app` (tech-debt.md).
+- Both games' `ui` features pull `chimera_client` and `chimera_present`
+  as optional dependencies; their simulations don't (checked).
+
+### 2.3 Where edits land (since 2026-10-15)
+
+261 non-merge commits on main, 186 touching Rust. The lowest crate a
+commit touches decides what rebuilds and which tests a push runs:
+
+| Lowest crate touched | Commits | Share |
+|---|---|---|
+| `chimera_world` | 36 | 19% |
+| `chimera_sim` | 20 | 11% |
+| `chimera_core` | 15 | 8% |
+| `lithtech_formats`, `source_formats` | 15 | 8% |
+| `source_logic`, `chimera_net`, `chimera_client`, `chimera_present` | 34 | 18% |
+| a game (`cs_source`, `combat_arms`, their `ui`) | 40 | 22% |
+| the rest (tests, tools, apps, checks, the root shim) | 26 | 14% |
+
+38% of Rust commits start at Chimera's bottom three crates: the
+"lift into Chimera at the second use" workflow (combat-arms.md) puts
+the busiest work where every edit rebuilds and retests everything.
+Most-edited files: docs (2.6), then `games/combat_arms/src/game/mod.rs`
+and `tests/it/main.rs` (22 each: registration lists every module adds a
+line to), `cs_source` `bsp.rs` (21), `Cargo.lock` (18), `core.rs`,
+`weapon/mod.rs`, `weapon/grenade.rs`, `logic/bridge.rs` (16 each),
+`map/data.rs` (15: `MapData`'s fields).
+
+### 2.4 ECS by the numbers
+
+| What | Count | Note |
+|---|---|---|
+| `add_systems` calls | 396 | 83 `in_set`, 121 `before`, 197 `after`, 86 `chain`, 169 `run_if` |
+| system sets | 23 | core: `SimSet`, `Predict` (schedules), `InterpSystems`, `WeaponFrame`; `LogicSet` lives in `source_logic` |
+| resource types | ~470 | largest: `MovementData` 45 fields (CA), `NetGraph` 38, `SourceMovementConfig` 36, `GameMenu` 35 |
+| component types | ~460 | largest: CS:S `Bot` 62 fields, `CaBot` 46, `CaMovement` 39, `SourceMovement` 30, `Intent` 15 |
+| message types / `add_message` | 111 / 172 | observers: 21 (`On<>` 15) |
+| `Query` params | 1,068 | 21 with 8+ components (movement steps 12 and 11) |
+| `Option<Res<_>>` params | 627 | most: `ActiveHud` 41, `SoundBank` 15, `NetRole` 14 |
+| change detection | 33 `Changed<>`, 15 `Added<>`, 52 `is_changed()`, 83 `set_if_neq`, 18 `bypass_change_detection` | the bypasses are avian wake-up workarounds (performance.md, "Props that never sleep") |
+| parallel iteration | 0 `par_iter` | every per-frame schedule on a single-threaded executor (`client::app::run`) |
+| `HashMap` in simulation crates | std's in 65 files | std's hasher is seeded per process |
+| process-wide mutable statics | ~40 | weapon sets, Combat Arms' data, effects, models, view-model caches, binds (E2) |
+| replicated components / server / client messages | 32 / 33 / 20 | union of both games; one replicon protocol hash |
+| predicted components | 17 + 12 weapon parts | union of both games, save/restore per replayed command |
+
+### 2.5 Tests and build
+
+- Integration tests by crate: `cs_source` 857 (283 heavy),
+  `combat_arms` 813 (66 heavy), `lithtech_formats` 101 (35 heavy),
+  `chimera_present` 21, `chimera_sim` 9, `chimera_client` 3,
+  `chimera_world` and `chimera_net` none (56 and 37 unit tests). The
+  engine's contracts (the weapon frame, prediction, `NetSim`, map
+  spawning) are tested almost only through the two games.
+- Full suite (performance.md, "The push hook", 2026-10-19): 1,757 s
+  wall at load 15-25, 2,833 tests; heavy tests ~5,500 s of ~7,200 s
+  summed; a third of the heavy time is converting maps (10-14
+  measurement). A push touching `chimera_world` selects nearly all of
+  it.
+- Leaf edits (performance.md, 10-15): `cargo test --features dev
+  --no-run` 14-23 s in a game or the shell; `cargo test -p <crate>`
+  2-15 s. A cold build 41-85 minutes by load.
+- The harness (`chimera_world::harness::Sim`) runs Bevy's
+  multi-threaded executor; the game, both dedicated servers and
+  `perfgate` run single-threaded ones (`client::app::run`,
+  `harness::single_threaded_schedules`). nextest runs 8 test processes,
+  each with Bevy's default task pools.
+- CI: only `release.yml` (builds on tags). No test runs off the dev box;
+  Windows runs only as playtests (tech-debt.md: "Windows build not yet
+  verified"). Found while committing this review on the Windows PC: in a
+  clone with `core.autocrlf=true` (Git for Windows' default), docs are
+  checked out with CRLF and `architecture::docs_stay_one_line_per_entry`
+  panics (it splits ARCHITECTURE.md on `"\n## Modules\n"`,
+  checks/tests/it/architecture.rs:677), so the pre-commit hook refuses
+  every commit there, docs-only ones included. The fix is a line-ending
+  normalisation in the check (or a `.gitattributes` with `eol=lf` for
+  Markdown); T3's Windows job would have caught it.
+
+### 2.6 Docs
+
+docs/ is 1.17 MB. Sizes: combat-arms.md 180 KB, OBSERVABILITY.md 113
+KB, multiplayer.md 111 KB, performance.md 92 KB, community-maps.md 90
+KB, parity-gaps.md 76 KB, ARCHITECTURE.md 62 KB. Commits touching them
+since 2026-10-15: tech-debt.md **99**, parity-gaps.md 73,
+ARCHITECTURE.md 56, OBSERVABILITY.md 55, backlog.md 47, combat-arms.md
+44. The one-line-per-entry rule keeps rows short but every feature
+still appends to the same two lists, so they remain the files parallel
+branches conflict on most.
+
+Survey scripts (not kept, as before): line and test counts per crate
+with inline test modules subtracted; function lengths and parameter
+counts by brace matching on comment- and string-stripped source;
+pattern counts (the table above); widest `Query` tuples; field counts
+of `Resource`/`Component`/`Message` structs; `cargo metadata` closures;
+`git log --no-merges --name-only` by lowest crate. Each is under 100
+lines of Python; a third pass should keep them (T5).
+
+## 3. Modularity
+
+### A1. Games as parts; the gameplay a run-time choice (priority 1)
+
+- **Evidence**: `cs_source::SimPlugins` adds `chimera_sim::
+  SimBasePlugins` (games/cs_source/src/lib.rs:74), and so does
+  `combat_arms::SimPlugins` (games/combat_arms/src/lib.rs:60): an app
+  adding both panics on the duplicate plugin. `game_registry`: "the
+  first registered is the default game" (chimera/core/src/
+  game_registry.rs:8-12), which decides the tick, binds, the map list
+  and the shell's map-change tick (chimera/client/src/client/
+  console.rs:1948); `MashupPlugins` registers Combat Arms first and CS:S
+  second only for its install (apps/mashup_demo/src/lib.rs). Each app
+  sets its tick by hand (`Time::<Fixed>::from_seconds(<game>::
+  TICK_INTERVAL)`, six places in apps/). A HUD is chosen when the app
+  is built (`with_hud`, games/*/src/ui/mod.rs). A game's systems are
+  gated by role only (`authoritative`, `server`, `client`: 31 of the
+  games' 56 `run_if`s), never by "this game is the one playing"; CS:S's
+  `DeathmatchPlugin`, `ObjectivesPlugin` and `BotPlugin` run on the
+  server whenever added. The mashup therefore can't run Source's map logic (it comes
+  with CS:S's `SimPlugins`) or offer CS:S's guns (their hooks are
+  registered by CS:S's simulation) (docs/plans/active/mashup-demo.md,
+  "Left").
+- **Problem**: Lucker Party rotates minigames from several games in one
+  session. As built, switching from a CS:S minigame to a Combat Arms one
+  needs a different binary. The likely workaround under deadline, a
+  Lucker Party app that copies or forks game code, is exactly what the
+  layering exists to prevent.
+- **Proposal**:
+  1. Split each game's simulation into its parts and the base:
+     `cs_source::CsSourceParts` (rules, objectives, bots, net part,
+     Source's logic), `combat_arms::CombatArmsParts`; `SimPlugins` stays
+     as base + parts for the faithful apps and harnesses. Separately, a
+     weapons-only plugin per game (data set and hooks), so an app can
+     offer a game's guns without its rules.
+  2. A `chimera_core::gameplay` module: a `Gameplay` resource naming the
+     active implementation of each match-wide slot (rules module id,
+     HUD id, character kit, weapon sets, tick), set from the match (a
+     minigame definition later, the app's default now). `Games` stays
+     the registry of installs and map loaders; "default game" keeps only
+     its meaning for bare map names.
+  3. Gating by slot, not by plugin presence: each game puts its
+     match-wide systems (rules, bots, its HUD, its net part's
+     match-state systems) in its own set per schedule, configured once
+     with `run_if(gameplay_is(GAME))`. Per-entity behaviour is already
+     gated by components (the movement marker, a weapon's game
+     components from its hooks, `CaBot`), so that sweep is limited to
+     plugins that act on match state. The tick comes from the gameplay
+     (`core::set_tick_length` on a gameplay change).
+  4. HUDs registered as front-end parts with their own gating instead
+     of `with_hud` at build time.
+- **Migration** (each step lands alone):
+  1. Parts without the base (N2): a test in `apps/mashup_demo` that
+     builds an app with both games' parts and the base once; the five
+     apps' `CHIMERA_SYSTEM_DUMP` identical before and after.
+  2. `Gameplay` resource and `gameplay_is` (X1, chimera_core only),
+     with the apps setting it; nothing gated yet. Unit tests.
+  3. One game at a time: its match-wide plugins into its set; the
+     faithful app's system dump identical modulo set names; its full
+     suite; then a scenario test with both games' parts where only the
+     active gameplay's rules run and a switch changes the tick.
+  4. Mashup: Source's logic and CS:S's weapons added to the mashup app;
+     a heavy test on cs_office opens a door, breaks a window and fires a
+     CS:S gun as Combat Arms' soldier.
+- **Risk**: medium. Adding sets doesn't reorder systems unless the sets
+  get constraints; ambiguous pairs can still sort differently (E1 first
+  makes that visible). Guard: system dumps, the full suite, the network
+  tests of both games.
+- **Payoff**: the precondition for Lucker Party; also lets the mashup
+  use Source's map logic and CS:S's guns now.
+
+### A2. Map lifetime and the world/kit split (priority 3)
+
+- **Evidence**: `MapData` has 73 fields (chimera/world/src/map/
+  data.rs:814): geometry and collision, entities, lighting, sky, vis,
+  water, sounds, but also what a game brings to every map (character
+  bodies, held and view models, the HUD look, the radio, bot profiles,
+  the navigation mesh, round sounds, muzzle flash, shells, decals) and
+  Source-flavoured effect lists (`steam`, `teslas`, `strikes`, `embers`,
+  `smokestacks`, `dust`, `detail_props`). A mashup strips the map's game
+  parts with a hand-kept list of 12 fields (`MapData::take_game_parts`,
+  chimera/world/src/map/sources.rs:126); `unload_map` removes 25
+  resources and several components by hand (chimera/world/src/map/
+  mod.rs:232-292) and then runs `MapHooks::unload`. `PendingMap(Arc<
+  MapData>)` is removed only at unload (mod.rs:137, 246), so every
+  decoded texture (RGBA8 plus mips) stays in RAM for the map's life
+  while `render::images::to_image` copies the bytes into the GPU image
+  (`t.rgba8.clone()`, chimera/present/src/render/images.rs:99;
+  tech-debt.md: ~1 GB of textures on surf_sedona).
+- **Problem**: a new game part added to `MapData` without a matching
+  line in `take_game_parts` leaks into mashups silently; a resource a
+  new feature inserts at spawn and forgets in `unload_map` leaks into
+  the next map (and, in Lucker Party's rotation, into the next game).
+  Every new game feature edits `map/data.rs` at the bottom of the graph
+  (15 commits since 10-15), which rebuilds everything above.
+- **Proposal**:
+  1. Map-scoped resources registered once (`app.map_scoped::<T>()` in
+     `chimera_world`): `unload_map` removes every registered one; a
+     test spawns each kind of map (greybox, a code-built CS:S map, a
+     code-built Combat Arms world), unloads, and fails on any resource
+     present after unload that wasn't there before the load and isn't
+     registered as kept.
+  2. Drop the bulk after spawning: `spawn_map` takes the textures (and
+     the meshes' vertex data where the drawer copied them) out of the
+     pending data, or `PendingMap` is replaced by the few resources
+     later systems need. Measure the RSS after load before and after.
+  3. Split `MapData` into the map's world (`MapWorld`: what the map's
+     file defines) and a game's kit (`GameKit`: bodies, held and view
+     models, HUD look, radio, bot names, round sounds, muzzle flash,
+     shells, decals), loaded by the gameplay's game, not the map's. A
+     faithful app loads both from one game; a mashup loads the world
+     from one and the kit from the other, and `take_game_parts` goes.
+     Source-only effect lists move behind one typed extension (`MapData
+     ::extras`, keyed by type, filled and read by the Source crates),
+     so a third game's own map features don't widen Chimera's struct.
+- **Migration**: (1) and (2) are one session (N4), guarded by the spawn
+  dump on the five maps, `drawn_parts.rs` and the new unload test. (3)
+  is two to three sessions (X7) after A1 step 1: the loaders first
+  return both halves from one call, then the mashup loads them apart,
+  then `take_game_parts` is deleted; the mashup's heavy test and both
+  games' heavy map tests guard it.
+- **Risk**: low for (1)-(2); medium for (3) (every loader and the
+  spawn phases change their inputs).
+- **Payoff**: memory (an estimated few hundred MB on texture-heavy
+  maps, to be measured), no leaks between maps or games, fewer
+  bottom-crate edits.
+
+### A3. Source-shaped vocabulary in Chimera (priority 6)
+
+What the second game and the mashup had to work around, and what a
+third game or an original minigame would hit next:
+
+| Where | What | Proposal |
+|---|---|---|
+| `net::OwnState` (chimera/net/src/net/mod.rs:612), filled in server.rs:919-955 | CS:S's `money`, `armor` (amount, helmet), `kit` (defuse kit), `nightvision` in every game's own-state message; `movement` as a `String` per player per tick | own-state parts registered like `predicted_codec` (name, encode, decode); CS:S registers money, kit and night vision, Combat Arms its armour; movement as a registry index |
+| `weapon::economy` (chimera/sim/src/weapon/economy.rs:75, 353, 360) | `Money`, `DefuseKit`, `NightVision` as engine types | the shop stays Chimera's; the kit and goggles become CS:S's items (`ItemParts` already exists for that) |
+| `core::Intent` (chimera/core/src/core.rs:87) | a fixed set of buttons (Source's: walk, use, secondary, lastinv) | named actions (`ActionRegistry`: a game or minigame registers `throw`, `ability`, `emote`; binds name actions; `Intent` carries a bit set beside today's fields, which become aliases) |
+| `core::Hitgroup` (core.rs:266) | Source's seven hit groups | keep as the normalised damage vocabulary, add `Other(u8)` for a game's own zones |
+| `mount::install::STEAM_GAMES` (chimera/core/src/mount/install.rs:43) | CS:S's Steam app and files in Chimera's base | a `steam: Option<SteamGame>` field on `GameInfo` |
+| `net::maps` (chimera/net/src/net/maps.rs:227) | the map offer is a BSP file (`maps/<name>.bsp`, `.bsp.bz2`, `sv_downloadurl`) | a `MapLoader` names its map's file (if one exists) and layout; maps without a downloadable file (Combat Arms') are by id and hash only |
+| `map::MapLoader::load(name, hdr_level)` (chimera/world/src/map/sources.rs:33) | Source's `mat_hdr_level` in the engine's loader interface | a `MapLoadOptions` struct (F1 adds `textures`, `models`, `sounds`) |
+| 80 `0.0254` literals in 30 Chimera files (most: `render/water.rs` 8, `weapon/drop.rs` 7, `render/emitters.rs` 7, `map/ragdoll.rs` 6); `net::quant`'s 1/32-inch grid | Source's numbers as engine defaults (drop distances, ragdoll pushes, effect sizes, third-person camera, shadows, audio distances) | each becomes a named constant of the game that measured it, passed as data; the net grid stays (it is a precision, 0.79 mm) but named in metres |
+| `logic::LogicSet` (source/logic/src/logic/bridge.rs:103) in the tick's order | the map-logic stages are Source's crate's | `SimSet::{LogicPre, LogicPost, LogicDamage}` in `chimera_core`; Source's logic and Combat Arms' world objects (Wave 5, item 23) both use them |
+| `client::debug_ui` (chimera/client/src/client/debug_ui.rs:177-183), `binds::POLLED`, the shell's `--help` text | `mp_*` cvars, CS:S's polled commands, `cs_source` in usage | from `GameDebug`, `GameInfo` |
+| surfaces | Source's surface properties vs Combat Arms' surface types: the mashup's effects and footsteps fall back to "unknown" | a normalised surface kind in Chimera (concrete, metal, wood, dirt, grass, water, glass, flesh, ...) with each game's table to it as data; effects keyed by the normalised kind plus the game's own |
+
+Slices are independent (X4, X5, X6 in section 11); each bumps
+`NET_VERSION` where the protocol changes and keeps CS:S's behaviour
+(its network and weapon tests unchanged in their expectations).
+
+### A4. One app builder (priority 11)
+
+- **Evidence**: the 12 material plugins (`WorldMaterialPlugin` ...
+  `DetailMaterialPlugin`) are listed in apps/cs_source/src/main.rs:
+  105-118, apps/combat_arms/src/main.rs:96-107 and apps/mashup_demo/
+  src/main.rs:78-89; `PhysicsPlugins` with Chimera's collision hooks and
+  without interpolation in four places (three apps and the harness);
+  the log layer, window settings and tick in each app.
+- **Proposal**: `chimera_present::PresentationPlugins` (the materials)
+  and `chimera_world::PhysicsSetup` (avian as Chimera runs it, used by
+  the harness too), plus the tick taken from the gameplay (A1). An app
+  `main.rs` then lists only its games and its front end.
+- **Migration**: one session (N7); the system dump of each app
+  identical, screenshots of de_dust2 and WAREHOUSE unchanged.
+- **Payoff**: an app can't forget a material (a missing one draws
+  nothing and fails no test today); Lucker Party's app starts small.
+
+### A5. Is the crate layering right?
+
+Mostly yes: the lowest crates rarely depend on what they shouldn't,
+the presentation is off the simulation and the dedicated servers build
+without it, and the game crates never meet. Three corrections, none
+urgent:
+
+- A neutral VFS crate (`chimera/vfs` or similar: `FileSource`, `Mount`,
+  `LooseDir`, `normalize`) under `source_formats` and
+  `lithtech_formats`, so Chimera's base and the LithTech loader stop
+  depending on a Source crate; Steam's `libraryfolders.vdf` parsing can
+  stay on `source_formats`' KeyValues or take a small reader with it
+  (X10, one session; `workspace_crates` rules updated).
+- Source behaviour that isn't CS:S's (BSP, MDL and VMT conversion,
+  Source movement, sound scripts) stays in `cs_source` until a second
+  Source game (HL2DM, CS:GO maps) needs it, then becomes a Bevy-level
+  crate in `source/` (combat-arms.md's lift survey lists the files).
+  Not before: one user doesn't prove the interface.
+- `bevy` without default features in the workspace, each crate asking
+  for what it uses (engine-split.md has the blockers): the dedicated
+  servers would stop compiling `bevy_render`/`wgpu`. Worth it when a
+  server build's time or size matters (Lucker Party's hosted servers).
+
+The layering is missing two planned layers: `games/originals` (Lucker
+Party's own parts and minigames' rule code) and `minigames/` (data).
+Create them with the first original minigame (L2), with
+`workspace_crates` rules: originals may use any game crate's public
+parts only through Chimera's slots, never a game's internals.
+
+### A6. Checklist for adding game #3
+
+What a third game (MW2, Minecraft, Half-Life 2) does today, in order,
+with the traps:
+
+1. Formats in a plain-data crate in its loader layer (`source/`,
+   `lithtech/`, or a new one): no Bevy, fixtures written by tests,
+   `heavy::` tests on the install that skip without it; add it to
+   `workspace_crates` and the hakari excludes if it has no Bevy.
+2. A game crate `games/<id>` with `GameInfo` (id, short name, content
+   folder, tick, `open`, map cycle, import, default binds, movement
+   cvars) registered first in its plugin group; after A3, its Steam
+   app and map file layout there too.
+3. A `MapLoader` producing `MapData` in metres with `entity_scale` for
+   its own units, and a `MapDressing` for playing its gameplay on other
+   games' maps. Never add game-specific fields to `MapData` (A2's
+   extension instead).
+4. Movement: a marker component and `register_movement::<M>("<id>:
+   movement")`; its state registered with `predicted_net`; its numbers
+   as data (`data/movement.toml`), in its own unit.
+5. Weapons as TOML in `data/weapons/` (docs/weapon-data.md), behaviour
+   as hooks (`register_weapon_hook`), predicted parts with
+   `predicted_part`; hit zones through `Hitgroup` (or `Other` after
+   A3).
+6. Rules as rule modules (`RuleModules::register`), in its gameplay set
+   (A1); its respawn through `chimera_sim::spawning`.
+7. Its net part (`net_part("<id>", ...)`): replicated components and
+   messages, `JoinRules` if the default join doesn't fit, own-state
+   parts (A3).
+8. Its front end behind a `ui` feature: HUD (registered, A1), menus via
+   `client::front_end`, its layouts on `client::canvas` or
+   `client::vgui`.
+9. `harness::<Game>Sim` as its tests' base; scenario tests per spec case;
+   one network test per feature on `NetSim`.
+10. Apps: its faithful app and dedicated server (without `ui`) on the
+    app builder (A4); `combat_arms_server` is the smaller example.
+11. Architecture test entries, ARCHITECTURE.md's crate paragraph, a plan
+    in `docs/plans/active/`.
+12. Don't rely on: the first-registered game being yours, `OwnState`'s
+    CS:S fields, Chimera's Source-inch defaults (A3's list), BSP map
+    downloads, `LogicSet` being generic, or the 12 material plugins
+    being added for you.
+
+## 4. ECS design
+
+### E1. Determinism and ordering guards (priority 2)
+
+- **Evidence**: `Sim::start` (chimera/world/src/harness.rs:85-100)
+  never calls `single_threaded_schedules`; the game, both dedicated
+  servers and `perfgate` do (chimera/client/src/client/app.rs:26,
+  apps/*_server/src/main.rs). Only two test files switch it on
+  (`net_bots.rs`, `heavy/net_capacity.rs`). Ambiguity detection is
+  opt-in and only for the render world's `Render` schedule
+  (`CHIMERA_AMBIGUITY=1`, app.rs:62). The client adds presentation
+  systems into the simulation's schedules at fixed places
+  (`map::MapLayers`, `client::input`'s `FixedPreUpdate`,
+  `client::interp`'s `FixedLast`), the server doesn't. 65 simulation
+  files use std's `HashMap`/`HashSet` (seeded per process); the ones
+  sampled iterate order-independently (Combat Arms' assist sums), but
+  nothing keeps it so. Windows-to-Linux prediction is unmeasured
+  (multiplayer.md: "if they show, use the `libm` crate").
+- **Problem**: with a single-threaded executor, two systems with
+  conflicting access and no order run in whatever order the graph sorts
+  to, and adding any system can change it (performance.md saw this in
+  the render world). Tests run another executor than the shipped game,
+  so an order a test passes with may not be the one players get; and a
+  client and its server, built from different plugin sets, can order
+  the same simulation systems differently, which is a misprediction no
+  single-process test sees. The more games and minigames share an app,
+  the more systems there are to collide.
+- **Proposal**:
+  1. `Sim` on the production executors by default (opt out with an
+     argument), and its task pools capped (`TaskPoolPlugin` with 2
+     compute threads), which also stops 8 nextest processes from each
+     starting a full set of threads.
+  2. An ambiguity ratchet per game: build the app as each faithful
+     binary and dedicated server composes it, count the ambiguous pairs
+     in `FixedUpdate`, `FixedPostUpdate`, `FixedLast` and the three
+     `Predict` schedules (after a schedule is initialised its graph
+     lists them: `conflicting_systems`, bevy_ecs 0.19.1
+     src/schedule/schedule.rs:786), and fail when the count rises;
+     lower the stored number as pairs get ordered.
+  3. A test per game that the simulation systems of `FixedUpdate` and
+     `Predict::*` run in the same order in the server's composition and
+     the client's (filtering out what only the client registers).
+  4. A `repo_checks` scan (or `clippy.toml` `disallowed-types` in the
+     simulation crates) against std's `HashMap`/`HashSet` where new code
+     iterates them, pointing to `BTreeMap` or Bevy's fixed-hash maps.
+  5. Measure Windows against Linux once: a Windows client on a Linux
+     dedicated server, a scripted run (strafe jumps, ladders, a magazine
+     of recoil) with `cl_showerror 1`, errors per minute (the Windows
+     PC can do it with `scripts\playtest.ps1` and the box's server).
+- **Migration**: (1) first, alone, with the full suite run twice: any
+  test that now fails had an order dependence, fixed by an explicit
+  edge, never by reverting (N1). (2) and (3) next, in new test files
+  only. (4) after (1). (5) any time.
+- **Risk**: low for the code, medium for the schedule: (1) may surface
+  several order bugs at once; budget a session for them.
+- **Payoff**: prediction stays exact as games are combined; tests
+  check what ships; likely faster tests (the single-threaded executor
+  cut the main and render worlds' time by a quarter and a sixth on
+  de_dust2: `client::app`'s doc, performance.md "Frame time pass").
+
+### E2. Process-wide state into the world (priority 5)
+
+- **Evidence** (mutable statics outside tests): `weapon::data::LOADED`
+  (chimera/sim/src/weapon/data.rs:663; tech-debt.md: "Weapon data sets
+  are leaked and process-wide"); Combat Arms' `data::BUILTIN_ONLY`
+  (games/combat_arms/src/game/data.rs:150, an `AtomicBool` switch) and
+  its `OnceLock` caches of movement data, attributes, mod tables,
+  character records, rigs, body groups, shared character models, the
+  effects library and its mount, render styles, view models on demand
+  ("never freed", tech-debt.md) and the world's mount; the shell's
+  `binds::GAME_DEFAULTS` and `OLD_DEFAULTS`, `console::MAP_NAMES`;
+  `map::loading::PROGRESS`.
+- **Problem**: they outlive any `World`. `NetSim` runs a server and
+  clients in one process, so they share these (a test that loads
+  another weapon set or flips `BUILTIN_ONLY` changes every other app in
+  the process); a server can't host two matches with different data in
+  one process; data can't reload without a restart (minigame tuning,
+  modding); caches hold memory after a game's minigame ends.
+- **Proposal**: resources (or Bevy assets, with F6) owned by the app:
+  weapon sets in `WeaponCatalog` with ids interned per app, Combat Arms'
+  tables as resources its data plugin fills, caches keyed by path with
+  handles so unused entries free. A `repo_checks` test listing the
+  allowed statics (read-only tables, the log layer, metrics) and failing
+  on new mutable ones in simulation crates.
+- **Migration**: one module per commit, Combat Arms first (most
+  statics, newest code, best spec tests), then `weapon::data`; guarded
+  by the game's suite and a new test that two `Sim`s in one process with
+  different weapon data don't see each other's (X3).
+- **Risk**: low-medium (weapon ids are `&'static str` throughout the
+  weapon code; interning keeps that).
+- **Payoff**: multi-match servers, hot-reloadable data, honest tests.
+
+### E3. Giant systems and fat components (P8, grown)
+
+`bot::think` (696 lines, 16 parameters), Combat Arms' `movement::step`
+(634, 11) and `bots::brain` (1,711-line file), `apply_effects` (439),
+`class_input` (394), `client_commands` (335), `weapon_frame` (324),
+`radar::update`, `overview::draw`, `impact_effects`, `shot_effects`
+(15-16 parameters each). Components: CS:S's `Bot` 62 fields, `CaBot` 46,
+`CaMovement` 39, `SourceMovement` 30.
+
+- **Problem**: hard to review, and every write to a fat component marks
+  all of it changed; predicted fat components (`CaMovement`,
+  `SourceMovement`) are cloned whole per entity per replayed command.
+- **Proposal** (opportunistic, when a feature touches one): systems split
+  by phase into chained functions with `SystemParam` bundles (the
+  characters, the local player, fonts and scale); bots' components split
+  by how often they change (configuration, perception, plan, steering);
+  movement state split into the predicted part and the derived part.
+- **Risk**: low-medium; existing tests cover each. Not a project on its
+  own: bots are parked for CS:S, and Combat Arms' movement follows its
+  spec's order on purpose.
+
+### E4. Plugins that half-exist
+
+627 `Option<Res<_>>` parameters (most for `ActiveHud`, `SoundBank`,
+`NetRole`, materials) let systems run with parts of an app missing.
+That is how the server and headless tests work without presentation,
+and it hides missing plugins: a system silently does nothing. Prefer
+run conditions (`resource_exists::<T>`) at registration for whole-
+system absence, and `Option` only where a system has real work either
+way; a `debug_assert` in each plugin's `finish` that its required
+plugins are present (`App::is_plugin_added`). Low priority; do it in
+files being edited anyway.
+
+### E5. Messages, observers, change detection, hierarchies
+
+- Messages (172 registered) for per-tick flows and observers (21) for
+  network events and one-off reactions is the right split for Bevy
+  0.19; nothing to change. Messages written in `Update` and read in
+  `FixedUpdate` survive frames without a tick (Bevy updates message
+  buffers only after a fixed tick ran); keep it so when adding readers
+  in the fixed schedules.
+- The 18 `bypass_change_detection` calls are avian wake-up workarounds
+  (a velocity write wakes a body); document each at its site (most
+  are) and list them for the avian upgrade (L5).
+- Hierarchies: map parts under the map's root, static parts under their
+  own; avian walks every collider under a root each tick (0.3 ms on
+  dust2, performance.md); fine at stock maps' counts.
+
+### E6. Does the prediction model fit the ECS?
+
+Yes, well. Prediction runs the `Predict::{Select, Movement, Weapons}`
+schedules once per command (core.rs:1130-1154), predicted components are
+registered by type (`PredictedAppExt`) and saved, restored and compared
+generically, side effects are gated by `FirstTimePredicted`, and map
+movers replay through `NetHooks::replay`. Two games plug into it without
+touching it. Small things:
+
+- `PredictedComponents::net_order` builds and sorts a `Vec` on every
+  `encode`, `decode`, `split` and `differing` (core.rs:1257): once per
+  player per tick on the server, more on a client's replays. Sort once
+  at `finish`.
+- Save and restore box every registered component per entity per
+  snapshot (`Box<dyn Any>`); with the union of every game's predicted
+  types in a Lucker Party app, entities pay for types they don't have
+  (an `Option` per type per command). Cheap now; measure with N1's
+  executor and `perfgate` after A1 combines games.
+- Nothing checks that a system added to a `Predict` schedule is a pure
+  function of predicted state, `Intent` and `SimClock`: a game that
+  reads `Time` or an unpredicted resource there mispredicts only under
+  latency. Each game's network suite should keep a scripted
+  "everything predicted" scenario run with zero errors (CS:S's
+  `net_prediction.rs` and Combat Arms' `net.rs` do; make it a template
+  in the test kit, T2).
+
+## 5. Performance
+
+### Where the time goes
+
+| Area | Number | Source |
+|---|---|---|
+| Frame (client, dust2, playtest build) | p50 3.9-5.4 ms, p99 8.6-17.4 ms, render world 13.7M instructions, main world 6.7-7.3M, GPU 0.22-0.25 ms; the 240 Hz goal is 4.2 ms | performance.md, "Baseline" |
+| Systems per frame | ~1,500 (main and render), most 0.01-0.04 ms; the executor's hand-off cost more than them | performance.md, "Frame time pass" |
+| Tick (server, dust2, 10 bots) | 17.9M instructions per tick summed over threads (p99 26-27M); estimate 3-6 ms on the dev box, against a 15 ms tick | perfgate baseline |
+| Server capacity | bots' sight is the limit (64 bots on mg_jacks don't fit); ~17 KB/s per client at 32 players, no relevance culling (37-45% of pairs in each other's PVS on dust2) | tech-debt.md, server.rs's `//!` |
+| Map conversion | dust2 under 1 s; Combat Arms 0.2-1.3 s per map plus 2 s of weapon data per session; the dedicated servers and tests decode every texture they never draw | performance.md, "Combat Arms map loads"; bsp.rs has no options |
+| Memory | Combat Arms' app peaks 2.1-3.4 GB; heavy tests median 1.1 GB, ten over 3.3 GB; surf_sedona's textures ~1 GB as RGBA8; `MapData` resident while mapped (A2) | performance.md, tech-debt.md |
+| GPU memory | every texture RGBA8 (no BC formats anywhere): 4 bytes a texel against DXT1's 0.5 and DXT5's 1, both games' native formats | `render::images`, no `Bc*` format in the code |
+
+The game is CPU-bound by per-entity and per-system work, not by the GPU
+(a 3080 draws dust2 in a quarter of a millisecond).
+
+### F1. Lean map loads (priority 4)
+
+- **Problem**: the dedicated servers and most heavy tests decode,
+  mip and keep every texture; a third of the heavy tier's time is map
+  conversion (10-14), and CS:S decodes its textures on one thread while
+  Combat Arms' loader uses eight (`decode_all`).
+- **Proposal**: `MapLoadOptions { textures, models, sounds, hdr_level }`
+  passed to every `MapLoader`; the servers and tests that check
+  collision, logic or movement load without textures (placeholders of
+  the right size, so materials and decals still find them); CS:S's
+  decode on threads through a shared helper (Combat Arms' `decode_all`
+  moved down into `chimera_world`).
+- **Migration** (N3): the options first with everything on (the spawn
+  dump identical), then the servers, then the heavy files that never
+  look at textures (a list in the PR; screenshot tests keep them on);
+  record the heavy tier's sum and the server's RSS before and after
+  (`MapData::load_times` already times the phases).
+- **Estimate**: a third to a half off map loads where textures dominate,
+  so roughly 10-15% off the heavy tier, and the servers' memory by the
+  texture set. Measure first on dust2, de_nuke and surf_sedona.
+
+### F2. Drop `MapData`'s bulk after spawning
+
+A2 step 2. Cheap, and the largest memory win per line changed.
+
+### F3. Compressed textures
+
+- **Proposal**: upload VTF's and DTX's DXT1/3/5 blocks as BC1/2/3 when
+  the adapter has `TEXTURE_COMPRESSION_BC` (every desktop GPU we
+  target), decoding to RGBA8 only where a CPU reads texels (lightmap
+  helpers, surface colours, the occasional effect). Shaders sample the
+  same.
+- **Payoff**: VRAM and upload 4-8 times smaller, texture decode gone
+  from loads. **Risk**: medium (sRGB variants, mip chains shorter than
+  full, alpha-tested pieces, the merged world's atlases); guard with
+  refcmp on de_dust2 and de_nuke and the Combat Arms screenshots.
+  After F1 (both touch the loaders' texture output) (X9).
+
+### F4. Parallelism where it is real
+
+The single-threaded executors stay (measured right for ~1,500 tiny
+systems). Parallel work belongs inside the few systems that iterate a
+lot of independent read-only work:
+
+- bots' sight and path search (read-only `SpatialQuery`, one result per
+  bot): `par_iter_mut` over bots, the server's capacity limit;
+- the server's per-client encoding (`OwnState`, replicon serialises
+  itself) once there are many clients;
+- map conversion (F1).
+
+Measure each with `perfgate` (instructions summed over threads and wall
+time) before and after; keep a change only if wall time drops at load.
+
+### F5. What to measure, and how
+
+- A per-tick allocation count: a counting global allocator in
+  `perfgate` (behind its `tools` feature), so allocation regressions show
+  like instruction ones. The code has 1,519 `collect`s, 1,676 `format!`s
+  and 1,146 `Vec::new`/`vec!` outside tests; which run per tick is not
+  known. Then remove the ones in the top systems.
+- `perfgate` scenarios for Combat Arms (WAREHOUSE with bots) and for the
+  mashup, so Lucker Party's composition has a baseline before A1 lands.
+- RSS after load and after unload for every map in the heavy sweeps
+  (sampled from `/proc` on Linux, `GetProcessMemoryInfo` on Windows):
+  catches A2's leaks and F2's win.
+- Frames and ticks on the Windows PC (the `GetThreadTimes` 15.6 ms
+  granularity makes per-frame CPU time useless there: compare wall times
+  over many frames, and GPU timestamps).
+- Bandwidth per client at 8, 16 and 32 players for each game's modes
+  (`heavy::net_capacity` for CS:S; none for Combat Arms yet).
+
+### F6. The asset pipeline
+
+- **Evidence**: no `AssetLoader` or `AssetSource` anywhere (4
+  `AssetServer` uses in all); a map converts synchronously into
+  `MapData` and its meshes and images go into `Assets<_>` by hand
+  (`render::spawn`); "Maps load synchronously before the app starts"
+  (tech-debt.md; apps/mashup_demo/src/main.rs loads before `App::new`);
+  CS:S decodes shared textures again on every load (no cache,
+  tech-debt.md); Combat Arms built session caches of its own (view
+  models on demand, character models once per session, both never
+  freed).
+- **Problem**: content shared between maps (hl2's textures, a game's
+  character models) loads once per map or is kept forever; nothing
+  loads in the background, which Lucker Party's rotation needs (the
+  next minigame loading while the current one plays); every game
+  reinvents caching and freeing.
+- **Proposal**: an `install://<game>/<path>` asset source reading through
+  the game's `Mount`; asset loaders per converted kind (textures,
+  models, sounds) in each game crate; a map as an asset whose
+  dependencies are those handles; the loading screen waits on load
+  states. Assets free when the last handle drops.
+- **Migration**: textures first, behind a cvar (after X9 settles their
+  format), spawn dumps compared; then models (Combat Arms' caches
+  replaced); maps last, with `change_map` waiting on the load. One
+  game at a time.
+- **Risk**: high (every loader and spawn phase; Bevy's asset API moves
+  between releases). **Payoff**: background loads, shared content
+  loaded once, memory that follows what is in use (L4).
+
+### Quick wins and deep work
+
+| Quick (a session or less) | Deep (several) |
 |---|---|
-| Rust, `src/` | 165,411 |
-| of which unit tests inside `src/` (`#[cfg(test)]` modules, `*_tests.rs`) | ~20,400 |
-| of which binaries (`src/bin/`: dump, mapsweep, movecmp, refcmp, ...) | 5,121 |
-| Rust, `tests/it/` (one test crate) | 38,313 (heavy: 17,638) |
-| Markdown: `specs/` | 18,755 |
-| Markdown: `docs/` + README + CLAUDE.md | ~7,500 lines, **686 KB** (long lines) |
-| `Cargo.lock` | 8,494 |
-| `tools/` (probes, Python, SourceMod) | 6,685 |
-| WGSL shaders | 1,777 |
+| F2: drop the texture bytes after spawning | F3: BC textures |
+| F1: no textures for servers and collision tests; CS:S decode on threads | F6: the asset pipeline (L4) |
+| `net_order` sorted once (E6) | relevance culling (M5) |
+| E1's executor in tests (also faster tests) | bots' sight in parallel (F4) |
+| a per-tick allocation counter in `perfgate` | `bevy` without default features for servers (A5) |
 
-So the game library proper is ~140k lines of non-test Rust; tests (unit
-and integration) are ~59k. That is a healthy test ratio, not bloat.
+## 6. Data-driven design and a minigame API
 
-`src/` by top-level module (lines including in-file tests):
+### D1. What is still code that should be data or a hook
 
-| Module | Lines | Notes |
-|---|---|---|
-| `client` | 37,758 | 46 files flat in one folder + `game_menu/` |
-| `map` | 32,385 | 54 files; `mod.rs` alone 5,824 |
-| `games/cs_source` | 29,051 | 51 files: formats, CS:S behaviour, CS:S assets glue |
-| `logic` | 24,053 | 32 files; 6,800 lines of them are `*_tests.rs` |
-| `net` | 12,267 | 24 files |
-| `weapon` | 6,767 | |
-| `bot` | 6,650 | `mod.rs` 2,673 |
-| `bin` | 5,121 | 8 tools |
-| `objectives` | 2,190 | |
-| `core.rs` | 1,717 | "keep this small" (its own doc) |
-| `console.rs` | 1,137 | |
-| `mount` | 1,092 | |
-| others (`metrics`, `rules`, `harness`, `greybox`, `movement`, `slots`, `character`, `lib`, `main`) | ~3,700 | |
+Already data: weapons, the shop, penetration, CS:S's round numbers,
+Combat Arms' movement, modes' settings, bots, characters, effects,
+surfaces, render styles, UI strings and layouts (docs/weapon-data.md,
+docs/economy-data.md, games/combat_arms/data/). Still code:
 
-Largest files (non-test lines): `map/mod.rs` 5,619; `client/server_browser.rs`
-3,000; `bot/mod.rs` 2,598; `logic/bridge.rs` 2,377; `cs_source/weapons.rs`
-2,348; `client/console.rs` 2,314; `cs_source/movement.rs` 2,250;
-`logic/movers.rs` 2,104; `cs_source/bsp.rs` 2,063; `cs_source/props.rs`
-2,021; `client/widgets.rs` 1,925; `core.rs` 1,718.
+- **Which parts play**: the app's plugin list and the first registered
+  game (A1). Should be a match's choice of slot implementations by id.
+- **Mode flow**: CS:S's round loop is code (`rules/rounds.rs`), its
+  rule modules are descriptions whose `applies` picks nothing that runs
+  (chimera/sim/src/rule_module.rs:60: "the first registered module that
+  applies" is reported, not enforced). Combat Arms' modes are a table
+  of data and hooks (`CaMode`: teams, spawn family, round time, warm-up,
+  respawn, scoring, setup, per-tick, round over, death, respawn and
+  joiner hooks; games/combat_arms/src/game/rules.rs) driven by one
+  mission update: the best shape in the repository for a minigame
+  runtime, but private to Combat Arms.
+- **HUD composition**: chosen at build time (`with_hud`); Combat Arms
+  binds the install's layouts' controls to values by name
+  (`ui::hud::bound`), which is the data-driven HUD pattern to lift.
+- **Input actions**: `Intent`'s fixed buttons (A3).
+- **Surfaces**: per game, no shared kind (A3).
+- **Bots' brains**: code per game, correctly (they are each game's
+  behaviour); a minigame needs only "fight", "go to", "carry" goals on
+  them.
 
-### 1.2 Functions
+### D2. A minigame API (sketch)
 
-4,049 non-test functions. 3,536 are under 50 lines (48k lines); 356 are
-50-100; 126 are 100-200; 28 are 200-400; **3 are over 400 lines and hold
-2,917 lines between them**:
+Goal: an original Lucker Party minigame is a data file, plus at most one
+small rules hook in `games/originals` when the built-in pieces don't
+cover it. The pieces exist in the two games; the work is lifting them
+into one Chimera module (rule of three: CS:S's rounds, Combat Arms'
+modes, the first original minigame).
 
-| Function | Lines | Params |
-|---|---|---|
-| `map::spawn_map` (map/mod.rs:2303) | **1,840** | 14 (13 of them `Option<ResMut<Assets<_>>>`) |
-| `bot::think` (bot/mod.rs:903) | 667 | 15 |
-| `logic::bridge::apply_effects` | 410 | 3 |
-| `logic::classes::class_input` | 391 | 6 |
-| `cs_source::bsp::load_level_bytes` | 348 | 4 |
-| `bot::walk_route` | 315 | 10 |
-| `client::console::client_commands` | 313 | 1 (registers ~60 commands inline) |
-| `cs_source::props::place_props` | 296 | 7 |
-| `weapon::weapon_frame` | 289 | 5 |
-| `client::overview::draw` | 273 | 15 |
+The definition (data, loaded at run time, sent to clients by hash: it is
+ours, unlike game assets):
 
-Long parameter lists are Bevy systems: 129 functions take 8+ parameters,
-28 take 12-16 (16 is Bevy's limit); 209 `#[allow(clippy::too_many_arguments
-/ type_complexity)]`; only 8 `#[derive(SystemParam)]` bundles in the
-whole crate.
+```toml
+# minigames/gun_game_dust2.toml
+id = "originals:gun_game_dust2"
+name = "Gun Game: Dust II"
+players = { min = 2, max = 16 }
+maps = ["cs_source:de_dust2", "combat_arms:warehouse"]   # a pool
+teams = "free_for_all"
+time_limit = "10m"
 
-### 1.3 Dependencies between modules
+[slots]                              # implementations by id (A1's Gameplay)
+movement = "cs_source:movement"
+character = "combat_arms:soldier"    # the kit (A2) of Combat Arms
+hud = "chimera:minimal"
+weapons = ["cs_source", "combat_arms"]   # the weapon sets available
 
-The top-level layering (docs/ARCHITECTURE.md, enforced by
-`checks/tests/it/architecture.rs`'s `ALLOWED`) holds: no violations, no cycles
-between top-level modules. `crate::` references by edge (refs / files):
+[spawn]
+respawn = { delay = "2s", protection = "1.5s" }   # chimera_sim::spawning
+points = "map"                       # or "team", "far_from_enemies"
 
+[rules]
+module = "chimera:ladder"            # built from primitives below
+ladder = ["cs_source:weapon_glock", "combat_arms:m4a1",
+          "cs_source:weapon_awp", "combat_arms:m9"]
+advance_on = "kill"
+demote_on = "melee_death"
+win = { kind = "ladder_end" }
+
+[modifiers]                          # Roll the Dice: named, registered hooks
+gravity = 0.6
+dice = ["big_heads"]
 ```
-games/cs_source -> map 222/35   core 33/13   weapon 14/3   mount 7/4   console 5/4   objectives 4/2
-client          -> map 173/33   console 105/36   net 68/14   core 65/22   weapon 33/10
-                   rules 22/8   games/cs_source 18/7   metrics 18/4   ...
-logic           -> map 141/24   core 28/11   console 5/2
-map             -> core 89/17   (nothing else: its rule)
-weapon          -> core 41/8    map 33/6    console 7/3
-net             -> core 30/12   console 17/9   map 13/6   rules 11/6   bot, weapon, movement 6 each
-bot             -> core 23/6    map 20/6    weapon 11/2   character 5/4   objectives 4/2
+
+The runtime (Chimera, `chimera_sim::mode`, lifted from `CaMode`):
+
+- **Phases** with timers: warm-up, play, round over, intermission, end;
+  a definition picks which exist and how long they last.
+- **Teams**: two or more named teams, free-for-all, one team (co-op),
+  assignment policies (balanced, as joined, by rule).
+- **Spawning and loadouts**: `chimera_sim::spawning` (already lifted),
+  kits per phase, rung or team from the weapon catalogue.
+- **Scoring**: kills, deaths, assists and objective points as a table
+  (`CaStats` and CS:S's `Score` generalised), the scoreboard's columns
+  from the definition.
+- **Objective primitives**: zones (enter, leave, hold for a time;
+  Combat Arms' Seize and Secure, CS:S's bomb sites and rescue zones),
+  carriables (an item that follows its carrier, drops on death, returns
+  after a time: flags, the bomb, intel, a hot potato), counters and
+  timers.
+- **Win conditions**: first to N, most at the time limit, last alive
+  (player or team), objective done, ladder end; ties by the
+  definition's order.
+- **Events for the HUD and the announcer**, named (`round_won`,
+  `lead_taken`, `rung_up`), bound by the HUD's data as Combat Arms binds
+  its panels.
+- **Modifiers** registered by name (gravity, speed, damage scale, head
+  size), each a small hook a definition turns on.
+
+A minigame the primitives can't express adds one rules hook (Rust,
+`games/originals`), registered by name and named by the definition:
+
+```rust
+pub static HOT_POTATO: ModeRules = ModeRules {
+    id: "originals:hot_potato",
+    setup: |world, def| { /* hand the potato (a carriable) to a random player */ },
+    tick: |world, clock| { /* the fuse; the holder blows up at 0 */ },
+    event: |world, event| { /* ModeEvent::Hit { by, to }: the potato passes */ },
+    ended: |world| { /* one player left */ None },
+};
 ```
 
-Findings:
+Later, if rule code must ship without a rebuild, the same hooks behind
+WASM or Lua (engine-split.md, "Minigames"). CS:S's modes and Combat
+Arms' modes become definitions on the same runtime, each faithful app
+playing them as before (their spec tests guard it). Arms Race (Combat
+Arms' VWRM, built) is the weapon ladder's first user and Gun Game its
+second: the point to lift it as `chimera:ladder`.
 
-- **`map` is the catch-all lowest layer.** It may use only `core`, and
-  everything above may use it, so anything two upper layers share lands
-  in `map`: rendering (11 of the crate's 15 custom materials, 17 of its 23
-  WGSL files, culling, water, shadows, particles, decals, view models), audio
-  (sound, live sounds, room DSP, soundscapes, hearing, radio), animation
-  (anim, ragdolls), physics helpers (prop physics, buoyancy,
-  controllers), HUD layouts (`map::hud`), bot data (`nav`,
-  `bot_profiles`). 54 files, 32k lines. The engine-split plan already
-  marks it "split".
-- **Inside `map`, 41 of the 54 files form one dependency cycle**:
-  `mod.rs` holds both the data types every submodule uses (`MapData`,
-  `MapMesh`, `MapProp`, ... ~1,800 lines of types) and `spawn_map`,
-  which uses 48 of the submodules. That cycle is what makes `map` hard to
-  split into crates; splitting the data types out of `mod.rs` breaks it.
-- Intra-module cycles elsewhere (client 40 of its 47 submodules, logic 20 of 32,
-  net 20 of 24, cs_source 24 of 51) are mostly the usual "plugin in
-  `mod.rs` registers submodules, submodules use `mod.rs`'s types" shape:
-  harmless inside one crate, irrelevant to a split along top-level lines.
-- Sim code reaches into render-ish `map` submodules for state:
-  `logic` uses `map::vis` (`LogicHidden`, `VisClusters`), `map::tint`,
-  `map::monitor`, `map::emitters`, `map::beams`, `map::color_correction`;
-  `net` uses `map::tint`, `map::decal`, `map::beams`. The state these
-  hold (hidden, tinted, on/off) is simulation; the drawing is not. A
-  render/sim split needs the state components moved to the sim side.
-- `client` uses `games::cs_source` in 7 files (18 refs: the game id, the
-  tick interval, mounting, `import_map`, movement cvar names), and 8
-  client files carry CS:S strings (`#Cstrike_*`, `cstrike/`). The rest of
-  the engine has none: the "engine knows no game" rule mostly already
-  holds in code.
-- Game composition is written out three times: `main.rs` (CS:S movement,
-  weapons, player and view animation, 11 material plugins listed one by
-  one), `bin/mashup_server.rs` (movement, weapons; the server's hitbox
-  animation comes in implicitly through `CsWeaponsPlugin`) and each
-  test's `Sim::new(...)`. There is no `CsSourcePlugins`
-  group.
+## 7. Multiplayer for Lucker Party
 
-### 1.4 Build and iteration times
+The network core is in good shape for it: server authority, prediction
+generic over games, game-registered parts (`net_part`, in name order),
+join, bot and hold hooks, an in-memory `NetSim`, quantised bodies,
+paced updates. What Lucker Party adds:
 
-One library crate (`mashup`, 165k lines) with Bevy linked dynamically
-(`dev`), our code at `opt-level = 1`, 9 binaries, one integration-test
-crate (`it`). Measured 2026-10-13 in a fresh worktree, `CARGO_BUILD_JOBS=4`,
-sccache, `--timings`, **load average 30-50** (other agents' builds), so
-absolute times are 2-4x what an idle box gives (docs/performance.md
-measured a `lib.rs` touch at 26 s at load 14); the ratios are the point.
+### M1. One app per match, a party per process
 
-| `cargo test --features dev --no-run` after... | wall | `mashup` lib | lib unit tests (parallel) | `it` | 9 bins (4 at a time) |
+A party (lobby plus its matches) is one server app with every game's
+parts registered (A1), so the replicon protocol hash is the same for
+every minigame and no reconnect is needed between them. A minigame
+change is a `ChangeMatch` (today's `ChangeLevel` plus the definition's
+id and hash and the gameplay slots), loaded behind the loading screen
+the shell already has. A host serving several parties runs one process
+each until E2 removes the process-wide state; then one thread per app.
+The dedicated party server is an app without presentation, like the
+existing two.
+
+### M2. A match manifest in the handshake
+
+`Welcome` and `ChangeLevel` (chimera/net/src/net/mod.rs:383-420) carry
+a map id, its file's hash and size, a download URL and the tick. Add:
+the minigame definition (its id, hash and, for ours, its bytes), the
+gameplay's slot ids, each map half's source (A2: the world's game and
+file hash, the kit's game and its version), and the games the match
+needs mounted. The client refuses with a clear reason before loading
+anything it can't load.
+
+### M3. The mount doctor and the lobby
+
+DESIGN.md's mount doctor (an install's games, build ids and checked
+files) isn't built. Clients report it at `Join` (installed games, Steam
+build ids, a hash of the files the loaders read); the lobby offers only
+minigames every player can play, or lets the party pick and makes the
+players without a game spectators. Map downloads stay per loader (A3:
+BSP files can be sent, Combat Arms' maps can't: they are in the
+install's archives).
+
+### M4. Protocol and versions
+
+One protocol per Lucker Party build: its hash covers every game's
+parts. A faithful CS:S client and a Lucker Party server differ in
+protocol; refuse with "this server plays Lucker Party" rather than a
+hash mismatch. Keep `NET_VERSION` per app. Predicted and own-state parts
+registered by name (E6, A3) keep the encoding stable when a game adds a
+type.
+
+### M5. Bandwidth and relevance
+
+At party sizes (8-16) bandwidth is not the limit (~17 KB/s per client
+at 32 players today). The rule that matters for mixed content: what
+every client must see (events, scores) stays small, and bodies are
+culled by relevance when a mode or map makes it cheap (Source's PVS on
+BSP maps, which `VisClusters` already holds; distance for others).
+Replicon's per-client visibility does the culling; the rules for what
+a client still gets (footsteps, radar) need a spec per game. Update rate
+per mode (a slow party game needs less than CS:S's 66 ticks).
+
+### M6. Authority and hosting
+
+Already: the server validates commands, looks (Combat Arms), votes,
+cvars. Add with M2: loadouts and modifiers only from the definition.
+Hosting behind NAT: nat-traversal.md's plan (UPnP done; a relay or a
+hosted server next) is the open decision for the user, not an
+architecture change.
+
+## 8. Tests and build
+
+### T1. Tests on the production executor
+
+E1 step 1. Also expected to shorten the suite: 8 nextest processes no
+longer each spin a full task pool on a 16-thread box. Measure the full
+suite before and after at similar load.
+
+### T2. A Chimera test kit and engine contract tests (priority 9)
+
+- **Problem**: Chimera's generic parts (weapon frame, grenades,
+  prediction, `NetSim`, map spawning) are tested almost only through
+  `cs_source` and `combat_arms` (2.5). A lift into Chimera can only be
+  checked by running both games' suites, which is what makes 38% of
+  commits run nearly everything; and a third game would find CS:S-
+  shaped assumptions by surprise.
+- **Proposal**: a small test kit in Chimera (a module of `chimera_sim`
+  behind a `testkit` feature, or a `chimera/testkit` crate used as a
+  dev-dependency): a test weapon set as TOML, a minimal rules module, a
+  code-built map with spawn points, a movement; `NetSim` helpers. Then
+  contract tests per Chimera crate: the weapon frame's timing and
+  magazines on test data, prediction with zero errors for a scripted
+  run, map spawn and unload (A2), own-state parts. When a lift moves
+  code, the generic part of its tests moves down onto the kit.
+- **Payoff**: a lift checked by `cargo test -p chimera_sim` in seconds;
+  the affected selection can then skip a game's heavy tier for changes
+  that only touch what the contract tests cover (a later decision; the
+  user ruled out coverage-based selection, not crate-based).
+
+### T3. CI without installs (priority 9)
+
+A workflow on Linux and Windows runners: `cargo check --workspace
+--lib --bins --features tools`, `cargo check -p cs_source_server -p
+combat_arms_server`, and the fast tier of the crates that need no
+install (`repo_checks`, both format crates, the Chimera crates' tests,
+the games' tests that build their maps in code). It catches Windows
+breakage (such as the CRLF failure in 2.5) and anything pushed with
+`--no-verify`; it costs runner time only (rust-cache keeps it under ~15
+minutes after the first run, estimate).
+
+### T4. The test support module (P4, finish)
+
+Per game, one `support` module: the install skip rule (one macro), map
+loading by id, `sim()` builders for the common bases, `feet`, the
+active weapon id. Then one sweep per game moving the 45 `fn sim(`, 24
+`fn load(` and their kin into it (guard: the list of passing and skipped
+tests identical before and after).
+
+### T5. Docs that stop colliding (priority 10)
+
+- `docs/tech-debt.md` becomes generated: `repo_checks --bin debt` lists
+  every `//!` "Known shortcuts" paragraph's first sentence with its file
+  (the detail is already there); the committed file keeps its header
+  and the entries without a file. A feature then edits only its own
+  file's `//!` doc. Same for ARCHITECTURE.md's module list from each
+  file's first `//!` line (the test that checks paths and lengths moves
+  to the generator).
+- combat-arms.md: the spec briefs of finished waves (lines 441-2195,
+  ~150 KB) move to `docs/plans/completed/combat-arms-briefs.md`; the
+  board and decisions stay.
+- The survey scripts of this review kept under `tools/arch_survey/`
+  (2.6) so the next pass compares like with like.
+
+### T6. Compile time
+
+Leaf edits are fine (14-30 s). What costs is bottom edits: 38% of Rust
+commits rebuild from `chimera_core`, `chimera_world` or `chimera_sim`.
+A2 (game data off `MapData`) and moving non-vocabulary out of
+`chimera_core::core` (2,377 lines: damage application, the predicted
+component registry, `BrushGrid`, which is Source movement's broad phase)
+into the crates that use them cut how often that happens. mold and
+`debug = "line-tables-only"` for dependencies are still unmeasured on a
+full cycle (performance.md, "Test cycle"); measure on an idle box before
+adopting. Windows builds use `rust-lld` (.cargo/config.toml); measure a
+leaf edit there once (no number exists).
+
+## 9. Top 10 risks over the next 3-6 months
+
+1. **Lucker Party can't combine games at run time** (A1): the first
+   party build gets written as copies or a fork of game code, or
+   waits on a large late refactor.
+2. **Prediction drift as games combine** (E1): ambiguous order, test vs
+   production executors, client vs server plugin sets, Windows vs Linux
+   floats; mispredictions that only show under latency with friends.
+3. **Bottom-crate churn**: lifts land in `chimera_world`/`sim`/`core`
+   (38% of Rust commits), each rebuilding and retesting everything
+   (the push suite 1,757 s and growing: Combat Arms brought 841 tests
+   in two days, and the suite went from 1,644 tests on 10-15 to 2,833
+   on 10-19); agents queue behind pushes and conflict in shared files.
+4. **Memory with two games' content in a session**: RGBA8 textures,
+   `MapData` resident, Combat Arms' caches never freed (its app peaks
+   at 3.4 GB already); 8-16 GB machines run out on a minigame rotation.
+5. **Process-wide state** (E2): blocks several matches per server and
+   data reloads; makes in-process network tests of mixed apps share
+   state silently.
+6. **State leaking between maps and games** through `MapData`'s
+   hand-kept strip list and `unload_map`'s hand-kept removals (A2).
+7. **Source-shaped core vocabulary hardening** (A3): every week more
+   code depends on `OwnState`'s CS:S fields, `Intent`'s fixed buttons,
+   inch constants and BSP-only map offers; each fix later costs more
+   and bumps the protocol.
+8. **Windows regressions found late**: no automated build or test on
+   Windows (T3); playtesters are the first to see breakage; the perf
+   tools are weaker there (no hardware counters, coarse thread times).
+9. **Docs as a tax**: 1.17 MB that sessions are sent to, and the top
+   conflict files (tech-debt.md 99 commits in five days); a slower and
+   noisier merge cycle for ~60 agents.
+10. **A Bevy or avian upgrade under parallel work**: Bevy is pinned at
+    0.19.1 and avian at 0.7 with workarounds in our code (contact flags,
+    a stale "body disabled" flag, wake-ups by change detection);
+    228k lines and both games move at once, so an upgrade needs a
+    planned freeze and its own lane (L5).
+
+## 10. Not worth doing (updated)
+
+- Everything on the first pass's list still: rewriting net replication
+  or the logic world, a typed error overhaul, dead-code hunting,
+  another UI toolkit, macros for cvars or replication, splitting files
+  only for size.
+- Bevy's multi-threaded executor back on: measured slower for this
+  workload; parallelism goes inside the few heavy systems (F4).
+- A disk cache of converted maps before F1 and F3: lean loads and
+  native compressed textures remove most of what a cache would save,
+  without its invalidation and per-user storage.
+- Native dynamic plugins for minigames (no stable ABI): data plus
+  registered hooks now, scripting behind the same hooks later.
+- A general "everything is a slot" registry before A1's few match-wide
+  slots prove the shape: lift at the second use, as the Combat Arms work
+  does.
+- Splitting `cs_source` into Source and CS:S crates before a second
+  Source game exists.
+
+## 11. Roadmap
+
+Sizes: S one session or less, M two or three, L four or more. Items in a
+phase touch disjoint files so agents can run them in parallel; each
+lands alone, quickly, with the tests named. Every item that changes a
+fact in ARCHITECTURE.md edits only its own lines there; N6 lands first
+or rebases last.
+
+### Now
+
+| # | Item | Files (lane) | Size | Guard |
+|---|---|---|---|---|
+| N1 | `Sim` on the production executors with capped task pools; ambiguity ratchet and server/client order tests per game (E1 1-3) | `chimera/world/src/harness.rs`; new `games/*/tests/it/schedules.rs` | S-M | full suite twice; failures fixed with explicit edges |
+| N2 | Game parts without the base: `CsSourceParts`, `CombatArmsParts`, a weapons-only plugin each; both games' parts in one app builds (A1 step 1) | `games/*/src/lib.rs`, `games/*/src/harness.rs`, `apps/mashup_demo/src/lib.rs` | S | the five apps' system dumps identical; new two-games test |
+| N3 | Lean map loads: `MapLoadOptions`; servers and collision-only heavy tests without textures; CS:S texture decode on threads (F1) | `chimera/world/src/map/sources.rs`, `games/cs_source/src/game/{bsp,material}.rs`, `games/combat_arms/src/game/world.rs`, test support | S-M | spawn dump identical with textures on; heavy tier sum and server RSS before and after |
+| N4 | Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
+| N5 | CI on Linux and Windows without installs (T3) | `.github/workflows/` | S | the workflow itself |
+| N6 | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
+| N7 | App builder: `PresentationPlugins`, the physics setup shared with the harness (A4) | `chimera/present/src/lib.rs`, `chimera/world/src/lib.rs`, `apps/*/src/main.rs` | S | system dumps; dust2 and WAREHOUSE screenshots |
+
+N3 and N4 both reach `MapData`'s consumers but not the same files; if
+N3 changes the `MapLoader` signature, N4 rebases on it (one line).
+
+### Next
+
+| # | Item | Depends on | Files (lane) | Size | Guard |
 |---|---|---|---|---|---|
-| cold (all dependencies) | 85 min | 1,559 s | 649 s | 170 s | 2-57 s each |
-| nothing (no-op) | 4 s | - | - | - | - |
-| a new `pub fn` in `client/window_icon.rs` (leaf) | 318 s | 260 s | 140 s | 39 s | 1-27 s each |
-| a new `pub fn` in `core.rs` (root) | 189 s | 153 s | 24 s | 21 s | 10-14 s each |
-| both reverted | 273 s | 211 s | 31 s | 42 s | 1-18 s each |
-| one test file (`games/cs_source/tests/it/teams.rs`) | 39 s | - | - | 36 s | - |
-| `cargo build --features dev --bin mashup` after a leaf body change | 83 s | 63 s | - | - | 19 s (`mashup`) |
+| X1 | `Gameplay` slots and `gameplay_is`; each game's match-wide plugins gated; tick, binds and HUD from the gameplay; the mashup runs Source's logic and offers CS:S's guns (A1 2-4) | N2, N7 | `chimera/core` (new module), each game's rules, bots, HUD and net-part registration | M | system dumps modulo set names; both suites; the mashup's heavy test on cs_office (doors, a CS:S gun) |
+| X2 | Determinism checks: std hash maps and new mutable statics refused in simulation crates (E1 4, E2's check) | N1 | `checks/` | S | `repo_checks` |
+| X3 | Process-wide state into resources: Combat Arms' data, effects and model caches, then weapon sets (E2) | X2 | `games/combat_arms/src/game/{data,effects,characters,view_model}`, `chimera/sim/src/weapon/data.rs` | M | Combat Arms' suite; a two-`Sim`s isolation test |
+| X4 | `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
+| X5 | Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
+| X6 | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
+| X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
+| X8 | Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
+| X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
+| X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
 
-What this says:
+Lanes in Next: X4 and X5 both touch `chimera_net`'s protocol; run them
+one after the other or agree on the file split (X4 owns own-state
+encoding, X5 the command encoding). X7 waits for N3 and N4.
 
-- **The library compile is 75-80% of a source-change test cycle**, and
-  it costs the same whether the edit is in a leaf (`client`) or the root
-  (`core`): one crate means every edit re-runs incremental compilation
-  of all 165k lines. The spread between runs is load, not the edit.
-- The tail after the library (37-62 s here) is the `it` crate plus
-  **8 binaries relinked on every test build**: cargo builds all of a
-  package's binaries for its integration tests. Only `dump` is used by a
-  test (`mount_cs_source.rs`, `CARGO_BIN_EXE_dump`); `refcmp`, `movecmp`,
-  `perfgate`, `tracesum`, `mapsweep`, `testmap` and `mashup_server`
-  aren't, yet each relinks a ~1 GB debug binary every cycle.
-- `cargo test` compiles the library twice (normal and with its 721 unit
-  tests); they run in parallel, so it costs CPU more than wall time.
-- A test-only change is cheap (39 s): the one-test-crate layout works.
+### Later
 
-Which edits a crate split would speed up, by what each commit touches
-(424 commits since the history rewrite, 310 touching `src/`; the lowest
-layer a commit touches decides what must rebuild):
-
-| Lowest module touched | Commits | Share |
-|---|---|---|
-| `core` | 46 | 15% |
-| `map` | 138 | 45% |
-| `weapon`, `logic`, `bot`, `rules`, `net`, `console`, `mount`, others | 53 | 17% |
-| `games` (cs_source) only | 35 | 11% |
-| `client`, `bin`, `main` only | 38 | 12% |
-
-60% of source commits touch `core` or `map`, which nearly everything
-depends on: after a split those still rebuild almost every crate.
-
-### 1.5 Tests
-
-1,389 `#[test]` attributes (nextest counts 1,459 tests with the
-macro-generated per-map ones): 668 integration attributes (440 in `tests/it`, 228 in
-`tests/it/heavy`), 721 unit tests in `src/` (logic 216, client 178, map
-128, cs_source 100, bot 28, net 26, weapon 18; none in core, rules,
-slots, movement, harness). Integration lines by area: heavy (real maps,
-long bot runs) 17.6k, net 5.9k, weapons 4.3k, map/logic 4.3k, movement
-2.0k, other 3.6k.
-
-Runtime, measured here (`cargo nextest run --features dev`, 2026-10-13,
-load 25-60, all 1,440 passed, 19 skipped): **70 minutes wall**. The sum
-of test times is 9,433 s: unit tests 108 s (721 tests), the fast
-integration tests 1,418 s (439), **heavy 7,907 s (280 tests, 84%)**.
-Because `.config/nextest.toml` runs at most 2 heavy tests at once
-(memory), the wall time is about the heavy sum / 2. By file: map_courses
-2,056 s (72 community maps, ~28 s each), map_community 651 s, de_nuke
-613 s (2 tests), map_ladders 574 s (**one** test), net_soak 520 s (one),
-de_dust2 512 s (62), map_surf 475 s (3); slowest fast-tier files cs_guns
-225 s (30), net_rules 204 s, net_weapons 174 s. docs/performance.md's
-"Test cycle" (200-270 s full suite, 2026-10-08) predates the
-community-map suites: the full suite has grown about 5x in five days
-(part of that is today's load; even at a third, a pre-push run is now
-20+ minutes).
-
-Shape problems:
-
-- **No shared test-support module.** `tests/it/main.rs` declares only
-  test files. Each file grows its own helpers: 27 `fn sim()`, 19 `fn
-  load()`, 6 `fn installed()`, 4 `fn dust2()`, 5 `fn active_id()`,
-  8 `fn feet()`. 35 files load real maps, each with its own "is the
-  install there" check, and they disagree: some skip on a missing
-  install, one requires `cstrike/` to exist, one also accepts a cached
-  map, others `expect` and panic.
-- Each heavy test loads and converts its map from scratch (nextest runs a
-  process per test, so there is no sharing; textures decode on every
-  load, tech-debt "no cache yet"). de_dust2's 62 tests pay 62 loads;
-  how much of a heavy test's time is the load and how much the
-  simulation is not measured anywhere.
-- A few single tests loop over a whole map's features (every ladder,
-  every surf map) and run 4-10 minutes alone, so they can't use the
-  parallelism nextest has.
-
-### 1.6 Duplicated code
-
-Not much copy-paste in the simulation; most duplication is in UI
-plumbing, file-format parsing, and tests:
-
-- **VGUI dialogs.** `game_menu`, `server_browser`, `first_run` (and in a
-  smaller way `buy_menu`, `team_menu`, `spectator_menu`, `chat`,
-  `radio`) each define their own `Hit(Target)`, `TextHit`, `WheelList`
-  marker components, a `pointer` system turning `Interaction` changes
-  into the model's `Input`s (hover, click, caret from click with the
-  same font/scale lookup, wheel over list or combo), and a
-  "despawn the tree and redraw when the model changed or the window
-  resized" system. The UI scale `(height / 720.0).clamp(0.6, 3.0)` is
-  written 9 times in 6 files. The good part, a pure `handle(Input) ->
-  Outcome` model unit-tested without a window, is already shared in
-  spirit (`game_menu/model.rs` + `tests.rs`, `ServerBrowser::handle`).
-- **KeyValues text.** Two tokenizers: `mount::keyvalues::tokens` (handles
-  `\` escapes) and `cs_source::surfaceprops::tokens` (no escapes), the
-  latter used by 15 call sites (material, props, bsp, gameui, vgui, hud,
-  pcf, decals, soundscape, water, ...), each walking the token list with
-  its own brace-depth loop. Two `rgba()` colour parsers
-  (`cs_source/gameui.rs`, `cs_source/vgui.rs`). Escape handling differs
-  between files: a parity question (which files does the game read with
-  escapes on?) hidden in which tokenizer a module happened to import.
-- **Binary readers.** Five little-endian cursor types with their own
-  `u8/u16/u32/i32/f32/vec3` (`nav`, `pcf`, `anim`, `vpk`,
-  `net::query`), plus raw `from_le_bytes` in `bsp` (16), `ambient` (12),
-  `detail`, `overlays`, `material`, ... ~200 lines in all.
-- `fn local_player(w: &mut World) -> Result<Entity, String>` three times
-  (client console, debug UI, weapon).
-- Cvar plumbing is fine: `resource_cvar::<R, T>(app, name, help, field)`
-  covers the common case (200 of 315 registrations).
-- Net replication is fine: one registration list in `net/mod.rs`,
-  `Snapshots<T>` generic interpolation buffers; each mirrored thing has a
-  server write and a client draw system by design.
-
-### 1.7 Dead code, unsafe, errors, features
-
-- Dead code is negligible: 23 `pub` items referenced nowhere else (most
-  are spawnflag constants documenting a format: `map::nav` flags,
-  `SF_FIRE_*`), 2 `#[allow(dead_code)]`. rustc already warns on private
-  dead code.
-- `unsafe`: 6 sites, all FFI (thread CPU clocks in `metrics`, the Windows
-  registry in `mount::install`). Fine.
-- Errors: `Result<_, String>` everywhere (140 signatures), 21
-  `io::Result`, 2 error enums; 241 `.unwrap()` and 19 `.expect()` in
-  non-test code. Consistent enough for a game; no change proposed.
-- Features: `dev`, `profile`, `combat_arms` (git-ignored folder);
-  13 `cfg(feature)` sites. Clean.
-- Visibility: 3,962 `pub` items against 578 `pub(crate)`/`pub(super)`.
-  In one crate that is free; at a crate split every `pub` becomes API.
-
-### 1.8 Systems and ordering
-
-104 plugins, 279 `add_systems` calls, 316 resources, 308 components, 85
-messages/events, 14 system sets. Ordering is mostly explicit pairwise:
-198 `.before/.after` against 55 `.in_set`. The core sets (`SimSet::
-{Rules, Commands, Movement, Weapons}`, `LogicSet`, `InterpSystems`, the
-net send/receive sets) carry most of it, and ARCHITECTURE.md's "Data
-flow per tick" documents it well. The pairwise edges between individual
-systems in other modules (`.after(crate::core::apply_damage)` 6 times,
-`.after(super::interp::draw_others)`, ...) are where ordering bugs would
-hide; there are few of them.
-
-### 1.9 Docs as a cost
-
-For an agent-driven repo the docs are part of the build: CLAUDE.md sends
-every session to them.
-
-| File | Size | Commits touching it (since 2026-10-03: 582 commits with merges) |
-|---|---|---|
-| docs/ARCHITECTURE.md | 129 KB (~32k tokens; module-table rows up to 11k characters) | 176 |
-| docs/tech-debt.md ("Small, current, honest") | 102 KB | 160 |
-| docs/plans/active/multiplayer.md | 96 KB | 23 |
-| docs/OBSERVABILITY.md | 75 KB | 115 |
-| docs/backlog.md | 44 KB | 230 |
-
-The module table repeats, at paragraph length, what each file's `//!`
-doc already says (compare `client/widgets.rs`' header with its row), so
-every feature edits it twice, and parallel agents conflict on it more
-than on any source file. The code hotspots by the same count:
-`map/mod.rs` 131, `cs_source/bsp.rs` 100, `client/mod.rs` 63,
-`cs_source/props.rs` 48, `cs_source/mod.rs` 47, `core.rs` 46.
-
-## 2. Assessment
-
-### Keep (working well)
-
-- **The layer rule and its test.** `ALLOWED` plus failure messages that
-  say how to fix it; zero violations at 165k lines is the best evidence
-  the structure works. Crates later only turn this into compiler errors.
-- **Pure models under thin Bevy shells**: `logic::world::LogicWorld`
-  (entity I/O as plain data, `Effect`s applied by `bridge`), the menus'
-  `handle(Input) -> Outcome` models, `widgets`' control state machines,
-  `game_hud::layout`. These are why 721 unit tests run without a window.
-  New code should keep this shape.
-- **Headless `harness::Sim`** and one integration-test crate with a
-  fast and a heavy tier.
-- **Data in, behaviour out between engine and game**: games fill
-  `MapData`, `GameUi`, `MapSounds`; the engine has no CS:S strings
-  outside 8 client files.
-- **Slots by marker components**, `resource_cvar`, `Snapshots<T>`.
-- No dead-code or `unsafe` problem; errors consistent.
-
-### Hurting (with evidence)
-
-1. `map/mod.rs`: the most-edited source file (131 commits in 10 days),
-   5,800 lines, one 1,840-line function with 13 optional asset
-   parameters, and the root of `map`'s 41-file cycle. Every map feature
-   lands in `spawn_map`, so parallel agents conflict there.
-2. `map` as the catch-all: render, audio, animation, physics and HUD
-   data in one module that may only see `core`. It hides which code is
-   simulation (must run headless, on the server) and which is drawing,
-   and it is the main obstacle in the engine-split plan.
-3. Docs size and churn (1.9): a direct tax on every agent session and the
-   top merge-conflict source.
-4. Repeated dialog plumbing (1.6) and 27 ad-hoc test setups (1.5):
-   moderate line counts, but they make behaviour drift (UI scale clamp,
-   install-skip semantics) easy.
-5. A few very large systems (`bot::think`, `apply_effects`,
-   `class_input`, `client_commands`, `overview::draw`) that are hard to
-   review; `bot` is parked now, so it hurts least.
-6. Two KeyValues tokenizers with different escape rules: a parity risk,
-   not a size one.
-
-### Risks of refactoring here
-
-- **Merge conflicts with ongoing work** are the main cost: several agents
-  work from `main` at once (playtest fixes, community maps). Moves of hot
-  files must land fast, alone, and be announced; one big refactor branch
-  would conflict with everything.
-- **Behaviour changes from reordering**: `spawn_map` spawns in a fixed
-  order and some tests check entity ids or iteration order (bot radio's
-  entity-id checks, logic's node order). Extracting functions must keep
-  the order.
-- **Test churn**: module moves change `use` paths in tests; `pub use`
-  shims keep old paths compiling until a sweep.
-- **System order**: moving systems between plugins can change the order
-  Bevy picks for unordered systems. Moves must keep each system's sets
-  and edges, and the full suite (heavy included) must pass.
-- **Parity**: anything that touches parsing (KeyValues) or effect
-  application can change what CS:S content looks like; guard with
-  refcmp/hudcmp captures and mapsweep before/after.
-
-## 3. Proposals, ranked
-
-Ranked by payoff over cost and risk. Session counts are rough
-(one agent session each).
-
-### P1. Split `map/mod.rs` (data types, bodies, spawn phases)
-
-- **Problem**: 1.3, 2.1 above.
-- **Change**:
-  1. Move the format types (`MapData` and the ~60 types it holds,
-     lines ~100-1900) into `map/data.rs`, re-exported from `map` so no
-     path changes outside. No submodule then needs `mod.rs` for types.
-  2. Move character bodies, held models and hitboxes (lines ~700-1170)
-     into `map/bodies.rs`; prop shadows, prop looks and animation
-     (~4,600-5,000) into `map/props.rs`; sky (~5,280-5,500) into
-     `map/sky.rs`; the image builders into `map/images.rs`.
-  3. Break `spawn_map` into phase functions in `map/spawn/` (world
-     chunks, brush entities and movers, props, ropes, sky, water,
-     decals and overlays, sounds, ...), each taking a `SpawnCtx` (the
-     commands and the optional asset stores, one `SystemParam`) and the
-     map data, called in today's order.
-- **Payoff**: `mod.rs` from 5,800 to a few hundred lines; the biggest
-  function becomes ~10 of 100-250; map features stop colliding in one
-  function; breaks the `map` cycle (prerequisite for P3 and the crate
-  split). No lines removed to speak of; clarity and fewer conflicts.
-- **Cost**: 2 sessions (types and file moves: 1; `spawn_map` phases: 1).
-- **Risk**: low for moves; medium for the phase split (spawn order, local
-  state threaded between phases). Mitigation: keep phase order; compare
-  a dump of each map's spawned entities (names, components, transforms,
-  in order) before and after on dust2, nuke and two community maps (a
-  small test helper, kept); the heavy map suite; refcmp screenshots.
-- **Slices**: (a) `data.rs` move, (b) bodies/props/sky/images moves,
-  (c) `SpawnCtx` + extract two phases, (d) the rest of the phases. Each
-  lands alone, quickly, when no other branch is mid-edit in `map/mod.rs`.
-
-### P2. Docs diet: module table to one line per module
-
-- **Problem**: 1.9.
-- **Change**: ARCHITECTURE.md keeps the layers, the rules, the data flow
-  per tick and one line per module or folder ("`client/widgets.rs`:
-  VGUI control state machines and drawing"); the detail moves to (or
-  already is in) each file's `//!` doc, which becomes the source of
-  truth. CLAUDE.md's "keep docs true" then means: change the `//!` doc
-  with the code. tech-debt.md: one line per debt with a link to the spec
-  or plan that holds the detail; finished plans' history out of
-  `active/`. A test (in `architecture.rs`) can cap line length or row
-  count of the module table, so it stays short.
-- **Payoff**: ~100 KB less for every session that reads the map; the top
-  conflict file becomes rarely edited. No code risk.
-- **Cost**: 1 session. **Risk**: losing information: move, don't delete
-  (check each row's facts are in the file's `//!` doc first).
-- **Done** (2026-10-13): ARCHITECTURE.md 133 KB to 22 KB, tech-debt.md
-  109 KB to 15 KB. Rows whose facts the `//!` doc already held were
-  dropped; every other row's text was appended to its file's `//!` doc
-  (folder rows split per file where they named files, else into the
-  folder's `mod.rs`), debt rows as a "Known shortcuts" paragraph. Some
-  `//!` docs now repeat themselves in places; trim them as the files are
-  next edited.
-
-### P3. Sort `map` (and `client`) into top-level modules in the crate
-
-This is engine-split step 2's "sort every module first", done without
-Cargo changes.
-
-- **Problem**: 1.3 (`map` catch-all), 2.2.
-- **Change**: new top-level modules beside `map`, each with its own row
-  in `ALLOWED`:
-  - `render` (materials and their plugins, WGSL, `vis`, `water`'s
-    drawing, `shadows`, particle drawing, `decal`, `view_model`, sky
-    drawing, `lod`, `fog`, `tint`'s drawing...): may use core, map;
-    nothing in the simulation may use it.
-  - `audio` (`sound`, `live_sound`, `room`, `soundscape`, `hearing`):
-    sound events stay as sim data in `map`/`core`; playback here.
-  - `anim` (`anim`, `ragdoll`, `placed_ragdoll`, bodies).
-  - `map` keeps `MapData`, spawning, entities, collision, prop
-    physics, nav and the sim-side state components that `logic`/`net`
-    toggle today inside render files (`LogicHidden`, `VisClusters`,
-    `RenderLook`, `BrushTint`, beam/monitor/emitter on-off state):
-    the state moves to the sim side, the drawing reads it.
-  - `client` grouped into folders: `hud/`, `ui/` (dialogs, widgets,
-    vgui, menus), `view/` (camera, interp, spectate, freeze cam,
-    senses), `post/` (hdr, gamma, colour correction), `debug/`.
-- **Payoff**: the layer test then proves the simulation never depends on
-  rendering (the dedicated server and headless tests stop needing
-  `Option<Assets<_>>` workarounds over time: 54 such parameters in 24
-  files today); the crate split becomes folder moves. Clarity for
-  agents: "where does X go" has an answer.
-- **Cost**: 3-4 sessions (`render` 2, `audio`/`anim` 1, `client`
-  folders 1). **Risk**: import churn (`pub use` shims, then a sweep);
-  system-order changes when plugins move (keep sets/edges, full suite).
-  Do it in slices, one submodule family per commit.
-
-### P4. Test support module
-
-- **Problem**: 1.5.
-- **Change**: `tests/it/support/` (declared in `main.rs`, not a test
-  file): `install()` / a `require_install!()` skip macro with one rule,
-  `cs_map(name) -> Option<MapData>`, `cs_sim(plugins)` (greybox + CS:S
-  weapons + tick), `active_weapon_id`, `feet`/`to_source` helpers,
-  `NetSim` builders. Migrate files as they are touched, plus one sweep
-  of the 35 map-loading files.
-- **Payoff**: ~600-1,000 test lines, one skip rule (no silently
-  skipped vs panicking difference), new tests shorter to write.
-- **Cost**: 1-2 sessions. **Risk**: low (tests only); guard by
-  comparing the list of passing/skipped tests before and after.
-
-### P4b. The heavy tier's time
-
-- **Problem**: 1.5: the full suite is now ~70 minutes under load, 84%
-  of it heavy tests capped at 2 at a time; every push waits for it.
-- **Change**, measuring first:
-  1. Log each heavy test's map-load time and simulation time (a line
-     from `games::load_map` under a test env var is enough) to see
-     which dominates.
-  2. If loading: a headless load path that skips what tests don't use
-     (texture decode, image building, mip chains) and/or a converted-map
-     cache keyed by the BSP's hash and a format version.
-  3. Split the 4-10 minute single tests (every ladder, every surf map,
-     the soak) into one test per map or case so they spread over the
-     heavy slots.
-  4. Measure a heavy test's peak memory and raise the heavy group's
-     `max-threads` where the box allows, or give the community sweeps
-     (`map_courses`, `map_community`: 95 tests, ~2,700 s) a third tier
-     run before merges that touch `logic`/`map` and nightly, not every
-     push.
-- **Payoff**: the push gate back toward the 5-minute range; also faster
-  `mapsweep`.
-- **Done, steps 1, 3 and 4** (2026-10-14; docs/performance.md, "The
-  heavy tier"): loading is a third of the heavy time, simulation two
-  thirds; the map-looping tests split per map; 5 heavy slots with the
-  big tests weighted. Full suite 1,812 s to 1,009 s at similar load.
-  Step 2 (cache or headless load path) and a third tier are still open. **Cost**: 1-2 sessions. **Risk**: low; a test tier split
-  needs a written rule for when it must run, or regressions on
-  community maps slip through.
-
-### P5. Game composition as plugin groups
-
-- **Problem**: 1.3 last point.
-- **Change**: `games::cs_source::CsSourcePlugins` (movement, weapons,
-  player/view animation where rendering exists, tick interval, loadout)
-  and `map::MapRenderPlugins` (the 11 material plugins), used by
-  `main.rs`, `mashup_server` and full-game tests. Today what a game is
-  is partly implicit (`CsWeaponsPlugin` adds the server's
-  `player_anim::SimAnimPlugin`; the drawn animation plugins are listed
-  only in `main.rs`); the group makes the client/server difference one
-  visible `if rendering`.
-- **Payoff**: one place says what "CS:S" is; client and server can't
-  drift; the `cargo run -p cs_source` app of the engine-split plan
-  starts here. **Cost**: half a session. **Risk**: low.
-
-### P6. One VGUI dialog layer
-
-- **Problem**: 1.6 (dialogs).
-- **Change**: in `client/widgets` (or `client/ui/dialog.rs`): generic
-  `Hit<T>`, `TextHit<T>`, `WheelList` components, a `UiScale` helper
-  (the one place for `/ 720` and its clamp), and a `Dialog` trait
-  (`type Target; type Input; fn handle(&mut self, Input) -> Outcome;
-  fn draw(&self, &mut DialogDraw)`) with generic `pointer::<D>` and
-  `redraw::<D>` systems. Port `first_run` first (smallest), then
-  `server_browser`, then `game_menu`.
-- **Payoff**: ~600-1,000 lines; the same caret/scroll/double-click
-  behaviour in every dialog (a parity win: VGUI behaves the same in all
-  of them). **Cost**: 2 sessions. **Risk**: medium (UI behaviour);
-  guard with the models' unit tests, `menus` tests, `hud_layout`, and
-  hudcmp captures of each dialog before/after.
-
-### P7. Source text and binary readers
-
-- **Problem**: 1.6 (KeyValues, readers).
-- **Change**: one KeyValues module (tokenizer with an explicit
-  `escapes: bool`, a tree parser, and a tiny cursor for the token-walk
-  loops) in `mount` (or `source` later); every parser picks escapes
-  explicitly, with the choice per file type written in the spec (ask a
-  spec session if unknown). One `LeReader` for binary formats.
-- **Payoff**: ~300-500 lines; the escape behaviour becomes a visible,
-  tested decision per file type. **Cost**: 1 session. **Risk**: parsing
-  changes on community content; guard with mapsweep over the cached maps
-  (warnings and entity counts identical) and the mount tests.
-- **Status (2026-10-14, with the `source_formats` crate)**: done in part.
-  One tokenizer (`source_formats::keyvalues::tokens(text, Escapes)`),
-  every caller choosing `Escapes::On` (Steam's files, ours) or `Off`
-  (the game's scripts and resource files) as it behaved before; one tree
-  type `Kv` (mount's `Node` and hud's `Kv` merged) with its three
-  parsers kept as they were (`parse`, `parse_res`, `parse_pc`; they
-  differ on a key before `}` and on conditionals, tested). Open: the
-  spec question (which files the game reads with escapes), the
-  token-walk cursor, soundscape.rs's own tree parser, localization's
-  own escapes (`\n`, `\t`), and the one `LeReader`.
-
-### P8. Split the remaining giant systems
-
-`bot::think` (667 lines), `logic::bridge::apply_effects` (410: one arm
-group per effect family into functions), `logic::classes::class_input`
-(391: per-class functions), `client::console::client_commands` (313:
-commands registered next to their feature, as other modules do),
-`overview::draw`, `radar::update`. Introduce `SystemParam` bundles for
-the recurring query groups (characters, the local player, UI fonts and
-window scale). **Payoff**: reviewability; fewer 16-parameter systems.
-**Cost**: 2-3 sessions, can be done opportunistically when a feature
-touches one. **Risk**: low-medium; existing tests cover them. `bot` is
-parked: leave it until bots are picked up again.
-
-### P9. The crate split (engine-split step 2)
-
-- **Problem**: every source edit recompiles all 165k lines (1.4); the
-  layer rules are a text-scanning test, not the compiler.
-- **What the measurements say about the plan as written**: the target
-  layout (`engine` / `source` / `games/*` / `apps/*`) puts `core`,
-  `map`, `client` and `net` in one `engine` crate at the bottom. Edits
-  there (about 85% of source commits) would rebuild `engine`, then
-  `source`, the games and the apps: no faster than today, possibly
-  slower (a longer chain, less cross-crate inlining). Only CS:S-only
-  edits (11%) get the full win. **As drawn, the split is not an
-  iteration-speed win**; its value is the publishing/sharing goal of
-  the plan and compiler-enforced boundaries.
-- **To make it a speed win**, the engine has to be several crates whose
-  hot parts sit high in the graph: `chimera_core` (core, console, slots,
-  character, metrics), `map` (data, spawning, collision), `sim`
-  (weapon, objectives, rules, bot, movement, logic or `source`),
-  `render`, `audio`, `net`, `client`, then games and apps. Rough
-  estimate, by the commit mix above and assuming incremental time
-  scales with the rebuilt crates' size: core edits about as slow as
-  today, `map` data edits ~0.9x, sim edits ~0.5x, client/game edits
-  ~0.3x of today's library time: about **25-30% off the library time,
-  ~20% off a test cycle**, close to the earlier 15-25% estimate. After
-  P1 and P3 move most of what `map` commits touch today (spawning,
-  materials, drawing) into `render`/spawn code above the simulation,
-  the blended gain grows toward ~35-40%: P1/P3 roughly double the
-  split's payoff, so they come first.
-- **Costs**: each crate's unit tests become their own test binary (more
-  links, ~1-3 s each idle); `pub` items become cross-crate API (3,962
-  of them, many only `pub` by habit); Windows build to re-verify; every
-  open branch rebased over moved paths. 4-6 sessions after P1/P3, done
-  one crate at a time from the bottom, each a move-only commit with the
-  full suite.
-- **Cheap wins to take first** (half a session, ~10% of a cycle):
-  `required-features = ["tools"]` on the six debugging binaries no test
-  uses (and on `mashup_server` if no test needs it), so `cargo test`
-  stops relinking them; the pre-push `cargo check --lib --bins` adds
-  `--features tools` so they keep compiling. Then measure, on an idle
-  box, mold (documented opt-in) and `debug = "line-tables-only"` for
-  dependencies (docs/performance.md lists both, unmeasured on a full
-  cycle).
-- **Recommendation**: do the cheap wins now, P1 and P3 next, then the
-  split along the finer lines above, starting with `games/cs_source` as
-  its own crate (the cleanest boundary: it uses only core, console,
-  mount, map, weapon, objectives, and 7 client files reach into it) and
-  `client` (the top). Don't do the split as one big move.
-
-### Not worth doing
-
-- **Rewriting net replication** or the logic world: they are already
-  the cleanest parts.
-- **A typed error overhaul**: `Result<_, String>` is consistent and the
-  messages reach the console as they are.
-- **Hunting dead code**: there is almost none.
-- **Changing UI toolkit** (e.g. everything to egui): the VGUI parity
-  work depends on Bevy UI layout matching the game's pixels.
-- **A macro or proc-macro for cvars or replication**: the existing
-  generic helpers already remove the boilerplate; a macro would hide it
-  from agents reading the code.
-- **Splitting files just for size** where the file is one concern
-  (`cs_source/weapons.rs` is mostly the 24 guns' tables;
-  `cs_source/movement.rs` is one spec).
-
-## 4. Recommended order
-
-For approval. Each slice is one session or less, lands on `main` alone
-and quickly (announce it so other agents merge right after), passes the
-full suite, and changes no behaviour.
-
-1. **Tool binaries out of the test build** (P9 cheap wins): `required-
-   features` on the unused binaries; the hook, the release workflow
-   and scripts that build them pass the feature; docs updated
-   (CLAUDE.md commands, OBSERVABILITY.md, performance.md "Test cycle"
-   with before/after on an idle box). Half a session; ~10% off every
-   test cycle for every agent from then on.
-2. **Heavy tier: measure, then cut** (P4b steps 1 and 3 first: the
-   load/simulate timing line and splitting the 4-10 minute tests). One
-   session; the full suite is the slowest loop every agent waits on.
-3. **Docs diet** (P2): ARCHITECTURE.md module table to one line per
-   module, details checked into `//!` docs; tech-debt.md to one line per
-   entry with links. One session; removes the top conflict file and
-   ~100 KB from each session's reading.
-4. **`map/mod.rs` types and helpers out** (P1 slices a and b):
-   `map/data.rs`, `bodies.rs`, `props.rs`, `sky.rs`, `images.rs`, with
-   re-exports so no path changes outside `map`. One session; land when
-   no branch has `map/mod.rs` changes in flight.
-5. **`spawn_map` in phases** (P1 slices c and d) with a spawned-entity
-   dump compared before/after on dust2, nuke and two community maps.
-   One to two sessions.
-6. **Test support module** (P4) and **game plugin groups** (P5):
-   independent of the above, small, can run in parallel with 4-5.
-
-Then, in order of value: P3 (sort `map`/`client` into top-level
-modules), P6 (dialog layer), P7 (KeyValues/readers, with a spec answer
-on escapes), the crate split along P9's finer lines, and P8
-opportunistically. Re-measure the build after slice 1 and after P3 on
-an idle box, and update this plan with the numbers.
-
-## Measurement scripts
-
-The numbers above came from small throwaway scripts (line counts per
-module, function lengths and parameter counts, `crate::` edges and
-cycles per folder, unused `pub` names, cargo `--timings` parsing,
-commits by lowest module touched). They were not kept: `cargo
---timings`, `git log --name-only` and the layering test cover what a
-future pass needs; if this review is repeated, keeping them under
-`tools/` would be worth it then.
+| # | Item | Depends on | Size |
+|---|---|---|---|
+| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L |
+| L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
+| L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
+| L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
+| L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4), `bevy` without default features for servers (A5) | none | S each |

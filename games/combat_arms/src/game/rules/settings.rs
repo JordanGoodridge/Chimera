@@ -84,6 +84,99 @@ pub struct ObjectiveData {
     pub ladder_kills: u32,
 }
 
+/// Hired Guns' numbers (data/modes.toml `[hired_guns]`; game_modes_2.md
+/// M11, missions.md F4.5).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct HiredGunsData {
+    /// The drop points' and spawn points' game type.
+    pub family: String,
+    pub drop_bullion_num: u32,
+    pub bullion_amount: i32,
+    pub base_bank: i32,
+    pub round_win_bonus: i32,
+    pub kill_bonus: i32,
+    pub death_bonus: i32,
+    /// Bars and bags are taken within this (u).
+    pub pickup_reach: f32,
+    /// The carry penalty's sections: first bar, last bar, rate per bar.
+    pub penalty_sections: Vec<(u32, u32, f32)>,
+    pub ai_damage_factor: f32,
+    pub merc_cap: u32,
+    pub unit_spawn_alpha: String,
+    pub unit_spawn_bravo: String,
+    pub body_lifetime: f32,
+    /// The hire menu's units by unit id.
+    pub units: Vec<MercUnit>,
+}
+
+impl HiredGunsData {
+    /// The carry penalty for `n` bars (missions.md F4.5): the last section
+    /// holding n gives P(b_{i-1}) + r_i (n − b_{i-1}) (the first: r_0 n);
+    /// none: 0.
+    pub fn penalty(&self, n: u32) -> f32 {
+        let s = &self.penalty_sections;
+        let Some(i) = s.iter().rposition(|(a, b, _)| (*a..=*b).contains(&n)) else { return 0.0 };
+        let mut p = 0.0;
+        for (k, (_, b, r)) in s.iter().enumerate().take(i + 1) {
+            let from = if k == 0 { 0 } else { s[k - 1].1 };
+            let to = if k == i { n } else { *b };
+            p += r * to.saturating_sub(from) as f32;
+        }
+        p
+    }
+}
+
+/// A hireable unit (the hire menu's row, its template's weapons).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MercUnit {
+    pub template: String,
+    pub name: String,
+    pub cost: i32,
+    pub weapon: String,
+    pub grenade: String,
+}
+
+/// VIP Escort's numbers (data/modes.toml `[escort]`; game_modes_2.md M13,
+/// missions.md F4.6).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct EscortData {
+    pub family: String,
+    pub vip_spawn: String,
+    pub escape_zone: String,
+    pub exit_time: f32,
+    pub end_hold: f32,
+    pub swap_wait: f32,
+    pub swap_notice: f32,
+    pub vip_weapons: Vec<String>,
+    pub vip_move_penalty: f32,
+}
+
+/// The AI damage cap (game_modes_2.md Constants (shared)).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AiDamageData {
+    pub cap: f32,
+    pub cap_big: f32,
+    pub big: f32,
+}
+
+impl AiDamageData {
+    /// One AI hit's health damage `hp` (HP) on a player, capped (a melee
+    /// hit isn't).
+    pub fn capped(&self, hp: f32, melee: bool) -> f32 {
+        if melee {
+            hp
+        } else if hp >= self.big {
+            self.cap_big
+        } else {
+            hp.min(self.cap)
+        }
+    }
+}
+
 /// The settings the rules read (data/modes.toml, then the cvars).
 #[derive(Resource, Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -114,6 +207,12 @@ pub struct CaRuleSettings {
     pub modes: BTreeMap<String, ModeData>,
     /// The objectives' numbers.
     pub objectives: ObjectiveData,
+    /// Hired Guns'.
+    pub hired_guns: HiredGunsData,
+    /// VIP Escort's.
+    pub escort: EscortData,
+    /// The AI damage cap.
+    pub ai_damage: AiDamageData,
 }
 
 impl Default for CaRuleSettings {
@@ -143,7 +242,8 @@ pub(super) fn plugin(app: &mut App) {
         "The game mode by its room key: TDM (Elimination), TSV (Elimination Pro), TMM (Search & Destroy), CTF \
          (Capture the Flag), FFA (One Man Army), LMS (Last Man Standing), BNT (Spy Hunt), QRT (Quarantine Regen), \
          SBT (Bombing Run), HQM (Seize and Secure), SQM2 (Squad Match 2), VTDM (VIP Elimination), VWRM (Arms \
-         Race), HG (Hunted), ESL (S&D for the Go4CA Cup), none. Takes effect at the next map load or ca_restart.",
+         Race), HG (Hunted), ESL (S&D for the Go4CA Cup), SQM (Hired Guns), ESC (VIP Escort), the clan modes \
+         CDM, CMM, CCTF, CTSV, CESC; none. Takes effect at the next map load or ca_restart.",
         |s| &mut s.mode,
     );
     resource_cvar::<CaRuleSettings, u32>(app, "ca_goal", "The goal G (kills, round wins, captures, rounds or minutes, by mode); 0: the mode's default.", |s| {
@@ -209,5 +309,25 @@ mod tests {
         let tsv = &s.modes["TSV"];
         assert_eq!((tsv.goal_default, tsv.time_limit, tsv.training_time_limit), (7, Some(180.0), Some(10.0)));
         assert_eq!((s.object_start, s.object_end, s.mission_end), (0.0, 3.0, 3.0));
+    }
+
+    /// game_modes_2.md test case 4 (the stock table, missions.md F4.5).
+    #[test]
+    fn the_carry_penalty() {
+        let h = CaRuleSettings::default().hired_guns;
+        let p = [10, 11, 20, 25, 30, 40, 80, 81].map(|n| h.penalty(n));
+        let want = [0.0, 0.03, 0.30, 0.45, 0.45, 0.45, 0.45, 0.0];
+        for (got, want) in p.iter().zip(want) {
+            assert!((got - want).abs() < 1e-5, "{p:?}");
+        }
+        assert_eq!(h.units.len(), 10);
+        assert_eq!(h.units.iter().map(|u| u.cost).collect::<Vec<_>>(), [200, 200, 200, 200, 500, 500, 500, 500, 500, 500]);
+    }
+
+    /// Test case 53: the AI cap.
+    #[test]
+    fn the_ai_cap() {
+        let a = CaRuleSettings::default().ai_damage;
+        assert_eq!((a.capped(120.0, false), a.capped(1500.0, false), a.capped(120.0, true)), (50.0, 990.0, 120.0));
     }
 }

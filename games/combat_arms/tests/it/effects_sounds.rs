@@ -165,9 +165,9 @@ fn t08_low_pass() {
     assert_eq!(rules::low_pass(2100.0, 140.0, 2000.0), 1.0);
     // Chimera's playback reads the same from the level.
     let level = rules::sound_level(2000.0, UNIT);
-    let units = 1350.0 * UNIT / chimera_world::map::sound::METERS_PER_UNIT;
-    close(chimera_world::map::sound::distance_cutoff(level, units), 0.6173, 1e-3, "playback");
-    close(chimera_world::map::sound::distance_gain(level, units), g(1350.0, 2000.0), 1e-4, "gain");
+    let metres = 1350.0 * UNIT;
+    close(chimera_world::map::sound::distance_cutoff(level, metres), 0.6173, 1e-3, "playback");
+    close(chimera_world::map::sound::distance_gain(level, metres), g(1350.0, 2000.0), 1e-4, "gain");
 }
 
 #[test]

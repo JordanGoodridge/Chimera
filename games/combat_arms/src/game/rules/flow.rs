@@ -200,7 +200,12 @@ fn step(world: &mut World, now: f64) {
                 let m = world.resource::<CaMatch>();
                 (m.end_requested, m.round_ends, m.warmup)
             };
-            if requested || ends.is_some_and(|e| now + 1e-9 >= e) {
+            let hold = world.resource::<CaMatch>().hold_until;
+            if let Some(h) = hold {
+                if now + 1e-9 >= h {
+                    round_over(world, now);
+                }
+            } else if requested || ends.is_some_and(|e| now + 1e-9 >= e) {
                 round_over(world, now);
             } else if warmup && mode.warmup_revives && now + 1e-9 >= world.resource::<CaMatch>().next_revive {
                 let period = world.resource::<CaRuleSettings>().warmup_revive as f64;
@@ -240,7 +245,11 @@ fn mission_start(world: &mut World, now: f64, first: bool) {
                 warmup,
                 ..default()
             };
+        } else if std::mem::take(&mut m.warmup_next) {
+            m.warmup = training > 0.0;
         }
+        m.hold_until = None;
+        m.immune = false;
         m.round_kills = [0; 2];
         m.round_deaths = [0; 2];
         m.winner = None;
@@ -258,6 +267,7 @@ fn mission_start(world: &mut World, now: f64, first: bool) {
     for (e, _) in players(world) {
         assign_team(world, e, true);
     }
+    (mode.hooks.before_spawns)(world);
     for (e, _) in players(world) {
         spawns::respawn(world, e);
     }
@@ -325,6 +335,7 @@ fn round_over(world: &mut World, now: f64) {
     m.results.push(result);
     m.phase = Phase::RoundOver { until: now + object_end };
     m.round_ends = None;
+    m.hold_until = None;
     (mode.hooks.round_over)(world);
 }
 
@@ -333,6 +344,8 @@ fn round_end(world: &mut World, now: f64) {
     let Some(mode) = current_mode(world) else { return };
     (mode.hooks.round_end)(world);
     clean_up(world);
+    world.resource_mut::<FreezeTime>().0 = false;
+    world.resource_mut::<CaMatch>().immune = false;
     let warmup = {
         let mut m = world.resource_mut::<CaMatch>();
         m.round_kills = [0; 2];
@@ -350,6 +363,7 @@ fn round_end(world: &mut World, now: f64) {
     }
     let mission_end = world.resource::<CaRuleSettings>().mission_end as f64;
     world.resource_mut::<CaMatch>().phase = Phase::Intermission { until: now + mission_end };
+    (mode.hooks.after_round)(world);
 }
 
 /// S11: every body and every weapon item on the ground goes (live
@@ -422,8 +436,8 @@ pub fn frozen_intent(i: &Intent) -> Intent {
 
 /// The setup's freeze on every intent (the server's and, through
 /// `net::Holds`, a client's prediction).
-pub(super) fn hold_frozen(frozen: Res<FreezeTime>, mut intents: Query<&mut Intent>) {
-    if !frozen.0 {
+pub(super) fn hold_frozen(frozen: Res<FreezeTime>, m: Option<Res<CaMatch>>, mut intents: Query<&mut Intent>) {
+    if !frozen.0 && !m.is_some_and(|m| m.immune) {
         return;
     }
     for mut i in &mut intents {
@@ -453,12 +467,15 @@ pub fn enter_game(world: &mut World, e: Entity) {
     };
     let settings = world.resource::<CaRuleSettings>().clone();
     let phase = world.resource::<CaMatch>().phase;
+    // A warm-up takes joiners at once (game_modes_2.md test case 34).
+    let live = phase == Phase::Live && !world.resource::<CaMatch>().warmup;
     let started = !matches!(phase, Phase::Waiting | Phase::Starting);
     assign_team(world, e, false);
     let in_game = players(world).iter().filter(|(p, _)| *p != e).count() as u32;
-    let hold = (started && settings.join_in_progress == 0)
-        || (!mode.respawns && phase == Phase::Live && in_game >= settings.late_join_wait)
-        || (!mode.respawns && phase == Phase::Live && (mode.hooks.holds_joiner)(world));
+    let no_joining = settings.join_in_progress == 0 || super::no_join_in_progress(mode.key);
+    let hold = (started && no_joining)
+        || (!mode.respawns && live && in_game >= settings.late_join_wait)
+        || (!mode.respawns && live && (mode.hooks.holds_joiner)(world));
     if hold {
         spawns::hold(world, e);
     } else {
@@ -482,4 +499,19 @@ pub fn restart(world: &mut World) {
     world.resource_mut::<FreezeTime>().0 = false;
     objectives::reset(world);
     reset_stats(world);
+    // The modes' own: Hired Guns' banks and mercenaries, VIP Escort's
+    // roles and VIP, the clan modes' half.
+    super::mercs::remove_all(world);
+    world.insert_resource(super::hired_guns::CaHiredGuns::default());
+    let banked: Vec<Entity> = world
+        .query_filtered::<Entity, Or<(With<super::hired_guns::CaBank>, With<super::hired_guns::CaPaid>)>>()
+        .iter(world)
+        .collect();
+    for e in banked {
+        world
+            .entity_mut(e)
+            .remove::<(super::hired_guns::CaBank, super::hired_guns::CaPaid, super::super::movement::CustomMovePenalty)>();
+    }
+    super::escort::reset(world);
+    super::clan::reset(world);
 }

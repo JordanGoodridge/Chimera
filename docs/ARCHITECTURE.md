@@ -157,7 +157,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
   grenades, the weapon classes, attachments, the game modes (TDM,
-  Elimination Pro, S&D, CTF, One Man Army and the rest), bots and the
+  Elimination Pro, S&D, CTF, One Man Army and the rest; Hired Guns with
+  its AI mercenaries, VIP Escort, the clan modes), bots and the
   player characters so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
@@ -182,10 +183,12 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `mashup_demo`): CS:S's maps (`cs_source::game::MAP_LOADER`) played as
   Combat Arms (its simulation, front end and bots). It composes the two
   games as libraries through Chimera's `map::MapSources` (each game's
-  `MapLoader`, the gameplay's `MapDressing`, spawn teams mapped), never
-  another app (checked: `workspace_crates`); CS:S's simulation plugins
-  and front end aren't added. docs/plans/active/mashup-demo.md has what
-  was generalised and what's left.
+  `MapLoader`, the gameplay's `MapDressing`, spawn teams mapped, the
+  app's surface tables, the map game's kept models), never another app
+  (checked: `workspace_crates`); of CS:S's simulation it adds Source's
+  map logic (`source_logic`) and its guns alone (`CsGunsPlugin`), never
+  its rules or front end. docs/plans/active/mashup-demo.md has what was
+  generalised and what's left.
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
   (`cs_source_server`): `cs_source_app` without `present`, so built alone it
   links no render or audio code (checked:
@@ -393,7 +396,7 @@ that the paths exist).
 - `chimera/world/src/map/tracer.rs`: bullet tracer requests and muzzle points (map)
 - `chimera/world/src/map/decal.rs`: runtime decals and players' sprays as data, impacts' lift (map)
 - `chimera/world/src/map/rope_sway.rs`: ropes' settling step and spline (map)
-- `chimera/world/src/map/sources.rs`: an app's maps: each game's `MapLoader`, the gameplay's `MapDressing`, `SpawnTeams` (map)
+- `chimera/world/src/map/sources.rs`: an app's maps: each game's `MapLoader`, the gameplay's `MapDressing`, `SpawnTeams`, `SurfaceTable`s (map)
 - `chimera/world/src/map/nav.rs`: `NavMesh`: areas, links, ladders, hiding spots, A* (map)
 - `chimera/world/src/map/nav_gen.rs`: a `NavMesh` generated from a map's collision (grid flood fill merged into rectangles) (map)
 - `chimera/world/src/map/sound.rs`: the simulation's side of sounds (map)
@@ -523,8 +526,8 @@ that the paths exist).
 - `games/combat_arms/src/game/attachments.rs`: Combat Arms' weapon attachments: records, accepted lists, fitting and their effects (games)
 - `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
-- `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules (TDM, Elimination Pro, S&D, CTF, One Man Army and the rest) (games)
-- `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, the bomb, scoreboard rows and each mode (games)
+- `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules (TDM, S&D, CTF, Hired Guns, VIP Escort, clan modes, the rest) (games)
+- `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, bomb, mercenaries, each mode (games)
 - `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
 - `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)
 - `games/combat_arms/data/characters.toml`: Combat Arms' character records, skeletons, hit tables, sockets (games)
@@ -600,7 +603,8 @@ that the paths exist).
 - `games/combat_arms/src/harness.rs`: `CaSim`: Combat Arms' simulation as a `Sim`'s base (harness)
 - `apps/combat_arms/src/main.rs`: the Combat Arms game binary, `combat_arms`, on the greybox or a map of the install (top)
 - `apps/combat_arms/build.rs`: stamps the build's commit and version (`VERSION`, `BUILD`)
-- `apps/mashup_demo/src/lib.rs`: the mashup's glue: `MAP_SOURCES` (CS:S's maps, Combat Arms' gameplay), `MashupPlugins` (crate root)
+- `apps/mashup_demo/src/lib.rs`: the mashup's glue: `MAP_SOURCES` (CS:S's maps, Combat Arms' gameplay), `MashupPlugins`, `MashupPartsPlugin` (crate root)
+- `apps/mashup_demo/data/surfaces_cs_source_combat_arms.toml`: CS:S's surfaces as Combat Arms' surface types (data)
 - `apps/mashup_demo/src/main.rs`: the mashup game binary, `mashup_demo`: de_dust2 played as Combat Arms (top)
 - `apps/mashup_demo/build.rs`: stamps the build's commit and version (`VERSION`, `BUILD`)
 - `apps/combat_arms_server/src/lib.rs`: Combat Arms' dedicated server: options, `ServerPlugin`, `listen`, `changelevel` (crate root)

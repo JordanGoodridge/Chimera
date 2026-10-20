@@ -1,0 +1,105 @@
+# Counter-Strike: Source's surfaces as Combat Arms' surface types, for
+# Combat Arms' gameplay on CS:S maps (`mashup_demo::MAP_SOURCES`, read by
+# Chimera's `map::sources::SurfaceTable`). Ours: a judgement of which
+# Combat Arms type looks and sounds most like each CS:S surface, made by
+# eye and ear, not from either game's files.
+#
+# The values are Combat Arms' surface type names (its effects table,
+# games/combat_arms/data/effects.toml, `[[surface]] name`; its
+# shoot-through table, data/surfaces.toml, matches the same names without
+# case). `[names]`: CS:S surface property names (a material's
+# `$surfaceprop`, a model's); `[materials]`: CS:S's game material letter
+# of a surface not listed (C concrete, D dirt, G grate, M metal, N sand,
+# O foliage, P computer, S slosh, T tile, V vent, W wood, Y glass, ...);
+# `default`: anything else.
+
+default = "Cement"
+
+[names]
+# Stone.
+default = "Cement"
+concrete = "Cement"
+concrete_block = "Cement"
+rock = "Cement"
+boulder = "Cement"
+brick = "Cement"
+plaster = "Cement"
+gravel = "Dirt Road"
+tile = "Ceramic tile"
+porcelain = "Ceramic tile"
+pottery = "Ceramic tile"
+# Ground.
+dirt = "Dirt"
+mud = "Dirt"
+foliage = "Grass"
+grass = "Grass"
+sand = "Desert_Sand"
+quicksand = "Desert_Sand"
+snow = "Snow"
+ice = "Snow"
+# Wood.
+wood = "Wood"
+wood_lowdensity = "Wood"
+wood_box = "Wood"
+wood_crate = "Wood"
+wood_plank = "Wood"
+wood_solid = "Wood"
+wood_furniture = "Wood"
+wood_panel = "Wood"
+cardboard = "Wood"
+woodladder = "Ladder"
+ladder = "Ladder"
+# Metal.
+metal = "Metal"
+solidmetal = "Metal"
+metal_box = "Metal"
+metalpanel = "Metal"
+metalgrate = "Metal"
+metalvent = "Metal"
+metalvehicle = "Metal"
+metal_barrel = "Metal"
+chainlink = "Metal"
+chain = "Metal"
+canister = "Metal"
+popcan = "Metal"
+paintcan = "Metal"
+computer = "Metal"
+weapon = "Metal"
+# Glass.
+glass = "Glass"
+glassbottle = "Glass"
+# Soft.
+carpet = "carpet"
+paper = "Cloth"
+papercell = "Cloth"
+plastic = "Linoleum"
+plastic_box = "Linoleum"
+plastic_barrel = "Linoleum"
+rubber = "Linoleum"
+rubbertire = "Linoleum"
+# Liquids.
+water = "Water"
+slime = "Water"
+wade = "Water"
+# Flesh.
+flesh = "ImpactAdultBody"
+bloodyflesh = "ImpactAdultBody"
+alienflesh = "ImpactAdultBody"
+watermelon = "ImpactAdultBody"
+
+[materials]
+C = "Cement"
+D = "Dirt"
+G = "Metal"
+M = "Metal"
+V = "Metal"
+P = "Metal"
+N = "Desert_Sand"
+O = "Grass"
+L = "Linoleum"
+S = "Water"
+T = "Ceramic tile"
+W = "Wood"
+Y = "Glass"
+F = "ImpactAdultBody"
+B = "ImpactAdultBody"

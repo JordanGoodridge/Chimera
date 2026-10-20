@@ -2478,6 +2478,7 @@ mod tests {
             default_binds: &[],
             old_default_binds: &[],
             movement_cvars: &[],
+            meters_per_unit: 0.0254,
         };
         let target = |name: &str| map_target(Some(&GAME), name);
         let sg = |m: &str| Some((format!("some_game:{m}"), true));

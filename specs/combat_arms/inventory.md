@@ -18,7 +18,7 @@ inventory, 2 default bindings, 3 slot keys, 4 last weapon, 5 scroll wheel,
 6 switching, holster and draw, 7 what interrupts what, 8 the knife, 9 no
 quick-knife or quick-throw, 10 auto-switch when a weapon runs empty,
 11 pickup, 12 drop and death drop, 13 respawn); Per-frame order; Edge cases;
-Quirks; Test cases; Open questions.
+Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -280,9 +280,13 @@ t_{draw} = \frac{L_{select}}{\rho_{played}}
    that came with the dropped item.
 
 While W is drawing, its fire is held off: holding fire does nothing until
-the select animation reports done. Fire is then accepted on the same
-update. Draw time therefore equals "time to first shot" after a switch.
-The outgoing weapon's speed does not matter.
+the select animation reports done. **Corrected:** the update that sees the
+draw done only switches the state to firing. The pre-fire animation (a
+0 ms one counts) plays on the next update, the fire animation on the one
+after, and the round is spent on the 3rd update after the draw ended (2nd
+for a primary shotgun, which skips its pre-fire). Time to first shot after
+a switch is therefore the draw time plus 3 updates (50 ms at 60 fps), see
+Corrections 1. The outgoing weapon's speed does not matter.
 
 ### 7. What interrupts what
 
@@ -295,11 +299,11 @@ build. Holding backward ends sprint.
 | While the weapon is… | Fire pressed | Reload pressed | Class key / Q | Sprint starts |
 |---|---|---|---|---|
 | drawing | ignored until the draw ends | **magazine weapon: reload replaces the draw at once** (if the clip is not full); shell-by-shell weapon: refused | switch (draw restarts on the new weapon) | the draw continues to its end, then the sprint pose begins |
-| reloading, magazine weapon | ignored until the reload completes; if held, it fires on the update the reload completes | ignored (already reloading) | switch; the reload is lost, the clip keeps its old value, the total is unchanged | the reload continues and completes, then the sprint pose begins |
+| reloading, magazine weapon | ignored until the reload completes; if held, the update that completes the reload sets the firing state and the round follows 3 updates later (Corrections 1) | ignored (already reloading) | switch; the reload is lost, the clip keeps its old value, the total is unchanged | the reload continues and completes, then the sprint pose begins |
 | reloading, shell-by-shell | stops the reload at once; shells already loaded stay; it fires | — | switch; loaded shells stay | as magazine |
 | firing (any fire animation playing) | — | queued: the state becomes "reloading" at once, but the reload animation starts only when the fire animation ends | switch; the remaining hits of a knife swing or burst are lost | **the fire animation plays to its end, and its hit events still land**; then the sprint pose; grenades stay in their throw until it finishes |
 | sprinting | ignored | allowed: the reload animation plays and completes under sprint | switch; the new weapon's draw plays, then the sprint pose | — |
-| leaving sprint | ignored until the post-sprint animation ends (167–400 ms stock) | allowed | allowed | — |
+| leaving sprint | ignored until the post-sprint animation ends (167–400 ms stock); the update that sees it end returns to idle, and a held fire then takes the 3-update chain, 4 updates in all (Corrections 1) | allowed | allowed | — |
 
 - Reload is refused when the clip is already full or already equals the
   total (no spare rounds), for infinite-ammo weapons (knives), while
@@ -682,6 +686,46 @@ Keep all of these unless noted.
 12. **Animation-rate cap:** a total rate above 2.0 is played at 1.0, so
     stacking speed bonuses past ×2 makes a weapon slower. Keep.
 
+## Corrections (2026-10-19)
+
+From a second pass over the reference's client fire state machine and the
+server's damage code, compared with this spec and our implementation.
+Test cases 45–49.
+
+1. **Ready times after a draw, a reload or sprint are 3 updates later.**
+   - Reference: the update that sees a draw, a magazine reload or the
+     post-sprint pose end does not fire. A draw or reload ending with fire
+     held switches the state to firing on that update. The next update plays
+     the pre-fire (the M16A3's and the M92FS's are 0 ms, but they are there),
+     the one after starts the fire animation, and the update after that
+     spends the round: 3 updates, 50 ms at 60 fps. A primary shotgun skips the
+     pre-fire: 2 updates. Leaving sprint takes one update more, because the
+     update that sees the post-sprint pose end only returns to idle: 4 updates.
+     The knife's timeline of 8.2 already counts its own chain.
+   - Ours: section 6 said fire "is accepted on the same update", table 7 said
+     "it fires on the update the reload completes", and test cases 1, 2, 11–14
+     and 16 used those times. In the implementation `start_reload` and the
+     draw make the weapon ready exactly at their end time
+     (`games/combat_arms/src/game/inventory.rs:795-806`, `456`; the frame's
+     trigger then fires on that tick), and the sprint hold ends at
+     `sprint_out_until` (`inventory.rs:877`, `880-891`).
+   - Why it matters: a "pistol is faster than reloading" swap or a sprint-stop
+     shot is 50–67 ms slower in the game than in ours.
+   - Test cases with corrected expectations at 60 fps: case 1 → first shot
+     1250 ms ±2f; case 2 → 700 ms; case 11 → 3250 ms; case 12 → ready
+     (first shot with fire held) 2350 ms; case 13 → 2450 ms; case 14 → first
+     shot on the 3rd update after the one that completes the reload,
+     2350 ms ±1f; case 16 → rifle 367 + 66.7 ≈ 433 ms ±2f, pistol 467 ms.
+2. **The knife's rear sector is measured from the victim's body.**
+   - Reference: the behind test of 8.4 uses the victim's server rotation,
+     its body yaw, which lags the view by the upper-body twist (up to ±45°
+     with no movement key held; `weapon_firing.md` Corrections 6).
+   - Ours: the knife's test uses the victim's view yaw
+     (`inventory.rs:1009-1010`).
+   - Why it matters: backstabbing a standing player who has turned the
+     mouse without moving. The ×1.3 that decides one-swing kills follows the
+     legs, not the head.
+
 ## Test cases
 
 Common setup unless stated: a stock loadout (M16A3 primary 30/120, M92FS
@@ -839,6 +883,25 @@ means within the given number of frames.
     Z each within ±7.5 units of the left-foot node, Y unchanged. Without a
     skeleton: at the hull's bottom centre (our fallback), death drop with no
     offset, swap drop within ±7.5 on X and Z.
+45. **Shot after a reload, fire held (Corrections 1).** Rifle clip 5,
+    total 65, R at t = 0, fire held from 500 ms, 60 fps. → The update at
+    2300 ms completes the reload (clip 30) and sets firing; 2316.7 ms
+    pre-fire; 2333.3 ms fire animation; the round on the update at
+    2350.0 ms (clip 29, total 64).
+46. **Shot after a draw (Corrections 1).** Pistol in hand, press 1 at t = 0
+    with fire held, 60 fps. → No round before the update at 1250 ms; the
+    round on that update.
+47. **Shotgun after a draw (Corrections 1).** A primary shotgun with a
+    1000 ms draw, fire held. → Round on the update at 1033.3 ms (2 updates).
+48. **Leaving sprint (Corrections 1).** Rifle, fire held, sprint released;
+    the post-sprint pose is seen done on the update at 367 ms (rounded to the
+    frame: 383.3 ms at 60 fps when it starts at 16.7 ms). → Idle on that
+    update; firing, pre-fire and fire animation on the next three; the round
+    on the 4th update after it.
+49. **Backstab by the body (Corrections 2).** Standing victim, no key held,
+    body yaw 45° to the right of its view. A knife stab travelling 150° from
+    the view's right (−0.8660, 0, 0.5 in the view's frame) → not behind
+    (body sector 0): 75 at roll 1.0, not 97.5.
 
 ## Open questions
 
