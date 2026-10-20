@@ -33,6 +33,8 @@ mod movement_volumes;
 mod net;
 mod net_modes;
 mod net_modes_2;
+mod radio_chat;
+mod radio_chat_net;
 mod other_modes;
 mod search_destroy;
 mod skeleton;
@@ -60,6 +62,7 @@ mod heavy {
     mod movement_volumes;
     mod mount;
     mod props;
+    mod radio;
     mod view_model;
     mod world;
     mod world_objects;

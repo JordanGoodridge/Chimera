@@ -35,3 +35,11 @@ button_record_stop = "Stop recording (%s)"
 DeadCamKillCount = "Killed you %d times"
 FastRespawnFreeDescription = "Press F7 to respawn now (%d left)"
 FastRespawnFreeCount = "Count : [%d/%d]"
+; The chat's notices (radio_chat.md; the ids are the spec's where it names
+; them, the texts are ours).
+SameSentence = "Please do not repeat yourself."
+SpamBlockChat = "You are sending messages too fast."
+BlockWhisper = "You are whispering too often."
+UserSpamBlockWhisper = "You have sent that whisper too many times."
+VoiceChatEnable = "Voice chat enabled."
+VoiceChatDisable = "Voice chat disabled."

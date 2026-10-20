@@ -49,6 +49,9 @@
 //!   they run (world_objects.md).
 //! - `death_cam`: the death camera, the kill-cam screen's values and the
 //!   respawn countdown, the client's own (death_killcam.md).
+//! - `chat`: radio and chat: the radio menus and calls, chat channels,
+//!   text commands, filter, muting, spam limits and voice channels
+//!   (radio_chat.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -56,6 +59,7 @@
 pub mod attachments;
 pub mod bots;
 pub mod characters;
+pub mod chat;
 pub mod data;
 pub mod death_cam;
 pub mod effects;
@@ -142,6 +146,18 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("6", "slot6"),
     // The scoreboard while held (ui_system.md I2; the key is ours).
     ("tab", "+showscores"),
+    // Radio and chat (radio_chat.md Open question 5: from a development
+    // seed profile): report, answer and request menus; all, team and clan
+    // chat; Enter opens the input; push-to-talk and voice output.
+    ("b", "radio_report"),
+    ("v", "radio_answer"),
+    ("n", "radio_request"),
+    ("enter", "chat_open"),
+    ("f2", "chat_all"),
+    ("f3", "chat_team"),
+    ("f4", "chat_clan"),
+    ("t", "+voicechat"),
+    ("f8", "voice_toggle"),
 ];
 
 /// The defaults before walk and sprint were two keys (`GameInfo::
@@ -190,6 +206,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
             .add(death_cam::CaDeathCamPlugin)
+            .add(chat::CaChatPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
             .add(net::CaNetPlugin)

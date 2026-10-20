@@ -77,12 +77,16 @@ in the lowest crate whose public API it needs:
   the 105 maps and players in their sea, ladders, gravity volumes, safety
   nets and jump pads); the death camera (`death_killcam.rs`: the
   pull-back and orbit maths, the phase machine and the respawn countdown
-  headless, and `CaDeathCam` on players in a match); its front end's (the
+  headless, and `CaDeathCam` on players in a match); radio and chat
+  (`radio_chat.rs`: a room of players through each side's own functions;
+  `radio_chat_net.rs`: a server and two clients; `heavy::radio`: the
+  install's radio file); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`; the kill
   feed, score panel, scoreboard and loading screen bound by name,
   `bound.rs`; the death screen bound by role and the dead player's name
-  tags, `death_screen.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
+  tags, `death_screen.rs`; the chat panel, input and radio window,
+  `radio_chat.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
   install's own layouts and string tables through the UI system's
   readers, the game's HUD panels, scoreboard and loading screen bound
   by name and its in-game menu, V1 key);

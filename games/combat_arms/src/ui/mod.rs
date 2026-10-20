@@ -17,7 +17,8 @@
 //!   `menu`: the in-game menu (Esc) in place of the
 //!   shell's default; `hud::death`: the death screen on the install's
 //!   kill-cam layout, and the death camera's input and camera on the shell;
-//!   `chat`: the match chat's queue (the model);
+//!   `chat`: the match chat's queue (the model); `talk`: the chat panel,
+//!   input bar and radio menu on it, and their keys;
 //!   `visuals`: placeholder looks (box guns); `effects`: decals, tracers,
 //!   casings, the first-person muzzle flash and effect lights
 //!   (game::effects).
@@ -60,6 +61,7 @@ pub mod layout;
 pub mod loading;
 pub mod menu;
 pub mod scoreboard;
+pub mod talk;
 pub mod visuals;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
@@ -91,6 +93,7 @@ impl Plugin for CaUiPlugin {
             scoreboard::CaScoreboardPlugin,
             loading::CaLoadingPlugin,
             hud::death::CaDeathScreenPlugin,
+            talk::CaTalkPlugin,
         ))
         // Key 6, the objective class (inventory.md 2, 3: the mission
         // bomb), through the shell's selection as slot 6.

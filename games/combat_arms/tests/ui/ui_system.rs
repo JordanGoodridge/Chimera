@@ -300,6 +300,7 @@ fn chat_at(screen: (f32, f32), n: usize) -> ChatQueue {
             born: 0.0,
             life: PLAYER_LIFE,
             height: height(&format!("message {i}"), &t13, s),
+            ..Default::default()
         });
     }
     q
@@ -332,6 +333,7 @@ fn t11_chat_expiry_removes_the_oldest() {
             born,
             life,
             height: 15,
+            ..Default::default()
         });
     }
     q.frame(6000.0);
