@@ -1261,6 +1261,25 @@ engine axes), damage per second, pending time, hidden, and `INSIDE`
 for the ones the player is in (`heavy::junk_flea2` is such a spot as a
 test).
 
+Combat Arms' world objects (`game::objects`: doors, moving and spinning
+world models, keyframers, breakables, triggers and the command strings
+they run; the server's): `ca_objects [filter]` lists the map's objects
+whose class or name contains the filter (without one, every world model
+and logic object) with their state: pose in Combat Arms units (the world
+file's axes), visible/solid/ray-hit, a mover's machine state, angles and
+timer, a trigger's fires and pending time, a counter's value, a
+keyframer's clock and next key, hit points. `ca_object_msg <name>
+<message...>` delivers a message now as a map's `msg` would (`ca_object_msg
+VIP_Door trigger`, `ca_object_msg SlidingWater on`, `ca_object_msg
+Level04StartTrigger trigger`) and prints the target's state;
+`ca_object_cmd <command string>` runs a whole command string (`delay`,
+`rand`, variables); `ca_object_vars` lists the command manager's variables
+and pending delayed commands. A map's objects and their properties as
+stored: `cargo run --bin dump -- combat_arms --objects <map> [--filter
+text]` (keyed maps need the V2 key). The spec's cases: `--test it
+world_objects::` (synthetic) and `heavy::world_objects` (FREEZER,
+SNOWSTORM, HGOILRIG, BLOODMONEY, CITYOFWINGS, the census).
+
 Combat Arms' dedicated server: `cargo run --features dev --bin
 combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM
 +ca_goal 50 +MaxPlayer 6 +BotLevel 1` (`--help`; console on stdin:

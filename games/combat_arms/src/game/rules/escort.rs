@@ -51,9 +51,10 @@
 //!
 //! Known shortcuts: the VIP keeps its own model (the VIP model 87 isn't
 //! drawn) and its weapon is our M92FS for the G18 (no G18 in our data);
-//! the VIP's cell door and its two use triggers (13 s and 1 s) aren't
-//! there (doors are world objects: not yet), so the cell is open; the
-//! exit's helicopter, markers, messages and camera, and the satellite
+//! the VIP's cell door and its two use triggers (13 s and 1 s) are the
+//! map's objects (`objects`), but the rounds' start and end triggers that
+//! re-close it come with the mission data (not read yet), so a cell
+//! opened stays open for the next rounds; the exit's helicopter, markers, messages and camera, and the satellite
 //! scan aren't there; the exit timer starts with the round's setup only
 //! (not also with the map's round start trigger); the VIP's perks and
 //! vote-kick protection aren't modelled; the swap's notice ends where the

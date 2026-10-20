@@ -43,6 +43,8 @@ mod weapon_classes;
 mod weapon_corrections;
 mod weapon_firing;
 mod world;
+mod world_objects;
+mod world_objects_play;
 
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
@@ -59,4 +61,5 @@ mod heavy {
     mod props;
     mod view_model;
     mod world;
+    mod world_objects;
 }
