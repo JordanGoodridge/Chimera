@@ -142,6 +142,53 @@ pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("dragunov_svd.toml"),
     // The mission bomb (game_modes.md M3).
     data_file!("xk2.toml"),
+    // Special weapons (special_weapons.md): rockets and launchers (2, 3), the
+    // flamethrower (4), devices (6), crossbows (7) and the melee weapons beyond
+    // the M9 (5).
+    data_file!("law.toml"),
+    data_file!("rpg-7.toml"),
+    data_file!("m136_at4.toml"),
+    data_file!("m32.toml"),
+    data_file!("m32_incendiarybomb.toml"),
+    data_file!("m32_stun.toml"),
+    data_file!("m79.toml"),
+    data_file!("mzp_1.toml"),
+    data_file!("xm_25.toml"),
+    data_file!("flamethrower.toml"),
+    data_file!("m16a1_mine.toml"),
+    data_file!("hornet.toml"),
+    data_file!("claymore.toml"),
+    data_file!("claymore_controller.toml"),
+    data_file!("mobile_grenade.toml"),
+    data_file!("mobile_grenade_controller.toml"),
+    data_file!("caltrops.toml"),
+    data_file!("nerve_confuse_mine.toml"),
+    data_file!("auto-turret.toml"),
+    data_file!("firstaidkit.toml"),
+    data_file!("medkit.toml"),
+    data_file!("lgb.toml"),
+    data_file!("airstrike_napalm.toml"),
+    data_file!("assassin_bowgun_nor.toml"),
+    data_file!("assassin_bowgun_expl.toml"),
+    data_file!("assassin_bowgun_expl_controller.toml"),
+    data_file!("balisong_knife.toml"),
+    data_file!("bowie_knife.toml"),
+    data_file!("chainsaw.toml"),
+    data_file!("dompedrosword.toml"),
+    data_file!("gi_shovel.toml"),
+    data_file!("guillotine.toml"),
+    data_file!("knuckle.toml"),
+    data_file!("kukuri.toml"),
+    data_file!("m11-tactical_knife.toml"),
+    data_file!("machete.toml"),
+    data_file!("ninjato.toml"),
+    data_file!("sickle.toml"),
+    data_file!("sledgehammer.toml"),
+    data_file!("strider_axe.toml"),
+    data_file!("survival_machete.toml"),
+    data_file!("tiger_strider.toml"),
+    data_file!("tracker_knife.toml"),
+    data_file!("uamc_ka_bar.toml"),
 ];
 
 /// The namespace of our weapon and ammo IDs.
@@ -474,6 +521,60 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
     out
 }
 
+/// What an install weapon's default ammo sets in the special weapons'
+/// hooks (special_weapons.md, "Where the numbers live"): the blast, the
+/// over-time sphere, the hit points, the counts and the knife's reach and
+/// damages. The projectile records (`FX.TXT`) aren't read: speeds,
+/// lifetimes and boxes are ours.
+fn special_values(w: &WeaponRecord, a: &AmmoRecord, length_scale: f64) -> Vec<Set> {
+    use super::special::{BOLT, DEVICE, PROJECTILE};
+    let mut out = Vec::new();
+    let area = |hook: &str, out: &mut Vec<Set>| {
+        out.extend([
+            set(&["hooks", hook, "area_damage"], a.area_damage as f64),
+            set(&["hooks", hook, "area_radius"], a.area_damage_radius as f64),
+        ]);
+        if a.area_damage_type >= 0 {
+            out.push(set(&["hooks", hook, "area_type"], i64::from(a.area_damage_type)));
+        }
+    };
+    area(PROJECTILE, &mut out);
+    area(DEVICE, &mut out);
+    out.push(set(&["hooks", PROJECTILE, "health"], a.health));
+    out.push(set(&["hooks", DEVICE, "health"], a.health));
+    out.push(set(&["hooks", BOLT, "health"], a.health));
+    for hook in [PROJECTILE] {
+        out.extend([
+            set(&["hooks", hook, "over_time", "rate"], a.prog_damage),
+            set(&["hooks", hook, "over_time", "radius"], a.prog_damage_radius),
+            set(&["hooks", hook, "over_time", "lifetime"], a.prog_damage_lifetime),
+            set(&["hooks", hook, "over_time", "duration"], a.prog_damage_duration),
+        ]);
+    }
+    out.extend([
+        set(&["hooks", DEVICE, "spawned"], i64::from(a.spawned_amount.max(0))),
+        set(&["hooks", DEVICE, "max"], i64::from(a.max_amount.max(0))),
+        set(&["hooks", DEVICE, "caltrops", "rate"], a.prog_damage),
+        set(&["hooks", DEVICE, "caltrops", "duration"], a.prog_damage_duration),
+        set(&["hooks", DEVICE, "caltrops", "radius"], a.prog_damage_radius),
+        set(&["hooks", DEVICE, "caltrops", "stun_penalty"], a.stunned_move_penalty),
+        set(&["hooks", DEVICE, "caltrops", "stun_time"], a.stunned_time),
+        set(&["hooks", DEVICE, "nerve", "amount"], a.area_damage as f64),
+        set(&["hooks", DEVICE, "nerve", "duration"], a.area_damage as f64),
+        set(&["hooks", DEVICE, "nerve", "radius"], a.area_damage_radius as f64),
+        set(&["hooks", BOLT, "damage", "damage"], a.inst_damage as f64),
+        set(&["hooks", BOLT, "damage", "damage_type"], i64::from(a.inst_damage_type)),
+    ]);
+    // The melee weapons: `Range` and the two buttons' damages.
+    const KNIFE: &str = super::inventory::KNIFE_HOOK;
+    out.extend([
+        set(&["hooks", KNIFE, "range"], w.range as f64 * length_scale),
+        set(&["hooks", KNIFE, "primary", "damage"], a.inst_damage as f64),
+        set(&["hooks", KNIFE, "secondary", "damage"], a.alt_inst_damage as f64),
+    ]);
+    out
+}
+
 /// An attribute file's skin list as archive paths: entries that aren't
 /// texture files (the stock data's `Hands` placeholder and the
 /// `PV_L_ARM` / `PV_R_ARM` tags, view_models.md 2) are empty.
@@ -652,6 +753,11 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     let length_scale = (meters_per_unit as f32 / doc_length as f32) as f64;
     for s in weapon_values(w, ammo, length_scale) {
         apply(doc, &s);
+    }
+    if let Some(a) = file.default_ammo(w) {
+        for s in special_values(w, a, length_scale) {
+            apply(doc, &s);
+        }
     }
     // The models (view_models.md 1, 2, 4; characters.md 2): the install's
     // files replace ours, its placement with them.

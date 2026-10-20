@@ -1,0 +1,32 @@
+# The claymore detonator: numbers from specs/combat_arms/special_weapons.md (its sections
+# in brackets), in our own data format (docs/weapon-data.md; hooks:
+# games/combat_arms/src/game/special/). Our numbers as the spec gives them,
+# not a file from the game; the install's attribute data overrides them
+# where it can be read (game/data.rs). Where the spec has no value the line
+# says PLACEHOLDER. Units: world units (1.8 cm each, by body size) and hit
+# points. No sounds or models yet (the front end draws a placeholder).
+id = "combat_arms:claymore_controller"
+units = { length = 0.018, damage = 0.01 }
+# `NoSelect` in the game (swapped in with its charge); here an ordinary
+# weapon of the special class. Its `fire_0` 500 ms with the key at 25 ms
+# [6.12]; the press marks the owner's `claymore` devices.
+slot = 4
+draw = 0.5
+undroppable = true
+
+[hooks."combat_arms:inventory"]
+infinite = true
+drop_on_death = false
+
+[trigger]
+automatic = false
+cycle = 0.5
+timing = "accumulate"
+
+[hitscan]
+range = 1.0
+pellets = 1
+punch_scale = 0.0
+
+[hooks."combat_arms:controller"]
+of = "combat_arms:claymore"
