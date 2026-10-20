@@ -23,7 +23,7 @@
 //!   no spectating, free or map camera), its upward smoothing
 //!   (specs/combat_arms/movement.md "Eye (camera) height",
 //!   `movement::CameraRise`, per rendered frame, held off in a jump or a
-//!   free-movement volume: `CaMovement::in_jump`, `in_liquid`); then the
+//!   free-movement volume: `CaMovement::in_jump`, `eye_free`); then the
 //!   effect groups' camera jitter (CamJitter: a random offset in [−a, a] u
 //!   on each world axis every frame, a = `CaFx::jitter_at` the camera).
 //!
@@ -618,7 +618,7 @@ pub fn camera_motion(
         && !map_view;
     if eye {
         let wanted = at.y / UNIT;
-        let in_jump = movement.is_some_and(|m| m.in_jump || m.in_liquid);
+        let in_jump = movement.is_some_and(|m| m.in_jump || m.eye_free);
         let h = state.rise.step(wanted, time.delta_secs(), in_jump, movement_data());
         offset.y += (h - wanted) * UNIT;
     } else {

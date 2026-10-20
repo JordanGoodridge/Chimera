@@ -11,7 +11,7 @@
 use std::collections::VecDeque;
 use std::f32::consts::{FRAC_1_SQRT_2, PI, TAU};
 
-use bevy::math::Vec2;
+use bevy::math::{Vec2, Vec3};
 
 /// An RGBA colour, 0-255 each.
 pub type Rgba = [u8; 4];
@@ -46,10 +46,22 @@ pub const RANGE_AT: Vec2 = Vec2::new(490.0, 400.0);
 pub const RANGE_DIVISOR: f32 = 40.0;
 pub const RANGE_IN: Rgba = [255, 198, 0, 255];
 pub const RANGE_OUT: Rgba = [255, 0, 0, 255];
-/// Low health: at or below this percentage; its colour; the heartbeat.
+/// The range readout's font: the font list's `SysFont13` asked for at
+/// 20 px (Corrections 15; ours under this name, `ui::CaUi`).
+pub const RANGE_FONT: &str = "SysFont13 at 20";
+/// That font list entry's number (`SysFont13`).
+pub const RANGE_SYSFONT: usize = 13;
+/// Low health: at or below this percentage; its colour; the heartbeat's
+/// period (more than this many OS ms since the last restart, D2).
 pub const LOW_HEALTH_PERCENT: i32 = 30;
 pub const LOW_HEALTH: Rgba = [255, 0, 0, 255];
-pub const HEARTBEAT_PERIOD: f64 = 1.0;
+pub const HEARTBEAT_MS: f64 = 1000.0;
+/// A player's no-damage window as a shooter's client sees it (A10,
+/// Corrections 1): this many OS ms from its (re)spawn, or until its first
+/// shot.
+pub const SPAWN_WINDOW_MS: f64 = 3500.0;
+/// An action message's life after its last request, OS ms (D9).
+pub const ACTION_MESSAGE_MS: f64 = 100.0;
 /// The kill feed.
 pub const FEED_LINES: usize = 5;
 pub const FEED_LIFE_MS: f64 = 30000.0;
@@ -504,9 +516,10 @@ pub fn dot_sight_rect(screen: Screen) -> PxRect {
 
 /// The scope range readout (A9): the text and its colour for a hit at
 /// `hit` units (None: nothing within the target range), with the
-/// weapon's `range` and the attachments' range percentages summed.
+/// weapon's `range` and the attachments' range percentages summed; a hit
+/// whose distance truncates to 0 shows nothing either.
 pub fn range_readout(hit: Option<f32>, range: f32, range_pct: f32) -> (String, Rgba) {
-    let Some(d) = hit.map(f32::trunc) else {
+    let Some(d) = hit.map(f32::trunc).filter(|d| *d >= 1.0) else {
         return (String::new(), RANGE_IN);
     };
     let eff = range + (range * range_pct).trunc();
@@ -514,17 +527,18 @@ pub fn range_readout(hit: Option<f32>, range: f32, range_pct: f32) -> (String, R
     (format!("{:.1}", d / RANGE_DIVISOR), colour)
 }
 
-/// The hit indicator (A10): the latest damaging hit on an enemy.
+/// The hit indicator (A10): the latest hit of the local player's own
+/// shot test on an enemy outside its spawn window.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct HitIndicator {
     pub last: Option<f64>,
 }
 
 impl HitIndicator {
-    /// The local player damaged someone (`enemy`: of another team) at
-    /// `now` ms.
-    pub fn hit(&mut self, now: f64, enemy: bool) {
-        if enemy {
+    /// The local player's shot trace hit another player's hit box at
+    /// `now` ms (`lights`: an enemy outside its spawn window).
+    pub fn hit(&mut self, now: f64, lights: bool) {
+        if lights {
             self.last = Some(now);
         }
     }
@@ -538,6 +552,39 @@ impl HitIndicator {
     /// The round ended.
     pub fn reset(&mut self) {
         self.last = None;
+    }
+}
+
+/// Whether a traced hit lights the hit indicator (A10): the victim's team
+/// id differs from the local player's and its spawn window is shut.
+pub fn hit_lights(enemy: bool, window_open: bool) -> bool {
+    enemy && !window_open
+}
+
+/// A player's no-damage window as this client sees it (A10, Corrections
+/// 1): open from its (re)spawn on this client for 3500 OS ms (shut on the
+/// first frame more than that later), or until its first shot after it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpawnWindow {
+    /// When it (re)spawned, OS ms.
+    pub spawned: Option<f64>,
+    /// It fired since.
+    pub fired: bool,
+}
+
+impl SpawnWindow {
+    /// It (re)spawned at `now` ms.
+    pub fn spawn(&mut self, now: f64) {
+        self.spawned = Some(now);
+        self.fired = false;
+    }
+    /// It fired.
+    pub fn fire(&mut self) {
+        self.fired = true;
+    }
+    /// Open at `now` ms.
+    pub fn open(&self, now: f64) -> bool {
+        !self.fired && self.spawned.is_some_and(|t| now - t <= SPAWN_WINDOW_MS)
     }
 }
 
@@ -569,19 +616,35 @@ pub struct TagInputs {
     pub chased: bool,
     /// A "state viewer" weapon or item.
     pub state_viewer: bool,
+    /// Dead: its body is there and visible (the tag floats over it).
+    pub body_visible: bool,
+    /// Carries a flag.
+    pub flag: bool,
+    /// One of the local player's revenge targets.
+    pub revenge: bool,
 }
 
-/// A shown tag: the name's colour, the tag's opacity, the HP bar.
+/// A shown tag: the name's colour, the tag's opacity, the HP bar, and the
+/// icons and numbers it holds (Corrections 5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Tag {
     pub name: Rgba,
     pub opacity: u8,
     pub hp_bar: bool,
+    /// The player's rank icon (its "alive" variant).
+    pub rank: bool,
+    pub flag: bool,
+    pub revenge: bool,
+    /// The kill/death ratio (a state viewer).
+    pub kd: bool,
 }
 
-/// A player's name tag (A11; never called for the local player).
+/// A player's name tag (A11; never called for the local player): a dead
+/// player's for everyone, while its body is visible (Corrections 5).
 pub fn name_tag(t: TagInputs) -> Option<Tag> {
-    let shown = if t.local_alive {
+    let shown = if !t.alive {
+        t.body_visible
+    } else if t.local_alive {
         t.teammate || t.aimed || t.revealed
     } else {
         t.teammate || t.aimed || t.chased
@@ -602,6 +665,10 @@ pub fn name_tag(t: TagInputs) -> Option<Tag> {
         name,
         opacity: if t.seen { TAG_SEEN } else { TAG_OCCLUDED },
         hp_bar: t.aimed && t.alive && (t.teammate || t.state_viewer),
+        rank: t.aimed && t.alive,
+        flag: t.flag,
+        revenge: t.revenge && !t.teammate,
+        kd: t.state_viewer,
     })
 }
 
@@ -622,9 +689,11 @@ pub struct DamageFeedback {
 
 impl DamageFeedback {
     /// A hit at `now` ms that travelled along `d` (source to player),
-    /// with the player's forward `f` and right `rt` and yaw then. None:
-    /// no health was lost (nothing is shown).
-    pub fn hit(now: f64, loss: f32, f: Vec2, rt: Vec2, d: Vec2, yaw: f32) -> Option<Self> {
+    /// with the forward `f` of the player's view rotation (pitch and yaw:
+    /// it tilts with the pitch) and its horizontal right `rt`, and its yaw
+    /// then (C). None: no health was lost (nothing is shown). The first
+    /// frame's fade (to 253) is the caller's `frame` on the same frame.
+    pub fn hit(now: f64, loss: f32, f: Vec3, rt: Vec3, d: Vec3, yaw: f32) -> Option<Self> {
         if loss <= 0.0 {
             return None;
         }
@@ -637,8 +706,9 @@ impl DamageFeedback {
         })
     }
 
-    /// A HUD frame after the hit's at `now` ms: fade by 2 (floor 0);
-    /// false once 1000 ms have passed (it goes).
+    /// A HUD frame at `now` ms, the hit's own included (Corrections 3:
+    /// it draws 253): fade by 2 (floor 0); false once 1000 ms have passed
+    /// (it goes).
     pub fn frame(&mut self, now: f64) -> bool {
         if now - self.at >= DAMAGE_LIFE_MS {
             return false;
@@ -698,20 +768,31 @@ pub fn low_health(h: f32, max: f32, infected: bool) -> bool {
     !infected && (100.0 * h / max).floor() as i32 <= LOW_HEALTH_PERCENT
 }
 
-/// The heartbeat timer (survives between low-health episodes).
+/// The heartbeat timer (D2, Corrections 4): started, silently, on the
+/// first low-health frame of the session and never reset; a beat on a low
+/// frame more than 1000 OS ms after its last restart, which restarts it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Heartbeat {
     pub last: Option<f64>,
 }
 
 impl Heartbeat {
-    /// A HUD frame at `now` s: true when a heartbeat plays.
+    /// A HUD frame at `now` OS ms: true when a heartbeat plays.
     pub fn frame(&mut self, now: f64, low: bool) -> bool {
-        if low && self.last.is_none_or(|t| now - t >= HEARTBEAT_PERIOD) {
-            self.last = Some(now);
-            return true;
+        if !low {
+            return false;
         }
-        false
+        match self.last {
+            None => {
+                self.last = Some(now);
+                false
+            }
+            Some(t) if now - t > HEARTBEAT_MS => {
+                self.last = Some(now);
+                true
+            }
+            Some(_) => false,
+        }
     }
 }
 
@@ -897,17 +978,72 @@ pub enum Badge {
     Revenge,
     Headshot,
     Groin,
+    /// The flag carrier, the enemy-flag image: a victim on the local
+    /// player's team (it carried the enemy's flag).
     Flag,
+    /// The flag carrier, the team-flag image: a victim on another team.
+    TeamFlag,
     Gold,
     IceCrush,
     Vip,
     VipRank,
 }
 
+/// How a death came about, as the kill line's weapon slot reads it (D5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeathKind {
+    /// Crush damage (an ordinary fall is crush) or a fall out of the
+    /// world.
+    Crush,
+    /// An explosion or a bump.
+    Blast,
+    Burn,
+    Poison,
+    Bleeding,
+    Other,
+}
+
+/// The weapon slot's picture (D5, Corrections 7): the suicide icon for a
+/// crush death; with no killer named the barrel, fire, poison or bleeding
+/// icon (another kind keeps the message's weapon icon); an AI killer the
+/// NPC icon; else the weapon's own icon, a self-kill's too.
+pub fn kill_icon(named: bool, npc: bool, kind: DeathKind, weapon: Option<String>) -> KillIcon {
+    match (kind, named) {
+        (DeathKind::Crush, _) => KillIcon::Suicide,
+        (DeathKind::Blast, false) => KillIcon::Barrel,
+        (DeathKind::Burn, false) => KillIcon::Fire,
+        (DeathKind::Poison, false) => KillIcon::Poison,
+        (DeathKind::Bleeding, false) => KillIcon::Bleeding,
+        _ if npc => KillIcon::Npc,
+        _ => KillIcon::Weapon(weapon),
+    }
+}
+
+/// The badges of a kill line (D5's order): revenge, headshot (whenever
+/// the killing hit was on the head, killer named or not), groin shot, flag carrier
+/// (the enemy-flag image for a victim on the local player's team, the
+/// team-flag image otherwise).
+pub fn kill_badges(revenge: bool, head: bool, groin: bool, flag_carrier: bool, victim_mate: bool) -> Vec<Badge> {
+    let mut out = Vec::new();
+    if revenge {
+        out.push(Badge::Revenge);
+    }
+    if head {
+        out.push(Badge::Headshot);
+    }
+    if groin {
+        out.push(Badge::Groin);
+    }
+    if flag_carrier {
+        out.push(if victim_mate { Badge::Flag } else { Badge::TeamFlag });
+    }
+    out
+}
+
 /// One kill message.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Kill {
-    /// None: no killer (the world or the victim).
+    /// None: no killer (the world). A self-kill names the victim.
     pub killer: Option<(String, bool)>,
     /// The victim's name and whether on the local player's team.
     pub victim: (String, bool),
@@ -946,13 +1082,12 @@ pub fn feed_line(k: &Kill, width: impl Fn(&str) -> f32) -> Vec<FeedItem> {
         out.push(FeedItem::Icon { x, icon: k.icon.clone() });
     }
     x += FEED_ICON_WIDTH;
-    // The first badge takes the first slot, every later one the second
-    // (quirk 12); x moves on for each.
+    // The first badge takes the first slot, every later one the second,
+    // moved to the running x each time (quirk 12, Corrections 6); x moves
+    // on for each.
     let mut slots: [Option<(f32, Badge)>; 2] = [None, None];
     for (i, b) in k.badges.iter().enumerate() {
-        let slot = if i == 0 { 0 } else { 1 };
-        let at = slots[slot].map_or(x, |(at, _)| at);
-        slots[slot] = Some((at, *b));
+        slots[usize::from(i > 0)] = Some((x, *b));
         x += FEED_BADGE_WIDTH;
     }
     for (at, badge) in slots.into_iter().flatten() {
@@ -1044,4 +1179,232 @@ pub fn timer(round_based: bool, ms: f64) -> Option<String> {
 pub fn round_timer(ms: f64) -> String {
     let t = ms.max(0.0).trunc() as u64;
     format!("{:02} : {:02}", t / 60000, (t % 60000) / 1000)
+}
+
+/// Whether game mode `key` is a round mode on the HUD (game_modes.md
+/// S13): its goal is rounds and its panel counts round wins.
+pub fn round_mode(key: &str) -> bool {
+    matches!(
+        key,
+        "TMM" | "CMM" | "QRT" | "TSV" | "CTSV" | "LMS" | "SBT" | "SQM" | "ESL" | "ESC" | "CESC" | "HG"
+    )
+}
+
+/// Whether mode `key`'s panel row titles show each team's living players
+/// (D6, Corrections 9: Elimination Pro, Search & Destroy, Bombing Run).
+pub fn rows_count_living(key: &str) -> bool {
+    matches!(key, "TSV" | "CTSV" | "TMM" | "CMM" | "SBT")
+}
+
+/// The goal text's string-table entry for mode `key` (game_modes.md S13,
+/// Corrections 1): rounds, kills or minutes, each a format the goal fills;
+/// None: the goal, a space and `IDS_POINTS`.
+pub fn goal_string(key: &str) -> Option<&'static str> {
+    match key {
+        "CTF" | "CCTF" | "SQM2" | "VTDM" => None,
+        "BNT" | "HQM" => Some("IDS_GAMEROOM_MIN"),
+        k if round_mode(k) => Some("IDS_GAMEROOM_ROUND"),
+        _ => Some("IDS_GAMEROOM_KILL"),
+    }
+}
+
+/// The goal text for mode `key` and goal `goal`, the strings by `resolve`
+/// (a format's first `%d` or `%s` filled with the goal).
+pub fn goal_text(key: &str, goal: u32, resolve: impl Fn(&str) -> String) -> String {
+    match goal_string(key) {
+        Some(id) => fill(&resolve(id), &goal.to_string()),
+        None => format!("{goal} {}", resolve("IDS_POINTS")),
+    }
+}
+
+/// A format's first `%d` or `%s` filled with `with` (none: the format).
+pub fn fill(format: &str, with: &str) -> String {
+    let at = [format.find("%d"), format.find("%s")].into_iter().flatten().min();
+    match at {
+        Some(i) => format!("{}{with}{}", &format[..i], &format[i + 2..]),
+        None => format.to_string(),
+    }
+}
+
+/// A round mode's bar frame (`at`, `size`, ref px) carries G - 1 divider
+/// marks (D6, Corrections 9): each mark's top-left and height, at
+/// x + 1 + trunc(i / G (w - 2)), y + 2, h - 2, for i = 1 .. G - 1.
+pub fn round_dividers(at: Vec2, size: Vec2, goal: u32) -> Vec<(Vec2, f32)> {
+    (1..goal.max(1))
+        .map(|i| {
+            let x = at.x + 1.0 + (i as f32 / goal as f32 * (size.x - 2.0)).trunc();
+            (Vec2::new(x, at.y + 2.0), size.y - 2.0)
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// The action message and the action gauge (D9)
+
+/// The action message (D9): the latest request's string id and when it
+/// was made; shown until the first frame more than 100 OS ms after it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ActionMessage {
+    pub current: Option<(String, f64)>,
+}
+
+impl ActionMessage {
+    /// Ask for message `id` at `now` ms (made every frame its condition
+    /// holds).
+    pub fn request(&mut self, id: &str, now: f64) {
+        self.current = Some((id.to_string(), now));
+    }
+    /// A HUD frame at `now` ms: the message shown, if any.
+    pub fn frame(&mut self, now: f64) -> Option<&str> {
+        if self.current.as_ref().is_some_and(|(_, t)| now - t > ACTION_MESSAGE_MS) {
+            self.current = None;
+        }
+        self.current.as_ref().map(|(id, _)| id.as_str())
+    }
+}
+
+/// The action message's x (D9): centred on `ActionDesc` (x, width) by its
+/// text's reference width `w`: (x + ⌊width / 2⌋) − ⌊w / 2⌋.
+pub fn message_x(desc_x: i32, desc_w: i32, w: i32) -> i32 {
+    desc_x + desc_w.div_euclid(2) - w.div_euclid(2)
+}
+
+/// Why the pickup prompt may be asked for (D9): the crosshair's draw step
+/// runs (no video or AI freeze, the crosshair item on, no scope overlay,
+/// not dead in the free-look or chase camera, weapon data for the held
+/// weapon) and the player may pick up (no mine in hand, not infected, a
+/// human model, no weapon-replacing buff, not the escorted VIP, not
+/// holding intel in Spy Hunt's second stage).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PickupInputs {
+    pub draw_step: bool,
+    pub scope_overlay: bool,
+    pub death_cam: bool,
+    pub weapon_data: bool,
+    pub aiming_at_pickup: bool,
+    pub mine: bool,
+    pub infected: bool,
+    pub not_human: bool,
+    pub buff: bool,
+    pub vip: bool,
+    pub spy_intel: bool,
+}
+
+/// The pickup prompt's string id, when asked for (D9; `own_bag`: Hunted,
+/// aiming at one's own bag).
+pub fn pickup_prompt(p: PickupInputs, own_bag: bool) -> Option<&'static str> {
+    let shown = p.draw_step
+        && !p.scope_overlay
+        && !p.death_cam
+        && p.weapon_data
+        && p.aiming_at_pickup
+        && !p.mine
+        && !p.infected
+        && !p.not_human
+        && !p.buff
+        && !p.vip
+        && !p.spy_intel;
+    shown.then_some(if own_bag { "IDS_HUD_Search_mybag" } else { "IDS_HUD_ITEMGET_MSG" })
+}
+
+/// The bomb prompts (D9): defuse while aiming at a bomb target the
+/// player's side defuses with no defuse under way; plant while the player
+/// may plant and isn't planting (the bomb in hand, else take it out).
+pub fn bomb_prompt(defusable_aimed: bool, defusing: bool, may_plant: bool, planting: bool, bomb_in_hand: bool) -> Option<&'static str> {
+    if defusable_aimed && !defusing {
+        return Some("IDS_HUD_BOMBDEFUSE_MSG");
+    }
+    if may_plant && !planting {
+        return Some(if bomb_in_hand { "IDS_HUD_BOMBSET_MSG" } else { "IDS_HUD_BOMBSELECT_MSG" });
+    }
+    None
+}
+
+/// What the action gauge shows (D9).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GaugeKind {
+    Plant,
+    Defuse,
+    /// An activate or recharge trigger (Seize and Secure's pole).
+    Custom,
+    TeamChange,
+}
+
+impl GaugeKind {
+    /// Its title's string id (a custom gauge without its own: the
+    /// default).
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Plant => "$GaugeBombPlant",
+            Self::Defuse => "$GaugeBombDefuse",
+            Self::Custom => "$GaugeDefault",
+            Self::TeamChange => "$TeamChange",
+        }
+    }
+    /// Its icon's HUD layout attribute key (lower case; as the data
+    /// spells it).
+    pub fn icon_key(self) -> Option<&'static str> {
+        match self {
+            Self::Plant => Some("guage_bombplant_tex"),
+            Self::Defuse => Some("guage_bombdefuse_tex"),
+            Self::TeamChange => Some("guage_teamchagne_tex"),
+            Self::Custom => None,
+        }
+    }
+}
+
+/// The action gauge's own timer (D9, Corrections 12): it starts from 0 on
+/// the frame its state changes (game seconds).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ActionGauge {
+    pub state: Option<(GaugeKind, f64)>,
+}
+
+impl ActionGauge {
+    /// A frame at `now` s with the state `kind` lasting `total` s: the
+    /// fill in whole percent, or None (no state, or its time is up: it
+    /// hides, even while the key is held).
+    pub fn frame(&mut self, kind: Option<GaugeKind>, total: f64, now: f64) -> Option<u32> {
+        let Some(kind) = kind else {
+            self.state = None;
+            return None;
+        };
+        let since = match self.state {
+            Some((k, t)) if k == kind => t,
+            _ => {
+                self.state = Some((kind, now));
+                now
+            }
+        };
+        gauge_percent(now - since, total)
+    }
+}
+
+/// The gauge's fill after `elapsed` of `total` s: trunc(100 · elapsed /
+/// total) whole percent; None once the elapsed time reaches the total.
+pub fn gauge_percent(elapsed: f64, total: f64) -> Option<u32> {
+    if total <= 0.0 || elapsed >= total {
+        return None;
+    }
+    Some((100.0 * elapsed.max(0.0) / total + 1e-9).trunc() as u32)
+}
+
+/// A gauge's bar width for `p` percent of `max_range` (ui_system.md W5).
+pub fn gauge_bar(p: u32, max_range: i32) -> i32 {
+    (p as i64 * max_range as i64).div_euclid(100) as i32
+}
+
+// ---------------------------------------------------------------------------
+// The gauge sight (A12, Corrections 13)
+
+/// The gauge sight's two images: the HUD layout attributes'
+/// `CrossHairLeftTex` and `CrossHairRightTex` prefixes with health's and
+/// the clip's steps (`game::attachments::gauge_image`: (q + 5) − ((q + 5)
+/// mod 10)) and ".dtx".
+pub fn gauge_images(left: &str, right: &str, health_q: i32, clip_q: i32) -> (String, String) {
+    use crate::game::attachments::gauge_image;
+    (
+        format!("{left}{}.dtx", gauge_image(health_q)),
+        format!("{right}{}.dtx", gauge_image(clip_q)),
+    )
 }

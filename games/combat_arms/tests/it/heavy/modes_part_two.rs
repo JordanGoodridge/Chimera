@@ -142,7 +142,9 @@ fn bots_play_no_objective_on_grayhammer() {
         bots::add_bot(sim.app.world_mut(), Some(team)).unwrap();
     }
     let mut taken = false;
-    for _ in 0..(90.0 / TICK_INTERVAL / 10.0) as usize {
+    // 150 s: the teams patrol their own halves first; when they meet
+    // depends on their paths (about 100 s with the corrected movement).
+    for _ in 0..(150.0 / TICK_INTERVAL / 10.0) as usize {
         sim.ticks(10);
         let o = sim.app.world().resource::<CaObjectives>();
         taken |= o.flags.iter().any(|f| f.at != FlagAt::Home);
