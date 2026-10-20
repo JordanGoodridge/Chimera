@@ -17,6 +17,8 @@
 //!   `menu`: the in-game menu (Esc) in place of the
 //!   shell's default; `hud::death`: the death screen on the install's
 //!   kill-cam layout, and the death camera's input and camera on the shell;
+//!   `music`: plays the client's music and the map's ambient sounds
+//!   (game::music, music_ambience.md);
 //!   `chat`: the match chat's queue (the model); `talk`: the chat panel,
 //!   input bar and radio menu on it, and their keys;
 //!   `hud::radar`, `hud::full_map` (with `hud::scene`): the radar and the
@@ -62,6 +64,7 @@ pub mod install;
 pub mod layout;
 pub mod loading;
 pub mod menu;
+pub mod music;
 pub mod scoreboard;
 pub mod talk;
 pub mod visuals;
@@ -96,6 +99,7 @@ impl Plugin for CaUiPlugin {
             loading::CaLoadingPlugin,
             hud::death::CaDeathScreenPlugin,
             talk::CaTalkPlugin,
+            music::CaMusicPlayPlugin,
         ))
         // Key 6, the objective class (inventory.md 2, 3: the mission
         // bomb), through the shell's selection as slot 6.

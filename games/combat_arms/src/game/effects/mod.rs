@@ -73,8 +73,7 @@
 //!   yet: characters.md); a network client takes others' gait from their
 //!   movement state as replicated.
 //! - Kill call-outs (`EnemyDown`) aren't played (they need the team
-//!   filter on each client); map `SoundFX` objects aren't placed (no
-//!   object classes yet); interface sounds are the UI's (`ui::desk`).
+//!   filter on each client); map `SoundFX` objects are `music::ambient`'s; interface sounds are the UI's (`ui::desk`).
 //! - Critical hits, ricochets, the pusher, screen tints and blast lights
 //!   (never at detail 3: Quirk 9) aren't modelled.
 

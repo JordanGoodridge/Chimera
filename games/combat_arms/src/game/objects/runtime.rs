@@ -20,9 +20,11 @@
 //! - Characters touch triggers (`touch`), use doors (`use_object`) and
 //!   damage world models (`damage`) before the frame.
 //!
-//! Known shortcuts: `SoundFX`, `LightGroup`, `Camera`, `SpecialFX` and
-//! `TargetTrigger` keep their on/off state only (map sounds, switchable
-//! lights, map cameras and objective markers aren't drawn or heard);
+//! Known shortcuts: `SoundFX` keeps its on/off state and restart count (the
+//! client's `music::ambient` plays them); `LightGroup`, `Camera`,
+//! `SpecialFX` and `TargetTrigger` keep their on/off state only
+//! (switchable lights, map cameras and objective markers aren't drawn);
+//! `BGMTrigger` only reports its `ON`/`OFF` (`Fx::Music`, `music::trigger`);
 //! breakables' `Spawn`, prop debris, `WorldModelDebris` and
 //! `CreateExplosion` aren't made (only the death command and the
 //! object's removal or hiding); bodies don't fire triggers; `PropType`
@@ -154,6 +156,9 @@ pub enum Fx {
         looping: bool,
         owner: Option<ObjId>,
     },
+    /// A `BGMTrigger` got `ON` or `OFF` (the bridge checks its mode and
+    /// tells the clients).
+    Music { id: ObjId, on: bool },
     /// A map explosion (`Explosion`): area damage like a grenade's blast.
     Explode {
         at: Vec3,
@@ -266,8 +271,13 @@ pub enum Kind {
     KeyFramer(Box<Keyframer>),
     Explosion { radius: f32, damage: f32, effect: String, remove: bool },
     Volume,
-    /// `SoundFX`, `LightGroup`, `Camera`, `SpecialFX`: on or off.
-    Switchable { on: bool },
+    /// `SoundFX`, `LightGroup`, `Camera`, `SpecialFX`: on or off; `plays`
+    /// counts how often it was (re)started (a sound plays again from its
+    /// start on each: music_ambience.md 6).
+    Switchable { on: bool, plays: u32 },
+    /// `BGMTrigger` (music_ambience.md 5): on or off by its messages; the
+    /// music itself is the bridge's (`Fx::Music`).
+    MusicTrigger { on: bool },
 }
 
 /// What `MEMORIZE` keeps (the world-model and active layers).
@@ -727,8 +737,10 @@ impl ObjectWorld {
                 "SoundFX" | "LightGroup" | "Camera" | "SpecialFX" | "ScaleSprite" => {
                     kind = Kind::Switchable {
                         on: p.bool_or("StartOn", class != "Camera"),
+                        plays: 0,
                     }
                 }
+                "BGMTrigger" => kind = Kind::MusicTrigger { on: false },
                 c if super::super::volumes::is_volume(c) => kind = Kind::Volume,
                 _ => {}
             }
@@ -1307,10 +1319,35 @@ impl ObjectWorld {
                 }
                 _ => {}
             },
-            Kind::Switchable { on } => match word {
-                "ON" | "START" => *on = true,
-                "OFF" | "KILL" => *on = false,
-                "TOGGLE" | "TRIGGER" => *on = !*on,
+            Kind::Switchable { on, plays } => {
+                let sound = self.objects[id as usize].class == "SoundFX";
+                match word {
+                    "ON" | "START" => {
+                        *on = true;
+                        *plays += 1;
+                    }
+                    "OFF" | "KILL" => *on = false,
+                    // A sound's TRIGGER starts it again; the others' flips.
+                    "TRIGGER" if sound => {
+                        *on = true;
+                        *plays += 1;
+                    }
+                    "TOGGLE" | "TRIGGER" => {
+                        *on = !*on;
+                        *plays += *on as u32;
+                    }
+                    _ => {}
+                }
+            }
+            Kind::MusicTrigger { on } => match word {
+                "ON" => {
+                    *on = true;
+                    self.fx.push(Fx::Music { id, on: true });
+                }
+                "OFF" => {
+                    *on = false;
+                    self.fx.push(Fx::Music { id, on: false });
+                }
                 _ => {}
             },
             _ => {}
@@ -1943,7 +1980,8 @@ impl ObjectWorld {
             Kind::KeyFramer(k) => {
                 s += &format!(" | keys {} active {} t {:.2} next {}", k.keys.len(), k.active, k.t, k.next)
             }
-            Kind::Switchable { on } => s += &format!(" | on {on}"),
+            Kind::Switchable { on, plays } => s += &format!(" | on {on} plays {plays}"),
+            Kind::MusicTrigger { on } => s += &format!(" | music {on}"),
             _ => {}
         }
         if let Some(d) = &o.hp

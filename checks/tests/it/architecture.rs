@@ -31,6 +31,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("movement", &["core", "slots", "character"]),
     ("greybox", &["core"]),
     ("map", &["core"]),
+    // A background-music player (two stream slots, fades): pure state, Bevy
+    // only; a game with streamed music uses it.
+    ("music", &[]),
     // Audio: plays what the simulation's sounds say (`map::sound`); nothing
     // in the simulation may use it.
     ("audio", &["core", "map"]),
@@ -158,6 +161,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "mount",
             "game_registry",
             "map",
+            "music",
             "weapon",
             "objectives",
             "rules",
