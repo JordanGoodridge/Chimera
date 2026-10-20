@@ -439,3 +439,27 @@ fn quarantine_sections() {
     assert_eq!((q.min_hosts, q.selection_rate, q.heal), (2, 0.2, Some((1.0, 0.1, 3.0))));
     assert_eq!(missions::loadout(&[vec![1, 4], vec![2], vec![3], vec![]]), vec![1, 2, 3, 4]);
 }
+
+/// The map messages per step (F2, F3; game_modes.md S3, S15): the
+/// mission's controllers and start triggers at mission start, the
+/// objective's at each round's setup, its end triggers at the round's
+/// end, the mission's at the mission's end; name lists split on `;`.
+#[test]
+fn map_messages_per_step() {
+    use missions::MapStep::*;
+    let m = mission(
+        "[MapInfo]\nMap = \"w\"\n[Mission0]\nMissionMode = \"TMM\"\nController = \"GameControl_SD\"\n\
+         StartTrigger = \"MissionStart\"\nEndTrigger = \"MissionEnd;\"\n[Object0]\nTimeLimit = 180\n\
+         Controller = \"GameControl_SD\"\nStartTrigger = \"Level02StartTrigger;Extra\"\n\
+         EndTrigger = \"Level02EndTrigger\"\n",
+    );
+    let o = m.object();
+    let pairs = |step| m.map_messages(step, &o).into_iter().map(|(n, msg)| format!("{n} {msg}")).collect::<Vec<_>>();
+    assert_eq!(pairs(MissionStart), ["GameControl_SD ON", "MissionStart TRIGGER"]);
+    assert_eq!(pairs(RoundSetup), ["GameControl_SD ON", "Level02StartTrigger TRIGGER", "Extra TRIGGER"]);
+    assert_eq!(pairs(RoundOver), ["Level02EndTrigger TRIGGER"]);
+    assert_eq!(pairs(MissionEnd), ["MissionEnd TRIGGER"]);
+    // No names: nothing.
+    let bare = mission(&file("w", "TDM", "TimeLimit = 0"));
+    assert!(bare.map_messages(RoundSetup, &bare.object()).is_empty());
+}

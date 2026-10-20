@@ -30,6 +30,12 @@
 //!   one, else our data (data/modes.toml's `TimeLimit` and
 //!   `TrainingTimeLimit` per mode, the objectives' numbers) as the
 //!   fallback, field by field.
+//! - The map messages (`map_messages`, `MapStep`): at mission start
+//!   `[Mission0]`'s controllers `ON` and start triggers `TRIGGER`, at each
+//!   round's setup the objective's, at the round's end its end triggers,
+//!   at the mission's end `[Mission0]`'s (the stock maps'
+//!   `LevelNNStartTrigger` / `LevelNNEndTrigger`); `rules::flow` sends
+//!   them to the map's objects.
 //!
 //! Known shortcuts: the file decides the mode in the game (Quirk 1: the
 //! US room data's Hired Guns on Hired Guns 2 runs Squad Match 2); here
@@ -1287,6 +1293,47 @@ pub fn lives(world: &World) -> (i32, i32) {
         let o = m.coop_object(goal);
         (o.life_count, o.max_life_count)
     })
+}
+
+/// A step of the match where the mission names map objects to message
+/// (game_modes.md S3, S15; missions.md F2, F3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MapStep {
+    /// S3 step 2: `[Mission0]`'s `Controller` `ON`, its `StartTrigger`
+    /// `TRIGGER`.
+    MissionStart,
+    /// S3 step 3: the objective's `Controller` `ON`, its `StartTrigger`
+    /// `TRIGGER`.
+    RoundSetup,
+    /// S3 step 5: the objective's `EndTrigger` `TRIGGER`.
+    RoundOver,
+    /// S3 step 6 (every round ends its mission): `[Mission0]`'s
+    /// `EndTrigger` `TRIGGER`.
+    MissionEnd,
+}
+
+impl Mission {
+    /// The (object name, message) pairs of `step`, in order: controllers
+    /// before triggers; `object` the objective playing.
+    pub fn map_messages(&self, step: MapStep, object: &ObjectRecord) -> Vec<(String, &'static str)> {
+        let each = |names: &[String], message: &'static str| {
+            names.iter().filter(|n| !n.is_empty()).map(|n| (n.clone(), message)).collect::<Vec<_>>()
+        };
+        match step {
+            MapStep::MissionStart => {
+                [each(&self.mission.controller, "ON"), each(&self.mission.start_trigger, "TRIGGER")].concat()
+            }
+            MapStep::RoundSetup => [each(&object.controller, "ON"), each(&object.start_trigger, "TRIGGER")].concat(),
+            MapStep::RoundOver => each(&object.end_trigger, "TRIGGER"),
+            MapStep::MissionEnd => each(&self.mission.end_trigger, "TRIGGER"),
+        }
+    }
+}
+
+/// The playing mission's map messages for `step` (none without the
+/// install's mission: our data names no map objects).
+pub fn map_messages(world: &World, step: MapStep) -> Vec<(String, &'static str)> {
+    installed(world).map_or_else(Vec::new, |m| m.map_messages(step, &m.object()))
 }
 
 #[cfg(test)]
