@@ -242,6 +242,9 @@ pub struct ViewMachine {
     /// The automatic reload request (raised at the end of an update that
     /// is idle with an empty clip).
     auto_reload: bool,
+    /// The weapon is mid-reload (its clip not yet filled): the empty clip
+    /// is stale then, and asks for no second reload (`set_weapon_reloading`).
+    weapon_reloading: bool,
     /// The clock (s) and when the full idle is due.
     clock: f64,
     idle_at: f64,
@@ -261,6 +264,7 @@ impl ViewMachine {
             press_shots: 0,
             reload_pending: false,
             auto_reload: false,
+            weapon_reloading: false,
             clock: 0.0,
             idle_at: f64::MAX,
             rng: seed | 1,
@@ -275,6 +279,13 @@ impl ViewMachine {
 
     /// Change the rates (attachments fitted while drawn); used from the
     /// next animation started.
+    /// Whether the weapon is mid-reload: the animation can end a tick before
+    /// the weapon fills the clip, and the stale empty clip must not raise
+    /// the automatic reload again (a second reload animation).
+    pub fn set_weapon_reloading(&mut self, reloading: bool) {
+        self.weapon_reloading = reloading;
+    }
+
     pub fn set_rates(&mut self, rates: Rates) {
         self.setup.rates = rates;
     }
@@ -608,7 +619,7 @@ impl ViewMachine {
             },
         }
         // Step 8: the automatic reload request, for the next update.
-        if self.stage == Stage::Idle && self.setup.clip_size > 0 && i.clip == 0 && i.total > 0 {
+        if self.stage == Stage::Idle && self.setup.clip_size > 0 && i.clip == 0 && i.total > 0 && !self.weapon_reloading {
             self.auto_reload = true;
         }
         out

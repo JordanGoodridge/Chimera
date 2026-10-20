@@ -536,6 +536,7 @@ fn drive(
         ),
     )>,
     weapons: Query<WeaponParts>,
+    states: Query<&chimera_sim::weapon::WeaponState>,
     mut events: MessageReader<WeaponEvent>,
     mut keys: MessageWriter<CaViewKey>,
     mut tables: Local<HashMap<String, Arc<Vec<AnimInfo>>>>,
@@ -636,6 +637,7 @@ fn drive(
         };
         if let Some(m) = vm.machine.as_mut() {
             m.set_rates(setup_of(&parts).rates);
+            m.set_weapon_reloading(active.and_then(|w| states.get(w).ok()).is_some_and(|s| s.reloading()));
             let out = m.update(&inputs);
             if out.reloaded {
                 vm.thrown = false;
