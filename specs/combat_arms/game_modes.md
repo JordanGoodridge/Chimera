@@ -3,6 +3,8 @@
 Source basis: the dedicated server's match rules (one rule set per game mode, the shared match base, the player's spawn, respawn, damage filter and death handling, the spawn point, bomb zone, flag and flag zone objects), the client's respawn request, death camera, respawn gauge, action gauge and scoreboard, the room data of a US-region data set (mode list, goal ranges, mode names), the per-map mission files of a US-region client, the dedicated server's and client's server configuration files, and object lists read from plaintext maps of that client.
 Status: draft
 
+A follow-up session (Open questions 17–36) added the bomb zone, flag, pole, VIP, weapon-race, quarantine, spy-hunt and hunted rule code, the default mission files of those modes, the room-option item table, and object lists from plaintext maps of an older extracted client release.
+
 Sections: Summary; Units and conventions; Modes found; Constants (shared); Shared rules (S1 teams; S2 settings; S3 match phases and clocks; S4 spawn points and spawn choice; S5 respawn; S6 spawn protection; S7 kill counting and assists; S8 friendly fire; S9 warm-up round; S10 end of a round and of the match, leaving players; S11 cleanup at a round's end; S12 item drop points; S13 scoreboard; S14 infected knock-back); Per-tick order; one section per mode (M1 Team Death Match ... M22); Edge cases; Quirks; Test cases; Open questions.
 
 ## Summary
@@ -18,6 +20,7 @@ Team Death Match is shown to players as **Elimination**; the round mode without 
 - Timers: phase and round timers count server game time in seconds. The server's respawn-wait check and spawn-protection timer use the OS millisecond clock. The client's respawn wait uses the client's OS millisecond clock.
 - "G" below is the room's **goal** value chosen in the lobby (kills, captures, rounds or minutes, depending on the mode). The lobby sends the same G both as the kill target and as the round count, so every mode reads the one value it needs.
 - Team ids: 0 none, 1 Alpha (`JSF`), 2 Bravo (`Creed`), 255 observer or game master (never spawns, never counts). Free-for-all players carry a unique id per player, assigned by the lobby (see Open questions).
+- **Box sizes** (Open question 30): every `Dims` of a map object (triggers, bomb zones, flag zones, use triggers, pick-up items) is a set of **half-extents** around the object's position, like a player's hull: a bomb zone with `Dims` (133.5, 64, 123.5) spans 267 × 128 × 247 u. The plant test (M3) is |Δx| ≤ 133.5 + 50 and so on.
 - Map-side names (`GameStartPoint`, `ObjectSpawnPoint`, `BombZoneTrigger`, `FlagItem`, `FlagZoneTrigger`, `TDMGameControl`, `ActivateTrigger`, their properties) are the data the maps carry, as listed in `world_dat.md`. Per-map mode data (time limits, spawn areas, objective weapons) comes from the map's mission file, one per map and mode, whose field names are given as data.
 
 ## Modes found
@@ -160,7 +163,7 @@ A match runs through these phases (our names). All transitions are made by the s
 3. **Round setup** (`ObjectStart` seconds, 0 by default; TDM always 0): every player on team 1 or 2 is respawned (S5; living players too: they are moved to a spawn point and re-equipped), map triggers for the round fire, objective weapons are handed out, and every living player is **frozen** (cannot move). Players who connect during this phase are frozen too.
 4. **Live.** Players are unfrozen, the winner is cleared, the round timer starts with the round length (mode table) or is stopped when the mode has none. Kills count only in this phase.
 5. **Round over** begins on the first frame where a rule has asked for it (a win condition, or the round timer reaching 0). The mode's time-out rule fills in a winner if none was set, round win counters are updated, end-of-round triggers fire, the result (winner and team scores) is sent to everyone, and a timer of `ObjectEnd` seconds starts. Players keep control, can still move, shoot and die, but nothing they do counts.
-6. **Round end** (next frame after the timer): round results and rewards are computed and sent, objective items are dropped and removed, **every body and every weapon item on the ground is removed** (S11), held players are released, per-round statistics are cleared. Then, if the mode has more rounds, the next **Mission start** follows; otherwise **Intermission** (`MissionEnd` seconds), then the match result.
+6. **Round end** (next frame after the timer): round results and rewards are computed and sent, objective items are dropped and removed, **every body and every weapon item on the ground is removed** (S11), held players are released, per-round statistics are cleared. Then the mission file's next objective for the winner is looked up (`JSFWin` / `CreedWin`); every stock file has −1 there, so **every round ends its mission** and **Intermission** (`MissionEnd` seconds) follows after **every** round, not only the last. At the end of the intermission the match-end test runs: if the match is over, the match result (step 7); otherwise the next **Mission start** (corrected: an earlier reading put the intermission only before the match result; the 6 s formula below already assumed every round; Open question 21). Only a file with a non-negative next objective would skip the intermission and go straight to the next round setup.
 7. **Match over**: a reward roulette is played on the clients, then the server pauses and reports the result to the lobby. If every player leaves during the roulette, it ends at once.
 
 ```math
@@ -185,7 +188,9 @@ The HUD's round timer (`hud_crosshair.md` D7) is fed the round timer's remaining
 | Spy Hunt | `BountyHunter` (one list) |
 | Quarantine | `Quarantine` (one list) |
 | Hunted | `HungerGame`: unlocked points form the warm-up list, locked points the round list |
-| every other mode | its own game-type string, per team |
+| Bombing Run (M9) | `Sabotage`, per team (Ghost Town: 12 + 12) |
+| Seize and Secure (M10) | `HeadQuaters` (spelled so), per team (Ghost Town: 12 + 12) |
+| every other mode | its own game-type string, per team (VIP Escort `VIPEscort`, Hired Guns `SquadMatch`, …) |
 
 - One-list modes (`FreeForAll`, `BountyHunter`, `Quarantine`) put every qualifying point in one list whatever its `Teams`. The `FreeForAll` list (and Hunted's two lists) are **shuffled once at map load**; team lists keep the map's object order.
 - Co-operative modes pick, at each spawn, unlocked co-op points whose `Spawn` equals the current spawn area of the objective (and the team, when the player has one).
@@ -195,9 +200,9 @@ The HUD's round timer (`hud_crosshair.md` D7) is fed the round timer's remaining
 **Which point (versus modes).** Each list has a **cursor**, starting at 0, shared by all players of that list (one cursor per team; free-for-all modes share one cursor for everybody). For a spawn:
 
 1. Advance the cursor by one (wrapping at the end of the list) and test that point.
-2. A point is **occupied** when any other player object (alive or dead player objects; bodies are not players) has its centre within twice its own half-extents of the point on every axis (strict): with the fallback hull (15, 50, 15), |dx| < 30, |dy| < 100, |dz| < 30.
+2. A point is **occupied** when any other player object (alive or dead player objects; bodies are not players) has its centre within twice its own half-extents of the point on every axis (strict): with the fallback hull (15, 50, 15), |dx| < 30, |dy| < 100, |dz| < 30. The half-extents are that player object's **current** physics box: the stand box (15, 50, 15) of every stock body, (15, 40, 15) while fully crouched (in between while crouching, `movement.md`); they come from the body's `LST` / `LC` animation boxes, not from the figure type.
 3. If occupied, repeat from 1, at most as many times as the list has points. The last point tested is used even if occupied. The cursor stays where it stopped.
-4. The player is placed at the point, faces its `Rotation` yaw, is dropped to the floor, and, if the point has a `Command` with `SendCommandOnRespawn`, that command runs.
+4. The player is placed at the point, faces its `Rotation` yaw, is dropped to the floor, and, if the point has a `Command` with `SendCommandOnRespawn`, that command runs (a map command string, S15, sent with the point as sender, once per spawn on that point). Every `GameStartPoint` of the stock maps read has an empty `Command` and `SendCommandOnRespawn` false.
 5. **Telefrag**: every other player whose doubled box contains the new position is killed with infinite crush damage credited to themselves (a suicide, S7). This only happens when every point was occupied, and a spawn-protected player (S6) is immune.
 
 So spawns cycle through a team's points in map order, skipping occupied ones; there is no "farthest from enemies" logic and no randomness for team points. If a list is empty the first `GameStartPoint` of the map is used.
@@ -205,7 +210,7 @@ So spawns cycle through a team's points in map order, skipping occupied ones; th
 ### S5. Respawn
 
 - **Which modes respawn**: TDM, VIP Elimination, clan TDM, CTF, clan CTF, One Man Army, Arms Race, Spy Hunt (stage 1 only), Bombing Run, Seize and Secure, Hired Guns, Squad Match 2, Snowball (tickets), the co-op modes (while lives remain) and bot Elimination. Every other mode keeps the dead out until the next round setup.
-- **Automatic, no key.** On death the client starts its wait at once (Hunted only: after `DyingTime` 3.5 s of death camera). When the wait has passed (elapsed > 7000 ms; Snowball also needs its team's ticket count > 0), the client sends one respawn request and switches the camera back. A "fast respawn" item lets the client send at once; the server checks the player still has uses left and spends one.
+- **Automatic, no key.** On death the client starts its wait at once (Hunted only: after `DyingTime` 3.5 s of death camera). When the wait has passed (elapsed > 7000 ms; Snowball also needs its team's ticket count > 0), the client sends one respawn request and switches the camera back. A "fast respawn" item lets the client send at once; the server checks the player still has uses left and spends one. Details: the request carries a "fast" flag only in TDM-type and CTF-type respawn requests (not Snowball); with the flag the server skips the wait test entirely, refuses (as illegal) when the lobby says the player has no uses left (players with the premium pass have unlimited uses and spend none), otherwise spends one, and the player's previous body is removed at once instead of 5 s after the respawn (`characters.md` 10).
 - **Server check**: the request is refused (and logged as illegal) if the mode does not respawn, or if fewer than 5.0 s (Snowball 1.0 s) have passed since death on the server's clock. A perk can lower the server limit: the limit is min(5.0, perk value). A refused request is not retried by the client (it has set its "requested" flag), so a refused player stays dead until the next round setup. The reference build carries edits that set the waits to 2.0 s and 1.5 s.
 - **Respawn**: the player gets full health and armour, the loadout is rebuilt from scratch (`inventory.md` section 13: picked-up weapons gone, clips full, primary drawn), gear is re-applied, any carried flag, intel or gold is let go first, and the spawn point is chosen as in S4. The previous body is removed.
 - At a round setup everyone on teams 1 and 2 is respawned this way, alive or not.
@@ -215,7 +220,7 @@ So spawns cycle through a team's points in map order, skipping occupied ones; th
 At every respawn (including round setups):
 
 - **All damage blocked for 4.0 s** (`RespawnInvulnerabilityTime`), except damage types a mode exempts (Spy Hunt's stage-2 respawn exempts falling out of the world). Explosions, falls and telefrags do nothing.
-- **Instant-hit shots pass through for 3.0 s**: a bullet or melee ray that hits a protected player is ignored before it can hit (no hit, no penetration stop); clients draw no blood and no flinch on a player for 3.5 s after they see the respawn.
+- **Instant-hit shots are absorbed for 3.0 s** (corrected; Open question 25): the shooter's ray still **stops** at the protected player's spheres (the ray test does not look at protection), and then nothing happens to the player: the shooter's client records no character hit (nothing is reported, no damage, no ding) and makes no blood. The ray's test ended at that player, so the round does not reach whatever is behind; whether a plain surface puff is drawn at the stopping point was not traced (Open question 25). A server-traced impact on a protected player (projectile, bot shot) likewise does nothing. Clients draw no blood and no flinch on a player for 3.5 s after they see the respawn, which is also the window in which their own shots at that player are absorbed (the client uses its own flag, so the effective window is the client's).
 - **What ends it early**: firing a weapon ends both parts at once, but only in One Man Army, Arms Race, Last Man Standing and Hunted; everyone is told and the client's no-blood flag clears too. In every other mode a protected player can shoot freely.
 - **How it shows**: no visual marker was found besides the missing blood and flinch.
 - The reference build carries edits setting both times to 0 (no protection). This spec uses 3.0 s and 4.0 s.
@@ -260,6 +265,13 @@ Damage from a player to a player of the same team (or from or to a player with t
 - A teammate hit also makes the victim call out (a "we are a team" voice, a different one after more than 2 such hits).
 - Heals work only on teammates.
 
+Details (Open question 26):
+
+- **Order**: the filter runs on the raw damage **before** armour and the hit-zone factor are applied (the victim's damage handling does both afterwards), so a 0.25 teammate rifle hit of 40 enters the armour rules as 10.
+- **Who is filtered**: the damager's team is read from the damaging player (or the auto turret, which never hurts its own team at all). A damager with team id 0 is never filtered. Otherwise the filter applies when the teams are equal, or the damager's team id is above 254 (255, observer or game master); an id below 1 cannot occur past the first test. So in free-for-all modes, where every player has a distinct id in 1..254, nobody is filtered.
+- **Heals**: damage of the heal kinds (the medic kit's and the first-aid kit's ammo, available in any mode whose loadout allows them) is dropped entirely when the healer is on another team; on a teammate it heals in full whatever the friendly-fire setting. The Quarantine infected's standing regeneration (M8) is not a heal of this kind.
+- **The voice**: on the first filtered teammate hit that still does damage above 0 (once; when this re-arms was not traced), an "I am hit" call-out to the victim's team (radius 500); on every filtered teammate hit (except ice-crush), a counter goes up and the victim's team hears "we are a team" (radius 500), or the angrier variant once the counter is above 2. The voice also plays with friendly fire **off** (damage 0), except for burn, poison and infection-poison ammo with friendly fire off, and never for heals. These are team call-outs: only the victim's team hears them (`effects_sounds.md`).
+
 ```math
 d' = \begin{cases} 0 & \text{FF off} \\ 0.25\,d & \text{FF on, listed mode, type not explosive/flash/burn/poison/bleed} \\ d & \text{otherwise} \end{cases}
 ```
@@ -298,7 +310,23 @@ At the round end phase (S3 step 6, `ObjectEnd` seconds after the deciding event)
 
 `ObjectSpawnPoint` objects are **drop points for mode items**, not player spawns. A point exists only when its `GameType` names the running mode; the others are deleted at map load. Its `Spawn` property is not read. Stock maps carry 30 `Team Death Match`, 30 `FreeForAll`, 12 to 18 `BountyHunter` and 3 `Sabotage` points (60 in all). Uses:
 
-- **Mutation boxes** (TDM and One Man Army with the room's mutation option on): every 30 s the point list is shuffled and a box is placed on the first N points, where N comes from the box data by player count (6 up to 6 players, then N = player count, up to 16). A box lives 10 s, is picked up by touch, and gives a random buff or nerf chosen by the toucher's team's score lead.
+- **Mutation boxes** (TDM and One Man Army with the room's mutation option on): every 30 s the point list is shuffled and a box is placed on the first N points, where N comes from the box data by player count (6 up to 6 players, then N = player count, up to 16). A box lives 10 s, is picked up by touch, and gives a random buff or nerf chosen by the toucher's team's score lead. What a box gives (Open question 27; data by role, effect keys are percent changes unless said): the toucher's "condition" is looked up first: TDM by the team score gap in percent (lose: −100..−15, even: −15..15, win: 15..100), One Man Army by the toucher's K / (K + D) in percent (0–45, 46–48, 49–100). Each item has one pick weight per condition and the pick is weighted among the ten box items:
+
+| Item | Effect while it lasts | Lasts (s) | Weights lose / even / win |
+|---|---|---|---|
+| 0 | move speed +20, max stamina +200 | 20 | 10 / 10 / 10 |
+| 1 | all spread and recoil values −50 | 20 | 5 / 10 / 20 |
+| 2 | damage +20, fire rate +20 | 20 | 10 / 10 / 10 |
+| 3 | damage taken −50, max HP +20, heal 100 | 20 | 10 / 10 / 10 |
+| 4 | ammunition refilled continuously, fire rate +10 | 20 | 10 / 10 / 10 |
+| 5 | max HP +200, max stamina +100 | 20 | 10 / 10 / 10 |
+| 6 | instant heal 100 | 1 | 10 / 10 / 10 |
+| 7 | damage taken −100 (invulnerable) | 10 | 5 / 10 / 20 |
+| 8 | become an infected host: weapon 344, standing heal 10 % of max HP per 1 s after 3 s still | 30 | 5 / 10 / 20 |
+| 9 | become the Spy Hunt spy model (model 6, backpack 20) with weapons 94, 86, 87 | 30 | 5 / 10 / 20 |
+
+  (The weights as stored favour the **winning** side with items 1, 7, 8 and 9; this is the data.) Each item plays its effect group and its sound (radius 300) at the toucher. The detailed stat rules of each key belong to `gear_perks.md`.
+- **Revenge buff** (TDM, event customisation on; M1): item 10 of the same table, not in boxes: damage +30, fire rate +10 and a "revenge chance" flag, for 30 s.
 - **Spy Hunt intel** (M7): 5 intel items on the first 5 shuffled points at round start.
 - **Bombing Run bomb** (M9): the bomb on the first shuffled point at each round start.
 - **Hired Guns bullion** (M11) and Hunted's supply drops (M15), the same way.
@@ -324,6 +352,24 @@ Team boards list Alpha in the upper list and every other team in the lower list.
 | Hunted | mission points, total time hunted, kills |
 
 The scoreboard is re-sorted on every player-info update.
+
+**HUD goal and mission column** (Open question 31; what the reference settles): the HUD's goal text is built from the room goal G by mode: round modes (S&D, Quarantine, Elimination Pro, Last Man Standing, Bombing Run, Hired Guns, Go4CA Cup, VIP Escort, VIP Elimination, Hunted) show "G Rounds" (`IDS_GAMEROOM_ROUND`, US text "%d Rounds"), with "current round / " in front when the HUD passes the round number; kill modes (TDM, One Man Army, Arms Race, Snowball, bot Elimination) "G Kills"; Spy Hunt and Seize and Secure "G Min."; CTF "G Points"; Squad Match 2 and VIP Elimination override with "G Points"; co-op modes the difficulty name. The scoreboard's mode column title is fixed per mode: S&D "Explode / Defuse", Bombing Run "Explode/Defuse", CTF "Thouch Down / Recover" (as spelled), Spy Hunt "Intels / Total", Quarantine "H./I. Survival", Last Man Standing "Last Man Points", Seize and Secure "HQ Point", Hunted "Hunted Points", co-op "Mission"; other modes have none. The S&D column shows the player's plant/detonation and defuse counts. The rest of the HUD layout (objective lines, gauge looks, icons, emblems, result screens) is `hud_crosshair.md`'s and `lobby.md`'s; it was not settled here.
+
+### S15. Map commands the modes run
+
+Modes drive the map through **command strings** stored in object properties and in the mission file; each is a list of `msg <object> <message>` lines (optionally `delay <s> (…)`), run by the server's command handler with the owning object as sender (Open question 18). Where they come from:
+
+- **Mission file**: each mission and each objective names a `StartTrigger` and an `EndTrigger` (map `Trigger` objects, triggered at mission start/end and objective start/end) and a `Controller` (the map's `TDMGameControl` for that mode). The stock maps keep one `LevelNNStartTrigger` / `LevelNNEndTrigger` pair per mode; a start trigger switches that mode's objects on and every other mode's off (bomb zones `on`/`off` and `lock`/`unlock`, indicator effects `on`/`off`, mode props `(visible 1)`/`(solid 1)`, hide-triggers for other modes, `Camera0 off`), an end trigger moves the shared map camera `Camera0` to a camera point and switches it on (the end-of-round view), defuses any planted bomb (`BombZone_X defuse`, delayed 0.3 s on some maps), switches the zones off and closes doors (`Latch_*` / `*_Shutter on`).
+- **`TDMGameControl`**: `MissionStartCommand`, `MissionEndCommand`, `ObjectStartCommand` (stock: `msg memorize trigger;`, which tells the map's breakable props to remember their state for the round reset), `ObjectEndCommand`, `BombPlantedCommand` (stock: empty). Messages it understands from the map: `plantbomb <s>` (a plant: S&D/Bombing Run timer of s seconds; 0 means "already planted", the clients show that text), `detonate` (the bomb went off: the round is won as in M3/M9), `defusebomb` (defused), `OCCUPY` (M10), and mode-specific ones (bot respawn, Hunted's `RandomMapItem`, `SystemScan`).
+- **`BombZoneTrigger`** (M3, M9): `PlantedCommand` (stock: `plantbomb 40` to the controller, `lock` this zone, `off` and `lock` the other zone, the green indicators off and this zone's red indicator on), `DetonatedCommand` (stock: `detonate` to the controller and `trigger` the site's explosion trigger, below), `DefusedCommand` (stock: `defusebomb`), `PowerOffCommand` (a plant attempt on a zone that is off: stock `plantbomb 0`), `CommandOn` / `CommandOff` (stock empty). Messages: `ON`, `OFF`, `LOCK` (no more plants here), `DETONATE`, `PLANTBOMB`, `DEFUSE`, `VISIBLE`, `HIDDEN`.
+- **`ActivateTrigger`** (M10): `WorkCommand` while a player uses it, `ReleaseCommand` when they stop, `ActivateCommand` when the use completes (stock: lock own trigger, unlock the enemy's, `OCCUPY` to the controller, indicator effects).
+- **`GameStartPoint`**: `Command` with `SendCommandOnRespawn` (S4; unused in stock maps). `SoundFX`, `SpecialFX`, `Camera`, doors and props take `on`/`off`/`trigger` and their own messages.
+
+**The bomb's explosion is only these commands**: the site's explosion trigger runs a timed script of the map camera (`moveto` three camera points at about 0.15–0.2 s, 2.45–2.5 s and 4.95–5 s, `on` each time) and turns on six effect objects at the site (about 0.4, 0.5, 2.7, 2.8, 5.2 and 5.3 s; groups `Explode_S` / `Explode_L`, on a few maps `Explode_M`, `Grenade_Dirt`, glass blow-outs, `Nuke_Exp`, `S_Area_onFire`). Of the 13 bomb-site maps read (plaintext maps of an older extracted client release), none sends anything to an `Explosion` object: **the detonation hurts nobody** (M3).
+
+### S16. Random draws
+
+Every random choice of the rules (drop-point shuffles, Quarantine hosts, Arms Race rolls, mutation picks) uses the C library's single process-wide generator (the Microsoft linear congruential one), with no fixed seed: many places reseed it with the clock in seconds just before their draw (drop points, Quarantine hosts, VIP Escort), others with the millisecond tick count. Ranges are inclusive: "a random integer in [0, 100]" has 101 values. Nothing a player can see depends on the exact sequence, except that two draws reseeded in the same second repeat each other; **any uniform generator is parity** (Open question 32).
 
 ### S14. Infected knock-back
 
@@ -365,16 +411,18 @@ Deaths that happen in the same frame after a win was requested are still counted
 - **Round win**: the first death that leaves one team with no living player gives the round to the other team. If the death leaves both teams with nobody alive, the victim's enemy team wins.
 - **Time-out**: the team with more living players wins; if equal, more round kills (enemy kills this round); if equal, fewer round deaths (every death counts, falls and suicides included); if still equal, no winner and nobody scores.
 - **Match end**: checked after each round: a team has G round wins, or a team is empty. Winner: the non-empty team if one is empty, else the team with more round wins, else (equal) **Bravo**.
-- **Spawns**: `Team Death Match` points. Dead players spectate until the next round.
+- **Spawns**: `Team Death Match` points. Dead players spectate until the next round. **Whom the dead may watch** (Open question 35; the same in every no-respawn mode): the death camera first follows the **killer**, if that player is alive and the room's enemy-view option (`EnableViewEnemyCameraSetting`, the client's `Enemydeadcam`, on by default) is on; then, and whenever the watched player dies or the spectator switches, it cycles through the **living players of the spectator's own team** in list order; only when none is left alive, and the option is on, it moves to the living players of the other team. In Last Man Standing and Hunted the team filter is off: any living player. Views are a chase camera behind the target or the target's first-person view (the player's camera mode); there is no free camera for players (game masters follow the team of whoever they watch).
 - Joining: held until the next round (S1).
 
 ## M3. Search & Destroy (`TMM`)
 
-- **Teams**: JSF attack (`OffenceTeam`), Creed defend (`DefenceTeam`) on every stock map; sides never swap. **Respawn**: no. **Rounds**: warm-up (S9), then rounds of `TimeLimit` 180 s. **G** = round wins needed.
-- **Bombs**: at each real round's setup every living JSF player receives the bomb weapon named by the objective's `JSFWeapon` (`XK-2`, the mission-class weapon, `inventory.md` class 6). It is never dropped on death; leftover bombs are removed at the round's end.
+- **Teams**: JSF attack (`OffenceTeam`), Creed defend (`DefenceTeam`) on every stock map; **sides never swap** (Open question 33: the public S&D rule set has no swap at all; only the clan variants M18 and VIP Escort M13 swap). **Respawn**: no. **Rounds**: warm-up (S9), then rounds of `TimeLimit` 180 s. **G** = round wins needed.
+- **Bombs**: at each real round's setup every living JSF player receives the bomb weapon named by the objective's `JSFWeapon` (`XK-2`, the mission-class weapon, `inventory.md` class 6). It is never dropped on death; leftover bombs are removed at the round's end. Order in the setup (Open question 33): everybody is respawned and given their own loadout first (S5), then the round's start triggers run, then the bomb is added to every **living team-1** player who does not already carry one (the hand-out ignores which team the objective names: it always looks at team 1) **without** being drawn (the player keeps the primary in hand), then everyone is frozen. Nothing is handed out in the warm-up.
 - **Bomb sites**: `BombZoneTrigger` objects with `GameType` `Doobic`, `DefusableTeam` `Creed`, `CanDefuse` true, `DefuseTime` 7.0, `DetonateTime` 40.0, two per map (`ZoneNumber` 0 and 1, sites A and B), each a box (`Dims` half-extents, about 130 × 64 × 125 u).
-- **Plant**: an attacker holding the bomb inside a site's box, widened by 50 u on each axis, holds fire; the HUD shows a 4 s plant gauge. When the plant completes, the site's `PlantedCommand` tells the mode controller "plant bomb 40": the bomb timer starts at 40 s, the round timer gets 40 s added to whatever is left, and the commands lock this site and switch the other off. Only one bomb can be planted per round.
-- **Defuse**: a defender inside the site uses it (use key) for 7 s (`DefuseTime`; 7 s gauge). Stopping early cancels the defuse. A completed defuse wins the round for Creed; the bomb's detonation at 0 wins it for JSF. A detonation or defuse only counts while the round is Live.
+- **Plant** (Open question 4, answered): the attacker draws the bomb and holds fire. The bomb's view model plays its fire animation (XK-2: `prefire` 0 ms, then `fire_0` **4000 ms** with `FIRE_KEY` at **3904 ms**, sound keys at 356, 822, 1644, 2534, 2603, 2699, 2822 and 3192 ms) and, while it plays, the client **locks the player's movement** (the player cannot walk, strafe or jump; turning still works). Releasing fire before the key cancels at once: the bomb returns to idle, movement is allowed again, and **nothing is kept**: the next attempt starts the 4 s from 0. At the key the shot is sent; the server checks the planter's position against the site's box widened by 50 u on each axis and, if inside and the site is on, plants **at once** (the site's own disable time is 0; the HUD's 4 s plant gauge is just the animation's length). The site's `PlantedCommand` then tells the mode controller "plant bomb 40": the bomb timer starts at 40 s, the round timer gets 40 s added to whatever is left, and the commands lock this site and switch the other off. Only one bomb can be planted per round. A plant on a site that is off or locked gives every client the "bomb already planted" text.
+- **Defuse** (Open question 4, answered): a defender who looks at the site from within its use range holds the use key (or fire) for 7 s (`DefuseTime`; the 7 s gauge counts down with the client's frame time). Releasing the key, leaving the range or looking away ends the attempt and the server keeps **no progress**: every new attempt is sent the full 7 s again. Moving while defusing is allowed as long as the range test holds. A completed defuse wins the round for Creed. Only the defending team (`DefusableTeam`) can defuse.
+- **Detonation** (Open question 17): when the bomb timer reaches 0 the round is won by JSF; the planter is credited with a detonation (a mission statistic, reward points) and **nothing else happens to anyone**: the stock sites' detonation commands only win the round and play the explosion show (S15): the map camera `Camera0` switches every client's view to three camera points in turn over about 5 s while six explosion effects play at the site. There is **no blast damage**, no kill, no suicide and no friendly-fire question, whoever stands at the site. The HUD shows "BOMB HAS BEEN DETONATED.", the bomb countdown goes to 0. A detonation or defuse only counts while the round is Live.
+- **The planted bomb on the clients** (Open question 17): no bomb model is placed at the site (the code that would attach one is disabled). What players see and hear: the site's red indicator effect (`Mission_RED`) on and both green ones (`Mission_GRN`) off, by the planted command; every client's interface sound `UI_SND\BombPlanted.wav` and the text "BOMB HAS BEEN PLANTED."; a HUD bomb countdown that beeps once per whole second with an interface sound chosen by the time left: `UI_SND\T9COUNT1.wav` above 30 s, `T9COUNT2` above 20 s, `T9COUNT3` above 10 s, `T9COUNT4` above 5 s, `T9COUNT5` above 0 s (`BombTimerSound1..5`); and every client forces its dynamic-light options on (`DynamicLight`, `DynamicLightWorld` = 1) until a defuse restores them (Quirk 12). All clients get the same (no team difference). The defuse sound on the site is the gadget target's defusing loop and its "defused" sound (`GUNS_SND_ETC\T9\DEFUSING.WAV`, `DEFUSED.WAV`, radius 500); a defuse also shows "BOMB HAS BEEN DEFUSED.".
 - **Round win by elimination**: the first death that leaves Creed with nobody alive gives the round to JSF, **even with the bomb planted**. A death that leaves JSF with nobody alive gives the round to Creed only if no bomb is ticking; with a bomb ticking the round goes on until it explodes or is defused. A death leaving both teams empty gives the round to the victim's enemy team.
 - **Time-out**: Creed (defence) wins. Because a plant adds 40 s to the round timer, the round timer cannot run out before the bomb.
 - **Match end** (after each round): a team has G round wins, or a team is empty. Winner: more round wins, else (equal) **Bravo**.
@@ -393,7 +441,9 @@ T = 180 \times G\ \text{s} \qquad (G = 5 \Rightarrow 900\ \text{s} = 15\ \text{m
 - **Taking**: a living player touching the **enemy** flag (at home or dropped) takes it. The flag disappears from the world while carried.
 - **Returning**: a living player touching their **own** flag while it is away from home returns it to its base at once and earns a return (team return count +1, player returns +1). Touching your own flag at home does nothing.
 - **Dropping**: when the carrier dies, the flag is dropped at the carrier's last living position, moved down to the floor, and a 30 s return timer starts (the remaining seconds are shown). After 30 s untouched, it goes home with no return credit. If the carrier died from falling out of the world or from crush damage, the flag goes home immediately. A carrier who leaves drops it the same way.
-- **Capture**: a carrier of the enemy flag who touches their own team's flag zone **while their own flag is at home** scores: team captures +1, player captures +1, and the carried flag goes home. A capture during the warm-up or outside the Live phase does not count.
+- **Capture**: a carrier of the enemy flag who touches their own team's flag zone **while their own flag is at home** scores: team captures +1, player captures +1, and the carried flag goes home. A capture during the warm-up does not count. Corrected (Open question 34): taking, returning and capturing work in **every** phase, and only the warm-up skips the credit; a capture or return made during round over or the intermission still adds to the team's and the player's counts (and a capture can still reach G and set the winner; Quirk 13).
+- **The carried flag** (Open question 34): the carrier gets an attached model on the `1W_N` socket (the backpack socket, `characters.md` 3), zero offset, its own default rotation: `ATTACH_M\flag01_back.ltb` with the **other** team's colour (record `Flag0` for a team-1 carrier, skin `ATTACH_T\CTF_Flag_B.DTX`; `Flag1` for team 2, `CTF_Flag_R.DTX`; render style `RS\EdgeAmp01.ltb`). It exists from the carrier's spawn, hidden, and is shown only while the player holds a flag (checked every update); it is hidden in first person. The flag item itself is invisible while carried.
+- **Assists**: CTF gives none (S7: not in the assist list).
 - **Win**: the first capture that brings a team to G captures ends the round; that team wins.
 - **Time-out**: more captures; else more returns; else more enemy kills (team kill counter, S7 table); else fewer deaths; else draw (no winner).
 - **Leaving**: last player of a team leaves → the other team wins.
@@ -418,8 +468,11 @@ T = 180 \times G\ \text{s} \qquad (G = 5 \Rightarrow 900\ \text{s} = 15\ \text{m
 
 - **Stage 1** (free-for-all intel hunt, respawn allowed): everybody starts as a hunter (Alpha). At round start 5 intel items are placed on shuffled `BountyHunter` drop points (S12; count from the mission file's intel section). Picking up intel makes the carrier a **spy** with a team of their own (so everyone may shoot them); a spy's death drops their intel.
 - **Stage 2**: the player who holds **all** intel becomes the **final spy** (Bravo); every dead player is revived and every living player's health and ammo are refilled; respawn stops. Hunters win by killing the final spy; the final spy wins when no hunter is left alive.
-- **Time limit**: G minutes (default 12) for the whole round; the mission file also carries a stage-2 time (`Stage2PlayTime` 180 s, use not traced).
+- **Time limit**: G minutes (default 12) for stage 1. Stage 2 (Open question 10, answered): when the final spy is made, every client's view is moved to the map camera at `CameraPoint00` for `AgentCameraHoldingTime` (5 s in the stock files) while the final spy is changed; then the camera goes off, the round timer is **restarted** with `Stage2PlayTime` (180 s; 180 when absent) and sent to every client, and the mission file's `AgentTrigger` runs. **Time-out winner**: the hunters (Alpha) in both stages; at a stage-2 time-out the final spy's detonation (mission) points for the round are cleared.
+- **Stage-2 refill**: dead players are respawned (full loadout, S5); living players get full health, full ammunition for **every** carried weapon and their gear re-applied (armour), not health only.
+- **Spy looks** (mission file): spies use `SpyModelSetting` (stock: model 6, no goggle, backpack 20), the final spy `AgentModelSetting` (model 10, backpack 20, primary weapons 94, 86, 87); the change effects `BountyFX` (to spy) and `FinalBountyFX` (to final spy); the intel item uses `ATTACH_T\Top_Secret.dtx` (`IntelObject`, `TotalNum` 5).
 - Spawns: `BountyHunter` list. Leaving: in stage 2 the last of a side leaving ends the round; in stage 1 the round ends when one player would be left.
+- **Intel on the ground** (Open question 30): each intel item has the same pick-up box as the Bombing Run bomb, half-extents (10, 25, 10) u, placed on its drop point and moved to the floor the same way (M9); a dropped intel goes to the carrier's last position, moved to the floor; out of the world or crushed, back to its drop point.
 
 ## M8. Quarantine Regen (`QRT`)
 
@@ -434,20 +487,26 @@ H = \begin{cases} 1 & N \le 3 \\ \max\big(\mathrm{round}(N \cdot r),\ H_{\min}\b
 - **Round win**: when no human is alive, infected win; when no infected is alive (after selection), humans win. **Time-out**: humans win.
 - **Per-player points** (mission file): human kills infected +3, infected killed by a human −1, infected infects a human +2, human infected 0; living members of the winning side get +10 (humans) or +5 (infected).
 - **Infected**: their own model and melee weapon from the mission file; after 3 s without moving they heal 0.1 every 1 s (`Infected_NoMovementHeal`); they take knock-back (S14).
+- **Becoming infected** (Open question 12, answered): a human killed by an infected's attack (the infection damage kind) is turned **at once**, in the same server frame as the kill, after the kill is counted: they change to Bravo, keep their position (dropped to the floor below) and are back alive with full health, as an infected; an effect (`PlayerToInfected` / `PlayerToHost` of the mission file, stock `Quarantine_Exp_01`) and an infection sound play at that spot. There is no wait and no respawn point. A human who dies any other way (fall, own grenade, a human's shot) stays dead until the next round.
+- **The infected's look and weapon**: the body becomes the model record's infection override (`InfectedOveridable`, or `HostInfectedOveridable` for a host; for example `Normal` → overrides 4 / 6; the override replaces render styles, armour, hit points and hands, `characters.md` 2); the head piece is the body's attached hair (or the event cap), goggle and backpack those of the mission file's `InfectedModelSetting` / `InfectedHostModelSetting` (stock: none); cosmetics are cleared. The weapons are replaced by the mission file's lists: stock infected melee weapon 191 (`Quarantine_Virus_Hand`), hosts 190 (`Quarantine_Host_Hand`); the server also removes that player's live projectiles of the kinds the mission file lists (grenades, mines, turrets …). A mercenary character uses its own infected model and weapon instead.
+- **Host selection** runs only in real rounds, not in the warm-up: the 20 s timer is started when a real round goes live; the warm-up has no infected at all. The H hosts are the first H living players after a shuffle of the player list (S16).
+- **The heal's unit**: `Heal` is a **fraction of the infected's maximum hit points** (0.1 = 10 % per `TickTime` 1.0 s), after `WaitingTIme` 3.0 s standing exactly still (any position change restarts the wait), interrupted by any change of hit points (damage) or by the fire posture; the first heal comes at once when the wait ends, then one per tick. A perk can scale it.
+- **Match winner**: there is none. The match ends after G rounds played (or when one player or fewer is left) and is reported with no winning team; players are ranked by their mission points (S13).
 - Spawns: `Quarantine` list (all `JSF`).
 
 ## M9. Bombing Run (`SBT`)
 
 - **Teams**: Alpha vs Bravo, **respawn allowed**. Warm-up, then rounds of `TimeLimit` 300 s. **G** = round wins.
 - One bomb (`JSFWeapon` and `CreedWeapon` are both `XK-2`, and the mission file's drop object) spawns at a random `Sabotage` drop point each round. Either team picks it up by touch and plants it at the **enemy's** `BombZoneTrigger` (`GameType` `Sabotage`); it is dropped when its carrier dies.
-- **Round win**: detonation → the planting team; defuse → the other team.
+- **Round win**: detonation → the planting team; defuse → the other team. As in M3, the detonation is only the map's camera and effect show (S15): no blast damage.
+- **The bomb on the ground** (Open question 30): a pick-up item with a box of half-extents (10, 25, 10) u, visible and solid to touches only; it is placed on its drop point and moved down to the floor (ray straight down from its centre, up to 10000 u, solid world and objects; centre set 25.1 u above the hit when the gap is larger than 25). A carrier's death drops it at their last position, again moved to the floor; a fall out of the world or crush death sends it back to its drop point at once.
 - **Time-out**: **both teams get a round win**.
 - **Match end**: a team has G wins or a team is empty; winner: more wins; if equal, the winner stays whatever the last round had (none after a time-out).
 
 ## M10. Seize and Secure (`HQM`)
 
 - **Teams**: Alpha vs Bravo, respawn allowed. Warm-up, then **one** round of G minutes.
-- A flag pole is created at the map's flag pole position. A team seizes it by using its own `ActivateTrigger` (`ActivateTrigger_A` for JSF, `ActivateTrigger_B` for Creed; the mission file sets the use time to 5 s). Seizing raises that team's flag from the bottom; the other flag disappears.
+- A flag pole is created at the map's flag pole position (Open question 24): the position and rotation of the map object named `FlagPolePos` (a plain base-class object; Ghost Town (279, −1466, −79), yaw 180°). The pole is a non-solid, shadow-casting model from the prop table entry `HQ_Flag_Pole` (`PROPS\HeadQuaters\HQ_flagpole01.ltb`), with two sockets `HQ_pole_top` and `HQ_pole_bottom`; the two flags are prop models `HQ_Flag_ALPHA` / `HQ_Flag_BRAVO` (`PROPS\HeadQuaters\HQ_flag01.ltb`, skins `ATTACH_T\CTF_Flag_R.dtx` / `CTF_Flag_B.dtx`, transparent style), created at the top and the bottom socket respectively with the top socket's rotation and moved by the mode as a flag rises. The use triggers stand at the pole (Ghost Town `ActivateTrigger_A` / `_B`, box (48, 179, 48), map `TimeAmount` 10 replaced by the mission file's 5). A team seizes it by using its own `ActivateTrigger` (`ActivateTrigger_A` for JSF, `ActivateTrigger_B` for Creed; the mission file sets the use time to 5 s). Seizing raises that team's flag from the bottom; the other flag disappears.
 - **Score**: the holding team gains 1 point per whole second its flag rises.
 - **Win**: a flag that reaches the top (`FlagMoveTime` 120 s of uninterrupted holding) wins at once.
 - **Time-out**: a flag still rising gets the `LastOccupyBonus` 50 points; then more points wins; else more enemy kills; else fewer deaths; else draw.
@@ -460,6 +519,9 @@ H = \begin{cases} 1 & N \le 3 \\ \max\big(\mathrm{round}(N \cdot r),\ H_{\min}\b
 ## M12. VIP Elimination (`VTDM`)
 
 - TDM (M1) in which a death is worth a number of points that depends on the victim's VIP rank, from the VIP data. The team counter is the sum of points; the first death that brings a team to G **points** ends the round. Personal VIP points are shown. Respawn as in TDM.
+- **The VIP data** (Open question 28; the default file `GMS\Vtdm.GMS`): rank weights `VIPPointWeight0..3` = 1, 3, 5, 7 for no rank, bronze, silver and gold. A death adds the **victim's** weight (read before any re-ranking) to the victim's enemy team, as in TDM for every kind of death (enemy kill, team kill, suicide, fall); an enemy kill also adds it to the killer's own VIP points.
+- **How many VIPs**: a table chosen by the goal G: the first `VIPElimination_Table` whose `TargetPoint` + 1 is above G (stock: `TargetPoint` 60 and 1000, so every stock goal 100..180 uses the second table). Its `VIPNumber<n>` gives the VIP count for a team of n players (n clamped to 0..8): second table 1 → 0, 2–4 → 1, 5–7 → 2, 8 or more → 3; first table 6 → 1, 7 → 1, 8 → 2, fewer → 0.
+- **How a player gets a rank**: each team keeps its players sorted by VIP points (more first), then experience (more first), then name (alphabetical). The top k players of that order are the VIPs, where k is the VIP count above: the first gets rank k, the second k − 1, … (with 3 VIPs: gold, silver, bronze; with one VIP that VIP is only bronze, worth 3). The order and ranks are recomputed for a team whenever its score rises (after a kill counts for it) and when a player joins it; every client is sent the new VIP list.
 
 ## M13. VIP Escort (`ESC`, clan `CESC`)
 
@@ -469,10 +531,25 @@ H = \begin{cases} 1 & N \le 3 \\ \max\big(\mathrm{round}(N \cdot r),\ H_{\min}\b
 ## M14. Arms Race (`VWRM`)
 
 - One Man Army (M5) with a weapon ladder: at given kill counts each player's weapon is replaced by the next weapon of the map's weapon table (a random roll chooses between the table and the player's own equipment). First to G kills wins. **No death drops** (`inventory.md` 12). Firing ends spawn protection.
+- **The table** (Open question 29): the map's mission file, or, when it has none (every stock map), the default file `GMS\VWRM.GMS`: one `Weapon_Step_Table` per goal G (15, 30, 45) and per optional ticket item (`ItemNo` −1 = everyone; 9062 and 9063 are premium items with their own tables). Each step has a kill count `Kill<i>`, a slot `WeaponType<i>` and up to five weighted weapon ids `Set<i>_<j>` / `Set_rate<i>_<j>` (a weight of 0 removes the entry). The default steps (weapon id, all weight 100):
+
+| G | kills: weapon id |
+|---|---|
+| 15 | 0: 325 (ACR), 4: 337 (Kriss), 7: 35 (M60), 10: 125 (R870), 12: 257 (M107CQ), 13: 110 (Desert Eagle), 14: 84 (M69HE frag) |
+| 30 | 0: 325, 4: 255 (M417), 7: 337, 11: 203 (MP7), 15: 35, 18: 220 (RPK), 21: 295 (M3 Super 90), 23: 125, 25: 257, 27: 110, 29: 84 |
+| 45 | 0: 325, 4: 255, 8: 351 (FS2000), 11: 337, 15: 203, 19: 152 (PP-19), 22: 35, 26: 220, 29: 386 (MG42), 32: 295, 35: 125, 38: 257, 41: 110, 44: 84 |
+
+- **When it changes**: at spawn (kill count 0) and each time the player's enemy-kill count **equals** a step's kill count, the player's weapon for that step is chosen: one roll r uniform in 0..100 (101 values); if r < `Percent` of the everyone-table (80), the table's weapon (a weighted pick among the step's entries); otherwise the player's **own equipped** weapon of that slot. If the player owns a ticket item and r is also below that item's `Percent` (50), the ticket table's weapon for the same step is used instead. So the table wins 80 / 101 = 79.2 % of the time. Each player is also told the kill count of their next step; reaching the last step's count (14 / 29 / 44) announces "last stage" to everyone.
 
 ## M15. Hunted (`HG`)
 
 - Last Man Standing (M6) with scavenging: players start with little, supply items and weapons drop on drop points, a death-camera hold of `DyingTime` 3.5 s, emotes, the time hunted is tracked and ranks the scoreboard. Spawns: unlocked `HungerGame` points in the warm-up, locked ones in rounds. Firing ends spawn protection.
+- **Details** (Open question 36; the mode's fuller rules belong to `game_modes_2.md`):
+  - **Start**: every player's loadout is replaced by a single weapon, id 934 (`fist`), with its normal ammunition; nothing else is carried.
+  - **Supplies**: the map's command `RandomMapItem <spawner>` (sent by the map's triggers) spawns items from the mission file's tables: the spawners are named map objects (`EditMapSpawner<n>`: a base name and `MapSpawnerMaxCnt` numbered objects); per call `DefaultActItemSpawnCnt` + `AddActItemSpawnCntPerPlayer` × living players objects are picked at random without repeats (stock Dark Hills: 130 + 2 per player, at most 150), and each picks by weight between a weapon (`SubWeaponRate` 45), gear (0), a general item (20), the player's own equipment (5) or nothing (30), then an entry of the matching list. A weapon item lies on the ground with gravity off, moved to the floor, with total ammunition = its maximum × U(0, 0.5) (at least 3) and a clip no larger than that, for the mission file's item lifetime. Nothing spawns in the warm-up.
+  - **`DyingTime`**: after death the client holds the death camera 3.5 s before starting its respawn wait (S5); in Hunted's rounds there is no respawn, so it is only the camera hold.
+  - **Time hunted**: per round, from the player's round play start until death, or for survivors until the round's time-out or end, added to the player's total (capped at the time the game has run); the total is shown and ranks the scoreboard after mission points.
+  - **System scan**: the map can switch a periodic radar scan on (`SystemScan 1`): every `SystemScanDelayTime` (10 s) it would show everyone's position for `SystemScanPlayTime` (5 s), but the periodic loop is disabled in this build and only the "off" message at the round's end remains.
 
 ## M16. Snowball Fight (`SFM`)
 
@@ -527,7 +604,11 @@ H = \begin{cases} 1 & N \le 3 \\ \max\big(\mathrm{round}(N \cdot r),\ H_{\min}\b
 8. **Map-placed weapons vanish after the first round end** (all weapon items are cleared). Keep.
 9. **Spawn protection does not stop protected players from shooting** except in the four free-for-all modes. Keep.
 10. **No auto-balance and no team switching** during a match. Keep.
-11. **The mission clock (`MissionTimeLimit`) starts but ends nothing.** Do not implement a match time limit for TDM.
+11. **The mission clock (`MissionTimeLimit`) starts but ends nothing.** Do not implement a match time limit for TDM. Confirmed (Open question 23): in every versus rule set the clock is only started and stopped; only the co-operative rule sets read it.
+12. **A detonation leaves everyone's dynamic lights forced on.** A plant forces each client's `DynamicLight` and `DynamicLightWorld` options to 1 and a defuse restores the player's own values, but the restore after a detonation is never reached, so after a detonated round the lights stay forced on until a later defuse (or the player changes the option). Keep or not (cosmetic); noted.
+13. **CTF counts captures and returns outside the Live phase.** Only the warm-up is excluded (M4). A capture during the 3 s round-over hold still adds to the score. Keep.
+14. **The S&D bomb always goes to team 1.** The hand-out names the objective's team but gives the weapon to every living team-1 player; harmless on stock maps (JSF always attacks). Keep.
+15. **The mutation box weights favour the winners** for the strongest items (the table in S12). Keep (data).
 
 ## Test cases
 
@@ -625,21 +706,92 @@ Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Tea
 61. Top. A team holds 120 s uninterrupted. → It wins at once.
 62. Time-out bonus. G = 8 → 480 s; at the end JSF's flag is rising with JSF 200, Creed 220. → JSF +50 = 250 → JSF wins.
 
+**Follow-up cases** (Open questions 4, 10, 12, 17–36; "old release" = plaintext maps of an older extracted client release, "data" = US attribute and mission files)
+
+63. **Intermission after every round.** S&D round 1 decided at t = 0 (G = 5, score 1–0): round end at t ≈ 3.05 s (bodies and weapons cleared), intermission until ≈ 6.05 s, match-end test (not over), mission start and round 2 setup on the following frames. The last round's end runs the same 3 s + 3 s before the match result.
+64. **Detonation hurts nobody (old release).** S&D Ghost Town, bomb planted at site A with one JSF and one Creed player standing on the site when the timer reaches 0 → both keep their health; JSF wins the round; the planter's detonations +1; no kill, death or suicide is counted; every client's view runs the site A camera script (first camera move at 0.15–0.2 s, effects from 0.4 s, last effect at 5.3 s).
+65. **Plant timing (old release XK-2 files).** Attacker inside the widened site box presses fire at t = 0 and holds: movement locked; the plant completes when the `FIRE_KEY` at 3904 ms of `fire_0` is consumed (at 60 fps: firing state on the press's update 0, `prefire` on update 1, `fire_0` from update 2, the key fires in the advance of update 236 and the plant is sent on update 237, 3950 ms); the bomb timer starts at 40 s. Released at t = 3.0 s → no plant, movement back; pressed again at t = 3.5 s → the plant completes about 3.9 s after that press (t ≈ 7.4 s), not 0.9 s.
+66. **Partial defuse.** Bomb ticking; a Creed player holds use on the site from t = 128 s to 131 s, lets go, and holds again from t = 132 s → defused at t = 139 s (7 s from the second press), not at 136 s.
+67. **Bomb beeps (data).** One interface beep each time the whole-second count of the bomb timer changes; the file by the time left at that moment: more than 30 s `T9COUNT1`, more than 20 s `T9COUNT2`, more than 10 s `T9COUNT3`, more than 5 s `T9COUNT4`, more than 0 s `T9COUNT5`. Example: the change from 26 to 25 s left (25.99 s) plays `T9COUNT2`; from 6 to 5 (5.99 s) `T9COUNT4`; from 5 to 4 (4.99 s) `T9COUNT5`.
+68. **Spawn families (old release).** Bombing Run on Ghost Town: the 12 + 12 `Sabotage` points; Seize and Secure: the 12 + 12 `HeadQuaters` points; neither uses `Team Death Match` points.
+69. **Flag pole (old release).** Seize and Secure on Ghost Town: the pole model is created at (279, −1466, −79) with yaw 180° (the `FlagPolePos` object); the flags start at its `HQ_pole_top` (Alpha) and `HQ_pole_bottom` (Bravo) sockets.
+70. **Arms Race (data).** G = 30, default table. A player reaches 7 kills: roll r = 50 → weapon 337; r = 79 → 337; r = 80 → the player's own equipped weapon of slot 1; reaching 8 kills → no change (no step at 8). G = 15, 14 kills → weapon 84 and "last stage" announced.
+71. **VIP points (data).** G = 140, a team of 5 → 2 VIPs. Ranking by VIP points: the top player is silver (worth 5), the second bronze (3), the others 1. Killing the silver VIP adds 5 to the killer's team and to the killer's VIP points; a fall death of the bronze VIP adds 3 to the other team.
+72. **VIP count (data).** G 100..180: team sizes 1, 2, 4, 5, 7, 8, 12 → 0, 1, 1, 2, 2, 3, 3 VIPs. G = 60 (first table): sizes 5, 6, 8 → 0, 1, 2.
+73. **Spy Hunt stage 2 (data).** The final spy is made at t = 300 s → every view on the map camera at `CameraPoint00` until t = 305 s; then the round timer is set to 180 s; nobody wins by t = 485 s → time-out, hunters (Alpha) win. At the switch a living hunter at 30 HP with an empty magazine gets full HP, full magazines for every weapon and their armour back; a dead hunter is respawned.
+74. **Quarantine infection (logic).** Real round live at t = 0; an infected (host since t = 20 s) kills a human with the infection hand at t = 50 s → in the same server frame the human is on Bravo, alive at full health at the spot where they died (on the floor), holding weapon 191. In the warm-up nobody is infected and no host is chosen.
+75. **Infected regeneration (data).** An infected with maximum 100 HP at 40 HP stands still from t = 0 → +10 at t = 3.0 s, +10 at 4.0 s, +10 at 5.0 s; it moves at t = 5.5 s → no heal until 3 s after it stops again; hit at t = 4.5 s → the wait restarts.
+76. **Mutation pick (data).** TDM, the toucher's team is behind by 20 % (condition 0): weights 10, 5, 10, 10, 10, 10, 10, 5, 5, 5 (sum 80) → item 0 with probability 10 / 80 = 0.125, item 7 (invulnerable 10 s) 5 / 80. Ahead by 20 % (condition 2): item 7 has weight 20 of 125.
+77. **Friendly fire order.** FF on, TDM: a teammate rifle hit of 40 enters the armour and hit-zone rules as 10 (the 0.25 scale comes first).
+78. **Protected player absorbs a shot.** Enemy P respawned 1 s ago (as the shooter's client sees it), enemy Q standing exactly behind P on the shot line: the shot hits neither P nor Q, no blood.
+79. **CTF capture in round over (logic, Quirk 13).** After a time-out has been decided, an Alpha carrier touches their zone with their flag at home during the 3 s hold → Alpha captures +1 and the carrier's captures +1.
+80. **Carried flag (data).** An Alpha (team 1) carrier: `ATTACH_M\flag01_back.ltb` with skin `ATTACH_T\CTF_Flag_B.DTX` on `1W_N`, visible to others while carrying, hidden after a capture, a return or the carrier's death.
+81. **Spectating (logic).** Elimination Pro, A killed by B (alive), enemy view on → A watches B; B dies → A watches the next living player of A's team; no teammate alive → living enemies; enemy view off → only teammates (and nobody to watch when none is alive). Last Man Standing: any living player.
+82. **Random draws (logic).** Two drop-point shuffles made in the same wall-clock second with the same point list give the same order (each reseeds with the clock in seconds).
+83. **Fast respawn (logic).** TDM, death at t = 0, the fast respawn item used at t = 0.5 s → the server accepts at once (no 5 s test), the item count drops by 1 (not with the premium pass), the old body disappears at once. No uses left → refused as illegal.
+84. **Hunted start (data).** Every player spawns into a round holding only weapon 934 (`fist`).
+85. **Occupied test crouched (logic).** A fully crouched player (half-extents (15, 40, 15)) at (0, 0, 0): a point at (0, 79.9, 0) is occupied, at (0, 80, 0) free (standing: 100).
+86. **Box half-extents (data).** Ghost Town site A at (284.7, −1618.8, −1419.5) with `Dims` (133.5, 64, 123.5): a planter at x = 284.7 + 183.4 = 468.1 is inside the plant test (≤ 133.5 + 50), at x = 468.3 outside.
+
 ## Open questions
 
 1. **Elimination naming.** The brief lists "Team Death Match" and "Elimination" as two modes. In this game they are one mode (`TDM`, shown as Elimination); this spec takes the brief's "Elimination" to mean Elimination Pro (`TSV`, M2). Confirm.
 2. **Respawn and protection values.** The reference carries marked edits that change the respawn waits (7.0 → 2.0 s client, 5.0 → 1.5 s server) and turn off spawn protection (3.0 s and 4.0 s → 0). This spec uses the earlier values. Check on the live game: time death to respawn in TDM with a stopwatch, and shoot a freshly respawned enemy.
 3. **Round phase lengths.** `ObjectEnd`, `MissionEnd` and `ObjectStart` default to 0 when the server file lacks them; only the client's copy of the server file has 3 / 3 / 0. Time the gap between a round's result and the next round's start in S&D (expect ≈ 6 s).
 4. **Bomb plant time.** The HUD gauge is 4 s and the zone accepts the plant when the client reports it; the exact hold time and whether moving or releasing fire cancels it are decided by the client's bomb weapon, which was not traced. Measure a plant with a stopwatch, and whether a partial defuse keeps its progress.
+   **Answered:** the plant is the bomb's fire animation (XK-2 `fire_0` 4000 ms, fire key at 3904 ms) with the planter's movement locked; releasing fire cancels and nothing is kept; the zone plants at once when the key's shot arrives inside the widened box. A partial defuse keeps no progress (every attempt gets the full 7 s); the plant's own "keep time" rule is moot because the zone's plant time is 0. Applied in M3; cases 65, 66. A live check on Steam (the XK-2 files may differ): time from pressing fire to the "planted" text.
 5. **Order of objects and the mission update** inside a server frame was not confirmed; this spec assumes deaths are handled before the frame's mission update.
 6. **Free-for-all team ids.** The lobby assigns them (Spy Hunt uses the player's room key + 1); confirm every player gets a different id in One Man Army. This also settles `hud_crosshair.md` open question 15 (everyone else is an enemy).
 7. **Room-data-only modes** (M22): Big Head, Race Combat, Team Race Combat, Lone Combat, Lone Combat Infected and the skill Elimination have no rules in the reference. They need a later reference or live play.
 8. **Last Man Standing winner** (Quirk 5): confirm on the live game whether the match winner really follows the first-player comparison (and the "more deaths" test), or whether a later build fixed it.
 9. **Co-op modes** (M19): lives per objective, revive rules and mission scripts were not traced in detail.
 10. **Spy Hunt stage 2 time** (`Stage2PlayTime` 180 s) and its time-out winner were not traced.
+    **Answered:** the round timer is restarted with `Stage2PlayTime` after the 5 s camera hold; a time-out in either stage goes to the hunters (Alpha); the stage-2 refill is health, ammunition for every weapon and gear. Applied in M7; case 73.
 11. **Join in progress off**: whether the lobby simply refuses joiners once the match has started was not traced (lobby side).
+    Still open (lobby side, `lobby.md`): the game server only sends the "closing" notices of S1; whether the lobby then refuses joiners is outside the game server. Checked: every rule set's closing test (S1 values unchanged).
 12. **Infected regeneration unit**: `Heal = 0.1` every 1 s after 3 s still; whether 0.1 is a fraction of maximum health or hit points was not traced.
+    **Answered:** a fraction of the infected's maximum hit points (10 % per second), interrupted by movement, damage and firing. Also settled here (brief): a human killed by an infected becomes infected at once in place; the infected's model is the body's infection override, the weapon the mission file's (191, hosts 190); host selection never runs in the warm-up; there is no match winner. Applied in M8; cases 74, 75.
 13. **Contradiction check with `hud_crosshair.md` D7**: it lists capture the flag among "round-based modes" with a timer. CTF is one round with a timer of 180 × G s; the timer is right, the label is loose. No change needed there, noted only.
 14. **Contradiction check with `grenades.md`**: none. Its open question 11 (grenades at a round's end) is answered in S11 (they keep their fuse; their kills outside the Live phase do not count); its question 14 (M67 knock-back) is specified in S14.
 15. **Contradiction check with `inventory.md`**: none; section 12's "no drop in snowball or the VIP weapon race" matches M14 and M16, and section 13's respawn matches S5. Addition: all ground weapons, including map-placed ones, are cleared at each round end (S11).
 16. **Contradiction check with `world_dat.md`**: none. Its open question 3 is answered in S12 (`ObjectSpawnPoint` = drop points for mode items, filtered by `GameType`, `Spawn` unused). Note that `GameStartPoint.Spawn` must be exactly 1 for versus modes (S4).
+17. **S&D detonation** (blast damage and who is hurt, credit, effect and sound, the planted bomb's object).
+    **Answered:** no blast at all: the stock detonation commands win the round for the attackers and run a camera-and-effects show; the planter gets a detonation statistic, nobody is hurt or killed. No bomb model is placed; the site's red indicator, the HUD countdown with per-second beeps, the planted and defused interface sounds and texts, and the forced dynamic lights are what clients get, the same for both teams. Applied in M3 and S15 (the look of the explosion groups is `effects_sounds.md` 9); cases 64, 67.
+18. **The sites' `PlantedCommand` and other command strings.**
+    **Answered:** S15 lists them by role: the planted command starts the bomb and round timers and locks/switches the sites and indicators; the detonated, defused and power-off commands; the controller's per-phase commands; the mission file's start and end triggers that switch each mode's objects; the use triggers of Seize and Secure; the spawn point command.
+19. **Spawn families of Bombing Run and Seize and Secure.**
+    **Answered:** `Sabotage` and `HeadQuaters` per team, `Spawn` 1 (S4); case 68.
+20. **A point's `Command` on respawn; the fast respawn item.**
+    **Answered:** S4 step 4 (once per spawn, unused in stock maps) and S5 (TDM and CTF only, skips the wait test, spends a lobby-counted use, removes the body at once); case 83.
+21. **Does the intermission come after every round?**
+    **Answered:** yes, because every stock objective ends its mission (S3 step 6, corrected); case 63.
+22. **Late-join closing in the elimination modes** (with Open question 11).
+    Partly answered: the closing notices are as in S1; whether a closed room refuses joiners is the lobby's (`lobby.md`). Measure: in a live Elimination Pro room 2 rounds from the end, try to join from a second account.
+23. **Does `MissionTimeLimit` end anything?**
+    **Answered:** no (Quirk 11).
+24. **Seize and Secure's flag pole.**
+    **Answered:** M10 (the `FlagPolePos` object, the `HQ_Flag_*` props and their sockets); case 69.
+25. **Spawn protection and instant-hit shots** (pass through, or stop and do nothing; blood).
+    **Answered:** they stop and do nothing, and the client draws no blood (S6, corrected); case 78. Still open: whether a plain surface puff appears at the stopping point. Measure: shoot a freshly respawned enemy standing in front of a wall and watch for a puff on the enemy.
+26. **Scoring details** (damage scaled before or after armour, the team-id filter, heals, the teammate-hit voice).
+    **Answered:** S8 Details; case 77.
+27. **Mutation boxes and the revenge buff.**
+    **Answered:** S12 (the item table, conditions and weights; revenge = item 10); case 76. Stat-by-stat rules: `gear_perks.md`.
+28. **VIP Elimination data and ranks.**
+    **Answered:** M12; cases 71, 72.
+29. **Arms Race table and roll.**
+    **Answered:** M14; case 70.
+30. **Box sizes and pick-up boxes.**
+    **Answered:** `Dims` are half-extents (Units and conventions); a player's box is the current hull, (15, 50, 15) standing (S4); the bomb and intel pick-ups are (10, 25, 10), dropped to the floor by a straight-down ray (M9, M7); cases 85, 86.
+31. **HUD and scoreboard per mode.**
+    Partly answered: the goal text and the scoreboard's mode-column title per mode (S13). Still open (the HUD's and lobby's specs own them): objective lines, gauge looks, column order beyond S13, level icon and clan emblem rules, tie order and the result screens. Measure: screenshots of the scoreboard and result screen in each mode with two players tied on kills.
+32. **Random draws.**
+    **Answered:** one C-library generator, reseeded from the clock; any uniform draw is parity (S16); case 82.
+33. **S&D side swaps and the bomb hand-out's timing.**
+    **Answered:** no swap outside the clan variants and VIP Escort; the bomb is added after the respawn and loadout and the start triggers, before the freeze, without drawing it (M3; Quirk 14).
+34. **Capture the Flag details** (carried flag, phases, assists).
+    **Answered:** M4 (the `1W_N` back flag, captures and returns in every phase but the warm-up, no assists); cases 79, 80.
+35. **Whom the dead may spectate.**
+    **Answered:** M2 (killer first with the enemy-view option, then living teammates, then enemies; free choice in Last Man Standing and Hunted); case 81.
+36. **Hunted's scavenging, `DyingTime` and time hunted.**
+    **Answered** at the depth this spec keeps (M15); the full mode belongs to `game_modes_2.md`; case 84.

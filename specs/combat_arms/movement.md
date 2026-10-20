@@ -11,8 +11,10 @@ Status: draft
 Sections: Summary; Units and conventions; Constants; Behavior (tick clock,
 input to control state, speed limit, acceleration, integration and friction,
 stopping, jumping, gravity and air movement, crouching, crouch-spam penalty,
-sprint and stamina, slopes and steps, falling and fall damage, other
-modifiers including hit knock-back, eye height); Per-tick order; Edge cases;
+sprint and stamina, slopes and steps, falling and fall damage, volumes
+(ladders, liquids, friction, speed factors, gravity volumes, jump pads,
+safety nets, damage volumes), other modifiers including pushers and hit
+knock-back, eye height); Per-tick order; Edge cases;
 Quirks; Test cases; Open questions.
 
 ---
@@ -62,9 +64,11 @@ no friction), and a short-lived jump factor weakens back-to-back jumps.
 | walk speed | 70 | u/s | Console variable `WalkVel`; also used when zoomed |
 | crouch speed | 50 | u/s | Console variable `DuckVel` |
 | jump speed | 330 | u/s | Console variable `JumpVel`; vertical velocity set on jump |
-| ladder speed | 200 | u/s | Speed limit on a ladder, also upward velocity cap |
+| ladder speed | 200 | u/s | Cap on upward velocity on a ladder; not scaled by penalties or speed factors, and there is no horizontal limit on a ladder (Volumes, "Ladders") |
 | player gravity | -1100 | u/s² | Along Y; console variable `PlayerGravity` |
-| ground friction coefficient k | 5 | 1/s | `5 × min(friction of containers touched)`, normally 5 |
+| ground friction coefficient k | 5 | 1/s | `5 × min(1, Friction of the volumes touched)`, normally 5; `Filter` and `SafteyNet` volumes do not count; k = 0 means no friction at all (Volumes) |
+| volume viscosity scale | 5000 | u/s² | Speed taken off per unit of a volume's `Viscosity` (same constant as grenades.md) |
+| viscosity minimum speed | 1 | u/s | Viscosity acts only when the speed is above this |
 | base move accel | 3000 | u/s² | Console variable `BaseMoveAccel` |
 | start accel | 500 | u/s² | Console variable `StartAccel` |
 | max accel | 3000 | u/s² | Console variable `MaxAccel`; also the cap on combined accel |
@@ -90,8 +94,8 @@ no friction), and a short-lived jump factor weakens back-to-back jumps.
 | fall damage full height | 700 | u | Drop that does 200 damage |
 | fall damage at full height | 200 | HP | Linear, not clamped above |
 | fall minimum | 50 | u | Second, redundant lower bound |
-| pusher air factor | 0.1 | × | Explosion push in the air is a tenth |
-| pusher max upward speed | 100 | u/s | Console variable `PusherMaxYVelocity` |
+| pusher air factor | 0.1 | × | A pusher's push on a player standing on nothing is a tenth |
+| pusher max upward speed | 100 | u/s | Console variable `PusherMaxYVelocity`; after a push, any upward speed above it is cut to it |
 | eye offset standing | 0.66 × stand half-height | u | Camera height above the hull centre (33 u with the fallback box; console variable `ChaseCamOffset` holds it) |
 | eye crouch offset | -13 | u | Added to the camera height × crouch rate (console variable `DuckDownCamOffSet`) |
 | camera rise time | 0.1 | s | Console variable `CameraMoveUpTime`; smoothing of upward camera steps |
@@ -222,7 +226,10 @@ except crouch, and sprint ends.
 
 The horizontal speed limit `V` for the tick, from the flags after step 9:
 
-- On a ladder: 200.
+- On a ladder: 200 (times the penalty and factors below), but on a ladder
+  this limit is never used as a clamp: the horizontal speed is not limited
+  at all and only the upward speed is capped, at a plain 200 (Volumes,
+  "Ladders").
 - Else, with `K` = the last direction speed (forward key held: forward run
   speed; else back held: back run speed; else a strafe key held: strafe run
   speed; else unchanged from before; all 285), and `r` the crouch rate after
@@ -260,8 +267,8 @@ V = V_1 \cdot (1 - P + S_{set}) \cdot f_{slow} \cdot f_{container}
 ```
 
   `S_set` is a set-item speed bonus (0), `f_slow` a temporary slow from
-  damage (1 when inactive), `f_container` the product of speed factors of
-  volumes the player is in (1).
+  damage (1 when inactive), `f_container` the product of the
+  `PlayerSpeedFactor`s of the volumes the player is in (1; Volumes).
 
 The reference character (figure DashSpeed 1.0, default vest MovePenalty 0.1
 and DashSpeed 0.4, no other gear) holding an M4A1-class rifle (0.1) has
@@ -269,8 +276,9 @@ and DashSpeed 0.4, no other gear) holding an M4A1-class rifle (0.1) has
 
 At the start of the motion step, if the horizontal velocity magnitude
 exceeds `V`, it is scaled down to exactly `V` (direction kept, vertical
-untouched). There is no other speed cap; see Integration for why the
-measured speed ends up higher.
+untouched). On a ladder this clamp is replaced by the upward cap. There is
+no other speed cap; see Integration for why the measured speed ends up
+higher.
 
 ### Acceleration
 
@@ -323,6 +331,11 @@ The engine integrates the object's velocity `v` and acceleration `a` over
 `dt`, with gravity `g = (0, -1100, 0)`:
 
 - First, a velocity with `|v|² < 0.1` is zeroed, and the same for `a`.
+- **Gravity switched off** (on a ladder, and on the first tick after
+  leaving one; Volumes, "Ladders"): none of the rules below apply. If both
+  are below threshold the object stops; otherwise `a` is used as it is (no
+  gravity, no projection onto the ground) and there is no friction, even
+  while standing on walkable ground.
 - **Standing on something**, and both are below threshold: the object
   stops (velocity and acceleration zero, no move).
 - **Standing on ground that is too steep** (`n.y < 0.7071` for the surface
@@ -338,7 +351,8 @@ The engine integrates the object's velocity `v` and acceleration `a` over
   - Else (normal walking) `a` is used as is (no gravity), with friction.
 - **Not standing:** `a ← a + g`, no friction.
 
-With friction (coefficient `k = 5`), exact closed form:
+With friction (coefficient `k = 5`, or less in a low-friction volume, but
+above 0), exact closed form:
 
 ```math
 v_{new} = \frac{a}{k} + \left(v - \frac{a}{k}\right) e^{-k\,dt}
@@ -350,7 +364,8 @@ v_{new} = \frac{a}{k} + \left(v - \frac{a}{k}\right) e^{-k\,dt}
 
 With `dt = 0.015`, `e^{-k dt} = 0.9277434863`.
 
-Without friction:
+Without friction, and also on the ground when `k = 0` (a volume with
+`Friction` 0; the closed form is not used as a limit):
 
 ```math
 v_{new} = v + a\,dt, \qquad \Delta x = v\,dt + \tfrac{1}{4} a\,dt^2
@@ -383,9 +398,11 @@ Run 285 → 4.44784 u per tick, 296.52 u/s. Walk 70 → 89.39 u/s. Crouch 50
 
 ### Stopping
 
-When the moving flag is off, the player is on ground, not in a jump, and in
-no current or viscous volume, braking runs after the motion step (before
-integration) and replaces the velocity:
+When the moving flag is off, the player is on ground, not in a jump, the
+summed current of the visible volumes the hull touches is zero and their
+summed viscosity is zero (a ladder's 0.4 counts, a volume's `Friction` does
+not), braking runs after the motion step (before integration) and replaces
+the velocity:
 
 - Let `h` = horizontal velocity. If `|h| > 5`: reduce its magnitude by
   `dt · K / 0.1` (42.75 u/s per tick at `K = 285`); if that would reach or
@@ -409,8 +426,10 @@ v_y = 330 \cdot (1 + J_{fig} + J_{model}) \cdot j
 
   where `j` is the jump factor at the start of the tick and `J` are the
   figure's and vest's jump bonuses (0). Horizontal velocity is kept. The
-  player is now "in a jump"; the request clears. A jump pad volume instead
-  adds its own launch velocity to the whole velocity.
+  player is now "in a jump"; the request clears. A jump pad volume makes
+  the request itself, without the jump key, and its launch velocity is
+  added to the whole velocity instead of setting `v_y` (Volumes, "Jump
+  pads").
 - **Jump factor `j`.** Starts at 1. On a jump tick, `j` becomes 0.3 (if it was
   already below 0.3 it decreases by `0.05·dt` instead, which cannot happen in
   practice). On every other tick, if `j < 1` it increases by `1.2·dt`
@@ -437,7 +456,9 @@ v_y = 330 \cdot (1 + J_{fig} + J_{model}) \cdot j
 ### Gravity and air movement
 
 - Gravity is -1100 u/s² on the player (other objects use -1600). Gravity
-  volumes replace it with the sum of their gravities.
+  volumes replace it with the sum of their gravities. Liquids do not change
+  the player's gravity (their -200 is for other objects only), and on a
+  ladder gravity is off (Volumes).
 - In the air there is no friction and no braking; horizontal velocity is
   kept when no key is held.
 - The speed clamp still applies every tick, using the current stance's
@@ -480,8 +501,9 @@ s(t) = (3t^2 - 4t + 1)\,T_0 + (-6t^2 + 6t) + (3t^2 - 2t)\,T_1 = 6t^2 - 8t + 3
     `s(0) = 3` the first tick of the new direction moves fastest (about
     0.26 of the full range at normal speed). The other direction's elapsed
     time is forgotten and restarts at 0 the next time that direction runs.
-  - On a ladder, while dead, or in free-movement volumes (water), `r` is
-    reset to 0 directly.
+  - On a ladder (the hull touching one), while dead, or in free movement
+    by the eye test (the eye point in a liquid or ladder volume; Volumes,
+    "Membership"), `r` is reset to 0 directly.
   - `t` is not clamped. Full crouch and full stand each take 10 ticks
     (150 ms) at full speed.
 - **Hull height.**
@@ -749,18 +771,207 @@ Fall damage is decided on the server from positions:
 - The client separately marks "falling" (for sounds and animation only)
   when not in a jump and a 150 u ray straight down hits nothing.
 
+### Volumes (containers)
+
+The maps' volume objects (world_dat.md, "Moving world models and volumes")
+act on the local player's movement on the client. Property defaults and
+clamps are in world_dat.md; the ones that matter here: `Viscosity` (0;
+liquids 0.035, `Ladder` 0.4), `Current` (0, 0, 0), `Friction` (1; `Ice`
+0), `PlayerSpeedFactor` (1), `PlayerGravity` (`Gravity` only, -2000),
+`Hidden` (switched by `ON` / `OFF`). A hidden volume is "not visible".
+
+**Membership** (Open question 21). Three different tests are used:
+
+- **The hull box.** The volumes whose brush the player's hull box overlaps
+  (touching counts; the whole box, not its centre) are the ones that act on
+  movement: ladder, viscosity, current, speed factor, ground friction,
+  gravity volumes and jump pads. The server uses the same box test for
+  volume damage.
+- **The eye point.** Once per rendered frame the camera's position (the eye,
+  Eye height) is tested against the visible volumes; the first one found
+  is the player's *eye volume* (a `Filter` found first is replaced by a
+  later one; `SafteyNet`, `JumpVolume`, `Weather` and dynamic-occluder
+  volumes are never the eye volume). "Free movement" means the eye volume
+  is a liquid (`Water`, `CorrosiveFluid`, `FreezingWater`) or a `Ladder`,
+  **or** the hull box touches a visible ladder. Free movement drives the
+  swimming and ladder controls, the crouch-rate reset and the stop on
+  leaving; the camera's upward-smoothing pause (Eye height) uses the eye
+  volume alone. Quirk: the eye test also skips `CorrosiveFluid` and
+  `Ice` volumes (Quirks), so a corrosive pool never gives free movement.
+- **The hull centre.** The server's safety-net test for fall damage looks
+  for a visible `SafteyNet` at the hull's centre point.
+
+**Per tick** (Per-tick order step 7b), before the ground check, with
+gravity first switched on unless the player was on a ladder last tick:
+
+1. **Ladders first.** If the hull touches any visible `Ladder`, the player
+   is *on a ladder* for this tick: gravity is switched off, and the first
+   such ladder's viscosity and speed factor are applied (once, however many
+   ladders overlap). Every visible ladder's current is added to the
+   current total.
+2. **Every other visible volume**, in the order found: its viscosity, its
+   gravity (if a `Gravity` volume) and its speed factor are applied, and
+   its current is added to the current total.
+3. **Jump pads** (also when switched off; the client does not check), see
+   "Jump pads" below.
+
+- **Viscosity** (Open questions 22 and 23), per volume, applied to the
+  velocity at once: if the volume's viscosity `c > 0` and `|v| > 1`, the
+  speed along the direction of motion drops by `5000·c·dt` (the velocity
+  becomes 0 if that is not less than the speed); vertical included. It is
+  skipped while the player is in a jump (from the tick after the jump tick
+  through the tick on which the landing is detected, Jumping), except on a
+  ladder. The jump tick itself and the tick after the landing tick are
+  slowed. Viscosity values are also summed for the braking test.
+- **Current**: `Current × dt` of every visible volume touched is added to
+  the velocity at step 7g (after the jump), whatever the volume's viscosity
+  and whatever the speed, even at rest; also while in a jump. (Non-player
+  objects differ: grenades.md.)
+- **Speed factor**: `f_container` in Speed limit is the product of the
+  visible volumes' `PlayerSpeedFactor`s (the first ladder's only).
+- **Ground friction**: `k = 5 × min(1, F)` with `F` the `Friction`s of all
+  volumes the hull touches, **hidden ones included**, except `Filter` and
+  `SafteyNet` volumes (and jump pads). Values are clamped to [0, 1] on load,
+  so a volume can only lower friction. `k = 0` uses the frictionless
+  formulas (Integration): a player holding a direction then ends each tick
+  at `V + 45` and moves `V·dt + 3000·dt²/4`; braking still stops a player
+  who lets go (test case 72).
+- **Gravity volumes**: if any visible `Gravity` volume is touched, the
+  player's gravity for the tick is the sum of their `PlayerGravity`s instead
+  of -1100 (two overlapping -300 volumes give -600). It replaces gravity in
+  the integrator and in the jump arc; the jump speed itself is unchanged.
+
+**Ladders** (Open questions 20 and 25).
+
+- Gravity is off on every tick the hull touches a visible ladder, and on
+  the first tick after it stops touching one (the switch-on at the start
+  of a tick looks at last tick's ladder state). With gravity off the
+  integrator ignores the ground (Integration): no friction, and an upward
+  acceleration is not pushed back into the floor. So a player standing on
+  the floor at a ladder's foot, looking up and holding forward, simply
+  rises; no jump or lift is needed (test case 56).
+- Movement is free movement: forward is the camera's full direction
+  (looking up climbs, looking down descends, looking level pushes along the
+  floor or into the wall); right stays horizontal. The ramp, the 500 start
+  and the jump factor work as on the ground. The crouch flag does not
+  halve the acceleration on a ladder; instead it sets the acceleration's
+  vertical part to -3000 (climb down), replacing whatever vertical part the
+  forward/back keys gave, and as usual skips the ramp. The crouch rate is
+  held at 0, sprint is impossible.
+- Speed: there is **no horizontal speed limit** on a ladder (the stance
+  clamp is skipped) and the upward speed is capped at a plain 200 at step
+  7d, after the viscosity; penalties and speed factors do not change the
+  cap, and downward speed is not capped. The stock ladder viscosity 0.4
+  takes 30 u/s off per tick. Climbing straight up at full ramp settles at
+  an end speed of 245, capped to 200 after viscosity at the start of each
+  tick, and 3.16875 u per tick (211.25 u/s). The climb starts slowly: while
+  the acceleration adds less than 30 u/s per tick (below 2000 u/s², the
+  first 17 ticks) the viscosity wipes the previous tick's speed each tick.
+- Letting go: no braking (the viscosity is not 0), no gravity; the
+  viscosity alone stops the player within a few ticks, and they hang.
+- **Jumping**: there is no jump on a ladder. The jump flag is never set
+  while on a ladder, so the key does nothing (it does not even count as
+  moving). A player leaves by moving out of the volume (back, strafe,
+  looking away, climbing past its top or bottom) or climbing down.
+- **Leaving**: the stance clamp applies again at once; gravity returns one
+  tick later. The velocity is **kept**, unless the eye volume was a ladder
+  or liquid on the previous tick and this tick is not free movement any
+  more (the eye and the hull left together); then the whole velocity is
+  zeroed at step 7d. Climbing out over a ladder's top therefore carries the
+  climbing speed (up to 245 u/s) into a short hop (test case 59).
+- Fall damage tracking is reset while on a ladder (Falling).
+
+**Liquids and swimming** (Open question 24). `Water`, `CorrosiveFluid` and
+`FreezingWater` are the liquid classes, and "free movement" is exactly the
+liquid classes plus `Ladder` (by the tests in "Membership").
+
+- Viscosity, current and speed factor act through the hull box like any
+  volume. Player gravity is unchanged (-1100). With the stock water
+  (viscosity 0.1, current (0, 1500, 0)) the current's +22.5 u/s per tick
+  beats gravity's -16.5: a player at rest rises at 0.275625 u per tick
+  (end speed 6.0 each tick) until the hull leaves the water, then drops
+  back: they float at the surface. In still water (current 0) the player
+  sinks, viscosity only slowing the fall a little.
+- The speed limit is the normal stance limit, horizontal only; vertical
+  speed is not limited.
+- **Swim controls** (only in free movement by the eye test): forward is
+  the camera direction with any upward part removed (then renormalized):
+  looking down and holding forward swims down, looking up moves level at
+  the full acceleration. The back key reverses it, so looking down and
+  holding back rises. Right stays horizontal. Crouch sets the vertical
+  acceleration to -1500 (the crouched base, halved as usual), replacing the
+  forward part's vertical, and since crouch is set the speed limit is walk
+  speed (70) and the run and jump flags are off. The 0.1 in-air factor is
+  never applied in free movement.
+- **Jump in a liquid**: the jump flag still needs ground (standing on the
+  bottom, not in a jump) and a fresh press, as on land. Then it is a
+  normal jump (`v_y = 330·j`, in a jump, `j` = 0.3) and, on that one tick,
+  the vertical acceleration gets +3000 (scaled by `j` like any
+  acceleration, with `j` as it was at the start of the tick).
+  Holding the key does nothing more; there is no swim-up key. Jump-pad
+  requests are dropped in free movement.
+- The crouch rate is held at 0; the camera's upward smoothing is paused.
+- **Getting out** over an edge has no special rule: the stair step (Slopes
+  and steps) climbs a ledge up to 30.5 u above the hull's bottom, in the
+  air as on land. When the eye leaves the liquid (and the hull touches no
+  ladder) the velocity is zeroed once, at step 7d of that tick.
+- There is no drowning and no breath.
+
+**Jump pads** (`JumpVolume`, Open question 10). The pad's launch velocity
+is `Velocity × forward`, with `Velocity` the speed (u/s, default 1000) and
+`forward` the forward vector of the pad object's `Rotation` (world_dat.md).
+It fires on its own, without the jump key: when the hull touches a pad and
+the player was on ground on the previous tick (walkable, not a character,
+not in a jump), the pad requests a jump. The jump then happens on this
+tick if the player is on ground now and not on a ladder (Jumping): the pad
+velocity is **added** to the velocity (horizontal and vertical; not
+scaled by the jump factor), instead of setting `v_y` = 330. Otherwise it is
+a normal jump: in a jump, `j` = 0.3, the ramp bypassed on that tick, and
+the stance clamp applies to the horizontal part from the next tick on.
+Overlapping pads: the last one found wins. A player standing on a pad is
+relaunched on the tick after each landing is detected. A player who falls
+or jumps into a pad is not launched until they land in it. Pads do not
+work in free movement.
+
+**Safety nets** (`SafteyNet`, Open question 26) take no part in the
+physics: they are left out of the friction minimum and of the eye volume,
+and their viscosity, current and speed factor are fixed at 0, (0, 0, 0)
+and 1 in every observed map. Their only effect is the fall-damage test at
+the hull's centre (Falling and fall damage). So a net's `Friction` 0 in a
+map changes nothing. A `Gravity` volume's `Friction` 0 (in one gravity map
+every gravity volume has it) does make the ground frictionless inside it.
+
+**Damage volumes** (Open question 28). `Damage` is per second, dealt by the
+server to a player whose hull touches the volume, of type `DamageType`
+(world_dat.md). The damage type has no movement effect of its own: freezing
+damage (`FREEZE`) only tints the screen blue, shows a frozen icon on the
+HUD and sways the camera slightly; movement and input stay allowed. The
+slowdown players feel in the observed freezing `DamageVolume`s comes from
+those volumes' own properties (`PlayerSpeedFactor` 0.7 and `Friction` 0:
+test case 74).
+
 ### Other modifiers (brief)
 
-- **Ladders:** gravity off, speed limit 200, upward velocity capped at 200,
-  movement uses the camera's full direction.
-- **Containers (water and other volumes):** viscosity removes
-  `viscosity_max · viscosity · dt` of speed per tick (skipped right after a
-  jump); currents add `current·dt` to velocity; friction coefficient is
-  `5 × min(volume friction)`. Leaving a free-movement volume zeroes the
-  velocity.
-- **Explosion pushers:** within radius, with a clear line, add
-  `strength·(1 - dist/radius)` along the push direction to velocity (a tenth
-  in the air), vertical capped at 100.
+- **Pushers** (Open question 27). A pusher has a position, radius, start
+  delay, duration and strength; the client keeps a list of them. Each tick
+  (Per-tick order step 9) every pusher's delay counts down by `dt`; once
+  it is used up, its time left counts down by `dt` too, and it is removed
+  when that reaches 0. While active, if the hull centre is less than
+  `radius` from the pusher and the straight segment between them hits
+  nothing, the velocity gets
+  `strength·(1 - dist/radius)` along the unit vector from the pusher to the
+  hull centre (three-dimensional), a tenth of that if the player stands on
+  nothing. The push repeats on every active tick. Then, if the vertical
+  velocity is above 100, it is set to 100, also when it was already above
+  100 before the push (a jumping player's 330 is cut to 100). Downward
+  speed is not capped. Which pushers exist: the impact effect of
+  full-metal-jacket bullets names a pusher record (`BulletExpPusher`:
+  radius 0, delay 0.05 s, duration 0.5 s, strength 400), and a second
+  record (`RocketPusher`: radius 0, 0.05 s, 0.5 s, 800) is not used by
+  anything; with radius 0 neither ever pushes. Explosions do not push
+  players. The only working pusher is sent by the server when an AI kicks
+  a door open in front of its player target: at the door's position,
+  radius 96, no delay, 1 s, strength 1000 (66 active ticks).
 - **Movement disallowed** (frozen, round start): horizontal velocity halved
   each tick, upward velocity removed, acceleration cleared except gravity
   (at most -1100 downward).
@@ -829,7 +1040,8 @@ one (80), not 0.9.
 
 1. (Networked play) other characters and moving world models are rewound
    to the time the player sees, for collision only; restored at the end.
-2. Note the volume type the player is in (and last tick's).
+2. Note the eye volume (from the camera point of the last rendered frame;
+   Volumes, "Membership") and last tick's.
 3. Update control flags from input (Input to control state, steps 1–9).
 4. Update the crouch rate, then the crouch-spam values (using movement
    history up to last tick).
@@ -837,10 +1049,14 @@ one (80), not 0.9.
 6. Update the last direction speed `K`.
 7. Motion step:
    a. if movement is disallowed, damp and skip to step 8;
-   b. zero acceleration; process volumes (gravity on/off, ladder, viscosity,
-      gravity override, speed factor, currents, jump pads);
+   b. zero acceleration; process the volumes the hull touches (gravity on
+      unless on a ladder last tick, ladders, viscosity, gravity override,
+      speed factor, current totals, jump pads; Volumes);
    c. ground check from last tick's standing state; handle landing;
-   d. compute the speed limit and clamp horizontal velocity;
+   d. compute the speed limit and clamp horizontal velocity (on a ladder:
+      cap the upward speed at 200 instead); if last tick's eye volume was
+      a liquid or ladder and this tick is not free movement, zero the
+      velocity;
    e. compute the acceleration (base, crouch, air factor, ramp, sum, clamp,
       start rescale), then scale by the jump factor if below 1; while the
       infection-mode knock-back timer runs, replace it by the push;
@@ -849,7 +1065,7 @@ one (80), not 0.9.
    g. add volume currents to velocity; if dying or movement is blocked,
       zero velocity and acceleration.
 8. Braking when no movement keys are held (Stopping).
-9. Explosion pushers.
+9. Pushers (Other modifiers).
 10. Resize the hull for the crouch rate again.
 11. Integrate with gravity and friction, move through the world with
     sliding and stair-stepping, update what the player stands on, apply the
@@ -929,6 +1145,33 @@ Stamina and the HUD update once per rendered frame after the ticks.
   round-trip delay only if we simulate latency.
 - **Crouch release delay** is measured on the wall clock (100 ms), not in
   ticks; a tap holds crouch for at least 7 ticks.
+- **No horizontal speed limit on a ladder.** Only the upward speed is
+  capped (at 200); sideways and downward the acceleration (45 u/s per tick
+  at full ramp) beats the ladder's viscosity (30 u/s per tick), so speed
+  keeps growing while the hull stays in the volume. Keep; ladder volumes
+  are narrow, so it rarely shows.
+- **Ladder top hop.** Leaving a ladder keeps the velocity and gravity
+  returns one tick late, so climbing out over the top carries up to
+  245 u/s upward into a short hop. Keep.
+- **The eye test skips corrosive fluid and ice.** The set of volume
+  classes the eye test ignores was meant to leave out generic volumes, but
+  is built from a class number instead of its flag, which also leaves out
+  `CorrosiveFluid` and `Ice` (and lets generic `VolumeBrush`es be the eye
+  volume). So a corrosive pool never gives swimming or the crouch reset;
+  its viscosity, current and damage still act through the hull. Keep.
+- **Switched-off volumes still lower friction.** The ground-friction
+  minimum does not check whether a volume is hidden. Keep.
+- **The pusher's upward cap also cuts speeds already above it**: any push,
+  however small, sets a vertical speed above 100 to 100. Keep (with no
+  working explosion pushers it only matters for the AI door kick).
+- **Bullet impacts carry a pusher of radius 0**, which can never reach
+  anyone, so bullets and explosions do not push players. Keep (do not
+  invent a radius).
+- **Jump pads keep their horizontal part for one tick only.** The stance
+  clamp applies from the next tick, so a pad's horizontal launch (the dam
+  map's pads, whose direction points 45° down toward -Z by the rotation
+  reading in world_dat.md, Open question 29) moves the player about 20 u
+  on the launch tick and is then cut to the run speed. Keep.
 
 ## Test cases
 
@@ -1138,6 +1381,119 @@ Numbers rounded to 4 decimals where not exact.
     hit by the same round: no change. The M9 knife (`DamageMovePenalty` 20
     but duration 0): no knock-back.
 
+Volume cases (56–79): a stock ladder has viscosity 0.4 and current 0; the
+hull is the fallback box; "at full ramp" means `L_f` = 3000.
+
+56. **Ladder from the floor.** Standing at rest on flat ground, the hull
+    touching a ladder, looking straight up (camera forward (0, 1, 0)),
+    forward held from tick 1. Gravity off, no ground friction or push-in.
+    Upward acceleration and end speed / height above the start: tick 1:
+    500, 7.5, 0.028125; tick 2: 590, 8.85, 0.0613125; tick 3: 680, 10.2,
+    0.0995625; tick 17: 1940, 29.1, 1.166625 (each tick's start speed is
+    below 30 and wiped by the viscosity); tick 18: 2030, 30.45, 1.2808125;
+    tick 19: 2120, 32.25, 1.4068125; tick 29: 3000, 124.2, 7.770375. From
+    tick 38 on: speed 245 at each tick's end, 200 after viscosity and cap,
+    3.16875 u per tick (211.25 u/s); height 36.230625 after tick 40.
+57. **Letting go on a ladder.** Climbing as case 56 at steady state (end
+    speed 245), release all keys. Speed after viscosity and cap on ticks
+    1–7: 200, 170, 140, 110, 80, 50, 20; 0 from tick 8 (no braking, no
+    gravity). Height gained over ticks 1–7: 11.55 u; the player then hangs.
+58. **Jump and crouch on a ladder.** Hanging at rest in a ladder: holding
+    jump does nothing (no jump, moving flag off, speed stays 0). Holding
+    crouch: acceleration (0, -3000, 0) from tick 1 (not halved, no ramp, no
+    500 start); end speed -45 and height -0.16875 after tick 1; -60 and
+    -0.5625 after tick 2; crouch rate stays 0.
+59. **Ladder top hop.** Climbing straight up at steady state (end speed
+    245); on the next tick the hull no longer touches the ladder and the eye
+    was not in it last tick. Tick 1: velocity kept, no viscosity, no cap, no
+    gravity: rises 3.675 u, vertical speed stays 245. Tick 2: gravity back:
+    rises 3.613125 u, vertical speed 228.5.
+60. **Leaving with the eye.** Last tick's eye volume was a ladder (or
+    water); this tick neither the eye nor the hull is in a free-movement
+    volume; velocity (100, 50, 0) at the start of the tick: it is zeroed
+    at step 7d.
+61. **No horizontal limit on a ladder.** On a ladder, horizontal speed 300
+    at the start of a tick (above the 285 run limit, `P` = 0): not clamped;
+    after viscosity 270.
+62. **Box versus eye.** A stock-water volume (viscosity 0.1, current
+    (0, 1500, 0)) whose top is 20 u above the floor; the player stands on
+    the floor (feet in it, eye 83 u up): the hull touches it, so viscosity
+    and current act and braking is off; the eye is not in it, so crouching
+    works normally (case 21 rates) and there are no swim controls.
+63. **Current without viscosity; slow speeds.** A `VolumeBrush` with
+    viscosity 0 and current (0, 0, 100): the velocity gains (0, 0, 1.5) at
+    step 7g every tick, also from rest. A volume with viscosity 0.1 and
+    speed 0.9: unchanged by viscosity; speed 5: becomes 0 (7.5 ≥ 5); speed
+    20: 12.5.
+64. **Viscosity during a jump.** Running inside a viscosity-0.1 volume
+    (no current, reaching above the apex), jump on tick 1 (landing
+    detected on tick 42, as case 13): viscosity acts on tick 1 (before the
+    jump) and again from tick 43; it is skipped on ticks 2–42. On a ladder
+    it is never skipped.
+65. **Floating in stock water.** Hull and eye inside stock water, at rest,
+    no keys, not standing: every tick ends at vertical speed +6.0 and rises
+    0.275625 u (18.375 u/s): the 6.0 left from the previous tick is wiped
+    by the viscosity, the current adds 22.5 and gravity takes 16.5.
+66. **Sinking in still water.** Water with viscosity 0.03 and no current,
+    at rest, no keys: vertical speed after ticks 1, 2, 3: -16.5, -30.75,
+    -45.0; after tick 10: -144.75, fallen 10.2375 u; after tick 20:
+    -287.25, fallen 41.85 u.
+67. **Swim controls.** Eye in water, hanging at rest, tick 1 (500 start):
+    looking 30° down holding forward: acceleration 433.0127 horizontal,
+    -250 vertical; looking 30° up holding forward: 500 horizontal, 0
+    vertical; looking 30° down holding back: +250 vertical. Holding crouch
+    only: (0, -1500, 0), speed limit 70, crouch rate 0.
+68. **Jump in water.** Standing on the bottom of a water volume (eye in
+    it), press jump: a normal jump (vertical speed set to 330, `j` = 0.3)
+    with +3000 upward acceleration on that tick. Pressing jump while not
+    standing: nothing.
+69. **Corrosive fluid is not free movement.** Eye and hull in a
+    `CorrosiveFluid` volume: no swim controls (forward stays horizontal,
+    crouch halves the acceleration as on land), crouch rate follows case
+    21; its viscosity, current and burn damage still act.
+70. **Jump pad.** Standing at rest on flat ground (on ground last tick),
+    the hull touching a pad with `Velocity` 800 and forward (0, 1, 0), no
+    keys. Tick 1: vertical speed 800 (not 330, not scaled by `j`), rises
+    11.938125 u, ends at 783.5; in a jump, `j` = 0.3 after the tick. With a
+    jump factor of 0.3 already, the launch is still 800. A player standing
+    on the pad after a landing is launched again on the tick after the
+    landing is detected.
+71. **Falling onto a pad.** Falling through a pad volume from above: no
+    launch while in the air; launched on the tick after the landing tick.
+72. **Frictionless ground.** Inside a volume with `Friction` 0 (`k` = 0),
+    on flat ground, steady run (`P` = 0): end speed 330, 4.44375 u per
+    tick (296.25 u/s). Release all keys: speeds after braking 287.25,
+    244.5, 201.75, 159, 116.25, 73.5, 30.75, then 0 on tick 8; distance
+    16.695 u over ticks 1–7.
+73. **Friction combinations.** Stock water with `Friction` 0.1 (one
+    observed map): `k` = 0.5. A `SafteyNet` or `Filter` with `Friction` 0:
+    `k` = 5. A hidden `Ice` volume: `k` = 0. `Ice` overlapping water
+    (`Friction` 1): 0. A stored `Friction` of 2: clamped to 1, `k` = 5.
+74. **Freezing damage volume.** A `DamageVolume` with `PlayerSpeedFactor`
+    0.7, `Friction` 0 and `DamageType` `FREEZE`, `P` = 0: run limit 199.5;
+    steady end speed 244.5, 3.16125 u per tick (210.75 u/s). Two such
+    volumes overlapping: factor 0.49, limit 139.65. The freezing damage
+    itself changes no movement value.
+75. **Gravity volume.** Inside a `Gravity` volume with `PlayerGravity`
+    -300, jump from rest: after tick 1 height 4.933125, vertical speed
+    325.5; after tick 2: 9.79875, 321.0. Two overlapping -300 volumes:
+    gravity -600. A liquid's -200 never applies to the player.
+76. **Bullet pusher.** A full-metal-jacket bullet hits the floor 10 u from
+    the player: its pusher (radius 0) never pushes; velocity unchanged.
+77. **Door-kick pusher.** Radius 96, strength 1000, no delay, 1 s. Player
+    on the ground, hull centre 48 u from it, clear line, at rest: +500 u/s
+    along the line on each active tick. Standing on nothing: +50. In the
+    air with vertical speed 330, pusher 48 u straight below: vertical
+    330 + 50, then cut to 100. Active on ticks 1–66 after it is added,
+    removed on tick 67.
+78. **Safety net at the centre.** A drop of 500 u onto a floor with a
+    `SafteyNet` volume 30 u deep on it: the hull touches the net but its
+    centre (50 u up) is outside, so the landing does 100 damage. With the
+    net 60 u deep: no damage.
+79. **Safety net physics.** Walking into a `SafteyNet` volume (stored
+    `Friction` 0): speed limit, friction (`k` = 5), braking and steady
+    distances exactly as without it (case 4).
+
 ## Open questions
 
 1. **Hull sizes.** The stand and crouch boxes come from each character
@@ -1194,7 +1550,19 @@ Numbers rounded to 4 decimals where not exact.
    count, which on Windows advances in 10–16 ms steps; we use exact frame
    time. Effects should be invisible.
 10. **Jump pads** add their launch velocity; the pad's data and activation
-    rules belong to a world-objects spec.
+    rules belong to a world-objects spec. (Also asked: `JumpVolume`'s
+    `Velocity` is a number in the maps, 800 to 3000: its direction, and
+    when it fires: entering, standing in it, or only a jump inside it.)
+    **Answered:** `Velocity` is a speed; the direction is the forward
+    vector of the pad object's `Rotation` (the gravity map's pads point
+    straight up, 800 and 1400). It fires on its own, without the jump key,
+    whenever the hull touches the pad and the player was on ground on the
+    previous tick and is on ground now (not in a jump, not on a ladder, not
+    in free movement): the pad velocity is added to the velocity, not
+    scaled by the jump factor, and the rest is a normal jump. Standing on a
+    pad relaunches on the tick after each landing is detected. Applies in
+    Volumes, "Jump pads", and Jumping; test cases 70 and 71. The dam map's
+    pads: Open question 29.
 11. **Jump factor and crouched air acceleration.** The Acceleration section
     scales by `j` when `j < 1`, but test case 20's +2.25 u/s per tick fits
     `j = 1`. Does `j` scale the crouched in-jump 150 u/s²?
@@ -1273,3 +1641,95 @@ Numbers rounded to 4 decimals where not exact.
     `K²·(1 - t)` along the hit direction, and run and sprint are off. See
     Other modifiers; test case 55. The figure types of the infected
     characters (their `StiffDuration`) belong to a game-modes spec.
+20. **Ladder from the ground.** Standing on walkable ground inside a
+    `Ladder` volume, looking up and holding forward, the Integration rules
+    push the upward acceleration back into the ground, so the ladder could
+    only be climbed by entering it in the air. What lifts a player at a
+    ladder's foot? Jumping off a ladder, and what happens on leaving one?
+    **Answered:** on a ladder the player's gravity is switched off, and
+    with gravity off the integrator skips all of its ground rules (no
+    push-in, no friction), so the upward acceleration lifts the player
+    straight off the floor (case 56). There is no jump on a ladder (the
+    key does nothing). On leaving, the velocity is kept and gravity
+    returns one tick late (a hop over the top, case 59); it is zeroed only
+    when the eye was in the ladder (or a liquid) on the previous tick and
+    nothing gives free movement now (case 60). Applies in Volumes,
+    "Ladders", and Integration; test cases 56–61.
+21. **Container membership.** Is a player "in" a volume when the hull's
+    centre is inside, or when the hull touches it?
+    **Answered:** for movement (ladder, viscosity, current, speed factor,
+    friction, gravity volumes, jump pads) and for volume damage, when the
+    hull **box** touches the volume. Free movement (swimming, crouch reset,
+    stopping on leaving) also uses the eye point, once per frame. The
+    fall-damage safety-net test uses the hull's centre point. Applies in
+    Volumes, "Membership"; test cases 62, 69 and 78.
+22. **`viscosity_max`.** Its value for players; whether viscosity also
+    acts only above 1 u/s; whether the current applies when the volume's
+    viscosity is 0.
+    **Answered:** 5000 (the same constant as for grenades), only when the
+    speed is above 1 u/s and the volume's viscosity is above 0. Unlike
+    grenades, a player gets every visible volume's current whatever its
+    viscosity and whatever the speed. Applies in Volumes and Constants;
+    test case 63.
+23. **"Skipped right after a jump".** On which ticks exactly?
+    **Answered:** on every tick the player is in a jump: from the tick
+    after the jump tick through the tick on which the landing is detected
+    (ticks 2–42 for a jump on tick 1 on flat ground). The jump tick itself
+    and the tick after the landing tick are slowed. Never skipped on a
+    ladder; currents are never skipped. Applies in Volumes; test case 64.
+24. **Swimming.** Speed limit, acceleration and gravity in the liquids;
+    whether view, jump or crouch move a swimmer up or down; getting out;
+    drowning; is "free movement" exactly the liquid classes?
+    **Answered:** the normal stance limit (horizontal only) and
+    acceleration; player gravity unchanged (-1100); the stock water's
+    current floats a player at the surface, still water sinks them. Looking
+    down and holding forward swims down (an upward view part is removed),
+    back reverses it, crouch accelerates down at 1500 (walk-speed limit);
+    the jump only works from the bottom, as a normal jump. No special
+    edge climb (the stair step does it), the velocity is zeroed once when
+    the eye leaves, no drowning or breath. Free movement is the liquid
+    classes plus `Ladder`, by the eye point (or the hull touching a
+    ladder); `CorrosiveFluid` never counts (quirk). Applies in Volumes,
+    "Liquids and swimming"; test cases 62 and 65–69.
+25. **Ladder speed.** Is the 200 limit scaled by the penalty and the speed
+    factors like the other limits?
+    **Answered:** no. On a ladder the horizontal speed is not limited at
+    all, and only the upward speed is capped, at a plain 200 (no penalty,
+    no speed factor, no downward cap). Applies in Speed limit and Volumes,
+    "Ladders"; test cases 56 and 61.
+26. **Volume property defaults; friction 0 in safety nets and gravity
+    volumes; do safety nets take part in the physics?**
+    **Answered:** `Friction` defaults to 1 for every class except `Ice`
+    (0), `PlayerSpeedFactor` to 1 for every class (world_dat.md). Ground
+    friction is `5 × min(1, Friction)` over the volumes touched, without
+    `Filter` and `SafteyNet`: a safety net's 0 changes nothing, a gravity
+    volume's 0 makes the ground frictionless inside it. Safety nets have no
+    physics at all; they only stop fall damage. Applies in Volumes; test
+    cases 72, 73 and 79.
+27. **Pushers.** The pusher records (radius, strength, duration), the push
+    direction, and how the 100 u/s upward cap works when the speed is
+    already above it.
+    **Answered:** the records are `BulletExpPusher` (radius 0, delay
+    0.05 s, duration 0.5 s, strength 400; named by the full-metal-jacket
+    bullet impact) and `RocketPusher` (radius 0, 0.05 s, 0.5 s, 800;
+    unused). With radius 0 they never push: explosions do not push players.
+    The only working pusher is an AI's door kick (radius 96, no delay, 1 s,
+    1000). The push points from the pusher to the hull centre in 3D,
+    repeats every active tick, and afterwards any upward speed above 100
+    is set to 100, also when it was already above it. Applies in Other
+    modifiers, "Pushers"; test cases 76 and 77.
+28. **Damage volumes.** The `DamageType` values and what freezing damage
+    does.
+    **Answered:** `DamageType` names an entry of the game's damage-type
+    table (world_dat.md lists the class defaults and the names seen in
+    maps). Freezing damage is ordinary damage plus a blue screen tint, a
+    frozen HUD icon and a slight camera sway; it does not slow the player.
+    The observed freezing `DamageVolume`s slow players through their own
+    `PlayerSpeedFactor` 0.7 and `Friction` 0. Applies in Volumes, "Damage
+    volumes"; test case 74.
+29. **The dam map's jump pads.** Read with world_dat.md's rotation formula,
+    its three pads (2000, 2000 and 3000 u/s) point 45° downward toward -Z,
+    which would only shove a player about 20 u along the floor. Check live:
+    walk onto one and watch whether the player is thrown up and forward
+    (the pitch sign would then be the other way round for these objects) or
+    only shoved.
