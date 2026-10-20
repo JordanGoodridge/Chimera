@@ -652,7 +652,11 @@ struct Soak {
     mismatch_runs: BTreeMap<(u64, &'static str, String), (u64, u64, String, String, u64)>,
     /// (map, visit, round, app, counts): sampled a second into each freeze.
     samples: Vec<(String, u32, u32, String, Counts)>,
-    frame_ms: Vec<(u64, f64, u64)>,
+    /// The server's frames: (step, wall ms, ticks, CPU ms of every
+    /// thread of the process while it ran).
+    frame_ms: Vec<(u64, f64, u64, f64)>,
+    /// The process's threads' CPU clocks, for `frame_ms`.
+    cpu: crate::stack::metrics::AllThreads,
     rss: Vec<(u64, String, f64)>,
     map: String,
     visits: HashMap<String, u32>,
@@ -739,10 +743,12 @@ impl Soak {
         self.sim.link.lock().unwrap().advance(frame);
         let before = self.sim.server.app.world().resource::<SimClock>().tick;
         let t = Instant::now();
+        let c0 = self.cpu.read().cpu_ns;
         self.sim.server.app.update();
+        let c1 = self.cpu.read().cpu_ns;
         let ms = t.elapsed().as_secs_f64() * 1e3;
         let ticks = self.sim.server.app.world().resource::<SimClock>().tick - before;
-        self.frame_ms.push((self.step, ms, ticks));
+        self.frame_ms.push((self.step, ms, ticks, c1.saturating_sub(c0) as f64 / 1e6));
         for i in 0..self.sim.clients.len() {
             let id = self.sim.client_id(i);
             let Some(e) = self.sim.character_of(i) else { continue };
@@ -1442,6 +1448,7 @@ fn soak_four_clients_and_bots_over_map_changes() {
         mismatch_runs: BTreeMap::new(),
         samples: Vec::new(),
         frame_ms: Vec::new(),
+        cpu: Default::default(),
         rss: Vec::new(),
         map: String::new(),
         visits: HashMap::new(),
@@ -1670,20 +1677,24 @@ fn report(soak: &mut Soak, minutes: f64, real: Duration) {
         }
     }
     // Frame time per game-minute.
-    println!("\nminute | server frames | mean ms | p95 ms | p99 ms | max ms | ms per tick");
+    println!("\nminute | server frames | mean ms | p95 ms | p99 ms | max ms | ms per tick | CPU ms median");
     let mut minute_medians = Vec::new();
     for (m, chunk) in soak.frame_ms.chunks(64 * 60).enumerate() {
         let mut ms: Vec<f64> = chunk.iter().map(|c| c.1).collect();
         let ticks: u64 = chunk.iter().map(|c| c.2).sum();
         let sum: f64 = ms.iter().sum();
         let p95 = percentile(&mut ms, 0.95);
-        // Full minutes' medians: wall times on a shared machine jump with
-        // its load (p95 too much to compare).
+        // Full minutes' medians of CPU time (every thread's, while the
+        // server's frame ran): wall times on a shared machine jump with
+        // its load (a busy minute can triple the median), CPU time far less
+        // (p95 too much to compare).
+        let mut cpu: Vec<f64> = chunk.iter().map(|c| c.3).collect();
+        let cpu_median = percentile(&mut cpu, 0.5);
         if chunk.len() == 64 * 60 {
-            minute_medians.push(percentile(&mut ms, 0.5));
+            minute_medians.push(cpu_median);
         }
         println!(
-            "{m} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2}",
+            "{m} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {cpu_median:.2}",
             ms.len(),
             sum / ms.len() as f64,
             p95,
@@ -1760,7 +1771,7 @@ fn report(soak: &mut Soak, minutes: f64, real: Duration) {
         let first = minute_medians[1];
         let last = *minute_medians.last().unwrap();
         if last > first * 3.0 + 2.0 {
-            failures.push(format!("server frame median grew from {first:.2} to {last:.2} ms"));
+            failures.push(format!("server frame median grew from {first:.2} to {last:.2} CPU ms"));
         }
     }
     {
