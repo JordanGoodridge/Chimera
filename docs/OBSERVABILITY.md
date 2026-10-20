@@ -73,7 +73,9 @@ in the lowest crate whose public API it needs:
   spawn, the plain ones in one test and the V2-keyed ones one test per
   archive, two maps at a time; a player walks and collides on
   WAREHOUSE; `heavy::model`: a prop model converts and animates as
-  LithTech samples it); its front end's (the
+  LithTech samples it; `heavy::movement_volumes`: the volume census of
+  the 105 maps and players in their sea, ladders, gravity volumes, safety
+  nets and jump pads); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`; the kill
   feed, score panel, scoreboard and loading screen bound by name,
@@ -114,8 +116,13 @@ a file in a folder only a feature compiles (a manifest's
 `[package.metadata.affected] feature-paths`: cs_source's `src/ui/`) its
 crate's test binaries built with the feature and the crates above, not
 the crate's other tests (an edit to CS:S's HUD doesn't run its map
-tests); the lockfile, the workspace manifest, .config/, the hooks or a
-build.rs select everything; Markdown and docs only `repo_checks`.
+tests); a Cargo.lock change the crates whose resolved dependencies
+changed between its two versions (the lockfile's graph, around the
+workspace-hack); the workspace manifest, .config/, the hooks, the
+workspace-hack or a build.rs select everything (the summary says
+"EVERY TEST" and which files); Markdown and docs only `repo_checks`. A
+compared commit missing from the clone (the remote moved since the last
+fetch) is fetched first.
 
 - Fast tier, before every commit (`.githooks/pre-commit`): unit tests and
   everything outside `heavy` of the crates the staged changes can affect
@@ -145,9 +152,12 @@ build.rs select everything; Markdown and docs only `repo_checks`.
   with `cargo install cargo-sweep`; skipped without it). The full
   suite is `cargo nextest run --features dev` (at most 8 tests at once
   and 5 heavy slots, the biggest heavy tests taking 2-3,
-  `.config/nextest.toml`: memory, not CPU, is the limit with other builds
-  running; a heavy test that loops over maps belongs split into one test
-  per map, as `map_courses`, `map_surf` and `map_ladders` are), or
+  `.config/nextest.toml`: memory, not CPU, is the limit with other
+  builds running; a heavy test that loops over maps belongs split into
+  one test per map, as `map_courses`, `map_surf` and `map_ladders` are,
+  or per archive, as Combat Arms' `heavy::world::keyed_maps_*`; a hung
+  test is killed after 5 minutes, a heavy one after 12, the soak after
+  30), or
   `cargo test --features dev` without nextest (twice as slow: in one
   process the heavy tests contend). nextest runs each test in its own
   process; install it once with `cargo install cargo-nextest --locked` (or
@@ -716,7 +726,9 @@ the 1-minute load average stays under half the CPUs (CPU time a tick
 grows with load: 6.5 ms at 1.2 per CPU, 10.5 ms at 3.8, same
 instructions) or where there are no hardware counters (Windows: the
 mean), and under 40 KB/s a client. Instructions count the whole
-process: run it alone in its process (nextest does). Bigger runs print the same table:
+process, so the test runs alone in one: nextest gives each test its
+own; under `cargo test` it runs itself again in a child process
+(`CHIMERA_CAPACITY_CHILD`). Bigger runs print the same table:
 `CHIMERA_CAPACITY_PLAYERS=64 CHIMERA_CAPACITY_CLIENTS=8
 CHIMERA_CAPACITY_MAP=mg_jacks_multigames_v1 CHIMERA_CAPACITY_SECONDS=30
 cargo test --profile playtest --features dev --test it heavy::net_capacity

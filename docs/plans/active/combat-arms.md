@@ -134,7 +134,7 @@ does for BSP.
 
 | # | Item | Spec | Status | Lift | Notes |
 |---|---|---|---|---|---|
-| 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | implementing (`ca/movement`) | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox. Follow-up answers in (cases 37-55): eye 83/60 u, crouch bypasses the start rescale, growth down then up, steps by what was hit, spawn drop, two keys for walk and sprint (`+walk`, `+sprint`) and opposing keys (`Intent::opposed`), infection knock-back, scale by body size |
+| 1 | Player movement: walk/run/sprint + stamina, jump, crouch, fall and fall damage, acceleration/friction, constants | `movement.md` | implementing (`ca/movement`) | L1 (box sweeps), only if the spec needs brush-exact traces; fall damage: none (CS:S's is a formula inside its movement; CA computes its own and sends `core::Damage`) | Cloud agent; a `combat_arms:movement` controller beside `cs_source:movement`, live swap on the greybox. Follow-up answers in (cases 37-55): eye 83/60 u, crouch bypasses the start rescale, growth down then up, steps by what was hit, spawn drop, two keys for walk and sprint (`+walk`, `+sprint`) and opposing keys (`Intent::opposed`), infection knock-back, scale by body size. Volumes (2026-10-19): ladders, liquids, viscosity, currents, friction, speed factors, gravity volumes, jump pads, safety nets, pushers (`tests/it/movement_volumes.rs`, `heavy::movement_volumes`); open: climbing a ladder from the ground, swimming (follow-up brief "movement in volumes") |
 | 2 | Weapon firing: hitscan, damage by range, hit zones, spread/recoil, fire modes, reload, ammo | `weapon_firing.md` | implementing (ca/weapon-firing): all 37 spec cases pass as scenario tests; ambiguities in `game/weapons.rs`'s Known shortcuts | none: L2/L3 not lifted (CA's own `combat_arms:damage`/`spread`/`recoil` hooks); Chimera gained `Trigger::per_press`, `Magazine::auto_reload`, `Burst::once_per_press`, `step_blocks_primary`, and hitscan rounds a game delivers itself | M4A1 in `data/weapons/m4a1.toml`, surfaces in `data/surfaces.toml`; CA delivers its rounds (hit spheres, bands, armour). Follow-up answers in (cases 38-49; 16 and 20 corrected): strict DecDelay, "in a jump" and the run flag from movement, mu on the penalised limit, the body yaw's twist, second victim's band, fire delay clock, armour by damage type |
 | 3 | Weapon/movement data format: the attribute files' schema | `attribute_data.md` | implementing (worktree-agent-a4e94370b2d41460f) | none (its reader goes in `lithtech/`) | Reader `lithtech_formats::attributes`; records and merge in `game/data.rs` (+ `data/attributes.rs`); test cases 1 to 32 pass on generated fixtures (inventory class and command id from `[WeaponOrder]`, knock-back fields mapped); heavy test checks ATTRIBUTES.rez's directory, the rest waits for the V1 key |
 | 4 | Inventory and switching: slots, keys, draw/holster times, knife primary/secondary, pickup/drop | `inventory.md` | implementing (ca/inventory) | L4 (weapon selection logic) and L5 (default binds per game): both done; inventory, slots, `lastinv`, draw/holster, melee and drop/pickup are already Chimera's | `game/inventory.rs` on Chimera's inventory and deploy (its own class keys and Q through `weapon::OwnSelection`), the M9 as data (`data/weapons/m9.toml`, hooks `combat_arms:inventory`/`knife`), E pickup and death drop of its own; all 44 test cases in `tests/it/inventory.rs` (rifle and pistol as fixtures until 2's data; 33 per the answered Q6); follow-up answers in: the knife's spread and zones, the swing at the update after the pre-fire, no item fallback, every pickup switches, spent grenades stay (`grenade::KeepSpent`), drops at the hull's bottom centre |
@@ -368,7 +368,21 @@ Notes:
   no team spawns at its own family (HGOILRIG: `HungerGame`), never on the
   world's outer box. Open: the kill feed, score panel, crosshair images
   and other screens are still code-placed; HGOILRIG's spawns have no floor
-  in the file (they land on the sea and sink: no swimming).
+  in the file (they land on the sea).
+- 2026-10-19: Movement in volumes (movement.md "Other modifiers"):
+  ladders, liquids (the stock water's current keeps a player afloat:
+  HGOILRIG's spawns now float at the sea's top instead of sinking; there
+  is still no deck under them in the file, neither collision nor render
+  data nor a world model), viscosity, currents, friction (ice), speed
+  factors, gravity volumes, jump pads, safety nets, explosion pushers
+  (`CaPusher`; nothing places them yet); cases 29 and 31's ladder and
+  net parts and the prose rules as tests (`tests/it/movement_volumes.rs`),
+  a census of the 105 maps (Water 20 in 18 maps, Ladder 266 in 55,
+  JumpVolume 42 in 3, Gravity 19 in 2, SafteyNet 21 in 6) and real-map
+  checks on HGOILRIG (sea, ladder), GRAVITYA (gravity, net) and TWINHIGH
+  (jump pad) (`heavy::movement_volumes`). Open: a ladder can't be
+  climbed from the ground as the spec's integrator stands (its follow-up
+  brief, "Follow-up brief (movement in volumes)", with nine more).
 - 2026-10-19: With the keys, model pieces draw in their render styles
   (by the style file's name: an enemy's team mark is clear, no white
   patch; glass and additive pieces blended), the rest of the HUD is the
@@ -1795,6 +1809,67 @@ effects_sounds.md
 
 Write only these files: specs/combat_arms/{characters,view_models,
 game_modes,bots,effects_sounds}.md; change nothing else. Commit with the
+repo's identity (CLAUDE.md "Commit identity"; check `git config user.name`
+is r0pi0x, else stop and ask me) in UTC: in PowerShell run `$env:TZ="UTC"`
+before `git commit`. End the message with "Co-Authored-By: Claude Opus 5.5
+<noreply@anthropic.com>". Never skip hooks. Then `git pull --rebase` and
+`git push` to main (or to `specs-incoming` if I say so).
+```
+
+## Follow-up brief (movement in volumes)
+
+Questions the volume-movement implementation (2026-10-19,
+`games/combat_arms/src/game/movement.rs` and `volumes.rs`, their `//!`
+"Known shortcuts") answered for itself or left as the spec has it. Paste
+the brief into one session (or hand it to a subagent); the implementer
+then changes the code to the answers.
+
+```text
+You are a spec session for Lucker Party/Chimera, re-implementing Combat Arms
+(the Classic, LithTech) from specs. Read CLAUDE.md and specs/README.md first
+and follow their rules exactly. Ask me in chat where the reference material
+is; never write that path, or any machine path, into the repo or a commit.
+
+Answer these about players in volumes in specs/combat_arms/movement.md
+(Open questions, with test cases where numbers are involved; new behaviour
+in its sections):
+
+1. Ladder from the ground. Standing on walkable ground inside a `Ladder`
+   volume, looking up and holding forward: the Integration section pushes
+   the upward acceleration back into the ground (a·n > 0.01), so the
+   player never leaves the floor and the ladder can only be climbed by
+   entering it in the air. What really lifts a player at a ladder's foot
+   (no standing on a ladder, a different ground rule, a lift, the jump)?
+   Also: jumping off a ladder, and whether anything happens on leaving
+   one (velocity kept or cleared).
+2. Container membership: is a player "in" a volume when its position (the
+   hull's centre) is inside, or when the hull touches it?
+3. `viscosity_max`: its value for players (grenades.md uses 5000 x c).
+   Does the player's viscosity also apply only above 1 u/s, and is the
+   current applied when the volume's viscosity is 0 (grenades: not)?
+4. "Skipped right after a jump": on which ticks exactly.
+5. Swimming: speed limit, acceleration and gravity in `Water`,
+   `CorrosiveFluid` and `FreezingWater` (is player gravity changed?);
+   whether looking up or down or the jump or crouch keys move a swimmer
+   up or down; getting out over an edge; drowning or breath. Is
+   "free movement" exactly the liquid classes?
+6. Ladder speed: is the 200 limit scaled by the penalty and the
+   containers' speed factors like the other limits?
+7. Jump pads (`JumpVolume`): `Velocity` is a number in the maps (800 to
+   3000): its direction, and when it fires (entering, standing in it, or
+   only a jump inside it, as the Jumping section reads).
+8. Volume property defaults for `Friction` and `PlayerSpeedFactor` per
+   class; the maps set `Friction` 0 on safety nets and on GRAVITYB's
+   gravity volumes: is a player's ground friction really 0 there, and do
+   safety nets take part in the physics at all?
+9. Explosion pushers: the pusher records (`BulletExpPusher` and others:
+   radius, strength, duration), the push direction, and how the 100 u/s
+   upward cap works when the speed is already above it.
+10. Damage volumes: the `DamageType` property's values and what the
+    freezing damage does (slowdown?).
+
+Write only specs/combat_arms/movement.md (and world_dat.md if a volume
+property's meaning belongs there); change nothing else. Commit with the
 repo's identity (CLAUDE.md "Commit identity"; check `git config user.name`
 is r0pi0x, else stop and ask me) in UTC: in PowerShell run `$env:TZ="UTC"`
 before `git commit`. End the message with "Co-Authored-By: Claude Opus 5.5

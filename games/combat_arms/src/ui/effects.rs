@@ -22,17 +22,16 @@
 //!   and before transforms propagate): while it is the eye (first person,
 //!   no spectating, free or map camera), its upward smoothing
 //!   (specs/combat_arms/movement.md "Eye (camera) height",
-//!   `movement::CameraRise`, per rendered frame, `CaMovement::in_jump` its
-//!   jump); then the effect groups' camera jitter (CamJitter: a random
-//!   offset in [−a, a] u on each world axis every frame, a =
-//!   `CaFx::jitter_at` the camera).
+//!   `movement::CameraRise`, per rendered frame, held off in a jump or a
+//!   free-movement volume: `CaMovement::in_jump`, `in_liquid`); then the
+//!   effect groups' camera jitter (CamJitter: a random offset in [−a, a] u
+//!   on each world axis every frame, a = `CaFx::jitter_at` the camera).
 //!
 //! Known shortcuts: lights light what Bevy lights (the lightmapped world
 //! may not show them); decals aren't clipped to their polygon (as the
-//! game's `MarksClip` 0) and lie 0.2 cm off the surface; the camera's rise
-//! isn't held off in free-movement volumes (players' volumes aren't
-//! modelled: `movement`); with several jitters the largest amplitude
-//! counts (the spec says nothing of overlaps).
+//! game's `MarksClip` 0) and lie 0.2 cm off the surface; with several
+//! jitters the largest amplitude counts (the spec says nothing of
+//! overlaps).
 
 use std::collections::HashMap;
 
@@ -619,7 +618,7 @@ pub fn camera_motion(
         && !map_view;
     if eye {
         let wanted = at.y / UNIT;
-        let in_jump = movement.is_some_and(|m| m.in_jump);
+        let in_jump = movement.is_some_and(|m| m.in_jump || m.in_liquid);
         let h = state.rise.step(wanted, time.delta_secs(), in_jump, movement_data());
         offset.y += (h - wanted) * UNIT;
     } else {

@@ -32,12 +32,32 @@
 //! The eye sits `eye_above_centre` over the hull's centre (83 u above the
 //! feet standing, 60 crouched); `CameraRise` is the camera's upward
 //! smoothing (the front end's `ui::effects::camera_motion` applies it to
-//! the first-person camera each rendered frame). An infected character (`CaInfected`) hit by the other team
+//! the first-person camera each rendered frame). An infected character
+//! (`CaInfected`, the infection modes' rules set it) hit by the other team
 //! gets a `HitKnockback` from the weapon part (its ammo's
 //! `DamageMovePenalty`): the push replaces the acceleration while it runs.
 //! A spawn or respawn puts the player on the floor below (or on a liquid
 //! volume's top, when one is on the way down: ours) and measures falls
 //! from there; a teleport resets nothing.
+//!
+//! Volumes ("Other modifiers"; the map's `volumes::CaVolume`s, a player
+//! being in one when its centre is): on a ladder (`Ladder`) gravity is
+//! off, the speed limit is the ladder's 200 (through the same penalty),
+//! the upward speed is capped at 200, forward is the camera's full
+//! direction, crouching doesn't halve the acceleration, the crouch rate
+//! is held at 0, and there is no jump, sprint or fall damage (the highest
+//! point is reset). In a liquid (the free-movement volumes) the crouch
+//! rate is held at 0 and leaving it stops the player; the camera's rise
+//! waits. Every volume's viscosity takes `viscosity_max` x its viscosity
+//! x dt off the speed (not on the tick after a jump), its current adds
+//! current x dt (the stock water's (0, 1500, 0) is what keeps a player
+//! afloat), and either stops the braking; the ground friction is 5 x the
+//! least `Friction` of them (0, ice: the closed form's limit), the speed
+//! limit is multiplied by their `PlayerSpeedFactor`s; gravity volumes
+//! replace the gravity by the sum of their `PlayerGravity`; a jump in a
+//! jump pad (`JumpVolume`) adds its `Velocity` in place of the jump
+//! speed; landing in a safety net (`SafteyNet`, a marker with no physics)
+//! does no fall damage. Explosion pushers are `CaPusher`s.
 //!
 //! Known shortcuts (docs/tech-debt.md): Combat Arms movement
 //! (specs/combat_arms/movement.md) runs once per engine tick, the game's
@@ -47,13 +67,28 @@
 //! runs per rendered frame runs per tick here: the stamina gauge, and the
 //! crouch release delay is checked against the tick's time, not the
 //! frame's (the same totals; edges a frame apart). Sprint applies at once (the
-//! spec's listen-server case). Not modelled: ladders, volumes (water,
-//! viscosity, currents, gravity, jump pads, safety nets), explosion
-//! pushers, movement disallowed (freeze), the infection stagger (nothing
-//! sets `CaInfected` yet: no game modes), VIP accounts, kill-streak and
-//! stamina perks, the ammo's own stun, the "falling" sound status, stamina kits,
-//! jump stamina, maps' not-a-step surface flag (characters and moving
-//! bodies are not steps). The shape cast reports where it touched, not
+//! spec's listen-server case). Volumes: a player is in one when its
+//! centre is (the engine's containers by position, as world_dat.md puts
+//! it; the movement spec doesn't say); `viscosity_max` (named in the spec
+//! without a value) is grenades.md's 5000; the ladder's 200 goes through
+//! the penalty and the container factor like any limit (the spec's list
+//! can be read either way); "right after a jump" is the tick after the
+//! jump tick; a jump volume's `Velocity` is a number in the maps, taken as
+//! straight up, and only a jump inside it launches (the spec leaves the
+//! pad's activation open, its question 10); the pusher's upward cap is
+//! applied to the speed the push raises (an upward speed already above
+//! 100 is kept); nothing in the game places pushers yet (the ammo's
+//! pusher records aren't specified). Spec as written, kept: standing at a
+//! ladder's foot, looking up and holding forward doesn't lift the player
+//! (the integrator pushes an upward acceleration back into the walkable
+//! ground it stands on), so a ladder is climbed from the air only, e.g.
+//! stepping off a ledge into it (a question for the spec); water has no
+//! swimming of its own (no swim speed, sinking or surfacing keys,
+//! drowning: none in the specs), only the current, viscosity and
+//! gravity. Not modelled: movement disallowed (freeze), VIP accounts,
+//! kill-streak and stamina perks, the ammo's own stun, the "falling"
+//! sound status, stamina kits, jump stamina, maps' not-a-step surface
+//! flag (characters and moving bodies are not steps). The shape cast reports where it touched, not
 //! which cap: a stair-step drop or a standing probe that touches an edge
 //! above the hull's flat bottom is taken as the curved side (a level
 //! normal). Scale: the spec stays in world units and the game calls 40 u
@@ -61,8 +96,10 @@
 //! built to that (a 100 u hull would be 2.5 m), so `meters_per_unit`
 //! scales by body size instead (open question 3; to be checked live).
 //! Why it's OK for now: every spec test case is a scenario test on the
-//! real collision (games/combat_arms/tests/it/movement.rs) and passes
-//! within the stated tolerances; the missing pieces have nothing in
+//! real collision (games/combat_arms/tests/it/movement.rs, the volumes'
+//! in movement_volumes.rs) and passes within the stated tolerances; the
+//! volumes' readings are checked on the install's maps
+//! (`heavy::movement_volumes`); the missing pieces have nothing in
 //! Chimera's Combat Arms to act on yet.
 
 use std::sync::OnceLock;
@@ -134,6 +171,9 @@ pub struct MovementData {
     pub fall_damage_at_full: f32,
     pub fall_minimum: f32,
     pub health_points: f32,
+    pub viscosity_max: f32,
+    pub pusher_air_factor: f32,
+    pub pusher_max_up: f32,
     pub crouch_spam: CrouchSpamData,
     pub character: CaCharacter,
 }
@@ -246,8 +286,8 @@ pub struct StunPenalty {
 }
 
 /// An infected character of the infection mode: hits from the other
-/// team knock it back (spec "Other modifiers", `HitKnockback`). Nothing
-/// sets it yet (no game modes).
+/// team knock it back (spec "Other modifiers", `HitKnockback`). The
+/// infection modes' rules set it (`rules::quarantine`).
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct CaInfected;
 
@@ -297,6 +337,22 @@ impl HitKnockback {
         let t = (now - self.started.unwrap_or(now)) as f32;
         (t < self.duration - 1e-6).then_some(t)
     }
+}
+
+/// An explosion pusher (spec "Other modifiers", "Explosion pushers"): on
+/// the tick at game time `at`, a player whose centre is within `radius`
+/// (u) of `origin` (engine meters) with a clear line from it (the world
+/// only) gets `strength x (1 - distance / radius)` u/s along that line
+/// added to its velocity, a tenth (`pusher_air_factor`) in the air, the
+/// push raising the upward speed to at most `pusher_max_up`. Nothing in
+/// the game places them yet (the ammo's pusher records aren't in the
+/// specs).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct CaPusher {
+    pub origin: Vec3,
+    pub radius: f32,
+    pub strength: f32,
+    pub at: f64,
 }
 
 /// The first-person camera's upward smoothing (spec "Eye (camera)
@@ -446,6 +502,12 @@ pub struct CaMovement {
     fall_top: Option<f32>,
     /// Dead last tick (a respawn puts the player on the floor again).
     was_dead: bool,
+    /// In a `Ladder` volume this tick (spec "Other modifiers").
+    pub on_ladder: bool,
+    /// In a liquid, the free-movement volumes, this tick.
+    pub in_liquid: bool,
+    /// Jumped last tick: the volumes' viscosity skips the tick after a jump.
+    jumped: bool,
     initialized: bool,
 }
 
@@ -797,7 +859,7 @@ fn move_hull(
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn step(
     mut q: Query<(
         Entity,
@@ -821,6 +883,7 @@ fn step(
     first: Option<Res<FirstTimePredicted>>,
     mut damage: MessageWriter<Damage>,
     volumes: Query<&super::volumes::CaVolume>,
+    pushers: Query<&CaPusher>,
 ) {
     let dt = clock.dt();
     let d = &*data;
@@ -893,6 +956,17 @@ fn step(
         let spam = &d.crouch_spam;
         let c0 = 1.0 / spam.duration;
 
+        // 2. The volumes the player is in (its position: the hull's centre)
+        // and last tick's.
+        // A safety net is a marker only (no physics): it counts for falls.
+        let inside: Vec<&super::volumes::CaVolume> =
+            volumes.iter().filter(|v| !v.is_safety_net() && v.contains(pos * s)).collect();
+        let on_ladder = !dead && inside.iter().any(|v| v.is_ladder());
+        let in_liquid = inside.iter().any(|v| v.liquid);
+        let left_liquid = me.in_liquid && !in_liquid;
+        me.on_ladder = on_ladder;
+        me.in_liquid = in_liquid;
+
         // 3. Control flags (spec "Input to control state").
         let was = (me.forward, me.back, me.left, me.right, me.moving, me.jump);
         let keys_on = !dead;
@@ -919,7 +993,7 @@ fn step(
         me.run = !me.crouch && keys_on && !intent.walk;
         // 3. Jump.
         me.jump = false;
-        if !me.crouch && me.on_ground && !me.in_jump {
+        if !me.crouch && me.on_ground && !on_ladder && !me.in_jump {
             if keys_on && intent.jump {
                 if !me.jump_used {
                     me.jump_used = true;
@@ -951,7 +1025,7 @@ fn step(
         if knocked.is_some() {
             me.run = false;
         }
-        let can_sprint = me.run && r_prev == 0.0 && sprint_ok;
+        let can_sprint = me.run && !on_ladder && r_prev == 0.0 && sprint_ok;
         if me.forward {
             if intent.sprint && me.stamina.floor() >= 1.0 && can_sprint {
                 me.sprint = true;
@@ -986,9 +1060,11 @@ fn step(
         } else {
             c0
         };
-        if dead {
+        if dead || on_ladder || in_liquid {
+            // On a ladder, dead, or in a free-movement volume: reset.
             me.crouch_rate = 0.0;
             me.crouch_phase = CrouchPhase::Idle;
+            me.crouch_elapsed = 0.0;
         } else if me.crouch && c > 0.0 {
             if me.crouch_phase != CrouchPhase::Down {
                 me.crouch_phase = CrouchPhase::Down;
@@ -1043,6 +1119,28 @@ fn step(
             me.direction_speed = d.run_strafe;
         }
 
+        // 7b. Volumes: leaving a free-movement volume stops the player;
+        // each volume's viscosity takes speed off (not on the tick after a
+        // jump); gravity off on a ladder, else the gravity volumes' sum.
+        if left_liquid {
+            v = Vec3::ZERO;
+        }
+        if !me.jumped {
+            for vol in inside.iter().filter(|v| v.viscosity > 0.0) {
+                let speed = v.length();
+                let slower = (speed - d.viscosity_max * vol.viscosity * dt).max(0.0);
+                v = v.normalize_or_zero() * slower;
+            }
+        }
+        let gravity = if on_ladder {
+            0.0
+        } else if inside.iter().any(|v| v.player_gravity.is_some()) {
+            inside.iter().filter_map(|v| v.player_gravity).sum()
+        } else {
+            d.gravity
+        };
+        let container_speed: f32 = inside.iter().map(|v| v.speed_factor).product();
+
         // 7c. Ground from last tick's move; landing.
         if me.standing.is_some() && me.in_jump {
             me.in_jump = false;
@@ -1062,7 +1160,8 @@ fn step(
             d.walk
         };
         let v0 = v0.max(d.crouch);
-        let v1 = v0 + (d.crouch - v0) * r;
+        // On a ladder the ladder speed, through the same penalty.
+        let v1 = if on_ladder { d.ladder } else { v0 + (d.crouch - v0) * r };
         let held = held.copied().unwrap_or_default();
         let stun = stun.filter(|s| now < s.until).map_or(0.0, |s| s.penalty);
         let penalty = (held.penalty * (1.0 + held.mod_factor)
@@ -1071,7 +1170,7 @@ fn step(
             - fig.variable_speed
             + stun)
             .clamp(-1.0, 1.0);
-        let limit = v1 * (1.0 - penalty);
+        let limit = v1 * (1.0 - penalty) * container_speed;
         me.speed_limit = limit;
         let h = Vec2::new(v.x, v.z);
         if h.length() > limit {
@@ -1079,13 +1178,21 @@ fn step(
             v.x = h.x;
             v.z = h.y;
         }
+        if on_ladder {
+            v.y = v.y.min(d.ladder);
+        }
 
         // 7e. Acceleration.
         let yaw = intent.yaw_rotation();
-        let fwd = (yaw * Vec3::NEG_Z).with_y(0.0).normalize_or_zero();
+        // On a ladder forward is the camera's full direction.
+        let fwd = if on_ladder {
+            intent.look_rotation() * Vec3::NEG_Z
+        } else {
+            (yaw * Vec3::NEG_Z).with_y(0.0).normalize_or_zero()
+        };
         let right = (yaw * Vec3::X).with_y(0.0).normalize_or_zero();
         let mut base = d.base_accel;
-        if me.crouch {
+        if me.crouch && !on_ladder {
             base *= d.crouch_accel_factor;
         }
         if me.in_jump {
@@ -1166,9 +1273,16 @@ fn step(
         }
 
         // 7f. Jump, or the jump factor's recovery.
+        me.jumped = false;
         if jump_request && !dead && me.on_ground {
-            let bonus = fig.variable_jump + character.gear_sum(|g| g.jump);
-            v.y = d.jump * (1.0 + bonus) * me.jump_factor;
+            // A jump pad adds its own launch velocity instead.
+            if let Some(pad) = inside.iter().find_map(|v| v.jump_velocity) {
+                v += pad;
+            } else {
+                let bonus = fig.variable_jump + character.gear_sum(|g| g.jump);
+                v.y = d.jump * (1.0 + bonus) * me.jump_factor;
+            }
+            me.jumped = true;
             me.in_jump = true;
             me.on_ground = false;
             me.jump_factor = if me.jump_factor < d.jump_factor_after_jump {
@@ -1181,7 +1295,10 @@ fn step(
         } else {
             me.jump_factor = 1.0;
         }
-        // 7g. Dying: no velocity, no acceleration.
+        // 7g. The volumes' currents; dying: no velocity, no acceleration.
+        for vol in &inside {
+            v += vol.current * dt;
+        }
         if dead {
             v = Vec3::ZERO;
             a = Vec3::ZERO;
@@ -1189,7 +1306,8 @@ fn step(
         me.accel = a;
 
         // 8. Braking with no movement keys (none under a knock-back).
-        if !me.moving && me.on_ground && !me.in_jump && knocked.is_none() {
+        let carried = inside.iter().any(|v| v.viscosity > 0.0 || v.current != Vec3::ZERO);
+        if !me.moving && me.on_ground && !me.in_jump && knocked.is_none() && !carried {
             let h = Vec2::new(v.x, v.z);
             let speed = h.length();
             if speed > d.stop_snap_speed {
@@ -1206,8 +1324,39 @@ fn step(
             }
         }
 
+        // 9. Explosion pushers.
+        for push in &pushers {
+            if (push.at - now).abs() > dt as f64 / 2.0 {
+                continue;
+            }
+            let from = push.origin / s;
+            let line = pos - from;
+            let dist = line.length();
+            if push.radius <= 0.0 || dist >= push.radius {
+                continue;
+            }
+            let clear = Dir3::new(line).map_or(true, |dir| {
+                move_and_slide
+                    .spatial_query
+                    .cast_ray_predicate(push.origin, dir, dist * s, true, &space.filter, &|e| !not_a_step(e))
+                    .is_none()
+            });
+            if !clear {
+                continue;
+            }
+            let mut add = line.normalize_or_zero() * push.strength * (1.0 - dist / push.radius);
+            if !me.on_ground {
+                add *= d.pusher_air_factor;
+            }
+            let up = v.y;
+            v += add;
+            if add.y > 0.0 {
+                v.y = v.y.min(up.max(d.pusher_max_up));
+            }
+        }
+
         // 11. Integrate, move, stand, fix.
-        let g = Vec3::Y * d.gravity;
+        let g = Vec3::Y * gravity;
         if v.length_squared() < d.rest_threshold {
             v = Vec3::ZERO;
         }
@@ -1250,12 +1399,18 @@ fn step(
         let (v_new, dx) = if rest {
             (Vec3::ZERO, Vec3::ZERO)
         } else if friction {
-            let kf = d.friction;
-            let e = (-kf * dt).exp();
-            (
-                a / kf + (v - a / kf) * e,
-                a / kf * dt + (v * kf - a) * (1.0 - e) / (kf * kf),
-            )
+            // 5 x the least friction of the volumes the player is in.
+            let kf = d.friction * inside.iter().map(|v| v.friction).reduce(f32::min).unwrap_or(1.0);
+            if kf > 1e-6 {
+                let e = (-kf * dt).exp();
+                (
+                    a / kf + (v - a / kf) * e,
+                    a / kf * dt + (v * kf - a) * (1.0 - e) / (kf * kf),
+                )
+            } else {
+                // No friction (ice): the closed form's limit.
+                (v + a * dt, v * dt + a * (0.5 * dt * dt))
+            }
         } else {
             (v + a * dt, v * dt + a * (0.25 * dt * dt))
         };
@@ -1274,7 +1429,12 @@ fn step(
             v.y = 0.0;
         }
 
-        // Fall damage (the server's, from positions).
+        // Fall damage (the server's, from positions): none on a ladder (the
+        // highest point is reset there) or landing in a safety net.
+        if on_ladder {
+            me.fall_top = Some(f32::MIN);
+        }
+        let net = volumes.iter().any(|v| v.is_safety_net() && v.contains(pos * s));
         if me.standing.is_some() {
             if let Some(top) = me.fall_top {
                 let drop = top - pos.y;
@@ -1282,6 +1442,8 @@ fn step(
                     && let Some(hp) = fall_damage(drop, d)
                     && first
                     && !dead
+                    && !on_ladder
+                    && !net
                 {
                     damage.write(Damage {
                         target: entity,
@@ -1324,6 +1486,7 @@ fn step(
                 && me.standing.is_some_and(|g| !g.character && g.normal.y >= d.walkable_normal),
             crouching: r > 0.0,
             sprinting: me.sprint,
+            on_ladder,
             eye_offset: Vec3::Y * eye_above_centre(r, d) * s,
             hull_min: Vec3::new(-r_xz, -half, -r_xz),
             hull_max: Vec3::new(r_xz, half, r_xz),
