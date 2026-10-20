@@ -140,7 +140,7 @@ fn update(world: &mut World) {
             half: FLAG_DIMS * super::super::inventory::UNIT,
         };
         let half = objectives::player_half();
-        let taker = objectives::living(world)
+        let taker = objectives::takers(world)
             .into_iter()
             .find(|p| side(p.team).is_some() && area.touches(p.at, half));
         if let Some(p) = taker

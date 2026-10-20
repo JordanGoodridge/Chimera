@@ -122,7 +122,7 @@ fn update(world: &mut World) {
     let counting = world.resource::<CaMatch>().counting() && world.resource::<CaMatch>().winner.is_none();
     let Some(pole) = world.resource::<CaObjectives>().pole else { return };
     let triggers = world.resource::<CaMapObjects>().triggers.clone();
-    for p in objectives::living(world) {
+    for p in objectives::takers(world) {
         let inside = triggers
             .iter()
             .any(|t| trigger_of(&t.name, p.team) && t.area.contains(p.at, 0.0));

@@ -157,7 +157,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   of placeholder parts on Chimera, each replaced by Combat Arms'
   behaviour as its spec lands (specs/combat_arms/; firing, inventory,
   grenades, the weapon classes, attachments, the game modes (TDM,
-  Elimination Pro, S&D, CTF, One Man Army and the rest), bots and the
+  Elimination Pro, S&D, CTF, One Man Army and the rest; Hired Guns with
+  its AI mercenaries, VIP Escort, the clan modes), bots and the
   player characters so far;
   docs/plans/active/combat-arms.md), one
   module per subsystem in `game` (`movement`, `weapons`, `inventory`,
@@ -523,8 +524,8 @@ that the paths exist).
 - `games/combat_arms/src/game/attachments.rs`: Combat Arms' weapon attachments: records, accepted lists, fitting and their effects (games)
 - `games/combat_arms/data/attachments/`: Combat Arms' attachment records as data (the attachments spec's tables) (games)
 - `games/combat_arms/src/game/net.rs`: Combat Arms' part of the network: armour, the pickup prompt, the match, respawn requests (games)
-- `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules (TDM, Elimination Pro, S&D, CTF, One Man Army and the rest) (games)
-- `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, the bomb, scoreboard rows and each mode (games)
+- `games/combat_arms/src/game/rules.rs`: Combat Arms' game modes as rule modules (TDM, S&D, CTF, Hired Guns, VIP Escort, clan modes, the rest) (games)
+- `games/combat_arms/src/game/rules/`: the modes' settings, phases, spawns, scoring, map objects, objectives, bomb, mercenaries, each mode (games)
 - `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
 - `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)
 - `games/combat_arms/data/characters.toml`: Combat Arms' character records, skeletons, hit tables, sockets (games)
