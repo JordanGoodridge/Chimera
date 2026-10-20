@@ -422,7 +422,14 @@ pub(super) fn zoom_input(
 #[allow(clippy::type_complexity)]
 pub(super) fn zoom_step(
     mut owners: Query<
-        (Entity, &mut Inventory, Option<&Health>, Option<&Zoomed>, Option<&mut ViewPunch>),
+        (
+            Entity,
+            &mut Inventory,
+            Option<&Health>,
+            Option<&Zoomed>,
+            Option<&mut ViewPunch>,
+            Option<&crate::game::perks::CaPerkEffects>,
+        ),
         Without<NetDrawn>,
     >,
     mut weapons: Query<(&mut CaZoom, &mut WeaponState, Option<&Magazine>, Has<ShellReload>)>,
@@ -431,7 +438,7 @@ pub(super) fn zoom_step(
     mut commands: Commands,
 ) {
     let (now, dt) = (clock.now, clock.dt().min(FRAME_TIME_CAP));
-    for (owner, mut inv, health, have, punch) in &mut owners {
+    for (owner, mut inv, health, have, punch, perk) in &mut owners {
         if health.is_some_and(|h| h.current <= 0.0) {
             continue;
         }
@@ -439,7 +446,8 @@ pub(super) fn zoom_step(
         let Ok((mut z, mut st, mag, shells)) = weapons.get_mut(active) else {
             continue;
         };
-        if z.zoomed() {
+        // Steady Hand (gear_perks.md 14) stops the sway.
+        if z.zoomed() && !perk.is_some_and(|p| p.steady) {
             // 7.8: the aim drifts (Combat Arms' pitch + is down and yaw +
             // right; the engine's view punch is pitch up, yaw left).
             // Plus the parts' additions (attachments.md: 0 in shipped data).

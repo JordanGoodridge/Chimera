@@ -15,7 +15,8 @@
 //!   else the map's first point.
 //! - The respawn (`respawn`, S5): the loadout rebuilt (`inventory::
 //!   respawn_inventory`), full health (`spawning::revive`, Chimera's) and
-//!   armour (`CaArmor`'s default), at the point facing its yaw; then a
+//!   armour (the pool and pieces of its gear, `gear::spawn_gear`), at the
+//!   point facing its yaw; then a
 //!   telefrag of every unprotected player inside the doubled box of the
 //!   new position (only when every point was occupied: a crush death
 //!   credited to themselves, `TELEFRAG`); then protection.
@@ -59,7 +60,7 @@ use serde::{Deserialize, Serialize};
 use bevy::prelude::*;
 
 use super::{
-    super::{death_cam::{CaFastRespawn, FAST_MODES}, inventory, weapons::CaArmor},
+    super::{death_cam::{CaFastRespawn, FAST_MODES}, inventory},
     CaRuleSettings, current_mode,
     state::side,
 };
@@ -284,10 +285,10 @@ pub fn respawn(world: &mut World, e: Entity) {
     if !spawning::revive(world, e, picked.map(|(t, _)| t)) {
         return;
     }
-    world
-        .entity_mut(e)
-        .remove::<(CaAsked, CaHeld)>()
-        .insert(CaArmor::default());
+    world.entity_mut(e).remove::<(CaAsked, CaHeld)>();
+    // The pool at the vest's `MaxArmor` and the gear's pieces
+    // (gear_perks.md 3, 9).
+    crate::game::gear::spawn_gear(world, e);
     protect(world, e);
     if let Some((at, true)) = picked {
         telefrag(world, e, at.translation);

@@ -230,6 +230,16 @@ pub struct CaCharacter {
     pub figure: Figure,
     #[serde(default)]
     pub gear: Vec<Gear>,
+    /// Fighting Chance's factors (gear_perks.md 15) on the speed limit
+    /// and the stamina capacity (1: none).
+    #[serde(default = "one")]
+    pub speed_scale: f32,
+    #[serde(default = "one")]
+    pub stamina_scale: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -274,6 +284,30 @@ impl CaCharacter {
         Self {
             figure: self.figure.clone(),
             gear: Vec::new(),
+            speed_scale: 1.0,
+            stamina_scale: 1.0,
+        }
+    }
+
+    /// The VIP of VIP Escort (gear_perks.md 10): sprint is the run
+    /// speed times one plus the vest's bonus alone (no figure multiplier,
+    /// no other item), the stamina the figure's alone.
+    pub fn vip(&self) -> Self {
+        let mut figure = self.figure.clone();
+        figure.dash_speed = 1.0;
+        Self {
+            figure,
+            gear: self
+                .gear
+                .first()
+                .map(|vest| Gear {
+                    max_stamina: 0.0,
+                    ..vest.clone()
+                })
+                .into_iter()
+                .collect(),
+            speed_scale: 1.0,
+            stamina_scale: 1.0,
         }
     }
 
@@ -283,7 +317,7 @@ impl CaCharacter {
 
     /// The stamina capacity: floor(Maxstamina x (1 + bonuses)).
     pub fn stamina_max(&self) -> f32 {
-        (self.figure.max_stamina * (1.0 + self.gear_sum(|g| g.max_stamina))).floor()
+        (self.figure.max_stamina * (1.0 + self.gear_sum(|g| g.max_stamina)) * self.stamina_scale).floor()
     }
 }
 
@@ -1015,6 +1049,7 @@ fn step(
             Option<&CaAction>,
             Option<&CustomMovePenalty>,
             Option<&VipMovement>,
+            Option<&super::perks::CaPerkEffects>,
         ),
         Option<&mut HitKnockback>,
         Has<Zoomed>,
@@ -1056,7 +1091,7 @@ fn step(
     }
     // The open-form step: no friction, a quarter-step displacement.
     let quarter = |v: Vec3, a: Vec3| (v + a * dt, v * dt + a * (0.25 * dt * dt));
-    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun, mode, action, custom, vip), mut knock, zoomed, dead, lock) in
+    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun, mode, action, custom, vip, perk), mut knock, zoomed, dead, lock) in
         &mut q
     {
         let me = &mut *me;
@@ -1068,7 +1103,7 @@ fn step(
         let vip_character;
         let character = match vip {
             Some(_) => {
-                vip_character = character.without_gear();
+                vip_character = character.vip();
                 &vip_character
             }
             None => character,
@@ -1224,11 +1259,13 @@ fn step(
             me.run = false;
         }
         let can_sprint = me.run && !on_ladder && r_prev == 0.0 && sprint_ok;
+        // Victory Lap (gear_perks.md 14): the sprint key does nothing.
+        let sprint_key = intent.sprint && !perk.is_some_and(|p| p.victory_lap);
         if me.forward {
-            if intent.sprint && me.stamina.floor() >= 1.0 && can_sprint {
+            if sprint_key && me.stamina.floor() >= 1.0 && can_sprint {
                 me.sprint = true;
                 me.stamina_state = StaminaState::Draining;
-            } else if intent.sprint && can_sprint {
+            } else if sprint_key && can_sprint {
                 me.sprint = false;
                 me.stamina_state = StaminaState::Stopped;
             } else {
@@ -1404,7 +1441,10 @@ fn step(
             // is capped); leaving free movement by the eye stops the
             // player.
             let crouching = me.crouch || r == 1.0;
-            let v0 = if me.sprint && !crouching && !zoomed {
+            let victory_lap = perk.is_some_and(|p| p.victory_lap);
+            // Victory Lap (gear_perks.md 14): the run flag uses the sprint
+            // limit, the sprint flag and the gauge untouched.
+            let v0 = if (me.sprint || (victory_lap && me.run)) && !crouching && !zoomed {
                 k * fig.dash_speed * (1.0 + character.gear_sum(|g| g.dash_speed))
             } else if me.run && !crouching && !zoomed {
                 k
@@ -1426,7 +1466,7 @@ fn step(
                     + stun)
                     .clamp(-1.0, 1.0),
             };
-            let limit = v1 * (1.0 - penalty) * mode.speed * factor;
+            let limit = v1 * (1.0 - penalty) * mode.speed * factor * character.speed_scale;
             me.speed_limit = limit;
             if on_ladder {
                 v.y = v.y.min(d.ladder);
@@ -1734,10 +1774,19 @@ fn step(
         // ends the sprint.
         let max = (character.stamina_max() * mode.stamina).floor();
         let step_s = dt.min(d.stamina_step_max);
+        // The perks (gear_perks.md 14): War Cry and Virulent lose none, an
+        // Awareness, Steady Hand or Inner Focus gauge doesn't recover, the
+        // first two drain on their own.
+        let (free, no_recover, extra) = perk.map_or((false, false, 0.0), |p| (p.free_stamina, p.no_recover, p.drain));
         match me.stamina_state {
-            StaminaState::Draining => me.stamina = (me.stamina - fig.dash_gauge * step_s).max(0.0),
-            StaminaState::Recovering => me.stamina = (me.stamina + fig.gauge_recovery * step_s).min(max),
+            StaminaState::Draining if !free => me.stamina = (me.stamina - fig.dash_gauge * step_s).max(0.0),
+            StaminaState::Draining => {}
+            StaminaState::Recovering if !no_recover => me.stamina = (me.stamina + fig.gauge_recovery * step_s).min(max),
+            StaminaState::Recovering => {}
             StaminaState::Stopped => me.stamina = 0.0,
+        }
+        if extra > 0.0 && !free {
+            me.stamina = (me.stamina - extra * step_s).max(0.0);
         }
 
         transform.translation = pos * s;

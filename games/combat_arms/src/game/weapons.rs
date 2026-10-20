@@ -732,6 +732,10 @@ pub struct CaSpread {
     pub was_on_ground: bool,
     /// The fitted attachments' terms (`attachments`; zero: stock).
     pub mods: SpreadMods,
+    /// The perks' and sets' cuts of the cone's limits (`perks`, `gear`):
+    /// Eagle Eye's fraction of both, a set's fraction of the maximum.
+    pub perk_cut: f32,
+    pub set_max_cut: f32,
 }
 
 impl CaSpread {
@@ -748,6 +752,8 @@ impl CaSpread {
             jumped: false,
             was_on_ground: true,
             mods: SpreadMods::default(),
+            perk_cut: 0.0,
+            set_max_cut: 0.0,
         }
     }
 
@@ -827,6 +833,16 @@ impl CaSpread {
             if z.max != 0 {
                 c_max = (z.max as f64 + m.zoomed_max as f64).trunc();
             }
+        }
+        // Eagle Eye (gear_perks.md 14): both limits lose a tenth, whole
+        // units; a set's spread effect cuts the maximum (12).
+        if self.perk_cut > 0.0 {
+            let cut = self.perk_cut as f64;
+            c_min -= (c_min * cut).floor();
+            c_max -= (c_max * cut).floor();
+        }
+        if self.set_max_cut > 0.0 {
+            c_max = (c_max * (1.0 - self.set_max_cut as f64)).trunc();
         }
         let g = (self.params.dynamic_factor + m.dynamic) as f64;
         let max = (c_max * g).trunc();
@@ -1277,22 +1293,39 @@ pub fn gear_torso(gear: &[Gear], damage_type: i32) -> f32 {
     gear.iter().filter_map(|g| g.against(damage_type)).map(|p| p.torso).sum()
 }
 
+impl Gear {
+    /// A piece with these entries, interned: the same entries are always
+    /// the same slice (a piece goes over the network by its entries, and
+    /// a client decoding it must not grow memory each time).
+    pub fn new(entries: &[Protection]) -> Gear {
+        static INTERNED: std::sync::Mutex<Vec<&'static [Protection]>> = std::sync::Mutex::new(Vec::new());
+        let mut list = INTERNED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(found) = list.iter().find(|s| s.iter().eq(entries.iter())) {
+            return Gear { protects: found };
+        }
+        let leaked: &'static [Protection] = Box::leak(entries.to_vec().into_boxed_slice());
+        list.push(leaked);
+        Gear { protects: leaked }
+    }
+}
+
+// A piece goes over the network by its entries: the install's pieces
+// are not in `GEARS`.
 impl Serialize for Gear {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let i = GEARS.iter().position(|(_, g)| g == self).ok_or_else(|| serde::ser::Error::custom("unknown gear"))?;
-        s.serialize_u8(i as u8)
+        self.protects.serialize(s)
     }
 }
 
 impl<'de> Deserialize<'de> for Gear {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let i = u8::deserialize(d)? as usize;
-        GEARS.get(i).map(|(_, g)| *g).ok_or_else(|| serde::de::Error::custom("unknown gear"))
+        let entries = Vec::<Protection>::deserialize(d)?;
+        Ok(Gear::new(&entries))
     }
 }
 
 /// What a piece of gear does against one damage type.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Protection {
     pub damage_type: i32,
     pub head: f32,
@@ -1777,6 +1810,11 @@ struct Delivery<'w, 's> {
     attach: (Query<'w, 's, &'static CaNpc>, Res<'w, CaSpecialRoll>),
     /// AI damage (Corrections 7).
     ai: AiHits<'w, 's>,
+    /// Damage the shooter's gear adds (Fighting Chance, set items;
+    /// gear_perks.md 11, 12, 15) and the weapons' ids.
+    dealt: Query<'w, 's, &'static super::gear::CaGearEffects>,
+    gear_data: Option<Res<'w, super::gear::CaGearData>>,
+    ids: Query<'w, 's, &'static crate::weapon::Weapon>,
     /// Lag compensation (a network server): each shooter's view tick,
     /// the characters' kept hit volumes, `sv_unlag`.
     lag: (
@@ -2798,6 +2836,12 @@ fn hurt(
     let forced = w.attach.1.0;
     let mut draws = Rng::new(r.seed.wrapping_mul(0x9e37_79b9).wrapping_add(si as u32));
     let mut draw = |_: usize| forced.unwrap_or_else(|| draws.next());
+    // The shooter's gear first (Fighting Chance, then the sets: hit
+    // points, attacker side before armour).
+    let d = match (w.dealt.get(r.owner), w.ids.get(r.weapon), &w.gear_data) {
+        (Ok(fx), Ok(weapon), Some(data)) => fx.dealt(&data.0, weapon.id, d / hp) * hp,
+        _ => d,
+    };
     // Then an AI's damage x `AIDamageFactor` (Corrections 7).
     let d = d * dmg.mods.victim_factor(victim, &mut draw) * w.ai.factor(Some(r.owner));
     let enemy = !w.same_team(r.owner, b.entity);

@@ -11,7 +11,9 @@
 //!   goggles by skeleton and figure type. A player's selection is
 //!   `CaLook`: the local player's `CaOwnLook` (the console's `ca_model`,
 //!   `ca_face`, `ca_head`, `ca_camo`), a bot's drawn from the loadout
-//!   pool (`CharacterData::bot_look`), else the default.
+//!   pool (`CharacterData::bot_look`), else the default. The same choice
+//!   is the player's gear (gear_perks.md, `gear`): the body record is the
+//!   vest, the head piece the helmet, the goggle and backpack as such.
 //! - `driver`: the animation driver (4-7, 9) on LithTech's millisecond
 //!   trackers: posture and movement from the weapon status, the fire
 //!   buttons and the movement flags; names from the class code, stance,

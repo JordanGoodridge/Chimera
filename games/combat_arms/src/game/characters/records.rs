@@ -610,16 +610,19 @@ impl CharacterData {
     /// names only face 0); known head pieces the records and the bots'
     /// pool (likewise).
     pub fn validated(&self, s: Selection) -> Option<Selection> {
-        let base = self.model(s.model)?;
+        // A vest only the gear data knows (gear_perks.md 3) is a valid
+        // choice too: it plays as itself and is drawn as the default body.
+        let gear = crate::game::gear::gear_data();
+        let base = self.model(s.model).or_else(|| gear.vests.contains_key(&s.model).then(|| self.default_model()))?;
         let known = |ok: bool, id: i32| if ok { id } else { -1 };
         let face_ok = self.face(s.face).is_some() || usize::try_from(s.face).is_ok_and(|f| f < base.faces.len());
-        let head_ok = self.head.iter().any(|h| h.id == s.head) || self.loadouts.heads.contains(&s.head);
+        let head_ok = self.head.iter().any(|h| h.id == s.head) || self.loadouts.heads.contains(&s.head) || gear.heads.contains_key(&s.head);
         Some(Selection {
             model: s.model,
             face: known(face_ok, s.face),
             head: known(head_ok, s.head),
-            goggle: known(self.goggle.iter().any(|g| g.id == s.goggle), s.goggle),
-            backpack: known(self.backpack.iter().any(|g| g.id == s.backpack), s.backpack),
+            goggle: known(self.goggle.iter().any(|g| g.id == s.goggle) || gear.goggles.contains_key(&s.goggle), s.goggle),
+            backpack: known(self.backpack.iter().any(|g| g.id == s.backpack) || gear.backpacks.contains_key(&s.backpack), s.backpack),
             camouflage: s.camouflage,
             cosmetic_character: known(self.model(s.cosmetic_character).is_some(), s.cosmetic_character),
             cosmetic_vest: known(self.model(s.cosmetic_vest).is_some(), s.cosmetic_vest),
