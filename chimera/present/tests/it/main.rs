@@ -3,7 +3,8 @@
 //! need nothing above the presentation, and scenario tests of what it
 //! draws on the headless harness (`chimera_world::harness::Sim`, the
 //! engine's `core` and console as the base: prop LODs, prop shadows),
-//! the view-model camera's switch, the under-water overlay's,
+//! the view-model camera's switch, a view model drawn without a map,
+//! the under-water overlay's,
 //! fog-only water's fog and the sky under water. `cargo test -p chimera_present --features dev
 //! --test it`; where tests go: docs/OBSERVABILITY.md, section 1.
 
@@ -15,4 +16,5 @@ mod underwater_fog_volume;
 mod underwater_overlay;
 mod underwater_sky;
 mod view_model_camera;
+mod view_model_without_map;
 mod wav_playback;

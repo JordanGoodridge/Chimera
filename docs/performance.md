@@ -1169,8 +1169,9 @@ What changed:
   it first wants drawing (the local player's inventory, a character's
   shown weapon), in the background, once per session, through
   `map::add_view_model` with its own textures; `render::view_model::
-  build_late` builds it on the next frame, the placeholder box stands
-  in meanwhile (the M4A1 with hands: 30 ms).
+  build_late` builds it on the next frame (with no map's drawing set
+  up, the greybox, on assets of its own: `assets_without_map`), the
+  placeholder box stands in meanwhile (the M4A1 with hands: 30 ms).
 - Character bodies and held weapons convert once per session on a
   thread beside the world (`characters::models::shared_character_models`)
   and are copied into each map.

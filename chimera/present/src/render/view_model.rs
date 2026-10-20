@@ -1,7 +1,8 @@
 //! First-person view models (any game): the model a character sees of its
 //! own weapon, with hands, drawn at the eye over the world. Games load
 //! `MapViewModel`s with the map (or later: `map::add_view_model`, built
-//! on the next frame by `build_late` with its own textures), drive each
+//! on the next frame by `build_late` with its own textures, also with no
+//! map spawned: `assets_without_map`), drive each
 //! character's `ViewAnimator`
 //! (which sequence plays) and `ViewModelOffset` (bob and sway), and send
 //! `ViewModelEvent`s (muzzle flashes; their types are in `map::view_model`);
@@ -220,6 +221,7 @@ pub fn build_assets(
 /// Build the render assets of view models added after the map spawned
 /// (`map::add_view_model`): their own textures (`LateViewModelTextures`)
 /// become images after the map's, their meshes' indices moved past them.
+/// With no map's assets (`assets_without_map`) only theirs.
 #[allow(clippy::too_many_arguments)]
 pub fn build_late(
     models: Option<Res<ViewModels>>,
@@ -262,6 +264,38 @@ pub fn build_late(
         .model(&moved, &mut meshes, &mut materials, &mut bindposes);
         assets.models.insert(v.key.clone(), asset);
     }
+}
+
+/// View models added while no `MapData` map is spawned (the greybox, or
+/// before the first map: `map::add_view_model` inserts `ViewModels`, but
+/// only a map's spawn built `ViewModelAssets`, so nothing drew them and
+/// the game's placeholder had stepped aside): the drawing's assets with
+/// nothing of a map (no textures, cubemaps, fog or light field, so the
+/// models show their textures as they are), for `build_late` to fill. A
+/// map spawned later replaces them with its own.
+pub fn assets_without_map(
+    models: Option<Res<ViewModels>>,
+    assets: Option<Res<ViewModelAssets>>,
+    meshes: Option<ResMut<Assets<Mesh>>>,
+    materials: Option<ResMut<Assets<PropMaterial>>>,
+    bindposes: Option<ResMut<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>>,
+    mut commands: Commands,
+) {
+    if models.is_none() || assets.is_some() {
+        return;
+    }
+    let (Some(mut meshes), Some(mut materials), Some(mut bindposes)) = (meshes, materials, bindposes) else {
+        return;
+    };
+    commands.insert_resource(build_assets(
+        &MapData::default(),
+        &[],
+        &[],
+        MapDebugView::Normal,
+        &mut meshes,
+        &mut materials,
+        &mut bindposes,
+    ));
 }
 
 /// The camera's horizontal 4:3 field of view (degrees) from its vertical

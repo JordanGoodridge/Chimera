@@ -4,8 +4,11 @@
 //! time a weapon wants drawing: one in the local player's inventory or
 //! shown by a character's `ViewAnimator`. Converted once per session
 //! (`cached`, kept across map changes), each with its own textures
-//! (`map::add_view_model`); until it is ready the front end's placeholder
-//! box stands in, and `drive` starts the model afresh when it arrives.
+//! (`map::add_view_model`; drawn on a map and on the greybox alike, where
+//! Chimera's drawing has assets of its own: `render::view_model::
+//! assets_without_map`, `tests/ui/heavy/view_model.rs`); until it is
+//! ready the front end's placeholder box stands in, and `drive` starts
+//! the model afresh when it arrives.
 //!
 //! Runs only where `LoadOnDemand` is (the front end inserts it): a
 //! dedicated server draws no view models.

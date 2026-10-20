@@ -6,7 +6,9 @@
 //! feed, score panel, action panel, scoreboard and loading screen bound
 //! by name to layouts written in the test (`bound`); the
 //! first-person camera's rise and jitter (`camera`); in `heavy` the
-//! install's own layouts and string tables (`install_ui`, V1 key).
+//! install's own layouts and string tables (`install_ui`, V1 key) and
+//! its M4A1 and knife view models drawn on the greybox (`view_model`,
+//! V2 key).
 //! `cargo test -p combat_arms --features dev,ui --test ui`; where tests
 //! go: docs/OBSERVABILITY.md, section 1.
 
@@ -25,4 +27,5 @@ mod ui_system;
 mod heavy {
     mod death_screen;
     mod install_ui;
+    mod view_model;
 }

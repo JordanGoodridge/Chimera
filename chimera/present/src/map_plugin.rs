@@ -196,6 +196,11 @@ impl MapLayers for Present {
                     render::loose::draw_loose,
                 )
                     .run_if(resource_exists::<render::bodies::PlayModels>),
+                // View models added with no map spawned (the greybox) get
+                // drawing assets of their own first.
+                render::view_model::assets_without_map
+                    .before(render::view_model::build_late)
+                    .after(DriveAnimation),
                 (
                     render::view_model::build_late,
                     render::view_model::draw_view_models,
