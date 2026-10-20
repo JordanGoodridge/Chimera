@@ -15,6 +15,9 @@ max = 90
 automatic = true
 cycle = 0.105
 timing = "set"
+# A 0 ms pre-fire: the first round 3 updates after the press
+# (inventory.md Corrections 1).
+latency = 3
 
 [magazine]
 clip = 30

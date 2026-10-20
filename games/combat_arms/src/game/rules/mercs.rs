@@ -25,8 +25,10 @@
 //! - Damage (`ai_damage`, before Chimera applies it): a unit's damage to
 //!   anyone of its team, and anyone's of its team to it, is 0 whatever
 //!   friendly fire says (Quirk 12); its damage is scaled by the mode's
-//!   `ai_damage_factor` and one non-melee hit on a player takes at most
-//!   `ai_damage.cap` (50 HP; 990 for a hit of 1000 or more).
+//!   `ai_damage_factor` (set as the console variable at each round's
+//!   setup: `hired_guns`) before armour and one non-melee hit on a player
+//!   takes at most `ai_damage.cap` (50 HP; 990 for a hit of 1000 or more)
+//!   after it, as every AI's (`weapons::CaAiDamage`).
 //! - Credit (`killer_of`): a kill by a unit is its hirer's.
 //! - Death (`died`): the unit leaves its hirer's list at once (the slot
 //!   is free), the mode counts its killer (`hired_guns::merc_killed`), its
@@ -43,9 +45,8 @@
 //! data/modes.toml); the attack-tower goal has nothing to shoot (no
 //! turrets yet); a unit's box is a player's (not 24 x 53 x 24 u); the
 //! follow distances are 3D (bots_objectives.md 3.4; game_modes_2.md M11.7
-//! says horizontal: the two specs differ); the AI damage factor and cap
-//! apply to the damage after armour (the weapon parts take armour first);
-//! the kill feed doesn't mark squad kills; the order wheel's voice lines
+//! says horizontal: the two specs differ); the kill feed
+//! doesn't mark squad kills; the order wheel's voice lines
 //! aren't played.
 
 use bevy::{ecs::message::MessageMutator, prelude::*};
@@ -54,7 +55,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     super::{
         bots::{CaBot, MercMind, Template, data::BotData, data::Level, roster::Kit},
-        inventory::{self, HP},
+        inventory,
         weapons::{CaArmor, ExactAim},
     },
     CaRuleSettings,
@@ -63,7 +64,7 @@ use super::{
 };
 use crate::{
     character::spawn_character,
-    core::{Damage, DamageKind, Died, Npc, SimClock, Team},
+    core::{Damage, Died, Npc, SimClock, Team},
     spawning,
     weapon::{Inventory, OwnKit},
 };
@@ -334,17 +335,10 @@ pub(super) fn expire(world: &mut World) {
     }
 }
 
-/// M11.7's damage rules for AI: same-team damage to or from a unit is 0;
-/// a unit's damage scaled by the AI damage factor and, on a player, one
-/// non-melee hit capped (game_modes_2.md Constants).
-pub(super) fn ai_damage(
-    mut damage: MessageMutator<Damage>,
-    mercs: Query<&CaMerc>,
-    teams: Query<&Team>,
-    npcs: Query<(), With<Npc>>,
-    settings: Res<CaRuleSettings>,
-) {
-    let factor = settings.hired_guns.ai_damage_factor;
+/// M11.7's damage rule for AI: same-team damage to or from a unit is 0.
+/// (The AI damage factor and cap are every AI's, applied where the damage
+/// is worked out: `weapons::AiHits`.)
+pub(super) fn ai_damage(mut damage: MessageMutator<Damage>, mercs: Query<&CaMerc>, teams: Query<&Team>) {
     for d in damage.read() {
         let Some(a) = d.attacker.filter(|a| *a != d.target) else { continue };
         let (from_ai, to_ai) = (mercs.contains(a), mercs.contains(d.target));
@@ -354,14 +348,6 @@ pub(super) fn ai_damage(
         let mates = matches!((teams.get(a), teams.get(d.target)), (Ok(x), Ok(y)) if x == y);
         if mates {
             d.amount = 0.0;
-            continue;
-        }
-        if from_ai {
-            d.amount *= factor;
-            if !npcs.contains(d.target) {
-                let hp = d.amount / HP;
-                d.amount = settings.ai_damage.capped(hp, d.kind == DamageKind::Melee) * HP;
-            }
         }
     }
 }

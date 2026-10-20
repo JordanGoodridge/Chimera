@@ -641,7 +641,61 @@ impl ServerPlayer {
     }
 }
 
+/// The server's `[TimeWeight]` settings used by firing (attribute_data.md
+/// Corrections 3).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ServerTimeWeight {
+    /// `ReloadCheckTime` (built-in 0.8): the server's reload window is the
+    /// third-person reload length / (rate x (2 - this)).
+    pub reload_check_time: f64,
+}
+
+impl ServerTimeWeight {
+    pub const BUILT_IN: f64 = 0.8;
+
+    /// The section's values (no section: the built-in ones).
+    pub fn read(doc: &Document) -> Self {
+        Self {
+            reload_check_time: doc
+                .section("TimeWeight")
+                .map_or(Self::BUILT_IN, |s| s.number("ReloadCheckTime", Self::BUILT_IN)),
+        }
+    }
+}
+
+/// A skeleton record's hit nodes (`Node<i>Name`, `Node<i>Radius`,
+/// `Node<i>Location`, `Node<i>DamageFactor`, `Node<i>Priority`) from
+/// node 0 until the first index without a name (attribute_data.md
+/// Corrections 1: a missing priority reads as 0).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SkeletonNode {
+    pub name: String,
+    pub radius: f64,
+    pub location: i32,
+    pub damage_factor: f64,
+    pub priority: f64,
+}
+
+impl SkeletonNode {
+    pub fn read_all(s: &Section) -> Vec<Self> {
+        (0..)
+            .map_while(|i| {
+                let k = |f: &str| format!("Node{i}{f}");
+                let name = text(s.string(&k("Name"))?);
+                Some(Self {
+                    name,
+                    radius: s.number(&k("Radius"), 0.0),
+                    location: s.int(&k("Location"), 0),
+                    damage_factor: s.number(&k("DamageFactor"), 0.0),
+                    priority: s.number(&k("Priority"), 0.0),
+                })
+            })
+            .collect()
+    }
+}
+
 /// `FigureType<N>`: a body type.
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FigureTypeRecord {
     pub name: String,

@@ -234,7 +234,12 @@ fn setup(world: &mut World) {
         return;
     }
     let h = world.resource::<CaRuleSettings>().hired_guns.clone();
+    // The objective's `AIDamageFactor` becomes the console variable's.
+    if let Some(mut ai) = world.get_resource_mut::<super::super::weapons::CaAiDamage>() {
+        ai.factor = h.ai_damage_factor;
+    }
     let winner = world.resource::<CaHiredGuns>().last_winner;
+
     for (e, team) in flow::players(world) {
         let win = if winner == Some(team) { h.round_win_bonus } else { 0 };
         pay(world, e, h.base_bank + win);

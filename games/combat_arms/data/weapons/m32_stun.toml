@@ -1,0 +1,61 @@
+# The M32 with stun shells (StunnedTime 8 s is not modelled: another spec's): numbers from specs/combat_arms/special_weapons.md (its sections
+# in brackets), in our own data format (docs/weapon-data.md; hooks:
+# games/combat_arms/src/game/special/). Our numbers as the spec gives them,
+# not a file from the game; the install's attribute data overrides them
+# where it can be read (game/data.rs). Where the spec has no value the line
+# says PLACEHOLDER. Units: world units (1.8 cm each, by body size) and hit
+# points. No sounds or models yet (the front end draws a placeholder).
+id = "combat_arms:m32_stun"
+units = { length = 0.018, damage = 0.01 }
+base = "combat_arms:m32"
+# Special class (key 5) [inventory.md 1, 3.2].
+slot = 4
+# The view model's draw animation [3.2].
+draw = 1.2
+
+# Clip 6 and total 6 [3.2, Stock values].
+[ammo."combat_arms:m32_stun_shell"]
+max = 0
+
+# RapidFireCount 0: holding fire shoots; the cycle is the fire animation [3.2].
+[trigger]
+automatic = true
+cycle = 1.0
+timing = "accumulate"
+
+# The reload animation; an empty clip reloads once the fire animation ends
+# [weapon_firing.md]. Rounds are made by `combat_arms:projectile` below,
+# so the frame traces nothing ([hitscan] only gives it a `Fired` round).
+[magazine]
+clip = 6
+ammo = "combat_arms:m32_stun_shell"
+reload = 1.0
+auto_reload = true
+# ReloadPerBullet 1: the pre-reload, a loop per shell, the post-reload [3.2].
+shells = { start = 2.1, insert = 1.0, finish = 1.034, back_to_back = true }
+
+[hitscan]
+range = 1.0
+pellets = 1
+punch_scale = 1.0
+
+# The `M32_Grenade` record [3]: 1550 u/s under the object gravity, no fuse
+# (10000 s), 300 HP, the rocket model's box 128 x 16 x 16 at scale 1
+# (Quirk 5), `CanHitSameKind` 1; cone 8..8 x 1.2 (n = 9); the ammo's blast
+# 15.0 / 300, explode (type 7).
+[hooks."combat_arms:projectile"]
+speed = 1550.0
+gravity = true
+lifetime = 10000.0
+health = 300.0
+box_half = [128.0, 16.0, 16.0]
+hits_same_kind = true
+perturb = [8, 8]
+dynamic_perturb = 1.2
+area_damage = 15.0
+area_radius = 300.0
+area_type = 7
+
+# MovePenalty [3.2].
+[hooks."combat_arms:handling"]
+move_penalty = 0.2

@@ -44,6 +44,9 @@ automatic = true
 cycle = 0.1                     # s between shots
 # timing = "carry_over"         # or "set", "accumulate" (from the base here)
 # per_press = 3                 # most shots per pull (0: no limit)
+# latency = 3                   # updates from entering the firing state to
+#   the first round (0: that update; CA's view-model chain: 3, primary
+#   shotguns 2)
 
 [magazine]
 clip = 30
@@ -166,6 +169,14 @@ hud_icon = "ammo_762"
   its type, the over-time sphere; data/weapons/m67.toml), `combat_arms:zoom`
   (`zoom_time`, `sway`, `reload_after_fire`, `zoomed_move_penalty`:
   game/weapons/zoom.rs; the scope is the fitted sight's),
+  `combat_arms:projectile` (an impact projectile a weapon fires: speed, gravity,
+  lifetime, box, blast, the lasting sphere), `combat_arms:flame` (the
+  flamethrower's fire keys), `combat_arms:device` (a thrown or placed mine,
+  claymore, turret, kit, strike: `kind` and its tables), `combat_arms:bolt`
+  (a crossbow's), `combat_arms:controller` (a detonator), `combat_arms:knife`
+  (melee: reach, the two buttons' swings and hit keys; games/combat_arms/src/
+  game/special/ and inventory.rs; data/weapons/law.toml, m32.toml,
+  flamethrower.toml, m16a1_mine.toml and the others),
   `combat_arms:spin` (a minigun's `prefire`, `postfire`, `loop_len`,
   `reversible`), `combat_arms:alt_fire` (attack2's volley: `rounds`,
   `interval`, `cycle`; both game/weapons/classes.rs) and

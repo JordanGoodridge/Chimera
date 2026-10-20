@@ -1478,7 +1478,9 @@ fn t78_hit_indicator_from_the_shot_test() {
     while hud(&sim).crosshair.colour != HIT_CROSSHAIR {
         sim.ticks(1);
         frames += 1;
-        assert!(frames < 4, "red on the frame the round is traced");
+        // The round on the 3rd update after the press (weapon_firing.md
+        // Corrections 10), red on that one.
+        assert!(frames < 5, "red on the frame the round is traced");
     }
     sim.intent(me).fire = false;
     let tag = hud(&sim).tags.into_iter().find(|t| t.entity == foe).expect("B's tag");

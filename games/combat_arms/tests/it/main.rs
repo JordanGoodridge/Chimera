@@ -36,9 +36,12 @@ mod net_modes_2;
 mod other_modes;
 mod search_destroy;
 mod skeleton;
+mod special_devices;
+mod special_weapons;
 mod view_model;
 mod vip_escort;
 mod weapon_classes;
+mod weapon_corrections;
 mod weapon_firing;
 mod world;
 
