@@ -1727,3 +1727,22 @@ fn opportunist_loots_a_body() {
     // Looted once.
     assert!(perks::use_perk(sim.app.world_mut(), p, 1).is_err(), "the body is empty");
 }
+
+/// Quirk 1 needs more than 255 pieces in the data (the US data's 258):
+/// with fewer, byte-wide ids change nothing.
+#[test]
+fn quirk_one_needs_more_than_255_pieces() {
+    let quirks = CaGearQuirks { byte_ids: true };
+    let effects = CaGearEffects::default();
+    let ours = GearData::built_in();
+    assert!(ours.piece_count > 255);
+    let wrapped = gear::resolve(&ours, quirks, &look(0), &CaLoadout::default(), &effects, false);
+    let plain = gear::resolve(&ours, CaGearQuirks::default(), &look(0), &CaLoadout::default(), &effects, false);
+    assert_eq!(wrapped.ids, [0, 255, 255], "the vest's piece and the missing face and goggle as 255");
+    assert_eq!(plain.ids, [0]);
+    // An install with 200 pieces: no wrap.
+    let mut small = ours.clone();
+    small.piece_count = 200;
+    let r = gear::resolve(&small, quirks, &look(0), &CaLoadout::default(), &effects, false);
+    assert_eq!(r.ids, [0]);
+}

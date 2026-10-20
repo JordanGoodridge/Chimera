@@ -476,7 +476,7 @@ fn set_piece(set: &SetBonus) -> Option<Gear> {
 /// Quirk 1's piece ids (section 3 of Quirks): the vest, face and goggle
 /// ids as bytes (none: 255), only when the data has more than 255 pieces.
 fn quirk_id(data: &GearData, quirks: CaGearQuirks, id: i32) -> i32 {
-    if quirks.byte_ids && data.pieces.keys().max().is_some_and(|&m| m > 255) {
+    if quirks.byte_ids && data.piece_count > 255 {
         (id & 0xff) as i32
     } else {
         id

@@ -75,7 +75,9 @@ in the lowest crate whose public API it needs:
   WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it; `heavy::movement_volumes`: the volume census of
   the 105 maps and players in their sea, ladders, gravity volumes, safety
-  nets and jump pads); the death camera (`death_killcam.rs`: the
+  nets and jump pads); gear and perks (`gear_perks.rs`: the spec's 56
+  cases on the movement tests' player and the greybox, the console's
+  loadout, a loadout over `NetSim`); the death camera (`death_killcam.rs`: the
   pull-back and orbit maths, the phase machine and the respawn countdown
   headless, and `CaDeathCam` on players in a match); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,

@@ -316,6 +316,9 @@ pub struct GearData {
     /// Item number to the weapon id it is (per-weapon set bonuses).
     pub items: HashMap<i32, String>,
     pub sets: Vec<SetDef>,
+    /// How many gear records the data has (the install's, else ours):
+    /// quirk 1 applies above 255.
+    pub piece_count: usize,
 }
 
 /// The built-in data (data/gear.toml).
@@ -426,6 +429,7 @@ impl GearData {
             data.items.insert(i.no, i.weapon.clone());
         }
         data.sets = file.set;
+        data.piece_count = data.pieces.keys().max().map_or(0, |&m| m as usize + 1);
         Ok(data)
     }
 
@@ -439,6 +443,9 @@ impl GearData {
     pub fn with_install(mut self, install: &GearInstall) -> Self {
         for (id, p) in install.pieces.iter().enumerate() {
             self.pieces.insert(id as i32, p.clone());
+        }
+        if !install.pieces.is_empty() {
+            self.piece_count = install.pieces.len();
         }
         for (id, v) in install.vests.iter().enumerate() {
             self.vests.insert(id as i32, v.clone());
