@@ -2,8 +2,9 @@
 //! (shapes, the spread gap, the firing kick, colours, the hit indicator),
 //! the damage-taken overlay and direction indicator, the health, armour
 //! and stamina block, the weapon and ammo panel, the kill feed, name
-//! tags, and the pickup prompt (inventory.md 11), laid out on the
-//! 1024x768 reference canvas stretched to the screen.
+//! tags, and the action message (D9: the pickup, plant and defuse
+//! prompts; `action`), laid out on the 1024x768 reference canvas
+//! stretched to the screen.
 //!
 //! Behaviour and drawing are apart: `model` is the spec as plain
 //! functions; `CaHudStatePlugin` reads the world each frame into `CaHud`
@@ -12,9 +13,9 @@
 //! `CaHudPlugin` adds it and draws `CaHud` with the shell's UI nodes
 //! (with the install's UI data, `CaUi::installed`, the health and weapon
 //! panels are the game's HUD layout's, bound by name: `install`; the
-//! kill feed, the mode's score panel, the pickup prompt and the action
-//! gauge too: `bound`, `BoundHud`; the hit overlay and the direction
-//! indicator are the HUD layout attributes' images),
+//! kill feed, the mode's score panel, the action message and the action
+//! gauge too: `bound`, `BoundHud`; the hit overlay, the direction
+//! indicator and the gauge sight are the HUD layout attributes' images),
 //! telling the shell's fallback HUD (`client::hud::GameDraws`) to leave
 //! out its crosshair, health and ammo, hit marker and kill feed.
 //!
@@ -27,36 +28,49 @@
 //! `Hitscan::spread`, the cone in perturb units / 1000), its data's
 //! `combat_arms:spread` limits (`cone`, `zoomed_cone`, `burst_cone`) and
 //! `combat_arms:hud` fields (`game::hud::CaHudData`), `Magazine`,
-//! `AltModes`/`Burst`, `game::inventory::CaItem`; `WeaponEvent::Fired`
-//! (the kick), `core::Damage` (the hit indicator, damage taken, the
-//! name-tag flash), `core::Died` (the kill feed), `RoundRestarts` (a new
-//! round clears the hit indicator); the aim ray (`client::aim`). On a
-//! network client (`NetRole::Client`, which deals no damage) the hits are
-//! the server's confirmations (`WeaponEventKind::Hit` of the local
-//! player), the damage taken its `core::DamageTaken`, and the pickup
-//! prompt the server's (`game::net::CaPickup`).
+//! `AltModes`/`Burst`, `game::inventory::CaItem`, the shop item table's
+//! names (`ItemNames`); `WeaponEvent`s: `Fired` (the kick; any player's
+//! first shot, swing or throw shuts its spawn window), and the local
+//! player's own `Shot` traces (a gun's first segment) and melee `Swing`s
+//! on another character (the hit indicator and the name-tag flash, A10:
+//! the shooter's own hit test on the frame of the shot, an enemy outside
+//! its spawn window as this client sees it; on a network client its
+//! predicted rounds' traces, nothing waiting for the server; grenades,
+//! fire and poison never); `core::Damage` (damage taken; on a network
+//! client the server's `core::DamageTaken`), `core::Died` (the kill
+//! feed), the match's phase (`game::rules::CaMatchView`: a round's end
+//! clears the hit indicator, a round going live the damage overlay; also
+//! `RoundRestarts`); bodies (`game::characters::CaBody`: a dead player's
+//! tag) and what players carry (`CaCarry`); the aim ray (`client::aim`);
+//! the pickup prompt's target (`CaSelection::pickup_target`, on a network
+//! client the server's `game::net::CaPickup`).
 //!
 //! Known shortcuts (docs/tech-debt.md; the spec's most literal reading
 //! where it is unclear):
 //! - The HUD runs once per rendered frame on two clocks (Open question
 //!   13): real time in whole ms (`Time<Real>`) for the hit indicator, the
-//!   damage overlay and the kill feed, the game's time in seconds
-//!   (`SimClock`) for the kick; Fired events are timed at the frame that
+//!   spawn windows, the damage overlay, the heartbeat, the action message
+//!   and the kill feed, the game's time in seconds (`SimClock`) for the
+//!   kick and the action gauge; Fired events are timed at the frame that
 //!   reads them.
 //! - "Enemy" for the hit indicator and name tags: a team id that differs
 //!   from the local player's (the spec's, Open question 15); with no
 //!   teams (the skeleton) everyone else, as if each player had an id of
-//!   their own (which ids free-for-all modes give: a live check).
-//!   Damage counts when a `core::Damage` from the local player carries
-//!   health (`amount` > 0), as the spec's "server reports damage".
-//! - A round's end: the next round's start (`RoundRestarts`).
+//!   their own (which ids free-for-all modes give: a live check). A
+//!   player's spawn window opens when this client first sees it alive or
+//!   sees it alive again after death; a hit on a character counts, the
+//!   hit box being the firing's (`game::weapons`).
 //! - Spec yaw grows turning right: ours is `-Intent::yaw` (Q4).
 //! - Name tag opacity (255 seen, 125 blocked) multiplies the name
 //!   colour's own alpha (200); the tag is anchored at the skeleton's
 //!   `NAME_socket` (`characters::CaPose`: a body model's, else the spec's
 //!   "stand" pose, characters.md 3), at the character's position (the
-//!   hull centre) without one; no distance limit, hidden only behind the
-//!   camera (Q10).
+//!   hull centre) without one; a dead player's at its latest body's
+//!   resting place (our bodies have no pose, so no name socket), while
+//!   the body exists; no distance limit, hidden only behind the camera
+//!   (Q10). The rank, flag and revenge icons are placeholder marks (no
+//!   rank or revenge data drives them yet: the flag icon only); Spy
+//!   Hunt's marked-players rule for an intel holder isn't done.
 //! - Text (Q2 and Q3, settled by ui_system.md): placed by `ui::layout`
 //!   (its T2-T6): fonts of the font list (`data/ui/fonts.toml`) scaled
 //!   ⌊H_f y_r⌋ tall and ⌊a_f x_r⌋ a glyph; aligned texts in their box,
@@ -66,34 +80,51 @@
 //!   1 px at every size; the kill feed's names advance by their reference
 //!   width ⌊w_px / x_r⌋ (`feed_width`). Glyph widths are our monospaced
 //!   estimate (ui_system.md's Open question 3), drawn with the install's
-//!   faces or stand-ins (`ui::draw`).
+//!   faces or stand-ins (`ui::draw`). The range readout's `SysFont13` at
+//!   20 px is the install's face (`model::RANGE_FONT`; ours "bold" without
+//!   it).
 //! - The weapon panel's class is the inventory class (the data's `slot`,
 //!   Q16); the fire-mode icon's `RapidFireCount` comes from the trigger
-//!   (`rapid_fire_count`); continuous fire isn't done, so never on.
+//!   (`rapid_fire_count`); continuous fire isn't done, so never on. No
+//!   reader fills `ItemNames` yet (the shop items file's fields aren't
+//!   specified), so the panel shows the weapon data's name, which ours
+//!   copy from the item table.
 //! - The held weapon's attachments (`game::attachments::CaMods`): the
 //!   sight's range readout (A9; the local player's view ray, not a
-//!   spectated player's) and the gauge sight's images (attachments.md;
-//!   placeholders: their numbers), the crosshair's attachment terms (A3).
+//!   spectated player's) and the gauge sight's images (Corrections 13:
+//!   with the weapon panel; the install's images beside the centre at our
+//!   places, the special-weapon HUD layout's `OptionCrossHair` isn't
+//!   read; without the install their numbers), the crosshair's
+//!   attachment terms (A3).
+//! - The kill feed: the revenge, gold, ice-crush and VIP badges aren't
+//!   driven (no data); the groin badge is a hit in the stomach group
+//!   (the firing's groin sphere); the flag badge reads what the victim
+//!   carries when the HUD reads the kill (gone if the rules took the flag
+//!   first); no damage kind of ours is poison or bleeding.
 //! - Not driven by anything yet (the model has them): crosshair items,
-//!   the toggle, video and AI freeze, infection, dot-sight mode (A6, A8:
-//!   no sight has `Type` 2), revealing items, badges but the headshot, the
-//!   heartbeat's sound (counted in `CaHud::heartbeats`, no sound file).
-//! - The score panel and round timer (D6, D7) are `score`'s, from the
-//!   match (`game::rules::CaMatchView`); see its own shortcuts.
+//!   video and AI freeze, infection, dot-sight mode (A6, A8: no sight has
+//!   `Type` 2), revealing items, the state viewer, the pickup prompt's
+//!   non-human, buff, VIP and Spy Hunt conditions, the heartbeat's sound
+//!   (counted in `CaHud::heartbeats`, no sound file). The crosshair is
+//!   never toggled off (Q12): `HudOptions::crosshair_on` is a test hook.
+//! - The score panel, round and bomb timers and the action gauge (D6, D7,
+//!   D9) are `score`'s, from the match (`game::rules::CaMatchView`); see
+//!   its own shortcuts; the bomb prompts `action`'s.
 //! - Without the install (no V1 key), placeholders for the game's
 //!   textures: the silhouette (a grey box standing or crouched), the
 //!   fire-mode icon (a word), kill-feed weapon icons and badges (words),
 //!   the hit overlay (a red frame), the direction indicator (a red bar
 //!   along the square's top edge), the dot-sight image (a red outline),
-//!   the panels' backgrounds (dark boxes). With it, the direction
-//!   indicator is drawn as a rotated rectangle of its sides' lengths (no
-//!   shear on non-4:3 screens) with the rows past the texture's last
-//!   left empty (C's v overrun, no clamp addressing); the crosshair stays
-//!   lines (A5: the layout's crosshair images, `CrossHairLeftTex` and
-//!   the like, are what A12 says isn't drawn); the dot-sight image stays
-//!   a placeholder (no sight in our data names one); name tags stay ours
-//!   (the spec gives no layout for them).
+//!   the panels' backgrounds (dark boxes), the action message at (312,
+//!   430) 400 x 20 (the game's `Action` panel places it). With it, the
+//!   direction indicator is drawn as a rotated rectangle of its sides'
+//!   lengths (no shear on non-4:3 screens) with the rows past the
+//!   texture's last left empty (C's v overrun, no clamp addressing); the
+//!   crosshair stays lines (A5); the dot-sight image stays a placeholder
+//!   (no sight in our data names one); name tags stay ours (the spec
+//!   gives no layout for them).
 
+pub mod action;
 pub mod bound;
 pub mod install;
 pub mod model;
@@ -112,8 +143,10 @@ use crate::{
         RoundRestarts, SimClock, Team,
     },
     game::{
-        attachments::{CaMods, gauge_image},
+        attachments::{CaMods, CaNpc, gauge_image},
+        characters::CaBody,
         hud::CaHudData,
+        rules::{CaMatchView, Phase, objectives::CaCarry},
         inventory::{self, CaItem, CaSelection, Dropped},
         movement::{CaCharacter, CaMovement, movement_data},
         net::CaPickup,
@@ -192,9 +225,12 @@ pub struct CrosshairView {
     /// The sight's range readout (A9): text and colour.
     pub range: Option<(String, Rgba)>,
     /// The gauge sight's images (attachments.md, "Crosshair, HUD and
-    /// overlay"): health on the left, clip on the right, each 0..100 in
-    /// tens.
+    /// overlay"; A12, Corrections 13): health on the left, clip on the
+    /// right, each 0..100 in tens; shown while the weapon panel shows.
     pub gauge: Option<(i32, i32)>,
+    /// Their textures (the HUD layout attributes' prefixes with the
+    /// steps), with the install's data.
+    pub gauge_images: Option<(String, String)>,
 }
 
 /// The damage-taken pieces this frame.
@@ -249,10 +285,24 @@ pub struct CaHud {
     pub tags: Vec<TagView>,
     /// The local player's aim target (A11).
     pub aim_target: Option<Entity>,
-    pub pickup: Option<String>,
+    /// The action message (D9): the pickup, plant or defuse prompt.
+    pub action: Option<ActionView>,
     /// Heartbeats played so far (D2).
     pub heartbeats: u32,
 }
+
+/// The action message as shown (D9): its string-table id and its text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActionView {
+    pub id: String,
+    pub text: String,
+}
+
+/// The shop item table's names by weapon id (D4, Corrections 16): the
+/// weapon panel's name; a weapon without one shows its data's `hud.name`
+/// (ours copy the item names), else its id.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct ItemNames(pub HashMap<String, String>);
 
 /// The HUD's memory between frames.
 #[derive(Resource, Default, Debug)]
@@ -267,6 +317,12 @@ pub struct HudMemory {
     pub flashes: HashMap<Entity, f64>,
     pub colour: Option<Rgba>,
     pub rounds: Option<u32>,
+    /// The match's phase last frame.
+    pub phase: Option<Phase>,
+    /// Each character: alive last frame, and its spawn window (A10).
+    pub windows: HashMap<Entity, (bool, SpawnWindow)>,
+    /// The action message (D9).
+    pub message: ActionMessage,
 }
 
 /// `CaHudStatePlugin`'s systems.
@@ -284,12 +340,17 @@ impl Plugin for CaHudStatePlugin {
             .init_resource::<HudMemory>()
             .init_resource::<CaHud>()
             .init_resource::<score::CaScoreHud>()
+            .init_resource::<score::ScoreMemory>()
+            .init_resource::<ItemNames>()
             .init_resource::<crate::game::rules::CaMatchView>()
             .add_message::<WeaponEvent>()
             .add_message::<Damage>()
             .add_message::<DamageTaken>()
             .add_message::<Died>()
-            .add_systems(Update, (track, update, score::update_score).chain().in_set(HudUpdate));
+            .add_systems(
+                Update,
+                (track, update, action::prompts, score::update_score).chain().in_set(HudUpdate),
+            );
     }
 }
 
@@ -301,14 +362,6 @@ fn viewed(spec: Option<&SpecView>, local: Option<Entity>) -> Option<Entity> {
 
 fn enemies(a: Option<&Team>, b: Option<&Team>) -> bool {
     !matches!((a, b), (Some(a), Some(b)) if a == b)
-}
-
-/// The horizontal forward and right of a yaw (x, z).
-fn flat_axes(yaw: f32) -> (Vec2, Vec2) {
-    let turn = Quat::from_rotation_y(yaw);
-    let f = turn * Vec3::NEG_Z;
-    let r = turn * Vec3::X;
-    (Vec2::new(f.x, f.z), Vec2::new(r.x, r.z))
 }
 
 fn name_of(names: &Query<Option<&Name>>, e: Entity) -> String {
@@ -324,8 +377,9 @@ fn clocks(real: &Time<Real>, time: &Time, sim: Option<&SimClock>) -> (f64, f64) 
     (ms, sim.map_or_else(|| time.elapsed_secs_f64(), |c| c.now))
 }
 
-/// The events of this frame: shots (the kick), damage dealt and taken,
-/// kills, a new round.
+/// The events of this frame: shots (the kick, the hit indicator from the
+/// local player's own traces, the spawn windows' first shots), damage
+/// taken, kills, a round's end and a new round going live.
 #[allow(clippy::too_many_arguments)]
 fn track(
     (time, real, sim): (Res<Time>, Res<Time<Real>>, Option<Res<SimClock>>),
@@ -334,18 +388,43 @@ fn track(
     (mut damage, mut taken): (MessageReader<Damage>, MessageReader<DamageTaken>),
     mut died: MessageReader<Died>,
     local: Option<Single<(Entity, &Intent, Option<&Team>), With<LocalPlayer>>>,
-    teams: Query<(Option<&Team>, Has<Health>)>,
+    characters: Query<(Entity, &Health, Option<&Team>, Has<Dead>), With<Intent>>,
     names: Query<Option<&Name>>,
-    held: Query<&Inventory>,
-    ids: Query<&Weapon>,
-    (rounds, role): (Option<Res<RoundRestarts>>, Option<Res<NetRole>>),
+    (held, ids, carry, npcs): (Query<&Inventory>, Query<&Weapon>, Query<&CaCarry>, Query<(), With<CaNpc>>),
+    (rounds, role, view): (Option<Res<RoundRestarts>>, Option<Res<NetRole>>, Option<Res<CaMatchView>>),
 ) {
     let (ms, now) = clocks(&real, &time, sim.as_deref());
     let memory = &mut *memory;
-    // A network client deals no damage: what the server says instead.
-    let client = role.is_some_and(|r| *r == NetRole::Client);
-    let mut dealt: Vec<Damage> = Vec::new();
-    for e in weapons.read().filter(|e| e.shown()) {
+    let (me, intent, my_team) = match local.as_deref() {
+        Some(&(e, i, t)) => (Some(e), Some(i.clone()), t.copied()),
+        None => (None, None, None),
+    };
+    // The spawn windows (A10): opened when a character appears or comes
+    // back to life on this client.
+    for (e, health, _, dead) in &characters {
+        let alive = !dead && health.current > 0.0;
+        let (was, window) = memory.windows.entry(e).or_insert((false, SpawnWindow::default()));
+        if alive && !*was {
+            window.spawn(ms);
+        }
+        *was = alive;
+    }
+    memory.windows.retain(|e, _| characters.contains(*e));
+    let team_of = |e: Entity| characters.get(e).ok().and_then(|c| c.2.copied());
+    // Shots: the kick; a player's first shot shuts its spawn window; the
+    // local player's own traces (a gun's first segment, a melee swing's
+    // line) on another character light the hit indicator (Corrections 1:
+    // nothing waits for the server, grenades and burns never light it).
+    let mut traced: Vec<Entity> = Vec::new();
+    for e in weapons.read() {
+        if matches!(e.kind, WeaponEventKind::Fired { .. } | WeaponEventKind::Swing { .. } | WeaponEventKind::Thrown)
+            && let Some((_, w)) = memory.windows.get_mut(&e.owner)
+        {
+            w.fire();
+        }
+        if !e.shown() {
+            continue;
+        }
         match e.kind {
             WeaponEventKind::Fired { mode, .. } => {
                 let entry = memory.fired.entry(e.weapon).or_default();
@@ -354,95 +433,110 @@ fn track(
                     entry.1 = Some(now);
                 }
             }
-            WeaponEventKind::Hit { target, amount, hitgroup } if client => dealt.push(Damage {
-                target,
-                attacker: Some(e.owner),
-                amount,
-                point: Vec3::ZERO,
-                dir: Vec3::ZERO,
-                hitgroup,
-                kind: DamageKind::Bullet,
-                weapon: None,
-                force: Vec3::ZERO,
-            }),
+            WeaponEventKind::Shot { hit: Some(target), .. } if Some(e.owner) == me => traced.push(target),
+            WeaponEventKind::Swing { at: Some((_, _, target)), .. } if Some(e.owner) == me => traced.push(target),
             _ => {}
         }
     }
-    if client {
+    for target in traced {
+        if Some(target) == me || !characters.contains(target) {
+            continue;
+        }
+        let enemy = enemies(my_team.as_ref(), team_of(target).as_ref());
+        let open = memory.windows.get(&target).is_some_and(|(_, w)| w.open(ms));
+        if hit_lights(enemy, open) {
+            memory.hit.hit(ms, true);
+            memory.flashes.insert(target, now);
+        }
+    }
+    // Damage taken (C): the server's report on a network client, else the
+    // damage dealt here.
+    let client = role.is_some_and(|r| *r == NetRole::Client);
+    let hits: Vec<Damage> = if client {
         damage.clear();
-        dealt.extend(taken.read().map(|t| t.damage.clone()));
+        taken.read().map(|t| t.damage.clone()).collect()
     } else {
         taken.clear();
-        dealt.extend(damage.read().cloned());
+        damage.read().cloned().collect()
+    };
+    if let (Some(me), Some(intent)) = (me, intent) {
+        for d in hits.iter().filter(|d| d.target == me && d.amount > 0.0) {
+            let (f, rt) = view_axes(&intent);
+            // No direction: the world's forward axis (Corrections 2).
+            let dir = if d.dir.length_squared() > 0.0 { d.dir } else { NO_DIRECTION };
+            memory.damage = DamageFeedback::hit(ms, d.amount, f, rt, dir, -intent.yaw).or(memory.damage);
+        }
     }
-    // The damage overlay fades on every frame after its hit.
+    // The overlay fades on every frame, its hit's own included
+    // (Corrections 3: the first frame draws 253).
     if let Some(d) = memory.damage.as_mut()
         && !d.frame(ms)
     {
         memory.damage = None;
     }
-    let (me, intent, my_team) = match local.as_deref() {
-        Some(&(e, i, t)) => (Some(e), Some(i.yaw), t.copied()),
-        None => (None, None, None),
-    };
-    for d in &dealt {
-        if d.amount <= 0.0 {
-            continue;
-        }
-        if me.is_some() && d.attacker == me && d.target != d.attacker.unwrap() {
-            let Ok((theirs, character)) = teams.get(d.target) else {
-                continue;
-            };
-            let enemy = character && enemies(my_team.as_ref(), theirs);
-            memory.hit.hit(ms, enemy);
-            if enemy {
-                memory.flashes.insert(d.target, now);
-            }
-        }
-        if Some(d.target) == me
-            && let Some(yaw) = intent
-        {
-            let (f, rt) = flat_axes(yaw);
-            let dir = Vec2::new(d.dir.x, d.dir.z);
-            memory.damage = DamageFeedback::hit(ms, d.amount, f, rt, dir, -yaw).or(memory.damage);
-        }
-    }
+    // The kill feed (D5, Corrections 7): a self-kill names its killer.
     for d in died.read() {
-        let mate = |e: Entity| Some(e) == me || !enemies(my_team.as_ref(), teams.get(e).ok().and_then(|t| t.0));
-        let killer = d.attacker.filter(|a| *a != d.entity);
-        let kind = d.damage.kind;
-        let icon = match (killer, kind) {
-            (_, DamageKind::Crush | DamageKind::Fall) => KillIcon::Suicide,
-            (None, DamageKind::Blast) => KillIcon::Barrel,
-            (None, DamageKind::Burn) => KillIcon::Fire,
-            (None, _) => KillIcon::Bleeding,
-            (Some(k), _) => KillIcon::Weapon(d.damage.weapon.map(str::to_string).or_else(|| {
-                let w = held.get(k).ok()?.active?;
-                Some(ids.get(w).ok()?.id.to_string())
-            })),
+        let mate = |e: Entity| Some(e) == me || !enemies(my_team.as_ref(), team_of(e).as_ref());
+        let killer = d.attacker;
+        let kind = match d.damage.kind {
+            DamageKind::Crush | DamageKind::Fall => DeathKind::Crush,
+            DamageKind::Blast => DeathKind::Blast,
+            DamageKind::Burn => DeathKind::Burn,
+            _ => DeathKind::Other,
         };
-        let badges = if d.damage.hitgroup == Hitgroup::Head && killer.is_some() {
-            vec![Badge::Headshot]
-        } else {
-            Vec::new()
-        };
+        let weapon = d.damage.weapon.map(str::to_string).or_else(|| {
+            let k = killer.filter(|k| *k != d.entity)?;
+            let w = held.get(k).ok()?.active?;
+            Some(ids.get(w).ok()?.id.to_string())
+        });
+        let npc = killer.is_some_and(|k| npcs.contains(k));
+        let flag = carry.get(d.entity).is_ok_and(|c| c.flag.is_some());
+        let badges = kill_badges(
+            false,
+            d.damage.hitgroup == Hitgroup::Head,
+            d.damage.hitgroup == Hitgroup::Stomach,
+            flag,
+            mate(d.entity),
+        );
         memory.feed.push(
             ms,
             Kill {
                 killer: killer.map(|k| (name_of(&names, k), mate(k))),
                 victim: (name_of(&names, d.entity), mate(d.entity)),
-                icon,
+                icon: kill_icon(killer.is_some(), npc, kind, weapon),
                 badges,
             },
         );
     }
     memory.feed.frame(ms);
+    // A round's end clears the hit indicator (A10); a round going live
+    // the damage overlay (C).
     let round = rounds.map(|r| r.0);
     if memory.rounds.is_some() && memory.rounds != round {
         memory.hit.reset();
+        memory.damage = None;
     }
     memory.rounds = round;
+    let phase = view.map(|v| v.phase);
+    if phase != memory.phase {
+        match phase {
+            Some(Phase::RoundOver { .. }) => memory.hit.reset(),
+            Some(Phase::Live) => memory.damage = None,
+            _ => {}
+        }
+        memory.phase = phase;
+    }
     memory.flashes.retain(|_, t| now - *t < TAG_FLASH_S);
+}
+
+/// The damage report's direction for damage with none (C, Corrections
+/// 2): the world's forward axis, the way a yaw-0 player faces.
+pub const NO_DIRECTION: Vec3 = Vec3::NEG_Z;
+
+/// The forward of a player's view rotation (pitch and yaw: it tilts with
+/// the pitch) and its horizontal right (C).
+pub fn view_axes(intent: &Intent) -> (Vec3, Vec3) {
+    (intent.look_rotation() * Vec3::NEG_Z, intent.yaw_rotation() * Vec3::X)
 }
 
 /// The `combat_arms:spread` limits the crosshair reads (the firing part's
@@ -589,10 +683,14 @@ struct HudInputs<'w, 's> {
     characters: Query<'w, 's, Character<'static>, With<Intent>>,
     parents: Query<'w, 's, &'static ChildOf>,
     dropped: Query<'w, 's, &'static Dropped>,
-    ids: Query<'w, 's, &'static Weapon>,
     spatial: SpatialQuery<'w, 's>,
     /// Name sockets (characters.md 3).
     poses: Query<'w, 's, (&'static crate::game::characters::CaPose, &'static crate::core::MovementState)>,
+    /// Dead players' bodies (their tags float over them) and what players
+    /// carry (a tag's flag icon).
+    bodies: Query<'w, 's, &'static CaBody>,
+    carry: Query<'w, 's, &'static CaCarry>,
+    items: Res<'w, ItemNames>,
 }
 
 /// This frame's `CaHud` from the world and the memory.
@@ -616,6 +714,8 @@ fn update(
     let mut next = CaHud {
         screen,
         heartbeats: hud.heartbeats,
+        // `action::prompts`' (after this).
+        action: hud.action.clone(),
         ..default()
     };
 
@@ -720,16 +820,6 @@ fn update(
             let range = w.1.map_or(0.0, |s| (s.range / UNIT).round());
             next.crosshair.range = Some(range_readout(hit, range, m.damage().range_per));
         }
-        if m.gauge()
-            && let Some(p) = player
-        {
-            // The integer percentage (health is a fraction here: a hair of
-            // slack so 0.95 is 95, not 94.99).
-            let percent = |v: f32, max: f32| if max > 0.0 { (100.0 * v / max + 1e-4).floor() as i32 } else { 0 };
-            let hp = percent(p.0.current, p.0.max);
-            let clip = w.5.map_or(0, |mag| percent(mag.clip as f32, mag.size as f32));
-            next.crosshair.gauge = Some((gauge_image(hp), gauge_image(clip)));
-        }
     }
 
     // Damage taken (C): drawn whenever the crosshair item draws.
@@ -750,7 +840,7 @@ fn update(
     if status_shown && let Some(p) = player {
         let (h, max) = (p.0.current * 100.0, p.0.max * 100.0);
         let low = low_health(h, max, options.infected);
-        if memory.heartbeat.frame(now, low) {
+        if memory.heartbeat.frame(ms, low) {
             next.heartbeats += 1;
         }
         let character = p.5.unwrap_or(&movement_data().character);
@@ -778,9 +868,10 @@ fn update(
             _ => (0, 0),
         };
         let inputs = PanelInputs {
-            name: data
-                .and_then(|d| d.hud.name.clone())
-                .unwrap_or_else(|| id.id.rsplit(':').next().unwrap_or(id.id).to_uppercase()),
+            name: world.items.0.get(id.id).cloned().unwrap_or_else(|| {
+                data.and_then(|d| d.hud.name.clone())
+                    .unwrap_or_else(|| id.id.rsplit(':').next().unwrap_or(id.id).to_uppercase())
+            }),
             class: inventory::class_of(id.slot),
             bomb: hud_data.is_some_and(|h| h.bomb),
             infinite: item.is_some_and(|i| i.infinite) || (mag.is_none() && throw.is_none()),
@@ -792,6 +883,23 @@ fn update(
             continuous: false,
         };
         next.weapon = model::weapon_panel(&inputs, status_shown && !options.infected);
+    }
+
+    // The gauge sight's images (A12, Corrections 13): the weapon panel's,
+    // whenever it shows, crosshair or not.
+    if let (Some(m), Some((_, w)), Some(p), Some(_)) = (mods, weapon, player, &next.weapon)
+        && m.gauge()
+    {
+        // The integer percentage (health is a fraction here: a hair of
+        // slack so 0.95 is 95, not 94.99).
+        let percent = |v: f32, max: f32| if max > 0.0 { (100.0 * v / max + 1e-4).floor() as i32 } else { 0 };
+        let hp = percent(p.0.current, p.0.max);
+        let clip = w.5.map_or(0, |mag| percent(mag.clip as f32, mag.size as f32));
+        next.crosshair.gauge = Some((gauge_image(hp), gauge_image(clip)));
+        let prefix = |k: &str| ui.install.as_ref().and_then(|i| i.hud_prefix(k));
+        if let (Some(l), Some(r)) = (prefix("crosshairlefttex"), prefix("crosshairrighttex")) {
+            next.crosshair.gauge_images = Some(gauge_images(&l, &r, hp, clip));
+        }
     }
 
     // The kill feed (D5): shown even while dead.
@@ -825,28 +933,45 @@ fn update(
             None
         };
         next.aim_target = target;
+        // Each dead player's latest body (Corrections 5).
+        let mut bodies: HashMap<Entity, &CaBody> = HashMap::new();
+        for b in &world.bodies {
+            if bodies.get(&b.owner).is_none_or(|old| old.since <= b.since) {
+                bodies.insert(b.owner, b);
+            }
+        }
         for (e, t, health, team, name, their_dead, _) in &world.characters {
             if e == me {
                 continue;
             }
-            // The skeleton's name socket; without one the character's
-            // position, the hull centre (Open question 10).
-            let anchor = world
-                .poses
-                .get(e)
-                .ok()
-                .and_then(|(p, s)| Some(p.world(t, s, UNIT, p.name_tag?)))
-                .unwrap_or(t.translation);
+            let alive = !their_dead && health.current > 0.0;
+            // A dead player's tag floats over its body (our bodies have no
+            // pose: their resting place); a living one's at the skeleton's
+            // name socket, without one the character's position, the hull
+            // centre (Open question 10).
+            let body = (!alive).then(|| bodies.get(&e)).flatten();
+            let anchor = match body {
+                Some(b) => b.at,
+                None => world
+                    .poses
+                    .get(e)
+                    .ok()
+                    .and_then(|(p, s)| Some(p.world(t, s, UNIT, p.name_tag?)))
+                    .unwrap_or(t.translation),
+            };
             let inputs = TagInputs {
                 local_alive,
                 teammate: !enemies(my_team, team),
-                alive: !their_dead && health.current > 0.0,
+                alive,
                 aimed: target == Some(e),
                 revealed: false,
                 flashing: memory.flashes.contains_key(&e),
                 seen: aim::clear_line(&world.spatial, ray.eye, anchor, &[me, e]),
                 chased: in_eye == Some(e),
                 state_viewer: false,
+                body_visible: body.is_some(),
+                flag: world.carry.get(e).is_ok_and(|c| c.flag.is_some()),
+                revenge: false,
             };
             if let Some(tag) = name_tag(inputs) {
                 next.tags.push(TagView {
@@ -858,20 +983,25 @@ fn update(
                 });
             }
         }
-        // The pickup prompt (inventory.md 11): the item the view is on.
-        if status_shown {
-            // Here, or (a network client) the server's.
-            let here = selection
-                .and_then(|s| s.pickup_target)
-                .and_then(|i| world.dropped.get(i).ok())
-                .and_then(|d| world.ids.get(d.weapon).ok())
-                .map(|w| w.id.to_string());
-            next.pickup = here.or_else(|| served.and_then(|p| p.0.clone())).map(|id| {
-                let name = crate::weapon::data::lookup(&id)
-                    .and_then(|d| d.hud.name.clone())
-                    .unwrap_or_else(|| id.rsplit(':').next().unwrap_or(&id).to_uppercase());
-                format!("Press [E] to pick up {name}")
-            });
+        // The pickup prompt (D9, Corrections 11): asked for from the
+        // crosshair's draw step while the view is on a pickup (here, or on
+        // a network client the server's), a fixed string-table text.
+        let here = selection.and_then(|s| s.pickup_target).is_some_and(|i| world.dropped.contains(i));
+        let prompt = pickup_prompt(
+            PickupInputs {
+                draw_step: options.crosshair_on && status_shown,
+                scope_overlay: scope,
+                death_cam: dead && in_eye.is_none(),
+                weapon_data: weapon.is_some(),
+                aiming_at_pickup: here || served.is_some_and(|p| p.0.is_some()),
+                mine: data.mine,
+                infected: options.infected,
+                ..default()
+            },
+            false,
+        );
+        if let Some(id) = prompt {
+            memory.message.request(id, ms);
         }
     }
     hud.set_if_neq(next);
@@ -1010,6 +1140,7 @@ impl BoundHud {
             Badge::Headshot => "killheadshotimg",
             Badge::Groin => "killnutshotimg",
             Badge::Flag => "killenemyflagimg",
+            Badge::TeamFlag => "killteamflagimg",
             Badge::Gold => "killenemygoldimg",
             Badge::IceCrush => "killicecrushimg",
             Badge::Vip | Badge::VipRank => "killlogviprankimg1",
@@ -1087,23 +1218,21 @@ fn draw_action(
     art: Option<Res<draw::CaArt>>,
     bound: Res<BoundHud>,
     root: Single<Entity, With<ActionRoot>>,
-    mut last: Local<Option<(Option<String>, Option<(String, f32)>, Screen, bool)>>,
+    mut last: Local<Option<(Option<ActionView>, Option<score::GaugeView>, Screen, bool)>>,
     mut commands: Commands,
 ) {
     let Some(panel) = &bound.action else { return };
     let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
-    if !rebuild(&mut last, (hud.pickup.clone(), score.gauge.clone(), hud.screen, loaded), *root, &mut commands) {
+    if !rebuild(&mut last, (hud.action.clone(), score.gauge.clone(), hud.screen, loaded), *root, &mut commands) {
         return;
     }
-    let gauge = score.gauge.as_ref().map(|(what, f)| {
-        let icon = match what.as_str() {
-            "Defusing" => bound.texture("guage_bombdefuse_tex"),
-            _ => bound.texture("guage_bombplant_tex"),
-        };
-        (what.as_str(), *f, icon)
+    let gauge = score.gauge.as_ref().map(|g| {
+        let icon = g.kind.icon_key().and_then(|k| bound.texture(k));
+        (g.title.as_str(), g.percent, icon)
     });
-    let Some(layout) = panel.build(hud.pickup.as_deref(), gauge, scale(hud.screen)) else { return };
     let ui = &params.0;
+    let prompt = hud.action.as_ref().map(|a| a.text.as_str());
+    let Some(layout) = panel.build(prompt, gauge, scale(hud.screen), &ui.fonts) else { return };
     let draws = layout.draw(&ui.ctx());
     commands.entity(*root).with_children(|c| {
         draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), params.1.as_deref(), params.2.as_deref());
@@ -1222,30 +1351,64 @@ pub(crate) fn rebuild<T: PartialEq + Clone + Send + Sync + 'static>(
     true
 }
 
+/// The range readout's text (A9, Corrections 15): `RANGE_FONT` (the font
+/// list's `SysFont13` at 20 px) scaled with the screen, its right end and
+/// top at (490, 400) ref.
+pub fn range_text(fonts: &FontList, screen: Screen, text: &str, colour: Rgba) -> Option<layout::TextDraw> {
+    let look = TextLook {
+        font: RANGE_FONT.to_string(),
+        h: HAlign::Right,
+        v: VAlign::Default,
+        effect: Effect::Shadow,
+        colour,
+        shadow: [0, 0, 0, 255],
+        set: Some(text.to_string()),
+        ..default()
+    };
+    let width = 200;
+    let at = RANGE_AT.as_ivec2() - IVec2::new(width, 0);
+    layout::boxed_text(at, IVec2::new(width, 0), IVec2::ZERO, look, scale(screen), fonts)
+}
+
 fn draw_crosshair(
     hud: Res<CaHud>,
     params: PenParams,
+    art: Option<Res<draw::CaArt>>,
     root: Single<Entity, With<CrosshairRoot>>,
-    mut last: Local<Option<(CrosshairView, Screen)>>,
+    mut last: Local<Option<(CrosshairView, Screen, bool)>>,
     mut commands: Commands,
 ) {
     let c = &hud.crosshair;
-    if !rebuild(&mut last, (c.clone(), hud.screen), *root, &mut commands) {
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (c.clone(), hud.screen, loaded), *root, &mut commands) {
         return;
     }
     let col = colour(c.colour);
     let pen = pen(&params, hud.screen);
     commands.entity(*root).with_children(|p| {
-        // The range readout, right-aligned at `RANGE_AT` (A9).
-        if let Some((t, rgba)) = &c.range {
-            let size = Vec2::new(120.0, 16.0);
-            let boxed = (RANGE_AT - Vec2::new(size.x, 0.0), size, Vec2::ZERO);
-            let align = (HAlign::Right, VAlign::Centre);
-            hud_text(p, pen, boxed, t, looks::PROMPT, align, Effect::Shadow, *rgba);
+        // The range readout: its right end and top at `RANGE_AT` (A9).
+        if let Some((t, rgba)) = &c.range
+            && let Some(d) = range_text(&pen.ui.fonts, hud.screen, t, *rgba)
+        {
+            draw::spawn_text(p, &d, pen.fonts, pen.faces);
         }
-        // PLACEHOLDER for the gauge sight's images: their numbers beside
-        // the centre, health left, clip right.
-        if let Some((hp, clip)) = c.gauge {
+        // The gauge sight's images (the install's) beside the centre,
+        // health left, clip right (ours: where; the special-weapon HUD
+        // layout's `OptionCrossHair` isn't read).
+        let images = c
+            .gauge_images
+            .as_ref()
+            .and_then(|(l, r)| Some((art.as_deref()?.get(l)?.clone(), art.as_deref()?.get(r)?.clone())));
+        if let Some(((left, ls), (right, rs))) = images {
+            for ((image, size), right_side) in [((left, ls), false), ((right, rs), true)] {
+                let size = size.as_vec2();
+                let x = if right_side { 512.0 + 90.0 } else { 512.0 - 90.0 - size.x };
+                let r = hud.screen.rect(Vec2::new(x, 384.0 - size.y / 2.0), size);
+                let full = Rect::new(0.0, 0.0, size.x, size.y);
+                draw::image_part(p, &image, [r.min.x, r.min.y, r.max.x, r.max.y], full, [255; 4]);
+            }
+        } else if let Some((hp, clip)) = c.gauge {
+            // PLACEHOLDER for the gauge sight's images: their numbers.
             let size = Vec2::new(60.0, 16.0);
             let white = [255, 255, 255, 220];
             let left = (Vec2::new(512.0 - 90.0 - size.x, 376.0), size, Vec2::ZERO);
@@ -1422,18 +1585,19 @@ fn draw_status(
     panels: Res<InstallHud>,
     bound: Res<BoundHud>,
     root: Single<Entity, With<StatusRoot>>,
-    mut last: Local<Option<(Option<StatusView>, Option<String>, Screen)>>,
+    mut last: Local<Option<(Option<StatusView>, Option<ActionView>, Screen)>>,
     mut commands: Commands,
 ) {
-    if !rebuild(&mut last, (hud.status.clone(), hud.pickup.clone(), hud.screen), *root, &mut commands) {
+    if !rebuild(&mut last, (hud.status.clone(), hud.action.clone(), hud.screen), *root, &mut commands) {
         return;
     }
     let screen = hud.screen;
     let pen = pen(&params, screen);
     let resolve = |id: &str| pen.ui.strings.resolve(id);
     commands.entity(*root).with_children(|p| {
-        if let Some(prompt) = hud.pickup.as_ref().filter(|_| bound.action.is_none()) {
-            // Ours: the spec gives the prompt no look or place.
+        if let Some(prompt) = hud.action.as_ref().map(|a| &a.text).filter(|_| bound.action.is_none()) {
+            // Ours without the install's `Action` panel (D9 places it
+            // there).
             hud_text(
                 p,
                 pen,
@@ -1632,7 +1796,7 @@ fn badge_art(b: Badge) -> Option<String> {
         Badge::Revenge => "revenge",
         Badge::Headshot => "headshot",
         Badge::Groin => "nutshot",
-        Badge::Flag => "flag_log_team",
+        Badge::TeamFlag => "flag_log_team",
         Badge::Vip => "vip_vip",
         _ => return None,
     };
@@ -1686,7 +1850,19 @@ fn draw_tags(
                 ..default()
             });
             tag.with_children(|c| {
-                c.spawn((Text::new(t.name.clone()), font, TextColor(name), TextLayout::no_wrap()));
+                // PLACEHOLDER marks for the tag's icons (rank left of the
+                // name, flag and revenge after it).
+                let mut line = t.name.clone();
+                if t.tag.rank {
+                    line = format!("[*] {line}");
+                }
+                if t.tag.flag {
+                    line.push_str(" [F]");
+                }
+                if t.tag.revenge {
+                    line.push_str(" [R]");
+                }
+                c.spawn((Text::new(line), font, TextColor(name), TextLayout::no_wrap()));
                 if t.tag.hp_bar {
                     c.spawn((
                         Node {

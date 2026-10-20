@@ -11,14 +11,23 @@
 //! install's layout nothing is drawn (the shell's console says what
 //! loads).
 //!
-//! Known shortcuts (the most literal reading): the gauge moves by the
-//! join's stage (ours: connecting 10 %, the server's info 25 %, a level
-//! change 35 %, verifying 45 %, downloading 55 %, loading the map 80 %),
-//! not by bytes; the mode line, the operation's description and the
-//! second banner's text (samples in the layout) and the tips whose
-//! string ids the table lacks are hidden, the
-//! Quarantine backdrop never shows; a local `map` loads in one frame and
-//! shows no loading screen.
+//! The gauge runs on the real clock by the join's part
+//! (`LoadingGauge`, ui_system.md Corrections 7); `mapmode` shows the
+//! mode's name and the Quarantine backdrop its mode when the mode is
+//! known (`CaLoading::mode`); the cursor is hidden while it shows.
+//!
+//! Known shortcuts (the most literal reading): the join's parts are our
+//! reading of its stages (`part`: connecting and the server's info the
+//! early part, a level change, verifying and downloading the level's
+//! setting up, loading the map entering the world); nothing tells the
+//! client the room's mode while joining yet (so the mode line and the
+//! Quarantine backdrop stay hidden) or whether the room is official;
+//! there is no room data, so the picture is the map's by name
+//! (`loading_picture` has the spec's fallback for when there is); the
+//! operation's description and the two tip banners (the map's and the
+//! mode's guide entries) have no data (samples in the layout: hidden),
+//! and tips whose string ids the table lacks are hidden; a local `map`
+//! loads in one frame and shows no loading screen.
 
 use bevy::prelude::*;
 
@@ -31,12 +40,92 @@ use super::{
 };
 use crate::client::{canvas::Scale, fonts::UiFonts, front_end::FrontEnd};
 
-/// The loading screen's state: what is loading (the joining label), and
-/// how far (0 to 1).
+/// The loading screen's state: what is loading (the joining label), how
+/// far (0 to 1), and the room's mode when known (its key).
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct CaLoading {
     pub label: Option<String>,
     pub progress: f32,
+    pub mode: Option<String>,
+}
+
+/// The loading gauge (ui_system.md H, Corrections 7), percent on the real
+/// millisecond clock: until the level starts being set up it rises 0.2
+/// a ms, at most 15, the time T summed; when entering the world starts it
+/// jumps to 55 and then rises 15 / T a ms, at most 100.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LoadingGauge {
+    pub percent: f64,
+    /// The early part's time, ms.
+    pub early: f64,
+    /// Rising after the jump: its speed (percent a ms).
+    pub speed: Option<f64>,
+}
+
+/// Where a join is, for the gauge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadingPart {
+    /// Before the level starts being set up.
+    Early,
+    /// The level being set up (the gauge holds).
+    Level,
+    /// Entering the world.
+    Entering,
+}
+
+impl LoadingGauge {
+    /// `dt` ms more in `part`.
+    pub fn advance(&mut self, dt: f64, part: LoadingPart) {
+        match (part, self.speed) {
+            (LoadingPart::Early, None) => {
+                self.early += dt;
+                self.percent = (self.percent + 0.2 * dt).min(15.0);
+            }
+            (LoadingPart::Level, None) => {}
+            (LoadingPart::Entering, None) => {
+                self.percent = 55.0;
+                self.speed = Some(if self.early > 0.0 { 15.0 / self.early } else { f64::INFINITY });
+            }
+            (_, Some(v)) => self.percent = (self.percent + v * dt).min(100.0),
+        }
+    }
+}
+
+/// The gauge's part for a join stage (ours: connecting and the server's
+/// info are the early part, a level change, verifying and downloading
+/// the level's setting up, loading the map entering the world).
+pub fn part(stage: crate::net::client::JoinStage) -> LoadingPart {
+    use crate::net::client::JoinStage as S;
+    match stage {
+        S::Idle | S::Connecting | S::ServerInfo => LoadingPart::Early,
+        S::ChangingLevel | S::Verifying | S::Downloading => LoadingPart::Level,
+        S::LoadingMap | S::Joined => LoadingPart::Entering,
+    }
+}
+
+/// The loading picture (Corrections 7): the room data's for the map and
+/// mode (`picture`), else the same map's team deathmatch one, when that
+/// texture exists (`exists`).
+pub fn loading_picture(
+    map: &str,
+    mode: &str,
+    picture: impl Fn(&str, &str) -> Option<String>,
+    exists: impl Fn(&str) -> bool,
+) -> Option<String> {
+    [mode, "TDM"]
+        .into_iter()
+        .filter_map(|m| picture(map, m))
+        .find(|t| exists(t))
+}
+
+/// The mode line (`mapmode`, Corrections 7): the mode's full name, with
+/// the string table's "official" word and a space in front in official
+/// rooms.
+pub fn mode_line(name: &str, official: Option<&str>) -> String {
+    match official {
+        Some(word) => format!("{word} {name}"),
+        None => name.to_string(),
+    }
 }
 
 /// The map picture's texture for `label` (a map id or name; `None` for
@@ -47,21 +136,6 @@ pub fn map_image(label: &str) -> Option<String> {
         return None;
     }
     Some(texture_key(&format!("UI_SCR_Loading\\MapLoading\\MapImage\\{name}")))
-}
-
-/// The join's progress by stage (ours: see the module doc).
-pub fn progress(stage: crate::net::client::JoinStage) -> f32 {
-    use crate::net::client::JoinStage as S;
-    match stage {
-        S::Idle => 0.0,
-        S::Connecting => 0.1,
-        S::ServerInfo => 0.25,
-        S::ChangingLevel => 0.35,
-        S::Verifying => 0.45,
-        S::Downloading => 0.55,
-        S::LoadingMap => 0.8,
-        S::Joined => 1.0,
-    }
 }
 
 /// The loading layout bound to `state` at `scale` (None: the layout lacks
@@ -85,8 +159,15 @@ pub fn build(src: &Layout, state: &CaLoading, image: Option<&str>, strings: &Str
         let id = find(&l, n);
         bound::set_text(&mut l, id, Some(&name), None);
     }
+    // The mode's line and Quarantine's backdrop, when the mode is known.
+    let mode = state.mode.as_deref().and_then(crate::game::rules::mode_by_key);
+    let id = find(&l, "mapmode");
+    match mode {
+        Some(m) => bound::set_text(&mut l, id, Some(&mode_line(m.shown_as, None)), None),
+        None => bound::show(&mut l, id, false),
+    }
     let id = find(&l, "Quarantine");
-    bound::show(&mut l, id, false);
+    bound::show(&mut l, id, state.mode.as_deref() == Some("QRT"));
     let id = find(&l, "LoadingGauge");
     bound::set_fraction(&mut l, id, state.progress);
     bound::hide_samples(&mut l, 0);
@@ -113,7 +194,7 @@ impl Plugin for CaLoadingPlugin {
             .add_systems(Startup, |mut commands: Commands| {
                 commands.spawn((LoadingRoot, layer(60)));
             })
-            .add_systems(Update, (track, draw).chain());
+            .add_systems(Update, (track, draw, cursor).chain());
         FrontEnd::register(app, |hooks| {
             hooks.joining = |w, label| {
                 if let Some(mut l) = w.get_resource_mut::<CaLoading>() {
@@ -135,14 +216,38 @@ impl Plugin for CaLoadingPlugin {
 #[derive(Component)]
 struct LoadingRoot;
 
-/// The join's progress into `CaLoading`.
-fn track(join: Option<Res<crate::net::client::JoinProgress>>, mut state: ResMut<CaLoading>) {
+/// The join's progress into `CaLoading`: the gauge on the real clock by
+/// the join's part.
+fn track(
+    join: Option<Res<crate::net::client::JoinProgress>>,
+    real: Res<Time<Real>>,
+    mut gauge: Local<LoadingGauge>,
+    mut state: ResMut<CaLoading>,
+) {
     if state.label.is_none() {
+        *gauge = LoadingGauge::default();
         return;
     }
-    let p = join.map_or(0.0, |j| progress(j.stage));
+    let stage = join.map_or(crate::net::client::JoinStage::Idle, |j| j.stage);
+    gauge.advance(real.delta().as_secs_f64() * 1000.0, part(stage));
+    let p = (gauge.percent / 100.0) as f32;
     if state.progress != p {
         state.progress = p;
+    }
+}
+
+/// The cursor is hidden while the loading screen shows (Corrections 7).
+fn cursor(state: Res<CaLoading>, cursor: Option<Single<&mut bevy::window::CursorOptions>>, mut hid: Local<bool>) {
+    let Some(mut cursor) = cursor else { return };
+    let showing = state.label.is_some();
+    if showing && cursor.visible {
+        cursor.visible = false;
+        *hid = true;
+    } else if !showing && *hid {
+        *hid = false;
+        if !crate::client::input::cursor_grabbed(&cursor) {
+            cursor.visible = true;
+        }
     }
 }
 

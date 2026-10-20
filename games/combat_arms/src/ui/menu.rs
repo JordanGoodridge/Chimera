@@ -9,12 +9,22 @@
 //! firing on the left button going down with their sounds.
 //!
 //! - Esc opens and closes it (not while the console is open or chat is
-//!   being typed: those take the Esc). The game doesn't pause (no pause
-//!   online), the mouse shows while it is open (`MenuStatus::open`, which
-//!   the shell reads: binds and the mouse grab wait), and is taken back
-//!   when it closes.
-//! - Buttons: return to lobby, report a user, start/stop recording,
-//!   cancel (closes it).
+//!   being typed: those take the Esc); every other key is swallowed
+//!   while it is open. The game doesn't pause (no pause online), the
+//!   mouse shows while it is open (`MenuStatus::open`, which the shell
+//!   reads: binds and the mouse grab wait), and is taken back when it
+//!   closes.
+//! - Under it, or with the chat input open (I2, Corrections 4,
+//!   `popup_input`): the local player's movement and command flags are
+//!   cleared each frame but crouch (a crouch held when it opened stays
+//!   down; a sprint ends), its view stays where it was (mouse look
+//!   ignored); the world keeps running.
+//! - Buttons (the install's, by name, Corrections 5): return to lobby,
+//!   report a user, start/stop recording (its label `btn_text_record`
+//!   the string `$button_record_start` with the record key's name),
+//!   cancel and the title bar's close button (both close it); a button
+//!   the layout has but code doesn't bind (the options button) keeps its
+//!   normal look and does nothing.
 //!
 //! `CaMenuStatePlugin` is the menu without a window (`InGameMenu`, the
 //! pointer as `MenuPointer`; tests/ui/ui_system.rs); `CaMenuPlugin` adds
@@ -24,16 +34,17 @@
 //! Known shortcuts (the spec's most literal reading where it is unclear):
 //! - "Return to lobby" quits the game (there is no lobby yet), so our
 //!   label says "Leave Game" (the game's layout keeps its own words);
-//!   reporting a user, recording and (the game's) options have no flow,
-//!   so their buttons are disabled (the D look).
-//! - While the menu is open the player stops moving and looking, as with
-//!   any free mouse in the shell (the spec's Open question 6 asks whether
-//!   the real game keeps movement).
+//!   reporting a user and recording have no flow, so their buttons are
+//!   disabled (the D look), and no console command records (the label
+//!   names the key bound to `record`, none by default).
 //! - Interface sounds are counted (`InGameMenu::played`), not played: the
 //!   sound files' roles are in the client interface attributes (keyed).
 //! - The popup's root takes the pointer over the whole screen (the file
 //!   root's 1024 x 1024 is used for alignment only), so a centred popup
 //!   past x 1024 still takes clicks.
+//! - The other in-game popups (the user report box, message boxes, the
+//!   user tooltip, the discard confirmation, the help box) don't exist
+//!   yet: only the Esc menu and the chat input stop the player.
 
 use bevy::{prelude::*, window::PrimaryWindow};
 
@@ -58,8 +69,9 @@ pub const CMD_LOBBY: i32 = 1;
 pub const CMD_REPORT: i32 = 2;
 pub const CMD_RECORD: i32 = 3;
 pub const CMD_CANCEL: i32 = 4;
-/// The game's layout's options button (no options flow: disabled).
-pub const CMD_OPTION: i32 = 5;
+/// The command of a button code doesn't bind: none (it keeps its
+/// normal look and does nothing; ui_system.md Corrections 5).
+pub const CMD_NONE: i32 = 0;
 /// The game's layout's first control (`install::MENU_FILE`).
 pub const INSTALL_BOX: &str = "exit_popup";
 /// The game's layout's buttons by name, their commands (its `Cmd_id`s
@@ -69,10 +81,21 @@ pub const INSTALL_BUTTONS: &[(&str, i32, bool)] = &[
     ("button_lobby", CMD_LOBBY, true),
     ("button_userreport", CMD_REPORT, false),
     ("button_record", CMD_RECORD, false),
-    ("button_option", CMD_OPTION, false),
     ("button_cancel", CMD_CANCEL, true),
     ("button_exit_title", CMD_CANCEL, true),
 ];
+/// The record button's label (`btn_text_record`) and the console command
+/// whose key it names.
+pub const RECORD_LABEL: &str = "btn_text_record";
+pub const RECORD_COMMAND: &str = "record";
+
+/// The record button's label (ui_system.md Corrections 5): the string
+/// `$button_record_start` (`$button_record_stop` while recording) filled
+/// with the name of the key bound to recording.
+pub fn record_label(strings: &super::layout::Strings, key: &str, recording: bool) -> String {
+    let id = if recording { "$button_record_stop" } else { "$button_record_start" };
+    super::hud::model::fill(&strings.resolve(id), key)
+}
 
 /// The in-game menu: its popup on a desk, open or not, the screen it is
 /// centred on, and the interface sounds it has played.
@@ -98,6 +121,13 @@ impl InGameMenu {
         let mut disabled: Vec<&str> = vec!["Report", "Record"];
         if installed {
             disabled.clear();
+            // Every button's command is code's: a button the layout has
+            // but code doesn't bind (the options button) does nothing.
+            for id in layout.tree.order() {
+                if matches!(layout.widget(id).kind, super::layout::Kind::Button(_)) {
+                    layout.widget_mut(id).cmd = CMD_NONE;
+                }
+            }
             for &(name, cmd, works) in INSTALL_BUTTONS {
                 if let Some(id) = layout.find(name) {
                     layout.widget_mut(id).cmd = cmd;
@@ -105,6 +135,11 @@ impl InGameMenu {
                         disabled.push(name);
                     }
                 }
+            }
+            if let Some(id) = layout.find(RECORD_LABEL)
+                && let super::layout::Kind::Text(t) = &mut layout.widget_mut(id).kind
+            {
+                t.set = Some(record_label(&ui.strings, "", false));
             }
         }
         let mut desk = Desk::default();
@@ -167,6 +202,60 @@ pub struct MenuPointer(pub Option<IVec2>);
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MenuSystems;
 
+/// The local player's input under a popup or the chat input (after the
+/// shell writes it).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PopupInput;
+
+/// While the Esc menu or the chat input is open (ui_system.md I2,
+/// Corrections 4): every movement and command flag cleared but crouch (a
+/// crouch held when it opened stays down; sprint ends), the view kept
+/// where it was (mouse look ignored); the world keeps running. `last` is
+/// the input of the last frame it was closed.
+fn popup_input(
+    menu: Res<InGameMenu>,
+    chat: Option<Res<crate::client::chat::ChatInput>>,
+    mut player: Query<&mut crate::core::Intent, With<crate::core::LocalPlayer>>,
+    mut last: Local<Option<(bool, f32, f32)>>,
+    mut held: Local<Option<(bool, f32, f32)>>,
+) {
+    let Ok(mut intent) = player.single_mut() else { return };
+    let open = menu.open || chat.is_some_and(|c| c.open.is_some());
+    if !open {
+        *held = None;
+        *last = Some((intent.crouch, intent.yaw, intent.pitch));
+        return;
+    }
+    let (crouch, yaw, pitch) = *held.get_or_insert(last.unwrap_or((intent.crouch, intent.yaw, intent.pitch)));
+    let i = &mut *intent;
+    *i = crate::core::Intent {
+        crouch,
+        yaw,
+        pitch,
+        command: i.command,
+        ..default()
+    };
+}
+
+/// The record button's label names the key bound to recording (when the
+/// menu opens).
+fn record_key(mut menu: ResMut<InGameMenu>, ui: Res<CaUi>, console: Option<Res<Console>>) {
+    if !menu.is_changed() || !menu.open {
+        return;
+    }
+    let key = console
+        .as_deref()
+        .and_then(|c| crate::client::binds::keys_for(&c.binds, RECORD_COMMAND).first().map(|k| k.to_uppercase()))
+        .unwrap_or_default();
+    let label = record_label(&ui.strings, &key, false);
+    let m = menu.bypass_change_detection();
+    if let Some(id) = m.layout().find(RECORD_LABEL)
+        && let super::layout::Kind::Text(t) = &mut m.layout_mut().widget_mut(id).kind
+    {
+        t.set = Some(label);
+    }
+}
+
 /// The menu without a window.
 pub struct CaMenuStatePlugin;
 
@@ -178,7 +267,8 @@ impl Plugin for CaMenuStatePlugin {
             .init_resource::<MenuPointer>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
-            .add_systems(Update, (keys, pointer, act).chain().in_set(MenuSystems))
+            .add_systems(Update, (keys, pointer, act, record_key).chain().in_set(MenuSystems))
+            .add_systems(Update, popup_input.in_set(PopupInput).after(MenuSystems))
             .console_command("ingamemenu", "Open or close Combat Arms' in-game menu (Esc).", |w, _| {
                 let mut m = w.resource_mut::<InGameMenu>();
                 let open = !m.open;
@@ -286,6 +376,7 @@ impl Plugin for CaMenuPlugin {
             // Before the console's toggle: the Esc that closes the console
             // doesn't open the menu.
             .configure_sets(Update, MenuSystems.before(crate::client::console::toggle))
+            .configure_sets(Update, PopupInput.after(crate::client::input::write_local_intent))
             .add_systems(Update, window_pointer.before(MenuSystems))
             .add_systems(Update, (cursor, draw_menu).after(MenuSystems));
     }
