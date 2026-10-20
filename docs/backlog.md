@@ -6,6 +6,16 @@ Things to build, **in priority order** (top first; reprioritized
 [plans/active/](plans/active/engine-split.md). Move items into a
 plan when work starts; delete them when done.
 
+## Architecture review (2026-10-20)
+
+Address the feedback in
+[plans/active/architecture-review.md](plans/active/architecture-review.md),
+following its phased roadmap ("Now" N1–N7, "Next" X1–X10, "Later"
+L1–L6) in that order; each item names its files (lanes), size and
+guard tests, so items in one phase can go to parallel agents. Mark items
+done in the review as they land. N5 (CI on GitHub Actions) waits for
+the user's go-ahead: no Actions runs unless asked.
+
 ## 0. Playtest feedback (2026-10-07), top priority
 
 ### Decisions 2026-10-13 (user)

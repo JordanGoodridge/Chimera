@@ -746,6 +746,7 @@ pub fn place_camera(
                         ideal_dist: CHASE_DISTANCE,
                         ideal_yaw: 0.0,
                         pivot_up: 0.0,
+                        meters_per_unit: UNIT,
                     };
                     let offset = camera_offset(&third, t, e.eye_offset, look, &spatial, &characters);
                     Some((t + offset, look))

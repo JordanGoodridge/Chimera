@@ -25,6 +25,8 @@ bevy_replicon.workspace = true
 half.workspace = true
 image.workspace = true
 serde.workspace = true
+# Surface tables of mashups (`map::sources::SurfaceTable`).
+toml.workspace = true
 workspace-hack.workspace = true
 
 [features]

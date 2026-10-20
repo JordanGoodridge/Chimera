@@ -240,6 +240,7 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
     default_binds: DEFAULT_BINDS,
     old_default_binds: OLD_DEFAULT_BINDS,
     movement_cvars: movement::CVARS,
+    meters_per_unit: 0.0254,
 };
 
 /// CS:S's maps from the install (`map::MapLoader`): what an app that

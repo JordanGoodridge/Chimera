@@ -123,9 +123,14 @@
 //!   exact 80 Hz clock (`SpreadOptions::quantised` drops the remainder
 //!   as the game does); the body's twist is ours to keep (`body_yaw`).
 //! - After a character, the ray goes on past it (no dampening); hits
-//!   behind a wall use the real distance (Q13's recommendation). World
-//!   surfaces have no names yet (no Combat Arms maps): only colliders with
-//!   a `PropSurface` named in the table pass.
+//!   behind a wall use the real distance (Q13's recommendation). What a
+//!   round passes is a collider's `PropSurface`, else the world's surface
+//!   type where it hit (the drawn triangles' types, `effects::
+//!   world_surface`) by name in the table; on another game's map (a
+//!   mashup) its surface names are Combat Arms' through the app's table
+//!   (`map::SurfaceNames`). A round that hits something with
+//!   `core::Damageable` that isn't a character (a map's breakable) deals
+//!   it the round's damage (banded and dampened, no zone).
 //! - Armour: the gear (which pieces a character wears, Q7) is the default
 //!   body gear for everyone, with the spec's stock coverage (bullets and
 //!   burn on body gear, bullets on head gear, poison on the gas mask);
@@ -152,9 +157,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     core::{
-        Damage, DamageKind, DamageRules, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole, Predict,
-        PropSurface, SOLID_LAYERS, SimClock, Velocity,
+        Damage, DamageKind, DamageRules, Damageable, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole,
+        Predict, PropSurface, SOLID_LAYERS, SimClock, Velocity,
     },
+    map::{SurfaceNames, sound::SurfaceGrid},
     weapon::{
         AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, Weapon, WeaponEvent,
         WeaponEventKind, WeaponFrame, Zoom, aim_of,
@@ -1546,6 +1552,14 @@ struct Delivery<'w, 's> {
     colliders: Query<'w, 's, &'static ColliderOf>,
     bodies: Query<'w, 's, (&'static RigidBody, Option<&'static ColliderAabb>)>,
     table: Res<'w, CaSurfaces>,
+    /// The world's surfaces (walls without a `PropSurface`), another
+    /// game's surface names as Combat Arms' (a mashup's map), and what
+    /// takes damage that isn't a character (map breakables, props).
+    ground: (
+        Option<Res<'w, SurfaceGrid>>,
+        Option<Res<'w, SurfaceNames>>,
+        Query<'w, 's, (), (With<Damageable>, Without<Intent>)>,
+    ),
     /// Live grenades, which rounds hit (grenades.md 13).
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
     damage: MessageWriter<'w, Damage>,
@@ -1659,6 +1673,22 @@ impl Delivery<'_, '_> {
 
     fn body(&self, collider: Entity) -> Entity {
         self.colliders.get(collider).map_or(collider, |c| c.body)
+    }
+
+    /// How a round passes what it hit (`CaSurfaces`): the collider's
+    /// `PropSurface` (or its body's), else the world's surface type at
+    /// `point` by name; another game's names (a mashup's map) as Combat
+    /// Arms' (`map::SurfaceNames`). None: it stops there.
+    fn surface_at(&self, collider: Entity, body: Entity, point: Vec3) -> Option<SurfacePass> {
+        let names = self.ground.1.as_deref();
+        let prop = self.surfaces.get(collider).or_else(|_| self.surfaces.get(body)).ok();
+        if let Some(p) = prop {
+            return self.table.get(names.map_or(p.0.as_str(), |n| n.resolve(&p.0)));
+        }
+        let tables = super::effects::data::CaFxTables::built_in();
+        let ty = super::effects::world_surface_named(self.ground.0.as_deref(), names, point);
+        let name = &tables.surface.iter().find(|s| s.id == ty)?.name;
+        self.table.get(name)
     }
 }
 
@@ -2208,9 +2238,24 @@ fn walk(
         let point = from + dir * hit.distance;
         let body = w.body(hit.entity);
         out.push(event(kind(from, point, Some(body), Some(hit.normal))));
-        // Through it?
-        let name = w.surfaces.get(hit.entity).or_else(|_| w.surfaces.get(body)).ok();
-        let Some(pass) = name.and_then(|n| w.table.get(&n.0)) else { break };
+        // Something that takes damage (a map's breakable): the round's
+        // damage, banded and dampened as a character's, no zone.
+        if server && (w.ground.2.contains(hit.entity) || w.ground.2.contains(body)) {
+            let d = base_damage(dmg, rng.next(), false, point.distance(r.origin)) * dampen;
+            w.damage.write(Damage {
+                target: if w.ground.2.contains(body) { body } else { hit.entity },
+                attacker: Some(r.owner),
+                amount: d,
+                point,
+                dir,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            });
+        }
+        // Through it? A collider's surface, else the world's there.
+        let Some(pass) = w.surface_at(hit.entity, body, point) else { break };
         let exit = if pass.thickness <= 0.0 {
             point
         } else {

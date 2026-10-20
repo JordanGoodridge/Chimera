@@ -942,6 +942,11 @@ pub struct MapData {
     pub playable: Option<(Vec3, Vec3)>,
     /// Sound entries, clips and surfaces the map uses.
     pub sounds: Arc<MapSounds>,
+    /// The gameplay's surface names for the map's own (a map of another
+    /// game in a mashup, `sources::SurfaceTable`): the map's lower-case
+    /// surface property name to the gameplay's; empty when the map's
+    /// names are the gameplay's. Spawned as `sources::SurfaceNames`.
+    pub surface_names: std::collections::HashMap<String, String>,
     /// The bots' navigation mesh, if the game ships one for the map.
     pub nav: Option<Arc<nav::NavMesh>>,
     /// How characters look and where they can be hit, per team.
