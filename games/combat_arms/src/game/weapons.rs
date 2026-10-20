@@ -1758,8 +1758,10 @@ struct Delivery<'w, 's> {
         Option<Res<'w, SurfaceNames>>,
         Query<'w, 's, (), (With<Damageable>, Without<Intent>)>,
     ),
-    /// Live grenades, which rounds hit (grenades.md 13).
+    /// Live grenades, which rounds hit (grenades.md 13), and special
+    /// weapons' objects (rockets, mines: special_weapons.md 1.4).
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
+    objects: Query<'w, 's, (Entity, &'static super::special::CaTarget)>,
     damage: MessageWriter<'w, Damage>,
     rules: DamageRules<'w, 's>,
     first: Res<'w, FirstTimePredicted>,
@@ -2547,6 +2549,9 @@ fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: 
                 let (c, half) = (g.pos * g.unit, Vec3::from(g.params.box_half) * g.unit);
                 box_entry(c - half, c + half, from, dir, wall).map(|t| (t, e))
             })
+            .chain(w.objects.iter().filter_map(|(e, t)| {
+                box_entry(t.centre - t.half, t.centre + t.half, from, dir, wall).map(|t| (t, e))
+            }))
             .min_by(|a, b| a.0.total_cmp(&b.0));
         // A live grenade's box (grenades.md 13): the round stops on its
         // metal, its damage (with the range band, no zone) off the

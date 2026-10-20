@@ -156,6 +156,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/cs_source ui: Voice HUD rows' order and box guessed; no avatars, fades or icons over heads (`games/cs_source/src/ui/voice_hud.rs`)
 - games/cs_source: func_footstep_control from the public FGD only: feet point inside, the replaced surface's step volume and timing (`games/cs_source/src/game/sound.rs`)
 - games/combat_arms: Inventory: updates per tick, not per rendered frame; items' boxes ours; no bomb key rule, "in use" weapons or dead-body interactions (`games/combat_arms/src/game/inventory.rs`)
+- games/combat_arms: Special weapons: no direct-hit damage, stun, snowball gun, shell-on-shell touches or crossbow alt-fire; turret scan per server frame (`games/combat_arms/src/game/special/mod.rs`)
 - games/combat_arms: Grenades: animation on whole ticks; hit-box bounds and invisible or sky polygons assumed; no perks, map cameras or flash goggles; flash drawn with Chimera's linear overlay (`games/combat_arms/src/game/grenades.rs`)
 - games/combat_arms: Volumes: their world models' face planes; no fog, tint, sound filter, `DamageType` or switching but the start-up commands'; default friction and speed factor ours (`games/combat_arms/src/game/volumes.rs`)
 - games/combat_arms bots: Act through the player's parts; the map's AI volumes and patrol nodes read, else navigation generated from collision; no doors, ladders, jumps or one-way volumes; no devices, mines or chat; CS:S brain not lifted (`games/combat_arms/src/game/bots.rs`)

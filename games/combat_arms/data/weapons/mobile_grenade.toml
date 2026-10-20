@@ -1,0 +1,48 @@
+# The remote grenade: numbers from specs/combat_arms/special_weapons.md (its sections
+# in brackets), in our own data format (docs/weapon-data.md; hooks:
+# games/combat_arms/src/game/special/). Our numbers as the spec gives them,
+# not a file from the game; the install's attribute data overrides them
+# where it can be read (game/data.rs). Where the spec has no value the line
+# says PLACEHOLDER. Units: world units (1.8 cm each, by body size) and hit
+# points. No sounds or models yet (the front end draws a placeholder).
+id = "combat_arms:mobile_grenade"
+units = { length = 0.018, damage = 0.01 }
+# Special class (key 5) [inventory.md 1].
+slot = 4
+# The view model's draw animation [6.12].
+draw = 0.833
+undroppable = false
+
+# HideWhenEmpty: the weapon is unselectable at total 0 and the owner
+# switches away; a device never drops on death [inventory.md 10, 12].
+[hooks."combat_arms:inventory"]
+hide_when_empty = true
+drop_on_death = false
+sprint_out = 0.267
+
+[hooks."combat_arms:device"]
+spawned = 2
+max = 2
+# 2 per spawn, Health 300 [6.4]; prefire 1767, `fire_0` 67, the post-fire's
+# key at 333 ms of 633 [6.12]. The box: PLACEHOLDER, the M67's.
+kind = "remote_grenade"
+prefire = 1.767
+throw_loop = 0.067
+key = 0.333
+postfire = 0.633
+redraw = 0.833
+perturb = [1, 10]
+dynamic_perturb = 1.0
+speed = 600.0
+lifetime = 60000.0
+health = 300.0
+box_half = [6.0, 6.0, 8.0]
+# AreaDamage 100, radius 450, claymore type 38 with no cone: the plain part
+# in every direction [6.4].
+area_damage = 100.0
+area_radius = 450.0
+area_type = 38
+controller = "combat_arms:mobile_grenade_controller"
+
+[hooks."combat_arms:handling"]
+move_penalty = 0.0

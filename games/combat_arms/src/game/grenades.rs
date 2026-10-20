@@ -210,6 +210,8 @@ pub const DEATH_RELEASE_SPEED: f32 = 500.0;
 pub const WATER_VISCOSITY: f32 = 0.035;
 /// Speed lost per unit of a volume's viscosity, u/s².
 pub const LIQUID_VISCOSITY_SCALE: f32 = 5000.0;
+/// Damage type 1, bleeding (caltrops).
+pub const BLEED: i32 = 1;
 /// A grenade at this many HP or fewer after damage goes off.
 pub const DESTROYED_AT: f32 = 1.0;
 /// A player at this many HP or fewer after damage dies.
@@ -253,6 +255,8 @@ pub enum OverTimeKind {
     Burn,
     /// Type 9: unprotected.
     Poison,
+    /// Type 1: bleeding (caltrops), unprotected.
+    Bleed,
 }
 
 /// A damage sphere's numbers (`ProgDamage*`): HP/s, u, s.
@@ -599,6 +603,9 @@ pub struct FlashTimer {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OverTime {
     pub victim: Entity,
+    /// The object that applies it: entries are keyed by it (a sphere's
+    /// refresh replaces its own, another's adds, up to `PROG_SLOTS`).
+    pub source: Option<Entity>,
     pub kind: OverTimeKind,
     pub rate: f32,
     pub remaining: f32,
@@ -617,6 +624,8 @@ pub struct CaGrenadeEffects {
 /// centre, world units for the radius.
 #[derive(Component, Clone, Debug)]
 pub struct CaDamageSphere {
+    /// The shooter never burns in it (the rocket class's flames).
+    pub exempt_thrower: bool,
     pub centre: Vec3,
     pub params: OverTimeParams,
     pub unit: f32,
@@ -625,6 +634,35 @@ pub struct CaDamageSphere {
     pub weapon: &'static str,
     pub created: u64,
     pub until: f64,
+}
+
+/// Over-time entries a character can hold (special_weapons.md constants).
+pub const PROG_SLOTS: usize = 20;
+
+/// Add `entry` to `list`: it replaces the one with the same victim, kind
+/// and source; a character holds at most `PROG_SLOTS`, a full one giving
+/// up the entry with the least damage left only for one that would do more.
+pub fn add_over_time(list: &mut Vec<OverTime>, entry: OverTime) {
+    if let Some(o) = list
+        .iter_mut()
+        .find(|o| o.victim == entry.victim && o.kind == entry.kind && o.source == entry.source)
+    {
+        *o = entry;
+        return;
+    }
+    let left = |o: &OverTime| o.rate * o.remaining;
+    let mine: Vec<usize> = (0..list.len()).filter(|&i| list[i].victim == entry.victim).collect();
+    if mine.len() < PROG_SLOTS {
+        list.push(entry);
+        return;
+    }
+    let weakest = mine
+        .into_iter()
+        .min_by(|&a, &b| left(&list[a]).total_cmp(&left(&list[b])))
+        .unwrap();
+    if left(&entry) > left(&list[weakest]) {
+        list[weakest] = entry;
+    }
 }
 
 /// A smoke cloud's end (the server removes it).
@@ -953,8 +991,8 @@ fn death_release(
 
 /// The world as grenades see it (read only).
 #[derive(bevy::ecs::system::SystemParam)]
-struct GrenadeWorld<'w, 's> {
-    spatial: SpatialQuery<'w, 's>,
+pub(crate) struct GrenadeWorld<'w, 's> {
+    pub(crate) spatial: SpatialQuery<'w, 's>,
     colliders: Query<'w, 's, &'static ColliderOf>,
     surfaces: Query<'w, 's, &'static PropSurface>,
     rigid: Query<'w, 's, &'static RigidBody>,
@@ -977,33 +1015,37 @@ struct GrenadeWorld<'w, 's> {
         Without<CaGrenade>,
     >,
     breakables: Query<'w, 's, (Entity, &'static ColliderAabb), (With<Damageable>, Without<Intent>)>,
+    /// Special weapons' objects (rockets, mines, ...) a blast damages.
+    pub(crate) targets: Query<'w, 's, (Entity, &'static super::special::CaTarget)>,
     prop_boxes: Query<'w, 's, (Entity, &'static ColliderAabb), With<PropEntity>>,
     volumes: Query<'w, 's, &'static CaVolume>,
     water: Option<Res<'w, MapWater>>,
-    table: Res<'w, CaGrenadeSurfaces>,
-    entities: &'w bevy::ecs::entity::Entities,
+    pub(crate) table: Res<'w, CaGrenadeSurfaces>,
+    pub(crate) entities: &'w bevy::ecs::entity::Entities,
 }
 
 /// What a character is to grenades: its box (m), centre (m), spheres (m)
 /// and head top (m, y).
-struct Body {
-    entity: Entity,
-    min: Vec3,
-    max: Vec3,
-    centre: Vec3,
-    spheres: Vec<(Vec3, f32)>,
-    head_top: f32,
-    facing: Vec3,
-    health: f32,
+pub(crate) struct Body {
+    pub(crate) entity: Entity,
+    pub(crate) min: Vec3,
+    pub(crate) max: Vec3,
+    pub(crate) centre: Vec3,
+    pub(crate) spheres: Vec<(Vec3, f32)>,
+    /// Each sphere's location and damage factor (the hit table's).
+    pub(crate) zones: Vec<(Location, f32)>,
+    pub(crate) head_top: f32,
+    pub(crate) facing: Vec3,
+    pub(crate) health: f32,
     flash_protection: f32,
 }
 
 impl GrenadeWorld<'_, '_> {
-    fn body(&self, collider: Entity) -> Entity {
+    pub(crate) fn body(&self, collider: Entity) -> Entity {
         self.colliders.get(collider).map_or(collider, |c| c.body)
     }
 
-    fn surface(&self, collider: Entity) -> Option<String> {
+    pub(crate) fn surface(&self, collider: Entity) -> Option<String> {
         self.surfaces
             .get(collider)
             .or_else(|_| self.surfaces.get(self.body(collider)))
@@ -1011,14 +1053,14 @@ impl GrenadeWorld<'_, '_> {
             .map(|s| s.0.to_lowercase())
     }
 
-    fn invisible(&self, collider: Entity) -> bool {
+    pub(crate) fn invisible(&self, collider: Entity) -> bool {
         self.surface(collider).as_deref() == Some("invisible")
     }
 
     /// The first world surface on the segment (m): distance (m), normal,
     /// collider. Characters, props, `skip` and invisible surfaces are
     /// passed; traces-only detail and solid world models are met (5, 6).
-    fn cast(&self, from: Vec3, to: Vec3, skip: Option<Entity>) -> Option<(f32, Vec3, Entity)> {
+    pub(crate) fn cast(&self, from: Vec3, to: Vec3, skip: Option<Entity>) -> Option<(f32, Vec3, Entity)> {
         let d = to - from;
         let dir = Dir3::new(d).ok()?;
         let filter = SpatialQueryFilter::default().with_mask(SOLID_LAYERS);
@@ -1032,7 +1074,7 @@ impl GrenadeWorld<'_, '_> {
 
     /// The first prop on the segment (m): the fraction along it and its
     /// surface's hardness (6: a touch, no mirror).
-    fn prop_touch(&self, from: Vec3, to: Vec3) -> Option<(f32, f32)> {
+    pub(crate) fn prop_touch(&self, from: Vec3, to: Vec3) -> Option<(f32, f32)> {
         let d = to - from;
         let (len, dir) = (d.length(), d.normalize_or_zero());
         self.prop_boxes
@@ -1047,7 +1089,7 @@ impl GrenadeWorld<'_, '_> {
     /// Whether the world stops the segment (m) one way (cover, 9): every
     /// static or kinematic surface queries meet (invisible and traces-only
     /// ones too, not player blockers), not characters or props.
-    fn blocked_one_way(&self, from: Vec3, to: Vec3) -> bool {
+    pub(crate) fn blocked_one_way(&self, from: Vec3, to: Vec3) -> bool {
         let d = to - from;
         let Ok(dir) = Dir3::new(d) else { return false };
         let filter = SpatialQueryFilter::default().with_mask(SOLID_LAYERS);
@@ -1065,12 +1107,12 @@ impl GrenadeWorld<'_, '_> {
     }
 
     /// Both cover traces (blast to target and back) clear.
-    fn clear(&self, a: Vec3, b: Vec3) -> bool {
+    pub(crate) fn clear(&self, a: Vec3, b: Vec3) -> bool {
         !self.blocked_one_way(a, b) && !self.blocked_one_way(b, a)
     }
 
     /// The living characters, in no particular order.
-    fn bodies(&self) -> Vec<Body> {
+    pub(crate) fn bodies(&self) -> Vec<Body> {
         let mut out = Vec::new();
         for (entity, t, intent, state, aabb, spheres, health, flash) in &self.characters {
             if health.current <= 0.0 {
@@ -1091,6 +1133,7 @@ impl GrenadeWorld<'_, '_> {
                 min,
                 max,
                 centre: (min + max) / 2.0,
+                zones: data.iter().map(|s| (s.location, s.factor)).collect(),
                 spheres,
                 head_top: if head_top == f32::MIN { max.y } else { head_top },
                 facing: intent.yaw_rotation() * Vec3::NEG_Z,
@@ -1103,7 +1146,7 @@ impl GrenadeWorld<'_, '_> {
 
     /// The volumes `p` (m) is inside (7): (liquid, viscosity, current
     /// u/s) each; other games' water as `Water` at its class defaults.
-    fn volumes_at(&self, p: Vec3) -> Vec<(bool, f32, Vec3)> {
+    pub(crate) fn volumes_at(&self, p: Vec3) -> Vec<(bool, f32, Vec3)> {
         let mut out: Vec<(bool, f32, Vec3)> = self
             .volumes
             .iter()
@@ -1122,7 +1165,7 @@ impl GrenadeWorld<'_, '_> {
 }
 
 /// Where a segment first enters a sphere: the fraction along it.
-fn sphere_entry(from: Vec3, to: Vec3, centre: Vec3, r: f32) -> Option<f32> {
+pub(crate) fn sphere_entry(from: Vec3, to: Vec3, centre: Vec3, r: f32) -> Option<f32> {
     let d = to - from;
     let a = d.length_squared();
     if a <= 0.0 || r <= 0.0 {
@@ -1144,25 +1187,40 @@ fn sphere_entry(from: Vec3, to: Vec3, centre: Vec3, r: f32) -> Option<f32> {
 
 /// What a frame changes besides the grenades: damage dealt (with each
 /// target's health as it goes), detonations, effects.
-struct Frame {
-    time: f64,
-    now: f64,
-    dt: f32,
-    frame: u64,
+pub(crate) struct Frame {
+    pub(crate) time: f64,
+    pub(crate) now: f64,
+    pub(crate) dt: f32,
+    pub(crate) frame: u64,
     health: HashMap<Entity, f32>,
-    gone: Vec<Entity>,
-    queue: Vec<Entity>,
+    pub(crate) gone: Vec<Entity>,
+    pub(crate) queue: Vec<Entity>,
+}
+
+impl Frame {
+    /// Server frame number `frame` at `time` (the game's clock `now`, s).
+    pub(crate) fn new(frame: u64, time: f64, now: f64, dt: f32) -> Self {
+        Self {
+            time,
+            now,
+            dt,
+            frame,
+            health: HashMap::new(),
+            gone: Vec::new(),
+            queue: Vec::new(),
+        }
+    }
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
-struct Out<'w, 's> {
-    damage: MessageWriter<'w, Damage>,
-    detonated: MessageWriter<'w, Detonated>,
-    rules: DamageRules<'w, 's>,
-    armour: Query<'w, 's, &'static mut CaArmor>,
-    effects: ResMut<'w, CaGrenadeEffects>,
-    commands: Commands<'w, 's>,
-    ai: super::weapons::AiHits<'w, 's>,
+pub(crate) struct Out<'w, 's> {
+    pub(crate) damage: MessageWriter<'w, Damage>,
+    pub(crate) detonated: MessageWriter<'w, Detonated>,
+    pub(crate) rules: DamageRules<'w, 's>,
+    pub(crate) armour: Query<'w, 's, &'static mut CaArmor>,
+    pub(crate) effects: ResMut<'w, CaGrenadeEffects>,
+    pub(crate) commands: Commands<'w, 's>,
+    pub(crate) ai: super::weapons::AiHits<'w, 's>,
 }
 
 impl Out<'_, '_> {
@@ -1170,7 +1228,7 @@ impl Out<'_, '_> {
     /// the team rules, death at `DEATH_AT` HP or less (the rest of its
     /// health), counted against its health this frame.
     #[allow(clippy::too_many_arguments)]
-    fn deal(
+    pub(crate) fn deal(
         &mut self,
         f: &mut Frame,
         target: Entity,
@@ -1211,7 +1269,7 @@ impl Out<'_, '_> {
     /// armour (weapon_firing.md, Armour), which takes its share if the
     /// hit lands; an AI's x `AIDamageFactor` first and capped on a player
     /// after (weapon_firing.md Corrections 7).
-    fn armoured(&mut self, victim: Entity, attacker: Option<Entity>, amount: f32, damage_type: i32, hp: f32) -> f32 {
+    pub(crate) fn armoured(&mut self, victim: Entity, attacker: Option<Entity>, amount: f32, damage_type: i32, hp: f32) -> f32 {
         let amount = amount * self.ai.factor(attacker);
         let lands = !self.spared(victim, attacker);
         let hit = ArmourHit {
@@ -1226,7 +1284,7 @@ impl Out<'_, '_> {
     }
 
     /// Whether the team rules spare `victim` from `attacker`'s grenade.
-    fn spared(&self, victim: Entity, attacker: Option<Entity>) -> bool {
+    pub(crate) fn spared(&self, victim: Entity, attacker: Option<Entity>) -> bool {
         self.rules.refuse(&Damage {
             target: victim,
             attacker,
@@ -1245,7 +1303,7 @@ type Grenades<'w, 's> = Query<'w, 's, (Entity, &'static mut CaGrenade, &'static 
 
 /// Run the server frames due by this tick.
 #[allow(clippy::too_many_arguments)]
-fn server_frames(
+pub(crate) fn server_frames(
     mut frames: ResMut<CaServerFrames>,
     clock: Res<SimClock>,
     mut grenades: Grenades,
@@ -1257,15 +1315,7 @@ fn server_frames(
     let due = ((clock.now + 1e-9) / frames.interval).floor() as u64;
     while frames.frame < due {
         frames.frame += 1;
-        let mut f = Frame {
-            time: frames.time(),
-            now: clock.now,
-            dt: frames.interval as f32,
-            frame: frames.frame,
-            health: HashMap::new(),
-            gone: Vec::new(),
-            queue: Vec::new(),
-        };
+        let mut f = Frame::new(frames.frame, frames.time(), clock.now, frames.interval as f32);
         run_frame(&mut f, &mut grenades, &mut spheres, &world, &mut out);
     }
     for (e, s) in &smokes {
@@ -1365,23 +1415,23 @@ fn run_frame(
             if to.distance(s.centre) > r || out.spared(b.entity, s.thrower) {
                 continue;
             }
+            if s.exempt_thrower && Some(b.entity) == s.thrower {
+                continue;
+            }
             let start = s.centre + (to - s.centre).normalize_or_zero() * OVER_TIME_TRACE_START * s.unit;
             if !world.clear(start, to) && !world.clear(start, to.with_y(b.head_top)) {
                 continue;
             }
             let entry = OverTime {
                 victim: b.entity,
+                source: Some(e),
                 kind: s.params.kind,
                 rate: s.params.rate * s.hp,
                 remaining: s.params.duration,
                 attacker: s.thrower,
                 weapon: s.weapon,
             };
-            let list = &mut out.effects.over_time;
-            match list.iter_mut().find(|o| o.victim == b.entity && o.kind == s.params.kind) {
-                Some(o) => *o = entry,
-                None => list.push(entry),
-            }
+            add_over_time(&mut out.effects.over_time, entry);
         }
     }
     // 4. Each player's flash timer and over-time damage.
@@ -1414,11 +1464,12 @@ fn run_frame(
         let damage_type = match o.kind {
             OverTimeKind::Burn => BURN,
             OverTimeKind::Poison => POISON,
+            OverTimeKind::Bleed => BLEED,
         };
         amount = out.armoured(o.victim, o.attacker, amount, damage_type, hp);
         let kind = match o.kind {
             OverTimeKind::Burn => DamageKind::Burn,
-            OverTimeKind::Poison => DamageKind::Generic,
+            OverTimeKind::Poison | OverTimeKind::Bleed => DamageKind::Generic,
         };
         out.deal(f, o.victim, b.health, amount, kind, o.attacker, o.weapon, b.centre, hp);
         o.remaining -= f.dt;
@@ -1635,6 +1686,7 @@ fn detonations(f: &mut Frame, grenades: &mut Grenades, world: &GrenadeWorld, out
                 Name::new("Damage sphere"),
                 Transform::from_translation(at),
                 CaDamageSphere {
+                    exempt_thrower: false,
                     centre: at,
                     params: o,
                     unit: g.unit,
@@ -1657,8 +1709,108 @@ pub fn blast_distance(d: f32, dims: Vec3) -> f32 {
 }
 
 /// The closest point of a box to `p`.
-fn box_distance(min: Vec3, max: Vec3, p: Vec3) -> f32 {
+pub(crate) fn box_distance(min: Vec3, max: Vec3, p: Vec3) -> f32 {
     p.clamp(min, max).distance(p)
+}
+
+/// One blast's numbers (9): the damage at the centre and the radius (world
+/// units), its damage type, whether a player takes it twice (Quirk 3), the
+/// attacker and the weapon.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Area {
+    pub damage: f32,
+    pub radius: f32,
+    pub damage_type: i32,
+    pub twice: bool,
+    pub thrower: Option<Entity>,
+    pub weapon: &'static str,
+    pub unit: f32,
+    pub hp: f32,
+}
+
+impl Area {
+    /// The damage at distance `d` (linear falloff, `falloff`).
+    pub(crate) fn at(&self, d: f32) -> f32 {
+        self.damage * falloff(self.radius, d)
+    }
+}
+
+/// The blast `a` at `at` (m) on the players it reaches: each living
+/// character whose box is within the radius, `amount(body, d)` the damage
+/// there (distance to the centre, world units), cover traces both ways
+/// with a second try to the head top (not for `direct`, the character a
+/// projectile struck), the armour step, the team rules; twice when `a`
+/// says so (the player object and its hit-box object, Quirk 3).
+pub(crate) fn blast_bodies(
+    f: &mut Frame,
+    at: Vec3,
+    a: &Area,
+    direct: Option<Entity>,
+    amount: &dyn Fn(&Body, f32) -> f32,
+    world: &GrenadeWorld,
+    out: &mut Out,
+) {
+    let (unit, hp) = (a.unit, a.hp);
+    for b in world.bodies() {
+        if box_distance(b.min, b.max, at) > a.radius * unit {
+            continue;
+        }
+        // The big-object slack applies to characters too, by their dims
+        // (Corrections 2: nothing for a stock body).
+        let d = blast_distance(b.centre.distance(at) / unit, (b.max - b.min) / 2.0 / unit);
+        if d > a.radius {
+            continue;
+        }
+        if direct != Some(b.entity) && !world.clear(at, b.centre) && !world.clear(at, b.centre.with_y(b.head_top)) {
+            continue;
+        }
+        let n = amount(&b, d);
+        if n <= 0.0 {
+            continue;
+        }
+        // Explosion damage through the armour step (no stock gear lists
+        // it: whole, armour points untouched).
+        for _ in 0..(if a.twice { 2 } else { 1 }) {
+            let damage = out.armoured(b.entity, a.thrower, n * hp, a.damage_type, hp);
+            out.deal(f, b.entity, b.health, damage, DamageKind::Blast, a.thrower, a.weapon, b.centre, hp);
+        }
+    }
+}
+
+/// The blast `a` at `at` (m) on breakables and special weapons' objects:
+/// no cover test (an object's distance has the excess of its dims over
+/// `BIG_OBJECT_SLACK` taken off).
+pub(crate) fn blast_things(at: Vec3, a: &Area, world: &GrenadeWorld, out: &mut Out) {
+    let (unit, hp, r) = (a.unit, a.hp, a.radius);
+    let mut one = |e: Entity, min: Vec3, max: Vec3| {
+        if box_distance(min, max, at) > r * unit {
+            return;
+        }
+        let centre = (min + max) / 2.0;
+        let dims = (max - min) / 2.0 / unit;
+        let slack = (dims.length() - BIG_OBJECT_SLACK).max(0.0);
+        let d = (centre.distance(at) / unit - slack).max(0.0);
+        if d > r {
+            return;
+        }
+        out.damage.write(Damage {
+            target: e,
+            attacker: a.thrower,
+            amount: a.at(d) * hp,
+            point: centre,
+            dir: (centre - at).normalize_or_zero(),
+            hitgroup: Hitgroup::Generic,
+            kind: DamageKind::Blast,
+            weapon: Some(a.weapon),
+            force: Vec3::ZERO,
+        });
+    };
+    for (e, aabb) in &world.breakables {
+        one(e, aabb.min, aabb.max);
+    }
+    for (e, t) in &world.targets {
+        one(e, t.centre - t.half, t.centre + t.half);
+    }
 }
 
 /// A frag's blast (9) at `at` (m).
@@ -1673,30 +1825,19 @@ fn blast(
     out: &mut Out,
 ) {
     let p = &g.params;
-    let (unit, hp) = (g.unit, g.hp);
     let r = p.area_radius;
-    let amount = |d: f32| p.area_damage * falloff(r, d);
+    let area = Area {
+        damage: p.area_damage,
+        radius: r,
+        damage_type: EXPLOSION,
+        twice: true,
+        thrower: g.thrower,
+        weapon: g.weapon,
+        unit: g.unit,
+        hp: g.hp,
+    };
     // Players and their hitboxes: the same blast twice (Quirk 3).
-    for b in world.bodies() {
-        if box_distance(b.min, b.max, at) > r * unit {
-            continue;
-        }
-        // The big-object slack applies to characters too, by their dims
-        // (Corrections 2: nothing for a stock body).
-        let d = blast_distance(b.centre.distance(at) / unit, (b.max - b.min) / 2.0 / unit);
-        if d > r {
-            continue;
-        }
-        if !world.clear(at, b.centre) && !world.clear(at, b.centre.with_y(b.head_top)) {
-            continue;
-        }
-        // Explosion damage through the armour step (no stock gear lists
-        // it: whole, armour points untouched).
-        for _ in 0..2 {
-            let damage = out.armoured(b.entity, g.thrower, amount(d) * hp, EXPLOSION, hp);
-            out.deal(f, b.entity, b.health, damage, DamageKind::Blast, g.thrower, g.weapon, b.centre, hp);
-        }
-    }
+    blast_bodies(f, at, &area, None, &|_, d| area.at(d), world, out);
     // Other live grenades (13).
     let others: Vec<Entity> = grenades
         .iter()
@@ -1706,39 +1847,17 @@ fn blast(
     for o in others {
         let Ok((_, mut other, ..)) = grenades.get_mut(o) else { continue };
         let pos = other.pos * other.unit;
-        let d = pos.distance(at) / unit;
+        let d = pos.distance(at) / g.unit;
         if d > r || !world.clear(at, pos) {
             continue;
         }
-        other.health -= amount(d);
+        other.health -= area.at(d);
         if other.health <= DESTROYED_AT {
             f.queue.push(o);
         }
     }
-    // Breakables and other damageable objects: no cover test.
-    for (e, aabb) in &world.breakables {
-        if box_distance(aabb.min, aabb.max, at) > r * unit {
-            continue;
-        }
-        let centre = (aabb.min + aabb.max) / 2.0;
-        let dims = (aabb.max - aabb.min) / 2.0 / unit;
-        let slack = (dims.length() - BIG_OBJECT_SLACK).max(0.0);
-        let d = (centre.distance(at) / unit - slack).max(0.0);
-        if d > r {
-            continue;
-        }
-        out.damage.write(Damage {
-            target: e,
-            attacker: g.thrower,
-            amount: amount(d) * hp,
-            point: centre,
-            dir: (centre - at).normalize_or_zero(),
-            hitgroup: Hitgroup::Generic,
-            kind: DamageKind::Blast,
-            weapon: Some(g.weapon),
-            force: Vec3::ZERO,
-        });
-    }
+    // Breakables and special weapons' objects: no cover test.
+    blast_things(at, &area, world, out);
 }
 
 /// A flash test (10) at `at` (m): each player in sight gets a timer.
