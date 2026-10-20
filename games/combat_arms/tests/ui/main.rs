@@ -2,13 +2,16 @@
 //! one test binary (each file a module): the HUD's behaviour and the
 //! scenario tests that read its state (`ui::hud::CaHud`, headless, on
 //! `combat_arms::harness::CaSim` and the greybox, as tests/it/'s); the UI
-//! system's layout, text, input and in-game menu (`ui_system`); the
+//! system's layout, text, input and in-game menu (`ui_system`); the kill
+//! feed, score panel, action panel, scoreboard and loading screen bound
+//! by name to layouts written in the test (`bound`); the
 //! first-person camera's rise and jitter (`camera`); in `heavy` the
 //! install's own layouts and string tables (`install_ui`, V1 key).
 //! `cargo test -p combat_arms --features dev,ui --test ui`; where tests
 //! go: docs/OBSERVABILITY.md, section 1.
 
 mod attachments;
+mod bound;
 mod camera;
 mod hud;
 mod net_hud;

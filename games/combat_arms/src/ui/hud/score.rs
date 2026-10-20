@@ -10,14 +10,18 @@
 //! M10). `update_score` reads the world into `CaScoreHud` (headless, for
 //! the tests); `draw_score` draws it.
 //!
+//! With the install's layouts the panel is the game's mode indicator
+//! (`bound::ScorePanel`) and the gauge the game's action panel
+//! (`bound::ActionPanel`); without them, ours at D6's places.
+//!
 //! Known shortcuts: the goal text is ours ("G kills" / "G wins": the
 //! mode's goal string isn't in our string table); the round modes show
-//! their round wins on the same panel (D6 describes TDM's only); the
-//! objectives' lines and the gauge are ours (text under the timer, a bar
-//! at the screen's middle: the spec gives their lengths, not their
-//! looks); the panel stays up while the scoreboard shows the round's
-//! result (no separate result screen); the panel's textures are flat
-//! placeholder boxes.
+//! their round wins on the same counters (D6 describes TDM's only); the
+//! objectives' lines are ours (text under the timer: the spec gives
+//! their lengths, not their looks), the gauge too without the install;
+//! the panel stays up while the scoreboard shows the round's result (no
+//! separate result screen); without the install the panel's textures
+//! are flat placeholder boxes.
 
 use bevy::prelude::*;
 
@@ -35,6 +39,8 @@ use crate::{
 /// The panel as drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScorePanelView {
+    /// The game mode's key (`game::rules`' `TDM`, `CTF`, ...).
+    pub mode_key: String,
     pub mode_name: String,
     pub goal: String,
     /// Alpha's and Bravo's rows (a free-for-all mode's: yours, the
@@ -207,6 +213,7 @@ pub(super) fn update_score(
             });
             CaScoreHud {
                 panel: Some(ScorePanelView {
+                    mode_key: mode.key.to_string(),
                     mode_name: mode.shown_as.to_string(),
                     goal,
                     rows,
@@ -232,21 +239,47 @@ pub(super) fn spawn_root(mut commands: Commands) {
     commands.spawn((ScoreRoot, layer(40)));
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_score(
     hud: Res<CaScoreHud>,
     screen: Res<super::HudScreen>,
     params: PenParams,
+    art: Option<Res<crate::ui::draw::CaArt>>,
+    bound: Res<super::BoundHud>,
     root: Single<Entity, With<ScoreRoot>>,
-    mut last: Local<Option<(CaScoreHud, Screen)>>,
+    mut last: Local<Option<(CaScoreHud, Screen, bool)>>,
     mut commands: Commands,
 ) {
     let screen = screen.0;
-    if !rebuild(&mut last, (hud.clone(), screen), *root, &mut commands) {
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (hud.clone(), screen, loaded), *root, &mut commands) {
         return;
     }
     let Some(panel) = &hud.panel else { return };
     let pen = pen(&params, screen);
     let centred = (HAlign::Centre, VAlign::Centre);
+    // The game's own mode panel, bound by name (`bound::ScorePanel`); the
+    // objectives' lines stay ours, the gauge the action panel's.
+    let installed = bound
+        .score
+        .as_ref()
+        .and_then(|s| s.build(&panel.mode_key, panel, hud.timer.as_deref(), super::scale(screen)));
+    if let Some(layout) = installed {
+        let ui = &params.0;
+        let draws = layout.draw(&ui.ctx());
+        commands.entity(*root).with_children(|p| {
+            crate::ui::draw::spawn_draws(p, &draws, &ui.stand_ins, art.as_deref(), params.1.as_deref(), params.2.as_deref());
+            for (k, line) in hud.objectives.iter().enumerate() {
+                let (at, size) = places::OBJECTIVES;
+                let at = at + Vec2::Y * size.y * k as f32;
+                hud_text(p, pen, (at, size, Vec2::ZERO), line, looks::MODE, centred, Effect::Shadow, looks::HEADER);
+            }
+            if bound.action.is_none() {
+                draw_gauge(p, pen, screen, &hud, centred);
+            }
+        });
+        return;
+    }
     commands.entity(*root).with_children(|p| {
         // PLACEHOLDER backgrounds for the panel's textures.
         p.spawn(rect(screen.rect(places::PANEL.0, places::PANEL.1), Color::srgba(0.05, 0.06, 0.07, 0.6)));
@@ -280,13 +313,21 @@ pub(super) fn draw_score(
             let at = at + Vec2::Y * size.y * k as f32;
             hud_text(p, pen, (at, size, Vec2::ZERO), line, looks::MODE, centred, Effect::Shadow, looks::HEADER);
         }
-        if let Some((what, fill)) = &hud.gauge {
-            let (at, size) = places::GAUGE_LABEL;
-            hud_text(p, pen, (at, size, Vec2::ZERO), what, looks::MODE, centred, Effect::Shadow, looks::HEADER);
-            let (at, size) = places::GAUGE;
-            p.spawn(rect(screen.rect(at, size), Color::srgba(0.0, 0.0, 0.0, 0.55)));
-            let bar = Vec2::new((size.x - 2.0) * fill, size.y - 2.0);
-            p.spawn(rect(screen.rect(at + Vec2::ONE, bar), Color::srgba(0.9, 0.8, 0.2, 0.9)));
+        if bound.action.is_none() {
+            draw_gauge(p, pen, screen, &hud, centred);
         }
     });
+}
+
+/// Ours: the action gauge (its label and bar) when the game's action
+/// panel isn't there.
+fn draw_gauge(p: &mut ChildSpawnerCommands, pen: super::Pen, screen: Screen, hud: &CaScoreHud, centred: (HAlign, VAlign)) {
+    if let Some((what, fill)) = &hud.gauge {
+        let (at, size) = places::GAUGE_LABEL;
+        hud_text(p, pen, (at, size, Vec2::ZERO), what, looks::MODE, centred, Effect::Shadow, looks::HEADER);
+        let (at, size) = places::GAUGE;
+        p.spawn(rect(screen.rect(at, size), Color::srgba(0.0, 0.0, 0.0, 0.55)));
+        let bar = Vec2::new((size.x - 2.0) * fill, size.y - 2.0);
+        p.spawn(rect(screen.rect(at + Vec2::ONE, bar), Color::srgba(0.9, 0.8, 0.2, 0.9)));
+    }
 }

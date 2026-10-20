@@ -6,7 +6,9 @@
 //! into a map, for tests): each weapon whose
 //! data names a player-view model (`[models] view`, an archive path of the
 //! install, with `view_skins`: its skins by texture index, 2, and
-//! `view_offset`: its `Pos`, 4) gets it as Chimera's `MapViewModel`,
+//! `view_offset`: its `Pos`, 4; its pieces drawn in the install
+//! weapon's `PVRenderStyle#`, `render_style`) gets it as Chimera's
+//! `MapViewModel`,
 //! converted by `model` (the gun's pieces on the arm skeleton, the
 //! `ANI_*` child's animations appended with their bindings' root
 //! translation, 1), scaled by `VIEW_SCALE`, its origin at `Pos` (the
@@ -92,7 +94,8 @@
 //!   camera's FOV is the shell's (5.2: 75 degrees vertical).
 //! - No left-handed mirroring (none in the game); the character's model
 //!   id, face, uniform and colour are `hands::HandProfile`'s defaults
-//!   (no character data yet).
+//!   (no character data yet); the hands' render styles aren't read
+//!   (their default style).
 
 pub mod hands;
 pub mod machine;
@@ -322,6 +325,12 @@ pub fn load(
 ) -> Result<MapViewModel, String> {
     let loaded = model::load(path, file)?;
     let mut m = model::convert_at(&loaded, VIEW_SCALE, &skin_of(skins), model::VIEW_SAMPLE_FPS);
+    // Its pieces' render styles: the install weapon's `PVRenderStyle#`
+    // (view_models.md 2; none without it: the default style).
+    let styles = super::data::install_weapon(key).map_or(&[][..], |r| &r.pv_render_styles[..]);
+    for (mesh, lod) in m.meshes.iter_mut().zip(model::drawn_lods(&loaded.model)) {
+        super::render_style::apply(mesh, super::render_style::of_list(styles, lod.render_style));
+    }
     super::world::textures(&mut m.meshes, map, file);
     for mesh in m.meshes.iter_mut().filter(|m| m.texture.is_none()) {
         mesh.color = UNSKINNED;

@@ -109,7 +109,7 @@ use lithtech_formats::attributes::Document;
 use toml::{Table, Value};
 
 use self::attributes::{
-    AmmoRecord, MOD_FILE, MODELS_FILE, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord,
+    AmmoRecord, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord,
     WeaponsFile,
 };
 use super::{attachments::CaModTable, movement::MovementData};
@@ -227,6 +227,8 @@ pub struct InstallAttributes {
     pub models: Option<ModelsFile>,
     /// The modification file (attachments).
     pub mods: Option<ModFile>,
+    /// The team marks (`[TeamMark]`: `TeamName#`, `RenderStyle#`).
+    pub marks: Option<MarksFile>,
 }
 
 /// Parse one attribute document, errors naming it and the line.
@@ -250,6 +252,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     let server = doc(SERVER_FILE);
     let models = doc(MODELS_FILE);
     let mods = doc(MOD_FILE);
+    let marks = doc(MARKS_FILE);
     let weapons = weapons.and_then(|d| {
         WeaponsFile::read(&d)
             .map_err(|e| problems.push(format!("{WEAPONS_FILE}: {e}")))
@@ -260,6 +263,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
         server: server.and_then(|d| ServerPlayer::read(&d)),
         models: models.map(|d| ModelsFile::read(&d)),
         mods: mods.map(|d| ModFile::read(&d)),
+        marks: marks.and_then(|d| MarksFile::read(&d)),
     };
     (attrs, problems)
 }

@@ -42,6 +42,7 @@ pub const WEAPONS_FILE: &str = "attributes/weapons.txt";
 pub const SERVER_FILE: &str = "attributes/serverbutes.txt";
 pub const MODELS_FILE: &str = "attributes/modelbutes.txt";
 pub const MOD_FILE: &str = "attributes/mod.txt";
+pub const MARKS_FILE: &str = "attributes/marks.txt";
 
 /// The "none" fallback of `Maxstamina`, `DashGauge`, `GaugeRec`.
 pub const NO_INT: i32 = i32::MIN;
@@ -320,6 +321,10 @@ pub struct WeaponRecord {
     /// `HHModel` and `HHSkin0..`: the third-person model and its skins.
     pub hh_model: String,
     pub hh_skins: Vec<String>,
+    /// `PVRenderStyle0..` and `HHRenderStyle0..`: the render-style files
+    /// of the two models (view_models.md 2, characters.md 2).
+    pub pv_render_styles: Vec<String>,
+    pub hh_render_styles: Vec<String>,
     /// `Pos`, `MuzzlePos`, `BreachOffset` (camera space, world units;
     /// missing: zero).
     pub pos: [f64; 3],
@@ -443,6 +448,8 @@ impl WeaponRecord {
             pv_skins: s.string_list("PVSkin").iter().map(|v| text(v)).collect(),
             hh_model: s.string("HHModel").map(text).unwrap_or_default(),
             hh_skins: s.string_list("HHSkin").iter().map(|v| text(v)).collect(),
+            pv_render_styles: s.string_list("PVRenderStyle").iter().map(|v| text(v)).collect(),
+            hh_render_styles: s.string_list("HHRenderStyle").iter().map(|v| text(v)).collect(),
             pos: s.vector("Pos").unwrap_or_default(),
             muzzle_pos: s.vector("MuzzlePos").unwrap_or_default(),
             breach_offset: s.vector("BreachOffset").unwrap_or_default(),
@@ -715,6 +722,8 @@ pub struct PieceRecord {
     pub files: Vec<String>,
     pub skins: Vec<String>,
     pub hair: Option<i32>,
+    /// `RenderStyle0..`.
+    pub render_styles: Vec<String>,
 }
 
 impl PieceRecord {
@@ -735,6 +744,52 @@ impl PieceRecord {
             files,
             skins: list("Skin"),
             hair: s.get("HairIndex").map(|_| s.int("HairIndex", -1)).filter(|&h| h >= 0),
+            render_styles: list("RenderStyle"),
+        }
+    }
+}
+
+/// The team marks (characters.md 2, `[TeamMark]`): mark i's texture
+/// (`TeamName#`) and render style (`RenderStyle#`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MarksFile {
+    pub textures: Vec<String>,
+    pub render_styles: Vec<String>,
+}
+
+impl MarksFile {
+    pub fn read(doc: &Document) -> Option<Self> {
+        let s = doc.section("TeamMark")?;
+        let list = |prefix: &str| -> Vec<String> { s.string_list(prefix).iter().map(|v| text(v)).collect() };
+        Some(Self {
+            textures: list("TeamName"),
+            render_styles: list("RenderStyle"),
+        })
+    }
+}
+
+/// A body record's look (`Model<N>`, characters.md 1 and 2): its file
+/// (`ModelFile`), skins by camouflage index (`UpperSkin0..`,
+/// `LowerSkin0..`), render styles (`RenderStyle0..`) and face redirects
+/// (`FaceRelationModel0..`, -1 none).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BodyLook {
+    pub file: String,
+    pub upper_skins: Vec<String>,
+    pub lower_skins: Vec<String>,
+    pub render_styles: Vec<String>,
+    pub faces: Vec<i32>,
+}
+
+impl BodyLook {
+    pub fn read(s: &Section) -> Self {
+        let list = |prefix: &str| -> Vec<String> { s.string_list(prefix).iter().map(|v| text(v)).collect() };
+        Self {
+            file: s.string("ModelFile").map(text).unwrap_or_default(),
+            upper_skins: list("UpperSkin"),
+            lower_skins: list("LowerSkin"),
+            render_styles: list("RenderStyle"),
+            faces: s.int_list("FaceRelationModel"),
         }
     }
 }
@@ -748,6 +803,8 @@ pub struct ModelsFile {
     /// `Hair<N>`'s and `Face<N>`'s files, by record index.
     pub hair_pieces: Vec<PieceRecord>,
     pub faces: Vec<PieceRecord>,
+    /// `Model<N>`'s looks, by record index.
+    pub bodies: Vec<BodyLook>,
 }
 
 impl ModelsFile {
@@ -758,6 +815,7 @@ impl ModelsFile {
             hair: doc.records("Hair").into_iter().map(WearRecord::read).collect(),
             hair_pieces: doc.records("Hair").into_iter().map(PieceRecord::read).collect(),
             faces: doc.records("Face").into_iter().map(PieceRecord::read).collect(),
+            bodies: doc.records("Model").into_iter().map(BodyLook::read).collect(),
         }
     }
 }

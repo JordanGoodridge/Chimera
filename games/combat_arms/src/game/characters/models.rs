@@ -1,18 +1,25 @@
 //! The characters' models from the install (specs/combat_arms/
-//! characters.md section 2): the default male and female body records'
-//! (`LOADED`) body files with their animation library (`game::model`), as Chimera's character model named
-//! `body_name(id)`, its texture slots filled per camouflage index and
-//! team mark (skin family `family(c, teammate)`), its default face and
-//! the head piece worn with it (`records::CharacterData::default_face`,
-//! `worn_head`) merged onto its skeleton as additional models, each with
-//! its own skins by camouflage index; each weapon's third-person
-//! model (`[models] world`, the weapons file's `HHModel`) as a held model
-//! on the `RightHand` socket. The body's nodes, sockets, weight sets and
-//! animation list are kept as a `Rig` (`rig`) for posing.
+//! characters.md section 2): the stock body records (`LOADED`), one
+//! Chimera character model per skeleton (sex) named after its first
+//! record (`body_name`), with its animation library (`game::model`): the
+//! first record's body, then the other records' bodies, the faces of
+//! that sex (each record's default and the loadout pool's) and the head
+//! pieces they may wear merged onto its skeleton as body-part choices
+//! (`BodyGroup`: a character's `map::BodyNumber` picks its body, face
+//! and head piece, `drawn`); its texture slots filled per camouflage
+//! index and team mark (skin family `family(c, teammate)`), a face's and
+//! head piece's skins by camouflage index; each piece in its render
+//! style (`render_style`: the body record's `RenderStyle#`, so the team
+//! mark of an enemy draws through `Alpha.dtx`'s alpha, nothing); each
+//! weapon's third-person model (`[models] world`, the weapons file's
+//! `HHModel`, in its `HHRenderStyle#`) as a held model on the
+//! `RightHand` socket. The body's nodes, sockets, weight sets and
+//! animation list are kept as a `Rig` (`rig`, every record of the group
+//! posing on the first's) for posing.
 //!
 //! Converted once per session (`shared_character_models`, the first map
 //! load's) and copied into each map after (`append_shared`: the textures
-//! appended, the indices moved), the rigs registered again.
+//! appended, the indices moved), the rigs and groups registered again.
 //!
 //! Every character archive (`CHARS_*`) and the third-person guns
 //! (`GUNS_M_HH`) are V2-keyed: without the key nothing here loads (the
@@ -28,13 +35,18 @@ use bevy::prelude::*;
 use lithtech_formats::ltb;
 
 use super::{
-    super::{model, view_model::hands},
+    super::{
+        model,
+        render_style::{self, Style},
+        view_model::hands,
+    },
     records::{self, ModelRecord, Selection},
     skeleton::Rig,
 };
 use crate::map::{MapCharacterModel, MapData, MapHeldModel, MapMesh, MapMeshLook, MapModel};
 
-/// The character model of body record `id` (`map::BodyName`).
+/// The character model of body record `id` (`map::BodyName`): the first
+/// record of a body group (`BodyGroup`).
 pub fn body_name(id: i32) -> String {
     format!("combat_arms:body:{id}")
 }
@@ -74,19 +86,101 @@ pub fn unregister(path: &str) {
     }
 }
 
-/// The bodies loaded with a map: the default male's and female's (what a
-/// selection draws without gear, by its face). Each has its sex's whole
-/// animation library (tens of megabytes), parsed per body.
-pub const LOADED: &[i32] = &[0, 7];
+/// The bodies loaded with a map: the three stock male bodies (Normal,
+/// Light, Heavy: their vests) and their female twins, each sex one
+/// character model (`BodyGroup`): the first record's body with its whole
+/// animation library, the others' bodies merged onto its skeleton.
+pub const LOADED: &[i32] = &[0, 1, 2, 7, 8, 9];
 
-/// The loaded bodies (`LOADED`) and every third-person weapon of ours into
-/// `map` (when they read); `shared_character_models` once per session.
+/// One character model's choices (`map::BodyNumber`, in this order of
+/// body parts): which body record's pieces, which face, which head piece
+/// (-1: none) show.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BodyGroup {
+    pub skeleton: usize,
+    pub records: Vec<i32>,
+    pub faces: Vec<i32>,
+    pub heads: Vec<i32>,
+}
+
+impl BodyGroup {
+    /// The model's name (its first record's, `body_name`).
+    pub fn name(&self) -> String {
+        body_name(self.records.first().copied().unwrap_or(0))
+    }
+
+    /// The body number showing record `record`, `face` and head piece
+    /// `head` (a choice not in the group: its first).
+    pub fn number(&self, record: i32, face: i32, head: i32) -> i32 {
+        let at = |list: &[i32], v: i32| list.iter().position(|&x| x == v).unwrap_or(0) as i32;
+        let (nr, nf) = (self.records.len().max(1) as i32, self.faces.len().max(1) as i32);
+        at(&self.records, record) + nr * (at(&self.faces, face) + nf * at(&self.heads, head))
+    }
+
+    /// The model's body parts' choice counts (`MapModel::body_parts`).
+    pub fn parts(&self) -> Vec<u16> {
+        [self.records.len(), self.faces.len(), self.heads.len()]
+            .map(|n| n.max(1) as u16)
+            .to_vec()
+    }
+}
+
+fn groups() -> &'static Mutex<Vec<BodyGroup>> {
+    static GROUPS: OnceLock<Mutex<Vec<BodyGroup>>> = OnceLock::new();
+    GROUPS.get_or_init(Default::default)
+}
+
+/// The body groups loaded (one per skeleton).
+pub fn loaded_groups() -> Vec<BodyGroup> {
+    groups().lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+/// Keep `group` as its skeleton's (the loader's; tests register their
+/// own).
+pub fn register_group(group: BodyGroup) {
+    if let Ok(mut g) = groups().lock() {
+        g.retain(|x| x.skeleton != group.skeleton);
+        g.push(group);
+    }
+}
+
+/// What a selection draws (characters.md 1, 2): its effective body's
+/// character model and body number (that body's pieces, the selection's
+/// face, else the body's default, and the head piece worn:
+/// `CharacterData::worn_head`); None when no loaded group has its body.
+pub fn drawn(look: &Selection) -> Option<(String, i32)> {
+    let data = records::data();
+    let (record, _) = data.effective(look);
+    let g = groups().lock().ok()?;
+    let group = g.iter().find(|g| g.records.contains(&record.id))?;
+    let face = if group.faces.contains(&look.face) { look.face } else { data.default_face(record.id) };
+    let head = data.worn_head(look.head, face, record.skeleton);
+    let head = if data.head_file(head, record.skeleton).is_some() { head } else { -1 };
+    Some((group.name(), group.number(record.id, face, head)))
+}
+
+/// The loaded bodies (`LOADED`, one character model per skeleton) and
+/// every third-person weapon of ours into `map` (when they read);
+/// `shared_character_models` once per session.
 pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let scale = super::super::movement::movement_data().meters_per_unit;
     let data = records::data();
     let mut failed = Vec::new();
-    for record in data.model.iter().filter(|r| LOADED.contains(&r.id)) {
-        match body(record, scale, map, file) {
+    let mut skeletons: Vec<usize> = Vec::new();
+    for id in LOADED {
+        if let Some(r) = data.model(*id)
+            && !skeletons.contains(&r.skeleton)
+        {
+            skeletons.push(r.skeleton);
+        }
+    }
+    for skeleton in &skeletons {
+        let records: Vec<&ModelRecord> = LOADED
+            .iter()
+            .filter_map(|id| data.model(*id))
+            .filter(|r| r.skeleton == *skeleton)
+            .collect();
+        match body_group(&records, scale, map, file) {
             Ok(c) => map.characters.push(c),
             Err(e) => failed.push(e),
         }
@@ -95,7 +189,7 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
         map.warnings.push(format!(
             "character models: {} of {} bodies did not load (capsules instead; CHARS_* need the V2 key): {}",
             failed.len(),
-            LOADED.len(),
+            skeletons.len(),
             failed[0]
         ));
     }
@@ -104,7 +198,7 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
     for w in super::super::data::weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
         let Some(path) = w.models.world.as_deref() else { continue };
         let look = data.weapon(Some(&w.id));
-        match held(path, &w.id, &look.skins, hand, map, file) {
+        match held(path, &w.id, &look, hand, map, file) {
             Ok(h) => map.held.push(h),
             Err(e) => map.warnings.push(format!("{} third-person model: {e}", w.id)),
         }
@@ -112,10 +206,12 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
 }
 
 /// The character models every map carries (`add_character_models` into
-/// an empty map: its own textures) and their rigs (`shared_character_models`).
+/// an empty map: its own textures), their rigs and body groups
+/// (`shared_character_models`).
 pub struct SharedModels {
     data: MapData,
     rigs: Vec<(String, Arc<Rig>)>,
+    groups: Vec<BodyGroup>,
 }
 
 /// `add_character_models`, converted once per session (the first map
@@ -133,17 +229,25 @@ pub fn shared_character_models(file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Arc<Sh
                 .filter(|r| LOADED.contains(&r.id))
                 .filter_map(|r| Some((r.file.clone(), rig(&r.file)?)))
                 .collect();
-            Arc::new(SharedModels { data, rigs })
+            Arc::new(SharedModels {
+                data,
+                rigs,
+                groups: loaded_groups(),
+            })
         })
         .clone()
 }
 
 /// The shared character models into `map`: their textures appended to
 /// the map's (the meshes' and skins' indices moved past the map's own),
-/// their rigs registered again (a test may have replaced one).
+/// their rigs and body groups registered again (a test may have replaced
+/// one).
 pub fn append_shared(map: &mut MapData, models: &SharedModels) {
     for (path, r) in &models.rigs {
         register(path, r.clone());
+    }
+    for g in &models.groups {
+        register_group(g.clone());
     }
     let base = map.textures.len();
     let shift = |model: &mut MapModel| {
@@ -180,20 +284,22 @@ fn slot(record: &ModelRecord, slot: i32, c: i32, teammate: bool) -> String {
     }
 }
 
-/// Textures by name, loaded once into `map`.
+/// Textures by name and render style, loaded once into `map`.
 struct Textures<'a> {
     file: &'a dyn Fn(&str) -> Option<Vec<u8>>,
-    loaded: HashMap<String, MapMesh>,
+    loaded: HashMap<(String, Style, Style), MapMesh>,
 }
 
 impl Textures<'_> {
-    fn look(&mut self, mesh: &MapMesh, material: String, map: &mut MapData) -> MapMeshLook {
-        let m = self.loaded.entry(material.clone()).or_insert_with(|| {
+    /// `material` drawn in `style`, then `over` (a team mark's own).
+    fn look(&mut self, material: String, style: Style, over: Style, map: &mut MapData) -> MapMeshLook {
+        let m = self.loaded.entry((material.clone(), style, over)).or_insert_with(|| {
             let mut m = MapMesh {
                 material: material.clone(),
-                alpha: mesh.alpha,
                 ..default()
             };
+            render_style::apply(&mut m, style);
+            render_style::apply(&mut m, over);
             super::super::world::textures(std::slice::from_mut(&mut m), map, self.file);
             m
         });
@@ -201,26 +307,52 @@ impl Textures<'_> {
             material,
             texture: m.texture,
             alpha: m.alpha,
+            unlit: m.unlit,
             ..default()
         }
     }
 }
 
-/// One body record's character model.
-fn body(
-    record: &ModelRecord,
+/// Where a mesh's skins come from: a body record's texture slot, or its
+/// own list by camouflage index (a face or head piece).
+enum Source<'a> {
+    Body(&'a ModelRecord, i32),
+    Own(Vec<String>),
+}
+
+/// Each added mesh's skins' source and render style.
+type Added<'a> = Vec<(Source<'a>, Style)>;
+
+/// A body record's pieces: its texture slots, its render styles.
+fn body_sources<'a>(record: &'a ModelRecord, lods: &[(i32, i32)]) -> Added<'a> {
+    lods.iter()
+        .map(|&(slot, style)| (Source::Body(record, slot), render_style::of_list(&record.render_styles, style)))
+        .collect()
+}
+
+/// A face's or head piece's pieces: its own skins and render styles.
+fn piece_sources<'a>(skins: &[String], styles: &[String], lods: &[(i32, i32)]) -> Added<'a> {
+    lods.iter()
+        .map(|&(_, style)| (Source::Own(skins.to_vec()), render_style::of_list(styles, style)))
+        .collect()
+}
+
+/// One body group's character model (the `LOADED` records of one
+/// skeleton): the first record's body and library; the other records'
+/// bodies, the faces of this skeleton (each record's default and the
+/// loadout pool's) and the head pieces they may wear (none, the pool's,
+/// each face's `HairIndex`) merged onto its skeleton as body-part choices
+/// (`BodyGroup`), each mesh drawn in its render style (`render_style`).
+fn body_group(
+    records: &[&ModelRecord],
     scale: f32,
     map: &mut MapData,
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<MapCharacterModel, String> {
-    let loaded = model::load(&record.file, file)?;
-    // Each piece's first texture index, its slot.
-    let slots: Vec<i32> = loaded
-        .model
-        .pieces
-        .iter()
-        .map(|p| p.lods.first().and_then(|l| l.used_textures().first().copied()).unwrap_or(-1))
-        .collect();
+    let base = *records.first().ok_or("no body")?;
+    let data = records::data();
+    let loaded = model::load(&base.file, file)?;
+    let base_lods: Vec<(i32, i32)> = model::drawn_lods(&loaded.model).into_iter().map(model::slot_and_style).collect();
     // Chimera's animation set only needs the body's own pose (the
     // driver lays the pose out itself, `Animator::fixed`): no resampling
     // of the library.
@@ -232,30 +364,83 @@ fn body(
             offsets: vec![Some(0)],
         },
     };
-    let mut m = model::convert(&own, scale, &|lod| {
-        let s = lod.used_textures().first().copied().unwrap_or(-1);
-        slot(record, s, 0, false)
-    });
+    let mut m = model::convert(&own, scale, &|_| String::new());
     let rig_data = m.rig.take().ok_or("no skeleton")?;
-    // The additional models (2): the body's default face and the head
-    // piece (the default selection's, none, else the one its face comes
-    // with), each mesh with its own skins by camouflage index.
-    let data = records::data();
-    let mut own: Vec<Option<Vec<String>>> = vec![None; m.meshes.len()];
-    let face = data.default_face(record.id);
-    if let Some(f) = data.face(face)
-        && let Some(path) = &f.file
-    {
-        let n = merge(&mut m, &rig_data.bones, path, scale, file).map_err(|e| format!("face {path}: {e}"))?;
-        own.extend(std::iter::repeat_n(Some(f.skins.clone()), n));
+    let mut sources: Added = body_sources(base, &base_lods);
+    let mut bodies: Vec<Option<(u16, u16)>> = vec![Some((0, 0)); m.meshes.len()];
+    let mut group = BodyGroup {
+        skeleton: base.skeleton,
+        records: vec![base.id],
+        ..default()
+    };
+    let mut warn = Vec::new();
+    // The other records' bodies (part 0).
+    for r in &records[1..] {
+        match merge(&mut m, &rig_data.bones, &r.file, scale, file) {
+            Ok(lods) => {
+                let choice = group.records.len() as u16;
+                bodies.extend(std::iter::repeat_n(Some((0, choice)), lods.len()));
+                sources.extend(body_sources(r, &lods));
+                group.records.push(r.id);
+            }
+            Err(e) => warn.push(format!("body {}: {e}", r.file)),
+        }
     }
-    let head = data.worn_head(Selection::default().head, face, record.skeleton);
-    if let Some(path) = data.head_file(head, record.skeleton) {
-        let n = merge(&mut m, &rig_data.bones, path, scale, file).map_err(|e| format!("head piece {path}: {e}"))?;
-        let skins = (0..CAMOUFLAGES as i32)
-            .map(|c| data.head_skin(head, c).unwrap_or_default().to_string())
-            .collect::<Vec<_>>();
-        own.extend(std::iter::repeat_n(Some(skins), n));
+    // Faces (part 1): this skeleton's (by model 0's face redirect), each
+    // record's default first.
+    let mut face_ids: Vec<i32> = Vec::new();
+    for f in group.records.iter().map(|&id| data.default_face(id)).chain(data.loadouts.faces.iter().copied()) {
+        if !face_ids.contains(&f) {
+            face_ids.push(f);
+        }
+    }
+    for f in face_ids {
+        let look = Selection {
+            face: f,
+            ..Selection::default()
+        };
+        if data.effective(&look).0.skeleton != base.skeleton {
+            continue;
+        }
+        let Some(rec) = data.face(f) else { continue };
+        let Some(path) = &rec.file else { continue };
+        match merge(&mut m, &rig_data.bones, path, scale, file) {
+            Ok(lods) => {
+                let choice = group.faces.len() as u16;
+                bodies.extend(std::iter::repeat_n(Some((1, choice)), lods.len()));
+                sources.extend(piece_sources(&rec.skins, &rec.render_styles, &lods));
+                group.faces.push(f);
+            }
+            Err(e) => warn.push(format!("face {path}: {e}")),
+        }
+    }
+    // Head pieces (part 2): none first, then the pool's and the faces'.
+    group.heads.push(-1);
+    let mut head_ids: Vec<i32> = data.loadouts.heads.clone();
+    head_ids.extend(group.faces.iter().filter_map(|&f| data.face(f).and_then(|r| r.hair)));
+    for h in head_ids {
+        if group.heads.contains(&h) {
+            continue;
+        }
+        let Some(path) = data.head_file(h, base.skeleton) else { continue };
+        let Some(rec) = data.head.iter().find(|x| x.id == h) else { continue };
+        match merge(&mut m, &rig_data.bones, path, scale, file) {
+            Ok(lods) => {
+                let choice = group.heads.len() as u16;
+                bodies.extend(std::iter::repeat_n(Some((2, choice)), lods.len()));
+                sources.extend(piece_sources(&rec.skins, &rec.render_styles, &lods));
+                group.heads.push(h);
+            }
+            Err(e) => warn.push(format!("head piece {path}: {e}")),
+        }
+    }
+    if !warn.is_empty() {
+        map.warnings.push(format!(
+            "character model {}: {} pieces did not load: {}",
+            base.id,
+            warn.len(),
+            warn.join("; ")
+        ));
     }
     let mut textures = Textures {
         file,
@@ -264,28 +449,37 @@ fn body(
     m.skins = (0..CAMOUFLAGES as i32 * 2)
         .map(|f| {
             let (c, teammate) = (f / 2, f % 2 == 1);
-            m.meshes
+            sources
                 .iter()
-                .enumerate()
-                .map(|(k, mesh)| {
-                    let name = match own.get(k).cloned().flatten() {
-                        Some(list) => {
+                .map(|(source, style)| {
+                    let (name, over) = match source {
+                        Source::Own(list) => {
                             let i = usize::try_from(c).ok().filter(|&i| i < list.len()).unwrap_or(0);
-                            list.get(i).cloned().unwrap_or_default()
+                            (list.get(i).cloned().unwrap_or_default(), Style::Opaque)
                         }
-                        None => slot(record, slots.get(k).copied().unwrap_or(-1), c, teammate),
+                        // The team mark in its mark's own style too
+                        // (`[TeamMark]`'s `RenderStyle#`).
+                        Source::Body(record, 2) => (
+                            slot(record, 2, c, teammate),
+                            render_style::of_list(&data.marks.render_styles, i32::from(teammate)),
+                        ),
+                        Source::Body(record, s) => (slot(record, *s, c, teammate), Style::Opaque),
                     };
-                    textures.look(mesh, name, map)
+                    textures.look(name, *style, over, map)
                 })
                 .collect()
         })
         .collect();
-    for (mesh, look) in m.meshes.iter_mut().zip(m.skins[0].clone()) {
+    for ((mesh, look), body) in m.meshes.iter_mut().zip(m.skins[0].clone()).zip(&bodies) {
+        mesh.material = look.material.clone();
         mesh.texture = look.texture;
         mesh.alpha = look.alpha;
+        mesh.unlit = look.unlit;
         mesh.color = if look.texture.is_some() { [255; 3] } else { [150; 3] };
+        mesh.body = *body;
     }
-    let rig = Rig::new(loaded.model, loaded.list);
+    m.body_parts = group.parts();
+    let rig = Arc::new(Rig::new(loaded.model, loaded.list));
     let feet = rig.half_heights.0;
     // The meshes in the body's frame (feet at the origin), as the root
     // places the skeleton: in model space they would sit the root's lift
@@ -296,10 +490,16 @@ fn body(
             p[1] += feet * scale;
         }
     }
-    register(&record.file, Arc::new(rig));
+    // Every record of the group poses on the first's skeleton and
+    // library (one tree shape per sex, characters.md 2).
+    for r in records {
+        register(&r.file, rig.clone());
+    }
+    let name = group.name();
+    register_group(group);
     Ok(MapCharacterModel {
         team: None,
-        name: Some(body_name(record.id)),
+        name: Some(name),
         class: None,
         hitboxes: Vec::new(),
         bones: rig_data.bones.clone(),
@@ -311,17 +511,24 @@ fn body(
     })
 }
 
-/// An additional model (a face or head piece) skinned onto the body's
-/// skeleton: its bones matched to the body's nodes by name, its vertices
-/// moved into the body's bind pose. How many meshes it added.
-fn merge(body: &mut MapModel, bones: &[crate::map::MapBone], path: &str, scale: f32, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<usize, String> {
-    let loaded = model::load(path, file)?;
+/// An additional model (another body, a face or head piece) skinned onto
+/// the body's skeleton: its bones matched to the body's nodes by name,
+/// its vertices moved into the body's bind pose. The added meshes' skin
+/// slots and render-style indices (`model::slot_and_style`).
+fn merge(
+    body: &mut MapModel,
+    bones: &[crate::map::MapBone],
+    path: &str,
+    scale: f32,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<Vec<(i32, i32)>, String> {
+    let loaded = model::load_own(path, file)?;
+    let lods: Vec<(i32, i32)> = model::drawn_lods(&loaded.model).into_iter().map(model::slot_and_style).collect();
     let mut m = model::convert(&loaded, scale, &|_| String::new());
-    let rig = m.rig.take().ok_or("head piece without a skeleton")?;
+    let rig = m.rig.take().ok_or("a piece without a skeleton")?;
     let map = hands::match_bones(&rig.bones, bones)?;
     let (own, theirs) = (hands::globals(&rig.bones), hands::globals(bones));
     let to: Vec<Mat4> = map.iter().enumerate().map(|(h, &b)| theirs[b] * own[h].inverse()).collect();
-    let added = m.meshes.len();
     for mut mesh in m.meshes {
         for (v, p) in mesh.positions.iter_mut().enumerate() {
             let units = Vec3::from(*p) / scale;
@@ -336,7 +543,7 @@ fn merge(body: &mut MapModel, bones: &[crate::map::MapBone], path: &str, scale: 
         }
         body.meshes.push(mesh);
     }
-    Ok(added)
+    Ok(lods)
 }
 
 /// A weapon's third-person model held at the `RightHand` socket: the
@@ -345,16 +552,23 @@ fn merge(body: &mut MapModel, bones: &[crate::map::MapBone], path: &str, scale: 
 fn held(
     path: &str,
     key: &str,
-    skins: &[String],
+    look: &records::WeaponLook,
     socket: &records::SocketRecord,
     map: &mut MapData,
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<MapHeldModel, String> {
     let loaded = model::load(path, file)?;
+    let styles: Vec<Style> = model::drawn_lods(&loaded.model)
+        .into_iter()
+        .map(|l| render_style::of_list(&look.render_styles, l.render_style))
+        .collect();
     let mut m = model::convert(&loaded, 1.0, &|lod| {
         let i = lod.used_textures().first().copied().unwrap_or(-1);
-        usize::try_from(i).ok().and_then(|i| skins.get(i)).cloned().unwrap_or_default()
+        usize::try_from(i).ok().and_then(|i| look.skins.get(i)).cloned().unwrap_or_default()
     });
+    for (mesh, style) in m.meshes.iter_mut().zip(styles) {
+        render_style::apply(mesh, style);
+    }
     super::super::world::textures(&mut m.meshes, map, file);
     m.rig = None;
     // The socket in the parent node's space, right-handed.

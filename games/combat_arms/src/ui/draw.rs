@@ -64,27 +64,31 @@ impl CaArt {
     }
 }
 
+/// A decoded texture as an image (sRGB RGBA).
+pub fn rgba_image(a: &super::install::Art) -> Image {
+    use bevy::{
+        asset::RenderAssetUsages,
+        render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+    };
+    Image::new(
+        Extent3d {
+            width: a.size.x as u32,
+            height: a.size.y as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        a.rgba.clone(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
+}
+
 /// Make the install's art images (`CaUi::install`), once.
 pub fn load_art(ui: Res<super::CaUi>, images: Option<ResMut<Assets<Image>>>, mut commands: Commands) {
     let mut art = CaArt::default();
     if let (Some(inst), Some(mut images)) = (&ui.install, images) {
-        use bevy::{
-            asset::RenderAssetUsages,
-            render::render_resource::{Extent3d, TextureDimension, TextureFormat},
-        };
         for (k, a) in &inst.art {
-            let image = Image::new(
-                Extent3d {
-                    width: a.size.x as u32,
-                    height: a.size.y as u32,
-                    depth_or_array_layers: 1,
-                },
-                TextureDimension::D2,
-                a.rgba.clone(),
-                TextureFormat::Rgba8UnormSrgb,
-                RenderAssetUsages::default(),
-            );
-            art.0.insert(k.clone(), (images.add(image), a.size));
+            art.0.insert(k.clone(), (images.add(rgba_image(a)), a.size));
         }
     }
     commands.insert_resource(art);
