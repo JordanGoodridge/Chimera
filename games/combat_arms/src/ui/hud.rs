@@ -127,8 +127,11 @@
 pub mod action;
 pub mod bound;
 pub mod death;
+pub mod full_map;
 pub mod install;
 pub mod model;
+pub mod radar;
+pub mod scene;
 pub mod score;
 
 use std::collections::HashMap;
@@ -348,6 +351,7 @@ impl Plugin for CaHudStatePlugin {
             .add_message::<Damage>()
             .add_message::<DamageTaken>()
             .add_message::<Died>()
+            .add_plugins(radar::CaRadarStatePlugin)
             .add_systems(
                 Update,
                 (track, update, action::prompts, score::update_score).chain().in_set(HudUpdate),
@@ -1036,7 +1040,10 @@ impl Plugin for CaHudPlugin {
                 hit_marker: true,
                 killfeed: true,
             })
-            .add_systems(Startup, (spawn, score::spawn_root, draw::load_faces, draw::load_art))
+            .add_systems(
+                Startup,
+                (spawn, score::spawn_root, draw::load_faces, draw::load_art, radar::spawn_root, full_map::spawn_root),
+            )
             .add_systems(Update, screen_size.before(HudUpdate))
             .add_systems(
                 Update,
@@ -1052,7 +1059,8 @@ impl Plugin for CaHudPlugin {
                     score::draw_score,
                 )
                     .after(HudUpdate),
-            );
+            )
+            .add_systems(Update, (radar::draw_radar, full_map::draw_full_map).after(radar::RadarUpdate));
     }
 }
 

@@ -78,6 +78,10 @@ pub const LAYOUT_ATTRIBUTES: &str = "attributes/layout.txt";
 pub const FONT_LIST: &str = "attributes/fontlist.txt";
 /// The HUD layout attributes' section.
 pub const HUD_LAYOUT: &str = "HUDLayout0";
+/// The large-map attribute file (radar_minimap.md: `[RadarInfo]`'s
+/// `DefaultWorldSize`, `[HUDLargeMap]`'s icon roles, the legend's
+/// `[IconListN]` sections).
+pub const LARGE_MAP_ATTRIBUTES: &str = "attributes/largemapdesc.txt";
 /// The section with the death screen's zone icons
 /// (`DamagePointIcon<Zone>Tex`; death_killcam.md 8), read into the same
 /// map as `HUD_LAYOUT`'s.
@@ -156,6 +160,8 @@ pub struct InstallUi {
     pub language: String,
     /// By `texture_key`.
     pub art: HashMap<String, Art>,
+    /// The full map's legend lists (`[IconListN]`, radar_minimap.md F2).
+    pub legend: Vec<crate::game::radar::legend::IconList>,
 }
 
 impl std::fmt::Debug for InstallUi {
@@ -455,6 +461,15 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         }
     }
     names.extend(extra_art.iter().cloned());
+    // The radar's and the full map's icons and art (radar_minimap.md).
+    names.extend(super::hud::radar::art_names());
+    let legend = legend(mount);
+    for l in &legend {
+        for i in &l.items {
+            names.push(i.icon.clone());
+            names.extend(i.view.clone());
+        }
+    }
     let mut art = HashMap::new();
     for n in names {
         let key = texture_key(&n);
@@ -490,7 +505,19 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         strings,
         language,
         art,
+        legend,
     })
+}
+
+/// The full map's legend lists (F2) from the large-map attribute file;
+/// none when the file is missing.
+pub fn legend(mount: &Mount) -> Vec<crate::game::radar::legend::IconList> {
+    mount
+        .read(LARGE_MAP_ATTRIBUTES)
+        .ok()
+        .and_then(|b| lithtech_formats::attributes::Document::parse(&b).ok())
+        .map(|d| crate::game::radar::legend::parse(&d))
+        .unwrap_or_default()
 }
 
 impl InstallUi {
