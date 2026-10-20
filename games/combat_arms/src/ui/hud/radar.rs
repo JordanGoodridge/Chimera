@@ -19,8 +19,12 @@
 //! Drawing: the install's art (the icons under `UI_HUD_Map\icon\`, the map
 //! image under `UI_HUD_Map\mapImage\`, the radar art) through the shell's
 //! UI nodes, clipped to the window; without it flat coloured boxes by role
-//! and a dark window. A turned quad is drawn as a rotated rectangle of its
-//! sides' lengths (no shear on a screen that isn't 4:3).
+//! and a dark window. Bevy's clip leaves turned nodes whole, so the turned
+//! quads are `client::clip_quad` materials cut to the window by the
+//! shader: the wedges, arrows and guide are turned in square space
+//! (`upright`: the angle follows the view's, no shear on a screen that
+//! isn't 4:3), the map picture is the exact stretched quad so it keeps to
+//! the icons' places.
 //!
 //! Known shortcuts: the radar hides while the local player is dead (the
 //! death camera, item 26, isn't there); letterbox, video and AI freeze
@@ -40,7 +44,10 @@ use super::{
     scene::{CaScene, Kind, Me, Thing, frame},
 };
 use crate::{
-    client::chat::ChatInput,
+    client::{
+        chat::ChatInput,
+        clip_quad::{ClipQuadMaterial, quad_node},
+    },
     core::MapLoads,
     game::radar::{
         CaRadarProfile, CaRadarRound, CaWorldOffset,
@@ -280,6 +287,9 @@ fn mark(t: &Thing, look: Look, centre: (i32, i32), f: &maths::Frame, s: Screen) 
 // ---------------------------------------------------------------------------
 // Drawing
 
+/// The whole image over a quad.
+const FULL: Vec4 = Vec4::new(0.0, 0.0, 1.0, 1.0);
+
 #[derive(Component)]
 pub struct RadarRoot;
 
@@ -415,6 +425,50 @@ pub fn spawn_box(p: &mut ChildSpawnerCommands, origin: Vec2, texture: &str, r: P
     spawn_quad(p, origin, texture, corners, tint, art);
 }
 
+/// A spec quad (corners in screen px, turned in reference px and then
+/// stretched by (x_r, y_r), which shears it on a screen that isn't 4:3)
+/// as a quad turned in square space: the same centre, angle and sides in
+/// reference px, drawn at the one scale `min(x_r, y_r)`. A wedge or guide
+/// then turns at the view's speed and keeps its shape.
+pub fn upright(corners: [Vec2; 4], s: Screen) -> [Vec2; 4] {
+    let (xr, yr) = (s.xr(), s.yr());
+    let k = xr.min(yr);
+    let back = |v: Vec2| Vec2::new(v.x / xr, v.y / yr) * k;
+    let centre = (corners[0] + corners[2]) / 2.0;
+    let (u, v) = (back(corners[1] - corners[0]), back(corners[3] - corners[0]));
+    [centre - (u + v) / 2.0, centre + (u - v) / 2.0, centre + (u + v) / 2.0, centre + (v - u) / 2.0]
+}
+
+/// A turned quad of the texture (or its flat stand-in) with its `uv` part,
+/// cut to the window by the shader (Bevy's clip leaves turned nodes
+/// whole). `corners` are screen px, `origin` the clip node's top-left,
+/// `clip_size` its size.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_turned(
+    p: &mut ChildSpawnerCommands,
+    materials: &mut Assets<ClipQuadMaterial>,
+    origin: Vec2,
+    clip_size: Vec2,
+    texture: &str,
+    corners: [Vec2; 4],
+    tint: [u8; 4],
+    uv: Vec4,
+    art: Option<&CaArt>,
+) {
+    let (image, color) = match art.and_then(|a| a.get(texture)) {
+        Some((image, _)) => (Some(image.clone()), colour(tint)),
+        None => {
+            let c = flat(texture);
+            let m = |a: u8, b: u8| ((a as u32 * b as u32) / 255) as u8;
+            (None, colour([m(c[0], tint[0]), m(c[1], tint[1]), m(c[2], tint[2]), m(c[3], tint[3])]))
+        }
+    };
+    let rel = corners.map(|c| c - origin);
+    if let Some(q) = quad_node(rel, (Vec2::ZERO, clip_size), color, image, uv) {
+        p.spawn((q.node, MaterialNode(materials.add(q.material))));
+    }
+}
+
 /// Pictures decoded on first use (the map images are large): the keys
 /// that failed aren't tried again.
 pub fn ensure_picture(key: &str, art: &mut CaArt, images: &mut Assets<Image>, failed: &mut HashSet<String>) -> bool {
@@ -442,6 +496,7 @@ pub fn draw_radar(
     radar: Res<CaRadar>,
     mut art: Option<ResMut<CaArt>>,
     mut images: Option<ResMut<Assets<Image>>>,
+    mut materials: Option<ResMut<Assets<ClipQuadMaterial>>>,
     root: Single<Entity, With<RadarRoot>>,
     mut failed: Local<HashSet<String>>,
     mut last: Local<Option<(CaRadar, bool)>>,
@@ -461,6 +516,7 @@ pub fn draw_radar(
     let (Some(window), s) = (radar.window, radar.screen) else { return };
     let art = art.as_deref();
     let origin = window.min;
+    let clip = window.size();
     commands.entity(*root).with_children(|p| {
         // The window: a clip over the picture, the things and the guide.
         p.spawn(Node {
@@ -475,7 +531,15 @@ pub fn draw_radar(
         .with_children(|c| {
             let alpha = [255, 255, 255, MAP_ALPHA];
             match radar.map.as_ref().filter(|m| art.is_some_and(|a| a.get(&m.texture).is_some())) {
-                Some(m) => spawn_window_image(c, origin, m, alpha, art.expect("checked")),
+                Some(m) => {
+                    if let Some(mats) = materials.as_mut() {
+                        let w = m.window;
+                        let uv = Vec4::new(w.u0 as f32, w.v0 as f32, w.uw as f32, w.vh as f32);
+                        // The picture keeps the stretch of the icons'
+                        // places, so it is the exact parallelogram.
+                        spawn_turned(c, mats, origin, clip, &m.texture, m.corners, alpha, uv, art);
+                    }
+                }
                 None => {
                     c.spawn((
                         Node {
@@ -495,25 +559,30 @@ pub fn draw_radar(
                 if let Some(b) = &m.look.badge {
                     spawn_box(c, origin, b, m.rect, [255; 4], art);
                 }
-                if let (Some(w), Some(view)) = (m.wedge, &m.look.view) {
-                    spawn_quad(c, origin, view, w, [255; 4], art);
+                if let (Some(w), Some(view), Some(mats)) = (m.wedge, &m.look.view, materials.as_mut()) {
+                    spawn_turned(c, mats, origin, clip, view, upright(w, s), [255; 4], FULL, art);
                 }
             }
             for a in &radar.arrows {
-                spawn_quad(c, origin, look::ARROW, a.corners, [255; 4], art);
+                if let Some(mats) = materials.as_mut() {
+                    spawn_turned(c, mats, origin, clip, look::ARROW, upright(a.corners, s), [255; 4], FULL, art);
+                }
                 spawn_box(c, origin, &a.look.icon, a.icon, [255; 4], art);
                 if let Some(b) = &a.look.badge {
                     spawn_box(c, origin, b, a.icon, [255; 4], art);
                 }
             }
-            if let Some(g) = radar.guide {
-                spawn_quad(c, origin, look::GUIDE, g, [255; 4], art);
+            if let (Some(g), Some(mats)) = (radar.guide, materials.as_mut()) {
+                spawn_turned(c, mats, origin, clip, look::GUIDE, upright(g, s), [255; 4], FULL, art);
             }
         });
         // The frame and the zoom bar, over everything and unclipped.
         let rect = |x: f32, y: f32, w: f32, h: f32| scaled(PxRect::new(x, x + w, y, y + h), s);
         let (fx, fy, fw, fh) = FRAME_AT;
-        spawn_box(p, Vec2::ZERO, look::FRAME, rect(fx, fy, fw, fh), [255; 4], art);
+        // Without the install the flat stand-in would hide the window.
+        if art.is_some_and(|a| a.get(look::FRAME).is_some()) {
+            spawn_box(p, Vec2::ZERO, look::FRAME, rect(fx, fy, fw, fh), [255; 4], art);
+        }
         let (tx, ty, tw, th) = TRACK_AT;
         spawn_box(p, Vec2::ZERO, look::ZOOM_TRACK, rect(tx, ty, tw, th), [255; 4], art);
         spawn_box(
@@ -524,52 +593,6 @@ pub fn draw_radar(
             [255; 4],
             art,
         );
-    });
-}
-
-/// The picture's texture window on the quad, inside the window's clip: the
-/// whole image placed so that the window falls on the quad (the rest is
-/// clipped by the window), turned with the quad.
-fn spawn_window_image(c: &mut ChildSpawnerCommands, origin: Vec2, m: &MapQuad, tint: [u8; 4], art: &CaArt) {
-    let Some((image, _)) = art.get(&m.texture) else { return };
-    let [p0, p1, _, p3] = m.corners;
-    let (u, v) = (p1 - p0, p3 - p0);
-    let (qw, qh) = (u.length(), v.length());
-    if qw <= 0.0 || qh <= 0.0 || m.window.uw <= 0.0 || m.window.vh <= 0.0 {
-        return;
-    }
-    let centre = (m.corners[0] + m.corners[2]) / 2.0 - origin;
-    let (iw, ih) = (qw / m.window.uw as f32, qh / m.window.vh as f32);
-    // The rotator: the quad's box turned about its centre; the image sits
-    // in it offset by the window's start.
-    c.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(centre.x - qw / 2.0),
-            top: px(centre.y - qh / 2.0),
-            width: px(qw),
-            height: px(qh),
-            ..default()
-        },
-        UiTransform::from_rotation(Rot2::radians(u.y.atan2(u.x))),
-    ))
-    .with_children(|r| {
-        r.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(-(m.window.u0 as f32) * iw),
-                top: px(-(m.window.v0 as f32) * ih),
-                width: px(iw),
-                height: px(ih),
-                ..default()
-            },
-            ImageNode {
-                image: image.clone(),
-                color: colour(tint),
-                image_mode: NodeImageMode::Stretch,
-                ..default()
-            },
-        ));
     });
 }
 

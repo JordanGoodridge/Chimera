@@ -5,6 +5,8 @@
 //! size, and the server's whole path from the world and mode to the image
 //! data (`mission::find`). Passes with a note without an install; the
 //! mission files need the V1 key. Nothing read here is written anywhere.
+#![cfg_attr(not(feature = "ui"), allow(unused_imports))]
+
 
 use chimera_core::mount::{Mount, config::LocalConfig};
 use combat_arms::game::{
@@ -61,6 +63,7 @@ fn t46_the_map_images() {
 }
 
 /// Test 47: the radar art and the icons, with the sizes the spec lists.
+#[cfg(feature = "ui")]
 #[test]
 fn t47_the_radar_art_and_icons() {
     let Some(m) = install() else { return };
@@ -131,6 +134,7 @@ fn the_mission_file_of_a_world_and_mode() {
 }
 
 /// Test 52: `[RadarInfo]`'s `DefaultWorldSize`, and the legend lists.
+#[cfg(feature = "ui")]
 #[test]
 fn t52_the_large_map_attribute_file() {
     let Some(m) = install() else { return };
