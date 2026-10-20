@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::{CaObjects, apply_effects, movers::Pose};
+use super::{CaObjects, apply_effects, movers::Pose, runtime::Kind};
 use crate::{
     core::NetRole,
     map::MapFile,
@@ -26,6 +26,17 @@ pub struct NetCaObjects {
     /// The map they belong to (`MapFile::name`).
     pub map: String,
     pub objects: Vec<NetObject>,
+    /// The map sounds (`SoundFX`) switched or restarted since the start
+    /// (music_ambience.md 6: a joiner gets every sound still running).
+    pub sounds: Vec<NetSound>,
+}
+
+/// One map sound's state.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct NetSound {
+    pub id: u32,
+    pub on: bool,
+    pub plays: u32,
 }
 
 /// One object's state (the world file's frame, u).
@@ -78,7 +89,22 @@ fn write(world: &mut World) {
             flags: flags_of(ob),
         })
         .collect();
-    let now = NetCaObjects { map, objects };
+    let sounds: Vec<NetSound> = o
+        .world
+        .objects
+        .iter()
+        .enumerate()
+        .filter(|(_, ob)| ob.class == "SoundFX")
+        .filter_map(|(i, ob)| match ob.kind {
+            Kind::Switchable { on, plays } if (on, plays) != (ob.props.bool_or("StartOn", true), 0) => Some(NetSound {
+                id: i as u32,
+                on,
+                plays,
+            }),
+            _ => None,
+        })
+        .collect();
+    let now = NetCaObjects { map, objects, sounds };
     let have = world.query::<(Entity, &NetCaObjects)>().iter(world).next().map(|(e, n)| (e, n.clone()));
     match have {
         Some((e, n)) if n != now => {
@@ -129,6 +155,17 @@ fn read(world: &mut World) {
             ob.dirty = true;
         }
     }
+    }
+    {
+        let mut o = world.resource_mut::<CaObjects>();
+        for i in 0..o.world.objects.len() {
+            if o.world.objects[i].class != "SoundFX" {
+                continue;
+            }
+            let start = o.world.objects[i].props.bool_or("StartOn", true);
+            let (on, plays) = net.sounds.iter().find(|s| s.id as usize == i).map_or((start, 0), |s| (s.on, s.plays));
+            o.world.objects[i].kind = Kind::Switchable { on, plays };
+        }
     }
     apply_effects(world);
 }

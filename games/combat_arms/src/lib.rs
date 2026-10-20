@@ -40,7 +40,7 @@ pub mod ui;
 use chimera_core::{character, console, core, game_registry, mount, slots};
 use chimera_net::net;
 use chimera_sim::{rule_module, spawning, weapon};
-use chimera_world::map;
+use chimera_world::{map, music};
 
 // The front end's: the shell.
 #[cfg(feature = "ui")]
