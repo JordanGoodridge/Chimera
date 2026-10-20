@@ -67,6 +67,7 @@ pub mod objects;
 pub mod props;
 pub mod render_style;
 pub mod rules;
+pub mod special;
 pub mod view_model;
 pub mod volumes;
 pub mod weapons;
@@ -179,6 +180,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(volumes::CaVolumesPlugin)
             .add(objects::CaObjectsPlugin)
             .add(grenades::CaGrenadesPlugin)
+            .add(special::CaSpecialPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(view_model::CaViewModelPlugin)
             .add(effects::CaEffectsPlugin)
