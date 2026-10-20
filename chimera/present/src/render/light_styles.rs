@@ -274,8 +274,9 @@ pub fn relight(
             let _ = images.insert(h.id(), image);
         }
     };
+    let world = built.world.unwrap_or_else(|| built.plain.clone());
     put(&maps.plain, built.plain);
-    put(&maps.world, built.world);
+    put(&maps.world, world);
     if let (Some(handles), Some(pages)) = (&maps.bumped, built.bumped) {
         for (h, p) in handles.iter().zip(pages) {
             let _ = images.insert(h.id(), p);

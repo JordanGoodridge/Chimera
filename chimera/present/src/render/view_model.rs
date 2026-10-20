@@ -1,6 +1,8 @@
 //! First-person view models (any game): the model a character sees of its
 //! own weapon, with hands, drawn at the eye over the world. Games load
-//! `MapViewModel`s with the map, drive each character's `ViewAnimator`
+//! `MapViewModel`s with the map (or later: `map::add_view_model`, built
+//! on the next frame by `build_late` with its own textures), drive each
+//! character's `ViewAnimator`
 //! (which sequence plays) and `ViewModelOffset` (bob and sway), and send
 //! `ViewModelEvent`s (muzzle flashes; their types are in `map::view_model`);
 //! this module draws the view model of
@@ -92,8 +94,80 @@ pub struct ViewModelAssets {
     cubemaps: Vec<(Vec3, Handle<Image>)>,
     /// All cubemaps, for materials that name theirs.
     cubemap_images: Vec<Handle<Image>>,
+    /// The map's textures, then those of view models added later
+    /// (`build_late`).
     textures: Vec<Handle<Image>>,
     light_scale: f32,
+    /// What later view models' materials take from the map: its fog and
+    /// look (`late_base`), whether it has a light field, the debug view.
+    late_base: MapData,
+    lit: bool,
+    view: MapDebugView,
+}
+
+/// What it takes to build one view model's render assets.
+struct Build<'a> {
+    textures: &'a [Handle<Image>],
+    data: &'a MapData,
+    lit: bool,
+    view: MapDebugView,
+}
+
+impl Build<'_> {
+    fn model(
+        &self,
+        v: &MapViewModel,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<PropMaterial>,
+        bindposes: &mut Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
+    ) -> ViewModelAsset {
+        let (textures, data, view) = (self.textures, self.data, self.view);
+        let parts = v
+            .model
+            .meshes
+            .iter()
+            .map(|m| {
+                let mut mesh = crate::render::build_mesh(m, false);
+                if m.joints.len() == m.positions.len() && !v.bones.is_empty() {
+                    mesh.insert_attribute(
+                        Mesh::ATTRIBUTE_JOINT_INDEX,
+                        bevy::mesh::VertexAttributeValues::Uint16x4(m.joints.clone()),
+                    );
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, m.joint_weights.clone());
+                }
+                let mut material = crate::render::lit_prop_material(m, textures, data, view, false);
+                // Without a light field it shows its texture as is.
+                if !m.unlit && view != MapDebugView::Albedo && self.lit {
+                    material.params.set_probe(&LightProbe::default(), 1.0);
+                }
+                let mut mirrored = material.clone();
+                mirrored.cull_front = true;
+                ViewModelPart {
+                    mesh: meshes.add(mesh),
+                    materials: [materials.add(material), materials.add(mirrored)],
+                    envmap: m.envmap.filter(|_| view == MapDebugView::Normal),
+                    normal_map: m.normal_map,
+                }
+            })
+            .collect();
+        // Each bone's reference pose in the eye's space, inverted.
+        let mut global: Vec<Mat4> = Vec::with_capacity(v.bones.len());
+        for b in &v.bones {
+            let local = Mat4::from_rotation_translation(b.rotation, b.position);
+            let parent = b
+                .parent
+                .and_then(|p| global.get(p).copied())
+                .unwrap_or(v.root.to_matrix());
+            global.push(parent * local);
+        }
+        let inverse: Vec<Mat4> = global.iter().map(|m| m.inverse()).collect();
+        ViewModelAsset {
+            parts,
+            bindposes: bindposes.add(bevy::mesh::skinning::SkinnedMeshInverseBindposes::from(inverse)),
+            bones: v.bones.clone(),
+            root: v.root,
+        }
+    }
 }
 
 /// Build the view models' render assets.
@@ -107,59 +181,16 @@ pub fn build_assets(
     materials: &mut Assets<PropMaterial>,
     bindposes: &mut Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
 ) -> ViewModelAssets {
+    let build = Build {
+        textures,
+        data,
+        lit: data.light_field.is_some(),
+        view,
+    };
     let models = data
         .view_models
         .iter()
-        .map(|v| {
-            let parts = v
-                .model
-                .meshes
-                .iter()
-                .map(|m| {
-                    let mut mesh = crate::render::build_mesh(m, false);
-                    if m.joints.len() == m.positions.len() && !v.bones.is_empty() {
-                        mesh.insert_attribute(
-                            Mesh::ATTRIBUTE_JOINT_INDEX,
-                            bevy::mesh::VertexAttributeValues::Uint16x4(m.joints.clone()),
-                        );
-                        mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, m.joint_weights.clone());
-                    }
-                    let mut material = crate::render::lit_prop_material(m, textures, data, view, false);
-                    // Without a light field it shows its texture as is.
-                    if !m.unlit && view != MapDebugView::Albedo && data.light_field.is_some() {
-                        material.params.set_probe(&LightProbe::default(), 1.0);
-                    }
-                    let mut mirrored = material.clone();
-                    mirrored.cull_front = true;
-                    ViewModelPart {
-                        mesh: meshes.add(mesh),
-                        materials: [materials.add(material), materials.add(mirrored)],
-                        envmap: m.envmap.filter(|_| view == MapDebugView::Normal),
-                        normal_map: m.normal_map,
-                    }
-                })
-                .collect();
-            // Each bone's reference pose in the eye's space, inverted.
-            let mut global: Vec<Mat4> = Vec::with_capacity(v.bones.len());
-            for b in &v.bones {
-                let local = Mat4::from_rotation_translation(b.rotation, b.position);
-                let parent = b
-                    .parent
-                    .and_then(|p| global.get(p).copied())
-                    .unwrap_or(v.root.to_matrix());
-                global.push(parent * local);
-            }
-            let inverse: Vec<Mat4> = global.iter().map(|m| m.inverse()).collect();
-            (
-                v.key.clone(),
-                ViewModelAsset {
-                    parts,
-                    bindposes: bindposes.add(bevy::mesh::skinning::SkinnedMeshInverseBindposes::from(inverse)),
-                    bones: v.bones.clone(),
-                    root: v.root,
-                },
-            )
-        })
+        .map(|v| (v.key.clone(), build.model(v, meshes, materials, bindposes)))
         .collect();
     let lighting_scale = if let MapDebugView::Lighting { scale } = view {
         scale
@@ -176,6 +207,60 @@ pub fn build_assets(
         cubemap_images: cubemaps.to_vec(),
         textures: textures.to_vec(),
         light_scale: data.look.light_scale * lighting_scale,
+        late_base: MapData {
+            fog: data.fog.clone(),
+            look: data.look.clone(),
+            ..default()
+        },
+        lit: data.light_field.is_some(),
+        view,
+    }
+}
+
+/// Build the render assets of view models added after the map spawned
+/// (`map::add_view_model`): their own textures (`LateViewModelTextures`)
+/// become images after the map's, their meshes' indices moved past them.
+#[allow(clippy::too_many_arguments)]
+pub fn build_late(
+    models: Option<Res<ViewModels>>,
+    late: Option<Res<LateViewModelTextures>>,
+    mut assets: ResMut<ViewModelAssets>,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    materials: Option<ResMut<Assets<PropMaterial>>>,
+    mut bindposes: ResMut<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>,
+) {
+    let (Some(models), Some(late), Some(mut materials)) = (models, late, materials) else {
+        return;
+    };
+    for v in models.0.iter() {
+        let Some(own) = late.0.get(&v.key).filter(|_| !assets.models.contains_key(&v.key)) else {
+            continue;
+        };
+        let base = assets.textures.len();
+        let look = assets.late_base.look.clone();
+        assets
+            .textures
+            .extend(own.iter().map(|t| images.add(super::images::to_image(t, &look))));
+        let mut moved = v.clone();
+        for m in &mut moved.model.meshes {
+            m.texture = m.texture.map(|t| t + base);
+            m.normal_map = m.normal_map.map(|t| t + base);
+            if let Some(d) = &mut m.detail {
+                d.texture += base;
+            }
+            if let Some(s) = &mut m.selfillum {
+                s.mask = s.mask.map(|t| t + base);
+            }
+        }
+        let asset = Build {
+            textures: &assets.textures,
+            data: &assets.late_base,
+            lit: assets.lit,
+            view: assets.view,
+        }
+        .model(&moved, &mut meshes, &mut materials, &mut bindposes);
+        assets.models.insert(v.key.clone(), asset);
     }
 }
 
@@ -937,6 +1022,7 @@ pub fn size_flash_sprites(
 /// Remove drawn view models (map unload); the cameras stay.
 pub fn unload(world: &mut World) {
     world.remove_resource::<ViewModels>();
+    world.remove_resource::<LateViewModelTextures>();
     world.remove_resource::<ViewModelAssets>();
     world.remove_resource::<FlashAssets>();
     world.remove_resource::<LightField>();

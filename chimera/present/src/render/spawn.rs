@@ -424,10 +424,14 @@ fn build_lightmaps(
         .lightmap
         .as_ref()
         .map(|l| LightmapLayers::build(&l.rgb, l.bumped.as_ref(), l.width, l.height, source_ldr));
-    let lightmap = built.as_ref().map(|b| images.add(b.plain.clone()));
-    let world_lightmap = built.as_ref().map(|b| images.add(b.world.clone()));
-    let bumped_lightmaps: Option<[Handle<Image>; 3]> =
-        built.and_then(|b| b.bumped).map(|pages| pages.map(|p| images.add(p)));
+    let (mut lightmap, mut world_lightmap, mut bumped_lightmaps) = (None, None, None::<[Handle<Image>; 3]>);
+    if let Some(b) = built {
+        let plain = images.add(b.plain);
+        // Without the game's own encoding the world's copy is the plain one.
+        world_lightmap = Some(b.world.map_or_else(|| plain.clone(), |w| images.add(w)));
+        lightmap = Some(plain);
+        bumped_lightmaps = b.bumped.map(|pages| pages.map(|p| images.add(p)));
+    }
     if let Some(l) = data.lightmap.as_ref().filter(|l| !l.styles.is_empty()) {
         commands.insert_resource(light_styles::StyledLightmaps::new(
             Arc::new(l.clone()),

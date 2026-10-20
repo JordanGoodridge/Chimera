@@ -90,8 +90,8 @@
 //!   (`rules::objects`).
 //! - Props: objects that name a model (`props`: the capture-the-flag
 //!   flags, whose model needs the V2 key).
-//! - View models: the weapons' first-person models their data names
-//!   (`view_model`), loaded with every map from the install (`load_from`).
+//! - View models: not with the map; each weapon's loads from the install
+//!   when it is first wanted (`view_model::on_demand`).
 //! - Spawns: the `GameStartPoint` objects that serve the team modes'
 //!   family (`SPAWN_GAME_TYPE`, `Team Death Match`: game_modes.md S4,
 //!   `qualifies`: unlocked, `Spawn` exactly 1) when it has one on a team,
@@ -108,7 +108,18 @@
 //! - No map file hash (Q15): the game checks none, a client loads its own
 //!   copy by name, so the network handshake compares only the name.
 //!
-//! Known shortcuts (docs/tech-debt.md): fullbright masks aren't drawn
+//! Loading (docs/performance.md, "Combat Arms map loads"): `load_from`
+//! converts the world while the character models load on a thread of
+//! their own (converted once per session, `characters::models::
+//! shared_character_models`); lightmap texels are looked up per byte
+//! (`LightLut`) and kept as bytes until the atlas is laid out; each
+//! texture file is read once and decoded with its mip chain on threads
+//! (`decode_all`). Converted maps aren't cached on disk: a map converts in
+//! 0.2-1.3 s, about what reading a cached copy of its textures and
+//! lightmaps (hundreds of MB) would take.
+//!
+//! Known shortcuts (docs/tech-debt.md): the character models are copied
+//! into every map (their textures with them); fullbright masks aren't drawn
 //! (Q13 still open: whether the lightmap multiplies over them). A map
 //! whose lightmaps don't fit one 8192 x 8192 atlas (`ATLAS_MAX`, the GPU's
 //! limit; TERRORDOME's are 4096 x 19428) has them all at half resolution
@@ -229,10 +240,18 @@ pub fn dress(mount: &Mount, map: &mut MapData) {
 /// Map `id` (`combat_arms:<name>`, or the bare name) from the install.
 pub fn load(id: &str) -> Result<MapData, String> {
     let name = map_name(id);
-    let mount = super::INFO.mount().ok_or_else(|| {
+    let mount = mount().ok_or_else(|| {
         "no Combat Arms install: set [games.combat_arms] path in chimera.local.toml".to_string()
     })?;
     load_from(&mount, &name)
+}
+
+/// The install, mounted once per session (its archives' directories read
+/// once; `None` when it doesn't open): map loads and on-demand loads
+/// (`view_model::on_demand`) share it.
+pub fn mount() -> Option<std::sync::Arc<Mount>> {
+    static MOUNT: std::sync::OnceLock<Option<std::sync::Arc<Mount>>> = std::sync::OnceLock::new();
+    MOUNT.get_or_init(|| super::INFO.mount().map(std::sync::Arc::new)).clone()
 }
 
 /// A map id's file name: lower case, without the game prefix.
@@ -270,18 +289,27 @@ pub fn map_names(mount: &Mount) -> Vec<String> {
     names
 }
 
-/// Map `name` from a mounted install, with the view models and
-/// character models every map carries.
+/// Map `name` from a mounted install, with the character models every
+/// map carries (the view models load on demand: `view_model::on_demand`).
+/// The models (converted once per session, with the weapon data they
+/// need) load on a thread of their own beside the world.
 pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
-    let mut map = load_world(mount, name)?;
     let file = |path: &str| mount.read(path).ok();
-    super::view_model::add_view_models(&mut map, &file);
-    super::characters::models::add_character_models(&mut map, &file);
+    let (map, models) = std::thread::scope(|s| {
+        let models = s.spawn(|| {
+            super::data::weapon_set();
+            super::characters::models::shared_character_models(&file)
+        });
+        let map = load_world(mount, name);
+        (map, models.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+    });
+    let mut map = map?;
+    super::characters::models::append_shared(&mut map, &models);
     Ok(map)
 }
 
 /// Map `name` from a mounted install: the world and its effects only
-/// (`load_from` without the models every map shares).
+/// (`load_from` without the character models every map shares).
 pub fn load_world(mount: &Mount, name: &str) -> Result<MapData, String> {
     let path = find(mount, name).ok_or_else(|| format!("{name}: no such map (worlds*/{name}.dat)"))?;
     let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
@@ -321,14 +349,12 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
         }
         Some((w, model_look(world, n)?, false))
     }));
-    let mut atlas = Atlas::default();
+    let lut = LightLut::new(t_factor);
+    let mut atlas = Atlas::new(lut);
     let mut meshes: HashMap<String, Building> = HashMap::new();
     for (render, alpha, skybox) in &worlds {
         for block in &render.blocks {
-            let lit = Lighting {
-                groups: &groups,
-                t_factor,
-            };
+            let lit = Lighting { groups: &groups, lut };
             add_block(block, *alpha, *skybox, &lit, &mut atlas, &mut meshes, &to_engine);
         }
     }
@@ -429,10 +455,26 @@ pub fn light_value(byte: u8, t: f32) -> f32 {
     }
 }
 
+/// `light_value` of every byte, per channel's `LightmapTFactor`: the
+/// lightmaps' texels are looked up, not computed (TERRORDOME has some 80
+/// million).
+#[derive(Clone, Copy)]
+struct LightLut([[f32; 256]; 3]);
+
+impl LightLut {
+    fn new(t_factor: [f32; 3]) -> Self {
+        Self(std::array::from_fn(|k| std::array::from_fn(|b| light_value(b as u8, t_factor[k]))))
+    }
+
+    fn get(&self, rgb: [u8; 3]) -> [f32; 3] {
+        std::array::from_fn(|k| self.0[k][rgb[k] as usize])
+    }
+}
+
 /// How light groups and the lightmap factor light a block.
 struct Lighting<'a> {
     groups: &'a dyn Fn(&str, [f32; 3]) -> [f32; 3],
-    t_factor: [f32; 3],
+    lut: LightLut,
 }
 
 impl Lighting<'_> {
@@ -448,7 +490,7 @@ impl Lighting<'_> {
     }
 
     fn texel(&self, rgb: [u8; 3]) -> [f32; 3] {
-        std::array::from_fn(|k| light_value(rgb[k], self.t_factor[k]))
+        self.lut.get(rgb)
     }
 }
 
@@ -583,8 +625,8 @@ fn add_block(
                 }
             }
         }
-        let texels = rgb.as_chunks::<3>().0.iter().map(|t| lit.texel(*t)).collect();
-        let rect = atlas.add(s.lightmap_width, s.lightmap_height, texels);
+        let texels = Texels::Bytes(rgb.as_chunks::<3>().0.to_vec());
+        let rect = atlas.add_texels(s.lightmap_width, s.lightmap_height, texels);
         for t in tris {
             for &i in &t.indices {
                 let v = &block.vertices[i as usize];
@@ -710,43 +752,60 @@ fn add_block(
 /// with a warning.
 pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let mut missing = std::collections::BTreeMap::<String, String>::new();
-    for m in meshes {
+    // Each file once (meshes differ by blend and sky too), read here and
+    // decoded on threads (`decode_all`).
+    let mut names: Vec<(String, String)> = Vec::new();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut index: HashMap<String, Option<usize>> = HashMap::new();
+    for m in meshes.iter() {
         if m.material.is_empty() || m.material.eq_ignore_ascii_case("default") {
             continue;
         }
-        let mut path = m.material.replace('\\', "/").to_lowercase();
-        // A sprite (world_dat.md: a name ending in `.spr`) draws its
-        // first frame's texture.
+        let name = m.material.replace('\\', "/").to_lowercase();
+        if index.contains_key(&name) {
+            continue;
+        }
+        let mut path = name.clone();
+        // A sprite (world_dat.md: a name ending in `.spr`) draws its first
+        // frame's texture.
         if path.ends_with(".spr")
             && let Some(first) = file(&path).and_then(|b| super::effects::library::sprite_texture(&b))
         {
             path = first;
         }
-        let dtx = match file(&path).map(Dtx::parse) {
-            Some(Ok(d)) => d,
-            Some(Err(e)) => {
-                missing.insert(path, format!("unreadable: {e}"));
-                continue;
+        match file(&path) {
+            Some(bytes) => {
+                index.insert(name, Some(files.len()));
+                names.push((m.material.clone(), path.clone()));
+                files.push((path, bytes));
             }
             None => {
+                index.insert(name, None);
                 missing.insert(path, "missing or locked".into());
-                continue;
             }
-        };
-        if let (Some(r), MapAlpha::Opaque) = (dtx.alpha_ref(), m.alpha) {
+        }
+    }
+    let decoded = decode_all(files);
+    let mut slots: Vec<Option<(usize, Option<u8>)>> = Vec::with_capacity(decoded.len());
+    for ((material, path), d) in names.into_iter().zip(decoded) {
+        match d {
+            Ok((texture, alpha_ref)) => {
+                map.textures.push(MapTexture { name: material, ..texture });
+                slots.push(Some((map.textures.len() - 1, alpha_ref)));
+            }
+            Err(e) => {
+                missing.insert(path, format!("unreadable: {e}"));
+                slots.push(None);
+            }
+        }
+    }
+    for m in meshes {
+        let name = m.material.replace('\\', "/").to_lowercase();
+        let Some((t, alpha_ref)) = index.get(&name).copied().flatten().and_then(|i| slots[i]) else { continue };
+        if let (Some(r), MapAlpha::Opaque) = (alpha_ref, m.alpha) {
             m.alpha = MapAlpha::Mask(r as f32 / 255.0);
         }
-        let level = dtx.skipped_levels(DETAIL_LEVEL, 0);
-        let (width, height) = dtx.level_dims(level);
-        map.textures.push(MapTexture {
-            name: m.material.clone(),
-            srgb: true,
-            mips: Vec::new(),
-            width,
-            height,
-            rgba8: dtx.rgba(level),
-        });
-        m.texture = Some(map.textures.len() - 1);
+        m.texture = Some(t);
         m.color = [255; 3];
     }
     if !missing.is_empty() {
@@ -757,6 +816,50 @@ pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(
             names.join(", ")
         ));
     }
+}
+
+/// `.dtx` files (path, bytes) decoded at the level the shipped
+/// "DetailLevel" loads, with their box-filtered mip chains
+/// (`MapTexture::box_mips`) and `alpharef`, on up to 8 threads (in
+/// order).
+fn decode_all(files: Vec<(String, Vec<u8>)>) -> Vec<Result<(MapTexture, Option<u8>), String>> {
+    let decode = |(_, bytes): (String, Vec<u8>)| -> Result<(MapTexture, Option<u8>), String> {
+        let dtx = Dtx::parse(bytes).map_err(|e| e.to_string())?;
+        let level = dtx.skipped_levels(DETAIL_LEVEL, 0);
+        let (width, height) = dtx.level_dims(level);
+        let mut texture = MapTexture {
+            name: String::new(),
+            srgb: true,
+            mips: Vec::new(),
+            width,
+            height,
+            rgba8: dtx.rgba(level),
+        };
+        // The mip chain here, on these threads, not on the main thread when
+        // the map spawns (the drawing's own box filter).
+        texture.mips = texture.box_mips();
+        Ok((texture, dtx.alpha_ref()))
+    };
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(8);
+    if threads < 2 || files.len() < 8 {
+        return files.into_iter().map(decode).collect();
+    }
+    let per = files.len().div_ceil(threads);
+    let mut chunks: Vec<Vec<(String, Vec<u8>)>> = Vec::new();
+    let mut files = files.into_iter().peekable();
+    while files.peek().is_some() {
+        chunks.push(files.by_ref().take(per).collect());
+    }
+    std::thread::scope(|s| {
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|c| s.spawn(move || c.into_iter().map(decode).collect::<Vec<_>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+            .collect()
+    })
 }
 
 /// A mesh being built from the sections: its vertices' lightmap
@@ -1342,15 +1445,30 @@ impl<'a> Floor<'a> {
     }
 }
 
+/// A lightmap rectangle's texels: the stored bytes (lit by the atlas's
+/// `LightLut` when laid out: a quarter of the memory), or light values.
+enum Texels {
+    Bytes(Vec<[u8; 3]>),
+    Linear(Vec<[f32; 3]>),
+}
+
 /// Lightmaps gathered for one atlas.
-#[derive(Default)]
 struct Atlas {
     /// (width, height, texels) per rectangle.
-    rects: Vec<(u32, u32, Vec<[f32; 3]>)>,
+    rects: Vec<(u32, u32, Texels)>,
     flats: HashMap<[u32; 3], u32>,
+    lut: LightLut,
 }
 
 impl Atlas {
+    fn new(lut: LightLut) -> Self {
+        Self {
+            rects: Vec::new(),
+            flats: HashMap::new(),
+            lut,
+        }
+    }
+
     /// Shelf places (tallest first) at `width`, and the height used.
     fn shelves(&self, width: u32) -> (Vec<(u32, u32)>, u32) {
         let mut order: Vec<usize> = (0..self.rects.len()).collect();
@@ -1373,10 +1491,15 @@ impl Atlas {
     /// texel the mean of the up to 2 x 2 it covers); the 2 x 2 ones are
     /// vertex lighting's exact blends and stay.
     fn halve(&mut self) {
-        for (w, h, texels) in &mut self.rects {
+        let lut = self.lut;
+        for (w, h, stored) in &mut self.rects {
             if *w * *h <= 4 {
                 continue;
             }
+            let texels: Vec<[f32; 3]> = match stored {
+                Texels::Bytes(b) => b.iter().map(|t| lut.get(*t)).collect(),
+                Texels::Linear(l) => std::mem::take(l),
+            };
             let (nw, nh) = (w.div_ceil(2), h.div_ceil(2));
             let mut out = Vec::with_capacity((nw * nh) as usize);
             for y in 0..nh {
@@ -1392,11 +1515,15 @@ impl Atlas {
                     out.push((sum / n).to_array());
                 }
             }
-            (*w, *h, *texels) = (nw, nh, out);
+            (*w, *h, *stored) = (nw, nh, Texels::Linear(out));
         }
     }
 
     fn add(&mut self, width: u32, height: u32, texels: Vec<[f32; 3]>) -> u32 {
+        self.add_texels(width, height, Texels::Linear(texels))
+    }
+
+    fn add_texels(&mut self, width: u32, height: u32, texels: Texels) -> u32 {
         self.rects.push((width, height, texels));
         (self.rects.len() - 1) as u32
     }
@@ -1427,14 +1554,22 @@ impl Atlas {
             }
         };
         let mut rgb = vec![[1.0f32; 3]; (width * height) as usize];
+        let mut row = Vec::new();
         for (i, (w, h, texels)) in self.rects.iter().enumerate() {
             let (px, py) = places[i];
+            let (w, h) = (*w as usize, *h as usize);
             for ty in 0..h + 2 {
-                for tx in 0..w + 2 {
-                    let sx = tx.saturating_sub(1).min(w - 1);
-                    let sy = ty.saturating_sub(1).min(h - 1);
-                    rgb[((py + ty) * width + px + tx) as usize] = texels[(sy * w + sx) as usize];
+                // The source row, its first and last texels repeated.
+                let sy = ty.saturating_sub(1).min(h - 1);
+                row.clear();
+                match texels {
+                    Texels::Bytes(b) => row.extend(b[sy * w..(sy + 1) * w].iter().map(|t| self.lut.get(*t))),
+                    Texels::Linear(l) => row.extend_from_slice(&l[sy * w..(sy + 1) * w]),
                 }
+                let at = (py as usize + ty) * width as usize + px as usize;
+                rgb[at] = row[0];
+                rgb[at + 1..at + 1 + w].copy_from_slice(&row);
+                rgb[at + w + 1] = row[w - 1];
             }
         }
         LaidOut {
