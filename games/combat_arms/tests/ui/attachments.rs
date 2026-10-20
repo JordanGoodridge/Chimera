@@ -100,3 +100,23 @@ fn t31_gauge_sight() {
         assert_eq!(hud(&sim).crosshair.gauge, Some((want, 80)), "HP {hp}");
     }
 }
+
+/// hud_crosshair.md 98: the gauge sight's images belong to the weapon
+/// panel: shown with the crosshair disabled, not while dead.
+#[test]
+fn hud_t98_gauge_sight_with_the_weapon_panel() {
+    let (mut sim, me) = setup(&["DotSight_B_AR"]);
+    let w = active(&sim, me);
+    sim.app.world_mut().entity_mut(w).insert(combat_arms::game::hud::CaHudData {
+        disable_crosshair: true,
+        ..default()
+    });
+    sim.ticks(1);
+    let h = hud(&sim);
+    assert!(h.crosshair.elements.is_empty() && h.weapon.is_some());
+    assert!(h.crosshair.gauge.is_some(), "crosshair or not");
+    sim.app.world_mut().get_mut::<Health>(me).unwrap().current = 0.0;
+    sim.ticks(1);
+    let h = hud(&sim);
+    assert!(h.weapon.is_none() && h.crosshair.gauge.is_none(), "with the weapon panel");
+}
