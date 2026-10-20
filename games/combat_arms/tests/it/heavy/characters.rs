@@ -383,6 +383,8 @@ fn warehouse_players_wear_their_bodies() {
 /// model, textured, and the faces and head pieces reach the head (above
 /// 1.3 m). The team-mark pieces (texture slot 2) draw in the transparent
 /// mark style, blended: an enemy's mark, `Alpha.dtx`, shows nothing.
+/// Goggles and backpacks (the pool's) are parts 3 and 4, rigid on one
+/// node each: goggles at the face, a backpack behind the upper body.
 /// Skips without the V1 and V2 keys.
 #[test]
 fn default_bodies_wear_face_and_head() {
@@ -435,6 +437,37 @@ fn default_bodies_wear_face_and_head() {
             if matches!(mesh.body, Some((1 | 2, _))) {
                 let top = mesh.positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
                 assert!(top > 1.3, "body {id}: face or head mesh {k} tops out at {top} m");
+            }
+        }
+        // Goggles and backpacks (parts 3 and 4): none first, then the
+        // pool's; each rigid on one node, the goggles at the face, the
+        // backpack on the upper body.
+        assert_eq!((group.goggles.first(), group.backpacks.first()), (Some(&-1), Some(&-1)));
+        assert!(group.goggles.len() > 1 && group.backpacks.len() > 1, "{group:?}");
+        // Heights in the bind pose, against the default face's centre
+        // (the female bind pose stands higher than the male one).
+        let centre = |part: u16, choice: u16| {
+            let points: Vec<Vec3> = meshes
+                .iter()
+                .filter(|m| m.body == Some((part, choice)))
+                .flat_map(|m| m.positions.iter().map(|p| Vec3::from(*p)))
+                .collect();
+            points.iter().sum::<Vec3>() / points.len().max(1) as f32
+        };
+        let face = centre(1, 0);
+        for (part, low, high) in [(3u16, -0.15f32, 0.15f32), (4, -0.6, -0.2)] {
+            for choice in 1..group.parts()[part as usize] {
+                let worn: Vec<_> = meshes.iter().filter(|m| m.body == Some((part, choice))).collect();
+                assert!(!worn.is_empty(), "body {id}: part {part} choice {choice}");
+                let at = centre(part, choice) - face;
+                eprintln!("body {id}: part {part} choice {choice}: {} meshes, centre {at:.2} m from the face's", worn.len());
+                assert!((low..high).contains(&at.y), "body {id}: part {part} choice {choice} at {at} m from the face");
+                assert!(at.x.abs() < 0.1, "body {id}: part {part} choice {choice} off centre: {at}");
+                // A backpack behind (the body faces -Z), goggles not.
+                assert_eq!(at.z > 0.15, part == 4, "body {id}: part {part} choice {choice} at {at}");
+                let node = worn[0].joints[0][0];
+                assert!(worn.iter().all(|m| m.joints.iter().all(|j| j[0] == node)));
+                assert!(worn.iter().all(|m| m.joint_weights.iter().all(|w| w[0] == 1.0)));
             }
         }
         assert!(body.model.skins.iter().all(|s| s.len() == meshes.len()));

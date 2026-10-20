@@ -106,9 +106,9 @@ mod spawn;
 pub use spawn::{Draws, DrawnResource, MapDrawer, MapSpawn, PropSpawn};
 pub use spawn::{merged_world, spawn_map};
 pub use view_model::{
-    DynamicLight, EffectSettings, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor, ViewModelCamera,
-    ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings, ViewModelSource,
-    ViewModels,
+    DynamicLight, EffectSettings, LateViewModelTextures, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor,
+    ViewModelCamera, ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings,
+    ViewModelSource, ViewModels, add_view_model,
 };
 
 /// The loaded map's light field, when the game provides one.

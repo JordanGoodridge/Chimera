@@ -129,12 +129,17 @@ teammate = "CHARS_T_BODY\\RED_Tie.dtx"
 # female (the face redirect), `heads` head pieces (0: `HBasic`, none;
 # the helmets, caps, beret, beanie and boonie hat of the install's
 # `Hair#` records),
-# `camouflages` the skin index (0-6).
+# `camouflages` the skin index (0-6), `goggles` and `backpacks` the
+# install's `Goggle#` (glasses, goggles, gas masks) and `Backpack#` (the
+# plain backpacks) records, -1 none (most bots wear none; without the
+# install's attachments file only goggle 0 has a model, the female one).
 [loadouts]
 models = [0, 1, 2]
 faces = [0, 1, 2, 3, 4, 5, 6, 7]
 heads = [0, 0, 1, 2, 3, 4, 5, 9, 15]
 camouflages = [0, 1, 2, 3, 4]
+goggles = [-1, -1, -1, -1, 0, 1, 2, 3, 4]
+backpacks = [-1, -1, -1, 26, 27]
 
 # Each weapon's third-person animation class (`AniType`, 5) and leg set
 # (`LowerAniType`: 0 normal, 1 infected, 2 infected with a club); `skins`

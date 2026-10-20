@@ -20,8 +20,9 @@
 //!
 //! The install: with `[games.combat_arms] path` and a `V1` key in
 //! chimera.local.toml, `install_attributes` opens the install's
-//! `ATTRIBUTES.rez` and reads the weapons, server, models and
-//! modification files (`attributes`). Then:
+//! `ATTRIBUTES.rez` and reads the weapons, server, models, marks,
+//! character attachments and modification files (`attributes`; the
+//! marks, goggles and backpacks go to `characters::records`). Then:
 //! - weapons (`merge_weapon_docs`): each of our documents whose ID (after
 //!   `combat_arms:`) matches an install weapon's `Name` (case-insensitive,
 //!   spaces as `_`: `slug`; `INSTALL_NAMES` for the two of ours named
@@ -86,9 +87,11 @@
 //!   our movement data has one figure.
 //! - Test case 29's install document has no `Ammo0`, which case 26 says
 //!   fails to load; its test adds one.
-//! - The install adds some 2,000 weapons; a map loads the view and held
-//!   models of ours only (`builtin_weapon_ids`: what players are given),
-//!   so an install weapon given by other means draws as a placeholder.
+//! - The install adds some 2,000 weapons; a map loads the held
+//!   (third-person) models of ours only (`builtin_weapon_ids`: what
+//!   players are given), so an install weapon given by other means has
+//!   none in third person (its view model loads on demand like any:
+//!   `view_model::on_demand`).
 //!   The skins' `Hands` placeholder and `PV_L_ARM` / `PV_R_ARM` tags (no
 //!   `.dtx`) are empty slots (`skin_paths`).
 
@@ -107,7 +110,7 @@ use lithtech_formats::attributes::Document;
 use toml::{Table, Value};
 
 use self::attributes::{
-    AmmoRecord, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord,
+    ATTACHMENTS_FILE, AmmoRecord, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, WEAPONS_FILE, WeaponRecord,
     WeaponsFile,
 };
 use super::{attachments::CaModTable, movement::MovementData};
@@ -227,6 +230,8 @@ pub struct InstallAttributes {
     pub mods: Option<ModFile>,
     /// The team marks (`[TeamMark]`: `TeamName#`, `RenderStyle#`).
     pub marks: Option<MarksFile>,
+    /// The character attachments (`Goggle#`, `Backpack#`).
+    pub attachments: Option<AttachmentsFile>,
 }
 
 /// Parse one attribute document, errors naming it and the line.
@@ -251,6 +256,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     let models = doc(MODELS_FILE);
     let mods = doc(MOD_FILE);
     let marks = doc(MARKS_FILE);
+    let attachments = doc(ATTACHMENTS_FILE);
     let weapons = weapons.and_then(|d| {
         WeaponsFile::read(&d)
             .map_err(|e| problems.push(format!("{WEAPONS_FILE}: {e}")))
@@ -262,6 +268,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
         models: models.map(|d| ModelsFile::read(&d)),
         mods: mods.map(|d| ModFile::read(&d)),
         marks: marks.and_then(|d| MarksFile::read(&d)),
+        attachments: attachments.map(|d| AttachmentsFile::read(&d)),
     };
     (attrs, problems)
 }

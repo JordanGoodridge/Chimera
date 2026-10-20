@@ -2,8 +2,11 @@
 //! file (`Filename`, e.g. the capture-the-flag `FlagItem`s,
 //! specs/combat_arms/world_dat.md "How common things are expressed") become
 //! Chimera props (`MapProp`) of the model converted by `model`, skinned
-//! with the object's `Skin0`..`Skin7` textures, lit by the world's light
-//! grid at their position, and playing their first animation
+//! with the object's `Skin0`..`Skin7` textures, each piece drawn
+//! in its render style (the piece's render-style index into the object's
+//! `RenderStyle0`..`RenderStyle7` list, `render_style`: blended glass,
+//! added or glowing pieces), lit by the world's light grid at their
+//! position, and playing their first animation
 //! (`CaPropsPlugin` gives each animated prop a `PropSequence`; Chimera's
 //! `map::props::animate_props` plays it).
 //!
@@ -13,9 +16,14 @@
 //! warning. `place` puts any model in a map (the `CHIMERA_CA_PROP`
 //! development option of the app, docs/OBSERVABILITY.md).
 //!
+//! The stock maps' only such objects, the flags, name
+//! `RS\EdgeAmp01.ltb` (not in our style table: opaque, the default).
+//! World models (brush geometry) are drawn by their object's `BlendMode`
+//! (`world`), not here.
+//!
 //! Known shortcuts (docs/tech-debt.md): the object's `Scale`,
-//! `MoveToFloor`, `Rotate` (spinning pickups), render styles and game
-//! type are ignored (flags of every mode are placed; `rules::ctf` hides
+//! `MoveToFloor`, `Rotate` (spinning pickups), `RenderStyle` (a number;
+//! its meaning isn't specced) and game type are ignored (flags of every mode are placed; `rules::ctf` hides
 //! them outside capture the flag and moves them with the flag's state);
 //! props don't collide (`PropSolid::None`; pickups are the game modes'
 //! item); the light probe is the light-grid sample nearest the object,
@@ -26,7 +34,10 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use lithtech_formats::world::{self as lt, Object, World};
 
-use super::model::{self, LoadedModel};
+use super::{
+    model::{self, LoadedModel},
+    render_style,
+};
 use crate::map::{LightProbe, MapData, MapEntity, MapProp, PropRig, PropSequence, PropSolid};
 
 /// Animated props start playing their first animation.
@@ -68,6 +79,14 @@ pub fn skins(o: &Object) -> Vec<String> {
     list
 }
 
+/// The object's render-style list: `RenderStyle0`..`RenderStyle7`
+/// (empty strings kept, so indices stay).
+pub fn render_styles(o: &Object) -> Vec<String> {
+    (0..8)
+        .map(|i| o.string(&format!("RenderStyle{i}")).unwrap_or("").to_string())
+        .collect()
+}
+
 /// An object's orientation in the engine's frame (the file's rotation
 /// mirrored: S R S).
 pub fn rotation(o: &Object) -> Quat {
@@ -97,12 +116,14 @@ pub fn light_at(world: &World, pos: lt::Vec3) -> Option<LightProbe> {
 
 /// Put `loaded` in `map` at `translation` (metres, engine frame) turned by
 /// `rotation`, its pieces textured from `skins` (by each piece's first
-/// texture index), as an entity prop of class `class` (so it can
-/// animate). Returns the prop's index.
+/// texture index) and drawn in the render styles of `styles` (by each
+/// piece's render-style index), as an entity prop of class `class` (so
+/// it can animate). Returns the prop's index.
 pub fn place(
     map: &mut MapData,
     loaded: &LoadedModel,
     skins: &[String],
+    styles: &[String],
     class: &str,
     translation: Vec3,
     rotation: Quat,
@@ -118,6 +139,9 @@ pub fn place(
             .map(|s| model::normalize(s))
             .unwrap_or_default()
     });
+    for (mesh, lod) in m.meshes.iter_mut().zip(model::drawn_lods(&loaded.model)) {
+        render_style::apply(mesh, render_style::of_list(styles, lod.render_style));
+    }
     super::world::textures(&mut m.meshes, map, file);
     map.models.push(m);
     map.entities.push(MapEntity {
@@ -180,7 +204,18 @@ pub fn add_objects(world: &World, map: &mut MapData, scale: f32, file: &dyn Fn(&
         let Some(loaded) = loaded else { continue };
         let pos = o.pos().unwrap_or([0.0; 3]);
         let at = Vec3::from(lt::to_right_handed(pos)) * scale;
-        place(map, &loaded, &skins(o), &o.class, at, rotation(o), light_at(world, pos), scale, file);
+        place(
+            map,
+            &loaded,
+            &skins(o),
+            &render_styles(o),
+            &o.class,
+            at,
+            rotation(o),
+            light_at(world, pos),
+            scale,
+            file,
+        );
         // The object's name and team, so a game mode finds its prop (a
         // flag it moves and hides: `rules::ctf`).
         if let Some(e) = map.entities.last_mut() {
@@ -194,8 +229,10 @@ pub fn add_objects(world: &World, map: &mut MapData, scale: f32, file: &dyn Fn(&
 }
 
 /// The development option that puts a model in front of the first spawn
-/// point: `CHIMERA_CA_PROP=<model path>[,<skin>...]` (archive paths, e.g.
-/// `props/headquaters/hq_flag01.ltb`), docs/OBSERVABILITY.md.
+/// point: `CHIMERA_CA_PROP=<model path>[,<skin>...][;<render style>...]`
+/// (archive paths, e.g. `props/headquaters/hq_flag01.ltb`; render styles
+/// by index, e.g. `;RS\default.ltb,RS\glass.ltb`),
+/// docs/OBSERVABILITY.md.
 pub const DEV_PROP_VAR: &str = "CHIMERA_CA_PROP";
 
 /// Metres ahead of the first spawn point the development prop stands.
@@ -205,9 +242,11 @@ const DEV_PROP_DISTANCE: f32 = 3.0;
 /// point at its feet, its front toward it (a warning when it doesn't
 /// read).
 pub fn dev_prop(world: &World, map: &mut MapData, spec: &str, scale: f32, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+    let (spec, styles) = spec.split_once(';').unwrap_or((spec, ""));
     let mut parts = spec.split(',').map(str::trim).filter(|s| !s.is_empty());
     let Some(path) = parts.next() else { return };
     let skins: Vec<String> = parts.map(String::from).collect();
+    let styles: Vec<String> = styles.split(',').map(|s| s.trim().to_string()).collect();
     let loaded = match model::load(path, file) {
         Ok(l) => l,
         Err(e) => {
@@ -222,6 +261,6 @@ pub fn dev_prop(world: &World, map: &mut MapData, spec: &str, scale: f32, file: 
     let light = light_at(world, lt::to_right_handed((at / scale).to_array()));
     // Its front (LithTech +Z, ours -Z) toward the spawn.
     let rotation = Quat::from_rotation_y(yaw + std::f32::consts::PI);
-    let n = place(map, &loaded, &skins, "chimera_dev_prop", at, rotation, light, scale, file);
+    let n = place(map, &loaded, &skins, &styles, "chimera_dev_prop", at, rotation, light, scale, file);
     info!("{DEV_PROP_VAR}: {} as prop {n} at {at}", loaded.path);
 }

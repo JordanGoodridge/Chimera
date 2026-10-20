@@ -17,6 +17,10 @@
 //! animation list are kept as a `Rig` (`rig`, every record of the group
 //! posing on the first's) for posing.
 //!
+//! Converted once per session (`shared_character_models`, the first map
+//! load's) and copied into each map after (`append_shared`: the textures
+//! appended, the indices moved), the rigs and groups registered again.
+//!
 //! Every character archive (`CHARS_*`) and the third-person guns
 //! (`GUNS_M_HH`) are V2-keyed: without the key nothing here loads (the
 //! map's warnings say so) and characters stay the shell's capsules, posed
@@ -89,14 +93,16 @@ pub fn unregister(path: &str) {
 pub const LOADED: &[i32] = &[0, 1, 2, 7, 8, 9];
 
 /// One character model's choices (`map::BodyNumber`, in this order of
-/// body parts): which body record's pieces, which face, which head piece
-/// (-1: none) show.
+/// body parts): which body record's pieces, which face, which head piece,
+/// which goggles and which backpack (-1: none) show.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BodyGroup {
     pub skeleton: usize,
     pub records: Vec<i32>,
     pub faces: Vec<i32>,
     pub heads: Vec<i32>,
+    pub goggles: Vec<i32>,
+    pub backpacks: Vec<i32>,
 }
 
 impl BodyGroup {
@@ -108,14 +114,23 @@ impl BodyGroup {
     /// The body number showing record `record`, `face` and head piece
     /// `head` (a choice not in the group: its first).
     pub fn number(&self, record: i32, face: i32, head: i32) -> i32 {
+        self.number_with(record, face, head, -1, -1)
+    }
+
+    /// `number` wearing goggles `goggle` and backpack `backpack` (-1:
+    /// none; not in the group: its first, none).
+    pub fn number_with(&self, record: i32, face: i32, head: i32, goggle: i32, backpack: i32) -> i32 {
         let at = |list: &[i32], v: i32| list.iter().position(|&x| x == v).unwrap_or(0) as i32;
-        let (nr, nf) = (self.records.len().max(1) as i32, self.faces.len().max(1) as i32);
-        at(&self.records, record) + nr * (at(&self.faces, face) + nf * at(&self.heads, head))
+        let n = |list: &[i32]| list.len().max(1) as i32;
+        let (nr, nf, nh, ng) = (n(&self.records), n(&self.faces), n(&self.heads), n(&self.goggles));
+        at(&self.records, record)
+            + nr * (at(&self.faces, face)
+                + nf * (at(&self.heads, head) + nh * (at(&self.goggles, goggle) + ng * at(&self.backpacks, backpack))))
     }
 
     /// The model's body parts' choice counts (`MapModel::body_parts`).
     pub fn parts(&self) -> Vec<u16> {
-        [self.records.len(), self.faces.len(), self.heads.len()]
+        [self.records.len(), self.faces.len(), self.heads.len(), self.goggles.len(), self.backpacks.len()]
             .map(|n| n.max(1) as u16)
             .to_vec()
     }
@@ -142,8 +157,9 @@ pub fn register_group(group: BodyGroup) {
 
 /// What a selection draws (characters.md 1, 2): its effective body's
 /// character model and body number (that body's pieces, the selection's
-/// face, else the body's default, and the head piece worn:
-/// `CharacterData::worn_head`); None when no loaded group has its body.
+/// face, else the body's default, the head piece worn:
+/// `CharacterData::worn_head`, its goggles and backpack); None when no
+/// loaded group has its body.
 pub fn drawn(look: &Selection) -> Option<(String, i32)> {
     let data = records::data();
     let (record, _) = data.effective(look);
@@ -152,11 +168,15 @@ pub fn drawn(look: &Selection) -> Option<(String, i32)> {
     let face = if group.faces.contains(&look.face) { look.face } else { data.default_face(record.id) };
     let head = data.worn_head(look.head, face, record.skeleton);
     let head = if data.head_file(head, record.skeleton).is_some() { head } else { -1 };
-    Some((group.name(), group.number(record.id, face, head)))
+    Some((
+        group.name(),
+        group.number_with(record.id, face, head, look.goggle, look.backpack),
+    ))
 }
 
 /// The loaded bodies (`LOADED`, one character model per skeleton) and
-/// every third-person weapon into `map` (when they read).
+/// every third-person weapon of ours into `map` (when they read);
+/// `shared_character_models` once per session.
 pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let scale = super::super::movement::movement_data().meters_per_unit;
     let data = records::data();
@@ -198,6 +218,71 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
             Err(e) => map.warnings.push(format!("{} third-person model: {e}", w.id)),
         }
     }
+}
+
+/// The character models every map carries (`add_character_models` into
+/// an empty map: its own textures), their rigs and body groups
+/// (`shared_character_models`).
+pub struct SharedModels {
+    data: MapData,
+    rigs: Vec<(String, Arc<Rig>)>,
+    groups: Vec<BodyGroup>,
+}
+
+/// `add_character_models`, converted once per session (the first map
+/// load; the next ones copy it: `append_shared`).
+pub fn shared_character_models(file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Arc<SharedModels> {
+    static SHARED: OnceLock<Mutex<Option<Arc<SharedModels>>>> = OnceLock::new();
+    let mut cached = SHARED.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    cached
+        .get_or_insert_with(|| {
+            let mut data = MapData::default();
+            add_character_models(&mut data, file);
+            let rigs = records::data()
+                .model
+                .iter()
+                .filter(|r| LOADED.contains(&r.id))
+                .filter_map(|r| Some((r.file.clone(), rig(&r.file)?)))
+                .collect();
+            Arc::new(SharedModels {
+                data,
+                rigs,
+                groups: loaded_groups(),
+            })
+        })
+        .clone()
+}
+
+/// The shared character models into `map`: their textures appended to
+/// the map's (the meshes' and skins' indices moved past the map's own),
+/// their rigs and body groups registered again (a test may have replaced
+/// one).
+pub fn append_shared(map: &mut MapData, models: &SharedModels) {
+    for (path, r) in &models.rigs {
+        register(path, r.clone());
+    }
+    for g in &models.groups {
+        register_group(g.clone());
+    }
+    let base = map.textures.len();
+    let shift = |model: &mut MapModel| {
+        for t in model.meshes.iter_mut().filter_map(|m| m.texture.as_mut()) {
+            *t += base;
+        }
+        for t in model.skins.iter_mut().flatten().filter_map(|l| l.texture.as_mut()) {
+            *t += base;
+        }
+    };
+    map.textures.extend(models.data.textures.iter().cloned());
+    map.characters.extend(models.data.characters.iter().cloned().map(|mut c| {
+        shift(&mut c.model);
+        c
+    }));
+    map.held.extend(models.data.held.iter().cloned().map(|mut h| {
+        shift(&mut h.model);
+        h
+    }));
+    map.warnings.extend(models.data.warnings.iter().cloned());
 }
 
 /// A texture slot's file for a family (2: 0 upper, 1 legs, 2 team mark,
@@ -364,6 +449,31 @@ fn body_group(
             Err(e) => warn.push(format!("head piece {path}: {e}")),
         }
     }
+    // Goggles (part 3) and backpacks (part 4): socket attachments
+    // (rigid on the body's socket), none first, then the pool's, the
+    // files of the body's figure type.
+    group.goggles.push(-1);
+    group.backpacks.push(-1);
+    for (part, pool, records) in [(3u16, &data.loadouts.goggles, &data.goggle), (4, &data.loadouts.backpacks, &data.backpack)] {
+        for &id in pool {
+            let chosen = if part == 3 { &group.goggles } else { &group.backpacks };
+            if chosen.contains(&id) {
+                continue;
+            }
+            let Some(rec) = records.iter().find(|r| r.id == id) else { continue };
+            let Some(path) = rec.files.get(base.figure).filter(|f| !f.is_empty()) else { continue };
+            match attach(&mut m, &rig_data.bones, &loaded.model, &rec.socket, path, scale, file) {
+                Ok(lods) => {
+                    let list = if part == 3 { &mut group.goggles } else { &mut group.backpacks };
+                    let choice = list.len() as u16;
+                    bodies.extend(std::iter::repeat_n(Some((part, choice)), lods.len()));
+                    sources.extend(piece_sources(&rec.skins, &rec.render_styles, &lods));
+                    list.push(id);
+                }
+                Err(e) => warn.push(format!("attachment {path}: {e}")),
+            }
+        }
+    }
     if !warn.is_empty() {
         map.warnings.push(format!(
             "character model {}: {} pieces did not load: {}",
@@ -476,6 +586,63 @@ fn merge(
     Ok(lods)
 }
 
+/// A socket attachment (characters.md 2: goggles, masks, backpacks)
+/// fixed to the body's socket `socket` (`owner`'s, by name, any case):
+/// its meshes placed by the socket's bind transform (its parent node's
+/// bind, then the socket's offset and rotation; the attachment's own
+/// origin and axes on the socket) and bound wholly to the parent node,
+/// so it follows that node's animation rigidly. Its meshes' skin slots
+/// and render-style indices; an error without that socket ("not
+/// attached").
+fn attach(
+    body: &mut MapModel,
+    bones: &[crate::map::MapBone],
+    owner: &ltb::Model,
+    socket: &str,
+    path: &str,
+    scale: f32,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<Vec<(i32, i32)>, String> {
+    let s = owner
+        .sockets
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(socket))
+        .ok_or_else(|| format!("the body has no socket {socket}"))?;
+    let node = s.node as usize;
+    let parent = *hands::globals(bones).get(node).ok_or("the socket's node is not in the skeleton")?;
+    let loaded = model::load_own(path, file)?;
+    let lods: Vec<(i32, i32)> = model::drawn_lods(&loaded.model).into_iter().map(model::slot_and_style).collect();
+    let m = model::convert(&loaded, scale, &|_| String::new());
+    let at = parent * socket_local(s.rotation, s.position);
+    for mut mesh in m.meshes {
+        place_rigid(&mut mesh, at, node, scale);
+        body.meshes.push(mesh);
+    }
+    Ok(lods)
+}
+
+/// A rigid mesh (metres) moved by `at` (world units) and bound wholly to
+/// node `node`.
+pub fn place_rigid(mesh: &mut MapMesh, at: Mat4, node: usize, scale: f32) {
+    for p in &mut mesh.positions {
+        *p = (at.transform_point3(Vec3::from(*p) / scale) * scale).to_array();
+    }
+    for n in &mut mesh.normals {
+        *n = at.transform_vector3(Vec3::from(*n)).normalize_or_zero().to_array();
+    }
+    let count = mesh.positions.len();
+    mesh.joints = vec![[node as u16, 0, 0, 0]; count];
+    mesh.joint_weights = vec![[1.0, 0.0, 0.0, 0.0]; count];
+}
+
+/// A socket's offset and rotation (stored, left-handed) as a
+/// right-handed transform in its parent node's space.
+pub fn socket_local(rotation: ltb::Quat, offset: ltb::Vec3) -> Mat4 {
+    let q = Quat::from_array(ltb::to_rh_quat(rotation));
+    let q = if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY };
+    Mat4::from_rotation_translation(q, Vec3::from(ltb::to_rh_vec(offset)))
+}
+
 /// A weapon's third-person model held at the `RightHand` socket: the
 /// socket's offset and rotation baked into its meshes, in the frame of
 /// the socket's parent node (`Right_hand`), the source's units.
@@ -502,9 +669,7 @@ fn held(
     super::super::world::textures(&mut m.meshes, map, file);
     m.rig = None;
     // The socket in the parent node's space, right-handed.
-    let q = Quat::from_array(ltb::to_rh_quat(socket.rotation));
-    let q = if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY };
-    let at = Mat4::from_rotation_translation(q, Vec3::from(ltb::to_rh_vec(socket.offset)));
+    let at = socket_local(socket.rotation, socket.offset);
     for mesh in &mut m.meshes {
         for p in &mut mesh.positions {
             *p = at.transform_point3(Vec3::from(*p)).to_array();

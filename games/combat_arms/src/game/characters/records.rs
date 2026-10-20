@@ -2,10 +2,13 @@
 //! characters.md sections 1, 2, 3 and 11 as our data) and the model
 //! choice: which body record a player's selection draws (1: cosmetics,
 //! the face redirect, the default), its skins by camouflage index, the
-//! team mark, head pieces and goggles by skeleton and figure type, faces
+//! team mark, head pieces, goggles and backpacks by skeleton and figure
+//! type, faces
 //! and the head piece a face comes with (2). With the V1 key the
-//! install's models file gives every head piece's and face's files and
-//! skins (`merge_install_pieces`).
+//! install's models and attachments files give every head piece's,
+//! face's, goggle's and backpack's files and
+//! skins (`merge_install_pieces`); a client's selection is checked by
+//! `CharacterData::validated`.
 
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -71,13 +74,31 @@ pub struct FaceRecord {
     pub render_styles: Vec<String>,
 }
 
-/// Goggles or a mask (`Goggle#`): its socket and file per figure type.
+/// A socket attachment a player wears (characters.md 2): goggles or a
+/// mask (`Goggle#`) or a backpack (`Backpack#`): its socket, its file
+/// per figure type, its skins by camouflage index and render styles.
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct GoggleRecord {
     pub id: i32,
+    #[serde(default)]
+    pub name: String,
     pub socket: String,
     pub files: Vec<String>,
+    #[serde(default)]
+    pub skins: Vec<String>,
+    /// `RenderStyle#` (none: the engine's default style).
+    #[serde(default)]
+    pub render_styles: Vec<String>,
+}
+
+impl GoggleRecord {
+    /// Its skin for camouflage index `c` (index 0 past the list; None:
+    /// no skins).
+    pub fn skin(&self, c: i32) -> Option<&str> {
+        let i = usize::try_from(c).ok().filter(|&i| i < self.skins.len()).unwrap_or(0);
+        self.skins.get(i).map(String::as_str).filter(|s| !s.is_empty())
+    }
 }
 
 /// The team-mark textures (`[TeamMark]`).
@@ -121,6 +142,11 @@ pub struct Loadouts {
     pub faces: Vec<i32>,
     pub heads: Vec<i32>,
     pub camouflages: Vec<i32>,
+    /// Goggles and backpacks (-1: none).
+    #[serde(default)]
+    pub goggles: Vec<i32>,
+    #[serde(default)]
+    pub backpacks: Vec<i32>,
 }
 
 /// A skeleton node the game uses, and where the spec measured it at `LST`
@@ -213,6 +239,8 @@ pub struct CharacterData {
     #[serde(default)]
     pub face: Vec<FaceRecord>,
     pub goggle: Vec<GoggleRecord>,
+    #[serde(default)]
+    pub backpack: Vec<GoggleRecord>,
     pub marks: Marks,
     /// The stock bodies' render styles (characters.md 2), for a record
     /// that names none.
@@ -256,6 +284,26 @@ fn merge_install_pieces(data: &mut CharacterData) {
             data.marks.teammate = teammate.clone();
         }
         data.marks.render_styles = m.render_styles.clone();
+    }
+    // The attachments file's goggles and backpacks by record index.
+    if let Some(a) = ca::install_attributes().and_then(|a| a.attachments.as_ref()) {
+        for (list, records) in [(&mut data.goggle, &a.goggles), (&mut data.backpack, &a.backpacks)] {
+            for (i, r) in records.iter().enumerate() {
+                let id = i as i32;
+                let rec = GoggleRecord {
+                    id,
+                    name: r.name.clone(),
+                    socket: r.socket.clone(),
+                    files: r.files.clone(),
+                    skins: ca::skin_paths(&r.skins),
+                    render_styles: r.render_styles.clone(),
+                };
+                match list.iter_mut().find(|g| g.id == id) {
+                    Some(g) => *g = rec,
+                    None => list.push(rec),
+                }
+            }
+        }
     }
     let Some(models) = ca::install_attributes().and_then(|a| a.models.as_ref()) else {
         return;
@@ -499,6 +547,8 @@ impl CharacterData {
             face: next(&l.faces, d.face),
             head: next(&l.heads, d.head),
             camouflage: next(&l.camouflages, d.camouflage),
+            goggle: next(&l.goggles, d.goggle),
+            backpack: next(&l.backpacks, d.backpack),
             ..d
         }
     }
@@ -508,6 +558,37 @@ impl CharacterData {
         let r = self.goggle.iter().find(|g| g.id == goggle)?;
         let file = r.files.get(figure).map(String::as_str).filter(|f| !f.is_empty())?;
         Some((r.socket.as_str(), file))
+    }
+
+    /// A backpack's socket and file for `figure` (None: none).
+    pub fn backpack_file(&self, backpack: i32, figure: usize) -> Option<(&str, &str)> {
+        let r = self.backpack.iter().find(|g| g.id == backpack)?;
+        let file = r.files.get(figure).map(String::as_str).filter(|f| !f.is_empty())?;
+        Some((r.socket.as_str(), file))
+    }
+
+    /// The server's check of a client's selection (1, "The selection"):
+    /// None for an unknown body record (refused); unknown face, head
+    /// piece, goggle, backpack or cosmetic ids become none (-1). Known
+    /// faces are the face records and the indices the body's face
+    /// redirect covers (ours: without the install's models file our data
+    /// names only face 0); known head pieces the records and the bots'
+    /// pool (likewise).
+    pub fn validated(&self, s: Selection) -> Option<Selection> {
+        let base = self.model(s.model)?;
+        let known = |ok: bool, id: i32| if ok { id } else { -1 };
+        let face_ok = self.face(s.face).is_some() || usize::try_from(s.face).is_ok_and(|f| f < base.faces.len());
+        let head_ok = self.head.iter().any(|h| h.id == s.head) || self.loadouts.heads.contains(&s.head);
+        Some(Selection {
+            model: s.model,
+            face: known(face_ok, s.face),
+            head: known(head_ok, s.head),
+            goggle: known(self.goggle.iter().any(|g| g.id == s.goggle), s.goggle),
+            backpack: known(self.backpack.iter().any(|g| g.id == s.backpack), s.backpack),
+            camouflage: s.camouflage,
+            cosmetic_character: known(self.model(s.cosmetic_character).is_some(), s.cosmetic_character),
+            cosmetic_vest: known(self.model(s.cosmetic_vest).is_some(), s.cosmetic_vest),
+        })
     }
 
     /// A weapon's third-person data (the attribute default without one).

@@ -197,6 +197,7 @@ impl MapLayers for Present {
                 )
                     .run_if(resource_exists::<render::bodies::PlayModels>),
                 (
+                    render::view_model::build_late,
                     render::view_model::draw_view_models,
                     render::view_model::view_model_screens,
                 )

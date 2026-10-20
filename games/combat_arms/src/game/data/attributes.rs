@@ -16,6 +16,9 @@
 //!   specs/combat_arms/attachments.md): attachment records (`Mod#`, as
 //!   `attachments::ModRecord`) and each weapon's accepted list
 //!   (`Weapon#`, unknown names dropped with their variant index).
+//! - `AttachmentsFile`: the character attachments file
+//!   (`ATTACHMENTS.TXT`): goggles and backpacks (`Goggle#`, `Backpack#`:
+//!   socket, model per figure type, skins, render styles).
 //!
 //! Names are kept as text (ASCII in shipped data; other bytes as
 //! Latin-1); `$` strings are kept as they are.
@@ -43,6 +46,7 @@ pub const SERVER_FILE: &str = "attributes/serverbutes.txt";
 pub const MODELS_FILE: &str = "attributes/modelbutes.txt";
 pub const MOD_FILE: &str = "attributes/mod.txt";
 pub const MARKS_FILE: &str = "attributes/marks.txt";
+pub const ATTACHMENTS_FILE: &str = "attributes/attachments.txt";
 
 /// The "none" fallback of `Maxstamina`, `DashGauge`, `GaugeRec`.
 pub const NO_INT: i32 = i32::MIN;
@@ -745,6 +749,54 @@ impl PieceRecord {
             skins: list("Skin"),
             hair: s.get("HairIndex").map(|_| s.int("HairIndex", -1)).filter(|&h| h >= 0),
             render_styles: list("RenderStyle"),
+        }
+    }
+}
+
+/// A worn socket attachment (characters.md 1 and 2, attachments.md
+/// "Character attachments"): goggles or a mask (`Goggle<N>`) or a
+/// backpack (`Backpack<N>`): its name, socket (`Socket`), file per figure
+/// type (`Model0`, `Model1`), skins (`Skin0..`) and render styles
+/// (`RenderStyle0..`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WornRecord {
+    pub name: String,
+    pub socket: String,
+    pub files: Vec<String>,
+    pub skins: Vec<String>,
+    pub render_styles: Vec<String>,
+}
+
+impl WornRecord {
+    pub fn read(s: &Section) -> Self {
+        let list = |prefix: &str| -> Vec<String> {
+            (0..)
+                .map_while(|i| s.string(&format!("{prefix}{i}")).map(text))
+                .collect()
+        };
+        Self {
+            name: name_of(s),
+            socket: s.string("Socket").map(text).unwrap_or_default(),
+            files: list("Model"),
+            skins: list("Skin"),
+            render_styles: list("RenderStyle"),
+        }
+    }
+}
+
+/// The character attachments file's goggles and backpacks, by record
+/// index.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AttachmentsFile {
+    pub goggles: Vec<WornRecord>,
+    pub backpacks: Vec<WornRecord>,
+}
+
+impl AttachmentsFile {
+    pub fn read(doc: &Document) -> Self {
+        Self {
+            goggles: doc.records("Goggle").into_iter().map(WornRecord::read).collect(),
+            backpacks: doc.records("Backpack").into_iter().map(WornRecord::read).collect(),
         }
     }
 }

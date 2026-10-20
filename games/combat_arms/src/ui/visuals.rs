@@ -1,7 +1,8 @@
 //! Combat Arms' placeholder looks (wave 0), until its models load: the
 //! local player's weapon in first person as a box (a long dark one for a
-//! gun, a thin light one for a melee weapon) when the map has no view
-//! model for it (`game::view_model`: keyed ones without the V2 key);
+//! gun, a thin light one for a melee weapon) while it has no view model
+//! (`game::view_model`: keyed ones without the V2 key, or one still
+//! loading: `on_demand`, which this plugin turns on);
 //! grenades in flight as small
 //! dark balls (`grenade_balls`) and, without the install's effect file,
 //! smoke clouds as grey balls of the cloud's size (`smoke_balls`; with it
@@ -30,6 +31,8 @@ pub struct CaVisualsPlugin;
 
 impl Plugin for CaVisualsPlugin {
     fn build(&self, app: &mut App) {
+        // The view models load as weapons want them (`view_model::on_demand`).
+        app.init_resource::<crate::game::view_model::on_demand::LoadOnDemand>();
         app.add_systems(
             Update,
             (
@@ -60,7 +63,11 @@ fn box_gun(
     mut commands: Commands,
 ) {
     let active = player.and_then(|inv| inv.active);
-    if shown.iter().any(|(_, b)| Some(b.0) == active) {
+    // A view model loaded since the box went up (`on_demand`) replaces it.
+    let modelled = active
+        .and_then(|w| kinds.get(w).ok())
+        .is_some_and(|(w, ..)| view_models.as_ref().is_some_and(|v| v.get(w.id).is_some()));
+    if !modelled && shown.iter().any(|(_, b)| Some(b.0) == active) {
         return;
     }
     for (e, _) in &shown {
@@ -69,10 +76,10 @@ fn box_gun(
     let (Some(weapon), Some(camera)) = (active, camera) else {
         return;
     };
-    let Ok((w, gun, melee)) = kinds.get(weapon) else {
+    let Ok((_, gun, melee)) = kinds.get(weapon) else {
         return;
     };
-    if view_models.is_some_and(|v| v.get(w.id).is_some()) {
+    if modelled {
         return;
     }
     // Metres, in the camera's space (-Z ahead, +X right, +Y up).

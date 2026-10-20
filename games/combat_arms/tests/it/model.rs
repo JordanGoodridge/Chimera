@@ -163,6 +163,26 @@ fn a_missing_child_fails_the_model() {
     assert!(model::load("parent.ltb", &|p| (p == "parent.ltb").then(|| parent.clone())).is_err());
 }
 
+/// A placed prop's pieces are drawn in their render styles: each
+/// piece's render-style index (here 0) into the object's list
+/// (`RenderStyle0..`); no list, the default (opaque, lit).
+#[test]
+fn placed_prop_render_styles() {
+    use chimera_world::map::MapAlpha;
+    let file = files();
+    let loaded = model::load("props/test/parent.ltb", &file).unwrap();
+    let mut data = MapData::default();
+    let lists: [&[String]; 3] = [&[], &["RS\\additive.ltb".into()], &["RS\\glass.ltb".into(), "RS\\GLOW.LTB".into()]];
+    let mut drawn = Vec::new();
+    for styles in lists {
+        let i = props::place(&mut data, &loaded, &[], styles, "Test", Vec3::ONE, Quat::IDENTITY, None, SCALE, &file);
+        let m = &data.models[data.props[i].model];
+        assert_eq!(m.meshes.len(), 1);
+        drawn.push((m.meshes[0].alpha, m.meshes[0].unlit));
+    }
+    assert_eq!(drawn, [(MapAlpha::Opaque, false), (MapAlpha::Add, true), (MapAlpha::Blend, false)]);
+}
+
 /// A placed prop plays its first sequence through Chimera's
 /// `animate_props`: `CaPropsPlugin` starts it.
 #[test]
@@ -170,7 +190,7 @@ fn placed_prop_animates() {
     let file = files();
     let loaded = model::load("props/test/parent.ltb", &file).unwrap();
     let mut data = MapData::default();
-    let i = props::place(&mut data, &loaded, &[], "Test", Vec3::ONE, Quat::IDENTITY, None, SCALE, &file);
+    let i = props::place(&mut data, &loaded, &[], &[], "Test", Vec3::ONE, Quat::IDENTITY, None, SCALE, &file);
     assert_eq!((i, data.props[i].entity, data.entities[0].classname()), (0, Some(0), "Test"));
     assert!(data.props[i].lighting.is_some());
 

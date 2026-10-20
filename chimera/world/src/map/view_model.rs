@@ -1,5 +1,6 @@
 //! First-person view models (any game), what games and the drawing
-//! share: games load `MapViewModel`s with the map, drive each character's
+//! share: games load `MapViewModel`s with the map (or later, on demand:
+//! `add_view_model`, its own textures in `LateViewModelTextures`), drive each character's
 //! `ViewAnimator` (which sequence plays) and `ViewModelOffset` (bob and
 //! sway), and send `ViewModelEvent`s (muzzle flashes, brass);
 //! `render::view_model` draws the view model of the character whose
@@ -11,11 +12,11 @@
 //! `ViewModelEvent`, the anchor and camera markers, `ViewModelScreen`,
 //! `DynamicLight`, `HeldMuzzle` and the placement maths.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bevy::prelude::*;
 
-use super::{MapBone, MapModel, anim};
+use super::{MapBone, MapModel, MapTexture, anim};
 
 /// Render layer of view models and the light that lights them.
 pub const VIEW_MODEL_LAYER: usize = 2;
@@ -61,6 +62,32 @@ pub struct ViewModels(pub Arc<Vec<MapViewModel>>);
 impl ViewModels {
     pub fn get(&self, key: &str) -> Option<&MapViewModel> {
         self.0.iter().find(|v| v.key == key)
+    }
+}
+
+/// The textures of the view models a game added after the map spawned
+/// (`add_view_model`: loaded on demand), by key: their meshes' texture
+/// indices are into these lists, not the map's. Removed with the map.
+#[derive(Resource, Clone, Default)]
+pub struct LateViewModelTextures(pub HashMap<String, Arc<Vec<MapTexture>>>);
+
+/// Add `model` to the loaded map's view models (replacing one with its
+/// key), its meshes' textures from `textures` (indices into that list):
+/// a view model loaded after the map spawned. The drawing builds it on
+/// its next frame (`render::view_model::build_late`); until then the
+/// key draws as if it had none. With no map yet, it waits for one.
+pub fn add_view_model(world: &mut World, model: MapViewModel, textures: Arc<Vec<MapTexture>>) {
+    world
+        .get_resource_or_init::<LateViewModelTextures>()
+        .0
+        .insert(model.key.clone(), textures);
+    match world.get_resource_mut::<ViewModels>() {
+        Some(mut models) => {
+            let list = Arc::make_mut(&mut models.0);
+            list.retain(|v| v.key != model.key);
+            list.push(model);
+        }
+        None => world.insert_resource(ViewModels(Arc::new(vec![model]))),
     }
 }
 
