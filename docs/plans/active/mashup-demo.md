@@ -36,21 +36,70 @@ neither game knows the other (checks/tests/it/architecture.rs).
   installs): the map dressed, a soldier on the floor at Combat Arms'
   size, walking, firing the M4A1, bots fighting and respawning.
 
+## Done (2026-10-20)
+
+- Source's map logic in the mashup: `mashup_demo::MashupPartsPlugin`
+  adds `source_logic`'s `LogicPlugin` (doors, buttons, breakables,
+  triggers, movers) to Combat Arms' simulation. The logic already spoke
+  Chimera's vocabulary (characters by `Intent`/`MovementState`, `+use`
+  as `Intent::use_key`, `core::Damage` on `Damageable` nodes); the gap
+  was Combat Arms' rounds, which now deal their damage to anything
+  `Damageable` that isn't a character (`combat_arms::game::weapons`).
+- Surfaces: Chimera's `map::sources::SurfaceTable` (the app's data
+  file per game pair, apps/mashup_demo/data/surfaces_cs_source_combat_arms.toml:
+  by name, by Source game material letter, a default) gives the map's
+  surface names as the gameplay's (`MapData::surface_names`, spawned
+  as `map::SurfaceNames`); the map keeps its own names, so its game's
+  parts (CS:S's guns' penetration) still read them. Combat Arms reads
+  the translation where it reads surfaces (`effects::Ground`,
+  `surface_type`: impacts, footsteps, shells, grenades; penetration,
+  which now also reads the world's surface type where a wall has no
+  `PropSurface`).
+- CS:S's guns per slot: `cs_source::game::weapons::CsGunsPlugin` (the
+  data, its hooks, accuracy and recoil, penetration materials) split
+  from `CsWeaponsPlugin` (which adds the shop, rules, effects and the
+  rest on it); the app adds it and `loadout_slot <slot> <weapon>`
+  (`+loadout_slot primary cs_source:weapon_ak47`) puts either game's
+  weapon in a loadout slot; `MapSources::kept` keeps CS:S's weapons'
+  held and view models on its maps.
+- Units: `GameInfo::meters_per_unit` (the game's world unit) makes the
+  third-person camera's `cam_idealdist` the default game's units;
+  sound distances are metres (`map::sound::distance_gain`/
+  `distance_cutoff` take metres; Source's levels convert to inches
+  inside, LithTech's radii are metres; the room send and near pan are
+  metric); shadows' sizes are Source's renderer's, named as such
+  (`SOURCE_UNIT`), metres for any game's characters.
+- Tests: `heavy::cs_maps` (both installs): a Combat Arms soldier opens
+  de_nuke's doors with +use and breaks a metal vent with the M4A1;
+  de_dust2's sand, wood and concrete answer Combat Arms' types, and a
+  round into the sand plays Combat Arms' sand impact; a soldier with
+  `loadout_slot primary cs_source:weapon_ak47` fires the AK-47 into
+  another on dust2. Unit tests: `map::sources` (tables, kept models),
+  the app (the table's names are Combat Arms types, `set_slot`).
+
 ## Left
 
-- CS:S's map logic (`source_logic`: doors, buttons, breakables,
-  triggers) isn't run; brush entities stand as placed.
-- CS:S's surfaces aren't translated into Combat Arms' surface types
-  (effects and footsteps take the unknown surface's): a table of Source
-  surface properties to Combat Arms' types in the dressing.
-- CS:S's weapons per slot: their data and hooks belong to CS:S's
-  simulation plugins; offering them needs those hooks registrable alone
-  (a weapons-only plugin in `cs_source`) and the view models kept.
+- Map logic: the logic maps teams by Source's numbering (gameplay team
+  + 1); a gameplay whose team ids differ from the spawn mapping's needs
+  `SpawnTeams` read back. Combat Arms' knife and grenades' own damage to
+  breakables isn't checked on CS:S maps.
+- CS:S's guns in the mashup: no impact effects (Combat Arms' effects
+  read only its weapons' `CaWeaponFx`; CS:S's impact plugins would also
+  answer Combat Arms' shots); its view model is kept on the map but
+  doesn't show (Combat Arms' view-model driver, `game::view_model`,
+  plays Combat Arms' sequences; CS:S's `ViewAnimPlugin` isn't added);
+  Combat Arms' HUD shows its name as CS:S's localization token
+  (`Cstrike_WPNHUD_AK47`); held models on CS:S's skeleton (drawn
+  on Combat Arms' bodies only where bones match), no view model on a
+  Combat Arms map (only CS:S maps carry its models); no menu for the
+  slots (the console command).
+- Surfaces: the table is ours by eye; CS:S's names not listed fall to
+  the game material letter.
 - Network: no map offer of CS:S maps to clients (`map_file_bytes`), no
   dedicated mashup server.
-- Chimera still has Source-inch constants in presentation code
-  (`client::view`'s third-person distances, `render::shadows`, audio's
-  distance units); a game-level unit in `GameInfo` would make them the
-  gameplay's.
+- Other Source-inch constants in presentation (`render::water`,
+  `dust`, `detail`, `emitters`, `beams`, the spectator's distances)
+  are Source map features' or CS:S's spectator spec's own: left in
+  inches.
 - Menus: the app starts straight in game (Combat Arms has no front-end
   menus yet).

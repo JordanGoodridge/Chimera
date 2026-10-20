@@ -989,8 +989,7 @@ fn hear(
             if team == source_team || health.current <= 0.0 {
                 continue;
             }
-            let units = t.translation.distance(at) / 0.0254;
-            if crate::map::sound::distance_gain(level, units) >= HEARING_GAIN {
+            if crate::map::sound::distance_gain(level, t.translation.distance(at)) >= HEARING_GAIN {
                 bot.lead = Some((feet, now));
                 bot.lead_who = Some(source);
             }

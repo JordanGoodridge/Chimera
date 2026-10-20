@@ -16,6 +16,9 @@
 //! `cs_source:hit_slowdown` (`hit_reaction::HitSlowdown`, measured M18),
 //! `cs_source:alternate_hands` (the Elites), `cs_source:grenade`
 //! (`grenades::throwable`) and `cs_source:c4` (`objectives::c4_part`).
+//! `CsGunsPlugin` is the weapons alone (data, hooks, accuracy, recoil,
+//! penetration materials: what a mashup offers in another game's slots);
+//! `CsWeaponsPlugin` is CS:S's game, with the shop, rules and effects.
 //! Bullet penetration is the shared `Penetration` part with CS:S's numbers
 //! (data/penetration.toml: `pass_materials`, measured M13; each ammo type's
 //! power and reach in ammo.toml). The shop is data too
@@ -368,14 +371,43 @@ pub fn pass_materials() -> PassMaterials {
     PassMaterials::parse(PENETRATION_DATA.0, PENETRATION_DATA.1).unwrap_or_else(|e| panic!("CS:S penetration data: {e}"))
 }
 
-pub struct CsWeaponsPlugin;
+/// CS:S's weapons alone, for another game's gameplay (a mashup offering
+/// them in its slots): the weapon data with the hooks it names, the
+/// accuracy penalty and recoil around the weapon frame (predicted) and how
+/// bullets pass materials. None of CS:S's shop, spawn kit, pickup and
+/// spray rules, impact sounds and effects, grenades', fire's and
+/// objectives' systems or animation: `CsWeaponsPlugin` (CS:S's own game)
+/// adds those after it.
+pub struct CsGunsPlugin;
 
-impl Plugin for CsWeaponsPlugin {
+impl Plugin for CsGunsPlugin {
     fn build(&self, app: &mut App) {
         register_hooks(app);
         if let Err(e) = app.add_weapon_set(cs_weapons()) {
             panic!("CS:S weapon data: {e}");
         }
+        app.add_message::<WeaponEvent>()
+            // Inaccuracy, punch and recoil are predicted with the weapon
+            // frame (`core::Predict`).
+            .add_systems(
+                crate::core::Predict::Weapons,
+                (before_shots.before(WeaponFrame), after_shots.after(WeaponFrame)),
+            )
+            .predicted_part::<Inaccuracy>()
+            .predicted_part::<Recoil>()
+            .insert_resource(pass_materials());
+    }
+}
+
+/// CS:S's weapons as its game plays them: `CsGunsPlugin` and the rest
+/// around them (the shop and spawn kit, pickup and spray rules, impact
+/// sounds and effects, grenades, fire, objectives, hit reactions, pain
+/// sounds, the server's body animation).
+pub struct CsWeaponsPlugin;
+
+impl Plugin for CsWeaponsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(CsGunsPlugin);
         // The shop after the weapons it names; a spawn kit the app set
         // before the game (tests) stays.
         let kept = app
@@ -395,15 +427,6 @@ impl Plugin for CsWeaponsPlugin {
             sound: Some(SPRAY_SOUND.into()),
             ..default()
         })
-        .add_message::<WeaponEvent>()
-        // Inaccuracy, punch and recoil are predicted with the weapon
-        // frame (`core::Predict`).
-        .add_systems(
-            crate::core::Predict::Weapons,
-            (before_shots.before(WeaponFrame), after_shots.after(WeaponFrame)),
-        )
-        .predicted_part::<Inaccuracy>()
-        .predicted_part::<Recoil>()
         .add_plugins((
             super::impacts::ImpactSoundsPlugin,
             super::impact_effects::ImpactEffectsPlugin,
@@ -413,8 +436,7 @@ impl Plugin for CsWeaponsPlugin {
             super::objectives::CsObjectivesPlugin,
             // A network server's per-tick body animation, for hitboxes.
             super::player_anim::SimAnimPlugin,
-        ))
-        .insert_resource(pass_materials());
+        ));
         if !app.is_plugin_added::<super::pain::PainSoundsPlugin>() {
             app.add_plugins(super::pain::PainSoundsPlugin);
         }
